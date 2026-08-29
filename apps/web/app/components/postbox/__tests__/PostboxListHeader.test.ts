@@ -113,10 +113,14 @@ describe('PostboxListHeader overflow', () => {
 		expect(header.classes()).toContain('flex-wrap');
 	});
 
-	it('keeps the control cluster from shrinking into itself', () => {
+	it('keeps the control cluster inside the pane', () => {
 		const w = mountHeader();
 		const cluster = w.findAll('header > div').at(-1);
-		expect(cluster?.classes()).toContain('flex-shrink-0');
+		// The five-segment view-mode control is wider than a narrow pane, so the
+		// cluster must wrap internally and cap at the pane's width instead of
+		// painting across the neighbouring reader.
+		expect(cluster?.classes()).toContain('flex-wrap');
+		expect(cluster?.classes()).toContain('max-w-full');
 	});
 });
 

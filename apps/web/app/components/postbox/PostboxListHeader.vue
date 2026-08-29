@@ -172,9 +172,12 @@ const emit = defineEmits<{
 				>
 			</h2>
 		</div>
-		<!-- `flex-shrink-0`: the cluster must wrap as a unit instead of squeezing
-		     the segmented control until its labels collide. -->
-		<div class="flex items-center gap-2 flex-shrink-0 ml-auto">
+		<!-- The cluster wraps internally too (`flex-wrap`), so the five-segment
+		     view-mode control drops onto its own line instead of squeezing — and
+		     `max-w-full` pins the whole cluster inside the pane: without it the
+		     control's min-content width (five nowrap labels) overflowed the ~380px
+		     list pane and painted over the reader. -->
+		<div class="flex flex-wrap items-center justify-end gap-2 max-w-full ml-auto">
 			<!-- Arrival direction. Every folder gets it: "oldest first" is how a
 			     backlog gets cleared, and it was previously unreachable. -->
 			<button
@@ -221,15 +224,19 @@ const emit = defineEmits<{
 					>
 				</button>
 				<!-- Labeled view-mode control — exactly one mode active; persisted
-				     per user. Inbox-only: other folders stay flat. -->
-				<UiSegmentedControl
-					v-if="viewModeOptions"
-					size="sm"
-					:aria-label="t('components.postbox.postboxLayout.inboxView')"
-					:options="viewModeOptions"
-					:model-value="viewMode"
-					@update:model-value="emit('select-view-mode', String($event))"
-				/>
+				     per user. Inbox-only: other folders stay flat. The wrapper
+				     scrolls sideways when even a line of its own is too narrow for
+				     the five labels (a squeezed pane, a long locale), so the control
+				     stays inside the pane instead of bleeding across the reader. -->
+				<div v-if="viewModeOptions" class="max-w-full overflow-x-auto pbx-viewmode-scroll">
+					<UiSegmentedControl
+						size="sm"
+						:aria-label="t('components.postbox.postboxLayout.inboxView')"
+						:options="viewModeOptions"
+						:model-value="viewMode"
+						@update:model-value="emit('select-view-mode', String($event))"
+					/>
+				</div>
 			</template>
 		</div>
 		<!-- Escape hatch past the loaded page. Only offered once the page itself
@@ -284,3 +291,15 @@ const emit = defineEmits<{
 		</div>
 	</header>
 </template>
+
+<style scoped>
+/* The overflow wrapper is a last-resort containment, not a designed scroller:
+   no scrollbar track under the control, just the ability to reach a clipped
+   segment by swiping/arrow keys when the pane is genuinely too narrow. */
+.pbx-viewmode-scroll {
+	scrollbar-width: none;
+}
+.pbx-viewmode-scroll::-webkit-scrollbar {
+	display: none;
+}
+</style>
