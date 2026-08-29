@@ -478,6 +478,33 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 		).rejects.toThrow();
 	});
 
+	it('reorderSteps: rejects a step id belonging to another automation and patches nothing', async () => {
+		const t = await freshT();
+		setUser('user-alice', 'admin');
+
+		const targetDraft = await seedAutomation(t, { status: 'draft' });
+		const own = await seedStep(t, targetDraft, { stepIndex: 0 });
+
+		// A step on a DIFFERENT (draft) automation the caller must not be able to
+		// renumber via `targetDraft`'s reorder.
+		const otherDraft = await seedAutomation(t, { status: 'draft' });
+		const foreign = await seedStep(t, otherDraft, { stepIndex: 0 });
+
+		await expect(
+			t.mutation(api.automations.steps.reorderSteps, {
+				automationId: targetDraft,
+				stepOrder: [own, foreign],
+			})
+		).rejects.toThrow(/belong to this automation/);
+
+		// The foreign step's stepIndex is untouched — the mutation threw before any
+		// patch, so a cross-automation renumber never lands.
+		const foreignAfter = await t.run(async (ctx) => ctx.db.get(foreign));
+		expect(foreignAfter?.stepIndex).toBe(0);
+		const ownAfter = await t.run(async (ctx) => ctx.db.get(own));
+		expect(ownAfter?.stepIndex).toBe(0);
+	});
+
 	it('removeStep: allowed on a draft (reindexes), rejected on an active automation', async () => {
 		const t = await freshT();
 		setUser('user-alice', 'admin');

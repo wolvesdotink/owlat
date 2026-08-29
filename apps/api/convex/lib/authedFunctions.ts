@@ -281,6 +281,15 @@ export const adminMutation = ((fn: FunctionConfig) =>
  * Public mutation that requires the **owner** role (`organization:delete`). For
  * the narrow set of destructive org-level writes (e.g. deleting the
  * organization, rotating the instance secret) that even admins must not perform.
+ *
+ * L6 (documented equivalence): in the current single-org-per-instance model
+ * there is NO such destructive org-level endpoint — the public
+ * `auth/organization/create`/`delete` routes are disabled (auth/auth.ts) and the
+ * one org is bootstrapped by the seed action. So `ownerMutation` /
+ * `requireOwnerContext` are presently unused and owner is operationally identical
+ * to admin. The role capability distinction (`organization:delete` on owner, not
+ * admin) is retained so that if a destructive org op is ever added it can be
+ * gated owner-only here without a role redesign; wiring one is out of scope.
  */
 export const ownerMutation = ((fn: FunctionConfig) =>
 	mutation({

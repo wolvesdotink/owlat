@@ -120,6 +120,15 @@ export interface ProviderClientConfig {
 	apiKey?: string;
 	/** Base-URL override (e.g. a local Ollama/vLLM server, or an OpenAI proxy). */
 	baseUrl?: string;
+	/**
+	 * Optional injected fetch for the discovery (`listModels`) round trip. The
+	 * Node action supplies an SSRF-guarded fetcher (`lib/ssrfGuard.fetchGuarded`
+	 * for hosted providers — where a decrypted key rides the request — so the key
+	 * can never reach an unvalidated/private host) while keeping this adapter file
+	 * isolate-safe (it never imports the Node-only guard). Defaults to global
+	 * `fetch` when absent (unit tests stub the global directly).
+	 */
+	fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>;
 }
 
 /** A {@link ProviderClientConfig} plus the concrete embedding model to build. */

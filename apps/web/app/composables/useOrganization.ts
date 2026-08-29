@@ -126,12 +126,28 @@ let watchSetUp = false;
 const ORGANIZATION_SYNC_TIMEOUT_MS = 5_000;
 
 /**
+ * The message catalog, resolved where one exists.
+ *
+ * `useOrganization` is called from route middleware (the `admin`-gated pages'
+ * guard reads `currentMemberRole` / permission flags) as well as from page
+ * setups, and `useI18n()` THROWS outside a component instance — which would 500
+ * every `admin`-gated route. Middleware only reads org state; it never reaches a
+ * branch that produces user copy, so outside a component the fallback degrades a
+ * key to itself rather than taking the app down. Mirrors `useAuth.ts`.
+ */
+export function organizationTranslator(): (key: string) => string {
+	if (!getCurrentInstance()) return (key: string) => key;
+	const { t } = useI18n();
+	return (key: string) => t(key);
+}
+
+/**
  * Composable for managing BetterAuth organization membership.
  * Uses shared state (useState) so all callers share the same data and
  * only one set of HTTP requests is made per organization switch.
  */
 export function useOrganization() {
-	const { t } = useI18n();
+	const t = organizationTranslator();
 	// BetterAuth hooks — called fresh each time; they return the same internal
 	// reactive state so multiple calls are cheap. Caching at module level broke
 	// reactivity across HMR and could prevent isPending from resolving.

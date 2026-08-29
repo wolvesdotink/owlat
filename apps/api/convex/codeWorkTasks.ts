@@ -13,15 +13,19 @@ import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
 import { isFeatureEnabled } from './lib/featureFlags';
 import { getOrThrow, throwInvalidState } from './_utils/errors';
 import { extractEmail } from './lib/emailAddress';
-import { checkCodeAgentSafety } from './lib/codeAgentGuard';
+import { checkCodeAgentSafety, isDmarcAligned } from './lib/codeAgentGuard';
 import { CODE_TASK_MAX_ATTEMPTS, codeTaskRetryDecision } from './lib/codeTaskRetry';
 
 /** Upper bound on rows a single reclaim sweep touches — keeps it bounded. */
 const RECLAIM_SCAN_LIMIT = 100;
+
+/** Default / hard ceiling for `listRecent` — bounds inbound-derived text exposure. */
+const LIST_RECENT_DEFAULT_LIMIT = 20;
+const LIST_RECENT_MAX_LIMIT = 100;
 
 /** Statuses in which the code-worker (not the user) owns the task. */
 const WORKER_OWNED_STATUSES = ['running', 'testing'] as const;
@@ -68,16 +72,25 @@ async function isTrustedInboundSender(ctx: MutationCtx, fromField: string): Prom
 }
 
 /**
- * List recent tasks (for dashboard / verification queue)
+ * List recent tasks (for dashboard / verification queue).
+ *
+ * A task's `description` is inbound-email-derived text (subject + body of a
+ * feature request), so this read is gated to the same owner/admin role that may
+ * create or cancel tasks — not every authenticated org member — and the caller's
+ * `limit` is CLAMPED to a hard ceiling so it can never sweep the whole table.
  */
 export const listRecent = authedQuery({
 	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('codeWorkTasks')
-			.withIndex('by_created_at')
-			.order('desc')
-			.take(args.limit ?? 20);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can view code tasks'
+		);
+		const requested = args.limit ?? LIST_RECENT_DEFAULT_LIMIT;
+		// Clamp into [1, MAX]: a non-positive or oversized limit is coerced rather
+		// than trusted, so inbound-derived text exposure stays bounded.
+		const limit = Math.min(Math.max(Math.floor(requested), 1), LIST_RECENT_MAX_LIMIT);
+		return await ctx.db.query('codeWorkTasks').withIndex('by_created_at').order('desc').take(limit);
 	},
 });
 
@@ -184,12 +197,14 @@ export const cancel = authedMutation({
  * feature request. Fails safe on several fronts before anything reaches the
  * coding agent:
  *   - the `inbox.codeTasks` feature flag must be on (off by default);
+ *   - the message must carry a DMARC-aligned `pass` (computed by the MTA over
+ *     the raw bytes at ingest). The allowlist below keys on the verbatim,
+ *     forgeable "From" address; without this gate a spoofed member address would
+ *     satisfy it. DMARC binds the From domain to an aligned SPF/DKIM pass, so it
+ *     is the primary anti-spoofing control here, checked BEFORE the allowlist;
  *   - the sender must be a trusted org member — an untrusted sender's mail
  *     still processes as normal inbound, it simply does NOT spawn a code task
- *     (a stranger cannot direct the coding agent by emailing the inbox). This
- *     keys on the (verbatim-stored) "From" address, so it assumes upstream
- *     inbound-sender authentication (DMARC/DKIM alignment); a spoofed member
- *     address would pass the allowlist, leaving the guard below as the backstop;
+ *     (a stranger cannot direct the coding agent by emailing the inbox);
  *   - a code-agent-specific appropriateness check must pass — instructions
  *     smuggled to a CODE agent ("add a backdoor", "leak the env secrets",
  *     "force-push to main") are distinct from the email-assistant injection
@@ -216,6 +231,16 @@ export const createFromInbound = internalMutation({
 
 		const message = await ctx.db.get(args.inboundMessageId);
 		if (!message) {
+			return null;
+		}
+
+		// DMARC gate (PRIMARY anti-spoofing control): the allowlist below trusts
+		// the verbatim "From" header, which any sender can forge. Require a
+		// DMARC-aligned pass — the MTA computed it over the raw bytes at ingest —
+		// so a forged member address cannot direct the coding agent. Fails CLOSED:
+		// an absent/failed/non-pass verdict spawns no task (the mail still
+		// processes as normal inbound). The content denylist stays as backstop.
+		if (!isDmarcAligned(message)) {
 			return null;
 		}
 

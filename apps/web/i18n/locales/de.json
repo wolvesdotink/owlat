@@ -6872,11 +6872,12 @@
 					"inviteTeammate": "Teammitglied einladen",
 					"mailboxChecking": "Postfachstatus wird geprüft…",
 					"mailboxLoading": "Postfachstatus wird geladen",
+					"markEmailVerified": "E-Mail-Adresse als verifiziert markieren",
 					"noMatchesDescription": "Keine Mitglieder passen zu „{query}“.",
 					"noMatchesTitle": "Keine Treffer",
 					"noName": "Kein Name",
 					"removeFromTeam": "Aus dem Team entfernen",
-					"removeMemberLabel": "{member} entfernen",
+					"resendVerification": "Verifizierungs-E-Mail erneut senden",
 					"rowActions": "Aktionen für {member}",
 					"searchLabel": "Mitglieder nach Name oder E-Mail-Adresse durchsuchen",
 					"searchPlaceholder": "Name oder E-Mail-Adresse suchen",
@@ -6907,7 +6908,9 @@
 					}
 				},
 				"operations": {
-					"deleteWorkspace": "Workspace löschen"
+					"deleteWorkspace": "Workspace löschen",
+					"markEmailVerified": "E-Mail-Adresse als verifiziert markieren",
+					"resendVerification": "Verifizierungs-E-Mail erneut senden"
 				},
 				"pageTitle": "Teamverwaltung — Owlat",
 				"removeModal": {
@@ -6977,6 +6980,8 @@
 				"title": "Teammitglieder",
 				"toasts": {
 					"cancelInviteFailed": "Die Einladung konnte nicht zurückgezogen werden",
+					"emailAlreadyVerified": "{email} ist bereits verifiziert",
+					"emailVerified": "{email} als verifiziert markiert",
 					"inviteCancelled": "Einladung zurückgezogen",
 					"inviteResendNoTransport": "Der E-Mail-Versand ist nicht eingerichtet — kopieren Sie stattdessen den Annahmelink für {email}.",
 					"inviteResent": "Einladung erneut an {email} gesendet",
@@ -6987,6 +6992,8 @@
 					"roleUpdated": "Rolle erfolgreich aktualisiert",
 					"transferOwnershipFailed": "Die Eigentümerschaft konnte nicht übertragen werden",
 					"updateRoleFailed": "Die Rolle konnte nicht aktualisiert werden",
+					"verificationResendNoTransport": "E-Mail-Versand ist nicht eingerichtet — markiere {email} stattdessen als verifiziert.",
+					"verificationResent": "Verifizierungs-E-Mail erneut an {email} gesendet",
 					"workspaceDeletionStarted": "Löschung des Workspace gestartet"
 				},
 				"transferModal": {

@@ -294,6 +294,13 @@ export interface IpPoolConfig {
 export interface DkimKeyConfig {
 	selector: string;
 	privateKey: string;
+	/**
+	 * Owning organization (H2 cross-tenant DKIM guard). When set, the key may only
+	 * sign for jobs from this organization — see {@link getDkimOptions}. Absent on
+	 * legacy keys (registered before ownership was recorded) and on env-seeded
+	 * keys, which stay usable by any org until re-registered with an owner.
+	 */
+	organizationId?: string;
 }
 
 // ============ Bounce Types ============

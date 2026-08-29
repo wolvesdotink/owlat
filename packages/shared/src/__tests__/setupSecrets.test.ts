@@ -56,4 +56,34 @@ describe('ensureSecrets', () => {
 		expect(s).toHaveLength(40);
 		expect(s).toMatch(/^[A-Za-z0-9]+$/);
 	});
+
+	it('generateSecret honours varied lengths, including 0', () => {
+		expect(generateSecret(0)).toBe('');
+		expect(generateSecret(1)).toHaveLength(1);
+		expect(generateSecret(100)).toHaveLength(100);
+	});
+
+	it('generateSecret is unbiased across the base62 alphabet (rejection sampling)', () => {
+		// A biased `byte % 62` over-weights the first 8 symbols (indices 0..7 map
+		// from 5 byte values, 8..61 from 4). Sample a large secret and assert the
+		// per-symbol counts do not split into a "5/62 vs 4/62" high/low band — the
+		// max-count / min-count ratio stays well below the ~1.25 a modulo bias
+		// would force. Rejection sampling makes the draw uniform.
+		const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+		const N = 620_000;
+		const s = generateSecret(N);
+		const counts = new Map<string, number>();
+		for (const ch of s) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+		// Every symbol appears; none is systematically starved or favoured.
+		expect(counts.size).toBe(alphabet.length);
+		const values = [...counts.values()];
+		const expected = N / alphabet.length; // 10_000
+		const max = Math.max(...values);
+		const min = Math.min(...values);
+		// A modulo bias would push max/min toward 5/4 = 1.25; uniform sampling keeps
+		// the spread tight around ±5% of expectation.
+		expect(max / min).toBeLessThan(1.1);
+		expect(max).toBeLessThan(expected * 1.06);
+		expect(min).toBeGreaterThan(expected * 0.94);
+	});
 });

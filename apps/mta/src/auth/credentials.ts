@@ -11,8 +11,26 @@ import type Redis from 'ioredis';
 export interface OrgCredential {
 	organizationId: string;
 	name: string;
+	/**
+	 * The organization's verified sending domains (lowercased). When present,
+	 * submission enforces that a message's From domain is in this set — the H2
+	 * cross-tenant From-forgery guard, mirroring the Postbox mailbox guard. Absent
+	 * on legacy credentials created before this field existed: those stay unscoped
+	 * at submission until re-provisioned, and the org-scoped DKIM signer is the
+	 * fail-closed backstop that still blocks signing under another tenant's key.
+	 */
+	allowedDomains?: string[];
 	createdAt: number;
 	lastUsedAt?: number;
+}
+
+/** Normalize a verified-domain list: lowercased, trimmed, de-duplicated, no blanks. */
+function normalizeAllowedDomains(domains: readonly string[]): string[] {
+	return [
+		...new Set(
+			domains.map((domain) => domain.trim().toLowerCase()).filter((domain) => domain.length > 0)
+		),
+	];
 }
 
 const CRED_PREFIX = 'mta:cred:';
@@ -24,13 +42,15 @@ const CRED_INDEX_PREFIX = 'mta:cred-index:'; // org → set of key IDs
 export async function createCredential(
 	redis: Redis,
 	organizationId: string,
-	name: string
+	name: string,
+	allowedDomains?: readonly string[]
 ): Promise<{ apiKey: string; credential: OrgCredential }> {
 	const apiKey = `owlat_${randomBytes(16).toString('hex')}`;
 	const credential: OrgCredential = {
 		organizationId,
 		name,
 		createdAt: Date.now(),
+		...(allowedDomains ? { allowedDomains: normalizeAllowedDomains(allowedDomains) } : {}),
 	};
 
 	await redis.set(`${CRED_PREFIX}${apiKey}`, JSON.stringify(credential));
@@ -59,6 +79,67 @@ export async function lookupCredential(
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Overwrite a credential's `allowedDomains` (the H2 verified-sending-domain set),
+ * preserving every other field on the blob. The list is normalized (lowercased,
+ * trimmed, de-duplicated, no blanks) exactly as {@link createCredential} does, so
+ * the two write paths can never disagree on the stored shape.
+ *
+ * Idempotent: re-writing the same normalized set leaves the blob byte-identical.
+ * Returns `false` when no credential exists for `apiKey` (so the route can 404),
+ * or when the stored blob is unparseable.
+ */
+export async function setAllowedDomains(
+	redis: Redis,
+	apiKey: string,
+	domains: readonly string[]
+): Promise<boolean> {
+	const data = await redis.get(`${CRED_PREFIX}${apiKey}`);
+	if (!data) return false;
+
+	let credential: OrgCredential;
+	try {
+		credential = JSON.parse(data) as OrgCredential;
+	} catch {
+		return false;
+	}
+
+	const updated: OrgCredential = {
+		...credential,
+		allowedDomains: normalizeAllowedDomains(domains),
+	};
+	await redis.set(`${CRED_PREFIX}${apiKey}`, JSON.stringify(updated));
+	return true;
+}
+
+/**
+ * List an organization's credentials WITH their full API keys (master-key admin
+ * paths only — e.g. the allowedDomains backfill migration, which must address a
+ * PATCH by the full key). This is the un-truncated sibling of
+ * {@link listCredentials}: that one redacts the key for any surface that might
+ * reach an operator, this one is for server-to-server use behind the master key.
+ */
+export async function listCredentialsWithKeys(
+	redis: Redis,
+	organizationId: string
+): Promise<Array<{ apiKey: string; credential: OrgCredential }>> {
+	const keys = await redis.smembers(`${CRED_INDEX_PREFIX}${organizationId}`);
+	const results: Array<{ apiKey: string; credential: OrgCredential }> = [];
+
+	for (const key of keys) {
+		const data = await redis.get(`${CRED_PREFIX}${key}`);
+		if (data) {
+			try {
+				results.push({ apiKey: key, credential: JSON.parse(data) as OrgCredential });
+			} catch {
+				// Skip invalid entries
+			}
+		}
+	}
+
+	return results;
 }
 
 /**
@@ -112,13 +193,7 @@ export async function listAllCredentials(
 	let cursor = '0';
 
 	do {
-		const [nextCursor, keys] = await redis.scan(
-			cursor,
-			'MATCH',
-			`${CRED_PREFIX}*`,
-			'COUNT',
-			100
-		);
+		const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', `${CRED_PREFIX}*`, 'COUNT', 100);
 		cursor = nextCursor;
 
 		for (const key of keys) {

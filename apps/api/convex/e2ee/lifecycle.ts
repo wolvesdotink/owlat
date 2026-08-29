@@ -146,9 +146,13 @@ export const deactivateAddressKeys = internalMutation({
  */
 export const listRotationStatements = internalQuery({
 	args: { limit: v.optional(v.number()) },
+	// The rotated `address` is intentionally NOT projected (L7): it is stored on
+	// the row (for the `by_address` index) but must never reach the anonymous
+	// manifest, which would otherwise enumerate every mailbox that rotated a key.
+	// The address stays bound to the statement by its signature — see
+	// `e2ee/pinning.ts:RotationStatement`.
 	returns: v.array(
 		v.object({
-			address: v.string(),
 			oldFingerprint: v.string(),
 			newFingerprint: v.string(),
 			signature: v.string(),
@@ -162,7 +166,6 @@ export const listRotationStatements = internalQuery({
 			.order('desc')
 			.take(limit);
 		return rows.map((r) => ({
-			address: r.address,
 			oldFingerprint: r.oldFingerprint,
 			newFingerprint: r.newFingerprint,
 			signature: r.signature,

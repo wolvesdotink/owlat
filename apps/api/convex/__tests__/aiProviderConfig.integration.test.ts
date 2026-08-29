@@ -180,6 +180,44 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 		expect(result.languageBaseUrl).toBe('http://localhost:11434/v1');
 	});
 
+	it('rejects a hosted provider whose base URL is http (SSRF/key-exfil gate)', async () => {
+		const t = setup();
+		await expect(
+			t.action(api.aiProviderConfigActions.saveConfig, {
+				languageProviderKind: 'openai',
+				languageBaseUrl: 'http://api.internal.example/v1',
+				apiKey: 'sk-openai-secret-1234',
+			})
+		).rejects.toThrow(/https/i);
+		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+		expect(row).toBeNull();
+	});
+
+	it('rejects a hosted provider whose base URL is a private/internal address', async () => {
+		const t = setup();
+		await expect(
+			t.action(api.aiProviderConfigActions.saveConfig, {
+				languageProviderKind: 'openai',
+				languageBaseUrl: 'https://169.254.169.254/v1',
+				apiKey: 'sk-openai-secret-1234',
+			})
+		).rejects.toThrow(/private or internal/i);
+		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+		expect(row).toBeNull();
+	});
+
+	it('accepts a hosted provider with a public https base URL', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			languageProviderKind: 'openai',
+			languageBaseUrl: 'https://proxy.example.com/v1',
+			apiKey: 'sk-openai-secret-1234',
+		});
+		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		if (!result.configured) throw new Error('unreachable');
+		expect(result.languageBaseUrl).toBe('https://proxy.example.com/v1');
+	});
+
 	it('rejects a hosted provider saved with no key at all', async () => {
 		const t = setup();
 		await expect(

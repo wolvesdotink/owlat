@@ -122,6 +122,10 @@ beforeEach(() => {
 	// ip+token key isolates each form to its own bucket regardless.
 	delete process.env['RATE_LIMIT_TRUSTED_PROXY'];
 	delete process.env['SITE_URL'];
+	// Local integration deployment: opt into dev mode so cors.allowedOrigins() and
+	// auth.resolveTrustedOrigins() use the loopback defaults instead of the
+	// production fail-closed throw (which now requires SITE_URL/ALLOWED_ORIGINS).
+	process.env['OWLAT_DEV_MODE'] = 'true';
 });
 
 afterEach(() => {

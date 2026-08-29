@@ -15,6 +15,7 @@ import { countWithPagination } from '../lib/pagination';
 import { getOptional } from '../lib/env';
 import { listResources } from '../lib/listing';
 import { topicListing } from './listing';
+import { redactContactCapabilityFields } from '../contacts/listing';
 import { toPaginationCursor } from '../lib/paginationCursor';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwNotFound } from '../_utils/errors';
@@ -73,9 +74,13 @@ export const getContacts = authedQuery({
 
 		const contacts = result.page.map((membership) => {
 			const contact = contactsMap.get(String(membership.contactId));
-			return contact
+			// Skip missing or soft-deleted (GDPR-erased) contacts — an erased
+			// contact must not re-surface through a topic membership. Redact the
+			// DOI capability fields (doiConfirmationToken / doiTokenExpiresAt) so a
+			// member-readable read never leaks the /confirm/doi bearer token.
+			return contact && contact.deletedAt === undefined
 				? {
-						...contact,
+						...redactContactCapabilityFields(contact),
 						addedAt: membership.addedAt,
 					}
 				: null;

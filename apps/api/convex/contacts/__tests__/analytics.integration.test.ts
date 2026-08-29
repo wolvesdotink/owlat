@@ -26,13 +26,13 @@ const contactsGlob = Object.fromEntries(
 	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
 		path.replace(/^\.\.\//, '../../contacts/'),
 		mod,
-	]),
+	])
 );
 const modules = { ...rootGlob, ...contactsGlob };
 
 async function insertContact(
 	t: ReturnType<typeof convexTest>,
-	createdAt: number,
+	createdAt: number
 ): Promise<Id<'contacts'>> {
 	return t.run((ctx) =>
 		ctx.db.insert('contacts', {
@@ -41,7 +41,7 @@ async function insertContact(
 			doiStatus: 'not_required',
 			createdAt,
 			updatedAt: createdAt,
-		}),
+		})
 	);
 }
 
@@ -58,7 +58,7 @@ describe('contacts.analytics.getTopTopics — denormalized counts', () => {
 				name: 'Denorm topic',
 				cachedMemberCount: 5000,
 				createdAt: Date.now(),
-			}),
+			})
 		);
 
 		const topics = await t.query(api.contacts.analytics.getTopTopics, { limit: 5 });
@@ -70,13 +70,13 @@ describe('contacts.analytics.getTopTopics — denormalized counts', () => {
 		const t = convexTest(schema, modules);
 
 		const topicId = await t.run((ctx) =>
-			ctx.db.insert('topics', { name: 'Uncached topic', createdAt: Date.now() }),
+			ctx.db.insert('topics', { name: 'Uncached topic', createdAt: Date.now() })
 		);
 		// Two real memberships, no cachedMemberCount.
 		for (let i = 0; i < 2; i++) {
 			const contactId = await insertContact(t, Date.now());
 			await t.run((ctx) =>
-				ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() }),
+				ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() })
 			);
 		}
 
@@ -106,5 +106,85 @@ describe('contacts.analytics.getSubscriberGrowth — bounded scan', () => {
 		expect(result.days).toHaveLength(30);
 		const total = result.days.reduce((sum, day) => sum + day.count, 0);
 		expect(total).toBe(3);
+	});
+
+	it('excludes soft-deleted (GDPR-erased) contacts from the growth series', async () => {
+		const t = convexTest(schema, modules);
+
+		const now = Date.now();
+		const oneDay = 24 * 60 * 60 * 1000;
+		// Two live contacts in-window and one soft-deleted contact in-window.
+		await insertContact(t, now - oneDay);
+		await insertContact(t, now - 2 * oneDay);
+		await t.run((ctx) =>
+			ctx.db.insert('contacts', {
+				email: `erased-${Math.random()}@example.com`,
+				source: 'api',
+				doiStatus: 'not_required',
+				deletedAt: now,
+				createdAt: now - oneDay,
+				updatedAt: now,
+			})
+		);
+
+		const result = await t.query(api.contacts.analytics.getSubscriberGrowth, {});
+		const total = result.days.reduce((sum, day) => sum + day.count, 0);
+		// The erased contact must not inflate the count.
+		expect(total).toBe(2);
+	});
+});
+
+describe('contacts.analytics.getRecent — redaction, soft-delete, clamp', () => {
+	it('never leaks DOI capability fields and excludes soft-deleted contacts', async () => {
+		const t = convexTest(schema, modules);
+
+		const now = Date.now();
+		await t.run((ctx) =>
+			ctx.db.insert('contacts', {
+				email: 'live@example.com',
+				source: 'api',
+				doiStatus: 'pending',
+				doiConfirmationToken: 'secret-doi-token',
+				doiTokenExpiresAt: now + 100000,
+				createdAt: now,
+				updatedAt: now,
+			})
+		);
+		await t.run((ctx) =>
+			ctx.db.insert('contacts', {
+				email: 'erased@example.com',
+				source: 'api',
+				doiStatus: 'pending',
+				doiConfirmationToken: 'erased-token',
+				deletedAt: now,
+				createdAt: now,
+				updatedAt: now,
+			})
+		);
+
+		const recent = await t.query(api.contacts.analytics.getRecent, { limit: 50 });
+
+		// Soft-deleted contact excluded.
+		expect(recent).toHaveLength(1);
+		expect(recent[0]!.email).toBe('live@example.com');
+		// Bearer capability for /confirm/doi never leaves the backend.
+		for (const row of recent) {
+			expect(row).not.toHaveProperty('doiConfirmationToken');
+			expect(row).not.toHaveProperty('doiTokenExpiresAt');
+		}
+	});
+
+	it('clamps an oversized limit to the 500 cap', async () => {
+		const t = convexTest(schema, modules);
+
+		const now = Date.now();
+		for (let i = 0; i < 3; i++) {
+			await insertContact(t, now - i);
+		}
+
+		// A hostile/buggy caller asking for a huge page is clamped; it still
+		// returns at most the available live rows and never throws.
+		const recent = await t.query(api.contacts.analytics.getRecent, { limit: 1_000_000 });
+		expect(recent.length).toBe(3);
 	});
 });

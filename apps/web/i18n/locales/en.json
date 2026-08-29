@@ -6872,11 +6872,12 @@
 					"inviteTeammate": "Invite a teammate",
 					"mailboxChecking": "Checking mailbox status…",
 					"mailboxLoading": "Loading mailbox status",
+					"markEmailVerified": "Mark email verified",
 					"noMatchesDescription": "No members match “{query}”.",
 					"noMatchesTitle": "No matches",
 					"noName": "No name",
 					"removeFromTeam": "Remove from team",
-					"removeMemberLabel": "Remove {member}",
+					"resendVerification": "Resend verification email",
 					"rowActions": "Actions for {member}",
 					"searchLabel": "Search members by name or email",
 					"searchPlaceholder": "Search name or email",
@@ -6907,7 +6908,9 @@
 					}
 				},
 				"operations": {
-					"deleteWorkspace": "Delete workspace"
+					"deleteWorkspace": "Delete workspace",
+					"markEmailVerified": "Mark email verified",
+					"resendVerification": "Resend verification email"
 				},
 				"pageTitle": "Team Management — Owlat",
 				"removeModal": {
@@ -6977,6 +6980,8 @@
 				"title": "Team Members",
 				"toasts": {
 					"cancelInviteFailed": "Failed to cancel invitation",
+					"emailAlreadyVerified": "{email} is already verified",
+					"emailVerified": "Marked {email} as verified",
 					"inviteCancelled": "Invitation cancelled",
 					"inviteResendNoTransport": "Email delivery isn't set up — copy the accept link for {email} instead.",
 					"inviteResent": "Invitation re-sent to {email}",
@@ -6987,6 +6992,8 @@
 					"roleUpdated": "Role updated successfully",
 					"transferOwnershipFailed": "Failed to transfer ownership",
 					"updateRoleFailed": "Failed to update role",
+					"verificationResendNoTransport": "Email delivery isn't set up — mark {email} verified instead.",
+					"verificationResent": "Verification email re-sent to {email}",
 					"workspaceDeletionStarted": "Workspace deletion started"
 				},
 				"transferModal": {

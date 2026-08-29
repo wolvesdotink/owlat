@@ -1,7 +1,8 @@
 /**
- * Recipient-key discovery — the hard test gate for `e2ee/discovery.ts`. All
- * network is mocked (injected {@link DiscoveryDeps}); real OpenPGP fixture keys
- * (alice, bob) exercise the crypto. Covers:
+ * Recipient-key discovery — the hard test gate for `e2ee/discovery.ts` and its
+ * `discoveryFetch` / `discoveryVerify` siblings. All network is mocked (injected
+ * {@link DiscoveryDeps}); real OpenPGP fixture keys (alice, bob) exercise the
+ * crypto. Covers:
  *   (a) manifest hit, WKD-only fallback, negative cache, TTL refresh, and the
  *       key<->address binding check;
  *   (b) SSRF negatives — a redirect (to 10.x / 169.254.x / localhost), plain
@@ -13,18 +14,19 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as openpgp from 'openpgp';
 import {
-	guardedFetchBytes,
 	discoverKeyForAddress,
-	keyCertifiesAddress,
-	verifyRotationStatement,
 	shouldRefetch,
-	SsrfRejection,
-	buildManifestUrl,
-	buildWkdUrl,
 	TTL_NEGATIVE_MS,
-	type DiscoveryDeps,
 	type RotationStatement,
 } from '../discovery';
+import {
+	guardedFetchBytes,
+	buildManifestUrl,
+	buildWkdUrl,
+	SsrfRejection,
+	type DiscoveryDeps,
+} from '../discoveryFetch';
+import { keyCertifiesAddress, verifyRotationStatement } from '../discoveryVerify';
 import { buildManifestPayload, signManifest } from '../manifest';
 
 const keyPath = (name: string) =>
@@ -248,12 +250,20 @@ describe('e2ee/discovery signed rotation statement', () => {
 	const OLD = 'AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555';
 	const NEW = '9999888877776666555544443333222211110000';
 
-	async function sign(statement: Omit<RotationStatement, 'signature'>): Promise<string> {
+	// The rotated address is NO LONGER on the wire (L7); the signature still
+	// covers the canonical text including the address, so the signer takes the
+	// address explicitly and a verifier reconstructs the same text from the
+	// address it is discovering.
+	async function sign(input: {
+		address: string;
+		oldFingerprint: string;
+		newFingerprint: string;
+	}): Promise<string> {
 		const text = [
 			'owlat-key-rotation',
-			statement.address.toLowerCase(),
-			statement.oldFingerprint.toUpperCase(),
-			statement.newFingerprint.toUpperCase(),
+			input.address.toLowerCase(),
+			input.oldFingerprint.toUpperCase(),
+			input.newFingerprint.toUpperCase(),
 		].join('\n');
 		return openpgp.sign({
 			message: await openpgp.createMessage({ text }),
@@ -265,7 +275,6 @@ describe('e2ee/discovery signed rotation statement', () => {
 
 	it('accepts a statement validly signed by the old key binding old->new', async () => {
 		const statement: RotationStatement = {
-			address: BOB,
 			oldFingerprint: OLD,
 			newFingerprint: NEW,
 			signature: await sign({ address: BOB, oldFingerprint: OLD, newFingerprint: NEW }),
@@ -275,7 +284,6 @@ describe('e2ee/discovery signed rotation statement', () => {
 
 	it('rejects a statement whose observed fingerprint does not match', async () => {
 		const statement: RotationStatement = {
-			address: BOB,
 			oldFingerprint: OLD,
 			newFingerprint: NEW,
 			signature: await sign({ address: BOB, oldFingerprint: OLD, newFingerprint: NEW }),
@@ -285,11 +293,23 @@ describe('e2ee/discovery signed rotation statement', () => {
 
 	it('rejects a statement signed by the WRONG key', async () => {
 		const statement: RotationStatement = {
-			address: BOB,
 			oldFingerprint: OLD,
 			newFingerprint: NEW,
 			signature: await sign({ address: BOB, oldFingerprint: OLD, newFingerprint: NEW }),
 		};
 		expect(await verifyRotationStatement(bobPub, statement, BOB, OLD, NEW)).toBe(false);
+	});
+
+	it('rejects a statement replayed onto a DIFFERENT address (signature binds it)', async () => {
+		// Signed for BOB, but verified while discovering a different address: the
+		// reconstructed canonical text differs, so the signature no longer verifies.
+		const statement: RotationStatement = {
+			oldFingerprint: OLD,
+			newFingerprint: NEW,
+			signature: await sign({ address: BOB, oldFingerprint: OLD, newFingerprint: NEW }),
+		};
+		expect(await verifyRotationStatement(alicePub, statement, 'mallory@b.test', OLD, NEW)).toBe(
+			false
+		);
 	});
 });

@@ -4,6 +4,7 @@
  * before spending an LLM call: it enforces the `ai` feature flag and a
  * per-user rate limit, mirroring the inbound pipeline's gating.
  */
+import { v } from 'convex/values';
 import { internalMutation } from '../../_generated/server';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
@@ -11,9 +12,20 @@ import { rateLimiter } from '../../rateLimiter';
 import { throwForbidden, throwRateLimited } from '../../_utils/errors';
 import { computeBudgetStatus } from '../../analytics/spendBudget';
 
+/**
+ * Per-user rate-limit bucket the gate charges. Each user-triggered AI surface
+ * passes its OWN bucket so one feature's tight loop can't starve another's
+ * headroom; `postboxAiPerUser` stays the default for the original callers.
+ */
+const AI_RATE_BUCKET = v.union(
+	v.literal('postboxAiPerUser'),
+	v.literal('translateBatchPerUser'),
+	v.literal('quickQueryPerUser')
+);
+
 export const assertAiAllowed = internalMutation({
-	args: {},
-	handler: async (ctx) => {
+	args: { rateLimitBucket: v.optional(AI_RATE_BUCKET) },
+	handler: async (ctx, args) => {
 		if (!(await isFeatureEnabled(ctx, 'ai'))) {
 			throwForbidden('AI features are disabled');
 		}
@@ -37,7 +49,7 @@ export const assertAiAllowed = internalMutation({
 
 		const session = await getBetterAuthSessionWithRole(ctx);
 		const key = session?.userId ?? 'anon';
-		const res = await rateLimiter.limit(ctx, 'postboxAiPerUser', { key });
+		const res = await rateLimiter.limit(ctx, args.rateLimitBucket ?? 'postboxAiPerUser', { key });
 		if (!res.ok) {
 			throwRateLimited('AI is busy — try again in a moment.', res.retryAfter);
 		}

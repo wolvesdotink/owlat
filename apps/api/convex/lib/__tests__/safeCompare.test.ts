@@ -36,4 +36,19 @@ describe('safeCompare', () => {
 		expect(safeCompare('café', 'café')).toBe(true);
 		expect(safeCompare('café', 'cafe')).toBe(false);
 	});
+
+	it('is length-order-independent (single path, no length oracle)', () => {
+		// The mismatch is folded into one accumulator, so which argument is longer
+		// must not change the result — a→b and b→a agree for every length pair.
+		expect(safeCompare('short', 'much-longer-string')).toBe(
+			safeCompare('much-longer-string', 'short')
+		);
+		expect(safeCompare('a', 'ab')).toBe(false);
+		expect(safeCompare('ab', 'a')).toBe(false);
+		// A shorter string that is a prefix of the longer one still fails: the
+		// trailing bytes XOR against 0 and the folded length difference guarantees
+		// the accumulator is non-zero.
+		expect(safeCompare('secret', 'secretX')).toBe(false);
+		expect(safeCompare('secretX', 'secret')).toBe(false);
+	});
 });

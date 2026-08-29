@@ -44,7 +44,8 @@ import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { generateSetupToken } from '@owlat/shared/setupToken';
 import { writeComposeOverride } from '../lib/override';
 import { saveFlagState } from '../lib/flagState';
-import { applySetupDefaults, type DeploymentMode } from '../lib/setupConfig';
+import type { DeploymentMode } from '../lib/setupConfig';
+import { applySetupDefaults } from '../lib/setupEnvDefaults';
 import { assertFblDedupCutoverConfigured } from '../lib/fblDedupSetup';
 import { applyAssumeYes, applyConfigFile } from './setupNonInteractive';
 import { pickSendingProvider } from './setupSendingProvider';
@@ -190,7 +191,7 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 	withSecrets['OWLAT_DEPLOYMENT_MODE'] = deploymentMode as string;
 	withSecrets['OWLAT_HOSTED_MODE'] = hosted ? 'true' : 'false';
 	// Deployment URLs + dev-mode default. Shared with the non-interactive config
-	// path (lib/setupConfig.applySetupDefaults) so the two can't diverge.
+	// path (lib/setupEnvDefaults.applySetupDefaults) so the two can't diverge.
 	applySetupDefaults(withSecrets, deploymentMode as DeploymentMode, flags, !hasPriorInstall);
 
 	// Seal the SMTP relay password in the `.env` BACKUP copy so it is never

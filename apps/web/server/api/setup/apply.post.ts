@@ -65,6 +65,22 @@ export default defineEventHandler(
 			return { ok: false, message: 'Admin password must be at least 12 characters.' };
 		}
 
+		// Reject control characters in any operator-supplied env value before it
+		// reaches writeEnvFile. The writer is line-oriented, so a newline in a value
+		// (e.g. DEFAULT_FROM_NAME) would be reconstructed on the next read as a
+		// separate, attacker-controlled env line (e.g. an injected INSTANCE_SECRET).
+		for (const [key, value] of Object.entries(body.env ?? {})) {
+			if (typeof value !== 'string') {
+				return { ok: false, message: `Env value for ${key} must be a string.` };
+			}
+			if (/[\r\n\0]/.test(value)) {
+				return {
+					ok: false,
+					message: `Env value for ${key} must not contain control characters (newline, carriage return, or NUL).`,
+				};
+			}
+		}
+
 		// Migration mode never promises an import the instance cannot perform: the
 		// import surface reads the `mail.external` flag, so when the operator says they
 		// are moving from another platform, align the plumbing by enabling it before
@@ -87,6 +103,24 @@ export default defineEventHandler(
 				ok: false,
 				message:
 					'Campaigns, transactional, or automations are enabled but no delivery provider is configured. Choose MTA, Resend, SES, or an SMTP relay, or disable bulk sending.',
+			};
+		}
+
+		// Email verification (REQUIRE_EMAIL_VERIFICATION) sends the confirmation link
+		// through the system-mail transport, which FAIL-CLOSED throws when no delivery
+		// provider is configured — so finishing setup with verification ON but no
+		// provider would lock every new signup/invitee out of their own account.
+		// Couple the two: when the operator turns verification on, a real delivery
+		// provider is required, reusing the same provider-required floor as bulk
+		// sending above. (Truthy set matches the Convex getBoolean parser.)
+		const verificationOn = /^(true|1|yes|on)$/i.test(
+			(body.env?.['REQUIRE_EMAIL_VERIFICATION'] ?? '').trim()
+		);
+		if (verificationOn && !hasRealProvider) {
+			return {
+				ok: false,
+				message:
+					'Email verification (REQUIRE_EMAIL_VERIFICATION) is on but no delivery provider is configured to send the verification link — new users would be locked out. Choose MTA, Resend, SES, or an SMTP relay, or turn verification off.',
 			};
 		}
 

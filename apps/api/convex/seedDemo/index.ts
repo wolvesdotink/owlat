@@ -27,6 +27,7 @@ import { httpAction, internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { safeCompare } from '../lib/safeCompare';
+import { logError } from '../lib/runtimeLog';
 import { devDeploymentResponseOrNull } from '../devShortcuts/_guard';
 import { applyLoaders, isRemovableSeedRow, SEEDED_TABLES, type SeedSummary } from './pipeline';
 
@@ -87,8 +88,9 @@ export const seedDemoHttp = httpAction(async (ctx, request) => {
 		summary.skipped['mailboxMessages'] = messages.skipped;
 		return jsonResponse(summary, 200);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Internal error';
-		return jsonResponse({ error: message }, 500);
+		// Locked error envelope — log the real cause server-side, return a fixed message.
+		logError('[seedDemo] demo seed failed:', error);
+		return jsonResponse({ error: 'Internal error' }, 500);
 	}
 });
 

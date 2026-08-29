@@ -146,6 +146,30 @@ describe('POST /api/setup/apply — relay password at rest', () => {
 	});
 });
 
+describe('POST /api/setup/apply — env value hygiene', () => {
+	it('refuses a newline in an env value before seeding or writing (env injection)', async () => {
+		body = {
+			flags: getDefaultFlags({ hosted: false }),
+			// A newline in the operator-supplied From name would inject an arbitrary
+			// extra `.env` line (here a forged INSTANCE_SECRET) through the line-oriented
+			// writer.
+			env: {
+				EMAIL_PROVIDER: 'smtp',
+				SMTP_RELAY_PASSWORD: PLAINTEXT_PASSWORD,
+				DEFAULT_FROM_NAME: 'Acme\nINSTANCE_SECRET=attacker-owned',
+			},
+			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
+		};
+
+		const result = await callRoute();
+		expect(result.ok).toBe(false);
+		expect(result.message).toMatch(/control characters/);
+		expect(fetch).not.toHaveBeenCalled();
+		expect(pushMock).not.toHaveBeenCalled();
+		expect(writeMock).not.toHaveBeenCalled();
+	});
+});
+
 describe('POST /api/setup/apply — MTA identity gate', () => {
 	it('refuses the happy path before seeding or writing when live FCrDNS fails', async () => {
 		body = {
@@ -186,5 +210,63 @@ describe('POST /api/setup/apply — MTA identity gate', () => {
 		expect(identityPreflightMock).toHaveBeenCalledTimes(1);
 		expect(fetch).not.toHaveBeenCalled();
 		expect(writeMock).not.toHaveBeenCalled();
+	});
+});
+
+describe('POST /api/setup/apply — email-verification provider coupling (H3)', () => {
+	// Flags with every bulk-sending feature off, so the ONLY thing that can demand a
+	// delivery provider is REQUIRE_EMAIL_VERIFICATION — isolates the new coupling
+	// from the pre-existing "bulk sending needs a provider" floor.
+	const noBulkFlags = () => ({
+		...getDefaultFlags({ hosted: false }),
+		campaigns: false,
+		transactional: false,
+		automations: false,
+	});
+
+	it('refuses to finish setup when verification is on but no delivery provider is configured', async () => {
+		body = {
+			flags: noBulkFlags(),
+			// Verification on, but EMAIL_PROVIDER absent — the verification link could
+			// never be delivered, so every new signup/invitee would be locked out.
+			env: { REQUIRE_EMAIL_VERIFICATION: 'true' },
+			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
+		};
+
+		const result = await callRoute();
+		expect(result.ok).toBe(false);
+		expect(result.message).toMatch(/verification/i);
+		expect(result.message).toMatch(/locked out|provider/i);
+		// Fails before seeding the admin, pushing runtime env, or writing .env.
+		expect(fetch).not.toHaveBeenCalled();
+		expect(pushMock).not.toHaveBeenCalled();
+		expect(writeMock).not.toHaveBeenCalled();
+	});
+
+	it('allows setup when verification is on AND a real delivery provider is configured', async () => {
+		body = {
+			flags: noBulkFlags(),
+			env: {
+				REQUIRE_EMAIL_VERIFICATION: 'true',
+				EMAIL_PROVIDER: 'smtp',
+				SMTP_RELAY_PASSWORD: PLAINTEXT_PASSWORD,
+			},
+			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
+		};
+
+		const result = await callRoute();
+		expect(result.ok).toBe(true);
+		expect(writeMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('ignores a non-truthy REQUIRE_EMAIL_VERIFICATION value (no provider required)', async () => {
+		body = {
+			flags: noBulkFlags(),
+			env: { REQUIRE_EMAIL_VERIFICATION: 'false' },
+			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
+		};
+
+		const result = await callRoute();
+		expect(result.ok).toBe(true);
 	});
 });

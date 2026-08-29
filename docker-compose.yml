@@ -461,10 +461,39 @@ services:
     volumes:
       - code-workspace:/workspace
     environment:
-      CONVEX_URL: http://convex:3210
-      # The worker polls an internalQuery + drives internalMutations, so it
-      # authenticates with the deployment admin key (like imap / mail-sync).
-      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY:-}
+      # LEAST-PRIVILEGE (security review M4): this container runs UNTRUSTED,
+      # inbound-email-driven code, so it holds NO deployment admin key. Instead
+      # it reaches Convex ONLY through the `convex-fn-proxy` sidecar, which holds
+      # the real admin key and forwards ONLY the thirteen allowlisted
+      # `codeWorkTasks:*` / `plugins/workerTasks:*` calls the worker makes. The
+      # worker authenticates to the proxy with CODE_WORKER_PROXY_TOKEN (presented
+      # as its Convex key); the proxy validates+strips it and injects the admin
+      # key. A compromised task cannot use this credential for anything else.
+      #
+      # convexClient.ts keeps the CONVEX_ADMIN_KEY fallback for operators who
+      # revert to a direct, non-proxied deployment — see docs. In the shipped
+      # composed stack the worker gets ONLY the proxy token.
+      CONVEX_URL: http://convex-fn-proxy:3220
+      CODE_WORKER_CONVEX_KEY: ${CODE_WORKER_PROXY_TOKEN:-}
+      # DEFENCE-IN-DEPTH: the `code-worker` network is `internal: true`, so this
+      # container has NO route to the internet of its own — its ONLY way out is
+      # the allowlisted `code-worker-egress` forward-proxy, which permits ONLY the
+      # git remote and the LLM endpoint (deny all else). A compromised task cannot
+      # bypass the allowlist by ignoring these vars, because there is no open
+      # bridge to fall back to. Forcing HTTP(S)_PROXY here is belt-and-braces on
+      # top of that isolation; git honours the same variables. NODE_USE_ENV_PROXY
+      # makes the orchestrator's OWN node fetch (octokit → api.github.com) honour
+      # them too — node's built-in fetch ignores HTTP_PROXY otherwise, so without
+      # it that traffic would fail closed once the network is internal. Convex is
+      # reached DIRECTLY over the internal network via convex-fn-proxy (not through
+      # the egress proxy), so that host is listed in NO_PROXY alongside loopback.
+      HTTP_PROXY: http://code-worker-egress:8888
+      HTTPS_PROXY: http://code-worker-egress:8888
+      http_proxy: http://code-worker-egress:8888
+      https_proxy: http://code-worker-egress:8888
+      NO_PROXY: localhost,127.0.0.1,convex-fn-proxy
+      no_proxy: localhost,127.0.0.1,convex-fn-proxy
+      NODE_USE_ENV_PROXY: "1"
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -528,10 +557,75 @@ services:
     depends_on:
       convex:
         condition: service_healthy
+      convex-fn-proxy:
+        condition: service_started
+      code-worker-egress:
+        condition: service_started
     profiles:
       # Coding-agent tasks (inbox.codeTasks) and the dormant Tier-3 worker
       # protocol. No shipped host path enqueues plugin jobs; `plugin-tasks`
       # starts only the reserved poller contract.
+      - inbox-codetasks
+      - plugin-tasks
+      - dev
+    restart: unless-stopped
+
+  # ── Convex function-allowlist proxy (least-privilege for code-worker) ──
+  # SECURITY REVIEW M4: self-hosted Convex mints only a FULL admin key, so the
+  # least-privilege boundary is built OUTSIDE Convex here. This sidecar holds the
+  # real CONVEX_ADMIN_KEY and forwards ONLY the thirteen allowlisted
+  # `codeWorkTasks:*` / `plugins/workerTasks:*` calls the worker makes; it
+  # authenticates the worker with CODE_WORKER_PROXY_TOKEN (constant-time, then
+  # stripped) and injects the admin key upstream. Any other function path → 403.
+  # The untrusted code-worker therefore never holds admin. Shares the isolated
+  # `code-worker` network with convex (which it forwards to) and the worker.
+  convex-fn-proxy:
+    image: owlat-convex-fn-proxy:${OWLAT_VERSION:-dev}
+    build:
+      context: .
+      dockerfile: apps/convex-fn-proxy/Dockerfile
+    environment:
+      CONVEX_URL: http://convex:3210
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY:-}
+      CODE_WORKER_PROXY_TOKEN: ${CODE_WORKER_PROXY_TOKEN:-}
+    # Nothing untrusted runs here, but it holds the admin key, so lock it down:
+    # no capabilities, read-only rootfs, no privilege escalation.
+    cap_drop:
+      - ALL
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - code-worker
+    depends_on:
+      convex:
+        condition: service_healthy
+    profiles:
+      - inbox-codetasks
+      - plugin-tasks
+      - dev
+    restart: unless-stopped
+
+  # ── Allowlisted egress forward-proxy for the code-worker ──
+  # SECURITY REVIEW M4 (defence-in-depth): the worker's HTTP_PROXY/HTTPS_PROXY
+  # point here, so ALL of its outbound traffic is filtered. tinyproxy permits
+  # ONLY the Convex proxy, the git remote and the LLM endpoint (FilterDefaultDeny
+  # in infra/code-worker/tinyproxy.filter); everything else is refused. This is
+  # the ONLY container on BOTH the isolated `code-worker` network (to reach
+  # convex-fn-proxy) and the internet-capable `default` network.
+  code-worker-egress:
+    image: vimagick/tinyproxy:latest
+    volumes:
+      - ./infra/code-worker/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
+      - ./infra/code-worker/tinyproxy.filter:/etc/tinyproxy/filter:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - code-worker
+      - default
+    profiles:
       - inbox-codetasks
       - plugin-tasks
       - dev
@@ -684,13 +778,19 @@ networks:
     enable_ipv6: ${MTA_IPV6_ENABLED:-false}
   docker-proxy:
     internal: true
-  # Isolated bridge for the untrusted code-worker executor. Only convex (which
-  # the worker must reach with the deployment admin key to poll for tasks) also
-  # attaches here, so a compromised code task cannot pivot to the mail/infra
-  # tier that lives on `default`. Internet egress stays open because a code task
-  # must git-push its branch and call the LLM endpoint; narrowing that further
-  # would require an allowlisted egress proxy rather than the open bridge.
+  # Isolated, INTERNAL bridge for the untrusted code-worker executor (security
+  # review M4). `internal: true` gives it NO route to the internet, so a
+  # compromised (inbound-email-driven) code task cannot pivot to the mail/infra
+  # tier on `default` AND cannot reach the internet directly. Its only paths off
+  # this network are the two dual-homed sidecars it depends on: convex-fn-proxy
+  # (which alone holds the Convex admin key and forwards only the thirteen
+  # allowlisted worker functions to convex, which also attaches here) and
+  # code-worker-egress (the tinyproxy forward-proxy — the SOLE bridge to
+  # `default`, permitting only the git remote and the LLM endpoint). Because
+  # there is no open bridge, a task cannot bypass the egress allowlist by
+  # ignoring HTTP_PROXY.
   code-worker:
+    internal: true
 
 volumes:
   convex-data:

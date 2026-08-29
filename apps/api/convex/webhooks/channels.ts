@@ -87,6 +87,26 @@ export const processInboundChannel = internalMutation({
 	handler: async (ctx, args) => {
 		const now = Date.now();
 
+		// Idempotent replay guard. None of the channel webhook signatures carry a
+		// timestamp we could freshness-check (Twilio's HMAC omits one by spec; Meta
+		// signs only the body; the generic channel is a static shared secret), so a
+		// captured-and-replayed — or provider-retried (Twilio on a 5xx, Meta's
+		// at-least-once delivery) — request would otherwise fork a duplicate
+		// `unifiedMessages` row AND re-trigger the agent walker. When the provider
+		// gave us its own message id, dedupe on it: a message we already stored under
+		// that id (on the same channel) is acknowledged as a no-op. Absent an id we
+		// cannot dedupe and fall through, exactly as before.
+		if (args.externalMessageId) {
+			const existing = await ctx.db
+				.query('unifiedMessages')
+				.withIndex('by_external_message_id', (q) =>
+					q.eq('externalMessageId', args.externalMessageId)
+				)
+				.filter((q) => q.eq(q.field('channel'), args.channel))
+				.first();
+			if (existing) return;
+		}
+
 		// Find or create contact via the Contact resolution module. Each
 		// channel is its own identity keyspace — a `generic`-channel
 		// `john@example.com` is NOT the same Contact as an `email`-channel

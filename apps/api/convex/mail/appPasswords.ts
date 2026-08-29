@@ -21,7 +21,7 @@ import type { Id } from '../_generated/dataModel';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { requireMailboxAccess } from './permissions';
 import { resolveDeliverableMailbox } from './mailbox/identity';
-import { throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 
 const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
@@ -175,7 +175,16 @@ export const revoke = authedMutation({
 export const revokeAll = authedMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+		const session = await requireAdminContext(ctx);
+		// Admin role alone is not enough: bind the caller-supplied mailboxId to the
+		// admin's own organization before touching any credential. A missing mailbox
+		// or one in another org fails closed, so a mailboxId cannot be used to revoke
+		// credentials outside the caller's org.
+		const mailbox = await ctx.db.get(args.mailboxId);
+		if (!mailbox) throwNotFound('Mailbox');
+		if (mailbox.organizationId !== session.activeOrganizationId) {
+			throwForbidden('Mailbox not accessible');
+		}
 		const all = await ctx.db
 			.query('mailAppPasswords')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))

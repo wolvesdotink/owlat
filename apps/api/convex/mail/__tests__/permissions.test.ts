@@ -113,6 +113,34 @@ describe('requireMailboxAccess', () => {
 		if (!result.ok) throw new Error('expected ok');
 		expect(result.userId).toBe('user-B');
 	});
+
+	it('returns forbidden when an owner targets a mailbox in ANOTHER org', async () => {
+		// Org scoping is checked ahead of the owner/admin ok branch, so a
+		// cross-org mailbox id can never be reached even by an org owner.
+		setSession('user-B', 'owner', 'org-1');
+		const t = convexTest(schema, modules);
+		const id = await seedMailbox(t, { userId: 'user-A', organizationId: 'org-2' });
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
+		expect(result).toEqual({ ok: false, reason: 'forbidden' });
+	});
+
+	it('returns forbidden when an admin targets a mailbox in ANOTHER org', async () => {
+		setSession('user-B', 'admin', 'org-1');
+		const t = convexTest(schema, modules);
+		const id = await seedMailbox(t, { userId: 'user-A', organizationId: 'org-2' });
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
+		expect(result).toEqual({ ok: false, reason: 'forbidden' });
+	});
+
+	it('returns forbidden when the mailbox’s OWN user is scoped to another org', async () => {
+		// Even the self branch (mailbox.userId === session.userId) is gated on org,
+		// so a mailbox that somehow lives in a different org fails closed.
+		setSession('user-A', 'editor', 'org-1');
+		const t = convexTest(schema, modules);
+		const id = await seedMailbox(t, { userId: 'user-A', organizationId: 'org-2' });
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
+		expect(result).toEqual({ ok: false, reason: 'forbidden' });
+	});
 });
 
 describe('loadReadableMailbox (read-side counterpart)', () => {

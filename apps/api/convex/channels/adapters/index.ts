@@ -1,5 +1,12 @@
+'use node';
+
 /**
  * Outbound channel provider adapters (NODE-SIDE HELPERS, no Convex functions).
+ *
+ * `'use node'`: the generic webhook adapter POSTs through `fetchGuarded`
+ * (dns/net + undici), so this barrel — and anything re-exported from it — is
+ * Node-only. Its sole consumer, `channels/outbound.ts`, is already an action.
+ * Import the isolate-safe types straight from './types' instead of this barrel.
  *
  * The three adapters an operator can actually configure and send through today
  * — Twilio SMS, the Meta WhatsApp Cloud API, and a generic outbound HTTP

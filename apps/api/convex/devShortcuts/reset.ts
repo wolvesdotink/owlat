@@ -26,6 +26,7 @@ import { httpAction, internalMutation, type MutationCtx } from '../_generated/se
 import { components, internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { safeCompare } from '../lib/safeCompare';
+import { logError } from '../lib/runtimeLog';
 import { devDeploymentResponseOrNull } from './_guard';
 import { TENANT_TABLES } from '../lib/tenantTables';
 import type { Doc } from '../_generated/dataModel';
@@ -179,8 +180,9 @@ export const resetHttp = httpAction(async (ctx, request) => {
 		const counts = await ctx.runMutation(internal.devShortcuts.reset.runReset, {});
 		return jsonResponse({ deleted: counts }, 200);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Internal error';
-		return jsonResponse({ error: message }, 500);
+		// Locked error envelope — log the real cause server-side, return a fixed message.
+		logError('[devReset] reset failed:', error);
+		return jsonResponse({ error: 'Internal error' }, 500);
 	}
 });
 

@@ -114,7 +114,7 @@ describe('analytics.spendBudget.getBudgetStatus', () => {
 	});
 });
 
-describe('mail.aiGate.assertAiAllowed with a spend budget', () => {
+describe('mail.ai.gate.assertAiAllowed with a spend budget', () => {
 	it('blocks advisory AI with a clear reason once the budget is exhausted', async () => {
 		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
 		const t = convexTest(schema, modules);

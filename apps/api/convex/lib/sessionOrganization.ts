@@ -1,4 +1,4 @@
-import type { QueryCtx, MutationCtx } from '../_generated/server';
+import type { QueryCtx, MutationCtx, ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { components } from '../_generated/api';
 import { throwUnauthenticated, throwForbidden } from '../_utils/errors';
@@ -148,8 +148,14 @@ export async function assertSingletonOrgInvariant(
  * Asserts exactly one organization exists (throwing on zero or many), and
  * caches the validated id per isolate — the same cache `assertSingletonOrgInvariant`
  * relies on, so the two helpers can never disagree.
+ *
+ * Accepts an {@link ActionCtx} too (it only ever calls `ctx.runQuery`, never
+ * `ctx.db`): the scheduled provider-register action and the DKIM/credential
+ * backfill migrations are actions with no session, and this is their org source.
  */
-export async function getSingletonOrganizationId(ctx: QueryCtx | MutationCtx): Promise<string> {
+export async function getSingletonOrganizationId(
+	ctx: QueryCtx | MutationCtx | ActionCtx
+): Promise<string> {
 	if (cachedSingletonOrgId !== null) {
 		return cachedSingletonOrgId;
 	}

@@ -1,5 +1,5 @@
 /**
- * mail.aiGate.assertAiAllowed — the spend-gate run before every Postbox LLM
+ * mail.ai.gate.assertAiAllowed — the spend-gate run before every Postbox LLM
  * call. Enforces the `ai` feature flag and the per-user rate limit.
  */
 import { convexTest } from 'convex-test';
@@ -41,7 +41,7 @@ async function setAiFlag(t: ReturnType<typeof convexTest>, on: boolean) {
 	});
 }
 
-describe('mail.aiGate.assertAiAllowed', () => {
+describe('mail.ai.gate.assertAiAllowed', () => {
 	it('throws when the ai feature flag is off', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
@@ -73,5 +73,32 @@ describe('mail.aiGate.assertAiAllowed', () => {
 		expect(limited).toBe(true);
 		expect(succeeded).toBeGreaterThan(1);
 		expect(succeeded).toBeLessThanOrEqual(31); // capacity 30 + the first call
+	});
+
+	it('charges a per-feature bucket that is independent of the default Postbox bucket', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await setAiFlag(t, true);
+
+		// Drain the translate bucket completely.
+		let translateLimited = false;
+		for (let i = 0; i < 60; i++) {
+			try {
+				await t.mutation(internal.mail.ai.gate.assertAiAllowed, {
+					rateLimitBucket: 'translateBatchPerUser',
+				});
+			} catch {
+				translateLimited = true;
+				break;
+			}
+		}
+		expect(translateLimited).toBe(true);
+
+		// A different feature's bucket (and the default) still has headroom — the
+		// per-feature buckets don't share a token pool.
+		await expect(
+			t.mutation(internal.mail.ai.gate.assertAiAllowed, { rateLimitBucket: 'quickQueryPerUser' })
+		).resolves.toBeNull();
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).resolves.toBeNull();
 	});
 });

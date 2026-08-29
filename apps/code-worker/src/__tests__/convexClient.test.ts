@@ -39,6 +39,7 @@ describe('code-worker getConvexClient', () => {
 	afterEach(() => {
 		delete process.env['CONVEX_URL'];
 		delete process.env['CONVEX_ADMIN_KEY'];
+		delete process.env['CODE_WORKER_CONVEX_KEY'];
 	});
 
 	it('authenticates the client with the deployment admin key', async () => {
@@ -46,6 +47,56 @@ describe('code-worker getConvexClient', () => {
 		getConvexClient();
 		expect(mocks.ctor).toHaveBeenCalledWith('http://convex:3210');
 		expect(mocks.setAdminAuth).toHaveBeenCalledWith('admin-key-abc123');
+	});
+
+	it('prefers the scoped CODE_WORKER_CONVEX_KEY over the admin key (least-privilege seam)', async () => {
+		process.env['CODE_WORKER_CONVEX_KEY'] = 'scoped-key-xyz789';
+		const { getConvexClient } = await import('../convexClient.js');
+		getConvexClient();
+		// The scoped key wins; the broad admin key is never presented.
+		expect(mocks.setAdminAuth).toHaveBeenCalledWith('scoped-key-xyz789');
+		expect(mocks.setAdminAuth).not.toHaveBeenCalledWith('admin-key-abc123');
+	});
+
+	it('falls back to the admin key when the scoped key is an empty string (compose default)', async () => {
+		// Compose sets `CODE_WORKER_CONVEX_KEY: ${CODE_WORKER_CONVEX_KEY:-}`, so an
+		// install that never defines the scoped key gets '' — not undefined. The
+		// nullish-coalescing form kept '' and crashed at startup; ensure the empty
+		// string is treated as unset and the admin key is used instead.
+		process.env['CODE_WORKER_CONVEX_KEY'] = '';
+		const { getConvexClient } = await import('../convexClient.js');
+		getConvexClient();
+		expect(mocks.setAdminAuth).toHaveBeenCalledWith('admin-key-abc123');
+	});
+
+	it('treats a whitespace-only scoped key as unset and falls back to the admin key', async () => {
+		process.env['CODE_WORKER_CONVEX_KEY'] = '   ';
+		const { getConvexClient } = await import('../convexClient.js');
+		getConvexClient();
+		expect(mocks.setAdminAuth).toHaveBeenCalledWith('admin-key-abc123');
+	});
+
+	it('runs on the scoped key alone with no admin key in the environment', async () => {
+		delete process.env['CONVEX_ADMIN_KEY'];
+		process.env['CODE_WORKER_CONVEX_KEY'] = 'scoped-key-only';
+		const { getConvexClient } = await import('../convexClient.js');
+		getConvexClient();
+		expect(mocks.setAdminAuth).toHaveBeenCalledWith('scoped-key-only');
+	});
+
+	it('runs in proxy-token-only mode: URL points at the fn-proxy, token is the proxy secret', async () => {
+		// The composed hardened deployment (apps/convex-fn-proxy): CONVEX_URL is the
+		// proxy, CODE_WORKER_CONVEX_KEY is the proxy token, and NO admin key is in
+		// the container. setAdminAuth sends the token as `Authorization: Convex
+		// <token>`, which the proxy validates+strips and replaces with the admin key.
+		delete process.env['CONVEX_ADMIN_KEY'];
+		process.env['CONVEX_URL'] = 'http://convex-fn-proxy:3220';
+		process.env['CODE_WORKER_CONVEX_KEY'] = 'proxy-token-secret';
+		const { getConvexClient } = await import('../convexClient.js');
+		getConvexClient();
+		expect(mocks.ctor).toHaveBeenCalledWith('http://convex-fn-proxy:3220');
+		expect(mocks.setAdminAuth).toHaveBeenCalledWith('proxy-token-secret');
+		expect(mocks.setAdminAuth).not.toHaveBeenCalledWith('admin-key-abc123');
 	});
 
 	it('caches the client across calls (constructed + authed once)', async () => {
@@ -63,9 +114,12 @@ describe('code-worker getConvexClient', () => {
 		expect(() => getConvexClient()).toThrow('CONVEX_URL environment variable is required');
 	});
 
-	it('throws when CONVEX_ADMIN_KEY is missing (would otherwise hit auth-less internal calls)', async () => {
+	it('throws when neither Convex key is set (would otherwise hit auth-less internal calls)', async () => {
 		delete process.env['CONVEX_ADMIN_KEY'];
+		delete process.env['CODE_WORKER_CONVEX_KEY'];
 		const { getConvexClient } = await import('../convexClient.js');
-		expect(() => getConvexClient()).toThrow('CONVEX_ADMIN_KEY environment variable is required');
+		expect(() => getConvexClient()).toThrow(
+			'CODE_WORKER_CONVEX_KEY or CONVEX_ADMIN_KEY environment variable is required'
+		);
 	});
 });

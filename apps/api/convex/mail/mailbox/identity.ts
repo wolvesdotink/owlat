@@ -351,8 +351,16 @@ export const getById = internalQuery({
 export const remove = authedMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+		const session = await requireAdminContext(ctx);
+		// Admin role alone is not enough: bind the caller-supplied mailboxId to the
+		// admin's own organization before deleting. A missing mailbox or one in
+		// another org fails closed, so a mailboxId cannot delete a mailbox outside
+		// the caller's org.
 		const mailbox = await ctx.db.get(args.mailboxId);
+		if (!mailbox) throwNotFound('Mailbox');
+		if (mailbox.organizationId !== session.activeOrganizationId) {
+			throwForbidden('Mailbox not accessible');
+		}
 		await ctx.db.patch(args.mailboxId, {
 			status: 'deleted',
 			updatedAt: Date.now(),

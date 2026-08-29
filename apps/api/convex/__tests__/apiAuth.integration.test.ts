@@ -1,15 +1,9 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
-import {
-	extractApiKey,
-	jsonResponse,
-	errorResponse,
-	authenticateApiRequest,
-	isApiKeyUsable,
-	requireScope,
-	type AuthenticatedContext,
-} from '../auth/apiAuth';
+import { extractApiKey, authenticateApiRequest, isApiKeyUsable } from '../auth/apiKeyAuth';
+import { jsonResponse, errorResponse } from '../auth/apiResponses';
+import { requireScope, type AuthenticatedContext } from '../auth/apiHandlers';
 import {
 	API_SCOPES,
 	ENDPOINT_SCOPES,
@@ -21,6 +15,16 @@ import {
 } from '../auth/apiScopes';
 
 const modules = import.meta.glob('../**/*.*s');
+
+// Local integration deployment: opt into dev mode so cors.allowedOrigins() uses
+// the loopback default (`http://localhost:3000`) instead of the production
+// fail-closed throw (which now requires ALLOWED_ORIGINS/SITE_URL).
+beforeEach(() => {
+	vi.stubEnv('OWLAT_DEV_MODE', 'true');
+});
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 // ============ Pure function tests ============
 

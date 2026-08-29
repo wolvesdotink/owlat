@@ -60,7 +60,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const ctxFromSession = () => {
 		const s = sessionMock.value;
 		if (!s || !s.role || !s.activeOrganizationId) errors.throwUnauthenticated();
-		return { userId: s!.userId, role: s!.role };
+		return { userId: s!.userId, role: s!.role, activeOrganizationId: s!.activeOrganizationId };
 	};
 	return {
 		...actual,
@@ -741,5 +741,47 @@ describe('appPasswords.revokeAll', () => {
 			expect((await ctx.db.get(ids.a))!.revokedAt).toBeUndefined();
 			expect((await ctx.db.get(ids.b))!.revokedAt).toBeUndefined();
 		});
+	});
+
+	it('forbids revokeAll against a mailbox in ANOTHER organization (cross-org mailboxId)', async () => {
+		const t = setupTest();
+		// Mailbox + its credentials live in org-2.
+		const { mailboxId } = await seedMailbox(t, {
+			userId: 'user-other',
+			organizationId: 'org-2',
+		});
+		const credId = await t.run(async (ctx) =>
+			ctx.db.insert('mailAppPasswords', {
+				mailboxId,
+				userId: 'user-other',
+				label: 'cross-org',
+				passwordHash: 'aa:bb',
+				passwordPrefix: 'aaaa',
+				scopes: ['imap', 'smtp'],
+				createdAt: Date.now(),
+			})
+		);
+		// A bona fide admin — but of org-1, not the mailbox's org-2.
+		setSession('user-admin', 'admin', 'org-1');
+
+		await expect(t.mutation(api.mail.appPasswords.revokeAll, { mailboxId })).rejects.toThrow(
+			/not accessible/i
+		);
+
+		// Fail-closed: the foreign org's credential is untouched.
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(credId))!.revokedAt).toBeUndefined();
+		});
+	});
+
+	it('throws not-found when revokeAll targets a mailbox id that no longer exists', async () => {
+		const t = setupTest();
+		const { mailboxId } = await seedMailbox(t, { userId: 'user-other' });
+		await t.run(async (ctx) => {
+			await ctx.db.delete(mailboxId);
+		});
+		setSession('user-admin', 'admin', 'org-1');
+
+		await expect(t.mutation(api.mail.appPasswords.revokeAll, { mailboxId })).rejects.toThrow();
 	});
 });

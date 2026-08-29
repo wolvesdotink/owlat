@@ -1,5 +1,17 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { WebhookAdapter, type OutboundMessage } from '../index';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// The outbound POST now goes through the SSRF guard, so the socket (fetchGuarded)
+// is mocked — the real guard would do live DNS on the example host. The shape
+// gate (validateConnectedAppEndpoint) stays REAL so its https/credential rules
+// are exercised end-to-end.
+const guard = vi.hoisted(() => ({ fetchGuarded: vi.fn() }));
+vi.mock('../../../lib/ssrfGuard', async () => ({
+	...(await vi.importActual('../../../lib/ssrfGuard')),
+	fetchGuarded: guard.fetchGuarded,
+}));
+
+const { WebhookAdapter } = await import('../index');
+type OutboundMessage = import('../index').OutboundMessage;
 
 const baseMessage: OutboundMessage = {
 	contactId: 'c1',
@@ -8,18 +20,13 @@ const baseMessage: OutboundMessage = {
 };
 
 // =============================================================================
-// Bucket 1 — send(): network result mapping (mock global fetch)
+// Bucket 1 — send(): network result mapping (mock fetchGuarded)
 // =============================================================================
 describe('WebhookAdapter — send()', () => {
-	const fetchMock = vi.fn();
+	const fetchMock = guard.fetchGuarded;
 
 	beforeEach(() => {
-		vi.stubGlobal('fetch', fetchMock);
 		fetchMock.mockReset();
-	});
-
-	afterEach(() => {
-		vi.unstubAllGlobals();
 	});
 
 	it('returns success on a 2xx response', async () => {
@@ -78,6 +85,54 @@ describe('WebhookAdapter — send()', () => {
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/not configured/i);
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('routes the POST through the SSRF guard (never a raw fetch)', async () => {
+		fetchMock.mockResolvedValue({ ok: true, status: 200 });
+		const adapter = new WebhookAdapter();
+		adapter.configure({ outboundUrl: 'https://hook.example/in' });
+
+		await adapter.send(baseMessage);
+
+		expect(fetchMock).toHaveBeenCalledOnce();
+		const [, init] = fetchMock.mock.calls[0]!;
+		// https pinned + a hard timeout so a hung endpoint can't stall the send.
+		expect(init.protocols).toEqual(['https:']);
+		expect(init.signal).toBeInstanceOf(AbortSignal);
+	});
+
+	it('rejects a non-https outbound URL before any network call', async () => {
+		const adapter = new WebhookAdapter();
+		adapter.configure({ outboundUrl: 'http://hook.example/in' });
+
+		const result = await adapter.send(baseMessage);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/https/i);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('rejects an outbound URL that embeds credentials before any network call', async () => {
+		const adapter = new WebhookAdapter();
+		adapter.configure({ outboundUrl: 'https://user:pass@hook.example/in' });
+
+		const result = await adapter.send(baseMessage);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/credential/i);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('maps a guard SSRF block to a failed result', async () => {
+		const { SsrfBlockedError } = await import('../../../lib/ssrfGuard');
+		fetchMock.mockRejectedValue(new SsrfBlockedError('blocked: private address'));
+		const adapter = new WebhookAdapter();
+		adapter.configure({ outboundUrl: 'https://hook.example/in' });
+
+		const result = await adapter.send(baseMessage);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/blocked/i);
 	});
 });
 

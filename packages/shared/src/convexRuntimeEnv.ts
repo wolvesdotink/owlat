@@ -55,6 +55,11 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'INSTANCE_SECRET_PREVIOUS',
 	'OWLAT_VERSION',
 	'OWLAT_DEV_MODE',
+	// Email-verification opt-in (H3). Read at Convex function runtime by
+	// auth/auth.ts to enable BetterAuth `requireEmailVerification` / `sendOnSignUp`
+	// and the org plugin's `requireEmailVerificationOnInvitation`. Must reach the
+	// deployment or the opt-in is un-enableable through the supported flows.
+	'REQUIRE_EMAIL_VERIFICATION',
 	// Site URLs
 	'SITE_URL',
 	'ADMIN_SITE_URL',
@@ -186,6 +191,17 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// every caller, and the public rate-limit buckets collapse to coarse shared
 	// keys — so an operator who sets it in .env would still get no per-IP keying.
 	'RATE_LIMIT_TRUSTED_PROXY',
+	// Shared secret the reverse proxy must present in `X-Owlat-Proxy-Secret` for
+	// the `cloudflare`/`xrealip` trust modes to believe their forwarded-IP header
+	// (M2). Read at Convex function runtime by publicRateLimit.getClientIp, so it
+	// must be pushed into the deployment — otherwise those modes never trust the
+	// header and every caller collapses to the shared 'unknown' bucket.
+	'RATE_LIMIT_PROXY_SECRET',
+	// Reverse-proxy IPs / CIDRs that front this deployment, used by the BetterAuth
+	// login limiter's right-anchored X-Forwarded-For walk (M12). Read at Convex
+	// function runtime by auth/auth.ts, so it must be pushed into the deployment —
+	// otherwise a multi-hop XFF chain degrades to single-value-only trust.
+	'RATE_LIMIT_TRUSTED_PROXIES',
 	// Inbound channel webhooks
 	'TWILIO_AUTH_TOKEN',
 	'META_APP_SECRET',

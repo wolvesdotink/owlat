@@ -73,7 +73,7 @@ jobs:
             owlat upgrade --version ${{ needs.resolve.outputs.version }}
             ```
 
-            **Images:** `web`, `mta`, `updater`, `convex-deploy`, `imap`, `mail-sync`, `code-worker`, `setup` — all `ghcr.io/${{ github.repository_owner }}/<name>:${{ needs.resolve.outputs.version }}`
+            **Images:** `web`, `mta`, `updater`, `convex-deploy`, `imap`, `mail-sync`, `code-worker`, `convex-fn-proxy`, `setup` — all `ghcr.io/${{ github.repository_owner }}/<name>:${{ needs.resolve.outputs.version }}`
 
   # `verify` is listed explicitly even though `create-release` already needs it:
   # the build/sign/publish edge is the one that must never lose the gate, and a

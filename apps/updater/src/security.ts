@@ -41,6 +41,7 @@ export const ALLOWED_IMAGE_PREFIXES = [
 	'clamav/clamav:',
 	'goacme/lego:', // ACME/Let's Encrypt cert issuance
 	'tecnativa/docker-socket-proxy:', // least-privilege docker socket proxy
+	'vimagick/tinyproxy:', // allowlisted egress forward-proxy for the code-worker (M4)
 	'ollama/ollama:', // optional local LLM provider
 	'busybox:', // setup-CLI override marker service
 ];

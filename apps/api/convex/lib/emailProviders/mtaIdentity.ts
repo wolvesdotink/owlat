@@ -9,6 +9,28 @@ import { getRequired } from '../env';
 export interface MtaRegistrationResult {
 	selector: string;
 	dnsRecord: string; // e.g., "v=DKIM1; k=rsa; p=MIGfMA0..."
+	/** Whether the MTA generated a brand-new key (vs. returning an existing one). */
+	created?: boolean;
+	/**
+	 * What the register call did to the domain's DKIM org-ownership binding (H2):
+	 * `assigned` (now owned by the supplied org), `unchanged` (already owned by
+	 * it), or `unowned` (no org supplied / key carries no owner). Absent on
+	 * responses from an older MTA that predates the field. The ownership-backfill
+	 * migration reads this to tally outcomes.
+	 */
+	ownership?: 'assigned' | 'unchanged' | 'unowned';
+}
+
+/** One org credential as the MTA's `?includeKeys=1` list returns it. */
+export interface MtaOrgCredential {
+	apiKey: string;
+	credential: {
+		organizationId: string;
+		name: string;
+		allowedDomains?: string[];
+		createdAt: number;
+		lastUsedAt?: number;
+	};
 }
 
 export class MtaIdentityManager {
@@ -39,14 +61,24 @@ export class MtaIdentityManager {
 	 *   - `null`     → clear any override, reverting the MTA to its global host.
 	 * The MTA validates the host and 400s an invalid one; a 400 surfaces here as a
 	 * thrown registration error (same taxonomy as any non-2xx).
+	 *
+	 * `organizationId` binds the domain's DKIM key to its owning tenant (H2). New
+	 * keys are born owned; an existing unowned key is backfilled; a cross-org clash
+	 * surfaces as the MTA's 409 (thrown here). Absent ⇒ no org is sent (the historic
+	 * call, unchanged).
 	 */
 	async registerDomain(
 		domain: string,
-		returnPathHost?: string | null
+		returnPathHost?: string | null,
+		organizationId?: string
 	): Promise<MtaRegistrationResult> {
-		// Only attach a body when the caller expresses an intent for the field
-		// (set or clear). `undefined` ⇒ no body ⇒ the MTA's "no change" path.
-		const body = returnPathHost === undefined ? undefined : JSON.stringify({ returnPathHost });
+		// Only attach a body when the caller expresses an intent for a field
+		// (return-path set/clear, or an owning org). No intent ⇒ no body ⇒ the MTA's
+		// "no change" path, byte-identical to the historic call.
+		const payload: { returnPathHost?: string | null; organizationId?: string } = {};
+		if (returnPathHost !== undefined) payload.returnPathHost = returnPathHost;
+		if (organizationId !== undefined) payload.organizationId = organizationId;
+		const body = Object.keys(payload).length === 0 ? undefined : JSON.stringify(payload);
 
 		const response = await fetch(`${this.baseUrl}/dkim/${encodeURIComponent(domain)}/register`, {
 			method: 'POST',
@@ -67,6 +99,8 @@ export class MtaIdentityManager {
 			domain: string;
 			selector: string;
 			dnsRecord: string;
+			created?: boolean;
+			ownership?: 'assigned' | 'unchanged' | 'unowned';
 		};
 
 		if (!result.success || !result.selector || !result.dnsRecord) {
@@ -76,7 +110,49 @@ export class MtaIdentityManager {
 		return {
 			selector: result.selector,
 			dnsRecord: result.dnsRecord,
+			...(result.created !== undefined ? { created: result.created } : {}),
+			...(result.ownership !== undefined ? { ownership: result.ownership } : {}),
 		};
+	}
+
+	/**
+	 * List an organization's MTA API credentials WITH their full keys (via
+	 * `?includeKeys=1`, master-key protected). Used by the allowedDomains backfill
+	 * migration, which must PATCH each credential by its full key.
+	 */
+	async listOrgCredentials(organizationId: string): Promise<MtaOrgCredential[]> {
+		const url = `${this.baseUrl}/credentials?organizationId=${encodeURIComponent(
+			organizationId
+		)}&includeKeys=1`;
+		const response = await fetch(url, {
+			method: 'GET',
+			headers: { Authorization: `Bearer ${this.apiKey}` },
+		});
+		if (!response.ok) {
+			const body = await response.text().catch(() => 'Unknown error');
+			throw new Error(`MTA credential list failed (${response.status}): ${body}`);
+		}
+		const result = (await response.json()) as { credentials?: MtaOrgCredential[] };
+		return result.credentials ?? [];
+	}
+
+	/**
+	 * Overwrite one credential's `allowedDomains` (H2 verified-sending-domain set).
+	 * Rewrites only that field on the MTA side; the MTA normalizes the list.
+	 */
+	async setCredentialAllowedDomains(apiKey: string, allowedDomains: string[]): Promise<void> {
+		const response = await fetch(`${this.baseUrl}/credentials/${encodeURIComponent(apiKey)}`, {
+			method: 'PATCH',
+			headers: {
+				Authorization: `Bearer ${this.apiKey}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({ allowedDomains }),
+		});
+		if (!response.ok) {
+			const body = await response.text().catch(() => 'Unknown error');
+			throw new Error(`MTA credential update failed (${response.status}): ${body}`);
+		}
 	}
 
 	/**

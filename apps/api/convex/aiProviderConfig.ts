@@ -27,6 +27,7 @@ import { authedQuery } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { recordAuditLog } from './lib/auditLog';
 import { throwInvalidInput } from './_utils/errors';
+import { validateOutboundUrl } from './lib/outboundUrlValidation';
 import {
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
@@ -183,6 +184,22 @@ export const _persistConfig = internalMutation({
 	},
 	handler: async (ctx, args): Promise<Id<'aiProviderConfig'>> => {
 		const { userId } = await requireOrgPermission(ctx, 'organization:manage');
+
+		// SSRF + key-exfiltration gate (persist time): a hosted provider carries a
+		// decrypted key to `languageBaseUrl` at dispatch, so an admin-supplied URL
+		// MUST be https and MUST NOT target a private/internal address. A LOCAL
+		// (keyless) provider is allowed to point at http://localhost. DNS-time
+		// enforcement is applied again at every fetch site (lib/ssrfGuard); this is
+		// the write-time shape gate so a dangerous URL never lands in the row.
+		if (args.languageBaseUrl !== undefined) {
+			const check = validateOutboundUrl(args.languageBaseUrl, {
+				requirePublic: !args.isLanguageLocal,
+			});
+			if (!check.ok) {
+				throwInvalidInput(`Language provider base URL ${check.error}.`);
+			}
+		}
+
 		const existing = await getSingleton(ctx);
 
 		const language = resolveSecret({

@@ -2,9 +2,14 @@ import { v } from 'convex/values';
 import { appLocaleValidator } from '../lib/convexValidators';
 import { internalMutation } from '../_generated/server';
 import { authedIdentityMutation } from '../lib/authedFunctions';
-import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
+import {
+	validateStringLength,
+	STRING_LIMITS,
+	isValidEmail,
+	normalizeEmail,
+} from '../lib/inputGuards';
 import { requireAuthenticatedIdentity } from '../lib/sessionOrganization';
-import { throwForbidden } from '../_utils/errors';
+import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 // Create a user profile on signup. Runs before org membership exists, so it
 // uses the authenticated-identity floor rather than the org-member one.
@@ -13,6 +18,8 @@ import { throwForbidden } from '../_utils/errors';
 export const create = authedIdentityMutation({
 	args: {
 		authUserId: v.string(),
+		// Accepted for wire compatibility but IGNORED: the stored email is bound to
+		// the verified identity from the JWT, never this client-supplied value.
 		email: v.string(),
 		name: v.optional(v.string()),
 	},
@@ -25,8 +32,19 @@ export const create = authedIdentityMutation({
 			throwForbidden('Cannot create a profile for a different user');
 		}
 
+		// H3: bind the profile email to the VERIFIED identity email carried in the
+		// JWT, not the client-supplied `args.email`. The claim paths
+		// (mail/pendingInboxMembership.claimInboxMemberships, mail/pendingMailbox)
+		// match a caller's profile email against reserved grants, so trusting a
+		// client value here would let a caller register any address and hijack a
+		// teammate's inbox reservation. Stored normalized so the `by_email` index
+		// lookups (canonical lowercase) match.
+		const identityEmail = typeof identity.email === 'string' ? normalizeEmail(identity.email) : '';
+		if (!identityEmail || !isValidEmail(identityEmail)) {
+			throwInvalidInput('Authenticated identity is missing a valid email');
+		}
+
 		// Validate input lengths
-		validateStringLength(args.email, STRING_LIMITS.NAME, 'Email');
 		if (args.name) validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 
 		// Idempotent: return existing profile if already created
@@ -43,7 +61,7 @@ export const create = authedIdentityMutation({
 
 		const profileId = await ctx.db.insert('userProfiles', {
 			authUserId: args.authUserId,
-			email: args.email,
+			email: identityEmail,
 			name: args.name,
 			createdAt: now,
 			updatedAt: now,
@@ -75,7 +93,9 @@ export const createInternal = internalMutation({
 
 		return await ctx.db.insert('userProfiles', {
 			authUserId: args.authUserId,
-			email: args.email,
+			// Normalized so it matches the canonical `by_email` lookups the claim
+			// paths perform (same binding as the public `create`).
+			email: normalizeEmail(args.email),
 			name: args.name,
 			createdAt: now,
 			updatedAt: now,

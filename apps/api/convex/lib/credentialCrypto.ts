@@ -135,9 +135,38 @@ export function createSecretBox(secret: string, context: SecretBoxContext): Secr
 	};
 }
 
+/**
+ * The minimum acceptable INSTANCE_SECRET length, in bytes.
+ *
+ * The generated default is 64 bytes (hex of 32 random bytes — see
+ * `@owlat/shared/setupSecrets:generateHexSecret`), comfortably above this floor.
+ * The floor exists to fail CLOSED on a hand-set truncated / low-entropy secret
+ * rather than silently deriving an AES-256 key from it: 16 bytes is the 128-bit
+ * minimum below which the KDF input can no longer be assumed to carry a full
+ * key's worth of entropy.
+ */
+export const MIN_INSTANCE_SECRET_BYTES = 16;
+
+/**
+ * Read INSTANCE_SECRET and assert it clears the entropy floor before it is fed
+ * to the KDF. Throws (fail-closed) on an unset, empty, or too-short secret — the
+ * external-mail credential box refuses to seal/open under a weak key rather than
+ * producing recoverable ciphertext.
+ */
+export function requireStrongInstanceSecret(): string {
+	const secret = getRequired('INSTANCE_SECRET');
+	if (Buffer.byteLength(secret, 'utf8') < MIN_INSTANCE_SECRET_BYTES) {
+		throw new Error(
+			`INSTANCE_SECRET is too short: it must be at least ${MIN_INSTANCE_SECRET_BYTES} bytes ` +
+				`(the generated default is 64). Refusing to derive an encryption key from a weak secret.`
+		);
+	}
+	return secret;
+}
+
 /** The external-mail credentials box: INSTANCE_SECRET under the pinned context. */
 function externalMailBox(): SecretBox {
-	return createSecretBox(getRequired('INSTANCE_SECRET'), { salt: HKDF_SALT, info: HKDF_INFO });
+	return createSecretBox(requireStrongInstanceSecret(), { salt: HKDF_SALT, info: HKDF_INFO });
 }
 
 /** Derive the 32-byte AES key from INSTANCE_SECRET via HKDF-SHA256. */

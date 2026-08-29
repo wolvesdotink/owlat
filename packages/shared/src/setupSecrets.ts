@@ -33,11 +33,36 @@ export function isKnownPlaceholderSecret(value: string): boolean {
 	return KNOWN_PLACEHOLDER_SECRETS.has(value.trim().toLowerCase());
 }
 
-export function generateSecret(byteLength = 32): string {
-	const bytes = new Uint8Array(byteLength);
-	webcrypto.getRandomValues(bytes);
+// The largest multiple of the 62-char alphabet that fits in a byte (256). A raw
+// `byte % 62` is biased because 256 is not a multiple of 62 — indices 0..7 would
+// occur on 5 byte values while 8..61 occur on 4 — so bytes at or above this
+// threshold are rejected and re-drawn (rejection sampling), giving a uniform
+// distribution over the alphabet.
+const REJECTION_THRESHOLD = 256 - (256 % ALPHABET.length); // 248 for a 62-char alphabet
+
+// `crypto.getRandomValues` rejects a view longer than 65,536 bytes per call, so
+// batches are capped well below that; real call sites request tens of bytes, so
+// a single batch almost always suffices.
+const CRYPTO_BATCH_BYTES = 4096;
+
+/**
+ * Generate a uniformly-distributed base62 secret of `length` characters.
+ * `length` counts OUTPUT characters (one alphabet symbol each), preserving the
+ * historical call sites that pass the desired character count.
+ */
+export function generateSecret(length = 32): string {
 	let out = '';
-	for (const b of bytes) out += ALPHABET[b % ALPHABET.length];
+	// Draw a bounded batch, keep the unbiased bytes, and refill only if rejection
+	// (or a short cap) left us short — in expectation ~3% of bytes are rejected.
+	const batch = new Uint8Array(Math.min(Math.max(length, 1), CRYPTO_BATCH_BYTES));
+	while (out.length < length) {
+		webcrypto.getRandomValues(batch);
+		for (const b of batch) {
+			if (b >= REJECTION_THRESHOLD) continue;
+			out += ALPHABET[b % ALPHABET.length];
+			if (out.length === length) break;
+		}
+	}
 	return out;
 }
 

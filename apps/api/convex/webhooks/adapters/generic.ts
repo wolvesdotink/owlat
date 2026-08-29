@@ -6,9 +6,16 @@
  * (`{from ?? sender ?? 'webhook'}`, text/message/content cascades) into
  * a `channel.received` event with `channel: 'generic'`.
  *
- * No HMAC — the secret is a static shared value. This is the
- * lowest-trust channel; the pipeline rate-limits inbound traffic before
- * the adapter runs to limit abuse exposure.
+ * No HMAC — the secret is a static shared value presented verbatim in a header.
+ * A per-request HMAC would be strictly stronger (a captured request could not be
+ * replayed against a different body), but the generic channel's wire contract is
+ * "send us your secret", and existing integrations POST exactly that; swapping in
+ * an HMAC scheme is a breaking change to every configured sender. Until that is
+ * coordinated, replay is bounded two ways: this is the lowest-trust channel, the
+ * pipeline rate-limits inbound traffic before the adapter runs, AND when the
+ * sender supplies its own message `id` the downstream
+ * `webhooks/channels.ts:processInboundChannel` dedupes on it
+ * (`externalMessageId`) so a replayed request is a no-op.
  *
  * No `successResponse` — inherits the pipeline's default JSON envelope.
  */

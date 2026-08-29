@@ -13,7 +13,7 @@ import {
 	type SegmentCountPage,
 	type SegmentMemberPage,
 } from './conditions';
-import type { Doc } from './_generated/dataModel';
+import { redactContactCapabilityFields, type PublicContact } from './contacts/listing';
 import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { segmentFiltersValidator } from './lib/convexValidators';
 import { listResources } from './lib/listing';
@@ -77,8 +77,13 @@ export const listMembers = authedQuery({
 			args.paginationOpts.numItems > 0 ? args.paginationOpts.numItems : MEMBER_PAGE_SCAN
 		);
 
+		// The page scan already excludes soft-deleted (GDPR-erased) rows via the
+		// `by_deleted_at` index. Redact the DOI capability fields
+		// (doiConfirmationToken / doiTokenExpiresAt) so this member-readable
+		// membership view never leaks the /confirm/doi bearer token — the same
+		// contract topics.getContacts applies.
 		return {
-			page: result.members,
+			page: result.members.map(redactContactCapabilityFields),
 			isDone: result.isDone,
 			continueCursor: result.continueCursor,
 		};
@@ -130,16 +135,20 @@ export const listMembersPage = internalQuery({
  * so the caller can warn the user rather than present an incomplete CSV as
  * complete.
  */
-// all-members: read-only membership export of a saved segment, available to every member (mirrors listForExportByOrganization).
+// all-members: read-only membership export of a saved segment, available to every
+// member. Like `listForExportByOrganization`, it excludes soft-deleted rows (the
+// `listMembersPage` scan rides the `by_deleted_at` index) and redacts the DOI
+// capability fields (doiConfirmationToken / doiTokenExpiresAt) below, so the
+// export never carries the /confirm/doi bearer token.
 export const listMembersForExport = authedAction({
 	args: {
 		id: v.id('segments'),
 	},
-	handler: async (ctx, args): Promise<{ members: Doc<'contacts'>[]; truncated: boolean }> => {
+	handler: async (ctx, args): Promise<{ members: PublicContact[]; truncated: boolean }> => {
 		const segment = await ctx.runQuery(internal.segments.getInternal, { id: args.id });
 		if (!segment) return { members: [], truncated: false };
 
-		const members: Doc<'contacts'>[] = [];
+		const members: PublicContact[] = [];
 		let cursor: string | null = null;
 		let scanned = 0;
 		let truncated = false;
@@ -156,7 +165,7 @@ export const listMembersForExport = authedAction({
 					truncated = true;
 					break;
 				}
-				members.push(member);
+				members.push(redactContactCapabilityFields(member));
 			}
 			if (truncated || page.isDone) break;
 			if (scanned >= EXPORT_MAX_SCAN) {

@@ -78,28 +78,50 @@ describe('reportTaskFailure', () => {
 });
 
 /**
- * The worker drives internal Convex functions, so it only starts when the
- * deployment admin key reaches the container. A VPS install shipped without it
- * for a while: the sidecar threw at startup and every code task sat queued
- * forever, silently. Pin the wiring in BOTH shipped stacks.
+ * The worker drives internal Convex functions, so it only starts when a working
+ * Convex credential reaches the container. A VPS install shipped without one for
+ * a while: the sidecar threw at startup and every code task sat queued forever,
+ * silently. As of security review M4 that credential is NOT the admin key — the
+ * worker holds only the `CODE_WORKER_PROXY_TOKEN` and reaches Convex through the
+ * `convex-fn-proxy` sidecar, which holds the admin key. Pin BOTH the worker's
+ * proxy wiring and the proxy's admin-key wiring in BOTH shipped stacks.
  */
 describe('code-worker compose wiring', () => {
 	const composeFiles = ['docker-compose.yml', 'infra/templates/docker-compose.vps.yml'];
 
-	/** The `code-worker:` block of a compose file (up to the next service key). */
-	const codeWorkerService = (compose: string): string => {
-		const start = compose.indexOf('\n  code-worker:\n');
+	/** A named service block of a compose file (up to the next service key). */
+	const serviceBlock = (compose: string, name: string): string => {
+		const start = compose.indexOf(`\n  ${name}:\n`);
 		expect(start).toBeGreaterThan(-1);
 		const rest = compose.slice(start + 1);
 		const next = rest.search(/\n {2}[a-z][a-z0-9-]*:\n/);
 		return next === -1 ? rest : rest.slice(0, next);
 	};
+	const codeWorkerService = (compose: string): string => serviceBlock(compose, 'code-worker');
 
-	it.each(composeFiles)('%s passes CONVEX_ADMIN_KEY to the code-worker service', (path) => {
-		const service = codeWorkerService(readFileSync(resolve(REPO_ROOT, path), 'utf8'));
-		expect(service).toMatch(/^ {6}CONVEX_ADMIN_KEY: \$\{CONVEX_ADMIN_KEY(:-)?\}$/m);
-		expect(service).toMatch(/^ {6}CONVEX_URL: http:\/\/convex:3210$/m);
-	});
+	it.each(composeFiles)(
+		'%s routes the worker through convex-fn-proxy with the proxy token, NOT the admin key',
+		(path) => {
+			const service = codeWorkerService(readFileSync(resolve(REPO_ROOT, path), 'utf8'));
+			// The worker points at the allowlist proxy and authenticates with the
+			// proxy token — the admin key never enters the worker container.
+			expect(service).toMatch(/^ {6}CONVEX_URL: http:\/\/convex-fn-proxy:3220$/m);
+			expect(service).toMatch(/^ {6}CODE_WORKER_CONVEX_KEY: \$\{CODE_WORKER_PROXY_TOKEN(:-)?\}$/m);
+			expect(service).not.toMatch(/^ {6}CONVEX_ADMIN_KEY:/m);
+			// Egress is forced through the allowlisted forward-proxy.
+			expect(service).toMatch(/^ {6}HTTPS_PROXY: http:\/\/code-worker-egress:8888$/m);
+		}
+	);
+
+	it.each(composeFiles)(
+		'%s gives the admin key to convex-fn-proxy, which validates the proxy token',
+		(path) => {
+			const proxy = serviceBlock(readFileSync(resolve(REPO_ROOT, path), 'utf8'), 'convex-fn-proxy');
+			expect(proxy).toMatch(/^ {6}CONVEX_URL: http:\/\/convex:3210$/m);
+			expect(proxy).toMatch(/^ {6}CONVEX_ADMIN_KEY: \$\{CONVEX_ADMIN_KEY(:-)?\}$/m);
+			expect(proxy).toMatch(/^ {6}CODE_WORKER_PROXY_TOKEN: \$\{CODE_WORKER_PROXY_TOKEN(:-)?\}$/m);
+		}
+	);
 
 	// `codeWorkTasks.reclaimStale` requeues every running/testing row whenever a
 	// worker starts, on the premise that a fresh process owns none of them. A

@@ -18,6 +18,7 @@
  *   - apps/api/convex/devShortcuts/reset.ts   (POST /dev/reset)
  *   - apps/api/convex/devShortcuts/forceVerifyDomain.ts
  *   - apps/api/convex/auth/auth.ts            (disables BetterAuth rate limiting on dev)
+ *   - apps/api/convex/auth/trustedOrigins.ts  (keeps the loopback origin defaults on dev)
  */
 
 import { getBoolean } from '../lib/env';

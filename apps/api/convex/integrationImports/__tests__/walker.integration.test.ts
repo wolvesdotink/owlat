@@ -29,6 +29,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
+import { isSealedImportCredential } from '../credentialSeal';
 
 // `ctx.db.get(importId)` widens across all docs in convex-test's generic ctx;
 // callsite cast keeps assertions readable.
@@ -50,20 +51,20 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		// Migrated walker handlers gate via requireOrgPermission; run the real
 		// role→permission map against the mocked owner role so the check passes
 		// without a BetterAuth session.
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
 				const mod: typeof import('../../lib/sessionOrganization') =
 					actual as typeof import('../../lib/sessionOrganization');
 				mod.requirePermission(
 					mod.hasPermission(
 						'owner' as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
 				return { userId: 'test-user', role: 'owner' as const };
-			},
-		),
+			}),
 	};
 });
 
@@ -77,10 +78,7 @@ const modules = Object.fromEntries(
 	Object.entries(allModules)
 		.map(([key, val]) => {
 			if (key.startsWith('../') && !key.startsWith('../../')) {
-				return ['../../integrationImports/' + key.slice(3), val] as [
-					string,
-					typeof val,
-				];
+				return ['../../integrationImports/' + key.slice(3), val] as [string, typeof val];
 			}
 			return [key, val] as [string, typeof val];
 		})
@@ -102,8 +100,8 @@ const modules = Object.fromEntries(
 				!path.includes('knowledgeExtraction') &&
 				!path.includes('semanticFileProcessing') &&
 				!path.includes('visualizationAgent') &&
-				!path.includes('llmProvider'),
-		),
+				!path.includes('llmProvider')
+		)
 );
 
 const VALID_MAILCHIMP_CONFIG = {
@@ -112,10 +110,7 @@ const VALID_MAILCHIMP_CONFIG = {
 	listId: 'list_1',
 };
 
-function mailchimpPageResponse(
-	emails: string[],
-	totalItems: number,
-): Response {
+function mailchimpPageResponse(emails: string[], totalItems: number): Response {
 	return new Response(
 		JSON.stringify({
 			members: emails.map((email) => ({
@@ -125,13 +120,13 @@ function mailchimpPageResponse(
 			})),
 			total_items: totalItems,
 		}),
-		{ status: 200 },
+		{ status: 200 }
 	);
 }
 
 async function seedRunningImport(
 	t: ReturnType<typeof convexTest>,
-	overrides: Partial<Doc<'integrationImports'>> = {},
+	overrides: Partial<Doc<'integrationImports'>> = {}
 ): Promise<Id<'integrationImports'>> {
 	return await t.run(async (ctx) => {
 		return await ctx.db.insert('integrationImports', {
@@ -167,7 +162,7 @@ describe('startIntegrationImport — validation gates', () => {
 			t.mutation(api.integrationImports.walker.startIntegrationImport, {
 				config: VALID_MAILCHIMP_CONFIG,
 				handleDuplicates: 'skip',
-			}),
+			})
 		).rejects.toThrow(/imports\.mailchimp/);
 	});
 
@@ -178,7 +173,7 @@ describe('startIntegrationImport — validation gates', () => {
 			t.mutation(api.integrationImports.walker.startIntegrationImport, {
 				config: { provider: 'mailchimp', apiKey: 'no-datacenter', listId: 'x' },
 				handleDuplicates: 'skip',
-			}),
+			})
 		).rejects.toThrow(/Invalid Mailchimp API key/);
 	});
 
@@ -202,7 +197,7 @@ describe('startIntegrationImport — validation gates', () => {
 				config: VALID_MAILCHIMP_CONFIG,
 				handleDuplicates: 'skip',
 				topicId: fakeTopicId,
-			}),
+			})
 		).rejects.toThrow(/Topic not found/);
 	});
 
@@ -214,24 +209,19 @@ describe('startIntegrationImport — validation gates', () => {
 			t.mutation(api.integrationImports.walker.startIntegrationImport, {
 				config: VALID_MAILCHIMP_CONFIG,
 				handleDuplicates: 'skip',
-			}),
+			})
 		).rejects.toThrow(/already running/);
 	});
 
 	it('inserts running row and returns importId on happy path', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['imports.mailchimp']);
-		global.fetch = vi
-			.fn()
-			.mockImplementation(() => mailchimpPageResponse([], 0));
+		global.fetch = vi.fn().mockImplementation(() => mailchimpPageResponse([], 0));
 
-		const importId = await t.mutation(
-			api.integrationImports.walker.startIntegrationImport,
-			{
-				config: VALID_MAILCHIMP_CONFIG,
-				handleDuplicates: 'skip',
-			},
-		);
+		const importId = await t.mutation(api.integrationImports.walker.startIntegrationImport, {
+			config: VALID_MAILCHIMP_CONFIG,
+			handleDuplicates: 'skip',
+		});
 
 		expect(importId).toBeDefined();
 		await t.run(async (ctx) => {
@@ -245,6 +235,32 @@ describe('startIntegrationImport — validation gates', () => {
 			expect(row.imported).toBe(0);
 		});
 	});
+
+	it('seals the provider credential in the scheduled-function args (plan L9)', async () => {
+		vi.stubEnv('INSTANCE_SECRET', 'walker-l9-seal-secret');
+		try {
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['imports.mailchimp']);
+			global.fetch = vi.fn().mockImplementation(() => mailchimpPageResponse([], 0));
+
+			await t.mutation(api.integrationImports.walker.startIntegrationImport, {
+				config: VALID_MAILCHIMP_CONFIG,
+				handleDuplicates: 'skip',
+			});
+
+			// The next-hop args persisted in `_scheduled_functions` must carry a
+			// sealed credential, never the plaintext API key.
+			const scheduled = await t.run(async (ctx) =>
+				ctx.db.system.query('_scheduled_functions').collect()
+			);
+			expect(scheduled.length).toBeGreaterThan(0);
+			const args = scheduled[0]!.args[0] as { config: { apiKey: string } };
+			expect(args.config.apiKey).not.toBe(VALID_MAILCHIMP_CONFIG.apiKey);
+			expect(isSealedImportCredential(args.config.apiKey)).toBe(true);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
 });
 
 // ─── processIntegrationPage — happy path (direct action invocation) ─────────
@@ -254,20 +270,15 @@ describe('processIntegrationPage — happy path with terminal page', () => {
 		const t = convexTest(schema, modules);
 		global.fetch = vi
 			.fn()
-			.mockImplementation(() =>
-				mailchimpPageResponse(['alice@example.com', 'bob@example.com'], 2),
-			);
+			.mockImplementation(() => mailchimpPageResponse(['alice@example.com', 'bob@example.com'], 2));
 
 		const importId = await seedRunningImport(t);
 
-		await t.action(
-			internal.integrationImports.walker.processIntegrationPage,
-			{
-				importId,
-				config: VALID_MAILCHIMP_CONFIG,
-				cursor: '',
-			},
-		);
+		await t.action(internal.integrationImports.walker.processIntegrationPage, {
+			importId,
+			config: VALID_MAILCHIMP_CONFIG,
+			cursor: '',
+		});
 
 		await t.run(async (ctx) => {
 			const row = asImport(await ctx.db.get(importId));
@@ -297,14 +308,11 @@ describe('processIntegrationPage — multi-page sequence', () => {
 		global.fetch = vi.fn().mockImplementation(() => mailchimpPageResponse(page1Emails, 150));
 
 		const importId = await seedRunningImport(t);
-		await t.action(
-			internal.integrationImports.walker.processIntegrationPage,
-			{
-				importId,
-				config: VALID_MAILCHIMP_CONFIG,
-				cursor: '',
-			},
-		);
+		await t.action(internal.integrationImports.walker.processIntegrationPage, {
+			importId,
+			config: VALID_MAILCHIMP_CONFIG,
+			cursor: '',
+		});
 
 		await t.run(async (ctx) => {
 			const row = asImport(await ctx.db.get(importId));
@@ -318,14 +326,11 @@ describe('processIntegrationPage — multi-page sequence', () => {
 		const page2Emails = Array.from({ length: 50 }, (_, i) => `v${i}@example.com`);
 		global.fetch = vi.fn().mockImplementation(() => mailchimpPageResponse(page2Emails, 150));
 
-		await t.action(
-			internal.integrationImports.walker.processIntegrationPage,
-			{
-				importId,
-				config: VALID_MAILCHIMP_CONFIG,
-				cursor: '100',
-			},
-		);
+		await t.action(internal.integrationImports.walker.processIntegrationPage, {
+			importId,
+			config: VALID_MAILCHIMP_CONFIG,
+			cursor: '100',
+		});
 
 		await t.run(async (ctx) => {
 			const row = asImport(await ctx.db.get(importId));
@@ -340,9 +345,7 @@ describe('processIntegrationPage — multi-page sequence', () => {
 describe('processIntegrationPage — cancellation', () => {
 	it('short-circuits when status is not running (no HTTP issued)', async () => {
 		const t = convexTest(schema, modules);
-		const fetchSpy = vi
-			.fn()
-			.mockImplementation(() => mailchimpPageResponse([], 0));
+		const fetchSpy = vi.fn().mockImplementation(() => mailchimpPageResponse([], 0));
 		global.fetch = fetchSpy;
 
 		// Seed a cancelled row directly.
@@ -352,14 +355,11 @@ describe('processIntegrationPage — cancellation', () => {
 			completedAt: Date.now(),
 		});
 
-		await t.action(
-			internal.integrationImports.walker.processIntegrationPage,
-			{
-				importId,
-				config: VALID_MAILCHIMP_CONFIG,
-				cursor: '',
-			},
-		);
+		await t.action(internal.integrationImports.walker.processIntegrationPage, {
+			importId,
+			config: VALID_MAILCHIMP_CONFIG,
+			cursor: '',
+		});
 
 		// No HTTP call should have been made.
 		expect(fetchSpy).not.toHaveBeenCalled();
@@ -386,7 +386,7 @@ describe('processIntegrationPage — cancellation', () => {
 		});
 
 		await expect(
-			t.mutation(api.integrationImports.walker.cancelImport, { importId }),
+			t.mutation(api.integrationImports.walker.cancelImport, { importId })
 		).rejects.toThrow(/not running/);
 	});
 });
@@ -412,14 +412,11 @@ describe('processIntegrationPage — retry semantics', () => {
 		}) as typeof setTimeout);
 
 		const importId = await seedRunningImport(t);
-		await t.action(
-			internal.integrationImports.walker.processIntegrationPage,
-			{
-				importId,
-				config: VALID_MAILCHIMP_CONFIG,
-				cursor: '',
-			},
-		);
+		await t.action(internal.integrationImports.walker.processIntegrationPage, {
+			importId,
+			config: VALID_MAILCHIMP_CONFIG,
+			cursor: '',
+		});
 
 		await t.run(async (ctx) => {
 			const row = asImport(await ctx.db.get(importId));
@@ -431,9 +428,7 @@ describe('processIntegrationPage — retry semantics', () => {
 
 	it('fails after MAX_RETRIES + 1 attempts of 429', async () => {
 		const t = convexTest(schema, modules);
-		const fetchSpy = vi
-			.fn()
-			.mockImplementation(() => new Response('rate', { status: 429 }));
+		const fetchSpy = vi.fn().mockImplementation(() => new Response('rate', { status: 429 }));
 		global.fetch = fetchSpy;
 
 		vi.spyOn(global, 'setTimeout').mockImplementation(((cb: () => void) => {
@@ -442,14 +437,11 @@ describe('processIntegrationPage — retry semantics', () => {
 		}) as typeof setTimeout);
 
 		const importId = await seedRunningImport(t);
-		await t.action(
-			internal.integrationImports.walker.processIntegrationPage,
-			{
-				importId,
-				config: VALID_MAILCHIMP_CONFIG,
-				cursor: '',
-			},
-		);
+		await t.action(internal.integrationImports.walker.processIntegrationPage, {
+			importId,
+			config: VALID_MAILCHIMP_CONFIG,
+			cursor: '',
+		});
 
 		await t.run(async (ctx) => {
 			const row = asImport(await ctx.db.get(importId));
@@ -462,21 +454,19 @@ describe('processIntegrationPage — retry semantics', () => {
 
 	it('fails immediately on non-retryable error (no retry)', async () => {
 		const t = convexTest(schema, modules);
-		const fetchSpy = vi.fn().mockImplementation(
-			() =>
-				new Response(JSON.stringify({ detail: 'Invalid key' }), { status: 401 }),
-		);
+		const fetchSpy = vi
+			.fn()
+			.mockImplementation(
+				() => new Response(JSON.stringify({ detail: 'Invalid key' }), { status: 401 })
+			);
 		global.fetch = fetchSpy;
 
 		const importId = await seedRunningImport(t);
-		await t.action(
-			internal.integrationImports.walker.processIntegrationPage,
-			{
-				importId,
-				config: VALID_MAILCHIMP_CONFIG,
-				cursor: '',
-			},
-		);
+		await t.action(internal.integrationImports.walker.processIntegrationPage, {
+			importId,
+			config: VALID_MAILCHIMP_CONFIG,
+			cursor: '',
+		});
 
 		await t.run(async (ctx) => {
 			const row = asImport(await ctx.db.get(importId));
@@ -501,19 +491,14 @@ describe('processIntegrationPage — topic assignment + DOI attest threading', (
 			});
 		});
 
-		global.fetch = vi
-			.fn()
-			.mockImplementation(() => mailchimpPageResponse(['z@example.com'], 1));
+		global.fetch = vi.fn().mockImplementation(() => mailchimpPageResponse(['z@example.com'], 1));
 
 		const importId = await seedRunningImport(t, { topicId });
-		await t.action(
-			internal.integrationImports.walker.processIntegrationPage,
-			{
-				importId,
-				config: VALID_MAILCHIMP_CONFIG,
-				cursor: '',
-			},
-		);
+		await t.action(internal.integrationImports.walker.processIntegrationPage, {
+			importId,
+			config: VALID_MAILCHIMP_CONFIG,
+			cursor: '',
+		});
 
 		await t.run(async (ctx) => {
 			const row = asImport(await ctx.db.get(importId));

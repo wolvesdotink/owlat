@@ -2,12 +2,16 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {
 	createAuthenticatedHandler,
-	jsonResponse,
-	errorResponse,
 	requireScope,
 	type AuthenticatedContext,
-} from '../auth/apiAuth';
-import { isValidEmail, isValidConvexId, STRING_LIMITS, safeDecodeURIComponent } from '../lib/inputGuards';
+} from '../auth/apiHandlers';
+import { jsonResponse, errorResponse } from '../auth/apiResponses';
+import {
+	isValidEmail,
+	isValidConvexId,
+	STRING_LIMITS,
+	safeDecodeURIComponent,
+} from '../lib/inputGuards';
 import type { ContactSource } from './resolution';
 
 // Type for the action context
@@ -104,18 +108,16 @@ export async function resolveContactRef(
 		if (!isValidContactId(id)) {
 			return errorResponse('invalid_input', 'Invalid contact ID or email format');
 		}
-		contact = await ctx.runQuery<Contact | null>(
-			internal.contacts.contacts.getInternal,
-			{ contactId: id as Id<'contacts'> }
-		);
+		contact = await ctx.runQuery<Contact | null>(internal.contacts.contacts.getInternal, {
+			contactId: id as Id<'contacts'>,
+		});
 	} else if (email) {
 		if (!isValidEmail(email)) {
 			return errorResponse('invalid_input', 'Invalid contact ID or email format');
 		}
-		contact = await ctx.runQuery<Contact | null>(
-			internal.contacts.contacts.getByEmailForTeam,
-			{ email: email.toLowerCase() }
-		);
+		contact = await ctx.runQuery<Contact | null>(internal.contacts.contacts.getByEmailForTeam, {
+			email: email.toLowerCase(),
+		});
 	} else {
 		return errorResponse('invalid_input', 'Contact ID or email is required');
 	}
@@ -186,7 +188,10 @@ export const createContact = createAuthenticatedHandler(
 		}
 
 		if (body.firstName && body.firstName.length > STRING_LIMITS.NAME) {
-			return errorResponse('invalid_input', `firstName must be at most ${STRING_LIMITS.NAME} characters`);
+			return errorResponse(
+				'invalid_input',
+				`firstName must be at most ${STRING_LIMITS.NAME} characters`
+			);
 		}
 
 		if (body.lastName !== undefined && typeof body.lastName !== 'string') {
@@ -194,7 +199,10 @@ export const createContact = createAuthenticatedHandler(
 		}
 
 		if (body.lastName && body.lastName.length > STRING_LIMITS.NAME) {
-			return errorResponse('invalid_input', `lastName must be at most ${STRING_LIMITS.NAME} characters`);
+			return errorResponse(
+				'invalid_input',
+				`lastName must be at most ${STRING_LIMITS.NAME} characters`
+			);
 		}
 
 		// Create the contact (mutation handles duplicate check atomically)
@@ -210,10 +218,9 @@ export const createContact = createAuthenticatedHandler(
 			);
 
 			// Fetch the created contact
-			const contact = await ctx.runQuery<Contact | null>(
-				internal.contacts.contacts.getInternal,
-				{ contactId }
-			);
+			const contact = await ctx.runQuery<Contact | null>(internal.contacts.contacts.getInternal, {
+				contactId,
+			});
 
 			if (!contact) {
 				return errorResponse('internal', 'Failed to create contact');
@@ -226,12 +233,14 @@ export const createContact = createAuthenticatedHandler(
 				201
 			);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to create contact';
+			// Locked error envelope: classify the internal error but never echo the
+			// raw `error.message` back to the caller — only fixed strings ship.
+			const message = error instanceof Error ? error.message : '';
 			// Handle duplicate email error from mutation
 			if (message.includes('already exists')) {
 				return errorResponse('already_exists', 'A contact with this email already exists');
 			}
-			return errorResponse('invalid_input', message);
+			return errorResponse('invalid_input', 'Failed to create contact');
 		}
 	}
 );
@@ -329,15 +338,12 @@ export const updateContact = createAuthenticatedHandler(
 
 		// Update the contact
 		try {
-			await ctx.runMutation<Id<'contacts'>>(
-				internal.contacts.contacts.updateForTeam,
-				{
-					contactId,
-					email: body.email,
-					firstName: body.firstName,
-					lastName: body.lastName,
-				}
-			);
+			await ctx.runMutation<Id<'contacts'>>(internal.contacts.contacts.updateForTeam, {
+				contactId,
+				email: body.email,
+				firstName: body.firstName,
+				lastName: body.lastName,
+			});
 
 			// Fetch the updated contact
 			const updatedContact = await ctx.runQuery<Contact | null>(
@@ -353,12 +359,13 @@ export const updateContact = createAuthenticatedHandler(
 				data: formatContactResponse(updatedContact),
 			});
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to update contact';
+			// Locked error envelope — classify internally, never echo the raw message.
+			const message = error instanceof Error ? error.message : '';
 			// Check for duplicate email error
 			if (message.includes('already exists')) {
-				return errorResponse('already_exists', message);
+				return errorResponse('already_exists', 'A contact with this email already exists');
 			}
-			return errorResponse('invalid_input', message);
+			return errorResponse('invalid_input', 'Failed to update contact');
 		}
 	}
 );
@@ -389,10 +396,7 @@ export const deleteContact = createAuthenticatedHandler(
 
 		// Delete the contact
 		try {
-			await ctx.runMutation<undefined>(
-				internal.contacts.contacts.removeForTeam,
-				{ contactId }
-			);
+			await ctx.runMutation<undefined>(internal.contacts.contacts.removeForTeam, { contactId });
 
 			return jsonResponse(
 				{
@@ -403,9 +407,9 @@ export const deleteContact = createAuthenticatedHandler(
 				},
 				200
 			);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to delete contact';
-			return errorResponse('invalid_input', message);
+		} catch {
+			// Locked error envelope — do not echo the raw internal error message.
+			return errorResponse('invalid_input', 'Failed to delete contact');
 		}
 	}
 );
@@ -442,13 +446,10 @@ export const listContacts = createAuthenticatedHandler(
 			isDone: boolean;
 			continueCursor: string;
 			totalCount: number;
-		}>(
-			internal.contacts.contacts.listByTeam,
-			{
-				search,
-				paginationOpts: { numItems: limit, cursor: cursor ?? null },
-			}
-		);
+		}>(internal.contacts.contacts.listByTeam, {
+			search,
+			paginationOpts: { numItems: limit, cursor: cursor ?? null },
+		});
 
 		return jsonResponse({
 			data: result.contacts.map(formatContactResponse),

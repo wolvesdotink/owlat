@@ -30,6 +30,7 @@ import { resolveEmbeddingModel, resolveLanguageModel } from './lib/llmProvider';
 import { runLlmText } from './lib/llm/dispatch';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
+import { throwInvalidInput } from './_utils/errors';
 
 // How many results to pull from EACH source before synthesis, and how much of
 // each result's body to feed the model (bounded so one huge file can't dominate
@@ -37,6 +38,10 @@ import { logInfo } from './lib/runtimeLog';
 const PER_SOURCE_LIMIT = 5;
 const MAX_KNOWLEDGE_CONTENT = 1200;
 const MAX_FILE_EXCERPT = 1000;
+
+// Cap the free-text question so a single ask can't be looped into an unbounded
+// embedding + synthesis spend.
+const MAX_QUESTION_CHARS = 2000;
 
 /** A citation the frontend renders — knowledge entry OR file, discriminated by `kind`. */
 type QuerySource =
@@ -68,6 +73,18 @@ export const ask = authedAction({
 		if (!question) {
 			return { answer: 'Please enter a question.', sources: [] };
 		}
+		// Clamp the question length BEFORE spending any embed/synthesis call.
+		if (question.length > MAX_QUESTION_CHARS) {
+			throwInvalidInput(`Question is too long (max ${MAX_QUESTION_CHARS} characters).`);
+		}
+
+		// Gate: `ai` feature flag + per-org spend budget + per-user rate limit,
+		// charged to the Quick Query bucket so a tight loop can't drain the LLM
+		// budget. The knowledge gate above enforces `ai.knowledge` + read access;
+		// this adds the shared AI spend/rate ceiling.
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+			rateLimitBucket: 'quickQueryPerUser',
+		});
 
 		// Embed the question ONCE and reuse it for both retrieval legs (each seam
 		// takes a precomputed `embedding`, so this avoids two identical embed calls).

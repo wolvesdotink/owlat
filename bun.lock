@@ -78,6 +78,17 @@
         "vitest": "catalog:",
       },
     },
+    "apps/convex-fn-proxy": {
+      "name": "@owlat/convex-fn-proxy",
+      "version": "0.4.4",
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "convex": "catalog:convex",
+        "tsx": "^4.19.0",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "apps/desktop": {
       "name": "@owlat/desktop",
       "version": "0.4.4",
@@ -1232,6 +1243,8 @@
     "@owlat/channels": ["@owlat/channels@workspace:packages/channels"],
 
     "@owlat/code-worker": ["@owlat/code-worker@workspace:apps/code-worker"],
+
+    "@owlat/convex-fn-proxy": ["@owlat/convex-fn-proxy@workspace:apps/convex-fn-proxy"],
 
     "@owlat/desktop": ["@owlat/desktop@workspace:apps/desktop"],
 

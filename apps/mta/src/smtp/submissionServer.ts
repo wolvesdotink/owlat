@@ -80,6 +80,14 @@ const MAX_SUBMISSION_BYTES = MAX_ATTACHMENT_BYTES;
 export interface AuthenticatedSession {
 	organizationId: string;
 	credentialName: string;
+	/**
+	 * The organization's verified sending domains (lowercased) for a per-org
+	 * credential session. When present, the DATA hook rejects a From whose domain
+	 * is not in this set (H2 cross-tenant From-forgery guard). Absent for the
+	 * master session (broad send) and for legacy credentials created before the
+	 * field existed — see {@link OrgCredential.allowedDomains}.
+	 */
+	allowedDomains?: readonly string[];
 	/** Set when authenticated via a Postbox app password (per-user). */
 	postbox?: {
 		mailboxId: string;
@@ -200,6 +208,7 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 				session.state.auth = {
 					organizationId: credential.organizationId,
 					credentialName: credential.name,
+					...(credential.allowedDomains ? { allowedDomains: credential.allowedDomains } : {}),
 				};
 				await clearAuthFailures(redis, remoteIp).catch(() => {});
 				return { ok: true, user: credential.name };
@@ -326,6 +335,29 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 					enhanced: '5.7.1',
 					text: 'From address must match authenticated mailbox',
 				};
+			}
+
+			// Per-org credential sessions (not Postbox, not the master key) MUST send
+			// From a domain in their organization's verified-sending-domain set (H2).
+			// Otherwise a per-org credential could send From any domain and — before
+			// the org-scoped DKIM guard — have it signed with another tenant's key.
+			// The master session (organizationId '__master__') carries no allowedDomains
+			// and keeps broad send; legacy credentials with none recorded stay unscoped
+			// here (the DKIM signer is the fail-closed backstop). A present-but-empty
+			// set authorizes no domain (fail-closed).
+			if (!authData.postbox && authData.allowedDomains) {
+				const allowed = new Set(authData.allowedDomains.map((domain) => domain.toLowerCase()));
+				if (!allowed.has(fromDomain)) {
+					logger.warn(
+						{ organizationId: authData.organizationId, fromDomain },
+						'SMTP submission rejected — From domain not in organization verified set'
+					);
+					return {
+						code: 553,
+						enhanced: '5.7.1',
+						text: 'From domain is not authorized for this organization',
+					};
+				}
 			}
 
 			const clientRequestBinding = await bindSubmissionClientRequest(redis, identity, recipients);

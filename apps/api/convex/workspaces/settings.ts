@@ -202,16 +202,88 @@ export const createInternal = internalMutation({
 		defaultFromName: v.optional(v.string()),
 		// Seeded by the setup wizard's "moving from another platform?" question.
 		isMigrationMode: v.optional(v.boolean()),
+		// When true, stamp the durable admin-seed latch on the freshly-created
+		// singleton so `POST /seed/admin` can never re-run against a de-populated
+		// instance (see `adminSeedCompletedAt` in schema/instance.ts). Only the
+		// seed path passes this; the bare setup-wizard bootstrap leaves it unset.
+		markAdminSeeded: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const existing = await ctx.db.query('instanceSettings').first();
-		if (existing) return existing._id;
 		const now = Date.now();
+		const existing = await ctx.db.query('instanceSettings').first();
+		if (existing) {
+			// The singleton already exists (idempotent bootstrap). Still stamp the
+			// latch if this is the seed path and it isn't stamped yet, so the gate
+			// is durable even when settings were created before the user rows.
+			if (args.markAdminSeeded && existing.adminSeedCompletedAt === undefined) {
+				await ctx.db.patch(existing._id, { adminSeedCompletedAt: now });
+			}
+			return existing._id;
+		}
 		return await ctx.db.insert('instanceSettings', {
 			timezone: args.timezone || 'UTC',
 			defaultFromName: args.defaultFromName,
 			isMigrationMode: args.isMigrationMode ?? false,
+			...(args.markAdminSeeded ? { adminSeedCompletedAt: now } : {}),
 			createdAt: now,
 		});
+	},
+});
+
+/**
+ * Atomically CLAIM the durable admin-seed latch.
+ *
+ * In a SINGLE transaction this reads `adminSeedCompletedAt` and, only if it is
+ * unset, stamps it — creating the `instanceSettings` singleton (with the seed's
+ * settings columns) when none exists yet. Returns `{ claimed }`.
+ *
+ * `seedAdmin.ts` calls this BEFORE creating any user. Because the check and the
+ * write happen in one Convex transaction (OCC-serialized on the singleton), two
+ * concurrent `/seed/admin` requests can no longer both pass a separate
+ * check-then-write and both seed: exactly one wins the claim, the loser reads the
+ * now-stamped latch and gets a 409. A seed that fails AFTER a successful claim
+ * leaves the latch set — fail-closed: no second unauthenticated bootstrap can
+ * mint a fresh owner on the instance. Recovering from a half-seed therefore needs
+ * operator action, which is the intended posture for a one-shot endpoint.
+ */
+export const claimAdminSeedInternal = internalMutation({
+	args: {
+		timezone: v.optional(v.string()),
+		defaultFromName: v.optional(v.string()),
+		isMigrationMode: v.optional(v.boolean()),
+	},
+	handler: async (ctx, args): Promise<{ claimed: boolean }> => {
+		const now = Date.now();
+		const existing = await ctx.db.query('instanceSettings').first();
+		if (existing) {
+			// Already latched ⇒ a prior seed claimed it; refuse (concurrent loser or
+			// a re-run against a de-populated instance).
+			if (existing.adminSeedCompletedAt !== undefined) {
+				return { claimed: false };
+			}
+			await ctx.db.patch(existing._id, { adminSeedCompletedAt: now });
+			return { claimed: true };
+		}
+		await ctx.db.insert('instanceSettings', {
+			timezone: args.timezone || 'UTC',
+			defaultFromName: args.defaultFromName,
+			isMigrationMode: args.isMigrationMode ?? false,
+			adminSeedCompletedAt: now,
+			createdAt: now,
+		});
+		return { claimed: true };
+	},
+});
+
+/**
+ * Whether the durable admin-seed latch has been stamped. Read by
+ * `seedAdmin.ts`'s one-shot gate alongside the "any user exists?" probe: the
+ * probe re-arms if every user is deleted, this latch does not.
+ */
+export const hasCompletedAdminSeedInternal = internalQuery({
+	args: {},
+	handler: async (ctx): Promise<boolean> => {
+		const settings = await ctx.db.query('instanceSettings').first();
+		return settings?.adminSeedCompletedAt !== undefined;
 	},
 });

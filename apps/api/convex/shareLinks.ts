@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { nanoid } from 'nanoid';
 import { getOptional } from './lib/env';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from './_utils/errors';
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
@@ -101,13 +101,23 @@ export const revokeShareLink = authedMutation({
 
 /**
  * List share links for an email template or transactional email.
+ *
+ * Gated on `shareLinks:manage` — each row carries the raw `token`, the bearer
+ * capability for the unauthenticated `/share` route, so listing is held to the
+ * same permission that minting (`createShareLink`) and revoking
+ * (`revokeShareLink`) already require. The only reader (ShareLinksPopover) is an
+ * admin surface whose create/revoke actions already demand this permission.
  */
 export const listShareLinks = authedQuery({
 	args: {
 		emailTemplateId: v.optional(v.id('emailTemplates')),
 		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'shareLinks:manage'),
+			'Only owners and admins can view share links'
+		);
 		let links;
 		if (args.emailTemplateId) {
 			const template = await ctx.db.get(args.emailTemplateId);
