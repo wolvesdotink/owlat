@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
+import { spamVerdictValidator, draftQualityValidator } from '../lib/convexValidators';
 import {
 	mailAttachmentShareScanValidator,
 	mailAttachmentShareScopeValidator,
@@ -9,9 +10,7 @@ import {
 	mailSnippetVariableValidator,
 	mailTriageVerbValidator,
 	mailUnsubscribeValidator,
-	spamVerdictValidator,
-	draftQualityValidator,
-} from '../lib/convexValidators';
+} from '../lib/mailContentValidators';
 import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,

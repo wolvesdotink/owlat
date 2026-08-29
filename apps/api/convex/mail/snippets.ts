@@ -24,7 +24,7 @@ import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import {
 	mailSnippetVariableValidator,
 	type MailSnippetVariableSource,
-} from '../lib/convexValidators';
+} from '../lib/mailContentValidators';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';

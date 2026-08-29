@@ -27,7 +27,7 @@
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { mailTriageVerbValidator, type MailTriageVerb } from '../lib/convexValidators';
+import { mailTriageVerbValidator, type MailTriageVerb } from '../lib/mailContentValidators';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';

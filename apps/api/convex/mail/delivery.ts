@@ -26,11 +26,11 @@
  */
 
 import { v } from 'convex/values';
+import { spamVerdictValidator } from '../lib/convexValidators';
 import {
 	mailMessageAttachmentValidator,
 	mailUnsubscribeValidator,
-	spamVerdictValidator,
-} from '../lib/convexValidators';
+} from '../lib/mailContentValidators';
 import { internalMutation, internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';

@@ -41,7 +41,7 @@ import { authedMutation, authedQuery, publicQuery } from '../lib/authedFunctions
 import {
 	mailAttachmentShareScanValidator,
 	mailAttachmentShareScopeValidator,
-} from '../lib/convexValidators';
+} from '../lib/mailContentValidators';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';

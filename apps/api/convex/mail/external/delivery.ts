@@ -16,7 +16,7 @@ import { v } from 'convex/values';
 import {
 	mailMessageAttachmentValidator,
 	mailUnsubscribeValidator,
-} from '../../lib/convexValidators';
+} from '../../lib/mailContentValidators';
 import {
 	internalAction,
 	internalMutation,

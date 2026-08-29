@@ -12,7 +12,7 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageAttachmentValidator } from '../../lib/convexValidators';
+import { mailMessageAttachmentValidator } from '../../lib/mailContentValidators';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { mailEncryptionInfoValidator, type OutboundEncryptionInfo } from '../sealPolicy';
 
