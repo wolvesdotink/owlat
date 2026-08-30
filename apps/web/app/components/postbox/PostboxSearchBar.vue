@@ -110,11 +110,7 @@ const { labels } = usePostboxLabels(mailboxIdRef);
 // The one scope-tagged palette store, read under the Mail tag: a query run here
 // is offered by the ⌘K overlay and vice versa. This bar used to keep its own
 // private localStorage key, which is exactly the split the unified search closed.
-const {
-	recentSearches: recents,
-	loadRecent,
-	saveRecent,
-} = useCommandPaletteRecents(() => 'mail');
+const { recentSearches: recents, loadRecent, saveRecent } = useCommandPaletteRecents(() => 'mail');
 onMounted(loadRecent);
 
 // ── Rows ───────────────────────────────────────────────────────────────────

@@ -42,7 +42,8 @@ const bulk = usePostboxBulkActions(mailboxIdRef);
 const pageIds = computed(() => props.pageIds ?? []);
 /** Only meaningful once every loaded row is picked — see the header checkbox. */
 const pageFullySelected = computed(
-	() => pageIds.value.length > 0 && headerSelectionState(pageIds.value, bulk.selected.value) === 'all'
+	() =>
+		pageIds.value.length > 0 && headerSelectionState(pageIds.value, bulk.selected.value) === 'all'
 );
 
 const loadingAllMatching = ref(false);
@@ -97,7 +98,11 @@ defineExpose({ selectAllMatching });
 					count: bulk.count.value,
 				})
 			}}</span>
-			<button type="button" class="text-brand hover:underline whitespace-nowrap" @click="bulk.clear()">
+			<button
+				type="button"
+				class="text-brand hover:underline whitespace-nowrap"
+				@click="bulk.clear()"
+			>
 				{{ t('components.postbox.postboxBulkSelectAllRow.clearSelection') }}
 			</button>
 		</template>

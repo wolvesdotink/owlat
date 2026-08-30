@@ -114,7 +114,9 @@ function switchTo(id: Id<'mailboxes'>) {
 
 		<template v-for="section in sectionDescriptors" :key="section.key">
 			<template v-if="section.items.length > 0">
-				<p class="px-3 pt-2 pb-1 text-2xs font-semibold uppercase tracking-wider text-text-tertiary">
+				<p
+					class="px-3 pt-2 pb-1 text-2xs font-semibold uppercase tracking-wider text-text-tertiary"
+				>
 					{{ section.heading }}
 				</p>
 				<UiDropdownMenuItem
@@ -123,7 +125,10 @@ function switchTo(id: Id<'mailboxes'>) {
 					:icon="section.icon"
 					@click="switchTo(mb.mailboxId)"
 				>
-					<span class="flex-1 truncate text-left" :class="{ 'text-brand': mb.mailboxId === mailboxId }">
+					<span
+						class="flex-1 truncate text-left"
+						:class="{ 'text-brand': mb.mailboxId === mailboxId }"
+					>
 						{{ mb.label }}
 					</span>
 					<span v-if="mb.unread > 0" class="text-xs font-medium text-text-secondary">{{

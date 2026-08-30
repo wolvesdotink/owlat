@@ -126,9 +126,7 @@ watch(
 					:aria-label="
 						t('components.postbox.postboxManageFolders.deleteAriaLabel', { name: folder.name })
 					"
-					@click="
-						requestFolderDelete({ _id: folder._id as Id<'mailFolders'>, name: folder.name })
-					"
+					@click="requestFolderDelete({ _id: folder._id as Id<'mailFolders'>, name: folder.name })"
 				>
 					<Icon name="lucide:trash-2" class="w-4 h-4" />
 				</button>

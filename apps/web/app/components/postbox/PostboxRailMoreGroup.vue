@@ -141,9 +141,7 @@ const expanded = computed(() => isOpen.value || holdsActiveRoute.value);
 
 		<div
 			v-if="expanded"
-			:class="
-				collapsed ? 'flex flex-col items-center gap-1' : 'flex flex-col gap-0.5 mt-0.5 pl-2'
-			"
+			:class="collapsed ? 'flex flex-col items-center gap-1' : 'flex flex-col gap-0.5 mt-0.5 pl-2'"
 		>
 			<PostboxFolderList
 				:folders="folders"
