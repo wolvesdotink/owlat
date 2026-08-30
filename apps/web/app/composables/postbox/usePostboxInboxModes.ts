@@ -110,15 +110,16 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 		switchInboxMode('browse');
 	}
 
-	// Focus the rail's search box after a mode flip mounts it (the `/` shortcut
-	// from Today mode; the rail consumes + clears the flag on mount).
-	const searchAutofocus = useState('postbox:search-autofocus', () => false);
+	// Search is the app-wide overlay now, so `/` no longer has to leave Today to
+	// reach a box that lived in the folder rail — it opens the overlay in Mail
+	// scope over whichever mode is on screen. The rail owns the same shortcut for
+	// Browse mode, where it is mounted; this covers Today, where it is not.
+	const { open: openCommandPalette } = useCommandPalette();
 
 	// Mode shortcuts (window-level, like the layout's triage-undo chord):
 	// `postbox.toggleBrowse` (and Cmd/Ctrl-B) toggles Today ↔ Browse from the
-	// inbox list; Esc returns from Browse to Today; `postbox.search` from Today
-	// jumps to Browse with the search focused (search never renders inside the
-	// Today column). All inert in text inputs, while a message is open, and
+	// inbox list; Esc returns from Browse to Today; `postbox.search` opens the
+	// search overlay. All inert in text inputs, while a message is open, and
 	// while any dialog is up.
 	//
 	// Both keys go through the REGISTRY rather than being matched literally, so
@@ -152,8 +153,7 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 		}
 		if (id === 'postbox.search' && todayActive.value) {
 			event.preventDefault();
-			searchAutofocus.value = true;
-			switchInboxMode('browse');
+			openCommandPalette({ scope: 'mail' });
 		}
 	}
 	onMounted(() => window.addEventListener('keydown', onModeKeydown));

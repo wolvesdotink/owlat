@@ -18,7 +18,8 @@ import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxSearchBar from '../PostboxSearchBar.vue';
-import { POSTBOX_RECENT_SEARCHES_KEY } from '~/utils/postboxSearchSuggest';
+import { LEGACY_MAIL_RECENTS_KEY } from '~/lib/commandPaletteRecents';
+import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -35,12 +36,17 @@ beforeAll(() => {
 	vi.stubGlobal('useConvexQuery', () => ({ data: ref([]) }));
 	vi.stubGlobal('useDebouncedSearch', () => ({ query: ref(''), debouncedQuery: ref('') }));
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]) }));
+	// The real history store: the bar reads the one scope-tagged palette store
+	// under the Mail tag, so seeding the retired key below also exercises the
+	// migration that folds it in.
+	vi.stubGlobal('useCommandPaletteRecents', useCommandPaletteRecents);
 });
 
 const iconStub = { props: ['name'], template: '<span />' };
 
 function mountBar(history: string[]) {
-	localStorage.setItem(POSTBOX_RECENT_SEARCHES_KEY, JSON.stringify(history));
+	localStorage.clear();
+	localStorage.setItem(LEGACY_MAIL_RECENTS_KEY, JSON.stringify(history));
 	return mount(PostboxSearchBar, {
 		props: { modelValue: '' },
 		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },

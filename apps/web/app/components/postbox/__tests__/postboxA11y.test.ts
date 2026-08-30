@@ -29,6 +29,7 @@ import {
 } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useClickOutside } from '~/composables/useClickOutside';
+import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { useDropZone } from '~/composables/useDropZone';
 import { useLocalStorage } from '~/composables/useLocalStorage';
@@ -137,6 +138,9 @@ function postboxStubs(rows: PostboxThreadRowMessage[]): Record<string, unknown> 
 		useClickOutside,
 		useClickOutsideSelector: useClickOutside,
 		useDebouncedSearch,
+		// The search bar reads the one scope-tagged palette history (Mail tag);
+		// it is localStorage-only, so the real one runs here.
+		useCommandPaletteRecents,
 		useDropZone,
 		useLocalStorage,
 		useRichText,

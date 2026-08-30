@@ -89,16 +89,10 @@ const activeLabelId = computed(() =>
 	route.path.startsWith('/dashboard/postbox/label/') ? String(route.params['labelId'] ?? '') : ''
 );
 
-// Search entry point: a box in the folder rail + a "/" shortcut to focus it.
-const searchQuery = ref('');
-const searchBar = ref<{ focus: () => void } | null>(null);
-
-function goSearch(value: string) {
-	const q = value.trim();
-	void navigateTo(
-		q ? `/dashboard/postbox/search?q=${encodeURIComponent(q)}` : '/dashboard/postbox/search'
-	);
-}
+// Search entry point: the app-wide overlay, opened in Mail scope. The rail used
+// to host its own box with its own grammar and its own history; there is now one
+// search, and `/` reaches it here exactly as it reached the box before.
+const { open: openCommandPalette } = useCommandPalette();
 
 function onGlobalKey(event: KeyboardEvent) {
 	// Cmd/Ctrl+Shift+D toggles the folder rail between full width and the icon
@@ -121,28 +115,20 @@ function onGlobalKey(event: KeyboardEvent) {
 		return;
 	}
 	event.preventDefault();
-	searchBar.value?.focus();
+	openCommandPalette({ scope: 'mail' });
 }
-
-// `/` pressed in the Today landing view: the layout flips to browse mode and
-// arms this flag so the freshly mounted rail carries the intent through —
-// search always lives here, never inside the Today column.
-const searchAutofocus = useState('postbox:search-autofocus', () => false);
 
 onMounted(() => {
 	window.addEventListener('keydown', onGlobalKey);
-	if (searchAutofocus.value) {
-		searchAutofocus.value = false;
-		void nextTick(() => searchBar.value?.focus());
-	}
 });
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 </script>
 
 <template>
 	<!-- Pane 1: folder rail — collapses to a ~48px icon strip (Cmd/Ctrl+Shift+D
-	     or the chevron at the bottom). Collapsed hides folder CRUD, label
-	     management and the search box; folder/action glyphs stay reachable. -->
+	     or the chevron at the bottom). Collapsed hides folder CRUD and label
+	     management; folder/action glyphs stay reachable. Search is not here: it
+	     is the app-wide overlay, on `/` and Cmd/Ctrl+K. -->
 	<aside
 		class="border-r border-border-subtle bg-bg-elevated flex flex-col"
 		:class="railCollapsed ? 'w-12 p-2 gap-1.5 items-center' : 'w-56 p-3 gap-2'"
@@ -152,25 +138,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		     single-mailbox user's rail is unchanged. -->
 		<PostboxMailboxSwitcher :mailbox-id="mailboxId" :collapsed="railCollapsed" />
 
-		<!-- Search: full box expanded; a single icon collapsed (opens the
-		     search page, which hosts the palette/query UI). -->
-		<PostboxSearchBar
-			v-if="!railCollapsed"
-			ref="searchBar"
-			v-model="searchQuery"
-			:mailbox-id="mailboxId"
-			@submit="goSearch"
-		/>
-		<button
-			v-else
-			type="button"
-			class="w-9 h-9 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-			:title="t('common.search')"
-			:aria-label="t('common.search')"
-			@click="goSearch('')"
-		>
-			<Icon name="lucide:search" class="w-4 h-4" />
-		</button>
 		<PostboxComposeButton :mailbox-id="mailboxId" :collapsed="railCollapsed" />
 		<PostboxFolderList
 			:folders="systemFolders"

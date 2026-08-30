@@ -19,6 +19,7 @@ const states = new Map<string, Ref<unknown>>();
 let wrapper: VueWrapper | null = null;
 let savedInboxMode: Ref<PostboxInboxMode>;
 let setInboxMode: ReturnType<typeof vi.fn>;
+let openPalette: ReturnType<typeof vi.fn>;
 
 function mountModes(inboxMode: PostboxInboxMode = 'today') {
 	savedInboxMode = ref(inboxMode);
@@ -52,6 +53,8 @@ beforeEach(() => {
 	states.clear();
 	resetShortcutPreferences();
 	vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
+	openPalette = vi.fn();
+	vi.stubGlobal('useCommandPalette', () => ({ open: openPalette }));
 	vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 		let state = states.get(key);
 		if (!state) states.set(key, (state = ref(init())));
@@ -97,11 +100,13 @@ describe('usePostboxInboxModes — mode keys go through the registry', () => {
 		expect(setInboxMode).toHaveBeenCalledWith('browse');
 	});
 
-	it('jumps to Browse with the search armed on the search key, remap included', async () => {
+	it('opens the search overlay in Mail scope on the search key, remap included', async () => {
+		// Search is the app-wide overlay now: `/` from Today no longer has to flip
+		// to Browse to reach a box that lived in the folder rail.
 		mountModes('today');
 		press('/');
-		expect(setInboxMode).toHaveBeenCalledWith('browse');
-		expect(states.get('postbox:search-autofocus')?.value).toBe(true);
+		expect(openPalette).toHaveBeenCalledWith({ scope: 'mail' });
+		expect(setInboxMode).not.toHaveBeenCalled();
 
 		await nextTick();
 		wrapper?.unmount();
@@ -109,10 +114,11 @@ describe('usePostboxInboxModes — mode keys go through the registry', () => {
 
 		applyShortcutPreferences('owlat', [{ id: 'postbox.search', keys: [';'] }]);
 		states.clear();
+		openPalette.mockClear();
 		mountModes('today');
 		press('/');
-		expect(setInboxMode).not.toHaveBeenCalled();
+		expect(openPalette).not.toHaveBeenCalled();
 		press(';');
-		expect(setInboxMode).toHaveBeenCalledWith('browse');
+		expect(openPalette).toHaveBeenCalledWith({ scope: 'mail' });
 	});
 });
