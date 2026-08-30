@@ -3180,18 +3180,12 @@
 				"askFailed": "Das ließ sich gerade nicht beantworten. Versuchen Sie es gleich noch einmal.",
 				"askOperation": "Zu diesem Thread fragen",
 				"askPlaceholder": "Zu diesem Thread fragen…",
-				"draftAReply": "Eine Antwort entwerfen",
-				"draftReply": "Antwort entwerfen",
 				"less": "weniger",
 				"more": "mehr",
-				"noSuggestions": "Derzeit keine Vorschläge. Versuchen Sie es gleich noch einmal.",
-				"suggestOperation": "Antworten vorschlagen",
-				"suggestedReplies": "Antwortvorschläge",
 				"summarizeOperation": "Thread zusammenfassen",
 				"summaryLabel": "Zusammenfassung:",
 				"thinking": "Denkt nach…",
-				"toggleSummaryDetail": "Details der Zusammenfassung umschalten",
-				"working": "Wird bearbeitet…"
+				"toggleSummaryDetail": "Details der Zusammenfassung umschalten"
 			},
 			"postboxAppPasswordCallout": {
 				"heading": "{provider} benötigt ein App-Passwort",
@@ -3513,9 +3507,15 @@
 			},
 			"postboxInlineReply": {
 				"dialogLabel": "Inline-Antwort",
+				"draftAReply": "Eine Antwort entwerfen",
+				"draftReply": "Antwort entwerfen",
 				"forward": "Weiterleiten",
+				"noSuggestions": "Derzeit keine Vorschläge. Versuchen Sie es gleich noch einmal.",
 				"replyAll": "Allen antworten",
-				"replyTo": "An {sender} antworten…"
+				"replyTo": "An {sender} antworten…",
+				"suggestOperation": "Antworten vorschlagen",
+				"suggestedReplies": "Antwortvorschläge",
+				"working": "Wird bearbeitet…"
 			},
 			"postboxInviteCard": {
 				"accept": "Annehmen",

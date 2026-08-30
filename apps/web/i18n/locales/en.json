@@ -3180,18 +3180,12 @@
 				"askFailed": "Couldn't answer that right now. Try again in a moment.",
 				"askOperation": "Ask about this thread",
 				"askPlaceholder": "Ask about this thread…",
-				"draftAReply": "Draft a reply",
-				"draftReply": "Draft reply",
 				"less": "less",
 				"more": "more",
-				"noSuggestions": "No suggestions right now. Try again in a moment.",
-				"suggestOperation": "Suggest replies",
-				"suggestedReplies": "Suggested replies",
 				"summarizeOperation": "Summarize thread",
 				"summaryLabel": "Summary:",
 				"thinking": "Thinking…",
-				"toggleSummaryDetail": "Toggle summary detail",
-				"working": "Working…"
+				"toggleSummaryDetail": "Toggle summary detail"
 			},
 			"postboxAppPasswordCallout": {
 				"heading": "{provider} needs an app password",
@@ -3513,9 +3507,15 @@
 			},
 			"postboxInlineReply": {
 				"dialogLabel": "Inline reply",
+				"draftAReply": "Draft a reply",
+				"draftReply": "Draft reply",
 				"forward": "Forward",
+				"noSuggestions": "No suggestions right now. Try again in a moment.",
 				"replyAll": "Reply all",
-				"replyTo": "Reply to {sender}…"
+				"replyTo": "Reply to {sender}…",
+				"suggestOperation": "Suggest replies",
+				"suggestedReplies": "Suggested replies",
+				"working": "Working…"
 			},
 			"postboxInviteCard": {
 				"accept": "Accept",

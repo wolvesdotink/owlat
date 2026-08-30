@@ -10,7 +10,15 @@
  *
  * The box never expands on its own: it mounts collapsed on thread open (so it
  * can't steal focus) and collapses back after send/discard.
+ *
+ * It also carries "Draft reply" (plan §05). The AI strip used to host it at the
+ * TOP of the thread, a long way from where a reply gets written; here the
+ * suggestion cards appear right above the box they seed. Same `mail.ai
+ * .suggestReplies` action, same `use-reply` contract, and the same `ai` flag
+ * gates it — with the flag off nothing renders and nothing is dispatched.
  */
+import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import type {
 	ComposerPromotePayload,
 	InlineComposeKind,
@@ -24,11 +32,17 @@ const props = defineProps<{
 	showReplyAll: boolean;
 	/** Expanded composer seed; null renders the collapsed affordance. */
 	spec: InlineComposeSpec | null;
+	/** Feature flag `ai` — gates the Draft reply affordance and its dispatch. */
+	aiEnabled?: boolean;
+	/** The message a drafted reply answers (the thread's latest). */
+	draftMessageId?: string;
 }>();
 
 const emit = defineEmits<{
 	(e: 'expand', kind: InlineComposeKind): void;
 	(e: 'collapse'): void;
+	/** A chosen suggestion — the reader opens the prefilled composer with it. */
+	(e: 'use-reply', text: string): void;
 }>();
 
 const { t } = useI18n();
@@ -78,6 +92,39 @@ function onPromote(payload: ComposerPromotePayload) {
 	emit('collapse');
 }
 
+// --- Draft reply: suggestions for the thread's latest message, revealed only
+// after you ask for them. Fail-soft — a failed dispatch just leaves the list
+// empty and the affordance in place.
+const suggestions = ref<string[]>([]);
+const suggestOpen = ref(false);
+const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
+	label: () => t('components.postbox.postboxInlineReply.suggestOperation'),
+	type: 'action',
+});
+const suggestBusy = computed(() => suggestOp.isLoading.value);
+const canDraft = computed(() => props.aiEnabled === true && !!props.draftMessageId);
+
+async function toggleDraftReply() {
+	if (suggestOpen.value) {
+		suggestOpen.value = false;
+		return;
+	}
+	suggestOpen.value = true;
+	const messageId = props.draftMessageId;
+	if (!messageId || suggestions.value.length > 0 || suggestBusy.value) return;
+	const res = await suggestOp.run({ messageId: messageId as Id<'mailMessages'> });
+	suggestions.value = res.ok ? res.result.replies : [];
+}
+
+// A different conversation gets different suggestions, not the last one's.
+watch(
+	() => props.draftMessageId,
+	() => {
+		suggestions.value = [];
+		suggestOpen.value = false;
+	}
+);
+
 defineExpose({
 	/** Focus the inline body editor (r/a re-press while already open). */
 	focusEditor: () => composerRef.value?.focusBody(),
@@ -86,6 +133,38 @@ defineExpose({
 
 <template>
 	<div ref="rootEl">
+		<!-- Drafted replies, above the box they seed. Only after you ask. -->
+		<div
+			v-if="!spec && suggestOpen"
+			class="mb-2"
+			aria-live="polite"
+			:aria-busy="suggestBusy"
+			data-testid="inline-reply-suggestions"
+		>
+			<span v-if="suggestBusy" class="sr-only">{{
+				t('components.postbox.postboxInlineReply.working')
+			}}</span>
+			<div
+				v-if="suggestions.length > 0"
+				role="group"
+				:aria-label="t('components.postbox.postboxInlineReply.suggestedReplies')"
+				class="flex flex-wrap gap-2"
+			>
+				<button
+					v-for="(r, i) in suggestions"
+					:key="i"
+					type="button"
+					class="text-left text-xs px-3 py-2 rounded-lg border border-border-subtle hover:border-brand hover:bg-bg-surface max-w-xs"
+					@click="emit('use-reply', r)"
+				>
+					{{ r }}
+				</button>
+			</div>
+			<p v-else-if="!suggestBusy" class="text-xs text-text-tertiary">
+				{{ t('components.postbox.postboxInlineReply.noSuggestions') }}
+			</p>
+		</div>
+
 		<!-- Collapsed one-line affordance -->
 		<div
 			v-if="!spec"
@@ -119,6 +198,22 @@ defineExpose({
 				@click="emit('expand', 'forward')"
 			>
 				<Icon name="lucide:forward" class="w-4 h-4" />
+			</button>
+			<button
+				v-if="canDraft"
+				type="button"
+				class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated disabled:opacity-50"
+				:title="t('components.postbox.postboxInlineReply.draftAReply')"
+				:aria-label="t('components.postbox.postboxInlineReply.draftAReply')"
+				:aria-expanded="suggestOpen"
+				:disabled="suggestBusy"
+				@click="toggleDraftReply"
+			>
+				<Icon
+					:name="suggestBusy ? 'lucide:loader-2' : 'lucide:wand-2'"
+					class="w-4 h-4"
+					:class="{ 'animate-spin motion-reduce:animate-none': suggestBusy }"
+				/>
 			</button>
 		</div>
 

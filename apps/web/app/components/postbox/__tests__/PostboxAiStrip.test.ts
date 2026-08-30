@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 /**
- * The reader's single consolidated AI strip:
+ * The reader's single AI strip, now one line (plan §05):
  *   - renders NOTHING when the thread doesn't warrant a summary and nothing is
  *     cached (zero height, fail-soft)
  *   - a warm summary cache paints the collapsed one-line gist; "more" expands it
- *   - Ask and Draft reply are mutually exclusive — opening one closes the other
- *   - a suggestion card emits `use-reply` with the exact suggestion text (the
- *     reader opens the same prefilled composer it did before consolidation)
+ *   - Ask is the only expandable section left, and it stays closed until asked
+ *   - Draft reply is NOT here any more — it moved into PostboxInlineReply, and
+ *     the strip must never dispatch mail.ai.suggestReplies again
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -48,6 +48,8 @@ beforeAll(() => {
 			switch (label) {
 				case 'Ask about this thread':
 					return { run: askRun, isLoading: askLoading };
+				// The strip no longer owns Suggest replies; a dispatch under any
+				// other label than the summary generator is a regression.
 				case 'Suggest replies':
 					return { run: suggestRun, isLoading: suggestLoading };
 				default:
@@ -109,42 +111,35 @@ describe('PostboxAiStrip', () => {
 		expect(items[0]!.text()).toBe('Point one');
 	});
 
-	it('is visible with only the actions when the thread warrants a summary but none exists', async () => {
+	it('is visible with only the Ask link when the thread warrants a summary but none exists', async () => {
 		genRun.mockResolvedValue({ ok: true, result: null }); // generation fails → no gist, strip still there
 		const wrapper = mountStrip({ warrantsSummary: true });
 		await flushPromises();
 		expect(wrapper.find('[data-testid="postbox-ai-strip"]').exists()).toBe(true);
 		expect(wrapper.get('[aria-label="Ask about this thread"]').exists()).toBe(true);
-		expect(wrapper.get('[aria-label="Draft a reply"]').exists()).toBe(true);
 	});
 
-	it('keeps Ask and Draft reply mutually exclusive', async () => {
-		suggestRun.mockResolvedValue({ ok: true, result: { replies: ['Sounds good.'] } });
+	it('no longer offers Draft reply, and never dispatches suggestions', async () => {
 		const wrapper = mountStrip({ warrantsSummary: true });
 		await flushPromises();
+		expect(wrapper.find('[aria-label="Draft a reply"]').exists()).toBe(false);
 
-		// Open Ask → the ask input appears.
+		// Opening the one section it does have must not reach the suggest action.
+		await wrapper.get('[aria-label="Ask about this thread"]').trigger('click');
+		await flushPromises();
+		expect(suggestRun).not.toHaveBeenCalled();
+	});
+
+	it('keeps Ask closed until it is asked for, and toggles back shut', async () => {
+		const wrapper = mountStrip({ warrantsSummary: true });
+		await flushPromises();
+		expect(wrapper.find('[data-testid="postbox-ask-thread"]').exists()).toBe(false);
+
 		await wrapper.get('[aria-label="Ask about this thread"]').trigger('click');
 		expect(wrapper.find('[data-testid="postbox-ask-thread"]').exists()).toBe(true);
 
-		// Open Draft reply → Ask closes, suggestions appear.
-		await wrapper.get('[aria-label="Draft a reply"]').trigger('click');
-		await flushPromises();
+		await wrapper.get('[aria-label="Ask about this thread"]').trigger('click');
 		expect(wrapper.find('[data-testid="postbox-ask-thread"]').exists()).toBe(false);
-		expect(wrapper.text()).toContain('Sounds good.');
-	});
-
-	it('emits use-reply with the exact suggestion text', async () => {
-		suggestRun.mockResolvedValue({ ok: true, result: { replies: ['On it — will send today.'] } });
-		const wrapper = mountStrip({ warrantsSummary: true });
-		await flushPromises();
-
-		await wrapper.get('[aria-label="Draft a reply"]').trigger('click');
-		await flushPromises();
-
-		await wrapper.get('[aria-label="Suggested replies"] button').trigger('click');
-		expect(wrapper.emitted('use-reply')).toBeTruthy();
-		expect(wrapper.emitted('use-reply')![0]).toEqual(['On it — will send today.']);
 	});
 
 	it('answers an Ask question inline and keeps the ephemeral history', async () => {

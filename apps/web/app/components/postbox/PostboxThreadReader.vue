@@ -194,7 +194,8 @@ const allMessages = computed(() => threadData.value?.messages ?? [props.message]
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
 
 // The one reader AI strip (PostboxAiStrip) mounts whenever AI is on and the
-// thread has a latest message; it hosts the summary gist, Ask, and Draft reply.
+// thread has a latest message; it hosts the summary gist and Ask (Draft reply
+// lives in the inline reply bar, next to the box it seeds).
 // `warrantsSummary` decides whether it eagerly generates a summary: long thread
 // (>= 5 messages OR a lot of body text) AND the per-user auto-summary toggle
 // (default ON). When false and nothing is cached, the strip collapses to zero
@@ -203,7 +204,8 @@ const { autoSummarize } = usePostboxSettings();
 const warrantsSummary = computed(
 	() => autoSummarize.value && isLongThreadForSummary(allMessages.value)
 );
-const showAiStrip = computed(() => isFeatureEnabled('ai') && !!latestMessage.value);
+const aiEnabled = computed(() => isFeatureEnabled('ai'));
+const showAiStrip = computed(() => aiEnabled.value && !!latestMessage.value);
 
 // Follow-up ("remind me if no reply") chip: armable only while the thread
 // ends on our own sent message — an inbound reply on top means they already
@@ -1064,15 +1066,15 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		<PostboxReaderSkeleton v-if="isLoading" />
 
 		<div v-else class="space-y-2">
-			<!-- The reader's ONE AI home: a single quiet strip with the summary gist
-			     plus Ask + Draft reply. Renders nothing when there's no summary and
-			     the thread is too short to warrant one (fail-soft, same thresholds). -->
+			<!-- The reader's ONE AI home, one line: the summary gist plus an Ask
+			     link (Draft reply lives in the reply bar). Renders nothing when
+			     there's no summary and the thread is too short to warrant one
+			     (fail-soft, same thresholds). -->
 			<PostboxAiStrip
 				v-if="showAiStrip && latestMessage"
 				:key="latestMessage._id"
 				:message-id="latestMessage._id"
 				:warrants-summary="warrantsSummary"
-				@use-reply="(t) => latestMessage && openReplyWithBody(latestMessage, t)"
 			/>
 
 			<PostboxReaderMessage
@@ -1129,6 +1131,9 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				:sender-label="inlineSenderLabel"
 				:show-reply-all="hasOtherRecipients(latestMessage)"
 				:spec="inlineSpec"
+				:ai-enabled="aiEnabled"
+				:draft-message-id="latestMessage._id"
+				@use-reply="(text) => latestMessage && openReplyWithBody(latestMessage, text)"
 				@expand="
 					(kind) =>
 						kind === 'reply'
