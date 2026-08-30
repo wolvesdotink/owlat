@@ -62,15 +62,17 @@ const handleImportBlocklist = async () => {
 	);
 };
 
-// Search state
-const searchQuery = ref('');
+// List FILTER — narrows the loaded suppressions in place. It is not the search
+// box (that is the one ⌘K overlay), which is why it says "Filter…" and wears a
+// filter icon. It ran undebounced, re-filtering the whole list on every
+// keystroke; it now shares `useDebouncedSearch` with every other list filter.
+const { searchQuery, debouncedSearch } = useDebouncedSearch();
 
-// Filtered blocked emails based on search
 const filteredBlockedEmails = computed(() => {
 	if (!blockedEmailsData.value) return [];
-	if (!searchQuery.value.trim()) return blockedEmailsData.value;
+	const query = debouncedSearch.value.toLowerCase().trim();
+	if (!query) return blockedEmailsData.value;
 
-	const query = searchQuery.value.toLowerCase().trim();
 	return blockedEmailsData.value.filter(
 		(be) =>
 			be.email.toLowerCase().includes(query) || (be.notes && be.notes.toLowerCase().includes(query))
@@ -274,16 +276,16 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 
 				<!-- Filters and Search -->
 				<div class="flex flex-col sm:flex-row gap-4">
-					<!-- Search -->
+					<!-- Filter (not search — see the composable comment above) -->
 					<div class="relative flex-1">
 						<Icon
-							name="lucide:search"
+							name="lucide:list-filter"
 							class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
 						/>
 						<input
 							v-model="searchQuery"
 							type="text"
-							:placeholder="t('dashboard.audience.suppressions.searchPlaceholder')"
+							:placeholder="t('common.filterPlaceholder')"
 							class="input pl-10"
 						/>
 					</div>
@@ -330,14 +332,14 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 
 				<!-- No Search Results -->
 				<div
-					v-else-if="filteredBlockedEmails.length === 0 && searchQuery.trim()"
+					v-else-if="filteredBlockedEmails.length === 0 && debouncedSearch.trim()"
 					class="card p-0 overflow-hidden"
 				>
 					<UiEmptyState
 						icon="lucide:search"
 						:title="t('dashboard.audience.suppressions.noResults.title')"
 						:description="
-							t('dashboard.audience.suppressions.noResults.description', { query: searchQuery })
+							t('dashboard.audience.suppressions.noResults.description', { query: debouncedSearch })
 						"
 					/>
 				</div>

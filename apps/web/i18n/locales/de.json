@@ -135,6 +135,7 @@
 		"email": "E-Mail",
 		"enabled": "Aktiviert",
 		"error": "Fehler",
+		"filterPlaceholder": "Filtern…",
 		"inactive": "Inaktiv",
 		"learnMore": "Mehr erfahren",
 		"loading": "Wird geladen…",
@@ -7442,7 +7443,6 @@
 				"pageTitle": "Unterdrückungen — Owlat",
 				"removeDescription": "Wenn Sie die Unterdrückung für „{email}“ entfernen, erhält diese Adresse wieder Ihre E-Mails.",
 				"removeSuppression": "Unterdrückung entfernen",
-				"searchPlaceholder": "Nach E-Mail-Adresse suchen...",
 				"subtitle": "Adressen, die keine E-Mails mehr erhalten — damit eine Unzustellbarkeit oder Beschwerde kein zweites Mal passiert",
 				"table": {
 					"dateAdded": "Hinzugefügt am",
@@ -7791,7 +7791,6 @@
 					"resume": "Automation fortsetzen"
 				},
 				"pageTitle": "Automationen — Owlat",
-				"searchPlaceholder": "Automationen durchsuchen...",
 				"status": {
 					"draft": "Entwurf",
 					"paused": "Pausiert"
@@ -9233,7 +9232,6 @@
 					"quickSettings": "Schnelleinstellungen",
 					"saveChanges": "Änderungen speichern",
 					"savingChanges": "Wird gespeichert...",
-					"searchPlaceholder": "Bausteine durchsuchen...",
 					"sort": {
 						"mostUsed": "Am häufigsten verwendet",
 						"name": "Name (A-Z)",

@@ -34,20 +34,10 @@ const sortOptions = computed<{ value: SortOption; label: string; icon: string }[
 	},
 ]);
 
-// Search state
-const searchQuery = ref('');
-const debouncedSearch = ref('');
-let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-
-// Debounce search input
-watch(searchQuery, (value) => {
-	if (searchTimeout) {
-		clearTimeout(searchTimeout);
-	}
-	searchTimeout = setTimeout(() => {
-		debouncedSearch.value = value;
-	}, 300);
-});
+// List FILTER — narrows this page's blocks. It is not the search box (that is
+// the one ⌘K overlay), which is why it says "Filter…" and wears a filter icon.
+// Debouncing is the shared `useDebouncedSearch`, not a private timeout.
+const { searchQuery, debouncedSearch, clear: clearFilter } = useDebouncedSearch();
 
 // Fetch blocks with real-time updates (uses session-based organization context)
 const {
@@ -282,16 +272,16 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 				/>
 			</div>
 
-			<!-- Search -->
+			<!-- Filter (not search — see the composable comment above) -->
 			<UiInput
 				v-model="searchQuery"
 				type="text"
-				:placeholder="t('dashboard.send.blocks.index.searchPlaceholder')"
+				:placeholder="t('common.filterPlaceholder')"
 				size="sm"
 				class="w-64"
 			>
 				<template #iconLeft>
-					<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary" />
+					<Icon name="lucide:list-filter" class="w-4 h-4 text-text-tertiary" />
 				</template>
 			</UiInput>
 		</div>
@@ -345,13 +335,7 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 					"
 				>
 					<template #action>
-						<UiButton
-							variant="secondary"
-							@click="
-								searchQuery = '';
-								debouncedSearch = '';
-							"
-						>
+						<UiButton variant="secondary" @click="clearFilter">
 							{{ t('dashboard.send.blocks.index.clearSearch') }}
 						</UiButton>
 					</template>

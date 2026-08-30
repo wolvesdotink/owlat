@@ -135,6 +135,7 @@
 		"email": "Email",
 		"enabled": "Enabled",
 		"error": "Error",
+		"filterPlaceholder": "Filter…",
 		"inactive": "Inactive",
 		"learnMore": "Learn more",
 		"loading": "Loading…",
@@ -7442,7 +7443,6 @@
 				"pageTitle": "Suppressions — Owlat",
 				"removeDescription": "Removing the suppression on \"{email}\" lets them receive your mail again.",
 				"removeSuppression": "Remove suppression",
-				"searchPlaceholder": "Search by email address...",
 				"subtitle": "Addresses that no longer receive mail — so a bounce or complaint never happens twice",
 				"table": {
 					"dateAdded": "Date Added",
@@ -7791,7 +7791,6 @@
 					"resume": "Resume automation"
 				},
 				"pageTitle": "Automations — Owlat",
-				"searchPlaceholder": "Search automations...",
 				"status": {
 					"draft": "Draft",
 					"paused": "Paused"
@@ -9233,7 +9232,6 @@
 					"quickSettings": "Quick Settings",
 					"saveChanges": "Save Changes",
 					"savingChanges": "Saving...",
-					"searchPlaceholder": "Search blocks...",
 					"sort": {
 						"mostUsed": "Most Used",
 						"name": "Name (A-Z)",
