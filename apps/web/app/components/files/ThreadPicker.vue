@@ -9,17 +9,20 @@ const selected = defineModel<PickerThread | null>({ default: null });
 
 const { t } = useI18n();
 
-const search = ref('');
+// The search runs on the SERVER (`inbox.queries.listThreads`' `search` argument,
+// over the subject and the participant address). This used to pull a bounded
+// recent page and filter it in the browser, which could only ever find a thread
+// that happened to land on the page it fetched; the dropdown now sees the whole
+// shared inbox. Nothing is subscribed until something is typed — the picker only
+// renders candidates then anyway.
+const { query: search, debouncedQuery } = useDebouncedSearch();
 
-// `conversationThreads` carries no full-text index, so — like the chat
-// "link an email thread" dialog — we pull a bounded recent page and filter it
-// in the browser.
-const { data: threadsData, isLoading } = useConvexQuery(api.inbox.queries.listThreads, () => ({
-	limit: 100,
-}));
+const { data: threadsData, isLoading } = useConvexQuery(api.inbox.queries.listThreads, () =>
+	debouncedQuery.value.trim() ? { search: debouncedQuery.value.trim(), limit: 8 } : 'skip'
+);
 
-const candidates = computed(() =>
-	filterThreadCandidates(threadsData.value?.threads ?? [], search.value).slice(0, 8),
+const candidates = computed<PickerThread[]>(() =>
+	search.value.trim() ? (threadsData.value?.threads ?? []) : []
 );
 
 const pick = (thread: PickerThread) => {
@@ -70,7 +73,10 @@ const pick = (thread: PickerThread) => {
 						@click="pick(candidate)"
 					>
 						<span class="block truncate">{{ threadPickerLabel(candidate) }}</span>
-						<span v-if="candidate.contactIdentifier" class="block text-xs text-text-tertiary truncate">
+						<span
+							v-if="candidate.contactIdentifier"
+							class="block text-xs text-text-tertiary truncate"
+						>
 							{{ candidate.contactIdentifier }}
 						</span>
 					</button>

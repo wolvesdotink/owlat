@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
-import { defineComponent, nextTick } from 'vue';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { defineComponent, nextTick, ref } from 'vue';
 
 import PostboxInlineReply from '../PostboxInlineReply.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -12,7 +12,10 @@ import type { InlineComposeSpec } from '../../../composables/postbox/usePostboxC
  *   - expanding renders a composer seeded for the correct thread with the
  *     quoted original,
  *   - promote-to-popup reopens the SAME draft id on the composer stack,
- *   - send collapses (and arms undo-send for the right mailbox).
+ *   - send collapses (and arms undo-send for the right mailbox),
+ *   - and, since plan §05 moved it here from the AI strip, that Draft reply
+ *     dispatches only when the `ai` flag is on and hands the chosen suggestion
+ *     back verbatim.
  */
 const ComposerStub = defineComponent({
 	name: 'PostboxComposer',
@@ -43,6 +46,10 @@ vi.stubGlobal('usePostboxComposerStack', () => ({
 	minimize: vi.fn(),
 }));
 vi.stubGlobal('usePostboxUndoSend', () => ({ arm: undoArm }));
+// Draft reply's one backend action (mail.ai.assist.suggestReplies).
+const suggestRun = vi.fn(async (_a: unknown): Promise<unknown> => ({ ok: false }));
+const suggestLoading = ref(false);
+vi.stubGlobal('useBackendOperation', () => ({ run: suggestRun, isLoading: suggestLoading }));
 // The box renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
 vi.stubGlobal('useI18n', i18nStubs.useI18n);
 
@@ -60,12 +67,17 @@ const replySpec: InlineComposeSpec = {
 
 let wrapper: VueWrapper | undefined;
 
-function mountInline(spec: InlineComposeSpec | null = null, showReplyAll = true) {
+function mountInline(
+	spec: InlineComposeSpec | null = null,
+	showReplyAll = true,
+	extra: { aiEnabled?: boolean; draftMessageId?: string } = {}
+) {
 	wrapper = mount(PostboxInlineReply, {
 		props: {
 			senderLabel: 'Alice',
 			showReplyAll,
 			spec,
+			...extra,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -79,6 +91,9 @@ function mountInline(spec: InlineComposeSpec | null = null, showReplyAll = true)
 beforeEach(() => {
 	stackOpen.mockClear();
 	undoArm.mockClear();
+	suggestRun.mockClear();
+	suggestLoading.value = false;
+	suggestRun.mockResolvedValue({ ok: false });
 });
 
 afterEach(() => {
@@ -177,6 +192,37 @@ describe('PostboxInlineReply', () => {
 		w.getComponent(ComposerStub).vm.$emit('minimize');
 		expect(w.emitted('collapse')).toHaveLength(2);
 		expect(undoArm).not.toHaveBeenCalled();
+	});
+
+	it('offers Draft reply only with the ai flag and a message to answer', () => {
+		expect(mountInline(null).find('[aria-label="Draft a reply"]').exists()).toBe(false);
+		wrapper?.unmount();
+		expect(
+			mountInline(null, true, { aiEnabled: true }).find('[aria-label="Draft a reply"]').exists()
+		).toBe(false);
+		wrapper?.unmount();
+		expect(
+			mountInline(null, true, { aiEnabled: true, draftMessageId: 'msg-1' })
+				.find('[aria-label="Draft a reply"]')
+				.exists()
+		).toBe(true);
+	});
+
+	it('draft reply hands the chosen suggestion back verbatim', async () => {
+		suggestRun.mockResolvedValue({ ok: true, result: { replies: ['On it — will send today.'] } });
+		const w = mountInline(null, true, { aiEnabled: true, draftMessageId: 'msg-1' });
+
+		await w.get('[aria-label="Draft a reply"]').trigger('click');
+		await flushPromises();
+		expect(suggestRun).toHaveBeenCalledTimes(1);
+
+		await w.get('[aria-label="Suggested replies"] button').trigger('click');
+		expect(w.emitted('use-reply')![0]).toEqual(['On it — will send today.']);
+
+		// Toggling shut hides the cards without asking again.
+		await w.get('[aria-label="Draft a reply"]').trigger('click');
+		expect(w.find('[data-testid="inline-reply-suggestions"]').exists()).toBe(false);
+		expect(suggestRun).toHaveBeenCalledTimes(1);
 	});
 
 	it('collapsing back (spec -> null) restores the affordance', async () => {

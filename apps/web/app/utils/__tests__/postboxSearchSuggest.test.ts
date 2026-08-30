@@ -6,17 +6,18 @@
  * typing, so the cases that matter are the ones where a naive whitespace split
  * or a naive prefix match would offer the wrong thing: a caret inside a quoted
  * operand, a negated term, and an operand list that has to stay quoted.
+ *
+ * The history STORE moved out of this module into the one scope-tagged palette
+ * store; its cases live in `lib/__tests__/commandPaletteRecents.test.ts`.
  */
 import { describe, it, expect } from 'vitest';
 
 import {
-	MAX_RECENT_POSTBOX_SEARCHES,
 	NO_SUGGESTION,
 	activeSearchToken,
 	applySearchSuggestion,
 	buildSearchSuggestions,
 	moveSuggestionIndex,
-	pushRecentSearch,
 	selectedSuggestion,
 } from '../postboxSearchSuggest';
 
@@ -162,23 +163,5 @@ describe('keyboard selection', () => {
 
 	it('hands back the selected row once one is selected', () => {
 		expect(selectedSuggestion(['a', 'b'], 1)).toBe('b');
-	});
-});
-
-describe('pushRecentSearch', () => {
-	it('puts the newest first and de-duplicates', () => {
-		const list = pushRecentSearch(pushRecentSearch(['b'], 'a'), 'b');
-		expect(list).toEqual(['b', 'a']);
-	});
-
-	it('ignores a blank query', () => {
-		expect(pushRecentSearch(['a'], '   ')).toEqual(['a']);
-	});
-
-	it('caps the history', () => {
-		let list: string[] = [];
-		for (let i = 0; i < MAX_RECENT_POSTBOX_SEARCHES + 5; i++)
-			list = pushRecentSearch(list, `q${i}`);
-		expect(list).toHaveLength(MAX_RECENT_POSTBOX_SEARCHES);
 	});
 });

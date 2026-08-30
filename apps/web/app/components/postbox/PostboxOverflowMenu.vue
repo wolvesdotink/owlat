@@ -31,12 +31,19 @@ const props = withDefaults(
 		triggerClass?: string;
 		/** Trigger glyph — horizontal ⋯ by default. */
 		icon?: string;
+		/**
+		 * Optional visible text beside the glyph. A ⋯ trigger is self-explanatory
+		 * next to the actions it demotes; a menu that is the ONLY rendering of its
+		 * contents (the list header's Display menu) has to name itself.
+		 */
+		triggerText?: string;
 	}>(),
 	{
 		align: 'right',
 		direction: 'down',
 		triggerClass: '',
 		icon: 'lucide:more-horizontal',
+		triggerText: undefined,
 	}
 );
 
@@ -78,6 +85,7 @@ useClickOutside([triggerEl, menuEl], close);
 			@click="toggle"
 		>
 			<Icon :name="props.icon" class="w-4 h-4" />
+			<span v-if="props.triggerText" class="ml-1.5 text-xs">{{ props.triggerText }}</span>
 		</UiButton>
 		<div
 			v-if="open"

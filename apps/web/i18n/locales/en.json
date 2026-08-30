@@ -135,6 +135,7 @@
 		"email": "Email",
 		"enabled": "Enabled",
 		"error": "Error",
+		"filterPlaceholder": "Filter…",
 		"inactive": "Inactive",
 		"learnMore": "Learn more",
 		"loading": "Loading…",
@@ -328,7 +329,7 @@
 			"clearQuery": "Clear",
 			"clearRecent": "Clear",
 			"dialogLabel": "Command palette",
-			"modeHint": "Commands, people, labels",
+			"modeHint": "Commands, people, labels, ask",
 			"navigate": "Navigate",
 			"noMatches": "No matches",
 			"noResults": "No results for \"{query}\"",
@@ -336,7 +337,9 @@
 			"searchMailFor": "Search mail for \"{query}\"",
 			"searchPlaceholder": "Search or run a command…",
 			"searching": "Searching…",
-			"select": "Select"
+			"select": "Select",
+			"scopeLabel": "Search scope",
+			"scopeHint": "Scope"
 		},
 		"assistant": {
 			"assistantComposer": {
@@ -3178,18 +3181,12 @@
 				"askFailed": "Couldn't answer that right now. Try again in a moment.",
 				"askOperation": "Ask about this thread",
 				"askPlaceholder": "Ask about this thread…",
-				"draftAReply": "Draft a reply",
-				"draftReply": "Draft reply",
 				"less": "less",
 				"more": "more",
-				"noSuggestions": "No suggestions right now. Try again in a moment.",
-				"suggestOperation": "Suggest replies",
-				"suggestedReplies": "Suggested replies",
 				"summarizeOperation": "Summarize thread",
 				"summaryLabel": "Summary:",
 				"thinking": "Thinking…",
-				"toggleSummaryDetail": "Toggle summary detail",
-				"working": "Working…"
+				"toggleSummaryDetail": "Toggle summary detail"
 			},
 			"postboxAppPasswordCallout": {
 				"heading": "{provider} needs an app password",
@@ -3220,6 +3217,14 @@
 			"postboxBasicEditor": {
 				"placeholder": "Write your message…",
 				"label": "Message body"
+			},
+			"postboxBulkSelectAllRow": {
+				"allMatchingCapped": "Capped at the first {count} — act on these, then select again.",
+				"allMatchingSelected": "{count} message selected. | {count} messages selected.",
+				"clearSelection": "Clear selection",
+				"pageSelected": "All {count} loaded message is selected. | All {count} loaded messages are selected.",
+				"selectAllMatching": "Select everything in this folder",
+				"selectingAllMatching": "Selecting…"
 			},
 			"postboxClarificationCard": {
 				"answer": "Answer",
@@ -3457,13 +3462,9 @@
 				"deleteFolderDescription": "Delete the folder \"{name}\"? Messages in it are relocated, not deleted.",
 				"expandSidebar": "Expand sidebar",
 				"expandSidebarTitle": "Expand sidebar (Cmd+Shift+D)",
-				"folderNameAriaLabel": "Folder name",
-				"folderNamePlaceholder": "Folder name",
 				"foldersHeading": "Folders",
 				"labelsHeading": "Labels",
-				"manageLabels": "Manage labels",
 				"newFolder": "New folder",
-				"newFolderNameAriaLabel": "New folder name",
 				"noCustomFolders": "No custom folders",
 				"noLabels": "No labels yet",
 				"renameFolder": "Rename folder",
@@ -3476,9 +3477,8 @@
 				"unpinSearchAriaLabel": "Unpin the saved search {name}",
 				"files": "Files",
 				"newLabel": "New label",
-				"newLabelNameAriaLabel": "New label name",
-				"labelNamePlaceholder": "Label name",
-				"labelNestingHint": "Use Work/Clients/Acme to nest."
+				"labelNestingHint": "Use Work/Clients/Acme to nest.",
+				"import": "Import mail"
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Set reply reminder",
@@ -3502,11 +3502,21 @@
 				},
 				"title": "Remind me if no reply by"
 			},
+			"postboxInboxModeToggle": {
+				"label": "Inbox surface",
+				"title": "Today or the full mailbox (B)"
+			},
 			"postboxInlineReply": {
 				"dialogLabel": "Inline reply",
+				"draftAReply": "Draft a reply",
+				"draftReply": "Draft reply",
 				"forward": "Forward",
+				"noSuggestions": "No suggestions right now. Try again in a moment.",
 				"replyAll": "Reply all",
-				"replyTo": "Reply to {sender}…"
+				"replyTo": "Reply to {sender}…",
+				"suggestOperation": "Suggest replies",
+				"suggestedReplies": "Suggested replies",
+				"working": "Working…"
 			},
 			"postboxInviteCard": {
 				"accept": "Accept",
@@ -3538,18 +3548,15 @@
 			},
 			"postboxLabelManager": {
 				"deleteLabel": "Delete label",
-				"empty": "No labels yet. Create one above.",
 				"newNamePlaceholder": "New label name",
 				"setColor": "Set color {color}",
-				"title": "Manage labels"
+				"title": "Manage folders & labels"
 			},
 			"postboxLabelPickerDialog": {
 				"empty": "No labels yet",
 				"title": "Add label"
 			},
 			"postboxLayout": {
-				"backToTodayTitle": "Back to Today (Esc)",
-				"escKey": "esc",
 				"folderFallback": "Folder",
 				"folderRoles": {
 					"archive": "Archive",
@@ -3572,19 +3579,16 @@
 					"sections": "Sections"
 				}
 			},
+			"postboxListDisplayMenu": {
+				"density": "Density",
+				"display": "Display",
+				"label": "Display options",
+				"readingPane": "Reading pane",
+				"sortOrder": "Sort order"
+			},
 			"postboxListHeader": {
-				"allMatchingCapped": "Capped at the first {count} — act on these, then select again.",
-				"allMatchingSelected": "{count} message selected. | {count} messages selected.",
-				"clearSelection": "Clear selection",
 				"deselectPage": "Clear selection",
-				"newestFirst": "Newest first",
-				"oldestFirst": "Oldest first",
-				"pageSelected": "All {count} loaded message is selected. | All {count} loaded messages are selected.",
-				"selectAllMatching": "Select everything in this folder",
-				"selectPage": "Select all loaded messages",
-				"selectingAllMatching": "Selecting…",
-				"sortToNewest": "Sort by newest first",
-				"sortToOldest": "Sort by oldest first"
+				"selectPage": "Select all loaded messages"
 			},
 			"postboxMailboxConnectForm": {
 				"addressLabel": "{provider} address",
@@ -3684,13 +3688,13 @@
 			},
 			"postboxMailboxSwitcher": {
 				"personal": {
-					"heading": "Mailboxes",
-					"title": "{label}"
+					"heading": "Mailboxes"
 				},
 				"team": {
-					"heading": "Team",
-					"title": "Team inbox: {label}"
-				}
+					"heading": "Team"
+				},
+				"switchTitle": "Mailbox: {label}. Switch mailbox",
+				"fallbackLabel": "Mailbox"
 			},
 			"postboxMessageBody": {
 				"alwaysForSender": "Always for {host}",
@@ -3842,6 +3846,7 @@
 				"label": "Label",
 				"markReadTitle": "Mark as read",
 				"markUnreadTitle": "Mark as unread",
+				"moreActions": "More bulk actions",
 				"move": "Move",
 				"noLabels": "No labels yet",
 				"notSpam": "Not spam",
@@ -4105,13 +4110,14 @@
 				"rowLabel": "{subject}, {count} unread"
 			},
 			"postboxThreadHeader": {
-				"alerted": "Alerting on reply",
-				"alertedHint": "You'll be notified when someone replies here, even during quiet hours. Click to stop.",
+				"alertOnReply": "Alert on reply",
+				"alertedHint": "You'll be notified when someone replies here, even during quiet hours.",
 				"backFromSnooze": "Back from snooze",
 				"markRead": "Mark read",
-				"muted": "Muted",
+				"menuLabel": "Conversation actions",
+				"muteConversation": "Mute conversation",
 				"noSubject": "(no subject)",
-				"unmuteHint": "Unmute this conversation"
+				"unmuteHint": "Muted conversations stay out of the inbox."
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archive",
@@ -4146,6 +4152,7 @@
 				"blockSender": "Block sender",
 				"ccLine": "· cc {recipients}",
 				"clearSnoozeReturnedOperation": "Dismiss the back-from-snooze note",
+				"createFilter": "Create filter from this",
 				"downloadAttachment": "Download {filename}",
 				"forward": "Forward",
 				"markReadOperation": "Mark read",
@@ -4153,13 +4160,11 @@
 				"moreActions": "More message actions",
 				"moveOperation": "Move message",
 				"moveToTrashOperation": "Move to trash",
-				"mute": "Mute conversation",
 				"muteOperation": "Mute conversation",
 				"notSpamOperation": "Not spam",
-				"notifyOnReply": "Notify me when they reply",
 				"notifyOnReplyOperation": "Reply alert",
-				"notifyOnReplyStop": "Stop notifying me on reply",
 				"previewAttachment": "Preview {filename}",
+				"print": "Print conversation",
 				"renderDark": "Render this message in dark mode",
 				"renderLight": "Render this message on a light background",
 				"reply": "Reply",
@@ -4174,9 +4179,7 @@
 				"undoMoved": "Moved",
 				"undoSpam": "Marked as spam",
 				"undoTrashed": "Moved to Trash",
-				"unmute": "Unmute conversation",
-				"unstar": "Unstar",
-				"createFilter": "Create filter from this"
+				"unstar": "Unstar"
 			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Back from snooze",
@@ -4208,7 +4211,6 @@
 				"allClear": "All clear — nothing new needs you.",
 				"answer": "Answer",
 				"browse": "Browse",
-				"browseTitle": "Browse all folders (B)",
 				"forYou": "For you",
 				"forYouDetail": "{who} — {snippet}",
 				"forYouHeading": "For you ({count})",
@@ -4220,10 +4222,14 @@
 				"view": "view",
 				"viewAllCount": "View all {count}"
 			},
-			"postboxTrackerBadge": {
-				"detected": "1 tracking pixel detected | {count} tracking pixels detected",
-				"explanation": "This message contains hidden images that would report when and where you open it. They stay blocked even when you show images.",
-				"trackerHosts": "Tracker hosts"
+			"postboxTrustChip": {
+				"notChecked": "Sender not checked",
+				"panelLabel": "Trust details",
+				"senderControls": "This sender",
+				"trackerHosts": "Tracker hosts",
+				"trackersDetected": "1 tracking pixel detected | {count} tracking pixels detected",
+				"trackersExplanation": "This message contains hidden images that would report when and where you open it. They stay blocked even when you show images.",
+				"worthALook": "Worth a look"
 			},
 			"postboxUndoSendToast": {
 				"queued": "Queued — sends when you're back online ({seconds}s)",
@@ -4303,7 +4309,8 @@
 				"unread": "Unread",
 				"starred": "Starred",
 				"attachments": "Attachments",
-				"partialCountHint": "Counts cover the messages loaded so far; scroll to load more."
+				"partialCountHint": "Counts cover the messages loaded so far; scroll to load more.",
+				"openInSearchTitle": "Search all mail for {token}"
 			},
 			"postboxTrustedSendersSettings": {
 				"heading": "Senders whose images load automatically",
@@ -4369,7 +4376,11 @@
 				"expand": "Expand {name}",
 				"collapse": "Collapse {name}",
 				"moveUp": "Move {name} up",
-				"moveDown": "Move {name} down"
+				"moveDown": "Move {name} down",
+				"renameLabel": "Rename label",
+				"nameAriaLabel": "Label name",
+				"renameAriaLabel": "Rename the label {name}",
+				"deleteAriaLabel": "Delete the label {name}"
 			},
 			"postboxFilterRunControl": {
 				"run": "Run on existing mail",
@@ -4560,6 +4571,20 @@
 			"postboxSealedMailNudge": {
 				"action": "see what this means and save your recovery kit",
 				"body": "Mail between Owlat instances is now sealed, so only you can read it. That also means the key matters:"
+			},
+			"postboxRailMoreGroup": {
+				"more": "More",
+				"moreUnreadAriaLabel": "More, {count} unread in Spam"
+			},
+			"postboxManageFolders": {
+				"heading": "Folders",
+				"newNamePlaceholder": "New folder name",
+				"nameAriaLabel": "Folder name",
+				"rename": "Rename folder",
+				"renameAriaLabel": "Rename the folder {name}",
+				"delete": "Delete folder",
+				"deleteAriaLabel": "Delete the folder {name}",
+				"empty": "No custom folders yet. Create one above."
 			}
 		},
 		"preferences": {
@@ -7418,7 +7443,6 @@
 				"pageTitle": "Suppressions — Owlat",
 				"removeDescription": "Removing the suppression on \"{email}\" lets them receive your mail again.",
 				"removeSuppression": "Remove suppression",
-				"searchPlaceholder": "Search by email address...",
 				"subtitle": "Addresses that no longer receive mail — so a bounce or complaint never happens twice",
 				"table": {
 					"dateAdded": "Date Added",
@@ -7767,7 +7791,6 @@
 					"resume": "Resume automation"
 				},
 				"pageTitle": "Automations — Owlat",
-				"searchPlaceholder": "Search automations...",
 				"status": {
 					"draft": "Draft",
 					"paused": "Paused"
@@ -8192,7 +8215,6 @@
 		},
 		"inbox": {
 			"activity": {
-				"assignToTeammate": "Assign to a teammate",
 				"channelHealthTitle": "{channel}: {status}",
 				"channels": {
 					"chat": "Chat",
@@ -8215,6 +8237,8 @@
 					"outbound": "Sent"
 				},
 				"errorTitle": "Couldn't load activity",
+				"failedMessages": "Failed messages",
+				"failedMessagesTitle": "Inbound messages that failed after every automatic retry",
 				"health": {
 					"error": "Down",
 					"success": "Healthy",
@@ -8258,7 +8282,6 @@
 				"approveAndSend": "Approve & Send",
 				"assign": "Assign",
 				"assignThreadAria": "Assign thread",
-				"assignToTeammateAria": "Assign thread to a teammate",
 				"assignedTo": "Assigned To",
 				"assignedToAria": "Assigned to {name}",
 				"autoSendCancelledToast": "Automatic send cancelled and returned to review",
@@ -9209,7 +9232,6 @@
 					"quickSettings": "Quick Settings",
 					"saveChanges": "Save Changes",
 					"savingChanges": "Saving...",
-					"searchPlaceholder": "Search blocks...",
 					"sort": {
 						"mostUsed": "Most Used",
 						"name": "Name (A-Z)",
@@ -10672,7 +10694,9 @@
 				"navigation": "Go to",
 				"recent": "Recent searches",
 				"settings": "Settings",
-				"templates": "Templates"
+				"templates": "Templates",
+				"refine": "Refine",
+				"inboxThreads": "Team Inbox"
 			}
 		},
 		"conditions": {
@@ -12098,6 +12122,10 @@
 				"notDelivered": "couldn't be delivered"
 			}
 		},
+		"postboxDensity": {
+			"comfortable": "Comfortable",
+			"compact": "Compact"
+		},
 		"postboxOfflineStore": {
 			"outOfStorage": "This device is out of storage for offline mail.",
 			"unavailable": "Local mail cache is unavailable on this device."
@@ -12142,6 +12170,10 @@
 					"unknown": "We're still checking your recent sends."
 				}
 			}
+		},
+		"postboxSortOrder": {
+			"newest": "Newest first",
+			"oldest": "Oldest first"
 		},
 		"postboxTodayPartition": {
 			"autoFiled": {
@@ -13889,6 +13921,13 @@
 			"unverified": "Not verified in person",
 			"verifiedByTeammate": "Verified by a teammate",
 			"verifiedByYou": "Verified by you"
+		},
+		"commandPaletteScope": {
+			"scopes": {
+				"mail": "Mail",
+				"ask": "Ask",
+				"everything": "Everything"
+			}
 		}
 	},
 	"sharedPkg": {
@@ -14377,7 +14416,9 @@
 			"skipToContent": "Skip to main content",
 			"theme": "Theme",
 			"userFallback": "User",
-			"navigatedTo": "Navigated to {page}"
+			"navigatedTo": "Navigated to {page}",
+			"pinSidebar": "Pin sidebar open",
+			"unpinSidebar": "Unpin sidebar"
 		},
 		"error": {
 			"forbidden": "You don't have permission to access this page.",

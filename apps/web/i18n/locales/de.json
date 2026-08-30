@@ -135,6 +135,7 @@
 		"email": "E-Mail",
 		"enabled": "Aktiviert",
 		"error": "Fehler",
+		"filterPlaceholder": "Filtern…",
 		"inactive": "Inaktiv",
 		"learnMore": "Mehr erfahren",
 		"loading": "Wird geladen…",
@@ -328,7 +329,7 @@
 			"clearQuery": "Leeren",
 			"clearRecent": "Löschen",
 			"dialogLabel": "Befehlspalette",
-			"modeHint": "Befehle, Personen, Labels",
+			"modeHint": "Befehle, Personen, Labels, fragen",
 			"navigate": "Navigieren",
 			"noMatches": "Keine Treffer",
 			"noResults": "Keine Ergebnisse für \"{query}\"",
@@ -336,7 +337,9 @@
 			"searchMailFor": "E-Mails durchsuchen nach \"{query}\"",
 			"searchPlaceholder": "Suchen oder Befehl ausführen…",
 			"searching": "Wird gesucht…",
-			"select": "Auswählen"
+			"select": "Auswählen",
+			"scopeLabel": "Suchbereich",
+			"scopeHint": "Bereich"
 		},
 		"assistant": {
 			"assistantComposer": {
@@ -3178,18 +3181,12 @@
 				"askFailed": "Das ließ sich gerade nicht beantworten. Versuchen Sie es gleich noch einmal.",
 				"askOperation": "Zu diesem Thread fragen",
 				"askPlaceholder": "Zu diesem Thread fragen…",
-				"draftAReply": "Eine Antwort entwerfen",
-				"draftReply": "Antwort entwerfen",
 				"less": "weniger",
 				"more": "mehr",
-				"noSuggestions": "Derzeit keine Vorschläge. Versuchen Sie es gleich noch einmal.",
-				"suggestOperation": "Antworten vorschlagen",
-				"suggestedReplies": "Antwortvorschläge",
 				"summarizeOperation": "Thread zusammenfassen",
 				"summaryLabel": "Zusammenfassung:",
 				"thinking": "Denkt nach…",
-				"toggleSummaryDetail": "Details der Zusammenfassung umschalten",
-				"working": "Wird bearbeitet…"
+				"toggleSummaryDetail": "Details der Zusammenfassung umschalten"
 			},
 			"postboxAppPasswordCallout": {
 				"heading": "{provider} benötigt ein App-Passwort",
@@ -3220,6 +3217,14 @@
 			"postboxBasicEditor": {
 				"placeholder": "Schreiben Sie Ihre Nachricht…",
 				"label": "Nachrichtentext"
+			},
+			"postboxBulkSelectAllRow": {
+				"allMatchingCapped": "Auf die ersten {count} begrenzt — erst bearbeiten, dann erneut auswählen.",
+				"allMatchingSelected": "{count} Nachricht ausgewählt. | {count} Nachrichten ausgewählt.",
+				"clearSelection": "Auswahl aufheben",
+				"pageSelected": "Die {count} geladene Nachricht ist ausgewählt. | Alle {count} geladenen Nachrichten sind ausgewählt.",
+				"selectAllMatching": "Alles in diesem Ordner auswählen",
+				"selectingAllMatching": "Wird ausgewählt…"
 			},
 			"postboxClarificationCard": {
 				"answer": "Antworten",
@@ -3457,13 +3462,9 @@
 				"deleteFolderDescription": "Den Ordner „{name}“ löschen? Nachrichten darin werden verschoben, nicht gelöscht.",
 				"expandSidebar": "Seitenleiste ausklappen",
 				"expandSidebarTitle": "Seitenleiste ausklappen (Cmd+Shift+D)",
-				"folderNameAriaLabel": "Ordnername",
-				"folderNamePlaceholder": "Ordnername",
 				"foldersHeading": "Ordner",
 				"labelsHeading": "Labels",
-				"manageLabels": "Labels verwalten",
 				"newFolder": "Neuer Ordner",
-				"newFolderNameAriaLabel": "Name des neuen Ordners",
 				"noCustomFolders": "Keine eigenen Ordner",
 				"noLabels": "Noch keine Labels",
 				"renameFolder": "Ordner umbenennen",
@@ -3476,9 +3477,8 @@
 				"unpinSearchAriaLabel": "Gespeicherte Suche {name} lösen",
 				"files": "Dateien",
 				"newLabel": "Neues Label",
-				"newLabelNameAriaLabel": "Name des neuen Labels",
-				"labelNamePlaceholder": "Labelname",
-				"labelNestingHint": "Mit Arbeit/Kunden/Acme verschachteln."
+				"labelNestingHint": "Mit Arbeit/Kunden/Acme verschachteln.",
+				"import": "E-Mails importieren"
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Antwort-Erinnerung setzen",
@@ -3502,11 +3502,21 @@
 				},
 				"title": "Erinnern, falls bis dahin keine Antwort kommt"
 			},
+			"postboxInboxModeToggle": {
+				"label": "Posteingangsansicht",
+				"title": "Heute oder das ganze Postfach (B)"
+			},
 			"postboxInlineReply": {
 				"dialogLabel": "Inline-Antwort",
+				"draftAReply": "Eine Antwort entwerfen",
+				"draftReply": "Antwort entwerfen",
 				"forward": "Weiterleiten",
+				"noSuggestions": "Derzeit keine Vorschläge. Versuchen Sie es gleich noch einmal.",
 				"replyAll": "Allen antworten",
-				"replyTo": "An {sender} antworten…"
+				"replyTo": "An {sender} antworten…",
+				"suggestOperation": "Antworten vorschlagen",
+				"suggestedReplies": "Antwortvorschläge",
+				"working": "Wird bearbeitet…"
 			},
 			"postboxInviteCard": {
 				"accept": "Annehmen",
@@ -3538,18 +3548,15 @@
 			},
 			"postboxLabelManager": {
 				"deleteLabel": "Label löschen",
-				"empty": "Noch keine Labels. Erstellen Sie oben eines.",
 				"newNamePlaceholder": "Name des neuen Labels",
 				"setColor": "Farbe {color} festlegen",
-				"title": "Labels verwalten"
+				"title": "Ordner & Labels verwalten"
 			},
 			"postboxLabelPickerDialog": {
 				"empty": "Noch keine Labels",
 				"title": "Label hinzufügen"
 			},
 			"postboxLayout": {
-				"backToTodayTitle": "Zurück zu Heute (Esc)",
-				"escKey": "esc",
 				"folderFallback": "Ordner",
 				"folderRoles": {
 					"archive": "Archiv",
@@ -3572,19 +3579,16 @@
 					"sections": "Bereiche"
 				}
 			},
+			"postboxListDisplayMenu": {
+				"density": "Dichte",
+				"display": "Anzeige",
+				"label": "Anzeigeoptionen",
+				"readingPane": "Lesebereich",
+				"sortOrder": "Sortierung"
+			},
 			"postboxListHeader": {
-				"allMatchingCapped": "Auf die ersten {count} begrenzt — erst bearbeiten, dann erneut auswählen.",
-				"allMatchingSelected": "{count} Nachricht ausgewählt. | {count} Nachrichten ausgewählt.",
-				"clearSelection": "Auswahl aufheben",
 				"deselectPage": "Auswahl aufheben",
-				"newestFirst": "Neueste zuerst",
-				"oldestFirst": "Älteste zuerst",
-				"pageSelected": "Die {count} geladene Nachricht ist ausgewählt. | Alle {count} geladenen Nachrichten sind ausgewählt.",
-				"selectAllMatching": "Alles in diesem Ordner auswählen",
-				"selectPage": "Alle geladenen Nachrichten auswählen",
-				"selectingAllMatching": "Wird ausgewählt…",
-				"sortToNewest": "Nach neuesten zuerst sortieren",
-				"sortToOldest": "Nach ältesten zuerst sortieren"
+				"selectPage": "Alle geladenen Nachrichten auswählen"
 			},
 			"postboxMailboxConnectForm": {
 				"addressLabel": "{provider}-Adresse",
@@ -3684,13 +3688,13 @@
 			},
 			"postboxMailboxSwitcher": {
 				"personal": {
-					"heading": "Postfächer",
-					"title": "{label}"
+					"heading": "Postfächer"
 				},
 				"team": {
-					"heading": "Team",
-					"title": "Team-Postfach: {label}"
-				}
+					"heading": "Team"
+				},
+				"switchTitle": "Postfach: {label}. Postfach wechseln",
+				"fallbackLabel": "Postfach"
 			},
 			"postboxMessageBody": {
 				"alwaysForSender": "Immer für {host}",
@@ -3842,6 +3846,7 @@
 				"label": "Label",
 				"markReadTitle": "Als gelesen markieren",
 				"markUnreadTitle": "Als ungelesen markieren",
+				"moreActions": "Weitere Sammelaktionen",
 				"move": "Verschieben",
 				"noLabels": "Noch keine Labels",
 				"notSpam": "Kein Spam",
@@ -4105,13 +4110,14 @@
 				"rowLabel": "{subject}, {count} ungelesen"
 			},
 			"postboxThreadHeader": {
-				"alerted": "Hinweis bei Antwort",
-				"alertedHint": "Sie werden benachrichtigt, wenn hier jemand antwortet — auch während der Ruhezeiten. Zum Beenden klicken.",
+				"alertOnReply": "Bei Antwort benachrichtigen",
+				"alertedHint": "Du wirst benachrichtigt, wenn hier jemand antwortet — auch in Ruhezeiten.",
 				"backFromSnooze": "Zurück aus dem Schlummer",
 				"markRead": "Als gelesen markieren",
-				"muted": "Stummgeschaltet",
+				"menuLabel": "Konversationsaktionen",
+				"muteConversation": "Konversation stummschalten",
 				"noSubject": "(kein Betreff)",
-				"unmuteHint": "Stummschaltung dieser Unterhaltung aufheben"
+				"unmuteHint": "Stummgeschaltete Konversationen bleiben aus dem Posteingang."
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archivieren",
@@ -4146,6 +4152,7 @@
 				"blockSender": "Absender blockieren",
 				"ccLine": "· Kopie an {recipients}",
 				"clearSnoozeReturnedOperation": "Hinweis „Zurück aus dem Schlummer“ ausblenden",
+				"createFilter": "Filter hieraus erstellen",
 				"downloadAttachment": "{filename} herunterladen",
 				"forward": "Weiterleiten",
 				"markReadOperation": "Als gelesen markieren",
@@ -4153,13 +4160,11 @@
 				"moreActions": "Weitere Nachrichtenaktionen",
 				"moveOperation": "Nachricht verschieben",
 				"moveToTrashOperation": "In den Papierkorb verschieben",
-				"mute": "Unterhaltung stummschalten",
 				"muteOperation": "Unterhaltung stummschalten",
 				"notSpamOperation": "Kein Spam",
-				"notifyOnReply": "Bei Antwort benachrichtigen",
 				"notifyOnReplyOperation": "Antwort-Hinweis",
-				"notifyOnReplyStop": "Nicht mehr bei Antwort benachrichtigen",
 				"previewAttachment": "{filename} in der Vorschau anzeigen",
+				"print": "Konversation drucken",
 				"renderDark": "Diese Nachricht im dunklen Modus darstellen",
 				"renderLight": "Diese Nachricht auf hellem Hintergrund darstellen",
 				"reply": "Antworten",
@@ -4174,9 +4179,7 @@
 				"undoMoved": "Verschoben",
 				"undoSpam": "Als Spam markiert",
 				"undoTrashed": "In den Papierkorb verschoben",
-				"unmute": "Stummschaltung aufheben",
-				"unstar": "Markierung entfernen",
-				"createFilter": "Filter hieraus erstellen"
+				"unstar": "Markierung entfernen"
 			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Zurück aus dem Schlummer",
@@ -4208,7 +4211,6 @@
 				"allClear": "Alles erledigt — nichts Neues braucht Ihre Aufmerksamkeit.",
 				"answer": "Antworten",
 				"browse": "Durchsuchen",
-				"browseTitle": "Alle Ordner durchsuchen (B)",
 				"forYou": "Für Sie",
 				"forYouDetail": "{who} — {snippet}",
 				"forYouHeading": "Für Sie ({count})",
@@ -4220,10 +4222,14 @@
 				"view": "anzeigen",
 				"viewAllCount": "Alle {count} anzeigen"
 			},
-			"postboxTrackerBadge": {
-				"detected": "1 Trackingpixel erkannt | {count} Trackingpixel erkannt",
-				"explanation": "Diese Nachricht enthält versteckte Bilder, die melden würden, wann und wo Sie sie öffnen. Sie bleiben blockiert, auch wenn Sie Bilder anzeigen.",
-				"trackerHosts": "Tracker-Hosts"
+			"postboxTrustChip": {
+				"notChecked": "Absender nicht geprüft",
+				"panelLabel": "Vertrauensdetails",
+				"senderControls": "Dieser Absender",
+				"trackerHosts": "Tracker-Hosts",
+				"trackersDetected": "1 Tracking-Pixel erkannt | {count} Tracking-Pixel erkannt",
+				"trackersExplanation": "Diese Nachricht enthält versteckte Bilder, die melden würden, wann und wo du sie öffnest. Sie bleiben blockiert, auch wenn du Bilder anzeigst.",
+				"worthALook": "Genauer ansehen"
 			},
 			"postboxUndoSendToast": {
 				"queued": "In Warteschlange — wird gesendet, sobald Sie wieder online sind ({seconds} s)",
@@ -4303,7 +4309,8 @@
 				"unread": "Ungelesen",
 				"starred": "Mit Stern",
 				"attachments": "Mit Anhang",
-				"partialCountHint": "Die Zahlen umfassen die bisher geladenen Nachrichten; scrollen Sie, um weitere zu laden."
+				"partialCountHint": "Die Zahlen umfassen die bisher geladenen Nachrichten; scrollen Sie, um weitere zu laden.",
+				"openInSearchTitle": "Alle E-Mails nach {token} durchsuchen"
 			},
 			"postboxTrustedSendersSettings": {
 				"heading": "Absender, deren Bilder automatisch geladen werden",
@@ -4369,7 +4376,11 @@
 				"expand": "{name} ausklappen",
 				"collapse": "{name} einklappen",
 				"moveUp": "{name} nach oben verschieben",
-				"moveDown": "{name} nach unten verschieben"
+				"moveDown": "{name} nach unten verschieben",
+				"renameLabel": "Label umbenennen",
+				"nameAriaLabel": "Name des Labels",
+				"renameAriaLabel": "Label {name} umbenennen",
+				"deleteAriaLabel": "Label {name} löschen"
 			},
 			"postboxFilterRunControl": {
 				"run": "Auf vorhandene E-Mails anwenden",
@@ -4560,6 +4571,20 @@
 			"postboxSealedMailNudge": {
 				"action": "ansehen, was das bedeutet, und Wiederherstellungspaket sichern",
 				"body": "Post zwischen Owlat-Instanzen ist jetzt versiegelt, sodass nur Sie sie lesen können. Damit zählt auch der Schlüssel:"
+			},
+			"postboxRailMoreGroup": {
+				"more": "Mehr",
+				"moreUnreadAriaLabel": "Mehr, {count} ungelesen im Spam"
+			},
+			"postboxManageFolders": {
+				"heading": "Ordner",
+				"newNamePlaceholder": "Name des neuen Ordners",
+				"nameAriaLabel": "Name des Ordners",
+				"rename": "Ordner umbenennen",
+				"renameAriaLabel": "Ordner {name} umbenennen",
+				"delete": "Ordner löschen",
+				"deleteAriaLabel": "Ordner {name} löschen",
+				"empty": "Noch keine eigenen Ordner. Erstellen Sie oben einen."
 			}
 		},
 		"preferences": {
@@ -7418,7 +7443,6 @@
 				"pageTitle": "Unterdrückungen — Owlat",
 				"removeDescription": "Wenn Sie die Unterdrückung für „{email}“ entfernen, erhält diese Adresse wieder Ihre E-Mails.",
 				"removeSuppression": "Unterdrückung entfernen",
-				"searchPlaceholder": "Nach E-Mail-Adresse suchen...",
 				"subtitle": "Adressen, die keine E-Mails mehr erhalten — damit eine Unzustellbarkeit oder Beschwerde kein zweites Mal passiert",
 				"table": {
 					"dateAdded": "Hinzugefügt am",
@@ -7767,7 +7791,6 @@
 					"resume": "Automation fortsetzen"
 				},
 				"pageTitle": "Automationen — Owlat",
-				"searchPlaceholder": "Automationen durchsuchen...",
 				"status": {
 					"draft": "Entwurf",
 					"paused": "Pausiert"
@@ -8192,7 +8215,6 @@
 		},
 		"inbox": {
 			"activity": {
-				"assignToTeammate": "Einer Kollegin oder einem Kollegen zuweisen",
 				"channelHealthTitle": "{channel}: {status}",
 				"channels": {
 					"chat": "Chat",
@@ -8215,6 +8237,8 @@
 					"outbound": "Gesendet"
 				},
 				"errorTitle": "Aktivitäten konnten nicht geladen werden",
+				"failedMessages": "Fehlgeschlagene Nachrichten",
+				"failedMessagesTitle": "Eingehende Nachrichten, die nach allen automatischen Wiederholungen fehlgeschlagen sind",
 				"health": {
 					"error": "Ausgefallen",
 					"success": "Funktioniert",
@@ -8258,7 +8282,6 @@
 				"approveAndSend": "Freigeben & senden",
 				"assign": "Zuweisen",
 				"assignThreadAria": "Konversation zuweisen",
-				"assignToTeammateAria": "Konversation einer Kollegin oder einem Kollegen zuweisen",
 				"assignedTo": "Zugewiesen an",
 				"assignedToAria": "{name} zugewiesen",
 				"autoSendCancelledToast": "Automatischer Versand abgebrochen und zur Prüfung zurückgestellt",
@@ -9209,7 +9232,6 @@
 					"quickSettings": "Schnelleinstellungen",
 					"saveChanges": "Änderungen speichern",
 					"savingChanges": "Wird gespeichert...",
-					"searchPlaceholder": "Bausteine durchsuchen...",
 					"sort": {
 						"mostUsed": "Am häufigsten verwendet",
 						"name": "Name (A-Z)",
@@ -10672,7 +10694,9 @@
 				"navigation": "Gehe zu",
 				"recent": "Letzte Suchen",
 				"settings": "Einstellungen",
-				"templates": "Vorlagen"
+				"templates": "Vorlagen",
+				"refine": "Verfeinern",
+				"inboxThreads": "Team-Postfach"
 			}
 		},
 		"conditions": {
@@ -12098,6 +12122,10 @@
 				"notDelivered": "konnte nicht zugestellt werden"
 			}
 		},
+		"postboxDensity": {
+			"comfortable": "Komfortabel",
+			"compact": "Kompakt"
+		},
 		"postboxOfflineStore": {
 			"outOfStorage": "Auf diesem Gerät ist kein Speicherplatz mehr für Offline-Mail vorhanden.",
 			"unavailable": "Der lokale Mail-Cache ist auf diesem Gerät nicht verfügbar."
@@ -12142,6 +12170,10 @@
 					"unknown": "Wir prüfen deine letzten Sendungen noch."
 				}
 			}
+		},
+		"postboxSortOrder": {
+			"newest": "Neueste zuerst",
+			"oldest": "Älteste zuerst"
 		},
 		"postboxTodayPartition": {
 			"autoFiled": {
@@ -13889,6 +13921,13 @@
 			"unverified": "Nicht persönlich verifiziert",
 			"verifiedByTeammate": "Von einem Teammitglied verifiziert",
 			"verifiedByYou": "Von Ihnen verifiziert"
+		},
+		"commandPaletteScope": {
+			"scopes": {
+				"mail": "E-Mail",
+				"ask": "Fragen",
+				"everything": "Alles"
+			}
 		}
 	},
 	"sharedPkg": {
@@ -14377,7 +14416,9 @@
 			"skipToContent": "Zum Hauptinhalt springen",
 			"theme": "Design",
 			"userFallback": "Benutzer",
-			"navigatedTo": "Zu {page} gewechselt"
+			"navigatedTo": "Zu {page} gewechselt",
+			"pinSidebar": "Seitenleiste angeheftet lassen",
+			"unpinSidebar": "Seitenleiste lösen"
 		},
 		"error": {
 			"forbidden": "Sie haben keine Berechtigung, auf diese Seite zuzugreifen.",

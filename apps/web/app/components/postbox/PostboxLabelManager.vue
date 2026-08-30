@@ -1,24 +1,34 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 
-const props = defineProps<{
-	mailboxId: Id<'mailboxes'>;
-	open: boolean;
-}>();
-
-const emit = defineEmits<{
-	(e: 'update:open', value: boolean): void;
-}>();
+/**
+ * "Manage folders & labels" — the one CRUD surface behind the Postbox rail.
+ *
+ * This used to be the label manager alone, while folder CRUD lived as hover
+ * glyphs on the rail's folder rows and label CRUD as two more buttons in the
+ * rail's Labels header. Setup-time verbs do not earn permanent chrome in a
+ * navigation column, so both sets moved here and the rail became pure
+ * navigation. Reached from the rail's "More" group and from a right-click on
+ * any folder or label row.
+ *
+ * The dialog's open state lives in `usePostboxManageDialog` rather than in a
+ * prop, because its callers are scattered across the rail (the More group, the
+ * folder rows, the label tree three components down) and threading an event up
+ * from each of them is how a second manage surface gets born.
+ */
+const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 
 const { t } = useI18n();
 
 const mailboxIdRef = computed(() => props.mailboxId);
-const { labels, create, rename, setColor, remove } = usePostboxLabels(mailboxIdRef);
+const { create } = usePostboxLabels(mailboxIdRef);
+const { open, focusCreate, close } = usePostboxManageDialog();
 
+// Label creation accepts a PATH (`Work/Clients/Acme`) — the backend creates any
+// missing ancestor — so nesting is one action rather than three.
 const newName = ref('');
 const newColor = ref(DEFAULT_LABEL_COLOR);
-const editingId = ref<Id<'mailLabels'> | null>(null);
-const editingName = ref('');
+const newInput = ref<HTMLInputElement | null>(null);
 
 const PRESET_COLORS = LABEL_PRESET_HEXES;
 
@@ -29,101 +39,69 @@ async function handleCreate() {
 	newName.value = '';
 }
 
-function startEdit(labelId: Id<'mailLabels'>, currentName: string) {
-	editingId.value = labelId;
-	editingName.value = currentName;
-}
-
-async function commitRename() {
-	if (!editingId.value) return;
-	await rename(editingId.value, editingName.value);
-	editingId.value = null;
-}
-
-function close() {
-	emit('update:open', false);
-}
+watch(
+	focusCreate,
+	async (target) => {
+		if (target !== 'labels') return;
+		focusCreate.value = null;
+		await nextTick();
+		newInput.value?.focus();
+	},
+	{ immediate: true }
+);
 </script>
 
 <template>
 	<UiModal
 		:open="open"
 		:title="t('components.postbox.postboxLabelManager.title')"
-		size="md"
+		size="2xl"
 		@update:open="
 			(v) => {
 				if (!v) close();
 			}
 		"
 	>
-		<form class="flex items-center gap-2 mb-4" @submit.prevent="handleCreate">
-			<div class="flex items-center gap-1">
-				<button
-					v-for="color in PRESET_COLORS"
-					:key="color"
-					type="button"
-					class="w-5 h-5 rounded-full border-2"
-					:class="newColor === color ? 'border-text-primary' : 'border-transparent'"
-					:style="{ backgroundColor: color }"
-					:title="color"
-					@click="newColor = color"
-				/>
-			</div>
-			<input
-				v-model="newName"
-				type="text"
-				:placeholder="t('components.postbox.postboxLabelManager.newNamePlaceholder')"
-				class="input flex-1"
-			/>
-			<UiButton type="submit" :disabled="!newName.trim()">{{ t('common.add') }}</UiButton>
-		</form>
+		<PostboxManageFolders :mailbox-id="mailboxId" />
 
-		<ul v-if="labels.length > 0" class="space-y-2 max-h-80 overflow-auto">
-			<li
-				v-for="label in labels"
-				:key="label._id"
-				class="flex items-center gap-2 px-3 py-2 rounded border border-border-subtle"
-			>
-				<span
-					class="w-3 h-3 rounded-full flex-shrink-0"
-					:style="{ backgroundColor: label.color || 'var(--color-text-tertiary)' }"
-				/>
-				<input
-					v-if="editingId === label._id"
-					v-model="editingName"
-					type="text"
-					class="input input-sm flex-1"
-					@blur="commitRename"
-					@keyup.enter="commitRename"
-					@keyup.escape="editingId = null"
-				/>
-				<span v-else class="flex-1 cursor-text" @click="startEdit(label._id, label.name)">{{
-					label.name
-				}}</span>
+		<div class="h-px bg-border-subtle my-5" role="separator" />
+
+		<section>
+			<h3 class="text-xs font-semibold uppercase tracking-wider text-text-tertiary mb-2">
+				{{ t('components.postbox.postboxFolderRail.labelsHeading') }}
+			</h3>
+
+			<form class="flex items-center gap-2 mb-1" @submit.prevent="handleCreate">
 				<div class="flex items-center gap-1">
 					<button
 						v-for="color in PRESET_COLORS"
 						:key="color"
 						type="button"
-						class="w-3.5 h-3.5 rounded-full border"
-						:class="label.color === color ? 'border-text-primary' : 'border-transparent'"
+						class="w-5 h-5 rounded-full border-2"
+						:class="newColor === color ? 'border-text-primary' : 'border-transparent'"
 						:style="{ backgroundColor: color }"
 						:title="t('components.postbox.postboxLabelManager.setColor', { color })"
-						@click="setColor(label._id, color)"
+						:aria-label="t('components.postbox.postboxLabelManager.setColor', { color })"
+						@click="newColor = color"
 					/>
 				</div>
-				<button
-					type="button"
-					class="p-1 rounded hover:bg-error/10 text-error"
-					:title="t('components.postbox.postboxLabelManager.deleteLabel')"
-					@click="remove(label._id)"
-				>
-					<Icon name="lucide:trash" class="w-4 h-4" />
-				</button>
-			</li>
-		</ul>
-		<div v-else class="text-sm text-text-secondary py-6 text-center">
-			{{ t('components.postbox.postboxLabelManager.empty') }}
-		</div>
+				<input
+					ref="newInput"
+					v-model="newName"
+					type="text"
+					:placeholder="t('components.postbox.postboxLabelManager.newNamePlaceholder')"
+					:aria-label="t('components.postbox.postboxLabelManager.newNamePlaceholder')"
+					class="input flex-1"
+				/>
+				<UiButton type="submit" :disabled="!newName.trim()">{{ t('common.add') }}</UiButton>
+			</form>
+			<p class="text-2xs text-text-tertiary mb-3">
+				{{ t('components.postbox.postboxFolderRail.labelNestingHint') }}
+			</p>
+
+			<div class="max-h-72 overflow-auto">
+				<PostboxLabelTree :mailbox-id="mailboxId" manage />
+			</div>
+		</section>
 	</UiModal>
 </template>

@@ -1,13 +1,24 @@
 <script setup lang="ts">
 /**
  * The thread-list pane's header — folder title, cold-start "updating…" hint,
- * mobile drawer handle, the newest/oldest sort toggle, and (inbox only) the
- * Today jump + Flat/Conversations/Categories segmented control. Extracted from
- * PostboxLayout.vue (the plan's R8 list-header seam): pure presentation over
- * semantic emits — every action routes back to the layout's existing handlers.
+ * mobile drawer handle, the page select-all checkbox, the inbox's Today|Browse
+ * switch, and one "Display" menu.
+ *
+ * It used to carry four competing controls on a ~380px pane: a five-segment
+ * view-mode control wide enough to need its own horizontal scroller, a sort
+ * toggle, a one-way Today jump, and a whole-folder select-all row. Every one of
+ * them was a persisted preference or a rare action, so the preferences moved
+ * into the Display menu, the Today jump became a two-way switch, and the
+ * select-all escape hatch moved into the bulk bar where the selection lives.
+ *
+ * Pure presentation over semantic emits: every action routes back to the
+ * layout's existing handlers.
  */
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { PostboxDensity } from '~/utils/postboxDensity';
+import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
+import type { PostboxReadingPane } from '~/utils/postboxReadingPane';
+import type { PostboxSortOrder } from '~/utils/postboxSortOrder';
 import { headerSelectionState } from '~/utils/postboxRangeSelect';
 
 const { t } = useI18n();
@@ -21,35 +32,27 @@ const props = defineProps<{
 	/** Cold start from the device cache — shows the quiet "updating…" shimmer. */
 	showingCached?: boolean;
 	isOffline?: boolean;
-	/** Inbox-only view-mode control (Flat / Conversations / Categories). */
+	/** Inbox-only view-mode options (Flat / Conversations / Categories / …). */
 	viewMode?: string;
 	viewModeOptions?: Array<{ value: string; label: string }>;
 	/** Arrival direction of the list — 'newest' (default) or 'oldest'. */
 	sortOrder?: string;
+	/** List/reader row density, shown as a radio group in the Display menu. */
+	density?: PostboxDensity;
+	/** Where the reader sits (right / bottom / off). */
+	readingPane?: PostboxReadingPane;
+	/** Which inbox landing surface is on screen — drives the Today|Browse switch. */
+	inboxMode?: PostboxInboxMode;
 	/** Set on the flat list, which is the only renderer with a selection model. */
 	mailboxId?: Id<'mailboxes'>;
 	/** Ids of the rows the list currently has loaded, in render order. */
 	pageIds?: string[];
-	/**
-	 * False when the rendered rows are a narrower set than the folder scope —
-	 * i.e. a triage chip (unread / starred / attachments) is filtering the list.
-	 * The whole-folder escape hatch below queries by folder scope alone, so
-	 * under a chip it would silently select rows the chip is hiding. Absent
-	 * means unfiltered, which is what every non-chip caller is.
-	 */
-	selectAllScopeMatchesList?: boolean;
 }>();
 
-// One toggle, two states: the label names the order the list is IN, and the
-// title names the order a tap moves TO, so the control is never ambiguous
-// about which it is describing.
-const sortIsOldest = computed(() => props.sortOrder === 'oldest');
-
 // --- Select-all -------------------------------------------------------------
-// The header owns the checkbox that covers the whole page of rows, plus the
-// escape hatch past it: the loaded page is 50 messages and "select all" over
-// 4 000 is a different promise, so whole-folder selection goes through a
-// server-side id query rather than pretending the page is the folder.
+// The header owns the checkbox that covers the whole page of rows. The escape
+// hatch past it ("and the rest of the folder") lives in the bulk bar, where the
+// selection it grows is already rendered.
 const mailboxIdRef = computed(() => props.mailboxId ?? null);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 const pageIds = computed(() => props.pageIds ?? []);
@@ -61,53 +64,33 @@ function toggleSelectPage() {
 	else bulk.selectPage(pageIds.value as Id<'mailMessages'>[]);
 }
 
-const loadingAllMatching = ref(false);
 /**
- * The escape hatch is only honest when the rows on screen ARE the folder
- * scope. `listMessageIds` narrows by folder, not by triage chip, so under an
- * active chip "select everything in this folder" would hand the next bulk verb
- * messages the user never saw as selected. Withhold it instead of lying: the
- * page-level selection (and its count) stays available.
+ * The Today|Browse switch is the inbox's landing-surface control, so it is
+ * offered exactly where a landing surface exists: the inbox root, with no
+ * message open and no custom folder standing in for it.
  */
-const canSelectAllMatching = computed(() => props.selectAllScopeMatchesList !== false);
-/**
- * Replace the page selection with every message the current folder scope
- * holds. One-shot read, not a subscription: the answer is consumed once by the
- * bulk action that follows, and a live id list of a whole folder would re-run
- * on every arrival.
- */
-async function selectAllMatching() {
-	if (!props.mailboxId || loadingAllMatching.value || !canSelectAllMatching.value) return;
-	loadingAllMatching.value = true;
-	try {
-		const result = await requireConvex().query(api.mail.mailbox.selection.listMessageIds, {
-			mailboxId: props.mailboxId,
-			...(props.folderId ? { folderId: props.folderId } : { folderRole: props.folderRole }),
-			...(sortIsOldest.value ? { sortOrder: 'oldest' as const } : {}),
-		});
-		bulk.selectAllMatchingIds(result.ids, result.capped);
-	} finally {
-		loadingAllMatching.value = false;
-	}
-}
+const showInboxModeToggle = computed(
+	() => props.folderRole === 'inbox' && !props.activeMessageId && !props.folderId
+);
 
 const emit = defineEmits<{
 	/** Mobile drawer handle pressed — the layout owns the drawer state. */
 	'open-rail': [];
-	/** Back to the focused Today landing view. */
-	'switch-today': [];
+	/** Today ↔ Browse (the same move B / Esc make). */
+	'switch-inbox-mode': [value: PostboxInboxMode];
 	'select-view-mode': [value: string];
-	/** Flip the arrival direction (newest <-> oldest). */
-	'toggle-sort': [];
+	'select-sort-order': [value: PostboxSortOrder];
+	'select-density': [value: PostboxDensity];
+	'select-reading-pane': [value: PostboxReadingPane];
 }>();
 </script>
 
 <template>
 	<!-- Wraps rather than truncates. The list pane is ~380px at a 1440px window,
-	     which the folder title + sort toggle + view-mode control overflow: as one
-	     nowrap row the title lost first and read "In…" for Inbox. Wrapping drops
-	     the control cluster onto a second line only when it genuinely does not
-	     fit, and a wide pane still gets the single row. -->
+	     which the folder title plus the control cluster can still overflow in a
+	     long locale: as one nowrap row the title lost first and read "In…" for
+	     Inbox. Wrapping drops the cluster onto a second line only when it
+	     genuinely does not fit, and a wide pane still gets the single row. -->
 	<header
 		class="border-b border-border-subtle px-4 py-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5"
 	>
@@ -171,135 +154,29 @@ const emit = defineEmits<{
 					>{{ t('components.postbox.postboxLayout.updating') }}</span
 				>
 			</h2>
+			<!-- The inbox's landing-surface switch, on the title it describes. -->
+			<PostboxInboxModeToggle
+				v-if="showInboxModeToggle"
+				class="flex-shrink-0"
+				:mode="inboxMode ?? 'browse'"
+				@select="emit('switch-inbox-mode', $event)"
+			/>
 		</div>
-		<!-- The cluster wraps internally too (`flex-wrap`), so the five-segment
-		     view-mode control drops onto its own line instead of squeezing — and
-		     `max-w-full` pins the whole cluster inside the pane: without it the
-		     control's min-content width (five nowrap labels) overflowed the ~380px
-		     list pane and painted over the reader. -->
-		<div class="flex flex-wrap items-center justify-end gap-2 max-w-full ml-auto">
-			<!-- Arrival direction. Every folder gets it: "oldest first" is how a
-			     backlog gets cleared, and it was previously unreachable. -->
-			<button
-				type="button"
-				class="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-				:title="
-					sortIsOldest
-						? t('components.postbox.postboxListHeader.sortToNewest')
-						: t('components.postbox.postboxListHeader.sortToOldest')
-				"
-				:aria-label="
-					sortIsOldest
-						? t('components.postbox.postboxListHeader.sortToNewest')
-						: t('components.postbox.postboxListHeader.sortToOldest')
-				"
-				@click="emit('toggle-sort')"
-			>
-				<Icon
-					:name="sortIsOldest ? 'lucide:arrow-up-narrow-wide' : 'lucide:arrow-down-narrow-wide'"
-					class="w-3.5 h-3.5"
-					aria-hidden="true"
-				/>
-				<span class="hidden sm:inline">{{
-					sortIsOldest
-						? t('components.postbox.postboxListHeader.oldestFirst')
-						: t('components.postbox.postboxListHeader.newestFirst')
-				}}</span>
-			</button>
-			<template v-if="folderRole === 'inbox'">
-				<!-- Back to the focused Today landing view (Esc / B do the same). -->
-				<button
-					v-if="!activeMessageId && !folderId"
-					type="button"
-					class="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-base focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-					aria-keyshortcuts="Escape b"
-					:title="t('components.postbox.postboxLayout.backToTodayTitle')"
-					@click="emit('switch-today')"
-				>
-					{{ t('common.today') }}
-					<kbd
-						class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
-						aria-hidden="true"
-						>{{ t('components.postbox.postboxLayout.escKey') }}</kbd
-					>
-				</button>
-				<!-- Labeled view-mode control — exactly one mode active; persisted
-				     per user. Inbox-only: other folders stay flat. The wrapper
-				     scrolls sideways when even a line of its own is too narrow for
-				     the five labels (a squeezed pane, a long locale), so the control
-				     stays inside the pane instead of bleeding across the reader. -->
-				<div v-if="viewModeOptions" class="max-w-full overflow-x-auto pbx-viewmode-scroll">
-					<UiSegmentedControl
-						size="sm"
-						:aria-label="t('components.postbox.postboxLayout.inboxView')"
-						:options="viewModeOptions"
-						:model-value="viewMode"
-						@update:model-value="emit('select-view-mode', String($event))"
-					/>
-				</div>
-			</template>
-		</div>
-		<!-- Escape hatch past the loaded page. Only offered once the page itself
-		     is fully selected, so it reads as "and the rest" rather than as a
-		     second, competing select-all — and only while the page IS the folder
-		     scope, since a triage chip makes "everything in this folder" a
-		     different (larger) set than the one on screen. -->
-		<div
-			v-if="selectionEnabled && selectionState === 'all'"
-			class="w-full text-xs text-text-secondary flex items-center gap-2"
-			role="status"
-		>
-			<template v-if="bulk.selectAllMatching.value.active">
-				<span>{{
-					t(
-						'components.postbox.postboxListHeader.allMatchingSelected',
-						{ count: bulk.count.value },
-						bulk.count.value
-					)
-				}}</span>
-				<span v-if="bulk.selectAllMatching.value.capped" class="text-text-tertiary">{{
-					t('components.postbox.postboxListHeader.allMatchingCapped', {
-						count: bulk.count.value,
-					})
-				}}</span>
-				<button type="button" class="text-brand hover:underline" @click="bulk.clear()">
-					{{ t('components.postbox.postboxListHeader.clearSelection') }}
-				</button>
-			</template>
-			<template v-else>
-				<span>{{
-					t(
-						'components.postbox.postboxListHeader.pageSelected',
-						{ count: bulk.count.value },
-						bulk.count.value
-					)
-				}}</span>
-				<button
-					v-if="canSelectAllMatching"
-					type="button"
-					class="text-brand hover:underline disabled:opacity-50"
-					:disabled="loadingAllMatching"
-					@click="selectAllMatching()"
-				>
-					{{
-						loadingAllMatching
-							? t('components.postbox.postboxListHeader.selectingAllMatching')
-							: t('components.postbox.postboxListHeader.selectAllMatching')
-					}}
-				</button>
-			</template>
-		</div>
+		<!-- Everything that used to be permanent chrome: four persisted
+		     preferences behind one menu, so the pane never has to scroll a
+		     control sideways to reach its own labels. The view-mode group is
+		     withheld outside the inbox, where every folder renders flat and the
+		     choice would be a control that does nothing. -->
+		<PostboxListDisplayMenu
+			:view-mode="viewMode"
+			:view-mode-options="folderRole === 'inbox' ? viewModeOptions : undefined"
+			:sort-order="sortOrder"
+			:density="density"
+			:reading-pane="readingPane"
+			@select-view-mode="emit('select-view-mode', $event)"
+			@select-sort-order="emit('select-sort-order', $event)"
+			@select-density="emit('select-density', $event)"
+			@select-reading-pane="emit('select-reading-pane', $event)"
+		/>
 	</header>
 </template>
-
-<style scoped>
-/* The overflow wrapper is a last-resort containment, not a designed scroller:
-   no scrollbar track under the control, just the ability to reach a clipped
-   segment by swiping/arrow keys when the pane is genuinely too narrow. */
-.pbx-viewmode-scroll {
-	scrollbar-width: none;
-}
-.pbx-viewmode-scroll::-webkit-scrollbar {
-	display: none;
-}
-</style>

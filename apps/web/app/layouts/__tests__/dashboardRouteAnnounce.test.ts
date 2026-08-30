@@ -80,7 +80,6 @@ function mountLayout(): VueWrapper {
 				DashboardShellHeader: true,
 				AppCommandPalette: true,
 				KeyboardShortcutsHelp: true,
-				QueryQuickQueryPanel: true,
 				Icon: true,
 				UiBadge: true,
 				UiThemeToggle: true,

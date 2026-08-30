@@ -6,6 +6,8 @@
  */
 
 import { v } from 'convex/values';
+import type { QueryCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
 import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
@@ -17,7 +19,69 @@ import {
 	threadFilterValidator,
 	type ThreadFilter,
 } from './threadFilters';
+import { searchThreads } from './threadSearch';
 import { openConversationThreadPreview } from '../lib/messageBody';
+
+/**
+ * Enrich a loaded page of threads for the team-inbox list DNA. Shared by the
+ * browse path and the text-search path so a searched row renders identically to
+ * a browsed one:
+ *  - `unread`: activity newer than THIS user's last-seen marker (the per-user
+ *    unread badge; mirrors chat's lastReadAt). Bounded: one point-read per row
+ *    on `threadReads.by_user_thread`.
+ *  - `assignee`: the assigned member's display name/email/image so the row can
+ *    render a deterministic-colour avatar without the client joining to the
+ *    member directory. Cached per call so repeat assignees cost one read.
+ *  - `assigneePresent`: does the assignee have this thread open right now
+ *    (the pulsing presence ring)? One point-read, and only for assigned rows.
+ */
+async function enrichThreadRows(
+	ctx: QueryCtx,
+	rows: ReadonlyArray<Doc<'conversationThreads'>>,
+	viewerId: string
+) {
+	const assigneeCache = new Map<string, { name?: string; email: string; image?: string } | null>();
+	const resolveAssignee = async (userId: string) => {
+		if (assigneeCache.has(userId)) return assigneeCache.get(userId)!;
+		const profile = await ctx.db
+			.query('userProfiles')
+			.withIndex('by_auth_user_id', (idx) => idx.eq('authUserId', userId))
+			.first();
+		const resolved = profile
+			? { name: profile.name, email: profile.email, image: profile.image }
+			: null;
+		assigneeCache.set(userId, resolved);
+		return resolved;
+	};
+
+	const presenceCutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
+	return Promise.all(
+		rows.map(async (thread) => {
+			const read = await ctx.db
+				.query('threadReads')
+				.withIndex('by_user_thread', (idx) => idx.eq('userId', viewerId).eq('threadId', thread._id))
+				.unique();
+			const unread = thread.lastMessageAt > (read?.lastSeenAt ?? 0);
+			const assignee = thread.assignedTo ? await resolveAssignee(thread.assignedTo) : null;
+			let assigneePresent = false;
+			if (thread.assignedTo) {
+				const presence = await ctx.db
+					.query('threadPresence')
+					.withIndex('by_user_thread', (idx) =>
+						idx.eq('userId', thread.assignedTo!).eq('threadId', thread._id)
+					)
+					.unique();
+				assigneePresent = !!presence && presence.heartbeatAt > presenceCutoff;
+			}
+			return {
+				...(await openConversationThreadPreview(thread)),
+				unread,
+				assignee,
+				assigneePresent,
+			};
+		})
+	);
+}
 
 /**
  * List conversation threads with filtering
@@ -32,6 +96,10 @@ export const listThreads = publicQuery({
 		sort: v.optional(
 			v.union(v.literal('needs-attention'), v.literal('oldest-waiting'), v.literal('newest'))
 		),
+		// Free-text query over the subject and the participant address. Present =
+		// the search path: a bounded, relevance-sourced TOP-N narrowed by the same
+		// pill, single-page (see ./threadSearch). Blank behaves as absent.
+		search: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.string()),
 	},
@@ -45,6 +113,22 @@ export const listThreads = publicQuery({
 		const limit = args.limit ?? 20;
 		const now = Date.now();
 		const sort = args.sort ?? 'newest';
+
+		// ── Search path. Relevance cannot share a cursor across two indexes, so
+		// this answers in one page and reports no continuation.
+		if (args.search?.trim()) {
+			const hits = await searchThreads(ctx, {
+				search: args.search,
+				filter: args.filter,
+				userId: session.userId,
+				now,
+				limit,
+			});
+			return {
+				threads: await enrichThreadRows(ctx, hits, session.userId),
+				nextCursor: null,
+			};
+		}
 
 		// Each filter selects an index that already encodes the slice, so paging
 		// stays complete (a filtered-out row shrinks the page but the keyset
@@ -65,66 +149,7 @@ export const listThreads = publicQuery({
 
 		const result = await q.paginate({ cursor: args.cursor ?? null, numItems: limit });
 
-		// Enrich each row for the team-inbox list DNA:
-		//  - `unread`: activity newer than THIS user's last-seen marker (the
-		//    per-user unread badge; mirrors chat's lastReadAt). Bounded: one
-		//    point-read per row on `threadReads.by_user_thread`.
-		//  - `assignee`: the assigned member's display name/email/image so the row
-		//    can render a deterministic-colour avatar without the client joining
-		//    to the member directory. Cached per handler so repeat assignees cost
-		//    one read.
-		const viewerId = session.userId;
-		const assigneeCache = new Map<
-			string,
-			{ name?: string; email: string; image?: string } | null
-		>();
-		const resolveAssignee = async (userId: string) => {
-			if (assigneeCache.has(userId)) return assigneeCache.get(userId)!;
-			const profile = await ctx.db
-				.query('userProfiles')
-				.withIndex('by_auth_user_id', (idx) => idx.eq('authUserId', userId))
-				.first();
-			const resolved = profile
-				? { name: profile.name, email: profile.email, image: profile.image }
-				: null;
-			assigneeCache.set(userId, resolved);
-			return resolved;
-		};
-
-		const presenceCutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
-		const threads = await Promise.all(
-			result.page.map(async (thread) => {
-				const read = await ctx.db
-					.query('threadReads')
-					.withIndex('by_user_thread', (idx) =>
-						idx.eq('userId', viewerId).eq('threadId', thread._id)
-					)
-					.unique();
-				const unread = thread.lastMessageAt > (read?.lastSeenAt ?? 0);
-				const assignee = thread.assignedTo ? await resolveAssignee(thread.assignedTo) : null;
-				// Does the assignee currently have this thread open? Drives the
-				// pulsing presence ring on their row avatar (b3a DNA). Bounded: a
-				// single point-read on `by_user_thread` (one row per user+thread,
-				// exactly as the presence heartbeat upserts it), and ONLY for
-				// assigned threads (unassigned rows skip it entirely).
-				let assigneePresent = false;
-				if (thread.assignedTo) {
-					const presence = await ctx.db
-						.query('threadPresence')
-						.withIndex('by_user_thread', (idx) =>
-							idx.eq('userId', thread.assignedTo!).eq('threadId', thread._id)
-						)
-						.unique();
-					assigneePresent = !!presence && presence.heartbeatAt > presenceCutoff;
-				}
-				return {
-					...(await openConversationThreadPreview(thread)),
-					unread,
-					assignee,
-					assigneePresent,
-				};
-			})
-		);
+		const threads = await enrichThreadRows(ctx, result.page, session.userId);
 
 		// Re-float the fetched page by the needs-attention rule (drafts-ready →
 		// unassigned-unread → oldest). The index already delivered rows oldest

@@ -10,6 +10,7 @@
 
 import { v, type Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
 import { WAITING_OVER_24H_MS } from './threadSort';
 
 /**
@@ -106,5 +107,50 @@ export function buildThreadQuery(
 			return base.withIndex('by_snoozed_until', (idx) => idx.gt('snoozedUntil', now));
 		default:
 			return base.withIndex('by_last_message_at');
+	}
+}
+
+/**
+ * The same slice as {@link buildThreadQuery}, expressed as a PREDICATE over a
+ * loaded row.
+ *
+ * The browse path selects an index; the text-search path cannot, because a
+ * Convex search index orders by relevance and only filters on equality — and
+ * three of the pills (`mine`/`unassigned` on assignment, `waiting-24h` on an
+ * age range, `snoozed` on a future timestamp) are not equality. So search reads
+ * the matching rows and narrows them here.
+ *
+ * This function and `buildThreadQuery` MUST agree: a thread the pill's list
+ * shows is a thread its search must be able to find. `__tests__/threadSearch`
+ * pins each branch against the index-side rule. Pure.
+ */
+export function threadMatchesFilter(
+	thread: Doc<'conversationThreads'>,
+	filter: ThreadFilter | undefined,
+	userId: string,
+	now: number
+): boolean {
+	// "Not snoozed" is the shared clause every active slice carries; `snoozedUntil`
+	// is only ever a future value at write time, so a lapsed one reads as awake.
+	const awake = thread.snoozedUntil === undefined || thread.snoozedUntil <= now;
+	const active = thread.status === 'open' || thread.status === 'waiting';
+	switch (filter) {
+		case 'open':
+			return thread.status === 'open' && awake;
+		case 'waiting':
+			return thread.status === 'waiting' && awake;
+		case 'waiting-24h':
+			return thread.status === 'open' && awake && thread.lastMessageAt <= now - WAITING_OVER_24H_MS;
+		case 'resolved':
+			return thread.status === 'resolved';
+		case 'mine':
+			return thread.assignedTo === userId && active && awake;
+		case 'unassigned':
+			return thread.assignedTo === undefined && active && awake;
+		case 'snoozed':
+			return thread.snoozedUntil !== undefined && thread.snoozedUntil > now;
+		default:
+			// No pill = every thread, exactly as the unfiltered index walk.
+			return true;
 	}
 }

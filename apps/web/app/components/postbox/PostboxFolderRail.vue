@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { resolveActiveShortcut } from '~/utils/shortcutScope';
 
 const props = defineProps<{
@@ -15,21 +16,17 @@ const { t } = useI18n();
 
 const mailboxIdRef = computed(() => props.mailboxId);
 const { systemFolders, customFolders, unreadByRole } = usePostboxFolders(mailboxIdRef);
-const { create: createLabel } = usePostboxLabels(mailboxIdRef);
 
-// Label creation accepts a PATH (`Work/Clients/Acme`) — the backend creates any
-// missing ancestor — so nesting is one action rather than three.
-const creatingLabel = ref(false);
-const newLabelName = ref('');
-
-async function confirmCreateLabel() {
-	const name = newLabelName.value.trim();
-	if (!name) return;
-	if (await createLabel(name)) {
-		newLabelName.value = '';
-		creatingLabel.value = false;
-	}
-}
+// Spam and Trash are destination folders you rarely browse, so they live in the
+// "More" group with the rest of the long tail; everything else in the system set
+// is a daily click and stays at the top of the rail.
+const MORE_ROLES = new Set(['spam', 'trash']);
+const primaryFolders = computed(() =>
+	systemFolders.value.filter((folder) => !MORE_ROLES.has(folder.role ?? ''))
+);
+const moreFolders = computed(() =>
+	systemFolders.value.filter((folder) => MORE_ROLES.has(folder.role ?? ''))
+);
 
 // Collapsible folder rail — icon strip when collapsed. Persisted per-device.
 // forceExpanded (drawer staging) wins over the saved preference.
@@ -40,39 +37,55 @@ const railCollapsed = computed(() => !props.forceExpanded && savedCollapsed.valu
 // inbox strip in PostboxLayout).
 const { count: replyQueueCount } = usePostboxReplyQueue(mailboxIdRef);
 
-// Custom-folder management (create / rename / delete) in the folder rail.
+// Folder and label CRUD used to live on these rows as hover-revealed pencils
+// and trashcans plus two header buttons. They are setup-time verbs, so they all
+// moved into one "Manage folders & labels" dialog; the rail keeps only ENTRY
+// points to it (the More group, and a right-click on any row).
+const { openManager, pendingFolderDelete, requestFolderDelete, clearFolderDelete } =
+	usePostboxManageDialog();
 const folderActions = usePostboxFolderActions(mailboxIdRef);
-const creatingFolder = ref(false);
-const newFolderName = ref('');
-const renamingFolderId = ref<Id<'mailFolders'> | null>(null);
-const renameFolderName = ref('');
-const deletingFolder = ref<{ _id: Id<'mailFolders'>; name: string } | null>(null);
-const labelManagerOpen = ref(false);
 
-async function confirmCreateFolder() {
-	if (await folderActions.create(newFolderName.value)) {
-		newFolderName.value = '';
-		creatingFolder.value = false;
-	}
+/** Right-click on a custom-folder row. */
+function folderMenuItems(folder: { _id: string; name: string }): ContextMenuItem[] {
+	return [
+		{
+			id: 'rename',
+			label: t('components.postbox.postboxFolderRail.renameFolder'),
+			icon: 'lucide:pencil',
+			run: () => openManager({ editFolderId: folder._id as Id<'mailFolders'> }),
+		},
+		{
+			id: 'delete',
+			label: t('components.postbox.postboxFolderRail.deleteFolder'),
+			icon: 'lucide:trash-2',
+			danger: true,
+			run: () => requestFolderDelete({ _id: folder._id as Id<'mailFolders'>, name: folder.name }),
+		},
+		{
+			id: 'new',
+			label: t('components.postbox.postboxFolderRail.newFolder'),
+			icon: 'lucide:folder-plus',
+			separatorBefore: true,
+			run: () => openManager({ section: 'folders', create: true }),
+		},
+		{
+			id: 'manage',
+			label: t('components.postbox.postboxLabelManager.title'),
+			icon: 'lucide:settings-2',
+			run: () => openManager({ section: 'folders' }),
+		},
+	];
 }
-function startRenameFolder(folder: { _id: Id<'mailFolders'>; name: string }) {
-	renamingFolderId.value = folder._id;
-	renameFolderName.value = folder.name;
-}
-async function confirmRenameFolder() {
-	if (
-		renamingFolderId.value &&
-		(await folderActions.rename(renamingFolderId.value, renameFolderName.value))
-	) {
-		renamingFolderId.value = null;
-	}
-}
+
+// Deleting the folder you are reading has to take you somewhere; the rail is
+// the surface that knows which folder that is, which is why the one
+// confirmation dialog lives here rather than inside the manage dialog.
 async function confirmDeleteFolder() {
-	const folder = deletingFolder.value;
+	const folder = pendingFolderDelete.value;
 	if (folder && (await folderActions.remove(folder._id)) && props.folderId === folder._id) {
 		void navigateTo('/dashboard/postbox/inbox');
 	}
-	deletingFolder.value = null;
+	clearFolderDelete();
 }
 
 // Pinned saved searches — recurring questions ("unread from Ines", "invoices
@@ -89,16 +102,10 @@ const activeLabelId = computed(() =>
 	route.path.startsWith('/dashboard/postbox/label/') ? String(route.params['labelId'] ?? '') : ''
 );
 
-// Search entry point: a box in the folder rail + a "/" shortcut to focus it.
-const searchQuery = ref('');
-const searchBar = ref<{ focus: () => void } | null>(null);
-
-function goSearch(value: string) {
-	const q = value.trim();
-	void navigateTo(
-		q ? `/dashboard/postbox/search?q=${encodeURIComponent(q)}` : '/dashboard/postbox/search'
-	);
-}
+// Search entry point: the app-wide overlay, opened in Mail scope. The rail used
+// to host its own box with its own grammar and its own history; there is now one
+// search, and `/` reaches it here exactly as it reached the box before.
+const { open: openCommandPalette } = useCommandPalette();
 
 function onGlobalKey(event: KeyboardEvent) {
 	// Cmd/Ctrl+Shift+D toggles the folder rail between full width and the icon
@@ -121,180 +128,85 @@ function onGlobalKey(event: KeyboardEvent) {
 		return;
 	}
 	event.preventDefault();
-	searchBar.value?.focus();
+	openCommandPalette({ scope: 'mail' });
 }
-
-// `/` pressed in the Today landing view: the layout flips to browse mode and
-// arms this flag so the freshly mounted rail carries the intent through —
-// search always lives here, never inside the Today column.
-const searchAutofocus = useState('postbox:search-autofocus', () => false);
 
 onMounted(() => {
 	window.addEventListener('keydown', onGlobalKey);
-	if (searchAutofocus.value) {
-		searchAutofocus.value = false;
-		void nextTick(() => searchBar.value?.focus());
-	}
 });
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 </script>
 
 <template>
 	<!-- Pane 1: folder rail — collapses to a ~48px icon strip (Cmd/Ctrl+Shift+D
-	     or the chevron at the bottom). Collapsed hides folder CRUD, label
-	     management and the search box; folder/action glyphs stay reachable. -->
+	     or the chevron at the bottom). Every row here is navigation: no folder
+	     or label CRUD, no search box. Search is the app-wide overlay, on `/` and
+	     Cmd/Ctrl+K; CRUD is the "Manage folders & labels" dialog, reachable from
+	     "More" and from a right-click on any folder or label row. -->
 	<aside
 		class="border-r border-border-subtle bg-bg-elevated flex flex-col"
 		:class="railCollapsed ? 'w-12 p-2 gap-1.5 items-center' : 'w-56 p-3 gap-2'"
 	>
-		<!-- Mailbox switcher: personal mailbox(es) + shared (team) inboxes with
-		     unread badges. Renders nothing for a lone personal mailbox, so a
-		     single-mailbox user's rail is unchanged. -->
-		<PostboxMailboxSwitcher :mailbox-id="mailboxId" :collapsed="railCollapsed" />
+		<!-- Identity + the one primary verb, in one compact block. The mailbox
+		     switcher is a single small chip (it was a stacked section with two
+		     headings and a row per mailbox) and still renders nothing at all for
+		     a lone personal mailbox — a chip offering one choice is chrome. -->
+		<div class="flex flex-col gap-1.5" :class="{ 'items-center': railCollapsed }">
+			<PostboxMailboxSwitcher :mailbox-id="mailboxId" :collapsed="railCollapsed" />
+			<PostboxComposeButton :mailbox-id="mailboxId" :collapsed="railCollapsed" />
+		</div>
 
-		<!-- Search: full box expanded; a single icon collapsed (opens the
-		     search page, which hosts the palette/query UI). -->
-		<PostboxSearchBar
-			v-if="!railCollapsed"
-			ref="searchBar"
-			v-model="searchQuery"
-			:mailbox-id="mailboxId"
-			@submit="goSearch"
-		/>
-		<button
-			v-else
-			type="button"
-			class="w-9 h-9 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-			:title="t('common.search')"
-			:aria-label="t('common.search')"
-			@click="goSearch('')"
-		>
-			<Icon name="lucide:search" class="w-4 h-4" />
-		</button>
-		<PostboxComposeButton :mailbox-id="mailboxId" :collapsed="railCollapsed" />
 		<PostboxFolderList
-			:folders="systemFolders"
+			:folders="primaryFolders"
 			:unread-counts="unreadByRole"
 			:active-folder="folderRole"
 			:collapsed="railCollapsed"
 		/>
 
-		<!-- The virtual views (Reply Queue, Snoozed, Files, Subscriptions). None of
-		     them has a backing folder — nothing moves when you open one — so they
-		     travel together, in their own component. -->
-		<PostboxFolderRailVirtualViews
+		<!-- Reply Queue — the AI task list of emails waiting on a reply. A virtual
+		     view like Snoozed (threads stay in their folders), but it carries a
+		     live count and a workflow, so it stays out of "More". -->
+		<PostboxRailLink
+			to="/dashboard/postbox/reply-queue"
+			icon="lucide:reply"
+			:label="t('components.postbox.postboxFolderRail.replyQueue')"
 			:collapsed="railCollapsed"
-			:folder-role="folderRole"
-			:reply-queue-count="replyQueueCount"
+			:count="replyQueueCount"
+			:count-label="
+				t('components.postbox.postboxFolderRail.replyQueueAriaLabel', {
+					count: replyQueueCount,
+				})
+			"
 		/>
 
-		<!-- Secondary destination: lighter weight than the mail folders so the
-		     inbox/folders read as the primary rail. -->
-		<NuxtLink
-			to="/dashboard/postbox/contacts"
-			class="rounded text-sm text-text-tertiary hover:text-text-secondary hover:bg-bg-surface"
-			:class="
-				railCollapsed
-					? 'flex items-center justify-center w-9 h-9'
-					: 'flex items-center gap-2 px-2.5 py-1'
-			"
-			:title="railCollapsed ? t('components.postbox.postboxFolderRail.contacts') : undefined"
-			:aria-label="railCollapsed ? t('components.postbox.postboxFolderRail.contacts') : undefined"
-		>
-			<Icon name="lucide:users" :class="railCollapsed ? 'w-4 h-4' : 'w-3.5 h-3.5'" />
-			<span v-if="!railCollapsed" class="flex-1">{{
-				t('components.postbox.postboxFolderRail.contacts')
-			}}</span>
-		</NuxtLink>
-
-		<!-- Postbox settings (accounts, signatures, filters, notifications). The
-		     dashboard sidebar links to the Postbox as a whole, so this rail is the
-		     one steady entry point to its settings. -->
-		<NuxtLink
-			to="/dashboard/preferences"
-			class="rounded text-sm text-text-tertiary hover:text-text-secondary hover:bg-bg-surface"
-			:class="
-				railCollapsed
-					? 'flex items-center justify-center w-9 h-9'
-					: 'flex items-center gap-2 px-2.5 py-1'
-			"
-			:title="railCollapsed ? t('common.settings') : undefined"
-			:aria-label="railCollapsed ? t('common.settings') : undefined"
-		>
-			<Icon name="lucide:settings" :class="railCollapsed ? 'w-4 h-4' : 'w-3.5 h-3.5'" />
-			<span v-if="!railCollapsed" class="flex-1">{{ t('common.settings') }}</span>
-		</NuxtLink>
-
 		<!-- Custom folders (no role; user-created or custom IMAP folders).
-		     Expanded-only: folder CRUD and label management live here. -->
+		     Expanded-only, and navigation only — right-click for the verbs. -->
 		<div v-if="!railCollapsed" class="mt-3">
-			<header class="flex items-center justify-between mb-1 px-2">
+			<header class="flex items-center mb-1 px-2">
 				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
 					t('components.postbox.postboxFolderRail.foldersHeading')
 				}}</span>
-				<button
-					type="button"
-					class="text-text-tertiary hover:text-text-primary"
-					:title="t('components.postbox.postboxFolderRail.newFolder')"
-					@click="
-						creatingFolder = true;
-						newFolderName = '';
-					"
-				>
-					<Icon name="lucide:folder-plus" class="w-3.5 h-3.5" />
-				</button>
 			</header>
-			<div v-if="creatingFolder" class="px-2 py-1">
-				<input
-					v-model="newFolderName"
-					:placeholder="t('components.postbox.postboxFolderRail.folderNamePlaceholder')"
-					class="input input-sm"
-					:aria-label="t('components.postbox.postboxFolderRail.newFolderNameAriaLabel')"
-					@keyup.enter="confirmCreateFolder"
-					@keyup.esc="creatingFolder = false"
-				/>
-			</div>
 			<ul class="flex flex-col gap-0.5">
-				<li v-for="folder in customFolders" :key="folder._id" class="group flex items-center">
-					<input
-						v-if="renamingFolderId === folder._id"
-						v-model="renameFolderName"
-						class="input input-sm flex-1 mx-2"
-						:aria-label="t('components.postbox.postboxFolderRail.folderNameAriaLabel')"
-						@keyup.enter="confirmRenameFolder"
-						@keyup.esc="renamingFolderId = null"
-					/>
-					<template v-else>
-						<NuxtLink
-							:to="`/dashboard/postbox/${folder._id}`"
-							class="flex-1 flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
-							:class="{ 'bg-bg-surface text-brand': folderId === folder._id }"
-						>
-							<Icon name="lucide:folder" class="w-4 h-4 flex-shrink-0" />
-							<span class="truncate">{{ folder.name }}</span>
-						</NuxtLink>
-						<button
-							type="button"
-							class="opacity-0 group-hover:opacity-100 p-1 text-text-tertiary hover:text-text-primary"
-							:title="t('components.postbox.postboxFolderRail.renameFolder')"
-							@click="startRenameFolder(folder)"
-						>
-							<Icon name="lucide:pencil" class="w-3 h-3" />
-						</button>
-						<button
-							type="button"
-							class="opacity-0 group-hover:opacity-100 p-1 text-text-tertiary hover:text-error"
-							:title="t('components.postbox.postboxFolderRail.deleteFolder')"
-							@click="deletingFolder = { _id: folder._id, name: folder.name }"
-						>
-							<Icon name="lucide:trash-2" class="w-3 h-3" />
-						</button>
-					</template>
-				</li>
-				<li
-					v-if="customFolders.length === 0 && !creatingFolder"
-					class="text-xs text-text-tertiary px-2 py-1"
+				<UiContextMenu
+					v-for="folder in customFolders"
+					:key="folder._id"
+					:items="folderMenuItems(folder)"
 				>
+					<template #default="{ onContextmenu, onKeydown }">
+						<li class="flex items-center" @contextmenu="onContextmenu" @keydown="onKeydown">
+							<NuxtLink
+								:to="`/dashboard/postbox/${folder._id}`"
+								class="flex-1 flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
+								:class="{ 'bg-bg-surface text-brand': folderId === folder._id }"
+							>
+								<Icon name="lucide:folder" class="w-4 h-4 flex-shrink-0" />
+								<span class="truncate">{{ folder.name }}</span>
+							</NuxtLink>
+						</li>
+					</template>
+				</UiContextMenu>
+				<li v-if="customFolders.length === 0" class="text-xs text-text-tertiary px-2 py-1">
 					{{ t('components.postbox.postboxFolderRail.noCustomFolders') }}
 				</li>
 			</ul>
@@ -322,7 +234,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					</NuxtLink>
 					<button
 						type="button"
-						class="opacity-0 group-hover:opacity-100 p-1 text-text-tertiary hover:text-text-primary"
+						class="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 text-text-tertiary hover:text-text-primary"
 						:title="t('components.postbox.postboxFolderRail.unpinSearch')"
 						:aria-label="
 							t('components.postbox.postboxFolderRail.unpinSearchAriaLabel', { name: saved.name })
@@ -335,52 +247,26 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			</ul>
 		</div>
 
-		<!-- Shown expanded so the "Manage labels" affordance (the only way to
-		     create the first label) stays reachable; the empty case is handled
-		     by the "No labels yet" row below. Collapsed hides labels with the
-		     rest of the management UI. -->
+		<!-- Labels, as navigation. Creating, renaming, recolouring, reordering and
+		     deleting them all happen in the manage dialog; a right-click on a row
+		     is the shortcut there. -->
 		<div v-if="!railCollapsed" class="mt-3">
-			<header class="flex items-center justify-between mb-1 px-2">
+			<header class="flex items-center mb-1 px-2">
 				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
 					t('components.postbox.postboxFolderRail.labelsHeading')
 				}}</span>
-				<span class="flex items-center gap-1.5">
-					<button
-						type="button"
-						class="text-text-tertiary hover:text-text-primary"
-						:title="t('components.postbox.postboxFolderRail.newLabel')"
-						@click="
-							creatingLabel = true;
-							newLabelName = '';
-						"
-					>
-						<Icon name="lucide:plus" class="w-3.5 h-3.5" />
-					</button>
-					<button
-						type="button"
-						class="text-text-tertiary hover:text-text-primary"
-						:title="t('components.postbox.postboxFolderRail.manageLabels')"
-						@click="labelManagerOpen = true"
-					>
-						<Icon name="lucide:settings-2" class="w-3.5 h-3.5" />
-					</button>
-				</span>
 			</header>
-			<div v-if="creatingLabel" class="px-2 py-1">
-				<input
-					v-model="newLabelName"
-					:placeholder="t('components.postbox.postboxFolderRail.labelNamePlaceholder')"
-					class="input input-sm"
-					:aria-label="t('components.postbox.postboxFolderRail.newLabelNameAriaLabel')"
-					@keyup.enter="confirmCreateLabel"
-					@keyup.esc="creatingLabel = false"
-				/>
-				<p class="text-2xs text-text-tertiary mt-1">
-					{{ t('components.postbox.postboxFolderRail.labelNestingHint') }}
-				</p>
-			</div>
 			<PostboxLabelTree :mailbox-id="mailboxId" :active-label-id="activeLabelId" />
 		</div>
+
+		<!-- The long tail: Spam, Trash, Snoozed, Files, Subscriptions, Contacts,
+		     Import, Settings, and the manage surface. -->
+		<PostboxRailMoreGroup
+			class="mt-3"
+			:collapsed="railCollapsed"
+			:folders="moreFolders"
+			:folder-role="folderRole"
+		/>
 
 		<!-- Collapse toggle pinned to the rail bottom (also Cmd/Ctrl+Shift+D). -->
 		<button
@@ -409,26 +295,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 	</aside>
 
 	<UiConfirmationDialog
-		:open="!!deletingFolder"
+		:open="!!pendingFolderDelete"
 		variant="danger"
 		:title="t('components.postbox.postboxFolderRail.deleteFolder')"
 		:description="
 			t('components.postbox.postboxFolderRail.deleteFolderDescription', {
-				name: deletingFolder?.name ?? '',
+				name: pendingFolderDelete?.name ?? '',
 			})
 		"
 		:confirm-text="t('components.postbox.postboxFolderRail.deleteFolder')"
 		@update:open="
 			(v: boolean) => {
-				if (!v) deletingFolder = null;
+				if (!v) clearFolderDelete();
 			}
 		"
 		@confirm="confirmDeleteFolder"
 	/>
 
-	<PostboxLabelManager
-		:mailbox-id="mailboxId"
-		:open="labelManagerOpen"
-		@update:open="labelManagerOpen = $event"
-	/>
+	<PostboxLabelManager :mailbox-id="mailboxId" />
 </template>

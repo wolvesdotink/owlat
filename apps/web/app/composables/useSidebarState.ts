@@ -1,5 +1,14 @@
 // Composable for managing sidebar state with localStorage persistence
 
+import {
+	type SidebarFocusArea,
+	type SidebarFocusPins,
+	focusAreaForPath,
+	isFocusAreaPinned,
+	resolveSidebarCollapsed,
+	toggleFocusAreaPin,
+} from '~/lib/sidebarFocusArea';
+
 export interface SectionState {
 	inbox: boolean;
 	postbox: boolean;
@@ -62,6 +71,14 @@ function normalizeSectionState(stored: unknown): SectionState {
 const collapsedStorage = useLocalStorage<boolean>('sidebar-collapsed', false);
 const hiddenStorage = useLocalStorage<boolean>('sidebar-hidden', false);
 const sectionsStorage = useLocalStorage<SectionState>('sidebar-sections', defaultSectionState);
+// Per-focus-area "keep it open here" pins. Separate from `sidebar-collapsed` so
+// the two preferences cannot overwrite each other (see lib/sidebarFocusArea.ts).
+const focusPinStorage = useLocalStorage<SidebarFocusPins>('sidebar-focus-pins', {});
+
+// The focus area of the current route, fed in by the layout's route watcher.
+// A setter rather than a `useRoute()` call so this module stays mountable
+// (and unit-testable) without a router.
+const activeFocusArea = ref<SidebarFocusArea | null>(null);
 
 // Section expand/collapse states, always reconciled against the current sections.
 const normalizedSectionStates = computed<SectionState>(() =>
@@ -79,8 +96,23 @@ const isPeeking = ref(false);
 const isDesktopViewport = ref(true);
 
 export function useSidebarState() {
-	// Sidebar collapsed state (icons only mode)
-	const isCollapsed = collapsedStorage.data;
+	// The route's focus area (Postbox today), or null on ordinary routes.
+	const focusArea = computed(() => activeFocusArea.value);
+
+	// Whether the sidebar is pinned open for the current focus area.
+	const isFocusPinned = computed(() =>
+		isFocusAreaPinned(focusPinStorage.data.value, activeFocusArea.value)
+	);
+
+	// Sidebar collapsed state (icons only mode). Inside a focus area the pin
+	// decides; everywhere else the user's persisted preference does.
+	const isCollapsed = computed(() =>
+		resolveSidebarCollapsed(
+			collapsedStorage.data.value,
+			activeFocusArea.value,
+			focusPinStorage.data.value
+		)
+	);
 
 	// Sidebar hidden state (off the layout flow — desktop only)
 	const isHidden = hiddenStorage.data;
@@ -100,13 +132,28 @@ export function useSidebarState() {
 	});
 
 	// Toggle sidebar collapsed state (icons ↔ labels). Orthogonal to hidden.
+	// Inside a focus area the same control pins/unpins the sidebar there, so the
+	// one button always means "make this wider / narrower" without the global
+	// preference and the local one fighting over the next route change.
 	const toggleCollapsed = () => {
+		const area = activeFocusArea.value;
+		if (area) {
+			focusPinStorage.set(toggleFocusAreaPin(focusPinStorage.data.value, area));
+			return;
+		}
 		collapsedStorage.set(!isCollapsed.value);
 	};
 
-	// Set collapsed state directly
+	// Set collapsed state directly (the global preference; focus areas answer to
+	// their pin, so this is a no-op for them until the route leaves the area).
 	const setCollapsed = (value: boolean) => {
 		collapsedStorage.set(value);
+	};
+
+	// Record which focus area the current route belongs to. Called by the
+	// dashboard layout on every navigation.
+	const setRoutePath = (path: string) => {
+		activeFocusArea.value = focusAreaForPath(path);
 	};
 
 	// Toggle sidebar hidden state (Cmd/Ctrl-\). No-op below the desktop
@@ -172,6 +219,9 @@ export function useSidebarState() {
 		sidebarMode,
 		isPeeking,
 		sectionStates,
+		focusArea,
+		isFocusPinned,
+		setRoutePath,
 		toggleCollapsed,
 		setCollapsed,
 		toggleHidden,

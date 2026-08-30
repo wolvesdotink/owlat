@@ -1,13 +1,13 @@
 /**
  * Postbox list sort-order derivations: a stored value normalises to a valid
- * order (defaulting to newest), the toggle alternates, and the read argument
- * omits the default entirely so a user on it keeps the pre-existing query
- * shape.
+ * order (defaulting to newest), the picker offers both orders as catalog keys,
+ * and the read argument omits the default entirely so a user on it keeps the
+ * pre-existing query shape.
  */
 import { describe, it, expect } from 'vitest';
 import {
 	POSTBOX_SORT_ORDER_DEFAULT,
-	nextPostboxSortOrder,
+	POSTBOX_SORT_ORDER_OPTIONS,
 	postboxSortOrderArg,
 	resolvePostboxSortOrder,
 } from '../postboxSortOrder';
@@ -29,10 +29,10 @@ describe('resolvePostboxSortOrder', () => {
 	});
 });
 
-describe('nextPostboxSortOrder', () => {
-	it('alternates between the two orders', () => {
-		expect(nextPostboxSortOrder('newest')).toBe('oldest');
-		expect(nextPostboxSortOrder('oldest')).toBe('newest');
+describe('POSTBOX_SORT_ORDER_OPTIONS', () => {
+	it('offers both orders, newest first, as catalog keys', () => {
+		expect(POSTBOX_SORT_ORDER_OPTIONS.map((o) => o.value)).toEqual(['newest', 'oldest']);
+		expect(POSTBOX_SORT_ORDER_OPTIONS.every((o) => o.label.startsWith('shared.'))).toBe(true);
 	});
 });
 
