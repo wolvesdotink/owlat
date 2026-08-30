@@ -227,8 +227,9 @@ const readerThread = computed(
 						waitingOn?: string;
 					};
 					// Muted conversation, its opt-in twin (alert me when they reply)
-					// and the transient back-from-snooze marker — all rendered as
-					// header chips (mail/mute.ts, mail/threadAlerts.ts, mail/snooze.ts).
+					// and the transient back-from-snooze marker — all checkable states
+					// in the thread ⋯ menu (mail/mute.ts, mail/threadAlerts.ts,
+					// mail/snooze.ts).
 					mutedAt?: number;
 					notifyOnReplyAt?: number;
 					snoozeReturnedAt?: number;
@@ -326,7 +327,7 @@ const { autoAdvance, replyDefault, markReadPolicy } = usePostboxSettings();
 // the reader always had, and what an unset preference resolves to),
 // 'after-dwell' waits POSTBOX_MARK_READ_DWELL_MS of visible dwell and cancels
 // if the reader is navigated away or torn down first, and 'manual' never fires
-// — the header offers an explicit button instead.
+// — the thread ⋯ menu offers an explicit item instead.
 //
 // Guarded per thread so the reactive re-fetch that follows (flagSeen flips →
 // query re-runs) doesn't re-fire, and so a dwell timer is armed at most once.
@@ -353,7 +354,7 @@ const showsManualMarkReadButton = computed(() =>
 	showsManualMarkRead(markReadPolicy.value, threadHasUnread.value)
 );
 
-/** The header's explicit "Mark read" affordance (markReadPolicy 'manual'). */
+/** The thread menu's explicit "Mark read" item (markReadPolicy 'manual'). */
 function markOpenThreadRead() {
 	const threadId = threadData.value?.thread?._id;
 	if (!threadId) return;
@@ -1031,8 +1032,8 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 			:labels="labelMap"
 			:show-mark-read="showsManualMarkReadButton"
 			:marking-read="markThreadReadOp.isLoading.value"
-			@unmute="toggleOpenThreadMute"
-			@stop-alert="toggleOpenThreadAlert"
+			@toggle-mute="toggleOpenThreadMute"
+			@toggle-alert="toggleOpenThreadAlert"
 			@mark-read="markOpenThreadRead"
 		/>
 

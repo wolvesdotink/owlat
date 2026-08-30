@@ -4109,13 +4109,14 @@
 				"rowLabel": "{subject}, {count} ungelesen"
 			},
 			"postboxThreadHeader": {
-				"alerted": "Hinweis bei Antwort",
-				"alertedHint": "Sie werden benachrichtigt, wenn hier jemand antwortet — auch während der Ruhezeiten. Zum Beenden klicken.",
+				"alertOnReply": "Bei Antwort benachrichtigen",
+				"alertedHint": "Du wirst benachrichtigt, wenn hier jemand antwortet — auch in Ruhezeiten.",
 				"backFromSnooze": "Zurück aus dem Schlummer",
 				"markRead": "Als gelesen markieren",
-				"muted": "Stummgeschaltet",
+				"menuLabel": "Konversationsaktionen",
+				"muteConversation": "Konversation stummschalten",
 				"noSubject": "(kein Betreff)",
-				"unmuteHint": "Stummschaltung dieser Unterhaltung aufheben"
+				"unmuteHint": "Stummgeschaltete Konversationen bleiben aus dem Posteingang."
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archivieren",

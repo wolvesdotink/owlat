@@ -4109,13 +4109,14 @@
 				"rowLabel": "{subject}, {count} unread"
 			},
 			"postboxThreadHeader": {
-				"alerted": "Alerting on reply",
-				"alertedHint": "You'll be notified when someone replies here, even during quiet hours. Click to stop.",
+				"alertOnReply": "Alert on reply",
+				"alertedHint": "You'll be notified when someone replies here, even during quiet hours.",
 				"backFromSnooze": "Back from snooze",
 				"markRead": "Mark read",
-				"muted": "Muted",
+				"menuLabel": "Conversation actions",
+				"muteConversation": "Mute conversation",
 				"noSubject": "(no subject)",
-				"unmuteHint": "Unmute this conversation"
+				"unmuteHint": "Muted conversations stay out of the inbox."
 			},
 			"postboxThreadList": {
 				"archiveOperation": "Archive",
