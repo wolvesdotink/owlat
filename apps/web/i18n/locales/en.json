@@ -14387,7 +14387,9 @@
 			"skipToContent": "Skip to main content",
 			"theme": "Theme",
 			"userFallback": "User",
-			"navigatedTo": "Navigated to {page}"
+			"navigatedTo": "Navigated to {page}",
+			"pinSidebar": "Pin sidebar open",
+			"unpinSidebar": "Unpin sidebar"
 		},
 		"error": {
 			"forbidden": "You don't have permission to access this page.",

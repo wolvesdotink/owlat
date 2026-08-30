@@ -22,6 +22,9 @@ const {
 	effectiveHidden,
 	isPeeking,
 	sectionStates,
+	focusArea,
+	isFocusPinned,
+	setRoutePath,
 	toggleCollapsed,
 	toggleHidden,
 	toggleSection,
@@ -30,6 +33,13 @@ const {
 	setDesktopViewport,
 	initFromStorage,
 } = useSidebarState();
+
+// Areas that bring their own navigation column (Postbox and its folder rail)
+// default this sidebar to its icon rail, so reading mail costs one full-width
+// nav column instead of two. The pin lives per area, so a user who wants both
+// columns keeps them and everyone else gets the width back. See
+// lib/sidebarFocusArea.ts.
+watch(() => route.path, setRoutePath, { immediate: true });
 
 // Focus mode state for distraction-free editing
 const { isFocusMode } = useFocusMode();
@@ -400,6 +410,19 @@ const {
 // pre-switched to its Ask scope behind the same `ai.knowledge` gate — one
 // overlay, one shortcut owner, and knowledge answers next to object results.
 
+// The collapse control's one label. In a focus area it reads as a pin, because
+// that is what it writes; elsewhere it stays the collapse/expand it always was.
+const sidebarToggleLabel = computed(() => {
+	if (focusArea.value) {
+		return isFocusPinned.value
+			? t("shell.dashboard.unpinSidebar")
+			: t("shell.dashboard.pinSidebar");
+	}
+	return isCollapsed.value
+		? t("shell.dashboard.expandSidebar")
+		: t("shell.dashboard.collapseSidebar");
+});
+
 // Computed sidebar width class — a hidden sidebar peeks at its last width.
 const sidebarWidthClass = computed(() => {
 	return isCollapsed.value ? "w-16" : "w-64";
@@ -722,7 +745,10 @@ const sidebarDesktopClass = computed(() => {
 				</div>
 			</nav>
 
-			<!-- Collapse toggle button -->
+			<!-- Collapse toggle button. Inside a focus area (Postbox) the same control
+			     pins the sidebar open instead of writing the global preference, so
+			     the icon-rail default there is reversible without changing what the
+			     sidebar does everywhere else. -->
 			<div class="hidden lg:flex px-2 py-2 border-t border-border-subtle">
 				<button
 					:class="[
@@ -730,18 +756,21 @@ const sidebarDesktopClass = computed(() => {
 						'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 						{ 'justify-center': isCollapsed },
 					]"
-					:title="
-						isCollapsed ? t('shell.dashboard.expandSidebar') : t('shell.dashboard.collapseSidebar')
-					"
+					:title="sidebarToggleLabel"
+					:aria-pressed="focusArea ? isFocusPinned : undefined"
 					@click="toggleCollapsed"
 				>
 					<Icon
 						v-if="!isCollapsed"
-						name="lucide:panel-left-close"
+						:name="focusArea ? 'lucide:pin-off' : 'lucide:panel-left-close'"
 						class="w-5 h-5 text-text-tertiary"
 					/>
-					<Icon v-else name="lucide:panel-left" class="w-5 h-5 text-text-tertiary" />
-					<span v-if="!isCollapsed">{{ t("shell.dashboard.collapse") }}</span>
+					<Icon
+						v-else
+						:name="focusArea ? 'lucide:pin' : 'lucide:panel-left'"
+						class="w-5 h-5 text-text-tertiary"
+					/>
+					<span v-if="!isCollapsed">{{ sidebarToggleLabel }}</span>
 				</button>
 			</div>
 
