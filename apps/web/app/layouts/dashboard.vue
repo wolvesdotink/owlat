@@ -365,9 +365,6 @@ const userInitials = computed(() => {
 // shared control so the event name lives in one place.
 const { open: openCommandPalette } = useCommandPalette();
 
-// Quick Query panel state
-const isQuickQueryOpen = ref(false);
-
 // Initialize desktop notifications (no-op in browser)
 useDesktopNotifications();
 
@@ -398,32 +395,10 @@ const {
 	dotClass: deliveryHealthDotClass,
 } = useDeliveryHealth();
 
-// Register Quick Query keyboard shortcut (Cmd+Shift+K / Ctrl+Shift+K).
-// Quick Query searches the knowledge graph, so it is gated on `ai.knowledge`
-// just like the panel mount below — the shortcut must do nothing when knowledge
-// is disabled (the backend mutation also asserts the flag).
-onMounted(() => {
-	const handleQuickQuery = (e: KeyboardEvent) => {
-		if (!isFeatureEnabled("ai.knowledge")) return;
-		// With Shift held the key value is uppercase — compare case-insensitively.
-		if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "k") {
-			e.preventDefault();
-			isQuickQueryOpen.value = !isQuickQueryOpen.value;
-		}
-	};
-	document.addEventListener("keydown", handleQuickQuery);
-	// The command palette surfaces Quick Query as its "Ask knowledge…" action,
-	// which dispatches this event so the two share one open path.
-	const handleOpenKnowledgeQuery = () => {
-		if (!isFeatureEnabled("ai.knowledge")) return;
-		isQuickQueryOpen.value = true;
-	};
-	window.addEventListener("owlat:open-knowledge-query", handleOpenKnowledgeQuery);
-	onUnmounted(() => {
-		document.removeEventListener("keydown", handleQuickQuery);
-		window.removeEventListener("owlat:open-knowledge-query", handleOpenKnowledgeQuery);
-	});
-});
+// Quick Query used to be a second modal with its own Cmd/Ctrl+Shift+K handler
+// and its own open event. Both now live in `AppCommandPalette`, which opens
+// pre-switched to its Ask scope behind the same `ai.knowledge` gate — one
+// overlay, one shortcut owner, and knowledge answers next to object results.
 
 // Computed sidebar width class — a hidden sidebar peeks at its last width.
 const sidebarWidthClass = computed(() => {
@@ -877,14 +852,8 @@ const sidebarDesktopClass = computed(() => {
 			</main>
 		</div>
 
-		<!-- Quick Query panel (knowledge search — gated on ai.knowledge) -->
-		<QueryQuickQueryPanel
-			v-if="isFeatureEnabled('ai.knowledge')"
-			:is-open="isQuickQueryOpen"
-			@close="isQuickQueryOpen = false"
-		/>
-
-		<!-- App-wide command palette (Cmd/Ctrl-K) — works on every dashboard page -->
+		<!-- App-wide command palette (Cmd/Ctrl-K), route-scoped: mail search on
+		     Postbox, knowledge Ask on Cmd/Ctrl+Shift+K, objects everywhere else -->
 		<AppCommandPalette />
 
 		<!-- Keyboard shortcuts help modal -->
