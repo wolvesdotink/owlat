@@ -8216,7 +8216,6 @@
 		},
 		"inbox": {
 			"activity": {
-				"assignToTeammate": "Assign to a teammate",
 				"channelHealthTitle": "{channel}: {status}",
 				"channels": {
 					"chat": "Chat",
@@ -8239,6 +8238,8 @@
 					"outbound": "Sent"
 				},
 				"errorTitle": "Couldn't load activity",
+				"failedMessages": "Failed messages",
+				"failedMessagesTitle": "Inbound messages that failed after every automatic retry",
 				"health": {
 					"error": "Down",
 					"success": "Healthy",
@@ -8282,7 +8283,6 @@
 				"approveAndSend": "Approve & Send",
 				"assign": "Assign",
 				"assignThreadAria": "Assign thread",
-				"assignToTeammateAria": "Assign thread to a teammate",
 				"assignedTo": "Assigned To",
 				"assignedToAria": "Assigned to {name}",
 				"autoSendCancelledToast": "Automatic send cancelled and returned to review",

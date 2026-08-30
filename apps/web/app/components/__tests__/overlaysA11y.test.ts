@@ -16,6 +16,7 @@ import { useCommandPaletteRegistry } from '~/composables/useCommandPaletteRegist
 import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
 import { useCommandPaletteScope } from '~/composables/useCommandPaletteScope';
 import { useCommandPaletteMailScope } from '~/composables/useCommandPaletteMailScope';
+import { useCommandPaletteInboxScope } from '~/composables/useCommandPaletteInboxScope';
 import { useCommandPaletteObjectItems } from '~/composables/useCommandPaletteObjectItems';
 import { useCommandPaletteAsk } from '~/composables/useCommandPaletteAsk';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
@@ -90,6 +91,7 @@ beforeEach(() => {
 		// placeholder and the rows the route-scoped overlay actually renders.
 		useCommandPaletteScope,
 		useCommandPaletteMailScope,
+		useCommandPaletteInboxScope,
 		useCommandPaletteObjectItems,
 		useCommandPaletteAsk,
 		useDebouncedSearch,

@@ -8216,7 +8216,6 @@
 		},
 		"inbox": {
 			"activity": {
-				"assignToTeammate": "Einer Kollegin oder einem Kollegen zuweisen",
 				"channelHealthTitle": "{channel}: {status}",
 				"channels": {
 					"chat": "Chat",
@@ -8239,6 +8238,8 @@
 					"outbound": "Gesendet"
 				},
 				"errorTitle": "Aktivitäten konnten nicht geladen werden",
+				"failedMessages": "Fehlgeschlagene Nachrichten",
+				"failedMessagesTitle": "Eingehende Nachrichten, die nach allen automatischen Wiederholungen fehlgeschlagen sind",
 				"health": {
 					"error": "Ausgefallen",
 					"success": "Funktioniert",
@@ -8282,7 +8283,6 @@
 				"approveAndSend": "Freigeben & senden",
 				"assign": "Zuweisen",
 				"assignThreadAria": "Konversation zuweisen",
-				"assignToTeammateAria": "Konversation einer Kollegin oder einem Kollegen zuweisen",
 				"assignedTo": "Zugewiesen an",
 				"assignedToAria": "{name} zugewiesen",
 				"autoSendCancelledToast": "Automatischer Versand abgebrochen und zur Prüfung zurückgestellt",

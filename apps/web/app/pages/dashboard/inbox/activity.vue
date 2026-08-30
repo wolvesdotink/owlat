@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ChannelHealthDot } from '~/utils/channelKinds';
 
@@ -39,6 +40,12 @@ const {
 // hide the affordance for editors — the explanation stays for everyone.
 const { role } = useOrganizationContext();
 const canManageChannels = computed(() => role.value === 'owner' || role.value === 'admin');
+
+// Permanently-failed inbound messages. The denormalized counter off
+// `instanceSettings.inboxStats` — the same read four other dashboard cards
+// already subscribe to, so the badge costs nothing new.
+const { data: inboundStats } = useConvexQuery(api.inbox.queries.getInboundStats, () => ({}));
+const failedCount = computed(() => inboundStats.value?.failed ?? 0);
 
 // Channel / direction / delivery labels are translated here; the shared display
 // helpers (`~/composables/useUnifiedContactTimeline`) stay plain constants, so an
@@ -94,6 +101,22 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 				</h1>
 				<p class="text-text-secondary mt-1">{{ t('dashboard.inbox.activity.subtitle') }}</p>
 			</div>
+
+			<!-- The retry desk, which had no entrance at all: /dashboard/inbox/failed
+			     was reachable only by typing the URL. This is the page where you come
+			     to ask what the channels have been doing, so it is where the messages
+			     that never made it belong — with a live count, like the review queue's
+			     button on the inbox list. -->
+			<UiButton
+				variant="secondary"
+				to="/dashboard/inbox/failed"
+				class="gap-2"
+				:title="t('dashboard.inbox.activity.failedMessagesTitle')"
+			>
+				<Icon name="lucide:alert-triangle" class="w-4 h-4" />
+				{{ t('dashboard.inbox.activity.failedMessages') }}
+				<UiBadge v-if="failedCount" variant="error" size="sm">{{ failedCount }}</UiBadge>
+			</UiButton>
 		</div>
 
 		<!-- Channel filter pills (with per-channel health dots) -->
@@ -217,8 +240,13 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 						</p>
 					</NuxtLink>
 
-					<!-- Hover-reveal action rail: opacity-only overlay, pointer-events gated,
-				     also revealed on keyboard focus-within. No DOM/layout shift. -->
+					<!-- Hover-reveal action rail: Open and Resolve. There used to be a
+					     third button here, an "assign" one that only navigated to the
+					     thread — the same destination Open already has, under a verb it
+					     did not do. Assigning happens in the thread header and on the
+					     list row's own hover rail.
+					     Opacity-only overlay, pointer-events gated, also revealed on
+					     keyboard focus-within. No DOM/layout shift. -->
 					<div
 						class="absolute top-1/2 right-4 -translate-y-1/2 flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-elevated px-1 py-1 shadow-lg opacity-0 pointer-events-none transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
 					>
@@ -231,16 +259,6 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 							:aria-label="t('dashboard.inbox.activity.openConversation')"
 						>
 							<Icon name="lucide:arrow-up-right" class="w-4 h-4" />
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							size="sm"
-							:to="`/dashboard/inbox/${item.threadId}`"
-							class="!px-2"
-							:title="t('dashboard.inbox.activity.assignToTeammate')"
-							:aria-label="t('dashboard.inbox.activity.assignToTeammate')"
-						>
-							<Icon name="lucide:user-plus" class="w-4 h-4" />
 						</UiButton>
 						<UiButton
 							variant="ghost"
