@@ -34,9 +34,12 @@ export const PALETTE_SCOPE_LABEL_KEYS: Readonly<Record<PaletteScope, string>> = 
 /**
  * Route prefix → the scope the overlay opens in there, first match wins.
  *
- * `/dashboard/inbox` (Team Inbox) is deliberately absent: its thread search
- * needs a backend search argument that does not exist yet, so it falls through
- * to Everything rather than opening on a scope that cannot answer.
+ * `/dashboard/inbox` (Team Inbox) is deliberately absent, and stays absent now
+ * that its threads are searchable: they reach the overlay as a route-scoped
+ * PROVIDER inside Everything (`core:inbox-threads`, gated on `matchRoute`), not
+ * as a fourth chip on the cycle. A scope NARROWS the overlay to one corpus, and
+ * in the Team Inbox you still want the contacts, the settings and the commands
+ * — you just also want the threads.
  */
 const SCOPE_ROUTES: ReadonlyArray<{ matches: (path: string) => boolean; scope: PaletteScope }> = [
 	{ matches: routePrefixMatcher('/dashboard/postbox'), scope: 'mail' },

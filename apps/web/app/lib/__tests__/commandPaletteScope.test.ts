@@ -53,9 +53,12 @@ describe('defaultScopeForRoute', () => {
 		expect(defaultScopeForRoute('/dashboard/knowledgebase')).toBe('everything');
 	});
 
-	it('leaves the Team Inbox on Everything until its threads are searchable', () => {
-		// `inbox.queries.listThreads` has no search argument yet; a Team Inbox
-		// scope would be a box that cannot answer.
+	it('keeps the Team Inbox on Everything — its threads join it, they are not a scope', () => {
+		// Team Inbox threads ARE searchable now (`inbox.queries.listThreads` grew a
+		// `search` argument), but they arrive as a route-scoped PROVIDER inside the
+		// Everything palette — `core:inbox-threads`, gated on `matchRoute` — rather
+		// than as a fourth chip on the Tab cycle. A scope narrows the overlay to one
+		// corpus; in the Team Inbox you still want the contacts and the commands.
 		expect(defaultScopeForRoute('/dashboard/inbox')).toBe('everything');
 		expect(defaultScopeForRoute('/dashboard/inbox/thread1')).toBe('everything');
 	});

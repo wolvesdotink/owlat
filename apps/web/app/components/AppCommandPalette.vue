@@ -11,7 +11,7 @@ import {
 	moveSelection,
 	parsePaletteQuery,
 } from '~/lib/commandPalette';
-import { resolvePaletteGroups } from '~/lib/commandPaletteRegistry';
+import { resolvePaletteGroups, routePrefixMatcher } from '~/lib/commandPaletteRegistry';
 import { PALETTE_SCOPE_LABEL_KEYS, groupsForScope } from '~/lib/commandPaletteScope';
 import type { CommandPaletteOpenDetail } from '~/composables/useCommandPalette';
 import {
@@ -117,14 +117,21 @@ const mailScope = useCommandPaletteMailScope({
 // ── Ask scope: the knowledge + files question, answered inline with citations.
 const askScope = useCommandPaletteAsk();
 
+// ── Team Inbox threads: the one ROUTE-scoped corpus. The registry gates the
+// provider on `/dashboard/inbox/**`; the same predicate gates the subscription
+// here, so the query never runs on the other forty dashboard pages.
+const isInboxRoute = computed(() => routePrefixMatcher('/dashboard/inbox')(route.path));
+const inboxScope = useCommandPaletteInboxScope({
+	query: searchTerm,
+	enabled: computed(() => prompt.value === 'palette' && isInboxRoute.value),
+	onRemember: (term) => saveRecent(term),
+});
+
 /** One spinner for whichever backend the active scope is waiting on. */
 const isSearching = computed(() => {
 	if (prompt.value === 'mailSearch') return mailScope.isSearching.value;
-	return (
-		prompt.value === 'palette' &&
-		searchTerm.value.trim().length >= SEARCH_MIN_QUERY &&
-		searchResults.value === undefined
-	);
+	if (prompt.value !== 'palette' || searchTerm.value.trim().length < SEARCH_MIN_QUERY) return false;
+	return searchResults.value === undefined || inboxScope.isSearching.value;
 });
 
 // ── Core providers, consulted before any surface/plugin provider. Their
@@ -148,6 +155,7 @@ const coreProviders = buildCorePaletteProviders({
 	isMailScope: () => prompt.value === 'mailSearch',
 	mailSuggestionItems: () => mailScope.suggestionItems.value,
 	mailHitItems: () => mailScope.hitItems.value,
+	inboxThreadItems: () => inboxScope.threadItems.value,
 });
 
 // ── Argument step. While an item's argument is pending the palette shows only
@@ -222,6 +230,7 @@ async function openPalette(detail?: CommandPaletteOpenDetail) {
 	pendingArgument.value = null;
 	resetScope(detail?.scope);
 	mailScope.resetQuery();
+	inboxScope.resetQuery();
 	askScope.reset();
 	loadRecent();
 	await nextTick();
@@ -234,6 +243,7 @@ function close() {
 	activeIndex.value = 0;
 	pendingArgument.value = null;
 	mailScope.resetQuery();
+	inboxScope.resetQuery();
 	askScope.reset();
 }
 

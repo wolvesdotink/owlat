@@ -18,6 +18,7 @@ import { useCommandPaletteProviders } from '~/composables/useCommandPaletteProvi
 import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
 import { useCommandPaletteScope } from '~/composables/useCommandPaletteScope';
 import { useCommandPaletteMailScope } from '~/composables/useCommandPaletteMailScope';
+import { useCommandPaletteInboxScope } from '~/composables/useCommandPaletteInboxScope';
 import { useCommandPaletteObjectItems } from '~/composables/useCommandPaletteObjectItems';
 import { useCommandPaletteAsk } from '~/composables/useCommandPaletteAsk';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
@@ -110,6 +111,7 @@ function installStubs(path: string, overrides: Record<string, unknown> = {}) {
 		useCommandPaletteRecents,
 		useCommandPaletteScope,
 		useCommandPaletteMailScope,
+		useCommandPaletteInboxScope,
 		useCommandPaletteObjectItems,
 		useCommandPaletteAsk,
 		useDebouncedSearch,

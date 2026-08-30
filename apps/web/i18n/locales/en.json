@@ -10697,7 +10697,8 @@
 				"recent": "Recent searches",
 				"settings": "Settings",
 				"templates": "Templates",
-				"refine": "Refine"
+				"refine": "Refine",
+				"inboxThreads": "Team Inbox"
 			}
 		},
 		"conditions": {

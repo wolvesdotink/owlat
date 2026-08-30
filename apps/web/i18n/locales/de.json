@@ -10697,7 +10697,8 @@
 				"recent": "Letzte Suchen",
 				"settings": "Einstellungen",
 				"templates": "Vorlagen",
-				"refine": "Verfeinern"
+				"refine": "Verfeinern",
+				"inboxThreads": "Team-Postfach"
 			}
 		},
 		"conditions": {

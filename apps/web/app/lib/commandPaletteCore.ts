@@ -2,7 +2,8 @@
  * Pure factory for the app command palette's built-in ("core") providers.
  *
  * The core providers — recent searches, the two Mail-scope providers (grammar
- * completions + live deep-search hits), verbs, sidebar-context switch, settings
+ * completions + live deep-search hits), route-scoped Team Inbox threads, verbs,
+ * sidebar-context switch, settings
  * controls, object search, mail, and navigation — used to live as inline closures inside
  * `AppCommandPalette.vue`, so their ids, priorities, group keys, `order`/`cap`
  * values, and idle-vs-query gating conditions were untestable without mounting
@@ -23,7 +24,7 @@
  * never re-implements the prefix grammar.
  */
 import { type PaletteGroup, type PaletteItem, filterItems } from './commandPalette';
-import type { CommandPaletteProvider } from './commandPaletteRegistry';
+import { type CommandPaletteProvider, routePrefixMatcher } from './commandPaletteRegistry';
 import { filterByKeywords } from './settingsRegistry';
 
 /**
@@ -110,11 +111,17 @@ export interface CorePaletteProviderDeps {
 	mailSuggestionItems: () => PaletteItem[];
 	/** Live top hits from `mail.mailbox.search.search`, newest first. */
 	mailHitItems: () => PaletteItem[];
+	/**
+	 * Team Inbox thread hits from `inbox.queries.listThreads`' search argument.
+	 * Only ever read on `/dashboard/inbox/**` — the provider below is route-gated,
+	 * so this getter costs nothing anywhere else.
+	 */
+	inboxThreadItems: () => PaletteItem[];
 }
 
 /**
  * Build the ordered core provider set. Priorities fix the consult/dedup order
- * (10/12/13/20/30/35/40/45/50); each provider's group `order` still drives the final
+ * (10/12/13/15/20/30/35/40/45/50); each provider's group `order` still drives the final
  * render sort in `mergeGroups`. Pure.
  */
 export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): CommandPaletteProvider[] {
@@ -176,6 +183,29 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 						order: 2,
 						cap: 5,
 						items: deps.mailHitItems(),
+					},
+				];
+			},
+		},
+		{
+			// Team Inbox threads — the ONE route-scoped corpus. `matchRoute` keeps it
+			// out of every other surface's results (a shared-inbox thread is noise on
+			// the campaigns page), which is exactly what the registry's route gate is
+			// for; the `inbox` flag keeps it out of instances without a team inbox.
+			// Ranked with the other object hits, above navigation.
+			id: 'core:inbox-threads',
+			priority: 15,
+			flag: 'inbox',
+			matchRoute: routePrefixMatcher('/dashboard/inbox'),
+			build: ({ query }): PaletteGroup[] => {
+				if (query.trim().length < SEARCH_MIN_QUERY) return [];
+				return [
+					{
+						key: 'inbox-threads',
+						heading: 'shared.commandPaletteCore.groups.inboxThreads',
+						order: 3,
+						cap: 5,
+						items: deps.inboxThreadItems(),
 					},
 				];
 			},
