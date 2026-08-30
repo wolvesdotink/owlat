@@ -147,15 +147,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		class="border-r border-border-subtle bg-bg-elevated flex flex-col"
 		:class="railCollapsed ? 'w-12 p-2 gap-1.5 items-center' : 'w-56 p-3 gap-2'"
 	>
-		<!-- Identity + the one primary verb. The mailbox switcher is a chip beside
-		     Compose and renders nothing at all for a lone personal mailbox. -->
-		<div :class="railCollapsed ? 'flex flex-col items-center gap-1.5' : 'flex items-center gap-2'">
-			<PostboxComposeButton
-				:mailbox-id="mailboxId"
-				:collapsed="railCollapsed"
-				:class="railCollapsed ? '' : 'flex-1 min-w-0'"
-			/>
+		<!-- Identity + the one primary verb, in one compact block. The mailbox
+		     switcher is a single small chip (it was a stacked section with two
+		     headings and a row per mailbox) and still renders nothing at all for
+		     a lone personal mailbox — a chip offering one choice is chrome. -->
+		<div class="flex flex-col gap-1.5" :class="{ 'items-center': railCollapsed }">
 			<PostboxMailboxSwitcher :mailbox-id="mailboxId" :collapsed="railCollapsed" />
+			<PostboxComposeButton :mailbox-id="mailboxId" :collapsed="railCollapsed" />
 		</div>
 
 		<PostboxFolderList

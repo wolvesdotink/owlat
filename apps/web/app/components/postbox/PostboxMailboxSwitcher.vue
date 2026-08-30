@@ -76,7 +76,14 @@ function switchTo(id: Id<'mailboxes'>) {
 </script>
 
 <template>
-	<UiDropdownMenu v-if="hasChoice" v-model:open="open" position="left" class="flex-shrink-0">
+	<!-- `self-start max-w-full`: the chip is as wide as its name and no wider, and
+	     truncates rather than widening the rail when the name is long. -->
+	<UiDropdownMenu
+		v-if="hasChoice"
+		v-model:open="open"
+		position="left"
+		class="self-start max-w-full"
+	>
 		<template #trigger>
 			<button
 				type="button"
@@ -84,7 +91,7 @@ function switchTo(id: Id<'mailboxes'>) {
 				:class="
 					collapsed
 						? 'flex items-center justify-center w-9 h-9'
-						: 'flex items-center gap-1 pl-2 pr-1.5 py-1 max-w-28'
+						: 'flex items-center gap-1 pl-2 pr-1.5 py-0.5 max-w-full min-w-0'
 				"
 				:title="t('components.postbox.postboxMailboxSwitcher.switchTitle', { label: chipLabel })"
 				:aria-label="
