@@ -75,13 +75,20 @@ describe('PostboxScheduleDialog — no recipient timezone', () => {
 	});
 
 	it('names the day each further-out row lands on, never the raw placeholder', () => {
-		const wrapper = mountDialog();
-		const rows = wrapper.findAll('[data-testid^="postbox-schedule-preset-next"]');
-		expect(rows.length).toBeGreaterThan(0);
-		for (const row of rows) {
-			expect(row.text()).not.toContain('{weekday}');
-			// A real weekday name, in the reader's language.
-			expect(row.text()).toMatch(/Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday/);
+		// Pinned to a Wednesday: on a Sunday both `next*` presets resolve to
+		// tomorrow 9:00 and dedupe against "tomorrow morning", leaving no rows.
+		vi.useFakeTimers({ now: new Date('2026-09-02T10:00:00'), toFake: ['Date'] });
+		try {
+			const wrapper = mountDialog();
+			const rows = wrapper.findAll('[data-testid^="postbox-schedule-preset-next"]');
+			expect(rows.length).toBeGreaterThan(0);
+			for (const row of rows) {
+				expect(row.text()).not.toContain('{weekday}');
+				// A real weekday name, in the reader's language.
+				expect(row.text()).toMatch(/Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday/);
+			}
+		} finally {
+			vi.useRealTimers();
 		}
 	});
 
