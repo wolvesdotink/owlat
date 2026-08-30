@@ -3223,6 +3223,14 @@
 				"placeholder": "Schreiben Sie Ihre Nachricht…",
 				"label": "Nachrichtentext"
 			},
+			"postboxBulkSelectAllRow": {
+				"allMatchingCapped": "Auf die ersten {count} begrenzt — erst bearbeiten, dann erneut auswählen.",
+				"allMatchingSelected": "{count} Nachricht ausgewählt. | {count} Nachrichten ausgewählt.",
+				"clearSelection": "Auswahl aufheben",
+				"pageSelected": "Die {count} geladene Nachricht ist ausgewählt. | Alle {count} geladenen Nachrichten sind ausgewählt.",
+				"selectAllMatching": "Alles in diesem Ordner auswählen",
+				"selectingAllMatching": "Wird ausgewählt…"
+			},
 			"postboxClarificationCard": {
 				"answer": "Antworten",
 				"answerLater": "Ich antworte später",
@@ -3499,6 +3507,10 @@
 				},
 				"title": "Erinnern, falls bis dahin keine Antwort kommt"
 			},
+			"postboxInboxModeToggle": {
+				"label": "Posteingangsansicht",
+				"title": "Heute oder das ganze Postfach (B)"
+			},
 			"postboxInlineReply": {
 				"dialogLabel": "Inline-Antwort",
 				"forward": "Weiterleiten",
@@ -3544,8 +3556,6 @@
 				"title": "Label hinzufügen"
 			},
 			"postboxLayout": {
-				"backToTodayTitle": "Zurück zu Heute (Esc)",
-				"escKey": "esc",
 				"folderFallback": "Ordner",
 				"folderRoles": {
 					"archive": "Archiv",
@@ -3568,19 +3578,16 @@
 					"sections": "Bereiche"
 				}
 			},
+			"postboxListDisplayMenu": {
+				"density": "Dichte",
+				"display": "Anzeige",
+				"label": "Anzeigeoptionen",
+				"readingPane": "Lesebereich",
+				"sortOrder": "Sortierung"
+			},
 			"postboxListHeader": {
-				"allMatchingCapped": "Auf die ersten {count} begrenzt — erst bearbeiten, dann erneut auswählen.",
-				"allMatchingSelected": "{count} Nachricht ausgewählt. | {count} Nachrichten ausgewählt.",
-				"clearSelection": "Auswahl aufheben",
 				"deselectPage": "Auswahl aufheben",
-				"newestFirst": "Neueste zuerst",
-				"oldestFirst": "Älteste zuerst",
-				"pageSelected": "Die {count} geladene Nachricht ist ausgewählt. | Alle {count} geladenen Nachrichten sind ausgewählt.",
-				"selectAllMatching": "Alles in diesem Ordner auswählen",
-				"selectPage": "Alle geladenen Nachrichten auswählen",
-				"selectingAllMatching": "Wird ausgewählt…",
-				"sortToNewest": "Nach neuesten zuerst sortieren",
-				"sortToOldest": "Nach ältesten zuerst sortieren"
+				"selectPage": "Alle geladenen Nachrichten auswählen"
 			},
 			"postboxMailboxConnectForm": {
 				"addressLabel": "{provider}-Adresse",
@@ -3838,6 +3845,7 @@
 				"label": "Label",
 				"markReadTitle": "Als gelesen markieren",
 				"markUnreadTitle": "Als ungelesen markieren",
+				"moreActions": "Weitere Sammelaktionen",
 				"move": "Verschieben",
 				"noLabels": "Noch keine Labels",
 				"notSpam": "Kein Spam",
@@ -4204,7 +4212,6 @@
 				"allClear": "Alles erledigt — nichts Neues braucht Ihre Aufmerksamkeit.",
 				"answer": "Antworten",
 				"browse": "Durchsuchen",
-				"browseTitle": "Alle Ordner durchsuchen (B)",
 				"forYou": "Für Sie",
 				"forYouDetail": "{who} — {snippet}",
 				"forYouHeading": "Für Sie ({count})",
@@ -4299,7 +4306,8 @@
 				"unread": "Ungelesen",
 				"starred": "Mit Stern",
 				"attachments": "Mit Anhang",
-				"partialCountHint": "Die Zahlen umfassen die bisher geladenen Nachrichten; scrollen Sie, um weitere zu laden."
+				"partialCountHint": "Die Zahlen umfassen die bisher geladenen Nachrichten; scrollen Sie, um weitere zu laden.",
+				"openInSearchTitle": "Alle E-Mails nach {token} durchsuchen"
 			},
 			"postboxTrustedSendersSettings": {
 				"heading": "Absender, deren Bilder automatisch geladen werden",
@@ -12113,6 +12121,10 @@
 				"notDelivered": "konnte nicht zugestellt werden"
 			}
 		},
+		"postboxDensity": {
+			"comfortable": "Komfortabel",
+			"compact": "Kompakt"
+		},
 		"postboxOfflineStore": {
 			"outOfStorage": "Auf diesem Gerät ist kein Speicherplatz mehr für Offline-Mail vorhanden.",
 			"unavailable": "Der lokale Mail-Cache ist auf diesem Gerät nicht verfügbar."
@@ -12157,6 +12169,10 @@
 					"unknown": "Wir prüfen deine letzten Sendungen noch."
 				}
 			}
+		},
+		"postboxSortOrder": {
+			"newest": "Neueste zuerst",
+			"oldest": "Älteste zuerst"
 		},
 		"postboxTodayPartition": {
 			"autoFiled": {

@@ -16,6 +16,10 @@
  * folder-wide count).
  */
 import type { PostboxTriageFilter } from '~/composables/postbox/usePostboxTriageFilters';
+import {
+	POSTBOX_TRIAGE_SEARCH_TOKENS,
+	postboxTriageSearchPath,
+} from '~/composables/postbox/usePostboxTriageFilters';
 
 const props = defineProps<{
 	filter: PostboxTriageFilter;
@@ -48,11 +52,26 @@ const countHint = computed(() =>
 		? t('components.postbox.postboxTriageFilterChips.partialCountHint')
 		: undefined
 );
+
+/**
+ * The active chip's escape into real search. The chips filter the fetched
+ * WINDOW; the token they map to searches the whole mailbox, keeps operators and
+ * is a URL you can save — so an active chip offers the handover instead of
+ * being where the question stops. Absent on "All", which is not a predicate.
+ */
+const searchPath = computed(() => postboxTriageSearchPath(props.filter));
+const searchToken = computed(() =>
+	props.filter === 'all' ? undefined : POSTBOX_TRIAGE_SEARCH_TOKENS[props.filter]
+);
 </script>
 
 <template>
+	<!-- Wraps rather than scrolling sideways: the list pane is ~380px, and a
+	     hidden horizontal scroller is how a control ends up with options nobody
+	     can find. The handover token drops to a second line when the four chips
+	     have taken the first. -->
 	<div
-		class="px-4 pb-2.5 -mt-1 flex items-center gap-1.5 overflow-x-auto"
+		class="px-4 pb-2.5 -mt-1 flex flex-wrap items-center gap-1.5"
 		role="group"
 		:aria-label="t('components.postbox.postboxTriageFilterChips.groupLabel')"
 	>
@@ -78,5 +97,23 @@ const countHint = computed(() =>
 				>{{ countLabel(chip.value) }}</span
 			>
 		</button>
+		<!-- The chip's own grammar, handed to the search that owns it. The token
+		     IS the label: it fits the pane where a sentence does not, and it is
+		     the thing worth teaching — the chip and `is:unread` are the same
+		     predicate, spelled twice. The sentence stays as the accessible name. -->
+		<NuxtLink
+			v-if="searchPath && searchToken"
+			:to="searchPath"
+			class="inline-flex items-center gap-1 px-1.5 py-1 rounded font-mono text-2xs text-text-tertiary whitespace-nowrap hover:text-brand focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+			:aria-label="
+				t('components.postbox.postboxTriageFilterChips.openInSearchTitle', { token: searchToken })
+			"
+			:title="
+				t('components.postbox.postboxTriageFilterChips.openInSearchTitle', { token: searchToken })
+			"
+		>
+			<Icon name="lucide:search" class="w-3 h-3" aria-hidden="true" />
+			{{ searchToken }}
+		</NuxtLink>
 	</div>
 </template>

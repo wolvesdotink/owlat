@@ -13,12 +13,15 @@
  * mean once per person, not once per browser. Following the link dismisses it
  * too: the nudge exists to get someone to that page, so arriving is its job
  * done.
+ *
+ * Whether it is showing at all is decided by the shared banner predicate, not
+ * here: the list pane runs one priority-ordered slot (offline > sealed > reply
+ * queue) and the slot has to agree with the strip about who is visible.
  */
-const { t } = useI18n();
-const { isEnabled } = useFeatureFlag();
-const { hasSeenSealedMailNudge, dismissSealedMailNudge } = usePostboxSettings();
+import { usePostboxSealedNudge } from '~/composables/postbox/usePostboxBanners';
 
-const isVisible = computed(() => isEnabled('sealedMail') && !hasSeenSealedMailNudge.value);
+const { t } = useI18n();
+const { visible: isVisible, dismiss: dismissSealedMailNudge } = usePostboxSealedNudge();
 
 async function dismiss() {
 	await dismissSealedMailNudge();

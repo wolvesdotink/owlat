@@ -3223,6 +3223,14 @@
 				"placeholder": "Write your message…",
 				"label": "Message body"
 			},
+			"postboxBulkSelectAllRow": {
+				"allMatchingCapped": "Capped at the first {count} — act on these, then select again.",
+				"allMatchingSelected": "{count} message selected. | {count} messages selected.",
+				"clearSelection": "Clear selection",
+				"pageSelected": "All {count} loaded message is selected. | All {count} loaded messages are selected.",
+				"selectAllMatching": "Select everything in this folder",
+				"selectingAllMatching": "Selecting…"
+			},
 			"postboxClarificationCard": {
 				"answer": "Answer",
 				"answerLater": "I'll answer later",
@@ -3499,6 +3507,10 @@
 				},
 				"title": "Remind me if no reply by"
 			},
+			"postboxInboxModeToggle": {
+				"label": "Inbox surface",
+				"title": "Today or the full mailbox (B)"
+			},
 			"postboxInlineReply": {
 				"dialogLabel": "Inline reply",
 				"forward": "Forward",
@@ -3544,8 +3556,6 @@
 				"title": "Add label"
 			},
 			"postboxLayout": {
-				"backToTodayTitle": "Back to Today (Esc)",
-				"escKey": "esc",
 				"folderFallback": "Folder",
 				"folderRoles": {
 					"archive": "Archive",
@@ -3568,19 +3578,16 @@
 					"sections": "Sections"
 				}
 			},
+			"postboxListDisplayMenu": {
+				"density": "Density",
+				"display": "Display",
+				"label": "Display options",
+				"readingPane": "Reading pane",
+				"sortOrder": "Sort order"
+			},
 			"postboxListHeader": {
-				"allMatchingCapped": "Capped at the first {count} — act on these, then select again.",
-				"allMatchingSelected": "{count} message selected. | {count} messages selected.",
-				"clearSelection": "Clear selection",
 				"deselectPage": "Clear selection",
-				"newestFirst": "Newest first",
-				"oldestFirst": "Oldest first",
-				"pageSelected": "All {count} loaded message is selected. | All {count} loaded messages are selected.",
-				"selectAllMatching": "Select everything in this folder",
-				"selectPage": "Select all loaded messages",
-				"selectingAllMatching": "Selecting…",
-				"sortToNewest": "Sort by newest first",
-				"sortToOldest": "Sort by oldest first"
+				"selectPage": "Select all loaded messages"
 			},
 			"postboxMailboxConnectForm": {
 				"addressLabel": "{provider} address",
@@ -3838,6 +3845,7 @@
 				"label": "Label",
 				"markReadTitle": "Mark as read",
 				"markUnreadTitle": "Mark as unread",
+				"moreActions": "More bulk actions",
 				"move": "Move",
 				"noLabels": "No labels yet",
 				"notSpam": "Not spam",
@@ -4204,7 +4212,6 @@
 				"allClear": "All clear — nothing new needs you.",
 				"answer": "Answer",
 				"browse": "Browse",
-				"browseTitle": "Browse all folders (B)",
 				"forYou": "For you",
 				"forYouDetail": "{who} — {snippet}",
 				"forYouHeading": "For you ({count})",
@@ -4299,7 +4306,8 @@
 				"unread": "Unread",
 				"starred": "Starred",
 				"attachments": "Attachments",
-				"partialCountHint": "Counts cover the messages loaded so far; scroll to load more."
+				"partialCountHint": "Counts cover the messages loaded so far; scroll to load more.",
+				"openInSearchTitle": "Search all mail for {token}"
 			},
 			"postboxTrustedSendersSettings": {
 				"heading": "Senders whose images load automatically",
@@ -12113,6 +12121,10 @@
 				"notDelivered": "couldn't be delivered"
 			}
 		},
+		"postboxDensity": {
+			"comfortable": "Comfortable",
+			"compact": "Compact"
+		},
 		"postboxOfflineStore": {
 			"outOfStorage": "This device is out of storage for offline mail.",
 			"unavailable": "Local mail cache is unavailable on this device."
@@ -12157,6 +12169,10 @@
 					"unknown": "We're still checking your recent sends."
 				}
 			}
+		},
+		"postboxSortOrder": {
+			"newest": "Newest first",
+			"oldest": "Oldest first"
 		},
 		"postboxTodayPartition": {
 			"autoFiled": {

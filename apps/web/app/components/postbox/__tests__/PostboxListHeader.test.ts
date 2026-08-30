@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 /**
- * The list header's sort control: it names the order the list is IN, offers the
- * other one as its accessible name, and asks the layout to flip — in every
- * folder, not just the inbox (a backlog is cleared oldest-first wherever it
- * sits).
+ * The list header after the Display menu took the preferences: what is left is
+ * the folder title, the drawer handle, the page select-all checkbox, the
+ * inbox's Today|Browse switch, and one menu trigger. The four preferences it
+ * used to render as permanent chrome are asserted on the menu itself
+ * (PostboxListDisplayMenu.test.ts); the whole-folder select-all hatch moved to
+ * the bulk bar (PostboxBulkSelectAllRow.test.ts).
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
@@ -16,7 +18,6 @@ import { usePostboxBulkActions } from '~/composables/postbox/usePostboxBulkActio
 // + Convex layers it reaches through have to exist for any mount.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let stateBuckets: Map<string, any>;
-const listMessageIds = vi.fn(async () => ({ ids: ['a', 'b', 'c'], capped: false }));
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -24,7 +25,6 @@ beforeAll(() => {
 
 beforeEach(() => {
 	stateBuckets = new Map();
-	listMessageIds.mockClear();
 	vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 		if (!stateBuckets.has(key)) stateBuckets.set(key, ref(init()));
 		return stateBuckets.get(key);
@@ -37,97 +37,136 @@ beforeEach(() => {
 		register: vi.fn(),
 		registerMoveBack: vi.fn(),
 	}));
-	vi.stubGlobal('requireConvex', () => ({ query: listMessageIds }));
 	// The real selection composable, over the stubbed state + mutation layers:
 	// the point of these cases is the header's reading of that shared bucket.
 	vi.stubGlobal('usePostboxBulkActions', usePostboxBulkActions);
 });
 
+const displayMenuStub = {
+	props: ['viewMode', 'viewModeOptions', 'sortOrder', 'density', 'readingPane'],
+	template:
+		'<div class="display-menu" :data-view-mode="viewMode" :data-sort="sortOrder" :data-view-modes="viewModeOptions ? \'yes\' : \'no\'" />',
+};
+const inboxModeToggleStub = {
+	props: ['mode'],
+	emits: ['select'],
+	template:
+		'<div class="inbox-mode-toggle" :data-mode="mode"><button type="button" data-segment="browse" @click="$emit(\'select\', \'browse\')">Browse</button></div>',
+};
+
 function mountHeader(
 	props: {
 		folderRole?: string;
+		folderId?: string;
+		activeMessageId?: string | null;
 		sortOrder?: string;
+		inboxMode?: string;
 		mailboxId?: string;
 		pageIds?: string[];
-		selectAllScopeMatchesList?: boolean;
 	} = {}
 ) {
 	return mount(PostboxListHeader, {
 		props: {
 			folderName: 'Inbox',
 			folderRole: props.folderRole ?? 'inbox',
+			folderId: props.folderId,
+			activeMessageId: props.activeMessageId,
+			viewMode: 'flat',
+			viewModeOptions: [{ value: 'flat', label: 'Flat' }],
 			sortOrder: props.sortOrder,
+			inboxMode: props.inboxMode ?? 'browse',
 			mailboxId: props.mailboxId,
 			pageIds: props.pageIds,
-			selectAllScopeMatchesList: props.selectAllScopeMatchesList,
 		},
 		global: {
 			plugins: [createTestI18n()],
 			components: {
 				Icon: { props: ['name'], template: '<span />' },
-				UiSegmentedControl: { props: ['options', 'modelValue'], template: '<div />' },
+				PostboxListDisplayMenu: displayMenuStub,
+				PostboxInboxModeToggle: inboxModeToggleStub,
 			},
 		},
 	});
 }
 
-const sortButton = (w: ReturnType<typeof mountHeader>) =>
-	w.findAll('button').find((b) => (b.attributes('aria-label') ?? '').startsWith('Sort by'));
-
-describe('PostboxListHeader sort toggle', () => {
-	it('shows newest-first and offers oldest when no order is stored', () => {
-		const w = mountHeader();
-		const button = sortButton(w);
-		expect(button?.text()).toBe('Newest first');
-		expect(button?.attributes('aria-label')).toBe('Sort by oldest first');
-	});
-
-	it('shows oldest-first and offers newest once the order is flipped', () => {
+/**
+ * Four persisted preferences used to be four separate controls (one of which
+ * needed its own horizontal scroller to reach its labels). The header now
+ * renders exactly one entrance to all of them, and hands it the state.
+ */
+describe('PostboxListHeader display menu', () => {
+	it('renders one menu and hands it the current preferences', () => {
 		const w = mountHeader({ sortOrder: 'oldest' });
-		const button = sortButton(w);
-		expect(button?.text()).toBe('Oldest first');
-		expect(button?.attributes('aria-label')).toBe('Sort by newest first');
+		const menu = w.find('.display-menu');
+		expect(menu.exists()).toBe(true);
+		expect(menu.attributes('data-sort')).toBe('oldest');
 	});
 
-	it('asks the layout to flip the order', async () => {
+	it('offers it in a non-inbox folder too, minus the view mode', () => {
+		// Every folder but the inbox renders flat, so a view-mode group there
+		// would be a control that changes nothing.
+		const menu = mountHeader({ folderRole: 'archive' }).find('.display-menu');
+		expect(menu.exists()).toBe(true);
+		expect(menu.attributes('data-view-modes')).toBe('no');
+		expect(mountHeader().find('.display-menu').attributes('data-view-modes')).toBe('yes');
+	});
+
+	it('routes each pick back to the layout', async () => {
 		const w = mountHeader();
-		await sortButton(w)?.trigger('click');
-		expect(w.emitted('toggle-sort')).toHaveLength(1);
-	});
+		const menu = w.findComponent(displayMenuStub);
+		menu.vm.$emit('select-view-mode', 'categories');
+		menu.vm.$emit('select-sort-order', 'oldest');
+		menu.vm.$emit('select-density', 'compact');
+		menu.vm.$emit('select-reading-pane', 'bottom');
+		await w.vm.$nextTick();
 
-	it('offers the control in a non-inbox folder too', () => {
-		const w = mountHeader({ folderRole: 'archive' });
-		expect(sortButton(w)).toBeDefined();
+		expect(w.emitted('select-view-mode')).toEqual([['categories']]);
+		expect(w.emitted('select-sort-order')).toEqual([['oldest']]);
+		expect(w.emitted('select-density')).toEqual([['compact']]);
+		expect(w.emitted('select-reading-pane')).toEqual([['bottom']]);
 	});
 });
 
 /**
- * At a 1440px window the list pane is ~380px, which the folder title + sort
- * toggle + view-mode control do not fit on one nowrap row — and the title was
- * the flex item that lost, rendering "In…" for Inbox. The cluster has to wrap as
- * a unit instead.
+ * The one-way "Today" jump became a two-way switch on the title it describes,
+ * and it only exists where a landing surface does: the inbox root, no message
+ * open, no custom folder standing in for it.
+ */
+describe('PostboxListHeader inbox mode switch', () => {
+	it('sits on the Inbox title and reports the surface on screen', () => {
+		const toggle = mountHeader({ inboxMode: 'browse' }).find('.inbox-mode-toggle');
+		expect(toggle.exists()).toBe(true);
+		expect(toggle.attributes('data-mode')).toBe('browse');
+	});
+
+	it('asks the layout to switch surfaces', async () => {
+		const w = mountHeader();
+		await w.find('[data-segment="browse"]').trigger('click');
+		expect(w.emitted('switch-inbox-mode')).toEqual([['browse']]);
+	});
+
+	it('is absent outside the inbox, with a message open, or in a custom folder', () => {
+		expect(mountHeader({ folderRole: 'archive' }).find('.inbox-mode-toggle').exists()).toBe(false);
+		expect(mountHeader({ activeMessageId: 'm-1' }).find('.inbox-mode-toggle').exists()).toBe(false);
+		expect(mountHeader({ folderId: 'fld-1' }).find('.inbox-mode-toggle').exists()).toBe(false);
+	});
+});
+
+/**
+ * At a 1440px window the list pane is ~380px, which the folder title plus the
+ * control cluster can still overflow in a long locale — and the title was the
+ * flex item that lost, rendering "In…" for Inbox.
  */
 describe('PostboxListHeader overflow', () => {
 	it('wraps rather than squeezing the folder title', () => {
 		const header = mountHeader().find('header');
 		expect(header.classes()).toContain('flex-wrap');
 	});
-
-	it('keeps the control cluster inside the pane', () => {
-		const w = mountHeader();
-		const cluster = w.findAll('header > div').at(-1);
-		// The five-segment view-mode control is wider than a narrow pane, so the
-		// cluster must wrap internally and cap at the pane's width instead of
-		// painting across the neighbouring reader.
-		expect(cluster?.classes()).toContain('flex-wrap');
-		expect(cluster?.classes()).toContain('max-w-full');
-	});
 });
 
 /**
- * The tri-state select-all: it covers the rows the list has LOADED, and the
- * escape hatch past that page goes to the server rather than pretending the
- * page is the folder.
+ * The tri-state select-all: it covers the rows the list has LOADED. The escape
+ * hatch past that page now lives in the bulk bar, next to the verbs it feeds.
  */
 const selectAllBox = (w: ReturnType<typeof mountHeader>) => w.find('button[role="checkbox"]');
 
@@ -156,86 +195,9 @@ describe('PostboxListHeader select-all', () => {
 		expect(selectAllBox(w).attributes('aria-checked')).toBe('mixed');
 	});
 
-	it('offers the whole-folder escape hatch only once the page is covered', async () => {
+	it('no longer renders the whole-folder hatch itself', async () => {
 		const w = mountHeader({ mailboxId: 'mbx', pageIds: ['a', 'b', 'c'] });
+		await selectAllBox(w).trigger('click');
 		expect(w.text()).not.toContain('Select everything in this folder');
-
-		await selectAllBox(w).trigger('click');
-		expect(w.text()).toContain('Select everything in this folder');
-	});
-
-	it('asks the server for the folder scope and adopts the answer', async () => {
-		const w = mountHeader({ mailboxId: 'mbx', pageIds: ['a', 'b', 'c'], sortOrder: 'oldest' });
-		await selectAllBox(w).trigger('click');
-		const escapeHatch = w
-			.findAll('button')
-			.find((b) => b.text() === 'Select everything in this folder');
-		await escapeHatch?.trigger('click');
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await w.vm.$nextTick();
-
-		expect(listMessageIds).toHaveBeenCalledTimes(1);
-		// The list's own arrival direction rides along, so a capped answer keeps
-		// the ids the user is actually looking at.
-		expect(listMessageIds.mock.calls[0]?.[1]).toMatchObject({
-			mailboxId: 'mbx',
-			folderRole: 'inbox',
-			sortOrder: 'oldest',
-		});
-		expect(w.text()).toContain('3 messages selected.');
-	});
-});
-
-/**
- * The escape hatch queries by FOLDER scope, but a triage chip (unread /
- * starred / attachments) narrows what the list renders below that scope. Offered
- * under a chip it would quietly hand the next bulk verb — trash, archive, spam,
- * snooze — the rows the chip is hiding. It has to be withheld instead.
- */
-describe('PostboxListHeader select-all under a triage filter', () => {
-	const hatchOf = (w: ReturnType<typeof mountHeader>) =>
-		w.findAll('button').find((b) => b.text() === 'Select everything in this folder');
-
-	it('withholds the whole-folder hatch while a chip filters the list', async () => {
-		const w = mountHeader({
-			mailboxId: 'mbx',
-			pageIds: ['a', 'b', 'c'],
-			selectAllScopeMatchesList: false,
-		});
-		await selectAllBox(w).trigger('click');
-
-		expect(hatchOf(w)).toBeUndefined();
-		// The page selection itself is untouched — only the promise it can't keep
-		// is gone, and the count that tells the user what IS selected stays.
-		expect(selectAllBox(w).attributes('aria-checked')).toBe('true');
-		expect(w.text()).toContain('All 3 loaded messages are selected.');
-	});
-
-	it('offers it again once the filter is cleared', async () => {
-		const w = mountHeader({
-			mailboxId: 'mbx',
-			pageIds: ['a', 'b', 'c'],
-			selectAllScopeMatchesList: false,
-		});
-		await selectAllBox(w).trigger('click');
-		await w.setProps({ selectAllScopeMatchesList: true });
-
-		expect(hatchOf(w)).toBeDefined();
-	});
-
-	it('never reaches the server for a scope the list is not showing', async () => {
-		const w = mountHeader({
-			mailboxId: 'mbx',
-			pageIds: ['a', 'b', 'c'],
-			selectAllScopeMatchesList: false,
-		});
-		await selectAllBox(w).trigger('click');
-		// Belt and braces: the handler itself refuses, so no future caller can
-		// re-expose the unsafe query by rendering a control that reaches it.
-		const vm = w.vm as unknown as { selectAllMatching: () => Promise<void> };
-		expect(typeof vm.selectAllMatching).toBe('function');
-		await vm.selectAllMatching();
-
-		expect(listMessageIds).not.toHaveBeenCalled();
 	});
 });

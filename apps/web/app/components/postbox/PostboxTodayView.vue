@@ -4,7 +4,7 @@
  * inbox opens on (mode 'today'; the three-pane UI stays available as
  * 'browse'). One task at a time, top to bottom:
  *
- *   - minimal header ("Inbox (n)" + a ghost Browse button with the B hint)
+ *   - minimal header ("Inbox (n)" + the shared Today|Browse switch)
  *   - the Brief slot (empty placeholder region — the Daily Brief lands here)
  *   - "FOR YOU (n)": compact agent-task strips from the existing Reply Queue
  *     feed; clicking routes to the Reply Queue page
@@ -26,6 +26,7 @@
 import { api } from '@owlat/api';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { Id } from '@owlat/api/dataModel';
+import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
 import {
 	replyQueueHeadline,
@@ -224,31 +225,28 @@ function closeOverlay() {
 	openMessageId.value = null;
 	emit('reader-closed');
 }
+
+/**
+ * The mode switch is two-way, but this surface IS 'today' — only the other
+ * segment has anywhere to go, and the host owns the move (it persists the mode).
+ */
+function onModeSelect(mode: PostboxInboxMode) {
+	if (mode === 'browse') emit('browse');
+}
 </script>
 
 <template>
 	<div class="flex-1 overflow-y-auto bg-bg-base">
 		<div class="max-w-xl mx-auto px-4 py-8 flex flex-col gap-8">
-			<!-- Minimal header: the count + the one way out to the full UI. -->
-			<header class="flex items-center justify-between">
+			<!-- Minimal header: the count + the two-way switch to the full UI. The
+			     same control the browse list header carries, so the two surfaces
+			     name each other instead of each offering a one-way exit. -->
+			<header class="flex items-center justify-between gap-3">
 				<h1 class="text-lg font-semibold text-text-primary">
 					{{ t('components.postbox.postboxTodayView.inbox') }}
 					<span class="font-normal text-text-tertiary tabular-nums">({{ todayRows.length }})</span>
 				</h1>
-				<button
-					type="button"
-					class="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-					aria-keyshortcuts="b"
-					:title="t('components.postbox.postboxTodayView.browseTitle')"
-					@click="emit('browse')"
-				>
-					{{ t('components.postbox.postboxTodayView.browse') }}
-					<kbd
-						class="text-[10px] text-text-tertiary border border-border-subtle rounded px-1"
-						aria-hidden="true"
-						>B</kbd
-					>
-				</button>
+				<PostboxInboxModeToggle class="flex-shrink-0" mode="today" @select="onModeSelect" />
 			</header>
 
 			<!-- Brief slot: the Daily Brief greeting card (fail-soft — renders

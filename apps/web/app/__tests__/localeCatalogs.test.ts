@@ -188,7 +188,6 @@ describe('UI message catalogs', () => {
 		'components.postbox.postboxFilterRuleBuilder.sizePlaceholder',
 		'components.postbox.postboxFolderList.roles.spam',
 		'components.postbox.postboxFolderRail.labelsHeading',
-		'components.postbox.postboxLayout.escKey',
 		'components.postbox.postboxLayout.folderRoles.spam',
 		'components.postbox.postboxMailboxConnectForm.ssl',
 		// Protocol names and RFC header field names — the same words in both

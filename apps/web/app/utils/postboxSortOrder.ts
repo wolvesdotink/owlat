@@ -24,10 +24,19 @@ export function resolvePostboxSortOrder(value: string | undefined | null): Postb
 	return value === 'oldest' ? value : POSTBOX_SORT_ORDER_DEFAULT;
 }
 
-/** The order a tap on the toggle moves to. */
-export function nextPostboxSortOrder(current: PostboxSortOrder): PostboxSortOrder {
-	return current === 'oldest' ? 'newest' : 'oldest';
-}
+/**
+ * The picker options, as a radio group rather than a flip: the list header's
+ * Display menu shows both orders at once. Module scope never calls `useI18n`,
+ * so `label` is the catalog key the rendering surface resolves through `t()` —
+ * the same shape the density and reading-pane registries use.
+ */
+export const POSTBOX_SORT_ORDER_OPTIONS: Array<{
+	value: PostboxSortOrder;
+	label: string;
+}> = [
+	{ value: 'newest', label: 'shared.postboxSortOrder.newest' },
+	{ value: 'oldest', label: 'shared.postboxSortOrder.oldest' },
+];
 
 /**
  * What the read should send. The default order is expressed by sending NOTHING:
