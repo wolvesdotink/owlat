@@ -4221,10 +4221,14 @@
 				"view": "view",
 				"viewAllCount": "View all {count}"
 			},
-			"postboxTrackerBadge": {
-				"detected": "1 tracking pixel detected | {count} tracking pixels detected",
-				"explanation": "This message contains hidden images that would report when and where you open it. They stay blocked even when you show images.",
-				"trackerHosts": "Tracker hosts"
+			"postboxTrustChip": {
+				"notChecked": "Sender not checked",
+				"panelLabel": "Trust details",
+				"senderControls": "This sender",
+				"trackerHosts": "Tracker hosts",
+				"trackersDetected": "1 tracking pixel detected | {count} tracking pixels detected",
+				"trackersExplanation": "This message contains hidden images that would report when and where you open it. They stay blocked even when you show images.",
+				"worthALook": "Worth a look"
 			},
 			"postboxUndoSendToast": {
 				"queued": "Queued — sends when you're back online ({seconds}s)",

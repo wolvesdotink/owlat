@@ -25,6 +25,7 @@ import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalE
 import type { SecureMessageClass } from '@owlat/shared/secureMessage';
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
+import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 import type { PostboxAttachmentMeta } from './PostboxMessageAttachments.vue';
 
@@ -58,6 +59,8 @@ const props = defineProps<{
 	ownEmail?: string;
 	/** This message carries a real .ics invite (PostboxInviteCard renders it). */
 	hasInvite: boolean;
+	/** The correspondent's sealing-key status, when THIS sender is them. */
+	sealStatus?: RecipientKeyStatus | null;
 	/** `${messageId}:${part}` of the attachment currently being fetched, if any. */
 	downloadingAttachment?: string | null;
 }>();
@@ -82,6 +85,8 @@ const emit = defineEmits<{
 	(e: 'resend', addresses: string[]): void;
 	(e: 'use-reply', text: string): void;
 	(e: 'dismiss-scheduling'): void;
+	/** A sealing-key verification changed; the reader should re-read the status. */
+	(e: 'seal-refetch'): void;
 }>();
 
 const { t } = useI18n();
@@ -105,13 +110,6 @@ const senderAuthSummary = computed(() => {
 
 const showSpamBanner = computed(
 	() => msg.value.spamVerdict === 'spam' || (!props.authEnabled && msg.value.dmarcResult === 'fail')
-);
-
-const showSecurityBadge = computed(
-	() =>
-		props.secureClass !== 'none' ||
-		(props.sealedEnabled && !!msg.value.inboundEncryptionInfo) ||
-		!!msg.value.inboundSignatureInfo
 );
 
 const starLabel = computed(() =>
@@ -199,12 +197,26 @@ const MENU_ITEM_CLASS =
 						</span>
 					</button>
 					<div class="flex items-center gap-2 flex-shrink-0">
-						<PostboxSenderControls
-							v-if="showSenderControls"
+						<!-- Five indicators, one pixel budget: the popover still holds the
+						     auth badge, the security / sealed badge, the tracker findings,
+						     the correspondent's sealing key and the sender controls. -->
+						<PostboxTrustChip
 							:mailbox-id="mailboxId"
 							:from-address="msg.fromAddress"
+							:auth-enabled="authEnabled"
+							:auth="authInput"
+							:heuristics="msg.senderHeuristics"
+							:sealed-enabled="sealedEnabled"
+							:sealed="msg.inboundEncryptionInfo"
+							:signature="msg.inboundSignatureInfo"
+							:secure-class="secureClass"
+							:message="msg"
+							:tracker="tracker"
+							:show-sender-controls="showSenderControls"
+							:seal-status="sealStatus"
+							:show-security-detail="!hideBody"
+							@seal-refetch="emit('seal-refetch')"
 						/>
-						<PostboxTrackerBadge v-if="tracker" :detection="tracker" />
 						<button
 							type="button"
 							class="text-xs text-text-tertiary tabular-nums whitespace-nowrap hover:text-text-primary"
@@ -235,11 +247,6 @@ const MENU_ITEM_CLASS =
 					:message-id="msg._id"
 					:mailbox-id="mailboxId"
 					:unsubscribe="msg.unsubscribe"
-				/>
-				<PostboxAuthBadge
-					:enabled="authEnabled"
-					:auth="authInput"
-					:heuristics="msg.senderHeuristics"
 				/>
 				<!-- The badge's claims, made checkable: the real headers behind them,
 				     the original .eml (UX plan idea 52) — and, in the slot, the three
@@ -297,15 +304,18 @@ const MENU_ITEM_CLASS =
 			<span v-else>{{ senderAuthSummary }}</span>
 		</div>
 
+		<!-- Ciphertext or clearsigned text: the security badge IS the readable half
+		     (plus the copy / download recovery controls), so it renders where the
+		     body would have been rather than inside the trust chip. -->
 		<PostboxSecurityBadge
-			v-if="showSecurityBadge"
+			v-if="hideBody"
 			:klass="secureClass"
 			:message="msg"
 			:sealed="sealedEnabled ? msg.inboundEncryptionInfo : undefined"
 			:signature="msg.inboundSignatureInfo"
 		/>
 		<PostboxMessageBody
-			v-if="!hideBody"
+			v-else
 			:message="msg"
 			:force-light="forcedLight"
 			:sender-images-allowed="imagesAllowed"

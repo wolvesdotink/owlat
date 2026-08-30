@@ -591,6 +591,22 @@ const threadCounterpart = computed(() => {
 	return '';
 });
 
+// The correspondent's PUBLIC sealing-key status, read once per thread (E5). The
+// key-change BANNER stays here — it is an alarm — while the key panel travels
+// into that sender's trust chip popover, and `keyChanged` turns the same chip
+// amber so the rotation is never only one popover deep.
+const {
+	status: correspondentKey,
+	wasVerified: correspondentKeyWasVerified,
+	keyChanged: correspondentKeyChanged,
+	refetch: refetchCorrespondentKey,
+} = usePostboxCorrespondentKey(() => (sealedMailEnabled.value ? threadCounterpart.value : ''));
+/** The seal status belongs to the ONE sender it describes, not to every message. */
+function sealStatusFor(msg: { fromAddress: string }) {
+	const from = extractEmailAddress(msg.fromAddress).toLowerCase();
+	return from && from === threadCounterpart.value ? correspondentKey.value : null;
+}
+
 // Reply guard: intercept reply / reply-all with a one-time-per-thread confirm on
 // the sender shapes a reply walks into (UX plan idea 56) — a DMARC failure, a
 // pass belonging to another domain, a look-alike of a known contact's domain, or
@@ -1029,13 +1045,18 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		     permitted on both sides; read-only, and it merges nothing. -->
 		<PostboxCrossSurfaceStrip :message-id="messageId" class="mb-3" />
 
-		<!-- Sealed Mail (E5): thread-level trust surfaces for the correspondent —
-		     the Signal-style key-change banner (explicit re-pin) + the contact key
-		     panel. Flag-gated; renders nothing without a key on file. -->
-		<PostboxThreadSealSurfaces
-			v-if="sealedMailEnabled && threadCounterpart"
-			:correspondent="threadCounterpart"
+		<!-- Sealed Mail (E5): the Signal-style key-change banner (explicit re-pin).
+		     An alarm, so it stays at thread level; the contact key PANEL moved into
+		     the correspondent's trust chip. Flag-gated; renders nothing without an
+		     unsigned rotation on file. -->
+		<PostboxKeyChangeBanner
+			v-if="correspondentKeyChanged"
+			:address="threadCounterpart"
+			:old-fingerprint="correspondentKey?.pinnedFingerprint"
+			:new-fingerprint="correspondentKey?.observedFingerprint"
+			:was-verified="correspondentKeyWasVerified"
 			class="mb-3"
+			@accepted="refetchCorrespondentKey()"
 		/>
 
 		<!-- Layout-matching skeleton while the thread loads (header is already
@@ -1076,6 +1097,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				:images-allowed="imageAllowlist.isAllowed(msg.fromAddress)"
 				:own-email="ownEmail"
 				:has-invite="!!calendarAttachment(msg)"
+				:seal-status="sealStatusFor(msg)"
 				:downloading-attachment="downloadingAttachment"
 				@toggle-expanded="toggleExpanded(msg._id)"
 				@open-sender-profile="openSenderProfile(msg)"
@@ -1096,6 +1118,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				@resend="(addresses) => openResend(msg, addresses)"
 				@use-reply="(text) => openReplyWithBody(msg, text)"
 				@dismiss-scheduling="dismissScheduling(msg._id)"
+				@seal-refetch="refetchCorrespondentKey()"
 			/>
 
 			<!-- Inline reply box pinned under the conversation (r / a / f or the
