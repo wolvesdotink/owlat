@@ -4151,6 +4151,7 @@
 				"blockSender": "Absender blockieren",
 				"ccLine": "· Kopie an {recipients}",
 				"clearSnoozeReturnedOperation": "Hinweis „Zurück aus dem Schlummer“ ausblenden",
+				"createFilter": "Filter hieraus erstellen",
 				"downloadAttachment": "{filename} herunterladen",
 				"forward": "Weiterleiten",
 				"markReadOperation": "Als gelesen markieren",
@@ -4158,13 +4159,11 @@
 				"moreActions": "Weitere Nachrichtenaktionen",
 				"moveOperation": "Nachricht verschieben",
 				"moveToTrashOperation": "In den Papierkorb verschieben",
-				"mute": "Unterhaltung stummschalten",
 				"muteOperation": "Unterhaltung stummschalten",
 				"notSpamOperation": "Kein Spam",
-				"notifyOnReply": "Bei Antwort benachrichtigen",
 				"notifyOnReplyOperation": "Antwort-Hinweis",
-				"notifyOnReplyStop": "Nicht mehr bei Antwort benachrichtigen",
 				"previewAttachment": "{filename} in der Vorschau anzeigen",
+				"print": "Konversation drucken",
 				"renderDark": "Diese Nachricht im dunklen Modus darstellen",
 				"renderLight": "Diese Nachricht auf hellem Hintergrund darstellen",
 				"reply": "Antworten",
@@ -4179,9 +4178,7 @@
 				"undoMoved": "Verschoben",
 				"undoSpam": "Als Spam markiert",
 				"undoTrashed": "In den Papierkorb verschoben",
-				"unmute": "Stummschaltung aufheben",
-				"unstar": "Markierung entfernen",
-				"createFilter": "Filter hieraus erstellen"
+				"unstar": "Markierung entfernen"
 			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Zurück aus dem Schlummer",

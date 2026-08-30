@@ -42,6 +42,7 @@ import PostboxOverflowMenu from '../PostboxOverflowMenu.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
 import PostboxThreadRow, { type PostboxThreadRowMessage } from '../PostboxThreadRow.vue';
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
+import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
 import PostboxComposer from '../PostboxComposer.vue';
 import PostboxComposerEnvelope from '../PostboxComposerEnvelope.vue';
 import PostboxComposerFooter from '../PostboxComposerFooter.vue';
@@ -264,9 +265,11 @@ describe('postbox thread list — accessibility', () => {
 describe('postbox reader — accessibility', () => {
 	it('has no axe violations on an arrived message', async () => {
 		const violations = await auditA11y(PostboxThreadReader, {
-			// The overflow menu is registered rather than left unresolved: it is
-			// where most of the reader's verbs live, and its trigger is icon-only.
-			...withCatalog({ PostboxOverflowMenu }),
+			// The overflow menu and the per-message card are registered rather than
+			// left unresolved: the card is the reader's own chrome (sender line,
+			// action row, attachment rows) and the menu is where the demoted verbs
+			// live behind an icon-only trigger.
+			...withCatalog({ PostboxOverflowMenu, PostboxReaderMessage: PostboxReaderMessageCard }),
 			props: { message: readerMessage(), folderRole: 'inbox' },
 			prepare: (wrapper) => expect(wrapper.text()).toContain('Ines Weber'),
 		});

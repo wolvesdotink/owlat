@@ -4151,6 +4151,7 @@
 				"blockSender": "Block sender",
 				"ccLine": "· cc {recipients}",
 				"clearSnoozeReturnedOperation": "Dismiss the back-from-snooze note",
+				"createFilter": "Create filter from this",
 				"downloadAttachment": "Download {filename}",
 				"forward": "Forward",
 				"markReadOperation": "Mark read",
@@ -4158,13 +4159,11 @@
 				"moreActions": "More message actions",
 				"moveOperation": "Move message",
 				"moveToTrashOperation": "Move to trash",
-				"mute": "Mute conversation",
 				"muteOperation": "Mute conversation",
 				"notSpamOperation": "Not spam",
-				"notifyOnReply": "Notify me when they reply",
 				"notifyOnReplyOperation": "Reply alert",
-				"notifyOnReplyStop": "Stop notifying me on reply",
 				"previewAttachment": "Preview {filename}",
+				"print": "Print conversation",
 				"renderDark": "Render this message in dark mode",
 				"renderLight": "Render this message on a light background",
 				"reply": "Reply",
@@ -4179,9 +4178,7 @@
 				"undoMoved": "Moved",
 				"undoSpam": "Marked as spam",
 				"undoTrashed": "Moved to Trash",
-				"unmute": "Unmute conversation",
-				"unstar": "Unstar",
-				"createFilter": "Create filter from this"
+				"unstar": "Unstar"
 			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Back from snooze",

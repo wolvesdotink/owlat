@@ -13,15 +13,21 @@
  * subscribes once the panel is opened, so a reader who never asks pays nothing.
  * Row derivation lives in `utils/postboxMessageDetails.ts` (pure, unit-tested);
  * this component fetches, resolves keys and renders.
+ *
+ * The disclosure also HOSTS the reader's other per-message minutiae through the
+ * default slot — the adaptive dark-render toggle, the delivery strip and the
+ * scheduling chip. They are each a rare, message-scoped detail, and the reader
+ * spent a permanent line of chrome on all three; here they cost nothing until
+ * somebody opens the panel.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { buildMessageDetailRows, type MessageDetailTone } from '~/utils/postboxMessageDetails';
+import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalEml';
 
 const props = defineProps<{ messageId: string }>();
 
 const { t } = useI18n();
-const { showToast } = useToast();
 
 const expanded = ref(false);
 
@@ -48,37 +54,7 @@ watch(
 	() => (expanded.value = false)
 );
 
-const downloading = ref(false);
-
-/**
- * Download the original `.eml`. The bytes come from the same signed-URL path the
- * attachment extractor uses, decoded latin1 (one char per byte), so the file on
- * disk is the message exactly as it arrived — headers included.
- */
-async function downloadOriginal() {
-	downloading.value = true;
-	try {
-		const raw = await loadRawEml(props.messageId);
-		if (!raw) {
-			showToast(t('components.postbox.postboxMessageDetails.downloadFailed'), 'error');
-			return;
-		}
-		const bytes = new Uint8Array(raw.length);
-		for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i) & 0xff;
-		const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'message/rfc822' }));
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = 'message.eml';
-		document.body.appendChild(a);
-		a.click();
-		a.remove();
-		setTimeout(() => URL.revokeObjectURL(url), 30000);
-	} catch {
-		showToast(t('components.postbox.postboxMessageDetails.downloadFailed'), 'error');
-	} finally {
-		downloading.value = false;
-	}
-}
+const { downloading, downloadOriginal } = usePostboxOriginalEml();
 </script>
 
 <template>
@@ -133,13 +109,16 @@ async function downloadOriginal() {
 					</dd>
 				</div>
 			</dl>
+			<!-- The message-scoped controls the reader used to render permanently:
+			     dark-render toggle, delivery strip, scheduling chip. -->
+			<slot />
 			<div class="mt-3 pt-2 border-t border-border-subtle">
 				<button
 					type="button"
 					class="text-brand hover:underline disabled:opacity-60"
 					:disabled="downloading"
 					data-testid="message-details-download"
-					@click="downloadOriginal"
+					@click="downloadOriginal(messageId)"
 				>
 					{{
 						downloading

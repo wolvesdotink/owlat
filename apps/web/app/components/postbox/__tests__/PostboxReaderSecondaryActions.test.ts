@@ -12,7 +12,8 @@
  *
  * Reading the source rather than mounting: the behaviour IS the CSS cascade,
  * which happy-dom has no layout engine to resolve, and the reader needs a live
- * Convex client to mount at all.
+ * Convex client to mount at all. The card was split out of PostboxThreadReader
+ * (plan §05), so the two classes are read from where they are now rendered.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +22,7 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
 
 const density = read('../../../assets/css/postbox-density.css');
-const reader = read('../PostboxThreadReader.vue');
+const card = read('../PostboxReaderMessage.vue');
 
 /** The declaration block of the first rule whose selector matches exactly. */
 function block(selector: string): string {
@@ -34,11 +35,11 @@ function block(selector: string): string {
 
 describe('reader reply-all / forward visibility', () => {
 	it('marks both buttons with the density-driven class', () => {
-		expect(reader.match(/class="pbx-reader-secondary-action"/g)).toHaveLength(2);
+		expect(card.match(/class="pbx-reader-secondary-action"/g)).toHaveLength(2);
 	});
 
 	it('no longer hides them behind a pointer hover at every density', () => {
-		expect(reader).not.toContain('group-hover:inline-flex');
+		expect(card).not.toContain('group-hover:inline-flex');
 	});
 
 	it('shows them by default — which is the comfortable default density', () => {
@@ -62,7 +63,7 @@ describe('reader reply-all / forward visibility', () => {
 		expect(touch).toContain('.pbx-reader-secondary-action');
 	});
 
-	it('hangs the compact hover rule on a class the reader actually renders', () => {
-		expect(reader).toContain('pbx-reader-message');
+	it('hangs the compact hover rule on a class the message card actually renders', () => {
+		expect(card).toContain('pbx-reader-message');
 	});
 });
