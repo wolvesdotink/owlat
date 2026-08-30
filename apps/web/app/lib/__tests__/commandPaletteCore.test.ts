@@ -54,6 +54,9 @@ function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePalette
 		buildResultItems: (results) => results.map((r) => paletteItem(`search:${r.id}`)),
 		buildMailItems: (results) => results.map((r) => paletteItem(`mail:${r.id}`)),
 		buildSearchMailItem: (term) => paletteItem(`mail:search-for:${term}`),
+		isMailScope: () => false,
+		mailSuggestionItems: () => [paletteItem('mail-suggest:operator:from:')],
+		mailHitItems: () => [paletteItem('mail-hit:message1')],
 		...overrides,
 	};
 }
@@ -70,10 +73,12 @@ function groupByKey(groups: PaletteGroup[], key: string): PaletteGroup | undefin
 }
 
 describe('buildCorePaletteProviders — provider set', () => {
-	it('is exactly the seven core providers, in priority order, at fixed priorities', () => {
+	it('is exactly the nine core providers, in priority order, at fixed priorities', () => {
 		const providers = buildCorePaletteProviders(makeDeps());
 		expect(providers.map((p) => p.id)).toEqual([
 			'core:recent',
+			'core:mail-suggest',
+			'core:mail-hits',
 			'core:verbs',
 			'core:context',
 			'core:settings',
@@ -81,7 +86,7 @@ describe('buildCorePaletteProviders — provider set', () => {
 			'core:mail',
 			'core:navigation',
 		]);
-		expect(providers.map((p) => p.priority)).toEqual([10, 20, 30, 35, 40, 45, 50]);
+		expect(providers.map((p) => p.priority)).toEqual([10, 12, 13, 20, 30, 35, 40, 45, 50]);
 	});
 
 	it('declares no flag or route gate on any core provider (core is always consulted)', () => {
@@ -236,5 +241,35 @@ describe('core:navigation', () => {
 		expect(nav?.cap).toBe(8);
 		expect(t(nav?.heading ?? '')).toBe('Go to');
 		expect(nav?.items.map((i) => i.id)).toEqual(['nav:/dashboard/inbox']);
+	});
+});
+
+describe('core:mail-suggest / core:mail-hits — the Mail scope', () => {
+	it('contributes nothing outside Mail scope', () => {
+		expect(build('core:mail-suggest', 'invoice')).toEqual([]);
+		expect(build('core:mail-hits', 'invoice')).toEqual([]);
+	});
+
+	it('offers the grammar completions above the hits', () => {
+		const suggest = groupByKey(
+			build('core:mail-suggest', 'fr', { isMailScope: () => true }),
+			'mail-suggest'
+		);
+		const hits = groupByKey(
+			build('core:mail-hits', 'invoice', { isMailScope: () => true }),
+			'mail-hits'
+		);
+		expect(suggest?.order).toBe(1);
+		expect(hits?.order).toBe(2);
+		expect(suggest?.items.map((i) => i.id)).toEqual(['mail-suggest:operator:from:']);
+		expect(hits?.items.map((i) => i.id)).toEqual(['mail-hit:message1']);
+		expect(t(hits?.heading ?? '')).toBe('Mail');
+	});
+
+	it('holds the hits back until the query is worth a search', () => {
+		// The completions still fire on one character — that is the whole point of
+		// discovering `from:` by typing `f` — but the search index does not.
+		expect(build('core:mail-suggest', 'f', { isMailScope: () => true })).toHaveLength(1);
+		expect(build('core:mail-hits', 'f', { isMailScope: () => true })).toEqual([]);
 	});
 });

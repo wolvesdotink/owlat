@@ -328,7 +328,7 @@
 			"clearQuery": "Clear",
 			"clearRecent": "Clear",
 			"dialogLabel": "Command palette",
-			"modeHint": "Commands, people, labels",
+			"modeHint": "Commands, people, labels, ask",
 			"navigate": "Navigate",
 			"noMatches": "No matches",
 			"noResults": "No results for \"{query}\"",
@@ -336,7 +336,9 @@
 			"searchMailFor": "Search mail for \"{query}\"",
 			"searchPlaceholder": "Search or run a command…",
 			"searching": "Searching…",
-			"select": "Select"
+			"select": "Select",
+			"scopeLabel": "Search scope",
+			"scopeHint": "Scope"
 		},
 		"assistant": {
 			"assistantComposer": {
@@ -10672,7 +10674,8 @@
 				"navigation": "Go to",
 				"recent": "Recent searches",
 				"settings": "Settings",
-				"templates": "Templates"
+				"templates": "Templates",
+				"refine": "Refine"
 			}
 		},
 		"conditions": {
@@ -13889,6 +13892,13 @@
 			"unverified": "Not verified in person",
 			"verifiedByTeammate": "Verified by a teammate",
 			"verifiedByYou": "Verified by you"
+		},
+		"commandPaletteScope": {
+			"scopes": {
+				"mail": "Mail",
+				"ask": "Ask",
+				"everything": "Everything"
+			}
 		}
 	},
 	"sharedPkg": {

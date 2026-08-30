@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 import {
 	type PaletteArgumentSpec,
 	type PaletteGroup,
@@ -8,42 +7,40 @@ import {
 	buildArgumentGroups,
 	flattenGroups,
 	groupsForMode,
-	highlightSegments,
 	mergeGroups,
 	moveSelection,
 	parsePaletteQuery,
 } from '~/lib/commandPalette';
 import { resolvePaletteGroups } from '~/lib/commandPaletteRegistry';
+import { PALETTE_SCOPE_LABEL_KEYS, groupsForScope } from '~/lib/commandPaletteScope';
+import type { CommandPaletteOpenDetail } from '~/composables/useCommandPalette';
 import {
 	SEARCH_MIN_QUERY,
-	type SearchResult,
 	type SearchResults,
 	buildCorePaletteProviders,
 } from '~/lib/commandPaletteCore';
 
 /**
- * App-wide Cmd/Ctrl-K command palette, mounted once in the dashboard layout so
- * it works on EVERY dashboard page. Assembled from an ordered, deduplicated
- * provider registry (`~/lib/commandPaletteRegistry`):
- *   1. core providers, built here and consulted first — recent searches, verbs,
- *      sidebar-context switch, object search, mail, and navigation;
- *   2. surface/plugin providers registered while mounted (e.g. the Postbox
- *      layout registers its reader actions + folders, route-gated to Postbox).
+ * The app's ONE search overlay, mounted once in the dashboard layout so it works
+ * on EVERY dashboard page. It is assembled from an ordered, deduplicated provider
+ * registry (`~/lib/commandPaletteRegistry`): core providers built here are
+ * consulted first, then the surface/plugin providers registered while mounted.
  *
- * Providers are gated by feature flag and route, ordered by priority, and
- * deduplicated by group key and item id (earlier providers win) before the
- * `mergeGroups` sort/cap. The palette is the shared shell; every contributor —
- * core or plugin — flows through the same registry, so nothing forks it.
+ * It is SCOPED BY ROUTE (`~/lib/commandPaletteScope`). On Postbox it opens on
+ * Mail — the full operator grammar, its autocomplete, live hits from the real
+ * mail search, and Enter handing off to `/dashboard/postbox/search`. On
+ * knowledge/files it opens on Ask, which answers from `quickQuery.ask` with its
+ * citations right here. Everywhere else it opens on Everything, the cross-object
+ * index. Tab cycles, so nothing is ever out of reach. This replaced four separate
+ * boxes — this palette, the Postbox rail bar, the search page's bar and the Quick
+ * Query modal — each of which had its own grammar and its own history.
  *
  * Typing is fuzzy (subsequence, with the matched characters highlighted), a
- * leading `>`/`@`/`#` narrows to commands/people/labels, and an item may ask
- * for an ARGUMENT — selecting it opens a second step with its own option list
- * instead of running. All of that arithmetic is pure (`~/lib/commandPalette`);
- * this component only holds the state and renders it.
- *
- * The Cmd+Shift+K knowledge Quick Query keeps its own shortcut; it is surfaced
- * here as the "Ask knowledge…" action (dispatches `owlat:open-knowledge-query`,
- * which the layout listens for).
+ * leading `>`/`@`/`#` narrows to commands/people/labels and `?` asks knowledge,
+ * and an item may ask for an ARGUMENT — selecting it opens a second step with its
+ * own option list instead of running. All of that arithmetic is pure
+ * (`~/lib/commandPalette`); this component holds the state and the keyboard, and
+ * `AppCommandPaletteResults` renders it.
  */
 
 const { t } = useI18n();
@@ -56,6 +53,8 @@ const open = ref(false);
 const activeIndex = ref(0);
 const inputEl = ref<HTMLInputElement | null>(null);
 const dialogRef = ref<HTMLElement | null>(null);
+/** Caret offset in the box — the Mail grammar completes a TOKEN, not the box. */
+const caret = ref(0);
 
 // Debounced so each keystroke doesn't re-run the cross-table search query.
 const { searchQuery, debouncedSearch, setImmediate } = useDebouncedSearch(300);
@@ -64,78 +63,69 @@ const { searchQuery, debouncedSearch, setImmediate } = useDebouncedSearch(300);
 // are handled by onInputKeydown below (single source of truth).
 useModalFocus(dialogRef, () => open.value);
 
-// ── Recent object-search terms (localStorage-backed; see the composable).
-const { recentSearches, loadRecent, saveRecent, clearRecent } = useCommandPaletteRecents();
-
-// ── Mode prefixes: the typed `>`/`@`/`#` never reaches a provider or the search
-// index — providers see the bare term, and the mode filters the merged groups.
+// ── Mode prefixes: the typed `>`/`@`/`#`/`?` never reaches a provider or the
+// search index — providers see the bare term, and the mode filters the groups.
 const parsedQuery = computed(() => parsePaletteQuery(searchQuery.value));
 const searchTerm = computed(() => parsedQuery.value.term);
 const debouncedTerm = computed(() => parsePaletteQuery(debouncedSearch.value).term);
 
+// ── Scope: which corpus this overlay is searching right now.
+const { scope, prompt, effectiveMode, isAskAvailable, resetScope, cycleScope } =
+	useCommandPaletteScope(() => parsedQuery.value.mode);
+
+// ── Recent terms, tagged with the scope they were typed in (localStorage).
+// Tagged by what the box is DOING, not by the chip: a `?` question asked from
+// the Everything chip is still Ask history, and belongs with the other ones.
+const { recentSearches, loadRecent, saveRecent, clearRecent } = useCommandPaletteRecents(() =>
+	prompt.value === 'ask' ? 'ask' : scope.value
+);
+
 // ── Object search (contacts / templates / campaigns / mail) via the shared index.
+// Skipped outside the Everything-style palette: Mail and Ask have their own
+// backends, and this component is mounted on every dashboard page.
 const { data: searchData } = useOrganizationQuery(api.globalSearch.search, () =>
 	// undefined → the wrapper skips the subscription (no empty / <2-char query).
-	debouncedTerm.value.trim().length >= SEARCH_MIN_QUERY
+	prompt.value === 'palette' && debouncedTerm.value.trim().length >= SEARCH_MIN_QUERY
 		? { query: debouncedTerm.value, limit: 5 }
 		: undefined
 );
 const searchResults = computed(() => searchData.value as SearchResults | undefined);
-const isSearching = computed(
-	() => searchTerm.value.trim().length >= SEARCH_MIN_QUERY && searchResults.value === undefined
-);
 
-function iconForType(type: string): string {
-	if (type === 'contact') return 'lucide:user';
-	if (type === 'campaign') return 'lucide:megaphone';
-	return 'lucide:mail';
-}
+const { buildResultItems, buildMailItems, buildSearchMailItem, goToMailSearch } =
+	useCommandPaletteObjectItems({
+		onRemember: (term) => saveRecent(term),
+		onNavigate: () => close(),
+		term: () => searchTerm.value,
+	});
 
-function toResultItems(results: SearchResult[]): PaletteItem[] {
-	return results.map((result) => ({
-		id: `search:${result.id}`,
-		label: result.title,
-		subtitle: result.subtitle,
-		icon: iconForType(result.type),
-		run: () => {
-			saveRecent(searchTerm.value);
-			void navigateTo(result.url);
-		},
-	}));
-}
+// ── Mail scope: the operator grammar's completions and its live hits.
+const mailScope = useCommandPaletteMailScope({
+	query: searchTerm,
+	caret,
+	enabled: computed(() => prompt.value === 'mailSearch'),
+	onReplace: (value, nextCaret) => {
+		searchQuery.value = value;
+		void nextTick(() => {
+			inputEl.value?.setSelectionRange(nextCaret, nextCaret);
+			inputEl.value?.focus();
+			caret.value = nextCaret;
+		});
+	},
+	onRemember: (term) => saveRecent(term),
+});
 
-// ── Mail hits. Selecting one may cross mailboxes, so the active Postbox mailbox
-// is pointed at the message's own mailbox before navigating — otherwise the
-// thread opens against whichever mailbox happened to be selected and reads as
-// "not found". The selection composable is the state-only one: this component
-// is mounted on every dashboard page and must not open Postbox subscriptions.
-const { setActiveMailboxId } = usePostboxActiveMailbox();
+// ── Ask scope: the knowledge + files question, answered inline with citations.
+const askScope = useCommandPaletteAsk();
 
-function toMailItems(results: SearchResult[]): PaletteItem[] {
-	return results.map((result) => ({
-		id: `mail:${result.id}`,
-		label: result.title.trim() || t('components.appCommandPalette.noSubject'),
-		subtitle: result.subtitle,
-		icon: 'lucide:mail',
-		run: () => {
-			saveRecent(searchTerm.value);
-			if (result.mailboxId) setActiveMailboxId(result.mailboxId as Id<'mailboxes'>);
-			void navigateTo(result.url);
-		},
-	}));
-}
-
-function toSearchMailItem(term: string): PaletteItem {
-	return {
-		id: 'mail:search-for',
-		label: t('components.appCommandPalette.searchMailFor', { query: term }),
-		icon: 'lucide:search',
-		run: () => {
-			saveRecent(term);
-			void navigateTo({ path: '/dashboard/postbox/search', query: { q: term } });
-		},
-	};
-}
+/** One spinner for whichever backend the active scope is waiting on. */
+const isSearching = computed(() => {
+	if (prompt.value === 'mailSearch') return mailScope.isSearching.value;
+	return (
+		prompt.value === 'palette' &&
+		searchTerm.value.trim().length >= SEARCH_MIN_QUERY &&
+		searchResults.value === undefined
+	);
+});
 
 // ── Core providers, consulted before any surface/plugin provider. Their
 // composition (ids, priorities, group keys/orders/caps, gating) lives in the
@@ -149,10 +139,15 @@ const coreProviders = buildCorePaletteProviders({
 	navItems: () => navItems.value,
 	settingsItems: () => settingsItems.value,
 	searchResults: () => searchResults.value,
-	onRecentTerm: (term) => setImmediate(term),
-	buildResultItems: (results) => toResultItems(results),
-	buildMailItems: (results) => toMailItems(results),
-	buildSearchMailItem: (term) => toSearchMailItem(term),
+	// A refill keeps the typed prefix, so a recent term picked in `?`/`>` mode
+	// stays in that mode instead of silently dropping back to the plain palette.
+	onRecentTerm: (term) => setImmediate(`${parsedQuery.value.prefix}${term}`),
+	buildResultItems,
+	buildMailItems,
+	buildSearchMailItem,
+	isMailScope: () => prompt.value === 'mailSearch',
+	mailSuggestionItems: () => mailScope.suggestionItems.value,
+	mailHitItems: () => mailScope.hitItems.value,
 });
 
 // ── Argument step. While an item's argument is pending the palette shows only
@@ -160,24 +155,27 @@ const coreProviders = buildCorePaletteProviders({
 const pendingArgument = ref<{ item: PaletteItem; spec: PaletteArgumentSpec } | null>(null);
 
 // ── Assemble the ordered, capped group list: gate + order + dedup providers,
-// keep the groups the typed mode admits, then sort/drop-empties/cap. Core
-// providers form their own trust tier and are always consulted before any
+// keep the groups the scope and the typed mode admit, then sort/drop-empties/cap.
+// Core providers form their own trust tier and are always consulted before any
 // registered surface/plugin provider, so a registered provider can add work but
 // never override a core group or item.
 const groups = computed<PaletteGroup[]>(() => {
 	const pending = pendingArgument.value;
 	if (pending) return mergeGroups(buildArgumentGroups(pending.spec, searchQuery.value));
-	return mergeGroups(
-		groupsForMode(
-			resolvePaletteGroups(
-				coreProviders,
-				registryProviders.value,
-				{ path: route.path, isFlagEnabled },
-				{ query: searchTerm.value, mode: parsedQuery.value.mode }
-			),
-			parsedQuery.value.mode
-		)
+	const resolved = resolvePaletteGroups(
+		coreProviders,
+		registryProviders.value,
+		{ path: route.path, isFlagEnabled },
+		{ query: searchTerm.value, mode: effectiveMode.value }
 	);
+	// Ask replaces the object list with one answer; only the history survives it,
+	// and it survives the `?` prefix too (no provider declares the `ask` mode, so
+	// the usual mode filter would blank it).
+	if (prompt.value === 'ask') {
+		return mergeGroups(resolved.filter((group) => group.key === 'recent'));
+	}
+	const scoped = groupsForScope(resolved, scope.value, effectiveMode.value);
+	return mergeGroups(groupsForMode(scoped, effectiveMode.value));
 });
 
 // What the rows highlight against: the argument step filters on the raw box,
@@ -192,15 +190,39 @@ const flatIndexById = computed(() => {
 });
 const hasAnyResults = computed(() => flatItems.value.length > 0);
 
+/**
+ * Where the highlight sits when the rows change.
+ *
+ * Mail scope opens with NOTHING selected, the way the search bar it replaced
+ * did: a search box's primary action is that Enter runs what you typed, and
+ * pre-selecting a row would make Enter open somebody's message instead of the
+ * results page. An arrow key hands the keyboard over to the list.
+ */
+const restingIndex = computed(() => (prompt.value === 'mailSearch' ? -1 : 0));
 watch(flatItems, () => {
-	activeIndex.value = 0;
+	activeIndex.value = restingIndex.value;
 });
 
-async function openPalette() {
+const scopeLabel = computed(() => t(PALETTE_SCOPE_LABEL_KEYS[scope.value]));
+const placeholder = computed(() => {
+	if (prompt.value === 'ask') return t('components.query.quickQueryPanel.placeholder');
+	if (scope.value === 'mail') return t('components.postbox.postboxSearchBar.placeholder');
+	return t('components.appCommandPalette.searchPlaceholder');
+});
+
+function syncCaret() {
+	caret.value = inputEl.value?.selectionStart ?? searchQuery.value.length;
+}
+
+async function openPalette(detail?: CommandPaletteOpenDetail) {
 	open.value = true;
 	searchQuery.value = '';
 	activeIndex.value = 0;
+	caret.value = 0;
 	pendingArgument.value = null;
+	resetScope(detail?.scope);
+	mailScope.resetQuery();
+	askScope.reset();
 	loadRecent();
 	await nextTick();
 	inputEl.value?.focus();
@@ -211,6 +233,8 @@ function close() {
 	searchQuery.value = '';
 	activeIndex.value = 0;
 	pendingArgument.value = null;
+	mailScope.resetQuery();
+	askScope.reset();
 }
 
 /** Leave the argument step, back to the palette that opened it. */
@@ -241,6 +265,21 @@ function runItem(item: PaletteItem | undefined) {
 	item.run();
 }
 
+/** Enter: run the highlighted row, or — with none — do what the scope means. */
+function onEnter() {
+	if (prompt.value === 'ask') {
+		saveRecent(searchTerm.value);
+		void askScope.ask(searchTerm.value);
+		return;
+	}
+	const item = flatItems.value[activeIndex.value];
+	if (item) {
+		runItem(item);
+		return;
+	}
+	if (prompt.value === 'mailSearch' && searchTerm.value.trim()) goToMailSearch(searchTerm.value);
+}
+
 function onInputKeydown(event: KeyboardEvent) {
 	if (event.key === 'Escape') {
 		event.preventDefault();
@@ -256,38 +295,63 @@ function onInputKeydown(event: KeyboardEvent) {
 		cancelArgument();
 		return;
 	}
+	// Tab cycles the SCOPE rather than moving focus: the overlay is one input, and
+	// the argument step is a sub-list of one scope, so it opts out.
+	if (event.key === 'Tab' && !pendingArgument.value) {
+		event.preventDefault();
+		cycleScope();
+		activeIndex.value = restingIndex.value;
+		return;
+	}
 	if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
 		event.preventDefault();
 		activeIndex.value = moveSelection(activeIndex.value, event.key, flatItems.value.length);
 	} else if (event.key === 'Enter') {
 		event.preventDefault();
-		runItem(flatItems.value[activeIndex.value]);
+		onEnter();
 	}
 }
 
-// ── Global open triggers. This palette owns plain Cmd/Ctrl+K everywhere;
-// Cmd+Shift+K stays with the knowledge Quick Query (dashboard layout).
+// ── Global open triggers. This palette owns plain Cmd/Ctrl+K everywhere, and
+// Cmd/Ctrl+Shift+K is now an ALIAS that opens it pre-switched to Ask — the
+// knowledge Quick Query's own shortcut, unchanged, gated on the same
+// `ai.knowledge` flag the panel it replaced was gated on.
 function onGlobalKey(event: KeyboardEvent) {
-	if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'k') {
+	if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return;
+	if (event.shiftKey) {
+		if (!isAskAvailable.value) return;
 		event.preventDefault();
-		if (open.value) close();
-		else void openPalette();
+		void openPalette({ scope: 'ask' });
+		return;
 	}
+	event.preventDefault();
+	if (open.value) close();
+	else void openPalette();
 }
 
-// Header/mobile search buttons open us.
-function onExternalOpen() {
-	if (!open.value) void openPalette();
+// Header/mobile search buttons, the desktop titlebar pill and the Postbox `/`
+// shortcut all open us; the detail names a scope when the caller has one.
+function onExternalOpen(event: Event) {
+	if (open.value) return;
+	void openPalette((event as CustomEvent<CommandPaletteOpenDetail>).detail ?? undefined);
+}
+
+// The palette's own "Ask knowledge…" verb keeps its event seam; it now switches
+// this overlay instead of opening a second modal.
+function onOpenAsk() {
+	if (isAskAvailable.value) void openPalette({ scope: 'ask' });
 }
 
 onMounted(() => {
 	loadRecent();
 	window.addEventListener('keydown', onGlobalKey);
 	window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
+	window.addEventListener('owlat:open-knowledge-query', onOpenAsk);
 });
 onBeforeUnmount(() => {
 	window.removeEventListener('keydown', onGlobalKey);
 	window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
+	window.removeEventListener('owlat:open-knowledge-query', onOpenAsk);
 });
 </script>
 
@@ -322,9 +386,23 @@ onBeforeUnmount(() => {
 			>
 				<!-- Search input -->
 				<div class="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
-					<Icon name="lucide:search" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<!-- The scope chip. `tabindex="-1"` on purpose: Tab inside the overlay
+					     is bound to cycling the scope, so the chip could never be reached
+					     by it anyway, and leaving it out of the tab ring keeps the focus
+					     trap's "first focusable" on the input, where typing belongs. -->
+					<button
+						v-if="!pendingArgument"
+						type="button"
+						tabindex="-1"
+						class="flex-shrink-0 text-xs font-medium px-2 py-1 rounded-full bg-brand/10 text-brand hover:bg-brand/20 transition-colors duration-(--motion-fast)"
+						:aria-label="t('components.appCommandPalette.scopeLabel')"
+						:title="t('components.appCommandPalette.scopeLabel')"
+						@click="cycleScope"
+					>
+						{{ scopeLabel }}
+					</button>
 					<span
-						v-if="pendingArgument"
+						v-else
 						class="flex-shrink-0 text-xs px-2 py-1 rounded bg-bg-surface text-text-secondary"
 					>
 						{{ t(pendingArgument.spec.promptKey) }}
@@ -333,7 +411,7 @@ onBeforeUnmount(() => {
 						ref="inputEl"
 						v-model="searchQuery"
 						type="text"
-						:placeholder="t('components.appCommandPalette.searchPlaceholder')"
+						:placeholder="placeholder"
 						class="flex-1 bg-transparent text-text-primary placeholder-text-tertiary outline-none text-base"
 						role="combobox"
 						aria-expanded="true"
@@ -343,6 +421,9 @@ onBeforeUnmount(() => {
 							flatItems[activeIndex] ? `app-cmdk-opt-${activeIndex}` : undefined
 						"
 						@keydown="onInputKeydown"
+						@keyup="syncCaret"
+						@click="syncCaret"
+						@input="syncCaret"
 					/>
 					<button
 						v-if="searchQuery"
@@ -359,118 +440,22 @@ onBeforeUnmount(() => {
 					</kbd>
 				</div>
 
-				<!-- Results -->
-				<div id="app-cmdk-list" role="listbox" class="max-h-[60vh] overflow-y-auto py-2">
-					<div
-						v-if="isSearching && !hasAnyResults"
-						class="px-4 py-8 text-center text-text-tertiary"
-					>
-						<UiSpinner class="mx-auto" size="sm" tone="brand" />
-						<p class="mt-2 text-sm">{{ t('components.appCommandPalette.searching') }}</p>
-					</div>
+				<AppCommandPaletteResults
+					:groups="groups"
+					:active-index="activeIndex"
+					:index-by-id="flatIndexById"
+					:match-term="matchTerm"
+					:prompt="prompt"
+					:is-searching="isSearching"
+					:has-rows="hasAnyResults"
+					:ask-answer="askScope.answer.value"
+					:ask-loading="askScope.isLoading.value"
+					@run="runItem"
+					@hover="activeIndex = $event"
+					@clear-recent="clearRecent"
+				/>
 
-					<div v-else-if="!hasAnyResults" class="px-4 py-8 text-center text-text-tertiary">
-						<Icon name="lucide:search" class="w-8 h-8 mx-auto mb-2 opacity-50" />
-						<p class="text-sm">
-							{{
-								searchTerm.trim().length >= SEARCH_MIN_QUERY
-									? t('components.appCommandPalette.noResults', { query: searchTerm })
-									: t('components.appCommandPalette.noMatches')
-							}}
-						</p>
-					</div>
-
-					<div v-for="group in groups" v-else :key="group.key" class="mb-1">
-						<div
-							class="flex items-center justify-between px-4 py-1.5 text-xs font-medium text-text-tertiary uppercase tracking-wider"
-						>
-							<!-- Provider group headings are message keys (providers are pure
-							     module-scope registries and cannot call `useI18n`); a heading a
-							     provider still ships as literal text passes through unchanged. -->
-							<span>{{ t(group.heading) }}</span>
-							<button
-								v-if="group.key === 'recent'"
-								class="text-xs normal-case tracking-normal text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-								@click="clearRecent"
-							>
-								{{ t('components.appCommandPalette.clearRecent') }}
-							</button>
-						</div>
-						<button
-							v-for="item in group.items"
-							:id="`app-cmdk-opt-${flatIndexById.get(item.id)}`"
-							:key="item.id"
-							type="button"
-							role="option"
-							:aria-selected="flatIndexById.get(item.id) === activeIndex"
-							class="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-(--motion-fast)"
-							:class="
-								flatIndexById.get(item.id) === activeIndex
-									? 'bg-bg-surface text-text-primary'
-									: 'hover:bg-bg-surface text-text-secondary'
-							"
-							@click="runItem(item)"
-							@mousemove="activeIndex = flatIndexById.get(item.id) ?? activeIndex"
-						>
-							<Icon :name="item.icon" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-							<span class="flex-1 min-w-0">
-								<span class="block text-sm truncate">
-									<!-- The fuzzy scorer matched these characters; bolding them is what
-									     makes a subsequence hit ("pbx" → Postbox) legible. -->
-									<span
-										v-for="(segment, segmentIndex) in highlightSegments(item.label, matchTerm)"
-										:key="segmentIndex"
-										:class="segment.isMatch ? 'font-semibold text-text-primary' : undefined"
-										>{{ segment.text }}</span
-									>
-								</span>
-								<span v-if="item.subtitle" class="block text-xs text-text-tertiary truncate">{{
-									item.subtitle
-								}}</span>
-							</span>
-							<Icon
-								v-if="item.argument"
-								name="lucide:chevron-right"
-								class="w-4 h-4 flex-shrink-0 text-text-tertiary"
-							/>
-							<kbd
-								v-else-if="item.hint"
-								class="text-2xs text-text-tertiary border border-border-subtle rounded px-1"
-								>{{ item.hint }}</kbd
-							>
-						</button>
-					</div>
-				</div>
-
-				<!-- Footer -->
-				<div
-					class="px-4 py-2 border-t border-border-subtle bg-bg-surface text-xs text-text-tertiary flex items-center gap-4"
-				>
-					<span class="flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
-							>↑↓</kbd
-						>
-						{{ t('components.appCommandPalette.navigate') }}
-					</span>
-					<span class="flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
-							>↵</kbd
-						>
-						{{ t('components.appCommandPalette.select') }}
-					</span>
-					<span class="flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
-							>esc</kbd
-						>
-						{{ pendingArgument ? t('components.appCommandPalette.back') : t('common.close') }}
-					</span>
-					<span v-if="!pendingArgument" class="hidden sm:flex items-center gap-1">
-						<kbd class="px-1 py-0.5 bg-bg-elevated border border-border-subtle rounded text-2xs"
-							>&gt; @ #</kbd
-						>
-						{{ t('components.appCommandPalette.modeHint') }}
-					</span>
-				</div>
+				<AppCommandPaletteFooter :pending-argument="!!pendingArgument" />
 			</div>
 		</Transition>
 	</Teleport>

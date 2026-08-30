@@ -328,7 +328,7 @@
 			"clearQuery": "Leeren",
 			"clearRecent": "Löschen",
 			"dialogLabel": "Befehlspalette",
-			"modeHint": "Befehle, Personen, Labels",
+			"modeHint": "Befehle, Personen, Labels, fragen",
 			"navigate": "Navigieren",
 			"noMatches": "Keine Treffer",
 			"noResults": "Keine Ergebnisse für \"{query}\"",
@@ -336,7 +336,9 @@
 			"searchMailFor": "E-Mails durchsuchen nach \"{query}\"",
 			"searchPlaceholder": "Suchen oder Befehl ausführen…",
 			"searching": "Wird gesucht…",
-			"select": "Auswählen"
+			"select": "Auswählen",
+			"scopeLabel": "Suchbereich",
+			"scopeHint": "Bereich"
 		},
 		"assistant": {
 			"assistantComposer": {
@@ -10672,7 +10674,8 @@
 				"navigation": "Gehe zu",
 				"recent": "Letzte Suchen",
 				"settings": "Einstellungen",
-				"templates": "Vorlagen"
+				"templates": "Vorlagen",
+				"refine": "Verfeinern"
 			}
 		},
 		"conditions": {
@@ -13889,6 +13892,13 @@
 			"unverified": "Nicht persönlich verifiziert",
 			"verifiedByTeammate": "Von einem Teammitglied verifiziert",
 			"verifiedByYou": "Von Ihnen verifiziert"
+		},
+		"commandPaletteScope": {
+			"scopes": {
+				"mail": "E-Mail",
+				"ask": "Fragen",
+				"everything": "Alles"
+			}
 		}
 	},
 	"sharedPkg": {

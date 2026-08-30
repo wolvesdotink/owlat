@@ -82,14 +82,19 @@ export interface PaletteItem {
 /**
  * Which typed PREFIX a group belongs to. `all` (the default) is the unprefixed
  * palette, where every group shows.
+ *
+ * `ask` is the odd one out: no group declares it, because the knowledge answer
+ * is not a list of objects. It exists so a typed `?` reaches the shell as a
+ * mode like any other rather than as a special case parsed twice.
  */
-export type PaletteMode = 'all' | 'commands' | 'people' | 'labels';
+export type PaletteMode = 'all' | 'commands' | 'people' | 'labels' | 'ask';
 
 /** The prefix characters that narrow the palette to one kind of result. */
 export const PALETTE_MODE_PREFIXES: Readonly<Record<string, PaletteMode>> = {
 	'>': 'commands',
 	'@': 'people',
 	'#': 'labels',
+	'?': 'ask',
 };
 
 /** A titled, ordered bucket of items. Empty groups are dropped on merge. */

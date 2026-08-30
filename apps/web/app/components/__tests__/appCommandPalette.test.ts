@@ -16,11 +16,17 @@ import { dashboardShellStubs, installNuxtStubs, queryResult } from '~/__tests__/
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useCommandPaletteProviders } from '~/composables/useCommandPaletteProviders';
 import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
+import { useCommandPaletteScope } from '~/composables/useCommandPaletteScope';
+import { useCommandPaletteMailScope } from '~/composables/useCommandPaletteMailScope';
+import { useCommandPaletteObjectItems } from '~/composables/useCommandPaletteObjectItems';
+import { useCommandPaletteAsk } from '~/composables/useCommandPaletteAsk';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
 import type { CommandPaletteProvider } from '~/lib/commandPaletteRegistry';
 import type { SearchResults } from '~/lib/commandPaletteCore';
 import AppCommandPalette from '../AppCommandPalette.vue';
+import AppCommandPaletteResults from '../AppCommandPaletteResults.vue';
+import QueryResult from '../query/QueryResult.vue';
 
 const searchResults: SearchResults = {
 	contacts: [
@@ -81,18 +87,19 @@ function argumentProvider(): CommandPaletteProvider {
 	};
 }
 
-beforeEach(() => {
-	setActiveMailboxId.mockClear();
-	navigateTo.mockClear();
-	runLabelOption.mockClear();
-	runParentItem.mockClear();
+/**
+ * The overlay is route-scoped, so the route is a per-test input rather than a
+ * constant: the same component is a mail search on Postbox and an object search
+ * everywhere else.
+ */
+function installStubs(path: string, overrides: Record<string, unknown> = {}) {
 	installNuxtStubs({
 		...i18nStubs,
 		...dashboardShellStubs(),
 		useRoute: () => ({
-			path: '/dashboard/campaigns',
-			fullPath: '/dashboard/campaigns',
-			name: 'dashboard-campaigns',
+			path,
+			fullPath: path,
+			name: 'route',
 			query: {},
 			params: {},
 			meta: {},
@@ -101,12 +108,26 @@ beforeEach(() => {
 		useCommandPaletteProviders,
 		useCommandPaletteRegistry: () => ref([argumentProvider()]),
 		useCommandPaletteRecents,
+		useCommandPaletteScope,
+		useCommandPaletteMailScope,
+		useCommandPaletteObjectItems,
+		useCommandPaletteAsk,
 		useDebouncedSearch,
 		useModalFocus: vi.fn(),
 		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null), setActiveMailboxId }),
 		COMMAND_PALETTE_OPEN_EVENT,
 		useOrganizationQuery: () => queryResult(searchResults),
+		...overrides,
 	});
+}
+
+beforeEach(() => {
+	localStorage.clear();
+	setActiveMailboxId.mockClear();
+	navigateTo.mockClear();
+	runLabelOption.mockClear();
+	runParentItem.mockClear();
+	installStubs('/dashboard/campaigns');
 });
 
 // The palette teleports into <body>, so a wrapper left mounted would leak its
@@ -123,7 +144,11 @@ afterEach(() => {
 async function openPalette() {
 	wrapper = mount(AppCommandPalette, {
 		attachTo: document.body,
-		global: { plugins: [createTestI18n()], stubs: { Icon: true, UiSpinner: true } },
+		global: {
+			plugins: [createTestI18n()],
+			components: { AppCommandPaletteResults, QueryResult },
+			stubs: { Icon: true, UiSpinner: true },
+		},
 	});
 	window.dispatchEvent(new Event(COMMAND_PALETTE_OPEN_EVENT));
 	await nextTick();
@@ -137,6 +162,23 @@ async function type(text: string) {
 	input.dispatchEvent(new Event('input'));
 	await nextTick();
 	await nextTick();
+}
+
+/** Press a key on the palette input, the way the real keyboard reaches it. */
+async function press(key: string, init: KeyboardEventInit = {}) {
+	const input = document.body.querySelector('input');
+	if (!input) throw new Error('palette input missing');
+	input.dispatchEvent(
+		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init })
+	);
+	await nextTick();
+	await nextTick();
+}
+
+/** The scope chip's label — the one visible answer to "what am I searching?". */
+function scopeChip(): string {
+	const chip = document.body.querySelector<HTMLElement>('[role="dialog"] button');
+	return chip?.textContent?.trim() ?? '';
 }
 
 function rows(): HTMLElement[] {
@@ -229,5 +271,87 @@ describe('AppCommandPalette — argument mode', () => {
 
 		expect(document.body.querySelector('input')).not.toBeNull();
 		expect(rows().length).toBeGreaterThan(1);
+	});
+});
+
+describe('AppCommandPalette — route-aware scope', () => {
+	it('opens on Everything away from the scoped surfaces', async () => {
+		await openPalette();
+		expect(scopeChip()).toBe('Everything');
+	});
+
+	it('opens on Mail inside the Postbox and offers the operator grammar', async () => {
+		installStubs('/dashboard/postbox/inbox');
+		await openPalette();
+		expect(scopeChip()).toBe('Mail');
+
+		// The grammar the rail's search bar used to own, now one overlay row.
+		await type('fr');
+		expect(rowLabelled('from:')).toBeTruthy();
+		// …and none of the object-search noise the Everything palette shows.
+		expect(document.body.textContent).not.toContain('Ada Lovelace');
+	});
+
+	it('sends Enter to the deep search page when no row is highlighted', async () => {
+		installStubs('/dashboard/postbox/inbox');
+		await openPalette();
+		await type('invoice');
+		await press('Enter');
+
+		expect(navigateTo).toHaveBeenCalledWith({
+			path: '/dashboard/postbox/search',
+			query: { q: 'invoice' },
+		});
+	});
+
+	it('cycles the scope on Tab', async () => {
+		await openPalette();
+		expect(scopeChip()).toBe('Everything');
+		await press('Tab');
+		expect(scopeChip()).toBe('Mail');
+		await press('Tab');
+		expect(scopeChip()).toBe('Ask');
+		await press('Tab');
+		expect(scopeChip()).toBe('Everything');
+	});
+
+	it('keeps the command mode reachable from Mail scope', async () => {
+		installStubs('/dashboard/postbox/inbox');
+		await openPalette();
+		await type('>label');
+		// Mail scope narrows the UNPREFIXED palette only; `>` still means commands.
+		expect(document.body.textContent).toContain('Label as');
+	});
+});
+
+describe('AppCommandPalette — Ask scope', () => {
+	const answer = { answer: 'Ines was double-billed on the 14th.', sources: [] };
+
+	function installAsk(run: ReturnType<typeof vi.fn>) {
+		installStubs('/dashboard/campaigns', {
+			useBackendOperation: () => ({ run, isLoading: ref(false), error: ref(null) }),
+		});
+	}
+
+	it('answers a `?` question inline instead of opening a second modal', async () => {
+		const run = vi.fn(async () => ({ ok: true, result: answer }));
+		installAsk(run);
+		await openPalette();
+		await type('?why was ines billed twice');
+		await press('Enter');
+		await nextTick();
+
+		expect(run).toHaveBeenCalledWith({ question: 'why was ines billed twice' });
+		expect(document.body.textContent).toContain('Ines was double-billed on the 14th.');
+	});
+
+	it('opens pre-switched to Ask on the Cmd/Ctrl+Shift+K alias', async () => {
+		installAsk(vi.fn());
+		await openPalette();
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'K', metaKey: true, shiftKey: true, bubbles: true })
+		);
+		await nextTick();
+		expect(scopeChip()).toBe('Ask');
 	});
 });
