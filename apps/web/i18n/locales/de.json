@@ -3459,13 +3459,9 @@
 				"deleteFolderDescription": "Den Ordner „{name}“ löschen? Nachrichten darin werden verschoben, nicht gelöscht.",
 				"expandSidebar": "Seitenleiste ausklappen",
 				"expandSidebarTitle": "Seitenleiste ausklappen (Cmd+Shift+D)",
-				"folderNameAriaLabel": "Ordnername",
-				"folderNamePlaceholder": "Ordnername",
 				"foldersHeading": "Ordner",
 				"labelsHeading": "Labels",
-				"manageLabels": "Labels verwalten",
 				"newFolder": "Neuer Ordner",
-				"newFolderNameAriaLabel": "Name des neuen Ordners",
 				"noCustomFolders": "Keine eigenen Ordner",
 				"noLabels": "Noch keine Labels",
 				"renameFolder": "Ordner umbenennen",
@@ -3478,9 +3474,8 @@
 				"unpinSearchAriaLabel": "Gespeicherte Suche {name} lösen",
 				"files": "Dateien",
 				"newLabel": "Neues Label",
-				"newLabelNameAriaLabel": "Name des neuen Labels",
-				"labelNamePlaceholder": "Labelname",
-				"labelNestingHint": "Mit Arbeit/Kunden/Acme verschachteln."
+				"labelNestingHint": "Mit Arbeit/Kunden/Acme verschachteln.",
+				"import": "E-Mails importieren"
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Antwort-Erinnerung setzen",
@@ -3540,10 +3535,9 @@
 			},
 			"postboxLabelManager": {
 				"deleteLabel": "Label löschen",
-				"empty": "Noch keine Labels. Erstellen Sie oben eines.",
 				"newNamePlaceholder": "Name des neuen Labels",
 				"setColor": "Farbe {color} festlegen",
-				"title": "Labels verwalten"
+				"title": "Ordner & Labels verwalten"
 			},
 			"postboxLabelPickerDialog": {
 				"empty": "Noch keine Labels",
@@ -3686,13 +3680,13 @@
 			},
 			"postboxMailboxSwitcher": {
 				"personal": {
-					"heading": "Postfächer",
-					"title": "{label}"
+					"heading": "Postfächer"
 				},
 				"team": {
-					"heading": "Team",
-					"title": "Team-Postfach: {label}"
-				}
+					"heading": "Team"
+				},
+				"switchTitle": "Postfach: {label}. Postfach wechseln",
+				"fallbackLabel": "Postfach"
 			},
 			"postboxMessageBody": {
 				"alwaysForSender": "Immer für {host}",
@@ -4371,7 +4365,11 @@
 				"expand": "{name} ausklappen",
 				"collapse": "{name} einklappen",
 				"moveUp": "{name} nach oben verschieben",
-				"moveDown": "{name} nach unten verschieben"
+				"moveDown": "{name} nach unten verschieben",
+				"renameLabel": "Label umbenennen",
+				"nameAriaLabel": "Name des Labels",
+				"renameAriaLabel": "Label {name} umbenennen",
+				"deleteAriaLabel": "Label {name} löschen"
 			},
 			"postboxFilterRunControl": {
 				"run": "Auf vorhandene E-Mails anwenden",
@@ -4562,6 +4560,20 @@
 			"postboxSealedMailNudge": {
 				"action": "ansehen, was das bedeutet, und Wiederherstellungspaket sichern",
 				"body": "Post zwischen Owlat-Instanzen ist jetzt versiegelt, sodass nur Sie sie lesen können. Damit zählt auch der Schlüssel:"
+			},
+			"postboxRailMoreGroup": {
+				"more": "Mehr",
+				"moreUnreadAriaLabel": "Mehr, {count} ungelesen im Spam"
+			},
+			"postboxManageFolders": {
+				"heading": "Ordner",
+				"newNamePlaceholder": "Name des neuen Ordners",
+				"nameAriaLabel": "Name des Ordners",
+				"rename": "Ordner umbenennen",
+				"renameAriaLabel": "Ordner {name} umbenennen",
+				"delete": "Ordner löschen",
+				"deleteAriaLabel": "Ordner {name} löschen",
+				"empty": "Noch keine eigenen Ordner. Erstellen Sie oben einen."
 			}
 		},
 		"preferences": {

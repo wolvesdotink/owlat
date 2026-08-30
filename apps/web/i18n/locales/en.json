@@ -3459,13 +3459,9 @@
 				"deleteFolderDescription": "Delete the folder \"{name}\"? Messages in it are relocated, not deleted.",
 				"expandSidebar": "Expand sidebar",
 				"expandSidebarTitle": "Expand sidebar (Cmd+Shift+D)",
-				"folderNameAriaLabel": "Folder name",
-				"folderNamePlaceholder": "Folder name",
 				"foldersHeading": "Folders",
 				"labelsHeading": "Labels",
-				"manageLabels": "Manage labels",
 				"newFolder": "New folder",
-				"newFolderNameAriaLabel": "New folder name",
 				"noCustomFolders": "No custom folders",
 				"noLabels": "No labels yet",
 				"renameFolder": "Rename folder",
@@ -3478,9 +3474,8 @@
 				"unpinSearchAriaLabel": "Unpin the saved search {name}",
 				"files": "Files",
 				"newLabel": "New label",
-				"newLabelNameAriaLabel": "New label name",
-				"labelNamePlaceholder": "Label name",
-				"labelNestingHint": "Use Work/Clients/Acme to nest."
+				"labelNestingHint": "Use Work/Clients/Acme to nest.",
+				"import": "Import mail"
 			},
 			"postboxFollowUpChip": {
 				"armOperation": "Set reply reminder",
@@ -3540,10 +3535,9 @@
 			},
 			"postboxLabelManager": {
 				"deleteLabel": "Delete label",
-				"empty": "No labels yet. Create one above.",
 				"newNamePlaceholder": "New label name",
 				"setColor": "Set color {color}",
-				"title": "Manage labels"
+				"title": "Manage folders & labels"
 			},
 			"postboxLabelPickerDialog": {
 				"empty": "No labels yet",
@@ -3686,13 +3680,13 @@
 			},
 			"postboxMailboxSwitcher": {
 				"personal": {
-					"heading": "Mailboxes",
-					"title": "{label}"
+					"heading": "Mailboxes"
 				},
 				"team": {
-					"heading": "Team",
-					"title": "Team inbox: {label}"
-				}
+					"heading": "Team"
+				},
+				"switchTitle": "Mailbox: {label}. Switch mailbox",
+				"fallbackLabel": "Mailbox"
 			},
 			"postboxMessageBody": {
 				"alwaysForSender": "Always for {host}",
@@ -4371,7 +4365,11 @@
 				"expand": "Expand {name}",
 				"collapse": "Collapse {name}",
 				"moveUp": "Move {name} up",
-				"moveDown": "Move {name} down"
+				"moveDown": "Move {name} down",
+				"renameLabel": "Rename label",
+				"nameAriaLabel": "Label name",
+				"renameAriaLabel": "Rename the label {name}",
+				"deleteAriaLabel": "Delete the label {name}"
 			},
 			"postboxFilterRunControl": {
 				"run": "Run on existing mail",
@@ -4562,6 +4560,20 @@
 			"postboxSealedMailNudge": {
 				"action": "see what this means and save your recovery kit",
 				"body": "Mail between Owlat instances is now sealed, so only you can read it. That also means the key matters:"
+			},
+			"postboxRailMoreGroup": {
+				"more": "More",
+				"moreUnreadAriaLabel": "More, {count} unread in Spam"
+			},
+			"postboxManageFolders": {
+				"heading": "Folders",
+				"newNamePlaceholder": "New folder name",
+				"nameAriaLabel": "Folder name",
+				"rename": "Rename folder",
+				"renameAriaLabel": "Rename the folder {name}",
+				"delete": "Delete folder",
+				"deleteAriaLabel": "Delete the folder {name}",
+				"empty": "No custom folders yet. Create one above."
 			}
 		},
 		"preferences": {
