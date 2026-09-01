@@ -132,6 +132,7 @@
 	},
 	"overrides": {
 		"brace-expansion": "^5.0.9",
+		"browserslist": "^4.28.8",
 		"devalue": "^5.8.1",
 		"fast-xml-builder": "^1.2.0",
 		"ip-address": "^10.4.0",
