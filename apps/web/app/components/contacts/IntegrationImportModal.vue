@@ -373,442 +373,439 @@ const suppressionSummary = computed(() => {
 			</div>
 		</div>
 
-		<!-- Content -->
-		<div class="max-h-[70vh] overflow-y-auto">
-			<!-- Error Alert -->
+		<!-- Error Alert -->
+		<div
+			v-if="error"
+			class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
+		>
+			<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+			<p class="text-sm text-error">{{ error }}</p>
+		</div>
+
+		<!-- Step 1: Select -->
+		<div v-if="step === 'select'">
+			<!-- Empty state: no providers enabled -->
 			<div
-				v-if="error"
-				class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
+				v-if="integrations.length === 0"
+				class="p-6 rounded-xl border border-border-subtle bg-bg-surface text-center"
 			>
-				<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
-				<p class="text-sm text-error">{{ error }}</p>
-			</div>
-
-			<!-- Step 1: Select -->
-			<div v-if="step === 'select'">
-				<!-- Empty state: no providers enabled -->
-				<div
-					v-if="integrations.length === 0"
-					class="p-6 rounded-xl border border-border-subtle bg-bg-surface text-center"
+				<div class="inline-flex p-3 rounded-full bg-bg-elevated mb-3">
+					<Icon name="lucide:toggle-right" class="w-6 h-6 text-text-tertiary" />
+				</div>
+				<p class="font-medium text-text-primary">
+					{{ t('components.contacts.integrationImportModal.select.emptyTitle') }}
+				</p>
+				<p class="text-sm text-text-tertiary mt-1 max-w-sm mx-auto">
+					{{ t('components.contacts.integrationImportModal.select.emptyBody') }}
+				</p>
+				<NuxtLink
+					to="/dashboard/admin/instance/features"
+					class="mt-4 inline-flex items-center gap-2 text-sm font-medium text-brand hover:underline"
+					@click="close"
 				>
-					<div class="inline-flex p-3 rounded-full bg-bg-elevated mb-3">
-						<Icon name="lucide:toggle-right" class="w-6 h-6 text-text-tertiary" />
-					</div>
-					<p class="font-medium text-text-primary">
-						{{ t('components.contacts.integrationImportModal.select.emptyTitle') }}
-					</p>
-					<p class="text-sm text-text-tertiary mt-1 max-w-sm mx-auto">
-						{{ t('components.contacts.integrationImportModal.select.emptyBody') }}
-					</p>
-					<NuxtLink
-						to="/dashboard/admin/instance/features"
-						class="mt-4 inline-flex items-center gap-2 text-sm font-medium text-brand hover:underline"
-						@click="close"
-					>
-						<Icon name="lucide:settings" class="w-4 h-4" />
-						{{ t('components.contacts.integrationImportModal.select.enableLink', { chevron }) }}
-					</NuxtLink>
-				</div>
-				<div v-else class="space-y-3">
-					<button
-						v-for="integration in integrations"
-						:key="integration.id"
-						class="w-full p-4 rounded-xl border border-border-subtle hover:border-border-default bg-bg-surface hover:bg-bg-surface/80 transition-colors text-left flex items-center gap-4"
-						@click="selectIntegration(integration.id)"
-					>
-						<div :class="['p-3 rounded-lg', integration.bgColor]">
-							<Icon :name="integration.icon" :class="['w-6 h-6', integration.color]" />
-						</div>
-						<div class="flex-1">
-							<p class="font-medium text-text-primary">{{ t(integration.name) }}</p>
-							<p class="text-sm text-text-tertiary">{{ t(integration.description) }}</p>
-						</div>
-						<Icon name="lucide:chevron-right" class="w-5 h-5 text-text-tertiary" />
-					</button>
-				</div>
-				<div v-if="integrations.length > 0" class="mt-6 p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-2">
-						{{ t('components.contacts.integrationImportModal.select.noteTitle') }}
-					</h4>
-					<p class="text-sm text-text-secondary">
-						{{ t('components.contacts.integrationImportModal.select.noteBody') }}
-					</p>
-				</div>
+					<Icon name="lucide:settings" class="w-4 h-4" />
+					{{ t('components.contacts.integrationImportModal.select.enableLink', { chevron }) }}
+				</NuxtLink>
 			</div>
-
-			<!-- Step 2: Configure -->
-			<div v-else-if="step === 'configure'">
-				<!-- Mailchimp Config -->
-				<div v-if="selectedIntegration === 'mailchimp'" class="space-y-4">
-					<div>
-						<label class="label"
-							>{{ t('components.contacts.integrationImportModal.configure.mailchimpApiKey') }}
-							<span class="text-error">*</span></label
-						>
-						<div class="relative">
-							<input
-								v-model="credentials.mailchimp.apiKey"
-								:type="credentials.mailchimp.showApiKey ? 'text' : 'password'"
-								:placeholder="
-									t('components.contacts.integrationImportModal.configure.mailchimpApiKeyPlaceholder')
-								"
-								class="input pr-10"
-							/>
-							<button
-								type="button"
-								class="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
-								@click="credentials.mailchimp.showApiKey = !credentials.mailchimp.showApiKey"
-							>
-								<Icon v-if="!credentials.mailchimp.showApiKey" name="lucide:eye" class="w-4 h-4" />
-								<Icon v-else name="lucide:eye-off" class="w-4 h-4" />
-							</button>
-						</div>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{
-								t('components.contacts.integrationImportModal.configure.mailchimpApiKeyHint', {
-									chevron,
-								})
-							}}
-						</p>
-					</div>
-					<div>
-						<label for="credentials-mailchimp-listid" class="label"
-							>{{ t('components.contacts.integrationImportModal.configure.audienceListId') }}
-							<span class="text-error">*</span></label
-						>
-						<input
-							id="credentials-mailchimp-listid"
-							v-model="credentials.mailchimp.listId"
-							type="text"
-							:placeholder="
-								t('components.contacts.integrationImportModal.configure.audienceListIdPlaceholder')
-							"
-							class="input"
-						/>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{
-								t('components.contacts.integrationImportModal.configure.audienceListIdHint', {
-									chevron,
-								})
-							}}
-						</p>
-					</div>
-					<label class="flex items-start gap-3 p-4 rounded-lg bg-bg-surface cursor-pointer">
-						<input v-model="importSuppressions" type="checkbox" class="w-4 h-4 mt-0.5 text-brand" />
-						<span>
-							<span class="block text-sm font-medium text-text-primary">{{
-								t('components.contacts.integrationImportModal.configure.carrySuppressions')
-							}}</span>
-							<span class="block text-xs text-text-tertiary mt-1">
-								{{ t('components.contacts.integrationImportModal.configure.carrySuppressionsHint') }}
-							</span>
-						</span>
-					</label>
-				</div>
-
-				<!-- Mandrill Config — nothing to configure: the key is an
-							     environment variable (plan D2). -->
-				<div v-else-if="selectedIntegration === 'mandrill'" class="space-y-4">
-					<div class="p-4 rounded-lg bg-bg-surface">
-						<I18nT
-							keypath="components.contacts.integrationImportModal.configure.mandrillBody"
-							tag="p"
-							class="text-sm text-text-secondary"
-							scope="global"
-						>
-							<template #apiKeyVar><code>MANDRILL_API_KEY</code></template>
-							<template #unsubEntry><code>unsub</code></template>
-						</I18nT>
-						<p class="text-xs text-text-tertiary mt-2">
-							{{ t('components.contacts.integrationImportModal.configure.mandrillNote') }}
-						</p>
-					</div>
-				</div>
-
-				<!-- Stripe Config -->
-				<div v-else-if="selectedIntegration === 'stripe'" class="space-y-4">
-					<div>
-						<label class="label"
-							>{{ t('components.contacts.integrationImportModal.configure.stripeSecretKey') }}
-							<span class="text-error">*</span></label
-						>
-						<div class="relative">
-							<input
-								v-model="credentials.stripe.apiKey"
-								:type="credentials.stripe.showApiKey ? 'text' : 'password'"
-								:placeholder="
-									t('components.contacts.integrationImportModal.configure.stripeSecretKeyPlaceholder')
-								"
-								class="input pr-10"
-							/>
-							<button
-								type="button"
-								class="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
-								@click="credentials.stripe.showApiKey = !credentials.stripe.showApiKey"
-							>
-								<Icon v-if="!credentials.stripe.showApiKey" name="lucide:eye" class="w-4 h-4" />
-								<Icon v-else name="lucide:eye-off" class="w-4 h-4" />
-							</button>
-						</div>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{
-								t('components.contacts.integrationImportModal.configure.stripeApiKeyHint', {
-									chevron,
-								})
-							}}
-						</p>
-					</div>
-					<div class="p-4 rounded-lg bg-warning-subtle border border-warning/20">
-						<div class="flex items-start gap-3">
-							<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
-							<div>
-								<p class="text-sm text-warning font-medium">
-									{{ t('components.contacts.integrationImportModal.configure.restrictedKeyTitle') }}
-								</p>
-								<p class="text-xs text-warning/80 mt-1">
-									{{ t('components.contacts.integrationImportModal.configure.restrictedKeyBody') }}
-								</p>
-							</div>
-						</div>
-					</div>
-				</div>
-
-				<!-- Handle Duplicates (contact imports only) -->
-				<div v-if="selectedIntegration !== 'mandrill'" class="mt-6 p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-3">
-						{{ t('components.contacts.integrationImportModal.configure.handleDuplicates') }}
-					</h4>
-					<div class="flex gap-4">
-						<label class="flex items-center gap-2 cursor-pointer">
-							<input
-								v-model="handleDuplicates"
-								type="radio"
-								value="skip"
-								class="w-4 h-4 text-brand"
-							/>
-							<span class="text-sm text-text-secondary">{{
-								t('components.contacts.integrationImportModal.configure.skipDuplicates')
-							}}</span>
-						</label>
-						<label class="flex items-center gap-2 cursor-pointer">
-							<input
-								v-model="handleDuplicates"
-								type="radio"
-								value="update"
-								class="w-4 h-4 text-brand"
-							/>
-							<span class="text-sm text-text-secondary">{{
-								t('components.contacts.integrationImportModal.configure.updateExisting')
-							}}</span>
-						</label>
-					</div>
-				</div>
-
-				<!-- Add to Topic -->
-				<div
-					v-if="availableLists.length > 0 && selectedIntegration !== 'mandrill'"
-					class="mt-4 p-4 rounded-lg bg-bg-surface"
+			<div v-else class="space-y-3">
+				<button
+					v-for="integration in integrations"
+					:key="integration.id"
+					class="w-full p-4 rounded-xl border border-border-subtle hover:border-border-default bg-bg-surface hover:bg-bg-surface/80 transition-colors text-left flex items-center gap-4"
+					@click="selectIntegration(integration.id)"
 				>
-					<h4 class="text-sm font-medium text-text-primary mb-3">
-						{{ t('components.contacts.integrationImportModal.configure.addToTopic') }}
-					</h4>
-					<select
-						:value="selectedTopicId ?? ''"
-						class="input w-full"
-						@change="selectedTopicId = ($event.target as HTMLSelectElement).value || null"
-					>
-						<option value="">{{ t('common.none') }}</option>
-						<option v-for="list in availableLists" :key="list._id" :value="list._id">
-							{{ list.name }}
-						</option>
-					</select>
-					<p class="text-xs text-text-tertiary mt-2">
-						{{ t('components.contacts.integrationImportModal.configure.addToTopicHint') }}
-					</p>
-				</div>
-
-				<!-- Field Mapping Info -->
-				<div v-if="selectedIntegration !== 'mandrill'" class="mt-4 p-4 rounded-lg bg-bg-surface">
-					<h4 class="text-sm font-medium text-text-primary mb-2">
-						{{ t('components.contacts.integrationImportModal.configure.fieldMapping') }}
-					</h4>
-					<ul class="text-sm text-text-secondary space-y-1">
-						<template v-if="selectedIntegration === 'mailchimp'">
-							<li>
-								{{
-									t('components.contacts.integrationImportModal.fieldMapping.mailchimpEmail', {
-										chevron,
-									})
-								}}
-							</li>
-							<li>
-								{{
-									t('components.contacts.integrationImportModal.fieldMapping.mailchimpFirstName', {
-										chevron,
-									})
-								}}
-							</li>
-							<li>
-								{{
-									t('components.contacts.integrationImportModal.fieldMapping.mailchimpLastName', {
-										chevron,
-									})
-								}}
-							</li>
-						</template>
-						<template v-else-if="selectedIntegration === 'stripe'">
-							<li>
-								{{
-									t('components.contacts.integrationImportModal.fieldMapping.stripeEmail', {
-										chevron,
-									})
-								}}
-							</li>
-							<li>
-								{{
-									t('components.contacts.integrationImportModal.fieldMapping.stripeName', {
-										chevron,
-									})
-								}}
-							</li>
-						</template>
-					</ul>
-				</div>
+					<div :class="['p-3 rounded-lg', integration.bgColor]">
+						<Icon :name="integration.icon" :class="['w-6 h-6', integration.color]" />
+					</div>
+					<div class="flex-1">
+						<p class="font-medium text-text-primary">{{ t(integration.name) }}</p>
+						<p class="text-sm text-text-tertiary">{{ t(integration.description) }}</p>
+					</div>
+					<Icon name="lucide:chevron-right" class="w-5 h-5 text-text-tertiary" />
+				</button>
 			</div>
+			<div v-if="integrations.length > 0" class="mt-6 p-4 rounded-lg bg-bg-surface">
+				<h4 class="text-sm font-medium text-text-primary mb-2">
+					{{ t('components.contacts.integrationImportModal.select.noteTitle') }}
+				</h4>
+				<p class="text-sm text-text-secondary">
+					{{ t('components.contacts.integrationImportModal.select.noteBody') }}
+				</p>
+			</div>
+		</div>
 
-			<!-- Step 3: Importing -->
-			<div v-else-if="step === 'importing'" class="py-8">
-				<div class="flex flex-col items-center gap-6">
+		<!-- Step 2: Configure -->
+		<div v-else-if="step === 'configure'">
+			<!-- Mailchimp Config -->
+			<div v-if="selectedIntegration === 'mailchimp'" class="space-y-4">
+				<div>
+					<label class="label"
+						>{{ t('components.contacts.integrationImportModal.configure.mailchimpApiKey') }}
+						<span class="text-error">*</span></label
+					>
 					<div class="relative">
-						<div class="w-20 h-20 rounded-full border-4 border-bg-surface" />
-						<div
-							class="absolute inset-0 w-20 h-20 rounded-full border-4 border-brand border-t-transparent animate-spin motion-reduce:animate-none"
+						<input
+							v-model="credentials.mailchimp.apiKey"
+							:type="credentials.mailchimp.showApiKey ? 'text' : 'password'"
+							:placeholder="
+								t('components.contacts.integrationImportModal.configure.mailchimpApiKeyPlaceholder')
+							"
+							class="input pr-10"
 						/>
+						<button
+							type="button"
+							class="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+							@click="credentials.mailchimp.showApiKey = !credentials.mailchimp.showApiKey"
+						>
+							<Icon v-if="!credentials.mailchimp.showApiKey" name="lucide:eye" class="w-4 h-4" />
+							<Icon v-else name="lucide:eye-off" class="w-4 h-4" />
+						</button>
 					</div>
-					<div class="text-center">
-						<p class="text-lg font-medium text-text-primary">
-							{{
-								t('components.contacts.integrationImportModal.importing.title', {
-									provider: integrationName,
-								})
-							}}
-						</p>
-						<p class="text-sm text-text-tertiary mt-1">
-							{{
-								progressText || t('components.contacts.integrationImportModal.importing.starting')
-							}}
-						</p>
-					</div>
-					<UiProgressBar
-						class="max-w-xs"
-						size="sm"
-						:value="progressPercent"
-						:aria-label="t('components.contacts.integrationImportModal.importing.progressLabel')"
-					/>
-					<p class="text-xs text-text-tertiary">
-						{{ t('components.contacts.integrationImportModal.importing.background') }}
-					</p>
-				</div>
-			</div>
-
-			<!-- Step 4: Complete -->
-			<div v-else-if="step === 'complete'" class="py-4">
-				<div class="flex flex-col items-center gap-4 mb-6">
-					<div
-						:class="[
-							'p-3 rounded-full',
-							importProgress?.status === 'failed' ? 'bg-error/10' : 'bg-success/10',
-						]"
-					>
-						<Icon
-							:name="importProgress?.status === 'failed' ? 'lucide:alert-triangle' : 'lucide:check'"
-							:class="[
-								'w-8 h-8',
-								importProgress?.status === 'failed' ? 'text-error' : 'text-success',
-							]"
-						/>
-					</div>
-					<p class="text-lg font-medium text-text-primary">
+					<p class="text-xs text-text-tertiary mt-1">
 						{{
-							importProgress?.status === 'failed'
-								? t('components.contacts.integrationImportModal.complete.failedTitle')
-								: t('components.contacts.integrationImportModal.complete.title')
+							t('components.contacts.integrationImportModal.configure.mailchimpApiKeyHint', {
+								chevron,
+							})
 						}}
 					</p>
 				</div>
-				<div v-if="!isSuppressionOnly" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-medium tracking-[-0.02em] text-success">{{ importProgress?.imported || 0 }}</p>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{ t('components.contacts.integrationImportModal.complete.imported') }}
-						</p>
-					</div>
-					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-medium tracking-[-0.02em] text-brand">{{ importProgress?.updated || 0 }}</p>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{ t('components.contacts.integrationImportModal.complete.updated') }}
-						</p>
-					</div>
-					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
-							{{ importProgress?.skipped || 0 }}
-						</p>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{ t('components.contacts.integrationImportModal.complete.skipped') }}
-						</p>
-					</div>
-					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-medium tracking-[-0.02em] text-error">{{ importProgress?.failed || 0 }}</p>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{ t('components.contacts.integrationImportModal.complete.failed') }}
-						</p>
-					</div>
+				<div>
+					<label for="credentials-mailchimp-listid" class="label"
+						>{{ t('components.contacts.integrationImportModal.configure.audienceListId') }}
+						<span class="text-error">*</span></label
+					>
+					<input
+						id="credentials-mailchimp-listid"
+						v-model="credentials.mailchimp.listId"
+						type="text"
+						:placeholder="
+							t('components.contacts.integrationImportModal.configure.audienceListIdPlaceholder')
+						"
+						class="input"
+					/>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{
+							t('components.contacts.integrationImportModal.configure.audienceListIdHint', {
+								chevron,
+							})
+						}}
+					</p>
 				</div>
-				<!-- Suppression carry-over (plan D9) -->
-				<div v-if="suppressionSummary" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-medium tracking-[-0.02em] text-warning">{{ suppressionSummary.blocked }}</p>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{ t('components.contacts.integrationImportModal.complete.suppressed') }}
-						</p>
-					</div>
-					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-medium tracking-[-0.02em] text-brand">{{ suppressionSummary.unsubscribed }}</p>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{ t('components.contacts.integrationImportModal.complete.unsubscribed') }}
-						</p>
-					</div>
-					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
-							{{ suppressionSummary.alreadySuppressed }}
-						</p>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{ t('components.contacts.integrationImportModal.complete.alreadySuppressed') }}
-						</p>
-					</div>
-					<div class="p-4 rounded-lg bg-bg-surface text-center">
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
-							{{ suppressionSummary.skipped }}
-						</p>
-						<p class="text-xs text-text-tertiary mt-1">
-							{{ t('components.contacts.integrationImportModal.complete.notApplicable') }}
-						</p>
-					</div>
-				</div>
+				<label class="flex items-start gap-3 p-4 rounded-lg bg-bg-surface cursor-pointer">
+					<input v-model="importSuppressions" type="checkbox" class="w-4 h-4 mt-0.5 text-brand" />
+					<span>
+						<span class="block text-sm font-medium text-text-primary">{{
+							t('components.contacts.integrationImportModal.configure.carrySuppressions')
+						}}</span>
+						<span class="block text-xs text-text-tertiary mt-1">
+							{{ t('components.contacts.integrationImportModal.configure.carrySuppressionsHint') }}
+						</span>
+					</span>
+				</label>
+			</div>
 
-				<div
-					v-if="importProgress?.errors && importProgress.errors.length > 0"
-					class="p-4 rounded-lg bg-error-subtle border border-error/20"
-				>
-					<h4 class="text-sm font-medium text-error mb-2">
-						{{ t('components.contacts.integrationImportModal.complete.errorsTitle') }}
-					</h4>
-					<ul class="text-sm text-error/80 space-y-1">
-						<li v-for="(err, index) in importProgress.errors.slice(0, 5)" :key="index">
-							{{ err }}
-						</li>
-					</ul>
+			<!-- Mandrill Config — nothing to configure: the key is an
+						     environment variable (plan D2). -->
+			<div v-else-if="selectedIntegration === 'mandrill'" class="space-y-4">
+				<div class="p-4 rounded-lg bg-bg-surface">
+					<I18nT
+						keypath="components.contacts.integrationImportModal.configure.mandrillBody"
+						tag="p"
+						class="text-sm text-text-secondary"
+						scope="global"
+					>
+						<template #apiKeyVar><code>MANDRILL_API_KEY</code></template>
+						<template #unsubEntry><code>unsub</code></template>
+					</I18nT>
+					<p class="text-xs text-text-tertiary mt-2">
+						{{ t('components.contacts.integrationImportModal.configure.mandrillNote') }}
+					</p>
 				</div>
+			</div>
+
+			<!-- Stripe Config -->
+			<div v-else-if="selectedIntegration === 'stripe'" class="space-y-4">
+				<div>
+					<label class="label"
+						>{{ t('components.contacts.integrationImportModal.configure.stripeSecretKey') }}
+						<span class="text-error">*</span></label
+					>
+					<div class="relative">
+						<input
+							v-model="credentials.stripe.apiKey"
+							:type="credentials.stripe.showApiKey ? 'text' : 'password'"
+							:placeholder="
+								t('components.contacts.integrationImportModal.configure.stripeSecretKeyPlaceholder')
+							"
+							class="input pr-10"
+						/>
+						<button
+							type="button"
+							class="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+							@click="credentials.stripe.showApiKey = !credentials.stripe.showApiKey"
+						>
+							<Icon v-if="!credentials.stripe.showApiKey" name="lucide:eye" class="w-4 h-4" />
+							<Icon v-else name="lucide:eye-off" class="w-4 h-4" />
+						</button>
+					</div>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{
+							t('components.contacts.integrationImportModal.configure.stripeApiKeyHint', {
+								chevron,
+							})
+						}}
+					</p>
+				</div>
+				<div class="p-4 rounded-lg bg-warning-subtle border border-warning/20">
+					<div class="flex items-start gap-3">
+						<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+						<div>
+							<p class="text-sm text-warning font-medium">
+								{{ t('components.contacts.integrationImportModal.configure.restrictedKeyTitle') }}
+							</p>
+							<p class="text-xs text-warning/80 mt-1">
+								{{ t('components.contacts.integrationImportModal.configure.restrictedKeyBody') }}
+							</p>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Handle Duplicates (contact imports only) -->
+			<div v-if="selectedIntegration !== 'mandrill'" class="mt-6 p-4 rounded-lg bg-bg-surface">
+				<h4 class="text-sm font-medium text-text-primary mb-3">
+					{{ t('components.contacts.integrationImportModal.configure.handleDuplicates') }}
+				</h4>
+				<div class="flex gap-4">
+					<label class="flex items-center gap-2 cursor-pointer">
+						<input
+							v-model="handleDuplicates"
+							type="radio"
+							value="skip"
+							class="w-4 h-4 text-brand"
+						/>
+						<span class="text-sm text-text-secondary">{{
+							t('components.contacts.integrationImportModal.configure.skipDuplicates')
+						}}</span>
+					</label>
+					<label class="flex items-center gap-2 cursor-pointer">
+						<input
+							v-model="handleDuplicates"
+							type="radio"
+							value="update"
+							class="w-4 h-4 text-brand"
+						/>
+						<span class="text-sm text-text-secondary">{{
+							t('components.contacts.integrationImportModal.configure.updateExisting')
+						}}</span>
+					</label>
+				</div>
+			</div>
+
+			<!-- Add to Topic -->
+			<div
+				v-if="availableLists.length > 0 && selectedIntegration !== 'mandrill'"
+				class="mt-4 p-4 rounded-lg bg-bg-surface"
+			>
+				<h4 class="text-sm font-medium text-text-primary mb-3">
+					{{ t('components.contacts.integrationImportModal.configure.addToTopic') }}
+				</h4>
+				<select
+					:value="selectedTopicId ?? ''"
+					class="input w-full"
+					@change="selectedTopicId = ($event.target as HTMLSelectElement).value || null"
+				>
+					<option value="">{{ t('common.none') }}</option>
+					<option v-for="list in availableLists" :key="list._id" :value="list._id">
+						{{ list.name }}
+					</option>
+				</select>
+				<p class="text-xs text-text-tertiary mt-2">
+					{{ t('components.contacts.integrationImportModal.configure.addToTopicHint') }}
+				</p>
+			</div>
+
+			<!-- Field Mapping Info -->
+			<div v-if="selectedIntegration !== 'mandrill'" class="mt-4 p-4 rounded-lg bg-bg-surface">
+				<h4 class="text-sm font-medium text-text-primary mb-2">
+					{{ t('components.contacts.integrationImportModal.configure.fieldMapping') }}
+				</h4>
+				<ul class="text-sm text-text-secondary space-y-1">
+					<template v-if="selectedIntegration === 'mailchimp'">
+						<li>
+							{{
+								t('components.contacts.integrationImportModal.fieldMapping.mailchimpEmail', {
+									chevron,
+								})
+							}}
+						</li>
+						<li>
+							{{
+								t('components.contacts.integrationImportModal.fieldMapping.mailchimpFirstName', {
+									chevron,
+								})
+							}}
+						</li>
+						<li>
+							{{
+								t('components.contacts.integrationImportModal.fieldMapping.mailchimpLastName', {
+									chevron,
+								})
+							}}
+						</li>
+					</template>
+					<template v-else-if="selectedIntegration === 'stripe'">
+						<li>
+							{{
+								t('components.contacts.integrationImportModal.fieldMapping.stripeEmail', {
+									chevron,
+								})
+							}}
+						</li>
+						<li>
+							{{
+								t('components.contacts.integrationImportModal.fieldMapping.stripeName', {
+									chevron,
+								})
+							}}
+						</li>
+					</template>
+				</ul>
+			</div>
+		</div>
+
+		<!-- Step 3: Importing -->
+		<div v-else-if="step === 'importing'" class="py-8">
+			<div class="flex flex-col items-center gap-6">
+				<div class="relative">
+					<div class="w-20 h-20 rounded-full border-4 border-bg-surface" />
+					<div
+						class="absolute inset-0 w-20 h-20 rounded-full border-4 border-brand border-t-transparent animate-spin motion-reduce:animate-none"
+					/>
+				</div>
+				<div class="text-center">
+					<p class="text-lg font-medium text-text-primary">
+						{{
+							t('components.contacts.integrationImportModal.importing.title', {
+								provider: integrationName,
+							})
+						}}
+					</p>
+					<p class="text-sm text-text-tertiary mt-1">
+						{{
+							progressText || t('components.contacts.integrationImportModal.importing.starting')
+						}}
+					</p>
+				</div>
+				<UiProgressBar
+					class="max-w-xs"
+					size="sm"
+					:value="progressPercent"
+					:aria-label="t('components.contacts.integrationImportModal.importing.progressLabel')"
+				/>
+				<p class="text-xs text-text-tertiary">
+					{{ t('components.contacts.integrationImportModal.importing.background') }}
+				</p>
+			</div>
+		</div>
+
+		<!-- Step 4: Complete -->
+		<div v-else-if="step === 'complete'" class="py-4">
+			<div class="flex flex-col items-center gap-4 mb-6">
+				<div
+					:class="[
+						'p-3 rounded-full',
+						importProgress?.status === 'failed' ? 'bg-error/10' : 'bg-success/10',
+					]"
+				>
+					<Icon
+						:name="importProgress?.status === 'failed' ? 'lucide:alert-triangle' : 'lucide:check'"
+						:class="[
+							'w-8 h-8',
+							importProgress?.status === 'failed' ? 'text-error' : 'text-success',
+						]"
+					/>
+				</div>
+				<p class="text-lg font-medium text-text-primary">
+					{{
+						importProgress?.status === 'failed'
+							? t('components.contacts.integrationImportModal.complete.failedTitle')
+							: t('components.contacts.integrationImportModal.complete.title')
+					}}
+				</p>
+			</div>
+			<div v-if="!isSuppressionOnly" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+				<div class="p-4 rounded-lg bg-bg-surface text-center">
+					<p class="text-2xl font-medium tracking-[-0.02em] text-success">{{ importProgress?.imported || 0 }}</p>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{ t('components.contacts.integrationImportModal.complete.imported') }}
+					</p>
+				</div>
+				<div class="p-4 rounded-lg bg-bg-surface text-center">
+					<p class="text-2xl font-medium tracking-[-0.02em] text-brand">{{ importProgress?.updated || 0 }}</p>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{ t('components.contacts.integrationImportModal.complete.updated') }}
+					</p>
+				</div>
+				<div class="p-4 rounded-lg bg-bg-surface text-center">
+					<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
+						{{ importProgress?.skipped || 0 }}
+					</p>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{ t('components.contacts.integrationImportModal.complete.skipped') }}
+					</p>
+				</div>
+				<div class="p-4 rounded-lg bg-bg-surface text-center">
+					<p class="text-2xl font-medium tracking-[-0.02em] text-error">{{ importProgress?.failed || 0 }}</p>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{ t('components.contacts.integrationImportModal.complete.failed') }}
+					</p>
+				</div>
+			</div>
+			<!-- Suppression carry-over (plan D9) -->
+			<div v-if="suppressionSummary" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+				<div class="p-4 rounded-lg bg-bg-surface text-center">
+					<p class="text-2xl font-medium tracking-[-0.02em] text-warning">{{ suppressionSummary.blocked }}</p>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{ t('components.contacts.integrationImportModal.complete.suppressed') }}
+					</p>
+				</div>
+				<div class="p-4 rounded-lg bg-bg-surface text-center">
+					<p class="text-2xl font-medium tracking-[-0.02em] text-brand">{{ suppressionSummary.unsubscribed }}</p>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{ t('components.contacts.integrationImportModal.complete.unsubscribed') }}
+					</p>
+				</div>
+				<div class="p-4 rounded-lg bg-bg-surface text-center">
+					<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
+						{{ suppressionSummary.alreadySuppressed }}
+					</p>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{ t('components.contacts.integrationImportModal.complete.alreadySuppressed') }}
+					</p>
+				</div>
+				<div class="p-4 rounded-lg bg-bg-surface text-center">
+					<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
+						{{ suppressionSummary.skipped }}
+					</p>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{ t('components.contacts.integrationImportModal.complete.notApplicable') }}
+					</p>
+				</div>
+			</div>
+
+			<div
+				v-if="importProgress?.errors && importProgress.errors.length > 0"
+				class="p-4 rounded-lg bg-error-subtle border border-error/20"
+			>
+				<h4 class="text-sm font-medium text-error mb-2">
+					{{ t('components.contacts.integrationImportModal.complete.errorsTitle') }}
+				</h4>
+				<ul class="text-sm text-error/80 space-y-1">
+					<li v-for="(err, index) in importProgress.errors.slice(0, 5)" :key="index">
+						{{ err }}
+					</li>
+				</ul>
 			</div>
 		</div>
 

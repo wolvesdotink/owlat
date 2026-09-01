@@ -34,6 +34,7 @@ import { useDataTable } from '~/composables/useDataTable';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { useFormModal } from '~/composables/useFormModal';
 import { usePostboxListKeyboard } from '~/composables/postbox/usePostboxListKeyboard';
+import { useUnsavedChanges } from '~/composables/useUnsavedChanges';
 import { useWizard } from '~/composables/useWizard';
 import DashboardLayout from '~/layouts/dashboard.vue';
 import DashboardHome from '../index.vue';
@@ -87,6 +88,7 @@ beforeEach(() => {
 		useDebouncedSearch,
 		useFormModal,
 		usePostboxListKeyboard,
+		useUnsavedChanges,
 		useWizard,
 
 		// Backend-backed page composables.

@@ -5,7 +5,7 @@ import { bundledPluginComposition } from '~/plugins/plugin-composition.generated
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.instance.plugins.index.pageTitle') });
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 // Build-time bundled manifests: the authoritative source for names, versions,
 // capabilities, and settings schemas. The server overrides only mutable state.

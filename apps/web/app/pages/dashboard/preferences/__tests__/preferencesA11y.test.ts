@@ -173,6 +173,18 @@ beforeEach(() => {
 		useOrganizationQuery: () => queryResult(undefined),
 		usePaginatedQuery: () => paginatedResult([]),
 		useOperationErrorToast: () => ({ showOperationError: vi.fn() }),
+		// The unsaved-changes guard registers `onBeforeRouteLeave`, which needs a
+		// matched route record the harness does not mount. The pages only read the
+		// dialog's `show` flag and its three handlers, so the audit gets those.
+		useUnsavedChanges: () => ({
+			showDialog: ref(false),
+			hasUnsavedChanges: ref(false),
+			pendingRoute: ref(null),
+			confirmDiscard: vi.fn(),
+			confirmSave: vi.fn(),
+			cancelNavigation: vi.fn(),
+			setHasChanges: vi.fn(),
+		}),
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		usePostboxActiveMailbox: () => ({ mailboxId: ref(null), mailbox: ref(null) }),
 		usePostboxMailbox: () => ({

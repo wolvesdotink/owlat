@@ -12,7 +12,7 @@ import {
 	type PluginSettingsRedactedState,
 } from '~/utils/pluginSettings';
 
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const { t } = useI18n();
 const route = useRoute();

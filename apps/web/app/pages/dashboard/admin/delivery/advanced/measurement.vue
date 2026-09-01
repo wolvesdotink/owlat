@@ -57,7 +57,7 @@ const message = (value: MeasurementMessage): string =>
 useHead({ title: () => t('dashboard.admin.delivery.advanced.measurement.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 

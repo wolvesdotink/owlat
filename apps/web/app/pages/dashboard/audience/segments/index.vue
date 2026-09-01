@@ -32,6 +32,11 @@ const { data: contactProperties } = useOrganizationQuery(
 );
 const isLoading = computed(() => organizationLoading.value || segmentsLoading.value);
 
+// Below md the five columns have nowhere to go — the same rows render as a card
+// list instead (one tap opens the segment; edit and delete stay on the row,
+// because the segment detail page carries neither).
+const tableFits = useDataTableViewport();
+
 // ─── Composables ───────────────────────────────────────────────────────
 const {
 	describeFilters,
@@ -142,20 +147,18 @@ onMounted(() => {
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.audience.segments.index.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">
-					{{ t('dashboard.audience.segments.index.subtitle') }}
-				</p>
-			</div>
-			<UiButton @click="openCreateModal">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-				{{ t('dashboard.audience.segments.index.newSegment') }}
-			</UiButton>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.audience.segments.index.title')"
+			:description="t('dashboard.audience.segments.index.subtitle')"
+			class="mb-6"
+		>
+			<template #actions>
+				<UiButton @click="openCreateModal">
+					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+					{{ t('dashboard.audience.segments.index.newSegment') }}
+				</UiButton>
+			</template>
+		</UiPageHeader>
 
 		<!-- Search Bar -->
 		<div class="mb-6 max-w-md">
@@ -220,7 +223,47 @@ onMounted(() => {
 
 				<!-- Data Table -->
 				<div v-else>
-					<div class="overflow-x-auto">
+					<!-- Card list below md. The two are alternatives, not layers: a
+					     CSS-only switch would keep both copies of every row in the DOM. -->
+					<ul v-if="!tableFits" class="divide-y divide-border-subtle">
+						<li
+							v-for="segment in filteredSegments"
+							:key="segment._id"
+							class="flex items-center gap-1 px-4 py-2"
+						>
+							<NuxtLink
+								:to="`/dashboard/audience/segments/${segment._id}`"
+								class="flex-1 min-w-0 py-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							>
+								<span class="block text-text-primary font-medium truncate">{{ segment.name }}</span>
+								<span class="block text-sm text-text-secondary truncate">
+									{{ segment.description || describeFilters(segment.filters) }}
+								</span>
+								<span class="flex items-center gap-1.5 text-xs text-text-tertiary mt-0.5">
+									<Icon name="lucide:users" class="w-3.5 h-3.5" />
+									{{ segment.cachedCount ?? '—' }}
+									<span aria-hidden="true">·</span>
+									{{ formatDate(segment.createdAt) }}
+								</span>
+							</NuxtLink>
+							<button
+								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors"
+								:aria-label="t('dashboard.audience.segments.index.actions.edit')"
+								@click="openEditModal(segment)"
+							>
+								<Icon name="lucide:pencil" class="w-4 h-4" />
+							</button>
+							<button
+								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+								:aria-label="t('dashboard.audience.segments.index.actions.delete')"
+								@click="openDeleteModal(segment)"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</button>
+						</li>
+					</ul>
+
+					<div v-else class="overflow-x-auto">
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">

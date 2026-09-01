@@ -2,6 +2,7 @@ import { computed, ref, type Ref, type ComputedRef } from 'vue';
 import { api } from '@owlat/api';
 import type { Id, Doc } from '@owlat/api/dataModel';
 import { parseScheduledStart } from '~/lib/campaignSchedule';
+import { SEND_UNDO_WINDOW_MS } from '~/lib/campaignSend';
 import { useCapacityRefusal } from './useCapacityRefusal';
 import type { useCampaignABTest } from './useCampaignABTest';
 
@@ -49,11 +50,13 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	 */
 	const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useCapacityRefusal();
 
-	// Mutations
-	const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {
-		label: () => t('shared.useCampaignActions.operations.sendNow'),
-		onError: claimCapacityRefusal,
-	});
+	// The undo window a "send now" is held for, armed here and counted down by
+	// the toast on the report page.
+	const { arm: armUndoSend } = useCampaignUndoSend();
+
+	// Mutations. No `sendNow`: see `executeSendNow` — an immediate send is a
+	// schedule one undo window out, which is the same mutation as any other
+	// schedule.
 	const { run: scheduleCampaign } = useBackendOperation(api.campaigns.scheduling.schedule, {
 		label: () => t('shared.useCampaignActions.operations.schedule'),
 		onError: claimCapacityRefusal,
@@ -151,6 +154,13 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 	// Send now. Each step aborts the sequence on failure; the failing `run`
 	// (or handleSave) has already surfaced the categorized error.
+	//
+	// "Now" means one undo window from now: the campaign is SCHEDULED at
+	// `Date.now() + SEND_UNDO_WINDOW_MS` rather than handed to `sendNow`, so the
+	// one irreversible action in the product has a minute in which it is still a
+	// scheduled campaign anybody can call back (CampaignsUndoSendToast, mounted
+	// on the report this lands on). The server contract is untouched — the same
+	// `schedule` mutation, the same pre-flight, the same cancel path.
 	const executeSendNow = async () => {
 		if (!campaignId.value) return;
 
@@ -163,18 +173,38 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 				if (!(await handleSave())) return;
 			}
 
+			// `schedule` only accepts a draft, so a campaign that is already
+			// scheduled goes back to draft first — the same step the immediate send
+			// took, for the same reason.
 			if (isScheduled.value) {
 				if (!(await unscheduleCampaign({ campaignId: campaignId.value })).ok) return;
 			}
 
-			if (!(await sendCampaignNow({ campaignId: campaignId.value })).ok) return;
+			const sendAt = Date.now() + SEND_UNDO_WINDOW_MS;
+			if (
+				!(
+					await scheduleCampaign({
+						campaignId: campaignId.value,
+						scheduledAt: sendAt,
+						// Staggering by recipient timezone is a scheduling choice; an
+						// immediate send is not one, whatever the form's toggle says.
+						useRecipientTimezone: false,
+					})
+				).ok
+			) {
+				return;
+			}
 
-			showToast(t('shared.useCampaignActions.toasts.sending'));
+			armUndoSend({
+				campaignId: campaignId.value,
+				campaignName: campaignData.value?.name ?? '',
+				sendAt,
+			});
 
 			onSaved?.();
-			setTimeout(() => {
-				router.push('/dashboard/campaigns');
-			}, 1500);
+			// Straight to the report: it is where the undo toast lives and where the
+			// numbers start climbing, which is the point of having pressed send.
+			router.push(`/dashboard/campaigns/${campaignId.value}/report`);
 		} finally {
 			isSaving.value = false;
 		}

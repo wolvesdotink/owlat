@@ -1,4 +1,17 @@
 {
+	"accessRequest": {
+		"brand": "Owlat",
+		"invitationRequired": "Einladung erforderlich",
+		"inviteExplainer": "Sie benötigen eine Einladung, um dieser Instanz beizutreten. Bitten Sie eine Administratorin oder einen Administrator darum — hier können Sie sie direkt anfragen.",
+		"noteLabel": "Notiz hinzufügen (optional)",
+		"notePlaceholder": "z. B. Ich bin im Marketing-Team und brauche Zugriff, um Kampagnen zu versenden.",
+		"pageTitle": "Zugriff anfragen — Owlat",
+		"requestAccess": "Zugriff anfragen",
+		"requestAccessOperation": "Zugriff anfragen",
+		"requestSentBody": "Eine Administratorin oder ein Administrator wurde benachrichtigt. Sobald Ihnen Zugriff gewährt wird, erhalten Sie eine Einladung per E-Mail — Sie müssen nicht erneut nachfragen.",
+		"requestSentTitle": "Anfrage gesendet",
+		"signOut": "Abmelden"
+	},
 	"auth": {
 		"fields": {
 			"email": "E-Mail",
@@ -842,6 +855,12 @@
 					"scheduledTimeFallback": "der geplanten Zeit",
 					"scheduling": "Wird geplant ...",
 					"sendCampaign": "Kampagne senden",
+					"sendConfirm": {
+						"cancel": "Abbrechen",
+						"confirm": "Jetzt senden",
+						"description": "{name} geht an alle in dieser Zielgruppe. Sie haben {seconds} Sekunden, um den Versand zurückzuholen, bevor die erste Nachricht rausgeht.",
+						"title": "An {count} Empfänger senden?"
+					},
 					"sendNow": "Jetzt senden",
 					"sendNowDescription": "Ihre Kampagne wird sofort an alle Empfänger gesendet.",
 					"sendNowOperation": "Kampagne jetzt senden",
@@ -967,6 +986,12 @@
 				"subjectLabel": "Betreff:",
 				"submit": "Test einreihen",
 				"title": "Test-E-Mail einreihen"
+			},
+			"undoSendToast": {
+				"sending": "\"{name}\" wird in {seconds}s gesendet",
+				"undo": "Rückgängig",
+				"undoOperation": "Kampagnenversand zurückholen",
+				"undone": "Versand zurückgeholt. Die Kampagne ist wieder ein Entwurf."
 			}
 		},
 		"channels": {
@@ -1280,13 +1305,26 @@
 			},
 			"csvImportModal": {
 				"complete": {
+					"addToTopic": "Zu Thema hinzufügen",
+					"addToTopicOperation": "Kontakte zu Thema hinzufügen",
+					"addToTopicTitle": "Diese Kontakte einem Thema zuordnen",
+					"addedToTopic": "{count} Kontakt zu {name} hinzugefügt | {count} Kontakte zu {name} hinzugefügt",
 					"addedToTopics": "{count} Kontakt zu Thema hinzugefügt | {count} Kontakte zu Themen hinzugefügt",
+					"chooseTopic": "Thema wählen…",
+					"downloadErrors": "Fehlerzeilen herunterladen",
 					"errorsTitle": "Fehler (erste {count})",
 					"failed": "Fehlgeschlagen",
 					"imported": "Importiert",
 					"skipped": "Übersprungen",
 					"title": "Import abgeschlossen!",
-					"updated": "Aktualisiert"
+					"updated": "Aktualisiert",
+					"viewAllHint": "Dieser Import wurde keinem Thema zugeordnet — die Ansicht öffnet daher Ihre vollständige Kontaktliste.",
+					"viewImported": "Importierte anzeigen"
+				},
+				"discard": {
+					"body": "Ihre Datei und die Spaltenzuordnung gehen verloren.",
+					"keepEditing": "Weiter bearbeiten",
+					"title": "Diesen Import verwerfen?"
 				},
 				"emptyCell": "(leer)",
 				"footer": {
@@ -1904,6 +1942,17 @@
 				"summary": "{count} Teammitglied benötigt ein Postfach. Richten Sie eines direkt aus der Anfrage ein oder markieren Sie die Anfrage als erledigt, wenn Sie sie anders gelöst haben. | {count} Teammitglieder benötigen ein Postfach. Richten Sie eines direkt aus der Anfrage ein oder markieren Sie die Anfrage als erledigt, wenn Sie sie anders gelöst haben.",
 				"title": "Postfach-Anfragen",
 				"verifyDomainFirst": "Verifizieren Sie zuerst eine Absenderdomain"
+			},
+			"mobileTabBar": {
+				"create": "Erstellen",
+				"home": "Start",
+				"label": "Hauptnavigation",
+				"mail": "E-Mail",
+				"more": "Mehr",
+				"people": "Kontakte"
+			},
+			"quickCreateMenu": {
+				"more": "Weitere Aktionen zum Erstellen"
 			},
 			"sendStatusBadge": {
 				"status": {
@@ -5230,7 +5279,6 @@
 						"windowNote": "Berichtszeitraum: {reported} · Prüfungen entschieden über {decision}"
 					}
 				},
-				"backToSetup": "Zustellungseinrichtung",
 				"deliverability": {
 					"copyReport": "Einrichtungsbericht kopieren",
 					"counts": {
@@ -5474,6 +5522,11 @@
 						"title": "Anbieterkonfiguration",
 						"unknownProvider": "unbekannt: {provider}"
 					},
+					"empty": {
+						"action": "Zurück zur Zustellungseinrichtung",
+						"description": "Für diese Installation wurde noch kein Transport konfiguriert, daher gibt es hier nichts zu berichten. Richten Sie einen in der Zustellungseinrichtung ein.",
+						"title": "Kein Transport konfiguriert"
+					},
 					"env": {
 						"addToEnv": "In Ihre {file} eintragen, dann die Instanz neu starten",
 						"blankValues": "Die Werte bleiben leer — tragen Sie Ihre echten Zugangsdaten ein. Sie werden hier niemals angezeigt.",
@@ -5488,6 +5541,7 @@
 						"title": "Zustellungsstatus konnte nicht geladen werden"
 					},
 					"lede": "Konfigurieren und prüfen Sie den E-Mail-Zustellungsanbieter, über den diese Instanz versendet",
+					"loadingLabel": "Transporteinstellungen werden geladen…",
 					"pageTitle": "Zustellungsanbieter — Owlat",
 					"sns": {
 						"copyEndpoint": "Endpunkt-URL kopieren",
@@ -5584,7 +5638,6 @@
 			},
 			"instance": {
 				"agent": {
-					"backToSettings": "Zurück zu den Einstellungen",
 					"backfill": {
 						"cancel": "Nachverarbeitung abbrechen",
 						"description": "Einmaliger Durchlauf durch Ihren eingehenden Mail-Verlauf, um den KI-Agenten mit Kontext zu versorgen.",
@@ -5647,7 +5700,6 @@
 					}
 				},
 				"agentHealth": {
-					"backToSettings": "Zurück zu den Einstellungen",
 					"charts": {
 						"errorRate": "Fehlerrate",
 						"latency": "Verarbeitungslatenz (ms)",
@@ -5697,7 +5749,6 @@
 					"title": "Agentenzustand & Überwachung"
 				},
 				"aiProvider": {
-					"backToSettings": "Zurück zu den Einstellungen",
 					"connectionWorks": "Verbindung funktioniert",
 					"embeddings": {
 						"apiKeyHelp": "Verschlüsselt gespeichert, wird nie wieder angezeigt.",
@@ -5742,7 +5793,6 @@
 				},
 				"autonomy": {
 					"addRule": "Regel hinzufügen",
-					"backToSettings": "Zurück zu den Einstellungen",
 					"createFirstRule": "Erste Regel erstellen",
 					"emptyBody": "Erstellen Sie Regeln, die steuern, wie der KI-Agent verschiedene Nachrichtenarten behandelt. Jede Kategorie kann eine eigene Konfidenzschwelle und eigene Tageslimits haben.",
 					"emptyTitle": "Keine Autonomieregeln konfiguriert",
@@ -5779,7 +5829,6 @@
 				"channels": {
 					"addChannel": "Kanal hinzufügen",
 					"addedToast": "Kanal hinzugefügt — konfigurieren Sie ihn unten",
-					"backToSettings": "Zurück zu den Einstellungen",
 					"emptyBodyAdmin": "Verwenden Sie oben {action}, um einen Kommunikationskanal für Ihren Workspace einzurichten.",
 					"emptyBodyMember": "Kommunikationskanäle erscheinen hier, sobald eine Inhaberin oder ein Administrator sie für Ihren Workspace eingerichtet hat.",
 					"emptyTitle": "Keine Kanäle konfiguriert",
@@ -5805,7 +5854,6 @@
 					"title": "Nachrichtenkanäle"
 				},
 				"emailTheme": {
-					"backToSettings": "Zurück zu den Einstellungen",
 					"backgroundColor": "Hintergrundfarbe",
 					"backgroundColorHelp": "Die Hintergrundfarbe Ihres E-Mail-Textkörpers.",
 					"emailWidth": "E-Mail-Breite",
@@ -5921,7 +5969,6 @@
 						"creating": "Wird erstellt...",
 						"title": "Formular-Endpunkt erstellen"
 					},
-					"backToSettings": "Zurück zu den Einstellungen",
 					"copied": "Kopiert!",
 					"copyCode": "Code kopieren",
 					"copyUrl": "URL kopieren",
@@ -5984,8 +6031,6 @@
 				"general": {
 					"archives": "Kampagnenarchive standardmäßig aktivieren",
 					"archivesHelp": "Neue Kampagnen enthalten einen Link \"Im Browser ansehen\" und eine öffentliche Archivseite.",
-					"cardSubtitle": "Team-Einstellungen und Vorgaben",
-					"cardTitle": "Allgemein",
 					"connectedWorkspaces": "Verbundene Workspaces",
 					"connectedWorkspacesHelp": "Wechseln Sie zwischen den Owlat-Workspaces, die Sie auf diesem Gerät verbunden haben, oder verbinden Sie einen weiteren.",
 					"errors": {
@@ -6058,7 +6103,6 @@
 				},
 				"index": {
 					"applyChanges": "Änderungen anwenden",
-					"backToAdministration": "Verwaltung",
 					"changeModeOperation": "Betriebsmodus ändern",
 					"disableCount": "Deaktivieren ({count})",
 					"enableCount": "Aktivieren ({count})",
@@ -6203,7 +6247,6 @@
 					}
 				},
 				"properties": {
-					"backToSettings": "Zurück zu den Einstellungen",
 					"cardTitle": "Eigenschaften",
 					"createFirst": "Erste Eigenschaft erstellen",
 					"createModal": {
@@ -6283,7 +6326,6 @@
 					"typesTitle": "Eigenschaftstypen"
 				},
 				"sealedMail": {
-					"backToSettings": "Zurück zu den Einstellungen",
 					"disabledNotice": "Sealed Mail ist für diesen Workspace ausgeschaltet, daher wird noch nichts versiegelt. Sie können die Richtlinie unten trotzdem wählen — sie greift, sobald Sealed Mail unter „Funktionen“ aktiviert ist.",
 					"exportKitOperation": "Wiederherstellungs-Kit exportieren",
 					"importKitOperation": "Wiederherstellungs-Kit importieren",
@@ -6360,7 +6402,6 @@
 						"role": "Rolle",
 						"title": "Plattform-Admins"
 					},
-					"backToSettings": "Zurück zu den Einstellungen",
 					"fallbackNames": {
 						"campaign": "Kampagne",
 						"content": "Inhalt",
@@ -6453,7 +6494,6 @@
 			},
 			"system": {
 				"index": {
-					"backToSettings": "← Einstellungen",
 					"confirm": {
 						"backupBody": "{backupWarning} Datenvolumes bleiben bei normalen Updates erhalten, aber eine Version mit inkompatiblen Schemaänderungen kann Daten migrieren oder zurücksetzen — lesen Sie zuerst die Versionshinweise.",
 						"backupWarning": "Sichern Sie vor dem Update.",
@@ -6462,6 +6502,8 @@
 						"title": "Update auf v{version} bestätigen"
 					},
 					"containers": {
+						"empty": "Diese Installation meldet keine Container.",
+						"error": "Container-Status konnte nicht gelesen werden. Bitte über Aktualisieren erneut versuchen.",
 						"imageTag": "Image-Tag",
 						"loading": "Container-Status wird geladen…",
 						"service": "Dienst",
@@ -6663,7 +6705,6 @@
 					},
 					"allActions": "Alle Aktionen",
 					"allUsers": "Alle Benutzer",
-					"backToSettings": "Zurück zu den Einstellungen",
 					"dateRange": {
 						"all": "Gesamter Zeitraum",
 						"month": "Letzte 30 Tage",
@@ -6694,7 +6735,6 @@
 					"subtitle": "Verfolgen Sie alle Aktionen und Änderungen Ihrer Teammitglieder",
 					"title": "Audit-Protokoll"
 				},
-				"backToAdministration": "Zurück zur Administration",
 				"cancelInviteModal": {
 					"body": "Möchten Sie die Einladung an {email} wirklich zurückziehen? Die Person kann dem Team mit diesem Einladungslink dann nicht mehr beitreten.",
 					"cancelling": "Wird zurückgezogen...",
@@ -6779,7 +6819,6 @@
 						"description": "Team-Postfächer können von Workspace-Eigentümern und Admins verwaltet werden.",
 						"title": "Nur für Admins"
 					},
-					"backToSettings": "Zurück zu den Einstellungen",
 					"badges": {
 						"external": "Extern",
 						"needsAttention": "Braucht Aufmerksamkeit",
@@ -6944,7 +6983,6 @@
 						"description": "Nur aktivierte Adressen können als Absenderadresse einer Kampagne gewählt werden.",
 						"title": "Freigegebene Absender"
 					},
-					"backToSettings": "Zurück zu den Einstellungen",
 					"defaultTitle": "Standardabsender für neue Kampagnen",
 					"empty": {
 						"action": "Fügen Sie Ihren ersten Absender hinzu",
@@ -7023,6 +7061,7 @@
 				},
 				"newChat": "Neuer Chat",
 				"noConversations": "Noch keine Unterhaltungen.",
+				"openConversations": "Unterhaltungen",
 				"pageTitle": "Assistent — Owlat",
 				"renameConversation": "Unterhaltung umbenennen",
 				"welcomeBody": "Fragen Sie nach Ihren Kontakten, Kampagnen, Wissensinhalten und Dateien — oder lassen Sie mich eine E-Mail oder einen Kampagnentext entwerfen. Ich kann Ihren Workspace durchsuchen, um meine Antworten zu belegen.",
@@ -7039,7 +7078,7 @@
 						"loading": "Aktivitäten werden geladen...",
 						"title": "Aktivitätsverlauf"
 					},
-					"backToCustomers": "Zurück zu den Kundinnen und Kunden",
+					"backToCustomers": "Zurück zu Kontakten",
 					"contactDetails": "Kontaktdetails",
 					"created": "Erstellt",
 					"customProperties": "Eigene Eigenschaften",
@@ -7196,7 +7235,7 @@
 						"firstName": "Vorname",
 						"lastName": "Nachname"
 					},
-					"title": "Kundinnen und Kunden",
+					"title": "Kontakte",
 					"toasts": {
 						"copyFailed": "Kopieren in die Zwischenablage nicht möglich",
 						"created": "Kontakt {email} wurde erstellt",
@@ -7946,13 +7985,15 @@
 						"title": "Öffentliches Archiv"
 					},
 					"backToCampaigns": "Zurück zu den Kampagnen",
+					"cancelledLine": "Vor dem Versand abgebrochen",
 					"clickRate": "Klickrate",
 					"clickedEmpty": "Bisher hat kein Kontakt Links in dieser E-Mail geklickt",
 					"clickedOfDelivered": "{clicked} von {delivered} zugestellten haben einen Link geklickt",
 					"comparison": {
 						"changeVsPrevious": "Veränderung gegenüber Ihrem letzten Versand · {name}",
 						"changeVsPreviousAb": "Veränderung gegenüber Ihrem letzten A/B-Versand · {name}",
-						"noComparable": "Es gibt noch keinen vergleichbaren früheren Versand."
+						"noComparable": "Es gibt noch keinen vergleichbaren früheren Versand.",
+						"pendingCounts": "Diese Werte füllen sich, während der Versand läuft."
 					},
 					"declareWinnerOperation": "A/B-Test-Gewinner festlegen",
 					"duplicateOperation": "Kampagne duplizieren",
@@ -7979,8 +8020,16 @@
 						"range": "{from}-{to} von {total}"
 					},
 					"recipients": "{count} Empfänger",
+					"scheduledFor": "Versand am {date}",
 					"sentAt": "Gesendet {date}",
 					"sentBadge": "Versendet",
+					"startedAt": "Versand läuft seit {date}",
+					"status": {
+						"cancelled": "Abgebrochen",
+						"draft": "Entwurf",
+						"scheduled": "Geplant",
+						"sending": "Wird gesendet"
+					},
 					"tabs": {
 						"clicked": "Geklickt ({count})",
 						"opened": "Geöffnet ({count})"
@@ -8020,6 +8069,7 @@
 				"allLoaded": "Alle Kampagnen geladen",
 				"attentionEmpty": {
 					"description": "Derzeit wartet keine Kampagne auf eine Entscheidung.",
+					"eyebrow": "Alles erledigt",
 					"title": "Nichts wartet auf Sie."
 				},
 				"deleteDialog": {
@@ -8065,6 +8115,12 @@
 					"segment": "Segment: {name}",
 					"topic": "Thema: {name}"
 				},
+				"leaveDialog": {
+					"cancel": "Weiter bearbeiten",
+					"confirm": "Kampagne verwerfen",
+					"description": "Diese Kampagne wurde noch nicht gespeichert. Wenn Sie jetzt gehen, gehen Ihre Eingaben verloren.",
+					"title": "Ohne Speichern verlassen?"
+				},
 				"pageTitle": "Kampagne erstellen — Owlat",
 				"steps": {
 					"content": "Inhalt",
@@ -8083,6 +8139,7 @@
 					"title": "Kanal archivieren?"
 				},
 				"backToChat": "Zurück zum Chat",
+				"backToConversations": "Zurück zu den Unterhaltungen",
 				"join": "Beitreten",
 				"loadEarlier": "Ältere Nachrichten laden",
 				"pageTitle": "Chat — Owlat",
@@ -8096,6 +8153,7 @@
 				"emptyDescription": "Wählen Sie einen Kanal oder eine Direktnachricht in der Seitenleiste oder starten Sie etwas Neues.",
 				"emptyTitle": "Team-Chat",
 				"newChannel": "Neuer Kanal",
+				"openConversations": "Unterhaltungen",
 				"pageTitle": "Chat — Owlat"
 			}
 		},
@@ -10193,6 +10251,10 @@
 			"settingsFeatures": "Einstellungen → Funktionen",
 			"start": "Los geht's",
 			"steps": {
+				"admin": {
+					"desc": "Legen Sie das Konto an, dem diese Instanz gehört.",
+					"title": "Administrator-Konto"
+				},
 				"email": {
 					"desc": "Owlat-MTA, Resend, Amazon SES oder keiner.",
 					"title": "E-Mail-Anbieter"
@@ -10206,8 +10268,8 @@
 					"title": "Betriebsmodus"
 				},
 				"review": {
-					"desc": "Erstellen Sie Ihr Konto und starten Sie.",
-					"title": "Administration & Überprüfung"
+					"desc": "Prüfen Sie jede Angabe und starten Sie dann.",
+					"title": "Überprüfung"
 				}
 			},
 			"terminalNote": "Lieber das Terminal? {command}",
@@ -10236,6 +10298,31 @@
 			"appliedMessage": "Wird abgeschlossen — die App lädt Ihre Konfiguration, danach bringen wir Sie zur Anmeldung. Das dauert in der Regel einige Sekunden.",
 			"appliedTitle": "Einrichtung angewendet",
 			"applying": "Wird angewendet…",
+			"complete": {
+				"eyebrow": "Owlat-Einrichtung",
+				"intro": "Ihre Instanz ist konfiguriert und läuft. Melden Sie sich einmal am neu gestarteten Prozess an und machen Sie weiter, wo Sie möchten.",
+				"nextHeading": "Wie es weitergeht",
+				"signIn": "Bei Owlat anmelden",
+				"title": "Einrichtung {accent}",
+				"titleAccent": "abgeschlossen",
+				"next": {
+					"domain": {
+						"desc": "Authentifizieren Sie eine Domain, damit Ihre Mail im Posteingang statt im Spam landet.",
+						"meta": "10 Min.",
+						"title": "Versanddomain hinzufügen"
+					},
+					"postbox": {
+						"desc": "Lesen, sortieren und beantworten Sie die Mail, die diese Instanz empfängt.",
+						"meta": "Hier starten",
+						"title": "Postfach öffnen"
+					},
+					"team": {
+						"desc": "Verschicken Sie Einladungen, damit Kolleginnen und Kollegen sich anmelden können.",
+						"meta": "2 Min.",
+						"title": "Team einladen"
+					}
+				}
+			},
 			"continueToSignIn": "Weiter zur Anmeldung",
 			"emailProvider": "E-Mail-Anbieter",
 			"errorUnknown": "Die Einrichtung ist aus unbekanntem Grund fehlgeschlagen.",
@@ -10258,19 +10345,6 @@
 			"setupTokenLabel": "Einrichtungs-Token",
 			"title": "Überprüfen & {accent}",
 			"titleAccent": "starten"
-		},
-		"team": {
-			"brand": "Owlat",
-			"invitationRequired": "Einladung erforderlich",
-			"inviteExplainer": "Sie benötigen eine Einladung, um dieser Instanz beizutreten. Bitten Sie eine Administratorin oder einen Administrator darum — hier können Sie sie direkt anfragen.",
-			"noteLabel": "Notiz hinzufügen (optional)",
-			"notePlaceholder": "z. B. Ich bin im Marketing-Team und brauche Zugriff, um Kampagnen zu versenden.",
-			"pageTitle": "Team-Setup — Owlat",
-			"requestAccess": "Zugriff anfragen",
-			"requestAccessOperation": "Zugriff anfragen",
-			"requestSentBody": "Eine Administratorin oder ein Administrator wurde benachrichtigt. Sobald Ihnen Zugriff gewährt wird, erhalten Sie eine Einladung per E-Mail — Sie müssen nicht erneut nachfragen.",
-			"requestSentTitle": "Anfrage gesendet",
-			"signOut": "Abmelden"
 		}
 	},
 	"shared": {
@@ -10667,10 +10741,10 @@
 				"campaigns": "Kampagnen",
 				"contacts": "Kontakte",
 				"context": "Kontext",
-				"goTo": "Gehe zu",
 				"mail": "E-Mail",
 				"navigation": "Gehe zu",
 				"recent": "Letzte Suchen",
+				"search": "Suche",
 				"settings": "Einstellungen",
 				"templates": "Vorlagen"
 			}
@@ -12211,6 +12285,12 @@
 				"requiresOwnMta": "Das Zustellbarkeits-Fallback erfordert eine aktivierte Route über den eigenen MTA"
 			}
 		},
+		"quickCreate": {
+			"automation": "Automatisierung",
+			"campaign": "Kampagne",
+			"compose": "E-Mail verfassen",
+			"contact": "Kontakt"
+		},
 		"referenceRelay": {
 			"multiRelay": {
 				"remedy": "Lassen Sie während der Migration genau ein Relay aktiviert. Bis dahin bleibt der Anteil, wo er ist: Mit zwei Referenzarmen gibt es keinen eindeutigen Vergleich, an dem sich Ihr eigener Server messen lässt, sodass keine Zelle zum Wachsen freigegeben werden kann.",
@@ -12678,6 +12758,7 @@
 				"archive": "Archivieren",
 				"closeCancel": "Schließen / Abbrechen",
 				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Heute",
+				"compose": "Verfassen",
 				"edit": "Bearbeiten",
 				"extendSelection": "Auswahl erweitern",
 				"focusComposer": "Editor fokussieren",
@@ -13889,6 +13970,18 @@
 			"unverified": "Nicht persönlich verifiziert",
 			"verifiedByTeammate": "Von einem Teammitglied verifiziert",
 			"verifiedByYou": "Von Ihnen verifiziert"
+		},
+		"commandPaletteSurfaces": {
+			"campaigns": {
+				"heading": "Auf dieser Seite",
+				"openCampaign": "Kampagne öffnen",
+				"openReport": "Bericht öffnen"
+			},
+			"thread": {
+				"archive": "Unterhaltung archivieren",
+				"heading": "Diese Unterhaltung",
+				"reply": "Antworten"
+			}
 		}
 	},
 	"sharedPkg": {
@@ -14357,6 +14450,19 @@
 		}
 	},
 	"shell": {
+		"admin": {
+			"areas": {
+				"advanced": "Erweitert",
+				"delivery": "Zustellung",
+				"instance": "Instanz",
+				"overview": "Verwaltung",
+				"platform": "Plattform",
+				"team": "Team & Zugriff"
+			},
+			"navLabel": "Verwaltungsbereiche",
+			"navLabelCompact": "Verwaltungsbereiche (kompakt)",
+			"paletteHeading": "Verwaltung"
+		},
 		"dashboard": {
 			"alphaBadge": "Alpha",
 			"chatMentions": {

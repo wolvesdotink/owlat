@@ -22,7 +22,7 @@ import SegmentedControl from '../components/ui/SegmentedControl.vue';
 /** Deliberately uneven, like the real Flat / Conversations / Categories row. */
 const LABEL_WIDTH = { Flat: 44, Conversations: 108, Categories: 84 } as const;
 /** `.segmented-control` padding — the first column starts here. */
-const TRACK_PADDING = 3;
+const TRACK_PADDING = 4;
 
 const OPTIONS = [
 	{ value: 'flat', label: 'Flat' },
@@ -138,7 +138,7 @@ describe('SegmentedControl sliding indicator', () => {
 			props: { options: [{ value: 'a', label: 'Unmeasured' }], modelValue: 'a' },
 		});
 		const style = w.find('.segmented-control__indicator').attributes('style') ?? '';
-		expect(style).toContain('calc(100% - 3px)');
+		expect(style).toContain('calc(100% - 4px)');
 		w.unmount();
 	});
 });

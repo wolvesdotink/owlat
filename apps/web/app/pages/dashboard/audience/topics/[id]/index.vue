@@ -41,6 +41,10 @@ const isLoading = computed(
 	() => organizationLoading.value || topicLoading.value || contactsLoading.value
 );
 
+// Below md the five columns have nowhere to go — the same rows render as a card
+// list instead (one tap opens the contact, the remove action stays on the row).
+const tableFits = useDataTableViewport();
+
 // Update breadcrumbs when topic data is loaded
 watch(
 	topic,
@@ -313,59 +317,48 @@ const viewContact = (contactId: Id<'contacts'>) => {
 
 		<!-- Main Content -->
 		<template v-else-if="topic">
-			<!-- Header -->
-			<div class="mb-6">
-				<!-- Back link and title -->
-				<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-					<div class="flex items-start gap-4">
-						<NuxtLink
-							to="/dashboard/audience/topics"
-							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors mt-1"
-						>
-							<Icon name="lucide:arrow-left" class="w-5 h-5" />
-						</NuxtLink>
-						<div>
-							<div class="flex items-center gap-3">
-								<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
-									<Icon name="lucide:list" class="w-5 h-5 text-brand" />
-								</div>
-								<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-									{{ topic.name }}
-								</h1>
+			<!-- Header: back link, topic icon, then the title ladder -->
+			<div class="flex items-start gap-4 mb-6">
+				<NuxtLink
+					to="/dashboard/audience/topics"
+					class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors mt-1"
+				>
+					<Icon name="lucide:arrow-left" class="w-5 h-5" />
+				</NuxtLink>
+				<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
+					<Icon name="lucide:list" class="w-5 h-5 text-brand" />
+				</div>
+				<UiPageHeader class="flex-1" :title="topic.name" :description="topic.description">
+					<template #meta>
+						<div class="flex items-center flex-wrap gap-4 text-sm text-text-tertiary">
+							<div class="flex items-center gap-1.5">
+								<Icon name="lucide:users" class="w-4 h-4" />
+								<span>{{
+									t(
+										'dashboard.audience.topics.detail.index.contactCount',
+										{ count: topic.contactCount },
+										topic.contactCount
+									)
+								}}</span>
 							</div>
-							<p v-if="topic.description" class="mt-2 text-text-secondary">
-								{{ topic.description }}
-							</p>
-							<div class="flex items-center flex-wrap gap-4 mt-3 text-sm text-text-tertiary">
-								<div class="flex items-center gap-1.5">
-									<Icon name="lucide:users" class="w-4 h-4" />
-									<span>{{
-										t(
-											'dashboard.audience.topics.detail.index.contactCount',
-											{ count: topic.contactCount },
-											topic.contactCount
-										)
-									}}</span>
-								</div>
-								<div class="flex items-center gap-1.5">
-									<Icon name="lucide:calendar" class="w-4 h-4" />
-									<span>{{
-										t('dashboard.audience.topics.detail.index.createdOn', {
-											date: formatDate(topic.createdAt),
-										})
-									}}</span>
-								</div>
-								<div
-									v-if="topic.requireDoubleOptIn"
-									class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-brand/10 text-brand"
-								>
-									<Icon name="lucide:shield" class="w-3.5 h-3.5" />
-									<span>{{ t('dashboard.audience.topics.detail.index.doiRequired') }}</span>
-								</div>
+							<div class="flex items-center gap-1.5">
+								<Icon name="lucide:calendar" class="w-4 h-4" />
+								<span>{{
+									t('dashboard.audience.topics.detail.index.createdOn', {
+										date: formatDate(topic.createdAt),
+									})
+								}}</span>
+							</div>
+							<div
+								v-if="topic.requireDoubleOptIn"
+								class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-brand/10 text-brand"
+							>
+								<Icon name="lucide:shield" class="w-3.5 h-3.5" />
+								<span>{{ t('dashboard.audience.topics.detail.index.doiRequired') }}</span>
 							</div>
 						</div>
-					</div>
-				</div>
+					</template>
+				</UiPageHeader>
 			</div>
 
 			<!-- Search Bar -->
@@ -431,7 +424,41 @@ const viewContact = (contactId: Id<'contacts'>) => {
 
 				<!-- Data Table -->
 				<div v-else>
-					<div class="overflow-x-auto">
+					<!-- Card list below md. The two are alternatives, not layers: a
+					     CSS-only switch would keep both copies of every row in the DOM. -->
+					<ul v-if="!tableFits" class="divide-y divide-border-subtle">
+						<li
+							v-for="contact in paginatedContacts"
+							:key="contact._id"
+							class="flex items-center gap-1 px-4 py-2"
+						>
+							<button
+								type="button"
+								class="flex-1 min-w-0 text-left py-1"
+								@click="viewContact(contact._id)"
+							>
+								<span class="block text-text-primary font-medium truncate">{{ contact.email }}</span>
+								<span
+									v-if="contact.firstName || contact.lastName"
+									class="block text-sm text-text-secondary truncate"
+								>
+									{{ [contact.firstName, contact.lastName].filter(Boolean).join(' ') }}
+								</span>
+								<span class="block text-xs text-text-tertiary mt-0.5">
+									{{ formatDate(contact.addedAt) }}
+								</span>
+							</button>
+							<button
+								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+								:aria-label="t('dashboard.audience.topics.detail.index.removeFromTopic')"
+								@click="openRemoveModal(contact)"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</button>
+						</li>
+					</ul>
+
+					<div v-else class="overflow-x-auto">
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
@@ -557,7 +584,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 									:class="[
 										'min-w-[32px] h-8 px-2 rounded-lg text-sm font-medium transition-colors',
 										page === currentPage
-											? 'bg-brand text-text-inverse'
+											? 'bg-text-primary text-text-inverse'
 											: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 									]"
 									@click="goToPage(page)"

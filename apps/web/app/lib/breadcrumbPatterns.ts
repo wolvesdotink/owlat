@@ -32,7 +32,33 @@ const POSTBOX_FOLDER_ROLE_KEYS: Record<string, string> = {
 	snoozed: 'components.postbox.postboxLayout.folderRoles.snoozed',
 };
 
+/** `inbox|drafts|sent|…` — the folder-list pattern matches these slugs ONLY, so
+ * the section's other one-segment pages (Contacts, Files, Search, …) keep their
+ * own trails instead of being read as folders. */
+const POSTBOX_FOLDER_ROLE_PATTERN = Object.keys(POSTBOX_FOLDER_ROLE_KEYS).join('|');
+
 export const patternConfigs: PatternConfig[] = [
+	/**
+	 * A system folder's message list: /dashboard/postbox/inbox, /…/sent, …
+	 *
+	 * Without an entry here the slug fallback took over and the list view
+	 * disagreed with the message view it opens into — "Dashboard > Postbox >
+	 * Inbox" (a redundant root crumb beside the home icon, and an untranslated
+	 * capitalized URL slug) against the reader's own "Mail > Inbox > Message".
+	 * Same rule as below: the trail must not say "Postbox" beside a sidebar that
+	 * says "Mail".
+	 */
+	{
+		pattern: new RegExp(`^/dashboard/postbox/(${POSTBOX_FOLDER_ROLE_PATTERN})$`),
+		getConfig: (match) => {
+			const folderKey = POSTBOX_FOLDER_ROLE_KEYS[match[1] ?? ''];
+			return {
+				section: 'shared.dashboardNavigation.sections.postbox',
+				sectionHref: '/dashboard/postbox/inbox',
+				...(folderKey ? { page: folderKey } : {}),
+			};
+		},
+	},
 	/**
 	 * An open message: /dashboard/postbox/<folder>/<messageId>.
 	 *

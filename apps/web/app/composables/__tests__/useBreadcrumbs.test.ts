@@ -209,6 +209,35 @@ describe('useBreadcrumbs', () => {
 		});
 	});
 
+	/**
+	 * The folder LIST route had no entry at all, so the slug fallback answered it:
+	 * the trail read "Dashboard > Postbox > Inbox" — a redundant root crumb beside
+	 * the home icon and an untranslated URL slug — while the message opened from
+	 * that very list read "Mail > Inbox > Message".
+	 */
+	describe('postbox folder-list trail', () => {
+		it('names the section the way the sidebar does', () => {
+			expect(labelsFor('/dashboard/postbox/inbox')).toEqual(['Mail', 'Inbox']);
+		});
+
+		it('agrees with the message trail it opens into', () => {
+			const list = labelsFor('/dashboard/postbox/sent');
+			const message = labelsFor('/dashboard/postbox/sent/Mm_abc123');
+			expect(message.slice(0, list.length)).toEqual(list);
+		});
+
+		it('leaves the section’s non-folder pages to their own trails', async () => {
+			// Contacts/Files/Search are one-segment routes too; reading them as
+			// folders would swap their page crumb for a bare, wrong "Mail".
+			const { patternConfigs } = await import('~/lib/breadcrumbPatterns');
+			const matches = (path: string) => patternConfigs.some((c) => c.pattern.test(path));
+			expect(matches('/dashboard/postbox/inbox')).toBe(true);
+			for (const page of ['contacts', 'files', 'search', 'reply-queue', 'subscriptions']) {
+				expect(matches(`/dashboard/postbox/${page}`)).toBe(false);
+			}
+		});
+	});
+
 	it('dynamic overrides still win over the route table', () => {
 		path.value = '/dashboard/admin/instance/general';
 		setDynamicBreadcrumbs([{ label: 'Custom' }]);

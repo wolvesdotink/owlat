@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { formatNumber } from '~/utils/formatters';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+
+/**
+ * Passed to UiNumberTicker, which formats every in-flight frame of the tween.
+ * The ticker captures the formatter at setup, so the element is keyed on
+ * `locale` in the template to re-render the current value on a language switch.
+ */
+function formatCount(value: number): string {
+	return formatNumber(Math.round(value), locale.value);
+}
 
 const { data: stats, isLoading } = useOrganizationQuery(api.inbox.queries.getInboundStats);
 
@@ -45,24 +55,24 @@ const maxCount = computed(() => {
 </script>
 
 <template>
-	<UiCard padding="none" overflow="hidden">
+	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:layers" size="sm" variant="brand" />
+					<UiIconBox icon="lucide:layers" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.queueDepthCard.title') }}
 					</h3>
 				</div>
 			</div>
 
-			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
-			</div>
+			<DashboardCardSkeleton v-if="isLoading" shape="stat" hero :count="4" />
 
 			<div v-else>
 				<div class="flex items-baseline gap-2 mb-4">
-					<span class="text-3xl font-bold text-text-primary">{{ totalInQueue }}</span>
+					<span class="text-3xl font-bold tabular-nums text-text-primary">
+						<UiNumberTicker :key="locale" :value="totalInQueue" :formatter="formatCount" />
+					</span>
 					<span class="text-sm text-text-secondary">
 						{{ t('components.dashboard.cards.queueDepthCard.messagesInPipeline') }}
 					</span>
@@ -72,7 +82,9 @@ const maxCount = computed(() => {
 					<div v-for="item in queueItems" :key="item.id">
 						<div class="flex items-center justify-between mb-1">
 							<span class="text-xs text-text-secondary">{{ item.label }}</span>
-							<span class="text-xs font-medium text-text-primary">{{ item.count }}</span>
+							<span class="text-xs font-medium tabular-nums text-text-primary">{{
+								formatCount(item.count)
+							}}</span>
 						</div>
 						<div class="h-1.5 bg-bg-surface rounded-full overflow-hidden">
 							<div

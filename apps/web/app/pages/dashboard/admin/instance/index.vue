@@ -12,7 +12,7 @@ import type { CoreFeatureFlagKey } from '@owlat/shared/featureFlags';
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.instance.index.pageTitle') });
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const { flags, isEnabled } = useFeatureFlag();
 const { data: pluginSettingsOverview } = useConvexQuery(
@@ -163,10 +163,7 @@ const groups = computed(() => [
 <template>
 	<div class="p-6 lg:p-8 max-w-6xl">
 		<header class="mb-8">
-			<NuxtLink to="/dashboard/admin" class="text-sm text-brand hover:underline">
-				← {{ t('dashboard.admin.instance.index.backToAdministration') }}
-			</NuxtLink>
-			<h1 class="mt-3 text-3xl font-semibold text-text-primary">
+			<h1 class="text-3xl font-semibold text-text-primary">
 				{{ t('dashboard.admin.instance.index.title') }}
 			</h1>
 			<p class="mt-2 text-text-secondary">

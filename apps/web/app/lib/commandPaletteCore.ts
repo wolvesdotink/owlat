@@ -230,9 +230,14 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 				}
 				// Offered even while the hits are still resolving (and when there are
 				// none): the full mail search understands operators this never will.
+				//
+				// Its own heading, NOT `groups.goTo`: that key also reads "Go to", the
+				// same string `core:navigation` renders at order 40, so the palette drew
+				// two identical "GO TO" headings back to back whenever a query matched
+				// both — which reads as a rendering bug rather than two sections.
 				groups.push({
 					key: 'mail-search',
-					heading: 'shared.commandPaletteCore.groups.goTo',
+					heading: 'shared.commandPaletteCore.groups.search',
 					order: 19,
 					items: [deps.buildSearchMailItem(term)],
 				});

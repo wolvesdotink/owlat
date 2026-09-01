@@ -140,6 +140,99 @@ const { data: clickedContacts, isLoading: clickedLoading } = useConvexQuery(
 
 const isLoading = computed(() => campaignLoading.value || statsLoading.value);
 
+/**
+ * THE REPORT BEFORE THERE IS ANYTHING TO REPORT.
+ *
+ * Pressing send now lands here immediately (the send is held one undo window
+ * out, so the campaign is `scheduled` for its first minute and `sending` after
+ * that). A page that hard-codes "Sent {date}" and a green "Sent" badge would
+ * greet that with "Sent never", so the header states which of the five states
+ * the campaign is actually in and the zero counts are explained rather than
+ * left looking like a failed send.
+ */
+type ReportStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled';
+
+const reportStatus = computed<ReportStatus>(() => {
+	const status = campaign.value?.status;
+	if (
+		status === 'sent' ||
+		status === 'sending' ||
+		status === 'scheduled' ||
+		status === 'cancelled'
+	) {
+		return status;
+	}
+	// `draft` and `pending_review` both mean "nothing has gone out".
+	return 'draft';
+});
+
+const hasSendStarted = computed(
+	() => reportStatus.value === 'sending' || reportStatus.value === 'sent'
+);
+
+/** In flight: the tiles are a live count, not a result to compare against. */
+const isSendPending = computed(
+	() => reportStatus.value === 'scheduled' || reportStatus.value === 'sending'
+);
+
+const statusBadge = computed(() => {
+	const prefix = 'dashboard.campaigns.detail.report.status';
+	switch (reportStatus.value) {
+		case 'sent':
+			return {
+				label: t('dashboard.campaigns.detail.report.sentBadge'),
+				icon: 'lucide:check-circle-2',
+				tone: 'bg-success/10 text-success',
+				spin: false,
+			};
+		case 'sending':
+			return {
+				label: t(`${prefix}.sending`),
+				icon: 'lucide:loader-2',
+				tone: 'bg-info/10 text-info',
+				spin: true,
+			};
+		case 'scheduled':
+			return {
+				label: t(`${prefix}.scheduled`),
+				icon: 'lucide:clock',
+				tone: 'bg-info/10 text-info',
+				spin: false,
+			};
+		case 'cancelled':
+			return {
+				label: t(`${prefix}.cancelled`),
+				icon: 'lucide:x-circle',
+				tone: 'bg-error/10 text-error',
+				spin: false,
+			};
+		default:
+			return {
+				label: t(`${prefix}.draft`),
+				icon: 'lucide:file-text',
+				tone: 'bg-bg-elevated text-text-secondary',
+				spin: false,
+			};
+	}
+});
+
+/** The one timing line under the title — whichever instant this state has. */
+const timingLine = computed(() => {
+	const prefix = 'dashboard.campaigns.detail.report';
+	switch (reportStatus.value) {
+		case 'sent':
+			return t(`${prefix}.sentAt`, { date: formatDateTime(campaign.value?.sentAt) });
+		case 'sending':
+			return t(`${prefix}.startedAt`, { date: formatDateTime(campaign.value?.sentAt) });
+		case 'scheduled':
+			return t(`${prefix}.scheduledFor`, { date: formatDateTime(campaign.value?.scheduledAt) });
+		case 'cancelled':
+			return t(`${prefix}.cancelledLine`);
+		default:
+			return t(`${prefix}.notSentYet`);
+	}
+});
+
 // Archive link
 const config = useRuntimeConfig();
 const archiveUrl = computed(() => {
@@ -316,20 +409,20 @@ const loadPrevClicked = () => {
 							>
 								<span class="inline-flex items-center gap-1.5">
 									<Icon name="lucide:clock" class="w-4 h-4" />
-									{{
-										t('dashboard.campaigns.detail.report.sentAt', {
-											date: formatDateTime(campaign.sentAt),
-										})
-									}}
+									{{ timingLine }}
 								</span>
-								<span class="text-text-tertiary">·</span>
-								<span class="tabular-nums">
-									{{
-										t('dashboard.campaigns.detail.report.recipients', {
-											count: formatNumber(sentCount),
-										})
-									}}
-								</span>
+								<!-- A recipient count before the first message is dispatched is
+								     just a zero pretending to be information. -->
+								<template v-if="hasSendStarted">
+									<span class="text-text-tertiary">·</span>
+									<span class="tabular-nums">
+										{{
+											t('dashboard.campaigns.detail.report.recipients', {
+												count: formatNumber(sentCount),
+											})
+										}}
+									</span>
+								</template>
 							</p>
 							<!--
 								THE MULTI-DAY SEND PLAN, present from the moment the send starts
@@ -353,10 +446,19 @@ const loadPrevClicked = () => {
 								}}
 							</UiButton>
 							<span
-								class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success"
+								:class="[
+									'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+									statusBadge.tone,
+								]"
 							>
-								<Icon name="lucide:check-circle-2" class="w-3 h-3" />
-								{{ t('dashboard.campaigns.detail.report.sentBadge') }}
+								<Icon
+									:name="statusBadge.icon"
+									:class="[
+										'w-3 h-3',
+										statusBadge.spin ? 'animate-spin motion-reduce:animate-none' : '',
+									]"
+								/>
+								{{ statusBadge.label }}
 							</span>
 						</div>
 					</div>
@@ -402,7 +504,12 @@ const loadPrevClicked = () => {
 						/>
 					</div>
 					<p class="mt-4 text-xs text-text-tertiary">
-						<template v-if="previousComparable">
+						<!-- Zeros on a send that has not gone out yet are a state, not a
+						     result — say so instead of comparing them to anything. -->
+						<template v-if="isSendPending">{{
+							t('dashboard.campaigns.detail.report.comparison.pendingCounts')
+						}}</template>
+						<template v-else-if="previousComparable">
 							{{
 								campaign.isABTest
 									? t('dashboard.campaigns.detail.report.comparison.changeVsPreviousAb', {
@@ -800,5 +907,11 @@ const loadPrevClicked = () => {
 				</div>
 			</div>
 		</UiQueryBoundary>
+
+		<!--
+			The send this page was navigated to by may still be inside its undo
+			window. The toast is mounted here because this is where sending lands.
+		-->
+		<CampaignsUndoSendToast />
 	</div>
 </template>

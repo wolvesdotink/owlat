@@ -80,6 +80,7 @@ describe('UI message catalogs', () => {
 	 * or a placeholder that is the same in both.
 	 */
 	const INTENTIONALLY_IDENTICAL = new Set([
+		'accessRequest.brand',
 		'auth.register.inviteOnlyTitleAccent',
 		'auth.register.nameLabel',
 		'common.name',
@@ -382,7 +383,6 @@ describe('UI message catalogs', () => {
 		'setup.email.sesRegionLabel',
 		'setup.email.smtpPortLabel',
 		'setup.review.adminName',
-		'setup.team.brand',
 		'shared.accountExportResources.domains',
 		'shared.accountExportResources.webhooks',
 		'shared.aiProviders.providers.anthropic.label',

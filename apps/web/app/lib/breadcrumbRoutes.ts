@@ -89,9 +89,11 @@ export const routeConfigs: Record<string, RouteConfig> = {
 	},
 
 	// Campaigns section
+	// Filed under Send, matching the sidebar — the section crumb was
+	// `campaigns` too, so the index route read "Campaigns > Campaigns".
 	'/dashboard/campaigns': {
-		section: 'shared.breadcrumbRoutes.sections.campaigns',
-		sectionHref: '/dashboard/campaigns',
+		section: 'shared.breadcrumbRoutes.sections.send',
+		sectionHref: '/dashboard/send',
 		page: 'shared.breadcrumbRoutes.pages.campaigns',
 	},
 	'/dashboard/campaigns/new': {

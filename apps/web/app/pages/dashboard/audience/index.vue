@@ -54,7 +54,7 @@ const stats = computed(() => [
 		label: t('dashboard.audience.index.stats.segments'),
 		value: audienceStats.value?.segmentCount ?? 0,
 		icon: 'lucide:filter',
-		color: 'lavender',
+		color: 'brand',
 	},
 ]);
 
@@ -102,18 +102,18 @@ const totalNewSubscribers = computed(() => {
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.audience.index.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">{{ t('dashboard.audience.index.subtitle') }}</p>
-			</div>
-			<UiButton to="/dashboard/audience/contacts?action=add" class="gap-2">
-				<Icon name="lucide:plus" class="w-4 h-4" />
-				{{ t('dashboard.audience.index.addContact') }}
-			</UiButton>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.audience.index.title')"
+			:description="t('dashboard.audience.index.subtitle')"
+			class="mb-8"
+		>
+			<template #actions>
+				<UiButton to="/dashboard/audience/contacts?action=add" class="gap-2">
+					<Icon name="lucide:plus" class="w-4 h-4" />
+					{{ t('dashboard.audience.index.addContact') }}
+				</UiButton>
+			</template>
+		</UiPageHeader>
 
 		<!-- Stats Cards -->
 		<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
@@ -144,9 +144,7 @@ const totalNewSubscribers = computed(() => {
 								? 'bg-brand-subtle text-brand'
 								: stat.color === 'success'
 									? 'bg-success-subtle text-success'
-									: stat.color === 'lavender'
-										? 'bg-lavender-subtle text-lavender'
-										: 'bg-bg-surface text-text-tertiary',
+									: 'bg-bg-surface text-text-tertiary',
 						]"
 					>
 						<Icon :name="stat.icon" class="w-5 h-5" />

@@ -7,7 +7,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.team.audit.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -160,13 +160,6 @@ const dateRangeOptions = computed(() => [
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/admin"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.team.audit.backToSettings') }}
-			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
 					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">

@@ -26,6 +26,21 @@ const {
 	remove,
 } = useAssistant();
 
+// Below md the conversation rail is an off-canvas drawer (see UiRailDrawer). It
+// used to be `hidden md:flex`, which on a phone removed the conversation list
+// and — since it lives in the rail's header — the only "New chat" button.
+const railOpen = ref(false);
+
+const startConversation = () => {
+	railOpen.value = false;
+	newConversation();
+};
+
+const openConversation = (id: Id<'aiConversations'>) => {
+	railOpen.value = false;
+	selectConversation(id);
+};
+
 const scrollRef = ref<HTMLElement | null>(null);
 const scrollToBottom = () => {
 	nextTick(() => {
@@ -96,74 +111,109 @@ const formatDate = (ts: number) =>
 </script>
 
 <template>
-	<div class="flex h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem-3rem)]">
-		<!-- Conversation list -->
-		<aside class="hidden md:flex w-72 flex-shrink-0 flex-col border-r border-border-subtle">
-			<div class="p-3">
-				<UiButton full-width class="gap-2" @click="newConversation">
-					<Icon name="lucide:plus" class="w-4 h-4" />
-					{{ t('dashboard.assistant.index.newChat') }}
-				</UiButton>
-			</div>
-			<div class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-				<div v-if="conversationsLoading" class="px-3 py-2 text-sm text-text-tertiary">
-					{{ t('common.loading') }}
+	<!-- Below lg the chrome around this pane is 4rem of header bar, 2.25rem of
+	     breadcrumb strip and the 4rem the tab bar reserves at the bottom of
+	     #main-content, plus both safe areas — subtract all of it, or the page
+	     itself scrolls and the composer loads under the fold. -->
+	<div
+		class="flex h-[calc(100dvh-10.25rem-1px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] lg:h-[calc(100vh-4rem-3rem)]"
+	>
+		<!-- Conversation list: a column at md, an off-canvas drawer below it -->
+		<UiRailDrawer id="assistant-rail" v-model:open="railOpen">
+			<aside class="flex flex-1 min-w-0 flex-col border-r border-border-subtle bg-bg-elevated">
+				<div class="p-3">
+					<UiButton full-width class="gap-2" @click="startConversation">
+						<Icon name="lucide:plus" class="w-4 h-4" />
+						{{ t('dashboard.assistant.index.newChat') }}
+					</UiButton>
 				</div>
-				<p v-else-if="conversations.length === 0" class="px-3 py-2 text-sm text-text-tertiary">
-					{{ t('dashboard.assistant.index.noConversations') }}
-				</p>
-				<div
-					v-for="c in conversations"
-					:key="c._id"
-					class="group w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer"
-					:class="
-						c._id === activeId
-							? 'bg-bg-surface text-text-primary'
-							: 'text-text-secondary hover:bg-bg-surface/60'
-					"
-					@click="selectConversation(c._id)"
-				>
-					<Icon name="lucide:message-square" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					<input
-						v-if="editingId === c._id"
-						:id="`conversation-rename-${c._id}`"
-						v-model="editingTitle"
-						type="text"
-						maxlength="120"
-						class="input input-sm flex-1 min-w-0"
-						@click.stop
-						@blur="commitRename"
-						@keyup.enter="commitRename"
-						@keyup.escape="cancelRename"
-					/>
-					<template v-else>
-						<span class="flex-1 truncate">{{ c.title }}</span>
-						<span class="text-2xs text-text-tertiary flex-shrink-0">{{
-							formatDate(c.lastMessageAt)
-						}}</span>
-						<button
-							class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-text-primary transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							:title="t('dashboard.assistant.index.renameConversation')"
-							:aria-label="t('dashboard.assistant.index.renameConversation')"
-							@click.stop="startRename(c._id, c.title)"
-						>
-							<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
-						</button>
-						<button
-							class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-error transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							:title="t('dashboard.assistant.index.deleteConversation')"
-							:aria-label="t('dashboard.assistant.index.deleteConversation')"
-							@click.stop="pendingDelete = { _id: c._id, title: c.title }"
-						>
-							<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
-						</button>
-					</template>
+				<div class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+					<div v-if="conversationsLoading" class="px-3 py-2 text-sm text-text-tertiary">
+						{{ t('common.loading') }}
+					</div>
+					<p v-else-if="conversations.length === 0" class="px-3 py-2 text-sm text-text-tertiary">
+						{{ t('dashboard.assistant.index.noConversations') }}
+					</p>
+					<div
+						v-for="c in conversations"
+						:key="c._id"
+						class="group w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer"
+						:class="
+							c._id === activeId
+								? 'bg-bg-surface text-text-primary'
+								: 'text-text-secondary hover:bg-bg-surface/60'
+						"
+						@click="openConversation(c._id)"
+					>
+						<Icon name="lucide:message-square" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						<input
+							v-if="editingId === c._id"
+							:id="`conversation-rename-${c._id}`"
+							v-model="editingTitle"
+							type="text"
+							maxlength="120"
+							class="input input-sm flex-1 min-w-0"
+							@click.stop
+							@blur="commitRename"
+							@keyup.enter="commitRename"
+							@keyup.escape="cancelRename"
+						/>
+						<template v-else>
+							<span class="flex-1 truncate">{{ c.title }}</span>
+							<span class="text-2xs text-text-tertiary flex-shrink-0">{{
+								formatDate(c.lastMessageAt)
+							}}</span>
+							<button
+								class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-text-primary transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+								:title="t('dashboard.assistant.index.renameConversation')"
+								:aria-label="t('dashboard.assistant.index.renameConversation')"
+								@click.stop="startRename(c._id, c.title)"
+							>
+								<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+							</button>
+							<button
+								class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-error transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+								:title="t('dashboard.assistant.index.deleteConversation')"
+								:aria-label="t('dashboard.assistant.index.deleteConversation')"
+								@click.stop="pendingDelete = { _id: c._id, title: c.title }"
+							>
+								<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
+							</button>
+						</template>
+					</div>
 				</div>
-			</div>
-		</aside>
+			</aside>
+		</UiRailDrawer>
 
 		<!-- Main thread -->
 		<section class="flex-1 flex flex-col min-w-0">
+			<!-- Below md the rail is off-canvas, so the thread carries its own way
+			     back to the conversation list and its own new-chat verb. The handle
+			     is named, like chat's: a lone icon in an otherwise empty strip reads
+			     as stray chrome and says nothing about what it opens. 44px targets,
+			     which is also the bar's height; the negative inline margins keep
+			     them optically aligned with the content below. -->
+			<div class="md:hidden px-3 border-b border-border-subtle flex items-center justify-between">
+				<button
+					type="button"
+					class="-ml-2 h-11 flex items-center gap-1.5 px-2 rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+					aria-controls="assistant-rail"
+					:aria-expanded="railOpen"
+					@click="railOpen = true"
+				>
+					<Icon name="lucide:panel-left" class="w-4 h-4" />
+					<span class="text-sm">{{ t('dashboard.assistant.index.openConversations') }}</span>
+				</button>
+				<button
+					type="button"
+					class="-mr-2 w-11 h-11 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+					:aria-label="t('dashboard.assistant.index.newChat')"
+					@click="startConversation"
+				>
+					<Icon name="lucide:plus" class="w-4 h-4" />
+				</button>
+			</div>
+
 			<header
 				v-if="activeConversation"
 				class="border-b border-border-subtle px-4 py-2.5 flex items-center gap-2"

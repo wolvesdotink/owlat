@@ -214,18 +214,21 @@ const handleSend = async () => {
 				@paste="handlePaste"
 			/>
 
-			<button
+			<!-- Send is `.btn-primary` — monochrome by design. A solid terracotta
+			     fill pinned to the bottom of a full-height pane is the most saturated
+			     thing on the screen, and the design language reserves the accent for
+			     small marks. UiButton also brings the disabled state (`opacity-50`),
+			     which used to be a third hand-written recipe here. The geometry
+			     classes keep the 40x40 square affordance against `.btn`'s pill. -->
+			<UiButton
+				variant="primary"
 				:disabled="!canSend"
-				class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors"
-				:class="
-					canSend
-						? 'bg-brand text-text-inverse hover:bg-brand/90'
-						: 'bg-bg-surface text-text-tertiary border border-border-subtle cursor-not-allowed'
-				"
+				class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
+				:aria-label="t('common.send')"
 				@click="handleSend"
-			 :aria-label="t('common.send')">
+			>
 				<Icon name="lucide:send" class="w-4 h-4" />
-			</button>
+			</UiButton>
 		</div>
 
 		<p class="text-[11px] text-text-tertiary mt-1.5 px-1">

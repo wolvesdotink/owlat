@@ -332,16 +332,12 @@ onUnmounted(() => {
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.audience.contacts.index.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">
-					{{ t('dashboard.audience.contacts.index.subtitle') }}
-				</p>
-			</div>
-			<div v-if="canManageContacts" class="flex gap-2">
+		<UiPageHeader
+			:title="t('dashboard.audience.contacts.index.title')"
+			:description="t('dashboard.audience.contacts.index.subtitle')"
+			class="mb-6"
+		>
+			<template v-if="canManageContacts" #actions>
 				<UiButton variant="secondary" @click="isExportModalOpen = true">
 					<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
 					{{ t('dashboard.audience.contacts.index.export') }}
@@ -411,8 +407,8 @@ onUnmounted(() => {
 					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 					{{ t('dashboard.audience.contacts.index.addContact') }}
 				</UiButton>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 
 		<!-- Search Bar and Bulk Actions -->
 		<div class="flex items-center gap-4 mb-6">

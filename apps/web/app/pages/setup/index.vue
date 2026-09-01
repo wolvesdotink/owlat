@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { SETUP_STEPS, setupStepPath } from '~/composables/useSetupWizard';
+
 definePageMeta({ layout: false });
 
 const { t } = useI18n();
@@ -7,31 +9,27 @@ useHead({ title: () => t('setup.index.pageTitle') });
 
 const router = useRouter();
 
-const steps = computed(() => [
-	{
-		icon: 'lucide:sliders-horizontal',
-		title: t('setup.index.steps.mode.title'),
-		desc: t('setup.index.steps.mode.desc'),
-	},
-	{
-		icon: 'lucide:toggle-right',
-		title: t('setup.index.steps.features.title'),
-		desc: t('setup.index.steps.features.desc'),
-	},
-	{
-		icon: 'lucide:send',
-		title: t('setup.index.steps.email.title'),
-		desc: t('setup.index.steps.email.desc'),
-	},
-	{
-		icon: 'lucide:user-round',
-		title: t('setup.index.steps.review.title'),
-		desc: t('setup.index.steps.review.desc'),
-	},
-]);
+/**
+ * The splash's preview of the wizard, DERIVED from the wizard's own step list.
+ *
+ * It used to be a hand-written array, and it drifted: it promised four steps
+ * (mode → features → email → "Admin & review") while `SETUP_STEPS` has run five
+ * since the admin step was split out, so the first-run screen quietly lied about
+ * the journey and then produced an unannounced account step. Mapping the real
+ * list means the promise cannot diverge from the wizard again — a step added
+ * there appears here, and its copy is keyed by the step's own id.
+ */
+const steps = computed(() =>
+	SETUP_STEPS.map((step) => ({
+		id: step.id,
+		number: step.number,
+		title: t(`setup.index.steps.${step.id}.title`),
+		desc: t(`setup.index.steps.${step.id}.desc`),
+	}))
+);
 
 function start() {
-	router.push('/setup/mode');
+	router.push(setupStepPath(SETUP_STEPS[0].id));
 }
 </script>
 
@@ -70,11 +68,11 @@ function start() {
 				</I18nT>
 
 				<ol class="space-y-3 mb-8">
-					<li v-for="(step, i) in steps" :key="step.title" class="flex items-start gap-3">
+					<li v-for="step in steps" :key="step.id" class="flex items-start gap-3">
 						<span
-							class="flex items-center justify-center size-6 shrink-0 rounded-full bg-brand/15 text-brand text-xs font-semibold mt-0.5"
+							class="flex items-center justify-center size-6 shrink-0 rounded-full bg-bg-surface text-text-tertiary border border-border-subtle text-xs font-medium mt-0.5"
 						>
-							{{ i + 1 }}
+							{{ step.number }}
 						</span>
 						<div>
 							<div class="font-medium text-text-primary">{{ step.title }}</div>

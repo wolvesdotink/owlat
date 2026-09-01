@@ -23,12 +23,20 @@ const emit = defineEmits<{ 'update:modelValue': [InboxFilter] }>();
 
 const { t } = useI18n();
 
-/** Render a capped count: a slice at the ceiling reads "99+". */
+/**
+ * Render a capped count: a slice at the ceiling reads "99+".
+ *
+ * A field the payload does not carry hides the badge rather than printing it:
+ * an older/partial `getThreadFilterCounts` shape (a new pill shipped ahead of
+ * the query, a cached response) would otherwise render the literal
+ * "undefined" beside the pill's label.
+ */
 function displayCount(filter: InboxFilter): string | null {
 	const counts = props.counts;
 	if (!counts) return null;
 	// The escalation pill's wire field is not its slug (see the registry).
 	const value = counts[INBOX_FILTER_COUNT_KEY[filter]];
+	if (typeof value !== 'number') return null;
 	if (value >= counts.cap) return `${counts.cap - 1}+`;
 	return String(value);
 }

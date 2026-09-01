@@ -93,10 +93,19 @@ export function useSidebarState() {
 	// persisted value is ignored so the off-canvas drawer keeps working.
 	const effectiveHidden = computed(() => isHidden.value && isDesktopViewport.value);
 
+	// Collapsed is gated the same way, and for the same reason. It is a desktop
+	// space tradeoff — give the content back 12rem, pay for it with tooltips —
+	// and the mobile drawer has no such tradeoff to make: it is opened
+	// deliberately, floats over the content and makes room for nothing. Ungated,
+	// anyone who collapsed the rail on their laptop got a 64px icon-only strip on
+	// their phone, with no labels, no section names and no way to widen it (the
+	// Collapse toggle itself is `hidden lg:flex`).
+	const effectiveCollapsed = computed(() => isCollapsed.value && isDesktopViewport.value);
+
 	// The resolved display mode consumers should render against.
 	const sidebarMode = computed<SidebarMode>(() => {
 		if (effectiveHidden.value) return 'hidden';
-		return isCollapsed.value ? 'collapsed' : 'visible';
+		return effectiveCollapsed.value ? 'collapsed' : 'visible';
 	});
 
 	// Toggle sidebar collapsed state (icons ↔ labels). Orthogonal to hidden.
@@ -168,6 +177,7 @@ export function useSidebarState() {
 	return {
 		isCollapsed,
 		isHidden,
+		effectiveCollapsed,
 		effectiveHidden,
 		sidebarMode,
 		isPeeking,

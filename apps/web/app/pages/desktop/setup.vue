@@ -292,20 +292,21 @@ const authOptions = computed(() => [
 	{ value: 'key', label: t('desktop.setup.auth.key') },
 	{ value: 'password', label: t('desktop.setup.auth.password') },
 ]);
-const configStep = ref<ConfigStep>('features');
-const stepIndex = computed(() => configSteps.findIndex((s) => s.id === configStep.value));
-const isLastStep = computed(() => stepIndex.value === configSteps.length - 1);
-function goStep(id: ConfigStep) {
-	configStep.value = id;
-}
-function nextStep() {
-	const next = configSteps[stepIndex.value + 1];
-	if (next) configStep.value = next.id;
-}
-function prevStep() {
-	const prev = configSteps[stepIndex.value - 1];
-	if (prev) configStep.value = prev.id;
-}
+// Step navigation is the shared wizard composable, not a second hand-rolled
+// copy of it. The step is deliberately NOT synced to the URL here: the SSH
+// session this wizard configures lives only in memory, so a reload drops back
+// to Connect and a shareable `?step=admin` would be a link to a wizard that is
+// not running.
+const {
+	currentStep: configStep,
+	currentStepIndex: stepIndex,
+	isLastStep,
+	goToStep: goStep,
+	goToNext: nextStep,
+	goToPrevious: prevStep,
+} = useWizard<ConfigStep>(
+	configSteps.map((step, index) => ({ id: step.id, label: step.label, number: index + 1 }))
+);
 
 async function onProvision() {
 	configError.value = '';

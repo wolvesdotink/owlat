@@ -36,10 +36,8 @@ export const PROPERTY_VALUES_CHUNK_SIZE = 500;
  */
 export async function fetchPropertyValuesChunked(
 	contactIds: ReadonlyArray<Id<'contacts'>>,
-	fetchChunk: (
-		chunk: Id<'contacts'>[],
-	) => Promise<Record<string, Record<string, string>>>,
-	chunkSize: number = PROPERTY_VALUES_CHUNK_SIZE,
+	fetchChunk: (chunk: Id<'contacts'>[]) => Promise<Record<string, Record<string, string>>>,
+	chunkSize: number = PROPERTY_VALUES_CHUNK_SIZE
 ): Promise<Record<string, Record<string, string>>> {
 	const merged: Record<string, Record<string, string>> = {};
 	for (let i = 0; i < contactIds.length; i += chunkSize) {
@@ -66,7 +64,7 @@ export interface CsvProperty {
 export function buildContactsCsv(
 	contacts: CsvContact[],
 	propertyValues: Record<string, Record<string, string>> | null | undefined,
-	properties: ReadonlyArray<CsvProperty>,
+	properties: ReadonlyArray<CsvProperty>
 ): string {
 	const headers = [
 		'Email',
@@ -95,6 +93,32 @@ export function buildContactsCsv(
 	// properties) — quoting alone does not stop spreadsheet formulas.
 	const sanitized = rows.map((row) => row.map((cell) => sanitizeCsvCell(String(cell ?? ''))));
 	return Papa.unparse({ fields: headers, data: sanitized });
+}
+
+/** First address-looking token in a message, so a failure lands next to its row. */
+const EMAIL_IN_MESSAGE = /[^\s<>@,;:"']+@[^\s<>@,;:"']+/;
+
+/**
+ * Build CSV text for the errors an import came back with.
+ *
+ * The complete step only ever shows the first handful on screen, and until this
+ * existed that was the whole record — the rest of the list was unreachable, so a
+ * 400-row import with 90 rejected rows told the operator about five of them and
+ * silently dropped the rest. The download carries the FULL list.
+ *
+ * Messages are backend-formatted sentences (`Invalid email: …`, `Failed to
+ * process someone@example.com: …`), so the address is pulled out into its own
+ * column on a best-effort basis: with it, the file can be filtered and
+ * re-imported; without it, the message column still says everything the screen
+ * would have.
+ */
+export function buildImportErrorsCsv(errors: ReadonlyArray<string>): string {
+	const rows = errors.map((message, index) => [
+		String(index + 1),
+		sanitizeCsvCell(EMAIL_IN_MESSAGE.exec(message)?.[0] ?? ''),
+		sanitizeCsvCell(message),
+	]);
+	return Papa.unparse({ fields: ['#', 'Email', 'Error'], data: rows });
 }
 
 /**

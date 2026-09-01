@@ -823,6 +823,15 @@ function runReaderAction(action: string) {
 	}
 }
 
+// ⌘K, while a conversation is open, offers the two verbs this reader leads with
+// (the mailbox provider only carries what the overflow menu hides). Runs the
+// actions directly, so it acts on THIS conversation.
+usePostboxThreadCommandSurface({
+	subject: () => props.message.subject,
+	onArchive: () => runReaderAction('archive'),
+	onReply: () => runReaderAction('reply'),
+});
+
 function onReaderShortcut(event: KeyboardEvent) {
 	// Alt matters too: on Windows the browser-menu accelerators (Alt+E, Alt+F)
 	// deliver plain keydowns with altKey — never treat those as triage keys.

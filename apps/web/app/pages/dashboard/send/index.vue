@@ -96,21 +96,22 @@ const quickActions = computed(() => [
 	},
 ]);
 
-// Get type badge color
+// Get type badge color. `lavender` was never a token — `bg-lavender-subtle
+// text-lavender` resolved to nothing, so transactional badges rendered
+// chip-less. `info` is the real quiet tint that pairs with brand here.
 function getTypeBadgeClass(type: string): string {
-	return type === 'marketing' ? 'bg-brand-subtle text-brand' : 'bg-lavender-subtle text-lavender';
+	return type === 'marketing' ? 'bg-brand-subtle text-brand' : 'bg-info-subtle text-info';
 }
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
-		<div class="mb-8">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.send.index.title') }}
-			</h1>
-			<p class="mt-1 text-text-secondary">{{ t('dashboard.send.index.subtitle') }}</p>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.send.index.title')"
+			:description="t('dashboard.send.index.subtitle')"
+			class="mb-8"
+		/>
 
 		<!-- Stats Cards -->
 		<UiErrorAlert

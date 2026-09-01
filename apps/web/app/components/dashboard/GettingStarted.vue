@@ -342,25 +342,33 @@ async function handleDismiss() {
 								</p>
 							</div>
 
-							<div class="flex-shrink-0">
-								<span v-if="step.completed" class="text-sm font-medium text-success">{{
-									t('common.done')
-								}}</span>
-								<span
-									v-else-if="step.blocked"
-									class="flex items-center gap-1.5 text-sm text-text-tertiary"
-								>
-									<Icon name="lucide:clock" class="h-4 w-4" />
-									{{ step.blockedReason ? localize(step.blockedReason) : '' }}
-								</span>
-								<span
-									v-else
-									class="flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-								>
-									{{ localize(step.cta) }}
-									<Icon name="lucide:chevron-right" class="h-4 w-4" />
-								</span>
-							</div>
+							<!--
+								Each trailing affordance is its own flex item rather than living in a
+								shared wrapper: an always-rendered wrapper would still be a flex item
+								(so still eat a `gap-4` and its own width) on the narrow viewports
+								where the hover-only CTA is not rendered at all. Below `sm` a normal
+								step therefore has exactly two items — icon and text — and the copy
+								gets the full row width instead of a ~40% column. The CTA is
+								hover/focus-only, which never fires on touch, so hiding it there
+								costs nothing: the whole row is the link.
+							-->
+							<span v-if="step.completed" class="flex-shrink-0 text-sm font-medium text-success">{{
+								t('common.done')
+							}}</span>
+							<span
+								v-else-if="step.blocked"
+								class="flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary"
+							>
+								<Icon name="lucide:clock" class="h-4 w-4 flex-shrink-0" />
+								{{ step.blockedReason ? localize(step.blockedReason) : '' }}
+							</span>
+							<span
+								v-else
+								class="hidden flex-shrink-0 items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 sm:flex"
+							>
+								{{ localize(step.cta) }}
+								<Icon name="lucide:chevron-right" class="h-4 w-4" />
+							</span>
 						</component>
 					</div>
 

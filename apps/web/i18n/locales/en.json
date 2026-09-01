@@ -1,4 +1,17 @@
 {
+	"accessRequest": {
+		"brand": "Owlat",
+		"invitationRequired": "Invitation required",
+		"inviteExplainer": "You need an invitation to join this instance. Ask an administrator to send you one — you can request it right here.",
+		"noteLabel": "Add a note (optional)",
+		"notePlaceholder": "e.g. I'm on the marketing team and need access to send campaigns.",
+		"pageTitle": "Request access — Owlat",
+		"requestAccess": "Request access",
+		"requestAccessOperation": "Request access",
+		"requestSentBody": "An administrator has been notified. You'll get an invitation by email once they grant you access — no need to ask again.",
+		"requestSentTitle": "Request sent",
+		"signOut": "Sign out"
+	},
 	"auth": {
 		"fields": {
 			"email": "Email",
@@ -842,6 +855,12 @@
 					"scheduledTimeFallback": "the scheduled time",
 					"scheduling": "Scheduling...",
 					"sendCampaign": "Send Campaign",
+					"sendConfirm": {
+						"cancel": "Cancel",
+						"confirm": "Send now",
+						"description": "{name} goes out to everyone in this audience. You have {seconds} seconds to call it back before the first message leaves.",
+						"title": "Send to {count} recipients?"
+					},
 					"sendNow": "Send Now",
 					"sendNowDescription": "Your campaign will start sending immediately to all recipients.",
 					"sendNowOperation": "Send campaign now",
@@ -967,6 +986,12 @@
 				"subjectLabel": "Subject:",
 				"submit": "Queue Test",
 				"title": "Queue Test Email"
+			},
+			"undoSendToast": {
+				"sending": "Sending \"{name}\" in {seconds}s",
+				"undo": "Undo",
+				"undoOperation": "Call back campaign send",
+				"undone": "Send called back. The campaign is a draft again."
 			}
 		},
 		"channels": {
@@ -1280,13 +1305,26 @@
 			},
 			"csvImportModal": {
 				"complete": {
+					"addToTopic": "Add to topic",
+					"addToTopicOperation": "Add contacts to topic",
+					"addToTopicTitle": "Add these contacts to a topic",
+					"addedToTopic": "{count} contact added to {name} | {count} contacts added to {name}",
 					"addedToTopics": "{count} contact added to topic | {count} contacts added to topics",
+					"chooseTopic": "Choose a topic…",
+					"downloadErrors": "Download error rows",
 					"errorsTitle": "Errors (first {count})",
 					"failed": "Failed",
 					"imported": "Imported",
 					"skipped": "Skipped",
 					"title": "Import Complete!",
-					"updated": "Updated"
+					"updated": "Updated",
+					"viewAllHint": "This import was not assigned to a topic, so viewing it opens your full contact list.",
+					"viewImported": "View imported"
+				},
+				"discard": {
+					"body": "Your file and column mapping will be lost.",
+					"keepEditing": "Keep editing",
+					"title": "Discard this import?"
 				},
 				"emptyCell": "(empty)",
 				"footer": {
@@ -1904,6 +1942,17 @@
 				"summary": "{count} teammate needs a mailbox. Provision one straight from the request, or mark it done if you've handled it another way. | {count} teammates need a mailbox. Provision one straight from the request, or mark it done if you've handled it another way.",
 				"title": "Mailbox requests",
 				"verifyDomainFirst": "Verify a sending domain first"
+			},
+			"mobileTabBar": {
+				"create": "Create",
+				"home": "Home",
+				"label": "Primary navigation",
+				"mail": "Mail",
+				"more": "More",
+				"people": "People"
+			},
+			"quickCreateMenu": {
+				"more": "More create options"
 			},
 			"sendStatusBadge": {
 				"status": {
@@ -5230,7 +5279,6 @@
 						"windowNote": "Reported window: {reported} · checks decided over {decision}"
 					}
 				},
-				"backToSetup": "Delivery setup",
 				"deliverability": {
 					"copyReport": "Copy setup report",
 					"counts": {
@@ -5474,6 +5522,11 @@
 						"title": "Provider configuration",
 						"unknownProvider": "unknown: {provider}"
 					},
+					"empty": {
+						"action": "Back to delivery setup",
+						"description": "No transport has been configured for this deployment yet, so there is nothing to report here. Set one up from delivery setup.",
+						"title": "No transport configured"
+					},
 					"env": {
 						"addToEnv": "Add to your {file}, then restart the instance",
 						"blankValues": "Values are left blank — fill in your real credentials. They are never displayed here.",
@@ -5488,6 +5541,7 @@
 						"title": "Couldn't load delivery status"
 					},
 					"lede": "Configure and validate the email delivery provider this instance sends through",
+					"loadingLabel": "Loading transport settings…",
 					"pageTitle": "Delivery provider — Owlat",
 					"sns": {
 						"copyEndpoint": "Copy endpoint URL",
@@ -5584,7 +5638,6 @@
 			},
 			"instance": {
 				"agent": {
-					"backToSettings": "Back to Settings",
 					"backfill": {
 						"cancel": "Cancel Backfill",
 						"description": "One-time scan of your inbound mail history to seed the AI agent with context.",
@@ -5647,7 +5700,6 @@
 					}
 				},
 				"agentHealth": {
-					"backToSettings": "Back to Settings",
 					"charts": {
 						"errorRate": "Error Rate",
 						"latency": "Processing Latency (ms)",
@@ -5697,7 +5749,6 @@
 					"title": "Agent Health & Monitoring"
 				},
 				"aiProvider": {
-					"backToSettings": "Back to Settings",
 					"connectionWorks": "Connection works",
 					"embeddings": {
 						"apiKeyHelp": "Encrypted at rest, never shown again.",
@@ -5742,7 +5793,6 @@
 				},
 				"autonomy": {
 					"addRule": "Add Rule",
-					"backToSettings": "Back to Settings",
 					"createFirstRule": "Create First Rule",
 					"emptyBody": "Create rules to control how the AI agent handles different types of messages. Each category can have its own confidence threshold and daily limits.",
 					"emptyTitle": "No autonomy rules configured",
@@ -5779,7 +5829,6 @@
 				"channels": {
 					"addChannel": "Add channel",
 					"addedToast": "Channel added — configure it below",
-					"backToSettings": "Back to Settings",
 					"emptyBodyAdmin": "Use {action} above to configure a communication channel for your workspace.",
 					"emptyBodyMember": "Communication channels will appear here once an owner or admin has configured them for your workspace.",
 					"emptyTitle": "No channels configured",
@@ -5805,7 +5854,6 @@
 					"title": "Messaging channels"
 				},
 				"emailTheme": {
-					"backToSettings": "Back to Settings",
 					"backgroundColor": "Background Color",
 					"backgroundColorHelp": "The background color of your email body.",
 					"emailWidth": "Email Width",
@@ -5921,7 +5969,6 @@
 						"creating": "Creating...",
 						"title": "Create Form Endpoint"
 					},
-					"backToSettings": "Back to Settings",
 					"copied": "Copied!",
 					"copyCode": "Copy Code",
 					"copyUrl": "Copy URL",
@@ -5984,8 +6031,6 @@
 				"general": {
 					"archives": "Enable campaign archives by default",
 					"archivesHelp": "New campaigns will include a \"View in browser\" link and a public archive page.",
-					"cardSubtitle": "Team settings and defaults",
-					"cardTitle": "General",
 					"connectedWorkspaces": "Connected workspaces",
 					"connectedWorkspacesHelp": "Switch between the Owlat workspaces you've connected on this device, or connect another.",
 					"errors": {
@@ -6058,7 +6103,6 @@
 				},
 				"index": {
 					"applyChanges": "Apply changes",
-					"backToAdministration": "Administration",
 					"changeModeOperation": "Change operating mode",
 					"disableCount": "Disable ({count})",
 					"enableCount": "Enable ({count})",
@@ -6203,7 +6247,6 @@
 					}
 				},
 				"properties": {
-					"backToSettings": "Back to Settings",
 					"cardTitle": "Properties",
 					"createFirst": "Create First Property",
 					"createModal": {
@@ -6283,7 +6326,6 @@
 					"typesTitle": "Property Types"
 				},
 				"sealedMail": {
-					"backToSettings": "Back to Settings",
 					"disabledNotice": "Sealed Mail is turned off for this workspace, so nothing is sealed yet. You can still choose the policy below — it takes effect once Sealed Mail is enabled in Features.",
 					"exportKitOperation": "Export recovery kit",
 					"importKitOperation": "Import recovery kit",
@@ -6360,7 +6402,6 @@
 						"role": "Role",
 						"title": "Platform admins"
 					},
-					"backToSettings": "Back to Settings",
 					"fallbackNames": {
 						"campaign": "campaign",
 						"content": "content",
@@ -6453,7 +6494,6 @@
 			},
 			"system": {
 				"index": {
-					"backToSettings": "← Settings",
 					"confirm": {
 						"backupBody": "{backupWarning} Data volumes persist across normal updates, but a release with breaking schema changes may migrate or reset data — check the release notes first.",
 						"backupWarning": "Back up before updating.",
@@ -6462,6 +6502,8 @@
 						"title": "Confirm update to v{version}"
 					},
 					"containers": {
+						"empty": "No containers reported by this deployment.",
+						"error": "Could not read container status. Use Refresh to try again.",
 						"imageTag": "Image tag",
 						"loading": "Loading container status…",
 						"service": "Service",
@@ -6663,7 +6705,6 @@
 					},
 					"allActions": "All Actions",
 					"allUsers": "All Users",
-					"backToSettings": "Back to Settings",
 					"dateRange": {
 						"all": "All Time",
 						"month": "Last 30 Days",
@@ -6694,7 +6735,6 @@
 					"subtitle": "Track all team member actions and changes",
 					"title": "Audit Log"
 				},
-				"backToAdministration": "Back to Administration",
 				"cancelInviteModal": {
 					"body": "Are you sure you want to cancel the invitation to {email}? They will not be able to join the team with this invite link.",
 					"cancelling": "Cancelling...",
@@ -6779,7 +6819,6 @@
 						"description": "Team inboxes can be managed by workspace owners and admins.",
 						"title": "Admins only"
 					},
-					"backToSettings": "Back to Settings",
 					"badges": {
 						"external": "External",
 						"needsAttention": "Needs attention",
@@ -6944,7 +6983,6 @@
 						"description": "Only enabled addresses can be picked as a campaign's from-address.",
 						"title": "Approved senders"
 					},
-					"backToSettings": "Back to Settings",
 					"defaultTitle": "Default sender for new campaigns",
 					"empty": {
 						"action": "Add your first sender",
@@ -7023,6 +7061,7 @@
 				},
 				"newChat": "New chat",
 				"noConversations": "No conversations yet.",
+				"openConversations": "Conversations",
 				"pageTitle": "Assistant — Owlat",
 				"renameConversation": "Rename conversation",
 				"welcomeBody": "Ask about your contacts, campaigns, knowledge, and files — or have me draft an email or campaign copy. I can search your workspace to ground my answers.",
@@ -7039,7 +7078,7 @@
 						"loading": "Loading activities...",
 						"title": "Activity Timeline"
 					},
-					"backToCustomers": "Back to Customers",
+					"backToCustomers": "Back to Contacts",
 					"contactDetails": "Contact Details",
 					"created": "Created",
 					"customProperties": "Custom Properties",
@@ -7196,7 +7235,7 @@
 						"firstName": "First Name",
 						"lastName": "Last Name"
 					},
-					"title": "Customers",
+					"title": "Contacts",
 					"toasts": {
 						"copyFailed": "Could not copy to clipboard",
 						"created": "Contact {email} created successfully",
@@ -7946,13 +7985,15 @@
 						"title": "Public Archive"
 					},
 					"backToCampaigns": "Back to Campaigns",
+					"cancelledLine": "Cancelled before it went out",
 					"clickRate": "Click rate",
 					"clickedEmpty": "No contacts have clicked links in this email yet",
 					"clickedOfDelivered": "{clicked} of {delivered} delivered clicked a link",
 					"comparison": {
 						"changeVsPrevious": "Change vs your previous send · {name}",
 						"changeVsPreviousAb": "Change vs your previous A/B send · {name}",
-						"noComparable": "No comparable prior send to compare against yet."
+						"noComparable": "No comparable prior send to compare against yet.",
+						"pendingCounts": "These fill in as the send goes out."
 					},
 					"declareWinnerOperation": "Declare A/B test winner",
 					"duplicateOperation": "Duplicate campaign",
@@ -7979,8 +8020,16 @@
 						"range": "{from}-{to} of {total}"
 					},
 					"recipients": "{count} recipients",
+					"scheduledFor": "Sends {date}",
 					"sentAt": "Sent {date}",
 					"sentBadge": "Sent",
+					"startedAt": "Sending since {date}",
+					"status": {
+						"cancelled": "Cancelled",
+						"draft": "Draft",
+						"scheduled": "Scheduled",
+						"sending": "Sending"
+					},
 					"tabs": {
 						"clicked": "Clicked ({count})",
 						"opened": "Opened ({count})"
@@ -8020,6 +8069,7 @@
 				"allLoaded": "All campaigns loaded",
 				"attentionEmpty": {
 					"description": "No campaigns are waiting on a decision right now.",
+					"eyebrow": "All clear",
 					"title": "Nothing needs you."
 				},
 				"deleteDialog": {
@@ -8065,6 +8115,12 @@
 					"segment": "Segment: {name}",
 					"topic": "Topic: {name}"
 				},
+				"leaveDialog": {
+					"cancel": "Keep editing",
+					"confirm": "Discard campaign",
+					"description": "This campaign has not been saved yet. Leaving now loses what you filled in.",
+					"title": "Leave without saving?"
+				},
 				"pageTitle": "Create Campaign — Owlat",
 				"steps": {
 					"content": "Content",
@@ -8083,6 +8139,7 @@
 					"title": "Archive channel?"
 				},
 				"backToChat": "Back to chat",
+				"backToConversations": "Back to conversations",
 				"join": "Join",
 				"loadEarlier": "Load earlier messages",
 				"pageTitle": "Chat — Owlat",
@@ -8096,6 +8153,7 @@
 				"emptyDescription": "Pick a channel or DM from the sidebar, or start something new.",
 				"emptyTitle": "Team chat",
 				"newChannel": "New channel",
+				"openConversations": "Conversations",
 				"pageTitle": "Chat — Owlat"
 			}
 		},
@@ -10193,6 +10251,10 @@
 			"settingsFeatures": "Settings → Features",
 			"start": "Let's go",
 			"steps": {
+				"admin": {
+					"desc": "Create the account that owns this instance.",
+					"title": "Admin account"
+				},
 				"email": {
 					"desc": "Owlat MTA, Resend, Amazon SES, or none.",
 					"title": "Email provider"
@@ -10206,8 +10268,8 @@
 					"title": "Operating mode"
 				},
 				"review": {
-					"desc": "Create your account, then launch.",
-					"title": "Admin & review"
+					"desc": "Check every answer, then launch.",
+					"title": "Review"
 				}
 			},
 			"terminalNote": "Prefer the terminal? {command}",
@@ -10236,6 +10298,31 @@
 			"appliedMessage": "Finishing up — the app is loading your configuration, then we'll take you to sign in. This usually takes a few seconds.",
 			"appliedTitle": "Setup applied",
 			"applying": "Applying…",
+			"complete": {
+				"eyebrow": "Owlat setup",
+				"intro": "Your instance is configured and running. Sign in once against the restarted process and pick up wherever you like.",
+				"nextHeading": "Where to go next",
+				"signIn": "Sign in to Owlat",
+				"title": "Setup {accent}",
+				"titleAccent": "complete",
+				"next": {
+					"domain": {
+						"desc": "Authenticate a domain so your mail reaches inboxes instead of spam folders.",
+						"meta": "10 min",
+						"title": "Add a sending domain"
+					},
+					"postbox": {
+						"desc": "Read, triage and reply to the mail this instance receives.",
+						"meta": "Start here",
+						"title": "Open your postbox"
+					},
+					"team": {
+						"desc": "Send invitations so colleagues can sign in to this instance.",
+						"meta": "2 min",
+						"title": "Invite your team"
+					}
+				}
+			},
 			"continueToSignIn": "Continue to sign in",
 			"emailProvider": "Email provider",
 			"errorUnknown": "Setup failed for an unknown reason.",
@@ -10258,19 +10345,6 @@
 			"setupTokenLabel": "Setup token",
 			"title": "Review & {accent}",
 			"titleAccent": "launch"
-		},
-		"team": {
-			"brand": "Owlat",
-			"invitationRequired": "Invitation required",
-			"inviteExplainer": "You need an invitation to join this instance. Ask an administrator to send you one — you can request it right here.",
-			"noteLabel": "Add a note (optional)",
-			"notePlaceholder": "e.g. I'm on the marketing team and need access to send campaigns.",
-			"pageTitle": "Team Setup — Owlat",
-			"requestAccess": "Request access",
-			"requestAccessOperation": "Request access",
-			"requestSentBody": "An administrator has been notified. You'll get an invitation by email once they grant you access — no need to ask again.",
-			"requestSentTitle": "Request sent",
-			"signOut": "Sign out"
 		}
 	},
 	"shared": {
@@ -10667,10 +10741,10 @@
 				"campaigns": "Campaigns",
 				"contacts": "Contacts",
 				"context": "Context",
-				"goTo": "Go to",
 				"mail": "Mail",
 				"navigation": "Go to",
 				"recent": "Recent searches",
+				"search": "Search",
 				"settings": "Settings",
 				"templates": "Templates"
 			}
@@ -12211,6 +12285,12 @@
 				"requiresOwnMta": "Deliverability fallback requires an enabled owned-MTA route"
 			}
 		},
+		"quickCreate": {
+			"automation": "Automation",
+			"campaign": "Campaign",
+			"compose": "Compose email",
+			"contact": "Contact"
+		},
 		"referenceRelay": {
 			"multiRelay": {
 				"remedy": "Keep exactly one relay enabled while you migrate. Until then the share stays where it is: with two reference arms there is no single comparison to judge your own server against, so no cell can be cleared to grow.",
@@ -12678,6 +12758,7 @@
 				"archive": "Archive",
 				"closeCancel": "Close / Cancel",
 				"closeConversation": "Close the open conversation / back to Today",
+				"compose": "Compose",
 				"edit": "Edit",
 				"extendSelection": "Extend selection",
 				"focusComposer": "Focus the composer",
@@ -13889,6 +13970,18 @@
 			"unverified": "Not verified in person",
 			"verifiedByTeammate": "Verified by a teammate",
 			"verifiedByYou": "Verified by you"
+		},
+		"commandPaletteSurfaces": {
+			"campaigns": {
+				"heading": "On this page",
+				"openCampaign": "Open campaign",
+				"openReport": "Open report"
+			},
+			"thread": {
+				"archive": "Archive conversation",
+				"heading": "This conversation",
+				"reply": "Reply"
+			}
 		}
 	},
 	"sharedPkg": {
@@ -14357,6 +14450,19 @@
 		}
 	},
 	"shell": {
+		"admin": {
+			"areas": {
+				"advanced": "Advanced",
+				"delivery": "Delivery",
+				"instance": "Instance",
+				"overview": "Administration",
+				"platform": "Platform",
+				"team": "Team & access"
+			},
+			"navLabel": "Administration sections",
+			"navLabelCompact": "Administration sections (compact)",
+			"paletteHeading": "Administration"
+		},
 		"dashboard": {
 			"alphaBadge": "Alpha",
 			"chatMentions": {

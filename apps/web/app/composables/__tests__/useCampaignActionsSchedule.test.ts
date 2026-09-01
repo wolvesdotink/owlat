@@ -54,6 +54,9 @@ describe('useCampaignActions schedule clock', () => {
 		vi.stubGlobal('useI18n', () => i18n.global);
 		vi.stubGlobal('useRouter', () => ({ push: () => {} }));
 		vi.stubGlobal('useToast', () => ({ showToast: () => {} }));
+		// The send-now path arms an undo window; nothing on the schedule path
+		// touches it, but the composable resolves it at setup.
+		vi.stubGlobal('useCampaignUndoSend', () => ({ arm: () => {} }));
 		// Keyed off the operation LABEL rather than the function reference, so the
 		// stub does not have to reach into the generated Convex api object.
 		vi.stubGlobal(

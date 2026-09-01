@@ -187,16 +187,11 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 				{{ t('dashboard.audience.suppressions.backToAudience') }}
 			</NuxtLink>
-			<div class="flex items-center justify-between">
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.audience.suppressions.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">
-						{{ t('dashboard.audience.suppressions.subtitle') }}
-					</p>
-				</div>
-				<div class="flex items-center gap-2">
+			<UiPageHeader
+				:title="t('dashboard.audience.suppressions.title')"
+				:description="t('dashboard.audience.suppressions.subtitle')"
+			>
+				<template #actions>
 					<UiButton variant="secondary" class="gap-2" @click="blocklistImport.open()">
 						<Icon name="lucide:file-up" class="w-4 h-4" />
 						{{ t('dashboard.audience.suppressions.import') }}
@@ -205,8 +200,8 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 						<Icon name="lucide:plus" class="w-4 h-4" />
 						{{ t('dashboard.audience.suppressions.addSuppression') }}
 					</UiButton>
-				</div>
-			</div>
+				</template>
+			</UiPageHeader>
 		</div>
 
 		<UiQueryBoundary
@@ -245,7 +240,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 					</div>
 				</div>
 
-				<SuppressionSunsetControls />
+				<AudienceSuppressionSunsetControls />
 
 				<!-- Stats Cards -->
 				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-5 gap-4">

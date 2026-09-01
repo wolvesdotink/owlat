@@ -70,7 +70,16 @@ useHead({
 	},
 });
 
+// Below md the rail is an off-canvas drawer (see UiRailDrawer). A deep link
+// straight into a room used to be a dead end on a phone: the rail was
+// `hidden md:block`, so there was no way back to the list of rooms.
+const railOpen = ref(false);
+watch(roomId, () => {
+	railOpen.value = false;
+});
+
 const handleSelectRoom = (id: Id<'chatRooms'>) => {
+	railOpen.value = false;
 	router.push(`/dashboard/chat/${id}`);
 };
 
@@ -85,10 +94,17 @@ const handleLeave = async () => {
 </script>
 
 <template>
-	<div class="flex h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem-3rem)]">
-		<!-- Sidebar -->
-		<div class="hidden md:block w-72 flex-shrink-0">
+	<!-- Below lg the chrome around this pane is 4rem of header bar, 2.25rem of
+	     breadcrumb strip and the 4rem the tab bar reserves at the bottom of
+	     #main-content, plus both safe areas — subtract all of it, or the page
+	     itself scrolls and the composer loads under the fold. -->
+	<div
+		class="flex h-[calc(100dvh-10.25rem-1px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] lg:h-[calc(100vh-4rem-3rem)]"
+	>
+		<!-- Sidebar: a column at md, an off-canvas drawer below it -->
+		<UiRailDrawer id="chat-rail" v-model:open="railOpen">
 			<ChatSidebar
+				class="flex-1 min-w-0"
 				:channels="channels"
 				:archived-channels="archivedChannels"
 				:dms="dms"
@@ -101,10 +117,27 @@ const handleLeave = async () => {
 				@browse-channels="showBrowseChannels = true"
 				@mentions="showMentions = true"
 			/>
-		</div>
+		</UiRailDrawer>
 
 		<!-- Main -->
 		<div class="flex-1 flex flex-col min-w-0">
+			<!-- Back to the room list. Below md the list IS the drawer — there is no
+			     separate list route to navigate to — so this opens it. 44px tall for
+			     the thumb, which is also the bar's height; the negative inline margin
+			     keeps the icon optically aligned with the content below. -->
+			<div class="md:hidden px-3 border-b border-border-subtle">
+				<button
+					type="button"
+					class="-mx-2 h-11 flex items-center gap-1.5 px-2 rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+					aria-controls="chat-rail"
+					:aria-expanded="railOpen"
+					@click="railOpen = true"
+				>
+					<Icon name="lucide:arrow-left" class="w-4 h-4" />
+					<span class="text-sm">{{ t('dashboard.chat.detail.backToConversations') }}</span>
+				</button>
+			</div>
+
 			<!-- Loading shell -->
 			<div v-if="roomLoading" class="flex-1 flex items-center justify-center">
 				<UiSpinner />

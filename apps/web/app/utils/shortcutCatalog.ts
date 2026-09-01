@@ -97,6 +97,17 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		labelKey: L('newItem'),
 		groupKey: G.actions,
 	},
+	{
+		// The quick-create registry's compose verb, one key from anywhere in the
+		// app. `c` is free in every scope the catalog claims, and scope lookup is
+		// what keeps it that way: a surface that later wants `c` for its own thing
+		// binds it in ITS scope and wins the press without touching this line.
+		id: 'global.compose',
+		scope: 'global',
+		keys: ['c'],
+		labelKey: L('compose'),
+		groupKey: G.actions,
+	},
 	{ id: 'global.save', scope: 'global', keys: ['s'], labelKey: L('save'), groupKey: G.actions },
 	{
 		id: 'global.commandPalette',

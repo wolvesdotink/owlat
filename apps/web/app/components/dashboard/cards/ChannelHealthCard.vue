@@ -60,20 +60,19 @@ function getStatusLabel(channel: ChannelConfigRow): string {
 </script>
 
 <template>
-	<UiCard padding="none" overflow="hidden">
+	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center gap-2.5 mb-4">
-				<UiIconBox icon="lucide:radio" size="sm" variant="success" />
+				<UiIconBox icon="lucide:radio" size="sm" variant="surface" />
 				<h3 class="text-sm font-semibold text-text-primary">
 					{{ t('components.dashboard.cards.channelHealth.title') }}
 				</h3>
 			</div>
 
-			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
-			</div>
+			<DashboardCardSkeleton v-if="isLoading" shape="list" :count="3" :avatar="false" />
 
 			<div v-else-if="channelList.length === 0" class="py-4 text-center">
+				<Icon name="lucide:radio" class="w-6 h-6 text-text-tertiary mx-auto mb-2" />
 				<p class="text-sm text-text-tertiary">
 					{{ t('components.dashboard.cards.channelHealth.empty') }}
 				</p>

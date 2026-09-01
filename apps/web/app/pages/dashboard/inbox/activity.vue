@@ -139,18 +139,20 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 		<UiQueryBoundary
 			:loading="isLoading && !timeline.length"
 			:error="error"
+			:empty="timeline.length === 0"
 			:error-title="t('dashboard.inbox.activity.errorTitle')"
 			:loading-label="t('dashboard.inbox.activity.loadingLabel')"
 		>
 			<!-- Empty — guided CTA (admin-only button, explanation for everyone) -->
-			<InboxActivityEmptyState
-				v-if="timeline.length === 0"
-				:filter-label="activeFilterLabel"
-				:can-manage="canManageChannels"
-			/>
+			<template #empty>
+				<InboxActivityEmptyState
+					:filter-label="activeFilterLabel"
+					:can-manage="canManageChannels"
+				/>
+			</template>
 
 			<!-- Message list -->
-			<ul v-else class="space-y-2">
+			<ul class="space-y-2">
 				<li v-for="item in timeline" :key="item._id" class="group relative">
 					<NuxtLink
 						:to="`/dashboard/inbox/${item.threadId}`"

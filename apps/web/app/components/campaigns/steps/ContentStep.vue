@@ -219,7 +219,7 @@ defineExpose({
 						:class="[
 							'flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors',
 							selectionType === 'existing'
-								? 'border-brand bg-brand/5'
+								? 'border-text-primary bg-bg-surface'
 								: 'border-border-subtle hover:border-border-default',
 						]"
 					>
@@ -228,7 +228,7 @@ defineExpose({
 							type="radio"
 							name="emailSelectionType"
 							value="existing"
-							class="mt-1 w-4 h-4 text-brand"
+							class="mt-1 w-4 h-4 text-text-primary"
 						/>
 						<div>
 							<p class="font-medium text-text-primary">
@@ -243,7 +243,7 @@ defineExpose({
 						:class="[
 							'flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors',
 							selectionType === 'new'
-								? 'border-brand bg-brand/5'
+								? 'border-text-primary bg-bg-surface'
 								: 'border-border-subtle hover:border-border-default',
 						]"
 					>
@@ -252,7 +252,7 @@ defineExpose({
 							type="radio"
 							name="emailSelectionType"
 							value="new"
-							class="mt-1 w-4 h-4 text-brand"
+							class="mt-1 w-4 h-4 text-text-primary"
 						/>
 						<div>
 							<p class="font-medium text-text-primary">
@@ -304,7 +304,7 @@ defineExpose({
 								:class="[
 									'w-5 h-5 rounded-full border flex items-center justify-center shrink-0',
 									selectedTemplateId === template._id
-										? 'border-brand bg-brand text-text-inverse'
+										? 'border-text-primary bg-text-primary text-text-inverse'
 										: 'border-border-default text-transparent',
 								]"
 							>
@@ -337,12 +337,12 @@ defineExpose({
 					</p>
 				</div>
 
-				<div v-if="selectedTemplate" class="p-4 bg-brand/5 border border-brand/30 rounded-lg">
+				<div v-if="selectedTemplate" class="p-4 bg-bg-surface border border-border-default rounded-lg">
 					<p class="text-sm text-text-secondary">
 						{{ t('components.campaigns.steps.contentStep.selectedTemplate') }}
 					</p>
 					<div class="mt-1 flex items-center gap-2">
-						<Icon name="lucide:mail" class="w-4 h-4 text-brand" />
+						<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
 						<p class="font-medium text-text-primary truncate">{{ selectedTemplate.name }}</p>
 					</div>
 					<p class="text-sm text-text-secondary truncate mt-1">

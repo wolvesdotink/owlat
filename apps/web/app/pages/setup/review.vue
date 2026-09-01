@@ -3,6 +3,7 @@ import {
 	SETUP_WIZARD_STEPS,
 	interpretSetupModeProbe,
 	buildApplyBody,
+	setupSignInHref,
 } from '~/composables/useSetupWizard';
 
 definePageMeta({ layout: false });
@@ -36,7 +37,7 @@ const GENERATED_SECRETS = [
 	'REDIS_PASSWORD',
 ];
 
-type Phase = 'idle' | 'applying' | 'finalizing';
+type Phase = 'idle' | 'applying' | 'finalizing' | 'complete';
 const phase = ref<Phase>('idle');
 const error = ref('');
 const redirectTarget = ref('/auth/login?postSetup=1');
@@ -73,11 +74,29 @@ function stopPolling() {
 	}
 }
 
+/**
+ * The finale's exits — every one an ANCHOR, which is what makes the handoff the
+ * wizard's single full page load (see `setupSignInHref` for why a load and not a
+ * `router.push`). Each row is a real destination behind the sign-in, so the
+ * operator leaves pointed at something rather than at a bare login form.
+ */
+function signInHref(next?: string): string {
+	return setupSignInHref(redirectTarget.value, next);
+}
+
+const NEXT_STEPS = [
+	{ id: 'domain', icon: 'lucide:globe', to: '/dashboard/admin/delivery/domains' },
+	{ id: 'team', icon: 'lucide:user-plus', to: '/dashboard/admin/team' },
+	{ id: 'postbox', icon: 'lucide:inbox', to: '/dashboard/postbox' },
+] as const;
+
 async function pollUntilReady() {
 	if (await probeSetupCleared()) {
 		stopPolling();
 		restartReady.value = true;
-		window.location.href = redirectTarget.value;
+		// The restart landed: show the finale rather than dumping the operator on a
+		// bare login form. Leaving is a deliberate click from there.
+		phase.value = 'complete';
 		return;
 	}
 	pollCount.value += 1;
@@ -119,9 +138,12 @@ async function apply() {
 	}
 }
 
+// Manual-restart escape hatch: the operator restarts the container themselves, so
+// the probe never clears. Skip straight to the finale — the handoff is still the
+// one page load, taken from there.
 function continueNow() {
 	stopPolling();
-	window.location.href = redirectTarget.value;
+	phase.value = 'complete';
 }
 
 onUnmounted(stopPolling);
@@ -131,7 +153,65 @@ onUnmounted(stopPolling);
 	<div class="relative isolate min-h-screen overflow-hidden bg-bg-base text-text-primary">
 		<UiHeroField />
 
-		<div class="relative mx-auto max-w-2xl px-6 py-12">
+		<!-- ─────────────────────── The finale ─────────────────────── -->
+		<!-- Setup ends on an acknowledgement, not on a login form: eyebrow, title,
+		     one lead, and three real next steps. Every exit from here is an anchor,
+		     so leaving IS the single page load the restarted process needs (see
+		     `signInHref`) — there is no second reload anywhere in this flow. -->
+		<div v-if="phase === 'complete'" class="relative mx-auto max-w-2xl px-6 py-12">
+			<div class="flex items-center gap-3 mb-8">
+				<UiIconBox icon="lucide:party-popper" size="md" variant="brand" rounded="xl" />
+				<span class="lp-eyebrow">{{ t('setup.review.complete.eyebrow') }}</span>
+			</div>
+
+			<header class="mb-6">
+				<I18nT
+					keypath="setup.review.complete.title"
+					tag="h1"
+					scope="global"
+					class="text-3xl font-medium tracking-[-0.02em] mb-2"
+				>
+					<template #accent>
+						<span class="lp-title-accent">{{ t('setup.review.complete.titleAccent') }}</span>
+					</template>
+				</I18nT>
+				<p class="max-w-[34rem] text-text-secondary leading-relaxed">
+					{{ t('setup.review.complete.intro') }}
+				</p>
+			</header>
+
+			<h2 class="lp-eyebrow mb-3">{{ t('setup.review.complete.nextHeading') }}</h2>
+			<ul class="space-y-2">
+				<li v-for="step in NEXT_STEPS" :key="step.id">
+					<a
+						:href="signInHref(step.to)"
+						class="flex items-center gap-4 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent px-4 py-3 transition-[box-shadow] duration-(--motion-fast) ease-spring hover:shadow-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+					>
+						<Icon :name="step.icon" class="h-5 w-5 shrink-0 text-text-tertiary" />
+						<span class="min-w-0 flex-1">
+							<span class="block font-medium text-text-primary">{{
+								t(`setup.review.complete.next.${step.id}.title`)
+							}}</span>
+							<span class="block text-sm text-text-secondary">{{
+								t(`setup.review.complete.next.${step.id}.desc`)
+							}}</span>
+						</span>
+						<span class="shrink-0 text-caption text-text-tertiary">{{
+							t(`setup.review.complete.next.${step.id}.meta`)
+						}}</span>
+					</a>
+				</li>
+			</ul>
+
+			<div class="mt-8">
+				<UiButton size="lg" :href="signInHref()">
+					{{ t('setup.review.complete.signIn') }}
+					<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2" /></template>
+				</UiButton>
+			</div>
+		</div>
+
+		<div v-else class="relative mx-auto max-w-2xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
 				<span class="lp-eyebrow">{{ t('setup.review.eyebrow') }}</span>
@@ -168,8 +248,12 @@ onUnmounted(stopPolling);
 							{{ t('setup.review.activeFeatures') }}
 						</dt>
 						<dd>
+							<!-- `neutral`, not `default`: this is an inventory read-out, not a
+							     status. Nine `bg-brand/10 text-brand` chips would be nine
+							     terracotta marks on the one screen whose step rail was made
+							     monochrome precisely to stop that (DESIGN-LANGUAGE rule 1). -->
 							<div v-if="summary.activeFeatures.length" class="flex flex-wrap gap-1.5">
-								<UiBadge v-for="f in summary.activeFeatures" :key="f" variant="default">{{
+								<UiBadge v-for="f in summary.activeFeatures" :key="f" variant="neutral">{{
 									f
 								}}</UiBadge>
 							</div>

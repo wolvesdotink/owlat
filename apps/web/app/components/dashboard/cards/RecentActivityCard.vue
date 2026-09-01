@@ -39,18 +39,16 @@ function getIcon(item: ActivityItem): string {
 </script>
 
 <template>
-	<UiCard padding="none" overflow="hidden">
+	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center gap-2.5 mb-4">
-				<UiIconBox icon="lucide:activity" size="sm" variant="brand" />
+				<UiIconBox icon="lucide:activity" size="sm" variant="surface" />
 				<h3 class="text-sm font-semibold text-text-primary">
 					{{ t('components.dashboard.cards.recentActivityCard.title') }}
 				</h3>
 			</div>
 
-			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
-			</div>
+			<DashboardCardSkeleton v-if="isLoading" shape="list" :count="4" />
 
 			<div v-else-if="activityList.length === 0" class="py-4 text-center">
 				<p class="text-sm text-text-tertiary">

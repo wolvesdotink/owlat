@@ -58,6 +58,18 @@ export const WEBHOOK_EVENTS = [
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number]['value'];
 
+/**
+ * The message KEY for an event's label, or the raw event id when no definition
+ * owns it — the caller renders both through `t(…)` (an id with nothing to
+ * translate reads as itself).
+ *
+ * Module scope, and exported, because the row component renders these chips
+ * without owning any of the form state this composable holds.
+ */
+export function getWebhookEventLabel(event: string): string {
+	return WEBHOOK_EVENTS.find((definition) => definition.value === event)?.label || event;
+}
+
 export function useWebhookForm() {
 	const { t } = useI18n();
 
@@ -284,15 +296,7 @@ export function useWebhookForm() {
 
 	// ─── Utilities ──────────────────────────────────────────────────────
 
-	/**
-	 * The message KEY for an event's label, or the raw event id when no definition
-	 * owns it — the caller renders both through `t(…)` (an id with nothing to
-	 * translate reads as itself).
-	 */
-	const getEventLabel = (event: string) => {
-		const found = WEBHOOK_EVENTS.find((e) => e.value === event);
-		return found?.label || event;
-	};
+	const getEventLabel = getWebhookEventLabel;
 
 	const expandedWebhookId = ref<Id<'webhooks'> | null>(null);
 

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
 
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.instance.emailTheme.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -140,11 +141,12 @@ const validateForm = (): boolean => {
 	return isValid;
 };
 
-// Save settings
-const handleSave = async () => {
-	if (!hasActiveOrganization.value) return;
+// Save settings. Resolves to whether the save succeeded so the unsaved-changes
+// guard can keep the operator on the page (and keep their edits) when it fails.
+const handleSave = async (): Promise<boolean> => {
+	if (!hasActiveOrganization.value) return false;
 
-	if (!validateForm()) return;
+	if (!validateForm()) return false;
 
 	isSaving.value = true;
 
@@ -158,11 +160,30 @@ const handleSave = async () => {
 	});
 	isSaving.value = false;
 
-	if (!result.ok) return;
+	if (!result.ok) return false;
 
 	showNotification(t('dashboard.admin.instance.emailTheme.savedToast'));
 	isFormDirty.value = false;
+	return true;
 };
+
+// Unsaved-changes guard: navigating away with an unsaved theme edit prompts to
+// save/discard instead of silently dropping it. Same shared composable + dialog
+// the General settings page uses; `onSave` throws on failure so a failed save
+// keeps the operator here.
+const {
+	showDialog: showUnsavedDialog,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		if (!(await handleSave())) throw new Error('Save failed');
+	},
+});
+
+watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 // Reset to defaults
 const handleReset = () => {
@@ -172,38 +193,14 @@ const handleReset = () => {
 	form.baseWidth = defaultTheme.baseWidth;
 };
 
-// Compute text color for preview (black or white based on background)
-const previewTextColor = computed(() => {
-	const hex = form.backgroundColor.replace('#', '');
-	const r = parseInt(hex.substring(0, 2), 16);
-	const g = parseInt(hex.substring(2, 4), 16);
-	const b = parseInt(hex.substring(4, 6), 16);
-	const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-	return luminance > 0.5 ? '#374151' : '#f3f4f6';
-});
-
-// Compute button text color
-const buttonTextColor = computed(() => {
-	const hex = form.primaryColor.replace('#', '');
-	const r = parseInt(hex.substring(0, 2), 16);
-	const g = parseInt(hex.substring(2, 4), 16);
-	const b = parseInt(hex.substring(4, 6), 16);
-	const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-	return luminance > 0.5 ? '#12110e' : '#ffffff';
-});
+// The live preview (and the two contrast computations it needs) lives in
+// `components/email/ThemePreview.vue` — it only reads the theme.
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/admin"
-				class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.instance.emailTheme.backToSettings') }}
-			</NuxtLink>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.instance.emailTheme.title') }}
 			</h1>
@@ -212,13 +209,26 @@ const buttonTextColor = computed(() => {
 			</p>
 		</div>
 
-		<!-- Loading State -->
-		<div v-if="isLoading && !organizationSettings" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.admin.instance.emailTheme.loading') }}
-				</p>
+		<!--
+			First load: a content-shaped placeholder at the geometry of the form
+			card and its live preview, rather than a centred spinner that blanks
+			the page and then reflows.
+		-->
+		<div
+			v-if="isLoading && !organizationSettings"
+			class="grid gap-8 lg:grid-cols-2"
+			role="status"
+			aria-busy="true"
+			:aria-label="t('dashboard.admin.instance.emailTheme.loading')"
+		>
+			<div class="card space-y-4">
+				<UiSkeleton class="h-5 w-48" />
+				<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
+				<UiSkeleton v-for="field in 4" :key="field" class="h-10 rounded-lg" />
+			</div>
+			<div class="card space-y-4">
+				<UiSkeleton class="h-5 w-32" />
+				<UiSkeleton class="h-64 rounded-lg" />
 			</div>
 		</div>
 
@@ -378,7 +388,11 @@ const buttonTextColor = computed(() => {
 							</p>
 
 							<UiButton type="submit" class="gap-2" :disabled="isSaving || !isFormDirty">
-								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+								<Icon
+									v-if="isSaving"
+									name="lucide:loader-2"
+									class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								/>
 								<Icon v-else name="lucide:check" class="w-4 h-4" />
 								{{
 									isSaving
@@ -392,75 +406,20 @@ const buttonTextColor = computed(() => {
 			</div>
 
 			<!-- Theme Preview -->
-			<div class="card p-0 overflow-hidden">
-				<div class="px-6 py-4 border-b border-border-subtle">
-					<h2 class="text-lg font-semibold text-text-primary">{{ t('common.preview') }}</h2>
-					<p class="text-sm text-text-secondary">
-						{{ t('dashboard.admin.instance.emailTheme.previewSubtitle') }}
-					</p>
-				</div>
-
-				<div class="p-6">
-					<!-- Email Preview Container -->
-					<div
-						class="rounded-xl overflow-hidden border border-border-subtle mx-auto transition-all duration-(--motion-moderate)"
-						:style="{ backgroundColor: form.backgroundColor, maxWidth: form.baseWidth + 'px' }"
-					>
-						<!-- Email Content Preview -->
-						<div class="p-8">
-							<!-- Header Text -->
-							<h1
-								class="text-2xl font-bold mb-4"
-								:style="{
-									fontFamily: form.fontFamily,
-									color: previewTextColor,
-								}"
-							>
-								{{ t('dashboard.admin.instance.emailTheme.preview.heading') }}
-							</h1>
-
-							<!-- Body Text -->
-							<p
-								class="mb-6 leading-relaxed"
-								:style="{
-									fontFamily: form.fontFamily,
-									color: previewTextColor,
-								}"
-							>
-								{{ t('dashboard.admin.instance.emailTheme.preview.body') }}
-							</p>
-
-							<!-- Button Preview -->
-							<button
-								class="px-6 py-3 rounded-lg font-semibold transition-all"
-								:style="{
-									backgroundColor: form.primaryColor,
-									color: buttonTextColor,
-									fontFamily: form.fontFamily,
-								}"
-							>
-								{{ t('dashboard.admin.instance.emailTheme.preview.button') }}
-							</button>
-
-							<!-- Footer Text -->
-							<p
-								class="mt-8 text-sm opacity-70"
-								:style="{
-									fontFamily: form.fontFamily,
-									color: previewTextColor,
-								}"
-							>
-								{{ t('dashboard.admin.instance.emailTheme.preview.footer') }}
-							</p>
-						</div>
-					</div>
-
-					<!-- Preview Note -->
-					<p class="mt-4 text-xs text-text-tertiary text-center">
-						{{ t('dashboard.admin.instance.emailTheme.preview.note') }}
-					</p>
-				</div>
-			</div>
+			<EmailThemePreview
+				:primary-color="form.primaryColor"
+				:font-family="form.fontFamily"
+				:background-color="form.backgroundColor"
+				:base-width="form.baseWidth"
+			/>
 		</div>
+
+		<!-- Unsaved Changes Dialog -->
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
+		/>
 	</div>
 </template>
