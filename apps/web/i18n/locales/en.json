@@ -11661,6 +11661,11 @@
 				"description": "Build an email template you can send.",
 				"title": "Create an email"
 			},
+			"finishSetup": {
+				"cta": "Finish setting up",
+				"description": "Reopen the guided two-minute setup wherever you left off.",
+				"title": "Finish setting up your account"
+			},
 			"instanceSection": {
 				"description": "A few steps to go live — set up sending, then your first campaign.",
 				"title": "Get your instance ready"

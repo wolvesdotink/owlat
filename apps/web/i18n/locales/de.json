@@ -11661,6 +11661,11 @@
 				"description": "Erstellen Sie eine E-Mail-Vorlage, die Sie versenden können.",
 				"title": "Eine E-Mail erstellen"
 			},
+			"finishSetup": {
+				"cta": "Einrichtung fortsetzen",
+				"description": "Öffnen Sie die geführte Zwei-Minuten-Einrichtung dort, wo Sie aufgehört haben.",
+				"title": "Kontoeinrichtung abschließen"
+			},
 			"instanceSection": {
 				"description": "Ein paar Schritte bis zum Start — richten Sie den Versand ein, dann Ihre erste Kampagne.",
 				"title": "Ihre Instanz startklar machen"
