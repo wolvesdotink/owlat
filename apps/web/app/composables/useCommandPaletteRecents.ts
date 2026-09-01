@@ -1,59 +1,87 @@
 /**
- * The command palette's memory of recent search terms.
+ * The command palette's memory of recent search terms, per scope.
  *
- * Carried over from the old GlobalSearch modal and kept in `localStorage`, so
- * an idle palette can offer what you looked for last time instead of a blank
- * list. Extracted from `AppCommandPalette.vue` to keep that component under the
- * file-size cap; it is also the only part of the palette that touches storage,
- * which makes it the one part worth isolating behind a seam.
+ * Kept in `localStorage` so an idle palette can offer what you looked for last
+ * time instead of a blank list. It is now the app's ONLY search history: the
+ * Postbox search bar's private key folds in on first load (see
+ * `~/lib/commandPaletteRecents`), so Mail history and object-search history are
+ * two tags on one store rather than two stores that never met.
  *
  * Every storage access is guarded: `localStorage` is absent on the server and
  * throws in a private-mode/quota-exhausted browser, and neither case is worth
  * breaking the palette over — the list just stays empty.
  */
 
-import { MAX_RECENT_SEARCHES } from '~/lib/commandPaletteCore';
+import {
+	LEGACY_MAIL_RECENTS_KEY,
+	PALETTE_RECENTS_KEY,
+	type ScopedRecents,
+	absorbLegacyMailRecents,
+	emptyScopedRecents,
+	parseScopedRecents,
+	pushScopedRecent,
+} from '~/lib/commandPaletteRecents';
+import type { PaletteScope } from '~/lib/commandPaletteScope';
 
-const RECENT_KEY = 'owlat_recent_searches';
+/**
+ * `scope` is a getter rather than a value: the overlay's scope changes while it
+ * is open (Tab, `?`, ⌘⇧K), and the offered history has to follow it.
+ */
+export function useCommandPaletteRecents(scope: () => PaletteScope = () => 'everything') {
+	const store = ref<ScopedRecents>(emptyScopedRecents());
 
-export function useCommandPaletteRecents() {
-	const recentSearches = ref<string[]>([]);
+	/** Terms for the scope the palette is in right now, newest first. */
+	const recentSearches = computed<string[]>(() => store.value[scope()] ?? []);
+
+	function persist() {
+		try {
+			localStorage.setItem(PALETTE_RECENTS_KEY, JSON.stringify(store.value));
+		} catch {
+			// Ignore quota / disabled storage — history is a convenience, not state.
+		}
+	}
 
 	/** Re-read the stored terms (the palette does this every time it opens). */
 	function loadRecent() {
 		if (import.meta.server) return;
+		let stored: string | null = null;
+		let legacy: string | null = null;
 		try {
-			const stored = localStorage.getItem(RECENT_KEY);
-			recentSearches.value = stored ? (JSON.parse(stored) as string[]) : [];
+			stored = localStorage.getItem(PALETTE_RECENTS_KEY);
+			legacy = localStorage.getItem(LEGACY_MAIL_RECENTS_KEY);
 		} catch {
-			recentSearches.value = [];
+			store.value = emptyScopedRecents();
+			return;
+		}
+		const parsed = parseScopedRecents(stored);
+		if (legacy === null) {
+			store.value = parsed;
+			return;
+		}
+		// One-way migration: the search bar's history becomes Mail history and its
+		// key goes, so the next load has nothing left to absorb.
+		store.value = absorbLegacyMailRecents(parsed, legacy);
+		persist();
+		try {
+			localStorage.removeItem(LEGACY_MAIL_RECENTS_KEY);
+		} catch {
+			// Ignore — a key that survives is re-absorbed idempotently next time.
 		}
 	}
 
-	/** Record a term as the newest, de-duplicated and capped. */
+	/** Record a term as the newest of the active scope, deduplicated and capped. */
 	function saveRecent(term: string) {
-		const trimmed = term.trim();
-		if (!trimmed || import.meta.server) return;
-		recentSearches.value = [trimmed, ...recentSearches.value.filter((s) => s !== trimmed)].slice(
-			0,
-			MAX_RECENT_SEARCHES
-		);
-		try {
-			localStorage.setItem(RECENT_KEY, JSON.stringify(recentSearches.value));
-		} catch {
-			// Ignore quota / disabled storage.
-		}
+		if (import.meta.server) return;
+		const next = pushScopedRecent(store.value, scope(), term);
+		if (next === store.value) return;
+		store.value = next;
+		persist();
 	}
 
+	/** Clears the ACTIVE scope only — the other scopes' history is not yours to drop. */
 	function clearRecent() {
-		recentSearches.value = [];
-		if (import.meta.client) {
-			try {
-				localStorage.removeItem(RECENT_KEY);
-			} catch {
-				// Ignore.
-			}
-		}
+		store.value = { ...store.value, [scope()]: [] };
+		if (import.meta.client) persist();
 	}
 
 	return { recentSearches, loadRecent, saveRecent, clearRecent };

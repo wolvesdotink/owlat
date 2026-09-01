@@ -13,12 +13,19 @@ export type PostboxDensity = 'comfortable' | 'compact';
 
 export const POSTBOX_DENSITY_DEFAULT: PostboxDensity = 'comfortable';
 
+/**
+ * The picker options. Module scope never calls `useI18n`, so `label` is the
+ * catalog key the rendering surface resolves through `t()` — the same shape the
+ * reading-pane and sort-order registries use. (They were bare English strings,
+ * which `t()` echoed back verbatim: correct in English, untranslated anywhere
+ * else.)
+ */
 export const POSTBOX_DENSITY_OPTIONS: Array<{
 	value: PostboxDensity;
 	label: string;
 }> = [
-	{ value: 'comfortable', label: 'Comfortable' },
-	{ value: 'compact', label: 'Compact' },
+	{ value: 'comfortable', label: 'shared.postboxDensity.comfortable' },
+	{ value: 'compact', label: 'shared.postboxDensity.compact' },
 ];
 
 /**

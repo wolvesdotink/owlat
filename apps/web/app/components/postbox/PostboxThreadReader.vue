@@ -74,15 +74,8 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { extractEmailAddress } from '~/utils/emailAddress';
-import {
-	deriveReplyRisk,
-	deriveSenderAuth,
-	senderAuthInputOf,
-	senderRiskInputOf,
-	type ReplyRisk,
-	type SenderAuthInput,
-} from '~/utils/senderAuth';
-import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
+import { deriveReplyRisk, senderRiskInputOf, type ReplyRisk } from '~/utils/senderAuth';
+import { formatCompactRelativeTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import {
 	POSTBOX_MARK_READ_DWELL_MS,
@@ -201,7 +194,8 @@ const allMessages = computed(() => threadData.value?.messages ?? [props.message]
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
 
 // The one reader AI strip (PostboxAiStrip) mounts whenever AI is on and the
-// thread has a latest message; it hosts the summary gist, Ask, and Draft reply.
+// thread has a latest message; it hosts the summary gist and Ask (Draft reply
+// lives in the inline reply bar, next to the box it seeds).
 // `warrantsSummary` decides whether it eagerly generates a summary: long thread
 // (>= 5 messages OR a lot of body text) AND the per-user auto-summary toggle
 // (default ON). When false and nothing is cached, the strip collapses to zero
@@ -210,7 +204,8 @@ const { autoSummarize } = usePostboxSettings();
 const warrantsSummary = computed(
 	() => autoSummarize.value && isLongThreadForSummary(allMessages.value)
 );
-const showAiStrip = computed(() => isFeatureEnabled('ai') && !!latestMessage.value);
+const aiEnabled = computed(() => isFeatureEnabled('ai'));
+const showAiStrip = computed(() => aiEnabled.value && !!latestMessage.value);
 
 // Follow-up ("remind me if no reply") chip: armable only while the thread
 // ends on our own sent message — an inbound reply on top means they already
@@ -227,8 +222,9 @@ const readerThread = computed(
 						waitingOn?: string;
 					};
 					// Muted conversation, its opt-in twin (alert me when they reply)
-					// and the transient back-from-snooze marker — all rendered as
-					// header chips (mail/mute.ts, mail/threadAlerts.ts, mail/snooze.ts).
+					// and the transient back-from-snooze marker — all checkable states
+					// in the thread ⋯ menu (mail/mute.ts, mail/threadAlerts.ts,
+					// mail/snooze.ts).
 					mutedAt?: number;
 					notifyOnReplyAt?: number;
 					snoozeReturnedAt?: number;
@@ -300,18 +296,24 @@ const dismissedScheduling = ref(new Set<string>());
 function dismissScheduling(messageId: string) {
 	dismissedScheduling.value = new Set(dismissedScheduling.value).add(messageId);
 }
-function showSchedulingChip(msg: {
+/**
+ * The proposed times to offer under `msg`, or null when this message gets no
+ * scheduling chip at all (no intent, wrong message, dismissed, AI off, or a real
+ * .ics invite is attached — PostboxInviteCard owns that case).
+ */
+function schedulingTimesFor(msg: {
 	_id: string;
 	attachments: Array<{ filename: string; contentType: string; partIndex?: string }>;
-}): boolean {
+}): string[] | null {
 	const intent = schedulingIntent.value;
-	return shouldShowSchedulingChip({
+	const show = shouldShowSchedulingChip({
 		aiEnabled: isFeatureEnabled('ai'),
 		meetingIntent: intent ? { isScheduling: true, proposedTimes: intent.proposedTimes } : null,
 		triggerMessageId: intent?.messageId,
 		message: msg,
 		dismissed: dismissedScheduling.value,
 	});
+	return show ? (intent?.proposedTimes ?? []) : null;
 }
 
 // Per-user reader preferences: auto-advance after triaging the open message
@@ -326,7 +328,7 @@ const { autoAdvance, replyDefault, markReadPolicy } = usePostboxSettings();
 // the reader always had, and what an unset preference resolves to),
 // 'after-dwell' waits POSTBOX_MARK_READ_DWELL_MS of visible dwell and cancels
 // if the reader is navigated away or torn down first, and 'manual' never fires
-// — the header offers an explicit button instead.
+// — the thread ⋯ menu offers an explicit item instead.
 //
 // Guarded per thread so the reactive re-fetch that follows (flagSeen flips →
 // query re-runs) doesn't re-fire, and so a dwell timer is armed at most once.
@@ -353,7 +355,7 @@ const showsManualMarkReadButton = computed(() =>
 	showsManualMarkRead(markReadPolicy.value, threadHasUnread.value)
 );
 
-/** The header's explicit "Mark read" affordance (markReadPolicy 'manual'). */
+/** The thread menu's explicit "Mark read" item (markReadPolicy 'manual'). */
 function markOpenThreadRead() {
 	const threadId = threadData.value?.thread?._id;
 	if (!threadId) return;
@@ -591,16 +593,20 @@ const threadCounterpart = computed(() => {
 	return '';
 });
 
-function senderAuthInput(msg: PostboxReaderMessage): SenderAuthInput {
-	return senderAuthInputOf(msg);
-}
-
-function senderAuthSummary(msg: PostboxReaderMessage): string {
-	// `summary` is a message key owned by utils/senderAuth (registry convention).
-	const summary = deriveSenderAuth(senderAuthInput(msg))?.summary;
-	return summary
-		? t(summary)
-		: t('components.postbox.postboxThreadReader.senderCouldNotBeVerified');
+// The correspondent's PUBLIC sealing-key status, read once per thread (E5). The
+// key-change BANNER stays here — it is an alarm — while the key panel travels
+// into that sender's trust chip popover, and `keyChanged` turns the same chip
+// amber so the rotation is never only one popover deep.
+const {
+	status: correspondentKey,
+	wasVerified: correspondentKeyWasVerified,
+	keyChanged: correspondentKeyChanged,
+	refetch: refetchCorrespondentKey,
+} = usePostboxCorrespondentKey(() => (sealedMailEnabled.value ? threadCounterpart.value : ''));
+/** The seal status belongs to the ONE sender it describes, not to every message. */
+function sealStatusFor(msg: { fromAddress: string }) {
+	const from = extractEmailAddress(msg.fromAddress).toLowerCase();
+	return from && from === threadCounterpart.value ? correspondentKey.value : null;
 }
 
 // Reply guard: intercept reply / reply-all with a one-time-per-thread confirm on
@@ -1040,8 +1046,8 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 			:labels="labelMap"
 			:show-mark-read="showsManualMarkReadButton"
 			:marking-read="markThreadReadOp.isLoading.value"
-			@unmute="toggleOpenThreadMute"
-			@stop-alert="toggleOpenThreadAlert"
+			@toggle-mute="toggleOpenThreadMute"
+			@toggle-alert="toggleOpenThreadAlert"
 			@mark-read="markOpenThreadRead"
 		/>
 
@@ -1050,13 +1056,18 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		     permitted on both sides; read-only, and it merges nothing. -->
 		<PostboxCrossSurfaceStrip :message-id="messageId" class="mb-3" />
 
-		<!-- Sealed Mail (E5): thread-level trust surfaces for the correspondent —
-		     the Signal-style key-change banner (explicit re-pin) + the contact key
-		     panel. Flag-gated; renders nothing without a key on file. -->
-		<PostboxThreadSealSurfaces
-			v-if="sealedMailEnabled && threadCounterpart"
-			:correspondent="threadCounterpart"
+		<!-- Sealed Mail (E5): the Signal-style key-change banner (explicit re-pin).
+		     An alarm, so it stays at thread level; the contact key PANEL moved into
+		     the correspondent's trust chip. Flag-gated; renders nothing without an
+		     unsigned rotation on file. -->
+		<PostboxKeyChangeBanner
+			v-if="correspondentKeyChanged"
+			:address="threadCounterpart"
+			:old-fingerprint="correspondentKey?.pinnedFingerprint"
+			:new-fingerprint="correspondentKey?.observedFingerprint"
+			:was-verified="correspondentKeyWasVerified"
 			class="mb-3"
+			@accepted="refetchCorrespondentKey()"
 		/>
 
 		<!-- Layout-matching skeleton while the thread loads (header is already
@@ -1064,445 +1075,62 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		<PostboxReaderSkeleton v-if="isLoading" />
 
 		<div v-else class="space-y-2">
-			<!-- The reader's ONE AI home: a single quiet strip with the summary gist
-			     plus Ask + Draft reply. Renders nothing when there's no summary and
-			     the thread is too short to warrant one (fail-soft, same thresholds). -->
+			<!-- The reader's ONE AI home, one line: the summary gist plus an Ask
+			     link (Draft reply lives in the reply bar). Renders nothing when
+			     there's no summary and the thread is too short to warrant one
+			     (fail-soft, same thresholds). -->
 			<PostboxAiStrip
 				v-if="showAiStrip && latestMessage"
 				:key="latestMessage._id"
 				:message-id="latestMessage._id"
 				:warrants-summary="warrantsSummary"
-				@use-reply="(t) => latestMessage && openReplyWithBody(latestMessage, t)"
 			/>
 
-			<template v-for="msg in allMessages" :key="msg._id">
-				<!-- Collapsed message header -->
-				<button
-					v-if="!expanded.has(msg._id)"
-					type="button"
-					class="w-full flex items-center gap-3 px-3 py-2 rounded border border-border-subtle bg-bg-surface text-left hover:bg-bg-elevated"
-					@click="toggleExpanded(msg._id)"
-				>
-					<UiAvatar
-						:name="msg.fromName"
-						:email="msg.fromAddress"
-						deterministic-color
-						size="md"
-						class="flex-shrink-0"
-						aria-hidden="true"
-					/>
-					<div class="flex-1 min-w-0">
-						<p class="text-sm truncate">
-							<span class="font-medium text-text-primary">{{
-								msg.fromName || msg.fromAddress
-							}}</span>
-							<template v-if="msg.snippet">
-								<span class="text-text-tertiary mx-1.5">·</span>
-								<span class="text-text-tertiary">{{ msg.snippet }}</span>
-							</template>
-						</p>
-					</div>
-					<span
-						class="text-xs text-text-tertiary tabular-nums whitespace-nowrap flex-shrink-0"
-						:title="formatDateTime(msg.receivedAt)"
-					>
-						{{ relativeReceivedAt(msg.receivedAt) }}
-					</span>
-				</button>
-
-				<!-- Expanded message -->
-				<section
-					v-else
-					class="pbx-reader-message border border-border-subtle rounded bg-bg-surface px-4 py-3"
-				>
-					<header class="flex items-start gap-3">
-						<UiAvatar
-							:name="msg.fromName"
-							:email="msg.fromAddress"
-							deterministic-color
-							size="lg"
-							class="flex-shrink-0"
-							aria-hidden="true"
-						/>
-						<div class="flex-1 min-w-0">
-							<div class="flex items-baseline justify-between gap-3">
-								<!-- Plan idea 45: the sender line was a text label. It now opens
-								     everything this mailbox knows about the person. -->
-								<button
-									type="button"
-									class="text-left hover:underline"
-									:title="t('components.postbox.postboxSenderProfile.open')"
-									@click="openSenderProfile(msg)"
-								>
-									<span class="font-medium text-text-primary">
-										{{ msg.fromName || msg.fromAddress }}
-									</span>
-									<span v-if="msg.fromName" class="text-text-tertiary text-sm">
-										&lt;{{ msg.fromAddress }}&gt;
-									</span>
-								</button>
-								<div class="flex items-center gap-2 flex-shrink-0">
-									<PostboxSenderControls
-										v-if="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
-										:mailbox-id="message.mailboxId"
-										:from-address="msg.fromAddress"
-									/>
-									<PostboxTrackerBadge
-										v-if="trackerDetection(msg)"
-										:detection="trackerDetection(msg)!"
-									/>
-									<button
-										v-if="appIsDark"
-										type="button"
-										class="text-text-tertiary hover:text-text-primary"
-										:title="
-											isForcedLight(msg._id)
-												? t('components.postbox.postboxThreadReader.renderDark')
-												: t('components.postbox.postboxThreadReader.renderLight')
-										"
-										:aria-label="
-											isForcedLight(msg._id)
-												? t('components.postbox.postboxThreadReader.renderDark')
-												: t('components.postbox.postboxThreadReader.renderLight')
-										"
-										:aria-pressed="isForcedLight(msg._id)"
-										@click="toggleForcedLight(msg._id)"
-									>
-										<Icon
-											:name="isForcedLight(msg._id) ? 'lucide:moon' : 'lucide:sun'"
-											class="w-3.5 h-3.5"
-										/>
-									</button>
-									<button
-										type="button"
-										class="text-xs text-text-tertiary tabular-nums whitespace-nowrap hover:text-text-primary"
-										:title="formatDateTime(msg.receivedAt)"
-										@click="toggleExpanded(msg._id)"
-									>
-										{{ relativeReceivedAt(msg.receivedAt) }}
-									</button>
-								</div>
-							</div>
-							<p class="text-text-secondary text-xs mt-0.5">
-								{{
-									t('components.postbox.postboxThreadReader.toLine', {
-										recipients: msg.toAddresses.join(', '),
-									})
-								}}
-								<span v-if="msg.ccAddresses.length > 0">
-									{{
-										t('components.postbox.postboxThreadReader.ccLine', {
-											recipients: msg.ccAddresses.join(', '),
-										})
-									}}
-								</span>
-							</p>
-							<PostboxUnsubscribeChip
-								v-if="msg.unsubscribe"
-								class="mt-1.5"
-								:message-id="msg._id"
-								:mailbox-id="message.mailboxId"
-								:unsubscribe="msg.unsubscribe"
-							/>
-							<PostboxAuthBadge
-								:enabled="authBadgesEnabled"
-								:auth="senderAuthInput(msg)"
-								:heuristics="msg.senderHeuristics"
-							/>
-							<!-- The badge's claims, made checkable: the real headers behind them,
-							     and the original .eml (UX plan idea 52). -->
-							<PostboxMessageDetails :message-id="msg._id" />
-						</div>
-					</header>
-
-					<PostboxSchedulingChip
-						v-if="showSchedulingChip(msg)"
-						:message-id="msg._id"
-						:proposed-times="schedulingIntent?.proposedTimes ?? []"
-						@use-reply="(t) => openReplyWithBody(msg, t)"
-						@dismiss="dismissScheduling(msg._id)"
-					/>
-
-					<!-- The ad-hoc DMARC-fail line moved into PostboxAuthBadge (in the
-					     sender header) behind `senderAuthBadges`. When the flag is off
-					     the legacy banner still surfaces a DMARC failure so behavior is
-					     unchanged; the spam line always shows. -->
-					<div
-						v-if="msg.spamVerdict === 'spam' || (!authBadgesEnabled && msg.dmarcResult === 'fail')"
-						class="my-3 px-3 py-2 rounded bg-warning/10 text-warning text-xs flex items-center gap-2"
-					>
-						<Icon name="lucide:shield-alert" class="w-4 h-4" />
-						<span v-if="msg.spamVerdict === 'spam'">{{
-							t('components.postbox.postboxThreadReader.markedAsSpam')
-						}}</span>
-						<span v-else>{{ senderAuthSummary(msg) }}</span>
-					</div>
-
-					<PostboxSecurityBadge
-						v-if="
-							secureClass(msg) !== 'none' ||
-							(sealedMailEnabled && msg.inboundEncryptionInfo) ||
-							msg.inboundSignatureInfo
-						"
-						:klass="secureClass(msg)"
-						:message="msg"
-						:sealed="sealedMailEnabled ? msg.inboundEncryptionInfo : undefined"
-						:signature="msg.inboundSignatureInfo"
-					/>
-					<PostboxMessageBody
-						v-if="!hideRawBody(msg)"
-						:message="msg"
-						:force-light="isForcedLight(msg._id)"
-						:sender-images-allowed="imageAllowlist.isAllowed(msg.fromAddress)"
-						@trackers="onTrackersDetected(msg._id, $event)"
-						@trust-sender="imageAllowlist.allow($event)"
-						@untrust-sender="imageAllowlist.revoke($event)"
-					/>
-
-					<PostboxInviteCard
-						v-if="calendarAttachment(msg)"
-						:message-id="msg._id"
-						:mailbox-id="message.mailboxId"
-						:own-email="ownEmail"
-					/>
-
-					<section v-if="msg.attachments?.length > 0" class="mt-3">
-						<ul class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-							<li
-								v-for="(att, i) in msg.attachments"
-								:key="i"
-								class="flex items-center gap-2 px-3 py-2 rounded border border-border-subtle"
-							>
-								<Icon name="lucide:paperclip" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
-								<div class="min-w-0 flex-1">
-									<p class="truncate text-sm">{{ att.filename }}</p>
-									<p class="text-xs text-text-tertiary">
-										{{ formatCompactFileSize(att.size) }} · {{ att.contentType }}
-									</p>
-								</div>
-								<button
-									v-if="isPreviewable(att.contentType)"
-									type="button"
-									class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
-									:title="
-										t('components.postbox.postboxThreadReader.previewAttachment', {
-											filename: att.filename,
-										})
-									"
-									:aria-label="
-										t('components.postbox.postboxThreadReader.previewAttachment', {
-											filename: att.filename,
-										})
-									"
-									@click="openAttachmentPreview(msg._id, att, msg.attachments)"
-								>
-									<Icon name="lucide:eye" class="w-4 h-4" />
-								</button>
-								<button
-									type="button"
-									class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50"
-									:title="
-										t('components.postbox.postboxThreadReader.downloadAttachment', {
-											filename: att.filename,
-										})
-									"
-									:aria-label="
-										t('components.postbox.postboxThreadReader.downloadAttachment', {
-											filename: att.filename,
-										})
-									"
-									:disabled="
-										downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`
-									"
-									@click="handleAttachmentDownload(msg._id, att)"
-								>
-									<Icon
-										:name="
-											downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`
-												? 'lucide:loader-2'
-												: 'lucide:download'
-										"
-										class="w-4 h-4"
-										:class="{
-											'animate-spin motion-reduce:animate-none':
-												downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`,
-										}"
-									/>
-								</button>
-							</li>
-						</ul>
-					</section>
-
-					<!-- What actually happened to a message WE sent (plan idea 1): one
-					     row per recipient, plus a resend that targets only the ones it
-					     never reached. Renders nothing for inbound mail (no `outbound`
-					     record) and nothing for the ordinary single-recipient send that
-					     simply went out. -->
-					<PostboxDeliveryStrip
-						v-if="deliveryFor(msg)"
-						:delivery="deliveryFor(msg)!"
-						@resend="(addresses) => openResend(msg, addresses)"
-					/>
-
-					<!-- Progressive disclosure: star + reply stay visible; reply-all
-					     and forward reveal on row hover (pointer); the full set is
-					     always reachable — keyboard/touch — inside the ⋯ overflow. -->
-					<div class="mt-4 flex items-center gap-2">
-						<UiButton
-							variant="ghost"
-							type="button"
-							:class="isMessageStarred(msg) ? 'text-warning' : 'text-text-tertiary'"
-							:title="
-								isMessageStarred(msg)
-									? t('components.postbox.postboxThreadReader.unstar')
-									: t('components.postbox.postboxThreadReader.star')
-							"
-							:aria-label="
-								isMessageStarred(msg)
-									? t('components.postbox.postboxThreadReader.unstar')
-									: t('components.postbox.postboxThreadReader.star')
-							"
-							:aria-pressed="isMessageStarred(msg)"
-							@click="toggleMessageStar(msg)"
-						>
-							<Icon
-								name="lucide:star"
-								class="w-4 h-4"
-								:class="{ 'fill-current': isMessageStarred(msg) }"
-							/>
-						</UiButton>
-						<UiButton variant="ghost" type="button" @click="guardedReply(msg)">
-							<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
-							{{ t('components.postbox.postboxThreadReader.reply') }}
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							v-if="hasOtherRecipients(msg)"
-							type="button"
-							class="pbx-reader-secondary-action"
-							@click="guardedReplyAll(msg)"
-						>
-							<Icon name="lucide:reply-all" class="w-4 h-4 mr-1.5" />
-							{{ t('components.postbox.postboxThreadReader.replyAll') }}
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							type="button"
-							class="pbx-reader-secondary-action"
-							@click="openForward(msg)"
-						>
-							<Icon name="lucide:forward" class="w-4 h-4 mr-1.5" />
-							{{ t('components.postbox.postboxThreadReader.forward') }}
-						</UiButton>
-						<span class="flex-1" />
-						<PostboxOverflowMenu :label="t('components.postbox.postboxThreadReader.moreActions')">
-							<template #default="{ close }">
-								<button
-									v-if="hasOtherRecipients(msg)"
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										guardedReplyAll(msg);
-										close();
-									"
-								>
-									<Icon name="lucide:reply-all" class="w-4 h-4 text-text-tertiary" />
-									{{ t('components.postbox.postboxThreadReader.replyAll') }}
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										openForward(msg);
-										close();
-									"
-								>
-									<Icon name="lucide:forward" class="w-4 h-4 text-text-tertiary" />
-									{{ t('components.postbox.postboxThreadReader.forward') }}
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										toggleOpenThreadMute();
-										close();
-									"
-								>
-									<Icon
-										:name="isThreadMuted ? 'lucide:bell' : 'lucide:bell-off'"
-										class="w-4 h-4 text-text-tertiary"
-									/>
-									{{
-										isThreadMuted
-											? t('components.postbox.postboxThreadReader.unmute')
-											: t('components.postbox.postboxThreadReader.mute')
-									}}
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										toggleOpenThreadAlert();
-										close();
-									"
-								>
-									<Icon
-										:name="isThreadAlerted ? 'lucide:bell-off' : 'lucide:bell-ring'"
-										class="w-4 h-4 text-text-tertiary"
-									/>
-									{{
-										isThreadAlerted
-											? t('components.postbox.postboxThreadReader.notifyOnReplyStop')
-											: t('components.postbox.postboxThreadReader.notifyOnReply')
-									}}
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										reportSpamMessage(msg._id);
-										close();
-									"
-								>
-									<Icon name="lucide:shield-alert" class="w-4 h-4 text-text-tertiary" />
-									{{ t('components.postbox.postboxThreadReader.reportSpam') }}
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										blockSenderOf(msg._id);
-										close();
-									"
-								>
-									<Icon name="lucide:ban" class="w-4 h-4 text-text-tertiary" />
-									{{ t('components.postbox.postboxThreadReader.blockSender') }}
-								</button>
-								<!-- "One more of these" is where a filter gets written, so the
-								     rule builder opens from the message, pre-filled with it. -->
-								<button
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										createFilterFrom(msg);
-										close();
-									"
-								>
-									<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
-									{{ t('components.postbox.postboxThreadReader.createFilter') }}
-								</button>
-							</template>
-						</PostboxOverflowMenu>
-					</div>
-				</section>
-			</template>
+			<PostboxReaderMessage
+				v-for="msg in allMessages"
+				:key="msg._id"
+				:message="msg"
+				:mailbox-id="message.mailboxId"
+				:expanded="expanded.has(msg._id)"
+				:relative-time="relativeReceivedAt(msg.receivedAt)"
+				:starred="isMessageStarred(msg)"
+				:show-reply-all="hasOtherRecipients(msg)"
+				:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
+				:auth-enabled="authBadgesEnabled"
+				:sealed-enabled="sealedMailEnabled"
+				:secure-class="secureClass(msg)"
+				:hide-body="hideRawBody(msg)"
+				:tracker="trackerDetection(msg)"
+				:delivery="deliveryFor(msg)"
+				:scheduling-times="schedulingTimesFor(msg)"
+				:show-render-toggle="appIsDark"
+				:forced-light="isForcedLight(msg._id)"
+				:images-allowed="imageAllowlist.isAllowed(msg.fromAddress)"
+				:own-email="ownEmail"
+				:has-invite="!!calendarAttachment(msg)"
+				:seal-status="sealStatusFor(msg)"
+				:downloading-attachment="downloadingAttachment"
+				@toggle-expanded="toggleExpanded(msg._id)"
+				@open-sender-profile="openSenderProfile(msg)"
+				@toggle-forced-light="toggleForcedLight(msg._id)"
+				@toggle-star="toggleMessageStar(msg)"
+				@reply="guardedReply(msg)"
+				@reply-all="guardedReplyAll(msg)"
+				@forward="openForward(msg)"
+				@report-spam="reportSpamMessage(msg._id)"
+				@block-sender="blockSenderOf(msg._id)"
+				@create-filter="createFilterFrom(msg)"
+				@print="runReaderAction('print')"
+				@preview-attachment="(att, all) => openAttachmentPreview(msg._id, att, all)"
+				@download-attachment="(att) => handleAttachmentDownload(msg._id, att)"
+				@trackers="onTrackersDetected(msg._id, $event)"
+				@trust-sender="imageAllowlist.allow($event)"
+				@untrust-sender="imageAllowlist.revoke($event)"
+				@resend="(addresses) => openResend(msg, addresses)"
+				@use-reply="(text) => openReplyWithBody(msg, text)"
+				@dismiss-scheduling="dismissScheduling(msg._id)"
+				@seal-refetch="refetchCorrespondentKey()"
+			/>
 
 			<!-- Inline reply box pinned under the conversation (r / a / f or the
 			     affordance expand it; it collapses back after send/discard). -->
@@ -1512,6 +1140,9 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				:sender-label="inlineSenderLabel"
 				:show-reply-all="hasOtherRecipients(latestMessage)"
 				:spec="inlineSpec"
+				:ai-enabled="aiEnabled"
+				:draft-message-id="latestMessage._id"
+				@use-reply="(text) => latestMessage && openReplyWithBody(latestMessage, text)"
 				@expand="
 					(kind) =>
 						kind === 'reply'

@@ -908,41 +908,26 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								<p class="text-xs text-text-tertiary">{{ t('dashboard.inbox.detail.messages') }}</p>
 								<p class="text-text-primary">{{ thread.messageCount ?? 0 }}</p>
 							</div>
+							<!-- Assignment READS here and is CHANGED in the header (and on row
+							     hover in the list). It used to be a second assign popover, so
+							     the same verb rendered twice on one screen; the details card is
+							     a list of facts about the thread, and this is one of them. -->
 							<div>
 								<p class="text-xs text-text-tertiary mb-1">
 									{{ t('dashboard.inbox.detail.assignedTo') }}
 								</p>
-								<InboxAssignPopover
-									v-model:open="detailsAssignMenuOpen"
-									:members="assignMembers"
-									:current-user-id="user?.id ?? null"
-									:assigned-to="thread.assignedTo ?? null"
-									position="left"
-									@assign="onAssign"
-								>
-									<template #trigger>
-										<button
-											type="button"
-											class="w-full flex items-center gap-2 text-sm border border-border-subtle rounded-lg px-2 py-1.5 bg-bg-surface text-text-primary hover:bg-(--surface-1-hover) transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											:aria-label="t('dashboard.inbox.detail.assignToTeammateAria')"
-										>
-											<UiAvatar
-												v-if="thread.assignedTo"
-												:name="assignedMemberName ?? undefined"
-												deterministic-color
-												size="sm"
-											/>
-											<Icon v-else name="lucide:user-plus" class="w-4 h-4 text-text-tertiary" />
-											<span class="flex-1 truncate text-left">
-												{{ assignedMemberName ?? t('dashboard.inbox.detail.unassigned') }}
-											</span>
-											<Icon
-												name="lucide:chevron-down"
-												class="w-3.5 h-3.5 text-text-tertiary shrink-0"
-											/>
-										</button>
-									</template>
-								</InboxAssignPopover>
+								<div class="flex items-center gap-2 text-sm text-text-primary">
+									<UiAvatar
+										v-if="thread.assignedTo"
+										:name="assignedMemberName ?? undefined"
+										deterministic-color
+										size="sm"
+									/>
+									<Icon v-else name="lucide:user-round" class="w-4 h-4 text-text-tertiary" />
+									<span class="truncate">
+										{{ assignedMemberName ?? t('dashboard.inbox.detail.unassigned') }}
+									</span>
+								</div>
 							</div>
 							<div v-if="thread.lastMessageAt">
 								<p class="text-xs text-text-tertiary">

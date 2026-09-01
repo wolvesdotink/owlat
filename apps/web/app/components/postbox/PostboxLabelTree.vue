@@ -1,33 +1,45 @@
 <script setup lang="ts">
 /**
- * The folder rail's label tree.
+ * The label tree, in two modes over one implementation.
  *
- * Labels used to render as a flat, unordered, uncounted wall — thirty rows in
- * alphabetical order with no signal which had new mail. This is the same list
- * with the three things folders always had: nesting, a manual order, and unread
- * counts. A collapsed branch shows its rolled-up count, so folding `Work` away
- * never hides the fact that something under it is unread.
+ * `nav` (the folder rail) is pure navigation: colour, name, unread count and
+ * the twisty. A collapsed branch shows its rolled-up count, so folding `Work`
+ * away never hides the fact that something under it is unread. Right-clicking a
+ * row reaches the manage surface — an entry point, not a second rendering.
  *
- * Reordering is drag-first with a keyboard-reachable equivalent: the ▲/▼
- * buttons on a focused row write exactly the same sibling order the drop does,
- * so the feature is not mouse-only.
+ * `manage` (inside "Manage folders & labels") is where the row's verbs live:
+ * rename in place, recolour, delete, and reorder — drag-first with the
+ * keyboard-reachable ▲/▼ equivalent that writes exactly the same sibling order
+ * the drop does, so the feature is not mouse-only. It is the same tree rather
+ * than a flat list because reparenting only makes sense with the hierarchy on
+ * screen.
  */
 
 import type { Id } from '@owlat/api/dataModel';
+import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { flattenLabelTree, labelAncestorIds } from '~/utils/postboxLabelTree';
 import { moveSibling } from '~/utils/postboxReorder';
 
-const props = defineProps<{
-	mailboxId: Id<'mailboxes'>;
-	/** The label whose view is open, so its branch can be revealed. */
-	activeLabelId?: string;
-}>();
+const props = withDefaults(
+	defineProps<{
+		mailboxId: Id<'mailboxes'>;
+		/** The label whose view is open, so its branch can be revealed. */
+		activeLabelId?: string;
+		/** Render the CRUD affordances instead of navigation links. */
+		manage?: boolean;
+	}>(),
+	{ activeLabelId: undefined, manage: false }
+);
 
 const { t } = useI18n();
 
 const mailboxIdRef = computed(() => props.mailboxId);
-const { labels, labelTree, reorder, setParent } = usePostboxLabels(mailboxIdRef);
+const { labels, labelTree, reorder, setParent, rename, setColor, remove } =
+	usePostboxLabels(mailboxIdRef);
 const { collapsedIds, toggle, expandAll } = usePostboxLabelCollapse();
+const { openManager, editLabelId } = usePostboxManageDialog();
+
+const PRESET_COLORS = LABEL_PRESET_HEXES;
 
 // Navigating to a label inside a folded branch must not leave the rail showing
 // no selection at all.
@@ -101,93 +113,218 @@ async function onDrop(targetId: string) {
 	run.splice(at === -1 ? run.length : at, 0, sourceId as Id<'mailLabels'>);
 	await reorder(run);
 }
+
+// ── manage mode: rename in place ──────────────────────────────────────────
+const renamingId = ref<string | null>(null);
+const renameName = ref('');
+
+function startRename(labelId: string, currentName: string) {
+	renamingId.value = labelId;
+	renameName.value = currentName;
+}
+
+async function commitRename() {
+	const id = renamingId.value;
+	if (!id) return;
+	renamingId.value = null;
+	await rename(id as Id<'mailLabels'>, renameName.value);
+}
+
+// A rail context menu can ask for one row in edit mode; the request is consumed
+// so re-opening the dialog later does not silently re-arm the same rename.
+watch(
+	editLabelId,
+	(id) => {
+		if (!props.manage || !id) return;
+		const label = labels.value.find((l) => l._id === id);
+		if (label) startRename(label._id, label.name);
+		editLabelId.value = null;
+	},
+	{ immediate: true }
+);
+
+/** Right-click on a nav row: entry points into the one manage surface. */
+function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
+	return [
+		{
+			id: 'rename',
+			label: t('components.postbox.postboxLabelTree.renameLabel'),
+			icon: 'lucide:pencil',
+			run: () => openManager({ editLabelId: label._id as Id<'mailLabels'> }),
+		},
+		{
+			id: 'new',
+			label: t('components.postbox.postboxFolderRail.newLabel'),
+			icon: 'lucide:plus',
+			run: () => openManager({ section: 'labels', create: true }),
+		},
+		{
+			id: 'manage',
+			label: t('components.postbox.postboxLabelManager.title'),
+			icon: 'lucide:settings-2',
+			separatorBefore: true,
+			run: () => openManager({ section: 'labels' }),
+		},
+	];
+}
 </script>
 
 <template>
 	<ul class="flex flex-col gap-0.5">
-		<li
+		<UiContextMenu
 			v-for="row in rows"
 			:key="row.label._id"
-			class="group flex items-center"
-			:class="{ 'opacity-50': draggingId === row.label._id }"
-			draggable="true"
-			@dragstart="onDragStart(row.label._id)"
-			@dragover.prevent="onDragOver(row.label._id)"
-			@dragleave="dropTargetId = null"
-			@drop.prevent="onDrop(row.label._id)"
-			@dragend="
-				draggingId = null;
-				dropTargetId = null;
-			"
+			:items="manage ? [] : menuItems(row.label)"
 		>
-			<!-- Indent by depth; the twisty occupies the same slot on a leaf so
-			     names stay aligned down a branch. -->
-			<span :style="{ width: `${row.depth * 0.75}rem` }" class="flex-shrink-0" />
-			<button
-				v-if="row.children.length > 0"
-				type="button"
-				class="w-4 h-4 flex items-center justify-center text-text-tertiary hover:text-text-primary flex-shrink-0"
-				:aria-expanded="!collapsedIds.has(row.label._id)"
-				:aria-label="
-					collapsedIds.has(row.label._id)
-						? t('components.postbox.postboxLabelTree.expand', { name: row.label.name })
-						: t('components.postbox.postboxLabelTree.collapse', { name: row.label.name })
-				"
-				@click="toggle(row.label._id)"
-			>
-				<Icon
-					:name="collapsedIds.has(row.label._id) ? 'lucide:chevron-right' : 'lucide:chevron-down'"
-					class="w-3 h-3"
-				/>
-			</button>
-			<span v-else class="w-4 flex-shrink-0" />
-
-			<NuxtLink
-				:to="`/dashboard/postbox/label/${row.label._id}`"
-				class="flex-1 flex items-center gap-2 px-1.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
-				:class="{
-					'bg-bg-surface text-brand': activeLabelId === row.label._id,
-					'ring-1 ring-brand': dropTargetId === row.label._id,
-				}"
-			>
-				<span
-					class="w-2.5 h-2.5 rounded-full flex-shrink-0"
-					:style="{ backgroundColor: row.label.color || '#6b7280' }"
-				/>
-				<Icon
-					v-if="row.label.isPinned"
-					name="lucide:pin"
-					class="w-3 h-3 flex-shrink-0 text-text-tertiary"
-				/>
-				<span class="truncate flex-1">{{ row.label.name }}</span>
-				<!-- Collapsed rows carry the branch total, so folding a branch never
-				     hides unread mail; expanded rows show only their own. -->
-				<span
-					v-if="(collapsedIds.has(row.label._id) ? row.totalUnreadCount : row.unreadCount) > 0"
-					class="text-xs font-medium text-text-secondary flex-shrink-0"
+			<template #default="{ onContextmenu, onKeydown }">
+				<li
+					class="group flex items-center"
+					:class="{ 'opacity-50': draggingId === row.label._id }"
+					:draggable="manage"
+					@contextmenu="onContextmenu"
+					@keydown="onKeydown"
+					@dragstart="manage && onDragStart(row.label._id)"
+					@dragover.prevent="manage && onDragOver(row.label._id)"
+					@dragleave="dropTargetId = null"
+					@drop.prevent="manage && onDrop(row.label._id)"
+					@dragend="
+						draggingId = null;
+						dropTargetId = null;
+					"
 				>
-					{{ collapsedIds.has(row.label._id) ? row.totalUnreadCount : row.unreadCount }}
-				</span>
-			</NuxtLink>
+					<!-- Indent by depth; the twisty occupies the same slot on a leaf so
+					     names stay aligned down a branch. -->
+					<span :style="{ width: `${row.depth * 0.75}rem` }" class="flex-shrink-0" />
+					<button
+						v-if="row.children.length > 0"
+						type="button"
+						class="w-4 h-4 flex items-center justify-center text-text-tertiary hover:text-text-primary flex-shrink-0"
+						:aria-expanded="!collapsedIds.has(row.label._id)"
+						:aria-label="
+							collapsedIds.has(row.label._id)
+								? t('components.postbox.postboxLabelTree.expand', { name: row.label.name })
+								: t('components.postbox.postboxLabelTree.collapse', { name: row.label.name })
+						"
+						@click="toggle(row.label._id)"
+					>
+						<Icon
+							:name="
+								collapsedIds.has(row.label._id) ? 'lucide:chevron-right' : 'lucide:chevron-down'
+							"
+							class="w-3 h-3"
+						/>
+					</button>
+					<span v-else class="w-4 flex-shrink-0" />
 
-			<!-- Keyboard-reachable equivalent of the drag: same write, one step. -->
-			<button
-				type="button"
-				class="opacity-0 group-hover:opacity-100 focus:opacity-100 p-0.5 text-text-tertiary hover:text-text-primary"
-				:aria-label="t('components.postbox.postboxLabelTree.moveUp', { name: row.label.name })"
-				@click="move(row.label._id, -1)"
-			>
-				<Icon name="lucide:chevron-up" class="w-3 h-3" />
-			</button>
-			<button
-				type="button"
-				class="opacity-0 group-hover:opacity-100 focus:opacity-100 p-0.5 text-text-tertiary hover:text-text-primary"
-				:aria-label="t('components.postbox.postboxLabelTree.moveDown', { name: row.label.name })"
-				@click="move(row.label._id, 1)"
-			>
-				<Icon name="lucide:chevron-down" class="w-3 h-3" />
-			</button>
-		</li>
+					<!-- Nav: one link, nothing else. -->
+					<NuxtLink
+						v-if="!manage"
+						:to="`/dashboard/postbox/label/${row.label._id}`"
+						class="flex-1 flex items-center gap-2 px-1.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
+						:class="{ 'bg-bg-surface text-brand': activeLabelId === row.label._id }"
+					>
+						<span
+							class="w-2.5 h-2.5 rounded-full flex-shrink-0"
+							:style="{ backgroundColor: row.label.color || 'var(--color-text-tertiary)' }"
+						/>
+						<Icon
+							v-if="row.label.isPinned"
+							name="lucide:pin"
+							class="w-3 h-3 flex-shrink-0 text-text-tertiary"
+						/>
+						<span class="truncate flex-1">{{ row.label.name }}</span>
+						<!-- Collapsed rows carry the branch total, so folding a branch never
+						     hides unread mail; expanded rows show only their own. -->
+						<span
+							v-if="(collapsedIds.has(row.label._id) ? row.totalUnreadCount : row.unreadCount) > 0"
+							class="text-xs font-medium text-text-secondary flex-shrink-0"
+						>
+							{{ collapsedIds.has(row.label._id) ? row.totalUnreadCount : row.unreadCount }}
+						</span>
+					</NuxtLink>
+
+					<!-- Manage: the row's verbs, with room for their labels. -->
+					<template v-else>
+						<div
+							class="flex-1 flex items-center gap-2 px-1.5 py-1 rounded min-w-0"
+							:class="{ 'ring-1 ring-brand': dropTargetId === row.label._id }"
+						>
+							<input
+								v-if="renamingId === row.label._id"
+								v-model="renameName"
+								type="text"
+								class="input input-sm flex-1"
+								:aria-label="t('components.postbox.postboxLabelTree.nameAriaLabel')"
+								@blur="commitRename"
+								@keyup.enter="commitRename"
+								@keyup.escape="renamingId = null"
+							/>
+							<template v-else>
+								<button
+									type="button"
+									class="flex-1 truncate text-left text-sm hover:text-text-primary"
+									:aria-label="
+										t('components.postbox.postboxLabelTree.renameAriaLabel', {
+											name: row.label.name,
+										})
+									"
+									@click="startRename(row.label._id, row.label.name)"
+								>
+									{{ row.label.name }}
+								</button>
+								<span class="flex items-center gap-1 flex-shrink-0">
+									<button
+										v-for="color in PRESET_COLORS"
+										:key="color"
+										type="button"
+										class="w-3.5 h-3.5 rounded-full border"
+										:class="
+											row.label.color === color ? 'border-text-primary' : 'border-transparent'
+										"
+										:style="{ backgroundColor: color }"
+										:title="t('components.postbox.postboxLabelManager.setColor', { color })"
+										:aria-label="t('components.postbox.postboxLabelManager.setColor', { color })"
+										@click="setColor(row.label._id as Id<'mailLabels'>, color)"
+									/>
+								</span>
+							</template>
+						</div>
+						<!-- Keyboard-reachable equivalent of the drag: same write, one step. -->
+						<button
+							type="button"
+							class="p-0.5 text-text-tertiary hover:text-text-primary"
+							:aria-label="
+								t('components.postbox.postboxLabelTree.moveUp', { name: row.label.name })
+							"
+							@click="move(row.label._id, -1)"
+						>
+							<Icon name="lucide:chevron-up" class="w-3 h-3" />
+						</button>
+						<button
+							type="button"
+							class="p-0.5 text-text-tertiary hover:text-text-primary"
+							:aria-label="
+								t('components.postbox.postboxLabelTree.moveDown', { name: row.label.name })
+							"
+							@click="move(row.label._id, 1)"
+						>
+							<Icon name="lucide:chevron-down" class="w-3 h-3" />
+						</button>
+						<button
+							type="button"
+							class="p-1 rounded hover:bg-error/10 text-error"
+							:title="t('components.postbox.postboxLabelManager.deleteLabel')"
+							:aria-label="
+								t('components.postbox.postboxLabelTree.deleteAriaLabel', { name: row.label.name })
+							"
+							@click="remove(row.label._id as Id<'mailLabels'>)"
+						>
+							<Icon name="lucide:trash" class="w-4 h-4" />
+						</button>
+					</template>
+				</li>
+			</template>
+		</UiContextMenu>
 		<li v-if="rows.length === 0" class="text-xs text-text-tertiary px-2 py-1">
 			{{ t('components.postbox.postboxFolderRail.noLabels') }}
 		</li>

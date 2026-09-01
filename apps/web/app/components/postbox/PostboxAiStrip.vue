@@ -3,17 +3,14 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 /**
- * The reader's ONE AI home — a single quiet strip that consolidates the three
- * advisory surfaces that used to stack under a thread (the TL;DR summary banner,
- * the Summarize/Suggest pills, and the "Ask about this thread…" input). It shows
- * a one-line gist of the cached thread summary (click "more" to expand the
- * bullets inline) and two ghost actions:
+ * The reader's ONE AI home, now one LINE: the gist of the cached thread summary
+ * (click "more" for the bullets) and an "Ask" link that expands a grounded Q&A
+ * about THIS thread inline (single-turn mail.ai.askThread; ephemeral in-memory
+ * history, never saved).
  *
- *   • "Ask"         — expands a grounded Q&A about THIS thread inline (single-turn
- *                     mail.ai.askThread; ephemeral in-memory history, never saved).
- *   • "Draft reply" — runs mail.ai.suggestReplies; each suggestion card emits
- *                     `use-reply` so the reader opens the existing prefilled
- *                     composer unchanged.
+ * "Draft reply" used to live here too, at the top of the thread — a long way
+ * from the reply box it feeds. It moved into PostboxInlineReply (plan §05),
+ * where the reply actually gets written; the same `ai` flag gates both.
  *
  * Fail-soft throughout: the summary reads the cache reactively and generates
  * lazily WITHOUT blocking the thread render; any AI failure just hides that part.
@@ -29,11 +26,6 @@ const props = defineProps<{
 	// generate a summary. When false the summary line is only shown if one is
 	// already cached; if neither, the strip collapses to nothing.
 	warrantsSummary: boolean;
-}>();
-
-const emit = defineEmits<{
-	// A chosen reply suggestion — the reader opens the prefilled composer with it.
-	(e: 'use-reply', text: string): void;
 }>();
 
 const { t } = useI18n();
@@ -131,33 +123,11 @@ function clearAsk() {
 	askErrored.value = false;
 }
 
-// --- Draft reply (formerly PostboxAiAssist suggest): reply suggestions.
-const suggestions = ref<string[]>([]);
-const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
-	label: () => t('components.postbox.postboxAiStrip.suggestOperation'),
-	type: 'action',
-});
-const suggestBusy = computed(() => suggestOp.isLoading.value);
-
-async function runSuggest() {
-	const res = await suggestOp.run({ messageId: props.messageId as Id<'mailMessages'> });
-	suggestions.value = res.ok ? res.result.replies : [];
-}
-
-// --- One expandable section at a time (Ask XOR Draft reply), mutually exclusive.
-type Section = 'ask' | 'suggest';
-const openSection = ref<Section | null>(null);
+// --- Ask is the strip's only expandable section; closed until asked for.
+const askOpen = ref(false);
 
 function toggleAsk() {
-	openSection.value = openSection.value === 'ask' ? null : 'ask';
-}
-async function toggleSuggest() {
-	if (openSection.value === 'suggest') {
-		openSection.value = null;
-		return;
-	}
-	openSection.value = 'suggest';
-	if (suggestions.value.length === 0 && !suggestBusy.value) await runSuggest();
+	askOpen.value = !askOpen.value;
 }
 
 // Reset every ephemeral bit of state when the open thread changes.
@@ -171,18 +141,15 @@ watch(
 		question.value = '';
 		askHistory.value = [];
 		askErrored.value = false;
-		suggestions.value = [];
-		openSection.value = null;
+		askOpen.value = false;
 	}
 );
 
 // The gist line is present when a summary exists or is being fetched.
 const hasGist = computed(() => summaryPending.value || !!summaryText.value);
 // The whole strip disappears (zero height) when there's nothing to show: no
-// summary, not warranting one, and the user hasn't opened Ask / Draft reply.
-const visible = computed(
-	() => hasGist.value || props.warrantsSummary || openSection.value !== null
-);
+// summary, not warranting one, and the user hasn't opened Ask.
+const visible = computed(() => hasGist.value || props.warrantsSummary || askOpen.value);
 </script>
 
 <template>
@@ -191,86 +158,60 @@ const visible = computed(
 		class="pbx-ai-strip rounded-lg border border-border-subtle bg-bg-elevated"
 		data-testid="postbox-ai-strip"
 	>
-		<!-- Gist: one-line thread summary (shimmer while it fills in). "more"
-		     expands the bullets inline; fail-soft — absent when unavailable. -->
-		<template v-if="hasGist">
-			<div v-if="summaryPending" class="flex items-center gap-2 px-3 py-2" aria-hidden="true">
-				<Icon name="lucide:sparkles" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
-				<div class="h-3 flex-1 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
-			</div>
-			<div v-else class="flex items-center gap-2 px-3 py-2">
-				<Icon name="lucide:sparkles" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
-				<p
-					class="text-xs text-text-secondary min-w-0 flex-1"
-					:class="{ truncate: !summaryExpanded }"
-				>
-					<span class="font-medium text-text-tertiary">{{
-						t('components.postbox.postboxAiStrip.summaryLabel')
-					}}</span>
-					<template v-if="!summaryExpanded"> {{ oneLine }}</template>
-				</p>
-				<button
-					type="button"
-					class="shrink-0 text-xs text-text-tertiary hover:text-text-primary"
-					:aria-expanded="summaryExpanded"
-					:aria-label="t('components.postbox.postboxAiStrip.toggleSummaryDetail')"
-					@click="summaryExpanded = !summaryExpanded"
-				>
-					{{
-						summaryExpanded
-							? t('components.postbox.postboxAiStrip.less')
-							: t('components.postbox.postboxAiStrip.more')
-					}}
-				</button>
-			</div>
-			<ul
-				v-if="summaryExpanded"
-				class="list-disc pl-9 pr-3 pb-2 space-y-1 text-xs text-text-secondary"
+		<!-- ONE line: the gist (shimmer while it fills in), "more" for the bullets,
+		     and the Ask link. Fail-soft — the gist is simply absent when there is no
+		     summary and the thread never warranted one. -->
+		<div class="flex items-center gap-2 px-3 py-2">
+			<Icon name="lucide:sparkles" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+			<div
+				v-if="summaryPending"
+				class="h-3 flex-1 rounded bg-bg-surface animate-pulse motion-reduce:animate-none"
+				aria-hidden="true"
+			/>
+			<p
+				v-else-if="hasGist"
+				class="text-xs text-text-secondary min-w-0 flex-1"
+				:class="{ truncate: !summaryExpanded }"
 			>
-				<li v-for="(b, i) in bullets" :key="i">{{ b }}</li>
-			</ul>
-		</template>
-
-		<!-- Divider between the gist and the actions (only when both are present). -->
-		<div v-if="hasGist" class="border-t border-border-subtle" />
-
-		<!-- Two ghost actions. -->
-		<div class="flex items-center gap-1 px-2 py-1">
-			<UiButton
-				variant="ghost"
-				size="sm"
-				class="gap-1.5 px-2.5 py-1 text-xs"
-				:aria-expanded="openSection === 'ask'"
+				<span class="font-medium text-text-tertiary">{{
+					t('components.postbox.postboxAiStrip.summaryLabel')
+				}}</span>
+				<template v-if="!summaryExpanded"> {{ oneLine }}</template>
+			</p>
+			<span v-else class="flex-1" />
+			<button
+				v-if="hasGist && !summaryPending"
+				type="button"
+				class="shrink-0 text-xs text-text-tertiary hover:text-text-primary"
+				:aria-expanded="summaryExpanded"
+				:aria-label="t('components.postbox.postboxAiStrip.toggleSummaryDetail')"
+				@click="summaryExpanded = !summaryExpanded"
+			>
+				{{
+					summaryExpanded
+						? t('components.postbox.postboxAiStrip.less')
+						: t('components.postbox.postboxAiStrip.more')
+				}}
+			</button>
+			<button
+				type="button"
+				class="shrink-0 text-xs text-brand hover:underline"
+				:aria-expanded="askOpen"
 				:aria-label="t('components.postbox.postboxAiStrip.askAbout')"
 				@click="toggleAsk"
 			>
-				<template #iconLeft>
-					<Icon name="lucide:message-circle-question" class="w-3.5 h-3.5" />
-				</template>
 				{{ t('components.postbox.postboxAiStrip.ask') }}
-			</UiButton>
-			<UiButton
-				variant="ghost"
-				size="sm"
-				class="gap-1.5 px-2.5 py-1 text-xs"
-				:aria-expanded="openSection === 'suggest'"
-				:disabled="suggestBusy"
-				:aria-label="t('components.postbox.postboxAiStrip.draftAReply')"
-				@click="toggleSuggest"
-			>
-				<template #iconLeft>
-					<Icon
-						:name="suggestBusy ? 'lucide:loader-2' : 'lucide:wand-2'"
-						class="w-3.5 h-3.5"
-						:class="{ 'animate-spin motion-reduce:animate-none': suggestBusy }"
-					/>
-				</template>
-				{{ t('components.postbox.postboxAiStrip.draftReply') }}
-			</UiButton>
+			</button>
 		</div>
+		<ul
+			v-if="summaryExpanded && hasGist"
+			class="list-disc pl-9 pr-3 pb-2 space-y-1 text-xs text-text-secondary"
+		>
+			<li v-for="(b, i) in bullets" :key="i">{{ b }}</li>
+		</ul>
 
 		<!-- Ask: grounded Q&A about THIS thread (ephemeral history). -->
-		<div v-if="openSection === 'ask'" class="px-3 pb-3 space-y-3" data-testid="postbox-ask-thread">
+		<div v-if="askOpen" class="px-3 pb-3 space-y-3" data-testid="postbox-ask-thread">
 			<div
 				v-for="(turn, i) in askHistory"
 				:key="i"
@@ -282,7 +223,10 @@ const visible = computed(
 
 			<div aria-live="polite" :aria-busy="askBusy">
 				<p v-if="askBusy" class="flex items-center gap-1.5 text-xs text-text-tertiary">
-					<Icon name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+					<Icon
+						name="lucide:loader-2"
+						class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
+					/>
 					{{ t('components.postbox.postboxAiStrip.thinking') }}
 				</p>
 				<p v-else-if="askErrored" class="text-xs text-text-tertiary">
@@ -315,37 +259,6 @@ const visible = computed(
 					<Icon name="lucide:corner-down-left" class="w-4 h-4" />
 				</button>
 			</div>
-		</div>
-
-		<!-- Draft reply: suggestion cards; each opens the prefilled composer. -->
-		<div
-			v-else-if="openSection === 'suggest'"
-			class="px-3 pb-3"
-			aria-live="polite"
-			:aria-busy="suggestBusy"
-		>
-			<span v-if="suggestBusy" class="sr-only">{{
-				t('components.postbox.postboxAiStrip.working')
-			}}</span>
-			<div
-				v-if="suggestions.length > 0"
-				role="group"
-				:aria-label="t('components.postbox.postboxAiStrip.suggestedReplies')"
-				class="flex flex-wrap gap-2"
-			>
-				<button
-					v-for="(r, i) in suggestions"
-					:key="i"
-					type="button"
-					class="text-left text-xs px-3 py-2 rounded-lg border border-border-subtle hover:border-brand hover:bg-bg-surface max-w-xs"
-					@click="emit('use-reply', r)"
-				>
-					{{ r }}
-				</button>
-			</div>
-			<p v-else-if="!suggestBusy" class="text-xs text-text-tertiary">
-				{{ t('components.postbox.postboxAiStrip.noSuggestions') }}
-			</p>
 		</div>
 	</div>
 </template>

@@ -43,20 +43,10 @@ const router = useRouter();
 type AutomationStatus = 'all' | 'draft' | 'active' | 'paused';
 const selectedStatus = ref<AutomationStatus>('all');
 
-// Search state
-const searchQuery = ref('');
-const debouncedSearch = ref('');
-let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-
-// Debounce search input
-watch(searchQuery, (value) => {
-	if (searchTimeout) {
-		clearTimeout(searchTimeout);
-	}
-	searchTimeout = setTimeout(() => {
-		debouncedSearch.value = value;
-	}, 300);
-});
+// List FILTER — narrows the loaded page in place. It is not the search box (that
+// is the one ⌘K overlay), which is why it says "Filter…" and wears a filter
+// icon. Debouncing is the shared `useDebouncedSearch`, not a private timeout.
+const { searchQuery, debouncedSearch, clear: clearFilter } = useDebouncedSearch();
 
 // Status filter options
 const statusFilters = computed<{ value: AutomationStatus; label: string }[]>(() => [
@@ -266,16 +256,16 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 
 			<div class="flex-1" />
 
-			<!-- Search -->
+			<!-- Filter (not search — see the composable comment above) -->
 			<UiInput
 				v-model="searchQuery"
 				type="text"
-				:placeholder="t('dashboard.automations.index.searchPlaceholder')"
+				:placeholder="t('common.filterPlaceholder')"
 				size="sm"
 				class="w-64"
 			>
 				<template #iconLeft>
-					<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary" />
+					<Icon name="lucide:list-filter" class="w-4 h-4 text-text-tertiary" />
 				</template>
 			</UiInput>
 		</div>
@@ -333,13 +323,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 					"
 				>
 					<template #action>
-						<UiButton
-							variant="secondary"
-							@click="
-								searchQuery = '';
-								debouncedSearch = '';
-							"
-						>
+						<UiButton variant="secondary" @click="clearFilter">
 							{{ t('dashboard.automations.index.clearSearch') }}
 						</UiButton>
 					</template>
@@ -610,7 +594,11 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 					:disabled="isDeleting || automationToDelete?.status === 'active'"
 					@click="handleDelete"
 				>
-					<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<Icon
+						v-if="isDeleting"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
 					{{
 						isDeleting
 							? t('dashboard.automations.index.deleting')

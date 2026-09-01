@@ -7,23 +7,20 @@ import {
 	activeSearchToken,
 	applySearchSuggestion,
 	buildSearchSuggestions,
-	loadRecentSearches,
 	moveSuggestionIndex,
-	pushRecentSearch,
-	saveRecentSearches,
 	selectedSuggestion,
 } from '~/utils/postboxSearchSuggest';
 
 /**
  * The Postbox search box, with an autocomplete dropdown over the operator
- * grammar.
+ * grammar. It belongs to the deep-results page (`postbox/search.vue`) — every
+ * other entry point is the app-wide ⌘K overlay, which runs the same grammar.
  *
  * The bar used to be a plain input: nothing hinted that `is:unread` or
  * `has:attachment` existed, so the grammar was only usable by people who had
  * read about it. Typing now offers the operators, the address book and the
  * mailbox's labels for the token under the caret, plus the queries you ran
- * before — the same localStorage history pattern the command palette uses,
- * under its own key so Postbox history and object-search history stay apart.
+ * before — from the shared palette history, tagged Mail.
  *
  * The ranking itself is pure (`~/utils/postboxSearchSuggest`); this component
  * owns the caret, the two data subscriptions, and the keyboard.
@@ -110,15 +107,11 @@ const mailboxIdRef = computed(() => props.mailboxId ?? null);
 const { labels } = usePostboxLabels(mailboxIdRef);
 
 // ── History ────────────────────────────────────────────────────────────────
-const recents = ref<string[]>([]);
-onMounted(() => {
-	recents.value = loadRecentSearches();
-});
-
-function rememberQuery(value: string) {
-	recents.value = pushRecentSearch(recents.value, value);
-	saveRecentSearches(recents.value);
-}
+// The one scope-tagged palette store, read under the Mail tag: a query run here
+// is offered by the ⌘K overlay and vice versa. This bar used to keep its own
+// private localStorage key, which is exactly the split the unified search closed.
+const { recentSearches: recents, loadRecent, saveRecent } = useCommandPaletteRecents(() => 'mail');
+onMounted(loadRecent);
 
 // ── Rows ───────────────────────────────────────────────────────────────────
 const suggestions = computed<SearchSuggestion[]>(() =>
@@ -170,7 +163,7 @@ function accept(suggestion: SearchSuggestion) {
 }
 
 function submit() {
-	rememberQuery(local.value);
+	saveRecent(local.value);
 	isOpen.value = false;
 	emit('submit', local.value);
 }

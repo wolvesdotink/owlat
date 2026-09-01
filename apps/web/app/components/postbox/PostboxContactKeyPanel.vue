@@ -13,8 +13,9 @@
  * as the second. The comparison surface itself lives in
  * PostboxContactVerifyPanel and is collapsed until asked for.
  *
- * The trust state is loaded ONCE by the parent (`PostboxThreadSealSurfaces`) and
- * passed down as `status`, so this panel does not re-query the same address.
+ * The trust state is loaded ONCE per thread by the reader
+ * (`usePostboxCorrespondentKey`) and passed down as `status`, so this panel does
+ * not re-query the same address; it renders inside the sender's trust chip.
  * No private material exists in the source shape, so nothing secret is rendered.
  * Re-accepting a changed key happens through PostboxKeyChangeBanner.
  */

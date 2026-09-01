@@ -92,7 +92,20 @@ export const inboxTables = {
 		.index('by_contact', ['contactId'])
 		.index('by_assigned_to', ['assignedTo'])
 		.index('by_snoozed_until', ['snoozedUntil'])
-		.index('by_normalized_subject_and_contact', ['normalizedSubject', 'contactIdentifier']),
+		.index('by_normalized_subject_and_contact', ['normalizedSubject', 'contactIdentifier'])
+		// Team Inbox TEXT SEARCH. Two indexes rather than one denormalized
+		// `searchableText` column: a thread's subject and its participant are both
+		// written once at insert and never patched (inbox/threads/module.ts), so a
+		// third derived column would only add a backfill and a drift risk for
+		// exactly the two fields the pickers already matched client-side. The
+		// search path reads both and merges them (inbox/threadFilters.ts).
+		//
+		// SEALED-AT-REST NOTE (Sealed Mail E8b): these index thread METADATA — the
+		// subject line and the participant address — not a message body.
+		// `lastPreview` IS a sealed body and is deliberately NOT indexed here.
+		// See lib/atRestBodies.ts.
+		.searchIndex('search_thread_subject', { searchField: 'subject' })
+		.searchIndex('search_thread_participant', { searchField: 'contactIdentifier' }),
 
 	// Inbound Messages - stores every inbound email with its processing state
 	inboundMessages: defineTable({

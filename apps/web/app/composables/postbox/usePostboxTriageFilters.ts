@@ -31,6 +31,29 @@ export type PostboxTriageFilter = 'all' | 'unread' | 'starred' | 'attachments';
 
 const FILTERS: PostboxTriageFilter[] = ['all', 'unread', 'starred', 'attachments'];
 
+/**
+ * The search token each chip is the shorthand for.
+ *
+ * The chips and the search grammar are two spellings of the same predicate, and
+ * maintaining both as strangers is how they drift. Mapping them 1:1 means an
+ * active chip can hand its filter to the real search — where it gains
+ * operators, the whole folder rather than the loaded window, and a URL you can
+ * save — instead of being a dead end at the edge of the fetched pages.
+ * 'all' is not a predicate, so it has no token.
+ */
+export const POSTBOX_TRIAGE_SEARCH_TOKENS: Record<Exclude<PostboxTriageFilter, 'all'>, string> = {
+	unread: 'is:unread',
+	starred: 'is:starred',
+	attachments: 'has:attachment',
+};
+
+/** Where "open this chip in search" goes, or null for the unfiltered chip. */
+export function postboxTriageSearchPath(filter: PostboxTriageFilter): string | null {
+	if (filter === 'all') return null;
+	const token = POSTBOX_TRIAGE_SEARCH_TOKENS[filter];
+	return `/dashboard/postbox/search?q=${encodeURIComponent(token)}`;
+}
+
 function isTriageFilter(value: unknown): value is PostboxTriageFilter {
 	return typeof value === 'string' && (FILTERS as string[]).includes(value);
 }

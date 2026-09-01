@@ -9,7 +9,9 @@
  *
  * Pure: it takes the caret position, the already-loaded contacts and labels,
  * and the recents list, and returns rows. No Convex, no localStorage reads, no
- * Vue — so the ranking is unit-testable without mounting the bar.
+ * Vue — so the ranking is unit-testable without mounting the bar. The history
+ * itself is no longer this module's: it lives in the one scope-tagged palette
+ * store (`~/lib/commandPaletteRecents`), which the callers pass in.
  *
  * Every human-readable hint is carried as an i18n KEY plus params and resolved
  * at the render boundary; nothing in this module is user-visible English.
@@ -327,38 +329,4 @@ function operandSuggestions(
 	// Free-form operands (subject:, filename:, sizes, dates) have nothing to
 	// complete from — offering a guess would be noise.
 	return [];
-}
-
-/** localStorage key for the Postbox search history, mirroring the palette's. */
-export const POSTBOX_RECENT_SEARCHES_KEY = 'owlat_postbox_recent_searches';
-export const MAX_RECENT_POSTBOX_SEARCHES = 8;
-
-/** Most-recent-first, deduplicated, capped. Pure — the storage IO is separate. */
-export function pushRecentSearch(recents: string[], query: string): string[] {
-	const trimmed = query.trim();
-	if (!trimmed) return recents;
-	return [trimmed, ...recents.filter((entry) => entry !== trimmed)].slice(
-		0,
-		MAX_RECENT_POSTBOX_SEARCHES
-	);
-}
-
-export function loadRecentSearches(): string[] {
-	if (import.meta.server) return [];
-	try {
-		const stored = localStorage.getItem(POSTBOX_RECENT_SEARCHES_KEY);
-		const parsed: unknown = stored ? JSON.parse(stored) : [];
-		return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === 'string') : [];
-	} catch {
-		return [];
-	}
-}
-
-export function saveRecentSearches(recents: string[]): void {
-	if (import.meta.server) return;
-	try {
-		localStorage.setItem(POSTBOX_RECENT_SEARCHES_KEY, JSON.stringify(recents));
-	} catch {
-		// Ignore quota / disabled storage — history is a convenience, not state.
-	}
 }

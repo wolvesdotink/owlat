@@ -11,21 +11,18 @@ const emit = defineEmits<{ close: [] }>();
 
 const { t, locale } = useI18n();
 
+// Recent threads with nothing typed; a typed query goes to the SERVER
+// (`inbox.queries.listThreads`' `search` argument, over the subject and the
+// participant address). It used to filter the fetched page in the browser, so a
+// thread outside the newest hundred was unlinkable however exactly you spelt it.
+const { query: search, debouncedQuery } = useDebouncedSearch();
+
 const { data: threadsData, isLoading } = useConvexQuery(api.inbox.queries.listThreads, () => ({
+	...(debouncedQuery.value.trim() ? { search: debouncedQuery.value.trim() } : {}),
 	limit: 100,
 }));
 
-const search = ref('');
-
-const threads = computed(() => {
-	const list = threadsData.value?.threads ?? [];
-	const q = search.value.trim().toLowerCase();
-	if (!q) return list;
-	return list.filter(
-		(t) =>
-			t.subject.toLowerCase().includes(q) || (t.contactIdentifier ?? '').toLowerCase().includes(q)
-	);
-});
+const threads = computed(() => threadsData.value?.threads ?? []);
 
 const { linkChannelToInboxThread, unlinkChannel } = useChatActions();
 const isSubmitting = ref(false);

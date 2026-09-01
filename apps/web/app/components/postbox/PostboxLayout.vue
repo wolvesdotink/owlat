@@ -31,9 +31,11 @@ usePostboxCommandSurface(mailboxIdRef);
 // list pane is; one data-attribute plus two custom properties (postbox-panes.css).
 const {
 	density,
+	setDensity,
 	viewMode: savedViewMode,
 	setViewMode,
 	readingPane,
+	setReadingPane,
 	listWidth,
 	listHeight,
 	setListSize,
@@ -62,10 +64,10 @@ const {
 // The divider measures the list pane it moves, so it needs the element itself.
 const listPaneRef = ref<HTMLElement | null>(null);
 
-// Newest / oldest arrival order for the list, persisted per user. The flip
+// Newest / oldest arrival order for the list, persisted per user. The pick
 // applies optimistically and the feed re-subscribes on the new order (its
-// resetKey carries the direction, so no cursor outlives the flip).
-const { sortOrder, toggleSortOrder } = usePostboxSortToggle({ savedSortOrder, setSortOrder });
+// resetKey carries the direction, so no cursor outlives the change).
+const { sortOrder, selectSortOrder } = usePostboxSortOrder({ savedSortOrder, setSortOrder });
 
 const { messages, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, loadMore } =
 	usePostboxThreads({
@@ -182,6 +184,7 @@ const {
 	viewModeOptions,
 	selectViewMode,
 	activeListRenderer,
+	inboxMode,
 	switchInboxMode,
 	todayActive,
 	viewAutoFiled,
@@ -202,11 +205,6 @@ const { backToList, onTodayReaderClosed } = usePostboxLayoutNav({
 	folderId: folderIdRef,
 	activeMessageId: computed(() => props.activeMessageId),
 });
-
-/** Compose FAB (stack mode) — the touch entry point while the rail, and its
- * Compose button with it, live in the drawer. Same entry point as the rail's
- * button: the composer stack. */
-const composerStack = usePostboxComposerStack();
 
 // The feed behind whichever renderer is active (conversations / categories /
 // bundles). Exactly one subscribes; the rest skip.
@@ -298,10 +296,11 @@ const advanceIds = computed(() =>
 						class="pbx-pane-list w-full border-border-subtle flex-col bg-bg-surface min-w-0 min-h-0"
 						:class="[listPaneVisibility, listPaneBorder]"
 					>
-						<!-- Idea 55: said once, when the instance turns sealing on, because
-						     the only other clue is a lock glyph nobody explained. -->
-						<PostboxSealedMailNudge />
-						<PostboxOfflineBanners
+						<!-- One slot, priority-ordered (offline > sealed > reply queue):
+						     three advisory strips used to stack above the first message. -->
+						<PostboxBannerSlot
+							:mailbox-id="mailboxId"
+							:folder-role="folderRole"
 							:is-offline="isOffline"
 							:queued-count="queuedSendCount"
 							:failed-count="failedSendCount"
@@ -318,13 +317,17 @@ const advanceIds = computed(() =>
 							:view-mode="viewMode"
 							:view-mode-options="viewModeOptions"
 							:sort-order="sortOrder"
+							:density="density"
+							:reading-pane="readingPane"
+							:inbox-mode="inboxMode"
 							:mailbox-id="!grouped && folderRole !== 'drafts' ? mailboxId : undefined"
 							:page-ids="listMessageIds"
-							:select-all-scope-matches-list="triageFilter === 'all'"
 							@open-rail="railOpen = true"
-							@switch-today="switchInboxMode('today')"
+							@switch-inbox-mode="switchInboxMode"
 							@select-view-mode="selectViewMode"
-							@toggle-sort="toggleSortOrder"
+							@select-sort-order="selectSortOrder"
+							@select-density="(mode) => void setDensity(mode)"
+							@select-reading-pane="(pane) => void setReadingPane(pane)"
 						/>
 						<template v-if="folderRole === 'drafts'">
 							<div class="flex-1 overflow-auto">
@@ -342,13 +345,14 @@ const advanceIds = computed(() =>
 								:counts-are-partial="triageCountsArePartial"
 								@select-filter="setTriageFilter"
 							/>
-							<!-- Compact "waiting on your reply" strip — inbox only, non-empty
-					     queue only, dismissible for the session. -->
-							<PostboxReplyQueueStrip :mailbox-id="mailboxId" :folder-role="folderRole" />
 							<PostboxQuickActionsBar
 								v-if="!grouped"
 								:mailbox-id="mailboxId"
 								:folder-role="folderRole"
+								:folder-id="folderId"
+								:sort-order="sortOrder"
+								:page-ids="listMessageIds"
+								:select-all-scope-matches-list="triageFilter === 'all'"
 							/>
 							<div class="flex-1 overflow-auto">
 								<!-- Keyed on folder + renderer so both folder changes and view-mode
@@ -481,18 +485,7 @@ const advanceIds = computed(() =>
 			</div>
 		</Transition>
 
-		<!-- Compose FAB (below lg): the touch entry point for writing while the
-		     rail, and its Compose button with it, live in the drawer. Hidden while
-		     a message is open — the reader carries its own reply affordances. -->
-		<button
-			v-if="!activeMessageId"
-			type="button"
-			class="lg:hidden fixed bottom-5 right-5 z-30 w-13 h-13 rounded-full bg-brand text-text-inverse shadow-lg flex items-center justify-center hover:bg-brand-hover transition-colors duration-(--motion-fast) focus-visible:ring-2 focus-visible:ring-brand/50 outline-none"
-			:aria-label="t('components.postbox.postboxComposeButton.compose')"
-			@click="composerStack.open({ mailboxId })"
-		>
-			<Icon name="lucide:pen-line" class="w-5 h-5" />
-		</button>
+		<PostboxComposeFab :mailbox-id="mailboxId" :hidden="!!activeMessageId" />
 
 		<PostboxShortcutHelp />
 	</div>
