@@ -517,7 +517,17 @@ function reachedEntries(
  *
  * Tracked in issue #528.
  */
-const UNREACHED_ENTRIES: readonly string[] = [];
+const UNREACHED_ENTRIES: readonly string[] = [
+	// The undo-send change (UX pass, 2026-09-01) moved every client "send now"
+	// onto `campaigns.scheduling.schedule` at now+60s so the undo toast cancels
+	// a real scheduled campaign, leaving this public mutation with no in-repo
+	// caller. It stays for now as deliberate API surface — the immediate-send
+	// contract external clients may hold, and the entry point the sendFlow
+	// integration suite exercises preflight/lifecycle through. Decide its fate
+	// in a dedicated PR: delete it (and rewrite that suite against `schedule`
+	// plus the scheduler hop) or route sub-threshold sends back through it.
+	'campaigns/campaigns.ts#sendNow',
+];
 
 describe('the wiring guard is looking at production', () => {
 	it('walked both sides and skipped their tests', () => {

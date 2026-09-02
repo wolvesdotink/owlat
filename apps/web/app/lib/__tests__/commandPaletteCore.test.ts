@@ -220,6 +220,19 @@ describe('core:mail', () => {
 		expect(t(groups[0]?.heading ?? '')).toBe('Mail');
 	});
 
+	/**
+	 * The search-mail row used to reuse `groups.goTo`, which translates to the very
+	 * string `core:navigation` renders — so any query matching both drew "GO TO"
+	 * twice, four rows apart, and read as a rendering bug rather than two sections.
+	 */
+	it('heads the search-mail row with something other than navigation’s "Go to"', () => {
+		const mailSearch = build('core:mail', 'invoice', withMail([]))[0];
+		const navigation = build('core:navigation', '')[0];
+
+		expect(t(mailSearch?.heading ?? '')).not.toBe(t(navigation?.heading ?? ''));
+		expect(t(mailSearch?.heading ?? '')).toBe('Search');
+	});
+
 	it('still offers the search-mail row while hits are missing or unresolved', () => {
 		expect(build('core:mail', 'invoice', withMail([])).map((g) => g.key)).toEqual(['mail-search']);
 		expect(

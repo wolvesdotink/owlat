@@ -11,7 +11,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.instance.general.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -272,22 +272,11 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 			<!-- Settings Content -->
 			<div v-else class="space-y-8">
-				<!-- General Settings Section -->
+				<!-- General settings. No card header: the page h1 immediately above
+				     already says "General" with its own subtitle, and a second
+				     "General / Team settings and defaults" ~100px below it was the same
+				     word twice. Straight into the fields, like Features and Webhooks. -->
 				<UiCard padding="none" overflow="hidden">
-					<template #header>
-						<div class="flex items-center gap-3">
-							<UiIconBox icon="lucide:building-2" size="sm" variant="surface" rounded="lg" />
-							<div>
-								<h2 class="text-lg font-semibold text-text-primary">
-									{{ t('dashboard.admin.instance.general.cardTitle') }}
-								</h2>
-								<p class="text-sm text-text-secondary">
-									{{ t('dashboard.admin.instance.general.cardSubtitle') }}
-								</p>
-							</div>
-						</div>
-					</template>
-
 					<form class="p-6" @submit.prevent="handleSave">
 						<div class="grid gap-6 max-w-2xl">
 							<!-- Team Name -->

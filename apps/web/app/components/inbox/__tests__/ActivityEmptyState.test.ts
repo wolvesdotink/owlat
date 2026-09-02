@@ -7,13 +7,17 @@
  *   - the CTA links to Settings → Messaging channels
  *   - a channel filter narrows the title but keeps the guidance
  *
- * NuxtLink + the Ui* globals are stubbed (global auto-imports); the CTA is
- * matched by its test id so a stubbed NuxtLink still asserts presence/href.
+ * NuxtLink is stubbed and UiButton comes from the shared test setup; the CTA is
+ * matched by its test id so a stubbed link still asserts presence/href.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import ActivityEmptyState from '../ActivityEmptyState.vue';
+// The REAL shared empty state, by workspace name: stubbing it would assert on
+// markup the browser never paints (the ladder, and the #action slot the CTA
+// rides in).
+import UiEmptyState from '@owlat/ui/components/ui/EmptyState.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 beforeAll(() => {
@@ -23,9 +27,9 @@ beforeAll(() => {
 const mountOpts = {
 	global: {
 		plugins: [createTestI18n()],
+		components: { UiEmptyState },
 		stubs: {
 			Icon: true,
-			UiIconBox: true,
 			NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 		},
 	},
@@ -58,5 +62,14 @@ describe('ActivityEmptyState', () => {
 	it('shows the generic title when no filter is active', () => {
 		const wrapper = mount(ActivityEmptyState, { ...mountOpts, props: { canManage: true } });
 		expect(wrapper.text()).toContain('No messages yet');
+	});
+
+	it('rides the shared ladder: eyebrow, a real heading, no icon disc', () => {
+		const wrapper = mount(ActivityEmptyState, { ...mountOpts, props: { canManage: true } });
+
+		expect(wrapper.find('.lp-eyebrow').exists()).toBe(true);
+		// The title was a bolded <p>, invisible to a heading walk of the feed.
+		expect(wrapper.find('h2').text()).toContain('No messages yet');
+		expect(wrapper.find('ui-icon-box-stub').exists()).toBe(false);
 	});
 });

@@ -82,7 +82,13 @@ function custom() {
 			</header>
 
 			<!-- Fresh start vs. migration. Default: fresh (Owlat is its own platform).
-			     When "moving" is chosen, first-login onboarding offers a mail import. -->
+			     When "moving" is chosen, first-login onboarding offers a mail import.
+
+			     Selection is the +10% surface tint one rung up the shadow ladder, not a
+			     painted terracotta border with a brand wash: DESIGN-LANGUAGE rule 2 makes
+			     elevation a shadow ring, and rule 1 leaves this screen's single accent to
+			     the step rail. -->
+
 			<fieldset class="card mb-8 p-5">
 				<legend class="px-2 text-sm font-medium text-text-primary">
 					{{ t('setup.mode.migrationLegend') }}
@@ -94,7 +100,7 @@ function custom() {
 						class="rounded-xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:class="
 							!isMigrationMode
-								? 'border-brand shadow-surface-2 bg-brand-soft'
+								? 'border-transparent bg-(--surface-2-selected) shadow-surface-2'
 								: 'border-transparent bg-surface-1 shadow-surface-1 hover:shadow-surface-2'
 						"
 						@click="isMigrationMode = false"
@@ -113,7 +119,7 @@ function custom() {
 						class="rounded-xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:class="
 							isMigrationMode
-								? 'border-brand shadow-surface-2 bg-brand-soft'
+								? 'border-transparent bg-(--surface-2-selected) shadow-surface-2'
 								: 'border-transparent bg-surface-1 shadow-surface-1 hover:shadow-surface-2'
 						"
 						@click="isMigrationMode = true"

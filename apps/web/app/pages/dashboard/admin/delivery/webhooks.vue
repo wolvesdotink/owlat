@@ -1,22 +1,13 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
 
 const { t } = useI18n();
-
-/**
- * `getEventLabel` reads a module-scope definition set whose labels carry i18n
- * keys rather than sentences (the registry convention); a plain string is still
- * accepted so a value with nothing to translate reads as itself.
- */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
 
 useHead({ title: () => t('dashboard.admin.delivery.webhooks.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -92,8 +83,6 @@ const {
 	handleDelete,
 
 	// Utilities
-	formatDate,
-	getEventLabel,
 	expandedWebhookId,
 	toggleExpanded,
 	showNotification,
@@ -116,6 +105,69 @@ const {
 	isSendingTest,
 	handleSendTest,
 } = useWebhookDeliveryLogs(showNotification);
+
+// ── Unsaved-changes guard ───────────────────────────────────────────
+// Both webhook forms live in modals, so their drafts exist only while the modal
+// is up: a command-palette jump, a browser Back or a tab close used to drop an
+// endpoint the operator had half-configured without a word. Dirtiness is
+// measured against the seed — an empty create form, or the stored row an edit
+// was opened on — so merely opening a modal never prompts.
+const isCreateDirty = computed(
+	() =>
+		isCreateModalOpen.value &&
+		(createForm.name.trim() !== '' || createForm.url.trim() !== '' || createForm.events.length > 0)
+);
+
+const isEditDirty = computed(() => {
+	if (!isEditModalOpen.value) return false;
+	const original = (webhooks.value ?? []).find((webhook) => webhook._id === editForm.id);
+	if (!original) return false;
+	const sorted = (events: readonly string[]) => [...events].sort().join(',');
+	return (
+		editForm.name !== original.name ||
+		editForm.url !== original.url ||
+		sorted(editForm.events) !== sorted(original.events)
+	);
+});
+
+const {
+	showDialog: showUnsavedDialog,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		await handleEdit();
+		// `handleEdit` closes its modal only once the write lands; a refusal or a
+		// validation stop leaves it open, and throwing keeps the operator here
+		// with the draft intact instead of navigating away from it.
+		if (isEditModalOpen.value) throw new Error('Save failed');
+	},
+});
+
+watch([isCreateDirty, isEditDirty], ([create, edit]) => setHasChanges(create || edit), {
+	immediate: true,
+});
+
+/**
+ * Saving from the guard dialog. Editing routes through the composable's
+ * `confirmSave`, which navigates once the write lands.
+ *
+ * Creating cannot: it answers with a signing secret that is shown exactly once,
+ * in a modal on THIS page, so completing the create and then leaving would
+ * destroy it. So the create path writes and then cancels the navigation — on
+ * success there is a secret to read, on failure an inline error in the form, and
+ * either way the operator belongs here.
+ */
+async function handleGuardSave() {
+	if (isCreateModalOpen.value) {
+		await handleCreate();
+		cancelNavigation();
+		return;
+	}
+	await confirmSave();
+}
 </script>
 
 <template>
@@ -167,37 +219,30 @@ const {
 				<DashboardListSkeleton variant="card" leading :rows="3" />
 			</div>
 
-			<!-- Empty State (no organization) -->
-			<div
+			<!-- No workspace — a precondition, not an empty list, so the eyebrow
+			     names the surface rather than claiming there is nothing here. -->
+			<UiEmptyState
 				v-else-if="!hasActiveOrganization"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
-			>
-				<UiIconBox icon="lucide:webhook" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">
-					{{ t('dashboard.admin.delivery.webhooks.noWorkspace.title') }}
-				</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					{{ t('dashboard.admin.delivery.webhooks.noWorkspace.description') }}
-				</p>
-			</div>
+				icon="lucide:webhook"
+				:eyebrow="t('dashboard.admin.delivery.webhooks.title')"
+				:title="t('dashboard.admin.delivery.webhooks.noWorkspace.title')"
+				:description="t('dashboard.admin.delivery.webhooks.noWorkspace.description')"
+			/>
 
 			<!-- Empty State (no webhooks) -->
-			<div
+			<UiEmptyState
 				v-else-if="!isLoading && (!webhooks || webhooks.length === 0)"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
+				icon="lucide:webhook"
+				:title="t('dashboard.admin.delivery.webhooks.empty.title')"
+				:description="t('dashboard.admin.delivery.webhooks.empty.description')"
 			>
-				<UiIconBox icon="lucide:webhook" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">
-					{{ t('dashboard.admin.delivery.webhooks.empty.title') }}
-				</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					{{ t('dashboard.admin.delivery.webhooks.empty.description') }}
-				</p>
-				<UiButton class="gap-2 mt-6" @click="openCreateModal">
-					<Icon name="lucide:plus" class="w-4 h-4" />
-					{{ t('dashboard.admin.delivery.webhooks.create') }}
-				</UiButton>
-			</div>
+				<template #action>
+					<UiButton class="gap-2" @click="openCreateModal">
+						<Icon name="lucide:plus" class="w-4 h-4" />
+						{{ t('dashboard.admin.delivery.webhooks.create') }}
+					</UiButton>
+				</template>
+			</UiEmptyState>
 
 			<!-- Webhooks List -->
 			<div v-else class="space-y-4">
@@ -211,177 +256,21 @@ const {
 					}}
 				</div>
 
-				<div
+				<WebhooksWebhookRow
 					v-for="webhook in webhooks"
 					:key="webhook._id"
-					:class="['card p-0 overflow-hidden', webhook.isActive ? '' : 'opacity-60']"
-				>
-					<!-- Webhook Header -->
-					<div
-						class="flex items-center justify-between px-6 py-4 cursor-pointer hover:bg-bg-surface/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
-						role="button"
-						tabindex="0"
-						:aria-expanded="expandedWebhookId === webhook._id"
-						:aria-controls="`webhook-details-${webhook._id}`"
-						:aria-label="t('dashboard.admin.delivery.webhooks.detailsFor', { name: webhook.name })"
-						@click="toggleExpanded(webhook._id)"
-						@keydown.enter.self="toggleExpanded(webhook._id)"
-						@keydown.space.self.prevent="toggleExpanded(webhook._id)"
-					>
-						<div class="flex items-center gap-4 min-w-0">
-							<div
-								:class="[
-									'p-2 rounded-lg shrink-0',
-									webhook.isActive ? 'bg-success/10' : 'bg-bg-surface',
-								]"
-							>
-								<Icon
-									name="lucide:globe"
-									:class="['w-5 h-5', webhook.isActive ? 'text-success' : 'text-text-tertiary']"
-								/>
-							</div>
-							<div class="min-w-0">
-								<div class="flex items-center gap-3">
-									<span class="text-text-primary font-medium">{{ webhook.name }}</span>
-									<span
-										:class="[
-											'inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium',
-											webhook.isActive
-												? 'bg-success/10 text-success'
-												: 'bg-bg-surface text-text-tertiary',
-										]"
-									>
-										{{
-											webhook.isActive
-												? t('common.active')
-												: t('dashboard.admin.delivery.webhooks.disabled')
-										}}
-									</span>
-								</div>
-								<p class="text-sm text-text-tertiary truncate mt-0.5">
-									{{ webhook.url }}
-								</p>
-							</div>
-						</div>
-						<div class="flex items-center gap-2">
-							<Icon
-								name="lucide:chevron-down"
-								:class="[
-									'w-5 h-5 text-text-tertiary transition-transform',
-									expandedWebhookId === webhook._id ? 'rotate-180' : '',
-								]"
-							/>
-						</div>
-					</div>
-
-					<!-- Expanded Details -->
-					<Transition name="expand">
-						<div
-							v-if="expandedWebhookId === webhook._id"
-							:id="`webhook-details-${webhook._id}`"
-							class="border-t border-border-subtle"
-						>
-							<!-- Events -->
-							<div class="px-6 py-4 border-b border-border-subtle">
-								<p class="text-sm font-medium text-text-secondary mb-2">
-									{{ t('dashboard.admin.delivery.webhooks.subscribedEvents') }}
-								</p>
-								<div class="flex flex-wrap gap-2">
-									<span
-										v-for="event in webhook.events"
-										:key="event"
-										class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-bg-surface text-text-primary"
-									>
-										{{ localized(getEventLabel(event)) }}
-									</span>
-								</div>
-							</div>
-
-							<!-- Info -->
-							<div class="px-6 py-4 border-b border-border-subtle grid grid-cols-2 gap-4">
-								<div>
-									<p class="text-xs text-text-tertiary">
-										{{ t('dashboard.admin.delivery.webhooks.created') }}
-									</p>
-									<p class="text-sm text-text-secondary">{{ formatDate(webhook.createdAt) }}</p>
-								</div>
-								<div>
-									<p class="text-xs text-text-tertiary">
-										{{ t('dashboard.admin.delivery.webhooks.lastUpdated') }}
-									</p>
-									<p class="text-sm text-text-secondary">{{ formatDate(webhook.updatedAt) }}</p>
-								</div>
-							</div>
-
-							<!-- Actions -->
-							<div class="px-6 py-4 flex items-center justify-between">
-								<div class="flex items-center gap-2">
-									<UiButton
-										variant="secondary"
-										class="gap-2"
-										:disabled="togglingWebhookId === webhook._id"
-										@click.stop="handleToggle(webhook._id)"
-									>
-										<Icon
-											v-if="togglingWebhookId === webhook._id"
-											name="lucide:loader-2"
-											class="w-4 h-4 animate-spin motion-reduce:animate-none"
-										/>
-										<Icon v-else-if="!webhook.isActive" name="lucide:play" class="w-4 h-4" />
-										<Icon v-else name="lucide:pause" class="w-4 h-4" />
-										{{
-											webhook.isActive
-												? t('dashboard.admin.delivery.webhooks.disable')
-												: t('dashboard.admin.delivery.webhooks.enable')
-										}}
-									</UiButton>
-									<UiButton variant="secondary" class="gap-2" @click.stop="openEditModal(webhook)">
-										<Icon name="lucide:settings" class="w-4 h-4" />
-										{{ t('common.edit') }}
-									</UiButton>
-									<UiButton
-										variant="secondary"
-										class="gap-2"
-										:disabled="!webhook.isActive || isSendingTest"
-										@click.stop="handleSendTest(webhook._id)"
-									>
-										<Icon
-											v-if="isSendingTest"
-											name="lucide:loader-2"
-											class="w-4 h-4 animate-spin motion-reduce:animate-none"
-										/>
-										<Icon v-else name="lucide:send" class="w-4 h-4" />
-										{{ t('dashboard.admin.delivery.webhooks.sendTest') }}
-									</UiButton>
-									<UiButton
-										variant="secondary"
-										class="gap-2"
-										@click.stop="openLogsModal(webhook._id, webhook.name)"
-									>
-										<Icon name="lucide:scroll-text" class="w-4 h-4" />
-										{{ t('dashboard.admin.delivery.webhooks.deliveryLogs') }}
-									</UiButton>
-									<UiButton
-										variant="secondary"
-										class="gap-2"
-										@click.stop="openRegenerateModal(webhook._id, webhook.name)"
-									>
-										<Icon name="lucide:refresh-cw" class="w-4 h-4" />
-										{{ t('dashboard.admin.delivery.webhooks.regenerateSecret') }}
-									</UiButton>
-								</div>
-								<UiButton
-									variant="ghost"
-									class="text-error hover:bg-error/10 gap-2"
-									@click.stop="openDeleteModal(webhook._id, webhook.name)"
-								>
-									<Icon name="lucide:trash-2" class="w-4 h-4" />
-									{{ t('common.delete') }}
-								</UiButton>
-							</div>
-						</div>
-					</Transition>
-				</div>
+					:webhook="webhook"
+					:expanded="expandedWebhookId === webhook._id"
+					:toggling="togglingWebhookId === webhook._id"
+					:sending-test="isSendingTest"
+					@toggle-expanded="toggleExpanded(webhook._id)"
+					@toggle-active="handleToggle(webhook._id)"
+					@edit="openEditModal(webhook)"
+					@send-test="handleSendTest(webhook._id)"
+					@view-logs="openLogsModal(webhook._id, webhook.name)"
+					@regenerate="openRegenerateModal(webhook._id, webhook.name)"
+					@remove="openDeleteModal(webhook._id, webhook.name)"
+				/>
 			</div>
 		</div>
 
@@ -462,25 +351,14 @@ const {
 			@clear-selected-log="clearSelectedLog"
 			@send-test="logsWebhookId && handleSendTest(logsWebhookId)"
 		/>
+
+		<!-- Unsaved Changes Dialog -->
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="handleGuardSave"
+		/>
 	</div>
 </template>
 
-<style scoped>
-/* Expand transition */
-.expand-enter-active,
-.expand-leave-active {
-	transition: all var(--motion-moderate) var(--ease-spring);
-	overflow: hidden;
-}
-
-.expand-enter-from,
-.expand-leave-to {
-	opacity: 0;
-	max-height: 0;
-}
-
-.expand-enter-to,
-.expand-leave-from {
-	max-height: 600px;
-}
-</style>

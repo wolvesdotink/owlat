@@ -46,20 +46,28 @@ const emit = defineEmits<{
 	cancel: [];
 }>();
 
-const variantConfig: Record<Variant, { icon: string; buttonClass: string; iconClass: string }> = {
+/**
+ * The variant only chooses the icon and the tint behind it.
+ *
+ * It used to carry a `buttonClass` too — a terracotta fill for `default`, a
+ * solid gold fill for `warning` — hand-written into a raw `<button>` that also
+ * got `.btn`'s own recipe wrong (`rounded-lg`/`px-4` against `.btn`'s
+ * `rounded-full`/`px-5`), so the confirm button was a different shape from the
+ * Cancel button beside it. The confirm button is a `UiButton` now: `.btn-danger`
+ * owns the only sanctioned solid danger fill and `.btn-primary` is the
+ * monochrome default. The icon disc keeps its tint — a tint is not a fill.
+ */
+const variantConfig: Record<Variant, { icon: string; iconClass: string }> = {
 	danger: {
 		icon: 'lucide:trash-2',
-		buttonClass: 'bg-error-strong hover:bg-error-strong/90 text-text-inverse',
 		iconClass: 'bg-error/10 text-error',
 	},
 	warning: {
 		icon: 'lucide:alert-triangle',
-		buttonClass: 'bg-warning hover:bg-warning/90 text-bg-deep',
 		iconClass: 'bg-warning/10 text-warning',
 	},
 	default: {
 		icon: 'lucide:alert-triangle',
-		buttonClass: 'bg-brand text-text-inverse hover:bg-brand-hover',
 		iconClass: 'bg-brand/10 text-brand',
 	},
 };
@@ -113,19 +121,16 @@ const handleBackdropClick = () => {
 			<UiButton variant="secondary" :disabled="isLoading" @click="handleCancel">
 				{{ resolvedCancelText }}
 			</UiButton>
-			<button
-				type="button"
-				:class="[
-					'inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-[color,background-color,border-color,box-shadow,scale] duration-(--motion-fast) ease-spring active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base disabled:pointer-events-none disabled:opacity-50',
-					config.buttonClass,
-				]"
-				:disabled="isLoading"
+			<UiButton
+				:variant="variant === 'danger' ? 'danger' : 'primary'"
+				:loading="isLoading"
 				@click="handleConfirm"
 			>
-				<Icon v-if="isLoading" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
-				<Icon v-else :name="config.icon" class="w-4 h-4" />
+				<template v-if="!isLoading" #iconLeft>
+					<Icon :name="config.icon" class="w-4 h-4" />
+				</template>
 				{{ isLoading ? t('ui.actions.pleaseWait') : resolvedConfirmText }}
-			</button>
+			</UiButton>
 		</template>
 	</UiModal>
 </template>

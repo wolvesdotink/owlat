@@ -362,7 +362,7 @@ defineExpose({
 		<div v-if="!abTestExpanded" class="card p-6">
 			<button
 				type="button"
-				class="flex w-full items-center gap-2 text-left text-brand font-medium hover:opacity-80 transition-opacity"
+				class="flex w-full items-center gap-2 text-left text-text-primary font-medium hover:opacity-80 transition-opacity"
 				@click="addABTest"
 			>
 				<Icon name="lucide:plus" class="w-4 h-4" />

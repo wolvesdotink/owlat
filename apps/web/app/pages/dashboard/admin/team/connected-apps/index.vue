@@ -9,7 +9,7 @@ import ConnectedAppSecretReveal from '~/components/settings/connectedApps/Connec
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.team.connectedApps.index.pageTitle') });
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 // Managing connected apps requires `organization:manage`. listByTeam is
 // owner/admin-gated, so surface the established "Admins only" state for editors

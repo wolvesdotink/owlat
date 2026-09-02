@@ -20,7 +20,7 @@ function localized(value: LocalizedText): string {
 useHead({ title: () => t('dashboard.admin.delivery.index.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -28,9 +28,11 @@ const { isLoading: teamLoading } = useOrganizationContext();
 
 // The SAME roll-up query that feeds the sidebar Delivery dot — so the header
 // verdict chip and the nav dot can never disagree.
+// `level` stays null until the roll-up answers, and the chip is a claim about
+// whether this instance can send — so there is no verdict to show yet, not a
+// default "Healthy" one.
 const { level, reason } = useDeliveryHealth();
-const verdict = computed(() => deliveryVerdict(level.value));
-const advancedOpen = ref(false);
+const verdict = computed(() => (level.value ? deliveryVerdict(level.value) : null));
 
 // Sending overview: warm-up state, today's volume/budget, rolling reputation.
 const {
@@ -196,7 +198,9 @@ const suppressionParts = computed(() => {
 
 // Verdict chip tone → semantic token classes, via the shared health tone map so
 // the chip and the sidebar dot (which reads the same query) can't drift apart.
-const verdictChipClass = computed(() => healthChipClass[levelTone(verdict.value.tone)]);
+const verdictChipClass = computed(() =>
+	verdict.value ? healthChipClass[levelTone(verdict.value.tone)] : healthChipClass.neutral
+);
 
 // Warm-up detail for the depth-on-demand disclosure — only when the MTA has
 // synced warming state (volume rides along so both are one narrowed object).
@@ -208,8 +212,11 @@ const sendingDetail = computed(() => {
 
 <template>
 	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="mb-6 flex items-start justify-between gap-4">
+		<!-- Header. The four ramp pages used to hide in an "Advanced tools"
+			 disclosure alongside it, which made the settings that gate how fast this
+			 deployment may send reachable from exactly one collapsed control; they
+			 live in the admin layout's rail now, under Advanced, on every page. -->
+		<div class="mb-6">
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:shield-check" size="lg" variant="brand" rounded="xl" />
 				<div>
@@ -218,11 +225,13 @@ const sendingDetail = computed(() => {
 							{{ t('dashboard.admin.delivery.index.title') }}
 						</h1>
 						<span
+							v-if="verdict"
 							class="px-2.5 py-1 rounded-full text-xs font-medium shrink-0"
 							:class="verdictChipClass"
 						>
 							{{ localized(verdict.label) }}
 						</span>
+						<UiSkeleton v-else class="h-6 w-24 rounded-full" />
 					</div>
 					<!-- When the verdict isn't Healthy, surface the reason as a visible
 						 line (not just a mouse-only tooltip) so keyboard/touch users see it. -->
@@ -230,39 +239,11 @@ const sendingDetail = computed(() => {
 						{{ reason }}
 					</p>
 					<p v-if="warmup" class="mt-1 text-sm text-text-secondary">{{ warmup }}</p>
-					<p v-else-if="level === 'ok'" class="mt-1 text-sm text-text-secondary">
+					<p v-else-if="!level || level === 'ok'" class="mt-1 text-sm text-text-secondary">
 						{{ t('dashboard.admin.delivery.index.lede') }}
 					</p>
 				</div>
 			</div>
-			<UiDisclosure
-				v-model="advancedOpen"
-				controls="delivery-advanced-links"
-				:label="t('dashboard.admin.delivery.index.advanced.label')"
-			>
-				<div class="flex flex-wrap justify-end gap-3">
-					<NuxtLink
-						to="/dashboard/admin/delivery/advanced/independence"
-						class="text-sm text-brand hover:underline"
-						>{{ t('dashboard.admin.delivery.index.advanced.independence') }}</NuxtLink
-					>
-					<NuxtLink
-						to="/dashboard/admin/delivery/advanced/cells"
-						class="text-sm text-brand hover:underline"
-						>{{ t('dashboard.admin.delivery.index.advanced.cells') }}</NuxtLink
-					>
-					<NuxtLink
-						to="/dashboard/admin/delivery/advanced/controls"
-						class="text-sm text-brand hover:underline"
-						>{{ t('dashboard.admin.delivery.index.advanced.controls') }}</NuxtLink
-					>
-					<NuxtLink
-						to="/dashboard/admin/delivery/advanced/measurement"
-						class="text-sm text-brand hover:underline"
-						>{{ t('dashboard.admin.delivery.index.advanced.measurement') }}</NuxtLink
-					>
-				</div>
-			</UiDisclosure>
 		</div>
 
 		<!-- The one readiness panel leads the hub: it derives a single truth for
@@ -279,7 +260,10 @@ const sendingDetail = computed(() => {
 
 		<!-- Loading -->
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<Icon name="lucide:loader-2" class="w-8 h-8 animate-spin motion-reduce:animate-none text-text-tertiary" />
+			<Icon
+				name="lucide:loader-2"
+				class="w-8 h-8 animate-spin motion-reduce:animate-none text-text-tertiary"
+			/>
 		</div>
 
 		<UiErrorAlert

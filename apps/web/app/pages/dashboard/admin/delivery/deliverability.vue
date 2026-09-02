@@ -41,7 +41,7 @@ const { itemTitle } = useDeliverabilityChecklistCopy();
 useHead({ title: () => t('dashboard.admin.delivery.deliverability.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -230,9 +230,11 @@ async function copyReport() {
 					:title="t('dashboard.admin.delivery.deliverability.empty.title')"
 					:description="t('dashboard.admin.delivery.deliverability.empty.description')"
 				>
-					<UiButton to="/dashboard/admin/delivery">
-						{{ t('dashboard.admin.delivery.deliverability.empty.action') }}
-					</UiButton>
+					<template #action>
+						<UiButton to="/dashboard/admin/delivery">
+							{{ t('dashboard.admin.delivery.deliverability.empty.action') }}
+						</UiButton>
+					</template>
 				</UiEmptyState>
 			</template>
 

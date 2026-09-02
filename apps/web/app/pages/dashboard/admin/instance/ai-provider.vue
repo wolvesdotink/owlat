@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { UnsavedChangesDialog } from '@owlat/email-builder';
+
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.instance.aiProvider.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	// Reachable on-ramp: this is how an admin turns AI on, so it is NOT gated by
 	// the `ai` flag (chicken-and-egg). The admin gate is enforced server-side —
 	// `saveConfig` requires `organization:manage` and audit-logs the change.
@@ -57,18 +59,31 @@ const providerOptions = computed(() =>
 const embeddingOptions = computed(() =>
 	embeddingOptionKeys.map((option) => ({ ...option, label: t(option.label) }))
 );
+
+// Unsaved-changes guard: navigating away with an unsaved provider edit — a
+// pasted API key above all — prompts to save/discard instead of dropping it.
+// Same shared composable + dialog the General settings page uses.
+const {
+	showDialog: showUnsavedDialog,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		await handleSave();
+		// `useAiProviderForm.handleSave` clears `isDirty` only once the write
+		// lands; a validation stop or a refused mutation leaves it set, so a
+		// still-dirty form means the save failed and the operator stays here.
+		if (isDirty.value) throw new Error('Save failed');
+	},
+});
+
+watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
-		<NuxtLink
-			to="/dashboard/admin"
-			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
-		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			{{ t('dashboard.admin.instance.aiProvider.backToSettings') }}
-		</NuxtLink>
-
 		<div class="flex items-center gap-4 mb-8">
 			<UiIconBox icon="lucide:sparkles" size="xl" variant="brand" rounded="full" />
 			<div>
@@ -82,14 +97,25 @@ const embeddingOptions = computed(() =>
 		</div>
 
 		<UiQueryBoundary :loading="isLoading && !config" :error="error">
+			<!--
+				First load: a content-shaped placeholder at the geometry of the
+				provider cards below, rather than a centred spinner that blanks
+				the page and then reflows.
+			-->
 			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">
-							{{ t('dashboard.admin.instance.aiProvider.loading') }}
-						</p>
-					</div>
+				<div
+					class="space-y-6 max-w-3xl"
+					role="status"
+					aria-busy="true"
+					:aria-label="t('dashboard.admin.instance.aiProvider.loading')"
+				>
+					<UiCard v-for="card in 2" :key="card">
+						<div class="space-y-4">
+							<UiSkeleton class="h-5 w-48" />
+							<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
+							<UiSkeleton v-for="field in 3" :key="field" class="h-10 rounded-lg" />
+						</div>
+					</UiCard>
 				</div>
 			</template>
 
@@ -335,5 +361,13 @@ const embeddingOptions = computed(() =>
 				</div>
 			</form>
 		</UiQueryBoundary>
+
+		<!-- Unsaved Changes Dialog -->
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
+		/>
 	</div>
 </template>

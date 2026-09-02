@@ -351,6 +351,23 @@ const agentOriginalDraft = (message: NonNullable<typeof messages.value>[number])
 // (legacy closed threads still read "Resolved" via the shared status chip).
 const statusOptions = ['open', 'waiting', 'resolved'] as const;
 
+/**
+ * The status picker is a pill menu, not a native `<select>`: it sits at the end
+ * of a row of pill controls (Discuss / Assign / Snooze) and an input-styled
+ * rectangle with a native chevron broke that rhythm — and skipped the shared
+ * control treatment (press feedback, tiered motion) its neighbours all get.
+ */
+const statusMenuOpen = ref(false);
+// The assignee popover takes `open` as a controlled prop (same as the list
+// row's picker); unbound, its trigger toggled a value nothing read back.
+const assignMenuOpen = ref(false);
+const detailsAssignMenuOpen = ref(false);
+const currentStatus = computed<(typeof statusOptions)[number]>(() => {
+	const status = thread.value?.status;
+	// Legacy `closed` (and anything unexpected) reads as Resolved.
+	return status === 'open' || status === 'waiting' ? status : 'resolved';
+});
+
 // Chat integration: surface existing chat channels that already discuss this
 // thread, and offer to spin up a new one. Only active when the chat flag is
 // enabled — the query throws FEATURE_DISABLED otherwise.
@@ -465,8 +482,11 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							{{ t('dashboard.inbox.detail.discussInChannel') }}
 						</UiButton>
 					</div>
-					<!-- Assignee picker — avatar popover (Me / members / Unassign). -->
+					<!-- Assignee picker — avatar popover (Me / members / Unassign).
+					     `open` is a controlled prop: without the binding the popover
+					     can never open (the row's picker models it the same way). -->
 					<InboxAssignPopover
+						v-model:open="assignMenuOpen"
 						:members="assignMembers"
 						:current-user-id="user?.id ?? null"
 						:assigned-to="thread.assignedTo ?? null"
@@ -519,20 +539,38 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						<Icon name="lucide:alarm-clock" class="w-4 h-4" />
 						{{ t('dashboard.inbox.detail.snooze') }}
 					</UiButton>
-					<select
-						:value="thread.status === 'closed' ? 'resolved' : thread.status"
-						class="input w-auto text-sm"
-						:aria-label="t('dashboard.inbox.detail.changeStatusAria')"
-						@change="
-							handleStatusChange(
-								($event.target as HTMLSelectElement).value as 'open' | 'waiting' | 'resolved'
-							)
-						"
-					>
-						<option v-for="s in statusOptions" :key="s" :value="s">
-							{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
-						</option>
-					</select>
+					<!-- Status picker — the same pill trigger + menu the assignee
+					     control two places to the left uses. -->
+					<UiDropdownMenu v-model:open="statusMenuOpen" position="right">
+						<template #trigger>
+							<UiButton
+								variant="secondary"
+								size="sm"
+								type="button"
+								class="gap-1.5"
+								:aria-label="t('dashboard.inbox.detail.changeStatusAria')"
+							>
+								{{ t(`dashboard.inbox.detail.statuses.${currentStatus}`) }}
+								<template #iconRight>
+									<Icon name="lucide:chevron-down" class="w-4 h-4 text-text-tertiary" />
+								</template>
+							</UiButton>
+						</template>
+						<UiDropdownMenuItem
+							v-for="s in statusOptions"
+							:key="s"
+							@click="handleStatusChange(s)"
+						>
+							<span class="flex-1 truncate">
+								{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
+							</span>
+							<Icon
+								v-if="s === currentStatus"
+								name="lucide:check"
+								class="w-4 h-4 text-brand shrink-0"
+							/>
+						</UiDropdownMenuItem>
+					</UiDropdownMenu>
 				</div>
 			</div>
 
@@ -814,9 +852,11 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					</div>
 
 					<!-- Empty messages -->
-					<div v-if="messages.length === 0" class="card text-center py-8">
-						<p class="text-text-tertiary">{{ t('dashboard.inbox.detail.noMessages') }}</p>
-					</div>
+					<UiEmptyState
+						v-if="messages.length === 0"
+						icon="lucide:mail"
+						:title="t('dashboard.inbox.detail.noMessages')"
+					/>
 				</div>
 
 				<!-- Sidebar -->

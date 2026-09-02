@@ -14,7 +14,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.instance.sealedMail.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -156,13 +156,6 @@ async function runReSeal() {
 <template>
 	<div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 		<div>
-			<NuxtLink
-				to="/dashboard/admin"
-				class="inline-flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.instance.sealedMail.backToSettings') }}
-			</NuxtLink>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.instance.sealedMail.title') }}
 			</h1>

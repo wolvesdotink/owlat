@@ -233,7 +233,17 @@ watch(
 						<p class="text-sm text-text-secondary">{{ t(TRANSPORT_WIZARD_ENTRY.body) }}</p>
 					</div>
 				</div>
-				<UiButton v-if="!isOpen" ref="entryActionRef" variant="secondary" size="sm" @click="open">
+				<!-- `shrink-0 whitespace-nowrap`: the title + body block beside it is
+				     long enough to squeeze this pill until "Connect a provider" wrapped
+				     to three lines and the full radius rounded it into a blob. -->
+				<UiButton
+					v-if="!isOpen"
+					ref="entryActionRef"
+					variant="secondary"
+					size="sm"
+					class="shrink-0 whitespace-nowrap"
+					@click="open"
+				>
 					{{ t(TRANSPORT_WIZARD_ENTRY.actionLabel) }}
 				</UiButton>
 			</div>

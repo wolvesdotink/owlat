@@ -112,8 +112,10 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 
 <template>
 	<div>
-		<!-- Section header -->
-		<div class="flex items-center justify-between mb-4">
+		<!-- Section header. Stacked below `sm` for the same reason the page header
+		     above it is: side by side, the title and lede wrap to a narrow column
+		     and the action pill wraps with them. -->
+		<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('components.domains.trackingDomainsSection.title') }}
@@ -125,7 +127,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 			<UiButton
 				variant="secondary"
 				v-if="hasActiveOrganization"
-				class="gap-2"
+				class="gap-2 shrink-0 self-start whitespace-nowrap sm:self-auto"
 				@click="addModal.open()"
 			>
 				<Icon name="lucide:plus" class="w-4 h-4" />
@@ -167,22 +169,26 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 			</div>
 		</div>
 
-		<!-- Empty state -->
-		<div
-			v-else-if="trackingDomains && trackingDomains.length === 0"
-			class="card flex flex-col items-center justify-center py-12 text-center px-6"
-		>
-			<UiIconBox icon="lucide:link" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('components.domains.trackingDomainsSection.empty.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('components.domains.trackingDomainsSection.empty.body') }}
-			</p>
-			<UiButton variant="secondary" class="gap-2 mt-4" @click="addModal.open()">
-				<Icon name="lucide:plus" class="w-4 h-4" />
-				{{ t('components.domains.trackingDomainsSection.empty.action') }}
-			</UiButton>
+		<!-- Empty state. Same eyebrow → title → lead → action ladder the sending
+		     domains section above uses (the two sit on ONE screen, so a grey icon
+		     disc here and a shared empty state there read as two products). The
+		     action stays a hairline: the sending empty state's dark pill is the
+		     page's one primary. `headingLevel` is 3 — this section already has an
+		     h2 above it. -->
+		<div v-else-if="trackingDomains && trackingDomains.length === 0" class="card">
+			<UiEmptyState
+				icon="lucide:link"
+				:heading-level="3"
+				:title="t('components.domains.trackingDomainsSection.empty.title')"
+				:description="t('components.domains.trackingDomainsSection.empty.body')"
+			>
+				<template #action>
+					<UiButton variant="secondary" class="gap-2" @click="addModal.open()">
+						<Icon name="lucide:plus" class="w-4 h-4" />
+						{{ t('components.domains.trackingDomainsSection.empty.action') }}
+					</UiButton>
+				</template>
+			</UiEmptyState>
 		</div>
 
 		<!-- List -->

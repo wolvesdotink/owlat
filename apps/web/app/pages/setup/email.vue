@@ -198,7 +198,7 @@ async function next() {
 							class="flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-[border-color,background-color,box-shadow] duration-(--motion-fast) ease-spring"
 							:class="
 								provider === opt.value
-									? 'border-brand shadow-surface-2 bg-brand-soft'
+									? 'border-transparent bg-(--surface-2-selected) shadow-surface-2'
 									: 'border-transparent bg-surface-1 shadow-surface-1 hover:shadow-surface-2'
 							"
 						>

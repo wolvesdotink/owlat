@@ -37,7 +37,7 @@ const { t } = useI18n();
 const { flagLabel, flagKeyLabel, flagDescription, packLabel, packDescription } = useFeatureCopy();
 
 useHead({ title: () => t('dashboard.admin.instance.features.pageTitle') });
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const {
 	data: liveFlags,

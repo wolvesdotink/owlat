@@ -338,6 +338,32 @@ export function interpretSetupModeProbe(status: number): boolean {
 	return status === 403;
 }
 
+/**
+ * The wizard's handoff URL — where its ONE full page load goes.
+ *
+ * It is a load rather than an in-app `router.push` for two reasons that both
+ * outlive any refactor: apply rewrote `.env` and restarted the web container, so
+ * this tab is still running the OLD process's bundle and runtime config
+ * (`setupMode: true`, plus the `BETTER_AUTH_SECRET` that was only just
+ * generated); and apply seeds the admin account server-side without ever issuing
+ * this browser a session, so there is no signed-in route to push to. The
+ * operator genuinely has to sign in once, against the restarted process.
+ *
+ * What the load no longer has to be is the END of the wizard: the review step
+ * shows its "setup complete" finale first and this URL is taken from there, on a
+ * click. `next` is the destination the operator picked; it rides along as the
+ * login form's own `redirect` (which `login.vue` clamps with `safeRedirect`), so
+ * they land there after signing in instead of on a bare dashboard.
+ *
+ * Pure so the query-merging — `target` already carries `?postSetup=1` and
+ * usually `&email=` — is unit-testable without a browser.
+ */
+export function setupSignInHref(target: string, next?: string): string {
+	if (!next) return target;
+	const separator = target.includes('?') ? '&' : '?';
+	return `${target}${separator}redirect=${encodeURIComponent(next)}`;
+}
+
 // ── Composable: shared reactive state ────────────────────────────────────────
 
 export function useSetupWizard() {

@@ -47,7 +47,7 @@ function localized(value: LocalizedText): string {
 	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 }
 
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const {
 	data: summary,

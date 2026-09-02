@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { sanitizeCsvCell } from '@owlat/shared';
 import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
 import Papa from 'papaparse';
 import { isValidEmail } from '~/utils/validation';
 import { authClient } from '~/lib/auth-client';
@@ -43,10 +44,16 @@ const { showToast } = useToast();
 
 // ── Profile (display name) ──
 const nameDraft = ref('');
+// The name we know is persisted. Tracked separately from `user.name` because
+// `authClient.updateUser` does not synchronously refresh the session object this
+// page reads, so comparing the draft against the session would report a
+// just-saved name as still dirty.
+const savedName = ref('');
 watch(
 	user,
 	(u) => {
 		if (u && !nameDraft.value) nameDraft.value = u.name ?? '';
+		if (u && !savedName.value) savedName.value = u.name ?? '';
 	},
 	{ immediate: true }
 );
@@ -62,13 +69,44 @@ async function saveProfile() {
 				res.error.message ?? t('dashboard.preferences.account.profileUpdateFailed'),
 				'error'
 			);
-		else showToast(t('dashboard.preferences.account.profileUpdated'));
+		else {
+			savedName.value = name;
+			showToast(t('dashboard.preferences.account.profileUpdated'));
+		}
 	} catch {
 		showToast(t('dashboard.preferences.account.profileUpdateFailed'), 'error');
 	} finally {
 		savingProfile.value = false;
 	}
 }
+
+// ── Unsaved-changes guard ───────────────────────────────────────────
+// The one DOCUMENT edit on this page is the display name — a value you changed
+// and have not persisted. The email and password fields below are request
+// flows: their "save" mails a confirmation link or rotates a credential, and
+// neither is something a navigation prompt should fire on the user's behalf. So
+// the guard watches the name draft alone, and its Save runs the same
+// `saveProfile` the card's own button runs.
+const isProfileDirty = computed(
+	() => nameDraft.value.trim() !== '' && nameDraft.value.trim() !== savedName.value.trim()
+);
+
+const {
+	showDialog: showUnsavedDialog,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		await saveProfile();
+		// `saveProfile` advances `savedName` only when the write landed, so a
+		// still-dirty draft means the save failed and the user stays here.
+		if (isProfileDirty.value) throw new Error('Save failed');
+	},
+});
+
+watch(isProfileDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 // ── Change login email ──
 // BetterAuth's change-email flow (apps/api/convex/auth/auth.ts → user.changeEmail)
@@ -364,11 +402,25 @@ const daysRemaining = computed(() => {
 	<div>
 		<p class="mb-6 text-text-secondary">{{ t('dashboard.preferences.account.subheading') }}</p>
 
-		<!-- Loading State -->
-		<div v-if="deletionLoading && !pendingDeletion" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">{{ t('common.loading') }}</p>
+		<!--
+			First load: a content-shaped placeholder at the geometry of the cards
+			below, rather than a centred spinner that blanks the page and then
+			reflows. Same idiom the rest of the settings group loads with.
+		-->
+		<div
+			v-if="deletionLoading && !pendingDeletion"
+			class="space-y-8 max-w-4xl"
+			role="status"
+			aria-busy="true"
+			:aria-label="t('common.loading')"
+		>
+			<div v-for="card in 3" :key="card" class="card space-y-4">
+				<UiSkeleton class="h-5 w-40" />
+				<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
+				<div class="flex items-end gap-3 max-w-md">
+					<UiSkeleton class="h-10 flex-1 rounded-lg" />
+					<UiSkeleton class="h-10 w-20 rounded-lg" />
+				</div>
 			</div>
 		</div>
 
@@ -826,5 +878,13 @@ const daysRemaining = computed(() => {
 				</UiButton>
 			</template>
 		</UiModal>
+
+		<!-- Unsaved Changes Dialog -->
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
+		/>
 	</div>
 </template>

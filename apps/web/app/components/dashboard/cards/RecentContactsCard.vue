@@ -32,28 +32,27 @@ function getInitials(contact: Contact): string {
 </script>
 
 <template>
-	<UiCard padding="none" overflow="hidden">
+	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:users" size="sm" variant="brand" />
+					<UiIconBox icon="lucide:users" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.recentContactsCard.title') }}
 					</h3>
 				</div>
 				<NuxtLink
 					to="/dashboard/audience/contacts"
-					class="text-xs font-medium text-brand hover:text-brand/80 transition-colors"
+					class="text-xs font-medium whitespace-nowrap text-text-secondary hover:text-brand transition-colors"
 				>
 					{{ t('common.viewAll') }}
 				</NuxtLink>
 			</div>
 
-			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
-			</div>
+			<DashboardCardSkeleton v-if="isLoading" shape="list" :count="4" />
 
 			<div v-else-if="contactList.length === 0" class="py-4 text-center">
+				<Icon name="lucide:users" class="w-6 h-6 text-text-tertiary mx-auto mb-2" />
 				<p class="text-sm text-text-tertiary">
 					{{ t('components.dashboard.cards.recentContactsCard.empty') }}
 				</p>

@@ -59,26 +59,24 @@ function getTimeUrgency(timestamp?: number): 'default' | 'warning' | 'error' | '
 </script>
 
 <template>
-	<UiCard padding="none" overflow="hidden">
+	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:calendar-clock" size="sm" variant="brand" />
+					<UiIconBox icon="lucide:calendar-clock" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.upcomingCampaignsCard.title') }}
 					</h3>
 				</div>
 				<NuxtLink
 					to="/dashboard/campaigns"
-					class="text-xs font-medium text-brand hover:text-brand/80 transition-colors"
+					class="text-xs font-medium whitespace-nowrap text-text-secondary hover:text-brand transition-colors"
 				>
 					{{ t('components.dashboard.cards.upcomingCampaignsCard.allCampaigns') }}
 				</NuxtLink>
 			</div>
 
-			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
-			</div>
+			<DashboardCardSkeleton v-if="isLoading" shape="list" :count="3" :avatar="false" />
 
 			<div v-else-if="campaigns.length === 0" class="py-4 text-center">
 				<Icon name="lucide:calendar" class="w-6 h-6 text-text-tertiary mx-auto mb-2" />

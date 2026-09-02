@@ -81,6 +81,13 @@ export interface GettingStartedStep {
 	blocked?: boolean;
 	/** What is being waited on, shown in place of the CTA. Set iff `blocked`. */
 	blockedReason?: GettingStartedMessage;
+	/**
+	 * A way back into a flow rather than a task to tick off. It renders like any
+	 * other row but is EXCLUDED from `completedCount`/`totalCount`, because it has
+	 * no completion: counting a permanently-open door as outstanding work would
+	 * mean the progress readout could never reach "done".
+	 */
+	informational?: boolean;
 }
 
 export interface GettingStartedSection {
@@ -222,6 +229,31 @@ export interface GettingStartedInput {
  * never be presented as a check the member is failing to tick — they are shown
  * as waiting on setup, and unblock themselves as soon as sending works.
  */
+/**
+ * The way BACK into the guided welcome — the personal section's last row.
+ *
+ * `/welcome` used to be one-shot: the first-login middleware routes a member
+ * there exactly once (while `welcomedAt` is unset — see `shouldRouteToWelcome`),
+ * so a single click on "I'll do this later" put the two-minute fresh-start setup
+ * out of reach forever, with nothing in the app pointing back at it. The screen
+ * itself was always reachable by URL; nothing linked to it.
+ *
+ * So this is a LINK, not a task: it is {@link GettingStartedStep.informational},
+ * carries no completion, and is left out of the progress counts. It disappears
+ * with the rest of the personal section once that section's real steps are done
+ * or dismissed — a member with nothing left to set up is not offered a setup
+ * flow.
+ */
+export const FINISH_SETUP_STEP: Omit<GettingStartedStep, 'completed'> = {
+	id: 'finishSetup',
+	title: 'shared.gettingStarted.finishSetup.title',
+	description: 'shared.gettingStarted.finishSetup.description',
+	icon: 'lucide:compass',
+	href: '/welcome',
+	cta: 'shared.gettingStarted.finishSetup.cta',
+	informational: true,
+};
+
 export const SEND_BLOCKED_STEP_IDS: ReadonlySet<ChecklistStepId> = new Set([
 	'sendingSwitched',
 	'firstSendDone',
@@ -337,6 +369,9 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 				...(blocked ? { blocked: true, blockedReason: SEND_BLOCKED_REASON } : {}),
 			};
 		});
+		// Last row: the door back into the guided welcome, so the flow the member
+		// skipped once is never unreachable. Not a step — see FINISH_SETUP_STEP.
+		steps.push({ ...FINISH_SETUP_STEP, completed: false });
 		sections.push({
 			id: 'personal',
 			title: 'shared.gettingStarted.personalSection.title',
@@ -352,14 +387,19 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 	else if (instanceActive) dismissalScope = 'instance';
 	else if (personalActive) dismissalScope = 'user';
 
-	const allSteps = sections.flatMap((section) => section.steps);
+	// Counted steps are the ones that can actually be finished — an informational
+	// row (the way back into the welcome flow) is a link, not outstanding work,
+	// and counting it would stop the readout ever reaching "all done".
+	const countedSteps = sections
+		.flatMap((section) => section.steps)
+		.filter((step) => !step.informational);
 
 	return {
 		visible: true,
 		sections,
 		dismissalScope,
-		completedCount: allSteps.filter((step) => step.completed).length,
-		totalCount: allSteps.length,
+		completedCount: countedSteps.filter((step) => step.completed).length,
+		totalCount: countedSteps.length,
 		showSelfHostResources: instanceActive && input.isSelfHost,
 	};
 }

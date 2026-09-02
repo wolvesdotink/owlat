@@ -6,6 +6,7 @@ import {
 	buildSetupSummary,
 	buildApplyBody,
 	interpretSetupModeProbe,
+	setupSignInHref,
 	setupStepPath,
 	SMTP_RELAY_PRESETS,
 	type AdminDraft,
@@ -88,6 +89,24 @@ describe('useSetupWizard step model', () => {
 	it('exposes five ordered, numbered steps ending in review', () => {
 		expect(SETUP_STEPS.map((s) => s.id)).toEqual(['mode', 'features', 'email', 'admin', 'review']);
 		expect(SETUP_STEPS.map((s) => s.number)).toEqual([1, 2, 3, 4, 5]);
+	});
+
+	/**
+	 * REGRESSION — the splash cannot promise a different wizard from the one that
+	 * runs. `/setup` hand-wrote a four-item preview (mode → features → email →
+	 * "Admin & review") while this list has run five since the admin step was
+	 * split out, so the first screen of the product understated the work and then
+	 * produced an unannounced account step. It now maps THIS list through
+	 * `setup.index.steps.<id>.*`, which only holds while every id has copy.
+	 */
+	it('has splash copy for every step, so the preview cannot understate the wizard', () => {
+		const splash = en.setup.index.steps as Record<string, { title: string; desc: string }>;
+		for (const step of SETUP_STEPS) {
+			expect(splash[step.id]?.title, `missing title for ${step.id}`).toBeTruthy();
+			expect(splash[step.id]?.desc, `missing desc for ${step.id}`).toBeTruthy();
+		}
+		// And nothing left over from the hand-written version pretending to be a step.
+		expect(Object.keys(splash).sort()).toEqual([...SETUP_STEPS].map((s) => s.id).sort());
 	});
 });
 
@@ -487,6 +506,37 @@ describe('readSetupDraft — sessionStorage read the reload restore hinges on', 
 
 	it('returns null when no draft has been persisted', () => {
 		expect(readSetupDraft()).toBeNull();
+	});
+});
+
+describe('the post-setup handoff URL', () => {
+	// The wizard's ONE full page load: the review step's finale hands off here on
+	// a click, instead of the two `window.location.href` reloads that used to fire
+	// on their own and drop the operator on a bare login form.
+	const target = '/auth/login?postSetup=1&email=admin%40acme.test';
+
+	it('is the server-chosen login target when no destination was picked', () => {
+		expect(setupSignInHref(target)).toBe(target);
+	});
+
+	it('carries the picked destination through as the login form\'s "redirect"', () => {
+		expect(setupSignInHref(target, '/dashboard/postbox')).toBe(
+			`${target}&redirect=%2Fdashboard%2Fpostbox`
+		);
+	});
+
+	it('opens the query string when the target has none', () => {
+		expect(setupSignInHref('/auth/login', '/dashboard/admin/team')).toBe(
+			'/auth/login?redirect=%2Fdashboard%2Fadmin%2Fteam'
+		);
+	});
+
+	it('encodes the destination rather than splicing it in raw', () => {
+		// A destination is never operator input here, but an un-encoded `&` would
+		// still silently truncate the redirect into a second query parameter.
+		expect(setupSignInHref(target, '/dashboard/x?a=1&b=2')).toContain(
+			'redirect=%2Fdashboard%2Fx%3Fa%3D1%26b%3D2'
+		);
 	});
 });
 

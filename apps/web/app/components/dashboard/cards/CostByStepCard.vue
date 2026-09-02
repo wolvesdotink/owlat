@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { formatNumber } from '~/utils/formatters';
 
 const { t, locale } = useI18n();
 
@@ -34,17 +35,23 @@ function stepLabel(step: string): string {
 	return key ? t(key) : step;
 }
 
+/**
+ * Also feeds UiNumberTicker, which formats every in-flight frame of the tween —
+ * hence the round, since a tween passes through fractional values. The ticker
+ * captures the formatter at setup, so its element is keyed on `locale` in the
+ * template to re-render the current value on a language switch.
+ */
 function formatTokens(n: number): string {
-	return new Intl.NumberFormat(locale.value).format(n);
+	return formatNumber(Math.round(n), locale.value);
 }
 </script>
 
 <template>
-	<UiCard padding="none" overflow="hidden">
+	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:coins" size="sm" variant="brand" />
+					<UiIconBox icon="lucide:coins" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.costByStep.title') }}
 					</h3>
@@ -54,13 +61,13 @@ function formatTokens(n: number): string {
 				}}</span>
 			</div>
 
-			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-					:aria-label="t('components.dashboard.cards.costByStep.loading')"
-				/>
-			</div>
+			<DashboardCardSkeleton
+				v-if="isLoading"
+				shape="stat"
+				hero
+				:count="3"
+				:label="t('components.dashboard.cards.costByStep.loading')"
+			/>
 
 			<div v-else-if="steps.length === 0" class="py-4 text-center">
 				<p class="text-sm text-text-tertiary">
@@ -70,7 +77,9 @@ function formatTokens(n: number): string {
 
 			<div v-else>
 				<div class="flex items-baseline gap-2 mb-4">
-					<span class="text-3xl font-bold text-text-primary">{{ formatTokens(totalTokens) }}</span>
+					<span class="text-3xl font-bold tabular-nums text-text-primary">
+						<UiNumberTicker :key="locale" :value="totalTokens" :formatter="formatTokens" />
+					</span>
 					<span class="text-sm text-text-secondary">{{
 						t('components.dashboard.cards.costByStep.tokensUsed')
 					}}</span>
@@ -80,7 +89,7 @@ function formatTokens(n: number): string {
 					<li v-for="item in steps" :key="item.step">
 						<div class="flex items-center justify-between mb-1">
 							<span class="text-xs text-text-secondary">{{ stepLabel(item.step) }}</span>
-							<span class="text-xs font-medium text-text-primary">{{
+							<span class="text-xs font-medium tabular-nums text-text-primary">{{
 								formatTokens(item.totalTokens)
 							}}</span>
 						</div>

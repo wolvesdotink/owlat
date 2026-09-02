@@ -34,7 +34,7 @@ function localized(value: LocalizedText): string {
 
 useHead({ title: () => t('dashboard.admin.delivery.advanced.cells.pageTitle') });
 
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const {
 	data: controls,

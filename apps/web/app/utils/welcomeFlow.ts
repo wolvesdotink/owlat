@@ -91,7 +91,16 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		id: 'mailboxReady',
 		title: 'shared.welcomeFlow.steps.mailboxReady.title',
 		description: 'shared.welcomeFlow.steps.mailboxReady.description',
-		href: '/dashboard/preferences/add-account',
+		// The mail context, not a Preferences leaf. This used to eject the member
+		// from onboarding into `/dashboard/preferences/add-account` — a settings
+		// page under the preferences layout, three levels away from the mail they
+		// were promised. `/dashboard/postbox/migrate` is the connect flow that
+		// lives INSIDE the postbox, and its connect step is literally what marks
+		// this stamp (`mail/external/accounts.ts` stamps `mailboxReady` when an
+		// account is connected), so the step and its destination agree. Where
+		// external mailboxes are turned off the page explains itself in place
+		// rather than redirecting, so this is never a dead end.
+		href: '/dashboard/postbox/migrate',
 		cta: 'shared.welcomeFlow.steps.mailboxReady.cta',
 		icon: 'lucide:mailbox',
 		migrationOnly: false,
@@ -168,6 +177,11 @@ export function isChecklistComplete(
  * member has never seen the welcome screen (`welcomedAt` unset). A returning
  * user — whose row carries a `welcomedAt` stamp — is never routed to `/welcome`
  * again, regardless of how much of the checklist they have or haven't done.
+ *
+ * This governs the AUTOMATIC route only. The screen itself is not one-shot: the
+ * checklist carries a permanent "Finish setting up" entry back to it
+ * (`FINISH_SETUP_STEP` in `~/utils/gettingStarted`), so clicking "I'll do this
+ * later" once no longer puts the guided setup out of reach forever.
  */
 export function shouldRouteToWelcome(opts: { welcomedAt: number | null }): boolean {
 	return opts.welcomedAt === null;

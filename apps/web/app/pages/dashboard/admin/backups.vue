@@ -7,7 +7,7 @@ const { t, locale } = useI18n();
 useHead({ title: () => t('dashboard.admin.backups.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'platform-admin'],
 });
 

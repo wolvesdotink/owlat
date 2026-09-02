@@ -16,9 +16,14 @@ const { registerNavigationShortcuts } = useKeyboardShortcuts();
 // registry, so every surface below dispatches and documents the same chords.
 useShortcutPreferences();
 
-// Sidebar state management
+// Sidebar state management. `effectiveCollapsed` — not the raw persisted
+// `isCollapsed` — is what this shell renders against, exactly as it renders
+// against `effectiveHidden`: below the desktop breakpoint the aside is the
+// mobile drawer, and a collapse preference saved on a laptop must not turn it
+// into a 64px icon strip there. Aliased so every reference below reads the
+// resolved value.
 const {
-	isCollapsed,
+	effectiveCollapsed: isCollapsed,
 	effectiveHidden,
 	isPeeking,
 	sectionStates,
@@ -559,8 +564,8 @@ const sidebarDesktopClass = computed(() => {
 							'flex items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors',
 							isCollapsed ? 'p-2' : 'flex-1 px-2 py-1.5',
 							activeContext === context.key
-								? 'bg-brand-subtle text-brand'
-								: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+								? 'bg-(--surface-2-selected) text-text-primary'
+								: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 						]"
 						:title="isCollapsed ? t(context.label) : undefined"
 						@click="switchContext(context.key)"
@@ -569,7 +574,7 @@ const sidebarDesktopClass = computed(() => {
 							:name="context.icon"
 							:class="[
 								isCollapsed ? 'w-5 h-5' : 'w-3.5 h-3.5',
-								activeContext === context.key ? 'text-brand' : 'text-text-tertiary',
+								activeContext === context.key ? 'text-text-primary' : 'text-text-tertiary',
 							]"
 						/>
 						<span v-if="!isCollapsed">{{ t(context.label) }}</span>
@@ -586,8 +591,8 @@ const sidebarDesktopClass = computed(() => {
 						:class="[
 							'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
 							route.path === '/dashboard'
-								? 'bg-brand-subtle text-brand'
-								: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+								? 'bg-(--surface-2-selected) text-text-primary'
+								: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 							{ 'justify-center': isCollapsed },
 						]"
 						:title="isCollapsed ? t('shell.dashboard.dashboardTooltip') : undefined"
@@ -621,8 +626,8 @@ const sidebarDesktopClass = computed(() => {
 							:class="[
 								'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
 								isActiveRoute(section.href)
-									? 'bg-brand-subtle text-brand'
-									: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+									? 'bg-(--surface-2-selected) text-text-primary'
+									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 								{ 'justify-center': isCollapsed },
 							]"
 							:title="isCollapsed ? t(section.name) : undefined"
@@ -658,8 +663,8 @@ const sidebarDesktopClass = computed(() => {
 							:class="[
 								'relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
 								isSectionActive(section)
-									? 'text-brand'
-									: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+									? 'text-text-primary'
+									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 								{ 'justify-center': isCollapsed },
 							]"
 							:title="isCollapsed ? t(section.name) : undefined"
@@ -669,7 +674,7 @@ const sidebarDesktopClass = computed(() => {
 								:name="section.icon"
 								:class="[
 									'w-5 h-5 flex-shrink-0',
-									isSectionActive(section) ? 'text-brand' : 'text-text-tertiary',
+									isSectionActive(section) ? 'text-text-primary' : 'text-text-tertiary',
 								]"
 							/>
 							<span v-if="!isCollapsed" class="flex-1 text-left">{{ t(section.name) }}</span>
@@ -725,8 +730,8 @@ const sidebarDesktopClass = computed(() => {
 										:class="[
 											'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
 											isActiveRoute(item.href)
-												? 'bg-brand-subtle text-brand font-medium'
-												: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+												? 'bg-(--surface-2-selected) text-text-primary font-medium'
+												: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 										]"
 									>
 										<Icon
@@ -795,25 +800,36 @@ const sidebarDesktopClass = computed(() => {
 						{ 'justify-center': isCollapsed },
 					]"
 					:title="isCollapsed ? user?.name || t('shell.dashboard.userFallback') : undefined"
+					:aria-busy="isPending ? 'true' : undefined"
 					@click="isUserDropdownOpen = !isUserDropdownOpen"
 				>
-					<!-- Avatar -->
+					<!-- Avatar. While the session resolves this is a skeleton at the
+					     row's exact geometry, not a "..." glyph, so nothing reflows
+					     when the name lands. UiSkeleton is aria-hidden, hence the
+					     sr-only label below that keeps the trigger named. -->
+					<UiSkeleton v-if="isPending" circle class="w-8 h-8 flex-shrink-0" />
 					<div
-						class="w-8 h-8 rounded-full bg-brand-subtle flex items-center justify-center text-sm font-medium text-brand flex-shrink-0"
+						v-else
+						class="w-8 h-8 rounded-full bg-bg-surface flex items-center justify-center text-sm font-medium text-text-secondary flex-shrink-0"
 					>
-						{{ isPending ? '...' : userInitials }}
+						{{ userInitials }}
 					</div>
+					<span v-if="isPending" class="sr-only">{{ t("common.loading") }}</span>
 
 					<!-- User info -->
 					<div v-if="!isCollapsed" class="flex-1 text-left min-w-0">
-						<p class="text-sm font-medium text-text-primary truncate">
-							{{
-								isPending ? t('common.loading') : user?.name || t('shell.dashboard.userFallback')
-							}}
-						</p>
-						<p class="text-xs text-text-tertiary truncate">
-							{{ isPending ? '' : user?.email || '' }}
-						</p>
+						<template v-if="isPending">
+							<UiSkeleton class="h-3.5 w-24" />
+							<UiSkeleton class="h-3 w-32 mt-2.5" />
+						</template>
+						<template v-else>
+							<p class="text-sm font-medium text-text-primary truncate">
+								{{ user?.name || t("shell.dashboard.userFallback") }}
+							</p>
+							<p class="text-xs text-text-tertiary truncate">
+								{{ user?.email || "" }}
+							</p>
+						</template>
 					</div>
 
 					<!-- Chevron -->
@@ -863,18 +879,23 @@ const sidebarDesktopClass = computed(() => {
 			<DashboardShellHeader
 				v-if="!isFocusMode"
 				:is-desktop="isDesktop"
+				:navigation-open="isSidebarOpen"
 				@open-navigation="isSidebarOpen = true"
 				@open-search="openCommandPalette()"
 			/>
 
-			<!-- Page content -->
+			<!-- Page content. The floor is "fill what the chrome leaves", and below
+			     lg the chrome is taller than the 4rem bar: the mobile header also
+			     carries the 2.25rem breadcrumb strip and its hairline. Counting only
+			     the bar left every phone page ~37px taller than the viewport — a
+			     screenful of nothing to scroll past at the bottom of every screen. -->
 			<main
 				id="main-content"
 				tabindex="-1"
 				:class="
 					isFocusMode
 						? 'min-h-[calc(100dvh-var(--titlebar-h,0px))]'
-						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
+						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-2.25rem-1px)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
 				"
 			>
 				<slot />

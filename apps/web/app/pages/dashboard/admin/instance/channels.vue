@@ -8,7 +8,7 @@ import {
 } from '~/utils/channelKinds';
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -90,15 +90,6 @@ const handleChannelError = (message: string) => {
 
 <template>
 	<div class="p-6 lg:p-8">
-		<!-- Back Navigation -->
-		<NuxtLink
-			to="/dashboard/admin"
-			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
-		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			{{ t('dashboard.admin.instance.channels.backToSettings') }}
-		</NuxtLink>
-
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
 			<div class="flex items-center gap-4">

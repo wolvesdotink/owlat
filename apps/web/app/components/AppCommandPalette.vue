@@ -392,7 +392,7 @@ onBeforeUnmount(() => {
 				role="dialog"
 				aria-modal="true"
 				:aria-label="t('components.appCommandPalette.dialogLabel')"
-				class="fixed inset-x-4 top-[12%] mx-auto max-w-xl bg-bg-elevated border border-border-default rounded-xl shadow-8 z-50 overflow-hidden"
+				class="fixed inset-x-4 top-[12%] mx-auto max-w-xl bg-bg-elevated rounded-xl shadow-surface-6 z-50 overflow-hidden"
 			>
 				<!-- Search input -->
 				<div class="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">

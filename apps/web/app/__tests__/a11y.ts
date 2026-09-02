@@ -357,6 +357,13 @@ function defaultStubs(): Record<string, unknown> {
 		// rather than real: it opens a Convex query, and the registry it feeds is
 		// module state that already reads as the shipped map.
 		useShortcutPreferences: vi.fn(),
+		// The shared create verbs, and the palette providers a surface registers
+		// while it is mounted. Stubbed rather than real: an audit that opened a
+		// composer or wrote into the shared provider registry would leak that into
+		// the next mount, and neither is what the scan is looking at.
+		useQuickCreate: () => ({ openCompose: vi.fn(), openNewContact: vi.fn() }),
+		useCampaignCommandSurface: vi.fn(),
+		usePostboxThreadCommandSurface: vi.fn(),
 		useClickOutside: vi.fn(),
 		useColorMode: () => reactive({ preference: 'dark', value: 'dark' }),
 		useAppTheme: () => ({ theme: ref('dark'), setTheme: vi.fn() }),
@@ -405,6 +412,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 		useSidebarState: () => ({
 			isCollapsed: ref(false),
 			isHidden: ref(false),
+			effectiveCollapsed: ref(false),
 			effectiveHidden: ref(false),
 			sidebarMode: ref('expanded'),
 			isPeeking: ref(false),

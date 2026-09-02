@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ isDesktop: boolean }>();
+defineProps<{ isDesktop: boolean; navigationOpen?: boolean }>();
 const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
 
 const { t } = useI18n();
@@ -12,8 +12,10 @@ const { t } = useI18n();
 		<div class="flex-1 min-w-0 mr-4">
 			<Breadcrumbs />
 		</div>
-		<div v-if="!isDesktop" class="flex-shrink-0">
-			<GlobalSearch />
+		<div class="flex items-center gap-3 flex-shrink-0">
+			<!-- The create action, persistent: one click from every page. -->
+			<DashboardQuickCreateMenu />
+			<GlobalSearch v-if="!isDesktop" />
 		</div>
 	</header>
 
@@ -23,7 +25,7 @@ const { t } = useI18n();
 		<div class="h-16 flex items-center justify-between px-4">
 			<div class="flex items-center">
 				<button
-					class="p-2 rounded-lg text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					class="p-2 rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:aria-label="t('components.dashboard.dashboardShellHeader.openNavigation')"
 					@click="emit('openNavigation')"
 				>
@@ -39,15 +41,27 @@ const { t } = useI18n();
 			</div>
 
 			<button
-				class="p-2 rounded-lg text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+				class="p-2 rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				:aria-label="t('common.search')"
 				@click="emit('openSearch')"
 			>
 				<Icon name="lucide:search" class="w-5 h-5" />
 			</button>
 		</div>
-		<div class="px-4 pb-3 overflow-x-auto">
+		<!-- A stated height, not padding around a variable trail: the mobile
+		     chrome is 4rem of bar + 2.25rem of crumbs, and the full-height panes
+		     (chat, assistant) size themselves against that sum. -->
+		<div class="h-9 flex items-center px-4 overflow-x-auto">
 			<Breadcrumbs />
 		</div>
 	</header>
+
+	<!-- The phone's primary verbs. It teleports itself to the bottom of the
+	     viewport; it lives here so it appears and disappears with the rest of
+	     the shell chrome (focus mode unmounts this component). The drawer state
+	     travels down so the bar can step aside for the drawer it opens. -->
+	<DashboardMobileTabBar
+		:navigation-open="navigationOpen"
+		@open-navigation="emit('openNavigation')"
+	/>
 </template>

@@ -28,30 +28,33 @@ function formatPct(ratio: number): string {
 </script>
 
 <template>
-	<UiCard padding="none" overflow="hidden">
+	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:trending-up" size="sm" variant="brand" />
+					<UiIconBox icon="lucide:trending-up" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.accuracyTrend.title') }}
 					</h3>
 				</div>
 				<NuxtLink
 					to="/dashboard/admin/instance/agent-health"
-					class="text-xs font-medium text-brand hover:text-brand/80 transition-colors"
+					class="text-xs font-medium whitespace-nowrap text-text-secondary hover:text-brand transition-colors"
 				>
 					{{ t('components.dashboard.cards.accuracyTrend.details') }}
 				</NuxtLink>
 			</div>
 
-			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-					:aria-label="t('components.dashboard.cards.accuracyTrend.loading')"
+			<!-- Two regions to stand in for: the tile pair, then the two plots. -->
+			<template v-if="isLoading">
+				<DashboardCardSkeleton
+					shape="metrics"
+					:count="2"
+					class="mb-4"
+					:label="t('components.dashboard.cards.accuracyTrend.loading')"
 				/>
-			</div>
+				<DashboardCardSkeleton shape="chart" :count="2" />
+			</template>
 
 			<div v-else-if="series.length === 0" class="py-4 text-center">
 				<p class="text-sm text-text-tertiary">
@@ -65,7 +68,7 @@ function formatPct(ratio: number): string {
 						<dt class="text-xs text-text-tertiary">
 							{{ t('components.dashboard.cards.accuracyTrend.autoApprove') }}
 						</dt>
-						<dd class="text-lg font-semibold text-success">
+						<dd class="text-lg font-semibold tabular-nums text-success">
 							{{ formatPct(latest.autoApproveRatio) }}
 						</dd>
 					</div>
@@ -73,7 +76,9 @@ function formatPct(ratio: number): string {
 						<dt class="text-xs text-text-tertiary">
 							{{ t('components.dashboard.cards.accuracyTrend.rejection') }}
 						</dt>
-						<dd class="text-lg font-semibold text-error">{{ formatPct(latest.rejectionRate) }}</dd>
+						<dd class="text-lg font-semibold tabular-nums text-error">
+							{{ formatPct(latest.rejectionRate) }}
+						</dd>
 					</div>
 				</dl>
 

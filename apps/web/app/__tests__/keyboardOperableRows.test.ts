@@ -8,9 +8,10 @@
  *
  * This gate reads the REAL shipped templates (not fabricated copies) and pins
  * the exact interactive markup, so a regression to a bare <div @click>
- * (keyboard-unreachable) fails CI. The webhooks/marketing/transactional rows are
- * inline in their Convex-backed Nuxt `pages/` components; the domains row markup
- * now lives in its extracted `components/domains/RecordRow.vue` sub-component.
+ * (keyboard-unreachable) fails CI. The marketing/transactional rows are inline
+ * in their Convex-backed Nuxt `pages/` components; the domains and webhook rows
+ * live in their extracted `components/domains/RecordRow.vue` and
+ * `components/webhooks/WebhookRow.vue` sub-components.
  * Either way, mounting the surface in isolation would require stubbing the
  * entire Convex/Nuxt/UI surface, so we assert against the source of truth
  * directly. Each container's keydown handlers are additionally
@@ -27,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
 const domainsRow = read('../components/domains/RecordRow.vue');
-const webhooks = read('../pages/dashboard/admin/delivery/webhooks.vue');
+const webhooksRow = read('../components/webhooks/WebhookRow.vue');
 const marketing = read('../pages/dashboard/send/marketing/index.vue');
 const transactional = read('../pages/dashboard/send/transactional/index.vue');
 const commandRowReference = read('../components/campaigns/CommandRow.vue');
@@ -93,9 +94,9 @@ describe('delivery expandable rows are keyboard-operable', () => {
 	});
 
 	it('webhooks: header is a labelled, non-bubbling toggle linked to its detail panel', () => {
-		const header = pick(webhooks, '@click="toggleExpanded(webhook._id)"', 'div');
+		const header = pick(webhooksRow, `@click="emit('toggleExpanded')"`, 'div');
 		expectExpandableHeader(header, 'webhook-details-');
-		expect(webhooks).toContain(':id="' + '`' + 'webhook-details-');
+		expect(webhooksRow).toContain(':id="' + '`' + 'webhook-details-');
 	});
 });
 
@@ -152,7 +153,7 @@ describe('parity with the components/campaigns/CommandRow.vue reference', () => 
 	});
 
 	it('no changed page reintroduces the inert @keydown.enter.prevent', () => {
-		for (const src of [domainsRow, webhooks, marketing, transactional]) {
+		for (const src of [domainsRow, webhooksRow, marketing, transactional]) {
 			expect(src).not.toMatch(/@keydown\.enter\.prevent/);
 		}
 	});

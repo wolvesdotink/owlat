@@ -44,6 +44,10 @@ const isLoading = computed(
 	() => organizationLoading.value || segmentLoading.value || membersLoading.value
 );
 
+// Below md the four columns have nowhere to go — the same rows render as a card
+// list instead (one tap opens the contact).
+const tableFits = useDataTableViewport();
+
 // Contact-property labels for the editor context + describeFilters helper.
 const { data: contactProperties } = useOrganizationQuery(
 	api.contacts.properties.listByOrganization
@@ -297,63 +301,55 @@ const handleExport = async () => {
 		<!-- Main Content -->
 		<template v-else-if="segment">
 			<!-- Header -->
-			<div class="mb-6">
-				<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-					<div class="flex items-start gap-4">
-						<NuxtLink
-							to="/dashboard/audience/segments"
-							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors mt-1"
-						>
-							<Icon name="lucide:arrow-left" class="w-5 h-5" />
-						</NuxtLink>
-						<div>
-							<div class="flex items-center gap-3">
-								<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
-									<Icon name="lucide:filter" class="w-5 h-5 text-brand" />
-								</div>
-								<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-									{{ segment.name }}
-								</h1>
+			<div class="flex items-start gap-4 mb-6">
+				<NuxtLink
+					to="/dashboard/audience/segments"
+					class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors mt-1"
+				>
+					<Icon name="lucide:arrow-left" class="w-5 h-5" />
+				</NuxtLink>
+				<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
+					<Icon name="lucide:filter" class="w-5 h-5 text-brand" />
+				</div>
+				<UiPageHeader class="flex-1" :title="segment.name" :description="segment.description">
+					<template #meta>
+						<div class="flex items-center flex-wrap gap-4 text-sm text-text-tertiary">
+							<div class="flex items-center gap-1.5">
+								<Icon name="lucide:users" class="w-4 h-4" />
+								<span>{{
+									t(
+										'dashboard.audience.segments.detail.index.matchingContacts',
+										{ count: segment.cachedCount ?? '—' },
+										segment.cachedCount ?? 0
+									)
+								}}</span>
 							</div>
-							<p v-if="segment.description" class="mt-2 text-text-secondary">
-								{{ segment.description }}
-							</p>
-							<div class="flex items-center flex-wrap gap-4 mt-3 text-sm text-text-tertiary">
-								<div class="flex items-center gap-1.5">
-									<Icon name="lucide:users" class="w-4 h-4" />
-									<span>{{
-										t(
-											'dashboard.audience.segments.detail.index.matchingContacts',
-											{ count: segment.cachedCount ?? '—' },
-											segment.cachedCount ?? 0
-										)
-									}}</span>
-								</div>
-								<div class="flex items-center gap-1.5">
-									<Icon name="lucide:sliders-horizontal" class="w-4 h-4" />
-									<span>{{ filterSummary }}</span>
-								</div>
-								<div class="flex items-center gap-1.5">
-									<Icon name="lucide:calendar" class="w-4 h-4" />
-									<span>{{
-										t('dashboard.audience.segments.detail.index.createdOn', {
-											date: formatDate(segment.createdAt),
-										})
-									}}</span>
-								</div>
+							<div class="flex items-center gap-1.5">
+								<Icon name="lucide:sliders-horizontal" class="w-4 h-4" />
+								<span>{{ filterSummary }}</span>
+							</div>
+							<div class="flex items-center gap-1.5">
+								<Icon name="lucide:calendar" class="w-4 h-4" />
+								<span>{{
+									t('dashboard.audience.segments.detail.index.createdOn', {
+										date: formatDate(segment.createdAt),
+									})
+								}}</span>
 							</div>
 						</div>
-					</div>
-					<UiButton
-						variant="secondary"
-						:disabled="totalCount === 0"
-						:loading="isExporting"
-						@click="handleExport"
-					>
-						<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
-						{{ t('dashboard.audience.segments.detail.index.exportCsv') }}
-					</UiButton>
-				</div>
+					</template>
+					<template #actions>
+						<UiButton
+							variant="secondary"
+							:disabled="totalCount === 0"
+							:loading="isExporting"
+							@click="handleExport"
+						>
+							<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+							{{ t('dashboard.audience.segments.detail.index.exportCsv') }}
+						</UiButton>
+					</template>
+				</UiPageHeader>
 			</div>
 
 			<!-- Search Bar -->
@@ -421,7 +417,30 @@ const handleExport = async () => {
 
 				<!-- Data Table -->
 				<div v-else>
-					<div class="overflow-x-auto">
+					<!-- Card list below md. The two are alternatives, not layers: a
+					     CSS-only switch would keep both copies of every row in the DOM. -->
+					<ul v-if="!tableFits" class="divide-y divide-border-subtle">
+						<li v-for="contact in paginatedMembers" :key="contact._id">
+							<button
+								type="button"
+								class="w-full text-left px-4 py-3 transition-colors hover:bg-bg-surface"
+								@click="viewContact(contact._id)"
+							>
+								<span class="block text-text-primary font-medium truncate">{{ contact.email }}</span>
+								<span
+									v-if="contact.firstName || contact.lastName"
+									class="block text-sm text-text-secondary truncate"
+								>
+									{{ [contact.firstName, contact.lastName].filter(Boolean).join(' ') }}
+								</span>
+								<span class="block text-xs text-text-tertiary mt-0.5">
+									{{ formatDate(contact.createdAt) }}
+								</span>
+							</button>
+						</li>
+					</ul>
+
+					<div v-else class="overflow-x-auto">
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
@@ -533,7 +552,7 @@ const handleExport = async () => {
 									:class="[
 										'min-w-[32px] h-8 px-2 rounded-lg text-sm font-medium transition-colors',
 										page === currentPage
-											? 'bg-brand text-text-inverse'
+											? 'bg-text-primary text-text-inverse'
 											: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 									]"
 									@click="goToPage(page)"

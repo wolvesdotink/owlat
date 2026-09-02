@@ -1,112 +1,24 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
-
-const { t } = useI18n();
-
-useHead({ title: () => t('setup.team.pageTitle') });
-
+/**
+ * Redirect. The access-request screen is not a setup step.
+ *
+ * It lived here — inside the first-run wizard's namespace, beside `/setup/mode`
+ * and `/setup/review` — while being neither run by the operator nor part of the
+ * wizard: it is what an ordinary member sees when they are signed in but belong
+ * to no organization. It now answers on `/access-request`.
+ *
+ * The route survives because sessions, bookmarks and the auth middleware's older
+ * signature all pointed here.
+ */
 definePageMeta({
-	middleware: 'auth',
+	layout: false,
 });
 
-const { signOut } = useAuth();
-const router = useRouter();
-const { organization, isLoading: orgLoading } = useOrganizationContext();
-
-// Redirect to dashboard if user already has an organization
-watch(
-	[organization, orgLoading],
-	([orgValue, loading]) => {
-		if (!loading && orgValue) {
-			router.push('/dashboard');
-		}
-	},
-	{ immediate: true }
-);
-
-// An orgless-but-signed-in user is invite-only here. Rather than dead-ending at
-// "ask your administrator" with sign-out as the only action, they can ask for
-// access in one click — a notification the admins see on their dashboard. The
-// request never grants membership; an admin still invites them the normal way.
-const MAX_NOTE_LENGTH = 500;
-const note = ref('');
-const requested = ref(false);
-
-const { run: sendRequest, isLoading: sending } = useBackendOperation(
-	api.auth.accessRequest.request,
-	{ label: () => t('setup.team.requestAccessOperation') }
-);
-
-async function requestAccess() {
-	if (requested.value || sending.value) return;
-	const trimmed = note.value.trim();
-	const result = await sendRequest(trimmed ? { note: trimmed } : {});
-	if (result.ok && result.result.requested) {
-		requested.value = true;
-	}
-}
+// No `auth` middleware here: the destination carries it, so a signed-out visitor
+// is sent to login by the page they actually land on rather than by the stub.
+await navigateTo('/access-request', { replace: true, redirectCode: 301 });
 </script>
 
 <template>
-	<div
-		class="relative isolate min-h-screen overflow-hidden bg-bg-base flex flex-col items-center justify-center px-4 py-12"
-	>
-		<UiHeroField />
-
-		<!-- Show loading while checking organization status -->
-		<div v-if="orgLoading" class="relative flex flex-col items-center">
-			<Icon name="lucide:loader-2" class="w-8 h-8 text-text-tertiary animate-spin motion-reduce:animate-none" />
-		</div>
-
-		<!-- Invite-only: no organization yet, but the door isn't locked. -->
-		<template v-else-if="!organization">
-			<div class="relative mb-8 text-center">
-				<h1 class="font-display text-4xl text-text-primary">{{ t('setup.team.brand') }}</h1>
-				<p class="text-text-secondary mt-2">{{ t('setup.team.invitationRequired') }}</p>
-			</div>
-
-			<UiCard class="relative w-full max-w-md">
-				<!-- After asking: a clear, honest confirmation. -->
-				<div v-if="requested" class="text-center space-y-4">
-					<Icon name="lucide:check-circle-2" class="w-12 h-12 text-brand mx-auto" />
-					<div class="space-y-1">
-						<p class="font-medium text-text-primary">{{ t('setup.team.requestSentTitle') }}</p>
-						<p class="text-text-secondary">
-							{{ t('setup.team.requestSentBody') }}
-						</p>
-					</div>
-					<UiButton variant="ghost" size="sm" @click="signOut()">
-						{{ t('setup.team.signOut') }}
-					</UiButton>
-				</div>
-
-				<!-- Before asking: request access, or sign out. -->
-				<div v-else class="space-y-4">
-					<div class="text-center space-y-3">
-						<Icon name="lucide:mail" class="w-12 h-12 text-text-tertiary mx-auto" />
-						<p class="text-text-secondary">
-							{{ t('setup.team.inviteExplainer') }}
-						</p>
-					</div>
-
-					<UiTextarea
-						v-model="note"
-						:rows="3"
-						:max-length="MAX_NOTE_LENGTH"
-						:label="t('setup.team.noteLabel')"
-						:placeholder="t('setup.team.notePlaceholder')"
-					/>
-
-					<div class="flex flex-col gap-2">
-						<UiButton :loading="sending" class="w-full" @click="requestAccess">
-							{{ t('setup.team.requestAccess') }}
-						</UiButton>
-						<UiButton variant="ghost" size="sm" @click="signOut()">
-							{{ t('setup.team.signOut') }}
-						</UiButton>
-					</div>
-				</div>
-			</UiCard>
-		</template>
-	</div>
+	<div />
 </template>

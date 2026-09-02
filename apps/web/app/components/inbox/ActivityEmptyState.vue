@@ -9,6 +9,10 @@
  * settings mutations require `organization:manage`, so an editor should never
  * see an affordance that 403s. When a channel filter is active the copy
  * narrows to that channel but keeps the same guidance.
+ *
+ * Structure comes from the shared `UiEmptyState` ladder (eyebrow → heading →
+ * one lead → one action); this component only decides the wording and who gets
+ * the button.
  */
 defineProps<{
 	/** Human channel label when a filter is active (e.g. "SMS"), else null. */
@@ -21,32 +25,24 @@ const { t } = useI18n();
 </script>
 
 <template>
-	<div class="flex flex-col items-center justify-center py-16 text-center">
-		<UiIconBox
-			icon="lucide:message-square"
-			size="xl"
-			variant="surface"
-			rounded="full"
-			class="mb-4"
-		/>
-		<p class="text-text-primary font-medium">
-			{{
-				filterLabel
-					? t('components.inbox.activityEmptyState.emptyForChannel', { channel: filterLabel })
-					: t('components.inbox.activityEmptyState.empty')
-			}}
-		</p>
-		<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-			{{ t('components.inbox.activityEmptyState.description') }}
-		</p>
-		<UiButton
-			v-if="canManage"
-			to="/dashboard/admin/instance/channels"
-			class="mt-5 inline-flex items-center gap-1.5"
-			data-testid="connect-channel-cta"
-		>
-			<Icon name="lucide:plus" class="w-4 h-4" />
-			{{ t('components.inbox.activityEmptyState.connectChannel') }}
-		</UiButton>
-	</div>
+	<UiEmptyState
+		icon="lucide:message-square"
+		:title="
+			filterLabel
+				? t('components.inbox.activityEmptyState.emptyForChannel', { channel: filterLabel })
+				: t('components.inbox.activityEmptyState.empty')
+		"
+		:description="t('components.inbox.activityEmptyState.description')"
+	>
+		<template v-if="canManage" #action>
+			<UiButton
+				to="/dashboard/admin/instance/channels"
+				class="inline-flex items-center gap-1.5"
+				data-testid="connect-channel-cta"
+			>
+				<Icon name="lucide:plus" class="w-4 h-4" />
+				{{ t('components.inbox.activityEmptyState.connectChannel') }}
+			</UiButton>
+		</template>
+	</UiEmptyState>
 </template>

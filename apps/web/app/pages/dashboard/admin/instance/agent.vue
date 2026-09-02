@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
 
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.instance.agent.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 	// Gate by URL too — the nav hides this link when ai.agent is off; re-enable
 	// via the always-on Features settings page.
@@ -89,8 +90,9 @@ watch(
 // Toast notifications (global)
 const { showToast } = useToast();
 
-// Save handler
-const handleSave = async () => {
+// Save handler. Resolves to whether the save succeeded so the unsaved-changes
+// guard can keep the operator on the page (and keep their edits) when it fails.
+const handleSave = async (): Promise<boolean> => {
 	isSaving.value = true;
 
 	// Tuning fields go through agentConfig
@@ -104,7 +106,7 @@ const handleSave = async () => {
 	});
 	if (!configResult.ok) {
 		isSaving.value = false;
-		return;
+		return false;
 	}
 
 	// On/off goes through the feature flag (triggers the one-shot
@@ -113,14 +115,33 @@ const handleSave = async () => {
 	if (form.enabled !== agentFlag) {
 		if (!(await setFeatureFlag({ flag: 'ai.agent', value: form.enabled })).ok) {
 			isSaving.value = false;
-			return;
+			return false;
 		}
 	}
 
 	isSaving.value = false;
 	isFormDirty.value = false;
 	showToast(t('dashboard.admin.instance.agent.savedToast'));
+	return true;
 };
+
+// Unsaved-changes guard: a sidebar click (or any in-app navigation) while the
+// agent form is dirty prompts to save/discard instead of silently dropping the
+// edits. Same shared composable + dialog the General settings page uses;
+// `onSave` throws on failure so a failed save keeps the operator here.
+const {
+	showDialog: showUnsavedDialog,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		if (!(await handleSave())) throw new Error('Save failed');
+	},
+});
+
+watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 // Confidence threshold display
 const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 100));
@@ -128,15 +149,6 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 
 <template>
 	<div class="p-6 lg:p-8">
-		<!-- Back Navigation -->
-		<NuxtLink
-			to="/dashboard/admin"
-			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
-		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			{{ t('dashboard.admin.instance.agent.backToSettings') }}
-		</NuxtLink>
-
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
 			<div class="flex items-center gap-4">
@@ -158,13 +170,22 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 			</UiButton>
 		</div>
 
-		<!-- Loading State -->
-		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.admin.instance.agent.loading') }}
-				</p>
+		<!--
+			First load: a content-shaped placeholder at the geometry of the
+			setting cards below, rather than a centred spinner that blanks the
+			page and then reflows.
+		-->
+		<div
+			v-if="isLoading"
+			class="space-y-6 max-w-3xl"
+			role="status"
+			aria-busy="true"
+			:aria-label="t('dashboard.admin.instance.agent.loading')"
+		>
+			<div v-for="card in 3" :key="card" class="card space-y-4">
+				<UiSkeleton class="h-5 w-48" />
+				<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
+				<UiSkeleton v-for="row in 2" :key="row" class="h-10 rounded-lg" />
 			</div>
 		</div>
 
@@ -354,5 +375,13 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 				</div>
 			</div>
 		</template>
+
+		<!-- Unsaved Changes Dialog -->
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
+		/>
 	</div>
 </template>

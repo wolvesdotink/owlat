@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { UnsavedChangesDialog } from '@owlat/email-builder';
+
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.instance.forms.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -41,19 +43,59 @@ const {
 } = useFormSettings();
 
 const { hasActiveOrganization } = useOrganizationContext();
+
+// ── Unsaved-changes guard ───────────────────────────────────────────
+// Both form builders live in modals, so their drafts — a name, a topic, a
+// redirect and a whole field list — exist only while the modal is up. A
+// command-palette jump, a browser Back or a tab close used to throw all of it
+// away without a word. Dirtiness is the draft measured against the snapshot
+// taken when the modal opened, so opening a form just to read it never prompts.
+const addSnapshot = ref('');
+const editSnapshot = ref('');
+
+watch(isAddModalOpen, (open) => {
+	if (open) addSnapshot.value = JSON.stringify(addForm);
+});
+// `openEditModal` seeds `editForm` synchronously right after setting
+// `formToEdit`, so by the time this callback runs the draft is the stored row.
+watch(formToEdit, (form) => {
+	if (form) editSnapshot.value = JSON.stringify(editForm);
+});
+
+const isAddDirty = computed(
+	() => isAddModalOpen.value && JSON.stringify(addForm) !== addSnapshot.value
+);
+const isEditDirty = computed(
+	() => formToEdit.value !== null && JSON.stringify(editForm) !== editSnapshot.value
+);
+
+const {
+	showDialog: showUnsavedDialog,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		// Each handler clears its own modal only once the write lands, so a modal
+		// still open means the save failed and the operator stays here.
+		if (formToEdit.value) {
+			await handleSaveEdit();
+			if (formToEdit.value) throw new Error('Save failed');
+			return;
+		}
+		await handleAddForm();
+		if (isAddModalOpen.value) throw new Error('Save failed');
+	},
+});
+
+watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { immediate: true });
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/admin"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.instance.forms.backToSettings') }}
-			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
 					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
@@ -70,14 +112,19 @@ const { hasActiveOrganization } = useOrganizationContext();
 			</div>
 		</div>
 
-		<!-- Loading State -->
-		<div v-if="isLoading && !formsData" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.admin.instance.forms.loading') }}
-				</p>
-			</div>
+		<!--
+			First load: a content-shaped placeholder at the geometry of the form
+			rows, rather than a centred spinner that blanks the page and then
+			reflows. Same idiom the delivery list pages load with.
+		-->
+		<div
+			v-if="isLoading && !formsData"
+			class="card overflow-hidden"
+			role="status"
+			aria-busy="true"
+			:aria-label="t('dashboard.admin.instance.forms.loading')"
+		>
+			<DashboardListSkeleton variant="card" leading :rows="3" />
 		</div>
 
 		<!-- No Organization State -->
@@ -516,7 +563,11 @@ const { hasActiveOrganization } = useOrganizationContext();
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="submit" form="add-form" class="gap-2" :disabled="isAdding">
-					<Icon v-if="isAdding" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<Icon
+						v-if="isAdding"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
 					<Icon v-else name="lucide:plus" class="w-4 h-4" />
 					{{
 						isAdding
@@ -645,7 +696,11 @@ const { hasActiveOrganization } = useOrganizationContext();
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="submit" form="edit-form" class="gap-2" :disabled="isSaving">
-					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<Icon
+						v-if="isSaving"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
 					<Icon v-else name="lucide:check" class="w-4 h-4" />
 					{{
 						isSaving
@@ -686,6 +741,14 @@ const { hasActiveOrganization } = useOrganizationContext();
 				{{ t('dashboard.admin.instance.forms.deleteModal.irreversible') }}
 			</p>
 		</UiConfirmationDialog>
+
+		<!-- Unsaved Changes Dialog -->
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
+		/>
 	</div>
 </template>
 

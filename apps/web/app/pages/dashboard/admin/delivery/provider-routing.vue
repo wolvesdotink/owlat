@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { unknownIpPoolWarning } from '~/utils/ipPool';
 import {
 	buildTransportOptions,
@@ -34,7 +35,7 @@ function localized(value: LocalizedText): string {
 useHead({ title: () => t('dashboard.admin.delivery.providerRouting.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -161,6 +162,7 @@ function startEdit(messageType: MessageType) {
 		editWarmupOverflow.value = false;
 	}
 	editOpen.value = true;
+	editSnapshot.value = draftFingerprint();
 }
 
 // A controller-owned strategy is displayed, never picked — and it is written
@@ -228,19 +230,51 @@ async function handleReset() {
 	showNotification(t('dashboard.admin.delivery.providerRouting.toasts.reset'));
 	resetMessageType.value = null;
 }
+
+// ── Unsaved-changes guard ───────────────────────────────────────────
+// The route editor is a modal, so its draft only lives as long as the modal is
+// open: a command-palette jump, a browser Back or a tab close while it is up
+// used to drop every edit without a word. Dirtiness is the draft measured
+// against the snapshot taken when `startEdit` seeded it, so opening a route
+// just to read it never prompts.
+const editSnapshot = ref('');
+
+function draftFingerprint(): string {
+	return JSON.stringify({
+		strategy: editStrategy.value,
+		ipPool: editIpPool.value,
+		providers: editProviders.value,
+		fallbackEnabled: editFallbackEnabled.value,
+		fallbackRelay: editFallbackRelay.value,
+		warmupOverflow: editWarmupOverflow.value,
+	});
+}
+
+const isEditDirty = computed(() => editOpen.value && draftFingerprint() !== editSnapshot.value);
+
+const {
+	showDialog: showUnsavedDialog,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		await handleSave();
+		// `handleSave` closes the modal only once the write lands; a refused
+		// mutation (or a local validation stop) leaves it open, and throwing is
+		// what keeps the operator on this page with their edits intact.
+		if (editOpen.value) throw new Error('Save failed');
+	},
+});
+
+watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/admin/delivery"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.delivery.backToSetup') }}
-			</NuxtLink>
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:route" size="lg" variant="brand" rounded="xl" />
 				<div>
@@ -259,19 +293,15 @@ async function handleReset() {
 			<DashboardListSkeleton variant="card" leading :rows="4" />
 		</div>
 
-		<!-- No Organization State -->
-		<div
+		<!-- No workspace — a precondition, not an empty list, so the eyebrow
+		     names the surface rather than claiming there is nothing here. -->
+		<UiEmptyState
 			v-else-if="!hasActiveOrganization"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox icon="lucide:route" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.admin.delivery.providerRouting.noWorkspace.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.admin.delivery.providerRouting.noWorkspace.description') }}
-			</p>
-		</div>
+			icon="lucide:route"
+			:eyebrow="t('dashboard.admin.delivery.providerRouting.title')"
+			:title="t('dashboard.admin.delivery.providerRouting.noWorkspace.title')"
+			:description="t('dashboard.admin.delivery.providerRouting.noWorkspace.description')"
+		/>
 
 		<!-- Content -->
 		<div v-else class="space-y-6">
@@ -305,55 +335,16 @@ async function handleReset() {
 
 			<!-- Message-type route cards -->
 			<div class="grid gap-4">
-				<div v-for="type in MESSAGE_TYPES" :key="type.value" class="card p-6">
-					<div class="flex items-start justify-between gap-4">
-						<div class="flex items-start gap-4">
-							<div class="p-3 rounded-lg bg-bg-surface flex items-center justify-center">
-								<Icon :name="type.icon" class="w-6 h-6 text-text-secondary" />
-							</div>
-							<div>
-								<h3 class="text-lg font-medium text-text-primary">{{ localized(type.label) }}</h3>
-								<p class="text-sm text-text-secondary mt-0.5">
-									{{ localized(type.description) }}
-								</p>
-
-								<!-- Configured route summary -->
-								<DeliveryProviderRouteSummary
-									v-if="routeByType.get(type.value)"
-									:route="routeByType.get(type.value)!"
-									:strategy-label="strategyLabelFor"
-									:provider-label="providerLabel"
-								/>
-
-								<!-- Default fallback summary -->
-								<p v-else class="mt-3 text-xs text-text-tertiary inline-flex items-center gap-1.5">
-									<Icon name="lucide:server" class="w-3.5 h-3.5" />
-									{{ t('dashboard.admin.delivery.providerRouting.usingDefault') }}
-								</p>
-							</div>
-						</div>
-
-						<div class="flex items-center gap-2 shrink-0">
-							<UiButton
-								variant="ghost"
-								v-if="routeByType.get(type.value)"
-								class="p-2 text-error hover:bg-error/10"
-								:title="t('dashboard.admin.delivery.providerRouting.resetToDefault')"
-								@click="resetMessageType = type.value"
-							>
-								<Icon name="lucide:rotate-ccw" class="w-4 h-4" />
-							</UiButton>
-							<UiButton variant="secondary" class="gap-2" @click="startEdit(type.value)">
-								<Icon name="lucide:settings-2" class="w-4 h-4" />
-								{{
-									routeByType.get(type.value)
-										? t('common.edit')
-										: t('dashboard.admin.delivery.providerRouting.configure')
-								}}
-							</UiButton>
-						</div>
-					</div>
-				</div>
+				<DeliveryProviderRouteCard
+					v-for="type in MESSAGE_TYPES"
+					:key="type.value"
+					:message-type="type"
+					:route="routeByType.get(type.value)"
+					:strategy-label="strategyLabelFor"
+					:provider-label="providerLabel"
+					@edit="startEdit(type.value)"
+					@reset="resetMessageType = type.value"
+				/>
 			</div>
 		</div>
 
@@ -470,6 +461,14 @@ async function handleReset() {
 				}
 			"
 			@confirm="handleReset"
+		/>
+
+		<!-- Unsaved Changes Dialog -->
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
 		/>
 	</div>
 </template>

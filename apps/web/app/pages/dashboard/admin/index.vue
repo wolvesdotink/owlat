@@ -4,8 +4,11 @@ import { api } from '@owlat/api';
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.index.pageTitle') });
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
+// `level` is null until the roll-up answers, and the verdict is the loudest
+// claim on this page — so it renders a placeholder rather than "Sending is
+// healthy" over a send path nothing has checked yet.
 const { level, reason } = useDeliveryHealth();
 const deliveryLabel = computed(() => {
 	if (level.value === 'error') return t('dashboard.admin.index.verdict.error');
@@ -71,7 +74,7 @@ const platformAreas = computed(() => [
 <template>
 	<div class="p-6 lg:p-8 max-w-6xl">
 		<header class="mb-8">
-			<p class="text-sm font-medium text-brand mb-1">{{ t('dashboard.admin.index.eyebrow') }}</p>
+			<p class="lp-eyebrow mb-1">{{ t('dashboard.admin.index.eyebrow') }}</p>
 			<h1 class="text-3xl font-semibold text-text-primary">
 				{{ t('dashboard.admin.index.title') }}
 			</h1>
@@ -82,7 +85,7 @@ const platformAreas = computed(() => [
 
 		<NuxtLink
 			to="/dashboard/admin/delivery"
-			class="card block mb-6 border-l-4 border-l-brand hover:bg-bg-surface transition-colors"
+			class="card block mb-6 hover:bg-bg-surface transition-colors"
 		>
 			<div class="flex items-start justify-between gap-4">
 				<div class="flex items-start gap-4">
@@ -91,7 +94,10 @@ const platformAreas = computed(() => [
 						<p class="text-sm text-text-tertiary">
 							{{ t('dashboard.admin.index.deliveryVerdict') }}
 						</p>
-						<h2 class="text-xl font-semibold" :class="deliveryTone">{{ deliveryLabel }}</h2>
+						<h2 v-if="level" class="text-xl font-semibold" :class="deliveryTone">
+							{{ deliveryLabel }}
+						</h2>
+						<UiSkeleton v-else class="mt-1 h-6 w-52" />
 						<p v-if="reason" class="mt-1 text-sm text-text-secondary">{{ reason }}</p>
 					</div>
 				</div>
@@ -105,7 +111,9 @@ const platformAreas = computed(() => [
 					<UiIconBox :icon="area.icon" size="md" variant="surface" rounded="lg" />
 					<h2 class="mt-4 text-lg font-semibold text-text-primary">{{ area.title }}</h2>
 					<p class="mt-1 text-sm text-text-secondary">{{ area.description }}</p>
-					<span class="mt-5 inline-flex items-center gap-1 text-sm font-medium text-brand">
+					<span
+						class="mt-5 inline-flex items-center gap-1 text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors duration-(--motion-fast)"
+					>
 						{{ t('common.open') }} <Icon name="lucide:arrow-right" class="w-4 h-4" />
 					</span>
 				</UiCard>

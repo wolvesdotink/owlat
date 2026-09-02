@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 import { useOrganization } from '~/composables/useOrganization';
 import {
+	DEFAULT_INBOX_FILTER,
 	INBOX_FILTER_META,
 	INBOX_SORT_META,
 	nextInboxSort,
@@ -207,6 +208,10 @@ const emptyMessage = computed(() => {
 	// rendering `shared.inboxFilters.…` at a person.
 	return te(key) ? t(key) : t(INBOX_FILTER_META[filter.value].empty);
 });
+
+// A non-default pill hides rows that exist, which is a no-results state — the
+// empty state says so and offers the way back rather than a dead end.
+const isFiltered = computed(() => filter.value !== DEFAULT_INBOX_FILTER);
 </script>
 
 <template>
@@ -283,30 +288,34 @@ const emptyMessage = computed(() => {
 			<UiQueryBoundary
 				:loading="threadsLoading && threads.length === 0"
 				:error="threadsError"
+				:empty="visibleThreads.length === 0"
 				:error-title="t('dashboard.inbox.index.errorTitle')"
 			>
 				<template #loading>
 					<PostboxThreadListSkeleton :rows="8" />
 				</template>
 
-				<!-- Empty state — copy per active pill -->
-				<div
-					v-if="visibleThreads.length === 0"
-					class="flex flex-col items-center justify-center py-16 text-center"
-				>
-					<UiIconBox icon="lucide:inbox" size="xl" variant="surface" rounded="full" class="mb-4" />
-					<p class="text-text-secondary font-medium">{{ emptyMessage }}</p>
-				</div>
+				<!-- Empty state — copy per active pill. A non-default pill is a
+				     no-results state, not an empty queue, so it reads quieter and
+				     offers the way back to the full list. -->
+				<template #empty>
+					<UiEmptyState
+						icon="lucide:inbox"
+						:title="emptyMessage"
+						:variant="isFiltered ? 'no-results' : 'empty'"
+						@clear="filter = DEFAULT_INBOX_FILTER"
+					/>
+				</template>
 
 				<!-- Thread List — Postbox row DNA: single column, weight-based unread,
 			     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
-				<div v-else>
+				<div>
 					<ul
 						role="listbox"
 						tabindex="0"
 						:aria-label="t('dashboard.inbox.index.listAriaLabel')"
 						:aria-activedescendant="activeId"
-						class="divide-y divide-border-subtle rounded-lg border border-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+						class="divide-y divide-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
 						@keydown="onKeydown"
 					>
 						<InboxThreadRow

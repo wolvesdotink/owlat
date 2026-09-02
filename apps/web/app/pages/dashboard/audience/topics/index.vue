@@ -36,6 +36,11 @@ watch(
 
 const isLoading = computed(() => organizationLoading.value || topicsLoading.value);
 
+// Below md the five columns have nowhere to go — the same rows render as a card
+// list instead (one tap opens the topic; edit and delete stay on the row,
+// because the topic detail page carries neither).
+const tableFits = useDataTableViewport();
+
 // Data table controls (search and sort) — shared contract with the other
 // audience list pages: identical debounced search + sort affordance.
 type SortField = 'name' | 'contactCount' | 'createdAt';
@@ -271,20 +276,18 @@ onMounted(() => {
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.audience.topics.index.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">
-					{{ t('dashboard.audience.topics.index.subtitle') }}
-				</p>
-			</div>
-			<UiButton @click="openCreateModal">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-				{{ t('dashboard.audience.topics.index.newTopic') }}
-			</UiButton>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.audience.topics.index.title')"
+			:description="t('dashboard.audience.topics.index.subtitle')"
+			class="mb-6"
+		>
+			<template #actions>
+				<UiButton @click="openCreateModal">
+					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+					{{ t('dashboard.audience.topics.index.newTopic') }}
+				</UiButton>
+			</template>
+		</UiPageHeader>
 
 		<!-- Search Bar -->
 		<div class="mb-6 max-w-md">
@@ -349,7 +352,48 @@ onMounted(() => {
 
 				<!-- Data Table -->
 				<div v-else>
-					<div class="overflow-x-auto">
+					<!-- Card list below md. The two are alternatives, not layers: a
+					     CSS-only switch would keep both copies of every row in the DOM. -->
+					<ul v-if="!tableFits" class="divide-y divide-border-subtle">
+						<li
+							v-for="topic in filteredTopics"
+							:key="topic._id"
+							class="flex items-center gap-1 px-4 py-2"
+						>
+							<button
+								type="button"
+								class="flex-1 min-w-0 text-left py-1"
+								@click="viewTopicContacts(topic._id)"
+							>
+								<span class="block text-text-primary font-medium truncate">{{ topic.name }}</span>
+								<span v-if="topic.description" class="block text-sm text-text-secondary truncate">
+									{{ topic.description }}
+								</span>
+								<span class="flex items-center gap-1.5 text-xs text-text-tertiary mt-0.5">
+									<Icon name="lucide:users" class="w-3.5 h-3.5" />
+									{{ topic.contactCount }}
+									<span aria-hidden="true">·</span>
+									{{ formatDate(topic.createdAt) }}
+								</span>
+							</button>
+							<button
+								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								:aria-label="t('dashboard.audience.topics.index.actions.edit')"
+								@click="openEditModal(topic)"
+							>
+								<Icon name="lucide:pencil" class="w-4 h-4" />
+							</button>
+							<button
+								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+								:aria-label="t('dashboard.audience.topics.index.actions.delete')"
+								@click="openDeleteModal(topic)"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</button>
+						</li>
+					</ul>
+
+					<div v-else class="overflow-x-auto">
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">

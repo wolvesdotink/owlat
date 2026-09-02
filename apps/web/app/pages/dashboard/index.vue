@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SavedRule } from '~/composables/useDashboardRules';
+import { dashboardCardSpan } from '~/utils/dashboardGrid';
 
 const { t } = useI18n();
 
@@ -106,9 +107,30 @@ async function handleSave(
 			:is-admin="isAdmin"
 		/>
 
-		<!-- Loading State -->
-		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
+		<!--
+			Loading state — the placeholder grid, NOT a centred spinner.
+
+			`displayCards` already falls back to the role's default layout while the
+			adaptive-layout query is in flight, so the placeholders sit on the cells
+			the cards are about to occupy — same grid, same spans (shared mapping, so
+			the two cannot drift), same card shell. The page therefore keeps its
+			height and column structure from the first paint instead of expanding out
+			of a ~120px spinner stub. A viewer with a saved custom layout may still
+			gain or lose a row when it lands; the columns and the card geometry do
+			not move, which is the part that reads as jitter.
+		-->
+		<div
+			v-if="isLoading"
+			data-testid="dashboard-grid-skeleton"
+			class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+		>
+			<div
+				v-for="(card, index) in displayCards"
+				:key="`placeholder-${card.type}-${index}`"
+				:class="[dashboardCardSpan(card.size), 'h-full']"
+			>
+				<DashboardCardPlaceholder :size="card.size" />
+			</div>
 		</div>
 
 		<!-- Adaptive Dashboard Grid -->

@@ -90,99 +90,82 @@ const confirmBlock = async () => {
 			</div>
 		</div>
 
-		<!-- Loading -->
-		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">{{ t('dashboard.inbox.quarantine.loading') }}</p>
-			</div>
-		</div>
-
-		<!-- Error — a faulted query must NOT look like an empty (all-clear) quarantine -->
-		<UiErrorAlert
-			v-else-if="error"
-			:title="t('dashboard.inbox.quarantine.errorTitle')"
-			:message="t('dashboard.inbox.quarantine.errorMessage')"
-			class="my-8"
-		/>
-
-		<!-- Empty State -->
-		<div
-			v-else-if="!quarantinedMessages || quarantinedMessages.length === 0"
-			class="flex flex-col items-center justify-center py-16 text-center"
+		<!-- Loading / faulted / empty / list — a faulted query must NOT look like
+		     an empty (all-clear) quarantine, which is the boundary's ordering. -->
+		<UiQueryBoundary
+			:loading="isLoading"
+			:error="error"
+			:empty="!quarantinedMessages || quarantinedMessages.length === 0"
+			:error-title="t('dashboard.inbox.quarantine.errorTitle')"
+			:error-message="t('dashboard.inbox.quarantine.errorMessage')"
+			:loading-label="t('dashboard.inbox.quarantine.loading')"
 		>
-			<UiIconBox
-				icon="lucide:shield-check"
-				size="xl"
-				variant="success"
-				rounded="full"
-				class="mb-4"
-			/>
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.inbox.quarantine.emptyTitle') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1">
-				{{ t('dashboard.inbox.quarantine.emptyBody') }}
-			</p>
-		</div>
+			<template #empty>
+				<UiEmptyState
+					icon="lucide:shield-check"
+					:title="t('dashboard.inbox.quarantine.emptyTitle')"
+					:description="t('dashboard.inbox.quarantine.emptyBody')"
+				/>
+			</template>
 
-		<!-- Quarantined Messages -->
-		<div v-else class="space-y-4">
-			<div v-for="message in quarantinedMessages" :key="message._id" class="card border-error/20">
-				<div class="flex items-start justify-between mb-3">
-					<div class="flex items-center gap-3">
-						<div
-							class="flex-shrink-0 w-10 h-10 rounded-full bg-error-subtle flex items-center justify-center"
-						>
-							<Icon name="lucide:shield-alert" class="w-5 h-5 text-error" />
-						</div>
-						<div>
-							<p class="text-text-primary font-medium text-sm">{{ message.from }}</p>
-							<p class="text-xs text-text-tertiary">
-								{{ formatDateTime(message._creationTime) }}
-							</p>
+			<!-- Quarantined Messages -->
+			<div class="space-y-4">
+				<div v-for="message in quarantinedMessages" :key="message._id" class="card border-error/20">
+					<div class="flex items-start justify-between mb-3">
+						<div class="flex items-center gap-3">
+							<div
+								class="flex-shrink-0 w-10 h-10 rounded-full bg-error-subtle flex items-center justify-center"
+							>
+								<Icon name="lucide:shield-alert" class="w-5 h-5 text-error" />
+							</div>
+							<div>
+								<p class="text-text-primary font-medium text-sm">{{ message.from }}</p>
+								<p class="text-xs text-text-tertiary">
+									{{ formatDateTime(message._creationTime) }}
+								</p>
+							</div>
 						</div>
 					</div>
-				</div>
 
-				<!-- Outcome first, then the reasons, then the machine's own record. A
-				     non-expert is making a security decision here, so the enum and the
-				     confidence number are the LAST thing on the card, not the first. -->
-				<InboxQuarantineReason class="mb-4" :flags="message.securityFlags" />
+					<!-- Outcome first, then the reasons, then the machine's own record. A
+					     non-expert is making a security decision here, so the enum and the
+					     confidence number are the LAST thing on the card, not the first. -->
+					<InboxQuarantineReason class="mb-4" :flags="message.securityFlags" />
 
-				<!-- Message preview -->
-				<p v-if="message.subject" class="text-text-primary font-medium text-sm mb-1">
-					{{ message.subject }}
-				</p>
-				<p class="text-text-secondary text-sm line-clamp-3 mb-4">
-					{{ message.textBody || t('dashboard.inbox.quarantine.noTextContent') }}
-				</p>
+					<!-- Message preview -->
+					<p v-if="message.subject" class="text-text-primary font-medium text-sm mb-1">
+						{{ message.subject }}
+					</p>
+					<p class="text-text-secondary text-sm line-clamp-3 mb-4">
+						{{ message.textBody || t('dashboard.inbox.quarantine.noTextContent') }}
+					</p>
 
-				<!-- Actions -->
-				<div v-if="isAdmin" class="flex items-center gap-2 border-t border-border-subtle pt-4">
-					<UiButton
-						variant="secondary"
-						size="sm"
-						class="gap-1"
-						:disabled="actionInProgress === message._id"
-						@click="onRelease(message._id)"
-					>
-						<Icon name="lucide:check-circle" class="w-3 h-3" />
-						{{ t('dashboard.inbox.quarantine.release') }}
-					</UiButton>
-					<UiButton
-						variant="ghost"
-						size="sm"
-						class="gap-1 text-error hover:bg-error-subtle"
-						:disabled="actionInProgress === message._id"
-						@click="pendingBlock = { _id: message._id, from: message.from }"
-					>
-						<Icon name="lucide:ban" class="w-3 h-3" />
-						{{ t('dashboard.inbox.quarantine.blockSender') }}
-					</UiButton>
+					<!-- Actions -->
+					<div v-if="isAdmin" class="flex items-center gap-2 border-t border-border-subtle pt-4">
+						<UiButton
+							variant="secondary"
+							size="sm"
+							class="gap-1"
+							:disabled="actionInProgress === message._id"
+							@click="onRelease(message._id)"
+						>
+							<Icon name="lucide:check-circle" class="w-3 h-3" />
+							{{ t('dashboard.inbox.quarantine.release') }}
+						</UiButton>
+						<UiButton
+							variant="ghost"
+							size="sm"
+							class="gap-1 text-error hover:bg-error-subtle"
+							:disabled="actionInProgress === message._id"
+							@click="pendingBlock = { _id: message._id, from: message.from }"
+						>
+							<Icon name="lucide:ban" class="w-3 h-3" />
+							{{ t('dashboard.inbox.quarantine.blockSender') }}
+						</UiButton>
+					</div>
 				</div>
 			</div>
-		</div>
+		</UiQueryBoundary>
 
 		<!-- Block confirmation — future mail from this sender is silently dropped -->
 		<UiConfirmationDialog

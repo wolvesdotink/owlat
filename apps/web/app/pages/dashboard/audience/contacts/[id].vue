@@ -74,6 +74,14 @@ const {
 	getDoiStatusIcon,
 } = useContactDetail(contactId);
 
+/** A nameless contact is titled by the only thing it does have: its address. */
+const contactTitle = computed(() => {
+	const c = contact.value;
+	if (!c) return '';
+	const name = `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim();
+	return name || c.email || '';
+});
+
 const { canManageContacts, canAnnotateContacts, isAdmin } = usePermissions();
 
 // Members get a quiet two-tab profile. Admin-only CRM depth stays available
@@ -273,22 +281,13 @@ async function handleRemoveSuppression() {
 			/>
 
 			<!-- Header -->
-			<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
-				<div class="flex items-center gap-4">
-					<UiIconBox icon="lucide:user" size="xl" variant="surface" rounded="full" />
-					<div>
-						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-							{{
-								contact.firstName || contact.lastName
-									? `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim()
-									: contact.email
-							}}
-						</h1>
-						<p class="text-text-secondary mt-1">{{ contact.email }}</p>
-						<!-- Double-opt-in confirmation status -->
+			<div class="flex items-start gap-4 mb-8">
+				<UiIconBox icon="lucide:user" size="xl" variant="surface" rounded="full" />
+				<UiPageHeader class="flex-1" :title="contactTitle" :description="contact.email">
+					<!-- Double-opt-in confirmation status -->
+					<template v-if="getDoiStatusLabel(contact.doiStatus)" #meta>
 						<div
-							v-if="getDoiStatusLabel(contact.doiStatus)"
-							class="mt-2 inline-flex items-center gap-1.5 text-sm"
+							class="inline-flex items-center gap-1.5 text-sm"
 							:class="getDoiStatusColor(contact.doiStatus)"
 						>
 							<Icon
@@ -302,65 +301,65 @@ async function handleRemoveSuppression() {
 								})
 							}}</span>
 						</div>
-					</div>
-				</div>
+					</template>
 
-				<div class="flex items-center gap-2">
-					<template v-if="isEditing">
-						<UiButton variant="ghost" :disabled="isSaving" @click="cancelEditing">
-							{{ t('common.cancel') }}
-						</UiButton>
-						<UiButton class="gap-2" :disabled="isSaving" @click="saveChanges">
-							<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
-							<Icon v-else name="lucide:save" class="w-4 h-4" />
-							{{ t('dashboard.audience.contacts.detail.saveChanges') }}
-						</UiButton>
+					<template #actions>
+						<template v-if="isEditing">
+							<UiButton variant="ghost" :disabled="isSaving" @click="cancelEditing">
+								{{ t('common.cancel') }}
+							</UiButton>
+							<UiButton class="gap-2" :disabled="isSaving" @click="saveChanges">
+								<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
+								<Icon v-else name="lucide:save" class="w-4 h-4" />
+								{{ t('dashboard.audience.contacts.detail.saveChanges') }}
+							</UiButton>
+						</template>
+						<template v-else-if="canManageContacts">
+							<UiButton
+								variant="secondary"
+								v-if="contact.doiStatus === 'pending'"
+								class="gap-2"
+								:disabled="isResendingDoi"
+								:title="t('dashboard.audience.contacts.detail.resendDoiTitle')"
+								@click="handleResendDoi"
+							>
+								<Icon v-if="isResendingDoi" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+								<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
+								{{
+									isResendingDoi
+										? t('dashboard.audience.contacts.detail.sending')
+										: t('dashboard.audience.contacts.detail.resendDoi')
+								}}
+							</UiButton>
+							<UiButton variant="secondary" class="gap-2" @click="startEditing">
+								<Icon name="lucide:pencil" class="w-4 h-4" />
+								{{ t('common.edit') }}
+							</UiButton>
+							<UiButton
+								variant="secondary"
+								class="gap-2"
+								:disabled="exportRequested"
+								:title="t('dashboard.audience.contacts.detail.exportDataTitle')"
+								@click="handleExportData"
+							>
+								<Icon name="lucide:download" class="w-4 h-4" />
+								{{
+									exportRequested
+										? t('dashboard.audience.contacts.detail.exporting')
+										: t('dashboard.audience.contacts.detail.exportData')
+								}}
+							</UiButton>
+							<UiButton
+								variant="ghost"
+								class="text-error hover:bg-error-subtle"
+								@click="showDeleteConfirm = true"
+								:aria-label="t('common.delete')"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</UiButton>
+						</template>
 					</template>
-					<template v-else-if="canManageContacts">
-						<UiButton
-							variant="secondary"
-							v-if="contact.doiStatus === 'pending'"
-							class="gap-2"
-							:disabled="isResendingDoi"
-							:title="t('dashboard.audience.contacts.detail.resendDoiTitle')"
-							@click="handleResendDoi"
-						>
-							<Icon v-if="isResendingDoi" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
-							<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
-							{{
-								isResendingDoi
-									? t('dashboard.audience.contacts.detail.sending')
-									: t('dashboard.audience.contacts.detail.resendDoi')
-							}}
-						</UiButton>
-						<UiButton variant="secondary" class="gap-2" @click="startEditing">
-							<Icon name="lucide:pencil" class="w-4 h-4" />
-							{{ t('common.edit') }}
-						</UiButton>
-						<UiButton
-							variant="secondary"
-							class="gap-2"
-							:disabled="exportRequested"
-							:title="t('dashboard.audience.contacts.detail.exportDataTitle')"
-							@click="handleExportData"
-						>
-							<Icon name="lucide:download" class="w-4 h-4" />
-							{{
-								exportRequested
-									? t('dashboard.audience.contacts.detail.exporting')
-									: t('dashboard.audience.contacts.detail.exportData')
-							}}
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							class="text-error hover:bg-error-subtle"
-							@click="showDeleteConfirm = true"
-							:aria-label="t('common.delete')"
-						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</UiButton>
-					</template>
-				</div>
+				</UiPageHeader>
 			</div>
 
 			<!-- Error Message -->

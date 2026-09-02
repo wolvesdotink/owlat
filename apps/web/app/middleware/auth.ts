@@ -5,10 +5,19 @@ import { logError } from '~/lib/runtimeLog';
 /**
  * Auth middleware for protecting routes.
  * Redirects unauthenticated users to the login page.
- * Redirects authenticated users without a team to the team setup page.
+ * Redirects authenticated users without an organization to the access-request page.
  *
  * Usage: Add `definePageMeta({ middleware: 'auth' })` to protected pages
  */
+
+/**
+ * Where a signed-in member with no organization is sent, and therefore the one
+ * path this middleware must not org-check (it would redirect to itself).
+ * Named once so the destination and the loop guard cannot drift apart — they did
+ * not while this was `/setup/team`, but only because both were the same literal
+ * typed twice.
+ */
+const ACCESS_REQUEST_PATH = '/access-request';
 export default defineNuxtRouteMiddleware(async (to) => {
 	// Only run on client side to avoid SSR hydration issues
 	if (import.meta.server) {
@@ -40,8 +49,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
 		});
 	}
 
-	// Check if user has an organization (skip for team setup page to avoid redirect loop)
-	if (to.path !== '/setup/team') {
+	// Check if user has an organization (skip on the access-request page itself to
+	// avoid a redirect loop)
+	if (to.path !== ACCESS_REQUEST_PATH) {
 		// Only check for team if we have a valid user ID
 		if (!user.value?.id) {
 			// User is authenticated but no user data yet - allow navigation
@@ -69,8 +79,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
 				if (import.meta.dev) logError('Failed to auto-activate organization:', e);
 			}
 
-			// User truly has no organizations - redirect to team setup
-			return navigateTo('/setup/team');
+			// User truly has no organizations - offer them a way to ask for access
+			return navigateTo(ACCESS_REQUEST_PATH);
 		}
 	}
 });

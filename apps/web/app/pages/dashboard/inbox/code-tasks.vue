@@ -87,42 +87,35 @@ const handleCreate = async () => {
 			</UiButton>
 		</div>
 
-		<!-- Loading -->
-		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">{{ t('dashboard.inbox.codeTasks.loading') }}</p>
-			</div>
-		</div>
-
-		<!-- Error -->
-		<UiErrorAlert
-			v-else-if="error"
-			:title="t('dashboard.inbox.codeTasks.errorTitle')"
-			:message="t('dashboard.inbox.codeTasks.errorMessage')"
-			class="my-8"
-		/>
-
-		<!-- Empty state -->
-		<div
-			v-else-if="!tasks || tasks.length === 0"
-			class="flex flex-col items-center justify-center py-16 text-center"
+		<!-- Loading / faulted / empty / list -->
+		<UiQueryBoundary
+			:loading="isLoading"
+			:error="error"
+			:empty="!tasks || tasks.length === 0"
+			:error-title="t('dashboard.inbox.codeTasks.errorTitle')"
+			:error-message="t('dashboard.inbox.codeTasks.errorMessage')"
+			:loading-label="t('dashboard.inbox.codeTasks.loading')"
 		>
-			<UiIconBox icon="lucide:code-2" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">{{ t('dashboard.inbox.codeTasks.emptyTitle') }}</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.inbox.codeTasks.emptyBody') }}
-			</p>
-			<UiButton variant="secondary" class="gap-2 mt-4" @click="createModal.open()">
-				<Icon name="lucide:plus" class="w-4 h-4" />
-				{{ t('dashboard.inbox.codeTasks.newTask') }}
-			</UiButton>
-		</div>
+			<template #empty>
+				<UiEmptyState
+					icon="lucide:code-2"
+					:title="t('dashboard.inbox.codeTasks.emptyTitle')"
+					:description="t('dashboard.inbox.codeTasks.emptyBody')"
+				>
+					<template #action>
+						<UiButton class="gap-2" @click="createModal.open()">
+							<Icon name="lucide:plus" class="w-4 h-4" />
+							{{ t('dashboard.inbox.codeTasks.newTask') }}
+						</UiButton>
+					</template>
+				</UiEmptyState>
+			</template>
 
-		<!-- Task list -->
-		<div v-else class="space-y-4">
-			<CodeTasksCodeTaskCard v-for="task in tasks" :key="task._id" :task="task" />
-		</div>
+			<!-- Task list -->
+			<div class="space-y-4">
+				<CodeTasksCodeTaskCard v-for="task in tasks" :key="task._id" :task="task" />
+			</div>
+		</UiQueryBoundary>
 
 		<!-- Create modal -->
 		<UiModal

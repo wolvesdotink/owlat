@@ -24,6 +24,11 @@
 		"disclosure": {
 			"label": "Advanced"
 		},
+		"emptyState": {
+			"nothingYet": "Nothing here yet",
+			"noResults": "No matches",
+			"clear": "Clear filters"
+		},
 		"errorBoundary": {
 			"message": "Something went wrong. Please try again."
 		},

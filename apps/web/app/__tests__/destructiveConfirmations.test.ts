@@ -38,10 +38,18 @@ const UiModalStub = defineComponent({
 });
 
 const UiButtonStub = defineComponent({
-	props: { variant: String, disabled: Boolean },
-	setup(_props, { slots }) {
+	props: { variant: String, disabled: Boolean, loading: Boolean },
+	setup(props, { slots }) {
 		// Single root <button> so the parent's @click falls through natively.
-		return () => h('button', { class: 'ui-button' }, slots.default?.());
+		// The variant lands on the class list because BOTH footer buttons are
+		// UiButtons now (the confirm button used to be a raw <button> carrying a
+		// hand-written brand fill), so the variant is the only thing that tells
+		// Cancel and Confirm apart from the outside.
+		return () =>
+			h('button', { class: ['ui-button', `ui-button--${props.variant}`] }, [
+				slots.iconLeft?.(),
+				slots.default?.(),
+			]);
 	},
 });
 
@@ -77,10 +85,12 @@ function mountPageLikeGate(onMutate: () => void) {
 	return mount(Harness, globalStubs);
 }
 
+// The harness mounts the dialog with variant="danger", so the confirm button is
+// the danger one and Cancel is the secondary one.
 const confirmButton = (w: ReturnType<typeof mountPageLikeGate>) =>
-	w.find('.footer button[type="button"]');
+	w.find('.footer button.ui-button--danger');
 const cancelButton = (w: ReturnType<typeof mountPageLikeGate>) =>
-	w.find('.footer button.ui-button');
+	w.find('.footer button.ui-button--secondary');
 
 describe('UiConfirmationDialog gate (real component)', () => {
 	it('does not mutate before the dialog is armed', () => {

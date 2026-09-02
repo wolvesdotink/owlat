@@ -75,7 +75,7 @@ const nonEligibleRecipients = computed(() => {
 				:class="[
 					'flex items-start gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
 					audienceType === 'topic'
-						? 'border-brand bg-brand/5'
+						? 'border-text-primary bg-bg-surface'
 						: 'border-border-subtle hover:border-border-default',
 				]"
 			>
@@ -84,11 +84,11 @@ const nonEligibleRecipients = computed(() => {
 					type="radio"
 					name="audienceType"
 					value="topic"
-					class="mt-1 w-4 h-4 text-brand focus:ring-brand border-border-subtle bg-bg-surface"
+					class="mt-1 w-4 h-4 text-text-primary focus:ring-brand border-border-subtle bg-bg-surface"
 				/>
 				<div class="flex-1">
 					<div class="flex items-center gap-2">
-						<Icon name="lucide:list-checks" class="w-5 h-5 text-brand" />
+						<Icon name="lucide:list-checks" class="w-5 h-5 text-text-tertiary" />
 						<span class="font-medium text-text-primary">{{ t('components.campaigns.steps.setupAudiencePicker.topicOption') }}</span>
 					</div>
 					<p class="text-sm text-text-secondary mt-1">
@@ -122,7 +122,7 @@ const nonEligibleRecipients = computed(() => {
 				:class="[
 					'flex items-start gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
 					audienceType === 'segment'
-						? 'border-brand bg-brand/5'
+						? 'border-text-primary bg-bg-surface'
 						: 'border-border-subtle hover:border-border-default',
 				]"
 			>
@@ -131,11 +131,11 @@ const nonEligibleRecipients = computed(() => {
 					type="radio"
 					name="audienceType"
 					value="segment"
-					class="mt-1 w-4 h-4 text-brand focus:ring-brand border-border-subtle bg-bg-surface"
+					class="mt-1 w-4 h-4 text-text-primary focus:ring-brand border-border-subtle bg-bg-surface"
 				/>
 				<div class="flex-1">
 					<div class="flex items-center gap-2">
-						<Icon name="lucide:filter" class="w-5 h-5 text-warning" />
+						<Icon name="lucide:filter" class="w-5 h-5 text-text-tertiary" />
 						<span class="font-medium text-text-primary">{{ t('components.campaigns.steps.setupAudiencePicker.segmentOption') }}</span>
 					</div>
 					<p class="text-sm text-text-secondary mt-1">

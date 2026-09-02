@@ -11,7 +11,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.team.api.docs.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 

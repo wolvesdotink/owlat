@@ -84,11 +84,11 @@ const metrics = computed(() => {
 </script>
 
 <template>
-	<UiCard padding="none" overflow="hidden">
+	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:bot" size="sm" variant="brand" />
+					<UiIconBox icon="lucide:bot" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.agentHealth.title') }}
 					</h3>
@@ -98,9 +98,7 @@ const metrics = computed(() => {
 				</UiBadge>
 			</div>
 
-			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
-			</div>
+			<DashboardCardSkeleton v-if="isLoading" shape="metrics" :count="4" />
 
 			<div v-else class="grid grid-cols-2 gap-2">
 				<div
@@ -112,7 +110,7 @@ const metrics = computed(() => {
 						<Icon :name="metric.icon" class="w-3 h-3 text-text-tertiary" />
 						<p class="text-xs text-text-tertiary">{{ metric.label }}</p>
 					</div>
-					<p class="text-lg font-semibold text-text-primary">{{ metric.value }}</p>
+					<p class="text-lg font-semibold tabular-nums text-text-primary">{{ metric.value }}</p>
 				</div>
 			</div>
 		</div>

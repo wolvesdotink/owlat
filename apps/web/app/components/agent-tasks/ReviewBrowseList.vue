@@ -302,25 +302,16 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 			</div>
 		</div>
 
-		<!-- Empty State -->
-		<div
+		<!-- Empty State — the shared eyebrow → heading → lead ladder, the same one
+		     Quarantine and Failed mount. The title is a real heading, so a
+		     caught-up Review Queue (a page whose whole content is this state) is
+		     not a screen with no heading at all. -->
+		<UiEmptyState
 			v-else-if="visibleRows.length === 0"
-			class="flex flex-col items-center justify-center py-16 text-center"
-		>
-			<UiIconBox
-				icon="lucide:check-circle"
-				size="xl"
-				variant="success"
-				rounded="full"
-				class="mb-4"
-			/>
-			<p class="text-text-secondary font-medium">
-				{{ t('components.agentTasks.reviewBrowseList.empty.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1">
-				{{ t('components.agentTasks.reviewBrowseList.empty.body') }}
-			</p>
-		</div>
+			icon="lucide:check-circle"
+			:title="t('components.agentTasks.reviewBrowseList.empty.title')"
+			:description="t('components.agentTasks.reviewBrowseList.empty.body')"
+		/>
 
 		<template v-else>
 			<!-- Sticky bulk bar: appears with the first selected card. -->

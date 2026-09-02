@@ -83,7 +83,7 @@ function cancelEditingDashboard() {
 					{{ t('components.dashboard.gettingStartedResources.convexDescription') }}
 				</span>
 				<span
-					class="mt-1 pl-6 text-xs font-medium text-brand transition-transform group-hover:translate-x-0.5"
+					class="mt-1 pl-6 text-xs font-medium text-text-secondary transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-brand"
 				>
 					{{ t('components.dashboard.gettingStartedResources.convexCta') }}
 				</span>
@@ -159,7 +159,7 @@ function cancelEditingDashboard() {
 				t('components.dashboard.gettingStartedResources.docsDescription')
 			}}</span>
 			<span
-				class="mt-1 pl-6 text-xs font-medium text-brand transition-transform group-hover:translate-x-0.5"
+				class="mt-1 pl-6 text-xs font-medium text-text-secondary transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-brand"
 			>
 				{{ t('components.dashboard.gettingStartedResources.docsCta') }}
 			</span>

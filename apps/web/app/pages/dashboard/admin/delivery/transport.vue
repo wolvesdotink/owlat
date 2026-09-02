@@ -24,7 +24,7 @@ function localized(value: LocalizedText): string {
 useHead({ title: () => t('dashboard.admin.delivery.transport.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -105,7 +105,6 @@ const envSetCommand = computed(() => {
 	return first ? `owlat-setup env ${first} <value>` : 'owlat-setup env <KEY> <value>';
 });
 
-const { copy, isCopied } = useCopyToClipboard();
 
 // Transport connection wizard (P2-4) — an OFFER, never a to-do item (plan D2).
 // Both reads are DNS-facing and non-secret, and both are answered ENTIRELY on
@@ -144,13 +143,6 @@ const {
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/admin/delivery"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.delivery.backToSetup') }}
-			</NuxtLink>
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:send" size="lg" variant="brand" rounded="xl" />
 				<div>
@@ -164,303 +156,243 @@ const {
 			</div>
 		</div>
 
-		<!-- Loading -->
-		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<Icon name="lucide:loader-2" class="w-8 h-8 animate-spin motion-reduce:animate-none text-text-tertiary" />
-		</div>
+		<!--
+			One state machine for the whole page: loading → error → "no status
+			yet" → content. The three branches used to be hand-rolled `v-if`s
+			whose loading arm was a bare centred spinner and whose content arm
+			had no `v-else` at all, so a `getStatus` that resolved to nothing
+			rendered this header and then a blank page.
+		-->
+		<UiQueryBoundary
+			:loading="isLoading && !status"
+			:error="error"
+			:empty="!status"
+			:error-title="t('dashboard.admin.delivery.transport.error.title')"
+			:error-message="t('dashboard.admin.delivery.transport.error.message')"
+			@retry="refetchStatus"
+		>
+			<!--
+				Content-shaped placeholder at the geometry the status and
+				configuration cards occupy, so nothing reflows when the query
+				lands. Same idiom as the sibling delivery list pages, which
+				stand in for their rows with DashboardListSkeleton.
+			-->
+			<template #loading>
+				<div
+					class="space-y-6 max-w-3xl"
+					role="status"
+					aria-busy="true"
+					:aria-label="t('dashboard.admin.delivery.transport.loadingLabel')"
+				>
+					<UiCard padding="none" overflow="hidden">
+						<div class="p-6 flex items-start gap-4">
+							<UiSkeleton class="w-12 h-12 rounded-xl shrink-0" />
+							<div class="flex-1 min-w-0 space-y-2.5">
+								<UiSkeleton class="h-5 w-48" />
+								<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
+							</div>
+						</div>
+					</UiCard>
+					<UiCard v-for="card in 2" :key="card" padding="none" overflow="hidden">
+						<div class="p-6 space-y-4">
+							<UiSkeleton class="h-4 w-40" />
+							<UiSkeleton v-for="row in 3" :key="row" class="h-10 rounded-lg" />
+						</div>
+					</UiCard>
+				</div>
+			</template>
 
-		<UiErrorAlert
-			v-else-if="error"
-			:title="t('dashboard.admin.delivery.transport.error.title')"
-			:message="t('dashboard.admin.delivery.transport.error.message')"
-			class="my-8"
-		/>
+			<!--
+				Resolved, and the answer is "nothing configured" — an honest
+				terminal state rather than a blank page or a card full of
+				zeroes. Mirrors the deliverability page's own no-setup state.
+			-->
+			<template #empty>
+				<UiEmptyState
+					icon="lucide:server-off"
+					:eyebrow="t('dashboard.admin.delivery.transport.title')"
+					:title="t('dashboard.admin.delivery.transport.empty.title')"
+					:description="t('dashboard.admin.delivery.transport.empty.description')"
+				>
+					<template #action>
+						<UiButton to="/dashboard/admin/delivery">
+							{{ t('dashboard.admin.delivery.transport.empty.action') }}
+						</UiButton>
+					</template>
+				</UiEmptyState>
+			</template>
 
-		<div v-else-if="status" class="space-y-6 max-w-3xl">
-			<!-- Plan D8: exactly one reference relay, or the ramp has no single
-			     second arm to judge the own server against and every cell holds.
-			     Renders nothing in every healthy configuration, standalone included. -->
-			<DeliveryReferenceRelayNotice />
+			<div v-if="status" class="space-y-6 max-w-3xl">
+				<!-- Plan D8: exactly one reference relay, or the ramp has no single
+				     second arm to judge the own server against and every cell holds.
+				     Renders nothing in every healthy configuration, standalone included. -->
+				<DeliveryReferenceRelayNotice />
 
-			<!-- Can-send status -->
-			<UiCard padding="none" overflow="hidden">
-				<div class="p-6 flex items-start gap-4" :class="canSend ? 'bg-success/5' : 'bg-error/5'">
-					<div
-						class="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center"
-						:class="canSend ? 'bg-success/15 text-success' : 'bg-error/15 text-error'"
-					>
-						<Icon
-							:name="canSend ? 'lucide:check-circle-2' : 'lucide:alert-triangle'"
-							class="w-6 h-6"
-						/>
-					</div>
-					<div class="flex-1 min-w-0">
-						<h2 class="text-lg font-semibold" :class="canSend ? 'text-success' : 'text-error'">
-							{{
-								canSend
-									? t('dashboard.admin.delivery.transport.canSend.yes')
-									: t('dashboard.admin.delivery.transport.canSend.no')
-							}}
-						</h2>
-						<p class="text-sm text-text-secondary mt-1">
-							<template v-if="canSend">
-								{{ t('dashboard.admin.delivery.transport.canSend.yesBody') }}
-							</template>
-							<I18nT
-								v-else
-								keypath="dashboard.admin.delivery.transport.canSend.noBody"
-								scope="global"
-							>
-								<template #envVar><code class="text-text-primary">EMAIL_PROVIDER</code></template>
-							</I18nT>
-						</p>
+				<!-- Can-send status -->
+				<DeliveryTransportCanSendCard
+					:can-send="canSend"
+					:env-snippet="envSnippet"
+					:env-set-command="envSetCommand"
+				/>
 
-						<!-- Actionable remedy: paste-ready .env skeleton + CLI command for the
-						     MISSING vars. Names only — no secret value is ever rendered. -->
-						<div v-if="!canSend && envSnippet" class="mt-4 space-y-4">
-							<!-- .env skeleton -->
+				<!-- Editable transport editor — change provider / rotate credentials in
+				     place, tested and applied through the same env-patch the setup wizard
+				     uses. The status cards above stay the read-only at-a-glance summary. -->
+				<DeliveryTransportEditor
+					:current-provider="status.provider"
+					:current-outbound-tls-mode="status.outboundTlsMode"
+					@applied="refetchStatus"
+				/>
+
+				<!-- Optional guided "connect an ESP" flow: credentials → live send test
+				     → live-DNS alignment → return-path capability. Skipping it leaves the
+				     deployment fully functional on its own MTA (plan D2), so it renders as
+				     a plain offer with no warning state of any kind. -->
+				<DeliveryTransportConnectionWizard
+					:alignment-arms="alignmentArms"
+					:return-path-transport-id="returnPathReadiness?.transportId"
+					:return-path-capability="returnPathReadiness?.capability"
+					:can-send="canSend"
+					@applied="refetchStatus"
+				/>
+
+				<!-- Inbound TLS hardening: publish our own MTA-STS policy (none →
+				     testing → enforce). Receiving posture, but it lives beside the
+				     transport controls so all TLS policy is in one place. -->
+				<DeliveryMtaStsModeCard />
+
+				<!-- Inbound sender authenticity: which forwarders we trust to rescue a
+				     DMARC fail on mailing-list / forwarded mail (Sealed Mail A5). -->
+				<DeliveryTrustedForwardersCard />
+
+				<!-- Provider + required env presence -->
+				<UiCard padding="none" overflow="hidden">
+					<template #header>
+						<div class="flex items-center gap-3">
+							<UiIconBox icon="lucide:server" size="sm" variant="surface" rounded="lg" />
 							<div>
-								<div class="flex items-center justify-between mb-2">
-									<I18nT
-										keypath="dashboard.admin.delivery.transport.env.addToEnv"
-										tag="p"
-										class="text-xs font-medium text-text-primary"
-										scope="global"
-									>
-										<template #file><code class="text-text-primary">.env</code></template>
-									</I18nT>
-									<UiButton
-										variant="ghost"
-										size="sm"
-										:title="
-											isCopied('env-snippet')
-												? t('common.copied')
-												: t('dashboard.admin.delivery.transport.env.copySnippet')
-										"
-										@click="copy(envSnippet, 'env-snippet')"
-									>
-										<Icon
-											:name="isCopied('env-snippet') ? 'lucide:check' : 'lucide:copy'"
-											class="w-3.5 h-3.5"
-											:class="isCopied('env-snippet') ? 'text-success' : ''"
-										/>
-										{{ isCopied('env-snippet') ? t('common.copied') : t('common.copy') }}
-									</UiButton>
-								</div>
-								<pre
-									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSnippet }}</pre>
-								<p class="text-xs text-text-tertiary mt-1.5">
-									{{ t('dashboard.admin.delivery.transport.env.blankValues') }}
+								<h2 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.admin.delivery.transport.config.title') }}
+								</h2>
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.admin.delivery.transport.config.subtitle') }}
 								</p>
 							</div>
+						</div>
+					</template>
 
-							<!-- CLI command -->
+					<div class="p-6 space-y-5">
+						<!-- Active provider -->
+						<div class="flex items-center justify-between">
 							<div>
-								<div class="flex items-center justify-between mb-2">
-									<p class="text-xs font-medium text-text-primary">
-										{{ t('dashboard.admin.delivery.transport.env.cliTitle') }}
-									</p>
-									<UiButton
-										variant="ghost"
-										size="sm"
-										:title="
-											isCopied('env-cmd')
-												? t('common.copied')
-												: t('dashboard.admin.delivery.transport.env.copyCommand')
-										"
-										@click="copy(envSetCommand, 'env-cmd')"
+								<p class="text-sm font-medium text-text-primary">
+									{{ t('dashboard.admin.delivery.transport.config.activeProvider') }}
+								</p>
+								<p class="text-xs text-text-tertiary mt-0.5">
+									{{ t('dashboard.admin.delivery.transport.config.activeProviderHint') }}
+								</p>
+							</div>
+							<UiBadge v-if="status.provider && status.isKnownProvider" variant="default" size="md">
+								{{ status.provider }}
+							</UiBadge>
+							<UiBadge v-else variant="error" size="md">
+								{{
+									status.provider
+										? t('dashboard.admin.delivery.transport.config.unknownProvider', {
+												provider: status.provider,
+											})
+										: t('dashboard.admin.delivery.transport.config.notSet')
+								}}
+							</UiBadge>
+						</div>
+
+						<!-- Required env presence (booleans only — never the secret value) -->
+						<div v-if="status.requiredEnv?.length" class="border-t border-border-subtle pt-5">
+							<p class="text-sm font-medium text-text-primary mb-3">
+								{{ t('dashboard.admin.delivery.transport.config.requiredEnv') }}
+							</p>
+							<ul class="space-y-2">
+								<li
+									v-for="entry in status.requiredEnv"
+									:key="entry.name"
+									class="flex items-center justify-between rounded-lg bg-bg-surface px-3 py-2"
+								>
+									<code class="text-sm text-text-primary">{{ entry.name }}</code>
+									<span
+										class="inline-flex items-center gap-1.5 text-xs font-medium"
+										:class="entry.isPresent ? 'text-success' : 'text-error'"
 									>
 										<Icon
-											:name="isCopied('env-cmd') ? 'lucide:check' : 'lucide:copy'"
+											:name="entry.isPresent ? 'lucide:check' : 'lucide:x'"
 											class="w-3.5 h-3.5"
-											:class="isCopied('env-cmd') ? 'text-success' : ''"
 										/>
-										{{ isCopied('env-cmd') ? t('common.copied') : t('common.copy') }}
-									</UiButton>
-								</div>
-								<pre
-									class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
-									>{{ envSetCommand }}</pre>
-								<I18nT
-									keypath="dashboard.admin.delivery.transport.env.cliHint"
-									tag="p"
-									class="text-xs text-text-tertiary mt-1.5"
-									scope="global"
+										{{
+											entry.isPresent
+												? t('dashboard.admin.delivery.transport.config.present')
+												: t('dashboard.admin.delivery.transport.config.missing')
+										}}
+									</span>
+								</li>
+							</ul>
+							<p class="text-xs text-text-tertiary mt-3">
+								{{ t('dashboard.admin.delivery.transport.config.presenceOnly') }}
+							</p>
+						</div>
+						<!-- The kinds this build carries, from the catalog: a provider added
+						     there is offered here without an edit (plan D1). -->
+						<I18nT
+							v-else
+							keypath="dashboard.admin.delivery.transport.config.selectProvider"
+							tag="p"
+							class="text-sm text-text-tertiary border-t border-border-subtle pt-5"
+							scope="global"
+						>
+							<template #envVar><code class="text-text-primary">EMAIL_PROVIDER</code></template>
+							<template #kinds>
+								<template v-for="(kind, index) in SEND_TRANSPORT_KINDS" :key="kind"
+									><span v-if="index > 0">{{
+										index === SEND_TRANSPORT_KINDS.length - 1
+											? t('dashboard.admin.delivery.transport.config.listLastSeparator')
+											: t('dashboard.admin.delivery.transport.config.listSeparator')
+									}}</span
+									><code class="text-text-primary">{{ kind }}</code></template
 								>
-									<template #command>
-										<code class="text-text-primary">owlat-setup env --show</code>
-									</template>
-									<template #guideLink>
-										<a
-											href="https://docs.owlat.app/developer/environment-variables"
-											target="_blank"
-											rel="noopener"
-											class="text-brand hover:text-brand-hover underline"
-											>{{ t('dashboard.admin.delivery.transport.env.guideLink') }}</a
-										>
-									</template>
-								</I18nT>
-							</div>
-						</div>
+							</template>
+						</I18nT>
 					</div>
-				</div>
-			</UiCard>
+				</UiCard>
 
-			<!-- Editable transport editor — change provider / rotate credentials in
-			     place, tested and applied through the same env-patch the setup wizard
-			     uses. The status cards above stay the read-only at-a-glance summary. -->
-			<DeliveryTransportEditor
-				:current-provider="status.provider"
-				:current-outbound-tls-mode="status.outboundTlsMode"
-				@applied="refetchStatus"
-			/>
+				<!-- Send test email -->
+				<DeliveryTestSendCard
+					:can-send="canSend"
+					:last-test-succeeded-at="status?.lastTestSucceededAt"
+				/>
 
-			<!-- Optional guided "connect an ESP" flow: credentials → live send test
-			     → live-DNS alignment → return-path capability. Skipping it leaves the
-			     deployment fully functional on its own MTA (plan D2), so it renders as
-			     a plain offer with no warning state of any kind. -->
-			<DeliveryTransportConnectionWizard
-				:alignment-arms="alignmentArms"
-				:return-path-transport-id="returnPathReadiness?.transportId"
-				:return-path-capability="returnPathReadiness?.capability"
-				:can-send="canSend"
-				@applied="refetchStatus"
-			/>
+				<!-- Signed-webhook feedback (a provider that posts events with a key) -->
+				<DeliverySignedWebhookCard
+					v-if="feedbackPanel === 'signed-webhook'"
+					:provider-kind="status?.provider ?? ''"
+					:provider-label="feedbackProviderLabel"
+					:signing-key-env-var="feedbackSigningKeyEnvVar"
+					:webhook-url="feedbackWebhookUrl"
+					:is-webhook-key-present="feedbackStatus?.missingVariables.length === 0"
+					:last-event-at="feedbackStatus?.lastEventAt ?? null"
+				/>
 
-			<!-- Inbound TLS hardening: publish our own MTA-STS policy (none →
-			     testing → enforce). Receiving posture, but it lives beside the
-			     transport controls so all TLS policy is in one place. -->
-			<DeliveryMtaStsModeCard />
+				<!-- SNS-topic feedback (bounces & complaints delivered through a topic) -->
+				<DeliverySnsTopicCard
+					v-if="feedbackPanel === 'sns-topic'"
+					:webhook-url="feedbackWebhookUrl"
+					:last-event-at="feedbackStatus?.lastEventAt ?? null"
+				/>
 
-			<!-- Inbound sender authenticity: which forwarders we trust to rescue a
-			     DMARC fail on mailing-list / forwarded mail (Sealed Mail A5). -->
-			<DeliveryTrustedForwardersCard />
-
-			<!-- Provider + required env presence -->
-			<UiCard padding="none" overflow="hidden">
-				<template #header>
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:server" size="sm" variant="surface" rounded="lg" />
-						<div>
-							<h2 class="text-lg font-semibold text-text-primary">
-								{{ t('dashboard.admin.delivery.transport.config.title') }}
-							</h2>
-							<p class="text-sm text-text-secondary">
-								{{ t('dashboard.admin.delivery.transport.config.subtitle') }}
-							</p>
-						</div>
-					</div>
-				</template>
-
-				<div class="p-6 space-y-5">
-					<!-- Active provider -->
-					<div class="flex items-center justify-between">
-						<div>
-							<p class="text-sm font-medium text-text-primary">
-								{{ t('dashboard.admin.delivery.transport.config.activeProvider') }}
-							</p>
-							<p class="text-xs text-text-tertiary mt-0.5">
-								{{ t('dashboard.admin.delivery.transport.config.activeProviderHint') }}
-							</p>
-						</div>
-						<UiBadge v-if="status.provider && status.isKnownProvider" variant="default" size="md">
-							{{ status.provider }}
-						</UiBadge>
-						<UiBadge v-else variant="error" size="md">
-							{{
-								status.provider
-									? t('dashboard.admin.delivery.transport.config.unknownProvider', {
-											provider: status.provider,
-										})
-									: t('dashboard.admin.delivery.transport.config.notSet')
-							}}
-						</UiBadge>
-					</div>
-
-					<!-- Required env presence (booleans only — never the secret value) -->
-					<div v-if="status.requiredEnv.length > 0" class="border-t border-border-subtle pt-5">
-						<p class="text-sm font-medium text-text-primary mb-3">
-							{{ t('dashboard.admin.delivery.transport.config.requiredEnv') }}
-						</p>
-						<ul class="space-y-2">
-							<li
-								v-for="entry in status.requiredEnv"
-								:key="entry.name"
-								class="flex items-center justify-between rounded-lg bg-bg-surface px-3 py-2"
-							>
-								<code class="text-sm text-text-primary">{{ entry.name }}</code>
-								<span
-									class="inline-flex items-center gap-1.5 text-xs font-medium"
-									:class="entry.isPresent ? 'text-success' : 'text-error'"
-								>
-									<Icon :name="entry.isPresent ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5" />
-									{{
-										entry.isPresent
-											? t('dashboard.admin.delivery.transport.config.present')
-											: t('dashboard.admin.delivery.transport.config.missing')
-									}}
-								</span>
-							</li>
-						</ul>
-						<p class="text-xs text-text-tertiary mt-3">
-							{{ t('dashboard.admin.delivery.transport.config.presenceOnly') }}
-						</p>
-					</div>
-					<!-- The kinds this build carries, from the catalog: a provider added
-					     there is offered here without an edit (plan D1). -->
-					<I18nT
-						v-else
-						keypath="dashboard.admin.delivery.transport.config.selectProvider"
-						tag="p"
-						class="text-sm text-text-tertiary border-t border-border-subtle pt-5"
-						scope="global"
-					>
-						<template #envVar><code class="text-text-primary">EMAIL_PROVIDER</code></template>
-						<template #kinds>
-							<template v-for="(kind, index) in SEND_TRANSPORT_KINDS" :key="kind"
-								><span v-if="index > 0">{{
-									index === SEND_TRANSPORT_KINDS.length - 1
-										? t('dashboard.admin.delivery.transport.config.listLastSeparator')
-										: t('dashboard.admin.delivery.transport.config.listSeparator')
-								}}</span
-								><code class="text-text-primary">{{ kind }}</code></template
-							>
-						</template>
-					</I18nT>
-				</div>
-			</UiCard>
-
-			<!-- Send test email -->
-			<DeliveryTestSendCard
-				:can-send="canSend"
-				:last-test-succeeded-at="status?.lastTestSucceededAt"
-			/>
-
-			<!-- Signed-webhook feedback (a provider that posts events with a key) -->
-			<DeliverySignedWebhookCard
-				v-if="feedbackPanel === 'signed-webhook'"
-				:provider-kind="status?.provider ?? ''"
-				:provider-label="feedbackProviderLabel"
-				:signing-key-env-var="feedbackSigningKeyEnvVar"
-				:webhook-url="feedbackWebhookUrl"
-				:is-webhook-key-present="feedbackStatus?.missingVariables.length === 0"
-				:last-event-at="feedbackStatus?.lastEventAt ?? null"
-			/>
-
-			<!-- SNS-topic feedback (bounces & complaints delivered through a topic) -->
-			<DeliverySnsTopicCard
-				v-if="feedbackPanel === 'sns-topic'"
-				:webhook-url="feedbackWebhookUrl"
-				:last-event-at="feedbackStatus?.lastEventAt ?? null"
-			/>
-
-			<!-- Inbound TLS reports (TLS-RPT, RFC 8460) partners send us -->
-			<DeliveryTlsReportCard
-				:summary="tlsReportSummary"
-				:is-loading="tlsReportLoading"
-				:error="tlsReportError"
-			/>
-		</div>
+				<!-- Inbound TLS reports (TLS-RPT, RFC 8460) partners send us -->
+				<DeliveryTlsReportCard
+					:summary="tlsReportSummary"
+					:is-loading="tlsReportLoading"
+					:error="tlsReportError"
+				/>
+			</div>
+		</UiQueryBoundary>
 	</div>
 </template>

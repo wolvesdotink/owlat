@@ -7,7 +7,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.team.inboxes.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
@@ -109,13 +109,6 @@ async function confirmPurge() {
 		<!-- Header -->
 		<div class="flex items-start justify-between gap-4">
 			<div>
-				<NuxtLink
-					to="/dashboard/admin"
-					class="inline-flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors mb-4"
-				>
-					<Icon name="lucide:arrow-left" class="w-4 h-4" />
-					{{ t('dashboard.admin.team.inboxes.backToSettings') }}
-				</NuxtLink>
 				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 					{{ t('dashboard.admin.team.inboxes.title') }}
 				</h1>
