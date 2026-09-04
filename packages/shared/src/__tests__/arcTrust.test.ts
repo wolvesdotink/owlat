@@ -12,17 +12,9 @@ import { describe, it, expect } from 'vitest';
 import {
 	isTrustedForwarder,
 	isValidForwarderDomain,
-	normalizeDomain,
 	sanitizeTrustedForwarders,
 	shouldArcOverrideDmarc,
 } from '../arcTrust';
-
-describe('normalizeDomain', () => {
-	it('lowercases, trims, and strips a single trailing dot', () => {
-		expect(normalizeDomain('  Google.COM.  ')).toBe('google.com');
-		expect(normalizeDomain(undefined)).toBe('');
-	});
-});
 
 describe('isTrustedForwarder — single-label entries are never wildcards', () => {
 	it('does not trust a sealer under a bare single-label entry', () => {

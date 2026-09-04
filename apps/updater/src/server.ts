@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { errorMessage } from '@owlat/shared';
 import {
 	applyEnvUpdates,
-	errorMessage,
 	isRateLimited,
 	isValidIPv4,
 	validateComposeTemplate,

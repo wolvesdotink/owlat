@@ -73,8 +73,7 @@ export class AuthRateLimiter {
 			const ipCount = (results[1]?.[1] as number) ?? 0;
 			const authCount = (results[3]?.[1] as number) ?? 0;
 			const throttled =
-				authCount >= this.config.failuresPerWindow ||
-				ipCount >= PER_IP_FAILURE_LIMIT;
+				authCount >= this.config.failuresPerWindow || ipCount >= PER_IP_FAILURE_LIMIT;
 			return {
 				throttled,
 				tarpitMs: throttled ? this.config.tarpitMs : 0,
@@ -111,8 +110,4 @@ export class AuthRateLimiter {
 			logger.warn({ err, ip }, 'auth rate-limit record failed — failing open');
 		}
 	}
-}
-
-export function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }

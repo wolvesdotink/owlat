@@ -18,15 +18,6 @@ import {
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
 
-/** Extract a human-readable message from an unknown caught throw. */
-export function errorMessage(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	if (typeof err === 'object' && err !== null && 'message' in err) {
-		return String((err as { message: unknown }).message);
-	}
-	return String(err);
-}
-
 // ── Allowed Docker images that may appear in compose templates ──
 // Any image not in this list will cause the compose template to be rejected.
 //

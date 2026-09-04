@@ -10,6 +10,7 @@
  * simpler and deterministic.
  */
 
+import { sleep } from '@owlat/shared';
 export interface WaitOptions {
 	url: string;
 	timeoutMs?: number;
@@ -31,9 +32,7 @@ export async function waitForUrl(opts: WaitOptions): Promise<void> {
 	while (true) {
 		const elapsed = Date.now() - start;
 		if (elapsed >= timeoutMs) {
-			throw new Error(
-				`Timed out after ${(timeoutMs / 1000).toFixed(0)}s waiting for ${opts.url}`,
-			);
+			throw new Error(`Timed out after ${(timeoutMs / 1000).toFixed(0)}s waiting for ${opts.url}`);
 		}
 
 		const ctrl = new AbortController();
@@ -56,8 +55,4 @@ export async function waitForUrl(opts: WaitOptions): Promise<void> {
 		opts.onTick?.(elapsed);
 		await sleep(intervalMs);
 	}
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }
