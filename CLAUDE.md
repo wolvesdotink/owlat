@@ -42,4 +42,4 @@ before adding new files, splitting existing ones, or touching mutation auth.
 
 Environment variables in the Convex backend must go through `lib/env.ts` —
 direct `process.env.*` reads outside that module are blocked by
-`bun run lint:env` (run as part of `bun run lint`).
+`bun run --cwd apps/api lint:env` (part of that workspace's `lint` script).

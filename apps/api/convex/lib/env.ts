@@ -2,7 +2,8 @@
  * Typed environment variable access for the Convex backend.
  *
  * All `process.env.*` reads in `apps/api/convex/` MUST go through this module.
- * The lint rule in `.eslintrc` rejects raw `process.env.` outside this file.
+ * `scripts/check-env.sh` (`bun run lint:env` in this workspace, part of its
+ * `lint` script) rejects raw `process.env.` outside this file.
  *
  * Add a new variable here when introducing one — the union below is the single
  * source of truth, and adding to it is the only place TypeScript will allow.
