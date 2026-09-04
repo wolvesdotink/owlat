@@ -25,6 +25,7 @@ import {
 import IndependencePage from '../advanced/independence.vue';
 import IndependenceTrendChart from '~/components/delivery/IndependenceTrendChart.vue';
 import RampConfirmDialog from '~/components/delivery/RampConfirmDialog.vue';
+import ErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import {
 	DAY_MS,
@@ -171,6 +172,7 @@ function mountPage() {
 			},
 			components: {
 				UiQueryBoundary: QueryBoundary,
+				UiErrorAlert: ErrorAlert,
 				DeliveryIndependenceTrendChart: IndependenceTrendChart,
 				DeliveryRampConfirmDialog: RampConfirmDialog,
 			},

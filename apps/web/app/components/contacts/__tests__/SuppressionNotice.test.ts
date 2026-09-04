@@ -35,7 +35,10 @@ function mountNotice(props: {
 			removing: false,
 			...props,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { Icon: true, UiDisclosure: { template: '<div><slot name="label" /><slot /></div>' } },
+		},
 	});
 }
 

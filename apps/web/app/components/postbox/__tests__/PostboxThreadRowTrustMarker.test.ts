@@ -61,6 +61,7 @@ function mountRow(msg: Partial<PostboxThreadRowMessage>, trustMarkers = true) {
 				UiContextMenu: contextMenuStub,
 				UiAvatar: avatarStub,
 				PostboxThreadRowFollowUp: { template: '<span />' },
+				PostboxSwipeTrack: { template: '<div><slot /></div>' },
 			},
 			mocks: {
 				formatThreadTimestamp: () => '2h',

@@ -17,6 +17,7 @@ import type { Id } from '@owlat/api/dataModel';
 import CampaignReport from '../[id]/report.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { installNuxtStubs, queryResult } from '~/__tests__/a11y';
+import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import { formatDateTime, formatCompactRelativeTime } from '~/utils/formatters';
 import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
 
@@ -56,9 +57,16 @@ function mountReport(campaign: Record<string, unknown>) {
 	return mount(CampaignReport, {
 		global: {
 			plugins: [createTestI18n()],
-			// Feature components are left unresolved on purpose (see the
-			// add-contact picker suite); the warning storm would bury a real one.
-			config: { warnHandler: () => {} },
+			components: { UiQueryBoundary: QueryBoundary },
+			stubs: {
+				UiIconBox: true,
+				UiStatTile: true,
+				UiTrendChart: true,
+				UiErrorAlert: true,
+				UiSpinner: true,
+				UiEmptyState: true,
+				CampaignsUndoSendToast: true,
+			},
 		},
 	});
 }

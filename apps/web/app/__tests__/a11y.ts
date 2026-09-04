@@ -50,6 +50,8 @@ import {
 	useTemplateRef,
 	type Component,
 } from 'vue';
+import { IconStub, NuxtLinkStub } from './nuxtComponents';
+import { tolerateUnresolvedComponents } from './vueWarnings';
 import { useAnnounce } from '~/composables/useAnnounce';
 import { useAuthForm } from '~/composables/useAuthForm';
 import { useBreadcrumbs } from '~/composables/useBreadcrumbs';
@@ -107,25 +109,6 @@ for (const [path, module] of Object.entries({
 	if (name) uiComponents[`Ui${name}`] = (module as { default: Component }).default;
 }
 
-const NuxtLinkStub = defineComponent({
-	name: 'NuxtLink',
-	inheritAttrs: false,
-	props: { to: { type: [String, Object], default: undefined } },
-	setup(props, { attrs, slots }) {
-		const href =
-			typeof props.to === 'string' ? props.to : ((props.to as { path?: string })?.path ?? '#');
-		return () => h('a', { ...attrs, href }, slots.default?.());
-	},
-});
-
-const IconStub = defineComponent({
-	name: 'Icon',
-	props: { name: { type: String, default: '' } },
-	// Matches the real @nuxt/icon output: a decorative glyph with no accessible
-	// name, so an icon-only control still fails `button-name` here.
-	setup: () => () => h('span', { 'aria-hidden': 'true' }),
-});
-
 /**
  * Component names Vue could not resolve during the audit currently running.
  * Feature components land here on purpose (they are left unresolved so a page
@@ -133,7 +116,6 @@ const IconStub = defineComponent({
  * real UI layer silently dropped out of the audit, which `auditA11y` fails on.
  */
 const unresolvedComponents = new Set<string>();
-const UNRESOLVED_COMPONENT = /Failed to resolve component: (\S+)/;
 
 const a11yGlobal = {
 	components: { ...uiComponents, NuxtLink: NuxtLinkStub, Icon: IconStub },
@@ -150,11 +132,7 @@ const a11yGlobal = {
 		// unresolved; the resulting warning storm would bury a real one. Swallowed
 		// is not the same as ignored, though — every name is recorded so a rename
 		// in the UI layer cannot quietly shrink what the audit covers.
-		warnHandler: (message: string): void => {
-			const unresolved = UNRESOLVED_COMPONENT.exec(message);
-			if (unresolved?.[1]) unresolvedComponents.add(unresolved[1]);
-			else console.warn(message);
-		},
+		warnHandler: tolerateUnresolvedComponents((name) => unresolvedComponents.add(name)),
 	},
 };
 
@@ -366,7 +344,14 @@ function defaultStubs(): Record<string, unknown> {
 		usePostboxThreadCommandSurface: vi.fn(),
 		useClickOutside: vi.fn(),
 		useColorMode: () => reactive({ preference: 'dark', value: 'dark' }),
-		useAppTheme: () => ({ theme: ref('dark'), setTheme: vi.fn() }),
+		useAppTheme: () => ({
+			themePreference: ref('dark'),
+			resolvedTheme: ref('dark'),
+			isDark: ref(true),
+			isLight: ref(false),
+			isHydrated: ref(true),
+			setTheme: vi.fn(),
+		}),
 	};
 }
 

@@ -30,7 +30,19 @@ beforeEach(() => {
 });
 
 function mountPage(component: typeof SetupModePage) {
-	return mount(component, { global: { plugins: [createTestI18n()] } });
+	return mount(component, {
+		global: {
+			plugins: [createTestI18n()],
+			stubs: {
+				UiBadge: true,
+				UiCard: { template: '<div><slot /></div>' },
+				UiErrorAlert: true,
+				UiHeroField: true,
+				UiIconBox: true,
+				UiStepIndicator: true,
+			},
+		},
+	});
 }
 
 describe('setup wizard — shared registry copy', () => {

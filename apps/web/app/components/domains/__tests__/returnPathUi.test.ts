@@ -249,6 +249,9 @@ const rowStubs = {
 	DomainsReceivingDnsSection: { template: '<div />' },
 	// Exercised above; inert here (it calls a mutation on setup).
 	DomainsReturnPathEditor: { template: '<div />' },
+	DomainsStreamSubdomainPlanPanel: true,
+	DomainsYahooCflPanel: true,
+	DomainsDnsPropagationNote: true,
 };
 
 function makeRowDomain(domainName: string) {

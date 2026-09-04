@@ -61,6 +61,7 @@ function mountBody(message = { _id: 'msg-1', htmlBodyStorageId: 'blob-1' }) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
+			stubs: { PostboxImageBanner: true },
 		},
 	});
 }

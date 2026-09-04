@@ -18,7 +18,7 @@
  *     send's `sendAt` (which only bounds the toast) by a separate path.
  */
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { ref, type Ref } from 'vue';
+import { effectScope, ref, type Ref } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const i18n = createTestI18n();
@@ -100,7 +100,7 @@ beforeEach(() => {
 
 async function makeComposer() {
 	const { usePostboxCompose } = await import('../usePostboxCompose');
-	const composer = usePostboxCompose({ mailboxId: 'mbx-1' as never });
+	const composer = effectScope().run(() => usePostboxCompose({ mailboxId: 'mbx-1' as never }))!;
 	composer.toAddresses.value = ['someone@example.com'];
 	composer.subject.value = 'Hello';
 	return composer;
