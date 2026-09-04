@@ -1,0 +1,25 @@
+name: Set up bun
+description: >-
+  Install the bun release pinned by `packageManager` in the root package.json,
+  restore bun's download cache and run a frozen-lockfile install. Callers
+  check the repository out first (a local action can only run after checkout)
+  and put step-security/harden-runner before that checkout, because its
+  first-step-of-the-job contract cannot be met from inside a composite action.
+
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      with:
+        bun-version-file: package.json
+
+    - name: Cache bun dependencies
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      run: bun install --frozen-lockfile
