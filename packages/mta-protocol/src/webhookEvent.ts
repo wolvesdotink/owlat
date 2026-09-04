@@ -23,7 +23,7 @@ import {
 // the package with RUNTIME imports, and the barrel re-exports `dnsZone` and
 // `spfAlignment`, both of which pull `tldts` (~1MB of PSL data) — a cost every
 // consumer of `isMtaWebhookEvent` would pay, the Convex bundle included.
-import { isRecord } from '@owlat/shared';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import { isDeliveryDomain } from '@owlat/shared/routingDispatch';
 import { parseIpAddress } from '@owlat/shared/ipAddress';

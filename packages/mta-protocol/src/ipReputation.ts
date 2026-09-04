@@ -7,7 +7,7 @@
  * one declaration, imported by the producer and the consumer alike.
  */
 
-import { isRecord } from '@owlat/shared';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { getWarmingDisplayCapForDay, GRADUATED_DISPLAY_CAP } from '@owlat/shared/warming';
 import {
 	isFcrdnsFailureReason,
