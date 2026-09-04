@@ -16,6 +16,7 @@
  * Pure: no DNS, no clock, no Convex.
  */
 
+import { normalizeDomain } from './utils/normalizeDomain';
 export const ALIGNMENT_CHECK_IDS = ['from_domain', 'spf', 'dkim', 'dmarc'] as const;
 export type AlignmentCheckId = (typeof ALIGNMENT_CHECK_IDS)[number];
 
@@ -177,11 +178,6 @@ export const ALIGNMENT_REMEDIES = {
 	reference_arm_unknown:
 		'A relay is configured but we cannot see the domain it signs and bounces as, so the two arms cannot be compared. Verify the relay for this sending domain (or turn the relay off to run on the own MTA alone).',
 } as const;
-
-/** Trim, lowercase and drop a trailing root dot. ONE spelling of a DNS name. */
-export function normalizeDomain(domain: string): string {
-	return domain.trim().toLowerCase().replace(/\.$/, '');
-}
 
 /**
  * The FULL TXT name a DKIM key is published at. The gather keys its observations
