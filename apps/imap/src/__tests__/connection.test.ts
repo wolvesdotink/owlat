@@ -23,7 +23,9 @@ import { ImapConnection } from '../connection.js';
 import type { ImapConfig } from '../config.js';
 import type { ConvexClient } from '../convex.js';
 import { AuthRateLimiter } from '../rateLimit.js';
-import { CAPABILITY_LINE } from '../commands/walker.js';
+import { assembleCapabilityLine } from '../commands/walker.js';
+
+const CAPABILITY_LINE = assembleCapabilityLine(true);
 
 vi.mock('../logger.js', () => ({
 	logger: {

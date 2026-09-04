@@ -1,4 +1,4 @@
-import type { UniversalPadding, UniversalMargin, UniversalBorder, EmailTheme } from '../types';
+import type { UniversalPadding, UniversalMargin, EmailTheme } from '../types';
 
 /**
  * Default padding values for blocks
@@ -30,15 +30,6 @@ export const defaultBackgroundColor = 'transparent';
  * Default border radius (0 = no rounding)
  */
 export const defaultBorderRadius = 0;
-
-/**
- * Default border values for blocks (no border by default)
- */
-export const defaultBorder: UniversalBorder = {
-	borderWidth: 0,
-	borderColor: '#000000',
-	borderStyle: 'none',
-};
 
 /**
  * Default email theme — provides all Required<EmailTheme> fields so

@@ -21,7 +21,7 @@ import {
 	parseCanonicalization,
 	stripSignatureValue,
 	type Canonicalization,
-} from '../canon.js';
+} from '@owlat/mail-canon';
 import type { DkimVerdict } from '../dmarc.js';
 import { isNoRecordDnsError } from '../dnsErrors.js';
 import { isKeyRecordError, parseDkimKeyRecord, type DkimKeyRecord } from './keyRecord.js';

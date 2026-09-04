@@ -16,7 +16,7 @@ const MAX_RETRY_DELAY_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export const GOOGLE_POSTMASTER_API_BASE = 'https://gmailpostmastertools.googleapis.com/v2';
-export const GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME = 'userReportedSpamRatio';
+const GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME = 'userReportedSpamRatio';
 
 /**
  * The ratio metrics requested in one v2 `domainStats:query`. `name` is OUR

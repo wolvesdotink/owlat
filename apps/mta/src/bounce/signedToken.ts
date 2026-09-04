@@ -24,16 +24,8 @@ import {
 	computeSignedTokenMac as computeSharedSignedTokenMac,
 	normalizeVerpKey,
 	signedTokenMacsEqual as sharedSignedTokenMacsEqual,
-	VERP_MAC_B64URL_LEN,
 	VERP_WINDOW_MS,
 } from '@owlat/shared/verp';
-
-/**
- * Length (chars) of the base64url-encoded truncated HMAC carried in a token,
- * and the window granularity — both re-exported from the shared core so the
- * MTA and Convex can never disagree about a token's shape.
- */
-export const MAC_B64URL_LEN = VERP_MAC_B64URL_LEN;
 
 /** Window granularity: one bucket per UTC day. */
 export const SIGNED_TOKEN_WINDOW_MS = VERP_WINDOW_MS;

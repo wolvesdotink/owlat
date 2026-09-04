@@ -13,10 +13,6 @@
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
 		},
-		"./utils": {
-			"types": "./src/utils/index.ts",
-			"import": "./src/utils/index.ts"
-		},
 		"./types": {
 			"types": "./src/types/index.ts",
 			"import": "./src/types/index.ts"
@@ -76,10 +72,6 @@
 		"./dane": {
 			"types": "./src/dane.ts",
 			"import": "./src/dane.ts"
-		},
-		"./tlsReport": {
-			"types": "./src/tlsReport.ts",
-			"import": "./src/tlsReport.ts"
 		},
 		"./mtaStsPolicy": {
 			"types": "./src/mtaStsPolicy.ts",
@@ -260,14 +252,6 @@
 		"./deliverabilityAlignment": {
 			"types": "./src/deliverabilityAlignment.ts",
 			"import": "./src/deliverabilityAlignment.ts"
-		},
-		"./deliverabilityAlignmentGate": {
-			"types": "./src/deliverabilityAlignmentGate.ts",
-			"import": "./src/deliverabilityAlignmentGate.ts"
-		},
-		"./spfCoexistence": {
-			"types": "./src/spfCoexistence.ts",
-			"import": "./src/spfCoexistence.ts"
 		},
 		"./yahooCfl": {
 			"types": "./src/yahooCfl.ts",

@@ -96,16 +96,3 @@ export function alignmentGate(input: AlignmentGateInput): AlignmentGateVerdict {
 		reason: state.verdict === 'unknown' ? 'unknown_hold' : 'blocked',
 	};
 }
-
-/**
- * Apply the gate to a proposed share: a blocked cell can only be held at 0.
- *
- * This is a BOUNDARY, so it also sanitises the share it is handed — a NaN,
- * an Infinity or an out-of-range number must not be able to travel through an
- * open gate into the route state.
- */
-export function applyAlignmentGateToShare(share: number, gate: AlignmentGateVerdict): number {
-	if (!gate.allowsShareAboveZero) return 0;
-	if (!Number.isFinite(share)) return 0;
-	return Math.min(1, Math.max(0, share));
-}

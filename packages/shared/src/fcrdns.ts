@@ -56,7 +56,7 @@ export interface FcrdnsDnsDeps {
 }
 
 export type FcrdnsVerification = Omit<FcrdnsReadiness, 'checkedAt' | 'overridden'>;
-export const FCRDNS_DNS_TIMEOUT_MS = 5_000;
+const FCRDNS_DNS_TIMEOUT_MS = 5_000;
 
 /**
  * Provider-owned reverse-DNS suffixes that identify their default/generated

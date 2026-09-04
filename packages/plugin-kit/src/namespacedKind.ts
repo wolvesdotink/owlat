@@ -15,7 +15,7 @@ import { isPluginId, parsePluginId, type PluginId } from './pluginId';
  * the plugin id embedded in it. It gets one builder, one parser and one prefix
  * constant.
  */
-export const PLUGIN_KIND_NAMESPACE = 'plugin' as const;
+const PLUGIN_KIND_NAMESPACE = 'plugin' as const;
 
 /** `plugin.` — the prefix every host `startsWith` check must use. */
 export const PLUGIN_KIND_PREFIX = `${PLUGIN_KIND_NAMESPACE}.` as const;

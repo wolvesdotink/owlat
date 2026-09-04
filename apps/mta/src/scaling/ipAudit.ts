@@ -44,7 +44,7 @@ const AUDIT_DUE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 const ZONE_TIMEOUT_MS = 5_000;
 
 /** Deterministic /24 sample: spread across the block, never the whole block. */
-export const NEIGHBOUR_SAMPLE_OFFSETS = [
+const NEIGHBOUR_SAMPLE_OFFSETS = [
 	1, 17, 33, 49, 65, 81, 97, 113, 129, 145, 161, 177, 193, 209, 225, 241,
 ] as const;
 
@@ -208,15 +208,13 @@ export async function auditIp(
 	const ehlo = resolveEhloForIp(config, ip);
 
 	const [port25Detail, zones, neighbourhood, fcrdns] = await Promise.all([
-		deps.port25(ip).catch(
-			(): Port25ProbeResult => ({
-				ip,
-				status: 'unknown',
-				reason: 'inconclusive',
-				checkedAt: deps.now(),
-				targets: [],
-			})
-		),
+		deps.port25(ip).catch((): Port25ProbeResult => ({
+			ip,
+			status: 'unknown',
+			reason: 'inconclusive',
+			checkedAt: deps.now(),
+			targets: [],
+		})),
 		family
 			? observeZones(ip, config, family, timeoutMs, deps)
 			: Promise.resolve<IpAuditZoneObservation[]>([]),
@@ -245,7 +243,7 @@ export async function auditIp(
 	return { ...report, port25Detail };
 }
 
-export function ipAuditKey(ip: string): string {
+function ipAuditKey(ip: string): string {
 	return `${IP_AUDIT_PREFIX}${ip}`;
 }
 

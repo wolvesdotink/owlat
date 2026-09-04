@@ -2,9 +2,9 @@
 	"name": "@owlat/email-scanner",
 	"version": "0.4.4",
 	"private": true,
-	"license": "Apache-2.0",
-	"homepage": "https://owlat.app",
 	"description": "Email security scanner — malicious content, attachment, and URL reputation scanning",
+	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
 	"main": "./src/index.ts",
 	"module": "./src/index.ts",
@@ -14,10 +14,6 @@
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
 		},
-		"./content": {
-			"types": "./src/content/index.ts",
-			"import": "./src/content/index.ts"
-		},
 		"./files": {
 			"types": "./src/files/index.ts",
 			"import": "./src/files/index.ts"
@@ -25,10 +21,6 @@
 		"./clamav": {
 			"types": "./src/clamav/index.ts",
 			"import": "./src/clamav/index.ts"
-		},
-		"./urls": {
-			"types": "./src/urls/index.ts",
-			"import": "./src/urls/index.ts"
 		}
 	},
 	"scripts": {
@@ -39,13 +31,13 @@
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage"
 	},
+	"dependencies": {
+		"@owlat/shared": "workspace:*"
+	},
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
-	},
-	"dependencies": {
-		"@owlat/shared": "workspace:*"
 	}
 }

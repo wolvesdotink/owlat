@@ -294,7 +294,7 @@ export function formatAddress(addr: EmailAddress): string {
 }
 
 /** Reconstruct a whole list into its canonical header form. */
-export function formatAddressList(list: readonly EmailAddress[]): string {
+function formatAddressList(list: readonly EmailAddress[]): string {
 	return list.map(formatAddress).join(', ');
 }
 

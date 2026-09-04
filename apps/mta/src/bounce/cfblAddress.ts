@@ -59,10 +59,10 @@ import {
 } from './signedToken.js';
 
 /** Envelope local-part prefix for the complaint feedback address. */
-export const CFBL_LOCAL_PREFIX = 'fbl';
+const CFBL_LOCAL_PREFIX = 'fbl';
 
 /** RFC 9477 §4.1 `report=` parameter value: we accept RFC 5965 ARF reports. */
-export const CFBL_REPORT_FORMAT = 'arf';
+const CFBL_REPORT_FORMAT = 'arf';
 
 /**
  * Domain-separation label for the complaint MAC. The VERP bounce token signs
@@ -200,7 +200,7 @@ export function buildCfblAddress(
  * Render the RFC 9477 §4.1 header value: the address plus the mandatory
  * `report=` parameter naming the report format we accept.
  */
-export function buildCfblHeaderValue(address: string): string {
+function buildCfblHeaderValue(address: string): string {
 	return `${address}; report=${CFBL_REPORT_FORMAT}`;
 }
 
@@ -232,7 +232,7 @@ export const CFBL_FEEDBACK_ID_HEADER = 'CFBL-Feedback-ID';
  * Absence is not an error state (D2): no throw, no warning, no nag — the send
  * proceeds byte-for-byte as it did before the header existed.
  */
-export function isCfblHostAlignedWithFrom(cfblHost: string, fromDomain: string): boolean {
+function isCfblHostAlignedWithFrom(cfblHost: string, fromDomain: string): boolean {
 	if (cfblHost.length === 0 || fromDomain.length === 0) return false;
 	const host = cfblHost.toLowerCase();
 	const from = fromDomain.toLowerCase();

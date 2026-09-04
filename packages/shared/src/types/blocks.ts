@@ -1117,16 +1117,6 @@ export type EditorBlock = {
 }[BlockType];
 
 /**
- * Type guard to narrow an EditorBlock to a specific block type.
- */
-export function isBlockType<T extends BlockType>(
-	block: EditorBlock,
-	type: T
-): block is EditorBlock & { type: T; content: BlockTypeContentMap[T] } {
-	return block.type === type;
-}
-
-/**
  * Saved block for reuse
  */
 export interface SavedBlock {

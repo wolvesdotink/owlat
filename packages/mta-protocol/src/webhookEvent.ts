@@ -45,7 +45,7 @@ const SPF_RESULTS = new Set([
 const DKIM_RESULTS = new Set(['pass', 'fail', 'neutral', 'none', 'temperror', 'permerror']);
 const DMARC_RESULTS = new Set(['pass', 'fail', 'none', 'temperror', 'permerror']);
 
-export function isMtaWebhookEventType(value: unknown): value is MtaWebhookEventType {
+function isMtaWebhookEventType(value: unknown): value is MtaWebhookEventType {
 	return typeof value === 'string' && EVENT_TYPES.has(value);
 }
 

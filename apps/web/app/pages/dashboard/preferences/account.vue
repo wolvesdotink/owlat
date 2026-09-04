@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { sanitizeCsvCell } from '@owlat/shared';
+import { isValidEmail, sanitizeCsvCell } from '@owlat/shared';
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import Papa from 'papaparse';
-import { isValidEmail } from '~/utils/validation';
 import { authClient } from '~/lib/auth-client';
 import { writeAccountJsonExport } from '~/utils/accountJsonExport';
 import {

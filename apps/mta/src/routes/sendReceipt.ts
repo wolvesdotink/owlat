@@ -16,7 +16,7 @@ export function intakeReceiptKey(intakeReceiptId: string): string {
 	return `mta:work-attempts:${intakeReceiptId}`;
 }
 
-export function resolveIntakeReceiptId(job: EmailJob): string | undefined {
+function resolveIntakeReceiptId(job: EmailJob): string | undefined {
 	return job.intakeReceiptId ?? job.workAttemptId;
 }
 

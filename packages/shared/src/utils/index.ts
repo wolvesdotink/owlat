@@ -11,16 +11,11 @@ export {
 	// Regex patterns
 	emailRegex,
 	domainRegex,
-	urlRegex,
-	phoneRegex,
 	slugRegex,
 	// Validation functions
 	isValidEmail,
 	isValidDomain,
 	isValidUrl,
-	isValidPhone,
-	isValidSlug,
 	isEmpty,
-	isNonEmptyString,
 	toSlug,
 } from './validation';

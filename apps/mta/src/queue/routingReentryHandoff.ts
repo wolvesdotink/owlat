@@ -63,7 +63,7 @@ function parseReceipt(raw: string | null): RoutingReentryHandoffReceipt | null {
 	return null;
 }
 
-export function classifyRoutingReentryReason(reason: string): RoutingReentryReason {
+function classifyRoutingReentryReason(reason: string): RoutingReentryReason {
 	if (/warming/i.test(reason)) return 'warming_capacity_changed';
 	if (/circuit/i.test(reason)) return 'circuit_breaker_changed';
 	return 'routing_lease_stale';

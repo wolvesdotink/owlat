@@ -26,13 +26,13 @@ export interface UrlReputationOptions {
  */
 export async function checkUrlReputation(
 	htmlContent: string,
-	options: UrlReputationOptions,
+	options: UrlReputationOptions
 ): Promise<UrlReputationResult[]> {
 	// Extract all URLs from HTML
 	const links = extractUrls(htmlContent);
 	const urls = links
-		.map(l => l.href)
-		.filter(href => href.startsWith('http://') || href.startsWith('https://'));
+		.map((l) => l.href)
+		.filter((href) => href.startsWith('http://') || href.startsWith('https://'));
 
 	if (urls.length === 0) return [];
 
@@ -49,9 +49,9 @@ export async function checkUrlReputation(
  * @param options - API key and optional cache
  * @returns Array of reputation results for flagged URLs
  */
-export async function checkUrlReputationBatch(
+async function checkUrlReputationBatch(
 	urls: string[],
-	options: UrlReputationOptions,
+	options: UrlReputationOptions
 ): Promise<UrlReputationResult[]> {
 	if (urls.length === 0) return [];
 
@@ -90,28 +90,24 @@ export async function checkUrlReputationBatch(
 		const sbResults = await checkSafeBrowsing(uncachedUrls, options.apiKey);
 
 		// Create a set of flagged URLs for quick lookup
-		const flaggedUrls = new Set(sbResults.map(r => normalizeUrl(r.url)));
+		const flaggedUrls = new Set(sbResults.map((r) => normalizeUrl(r.url)));
 
 		// Cache all results (both clean and flagged)
 		if (options.cache) {
 			// Cache flagged URLs
 			for (const sbResult of sbResults) {
 				const hash = await hashUrl(sbResult.url);
-				await options.cache.set(hash, createCachedVerdict(
-					sbResult.verdict,
-					'google_safe_browsing',
-					sbResult.threats,
-				));
+				await options.cache.set(
+					hash,
+					createCachedVerdict(sbResult.verdict, 'google_safe_browsing', sbResult.threats)
+				);
 			}
 
 			// Cache clean URLs
 			for (const url of uncachedUrls) {
 				if (!flaggedUrls.has(normalizeUrl(url))) {
 					const hash = await hashUrl(url);
-					await options.cache.set(hash, createCachedVerdict(
-						'safe',
-						'google_safe_browsing',
-					));
+					await options.cache.set(hash, createCachedVerdict('safe', 'google_safe_browsing'));
 				}
 			}
 		}
@@ -165,4 +161,10 @@ export function urlReputationToFlags(results: UrlReputationResult[]): ContentFla
 
 // Re-export
 export { checkSafeBrowsing, hashUrl, normalizeUrl } from './safeBrowsing.js';
-export { createCachedVerdict, isExpired, InMemoryUrlCache, CLEAN_TTL_MS, FLAGGED_TTL_MS } from './cache.js';
+export {
+	createCachedVerdict,
+	isExpired,
+	InMemoryUrlCache,
+	CLEAN_TTL_MS,
+	FLAGGED_TTL_MS,
+} from './cache.js';

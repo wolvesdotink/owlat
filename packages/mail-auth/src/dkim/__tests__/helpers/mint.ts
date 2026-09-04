@@ -10,7 +10,7 @@
  */
 
 import { createHash, createSign, type KeyObject } from 'crypto';
-import { canonicalizeBodyRelaxed, canonicalizeHeaderField } from '../../../canon.js';
+import { canonicalizeBodyRelaxed, canonicalizeHeaderField } from '@owlat/mail-canon';
 
 export interface MintOptions {
 	/** Private key (PEM string or KeyObject) used to sign, or ignored when `bogusSignature` is set. */

@@ -24,7 +24,7 @@ import {
 	type FeatureFlagState,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
-import { ensureSecrets } from './secrets';
+import { ensureSecrets } from '@owlat/shared/setupSecrets';
 import { mergeEnv, type EnvMap } from './env';
 import { applySetupDefaults } from './setupEnvDefaults';
 import { isValidEmail } from './validators';
