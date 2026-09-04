@@ -8,8 +8,6 @@ import type {
 	EditorBlock,
 	UniversalPadding,
 	UniversalMargin,
-	UniversalBorder,
-	BorderStyle,
 	EmailTheme,
 	CommonBlockProperties,
 	ImageBlockContent,
@@ -20,7 +18,6 @@ import {
 	defaultMargin,
 	defaultBackgroundColor,
 	defaultBorderRadius,
-	defaultBorder,
 	defaultTheme,
 } from '../defaults';
 import { getBlock } from '../registry';
@@ -228,38 +225,6 @@ export const updateBlockBorderRadius = (block: EditorBlock, value: number): void
 	if (!blockSupportsBorderRadius(block)) return;
 	const content = block.content as CommonBlockProperties;
 	content.borderRadius = value;
-};
-
-/**
- * Get block border with defaults
- */
-export const getBlockBorder = (block: EditorBlock): UniversalBorder => {
-	const content = block.content as CommonBlockProperties;
-	return {
-		borderWidth: (content.borderWidth as number | undefined) ?? defaultBorder.borderWidth,
-		borderColor: (content.borderColor as string | undefined) ?? defaultBorder.borderColor,
-		borderStyle: (content.borderStyle as BorderStyle | undefined) ?? defaultBorder.borderStyle,
-	};
-};
-
-/**
- * Update block border property
- */
-export const updateBlockBorder = (
-	block: EditorBlock,
-	property: keyof UniversalBorder,
-	value: number | string
-): void => {
-	const content = block.content as unknown as Record<string, unknown>;
-	content[property] = value;
-};
-
-/**
- * Check if block has a visible border
- */
-export const hasBlockBorder = (block: EditorBlock): boolean => {
-	const border = getBlockBorder(block);
-	return border.borderWidth > 0 && border.borderStyle !== 'none';
 };
 
 // Column-width math now lives in @owlat/shared so the editor preview and the

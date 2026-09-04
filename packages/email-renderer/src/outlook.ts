@@ -1,20 +1,6 @@
 import { escapeAttr } from './sanitize';
 
 /**
- * Wraps content in Outlook conditional comments.
- */
-export const msoConditional = (html: string): string => {
-	return `<!--[if mso]>${html}<![endif]-->`;
-};
-
-/**
- * Wraps content in NOT-mso conditional comments (for non-Outlook clients).
- */
-export const notMsoConditional = (html: string): string => {
-	return `<!--[if !mso]><!-->${html}<!--<![endif]-->`;
-};
-
-/**
  * Office document settings XML for Outlook.
  */
 export const getOfficeDocumentSettings = (): string => {
@@ -63,7 +49,7 @@ export const msoVmlBackground = (
 	imageUrl: string,
 	width: number,
 	height: number,
-	bgColor: string = '#ffffff',
+	bgColor: string = '#ffffff'
 ): string => {
 	return `<!--[if gte mso 9]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${width}px;height:${height}px"><v:fill type="frame" src="${escapeAttr(imageUrl)}" color="${escapeAttr(bgColor)}" /><v:textbox inset="0,0,0,0" style="mso-fit-shape-to-text:true"><![endif]-->`;
 };
