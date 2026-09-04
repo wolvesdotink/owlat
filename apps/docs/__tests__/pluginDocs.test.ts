@@ -770,6 +770,9 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		expect(wire, `NONCE_ENTROPY_BYTES (${nonceBytes} bytes) is undocumented`).toContain(
 			`| \`x-owlat-hook-nonce\` | Per-request ${nonceBytes * 8}-bit base64url nonce, signed |`
 		);
+		expect(wire, 'the timestamp unit is undocumented').toContain(
+			'| `x-owlat-hook-timestamp` | Unix **seconds**, signed |'
+		);
 	});
 
 	it('documents every host error code and codegen error code', () => {
