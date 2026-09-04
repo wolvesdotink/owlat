@@ -387,7 +387,7 @@ export function digestTlsReport(report: TlsRptReport): TlsReportDigest {
  * report schema. Deliberately explains the *effect* ("STARTTLS stripped
  * upstream") rather than lecturing about the mechanism.
  */
-export const TLS_RPT_FAILURE_EXPLANATIONS: Record<string, string> = {
+const TLS_RPT_FAILURE_EXPLANATIONS: Record<string, string> = {
 	'starttls-not-supported': 'STARTTLS stripped upstream',
 	'certificate-host-mismatch': "Certificate didn't match the server name",
 	'certificate-expired': 'Server certificate had expired',

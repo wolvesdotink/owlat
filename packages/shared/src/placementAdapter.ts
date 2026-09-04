@@ -31,8 +31,7 @@
  * Pure: no clock, no I/O, no env reads — every input is a parameter (D15).
  */
 
-import type { DeliverabilityCell, DestinationProviderKey } from './deliverabilityRouting';
-import { deliverabilityCellKey, type DeliverabilityCellKey } from './deliverabilityRouting';
+import type { DestinationProviderKey } from './deliverabilityRouting';
 import type {
 	SeedConfidence,
 	SeedObservation,
@@ -240,78 +239,4 @@ export function resolvePlacementAdapter(config: PlacementSourceConfig): Placemen
 		improvement: seeds > 0 ? 'none' : 'add_seed_mailboxes',
 		blocking: false,
 	};
-}
-
-// ============ SCHEDULING: A PROBE RUN BEFORE EVERY PHASE PROMOTION ============
-
-/**
- * How fresh a placement reading must be to authorise a phase promotion.
- *
- * A phase promotion (0.25 → 0.5 → 0.8 → 1.0) is the one moment the controller
- * takes a discrete step rather than a 5 pp nudge, so it is the moment a stale
- * reading costs the most. Seven days is the shortest window over which a
- * handful of mailboxes says anything at all (D17), and matches the standalone
- * gates' trailing window.
- */
-export const PLACEMENT_PROBE_FRESHNESS_MS = 7 * 24 * 60 * 60 * 1000;
-
-export type PlacementProbeScheduleReason =
-	| 'promotion_pending_no_probe_yet'
-	| 'promotion_pending_probe_stale'
-	| 'probe_fresh'
-	| 'no_promotion_pending';
-
-export interface PlacementProbePlan {
-	cellKey: DeliverabilityCellKey;
-	shouldSchedule: boolean;
-	reason: PlacementProbeScheduleReason;
-	/**
-	 * ALWAYS `false` (D2, again as a literal type): a placement probe that
-	 * cannot run — no seeds, no panel, a provider we hold no mailbox for — may
-	 * never hold a promotion hostage. It lowers CONFIDENCE and lets gate 5 read
-	 * `insufficient_data`, which holds the ramp through the ordinary K_CLEAN
-	 * path, and does nothing else.
-	 */
-	readonly blocksPromotion: false;
-}
-
-/**
- * Decide whether a placement probe run must be scheduled for a cell BEFORE the
- * controller promotes it to the next phase ceiling.
- *
- * Pure — `nowMs` is a parameter (D15). Clock skew is handled by treating a
- * reading stamped in the future as fresh rather than negative-aged: a skewed
- * clock must not manufacture probe traffic. An UNREADABLE clock is the opposite
- * case and resolves the other way: with no usable `nowMs` we cannot say the
- * reading is fresh, so the probe is scheduled. Skipping it would let a broken
- * clock silently promote a cell on evidence of unknown age.
- */
-export function planPlacementProbeForPromotion(input: {
-	cell: DeliverabilityCell;
-	nowMs: number;
-	/** When this cell's last placement reading was gathered; `null` ⇒ never. */
-	lastProbeAtMs: number | null;
-	/** The controller intends to raise this cell's phase ceiling. */
-	promotionPending: boolean;
-}): PlacementProbePlan {
-	const cellKey = deliverabilityCellKey(input.cell);
-	const base: Pick<PlacementProbePlan, 'cellKey' | 'blocksPromotion'> = {
-		cellKey,
-		blocksPromotion: false,
-	};
-	if (!input.promotionPending) {
-		return { ...base, shouldSchedule: false, reason: 'no_promotion_pending' };
-	}
-	if (
-		input.lastProbeAtMs === null ||
-		!Number.isFinite(input.lastProbeAtMs) ||
-		!Number.isFinite(input.nowMs)
-	) {
-		return { ...base, shouldSchedule: true, reason: 'promotion_pending_no_probe_yet' };
-	}
-	const ageMs = input.nowMs - input.lastProbeAtMs;
-	if (ageMs > PLACEMENT_PROBE_FRESHNESS_MS) {
-		return { ...base, shouldSchedule: true, reason: 'promotion_pending_probe_stale' };
-	}
-	return { ...base, shouldSchedule: false, reason: 'probe_fresh' };
 }

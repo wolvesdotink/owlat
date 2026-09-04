@@ -40,18 +40,6 @@ export const emailRegex =
 export const domainRegex = /^(?!-)[A-Za-z0-9-]+([-.][A-Za-z0-9]+)*\.[A-Za-z]{2,}$/;
 
 /**
- * URL validation regex
- * Matches http and https URLs
- */
-export const urlRegex = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
-
-/**
- * Phone number validation regex (international format)
- * Matches various phone formats
- */
-export const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-
-/**
  * Slug validation regex
  * Matches URL-safe slugs (lowercase letters, numbers, hyphens)
  */
@@ -88,32 +76,10 @@ export function isValidUrl(url: string): boolean {
 }
 
 /**
- * Validate a phone number (international format)
- * Strips common formatting characters before validation
- */
-export function isValidPhone(phone: string): boolean {
-	return phoneRegex.test(phone.replace(/[\s()-]/g, ''));
-}
-
-/**
- * Validate a slug
- */
-export function isValidSlug(slug: string): boolean {
-	return slugRegex.test(slug);
-}
-
-/**
  * Check if a string is empty or only whitespace
  */
 export function isEmpty(value: string | null | undefined): boolean {
 	return value === null || value === undefined || value.trim() === '';
-}
-
-/**
- * Check if a value is a non-empty string
- */
-export function isNonEmptyString(value: unknown): value is string {
-	return typeof value === 'string' && value.trim() !== '';
 }
 
 /**

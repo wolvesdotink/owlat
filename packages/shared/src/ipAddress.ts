@@ -6,7 +6,7 @@
  * different pool members or readiness records.
  */
 
-export const IP_ADDRESS_FAMILIES = ['ipv4', 'ipv6'] as const;
+const IP_ADDRESS_FAMILIES = ['ipv4', 'ipv6'] as const;
 export type IpAddressFamily = (typeof IP_ADDRESS_FAMILIES)[number];
 
 export interface ParsedIpAddress {

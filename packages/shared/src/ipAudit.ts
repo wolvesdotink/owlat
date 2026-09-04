@@ -18,7 +18,7 @@
 import { DNSBL_LISTS, type DnsblListId } from './dnsbl';
 import type { FcrdnsFailureReason, FcrdnsVerdict } from './fcrdns';
 
-export const IP_AUDIT_ZONE_IDS = [
+const IP_AUDIT_ZONE_IDS = [
 	'spamhaus',
 	'barracuda',
 	'spamcop',
@@ -77,7 +77,7 @@ export const IP_AUDIT_ZONES: readonly IpAuditZoneDefinition[] = [
 ];
 
 /** Spamhaus ZEN is several lists behind one zone; each needs different advice. */
-export const SPAMHAUS_SUBLISTS = ['sbl', 'css', 'xbl', 'pbl', 'drop'] as const;
+const SPAMHAUS_SUBLISTS = ['sbl', 'css', 'xbl', 'pbl', 'drop'] as const;
 export type SpamhausSublist = (typeof SPAMHAUS_SUBLISTS)[number];
 
 export type IpAuditZoneStatus = 'clean' | 'listed' | 'unknown' | 'skipped';
@@ -103,9 +103,9 @@ export interface IpAuditNeighbourhood {
 export type NeighbourhoodStatus = 'clean' | 'mixed' | 'noisy' | 'insufficient_data';
 
 /** Below this many definite answers a /24 sample says nothing at all. */
-export const NEIGHBOURHOOD_MIN_SAMPLE = 8;
-export const NEIGHBOURHOOD_NOISY_RATIO = 0.5;
-export const NEIGHBOURHOOD_MIXED_RATIO = 0.2;
+const NEIGHBOURHOOD_MIN_SAMPLE = 8;
+const NEIGHBOURHOOD_NOISY_RATIO = 0.5;
+const NEIGHBOURHOOD_MIXED_RATIO = 0.2;
 
 export function neighbourhoodStatus(neighbourhood: IpAuditNeighbourhood): NeighbourhoodStatus {
 	const { sampled, listed } = neighbourhood;
@@ -117,12 +117,12 @@ export function neighbourhoodStatus(neighbourhood: IpAuditNeighbourhood): Neighb
 	return 'clean';
 }
 
-export const IP_AUDIT_VERDICTS = ['clean', 'action_required', 'unusable'] as const;
+const IP_AUDIT_VERDICTS = ['clean', 'action_required', 'unusable'] as const;
 export type IpAuditVerdict = (typeof IP_AUDIT_VERDICTS)[number];
 
 export type IpAuditFindingSeverity = 'blocking' | 'fixable' | 'advisory';
 
-export const IP_AUDIT_FINDING_IDS = [
+const IP_AUDIT_FINDING_IDS = [
 	'port25_blocked',
 	'port25_unknown',
 	'spamhaus_drop',

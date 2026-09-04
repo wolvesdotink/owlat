@@ -28,7 +28,7 @@
 import { createHash, X509Certificate } from 'node:crypto';
 
 /** DANE certificate usage (RFC 6698 §2.1.1). */
-export const DANE_USAGE = {
+const DANE_USAGE = {
 	PKIX_TA: 0,
 	PKIX_EE: 1,
 	DANE_TA: 2,

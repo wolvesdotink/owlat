@@ -130,7 +130,6 @@ import type { SeedPlacement } from './seedPlacementFolders';
 // The roll-up (the measurement) owns a sibling file and is re-exported here so
 // `@owlat/shared/seedPlacement` stays the one import surface.
 export {
-	SEED_COLLAPSE_THRESHOLD,
 	SEED_GATE_CONFIDENCE,
 	SEED_MIN_OBSERVATIONS,
 	SEED_REACHED_THRESHOLD,

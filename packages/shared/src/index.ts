@@ -7,8 +7,6 @@ export {
 	type OperationError,
 	OPERATION_ERROR_CATEGORIES,
 	categoryToHttpStatus,
-	isOperationErrorCategory,
-	isOperationError,
 	extractOperationError,
 } from './operationError';
 export {
@@ -122,7 +120,6 @@ export {
 	fcrdnsReasonMessage,
 } from './fcrdns';
 export {
-	IP_ADDRESS_FAMILIES,
 	type IpAddressFamily,
 	type ParsedIpAddress,
 	parseIpAddress,
@@ -181,7 +178,6 @@ export {
 	TLS_RPT_MAX_CONTACT_INFO_LENGTH,
 	TLS_RPT_MAX_POLICY_DOMAIN_LENGTH,
 	TLS_RPT_MAX_FAILURE_TYPE_LENGTH,
-	TLS_RPT_FAILURE_EXPLANATIONS,
 	gunzipTlsReport,
 	parseTlsReport,
 	decodeTlsReport,
@@ -201,7 +197,6 @@ export {
 	isMtaStsMode,
 	mtaStsPolicyId,
 	buildMtaStsTxtValue,
-	parseMtaStsTxtId,
 	buildMtaStsPolicy,
 	verifyMtaStsPublication,
 } from './mtaStsPolicy';
@@ -219,17 +214,14 @@ export {
 	type GovernedIpPool,
 	type GovernedMessageType,
 	type GovernedRoutingContext,
-	DELIVERY_DOMAINS,
 	type DeliveryDomain,
 	isDeliveryDomain,
 	isGovernedMessageType,
 } from './routingDispatch';
 export {
 	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
-	ROUTING_REENTRY_CLOCK_SKEW_MS,
 	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
 	ROUTING_REENTRY_TOKEN_TTL_MS,
-	ROUTING_WORK_ATTEMPT_ID_MAX_LENGTH,
 	admitGovernedRetry,
 	governedDeliveryDeadlineAt,
 	nextGovernedAttempt,

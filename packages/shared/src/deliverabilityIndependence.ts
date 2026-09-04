@@ -65,7 +65,7 @@ export function isUsablePoint(point: IndependenceDayPoint): boolean {
  * and feeding zeroes into the trend fit is how a fortnight's holiday reads as a
  * collapse in independence.
  */
-export function dayOwnShare(point: IndependenceDayPoint): number | null {
+function dayOwnShare(point: IndependenceDayPoint): number | null {
 	if (!isUsablePoint(point)) return null;
 	const total = point.own + point.reference;
 	if (total <= 0) return null;
@@ -102,10 +102,10 @@ export const INDEPENDENCE_PROJECTION_MIN_DAYS = 5;
  * 1.0: the last fraction of a percent is rounding, and a date that recedes for
  * ever because one cell rounds to 0.999 is worse than no date.
  */
-export const INDEPENDENCE_TARGET_SHARE = 0.99;
+const INDEPENDENCE_TARGET_SHARE = 0.99;
 
 /** How far ahead a projection is willing to look before it declines to guess. */
-export const INDEPENDENCE_PROJECTION_HORIZON_DAYS = 730;
+const INDEPENDENCE_PROJECTION_HORIZON_DAYS = 730;
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -274,7 +274,7 @@ export interface RampPresetTuning {
 	readonly extraCleanWindows: number;
 }
 
-export const RAMP_PRESET_TUNING: Record<RampPreset, RampPresetTuning> = {
+const RAMP_PRESET_TUNING: Record<RampPreset, RampPresetTuning> = {
 	// `conservative` IS the plan's standalone substitution, not a coincidence
 	// that happens to match it: step halved, K_CLEAN +2 (3 -> 5). Applying that
 	// substitution anywhere else as well would compound it to x0.25 / K_CLEAN 7.

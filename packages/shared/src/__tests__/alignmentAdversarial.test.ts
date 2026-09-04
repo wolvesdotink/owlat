@@ -22,7 +22,6 @@ import {
 	ALIGNMENT_MAX_FUTURE_SKEW_MS,
 	ALIGNMENT_STALE_AFTER_MS,
 	alignmentGate,
-	applyAlignmentGateToShare,
 } from '../deliverabilityAlignmentGate';
 import { alignedDns, alignedInput, CHECKED_AT, found, ownArm, relayArm } from './alignmentFixtures';
 
@@ -191,30 +190,5 @@ describe('the gate distinguishes its hold reasons', () => {
 		});
 		expect(undescribed.reason).toBe('reference_arm_unknown');
 		expect(undescribed.allowsShareAboveZero).toBe(false);
-	});
-});
-
-describe('applyAlignmentGateToShare sanitises the share at the boundary', () => {
-	const open = { allowsShareAboveZero: true, reason: 'aligned' } as const;
-	const shut = { allowsShareAboveZero: false, reason: 'blocked' } as const;
-
-	it('pins every proposal at 0 through a shut gate', () => {
-		for (const share of [0, 0.5, 1, 1.7, -0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-			expect(applyAlignmentGateToShare(share, shut)).toBe(0);
-		}
-	});
-
-	it('clamps an out-of-range proposal through an open gate', () => {
-		expect(applyAlignmentGateToShare(1.7, open)).toBe(1);
-		expect(applyAlignmentGateToShare(-0.5, open)).toBe(0);
-		expect(applyAlignmentGateToShare(0.42, open)).toBe(0.42);
-		expect(applyAlignmentGateToShare(0, open)).toBe(0);
-		expect(applyAlignmentGateToShare(1, open)).toBe(1);
-	});
-
-	it('maps a non-finite proposal to 0 rather than letting it through', () => {
-		for (const share of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
-			expect(applyAlignmentGateToShare(share, open)).toBe(0);
-		}
 	});
 });

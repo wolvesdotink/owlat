@@ -11,7 +11,6 @@
  * offered in the first place.
  */
 import { isValidEmail } from '@owlat/shared';
-import { isValidEmail } from './validation';
 
 /** Message-key root for this module; see `i18n/locales/en.json`. */
 const K = 'shared.campaignSenderPicker';

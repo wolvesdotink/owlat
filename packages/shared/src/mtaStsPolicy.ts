@@ -133,7 +133,7 @@ export function buildMtaStsTxtValue(policyId: string): string {
  * key/value list); returns `null` when the record isn't a valid STSv1 record or
  * carries no id.
  */
-export function parseMtaStsTxtId(txtValue: string): string | null {
+function parseMtaStsTxtId(txtValue: string): string | null {
 	const parts = txtValue.split(';').map((part) => part.trim());
 	if (!parts.some((part) => part.toLowerCase() === 'v=stsv1')) return null;
 	for (const part of parts) {
