@@ -23,6 +23,7 @@ import {
 	resolvePostboxViewMode,
 } from '~/utils/postboxViewMode';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
+import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import type { ShortcutScope } from '~/utils/shortcutRegistry';
 import { chordFromEvent } from '~/utils/shortcutRegistry';
@@ -136,7 +137,7 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 		if (folderRole.value !== 'inbox' || folderId.value || activeMessageId.value) return;
 		if (isEditableTarget(event.target)) return;
 		if (event.defaultPrevented) return;
-		if (document.querySelector('[role="dialog"]')) return;
+		if (isDialogOpen()) return;
 		const chord = chordFromEvent(event);
 		// Cmd/Ctrl-B is kept as its own case: the registry deliberately owns no
 		// modifier chords, and this one has to keep working from anywhere.

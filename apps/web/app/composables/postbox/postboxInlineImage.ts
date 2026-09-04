@@ -65,7 +65,7 @@ export async function downscaleImageFile(
 	maxEdge: number = MAX_INLINE_IMAGE_EDGE
 ): Promise<File> {
 	if (!file.type.startsWith('image/') || /svg/i.test(file.type)) return file;
-	if (typeof document === 'undefined' || typeof createImageBitmap === 'undefined') {
+	if (import.meta.server || typeof createImageBitmap === 'undefined') {
 		return file;
 	}
 	try {

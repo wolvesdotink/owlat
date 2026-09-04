@@ -17,7 +17,7 @@ let active: WorkspaceConfig | null = null;
  * global in case `withGlobalTauri` is off.
  */
 export function isDesktopRuntime(): boolean {
-	if (typeof window === 'undefined') return false;
+	if (import.meta.server) return false;
 	return '__TAURI__' in window || '__TAURI_INTERNALS__' in window;
 }
 

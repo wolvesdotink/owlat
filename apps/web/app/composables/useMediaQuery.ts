@@ -18,7 +18,7 @@ export { prefersReducedMotion, useReducedMotion } from '@owlat/ui/composables/us
  */
 export function useMediaQuery(query: string): Ref<boolean> {
 	const matches = ref(true);
-	if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return matches;
+	if (import.meta.server || typeof window.matchMedia !== 'function') return matches;
 
 	const mql = window.matchMedia(query);
 	matches.value = mql.matches;
