@@ -1,6 +1,7 @@
 import { realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { PluginPackageName } from '@owlat/plugin-host';
+import { isRecord } from '@owlat/shared';
 import ts from 'typescript';
 import { readBoundedRepositoryUtf8File } from './boundedRepository';
 import { PluginCodegenError } from './errors';
@@ -418,8 +419,4 @@ async function readJsonFile<T>(
 	} catch (cause) {
 		throw new PluginCodegenError(code, message, [], { cause });
 	}
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

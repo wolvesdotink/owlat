@@ -1,5 +1,6 @@
 import { basename, relative, sep } from 'node:path';
 import ts from 'typescript';
+import { isRecord } from '@owlat/shared';
 import { readBoundedRepositoryUtf8File, Utf8ByteBudget } from './boundedRepository';
 import { PluginCodegenError } from './errors';
 import {
@@ -322,8 +323,4 @@ function targetReferencesPackage(target: string, packageName: string): boolean {
 		normalized.includes(`/node_modules/${packageName}/`) ||
 		normalized.endsWith(`/node_modules/${packageName}`)
 	);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

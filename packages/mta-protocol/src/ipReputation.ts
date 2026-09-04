@@ -7,6 +7,7 @@
  * one declaration, imported by the producer and the consumer alike.
  */
 
+import { isRecord } from '@owlat/shared';
 import { getWarmingDisplayCapForDay, GRADUATED_DISPLAY_CAP } from '@owlat/shared/warming';
 import {
 	isFcrdnsFailureReason,
@@ -75,10 +76,6 @@ export interface MtaIpReputationPayload {
 
 type MtaIpReputationRow = MtaIpReputationPayload['ips'][number];
 type MtaFcrdnsPayload = NonNullable<MtaIpReputationRow['fcrdns']>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
 
 function isStringArray(value: unknown): value is string[] {
 	return Array.isArray(value) && value.every((item) => typeof item === 'string');
