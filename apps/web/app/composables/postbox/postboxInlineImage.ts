@@ -15,7 +15,7 @@
 /** Longest-edge ceiling; a photo wider/taller than this is scaled down to fit. */
 export const MAX_INLINE_IMAGE_EDGE = 1600;
 /** JPEG quality for re-encoded opaque images. */
-export const INLINE_IMAGE_JPEG_QUALITY = 0.85;
+const INLINE_IMAGE_JPEG_QUALITY = 0.85;
 
 export interface DownscaleDimensions {
 	width: number;
@@ -32,14 +32,9 @@ export interface DownscaleDimensions {
 export function computeDownscaleDimensions(
 	width: number,
 	height: number,
-	maxEdge: number = MAX_INLINE_IMAGE_EDGE,
+	maxEdge: number = MAX_INLINE_IMAGE_EDGE
 ): DownscaleDimensions {
-	if (
-		!Number.isFinite(width) ||
-		!Number.isFinite(height) ||
-		width <= 0 ||
-		height <= 0
-	) {
+	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
 		return { width: 0, height: 0, scaled: false };
 	}
 	const longest = Math.max(width, height);
@@ -67,7 +62,7 @@ export function keepsPngFormat(mimeType: string): boolean {
  */
 export async function downscaleImageFile(
 	file: File,
-	maxEdge: number = MAX_INLINE_IMAGE_EDGE,
+	maxEdge: number = MAX_INLINE_IMAGE_EDGE
 ): Promise<File> {
 	if (!file.type.startsWith('image/') || /svg/i.test(file.type)) return file;
 	if (typeof document === 'undefined' || typeof createImageBitmap === 'undefined') {
@@ -94,7 +89,7 @@ export async function downscaleImageFile(
 		const keepPng = keepsPngFormat(file.type);
 		const outType = keepPng ? 'image/png' : 'image/jpeg';
 		const blob = await new Promise<Blob | null>((resolve) =>
-			canvas.toBlob(resolve, outType, keepPng ? undefined : INLINE_IMAGE_JPEG_QUALITY),
+			canvas.toBlob(resolve, outType, keepPng ? undefined : INLINE_IMAGE_JPEG_QUALITY)
 		);
 		if (!blob) return file;
 

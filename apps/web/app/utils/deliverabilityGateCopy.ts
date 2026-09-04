@@ -49,7 +49,7 @@ export type GateStatus = DeliverabilityDashboardGate['status'];
  * (plan D10/D2). Splitting tone and label across two functions is how a status
  * ends up with alarming colour and calm words.
  */
-export const GATE_STATUS_PRESENTATION = {
+const GATE_STATUS_PRESENTATION = {
 	pass: { tone: 'ok', label: 'shared.deliverabilityMeasurement.gateStatus.pass' },
 	fail: { tone: 'attention', label: 'shared.deliverabilityMeasurement.gateStatus.fail' },
 	halt: { tone: 'stop', label: 'shared.deliverabilityMeasurement.gateStatus.halt' },

@@ -7,8 +7,8 @@
  * unit-tested without mounting the reader.
  */
 
-export const LONG_THREAD_MIN_MESSAGES = 5;
-export const LONG_THREAD_MIN_BODY_CHARS = 8000;
+const LONG_THREAD_MIN_MESSAGES = 5;
+const LONG_THREAD_MIN_BODY_CHARS = 8000;
 
 export interface SummaryEligibleMessage {
 	textBodyInline?: string;
@@ -21,7 +21,7 @@ export function isLongThreadForSummary(messages: SummaryEligibleMessage[]): bool
 	const chars = messages.reduce(
 		(sum, m) =>
 			sum + (m.textBodyInline?.length ?? m.htmlBodyInline?.length ?? m.snippet?.length ?? 0),
-		0,
+		0
 	);
 	return chars >= LONG_THREAD_MIN_BODY_CHARS;
 }

@@ -120,7 +120,7 @@ export const POSTBOX_SWIPE_SLOP_PX = 12;
  * win the pointer. A 1.4 ratio means a 45° diagonal scrolls (the safe outcome)
  * and only a clearly sideways drag triages.
  */
-export const POSTBOX_SWIPE_DOMINANCE = 1.4;
+const POSTBOX_SWIPE_DOMINANCE = 1.4;
 
 /** Displacement at which a released drag commits its action. */
 export const POSTBOX_SWIPE_COMMIT_PX = 88;
@@ -282,7 +282,7 @@ export interface PostboxSwipeSample {
 }
 
 /** How far back the velocity estimate looks. */
-export const POSTBOX_SWIPE_VELOCITY_WINDOW_MS = 120;
+const POSTBOX_SWIPE_VELOCITY_WINDOW_MS = 120;
 
 /**
  * Signed horizontal velocity in px/ms over the recent samples.

@@ -81,7 +81,7 @@ export function resolveReviewSelectShortcut(key: string): ReviewSelectShortcutAc
  * the multi-select layer claims it first (see `resolveReviewSelectShortcut`),
  * so `#` is the reject key the hint can promise on every surface.
  */
-export function reviewShortcutSheet(isMac = false) {
+function reviewShortcutSheet(isMac = false) {
 	return buildShortcutSheet(SHORTCUT_CATALOG, shortcutBindings.value, {
 		scopes: REVIEW_SCOPES,
 		isMac,

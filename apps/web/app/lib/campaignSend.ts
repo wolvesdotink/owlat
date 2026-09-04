@@ -17,7 +17,7 @@
  * and a modal in front of every one of those taxes the common case to protect
  * against a rare mistake. The undo window (below) covers that case instead.
  */
-export const SEND_CONFIRM_AUDIENCE_THRESHOLD = 50;
+const SEND_CONFIRM_AUDIENCE_THRESHOLD = 50;
 
 /**
  * How long a "send now" is held before it actually goes out, so the undo toast

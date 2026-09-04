@@ -237,7 +237,7 @@ export interface HostedPluginDetail {
 	operationKey?: string;
 }
 
-export function getHostedPluginDetail(log: AuditLogEntry): HostedPluginDetail | undefined {
+function getHostedPluginDetail(log: AuditLogEntry): HostedPluginDetail | undefined {
 	if (log.resource !== 'plugin' || !HOSTED_PLUGIN_ACTIONS.has(log.action)) return undefined;
 	return {
 		pluginId: safePluginId(log.pluginId) ?? safePluginId(log.resourceId),
@@ -280,7 +280,7 @@ const plural = (count: number): 'one' | 'other' => (count === 1 ? 'one' : 'other
  * the 7-day window the audit list renders as an absolute date. Each unit
  * carries its own `one`/`other` key so the caller resolves it with a plain
  * `t(key, params)`. */
-export function relativeTimestampMessage(
+function relativeTimestampMessage(
 	timestamp: number,
 	now: number = Date.now()
 ): { key: string; params: { count: number } } | null {

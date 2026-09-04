@@ -97,7 +97,7 @@ const SMTP_PRESET_OPTIONS = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).ma
  * Restore a matching relay preset from a previously-entered host, otherwise fall
  * back to Custom (an unrecognised host is one the operator typed themselves).
  */
-export function resolveSmtpPreset(host: string): SmtpPreset {
+function resolveSmtpPreset(host: string): SmtpPreset {
 	if (!host) return 'mailgun';
 	const match = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).find(
 		(p) => p !== 'custom' && SMTP_RELAY_PRESETS[p].host === host

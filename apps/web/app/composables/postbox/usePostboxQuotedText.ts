@@ -98,7 +98,7 @@ export async function resolveBodyFields<T extends { _id: string } & QuoteSource>
 }
 
 /** "Re: " subject prefix guard — never stacks a second "Re:". */
-export function replySubject(subject: string): string {
+function replySubject(subject: string): string {
 	return subject.match(/^re\s*:\s*/i) ? subject : `Re: ${subject}`;
 }
 

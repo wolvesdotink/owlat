@@ -11,7 +11,7 @@
  * comes off the Nuxt app (`$i18n`) rather than `useI18n()` — this runs from a
  * plugin and from a `window` event listener, neither of which is a setup scope.
  */
-export async function runUpdateCheck(opts?: { announce?: boolean }): Promise<void> {
+async function runUpdateCheck(opts?: { announce?: boolean }): Promise<void> {
 	try {
 		const { checkForUpdates } = await import('@owlat/desktop/src/updater');
 		const { sendDesktopNotification } = await import('@owlat/desktop/src/notifications');
