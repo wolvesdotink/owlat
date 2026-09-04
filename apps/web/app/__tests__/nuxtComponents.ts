@@ -9,7 +9,7 @@
  */
 import { config } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
-import UiButton from '../../../../packages/ui/components/ui/Button.vue';
+import UiButton from '@owlat/ui/components/ui/Button.vue';
 
 export const IconStub = defineComponent({
 	name: 'Icon',
