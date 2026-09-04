@@ -2,8 +2,8 @@
 	"name": "@owlat/smtp-client",
 	"version": "0.4.4",
 	"private": true,
-	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
 	"main": "./src/index.ts",
 	"module": "./src/index.ts",
@@ -12,30 +12,6 @@
 		".": {
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
-		},
-		"./reply": {
-			"types": "./src/reply.ts",
-			"import": "./src/reply.ts"
-		},
-		"./errors": {
-			"types": "./src/errors.ts",
-			"import": "./src/errors.ts"
-		},
-		"./dotStuff": {
-			"types": "./src/dotStuff.ts",
-			"import": "./src/dotStuff.ts"
-		},
-		"./commands": {
-			"types": "./src/commands.ts",
-			"import": "./src/commands.ts"
-		},
-		"./connection": {
-			"types": "./src/connection.ts",
-			"import": "./src/connection.ts"
-		},
-		"./transaction": {
-			"types": "./src/transaction.ts",
-			"import": "./src/transaction.ts"
 		}
 	},
 	"scripts": {

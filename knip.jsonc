@@ -184,10 +184,8 @@
 		"packages/email-scanner": {
 			"entry": [
 				"src/index.ts",
-				"src/content/index.ts",
 				"src/files/index.ts",
 				"src/clamav/index.ts",
-				"src/urls/index.ts",
 				"src/**/__tests__/**/*.ts",
 			],
 		},

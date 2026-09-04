@@ -1,27 +1,4 @@
 export type { JsonObject, JsonPrimitive, JsonValue } from './json';
-// Provider authors may adopt the universal vocabulary through plugin-kit while
-// existing PluginSendTransport* names remain source compatible.
-export {
-	composeProviderBundles,
-	defineSendProviderBundle,
-	ProviderBundleCompositionError,
-} from '@owlat/provider-kit';
-export type {
-	ComposedSendProviderBundle,
-	HmacTimestampBodyVerifier,
-	ProviderBundleSource,
-	ProviderFeedbackContribution,
-	ProviderFeedbackEvent,
-	ProviderFeedbackParserModule,
-	ProviderFeedbackVerifier,
-	ProviderModuleExport,
-	ProviderSetupContribution,
-	ProviderSetupProbeModule,
-	ProviderStaticModuleExport,
-	SendProviderBundle,
-	SendProviderDescriptor,
-	SourceAssignedProviderBundle,
-} from '@owlat/provider-kit';
 export {
 	PLUGIN_AUTONOMY_GATE_CAPABILITY,
 	PLUGIN_AUTONOMY_GATE_TIMEOUT_MAX_MS,
@@ -30,7 +7,6 @@ export type {
 	PluginAutonomyGateClassification,
 	PluginAutonomyGateDefinition,
 	PluginAutonomyGateInput,
-	PluginAutonomyGateKind,
 	PluginAutonomyGateModule,
 	PluginAutonomyGateResult,
 	PluginAutonomyGateServices,
@@ -44,20 +20,17 @@ export type {
 	PluginAutomationConditionCapability,
 	PluginAutomationConditionDefinition,
 	PluginAutomationConditionInput,
-	PluginAutomationConditionKind,
 	PluginAutomationConditionModule,
 	PluginAutomationEditorMetadata,
 	PluginAutomationStepCapability,
 	PluginAutomationStepDefinition,
 	PluginAutomationStepInput,
-	PluginAutomationStepKind,
 	PluginAutomationStepModule,
 	PluginAutomationStepResult,
 	PluginAutomationTriggerCapability,
 	PluginAutomationTriggerData,
 	PluginAutomationTriggerDefinition,
 	PluginAutomationTriggerInput,
-	PluginAutomationTriggerKind,
 	PluginAutomationTriggerModule,
 } from './automation';
 export {
@@ -68,9 +41,7 @@ export {
 	PLUGIN_CRON_TIMEOUT_MIN_MS,
 } from './cron';
 export type {
-	PluginCronCapability,
 	PluginCronDefinition,
-	PluginCronKind,
 	PluginCronModule,
 	PluginCronSchedule,
 	PluginCronServices,
@@ -82,7 +53,6 @@ export {
 	isPluginNamespacedKind,
 	parsePluginLocalId,
 	parsePluginNamespacedKind,
-	PLUGIN_KIND_NAMESPACE,
 	PLUGIN_KIND_PREFIX,
 	PluginLocalIdError,
 	pluginNamespacedKind,
@@ -107,7 +77,6 @@ export {
 	pluginWorkerJobLocalIdOf,
 } from './workerTask';
 export type {
-	PluginWorkerCapability,
 	PluginWorkerClaimedJob,
 	PluginWorkerClaimedJobSource,
 	PluginWorkerJobKind,
@@ -116,10 +85,8 @@ export type {
 export { PLUGIN_AGENT_STEP_CAPABILITY } from './agentStep';
 export type {
 	PluginAgentLifecycleEdge,
-	PluginAgentStepCapability,
 	PluginAgentStepDefinition,
 	PluginAgentStepInput,
-	PluginAgentStepKind,
 	PluginAgentStepModule,
 	PluginAgentStepResult,
 } from './agentStep';
@@ -131,7 +98,6 @@ export type {
 	PluginDraftClassification,
 	PluginDraftStrategyDefinition,
 	PluginDraftStrategyInput,
-	PluginDraftStrategyKind,
 	PluginDraftStrategyModule,
 	PluginDraftStrategyResult,
 	PluginDraftStrategyServices,
@@ -170,28 +136,15 @@ export {
 	validatePluginManifest,
 } from './manifest';
 export { PLUGIN_WEBHOOK_EVENT_CAPABILITY } from './webhookEvent';
-export type {
-	PluginWebhookEventCapability,
-	PluginWebhookEventDefinition,
-	PluginWebhookEventKind,
-} from './webhookEvent';
+export type { PluginWebhookEventDefinition, PluginWebhookEventKind } from './webhookEvent';
 export { isSafeInternalNavPath } from './internalPath';
 export { PLUGIN_NAV_ITEM_CAPABILITY } from './navItem';
-export type {
-	PluginNavItemCapability,
-	PluginNavItemDefinition,
-	PluginNavItemKind,
-} from './navItem';
+export type { PluginNavItemDefinition } from './navItem';
 export { PLUGIN_SETTINGS_PANEL_CAPABILITY } from './settingsPanel';
-export type {
-	PluginSettingsPanelCapability,
-	PluginSettingsPanelDefinition,
-	PluginSettingsPanelKind,
-} from './settingsPanel';
+export type { PluginSettingsPanelDefinition } from './settingsPanel';
 export { PLUGIN_IMPORT_PROVIDER_CAPABILITY } from './importProvider';
 export type {
 	PluginImportPageResult,
-	PluginImportProviderCapability,
 	PluginImportProviderDefinition,
 	PluginImportProviderInput,
 	PluginImportProviderKind,
@@ -217,7 +170,6 @@ export {
 	isPluginSendTransportEnvVar,
 	PLUGIN_SEND_FAILURE_CODES,
 	PLUGIN_SEND_TRANSPORT_CAPABILITY,
-	PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH,
 	PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS,
 } from './sendTransport';
 export type {
@@ -226,7 +178,6 @@ export type {
 	PluginSendDispatchContext,
 	PluginSendFailureCode,
 	PluginSendSystemMailContext,
-	PluginSendTransportCapability,
 	PluginSendTransportConfig,
 	PluginSendTransportCustomReturnPathSupport,
 	PluginSendTransportDefinition,

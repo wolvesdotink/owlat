@@ -84,7 +84,6 @@ export {
 	POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES,
 	POSTMASTER_TOKEN,
 	isMtaWebhookEvent,
-	isMtaWebhookEventType,
 } from './webhookEvent';
 
 export type { MtaIpReputationPayload } from './ipReputation';

@@ -17,7 +17,7 @@ export function parsePluginPackageName(value: unknown): PluginPackageName {
 	return value;
 }
 
-export function isPluginPackageName(value: unknown): value is PluginPackageName {
+function isPluginPackageName(value: unknown): value is PluginPackageName {
 	return (
 		typeof value === 'string' &&
 		value.length <= MAX_PACKAGE_NAME_LENGTH &&

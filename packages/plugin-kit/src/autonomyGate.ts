@@ -1,10 +1,7 @@
-import type { PluginNamespacedKind } from './namespacedKind';
 import type { PluginStaticModuleExport } from './sendTransport';
 
 export const PLUGIN_AUTONOMY_GATE_CAPABILITY = 'send:gate' as const;
 export const PLUGIN_AUTONOMY_GATE_TIMEOUT_MAX_MS = 30_000;
-
-export type PluginAutonomyGateKind = PluginNamespacedKind;
 
 /** Data-only declaration for a bundled gate on autonomous agent replies. */
 export interface PluginAutonomyGateDefinition {
