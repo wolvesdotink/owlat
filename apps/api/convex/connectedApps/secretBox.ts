@@ -63,8 +63,3 @@ export function sealConnectedAppSecret(plaintext: string): ConnectedAppSecretEnv
 	const box = connectedAppBox().seal(plaintext);
 	return { ...box, version: CURRENT_CONNECTED_APP_SECRET_VERSION };
 }
-
-/** Open a sealed envelope back to the plaintext secret. Throws on tamper. */
-export function openConnectedAppSecret(envelope: ConnectedAppSecretEnvelope): string {
-	return connectedAppBox().open(envelope);
-}

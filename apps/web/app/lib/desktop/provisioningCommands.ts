@@ -54,7 +54,7 @@ export function setupConfigPath(installDir: string): string {
  * mounts the install dir at `/opt/owlat` (and sets `OWLAT_DIR=/opt/owlat`), so
  * the container sees the uploaded file here regardless of the host install dir.
  */
-export const CONTAINER_CONFIG_PATH = '/opt/owlat/.owlat-setup.json';
+const CONTAINER_CONFIG_PATH = '/opt/owlat/.owlat-setup.json';
 
 /** Probe the server: OS, arch, docker presence, compose v2. Output parsed for `docker=no` / `arch=`. */
 export function systemCheckCommand(): string {
@@ -84,7 +84,7 @@ export function installDockerCommand(): string {
  * `image:` interpolation resolves to the locally built images instead of
  * pulling `:latest` from GHCR.
  */
-export const LOCAL_VERSION_TAG = 'dev';
+const LOCAL_VERSION_TAG = 'dev';
 export const LOCAL_SETUP_IMAGE = `ghcr.io/wolvesdotink/setup:${LOCAL_VERSION_TAG}`;
 
 /** Create the install dir (root-owned path like /opt) and hand it to the SSH user. */

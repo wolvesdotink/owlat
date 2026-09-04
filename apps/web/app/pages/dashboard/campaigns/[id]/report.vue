@@ -4,13 +4,11 @@ import ClickHeatmap from '~/components/dashboard/ClickHeatmap.vue';
 import CampaignSendPlanLine from '~/components/campaigns/CampaignSendPlanLine.vue';
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
 import { selectPreviousComparable, computeStatDeltas, NO_DELTAS } from '~/utils/campaignReport';
+import { formatNumber } from '~/utils/formatters';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.campaigns.detail.report.pageTitle') });
-
-const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
-const formatNumber = (value: number) => numberFormat.value.format(value);
 
 definePageMeta({
 	layout: 'dashboard',

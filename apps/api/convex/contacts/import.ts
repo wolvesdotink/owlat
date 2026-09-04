@@ -30,7 +30,7 @@
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Id } from '../_generated/dataModel';
 import { resolveContact } from './resolution';
 import { deduplicateContactsByEmail } from '../lib/contactHelpers';
 import { incrementContactCount } from '../lib/contactCountHelpers';
@@ -55,11 +55,6 @@ export type ImportRow = {
 export type TopicAssignments =
 	| { kind: 'single'; topicId: Id<'topics'> }
 	| { kind: 'per_row'; map: Record<string, Id<'topics'>[]> };
-
-export type DoiAttest = {
-	attestSource: string;
-	triggeredBy?: string;
-};
 
 export type ImportOutcome = {
 	imported: number;
@@ -503,23 +498,3 @@ export const importBatch = internalMutation({
 		return outcome;
 	},
 });
-
-// ─── Helper exports for shells ──────────────────────────────────────────────
-
-// (Removed the dead CONTACTS_IMPORT_ATTEST_SCOPE + canImportAttest helper — they
-// only supported a public HTTP API import shell that was never implemented; the
-// two real shells gate doiAttest via session + contacts:manage. Reintroduce
-// alongside a real importBatchForOrganization + requireScope if that path lands.)
-
-/**
- * Sliced helper for typed callers — exported so the unit tests can exercise
- * the per-topic coalescing without re-deriving from outcome counters.
- */
-export const __internal = {
-	buildPerTopicLists,
-};
-
-// Avoid an unused import warning when `Doc` is unreferenced in the
-// finalized file body (TS strict mode flags unused imports).
-type _DocOnlyExport = Doc<'contacts'>;
-void (null as unknown as _DocOnlyExport);

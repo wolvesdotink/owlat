@@ -55,11 +55,6 @@ export function bindAppLocale(locale: string, labels: FormatLabels): void {
 	appLabels = labels;
 }
 
-/** The active locale, for a caller that has to build its own `Intl`. */
-export function activeFormatLocale(): string {
-	return appLocale;
-}
-
 export type DateFormatStyle = 'short' | 'medium' | 'long' | 'full' | 'relative';
 
 const dateFormatOptions: Record<

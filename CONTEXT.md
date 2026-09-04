@@ -487,10 +487,10 @@ Per-row order of operations (the ordering is load-bearing):
 2. **Contact resolution (module)** with `mode` derived from
    `handleDuplicates` (`'skip' → 'upsert'`, `'update' → 'merge'`).
 3. Property writes per the source-gated policy.
-3. `recordContactActivity` — `'created'` when resolution returned
+4. `recordContactActivity` — `'created'` when resolution returned
    `'created'`; `'property_updated'` when property values were
    written against an existing contact.
-4. When `doiAttest` is set: **DOI lifecycle (module)** `transition({
+5. When `doiAttest` is set: **DOI lifecycle (module)** `transition({
 to: 'confirmed', source: 'admin_attest', attestSource:
 doiAttest.attestSource })`. Must precede step 6 so DOI-required
    topic memberships activate immediately rather than triggering a
@@ -1289,9 +1289,9 @@ Producers of transition calls today (post-deepening):
 - `convex/campaigns/scheduling.ts:unschedule` (`→ draft`)
 - One surviving `schedule` mutation (`→ scheduled`) — the
   `scheduleForOrganization` duplicate in `organization.ts` is deleted;
-  HTTP callers delegate.
-- One surviving `sendNow` mutation (`→ sending`) — the
-  `sendNowForOrganization` duplicate is deleted similarly.
+  HTTP callers delegate. It is the only client entry point left: the
+  `sendNow` mutation (`→ sending`) and its `sendNowForOrganization`
+  duplicate are both deleted; the web client only ever called `schedule`.
 - The campaign-send orchestrator (`emails.startCampaignSendInternal` or
   its successor) calls `lifecycle.transition({ to: 'sending' })` on the
   scheduler-tick path (replacing the deleted
@@ -2040,8 +2040,8 @@ Per-call order of operations:
    attachments JSON-parsed once at intake; pre-deepening this lived in
    the HTTP shell).
 9. Insert `transactionalSends` row in `queued`. Writes `language` on
-    the row (new field — closes the silent drift where resolved
-    language was only on the API response, not persisted).
+   the row (new field — closes the silent drift where resolved
+   language was only on the API response, not persisted).
 10. Increment BOTH counters atomically with the row insert:
     `instanceSettings.transactionalSendCount` and
     `emailsQueries.incrementDailySendCountInternal`. Today the daily

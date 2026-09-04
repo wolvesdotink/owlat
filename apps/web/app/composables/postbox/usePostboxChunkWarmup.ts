@@ -26,7 +26,7 @@ export type ChunkLoader = () => Promise<unknown>;
 export type IdleScheduler = (cb: () => void) => void;
 
 function defaultIdleScheduler(cb: () => void): void {
-	if (typeof window === 'undefined') return;
+	if (import.meta.server) return;
 	const ric = (
 		window as unknown as {
 			requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
@@ -64,7 +64,7 @@ export function usePostboxChunkWarmup(options?: {
 	 */
 	function warm(): void {
 		if (done) return;
-		if (typeof window === 'undefined') return;
+		if (import.meta.server) return;
 		done = true;
 		schedule(() => {
 			for (const load of loaders) {

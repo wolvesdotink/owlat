@@ -14,7 +14,7 @@ import type { Ref } from 'vue';
 import { createRafThrottle, isNearListEnd } from './usePostboxVirtualList';
 
 /** How close to the end (in px) the scroll gets before the next page is asked for. */
-export const POSTBOX_AUTOLOAD_MARGIN_PX = 240;
+const POSTBOX_AUTOLOAD_MARGIN_PX = 240;
 
 export function usePostboxListAutoLoad(opts: {
 	scrollEl: Ref<HTMLElement | null>;

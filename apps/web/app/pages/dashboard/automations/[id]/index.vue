@@ -2,13 +2,11 @@
 import { api } from '@owlat/api';
 import type { Doc } from '@owlat/api/dataModel';
 import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
+import { formatNumber } from '~/utils/formatters';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.automations.detail.index.pageTitle') });
-
-const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
-const formatNumber = (value: number) => numberFormat.value.format(value);
 
 /**
  * Registry-owned copy (step modules, status/trigger badges) carries message

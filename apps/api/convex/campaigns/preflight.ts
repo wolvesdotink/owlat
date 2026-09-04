@@ -1,8 +1,7 @@
 /**
- * Campaign send pre-flight — consolidates the four-way-duplicated check
- * block that pre-deepening lived in `schedule`, `scheduleForOrganization`,
- * `sendNow`, and `sendNowForOrganization`. The lifecycle reducer trusts
- * its input; callers run this helper *before* `lifecycle.transition`.
+ * Campaign send pre-flight — the one check block every path that moves a
+ * campaign towards `sending` runs. The lifecycle reducer trusts its input;
+ * callers run this helper *before* `lifecycle.transition`.
  *
  * See docs/adr/0017-campaign-lifecycle-modules.md §Pre-flight helper.
  */
@@ -59,7 +58,7 @@ export function preflightErrorData(result: Extract<PreflightResult, { ok: false 
 export interface PreflightOptions {
 	/**
 	 * If set, enables the future-date check (`scheduled_in_past`). Omit
-	 * for `sendNow` paths that aren't tied to a future timestamp.
+	 * for callers that aren't tied to a future timestamp.
 	 */
 	scheduledAt?: number;
 	/**

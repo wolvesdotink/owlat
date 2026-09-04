@@ -17,7 +17,7 @@ export type MailCategory = 'person' | 'newsletter' | 'notification' | 'receipt' 
  * sentence itself (the i18n registry convention); the list that renders it
  * resolves the key with `t()`.
  */
-export const CATEGORY_SECTIONS: ReadonlyArray<{
+const CATEGORY_SECTIONS: ReadonlyArray<{
 	key: MailCategory;
 	label: string;
 	icon: string;

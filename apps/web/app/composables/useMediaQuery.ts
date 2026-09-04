@@ -7,11 +7,7 @@
  * `prefersReducedMotion` is for the animation helpers under `lib/` that are not
  * components and have nothing to re-render.
  */
-export {
-	prefersReducedMotion,
-	useReducedMotion,
-	REDUCED_MOTION_QUERY,
-} from '@owlat/ui/composables/useReducedMotion';
+export { prefersReducedMotion, useReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 /**
  * Reactive `window.matchMedia`.
@@ -22,7 +18,7 @@ export {
  */
 export function useMediaQuery(query: string): Ref<boolean> {
 	const matches = ref(true);
-	if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return matches;
+	if (import.meta.server || typeof window.matchMedia !== 'function') return matches;
 
 	const mql = window.matchMedia(query);
 	matches.value = mql.matches;

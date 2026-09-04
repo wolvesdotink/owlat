@@ -2,13 +2,11 @@
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { isValidEmail } from '@owlat/shared';
+import { formatNumber } from '~/utils/formatters';
 
 const { t, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.campaigns.detail.edit.pageTitle') });
-
-const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
-const formatNumber = (value: number) => numberFormat.value.format(value);
 
 definePageMeta({
 	layout: 'dashboard',

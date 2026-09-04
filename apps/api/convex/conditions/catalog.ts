@@ -38,8 +38,6 @@ export interface GeneratedPluginConditionCatalogEntry {
 const PLUGIN_CONDITION_CATALOG =
 	BUNDLED_PLUGIN_AUTOMATION_CONDITION_CATALOG as readonly GeneratedPluginConditionCatalogEntry[];
 
-export type PluginConditionKind = GeneratedPluginConditionKind;
-
 export function isCoreConditionKind(kind: string): kind is CoreConditionKind {
 	return (CORE_CONDITION_KINDS as readonly string[]).includes(kind);
 }

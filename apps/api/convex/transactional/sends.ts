@@ -2,20 +2,6 @@ import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOrThrow } from '../_utils/errors';
 
-// Status type for transactional email sends. Per ADR-0006 transactional
-// sends pre-create in `queued` (so the worker can transition them through
-// the Send lifecycle the same way campaign sends do) and `failed` rows
-// persist on worker error.
-export type TransactionalSendStatus =
-	| 'queued'
-	| 'sent'
-	| 'failed'
-	| 'delivered'
-	| 'opened'
-	| 'clicked'
-	| 'bounced'
-	| 'complained';
-
 // Get all sends for a transactional email
 export const listByTransactionalEmail = authedQuery({
 	args: {

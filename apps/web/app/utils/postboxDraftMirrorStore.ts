@@ -35,7 +35,7 @@ import { getOfflineKvDriver, type OfflineKvDriver } from './postboxOfflineStore'
  * (the composer stack caps well below this); the cap exists so a device that
  * crashes repeatedly cannot accumulate mirrors without bound.
  */
-export const DRAFT_MIRRORS_CAP = 20;
+const DRAFT_MIRRORS_CAP = 20;
 
 const mirrorKey = (ns: string, id: string) => `draft-mirror:${ns}:${id}`;
 const mirrorIndexKey = (ns: string) => `draft-mirror-index:${ns}`;

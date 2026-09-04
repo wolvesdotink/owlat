@@ -258,7 +258,7 @@ export function settingsEntryFor(path: string): SettingsEntry | undefined {
 }
 
 /** The entries this environment may reach, hidden ones included. Pure. */
-export function reachableSettingsEntries(env: SettingsEnvironment): SettingsEntry[] {
+function reachableSettingsEntries(env: SettingsEnvironment): SettingsEntry[] {
 	return SETTINGS_REGISTRY.filter((candidate) => !candidate.gate || candidate.gate(env));
 }
 

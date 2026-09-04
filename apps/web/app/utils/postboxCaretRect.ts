@@ -25,7 +25,7 @@ export interface CaretRect {
  * unmeasurable (a zero-origin/zero-height box, e.g. an empty line or SSR).
  */
 export function measureCaretRect(surface: HTMLElement | null): CaretRect | null {
-	const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+	const sel = import.meta.client ? window.getSelection() : null;
 	if (!surface || !sel || sel.rangeCount === 0) return null;
 	const range = sel.getRangeAt(0).cloneRange();
 	range.collapse(false);

@@ -24,10 +24,7 @@ import { recordAuditLog } from './lib/auditLog';
 // Types for segment filter configuration — re-exported from the canonical
 // `Condition` union owned by `apps/api/convex/conditions/`.
 export type FilterLogic = 'AND' | 'OR';
-export type {
-	Condition as FilterCondition,
-	ConditionKind as FilterConditionKind,
-} from './conditions/types';
+export type { Condition as FilterCondition } from './conditions/types';
 
 export type { SegmentFilters } from './conditions';
 

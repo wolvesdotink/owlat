@@ -407,7 +407,7 @@ export function upgradeOfflineDb(
  * Real IndexedDB-backed driver. Returns `null` when IndexedDB is unavailable
  * (SSR, privacy mode, or an old engine) so callers can no-op cleanly.
  */
-export function createIndexedDbDriver(
+function createIndexedDbDriver(
 	dbName: string = DB_NAME,
 	storeName: string = STORE_NAME
 ): OfflineKvDriver | null {

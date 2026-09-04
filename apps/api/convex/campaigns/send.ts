@@ -166,7 +166,7 @@ export const startCampaignSend = internalAction({
 		// lifecycle (`scheduled → sending` is single-write; same-state
 		// `sending → sending` is recorded but does NOT refire the
 		// `schedule_campaign_send_orchestrator` effect) — so we don't skip
-		// on `sending` here. The sendNow path arrives with status already
+		// on `sending` here. The scheduler hop arrives with status already
 		// flipped to `sending` (lifecycle ran first, then scheduled this
 		// orchestrator), and the cron-tick path arrives with `scheduled`.
 		if (campaign.status === 'cancelled' || campaign.status === 'draft') {
@@ -192,8 +192,8 @@ export const startCampaignSend = internalAction({
 		// so without this an early-firing stale hop would transition the campaign to
 		// `sending` and send at the OLD time. If scheduledAt is still in the future,
 		// skip — the correct hop (or the per-minute `process scheduled campaigns`
-		// cron, which only picks up scheduledAt <= now) sends it on time. The
-		// sendNow path arrives as `sending` and is unaffected.
+		// cron, which only picks up scheduledAt <= now) sends it on time. A hop
+		// that arrives as `sending` is unaffected.
 		if (
 			campaign.status === 'scheduled' &&
 			campaign.scheduledAt !== undefined &&

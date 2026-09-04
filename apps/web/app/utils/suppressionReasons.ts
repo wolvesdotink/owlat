@@ -54,7 +54,7 @@ export type SuppressionReasonPresentation = {
 	phrase: (dateLabel: string) => SuppressionReasonText;
 };
 
-export const SUPPRESSION_REASON_PRESENTATION = {
+const SUPPRESSION_REASON_PRESENTATION = {
 	bounced: {
 		headline: 'shared.suppressionReasons.headline.noMail',
 		badge: 'bg-error/20 text-error border-error/30',

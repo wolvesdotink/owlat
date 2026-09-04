@@ -1,11 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSecretBox } from '../../lib/credentialCrypto';
 import { CURRENT_CONNECTED_APP_SECRET_VERSION } from '../../lib/constants';
-import {
-	generateConnectedAppSecret,
-	openConnectedAppSecret,
-	sealConnectedAppSecret,
-} from '../secretBox';
+import { generateConnectedAppSecret, sealConnectedAppSecret } from '../secretBox';
 
 describe('connected-app secret box', () => {
 	beforeEach(() => {
@@ -13,11 +9,9 @@ describe('connected-app secret box', () => {
 	});
 	afterEach(() => vi.unstubAllEnvs());
 
-	it('round-trips a sealed secret and stamps the current envelope version', () => {
-		const secret = generateConnectedAppSecret();
-		const envelope = sealConnectedAppSecret(secret);
+	it('stamps the current envelope version', () => {
+		const envelope = sealConnectedAppSecret(generateConnectedAppSecret());
 		expect(envelope.version).toBe(CURRENT_CONNECTED_APP_SECRET_VERSION);
-		expect(openConnectedAppSecret(envelope)).toBe(secret);
 	});
 
 	it('never stores the plaintext inside the sealed envelope', () => {
@@ -44,17 +38,6 @@ describe('connected-app secret box', () => {
 		const second = sealConnectedAppSecret(secret);
 		expect(first.iv).not.toBe(second.iv);
 		expect(first.ciphertext).not.toBe(second.ciphertext);
-		expect(openConnectedAppSecret(first)).toBe(secret);
-		expect(openConnectedAppSecret(second)).toBe(secret);
-	});
-
-	it('fails closed when the auth tag is tampered', () => {
-		const envelope = sealConnectedAppSecret(generateConnectedAppSecret());
-		const tamperedTag = Buffer.from(envelope.authTag, 'base64');
-		tamperedTag[0] = tamperedTag[0]! ^ 0xff;
-		expect(() =>
-			openConnectedAppSecret({ ...envelope, authTag: tamperedTag.toString('base64') })
-		).toThrow();
 	});
 
 	it('is cryptographically domain-separated from other secret-box consumers', () => {

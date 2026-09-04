@@ -29,7 +29,7 @@ export function isSetupEmailValid(value: string): boolean {
 	return EMAIL_RE.test(value.trim());
 }
 
-export const MIN_PASSWORD_LENGTH = 12;
+const MIN_PASSWORD_LENGTH = 12;
 
 export interface AdminErrors {
 	email?: string;

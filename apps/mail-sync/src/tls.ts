@@ -14,9 +14,9 @@ import type { SmtpTlsMode } from '@owlat/smtp-client';
 
 /**
  * True when `host` is a loopback address — the only host for which an
- * unencrypted IMAP/SMTP connection is permitted. Mirrors isLocalMailHost in the
- * Convex backend (apps/api/convex/lib/mailHost.ts), which gates what the worker
- * is ever handed.
+ * unencrypted IMAP/SMTP connection is permitted. This worker is the only place
+ * that gate lives: the backend stores the account's TLS flags as given and
+ * relies on the check here at connect time.
  */
 export function isLoopbackHost(host: string): boolean {
 	let h = host.trim().toLowerCase();

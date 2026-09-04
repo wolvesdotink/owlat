@@ -360,7 +360,7 @@ export async function* streamAudienceCandidates(
 	// front-loads whole columns — for a `topic_membership` condition it
 	// `.collect()`s the entire `contactTopics.by_topic` range — and the budgeted
 	// caller (the binding capacity pre-flight) runs inside `campaigns.scheduling
-	// .schedule` / `campaigns.campaigns.sendNow`. An unbounded collect there would
+	// .schedule`. An unbounded collect there would
 	// exceed the Convex per-execution read limit, turning a failure to MEASURE
 	// into a blocked SEND (D2), and would drag the whole junction table into the
 	// mutation's OCC read set (D16). So the budgeted path preloads per BATCH of

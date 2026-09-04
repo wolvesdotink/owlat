@@ -43,6 +43,8 @@ const SEARCH_ROOTS = ['apps/api/convex', 'apps/web/app', 'apps/code-worker/src']
 export const AWAITING_CALL_SITE: Readonly<Record<string, string>> = Object.freeze({
 	importProviderSignature:
 		'importProviders is dispatch: declared — the origin-only inbound verifier its contract declares gates no HTTP endpoint, because the bucket has no inbound surface yet',
+	storage:
+		'plugin-storage:read/write are declared capabilities, but no hosted service binds bindAuthenticatedBundledPluginStorage for a bundled plugin yet; its only importer was the connected-app binder, which nothing reached either and which is gone',
 });
 
 export interface OrphanCheckOptions {

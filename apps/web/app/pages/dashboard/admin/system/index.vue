@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import { formatDateTime } from '~/utils/formatters';
 
 const { t } = useI18n();
+const { showToast } = useToast();
 
 useHead({ title: () => t('dashboard.admin.system.index.pageTitle') });
 
@@ -24,16 +25,16 @@ const convex = useConvex();
 const checking = ref(false);
 async function checkNow() {
 	if (!convex) {
-		notify('error', t('dashboard.admin.system.index.toasts.noClient'));
+		showToast(t('dashboard.admin.system.index.toasts.noClient'), 'error');
 		return;
 	}
 	checking.value = true;
 	try {
 		await convex.action(api.systemUpdates.checkForUpdates, { force: true });
-		notify('success', t('dashboard.admin.system.index.toasts.checkComplete'));
+		showToast(t('dashboard.admin.system.index.toasts.checkComplete'));
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : t('dashboard.admin.system.index.unknownError');
-		notify('error', t('dashboard.admin.system.index.toasts.checkFailed', { error: msg }));
+		showToast(t('dashboard.admin.system.index.toasts.checkFailed', { error: msg }), 'error');
 	} finally {
 		checking.value = false;
 	}
@@ -157,17 +158,6 @@ function onUpdateFailed(error: string) {
 }
 
 // ── Utility ──────────────────────────────────────────────────────────────────
-function notify(kind: 'success' | 'error', message: string) {
-	// Best-effort toast — the UI package ships useToast
-	try {
-		const { showToast } = useToast();
-		showToast(message, kind);
-	} catch {
-		// eslint-disable-next-line no-console
-		if (kind === 'error') console.error(message);
-	}
-}
-
 function formatDuration(start?: number, end?: number) {
 	if (!start || !end) return '—';
 	const sec = Math.floor((end - start) / 1000);

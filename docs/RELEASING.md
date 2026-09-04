@@ -26,8 +26,8 @@ Both server pipelines run the reusable core (`_server-build.yml`). The GitHub
 Release is created as a DRAFT up front; every job below must pass before the
 `publish` job flips it live, so a red gate means nothing was shipped:
 
-1. **`verify`** (unified line only) — full `ci:verify` of the exact tagged
-   commit.
+1. **`verify`** (the shared `_verify.yml`, called by all three release
+   workflows) — full `ci:verify` of the exact tagged commit.
 2. **`build-and-push`** — builds all eight images, cosign-signs each digest,
    publishes SLSA attestations, and records each image digest for compose
    pinning.

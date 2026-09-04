@@ -97,7 +97,7 @@ export function usePostboxTriageUndo() {
 	}
 
 	function syncHotkey() {
-		if (typeof window === 'undefined') return;
+		if (import.meta.server) return;
 		const wanted = entries.value.length > 0;
 		if (wanted && !boundHotkey) {
 			boundHotkey = onWindowKeydown;

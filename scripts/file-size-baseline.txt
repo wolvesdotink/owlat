@@ -3,7 +3,6 @@ apps/api/convex/campaigns/lifecycle.ts
 apps/api/convex/campaigns/send.ts
 apps/api/convex/contacts/contacts.ts
 apps/api/convex/contacts/doiLifecycle.ts
-apps/api/convex/contacts/import.ts
 apps/api/convex/domains/lifecycle.ts
 apps/api/convex/emailBlocks/module.ts
 apps/api/convex/knowledge/graph.ts

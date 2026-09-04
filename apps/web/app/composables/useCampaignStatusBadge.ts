@@ -7,10 +7,13 @@
  */
 
 /** The set of statuses a campaign record can actually have. */
-export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled' | 'pending_review';
-
-/** Status values usable as a list filter, including the synthetic "all". */
-export type CampaignStatusFilter = 'all' | CampaignStatus;
+export type CampaignStatus =
+	| 'draft'
+	| 'scheduled'
+	| 'sending'
+	| 'sent'
+	| 'cancelled'
+	| 'pending_review';
 
 interface CampaignStatusBadge {
 	color: string;
@@ -24,7 +27,11 @@ const STATUS_BADGES: Record<CampaignStatus, CampaignStatusBadge> = {
 	sending: { color: 'bg-warning/10 text-warning', icon: 'lucide:loader-2', label: 'Sending' },
 	sent: { color: 'bg-success/10 text-success', icon: 'lucide:check-circle', label: 'Sent' },
 	cancelled: { color: 'bg-error/10 text-error', icon: 'lucide:x-circle', label: 'Cancelled' },
-	pending_review: { color: 'bg-warning/10 text-warning', icon: 'lucide:shield-alert', label: 'Under Review' },
+	pending_review: {
+		color: 'bg-warning/10 text-warning',
+		icon: 'lucide:shield-alert',
+		label: 'Under Review',
+	},
 };
 
 export function useCampaignStatusBadge() {

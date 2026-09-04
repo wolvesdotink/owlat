@@ -22,6 +22,7 @@
  * archive/trash/snooze swap to the adjacent row (or close at the ends)
  * instead of navigating to the three-pane route.
  */
+import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget, resolvePostboxShortcut } from '~/utils/postboxShortcuts';
 import { resolveActiveShortcut } from '~/utils/shortcutScope';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
@@ -62,7 +63,7 @@ function onAdvance(target: string | null) {
  * inline ones render inside the pane) — they own Esc and every other key.
  */
 function anotherDialogOpen(): boolean {
-	return Array.from(document.querySelectorAll('[role="dialog"]')).some((el) => el !== paneEl.value);
+	return isDialogOpen(paneEl.value);
 }
 
 function onWindowKeydown(event: KeyboardEvent) {

@@ -74,14 +74,13 @@ export async function bindAuthenticatedBundledPluginStorage(
 
 /**
  * Host primitive: build a scoped KV service over a caller-supplied
- * {@link HostedPluginActorScope} and capability `authorize` gate. Exported for
- * host-owned authenticators ONLY — the bundled-plugin authenticator above and
- * the connected-app authenticator in `connectedApps/storage.ts`. No production
- * caller may manufacture an organization/plugin scope without first passing an
+ * {@link HostedPluginActorScope} and capability `authorize` gate. Reached only
+ * through the bundled-plugin authenticator above. No production caller may
+ * manufacture an organization/plugin scope without first passing an
  * authenticator that reloads enablement and grants; the returned service carries
  * no caller-selectable scope, so tenant/plugin isolation is structural.
  */
-export function createScopedPluginStorageService(
+function createScopedPluginStorageService(
 	ctx: MutationCtx,
 	scope: HostedPluginActorScope,
 	authorize: StorageAuthorization
