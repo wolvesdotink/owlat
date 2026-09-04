@@ -26,9 +26,9 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
 
-      # ci:verify ends with the knip dead-code gate (scripts/check-dead-code.sh),
-      # whose binary and JSON normaliser run on node; setup-bun does not put node
-      # on PATH, so pin it explicitly (mirrors the lint job in test.yml).
+      # ci:verify (scripts/ci-gate.sh) runs the knip dead-code gate and the
+      # Convex bundle smoke on node; setup-bun does not put node on PATH, so pin
+      # it explicitly (mirrors the lint job in test.yml).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"

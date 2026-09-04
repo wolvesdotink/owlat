@@ -227,18 +227,19 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          # ci:lint ends with the oxfmt format gate (scripts/check-format.sh),
-          # which diffs changed JS/TS files against the base branch. Full
-          # history is needed so `git merge-base origin/<base> HEAD` resolves.
+          # ci:lint (scripts/ci-gate.sh) includes the oxfmt format gate
+          # (scripts/check-format.sh), which diffs changed JS/TS files against
+          # the base branch. Full history is needed so
+          # `git merge-base origin/<base> HEAD` resolves.
           fetch-depth: 0
 
       - uses: ./.github/actions/setup-bun
 
-      # ci:lint ends with the knip dead-code gate (scripts/check-dead-code.sh)
-      # and the file-size ratchet (scripts/check-file-size.sh). The dead-code
-      # gate's binary and JSON normaliser both run on node, and setup-bun does
-      # not put node on PATH, so pin it explicitly rather than rely on the runner
-      # image.
+      # ci:lint runs the knip dead-code gate (scripts/check-dead-code.sh), the
+      # file-size ratchet (scripts/check-file-size.sh) and the Convex bundle
+      # smoke. The dead-code gate's binary, its JSON normaliser and the smoke
+      # all run on node, and setup-bun does not put node on PATH, so pin it
+      # explicitly rather than rely on the runner image.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '22'
@@ -249,22 +250,9 @@ jobs:
         # "green" without running anything.
         uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
 
-      - name: Verify plugin codegen from clean artifacts
-        run: bun run plugins:test-clean
-
-      - name: Verify plugin deploy graph
-        run: bun run plugins:test-deploy-graph
-
-      - name: Verify Convex plugin composition bundle
-        run: bun run plugins:test-convex-bundle
-
-      # Bundles EVERY function module under apps/api/convex with Convex's real
-      # isolate/node runtime split — the composition bundle above only covers
-      # convex.config.ts, which is how the v0.4.2 runtime-boundary breakage
-      # shipped unnoticed (#551).
-      - name: Verify Convex function-graph bundle
-        run: bun run plugins:test-convex-function-graph
-
+      # The plugin smokes (clean-checkout codegen, deploy graph, Convex
+      # composition + function-graph bundles) run inside ci:lint; see
+      # scripts/ci-gate.sh for the full ordered list.
       - name: Lint
         run: bun run ci:lint
 
