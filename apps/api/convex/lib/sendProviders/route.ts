@@ -81,7 +81,7 @@ function probeableCandidateKind(
  * than the selected route — the campaign warming-cap gate needs the row and
  * the readiness set too — load this once and select from it, instead of
  * re-reading `providerRoutes` and re-running `isSendProviderReady`, which would
- * double the OCC read set they carry inside `schedule` / `sendNow`.
+ * double the OCC read set they carry inside `schedule`.
  */
 export type SendRouteFacts = {
 	routeConfig: Doc<'providerRoutes'> | null;

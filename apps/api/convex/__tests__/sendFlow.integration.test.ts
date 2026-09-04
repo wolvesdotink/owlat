@@ -75,7 +75,7 @@ async function drainRecipientPages(
 }
 
 // Suppress unhandled rejections from convex-test trying to run excluded scheduled functions
-// (sendNow schedules emails.startCampaignSend and posthog.capture which are excluded)
+// (the transition to `sending` schedules emails.startCampaignSend and posthog.capture, which are excluded)
 const suppressedErrors: Error[] = [];
 const unhandledRejectionHandler = (err: Error) => {
 	if (
@@ -204,173 +204,6 @@ async function setupSendFlowData(t: TestConvex<typeof schema>): Promise<SendFlow
 
 	return result;
 }
-
-// ============ sendNow Validation ============
-
-describe('sendNow validation', () => {
-	it('should reject campaign missing email template', async () => {
-		const t = convexTest(schema, modules);
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({ domain: 'example.com', status: 'verified', lastVerifiedAt: Date.now() })
-			);
-		});
-
-		let campaignId: Id<'campaigns'>;
-		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({
-					status: 'draft',
-					fromEmail: 'sender@example.com',
-					// no emailTemplateId
-				})
-			);
-		});
-
-		await expect(
-			t.mutation(api.campaigns.campaigns.sendNow, { campaignId: campaignId! })
-		).rejects.toThrow(/must have an email template/);
-	});
-
-	it('should reject campaign missing fromEmail', async () => {
-		const t = convexTest(schema, modules);
-		let campaignId: Id<'campaigns'>;
-
-		await t.run(async (ctx) => {
-			const templateId = await ctx.db.insert(
-				'emailTemplates',
-				createTestEmailTemplate({ status: 'published' })
-			);
-			const topicId = await ctx.db.insert('topics', createTestTopic());
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({
-					status: 'draft',
-					emailTemplateId: templateId,
-					audience: { kind: 'topic', topicId },
-					fromEmail: undefined,
-				})
-			);
-		});
-
-		await expect(
-			t.mutation(api.campaigns.campaigns.sendNow, { campaignId: campaignId! })
-		).rejects.toThrow(/must have a from email/);
-	});
-
-	it('should reject campaign missing audience', async () => {
-		const t = convexTest(schema, modules);
-		let campaignId: Id<'campaigns'>;
-
-		await t.run(async (ctx) => {
-			const templateId = await ctx.db.insert(
-				'emailTemplates',
-				createTestEmailTemplate({ status: 'published' })
-			);
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({
-					status: 'draft',
-					emailTemplateId: templateId,
-					fromEmail: 'sender@example.com',
-					// no audience configured
-				})
-			);
-		});
-
-		await expect(
-			t.mutation(api.campaigns.campaigns.sendNow, { campaignId: campaignId! })
-		).rejects.toThrow(/must have an audience/);
-	});
-
-	it('should reject unverified domain', async () => {
-		const t = convexTest(schema, modules);
-		let campaignId: Id<'campaigns'>;
-
-		await t.run(async (ctx) => {
-			// Domain exists but is not verified
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({ domain: 'example.com', status: 'pending' })
-			);
-			const templateId = await ctx.db.insert(
-				'emailTemplates',
-				createTestEmailTemplate({ status: 'published' })
-			);
-			const topicId = await ctx.db.insert('topics', createTestTopic());
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({
-					status: 'draft',
-					emailTemplateId: templateId,
-					fromEmail: 'sender@example.com',
-					audience: { kind: 'topic', topicId },
-				})
-			);
-		});
-
-		await expect(
-			t.mutation(api.campaigns.campaigns.sendNow, { campaignId: campaignId! })
-		).rejects.toThrow(/not verified/);
-	});
-
-	it('should reject non-draft campaign', async () => {
-		const t = convexTest(schema, modules);
-		let campaignId: Id<'campaigns'>;
-
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({ domain: 'example.com', status: 'verified', lastVerifiedAt: Date.now() })
-			);
-			const templateId = await ctx.db.insert(
-				'emailTemplates',
-				createTestEmailTemplate({ status: 'published' })
-			);
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({
-					status: 'sent',
-					emailTemplateId: templateId,
-					fromEmail: 'sender@example.com',
-				})
-			);
-		});
-
-		await expect(
-			t.mutation(api.campaigns.campaigns.sendNow, { campaignId: campaignId! })
-		).rejects.toThrow(/Only draft or scheduled/);
-	});
-});
-
-// ============ sendNow Happy Path ============
-
-describe('sendNow happy path', () => {
-	it('should transition campaign to sending with zeroed stats', async () => {
-		const t = convexTest(schema, modules);
-		const data = await setupSendFlowData(t);
-
-		await t.mutation(api.campaigns.campaigns.sendNow, { campaignId: data.campaignId });
-		// Do NOT call t.finishInProgressScheduledFunctions() — the scheduled action
-		// would try to call the email provider
-
-		await t.run(async (ctx) => {
-			const campaign = await readCampaignWithStats(ctx, data.campaignId);
-			expect(campaign).toBeDefined();
-			expect(campaign!.status).toBe('sending');
-			expect(campaign!.sentAt).toBeDefined();
-			expect(campaign!.statsSent).toBe(0);
-			expect(campaign!.statsDelivered).toBe(0);
-			expect(campaign!.statsOpened).toBe(0);
-			expect(campaign!.statsClicked).toBe(0);
-			expect(campaign!.statsBounced).toBe(0);
-			expect(campaign!.statsUnsubscribed).toBe(0);
-		});
-	});
-});
 
 // ============ Recipient Resolution ============
 
@@ -762,12 +595,16 @@ describe('sendCompletion.completeSend', () => {
 // ============ Full Lifecycle Chain ============
 
 describe('full campaign send lifecycle', () => {
-	it('should chain sendNow → recipients → createBatch → completeSend → lifecycle.transition(sent)', async () => {
+	it('should chain transition(sending) → recipients → createBatch → completeSend → lifecycle.transition(sent)', async () => {
 		const t = convexTest(schema, modules);
 		const data = await setupSendFlowData(t);
 
-		// Step 1: sendNow — transitions to 'sending'
-		await t.mutation(api.campaigns.campaigns.sendNow, { campaignId: data.campaignId });
+		// Step 1: the lifecycle transition every send path ends in — 'sending'
+		await t.mutation(internal.campaigns.lifecycle.transition, {
+			campaignId: data.campaignId,
+			input: { to: 'sending', at: Date.now() },
+			userId: 'test-user',
+		});
 		// Do NOT finish scheduled functions (would try to call email provider)
 
 		await t.run(async (ctx) => {

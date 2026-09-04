@@ -1891,7 +1891,7 @@ describe('assessCampaignCapacity — the fail-open catch (D2)', () => {
 		// A ctx whose very first document read throws. This is the branch that
 		// GUARANTEES a measurement fault can never block a send: an exception
 		// escaping the assessment would not refuse the campaign, it would make
-		// `schedule` / `sendNow` throw — a failure to MEASURE blocking a SEND,
+		// `schedule` throw — a failure to MEASURE blocking a SEND,
 		// exactly what D2 forbids.
 		const assessment = await t.run(async (ctx) => {
 			const hostileCtx = {

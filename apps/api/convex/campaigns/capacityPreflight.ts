@@ -39,7 +39,7 @@ type Ctx = MutationCtx | QueryCtx;
 
 /**
  * DOCUMENTS the gate may read while sizing the audience. The gate runs inside
- * `campaigns.scheduling.schedule` and `campaigns.campaigns.sendNow`, where an
+ * `campaigns.scheduling.schedule`, where an
  * unbounded segment scan would both exceed the Convex per-execution read limit
  * — turning a failure to MEASURE into a blocked SEND — and pull the whole live
  * contacts table into the mutation's OCC read set (D16).
@@ -52,8 +52,8 @@ type Ctx = MutationCtx | QueryCtx;
  * documents per row. Charging rows would let this "bound" overrun the limit by
  * 2-3x on exactly the audiences it exists for — and in production the limit
  * THROWS, the fail-open catch swallows it, and the gate goes dark. The gate is
- * also not the only reader in the mutation: the enclosing `schedule` /
- * `sendNow` loads the campaign, template, domain and sender. 6,000 documents
+ * also not the only reader in the mutation: the enclosing `schedule` loads
+ * the campaign, template, domain and sender. 6,000 documents
  * leaves 10,384 of the 16,384 for everything else.
  *
  * Exhausting it is NOT a refusal and NOT a silent pass: the partial count is
@@ -151,8 +151,8 @@ export async function assessCampaignCapacity(
 	ctx: Ctx,
 	options: CampaignCapacityOptions
 ): Promise<CampaignCapacityAssessment> {
-	// FAIL OPEN, unconditionally. This runs inside `campaigns.scheduling.schedule`
-	// and `campaigns.campaigns.sendNow`: an exception escaping here would not
+	// FAIL OPEN, unconditionally. This runs inside `campaigns.scheduling.schedule`:
+	// an exception escaping here would not
 	// refuse the campaign, it would make the send mutation THROW — a failure to
 	// MEASURE blocking a SEND, exactly what D2 forbids. Every measurement fault
 	// (a read limit, a corrupt segment, an unreadable row) degrades to "capacity

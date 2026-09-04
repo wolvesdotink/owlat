@@ -306,8 +306,8 @@ export const remove = authedMutation({
 });
 
 /**
- * Idempotent bootstrap seed, run FROM THE SEND PATH (`campaigns/campaigns.ts`
- * sendNow, `campaigns/scheduling.ts` schedule) right before pre-flight: if no
+ * Idempotent bootstrap seed, run FROM THE SEND PATH (`campaigns/scheduling.ts`
+ * schedule) right before pre-flight: if no
  * curated senders exist yet and the org has a `defaultFromEmail` on a verified
  * domain, create one enabled default row from `defaultFromName`/`defaultFromEmail`.
  *
