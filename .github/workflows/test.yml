@@ -203,9 +203,9 @@ jobs:
 
       # apps/api/scripts/test-ramp.sh sets the sentinel + mode pair for the leg
       # it runs, so this job is the only place either variable is set. Every
-      # other job — the sharded test-api one runs these files too — leaves them
-      # unset and gets the equipped leg. `bun run test:ramp` with no argument
-      # runs both legs locally.
+      # other job leaves them unset and gets the equipped leg, including the
+      # sharded test-api one, which runs these files too. `bun run test:ramp`
+      # with no argument runs both legs locally.
       - name: Run the ramp gate suite (${{ matrix.mode }})
         run: bun run test:ramp ${{ matrix.mode }}
 
