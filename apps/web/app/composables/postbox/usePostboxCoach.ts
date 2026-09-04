@@ -136,5 +136,3 @@ export function usePostboxCoach(options: UsePostboxCoachOptions) {
 		isClean,
 	};
 }
-
-export type PostboxCoach = ReturnType<typeof usePostboxCoach>;

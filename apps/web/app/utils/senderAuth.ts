@@ -466,6 +466,6 @@ export function senderRiskInputOf(msg: SenderAuthMessage): SenderRiskInput {
  * the header carries no address at all, which the derivation renders as its own
  * unknown-sender copy rather than splicing a placeholder noun into a message.
  */
-export function senderDomainOf(fromAddress: string | undefined): string {
+function senderDomainOf(fromAddress: string | undefined): string {
 	return extractEmailAddress(fromAddress ?? '').split('@')[1] ?? '';
 }

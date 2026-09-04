@@ -5,7 +5,7 @@
  * consumed by the autonomy rule editor and the thread-detail composable.
  */
 
-export const AGENT_CATEGORY_ICONS: Record<string, string> = {
+const AGENT_CATEGORY_ICONS: Record<string, string> = {
 	support: 'lucide:life-buoy',
 	sales: 'lucide:trending-up',
 	billing: 'lucide:credit-card',
@@ -16,4 +16,5 @@ export const AGENT_CATEGORY_ICONS: Record<string, string> = {
 	other: 'lucide:mail',
 };
 
-export const categoryIcon = (category: string): string => AGENT_CATEGORY_ICONS[category] ?? 'lucide:mail';
+export const categoryIcon = (category: string): string =>
+	AGENT_CATEGORY_ICONS[category] ?? 'lucide:mail';

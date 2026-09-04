@@ -19,7 +19,7 @@
 
 export type SidebarFocusArea = 'postbox';
 
-export const SIDEBAR_FOCUS_AREAS: readonly SidebarFocusArea[] = ['postbox'];
+const SIDEBAR_FOCUS_AREAS: readonly SidebarFocusArea[] = ['postbox'];
 
 /**
  * Route prefix each focus area owns. A prefix owns its whole subtree, so a deep

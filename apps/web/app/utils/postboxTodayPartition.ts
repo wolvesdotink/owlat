@@ -22,7 +22,7 @@
 export type PostboxAutoFiledCategory = 'newsletter' | 'notification' | 'receipt';
 
 /** Smart-inbox categories the Today view rolls up instead of listing. */
-export const POSTBOX_AUTO_FILED_CATEGORIES: ReadonlySet<string> = new Set([
+const POSTBOX_AUTO_FILED_CATEGORIES: ReadonlySet<string> = new Set([
 	'newsletter',
 	'notification',
 	'receipt',

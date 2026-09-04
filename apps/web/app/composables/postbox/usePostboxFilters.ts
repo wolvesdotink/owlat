@@ -55,7 +55,7 @@ export type FilterMatchType = 'all' | 'any';
  * them on a sweep; the UI reads the same set to say when a rule has nothing
  * safe to apply. Mirrors `SAFE_ACTION_TYPES` in mail/filterRun.ts.
  */
-export const RETROACTIVE_ACTION_TYPES: readonly FilterActionType[] = [
+const RETROACTIVE_ACTION_TYPES: readonly FilterActionType[] = [
 	'moveToFolder',
 	'addLabel',
 	'markRead',

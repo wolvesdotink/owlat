@@ -23,7 +23,7 @@ export function safeRedirect(value: unknown, fallback: string): string {
 	// Reject any control characters or whitespace anywhere in the value.
 	// Browsers / Nuxt navigateTo handle whitespace-stripping inconsistently and
 	// a leading "\t" or "\r" can let "//evil.com" sneak through some checks.
-	// eslint-disable-next-line no-control-regex
+	// oxlint-disable-next-line no-control-regex
 	if (/[\x00-\x20\x7F]/.test(value)) return fallback;
 
 	// Must start with a single forward slash …

@@ -11,13 +11,7 @@ const STORAGE_KEY = 'postbox.rewrite.recentLanguages';
 const MAX_RECENT = 5;
 
 /** A short common set so the submenu is useful before any history exists. */
-export const DEFAULT_LANGUAGES = [
-	'English',
-	'Spanish',
-	'French',
-	'German',
-	'Portuguese',
-] as const;
+const DEFAULT_LANGUAGES = ['English', 'Spanish', 'French', 'German', 'Portuguese'] as const;
 
 function load(): string[] {
 	if (!import.meta.client) return [];
@@ -49,10 +43,10 @@ export function useRewriteLanguages() {
 	function remember(language: string) {
 		const name = language.trim();
 		if (!name) return;
-		const next = [name, ...recent.value.filter((l) => l.toLowerCase() !== name.toLowerCase())].slice(
-			0,
-			MAX_RECENT
-		);
+		const next = [
+			name,
+			...recent.value.filter((l) => l.toLowerCase() !== name.toLowerCase()),
+		].slice(0, MAX_RECENT);
 		recent.value = next;
 		if (import.meta.client) {
 			try {

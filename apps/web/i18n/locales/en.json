@@ -130,7 +130,6 @@
 		"back": "Back",
 		"cancel": "Cancel",
 		"close": "Close",
-		"confirm": "Confirm",
 		"continue": "Continue",
 		"copied": "Copied",
 		"copy": "Copy",
@@ -163,7 +162,6 @@
 		"preview": "Preview",
 		"refresh": "Refresh",
 		"remove": "Remove",
-		"rename": "Rename",
 		"required": "Required",
 		"retry": "Retry",
 		"save": "Save",
@@ -175,11 +173,9 @@
 		"status": "Status",
 		"today": "Today",
 		"unknown": "Unknown",
-		"untitled": "Untitled",
 		"upload": "Upload",
 		"viewAll": "View all",
 		"yes": "Yes",
-		"yesterday": "Yesterday",
 		"roles": {
 			"member": "member",
 			"admin": "admin",
@@ -4719,12 +4715,10 @@
 			},
 			"quickQueryPanel": {
 				"askOperation": "Run query",
-				"clear": "Clear question",
 				"emptyHint": "Press Enter for a synthesized, cited answer",
 				"emptyTitle": "Ask a question across your knowledge and files",
 				"placeholder": "Ask anything about your knowledge and files...",
-				"searching": "Searching your knowledge and files...",
-				"toggle": "Toggle"
+				"searching": "Searching your knowledge and files..."
 			},
 			"sourceCitation": {
 				"fileTooltip": "file: {name}",
@@ -5412,13 +5406,6 @@
 						"banned": "This account is permanently restricted from sending.",
 						"suspended": "Sending is suspended because reputation thresholds were exceeded. Resolve the flagged issues to resume.",
 						"warned": "Your account is flagged for elevated bounce or complaint rates. Improve list quality to avoid further restrictions."
-					},
-					"advanced": {
-						"cells": "Cells",
-						"controls": "Controls",
-						"independence": "Independence",
-						"label": "Advanced tools",
-						"measurement": "Measurement"
 					},
 					"domains": {
 						"errorMessage": "This list could not be read. It is not shown empty: an empty list here means you have no sending domains set up, and that is not something to claim while the read is failing.",
@@ -13361,7 +13348,6 @@
 				"enableABTest": "Enable A/B test",
 				"reschedule": "Reschedule campaign",
 				"schedule": "Schedule campaign",
-				"sendNow": "Send campaign now",
 				"unschedule": "Unschedule campaign"
 			},
 			"toasts": {
@@ -13369,7 +13355,6 @@
 				"saved": "Campaign saved successfully!",
 				"scheduled": "Campaign scheduled successfully!",
 				"scheduledRecipientTimezone": "Campaign scheduled for {time} in each recipient's timezone!",
-				"sending": "Campaign is now sending!",
 				"unscheduled": "Campaign unscheduled. You can now edit it."
 			}
 		},
@@ -14513,7 +14498,6 @@
 				"one": "{count} unread mention",
 				"other": "{count} unread mentions"
 			},
-			"collapse": "Collapse",
 			"collapseSidebar": "Collapse sidebar",
 			"contexts": {
 				"inbox": "Inbox",

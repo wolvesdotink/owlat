@@ -5,7 +5,7 @@
  */
 
 // Regex patterns
-export { emailRegex, domainRegex, urlRegex, phoneRegex, slugRegex } from '@owlat/shared';
+export { emailRegex, domainRegex, slugRegex } from '@owlat/shared';
 
 // Validation functions
 export {

@@ -90,7 +90,7 @@ export interface PaletteItem {
 export type PaletteMode = 'all' | 'commands' | 'people' | 'labels' | 'ask';
 
 /** The prefix characters that narrow the palette to one kind of result. */
-export const PALETTE_MODE_PREFIXES: Readonly<Record<string, PaletteMode>> = {
+const PALETTE_MODE_PREFIXES: Readonly<Record<string, PaletteMode>> = {
 	'>': 'commands',
 	'@': 'people',
 	'#': 'labels',
@@ -173,7 +173,7 @@ export function buildArgumentGroups(spec: PaletteArgumentSpec, query: string): P
 }
 
 /** Default max items rendered per group before truncation. */
-export const DEFAULT_GROUP_CAP = 6;
+const DEFAULT_GROUP_CAP = 6;
 
 /**
  * Merge provider groups into the final render list: drop empties, sort by

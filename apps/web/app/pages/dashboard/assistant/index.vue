@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { formatDate } from '~/utils/formatters';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.assistant.index.pageTitle') });
 
@@ -105,9 +106,6 @@ const commitRename = async () => {
 const cancelRename = () => {
 	editingId.value = null;
 };
-
-const formatDate = (ts: number) =>
-	new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric' }).format(new Date(ts));
 </script>
 
 <template>
@@ -161,7 +159,7 @@ const formatDate = (ts: number) =>
 						<template v-else>
 							<span class="flex-1 truncate">{{ c.title }}</span>
 							<span class="text-2xs text-text-tertiary flex-shrink-0">{{
-								formatDate(c.lastMessageAt)
+								formatDate(c.lastMessageAt, 'short')
 							}}</span>
 							<button
 								class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded text-text-tertiary hover:text-text-primary transition-opacity flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"

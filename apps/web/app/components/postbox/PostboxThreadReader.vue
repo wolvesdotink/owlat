@@ -824,7 +824,7 @@ function runReaderAction(action: string) {
 			blockSenderOf(props.message._id);
 			break;
 		case 'print':
-			if (typeof window !== 'undefined') window.print();
+			if (import.meta.client) window.print();
 			break;
 	}
 }

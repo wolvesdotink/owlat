@@ -65,7 +65,7 @@ function formatTime(ts?: number) {
 }
 
 const imapHost = computed(() => {
-	if (typeof window === 'undefined') return 'mail.your-domain';
+	if (import.meta.server) return 'mail.your-domain';
 	const slug = window.location.hostname.split('.')[0];
 	return `mail.${slug}.owlat.app`;
 });

@@ -48,9 +48,9 @@ import {
 } from '~/utils/postboxSwipe';
 
 /** How long a press has to be held before it opens the context menu. */
-export const POSTBOX_LONG_PRESS_MS = 500;
+const POSTBOX_LONG_PRESS_MS = 500;
 /** Movement that turns a hold into a drag (scroll or swipe), so the hold stands down. */
-export const POSTBOX_LONG_PRESS_SLOP_PX = 8;
+const POSTBOX_LONG_PRESS_SLOP_PX = 8;
 
 export interface PostboxRowGestureOptions {
 	/** The action a leftward drag fires, read fresh so a settings change lands live. */

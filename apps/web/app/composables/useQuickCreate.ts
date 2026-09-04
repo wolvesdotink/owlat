@@ -20,10 +20,10 @@ import type { Id } from '@owlat/api/dataModel';
  */
 
 /** Where the composer lives when the caller is not already in the Postbox. */
-export const POSTBOX_COMPOSE_ROUTE = '/dashboard/postbox/inbox';
+const POSTBOX_COMPOSE_ROUTE = '/dashboard/postbox/inbox';
 
 /** The contacts list, told to open its Add dialog on arrival. */
-export const NEW_CONTACT_ROUTE = {
+const NEW_CONTACT_ROUTE = {
 	path: '/dashboard/audience/contacts',
 	query: { action: 'add' },
 } as const;

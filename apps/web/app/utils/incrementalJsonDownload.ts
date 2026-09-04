@@ -21,7 +21,7 @@ export interface IncrementalDownloadKind {
 	extension: string;
 }
 
-export const JSON_DOWNLOAD_KIND: IncrementalDownloadKind = {
+const JSON_DOWNLOAD_KIND: IncrementalDownloadKind = {
 	description: 'JSON data',
 	mimeType: 'application/json',
 	extension: '.json',

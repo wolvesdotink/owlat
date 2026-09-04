@@ -13,7 +13,7 @@ export type SortOption = {
 	sortOrder: 'asc' | 'desc';
 };
 
-export const SORT_OPTIONS: SortOption[] = [
+const SORT_OPTIONS: SortOption[] = [
 	{
 		label: 'shared.useTransactionalList.sort.lastModified',
 		value: 'updatedAt-desc',
@@ -53,7 +53,7 @@ export const SORT_OPTIONS: SortOption[] = [
 ];
 
 /** `label` is an i18n message key — resolve with `t()` where the filter renders. */
-export const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 	{ value: 'all', label: 'common.all' },
 	{ value: 'draft', label: 'shared.useTransactionalList.status.draft' },
 	{ value: 'published', label: 'shared.useTransactionalList.status.published' },

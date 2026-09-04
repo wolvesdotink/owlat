@@ -181,7 +181,7 @@ export function parseSearchSize(raw: string): number | null {
 }
 
 /** Byte count back to the shorthand the operator accepts, for chip display. */
-export function formatSearchSize(bytes: number): string {
+function formatSearchSize(bytes: number): string {
 	if (bytes >= SIZE_UNITS['g']!) return `${+(bytes / SIZE_UNITS['g']!).toFixed(1)}G`;
 	if (bytes >= SIZE_UNITS['m']!) return `${+(bytes / SIZE_UNITS['m']!).toFixed(1)}M`;
 	if (bytes >= SIZE_UNITS['k']!) return `${+(bytes / SIZE_UNITS['k']!).toFixed(1)}K`;

@@ -42,9 +42,9 @@ export interface TrustLabel {
 }
 
 /** At or above this self-check score (with no flags) the draft reads "Ready to send". */
-export const TRUST_READY_MIN = 0.8;
+const TRUST_READY_MIN = 0.8;
 /** At or above this self-check score the draft is at worst "Worth a look". */
-export const TRUST_LOOK_MIN = 0.6;
+const TRUST_LOOK_MIN = 0.6;
 
 /**
  * Copy table translating the known self-check flag themes into plain language.

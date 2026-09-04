@@ -57,7 +57,7 @@ export interface SearchResults {
 }
 
 /** Max recent-search terms kept and shown in the idle palette. */
-export const MAX_RECENT_SEARCHES = 5;
+const MAX_RECENT_SEARCHES = 5;
 
 /** Minimum query length before object search runs and its groups appear. */
 export const SEARCH_MIN_QUERY = 2;

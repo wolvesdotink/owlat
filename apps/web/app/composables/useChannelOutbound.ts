@@ -20,7 +20,7 @@ import type { Id } from '@owlat/api/dataModel';
  */
 
 /** Channels dispatched through a provider adapter — the ones with credentials. */
-export const PROVIDER_CHANNELS = ['sms', 'whatsapp', 'generic'] as const;
+const PROVIDER_CHANNELS = ['sms', 'whatsapp', 'generic'] as const;
 export type ProviderChannel = (typeof PROVIDER_CHANNELS)[number];
 export type SendableChannel = ProviderChannel | 'chat';
 

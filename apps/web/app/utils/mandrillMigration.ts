@@ -47,7 +47,7 @@ export type MigrationMessage = string | { key: string; params?: Record<string, u
 export const MIGRATION_RELAY_KIND = 'mandrill';
 
 /** Owlat's own arm — the transport the ramp migrates traffic TO. */
-export const MIGRATION_OWN_KIND = 'mta';
+const MIGRATION_OWN_KIND = 'mta';
 
 /**
  * Every message type, in runbook order. A migration covers all three streams:
@@ -60,7 +60,7 @@ export type MigrationMessageType = (typeof MIGRATION_MESSAGE_TYPES)[number];
 /** Migrations ramp at the cautious pace (plan P4.2). */
 export const MIGRATION_RAMP_PRESET = 'conservative';
 
-export const MIGRATION_STEP_IDS = ['connect', 'history', 'domain', 'preset', 'watch'] as const;
+const MIGRATION_STEP_IDS = ['connect', 'history', 'domain', 'preset', 'watch'] as const;
 export type MigrationStepId = (typeof MIGRATION_STEP_IDS)[number];
 
 export type MigrationStepState = 'complete' | 'current' | 'blocked' | 'upcoming';
@@ -207,7 +207,7 @@ export interface MigrationRoutePayload {
  * `fallbackRelayIssue` below refuses with the backend's own sentence instead of
  * the mutation refusing after three-quarters of the preset has landed.
  */
-export function migrationRouteProviders(
+function migrationRouteProviders(
 	catalog: readonly MigrationTransportEntry[] | null | undefined
 ): readonly RouteProviderEntry[] {
 	return [

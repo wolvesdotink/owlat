@@ -1,7 +1,7 @@
 // Proxy auth requests to Convex to avoid CORS issues
 // See: https://www.better-auth.com/docs/integrations/convex
 import { logError } from '~/lib/runtimeLog';
-import { authPathHasTraversal } from './authPath';
+import { authPathHasTraversal } from '~~/server/utils/authPath';
 
 export default defineEventHandler(async (event) => {
 	const config = useRuntimeConfig();

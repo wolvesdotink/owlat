@@ -130,7 +130,6 @@
 		"back": "Zurück",
 		"cancel": "Abbrechen",
 		"close": "Schließen",
-		"confirm": "Bestätigen",
 		"continue": "Fortfahren",
 		"copied": "Kopiert",
 		"copy": "Kopieren",
@@ -163,7 +162,6 @@
 		"preview": "Vorschau",
 		"refresh": "Aktualisieren",
 		"remove": "Entfernen",
-		"rename": "Umbenennen",
 		"required": "Erforderlich",
 		"retry": "Erneut versuchen",
 		"save": "Speichern",
@@ -175,11 +173,9 @@
 		"status": "Status",
 		"today": "Heute",
 		"unknown": "Unbekannt",
-		"untitled": "Ohne Titel",
 		"upload": "Hochladen",
 		"viewAll": "Alle anzeigen",
 		"yes": "Ja",
-		"yesterday": "Gestern",
 		"roles": {
 			"member": "Mitglied",
 			"admin": "Administrator",
@@ -4719,12 +4715,10 @@
 			},
 			"quickQueryPanel": {
 				"askOperation": "Abfrage ausführen",
-				"clear": "Frage löschen",
 				"emptyHint": "Drücken Sie die Eingabetaste für eine zusammengefasste Antwort mit Quellenangaben",
 				"emptyTitle": "Stellen Sie eine Frage zu Ihrem Wissen und Ihren Dateien",
 				"placeholder": "Fragen Sie alles zu Ihrem Wissen und Ihren Dateien...",
-				"searching": "Ihr Wissen und Ihre Dateien werden durchsucht...",
-				"toggle": "Umschalten"
+				"searching": "Ihr Wissen und Ihre Dateien werden durchsucht..."
 			},
 			"sourceCitation": {
 				"fileTooltip": "Datei: {name}",
@@ -5412,13 +5406,6 @@
 						"banned": "Dieses Konto ist dauerhaft vom Versand ausgeschlossen.",
 						"suspended": "Der Versand ist ausgesetzt, weil Reputationsgrenzwerte überschritten wurden. Beheben Sie die markierten Probleme, um fortzufahren.",
 						"warned": "Ihr Konto ist wegen erhöhter Bounce- oder Beschwerderaten markiert. Verbessern Sie die Listenqualität, um weitere Einschränkungen zu vermeiden."
-					},
-					"advanced": {
-						"cells": "Zellen",
-						"controls": "Steuerung",
-						"independence": "Unabhängigkeit",
-						"label": "Erweiterte Werkzeuge",
-						"measurement": "Messung"
 					},
 					"domains": {
 						"errorMessage": "Diese Liste konnte nicht gelesen werden. Sie wird nicht leer angezeigt: Eine leere Liste hier würde bedeuten, dass Sie keine Versanddomains eingerichtet haben — und das lässt sich nicht behaupten, während der Lesevorgang fehlschlägt.",
@@ -13361,7 +13348,6 @@
 				"enableABTest": "A/B-Test aktivieren",
 				"reschedule": "Kampagne umplanen",
 				"schedule": "Kampagne planen",
-				"sendNow": "Kampagne jetzt senden",
 				"unschedule": "Kampagnenplanung aufheben"
 			},
 			"toasts": {
@@ -13369,7 +13355,6 @@
 				"saved": "Kampagne erfolgreich gespeichert!",
 				"scheduled": "Kampagne erfolgreich geplant!",
 				"scheduledRecipientTimezone": "Kampagne für {time} in der Zeitzone der jeweiligen Empfänger geplant!",
-				"sending": "Kampagne wird jetzt gesendet!",
 				"unscheduled": "Kampagnenplanung aufgehoben. Sie können die Kampagne jetzt bearbeiten."
 			}
 		},
@@ -14513,7 +14498,6 @@
 				"one": "{count} ungelesene Erwähnung",
 				"other": "{count} ungelesene Erwähnungen"
 			},
-			"collapse": "Einklappen",
 			"collapseSidebar": "Seitenleiste einklappen",
 			"contexts": {
 				"inbox": "Posteingang",

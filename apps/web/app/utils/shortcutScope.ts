@@ -93,7 +93,7 @@ let pendingChord: string | null = null;
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** How long a half-finished sequence chord waits for its second key. */
-export const CHORD_WINDOW_MS = 500;
+const CHORD_WINDOW_MS = 500;
 
 /** The step being held, or `null` when no chord is in flight. */
 export function pendingChordStep(): string | null {
