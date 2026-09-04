@@ -101,8 +101,6 @@
 		"plugins:test-convex-function-graph": "bun run plugins:prepare && bun packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts",
 		"plugins:test-deploy-graph": "bun packages/plugin-codegen/scripts/deployGraphSmoke.ts",
 		"deploy:api": "turbo deploy --filter=@owlat/api",
-		"ox:lint": "oxlint --config oxlintrc.json",
-		"ox:lint:fix": "oxlint --config oxlintrc.json --fix",
 		"ox:fmt": "oxfmt --config oxfmtrc.json .",
 		"ox:fmt:check": "oxfmt --config oxfmtrc.json --check .",
 		"ci:lint": "bun run plugins:check && turbo lint --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:build-graph && bun run lint:convex-orphans && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports && bun run lint:providers && bun run lint:ui-buttons && bun run lint:tokens && bun run lint:member-jargon && bun run lint:docker-workspaces && bun run lint:release-compose && bun run lint:deploy-closure && bun run lint:plugin-imports",
