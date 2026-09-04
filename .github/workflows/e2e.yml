@@ -2,10 +2,12 @@ name: E2E
 
 # Playwright e2e runs nightly, on merges to main that touch apps/web, and on
 # manual dispatch — NOT on every PR: it needs the CONVEX_TEST_URL secrets and a
-# full browser install, so it executes out-of-band where a failure (or unset
-# secret) can't block PR merges. The job skips cleanly when the test-deployment
-# secret isn't configured. The push-to-main trigger surfaces web regressions
-# within hours instead of waiting for the 04:00 UTC run.
+# full browser install, so it executes out-of-band where a failure can't block
+# PR merges. The job FAILS when the test-deployment secrets are missing: a
+# nightly that reports green without running anything is not a gate. The
+# secrets are listed in CONTRIBUTING.md under "CI secrets". The push-to-main
+# trigger surfaces web regressions within hours instead of waiting for the
+# 04:00 UTC run.
 
 on:
   schedule:
@@ -25,42 +27,31 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     steps:
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.11"
-
       - name: Check test deployment is configured
-        id: secrets
         env:
           CONVEX_TEST_URL: ${{ secrets.CONVEX_TEST_URL }}
+          CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
         run: |
-          if [ -n "$CONVEX_TEST_URL" ]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::CONVEX_TEST_URL secret not set — skipping the e2e run."
+          missing=""
+          [ -n "$CONVEX_TEST_URL" ] || missing="$missing CONVEX_TEST_URL"
+          [ -n "$CONVEX_TEST_SITE_URL" ] || missing="$missing CONVEX_TEST_SITE_URL"
+          if [ -n "$missing" ]; then
+            echo "::error::E2E cannot run: repository secret(s) not set:$missing. Add them under Settings > Secrets and variables > Actions (see CONTRIBUTING.md, CI secrets)."
+            exit 1
           fi
 
-      - name: Cache bun dependencies
-        if: steps.secrets.outputs.configured == 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
-
-      - name: Install dependencies
-        if: steps.secrets.outputs.configured == 'true'
-        run: bun install --frozen-lockfile
+      - uses: ./.github/actions/setup-bun
 
       - name: Install Playwright browsers
-        if: steps.secrets.outputs.configured == 'true'
         run: cd apps/web && bunx playwright install chromium --with-deps
 
       - name: Run E2E tests
-        if: steps.secrets.outputs.configured == 'true'
         run: bun run --cwd apps/web test:e2e
         env:
           NUXT_PUBLIC_CONVEX_URL: ${{ secrets.CONVEX_TEST_URL }}
@@ -68,9 +59,10 @@ jobs:
           NUXT_PUBLIC_SITE_URL: http://localhost:3000
 
       - name: Upload Playwright report
-        if: always() && steps.secrets.outputs.configured == 'true'
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: playwright-report
           path: apps/web/playwright-report/
+          if-no-files-found: ignore
           retention-days: 7
