@@ -263,3 +263,26 @@ describe('the live-check endpoint takes exactly the kinds the catalog says can b
 		}
 	);
 });
+
+/**
+ * The gate itself, not its mock: an unauthenticated request must be refused by
+ * the shipped `requireOrgAdmin` before the route does any work.
+ */
+describe('POST /api/delivery/validate-transport — the real org-admin gate', () => {
+	it('rejects an unauthenticated call with 401 before running any probe', async () => {
+		const real = await vi.importActual<typeof import('~~/server/utils/requireOrgAdmin')>(
+			'~~/server/utils/requireOrgAdmin'
+		);
+		requireOrgAdminMock.mockImplementation(real.requireOrgAdmin);
+		vi.stubGlobal('useRuntimeConfig', () => ({
+			public: { convexUrl: 'https://convex.example.com', siteUrl: 'https://owlat.example' },
+		}));
+		vi.stubGlobal('getHeader', () => undefined);
+		const tokenProxy = vi.fn();
+		vi.stubGlobal('fetch', tokenProxy);
+
+		await expect(callRoute()).rejects.toMatchObject({ statusCode: 401 });
+		expect(tokenProxy).not.toHaveBeenCalled();
+		expect(probeCalls).toEqual([]);
+	});
+});
