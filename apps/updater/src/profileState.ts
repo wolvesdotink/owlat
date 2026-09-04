@@ -15,7 +15,8 @@ import {
 	parseComposeProfilesFromEnv,
 	parseDeliveryProviderFromEnv,
 } from '@owlat/shared/composeOverride';
-import { errorMessage, isRateLimited } from './security.js';
+import { errorMessage } from '@owlat/shared';
+import { isRateLimited } from './security.js';
 import { composePsServices, json, OWLAT_DIR, requireAuth } from './http.js';
 
 export function handleProfileState(req: IncomingMessage, res: ServerResponse) {

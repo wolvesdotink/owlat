@@ -14,7 +14,8 @@ import {
 	parseDeliveryProviderFromEnv,
 	renderComposeOverrideYaml,
 } from '@owlat/shared/composeOverride';
-import { applyEnvUpdates, errorMessage, isRateLimited, validateFlagSnapshot } from './security.js';
+import { errorMessage } from '@owlat/shared';
+import { applyEnvUpdates, isRateLimited, validateFlagSnapshot } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
 
 export async function handleApplyProfiles(req: IncomingMessage, res: ServerResponse) {

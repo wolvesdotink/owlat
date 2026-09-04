@@ -37,6 +37,7 @@ import {
 	type FcrdnsFailureReason,
 } from '@owlat/shared/fcrdns';
 import { installerProviderNote } from '@owlat/shared/ipAuditProviders';
+import { isRecord } from '@owlat/shared';
 
 interface DoctorOptions {
 	owlatDir: string;
@@ -133,10 +134,6 @@ export function evaluateSendPath(flags: FeatureFlagState, env: EnvMap): SendPath
 		ok: Boolean(env[key]),
 		message: `${key} is set (required to send via ${provider})`,
 	}));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
 }
 
 /** Pure interpretation of the MTA health body, separated for unit tests. */
