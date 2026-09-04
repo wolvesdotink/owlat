@@ -39,7 +39,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { readEnv, writeEnv, mergeEnv, type EnvMap } from '../lib/env';
-import { ensureSecrets } from '../lib/secrets';
+import { ensureSecrets } from '@owlat/shared/setupSecrets';
 import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { generateSetupToken } from '@owlat/shared/setupToken';
 import { writeComposeOverride } from '../lib/override';

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { OrganizationRole } from '~/composables/useOrganization';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 import { ROLE_DEFINITIONS } from '~/utils/teamRoles';
 import InviteSuccessPanel, {
 	type InviteSuccess,

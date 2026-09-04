@@ -50,8 +50,8 @@ export {
 	canonicalizeHeaderField,
 	parseCanonicalization,
 	stripSignatureValue,
-} from './canon.js';
-export type { Canonicalization } from './canon.js';
+} from '@owlat/mail-canon';
+export type { Canonicalization } from '@owlat/mail-canon';
 
 export { verifyDkim } from './dkim/verify.js';
 export { isNoRecordDnsError } from './dnsErrors.js';

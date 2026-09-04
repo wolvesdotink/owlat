@@ -3,9 +3,8 @@
  * Convex-`'use node'` safe — the ONLY runtime imports it may pull are
  * `node:crypto` and the dependency-free `@owlat/mail-canon` leaf (the single
  * shared DKIM canonicalizer the outbound signer consumes; that leaf transitively
- * imports no dns/Redis/node-only module — proven by mail-auth's own
- * `canonSubpathPurity` guard, which walks the same bytes through the `./canon`
- * re-export). This test statically proves it by scanning every `src/**` module
+ * imports no dns/Redis/node-only module). This test statically proves it by
+ * scanning every `src/**` module
  * and asserting that each import specifier is either a relative path,
  * `node:crypto`, or `@owlat/mail-canon`. Any bare npm import
  * (nodemailer/mailparser/mailauth survive only as devDependencies for tests),

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Staged real-message diagnostic for the active delivery transport. */
 import { api } from '@owlat/api';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 
 const props = defineProps<{
 	canSend: boolean;

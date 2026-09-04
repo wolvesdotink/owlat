@@ -25,13 +25,12 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { verifyArcChain, type ArcDnsResolver } from '../inboundArc.js';
 import {
-	verifyArcChain,
-	shouldArcOverrideDmarc,
-	isTrustedForwarder,
 	DEFAULT_TRUSTED_ARC_FORWARDERS,
-	type ArcDnsResolver,
-} from '../inboundArc.js';
+	isTrustedForwarder,
+	shouldArcOverrideDmarc,
+} from '@owlat/shared/arcTrust';
 
 const fixturesDir = join(
 	dirname(fileURLToPath(import.meta.url)),

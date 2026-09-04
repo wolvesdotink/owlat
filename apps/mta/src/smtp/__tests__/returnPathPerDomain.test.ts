@@ -98,7 +98,7 @@ import { createDkimRoutes } from '../../routes/dkim.js';
 import * as dkimStore from '../dkimStore.js';
 import { buildVerpAddress, parseVerpAddress } from '../../bounce/verp.js';
 import { parseBounce } from '../../bounce/parser.js';
-import { normalizeReturnPathHost } from '../../lib/returnPathHost.js';
+import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import type { ParsedMessage } from '@owlat/mail-message';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';

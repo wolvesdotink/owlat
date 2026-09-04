@@ -10,6 +10,7 @@
  * the floor — this mirrors it in the UI so an unsubmittable address is never
  * offered in the first place.
  */
+import { isValidEmail } from '@owlat/shared';
 import { isValidEmail } from './validation';
 
 /** Message-key root for this module; see `i18n/locales/en.json`. */
