@@ -34,7 +34,6 @@ import { useDataTable } from '~/composables/useDataTable';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { useFormModal } from '~/composables/useFormModal';
 import { usePostboxListKeyboard } from '~/composables/postbox/usePostboxListKeyboard';
-import { useUnsavedChanges } from '~/composables/useUnsavedChanges';
 import { useWizard } from '~/composables/useWizard';
 import DashboardLayout from '~/layouts/dashboard.vue';
 import DashboardHome from '../index.vue';
@@ -88,7 +87,17 @@ beforeEach(() => {
 		useDebouncedSearch,
 		useFormModal,
 		usePostboxListKeyboard,
-		useUnsavedChanges,
+		// Inert: the real guard registers `onBeforeRouteLeave`, which needs a
+		// router and a matched route no audited page is mounted under.
+		useUnsavedChanges: () => ({
+			showDialog: ref(false),
+			hasUnsavedChanges: ref(false),
+			pendingRoute: ref<string | null>(null),
+			confirmDiscard: vi.fn(),
+			confirmSave: vi.fn(),
+			cancelNavigation: vi.fn(),
+			setHasChanges: vi.fn(),
+		}),
 		useWizard,
 
 		// Backend-backed page composables.

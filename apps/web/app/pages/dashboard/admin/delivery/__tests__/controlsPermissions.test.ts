@@ -30,6 +30,7 @@ import ControlsPage from '../advanced/controls.vue';
 import RampCellControls from '~/components/delivery/RampCellControls.vue';
 import RampDecreaseNotices from '~/components/delivery/RampDecreaseNotices.vue';
 import RampPresetPicker from '~/components/delivery/RampPresetPicker.vue';
+import ErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import {
 	adminNotice,
@@ -77,6 +78,7 @@ const globalOptions = {
 	},
 	components: {
 		UiQueryBoundary: QueryBoundary,
+		UiErrorAlert: ErrorAlert,
 		DeliveryRampCellControls: RampCellControls,
 		DeliveryRampDecreaseNotices: RampDecreaseNotices,
 		DeliveryRampPresetPicker: RampPresetPicker,

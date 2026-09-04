@@ -84,8 +84,9 @@ const globalOptions = {
 		// setup" link is gone (the admin rail and the breadcrumb carry that).
 		UiEmptyState: {
 			props: ['title'],
-			template: '<ui-empty-state-stub :title="title"><slot name="action" /></ui-empty-state-stub>',
+			template: '<div data-testid="empty-state" :title="title"><slot name="action" /></div>',
 		},
+		UiSpinner: true,
 		UiErrorAlert: true,
 		DeliveryReferenceRelayNotice: true,
 		DeliveryTransportEditor: true,
@@ -97,7 +98,6 @@ const globalOptions = {
 		DeliverySnsTopicCard: true,
 		DeliveryTlsReportCard: true,
 		UiCard: passthrough,
-		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 	},
 	components: { UiQueryBoundary: QueryBoundary, DeliveryTransportCanSendCard },
 	plugins: [createTestI18n()],
@@ -121,7 +121,7 @@ describe('the delivery transport page never renders a bare header', () => {
 		stubPage({ status: null, isLoading: false, error: null });
 		const wrapper = mount(TransportPage, { global: globalOptions });
 
-		const empty = wrapper.find('ui-empty-state-stub');
+		const empty = wrapper.find('[data-testid="empty-state"]');
 		expect(empty.exists()).toBe(true);
 		expect(empty.attributes('title')).toBe(en.dashboard.admin.delivery.transport.empty.title);
 		// A way forward, not a dead end.

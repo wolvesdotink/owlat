@@ -79,6 +79,8 @@ function mountPage() {
 			stubs: {
 				UiQueryBoundary: passthroughStub,
 				UiCard: passthroughStub,
+				UiDisclosure: passthroughStub,
+				UiModal: passthroughStub,
 				NuxtLink: nuxtLinkStub,
 				UiEmptyState: true,
 				UiSpinner: true,

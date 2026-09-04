@@ -139,6 +139,9 @@ function mountList(opts: {
 				PostboxSnoozeDialog: dialogStub,
 				PostboxLabelPickerDialog: dialogStub,
 				PostboxMovePickerDialog: dialogStub,
+				PostboxSwipeTrack: { template: '<div><slot /></div>' },
+				PostboxThreadRowFollowUp: { template: '<span />' },
+				UiAvatar: { template: '<span />' },
 			},
 			mocks: {
 				formatThreadTimestamp: () => '5m',
