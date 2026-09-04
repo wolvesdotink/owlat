@@ -1,12 +1,13 @@
 name: Security
 
-# Dependency audit + SAST. Runs on PRs and on push to main/stage.
+# Dependency audit + SAST + secret scan. Runs on PRs, on push to main and the
+# integration branches, and nightly.
 
 on:
   pull_request:
-    branches: [main, stage, pro]
+    branches: [main, 'integration/**', 'ux/**']
   push:
-    branches: [main, stage, pro]
+    branches: [main, 'integration/**']
   schedule:
     # Run nightly so a published CVE doesn't wait for the next PR.
     - cron: '0 4 * * *'

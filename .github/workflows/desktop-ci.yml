@@ -7,7 +7,7 @@ name: Desktop CI
 
 on:
   pull_request:
-    branches: [main, stage, pro, 'integration/**']
+    branches: [main, 'integration/**', 'ux/**']
     paths:
       - 'apps/desktop/**'
       - '.github/workflows/desktop-ci.yml'

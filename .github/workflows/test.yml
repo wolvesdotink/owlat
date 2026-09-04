@@ -12,9 +12,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, stage, pro, 'integration/**']
+    branches: [main, 'integration/**', 'ux/**']
   push:
-    branches: [main, stage, pro, 'integration/**']
+    branches: [main, 'integration/**']
   schedule:
     - cron: '0 5 * * *' # nightly full-matrix safety valve
   workflow_dispatch: {}
