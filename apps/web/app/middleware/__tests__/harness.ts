@@ -213,7 +213,7 @@ export function createFakeConvex(): FakeConvex {
 			};
 		},
 		deliver: (fn, data) => {
-			for (const subscriber of [...bucket(fn)]) subscriber.onData(data);
+			for (const subscriber of bucket(fn).slice()) subscriber.onData(data);
 		},
 		subscriptionCount: (fn) => bucket(fn).length,
 	};
