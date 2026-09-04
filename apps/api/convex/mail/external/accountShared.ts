@@ -24,8 +24,6 @@ import type { Doc, Id } from '../../_generated/dataModel';
  */
 export const CONNECTABLE_ACCOUNT_STATUSES = ['pending', 'connected', 'error'] as const;
 
-export type ConnectableAccountStatus = (typeof CONNECTABLE_ACCOUNT_STATUSES)[number];
-
 /**
  * Every account status that is NOT retired — i.e. a row the operator still owns
  * and expects to be counted. Wider than `CONNECTABLE_ACCOUNT_STATUSES`:

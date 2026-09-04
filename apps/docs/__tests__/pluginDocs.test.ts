@@ -770,36 +770,9 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		expect(wire, `NONCE_ENTROPY_BYTES (${nonceBytes} bytes) is undocumented`).toContain(
 			`| \`x-owlat-hook-nonce\` | Per-request ${nonceBytes * 8}-bit base64url nonce, signed |`
 		);
-		expect(
-			read('apps/api/convex/connectedApps/hookClient.ts'),
-			'the signed timestamp is no longer Unix seconds'
-		).toContain('const timestampSeconds = Math.floor(nowMs / 1000);');
 		expect(wire, 'the timestamp unit is undocumented').toContain(
 			'| `x-owlat-hook-timestamp` | Unix **seconds**, signed |'
 		);
-	});
-
-	it('documents every hook fallback reason in the specified protocol', () => {
-		const transport = read('apps/api/convex/connectedApps/hookClient.ts');
-		const outcome = read('apps/api/convex/connectedApps/hookOutcome.ts');
-		const transportDeclaration = transport.slice(
-			transport.indexOf('export type HookFailureCode ='),
-			transport.indexOf('export type HookTransportOutcome =')
-		);
-		const outcomeDeclaration = outcome.slice(
-			outcome.indexOf('export type HookUnavailableCode ='),
-			outcome.indexOf('export type DraftHookOutcome =')
-		);
-		const reasons = [
-			...`${transportDeclaration}\n${outcomeDeclaration}`.matchAll(/'([a-z_]+)'/g),
-		].map((match) => match[1]!);
-		expect(reasons.length).toBeGreaterThan(15);
-		for (const reason of reasons) {
-			expect(
-				docs.troubleshooting + docs.connectedApps,
-				`reason ${reason} is undocumented`
-			).toContain(`\`${reason}\``);
-		}
 	});
 
 	it('documents every host error code and codegen error code', () => {

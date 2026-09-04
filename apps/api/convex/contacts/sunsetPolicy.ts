@@ -171,13 +171,6 @@ export type SunsetPolicyOverride = {
 /** Where a contact sits on the sunset track. Absent on a legacy row means `engaged`. */
 export type SunsetStage = 'engaged' | 'reengagement' | 'suppressed';
 
-export type SunsetAction =
-	| 'hold'
-	| 'enter_reengagement'
-	| 'suppress'
-	/** Back to `engaged` from the re-engagement track — the contact engaged again. */
-	| 'resume';
-
 /**
  * Why the engine did what it did. Every verdict carries one, it reaches the
  * audit log verbatim, and the KPI is that no transition is ever unexplained.

@@ -35,7 +35,6 @@ convex/campaigns/abTest.ts:getABTestStats
 convex/campaigns/campaigns.ts:create
 convex/campaigns/campaigns.ts:duplicate
 convex/campaigns/campaigns.ts:remove
-convex/campaigns/campaigns.ts:sendNow
 convex/campaigns/scheduling.ts:cancel
 convex/campaigns/scheduling.ts:reschedule
 convex/campaigns/scheduling.ts:schedule

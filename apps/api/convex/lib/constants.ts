@@ -5,13 +5,6 @@ import { DELIVERABILITY_OBSERVATION_SCHEMA_VERSION } from '@owlat/shared';
 
 // Default pagination sizes by context
 export const PAGE_SIZE_DEFAULT = 25;
-export const PAGE_SIZE_SMALL = 5;
-export const PAGE_SIZE_MEDIUM = 10;
-export const PAGE_SIZE_LARGE = 50;
-
-// Rate limiting
-export const API_RATE_LIMIT_PER_SECOND = 10;
-export const RATE_LIMIT_WINDOW_MS = 1000;
 
 // Retry configuration for the generic worker loops (automation steps, inbox
 // processing). DELIBERATELY NOT the send path's schedule: a send transport
@@ -59,22 +52,14 @@ export const CONNECTED_APP_HOOK_MAX_DRAFT_CODE_POINTS = 64 * 1024;
 export const CONNECTED_APP_HOOK_MAX_REASON_CODE_POINTS = 300;
 
 // Redacted hook DELIVERY LOG reads (PP-25). The log is a per-org diagnostic
-// table; every read is bounded and org-scoped. A read scans at most SCAN_CAP
-// recent rows off the most selective index (app / source / kind each have one, so
-// a sole/primary filter is index-complete), JS-re-checks any remaining filter
-// dimension, and returns up to the (clamped) page limit.
+// table; every read is bounded and org-scoped, returning up to the (clamped)
+// page limit.
 export const CONNECTED_APP_HOOK_LOG_DEFAULT_LIMIT = 50;
 export const CONNECTED_APP_HOOK_LOG_MAX_LIMIT = 200;
-export const CONNECTED_APP_HOOK_LOG_SCAN_CAP = 500;
-/** Rows deleted per retention batch before the cleanup mutation reschedules. */
-export const CONNECTED_APP_HOOK_LOG_CLEANUP_BATCH_SIZE = 100;
 
 // Token expiry durations
 export const UNSUBSCRIBE_TOKEN_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 export const AUDIT_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-
-// Import batch sizes
-export const IMPORT_BATCH_SIZE = 100;
 
 // Full-table pagination limit (for internal operations)
 export const BULK_QUERY_LIMIT = 1000;
@@ -94,14 +79,8 @@ export const CURRENT_RENDERER_VERSION = 1;
 /** webhookDeliveryLogs.payload contract version — bumping is a breaking change for external receivers. */
 export const CURRENT_WEBHOOK_PAYLOAD_VERSION = 1;
 
-/** transactionalEmails.attachments JSON shape. */
-export const CURRENT_TRANSACTIONAL_ATTACHMENTS_VERSION = 1;
-
 /** externalMailAccounts encrypted credential envelope (AES-256-GCM blob) shape. */
 export const CURRENT_EXTERNAL_MAIL_CRED_VERSION = 1;
-
-/** transactionalEmails.translations / htmlTranslations JSON shape. */
-export const CURRENT_TRANSLATIONS_VERSION = 1;
 
 /** unifiedMessages.content JSON shape. */
 export const CURRENT_UNIFIED_MESSAGE_CONTENT_VERSION = 1;

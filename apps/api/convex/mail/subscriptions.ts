@@ -25,9 +25,10 @@
 
 import { v } from 'convex/values';
 import { normalizeEmail } from '@owlat/shared';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
+import { internalMutation } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { authedAction, authedMutation, publicQuery } from '../lib/authedFunctions';
+import { authedAction, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden } from '../_utils/errors';
 import type { OneClickResult } from './unsubscribe';
@@ -272,13 +273,15 @@ export const sendersOfMessages = publicQuery({
  * Archive everything a sender still has in this mailbox's Inbox.
  *
  * Split out as its own mutation because the batch runs from an action, which
- * has no database handle. Delegates the actual move to
- * `mail.messageActions.move`, which owns UID/modseq allocation and the folder
- * counters — this never re-derives that arithmetic.
+ * has no database handle; it is internal because that action is its only
+ * caller. Delegates the actual move to `mail.messageActions.move`, which owns
+ * UID/modseq allocation and the folder counters — this never re-derives that
+ * arithmetic.
  */
-// authz: mailbox access via requireMailboxAccess; org membership via
-// authedMutation. The delegated move re-checks access on the target folder.
-export const archiveSenderInInbox = authedMutation({
+// authz: mailbox access via requireMailboxAccess on the caller's propagated
+// session; org membership was checked by the calling authedAction. The
+// delegated move re-checks access on the target folder.
+export const archiveSenderInInbox = internalMutation({
 	args: { mailboxId: v.id('mailboxes'), senderEmail: v.string() },
 	handler: async (ctx, args): Promise<{ archived: number }> => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
@@ -435,7 +438,7 @@ export const unsubscribeAndArchive = authedAction({
 			}
 
 			const { archived }: { archived: number } = await ctx.runMutation(
-				api.mail.subscriptions.archiveSenderInInbox,
+				internal.mail.subscriptions.archiveSenderInInbox,
 				{ mailboxId: args.mailboxId, senderEmail }
 			);
 			results.push({ senderEmail, status: 'unsubscribed', archived });

@@ -20,10 +20,6 @@ import { applyUsageCountDelta } from '../emailBlocks/module';
 // Data variable type for schema definition
 export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
 
-export interface DataVariableSchema {
-	[key: string]: DataVariableType;
-}
-
 /**
  * List all transactional emails for an organization with optional filtering
  */

@@ -23,9 +23,3 @@ const CATALOG = defineHostedContributionCatalog<HostedWebhookEventDefinition>(
 );
 
 export const WEBHOOK_EVENT_CATALOG = CATALOG.all;
-
-export function pluginWebhookEventDefinition(
-	kind: string
-): HostedWebhookEventDefinition | undefined {
-	return CATALOG.byKind(kind);
-}

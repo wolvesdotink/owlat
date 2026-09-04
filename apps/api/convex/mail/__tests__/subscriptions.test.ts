@@ -13,7 +13,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import {
 	groupSubscriptionSenders,
 	subscriptionMethodOf,
@@ -486,7 +486,7 @@ describe('mail.subscriptions.archiveSenderInInbox', () => {
 			receivedAt: 30,
 		});
 
-		const result = await t.mutation(api.mail.subscriptions.archiveSenderInInbox, {
+		const result = await t.mutation(internal.mail.subscriptions.archiveSenderInInbox, {
 			mailboxId: seeded.mailboxId,
 			senderEmail: 'News@A.example',
 		});
@@ -501,7 +501,7 @@ describe('mail.subscriptions.archiveSenderInInbox', () => {
 	it('is a no-op when the sender has nothing left in the Inbox', async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seedMailboxWithFolders(t);
-		const result = await t.mutation(api.mail.subscriptions.archiveSenderInInbox, {
+		const result = await t.mutation(internal.mail.subscriptions.archiveSenderInInbox, {
 			mailboxId: seeded.mailboxId,
 			senderEmail: 'nobody@a.example',
 		});
@@ -515,7 +515,7 @@ describe('mail.subscriptions.archiveSenderInInbox', () => {
 
 		sessionMock.userId = 'user-B';
 		await expect(
-			t.mutation(api.mail.subscriptions.archiveSenderInInbox, {
+			t.mutation(internal.mail.subscriptions.archiveSenderInInbox, {
 				mailboxId: seeded.mailboxId,
 				senderEmail: 'news@a.example',
 			})

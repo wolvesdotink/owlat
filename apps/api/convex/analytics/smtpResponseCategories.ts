@@ -224,19 +224,6 @@ export function summarizeSmtpBlockObservation(
 	return { observed, blockedByCategory, observedAt: observedAt ?? 0 };
 }
 
-/**
- * One (org, cell, arm) window, read and reduced in one call — the shape a caller
- * with a single window wants. Readers that slice several windows out of one span
- * (both of the production ones do) read the rows through
- * `readCellArmCategoryBuckets` and run the summarizer per window instead.
- */
-export async function summarizeSmtpBlocksForCellArm(
-	db: DatabaseReader,
-	input: SmtpCategoryWindowQuery
-): Promise<SmtpBlockObservation | null> {
-	return summarizeSmtpBlockObservation(await readCellArmCategoryBuckets(db, input), input);
-}
-
 // ============ WRITER (the ingress path) ============
 
 interface CategoryBucketKey {

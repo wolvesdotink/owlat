@@ -64,23 +64,3 @@ export function personalize(
 		return fallback ? applyEscape(fallback, options.escape) : '';
 	});
 }
-
-/**
- * Plain (no-escape) personalization. Compat surface used by the bridging
- * re-exports in `lib/emailHelpers.ts` and `automations/steps/shared/personalize.ts`
- * during the deepening migration. New call sites should call `personalize`
- * directly with an explicit `escape` argument.
- */
-export function replaceVariablesPlain(content: string, variables: Record<string, unknown>): string {
-	return personalize(content, variables, { escape: 'plain' });
-}
-
-/**
- * HTML-escaping personalization. Compat surface used by the bridging
- * re-export in `emailWorker.ts` during the deepening migration. New call
- * sites should call `personalize` directly with an explicit `escape`
- * argument.
- */
-export function replaceVariablesHtml(content: string, variables: Record<string, unknown>): string {
-	return personalize(content, variables, { escape: 'html' });
-}
