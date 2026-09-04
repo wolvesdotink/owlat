@@ -35,8 +35,6 @@ import { armThreadFollowUp, followUpWaitingOn } from './followUps';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
-export type CommitmentDirection = 'inbound' | 'outbound';
-
 /** Cap on the persisted commitment description. */
 const MAX_DESCRIPTION_CHARS = 200;
 

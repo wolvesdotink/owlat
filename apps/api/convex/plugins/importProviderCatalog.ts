@@ -25,9 +25,3 @@ const CATALOG = defineHostedContributionCatalog<HostedImportProviderDefinition>(
 );
 
 export const IMPORT_PROVIDER_CATALOG = CATALOG.all;
-
-export function pluginImportProviderDefinition(
-	kind: string
-): HostedImportProviderDefinition | undefined {
-	return CATALOG.byKind(kind);
-}

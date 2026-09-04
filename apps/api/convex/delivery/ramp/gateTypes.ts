@@ -111,16 +111,6 @@ export type RampGateHoldReason =
 	| 'evidence_absent';
 
 /**
- * Why a gate returned what it returned, as a stable machine-readable code. The
- * human sentence is rendered from this plus the measurement; the code is what
- * the audit row and the admin notification key off (plan D12).
- *
- * The union is split per status above so that a `pass` carrying a hold reason
- * is not a representable value.
- */
-export type RampGateReason = RampGateDecidedReason | RampGateHaltReason | RampGateHoldReason;
-
-/**
  * The numbers behind a verdict, in DOCUMENTED units: `*Rate` fields are
  * fractions in [0, 1]; `toleranceValuePp` is in percentage points. A rate and a
  * tolerance never share a field.
@@ -216,8 +206,6 @@ export interface RampGateHoldMeasurement extends RampGateMeasurementBase {
 	readonly ownRate: number | null;
 	readonly referenceRate: number | null;
 }
-
-export type RampGateMeasurement = RampGateDecidedMeasurement | RampGateHoldMeasurement;
 
 /**
  * HOW MUCH THE VERDICT IS WORTH (plan D14). Rendered on the cell, recorded in

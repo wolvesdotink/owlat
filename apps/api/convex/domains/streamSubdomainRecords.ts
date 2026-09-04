@@ -70,9 +70,6 @@ import {
 	type TransportArm,
 } from './streamSubdomains';
 
-/** What a generated row is for. The wizard groups its table by this. */
-export type StreamSubdomainRecordPurpose = 'spf' | 'dkim' | 'dmarc' | 'mx';
-
 interface StreamSubdomainRecordBase {
 	/** The subdomain this row belongs to, e.g. `news.example.com`. */
 	subdomain: string;

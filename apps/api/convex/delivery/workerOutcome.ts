@@ -144,9 +144,6 @@ export const sendWorkerOutcomeValidator = v.union(
  */
 export type SendWorkerOutcome = Infer<typeof sendWorkerOutcomeValidator>;
 
-/** The discriminant, so consumers can name an arm without restating a literal. */
-export type SendWorkerOutcomeKind = SendWorkerOutcome['kind'];
-
 /**
  * Does an untrusted workpool `returnValue` carry one of the five arms?
  *

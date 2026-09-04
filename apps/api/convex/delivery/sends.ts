@@ -5,17 +5,6 @@ import type { Id } from '../_generated/dataModel';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 
-// Status type for email sends
-export type EmailSendStatus =
-	| 'queued'
-	| 'sent'
-	| 'delivered'
-	| 'opened'
-	| 'clicked'
-	| 'bounced'
-	| 'complained'
-	| 'failed';
-
 // Get a single email send by ID
 export const get = authedQuery({
 	args: { id: v.id('emailSends') },

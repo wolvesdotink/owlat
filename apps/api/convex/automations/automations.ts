@@ -29,7 +29,6 @@ export type { StepConfig } from '../lib/automationConfigTypes';
 
 export type TriggerType = Doc<'automations'>['triggerType'];
 export type AutomationStatus = Doc<'automations'>['status'];
-export type StepType = Doc<'automationSteps'>['stepType'];
 
 export interface ContactUpdatedTriggerConfig {
 	propertyKey: string;
@@ -70,8 +69,6 @@ export type ConditionOperator =
 	| 'less_than'
 	| 'is_set'
 	| 'is_not_set';
-
-export type ConditionType = 'property' | 'email_activity' | 'topic_membership';
 
 // ============== Queries ==============
 

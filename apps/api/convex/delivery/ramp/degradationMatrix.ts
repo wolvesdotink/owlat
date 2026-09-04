@@ -342,20 +342,6 @@ export const RAMP_DEGRADATION_BY_INTEGRATION: ReadonlyMap<
 > = new Map(RAMP_DEGRADATION_MATRIX.map((entry) => [entry.integration, entry]));
 
 /**
- * The same lookup, TOTAL — for callers that need an entry's copy at module load
- * rather than a branch. The map is built from the table over the same closed id
- * union, so a miss is a table that lost a row, not a runtime condition; handing
- * the caller an `undefined` to handle would make it write a fallback sentence,
- * and a fallback sentence for a cell this table already describes is the second
- * copy the whole module exists to prevent.
- */
-export function rampSubstitutionEntry(integration: RampIntegrationId): RampSubstitutionEntry {
-	const entry = RAMP_DEGRADATION_BY_INTEGRATION.get(integration);
-	if (!entry) throw new Error(`No degradation matrix entry for ${integration}`);
-	return entry;
-}
-
-/**
  * Whether an entry governs a given destination-provider cell.
  *
  * PROVIDER-ONLY, AND A CELL IS (STREAM, PROVIDER). The plan scopes every

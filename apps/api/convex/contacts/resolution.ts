@@ -49,8 +49,6 @@ export const CHANNEL_KIND_LITERALS = [
 
 export type ChannelKind = (typeof CHANNEL_KIND_LITERALS)[number];
 
-export const channelKindValidator = v.union(...CHANNEL_KIND_LITERALS.map((l) => v.literal(l)));
-
 export const CONTACT_SOURCE_LITERALS = [
 	'api',
 	'import',
@@ -60,8 +58,6 @@ export const CONTACT_SOURCE_LITERALS = [
 ] as const;
 
 export type ContactSource = (typeof CONTACT_SOURCE_LITERALS)[number];
-
-export const contactSourceValidator = v.union(...CONTACT_SOURCE_LITERALS.map((l) => v.literal(l)));
 
 // Sources a caller may set when CREATING a contact. 'inbound' is excluded — it
 // is assigned only internally the first time a contact appears via an inbound
@@ -76,20 +72,11 @@ export const RESOLVE_MODE_LITERALS = ['strict', 'upsert', 'merge'] as const;
 
 export type ResolveMode = (typeof RESOLVE_MODE_LITERALS)[number];
 
-export const resolveModeValidator = v.union(...RESOLVE_MODE_LITERALS.map((l) => v.literal(l)));
-
 /**
  * Optional Contact fields that may be set at create time and (in `merge` mode)
  * patched on match. Empty/undefined values are ignored — never overwrite a
  * user-set name with `extractNameFromEmail`-style junk.
  */
-export const contactFieldsValidator = v.object({
-	firstName: v.optional(v.string()),
-	lastName: v.optional(v.string()),
-	language: v.optional(v.string()),
-	timezone: v.optional(v.string()),
-});
-
 export type ContactFields = {
 	firstName?: string;
 	lastName?: string;

@@ -27,7 +27,7 @@ Factories cache the resolved provider per-process. Tests can call
 | Interface                                                               | Env var                 | Implementations                                                             | Files                                                                                    |
 | ----------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `EmailProvider` (domain identity/verification) — **legacy, superseded** | `EMAIL_PROVIDER` (mta)  | see `domains/providers/` below                                              | `emailProviders/{sesIdentity,mtaIdentity,domainVerification}.ts`                         |
-| Send providers (delivery dispatch + health + routing)                   | per-org config          | `mta`, `ses`, `resend`, `smtp`, `mandrill`, `emailit`                        | `sendProviders/` (adapters) + `packages/shared/src/sendProviderCatalog.ts` (the catalog) |
+| Send providers (delivery dispatch + health + routing)                   | per-org config          | `mta`, `ses`, `resend`, `smtp`, `mandrill`, `emailit`                       | `sendProviders/` (adapters) + `packages/shared/src/sendProviderCatalog.ts` (the catalog) |
 | `LLMProvider`                                                           | `LLM_PROVIDER` (openai) | OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Claude-via-compat) | `llmProvider.ts`                                                                         |
 
 The first row is **history, not a seam to implement**: there is no `EmailProvider`
@@ -38,9 +38,8 @@ survives under `emailProviders/` is what those adapters call:
 `sesIdentity.ts` / `mtaIdentity.ts` are the two provider identity API clients,
 and `domainVerification.ts` holds the From-address helpers **and** the
 `domains`-table verification gate (`isDomainVerified`,
-`isDomainVerificationFresh`, `validateDomainForSending`,
-`getDomainVerificationStatus`) that the send path checks before a campaign goes
-out. `EMAIL_PROVIDER` stays on the row because it is still what picks a newly
+`isDomainVerificationFresh`, `validateDomainForSending`) that the send path
+checks before a campaign goes out. `EMAIL_PROVIDER` stays on the row because it is still what picks a newly
 created domain's `providerType` — see the section below.
 
 The send-provider seam is deliberately **two halves**. The DATA half — what each
