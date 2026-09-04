@@ -271,24 +271,6 @@ jobs:
       - name: Typecheck
         run: bun run ci:typecheck
 
-  # apps/docs is part of the root ci:typecheck run above as well; this job runs
-  # its Nuxt typecheck on its own. Its vitest suite runs through the affected
-  # `test` matrix above.
-  docs-typecheck:
-    name: Typecheck (apps/docs)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: ./.github/actions/setup-bun
-
-      - name: Typecheck
-        run: bun run --cwd apps/docs typecheck
-
   docker-build:
     name: Docker Build (${{ matrix.name }})
     needs: detect
@@ -369,7 +351,6 @@ jobs:
         test-api-merge,
         ramp-gate-matrix,
         lint,
-        docs-typecheck,
         docker-build,
         sdk-java,
       ]
