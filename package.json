@@ -113,18 +113,13 @@
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",
 		"goldens:update": "bun --cwd packages/mail-message run goldens:update",
-		"release:cut": "bun scripts/release.ts",
-		"changeset": "changeset",
-		"changeset:version": "changeset version",
-		"changeset:publish": "changeset publish",
-		"release": "bun run build && bun run changeset:publish"
+		"release:cut": "bun scripts/release.ts"
 	},
 	"dependencies": {
 		"nuxt": "4.5.2",
 		"vite": "8.2.1"
 	},
 	"devDependencies": {
-		"@changesets/cli": "^2.31.0",
 		"knip": "6.23.0",
 		"oxfmt": "^0.62.0",
 		"oxlint": "^1.69.0",
