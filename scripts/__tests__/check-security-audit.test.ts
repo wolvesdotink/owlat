@@ -71,7 +71,6 @@ describe('security audit parser', () => {
 		expect(ACKNOWLEDGED_ADVISORIES).toEqual({
 			'GHSA-W3RX-R6R6-PGPR': expect.stringContaining('patches/image-size@2.0.2.patch'),
 			'GHSA-5P2G-FCMC-QVQQ': expect.stringContaining('patches/image-size@2.0.2.patch'),
-			'GHSA-QXC2-J82W-R537': expect.stringContaining('helpers.fake()'),
 		});
 	});
 });
