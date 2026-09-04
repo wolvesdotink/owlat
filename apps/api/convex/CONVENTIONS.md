@@ -431,9 +431,13 @@ without stripping the secret. Satisfy it one of three ways:
   mutations stay V8-safe and only ever see the envelope. The plaintext is
   returned exactly once, at register or rotate, and is never stored or logged.
 - `hookProtocol` (kinds, headers, response validation) and `hookSignature`
-  (canonical signing strings, constant-time verification) are pure and V8-safe.
-  Keep crypto to Web Crypto there; `hookClient` owns the SSRF-guarded transport,
-  and any future runtime adapter must own plugin binding and outcome handling.
+  (canonical signing strings, constant-time verification) are pure and V8-safe
+  and define the wire contract the docs and the example apps implement. Keep
+  crypto to Web Crypto there. No host-side hook transport exists: the earlier
+  client, circuit breaker, outcome mapper, and app-authenticated storage binder
+  were removed because nothing in production called them. A future runtime
+  adapter must own the SSRF-guarded transport, plugin binding, and outcome
+  handling, and open the sealed secret only after resolving the app.
 - Hook fail directions are fixed: `gate` fails closed to a caution objection;
   `draft` and `score` fail open. Never add an accept value to a gate response.
 - Resolve the app and circuit state before opening the secret: a missing,
