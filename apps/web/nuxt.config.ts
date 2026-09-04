@@ -233,6 +233,15 @@ export default defineNuxtConfig({
 		// standalone list is gone; send its old deep link to the command center.
 		'/dashboard/campaigns/ab-results': { redirect: '/dashboard/campaigns' },
 
+		// The retired "All campaigns" list, the reports index and the old inbox
+		// "channels" feed were page components whose whole body was a
+		// navigateTo(). Nitro carries the query string over, so a
+		// /dashboard/campaigns/all?status=scheduled deep link still lands on the
+		// matching command-center pill.
+		'/dashboard/campaigns/all': { redirect: '/dashboard/campaigns' },
+		'/dashboard/campaigns/reports': { redirect: '/dashboard/campaigns?status=sent' },
+		'/dashboard/inbox/channels': { redirect: '/dashboard/inbox/activity' },
+
 		// NOTE: pre-release `/dashboard/settings/*` and `/dashboard/delivery/*` URLs
 		// intentionally 404 — the app never shipped, so no compatibility redirects
 		// are kept. Do not add `/dashboard/admin/**` redirect rules here:
