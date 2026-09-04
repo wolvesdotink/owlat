@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, nextTick, type Ref } from 'vue';
+import { effectScope, ref, nextTick, type Ref } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /** The real catalog behind the `useI18n` auto-import the composable calls. */
@@ -105,7 +105,7 @@ async function loadComposable() {
 describe('usePostboxCompose — send blocked while uploading', () => {
 	it('canSend is false while an attachment is still uploading', async () => {
 		const usePostboxCompose = await loadComposable();
-		const composer = usePostboxCompose({ mailboxId: 'mbx-1' as never });
+		const composer = effectScope().run(() => usePostboxCompose({ mailboxId: 'mbx-1' as never }))!;
 
 		composer.toAddresses.value = ['someone@example.com'];
 		composer.subject.value = 'Here is the file';
@@ -122,7 +122,7 @@ describe('usePostboxCompose — send blocked while uploading', () => {
 
 	it('re-enables send and dispatches once the upload settles', async () => {
 		const usePostboxCompose = await loadComposable();
-		const composer = usePostboxCompose({ mailboxId: 'mbx-1' as never });
+		const composer = effectScope().run(() => usePostboxCompose({ mailboxId: 'mbx-1' as never }))!;
 
 		composer.toAddresses.value = ['someone@example.com'];
 		composer.subject.value = 'Here is the file';

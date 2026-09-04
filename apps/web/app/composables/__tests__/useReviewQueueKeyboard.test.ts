@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ref } from 'vue';
+import { withSetup } from '~/__tests__/withSetup';
 import { useReviewQueueKeyboard } from '../useReviewQueueKeyboard';
 
 type Row = { _id: string };
@@ -12,16 +13,18 @@ function key(k: string, target?: EventTarget): KeyboardEvent {
 
 function harness(items = [{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }]) {
 	const calls: Array<[string, string]> = [];
-	const kb = useReviewQueueKeyboard<Row>({
-		items: ref(items),
-		resetKey: ref('ready'),
-		rowDomId: (r) => `review-row-${r._id}`,
-		onOpen: (r) => calls.push(['open', r._id]),
-		onApprove: (r) => calls.push(['approve', r._id]),
-		onEdit: (r) => calls.push(['edit', r._id]),
-		onReject: (r) => calls.push(['reject', r._id]),
-		onPickOption: (r, index) => calls.push(['pick', `${r._id}:${index}`]),
-	});
+	const kb = withSetup(() =>
+		useReviewQueueKeyboard<Row>({
+			items: ref(items),
+			resetKey: ref('ready'),
+			rowDomId: (r) => `review-row-${r._id}`,
+			onOpen: (r) => calls.push(['open', r._id]),
+			onApprove: (r) => calls.push(['approve', r._id]),
+			onEdit: (r) => calls.push(['edit', r._id]),
+			onReject: (r) => calls.push(['reject', r._id]),
+			onPickOption: (r, index) => calls.push(['pick', `${r._id}:${index}`]),
+		})
+	).result;
 	return { kb, calls };
 }
 
@@ -80,17 +83,19 @@ describe('useReviewQueueKeyboard', () => {
 		// approveDraft); pressing `a` must dispatch to that exact callback so a
 		// mis-key is as recoverable as a mis-click — never a separate send path.
 		let approved: string | null = null;
-		const kb = useReviewQueueKeyboard<Row>({
-			items: ref([{ _id: 'msg-1' }]),
-			resetKey: ref('ready'),
-			rowDomId: (r) => r._id,
-			onOpen: () => {},
-			onApprove: (r) => {
-				approved = r._id;
-			},
-			onEdit: () => {},
-			onReject: () => {},
-		});
+		const kb = withSetup(() =>
+			useReviewQueueKeyboard<Row>({
+				items: ref([{ _id: 'msg-1' }]),
+				resetKey: ref('ready'),
+				rowDomId: (r) => r._id,
+				onOpen: () => {},
+				onApprove: (r) => {
+					approved = r._id;
+				},
+				onEdit: () => {},
+				onReject: () => {},
+			})
+		).result;
 		kb.onKeydown(key('j'));
 		kb.onKeydown(key('a'));
 		expect(approved).toBe('msg-1');

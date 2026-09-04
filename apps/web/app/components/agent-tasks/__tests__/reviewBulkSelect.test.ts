@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { withSetup } from '~/__tests__/withSetup';
 import { createTestI18n } from '~/__tests__/i18n';
 
 // The summary builders are pure, so they hand back key+params clauses; this is
@@ -50,22 +51,24 @@ function key(k: string, target?: EventTarget): KeyboardEvent {
 /** The browse list's wiring: the keyboard layered over the selection Set. */
 function selectionHarness(ids = ['a', 'b', 'c']) {
 	const items = ref<Row[]>(ids.map((_id) => ({ _id })));
-	const bulk = useReviewBulkSelect(items);
+	const bulk = withSetup(() => useReviewBulkSelect(items)).result;
 	const calls: Array<[string, string]> = [];
-	const kb = useReviewQueueKeyboard<Row>({
-		items,
-		resetKey: ref('ready'),
-		rowDomId: (r) => `review-row-${r._id}`,
-		onOpen: (r) => calls.push(['open', r._id]),
-		onApprove: (r) => calls.push(['approve', r._id]),
-		onEdit: (r) => calls.push(['edit', r._id]),
-		onReject: (r) => calls.push(['reject', r._id]),
-		selection: {
-			toggle: (r) => bulk.toggle(r._id),
-			selectMany: (rows) => bulk.selectMany(rows.map((r) => r._id)),
-			selectAllVisible: () => bulk.selectAllVisible(),
-		},
-	});
+	const kb = withSetup(() =>
+		useReviewQueueKeyboard<Row>({
+			items,
+			resetKey: ref('ready'),
+			rowDomId: (r) => `review-row-${r._id}`,
+			onOpen: (r) => calls.push(['open', r._id]),
+			onApprove: (r) => calls.push(['approve', r._id]),
+			onEdit: (r) => calls.push(['edit', r._id]),
+			onReject: (r) => calls.push(['reject', r._id]),
+			selection: {
+				toggle: (r) => bulk.toggle(r._id),
+				selectMany: (rows) => bulk.selectMany(rows.map((r) => r._id)),
+				selectAllVisible: () => bulk.selectAllVisible(),
+			},
+		})
+	).result;
 	return { items, bulk, kb, calls };
 }
 
@@ -137,15 +140,17 @@ describe('selection keyboard model', () => {
 
 	it('without a selection model, x keeps its original reject mapping', () => {
 		const calls: Array<[string, string]> = [];
-		const kb = useReviewQueueKeyboard<Row>({
-			items: ref([{ _id: 'a' }]),
-			resetKey: ref('ready'),
-			rowDomId: (r) => r._id,
-			onOpen: () => {},
-			onApprove: () => {},
-			onEdit: () => {},
-			onReject: (r) => calls.push(['reject', r._id]),
-		});
+		const kb = withSetup(() =>
+			useReviewQueueKeyboard<Row>({
+				items: ref([{ _id: 'a' }]),
+				resetKey: ref('ready'),
+				rowDomId: (r) => r._id,
+				onOpen: () => {},
+				onApprove: () => {},
+				onEdit: () => {},
+				onReject: (r) => calls.push(['reject', r._id]),
+			})
+		).result;
 		kb.onKeydown(key('j'));
 		kb.onKeydown(key('x'));
 		expect(calls).toEqual([['reject', 'a']]);
@@ -157,7 +162,7 @@ describe('useReviewBulkSelect', () => {
 
 	it('caps the selection at the 50-item batch limit', () => {
 		const items = ref<Row[]>(Array.from({ length: 60 }, (_, i) => ({ _id: `m${i}` })));
-		const bulk = useReviewBulkSelect(items);
+		const bulk = withSetup(() => useReviewBulkSelect(items)).result;
 		bulk.selectAllVisible();
 		expect(bulk.count.value).toBe(REVIEW_BULK_ACTION_LIMIT);
 		// Toggling one more ON past the cap is refused; toggling OFF still works.
@@ -169,7 +174,7 @@ describe('useReviewBulkSelect', () => {
 
 	it('prunes ids whose rows left the visible list', async () => {
 		const items = ref<Row[]>([{ _id: 'a' }, { _id: 'b' }]);
-		const bulk = useReviewBulkSelect(items);
+		const bulk = withSetup(() => useReviewBulkSelect(items)).result;
 		bulk.selectMany(['a', 'b']);
 		items.value = [{ _id: 'b' }]; // 'a' was approved elsewhere
 		await nextTick();
