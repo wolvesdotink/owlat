@@ -52,7 +52,7 @@
       },
       "devDependencies": {
         "@edge-runtime/vm": "^5.0.0",
-        "@faker-js/faker": "^10.3.0",
+        "@faker-js/faker": "^10.6.0",
         "@types/node": "catalog:",
         "@types/sanitize-html": "^2.13.0",
         "@vitest/coverage-v8": "catalog:",
@@ -283,7 +283,7 @@
         "vue-router": "^5.0.4",
       },
       "devDependencies": {
-        "@faker-js/faker": "^10.3.0",
+        "@faker-js/faker": "^10.6.0",
         "@iconify-json/lucide": "^1.2.123",
         "@nuxt/fonts": "catalog:vue",
         "@nuxt/icon": "^2.2.1",
@@ -972,7 +972,7 @@
 
     "@eslint/plugin-kit": ["@eslint/plugin-kit@0.7.2", "", { "dependencies": { "@eslint/core": "^1.2.1", "levn": "^0.4.1" } }, "sha512-+CNAzxglkrpNf/kKywqQfk74QjtceuOE7Qm+AF8miRvPF/wmmK5+OJOgVh3AVTT3RP2mH3+FOaxlE5v72owk0A=="],
 
-    "@faker-js/faker": ["@faker-js/faker@10.4.0", "", {}, "sha512-sDBWI3yLy8EcDzgobvJTWq1MJYzAkQdpjXuPukga9wXonhpMRvd1Izuo2Qgwey2OiEoRIBr35RMU9HJRoOHzpw=="],
+    "@faker-js/faker": ["@faker-js/faker@10.6.0", "", {}, "sha512-3RQHgEtvL1Frl/d1cSreo7qhJ3Gk1OdNUai/CtZ8G+wYeRQnJih3s9xJ9/kgYekPQRdwgh0HXRPqMlzWGwivIQ=="],
 
     "@fingerprintjs/botd": ["@fingerprintjs/botd@2.0.0", "", {}, "sha512-yhuz23NKEcBDTHmGz/ULrXlGnbHenO+xZmVwuBkuqHUkqvaZ5TAA0kAgcRy4Wyo5dIBdkIf57UXX8/c9UlMLJg=="],
 
