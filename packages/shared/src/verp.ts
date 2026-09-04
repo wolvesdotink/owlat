@@ -28,7 +28,7 @@ import { normalizeReturnPathDomain, normalizeVerpKey } from './verpNormalize';
 export { normalizeReturnPathDomain, normalizeVerpKey };
 
 /** Length (chars) of the base64url-encoded truncated HMAC carried in the token. */
-export const VERP_MAC_B64URL_LEN = 14; // ~84 bits
+const VERP_MAC_B64URL_LEN = 14; // ~84 bits
 
 /** Window granularity: one bucket per day. */
 export const VERP_WINDOW_MS = 24 * 60 * 60 * 1000;
