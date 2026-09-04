@@ -14,7 +14,7 @@
  */
 
 import type { ShortcutScope } from './shortcutRegistry';
-import { buildShortcutSheet, formatChord } from './shortcutRegistry';
+import { buildShortcutSheet } from './shortcutRegistry';
 import { SHORTCUT_CATALOG } from './shortcutCatalog';
 import { resolveActiveChord, shortcutBindings } from './shortcutScope';
 
@@ -103,11 +103,6 @@ export function nextUnreadIndex(seen: readonly boolean[], from: number, directio
 		if (!seen[i]) return i;
 	}
 	return -1;
-}
-
-/** Every chord the Postbox currently answers, formatted — for tests and hints. */
-export function postboxShortcutKeys(id: string, isMac = false): string[][] {
-	return (shortcutBindings.value.byId.get(id) ?? []).map((chord) => formatChord(chord, isMac));
 }
 
 /**

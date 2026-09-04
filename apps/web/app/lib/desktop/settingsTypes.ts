@@ -16,8 +16,6 @@
  * never throw or surface partial state.
  */
 
-export const SETTINGS_STORE_FILE = 'settings.json';
-
 export const SETTINGS_VERSION = 1;
 
 export interface GlobalDesktopSettings {

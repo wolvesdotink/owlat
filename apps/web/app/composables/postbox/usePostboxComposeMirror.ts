@@ -255,5 +255,3 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 	// `usePostboxComposerGuards` returns.
 	return reactive({ restorable, restore, dismiss, retire });
 }
-
-export type PostboxComposeMirror = ReturnType<typeof usePostboxComposeMirror>;

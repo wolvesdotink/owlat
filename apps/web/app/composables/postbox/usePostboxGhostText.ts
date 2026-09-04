@@ -37,10 +37,7 @@ export interface UsePostboxGhostTextOptions {
 	/** ai flag AND the per-user "Writing suggestions" toggle. Re-read each pause. */
 	enabled: () => boolean;
 	/** Fetch a completion; reject/ignore when `signal` aborts. */
-	requestCompletion: (
-		input: GhostTextRequestInput,
-		signal: AbortSignal
-	) => Promise<string>;
+	requestCompletion: (input: GhostTextRequestInput, signal: AbortSignal) => Promise<string>;
 	/** Insert the accepted suggestion as real editor text. */
 	onAccept: (suggestion: string) => void;
 	/** Typing-pause debounce before a request (default 450ms). */
@@ -145,5 +142,3 @@ export function usePostboxGhostText(options: UsePostboxGhostTextOptions) {
 
 	return { ghost, schedule, cancel, accept, hasGhost };
 }
-
-export type PostboxGhostText = ReturnType<typeof usePostboxGhostText>;
