@@ -233,9 +233,7 @@ const cancelRename = () => {
 					>
 						<Icon name="lucide:sparkles" class="w-8 h-8" />
 					</div>
-					<h2 class="text-lg font-medium text-text-primary">
-						{{ t('dashboard.assistant.index.welcomeTitle') }}
-					</h2>
+					<h2 class="text-lg font-medium text-text-primary">{{ t('dashboard.assistant.index.welcomeTitle') }}</h2>
 					<p class="text-sm text-text-secondary mt-1 max-w-md">
 						{{ t('dashboard.assistant.index.welcomeBody') }}
 					</p>
@@ -265,11 +263,7 @@ const cancelRename = () => {
 			:open="!!pendingDelete"
 			variant="danger"
 			:title="t('dashboard.assistant.index.deleteDialog.title')"
-			:description="
-				t('dashboard.assistant.index.deleteDialog.description', {
-					title: pendingDelete?.title ?? '',
-				})
-			"
+			:description="t('dashboard.assistant.index.deleteDialog.description', { title: pendingDelete?.title ?? '' })"
 			:confirm-text="t('dashboard.assistant.index.deleteDialog.confirm')"
 			:is-loading="isDeleting"
 			@update:open="

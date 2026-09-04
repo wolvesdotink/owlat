@@ -227,9 +227,7 @@ const handleEdit = () => {
 		<div v-if="isLoading && !automation" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.automations.detail.index.loading') }}
-				</p>
+				<p class="text-text-secondary text-sm">{{ t('dashboard.automations.detail.index.loading') }}</p>
 			</div>
 		</div>
 
@@ -239,9 +237,7 @@ const handleEdit = () => {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:zap" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.automations.detail.index.notFoundTitle') }}
-			</p>
+			<p class="text-text-secondary font-medium">{{ t('dashboard.automations.detail.index.notFoundTitle') }}</p>
 			<p class="text-sm text-text-tertiary mt-1">
 				{{ t('dashboard.automations.detail.index.notFoundDescription') }}
 			</p>
@@ -287,11 +283,7 @@ const handleEdit = () => {
 							</div>
 							<div class="flex items-center gap-1.5">
 								<Icon name="lucide:clock" class="w-4 h-4" />
-								{{
-									t('dashboard.automations.detail.index.createdAt', {
-										date: formatDateTime(automation.createdAt),
-									})
-								}}
+								{{ t('dashboard.automations.detail.index.createdAt', { date: formatDateTime(automation.createdAt) }) }}
 							</div>
 						</div>
 					</div>
@@ -320,9 +312,7 @@ const handleEdit = () => {
 			<!-- Completion Rate Card -->
 			<div class="card p-6 mb-8">
 				<div class="flex items-center justify-between mb-4">
-					<h3 class="text-lg font-medium text-text-primary">
-						{{ t('dashboard.automations.detail.index.completionRate') }}
-					</h3>
+					<h3 class="text-lg font-medium text-text-primary">{{ t('dashboard.automations.detail.index.completionRate') }}</h3>
 					<span class="text-3xl font-semibold text-brand">{{ stats?.completionRate || 0 }}%</span>
 				</div>
 				<UiProgressBar
@@ -342,9 +332,7 @@ const handleEdit = () => {
 
 			<!-- Funnel Visualization -->
 			<div class="card p-6 mb-8">
-				<h3 class="text-lg font-medium text-text-primary mb-6">
-					{{ t('dashboard.automations.detail.index.funnel.title') }}
-				</h3>
+				<h3 class="text-lg font-medium text-text-primary mb-6">{{ t('dashboard.automations.detail.index.funnel.title') }}</h3>
 
 				<!-- Empty state -->
 				<div
@@ -352,9 +340,7 @@ const handleEdit = () => {
 					class="flex flex-col items-center justify-center py-12 text-center"
 				>
 					<Icon name="lucide:zap" class="w-12 h-12 text-text-tertiary mb-3" />
-					<p class="text-text-secondary">
-						{{ t('dashboard.automations.detail.index.funnel.emptyTitle') }}
-					</p>
+					<p class="text-text-secondary">{{ t('dashboard.automations.detail.index.funnel.emptyTitle') }}</p>
 					<p class="text-sm text-text-tertiary mt-1">
 						{{ t('dashboard.automations.detail.index.funnel.emptyDescription') }}
 					</p>
@@ -386,11 +372,7 @@ const handleEdit = () => {
 										style="width: 100%"
 									>
 										<span class="text-sm font-medium text-text-primary">
-											{{
-												t('dashboard.automations.detail.index.funnel.entered', {
-													count: stats?.totalEntered || 0,
-												})
-											}}
+											{{ t('dashboard.automations.detail.index.funnel.entered', { count: stats?.totalEntered || 0 }) }}
 										</span>
 									</div>
 								</div>
@@ -450,30 +432,15 @@ const handleEdit = () => {
 								<div class="ml-11 mt-1 flex items-center gap-4 text-xs text-text-tertiary">
 									<span v-if="step.stats.pending > 0" class="flex items-center gap-1">
 										<Icon name="lucide:clock" class="w-3 h-3" />
-										{{
-											t('dashboard.automations.detail.index.funnel.pending', {
-												count: step.stats.pending,
-											})
-										}}
+										{{ t('dashboard.automations.detail.index.funnel.pending', { count: step.stats.pending }) }}
 									</span>
 									<span v-if="step.stats.executing > 0" class="flex items-center gap-1">
-										<Icon
-											name="lucide:loader-2"
-											class="w-3 h-3 animate-spin motion-reduce:animate-none"
-										/>
-										{{
-											t('dashboard.automations.detail.index.funnel.executing', {
-												count: step.stats.executing,
-											})
-										}}
+										<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin motion-reduce:animate-none" />
+										{{ t('dashboard.automations.detail.index.funnel.executing', { count: step.stats.executing }) }}
 									</span>
 									<span v-if="step.stats.failed > 0" class="flex items-center gap-1 text-error">
 										<Icon name="lucide:x-circle" class="w-3 h-3" />
-										{{
-											t('dashboard.automations.detail.index.funnel.failed', {
-												count: step.stats.failed,
-											})
-										}}
+										{{ t('dashboard.automations.detail.index.funnel.failed', { count: step.stats.failed }) }}
 									</span>
 								</div>
 							</div>
@@ -494,9 +461,7 @@ const handleEdit = () => {
 			<!-- Contacts List -->
 			<div class="card p-0 overflow-hidden">
 				<div class="px-6 py-4 border-b border-border-subtle flex items-center justify-between">
-					<h3 class="text-lg font-medium text-text-primary">
-						{{ t('dashboard.automations.detail.index.runs.title') }}
-					</h3>
+					<h3 class="text-lg font-medium text-text-primary">{{ t('dashboard.automations.detail.index.runs.title') }}</h3>
 					<!-- Status filter -->
 					<div class="flex items-center gap-1 p-1 bg-bg-surface rounded-lg">
 						<button
@@ -517,18 +482,13 @@ const handleEdit = () => {
 
 				<!-- Loading -->
 				<div v-if="runsLoading && !runs" class="p-8 flex justify-center">
-					<Icon
-						name="lucide:loader-2"
-						class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none"
-					/>
+					<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none" />
 				</div>
 
 				<!-- Empty state -->
 				<div v-else-if="!runs || runs.runs.length === 0" class="py-12 text-center">
 					<Icon name="lucide:users" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
-					<p class="text-text-secondary">
-						{{ t('dashboard.automations.detail.index.runs.emptyTitle') }}
-					</p>
+					<p class="text-text-secondary">{{ t('dashboard.automations.detail.index.runs.emptyTitle') }}</p>
 					<p class="text-sm text-text-tertiary mt-1">
 						{{ t('dashboard.automations.detail.index.runs.emptyDescription') }}
 					</p>
@@ -546,11 +506,7 @@ const handleEdit = () => {
 								<UiIconBox icon="lucide:users" size="lg" rounded="full" />
 								<div class="min-w-0">
 									<div class="text-text-primary font-medium truncate">
-										{{
-											run.contact?.firstName ||
-											run.contact?.email?.split('@')[0] ||
-											t('common.unknown')
-										}}
+										{{ run.contact?.firstName || run.contact?.email?.split('@')[0] || t('common.unknown') }}
 										{{ run.contact?.lastName || '' }}
 									</div>
 									<div class="text-sm text-text-tertiary truncate">
@@ -570,9 +526,7 @@ const handleEdit = () => {
 											:name="getRunStatusBadge(run.status).icon"
 											:class="[
 												'w-3 h-3',
-												getRunStatusBadge(run.status).animated
-													? 'animate-spin motion-reduce:animate-none'
-													: '',
+												getRunStatusBadge(run.status).animated ? 'animate-spin motion-reduce:animate-none' : '',
 											]"
 										/>
 										{{ getRunStatusBadge(run.status).label }}
@@ -608,9 +562,9 @@ const handleEdit = () => {
 							class="text-sm"
 							:disabled="runsOffset === 0"
 							@click="loadPrevRuns"
-						>
+							>
 							{{ t('dashboard.automations.detail.index.runs.previous') }}
-						</UiButton>
+							</UiButton>
 						<span class="text-sm text-text-tertiary">
 							{{
 								t('dashboard.automations.detail.index.runs.range', {
@@ -624,9 +578,9 @@ const handleEdit = () => {
 							class="text-sm"
 							:disabled="!runs.hasMore"
 							@click="loadMoreRuns"
-						>
+							>
 							{{ t('dashboard.automations.detail.index.runs.next') }}
-						</UiButton>
+							</UiButton>
 					</div>
 				</div>
 			</div>

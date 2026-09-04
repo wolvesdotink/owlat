@@ -28,7 +28,10 @@ const coachDraftText = computed(() => {
 // plain text; escape it and preserve line breaks so the rewritten draft replaces
 // the body without injecting markup. Only runs on an explicit Apply.
 function applyRevisedBody(text: string) {
-	const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const escaped = text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
 	bodyHtml.value = escaped
 		.split(/\n/)
 		.map((line) => (line.length ? line : '<br>'))
