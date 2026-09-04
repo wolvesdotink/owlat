@@ -724,6 +724,7 @@ import type * as mail_attachmentSharesActions from '../mail/attachmentSharesActi
 import type * as mail_authHttp from '../mail/authHttp.js';
 import type * as mail_authRateLimit from '../mail/authRateLimit.js';
 import type * as mail_availability from '../mail/availability.js';
+import type * as mail_blobReseal from '../mail/blobReseal.js';
 import type * as mail_bodySearchBackfill from '../mail/bodySearchBackfill.js';
 import type * as mail_brief from '../mail/brief.js';
 import type * as mail_briefEmail from '../mail/briefEmail.js';
@@ -1789,6 +1790,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/authHttp': typeof mail_authHttp;
 	'mail/authRateLimit': typeof mail_authRateLimit;
 	'mail/availability': typeof mail_availability;
+	'mail/blobReseal': typeof mail_blobReseal;
 	'mail/bodySearchBackfill': typeof mail_bodySearchBackfill;
 	'mail/brief': typeof mail_brief;
 	'mail/briefEmail': typeof mail_briefEmail;

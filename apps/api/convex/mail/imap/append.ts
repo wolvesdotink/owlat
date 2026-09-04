@@ -158,11 +158,7 @@ export const appendMessage = internalMutation({
 		// (plaintext), so seal it at rest out-of-band — a mutation can't read/re-store
 		// a blob's bytes. Idempotent + resumable; the accessor + `/sealed-blob` proxy
 		// serve it correctly in the meantime (mixed-state tolerance).
-		await ctx.scheduler.runAfter(
-			0,
-			internal.migrations['0035_seal_bodies_at_rest'].resealMessageBlobs,
-			{ id: messageId }
-		);
+		await ctx.scheduler.runAfter(0, internal.mail.blobReseal.resealMessageBlobs, { id: messageId });
 
 		await ctx.db.patch(folder._id, {
 			uidNext: uid + 1,
