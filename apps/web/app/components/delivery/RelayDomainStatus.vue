@@ -36,6 +36,7 @@
  */
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
+import { formatDateTime } from '~/utils/formatters';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	relayDomainDisplay,
@@ -58,7 +59,7 @@ const {
 });
 const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === 'CanLoadMore');
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 /**
  * The display vocabulary in `utils/relayDomainDisplay` carries i18n keys rather
@@ -135,12 +136,6 @@ async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
 	const result = await verifyRelayDomain({ domainId });
 	verifyingRelayDomainId.value = null;
 	if (result.ok) showNotification(t('components.delivery.relayDomainStatus.verifyRefreshed'));
-}
-
-function formatDate(at: number | null | undefined): string {
-	return at === null || at === undefined
-		? t('components.delivery.relayDomainStatus.notScheduled')
-		: new Date(at).toLocaleString(locale.value);
 }
 
 /**
@@ -305,8 +300,10 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 			>
 				{{
 					t('components.delivery.relayDomainStatus.freshness', {
-						lastConfirmed: formatDate(entry.row.lastCheckedAt),
-						nextCheck: formatDate(entry.row.nextCheckDueAt),
+						lastConfirmed: formatDateTime(entry.row.lastCheckedAt),
+						nextCheck: entry.row.nextCheckDueAt
+							? formatDateTime(entry.row.nextCheckDueAt)
+							: t('components.delivery.relayDomainStatus.notScheduled'),
 					})
 				}}
 			</p>

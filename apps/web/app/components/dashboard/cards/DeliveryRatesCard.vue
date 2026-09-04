@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { formatNumber } from '~/utils/formatters';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 const { data: overview, isLoading } = useOrganizationQuery(
 	api.analytics.reputationQueries.getSendingOverview
@@ -48,11 +49,6 @@ const tierVariant = computed<'neutral' | 'warning' | 'default' | 'success'>(() =
 
 const dailyLimit = computed(() => warming.value?.totalDailyCap ?? null);
 const remaining = computed(() => warming.value?.remainingToday ?? null);
-
-/** Grouped against the active locale; `null` keeps the blank the card showed. */
-function formatNumber(value: number | null): string {
-	return value === null ? '' : new Intl.NumberFormat(locale.value).format(value);
-}
 
 const usagePercent = computed(() => {
 	const cap = dailyLimit.value;
@@ -112,7 +108,7 @@ const usagePercent = computed(() => {
 						<span class="text-xs tabular-nums text-text-tertiary">
 							{{
 								t('components.dashboard.cards.deliveryRates.remaining', {
-									count: formatNumber(remaining),
+									count: remaining === null ? '' : formatNumber(remaining),
 								})
 							}}
 						</span>

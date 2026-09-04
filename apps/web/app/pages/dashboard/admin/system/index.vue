@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import { formatDateTime } from '~/utils/formatters';
 
 const { t } = useI18n();
+const { showToast } = useToast();
 
 useHead({ title: () => t('dashboard.admin.system.index.pageTitle') });
 
@@ -24,16 +25,16 @@ const convex = useConvex();
 const checking = ref(false);
 async function checkNow() {
 	if (!convex) {
-		notify('error', t('dashboard.admin.system.index.toasts.noClient'));
+		showToast(t('dashboard.admin.system.index.toasts.noClient'), 'error');
 		return;
 	}
 	checking.value = true;
 	try {
 		await convex.action(api.systemUpdates.checkForUpdates, { force: true });
-		notify('success', t('dashboard.admin.system.index.toasts.checkComplete'));
+		showToast(t('dashboard.admin.system.index.toasts.checkComplete'));
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : t('dashboard.admin.system.index.unknownError');
-		notify('error', t('dashboard.admin.system.index.toasts.checkFailed', { error: msg }));
+		showToast(t('dashboard.admin.system.index.toasts.checkFailed', { error: msg }), 'error');
 	} finally {
 		checking.value = false;
 	}
@@ -157,22 +158,14 @@ function onUpdateFailed(error: string) {
 }
 
 // ── Utility ──────────────────────────────────────────────────────────────────
-function notify(kind: 'success' | 'error', message: string) {
-	// Best-effort toast — the UI package ships useToast
-	try {
-		const { showToast } = useToast();
-		showToast(message, kind);
-	} catch {
-		// eslint-disable-next-line no-console
-		if (kind === 'error') console.error(message);
-	}
-}
-
 function formatDuration(start?: number, end?: number) {
 	if (!start || !end) return '—';
 	const sec = Math.floor((end - start) / 1000);
 	if (sec < 60) return t('dashboard.admin.system.index.duration.seconds', { seconds: sec });
-	return t('dashboard.admin.system.index.duration.minutes', { minutes: Math.floor(sec / 60), seconds: sec % 60 });
+	return t('dashboard.admin.system.index.duration.minutes', {
+		minutes: Math.floor(sec / 60),
+		seconds: sec % 60,
+	});
 }
 </script>
 
@@ -229,9 +222,15 @@ function formatDuration(start?: number, end?: number) {
 				<table class="w-full min-w-max text-caption">
 					<thead>
 						<tr class="border-b border-border-subtle text-text-tertiary">
-							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.system.index.containers.service') }}</th>
-							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.system.index.containers.state') }}</th>
-							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.system.index.containers.imageTag') }}</th>
+							<th class="text-left py-2 font-medium">
+								{{ t('dashboard.admin.system.index.containers.service') }}
+							</th>
+							<th class="text-left py-2 font-medium">
+								{{ t('dashboard.admin.system.index.containers.state') }}
+							</th>
+							<th class="text-left py-2 font-medium">
+								{{ t('dashboard.admin.system.index.containers.imageTag') }}
+							</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -281,12 +280,18 @@ function formatDuration(start?: number, end?: number) {
 								v{{ latestRelease.latestVersion }}
 							</span>
 							<span class="text-caption text-text-tertiary">
-								{{ t('dashboard.admin.system.index.updates.availableCurrent', { version: currentVersion }) }}
+								{{
+									t('dashboard.admin.system.index.updates.availableCurrent', {
+										version: currentVersion,
+									})
+								}}
 							</span>
 						</div>
 						<p class="mt-1 text-caption text-text-tertiary">
 							{{
-								t('dashboard.admin.system.index.updates.released', { date: formatDateTime(latestRelease.publishedAt) })
+								t('dashboard.admin.system.index.updates.released', {
+									date: formatDateTime(latestRelease.publishedAt),
+								})
 							}}
 						</p>
 					</template>
@@ -294,7 +299,9 @@ function formatDuration(start?: number, end?: number) {
 					<template v-else-if="latestRelease?.latestVersion">
 						<div class="flex items-baseline gap-2">
 							<Icon name="lucide:check-circle-2" class="w-5 h-5 text-success" />
-							<span class="text-text-primary font-medium">{{ t('dashboard.admin.system.index.updates.upToDate') }}</span>
+							<span class="text-text-primary font-medium">{{
+								t('dashboard.admin.system.index.updates.upToDate')
+							}}</span>
 						</div>
 						<p class="mt-1 text-caption text-text-tertiary">
 							{{
@@ -315,7 +322,11 @@ function formatDuration(start?: number, end?: number) {
 
 				<div class="flex gap-2 flex-wrap">
 					<UiButton variant="outline" size="sm" :disabled="checking" @click="checkNow">
-						<Icon v-if="checking" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+						<Icon
+							v-if="checking"
+							name="lucide:loader-2"
+							class="w-4 h-4 animate-spin motion-reduce:animate-none"
+						/>
 						<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
 						{{ t('dashboard.admin.system.index.updates.checkNow') }}
 					</UiButton>
@@ -341,7 +352,9 @@ function formatDuration(start?: number, end?: number) {
 			</details>
 
 			<div v-if="latestRelease?.error" class="mt-3 text-xs text-warning">
-				{{ t('dashboard.admin.system.index.updates.lastCheckError', { error: latestRelease.error }) }}
+				{{
+					t('dashboard.admin.system.index.updates.lastCheckError', { error: latestRelease.error })
+				}}
 			</div>
 		</div>
 
@@ -389,7 +402,9 @@ function formatDuration(start?: number, end?: number) {
 			<div class="flex items-start gap-3">
 				<Icon name="lucide:check-circle-2" class="w-6 h-6 text-success shrink-0" />
 				<div>
-					<h3 class="font-semibold text-text-primary">{{ t('dashboard.admin.system.index.success.title') }}</h3>
+					<h3 class="font-semibold text-text-primary">
+						{{ t('dashboard.admin.system.index.success.title') }}
+					</h3>
 					<p class="mt-1 text-sm text-text-secondary">
 						{{ t('dashboard.admin.system.index.success.body', { version: pendingTargetVersion }) }}
 					</p>
@@ -401,7 +416,9 @@ function formatDuration(start?: number, end?: number) {
 			<div class="flex items-start gap-3">
 				<Icon name="lucide:x-circle" class="w-6 h-6 text-error shrink-0" />
 				<div class="flex-1 min-w-0">
-					<h3 class="font-semibold text-text-primary">{{ t('dashboard.admin.system.index.failure.title') }}</h3>
+					<h3 class="font-semibold text-text-primary">
+						{{ t('dashboard.admin.system.index.failure.title') }}
+					</h3>
 					<p class="mt-1 text-sm text-error break-words">{{ updateError }}</p>
 					<I18nT
 						keypath="dashboard.admin.system.index.failure.recovery"
@@ -419,7 +436,9 @@ function formatDuration(start?: number, end?: number) {
 							>
 						</template>
 						<template #doctorCommand>
-							<code class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded">owlat doctor</code>
+							<code class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded"
+								>owlat doctor</code
+							>
 						</template>
 					</I18nT>
 				</div>
@@ -443,9 +462,15 @@ function formatDuration(start?: number, end?: number) {
 				<table class="w-full min-w-max text-caption">
 					<thead>
 						<tr class="border-b border-border-subtle text-text-tertiary">
-							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.system.index.history.fromTo') }}</th>
-							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.system.index.history.started') }}</th>
-							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.system.index.history.duration') }}</th>
+							<th class="text-left py-2 font-medium">
+								{{ t('dashboard.admin.system.index.history.fromTo') }}
+							</th>
+							<th class="text-left py-2 font-medium">
+								{{ t('dashboard.admin.system.index.history.started') }}
+							</th>
+							<th class="text-left py-2 font-medium">
+								{{ t('dashboard.admin.system.index.history.duration') }}
+							</th>
 							<th class="text-left py-2 font-medium">{{ t('common.status') }}</th>
 						</tr>
 					</thead>
