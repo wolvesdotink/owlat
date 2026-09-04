@@ -110,6 +110,7 @@
 		"ci:verify": "bash scripts/ci-gate.sh verify",
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",
+		"test:ramp": "bun run --cwd apps/api test:ramp",
 		"goldens:update": "bun --cwd packages/mail-message run goldens:update",
 		"release:cut": "bun scripts/release.ts"
 	},

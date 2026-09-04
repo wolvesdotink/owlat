@@ -42,6 +42,13 @@ const WORKFLOW = readFileSync(
 	fileURLToPath(new URL('../../../../../../.github/workflows/test.yml', import.meta.url)),
 	'utf8'
 );
+// The matrix job delegates to this script (also `bun run test:ramp` locally), so
+// the sentinel, the mode and the globs live there and the workflow only names
+// the leg.
+const RAMP_SCRIPT = readFileSync(
+	fileURLToPath(new URL('../../../../scripts/test-ramp.sh', import.meta.url)),
+	'utf8'
+);
 
 describe('the CI matrix exists and runs both configurations', () => {
 	it('declares both legs', () => {
@@ -50,17 +57,18 @@ describe('the CI matrix exists and runs both configurations', () => {
 	});
 
 	it('passes the mode through the environment variable this suite reads', () => {
-		expect(WORKFLOW).toContain(`${RAMP_GATE_MATRIX_ENV}: \${{ matrix.mode }}`);
+		expect(WORKFLOW).toContain('bun run test:ramp ${{ matrix.mode }}');
+		expect(RAMP_SCRIPT).toContain(`${RAMP_GATE_MATRIX_ENV}="$mode"`);
 	});
 
 	it('sets the sentinel that makes a missing mode fatal, in that job only', () => {
 		// The sentinel is what distinguishes "the matrix lost its mode" from "some
 		// other job imported this file"; if only the mode survives a future edit,
-		// the missing-mode case degrades to a silent default again.
-		expect(WORKFLOW).toContain(`${RAMP_GATE_MATRIX_SENTINEL_ENV}: '1'`);
-		expect(WORKFLOW.match(new RegExp(`^\\s+${RAMP_GATE_MATRIX_SENTINEL_ENV}:`, 'gm'))).toHaveLength(
-			1
-		);
+		// the missing-mode case degrades to a silent default again. The script is
+		// the only thing that sets it, and only the matrix job runs the script.
+		expect(RAMP_SCRIPT).toContain(`${RAMP_GATE_MATRIX_SENTINEL_ENV}=1 `);
+		expect(WORKFLOW).not.toMatch(new RegExp(`^\\s+${RAMP_GATE_MATRIX_SENTINEL_ENV}:`, 'm'));
+		expect(WORKFLOW.match(/run: bun run test:ramp/g)).toHaveLength(1);
 	});
 
 	it('runs the signal registry in both legs, not just the ramp directory', () => {
@@ -69,7 +77,7 @@ describe('the CI matrix exists and runs both configurations', () => {
 		// standalone evaluators but never checks that they are the ones registered
 		// for a deployment with no reference transport. Narrowing the glob back is
 		// a one-word edit, and this is what makes that edit fail on its own PR.
-		expect(WORKFLOW).toContain('bunx vitest run convex/delivery/ramp convex/delivery/signals');
+		expect(RAMP_SCRIPT).toContain('vitest run convex/delivery/ramp convex/delivery/signals');
 	});
 
 	it('is wired into the required status check, not left dangling', () => {
