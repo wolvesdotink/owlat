@@ -419,8 +419,23 @@ async function removeWorkspace(id: string): Promise<void> {
 	window.location.assign(workspaces.value.length ? '/dashboard' : '/desktop/welcome');
 }
 
-export function useDesktopWorkspaces() {
+/**
+ * The message catalog, resolved where one exists.
+ *
+ * `useDesktopWorkspaces()` is reached from the `desktop-workspace.global` route
+ * guard — outside any component `setup()`, where `useI18n()` THROWS and would
+ * take down every desktop navigation. The guard only reads `active`; it never
+ * runs a connect flow, so outside a component the copy degrades to its key.
+ * Mirrors `useAuth.ts` and `useOrganization.ts`.
+ */
+function workspaceTranslator(): (key: string, params?: Record<string, unknown>) => string {
+	if (!getCurrentInstance()) return (key: string) => key;
 	const { t } = useI18n();
+	return (key: string, params?: Record<string, unknown>) => t(key, params ?? {});
+}
+
+export function useDesktopWorkspaces() {
+	const t = workspaceTranslator();
 	const active = computed(() => workspaces.value.find((w) => w.id === activeId.value) ?? null);
 
 	/**
