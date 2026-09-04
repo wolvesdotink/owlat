@@ -5,6 +5,8 @@ export const ACKNOWLEDGED_ADVISORIES: Readonly<Record<string, string>> = Object.
 		'image-size@2.0.2 has no upstream release; patches/image-size@2.0.2.patch rejects zero, truncated, and non-advancing ICNS entries.',
 	'GHSA-5P2G-FCMC-QVQQ':
 		'image-size@2.0.2 has no upstream release; patches/image-size@2.0.2.patch rejects undersized and non-advancing HEIF/JXL boxes.',
+	'GHSA-QXC2-J82W-R537':
+		'@faker-js/faker <= 10.4.0 has no patched release; faker is a devDependency imported only by the two test factories, and nothing in the repo calls helpers.fake(), the vulnerable template evaluator.',
 });
 
 export interface AuditFinding {
