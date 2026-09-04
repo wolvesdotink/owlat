@@ -1,9 +1,9 @@
 # Convex Backend Conventions
 
 This document captures the conventions for organizing files in
-`apps/api/convex/`. The flat 161-file layout has outgrown the legacy
-single-prefix-per-file pattern; new code should follow the rules below, and
-existing files migrate to them as touched.
+`apps/api/convex/`. The tree (161 flat files when this was written, well over a
+thousand now) has outgrown the legacy single-prefix-per-file pattern; new code
+should follow the rules below, and existing files migrate to them as touched.
 
 ---
 

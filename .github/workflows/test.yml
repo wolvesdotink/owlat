@@ -343,8 +343,9 @@ jobs:
       - name: Typecheck
         run: bun run ci:typecheck
 
-  # apps/docs is excluded from the root ci:typecheck pipeline; its Nuxt typecheck
-  # runs here. Its vitest suite now runs through the affected `test` matrix above.
+  # apps/docs is part of the root ci:typecheck run above as well; this job runs
+  # its Nuxt typecheck on its own. Its vitest suite runs through the affected
+  # `test` matrix above.
   docs-typecheck:
     name: Typecheck (apps/docs)
     runs-on: ubuntu-latest
