@@ -1,6 +1,6 @@
 # Campaign lifecycle modules — single writers of `campaigns.status` and `campaigns.abTestStatus`, sibling machines
 
-**Status:** proposed
+**Status:** accepted (shipped 2026-06-30 — `campaigns/lifecycle.ts`, `campaigns/abTestLifecycle.ts` and `campaigns/preflight.ts` are in the tree; see Execution)
 
 ## Context
 
