@@ -91,7 +91,7 @@ export async function reserveWarmingSlot(
 	};
 }
 
-export async function isWarmingReservationValid(
+async function isWarmingReservationValid(
 	redis: Redis,
 	reservation: WarmingReservation,
 	now = Date.now()

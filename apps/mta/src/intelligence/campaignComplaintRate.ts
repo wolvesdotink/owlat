@@ -39,7 +39,7 @@ export const CAMPAIGN_MIN_DELIVERIES = CAMPAIGN_COMPLAINT_POLICY.minimumDeliveri
 /** 30-day TTL — matches the delivery-metrics retention window. */
 const TTL_SECONDS = 30 * 86400;
 /** Individual replay receipts outlive both the seven-day parent and 30-day window. */
-export const CAMPAIGN_EFFECT_RECEIPT_TTL_SECONDS = 35 * 86400;
+const CAMPAIGN_EFFECT_RECEIPT_TTL_SECONDS = 35 * 86400;
 
 const RECORD_COMPLAINT_ONCE_LUA = `
 if redis.call('EXISTS', KEYS[2]) == 1 then

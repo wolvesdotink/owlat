@@ -18,7 +18,7 @@ function handoffKey(successorJobId: string): string {
 	return `mta:defer-handoffs:${successorJobId}`;
 }
 
-export function deferredJobId(predecessorJobId: string): string {
+function deferredJobId(predecessorJobId: string): string {
 	return `defer-${createHash('sha256').update(predecessorJobId).digest('hex')}`;
 }
 

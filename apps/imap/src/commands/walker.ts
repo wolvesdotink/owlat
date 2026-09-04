@@ -158,15 +158,6 @@ export function assembleCapabilityLine(tls: boolean): string {
 }
 
 /**
- * The TLS capability line. Frozen at module-load and used by the
- * greeting + LOGIN banner + CAPABILITY on encrypted connections.
- */
-export const CAPABILITY_LINE = assembleCapabilityLine(true);
-
-/** The plaintext (dev-fallback) capability line — `LOGINDISABLED`, no `AUTH=PLAIN`. */
-export const PLAINTEXT_CAPABILITY_LINE = assembleCapabilityLine(false);
-
-/**
  * Look up the module for the parsed verb, run its `parseArgs`, and
  * hand off to `start`. Unknown verbs and parse failures emit a BAD
  * line and return a closed one-shot session — no module is touched.
@@ -175,7 +166,7 @@ export function dispatch(
 	deps: CommandDeps,
 	state: ConnectionState,
 	parsed: ParsedCommand,
-	send: (line: string | Buffer) => void,
+	send: (line: string | Buffer) => void
 ): CommandSession {
 	const verb = parsed.command as ImapVerb;
 	const module = REGISTRY[verb];
