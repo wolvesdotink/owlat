@@ -57,9 +57,7 @@ import type * as analytics_engagementActivity from '../analytics/engagementActiv
 import type * as analytics_engagementPercentile from '../analytics/engagementPercentile.js';
 import type * as analytics_engagementScore from '../analytics/engagementScore.js';
 import type * as analytics_engagementScoreSync from '../analytics/engagementScoreSync.js';
-import type * as analytics_evalHarness from '../analytics/evalHarness.js';
 import type * as analytics_llmUsage from '../analytics/llmUsage.js';
-import type * as analytics_qualityMetrics from '../analytics/qualityMetrics.js';
 import type * as analytics_reporter from '../analytics/reporter.js';
 import type * as analytics_reputationQueries from '../analytics/reputationQueries.js';
 import type * as analytics_reputationSnapshots from '../analytics/reputationSnapshots.js';
@@ -344,7 +342,6 @@ import type * as delivery_signals_yahooCfl from '../delivery/signals/yahooCfl.js
 import type * as delivery_ramp_degradation from '../delivery/ramp/degradation.js';
 import type * as delivery_ramp_degradationMatrix from '../delivery/ramp/degradationMatrix.js';
 import type * as delivery_ramp_phasePromotion from '../delivery/ramp/phasePromotion.js';
-import type * as delivery_ramp_rampFraming from '../delivery/ramp/rampFraming.js';
 import type * as delivery_ramp_setupFork from '../delivery/ramp/setupFork.js';
 import type * as delivery_rampIntegrationPresence from '../delivery/rampIntegrationPresence.js';
 import type * as delivery_rampPromotionEvidence from '../delivery/rampPromotionEvidence.js';
@@ -533,7 +530,6 @@ import type * as inbox_threadSort from '../inbox/threadSort.js';
 import type * as inbox_threads_module from '../inbox/threads/module.js';
 import type * as integrationImports__common from '../integrationImports/_common.js';
 import type * as integrationImports_credentialSeal from '../integrationImports/credentialSeal.js';
-import type * as integrationImports_providers_catalog from '../integrationImports/providers/catalog.js';
 import type * as integrationImports_providers_index from '../integrationImports/providers/index.js';
 import type * as integrationImports_providers_mailchimp_index from '../integrationImports/providers/mailchimp/index.js';
 import type * as integrationImports_providers_mandrill_index from '../integrationImports/providers/mandrill/index.js';
@@ -609,7 +605,6 @@ import type * as lib_llmProviders_openai from '../lib/llmProviders/openai.js';
 import type * as lib_llmProviders_openaiCompatible from '../lib/llmProviders/openaiCompatible.js';
 import type * as lib_llmProviders_openrouter from '../lib/llmProviders/openrouter.js';
 import type * as lib_llmProviders_types from '../lib/llmProviders/types.js';
-import type * as lib_mailHost from '../lib/mailHost.js';
 import type * as lib_mailContentValidators from '../lib/mailContentValidators.js';
 import type * as lib_mailSettingsValidators from '../lib/mailSettingsValidators.js';
 import type * as lib_mailMute from '../lib/mailMute.js';
@@ -1128,9 +1123,7 @@ declare const fullApi: ApiFromModules<{
 	'analytics/engagementPercentile': typeof analytics_engagementPercentile;
 	'analytics/engagementScore': typeof analytics_engagementScore;
 	'analytics/engagementScoreSync': typeof analytics_engagementScoreSync;
-	'analytics/evalHarness': typeof analytics_evalHarness;
 	'analytics/llmUsage': typeof analytics_llmUsage;
-	'analytics/qualityMetrics': typeof analytics_qualityMetrics;
 	'analytics/reporter': typeof analytics_reporter;
 	'analytics/reputationQueries': typeof analytics_reputationQueries;
 	'analytics/reputationSnapshots': typeof analytics_reputationSnapshots;
@@ -1418,7 +1411,6 @@ declare const fullApi: ApiFromModules<{
 	'delivery/ramp/degradation': typeof delivery_ramp_degradation;
 	'delivery/ramp/degradationMatrix': typeof delivery_ramp_degradationMatrix;
 	'delivery/ramp/phasePromotion': typeof delivery_ramp_phasePromotion;
-	'delivery/ramp/rampFraming': typeof delivery_ramp_rampFraming;
 	'delivery/ramp/setupFork': typeof delivery_ramp_setupFork;
 	'delivery/rampIntegrationPresence': typeof delivery_rampIntegrationPresence;
 	'delivery/rampPromotionEvidence': typeof delivery_rampPromotionEvidence;
@@ -1604,7 +1596,6 @@ declare const fullApi: ApiFromModules<{
 	'inbox/threads/module': typeof inbox_threads_module;
 	'integrationImports/_common': typeof integrationImports__common;
 	'integrationImports/credentialSeal': typeof integrationImports_credentialSeal;
-	'integrationImports/providers/catalog': typeof integrationImports_providers_catalog;
 	'integrationImports/providers/index': typeof integrationImports_providers_index;
 	'integrationImports/providers/mailchimp/index': typeof integrationImports_providers_mailchimp_index;
 	'integrationImports/providers/mandrill/index': typeof integrationImports_providers_mandrill_index;
@@ -1680,7 +1671,6 @@ declare const fullApi: ApiFromModules<{
 	'lib/llmProviders/openaiCompatible': typeof lib_llmProviders_openaiCompatible;
 	'lib/llmProviders/openrouter': typeof lib_llmProviders_openrouter;
 	'lib/llmProviders/types': typeof lib_llmProviders_types;
-	'lib/mailHost': typeof lib_mailHost;
 	'lib/mailContentValidators': typeof lib_mailContentValidators;
 	'lib/mailSettingsValidators': typeof lib_mailSettingsValidators;
 	'lib/mailMute': typeof lib_mailMute;
