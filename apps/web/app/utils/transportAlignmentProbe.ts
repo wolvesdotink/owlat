@@ -19,13 +19,13 @@
 import {
 	dkimRecordName,
 	evaluateAlignmentPreflight,
-	normalizeDomain,
 	type AlignmentDnsFacts,
 	type AlignmentPreflightResult,
 	type AlignmentArm,
 	type DnsTxtObservation,
 	type ReferenceArmInput,
 } from '@owlat/shared/deliverabilityAlignment';
+import { normalizeDomain } from '@owlat/shared';
 import { dohQuery, DNS_TYPE_TXT, DNS_STATUS_NXDOMAIN } from './doh';
 
 /** DoH JSON `Status` values we distinguish beyond NXDOMAIN (RFC 1035 §4.1.1). */
