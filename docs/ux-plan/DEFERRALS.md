@@ -687,8 +687,8 @@ dark-mode rendering, all from `renderDraftBodies` in `@owlat/email-renderer`.
 That is the same function the dispatch action calls, which is the property that
 matters. The preview cannot drift from the wire.
 
-The plan suggested borrowing the builder's `usePreview`/`useDevicePreview`. That
-machinery is viewport switching (mobile/desktop widths) and per-client
+The plan suggested borrowing the builder's `usePreview`. That machinery is
+viewport switching (mobile/desktop widths) and per-client
 simulation over a live `EditorBlock[]` inside the designer's own store. The
 composer has no store to attach it to, and simple-mode drafts have no blocks at
 all; they are wrapped into a synthetic one at render time. Reaching for it would
@@ -698,9 +698,10 @@ The AMP alternative is reported ("+ AMP part") but not rendered as a fourth
 pane. It exists only for designs using an accordion or carousel, and previewing
 AMP faithfully needs the AMP runtime, not an iframe.
 
-To pick it up: lift the device-width switcher out of `useDevicePreview` into
-something that takes rendered HTML rather than blocks, and give the HTML and
-dark panes a width control.
+To pick it up: build a device-width switcher that takes rendered HTML rather
+than blocks (the builder's `usePreview` keeps its `previewDevice` state over
+`EditorBlock[]`, so it cannot be reused as is), and give the HTML and dark
+panes a width control.
 
 ## 45 — the profile's numbers are a bounded window
 
