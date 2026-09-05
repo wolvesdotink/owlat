@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { withSetup } from '~/__tests__/withSetup';
-import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
+import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /** The real catalog behind the `useI18n` auto-import the composable calls. */
@@ -136,5 +136,14 @@ describe('usePostboxComposeAttachments — compose limits', () => {
 		expect(uploaderAddFiles).toHaveBeenCalledOnce();
 		expect(uploaderAddFiles.mock.calls[0]![0]).toHaveLength(2);
 		expect(showToast).not.toHaveBeenCalled();
+	});
+	it('the shared per-file cap is a whole number of MB and not below the per-message total', () => {
+		// The composer labels its toast with MAX_ATTACHMENT_BYTES / 1024 / 1024, so
+		// a fractional cap would print "24.5 MB"; and a per-file cap below the
+		// combined ceiling would reject a file the total gate would have allowed.
+		const mb = MAX_ATTACHMENT_BYTES / 1024 / 1024;
+		expect(Number.isInteger(mb)).toBe(true);
+		expect(mb).toBeGreaterThan(0);
+		expect(MAX_ATTACHMENT_BYTES).toBeGreaterThanOrEqual(ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes);
 	});
 });
