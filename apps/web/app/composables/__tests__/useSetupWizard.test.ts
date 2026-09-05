@@ -122,15 +122,15 @@ describe('email validation helper', () => {
 
 describe('admin step navigation gate', () => {
 	it('cannot advance with an invalid email', () => {
-		const errors = validateAdmin({ ...validAdmin, email: 'not-an-email' });
-		expect(errors.email).toBeTruthy();
-		expect(adminIsValid({ ...validAdmin, email: 'not-an-email' })).toBe(false);
+		expect(validateAdmin({ ...validAdmin, email: 'not-an-email' })).toEqual({
+			email: 'shared.setupWizardValidation.admin.emailInvalid',
+		});
 	});
 
 	it('cannot advance with a password under 12 characters', () => {
-		const errors = validateAdmin({ ...validAdmin, password: 'short' });
-		expect(errors.password).toBeTruthy();
-		expect(adminIsValid({ ...validAdmin, password: 'short' })).toBe(false);
+		expect(validateAdmin({ ...validAdmin, password: 'short' })).toEqual({
+			password: 'shared.setupWizardValidation.admin.passwordTooShort',
+		});
 	});
 
 	it('can advance once email and password are valid', () => {
@@ -142,8 +142,9 @@ describe('admin step navigation gate', () => {
 describe('email step navigation gate', () => {
 	it('cannot advance with "none" when a delivery provider is required', () => {
 		const draft = emailDraft({ provider: 'none', requiresProvider: true });
-		expect(validateEmailStep(draft).provider).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			provider: 'shared.setupWizardValidation.email.providerRequired',
+		});
 	});
 
 	it('can advance with "none" when no provider is required (receive-only)', () => {
@@ -153,20 +154,23 @@ describe('email step navigation gate', () => {
 
 	it('cannot advance with Resend selected but no API key', () => {
 		const draft = emailDraft({ provider: 'resend', resendKey: '' });
-		expect(validateEmailStep(draft).resendKey).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			resendKey: 'shared.setupWizardValidation.email.resendKeyRequired',
+		});
 	});
 
 	it('cannot advance with SES selected but missing credentials', () => {
 		const draft = emailDraft({ provider: 'ses' });
-		expect(validateEmailStep(draft).ses).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			ses: 'shared.setupWizardValidation.email.sesIncomplete',
+		});
 	});
 
 	it('cannot advance with an SMTP relay missing host/username/password', () => {
 		const draft = emailDraft({ provider: 'smtp', smtp: { ...blankSmtp } });
-		expect(validateEmailStep(draft).smtp).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			smtp: 'shared.setupWizardValidation.email.smtpIncomplete',
+		});
 	});
 
 	it('cannot advance with an SMTP relay host but missing credentials', () => {
@@ -174,17 +178,17 @@ describe('email step navigation gate', () => {
 			provider: 'smtp',
 			smtp: smtpRelay({ username: '', password: '' }),
 		});
-		expect(validateEmailStep(draft).smtp).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			smtp: 'shared.setupWizardValidation.email.smtpIncomplete',
+		});
 	});
 
 	it('rejects a non-numeric or out-of-range SMTP port', () => {
-		expect(
-			validateEmailStep(emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: 'abc' }) })).smtp
-		).toBeTruthy();
-		expect(
-			validateEmailStep(emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: '70000' }) })).smtp
-		).toBeTruthy();
+		for (const port of ['abc', '70000']) {
+			expect(
+				validateEmailStep(emailDraft({ provider: 'smtp', smtp: smtpRelay({ port }) })).smtp
+			).toBe('shared.setupWizardValidation.email.smtpPortInvalid');
+		}
 	});
 
 	it('accepts a complete SMTP relay (blank port defaults to 587)', () => {
@@ -206,8 +210,9 @@ describe('email step navigation gate', () => {
 
 	it('rejects a malformed optional From address', () => {
 		const draft = emailDraft({ provider: 'mta', fromEmail: 'bogus' });
-		expect(validateEmailStep(draft).fromEmail).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			fromEmail: 'shared.setupWizardValidation.email.fromEmailInvalid',
+		});
 	});
 
 	it('accepts a blank From address (the field is optional)', () => {
@@ -226,8 +231,9 @@ describe('email step navigation gate', () => {
 				ehloHostnames: '',
 			},
 		});
-		expect(validateEmailStep(draft).mtaIdentity).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			mtaIdentity: 'shared.setupMtaIdentity.missingIpsOrHostname',
+		});
 	});
 
 	it('rejects malformed per-IP EHLO JSON', () => {
