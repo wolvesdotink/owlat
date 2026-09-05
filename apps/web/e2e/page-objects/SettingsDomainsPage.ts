@@ -1,12 +1,31 @@
 import type { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 
-export class SettingsDomainsPage extends BasePage {
-	readonly addDomainButton: Locator;
+export type DomainKind = 'sending' | 'tracking';
 
-	constructor(page: Page) {
+/**
+ * The two domain lists on the Sending Domains settings page. Both are card
+ * rows fed by the same DomainsAddDomainForm modal; only the button labels and
+ * the accessible names of the row actions differ, so the kind is a parameter.
+ */
+const LABELS: Record<DomainKind, { add: string; remove: string; removeConfirm: RegExp }> = {
+	sending: { add: 'Add Domain', remove: 'Remove domain', removeConfirm: /Remove Domain/ },
+	tracking: {
+		add: 'Add Tracking Domain',
+		remove: 'Remove tracking domain',
+		removeConfirm: /Remove Tracking Domain/,
+	},
+};
+
+export class SettingsDomainsPage extends BasePage {
+	readonly kind: DomainKind;
+	/** The header button; the empty-state CTA shares its label, hence `.first()`. */
+	readonly addButton: Locator;
+
+	constructor(page: Page, kind: DomainKind = 'sending') {
 		super(page);
-		this.addDomainButton = page.getByRole('button', { name: 'Add Domain' });
+		this.kind = kind;
+		this.addButton = page.getByRole('button', { name: LABELS[kind].add }).first();
 	}
 
 	async goto() {
@@ -15,22 +34,10 @@ export class SettingsDomainsPage extends BasePage {
 	}
 
 	async addDomain(domain: string) {
-		await this.addDomainButton.click();
+		await this.addButton.click();
 		await this.waitForModal();
-		await this.modal.locator('#domain-name').fill(domain);
-		await this.clickModalButton(/Add Domain/);
-		await this.waitForModalClose();
-	}
-
-	async deleteDomain(domain: string) {
-		// Each domain is a card row; find the one containing the domain text
-		const domainCard = this.page.locator('.card').filter({ hasText: domain });
-		// The remove button has title="Remove domain"
-		await domainCard.locator('button[title="Remove domain"]').click();
-		// UiConfirmationDialog opens via UiModal (role="dialog")
-		await this.waitForModal();
-		// Confirm button text is "Remove Domain"
-		await this.clickModalButton(/Remove Domain/);
+		await this.modal.getByTestId('domain-input').fill(domain);
+		await this.clickModalButton(LABELS[this.kind].add);
 		await this.waitForModalClose();
 	}
 
@@ -38,14 +45,23 @@ export class SettingsDomainsPage extends BasePage {
 		return this.page.locator('.card').filter({ hasText: domain });
 	}
 
-	async verifyDomain(domain: string) {
-		const domainCard = this.getDomainCard(domain);
-		await domainCard.getByRole('button', { name: /Verify/ }).click();
+	async deleteDomain(domain: string) {
+		await this.getDomainCard(domain)
+			.getByRole('button', { name: LABELS[this.kind].remove })
+			.click();
+		await this.waitForModal();
+		await this.clickModalButton(LABELS[this.kind].removeConfirm);
+		await this.waitForModalClose();
 	}
 
+	async verifyDomain(domain: string) {
+		await this.getDomainCard(domain)
+			.getByRole('button', { name: /Verify|Check DNS/ })
+			.click();
+	}
+
+	/** Toggle the row's disclosure by its header. */
 	async expandDomain(domain: string) {
-		const domainCard = this.getDomainCard(domain);
-		// Click the domain header row to toggle expansion
-		await domainCard.locator('.cursor-pointer').click();
+		await this.getDomainCard(domain).locator('.cursor-pointer').first().click();
 	}
 }

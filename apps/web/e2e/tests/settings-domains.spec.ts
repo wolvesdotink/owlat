@@ -15,7 +15,7 @@ test.describe('Settings — Sending Domains', () => {
 		});
 
 		// The "Add Domain" button should be present
-		await expect(domainsPage.addDomainButton).toBeVisible();
+		await expect(domainsPage.addButton).toBeVisible();
 	});
 
 	test('add a new domain', async ({ page }) => {
@@ -27,14 +27,14 @@ test.describe('Settings — Sending Domains', () => {
 	});
 
 	test('empty domain shows validation error', async ({ page }) => {
-		await domainsPage.addDomainButton.click();
+		await domainsPage.addButton.click();
 		await domainsPage.waitForModal();
 
 		// Try to submit without entering a domain
 		await domainsPage.clickModalButton(/Add Domain/);
 
 		// Validation error should appear inside the modal
-		await expect(domainsPage.modal.getByText('Domain is required')).toBeVisible({
+		await expect(domainsPage.modal.getByTestId('domain-error')).toHaveText('Enter your domain', {
 			timeout: 10_000,
 		});
 	});

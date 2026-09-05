@@ -1,8 +1,7 @@
 import type { Page, Locator } from '@playwright/test';
+import { BasePage } from './BasePage';
 
-export class CampaignWizardPage {
-	readonly page: Page;
-
+export class CampaignWizardPage extends BasePage {
 	// Setup step (basics fields)
 	readonly campaignNameInput: Locator;
 	readonly fromNameInput: Locator;
@@ -15,7 +14,7 @@ export class CampaignWizardPage {
 	readonly cancelButton: Locator;
 
 	constructor(page: Page) {
-		this.page = page;
+		super(page);
 
 		// Setup step fields (using id selectors from SetupStep.vue)
 		this.campaignNameInput = page.locator('#campaignName');
@@ -51,10 +50,5 @@ export class CampaignWizardPage {
 
 	async submitBasicsStep() {
 		await this.nextButton.click();
-	}
-
-	async getValidationErrors() {
-		// Error messages are <p> tags with text-error class (not the <span> asterisks)
-		return this.page.locator('p.text-error').allTextContents();
 	}
 }
