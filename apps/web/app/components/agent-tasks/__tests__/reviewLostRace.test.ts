@@ -143,6 +143,7 @@ describe('browse list — a lost-race approve', () => {
 					...passthroughStubs,
 					ReviewQueueHeader: true,
 					ReviewBulkActionBar: true,
+					UiEmptyState: true,
 					TaskCardShell: { template: '<li><slot /></li>' },
 					ReviewBrowseCard: true,
 				},

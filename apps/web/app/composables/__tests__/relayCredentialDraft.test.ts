@@ -59,7 +59,11 @@ describe('the transport picker', () => {
 		// the one thing this pin has to be able to disagree with. The picker's
 		// own-arm option is an instruction rather than a name and is the ONE copy
 		// override left in the draft; every relay takes the entry's label.
-		expect(TRANSPORT_EDITOR_PROVIDER_OPTIONS.map((option) => t(option.label))).toEqual([
+		expect(
+			TRANSPORT_EDITOR_PROVIDER_OPTIONS.map((option) =>
+				option.labelKey ? t(option.labelKey) : option.label
+			)
+		).toEqual([
 			'Run your own MTA',
 			'Amazon SES',
 			'SMTP relay',
@@ -71,9 +75,10 @@ describe('the transport picker', () => {
 
 	it('takes every RELAY’s label from the catalog, not from a second copy', () => {
 		for (const option of RELAY_PROVIDER_OPTIONS) {
-			// A catalog label carries no message of its own, so `t()` hands it back
-			// unchanged — the rendered name is still the entry's.
-			expect(t(option.label)).toBe(coreSendProviderCatalogEntry(option.value)?.label);
+			// A catalog label is display text, not a message key: the picker renders
+			// it as-is, and no relay carries a `labelKey` that would replace it.
+			expect(option.label).toBe(coreSendProviderCatalogEntry(option.value)?.label);
+			expect(option.labelKey).toBeUndefined();
 		}
 	});
 

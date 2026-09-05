@@ -14,6 +14,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { withSetup } from '~/__tests__/withSetup';
 import { createTestI18n } from '~/__tests__/i18n';
 import { formatCompactFileSize, formatDate } from '~/utils/formatters';
 
@@ -73,11 +74,13 @@ beforeEach(() => {
 
 async function makeAttachments(bodyHtml = ref('<p>Numbers attached.</p>')) {
 	const { usePostboxComposeAttachments } = await import('../usePostboxComposeAttachments');
-	const composable = usePostboxComposeAttachments({
-		ensureDraft: async () => 'd1' as never,
-		draftId: ref('d1' as never),
-		bodyHtml,
-	});
+	const composable = withSetup(() =>
+		usePostboxComposeAttachments({
+			ensureDraft: async () => 'd1' as never,
+			draftId: ref('d1' as never),
+			bodyHtml,
+		})
+	).result;
 	composable.attachments.value = [
 		{
 			storageId: 'st-1',

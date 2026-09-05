@@ -25,6 +25,7 @@ import RampDecreaseNotices from '../RampDecreaseNotices.vue';
 import RampDecisionTimeline from '../RampDecisionTimeline.vue';
 import RampPresetPicker from '../RampPresetPicker.vue';
 import ControlsPage from '~/pages/dashboard/admin/delivery/advanced/controls.vue';
+import ErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import {
 	rampRefusalSentence,
@@ -496,6 +497,7 @@ describe('control refusals', () => {
 		},
 		components: {
 			UiQueryBoundary: QueryBoundary,
+			UiErrorAlert: ErrorAlert,
 			DeliveryRampCellControls: RampCellControls,
 			DeliveryRampDecreaseNotices: RampDecreaseNotices,
 			DeliveryRampPresetPicker: RampPresetPicker,

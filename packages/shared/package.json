@@ -292,6 +292,10 @@
 		"./dnsZone": {
 			"types": "./src/dnsZone.ts",
 			"import": "./src/dnsZone.ts"
+		},
+		"./utils/guards": {
+			"types": "./src/utils/guards.ts",
+			"import": "./src/utils/guards.ts"
 		}
 	},
 	"scripts": {

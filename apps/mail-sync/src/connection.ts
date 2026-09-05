@@ -13,6 +13,7 @@
  */
 
 import { ImapFlow } from 'imapflow';
+import { sleep } from '@owlat/shared';
 import type {
 	BackfillWork,
 	ConnectableAccount,
@@ -60,10 +61,6 @@ function isAuthError(err: unknown): boolean {
 		msg.includes('login failed') ||
 		msg.includes('[alert] invalid')
 	);
-}
-
-function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class AccountConnection {
@@ -127,7 +124,7 @@ export class AccountConnection {
 				}
 				logger.warn({ accountId: this.account.accountId, err }, 'connect failed; backing off');
 				await this.setStatus('error', message);
-				await delay(this.backoffMs + Math.floor(Math.random() * 1000));
+				await sleep(this.backoffMs + Math.floor(Math.random() * 1000));
 				this.backoffMs = Math.min(this.backoffMs * 2, MAX_BACKOFF_MS);
 			}
 		}

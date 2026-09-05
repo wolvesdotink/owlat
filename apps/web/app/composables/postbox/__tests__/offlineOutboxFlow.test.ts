@@ -19,7 +19,7 @@
  * behind both useBackendOperation (compose side) and useConvex (drain side).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, nextTick } from 'vue';
+import { effectScope, ref, nextTick } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 
 // The composables under test are stood up OUTSIDE a component setup here, so
@@ -306,7 +306,7 @@ function goOnline() {
 
 async function makeComposer(fields?: { subject?: string; to?: string[]; body?: string }) {
 	const { usePostboxCompose } = await import('../usePostboxCompose');
-	const composer = usePostboxCompose({ mailboxId: 'mbx-1' as never });
+	const composer = effectScope().run(() => usePostboxCompose({ mailboxId: 'mbx-1' as never }))!;
 	composer.toAddresses.value = fields?.to ?? ['rcpt@example.com'];
 	composer.subject.value = fields?.subject ?? 'Hello';
 	composer.bodyHtml.value = fields?.body ?? '<p>Body</p>';
@@ -401,10 +401,12 @@ describe('offline undo', () => {
 
 		// Attachment refs only exist once committed to a server draft, so the
 		// realistic shape is a draft that went offline before its send.
-		const composer = usePostboxCompose({
-			mailboxId: 'mbx-1' as never,
-			draftId: 'draft-7' as never,
-		});
+		const composer = effectScope().run(() =>
+			usePostboxCompose({
+				mailboxId: 'mbx-1' as never,
+				draftId: 'draft-7' as never,
+			})
+		)!;
 		composer.toAddresses.value = ['rcpt@example.com'];
 		composer.subject.value = 'With the invoice';
 		composer.attachments.value = [attachment];
@@ -416,13 +418,15 @@ describe('offline undo', () => {
 		const item = await outbox.undoQueuedSend(undoToken);
 
 		// Exactly the seed PostboxUndoSendToast hands stack.open().
-		const reopened = usePostboxCompose({
-			mailboxId: 'mbx-1' as never,
-			draftId: item!.payload.draftId as never,
-			prefillTo: item!.payload.toAddresses,
-			prefillSubject: item!.payload.subject,
-			prefillAttachments: item!.payload.attachments,
-		});
+		const reopened = effectScope().run(() =>
+			usePostboxCompose({
+				mailboxId: 'mbx-1' as never,
+				draftId: item!.payload.draftId as never,
+				prefillTo: item!.payload.toAddresses,
+				prefillSubject: item!.payload.subject,
+				prefillAttachments: item!.payload.attachments,
+			})
+		)!;
 		expect(reopened.attachments.value).toEqual([attachment]);
 
 		// The round trip is lossless: re-queuing keeps the files attached, so

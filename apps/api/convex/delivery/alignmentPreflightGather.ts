@@ -28,11 +28,11 @@ import {
 	ALIGNMENT_SWEEP_PAGE_SIZE,
 	dkimRecordName,
 	evaluateAlignmentPreflight,
-	normalizeDomain,
 	type AlignmentArm,
 	type AlignmentDnsFacts,
 	type DnsTxtObservation,
 } from '@owlat/shared/deliverabilityAlignment';
+import { normalizeDomain } from '@owlat/shared';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logWarn } from '../lib/runtimeLog';

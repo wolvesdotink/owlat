@@ -6,7 +6,8 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { execSync } from 'node:child_process';
-import { errorMessage, safeCompare } from './security.js';
+import { errorMessage } from '@owlat/shared';
+import { safeCompare } from './security.js';
 
 const INSTANCE_SECRET = process.env['INSTANCE_SECRET'];
 export const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';

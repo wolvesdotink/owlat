@@ -22,14 +22,12 @@ function mountHost(handler: (e: MouseEvent) => void): VueWrapper {
 	return wrapper;
 }
 
-afterEach(() => {
-	try {
-		wrapper?.unmount();
-	} catch {
-		// a test may have unmounted already
-	}
+function unmountHost(): void {
+	wrapper?.unmount();
 	wrapper = null;
-});
+}
+
+afterEach(unmountHost);
 
 describe('useClickOutside', () => {
 	it('fires the handler when the click lands outside the element', () => {
@@ -54,7 +52,7 @@ describe('useClickOutside', () => {
 		const handler = vi.fn();
 		const w = mountHost(handler);
 
-		w.unmount();
+		unmountHost();
 		document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
 		expect(handler).not.toHaveBeenCalled();

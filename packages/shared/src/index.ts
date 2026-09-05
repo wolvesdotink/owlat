@@ -112,7 +112,6 @@ export {
 	FCRDNS_FAILURE_REASONS,
 	FCRDNS_VERDICTS,
 	DEFAULT_GENERIC_PTR_SUFFIXES,
-	normalizeDnsName,
 	isFqdn,
 	isGenericPtrHostname,
 	verifyFcrdnsIdentity,

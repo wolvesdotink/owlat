@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import {
-	DEFAULT_TRUSTED_ARC_FORWARDERS,
-	isValidForwarderDomain,
-	normalizeDomain,
-} from '@owlat/shared/arcTrust';
+import { DEFAULT_TRUSTED_ARC_FORWARDERS, isValidForwarderDomain } from '@owlat/shared/arcTrust';
+import { normalizeDomain } from '@owlat/shared';
 
 /**
  * Trusted forwarders editor (Delivery → provider config), Sealed Mail A5.

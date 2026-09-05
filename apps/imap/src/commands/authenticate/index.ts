@@ -23,7 +23,7 @@
 
 import type { CommandSession, ImapCommandModule, ConnectionState } from '../types.js';
 import { syncSession } from '../helpers/session.js';
-import { sleep } from '../../rateLimit.js';
+import { sleep } from '@owlat/shared';
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 
@@ -143,7 +143,7 @@ export const authenticateModule: ImapCommandModule<AuthenticateArgs> = {
 						authCount: limit.authCount,
 						ipCount: limit.ipCount,
 					},
-					'AUTHENTICATE throttled — tarpitting',
+					'AUTHENTICATE throttled — tarpitting'
 				);
 				await sleep(Math.min(limit.tarpitMs, TARPIT_SLEEP_CAP_MS));
 				await deps.rateLimiter.recordFailure(deps.remoteIp, address);
@@ -153,11 +153,14 @@ export const authenticateModule: ImapCommandModule<AuthenticateArgs> = {
 			}
 
 			try {
-				const result = (await deps.convex.action(fn.verifyAppPassword as never, {
-					address,
-					password: decoded.password,
-					scope: 'imap',
-				} as never)) as VerifyAppPasswordResult | null;
+				const result = (await deps.convex.action(
+					fn.verifyAppPassword as never,
+					{
+						address,
+						password: decoded.password,
+						scope: 'imap',
+					} as never
+				)) as VerifyAppPasswordResult | null;
 
 				if (!result) {
 					logger.warn({ ip: deps.remoteIp, user: decoded.authcid }, 'AUTHENTICATE failed');
@@ -169,11 +172,14 @@ export const authenticateModule: ImapCommandModule<AuthenticateArgs> = {
 
 				// Best-effort touch — mirror LOGIN; don't block the OK on it.
 				deps.convex
-					.mutation(fn.touchAppPassword as never, {
-						appPasswordId: result.appPasswordId,
-						ip: deps.remoteIp,
-						...(state.clientId ? { userAgent: state.clientId } : {}),
-					} as never)
+					.mutation(
+						fn.touchAppPassword as never,
+						{
+							appPasswordId: result.appPasswordId,
+							ip: deps.remoteIp,
+							...(state.clientId ? { userAgent: state.clientId } : {}),
+						} as never
+					)
 					.catch(() => undefined);
 
 				const next: ConnectionState = {

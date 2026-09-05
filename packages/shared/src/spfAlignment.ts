@@ -21,13 +21,9 @@
  */
 
 import { getDomain } from 'tldts';
+import { normalizeDomain } from './utils/normalizeDomain';
 
 export type AlignmentMode = 'strict' | 'relaxed';
-
-/** Lowercase + strip a single trailing dot for comparison. */
-function normalizeDomain(domain: string): string {
-	return domain.trim().toLowerCase().replace(/\.$/, '');
-}
 
 /**
  * Organizational Domain used for relaxed alignment (RFC 7489 §3.2): the
