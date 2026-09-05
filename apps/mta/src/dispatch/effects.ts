@@ -32,6 +32,7 @@ import { logDeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import { queueConvexWebhook } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { IpPoolType, MtaWebhookEvent, MetricOutcome } from '../types.js';
 import {
@@ -282,17 +283,14 @@ async function applySecondary(
 	};
 	if (replayGuard) return replayGuard.runSecondary(`${index}:${effect.kind}`, apply);
 	if (effect.kind === 'log_delivery_event') {
-		fireAndForget(effect, deps);
+		void fireAndForget(
+			logDeliveryEvent(deps.redis, effect.event, deps.config),
+			logger,
+			'log_delivery_event'
+		);
 		return;
 	}
 	return apply();
-}
-
-function fireAndForget(
-	effect: Extract<DispatchEffect, { kind: 'log_delivery_event' }>,
-	deps: PhaseDeps
-): void {
-	logDeliveryEvent(deps.redis, effect.event, deps.config).catch(() => {});
 }
 
 /**

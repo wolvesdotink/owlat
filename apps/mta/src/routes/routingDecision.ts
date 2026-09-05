@@ -10,6 +10,8 @@ import {
 	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
 } from '@owlat/shared';
 import type { MtaConfig } from '../config.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
+import { logger } from '../monitoring/logger.js';
 import type { AuthContext } from '../server.js';
 import {
 	canSend,
@@ -381,25 +383,37 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 		} catch {
 			if (leaseToken) await redis.del(`${ROUTING_LEASE_PREFIX}${leaseToken}`).catch(() => 0);
 			if (providerProbe) {
-				await releaseHalfOpenProbe(
-					redis,
-					input.organizationId,
-					destination.providerKey,
-					input.messageId,
-					provider.generation
-				).catch(() => {});
+				await fireAndForget(
+					releaseHalfOpenProbe(
+						redis,
+						input.organizationId,
+						destination.providerKey,
+						input.messageId,
+						provider.generation
+					),
+					logger,
+					'release_provider_probe'
+				);
 			}
 			if (globalProbe) {
-				await releaseHalfOpenProbe(
-					redis,
-					input.organizationId,
-					undefined,
-					input.messageId,
-					currentGlobal.generation
-				).catch(() => {});
+				await fireAndForget(
+					releaseHalfOpenProbe(
+						redis,
+						input.organizationId,
+						undefined,
+						input.messageId,
+						currentGlobal.generation
+					),
+					logger,
+					'release_global_probe'
+				);
 			}
 			if (warmingReservation) {
-				await releaseWarmingSlot(redis, warmingReservation).catch(() => {});
+				await fireAndForget(
+					releaseWarmingSlot(redis, warmingReservation),
+					logger,
+					'release_warming_slot'
+				);
 			}
 			return decide(c, { decision: 'defer', reason: 'lease_persistence', retryAfterMs: 60_000 });
 		}

@@ -39,6 +39,7 @@ import { notifyConvex } from './webhooks/convexNotifier.js';
 import { sweepWebhookDlq } from './webhooks/dlqSweeper.js';
 import { logger } from './monitoring/logger.js';
 import { closeListenerSafely } from './lib/closeListenerSafely.js';
+import { fireAndForget } from './lib/fireAndForget.js';
 import { pathToFileURL } from 'node:url';
 
 export async function main() {
@@ -136,16 +137,17 @@ export async function main() {
 	// Recover routing/lifecycle callbacks automatically after a Convex outage.
 	// The sweep is bounded and leader-gated; exhausted entries remain available
 	// through the authenticated manual DLQ routes.
-	const webhookDlqInterval = setInterval(() => {
+	const webhookDlqInterval = setInterval(async () => {
 		if (!isLeader()) return;
-		void flushPendingIpReadinessAlerts(redis, config)
-			.then(() => sweepWebhookDlq(redis, config))
-			.catch(() =>
-				logger.error(
-					{ operation: 'convex_webhook_dlq', category: 'automatic_retry' },
-					'Automatic webhook recovery sweep failed'
-				)
+		try {
+			await flushPendingIpReadinessAlerts(redis, config);
+			await sweepWebhookDlq(redis, config);
+		} catch (err) {
+			logger.error(
+				{ err, operation: 'convex_webhook_dlq', category: 'automatic_retry' },
+				'Automatic webhook recovery sweep failed'
 			);
+		}
 	}, 60_000);
 
 	// ── 7. Start HTTP server ──
@@ -202,12 +204,15 @@ export async function main() {
 
 	// ── 10b. Re-verify outbound identity hourly (leader only) ──
 	const fcrdnsInterval = setInterval(
-		() => {
+		async () => {
 			if (!isLeader()) return;
-			void runSourceAddressReadinessCheck(redis, config)
-				.then(() => runFcrdnsReadinessCheck(redis, config))
-				.then(() => runIpv6SpfReadinessCheck(redis, config))
-				.catch((err) => logger.error({ err }, 'Periodic outbound-IP readiness check failed'));
+			try {
+				await runSourceAddressReadinessCheck(redis, config);
+				await runFcrdnsReadinessCheck(redis, config);
+				await runIpv6SpfReadinessCheck(redis, config);
+			} catch (err) {
+				logger.error({ err }, 'Periodic outbound-IP readiness check failed');
+			}
 		},
 		60 * 60 * 1000
 	);
@@ -279,18 +284,22 @@ export async function main() {
 	// customer's `dnsRecords` + `verifyDomain` track the rotated key (RFC 6376
 	// §3.6.1). Fire-and-forget with the notifier's own retry/DLQ.
 	const notifyDkimRotation: DkimRotationNotifier = async (rotation) => {
-		await notifyConvex(
-			{
-				event: 'dkim.rotated',
-				domain: rotation.domain,
-				selector: rotation.selector,
-				dnsRecord: rotation.dnsRecord,
-				phase: rotation.phase,
-				timestamp: Date.now(),
-			},
-			config,
-			redis
-		).catch(() => {});
+		await fireAndForget(
+			notifyConvex(
+				{
+					event: 'dkim.rotated',
+					domain: rotation.domain,
+					selector: rotation.selector,
+					dnsRecord: rotation.dnsRecord,
+					phase: rotation.phase,
+					timestamp: Date.now(),
+				},
+				config,
+				redis
+			),
+			logger,
+			'dkim_rotation_notify'
+		);
 	};
 	const dkimRotationInterval = setInterval(
 		async () => {

@@ -30,6 +30,7 @@ import { extractDomain, buildGroupKey } from './groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
 import { recordWorkerHeartbeat } from '../routes/health.js';
 import { logger } from '../monitoring/logger.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
 import { runPipeline } from '../dispatch/pipeline.js';
 import { mainPipeline } from '../dispatch/phases/index.js';
 import type { DispatchOutcome } from '../dispatch/outcome.js';
@@ -108,7 +109,7 @@ export async function handleEmailJob(
 		'Processing email job'
 	);
 
-	recordWorkerHeartbeat(redis, config.serverId).catch(() => {});
+	void fireAndForget(recordWorkerHeartbeat(redis, config.serverId), logger, 'worker_heartbeat');
 
 	const baseCtx: BasePhaseCtx = {
 		job: data,
