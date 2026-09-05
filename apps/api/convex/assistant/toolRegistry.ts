@@ -29,6 +29,7 @@
 
 import type { Tool, ToolExecuteFunction } from 'ai';
 import type { ActionCtx } from '../_generated/server';
+import { isPlainObject } from '@owlat/shared';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { scrubForInjection } from './prompt';
 
@@ -67,18 +68,6 @@ export interface HostedAssistantToolModule {
 
 /** Resolved feature-flag state as returned by the host's flag resolver. */
 export type ResolvedFlags = Readonly<Record<string, boolean>>;
-
-/**
- * True for a *plain* object — a `{}` literal or `Object.create(null)`. Class
- * instances (`Date`, `Map`, custom classes) and other exotic objects are not
- * plain: recursing into them with `Object.entries` would flatten them to `{}`
- * and discard the value. `scrubToolOutput` only recurses into plain objects (and
- * arrays) and passes everything else through untouched.
- */
-function isPlainObject(value: object): value is Record<string, unknown> {
-	const proto = Object.getPrototypeOf(value);
-	return proto === Object.prototype || proto === null;
-}
 
 /** True for an async-iterable value (a streaming tool result). */
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
@@ -123,7 +112,9 @@ export function hasFlaggedModule(modules: readonly HostedAssistantToolModule[]):
 export function scrubToolOutput(value: unknown): unknown {
 	if (typeof value === 'string') return scrubForInjection(value);
 	if (Array.isArray(value)) return value.map(scrubToolOutput);
-	if (value !== null && typeof value === 'object' && isPlainObject(value)) {
+	// Only plain objects are recursed into: `Object.entries` on a Date or Map
+	// would flatten it to `{}` and discard the value.
+	if (isPlainObject(value)) {
 		return Object.fromEntries(
 			Object.entries(value).map(([key, entry]) => [key, scrubToolOutput(entry)])
 		);

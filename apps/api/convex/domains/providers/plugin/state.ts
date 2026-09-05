@@ -20,7 +20,7 @@ import {
 	PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS,
 	PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH,
 } from '@owlat/plugin-kit';
-import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
+import { isRecord, MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import { parseStoredProviderDetails } from '../relayIdentityProviderDetails';
 import type { RelayIdentityStatus } from '../types';
 
