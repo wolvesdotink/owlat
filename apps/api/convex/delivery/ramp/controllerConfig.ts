@@ -22,6 +22,7 @@
  */
 
 import { readStoredInstant } from './controllerReaders';
+import { DAY_MS, HOUR_MS } from '../../lib/constants';
 
 /**
  * THE COOLDOWN LADDER'S INPUTS, and nothing else.
@@ -43,9 +44,6 @@ export interface RampCooldownState {
 	/** The cooldown length that produced the current freeze (the ladder position). */
 	readonly cooldownMs: number | undefined;
 }
-
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 
 export interface RampAimdConfig {
 	/** Multiplicative decrease applied the instant any gate breaches. */
@@ -197,7 +195,7 @@ export const RAMP_INITIAL_PHASE_CEILING: number = RAMP_PHASE_CEILINGS[0];
  * hand a cell a ceiling nobody promoted it to.
  */
 export function normalizePhaseCeiling(value: number | undefined | null): number {
-	if (value === undefined || value === null || !Number.isFinite(value)) {
+	if (value == null || !Number.isFinite(value)) {
 		return RAMP_INITIAL_PHASE_CEILING;
 	}
 	let resolved = RAMP_INITIAL_PHASE_CEILING;

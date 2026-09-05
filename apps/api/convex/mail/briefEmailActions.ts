@@ -18,6 +18,7 @@
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { EditorBlock } from '@owlat/shared';
+import { escapeHtml } from '@owlat/shared/html';
 import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
 import { buildMessageId, buildRfc822, type DraftRow } from './rfc822';
 import { getOptional } from '../lib/env';
@@ -27,14 +28,6 @@ import { dailyBriefEmailCopy, systemEmailLocale } from '../lib/systemEmailCopy';
 
 /** Snippet length that matches what the delivery pipeline stores elsewhere. */
 const SNIPPET_LENGTH = 200;
-
-function escapeHtml(value: string): string {
-	return value
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;');
-}
 
 /**
  * The brief as renderer blocks.

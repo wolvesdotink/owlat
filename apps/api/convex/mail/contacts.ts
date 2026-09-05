@@ -12,6 +12,7 @@ import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { normalizeEmail } from '@owlat/shared';
+import { DAY_MS } from '../lib/constants';
 
 // ─── Pure frecency ranking (recency × frequency blend) ───────────────────────
 // Exported for unit tests. The autocomplete ordering blends how *recently* a
@@ -24,8 +25,6 @@ export interface RankableContact {
 	useCount: number;
 	lastUsedAt: number;
 }
-
-const DAY_MS = 86_400_000;
 
 /** Blended frecency score — higher sorts first. Pure/deterministic given `now`. */
 export function contactFrecencyScore(

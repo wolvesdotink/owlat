@@ -23,6 +23,7 @@ import {
 	SEED_REFERENCE_TOLERANCE,
 } from '@owlat/shared/seedPlacement';
 import type { RampGateId } from './gateTypes';
+import { DAY_MS, HOUR_MS } from '../../lib/constants';
 
 /** A rate in [0, 1]. 0.02 means 2%. */
 export type RateFraction = number & { readonly __unit: 'rate_fraction' };
@@ -249,9 +250,6 @@ export interface RampGateThresholds {
 	 */
 	readonly maxFutureSkewMs: number;
 }
-
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 
 export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 	hardBounceMax: rateFraction(0.02),

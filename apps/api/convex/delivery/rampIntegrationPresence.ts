@@ -24,7 +24,7 @@ import {
 	deliverabilityCellKey,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
-import { MS_PER_DAY } from '../lib/constants';
+import { DAY_MS } from '../lib/constants';
 import { summarizeTransportOutcomes } from '../analytics/transportOutcomes';
 import type { TransportOutcomeSummary } from '../analytics/transportOutcomeSummary';
 import { RAMP_AIMD } from './ramp/controllerConfig';
@@ -48,7 +48,7 @@ import type { RampReadCtx } from './rampReadCtx';
  * this piece exists to prevent. Three days is the smallest window that still
  * tolerates the feeds' own jitter; the boundary is fixture-pinned.
  */
-export const RAMP_INTEGRATION_FRESHNESS_MS = 3 * MS_PER_DAY;
+export const RAMP_INTEGRATION_FRESHNESS_MS = 3 * DAY_MS;
 
 /**
  * How far back a cell's reference arm is looked for.

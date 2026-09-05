@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { unifiedMessageChannelValidator } from '../lib/convexValidators';
+import { unifiedMessageChannelValidator, messageDirectionValidator } from '../lib/convexValidators';
 
 /**
  * Multi-channel messaging tables — unified inbox for all channels + per-channel config.
@@ -12,7 +12,7 @@ export const messagingTables = {
 	unifiedMessages: defineTable({
 		threadId: v.id('conversationThreads'),
 		channel: unifiedMessageChannelValidator,
-		direction: v.union(v.literal('inbound'), v.literal('outbound')),
+		direction: messageDirectionValidator,
 		// Sender/recipient
 		contactId: v.optional(v.id('contacts')),
 		memberId: v.optional(v.string()), // Internal sender (BetterAuth user ID)

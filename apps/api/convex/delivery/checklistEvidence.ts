@@ -1,7 +1,6 @@
-import { v, type Validator } from 'convex/values';
+import { v } from 'convex/values';
 import {
 	DELIVERABILITY_CHECKLIST,
-	DELIVERABILITY_CHECKLIST_STATUSES,
 	DELIVERABILITY_DIAGNOSTIC_LENGTH,
 	DELIVERABILITY_OBSERVED_VALUE_LENGTH,
 	DELIVERABILITY_OBSERVED_VALUE_LIMIT,
@@ -12,6 +11,7 @@ import {
 import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
+import { deliverabilityStatusValidator, literalUnion } from '../lib/convexValidators';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
 import { checklistTraits } from './checklistTraits';
 import { resolveDeliverabilityAlert } from './checklistAlertResolution';
@@ -37,20 +37,12 @@ export function nextDnsRetry(
 	};
 }
 
-function literalUnion<const T extends readonly [string, ...string[]]>(values: T) {
-	const [first, ...rest] = values;
-	return v.union(v.literal(first), ...rest.map((value) => v.literal(value))) as Validator<
-		T[number]
-	>;
-}
-
 export const deliverabilityCheckIdValidator = literalUnion(
 	DELIVERABILITY_CHECKLIST.map((item) => item.id) as [
 		DeliverabilityCheckId,
 		...DeliverabilityCheckId[],
 	]
 );
-export const deliverabilityStatusValidator = literalUnion(DELIVERABILITY_CHECKLIST_STATUSES);
 
 export function deliverabilityTargetKey(organizationId: string, domainId?: Id<'domains'>): string {
 	return domainId

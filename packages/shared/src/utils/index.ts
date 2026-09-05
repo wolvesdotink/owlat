@@ -4,7 +4,7 @@ export { sanitizeCsvCell } from './csv';
 export { gradientToCss, gradientToCssOrUndefined } from './gradient';
 export { generateId } from './id';
 export { errorMessage, normalizeError } from './errors';
-export { isRecord } from './guards';
+export { isPlainObject, isRecord } from './guards';
 export { normalizeDomain } from './normalizeDomain';
 export { sleep } from './sleep';
 export { createAdminConvexClient } from './convexAdminClient';

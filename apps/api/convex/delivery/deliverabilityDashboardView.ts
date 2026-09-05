@@ -51,9 +51,9 @@ import {
 import type { RampGateConfidence, RampGateEvaluation, RampGateResult } from './ramp/gateTypes';
 import { RAMP_GATE_SAMPLE_FLOORS } from './ramp/gateConfig';
 import { weakestConfidence } from './ramp/gateGrades';
+import { DAY_MS } from '../lib/constants';
 
 /** Declared ONCE for the whole feature; the query shell imports it from here. */
-export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** How many days of trend the screen renders at most — one bounded series. */
 export const DASHBOARD_MAX_TREND_DAYS = 30;

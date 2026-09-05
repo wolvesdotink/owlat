@@ -225,7 +225,7 @@ export const suggestReplies = authedAction({
 });
 
 /** Hard cap on a user question so a pasted wall of text can't blow the budget. */
-const MAX_QUESTION_CHARS = 2000;
+const MAX_ASK_QUESTION_CHARS = 2000;
 /** How many prior Q/A turns of the (client-held, unpersisted) history to include. */
 const MAX_HISTORY_TURNS = 6;
 
@@ -247,7 +247,7 @@ export function buildAskThreadPrompt(args: {
 	question: string;
 	history?: { question: string; answer: string }[];
 }): { system: string; prompt: string } {
-	const question = args.question.slice(0, MAX_QUESTION_CHARS);
+	const question = args.question.slice(0, MAX_ASK_QUESTION_CHARS);
 	const priorTurns = (args.history ?? []).slice(-MAX_HISTORY_TURNS);
 	const historySection = priorTurns.length
 		? '\n\nEarlier in this conversation:\n' +

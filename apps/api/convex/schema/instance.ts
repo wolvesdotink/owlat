@@ -1,6 +1,10 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { jsonPrimitiveRecord, updateStepResultValidator } from '../lib/convexValidators';
+import {
+	jsonPrimitiveRecord,
+	mtaStsModeValidator,
+	updateStepResultValidator,
+} from '../lib/convexValidators';
 import { sealPolicyValidator } from '../mail/sealPolicy';
 import {
 	embeddingProviderKindValidator,
@@ -60,7 +64,7 @@ export const instanceTables = {
 		// host is the deployment's own EHLO_HOSTNAME; the policy body + id are
 		// derived by `@owlat/shared/mtaStsPolicy`. Admin-gated write via
 		// `settings.update`, served publicly by the `getMtaStsPolicy` query.
-		mtaStsMode: v.optional(v.union(v.literal('none'), v.literal('testing'), v.literal('enforce'))),
+		mtaStsMode: v.optional(mtaStsModeValidator),
 		// Sealed Mail (E3) org-level sealing policy (locked decision D2): `auto`
 		// seals whenever every recipient has a usable pinned key, `ask` defers to
 		// the composer opt-in (E5), `off` never seals. Unset ⇒ `auto`. Admin-gated

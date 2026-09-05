@@ -16,13 +16,10 @@
  */
 import { v } from 'convex/values';
 import { getOptional } from './lib/env';
-import {
-	internalMutation,
-	internalQuery,
-} from './_generated/server';
+import { internalMutation, internalQuery } from './_generated/server';
 import { authedAction, authedQuery } from './lib/authedFunctions';
 import { internal } from './_generated/api';
-import { requirePlatformAdmin } from "./platformAdmin/platformAdmin";
+import { requirePlatformAdmin } from './platformAdmin/platformAdmin';
 import { updateStepResultValidator } from './lib/convexValidators';
 import { requireAuthenticatedIdentity } from './lib/sessionOrganization';
 import { throwForbidden, throwInternal } from './_utils/errors';
@@ -187,13 +184,13 @@ export const recordUpdateStart = internalMutation({
 		console.info(
 			JSON.stringify({
 				event: 'update_start',
-				runId: String(runId),
+				runId: runId,
 				versionFrom: args.versionFrom,
 				versionTo: args.versionTo,
 				initiatedBy: args.initiatedBy,
 				startedAt,
 				timestamp: new Date(startedAt).toISOString(),
-			}),
+			})
 		);
 		return runId;
 	},
@@ -225,7 +222,7 @@ export const recordUpdateFinish = internalMutation({
 		console.info(
 			JSON.stringify({
 				event: 'update_finish',
-				runId: String(args.runId),
+				runId: args.runId,
 				versionFrom: run?.versionFrom,
 				versionTo: run?.versionTo,
 				status: args.status,
@@ -233,7 +230,7 @@ export const recordUpdateFinish = internalMutation({
 				initiatedBy: run?.initiatedBy,
 				error: args.error,
 				timestamp: new Date(finishedAt).toISOString(),
-			}),
+			})
 		);
 	},
 });
@@ -303,9 +300,12 @@ export const checkForUpdates = authedAction({
 		// Action context — can't call requirePlatformAdmin (needs QueryCtx).
 		// Verify admin via internal query instead.
 		const identity = await requireAuthenticatedIdentity(ctx);
-		const isAdmin = await ctx.runQuery(internal.platformAdmin.platformAdmin.isPlatformAdminByUserId, {
-			authUserId: identity.subject,
-		});
+		const isAdmin = await ctx.runQuery(
+			internal.platformAdmin.platformAdmin.isPlatformAdminByUserId,
+			{
+				authUserId: identity.subject,
+			}
+		);
 		if (!isAdmin) {
 			throwForbidden('Platform admin access required');
 		}
@@ -316,7 +316,7 @@ export const checkForUpdates = authedAction({
 		const cached = await ctx.runQuery(internal.systemUpdates.getLatestCheckInternal);
 		const now = Date.now();
 
-		if (!args.force && cached?.checkedAt && (now - cached.checkedAt) < CHECK_CACHE_TTL_MS) {
+		if (!args.force && cached?.checkedAt && now - cached.checkedAt < CHECK_CACHE_TTL_MS) {
 			const latestVersion = cached.latestVersion ?? null;
 			return {
 				latestVersion,
@@ -333,7 +333,7 @@ export const checkForUpdates = authedAction({
 		try {
 			const resp = await fetch(GITHUB_RELEASES_URL, {
 				headers: {
-					'Accept': 'application/vnd.github+json',
+					Accept: 'application/vnd.github+json',
 					'User-Agent': `owlat-selfhost/${currentVersion}`,
 					'X-GitHub-Api-Version': '2022-11-28',
 				},
@@ -360,7 +360,7 @@ export const checkForUpdates = authedAction({
 				throwInternal(`GitHub API returned ${resp.status}`);
 			}
 
-			const release = await resp.json() as {
+			const release = (await resp.json()) as {
 				tag_name?: string;
 				body?: string;
 				published_at?: string;

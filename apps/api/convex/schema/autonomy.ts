@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { reviewActionValidator } from '../lib/convexValidators';
 
 /**
  * Autonomy / graduated-trust tables — the safety + graduation machinery that
@@ -153,7 +154,7 @@ export const autonomyTables = {
 	autonomyFeedback: defineTable({
 		ruleId: v.optional(v.id('autonomyRules')),
 		category: v.string(),
-		action: v.union(v.literal('approved'), v.literal('rejected'), v.literal('edited')),
+		action: reviewActionValidator,
 		agentConfidence: v.number(),
 		userFeedback: v.optional(v.string()),
 		inboundMessageId: v.optional(v.id('inboundMessages')),
@@ -203,9 +204,7 @@ export const autonomyTables = {
 		draftQualityScore: v.optional(v.number()),
 		shadowDraft: v.string(), // draft snapshot at decision time
 		isResolved: v.boolean(), // reconciled against a human action yet?
-		userAction: v.optional(
-			v.union(v.literal('approved'), v.literal('rejected'), v.literal('edited'))
-		),
+		userAction: v.optional(reviewActionValidator),
 		isMatched: v.optional(v.boolean()), // would-have-sent AND human approved unedited
 		similarity: v.optional(v.number()), // shadowDraft vs. final human draft
 		createdAt: v.number(),

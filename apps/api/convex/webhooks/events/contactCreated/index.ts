@@ -8,19 +8,12 @@
 import { v, type Infer } from 'convex/values';
 import type { Id } from '../../../_generated/dataModel';
 import type { WebhookEventModule } from '../../types';
-
-const sourceValidator = v.union(
-	v.literal('api'),
-	v.literal('import'),
-	v.literal('form'),
-	v.literal('transactional'),
-	v.literal('inbound')
-);
+import { contactSourceValidator } from '../../../contacts/resolution';
 
 const schema = v.object({
 	contactId: v.string(),
 	email: v.string(),
-	source: sourceValidator,
+	source: contactSourceValidator,
 	timestamp: v.string(),
 });
 
@@ -33,18 +26,14 @@ interface Input {
 	at: number;
 }
 
-export const contactCreated: WebhookEventModule<
-	'contact.created',
-	Input,
-	Data
-> = {
+export const contactCreated: WebhookEventModule<'contact.created', Input, Data> = {
 	literal: 'contact.created',
 	description: 'New contact added to the organization',
 	isSubscribable: true,
 	schema,
 	build(input) {
 		return {
-			contactId: String(input.contactId),
+			contactId: input.contactId,
 			email: input.email,
 			source: input.source,
 			timestamp: new Date(input.at).toISOString(),

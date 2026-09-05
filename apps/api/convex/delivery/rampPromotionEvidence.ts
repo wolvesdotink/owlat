@@ -21,7 +21,7 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { isSeedPlacementReached } from '@owlat/shared/seedPlacement';
 import type { Doc } from '../_generated/dataModel';
-import { MS_PER_DAY } from '../lib/constants';
+import { DAY_MS } from '../lib/constants';
 import { startOfDayUtc } from '../lib/clock';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import {
@@ -37,9 +37,9 @@ import { PROMOTION_BASE_DWELL_MS, type RampPromotionEvidence } from './ramp/phas
 import type { RampDegradation } from './ramp/degradation';
 
 /** How far back the evidence readers look. One week, the plan's window. */
-const EVIDENCE_WINDOW_MS = 7 * MS_PER_DAY;
+const EVIDENCE_WINDOW_MS = 7 * DAY_MS;
 /** DNSBL day coverage the streak condition needs. Two weeks, plus slack. */
-const DNSBL_WINDOW_MS = 21 * MS_PER_DAY;
+const DNSBL_WINDOW_MS = 21 * DAY_MS;
 /** Bounded scans — a promotion must never be able to read an unbounded table. */
 const SCAN_LIMIT = 64;
 const DECISION_SCAN_LIMIT = 600;

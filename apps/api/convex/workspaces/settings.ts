@@ -24,6 +24,7 @@
 import { v } from 'convex/values';
 import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
 import { sealPolicyValidator } from '../mail/sealPolicy';
+import { mtaStsModeValidator } from '../lib/convexValidators';
 import { internalMutation, internalQuery } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
@@ -55,7 +56,7 @@ export const update = authedMutation({
 		isCustomCampaignSendersAllowed: v.optional(v.boolean()),
 		// MTA-STS publishing posture for inbound mail (RFC 8461). Defaults to
 		// `none` (nothing published) — step through `testing` before `enforce`.
-		mtaStsMode: v.optional(v.union(v.literal('none'), v.literal('testing'), v.literal('enforce'))),
+		mtaStsMode: v.optional(mtaStsModeValidator),
 		// Trusted ARC forwarders (Sealed Mail A5) — domains whose validated ARC seal
 		// rescues an inbound DMARC fail. Unset keeps the seeded default list; an
 		// explicit `[]` turns the override off.

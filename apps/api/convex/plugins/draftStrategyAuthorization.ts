@@ -7,6 +7,7 @@ import {
 	recordHostedContributionOutcome,
 	type HostedContributionAuthorizationSpec,
 } from './hostedContributionAuthorization';
+import { completedOrFailedValidator } from '../lib/convexValidators';
 
 /**
  * Runtime authorization seam for plugin-contributed draft strategies. A denial
@@ -31,7 +32,7 @@ export const recordOutcome = internalMutation({
 	args: {
 		pluginId: v.string(),
 		strategyKind: v.string(),
-		outcome: v.union(v.literal('completed'), v.literal('failed')),
+		outcome: completedOrFailedValidator,
 		reasonCode: v.optional(
 			v.union(
 				v.literal('draft_strategy_failed'),

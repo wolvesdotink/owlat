@@ -1,3 +1,4 @@
+import { DAY_MS } from './constants';
 /**
  * DST-correct send-time scheduling for timezone-staggered campaigns.
  *
@@ -7,8 +8,6 @@
  * year, and the requested wall-clock hour was ignored entirely. We compute the
  * absolute UTC instant of the next `hour:minute` local occurrence per zone.
  */
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 type WallClock = {
 	year: number;
@@ -46,7 +45,14 @@ function zoneOffsetMs(instant: number, timeZone: string): number {
 }
 
 /** The UTC instant at which `timeZone`'s wall clock reads y-mo-d hh:mm:00. */
-function wallClockToUtc(timeZone: string, y: number, mo: number, d: number, h: number, mi: number): number {
+function wallClockToUtc(
+	timeZone: string,
+	y: number,
+	mo: number,
+	d: number,
+	h: number,
+	mi: number
+): number {
 	// Fixed-point: treat the wall clock as UTC, subtract the zone offset, then
 	// recompute the offset at the candidate instant to settle DST transitions.
 	let utc = Date.UTC(y, mo - 1, d, h, mi, 0);
@@ -77,16 +83,30 @@ export function resolveNextSendTime(
 	scheduledHour: number,
 	scheduledMinute: number,
 	nowMs: number,
-	fallback = 'UTC',
+	fallback = 'UTC'
 ): number {
 	const zone = isValidTimeZone(timeZone) ? timeZone : fallback;
 	const today = zonedParts(nowMs, zone);
-	let target = wallClockToUtc(zone, today.year, today.month, today.day, scheduledHour, scheduledMinute);
+	let target = wallClockToUtc(
+		zone,
+		today.year,
+		today.month,
+		today.day,
+		scheduledHour,
+		scheduledMinute
+	);
 	if (target <= nowMs) {
 		// Already past in this zone — roll to the same wall-clock time tomorrow,
 		// reading "tomorrow" in-zone so month/year/DST day-length all stay correct.
 		const tomorrow = zonedParts(nowMs + DAY_MS, zone);
-		target = wallClockToUtc(zone, tomorrow.year, tomorrow.month, tomorrow.day, scheduledHour, scheduledMinute);
+		target = wallClockToUtc(
+			zone,
+			tomorrow.year,
+			tomorrow.month,
+			tomorrow.day,
+			scheduledHour,
+			scheduledMinute
+		);
 	}
 	return target;
 }

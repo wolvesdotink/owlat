@@ -73,7 +73,7 @@ export const getContacts = authedQuery({
 		const contactsMap = await batchGet<Doc<'contacts'>>(ctx, contactIds);
 
 		const contacts = result.page.map((membership) => {
-			const contact = contactsMap.get(String(membership.contactId));
+			const contact = contactsMap.get(membership.contactId);
 			// Skip missing or soft-deleted (GDPR-erased) contacts — an erased
 			// contact must not re-surface through a topic membership. Redact the
 			// DOI capability fields (doiConfirmationToken / doiTokenExpiresAt) so a
@@ -106,7 +106,7 @@ async function getTopicsForContactImpl(ctx: QueryCtx, contactId: Id<'contacts'>)
 	const topicsMap = await batchGet<Doc<'topics'>>(ctx, topicIds);
 
 	const topics = memberships.map((membership) => {
-		const topic = topicsMap.get(String(membership.topicId));
+		const topic = topicsMap.get(membership.topicId);
 		return topic
 			? {
 					...topic,

@@ -10,6 +10,7 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import type { OrganizationRole } from '../lib/sessionOrganization';
+import { widgetSizeValidator } from '../lib/convexValidators';
 
 // ============================================================
 // Default Card Definitions
@@ -230,7 +231,7 @@ export const saveLayout = authedMutation({
 					cards: v.array(
 						v.object({
 							type: v.string(),
-							size: v.union(v.literal('small'), v.literal('medium'), v.literal('large')),
+							size: widgetSizeValidator,
 						})
 					),
 					priority: v.number(),
@@ -241,7 +242,7 @@ export const saveLayout = authedMutation({
 			v.array(
 				v.object({
 					type: v.string(),
-					size: v.union(v.literal('small'), v.literal('medium'), v.literal('large')),
+					size: widgetSizeValidator,
 				})
 			)
 		),

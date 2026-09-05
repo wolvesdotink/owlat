@@ -65,9 +65,8 @@ import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import { evaluateEngagementGate } from './ramp/engagementGate';
 import { capacityInputForCell, type RampCapacityContext } from './rampCapacityInputs';
 import type { RampControllerInput, RampMixState } from './ramp/controllerTypes';
+import { DAY_MS } from '../lib/constants';
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 /**
  * The gate evaluation window: one day of outcomes. Taken from the controller's
  * own constant rather than re-declared, because the SAME number is what spaces

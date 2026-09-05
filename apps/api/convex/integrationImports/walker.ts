@@ -43,6 +43,7 @@ import {
 import { recordImportSummary } from './suppressions';
 import { sealImportCredential, openImportCredential } from './credentialSeal';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+import { duplicateHandlingValidator, completedOrFailedValidator } from '../lib/convexValidators';
 
 const MAX_RETRIES = 2;
 
@@ -130,7 +131,7 @@ const PROVIDER_FEATURE_FLAGS = {
 export const startIntegrationImport = authedMutation({
 	args: {
 		config: integrationProviderConfigValidator,
-		handleDuplicates: v.union(v.literal('skip'), v.literal('update')),
+		handleDuplicates: duplicateHandlingValidator,
 		topicId: v.optional(v.id('topics')),
 	},
 	handler: async (ctx, args) => {
@@ -443,7 +444,7 @@ export const updateImportProgress = internalMutation({
 export const completeImport = internalMutation({
 	args: {
 		importId: v.id('integrationImports'),
-		status: v.union(v.literal('completed'), v.literal('failed')),
+		status: completedOrFailedValidator,
 		errorMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {

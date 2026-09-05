@@ -40,6 +40,7 @@ import { withoutTestSendEffects } from './sendLifecycle/types';
 import { refuse } from '../lib/lifecycle';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
+import { bounceTypeValidator } from '../lib/convexValidators';
 
 // ============================================================================
 // Send lifecycle — the single writer of `emailSends.status` and
@@ -107,7 +108,7 @@ const transitionInputValidator = v.union(
 	v.object({
 		to: v.literal('bounced'),
 		at: v.number(),
-		bounceType: v.union(v.literal('hard'), v.literal('soft')),
+		bounceType: bounceTypeValidator,
 		bounceMessage: v.optional(v.string()),
 	}),
 	v.object({ to: v.literal('complained'), at: v.number() })

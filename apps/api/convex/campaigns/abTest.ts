@@ -7,6 +7,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { requireDraftCampaign } from './guards';
 import { getOrThrow, throwInvalidState, throwInvalidInput } from '../_utils/errors';
+import { abVariantValidator } from '../lib/convexValidators';
 
 /**
  * Per-variant A/B stats from a variant's `emailSends` rows. opened/clicked are
@@ -194,7 +195,7 @@ export const disableABTest = authedMutation({
 export const declareABTestWinner = authedMutation({
 	args: {
 		campaignId: v.id('campaigns'),
-		winner: v.union(v.literal('A'), v.literal('B')),
+		winner: abVariantValidator,
 	},
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(

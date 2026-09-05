@@ -266,7 +266,7 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 				await ctx.scheduler.runAfter(0, internal.lib.posthog.capture, {
 					distinctId: effect.userId,
 					event: effect.event,
-					properties: { automationId: String(effect.automationId) },
+					properties: { automationId: effect.automationId },
 				});
 				break;
 			}
@@ -384,7 +384,7 @@ export const recordRunFailure = internalMutation({
 		await ctx.db.patch(args.automationId, { consecutiveRunFailures: failures });
 		if (failures >= AUTOMATION_FAILURE_BREAKER_THRESHOLD && automation.status === 'active') {
 			logWarn('[automation breaker] pausing automation after consecutive run failures', {
-				automationId: String(args.automationId),
+				automationId: args.automationId,
 				consecutiveRunFailures: failures,
 			});
 			// `automation.status` is still 'active' (the counter patch above doesn't

@@ -6,6 +6,7 @@ import { adminMutation, authedAction } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { throwNotFound } from '../_utils/errors';
+import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';
 import { createAuth } from './auth';
 
 /**
@@ -79,13 +80,16 @@ export const markMemberEmailVerified = adminMutation({
 			return { alreadyVerified: true, email: target.email };
 		}
 
-		await ctx.runMutation(components.betterAuth.adapter.updateOne, {
-			input: {
-				model: 'user',
-				update: { emailVerified: true, updatedAt: Date.now() },
-				where: [{ field: '_id', value: userId }],
-			},
-		} as unknown as Parameters<typeof ctx.runMutation>[1]);
+		await ctx.runMutation(
+			components.betterAuth.adapter.updateOne,
+			betterAuthAdapterArgs({
+				input: {
+					model: 'user',
+					update: { emailVerified: true, updatedAt: Date.now() },
+					where: [{ field: '_id', value: userId }],
+				},
+			})
+		);
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,

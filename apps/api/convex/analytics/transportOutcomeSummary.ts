@@ -18,7 +18,7 @@
 
 import type { Doc } from '../_generated/dataModel';
 import { startOfDayUtc } from '../lib/clock';
-import { MS_PER_DAY } from '../lib/constants';
+import { DAY_MS } from '../lib/constants';
 
 export type TransportOutcomeBucket = Doc<'transportOutcomes'>;
 export type TransportOutcomeArm = TransportOutcomeBucket['arm'];
@@ -290,7 +290,7 @@ export function safeOutcomeCount(value: number | undefined | null): number {
  * for their baselines, so every reader asks the same question of the same rows
  * and the witness costs no extra index read anywhere.
  */
-export const DEFERRAL_TELEMETRY_SPAN_MS = 30 * MS_PER_DAY;
+export const DEFERRAL_TELEMETRY_SPAN_MS = 30 * DAY_MS;
 
 /**
  * HOW MUCH OF THE SPAN THE ARM'S OWN TRAFFIC HAS TO COVER before a silent
@@ -308,7 +308,7 @@ export const DEFERRAL_TELEMETRY_SPAN_MS = 30 * MS_PER_DAY;
  * Fourteen days because that is the ramp's own graduation dwell: the shortest
  * period the plan is willing to call sustained evidence about a cell.
  */
-export const DEFERRAL_TELEMETRY_MIN_OBSERVED_MS = 14 * MS_PER_DAY;
+export const DEFERRAL_TELEMETRY_MIN_OBSERVED_MS = 14 * DAY_MS;
 
 /**
  * The oldest UTC day inside the span, counting TODAY as one of its days. The
@@ -319,7 +319,7 @@ export const DEFERRAL_TELEMETRY_MIN_OBSERVED_MS = 14 * MS_PER_DAY;
  * this module exists to prevent.
  */
 function telemetrySpanStartDay(now: number): number {
-	return startOfDayUtc(now) - DEFERRAL_TELEMETRY_SPAN_MS + MS_PER_DAY;
+	return startOfDayUtc(now) - DEFERRAL_TELEMETRY_SPAN_MS + DAY_MS;
 }
 
 /**
@@ -381,7 +381,7 @@ export function hasUsableDeferralTelemetry(
 	const spanStartDay = telemetrySpanStartDay(now);
 	// Exclusive: a future-dated row is a clock fault, and letting one manufacture
 	// the spread in (2) would unlock the gate off a day that has not happened.
-	const spanUntil = startOfDayUtc(now) + MS_PER_DAY;
+	const spanUntil = startOfDayUtc(now) + DAY_MS;
 	let oldestSendingDay: number | null = null;
 	let newestSendingDay: number | null = null;
 	for (const row of rows) {

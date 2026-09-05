@@ -5,7 +5,7 @@ import { MAX_WEBHOOK_ATTEMPTS, WEBHOOK_RETRY_DELAYS_MS } from '../lib/constants'
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { hmacSha256Hex } from './security';
-import { guardedDispatcher, validatePublicUrl } from '../lib/ssrfGuard';
+import { fetchWithGuardedDispatcher, validatePublicUrl } from '../lib/ssrfGuard';
 
 // Result type for the retry-aware delivery action.
 interface DeliverWebhookResult {
@@ -72,7 +72,10 @@ export const deliverWebhookInternal = internalAction({
 				throw new Error(destinationValidation.error);
 			}
 
-			const response = await fetch(webhook.url, {
+			// The guarded dispatcher re-validates the resolved IP at connect time,
+			// closing the DNS-rebinding window left open by the up-front
+			// validatePublicUrl check (which resolves independently of the socket).
+			const response = await fetchWithGuardedDispatcher(webhook.url, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -84,12 +87,6 @@ export const deliverWebhookInternal = internalAction({
 				body: payload,
 				redirect: 'manual',
 				signal: AbortSignal.timeout(30000), // 30 second timeout
-				// Re-validate the resolved IP at connect time to close the
-				// DNS-rebinding window left open by the up-front validatePublicUrl
-				// check (which resolves independently of the socket).
-				// @ts-expect-error `dispatcher` is an undici-specific fetch option
-				// not in the DOM RequestInit lib types, but valid in the Node runtime.
-				dispatcher: guardedDispatcher(),
 			});
 
 			httpStatusCode = response.status;
@@ -137,12 +134,16 @@ export const deliverWebhookInternal = internalAction({
 			});
 
 			// Schedule retry with exponential backoff
-			await ctx.scheduler.runAfter(retryDelayMs, internal.webhooks.delivery.deliverWebhookInternal, {
-				webhookId,
-				logId,
-				payload,
-				attemptNumber: nextAttemptNumber,
-			});
+			await ctx.scheduler.runAfter(
+				retryDelayMs,
+				internal.webhooks.delivery.deliverWebhookInternal,
+				{
+					webhookId,
+					logId,
+					payload,
+					attemptNumber: nextAttemptNumber,
+				}
+			);
 
 			return { success: false, retrying: true, error: errorMessage };
 		}

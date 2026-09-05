@@ -22,7 +22,7 @@ import { internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
 import { readManagedCell, seedRampCell, type Harness } from './rampCronFixtures';
 import { RAMP_FAILURE_MESSAGE_MAX } from '../rampControllerCron';
-import { MS_PER_DAY } from '../../lib/constants';
+import { DAY_MS } from '../../lib/constants';
 
 // `vi.hoisted`, not a bare const: the mock factory below is hoisted above the
 // imports, and this suite imports the cron module itself (for the message bound),
@@ -112,7 +112,7 @@ async function seedSurvivor(t: Harness): Promise<void> {
 			mixVersion: 2,
 			signals: [],
 			snapshotGeneratedAt: now,
-			expiresAt: now + MS_PER_DAY,
+			expiresAt: now + DAY_MS,
 			updatedAt: now,
 		});
 	});

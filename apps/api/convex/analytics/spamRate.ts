@@ -5,8 +5,8 @@ import type { Doc } from '../_generated/dataModel';
 import type { DatabaseReader } from '../_generated/server';
 import type { DomainReputationBucketGroups, ReputationScope } from './sendingReputation';
 import { startOfDayUtc } from '../lib/clock';
+import { DAY_MS } from '../lib/constants';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_MS = 30 * DAY_MS;
 
 export const SPAM_RATE_TARGET = PROVIDER_SPAM_RATE_POLICY.target;

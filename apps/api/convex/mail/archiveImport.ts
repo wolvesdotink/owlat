@@ -32,6 +32,7 @@ import { requireMailboxAccess } from './permissions';
 import { insertDeliveredMessage } from './deliveryPipeline/insert';
 import { mailMessageAttachmentValidator } from '../lib/mailContentValidators';
 import { resolveLabelPath } from './labelsTree';
+import { completedOrFailedValidator } from '../lib/convexValidators';
 
 /**
  * Largest archive one job accepts. Defined in `@owlat/shared` because the upload
@@ -273,7 +274,7 @@ export const recordProgress = internalMutation({
 export const finishJob = internalMutation({
 	args: {
 		importId: v.id('mailArchiveImports'),
-		status: v.union(v.literal('completed'), v.literal('failed')),
+		status: completedOrFailedValidator,
 		lastError: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {

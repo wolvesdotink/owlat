@@ -1,4 +1,5 @@
 import type { JsonValue } from '@owlat/plugin-kit';
+import { isPlainObject } from '@owlat/shared';
 import { CURRENT_PLUGIN_STORAGE_VALUE_JSON_VERSION } from '../lib/constants';
 
 export const PLUGIN_STORAGE_LIMITS = Object.freeze({
@@ -142,12 +143,6 @@ function encodeObject(
 		fields.push(`${JSON.stringify(key)}:${encodeValue(descriptor.value, depth + 1, state)}`);
 	}
 	return `{${fields.join(',')}}`;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== 'object') return false;
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
 
 /** Match JavaScript/JSON's deterministic lexicographic UTF-16 code-unit order. */

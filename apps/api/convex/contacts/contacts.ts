@@ -17,6 +17,7 @@ import { trackEvent } from '../lib/posthogHelpers';
 import { validateStringLength, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwNotFound, throwAlreadyExists, throwInvalidInput } from '../_utils/errors';
 import { createContact } from './creation';
+import { duplicateHandlingValidator } from '../lib/convexValidators';
 
 // Query to get a single contact by ID (session-authenticated client callers).
 export const get = authedQuery({
@@ -430,7 +431,7 @@ export const importBatch = authedMutation({
 				),
 			})
 		),
-		handleDuplicates: v.union(v.literal('skip'), v.literal('update')),
+		handleDuplicates: duplicateHandlingValidator,
 		topicId: v.optional(v.id('topics')),
 		contactListAssignments: v.optional(
 			v.array(

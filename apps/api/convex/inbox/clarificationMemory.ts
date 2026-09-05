@@ -39,7 +39,7 @@ import type { MutationCtx } from '../_generated/server';
 import { normalizeQuestionKey, matchStandingAnswers } from './clarificationMemoryMatch';
 
 const MAX_ANSWER_CHARS = 2000;
-const MAX_QUESTION_CHARS = 500;
+const MAX_REMEMBERED_QUESTION_CHARS = 500;
 
 /**
  * Resolve the contact SCOPE for a capture/fill call: an explicit `contactId`
@@ -167,7 +167,7 @@ export async function captureStandingAnswers(
 	for (const answer of args.answers) {
 		const value = answer.value.trim().slice(0, MAX_ANSWER_CHARS);
 		if (value.length === 0) continue;
-		const questionText = answer.questionText.trim().slice(0, MAX_QUESTION_CHARS);
+		const questionText = answer.questionText.trim().slice(0, MAX_REMEMBERED_QUESTION_CHARS);
 		if (questionText.length === 0) continue;
 		const questionKey = normalizeQuestionKey(answer.slotType, questionText);
 
