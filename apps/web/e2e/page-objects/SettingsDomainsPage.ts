@@ -60,8 +60,12 @@ export class SettingsDomainsPage extends BasePage {
 			.click();
 	}
 
-	/** Toggle the row's disclosure by its header. */
+	/**
+	 * Toggle the row's disclosure by its header. Only the tracking list calls
+	 * this; its header is a plain click target without a role, so it is found
+	 * by test id rather than by accessible name.
+	 */
 	async expandDomain(domain: string) {
-		await this.getDomainCard(domain).locator('.cursor-pointer').first().click();
+		await this.getDomainCard(domain).getByTestId('tracking-domain-header').click();
 	}
 }
