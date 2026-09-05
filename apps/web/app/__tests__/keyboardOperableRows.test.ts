@@ -6,10 +6,11 @@
  * (role="button"), operable with Enter and Space, and — for the expandable
  * delivery rows — reflecting open/closed state via aria-expanded.
  *
- * The two extracted rows are MOUNTED and driven with real keyboard events,
- * including the contract that activating a nested action control never fires
- * the row's own action. The marketing/transactional rows are inline in their
- * Convex-backed pages, so their opening tags are read from the source.
+ * The two extracted rows are MOUNTED and driven with real keyboard events;
+ * the domain row, whose header nests action controls, also proves that
+ * activating one never fires the row's own action. The marketing/transactional
+ * rows are inline in their Convex-backed pages, so their opening tags are read
+ * from the source.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -116,17 +117,17 @@ describe.each([
 		expect(wrapper.emitted(event)).toHaveLength(2);
 		expect(space.defaultPrevented).toBe(true);
 	});
+});
 
-	it('does not toggle when a nested control is activated with the keyboard', async () => {
-		const wrapper = mountRow();
-		// The domain row nests Verify/Remove inside the header (hence `.self` on
-		// its keydown handlers); the webhook row keeps its actions in the panel.
-		const nested = wrapper.findAll('button')[0];
-		expect(nested).toBeDefined();
-		await nested!.trigger('keydown', { key: 'Enter' });
-		await nested!.trigger('keydown', { key: ' ' });
-		expect(wrapper.emitted(event)).toBeUndefined();
-	});
+// Only the domain row nests action controls (Verify/Remove) inside its header,
+// hence the `.self` modifier on its keydown handlers; the webhook row keeps its
+// actions in the panel, where a keydown can never reach the header anyway.
+it('domains row header does not toggle when a nested control is activated', async () => {
+	const wrapper = mountDomainRow();
+	const nested = wrapper.get('[role="button"]').get('button');
+	await nested.trigger('keydown', { key: 'Enter' });
+	await nested.trigger('keydown', { key: ' ' });
+	expect(wrapper.emitted('toggle')).toBeUndefined();
 });
 
 /** Every opening tag in `src` whose attribute list contains `marker`. */
