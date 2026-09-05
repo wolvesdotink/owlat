@@ -270,3 +270,26 @@ describe('POST /api/setup/apply — email-verification provider coupling (H3)', 
 		expect(result.ok).toBe(true);
 	});
 });
+
+/**
+ * The gate itself, not its mock: without the setup token the shipped
+ * `requireSetupToken` refuses the call before an admin is created or .env is
+ * touched, even with setup mode on and a token configured.
+ */
+describe('POST /api/setup/apply — the real setup-token gate', () => {
+	it('rejects a call without the setup token before creating the admin', async () => {
+		const { requireSetupToken } = await import('../../../utils/setupToken');
+		vi.stubGlobal('requireSetupToken', requireSetupToken);
+		vi.stubGlobal('getHeader', () => undefined);
+		process.env['OWLAT_SETUP_TOKEN'] = 'stk_configured-by-owlat-setup';
+		try {
+			await expect(callRoute()).rejects.toMatchObject({ statusCode: 401 });
+		} finally {
+			delete process.env['OWLAT_SETUP_TOKEN'];
+		}
+
+		expect(fetch).not.toHaveBeenCalled();
+		expect(pushMock).not.toHaveBeenCalled();
+		expect(writeMock).not.toHaveBeenCalled();
+	});
+});

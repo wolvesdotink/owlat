@@ -1,47 +1,126 @@
+/**
+ * `admin` route guard, run through the shipped composable chain
+ * (`useAuth` → `useOrganizationContext` → `useOrganization` → `usePermissions`)
+ * over a fake session. The member's role comes from the members list the
+ * guard has to wait for, the way it does in the browser.
+ *
+ * Regression pinned here: 34 admin-gated pages 500'd when `useOrganization()`
+ * gained an unguarded `useI18n()` — invisible to a suite that stubbed
+ * `useOrganizationContext` away. `useI18n` is the real vue-i18n one below, and
+ * the guard runs outside a component `setup()`, so that crash fails this file.
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { getCurrentInstance } from 'vue';
+import type { RouteLocationNormalized } from 'vue-router';
+import {
+	authClientMock,
+	listMembers,
+	loadMiddleware,
+	resetSession,
+	route,
+	session,
+	signIn,
+	type Redirect,
+} from './harness';
 
-const navigateTo = vi.fn((path: string) => path);
-const isAuthenticated = ref(true);
-const isLoading = ref(false);
-const isAdmin = ref(false);
-const waitUntilReady = vi.fn(async () => undefined);
-const waitForLoaded = vi.fn(async () => undefined);
+vi.mock('~/lib/auth-client', () => authClientMock());
 
-vi.stubGlobal('defineNuxtRouteMiddleware', (fn: unknown) => fn);
-vi.stubGlobal('navigateTo', navigateTo);
-vi.stubGlobal('useAuth', () => ({ isAuthenticated, waitUntilReady }));
-vi.stubGlobal('useOrganizationContext', () => ({ isLoading }));
-vi.stubGlobal('usePermissions', () => ({ isAdmin }));
-vi.stubGlobal('waitForLoaded', waitForLoaded);
+type Middleware = (
+	to: RouteLocationNormalized,
+	from: RouteLocationNormalized
+) => Promise<Redirect | undefined>;
 
-const middleware = (await import('../admin')).default as () => Promise<unknown>;
+const load = () => loadMiddleware<Middleware>(() => import('../admin'));
+const to = route('/dashboard/admin');
+
+beforeEach(resetSession);
 
 describe('admin middleware', () => {
-	beforeEach(() => {
-		navigateTo.mockClear();
-		waitUntilReady.mockClear();
-		waitForLoaded.mockClear();
-		isAuthenticated.value = true;
-		isAdmin.value = false;
+	it('runs where useI18n() has no component instance, as the router guard does', async () => {
+		await load();
+		expect(getCurrentInstance()).toBeNull();
+		expect(() => useI18n()).toThrow(/setup/);
 	});
 
-	it('fails closed for an editor deep link', async () => {
-		await expect(middleware()).resolves.toBe('/dashboard');
-		expect(navigateTo).toHaveBeenCalledWith('/dashboard', { replace: true });
+	it.each(['owner', 'admin'] as const)(
+		'lets an %s through once the role resolves',
+		async (role) => {
+			signIn({ role });
+			const { middleware } = await load();
+
+			await expect(middleware(to, to)).resolves.toBeUndefined();
+		}
+	);
+
+	it('bounces an editor deep link to Home with replace', async () => {
+		signIn({ role: 'member' });
+		const { middleware } = await load();
+
+		await expect(middleware(to, to)).resolves.toEqual({
+			redirect: '/dashboard',
+			options: { replace: true },
+		});
 	});
 
-	it('allows an owner or admin after role resolution', async () => {
-		isAdmin.value = true;
-		await expect(middleware()).resolves.toBeUndefined();
-		expect(waitForLoaded).toHaveBeenCalledWith(isLoading);
-		expect(navigateTo).not.toHaveBeenCalled();
+	it('waits for the member list before deciding', async () => {
+		signIn({ role: 'admin' });
+		let releaseMembers!: () => void;
+		listMembers.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					releaseMembers = () => resolve({ data: { members: session.members.value } });
+				})
+		);
+		const { middleware } = await load();
+
+		let settled = false;
+		const decision = middleware(to, to).then((result) => {
+			settled = true;
+			return result;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(settled).toBe(false);
+
+		releaseMembers();
+		await expect(decision).resolves.toBeUndefined();
 	});
 
-	it('sends an expired session to sign in before checking role', async () => {
-		isAuthenticated.value = false;
-		await expect(middleware()).resolves.toBe('/auth/login');
-		expect(navigateTo).toHaveBeenCalledWith('/auth/login');
-		expect(waitForLoaded).not.toHaveBeenCalled();
+	it('fails closed to Home when the member list cannot be loaded', async () => {
+		signIn({ role: 'owner' });
+		listMembers.mockRejectedValueOnce(new Error('network down'));
+		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		const { middleware } = await load();
+
+		await expect(middleware(to, to)).resolves.toEqual({
+			redirect: '/dashboard',
+			options: { replace: true },
+		});
+		consoleError.mockRestore();
+	});
+
+	it('sends a signed-out visitor to sign in without loading the organization', async () => {
+		const { middleware } = await load();
+
+		await expect(middleware(to, to)).resolves.toEqual({
+			redirect: '/auth/login',
+			options: undefined,
+		});
+		expect(listMembers).not.toHaveBeenCalled();
+	});
+
+	it('holds a pending session until it settles, then decides on the outcome', async () => {
+		session.pending.value = true;
+		const { middleware } = await load();
+
+		let settled = false;
+		const decision = middleware(to, to).then((result) => {
+			settled = true;
+			return result;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(settled).toBe(false);
+
+		session.pending.value = false;
+		await expect(decision).resolves.toEqual({ redirect: '/auth/login', options: undefined });
 	});
 });
