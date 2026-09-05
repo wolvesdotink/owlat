@@ -23,9 +23,10 @@ cd "$(dirname "$0")/.."
 failures=0
 total=0
 
-# check_dir <dir> <find-name-glob> <sed-expr extracting the number> <label>
+# check_dir <dir> <find-name-glob> <sed-expr extracting the number> <label> <mask>
+# <mask> is the number's shape in the series ("NNNN" or "NNN"), for the hint.
 check_dir() {
-	local dir="$1" glob="$2" extract="$3" label="$4"
+	local dir="$1" glob="$2" extract="$3" label="$4" mask="$5"
 
 	if [ ! -d "$dir" ]; then
 		echo "FAIL: $dir not found" >&2
@@ -47,7 +48,7 @@ check_dir() {
 		done
 		echo ""
 		echo "Each ADR number must name exactly one document. Renumber the newer one"
-		echo "to the end of the sequence so 'grep -n $label-NNNN' is unambiguous."
+		echo "to the end of the sequence so 'grep -n $label-$mask' is unambiguous."
 		failures=$((failures + 1))
 		return
 	fi
@@ -57,7 +58,7 @@ check_dir() {
 }
 
 # docs/adr: NNNN-slug.md
-check_dir docs/adr '[0-9][0-9][0-9][0-9]-*.md' 's#.*/([0-9]{4})-.*#\1#' ADR
+check_dir docs/adr '[0-9][0-9][0-9][0-9]-*.md' 's#.*/([0-9]{4})-.*#\1#' ADR NNNN
 
 # apps/docs: K.NNN-slug.md, one directory per locale
 decision_dirs=$(find apps/docs/content -mindepth 3 -maxdepth 3 -type d -path '*/3.developer/decisions' | sort)
@@ -66,7 +67,7 @@ if [ -z "$decision_dirs" ]; then
 	failures=$((failures + 1))
 fi
 for d in $decision_dirs; do
-	check_dir "$d" '[0-9]*.[0-9][0-9][0-9]-*.md' 's#.*/[0-9]+\.([0-9]{3})-.*#\1#' ADR
+	check_dir "$d" '[0-9]*.[0-9][0-9][0-9]-*.md' 's#.*/[0-9]+\.([0-9]{3})-.*#\1#' ADR NNN
 done
 
 if [ "$failures" -gt 0 ]; then
