@@ -38,7 +38,7 @@ import { isValidDomain } from '@owlat/shared';
 import {
 	readCappedBytes,
 	CappedReadOverflow,
-	guardedDispatcher,
+	fetchWithGuardedDispatcher,
 	isDisallowedIpAddress,
 } from '../lib/ssrfGuard';
 
@@ -70,13 +70,7 @@ export interface MtaStsGatherDeps {
 const defaultDeps: MtaStsGatherDeps = {
 	resolveTxt: (name) => dns.resolveTxt(name),
 	lookup: (host) => dns.lookup(host, { all: true }),
-	fetch: (input, init) =>
-		fetch(input, {
-			...init,
-			// @ts-expect-error `dispatcher` is an undici-specific fetch option not in
-			// the DOM RequestInit types, but is supported in the Node action runtime.
-			dispatcher: guardedDispatcher(),
-		}),
+	fetch: fetchWithGuardedDispatcher,
 };
 
 // Live verification that our OWN MTA-STS policy is correctly published for
