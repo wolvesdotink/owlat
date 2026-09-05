@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
-import { MS_PER_DAY } from '../../lib/constants';
+import { DAY_MS } from '../../lib/constants';
 import { campaignWarmingCapBinds } from '../../lib/sendProviders/warmingCapGate';
 import { loadWarmingCapacity } from '../warmingCapacity';
 import { capacityInputForCell, type RampCapacityContext } from '../rampCapacityInputs';
@@ -80,7 +80,7 @@ describe('the shipped absences still constrain nothing (plan D2)', () => {
 	});
 
 	it('a warming sync that has gone quiet for a day: unconstrained, never a spent cap', async () => {
-		const { capacity } = await runTick({ warming: { syncedAgoMs: MS_PER_DAY + 60_000 } });
+		const { capacity } = await runTick({ warming: { syncedAgoMs: DAY_MS + 60_000 } });
 		expect(capacity.kind).toBe('unconstrained');
 	});
 
@@ -108,7 +108,7 @@ describe('the shipped warming projection itself is untouched', () => {
 
 	it('still answers UNKNOWN — not zero — for a stale sync', async () => {
 		const t = convexTest(schema, modules);
-		await seedWarming(t, { syncedAgoMs: MS_PER_DAY + 60_000 });
+		await seedWarming(t, { syncedAgoMs: DAY_MS + 60_000 });
 		const projection = await t.run(
 			async (ctx) => await loadWarmingCapacity(ctx, { now: CAPACITY_NOW })
 		);

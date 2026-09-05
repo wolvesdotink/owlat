@@ -16,17 +16,17 @@
  * Pure: `now` is always a parameter (plan D15).
  */
 
-import { MS_PER_DAY } from './constants';
+import { DAY_MS } from './constants';
 
 /** Start of the UTC day containing `now`, or `0` for a non-finite clock. */
 export function utcDayStart(now: number): number {
 	if (!Number.isFinite(now)) return 0;
-	return Math.floor(now / MS_PER_DAY) * MS_PER_DAY;
+	return Math.floor(now / DAY_MS) * DAY_MS;
 }
 
 /** Start of the NEXT UTC day after `now` — the next cap window. */
 export function nextUtcDayStart(now: number): number {
-	return utcDayStart(now) + MS_PER_DAY;
+	return utcDayStart(now) + DAY_MS;
 }
 
 /**

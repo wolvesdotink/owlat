@@ -26,7 +26,7 @@ import { authedQuery } from '../lib/authedFunctions';
 import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
 import type { WarmingCapacityProjection } from '../delivery/warmingCapacity';
 import { campaignWarmingCapBinds } from '../lib/sendProviders/warmingCapGate';
-import { MS_PER_DAY } from '../lib/constants';
+import { DAY_MS } from '../lib/constants';
 import { utcDayStart } from '../lib/utcDay';
 import { logWarn } from '../lib/runtimeLog';
 import type { CapacityUnknownReason } from './capacityPreflight';
@@ -97,7 +97,7 @@ export function summarizeProjectedCapacity(
 	for (let day = 1; day < projection.byDay.length; day += 1) {
 		const capacity = sanitizeCount(projection.byDay[day] ?? 0);
 		if (capacity > today) {
-			return { capped: true, today, growsTo: capacity, growsAt: dayZero + day * MS_PER_DAY };
+			return { capped: true, today, growsTo: capacity, growsAt: dayZero + day * DAY_MS };
 		}
 	}
 	return { capped: true, today, growsTo: null, growsAt: null };

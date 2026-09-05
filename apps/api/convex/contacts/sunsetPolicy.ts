@@ -50,7 +50,7 @@
  * `__tests__/sunset*.test.ts` are fully deterministic.
  */
 
-import { MS_PER_DAY } from '../lib/constants';
+import { DAY_MS } from '../lib/constants';
 
 /**
  * One day in milliseconds — the unit every sunset window and interval is
@@ -59,7 +59,7 @@ import { MS_PER_DAY } from '../lib/constants';
  * modules read it from here. It is a plain number with no db, clock or env
  * read behind it, so the purity of this core is unaffected.
  */
-export { MS_PER_DAY };
+export { DAY_MS };
 
 // ─── Defaults ───────────────────────────────────────────────────────────────
 
@@ -109,7 +109,7 @@ export const SUNSET_MIN_WINDOW_DAYS = 30;
  * corroboration source, and why the sweep surfaces the stall rather than
  * failing quietly.
  */
-export const SUNSET_MAX_CLOCK_LEAD_MS = 30 * MS_PER_DAY;
+export const SUNSET_MAX_CLOCK_LEAD_MS = 30 * DAY_MS;
 
 /**
  * Is `now` corroborated by an independently-written earlier observation?
@@ -423,18 +423,18 @@ export function evaluateSunset(facts: SunsetFacts, policy: SunsetPolicy): Sunset
 		return hold('no_send_history', stage);
 	}
 
-	const tenureDays = (facts.now - facts.createdAt) / MS_PER_DAY;
+	const tenureDays = (facts.now - facts.createdAt) / DAY_MS;
 	// Quiet since the last engagement, or — never having engaged — since the
 	// first time we gave the contact something to engage WITH.
 	const quietSince = Math.max(
 		facts.lastEngagementAt ?? facts.firstMessagedAt,
 		facts.firstMessagedAt
 	);
-	const quietDays = (facts.now - quietSince) / MS_PER_DAY;
+	const quietDays = (facts.now - quietSince) / DAY_MS;
 	// How long the contact has been measurable at all. Judging a 20-day-old
 	// contact against a 270-day window is a category error, so both the tenure
 	// and the measurement span must cover the window being applied.
-	const measurableDays = (facts.now - facts.firstMessagedAt) / MS_PER_DAY;
+	const measurableDays = (facts.now - facts.firstMessagedAt) / DAY_MS;
 
 	// 6. Recent engagement resets the track. A suppressed contact is NOT
 	//    auto-resurrected: coming back is an operator action (`restore`).

@@ -53,10 +53,11 @@
  */
 
 import { engagementBandForScore, type EngagementBand } from '@owlat/shared/engagementBands';
+import { DAY_MS } from '../lib/constants';
 
 // ─── Tunables ───────────────────────────────────────────────────────────────
 
-const MS_PER_DAY = 86_400_000;
+const DAY_MS = 86_400_000;
 
 /** Half-life (days) of an open/click/reply's contribution. */
 export const ENGAGEMENT_HALF_LIFE_DAYS = 45;
@@ -218,7 +219,7 @@ export function engagementActivityKey(kind: EngagementActivityKind, occurredAt: 
 /** 2^(-elapsedMs / halfLifeDays), clamped so negative elapsed never amplifies. */
 function decayFactor(elapsedMs: number, halfLifeDays: number): number {
 	if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return 1;
-	return Math.pow(2, -elapsedMs / (halfLifeDays * MS_PER_DAY));
+	return Math.pow(2, -elapsedMs / (halfLifeDays * DAY_MS));
 }
 
 /** Guard against NaN/Infinity leaking in from a corrupt cached state row. */
@@ -451,7 +452,7 @@ export function computeEngagementScore(args: {
 		inputs: {
 			...counts,
 			discardedCount: discarded,
-			tenureDays: Math.max(0, (now - finite(args.tenureStartedAt, now)) / MS_PER_DAY),
+			tenureDays: Math.max(0, (now - finite(args.tenureStartedAt, now)) / DAY_MS),
 			decayedEngagement: projected.state.raw,
 			decayedSoftBounce: projected.state.softBounceRaw,
 			tenurePrior: projected.tenurePrior,

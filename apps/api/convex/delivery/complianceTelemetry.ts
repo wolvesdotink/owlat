@@ -6,6 +6,7 @@ import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { startOfDayUtc } from '../lib/clock';
 import { UNSUBSCRIBE_HONOR_WINDOW_MS } from '@owlat/shared/deliverabilityPolicy';
+import { DAY_MS, HOUR_MS } from '../lib/constants';
 
 export {
 	GMAIL_BULK_SENDER_THRESHOLD,
@@ -13,8 +14,6 @@ export {
 	UNSUBSCRIBE_HONOR_WINDOW_MS,
 } from '@owlat/shared/deliverabilityPolicy';
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 const GMAIL_WINDOW_MS = DAY_MS;
 const TELEMETRY_RETENTION_MS = 48 * HOUR_MS;
 export const GMAIL_ACCEPTED_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;

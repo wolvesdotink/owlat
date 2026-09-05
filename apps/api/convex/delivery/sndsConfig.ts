@@ -11,8 +11,8 @@
  */
 
 import { parsePoolIpsLenient } from '../domains/spf';
-import { DAY_MS } from './sndsFeed';
 import { startOfDayUtc } from '../lib/clock';
+import { DAY_MS } from '../lib/constants';
 
 /**
  * How far back a feed row may reach and still be stored.

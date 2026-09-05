@@ -25,7 +25,7 @@
  * whose tail will expire.
  */
 
-import { MS_PER_DAY } from '../lib/constants';
+import { DAY_MS } from '../lib/constants';
 import { utcDayStart } from '../lib/utcDay';
 
 /**
@@ -132,11 +132,11 @@ export function usableDayCount(now: number, maxMessageAgeMs: number): number {
 	const expiresAt = now + maxMessageAgeMs;
 	const dayZeroStart = utcDayStart(now);
 	// Closed form for "how many day-starts at or before the expiry instant":
-	// day k is usable when `dayZeroStart + k * MS_PER_DAY < expiresAt`, so the
-	// count is `ceil((expiresAt - dayZeroStart) / MS_PER_DAY)`. Clamped below at
+	// day k is usable when `dayZeroStart + k * DAY_MS < expiresAt`, so the
+	// count is `ceil((expiresAt - dayZeroStart) / DAY_MS)`. Clamped below at
 	// 1 (the remainder of today is always usable for a positive horizon) and
 	// above at MAX_HORIZON_DAYS.
-	const days = Math.ceil((expiresAt - dayZeroStart) / MS_PER_DAY);
+	const days = Math.ceil((expiresAt - dayZeroStart) / DAY_MS);
 	return Math.min(MAX_HORIZON_DAYS, Math.max(1, days));
 }
 
@@ -262,7 +262,7 @@ export function buildCapacitySchedule(input: CapacityScheduleInput): CampaignCap
 	const truncated = remaining > 0;
 
 	const days = slices.length;
-	const finishesAt = utcDayStart(now) + days * MS_PER_DAY;
+	const finishesAt = utcDayStart(now) + days * DAY_MS;
 	return { fits: false, days, slices, finishesAt, covered, truncated, audienceUnderCounted: false };
 }
 

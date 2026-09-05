@@ -9,7 +9,7 @@
  * fixture that disagreed between them would make one of the two lie.
  *
  * NOTHING HERE RE-IMPLEMENTS A PRODUCTION RULE. The day boundary is
- * `lib/clock.startOfDayUtc` and the day length is `lib/constants.MS_PER_DAY`,
+ * `lib/clock.startOfDayUtc` and the day length is `lib/constants.DAY_MS`,
  * because a fixture that recomputes `x - (x % DAY)` for itself cannot catch a
  * bug in the arithmetic the projection actually uses. The capacity snapshot type
  * is `RampCapacityInput` itself rather than a loose restatement of it, so a
@@ -27,7 +27,7 @@ import type { ResolvedRoute } from '../../lib/sendProviders/routing';
 import type { RampCapacityInput } from '../ramp/controllerTypes';
 import { createTestDomain } from '../../__tests__/factories';
 import { startOfDayUtc } from '../../lib/clock';
-import { MS_PER_DAY } from '../../lib/constants';
+import { DAY_MS } from '../../lib/constants';
 
 export const CAPACITY_ORG = 'org_ramp_capacity';
 /** 08:00 UTC on a fixed day: two thirds of the UTC day still ahead. */
@@ -73,7 +73,7 @@ export async function seedTrafficDay(
 	t: Harness,
 	args: { dayOffset: number; own: number; reference: number }
 ): Promise<void> {
-	const periodStart = CAPACITY_TODAY - args.dayOffset * MS_PER_DAY;
+	const periodStart = CAPACITY_TODAY - args.dayOffset * DAY_MS;
 	await t.run(async (ctx) => {
 		for (const [arm, sent] of [
 			[armForTransport('mta'), args.own],
@@ -88,7 +88,7 @@ export async function seedTrafficDay(
 				shardKey: 0,
 				sent,
 				delivered: sent,
-				lastRecordedAt: periodStart + MS_PER_DAY - 1,
+				lastRecordedAt: periodStart + DAY_MS - 1,
 			});
 		}
 	});

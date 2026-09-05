@@ -24,10 +24,11 @@ import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { sndsComplaintBandValidator, sndsFilterResultValidator } from '../schema/snds';
-import { DAY_MS, normalizeSndsIp, type SndsDayObservation } from './sndsFeed';
+import { normalizeSndsIp, type SndsDayObservation } from './sndsFeed';
 import { oldestStorableDay } from './sndsConfig';
 import { observationVerdict } from './observationFreshness';
 import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
+import { DAY_MS } from '../lib/constants';
 
 const RETENTION_MS = 90 * DAY_MS;
 const FETCHED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;

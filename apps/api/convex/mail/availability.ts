@@ -20,6 +20,7 @@
 
 import { getOptional } from '../lib/env';
 import { buildSchedulingInstruction } from './ai/scheduling';
+import { DAY_MS } from '../lib/constants';
 
 /** A busy time range, epoch-ms half-open interval [start, end). */
 export interface BusyInterval {
@@ -47,8 +48,6 @@ const SLOT_MINUTES = 60;
 const MAX_OPEN_SLOTS = 3;
 /** Network fetch budget for the feed. */
 const FETCH_TIMEOUT_MS = 5000;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Unfold RFC 5545 folded lines: a CRLF (or LF) followed by a space or tab is a

@@ -25,8 +25,8 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { purgeMessageRow } from './messagePurge';
 import { rebuildThreadAggregates } from './threadAggregates';
+import { DAY_MS } from '../lib/constants';
 
-const DAY_MS = 24 * 60 * 60 * 1_000;
 /** Settings rows examined per sweep run. */
 export const TRASH_RETENTION_SETTINGS_BATCH = 32;
 /** Messages deleted per settings row per run. The next tick continues. */

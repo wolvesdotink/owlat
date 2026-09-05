@@ -19,8 +19,8 @@ import {
 	type PostmasterCard,
 	type PostmasterDomainSignals,
 } from './signals/postmaster';
+import { DAY_MS } from '../lib/constants';
 
-const DAY_MS = 24 * 60 * 60 * 1_000;
 const INGEST_MAX_AGE_MS = 14 * DAY_MS;
 const RETENTION_MS = 90 * DAY_MS;
 export const POSTMASTER_CLEANUP_BATCH_SIZE = 128;
