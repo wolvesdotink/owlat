@@ -146,9 +146,9 @@ export const mailTables = {
 
 	// Explicit membership on a mailbox — the access-control source of truth for
 	// shared (team) inboxes. A personal mailbox carries exactly one row: an
-	// 'owner' membership for its `mailboxes.userId` (created by the backfill in
-	// migrations/0034 and, going forward, at provision time). A shared mailbox
-	// adds 'member' (and further 'owner') rows for the teammates who may use it.
+	// 'owner' membership for its `mailboxes.userId`, written at provision time
+	// (mail/mailbox/identity.ts). A shared mailbox adds 'member' (and further
+	// 'owner') rows for the teammates who may use it.
 	//
 	// Org membership alone grants nothing here — access is either org
 	// owner/admin acting on behalf, the mailbox's own `userId`, or an explicit

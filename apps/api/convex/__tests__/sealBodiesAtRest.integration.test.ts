@@ -456,6 +456,46 @@ describe('E8b migration — interrupt/resume (b)', () => {
 		const rerun = await t.action(migration.sealMailMessagesBlobsPage, { cursor: null });
 		expect(rerun.sealed).toBe(0);
 	});
+
+	it('the per-message reseal (IMAP APPEND path) seals one row and its shared siblings', async () => {
+		const t = convexTest(schema, allModules);
+		// Same COPY'd pair, but driven by the action IMAP APPEND schedules per
+		// message rather than by the back-fill walker: resealing row A alone must
+		// still repoint row B before the shared plaintext blobs are dropped.
+		const { rowA, rowB, rawId, textId, htmlId } = await seedCopiedPair(t);
+
+		await t.action(internal.mail.blobReseal.resealMessageBlobs, { id: rowA });
+
+		await t.run(async (ctx) => {
+			expect(await ctx.storage.get(rawId)).toBeNull();
+			expect(await ctx.storage.get(textId)).toBeNull();
+			expect(await ctx.storage.get(htmlId)).toBeNull();
+			const a = await ctx.db.get(rowA);
+			const b = await ctx.db.get(rowB);
+			expect(a!.rawStorageId).toBe(b!.rawStorageId);
+			expect(a!.textBodyStorageId).toBe(b!.textBodyStorageId);
+			expect(a!.htmlBodyStorageId).toBe(b!.htmlBodyStorageId);
+			for (const id of [rowA, rowB]) {
+				const m = await ctx.db.get(id);
+				for (const blobId of [m!.rawStorageId, m!.textBodyStorageId, m!.htmlBodyStorageId]) {
+					const bytes = await readSealedBlobBytes(ctx.storage, blobId!);
+					expect(new TextDecoder().decode(bytes!)).toContain(CANARY);
+				}
+			}
+		});
+
+		// A retry (double-scheduling) over the sealed row changes nothing.
+		const sealedIds = await t.run(async (ctx) => {
+			const a = await ctx.db.get(rowA);
+			return [a!.rawStorageId, a!.textBodyStorageId, a!.htmlBodyStorageId];
+		});
+		await t.action(internal.mail.blobReseal.resealMessageBlobs, { id: rowA });
+		await t.run(async (ctx) => {
+			const a = await ctx.db.get(rowA);
+			expect([a!.rawStorageId, a!.textBodyStorageId, a!.htmlBodyStorageId]).toEqual(sealedIds);
+			for (const blobId of sealedIds) expect(await ctx.storage.get(blobId!)).not.toBeNull();
+		});
+	});
 });
 
 describe('E8b migration — canary dump has zero body plaintext (d)', () => {
