@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ContactsPage } from '../page-objects/ContactsPage';
 import { SAMPLE_CONTACTS } from '../fixtures/test-data';
 
@@ -40,7 +40,7 @@ test.describe('Contacts Management', () => {
 	});
 
 	test('CSV import uploads and shows preview', async ({ page }) => {
-		const csvPath = path.resolve(__dirname, '../fixtures/csv-contacts.csv');
+		const csvPath = fileURLToPath(new URL('../fixtures/csv-contacts.csv', import.meta.url));
 		const modal = await contactsPage.importCSV(csvPath);
 
 		// Wait for file to be parsed and preview shown

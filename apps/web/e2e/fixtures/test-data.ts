@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export interface TestUser {
 	name: string;
@@ -14,7 +15,7 @@ export interface TestUser {
  * chromium project another; the login specs then signed in as a user nobody
  * had registered.
  */
-const REGISTERED_USER_FILE = resolve(__dirname, '..', '.auth', 'test-user.json');
+const REGISTERED_USER_FILE = fileURLToPath(new URL('../.auth/test-user.json', import.meta.url));
 
 const TEST_PASSWORD = 'TestPassword123!';
 
