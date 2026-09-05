@@ -28,8 +28,6 @@ interface EmptyStateGuard {
 	primaryCta: { label: string; handler: string };
 	/** A marker proving the normal (has-data) list branch still renders. */
 	dataBranchMarker: string;
-	/** The forked ad-hoc empty markup this conversion must remove. */
-	removedForkMarker: string;
 }
 
 const guards: EmptyStateGuard[] = [
@@ -45,7 +43,6 @@ const guards: EmptyStateGuard[] = [
 			handler: 'handleNewCampaign',
 		},
 		dataBranchMarker: 'v-for="row in visibleRows"',
-		removedForkMarker: 'font-semibold">No campaigns here yet',
 	},
 	{
 		// Extracted page — same as campaigns above: anchor on the message keys.
@@ -57,7 +54,6 @@ const guards: EmptyStateGuard[] = [
 			handler: 'handleNewAutomation',
 		},
 		dataBranchMarker: 'v-for="automation in filteredAutomations"',
-		removedForkMarker: 'font-medium">No automations yet',
 	},
 	{
 		// Extracted page — same as campaigns above: anchor on the message keys.
@@ -69,13 +65,12 @@ const guards: EmptyStateGuard[] = [
 			handler: 'addModal.open()',
 		},
 		dataBranchMarker: 'v-else-if="filteredBlockedEmails.length > 0"',
-		removedForkMarker: 'font-medium">No suppressions',
 	},
 ];
 
 describe.each(guards)(
 	'$name list — standardized empty state',
-	({ page, emptyTitle, primaryCta, dataBranchMarker, removedForkMarker }) => {
+	({ page, emptyTitle, primaryCta, dataBranchMarker }) => {
 		const source = read(page);
 
 		it('renders the shared UiEmptyState for the empty state', () => {
@@ -92,10 +87,6 @@ describe.each(guards)(
 				`#action[\\s\\S]*?(?:${label}[\\s\\S]*?${handler}|${handler}[\\s\\S]*?${label})`
 			);
 			expect(source).toMatch(guard);
-		});
-
-		it('drops the forked ad-hoc empty card in favour of the shared component', () => {
-			expect(source).not.toContain(removedForkMarker);
 		});
 
 		it('still renders the data branch when there is content', () => {

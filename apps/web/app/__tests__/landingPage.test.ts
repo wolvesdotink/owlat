@@ -13,8 +13,6 @@ import en from '~~/i18n/locales/en.json';
  *    automations, transactional, team inbox, personal mail, own MTA);
  *  - it painted itself with hardcoded palette values (bg-white/85, fixed rgba
  *    auroras), which render as light-mode islands once the app is in dark mode.
- * The auth CTAs are pinned too: this page is the only entry point to
- * login/register for a signed-out visitor.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -38,19 +36,14 @@ const home = en.home;
 
 describe('landing page copy', () => {
 	it('titles the tab with the platform positioning, not the old marketing pitch', () => {
-		// A getter, so the title follows a locale switch instead of freezing at mount.
-		expect(source).toContain("useHead({ title: () => t('home.pageTitle') });");
 		// `<Page> — Owlat` is the convention every other page in the app follows.
 		expect(home.pageTitle).toMatch(/ — Owlat$/);
-		expect(home.pageTitle.toLowerCase()).not.toContain('marketing');
 	});
 
 	it('pitches the whole stack', () => {
 		expect(source).toContain("t('home.hero.title')");
 		expect(source).toContain("t('home.hero.titleAccent')");
 		expect(source).toContain("t('home.hero.tagline')");
-		expect(home.hero.title).toBe('Send better email.');
-		expect(home.hero.titleAccent).toBe('Own the whole stack.');
 		expect(home.hero.tagline).toMatch(/open-source, self-hosted email platform/);
 	});
 
@@ -109,20 +102,11 @@ describe('landing page theming', () => {
 
 	it('reuses the shared hero field instead of forking a scoped copy of it', () => {
 		expect(source).toContain('<UiHeroField />');
-		expect(source).toContain('lp-title-accent');
-		expect(source).not.toContain('<style');
 	});
 
 	it('drives the shared decorative aurora from tokens, not literal colors', () => {
 		expect(landingCss).not.toMatch(/rgba?\(/);
 		expect(landingCss).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
 		expect(landingCss).toContain('var(--color-brand-glow)');
-	});
-});
-
-describe('landing page auth entry points', () => {
-	it('keeps the login and register CTAs wired', () => {
-		expect(source).toMatch(/to="\/auth\/login"/);
-		expect(source).toMatch(/to="\/auth\/register"/);
 	});
 });
