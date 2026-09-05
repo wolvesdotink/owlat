@@ -5,7 +5,7 @@
  *
  * Subcommands:
  *   setup    Run the first-run wizard (interactive TUI or launches the web UI).
- *   config   Re-open the wizard for an existing install (skips already-set fields).
+ *   config   Alias of `setup` for re-opening the wizard on an existing install.
  *   feature  Toggle a single feature flag (e.g., `owlat-setup feature ai on`).
  *   env      Set a single env var (e.g., `owlat-setup env LLM_API_KEY sk-...`),
  *            or `owlat-setup env --show` to list the vars the current flags need.
@@ -15,7 +15,6 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { runSetup } from './commands/setup';
-import { runConfig } from './commands/config';
 import { runFeature } from './commands/feature';
 import { runPack } from './commands/pack';
 import { runEnv } from './commands/env';
@@ -118,9 +117,8 @@ async function main(): Promise<number> {
 			case 'quickstart':
 				return await runQuickstart({ ...opts, positional });
 			case 'setup':
-				return await runSetup({ ...opts, positional });
 			case 'config':
-				return await runConfig({ ...opts, positional });
+				return await runSetup({ ...opts, positional });
 			case 'bootstrap-org':
 				return await runBootstrapOrg({ ...opts, positional });
 			case 'seed':

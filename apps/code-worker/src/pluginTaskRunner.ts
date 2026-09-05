@@ -6,6 +6,7 @@ import { PLUGIN_WORKER_RESULT_MAX_BYTES, pluginWorkerJobLocalIdOf } from '@owlat
 import { getConvexClient, pluginFn, type PluginTask } from './convexClient.js';
 import { chownDirToSandbox, runUntrusted } from './sandbox.js';
 import { removeWorkspace } from './taskRunner.js';
+import { log } from './log.js';
 
 /**
  * Tier-3 plugin-job runner — the generalized half of the code-worker.
@@ -26,10 +27,6 @@ import { removeWorkspace } from './taskRunner.js';
 
 const WORKSPACE_ROOT = process.env['WORKSPACE_ROOT'] ?? '/workspace';
 const DEFAULT_HEARTBEAT_INTERVAL_MS = Number(process.env['PLUGIN_JOB_HEARTBEAT_MS'] ?? 5_000);
-
-function log(msg: string) {
-	console.info(`[code-worker] ${new Date().toISOString()} ${msg}`);
-}
 
 /** A host-controlled command a job kind maps to. Never built from the payload. */
 export interface JobCommandSpec {

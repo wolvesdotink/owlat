@@ -14,6 +14,7 @@ import {
 	type SmtpConnection,
 } from '@owlat/smtp-client';
 import { logger } from '../monitoring/logger.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
 import { PoolGlobalCap, type PoolCoordinationProtocol } from './poolGlobalCap.js';
 import { PoolLeaseHeartbeat, type LeaseHeartbeatTarget } from './poolLeaseHeartbeat.js';
 import { smtpPoolConnections, smtpPoolReused } from './poolMetrics.js';
@@ -369,7 +370,7 @@ export class SmtpConnectionPool {
 
 	/** Best-effort polite teardown: send QUIT, read the 221, then destroy. */
 	private quitConnection(conn: SmtpConnection): void {
-		void quit(conn).catch(() => {});
+		void fireAndForget(quit(conn), logger, 'smtp_quit');
 	}
 
 	/** Cleanly retire an entry's parked idle socket, if any, before it is dropped. */

@@ -13,6 +13,7 @@ import { ADAPTIVE_WARMING_POLICY, getWarmingCapForDay } from '@owlat/shared/warm
 import type { MtaConfig } from '../config.js';
 import type { WarmingState } from '../types.js';
 import { logger } from '../monitoring/logger.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 
 /** One UTC day's measured warming performance for an IP. */
@@ -63,17 +64,21 @@ export async function applyWarmingScheduleAdjustment(
 
 		logger.error({ ip, bounceRate, deferralRate }, 'Warming HALTED — critical thresholds exceeded');
 
-		await notifyConvex(
-			{
-				event: 'ip.blocklisted',
-				ip,
-				severity: 'critical',
-				message: `Warming halted: bounce rate ${(bounceRate * 100).toFixed(1)}%, deferral rate ${(deferralRate * 100).toFixed(1)}%`,
-				timestamp: Date.now(),
-			},
-			config,
-			redis
-		).catch(() => {});
+		await fireAndForget(
+			notifyConvex(
+				{
+					event: 'ip.blocklisted',
+					ip,
+					severity: 'critical',
+					message: `Warming halted: bounce rate ${(bounceRate * 100).toFixed(1)}%, deferral rate ${(deferralRate * 100).toFixed(1)}%`,
+					timestamp: Date.now(),
+				},
+				config,
+				redis
+			),
+			logger,
+			'warming_halt_notify'
+		);
 		return 'halted';
 	}
 
@@ -185,16 +190,20 @@ export async function applyWarmingGraduation(
 		await redis.hset(hashKey, 'phase', 'graduated', 'dailyCap', String(Infinity));
 		logger.info({ ip, actualDays: updatedState.currentDay }, 'IP GRADUATED — warming complete');
 
-		await notifyConvex(
-			{
-				event: 'ip.warming_complete',
-				ip,
-				severity: 'info',
-				message: `IP ${ip} warming complete after ${updatedState.currentDay} days`,
-				timestamp: Date.now(),
-			},
-			config,
-			redis
-		).catch(() => {});
+		await fireAndForget(
+			notifyConvex(
+				{
+					event: 'ip.warming_complete',
+					ip,
+					severity: 'info',
+					message: `IP ${ip} warming complete after ${updatedState.currentDay} days`,
+					timestamp: Date.now(),
+				},
+				config,
+				redis
+			),
+			logger,
+			'warming_complete_notify'
+		);
 	}
 }

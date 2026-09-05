@@ -49,6 +49,7 @@ import { verifyPostboxAppPassword } from '../auth/postboxAuth.js';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
 import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { logger } from '../monitoring/logger.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { emailDomain } from '@owlat/shared/spfAlignment';
 import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
@@ -198,7 +199,7 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 			// Master key — constant-time compare like every other secret check.
 			if (timingSafeStringEqual(apiKey, config.apiKey)) {
 				session.state.auth = { organizationId: '__master__', credentialName: 'master' };
-				await clearAuthFailures(redis, remoteIp).catch(() => {});
+				await fireAndForget(clearAuthFailures(redis, remoteIp), logger, 'clear_auth_failures');
 				return { ok: true, user: 'master' };
 			}
 
@@ -210,7 +211,7 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 					credentialName: credential.name,
 					...(credential.allowedDomains ? { allowedDomains: credential.allowedDomains } : {}),
 				};
-				await clearAuthFailures(redis, remoteIp).catch(() => {});
+				await fireAndForget(clearAuthFailures(redis, remoteIp), logger, 'clear_auth_failures');
 				return { ok: true, user: credential.name };
 			}
 
@@ -235,7 +236,7 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 							userId: result.userId,
 						},
 					};
-					await clearAuthFailures(redis, remoteIp).catch(() => {});
+					await fireAndForget(clearAuthFailures(redis, remoteIp), logger, 'clear_auth_failures');
 					return { ok: true, user: username };
 				}
 			}

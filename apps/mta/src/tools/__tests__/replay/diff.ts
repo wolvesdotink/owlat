@@ -1,5 +1,5 @@
 /**
- * Divergence classification for the inbound shadow-replay harness (piece C0).
+ * Divergence classification for the inbound shadow-replay harness.
  *
  * Field-level diff of two driver projections plus the message-level auth
  * verdicts, marking the exact, enumerated set of sanctioned inbound behaviour

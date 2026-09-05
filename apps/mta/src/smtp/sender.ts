@@ -35,6 +35,7 @@ import {
 import { extractDomain } from '../queue/groups.js';
 import { extractDomainOrNull, strictestOutboundTlsMode } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
 import { cfblEmissionsTotal } from '../monitoring/collector.js';
 import { pool, PoolOverCapError } from './connectionPool.js';
 import { prepareDaneAttempt, type DanePlan } from './daneVerify.js';
@@ -702,14 +703,20 @@ export async function sendToMx(
 		//    to cleartext. Otherwise escalate to the STS-specific type under a policy.
 		if (err.tlsCause !== undefined) {
 			if (daneRequired) {
-				recordTlsResult(redis, recipientDomain, 'validation-failure', mxHost, bindIp, ctx).catch(
-					() => {}
+				void fireAndForget(
+					recordTlsResult(redis, recipientDomain, 'validation-failure', mxHost, bindIp, ctx),
+					logger,
+					'record_tls_result'
 				);
 				return { kind: 'tls-failure', resultType: 'validation-failure', response };
 			}
 			const baseType = classifyTlsFailure(err.tlsCause);
 			const stsResultType = stsAttributedResultType(baseType, stsOptions.policyMode);
-			recordTlsResult(redis, recipientDomain, stsResultType, mxHost, bindIp, ctx).catch(() => {});
+			void fireAndForget(
+				recordTlsResult(redis, recipientDomain, stsResultType, mxHost, bindIp, ctx),
+				logger,
+				'record_tls_result'
+			);
 			return { kind: 'tls-failure', resultType: stsResultType, response };
 		}
 
@@ -907,14 +914,18 @@ export async function sendToMx(
 			// RFC 8460 §4.3: an MX that is not in the enforce policy is a policy
 			// failure — record it (previously this skip recorded nothing, so STS
 			// MX-mismatch was invisible in our TLS-RPT reports).
-			recordTlsResult(
-				redis,
-				recipientDomain,
-				'sts-policy-invalid',
-				mxHost,
-				bindIp,
-				policyContext
-			).catch(() => {});
+			void fireAndForget(
+				recordTlsResult(
+					redis,
+					recipientDomain,
+					'sts-policy-invalid',
+					mxHost,
+					bindIp,
+					policyContext
+				),
+				logger,
+				'record_tls_result'
+			);
 			continue;
 		}
 

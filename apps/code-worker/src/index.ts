@@ -1,12 +1,9 @@
 import { getConvexClient, fn, pluginFn } from './convexClient.js';
 import { processTask, pruneStaleWorkspaces } from './taskRunner.js';
 import { pollForPluginTask } from './pluginTaskRunner.js';
+import { log } from './log.js';
 
 const POLL_INTERVAL_MS = Number(process.env['POLL_INTERVAL_MS'] ?? 10_000);
-
-function log(msg: string) {
-	console.info(`[code-worker] ${new Date().toISOString()} ${msg}`);
-}
 
 async function pollForTasks(): Promise<void> {
 	const client = getConvexClient();

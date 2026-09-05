@@ -17,7 +17,7 @@
 import { describe, it, expect } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { loadCorpus, owlatNewStack, runReplay } from '../inboundReplay';
+import { loadCorpus, owlatNewStack, runReplay } from './inboundReplay';
 import { oracleOldStack } from './helpers/oracleStack';
 
 const IMAP_CORPUS_DIR = join(
