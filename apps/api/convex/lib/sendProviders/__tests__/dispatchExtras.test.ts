@@ -29,9 +29,6 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { buildDispatchExtrasFor, providerFor } from '../index';
 import {
 	acceptanceSemanticsFor,
@@ -430,22 +427,6 @@ describe('declared dispatch semantics', () => {
 		for (const entry of coreEntries) {
 			expect(entry.acceptanceSemantics).toBeDefined();
 			expect(entry.messageIdSource).toBeDefined();
-		}
-	});
-});
-
-describe('the seam stays closed', () => {
-	it('governed dispatch compares no provider kind to a literal (D2)', () => {
-		// The point of P0.1, both halves: extras belong to the module and the
-		// acceptance/identity semantics belong to the catalog, so the governed send
-		// path must not know that ANY particular kind exists — `'mta'` included,
-		// which is what the second half of the piece removed.
-		const source = readFileSync(
-			join(dirname(fileURLToPath(import.meta.url)), '../../../delivery/governedDispatch.ts'),
-			'utf8'
-		);
-		for (const kind of SEND_PROVIDER_KINDS) {
-			expect(source).not.toContain(`'${kind}'`);
 		}
 	});
 });

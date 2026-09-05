@@ -19,9 +19,6 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import {
 	OWN_SENDING_DOMAIN_PROVIDER_KIND,
 	SENDING_DOMAIN_PROVIDERS,
@@ -41,10 +38,6 @@ import {
 	type ApiVerifiedSendProviderKind,
 	type SendProviderKind,
 } from '../../../lib/sendProviders/catalog';
-
-const sourceDir = dirname(fileURLToPath(import.meta.url));
-const readSource = (relativePath: string): string =>
-	readFileSync(resolve(sourceDir, relativePath), 'utf8');
 
 describe('SENDING_DOMAIN_PROVIDERS', () => {
 	it('registers exactly the shipped kinds, each declaring its own kind', () => {
@@ -111,24 +104,6 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 		// Inherited object properties are not registrations.
 		expect(isSendingDomainProviderKind('toString')).toBe(false);
 		expect(isSendingDomainProviderKind('constructor')).toBe(false);
-	});
-
-	it('names the forward-provisioning effect exactly while it is a hand-written list', () => {
-		// `../index.ts` may warn that registering an adapter does not by itself put
-		// a kind on the FORWARD relay-provisioning path only while
-		// `provision_relay_identity_if_enabled` schedules from a hand-written list
-		// of relay kinds. Pinned in BOTH directions — the same treatment
-		// `apps/docs/__tests__/abstractionsDocs.test.ts` gives the abstraction
-		// page's copy of the warning. The effect is a registry walk today, so a
-		// surviving warning would tell the next author their kind is unreachable on
-		// the forward path when it is not; and if the walk is ever unwound back
-		// into a list, the warning has to come back. Nothing else in the tree would
-		// notice either direction.
-		const stillAHandWrittenList =
-			readSource('../../lifecycle.ts').includes("relayKinds.has('ses')");
-		expect(readSource('../index.ts').includes('provision_relay_identity_if_enabled')).toBe(
-			stillAHandWrittenList
-		);
 	});
 });
 

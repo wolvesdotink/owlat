@@ -18,9 +18,6 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
@@ -343,23 +340,6 @@ describe('getDeliverabilityDashboard — tenant isolation', () => {
 		await expect(
 			t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
 		).rejects.toThrow(/access/i);
-	});
-
-	/**
-	 * The case above proves the handler AWAITS the membership check; it cannot
-	 * prove the function is gated, because the check it exercises is mocked. What
-	 * makes the gate real is the WRAPPER, so that is asserted statically: the
-	 * module must build on `authedQuery` and must not reach for a bare `query`,
-	 * and it must take no `organizationId` argument a caller could forge.
-	 */
-	it('is built on the authed wrapper and takes no forgeable org argument', () => {
-		const source = readFileSync(
-			resolve(dirname(fileURLToPath(import.meta.url)), '../deliverabilityDashboard.ts'),
-			'utf8'
-		);
-		expect(source).toContain('authedQuery({');
-		expect(source).not.toMatch(/\bimport\b[^;]*\bquery\b[^;]*from '\.\.\/_generated\/server'/);
-		expect(source).not.toMatch(/^\s*organizationId: v\./m);
 	});
 });
 

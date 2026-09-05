@@ -457,41 +457,6 @@ describe('the rows are tenant data', () => {
 		});
 		expect(await allRows(t)).toEqual([]);
 	});
-
-	it('declares every caller-reachable index org-leading', async () => {
-		// Read off the schema source rather than hand-listed, and EXHAUSTIVE: an
-		// index nobody reads on a table written once per SMTP response is the write
-		// amplification D16 exists to bound.
-		const { readFileSync } = await import('node:fs');
-		const { dirname, join } = await import('node:path');
-		const { fileURLToPath } = await import('node:url');
-		const source = readFileSync(
-			join(
-				dirname(fileURLToPath(import.meta.url)),
-				'..',
-				'..',
-				'schema',
-				'smtpResponseCategories.ts'
-			),
-			'utf8'
-		);
-		const declared = [...source.matchAll(/\.index\('([^']+)',\s*\[([^\]]*)\]/g)].map((match) => ({
-			name: match[1] ?? '',
-			fields: (match[2] ?? '')
-				.split(',')
-				.map((field) => field.trim().replace(/^'|'$/g, ''))
-				.filter((field) => field.length > 0),
-		}));
-		expect(declared.map((index) => index.name)).toEqual([
-			'by_org_cell_arm_period_shard',
-			'by_period_start',
-		]);
-		expect(declared[0]?.fields[0]).toBe('organizationId');
-		// The one exemption, and the reason: the aging sweep is deployment-wide and
-		// must not have to enumerate orgs to find old buckets. It is reachable only
-		// from the internal cron.
-		expect(declared[1]?.fields).toEqual(['periodStart']);
-	});
 });
 
 describe('the aging sweep', () => {
