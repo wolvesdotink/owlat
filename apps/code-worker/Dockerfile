@@ -4,7 +4,7 @@
 # Compiled via the bun workspace (like web/mta/updater/setup-cli): the
 # package.json uses bun `catalog:` versions, which only resolve inside the
 # workspace — a standalone `npm install` cannot parse them.
-FROM oven/bun:1.3-alpine AS builder
+FROM oven/bun:1.4-alpine AS builder
 
 WORKDIR /build
 
@@ -33,7 +33,7 @@ RUN cd apps/code-worker && bun run build
 # ── Runtime deps stage ───────────────────────────────────────────────
 # Production-only install scoped to this package: yields a minimal
 # node_modules (convex, octokit, execa + transitives) without devDeps.
-FROM oven/bun:1.3-alpine AS proddeps
+FROM oven/bun:1.4-alpine AS proddeps
 
 WORKDIR /build
 
