@@ -26,6 +26,7 @@ import { v, type Validator } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { getMtaConfig } from '../mail/mtaClient';
+import { bounceTypeValidator } from '../lib/convexValidators';
 
 // blockedEmails.reason — the Convex-side suppression vocabulary.
 export type BlockReason = 'bounced' | 'complained' | 'manual' | 'unengaged';
@@ -123,7 +124,7 @@ export const mirror = internalAction({
 	args: {
 		email: v.string(),
 		reason: mirroredBlockReasonValidator,
-		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
+		bounceType: v.optional(bounceTypeValidator),
 	},
 	handler: async (_ctx, args) => {
 		const mta = getMtaConfig();

@@ -36,7 +36,7 @@ import { deduplicateContactsByEmail } from '../lib/contactHelpers';
 import { incrementContactCount } from '../lib/contactCountHelpers';
 import { isValidEmail, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
 import { recordContactActivity } from '../contactActivities/writer';
-import { jsonPrimitiveValue } from '../lib/convexValidators';
+import { jsonPrimitiveValue, duplicateHandlingValidator } from '../lib/convexValidators';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -213,7 +213,7 @@ async function applyRowProperties(
 	const operatorSource = isOperatorSource(source);
 
 	for (const [rawKey, rawValue] of Object.entries(properties)) {
-		if (rawValue === undefined || rawValue === null || rawValue === '') {
+		if (rawValue == null || rawValue === '') {
 			continue;
 		}
 		if (
@@ -287,7 +287,7 @@ function buildPerTopicLists(
 const importBatchArgsValidator = {
 	rows: v.array(importRowValidator),
 	source: importSourceValidator,
-	handleDuplicates: v.union(v.literal('skip'), v.literal('update')),
+	handleDuplicates: duplicateHandlingValidator,
 	topicAssignments: v.optional(topicAssignmentsValidator),
 	doiAttest: v.optional(doiAttestValidator),
 	siteUrl: v.optional(v.string()),

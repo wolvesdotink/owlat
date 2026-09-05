@@ -30,6 +30,7 @@ import { recordSendAssignments } from './sendAssignments';
 import { normalizeEngagementScore } from './workerEnvelope';
 import { enqueueSeedShadowCopies, type CampaignEnvelopeInput } from './seedShadowCopy';
 import { logError } from '../lib/runtimeLog';
+import { abVariantValidator } from '../lib/convexValidators';
 
 /**
  * One element of `enqueueCampaignEmails.emails` — the per-recipient slice of a
@@ -86,7 +87,7 @@ export const enqueueCampaignEmails = internalMutation({
 		listId: v.optional(v.string()),
 		// A/B arm this page belongs to. Only used to key the seed-probe set: the
 		// two arms are different messages and each deserves its own reading.
-		abVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
+		abVariant: v.optional(abVariantValidator),
 	},
 	handler: async (ctx, args) => {
 		// The experiment record (plan D7): one assignment row per recipient,

@@ -20,6 +20,7 @@ import type { Doc } from './_generated/dataModel';
 import { adminQuery } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { getCategoryRule } from './lib/autonomyRules';
+import { reviewActionValidator } from './lib/convexValidators';
 
 // ============================================================
 // Feedback readers
@@ -116,7 +117,7 @@ export const getFeedbackCountsInternal = internalQuery({
 export const recordFeedback = internalMutation({
 	args: {
 		category: v.string(),
-		action: v.union(v.literal('approved'), v.literal('rejected'), v.literal('edited')),
+		action: reviewActionValidator,
 		agentConfidence: v.number(),
 		userFeedback: v.optional(v.string()),
 		inboundMessageId: v.optional(v.id('inboundMessages')),

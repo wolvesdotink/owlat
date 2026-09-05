@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { transportArmValidator } from '../lib/convexValidators';
 
 /**
  * The experiment record — one row per recipient per send.
@@ -43,7 +44,7 @@ export const sendAssignmentTables = {
 		// for the arm question this table exists to answer — `own` vs
 		// `reference` is a property of the kind, not of the instance.
 		transport: v.string(),
-		arm: v.union(v.literal('own'), v.literal('reference')),
+		arm: transportArmValidator,
 		// `is*` prefix per CONVENTIONS.md boolean naming (the plan sketch called
 		// this `calibration`); true for the randomized calibration slice.
 		isCalibration: v.boolean(),

@@ -1,4 +1,4 @@
-import { v, type Validator } from 'convex/values';
+import { v } from 'convex/values';
 import { DNSBL_LIST_IDS } from '@owlat/shared/dnsbl';
 import { FCRDNS_FAILURE_REASONS, FCRDNS_VERDICTS } from '@owlat/shared/fcrdns';
 import {
@@ -9,13 +9,7 @@ import {
 	SOURCE_ADDRESS_FAILURE_REASONS,
 	SOURCE_ADDRESS_VERDICTS,
 } from '@owlat/shared/ipReadiness';
-
-function literalUnion<const T extends readonly [string, ...string[]]>(values: T) {
-	const [first, ...rest] = values;
-	return v.union(v.literal(first), ...rest.map((value) => v.literal(value))) as Validator<
-		T[number]
-	>;
-}
+import { literalUnion } from '../lib/convexValidators';
 
 /** Readiness fields shared by the warming-state table and its sync mutation. */
 export const ipReadinessFieldValidators = {

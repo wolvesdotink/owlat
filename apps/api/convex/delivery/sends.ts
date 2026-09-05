@@ -4,6 +4,7 @@ import { authedQuery } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
+import { abVariantValidator } from '../lib/convexValidators';
 
 // Get a single email send by ID
 export const get = authedQuery({
@@ -140,7 +141,7 @@ export const createBatch = internalMutation({
 				contactEmail: v.optional(v.string()),
 				contactFirstName: v.optional(v.string()),
 				contactLastName: v.optional(v.string()),
-				abVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
+				abVariant: v.optional(abVariantValidator),
 			})
 		),
 	},

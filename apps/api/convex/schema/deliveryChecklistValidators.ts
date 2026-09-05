@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/convexValidators';
 import {
 	DELIVERABILITY_ALERT_RECIPIENT_STATUSES,
 	DELIVERABILITY_ALERT_RECIPIENT_UNAVAILABLE_REASONS,
@@ -15,10 +16,10 @@ export const deliverabilityCheckIdSchemaValidator = v.union(
 	...remainingDeliverabilityChecks.map((item) => v.literal(item))
 );
 
-export const deliverabilityAlertRecipientStatusValidator = v.union(
-	...DELIVERABILITY_ALERT_RECIPIENT_STATUSES.map((status) => v.literal(status))
+export const deliverabilityAlertRecipientStatusValidator = literalUnion(
+	DELIVERABILITY_ALERT_RECIPIENT_STATUSES
 );
 
-export const deliverabilityAlertRecipientUnavailableReasonValidator = v.union(
-	...DELIVERABILITY_ALERT_RECIPIENT_UNAVAILABLE_REASONS.map((reason) => v.literal(reason))
+export const deliverabilityAlertRecipientUnavailableReasonValidator = literalUnion(
+	DELIVERABILITY_ALERT_RECIPIENT_UNAVAILABLE_REASONS
 );

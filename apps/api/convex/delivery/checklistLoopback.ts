@@ -11,6 +11,7 @@ import { authedAction } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { internalAction } from '../_generated/server';
+import { authResultValidator } from '../lib/convexValidators';
 
 const PROBE_TIMEOUT_MS = 15 * 60_000;
 
@@ -106,9 +107,9 @@ export const start = authedAction({
 export const recordInbound = internalAction({
 	args: {
 		token: v.string(),
-		spf: v.union(v.literal('pass'), v.literal('fail'), v.literal('unknown')),
-		dkim: v.union(v.literal('pass'), v.literal('fail'), v.literal('unknown')),
-		dmarc: v.union(v.literal('pass'), v.literal('fail'), v.literal('unknown')),
+		spf: authResultValidator,
+		dkim: authResultValidator,
+		dmarc: authResultValidator,
 		dkimSelector: v.optional(v.string()),
 		tlsVersion: v.string(),
 		sendingIp: v.string(),

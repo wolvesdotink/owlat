@@ -30,6 +30,7 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { audienceValidator } from './audience';
+import { abVariantValidator } from '../lib/convexValidators';
 
 const variantModeValidator = v.union(
 	v.literal('plain'),
@@ -57,7 +58,7 @@ export const createSendJob = internalMutation({
 		variantMode: v.optional(variantModeValidator),
 		testFraction: v.optional(v.number()),
 		splitPercentage: v.optional(v.number()),
-		winningVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
+		winningVariant: v.optional(abVariantValidator),
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();

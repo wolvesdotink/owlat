@@ -32,6 +32,7 @@ import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isBulkOrNoReplySender } from './needsReply';
 import { armThreadFollowUp, followUpWaitingOn } from './followUps';
+import { messageDirectionValidator, detectionSourceValidator } from '../lib/convexValidators';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -141,12 +142,12 @@ export const applyCommitment = internalMutation({
 		mailboxId: v.id('mailboxes'),
 		threadId: v.id('mailThreads'),
 		messageId: v.id('mailMessages'),
-		direction: v.union(v.literal('inbound'), v.literal('outbound')),
+		direction: messageDirectionValidator,
 		description: v.string(),
 		counterparty: v.optional(v.string()),
 		dueAt: v.optional(v.number()),
 		dueHintRaw: v.optional(v.string()),
-		source: v.union(v.literal('heuristic'), v.literal('llm')),
+		source: detectionSourceValidator,
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db

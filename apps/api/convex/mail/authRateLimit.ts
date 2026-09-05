@@ -13,6 +13,7 @@
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
+import { mailAppPasswordScopeValidator } from '../lib/convexValidators';
 
 const WINDOW_MS = 60_000;
 const PER_ADDRESS_LIMIT = 5;
@@ -34,7 +35,7 @@ export const recordFailure = internalMutation({
 	args: {
 		address: v.string(),
 		ip: v.optional(v.string()),
-		scope: v.union(v.literal('imap'), v.literal('smtp')),
+		scope: mailAppPasswordScopeValidator,
 	},
 	handler: async (ctx, args) => {
 		await ctx.db.insert('mailAuthFailures', {

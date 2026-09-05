@@ -11,7 +11,6 @@
  * the batch seam may not. See the two predicates below.
  */
 
-import { v } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { isSendProviderReady, providerKindConfigured } from './capability';
@@ -34,16 +33,6 @@ import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityR
  * re-exports both for existing importers.
  */
 export type MessageType = Doc<'providerRoutes'>['messageType'];
-
-/**
- * Single source of truth for the message-type literal set (imported by
- * `providerRoutes.ts` so the two can't drift).
- */
-export const messageTypeValidator = v.union(
-	v.literal('campaign'),
-	v.literal('transactional'),
-	v.literal('automation')
-);
 
 /**
  * The provider kinds this route config could select: the ENABLED ones named on

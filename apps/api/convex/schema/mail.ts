@@ -1,7 +1,13 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
-import { spamVerdictValidator, draftQualityValidator } from '../lib/convexValidators';
+import {
+	spamVerdictValidator,
+	draftQualityValidator,
+	detectionSourceValidator,
+	mailAppPasswordScopeValidator,
+	messageDirectionValidator,
+} from '../lib/convexValidators';
 import {
 	mailAttachmentShareScanValidator,
 	mailAttachmentShareScopeValidator,
@@ -867,7 +873,7 @@ export const mailTables = {
 				// The inbound message that triggered the flag (usually the newest).
 				messageId: v.id('mailMessages'),
 				detectedAt: v.number(),
-				source: v.union(v.literal('heuristic'), v.literal('llm')),
+				source: detectionSourceValidator,
 				urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
 				// Unified cross-thread priority score (mail/ai/priorityScore.ts): the
 				// deterministic sender-importance signal (VIP / person / frecency)
@@ -1380,7 +1386,7 @@ export const mailTables = {
 		label: v.string(), // e.g. "iPhone Mail", "Thunderbird"
 		passwordHash: v.string(), // PBKDF2-SHA256 derived; encoded as <salt-hex>:<hash-hex>
 		passwordPrefix: v.string(), // first 4 chars, lowercase
-		scopes: v.array(v.union(v.literal('imap'), v.literal('smtp'))),
+		scopes: v.array(mailAppPasswordScopeValidator),
 		createdAt: v.number(),
 		lastUsedAt: v.optional(v.number()),
 		lastUsedIp: v.optional(v.string()),
@@ -1927,7 +1933,7 @@ export const mailTables = {
 		messageId: v.id('mailMessages'),
 		// `inbound` = a deadline someone gave the owner; `outbound` = a promise the
 		// owner made in sent mail.
-		direction: v.union(v.literal('inbound'), v.literal('outbound')),
+		direction: messageDirectionValidator,
 		// One line describing the commitment (<= 200 chars).
 		description: v.string(),
 		// The other party (who is owed / who is waiting). Display hint.
@@ -1945,7 +1951,7 @@ export const mailTables = {
 			v.literal('done'),
 			v.literal('lapsed')
 		),
-		source: v.union(v.literal('heuristic'), v.literal('llm')),
+		source: detectionSourceValidator,
 		// Set once the pre-lapse reminder fired (status → reminded), so the cron
 		// never re-reminds the same commitment.
 		remindedAt: v.optional(v.number()),

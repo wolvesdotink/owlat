@@ -24,7 +24,7 @@ import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { abTestConfigValidator } from '../lib/convexValidators';
+import { abTestConfigValidator, abVariantValidator } from '../lib/convexValidators';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse } from '../lib/lifecycle';
 
@@ -74,7 +74,7 @@ const transitionInputValidator = v.union(
 	v.object({
 		to: v.literal('winner_selected'),
 		at: v.number(),
-		winner: v.union(v.literal('A'), v.literal('B')),
+		winner: abVariantValidator,
 	}),
 	v.object({ to: v.literal('none'), at: v.number() })
 );

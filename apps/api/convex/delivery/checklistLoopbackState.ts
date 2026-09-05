@@ -13,6 +13,7 @@ import { internal } from '../_generated/api';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import { deliverabilityTargetKey } from './checklistEvidence';
 import { checklistTraits } from './checklistTraits';
+import { authResultValidator } from '../lib/convexValidators';
 
 const EVIDENCE_LIMIT = 1_500;
 
@@ -201,14 +202,12 @@ export const markSendFailed = internalMutation({
 	},
 });
 
-const authResult = v.union(v.literal('pass'), v.literal('fail'), v.literal('unknown'));
-
 export const recordInboundEvidence = internalMutation({
 	args: {
 		correlationTokenHash: v.string(),
-		spf: authResult,
-		dkim: authResult,
-		dmarc: authResult,
+		spf: authResultValidator,
+		dkim: authResultValidator,
+		dmarc: authResultValidator,
 		dkimSelector: v.optional(v.string()),
 		tlsVersion: v.string(),
 		sendingIp: v.string(),

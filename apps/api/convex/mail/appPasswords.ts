@@ -22,6 +22,7 @@ import { requireAdminContext } from '../lib/sessionOrganization';
 import { requireMailboxAccess } from './permissions';
 import { resolveDeliverableMailbox } from './mailbox/identity';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { mailAppPasswordScopeValidator } from '../lib/convexValidators';
 
 const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
@@ -106,7 +107,7 @@ export const generate = authedMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		label: v.string(),
-		scopes: v.optional(v.array(v.union(v.literal('imap'), v.literal('smtp')))),
+		scopes: v.optional(v.array(mailAppPasswordScopeValidator)),
 	},
 	handler: async (ctx, args) => {
 		// Minting standing IMAP/SMTP credentials is an owner-grade action: they
@@ -210,7 +211,7 @@ export const verify = internalAction({
 	args: {
 		address: v.string(),
 		password: v.string(),
-		scope: v.union(v.literal('imap'), v.literal('smtp')),
+		scope: mailAppPasswordScopeValidator,
 		// Optional caller IP — used by the shared rate-limit table so the
 		// SMTP submission path can throttle (the IMAP path also uses Redis).
 		ip: v.optional(v.string()),
@@ -281,7 +282,7 @@ export const _candidatesByAddressAndPrefix = internalQuery({
 	args: {
 		address: v.string(),
 		passwordPrefix: v.string(),
-		scope: v.union(v.literal('imap'), v.literal('smtp')),
+		scope: mailAppPasswordScopeValidator,
 	},
 	handler: async (ctx, args) => {
 		// Bind auth to the live hosted mailbox, not an external read-only archive
