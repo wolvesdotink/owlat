@@ -80,7 +80,7 @@
 		"@types/node": "catalog:",
 		"@types/sanitize-html": "^2.13.0",
 		"@vitest/coverage-v8": "catalog:",
-		"convex-test": "^0.0.55",
+		"convex-test": "^0.0.56",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}
