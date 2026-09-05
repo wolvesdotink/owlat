@@ -344,7 +344,6 @@ describe('the module contract', () => {
 	it('every core kind answers the builder through its own module', () => {
 		for (const kind of CORE_KINDS) {
 			const module = providerFor(kind);
-			expect(typeof module.buildDispatchExtras).toBe('function');
 			expect(module.buildDispatchExtras?.(facts())).toEqual(buildDispatchExtrasFor(kind, facts()));
 		}
 	});

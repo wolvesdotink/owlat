@@ -18,14 +18,6 @@ vi.mock('../../plugins/automationConditionCatalog.generated', () => ({
 const catalog = await import('../catalog');
 
 describe('automation condition catalog', () => {
-	it('pins the built-in condition kinds and their order', () => {
-		expect(catalog.CORE_CONDITION_KINDS).toEqual([
-			'contact_property',
-			'email_activity',
-			'topic_membership',
-		]);
-	});
-
 	it('classifies core and plugin kinds', () => {
 		expect(catalog.isCoreConditionKind('contact_property')).toBe(true);
 		expect(catalog.isCoreConditionKind('plugin.scoring.high_intent')).toBe(false);

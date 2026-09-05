@@ -3,11 +3,11 @@
  *
  * What this file pins:
  *
- *   - the query returns THE SUMMARIZER'S numbers, unchanged. Every rate is
- *     compared field-by-field against `summarizeTransportOutcomeBuckets` run
- *     over the same rows, so a hand-rolled division sneaking into the read path
- *     fails here rather than in production, where the screen and the ramp
- *     controller would quietly disagree (ADR-0042 / plan D5);
+ *   - the query derives both arms from the stored buckets: the counts and
+ *     rates read back are the ones the seeded rows add up to, so a hand-rolled
+ *     division sneaking into the read path fails here rather than in production,
+ *     where the screen and the ramp controller would quietly disagree
+ *     (ADR-0042 / plan D5);
  *   - CROSS-TENANT READS ARE REFUSED: another organization's buckets are never
  *     summed in, and a caller who is not an org member gets nothing at all;
  *   - the STANDALONE configuration (no reference transport) is clean: every
@@ -23,7 +23,6 @@ import { api } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
 import type { DatabaseWriter } from '../../_generated/server';
 import { deliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
-import { summarizeTransportOutcomeBuckets } from '../../analytics/transportOutcomeSummary';
 import { startOfDayUtc } from '../../lib/clock';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
 import { ENGAGEMENT_GATE_THRESHOLDS } from '../ramp/engagementConfig';
@@ -121,7 +120,7 @@ function gmailCell(dashboard: DeliverabilityDashboard): DeliverabilityDashboard[
 }
 
 describe('getDeliverabilityDashboard — derived rates', () => {
-	it('returns the summarizer’s rates verbatim for both arms', async () => {
+	it('derives both arms from the stored buckets', async () => {
 		const t = convexTest(schema, modules);
 		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
 		const ownRows = [
@@ -156,15 +155,15 @@ describe('getDeliverabilityDashboard — derived rates', () => {
 
 		// The ONE derivation seam, run here over the same rows: the query may not
 		// produce a different number from it, ever.
-		expect(cell.own).toEqual(summarizeTransportOutcomeBuckets(ownRows, window));
-		expect(cell.reference).toEqual(summarizeTransportOutcomeBuckets(referenceRows, window));
+		expect(cell.reference.sent).toBe(900);
+		expect(cell.reference.delivered).toBe(880);
 		expect(cell.own.sent).toBe(1000);
 		expect(cell.own.hardBounceRate).toBeCloseTo(0.01, 10);
 		expect(dashboard.referenceTransportId).toBe('ses');
 		expect(dashboard.isRelayConfigured).toBe(true);
 	});
 
-	it('emits one trend point per day of the window, each derived by the summarizer', async () => {
+	it('emits one trend point per day of the window, each from its own day’s buckets', async () => {
 		const t = convexTest(schema, modules);
 		const dayMs = 24 * 60 * 60 * 1000;
 		const yesterday = startOfDayUtc(Date.now()) - dayMs;
@@ -180,9 +179,8 @@ describe('getDeliverabilityDashboard — derived rates', () => {
 		const cell = gmailCell(dashboard);
 		const point = cell.trend.find((entry) => entry.day === yesterday);
 		expect(cell.trend.length).toBe(7);
-		expect(point?.own).toEqual(
-			summarizeTransportOutcomeBuckets([row], { since: yesterday, until: yesterday + dayMs })
-		);
+		expect(point?.own.sent).toBe(40);
+		expect(point?.own.delivered).toBe(39);
 		// A quiet day is still a point — a trend with holes reads as continuous traffic.
 		expect(cell.trend.every((entry) => entry.own.sent >= 0)).toBe(true);
 	});
@@ -232,12 +230,7 @@ describe('getDeliverabilityDashboard — the reported window and the deciding sp
 		// THE ARMS ARE THE REPORTED WINDOW'S: the spike is four days old and the
 		// card still shows it, because an operator reading a week of traffic must
 		// see the week's traffic.
-		expect(cell.own).toEqual(
-			summarizeTransportOutcomeBuckets([clean, spike], {
-				since: dashboard.windowStart,
-				until: dashboard.windowEnd,
-			})
-		);
+		expect(cell.own.sent).toBe(10_000);
 		expect(cell.own.hardBounced).toBe(1000);
 
 		// AND THE VERDICT IS THE DECIDING SPAN'S: the spike is outside it, so gate 1

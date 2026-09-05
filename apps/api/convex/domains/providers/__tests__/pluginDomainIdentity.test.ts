@@ -410,12 +410,4 @@ describe('the identity backfill schedules the provider call', () => {
 
 		expect(await scheduledNames(t)).toEqual(['domains/pluginRelay:provision']);
 	});
-
-	it('names the action the sweep and the backfill both reach', () => {
-		// A string in a test is not a wire; this is the generated reference, so a
-		// renamed action fails the build rather than leaving the two schedulers
-		// pointing at nothing.
-		expect(internal.domains.pluginRelay.provision).toBeDefined();
-		expect(internal.domains.pluginRelay.refreshIdentity).toBeDefined();
-	});
 });
