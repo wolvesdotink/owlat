@@ -37,7 +37,7 @@ import MeasurementGateList from '../MeasurementGateList.vue';
 import { improvementCopy, confidenceLabel } from '~/utils/deliverabilityMeasurement';
 import { holdingGate } from './measurementFixtures';
 import { adminNotice, cellControl, controlsView, NOW } from './rampFixtures';
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { createTestI18n, i18nStubs, localizedWith } from '~/__tests__/i18n';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -47,8 +47,7 @@ Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
  * English catalog rather than restating it.
  */
 const { t } = createTestI18n().global;
-const localized = (value: string | { key: string; params?: Record<string, unknown> }): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 
 const ALARM = /text-error|bg-error|setup incomplete|action required|something went wrong/i;
 

@@ -1,10 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-	summarizeDomainReadiness,
-	domainReadinessMessage,
-	type LocalizedText,
-} from '../domainReadiness';
-import { createTestI18n } from '~/__tests__/i18n';
+import { summarizeDomainReadiness, domainReadinessMessage } from '../domainReadiness';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * `domainReadinessMessage` is a module-scope helper, so it hands back the
@@ -12,8 +8,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * real English catalog keeps these assertions on the sentence people read.
  */
 const { t } = createTestI18n().global;
-const localized = (value: LocalizedText): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 
 describe('summarizeDomainReadiness', () => {
 	it('reports all-verified when every present record verifies', () => {

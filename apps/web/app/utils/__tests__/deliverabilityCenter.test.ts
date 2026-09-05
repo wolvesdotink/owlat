@@ -14,7 +14,7 @@ import {
 	formatVerificationAge,
 	itemKey,
 } from '../deliverabilityCenter';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * The presentation tables and the age helper are module scope, so they carry
@@ -23,8 +23,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * catalog keeps these assertions on the words a person reads.
  */
 const { t } = createTestI18n().global;
-const localized = (value: LocalizedText): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 
 function domainItem(
 	domainId: Id<'domains'>,

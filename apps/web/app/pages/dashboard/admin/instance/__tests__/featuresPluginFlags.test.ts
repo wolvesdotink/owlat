@@ -30,7 +30,8 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 }));
 
 import FeaturesPage from '../features.vue';
-import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import { expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 const liveFlags = ref<Record<string, boolean>>({});
 const configStatus = ref<Record<string, string[]> | undefined>({});
@@ -108,19 +109,14 @@ const buttonStub = {
 };
 
 function mountPage() {
-	return mount(FeaturesPage, {
-		global: {
-			plugins: [createTestI18n()],
-			stubs: {
-				UiQueryBoundary: passthroughStub,
-				UiCard: passthroughStub,
-				UiConfirmationDialog: confirmationStub,
-				UiModal: modalStub,
-				UiButton: buttonStub,
-				UiIconBox: true,
-				Icon: true,
-				NuxtLink: true,
-			},
+	return mountDashboardPage(FeaturesPage, {
+		stubs: {
+			UiQueryBoundary: passthroughStub,
+			UiCard: passthroughStub,
+			UiConfirmationDialog: confirmationStub,
+			UiModal: modalStub,
+			UiButton: buttonStub,
+			NuxtLink: true,
 		},
 	});
 }

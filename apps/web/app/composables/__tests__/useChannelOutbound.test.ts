@@ -15,6 +15,7 @@ import { api } from '@owlat/api';
 
 import { createTestI18n } from '~/__tests__/i18n';
 import { useChannelOutbound, isProviderChannel } from '../useChannelOutbound';
+import { queryResult } from '~/__tests__/queryStubs';
 
 // Called outside a component here, so `useI18n` is stubbed with the real
 // catalog's `t` — the toast assertion below stays the English a sender reads.
@@ -50,7 +51,7 @@ beforeEach(() => {
 	loading = {};
 
 	vi.stubGlobal('useOrganizationContext', () => ({ role: ref(role) }));
-	vi.stubGlobal('useConvexQuery', () => ({ data: ref(channelConfigs) }));
+	vi.stubGlobal('useConvexQuery', () => queryResult(channelConfigs));
 	vi.stubGlobal('useBackendOperation', (fnRef: Parameters<typeof getFunctionName>[0]) => {
 		const fn = getFunctionName(fnRef);
 		return {

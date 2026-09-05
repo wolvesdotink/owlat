@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, reactive } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
+import { queryResult } from '~/__tests__/queryStubs';
 
 const i18n = createTestI18n();
 
@@ -82,7 +83,7 @@ beforeEach(() => {
 	queueSend.mockClear();
 	queueSend.mockImplementation(async () => ({ undoToken: 'outbox:ns:1', sendAt: 0 }));
 
-	vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined), isLoading: ref(false) }));
+	vi.stubGlobal('useConvexQuery', () => queryResult(undefined));
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal(
 		'useBackendOperation',

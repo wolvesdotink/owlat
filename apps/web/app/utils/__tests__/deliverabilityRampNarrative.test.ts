@@ -16,12 +16,11 @@ import {
 	rampNextAction as rampNextActionFor,
 	rampPhaseNarrative as rampPhaseNarrativeFor,
 	recentRampDecisions,
-	type LocalizedText,
 	type RampNextAction,
 	type RampNarrativePhase,
 } from '~/utils/deliverabilityRampNarrative';
 import type { RampControls } from '~/utils/deliverabilityRamp';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 import {
 	cellControl,
 	controlsView,
@@ -37,8 +36,7 @@ import {
  * these properties are about.
  */
 const { t } = createTestI18n().global;
-const localized = (value: LocalizedText): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 const rampPhaseNarrative = (controls: RampControls): RampNarrativePhase =>
 	rampPhaseNarrativeFor(controls, localized);
 const rampNextAction = (controls: RampControls): RampNextAction =>

@@ -13,10 +13,9 @@ import {
 	resolveModelId,
 	testConnectionReducer,
 	validateLanguageConfig,
-	type AiProviderText,
 	type TestConnectionState,
 } from '../aiProviders';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * The catalog is a module-scope table, so its copy travels as catalog keys
@@ -24,8 +23,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * these assertions on the copy an admin reads.
  */
 const { t } = createTestI18n().global;
-const render = (text: AiProviderText) =>
-	typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
+const render = localizedWith(t);
 
 describe('provider catalog', () => {
 	it('exposes exactly the six language kinds and four embedding kinds', () => {

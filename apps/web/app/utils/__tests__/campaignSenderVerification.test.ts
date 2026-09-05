@@ -1,10 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-	mapSenderVerification,
-	type SenderDomainStatus,
-	type SenderVerificationMessage,
-} from '../campaignSenderVerification';
-import { createTestI18n } from '~/__tests__/i18n';
+import { mapSenderVerification, type SenderDomainStatus } from '../campaignSenderVerification';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * The advisory is a framework-free module, so it carries catalog keys rather
@@ -12,8 +8,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * assertions on the copy a person reads.
  */
 const { t } = createTestI18n().global;
-const render = (message: SenderVerificationMessage) =>
-	typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
+const render = localizedWith(t);
 
 const verified: SenderDomainStatus = {
 	domain: 'acme.com',
