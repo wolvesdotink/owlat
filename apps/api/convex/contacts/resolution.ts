@@ -28,7 +28,6 @@
  * See docs/adr/0008-contact-resolution-module.md.
  */
 
-import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwAlreadyExists } from '../_utils/errors';
