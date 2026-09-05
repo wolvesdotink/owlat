@@ -202,7 +202,7 @@ export const sendTestEmail = authedAction({
 
 		return {
 			success: true,
-			id: String(sendId),
+			id: sendId,
 			message: `Test email queued for ${args.testEmail}`,
 			language: langContent.resolvedLanguage,
 		};

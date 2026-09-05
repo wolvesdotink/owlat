@@ -67,14 +67,12 @@ export const stripeProvider: IntegrationImportProviderModule<'stripe'> = {
 			});
 		} catch (err) {
 			throw new RetryableProviderError(
-				`Network error fetching Stripe page after "${cursor || 'start'}": ${err instanceof Error ? err.message : 'unknown'}`,
+				`Network error fetching Stripe page after "${cursor || 'start'}": ${err instanceof Error ? err.message : 'unknown'}`
 			);
 		}
 
 		if (response.status === 429) {
-			throw new RetryableProviderError(
-				`Stripe rate limit (429) after "${cursor || 'start'}"`,
-			);
+			throw new RetryableProviderError(`Stripe rate limit (429) after "${cursor || 'start'}"`);
 		}
 		if (!response.ok) {
 			let errorMessage = `Stripe API error: ${response.status}`;
@@ -131,7 +129,7 @@ export const stripeProvider: IntegrationImportProviderModule<'stripe'> = {
 					) {
 						continue;
 					}
-					if (value === undefined || value === null || value === '') continue;
+					if (value == null || value === '') continue;
 					properties[key] = value;
 				}
 			}
@@ -145,8 +143,7 @@ export const stripeProvider: IntegrationImportProviderModule<'stripe'> = {
 		}
 
 		const lastCustomer = data.data[data.data.length - 1];
-		const nextCursor: string | null =
-			data.has_more && lastCustomer ? lastCustomer.id : null;
+		const nextCursor: string | null = data.has_more && lastCustomer ? lastCustomer.id : null;
 
 		// Stripe doesn't expose a total — omit totalEstimate.
 		return { rows, nextCursor };

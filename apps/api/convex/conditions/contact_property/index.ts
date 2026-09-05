@@ -67,7 +67,7 @@ function applyOperator(
 		case 'lte':
 			return Number(fieldValue) <= Number(conditionValue);
 		case 'is_empty':
-			return fieldValue === undefined || fieldValue === null || fieldValue === '';
+			return fieldValue == null || fieldValue === '';
 		case 'not_empty':
 			return fieldValue !== undefined && fieldValue !== null && fieldValue !== '';
 		case 'is_true':

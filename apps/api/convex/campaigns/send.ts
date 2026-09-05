@@ -495,7 +495,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 		sends: sendsToCreate,
 	});
 	const sendIdByContact = new Map<string, Id<'emailSends'>>(
-		created.map((c) => [String(c.contactId), c.emailSendId])
+		created.map((c) => [c.contactId, c.emailSendId])
 	);
 
 	// The enqueue payload shape is owned by `delivery/enqueue.ts`'s validator —
@@ -505,7 +505,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 
 	const emailsToEnqueue: EmailEnqueueData[] = [];
 	for (const r of args.recipients) {
-		const emailSendId = sendIdByContact.get(String(r._id));
+		const emailSendId = sendIdByContact.get(r._id);
 		if (!emailSendId) continue; // duplicate skipped by createBatch — already enqueued
 		emailsToEnqueue.push({
 			emailSendId,
@@ -849,7 +849,7 @@ export const resolveCampaignPage = internalAction({
 				listId =
 					getListIdHeader({
 						domain: sendingDomain,
-						topic: { id: String(topic._id), name: topic.name },
+						topic: { id: topic._id, name: topic.name },
 					}) ?? undefined;
 			}
 		}
@@ -882,7 +882,7 @@ export const resolveCampaignPage = internalAction({
 		const testFraction = job.testFraction ?? 0;
 		const bucketFor = (contactId: string): 'A' | 'B' | undefined | null => {
 			if (variantMode === 'plain') return undefined; // no tag, always enqueue
-			const h = hashFraction(String(args.campaignId), contactId);
+			const h = hashFraction(args.campaignId, contactId);
 			if (variantMode === 'ab_test') {
 				// h < testFraction ⇒ test cohort (A/B by sub-bucket); else remainder.
 				return variantForHash(h, testFraction);
@@ -929,7 +929,7 @@ export const resolveCampaignPage = internalAction({
 			// scope. The property that matters for the daily slice still holds when a
 			// day is one page, and never regresses when it is more.
 			for (const recipient of orderByEngagement(page.recipients)) {
-				const variant = bucketFor(String(recipient._id));
+				const variant = bucketFor(recipient._id);
 				if (variant === null) continue; // belongs to the other phase — skip
 				const language = recipient.language ?? tmplDefaultLanguage;
 				const key = `${language}\u0000${variant ?? '-'}`;

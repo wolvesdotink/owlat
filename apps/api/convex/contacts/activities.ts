@@ -88,7 +88,7 @@ export const getRecent = authedQuery({
 		const contactsMap = await batchGet<Doc<'contacts'>>(ctx, contactIds);
 
 		const activitiesWithContacts = recentActivities.map((activity) => {
-			const contact = contactsMap.get(String(activity.contactId));
+			const contact = contactsMap.get(activity.contactId);
 			return {
 				...activity,
 				// Don't surface a soft-deleted (GDPR-erased) contact's PII

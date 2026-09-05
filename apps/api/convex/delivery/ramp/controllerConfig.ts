@@ -195,7 +195,7 @@ export const RAMP_INITIAL_PHASE_CEILING: number = RAMP_PHASE_CEILINGS[0];
  * hand a cell a ceiling nobody promoted it to.
  */
 export function normalizePhaseCeiling(value: number | undefined | null): number {
-	if (value === undefined || value === null || !Number.isFinite(value)) {
+	if (value == null || !Number.isFinite(value)) {
 		return RAMP_INITIAL_PHASE_CEILING;
 	}
 	let resolved = RAMP_INITIAL_PHASE_CEILING;

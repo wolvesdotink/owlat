@@ -114,7 +114,7 @@ async function openMaybe(stored: string | undefined): Promise<string | undefined
 export async function openConversationThreadPreview<T extends { lastPreview?: string | null }>(
 	row: T
 ): Promise<T> {
-	if (row.lastPreview === undefined || row.lastPreview === null) return row;
+	if (row.lastPreview == null) return row;
 	return { ...row, lastPreview: await openMessageBody(row.lastPreview) };
 }
 
@@ -186,7 +186,7 @@ export async function sealUnifiedContentPatch(
 export async function sealConversationThreadPreviewPatch(row: {
 	lastPreview?: string | null;
 }): Promise<{ lastPreview?: string }> {
-	if (row.lastPreview === undefined || row.lastPreview === null) return {};
+	if (row.lastPreview == null) return {};
 	const next = await sealMessageBody(row.lastPreview);
 	return next !== row.lastPreview ? { lastPreview: next } : {};
 }

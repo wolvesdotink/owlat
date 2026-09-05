@@ -166,7 +166,7 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 			const properties: Record<string, string | number | boolean | null> = {};
 			for (const [key, value] of Object.entries(mergeFields)) {
 				if (key === 'FNAME' || key === 'LNAME') continue;
-				if (value === undefined || value === null || value === '') continue;
+				if (value == null || value === '') continue;
 				properties[key] = value;
 			}
 			rows.push({

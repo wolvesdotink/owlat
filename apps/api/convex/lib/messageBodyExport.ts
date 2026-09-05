@@ -53,7 +53,7 @@ export async function openBodyPreservingLegacyForContactExport(stored: string): 
 export async function openConversationPreviewPreservingLegacyForContactExport<
 	T extends { lastPreview?: string | null },
 >(row: T): Promise<T> {
-	if (row.lastPreview === undefined || row.lastPreview === null) return row;
+	if (row.lastPreview == null) return row;
 	return {
 		...row,
 		lastPreview: await openBodyPreservingLegacyForContactExport(row.lastPreview),

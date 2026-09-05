@@ -163,7 +163,7 @@ export const listDue = internalQuery({
 					// than describe one. A thread whose newest message is gone links
 					// nowhere rather than to a 404.
 					path: thread?.latestMessageId
-						? `/dashboard/postbox/inbox/${String(thread.latestMessageId)}`
+						? `/dashboard/postbox/inbox/${thread.latestMessageId}`
 						: undefined,
 				});
 			}

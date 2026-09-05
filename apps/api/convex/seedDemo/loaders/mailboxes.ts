@@ -43,7 +43,7 @@ async function authUserIdByEmail(ctx: MutationCtx, email: string): Promise<strin
 		paginationOpts: { cursor: null, numItems: 1 },
 	} as unknown as AdapterArgs)) as { page?: Array<{ _id: string }> } | null;
 	const user = result?.page?.[0];
-	return user ? String(user._id) : null;
+	return user ? user._id : null;
 }
 
 async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult> {

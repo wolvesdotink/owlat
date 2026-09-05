@@ -122,7 +122,7 @@ export const countUsage = authedQuery({
 	handler: async (ctx, args) => {
 		const asset = await ctx.db.get(args.assetId);
 		if (!asset) return { count: 0 };
-		const needle = String(asset.storageId);
+		const needle = asset.storageId;
 
 		const [templates, transactional, blocks] = await Promise.all([
 			ctx.db.query('emailTemplates').take(MEDIA_SCAN_LIMIT),

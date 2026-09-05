@@ -432,7 +432,7 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 				await ctx.scheduler.runAfter(0, internal.lib.posthog.capture, {
 					distinctId: effect.userId,
 					event: effect.event,
-					properties: { campaignId: String(effect.campaignId) },
+					properties: { campaignId: effect.campaignId },
 				});
 				break;
 			}

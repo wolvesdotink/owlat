@@ -29,6 +29,7 @@ import { safeCompare } from '../lib/safeCompare';
 import { logError } from '../lib/runtimeLog';
 import { devDeploymentResponseOrNull } from './_guard';
 import { TENANT_TABLES } from '../lib/tenantTables';
+import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';
 import type { Doc } from '../_generated/dataModel';
 
 interface ResetCounts {
@@ -145,20 +146,26 @@ async function wipeBetterAuthModel(
 	const MAX_ITERATIONS = 200;
 	for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
 		const result: { page: Array<{ _id: string }>; isDone: boolean; continueCursor: string } =
-			await ctx.runQuery(components.betterAuth.adapter.findMany, {
-				model,
-				where: [],
-				paginationOpts: { cursor: null, numItems: 100 },
-			} as unknown as Parameters<typeof ctx.runQuery>[1]);
+			await ctx.runQuery(
+				components.betterAuth.adapter.findMany,
+				betterAuthAdapterArgs({
+					model,
+					where: [],
+					paginationOpts: { cursor: null, numItems: 100 },
+				})
+			);
 		const rows = result?.page ?? [];
 		if (rows.length === 0) break;
 		for (const row of rows) {
-			await ctx.runMutation(components.betterAuth.adapter.deleteOne, {
-				input: {
-					model,
-					where: [{ field: '_id', value: row._id }],
-				},
-			} as unknown as Parameters<typeof ctx.runMutation>[1]);
+			await ctx.runMutation(
+				components.betterAuth.adapter.deleteOne,
+				betterAuthAdapterArgs({
+					input: {
+						model,
+						where: [{ field: '_id', value: row._id }],
+					},
+				})
+			);
 			total++;
 		}
 		// Loop continues: re-query with cursor=null picks up whatever's left.

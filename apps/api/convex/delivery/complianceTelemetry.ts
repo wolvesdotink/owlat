@@ -350,11 +350,11 @@ export const cleanupComplianceTelemetry = internalMutation({
 				...expiredLegacyReceipts,
 				...futureReceipts,
 				...futureLegacyReceipts,
-			].map((row) => [String(row._id), row] as const)
+			].map((row) => [row._id, row] as const)
 		);
 		for (const row of receiptRows.values()) await ctx.db.delete(row._id);
 		const bucketRows = new Map(
-			[...expiredBuckets, ...futureGmailBuckets].map((row) => [String(row._id), row] as const)
+			[...expiredBuckets, ...futureGmailBuckets].map((row) => [row._id, row] as const)
 		);
 		for (const row of bucketRows.values()) await ctx.db.delete(row._id);
 
