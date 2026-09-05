@@ -35,7 +35,6 @@ import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { detectionSourceValidator } from '../lib/convexValidators';
 
 // ─── Deterministic heuristic (pure) ─────────────────────────────────────────
 
@@ -252,7 +251,7 @@ const needsReplyResultValidator = v.union(
 	v.null(),
 	v.object({
 		messageId: v.id('mailMessages'),
-		source: detectionSourceValidator,
+		source: v.union(v.literal('heuristic'), v.literal('llm')),
 		urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
 		// Blended sender-importance × urgency score — the ranking key. Computed in
 		// applyResult (server-side) from the address book, never sent by callers.
