@@ -6,6 +6,7 @@ import {
 	DELIVERABILITY_ALERT_RECIPIENT_LIMIT,
 	type DeliverabilityAlertAdminRecipient,
 } from '@owlat/shared';
+import { escapeHtml } from '@owlat/shared/html';
 import { components, internal } from '../_generated/api';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getOptional } from '../lib/env';

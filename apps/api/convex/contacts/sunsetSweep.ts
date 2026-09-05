@@ -28,7 +28,7 @@ import {
 	resolveSunsetPolicyForContact,
 	type SunsetPolicyRow,
 } from './sunsetEngine';
-import { isClockCorroborated, DAY_MS, type SunsetClock } from './sunsetPolicy';
+import { isClockCorroborated, type SunsetClock } from './sunsetPolicy';
 import { DAY_MS } from '../lib/constants';
 
 /** A contact is re-evaluated at most once a day. */

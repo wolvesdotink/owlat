@@ -52,15 +52,6 @@
 
 import { DAY_MS } from '../lib/constants';
 
-/**
- * One day in milliseconds — the unit every sunset window and interval is
- * written in. Re-exported from `lib/constants.ts` rather than redeclared:
- * there is ONE definition of where a day starts in this app, and the sunset
- * modules read it from here. It is a plain number with no db, clock or env
- * read behind it, so the purity of this core is unaffected.
- */
-export { DAY_MS };
-
 // ─── Defaults ───────────────────────────────────────────────────────────────
 
 /** Quiet days before a contact moves onto the re-engagement track. */

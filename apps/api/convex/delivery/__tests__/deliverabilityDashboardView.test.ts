@@ -33,10 +33,10 @@ import {
 	dashboardWindow,
 	DASHBOARD_MAX_TREND_DAYS,
 	DASHBOARD_WINDOW_DAYS,
-	DAY_MS,
 	type DashboardConfidenceImprovement,
 	type DashboardConfidenceLevel,
 } from '../deliverabilityDashboardView';
+import { DAY_MS } from '../../lib/constants';
 
 /** A summary built the ONE legal way: through the summarizer (plan D5). */
 function summary(overrides: Partial<TransportOutcomeBucketCounts> = {}): TransportOutcomeSummary {

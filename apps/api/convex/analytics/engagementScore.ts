@@ -57,8 +57,6 @@ import { DAY_MS } from '../lib/constants';
 
 // ─── Tunables ───────────────────────────────────────────────────────────────
 
-const DAY_MS = 86_400_000;
-
 /** Half-life (days) of an open/click/reply's contribution. */
 export const ENGAGEMENT_HALF_LIFE_DAYS = 45;
 

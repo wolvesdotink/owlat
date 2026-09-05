@@ -18,6 +18,7 @@
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { EditorBlock } from '@owlat/shared';
+import { escapeHtml } from '@owlat/shared/html';
 import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
 import { buildMessageId, buildRfc822, type DraftRow } from './rfc822';
 import { getOptional } from '../lib/env';
