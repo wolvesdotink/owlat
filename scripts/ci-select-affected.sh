@@ -54,8 +54,11 @@ API=$(bunx turbo run test:coverage $AFFECTED_FLAG --filter='@owlat/api' --dry=js
 	| jq -r 'if (.tasks | length) > 0 then "true" else "false" end')
 
 # An image rebuilds when its workspace is affected, or (turbo can't see this) its
-# Dockerfile itself changed. A full run rebuilds all of them.
-if [ "$RUN_ALL" = "true" ]; then
+# Dockerfile itself changed. A full run rebuilds all of them, and so does a
+# change to the image list itself: a new entry has no affected workspace and no
+# changed Dockerfile, so nothing else would build it on the PR that adds it.
+if [ "$RUN_ALL" = "true" ] \
+	|| echo "$CHANGED" | jq -e 'index(".github/docker-images.json") != null' >/dev/null; then
 	IMAGES=$(jq -c '.' .github/docker-images.json)
 else
 	# Every affected workspace name — keys the docker-image selection.
