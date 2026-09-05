@@ -12,6 +12,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { flushScheduled } from '../../__tests__/factories';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -34,7 +35,7 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 });
 
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 describe('calibration counters', () => {

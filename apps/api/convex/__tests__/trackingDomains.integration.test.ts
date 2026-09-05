@@ -1,5 +1,6 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { flushScheduled } from './factories';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -20,7 +21,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireAuthenticatedIdentity: vi
 			.fn()
-			.mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+			.mockResolvedValue({
+				subject: 'test-user',
+				issuer: 'test',
+				tokenIdentifier: 'test|test-user',
+			}),
 	};
 });
 
@@ -28,7 +33,7 @@ const modules = import.meta.glob('../**/*.*s');
 
 async function insertTrackingDomain(
 	t: ReturnType<typeof convexTest>,
-	domain = 'track.example.com',
+	domain = 'track.example.com'
 ): Promise<Id<'trackingDomains'>> {
 	return t.run(async (ctx) =>
 		ctx.db.insert('trackingDomains', {
@@ -37,7 +42,7 @@ async function insertTrackingDomain(
 			isVerified: false,
 			verifiedAt: undefined,
 			createdAt: Date.now(),
-		}),
+		})
 	);
 }
 
@@ -50,7 +55,7 @@ describe('domains.trackingDomains', () => {
 			vi.fn().mockResolvedValue({
 				ok: true,
 				json: async () => ({ Answer: [] }),
-			}),
+			})
 		);
 	});
 
@@ -73,8 +78,7 @@ describe('domains.trackingDomains', () => {
 			expect(result).toEqual({ success: true });
 			expect(result).not.toBeUndefined();
 
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			await t.finishInProgressScheduledFunctions();
+			await flushScheduled(t);
 		});
 
 		it('throws (not undefined-returns) for an unknown tracking domain', async () => {
@@ -83,7 +87,7 @@ describe('domains.trackingDomains', () => {
 			await expect(
 				t.mutation(api.domains.trackingDomains.verifyTrackingDomain, {
 					trackingDomainId: 'nonexistent' as Id<'trackingDomains'>,
-				}),
+				})
 			).rejects.toThrow();
 		});
 	});

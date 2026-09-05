@@ -22,7 +22,6 @@
  * than being the "unknown kind" placeholder it used to be.
  */
 
-import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import { MANDRILL_RELAY_PROOF_MAX_AGE_MS, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import schema from '../../schema';
@@ -30,7 +29,7 @@ import { relayDomainVerified } from '../../lib/sendProviders/relayDomainVerifica
 import { SENDING_DOMAIN_PROVIDERS } from '../../domains/providers';
 import type { DatabaseWriter } from '../../_generated/server';
 
-import { modules } from '../../__tests__/testModules';
+import { newHarness } from '../../__tests__/testModules';
 
 const DOMAIN = 'sender.example.com';
 const NOW = 1_800_000_000_000;
@@ -108,13 +107,9 @@ async function seedMandrillIdentity(
 	});
 }
 
-function harness() {
-	return convexTest(schema, modules);
-}
-
 describe('relayDomainVerified — SES (byte-identical)', () => {
 	it('accepts a complete, fresh proof', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedSesRelay(ctx);
 			expect(await relayDomainVerified(ctx, DOMAIN, 'ses', NOW)).toBe(true);
@@ -122,7 +117,7 @@ describe('relayDomainVerified — SES (byte-identical)', () => {
 	});
 
 	it('is case-insensitive on the From domain', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedSesRelay(ctx);
 			expect(await relayDomainVerified(ctx, DOMAIN.toUpperCase(), 'ses', NOW)).toBe(true);
@@ -130,14 +125,14 @@ describe('relayDomainVerified — SES (byte-identical)', () => {
 	});
 
 	it('refuses a domain with no row at all', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			expect(await relayDomainVerified(ctx, DOMAIN, 'ses', NOW)).toBe(false);
 		});
 	});
 
 	it('refuses a domain with no SES identity', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await ctx.db.insert('domains', {
 				domain: DOMAIN,
@@ -152,7 +147,7 @@ describe('relayDomainVerified — SES (byte-identical)', () => {
 	});
 
 	it('refuses an identity SES itself has not verified', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedSesRelay(ctx, { isProviderVerified: false });
 			expect(await relayDomainVerified(ctx, DOMAIN, 'ses', NOW)).toBe(false);
@@ -160,7 +155,7 @@ describe('relayDomainVerified — SES (byte-identical)', () => {
 	});
 
 	it('refuses a proof older than the max age', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedSesRelay(ctx);
 			expect(
@@ -170,7 +165,7 @@ describe('relayDomainVerified — SES (byte-identical)', () => {
 	});
 
 	it('refuses an unproven DKIM token', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedSesRelay(ctx, {
 				verificationResults: {
@@ -188,7 +183,7 @@ describe('relayDomainVerified — SES (byte-identical)', () => {
 		// relay must still be unverifiable. Both directions are needed — a lookup
 		// that resolved every kind to one adapter would be caught in one direction
 		// only, and which direction depends on which adapter it collapsed to.
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedMandrillIdentity(ctx);
 			expect(await relayDomainVerified(ctx, DOMAIN, 'ses', NOW)).toBe(false);
@@ -196,7 +191,7 @@ describe('relayDomainVerified — SES (byte-identical)', () => {
 	});
 
 	it('refuses when a published apex SPF row has no verified result', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedSesRelay(ctx, {
 				dnsRecords: {
@@ -217,7 +212,7 @@ describe('relayDomainVerified — kinds with no registered proof', () => {
 	it('reports unverifiable for relay kinds with no identity API', async () => {
 		// The seeded domain carries a COMPLETE SES proof. A `resend` or `smtp`
 		// relay must still be unverifiable: one relay's proof is not another's.
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedSesRelay(ctx);
 			expect(await relayDomainVerified(ctx, DOMAIN, 'resend', NOW)).toBe(false);
@@ -229,7 +224,7 @@ describe('relayDomainVerified — kinds with no registered proof', () => {
 		// `mta` HAS a registered sending-domain provider, so this is the case that
 		// proves the seam asks for a relay proof rather than for mere
 		// registration: the MTA adapter implements no `relayDomainVerified`.
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedSesRelay(ctx);
 			expect(await relayDomainVerified(ctx, DOMAIN, 'mta', NOW)).toBe(false);
@@ -257,7 +252,7 @@ describe('relayDomainVerified — kinds with no registered proof', () => {
  */
 describe('relayDomainVerified — Mandrill', () => {
 	it('accepts a fresh, verified identity', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedMandrillIdentity(ctx);
 			expect(await relayDomainVerified(ctx, DOMAIN, 'mandrill', NOW)).toBe(true);
@@ -266,7 +261,7 @@ describe('relayDomainVerified — Mandrill', () => {
 	});
 
 	it('refuses an observation older than the max age', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedMandrillIdentity(ctx);
 			expect(
@@ -281,7 +276,7 @@ describe('relayDomainVerified — Mandrill', () => {
 	});
 
 	it('refuses an identity that is not verified', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedMandrillIdentity(ctx, { status: 'pending_dns' });
 			expect(await relayDomainVerified(ctx, DOMAIN, 'mandrill', NOW)).toBe(false);
@@ -291,7 +286,7 @@ describe('relayDomainVerified — Mandrill', () => {
 	it('refuses a domain with no Mandrill identity, however verified it is at SES', async () => {
 		// One relay's proof is not another's — the same rule the SES-only cases
 		// above assert from the other side.
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedSesRelay(ctx);
 			expect(await relayDomainVerified(ctx, DOMAIN, 'mandrill', NOW)).toBe(false);
@@ -322,7 +317,7 @@ describe('relayDomainVerified — Mandrill', () => {
  */
 describe('relayDomainVerified — dispatch, not a per-kind rulebook', () => {
 	it('answers exactly what the registered provider answers, for every registered kind', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			// Both shipped proofs present at once, so the agreement below is not
 			// vacuously all-false: the two `api` kinds must answer `true` through
@@ -364,7 +359,7 @@ describe('relayDomainVerified — dispatch, not a per-kind rulebook', () => {
 			// The domain carries BOTH shipped proofs, so any leniency here — a
 			// case-folded match, a prototype member mistaken for an adapter, a
 			// trimmed string — surfaces as `true` rather than as a silent no-op.
-			const t = harness();
+			const t = newHarness();
 			await t.run(async (ctx) => {
 				await seedSesRelay(ctx);
 				await seedMandrillIdentity(ctx);

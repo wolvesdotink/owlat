@@ -21,6 +21,7 @@ import {
 	createTestContact,
 	createTestEmailSend,
 	createTestTransactionalEmail,
+	flushScheduled,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -40,7 +41,7 @@ async function readCampaignWithStats(ctx: MutationCtx, campaignId: Id<'campaigns
 // ctx.scheduler.runAfter(0, …); let those drain before convex-test resets
 // global state — otherwise we leak "Write outside of transaction" errors.
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 // ============================================================================
@@ -53,10 +54,7 @@ describe('campaign_stats_failed effect', () => {
 		let campaignId: Id<'campaigns'>;
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({ statsFailed: 0 })
-			);
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ statsFailed: 0 }));
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -120,10 +118,7 @@ describe('campaign_stats_failed effect', () => {
 		let campaignId: Id<'campaigns'>;
 		const sendIds: Id<'emailSends'>[] = [];
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({ statsFailed: 0 })
-			);
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ statsFailed: 0 }));
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			for (let i = 0; i < 3; i++) {
 				const id = await ctx.db.insert(
@@ -191,10 +186,7 @@ describe('email.sent customer_webhook effect', () => {
 
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
-			const campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign()
-			);
+			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -217,14 +209,8 @@ describe('email.sent customer_webhook effect', () => {
 		});
 
 		const fanoutJobs = await t.run(async (ctx) => {
-			const jobs = await ctx.db.system
-				.query('_scheduled_functions')
-				.collect();
-			return jobs.filter(
-				(j) =>
-					j.name.includes('fanout') &&
-					j.args[0]?.event === 'email.sent'
-			);
+			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
+			return jobs.filter((j) => j.name.includes('fanout') && j.args[0]?.event === 'email.sent');
 		});
 
 		expect(fanoutJobs).toHaveLength(1);
@@ -242,10 +228,7 @@ describe('email.sent customer_webhook effect', () => {
 		let txSendId: Id<'transactionalSends'>;
 		let txEmailId: Id<'transactionalEmails'>;
 		await t.run(async (ctx) => {
-			txEmailId = await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail()
-			);
+			txEmailId = await ctx.db.insert('transactionalEmails', createTestTransactionalEmail());
 			txSendId = await ctx.db.insert('transactionalSends', {
 				kind: 'transactional' as const,
 				transactionalEmailId: txEmailId,
@@ -265,14 +248,8 @@ describe('email.sent customer_webhook effect', () => {
 		});
 
 		const fanoutJobs = await t.run(async (ctx) => {
-			const jobs = await ctx.db.system
-				.query('_scheduled_functions')
-				.collect();
-			return jobs.filter(
-				(j) =>
-					j.name.includes('fanout') &&
-					j.args[0]?.event === 'email.sent'
-			);
+			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
+			return jobs.filter((j) => j.name.includes('fanout') && j.args[0]?.event === 'email.sent');
 		});
 
 		expect(fanoutJobs).toHaveLength(1);
@@ -283,7 +260,7 @@ describe('email.sent customer_webhook effect', () => {
 		});
 	});
 
-	it('schedules an email.sent fanout regardless of subscribers (filtering is the fanout action\'s job)', async () => {
+	it("schedules an email.sent fanout regardless of subscribers (filtering is the fanout action's job)", async () => {
 		// The lifecycle is intentionally agnostic of who subscribes — it
 		// always emits the customer_webhook effect on `sent`, and the
 		// fanout action filters to active matching subscribers when it
@@ -293,10 +270,7 @@ describe('email.sent customer_webhook effect', () => {
 
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
-			const campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign()
-			);
+			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -314,14 +288,8 @@ describe('email.sent customer_webhook effect', () => {
 		});
 
 		const fanoutJobs = await t.run(async (ctx) => {
-			const jobs = await ctx.db.system
-				.query('_scheduled_functions')
-				.collect();
-			return jobs.filter(
-				(j) =>
-					j.name.includes('fanout') &&
-					j.args[0]?.event === 'email.sent'
-			);
+			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
+			return jobs.filter((j) => j.name.includes('fanout') && j.args[0]?.event === 'email.sent');
 		});
 
 		expect(fanoutJobs).toHaveLength(1);
@@ -338,10 +306,7 @@ describe('email_sent contact_activity effect', () => {
 		let contactId: Id<'contacts'>;
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
-			const campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign()
-			);
+			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
 			contactId = await ctx.db.insert('contacts', createTestContact());
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -384,10 +349,7 @@ describe('email_sent contact_activity effect', () => {
 		let txSendId: Id<'transactionalSends'>;
 		await t.run(async (ctx) => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
-			txEmailId = await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail()
-			);
+			txEmailId = await ctx.db.insert('transactionalEmails', createTestTransactionalEmail());
 			txSendId = await ctx.db.insert('transactionalSends', {
 				kind: 'transactional' as const,
 				transactionalEmailId: txEmailId,
@@ -425,10 +387,7 @@ describe('email_sent contact_activity effect', () => {
 		const t = convexTest(schema, modules);
 		let txSendId: Id<'transactionalSends'>;
 		await t.run(async (ctx) => {
-			const txEmailId = await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail()
-			);
+			const txEmailId = await ctx.db.insert('transactionalEmails', createTestTransactionalEmail());
 			txSendId = await ctx.db.insert('transactionalSends', {
 				kind: 'transactional' as const,
 				transactionalEmailId: txEmailId,
@@ -449,9 +408,7 @@ describe('email_sent contact_activity effect', () => {
 		});
 
 		await t.run(async (ctx) => {
-			const activities = await ctx.db
-				.query('contactActivities')
-				.collect();
+			const activities = await ctx.db.query('contactActivities').collect();
 			expect(activities).toHaveLength(0);
 		});
 	});
@@ -471,10 +428,7 @@ describe('attachment_cleanup effect', () => {
 				type: 'application/octet-stream',
 			});
 			storageId = await ctx.storage.store(blob);
-			const txEmailId = await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail()
-			);
+			const txEmailId = await ctx.db.insert('transactionalEmails', createTestTransactionalEmail());
 			txSendId = await ctx.db.insert('transactionalSends', {
 				kind: 'transactional' as const,
 				transactionalEmailId: txEmailId,
@@ -514,10 +468,7 @@ describe('attachment_cleanup effect', () => {
 				type: 'application/octet-stream',
 			});
 			storageId = await ctx.storage.store(blob);
-			const txEmailId = await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail()
-			);
+			const txEmailId = await ctx.db.insert('transactionalEmails', createTestTransactionalEmail());
 			txSendId = await ctx.db.insert('transactionalSends', {
 				kind: 'transactional' as const,
 				transactionalEmailId: txEmailId,
@@ -547,10 +498,7 @@ describe('attachment_cleanup effect', () => {
 		const t = convexTest(schema, modules);
 		let txSendId: Id<'transactionalSends'>;
 		await t.run(async (ctx) => {
-			const txEmailId = await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail()
-			);
+			const txEmailId = await ctx.db.insert('transactionalEmails', createTestTransactionalEmail());
 			txSendId = await ctx.db.insert('transactionalSends', {
 				kind: 'transactional' as const,
 				transactionalEmailId: txEmailId,
@@ -562,17 +510,14 @@ describe('attachment_cleanup effect', () => {
 		});
 
 		// The transition simply succeeds without error.
-		const outcome = await t.mutation(
-			internal.delivery.sendLifecycle.transition,
-			{
-				send: { kind: 'transactional', id: txSendId! },
-				transition: {
-					to: 'sent',
-					at: Date.now(),
-					providerMessageId: 'tx-noattach',
-				},
-			}
-		);
+		const outcome = await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'transactional', id: txSendId! },
+			transition: {
+				to: 'sent',
+				at: Date.now(),
+				providerMessageId: 'tx-noattach',
+			},
+		});
 		expect(outcome.ok).toBe(true);
 	});
 
@@ -580,10 +525,7 @@ describe('attachment_cleanup effect', () => {
 		const t = convexTest(schema, modules);
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
-			const campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign()
-			);
+			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -593,17 +535,14 @@ describe('attachment_cleanup effect', () => {
 
 		// Just verifying the path doesn't error — the field literally doesn't
 		// exist on emailSends, so the effect is correctly skipped.
-		const outcome = await t.mutation(
-			internal.delivery.sendLifecycle.transition,
-			{
-				send: { kind: 'campaign', id: sendId! },
-				transition: {
-					to: 'sent',
-					at: Date.now(),
-					providerMessageId: 'campaign-no-attach',
-				},
-			}
-		);
+		const outcome = await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: sendId! },
+			transition: {
+				to: 'sent',
+				at: Date.now(),
+				providerMessageId: 'campaign-no-attach',
+			},
+		});
 		expect(outcome.ok).toBe(true);
 	});
 
@@ -619,7 +558,7 @@ describe('attachment_cleanup effect', () => {
 		async function seedNonCampaignSend(
 			t: TestConvex<typeof schema>,
 			kind: 'automation' | 'agent_reply',
-			overrideArgs?: Record<string, unknown>,
+			overrideArgs?: Record<string, unknown>
 		) {
 			return await t.run(async (ctx) => {
 				const sendId = await ctx.db.insert('transactionalSends', {
@@ -648,15 +587,13 @@ describe('attachment_cleanup effect', () => {
 				const blocked = await t.run(async (ctx) =>
 					ctx.db
 						.query('blockedEmails')
-						.withIndex('by_email', (q) =>
-							q.eq('email', 'recipient@example.com'),
-						)
-						.first(),
+						.withIndex('by_email', (q) => q.eq('email', 'recipient@example.com'))
+						.first()
 				);
 				expect(blocked).not.toBeNull();
 				expect(blocked?.bounceType).toBe('hard');
 				expect(blocked?.sourceType).toBe('transactionalSend');
-			},
+			}
 		);
 
 		it.each(['automation', 'agent_reply'] as const)(
@@ -686,11 +623,9 @@ describe('attachment_cleanup effect', () => {
 					vi.useRealTimers();
 				}
 
-				const org = await t.run(async (ctx) =>
-					summarize(ctx.db, { kind: 'org' }),
-				);
+				const org = await t.run(async (ctx) => summarize(ctx.db, { kind: 'org' }));
 				expect(org.totalSent).toBeGreaterThanOrEqual(1);
-			},
+			}
 		);
 	});
 });

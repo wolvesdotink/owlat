@@ -16,22 +16,11 @@
  * through the adapter.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import schema from '../schema';
-import betterAuthSchema from '../betterAuth/schema';
+import { newBetterAuthHarness } from './testModules';
 import { internal } from '../_generated/api';
 
-const modules = import.meta.glob('../**/*.*s');
-const betterAuthModules = import.meta.glob('../betterAuth/**/*.*s');
-
 const SECRET = 'dev-reset-test-secret-at-least-32-characters';
-
-function newHarness(): TestConvex<typeof schema> {
-	const t = convexTest(schema, modules);
-	t.registerComponent('betterAuth', betterAuthSchema, betterAuthModules);
-	return t;
-}
 
 beforeEach(() => {
 	vi.stubEnv('INSTANCE_SECRET', SECRET);
@@ -44,7 +33,7 @@ afterEach(() => {
 
 describe('dev reset — onboarding notice tables', () => {
 	it('wipes sendReadyNotices and sendPathReadiness and counts them', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness();
 		await t.run(async (ctx) => {
 			const now = Date.now();
 			await ctx.db.insert('sendReadyNotices', { userId: 'auth-user-1', createdAt: now });
@@ -75,7 +64,7 @@ describe('dev reset — onboarding notice tables', () => {
 	});
 
 	it('is idempotent — a second reset reports zeros', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness();
 		await t.run(async (ctx) => {
 			await ctx.db.insert('sendPathReadiness', { isReady: false, changedAt: Date.now() });
 		});

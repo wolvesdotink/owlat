@@ -24,11 +24,10 @@
  *     summary, and an organization wipe must take these rows with it.
  */
 
-import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import { modules } from '../../__tests__/testModules';
+import { newHarness } from '../../__tests__/testModules';
 import { startOfDayUtc } from '../../lib/clock';
 import { TENANT_TABLES } from '../../lib/tenantTables';
 import {
@@ -59,18 +58,14 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 const NOW = Date.UTC(2026, 6, 15, 12, 0, 0);
 const TODAY = startOfDayUtc(NOW);
 
-function harness() {
-	return convexTest(schema, modules);
-}
-
 /** Every stored shard row, unfiltered — the writer's whole footprint. */
-async function allRows(t: ReturnType<typeof harness>) {
+async function allRows(t: ReturnType<typeof newHarness>) {
 	return await t.run(async (ctx) => await ctx.db.query('smtpResponseCategories').collect());
 }
 
 /** One (org, cell, arm) window, read through the production reader. */
 async function observe(
-	t: ReturnType<typeof harness>,
+	t: ReturnType<typeof newHarness>,
 	window: { since?: number; until?: number },
 	input: { organizationId?: string; cell?: string; arm?: 'own' | 'reference' } = {}
 ) {
@@ -89,7 +84,7 @@ async function observe(
 
 describe('the classified response reaches a counter at all', () => {
 	it('joins the MTA message id to the send’s cell and arm', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedAssignedSend(ctx, {
 				providerMessageId: 'mta-msg-1',
@@ -121,7 +116,7 @@ describe('the classified response reaches a counter at all', () => {
 		// be easy — and wrong — to conclude that every classified response is the
 		// `own` arm. The arm is a property of the ASSIGNMENT: a relay that grew a
 		// classifier of its own would report against the arm it actually carried.
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedAssignedSend(ctx, {
 				providerMessageId: 'mta-msg-ref',
@@ -141,7 +136,7 @@ describe('the classified response reaches a counter at all', () => {
 	});
 
 	it('records NOTHING for a send outside the experiment, and says which', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			// No assignment row: a seed shadow copy (plan D18) or a legacy send. It
 			// must never enter a denominator.
@@ -170,7 +165,7 @@ describe('the classified response reaches a counter at all', () => {
 		// The handler swallows its own failures, so a throw can only come from the
 		// argument validator — which is the last thing holding a stored map key to
 		// `@owlat/shared/smtpBlockCategories`.
-		const t = harness();
+		const t = newHarness();
 		await expect(
 			t.mutation(internal.analytics.smtpResponseCategories.recordClassifiedResponse, {
 				providerMessageId: 'mta-msg-1',
@@ -185,7 +180,7 @@ describe('the classified response reaches a counter at all', () => {
 		// A greylisted message collects a new classified response on every attempt,
 		// and the gate's denominator is responses. Counting once per message would
 		// under-report the denominator and inflate the block rate above it.
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await seedAssignedSend(ctx, {
 				providerMessageId: 'mta-msg-retry',
@@ -208,7 +203,7 @@ describe('the classified response reaches a counter at all', () => {
 
 describe('absence and a measured zero are different facts', () => {
 	it('summarizes an empty window to NULL, never to a zeroed observation', async () => {
-		const t = harness();
+		const t = newHarness();
 		expect(await observe(t, { since: NOW - DAY_MS })).toBeNull();
 		expect(await observe(t, {})).toBeNull();
 	});
@@ -218,7 +213,7 @@ describe('absence and a measured zero are different facts', () => {
 		// them is a refusal, so the block numerator is zero. That is the opposite
 		// fact from the case above and the gate reads it as such: the clause has a
 		// denominator, derives 0%, and declines to halt.
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			for (const category of ['greylisted', 'rate_limited', 'mailbox_full'] as const) {
 				await recordSmtpResponseForCell(ctx, {
@@ -285,7 +280,7 @@ describe('absence and a measured zero are different facts', () => {
 
 describe('one read, both readers’ windows', () => {
 	/** Four days of rows: one refusal today, rate pressure on days 1..3. */
-	async function seedFourDays(t: ReturnType<typeof harness>) {
+	async function seedFourDays(t: ReturnType<typeof newHarness>) {
 		await t.run(async (ctx) => {
 			await recordSmtpResponseForCell(ctx, {
 				organizationId: OUTCOME_ORG,
@@ -307,7 +302,7 @@ describe('one read, both readers’ windows', () => {
 	}
 
 	it('gives the controller its 24 hours and the dashboard its seven days off the same rows', async () => {
-		const t = harness();
+		const t = newHarness();
 		await seedFourDays(t);
 
 		// THE CONTROLLER'S SPAN, spelled the way `loadCellInput` spells it. The
@@ -341,7 +336,7 @@ describe('one read, both readers’ windows', () => {
 	});
 
 	it('is bounded to its own window at both edges', async () => {
-		const t = harness();
+		const t = newHarness();
 		await seedFourDays(t);
 		// A window entirely in the past sees only what it covers.
 		expect(await observe(t, { since: TODAY - 2 * DAY_MS, until: TODAY })).toEqual({
@@ -356,7 +351,7 @@ describe('one read, both readers’ windows', () => {
 
 describe('the counter is sharded and the read sums (ADR-0042)', () => {
 	it('loses no count when many responses land on one bucket', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			for (let index = 0; index < 40; index += 1) {
 				await recordSmtpResponseForCell(ctx, {
@@ -385,7 +380,7 @@ describe('the counter is sharded and the read sums (ADR-0042)', () => {
 		// `blockRate` treats "more blocks than responses" as a producer bug and
 		// refuses to derive a rate from it rather than clamping — so a writer that
 		// could move one without the other would silently disable the clause.
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await recordSmtpResponseForCell(ctx, {
 				organizationId: OUTCOME_ORG,
@@ -404,7 +399,7 @@ describe('the counter is sharded and the read sums (ADR-0042)', () => {
 
 describe('the rows are tenant data', () => {
 	it('never sums another tenant’s responses into this one’s window', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await recordSmtpResponseForCell(ctx, {
 				organizationId: OUTCOME_ORG,
@@ -440,7 +435,7 @@ describe('the rows are tenant data', () => {
 	it('is classified as tenant data and swept by the organization walker', async () => {
 		expect(TENANT_TABLES).toContain('smtpResponseCategories');
 
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await recordSmtpResponseForCell(ctx, {
 				organizationId: OUTCOME_ORG,
@@ -461,7 +456,7 @@ describe('the rows are tenant data', () => {
 
 describe('the aging sweep', () => {
 	it('drops buckets past the retention horizon and keeps the rest', async () => {
-		const t = harness();
+		const t = newHarness();
 		await t.run(async (ctx) => {
 			await recordSmtpResponseForCell(ctx, {
 				organizationId: OUTCOME_ORG,

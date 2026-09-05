@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getFunctionName } from 'convex/server';
+import { makeStepCtx } from '../../__tests__/stepCtx';
 
 const mocks = vi.hoisted(() => ({
 	runLlmText: vi.fn(),
@@ -70,23 +70,19 @@ const highConfidenceInput: DraftInput = {
 
 function makeCtx() {
 	const recorded: Array<Record<string, unknown>> = [];
-	const ctx = {
-		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getAgentConfig')) return null;
-			if (name.includes('getMessage')) return { subject: 'Order status' }; // no `to` → skip voice
-			throw new Error(`unexpected runQuery: ${name}`);
+	const ctx = makeStepCtx<Parameters<typeof draftStep.execute>[0]>({
+		queries: {
+			getAgentConfig: null,
+			getMessage: { subject: 'Order status' }, // no `to` → skip voice
 		},
-		runMutation: async (ref: unknown, args: Record<string, unknown>) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('recordDraftOutput')) {
-				recorded.push(args);
+		mutations: {
+			recordDraftOutput: (args) => {
+				recorded.push(args as Record<string, unknown>);
 				return undefined;
-			}
-			if (name.includes('llmUsage')) return undefined; // spend accounting
-			throw new Error(`unexpected runMutation: ${name}`);
+			},
+			llmUsage: undefined, // spend accounting
 		},
-	} as unknown as Parameters<typeof draftStep.execute>[0];
+	});
 	return { ctx, recorded };
 }
 
