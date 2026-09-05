@@ -15,7 +15,6 @@ export default defineConfig({
 		// that graph is milliseconds on an idle machine and seconds once the root
 		// `ci:test` gate runs every turbo test task at once — which blew vitest's
 		// 5000ms default and failed the gate on machine load rather than on code.
-		// Asserted by app/__tests__/vitestTimeout.test.ts.
 		testTimeout: PARALLEL_GATE_TIMEOUT_MS,
 		hookTimeout: PARALLEL_GATE_TIMEOUT_MS,
 		coverage: {
