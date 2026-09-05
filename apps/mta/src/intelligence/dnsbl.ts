@@ -23,6 +23,7 @@ import {
 import { ALERT_MESSAGE_MAX_LENGTH, boundedListingDetail, type DnsblListing } from './dnsblAlert.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
 import { pool } from '../smtp/connectionPool.js';
 import {
 	applyIpPoolObservation,
@@ -233,18 +234,22 @@ export async function runDnsblCheck(
 			// WARNING: Deprioritize but keep active
 			logger.warn({ ip, listedOn }, 'IP degraded — listed on non-critical blocklist');
 
-			await notifyConvex(
-				{
-					event: 'ip.blocklisted',
-					ip,
-					blocklists: listedOn,
-					severity: 'warning',
-					message: `IP ${ip} listed on ${listedOn.join(', ')} (non-critical)`,
-					timestamp: Date.now(),
-				},
-				config,
-				redis
-			).catch(() => {});
+			await fireAndForget(
+				notifyConvex(
+					{
+						event: 'ip.blocklisted',
+						ip,
+						blocklists: listedOn,
+						severity: 'warning',
+						message: `IP ${ip} listed on ${listedOn.join(', ')} (non-critical)`,
+						timestamp: Date.now(),
+					},
+					config,
+					redis
+				),
+				logger,
+				'dnsbl_listed_notify'
+			);
 		}
 		const spamhausCleared = previousSpamhausStatus === 'listed' && spamhaus.status === 'clean';
 		const allListsCleared =
@@ -255,17 +260,21 @@ export async function runDnsblCheck(
 		if (spamhausCleared || allListsCleared) {
 			logger.info({ ip }, 'IP delisted — Spamhaus quarantine cleared');
 
-			await notifyConvex(
-				{
-					event: 'ip.delisted',
-					ip,
-					severity: 'info',
-					message: `IP ${ip} is not listed on Spamhaus`,
-					timestamp: Date.now(),
-				},
-				config,
-				redis
-			).catch(() => {});
+			await fireAndForget(
+				notifyConvex(
+					{
+						event: 'ip.delisted',
+						ip,
+						severity: 'info',
+						message: `IP ${ip} is not listed on Spamhaus`,
+						timestamp: Date.now(),
+					},
+					config,
+					redis
+				),
+				logger,
+				'dnsbl_delisted_notify'
+			);
 		}
 	}
 
@@ -322,7 +331,7 @@ export async function runDnsblCheck(
 					// sweep retries it. A `false` return is the other case and keeps the
 					// key deliberately — that event is already in the dead-letter queue,
 					// which owns its redelivery, so re-alerting would duplicate it.
-					redis.del(ALL_IPS_BLOCKED_ALERT_KEY).catch(() => {})
+					fireAndForget(redis.del(ALL_IPS_BLOCKED_ALERT_KEY), logger, 'all_ips_blocked_alert_reset')
 				);
 			}
 		} else {
@@ -330,7 +339,11 @@ export async function runDnsblCheck(
 		}
 	} else {
 		// The halt lifted: the next one is a new event and alerts immediately.
-		await redis.del(ALL_IPS_BLOCKED_ALERT_KEY).catch(() => {});
+		await fireAndForget(
+			redis.del(ALL_IPS_BLOCKED_ALERT_KEY),
+			logger,
+			'all_ips_blocked_alert_reset'
+		);
 	}
 }
 

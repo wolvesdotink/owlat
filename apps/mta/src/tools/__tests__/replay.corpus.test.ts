@@ -44,7 +44,7 @@ import {
 	type ReplayInput,
 	type ReplayStackSide,
 	type RoutingDrivers,
-} from '../inboundReplay';
+} from './inboundReplay';
 import { oracleOldStack } from './helpers/oracleStack';
 // The bounce/FBL scrapers are driven directly (below) to prove the report-part
 // recovery yields IDENTICAL classification outcomes across the library boundary.

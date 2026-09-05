@@ -1,5 +1,5 @@
 /**
- * Driver projection for the inbound shadow-replay harness (piece C0).
+ * Driver projection for the inbound shadow-replay harness.
  *
  * Projects a parsed message (from EITHER stack) onto the ROUTING / DELIVERY
  * DRIVERS the six inbound consumers actually read (parsed fields), with every
