@@ -3,7 +3,7 @@
 # One-shot container that deploys Convex functions to a self-hosted backend.
 # Usage: docker compose --profile deploy run --rm convex-deploy
 
-FROM oven/bun:1.3.14-alpine AS deps
+FROM oven/bun:1.4.0-alpine AS deps
 
 # Build tools needed for native deps that may show up transitively from the
 # full workspace install (apps/docs uses better-sqlite3 as a devDep). Matches
