@@ -1,37 +1,133 @@
 /**
  * Accessibility contract for the interactive rows that used to be mouse-only
  * <div @click> / <tr @click> elements on the delivery (domains, webhooks) and
- * send (marketing, transactional) pages. Those elements are now exposed to
- * assistive tech and the keyboard as real buttons: focusable (tabindex="0"),
- * announced (role="button"), operable with Enter and Space, and — for the
- * expandable delivery rows — reflecting open/closed state via aria-expanded.
+ * send (marketing, transactional) pages. They are exposed to assistive tech
+ * and the keyboard as real buttons: focusable (tabindex="0"), announced
+ * (role="button"), operable with Enter and Space, and — for the expandable
+ * delivery rows — reflecting open/closed state via aria-expanded.
  *
- * This gate reads the REAL shipped templates (not fabricated copies) and pins
- * the exact interactive markup, so a regression to a bare <div @click>
- * (keyboard-unreachable) fails CI. The marketing/transactional rows are inline
- * in their Convex-backed Nuxt `pages/` components; the domains and webhook rows
- * live in their extracted `components/domains/RecordRow.vue` and
- * `components/webhooks/WebhookRow.vue` sub-components.
- * Either way, mounting the surface in isolation would require stubbing the
- * entire Convex/Nuxt/UI surface, so we assert against the source of truth
- * directly. Each container's keydown handlers are additionally
- * required to carry the `.self` modifier: without it, activating a nested
- * action button with the keyboard would bubble up and ALSO fire the row/card
- * default action, violating the "activating a row never fires a nested action"
- * contract. The pages deliberately nest interactive controls (proven below via
- * @click.stop), which is exactly why `.self` is load-bearing here.
+ * The two extracted rows are MOUNTED and driven with real keyboard events,
+ * including the contract that activating a nested action control never fires
+ * the row's own action. The marketing/transactional rows are inline in their
+ * Convex-backed pages, so their opening tags are read from the source.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { capitalize } from 'vue';
+import { mount } from '@vue/test-utils';
+import RecordRow from '~/components/domains/RecordRow.vue';
+import WebhookRow from '~/components/webhooks/WebhookRow.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { formatDate } from '~/utils/formatters';
+
+Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
-const domainsRow = read('../components/domains/RecordRow.vue');
-const webhooksRow = read('../components/webhooks/WebhookRow.vue');
 const marketing = read('../pages/dashboard/send/marketing/index.vue');
 const transactional = read('../pages/dashboard/send/transactional/index.vue');
-const commandRowReference = read('../components/campaigns/CommandRow.vue');
+
+const rowStubs = {
+	Icon: { template: '<i />' },
+	UiIconBox: { template: '<i />' },
+	UiBadge: { template: '<span><slot /></span>' },
+	DomainsDNSRecordPanel: true,
+	DomainsReceivingDnsSection: true,
+	DomainsReturnPathEditor: true,
+	DomainsStreamSubdomainPlanPanel: true,
+	DomainsYahooCflPanel: true,
+	DomainsDnsPropagationNote: true,
+};
+
+function mountDomainRow() {
+	return mount(RecordRow, {
+		props: {
+			domain: {
+				_id: 'domain_1',
+				domain: 'mail.example.com',
+				status: 'pending',
+				createdAt: 0,
+				verifiedAt: null,
+				lastVerifiedAt: null,
+				lastRegistrationError: null,
+				dmarcPolicy: 'none',
+				dnsRecords: { spf: { type: 'TXT', host: '@', value: 'v=spf1 ~all' }, dkim: [] },
+				verificationResults: undefined,
+			},
+			isExpanded: false,
+			canForceVerify: false,
+			canManageDomains: true,
+			isForcing: false,
+			isVerifying: false,
+			isUpdatingDmarc: false,
+			autoRecheckActive: false,
+			spfCoexistence: null,
+			dmarcPolicyOptions: [{ value: 'none', label: 'None', hint: '' }],
+			showReceivingDns: false,
+			inboundMailHost: null,
+			inboundPort: 25,
+			inboundEnabled: false,
+		} as never,
+		global: { plugins: [createTestI18n()], stubs: rowStubs, mocks: { capitalize } },
+	});
+}
+
+function mountWebhookRow() {
+	return mount(WebhookRow, {
+		props: {
+			webhook: {
+				_id: 'webhook_1',
+				name: 'Order events',
+				url: 'https://hooks.example.com/orders',
+				events: [],
+				isActive: true,
+				createdAt: 0,
+				updatedAt: 0,
+			},
+			expanded: true,
+			toggling: false,
+			sendingTest: false,
+		} as never,
+		global: { plugins: [createTestI18n()], stubs: rowStubs, mocks: { formatDate } },
+	});
+}
+
+describe.each([
+	['domains', mountDomainRow, 'toggle', 'domain-records-domain_1'],
+	['webhooks', mountWebhookRow, 'toggleExpanded', 'webhook-details-webhook_1'],
+] as const)('%s row header', (_name, mountRow, event, panelId) => {
+	it('is a focusable button that names its state and its panel', () => {
+		const header = mountRow().get('[role="button"]');
+		expect(header.attributes('tabindex')).toBe('0');
+		expect(header.attributes('aria-expanded')).toBeDefined();
+		expect(header.attributes('aria-controls')).toBe(panelId);
+		expect(header.attributes('aria-label')).toBeTruthy();
+	});
+
+	it('toggles on Enter and on Space, and Space does not scroll the page', async () => {
+		const wrapper = mountRow();
+		const header = wrapper.get('[role="button"]');
+		await header.trigger('keydown', { key: 'Enter' });
+		expect(wrapper.emitted(event)).toHaveLength(1);
+		const space = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+		header.element.dispatchEvent(space);
+		await wrapper.vm.$nextTick();
+		expect(wrapper.emitted(event)).toHaveLength(2);
+		expect(space.defaultPrevented).toBe(true);
+	});
+
+	it('does not toggle when a nested control is activated with the keyboard', async () => {
+		const wrapper = mountRow();
+		// The domain row nests Verify/Remove inside the header (hence `.self` on
+		// its keydown handlers); the webhook row keeps its actions in the panel.
+		const nested = wrapper.findAll('button')[0];
+		expect(nested).toBeDefined();
+		await nested!.trigger('keydown', { key: 'Enter' });
+		await nested!.trigger('keydown', { key: ' ' });
+		expect(wrapper.emitted(event)).toBeUndefined();
+	});
+});
 
 /** Every opening tag in `src` whose attribute list contains `marker`. */
 function tagsWith(src: string, marker: string): string[] {
@@ -71,34 +167,6 @@ function expectActivationContainer(tag: string) {
 	// reference pattern omits it.
 	expect(tag).not.toMatch(/@keydown\.enter\.prevent/);
 }
-
-/** Assert an expandable header additionally reflects and links its panel. */
-function expectExpandableHeader(tag: string, panelIdPrefix: string) {
-	expectActivationContainer(tag);
-	expect(tag).toMatch(/:aria-expanded=/);
-	// `:aria-controls="` followed by a backtick-delimited dynamic id.
-	expect(tag).toContain(':aria-controls="' + '`' + panelIdPrefix);
-	expect(tag).toMatch(/:aria-label=/);
-}
-
-describe('delivery expandable rows are keyboard-operable', () => {
-	it('domains: header is a labelled, non-bubbling toggle linked to its DNS panel', () => {
-		const header = pick(domainsRow, '@click="emit(\'toggle\')"', 'div');
-		expectExpandableHeader(header, 'domain-records-');
-		// Panel is programmatically linked back to the header.
-		expect(domainsRow).toContain(':id="' + '`' + 'domain-records-');
-		// The nested Remove control is named for screen readers, and nesting is
-		// real (@click.stop) — which is why the header keydown must be `.self`.
-		expect(domainsRow).toMatch(/:aria-label="t\('components\.domains\.recordRow\.removeDomain'\)"/);
-		expect(domainsRow).toMatch(/@click\.stop=/);
-	});
-
-	it('webhooks: header is a labelled, non-bubbling toggle linked to its detail panel', () => {
-		const header = pick(webhooksRow, `@click="emit('toggleExpanded')"`, 'div');
-		expectExpandableHeader(header, 'webhook-details-');
-		expect(webhooksRow).toContain(':id="' + '`' + 'webhook-details-');
-	});
-});
 
 describe('send template cards and rows are keyboard-operable', () => {
 	it('marketing: both the grid card and the list row activate without bubbling', () => {
@@ -144,17 +212,4 @@ describe('custom sort dropdowns expose listbox semantics linked to their trigger
 			expect(option).toMatch(/:aria-selected=/);
 		});
 	}
-});
-
-describe('parity with the components/campaigns/CommandRow.vue reference', () => {
-	it('the reference activates on Enter without .prevent', () => {
-		expect(commandRowReference).toMatch(/@keydown\.enter="/);
-		expect(commandRowReference).not.toMatch(/@keydown\.enter\.prevent/);
-	});
-
-	it('no changed page reintroduces the inert @keydown.enter.prevent', () => {
-		for (const src of [domainsRow, webhooksRow, marketing, transactional]) {
-			expect(src).not.toMatch(/@keydown\.enter\.prevent/);
-		}
-	});
 });

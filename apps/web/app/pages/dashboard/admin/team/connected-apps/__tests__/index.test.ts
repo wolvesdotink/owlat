@@ -7,7 +7,7 @@
  * behind explicit confirmation.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 
 const role = ref<'owner' | 'editor'>('owner');
@@ -26,8 +26,9 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	]),
 }));
 
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { i18nStubs } from '~/__tests__/i18n';
 import ConnectedAppsPage from '../index.vue';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 interface AppRow {
 	_id: string;
@@ -123,24 +124,19 @@ const revealStub = {
 };
 
 function mountPage() {
-	return mount(ConnectedAppsPage, {
-		global: {
-			plugins: [createTestI18n()],
-			stubs: {
-				UiQueryBoundary: passthroughStub,
-				UiCard: passthroughStub,
-				UiButton: buttonStub,
-				UiConfirmationDialog: confirmStub,
-				ConnectedAppRegisterModal: registerModalStub,
-				ConnectedAppSecretReveal: revealStub,
-				UiEmptyState: {
-					props: ['title', 'description', 'icon'],
-					template: '<div><p>{{ title }}</p><p>{{ description }}</p><slot /></div>',
-				},
-				UiBadge: true,
-				UiIconBox: true,
-				Icon: true,
+	return mountDashboardPage(ConnectedAppsPage, {
+		stubs: {
+			UiQueryBoundary: passthroughStub,
+			UiCard: passthroughStub,
+			UiButton: buttonStub,
+			UiConfirmationDialog: confirmStub,
+			ConnectedAppRegisterModal: registerModalStub,
+			ConnectedAppSecretReveal: revealStub,
+			UiEmptyState: {
+				props: ['title', 'description', 'icon'],
+				template: '<div><p>{{ title }}</p><p>{{ description }}</p><slot /></div>',
 			},
+			UiBadge: true,
 		},
 	});
 }

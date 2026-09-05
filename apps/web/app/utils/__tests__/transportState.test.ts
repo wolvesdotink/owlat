@@ -4,9 +4,8 @@ import {
 	transportIdLabel,
 	type TransportHealthInput,
 	type TransportSummaryInput,
-	type TransportText,
 } from '../transportState';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * The module's own copy arrives as catalog keys; a name that comes from the
@@ -15,8 +14,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * exactly what the card does.
  */
 const { t } = createTestI18n().global;
-const render = (text: TransportText) =>
-	typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
+const render = localizedWith(t);
 
 function summary(overrides: Partial<TransportSummaryInput> = {}): TransportSummaryInput {
 	return {

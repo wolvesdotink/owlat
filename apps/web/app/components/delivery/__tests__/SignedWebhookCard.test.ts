@@ -18,12 +18,11 @@ import {
 } from '@owlat/shared/sendProviderCatalog';
 import { transportKindLabel } from '~/utils/transportState';
 import SignedWebhookCard from '../SignedWebhookCard.vue';
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { createTestI18n, i18nStubs, localizedWith } from '~/__tests__/i18n';
 
 /** The kind vocabulary is keyed; the page resolves it before handing it over. */
 const { t } = createTestI18n().global;
-const localized = (value: string | { key: string; params?: Record<string, unknown> }): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 
 const stubs = {
 	Icon: { template: '<i />' },

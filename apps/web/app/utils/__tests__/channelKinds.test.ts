@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-	ADDABLE_CHANNEL_KINDS,
-	availableChannelKinds,
-	channelHealthDot,
-	type LocalizedText,
-} from '../channelKinds';
-import { createTestI18n } from '~/__tests__/i18n';
+import { ADDABLE_CHANNEL_KINDS, availableChannelKinds, channelHealthDot } from '../channelKinds';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * The tables are module scope, so they carry catalog keys rather than words.
@@ -13,8 +8,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * label a person actually reads.
  */
 const { t } = createTestI18n().global;
-const localized = (value: LocalizedText): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 
 describe('ADDABLE_CHANNEL_KINDS', () => {
 	it('excludes the built-in email and chat kinds', () => {

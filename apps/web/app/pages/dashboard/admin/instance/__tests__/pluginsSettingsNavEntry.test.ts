@@ -9,7 +9,6 @@
  * orphaned-settings signal.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 
 vi.mock('~/plugins/plugin-composition.generated', () => ({
@@ -21,7 +20,8 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 vi.mock('@owlat/email-builder', () => ({ UnsavedChangesDialog: { template: '<div />' } }));
 
 import SettingsIndexPage from '../index.vue';
-import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import { expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 const overview = ref<{ plugins: unknown[]; orphaned: unknown[] }>({ plugins: [], orphaned: [] });
 
@@ -73,25 +73,18 @@ const nuxtLinkStub = {
 };
 
 function mountPage() {
-	return mount(SettingsIndexPage, {
-		global: {
-			plugins: [createTestI18n()],
-			stubs: {
-				UiQueryBoundary: passthroughStub,
-				UiCard: passthroughStub,
-				UiDisclosure: passthroughStub,
-				UiModal: passthroughStub,
-				NuxtLink: nuxtLinkStub,
-				UiEmptyState: true,
-				UiSpinner: true,
-				UiToggle: true,
-				UiInput: true,
-				UiButton: true,
-				UiBadge: true,
-				UiIconBox: true,
-				Icon: true,
-				UnsavedChangesDialog: true,
-			},
+	return mountDashboardPage(SettingsIndexPage, {
+		stubs: {
+			UiQueryBoundary: passthroughStub,
+			UiCard: passthroughStub,
+			UiDisclosure: passthroughStub,
+			UiModal: passthroughStub,
+			NuxtLink: nuxtLinkStub,
+			UiToggle: true,
+			UiInput: true,
+			UiButton: true,
+			UiBadge: true,
+			UnsavedChangesDialog: true,
 		},
 	});
 }

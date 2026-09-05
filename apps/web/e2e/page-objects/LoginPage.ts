@@ -1,19 +1,17 @@
 import type { Page, Locator } from '@playwright/test';
+import { BasePage } from './BasePage';
 
-export class LoginPage {
-	readonly page: Page;
+export class LoginPage extends BasePage {
 	readonly emailInput: Locator;
 	readonly passwordInput: Locator;
 	readonly submitButton: Locator;
-	readonly registerLink: Locator;
 	readonly errorAlert: Locator;
 
 	constructor(page: Page) {
-		this.page = page;
+		super(page);
 		this.emailInput = page.getByLabel('Email');
 		this.passwordInput = page.getByLabel('Password');
 		this.submitButton = page.getByRole('button', { name: 'Sign in' });
-		this.registerLink = page.getByRole('link', { name: 'Create one' });
 		this.errorAlert = page.locator('.bg-error-subtle');
 	}
 

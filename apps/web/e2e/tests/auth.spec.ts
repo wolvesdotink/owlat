@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { LoginPage } from '../page-objects/LoginPage';
 import { RegisterPage } from '../page-objects/RegisterPage';
-import { TEST_USER } from '../fixtures/test-data';
+import { testUser } from '../fixtures/test-data';
 
 // Auth tests run without pre-saved auth state
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -26,7 +26,8 @@ test.describe('Authentication', () => {
 		const loginPage = new LoginPage(page);
 		await loginPage.goto();
 
-		// Use the user created by auth.setup.ts
+		// The account auth.setup.ts registered for this run.
+		const TEST_USER = testUser();
 		await loginPage.login(TEST_USER.email, TEST_USER.password);
 
 		await page.waitForURL('**/dashboard**', { timeout: 15_000 });
@@ -48,12 +49,7 @@ test.describe('Authentication', () => {
 
 		await loginPage.submitButton.click();
 
-		// Custom validation shows error messages via .error-message class
-		const errors = page.locator('.error-message');
-		await expect(errors.first()).toBeVisible({ timeout: 5_000 });
-
-		// Verify specific error messages
-		await expect(page.getByText('Email is required')).toBeVisible();
+		await expect(page.getByText('Email is required')).toBeVisible({ timeout: 5_000 });
 		await expect(page.getByText('Password is required')).toBeVisible();
 	});
 
@@ -68,18 +64,13 @@ test.describe('Authentication', () => {
 		const loginPage = new LoginPage(page);
 		await loginPage.goto();
 
-		// Login first
+		const TEST_USER = testUser();
 		await loginPage.login(TEST_USER.email, TEST_USER.password);
 		await page.waitForURL('**/dashboard**', { timeout: 15_000 });
 
-		// The logout is in the sidebar: click user profile area to open dropdown, then click "Sign out"
-		// The user profile button is at the bottom of the sidebar
-		const userProfileButton = page.locator('aside button').last();
-		await userProfileButton.click();
-
-		// Click "Sign out" from the dropdown
-		const signOutButton = page.getByText('Sign out');
-		await signOutButton.click();
+		// The sidebar's user menu is a button named after the signed-in user.
+		await page.getByRole('button', { name: TEST_USER.name }).click();
+		await page.getByRole('button', { name: 'Sign out' }).click();
 
 		await page.waitForURL('**/auth/login**', { timeout: 10_000 });
 		await expect(page).toHaveURL(/\/auth\/login/);

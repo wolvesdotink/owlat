@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 import { useReviewQueue } from '../useReviewQueue';
+import { queryResult } from '~/__tests__/queryStubs';
 
 // The queue is stood up outside a component here, so `useI18n` is stubbed with
 // the real catalog's `t` — the operation labels stay the English an admin reads.
@@ -25,7 +25,7 @@ describe('useReviewQueue', () => {
 	beforeEach(() => {
 		runs = [];
 		vi.stubGlobal('useI18n', () => ({ t }));
-		vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined), isLoading: ref(false) }));
+		vi.stubGlobal('useConvexQuery', () => queryResult(undefined));
 		vi.stubGlobal('useBackendOperation', () => {
 			const run = vi.fn().mockResolvedValue({ ok: true, result: { success: true } });
 			runs.push(run);
@@ -173,7 +173,7 @@ describe('useReviewQueue', () => {
 				{ message: { _id: 'c' } },
 				{ message: { _id: 'd', draftSavedAt: 200 } },
 			];
-			vi.stubGlobal('useConvexQuery', () => ({ data: ref(items), isLoading: ref(false) }));
+			vi.stubGlobal('useConvexQuery', () => queryResult(items));
 
 			const { reviewItems } = useReviewQueue();
 
@@ -182,7 +182,7 @@ describe('useReviewQueue', () => {
 
 		it('leaves a queue with no saved drafts in the server order', () => {
 			const items = [{ message: { _id: 'a' } }, { message: { _id: 'b' } }];
-			vi.stubGlobal('useConvexQuery', () => ({ data: ref(items), isLoading: ref(false) }));
+			vi.stubGlobal('useConvexQuery', () => queryResult(items));
 
 			const { reviewItems } = useReviewQueue();
 

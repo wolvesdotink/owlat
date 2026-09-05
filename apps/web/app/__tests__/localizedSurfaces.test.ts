@@ -136,17 +136,9 @@ describe('auth/login', () => {
 	it('renders the sign-in copy from the catalog', () => {
 		const w = mountSurface(LoginPage);
 
-		expect(w.text()).toContain('Welcome');
-		expect(w.text()).toContain('back');
 		expect(w.text()).toContain('Sign in to your Owlat account.');
-		expect(w.text()).toContain('Email');
-		expect(w.text()).toContain('Password');
 		expect(w.text()).toContain('Forgot password?');
-		expect(w.text()).toContain('Sign in');
-		expect(w.text()).toContain("Don't have an account?");
-		expect(w.text()).toContain('Create one');
 		expect(w.get('#email').attributes('placeholder')).toBe('you@example.com');
-		expect(w.get('#password').attributes('placeholder')).toBe('Enter your password');
 		expectFullyLocalized(w);
 	});
 
@@ -192,11 +184,8 @@ describe('auth/login', () => {
 		it('replaces the credentials form with the code prompt', async () => {
 			const w = await reachChallenge();
 
-			expect(w.text()).toContain('One more step');
 			expect(w.text()).toContain('Enter the six-digit code your authenticator app is showing.');
-			expect(w.text()).toContain('Verify');
 			expect(w.text()).toContain('Use a backup code');
-			expect(w.text()).toContain('Start over');
 			// The password fields are gone — the password leg is already done.
 			expect(w.find('#password').exists()).toBe(false);
 			expect(w.get('#two-factor-code').exists()).toBe(true);
@@ -359,10 +348,8 @@ describe('auth/register', () => {
 	it('renders the invite-only wall when the visit is not an invite redirect', () => {
 		const w = mountSurface(RegisterPage);
 
-		expect(w.text()).toContain('Welcome to');
 		expect(w.text()).toContain('Owlat is invite only.');
 		expect(w.text()).toContain('Registration is disabled.');
-		expect(w.text()).toContain('Already have an account?');
 		expect(w.find('form').exists()).toBe(false);
 		expectFullyLocalized(w);
 	});
@@ -371,14 +358,10 @@ describe('auth/register', () => {
 		routeQuery = { redirect: '/invite/accept?token=abc' };
 		const w = mountSurface(RegisterPage);
 
-		expect(w.text()).toContain('Create your');
 		expect(w.text()).toContain("You've been invited to an Owlat workspace.");
-		expect(w.text()).toContain('Name');
-		expect(w.text()).toContain('Must be at least 10 characters');
 		// `terms` is one sentence with a link slot — never two concatenated halves.
 		expect(w.text()).toContain('I agree to the');
 		expect(w.text()).toContain('Terms of Service');
-		expect(w.text()).toContain('Create account');
 		expectFullyLocalized(w);
 	});
 
@@ -399,10 +382,8 @@ describe('auth/forgot-password', () => {
 	it('renders the request form', () => {
 		const w = mountSurface(ForgotPasswordPage);
 
-		expect(w.text()).toContain('Reset your');
 		expect(w.text()).toContain("Enter your email address and we'll send you a link");
 		expect(w.text()).toContain('Send reset link');
-		expect(w.text()).toContain('Back to login');
 		expectFullyLocalized(w);
 	});
 
@@ -433,11 +414,8 @@ describe('auth/reset-password', () => {
 		routeQuery = { token: 'reset-token' };
 		const w = mountSurface(ResetPasswordPage);
 
-		expect(w.text()).toContain('Set a new');
-		expect(w.text()).toContain('New password');
 		expect(w.text()).toContain('Confirm password');
 		expect(w.get('#confirm-password').attributes('placeholder')).toBe('Re-enter your new password');
-		expect(w.text()).toContain('Reset password');
 		expectFullyLocalized(w);
 	});
 

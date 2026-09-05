@@ -17,19 +17,8 @@ test.describe('Segments', () => {
 		});
 
 		// Verify segment appears in the list
-		const segmentRow = await segmentsPage.getSegmentRow(testSegmentName);
+		const segmentRow = segmentsPage.getSegmentRow(testSegmentName);
 		await expect(segmentRow).toBeVisible({ timeout: 10_000 });
-	});
-
-	test('created segment appears in list', async ({ page }) => {
-		// Create a segment first
-		const name = `List Test Segment ${Date.now()}`;
-		await segmentsPage.createSegment({ name });
-
-		// Verify it's in the table
-		const row = await segmentsPage.getSegmentRow(name);
-		await expect(row).toBeVisible({ timeout: 10_000 });
-		await expect(row).toContainText(name);
 	});
 
 	test('edit segment name', async ({ page }) => {
@@ -38,7 +27,7 @@ test.describe('Segments', () => {
 		await segmentsPage.createSegment({ name: originalName });
 
 		// Wait for it to appear
-		await expect(await segmentsPage.getSegmentRow(originalName)).toBeVisible({
+		await expect(segmentsPage.getSegmentRow(originalName)).toBeVisible({
 			timeout: 10_000,
 		});
 
@@ -55,7 +44,7 @@ test.describe('Segments', () => {
 		await modal.waitFor({ state: 'hidden', timeout: 10_000 });
 
 		// Verify updated name appears
-		await expect(await segmentsPage.getSegmentRow(updatedName)).toBeVisible({
+		await expect(segmentsPage.getSegmentRow(updatedName)).toBeVisible({
 			timeout: 10_000,
 		});
 	});
@@ -66,7 +55,7 @@ test.describe('Segments', () => {
 		await segmentsPage.createSegment({ name: nameToDelete });
 
 		// Wait for it to appear
-		await expect(await segmentsPage.getSegmentRow(nameToDelete)).toBeVisible({
+		await expect(segmentsPage.getSegmentRow(nameToDelete)).toBeVisible({
 			timeout: 10_000,
 		});
 
@@ -74,7 +63,7 @@ test.describe('Segments', () => {
 		await segmentsPage.deleteSegment(nameToDelete);
 
 		// Verify it's gone
-		await expect(await segmentsPage.getSegmentRow(nameToDelete)).not.toBeVisible({
+		await expect(segmentsPage.getSegmentRow(nameToDelete)).not.toBeVisible({
 			timeout: 10_000,
 		});
 	});

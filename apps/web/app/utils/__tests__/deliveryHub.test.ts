@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-	deliveryVerdict,
-	warmupSentence,
-	deliveryStatTiles,
-	type LocalizedText,
-} from '../deliveryHub';
-import { createTestI18n } from '~/__tests__/i18n';
+import { deliveryVerdict, warmupSentence, deliveryStatTiles } from '../deliveryHub';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * The verdict map and the tiles are module scope, so they carry catalog keys
@@ -13,8 +8,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * catalog keeps these assertions on the copy the hub paints.
  */
 const { t } = createTestI18n().global;
-const localized = (value: LocalizedText): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 
 describe('deliveryVerdict', () => {
 	it('maps every roll-up level to a human label + tone', () => {

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { SettingsTeamPage } from '../page-objects/SettingsTeamPage';
-import { TEST_USER } from '../fixtures/test-data';
+import { testUser } from '../fixtures/test-data';
 
 test.describe('Settings — Team Members', () => {
 	let teamPage: SettingsTeamPage;
@@ -18,7 +18,7 @@ test.describe('Settings — Team Members', () => {
 
 	test('current user appears in members list', async ({ page }) => {
 		// The E2E test user's name should be visible in the member list
-		await expect(page.getByText(TEST_USER.name)).toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText(testUser().name)).toBeVisible({ timeout: 10_000 });
 	});
 
 	test('invite modal shows validation for empty email', async ({ page }) => {

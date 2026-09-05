@@ -11,7 +11,7 @@
  * anywhere in these states. A screen that says the right words in an alarming
  * colour has still told the operator their install is broken.
  */
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, ref, type Ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
@@ -37,7 +37,7 @@ import MeasurementGateList from '../MeasurementGateList.vue';
 import { improvementCopy, confidenceLabel } from '~/utils/deliverabilityMeasurement';
 import { holdingGate } from './measurementFixtures';
 import { adminNotice, cellControl, controlsView, NOW } from './rampFixtures';
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { createTestI18n, i18nStubs, localizedWith } from '~/__tests__/i18n';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -47,10 +47,17 @@ Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
  * English catalog rather than restating it.
  */
 const { t } = createTestI18n().global;
-const localized = (value: string | { key: string; params?: Record<string, unknown> }): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 
 const ALARM = /text-error|bg-error|setup incomplete|action required|something went wrong/i;
+
+/** Select the campaign:gmail cell, press one of its controls and let the write settle. */
+async function pressControl(wrapper: ReturnType<typeof mount>, control: string) {
+	await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
+	await wrapper.vm.$nextTick();
+	await wrapper.find(`[data-testid="ramp-control-${control}"]`).trigger('click');
+	await flushPromises();
+}
 
 describe('calm states', () => {
 	it('renders a zero-volume, never-ramped cell as neutral with no warning tone', () => {
@@ -546,11 +553,7 @@ describe('control refusals', () => {
 	])('explains the %s refusal calmly instead of showing nothing', async (refusal, sentence) => {
 		stubPage({ applied: false, refusal });
 		const wrapper = mount(ControlsPage, { global: globalOptions });
-		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
-		await wrapper.vm.$nextTick();
-		await wrapper.find('[data-testid="ramp-control-pause"]').trigger('click');
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await wrapper.vm.$nextTick();
+		await pressControl(wrapper, 'pause');
 		const note = wrapper.find('[data-testid="ramp-control-refusal"]');
 		expect(note.exists()).toBe(true);
 		expect(note.text()).toMatch(sentence);
@@ -632,11 +635,7 @@ describe('control refusals', () => {
 			outstanding: ['dnsbl_clean_streak', 'seed_probe_pass_recent'],
 		});
 		const wrapper = mount(ControlsPage, { global: globalOptions });
-		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
-		await wrapper.vm.$nextTick();
-		await wrapper.find('[data-testid="ramp-control-promote-phase"]').trigger('click');
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await wrapper.vm.$nextTick();
+		await pressControl(wrapper, 'promote-phase');
 		const list = wrapper.find('[data-testid="ramp-promotion-outstanding"]');
 		expect(list.exists()).toBe(true);
 		expect(list.text()).toContain('blocklist-clean days');
@@ -657,11 +656,7 @@ describe('control refusals', () => {
 			[cellControl({ isRampManaged: false })]
 		);
 		const wrapper = mount(ControlsPage, { global: globalOptions });
-		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
-		await wrapper.vm.$nextTick();
-		await wrapper.find('[data-testid="ramp-control-enroll"]').trigger('click');
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await wrapper.vm.$nextTick();
+		await pressControl(wrapper, 'enroll');
 		expect(run).toHaveBeenCalledWith({ stream: 'campaign', destinationProvider: 'gmail' });
 		expect(wrapper.find('[data-testid="ramp-control-refusal"]').exists()).toBe(false);
 		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
@@ -684,11 +679,7 @@ describe('control refusals', () => {
 			cellControl({ isRampManaged: false }),
 		]);
 		const wrapper = mount(ControlsPage, { global: globalOptions });
-		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
-		await wrapper.vm.$nextTick();
-		await wrapper.find('[data-testid="ramp-control-enroll"]').trigger('click');
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await wrapper.vm.$nextTick();
+		await pressControl(wrapper, 'enroll');
 		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
 		expect(outcome.text()).toContain('2%');
 		expect(outcome.text()).toMatch(/does not split by share/i);
@@ -703,11 +694,7 @@ describe('control refusals', () => {
 			cellControl({ isRampManaged: false }),
 		]);
 		const wrapper = mount(ControlsPage, { global: globalOptions });
-		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
-		await wrapper.vm.$nextTick();
-		await wrapper.find('[data-testid="ramp-control-enroll"]').trigger('click');
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await wrapper.vm.$nextTick();
+		await pressControl(wrapper, 'enroll');
 		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
 		expect(outcome.text()).toContain('warm-up pace');
 		expect(outcome.html()).not.toMatch(ALARM);
@@ -722,11 +709,7 @@ describe('control refusals', () => {
 	it('says there is nothing to promote when the server answers at the top rung', async () => {
 		stubPage({ applied: false, phaseCeiling: 1 }, [cellControl({ phaseCeiling: 0.8 })]);
 		const wrapper = mount(ControlsPage, { global: globalOptions });
-		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
-		await wrapper.vm.$nextTick();
-		await wrapper.find('[data-testid="ramp-control-promote-phase"]').trigger('click');
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await wrapper.vm.$nextTick();
+		await pressControl(wrapper, 'promote-phase');
 		expect(wrapper.find('[data-testid="ramp-control-refusal"]').exists()).toBe(false);
 		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
 		expect(outcome.text()).toContain('nothing left to promote');
@@ -753,11 +736,7 @@ describe('control refusals', () => {
 	])('says what a promotion does to the share with %s', async (_name, view, expected, refuted) => {
 		stubPage({ applied: true, phaseCeiling: 0.5 }, [cellControl({ phaseCeiling: 0.25 })], view);
 		const wrapper = mount(ControlsPage, { global: globalOptions });
-		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
-		await wrapper.vm.$nextTick();
-		await wrapper.find('[data-testid="ramp-control-promote-phase"]').trigger('click');
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await wrapper.vm.$nextTick();
+		await pressControl(wrapper, 'promote-phase');
 		const outcome = wrapper.find('[data-testid="ramp-control-outcome"]');
 		expect(outcome.text()).toContain('50% phase');
 		expect(outcome.text()).toMatch(expected);
@@ -791,19 +770,14 @@ describe('control refusals', () => {
 				components: { ...globalOptions.components, DeliveryRampConfirmDialog: RampConfirmDialog },
 			},
 		});
-		await wrapper.find('[data-testid="ramp-select-campaign:gmail"]').trigger('click');
-		await wrapper.vm.$nextTick();
-		await wrapper.find('[data-testid="ramp-control-promote-phase"]').trigger('click');
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await wrapper.vm.$nextTick();
+		await pressControl(wrapper, 'promote-phase');
 		expect(wrapper.find('[data-testid="ramp-control-outcome"]').exists()).toBe(true);
 
 		await wrapper.find('[data-testid="ramp-control-force-input"]').setValue(60);
 		await wrapper.find('[data-testid="ramp-control-force-advance"]').trigger('click');
 		await wrapper.find('[data-testid="ramp-confirm-input"]').setValue(FORCE_ADVANCE_CONFIRMATION);
 		await wrapper.find('[data-testid="ramp-confirm-submit"]').trigger('click');
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await wrapper.vm.$nextTick();
+		await flushPromises();
 		expect(run).toHaveBeenLastCalledWith({
 			stream: 'campaign',
 			destinationProvider: 'gmail',

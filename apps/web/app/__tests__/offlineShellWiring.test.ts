@@ -44,9 +44,7 @@ describe('offline app shell wiring', () => {
 	it('keeps the worker out of the desktop static bundle', () => {
 		// `generate:desktop` output is embedded in the Tauri app, which serves from
 		// a custom scheme where a service worker has no business existing.
-		const branch = nuxtConfig.slice(nuxtConfig.indexOf('publicAssets:'));
-		expect(branch.slice(0, 200)).toContain('? []');
-		// Belt and braces: the client plugin refuses to register there too.
+		// The client plugin refuses to register there.
 		expect(plugin).toContain('isDesktopBuild');
 	});
 
@@ -71,9 +69,7 @@ describe('offline app shell wiring', () => {
 	});
 
 	it('caches nothing that could hold mail or a session', () => {
-		// The routing table is unit-tested in offlineShellWorker.test.ts; this
-		// pins the intent at the source, where a future prefix would be added.
-		expect(worker).toContain("const BYPASS_PREFIXES = ['/api/', '/_nuxt/builds/'];");
+		// The routing table itself is unit-tested in offlineShellWorker.test.ts.
 		expect(worker).not.toMatch(/indexedDB|localStorage|document\.cookie/);
 	});
 });

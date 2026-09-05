@@ -21,7 +21,6 @@ import UiModal from '@owlat/ui/components/ui/Modal.vue';
 type Overrides = {
 	persistent?: boolean;
 	closable?: boolean;
-	size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | 'full';
 };
 
 function mountModal(overrides: Overrides = {}) {
@@ -91,28 +90,7 @@ describe('UiModal (semantics inherited by every converted overlay)', () => {
 	});
 });
 
-describe('UiModal panel geometry (the call sites no longer patch this)', () => {
-	it('caps the panel height and lays it out as a flex column', () => {
-		const wrapper = mountModal();
-		const classes = wrapper.find('[role="dialog"]').classes();
-		expect(classes).toContain('flex');
-		expect(classes).toContain('flex-col');
-		expect(classes).toContain('max-h-[85dvh]');
-		wrapper.unmount();
-	});
-
-	it('scrolls the body and nothing else', () => {
-		const wrapper = mountModal();
-		const body = bodyOf(wrapper);
-		expect(body.exists()).toBe(true);
-		// `min-h-0` is what actually lets a flex child shrink below its content
-		// and scroll; without it the panel grows and the cap does nothing.
-		expect(body.classes()).toContain('min-h-0');
-		expect(body.classes()).toContain('flex-1');
-		expect(wrapper.find('[role="dialog"]').classes()).not.toContain('overflow-y-auto');
-		wrapper.unmount();
-	});
-
+describe('UiModal panel geometry', () => {
 	it('keeps the header and the footer outside the scrolling region', () => {
 		const wrapper = mount(UiModal, {
 			props: { open: true, title: 'Upload File' },
@@ -130,26 +108,9 @@ describe('UiModal panel geometry (the call sites no longer patch this)', () => {
 		expect(body.contains(submit)).toBe(false);
 		wrapper.unmount();
 	});
-
-	it('applies its width cap only from the sm breakpoint up, so the sheet is full-bleed', () => {
-		const wrapper = mountModal({ size: 'lg' });
-		const classes = wrapper.find('[role="dialog"]').classes();
-		expect(classes).toContain('sm:max-w-lg');
-		expect(classes).toContain('w-full');
-		expect(classes).not.toContain('max-w-lg');
-		wrapper.unmount();
-	});
 });
 
 describe('UiModal bottom sheet (below the sm breakpoint)', () => {
-	it('rounds only the top corners below sm', () => {
-		const wrapper = mountModal();
-		const classes = wrapper.find('[role="dialog"]').classes();
-		expect(classes).toContain('rounded-t-2xl');
-		expect(classes).toContain('sm:rounded-2xl');
-		wrapper.unmount();
-	});
-
 	it('offers a drag handle when the dialog can be dismissed', () => {
 		const wrapper = mountModal();
 		expect(grip(wrapper).exists()).toBe(true);

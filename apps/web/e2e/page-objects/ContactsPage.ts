@@ -1,20 +1,18 @@
 import type { Page, Locator } from '@playwright/test';
+import { BasePage } from './BasePage';
 
-export class ContactsPage {
-	readonly page: Page;
+export class ContactsPage extends BasePage {
 	readonly searchInput: Locator;
 	readonly addContactButton: Locator;
 	readonly importButton: Locator;
-	readonly tableRows: Locator;
 	readonly selectAllCheckbox: Locator;
 	readonly selectedCountText: Locator;
 
 	constructor(page: Page) {
-		this.page = page;
+		super(page);
 		this.searchInput = page.getByPlaceholder('Search by email or name...');
 		this.addContactButton = page.getByRole('button', { name: 'Add Contact' });
 		this.importButton = page.getByRole('button', { name: 'Import' });
-		this.tableRows = page.locator('tbody tr');
 		this.selectAllCheckbox = page.locator('thead button').first();
 		this.selectedCountText = page.locator('text=/\\d+ selected/');
 	}
@@ -28,9 +26,7 @@ export class ContactsPage {
 	async addContact(data: { email: string; firstName?: string; lastName?: string }) {
 		await this.addContactButton.click();
 
-		// Wait for modal to open (UiModal with role="dialog")
-		const modal = this.page.locator('[role="dialog"]');
-		await modal.waitFor();
+		const modal = await this.waitForModal();
 
 		await modal.getByLabel('Email').fill(data.email);
 		if (data.firstName) {
@@ -43,8 +39,7 @@ export class ContactsPage {
 		// The button says "Create Contact"
 		await modal.getByRole('button', { name: 'Create Contact' }).click();
 
-		// Wait for modal to close
-		await modal.waitFor({ state: 'hidden', timeout: 10_000 });
+		await this.waitForModalClose();
 	}
 
 	async searchContacts(query: string) {
@@ -60,9 +55,7 @@ export class ContactsPage {
 		// Select "CSV File" from dropdown menu
 		await this.page.getByText('CSV File').click();
 
-		// Wait for import modal to open
-		const modal = this.page.locator('[role="dialog"]');
-		await modal.waitFor();
+		const modal = await this.waitForModal();
 
 		// Upload file via hidden input
 		const fileInput = modal.locator('input[type="file"]');

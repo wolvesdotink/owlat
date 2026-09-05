@@ -17,7 +17,7 @@
  * middleware declaration ever goes missing.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 
 const routeId = ref('policy-pack');
@@ -44,8 +44,9 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	]),
 }));
 
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { i18nStubs } from '~/__tests__/i18n';
 import PluginDetailPage from '../[id].vue';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 const overview = ref<{
 	plugins: Array<Record<string, unknown>>;
@@ -110,20 +111,15 @@ const confirmationStub = {
 const buttonStub = { template: '<button v-bind="$attrs"><slot/></button>' };
 
 function mountPage() {
-	return mount(PluginDetailPage, {
-		global: {
-			plugins: [createTestI18n()],
-			stubs: {
-				UiQueryBoundary: passthroughStub,
-				UiCard: passthroughStub,
-				UiEmptyState: emptyStateStub,
-				UiConfirmationDialog: confirmationStub,
-				UiButton: buttonStub,
-				UiBadge: true,
-				UiIconBox: true,
-				Icon: true,
-				NuxtLink: true,
-			},
+	return mountDashboardPage(PluginDetailPage, {
+		stubs: {
+			UiQueryBoundary: passthroughStub,
+			UiCard: passthroughStub,
+			UiEmptyState: emptyStateStub,
+			UiConfirmationDialog: confirmationStub,
+			UiButton: buttonStub,
+			UiBadge: true,
+			NuxtLink: true,
 		},
 	});
 }

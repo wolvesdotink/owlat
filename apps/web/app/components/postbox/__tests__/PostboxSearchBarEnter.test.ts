@@ -20,6 +20,7 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxSearchBar from '../PostboxSearchBar.vue';
 import { LEGACY_MAIL_RECENTS_KEY } from '~/lib/commandPaletteRecents';
 import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
+import { queryResult } from '~/__tests__/queryStubs';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -33,7 +34,7 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	// No address book and no labels: the grammar and the history are what these
 	// cases are about.
-	vi.stubGlobal('useConvexQuery', () => ({ data: ref([]) }));
+	vi.stubGlobal('useConvexQuery', () => queryResult([]));
 	vi.stubGlobal('useDebouncedSearch', () => ({ query: ref(''), debouncedQuery: ref('') }));
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]) }));
 	// The real history store: the bar reads the one scope-tagged palette store
