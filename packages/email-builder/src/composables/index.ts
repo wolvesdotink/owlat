@@ -41,31 +41,12 @@ export {
 } from './editorShortcuts';
 export type { EditorShortcut, EditorShortcutGroup } from './editorShortcuts';
 
-export { useBackgroundColorControl } from './useBackgroundColorControl';
-export type {
-	ColorPreset,
-	UseBackgroundColorControlOptions,
-	UseBackgroundColorControlReturn,
-} from './useBackgroundColorControl';
-
 export { useLinkedBlocks } from './useLinkedBlocks';
 export type {
 	LinkedBlockGroup,
 	UseLinkedBlocksOptions,
 	UseLinkedBlocksReturn,
 } from './useLinkedBlocks';
-
-export { useLinkedBlockDrag } from './useLinkedBlockDrag';
-export type { UseLinkedBlockDragOptions, UseLinkedBlockDragReturn } from './useLinkedBlockDrag';
-
-export { useDevicePreview } from './useDevicePreview';
-export type {
-	DeviceType,
-	ViewMode,
-	DeviceConfig,
-	UseDevicePreviewOptions,
-	UseDevicePreviewReturn,
-} from './useDevicePreview';
 
 export { useBlockRenderer } from './useBlockRenderer';
 

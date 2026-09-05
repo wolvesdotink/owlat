@@ -27,6 +27,7 @@ Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 const stubs = {
 	Icon: { template: '<i />' },
 	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+	UiEmptyState: true,
 };
 
 // The section's Nuxt data/UI composables, stubbed inert so it mounts offline.

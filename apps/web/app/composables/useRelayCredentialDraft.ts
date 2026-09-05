@@ -62,8 +62,13 @@ export type RelayProviderChoice = Exclude<ProviderChoice, OwnSendProviderKind | 
 
 export interface RelayProviderOption {
 	readonly value: RelayProviderChoice;
-	/** i18n message key (or the catalog's own label) — resolve with `t()`. */
+	/** The transport's NAME, from the catalog — display text, rendered as-is. */
 	readonly label: string;
+	/**
+	 * An i18n message key that replaces `label` on screen — resolve with `t()`.
+	 * Only the own arm carries one (its option is an instruction, not a name).
+	 */
+	readonly labelKey?: string;
 	/** i18n message key — resolve with `t()`; empty when the kind has no copy. */
 	readonly hint: string;
 	readonly icon: string;
@@ -71,15 +76,15 @@ export interface RelayProviderOption {
 
 /**
  * The picker's COPY — one sentence and one icon per transport, in the order the
- * shipped screens list them. `label` and `hint` are i18n MESSAGE KEYS, because
+ * shipped screens list them. `labelKey` and `hint` are i18n MESSAGE KEYS, because
  * this table is built at module scope, before any component sets up: the screens
- * that render an option resolve them with `t(option.label)` / `t(option.hint)`.
+ * that render an option resolve them with `t(option.labelKey)` / `t(option.hint)`.
  *
  * Deliberately not in the catalog, which states so itself: a descriptor carries
  * the label a form needs, and "hints, icons and per-vendor prose" stay where the
  * copy is written. What is NOT here any more is the KIND LIST — it is read from
  * the catalog below, so this table can only ever ADD copy to a provider that
- * already exists, and the one `label` it still carries is the own arm's (see
+ * already exists, and the one `labelKey` it still carries is the own arm's (see
  * that row).
  *
  * A kind with no row still appears, with the catalog's label, a neutral icon and
@@ -93,17 +98,17 @@ const TRANSPORT_PICKER_COPY: readonly {
 	kind: string;
 	hint: string;
 	icon: string;
-	label?: string;
+	labelKey?: string;
 }[] = [
 	{
 		kind: OWN_SEND_PROVIDER_KIND,
-		// THE ONE `label` OVERRIDE, and it is on the one kind D3 calls special by
-		// definition: this picker's own-arm option is an INSTRUCTION ("Run your own
-		// MTA"), not the transport's name, and it is what the shipped editor says.
-		// Every relay takes the catalog's label — none of the four incumbents
+		// THE ONE `labelKey` OVERRIDE, and it is on the one kind D3 calls special
+		// by definition: this picker's own-arm option is an INSTRUCTION ("Run your
+		// own MTA"), not the transport's name, and it is what the shipped editor
+		// says. Every relay shows the catalog's label — none of the four incumbents
 		// needed an override, and a new provider cannot need one either, because
-		// the fallback is the entry's own label.
-		label: 'shared.useRelayCredentialDraft.providers.mta.label',
+		// the entry's own label is display text, never a message key.
+		labelKey: 'shared.useRelayCredentialDraft.providers.mta.label',
 		hint: 'shared.useRelayCredentialDraft.providers.mta.hint',
 		icon: 'lucide:server',
 	},
@@ -149,7 +154,8 @@ function pickerOption(kind: string): RelayProviderOption {
 	const copy = TRANSPORT_PICKER_COPY.find((row) => row.kind === kind);
 	return {
 		value: kind as RelayProviderChoice,
-		label: copy?.label ?? composedSendProviderCatalogEntry(kind)?.label ?? kind,
+		label: composedSendProviderCatalogEntry(kind)?.label ?? kind,
+		...(copy?.labelKey ? { labelKey: copy.labelKey } : {}),
 		hint: copy?.hint ?? '',
 		icon: copy?.icon ?? 'lucide:send',
 	};
@@ -170,8 +176,10 @@ export const RELAY_PROVIDER_OPTIONS: readonly RelayProviderOption[] = pickerOrde
  */
 export const TRANSPORT_EDITOR_PROVIDER_OPTIONS: readonly {
 	readonly value: ProviderChoice;
-	/** i18n message key (or the catalog's own label) — resolve with `t()`. */
+	/** The transport's NAME, from the catalog — display text, rendered as-is. */
 	readonly label: string;
+	/** An i18n message key that replaces `label` on screen — resolve with `t()`. */
+	readonly labelKey?: string;
 	/** i18n message key — resolve with `t()`; empty when the kind has no copy. */
 	readonly hint: string;
 	readonly icon: string;

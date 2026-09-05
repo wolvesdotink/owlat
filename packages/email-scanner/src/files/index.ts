@@ -5,7 +5,7 @@
  * file policy enforcement into a single validation function.
  */
 
-import type { ContentFlag, FilePolicy, FileValidationResult } from '../types.js';
+import type { FilePolicy, FileValidationResult } from '../types.js';
 import { detectFileType } from './magicBytes.js';
 import { detectDoubleExtension, isExecutableExtension } from './doubleExtension.js';
 import { DEFAULT_FILE_POLICY, isExtensionAllowed, isFileSizeAllowed } from './filePolicy.js';
@@ -31,7 +31,7 @@ export function validateFile(
 	firstBytes?: Uint8Array,
 	policy: FilePolicy = DEFAULT_FILE_POLICY,
 	fileSize?: number,
-	isoProbe?: Uint8Array,
+	isoProbe?: Uint8Array
 ): FileValidationResult {
 	// Check 1: Double extension detection
 	const doubleExt = detectDoubleExtension(filename);
@@ -62,8 +62,8 @@ export function validateFile(
 		// If magic bytes identify a safe type, use that as the detected type
 		if (magicResult) {
 			// Check if the detected MIME type is allowed by policy
-			const mimeAllowed = policy.allowedTypes.some(allowed =>
-				magicResult.mime === allowed || magicResult.mime.startsWith(allowed)
+			const mimeAllowed = policy.allowedTypes.some(
+				(allowed) => magicResult.mime === allowed || magicResult.mime.startsWith(allowed)
 			);
 
 			if (!mimeAllowed) {
@@ -123,38 +123,13 @@ export function validateFile(
 	};
 }
 
-/**
- * Generate content flags from file validation results.
- * Useful for integrating file validation into the content scanning pipeline.
- */
-export function fileValidationToFlags(
-	filename: string,
-	result: FileValidationResult,
-): ContentFlag[] {
-	if (result.allowed) return [];
-
-	const flags: ContentFlag[] = [];
-
-	if (result.dangerousType || result.doubleExtension) {
-		flags.push({
-			type: 'dangerous_file_type',
-			severity: 'high',
-			description: result.reason ?? `Dangerous file detected: ${filename}`,
-			match: filename,
-		});
-	} else {
-		flags.push({
-			type: 'dangerous_file_type',
-			severity: 'medium',
-			description: result.reason ?? `Disallowed file type: ${filename}`,
-			match: filename,
-		});
-	}
-
-	return flags;
-}
-
 // Re-export sub-modules
 export { detectFileType, isDangerousFileType } from './magicBytes.js';
 export { detectDoubleExtension, isExecutableExtension } from './doubleExtension.js';
-export { DEFAULT_FILE_POLICY, isMimeTypeAllowed, isExtensionAllowed, isFileSizeAllowed, mergePolicy } from './filePolicy.js';
+export {
+	DEFAULT_FILE_POLICY,
+	isMimeTypeAllowed,
+	isExtensionAllowed,
+	isFileSizeAllowed,
+	mergePolicy,
+} from './filePolicy.js';

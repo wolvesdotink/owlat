@@ -110,10 +110,6 @@ export function serializeStartTls(): string {
 	return `STARTTLS${CRLF}`;
 }
 
-export function serializeNoop(): string {
-	return `NOOP${CRLF}`;
-}
-
 /**
  * `AUTH <mechanism>` optionally with an initial response token. The mechanism
  * and token are guarded — an injected CRLF here would be an auth-bypass vector.

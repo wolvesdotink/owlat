@@ -303,7 +303,7 @@ export function applyYahooCflEvent(
 
 // ── The guided flow ─────────────────────────────────────────────────────────
 
-export const YAHOO_CFL_STEP_IDS = [
+const YAHOO_CFL_STEP_IDS = [
 	'verify_dkim_domain',
 	'submit_enrollment',
 	'confirm_enrollment',

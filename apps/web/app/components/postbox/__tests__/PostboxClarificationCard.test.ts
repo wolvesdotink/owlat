@@ -69,7 +69,7 @@ function mountCard(item: ReplyQueueItem) {
 		props: { item },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: iconStub, UiAvatar: avatarStub },
+			stubs: { Icon: iconStub, UiAvatar: avatarStub, UiIconBox: true },
 		},
 	});
 }

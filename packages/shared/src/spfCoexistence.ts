@@ -88,7 +88,7 @@ function authorizedMechanisms(record: string): Set<string> {
 }
 
 /** The `include:` target of a token, or null when it is not an include. */
-export function includeTarget(token: string): string | null {
+function includeTarget(token: string): string | null {
 	const normalized = normalizeMechanism(token);
 	if (!normalized.startsWith('include:')) return null;
 	const target = normalized.slice('include:'.length);

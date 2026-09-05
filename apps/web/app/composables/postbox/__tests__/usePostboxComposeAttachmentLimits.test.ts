@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { withSetup } from '~/__tests__/withSetup';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { createTestI18n } from '~/__tests__/i18n';
 
@@ -81,10 +82,12 @@ function makeFile(name: string, size: number): File {
 }
 
 function makeComposable(use: Awaited<ReturnType<typeof loadComposable>>) {
-	return use({
-		ensureDraft: async () => 'draft-1' as never,
-		draftId: ref('draft-1' as never),
-	});
+	return withSetup(() =>
+		use({
+			ensureDraft: async () => 'draft-1' as never,
+			draftId: ref('draft-1' as never),
+		})
+	).result;
 }
 
 describe('usePostboxComposeAttachments — compose limits', () => {

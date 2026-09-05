@@ -21,11 +21,7 @@ import {
 	ALIGNMENT_RECHECK_INTERVAL_MS,
 	evaluateAlignmentPreflight,
 } from '../deliverabilityAlignment';
-import {
-	ALIGNMENT_STALE_AFTER_MS,
-	alignmentGate,
-	applyAlignmentGateToShare,
-} from '../deliverabilityAlignmentGate';
+import { ALIGNMENT_STALE_AFTER_MS, alignmentGate } from '../deliverabilityAlignmentGate';
 import { ALIGNMENT_FAILURE_TABLE, alignedInput, CHECKED_AT } from './alignmentFixtures';
 
 const NO_REFERENCE = { kind: 'none' } as const;
@@ -59,7 +55,6 @@ describe('the gate opens for a standalone deployment regardless of stored state'
 		const gate = alignmentGate({ referenceArm: 'none', state: null, now: CHECKED_AT });
 		expect(gate.allowsShareAboveZero).toBe(true);
 		expect(gate.reason).toBe('single_arm');
-		expect(applyAlignmentGateToShare(1, gate)).toBe(1);
 	});
 
 	it('opens even with a stale or blocked leftover row', () => {
@@ -89,7 +84,6 @@ describe('the gate opens for a standalone deployment regardless of stored state'
 			});
 			expect(gate.allowsShareAboveZero).toBe(false);
 			expect(gate.reason).toBe('not_yet_checked');
-			expect(applyAlignmentGateToShare(0.25, gate)).toBe(0);
 		}
 	});
 

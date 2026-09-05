@@ -152,7 +152,7 @@ export async function removeDkimKey(redis: Redis, domain: string): Promise<boole
  * Store a domain's per-domain VERP return-path host (D1).
  *
  * The value MUST already be a validated, normalized DNS FQDN (see
- * `lib/returnPathHost.normalizeReturnPathHost`) — this function does no
+ * `normalizeReturnPathHost` in `@owlat/shared/returnPathHost`) — this function does no
  * validation of its own. Persisted as a plaintext field on the domain's
  * `mta:dkim:{domain}` hash, so it survives alongside the DKIM key and is dropped
  * when the domain is removed.

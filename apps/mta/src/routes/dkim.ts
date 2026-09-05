@@ -10,7 +10,7 @@ import * as dkimRotation from '../smtp/dkimRotation.js';
 import type { DkimRotationNotifier } from '../smtp/dkimRotation.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
-import { normalizeReturnPathHost } from '../lib/returnPathHost.js';
+import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 
 export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	const app = new Hono();

@@ -82,6 +82,7 @@ function mountLayout(): VueWrapper {
 				KeyboardShortcutsHelp: true,
 				Icon: true,
 				UiBadge: true,
+				UiSkeleton: true,
 				UiThemeToggle: true,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 			},

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { isValidEmail, normalizeEmail } from '~/utils/validation';
+import { isValidEmail, normalizeEmail } from '@owlat/shared';
 import { canonicalEmailAddress, isExternalRecipient } from '~/utils/recipientHints';
 import { suggestRecipientDomain, type DomainSuggestion } from '~/utils/recipientTypo';
 import {

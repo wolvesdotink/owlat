@@ -22,7 +22,7 @@ export interface QuotedSplitResult {
 	hasQuote: boolean;
 }
 
-export const QUOTE_ATTRIBUTION_PATTERNS = [
+const QUOTE_ATTRIBUTION_PATTERNS = [
 	/On\s+\w+,?\s+(?:[A-Z][a-z]+\s+\d{1,2}|\d{1,2}\s+[A-Z][a-z]+).*?wrote:/,
 	/^Am\s+\d{1,2}\.\d{1,2}\.\d{2,4}.*?schrieb\s/,
 	/^Le\s+\d{1,2}.*?écrit\s*:/,
@@ -58,7 +58,10 @@ export function splitQuotedHtml(html: string): QuotedSplitResult {
 	const blockquoteIdx = html.search(/<blockquote/i);
 	if (blockquoteIdx > 0) {
 		const before = html.slice(0, blockquoteIdx);
-		const stripped = before.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').trim();
+		const stripped = before
+			.replace(/<[^>]+>/g, '')
+			.replace(/&nbsp;/g, '')
+			.trim();
 		if (stripped.length > 0) {
 			return {
 				fresh: before,

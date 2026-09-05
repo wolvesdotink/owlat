@@ -335,7 +335,9 @@ function cancel() {
 						rounded="lg"
 					/>
 					<div class="flex-1">
-						<div class="font-medium text-text-primary">{{ t(opt.label) }}</div>
+						<div class="font-medium text-text-primary">
+							{{ opt.labelKey ? t(opt.labelKey) : opt.label }}
+						</div>
 						<div class="text-sm text-text-secondary">{{ t(opt.hint) }}</div>
 					</div>
 				</label>

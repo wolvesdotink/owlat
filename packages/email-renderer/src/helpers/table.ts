@@ -110,13 +110,6 @@ export const wrapSection = (
 };
 
 /**
- * Wraps column content in a table cell with proper width.
- */
-export const wrapColumnCell = (width: string, innerHtml: string): string => {
-	return `<td style="width:${width};vertical-align:top;padding:0">${innerHtml || '&nbsp;'}</td>`;
-};
-
-/**
  * Wraps a block's HTML in the column-item shell used at column/container placement
  * by most blocks (the outer `<table><tr><td style="padding:8px 0">` wrapper).
  * Blocks that need different shells (text fuses styles, spacer is the cell)

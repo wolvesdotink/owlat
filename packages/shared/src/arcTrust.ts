@@ -25,6 +25,7 @@
  * the cryptographic chain plus an explicit operator allow-list.
  */
 
+import { normalizeDomain } from './utils/normalizeDomain';
 /** RFC 8617 chain-validation state (`cv=`): the whole ARC chain verified, or not. */
 export type ArcChainResult = 'pass' | 'fail' | 'none';
 
@@ -71,11 +72,6 @@ export const DEFAULT_TRUSTED_ARC_FORWARDERS: readonly string[] = [
 
 export const MAX_TRUSTED_ARC_FORWARDERS = 100;
 const MAX_DOMAIN_LENGTH = 253;
-
-/** Lowercase + strip a single trailing dot + leading/trailing whitespace. */
-export function normalizeDomain(domain: string | undefined): string {
-	return (domain ?? '').trim().toLowerCase().replace(/\.$/, '');
-}
 
 /**
  * Is `entry` a usable trusted-forwarder domain? A trusted entry must be a bare,

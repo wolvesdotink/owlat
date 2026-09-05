@@ -73,6 +73,9 @@ function mountFooter() {
 			persistentToolbar: false,
 			lastSavedLabel: 'Saved',
 			followUpRemindAt: null,
+			subject: '',
+			bodyHtml: '',
+			bodyBlocks: [],
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -83,6 +86,7 @@ function mountFooter() {
 				PostboxComposerModeControls: modeControlsStub,
 				Icon: iconStub,
 			},
+			stubs: { PostboxComposerPreflightChip: true, PostboxPreviewAsSent: true },
 		},
 	});
 	return wrapper;

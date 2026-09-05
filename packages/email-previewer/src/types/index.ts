@@ -18,14 +18,6 @@ export type {
 	PreviewSettings,
 } from './clients';
 
-// Component props/emits types
-export interface EmailPreviewerProps {
-	html: string;
-	subject?: string;
-	preheader?: string;
-	showSendTest?: boolean;
-}
-
 export interface CompatibilityIssue {
 	severity: 'error' | 'warning' | 'info';
 	feature: string;

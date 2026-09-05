@@ -1,7 +1,7 @@
 /** One coherent MX route and provider-policy snapshot for a recipient domain. */
 
-import { domainToASCII } from 'node:url';
 import type Redis from 'ioredis';
+import { normalizeDomain } from '@owlat/shared';
 import type { MtaConfig } from '../config.js';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import { resolveDaneMxDestinations, type DaneMxDestination } from './daneMxResolver.js';
@@ -26,11 +26,6 @@ export interface DestinationResolutionOptions {
 
 function normalizeHostname(value: string): string {
 	return value.trim().toLowerCase().replace(/\.$/, '');
-}
-
-function normalizeDomain(value: string): string {
-	const normalized = normalizeHostname(value);
-	return domainToASCII(normalized) || normalized;
 }
 
 function hasDnsSuffix(hostname: string, suffix: string): boolean {

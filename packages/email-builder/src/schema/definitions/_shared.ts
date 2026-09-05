@@ -14,9 +14,7 @@ export const paddingFields: PropertyField[] = [
 	{ key: 'padding', label: 'Padding', type: 'spacing' },
 ];
 
-export const marginFields: PropertyField[] = [
-	{ key: 'margin', label: 'Margin', type: 'margin' },
-];
+export const marginFields: PropertyField[] = [{ key: 'margin', label: 'Margin', type: 'margin' }];
 
 export const backgroundColorField: PropertyField = {
 	key: 'backgroundColor',
@@ -95,30 +93,6 @@ export const responsiveGroup: PropertyGroup = {
 	],
 };
 
-export const advancedGroup: PropertyGroup = {
-	label: 'Advanced',
-	icon: 'Settings',
-	collapsed: true,
-	fields: [
-		{ key: 'fullWidth', label: 'Full Width', type: 'toggle' },
-		{ key: 'cssClass', label: 'CSS Class', type: 'text', placeholder: 'custom-class' },
-		{ key: 'condition', label: 'Condition', type: 'condition' },
-		{ key: 'repeat', label: 'Repeat', type: 'repeat' },
-	],
-};
-
-/** Advanced group without fullWidth option (for blocks that don't support it) */
-export const advancedGroupNoFullWidth: PropertyGroup = {
-	label: 'Advanced',
-	icon: 'Settings',
-	collapsed: true,
-	fields: [
-		{ key: 'cssClass', label: 'CSS Class', type: 'text', placeholder: 'custom-class' },
-		{ key: 'condition', label: 'Condition', type: 'condition' },
-		{ key: 'repeat', label: 'Repeat', type: 'repeat' },
-	],
-};
-
 // ---------------------------------------------------------------------------
 // Helper to compose shared groups for common block patterns
 // ---------------------------------------------------------------------------
@@ -135,14 +109,6 @@ export const standardSharedGroups: PropertyGroup[] = [
 export const sharedGroupsNoBorderRadius: PropertyGroup[] = [
 	spacingGroup,
 	borderGroupNoBorderRadius,
-	darkModeGroup,
-	responsiveGroup,
-];
-
-/** Shared groups without fullWidth */
-export const sharedGroupsNoFullWidth: PropertyGroup[] = [
-	spacingGroup,
-	borderGroup,
 	darkModeGroup,
 	responsiveGroup,
 ];

@@ -149,7 +149,12 @@ async function openPalette() {
 		global: {
 			plugins: [createTestI18n()],
 			components: { AppCommandPaletteResults, QueryResult },
-			stubs: { Icon: true, UiSpinner: true },
+			stubs: {
+				Icon: true,
+				UiSpinner: true,
+				AppCommandPaletteFooter: true,
+				QuerySourceCitation: true,
+			},
 		},
 	});
 	window.dispatchEvent(new Event(COMMAND_PALETTE_OPEN_EVENT));

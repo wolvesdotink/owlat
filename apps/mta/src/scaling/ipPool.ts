@@ -9,11 +9,7 @@
 
 import type Redis from 'ioredis';
 import { normalizeIpAddress } from '@owlat/shared/ipAddress';
-import {
-	IP_READINESS_BLOCK_REASONS,
-	isIpReadinessBlockReason,
-	type IpReadinessBlockReason,
-} from '@owlat/shared/ipReadiness';
+import { isIpReadinessBlockReason, type IpReadinessBlockReason } from '@owlat/shared/ipReadiness';
 import type { IpPoolConfig, IpPoolType } from '../types.js';
 import { logger } from '../monitoring/logger.js';
 
@@ -39,7 +35,6 @@ return redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1
   and 1 or 0
 `;
 
-export const IP_POOL_BLOCK_REASONS = IP_READINESS_BLOCK_REASONS;
 export type IpPoolBlockReason = IpReadinessBlockReason;
 export type IpPoolObservationDecision = 'block' | 'clear' | 'preserve';
 
@@ -252,7 +247,7 @@ if #configuredIps > 0 and eligibleCount == 0 then redis.call('SET', emergencyKey
 return {#configuredIps, eligibleCount}
 `;
 
-export function isIpPoolBlockReason(value: string): value is IpPoolBlockReason {
+function isIpPoolBlockReason(value: string): value is IpPoolBlockReason {
 	return isIpReadinessBlockReason(value);
 }
 

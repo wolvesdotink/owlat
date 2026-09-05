@@ -15,8 +15,6 @@ import type { PluginSendTransportCredentialField } from './sendTransportCredenti
 /** Capability assigned by the host to every bundled send transport. */
 export const PLUGIN_SEND_TRANSPORT_CAPABILITY = 'send:transport' as const;
 
-export type PluginSendTransportCapability = typeof PLUGIN_SEND_TRANSPORT_CAPABILITY;
-
 /** Local contribution identity. The host namespaces it with the owning plugin id. */
 
 /** Collision-safe transport kind stored in routes and health records. */
@@ -289,7 +287,7 @@ export interface PluginSendTransportDefinition {
 export const PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS = 12;
 
 /** Longest configuration variable name a transport may declare. */
-export const PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH = 96;
+const PLUGIN_SEND_TRANSPORT_MAX_ENV_VAR_LENGTH = 96;
 
 /**
  * The instance-suffix separator, as the transport contract has to spell it: a

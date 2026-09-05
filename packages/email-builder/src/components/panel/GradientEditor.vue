@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { GradientBackground } from '../../types';
-import { Plus, X, Trash2, ArrowRight, ArrowLeft, ArrowDown, ArrowUp, ArrowDownRight } from '@lucide/vue';
+import {
+	Plus,
+	X,
+	Trash2,
+	ArrowRight,
+	ArrowLeft,
+	ArrowDown,
+	ArrowUp,
+	ArrowDownRight,
+} from '@lucide/vue';
 import ButtonGroup from '../ui/ButtonGroup.vue';
 import IconButton from '../ui/IconButton.vue';
 import ActionButton from '../ui/ActionButton.vue';
@@ -31,9 +40,7 @@ const sortedStops = computed(() => {
 
 const previewStyle = computed(() => {
 	if (!props.modelValue || sortedStops.value.length < 2) return {};
-	const stops = sortedStops.value
-		.map((s) => `${s.color} ${s.position}%`)
-		.join(', ');
+	const stops = sortedStops.value.map((s) => `${s.color} ${s.position}%`).join(', ');
 	return {
 		background: `linear-gradient(${props.modelValue.direction}, ${stops})`,
 	};
@@ -165,7 +172,11 @@ function openColorPicker(index: number) {
 							@click="openColorPicker(index)"
 						/>
 						<input
-							:ref="(el) => { colorInputRefs[index] = el as HTMLInputElement }"
+							:ref="
+								(el) => {
+									colorInputRefs[index] = el as HTMLInputElement;
+								}
+							"
 							type="color"
 							:aria-label="`Stop ${index + 1} color`"
 							class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -183,10 +194,12 @@ function openColorPicker(index: number) {
 						:value="stop.position"
 						min="0"
 						max="100"
-						@input="(e) => updateStopPosition(index, parseInt((e.target as HTMLInputElement).value) || 0)"
+						@input="
+							(e) => updateStopPosition(index, parseInt((e.target as HTMLInputElement).value) || 0)
+						"
 					/>
 
-					<!-- Number input (InlineNumberInput style) + % -->
+					<!-- Number input + % -->
 					<div class="flex items-center shrink-0">
 						<input
 							type="number"
@@ -195,7 +208,10 @@ function openColorPicker(index: number) {
 							:value="stop.position"
 							min="0"
 							max="100"
-							@input="(e) => updateStopPosition(index, parseInt((e.target as HTMLInputElement).value) || 0)"
+							@input="
+								(e) =>
+									updateStopPosition(index, parseInt((e.target as HTMLInputElement).value) || 0)
+							"
 						/>
 						<span class="text-[11px] text-text-tertiary select-none">%</span>
 					</div>

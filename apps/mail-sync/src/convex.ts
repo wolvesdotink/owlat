@@ -6,17 +6,14 @@
  * generated `_generated/api.d.ts` (which would create a circular dev dep).
  */
 
+import { createAdminConvexClient } from '@owlat/shared';
 import { ConvexHttpClient } from 'convex/browser';
 import type { MailSyncConfig } from './config.js';
 
 export type ConvexClient = ConvexHttpClient;
 
 export function createConvexClient(config: MailSyncConfig): ConvexClient {
-	const client = new ConvexHttpClient(config.convexUrl);
-	// `setAdminAuth` is a real runtime method on ConvexHttpClient but is omitted
-	// from the published public type — cast to reach it (apps/imap does the same).
-	(client as unknown as { setAdminAuth(key: string): void }).setAdminAuth(config.convexAdminKey);
-	return client;
+	return createAdminConvexClient(ConvexHttpClient, config.convexUrl, config.convexAdminKey);
 }
 
 export type FnRef = string;

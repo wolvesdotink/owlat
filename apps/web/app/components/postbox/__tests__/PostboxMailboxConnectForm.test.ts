@@ -128,6 +128,7 @@ function mountForm(props: FormProps) {
 				UiErrorAlert: UiErrorAlertStub,
 				Icon: iconStub,
 				PostboxAppPasswordCallout: true,
+				UiDisclosure: { template: '<div><slot name="label" /><slot /></div>' },
 			},
 		},
 	});

@@ -130,7 +130,7 @@ export type BounceEffect =
 	  };
 
 /** Signals the one inbound failure for which SMTP must request a retry. */
-export class DurableFeedbackPersistenceError extends TransientFeedbackProcessingError {
+class DurableFeedbackPersistenceError extends TransientFeedbackProcessingError {
 	constructor(cause: unknown) {
 		super('Attributed feedback could not be persisted durably', cause);
 		this.name = 'DurableFeedbackPersistenceError';

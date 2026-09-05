@@ -15,7 +15,7 @@ import type { BounceEffect } from './effects.js';
 import type { FblSourceIspToken } from './fblProcessor.js';
 import type { BasePhaseCtx, BounceAttempt } from './types.js';
 import { addressText, firstAddress } from '../inbound/parsedAddress.js';
-import { normalizeReturnPathHost } from '../lib/returnPathHost.js';
+import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 
 /**
  * The reducer's return type. `effects` runs through `applyEffects` in the
@@ -68,14 +68,13 @@ function applyFeedbackProvenancePolicy(
 	if (!feedback.feedbackProvenance) return reduction;
 	if (feedback.feedbackProvenance === 'unknown') return { effects: [] };
 	const deliveryDomain = feedback.feedbackProvenance;
-	const events = reduction.effects.map(
-		(effect): BounceEffect =>
-			effect.kind === 'notify_convex'
-				? {
-						...effect,
-						event: { ...effect.event, deliveryDomain },
-					}
-				: effect
+	const events = reduction.effects.map((effect): BounceEffect =>
+		effect.kind === 'notify_convex'
+			? {
+					...effect,
+					event: { ...effect.event, deliveryDomain },
+				}
+			: effect
 	);
 	if (deliveryDomain === 'production') return { effects: events };
 	// Member previews retain only their authenticated lifecycle callback. They

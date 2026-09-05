@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { languageSelectOptions } from '~/data/languageOptions';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 
 const { t } = useI18n();
 
@@ -616,7 +616,10 @@ onUnmounted(() => {
 					v-if="bulkOps.isBulkOperationInProgress.value"
 					class="flex items-center gap-3 px-3 py-2 rounded-lg bg-bg-surface"
 				>
-					<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none text-brand" />
+					<Icon
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none text-brand"
+					/>
 					<span class="text-sm text-text-secondary">
 						<template v-if="bulkOps.bulkOperationType.value === 'add'">{{
 							t('dashboard.audience.contacts.index.bulk.progress.add')

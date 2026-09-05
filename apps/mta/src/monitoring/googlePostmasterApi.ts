@@ -1,6 +1,7 @@
 /** OAuth transport and wire validation for Google Postmaster Tools API v2. */
 
 import type Redis from 'ioredis';
+import { isRecord } from '@owlat/shared';
 import type { MtaConfig } from '../config.js';
 import {
 	POSTMASTER_MAX_COMPLIANCE_CHECKS,
@@ -16,7 +17,7 @@ const MAX_RETRY_DELAY_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export const GOOGLE_POSTMASTER_API_BASE = 'https://gmailpostmastertools.googleapis.com/v2';
-export const GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME = 'userReportedSpamRatio';
+const GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME = 'userReportedSpamRatio';
 
 /**
  * The ratio metrics requested in one v2 `domainStats:query`. `name` is OUR
@@ -104,10 +105,6 @@ export class GoogleApiError extends Error {
 		super(`Google Postmaster ${operation} failed (${category}, HTTP ${status})`);
 		this.name = 'GoogleApiError';
 	}
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isRatio(value: unknown): value is number {

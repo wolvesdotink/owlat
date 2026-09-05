@@ -28,6 +28,7 @@ const stubs = {
 	Icon: true,
 	UiCard: { template: '<div><slot /></div>' },
 	UiIconBox: true,
+	UiSpinner: true,
 	UiToggle: true,
 };
 /** A fresh i18n instance per mount — locale state must not leak between them. */

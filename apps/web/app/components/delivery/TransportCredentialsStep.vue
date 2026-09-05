@@ -169,7 +169,7 @@ async function applyCredentials() {
 					class="mt-1 h-4 w-4 border-border-default bg-bg-deep text-brand"
 				/>
 				<span>
-					<span class="block font-medium text-text-primary">{{ t(opt.label) }}</span>
+					<span class="block font-medium text-text-primary">{{ opt.label }}</span>
 					<span class="block text-sm text-text-secondary">{{ t(opt.hint) }}</span>
 				</span>
 			</label>

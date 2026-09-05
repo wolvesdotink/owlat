@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { isValidEmail, normalizeEmail } from '~/utils/validation';
+import { isValidEmail, normalizeEmail } from '@owlat/shared';
 import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
 
 const { t } = useI18n();

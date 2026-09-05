@@ -18,6 +18,7 @@ import {
 import IndependencePage from '~/pages/dashboard/admin/delivery/advanced/independence.vue';
 import IndependenceTrendChart from '../IndependenceTrendChart.vue';
 import RampConfirmDialog from '../RampConfirmDialog.vue';
+import ErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { DAY_MS, NOW, independenceSummary } from './rampFixtures';
@@ -87,6 +88,7 @@ function mountPage() {
 			},
 			components: {
 				UiQueryBoundary: QueryBoundary,
+				UiErrorAlert: ErrorAlert,
 				DeliveryIndependenceTrendChart: IndependenceTrendChart,
 				DeliveryRampConfirmDialog: RampConfirmDialog,
 			},

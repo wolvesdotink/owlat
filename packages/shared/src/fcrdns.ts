@@ -7,6 +7,7 @@
  */
 
 import { ipAddressFamily, normalizeIpAddress, type IpAddressFamily } from './ipAddress';
+import { normalizeDomain } from './utils/normalizeDomain';
 
 export const FCRDNS_FAILURE_REASONS = [
 	'no-ptr',
@@ -56,7 +57,7 @@ export interface FcrdnsDnsDeps {
 }
 
 export type FcrdnsVerification = Omit<FcrdnsReadiness, 'checkedAt' | 'overridden'>;
-export const FCRDNS_DNS_TIMEOUT_MS = 5_000;
+const FCRDNS_DNS_TIMEOUT_MS = 5_000;
 
 /**
  * Provider-owned reverse-DNS suffixes that identify their default/generated
@@ -74,20 +75,16 @@ export const DEFAULT_GENERIC_PTR_SUFFIXES = [
 	'vultrusercontent.com',
 ] as const;
 
-export function normalizeDnsName(name: string): string {
-	return name.trim().replace(/\.$/, '').toLowerCase();
-}
-
 /** RFC-shaped, multi-label hostname check suitable for PTR/EHLO identity. */
 export function isFqdn(name: string): boolean {
-	const normalized = normalizeDnsName(name);
+	const normalized = normalizeDomain(name);
 	if (normalized.length > 253 || !normalized.includes('.')) return false;
 	return normalized.split('.').every((label) => /^(?!-)[a-z0-9-]{1,63}(?<!-)$/.test(label));
 }
 
 /** Parse and validate the data-driven provider-PTR warning suffix list. */
 export function parseGenericPtrSuffixes(value: string | undefined): string[] {
-	const suffixes = (value ?? '').split(',').map(normalizeDnsName).filter(Boolean);
+	const suffixes = (value ?? '').split(',').map(normalizeDomain).filter(Boolean);
 	for (const suffix of suffixes) {
 		if (!isFqdn(suffix)) {
 			throw new Error(`MTA_GENERIC_PTR_SUFFIXES contains an invalid DNS suffix: ${suffix}`);
@@ -117,10 +114,10 @@ export function isGenericPtrHostname(
 	hostname: string,
 	extraSuffixes: readonly string[] = []
 ): boolean {
-	const name = normalizeDnsName(hostname);
+	const name = normalizeDomain(hostname);
 	if (!name) return false;
 	const suffixes = [...DEFAULT_GENERIC_PTR_SUFFIXES, ...extraSuffixes]
-		.map(normalizeDnsName)
+		.map(normalizeDomain)
 		.filter(Boolean);
 	return (
 		embedsIpv4(name) || suffixes.some((suffix) => name === suffix || name.endsWith(`.${suffix}`))
@@ -165,7 +162,7 @@ async function performFcrdnsVerification(
 ): Promise<FcrdnsVerification> {
 	const normalizedIp = normalizeIpAddress(ip);
 	const addressFamily = ipAddressFamily(ip);
-	const ehlo = normalizeDnsName(ehloHostname);
+	const ehlo = normalizeDomain(ehloHostname);
 	const emptyChecklist: FcrdnsChecklist = {
 		ptrExists: false,
 		ptrIsFqdn: false,
@@ -190,7 +187,7 @@ async function performFcrdnsVerification(
 		);
 	}
 
-	const ptrNames = [...new Set(rawPtrNames.map(normalizeDnsName).filter(Boolean))];
+	const ptrNames = [...new Set(rawPtrNames.map(normalizeDomain).filter(Boolean))];
 	if (ptrNames.length === 0) {
 		return failedVerification(
 			normalizedIp,
@@ -278,7 +275,7 @@ export async function verifyFcrdnsIdentity(
 ): Promise<FcrdnsVerification> {
 	const normalizedIp = normalizeIpAddress(ip) ?? ip;
 	const addressFamily = ipAddressFamily(ip) ?? 'ipv4';
-	const ehlo = normalizeDnsName(ehloHostname);
+	const ehlo = normalizeDomain(ehloHostname);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
 		return await Promise.race([
@@ -313,7 +310,7 @@ export interface ReverseDnsGuidance {
 
 /** Provider-specific setup copy inferred from the currently observed PTR. */
 export function reverseDnsGuidance(ptrNames: readonly string[]): ReverseDnsGuidance {
-	const joined = ptrNames.map(normalizeDnsName).join(' ');
+	const joined = ptrNames.map(normalizeDomain).join(' ');
 	if (joined.includes('your-server.de')) {
 		return {
 			provider: 'hetzner',

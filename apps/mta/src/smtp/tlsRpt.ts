@@ -29,14 +29,14 @@ const TLS_RPT_TTL = 3 * 86400; // Keep 3 days of records
 
 // ─── Prometheus Metrics ─────────────────────────────────────────────
 
-export const tlsFailuresTotal = new Counter({
+const tlsFailuresTotal = new Counter({
 	name: 'mta_tls_failures_total',
 	help: 'TLS negotiation failures by type',
 	labelNames: ['type', 'domain'] as const,
 	registers: [registry],
 });
 
-export const tlsReportsSent = new Counter({
+const tlsReportsSent = new Counter({
 	name: 'mta_tls_reports_sent_total',
 	help: 'TLS-RPT reports sent',
 	registers: [registry],
@@ -219,7 +219,7 @@ export function buildTlsaPolicyString(records: readonly TlsaRecord[]): string[] 
  *
  * @returns The reporting address (mailto: or https: URI), or null
  */
-export async function getTlsRptAddress(domain: string): Promise<string | null> {
+async function getTlsRptAddress(domain: string): Promise<string | null> {
 	try {
 		const records = await dnsResolve(`_smtp._tls.${domain}`, 'TXT');
 		const flat = records.flat().join('');

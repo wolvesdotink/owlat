@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 import { senderAuthDisplay } from '~/utils/senderAlignment';
 import {
 	CUSTOM_SENDER_VALUE,

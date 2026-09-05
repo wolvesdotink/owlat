@@ -33,7 +33,6 @@ export type {
 	DevicePreset,
 	PreviewSettings,
 	// Component types
-	EmailPreviewerProps,
 	CompatibilityIssue,
 	CompatibilityReport,
 	// Nesting depth types

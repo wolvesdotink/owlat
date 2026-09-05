@@ -50,8 +50,6 @@ export type {
 	UrlReputationCache,
 	ClamScanResult,
 	ClamClientOptions,
-	EnhancedScanOptions,
-	EnhancedScanResult,
 } from './types.js';
 
 // ============ CONTENT SCANNING ============
@@ -79,7 +77,6 @@ export type { ContentScanRule, ScanInput } from './content/index.js';
 // ============ FILE VALIDATION ============
 export {
 	validateFile,
-	fileValidationToFlags,
 	detectFileType,
 	isDangerousFileType,
 	detectDoubleExtension,
@@ -94,7 +91,6 @@ export {
 // ============ URL REPUTATION ============
 export {
 	checkUrlReputation,
-	checkUrlReputationBatch,
 	urlReputationToFlags,
 	checkSafeBrowsing,
 	hashUrl,

@@ -33,6 +33,9 @@ const stubs = {
 	DomainsReceivingDnsSection: { template: '<div />' },
 	// Exercised by returnPathUi.test.ts; inert here (it calls a mutation on setup).
 	DomainsReturnPathEditor: { template: '<div />' },
+	DomainsStreamSubdomainPlanPanel: true,
+	DomainsYahooCflPanel: true,
+	DomainsDnsPropagationNote: true,
 };
 
 type DomainOverrides = Record<string, unknown>;

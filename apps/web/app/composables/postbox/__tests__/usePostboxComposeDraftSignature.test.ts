@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, nextTick, type Ref } from 'vue';
+import { effectScope, ref, nextTick, type Ref } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /** The real catalog behind the `useI18n` auto-import the composable calls. */
@@ -114,10 +114,12 @@ async function loadComposable() {
 describe('usePostboxCompose — reopened-draft signature race', () => {
 	it('keeps the saved body when signatures resolve before the draft hydrates', async () => {
 		const usePostboxCompose = await loadComposable();
-		const composer = usePostboxCompose({
-			mailboxId: 'mbx-1' as never,
-			draftId: 'draft-42' as never,
-		});
+		const composer = effectScope().run(() =>
+			usePostboxCompose({
+				mailboxId: 'mbx-1' as never,
+				draftId: 'draft-42' as never,
+			})
+		)!;
 
 		// signatures.list wins the race first — the losing interleaving.
 		signaturesData.value = [DEFAULT_SIGNATURE];
@@ -134,7 +136,7 @@ describe('usePostboxCompose — reopened-draft signature race', () => {
 
 	it('still auto-prepends the default signature for a fresh compose', async () => {
 		const usePostboxCompose = await loadComposable();
-		const composer = usePostboxCompose({ mailboxId: 'mbx-1' as never });
+		const composer = effectScope().run(() => usePostboxCompose({ mailboxId: 'mbx-1' as never }))!;
 
 		signaturesData.value = [DEFAULT_SIGNATURE];
 		await nextTick();

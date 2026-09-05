@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import {
-	errorMessage,
 	isRateLimited,
 	isValidIPv4,
 	safeCompare,
@@ -12,23 +11,6 @@ import {
 } from '../security.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
-
-describe('errorMessage', () => {
-	it('returns the message of an Error', () => {
-		expect(errorMessage(new Error('boom'))).toBe('boom');
-	});
-
-	it('reads a message property from a plain object', () => {
-		expect(errorMessage({ message: 'nope' })).toBe('nope');
-	});
-
-	it('stringifies primitives', () => {
-		expect(errorMessage('raw string')).toBe('raw string');
-		expect(errorMessage(42)).toBe('42');
-		expect(errorMessage(null)).toBe('null');
-		expect(errorMessage(undefined)).toBe('undefined');
-	});
-});
 
 describe('safeCompare', () => {
 	it('is true for equal strings', () => {
@@ -160,7 +142,10 @@ describe('validateComposeTemplate', () => {
     image: ghcr.io/wolvesdotink/web:latest
     privileged: true
 `;
-		expect(validateComposeTemplate(bad)).toMatchObject({ valid: false, reason: expect.stringContaining('Privileged') });
+		expect(validateComposeTemplate(bad)).toMatchObject({
+			valid: false,
+			reason: expect.stringContaining('Privileged'),
+		});
 	});
 
 	it('rejects SYS_ADMIN capability', () => {
@@ -170,7 +155,10 @@ describe('validateComposeTemplate', () => {
     cap_add:
       - SYS_ADMIN
 `;
-		expect(validateComposeTemplate(bad)).toMatchObject({ valid: false, reason: expect.stringContaining('SYS_ADMIN') });
+		expect(validateComposeTemplate(bad)).toMatchObject({
+			valid: false,
+			reason: expect.stringContaining('SYS_ADMIN'),
+		});
 	});
 
 	it.each(['pid', 'network_mode'])('rejects host %s mode', (key) => {

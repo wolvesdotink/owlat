@@ -28,10 +28,7 @@ const mountOpts = {
 	global: {
 		plugins: [createTestI18n()],
 		components: { UiEmptyState },
-		stubs: {
-			Icon: true,
-			NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
-		},
+		stubs: { Icon: true },
 	},
 };
 

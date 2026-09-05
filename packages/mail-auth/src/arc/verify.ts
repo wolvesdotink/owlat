@@ -25,7 +25,8 @@
 import { resolveTxt } from 'dns/promises';
 import { splitMessage } from '../dkim/message.js';
 import { verifyMessageSignature, type DkimDnsResolver } from '../dkim/messageSignature.js';
-import { aarAttestsPass, normalizeDomain } from './attestation.js';
+import { normalizeDomain } from '@owlat/shared';
+import { aarAttestsPass } from './attestation.js';
 import { arcHeaderKind, buildArcChain, validateChainStructure } from './chain.js';
 import { verifySealChain } from './seal.js';
 

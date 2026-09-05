@@ -13,8 +13,6 @@ export type {
 /** Capability the host assigns to every plugin that contributes import providers. */
 export const PLUGIN_IMPORT_PROVIDER_CAPABILITY = 'imports:provide' as const;
 
-export type PluginImportProviderCapability = typeof PLUGIN_IMPORT_PROVIDER_CAPABILITY;
-
 /** Collision-safe provider kind; the walker resolves it through the host. */
 export type PluginImportProviderKind = PluginNamespacedKind;
 

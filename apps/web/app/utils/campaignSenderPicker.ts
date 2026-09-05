@@ -10,7 +10,7 @@
  * the floor — this mirrors it in the UI so an unsubmittable address is never
  * offered in the first place.
  */
-import { isValidEmail } from './validation';
+import { isValidEmail } from '@owlat/shared';
 
 /** Message-key root for this module; see `i18n/locales/en.json`. */
 const K = 'shared.campaignSenderPicker';

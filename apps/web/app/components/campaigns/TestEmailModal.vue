@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 import type { Id } from '@owlat/api/dataModel';
 import { api } from '@owlat/api';
 import { languageOptions, formatLanguageLabel } from '~/data/languageOptions';

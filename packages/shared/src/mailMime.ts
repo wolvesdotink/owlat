@@ -14,22 +14,18 @@
  * `new TextDecoder('latin1').decode(bytes)`) so binary parts survive.
  */
 
-// The RFC 2047 / 2231 header helpers now live in `@owlat/mail-message` (the
-// in-house parser that replaces mailparser). This module keeps re-exporting
-// them from their new home so every existing importer of
-// `@owlat/shared/mailMime` — including `decodeEncodedWords` — keeps working
-// unchanged. We import from the directional `/parse/headers` subpath (which
-// pulls in nothing else) so the web bundle that consumes this extractor is not
-// enlarged.
+// The RFC 2047 / 2231 header helpers live in `@owlat/mail-message`. We import
+// from the directional `/parse/headers` subpath (which pulls in nothing else)
+// so the web bundle that consumes this extractor is not enlarged.
+// `decodeEncodedWords` stays re-exported for `apps/imap`.
 import {
 	unfold,
 	decodeQpHexEscapes,
 	decodeEncodedWords,
-	decodeRfc2231,
 	getRawParam,
 } from '@owlat/mail-message/parse/headers';
 
-export { unfold, decodeEncodedWords, decodeRfc2231 };
+export { decodeEncodedWords };
 
 export interface ExtractedAttachment {
 	filename: string;
