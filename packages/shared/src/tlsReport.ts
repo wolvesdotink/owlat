@@ -18,6 +18,7 @@
  * the single source of truth for the report schema.
  */
 
+import { isRecord } from './utils/guards';
 // ─── RFC 8460 report shape ──────────────────────────────────────────
 
 /** Policy block echoed in a report (RFC 8460 §4.4). */
@@ -129,10 +130,6 @@ export async function gunzipTlsReport(bytes: Uint8Array): Promise<string> {
 }
 
 // ─── Validation ─────────────────────────────────────────────────────
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function isBoundedString(
 	value: unknown,

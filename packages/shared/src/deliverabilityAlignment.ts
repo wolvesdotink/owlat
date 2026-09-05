@@ -56,6 +56,7 @@
 
 import { organizationalDomain } from './spfAlignment';
 import { evaluateSpfCoexistence } from './spfCoexistence';
+import { normalizeDomain } from './utils/normalizeDomain';
 import type { SpfCoexistenceFailure } from './spfCoexistence';
 import {
 	ALIGNMENT_CHECK_IDS,
@@ -64,7 +65,6 @@ import {
 	ALIGNMENT_UNKNOWN_RETRY_MS,
 	dkimRecordName,
 	fail,
-	normalizeDomain,
 	pass,
 	unknownCheck,
 	type AlignmentArm,

@@ -26,6 +26,7 @@
  *     aligned with its parent.
  */
 
+import { normalizeDomain } from '@owlat/shared';
 import { isSpfAligned, organizationalDomain, type AlignmentMode } from '@owlat/shared/spfAlignment';
 import type { SpfVerdict } from './spf.js';
 
@@ -214,11 +215,6 @@ export async function evaluateDmarc(args: EvaluateDmarcArgs): Promise<DmarcOutco
 /** Map a DMARC `aspf`/`adkim` tag to the shared alignment-mode keyword. */
 function alignmentMode(tag: 'r' | 's'): AlignmentMode {
 	return tag === 's' ? 'strict' : 'relaxed';
-}
-
-/** Lowercase + strip a trailing dot from a domain; '' for nullish/blank. */
-function normalizeDomain(domain: string): string {
-	return domain.trim().toLowerCase().replace(/\.$/, '');
 }
 
 /**
