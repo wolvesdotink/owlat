@@ -1,7 +1,9 @@
 # UX plan — deferrals
 
-Work named in the plan (`docs/ux-plan/index.html`) that was consciously left
-undone, with the reason and what it would take. Idea numbers refer to that file.
+Work named in the UX plan that was consciously left undone, with the reason
+and what it would take. The plan itself (`index.html`, with its screenshots)
+landed in PR #588 and was removed from the tree after the work shipped; it is
+still readable in that PR's history. Idea numbers refer to that plan.
 
 ## 9 — recipient timezone is read from the CRM, not inferred from headers
 
