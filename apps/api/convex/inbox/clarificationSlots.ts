@@ -192,7 +192,7 @@ export interface RawClarificationQuestion {
 	options?: string[];
 }
 
-const MAX_QUESTION_CHARS = 200;
+const MAX_CLARIFICATION_QUESTION_CHARS = 200;
 const MAX_OPTION_CHARS = 80;
 const MAX_OPTIONS = 4;
 
@@ -214,7 +214,7 @@ export function sanitizeClarificationQuestions(
 	const attribution = attributeQuestion(fromAddress);
 	const out: SanitizedClarificationQuestion[] = [];
 	for (const q of raw) {
-		const text = (q.text ?? '').trim().slice(0, MAX_QUESTION_CHARS);
+		const text = (q.text ?? '').trim().slice(0, MAX_CLARIFICATION_QUESTION_CHARS);
 		if (text.length === 0) continue;
 		if (isCredentialSolicitation(text)) continue;
 		const options: string[] = [];
