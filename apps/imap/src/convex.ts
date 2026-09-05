@@ -6,24 +6,14 @@
  * via the websocket client, but P4 (read-only) only needs HTTP.
  */
 
+import { createAdminConvexClient } from '@owlat/shared';
 import { ConvexHttpClient } from 'convex/browser';
 import type { ImapConfig } from './config.js';
 
 export type ConvexClient = ConvexHttpClient;
 
-/**
- * `setAdminAuth` is a real runtime method on `ConvexHttpClient` for
- * authenticating with a deploy admin key, but Convex deliberately omits it
- * from the public type surface. We narrow to it explicitly here.
- */
-interface AdminAuthClient {
-	setAdminAuth(token: string): void;
-}
-
 export function createConvexClient(config: ImapConfig): ConvexClient {
-	const client = new ConvexHttpClient(config.convexUrl);
-	(client as unknown as AdminAuthClient).setAdminAuth(config.convexAdminKey);
-	return client;
+	return createAdminConvexClient(ConvexHttpClient, config.convexUrl, config.convexAdminKey);
 }
 
 /**

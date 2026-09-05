@@ -2,6 +2,7 @@
 
 import { createHash, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
+import { sleep } from '@owlat/shared';
 
 /** Shared lease-state transitions; storage/parent ownership remain adapter-specific. */
 export const EFFECT_LEASE_LUA_FUNCTIONS = `
@@ -246,7 +247,7 @@ export async function runLeasedEffect<T>(
 		const started = await store.begin(token, Date.now(), leaseMs);
 		if (started.kind === 'applied') return undefined;
 		if (started.kind === 'acquired') break;
-		await delay(Math.min(waitMs, Math.max(1, started.expiresAt - Date.now())));
+		await sleep(Math.min(waitMs, Math.max(1, started.expiresAt - Date.now())));
 	}
 
 	let renewal = Promise.resolve();
@@ -280,8 +281,4 @@ function busyLease(expiresAt: number): EffectLeaseStart {
 		throw new EffectCheckpointError('Effect checkpoint lease expiry is invalid');
 	}
 	return { kind: 'busy', expiresAt };
-}
-
-function delay(milliseconds: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

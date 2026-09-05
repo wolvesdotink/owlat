@@ -27,11 +27,11 @@ import {
 	type GooglePostmasterClient,
 	POSTMASTER_DELIVERY_ERROR_CATEGORIES,
 	googleDateObject,
-	isRecord,
 	normalizeDomainStat,
 	parseComplianceStatus,
 	utcDateDaysAgo,
 } from './googlePostmasterApi.js';
+import { isRecord } from '@owlat/shared';
 import { logger } from './logger.js';
 
 const DELIVERY_ERROR_PAGE_SIZE = 200;

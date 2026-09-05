@@ -16,8 +16,8 @@ import {
 	ALIGNMENT_UNKNOWN_RETRY_MS,
 	dkimRecordName,
 	evaluateAlignmentPreflight,
-	normalizeDomain,
 } from '../deliverabilityAlignment';
+import { normalizeDomain } from '../utils/normalizeDomain';
 import {
 	ALIGNMENT_MAX_FUTURE_SKEW_MS,
 	ALIGNMENT_STALE_AFTER_MS,

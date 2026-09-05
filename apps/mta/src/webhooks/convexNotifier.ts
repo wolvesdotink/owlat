@@ -7,6 +7,7 @@
 
 import { createHmac, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
+import { isRecord, sleep } from '@owlat/shared';
 import type { GooglePostmasterWebhookEvent, MtaWebhookEvent } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import {
@@ -42,10 +43,6 @@ export type PostmasterAcknowledgement =
 	| { disposition: 'accepted_authorized'; retained: boolean }
 	| { disposition: 'ignored_unowned'; retained: false }
 	| { disposition: 'delivery_failed'; retained: false };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
 
 function isPostmasterEvent(event: MtaWebhookEvent): event is GooglePostmasterWebhookEvent {
 	return (
@@ -146,7 +143,7 @@ async function deliverWithRetries<T>(
 				deliveryFailure = { category: 'deadline_exhausted' };
 				break;
 			}
-			await new Promise((resolve) => setTimeout(resolve, delayMs));
+			await sleep(delayMs);
 		}
 	}
 

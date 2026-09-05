@@ -8,13 +8,13 @@
 
 import { resolve4, resolve6, reverse } from 'dns/promises';
 import {
-	normalizeDnsName,
 	isFcrdnsFailureReason,
 	verifyFcrdnsIdentity,
 	type FcrdnsDnsDeps,
 	type FcrdnsFailureReason,
 	type FcrdnsReadiness,
 } from '@owlat/shared/fcrdns';
+import { normalizeDomain } from '@owlat/shared';
 import { ipAddressFamily } from '@owlat/shared/ipAddress';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
@@ -80,7 +80,7 @@ export async function verifyFcrdns(
 	deps: FcrdnsDeps = DEFAULT_DEPS,
 	genericPtrSuffixes: readonly string[] = []
 ): Promise<FcrdnsResult> {
-	const expected = expectedNames.map(normalizeDnsName).filter(Boolean);
+	const expected = expectedNames.map(normalizeDomain).filter(Boolean);
 	const ehlo = expected[0] ?? '';
 	const checkedAt = deps.now?.() ?? Date.now();
 	const verification = await verifyFcrdnsIdentity(
@@ -166,7 +166,7 @@ async function observeFcrdnsIdentity(
 	} catch (err) {
 		result = failedResult(
 			ip,
-			normalizeDnsName(ehlo),
+			normalizeDomain(ehlo),
 			[],
 			'lookup-error',
 			deps.now?.() ?? Date.now(),

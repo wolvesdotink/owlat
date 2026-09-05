@@ -28,10 +28,10 @@ import { paginationOptsValidator } from 'convex/server';
 import {
 	ALIGNMENT_SWEEP_PAGE_SIZE,
 	MULTI_RELAY_DETAIL_PREFIX,
-	normalizeDomain,
 	type AlignmentArm,
 	type ReferenceArmInput,
 } from '@owlat/shared/deliverabilityAlignment';
+import { normalizeDomain } from '@owlat/shared';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { authedQuery } from '../lib/authedFunctions';

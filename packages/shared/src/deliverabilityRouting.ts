@@ -3,6 +3,7 @@ import {
 	isGovernedMessageType,
 	type GovernedMessageType,
 } from './routingDispatch';
+import { isRecord } from './utils/guards';
 
 export const DESTINATION_PROVIDER_KEYS = ['gmail', 'microsoft', 'yahoo', 'apple', 'other'] as const;
 
@@ -272,10 +273,6 @@ export function isDestinationProviderKey(value: unknown): value is DestinationPr
 	return (
 		typeof value === 'string' && (DESTINATION_PROVIDER_KEYS as readonly string[]).includes(value)
 	);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
 }
 
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
