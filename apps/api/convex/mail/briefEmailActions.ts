@@ -28,14 +28,6 @@ import { dailyBriefEmailCopy, systemEmailLocale } from '../lib/systemEmailCopy';
 /** Snippet length that matches what the delivery pipeline stores elsewhere. */
 const SNIPPET_LENGTH = 200;
 
-function escapeHtml(value: string): string {
-	return value
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;');
-}
-
 /**
  * The brief as renderer blocks.
  *

@@ -32,15 +32,6 @@ export function regressionEmailRetryDelay(attempt: number): number | null {
 	return REGRESSION_EMAIL_RETRY_DELAYS_MS[attempt] ?? null;
 }
 
-function escapeHtml(value: string): string {
-	return value
-		.replaceAll('&', '&amp;')
-		.replaceAll('<', '&lt;')
-		.replaceAll('>', '&gt;')
-		.replaceAll('"', '&quot;')
-		.replaceAll("'", '&#39;');
-}
-
 function normalizedEmail(value: string | undefined): string | undefined {
 	const email = value?.trim().toLowerCase();
 	return email || undefined;
