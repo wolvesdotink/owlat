@@ -1,5 +1,5 @@
 /**
- * The replay engine for the inbound shadow-replay harness (piece C0): run every
+ * The replay engine for the inbound shadow-replay harness: run every
  * input through both stacks and produce a categorized divergence report. Every
  * divergence carries hashed bodies only, so the report is body-safe (I7).
  */
