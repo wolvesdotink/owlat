@@ -203,14 +203,14 @@ from `packageManager` in the root `package.json`; bump it there only.
 Every secret the workflows reference, in one place. `GITHUB_TOKEN` is provided
 by Actions and is not listed.
 
-| Secret | Used by | When unset |
-| --- | --- | --- |
-| `CONVEX_TEST_URL`, `CONVEX_TEST_SITE_URL` | e2e.yml, as `NUXT_PUBLIC_CONVEX_URL` / `NUXT_PUBLIC_CONVEX_SITE_URL` of a dedicated test deployment | the E2E job fails with an error naming the missing secret |
-| `DEPENDABOT_LOCKFILE_PAT` | dependabot-lockfile.yml; a fine-grained PAT (Contents: read & write) stored as a **Dependabot** secret, not an Actions secret | the job warns and skips; Dependabot PRs then fail `bun install --frozen-lockfile` |
-| `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | _desktop-build.yml, updater bundle signing | unsigned artifacts with a `::warning::` |
-| `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` | _desktop-build.yml, macOS code signing | unsigned artifacts |
-| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | _desktop-build.yml, macOS notarization | unsigned artifacts |
-| `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD` | _desktop-build.yml, Windows Authenticode | unsigned artifacts |
+| Secret                                                                      | Used by                                                                                                                       | When unset                                                                        |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `CONVEX_TEST_URL`, `CONVEX_TEST_SITE_URL`                                   | e2e.yml, as `NUXT_PUBLIC_CONVEX_URL` / `NUXT_PUBLIC_CONVEX_SITE_URL` of a dedicated test deployment                           | the E2E job fails with an error naming the missing secret                         |
+| `DEPENDABOT_LOCKFILE_PAT`                                                   | dependabot-lockfile.yml; a fine-grained PAT (Contents: read & write) stored as a **Dependabot** secret, not an Actions secret | the job warns and skips; Dependabot PRs then fail `bun install --frozen-lockfile` |
+| `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`           | _desktop-build.yml, updater bundle signing                                                                                    | unsigned artifacts with a `::warning::`                                           |
+| `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` | _desktop-build.yml, macOS code signing                                                                                        | unsigned artifacts                                                                |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`                               | _desktop-build.yml, macOS notarization                                                                                        | unsigned artifacts                                                                |
+| `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD`                       | _desktop-build.yml, Windows Authenticode                                                                                      | unsigned artifacts                                                                |
 
 Setup steps for the desktop signing secrets are in `apps/desktop/README.md`.
 

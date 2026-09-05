@@ -66,7 +66,10 @@ describe('the CI matrix exists and runs both configurations', () => {
 		// other job imported this file"; if only the mode survives a future edit,
 		// the missing-mode case degrades to a silent default again. The script is
 		// the only thing that sets it, and only the matrix job runs the script.
-		expect(RAMP_SCRIPT).toContain(`${RAMP_GATE_MATRIX_SENTINEL_ENV}=1 `);
+		// Whitespace-tolerant so a reflow of the script does not break the pair.
+		expect(RAMP_SCRIPT).toMatch(
+			new RegExp(`${RAMP_GATE_MATRIX_SENTINEL_ENV}=1\\s+${RAMP_GATE_MATRIX_ENV}="\\$mode"`)
+		);
 		expect(WORKFLOW).not.toMatch(new RegExp(`^\\s+${RAMP_GATE_MATRIX_SENTINEL_ENV}:`, 'm'));
 		expect(WORKFLOW.match(/run: bun run test:ramp/g)).toHaveLength(1);
 	});
