@@ -263,3 +263,27 @@ describe('apply-transport secrets at rest', () => {
 		expect(writeMock).not.toHaveBeenCalled();
 	});
 });
+
+/**
+ * The gate itself, not its mock: an unauthenticated request must be refused by
+ * the shipped `requireOrgAdmin` before the route does any work.
+ */
+describe('POST /api/delivery/apply-transport — the real org-admin gate', () => {
+	it('rejects an unauthenticated call with 401 before touching .env or the live env store', async () => {
+		const real = await vi.importActual<typeof import('~~/server/utils/requireOrgAdmin')>(
+			'~~/server/utils/requireOrgAdmin'
+		);
+		requireOrgAdminMock.mockImplementation(real.requireOrgAdmin);
+		vi.stubGlobal('useRuntimeConfig', () => ({
+			public: { convexUrl: 'https://convex.example.com', siteUrl: 'https://owlat.example' },
+		}));
+		vi.stubGlobal('getHeader', () => undefined);
+		const tokenProxy = vi.fn();
+		vi.stubGlobal('fetch', tokenProxy);
+
+		await expect(callRoute()).rejects.toMatchObject({ statusCode: 401 });
+		expect(tokenProxy).not.toHaveBeenCalled();
+		expect(writeMock).not.toHaveBeenCalled();
+		expect(pushMock).not.toHaveBeenCalled();
+	});
+});
