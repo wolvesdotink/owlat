@@ -105,7 +105,6 @@ const { SEND_PROVIDER_CATALOG, domainVerificationFor } =
 	await import('../../../lib/sendProviders/catalog');
 const schema = (await import('../../../schema')).default;
 const { modules } = await import('../../../__tests__/testModules');
-const { internal } = await import('../../../_generated/api');
 
 type TestConvex = ReturnType<typeof convexTest>;
 type RowOverrides = Partial<{
