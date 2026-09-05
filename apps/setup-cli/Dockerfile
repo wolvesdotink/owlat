@@ -5,7 +5,7 @@
 #
 # Multi-stage so the final image stays small (~80MB).
 
-FROM oven/bun:1.3-alpine AS builder
+FROM oven/bun:1.4-alpine AS builder
 WORKDIR /build
 COPY package.json bun.lock* ./
 COPY patches/ patches/
@@ -21,7 +21,7 @@ COPY packages/shared packages/shared
 COPY apps/setup-cli apps/setup-cli
 RUN cd apps/setup-cli && bun run build
 
-FROM oven/bun:1.3-alpine
+FROM oven/bun:1.4-alpine
 WORKDIR /opt/setup
 
 # The `quickstart` flow orchestrates the stack (docker compose up, the
