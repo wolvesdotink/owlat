@@ -119,6 +119,8 @@ export const CURRENT_EMBEDDING_MODEL = 'text-embedding-3-small';
  */
 export const EMBEDDING_DIMENSIONS = 1536;
 
+export const HOUR_MS = 60 * 60 * 1000;
+
 /**
  * Milliseconds in a UTC day. The granularity the MTA's warming cap resets on,
  * and therefore the day boundary the warming projection
@@ -126,4 +128,4 @@ export const EMBEDDING_DIMENSIONS = 1536;
  * (`campaigns/capacityPlan.ts`) both index by. ONE definition: the two modules
  * must never disagree about where a day starts.
  */
-export const MS_PER_DAY = 24 * 60 * 60 * 1000;
+export const DAY_MS = 24 * HOUR_MS;

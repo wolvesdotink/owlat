@@ -40,7 +40,7 @@ import { modules } from '../../__tests__/testModules';
 import { recordTransportOutcomeForCell } from '../../analytics/transportOutcomes';
 import { armForTransport } from '../sendAssignments';
 import type { SendProviderKind } from '../../lib/sendProviders/types';
-import { MS_PER_DAY } from '../../lib/constants';
+import { DAY_MS } from '../../lib/constants';
 import { seedRampCell } from './rampCronFixtures';
 import {
 	CAPACITY_CELL,
@@ -96,7 +96,7 @@ async function recordDay(
 	t: Harness,
 	args: { dayOffset: number; transport: SendProviderKind; sends: number }
 ): Promise<void> {
-	const at = CAPACITY_TODAY - args.dayOffset * MS_PER_DAY + 1;
+	const at = CAPACITY_TODAY - args.dayOffset * DAY_MS + 1;
 	await t.run(async (ctx) => {
 		for (let index = 0; index < args.sends; index += 1) {
 			await recordTransportOutcomeForCell(ctx, {

@@ -60,7 +60,7 @@ export async function assertRegistrationAllowed(
 
 	const now = Date.now();
 	const hasLiveInvite = (invitations?.page ?? []).some((inv) => {
-		if (inv.expiresAt === undefined || inv.expiresAt === null) return false;
+		if (inv.expiresAt == null) return false;
 		return new Date(inv.expiresAt).getTime() > now;
 	});
 

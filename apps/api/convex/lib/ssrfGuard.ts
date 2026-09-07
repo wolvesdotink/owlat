@@ -194,6 +194,25 @@ export function guardedDispatcher(): Agent {
 }
 
 /** Thrown by {@link readCappedBytes} when a response body exceeds the cap. */
+/**
+ * `fetch` bound to {@link guardedDispatcher}, so the socket-level DNS lookup
+ * is re-validated against the SSRF blocklist at CONNECT time. This closes the
+ * DNS-rebinding TOCTOU window that an up-front {@link validatePublicUrl} check
+ * leaves open when the runtime resolves the host a second time. Callers that
+ * need redirect refusal or the up-front URL check use {@link fetchGuarded}.
+ */
+export function fetchWithGuardedDispatcher(
+	input: string | URL,
+	init: RequestInit = {}
+): Promise<Response> {
+	return fetch(input, {
+		...init,
+		// @ts-expect-error `dispatcher` is an undici-specific fetch option not in
+		// the DOM RequestInit lib types, but valid in the Node action runtime.
+		dispatcher: guardedDispatcher(),
+	});
+}
+
 export class CappedReadOverflow extends Error {}
 
 /**
@@ -263,13 +282,7 @@ export async function fetchGuarded(
 			? new SsrfBlockedError(message)
 			: new FetchGuardError(message);
 	}
-	const res = await fetch(urlStr, {
-		...requestInit,
-		redirect: 'manual',
-		// @ts-expect-error `dispatcher` is an undici-specific fetch option not in
-		// the DOM RequestInit lib types, but valid in the Node runtime.
-		dispatcher: guardedDispatcher(),
-	});
+	const res = await fetchWithGuardedDispatcher(urlStr, { ...requestInit, redirect: 'manual' });
 	if (res.status >= 300 && res.status < 400) {
 		throw new RedirectRefusedError(
 			`Blocked fetch of "${urlStr}": refusing to follow redirect (to ${res.headers.get('location') ?? 'unknown'}) — possible SSRF`

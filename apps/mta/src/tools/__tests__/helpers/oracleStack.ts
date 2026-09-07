@@ -21,7 +21,7 @@ import {
 	type ReplayInput,
 	type ReplayStackSide,
 	type RoutingDrivers,
-} from '../../inboundReplay';
+} from '../inboundReplay';
 
 /**
  * The OLD (oracle) stack: mailparser for the routing drivers, and the

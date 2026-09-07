@@ -45,6 +45,7 @@ import {
 	ZERO_SUPPRESSION_COUNTS,
 	type SuppressionImportCounts,
 } from './_common';
+import { bounceTypeValidator } from '../lib/convexValidators';
 
 // ─── Apply one page ─────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ export const suppressionEntryValidator = v.object({
 		v.literal('manual'),
 		v.literal('unsubscribe')
 	),
-	bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
+	bounceType: v.optional(bounceTypeValidator),
 	evidence: v.string(),
 });
 

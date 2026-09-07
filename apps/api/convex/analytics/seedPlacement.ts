@@ -73,6 +73,7 @@ import {
 	seedProbeEvidence,
 	type SeedPlacementSweepIndex,
 } from './seedPlacementSweeps';
+import { transportArmValidator } from '../lib/convexValidators';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -292,7 +293,7 @@ export const recordSeedProbeDispatch = internalMutation({
 	args: {
 		organizationId: v.string(),
 		probeRef: v.id('seedPlacementProbes'),
-		transportArm: v.union(v.literal('own'), v.literal('reference')),
+		transportArm: transportArmValidator,
 		now: v.number(),
 	},
 	handler: async (ctx, args) => {

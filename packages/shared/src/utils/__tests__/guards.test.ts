@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRecord } from '../guards';
+import { isPlainObject, isRecord } from '../guards';
 
 describe('isRecord', () => {
 	it('accepts plain and prototype-less objects', () => {
@@ -15,5 +15,20 @@ describe('isRecord', () => {
 		expect(isRecord(['message'])).toBe(false);
 		expect(isRecord('text')).toBe(false);
 		expect(isRecord(42)).toBe(false);
+	});
+});
+
+describe('isPlainObject', () => {
+	it('accepts object literals and prototype-less objects', () => {
+		expect(isPlainObject({ a: 1 })).toBe(true);
+		expect(isPlainObject(Object.create(null))).toBe(true);
+	});
+
+	it('rejects arrays, class instances, null and primitives', () => {
+		expect(isPlainObject([])).toBe(false);
+		expect(isPlainObject(new Date())).toBe(false);
+		expect(isPlainObject(new Map())).toBe(false);
+		expect(isPlainObject(null)).toBe(false);
+		expect(isPlainObject('text')).toBe(false);
 	});
 });

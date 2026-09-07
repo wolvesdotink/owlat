@@ -3,7 +3,12 @@
 import { v, type Infer } from 'convex/values';
 import { SEED_PLACEMENTS } from '@owlat/shared/seedPlacement';
 import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
-import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
+import { RAMP_PRESET_KEYS, type RampPreset } from '@owlat/shared/deliverabilityIndependence';
+import {
+	ALIGNMENT_CHECK_IDS,
+	ALIGNMENT_CHECK_STATUSES,
+} from '@owlat/shared/deliverabilityAlignment';
+import { literalUnion } from '../lib/convexValidators';
 
 /**
  * The destination-provider cell axis. DERIVED from `DESTINATION_PROVIDER_KEYS`
@@ -12,18 +17,14 @@ import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
  * on the first write of that provider — a runtime failure where the one
  * declaration is supposed to buy a build failure.
  */
-export const destinationProviderValidator = v.union(
-	...DESTINATION_PROVIDER_KEYS.map((providerKey) => v.literal(providerKey))
-);
+export const destinationProviderValidator = literalUnion(DESTINATION_PROVIDER_KEYS);
 
 /**
  * Where a seed probe was found. DERIVED from `SEED_PLACEMENTS` rather than
  * restated: the pure core owns the taxonomy, and a placement added there
  * becomes storable here without a second edit that could be forgotten.
  */
-export const seedPlacementValidator = v.union(
-	...SEED_PLACEMENTS.map((placement) => v.literal(placement))
-);
+export const seedPlacementValidator = literalUnion(SEED_PLACEMENTS);
 
 export const deliverabilitySignalProviderValidator = v.union(
 	v.literal('all'),
@@ -72,24 +73,14 @@ export const deliverabilitySignalValidator = v.object({
 });
 
 /**
- * Dual-transport alignment pre-flight (P3-5). Mirrors ALIGNMENT_CHECK_IDS /
- * ALIGNMENT_CHECK_STATUSES / AlignmentVerdict in
- * @owlat/shared/deliverabilityAlignment; parity is asserted in
- * delivery/__tests__/alignmentBlocking.test.ts.
+ * Dual-transport alignment pre-flight (P3-5). DERIVED from the vocabulary in
+ * @owlat/shared/deliverabilityAlignment; AlignmentVerdict parity is asserted
+ * in delivery/__tests__/alignmentBlocking.test.ts.
  */
-export const alignmentCheckIdValidator = v.union(
-	v.literal('from_domain'),
-	v.literal('spf'),
-	v.literal('dkim'),
-	v.literal('dmarc')
-);
+export const alignmentCheckIdValidator = literalUnion(ALIGNMENT_CHECK_IDS);
 
 /** `unknown` is "DNS could not answer" — a hold, never a pass and never a fail. */
-export const alignmentCheckStatusValidator = v.union(
-	v.literal('pass'),
-	v.literal('fail'),
-	v.literal('unknown')
-);
+export const alignmentCheckStatusValidator = literalUnion(ALIGNMENT_CHECK_STATUSES);
 
 export const alignmentVerdictValidator = v.union(
 	v.literal('aligned'),
@@ -181,19 +172,11 @@ export const paceDecisionReasonValidator = v.union(
 );
 
 /**
- * The per-stream aggressiveness preset (plan D9, P3-6).
- *
- * The literals are re-listed rather than mapped from `RAMP_PRESET_KEYS`, because
- * a `v.union(...keys.map(v.literal))` erases to `Validator<string>` and would
- * cost every stored column and every argument its closed union. The assertion
- * below is what stops the two lists drifting: adding a key to
- * `RAMP_PRESET_KEYS` without adding it here is a compile error, and vice versa.
+ * The per-stream aggressiveness preset (plan D9, P3-6), DERIVED from
+ * `RAMP_PRESET_KEYS`. The assertion below pins the stored union to the shared
+ * `RampPreset` type so neither can drift from the other.
  */
-export const rampPresetValidator = v.union(
-	v.literal('conservative'),
-	v.literal('balanced'),
-	v.literal('aggressive')
-);
+export const rampPresetValidator = literalUnion(RAMP_PRESET_KEYS);
 
 type ValidatedRampPreset = Infer<typeof rampPresetValidator>;
 /** Mutual assignability, expressed without either parameter constraining the other. */

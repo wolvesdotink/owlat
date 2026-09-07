@@ -3,6 +3,8 @@
 import { createHash, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import { sleep } from '@owlat/shared';
+import { fireAndForget } from './fireAndForget.js';
+import { logger } from '../monitoring/logger.js';
 
 /** Shared lease-state transitions; storage/parent ownership remain adapter-specific. */
 export const EFFECT_LEASE_LUA_FUNCTIONS = `
@@ -257,7 +259,11 @@ export async function runLeasedEffect<T>(
 			// trying, and the terminal transition validates the lease that exists
 			// at that moment. This also tolerates a lost renewal response whose
 			// Redis write committed.
-			renewal = renewal.then(() => store.renew(token, Date.now(), leaseMs)).catch(() => {});
+			renewal = fireAndForget(
+				renewal.then(() => store.renew(token, Date.now(), leaseMs)),
+				logger,
+				'effect_lease_renew'
+			);
 		},
 		Math.max(5, Math.floor(leaseMs / 3))
 	);

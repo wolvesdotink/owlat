@@ -34,6 +34,7 @@ import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { REPUTATION_THRESHOLDS, REPUTATION_MIN_SAMPLE_SIZE } from '@owlat/shared/reputation';
 import { startOfDayUtc } from '../lib/clock';
+import { DAY_MS } from '../lib/constants';
 
 // ============ RISK LEVEL THRESHOLDS ============
 
@@ -125,7 +126,6 @@ const eventTypeValidator = v.union(
 	v.literal('deliver')
 );
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_MS = 30 * DAY_MS; // rolling rate window
 const RETENTION_MS = 60 * DAY_MS; // cleanup horizon
 

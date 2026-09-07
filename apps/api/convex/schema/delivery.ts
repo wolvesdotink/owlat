@@ -1,7 +1,13 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { returnPathTables } from './returnPath';
-import { contentScanFlagValidator } from '../lib/convexValidators';
+import {
+	authResultValidator,
+	bounceTypeValidator,
+	contentScanFlagValidator,
+	deliverabilityStatusValidator,
+	messageTypeValidator,
+} from '../lib/convexValidators';
 import { ipReadinessFieldValidators } from '../delivery/readinessValidators';
 import { deliverabilityRoutingTables } from './deliverabilityRouting';
 import {
@@ -30,7 +36,7 @@ export const deliveryTables = {
 			v.literal('unengaged') // Sunset policy — see contacts/sunsetPolicy.ts
 		),
 		// Bounce type classification (hard = permanent, soft = temporary)
-		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
+		bounceType: v.optional(bounceTypeValidator),
 		// Optional notes for manual blocks
 		notes: v.optional(v.string()),
 		// Polymorphic FK: sourceType discriminates which source-id field is set.
@@ -194,11 +200,7 @@ export const deliveryTables = {
 	// Provider Routes - which email provider per message type; one entry per
 	// configured send transport kind, see the `providerType` comment below
 	providerRoutes: defineTable({
-		messageType: v.union(
-			v.literal('campaign'),
-			v.literal('transactional'),
-			v.literal('automation')
-		),
+		messageType: messageTypeValidator,
 		strategy: v.union(
 			v.literal('single'), // Use one provider only
 			v.literal('priority_failover'), // Try providers in order, failover on error
@@ -301,12 +303,7 @@ export const deliveryTables = {
 		domainId: v.optional(v.id('domains')),
 		attemptId: v.string(),
 		validator: v.string(),
-		status: v.union(
-			v.literal('pass'),
-			v.literal('warn'),
-			v.literal('fail'),
-			v.literal('pending-dns')
-		),
+		status: deliverabilityStatusValidator,
 		observedValues: v.array(v.string()),
 		observedValuesVersion: v.optional(v.number()),
 		diagnostic: v.string(),
@@ -432,9 +429,9 @@ export const deliveryTables = {
 			v.literal('timed_out')
 		),
 		providerMessageId: v.optional(v.string()),
-		spf: v.optional(v.union(v.literal('pass'), v.literal('fail'), v.literal('unknown'))),
-		dkim: v.optional(v.union(v.literal('pass'), v.literal('fail'), v.literal('unknown'))),
-		dmarc: v.optional(v.union(v.literal('pass'), v.literal('fail'), v.literal('unknown'))),
+		spf: v.optional(authResultValidator),
+		dkim: v.optional(authResultValidator),
+		dmarc: v.optional(authResultValidator),
 		dkimSelector: v.optional(v.string()),
 		tlsVersion: v.optional(v.string()),
 		sendingIp: v.optional(v.string()),

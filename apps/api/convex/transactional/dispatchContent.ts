@@ -34,7 +34,7 @@ export function validateDataVariables(
 
 	for (const [key, expectedType] of Object.entries(schema)) {
 		const value = variables[key];
-		if (value === undefined || value === null) continue;
+		if (value == null) continue;
 
 		const actualType = typeof value;
 		let isValid = false;

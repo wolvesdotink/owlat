@@ -1,7 +1,11 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { dmarcPolicyValidator } from '../domains/dmarc';
-import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
+import {
+	dnsRecordsValidator,
+	verificationResultsValidator,
+	yahooCflStoredStateValidator,
+} from '../lib/convexValidators';
 
 /**
  * Domain tables — sending domains + per-provider identities + tracking domains.
@@ -151,7 +155,7 @@ export const domainTables = {
 		// Only the three PERSISTED states. `lapsed` is DERIVED on read from
 		// `lastReportAt` + the clock (ADR-0042's derive-on-read rule), so no cron
 		// and no write are needed to keep it current and it can never go stale.
-		state: v.union(v.literal('not_started'), v.literal('awaiting_yahoo'), v.literal('enrolled')),
+		state: yahooCflStoredStateValidator,
 		// The DKIM domain as submitted to Yahoo (snapshot of the domain name).
 		dkimDomain: v.optional(v.string()),
 		submittedAt: v.optional(v.number()),

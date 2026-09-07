@@ -344,7 +344,7 @@ async function unsubscribeOne(
 		literal: 'topic_unsubscribed',
 		contactId: args.contactId,
 		metadata: {
-			topicId: String(args.topic._id),
+			topicId: args.topic._id,
 			topicName: args.topic.name,
 			reason: args.reason,
 		},
@@ -424,7 +424,7 @@ async function fireTopicUnsubscribedWebhook(
 			email: emailForWebhook,
 			unsubscribedAt: args.now,
 			lists: args.removedTopics.map((t) => ({
-				topicId: String(t.topicId),
+				topicId: t.topicId,
 				topicName: t.topicName,
 			})),
 		},
@@ -556,9 +556,10 @@ export const subscribeMany = internalMutation({
 		const topic = await ctx.db.get(args.topicId);
 		if (!topic) {
 			return {
-				outcomes: args.contactIds.map(
-					(): SubscribeOutcome => ({ ok: false, reason: 'topic_not_found' })
-				),
+				outcomes: args.contactIds.map((): SubscribeOutcome => ({
+					ok: false,
+					reason: 'topic_not_found',
+				})),
 			};
 		}
 
@@ -667,13 +668,11 @@ export const unsubscribeMany = internalMutation({
 		const topic = await ctx.db.get(args.topicId);
 		if (!topic) {
 			return {
-				outcomes: args.contactIds.map(
-					(): UnsubscribeOutcome => ({
-						ok: false,
-						reason: 'topic_not_found',
-						topicId: args.topicId,
-					})
-				),
+				outcomes: args.contactIds.map((): UnsubscribeOutcome => ({
+					ok: false,
+					reason: 'topic_not_found',
+					topicId: args.topicId,
+				})),
 			};
 		}
 

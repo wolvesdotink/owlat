@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { transportArmValidator } from '../lib/convexValidators';
 
 /**
  * WHAT RECEIVERS SAID, PER CELL AND PER ARM — the transport-telemetry surface
@@ -54,7 +55,7 @@ export const smtpResponseCategoryTables = {
 		// Which arm carried the message the receiver answered. Learned by joining
 		// the send through its `sendAssignments` row — never guessed from the wire,
 		// which carries no arm at all.
-		arm: v.union(v.literal('own'), v.literal('reference')),
+		arm: transportArmValidator,
 		periodStart: v.number(), // UTC start-of-day bucket (epoch ms)
 		shardKey: v.number(), // 0..N-1 write shard within the (org, cell, arm, day) bucket
 

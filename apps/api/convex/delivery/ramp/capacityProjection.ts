@@ -35,7 +35,7 @@
  */
 
 import { startOfDayUtc } from '../../lib/clock';
-import { MS_PER_DAY } from '../../lib/constants';
+import { DAY_MS } from '../../lib/constants';
 
 /** How many COMPLETE UTC days the projection looks back over. */
 export const CAPACITY_TRAILING_DAYS = 7;
@@ -150,7 +150,7 @@ export function projectCellVolume(
 ): CellVolumeProjection {
 	if (!Number.isFinite(now)) return { kind: 'unknown', reason: 'clock_unusable' };
 	const today = startOfDayUtc(now);
-	const windowStart = today - CAPACITY_TRAILING_DAYS * MS_PER_DAY;
+	const windowStart = today - CAPACITY_TRAILING_DAYS * DAY_MS;
 
 	const byDay = new Map<number, { total: number; own: number }>();
 	for (const day of days) {
@@ -219,7 +219,7 @@ export function remainingDemandToday(dailyVolume: number, now: number): number |
 	if (!Number.isFinite(dailyVolume) || dailyVolume <= 0) return null;
 	if (!Number.isFinite(now)) return null;
 	const elapsed = now - startOfDayUtc(now);
-	const remainingFraction = 1 - elapsed / MS_PER_DAY;
+	const remainingFraction = 1 - elapsed / DAY_MS;
 	// `elapsed` is never negative for a finite `now`, so `remainingFraction` is
 	// never above 1 and there is nothing to clamp on that side.
 	if (!(remainingFraction >= CAPACITY_MIN_DAY_FRACTION_REMAINING)) return null;

@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { activityMetadataValidator, segmentFiltersValidator } from '../lib/convexValidators';
 import { contactActivityTypeValidator } from '../contactActivities/catalog';
+import { contactSourceValidator } from '../contacts/resolution';
 
 /**
  * Contact tables — CRM contacts + custom properties + activity timeline + relationships + segments.
@@ -32,13 +33,7 @@ export const contactTables = {
 		email: v.optional(v.string()),
 		firstName: v.optional(v.string()),
 		lastName: v.optional(v.string()),
-		source: v.union(
-			v.literal('api'),
-			v.literal('import'),
-			v.literal('form'),
-			v.literal('transactional'),
-			v.literal('inbound')
-		),
+		source: contactSourceValidator,
 		// Timezone for scheduling emails in recipient's local time (e.g., "America/New_York")
 		timezone: v.optional(v.string()),
 		// Preferred language for email content (e.g., "en", "de", "fr")

@@ -9,6 +9,7 @@ import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/erro
 import { scheduleSuppressionMirror } from './delivery/suppressionMirrorScheduler';
 import { recordAuditLog } from './lib/auditLog';
 import { restoreSunsetSuppression } from './contacts/sunsetRestore';
+import { bounceTypeValidator } from './lib/convexValidators';
 
 // Look up a blocklist row by email. Normalizes (lowercase + trim) so every
 // caller hits the `by_email` index with the same key, then returns the first
@@ -426,7 +427,7 @@ export const addFromEvent = internalMutation({
 	args: {
 		email: v.string(),
 		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
-		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
+		bounceType: v.optional(bounceTypeValidator),
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
 		provenance: v.optional(

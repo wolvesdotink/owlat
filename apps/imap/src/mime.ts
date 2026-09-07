@@ -4,11 +4,13 @@
  * APPEND'd messages are well-formed MIME from real clients (Apple Mail,
  * Thunderbird, Gmail, …). We only need enough envelope detail to pre-fill
  * the mailMessages row — the raw .eml stays the source of truth so any
- * header we miss can be re-derived later. Address parsing is shared with
+ * header we miss can be re-derived later. Header splitting and unfolding
+ * come from `@owlat/mail-message`; address parsing is shared with
  * MTA/contentScreening via `@owlat/shared`.
  */
 
-import { parseAddressList as parseAddressListShared, type ParsedAddress } from '@owlat/shared';
+import { parseHeaders } from '@owlat/mail-message';
+import { parseAddressList, type ParsedAddress } from '@owlat/shared';
 import { decodeEncodedWords as decodeMime } from '@owlat/shared/mailMime';
 
 export interface ParsedAppendHeaders {
@@ -33,36 +35,6 @@ function splitHeadersAndBody(raw: string): { headers: string; body: string } {
 	};
 }
 
-/** Unfold continuation lines (RFC 5322 §2.2.3). */
-function unfoldHeaders(headerBlock: string): string[] {
-	const folded = headerBlock.split(/\r?\n/);
-	const out: string[] = [];
-	for (const line of folded) {
-		if (line.length === 0) continue;
-		if ((line.startsWith(' ') || line.startsWith('\t')) && out.length > 0) {
-			out[out.length - 1] += ' ' + line.trim();
-		} else {
-			out.push(line);
-		}
-	}
-	return out;
-}
-
-function findHeader(lines: string[], name: string): string | null {
-	const lower = name.toLowerCase();
-	for (const line of lines) {
-		const colon = line.indexOf(':');
-		if (colon < 0) continue;
-		if (line.slice(0, colon).toLowerCase().trim() === lower) {
-			return line.slice(colon + 1).trim();
-		}
-	}
-	return null;
-}
-
-
-const parseAddressList = parseAddressListShared;
-
 function stripBrackets(s: string): string {
 	return s.replace(/[<>]/g, '').trim();
 }
@@ -70,16 +42,18 @@ function stripBrackets(s: string): string {
 export function parseAppendHeaders(rawBytes: Buffer): ParsedAppendHeaders {
 	const text = rawBytes.toString('utf-8');
 	const { headers: headerBlock, body } = splitHeadersAndBody(text);
-	const headers = unfoldHeaders(headerBlock);
+	const headers = parseHeaders(headerBlock);
 
-	const subject = decodeMime(findHeader(headers, 'Subject') ?? '(no subject)');
-	const messageIdRaw = findHeader(headers, 'Message-ID') ?? '';
-	const messageId = stripBrackets(messageIdRaw) || `append-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-	const fromList = parseAddressList(decodeMime(findHeader(headers, 'From') ?? ''));
-	const toList = parseAddressList(decodeMime(findHeader(headers, 'To') ?? ''));
-	const ccList = parseAddressList(decodeMime(findHeader(headers, 'Cc') ?? ''));
-	const bccList = parseAddressList(decodeMime(findHeader(headers, 'Bcc') ?? ''));
-	const dateHeader = findHeader(headers, 'Date');
+	const subject = decodeMime(headers.get('Subject') ?? '(no subject)');
+	const messageIdRaw = headers.get('Message-ID') ?? '';
+	const messageId =
+		stripBrackets(messageIdRaw) ||
+		`append-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+	const fromList = parseAddressList(decodeMime(headers.get('From') ?? ''));
+	const toList = parseAddressList(decodeMime(headers.get('To') ?? ''));
+	const ccList = parseAddressList(decodeMime(headers.get('Cc') ?? ''));
+	const bccList = parseAddressList(decodeMime(headers.get('Bcc') ?? ''));
+	const dateHeader = headers.get('Date');
 	const internalDate = dateHeader ? Date.parse(dateHeader) : undefined;
 
 	// Snippet/text body — for multipart bodies this will be the first part's
@@ -105,5 +79,9 @@ export function parseAppendHeaders(rawBytes: Buffer): ParsedAppendHeaders {
 
 export function buildSnippet(text: string | undefined): string {
 	if (!text) return '';
-	return text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+	return text
+		.replace(/<[^>]+>/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim()
+		.slice(0, 200);
 }

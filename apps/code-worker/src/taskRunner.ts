@@ -4,6 +4,7 @@ import path from 'node:path';
 import { getConvexClient, fn, type CodeWorkTask } from './convexClient.js';
 import { createPullRequest } from './github.js';
 import { runUntrusted, runGit, handOffWorkspaceToSandbox, isGitDirRootOwned } from './sandbox.js';
+import { log } from './log.js';
 
 // Re-export the sandbox-execution seam so existing importers (and the uid /
 // process-isolation tests) keep resolving these symbols through taskRunner.
@@ -24,10 +25,6 @@ const { cleanUrl: GIT_CLEAN_URL, authArgs: GIT_AUTH_ARGS } = parseRepoUrl(GIT_RE
 const GIT_BASE_BRANCH = process.env['GIT_BASE_BRANCH'] ?? 'main';
 const GITHUB_OWNER = process.env['GITHUB_OWNER'] ?? '';
 const GITHUB_REPO = process.env['GITHUB_REPO'] ?? '';
-
-function log(msg: string) {
-	console.info(`[code-worker] ${new Date().toISOString()} ${msg}`);
-}
 
 /**
  * Pure argv-array builders for every external command this worker runs.

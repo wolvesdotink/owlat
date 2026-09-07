@@ -62,7 +62,7 @@ import {
 	type DeliverabilityStream,
 } from '@owlat/shared/deliverabilityRouting';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { MS_PER_DAY } from '../lib/constants';
+import { DAY_MS } from '../lib/constants';
 import { startOfDayUtc } from '../lib/clock';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import { safeOutcomeCount } from '../analytics/transportOutcomeSummary';
@@ -178,7 +178,7 @@ export async function loadRampCapacityContext(
 
 	// One extra day of slack on the lower bound: `readCellArmBuckets` floors it to
 	// a UTC day, and the projection re-applies the exact window itself.
-	const since = startOfDayUtc(now) - (CAPACITY_TRAILING_DAYS + 1) * MS_PER_DAY;
+	const since = startOfDayUtc(now) - (CAPACITY_TRAILING_DAYS + 1) * DAY_MS;
 	// THE CELLS ARE INDEPENDENT, so their reads are issued together rather than
 	// one round trip after another: the loop this replaces paid a serial trip per
 	// cell for a reading no cell's answer depends on.

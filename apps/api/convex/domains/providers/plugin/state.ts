@@ -20,7 +20,7 @@ import {
 	PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS,
 	PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH,
 } from '@owlat/plugin-kit';
-import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
+import { isRecord, MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import { parseStoredProviderDetails } from '../relayIdentityProviderDetails';
 import type { RelayIdentityStatus } from '../types';
 
@@ -300,8 +300,4 @@ function boundedText(input: unknown): string | undefined {
 	const trimmed = input.trim();
 	if (trimmed.length === 0) return undefined;
 	return trimmed.slice(0, PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH);
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

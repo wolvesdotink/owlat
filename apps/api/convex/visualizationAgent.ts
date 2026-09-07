@@ -322,7 +322,7 @@ export const dataContactGrowth = internalQuery({
 		// would assert a confidently-wrong figure. Throwing routes the whole
 		// dataset through generate()'s illustrative fallback instead.
 		const cachedTotal = await getCachedContactCount(ctx);
-		if (cachedTotal === null || cachedTotal === undefined) {
+		if (cachedTotal == null) {
 			throw new Error('Contact count cache not initialized — falling back to illustrative data');
 		}
 
