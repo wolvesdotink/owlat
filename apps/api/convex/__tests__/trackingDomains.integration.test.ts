@@ -19,13 +19,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi
-			.fn()
-			.mockResolvedValue({
-				subject: 'test-user',
-				issuer: 'test',
-				tokenIdentifier: 'test|test-user',
-			}),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
