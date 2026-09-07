@@ -48,6 +48,7 @@ import ReviewBrowseList from '../ReviewBrowseList.vue';
 import ReviewBrowseCard from '../ReviewBrowseCard.vue';
 import ReviewFocusFlow from '../ReviewFocusFlow.vue';
 import AgentTaskFlow from '../AgentTaskFlow.vue';
+import { queryResult } from '~/__tests__/queryStubs';
 
 const ALREADY_HANDLED = 'Already handled — this draft was approved or declined by someone else';
 
@@ -216,7 +217,7 @@ describe('focus flow — a lost-race approve', () => {
 		stubQueueGlobals([queueItem('m1'), queueItem('m2')]);
 		vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'me' }) }));
 		vi.stubGlobal('useOrganization', () => ({ members: ref([]), fetchMembers: vi.fn() }));
-		vi.stubGlobal('useConvexQuery', () => ({ data: ref([]), isLoading: ref(false) }));
+		vi.stubGlobal('useConvexQuery', () => queryResult([]));
 		return mount(ReviewFocusFlow, {
 			attachTo: document.body,
 			global: {

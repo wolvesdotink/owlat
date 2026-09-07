@@ -4,6 +4,7 @@ import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { createTestI18n } from '~/__tests__/i18n';
+import { queryResult } from '~/__tests__/queryStubs';
 
 // useContactRelationships leans on four project composables that Nuxt
 // auto-imports. Stub them as globals so the composable can run under vitest and
@@ -29,7 +30,7 @@ beforeEach(() => {
 	lastListArgsFactory = null;
 	runsByQuery = new Map();
 
-	vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined), isLoading: ref(false) }));
+	vi.stubGlobal('useConvexQuery', () => queryResult(undefined));
 	vi.stubGlobal('useBackendOperation', (query: Parameters<typeof getFunctionName>[0]) => {
 		const run = vi.fn();
 		runsByQuery.set(getFunctionName(query), run);

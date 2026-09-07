@@ -19,7 +19,8 @@ import type { DeliverabilityDashboard } from '~/utils/deliverabilityMeasurement'
 import MeasurementCellCard from '~/components/delivery/MeasurementCellCard.vue';
 import MeasurementGateList from '~/components/delivery/MeasurementGateList.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { i18nStubs } from '~/__tests__/i18n';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 const WINDOW_END = Date.UTC(2026, 6, 16);
 const WINDOW_START = WINDOW_END - 7 * 24 * 60 * 60 * 1000;
@@ -56,31 +57,21 @@ beforeEach(() => {
 	vi.stubGlobal('useOrganizationQuery', () => ({ data, isLoading, error, refetch: vi.fn() }));
 });
 
-const passthroughCard = { template: '<div><slot /></div>' };
-
 function mountPage() {
-	return mount(MeasurementPage, {
-		global: {
-			plugins: [createTestI18n()],
-			stubs: {
-				UiIconBox: true,
-				Icon: true,
-				UiSpinner: true,
-				UiEmptyState: true,
-				UiCard: passthroughCard,
-				UiErrorAlert: {
-					props: ['title', 'message'],
-					template: '<div>{{ title }} {{ message }}</div>',
-				},
-				UiButton: { template: '<button><slot /></button>' },
+	return mountDashboardPage(MeasurementPage, {
+		stubs: {
+			UiErrorAlert: {
+				props: ['title', 'message'],
+				template: '<div>{{ title }} {{ message }}</div>',
 			},
-			components: {
-				// The REAL boundary: its loading/error branching is what this suite
-				// asserts, so stubbing it would assert nothing.
-				UiQueryBoundary: QueryBoundary,
-				DeliveryMeasurementCellCard: MeasurementCellCard,
-				DeliveryMeasurementGateList: MeasurementGateList,
-			},
+			UiButton: { template: '<button><slot /></button>' },
+		},
+		components: {
+			// The REAL boundary: its loading/error branching is what this suite
+			// asserts, so stubbing it would assert nothing.
+			UiQueryBoundary: QueryBoundary,
+			DeliveryMeasurementCellCard: MeasurementCellCard,
+			DeliveryMeasurementGateList: MeasurementGateList,
 		},
 	});
 }

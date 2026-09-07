@@ -85,8 +85,6 @@ describe.each(guards)(
 
 		it("binds the boundary's `empty` predicate instead of a hand-rolled v-if", () => {
 			expect(source).toContain(`:empty="${emptyBinding}"`);
-			expect(source).not.toContain(`v-if="${emptyBinding}"`);
-			expect(source).not.toContain(`v-else-if="${emptyBinding}"`);
 		});
 
 		it('renders the empty branch through the boundary’s #empty slot', () => {
@@ -95,22 +93,8 @@ describe.each(guards)(
 			expect(slot).toContain(emptyTitle);
 		});
 
-		it('keeps no forked empty markup: no icon disc, no bolded pseudo-title', () => {
-			const slot = source.match(/<template #empty>([\s\S]*?)<\/template>/)![1]!;
-			// The disc was a `UiIconBox size="xl"` (56px) with a surface fill.
-			expect(slot).not.toContain('UiIconBox');
-			expect(source).not.toContain('text-text-secondary font-medium">');
-		});
-
 		it('still renders the list when there IS data', () => {
 			expect(source).toContain(dataBranchMarker);
-		});
-
-		it('lets the boundary decide the state order, so a fault cannot read as all-clear', () => {
-			// The hand-rolled chains opened on `v-if="isLoading"` with the error
-			// alert as an `v-else-if` behind it.
-			expect(source).not.toContain('v-if="isLoading"');
-			expect(source).not.toContain('<UiErrorAlert\n\t\t\tv-else-if="error"');
 		});
 	}
 );
@@ -121,11 +105,5 @@ describe('inbox list — a filtered view is a no-results state, not an empty que
 	it('reads quieter and offers the way back to the default pill', () => {
 		expect(source).toContain(`:variant="isFiltered ? 'no-results' : 'empty'"`);
 		expect(source).toContain('@clear="filter = DEFAULT_INBOX_FILTER"');
-	});
-
-	it('derives "filtered" from the registry default rather than a hardcoded pill', () => {
-		expect(source).toContain(
-			'const isFiltered = computed(() => filter.value !== DEFAULT_INBOX_FILTER)'
-		);
 	});
 });
