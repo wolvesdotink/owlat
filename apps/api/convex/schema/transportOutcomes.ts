@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { transportArmValidator } from '../lib/convexValidators';
 
 /**
  * Per-cell, per-arm rolling OUTCOME counters — the table that measures
@@ -38,7 +39,7 @@ export const transportOutcomeTables = {
 		cell: v.string(),
 		// Which arm of the cell produced the outcome. Learned by joining the
 		// send through its `sendAssignments` row — never guessed from the Send.
-		arm: v.union(v.literal('own'), v.literal('reference')),
+		arm: transportArmValidator,
 		periodStart: v.number(), // UTC start-of-day bucket (epoch ms)
 		shardKey: v.number(), // 0..N-1 write shard within the (org, cell, arm, day) bucket
 

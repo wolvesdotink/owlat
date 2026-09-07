@@ -67,10 +67,7 @@ export type MarkConfirmedOutcome =
 	| { ok: true; submissionId: Id<'formSubmissions'> }
 	| {
 			ok: false;
-			reason:
-				| 'no_submission_for_token'
-				| 'already_confirmed'
-				| 'invalid_state';
+			reason: 'no_submission_for_token' | 'already_confirmed' | 'invalid_state';
 	  };
 
 // ─── Subscribe-result shape (narrowed to what the classifier needs) ─────────
@@ -89,7 +86,7 @@ type SubscribeOkResult = Extract<SubscribeOutcome, { ok: true }>;
 export function classifyAction(
 	resolveAction: 'matched' | 'created' | 'updated',
 	subscribeResult: SubscribeOkResult | undefined,
-	topicExpected = false,
+	topicExpected = false
 ): SubmitAction {
 	// A topic subscription was expected but failed (`subscribeResult` is set
 	// only on success). The contact was upserted but not subscribed, so this is
@@ -129,7 +126,7 @@ interface ValidateResult {
  */
 export function validateFields(
 	fields: FormField[],
-	submissionData: Record<string, string>,
+	submissionData: Record<string, string>
 ): ValidateResult {
 	const errors: string[] = [];
 	let email = '';
@@ -176,7 +173,7 @@ async function insertSubmission(
 		contactId?: Id<'contacts'>;
 		errorMessage?: string;
 		confirmationToken?: string;
-	},
+	}
 ): Promise<Id<'formSubmissions'>> {
 	const now = Date.now();
 	const submissionId = await ctx.db.insert('formSubmissions', {
@@ -195,8 +192,7 @@ async function insertSubmission(
 	await ctx.db.patch(args.form._id, {
 		submissionCount: (args.form.submissionCount ?? 0) + 1,
 		successfulSubmissionCount:
-			(args.form.successfulSubmissionCount ?? 0) +
-			(args.status === 'success' ? 1 : 0),
+			(args.form.successfulSubmissionCount ?? 0) + (args.status === 'success' ? 1 : 0),
 		updatedAt: now,
 	});
 
@@ -209,16 +205,8 @@ function extractContactFields(submissionData: Record<string, string>): {
 	firstName?: string;
 	lastName?: string;
 } {
-	const firstName = (
-		submissionData['firstName'] ||
-		submissionData['first_name'] ||
-		''
-	).trim();
-	const lastName = (
-		submissionData['lastName'] ||
-		submissionData['last_name'] ||
-		''
-	).trim();
+	const firstName = (submissionData['firstName'] || submissionData['first_name'] || '').trim();
+	const lastName = (submissionData['lastName'] || submissionData['last_name'] || '').trim();
 	const fields: { firstName?: string; lastName?: string } = {};
 	if (firstName) fields.firstName = firstName;
 	if (lastName) fields.lastName = lastName;
@@ -333,7 +321,7 @@ export const submit = internalMutation({
 					// consulted — a GDPR/compliance footgun).
 					...(form.doubleOptIn === true ? { forceDoi: true } : {}),
 					...(siteUrl ? { siteUrl } : {}),
-				},
+				}
 			);
 
 			if (subscribeOutcome.ok) {
@@ -345,7 +333,7 @@ export const submit = internalMutation({
 				// Surface it; the classifier marks the submission `invalid` below
 				// (topicExpected) so it is not recorded as a successful signup.
 				logWarn(
-					`Form ${form._id} subscribe to topic ${String(form.topicId)} failed: ${subscribeOutcome.reason}`,
+					`Form ${form._id} subscribe to topic ${form.topicId} failed: ${subscribeOutcome.reason}`
 				);
 			}
 		}
@@ -354,12 +342,10 @@ export const submit = internalMutation({
 		const action = classifyAction(
 			resolveResult.action,
 			subscribeResult,
-			form.topicId !== undefined,
+			form.topicId !== undefined
 		);
 		const confirmationToken =
-			subscribeResult?.action === 'pending_doi'
-				? subscribeResult.doiToken
-				: undefined;
+			subscribeResult?.action === 'pending_doi' ? subscribeResult.doiToken : undefined;
 
 		const submissionId = await insertSubmission(ctx, {
 			form,
@@ -403,9 +389,7 @@ export const markConfirmedByToken = internalMutation({
 	handler: async (ctx, args): Promise<MarkConfirmedOutcome> => {
 		const submission = await ctx.db
 			.query('formSubmissions')
-			.withIndex('by_confirmation_token', (q) =>
-				q.eq('confirmationToken', args.token),
-			)
+			.withIndex('by_confirmation_token', (q) => q.eq('confirmationToken', args.token))
 			.first();
 
 		if (!submission) {
@@ -426,8 +410,7 @@ export const markConfirmedByToken = internalMutation({
 		const form = await ctx.db.get(submission.formEndpointId);
 		if (form) {
 			await ctx.db.patch(form._id, {
-				successfulSubmissionCount:
-					(form.successfulSubmissionCount ?? 0) + 1,
+				successfulSubmissionCount: (form.successfulSubmissionCount ?? 0) + 1,
 			});
 		}
 

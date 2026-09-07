@@ -23,9 +23,7 @@
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import { startOfDayUtc } from '../../lib/clock';
-
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
+import { DAY_MS } from '../../lib/constants';
 
 /** External evidence older than this is not evidence — the plan's 7 days. */
 export const PROMOTION_EVIDENCE_MAX_AGE_MS = 7 * DAY_MS;

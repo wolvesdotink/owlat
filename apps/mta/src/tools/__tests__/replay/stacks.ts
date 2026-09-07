@@ -1,6 +1,5 @@
 /**
- * Corpus inputs and the in-house stack for the inbound shadow-replay harness
- * (piece C0).
+ * Corpus inputs and the in-house stack for the inbound shadow-replay harness.
  *
  * The permanent in-house stack ({@link owlatNewStack}) is the ONLY stack this
  * shipped tool imports directly (`parseMessage` + `verifyDkim`); the OLD (oracle)
@@ -10,7 +9,7 @@
 
 import { parseMessage } from '@owlat/mail-message';
 import { verifyDkim, type DkimDnsResolver } from '@owlat/mail-auth';
-import { extractReportParts } from '../../bounce/reportParts.js';
+import { extractReportParts } from '../../../bounce/reportParts.js';
 import { projectDrivers, type RoutingDrivers } from './drivers.js';
 import type { AuthVerdicts, DkimContext, SanctionedFields } from './diff.js';
 

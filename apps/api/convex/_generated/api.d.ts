@@ -553,6 +553,7 @@ import type * as lib_auditLog from '../lib/auditLog.js';
 import type * as lib_authedFunctions from '../lib/authedFunctions.js';
 import type * as lib_automationConfigTypes from '../lib/automationConfigTypes.js';
 import type * as lib_autonomyRules from '../lib/autonomyRules.js';
+import type * as lib_betterAuthAdapterArgs from '../lib/betterAuthAdapterArgs.js';
 import type * as lib_clock from '../lib/clock.js';
 import type * as lib_codeAgentGuard from '../lib/codeAgentGuard.js';
 import type * as lib_codeTaskRetry from '../lib/codeTaskRetry.js';
@@ -1618,6 +1619,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/authedFunctions': typeof lib_authedFunctions;
 	'lib/automationConfigTypes': typeof lib_automationConfigTypes;
 	'lib/autonomyRules': typeof lib_autonomyRules;
+	'lib/betterAuthAdapterArgs': typeof lib_betterAuthAdapterArgs;
 	'lib/clock': typeof lib_clock;
 	'lib/codeAgentGuard': typeof lib_codeAgentGuard;
 	'lib/codeTaskRetry': typeof lib_codeTaskRetry;

@@ -5,6 +5,7 @@ import {
 	destinationProviderValidator,
 	seedPlacementValidator,
 } from '../delivery/deliverabilityValidators';
+import { transportArmValidator, abVariantValidator } from '../lib/convexValidators';
 
 /**
  * Retention bound for the probe ledger (D16 — write amplification is a design
@@ -61,7 +62,7 @@ export const seedPlacementTables = {
 		 * absent means the probe has not been dispatched yet (or never was), which
 		 * is why it is optional rather than guessed at enqueue time.
 		 */
-		transportArm: v.optional(v.union(v.literal('own'), v.literal('reference'))),
+		transportArm: v.optional(transportArmValidator),
 		/**
 		 * Set when the worker actually handed the shadow copy to a provider.
 		 * Everything downstream keys off THIS, never off `sentAt`: a probe that is
@@ -88,7 +89,7 @@ export const seedPlacementTables = {
 		 * DIFFERENT MESSAGES, so each gets its own probe set and its own reading;
 		 * this is part of the per-campaign idempotency key.
 		 */
-		abVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
+		abVariant: v.optional(abVariantValidator),
 		sentAt: v.number(),
 
 		/**

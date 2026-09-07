@@ -4,6 +4,8 @@ import {
 	abTestConfigValidator,
 	linkClickValidator,
 	campaignStatusValidator,
+	abVariantValidator,
+	bounceTypeValidator,
 } from '../lib/convexValidators';
 import { audienceValidator } from '../campaigns/audience';
 
@@ -56,7 +58,7 @@ const campaignSendJobs = defineTable({
 	// Per-variant split percentage (10–50) — kept for diagnostics / clarity.
 	splitPercentage: v.optional(v.number()),
 	// The declared winner, set when the row is reset for the `ab_winner` phase.
-	winningVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
+	winningVariant: v.optional(abVariantValidator),
 	// Opaque Convex pagination cursor for the NEXT page. `''` = start.
 	cursor: v.string(),
 	// Frozen Audience snapshot — captured once, never re-read from the campaign.
@@ -190,7 +192,7 @@ export const campaignTables = {
 		abVariantBOpened: v.optional(v.number()),
 		abVariantBClicked: v.optional(v.number()),
 		// Winner information
-		abWinner: v.optional(v.union(v.literal('A'), v.literal('B'))),
+		abWinner: v.optional(abVariantValidator),
 		abWinnerSelectedAt: v.optional(v.number()),
 		// Campaign archive fields (public "View in browser" link)
 		archiveEnabled: v.optional(v.boolean()),
@@ -260,7 +262,7 @@ export const campaignTables = {
 		// Personalized content for this recipient (to preserve exactly what was sent)
 		personalizedSubject: v.optional(v.string()),
 		// A/B test variant tracking - "A" or "B" for test recipients
-		abVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
+		abVariant: v.optional(abVariantValidator),
 		// Timestamps for status changes
 		queuedAt: v.number(),
 		sentAt: v.optional(v.number()),
@@ -270,7 +272,7 @@ export const campaignTables = {
 		clickedAt: v.optional(v.number()),
 		bouncedAt: v.optional(v.number()),
 		// Bounce classification; required-via-runtime-guard when status='bounced'.
-		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
+		bounceType: v.optional(bounceTypeValidator),
 		complainedAt: v.optional(v.number()),
 		// When this send absorbed the recipient's unsubscribe. NOT a status — the
 		// send itself succeeded — and NOT the contact's unsubscribe record either

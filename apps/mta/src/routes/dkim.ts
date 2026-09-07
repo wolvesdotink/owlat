@@ -10,6 +10,8 @@ import * as dkimRotation from '../smtp/dkimRotation.js';
 import type { DkimRotationNotifier } from '../smtp/dkimRotation.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
+import { logger } from '../monitoring/logger.js';
 import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 
 export function createDkimRoutes(redis: Redis, config: MtaConfig) {
@@ -25,18 +27,22 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// time out) the rotation API response. We intentionally do NOT await the
 	// notifier promise here.
 	const notifyRotation: DkimRotationNotifier = (rotation) => {
-		void notifyConvex(
-			{
-				event: 'dkim.rotated',
-				domain: rotation.domain,
-				selector: rotation.selector,
-				dnsRecord: rotation.dnsRecord,
-				phase: rotation.phase,
-				timestamp: Date.now(),
-			},
-			config,
-			redis
-		).catch(() => {});
+		void fireAndForget(
+			notifyConvex(
+				{
+					event: 'dkim.rotated',
+					domain: rotation.domain,
+					selector: rotation.selector,
+					dnsRecord: rotation.dnsRecord,
+					phase: rotation.phase,
+					timestamp: Date.now(),
+				},
+				config,
+				redis
+			),
+			logger,
+			'dkim_rotation_notify'
+		);
 		return Promise.resolve();
 	};
 

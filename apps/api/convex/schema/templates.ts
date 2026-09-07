@@ -5,6 +5,7 @@ import {
 	dataVariablesSchemaValidator,
 	jsonPrimitiveRecord,
 	emailTemplateTypeValidator,
+	bounceTypeValidator,
 } from '../lib/convexValidators';
 
 /**
@@ -322,7 +323,7 @@ export const templateTables = {
 		bouncedAt: v.optional(v.number()),
 		// Bounce classification; required-via-runtime-guard when status='bounced'.
 		// See CONTEXT.md "Send status" — canonical encoding of bounce class.
-		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
+		bounceType: v.optional(bounceTypeValidator),
 		complainedAt: v.optional(v.number()),
 		// When this send absorbed the recipient's unsubscribe — the per-send
 		// uniqueness gate for the `unsubscribed` transport outcome, exactly as on

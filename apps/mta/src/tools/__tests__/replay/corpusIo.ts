@@ -1,5 +1,5 @@
 /**
- * Corpus IO for the inbound shadow-replay harness (piece C0): load a corpus
+ * Corpus IO for the inbound shadow-replay harness: load a corpus
  * directory, persist divergent messages to a regression corpus, and render the
  * categorized report. Only field names, categories, verdicts and body DIGESTS
  * are ever written to a log — never decoded body text (I7).

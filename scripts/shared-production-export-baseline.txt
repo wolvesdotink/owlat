@@ -15,9 +15,7 @@ export:packages/shared/src/dane.ts:DANE_SELECTOR
 export:packages/shared/src/dane.ts:isUsableForSmtp
 export:packages/shared/src/deliverabilityAlignmentGate.ts:ALIGNMENT_MAX_FUTURE_SKEW_MS
 export:packages/shared/src/deliverabilityAlignmentGate.ts:ALIGNMENT_STALE_AFTER_MS
-export:packages/shared/src/deliverabilityAlignmentVocabulary.ts:ALIGNMENT_CHECK_STATUSES
 export:packages/shared/src/deliverabilityChecklist.ts:DELIVERABILITY_SEVERITIES
-export:packages/shared/src/deliverabilityIndependence.ts:RAMP_PRESET_KEYS
 export:packages/shared/src/deliverabilityPolicy.ts:MICROSOFT_HIGH_VOLUME_SENDER_THRESHOLD
 export:packages/shared/src/deliverabilityRouting.ts:ADVISORY_DELIVERABILITY_SIGNAL_SOURCES
 export:packages/shared/src/deliverabilityRouting.ts:DELIVERABILITY_SIGNAL_SOURCES
@@ -42,7 +40,6 @@ export:packages/shared/src/ipAuditProviders.ts:VPS_PORT25_NOTES
 export:packages/shared/src/ipAuditProviders.ts:isIpAuditVpsProvider
 export:packages/shared/src/mtaStsPolicy.ts:MTA_STS_CONTENT_TYPE
 export:packages/shared/src/mtaStsPolicy.ts:MTA_STS_MAX_AGE_SECONDS
-export:packages/shared/src/mtaStsPolicy.ts:MTA_STS_MODES
 export:packages/shared/src/operatingModes.ts:operatingModeNeedsTransport
 export:packages/shared/src/operationError.ts:OPERATION_ERROR_CATEGORIES
 export:packages/shared/src/placementAdapter.ts:DEFAULT_PLACEMENT_SOURCE_KIND
@@ -77,6 +74,5 @@ export:packages/shared/src/yahooCfl.ts:YAHOO_CFL_ENROLLMENT_STATES
 export:packages/shared/src/yahooCfl.ts:YAHOO_CFL_ENROLLMENT_URL
 export:packages/shared/src/yahooCfl.ts:YAHOO_CFL_LAPSE_SILENCE_MS
 export:packages/shared/src/yahooCfl.ts:YAHOO_CFL_REPORT_COALESCE_MS
-export:packages/shared/src/yahooCfl.ts:YAHOO_CFL_STORED_STATES
 export:packages/shared/src/yahooCfl.ts:YAHOO_CFL_SUBMISSION_PATIENCE_MS
 export:packages/shared/src/yahooCfl.ts:yahooCflPreconditionMet

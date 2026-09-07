@@ -15,11 +15,11 @@ import {
 	MAX_PLAN_DAYS,
 	MAX_HORIZON_DAYS,
 } from '../capacityPlan';
-import { MS_PER_DAY } from '../../lib/constants';
+import { DAY_MS } from '../../lib/constants';
 
 /** A UTC midnight, so day boundaries in assertions are exact. */
 const MIDNIGHT = Date.UTC(2026, 6, 27, 0, 0, 0);
-const FOUR_DAYS = 4 * MS_PER_DAY;
+const FOUR_DAYS = 4 * DAY_MS;
 
 describe('usableDayCount', () => {
 	it('counts today plus every day that STARTS before the message expires', () => {
@@ -46,8 +46,8 @@ describe('usableDayCount', () => {
 	 * — and start allowing sends whose tail expires.
 	 */
 	it('is bounded by MAX_HORIZON_DAYS, not by MAX_PLAN_DAYS', () => {
-		expect(usableDayCount(MIDNIGHT, 90 * MS_PER_DAY)).toBe(90);
-		expect(usableDayCount(MIDNIGHT, 10_000 * MS_PER_DAY)).toBe(MAX_HORIZON_DAYS);
+		expect(usableDayCount(MIDNIGHT, 90 * DAY_MS)).toBe(90);
+		expect(usableDayCount(MIDNIGHT, 10_000 * DAY_MS)).toBe(MAX_HORIZON_DAYS);
 	});
 });
 
@@ -85,7 +85,7 @@ describe('planCampaignCapacity — the table', () => {
 		expect(plan.days).toBe(5);
 		expect(plan.slices).toEqual([100, 100, 100, 100, 1]);
 		expect(plan.slices.reduce((a, b) => a + b, 0)).toBe(401);
-		expect(plan.finishesAt).toBe(MIDNIGHT + 5 * MS_PER_DAY);
+		expect(plan.finishesAt).toBe(MIDNIGHT + 5 * DAY_MS);
 	});
 
 	it('zero remaining capacity everywhere: the unplannable sentinel', () => {
@@ -213,14 +213,14 @@ describe('planCampaignCapacity — the table', () => {
 		const plan = planCampaignCapacity({
 			audienceSize: 150,
 			remainingCapacityByDay: [100, 100, 0],
-			maxMessageAgeMs: MS_PER_DAY,
+			maxMessageAgeMs: DAY_MS,
 			now: MIDNIGHT,
 		});
 		expect(plan).toEqual({
 			fits: false,
 			days: 2,
 			slices: [100, 50],
-			finishesAt: MIDNIGHT + 2 * MS_PER_DAY,
+			finishesAt: MIDNIGHT + 2 * DAY_MS,
 			covered: 150,
 			truncated: false,
 			audienceUnderCounted: false,
@@ -310,12 +310,12 @@ describe('planCampaignCapacity — adversarial', () => {
 			audienceSize: 1_000_000,
 			remainingCapacityByDay: [1],
 			maxMessageAgeMs: FOUR_DAYS,
-			now: -MS_PER_DAY,
+			now: -DAY_MS,
 		});
 		// A pre-epoch clock still produces a coherent, monotonically later finish.
 		expect(plan.fits).toBe(false);
 		if (plan.fits) return;
-		expect(plan.finishesAt).toBeGreaterThan(-MS_PER_DAY);
+		expect(plan.finishesAt).toBeGreaterThan(-DAY_MS);
 	});
 });
 
@@ -338,7 +338,7 @@ describe('planCampaignCapacity — the MAX_PLAN_DAYS boundary', () => {
 		expect(plan.days).toBe(MAX_PLAN_DAYS);
 		expect(plan.truncated).toBe(false);
 		expect(plan.covered).toBe(10 * MAX_PLAN_DAYS);
-		expect(plan.finishesAt).toBe(MIDNIGHT + MAX_PLAN_DAYS * MS_PER_DAY);
+		expect(plan.finishesAt).toBe(MIDNIGHT + MAX_PLAN_DAYS * DAY_MS);
 	});
 
 	it('one recipient past the last enumerable day flips it to truncated', () => {
@@ -379,7 +379,7 @@ describe('buildCapacitySchedule — the horizon-free enumeration', () => {
 			fits: false,
 			days: 2,
 			slices: [100, 100],
-			finishesAt: MIDNIGHT + 2 * MS_PER_DAY,
+			finishesAt: MIDNIGHT + 2 * DAY_MS,
 			covered: 200,
 			truncated: false,
 			audienceUnderCounted: false,

@@ -212,3 +212,26 @@ describe('GET /api/system/profile-drift — updater unreachable', () => {
 		expect(callUpdaterMock).not.toHaveBeenCalled();
 	});
 });
+
+/**
+ * The gate itself, not its mock: an unauthenticated request must be refused by
+ * the shipped `requirePlatformAdmin` before the route reaches the updater.
+ */
+describe('GET /api/system/profile-drift — the real platform-admin gate', () => {
+	it('rejects an unauthenticated call with 401 before touching the updater', async () => {
+		const real = await vi.importActual<typeof import('~~/server/utils/requireAdmin')>(
+			'~~/server/utils/requireAdmin'
+		);
+		requirePlatformAdminMock.mockImplementation(real.requirePlatformAdmin);
+		vi.stubGlobal('useRuntimeConfig', () => ({
+			public: { convexUrl: 'https://convex.example.com', siteUrl: 'https://owlat.example' },
+		}));
+		vi.stubGlobal('getHeader', () => undefined);
+		const tokenProxy = vi.fn();
+		vi.stubGlobal('fetch', tokenProxy);
+
+		await expect(callRoute()).rejects.toMatchObject({ statusCode: 401 });
+		expect(tokenProxy).not.toHaveBeenCalled();
+		expect(callUpdaterMock).not.toHaveBeenCalled();
+	});
+});

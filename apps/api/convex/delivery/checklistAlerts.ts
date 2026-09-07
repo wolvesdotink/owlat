@@ -6,6 +6,7 @@ import {
 	DELIVERABILITY_ALERT_RECIPIENT_LIMIT,
 	type DeliverabilityAlertAdminRecipient,
 } from '@owlat/shared';
+import { escapeHtml } from '@owlat/shared/html';
 import { components, internal } from '../_generated/api';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getOptional } from '../lib/env';
@@ -30,15 +31,6 @@ type RegressionEmailResult = {
 
 export function regressionEmailRetryDelay(attempt: number): number | null {
 	return REGRESSION_EMAIL_RETRY_DELAYS_MS[attempt] ?? null;
-}
-
-function escapeHtml(value: string): string {
-	return value
-		.replaceAll('&', '&amp;')
-		.replaceAll('<', '&lt;')
-		.replaceAll('>', '&gt;')
-		.replaceAll('"', '&quot;')
-		.replaceAll("'", '&#39;');
 }
 
 function normalizedEmail(value: string | undefined): string | undefined {

@@ -26,12 +26,9 @@ import { constantTimeEqual, hmacSha256Hex } from '../security';
 import type { InboundParser } from '../pipeline';
 import type { InboundEvent } from '../types';
 import { isMtaWebhookEvent, type ValidatedMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
+import { isRecord } from '@owlat/shared';
 import { logWarn } from '../../lib/runtimeLog';
 import { MTA_EVENT_PARSERS } from './mtaEventParsers';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
 
 function isSensitiveInternalPayload(rawBody: string): boolean {
 	try {

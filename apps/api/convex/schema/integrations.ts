@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { suppressionCountsValidator } from '../integrationImports/_common';
+import { duplicateHandlingValidator } from '../lib/convexValidators';
 
 /**
  * Integration tables — async import jobs for external providers (Mailchimp,
@@ -33,7 +34,7 @@ export const integrationTables = {
 		// `blocklist.provider_import_summary`.
 		suppressionCounts: v.optional(suppressionCountsValidator),
 		// Config
-		handleDuplicates: v.union(v.literal('skip'), v.literal('update')),
+		handleDuplicates: duplicateHandlingValidator,
 		topicId: v.optional(v.id('topics')),
 		startedAt: v.number(),
 		completedAt: v.optional(v.number()),

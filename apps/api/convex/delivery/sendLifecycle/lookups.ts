@@ -1,11 +1,7 @@
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { normalizeEmail } from '../../lib/inputGuards';
-import type {
-	EmailSendDoc,
-	SendRef,
-	TransactionalSendDoc,
-} from './types';
+import type { EmailSendDoc, SendRef, TransactionalSendDoc } from './types';
 
 // ─── SendStore — the only place that branches on kind to load/patch ─────────
 
@@ -22,17 +18,13 @@ export async function resolveProviderMessageId(
 ): Promise<SendRef | null> {
 	const emailSend = await ctx.db
 		.query('emailSends')
-		.withIndex('by_provider_message_id', (q) =>
-			q.eq('providerMessageId', providerMessageId)
-		)
+		.withIndex('by_provider_message_id', (q) => q.eq('providerMessageId', providerMessageId))
 		.first();
 	if (emailSend) return { kind: 'campaign', id: emailSend._id };
 
 	const txSend = await ctx.db
 		.query('transactionalSends')
-		.withIndex('by_provider_message_id', (q) =>
-			q.eq('providerMessageId', providerMessageId)
-		)
+		.withIndex('by_provider_message_id', (q) => q.eq('providerMessageId', providerMessageId))
 		.first();
 	if (txSend) return { kind: 'transactional', id: txSend._id };
 
@@ -59,9 +51,7 @@ export async function senderDomainFor(
 // emailSends has a denormalized `contactEmail` (SNAPSHOT field, never updated
 // after write). transactionalSends carries the recipient as `email`.
 
-export function contactEmailOf(
-	send: EmailSendDoc | TransactionalSendDoc
-): string {
+export function contactEmailOf(send: EmailSendDoc | TransactionalSendDoc): string {
 	if ('contactEmail' in send) return send.contactEmail;
 	return (send as TransactionalSendDoc).email;
 }
@@ -117,9 +107,7 @@ export function nonCampaignBounceProvenance(send: TransactionalSendDoc): {
 	automationId?: string;
 } {
 	return {
-		...(send.transactionalEmailId
-			? { transactionalEmailId: String(send.transactionalEmailId) }
-			: {}),
-		...(send.automationId ? { automationId: String(send.automationId) } : {}),
+		...(send.transactionalEmailId ? { transactionalEmailId: send.transactionalEmailId } : {}),
+		...(send.automationId ? { automationId: send.automationId } : {}),
 	};
 }

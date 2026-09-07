@@ -111,7 +111,7 @@ export async function compareSignature(
 	signingBase: string,
 	providedSignature: string | null | undefined
 ): Promise<InboundSignatureResult> {
-	if (providedSignature === null || providedSignature === undefined || providedSignature === '') {
+	if (providedSignature == null || providedSignature === '') {
 		return { ok: false, status: 401, reason: 'Missing inbound signature' };
 	}
 	const expected = await computeSignature(contract, secret, signingBase);

@@ -7,6 +7,8 @@
 
 import { randomBytes } from 'crypto';
 import type Redis from 'ioredis';
+import { fireAndForget } from '../lib/fireAndForget.js';
+import { logger } from '../monitoring/logger.js';
 
 export interface OrgCredential {
 	organizationId: string;
@@ -74,7 +76,11 @@ export async function lookupCredential(
 		const credential = JSON.parse(data) as OrgCredential;
 		// Update lastUsedAt (fire-and-forget)
 		credential.lastUsedAt = Date.now();
-		redis.set(`${CRED_PREFIX}${apiKey}`, JSON.stringify(credential)).catch(() => {});
+		void fireAndForget(
+			redis.set(`${CRED_PREFIX}${apiKey}`, JSON.stringify(credential)),
+			logger,
+			'credential_last_used'
+		);
 		return credential;
 	} catch {
 		return null;

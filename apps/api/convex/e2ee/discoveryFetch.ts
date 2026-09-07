@@ -15,7 +15,7 @@
 
 import dns from 'node:dns/promises';
 import { isDisallowedIpAddress } from '../lib/ipBlocklist';
-import { readCappedBytes, CappedReadOverflow, guardedDispatcher } from '../lib/ssrfGuard';
+import { readCappedBytes, CappedReadOverflow, fetchWithGuardedDispatcher } from '../lib/ssrfGuard';
 
 /** Hard ceiling on a discovery fetch (mirrors the MTA-STS verify timeout). */
 const FETCH_TIMEOUT_MS = 10_000;
@@ -35,16 +35,9 @@ export interface DiscoveryDeps {
 
 export const defaultDeps: DiscoveryDeps = {
 	lookup: (host) => dns.lookup(host, { all: true }),
-	fetch: (input, init) =>
-		fetch(input, {
-			...init,
-			// @ts-expect-error `dispatcher` is an undici-specific fetch option not in
-			// the DOM RequestInit lib types, but valid in the Node action runtime. It
-			// binds the socket-level DNS lookup to the SSRF blocklist, closing the
-			// connect-time DNS-rebinding TOCTOU the up-front resolve can't (recipient
-			// domains are attacker-influenceable — anyone you mail).
-			dispatcher: guardedDispatcher(),
-		}),
+	// Recipient domains are attacker-influenceable (anyone you mail), so the
+	// connect-time blocklist re-check matters here, not just the up-front resolve.
+	fetch: fetchWithGuardedDispatcher,
 };
 
 /** The manifest URL for a domain. */
