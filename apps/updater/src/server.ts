@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
+import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
 import {
@@ -64,7 +64,7 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		}
 
 		try {
-			writeFileSync(STAGED_FILE, composeTemplate, 'utf-8');
+			await writeFile(STAGED_FILE, composeTemplate, 'utf-8');
 			composeFileForUpdate = STAGED_FILE;
 			steps.push({ step: 'stage-compose', stdout: 'New compose template staged', stderr: '' });
 		} catch (err) {
@@ -76,13 +76,12 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		}
 	}
 	const composeCmd = `docker compose -f ${composeFileForUpdate}`;
-	const discardStaged = () => {
-		if (composeTemplate && existsSync(STAGED_FILE)) {
-			try {
-				unlinkSync(STAGED_FILE);
-			} catch {
-				// best-effort cleanup
-			}
+	const discardStaged = async () => {
+		if (!composeTemplate) return;
+		try {
+			await rm(STAGED_FILE, { force: true });
+		} catch {
+			// best-effort cleanup
 		}
 	};
 
@@ -92,7 +91,7 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	steps.push({ step: 'pull', ...pull });
 
 	if (!pull.ok) {
-		discardStaged();
+		await discardStaged();
 		return json(res, 500, { error: 'Docker pull failed — update aborted, nothing changed', steps });
 	}
 
@@ -108,7 +107,7 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	steps.push({ step: 'convex-deploy', ...deploy });
 
 	if (!deploy.ok) {
-		discardStaged();
+		await discardStaged();
 		return json(res, 500, {
 			error: 'convex-deploy failed — update aborted, running stack untouched',
 			steps,
@@ -118,8 +117,8 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// Step 4: Promote the staged template now that pull + deploy succeeded.
 	if (composeTemplate) {
 		try {
-			writeFileSync(COMPOSE_FILE, composeTemplate, 'utf-8');
-			unlinkSync(STAGED_FILE);
+			await writeFile(COMPOSE_FILE, composeTemplate, 'utf-8');
+			await unlink(STAGED_FILE);
 			steps.push({ step: 'write-compose', stdout: 'Compose file updated', stderr: '' });
 		} catch (err) {
 			return json(res, 500, {
@@ -206,8 +205,8 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 		// Step 2: Write persistent network config (survives reboots)
 		try {
-			mkdirSync(INTERFACES_DIR, { recursive: true });
-			writeFileSync(
+			await mkdir(INTERFACES_DIR, { recursive: true });
+			await writeFile(
 				persistFile,
 				`auto eth0\niface eth0 inet static\n    address ${ip}/32\n`,
 				'utf-8'
@@ -219,7 +218,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 		// Step 3: Append IP to IP_POOLS_CAMPAIGN in .env
 		try {
-			const envContent = readFileSync(envFile, 'utf-8');
+			const envContent = await readFile(envFile, 'utf-8');
 			const updated = rewriteEnvLines(envContent, (line) => {
 				if (line.startsWith('IP_POOLS_CAMPAIGN=')) {
 					const current = line.split('=')[1] || '';
@@ -229,7 +228,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 				}
 				return line;
 			});
-			writeFileSync(envFile, updated, 'utf-8');
+			await writeFile(envFile, updated, 'utf-8');
 			steps.push({ step: 'update-env', stdout: `Added ${ip} to IP_POOLS_CAMPAIGN`, stderr: '' });
 		} catch (err) {
 			steps.push({ step: 'update-env', stdout: '', stderr: errorMessage(err) });
@@ -246,9 +245,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 		// Step 2: Remove persistent config
 		try {
-			if (existsSync(persistFile)) {
-				unlinkSync(persistFile);
-			}
+			await rm(persistFile, { force: true });
 			steps.push({ step: 'remove-persist-config', stdout: `Removed ${persistFile}`, stderr: '' });
 		} catch (err) {
 			steps.push({ step: 'remove-persist-config', stdout: '', stderr: errorMessage(err) });
@@ -256,7 +253,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 		// Step 3: Remove IP from IP_POOLS_CAMPAIGN in .env
 		try {
-			const envContent = readFileSync(envFile, 'utf-8');
+			const envContent = await readFile(envFile, 'utf-8');
 			const updated = rewriteEnvLines(envContent, (line) => {
 				if (line.startsWith('IP_POOLS_CAMPAIGN=')) {
 					const current = line.split('=')[1] || '';
@@ -265,7 +262,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 				}
 				return line;
 			});
-			writeFileSync(envFile, updated, 'utf-8');
+			await writeFile(envFile, updated, 'utf-8');
 			steps.push({
 				step: 'update-env',
 				stdout: `Removed ${ip} from IP_POOLS_CAMPAIGN`,
@@ -337,7 +334,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	const envFile = join(OWLAT_DIR, '.env');
 	let envContent: string;
 	try {
-		envContent = readFileSync(envFile, 'utf-8');
+		envContent = await readFile(envFile, 'utf-8');
 	} catch (err) {
 		return json(res, 500, { error: `Cannot read .env: ${errorMessage(err)}` });
 	}
@@ -361,7 +358,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	}
 
 	try {
-		writeFileSync(envFile, rewrite.content, 'utf-8');
+		await writeFile(envFile, rewrite.content, 'utf-8');
 	} catch (err) {
 		return json(res, 500, { error: `Cannot write .env: ${errorMessage(err)}` });
 	}

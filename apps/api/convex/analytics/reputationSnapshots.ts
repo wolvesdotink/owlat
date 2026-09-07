@@ -19,8 +19,8 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { summarize, type ReputationSummary } from './sendingReputation';
 import { startOfDayUtc } from '../lib/clock';
+import { DAY_MS } from '../lib/constants';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 /** How much snapshot history to keep. ~90 days of daily points. */
 const SNAPSHOT_RETENTION_MS = 90 * DAY_MS;
 

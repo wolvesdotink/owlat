@@ -1,4 +1,54 @@
-import { v, type Infer } from 'convex/values';
+import { v, type Infer, type VLiteral, type VUnion } from 'convex/values';
+import { DELIVERABILITY_CHECKLIST_STATUSES, GOVERNED_MESSAGE_TYPES } from '@owlat/shared';
+import { MTA_STS_MODES } from '@owlat/shared/mtaStsPolicy';
+import { YAHOO_CFL_STORED_STATES } from '@owlat/shared/yahooCfl';
+
+/**
+ * A closed string union derived from an `as const` array, so a vocabulary owned
+ * by `@owlat/shared` is never re-spelled here. The inferred type is
+ * `T[number]`, the same closed union a hand-written `v.union(v.literal(...))`
+ * gives, and `.members` stays available for parity tests. The cast is needed
+ * because destructuring a generic tuple widens the rest to `string[]`.
+ */
+export function literalUnion<const T extends readonly [string, ...string[]]>(values: T) {
+	const [first, ...rest] = values;
+	return v.union(v.literal(first), ...rest.map((value) => v.literal(value))) as VUnion<
+		T[number],
+		VLiteral<T[number]>[]
+	>;
+}
+
+export const mtaStsModeValidator = literalUnion(MTA_STS_MODES);
+export const yahooCflStoredStateValidator = literalUnion(YAHOO_CFL_STORED_STATES);
+/** Message type a provider route governs — `providerRoutes.messageType` and its readers. */
+export const messageTypeValidator = literalUnion(GOVERNED_MESSAGE_TYPES);
+export const deliverabilityStatusValidator = literalUnion(DELIVERABILITY_CHECKLIST_STATUSES);
+
+// Two-to-three literal unions that several tables and function args share.
+export const completedOrFailedValidator = v.union(v.literal('completed'), v.literal('failed'));
+export const abVariantValidator = v.union(v.literal('A'), v.literal('B'));
+export const bounceTypeValidator = v.union(v.literal('hard'), v.literal('soft'));
+/** SPF / DKIM / DMARC result on an inbound probe; `unknown` is "not evaluated". */
+export const authResultValidator = v.union(
+	v.literal('pass'),
+	v.literal('fail'),
+	v.literal('unknown')
+);
+export const transportArmValidator = v.union(v.literal('own'), v.literal('reference'));
+export const mailAppPasswordScopeValidator = v.union(v.literal('imap'), v.literal('smtp'));
+export const reviewActionValidator = v.union(
+	v.literal('approved'),
+	v.literal('rejected'),
+	v.literal('edited')
+);
+export const widgetSizeValidator = v.union(
+	v.literal('small'),
+	v.literal('medium'),
+	v.literal('large')
+);
+export const duplicateHandlingValidator = v.union(v.literal('skip'), v.literal('update'));
+export const messageDirectionValidator = v.union(v.literal('inbound'), v.literal('outbound'));
+export const detectionSourceValidator = v.union(v.literal('heuristic'), v.literal('llm'));
 
 // Unified-message channel union shared by stored rows and function arguments.
 /**

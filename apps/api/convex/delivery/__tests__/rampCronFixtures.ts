@@ -31,7 +31,7 @@ import {
 import { sumCounters } from '../../analytics/__tests__/transportOutcomesFixtures';
 import { ZERO_TRANSPORT_OUTCOME_TOTALS } from '../../analytics/transportOutcomeSummary';
 import { startOfDayUtc } from '../../lib/clock';
-import { MS_PER_DAY } from '../../lib/constants';
+import { DAY_MS } from '../../lib/constants';
 
 /** The default share on the managed cell when a suite does not name one. */
 export const RAMP_FIXTURE_SHARE = 0.5;
@@ -160,7 +160,7 @@ export async function seedRampCell(t: Harness, options: SeedRampCellOptions): Pr
 		isFallbackActive: false,
 		signals: [],
 		snapshotGeneratedAt: now,
-		expiresAt: now + MS_PER_DAY,
+		expiresAt: now + DAY_MS,
 		updatedAt: now,
 	};
 	await t.run(async (ctx) => {
@@ -384,7 +384,7 @@ export async function seedArmOutcomes(
 	}
 ): Promise<void> {
 	const now = Date.now();
-	const periodStart = startOfDayUtc(now) - (args.dayOffset ?? 0) * MS_PER_DAY;
+	const periodStart = startOfDayUtc(now) - (args.dayOffset ?? 0) * DAY_MS;
 	const provider = args.destinationProvider ?? 'gmail';
 	await t.run(async (ctx) => {
 		await ctx.db.insert('transportOutcomes', {
@@ -400,7 +400,7 @@ export async function seedArmOutcomes(
 			sent: args.sent,
 			delivered: args.sent,
 			...args.counters,
-			lastRecordedAt: Math.min(now, periodStart + MS_PER_DAY - 1),
+			lastRecordedAt: Math.min(now, periodStart + DAY_MS - 1),
 		});
 	});
 }

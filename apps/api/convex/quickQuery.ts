@@ -41,7 +41,7 @@ const MAX_FILE_EXCERPT = 1000;
 
 // Cap the free-text question so a single ask can't be looped into an unbounded
 // embedding + synthesis spend.
-const MAX_QUESTION_CHARS = 2000;
+const MAX_QUICK_QUERY_QUESTION_CHARS = 2000;
 
 /** A citation the frontend renders — knowledge entry OR file, discriminated by `kind`. */
 type QuerySource =
@@ -74,8 +74,8 @@ export const ask = authedAction({
 			return { answer: 'Please enter a question.', sources: [] };
 		}
 		// Clamp the question length BEFORE spending any embed/synthesis call.
-		if (question.length > MAX_QUESTION_CHARS) {
-			throwInvalidInput(`Question is too long (max ${MAX_QUESTION_CHARS} characters).`);
+		if (question.length > MAX_QUICK_QUERY_QUESTION_CHARS) {
+			throwInvalidInput(`Question is too long (max ${MAX_QUICK_QUERY_QUESTION_CHARS} characters).`);
 		}
 
 		// Gate: `ai` feature flag + per-org spend budget + per-user rate limit,

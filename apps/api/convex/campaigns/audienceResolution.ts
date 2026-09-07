@@ -90,7 +90,7 @@ async function resolveRecipientPageImpl(
 		);
 		const recipients: CampaignRecipient[] = [];
 		for (const membership of page) {
-			const contact = contacts.get(String(membership.contactId));
+			const contact = contacts.get(membership.contactId);
 			if (!contact) continue; // orphan membership (contact hard-deleted)
 			const recipient = selectRecipient(contact, gate, membership.pendingDoiConfirmation);
 			if (recipient) recipients.push(recipient);

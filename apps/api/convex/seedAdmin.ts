@@ -2,6 +2,7 @@ import { httpAction } from './_generated/server';
 import { components } from './_generated/api';
 import { internal } from './_generated/api';
 import { getOptional } from './lib/env';
+import { betterAuthAdapterArgs } from './lib/betterAuthAdapterArgs';
 import { safeCompare } from './lib/safeCompare';
 import { getClientIp, rateLimitedResponse } from './publicRateLimit';
 import { logError } from './lib/runtimeLog';
@@ -162,7 +163,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		// the id BetterAuth resolves at login (the adapter derives the
 		// better-auth id from `_id`; see getDocId in @convex-dev/better-auth).
 		const userDoc = (await ctx.runMutation(components.betterAuth.adapter.create, {
-			input: {
+			input: betterAuthAdapterArgs({
 				model: 'user',
 				data: {
 					email: body.email,
@@ -171,13 +172,13 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 					createdAt: nowMs,
 					updatedAt: nowMs,
 				},
-			} as unknown as Parameters<typeof ctx.runMutation>[1],
+			}),
 		})) as unknown as { _id: string };
-		const userId = String(userDoc._id);
+		const userId = userDoc._id;
 
 		// Create BetterAuth account record with the hashed password
 		await ctx.runMutation(components.betterAuth.adapter.create, {
-			input: {
+			input: betterAuthAdapterArgs({
 				model: 'account',
 				data: {
 					userId,
@@ -187,7 +188,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 					createdAt: nowMs,
 					updatedAt: nowMs,
 				},
-			} as unknown as Parameters<typeof ctx.runMutation>[1],
+			}),
 		});
 
 		// Create BetterAuth organization
@@ -201,20 +202,20 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		const orgSlug = slugBase && slugBase.length > 0 ? slugBase : 'org';
 
 		const orgDoc = (await ctx.runMutation(components.betterAuth.adapter.create, {
-			input: {
+			input: betterAuthAdapterArgs({
 				model: 'organization',
 				data: {
 					name: orgName,
 					slug: orgSlug,
 					createdAt: nowMs,
 				},
-			} as unknown as Parameters<typeof ctx.runMutation>[1],
+			}),
 		})) as unknown as { _id: string };
-		const orgId = String(orgDoc._id);
+		const orgId = orgDoc._id;
 
 		// Create BetterAuth member record (owner role)
 		await ctx.runMutation(components.betterAuth.adapter.create, {
-			input: {
+			input: betterAuthAdapterArgs({
 				model: 'member',
 				data: {
 					userId,
@@ -222,7 +223,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 					role: 'owner',
 					createdAt: nowMs,
 				},
-			} as unknown as Parameters<typeof ctx.runMutation>[1],
+			}),
 		});
 
 		// Create userProfile record

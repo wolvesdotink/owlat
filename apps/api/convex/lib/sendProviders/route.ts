@@ -35,17 +35,18 @@ import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
 import { routeCarriesOwnArm } from './fallbackEligibility';
 import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
 import type { SendProviderKind } from './types';
+import { messageTypeValidator } from '../convexValidators';
 import {
 	candidateSendProviderKinds,
-	messageTypeValidator,
 	readySendProviderKinds,
 	type MessageType,
 } from './routeInputs';
 
-// `MessageType` and `messageTypeValidator` live in `routeInputs.ts` — the module
-// that holds what BOTH resolvers read — and are re-exported here for existing
-// importers, so the health-free cell seam never needs an import edge to this
-// module.
+// `MessageType` lives in `routeInputs.ts` — the module that holds what BOTH
+// resolvers read — and `messageTypeValidator` in `lib/convexValidators.ts`
+// (the schema derives from the same one). Both are re-exported here for
+// existing importers, so the health-free cell seam never needs an import edge
+// to this module.
 export { messageTypeValidator, type MessageType };
 
 // `SendRouteAddressContext` lives next to the identity it extends, in

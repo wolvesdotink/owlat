@@ -8,6 +8,7 @@
  * at the source.
  */
 
+import { isRecord } from '@owlat/shared';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction, internalMutation } from '../_generated/server';
@@ -68,10 +69,6 @@ type Snapshot = {
 	};
 	observedAt: number;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
 
 function parseHealth(value: unknown, observedAt: number): Snapshot | null {
 	if (!isRecord(value)) return null;

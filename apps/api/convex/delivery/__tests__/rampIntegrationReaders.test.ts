@@ -22,7 +22,7 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import schema from '../../schema';
 import { modules } from '../../__tests__/testModules';
-import { MS_PER_DAY } from '../../lib/constants';
+import { DAY_MS } from '../../lib/constants';
 import { startOfDayUtc } from '../../lib/clock';
 import {
 	loadRampDeploymentPresence,
@@ -64,7 +64,7 @@ async function seedCellRow(t: Harness, phaseCeilingSince?: number): Promise<void
 			...(phaseCeilingSince === undefined ? {} : { phaseCeilingSince }),
 			signals: [],
 			snapshotGeneratedAt: NOW,
-			expiresAt: NOW + MS_PER_DAY,
+			expiresAt: NOW + DAY_MS,
 			updatedAt: NOW,
 		});
 	});
@@ -161,7 +161,7 @@ async function seedProbe(
 			dispatchedAt: args.sentAt,
 			placement: 'inbox' as const,
 			...(args.classifiedAt === undefined ? {} : { classifiedAt: args.classifiedAt }),
-			expiresAt: args.sentAt + 90 * MS_PER_DAY,
+			expiresAt: args.sentAt + 90 * DAY_MS,
 		});
 	});
 }
@@ -198,7 +198,7 @@ async function seedDecision(
 					isPoolBlocklisted: args.isPoolBlocklisted,
 				},
 			}),
-			expiresAt: args.at + 90 * MS_PER_DAY,
+			expiresAt: args.at + 90 * DAY_MS,
 		});
 	});
 }
@@ -218,7 +218,7 @@ describe('the presence reader answers from the deployment’s own rows', () => {
 	it('sees each feed the moment it produces a row', async () => {
 		const t = convexTest(schema, modules);
 		await seedAccount(t);
-		await seedProbe(t, { sentAt: NOW - MS_PER_DAY });
+		await seedProbe(t, { sentAt: NOW - DAY_MS });
 		await t.run(async (ctx) => {
 			const domainId = await ctx.db.insert('domains', {
 				domain: 'readers.example',
@@ -230,22 +230,22 @@ describe('the presence reader answers from the deployment’s own rows', () => {
 			await ctx.db.insert('googlePostmasterStats', {
 				domainId,
 				domain: 'readers.example',
-				periodStart: NOW - MS_PER_DAY,
+				periodStart: NOW - DAY_MS,
 				userReportedSpamRatio: 0.0001,
-				fetchedAt: NOW - MS_PER_DAY,
-				ingestedAt: NOW - MS_PER_DAY,
+				fetchedAt: NOW - DAY_MS,
+				ingestedAt: NOW - DAY_MS,
 			});
 			await ctx.db.insert('sndsIpDailyStats', {
 				ip: '203.0.113.10',
-				periodStart: NOW - MS_PER_DAY,
+				periodStart: NOW - DAY_MS,
 				complaintBand: 'lt_0_1' as const,
 				filterResult: 'green' as const,
 				trapHits: 0,
 				messageRecipients: 1000,
 				rcptCommands: 1000,
 				dataCommands: 1000,
-				fetchedAt: NOW - MS_PER_DAY,
-				ingestedAt: NOW - MS_PER_DAY,
+				fetchedAt: NOW - DAY_MS,
+				ingestedAt: NOW - DAY_MS,
 			});
 			await ctx.db.insert('yahooCflEnrollments', {
 				organizationId: ORG,
@@ -310,7 +310,7 @@ describe('the presence reader answers from the deployment’s own rows', () => {
 describe('the promotion-evidence reader', () => {
 	it('reports every field as unmeasured in an empty deployment', async () => {
 		const t = convexTest(schema, modules);
-		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedCellRow(t, NOW - 30 * DAY_MS);
 		const loaded = await evidence(t);
 		expect(loaded.googleCompliancePassAt).toBeNull();
 		expect(loaded.sndsBandGreenAt).toBeNull();
@@ -329,8 +329,8 @@ describe('the promotion-evidence reader', () => {
 	 */
 	it('scores a day dirty from the recorded signal even when another rung won', async () => {
 		const t = convexTest(schema, modules);
-		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
-		const day = startOfDayUtc(NOW - MS_PER_DAY);
+		await seedCellRow(t, NOW - 30 * DAY_MS);
+		const day = startOfDayUtc(NOW - DAY_MS);
 		await seedDecision(t, { at: day + 1000, reason: 'frozen', isPoolBlocklisted: true });
 		const loaded = await evidence(t);
 		expect(loaded.dnsblDays).toEqual([{ dayStart: day, clean: false }]);
@@ -338,8 +338,8 @@ describe('the promotion-evidence reader', () => {
 
 	it('scores a day clean only when every decision that day saw a clean pool', async () => {
 		const t = convexTest(schema, modules);
-		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
-		const day = startOfDayUtc(NOW - MS_PER_DAY);
+		await seedCellRow(t, NOW - 30 * DAY_MS);
+		const day = startOfDayUtc(NOW - DAY_MS);
 		await seedDecision(t, { at: day + 1000, reason: 'holding', isPoolBlocklisted: false });
 		await seedDecision(t, { at: day + 2000, reason: 'holding', isPoolBlocklisted: false });
 		expect((await evidence(t)).dnsblDays).toEqual([{ dayStart: day, clean: true }]);
@@ -355,14 +355,14 @@ describe('the promotion-evidence reader', () => {
 	 */
 	it('keeps the newest days when the decision scan is truncated', async () => {
 		const t = convexTest(schema, modules);
-		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedCellRow(t, NOW - 30 * DAY_MS);
 		const today = startOfDayUtc(NOW);
 		// Far more rows than the reader's bounded page, spread over the window — in
 		// ONE transaction, because 700 round trips is a fixture, not a test.
 		await t.run(async (ctx) => {
 			for (let index = 0; index < 700; index += 1) {
 				const dayOffset = index % PROMOTION_DNSBL_CLEAN_DAYS;
-				const at = today - dayOffset * MS_PER_DAY + index;
+				const at = today - dayOffset * DAY_MS + index;
 				await ctx.db.insert('mixDecisions', {
 					organizationId: ORG,
 					cell: deliverabilityCellKey(CELL),
@@ -376,7 +376,7 @@ describe('the promotion-evidence reader', () => {
 					reason: 'holding' as const,
 					message: 'fixture',
 					snapshot: JSON.stringify({ signals: { isPoolBlocklisted: false } }),
-					expiresAt: at + 90 * MS_PER_DAY,
+					expiresAt: at + 90 * DAY_MS,
 				});
 			}
 		});
@@ -386,7 +386,7 @@ describe('the promotion-evidence reader', () => {
 
 	it('walks EVERY cell for the worst deferral rate, not just this one', async () => {
 		const t = convexTest(schema, modules);
-		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedCellRow(t, NOW - 30 * DAY_MS);
 		// This cell is all but spotless; a different cell entirely is deferring
 		// hard. Both carry a recorded deferral, so both are readable and the fold
 		// is judged on the rates rather than on the instrument.
@@ -408,7 +408,7 @@ describe('the promotion-evidence reader', () => {
 
 	it('reads a cell nothing records deferrals for as UNMEASURED, not as a clean 0%', async () => {
 		const t = convexTest(schema, modules);
-		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedCellRow(t, NOW - 30 * DAY_MS);
 		// Ample traffic through two cells, and not one deferral counted anywhere:
 		// the shape of every deployment before the counter had a writer. Folding it
 		// to `0` satisfied "deferral rate under threshold in EVERY cell" on the most
@@ -456,7 +456,7 @@ describe('the promotion-evidence reader', () => {
 	 */
 	it('decides gate 2 on a deferral recorded weeks before the window it judges', async () => {
 		const t = convexTest(schema, modules);
-		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedCellRow(t, NOW - 30 * DAY_MS);
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
 		await seedArmOutcomes(t, {
 			organizationId: ORG,
@@ -479,7 +479,7 @@ describe('the promotion-evidence reader', () => {
 	 */
 	it('reads a long observed zero as a reading once the arm’s traffic spans the observation minimum', async () => {
 		const t = convexTest(schema, modules);
-		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedCellRow(t, NOW - 30 * DAY_MS);
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 5000 });
 		expect((await evidence(t)).worstCellDeferralRate).toBeNull();
 
@@ -500,11 +500,11 @@ describe('the promotion-evidence reader', () => {
 
 	it('reads a classified seed probe for THIS cell’s provider only', async () => {
 		const t = convexTest(schema, modules);
-		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedCellRow(t, NOW - 30 * DAY_MS);
 		await seedAccount(t);
 		// Sent and classified inside the week the rule judges.
-		await seedProbe(t, { sentAt: NOW - 2 * MS_PER_DAY, classifiedAt: NOW - MS_PER_DAY });
-		expect((await evidence(t)).seedProbePassAt).toBe(NOW - MS_PER_DAY);
+		await seedProbe(t, { sentAt: NOW - 2 * DAY_MS, classifiedAt: NOW - DAY_MS });
+		expect((await evidence(t)).seedProbePassAt).toBe(NOW - DAY_MS);
 
 		// An unclassified probe is not evidence of anything.
 		await t.run(async (ctx) => {
@@ -526,19 +526,19 @@ describe('the promotion-evidence reader', () => {
 	 */
 	it('does not take another STREAM’s clean probe as this cell’s promotion evidence', async () => {
 		const t = convexTest(schema, modules);
-		await seedCellRow(t, NOW - 30 * MS_PER_DAY);
+		await seedCellRow(t, NOW - 30 * DAY_MS);
 		await seedAccount(t);
 		await seedProbe(t, {
-			sentAt: NOW - 2 * MS_PER_DAY,
-			classifiedAt: NOW - MS_PER_DAY,
+			sentAt: NOW - 2 * DAY_MS,
+			classifiedAt: NOW - DAY_MS,
 			stream: 'transactional',
 		});
 		// CELL is the campaign/gmail cell: same provider, same week, other stream.
 		expect((await evidence(t)).seedProbePassAt).toBeNull();
 
 		// Its own stream's probe is read exactly as before.
-		await seedProbe(t, { sentAt: NOW - 2 * MS_PER_DAY, classifiedAt: NOW - MS_PER_DAY });
-		expect((await evidence(t)).seedProbePassAt).toBe(NOW - MS_PER_DAY);
+		await seedProbe(t, { sentAt: NOW - 2 * DAY_MS, classifiedAt: NOW - DAY_MS });
+		expect((await evidence(t)).seedProbePassAt).toBe(NOW - DAY_MS);
 	});
 
 	/**

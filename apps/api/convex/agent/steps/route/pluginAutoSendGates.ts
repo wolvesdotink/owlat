@@ -10,6 +10,7 @@ import {
 	type PluginAutonomyGateModule,
 } from '@owlat/plugin-kit';
 import { applyPluginUntrustedTextPolicy, applyRestrictOnlyGateResult } from '@owlat/plugin-host';
+import { isPlainObject } from '@owlat/shared';
 import { internal } from '../../../_generated/api';
 import type { Doc, Id } from '../../../_generated/dataModel';
 import type { ActionCtx } from '../../../_generated/server';
@@ -285,12 +286,6 @@ function invalidGateResult(label: string): AutoSendGateDecision {
 	return unsafe(
 		`Plugin gate ${label} returned an invalid result; not auto-sending — routing to human review.`
 	);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
 
 class GateTimeoutError extends Error {}

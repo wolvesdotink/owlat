@@ -29,6 +29,7 @@ import { adminQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { extractEmail } from '../lib/emailAddress';
 import { draftSimilarity } from './shadowSimilarity';
+import { reviewActionValidator } from '../lib/convexValidators';
 
 /**
  * A shadowed auto-approve counts as "matched" only when the human approved the
@@ -149,7 +150,7 @@ export const recordShadowDecision = internalMutation({
 export const reconcileShadowDecision = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
-		action: v.union(v.literal('approved'), v.literal('rejected'), v.literal('edited')),
+		action: reviewActionValidator,
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
@@ -193,13 +194,13 @@ export const reconcileShadowDecision = internalMutation({
 /** Update the running per-(category, sender) scorecard for one reconciled observation. */
 async function bumpScorecard(
 	ctx: MutationCtx,
-	args: { category: string; sender: string; wouldHaveSent: boolean; matched: boolean },
+	args: { category: string; sender: string; wouldHaveSent: boolean; matched: boolean }
 ): Promise<void> {
 	const now = Date.now();
 	const existing = await ctx.db
 		.query('agentShadowScorecard')
 		.withIndex('by_category_sender', (q) =>
-			q.eq('category', args.category).eq('sender', args.sender),
+			q.eq('category', args.category).eq('sender', args.sender)
 		)
 		.first();
 

@@ -7,6 +7,7 @@ import {
 	recordHostedContributionOutcome,
 	type HostedContributionAuthorizationSpec,
 } from './hostedContributionAuthorization';
+import { completedOrFailedValidator } from '../lib/convexValidators';
 
 /**
  * Runtime authorization seam for plugin-contributed send transports.
@@ -45,7 +46,7 @@ export const recordOutcome = internalMutation({
 		pluginId: v.string(),
 		providerKind: v.string(),
 		attempts: v.number(),
-		outcome: v.union(v.literal('completed'), v.literal('failed')),
+		outcome: completedOrFailedValidator,
 	},
 	handler: (ctx, args): Promise<void> =>
 		recordHostedContributionOutcome(

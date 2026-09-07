@@ -70,6 +70,6 @@ describe('hosted contribution authorization seams', () => {
 		const source = read(name);
 		if (!source.includes('recordOutcome')) return;
 		expect(source, `${name} still takes a boolean outcome`).not.toContain('success: v.boolean()');
-		expect(source).toContain("outcome: v.union(v.literal('completed'), v.literal('failed'))");
+		expect(source).toContain('outcome: completedOrFailedValidator');
 	});
 });

@@ -12,6 +12,7 @@
  */
 
 import { getInboundChannelAdapter } from '@owlat/channels';
+import { isRecord } from '@owlat/shared';
 import type {
 	MtaWebhookEventType,
 	ValidatedMtaWebhookEvent,
@@ -19,10 +20,6 @@ import type {
 import { type InboundEvent, postmasterStatsMetrics } from '../types';
 import { logWarn } from '../../lib/runtimeLog';
 import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
 
 /** The four wire kinds that collapse into one `internal.ip_event`. */
 const IP_EVENT_SUBKIND = {

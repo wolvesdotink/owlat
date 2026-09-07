@@ -314,6 +314,6 @@ function readRequiredText(value: unknown, field: string): string {
  * absent — a provider sending `""` means "no value", not a value of nothing.
  */
 function optionalText(field: string, value: unknown): Record<string, string> {
-	if (value === undefined || value === null || value === '') return {};
+	if (value == null || value === '') return {};
 	return { [field]: readRequiredText(value, field) };
 }

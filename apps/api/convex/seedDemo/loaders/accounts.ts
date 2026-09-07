@@ -66,7 +66,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 	if (!org) {
 		return { inserted: 0, skipped: records.length, ids };
 	}
-	const orgId = String(org._id);
+	const orgId = org._id;
 
 	for (const rec of records) {
 		const existing = await findOne(ctx, 'user', [{ field: 'email', value: rec.email }]);
@@ -74,7 +74,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 			skipped++;
 			const profile = await ctx.db
 				.query('userProfiles')
-				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', String(existing._id)))
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', existing._id))
 				.first();
 			if (profile) ids[rec.slug] = profile._id;
 			continue;
@@ -92,7 +92,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 				},
 			},
 		} as unknown as AdapterArgs)) as unknown as { _id: string };
-		const userId = String(userDoc._id);
+		const userId = userDoc._id;
 
 		await ctx.runMutation(components.betterAuth.adapter.create, {
 			input: {

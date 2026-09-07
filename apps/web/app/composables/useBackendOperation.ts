@@ -107,12 +107,28 @@ export interface BackendOperation<M extends FunctionReference<'mutation' | 'acti
  * module — they don't go through the Convex client, so the error vocabulary
  * and telemetry policy here don't apply to them.
  */
+/**
+ * The message catalog, resolved where one exists.
+ *
+ * `useOrganization()` builds its mutation runners through this composable at
+ * setup, and `useOrganization()` is reached from the `admin` route guard —
+ * outside any component `setup()`, where `useI18n()` THROWS and would 500 every
+ * admin-gated page. A guard never runs an operation, so outside a component the
+ * copy degrades to its key instead of taking the app down. Mirrors `useAuth.ts`
+ * and `useOrganization.ts`.
+ */
+function operationTranslator(): (key: string, values?: Record<string, unknown>) => string {
+	if (!getCurrentInstance()) return (key: string) => key;
+	const { t } = useI18n();
+	return (key: string, values?: Record<string, unknown>) => (values ? t(key, values) : t(key));
+}
+
 export function useBackendOperation<M extends FunctionReference<'mutation' | 'action'>>(
 	operation: M,
 	opts: BackendOperationOptions
 ): BackendOperation<M> {
 	const client = useConvex();
-	const { t } = useI18n();
+	const t = operationTranslator();
 	const { showToast } = useToast();
 	const { announce } = useAnnounce();
 	const posthog = usePostHog();
