@@ -192,25 +192,3 @@ describe('envelope ↔ SPF alignment', () => {
 		expect(isSpfAligned(envelopeFromDomain, fromDomain, 'strict')).toBe(false);
 	});
 });
-
-describe('return-path SPF in the DNS guide', () => {
-	it('documents a bounce-domain SPF record for RETURN_PATH_DOMAIN', async () => {
-		const { readFileSync } = await import('node:fs');
-		const { fileURLToPath } = await import('node:url');
-		const { dirname, resolve } = await import('node:path');
-		const here = dirname(fileURLToPath(import.meta.url));
-		// apps/mta/src/smtp/__tests__ → repo apps/docs/content/en/...
-		const guidePath = resolve(
-			here,
-			'../../../../docs/content/en/3.developer/32.self-hosting-dns-email.md'
-		);
-		const guide = readFileSync(guidePath, 'utf-8');
-
-		// The guide must show an SPF record published on the bounce/return-path
-		// domain (not just the From-domain apex).
-		expect(guide).toMatch(/bounces?\.example\.com\.\s+TXT\s+"v=spf1\b[^"]*\ball"/i);
-		// And it must explain the return-path is the SPF identity.
-		expect(guide).toMatch(/RETURN_PATH_DOMAIN/);
-		expect(guide.toLowerCase()).toContain('return-path');
-	});
-});

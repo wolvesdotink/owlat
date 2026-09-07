@@ -118,9 +118,7 @@ describe('notifyConvex', () => {
 		const options = fetchCall[1] as RequestInit;
 		const headers = options.headers as Record<string, string>;
 
-		expect(headers['X-MTA-Signature']).toBeDefined();
 		expect(headers['X-MTA-Signature']).toMatch(/^[0-9a-f]+$/);
-		expect(headers['X-MTA-Timestamp']).toBeDefined();
 		expect(headers['X-MTA-Timestamp']).toMatch(/^\d+$/);
 	});
 
