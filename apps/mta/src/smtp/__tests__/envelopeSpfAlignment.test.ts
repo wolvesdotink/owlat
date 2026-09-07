@@ -71,7 +71,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import { sendToMx } from '../sender.js';
 import type { EmailJob } from '../../types.js';
-import type { MtaConfig } from '../../config.js';
+import { createOwlatHostConfig as createConfig } from '../../__tests__/helpers/fixtures.js';
 
 function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {
@@ -83,46 +83,6 @@ function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 		ipPool: 'transactional',
 		organizationId: 'org-1',
 		dkimDomain: 'acme.com',
-		...overrides,
-	};
-}
-
-function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
-	return {
-		port: 3100,
-		bouncePort: 25,
-		redisUrl: 'redis://localhost:6379',
-		apiKey: 'test-key',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
-		convexSiteUrl: 'https://test.convex.site',
-		webhookSecret: 'secret',
-		ipPools: { transactional: ['10.0.0.1'], campaign: ['10.0.0.2'] },
-		dkimKeys: {},
-		workerConcurrency: 50,
-		serverId: 'test-server',
-		smtpPool: {
-			maxPerHost: 3,
-			idleTimeoutMs: 30000,
-			maxAgeMs: 300000,
-			maxMessagesPerConnection: 100,
-		},
-		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
-		submissionPort: 587,
-		submissionEnabled: false,
-		contentScreeningEnabled: true,
-		contentMaxSizeKb: 500,
-		deliveryLogMaxLen: 100000,
-		deliveryLogTtlHours: 72,
-		webhookDlqMaxSize: 10000,
-		bounceMaxConnectionsPerIp: 10,
-		bounceMaxClients: 200,
-		bounceTarpitEnabled: false,
-		bounceTarpitDelayMs: 5000,
-		inboundSpfEnabled: false,
-		rspamdRejectThreshold: 15,
-		smtpPoolGlobalMaxPerHost: 10,
 		...overrides,
 	};
 }

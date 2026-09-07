@@ -27,12 +27,8 @@ import { notifyConvex } from '../../webhooks/convexNotifier.js';
 import { logger } from '../../monitoring/logger.js';
 import type { MtaConfig } from '../../config.js';
 import { selectIp, selectIpWithLease, setIpPoolBlock } from '../../scaling/ipPool.js';
-import {
-	createDnsblTestConfig,
-	createRecordingLookupDeps,
-	dnsError,
-	seedActivePools,
-} from './dnsblFixtures.js';
+import { createRecordingLookupDeps, dnsError, seedActivePools } from './dnsblFixtures.js';
+import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
 
 const ABUSIX_API_KEY = '0123456789abcdef0123456789abcdef';
 /**
@@ -41,7 +37,7 @@ const ABUSIX_API_KEY = '0123456789abcdef0123456789abcdef';
  * 200ms + 400ms per zone. Injected deps keep the retry path deterministic.
  */
 const lookupDeps = createRecordingLookupDeps().deps;
-const defaultConfig = createDnsblTestConfig();
+const defaultConfig = createOwlatHostConfig();
 
 describe('DNSBL checking', () => {
 	let redis: InstanceType<typeof Redis>;
@@ -51,7 +47,7 @@ describe('DNSBL checking', () => {
 		vi.clearAllMocks();
 		redis = new Redis();
 		await redis.flushall();
-		config = createDnsblTestConfig();
+		config = createOwlatHostConfig();
 		await seedActivePools(redis, config.ipPools);
 	});
 
@@ -71,7 +67,7 @@ describe('DNSBL checking', () => {
 		});
 
 		it('quarantines an IPv6 Spamhaus listing without querying IPv4-only providers', async () => {
-			config = createDnsblTestConfig({
+			config = createOwlatHostConfig({
 				ipPools: {
 					transactional: ['203.0.113.10'],
 					campaign: ['203.0.113.10', '2001:db8::1'],
@@ -728,7 +724,7 @@ describe('the halt alert survives Convex ingress for a large pool', () => {
 	// Convex rejects the WHOLE event when `message` exceeds 512 characters, so an
 	// unbounded '<ip> on <zones>' clause per address would 400, exhaust the retry
 	// budget and land the one alert the operator must see in the DLQ.
-	const largePoolConfig = createDnsblTestConfig({
+	const largePoolConfig = createOwlatHostConfig({
 		ipPools: {
 			transactional: Array.from({ length: 12 }, (_, index) => `10.1.0.${index + 1}`),
 			campaign: Array.from({ length: 12 }, (_, index) => `10.2.0.${index + 1}`),
@@ -781,7 +777,7 @@ describe('the halt alert survives Convex ingress for a large pool', () => {
  */
 // More addresses than the bound, so an unbounded fan-out is visible as such.
 const IPS = Array.from({ length: 9 }, (_, index) => `10.0.0.${index + 1}`);
-const fanOutConfig = createDnsblTestConfig({
+const fanOutConfig = createOwlatHostConfig({
 	ipPools: { transactional: IPS.slice(0, 5), campaign: IPS.slice(5) },
 });
 const ZONES = configuredDnsblZones(fanOutConfig, 'ipv4');

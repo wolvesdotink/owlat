@@ -13,6 +13,10 @@ import { storeFailed } from '../dlq.js';
 import { logger } from '../../monitoring/logger.js';
 import type { MtaWebhookEvent } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
+
+const createConfig = (overrides: Partial<MtaConfig> = {}): MtaConfig =>
+	createOwlatHostConfig({ webhookSecret: 'test-webhook-secret', ...overrides });
 
 function createEvent(overrides: Partial<MtaWebhookEvent> = {}): MtaWebhookEvent {
 	return {
@@ -20,46 +24,6 @@ function createEvent(overrides: Partial<MtaWebhookEvent> = {}): MtaWebhookEvent 
 		messageId: 'msg-001',
 		organizationId: 'org-1',
 		timestamp: Date.now(),
-		...overrides,
-	};
-}
-
-function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
-	return {
-		port: 3100,
-		bouncePort: 25,
-		redisUrl: 'redis://localhost:6379',
-		apiKey: 'test-key',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
-		convexSiteUrl: 'https://test.convex.site',
-		webhookSecret: 'test-webhook-secret',
-		ipPools: { transactional: ['10.0.0.1'], campaign: ['10.0.0.2'] },
-		dkimKeys: {},
-		workerConcurrency: 50,
-		serverId: 'test-server',
-		smtpPool: {
-			maxPerHost: 3,
-			idleTimeoutMs: 30000,
-			maxAgeMs: 300000,
-			maxMessagesPerConnection: 100,
-		},
-		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
-		submissionPort: 587,
-		submissionEnabled: false,
-		contentScreeningEnabled: true,
-		contentMaxSizeKb: 500,
-		deliveryLogMaxLen: 100000,
-		deliveryLogTtlHours: 72,
-		webhookDlqMaxSize: 10000,
-		bounceMaxConnectionsPerIp: 10,
-		bounceMaxClients: 200,
-		bounceTarpitEnabled: false,
-		bounceTarpitDelayMs: 5000,
-		inboundSpfEnabled: false,
-		rspamdRejectThreshold: 15,
-		smtpPoolGlobalMaxPerHost: 10,
 		...overrides,
 	};
 }
