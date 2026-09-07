@@ -28,10 +28,9 @@ vi.mock('../../scaling/ipPool.js', () => ({
 	selectIpWithLease: vi.fn().mockResolvedValue({ ip: '192.0.2.10', eligibilityGeneration: 1 }),
 }));
 
-const actualBreaker =
-	await vi.importActual<typeof import('../../intelligence/circuitBreaker.js')>(
-		'../../intelligence/circuitBreaker.js'
-	);
+const actualBreaker = await vi.importActual<typeof import('../../intelligence/circuitBreaker.js')>(
+	'../../intelligence/circuitBreaker.js'
+);
 const { createRoutingDecisionHandler, isRoutingLeaseBoundTo, readRoutingLease } =
 	await import('../routingDecision.js');
 type RoutingLeaseRecord = import('../routingDecision.js').RoutingLeaseRecord;
