@@ -1,13 +1,14 @@
 /**
- * Bounded retry with backoff.
+ * `checkDnsbl` — one address against one zone.
  *
  * Concluding `unknown` is expensive (it preserves quarantine and holds the
  * ramp), so a transient resolver failure is retried — but a dead resolver must
  * never stall the sweep, so the attempts and the total wait are hard-bounded
- * and no attempt starts after the budget is spent.
+ * and no attempt starts after the budget is spent. And whatever the resolver
+ * does, only NXDOMAIN and NODATA are ever read as clean.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('dns/promises', () => ({ resolve4: vi.fn() }));
 vi.mock('../../monitoring/logger.js', () => ({
@@ -24,9 +25,10 @@ import {
 import { logger } from '../../monitoring/logger.js';
 import { createRecordingLookupDeps, dnsError } from './dnsblFixtures.js';
 
-describe('DNSBL bounded retry', () => {
-	beforeEach(() => vi.clearAllMocks());
+beforeEach(() => vi.clearAllMocks());
+afterEach(() => vi.useRealTimers());
 
+describe('checkDnsbl — bounded retry with backoff', () => {
 	it('retries a transient failure and accepts the answer that arrives on the retry', async () => {
 		vi.mocked(resolve4)
 			.mockRejectedValueOnce(dnsError('ESERVFAIL'))
@@ -144,5 +146,58 @@ describe('DNSBL bounded retry', () => {
 		expect(await checkDnsbl('10.0.0.1', 'spamhaus', 'zen.spamhaus.org', deps)).toBe('unknown');
 		expect(resolve4).toHaveBeenCalledTimes(1);
 		expect(delays).toEqual([]);
+	});
+});
+
+describe('checkDnsbl — unknown is never laundered into clean', () => {
+	it.each([
+		['SERVFAIL', 'ESERVFAIL'],
+		['REFUSED', 'EREFUSED'],
+		['connection refused', 'ECONNREFUSED'],
+		['resolver unreachable', 'EAI_AGAIN'],
+		['aborted', 'ECANCELLED'],
+		['malformed response', 'EBADRESP'],
+		['an unrecognised failure', 'ESOMETHINGELSE'],
+	])('reports %s as unknown, never clean', async (_label, code) => {
+		vi.mocked(resolve4).mockRejectedValue(dnsError(code));
+		const { deps } = createRecordingLookupDeps();
+
+		expect(await checkDnsbl('10.0.0.1', 'spamhaus', 'zen.spamhaus.org', deps)).toBe('unknown');
+	});
+
+	it.each([
+		['policy refusal', '127.255.255.252'],
+		['open resolver rejection', '127.255.255.254'],
+		['query rate limit', '127.255.255.255'],
+	])('reports the reserved return code for %s as unknown at every zone', async (_label, answer) => {
+		vi.mocked(resolve4).mockResolvedValue([answer]);
+		const { deps } = createRecordingLookupDeps();
+
+		for (const [listId, zone] of [
+			['spamhaus', 'zen.spamhaus.org'],
+			['barracuda', 'b.barracudacentral.org'],
+			['spamcop', 'bl.spamcop.net'],
+		] as const) {
+			expect(await checkDnsbl('10.0.0.1', listId, zone, deps)).toBe('unknown');
+		}
+	});
+
+	it('reports a lookup that never answers as unknown once the per-attempt timeout fires', async () => {
+		vi.useFakeTimers();
+		vi.mocked(resolve4).mockImplementation(() => new Promise<string[]>(() => {}));
+		const { deps } = createRecordingLookupDeps();
+
+		const pending = checkDnsbl('10.0.0.1', 'spamhaus', 'zen.spamhaus.org', deps);
+		await vi.advanceTimersByTimeAsync(5_000 * 3 + 50);
+
+		expect(await pending).toBe('unknown');
+	});
+
+	it('keeps NXDOMAIN and NODATA as the only clean verdicts', async () => {
+		const { deps } = createRecordingLookupDeps();
+		for (const code of ['ENOTFOUND', 'ENODATA']) {
+			vi.mocked(resolve4).mockRejectedValue(dnsError(code));
+			expect(await checkDnsbl('10.0.0.1', 'spamhaus', 'zen.spamhaus.org', deps)).toBe('clean');
+		}
 	});
 });

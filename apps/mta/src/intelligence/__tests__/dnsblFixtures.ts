@@ -1,4 +1,6 @@
+import type Redis from 'ioredis';
 import type { MtaConfig } from '../../config.js';
+import { initializePools } from '../../scaling/ipPool.js';
 
 /** Minimal MTA config shared by the DNSBL fail-open suites. */
 export function createDnsblTestConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
@@ -63,4 +65,12 @@ export function createRecordingLookupDeps(nowValues?: number[]) {
 
 export function dnsError(code: string): Error {
 	return Object.assign(new Error(code), { code });
+}
+
+/** Mark every pooled address FCrDNS-clean and load the pools, so a sweep starts from a fully active rotation. */
+export async function seedActivePools(redis: Redis, ipPools: MtaConfig['ipPools']): Promise<void> {
+	for (const ip of [...ipPools.transactional, ...ipPools.campaign]) {
+		await redis.hset(`mta:fcrdns:${ip}`, 'verdict', 'pass', 'checkedAt', '1');
+	}
+	await initializePools(redis, ipPools);
 }
