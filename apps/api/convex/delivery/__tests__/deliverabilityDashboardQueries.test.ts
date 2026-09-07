@@ -155,8 +155,8 @@ describe('getDeliverabilityDashboard — derived rates', () => {
 
 		// The ONE derivation seam, run here over the same rows: the query may not
 		// produce a different number from it, ever.
-		expect(cell.reference.sent).toBe(900);
-		expect(cell.reference.delivered).toBe(880);
+		expect(cell.reference?.sent).toBe(900);
+		expect(cell.reference?.delivered).toBe(880);
 		expect(cell.own.sent).toBe(1000);
 		expect(cell.own.hardBounceRate).toBeCloseTo(0.01, 10);
 		expect(dashboard.referenceTransportId).toBe('ses');

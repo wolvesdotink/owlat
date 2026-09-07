@@ -3,8 +3,12 @@ import { getFunctionName } from 'convex/server';
 /**
  * A route answers one generated function. A plain value is returned as-is; a
  * function is called with the handler's args so a route can record or branch.
+ * (`object` rather than `unknown` for the value half, so an arrow literal is
+ * contextually typed by the function half instead of falling to implicit any.)
  */
-type Route = unknown | ((args: unknown) => unknown);
+type RouteFn = (args: unknown) => unknown;
+type RouteValue = string | number | boolean | null | undefined | object;
+type Route = RouteFn | RouteValue;
 
 export interface StepCtxRoutes {
 	/** Keyed by a fragment of the generated function name (`getMessage`, `knowledge`). */
@@ -25,7 +29,7 @@ function dispatcher(
 		const key = Object.keys(routes).find((fragment) => name.includes(fragment));
 		if (key === undefined) throw new Error(`unexpected ${kind}: ${name}`);
 		const route = routes[key];
-		return typeof route === 'function' ? (route as (args: unknown) => unknown)(args) : route;
+		return typeof route === 'function' ? (route as RouteFn)(args) : route;
 	};
 }
 

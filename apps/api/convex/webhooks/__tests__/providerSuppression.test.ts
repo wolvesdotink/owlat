@@ -24,6 +24,7 @@ import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
+import type { ActionCtx } from '../../_generated/server';
 import { modules } from '../../__tests__/testModules';
 import { fnName, makeRecordingActionCtx, type RunMutationCall } from './recordingActionCtx';
 import { dispatchInboundEvent } from '../dispatcher';

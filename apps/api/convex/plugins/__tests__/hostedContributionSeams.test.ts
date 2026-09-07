@@ -328,12 +328,13 @@ describe.each(SEAMS)('hosted seam: $name', (seam) => {
 		expect(audit).not.toHaveBeenCalled();
 	});
 
-	it.each([
+	const ownershipRefusals: ReadonlyArray<readonly [label: string, pluginId: string, kind: string]> = [
 		['a cross-plugin claim', 'other-pack', seam.kind],
 		['an uncatalogued kind', seam.pluginId, `${seam.kind}-missing`],
 		['a malformed plugin id', 'Not A Plugin Id', seam.kind],
 		...(seam.alsoRefuses ?? []),
-	])('refuses %s without auditing under the named plugin', async (_label, pluginId, kind) => {
+	];
+	it.each(ownershipRefusals)('refuses %s without auditing under the named plugin', async (_label, pluginId, kind) => {
 		await expect(seam.authorize(fakeContext(true, true), claim(pluginId, kind))).resolves.toBe(
 			false
 		);
