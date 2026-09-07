@@ -2,7 +2,7 @@ import type { ComputedRef, Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
-import { pickAdjacentMessageId } from '~/utils/postboxAutoAdvance';
+import { pickAdjacentMessageId, type PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
 
 /** The live thread fields the reader's thread-level actions branch on. */
@@ -48,7 +48,7 @@ export function usePostboxReaderActions(opts: {
 	mailboxId: ComputedRef<Id<'mailboxes'>>;
 	allMessages: ComputedRef<ReadonlyArray<{ _id: string }>>;
 	readerThread: ComputedRef<ReaderActionThread | null | undefined>;
-	autoAdvance: Ref<boolean> | ComputedRef<boolean>;
+	autoAdvance: Ref<PostboxAutoAdvanceMode> | ComputedRef<PostboxAutoAdvanceMode>;
 	advance: {
 		ids: () => string[] | undefined;
 		folderRole: () => string | undefined;
