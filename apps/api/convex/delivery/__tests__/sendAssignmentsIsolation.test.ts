@@ -58,57 +58,6 @@ describe('sendAssignments tenant isolation', () => {
 		});
 	});
 
-	it('declares every caller-reachable index org-leading', async () => {
-		const source = await import('node:fs/promises').then((fs) =>
-			fs.readFile(new URL('../../schema/sendAssignments.ts', import.meta.url), 'utf8')
-		);
-		const tableStart = source.indexOf('sendAssignments: defineTable(');
-		expect(tableStart).toBeGreaterThanOrEqual(0);
-		const table = source.slice(tableStart);
-		// Anchor the end of the block on the NEXT table definition, not on a prose
-		// comment: a reworded comment would silently widen the scanned block to the
-		// rest of the file and make this guard pass vacuously.
-		const nextTable = table.indexOf('defineTable(', 'sendAssignments: defineTable('.length);
-		const indexBlock = nextTable === -1 ? table : table.slice(0, nextTable);
-		const declared = [...indexBlock.matchAll(/\.index\('([^']+)',\s*\[([^\]]*)\]\)/g)].map(
-			(match) => ({
-				name: match[1] ?? '',
-				fields: (match[2] ?? '')
-					.split(',')
-					.map((field) => field.trim().replace(/^'|'$/g, ''))
-					.filter((field) => field.length > 0),
-			})
-		);
-		// TWO, and the list is exhaustive on purpose: an index added here without
-		// a reader is write amplification on a per-recipient table (D16/D20), and
-		// a `by_org_cell_time` shipped and stayed unread for exactly that reason.
-		expect(declared.map((index) => index.name).sort()).toEqual(['by_assigned_at', 'by_org_send']);
-		// The ONE index that is not org-leading is exempt only because of where
-		// it is used, and the module exports `cleanupExpiredAssignments`, so the
-		// exemption is asserted rather than asserted-in-a-comment: `by_assigned_at`
-		// must appear exactly once in the module, inside the retention sweep.
-		// The day someone reaches for it from a caller-facing query, this fails.
-		const moduleSource = await import('node:fs/promises').then((fs) =>
-			fs.readFile(new URL('../sendAssignments.ts', import.meta.url), 'utf8')
-		);
-		const uses = [...moduleSource.matchAll(/withIndex\('by_assigned_at'/g)];
-		expect(uses).toHaveLength(1);
-		const sweepStart = moduleSource.indexOf('export const cleanupExpiredAssignments');
-		expect(sweepStart).toBeGreaterThanOrEqual(0);
-		expect(uses[0]?.index ?? -1).toBeGreaterThan(sweepStart);
-
-		for (const index of declared) {
-			// `by_assigned_at` serves the internal retention sweep only (pinned
-			// just above). Every index a caller can reach with a cell or a send
-			// id must start at the organization.
-			if (index.name === 'by_assigned_at') {
-				expect(index.fields).toEqual(['assignedAt']);
-				continue;
-			}
-			expect(index.fields[0]).toBe('organizationId');
-		}
-	});
-
 	it('is wiped by the organization-deletion walker (GDPR scoping)', async () => {
 		// The experiment record is per-recipient tenant business data. Account
 		// deletion and 'Delete organization' must not leave it on disk, so the

@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mandrillSendProvider, _resetMandrillConfigCacheForTests } from '../index';
 import { isAmbiguousMandrillTimeout, MANDRILL_SEND_TIMEOUT_MESSAGE } from '../errors';
 import { sendProviderDispatch } from '../../dispatch';
+import { fakeDispatchCtx } from '../../__tests__/dispatchFixtures';
 import { EmailErrorCode, isRetryableErrorCode } from '../../types';
 import { resolveSendTransport, _resetSendTransportCacheForTests } from '../../transports';
 
@@ -31,13 +32,6 @@ const params = {
 	subject: 'hi',
 	html: '<p>hi</p>',
 };
-
-function fakeCtx(): Parameters<typeof sendProviderDispatch>[0] {
-	return {
-		runMutation: vi.fn(async () => true),
-		scheduler: { runAfter: vi.fn(async () => undefined) },
-	} as unknown as Parameters<typeof sendProviderDispatch>[0];
-}
 
 beforeEach(() => {
 	_resetSendTransportCacheForTests();
@@ -146,7 +140,7 @@ describe('the dispatch loop never re-sends after a timeout', () => {
 		const fetchSpy = vi.fn().mockRejectedValue(timeout);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
-		const dispatched = await sendProviderDispatch(fakeCtx(), 'mandrill', params);
+		const dispatched = await sendProviderDispatch(fakeDispatchCtx(), 'mandrill', params);
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		expect(dispatched.attempts).toBe(1);
@@ -162,7 +156,7 @@ describe('the dispatch loop never re-sends after a timeout', () => {
 		const timeout = new Error(MANDRILL_SEND_TIMEOUT_MESSAGE);
 		global.fetch = vi.fn().mockRejectedValue(timeout) as unknown as typeof fetch;
 
-		const dispatched = await sendProviderDispatch(fakeCtx(), 'mandrill', params);
+		const dispatched = await sendProviderDispatch(fakeDispatchCtx(), 'mandrill', params);
 
 		expect(dispatched.result).toMatchObject({
 			success: false,

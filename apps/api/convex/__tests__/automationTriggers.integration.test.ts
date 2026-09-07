@@ -3,7 +3,12 @@ import { describe, it, expect, afterEach } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { fireTrigger } from '../automations/triggers';
-import { createTestAutomation, createTestAutomationStep, createTestContact } from './factories';
+import {
+	createTestAutomation,
+	createTestAutomationStep,
+	createTestContact,
+	flushScheduled,
+} from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { bumpAutomationStats, rollupAutomationStatsRow } from '../automations/statShards';
@@ -37,7 +42,7 @@ async function fireEventReceived(
 // setTimeout closure holds a stale DatabaseFake reference that has no active
 // transaction, producing "Write outside of transaction" unhandled rejections.
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 10));
+	await flushScheduled();
 });
 
 // ============ fireContactCreatedTrigger ============

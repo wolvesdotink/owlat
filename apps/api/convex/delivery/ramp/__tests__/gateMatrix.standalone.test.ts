@@ -1,22 +1,16 @@
 /**
  * THE MATRIX PROOF (plan D2, D3).
  *
- * Two things are asserted here that nothing else can assert:
+ * THE STANDALONE LEG IS REALLY STANDALONE. A leg that is silently handed a
+ * reference arm reports green while proving nothing — the exact failure mode
+ * the matrix exists to prevent. So the leg asserts on its own inputs.
  *
- *  1. THE WORKFLOW REALLY RUNS BOTH LEGS. The acceptance criterion is a CI matrix,
- *     and a matrix that was renamed, dropped in a merge or never wired to the
- *     required status check is indistinguishable from one that never existed. So
- *     the workflow file itself is read and checked.
- *  2. THE STANDALONE LEG IS REALLY STANDALONE. A leg that is silently handed a
- *     reference arm reports green while proving nothing — the exact failure mode
- *     the matrix exists to prevent. So the leg asserts on its own inputs.
- *
- * Everything below runs in BOTH legs; the assertions branch on the mode rather
- * than the suite being skipped, so neither leg is a no-op.
+ * That the CI workflow really runs both legs, passes the mode through and feeds
+ * the required status check is `scripts/check-ramp-matrix-workflow.sh` (part of
+ * `bun run lint`). Everything below runs in BOTH legs; the assertions branch on
+ * the mode rather than the suite being skipped, so neither leg is a no-op.
  */
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
 	RAMP_GATE_MATRIX_ENV,
@@ -34,49 +28,8 @@ import {
 	seeds,
 	standaloneInput,
 } from './gateFixtures';
-
 const MODE = rampGateMatrixMode();
 const EVALUATOR = matrixEvaluator(MODE);
-
-const WORKFLOW = readFileSync(
-	fileURLToPath(new URL('../../../../../../.github/workflows/test.yml', import.meta.url)),
-	'utf8'
-);
-
-describe('the CI matrix exists and runs both configurations', () => {
-	it('declares both legs', () => {
-		expect(WORKFLOW).toContain('ramp-gate-matrix');
-		expect(WORKFLOW).toContain('mode: [reference_arm, standalone]');
-	});
-
-	it('passes the mode through the environment variable this suite reads', () => {
-		expect(WORKFLOW).toContain(`${RAMP_GATE_MATRIX_ENV}: \${{ matrix.mode }}`);
-	});
-
-	it('sets the sentinel that makes a missing mode fatal, in that job only', () => {
-		// The sentinel is what distinguishes "the matrix lost its mode" from "some
-		// other job imported this file"; if only the mode survives a future edit,
-		// the missing-mode case degrades to a silent default again.
-		expect(WORKFLOW).toContain(`${RAMP_GATE_MATRIX_SENTINEL_ENV}: '1'`);
-		expect(WORKFLOW.match(new RegExp(`^\\s+${RAMP_GATE_MATRIX_SENTINEL_ENV}:`, 'gm'))).toHaveLength(
-			1
-		);
-	});
-
-	it('runs the signal registry in both legs, not just the ramp directory', () => {
-		// The registry declares WHICH measurements each arm evaluates (seams plan
-		// D9), so a leg that runs `convex/delivery/ramp` alone still folds the
-		// standalone evaluators but never checks that they are the ones registered
-		// for a deployment with no reference transport. Narrowing the glob back is
-		// a one-word edit, and this is what makes that edit fail on its own PR.
-		expect(WORKFLOW).toContain('bunx vitest run convex/delivery/ramp convex/delivery/signals');
-	});
-
-	it('is wired into the required status check, not left dangling', () => {
-		const summaryNeeds = WORKFLOW.slice(WORKFLOW.indexOf('test-summary:'));
-		expect(summaryNeeds).toContain('ramp-gate-matrix');
-	});
-});
 
 describe(`the ${MODE} leg`, () => {
 	it('selects the evaluator its name promises', () => {

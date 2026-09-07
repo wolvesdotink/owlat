@@ -30,12 +30,11 @@
  */
 
 import { convexTest } from 'convex-test';
-import { getFunctionName } from 'convex/server';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import type { ActionCtx } from '../../_generated/server';
 import { modules } from '../../__tests__/testModules';
+import { fnName, makeRecordingActionCtx, type RunMutationCall } from './recordingActionCtx';
 import {
 	MANDRILL_REJECT_CODE_PREFIX,
 	mapMandrillEvent,
@@ -44,35 +43,6 @@ import {
 import { dispatchInboundEvent } from '../dispatcher';
 
 const RECIPIENT = 'blocked@example.com';
-
-interface RunMutationCall {
-	readonly name: string;
-	readonly args: Record<string, unknown>;
-}
-
-/** The generated function reference, as its stable `module:function` name. */
-const fnName = (ref: unknown): string =>
-	getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-
-/**
- * A dispatcher context that records what it was asked to run.
- *
- * Calls are keyed by the REAL generated function name rather than through a
- * stringifying proxy mock of `_generated/api` (the older `sesDispatch.test.ts`
- * shape): this suite also drives the real backend below, and the two halves
- * cannot share a file if the generated api is mocked away.
- */
-function makeCtx(): { ctx: ActionCtx; calls: RunMutationCall[] } {
-	const calls: RunMutationCall[] = [];
-	const ctx = {
-		runMutation: vi.fn(async (ref: unknown, args: Record<string, unknown>) => {
-			calls.push({ name: fnName(ref), args });
-			return { ok: true };
-		}),
-		scheduler: { runAfter: vi.fn(async () => undefined) },
-	} as unknown as ActionCtx;
-	return { ctx, calls };
-}
 
 /** The event the real adapter produces for a reject with this reason. */
 function rejectEvent(rejectReason: string | undefined, email: string | null = RECIPIENT) {
@@ -102,7 +72,7 @@ async function dispatchReject(
 	rejectReason: string | undefined,
 	email: string | null = RECIPIENT
 ): Promise<RunMutationCall[]> {
-	const { ctx, calls } = makeCtx();
+	const { ctx, calls } = makeRecordingActionCtx();
 	await dispatchInboundEvent(ctx, rejectEvent(rejectReason, email));
 	return calls;
 }
@@ -191,7 +161,7 @@ describe('which reject reasons are recipient truths', () => {
 	// failure carrying a Mandrill-shaped code but no minted suppression, from any
 	// provider, suppresses nobody.
 	it('suppresses nobody on a lookalike error code no adapter minted a suppression for', async () => {
-		const { ctx, calls } = makeCtx();
+		const { ctx, calls } = makeRecordingActionCtx();
 		const { suppression: _minted, ...lookalike } = rejectEvent('hard-bounce');
 		await dispatchInboundEvent(ctx, { ...lookalike, providerType: 'ses' });
 		expect(suppressions(calls)).toHaveLength(0);

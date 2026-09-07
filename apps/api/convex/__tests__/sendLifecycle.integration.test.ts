@@ -7,6 +7,7 @@ import {
 	createTestContact,
 	createTestEmailSend,
 	createTestTransactionalEmail,
+	flushScheduled,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -46,7 +47,7 @@ async function readCampaignWithStats(ctx: MutationCtx, campaignId: Id<'campaigns
 // drain before the next test replaces convex-test's global state — otherwise
 // they leak "Write outside of transaction" unhandled rejections.
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 function createTestTransactionalSend(overrides: Record<string, unknown> = {}) {

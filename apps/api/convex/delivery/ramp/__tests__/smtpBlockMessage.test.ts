@@ -21,7 +21,7 @@
  * again, whether the wire is up or not. That the clause is REACHED from a real
  * deployment's rows is the other suite's job
  * (`delivery/__tests__/smtpBlockWiring.test.ts`), and that both readers supply
- * the field at all is `gateInputWiring.test.ts`'.
+ * the field at all is `scripts/check-gate-input-wiring.ts`'.
  *
  * THE FIXTURES ARE SHARED WITH THE CLASSIFIER (`SMTP_BLOCK_MESSAGE_SAMPLES` in
  * `@owlat/shared/smtpBlockCategories`). The MTA's own suite runs the same strings

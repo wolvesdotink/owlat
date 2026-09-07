@@ -97,7 +97,7 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  *
  *   * DECLARATIONS in `apps/api/convex` (`const X = 'ses'`) —
  *     `SURVIVING_KIND_LITERALS` in
- *     `lib/sendProviders/__tests__/kindLiteralCustody.test.ts`, each entry with
+ *     `scripts/check-kind-literal-custody.ts`, each entry with
  *     its family and its owner, asserted in both directions. This file is no
  *     longer in it: the `definitional` entry it used to hold went when the
  *     constant below became a re-export. `domains/providers/mta/index.ts`'s

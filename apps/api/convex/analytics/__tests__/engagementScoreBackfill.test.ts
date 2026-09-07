@@ -1,5 +1,5 @@
-import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
+import { newHarness } from '../../__tests__/testModules';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -33,22 +33,9 @@ import { engagementBand } from '../engagementScore';
 // glob base, so `'../../**'` from this `analytics/__tests__` file omits the
 // sibling `analytics/*` modules. Merge a second glob rooted at `analytics/` and
 // re-prefix its keys so convex-test resolves every entry.
-const rootGlob = import.meta.glob('../../**/*.*s');
-const analyticsGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../analytics/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...analyticsGlob };
-
 const DAY = 24 * 60 * 60 * 1000;
 
-function harness() {
-	return convexTest(schema, modules);
-}
-
-type Harness = ReturnType<typeof harness>;
+type Harness = ReturnType<typeof newHarness>;
 
 async function seedContacts(
 	t: Harness,
@@ -92,7 +79,7 @@ async function recomputeScore(t: Harness, contactId: Id<'contacts'>): Promise<nu
 
 describe('backfillEngagementScores — boundedness', () => {
 	it('scores at most `batchSize` contacts per invocation', async () => {
-		const t = harness();
+		const t = newHarness();
 		const ids = await seedContacts(t, 7);
 
 		const first = await t.mutation(
@@ -111,7 +98,7 @@ describe('backfillEngagementScores — boundedness', () => {
 	});
 
 	it('clamps an absurd caller-supplied batch size to the document budget', async () => {
-		const t = harness();
+		const t = newHarness();
 		// One more contact than the clamp allows, so an unclamped batchSize would
 		// visibly scan them all in a single transaction.
 		await seedContacts(t, BACKFILL_BATCH_SIZE + 1);
@@ -134,7 +121,7 @@ describe('backfillEngagementScores — boundedness', () => {
 	});
 
 	it('stays inside its read budget with a full batch of maximally heavy contacts', async () => {
-		const t = harness();
+		const t = newHarness();
 		const ids = await seedContacts(t, BACKFILL_BATCH_SIZE, 300);
 
 		// Every contact in the batch carries the most activities a recompute will
@@ -168,7 +155,7 @@ describe('backfillEngagementScores — boundedness', () => {
 
 describe('backfillEngagementScores — the self-chaining bound', () => {
 	it('clamps batchesRemaining to BACKFILL_MAX_BATCHES and terminates', async () => {
-		const t = harness();
+		const t = newHarness();
 		// More contacts than one batch, far fewer than the batch budget, so the
 		// chain must stop because the WORK ran out rather than because the budget
 		// did — and it must stop at all, which is the property under test.
@@ -210,7 +197,7 @@ describe('backfillEngagementScores — the self-chaining bound', () => {
 	});
 
 	it('stops chaining when the batch budget runs out, with work still queued', async () => {
-		const t = harness();
+		const t = newHarness();
 		const ids = await seedContacts(t, BACKFILL_BATCH_SIZE * 3);
 
 		// Two batches for three batches' worth of work: the chain must run exactly
@@ -239,7 +226,7 @@ describe('backfillEngagementScores — the self-chaining bound', () => {
 
 describe('backfillEngagementScores — resumption', () => {
 	it('resumes where the previous tick stopped and never re-scores the same row', async () => {
-		const t = harness();
+		const t = newHarness();
 		const ids = await seedContacts(t, 7);
 
 		const seen: Array<number | null> = [];
@@ -271,7 +258,7 @@ describe('backfillEngagementScores — resumption', () => {
 	});
 
 	it('sorts never-scored contacts ahead of merely-stale ones', async () => {
-		const t = harness();
+		const t = newHarness();
 		const [stale] = await seedContacts(t, 1);
 		if (!stale) throw new Error('seed failed');
 		await t.run(async (ctx) => {
@@ -296,7 +283,7 @@ describe('backfillEngagementScores — resumption', () => {
 
 describe('backfillEngagementScores — idempotence', () => {
 	it('does not rewrite an unchanged score', async () => {
-		const t = harness();
+		const t = newHarness();
 		// No activities and a long tenure → the score is a stable 0.
 		const [id] = await seedContacts(t, 1, 500);
 		if (!id) throw new Error('seed failed');
@@ -331,7 +318,7 @@ describe('backfillEngagementScores — idempotence', () => {
 	});
 
 	it('stamps soft-deleted contacts past without scoring them', async () => {
-		const t = harness();
+		const t = newHarness();
 		const [id] = await seedContacts(t, 1);
 		if (!id) throw new Error('seed failed');
 		await t.run(async (ctx) => ctx.db.patch(id, { deletedAt: Date.now() }));
@@ -350,7 +337,7 @@ describe('backfillEngagementScores — idempotence', () => {
 
 describe('the acceptance criteria, end to end', () => {
 	it('scores a contact with recent clicks in the HIGH band', async () => {
-		const t = harness();
+		const t = newHarness();
 		const [id] = await seedContacts(t, 1, 400);
 		if (!id) throw new Error('seed failed');
 
@@ -385,7 +372,7 @@ describe('the acceptance criteria, end to end', () => {
 	});
 
 	it('scores a 200-day-silent contact COLD', async () => {
-		const t = harness();
+		const t = newHarness();
 		const [id] = await seedContacts(t, 1, 400);
 		if (!id) throw new Error('seed failed');
 
@@ -404,7 +391,7 @@ describe('the acceptance criteria, end to end', () => {
 	});
 
 	it('marks a hard-bounced contact isSuppressed on the writer hot path', async () => {
-		const t = harness();
+		const t = newHarness();
 		const [id] = await seedContacts(t, 1, 200);
 		if (!id) throw new Error('seed failed');
 
@@ -428,7 +415,7 @@ describe('the acceptance criteria, end to end', () => {
 	});
 
 	it('preserves the shipped hasOpened/hasClicked denormalization', async () => {
-		const t = harness();
+		const t = newHarness();
 		const [id] = await seedContacts(t, 1);
 		if (!id) throw new Error('seed failed');
 
@@ -470,7 +457,7 @@ describe('the acceptance criteria, end to end', () => {
 			// A new mapping with no fixture here is a test failure, not a skip.
 			expect(metadata, `no metadata fixture for '${literal}'`).toBeDefined();
 
-			const t = harness();
+			const t = newHarness();
 			const [id] = await seedContacts(t, 1);
 			if (!id) throw new Error('seed failed');
 
@@ -489,7 +476,7 @@ describe('the acceptance criteria, end to end', () => {
 	});
 
 	it('leaves contacts untouched for activity types the score ignores', async () => {
-		const t = harness();
+		const t = newHarness();
 		const [id] = await seedContacts(t, 1);
 		if (!id) throw new Error('seed failed');
 
@@ -509,7 +496,7 @@ describe('the acceptance criteria, end to end', () => {
 
 describe('the incremental hot path — hostile inputs', () => {
 	it('clamps a far-future activity instead of folding it at full weight', async () => {
-		const t = harness();
+		const t = newHarness();
 		const [skewed] = await seedContacts(t, 1, 400);
 		const [sane] = await seedContacts(t, 1, 400);
 		if (!skewed || !sane) throw new Error('seed failed');
@@ -545,7 +532,7 @@ describe('the incremental hot path — hostile inputs', () => {
 	});
 
 	it('folds a redelivered webhook once', async () => {
-		const t = harness();
+		const t = newHarness();
 		const [dupe] = await seedContacts(t, 1, 400);
 		const [once] = await seedContacts(t, 1, 400);
 		if (!dupe || !once) throw new Error('seed failed');
@@ -579,7 +566,7 @@ describe('the incremental hot path — hostile inputs', () => {
 	});
 
 	it('still folds a genuinely distinct second open at the same instant-1ms', async () => {
-		const t = harness();
+		const t = newHarness();
 		const [id] = await seedContacts(t, 1, 400);
 		if (!id) throw new Error('seed failed');
 

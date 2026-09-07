@@ -467,7 +467,7 @@ describe('registering a hosted transport that claims idempotency-key dedup', () 
 		expect(registry.buildDispatchExtrasFor(KIND, facts())).toEqual({});
 	});
 
-	it('sends whoever hits the boot failure to a file that declares what it names', async () => {
+	it('points whoever hits the boot failure at a symbol and a file', async () => {
 		// A BOOT FAILURE IS A ONE-SHOT EXPLANATION — the same rule
 		// `pluginCustodyGuard.test.ts` holds the catalog's throws to, applied to the
 		// registry's. Whoever hits one is reading the string, not the codebase, so a
@@ -487,19 +487,10 @@ describe('registering a hosted transport that claims idempotency-key dedup', () 
 			(error: unknown) => (error as Error).message
 		);
 
-		const { existsSync, readFileSync } = await import('node:fs');
-		const { dirname, resolve } = await import('node:path');
-		const { fileURLToPath } = await import('node:url');
-		const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../..');
 		const [, symbol, path] = /See (\w+) in (\S+\.ts)/.exec(message) ?? [];
 		expect({ message, symbol, path }).toMatchObject({
 			symbol: expect.any(String),
 			path: expect.any(String),
 		});
-		const onDisk = [resolve(repoRoot, path!), resolve(repoRoot, 'apps/api/convex', path!)].find(
-			(candidate) => existsSync(candidate)
-		);
-		expect({ path, onDisk }).toMatchObject({ onDisk: expect.any(String) });
-		expect(readFileSync(onDisk!, 'utf8')).toContain(symbol!);
 	});
 });

@@ -276,8 +276,7 @@ describe('runProviderCheck', () => {
 // ─── The DNS instructions ──────────────────────────────────────────────────
 
 describe('the published records', () => {
-	it('are a pure function of the domain name', () => {
-		expect(buildMandrillDnsRecords(DOMAIN)).toEqual(buildMandrillDnsRecords(DOMAIN));
+	it('publish the DKIM selector under mandrill._domainkey', () => {
 		expect(buildMandrillDnsRecords(DOMAIN).dkim?.[0]?.host).toBe('mandrill._domainkey');
 	});
 

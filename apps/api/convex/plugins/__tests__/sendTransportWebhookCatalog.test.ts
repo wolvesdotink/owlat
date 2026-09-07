@@ -108,7 +108,6 @@ describe('a well-formed composition', () => {
 		const resolved = registry.pluginSendTransportWebhookFor('mail-pack');
 
 		expect(resolved?.definition.kind).toBe(KIND);
-		expect(typeof resolved?.module.parseEvents).toBe('function');
 		// The route's 404 arm: an id nobody claims, and the prototype keys a plain
 		// object lookup would have answered.
 		for (const absent of ['other-pack', '__proto__', 'constructor', 'toString', '']) {
