@@ -13,6 +13,9 @@ import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
+import type { ActionCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
+import { captureAttachments } from '../mail/deliveryPipeline/ingest';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -49,7 +52,9 @@ async function seedInbox(t: ReturnType<typeof convexTest>): Promise<void> {
 /** A multipart message with a plain body + one .txt attachment + one inline image. */
 function buildRawEml(): string {
 	const boundary = 'b0undary';
-	const attachmentB64 = Buffer.from('hello from the attachment, a real document').toString('base64');
+	const attachmentB64 = Buffer.from('hello from the attachment, a real document').toString(
+		'base64'
+	);
 	const imageB64 = Buffer.from('\x89PNG fake').toString('base64');
 	return [
 		'From: Bob <bob@example.com>',
@@ -99,9 +104,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 			subject: 'with attachment',
 			textBody: 'See the attached notes.',
 			messageId: '<cap-1@example.com>',
-			attachments: [
-				{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' },
-			],
+			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
 		});
 		expect('messageId' in result).toBe(true);
 
@@ -156,24 +159,12 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 		expect(files).toHaveLength(0);
 	});
 
-	// SKIPPED under convex-test 0.0.54: this exercises capturing >1 attachment,
-	// which makes the ingest action call `ctx.storage.store` more than once. convex-test
-	// mis-tracks transaction state across an action's sub-operations, so the 2nd
-	// `storage.store` in a single action throws "Write outside of transaction" — a
-	// harness false-positive (real Convex actions are not transactional; this pattern
-	// is valid and works in production). Not fixable in product code (verified: a
-	// batch store-then-ingest rewrite still trips it). The sibling tests above cover
-	// the single-attachment capture path. Un-skip once convex-test fixes the action
-	// transaction-state tracking (present in 0.0.51–0.0.54).
-	// TODO(convex-test): re-enable when the upstream storage/transaction bug is fixed.
-	it.skip('caps captured attachments per message to bound LLM cost amplification', async () => {
-		const t = convexTest(schema, modules);
-		await seedInbox(t);
-
-		// Craft a message carrying far more real attachment leaves than the cap.
-		// The inbound webhook is attacker-reachable and each captured file
-		// schedules summarization/embedding/knowledge LLM calls, so the count of
-		// ingested files must be bounded regardless of how many leaves arrive.
+	// convex-test mis-tracks transaction state across an action's sub-operations,
+	// so a second `ctx.storage.store` inside one action throws "Write outside of
+	// transaction" (still the case in 0.0.55). The cap lives in captureAttachments,
+	// which takes its ctx as a parameter, so the many-leaf message is driven
+	// through it with a counting ctx rather than through the action.
+	it('caps captured attachments per message to bound LLM cost amplification', async () => {
 		const boundary = 'manyb0undary';
 		const leafCount = ATTACHMENT_COMPOSE_LIMITS.maxCount + 5;
 		const parts: string[] = [
@@ -198,36 +189,41 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 				'Content-Transfer-Encoding: base64',
 				'',
 				b64,
-				'',
+				''
 			);
 		}
 		parts.push(`--${boundary}--`, '');
 		const raw = parts.join('\r\n');
 
-		await t.action(internal.mail.delivery.ingestFromWebhook, {
-			deliveryId: 'd3',
-			rawBytesBase64: Buffer.from(raw, 'latin1').toString('base64'),
-			recipientAddress: 'alice@example.com',
-			from: 'Bob <bob@example.com>',
-			to: ['alice@example.com'],
-			cc: [],
-			bcc: [],
-			subject: 'many attachments',
-			textBody: 'See the attached notes.',
-			messageId: '<many-1@example.com>',
-			attachments: [],
-		});
+		const stored: string[] = [];
+		const ingested: unknown[] = [];
+		await captureAttachments(
+			{
+				storage: {
+					store: async () => {
+						const id = `storage-${stored.length}` as Id<'_storage'>;
+						stored.push(id);
+						return id;
+					},
+				},
+				runQuery: (async () => null) as unknown as ActionCtx['runQuery'],
+				runMutation: (async (_ref: unknown, args: unknown) => {
+					ingested.push(args);
+					return null;
+				}) as unknown as ActionCtx['runMutation'],
+			},
+			Buffer.from(raw, 'latin1'),
+			'<many-1@example.com>',
+			'Bob <bob@example.com>'
+		);
 
-		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
-		expect(files).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+		expect(stored).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+		expect(ingested).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
 	});
 });
 
 /** Seed a live email-channel contact so the sender resolves find-only. */
-async function seedContact(
-	t: ReturnType<typeof convexTest>,
-	email: string,
-): Promise<string> {
+async function seedContact(t: ReturnType<typeof convexTest>, email: string): Promise<string> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
 		return await ctx.db.insert('contacts', {
@@ -259,9 +255,7 @@ describe('mail.delivery.ingestFromWebhook — sender contact linking', () => {
 			subject: 'with attachment',
 			textBody: 'See the attached notes.',
 			messageId: '<cap-link-1@example.com>',
-			attachments: [
-				{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' },
-			],
+			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
 		});
 		expect('messageId' in result).toBe(true);
 
@@ -276,7 +270,7 @@ describe('mail.delivery.ingestFromWebhook — sender contact linking', () => {
 			ctx.db
 				.query('semanticFileContacts')
 				.withIndex('by_file', (q) => q.eq('fileId', file._id))
-				.collect(),
+				.collect()
 		);
 		expect(junction.map((r) => r.contactId)).toEqual([contactId]);
 	});
@@ -299,9 +293,7 @@ describe('mail.delivery.ingestFromWebhook — sender contact linking', () => {
 			subject: 'with attachment',
 			textBody: 'See the attached notes.',
 			messageId: '<cap-link-2@example.com>',
-			attachments: [
-				{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' },
-			],
+			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
 		});
 
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
@@ -313,7 +305,7 @@ describe('mail.delivery.ingestFromWebhook — sender contact linking', () => {
 			ctx.db
 				.query('semanticFileContacts')
 				.withIndex('by_file', (q) => q.eq('fileId', file._id))
-				.collect(),
+				.collect()
 		);
 		expect(junction).toHaveLength(0);
 	});
