@@ -71,8 +71,8 @@ const isRemoving = ref(false);
 
 // Transfer ownership modal state (owner-only). Promotes the chosen member to
 // owner and demotes the current owner to admin — the only succession path.
+// The modal arms its confirm only once TRANSFER has been typed.
 const memberToPromote = ref<OrganizationMember | null>(null);
-const transferConfirmText = ref('');
 const isTransferring = ref(false);
 
 // Cancel invite modal state
@@ -96,7 +96,6 @@ const showConnectedApps = computed(
 );
 const { signOut } = useAuth();
 const showDeleteOrgModal = ref(false);
-const deleteOrgConfirmText = ref('');
 const isDeletingOrg = ref(false);
 const { run: removeOrganization } = useBackendOperation(api.workspaces.settings.remove, {
 	label: () => t('dashboard.admin.team.operations.deleteWorkspace'),
@@ -255,10 +254,9 @@ const openRemoveMemberModal = (member: OrganizationMember) => {
 };
 
 // Handle transfer ownership — promotes the member to owner and demotes the
-// current owner to admin. Requires typing TRANSFER to confirm.
+// current owner to admin. The modal only confirms once TRANSFER was typed.
 const handleTransferOwnership = async () => {
 	if (!memberToPromote.value) return;
-	if (transferConfirmText.value !== 'TRANSFER') return;
 
 	isTransferring.value = true;
 
@@ -267,7 +265,6 @@ const handleTransferOwnership = async () => {
 
 		showToast(t('dashboard.admin.team.toasts.ownershipTransferred'));
 		memberToPromote.value = null;
-		transferConfirmText.value = '';
 	} catch (error) {
 		const errorMessage =
 			error instanceof Error
@@ -280,10 +277,9 @@ const handleTransferOwnership = async () => {
 };
 
 // Handle delete organization — schedules the backend deletion walker,
-// then signs the owner out (the whole tenant is being wiped).
+// then signs the owner out (the whole tenant is being wiped). The modal only
+// confirms once DELETE was typed.
 const handleDeleteOrganization = async () => {
-	if (deleteOrgConfirmText.value !== 'DELETE') return;
-
 	isDeletingOrg.value = true;
 
 	const result = await removeOrganization({});
@@ -294,7 +290,6 @@ const handleDeleteOrganization = async () => {
 
 	showToast(t('dashboard.admin.team.toasts.workspaceDeletionStarted'));
 	showDeleteOrgModal.value = false;
-	deleteOrgConfirmText.value = '';
 
 	try {
 		await signOut();
@@ -852,260 +847,33 @@ const formatExpiryTime = (expiresAt: Date) => {
 		<!-- Invite Member Modal (self-contained; opened via ref from the gated buttons) -->
 		<SettingsTeamInviteModal ref="inviteModal" />
 
-		<!-- Remove Member Confirmation Modal -->
-		<UiModal
-			:open="!!memberToRemove"
-			:title="t('dashboard.admin.team.removeModal.title')"
-			@update:open="(v: boolean) => !v && (memberToRemove = null)"
-		>
-			<I18nT
-				keypath="dashboard.admin.team.removeModal.body"
-				tag="p"
-				class="text-text-secondary"
-				scope="global"
-			>
-				<template #member>
-					<span v-if="memberToRemove" class="font-medium text-text-primary">
-						{{ memberToRemove.user.name || memberToRemove.user.email }}
-					</span>
-				</template>
-			</I18nT>
+		<SettingsTeamRemoveMemberModal
+			:member="memberToRemove"
+			:busy="isRemoving"
+			@close="memberToRemove = null"
+			@confirm="handleRemoveMember"
+		/>
 
-			<template #footer>
-				<UiButton variant="secondary" :disabled="isRemoving" @click="memberToRemove = null">
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton variant="danger" :loading="isRemoving" @click="handleRemoveMember">
-					<template #iconLeft>
-						<Icon v-if="!isRemoving" name="lucide:trash-2" class="w-4 h-4" />
-					</template>
-					{{
-						isRemoving
-							? t('dashboard.admin.team.removeModal.removing')
-							: t('dashboard.admin.team.removeModal.confirm')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
+		<SettingsTeamTransferOwnershipModal
+			:member="memberToPromote"
+			:busy="isTransferring"
+			@close="memberToPromote = null"
+			@confirm="handleTransferOwnership"
+		/>
 
-		<!-- Transfer Ownership Confirmation Modal (owner only) -->
-		<UiModal
-			:open="!!memberToPromote"
-			size="lg"
-			:closable="!isTransferring"
-			:persistent="isTransferring"
-			@update:open="
-				(v: boolean) => {
-					if (!v) {
-						memberToPromote = null;
-						transferConfirmText = '';
-					}
-				}
-			"
-		>
-			<div class="flex items-center gap-3 mb-6">
-				<UiIconBox icon="lucide:crown" size="sm" variant="brand" rounded="lg" />
-				<div>
-					<h2 class="text-lg font-semibold text-text-primary">
-						{{ t('dashboard.admin.team.transferModal.title') }}
-					</h2>
-					<p class="text-sm text-text-secondary">
-						{{ t('dashboard.admin.team.transferModal.subtitle') }}
-					</p>
-				</div>
-			</div>
+		<SettingsTeamCancelInviteModal
+			:invitation="inviteToCancel"
+			:busy="isCancelling"
+			@close="inviteToCancel = null"
+			@confirm="handleCancelInvite"
+		/>
 
-			<div class="p-4 rounded-xl bg-bg-surface border border-border-subtle mb-6">
-				<I18nT
-					keypath="dashboard.admin.team.transferModal.body"
-					tag="p"
-					class="text-sm text-text-secondary"
-					scope="global"
-				>
-					<template #member>
-						<span v-if="memberToPromote" class="font-medium text-text-primary">{{
-							memberToPromote.user.name || memberToPromote.user.email
-						}}</span>
-					</template>
-					<template #ownerRole>
-						<strong class="text-text-primary">{{
-							t('dashboard.admin.team.transferModal.ownerRole')
-						}}</strong>
-					</template>
-					<template #adminRole>
-						<strong>{{ t('dashboard.admin.team.transferModal.adminRole') }}</strong>
-					</template>
-				</I18nT>
-			</div>
-
-			<div>
-				<label class="label" for="confirm-transfer-ownership">
-					<I18nT keypath="dashboard.admin.team.transferModal.typeToConfirm" scope="global">
-						<template #phrase><strong class="text-text-primary">TRANSFER</strong></template>
-					</I18nT>
-				</label>
-				<input
-					id="confirm-transfer-ownership"
-					v-model="transferConfirmText"
-					type="text"
-					class="input"
-					placeholder="TRANSFER"
-					autocomplete="off"
-					:disabled="isTransferring"
-				/>
-			</div>
-
-			<template #footer>
-				<UiButton
-					variant="secondary"
-					:disabled="isTransferring"
-					@click="
-						memberToPromote = null;
-						transferConfirmText = '';
-					"
-				>
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton
-					:loading="isTransferring"
-					:disabled="transferConfirmText !== 'TRANSFER'"
-					@click="handleTransferOwnership"
-				>
-					<template #iconLeft>
-						<Icon v-if="!isTransferring" name="lucide:crown" class="w-4 h-4" />
-					</template>
-					{{
-						isTransferring
-							? t('dashboard.admin.team.transferModal.transferring')
-							: t('dashboard.admin.team.transferModal.confirm')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
-
-		<!-- Cancel Invite Confirmation Modal -->
-		<UiModal
-			:open="!!inviteToCancel"
-			:title="t('dashboard.admin.team.cancelInviteModal.title')"
-			@update:open="(v: boolean) => !v && (inviteToCancel = null)"
-		>
-			<I18nT
-				keypath="dashboard.admin.team.cancelInviteModal.body"
-				tag="p"
-				class="text-text-secondary"
-				scope="global"
-			>
-				<template #email>
-					<span v-if="inviteToCancel" class="font-medium text-text-primary">{{
-						inviteToCancel.email
-					}}</span>
-				</template>
-			</I18nT>
-
-			<template #footer>
-				<UiButton variant="secondary" :disabled="isCancelling" @click="inviteToCancel = null">
-					{{ t('dashboard.admin.team.cancelInviteModal.keep') }}
-				</UiButton>
-				<UiButton variant="danger" :loading="isCancelling" @click="handleCancelInvite">
-					<template #iconLeft>
-						<Icon v-if="!isCancelling" name="lucide:x" class="w-4 h-4" />
-					</template>
-					{{
-						isCancelling
-							? t('dashboard.admin.team.cancelInviteModal.cancelling')
-							: t('dashboard.admin.team.cancelInviteModal.confirm')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
-
-		<!-- Delete Organization Confirmation Modal (owner only) -->
-		<UiModal
+		<SettingsTeamDeleteWorkspaceModal
 			:open="showDeleteOrgModal"
-			size="lg"
-			:closable="!isDeletingOrg"
-			:persistent="isDeletingOrg"
-			@update:open="
-				(v: boolean) => {
-					if (!v) {
-						showDeleteOrgModal = false;
-						deleteOrgConfirmText = '';
-					}
-				}
-			"
-		>
-			<div class="flex items-center gap-3 mb-6">
-				<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" rounded="lg" />
-				<div>
-					<h2 class="text-lg font-semibold text-text-primary">
-						{{ t('dashboard.admin.team.deleteModal.title') }}
-					</h2>
-					<p class="text-sm text-text-secondary">
-						{{ t('dashboard.admin.team.deleteModal.subtitle') }}
-					</p>
-				</div>
-			</div>
-
-			<div class="p-4 rounded-xl bg-error/5 border border-error/20 mb-6">
-				<I18nT
-					keypath="dashboard.admin.team.deleteModal.warning"
-					tag="p"
-					class="text-sm text-error"
-					scope="global"
-				>
-					<template #label>
-						<strong>{{ t('dashboard.admin.team.deleteModal.warningLabel') }}</strong>
-					</template>
-					<template #workspace>
-						<span v-if="organization" class="font-medium">{{ organization.name }}</span>
-					</template>
-				</I18nT>
-			</div>
-
-			<div>
-				<label class="label" for="confirm-delete-org">
-					<I18nT keypath="dashboard.admin.team.deleteModal.typeToConfirm" scope="global">
-						<template #phrase><strong class="text-error">DELETE</strong></template>
-					</I18nT>
-				</label>
-				<input
-					id="confirm-delete-org"
-					v-model="deleteOrgConfirmText"
-					type="text"
-					class="input"
-					placeholder="DELETE"
-					autocomplete="off"
-					:disabled="isDeletingOrg"
-				/>
-			</div>
-
-			<template #footer>
-				<UiButton
-					variant="secondary"
-					:disabled="isDeletingOrg"
-					@click="
-						showDeleteOrgModal = false;
-						deleteOrgConfirmText = '';
-					"
-				>
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton
-					variant="danger"
-					:loading="isDeletingOrg"
-					:disabled="deleteOrgConfirmText !== 'DELETE'"
-					@click="handleDeleteOrganization"
-				>
-					<template #iconLeft>
-						<Icon v-if="!isDeletingOrg" name="lucide:trash-2" class="w-4 h-4" />
-					</template>
-					{{
-						isDeletingOrg
-							? t('dashboard.admin.team.deleteModal.deleting')
-							: t('dashboard.admin.team.deleteModal.confirm')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
+			:workspace-name="organization?.name"
+			:busy="isDeletingOrg"
+			@close="showDeleteOrgModal = false"
+			@confirm="handleDeleteOrganization"
+		/>
 	</div>
 </template>
