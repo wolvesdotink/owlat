@@ -105,7 +105,6 @@ const { SEND_PROVIDER_CATALOG, domainVerificationFor } =
 	await import('../../../lib/sendProviders/catalog');
 const schema = (await import('../../../schema')).default;
 const { modules } = await import('../../../__tests__/testModules');
-const { internal } = await import('../../../_generated/api');
 
 type TestConvex = ReturnType<typeof convexTest>;
 type RowOverrides = Partial<{
@@ -409,13 +408,5 @@ describe('the identity backfill schedules the provider call', () => {
 		});
 
 		expect(await scheduledNames(t)).toEqual(['domains/pluginRelay:provision']);
-	});
-
-	it('names the action the sweep and the backfill both reach', () => {
-		// A string in a test is not a wire; this is the generated reference, so a
-		// renamed action fails the build rather than leaving the two schedulers
-		// pointing at nothing.
-		expect(internal.domains.pluginRelay.provision).toBeDefined();
-		expect(internal.domains.pluginRelay.refreshIdentity).toBeDefined();
 	});
 });

@@ -14,4 +14,26 @@
  * reason, and this map is not a property of any one domain.
  */
 
+import { convexTest, type TestConvex } from 'convex-test';
+import schema from '../schema';
+import betterAuthSchema from '../betterAuth/schema';
+
 export const modules = import.meta.glob('../**/*.*s');
+export const betterAuthModules = import.meta.glob('../betterAuth/**/*.*s');
+
+/** A convex-test harness over the whole backend. */
+export function newHarness(): TestConvex<typeof schema> {
+	return convexTest(schema, modules);
+}
+
+/**
+ * The same harness with the BetterAuth component registered, for suites that
+ * drive the adapter (organizations, members, sessions). A suite that has to
+ * trim the module map (the AI modules pull in providers vitest cannot load)
+ * passes its own.
+ */
+export function newBetterAuthHarness(moduleMap = modules): TestConvex<typeof schema> {
+	const t = convexTest(schema, moduleMap);
+	t.registerComponent('betterAuth', betterAuthSchema, betterAuthModules);
+	return t;
+}

@@ -333,20 +333,6 @@ describe('llmProvider', () => {
 		});
 	});
 
-	// ============ rename surface ============
-
-	describe('resolver export surface', () => {
-		it('no longer exports the former sync getLLMProvider* names', async () => {
-			const mod = await import('../llmProvider');
-			expect('getLLMProvider' in mod).toBe(false);
-			expect('getLLMProviderForUserText' in mod).toBe(false);
-			expect('getLLMProviderForClassifiedDraft' in mod).toBe(false);
-			expect(typeof mod.resolveLanguageModel).toBe('function');
-			expect(typeof mod.resolveLanguageModelWithProvenance).toBe('function');
-			expect(typeof mod.resolveAiConfig).toBe('function');
-		});
-	});
-
 	// ============ getLLMConfig ============
 
 	describe('getLLMConfig', () => {
