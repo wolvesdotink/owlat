@@ -21,7 +21,7 @@ test.describe('Settings — Team Members', () => {
 		await expect(page.getByText(testUser().name)).toBeVisible({ timeout: 10_000 });
 	});
 
-	test('invite modal shows validation for empty email', async ({ page }) => {
+	test('invite modal shows validation for empty email', async () => {
 		await teamPage.inviteButton.click();
 		await teamPage.waitForModal();
 
@@ -34,7 +34,7 @@ test.describe('Settings — Team Members', () => {
 		});
 	});
 
-	test('invite modal shows validation for invalid email', async ({ page }) => {
+	test('invite modal shows validation for invalid email', async () => {
 		await teamPage.inviteButton.click();
 		await teamPage.waitForModal();
 
