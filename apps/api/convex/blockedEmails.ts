@@ -10,6 +10,7 @@ import { scheduleSuppressionMirror } from './delivery/suppressionMirrorScheduler
 import { recordAuditLog } from './lib/auditLog';
 import { restoreSunsetSuppression } from './contacts/sunsetRestore';
 import { bounceTypeValidator } from './lib/convexValidators';
+import { blockReasonValidator } from './lib/literalValidators';
 
 // Look up a blocklist row by email. Normalizes (lowercase + trim) so every
 // caller hits the `by_email` index with the same key, then returns the first
@@ -152,7 +153,7 @@ export const getByEmail = authedQuery({
 export const add = authedMutation({
 	args: {
 		email: v.string(),
-		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
+		reason: blockReasonValidator,
 		notes: v.optional(v.string()),
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
@@ -278,7 +279,7 @@ export const bulkAdd = authedMutation({
 		emails: v.array(
 			v.object({
 				email: v.string(),
-				reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
+				reason: blockReasonValidator,
 				notes: v.optional(v.string()),
 			})
 		),
@@ -426,7 +427,7 @@ export const isBlockedInternal = internalQuery({
 export const addFromEvent = internalMutation({
 	args: {
 		email: v.string(),
-		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
+		reason: blockReasonValidator,
 		bounceType: v.optional(bounceTypeValidator),
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),

@@ -37,6 +37,7 @@ import {
 	INJECTION_CONFIDENCE_THRESHOLD,
 } from '../../agent/steps/security_scan/patterns';
 import { SYSTEM_GUARD } from './promptGuards';
+import { draftSurfaceValidator } from '../../lib/literalValidators';
 
 /** Bound each untrusted-ish / trusted input that reaches the model. */
 const REVISE_MAX_INSTRUCTION_CHARS = 2000;
@@ -95,7 +96,7 @@ export const reviseDraft = authedAction({
 		currentDraft: v.string(),
 		threadContext: v.optional(v.string()),
 		mailboxId: v.optional(v.id('mailboxes')),
-		surface: v.optional(v.union(v.literal('compose'), v.literal('review'))),
+		surface: v.optional(draftSurfaceValidator),
 	},
 	handler: async (
 		ctx,

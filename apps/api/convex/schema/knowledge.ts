@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { semanticFileSourceTypeValidator } from '../lib/literalValidators';
 
 /**
  * The knowledge entry types, as a literal tuple. Single source of truth for both
@@ -281,11 +282,7 @@ export const knowledgeTables = {
 		tags: v.optional(v.array(v.string())),
 		autoTags: v.optional(v.array(v.string())),
 		// Provenance
-		sourceType: v.union(
-			v.literal('upload'),
-			v.literal('email_attachment'),
-			v.literal('agent_generated')
-		),
+		sourceType: semanticFileSourceTypeValidator,
 		sourceMessageId: v.optional(v.string()),
 		uploadedBy: v.optional(v.string()),
 		// Provenance: why/where this version was shared. JSON-stringified

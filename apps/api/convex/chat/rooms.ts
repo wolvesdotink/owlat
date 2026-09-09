@@ -22,6 +22,7 @@ import {
 	normalizeChannelName,
 	requireChannelName,
 } from './_helpers';
+import { chatRoomVisibilityValidator } from '../lib/literalValidators';
 
 /**
  * Create a channel. Public channels are visible to all org members; private
@@ -31,7 +32,7 @@ export const createChannel = chatMutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
-		visibility: v.union(v.literal('public'), v.literal('private')),
+		visibility: chatRoomVisibilityValidator,
 		initialMemberIds: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
@@ -48,7 +49,7 @@ export const createChannel = chatMutation({
 		const existing = await ctx.db
 			.query('chatRooms')
 			.withIndex('by_kind_and_normalized_name', (q) =>
-				q.eq('kind', 'channel').eq('normalizedName', normalizedName),
+				q.eq('kind', 'channel').eq('normalizedName', normalizedName)
 			)
 			.first();
 		if (existing) {
@@ -106,7 +107,7 @@ export const updateChannel = chatMutation({
 		roomId: v.id('chatRooms'),
 		name: v.optional(v.string()),
 		description: v.optional(v.string()),
-		visibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
+		visibility: v.optional(chatRoomVisibilityValidator),
 	},
 	handler: async (ctx, args) => {
 		const { userId, role } = await getMutationContext(ctx);
@@ -131,7 +132,7 @@ export const updateChannel = chatMutation({
 				const existing = await ctx.db
 					.query('chatRooms')
 					.withIndex('by_kind_and_normalized_name', (q) =>
-						q.eq('kind', 'channel').eq('normalizedName', normalizedName),
+						q.eq('kind', 'channel').eq('normalizedName', normalizedName)
 					)
 					.first();
 				if (existing && existing._id !== room._id) {
@@ -276,9 +277,7 @@ export const getRoom = chatQuery({
 
 		const membership = await ctx.db
 			.query('chatRoomMembers')
-			.withIndex('by_room_and_member', (q) =>
-				q.eq('roomId', room._id).eq('memberId', userId),
-			)
+			.withIndex('by_room_and_member', (q) => q.eq('roomId', room._id).eq('memberId', userId))
 			.first();
 
 		// Private rooms: hide entirely if non-member.

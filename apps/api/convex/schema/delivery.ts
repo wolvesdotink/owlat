@@ -15,6 +15,7 @@ import {
 	deliverabilityAlertRecipientUnavailableReasonValidator,
 	deliverabilityCheckIdSchemaValidator,
 } from './deliveryChecklistValidators';
+import { healthStatusValidator } from '../lib/literalValidators';
 
 /**
  * Delivery + sending-infrastructure tables — blocklist, reputation tracking, content scanning,
@@ -242,7 +243,7 @@ export const deliveryTables = {
 		// A `SendTransportKind` (`@owlat/shared`), stored open per ADR-0055 (D10)
 		// — see `providerRoutes.providers[].providerType` above.
 		providerType: v.string(),
-		status: v.union(v.literal('healthy'), v.literal('degraded'), v.literal('down')),
+		status: healthStatusValidator,
 		// Rolling metrics
 		recentSuccesses: v.number(),
 		recentFailures: v.number(),

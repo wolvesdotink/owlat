@@ -24,6 +24,7 @@ import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { authedMutation, authedQuery } from './lib/authedFunctions';
 import { requirePlatformAdmin } from './platformAdmin/platformAdmin';
+import { successOrFailedValidator } from './lib/literalValidators';
 
 /**
  * Read the singleton backupState row, if the operator has recorded one.
@@ -111,7 +112,7 @@ export const setScheduleEnabled = authedMutation({
  * surfaces the command to run on the host. Platform-admin only.
  */
 export const logManualRun = authedMutation({
-	args: { status: v.union(v.literal('success'), v.literal('failed')) },
+	args: { status: successOrFailedValidator },
 	handler: async (ctx, { status }) => {
 		const admin = await requirePlatformAdmin(ctx);
 

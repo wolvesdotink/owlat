@@ -12,16 +12,12 @@
 
 import { v, type Infer } from 'convex/values';
 import type { MandrillIdentity } from '../types';
+import { relayIdentityStatusValidator } from '../../../lib/literalValidators';
 
 export const mandrillIdentityValidator = v.object({
 	kind: v.literal('mandrill'),
 	dkimSelector: v.string(),
-	status: v.union(
-		v.literal('unverified'),
-		v.literal('pending_dns'),
-		v.literal('verified'),
-		v.literal('failed')
-	),
+	status: relayIdentityStatusValidator,
 	spf: v.object({ isValid: v.boolean(), error: v.optional(v.string()) }),
 	dkim: v.object({ isValid: v.boolean(), error: v.optional(v.string()) }),
 	isValidSigning: v.boolean(),

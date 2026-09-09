@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireContactsManage } from './guards';
 import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
+import { fieldTypeValidator } from '../lib/literalValidators';
 
 // Query to list all contact properties
 export const listByOrganization = authedQuery({
@@ -16,12 +17,7 @@ export const create = authedMutation({
 	args: {
 		key: v.string(),
 		label: v.string(),
-		type: v.union(
-			v.literal('string'),
-			v.literal('number'),
-			v.literal('boolean'),
-			v.literal('date')
-		),
+		type: fieldTypeValidator,
 	},
 	handler: async (ctx, args) => {
 		await requireContactsManage(ctx);

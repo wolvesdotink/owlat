@@ -24,6 +24,7 @@ import {
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import type { Id, Doc } from './_generated/dataModel';
+import { semanticFileSourceTypeValidator } from './lib/literalValidators';
 
 // ============================================================
 // Queries
@@ -169,12 +170,6 @@ export const getProcessingContext = internalQuery({
 	},
 });
 
-const sourceTypeValidator = v.union(
-	v.literal('upload'),
-	v.literal('email_attachment'),
-	v.literal('agent_generated')
-);
-
 /**
  * Apply the `sourceType` provenance filter to a page of files and resolve a
  * storage URL for each survivor. The filter runs after pagination (mirroring
@@ -199,7 +194,7 @@ async function applySourceFilter(
 export const list = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
-		sourceType: v.optional(sourceTypeValidator),
+		sourceType: v.optional(semanticFileSourceTypeValidator),
 	},
 	handler: async (ctx, args) => {
 		const results = await ctx.db
@@ -219,7 +214,7 @@ export const search = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
 		query: v.string(),
-		sourceType: v.optional(sourceTypeValidator),
+		sourceType: v.optional(semanticFileSourceTypeValidator),
 	},
 	handler: async (ctx, args) => {
 		const results = await ctx.db
@@ -305,11 +300,7 @@ export const create = authedMutation({
 		fileSize: v.number(),
 		title: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
-		sourceType: v.union(
-			v.literal('upload'),
-			v.literal('email_attachment'),
-			v.literal('agent_generated')
-		),
+		sourceType: semanticFileSourceTypeValidator,
 		sourceMessageId: v.optional(v.string()),
 		uploadContext: v.optional(v.string()),
 		contactIds: v.optional(v.array(v.id('contacts'))),

@@ -21,6 +21,7 @@ import {
 import { pendingClarificationValidator } from '../clarificationValidators';
 import { MAX_RETRY_ATTEMPTS } from '../../lib/constants';
 import { agentStepKindValidator, type AgentStepKind } from '../../agent/steps/catalog';
+import { contextTierValidator } from '../../lib/literalValidators';
 
 // ─── Status / action literals ────────────────────────────────────────────────
 
@@ -205,9 +206,7 @@ export const transitionInputValidator = v.union(
 		completedActionId: v.optional(v.id('agentActions')),
 		output: v.optional(v.string()),
 		securityFlags: v.optional(securityFlagsValidator),
-		contextTier: v.optional(
-			v.union(v.literal('normal'), v.literal('compacted'), v.literal('emergency'))
-		),
+		contextTier: v.optional(contextTierValidator),
 		durationMs: v.optional(v.number()),
 		modelUsed: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),

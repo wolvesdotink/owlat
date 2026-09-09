@@ -42,6 +42,14 @@ import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
 import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
 import { senderHeuristicsValidator } from '../lib/senderHeuristicsValidator';
 import { editAdjustmentValidator } from '../mail/ai/editLearningValidators';
+import {
+	archiveFormatValidator,
+	mailCategoryLabelValidator,
+	mailCategorySourceValidator,
+	mailJobStatusValidator,
+	virusVerdictValidator,
+} from '../lib/literalValidators';
+import { folderRoleValidator } from '../mail/mailbox/shared';
 
 /**
  * Personal Mail (Postbox) tables — Gmail-equivalent backend.
@@ -422,7 +430,7 @@ export const mailTables = {
 		// What the user picked it from, for the wizard's copy only.
 		filename: v.string(),
 		// `mbox` splits on `From_` separators; `eml` is one message, whole file.
-		format: v.union(v.literal('mbox'), v.literal('eml')),
+		format: archiveFormatValidator,
 		totalBytes: v.number(),
 		// Resume point: bytes fully committed. Never moves backwards.
 		cursorBytes: v.number(),
@@ -497,16 +505,7 @@ export const mailTables = {
 	mailFolders: defineTable({
 		mailboxId: v.id('mailboxes'),
 		name: v.string(),
-		role: v.optional(
-			v.union(
-				v.literal('inbox'),
-				v.literal('sent'),
-				v.literal('drafts'),
-				v.literal('trash'),
-				v.literal('spam'),
-				v.literal('archive')
-			)
-		),
+		role: v.optional(folderRoleValidator),
 		parentId: v.optional(v.id('mailFolders')),
 		uidValidity: v.number(),
 		uidNext: v.number(),
@@ -618,9 +617,7 @@ export const mailTables = {
 		internalDate: v.number(),
 		spamScore: v.optional(v.number()),
 		spamVerdict: v.optional(spamVerdictValidator),
-		virusVerdict: v.optional(
-			v.union(v.literal('clean'), v.literal('infected'), v.literal('skipped'))
-		),
+		virusVerdict: v.optional(virusVerdictValidator),
 		spfResult: v.optional(v.string()),
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
@@ -1008,14 +1005,8 @@ export const mailTables = {
 		// unavailable. Never moves or modifies mail — this is a display grouping only.
 		category: v.optional(
 			v.object({
-				label: v.union(
-					v.literal('person'),
-					v.literal('newsletter'),
-					v.literal('notification'),
-					v.literal('receipt'),
-					v.literal('other')
-				),
-				source: v.union(v.literal('heuristic'), v.literal('llm'), v.literal('user')),
+				label: mailCategoryLabelValidator,
+				source: mailCategorySourceValidator,
 				classifiedAt: v.number(),
 			})
 		),
@@ -1209,12 +1200,7 @@ export const mailTables = {
 	// cancel a walk mid-flight.
 	mailAttachmentBackfillJobs: defineTable({
 		mailboxId: v.id('mailboxes'),
-		status: v.union(
-			v.literal('running'),
-			v.literal('completed'),
-			v.literal('cancelled'),
-			v.literal('failed')
-		),
+		status: mailJobStatusValidator,
 		// Resumable pagination cursor over `mailMessages` (Convex continueCursor).
 		cursor: v.optional(v.string()),
 		scannedCount: v.number(),
@@ -1240,12 +1226,7 @@ export const mailTables = {
 	mailBodySearchBackfillJobs: defineTable({
 		mailboxId: v.id('mailboxes'),
 		mode: v.union(v.literal('index'), v.literal('purge')),
-		status: v.union(
-			v.literal('running'),
-			v.literal('completed'),
-			v.literal('cancelled'),
-			v.literal('failed')
-		),
+		status: mailJobStatusValidator,
 		// Resumable pagination cursor over `mailMessages` (Convex continueCursor).
 		cursor: v.optional(v.string()),
 		scannedCount: v.number(),
@@ -1504,12 +1485,7 @@ export const mailTables = {
 	mailFilterRunJobs: defineTable({
 		mailboxId: v.id('mailboxes'),
 		filterId: v.id('mailFilters'),
-		status: v.union(
-			v.literal('running'),
-			v.literal('completed'),
-			v.literal('cancelled'),
-			v.literal('failed')
-		),
+		status: mailJobStatusValidator,
 		cursor: v.optional(v.string()),
 		scannedCount: v.number(),
 		matchedCount: v.number(),
@@ -1600,13 +1576,7 @@ export const mailTables = {
 	mailSenderCategoryOverrides: defineTable({
 		mailboxId: v.id('mailboxes'),
 		senderEmail: v.string(), // canonical lowercase
-		label: v.union(
-			v.literal('person'),
-			v.literal('newsletter'),
-			v.literal('notification'),
-			v.literal('receipt'),
-			v.literal('other')
-		),
+		label: mailCategoryLabelValidator,
 		updatedAt: v.number(),
 	}).index('by_mailbox_and_sender', ['mailboxId', 'senderEmail']),
 
