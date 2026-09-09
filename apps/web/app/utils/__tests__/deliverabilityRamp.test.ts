@@ -11,8 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
 import { independenceSubhead } from '~/utils/deliverabilityIndependenceCopy';
-import type { LocalizedText } from '~/utils/deliverabilityMeasurement';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * Both helpers are module scope, so they hand back the catalog key plus the
@@ -20,8 +19,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * catalog — the wording is the whole subject here.
  */
 const { t } = createTestI18n().global;
-const localized = (value: LocalizedText): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 
 const REFERENCE = 'ses';
 

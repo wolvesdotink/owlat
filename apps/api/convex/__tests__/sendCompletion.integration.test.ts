@@ -17,6 +17,7 @@ import {
 	createTestContact,
 	createTestEmailSend,
 	createTestTransactionalEmail,
+	flushScheduled,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { WorkId } from '@convex-dev/workpool';
@@ -42,7 +43,7 @@ const workerSuccess = (providerMessageId: string) => ({
 const workerFailure = (error: string) => ({ kind: 'failed' as const, error });
 
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 async function setupCampaignSend(t: ReturnType<typeof convexTest>): Promise<Id<'emailSends'>> {

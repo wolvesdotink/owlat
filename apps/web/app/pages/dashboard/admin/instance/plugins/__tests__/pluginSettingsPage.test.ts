@@ -8,7 +8,7 @@
  * input. It is surfaced as a persistent warning instead.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 
 vi.mock('~/plugins/plugin-composition.generated', () => ({
@@ -41,8 +41,9 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	]),
 }));
 
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { i18nStubs } from '~/__tests__/i18n';
 import PluginSettingsPage from '../[id].vue';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 const overview = ref<unknown>(undefined);
 const setPluginSettings = vi.fn();
@@ -97,20 +98,15 @@ const passthroughStub = { template: '<section><slot name="header"/><slot/></sect
 const buttonStub = { template: '<button v-bind="$attrs"><slot/></button>' };
 
 function mountPage() {
-	return mount(PluginSettingsPage, {
-		global: {
-			plugins: [createTestI18n()],
-			stubs: {
-				UiQueryBoundary: passthroughStub,
-				UiCard: passthroughStub,
-				UiEmptyState: passthroughStub,
-				UiConfirmationDialog: true,
-				UiButton: buttonStub,
-				UiBadge: passthroughStub,
-				UiIconBox: true,
-				Icon: true,
-				NuxtLink: true,
-			},
+	return mountDashboardPage(PluginSettingsPage, {
+		stubs: {
+			UiQueryBoundary: passthroughStub,
+			UiCard: passthroughStub,
+			UiEmptyState: passthroughStub,
+			UiConfirmationDialog: true,
+			UiButton: buttonStub,
+			UiBadge: passthroughStub,
+			NuxtLink: true,
 		},
 	});
 }

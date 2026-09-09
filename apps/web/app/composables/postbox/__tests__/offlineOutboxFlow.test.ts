@@ -21,6 +21,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { effectScope, ref, nextTick } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
+import { queryResult } from '~/__tests__/queryStubs';
 
 // The composables under test are stood up OUTSIDE a component setup here, so
 // the `useI18n` auto-import resolves straight to a catalog-backed composer —
@@ -262,7 +263,7 @@ beforeEach(async () => {
 			toasts.push(msg);
 		},
 	}));
-	vi.stubGlobal('useConvexQuery', () => ({ data: ref([]) }));
+	vi.stubGlobal('useConvexQuery', () => queryResult([]));
 	vi.stubGlobal('useConvex', () => ({
 		mutation: (op: string, args: Record<string, unknown>) => backend.call(op, args),
 		query: (op: string, args: Record<string, unknown>) => backend.call(op, args),

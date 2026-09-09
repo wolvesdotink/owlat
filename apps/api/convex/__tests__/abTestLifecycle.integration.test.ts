@@ -2,7 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, afterEach } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import { createTestCampaign } from './factories';
+import { createTestCampaign, flushScheduled } from './factories';
 import type { Id } from '../_generated/dataModel';
 
 const modules = import.meta.glob('../**/*.*s');
@@ -11,7 +11,7 @@ const modules = import.meta.glob('../**/*.*s');
 // Let scheduled functions drain before the next test to avoid "Write outside
 // of transaction" leaks (same pattern as campaignLifecycle.integration.test.ts).
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 const VALID_AB_CONFIG = {
@@ -49,7 +49,9 @@ describe('AB test lifecycle — happy path transitions', () => {
 			expect(campaign?.abTestStatus).toBe('pending');
 			expect(campaign?.abTestConfig?.testType).toBe('subject');
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('ab_test.enabled');
 		});
 	});
@@ -81,7 +83,9 @@ describe('AB test lifecycle — happy path transitions', () => {
 			const campaign = await ctx.db.get(campaignId!);
 			expect(campaign?.abTestStatus).toBe('testing');
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('ab_test.testing_started');
 		});
 	});
@@ -115,7 +119,9 @@ describe('AB test lifecycle — happy path transitions', () => {
 			expect(campaign?.abWinner).toBe('B');
 			expect(campaign?.abWinnerSelectedAt).toBeDefined();
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('ab_test.winner_declared');
 		});
 	});
@@ -157,7 +163,9 @@ describe('AB test lifecycle — happy path transitions', () => {
 			expect(campaign?.abWinner).toBeUndefined();
 			expect(campaign?.abWinnerSelectedAt).toBeUndefined();
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('ab_test.disabled');
 		});
 	});
@@ -262,7 +270,9 @@ describe('AB test lifecycle — outcome shapes', () => {
 
 		await t.run(async (ctx) => {
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('ab_test.enabled');
 		});
 	});

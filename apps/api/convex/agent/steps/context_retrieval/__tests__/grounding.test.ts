@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getFunctionName } from 'convex/server';
+import { makeStepCtx } from '../../__tests__/stepCtx';
 import type { Id } from '../../../../_generated/dataModel';
 import { contextRetrievalStep, type GroundingSource } from '../index';
 
@@ -54,32 +54,23 @@ function makeCtx(legs: Legs) {
 		threadId: legs.threadId,
 	};
 
-	const ctx = {
-		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getMessage')) return message;
-			if (name.includes('getContact')) return null;
-			if (name.includes('getRecentActivities')) return [];
-			if (name.includes('getThreadMessages')) return legs.threadMessages ?? [];
-			if (name.includes('getOpenCommitments')) return [];
-			if (name.includes('isGraphRetrievalEnabled')) return false;
-			throw new Error(`unexpected runQuery: ${name}`);
+	const ctx = makeStepCtx<Parameters<typeof contextRetrievalStep.execute>[0]>({
+		queries: {
+			getMessage: message,
+			getContact: null,
+			getRecentActivities: [],
+			getThreadMessages: legs.threadMessages ?? [],
+			getOpenCommitments: [],
+			isGraphRetrievalEnabled: false,
 		},
-		runAction: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('knowledge')) return legs.knowledge ?? [];
-			if (name.includes('semanticFileProcessing')) return [];
-			throw new Error(`unexpected runAction: ${name}`);
-		},
-		runMutation: async (ref: unknown, args: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('recordContextTier')) {
+		actions: { knowledge: legs.knowledge ?? [], semanticFileProcessing: [] },
+		mutations: {
+			recordContextTier: (args) => {
 				recorded.value = args as Record<string, unknown>;
 				return null;
-			}
-			throw new Error(`unexpected runMutation: ${name}`);
+			},
 		},
-	} as unknown as Parameters<typeof contextRetrievalStep.execute>[0];
+	});
 
 	return { ctx, recorded };
 }

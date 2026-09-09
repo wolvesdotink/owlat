@@ -19,6 +19,18 @@ import {
 } from '../campaigns/preflight';
 import type { Doc, Id } from '../_generated/dataModel';
 import type schema from '../schema';
+import {
+	createTestCampaign,
+	createTestCampaignSender,
+	createTestContact,
+	createTestDomain,
+	createTestEmailTemplate,
+	createTestTopic,
+} from './factories';
+import {
+	assessCampaignCapacity,
+	type CampaignCapacityAssessment,
+} from '../campaigns/capacityPreflight';
 
 /**
  * The convex-test runner PARAMETERIZED by this app's schema.
@@ -296,4 +308,73 @@ export async function runPreflight(
 		if (!campaign) return { ok: false, reason: 'not_found', message: 'Campaign not found' };
 		return await validateReadyToSend(ctx, campaign, { now: MIDNIGHT, ...options });
 	});
+}
+
+/**
+ * The gate's ASSESSMENT for a stored campaign, un-laundered by the pre-flight
+ * ladder. `result.ok === true` cannot tell "allowed because the lower bound
+ * decided nothing" apart from "allowed because the scan threw and
+ * `assessCampaignCapacity`'s fail-open catch swallowed it" — the assessment
+ * shape can (`capacityKnown: false` for the first, and for the second too, so
+ * the suites that care assert it alongside a positive signal).
+ */
+export async function assessCampaign(
+	t: TestRunner,
+	campaignId: Id<'campaigns'>,
+	options: { startsAt?: number } = {}
+): Promise<CampaignCapacityAssessment> {
+	return await t.run(async (ctx) => {
+		const campaign = await ctx.db.get(campaignId);
+		if (!campaign?.audience) throw new Error('campaign missing its audience');
+		return await assessCampaignCapacity(ctx, {
+			audience: campaign.audience,
+			fromEmail: campaign.fromEmail,
+			now: MIDNIGHT,
+			...options,
+		});
+	});
+}
+
+/**
+ * A sendable campaign: template, verified domain, curated sender, and a topic
+ * audience of `contactCount` eligible contacts.
+ */
+export async function seedSendableCampaign(
+	t: TestRunner,
+	contactCount: number
+): Promise<Id<'campaigns'>> {
+	let campaignId: Id<'campaigns'>;
+	await t.run(async (ctx) => {
+		const templateId = await ctx.db.insert('emailTemplates', createTestEmailTemplate());
+		await ctx.db.insert(
+			'domains',
+			createTestDomain({
+				domain: 'verified.example.com',
+				status: 'verified',
+				lastVerifiedAt: MIDNIGHT,
+			})
+		);
+		await ctx.db.insert(
+			'campaignSenders',
+			createTestCampaignSender({ email: 'sender@verified.example.com' })
+		);
+		const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
+		for (let i = 0; i < contactCount; i += 1) {
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: `person-${i}@subscriber.example.com`, doiStatus: 'confirmed' })
+			);
+			await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: MIDNIGHT });
+		}
+		campaignId = await ctx.db.insert(
+			'campaigns',
+			createTestCampaign({
+				status: 'draft',
+				emailTemplateId: templateId,
+				fromEmail: 'sender@verified.example.com',
+				audience: { kind: 'topic', topicId },
+			})
+		);
+	});
+	return campaignId!;
 }

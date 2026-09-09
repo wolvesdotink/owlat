@@ -39,7 +39,7 @@ export type TransportOutcomeArm = TransportOutcomeBucket['arm'];
  * A VALUE, with the type derived from it, so the vocabulary can be ENUMERATED
  * rather than only checked. Three counters in this plan shipped with readers and
  * no writer; the guard that now forbids that
- * (`__tests__/transportOutcomeWiring.test.ts`) has to be able to iterate the
+ * (`scripts/check-transport-outcome-wiring.ts`) has to be able to iterate the
  * whole vocabulary, and a hand-kept second list is a second chance to disagree.
  */
 export const TRANSPORT_OUTCOME_EVENTS = [

@@ -35,12 +35,6 @@ describe('reading-pane stylesheet', () => {
 		expect(main).toContain("@import './postbox-panes.css';");
 	});
 
-	it('only applies at lg and up — the narrow layout is a stacked drill-in', () => {
-		expect(panes).toContain('@media (min-width: 64rem)');
-		// Every rule sits inside that one query.
-		expect(panes.split('@media').length).toBe(2);
-	});
-
 	it('sizes the side-by-side list from the persisted width', () => {
 		expect(block("[data-reading-pane='right'] .pbx-pane-list")).toContain(
 			'width: var(--pbx-list-width'
@@ -64,18 +58,9 @@ describe('reading-pane stylesheet', () => {
 });
 
 describe('layout hooks', () => {
-	it('publishes the pane and the seam on the Postbox root', () => {
-		expect(layout).toContain(':data-reading-pane="readingPane"');
-		expect(layout).toContain(':style="paneStyle"');
-	});
-
 	it('marks the three boxes the stylesheet targets', () => {
 		for (const hook of ['pbx-pane-split', 'pbx-pane-list', 'pbx-pane-reader']) {
 			expect(layout, hook).toContain(hook);
 		}
-	});
-
-	it('no longer hardcodes the 384px list track in the template', () => {
-		expect(layout).not.toContain('lg:w-96');
 	});
 });

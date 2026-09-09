@@ -52,6 +52,8 @@ import {
 } from 'vue';
 import { IconStub, NuxtLinkStub } from './nuxtComponents';
 import { tolerateUnresolvedComponents } from './vueWarnings';
+import { paginatedResult, queryResult } from './queryStubs';
+import { createTestI18n } from './i18n';
 import { useAnnounce } from '~/composables/useAnnounce';
 import { useAuthForm } from '~/composables/useAuthForm';
 import { useBreadcrumbs } from '~/composables/useBreadcrumbs';
@@ -136,28 +138,7 @@ const a11yGlobal = {
 	},
 };
 
-/** A ref-shaped query result: what every Convex-backed composable hands a template. */
-export function queryResult<T>(data: T) {
-	return {
-		data: ref(data),
-		isLoading: ref(false),
-		isRefetching: ref(false),
-		error: ref(null),
-		refetch: vi.fn(),
-	};
-}
-
-/** A `usePaginatedQuery` result with a single, already-exhausted page. */
-export function paginatedResult<T>(results: T[]) {
-	return {
-		results: ref(results),
-		status: ref('Exhausted'),
-		isLoading: ref(false),
-		error: ref(null),
-		loadMore: vi.fn(),
-		reset: vi.fn(),
-	};
-}
+export { queryResult, paginatedResult };
 
 /**
  * The Nuxt/app auto-imports a mounted page reaches for. Absent a stub these are
@@ -370,6 +351,36 @@ function convexClientStub() {
  * refs handed out are fresh each time, so a page that writes to one cannot
  * leak that state into the next audit.
  */
+/** Chrome a page suite never asserts on: inert icons, spinners, empty states, a passthrough card. */
+const DASHBOARD_PAGE_STUBS: Record<string, unknown> = {
+	UiIconBox: true,
+	Icon: true,
+	UiSpinner: true,
+	UiEmptyState: true,
+	UiCard: { template: '<div><slot name="header" /><slot /></div>' },
+};
+
+/**
+ * Mount a dashboard page against the real English catalog with the inert
+ * chrome above, overridable per suite. A name a suite registers as a real
+ * `component` is left out of the default stubs, since a stub would shadow it.
+ */
+export function mountDashboardPage(
+	component: Component,
+	global: { stubs?: Record<string, unknown>; components?: Record<string, Component> } = {}
+): VueWrapper {
+	const stubs = Object.fromEntries(
+		Object.entries(DASHBOARD_PAGE_STUBS).filter(([name]) => !(name in (global.components ?? {})))
+	);
+	return mount(component, {
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { ...stubs, ...global.stubs },
+			components: { ...global.components },
+		},
+	}) as VueWrapper;
+}
+
 export function installNuxtStubs(overrides: Record<string, unknown> = {}): void {
 	for (const [name, value] of Object.entries({ ...defaultStubs(), ...overrides })) {
 		vi.stubGlobal(name, value);

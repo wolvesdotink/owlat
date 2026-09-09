@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { defineComponent, h, ref, nextTick, type Ref } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { useThreadPresence } from '../useThreadPresence';
+import { queryResult } from '~/__tests__/queryStubs';
 
 /**
  * useThreadPresence drives a background heartbeat with two behaviours worth
@@ -33,7 +34,7 @@ beforeEach(() => {
 	mutation.mockClear();
 	setHidden(false);
 	vi.stubGlobal('useConvex', () => ({ mutation }));
-	vi.stubGlobal('useConvexQuery', () => ({ data: ref([]) }));
+	vi.stubGlobal('useConvexQuery', () => queryResult([]));
 	vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'me' }) }));
 });
 

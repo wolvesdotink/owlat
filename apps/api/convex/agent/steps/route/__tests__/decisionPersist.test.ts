@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getFunctionName } from 'convex/server';
+import { makeStepCtx } from '../../__tests__/stepCtx';
 import { routeStep, type RouteInput } from '../index';
 import type { Id } from '../../../../_generated/dataModel';
 
@@ -23,11 +23,10 @@ const cleanDraft = 'Thanks for reaching out — happy to help with your order.';
 /** Captures the args handed to recordAgentDecision for persistence assertions. */
 function makeCtx(opts: { autonomyThreshold?: number; recordThrows?: boolean }) {
 	const recorded: { value: Record<string, unknown> | null } = { value: null };
-	const ctx = {
-		runQuery: async (ref: unknown, params?: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getCircuitBreakersInternal')) return [];
-			if (name.includes('checkPermissionInternal')) {
+	const ctx = makeStepCtx<Parameters<typeof routeStep.execute>[0]>({
+		queries: {
+			getCircuitBreakersInternal: [],
+			checkPermissionInternal: (params) => {
 				if (opts.autonomyThreshold === undefined) return { mode: 'disabled', allowed: false };
 				const confidence = (params as { confidence: number }).confidence;
 				const allowed = confidence >= opts.autonomyThreshold;
@@ -36,29 +35,24 @@ function makeCtx(opts: { autonomyThreshold?: number; recordThrows?: boolean }) {
 					allowed,
 					reason: allowed ? 'rule permits' : 'below per-category threshold',
 				};
-			}
-			if (name.includes('getMessage')) {
-				return {
-					from: 'Alice Customer <alice@customer.example>',
-					draftResponse: cleanDraft,
-					securityFlags: { guardUnavailable: false },
-				};
-			}
-			if (name.includes('getAgentConfig')) return null;
-			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
-			throw new Error(`unexpected runQuery: ${name}`);
+			},
+			getMessage: {
+				from: 'Alice Customer <alice@customer.example>',
+				draftResponse: cleanDraft,
+				securityFlags: { guardUnavailable: false },
+			},
+			getAgentConfig: null,
+			getBudgetStatus: { autonomousAutoSendAllowed: true },
 		},
-		runMutation: async (ref: unknown, args: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('incrementDailyCount')) return { allowed: true };
-			if (name.includes('recordAgentDecision')) {
+		mutations: {
+			incrementDailyCount: { allowed: true },
+			recordAgentDecision: (args) => {
 				if (opts.recordThrows) throw new Error('boom');
 				recorded.value = args as Record<string, unknown>;
 				return null;
-			}
-			throw new Error(`unexpected runMutation: ${name}`);
+			},
 		},
-	} as unknown as Parameters<typeof routeStep.execute>[0];
+	});
 	return { ctx, recorded };
 }
 

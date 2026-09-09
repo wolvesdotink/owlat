@@ -22,6 +22,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestContact, createTestTopic } from './factories';
+import { newBetterAuthHarness } from './testModules';
 import type { StoredAudience } from '../campaigns/audience';
 import type { CampaignRecipient } from '../campaigns/audienceCandidates';
 
@@ -945,8 +946,9 @@ describe('seedAdmin (POST /seed/admin)', () => {
 	// `t.registerComponent` would need the betterAuth component's module map,
 	// which isn't wired into the test harness. The auth-gate (401/400) cases
 	// above cover the security-relevant surface of this endpoint.
-	it.skip('seeds once with the correct secret, then refuses a second call (one-shot)', async () => {
-		const t = setupTest();
+	it('seeds once with the correct secret, then refuses a second call (one-shot)', async () => {
+		const t = newBetterAuthHarness(modules);
+		rateLimiterTest.register(t);
 		const first = await t.fetch('/seed/admin', {
 			method: 'POST',
 			headers: {

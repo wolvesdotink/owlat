@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getFunctionName } from 'convex/server';
+import { makeStepCtx } from '../../__tests__/stepCtx';
 
 const mocks = vi.hoisted(() => ({
 	runLlmObject: vi.fn(),
@@ -33,14 +33,9 @@ const input = { inboundMessageId: messageId };
 
 /** ctx serving one inbound; agent enabled; no phishing key so no URL check. */
 function makeCtx(message: Record<string, unknown>) {
-	return {
-		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getMessage')) return message;
-			if (name.includes('isAgentEnabled')) return true;
-			throw new Error(`unexpected runQuery: ${name}`);
-		},
-	} as unknown as Parameters<typeof securityScanStep.execute>[0];
+	return makeStepCtx<Parameters<typeof securityScanStep.execute>[0]>({
+		queries: { getMessage: message, isAgentEnabled: true },
+	});
 }
 
 beforeEach(() => {

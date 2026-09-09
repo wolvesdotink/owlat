@@ -2,7 +2,12 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, afterEach } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import { createTestAutomation, createTestAutomationStep, createTestContact } from './factories';
+import {
+	createTestAutomation,
+	createTestAutomationStep,
+	createTestContact,
+	flushScheduled,
+} from './factories';
 import {
 	AUTOMATION_LIFECYCLE,
 	AUTOMATION_FAILURE_BREAKER_THRESHOLD,
@@ -15,7 +20,7 @@ const modules = import.meta.glob('../**/*.*s');
 // Lifecycle effects schedule `internal.lib.posthog.capture` — let the
 // scheduled functions drain between tests.
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 // ============================================================================

@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { makeStepCtx } from '../../__tests__/stepCtx';
 import { getFunctionName } from 'convex/server';
 import { routeStep } from '../index';
 import type { Id } from '../../../../_generated/dataModel';
@@ -39,33 +40,27 @@ type Recorded = {
  * `recordShadowDecision` args are pushed into `recorded`.
  */
 function makeCtx(shadowEnabled: boolean, recorded: Recorded[]) {
-	return {
-		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
-			if (name.includes('getCircuitBreakersInternal')) return [];
-			if (name.includes('checkPermissionInternal'))
-				return { mode: 'enabled', allowed: true, reason: 'rule permits' };
-			if (name.includes('getMessage'))
-				return {
-					from: 'Alice Customer <alice@customer.example>',
-					draftResponse: cleanDraft,
-					securityFlags: { guardUnavailable: false },
-				};
-			if (name.includes('getShadowMode')) return { enabled: shadowEnabled };
-			throw new Error(`unexpected runQuery: ${name}`);
+	return makeStepCtx<Parameters<typeof routeStep.execute>[0]>({
+		queries: {
+			getBudgetStatus: { autonomousAutoSendAllowed: true },
+			getCircuitBreakersInternal: [],
+			checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
+			getMessage: {
+				from: 'Alice Customer <alice@customer.example>',
+				draftResponse: cleanDraft,
+				securityFlags: { guardUnavailable: false },
+			},
+			getShadowMode: { enabled: shadowEnabled },
 		},
-		runMutation: async (ref: unknown, args: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('incrementDailyCount')) return { allowed: true };
-			if (name.includes('recordShadowDecision')) {
+		mutations: {
+			incrementDailyCount: { allowed: true },
+			recordShadowDecision: (args) => {
 				recorded.push(args as Recorded);
 				return null;
-			}
-			if (name.includes('recordAgentDecision')) return null;
-			throw new Error(`unexpected runMutation: ${name}`);
+			},
+			recordAgentDecision: null,
 		},
-	} as unknown as Parameters<typeof routeStep.execute>[0];
+	});
 }
 
 describe('routeStep.execute — shadow mode', () => {

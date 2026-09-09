@@ -149,7 +149,7 @@ kind silently gets neither. That capability has no home on the adapter
 interface yet. It is one of the surviving families of kind literals, and the
 families are DATA rather than prose, split by what the literal is. A kind
 _declaration_ (`const X = 'ses'`) is enumerated by `SURVIVING_KIND_LITERALS` in
-`apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts`, with
+`apps/api/scripts/check-kind-literal-custody.ts`, with
 its family and its owner; a _comparison_ — the return-path branches included —
 is enumerated by the ratchet's allowlist below. Both fail in both directions:
 an unenumerated literal fails, and an entry whose literal has been swept fails

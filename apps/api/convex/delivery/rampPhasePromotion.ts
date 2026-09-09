@@ -15,7 +15,7 @@
  * shell over the same rule shipped alongside it and was removed under D20: no
  * cron registered it and no module called it, so it was a second entry to a gate
  * with nothing behind it — and the second entry is always the one that drifts.
- * `../../__tests__/entryWiring.test.ts` is what keeps a replacement from
+ * `apps/api/scripts/check-entry-wiring.ts` is what keeps a replacement from
  * arriving unwired — it asks the question of the whole backend now, not just of
  * `delivery/ramp*.ts` (#509). Should a genuine server-side flow ever need to promote, the rule is
  * already the shared one; give it an entry AND the caller in the same change.

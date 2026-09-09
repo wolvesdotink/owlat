@@ -18,15 +18,6 @@ vi.mock('../../../plugins/automationTriggerCatalog.generated', () => ({
 const catalog = await import('../catalog');
 
 describe('automation trigger catalog', () => {
-	it('pins the built-in trigger kinds and their order', () => {
-		expect(catalog.CORE_TRIGGER_KINDS).toEqual([
-			'contact_created',
-			'contact_updated',
-			'event_received',
-			'topic_subscribed',
-		]);
-	});
-
 	it('appends composed plugin kinds after the core kinds', () => {
 		expect(catalog.TRIGGER_KINDS).toEqual([
 			'contact_created',

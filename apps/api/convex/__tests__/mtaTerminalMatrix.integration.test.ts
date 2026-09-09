@@ -8,6 +8,7 @@ import {
 	createTestContact,
 	createTestEmailSend,
 	createTestInboundMessage,
+	flushScheduled,
 } from './factories';
 import { rollupCampaignStatsRow } from '../campaigns/statShards';
 import type { ActionCtx } from '../_generated/server';
@@ -16,7 +17,7 @@ import { dispatchInboundEvent } from '../webhooks/dispatcher';
 const modules = import.meta.glob('../**/*.*s');
 
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 type Source = 'campaign' | 'agent_reply' | 'member_test';

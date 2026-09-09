@@ -1,30 +1,25 @@
 import type { Page, Locator } from '@playwright/test';
+import { BasePage } from './BasePage';
 
-export class SegmentsPage {
-	readonly page: Page;
+export class SegmentsPage extends BasePage {
 	readonly newSegmentButton: Locator;
 	readonly searchInput: Locator;
-	readonly tableRows: Locator;
 
 	constructor(page: Page) {
-		this.page = page;
+		super(page);
 		this.newSegmentButton = page.getByRole('button', { name: 'New Segment' });
 		this.searchInput = page.getByPlaceholder('Search segments...');
-		this.tableRows = page.locator('tbody tr');
 	}
 
 	async goto() {
 		await this.page.goto('/dashboard/audience/segments');
-		// Wait for page to load
-		await this.page.waitForSelector('h1', { timeout: 15_000 });
+		await this.waitForHeading();
 	}
 
 	async createSegment(data: { name: string; description?: string }) {
 		await this.newSegmentButton.click();
 
-		// The segment modal is a custom Teleport modal with role="dialog"
-		const modal = this.page.locator('[role="dialog"]');
-		await modal.waitFor();
+		const modal = await this.waitForModal();
 
 		await modal.locator('#segment-name').fill(data.name);
 		if (data.description) {
@@ -38,38 +33,23 @@ export class SegmentsPage {
 		const conditionTypeSelect = modal.locator('select.input').first();
 		await conditionTypeSelect.selectOption('contact_property');
 
-		// Click "Create Segment"
 		await modal.getByRole('button', { name: /Create Segment/i }).click();
-
-		// Wait for modal to close
-		await modal.waitFor({ state: 'hidden', timeout: 10_000 });
+		await this.waitForModalClose();
 	}
 
 	async editSegment(segmentName: string) {
-		const row = this.tableRows.filter({ hasText: segmentName });
-		// Edit button has title="Edit segment"
-		await row.locator('button[title="Edit segment"]').click();
-
-		const modal = this.page.locator('[role="dialog"]');
-		await modal.waitFor();
-		return modal;
+		await this.getTableRow(segmentName).getByRole('button', { name: 'Edit segment' }).click();
+		return this.waitForModal();
 	}
 
 	async deleteSegment(segmentName: string) {
-		const row = this.tableRows.filter({ hasText: segmentName });
-		// Delete button has title="Delete segment"
-		await row.locator('button[title="Delete segment"]').click();
-
-		// Confirm deletion in the UiModal confirmation dialog
-		const confirmModal = this.page.locator('[role="dialog"]');
-		await confirmModal.waitFor();
-		await confirmModal.getByRole('button', { name: /Delete Segment/i }).click();
-
-		// Wait for modal to close
-		await confirmModal.waitFor({ state: 'hidden', timeout: 10_000 });
+		await this.getTableRow(segmentName).getByRole('button', { name: 'Delete segment' }).click();
+		await this.waitForModal();
+		await this.clickModalButton(/Delete Segment/i);
+		await this.waitForModalClose();
 	}
 
-	async getSegmentRow(segmentName: string) {
-		return this.tableRows.filter({ hasText: segmentName });
+	getSegmentRow(segmentName: string): Locator {
+		return this.getTableRow(segmentName);
 	}
 }

@@ -15,14 +15,12 @@ import {
 	senderAuthInputOf,
 	senderRiskInputOf,
 	type SenderAuthInput,
-	type SenderAuthText,
 } from '../senderAuth';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /** The derivation carries catalog keys, so the audit renders them in English. */
 const { t } = createTestI18n().global;
-const render = (text: SenderAuthText) =>
-	typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
+const render = localizedWith(t);
 
 describe('deriveSenderAuth', () => {
 	it('aligned pass → verified', () => {

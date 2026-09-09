@@ -76,8 +76,8 @@
 #     the catalog as it grows, so the ratchet has nothing to say about it.
 #   * Convex's _generated/**.
 #
-# The narrower sibling is `apps/api/convex/lib/sendProviders/__tests__/
-# kindLiteralCustody.test.ts`: over apps/api/convex ONLY, it catches a kind
+# The narrower sibling is `apps/api/scripts/
+# check-kind-literal-custody.ts`: over apps/api/convex ONLY, it catches a kind
 # DECLARATION (`const RELAY_IDENTITY_PROOF_KIND = 'ses'` — the same fact with one
 # hop). Declarations are not a repo-wide rule (a catalog entry, an adapter, an
 # event payload and a fixture all legitimately write their own name), which is

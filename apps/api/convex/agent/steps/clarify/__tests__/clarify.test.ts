@@ -18,6 +18,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { makeStepCtx } from '../../__tests__/stepCtx';
 import { getFunctionName } from 'convex/server';
 
 const mocks = vi.hoisted(() => ({
@@ -76,32 +77,20 @@ function makeCtx(
 	fills: { questionId: string; slotType: string; value: string }[] = []
 ) {
 	const asked: unknown[] = [];
-	const ctx = {
-		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getAskEagernessInternal')) {
-				return { mode };
-			}
-			if (name.includes('getMessage')) {
-				return coverage === 'missing'
-					? null
-					: { contextCoverage: coverage, contactId: 'contact_test' };
-			}
-			throw new Error(`unexpected runQuery: ${name}`);
+	const ctx = makeStepCtx<Parameters<typeof clarifyStep.execute>[0]>({
+		queries: {
+			getAskEagernessInternal: { mode },
+			getMessage:
+				coverage === 'missing' ? null : { contextCoverage: coverage, contactId: 'contact_test' },
 		},
-		runMutation: async (ref: unknown, args: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('recordClarificationAsk')) {
+		mutations: {
+			recordClarificationAsk: (args) => {
 				asked.push(args);
 				return undefined;
-			}
-			// Answer-memory fill lookup — return the configured fills.
-			if (name.includes('resolveFills')) {
-				return { fills };
-			}
-			throw new Error(`unexpected runMutation: ${name}`);
+			},
+			resolveFills: { fills },
 		},
-	} as unknown as Parameters<typeof clarifyStep.execute>[0];
+	});
 	return Object.assign(ctx, { asked });
 }
 
