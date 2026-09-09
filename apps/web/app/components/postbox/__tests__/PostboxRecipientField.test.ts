@@ -11,10 +11,10 @@
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxRecipientField from '../PostboxRecipientField.vue';
+import { queryResult } from '~/__tests__/queryStubs';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -29,7 +29,7 @@ beforeAll(() => {
 	// auto-import, so it has to exist as a global for the component's setup.
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	// No suggestions — we're exercising chip/keyboard logic, not autocomplete.
-	vi.stubGlobal('useConvexQuery', () => ({ data: ref([]) }));
+	vi.stubGlobal('useConvexQuery', () => queryResult([]));
 });
 
 const iconStub = { props: ['name'], template: '<span />' };

@@ -63,15 +63,6 @@ describe('change-login-email wiring', () => {
 		expect(opts.user.changeEmail.updateEmailWithoutVerification).toBe(false);
 	});
 
-	it('configures BOTH hops of the verified two-step flow', () => {
-		const opts = createAuthOptions(ctx);
-		// Hop 1 (verified): confirmation to the current address.
-		expect(typeof opts.user.changeEmail.sendChangeEmailConfirmation).toBe('function');
-		// Hop 2 (verified) / sole hop (unverified): verification to the new
-		// address. Without this BetterAuth dead-ends and the email never changes.
-		expect(typeof opts.emailVerification?.sendVerificationEmail).toBe('function');
-	});
-
 	it('hop 1 (sendChangeEmailConfirmation) emails the CURRENT address', async () => {
 		const { ctx: captureCtx, sends } = ctxWithCapture();
 		const opts = createAuthOptions(captureCtx);

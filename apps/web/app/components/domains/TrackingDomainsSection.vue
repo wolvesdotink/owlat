@@ -197,6 +197,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 				<!-- Row header -->
 				<div
 					class="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-bg-surface/50 transition-colors"
+					data-testid="tracking-domain-header"
 					@click="toggleExpansion(td._id)"
 				>
 					<div class="flex items-center gap-4">

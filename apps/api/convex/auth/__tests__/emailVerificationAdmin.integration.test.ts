@@ -18,10 +18,10 @@
  * the org-permission gate read.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { newBetterAuthHarness } from '../../__tests__/testModules';
 import schema from '../../schema';
-import betterAuthSchema from '../../betterAuth/schema';
 import { api, internal, components } from '../../_generated/api';
 
 const sessionMock = vi.hoisted(() => ({
@@ -90,14 +90,6 @@ const modules = Object.fromEntries(
 		)
 );
 
-const betterAuthModules = import.meta.glob('../../betterAuth/**/*.*s');
-
-function newHarness(): TestConvex<typeof schema> {
-	const t = convexTest(schema, modules);
-	t.registerComponent('betterAuth', betterAuthSchema, betterAuthModules);
-	return t;
-}
-
 /** Create a BetterAuth user; returns its component `_id`. */
 async function seedUser(
 	t: TestConvex<typeof schema>,
@@ -151,7 +143,7 @@ beforeEach(() => {
 
 describe('markMemberEmailVerified', () => {
 	it('flips an unverified org member to verified and writes an audit row', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness(modules);
 		const memberUserId = await seedUser(t, 'stranded@example.com', false);
 		await seedMember(t, 'org-1', memberUserId, 'editor');
 
@@ -165,7 +157,7 @@ describe('markMemberEmailVerified', () => {
 	});
 
 	it('is idempotent — an already-verified member is a no-op with no second audit row', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness(modules);
 		const memberUserId = await seedUser(t, 'already@example.com', true);
 		await seedMember(t, 'org-1', memberUserId, 'editor');
 
@@ -179,7 +171,7 @@ describe('markMemberEmailVerified', () => {
 	});
 
 	it('rejects a non-admin (editor) caller', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness(modules);
 		const memberUserId = await seedUser(t, 'target@example.com', false);
 		await seedMember(t, 'org-1', memberUserId, 'editor');
 		sessionMock.role = 'editor';
@@ -191,7 +183,7 @@ describe('markMemberEmailVerified', () => {
 	});
 
 	it('fails closed for a target who is not a member of the caller org (cross-org)', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness(modules);
 		// Target belongs to a DIFFERENT org; the admin's active org is org-1.
 		const foreignUserId = await seedUser(t, 'foreign@example.com', false);
 		await seedMember(t, 'org-2', foreignUserId, 'editor');
@@ -203,7 +195,7 @@ describe('markMemberEmailVerified', () => {
 	});
 
 	it('fails closed for an unknown target user id', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness(modules);
 		await expect(
 			t.mutation(api.auth.emailVerificationAdmin.markMemberEmailVerified, { userId: 'nope' })
 		).rejects.toThrow(/not found/i);
@@ -212,7 +204,7 @@ describe('markMemberEmailVerified', () => {
 
 describe('resolveMemberForResend (admin gate + org-scoped resolution)', () => {
 	it('returns the target email for an admin caller and org member', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness(modules);
 		const memberUserId = await seedUser(t, 'resend@example.com', false);
 		await seedMember(t, 'org-1', memberUserId, 'editor');
 
@@ -225,7 +217,7 @@ describe('resolveMemberForResend (admin gate + org-scoped resolution)', () => {
 	});
 
 	it('rejects a non-admin caller before any resolution', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness(modules);
 		const memberUserId = await seedUser(t, 'resend@example.com', false);
 		await seedMember(t, 'org-1', memberUserId, 'editor');
 		sessionMock.role = 'editor';
@@ -236,7 +228,7 @@ describe('resolveMemberForResend (admin gate + org-scoped resolution)', () => {
 	});
 
 	it('fails closed for a cross-org target', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness(modules);
 		const foreignUserId = await seedUser(t, 'foreign@example.com', false);
 		await seedMember(t, 'org-2', foreignUserId, 'editor');
 
@@ -250,7 +242,7 @@ describe('resolveMemberForResend (admin gate + org-scoped resolution)', () => {
 
 describe('resendMemberVerificationEmail', () => {
 	it('is a no-op (sent:false) for an already-verified member and never calls BetterAuth', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness(modules);
 		const memberUserId = await seedUser(t, 'verified@example.com', true);
 		await seedMember(t, 'org-1', memberUserId, 'editor');
 
@@ -263,7 +255,7 @@ describe('resendMemberVerificationEmail', () => {
 	});
 
 	it('rejects a cross-org target before touching BetterAuth', async () => {
-		const t = newHarness();
+		const t = newBetterAuthHarness(modules);
 		const foreignUserId = await seedUser(t, 'foreign@example.com', false);
 		await seedMember(t, 'org-2', foreignUserId, 'editor');
 

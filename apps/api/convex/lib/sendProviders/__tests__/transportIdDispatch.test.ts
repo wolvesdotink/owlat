@@ -31,6 +31,7 @@ vi.mock('@owlat/smtp-client', () => ({
 }));
 
 import { sendProviderDispatch } from '../dispatch';
+import { fakeDispatchCtx, type ScheduledCall } from './dispatchFixtures';
 import { _resetResendClientCacheForTests } from '../resend';
 import { _resetSesClientCacheForTests } from '../ses';
 import { _resetSmtpConfigCacheForTests } from '../smtp';
@@ -40,26 +41,6 @@ import {
 	defaultSendTransportId,
 	resolveSendTransport,
 } from '../transports';
-
-interface ScheduledCall {
-	readonly args: Record<string, unknown>;
-}
-
-function fakeCtx(): {
-	scheduled: ScheduledCall[];
-	ctx: Parameters<typeof sendProviderDispatch>[0];
-} {
-	const scheduled: ScheduledCall[] = [];
-	const ctx = {
-		runMutation: vi.fn(async () => true),
-		scheduler: {
-			runAfter: vi.fn(async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
-				scheduled.push({ args });
-			}),
-		},
-	};
-	return { scheduled, ctx: ctx as unknown as Parameters<typeof sendProviderDispatch>[0] };
-}
 
 const params = {
 	to: 'to@example.com',
@@ -125,7 +106,8 @@ describe('transport-id dispatch — the default instance of every shipped kind',
 				})
 		);
 		global.fetch = fetchSpy as unknown as typeof fetch;
-		const { ctx, scheduled } = fakeCtx();
+		const scheduled: ScheduledCall[] = [];
+		const ctx = fakeDispatchCtx(scheduled);
 
 		const dispatched = await sendProviderDispatch(ctx, defaultSendTransportId('mta'), params);
 
@@ -137,7 +119,7 @@ describe('transport-id dispatch — the default instance of every shipped kind',
 	});
 
 	it('dispatches the resend id through the Resend adapter with the Resend key', async () => {
-		const { ctx } = fakeCtx();
+		const ctx = fakeDispatchCtx();
 
 		const dispatched = await sendProviderDispatch(ctx, defaultSendTransportId('resend'), params);
 
@@ -151,7 +133,7 @@ describe('transport-id dispatch — the default instance of every shipped kind',
 		const sendSpy = vi
 			.spyOn(SESClient.prototype, 'send')
 			.mockResolvedValue({ MessageId: 'ses-1' } as never);
-		const { ctx } = fakeCtx();
+		const ctx = fakeDispatchCtx();
 
 		const dispatched = await sendProviderDispatch(ctx, defaultSendTransportId('ses'), params);
 
@@ -162,7 +144,7 @@ describe('transport-id dispatch — the default instance of every shipped kind',
 	});
 
 	it('dispatches the smtp id through the relay adapter with the relay config', async () => {
-		const { ctx } = fakeCtx();
+		const ctx = fakeDispatchCtx();
 
 		const dispatched = await sendProviderDispatch(ctx, defaultSendTransportId('smtp'), params);
 
@@ -185,7 +167,7 @@ describe('transport-id dispatch — the default instance of every shipped kind',
 				})
 		);
 		global.fetch = fetchSpy as unknown as typeof fetch;
-		const { ctx } = fakeCtx();
+		const ctx = fakeDispatchCtx();
 
 		const dispatched = await sendProviderDispatch(ctx, defaultSendTransportId('mandrill'), params);
 

@@ -11,9 +11,8 @@
  * the real `en` catalog is what tells those two apart from a passing grep.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { mount } from '@vue/test-utils';
-import { installNuxtStubs } from '~/__tests__/a11y';
-import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import { installNuxtStubs, mountDashboardPage } from '~/__tests__/a11y';
+import { expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { useSetupWizard } from '~/composables/useSetupWizard';
 import { useWizard } from '~/composables/useWizard';
 import SetupModePage from '../mode.vue';
@@ -30,17 +29,13 @@ beforeEach(() => {
 });
 
 function mountPage(component: typeof SetupModePage) {
-	return mount(component, {
-		global: {
-			plugins: [createTestI18n()],
-			stubs: {
-				UiBadge: true,
-				UiCard: { template: '<div><slot /></div>' },
-				UiErrorAlert: true,
-				UiHeroField: true,
-				UiIconBox: true,
-				UiStepIndicator: true,
-			},
+	return mountDashboardPage(component, {
+		stubs: {
+			UiBadge: true,
+			UiCard: { template: '<div><slot /></div>' },
+			UiErrorAlert: true,
+			UiHeroField: true,
+			UiStepIndicator: true,
 		},
 	});
 }

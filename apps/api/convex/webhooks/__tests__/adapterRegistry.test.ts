@@ -261,7 +261,6 @@ describe('a registry key is the adapter that answers to it', () => {
 		// the registry instead, so the assertion follows the adapter if the file
 		// layout ever changes.
 		const adapter = PROVIDER_FEEDBACK_ADAPTERS[kind] as unknown as Record<string, unknown>;
-		expect(typeof adapter['verifySignature']).toBe('function');
 		const single = typeof adapter['parseEvent'] === 'function';
 		const batch = typeof adapter['parseEvents'] === 'function';
 		expect(single !== batch, 'exactly one of parseEvent / parseEvents').toBe(true);

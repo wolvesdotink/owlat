@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getFunctionName } from 'convex/server';
+import { makeStepCtx } from '../../__tests__/stepCtx';
 import { routeStep, type RouteInput } from '../index';
 import type { Id } from '../../../../_generated/dataModel';
 
@@ -23,39 +23,29 @@ const highQuality = { score: 0.95, complete: true, grounded: true, flags: [] as 
 /** Fake ctx: autonomy PERMITS, draft is clean/high-quality, and getMessage
  * carries the given classification so the complaint/urgent hard block sees it. */
 function makeCtx(classification: { category: string; priority: string } | undefined) {
-	return {
-		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getCircuitBreakersInternal')) return [];
-			if (name.includes('checkPermissionInternal')) {
-				return { mode: 'enabled', allowed: true, reason: 'rule permits' };
-			}
-			if (name.includes('getMessage')) {
-				return {
-					from: 'Alice Customer <alice@customer.example>',
-					draftResponse: cleanDraft,
-					securityFlags: { guardUnavailable: false },
-					...(classification
-						? {
-								classification: {
-									...classification,
-									sentiment: 'negative',
-									intent: 'complaint',
-									confidence: 0.9,
-								},
-							}
-						: {}),
-				};
-			}
-			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
-			throw new Error(`unexpected runQuery: ${name}`);
+	return makeStepCtx<Parameters<typeof routeStep.execute>[0]>({
+		queries: {
+			getCircuitBreakersInternal: [],
+			checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
+			getMessage: {
+				from: 'Alice Customer <alice@customer.example>',
+				draftResponse: cleanDraft,
+				securityFlags: { guardUnavailable: false },
+				...(classification
+					? {
+							classification: {
+								...classification,
+								sentiment: 'negative',
+								intent: 'complaint',
+								confidence: 0.9,
+							},
+						}
+					: {}),
+			},
+			getBudgetStatus: { autonomousAutoSendAllowed: true },
 		},
-		runMutation: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('incrementDailyCount')) return { allowed: true };
-			throw new Error(`unexpected runMutation: ${name}`);
-		},
-	} as unknown as Parameters<typeof routeStep.execute>[0];
+		mutations: { incrementDailyCount: { allowed: true } },
+	});
 }
 
 function input(over: Partial<RouteInput> = {}): RouteInput {

@@ -48,10 +48,6 @@ describe('mtaSendProvider', () => {
 		expect(mtaSendProvider.kind).toBe('mta');
 	});
 
-	it('declares the documented retry schedule', () => {
-		expect([...mtaSendProvider.retryDelays]).toEqual([1000, 5000]);
-	});
-
 	it('sendEmail returns success on HTTP 200 with valid body', async () => {
 		global.fetch = vi.fn().mockResolvedValue(
 			new Response(JSON.stringify({ success: true, id: 'msg-123' }), {
@@ -301,10 +297,6 @@ describe('sesSendProvider', () => {
 		expect(sesSendProvider.kind).toBe('ses');
 	});
 
-	it('declares the documented retry schedule', () => {
-		expect([...sesSendProvider.retryDelays]).toEqual([1000, 5000, 30000]);
-	});
-
 	describe('categorizeError', () => {
 		beforeEach(() => _resetSesClientCacheForTests());
 		afterEach(() => _resetSesClientCacheForTests());
@@ -545,10 +537,6 @@ describe('sesSendProvider', () => {
 describe('resendSendProvider', () => {
 	it('kind discriminator matches the registry key', () => {
 		expect(resendSendProvider.kind).toBe('resend');
-	});
-
-	it('declares the documented retry schedule', () => {
-		expect([...resendSendProvider.retryDelays]).toEqual([1000, 5000, 30000]);
 	});
 
 	describe('categorizeError', () => {

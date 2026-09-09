@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TRIGGER_EDITOR_MODULES, triggerEditorModuleFor, listTriggerEditorModules } from '../index';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * Trigger modules cannot call `useI18n`, so every label, error and summary they
@@ -11,8 +11,7 @@ import { createTestI18n } from '~/__tests__/i18n';
 const { t, te } = createTestI18n().global;
 const resolves = (key: string) => te(key) && t(key) !== key;
 /** What a renderer does with a registry message. */
-const render = (value: string | { key: string; params?: Record<string, unknown> }) =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const render = localizedWith(t);
 /** The display context every trigger takes, empty where the trigger ignores it. */
 const computedTopics = { value: [] } as never;
 

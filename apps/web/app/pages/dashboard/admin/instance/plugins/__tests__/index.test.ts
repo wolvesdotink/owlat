@@ -12,7 +12,6 @@
  * with no `'skip'` branch left to strand the page on an empty list.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 
 vi.mock('~/plugins/plugin-composition.generated', () => ({
@@ -30,8 +29,9 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	]),
 }));
 
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { i18nStubs } from '~/__tests__/i18n';
 import PluginsIndexPage from '../index.vue';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 const overview = ref<{
 	plugins: Array<Record<string, unknown>>;
@@ -76,20 +76,14 @@ const passthroughStub = { template: '<div><slot name="header"/><slot/></div>' };
 const nuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot/></a>' };
 
 function mountPage() {
-	return mount(PluginsIndexPage, {
-		global: {
-			plugins: [createTestI18n()],
-			stubs: {
-				UiQueryBoundary: passthroughStub,
-				UiCard: passthroughStub,
-				NuxtLink: nuxtLinkStub,
-				UiEmptyState: true,
-				UiConfirmationDialog: true,
-				UiButton: true,
-				UiBadge: true,
-				UiIconBox: true,
-				Icon: true,
-			},
+	return mountDashboardPage(PluginsIndexPage, {
+		stubs: {
+			UiQueryBoundary: passthroughStub,
+			UiCard: passthroughStub,
+			NuxtLink: nuxtLinkStub,
+			UiConfirmationDialog: true,
+			UiButton: true,
+			UiBadge: true,
 		},
 	});
 }

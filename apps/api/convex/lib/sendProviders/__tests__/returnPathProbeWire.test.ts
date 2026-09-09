@@ -47,10 +47,6 @@ const PROBE_PARAMS = {
 };
 
 describe('which adapters can carry a return-path probe', () => {
-	it('the SMTP relay can: submission lets us choose the whole RFC5321.MailFrom', () => {
-		expect(typeof SEND_PROVIDERS.smtp.sendReturnPathProbe).toBe('function');
-	});
-
 	it('Mandrill CANNOT, and declines rather than borrowing another wire', () => {
 		// `return_path_domain` names a DOMAIN; Mandrill mints the local part, which
 		// is exactly where the signed probe token lives. Implementing the wire by

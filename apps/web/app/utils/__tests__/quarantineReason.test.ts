@@ -8,16 +8,11 @@
  * rather than a fabricated 0%.
  */
 import { describe, it, expect } from 'vitest';
-import {
-	deriveQuarantineReason,
-	QUARANTINE_SPAM_SCORE_NOTABLE,
-	type QuarantineText,
-} from '../quarantineReason';
-import { createTestI18n } from '~/__tests__/i18n';
+import { deriveQuarantineReason, QUARANTINE_SPAM_SCORE_NOTABLE } from '../quarantineReason';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
-const render = (text: QuarantineText) =>
-	typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
+const render = localizedWith(t);
 
 describe('deriveQuarantineReason', () => {
 	it('leads with the outcome and explains the injection type in plain language', () => {

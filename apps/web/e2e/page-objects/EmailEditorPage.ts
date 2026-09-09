@@ -1,16 +1,16 @@
 import type { Page, Locator } from '@playwright/test';
+import { BasePage } from './BasePage';
 
-export class EmailEditorPage {
-	readonly page: Page;
+export class EmailEditorPage extends BasePage {
 	readonly saveButton: Locator;
 	readonly backButton: Locator;
 
 	constructor(page: Page) {
-		this.page = page;
+		super(page);
 		// Save button in EditorHeader: has text "Save" or "Saving..."
 		this.saveButton = page.getByRole('button', { name: /save/i });
-		// Back button is an ArrowLeft icon button in the header
-		this.backButton = page.locator('button:has(svg.lucide-arrow-left)').first();
+		// EditorHeader names its icon-only back control for assistive tech.
+		this.backButton = page.getByRole('button', { name: 'Back' });
 	}
 
 	/**
@@ -18,8 +18,7 @@ export class EmailEditorPage {
 	 */
 	async gotoNewTemplate() {
 		await this.page.goto('/dashboard/send/marketing');
-		// Wait for page to load
-		await this.page.waitForSelector('h1', { timeout: 15_000 });
+		await this.waitForHeading();
 
 		// Click "New Marketing Template" button
 		await this.page.getByRole('button', { name: /New Marketing Template/i }).click();
@@ -42,13 +41,8 @@ export class EmailEditorPage {
 	}
 
 	async waitForEditorReady() {
-		// Wait for the loading spinner to disappear
-		await this.page
-			.locator('text=Loading template')
-			.waitFor({ state: 'hidden', timeout: 15_000 })
-			.catch(() => {
-				// May already be loaded
-			});
+		// `hidden` also resolves when the loading state never rendered.
+		await this.page.getByText('Loading template').waitFor({ state: 'hidden', timeout: 15_000 });
 	}
 
 	async save() {

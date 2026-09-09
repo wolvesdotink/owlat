@@ -36,9 +36,8 @@ import {
 	stderrTail,
 	SERVER_IP_PLACEHOLDER,
 	MIN_ADMIN_PASSWORD_LENGTH,
-	type ProvisioningMessage,
 } from '../provisioningForm';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * Step titles, strength labels, validation errors and DNS notes are catalog keys
@@ -47,8 +46,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * the words the operator reads.
  */
 const { t } = createTestI18n().global;
-const render = (message: ProvisioningMessage): string =>
-	typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
+const render = localizedWith(t);
 
 describe('timeline', () => {
 	it('starts every step pending and includes all server steps', () => {

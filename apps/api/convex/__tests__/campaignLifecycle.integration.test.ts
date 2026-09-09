@@ -2,7 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, afterEach } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import { createTestCampaign } from './factories';
+import { createTestCampaign, flushScheduled } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { rollupCampaignStatsRow } from '../campaigns/statShards';
@@ -22,7 +22,7 @@ async function readCampaignWithStats(ctx: MutationCtx, campaignId: Id<'campaigns
 // Let them drain before the next test to avoid "Write outside of
 // transaction" leaks.
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 // ============================================================================
@@ -34,10 +34,7 @@ describe('Campaign lifecycle — happy path transitions', () => {
 		const t = convexTest(schema, modules);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({ status: 'draft' })
-			);
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'draft' }));
 		});
 
 		const scheduledAt = Date.now() + 60 * 60 * 1000;
@@ -58,7 +55,9 @@ describe('Campaign lifecycle — happy path transitions', () => {
 			expect(campaign?.status).toBe('scheduled');
 			expect(campaign?.scheduledAt).toBe(scheduledAt);
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.scheduled');
 			expect(audit?.userId).toBe('user_123');
 		});
@@ -112,7 +111,9 @@ describe('Campaign lifecycle — happy path transitions', () => {
 			expect(campaign?.sentAt).toBeDefined();
 			expect(campaign?.scheduledAt).toBeUndefined();
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.send_started');
 		});
 	});
@@ -142,7 +143,9 @@ describe('Campaign lifecycle — happy path transitions', () => {
 			const campaign = await readCampaignWithStats(ctx, campaignId!);
 			expect(campaign?.status).toBe('sending');
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.userId).toBe('system:scheduler_tick');
 		});
 	});
@@ -174,7 +177,9 @@ describe('Campaign lifecycle — happy path transitions', () => {
 			expect(campaign?.cancelledAt).toBeDefined();
 			expect(campaign?.scheduledAt).toBeUndefined();
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.cancelled');
 		});
 	});
@@ -205,7 +210,9 @@ describe('Campaign lifecycle — happy path transitions', () => {
 			expect(campaign?.status).toBe('draft');
 			expect(campaign?.scheduledAt).toBeUndefined();
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.unscheduled');
 		});
 	});
@@ -214,10 +221,7 @@ describe('Campaign lifecycle — happy path transitions', () => {
 		const t = convexTest(schema, modules);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({ status: 'sending' })
-			);
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
 		});
 
 		const outcome = await t.mutation(internal.campaigns.lifecycle.transition, {
@@ -232,7 +236,9 @@ describe('Campaign lifecycle — happy path transitions', () => {
 			const campaign = await readCampaignWithStats(ctx, campaignId!);
 			expect(campaign?.status).toBe('sent');
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.sent');
 		});
 	});
@@ -241,10 +247,7 @@ describe('Campaign lifecycle — happy path transitions', () => {
 		const t = convexTest(schema, modules);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({ status: 'sending' })
-			);
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
 		});
 
 		const outcome = await t.mutation(internal.campaigns.lifecycle.transition, {
@@ -264,7 +267,9 @@ describe('Campaign lifecycle — happy path transitions', () => {
 			expect(campaign?.status).toBe('draft');
 			expect(campaign?.contentBlockReason).toBe('spam keywords detected');
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.content_blocked');
 		});
 	});
@@ -273,10 +278,7 @@ describe('Campaign lifecycle — happy path transitions', () => {
 		const t = convexTest(schema, modules);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({ status: 'sending' })
-			);
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
 		});
 
 		const outcome = await t.mutation(internal.campaigns.lifecycle.transition, {
@@ -291,7 +293,9 @@ describe('Campaign lifecycle — happy path transitions', () => {
 			const campaign = await readCampaignWithStats(ctx, campaignId!);
 			expect(campaign?.status).toBe('pending_review');
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.flagged_for_review');
 		});
 	});
@@ -318,7 +322,9 @@ describe('Campaign lifecycle — happy path transitions', () => {
 			const campaign = await readCampaignWithStats(ctx, campaignId!);
 			expect(campaign?.status).toBe('sending');
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.review_approved');
 		});
 	});
@@ -345,7 +351,9 @@ describe('Campaign lifecycle — happy path transitions', () => {
 			const campaign = await readCampaignWithStats(ctx, campaignId!);
 			expect(campaign?.status).toBe('draft');
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.review_rejected');
 		});
 	});
@@ -522,7 +530,9 @@ describe('Campaign lifecycle — cross-machine AB test kickoff', () => {
 			expect(campaign?.status).toBe('sending');
 			expect(campaign?.abTestStatus).toBe('testing');
 			const auditRows = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.filter((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.filter((l) => l.resourceId === campaignId!));
 			const actions = auditRows.map((r) => r.action).sort();
 			expect(actions).toContain('campaign.send_started');
 			expect(actions).toContain('ab_test.testing_started');
@@ -613,7 +623,9 @@ describe('Campaign lifecycle — track_event firing rules', () => {
 		// presence as a witness for the synchronous effects.
 		await t.run(async (ctx) => {
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.cancelled');
 		});
 	});
@@ -625,10 +637,7 @@ describe('Campaign lifecycle — track_event firing rules', () => {
 		const t = convexTest(schema, modules);
 		let campaignId: Id<'campaigns'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({ status: 'sending' })
-			);
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
 		});
 
 		await t.mutation(internal.campaigns.lifecycle.transition, {
@@ -639,7 +648,9 @@ describe('Campaign lifecycle — track_event firing rules', () => {
 
 		await t.run(async (ctx) => {
 			const audit = await ctx.db
-				.query('auditLogs').collect().then((logs) => logs.find((l) => l.resourceId === campaignId!));
+				.query('auditLogs')
+				.collect()
+				.then((logs) => logs.find((l) => l.resourceId === campaignId!));
 			expect(audit?.action).toBe('campaign.sent');
 			expect(audit?.userId).toBe('system:orchestrator');
 		});
