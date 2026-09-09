@@ -2,8 +2,8 @@ import type { Page, Locator } from '@playwright/test';
 import { expect } from '@playwright/test';
 
 /**
- * Base page object with shared patterns for modals, toasts, and navigation.
- * All page objects can extend this for common functionality.
+ * Base page object with shared patterns for modals, toasts, tables and navigation.
+ * Every page object extends this.
  */
 export class BasePage {
 	readonly page: Page;
@@ -35,11 +35,6 @@ export class BasePage {
 	/** Click a button inside the current modal by name */
 	async clickModalButton(name: string | RegExp) {
 		await this.modal.getByRole('button', { name }).click();
-	}
-
-	/** Fill an input inside the current modal by label */
-	async fillModalField(label: string, value: string) {
-		await this.modal.getByLabel(label).fill(value);
 	}
 
 	// ============================================
@@ -79,11 +74,6 @@ export class BasePage {
 	// ============================================
 	// Navigation Helpers
 	// ============================================
-
-	/** Wait for the page content to load (table or empty state) */
-	async waitForPageContent(timeout = 15_000) {
-		await this.page.waitForSelector('table, [class*="empty"]', { timeout });
-	}
 
 	/** Wait for a heading to appear */
 	async waitForHeading(timeout = 15_000) {

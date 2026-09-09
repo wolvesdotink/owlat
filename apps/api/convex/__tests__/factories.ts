@@ -838,3 +838,18 @@ export function createTestSendAssignment(
 		...overrides,
 	};
 }
+
+/**
+ * Let the work a handler queued with `ctx.scheduler.runAfter(0, …)` drain.
+ * With a harness, its in-progress scheduled functions are awaited after one
+ * macrotask turn. Without one — an `afterEach` in a suite where every test
+ * builds its own harness — a short real wait lets the fan-out settle before
+ * the next test replaces convex-test's global state; otherwise the closures
+ * hold a stale database and surface "Write outside of transaction" rejections.
+ */
+export async function flushScheduled(t?: {
+	finishInProgressScheduledFunctions(): Promise<void>;
+}): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, t === undefined ? 25 : 0));
+	if (t !== undefined) await t.finishInProgressScheduledFunctions();
+}

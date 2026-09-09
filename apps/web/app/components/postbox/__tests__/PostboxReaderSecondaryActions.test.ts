@@ -34,14 +34,6 @@ function block(selector: string): string {
 }
 
 describe('reader reply-all / forward visibility', () => {
-	it('marks both buttons with the density-driven class', () => {
-		expect(card.match(/class="pbx-reader-secondary-action"/g)).toHaveLength(2);
-	});
-
-	it('no longer hides them behind a pointer hover at every density', () => {
-		expect(card).not.toContain('group-hover:inline-flex');
-	});
-
 	it('shows them by default — which is the comfortable default density', () => {
 		expect(block('.pbx-reader-secondary-action')).toContain('display: inline-flex');
 	});

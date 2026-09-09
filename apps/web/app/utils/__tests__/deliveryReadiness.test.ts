@@ -3,13 +3,12 @@ import type { OutboundTransportFacts } from '@owlat/shared';
 import {
 	deriveDeliveryReadiness,
 	readinessInputFromSources,
-	type LocalizedText,
 	type ReadinessDomainRow,
 	type ReadinessGateKey,
 	type ReadinessInput,
 } from '../deliveryReadiness';
 import { summarizeDualArmAlignment, type ReadinessDualArmRow } from '../dualArmAlignment';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * The gates are built outside a component, so every headline, detail and action
@@ -18,8 +17,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * and a server-authored detail, which rides through as itself, still resolves.
  */
 const { t } = createTestI18n().global;
-const localized = (value: LocalizedText): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 
 /** A fully-ready instance; override one fact at a time to exercise each gate. */
 function input(overrides: Partial<ReadinessInput> = {}): ReadinessInput {

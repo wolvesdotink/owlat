@@ -109,3 +109,17 @@ describe('looping animations honour prefers-reduced-motion', () => {
 		expect(guarded.length).toBeGreaterThan(100);
 	});
 });
+
+describe('page transitions honour prefers-reduced-motion', () => {
+	// The route transition is pure CSS (a named Vue transition), so the only
+	// place its off switch can live is the stylesheet's reduced-motion block.
+	const css = readFileSync(join(repoRoot, 'apps/web/app/assets/css/page-transitions.css'), 'utf8');
+
+	it('turns the page and layout transitions into an instant, static swap', () => {
+		const start = css.indexOf('@media (prefers-reduced-motion: reduce)');
+		expect(start).toBeGreaterThan(-1);
+		const reduced = css.slice(start);
+		expect(reduced).toContain('transition: none;');
+		expect(reduced).toContain('transform: none;');
+	});
+});

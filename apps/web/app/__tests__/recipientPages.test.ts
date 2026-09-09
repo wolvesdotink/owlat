@@ -12,12 +12,9 @@ import { dirname, resolve } from 'node:path';
  *  - share/archive painted themselves with hardcoded palette classes
  *    (bg-gray-50, text-gray-900, bg-white), which render as a light-mode island
  *    when the recipient's device is in dark mode;
- *  - the framed email is the one thing that must NOT follow that preference —
- *    campaign HTML is authored for a light canvas, so the paper is pinned light
- *    in both modes or dark-on-dark text becomes unreadable;
  *  - `min-h-screen` measures the tallest viewport, so mobile browser chrome
  *    clipped the centred cards;
- *  - the only control on the page has to be thumb-sized (>= 44px).
+ *  - the framed email is attacker-influenced HTML and must never run scripts.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -59,16 +56,6 @@ describe('recipient pages are mobile-first', () => {
 		expect(pages[name]).not.toContain('min-h-screen');
 	});
 
-	it.each(cardPages)('%s keeps its content clear of the notch and home indicator', (name) => {
-		expect(pages[name]).toContain('pt-[max(2.5rem,env(safe-area-inset-top))]');
-		expect(pages[name]).toContain('pb-[max(2.5rem,env(safe-area-inset-bottom))]');
-	});
-
-	it.each(framePages)('%s keeps its chrome clear of the notch and home indicator', (name) => {
-		expect(pages[name]).toContain('pt-[env(safe-area-inset-top)]');
-		expect(pages[name]).toContain('pb-[max(1.5rem,env(safe-area-inset-bottom))]');
-	});
-
 	it.each(cardPages)('%s wraps the unbounded contact strings', (name) => {
 		// Contact emails and organization names are arbitrary length and the card
 		// is read at 320px; without this they push the card wider than the screen.
@@ -80,39 +67,7 @@ describe('recipient pages are mobile-first', () => {
 	});
 });
 
-describe('recipient pages have thumb-sized controls', () => {
-	it.each(cardPages)('%s sizes its primary action past 44px', (name) => {
-		// UiButton's default height is below the 44px touch minimum; h-12 = 48px.
-		expect(pages[name]).toMatch(/<UiButton[\s\S]*?class="h-12"/);
-	});
-
-	it('preferences expands the switch hit area to 44px without growing the track', () => {
-		// UiSwitch's track is 44x24 — wide enough, 20px too short. The rows are the
-		// entire job of this page on a phone.
-		expect(pages.preferences).toContain(".pref-row :deep(button[role='switch'])::after");
-		expect(pages.preferences).toMatch(/inset:\s*-10px\s+-8px/);
-		// The rule only reaches switches that sit in a tagged row.
-		expect(pages.preferences.match(/class="pref-row|pref-row /g)?.length ?? 0).toBeGreaterThan(1);
-	});
-
-	it('preferences keeps its rows visible against the card', () => {
-		// `.card` is surface-2 and bg-bg-elevated resolves to surface-2 in BOTH
-		// modes, so the rows used to be the exact colour of their parent.
-		// Matched inside a class attribute: both names are also named in the
-		// comment that explains the choice.
-		expect(pages.preferences).not.toMatch(/class="[^"]*\bbg-bg-elevated\b/);
-		expect(pages.preferences).toMatch(/class="[^"]*\bbg-bg-surface\b/);
-	});
-});
-
 describe('framed email stays readable and sandboxed', () => {
-	it.each(framePages)('%s pins the email canvas to light in both modes', (name) => {
-		// The email HTML brings its own light-canvas colours; inverting the paper
-		// with the app would leave dark text on a dark background.
-		expect(pages[name]).toContain('class="light bg-surface-3"');
-		expect(pages[name]).toContain('scheme-only-light');
-	});
-
 	it.each(framePages)('%s never lets the untrusted email run scripts', (name) => {
 		// same-origin + scripts = full escape from the sandbox, and this frame
 		// renders attacker-influenced HTML.

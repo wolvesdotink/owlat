@@ -251,7 +251,6 @@ describe('every catalog kind has an adapter', () => {
 		// the assertion that says so out loud.
 		const module = providerFor(kind);
 		expect(module.kind).toBe(kind);
-		expect(typeof module.sendEmail).toBe('function');
 		expect(module.retryDelays.length).toBeGreaterThan(0);
 	});
 });

@@ -64,6 +64,19 @@ export function createTestI18n() {
  */
 export const i18nStubs = { useI18n };
 
+/** A message as the registries carry it: a bare key, or a key with its params. */
+export type LocalizedMessage = string | { key: string; params?: Record<string, unknown> };
+
+/**
+ * Resolve a registry message through a real `t`, so a suite asserts the English
+ * the catalog renders rather than restating a key path. Bound to the caller's
+ * instance because `t` is per-instance and suites create their own.
+ */
+export function localizedWith(t: ReturnType<typeof createTestI18n>['global']['t']) {
+	return (value: LocalizedMessage): string =>
+		typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
+
 /**
  * A message key that leaked into the page instead of its translation.
  *

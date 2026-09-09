@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getFunctionName } from 'convex/server';
+import { makeStepCtx } from '../../__tests__/stepCtx';
 import type { Id } from '../../../../_generated/dataModel';
 import { contextRetrievalStep, inboundBodyForContext } from '../index';
 
@@ -24,23 +24,17 @@ const INLINE_CID = '<img src="cid:logo@corp" alt="logo">';
 
 /** Minimal ctx serving an HTML-only inbound; retrieval legs return empty. */
 function makeCtx(message: Record<string, unknown>) {
-	return {
-		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getMessage')) return message;
-			if (name.includes('getContact')) return null;
-			if (name.includes('getRecentActivities')) return [];
-			if (name.includes('getThreadMessages')) return [];
-			if (name.includes('isGraphRetrievalEnabled')) return false;
-			throw new Error(`unexpected runQuery: ${name}`);
+	return makeStepCtx<Parameters<typeof contextRetrievalStep.execute>[0]>({
+		queries: {
+			getMessage: message,
+			getContact: null,
+			getRecentActivities: [],
+			getThreadMessages: [],
+			isGraphRetrievalEnabled: false,
 		},
-		runAction: async () => [],
-		runMutation: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('recordContextTier')) return null;
-			throw new Error(`unexpected runMutation: ${name}`);
-		},
-	} as unknown as Parameters<typeof contextRetrievalStep.execute>[0];
+		actions: { knowledge: [], semanticFileProcessing: [] },
+		mutations: { recordContextTier: null },
+	});
 }
 
 describe('inboundBodyForContext', () => {

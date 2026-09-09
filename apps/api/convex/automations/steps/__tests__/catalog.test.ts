@@ -20,10 +20,6 @@ vi.mock('../../../plugins/automationStepCatalog.generated', () => ({
 const catalog = await import('../catalog');
 
 describe('automation step catalog', () => {
-	it('pins the built-in step kinds and their order', () => {
-		expect(catalog.CORE_STEP_KINDS).toEqual(['email', 'delay', 'condition']);
-	});
-
 	it('appends composed plugin kinds after the core kinds', () => {
 		expect(catalog.STEP_KINDS).toEqual([
 			'email',

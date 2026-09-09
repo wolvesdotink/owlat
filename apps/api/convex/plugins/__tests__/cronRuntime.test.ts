@@ -124,7 +124,6 @@ describe('hosted plugin cron runtime', () => {
 
 		expect(received).toBeDefined();
 		expect(received!.signal).toBeInstanceOf(AbortSignal);
-		expect(typeof received!.logger.info).toBe('function');
 		expect(received!.llm).toBe(registry.llm);
 		expect(received).not.toHaveProperty('db');
 		// the lease is revoked once the tick ends

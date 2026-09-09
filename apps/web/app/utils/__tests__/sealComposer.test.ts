@@ -10,19 +10,17 @@ import {
 	deriveComposerLock,
 	deriveUnsealedPrompt,
 	sealSendBlock,
-	type SealLockText,
 	type SealSkipReason,
 	type SealState,
 } from '../sealComposer';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * The derivation carries catalog keys, so the audit renders them against the
  * real English catalog: what is pinned below is the sentence a sender reads.
  */
 const { t } = createTestI18n().global;
-const render = (text: SealLockText) =>
-	typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
+const render = localizedWith(t);
 
 describe('deriveComposerLock', () => {
 	it('willSeal: verbatim promise copy, ok tone, no unsealed escape hatch', () => {

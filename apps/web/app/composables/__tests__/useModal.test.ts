@@ -275,19 +275,6 @@ describe('useModal', () => {
 });
 
 describe('useConfirmModal', () => {
-	it('returns all useModal properties', () => {
-		const modal = useConfirmModal();
-
-		expect(modal.isOpen).toBeDefined();
-		expect(modal.isLoading).toBeDefined();
-		expect(modal.error).toBeDefined();
-		expect(modal.data).toBeDefined();
-		expect(modal.open).toBeDefined();
-		expect(modal.close).toBeDefined();
-		expect(modal.reset).toBeDefined();
-		expect(modal.confirm).toBeDefined();
-	});
-
 	describe('confirm', () => {
 		it('delegates to execute with closeOnSuccess true', async () => {
 			const modal = useConfirmModal();

@@ -86,6 +86,7 @@ vi.mock('@owlat/smtp-client', () => ({
 
 import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
 import { sendProviderDispatch } from '../dispatch';
+import { fakeDispatchCtx } from './dispatchFixtures';
 import { _resetResendClientCacheForTests } from '../resend';
 import { _resetSmtpConfigCacheForTests } from '../smtp';
 import { _resetMandrillConfigCacheForTests } from '../mandrill';
@@ -95,13 +96,6 @@ import {
 	namedSendTransportId,
 	resolveSendTransport,
 } from '../transports';
-
-function fakeCtx(): Parameters<typeof sendProviderDispatch>[0] {
-	return {
-		runMutation: vi.fn(async () => true),
-		scheduler: { runAfter: vi.fn(async () => undefined) },
-	} as unknown as Parameters<typeof sendProviderDispatch>[0];
-}
 
 /**
  * Built through the kit's own grammar rather than written out: the plugin kind is
@@ -216,9 +210,9 @@ describe('two transports of the same kind', () => {
 		);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
-		const primary = await sendProviderDispatch(fakeCtx(), 'mta', params);
+		const primary = await sendProviderDispatch(fakeDispatchCtx(), 'mta', params);
 		const secondary = await sendProviderDispatch(
-			fakeCtx(),
+			fakeDispatchCtx(),
 			namedSendTransportId('mta', 'secondary'),
 			params
 		);
@@ -237,11 +231,11 @@ describe('two transports of the same kind', () => {
 	});
 
 	it('dispatches two smtp transports to two different relays, caches kept separate', async () => {
-		await sendProviderDispatch(fakeCtx(), 'smtp', params);
-		await sendProviderDispatch(fakeCtx(), namedSendTransportId('smtp', 'backup'), params);
+		await sendProviderDispatch(fakeDispatchCtx(), 'smtp', params);
+		await sendProviderDispatch(fakeDispatchCtx(), namedSendTransportId('smtp', 'backup'), params);
 		// Send through the primary again: a per-kind cache would have been
 		// overwritten by the backup's config by now.
-		await sendProviderDispatch(fakeCtx(), 'smtp', params);
+		await sendProviderDispatch(fakeDispatchCtx(), 'smtp', params);
 
 		const inputs = smtpSendMock.mock.calls.map(
 			(call) =>
@@ -263,9 +257,9 @@ describe('two transports of the same kind', () => {
 	});
 
 	it('builds one Resend client per transport, each with its own API key', async () => {
-		await sendProviderDispatch(fakeCtx(), 'resend', params);
-		await sendProviderDispatch(fakeCtx(), namedSendTransportId('resend', 'trial'), params);
-		await sendProviderDispatch(fakeCtx(), 'resend', params);
+		await sendProviderDispatch(fakeDispatchCtx(), 'resend', params);
+		await sendProviderDispatch(fakeDispatchCtx(), namedSendTransportId('resend', 'trial'), params);
+		await sendProviderDispatch(fakeDispatchCtx(), 'resend', params);
 
 		expect(resendKeys).toEqual(['resend-primary-key', 'resend-trial-key']);
 	});
@@ -284,9 +278,9 @@ describe('two transports of the same kind', () => {
 		);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
-		await sendProviderDispatch(fakeCtx(), 'mandrill', params);
-		await sendProviderDispatch(fakeCtx(), namedSendTransportId('mandrill', 'eu'), params);
-		await sendProviderDispatch(fakeCtx(), 'mandrill', params);
+		await sendProviderDispatch(fakeDispatchCtx(), 'mandrill', params);
+		await sendProviderDispatch(fakeDispatchCtx(), namedSendTransportId('mandrill', 'eu'), params);
+		await sendProviderDispatch(fakeDispatchCtx(), 'mandrill', params);
 
 		const bodies = fetchSpy.mock.calls.map(
 			(call) =>
@@ -309,9 +303,13 @@ describe('two transports of the same kind', () => {
 		// HANDED — under the base name, whichever instance it was — so a module
 		// written without knowing instances exist still cannot send the third message
 		// with the EU token.
-		await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
-		await sendProviderDispatch(fakeCtx(), namedSendTransportId(SENDBIRD_KIND, 'eu'), params);
-		await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
+		await sendProviderDispatch(fakeDispatchCtx(), SENDBIRD_KIND, params);
+		await sendProviderDispatch(
+			fakeDispatchCtx(),
+			namedSendTransportId(SENDBIRD_KIND, 'eu'),
+			params
+		);
+		await sendProviderDispatch(fakeDispatchCtx(), SENDBIRD_KIND, params);
 
 		expect(pluginSendMock.mock.calls.map((call) => call[0])).toEqual([
 			{
@@ -339,9 +337,9 @@ describe('two transports of the same kind', () => {
 		// Health and measurement stay keyed by KIND (one row per kind, instances
 		// share it), while the dispatch result names the instance — the same split
 		// the core kinds above have.
-		const primary = await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
+		const primary = await sendProviderDispatch(fakeDispatchCtx(), SENDBIRD_KIND, params);
 		const eu = await sendProviderDispatch(
-			fakeCtx(),
+			fakeDispatchCtx(),
 			namedSendTransportId(SENDBIRD_KIND, 'eu'),
 			params
 		);

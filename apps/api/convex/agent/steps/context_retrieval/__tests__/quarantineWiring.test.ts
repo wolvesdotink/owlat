@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getFunctionName } from 'convex/server';
+import { makeStepCtx } from '../../__tests__/stepCtx';
 import { contextRetrievalStep } from '../index';
 import type { Id } from '../../../../_generated/dataModel';
 
@@ -30,30 +30,19 @@ function makeCtx(extractResult: string | null) {
 		textBody: RAW_BODY,
 		receivedAt: Date.now(),
 	};
-	return {
-		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getMessage')) return message;
-			if (name.includes('getContact')) return null;
-			if (name.includes('getRecentActivities')) return [];
-			if (name.includes('getThreadMessages')) return [];
-			if (name.includes('getOpenCommitments')) return [];
-			if (name.includes('isGraphRetrievalEnabled')) return false;
-			throw new Error(`unexpected runQuery: ${name}`);
+
+	return makeStepCtx<Parameters<typeof contextRetrievalStep.execute>[0]>({
+		queries: {
+			getMessage: message,
+			getContact: null,
+			getRecentActivities: [],
+			getThreadMessages: [],
+			getOpenCommitments: [],
+			isGraphRetrievalEnabled: false,
 		},
-		runAction: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('quarantine')) return extractResult;
-			if (name.includes('knowledge')) return [];
-			if (name.includes('semanticFileProcessing')) return [];
-			throw new Error(`unexpected runAction: ${name}`);
-		},
-		runMutation: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('recordContextTier')) return null;
-			throw new Error(`unexpected runMutation: ${name}`);
-		},
-	} as unknown as Parameters<typeof contextRetrievalStep.execute>[0];
+		actions: { quarantine: extractResult, knowledge: [], semanticFileProcessing: [] },
+		mutations: { recordContextTier: null },
+	});
 }
 
 describe('contextRetrievalStep.execute — quarantined structured current message', () => {

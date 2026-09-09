@@ -21,12 +21,12 @@
  */
 
 import { convexTest } from 'convex-test';
-import { getFunctionName } from 'convex/server';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import { modules } from '../../__tests__/testModules';
+import { fnName, makeRecordingActionCtx, type RunMutationCall } from './recordingActionCtx';
 import { dispatchInboundEvent } from '../dispatcher';
 import { parsePluginFeedbackEvents } from '../pluginFeedbackEvents';
 import { applyProviderSuppression } from '../providerSuppression';
@@ -34,26 +34,6 @@ import { PROVIDER_SUPPRESSION_REASONS, type ProviderSuppressionReason } from '..
 
 const PLUGIN_KIND = 'plugin.acme.mail';
 const RECIPIENT = 'blocked@example.com';
-
-const fnName = (ref: unknown): string =>
-	getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-
-interface RunMutationCall {
-	readonly name: string;
-	readonly args: Record<string, unknown>;
-}
-
-function makeCtx(): { ctx: ActionCtx; calls: RunMutationCall[] } {
-	const calls: RunMutationCall[] = [];
-	const ctx = {
-		runMutation: vi.fn(async (ref: unknown, args: Record<string, unknown>) => {
-			calls.push({ name: fnName(ref), args });
-			return { ok: true };
-		}),
-		scheduler: { runAfter: vi.fn(async () => undefined) },
-	} as unknown as ActionCtx;
-	return { ctx, calls };
-}
 
 const blocks = (calls: readonly RunMutationCall[]) =>
 	calls.filter((call) => call.name === fnName(internal.blockedEmails.addFromEvent));
@@ -117,7 +97,7 @@ describe('a provider nothing was written for expresses its whole policy as data'
 		['recipient_blacklisted', 'manual', undefined],
 		['operator_suppressed', 'manual', undefined],
 	] as const)('blocks %s as %s', async (reason, blockReason, bounceType) => {
-		const { ctx, calls } = makeCtx();
+		const { ctx, calls } = makeRecordingActionCtx();
 		await dispatchInboundEvent(ctx, pluginSuppression(reason));
 
 		expect(blocks(calls)).toHaveLength(1);
@@ -140,7 +120,7 @@ describe('a provider nothing was written for expresses its whole policy as data'
 	// campaign counter, webhook fanout) and a blocklist row would record the
 	// outcome while skipping all of it.
 	it('routes a departure through the consent path instead of the blocklist', async () => {
-		const { ctx, calls } = makeCtx();
+		const { ctx, calls } = makeRecordingActionCtx();
 		await dispatchInboundEvent(ctx, pluginSuppression('unsubscribed'));
 
 		expect(blocks(calls)).toHaveLength(0);
@@ -172,7 +152,7 @@ describe('a provider nothing was written for expresses its whole policy as data'
 	// same normalized fact, and the shared handler applies it before it does the
 	// bookkeeping.
 	it('applies a failure-borne suppression from an unknown provider, suppression first', async () => {
-		const { ctx, calls } = makeCtx();
+		const { ctx, calls } = makeRecordingActionCtx();
 		await dispatchInboundEvent(ctx, {
 			kind: 'email.failed',
 			providerMessageId: 'acme-1',
@@ -199,7 +179,7 @@ describe('a provider nothing was written for expresses its whole policy as data'
 	});
 
 	it('suppresses nobody on a terminal failure carrying no suppression', async () => {
-		const { ctx, calls } = makeCtx();
+		const { ctx, calls } = makeRecordingActionCtx();
 		await dispatchInboundEvent(ctx, {
 			kind: 'email.failed',
 			providerMessageId: 'acme-2',
@@ -215,7 +195,7 @@ describe('a provider nothing was written for expresses its whole policy as data'
 	});
 
 	it('suppresses nobody when the provider names no address', async () => {
-		const { ctx, calls } = makeCtx();
+		const { ctx, calls } = makeRecordingActionCtx();
 		await dispatchInboundEvent(ctx, {
 			kind: 'email.failed',
 			providerMessageId: 'acme-3',

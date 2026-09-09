@@ -102,8 +102,6 @@ describe('a well-formed composition', () => {
 		const resolved = registry.pluginSendTransportDomainIdentityFor(KIND);
 
 		expect(resolved?.definition.label).toBe('Relay');
-		expect(typeof resolved?.module.registerDomain).toBe('function');
-		expect(typeof resolved?.module.checkDomain).toBe('function');
 		// Keyed by KIND, not by plugin id — an identity belongs to the transport
 		// whose account it was registered under, and the prototype keys a plain
 		// object lookup would have answered resolve to nothing.

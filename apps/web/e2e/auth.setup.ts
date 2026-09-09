@@ -1,7 +1,8 @@
-import { test as setup, expect } from '@playwright/test';
-import { TEST_USER } from './fixtures/test-data';
+import { test as setup } from '@playwright/test';
+import { registerTestUser } from './fixtures/test-data';
 
 setup('register and save auth state', async ({ page }) => {
+	const TEST_USER = registerTestUser();
 	await page.goto('/auth/register');
 
 	// Wait for Nuxt/Vue hydration so @submit.prevent is wired up
@@ -16,7 +17,7 @@ setup('register and save auth state', async ({ page }) => {
 	const [signupResponse] = await Promise.all([
 		page.waitForResponse(
 			(resp) => resp.url().includes('/api/auth/sign-up') && resp.request().method() === 'POST',
-			{ timeout: 30_000 },
+			{ timeout: 30_000 }
 		),
 		page.getByRole('button', { name: 'Create account' }).click(),
 	]);
@@ -26,7 +27,7 @@ setup('register and save auth state', async ({ page }) => {
 		const body = await signupResponse.text().catch(() => '(no body)');
 		throw new Error(
 			`Signup API returned ${signupResponse.status()}: ${body}. ` +
-				'Check that CONVEX_TEST_URL/CONVEX_TEST_SITE_URL secrets are configured and the Convex test instance is running.',
+				'Check that CONVEX_TEST_URL/CONVEX_TEST_SITE_URL secrets are configured and the Convex test instance is running.'
 		);
 	}
 
