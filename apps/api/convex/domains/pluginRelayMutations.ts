@@ -28,6 +28,7 @@ import {
 	type PluginRelayObservation,
 } from './providers/plugin/state';
 import { internalMutation } from '../_generated/server';
+import { relayIdentityStatusValidator } from '../lib/literalValidators';
 
 const recordVerdictValidator = v.object({
 	isValid: v.boolean(),
@@ -36,12 +37,7 @@ const recordVerdictValidator = v.object({
 
 /** The host's reading of one provider observation, on its way to the row. */
 const observationValidator = v.object({
-	status: v.union(
-		v.literal('unverified'),
-		v.literal('pending_dns'),
-		v.literal('verified'),
-		v.literal('failed')
-	),
+	status: relayIdentityStatusValidator,
 	spf: recordVerdictValidator,
 	dkim: recordVerdictValidator,
 	dkimSelectors: v.array(v.string()),

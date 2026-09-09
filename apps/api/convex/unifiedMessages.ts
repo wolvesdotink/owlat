@@ -16,6 +16,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { unifiedMessageChannelValidator, outboundChannelValidator } from './lib/convexValidators';
 import { applyOpenThreadDelta } from './lib/inboxStats';
 import { openUnifiedMessageContent, sealUnifiedMessageContentAtWrite } from './lib/messageBody';
+import { healthStatusValidator } from './lib/literalValidators';
 
 // ============================================================
 // Queries
@@ -539,7 +540,7 @@ export const resolveOutboundThread = internalMutation({
 export const updateChannelHealth = internalMutation({
 	args: {
 		channel: unifiedMessageChannelValidator,
-		healthStatus: v.union(v.literal('healthy'), v.literal('degraded'), v.literal('down')),
+		healthStatus: healthStatusValidator,
 		lastError: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {

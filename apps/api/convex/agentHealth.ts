@@ -17,6 +17,7 @@ import type { Doc } from './_generated/dataModel';
 import { adminQuery } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { estimateCostUsd } from './lib/llm/pricing';
+import { agentMetricTypeValidator } from './lib/literalValidators';
 
 // ============================================================
 // Dashboard Queries
@@ -88,15 +89,7 @@ export const getDashboardMetrics = adminQuery({
  */
 export const getMetricHistory = adminQuery({
 	args: {
-		metricType: v.union(
-			v.literal('queue_depth'),
-			v.literal('processing_latency'),
-			v.literal('classification_accuracy'),
-			v.literal('auto_approve_ratio'),
-			v.literal('rejection_rate'),
-			v.literal('llm_cost'),
-			v.literal('error_rate')
-		),
+		metricType: agentMetricTypeValidator,
 		hoursBack: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
@@ -247,15 +240,7 @@ export const getCircuitBreakersInternal = internalQuery({
  */
 export const recordMetric = internalMutation({
 	args: {
-		metricType: v.union(
-			v.literal('queue_depth'),
-			v.literal('processing_latency'),
-			v.literal('classification_accuracy'),
-			v.literal('auto_approve_ratio'),
-			v.literal('rejection_rate'),
-			v.literal('llm_cost'),
-			v.literal('error_rate')
-		),
+		metricType: agentMetricTypeValidator,
 		value: v.number(),
 		windowStart: v.number(),
 		windowEnd: v.number(),

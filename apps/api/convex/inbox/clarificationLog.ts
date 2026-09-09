@@ -14,6 +14,7 @@
 
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
+import { clarificationSourceValidator } from '../lib/literalValidators';
 
 /**
  * Persist one clarification ask-outcome row. All measurement fields are optional
@@ -23,7 +24,7 @@ import { internalMutation } from '../_generated/server';
  */
 export const recordClarificationAsk = internalMutation({
 	args: {
-		source: v.union(v.literal('agent'), v.literal('reply_queue')),
+		source: clarificationSourceValidator,
 		slotTypes: v.array(v.string()),
 		questionCount: v.number(),
 		predictedValue: v.number(),
