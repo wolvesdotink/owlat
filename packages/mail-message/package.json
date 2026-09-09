@@ -2,8 +2,8 @@
 	"name": "@owlat/mail-message",
 	"version": "0.4.4",
 	"private": true,
-	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
 	"main": "./src/index.ts",
 	"module": "./src/index.ts",
@@ -57,7 +57,7 @@
 		"@vitest/coverage-v8": "catalog:",
 		"mailauth": "^5.0.0",
 		"mailparser": "^3.7.0",
-		"nodemailer": "^9.0.3",
+		"nodemailer": "^9.1.0",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}
