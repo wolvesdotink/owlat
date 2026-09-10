@@ -1,5 +1,5 @@
 /**
- * Custom return-path capability — the measurement-bias fix (plan G-08).
+ * Custom return-path capability — the measurement-bias fix.
  *
  * The own-MTA arm stamps a VERP envelope sender and runs its own bounce
  * server, so its feedback is rich. Resend and SES report bounces over their

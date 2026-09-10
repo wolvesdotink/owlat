@@ -1,5 +1,5 @@
 /**
- * Is the return-path host allowed to be a RELAY's envelope sender? (plan G-08)
+ * Is the return-path host allowed to be a RELAY's envelope sender?
  *
  * Deliberately apart from `./smtp/returnPath.ts`, which builds the VERP address
  * and therefore imports `node:crypto`. This decision is read by the ROUTING

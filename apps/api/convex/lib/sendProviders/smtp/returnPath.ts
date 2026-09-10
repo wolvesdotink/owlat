@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * The relay arm's RETURN-PATH decision (plan G-08).
+ * The relay arm's RETURN-PATH decision.
  *
  * Split out of `./index.ts` so the one rule that governs bounce attribution on
  * the relay arm is a small, pure, exhaustively-fixtured module rather than a
@@ -41,7 +41,7 @@ export interface RelayEnvelopeSender {
 }
 
 /**
- * Decide the relay send's envelope sender (plan G-08, D11).
+ * Decide the relay send's envelope sender.
  *
  * ONLY the RFC5321.MailFrom is affected. The From header, the DKIM `d=` and
  * therefore DMARC's DKIM leg are untouched — the composed message bytes are not

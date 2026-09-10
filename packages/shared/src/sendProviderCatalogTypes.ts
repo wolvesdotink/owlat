@@ -98,8 +98,7 @@ export type DomainVerificationSupport = 'api' | 'none';
 
 /**
  * What a SUCCESSFUL dispatch means for this transport, and therefore what an
- * AMBIGUOUS one may be answered with (the SEAMS plan's D2 — capabilities, not
- * identity).
+ * AMBIGUOUS one may be answered with (capabilities, not identity).
  *
  *  - `accepted`  the transport takes CUSTODY of the message. Success is an
  *                intake acceptance, not a delivery: the Send stays `queued`
@@ -204,7 +203,7 @@ export type MessageIdSource = 'provider' | 'idempotency-key' | 'composed';
 
 /**
  * Does handing this transport the SAME idempotency key twice deliver the message
- * once? (the SEAMS plan's D2 — capabilities, not identity.)
+ * once? (capabilities, not identity.)
  *
  * A narrower question than {@link AcceptanceSemantics}, and deliberately a
  * separate field rather than a derivation of it. Acceptance semantics answer what
@@ -235,8 +234,7 @@ export type IdempotencyKeyDeduplication = boolean;
 
 /**
  * Does the feedback this transport sends us carry OUR OWN provenance tag —
- * `deliveryDomain` on the inbound event? (the SEAMS plan's D2 — capabilities,
- * not identity.)
+ * `deliveryDomain` on the inbound event? (capabilities, not identity.)
  *
  * `deliveryDomain` is not a provider field. It has exactly one writer,
  * `applyFeedbackProvenancePolicy` in `apps/mta/src/bounce/outcome.ts`, which

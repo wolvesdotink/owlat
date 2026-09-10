@@ -4,9 +4,9 @@ import { transportArmValidator } from '../lib/convexValidators';
 
 /**
  * Per-cell, per-arm rolling OUTCOME counters — the table that measures
- * DELIVERABILITY rather than ACCEPTANCE (plan G-05: a message Gmail accepts and
- * files into Spam currently counts as a 100% success, because the only thing
- * recorded is that the transport took it).
+ * DELIVERABILITY rather than ACCEPTANCE (a message Gmail accepts and files into
+ * Spam currently counts as a 100% success, because the only thing recorded is
+ * that the transport took it).
  *
  * Its own schema sibling rather than another entry in `schema/delivery.ts`: that
  * file sits at the file-size cap, and CONVENTIONS.md → "Add new tables"

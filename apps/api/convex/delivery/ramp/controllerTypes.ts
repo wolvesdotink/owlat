@@ -284,8 +284,8 @@ export interface RampControllerInput {
 	readonly evaluation: RampGateEvaluation | null;
 	readonly capacity: RampCapacityInput;
 	/**
-	 * THE DEGRADATION MATRIX'S CEILING CAP (piece P3-8) — the highest rung
-	 * this cell may occupy while an integration is missing.
+	 * THE DEGRADATION MATRIX'S CEILING CAP — the highest rung this cell
+	 * may occupy while an integration is missing.
 	 *
 	 * REQUIRED, not optional. `degradedCeilingCap` is TOTAL: it answers for every
 	 * presence map and returns the top rung when nothing caps anything, so an

@@ -302,12 +302,12 @@ export async function loadCellInput(
 		now,
 	});
 
-	// THE SUBSTITUTION TABLE CHOOSES EVERYTHING BELOW (piece P3-8). Which evaluator
-	// runs, how many clean windows an increase costs, how big a step is, which
-	// complaint line applies and how high the phase ladder may go are all folded
-	// out of `RAMP_DEGRADATION_MATRIX`. There is no `if (no relay)` here or
-	// anywhere else in the controller: a conditional naming an integration would be
-	// a substitution living outside the table, which is the exact failure mode the
+	// THE SUBSTITUTION TABLE CHOOSES EVERYTHING BELOW. Which evaluator runs, how
+	// many clean windows an increase costs, how big a step is, which complaint line
+	// applies and how high the phase ladder may go are all folded out of
+	// `RAMP_DEGRADATION_MATRIX`. There is no `if (no relay)` here or anywhere else
+	// in the controller: a conditional naming an integration would be a
+	// substitution living outside the table, which is the exact failure mode the
 	// table exists to prevent.
 	//
 	// THE OPERATOR'S PRESET AND THE TABLE COMPOSE IN THIS ORDER:

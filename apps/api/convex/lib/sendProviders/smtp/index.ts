@@ -313,13 +313,13 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	retryDelays: sendProviderCatalogEntry('smtp').retryDelays,
 
 	/**
-	 * Relay arm (plan G-08): stamp OUR VERP envelope sender at the return-path
-	 * host the routing pass authorised — the SAME host the direct-MX arm stamps
-	 * for this From domain — so relayed bounces reach our own bounce server and
-	 * both arms present the same envelope-sender domain. Resolved by the routing
-	 * pass, not by a second query on the send path. No authorised host simply
-	 * keeps the composer's envelope sender: the send is unchanged and its cell is
-	 * graded degraded-measurement, never blocked.
+	 * Relay arm: stamp OUR VERP envelope sender at the return-path host the
+	 * routing pass authorised — the SAME host the direct-MX arm stamps for this
+	 * From domain — so relayed bounces reach our own bounce server and both arms
+	 * present the same envelope-sender domain. Resolved by the routing pass, not
+	 * by a second query on the send path. No authorised host simply keeps the
+	 * composer's envelope sender: the send is unchanged and its cell is graded
+	 * degraded-measurement, never blocked.
 	 */
 	buildDispatchExtras(input: DispatchExtrasInput): SmtpExtras {
 		return input.relayReturnPathHost === undefined

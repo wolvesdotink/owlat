@@ -1,5 +1,5 @@
 /**
- * The return-path probe state machine (plan G-08).
+ * The return-path probe state machine.
  *
  * ONE probe, for ONE configured transport, and the timing rules around it:
  * when a probe is due, when an open one has aged out, and what each event does

@@ -3,12 +3,11 @@
  *
  * The shipped delivery stack measures ACCEPTANCE: a transport took the message,
  * so the send is a success. A message Gmail accepts and files into Spam is
- * therefore indistinguishable from one that landed in the inbox (plan G-05).
- * This module is the counter half of the fix: it records what actually HAPPENED
- * to a message — delivered, deferred, bounced, complained, opened, clicked —
- * against the CELL and the ARM the recipient was assigned to, so the ramp
- * controller can compare "our own MTA" with "the reference transport" instead of
- * comparing nothing.
+ * therefore indistinguishable from one that landed in the inbox. This module is
+ * the counter half of the fix: it records what actually HAPPENED to a message —
+ * delivered, deferred, bounced, complained, opened, clicked — against the CELL
+ * and the ARM the recipient was assigned to, so the ramp controller can compare
+ * "our own MTA" with "the reference transport" instead of comparing nothing.
  *
  * The shape is copied from `analytics/sendingReputation.ts` on purpose:
  *

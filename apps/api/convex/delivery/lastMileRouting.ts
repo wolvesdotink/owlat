@@ -41,11 +41,11 @@ interface LastMileRoutingReady {
 	routingLease?: string;
 	/**
 	 * The return-path host a relay send may stamp as its VERP envelope sender,
-	 * so a bounce the relay generates reaches our own bounce server (plan G-08).
-	 * Carried on the routing result because the routing query already resolved
-	 * it — the send path must not grow a second round trip per message.
-	 * `undefined` unless the transport is PROVEN to honour a custom return path
-	 * AND the From domain's return-path host authorises it.
+	 * so a bounce the relay generates reaches our own bounce server. Carried on
+	 * the routing result because the routing query already resolved it — the
+	 * send path must not grow a second round trip per message. `undefined`
+	 * unless the transport is PROVEN to honour a custom return path AND the From
+	 * domain's return-path host authorises it.
 	 */
 	relayReturnPathHost?: string | undefined;
 }
@@ -305,7 +305,7 @@ export async function resolveLastMileRouting(
 	// The warm-up-overflow / breaker-open relay fallback resolved above carries
 	// most relay traffic during a ramp, so it is the LAST route that may drop the
 	// VERP envelope sender: without it those bounces land at the relay and the
-	// arm reads artificially clean (plan G-08).
+	// arm reads artificially clean.
 	return withReconciliationSafety(
 		{
 			kind: 'ready',

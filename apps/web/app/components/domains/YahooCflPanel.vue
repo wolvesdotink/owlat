@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Yahoo Complaint Feedback Loop — the guided enrollment panel (piece P4-6).
+ * Yahoo Complaint Feedback Loop — the guided enrollment panel.
  *
  * Yahoo's CFL is DKIM-DOMAIN based: there is no API and no credential, only a
  * bilateral enrollment the operator performs on Yahoo's sender site. So this is

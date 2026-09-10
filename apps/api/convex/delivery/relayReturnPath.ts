@@ -370,7 +370,7 @@ function returnPathSpfProof(
 /**
  * The return-path host a RELAY send from `fromAddress` may stamp as its VERP
  * envelope sender — or `undefined`, which means "keep the composer's envelope
- * sender", the shipped behaviour (plan G-08).
+ * sender", the shipped behaviour.
  *
  * Three conditions, all required, evaluated cheapest-first so an unproven relay
  * costs exactly one indexed read:

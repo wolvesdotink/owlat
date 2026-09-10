@@ -1,5 +1,5 @@
 /**
- * WHEN DOES A CAPPED IP GET CAPACITY BACK? (deliverability plan P3-7.)
+ * WHEN DOES A CAPPED IP GET CAPACITY BACK?
  *
  * The warming cap is a per-UTC-DAY budget: `sentToday` resets at the UTC day
  * boundary, so an IP that has spent today's cap gets nothing back before then —

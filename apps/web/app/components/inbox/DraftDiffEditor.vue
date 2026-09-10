@@ -26,9 +26,9 @@ const props = withDefaults(
 		applyLabel?: string;
 		/**
 		 * Soft-hold: a teammate is actively replying to this thread, so Apply
-		 * (save & approve) is HELD — disabled-styled but visible, with
-		 * {@link heldReason} shown beneath. Discard stays enabled. Releases on its
-		 * own when their presence drops (UX piece b3b).
+		 * (save & approve) is HELD — disabled-styled but visible, with {@link
+		 * heldReason} shown beneath. Discard stays enabled. Releases on its own
+		 * when their presence drops.
 		 */
 		held?: boolean;
 		/** Plain-language reason shown under the row while `held`. */

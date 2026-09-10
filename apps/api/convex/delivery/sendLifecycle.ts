@@ -433,13 +433,12 @@ export const bindMtaProviderIdentity = internalMutation({
  * VERP token decoded to (a bounce our own bounce server accepted). A send that
  * has since been re-dispatched carries a different id and is not matched.
  *
- * Deliberately NOT restricted to the own arm. A relay send stamped
- * with our VERP envelope sender produces DSNs that land on OUR bounce server,
- * so the MTA reports them exactly like a direct-MX bounce — while the Send row
- * still records the transport it actually left through (`smtp`). Requiring the
- * row to say `mta` dropped every one of those bounces as `send_not_found`,
- * which is precisely the measurement bias the relay VERP stamp exists to remove
- * (plan G-08).
+ * Deliberately NOT restricted to the own arm. A relay send stamped with our
+ * VERP envelope sender produces DSNs that land on OUR bounce server, so the MTA
+ * reports them exactly like a direct-MX bounce — while the Send row still
+ * records the transport it actually left through (`smtp`). Requiring the row to
+ * say `mta` dropped every one of those bounces as `send_not_found`, which is
+ * precisely the measurement bias the relay VERP stamp exists to remove.
  *
  * The queued-terminal relaxation stays MTA-only: only the direct-MX path binds
  * a provisional identity while the row is still `queued`, so only it can

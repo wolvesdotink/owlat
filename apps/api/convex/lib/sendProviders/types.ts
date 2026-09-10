@@ -159,7 +159,7 @@ export interface EmailitExtras {
  * per-message, so a relay has almost no per-send knobs. The exception is the
  * envelope sender: where the relay honours a custom RFC5321.MailFrom we stamp
  * OUR VERP address so relayed bounces come back to our own bounce server and
- * both transport arms produce comparable bounce data (plan G-08).
+ * both transport arms produce comparable bounce data.
  */
 export interface SmtpExtras {
 	/**
@@ -274,9 +274,9 @@ export interface DispatchExtrasInput {
 	readonly engagementScore?: number | undefined;
 	/**
 	 * The return-path host a relay send may stamp as its VERP envelope sender,
-	 * resolved by the routing pass (plan G-08). `undefined` unless the transport
-	 * is PROVEN to honour a custom return path AND the From domain's return-path
-	 * host authorises it — see `SmtpExtras.returnPathHost`.
+	 * resolved by the routing pass. `undefined` unless the transport is PROVEN
+	 * to honour a custom return path AND the From domain's return-path host
+	 * authorises it — see `SmtpExtras.returnPathHost`.
 	 */
 	readonly relayReturnPathHost?: string | undefined;
 }
