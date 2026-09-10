@@ -368,10 +368,9 @@ export function evaluateSmtpBlockMessages(input: RampGateEvaluationInput): RampG
  * from 400 to 2000.
  *
  * TWO of those three are constants here; the 7-day WINDOW is not, because the
- * gate takes its windows as PARAMETERS and nothing in this piece
- * builds one. It lands with the cron that summarises the window (P3), rather than
- * sitting here as a constant with no consumer, asserted by a test to equal
- * itself (no speculative seams).
+ * gate takes its windows as PARAMETERS and nothing here builds one. It belongs
+ * with the cron that summarises the window, rather than sitting here as a
+ * constant with no consumer, asserted by a test to equal itself.
  *
  * AND IT MAY NEVER JUSTIFY AN INCREASE. `WEAK_TRAILING_SIGNAL` carries
  * `mayJustifyIncrease: false`, which the aggregator enforces: this gate can pull a

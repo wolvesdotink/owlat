@@ -6,12 +6,12 @@
  * Everything here is pure: presence in, a resolution out, no clock, no database,
  * no environment.
  *
- * WHY ONE FOLD AND NOT A HELPER PER INTEGRATION. The failure mode this piece
- * exists to prevent is a substitution that lives in an inline conditional
- * somewhere in the controller. The defence is that there is exactly one function
- * that can produce a degraded constant, it is driven entirely by the table's
- * fields, and it has no branch naming an integration: adding an integration is a
- * table row and nothing else.
+ * WHY ONE FOLD AND NOT A HELPER PER INTEGRATION. The failure mode to prevent is
+ * a substitution that lives in an inline conditional somewhere in the
+ * controller. The defence is that there is exactly one function that can produce
+ * a degraded constant, it is driven entirely by the table's fields, and it has
+ * no branch naming an integration: adding an integration is a table row and
+ * nothing else.
  *
  * EVERY FOLD IS COMMUTATIVE AND FAILS TOWARD CAUTION:
  *   - K_CLEAN            — the STRICTEST (largest) override wins.

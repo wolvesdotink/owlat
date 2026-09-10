@@ -264,12 +264,12 @@ export const runRampController = internalMutation({
 				// shift traffic to would hold the only dial this cell owns for the entire
 				// ramp — the headline deliverable of the standalone twin, starved.
 				//
-				// THE SHARE DECISION IS STILL APPLIED. Composition only ever holds the
-				// PACE dial back, and the share half of the row is still the deployment's
-				// safety interlock: a hard stop zeroes it, a critical blocklist freezes it,
-				// and `isFallbackActive` is derived from it. Declining to write it on a
+				// THE SHARE DECISION IS STILL APPLIED. Composition only ever holds the PACE
+				// dial back, and the share half of the row is still the deployment's safety
+				// interlock: a hard stop zeroes it, a critical blocklist freezes it, and
+				// `isFallbackActive` is derived from it. Declining to write it on a
 				// pace-actuated cell would silently drop shipped hard-stop behaviour on
-				// exactly the configuration this piece exists to serve.
+				// exactly the configuration the pace actuator exists to serve.
 				const composed = composeActuators({
 					share: isPaceActuated ? null : decision,
 					pace: paceDecision,

@@ -5,15 +5,13 @@
  * WHY THIS EXISTS. Domain reputation is evaluated PER FQDN and does NOT
  * inherit from the registrable root, so a bad campaign on `example.com` drags
  * password resets down with it. Separating `news.` from `mail.` is industry
- * standard, and until this piece the wizard neither offered nor encouraged it.
- * The layout is therefore the DEFAULT PROPOSAL, not an expert toggle.
+ * standard, so the layout is the wizard's DEFAULT PROPOSAL, not an expert
+ * toggle.
  *
- * THE LAYOUT (the plan's table, verbatim):
- *   transactional        → mail.<root>      (transactional pool)
- *   marketing/campaigns  → news.<root>      (campaign pool)
- *   automation/lifecycle → news.<root>      (campaign pool — steady lifecycle
- *                                            volume is the best warming fuel)
- *   bounce/VERP          → bounces.<root>   (already the MTA's return-path host)
+ * THE LAYOUT: transactional → mail.<root> (transactional pool)
+ * marketing/campaigns → news.<root> (campaign pool) automation/lifecycle →
+ * news.<root> (campaign pool — steady lifecycle volume is the best warming fuel)
+ * bounce/VERP → bounces.<root> (already the MTA's return-path host)
  *
  * D11 — PER-STREAM IS CORRECT, PER-TRANSPORT IS FORBIDDEN. This is the piece
  * most likely to violate it, so the violation is not expressible HERE: nothing

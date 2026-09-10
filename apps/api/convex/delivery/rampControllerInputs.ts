@@ -334,7 +334,7 @@ export async function loadCellInput(
 		// an integration's presence is read exactly ONCE — by
 		// `resolveRampDegradation` — and every consumer asks the RESOLUTION. A
 		// direct `presence.<id>` read here would be a substitution living outside
-		// the table, which is the one thing this piece exists to prevent.
+		// the table, which is the one thing the resolution exists to prevent.
 		hasComplaintFeedback: !usesUnsubscribeProxy(degradation),
 		// OBSERVED, NEVER CONFIGURED, exactly as integration presence is
 		// (`rampIntegrationPresence.ts` says why), and asked THROUGH THE ONE

@@ -142,7 +142,7 @@ async function scheduleRefresh(
  * stays because the module path IS the Convex function path — moving it renames
  * a cron'd scheduled function and strands the paginating continuation any
  * in-flight sweep is holding, which is a real (if small) operational cost for a
- * rename. A later piece that touches the cron registration anyway is the cheap
+ * rename. Any change that touches the cron registration anyway is the cheap
  * moment for it.
  */
 export const scheduleDueChecks = internalMutation({

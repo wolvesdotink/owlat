@@ -43,10 +43,11 @@ export {
 } from './connectionTypes';
 
 /**
- * A live SMTP connection, opened and past EHLO. Owns the socket (via its
- * {@link ReplyReader}) and a single reply reader; `command()` writes a line and
+ * A live SMTP connection, opened and past EHLO. Owns the socket (via its {@link
+ * ReplyReader}) and a single reply reader; `command()` writes a line and
  * resolves the next complete reply. Higher layers (AUTH, the send state machine)
- * build on this — this piece only establishes it and exposes the wire primitives.
+ * build on this; this module only establishes it and exposes the wire
+ * primitives.
  */
 export class SmtpConnection {
 	/** `true` iff the underlying socket is TLS (at EHLO-completion time). */

@@ -48,10 +48,10 @@
  * D1), and a slice of transactional cells (which the stream-major cell order
  * produces exactly), never ask for it at all.
  *
- * ABSENCE IS A SUPPORTED CONFIGURATION. No warming state, a stale
- * sync, a graduated pool: every one of them answers `unconstrained` — the cell
- * is bounded by its phase ceiling and by its gates, exactly as before this piece
- * landed. A missing reading is never evidence of a full cap.
+ * ABSENCE IS A SUPPORTED CONFIGURATION. No warming state, a stale sync, a
+ * graduated pool: every one of them answers `unconstrained` — the cell is
+ * bounded by its phase ceiling and by its gates. A missing reading is never
+ * evidence of a full cap.
  */
 
 import {

@@ -248,10 +248,9 @@ export interface SetupSummary {
  *    so it is not a vendor table and cannot grow one: any other kind, present or
  *    future, reads its label from the entry.
  *
- * The delivery hub, the transport editor's picker and this step each still word
- * the own MTA slightly differently, exactly as they shipped; unifying that copy
- * is a deliberate wording decision for the plan owner, not something a rendering
- * refactor gets to do silently (recorded in `scripts/provider-identity-allowlist.txt`).
+ * The delivery hub, the transport editor's picker and this step each still word the own MTA
+ * slightly differently; unifying that copy is a deliberate wording decision, not something a
+ * rendering refactor gets to do silently (recorded in `scripts/provider-identity-allowlist.txt`).
  */
 const RECEIVE_ONLY_LABEL = 'shared.useSetupWizard.provider.receiveOnly';
 

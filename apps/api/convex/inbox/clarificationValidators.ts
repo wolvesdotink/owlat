@@ -14,7 +14,7 @@
  * `[CONFIRMED BY OWNER]` block and resumes the draft. `answer` is absent until
  * the question is answered; `source` records whether the value came from the
  * owner ("user") or was auto-filled from stored memory ("memory"). No question
- * GENERATION happens in this piece — a later piece emits into this shape.
+ * GENERATION happens here — the generator emits into this shape.
  */
 
 import { v } from 'convex/values';
@@ -35,7 +35,7 @@ export const clarificationQuestionValidator = v.object({
 			value: v.string(),
 			source: v.union(v.literal('user'), v.literal('memory')),
 			at: v.number(),
-		}),
+		})
 	),
 });
 

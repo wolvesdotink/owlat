@@ -13,8 +13,7 @@
  * PRESENCE IS OBSERVED, NEVER CONFIGURED. There is no "I have connected SNDS"
  * flag to tick: an integration is present when its data is present. A key that
  * stops being renewed therefore degrades exactly like one that was never added —
- * within one evaluation window and with no operator action — which is the
- * acceptance criterion this piece is measured against.
+ * within one evaluation window and with no operator action.
  *
  * ABSENCE IS A SUPPORTED CONFIGURATION: every read below is allowed to find
  * nothing, and finding nothing is never an error.
@@ -41,12 +40,12 @@ import type { RampReadCtx } from './rampReadCtx';
  * a wider window buys nothing but staleness.
  *
  * THE ACCEPTANCE CRITERION IS "WITHIN ONE WINDOW" (the piece's own), and the
- * evaluation window is `RAMP_AIMD.evaluationWindowMs` — 24h. A 30-day window
- * would have kept the EQUIPPED constants (full step, K_CLEAN 3, no doubled
- * dwell, no capped ceiling) running for thirty windows after a key was revoked,
- * which is exactly the "the degraded path is never taken so it rots" failure
- * this piece exists to prevent. Three days is the smallest window that still
- * tolerates the feeds' own jitter; the boundary is fixture-pinned.
+ * evaluation window is `RAMP_AIMD.evaluationWindowMs` — 24h. A 30-day window would
+ * have kept the EQUIPPED constants (full step, K_CLEAN 3, no doubled dwell, no capped
+ * ceiling) running for thirty windows after a key was revoked, which is exactly the
+ * "the degraded path is never taken so it rots" failure the freshness window exists to
+ * prevent. Three days is the smallest window that still tolerates the feeds' own
+ * jitter; the boundary is fixture-pinned.
  */
 export const RAMP_INTEGRATION_FRESHNESS_MS = 3 * DAY_MS;
 

@@ -172,9 +172,9 @@ export const contactTables = {
 		.index('by_sunset_evaluated_at', ['sunsetEvaluatedAt'])
 		// The re-engagement TRACK, addressable. Moving a contact onto the track is
 		// pointless if nobody can enumerate who is on it, and scanning `contacts`
-		// for a stage is exactly the full-table walk this piece is not allowed to
-		// do — so the stage gets its own index and `contacts.sunset.listSunsetStage`
-		// pages over it.
+		// for a stage is exactly the full-table walk this must not do — so the
+		// stage gets its own index and `contacts.sunset.listSunsetStage` pages
+		// over it.
 		.index('by_sunset_stage', ['sunsetStage'])
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` here indexes contact
 		// METADATA (name, email, company), not a sealed message body, so E8b at-rest

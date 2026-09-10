@@ -33,12 +33,12 @@
  * Full ICU-backed IDNA is verified present in browsers and in Node, which covers
  * the two runtimes this module is actually exercised in: the Nuxt client and the
  * Convex `"use node"` actions where DNS verification runs. Convex's default V8
- * runtime also exposes a `URL` global, but this piece did not verify its ICU/IDNA
- * coverage, so `asDnsName` is written to fail *closed* on any runtime lacking
- * IDNA: a Unicode input either throws inside `URL` (caught → `null`) or survives
- * un-encoded and is then rejected by the ASCII-only label check (→ `null`). It can
- * never emit a mis-normalized name, so the worst case is an IDN domain being
- * refused, never silently corrupted. No `node:punycode`, no browser-only APIs.
+ * runtime also exposes a `URL` global, but its ICU/IDNA coverage is unverified, so
+ * `asDnsName` is written to fail *closed* on any runtime lacking IDNA: a Unicode
+ * input either throws inside `URL` (caught → `null`) or survives un-encoded and is
+ * then rejected by the ASCII-only label check (→ `null`). It can never emit a
+ * mis-normalized name, so the worst case is an IDN domain being refused, never
+ * silently corrupted. No `node:punycode`, no browser-only APIs.
  */
 
 import { parse as parseTldts } from 'tldts';

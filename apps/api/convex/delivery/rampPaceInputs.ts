@@ -169,18 +169,17 @@ export async function loadCampaignPaceMultiplier(
 export function applyPaceToCapacityByDay(byDay: readonly number[], multiplier: number): number[] {
 	// ONLY THE RETREAT HALF OF THE DIAL REACHES PRODUCTION THROUGH HERE, and that
 	// is a deliberate scope line rather than an oversight. Say it plainly so a
-	// later piece cannot read `effectiveDailyCap`'s two separate caps and assume
-	// the increase is already live:
+	// reader cannot look at `effectiveDailyCap`'s two separate caps and assume the
+	// increase is already live:
 	//
-	//   · m < 1 (retreat) is applied HERE, to the pool-wide campaign projection —
-	//     which is the campaign-facing cap Convex itself meters, so a retreat
-	//     shortens today's slice on the very next walker hop.
-	//   · m > 1 (increase) is NOT applied here and MUST NOT BE: the published base
-	//     schedule is a HARD CEILING for the current day and this
-	//     projection is stated in terms of it. The increase buys per-(IP x
-	//     mailboxProvider) headroom BELOW that published cap, which lives in the
-	//     MTA's own provider store — publishing the dial into that store is a NEW
-	//     Convex -> MTA surface, and no piece on this branch owns it yet.
+	// · m < 1 (retreat) is applied HERE, to the pool-wide campaign projection —
+	// which is the campaign-facing cap Convex itself meters, so a retreat shortens
+	// today's slice on the very next walker hop. · m > 1 (increase) is NOT applied
+	// here and MUST NOT BE: the published base schedule is a HARD CEILING for the
+	// current day and this projection is stated in terms of it. The increase buys
+	// per-(IP x mailboxProvider) headroom BELOW that published cap, which lives in
+	// the MTA's own provider store — publishing the dial into that store is a NEW
+	// Convex -> MTA surface, and nothing owns it yet.
 	//
 	// Both caps are still passed separately below rather than collapsed, because
 	// `effectiveDailyCap` is the one place the day's ceiling is applied and the

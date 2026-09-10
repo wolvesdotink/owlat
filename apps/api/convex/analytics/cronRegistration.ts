@@ -4,8 +4,8 @@
  * A domain sibling rather than more lines in the core `crons.ts` (which sits at
  * the ~500 LOC split guideline), following the same shape as
  * `plugins/cronRegistration.ts`: the registrations live next to the functions
- * they schedule and `crons.ts` calls one register function. Only THIS piece's
- * crons live here — every shipped registration stays exactly where it is.
+ * they schedule and `crons.ts` calls one register function. Only the analytics
+ * crons live here.
  */
 
 import type { cronJobs } from 'convex/server';

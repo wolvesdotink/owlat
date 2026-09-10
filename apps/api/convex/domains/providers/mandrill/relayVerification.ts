@@ -2,8 +2,7 @@
  * Mandrill's answers to the two questions asked ABOUT an identity rather than
  * of Mandrill: "may we hand this From domain to the relay right now?" (the
  * enqueue-path proof) and "describe this domain's second arm" (the
- * dual-transport alignment pre-flight). Plan numbers in this folder are the
- * Mandrill plan's — qualified in `../index.ts`.
+ * dual-transport alignment pre-flight).
  *
  * Both read the same row and both are pure reads, which is why they live
  * together and away from `./index.ts`: everything there is an HTTP call made

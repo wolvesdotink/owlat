@@ -79,8 +79,7 @@ import type {
 } from './paceTypes';
 
 /**
- * THE MINIMUM CAP UTILISATION THAT COUNTS AS EVIDENCE — the one sanctioned
- * behaviour change in this piece.
+ * THE MINIMUM CAP UTILISATION THAT COUNTS AS EVIDENCE.
  *
  * The shipped MTA evaluator REQUIRES this much utilisation to accelerate and
  * otherwise falls through to the normal one-day advance, so a deployment sending
@@ -193,7 +192,7 @@ interface PaceDecideArgs {
 
 /**
  * The precedence ladder, in one function on purpose — the ORDER is the safety
- * property, and it is the property the reviewer of this piece reads first.
+ * property, and it is the property a reader should check first.
  */
 function decide(args: PaceDecideArgs): PaceDecisionDraft {
 	const { fromMultiplier, storedStreak, isClockUsable, input } = args;
