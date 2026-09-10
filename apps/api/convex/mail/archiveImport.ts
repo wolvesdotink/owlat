@@ -33,6 +33,8 @@ import { insertDeliveredMessage } from './deliveryPipeline/insert';
 import { mailMessageAttachmentValidator } from '../lib/mailContentValidators';
 import { resolveLabelPath } from './labelsTree';
 import { completedOrFailedValidator } from '../lib/convexValidators';
+import { archiveFormatValidator } from '../lib/literalValidators';
+import { folderRoleValidator } from './mailbox/shared';
 
 /**
  * Largest archive one job accepts. Defined in `@owlat/shared` because the upload
@@ -40,17 +42,6 @@ import { completedOrFailedValidator } from '../lib/convexValidators';
  * the two ceilings must be the same number.
  */
 export const MAX_ARCHIVE_BYTES = MAX_ARCHIVE_IMPORT_BYTES;
-
-const archiveFormatValidator = v.union(v.literal('mbox'), v.literal('eml'));
-
-const folderRoleValidator = v.union(
-	v.literal('inbox'),
-	v.literal('sent'),
-	v.literal('drafts'),
-	v.literal('trash'),
-	v.literal('spam'),
-	v.literal('archive')
-);
 
 /** Strip RFC 5322 angle brackets from a Message-ID for dedup. */
 function canonicalMessageId(raw: string): string {

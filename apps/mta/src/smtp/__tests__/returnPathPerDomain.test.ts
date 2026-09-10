@@ -102,20 +102,13 @@ import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import type { ParsedMessage } from '@owlat/mail-message';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
 
 const API_KEY = 'test-master-key';
 const GLOBAL_RETURN_PATH = 'bounces.owlat.com';
 
-function createConfig(): MtaConfig {
-	return {
-		apiKey: API_KEY,
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: GLOBAL_RETURN_PATH,
-		outboundTlsMode: 'opportunistic',
-		daneMode: 'off',
-	} as unknown as MtaConfig;
-}
+const createConfig = (): MtaConfig =>
+	createOwlatHostConfig({ apiKey: API_KEY, outboundTlsMode: 'opportunistic', daneMode: 'off' });
 
 function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {

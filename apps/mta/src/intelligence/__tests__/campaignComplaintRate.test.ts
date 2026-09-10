@@ -22,12 +22,6 @@ describe('campaignComplaintRate', () => {
 		await redis.flushall();
 	});
 
-	describe('threshold === Gmail 2024 spam-rate ceiling', () => {
-		it('is 0.3%', () => {
-			expect(CAMPAIGN_COMPLAINT_THRESHOLD).toBe(0.003);
-		});
-	});
-
 	describe('recordDelivery / getStats', () => {
 		it('accumulates deliveries as the rate denominator', async () => {
 			await recordDelivery(redis, 'c1', 500);

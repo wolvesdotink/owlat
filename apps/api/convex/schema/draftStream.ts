@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { tokenUsageValidator } from '../lib/convexValidators';
+import { draftSurfaceValidator } from '../lib/literalValidators';
 
 /**
  * Ephemeral, owner-private streaming buffers for the whole-draft REVISE loop
@@ -27,7 +28,7 @@ export const draftStreamTables = {
 		// BetterAuth user id — the sole owner. Reads are owner-scoped.
 		ownerId: v.string(),
 		// Which surface asked for the revise (analytics / display only).
-		surface: v.union(v.literal('compose'), v.literal('review')),
+		surface: draftSurfaceValidator,
 		// Lifecycle: streaming → complete | error.
 		status: v.union(v.literal('streaming'), v.literal('complete'), v.literal('error')),
 		// Accumulates as tokens arrive; the final revised draft on complete.

@@ -30,15 +30,7 @@ import { buildSearchBody } from '../searchBody';
 import { splitBodyForStorage } from '../deliveryPipeline/ingest';
 import { storeSealedBlob } from '../../lib/sealedBlob';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
-
-const folderRoleValidator = v.union(
-	v.literal('inbox'),
-	v.literal('sent'),
-	v.literal('drafts'),
-	v.literal('trash'),
-	v.literal('spam'),
-	v.literal('archive')
-);
+import { folderRoleValidator } from '../mailbox/shared';
 
 /** Strip RFC 5322 angle brackets from a Message-ID for dedup. */
 function canonicalMessageId(raw: string): string {

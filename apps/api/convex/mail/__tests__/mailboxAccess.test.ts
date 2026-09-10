@@ -1,9 +1,9 @@
 /**
- * Shared-mailbox membership — authz matrix + backfill.
+ * Shared-mailbox membership — authz matrix.
  *
  * Covers the membership extension to the mailbox choke point
- * (`mail/permissions.ts::requireMailboxAccess`) and the idempotent owner-row
- * backfill (`migrations/0034_mailbox_owner_membership`).
+ * (`mail/permissions.ts::requireMailboxAccess`) and the implicit owner row
+ * `provisionMailbox` writes.
  *
  * The matrix asserts owner / member / non-member callers against the
  * member-level and owner-level access floors on BOTH a personal and a shared
@@ -15,7 +15,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
-import { api, internal } from '../../_generated/api';
+import { api } from '../../_generated/api';
 import { requireMailboxAccess } from '../permissions';
 import { provisionMailbox } from '../mailbox/identity';
 import { modules, seedMailbox } from './helpers.testlib';
@@ -239,55 +239,5 @@ describe('provisionMailbox — writes the implicit owner membership row', () => 
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.role).toBe('owner');
 		expect(rows[0]?.addedBy).toBe('user-A');
-	});
-
-	it('the owner-row invariant makes the backfill a no-op for provisioned mailboxes', async () => {
-		const t = convexTest(schema, modules);
-		await t.run((ctx) =>
-			provisionMailbox(ctx, {
-				userId: 'user-A',
-				organizationId: 'org-1',
-				address: 'fresh@hinterland.camp',
-				domain: 'hinterland.camp',
-			})
-		);
-		const result = await t.mutation(internal.migrations['0034_mailbox_owner_membership'].run, {});
-		expect(result.created).toBe(0);
-	});
-});
-
-describe('migrations/0034 — implicit owner backfill', () => {
-	it('creates one owner membership per existing mailbox and is idempotent', async () => {
-		const t = convexTest(schema, modules);
-		const idA = await seedMailbox(t, { userId: 'user-A', address: 'a@hinterland.camp' });
-		const idB = await seedMailbox(t, { userId: 'user-B', address: 'b@hinterland.camp' });
-
-		const first = await t.mutation(internal.migrations['0034_mailbox_owner_membership'].run, {});
-		expect(first.created).toBe(2);
-
-		const rows = await t.run((ctx) => ctx.db.query('mailboxMembers').collect());
-		expect(rows).toHaveLength(2);
-		for (const row of rows) {
-			expect(row.role).toBe('owner');
-		}
-		const owners = new Map(rows.map((r) => [r.mailboxId, r.authUserId]));
-		expect(owners.get(idA)).toBe('user-A');
-		expect(owners.get(idB)).toBe('user-B');
-
-		// Re-running is a no-op.
-		const second = await t.mutation(internal.migrations['0034_mailbox_owner_membership'].run, {});
-		expect(second.created).toBe(0);
-		const after = await t.run((ctx) => ctx.db.query('mailboxMembers').collect());
-		expect(after).toHaveLength(2);
-	});
-
-	it('backfilled owner grants the owner access via requireMailboxAccess', async () => {
-		const t = convexTest(schema, modules);
-		const id = await seedMailbox(t, { userId: 'user-A' });
-		await t.mutation(internal.migrations['0034_mailbox_owner_membership'].run, {});
-
-		setSession('user-A', 'editor');
-		const result = await t.run((ctx) => requireMailboxAccess(ctx, id, 'owner'));
-		expect(result.ok).toBe(true);
 	});
 });

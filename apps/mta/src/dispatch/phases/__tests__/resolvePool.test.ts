@@ -6,23 +6,16 @@ vi.mock('../../../scaling/poolRules.js', () => ({
 
 import { resolvePoolPhase } from '../resolvePool.js';
 import * as poolRules from '../../../scaling/poolRules.js';
-import type { BasePhaseCtx, PhaseDeps } from '../../types.js';
-import type { EmailJob } from '../../../types.js';
+import type { PhaseDeps } from '../../types.js';
 import type { MtaConfig } from '../../../config.js';
+import { makeDispatchCtx } from '../../../__tests__/helpers/dispatchCtx.js';
+import { createOwlatJob } from '../../../__tests__/helpers/fixtures.js';
 
-function makeCtx(): BasePhaseCtx {
-	const job: EmailJob = {
-		messageId: 'msg-1',
-		to: 'user@example.com',
-		from: 'sender@notify.owlat.com',
-		subject: 'Test',
-		html: '<p>Hello</p>',
-		ipPool: 'transactional',
-		organizationId: 'org-1',
-		dkimDomain: 'owlat.com',
-	};
-	return { job, domain: 'example.com', isp: 'other', fromDomain: 'notify.owlat.com' };
-}
+const makeCtx = () =>
+	makeDispatchCtx({
+		job: createOwlatJob({ from: 'sender@notify.owlat.com' }),
+		fromDomain: 'notify.owlat.com',
+	});
 
 const deps: PhaseDeps = { redis: {} as never, config: {} as MtaConfig };
 
@@ -56,7 +49,7 @@ describe('resolvePoolPhase', () => {
 			'org-1',
 			'transactional',
 			'notify.owlat.com',
-			'example.com',
+			'example.com'
 		);
 	});
 });

@@ -40,7 +40,7 @@ step bun packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts
 step bunx turbo "${turbo_tasks[@]}" --filter='!@owlat/desktop'
 
 for gate in deadcode build-graph convex-orphans filesize adr branding format imports providers \
-	ui-buttons tokens member-jargon docker-workspaces release-compose deploy-closure; do
+	ui-buttons tokens member-jargon docker-workspaces release-compose deploy-closure installer compose; do
 	step bun run "lint:$gate"
 done
 # lint:plugin-imports without its plugins:prepare prefix (see above).

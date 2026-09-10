@@ -38,6 +38,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReply';
 import { requireMailboxAccess } from './permissions';
+import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
@@ -266,14 +267,8 @@ export const applyCategory = internalMutation({
 	args: {
 		threadId: v.id('mailThreads'),
 		expectedLatestMessageId: v.optional(v.id('mailMessages')),
-		label: v.union(
-			v.literal('person'),
-			v.literal('newsletter'),
-			v.literal('notification'),
-			v.literal('receipt'),
-			v.literal('other')
-		),
-		source: v.union(v.literal('heuristic'), v.literal('llm'), v.literal('user')),
+		label: mailCategoryLabelValidator,
+		source: mailCategorySourceValidator,
 	},
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
@@ -303,13 +298,7 @@ export const applyCategory = internalMutation({
 export const recategorize = authedMutation({
 	args: {
 		threadId: v.id('mailThreads'),
-		label: v.union(
-			v.literal('person'),
-			v.literal('newsletter'),
-			v.literal('notification'),
-			v.literal('receipt'),
-			v.literal('other')
-		),
+		label: mailCategoryLabelValidator,
 	},
 	handler: async (ctx, args) => {
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');

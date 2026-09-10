@@ -151,9 +151,6 @@ export const SNDS_MAX_FEED_BYTES = 4 * 1024 * 1024;
 export const SNDS_MAX_ROWS = 20_000;
 const MAX_LINE_LENGTH = 2_048;
 const MAX_COUNTER = 1_000_000_000_000;
-/** One UTC day. The (IP, day) grain is the unit of everything stored here. */
-export const DAY_MS = 24 * 60 * 60 * 1_000;
-
 /** Keeps binary floating point from turning `0.3 * 10` into `2.999…`. */
 const BAND_EPSILON = 1e-9;
 

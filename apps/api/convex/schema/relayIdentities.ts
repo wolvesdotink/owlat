@@ -12,6 +12,7 @@
 
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { relayIdentityStatusValidator } from '../lib/literalValidators';
 
 export const relayIdentitiesTables = {
 	// D7: the sibling-table pattern (`sendingDomainMtaIdentities` /
@@ -45,12 +46,7 @@ export const relayIdentitiesTables = {
 		transportInstanceKey: v.optional(v.string()),
 		// Provider-side verification lifecycle. A status string, not a boolean,
 		// so it is exempt from the `is*` naming rule.
-		status: v.union(
-			v.literal('unverified'),
-			v.literal('pending_dns'),
-			v.literal('verified'),
-			v.literal('failed')
-		),
+		status: relayIdentityStatusValidator,
 		spf: v.optional(v.object({ isValid: v.boolean(), error: v.optional(v.string()) })),
 		dkim: v.optional(v.object({ isValid: v.boolean(), error: v.optional(v.string()) })),
 		// Feeds the D5 return-path probe short-circuit: a provider that already

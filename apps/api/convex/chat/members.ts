@@ -19,6 +19,7 @@ import {
 	getRoomOrThrow,
 	loadProfileSummary,
 } from './_helpers';
+import { chatMemberRoleValidator } from '../lib/literalValidators';
 
 /**
  * Join a public channel. Idempotent: a no-op if the caller is already a
@@ -76,12 +77,10 @@ export const leaveRoom = chatMutation({
 				.query('chatRoomMembers')
 				.withIndex('by_room', (q) => q.eq('roomId', args.roomId))
 				.collect(); // bounded: members of one chat room (~tens to low hundreds)
-			const otherAdmins = allMembers.filter(
-				(m) => m._id !== membership._id && m.role === 'admin',
-			);
+			const otherAdmins = allMembers.filter((m) => m._id !== membership._id && m.role === 'admin');
 			if (otherAdmins.length === 0 && allMembers.length > 1) {
 				throwInvalidState(
-					'You are the last admin. Promote someone else first or archive the channel.',
+					'You are the last admin. Promote someone else first or archive the channel.'
 				);
 			}
 		}
@@ -98,7 +97,7 @@ export const addMember = chatMutation({
 	args: {
 		roomId: v.id('chatRooms'),
 		memberId: v.string(),
-		role: v.optional(v.union(v.literal('admin'), v.literal('member'))),
+		role: v.optional(chatMemberRoleValidator),
 	},
 	handler: async (ctx, args) => {
 		const { userId, role } = await getMutationContext(ctx);
@@ -147,9 +146,7 @@ export const removeMember = chatMutation({
 				.query('chatRoomMembers')
 				.withIndex('by_room', (q) => q.eq('roomId', args.roomId))
 				.collect(); // bounded: members of one chat room (~tens to low hundreds)
-			const otherAdmins = allMembers.filter(
-				(m) => m._id !== membership._id && m.role === 'admin',
-			);
+			const otherAdmins = allMembers.filter((m) => m._id !== membership._id && m.role === 'admin');
 			if (otherAdmins.length === 0) {
 				throwInvalidState('Promote another admin before removing the last one');
 			}
@@ -167,7 +164,7 @@ export const setMemberRole = chatMutation({
 	args: {
 		roomId: v.id('chatRooms'),
 		memberId: v.string(),
-		role: v.union(v.literal('admin'), v.literal('member')),
+		role: chatMemberRoleValidator,
 	},
 	handler: async (ctx, args) => {
 		const { userId, role } = await getMutationContext(ctx);
@@ -188,9 +185,7 @@ export const setMemberRole = chatMutation({
 				.query('chatRoomMembers')
 				.withIndex('by_room', (q) => q.eq('roomId', args.roomId))
 				.collect(); // bounded: members of one chat room (~tens to low hundreds)
-			const otherAdmins = allMembers.filter(
-				(m) => m._id !== membership._id && m.role === 'admin',
-			);
+			const otherAdmins = allMembers.filter((m) => m._id !== membership._id && m.role === 'admin');
 			if (otherAdmins.length === 0) {
 				throwInvalidState('Promote another admin before demoting the last one');
 			}

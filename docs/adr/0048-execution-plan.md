@@ -4,6 +4,8 @@
 > Renumbered from `0020-execution-plan.md` to its own unique ADR number so the
 > `000X` prefix is unambiguous (one document per number).
 
+**Status:** historical — the phased delivery plan for ADR-0020, which is accepted and shipped. Kept as a record of how the work was split; not maintained.
+
 Phased migration for the Send provider adapter modules ADR. Each phase
 is one shippable PR. Existing tests pass at every phase boundary;
 behavior is unchanged until the caller-cutover phase, which switches

@@ -8,6 +8,7 @@ import {
 	bounceTypeValidator,
 } from '../lib/convexValidators';
 import { audienceValidator } from '../campaigns/audience';
+import { sendStatusValidator } from '../lib/literalValidators';
 
 /**
  * Campaign send job — the checkpoint row for one large-audience send walk
@@ -245,16 +246,7 @@ export const campaignTables = {
 		// Current status of this email send. `failed` is a terminal state set
 		// when the workpool reports the action errored — distinct from `bounced`
 		// (provider accepted then receiver rejected). See CONTEXT.md "Send status".
-		status: v.union(
-			v.literal('queued'),
-			v.literal('sent'),
-			v.literal('failed'),
-			v.literal('delivered'),
-			v.literal('opened'),
-			v.literal('clicked'),
-			v.literal('bounced'),
-			v.literal('complained')
-		),
+		status: sendStatusValidator,
 		// Email provider message ID for tracking
 		providerMessageId: v.optional(v.string()),
 		// Highest accepted MTA pre-network routing handoff enqueued for this Send.

@@ -9,6 +9,7 @@
  * and `search.ts` do not import one another just to reach a constant.
  */
 
+import { literalUnion } from '../../lib/convexValidators';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 
 /**
@@ -18,6 +19,8 @@ import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
  */
 export const SYSTEM_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive'] as const;
 export type FolderRole = (typeof SYSTEM_FOLDER_ROLES)[number];
+/** The same six roles as a Convex validator, for `mailFolders.role` and the folder-scoped args. */
+export const folderRoleValidator = literalUnion(SYSTEM_FOLDER_ROLES);
 
 export const SYSTEM_FOLDER_NAMES: Record<FolderRole, string> = {
 	inbox: 'INBOX',

@@ -276,7 +276,7 @@ function reduceConfirmed(
 				kind: 'contact_activity',
 				literal: 'topic_confirmed',
 				contactId: contact._id,
-				metadata: { topicId: String(topic.id), topicName: topic.name },
+				metadata: { topicId: topic.id, topicName: topic.name },
 				occurredAt: args.at,
 			});
 		}

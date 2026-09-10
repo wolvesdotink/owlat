@@ -51,6 +51,7 @@ import {
 	resolveFilterOutcome,
 	resolveSpamVerdict,
 } from './deliveryPipeline/routing';
+import { virusVerdictValidator } from '../lib/literalValidators';
 
 /**
  * Action: download raw MIME from MTA Redis stage and store in ctx.storage.
@@ -83,9 +84,7 @@ export const ingestFromWebhook = internalAction({
 		attachments: v.array(mailMessageAttachmentValidator),
 		spamScore: v.optional(v.number()),
 		spamVerdict: v.optional(spamVerdictValidator),
-		virusVerdict: v.optional(
-			v.union(v.literal('clean'), v.literal('infected'), v.literal('skipped'))
-		),
+		virusVerdict: v.optional(virusVerdictValidator),
 		spfResult: v.optional(v.string()),
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
@@ -204,9 +203,7 @@ export const deliverToMailbox = internalMutation({
 		attachments: v.array(mailMessageAttachmentValidator),
 		spamScore: v.optional(v.number()),
 		spamVerdict: v.optional(spamVerdictValidator),
-		virusVerdict: v.optional(
-			v.union(v.literal('clean'), v.literal('infected'), v.literal('skipped'))
-		),
+		virusVerdict: v.optional(virusVerdictValidator),
 		spfResult: v.optional(v.string()),
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),

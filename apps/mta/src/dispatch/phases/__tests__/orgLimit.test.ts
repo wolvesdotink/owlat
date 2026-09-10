@@ -6,23 +6,12 @@ vi.mock('../../../intelligence/orgLimits.js', () => ({
 
 import { orgLimitPhase } from '../orgLimit.js';
 import * as orgLimits from '../../../intelligence/orgLimits.js';
-import type { BasePhaseCtx, PhaseDeps } from '../../types.js';
-import type { EmailJob } from '../../../types.js';
+import type { PhaseDeps } from '../../types.js';
 import type { MtaConfig } from '../../../config.js';
+import { makeDispatchCtx } from '../../../__tests__/helpers/dispatchCtx.js';
+import { createOwlatJob } from '../../../__tests__/helpers/fixtures.js';
 
-function makeCtx(): BasePhaseCtx {
-	const job: EmailJob = {
-		messageId: 'msg-1',
-		to: 'user@example.com',
-		from: 'sender@owlat.com',
-		subject: 'Test',
-		html: '<p>Hello</p>',
-		ipPool: 'transactional',
-		organizationId: 'org-7',
-		dkimDomain: 'owlat.com',
-	};
-	return { job, domain: 'example.com', isp: 'other', fromDomain: 'owlat.com' };
-}
+const makeCtx = () => makeDispatchCtx({ job: createOwlatJob({ organizationId: 'org-7' }) });
 
 const deps: PhaseDeps = { redis: {} as never, config: {} as MtaConfig };
 
