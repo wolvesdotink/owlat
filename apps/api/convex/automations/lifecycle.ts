@@ -292,12 +292,11 @@ async function dispatch(
 	// Preconditions for `→ active` (both `draft → active` and
 	// `paused → active`). Skipped on self-loops (already `active`).
 	if (input.to === 'active' && !verdict.isSelfLoop) {
-		const stepCount = await ctx.db
+		const steps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))
-			.collect() // bounded: one automation's steps
-			.then((steps) => steps.length);
-		if (stepCount === 0) {
+			.collect(); // bounded: one automation's steps
+		if (steps.length === 0) {
 			return { ok: false, reason: 'no_steps', from, to: input.to };
 		}
 		const triggerCheck = validateTriggerConfig(automation);

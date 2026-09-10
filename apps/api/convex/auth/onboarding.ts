@@ -26,49 +26,39 @@ export const getWithActualProgress = authedQuery({
 	handler: async (ctx, args) => {
 		await requireSelf(ctx, args.userId);
 
-		// Check actual data to determine step completion
-		const [sendPathReady, hasContacts, hasEmails, hasSentCampaign, hasApiKey, hasVerifiedDomain] =
+		// Check actual data to determine step completion. Each probe is a single
+		// independent row lookup, so they all run together.
+		const [sendPathReady, firstContact, firstTemplate, sentCampaign, apiKey, verifiedDomain] =
 			await Promise.all([
 				// Can this instance actually deliver mail? (provider + creds, or a
 				// providerRoutes row) — the real pre-send gate, not domain verification.
 				isDeliveryConfigured(ctx),
 				// Check for at least one contact
-				ctx.db
-					.query('contacts')
-					.first()
-					.then((c) => !!c),
+				ctx.db.query('contacts').first(),
 				// Check for at least one email template
-				ctx.db
-					.query('emailTemplates')
-					.first()
-					.then((e) => !!e),
+				ctx.db.query('emailTemplates').first(),
 				// Check for at least one sent campaign — indexed lookup.
 				ctx.db
 					.query('campaigns')
 					.withIndex('by_status', (q) => q.eq('status', 'sent'))
-					.first()
-					.then((c) => !!c),
+					.first(),
 				// Check for at least one API key — the transactional/API on-ramp, so
 				// onboarding covers programmatic sending, not just marketing campaigns.
-				ctx.db
-					.query('apiKeys')
-					.first()
-					.then((k) => !!k),
+				ctx.db.query('apiKeys').first(),
 				// Check for at least one verified domain — indexed lookup.
 				ctx.db
 					.query('domains')
 					.withIndex('by_status', (q) => q.eq('status', 'verified'))
-					.first()
-					.then((d) => !!d),
+					.first(),
 			]);
 
 		const flags = {
 			sendPathReady,
-			addedContacts: hasContacts,
-			createdEmail: hasEmails,
-			sentCampaign: hasSentCampaign,
-			createdApiKey: hasApiKey,
-			setupDomain: hasVerifiedDomain,
+			addedContacts: firstContact !== null,
+			createdEmail: firstTemplate !== null,
+			sentCampaign: sentCampaign !== null,
+			createdApiKey: apiKey !== null,
+			setupDomain: verifiedDomain !== null,
 		};
 		const completedSteps = Object.values(flags).filter(Boolean).length;
 		const totalSteps = Object.keys(flags).length;
