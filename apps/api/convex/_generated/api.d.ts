@@ -155,6 +155,7 @@ import type * as campaigns_send from '../campaigns/send.js';
 import type * as campaigns_sendJob from '../campaigns/sendJob.js';
 import type * as campaigns_sendPlanProgress from '../campaigns/sendPlanProgress.js';
 import type * as campaigns_sendPlanQueries from '../campaigns/sendPlanQueries.js';
+import type * as campaigns_sendPlanning from '../campaigns/sendPlanning.js';
 import type * as campaigns_sendQueries from '../campaigns/sendQueries.js';
 import type * as campaigns_sendVariantSplit from '../campaigns/sendVariantSplit.js';
 import type * as campaigns_senders from '../campaigns/senders.js';
@@ -1227,6 +1228,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/sendJob': typeof campaigns_sendJob;
 	'campaigns/sendPlanProgress': typeof campaigns_sendPlanProgress;
 	'campaigns/sendPlanQueries': typeof campaigns_sendPlanQueries;
+	'campaigns/sendPlanning': typeof campaigns_sendPlanning;
 	'campaigns/sendQueries': typeof campaigns_sendQueries;
 	'campaigns/sendVariantSplit': typeof campaigns_sendVariantSplit;
 	'campaigns/senders': typeof campaigns_senders;
