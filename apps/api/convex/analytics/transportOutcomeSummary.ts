@@ -132,7 +132,7 @@ export function transportOutcomeCounters(
  * transition is emitted for every re-fire (image prefetch reopens a message 3-5
  * times). Mapping the transition would make `openRate` an opens-per-delivered
  * number that routinely exceeds 1.0 and disagrees with the campaign dashboard
- * over the same traffic, which is precisely what plan D5 exists to prevent.
+ * over the same traffic, which is precisely what one derivation seam prevents.
  * So the engagement outcome effects are pushed by `reduceOpened`/`reduceClicked`
  * from inside their existing uniqueness gate, next to the shipped counter they
  * must agree with. Do not re-add them here.
@@ -215,7 +215,7 @@ export interface TransportOutcomeTotals {
  *
  * A gate must therefore read a saturated `openRate` as CARRY-OVER — engagement
  * whose delivery denominator landed elsewhere — and not as 100% engagement.
- * That is one more reason D8's engagement-ratio gate compares the two arms'
+ * That is one more reason the engagement-ratio gate compares the two arms'
  * calibration rates against each other over the SAME window rather than reading
  * either one as an absolute number.
  */
@@ -296,14 +296,13 @@ export const DEFERRAL_TELEMETRY_SPAN_MS = 30 * DAY_MS;
  * HOW MUCH OF THE SPAN THE ARM'S OWN TRAFFIC HAS TO COVER before a silent
  * `deferred` counter counts as a reading rather than as a silence.
  *
- * A DISTANCE, NOT A DAY COUNT, and not the span's oldest day either. Real
- * senders are not continuous: a cell that sends on weekdays only is quiet on
- * both of the span's oldest days once every seven, and a test anchored on that
- * edge would restart its fourteen-day graduation clock every weekend — the
- * permanent block plan D2 forbids, merely made intermittent. A cell that sends
- * one batch a week has four sending days in the span and is just as entitled to
- * an answer. What both have and a cell that started on Tuesday does not is
- * TRAFFIC SPREAD ACROSS THE SPAN, which is what this measures.
+ * A DISTANCE, NOT A DAY COUNT, and not the span's oldest day either. Real senders are not
+ * continuous: a cell that sends on weekdays only is quiet on both of the span's oldest days
+ * once every seven, and a test anchored on that edge would restart its fourteen-day
+ * graduation clock every weekend — the permanent block the additive-only rule forbids, merely
+ * made intermittent. A cell that sends one batch a week has four sending days in the span and
+ * is just as entitled to an answer. What both have and a cell that started on Tuesday does
+ * not is TRAFFIC SPREAD ACROSS THE SPAN, which is what this measures.
  *
  * Fourteen days because that is the ramp's own graduation dwell: the shortest
  * period the plan is willing to call sustained evidence about a cell.
@@ -356,14 +355,14 @@ export function deferralTelemetryReadSince(now: number): number {
  * asked (2) of the span's oldest day alone, which any cell that does not send at
  * weekends fails once a week — see `DEFERRAL_TELEMETRY_MIN_OBSERVED_MS`.
  *
- * Without (2) the hold has no exit, and that is a live bricking bug rather than
- * a conservative default: a deployment whose warm-up overflow routes to a relay
+ * Without (2) the hold has no exit, and that is a live bricking bug rather than a
+ * conservative default: a deployment whose warm-up overflow routes to a relay
  * instead of deferring never records a deferral at all, and gate 2's
  * `insufficient_data` outranks `pass` in the fold. Every tick would clear
  * `greenSince` (controller rung 7), so the cell could never raise its own-MTA
- * share and its fourteen-day graduation clock would restart hourly, for ever,
- * with no operator remedy. Plan D2 forbids exactly that: an ABSENT signal may
- * slow a ramp down, never block it permanently.
+ * share and its fourteen-day graduation clock would restart hourly, for ever, with
+ * no operator remedy. That is exactly what is forbidden: an ABSENT signal may slow
+ * a ramp down, never block it permanently.
  *
  * TAKES `now`, NOT THE CALLER'S LOWER BOUND, and CLAMPS ITS OWN SPAN over the
  * rows: a reader that happened to read a day further back must not reach a

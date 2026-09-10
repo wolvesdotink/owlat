@@ -95,7 +95,8 @@ export interface EngagementGateInput {
 	/**
 	 * Reference (relay/ESP) arm outcomes for the SAME window, or `null` when no reference transport is
 	 * configured. `null` is a SUPPORTED CONFIGURATION: the ratio simply holds, nothing fails and
-	 * nothing is blocked. The standalone deployment's substitute lives in P1-7's evaluator.
+	 * nothing is blocked. The standalone deployment's substitute lives in the trailing-baseline
+	 * evaluator.
 	 */
 	readonly reference: TransportOutcomeSummary | null;
 	/**
@@ -226,8 +227,8 @@ const FLOOR_SPEC: EngagementComparisonSpec = {
  * ORDERING, and why:
  *   1. Recent window absent/thin/stale/unmeasurable -> hold. We know nothing.
  *   2. Second series absent/thin/stale/unmeasurable -> hold. There is no ratio
- *      without a denominator, and plan D2 forbids an absent external account
- *      from producing anything worse than lower confidence.
+ *      without a denominator, and an absent external account may never produce
+ *      anything worse than lower confidence.
  *   3. A second series at exactly zero -> hold, NOT pass. A zero denominator is
  *      a division by zero, and "0/0 looks fine" is precisely the bug that would
  *      let a dead cell ramp to 100%.

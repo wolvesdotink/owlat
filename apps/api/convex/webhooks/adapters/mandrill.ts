@@ -1,5 +1,5 @@
 /**
- * Mailchimp Transactional (Mandrill) webhook adapter — plan D10.
+ * Mailchimp Transactional (Mandrill) webhook adapter.
  *
  * The feedback half of the reference arm: Mandrill is where a migrating team's
  * mail goes while the ramp controller walks traffic onto Owlat's own MTA, so

@@ -1,6 +1,6 @@
 /**
  * BUNDLED-PLUGIN FEEDBACK WEBHOOK — one route for every plugin transport that
- * reports its own outcomes (wired by P2.2).
+ * reports its own outcomes.
  *
  *     POST /webhooks/plugin/<pluginId>
  *

@@ -3,8 +3,8 @@
  *
  * Types only: what a gate is asked, what it answers, and the numbers it must
  * hand back with the answer. Split from `gates.ts` so the two evaluator
- * implementations (reference-arm here, trailing-baseline in P1-7) and the
- * dashboard can share one vocabulary without importing either implementation.
+ * implementations (reference-arm and trailing-baseline) and the dashboard can
+ * share one vocabulary without importing either implementation.
  */
 
 import type { SeedPlacementObservation, SmtpBlockObservation } from './gateObservations';
@@ -157,10 +157,9 @@ interface RampGateMeasurementBase {
 	 *    said "we are refusing this sender", which has nothing to do with how many
 	 *    messages were handed over.
 	 *
-	 * A renderer that prints "N sends" unconditionally is wrong on both, and under
-	 * plan D12 the audit row and the admin notification render from exactly this
-	 * field — see `gateExplanation` in `apps/web/app/utils/deliverabilityMeasurement.ts`
-	 * for the branch that keeps the sentence true.
+	 * A renderer that prints "N sends" unconditionally is wrong on both, and the audit row and the
+	 * admin notification render from exactly this field — see `gateExplanation` in
+	 * `apps/web/app/utils/deliverabilityMeasurement.ts` for the branch that keeps the sentence true.
 	 */
 	readonly ownSample: number;
 	/** Denominator behind `referenceRate`, or `null` when absent. */
@@ -286,7 +285,7 @@ interface RampGateEvaluationBase {
 	 * `CORROBORATION_REQUIRED_RAMP_GATES`.
 	 */
 	readonly requiresCorroboration: boolean;
-	/** Consecutive clean windows INCLUDING this one (plan D9's K_CLEAN input). */
+	/** Consecutive clean windows INCLUDING this one (the K_CLEAN input). */
 	readonly cleanStreak: number;
 	readonly perGate: readonly RampGateResult[];
 	/**
@@ -364,9 +363,9 @@ export interface RampGateEvaluationInput {
 	 * Under `referenceArmGateEvaluator` — the only implementation that exists
 	 * today — `null` makes the two-armed gates (hard bounce, complaint, seed
 	 * placement) HOLD, while the one-armed deferral gate keeps deciding. Nothing
-	 * fails, nothing is blocked; the ramp simply moves on thinner evidence. P1-7
-	 * adds the trailing-baseline evaluator that decides for a standalone
-	 * deployment; the CALLER picks the evaluator, this field does not.
+	 * fails, nothing is blocked; the ramp simply moves on thinner evidence. The
+	 * trailing-baseline evaluator is what decides for a standalone deployment; the
+	 * CALLER picks the evaluator, this field does not.
 	 */
 	readonly reference: TransportOutcomeSummary | null;
 	/**
@@ -430,7 +429,7 @@ export interface RampGateEvaluationInput {
 	/**
 	 * The same window's REFERENCE-arm sweep — gate 5's second clause. `null` on a
 	 * standalone deployment, where the roll-up reports `no_reference_arm` and the
-	 * absolute clause is the whole gate (D3's substitution).
+	 * absolute clause is the whole gate.
 	 */
 	readonly referenceSeeds?: SeedPlacementObservation | null;
 	/** Gate 4's result, computed elsewhere (MPP handling). Absent = not measured. */
@@ -450,7 +449,7 @@ export interface RampGateEvaluationInput {
  * `Math.floor(epoch)`, which satisfies K_CLEAN instantly, and an `evaluatedAt`
  * of single digits. In the one module whose premise is that units are a
  * type-level concern, that is not a risk worth taking; naming the fields removes
- * it, and removes the positional churn P1-5/P1-7 would otherwise cause.
+ * it, and removes the positional churn a widening argument list would cause.
  */
 export interface RampGateAggregationInput {
 	readonly perGate: readonly RampGateResult[];

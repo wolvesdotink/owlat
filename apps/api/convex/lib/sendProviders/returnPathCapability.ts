@@ -15,7 +15,7 @@
  *     bounce gate runs on a WIDER tolerance instead of pretending the two
  *     arms' numbers are comparable.
  *
- * Plan D2 (additive-only third-party rule) is absolute here: an unsupported,
+ * The additive-only third-party rule is absolute here: an unsupported,
  * unprobed or never-configured relay lowers confidence and widens a tolerance.
  * It never throws, never blocks a send, never blocks a promotion and never
  * renders an error. Every function in this module is total.

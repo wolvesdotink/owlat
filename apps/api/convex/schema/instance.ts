@@ -90,8 +90,8 @@ export const instanceTables = {
 		// `@owlat/shared/arcTrust`; an explicit `[]` disables the override entirely.
 		// Admin-gated write via `settings.update`, editable in Settings → Delivery.
 		trustedArcForwarders: v.optional(v.array(v.string())),
-		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH (plan P3-2's named mitigation for
-		// controller complexity). When true, every ramp cell is PINNED at its
+		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH — the named mitigation for
+		// controller complexity. When true, every ramp cell is PINNED at its
 		// current share: the hourly controller still evaluates and still audits, so
 		// an operator can watch what it WOULD have done, but it writes no share.
 		// Honoured before every other rule, including the hard stops — a paused
@@ -301,12 +301,12 @@ export const instanceTables = {
 	//
 	// SECRETS AT REST: the language key (and optional hosted-embedder key) are
 	// stored ONLY as an AES-256-GCM envelope (secretCiphertext/Iv/AuthTag +
-	// EnvelopeVersion), exactly like `externalMailAccounts`, encrypted in a
-	// `'use node'` action with `lib/credentialCrypto`. All envelope columns are
-	// OPTIONAL — a local provider needs no key. Queries NEVER return the envelope,
-	// only `keyPreview` + a "configured" boolean. Decrypt happens only at call time
+	// EnvelopeVersion), exactly like `externalMailAccounts`, encrypted in a `'use
+	// node'` action with `lib/credentialCrypto`. All envelope columns are OPTIONAL
+	// — a local provider needs no key. Queries NEVER return the envelope, only
+	// `keyPreview` + a "configured" boolean. Decrypt happens only at call time
 	// inside a Node action. Env `LLM_*` remains the deployment fallback when this
-	// row is absent; a present row wins (resolution is a later plan piece).
+	// row is absent; a present row wins.
 	//
 	// `embeddingModelVersion` is the dimension guard: it is bumped whenever the
 	// embedding model/provider changes so stale vectors are never silently mixed

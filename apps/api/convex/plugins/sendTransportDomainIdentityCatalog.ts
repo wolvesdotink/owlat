@@ -10,9 +10,9 @@ import {
 import { readExactFunctionModule } from './hostedModuleSnapshot';
 
 /**
- * Host view of a bundled send transport's SENDING-DOMAIN IDENTITY half (wired
- * by P3.2) — the declaration side, plus the executable provider-call half it
- * is paired with.
+ * Host view of a bundled send transport's SENDING-DOMAIN IDENTITY half — the
+ * declaration side, plus the executable provider-call half it is paired
+ * with.
  *
  * Two things live here because they are one fact with two representations, and
  * the value of the pair is that they are checked against each other at module

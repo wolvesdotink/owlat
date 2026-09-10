@@ -1,5 +1,5 @@
 /**
- * THE MULTI-DAY SEND PLAN'S READS — the ctx-bound half of P3-7.
+ * THE MULTI-DAY SEND PLAN'S READS — the ctx-bound half.
  *
  * The pure planner is `multiDaySendPlan.ts`; this module only LOADS what it
  * needs (the warming projection, and — once per walk — a bounded audience count

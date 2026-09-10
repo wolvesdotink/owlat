@@ -1,12 +1,12 @@
 /**
- * CROSSING THE 0.5 CEILING (plan D3's promotion rule) — the either/or as DATA.
+ * CROSSING THE 0.5 CEILING — the promotion rule's either/or as DATA.
  *
- * The plan states it as a sentence with an "either ... or" in the middle:
- * promotion past the 0.5 rung requires EITHER a Google Compliance Status pass
- * (Gmail) or an SNDS complaint band green (Microsoft) for the relevant cell
- * within the last 7 days, OR — standalone — ALL FOUR of a doubled dwell, a
- * recent passing seed probe, a 14-consecutive-day DNSBL-clean streak across
- * every pool IP, and a deferral rate under threshold in EVERY cell.
+ * The rule is a sentence with an "either ... or" in the middle: promotion
+ * past the 0.5 rung requires EITHER a Google Compliance Status pass (Gmail)
+ * or an SNDS complaint band green (Microsoft) for the relevant cell within
+ * the last 7 days, OR — standalone — ALL FOUR of a doubled dwell, a recent
+ * passing seed probe, a 14-consecutive-day DNSBL-clean streak across every
+ * pool IP, and a deferral rate under threshold in EVERY cell.
  *
  * IMPLEMENTED AS ROUTES, NOT AS BRANCHING. A route is a named list of
  * conditions; promotion is allowed when ANY route's conditions are all met. Two

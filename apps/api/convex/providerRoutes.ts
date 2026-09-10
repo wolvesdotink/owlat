@@ -202,14 +202,14 @@ function relayKindLabel(kind: string): string {
  * Every relay identity this deployment holds for its owned sending domains —
  * one row per (domain, relay kind), for WHICHEVER KINDS THE REGISTRY PROVES.
  *
- * IT USED TO BE `listDeliverabilityRelayDomains`, AND IT USED TO BE SES. That
- * query point-read the frozen `sendingDomainSesIdentities` sibling and shaped its
- * result around SES's bundle (dkim tokens, MAIL FROM, `spfProofState`), which
- * made one vendor's storage the shape of the surface: Mandrill's identities were
- * reported by a second, `providerKind === 'mandrill'` query under a second Vue
- * panel, and the bundled plugin relay tier — which writes the same generic table
- * Mandrill does — wrote rows that NO surface could render. A deployment relaying
- * through a plugin transport was told, forever, that provisioning was queued.
+ * NOT SES-SHAPED, AND NOT ONE QUERY PER VENDOR. A query that point-reads the
+ * frozen `sendingDomainSesIdentities` sibling and shapes its result around SES's
+ * bundle (dkim tokens, MAIL FROM, `spfProofState`) makes one vendor's storage the
+ * shape of the surface: Mandrill's identities then need a second, `providerKind
+ * === 'mandrill'` query under a second Vue panel, and the bundled plugin relay
+ * tier — which writes the same generic table Mandrill does — writes rows NO
+ * surface can render, so a deployment relaying through a plugin transport is
+ * told, forever, that provisioning is queued.
  *
  * SO THE ANSWERING KINDS COME FROM THE REGISTRY (`relayIdentityProviders()`),
  * not from this file. Each kind describes its own domain through

@@ -6,19 +6,13 @@
  * (module)** dispatches per-provider work through `providerFor(kind)` in
  * `./index.ts`; provider variation lives entirely behind this seam — with the
  * RETURN-PATH branches the lifecycle still carries of its own as the stated
- * exception (`./index.ts`'s header says what they cost a new kind). The seams
- * plan's P0.4 cleared the identity ones: both relay-identity provisioning paths
- * now walk the registry through
- * {@link SendingDomainProviderModule.ensureRelayIdentity}.
+ * exception (`./index.ts`'s header says what they cost a new kind). The identity
+ * ones are cleared: both relay-identity provisioning paths now walk the registry
+ * through {@link SendingDomainProviderModule.ensureRelayIdentity}.
  *
  * THE PRIMARY CONTRACT ONLY. The smaller "can this RELAY kind prove a domain?"
  * surface a bundled plugin transport also answers is `./relayIdentityTypes.ts`;
  * that file's header says why the two are not one type.
- *
- * PLAN NUMBERS: every D-/P-number in this file names its plan, because more
- * than one plan's numbering reaches this seam — the Mandrill provider plan's
- * for the registry and the relay seams, the seams plan's for P0.3/P0.4, and
- * the per-domain return-path work (#408) for `returnPathHost`.
  *
  * Per ADR-0018:
  * - Each adapter owns its per-provider sibling identity table
@@ -140,15 +134,15 @@ export type ProviderCheckResult = {
  * therefore about WHO DECIDES the projection, not about a pill on a screen: a
  * developer adding provider #4 should implement it to keep the provider's own
  * verdict in the domain's record, and should not expect it to appear anywhere
- * until the domain-records UI grows a consumer (P1.2 territory).
+ * until the domain-records UI grows a consumer.
  *
  * The key is SES-named because the PERSISTED FIELD is (rows written since long
  * before this seam existed). That is schema vocabulary, not an identity check:
- * per D10 persisted shapes stay additive, so a second provider that wants a
- * status of its own adds its OWN optional key here and fills it from its OWN
- * adapter. What the seam removes is the `providerType === 'ses'` branch that
- * used to decide, in `domains/dnsVerification.ts`, which provider was allowed
- * to have a verdict worth recording.
+ * persisted shapes stay additive, so a second provider that wants a status of
+ * its own adds its OWN optional key here and fills it from its OWN adapter.
+ * What the seam removes is the `providerType === 'ses'` branch that used to
+ * decide, in `domains/dnsVerification.ts`, which provider was allowed to have
+ * a verdict worth recording.
  */
 export type ProviderVerificationStatusFields = {
 	/** SES's `verificationStatus`, spelled as the persisted field has always held it. */
@@ -169,8 +163,7 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * and translates to a `→ failed` lifecycle transition.
 	 *
 	 * `options.returnPathHost` is the domain's per-domain VERP return-path host
-	 * (the return-path work's D1/D2 — #408). When set, the MTA adapter reflects
-	 * it to the MTA and builds the
+	 * (#408). When set, the MTA adapter reflects it to the MTA and builds the
 	 * `mailFrom` SPF record on that host; when absent it falls back to the
 	 * deployment-global `MTA_RETURN_PATH_DOMAIN` env (historic behavior). SES has
 	 * no return-path concept and ignores it.

@@ -14,12 +14,11 @@
  * conservative 180 / 270 days (see `SUNSET_POLICY_DEFAULTS`). Operators tune it
  * per topic; the tuning is a merge, not a replacement (`resolveSunsetPolicy`).
  *
- * BUILT ON P0-2, NOT BESIDE IT. "Has this contact engaged" is already answered
- * by the engagement machinery: `analytics/engagementActivity.ts` owns the ONE
- * table of which `contactActivities` literals count as engagement, and the
- * sunset engine derives its "last engagement" instant from that same table
- * (see `contacts/sunsetEngine.ts`). Nothing here re-derives engagement from raw
- * activities a second time.
+ * BUILT ON THE ENGAGEMENT MACHINERY, NOT BESIDE IT. "Has this contact engaged" is already answered
+ * by the engagement machinery: `analytics/engagementActivity.ts` owns the ONE table of which
+ * `contactActivities` literals count as engagement, and the sunset engine derives its "last
+ * engagement" instant from that same table (see `contacts/sunsetEngine.ts`). Nothing here
+ * re-derives engagement from raw activities a second time.
  *
  * SAFETY IS THE POINT. Auto-suppression is the most destructive thing in the
  * deliverability plan, so every path that can suppress is guarded BEFORE any
@@ -214,7 +213,7 @@ export type SunsetClock = {
 export type SunsetFacts = SunsetClock & {
 	/** Contact row creation instant — the tenure clock. */
 	createdAt: number;
-	/** Newest open/click/reply, per the P0-2 engagement literals. */
+	/** Newest open/click/reply, per the engagement literals. */
 	lastEngagementAt?: number | undefined;
 	/** Oldest `email_sent` — when this contact first became measurable. */
 	firstMessagedAt?: number | undefined;

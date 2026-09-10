@@ -15,7 +15,7 @@
  * Three things are worth knowing before changing this file:
  *
  *  - **The credential is env, not config.** Mandrill is a SEND provider;
- *    plan D2 froze send-provider credentials as env-only, so the key comes from
+ *    send-provider credentials are env-only, so the key comes from
  *    `MANDRILL_API_KEY` — the same variable the send adapter and the webhook
  *    verifier read — and never from the import form. That is why
  *    `IntegrationProviderConfig`'s `mandrill` branch has no fields. It also

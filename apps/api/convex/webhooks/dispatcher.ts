@@ -216,7 +216,7 @@ const DISPATCH: DispatchTable = {
 		// A relay holding a message it already accepted moves NO send state — the
 		// relay is still retrying and owns the terminal edge. The only thing this
 		// records is the (cell, arm) `deferred` counter ramp gate 2 divides; the
-		// recorder is fail-soft on an id it cannot resolve. See plan D10 and the
+		// recorder is fail-soft on an id it cannot resolve. See the
 		// `recordRelayDeferral` docstring for why it, unlike the governed writer,
 		// accepts a send that is already `sent`.
 		return await ctx.runMutation(internal.delivery.deferralOutcome.recordRelayDeferral, {

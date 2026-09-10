@@ -6,7 +6,7 @@
  * provably cannot finish: the MTA hits the warming cap, defers the tail, and
  * the tail silently expires at `maxMessageAgeMs`. Rather than let that happen,
  * pre-flight refuses the send and hands back a multi-day SCHEDULE — capacity is
- * a schedule, not a failure (plan D2/D14 honesty rule).
+ * a schedule, not a failure — the honesty rule.
  *
  * Purity is the point: no `Date.now()`, no DB reads, no env reads. The
  * clock and every input are parameters, so the predicate is exhaustively

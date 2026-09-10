@@ -297,8 +297,8 @@ export const getGuide = authedQuery({
 			// The yahoo cell's gate-3 source. Always present — absence of an
 			// enrollment substitutes, it never blanks the gate out.
 			//
-			// `hasCfblAddress` is resolved SERVER-side and is `false` until P2-7 lands
-			// the RFC 9477 CFBL-Address feed: there is nothing to read yet, and a
+			// `hasCfblAddress` is resolved SERVER-side and is `false` until the RFC
+			// 9477 CFBL-Address feed lands: there is nothing to read yet, and a
 			// client-supplied flag steering the reported confidence and threshold
 			// would be a speculative seam.
 			complaintSignal: yahooComplaintSubstitution({

@@ -68,8 +68,8 @@ export const DASHBOARD_MAX_TREND_DAYS = 30;
  * this screen is decided over either. Both arms are summarized a second time
  * over the controller's span before they reach the evaluator, so the two readers
  * agree on the verdict (#510); this constant governs the counters, the rates,
- * the trend and the confidence cap rendered beside it, which plan D2/D5 asks for
- * over a week rather than over a day.
+ * the trend and the confidence cap rendered beside it, all reported over a week
+ * rather than over a day.
  */
 export const DASHBOARD_WINDOW_DAYS = 7;
 
@@ -227,7 +227,7 @@ interface DashboardConfidence {
  *   1. a window with nothing in it is graded `none`, rather than being given
  *      whichever level a column of holds happened to produce;
  *   2. a cell is CAPPED by the measurement inputs it does not have, which is
- *      plan D14's sentence read literally: "measurement confidence: low —
+ *      the operator-facing sentence read literally: "measurement confidence: low —
  *      connect a relay or add seed mailboxes to improve". With NEITHER of those
  *      the cap is `low`; with seeds but no second arm it is `medium`; a cell
  *      with a reference arm has no cap, so absent seeds beside one remain an

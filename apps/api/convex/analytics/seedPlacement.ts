@@ -13,11 +13,11 @@
  * Every decision lives in the pure core (`@owlat/shared/seedPlacement`): this
  * file loads, calls, and writes.
  *
- * D17 — TRIPWIRE, NOT A GAUGE. Nothing here returns a placement percentage.
- * The roll-up is a STATUS per mailbox provider, and a provider-wide collapse
- * is SUSPECT until the deferral or bounce gate corroborates it.
+ * TRIPWIRE, NOT A GAUGE. Nothing here returns a placement percentage. The
+ * roll-up is a STATUS per mailbox provider, and a provider-wide collapse is
+ * SUSPECT until the deferral or bounce gate corroborates it.
  *
- * D2 — ADDITIVE-ONLY. Zero seed mailboxes is a supported configuration: the
+ * ADDITIVE-ONLY. Zero seed mailboxes is a supported configuration: the
  * sweeps index comes back empty, gate 5 answers `insufficient_data`, the
  * controller HOLDS, and nothing errors, warns, or nags.
  *
@@ -27,24 +27,24 @@
  *
  * GATE 5'S VERDICT IS NOT HERE, AND THERE IS NO SECOND ROUTE TO IT.
  * `delivery/ramp/seedGate.ts` decides it, over the per-cell sweeps
- * `analytics/seedPlacementSweeps.ts` reduces from these same rows, and D17's
+ * `analytics/seedPlacementSweeps.ts` reduces from these same rows, and the
  * corroboration rule rides from there through `CORROBORATION_REQUIRED_RAMP_GATES`
  * (gateConfig) into the controller's `awaiting_corroboration` hold. That is the
  * path the controller runs on every tick, and now the only one: this module used
  * to export a `getGateVerdict` query restating the same rule over the PROVIDER
  * roll-up — pooled across streams, where the ramp is per cell — with no
  * production caller. It was deleted rather than kept as a second answer to one
- * question (issue #504, design rule D5).
+ * question (issue #504).
  *
  * The seed ACCOUNTS themselves — the projection and the rotation nudge — are the
  * domain sibling `analytics/seedAccounts.ts`, and the two ledger sweeps are
  * `analytics/seedProbeLedger.ts`. It does NOT own the CELL DASHBOARD that
- * renders the status or the confidence line beside it — P3-6 (Independence &
- * Cells UI) and P3-8 (confidence surfacing) own that and consume
- * `summarizeSeedPlacementWindow`. TWO PRODUCERS write this ledger, one
- * per shape of stream: `delivery/seedShadowCopy.ts` shadows a real campaign
- * send, and P4-7's `delivery/seedScheduledProbe.ts` mails the `transactional`
- * and `automation` streams on a cron. Same row, same classification path.
+ * renders the status or the confidence line beside it — the Independence & Cells
+ * UI and the confidence surfacing own that and consume
+ * `summarizeSeedPlacementWindow`. TWO PRODUCERS write this ledger, one per shape
+ * of stream: `delivery/seedShadowCopy.ts` shadows a real campaign send, and
+ * `delivery/seedScheduledProbe.ts` mails the `transactional` and `automation`
+ * streams on a cron. Same row, same classification path.
  *
  * SECURITY. Seed credentials are the SAME sealed envelope every other external
  * account uses; this module never reads, returns, or logs them. Seed mailbox

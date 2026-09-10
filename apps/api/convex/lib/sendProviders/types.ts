@@ -319,7 +319,7 @@ export interface DispatchResult {
 	attempts: number;
 }
 
-// ─── Return-path probe wire (the capability half of plan D5) ───────────────
+// ─── Return-path probe wire (the capability half) ─────────────────────────
 
 /**
  * What the return-path probe needs a transport to put on the wire.

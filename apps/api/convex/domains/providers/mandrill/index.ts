@@ -21,8 +21,7 @@
  *    (`senders/*` is add / check / verify / list), so `deleteFromProvider` is a
  *    documented no-op rather than a best-effort call that would always fail.
  *
- * Per ADR-0018, extended by Mandrill plan D6/D7 (plan numbers in this folder
- * are the Mandrill plan's — qualified in `../index.ts`).
+ * Per ADR-0018.
  */
 
 import { internal } from '../../../_generated/api';

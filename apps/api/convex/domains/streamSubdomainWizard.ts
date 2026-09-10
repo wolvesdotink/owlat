@@ -12,7 +12,7 @@
  * tell the operator which names to create and what to publish on each. The
  * domain rows themselves are still created through the shipped Add-Domain flow,
  * one per sending subdomain — this screen is what tells them that is the layout
- * to create in the first place, which is exactly the gap G-14 names.
+ * to create in the first place.
  *
  * IT NEVER INVENTS A RECORD VALUE. The proposed hosts are ordinary sending
  * domains, so the ones that already exist are LOOKED UP and their shipped

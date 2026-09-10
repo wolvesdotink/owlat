@@ -272,7 +272,7 @@ const {
 				</template>
 			</p>
 
-			<!-- Per-STREAM subdomains (G-14). Domain reputation is evaluated per name
+			<!-- Per-STREAM subdomains. Domain reputation is evaluated per name
 			     and does NOT inherit from the root, so one name per kind of mail is
 			     what keeps a bad campaign away from password resets. Said here, in
 			     the wizard, rather than in the docs — and stated as the recommended

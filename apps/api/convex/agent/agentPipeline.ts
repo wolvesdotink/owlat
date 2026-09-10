@@ -154,10 +154,10 @@ function buildThreadingHeaders(inbound: {
  * the inbound message.
  *
  * TOTAL BY CONSTRUCTION — the `Record<NonCampaignIntakeRejectionReason, …>`
- * makes a new rejection reason a compile error here. Before PIECE C2 this path
- * did not classify refusals at all: the intake threw, this action caught, and
- * EVERY refusal — including a suppressed recipient — was flattened into
- * `fail(err.message)`, i.e. into the same `failed` transition as a real fault.
+ * makes a new rejection reason a compile error here. Without it the intake
+ * throws, this action catches, and EVERY refusal — including a suppressed
+ * recipient — flattens into `fail(err.message)`, i.e. into the same `failed`
+ * transition as a real fault.
  *
  *   - `recipient_blocked` → `archived` with reason `sender_blocked`, the same
  *     edge `inbox/messages.ts` uses when blocklisted mail arrives, and the

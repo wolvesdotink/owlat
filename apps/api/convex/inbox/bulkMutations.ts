@@ -72,7 +72,7 @@ export const approveDrafts = adminMutation({
 	handler: async (ctx, args, session) => {
 		const ids = normalizeBatchIds(args.inboundMessageIds, 'Bulk approve');
 
-		// One shared undo window for the whole batch (piece C1 semantics).
+		// One shared undo window for the whole batch.
 		const configs = await ctx.db.query('agentConfig').take(1);
 		const undoDelayMs = resolveHumanApproveUndoDelayMs(configs[0]?.humanApproveUndoDelayMs);
 		const approvedAt = Date.now();

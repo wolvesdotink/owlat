@@ -183,7 +183,7 @@ export function ceilingGateSpecIsDecidable(
  *   2. Own arm over the absolute ceiling -> fail, EVEN IF the reference arm is
  *      thin or absent. A 20% hard-bounce rate on ample own-arm data is real
  *      evidence; making it wait for the relay's sample would be a safety hole,
- *      and plan D2 forbids an external account being load-bearing — including
+ *      and an external account may never be load-bearing — including
  *      load-bearing for a RETREAT.
  *   3. Reference arm thin/stale/absent -> insufficient_data. The comparative
  *      half is unmeasurable, so the gate holds rather than passing on half a

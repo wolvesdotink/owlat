@@ -6,7 +6,7 @@
  *
  * WHAT IT REUSES RATHER THAN REBUILDS:
  *   - "which activities count as engagement" — `analytics/engagementActivity.ts`
- *     (the P0-2 mapping table). This module derives its literals from that
+ *     (the engagement mapping table). This module derives its literals from that
  *     table BY EXCLUSION, so adding a new positive engagement activity type
  *     reaches the sunset engine automatically and no second definition of
  *     "engaged" exists.
@@ -48,7 +48,7 @@ import {
 
 /**
  * The activity literals that count as the contact ENGAGING with us, derived
- * from the P0-2 mapping table.
+ * from the engagement mapping table.
  *
  * DEFINED BY EXCLUSION, ON PURPOSE. The rule is "every literal the engagement
  * machinery reacts to, except the two NEGATIVE ones", not an allow-list of the

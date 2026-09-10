@@ -1,13 +1,13 @@
 /**
- * Send-provider CREDENTIAL FIELDS — the typed UI field descriptors of the seams
- * plan's D5 ("a provider is a bundle; UI renders descriptors, it doesn't know
- * providers"), plus the SMTP relay preset table that is one field's data.
+ * Send-provider CREDENTIAL FIELDS — the typed UI field descriptors. A provider
+ * is a bundle: the UI renders descriptors and does not know providers. The SMTP
+ * relay preset table that is one field's data lives here too.
  *
  * DATA ONLY. A descriptor names a field, its label, and the DEPLOYMENT ENV
  * VARIABLE that carries its value — never the value itself. This module ends up
- * in the web client bundle, so there is nothing here a browser may not see (the
- * seams plan's D1 risk row: "moving catalog data to packages/shared leaks
- * backend concerns into client bundles").
+ * in the web client bundle, so there is nothing here a browser may not see:
+ * moving catalog data to `packages/shared` must not leak backend concerns into
+ * client bundles.
  *
  * AND THE COPY IN IT IS MESSAGE KEYS. A `label`, a `description` and a select's
  * option labels are `sharedPkg.sendProviderCatalog.*` catalog keys, because this
@@ -16,16 +16,16 @@
  * {@link SmtpRelayPresetConfig.label}: the setup CLI prints the preset table to
  * a terminal, so those stay English sentences — see that type.
  *
- * THE VOCABULARY, AND THE OPEN QUESTION P1.1 CLOSED. The plan asked whether
+ * THE VOCABULARY, AND THE QUESTION IT CLOSES. The open question was whether
  * `credentialFields` should reuse the plugin platform's `settingsSchema` field
  * vocabulary exactly (`string | secret | number | boolean | select`,
  * `packages/plugin-kit/src/settingsSchema.ts`) or that base plus composite
  * kinds. The answer implemented here is the plan's recommendation: THE SAME FIVE
- * BASE KINDS, SPELLED IDENTICALLY, plus exactly two composites —
- * {@link SendProviderRegionSelectField} and {@link SendProviderHostPortField}.
- * "Spelled identically" is ENFORCED rather than asserted in prose — see
- * {@link SEND_PROVIDER_CREDENTIAL_FIELD_KINDS} for where the two vocabularies
- * are pinned to each other, and why the pin cannot live in this package.
+ * BASE KINDS, SPELLED IDENTICALLY, plus exactly two composites — {@link
+ * SendProviderRegionSelectField} and {@link SendProviderHostPortField}. "Spelled
+ * identically" is ENFORCED rather than asserted in prose — see {@link
+ * SEND_PROVIDER_CREDENTIAL_FIELD_KINDS} for where the two vocabularies are
+ * pinned to each other, and why the pin cannot live in this package.
  *
  * WHAT "SPELLED IDENTICALLY" COVERS, EXACTLY: the KIND NAMES, and nothing else.
  * The pin compares the two vocabularies' kind lists; it says nothing about the
@@ -47,9 +47,9 @@
  *
  * THE DIVERGENCE ABOVE IS THE SETTINGS FORM'S, AND IT STAYS. A plugin's
  * `settingsSchema` describes operator settings the host STORES; these describe
- * credentials the DEPLOYMENT carries. P3.1 (contract parity) did not reconcile
- * those two — it gave a bundled SEND TRANSPORT a `credentialFields` declaration
- * of its own, shaped to THIS module rather than to `settingsSchema`
+ * credentials the DEPLOYMENT carries. Contract parity did not reconcile those two
+ * — it gave a bundled SEND TRANSPORT a `credentialFields` declaration of its own,
+ * shaped to THIS module rather than to `settingsSchema`
  * (`PluginSendTransportCredentialField` in
  * `packages/plugin-kit/src/sendTransportCredentials.ts`): the base five kinds,
  * `envVar` on every one of them, and the composites withheld because a plugin can
@@ -124,13 +124,13 @@ export const OUTBOUND_TLS_MODE_OPTIONS = [
  *
  * A VALUE, not just a type, because "spelled identically" has to be checkable.
  * `packages/shared` may not import `@owlat/plugin-kit` (nothing in this package
- * may depend on the plugin platform), so the two lists cannot be one
- * declaration; what keeps them from diverging silently is
+ * may depend on the plugin platform), so the two lists cannot be one declaration;
+ * what keeps them from diverging silently is
  * `apps/api/convex/lib/sendProviders/__tests__/credentialFieldVocabulary.test.ts`,
- * a package that may import both, which pins `SETTINGS_FIELD_KINDS` as a subset
- * of this list at build time AND at run time. A kind added to (or renamed in)
+ * a package that may import both, which pins `SETTINGS_FIELD_KINDS` as a subset of
+ * this list at build time AND at run time. A kind added to (or renamed in)
  * plugin-kit is a red suite the moment it happens, instead of a renderer with no
- * branch for it discovered at P3.1.
+ * branch for it discovered once a plugin ships one.
  */
 export const SEND_PROVIDER_CREDENTIAL_FIELD_KINDS = [
 	// The plugin `settingsSchema` five, in its order.

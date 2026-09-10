@@ -13,7 +13,7 @@ import { transportArmValidator } from '../lib/convexValidators';
  * sanctions a feature-named sibling in exactly that case (the
  * `schema/sendAssignments.ts` precedent).
  *
- * SHAPE IS COPIED FROM `sendingReputation` DELIBERATELY (plan D5, ADR-0042):
+ * SHAPE IS COPIED FROM `sendingReputation` DELIBERATELY (ADR-0042):
  *   - Each (org, cell, arm, day) bucket is SHARDED into `shardKey` 0..N-1 rows.
  *     One lifecycle event bumps ONE random shard, so a blast's per-recipient
  *     writes spread across N documents instead of read-modify-writing a single

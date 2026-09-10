@@ -284,8 +284,8 @@ function readSuppressionReason(value: unknown): PluginSuppressionReason {
  * WHAT THIS DOES NOT CLOSE: an id belonging to ANOTHER send provider's message.
  * `transitionByProviderMessageId` resolves by id alone with no provider scoping,
  * which the core adapters can already exploit against each other today; it is a
- * dispatcher-wide property, recorded in `docs/abstractions.md` for P3.1 rather
- * than patched from one caller.
+ * dispatcher-wide property, recorded in `docs/abstractions.md` rather than
+ * patched from one caller.
  */
 function readProviderMessageId(value: unknown): string {
 	return assertUnreservedMessageId(readRequiredText(value, 'providerMessageId'));

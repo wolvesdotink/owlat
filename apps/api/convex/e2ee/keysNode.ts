@@ -63,7 +63,7 @@ export async function generateKeypair(email: string, name: string): Promise<Gene
 		// profile (Ed25519=27 / X25519=25) is rejected by GnuPG 2.5.x, Thunderbird
 		// /RNP and older gpg, so a WKD/manifest key minted that way cannot be
 		// encrypted TO. Only the key algorithm-ID profile changes here — the
-		// message/signature format stays per locked decision D1.
+		// message/signature format is unchanged.
 		type: 'ecc',
 		curve: 'curve25519Legacy',
 		userIDs: [{ name, email }],

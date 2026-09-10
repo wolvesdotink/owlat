@@ -8,11 +8,11 @@
  * recipients in ENGAGEMENT ORDER so each day's slice is the best remaining
  * audience — which is also the ideal warming behaviour.
  *
- * It CONSUMES P0-5's binding plan (`capacityPlan.ts`) rather than re-deriving
+ * It CONSUMES the binding capacity plan (`capacityPlan.ts`) rather than re-deriving
  * one: `buildCapacitySchedule` already owns "what can day k carry", the
- * trailing-rate extension and the `MAX_PLAN_DAYS` truncation, and a second
- * answer to those questions is a second answer the pre-flight and the walker can
- * disagree about.
+ * trailing-rate extension and the `MAX_PLAN_DAYS` truncation, and a second answer
+ * to those questions is a second answer the pre-flight and the walker can disagree
+ * about.
  *
  * THE BUDGET AND THE PLAN LENGTH ARE TWO DIFFERENT QUESTIONS, and only the
  * second one needs a denominator. "How many may go out today" is

@@ -2,8 +2,8 @@
 
 /**
  * Key lifecycle — the Node (`'use node'`) plane of Sealed Mail key rotation,
- * revocation, INSTANCE_SECRET re-sealing, and the recovery kit (E6; locked
- * decision D7: recovery kit only, NO admin escrow).
+ * revocation, INSTANCE_SECRET re-sealing, and the recovery kit (recovery kit
+ * only, NO admin escrow).
  *
  * These need `openpgp` (keygen, statement signing, key parsing) and the Node
  * secret box (`e2ee/sealing.ts`), so they live here; all DB work is delegated to

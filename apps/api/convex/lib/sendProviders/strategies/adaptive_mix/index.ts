@@ -117,15 +117,13 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  *     coupling, so it must NOT go in the allowlist — that is what lets the
  *     allowlist reach zero.
  *
- * Read those three, not this list. For orientation only, the surviving families
- * as of P0.5: the RETURN-PATH pair (`domains/lifecycle.ts`,
- * `delivery/checklistDomainValidators.ts`), waiting on a capability that has no
- * home on the sending-domain adapter interface yet; the FROZEN-SIBLING READ
- * that is left (`delivery/checklistValidatorTypes.ts` — its twin, the relay
- * panel's query, now walks the relay-identity registry instead); ADAPTER-ADJACENT actions living
- * beside an adapter rather than inside it (`domains/mandrillRelay*.ts`,
- * `webhooks/mandrillRejectSuppression.ts`); and the provider-shaped UI branches
- * in `apps/web`, which P1.2 and its follow-up delete.
+ * Read those three, not this list. For orientation only, the surviving families: the RETURN-PATH
+ * pair (`domains/lifecycle.ts`, `delivery/checklistDomainValidators.ts`), waiting on a
+ * capability that has no home on the sending-domain adapter interface yet; the FROZEN-SIBLING
+ * READ that is left (`delivery/checklistValidatorTypes.ts` — its twin, the relay panel's query,
+ * now walks the relay-identity registry instead); ADAPTER-ADJACENT actions living beside an
+ * adapter rather than inside it (`domains/mandrillRelay*.ts`,
+ * `webhooks/mandrillRejectSuppression.ts`); and the provider-shaped UI branches in `apps/web`.
  */
 export const OWN_ARM_TRANSPORT_KIND = OWN_SEND_PROVIDER_KIND;
 

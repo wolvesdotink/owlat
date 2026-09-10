@@ -1,9 +1,9 @@
 /**
- * Binding capacity pre-flight — the ctx-bound half of the P0-5 capacity gate
- * (deliverability plan rev 3). The pure predicate lives in `capacityPlan.ts`
- * and the warming projection in `../delivery/warmingCapacity.ts`; this module
- * only LOADS the inputs (projection, audience size) and maps "we could not
- * measure" onto "allow the send".
+ * Binding capacity pre-flight — the ctx-bound half of the capacity gate. The
+ * pure predicate lives in `capacityPlan.ts` and the warming projection in
+ * `../delivery/warmingCapacity.ts`; this module only LOADS the inputs
+ * (projection, audience size) and maps "we could not measure" onto "allow the
+ * send".
  *
  * The governing rule: NEVER refuse on missing data. No warming
  * state, stale warming state, a graduated deployment with no cap, an audience
@@ -267,9 +267,9 @@ async function measureCampaignCapacity(
 	// "it fits" off the floor is not yet an approval: with the peak over the
 	// horizon, whether this campaign's tail expires depends on how its recipients
 	// fall across the ramp cells, and nobody has counted that. Saying
-	// `capacityKnown: true` there would be the P0-5 tail-expiry itself, dressed as
-	// a measurement. A refusal, and an already-unmeasured count, both stand as
-	// they are — the peak can only ever turn "it fits" into "unmeasured".
+	// `capacityKnown: true` there would be the tail-expiry itself, dressed as a
+	// measurement. A refusal, and an already-unmeasured count, both stand as they
+	// are — the peak can only ever turn "it fits" into "unmeasured".
 	if (
 		floorVerdict.capacityKnown &&
 		floorVerdict.fits &&

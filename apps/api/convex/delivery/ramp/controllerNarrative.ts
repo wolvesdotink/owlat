@@ -380,11 +380,11 @@ export function describePaceDecision(cell: DeliverabilityCell, decision: PaceDec
 			return `Held the warm-up pace for ${where} at its maximum: what limits the daily cap from here is the published warming schedule, which the controller may never exceed for the current day.`;
 		case 'healthy':
 			return `Increased the warm-up pace for ${where} (${move}): every gate is green, the clean streak is long enough and the current cap is genuinely being used.`;
-		// THE OPERATOR'S PAUSE REACHES THIS DIAL (P3-6 x D3). It is the one control
-		// that does: a pause says "hold this cell", and on a deployment with no
-		// reference transport the warm-up pace is the only thing there is to hold.
-		// The sentence says what it held and what it did NOT hold, because the
-		// second half is what an operator is trusting when they leave it in place.
+		// THE OPERATOR'S PAUSE REACHES THIS DIAL. It is the one control that does:
+		// a pause says "hold this cell", and on a deployment with no reference
+		// transport the warm-up pace is the only thing there is to hold. The
+		// sentence says what it held and what it did NOT hold, because the second
+		// half is what an operator is trusting when they leave it in place.
 		case 'operator_pause':
 			return `Held the warm-up pace for ${where} at ${multiple(decision.multiplier)}: this cell is paused by an operator. The gates are still measured and a retreat would still be applied — only the increase is held.`;
 		case 'hard_bounce':

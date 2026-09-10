@@ -8,7 +8,7 @@
  * A cell has TWO rows, not one, and they have DIFFERENT WRITERS:
  *
  *  - the per-stream row is the ramp controller's, carrying `ownShare` (absent
- *    until P3-2 writes one);
+ *    until the controller writes one);
  *  - the stream-less row is the MTA snapshot's, carrying the infrastructure
  *    verdict (`isFallbackActive`) and its `signals`, and it is also the LEGACY
  *    shape every row written before the migration has.
@@ -87,7 +87,7 @@ export async function loadStreamlessRouteState(
  * none) lands nowhere near the assignment. Build a new object instead.
  */
 export interface RouteStateCellRows {
-	/** The ramp controller's row: the cell's share. Absent until P3-2 writes one. */
+	/** The ramp controller's row: the cell's share. Absent until it writes one. */
 	readonly perStream: Doc<'deliverabilityRouteStates'> | null;
 	/** The MTA snapshot's (and legacy) row: the infrastructure verdict + signals. */
 	readonly streamless: Doc<'deliverabilityRouteStates'> | null;

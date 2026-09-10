@@ -14,7 +14,7 @@ import { transportArmValidator } from '../lib/convexValidators';
  * `smtp.classified` webhook and land here, keyed the way the outcomes they sit
  * beside are.
  *
- * SHAPE IS COPIED FROM `transportOutcomes` DELIBERATELY (plan D5, ADR-0042), and
+ * SHAPE IS COPIED FROM `transportOutcomes` DELIBERATELY (ADR-0042), and
  * it is the same shape for the same three reasons:
  *   - Each (org, cell, arm, day) bucket is SHARDED into `shardKey` 0..N-1 rows.
  *     One classified response bumps ONE random shard, so a blast's deferrals

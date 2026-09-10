@@ -242,10 +242,10 @@ export async function observeDeploymentCheck(
 			// ASK THE CAPABILITY, don't name the provider. This used to require
 			// `relayProviderType === 'ses'` and an enabled `'ses'` route entry, which
 			// was true of the gate above it at the time — `setRoute` refused any other
-			// relay. Since P0.2 it does not, so a deployment relaying through
-			// Mandrill (or a bring-your-own SMTP relay) had a fallback configured,
-			// identities provisioned and a checklist item that said "No verified relay
-			// fallback is configured" forever.
+			// relay. It no longer does, so a deployment relaying through Mandrill (or
+			// a bring-your-own SMTP relay) had a fallback configured, identities
+			// provisioned and a checklist item that said "No verified relay fallback
+			// is configured" forever.
 			//
 			// TWO CONDITIONS, BOTH ASKED OF THE MODULE THAT OWNS THEM, so that "is
 			// this route a working fallback?" has one answer here and at save time.
@@ -338,7 +338,7 @@ export async function observeDeploymentCheck(
 				// into the evidence stored against past checklist runs, so renaming it
 				// would orphan that history for a deployment's own audit trail. The
 				// copy below is what an operator reads, and that no longer names a
-				// provider (the same call P0.2 made for the routing error copy).
+				// provider (the same call the routing error copy makes).
 				'provider-route.ses-relay-readiness',
 				pass ? 'pass' : 'warn',
 				pass

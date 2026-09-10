@@ -1,6 +1,5 @@
 /**
- * PROVIDER FEEDBACK ADAPTER REGISTRY — the feedback plane's seam (delivered
- * by P2.1).
+ * PROVIDER FEEDBACK ADAPTER REGISTRY — the feedback plane's seam.
  *
  * A send transport that reports its own outcomes posts them to a route of ours.
  * That used to be a hand-wired pair per kind — a thin `httpAction` file at the
@@ -30,9 +29,9 @@
  * (`twilio`, `meta`, `generic`) — inbound SMS/WhatsApp/webhook channels, not
  * send transports, with no catalog entry and no kind. And this is not the plugin
  * platform's reserved `inboundAdapters` contribution bucket, which is held for
- * genuine inbound-MAIL sources; conflating the two is deliberately avoided.
- * A plugin transport's feedback arrives on its own route surface keyed by plugin
- * id — the seams plan's P2.2.
+ * genuine inbound-MAIL sources; conflating the two is deliberately avoided. A
+ * plugin transport's feedback arrives on its own route surface keyed by plugin
+ * id.
  */
 
 import { PROVIDER_FEEDBACK_CONTRIBUTIONS } from '../../providers/feedback';

@@ -10,13 +10,13 @@
  *
  * `halt` outranks an ordinary fail because it is a hard stop rather than a
  * multiplicative decrease. `insufficient_data` outranks `pass` because the
- * controller must never increase on thin data — and, per plan D10, must never
- * DECREASE on it either, which is why holding is its own verdict rather than a
- * quiet failure.
+ * controller must never increase on thin data — and must never DECREASE on it
+ * either, which is why holding is its own verdict rather than a quiet
+ * failure.
  *
  * An OPTIONAL gate (`OPTIONAL_RAMP_GATES`) contributes only its `fail`/`halt`;
- * its `insufficient_data` is ignored. That is plan D2 in one line: no absent
- * external account may hold the ramp.
+ * its `insufficient_data` is ignored: no absent external account may hold the
+ * ramp.
  *
  * NO EVIDENCE IS NOT A PASS. `pass` is the one verdict that lets the AIMD
  * controller raise a share, so it is never the default: an evaluation in which
@@ -24,11 +24,11 @@
  * are all holding — returns `insufficient_data` and holds the streak where it
  * was. Never increase, and never decrease, on nothing.
  *
- * WHAT THIS MODULE DOES NOT DECIDE. D17's corroboration rule is the
- * controller's: a `fail` from a tripwire gate is flagged here through
- * `requiresCorroboration`, and P3-2 must confirm it against the deferral or
- * bounce results in `perGate` before halving a share. Acting on `verdict` alone
- * when `requiresCorroboration` is set is a defect in the caller.
+ * WHAT THIS MODULE DOES NOT DECIDE. The corroboration rule is the controller's:
+ * a `fail` from a tripwire gate is flagged here through `requiresCorroboration`,
+ * and the controller must confirm it against the deferral or bounce results in
+ * `perGate` before halving a share. Acting on `verdict` alone when
+ * `requiresCorroboration` is set is a defect in the caller.
  */
 
 import { CORROBORATION_REQUIRED_RAMP_GATES, OPTIONAL_RAMP_GATES } from './gateConfig';
@@ -174,12 +174,11 @@ function armGateEvaluator(kind: RampArm): RampGateEvaluator {
 }
 
 /**
- * The concurrent, two-armed evaluator (plan D3's first implementation): a
- * reference transport is configured, so every gate can compare the two arms
- * over the same window. P1-7 adds the trailing-baseline twin behind the same
- * interface — two implementations, not N. The CALLER picks which one it wants;
- * there is deliberately no delegating `evaluateGates` wrapper that would hide
- * which implementation ran.
+ * The concurrent, two-armed evaluator: a reference transport is configured, so
+ * every gate can compare the two arms over the same window. The
+ * trailing-baseline twin sits behind the same interface — two implementations,
+ * not N. The CALLER picks which one it wants; there is deliberately no
+ * delegating `evaluateGates` wrapper that would hide which implementation ran.
  */
 export const referenceArmGateEvaluator: RampGateEvaluator = armGateEvaluator('reference_arm');
 

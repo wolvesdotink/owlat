@@ -28,9 +28,8 @@ export const integrationTables = {
 		errors: v.array(v.string()),
 		totalEstimate: v.optional(v.number()),
 		// AGGREGATED — per-disposition tally of the suppression carry-over half of
-		// this run. Absent on every contacts-only run, including every
-		// row written before P4.1. Written only by the walker's per-page
-		// accumulation; the terminal hop reports it once as
+		// this run. Absent on every contacts-only run. Written only by the
+		// walker's per-page accumulation; the terminal hop reports it once as
 		// `blocklist.provider_import_summary`.
 		suppressionCounts: v.optional(suppressionCountsValidator),
 		// Config

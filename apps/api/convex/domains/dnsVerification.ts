@@ -445,7 +445,7 @@ export const verifyDomain = authedAction({
 		// and provider verdict; never borrow the primary domain's status or DNS
 		// proof.
 		//
-		// The gate is D3's sanctioned own-vs-not-own identity, read from the
+		// The gate is the sanctioned own-vs-not-own identity, read from the
 		// domain-provider registry — it used to be `providerType !== 'ses'`, which
 		// named the RELAY rather than the rule and so had to be re-read every time
 		// a second relay kind landed. Same rows either way: the only writers of an

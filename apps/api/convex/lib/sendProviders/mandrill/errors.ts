@@ -34,7 +34,7 @@ export const MANDRILL_SEND_TIMEOUT_MESSAGE = 'Mandrill send timed out';
  *
  *  - Recipient-side (the address is unmailable or on Mandrill's reject list):
  *    `hard-bounce`, `soft-bounce`, `invalid`, `unsub`, `custom`. All terminal;
- *    P2.2 mirrors the reject-list ones into `blockedEmails`.
+ *    The reject-list ones are mirrored into `blockedEmails`.
  *  - Sender-side: `unsigned` (the From domain is not SPF/DKIM-configured in the
  *    Mandrill account) and `invalid-sender`.
  *  - Content/policy: `spam`, `rule` (an account rejection rule fired).

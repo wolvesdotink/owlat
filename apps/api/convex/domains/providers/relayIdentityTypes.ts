@@ -21,8 +21,8 @@ import type { RelayDomainIdentityFacts } from './relayIdentityView';
  * provisioning halves do NOT agree on.
  *
  * They agree on everything else (which relays, which domains, schedule-never-
- * call), which is why they share one implementation since P0.4. They do not
- * agree on what "ensure" means when a sibling row already exists:
+ * call), which is why they share one implementation. They do not agree on
+ * what "ensure" means when a sibling row already exists:
  *
  *  - the CATCH-UP DRAIN (`providerRoutes.provisionDeliverabilityRelayBatch`)
  *    walks every verified domain on every page and must be cheap and

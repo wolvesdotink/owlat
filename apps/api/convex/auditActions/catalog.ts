@@ -190,7 +190,7 @@ export const AUDIT_ACTION_LITERALS = [
 	// cell's durable ramp state: the own-MTA share moved, or a gate breach imposed
 	// a fresh freeze and cooldown rung on a cell already sitting on the share
 	// floor. Ordinary no-ops are not here; they are audited in `mixDecisions`,
-	// which records EVERY evaluation. See the deliverability plan, decision D12.
+	// which records EVERY evaluation.
 	action('deliverability_ramp.decision_applied'),
 	// Deliverability ramp — ONE CELL THREW and the tick carried on with the rest.
 	// Its own literal rather than a detail on `decision_applied`: an evaluation

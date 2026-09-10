@@ -16,7 +16,7 @@
  *   3. alignment → the shipped dual-transport pre-flight run against live DNS,
  *      which runs the shipped SPF-coexistence detector (RFC 7208 10-lookup
  *      accounting included). Every failure names the exact DNS change to make.
- *   4. return path → P2-3's recorded capability. Informational, never blocking.
+ *   4. return path → the recorded capability. Informational, never blocking.
  *
  * The DECISION logic is pure and lives in `~/utils/transportWizard`; the DNS
  * gather is `~/utils/transportAlignmentProbe`. This file is the shell: the step
@@ -80,7 +80,7 @@ const props = defineProps<{
 	 * which is a supported configuration, not a fault.
 	 */
 	returnPathTransportId?: string | null;
-	/** P2-3's recorded posture for the reference transport; undefined while loading. */
+	/** The recorded posture for the reference transport; undefined while loading. */
 	returnPathCapability?: ReturnPathCapabilityValue | null;
 	/** Whether a test send is possible at all (a transport is configured). */
 	canSend?: boolean;

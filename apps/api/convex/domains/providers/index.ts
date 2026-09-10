@@ -1,18 +1,14 @@
 /**
  * Sending domain provider adapter (module) — registry + dispatch.
  *
- * PLAN NUMBERS IN THIS FILE ARE THE MANDRILL PLAN'S (`D6` = kill the 'ses'-only
- * gates, `D7` = one generic relay-identity table + this registry). The seams
- * plan that owns the branch numbers those differently — its D6 is the webhook
- * registry and its D7 is the `@owlat/mta-protocol` package — so the
- * qualification is written out once here rather than left to the reader. This
- * registry is the seams plan's P0.3.
+ * One generic relay-identity table plus this registry replaced the 'ses'-only
+ * gates.
  *
  * Adding a sending provider is a one-folder change:
  *   1. Create `convex/domains/providers/<kind>/index.ts` with the adapter.
  *   2. Add the kind and its identity payload to `SendingDomainIdentityRegistry`
  *      in `./types.ts`. Rows go in the generic, org-scoped
- *      `sendingDomainRelayIdentities` table (Mandrill D7) — the per-provider
+ *      `sendingDomainRelayIdentities` table — the per-provider
  *      sibling pattern stopped at `sendingDomainMtaIdentities` /
  *      `sendingDomainSesIdentities`, which stay frozen and keep the MTA's and
  *      SES's rows.
@@ -21,16 +17,15 @@
  * The compile-time `satisfies` check on the registry catches missing methods.
  *
  * WHAT THAT ONE FOLDER DOES NOT YET COVER. Both relay-identity provisioning
- * paths now walk this registry (the seams plan's P0.4 routed the forward one
- * here), so a registered kind is reached end to end for identities. What
- * `domains/lifecycle.ts` still carries of its own is the RETURN-PATH family —
- * `setReturnPathHost` and its post-registration reconcile branch on
- * `providerType` to decide which bundle of `mailFrom` records to publish and
- * which reflection action to schedule, so a newly registered kind silently gets
- * neither. That is a separate capability from the identity seams below and it
- * has no home on this interface yet.
+ * paths now walk this registry, so a registered kind is reached end to end for
+ * identities. What `domains/lifecycle.ts` still carries of its own is the
+ * RETURN-PATH family — `setReturnPathHost` and its post-registration reconcile
+ * branch on `providerType` to decide which bundle of `mailFrom` records to
+ * publish and which reflection action to schedule, so a newly registered kind
+ * silently gets neither. That is a separate capability from the identity seams
+ * below and it has no home on this interface yet.
  *
- * Per ADR-0018, extended by Mandrill plan D6/D7.
+ * Per ADR-0018.
  */
 
 import {
@@ -80,8 +75,8 @@ export const SENDING_DOMAIN_PROVIDERS = PRIMARY_DOMAIN_IDENTITY_PROVIDERS;
  * identity may COEXIST on (a domain already hosted at some provider owns its
  * identity through the ordinary lifecycle).
  *
- * D3 sanctions this identity check; it does not sanction restating it. Read
- * from the adapter's own `kind` so the value has exactly one declaration —
+ * The identity check is sanctioned; restating it is not. Read from the
+ * adapter's own `kind` so the value has exactly one declaration —
  * `domains/providers/mta/index.ts` — rather than a literal at each site that
  * asks the question. `OWN_ARM_TRANSPORT_KIND` (lib/sendProviders/strategies) is
  * the twin of this constant in the SEND-TRANSPORT type domain: same string,

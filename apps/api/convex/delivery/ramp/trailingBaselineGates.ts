@@ -52,13 +52,13 @@
  * hard-bounce (200) and complaint (1000) floors, and the ramp sits at the
  * stream's initial `s` for that long.
  *
- * THAT IS CORRECT, NOT A DEFECT. D10 says thin data HOLDS: it never increases on
- * it and never decreases on it either, so the cost of the cold start is time, not
- * risk. What UNFREEZES it is volume — and P3-2's cron should hand this module a
- * PARTIAL-HISTORY trailing summary as soon as the window clears those floors,
- * rather than passing `null` until some notional thirty days have elapsed. The
- * gates already judge the summary they are given on its own sample and freshness;
- * withholding a usable one only lengthens the freeze.
+ * THAT IS CORRECT, NOT A DEFECT. Thin data HOLDS: the controller never increases on it and
+ * never decreases on it either, so the cost of the cold start is time, not risk. What
+ * UNFREEZES it is volume — and the controller's cron should hand this module a
+ * PARTIAL-HISTORY trailing summary as soon as the window clears those floors, rather than
+ * passing `null` until some notional thirty days have elapsed. The gates already judge the
+ * summary they are given on its own sample and freshness; withholding a usable one only
+ * lengthens the freeze.
  *
  * PURE: `now` is a parameter, nothing reads a clock, a database or the
  * environment.

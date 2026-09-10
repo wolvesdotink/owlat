@@ -319,13 +319,13 @@ type Effect =
 	| {
 			// A domain just verified — provision any COEXISTING relay identity the
 			// deployment's fallback configuration calls for (an SES or Mandrill
-			// identity on a domain whose primary provider is our own MTA). Named
-			// for the capability rather than for one provider since P3.1 added the
-			// second one.
+			// identity on a domain whose primary provider is our own MTA). Named for
+			// the capability rather than for one provider, because there is more
+			// than one.
 			//
 			// THE ID ONLY. This variant used to carry the reducer's `providerType`
-			// as well, and the handler gated on it; since P0.4 the own-MTA-primary
-			// gate lives in `ensureRelayIdentities` and reads the DOC, so a
+			// as well, and the handler gated on it; the own-MTA-primary gate now
+			// lives in `ensureRelayIdentities` and reads the DOC, so a
 			// `providerType` here would be a payload nothing dereferences — read by
 			// the next author as "the gate is applied at construction time", which
 			// is the two-subjects-for-one-rule seam the move removed.

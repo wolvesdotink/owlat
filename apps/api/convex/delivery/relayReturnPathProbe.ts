@@ -1,9 +1,9 @@
 'use node';
 
 /**
- * Return-path capability PROBE — the network half of plan G-08's capability
- * detection. Kept apart from `relayReturnPath.ts` because a `'use node'` module
- * may hold only actions, and the persistence there is queries + mutations.
+ * Return-path capability PROBE — the network half of capability detection. Kept apart from
+ * `relayReturnPath.ts` because a `'use node'` module may hold only actions, and the persistence
+ * there is queries + mutations.
  *
  * What the probe does: send one real message THROUGH the relay, with our signed
  * VERP address as the envelope sender, to an address at our own bounce domain
@@ -21,9 +21,9 @@
  * the pure core (24h → 7d → 30d), and it is only ever run for transports whose
  * catalog declaration is `probe`.
  *
- * Plan D2: the probe is additive. A relay that is not configured, a deployment
- * with no return-path domain or VERP key, a probe that fails on the wire — all
- * simply leave the capability `unknown`, which reads as unsupported + degraded
+ * The probe is additive. A relay that is not configured, a deployment with no
+ * return-path domain or VERP key, a probe that fails on the wire — all simply
+ * leave the capability `unknown`, which reads as unsupported + degraded
  * measurement. Nothing throws, nothing is blocked.
  */
 

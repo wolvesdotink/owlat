@@ -10,10 +10,10 @@
  */
 
 /**
- * The seam plan P2-5 consumes for stratified assignment: the percentile
- * INTERVAL a score occupies within a cohort. `cohortAscending` must be sorted
- * ascending. `lower` is the fraction of the
- * cohort scoring strictly below it, `upper` the fraction scoring at or below.
+ * The seam stratified assignment consumes: the percentile INTERVAL a score
+ * occupies within a cohort. `cohortAscending` must be sorted ascending.
+ * `lower` is the fraction of the cohort scoring strictly below it, `upper`
+ * the fraction scoring at or below.
  *
  * The two differ exactly when the score is TIED, and the width of the gap is
  * the size of the tied group. A consumer that ranks recipients (stratified

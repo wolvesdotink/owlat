@@ -67,7 +67,7 @@ import {
 	type SignalSourceKind,
 } from './types';
 
-/** Which evaluator arm is asking — the two implementations of plan D3. */
+/** Which evaluator arm is asking — the two gate implementations. */
 export type RampArm = RampGateEvaluator['kind'];
 
 /**
@@ -206,7 +206,7 @@ export const RAMP_GATE_SIGNALS = {
 	 * the input, so absent means "not measured this window" and contributes
 	 * NOTHING — deliberately not a hold. Holding here would freeze every cell that
 	 * has not yet accumulated its calibration sends, turning an absent weak signal
-	 * into a blocker, which is the one thing plan D2 forbids it from being.
+	 * into a blocker, which is the one thing it must never be.
 	 *
 	 * The standalone arm RE-GRADES the pre-computed result to the weak trailing
 	 * signal, so the concurrent ratio's high-confidence, increase-justifying

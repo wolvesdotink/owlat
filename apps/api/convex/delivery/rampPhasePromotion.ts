@@ -3,12 +3,12 @@
  *
  * A promotion moves the two things that matter most: it raises the rung the AIMD
  * ladder may climb to, and — on the ESP path — it re-randomises which arm every
- * recipient of the cell lands in (plan D7's mix generation). The generation
- * advances on the PACE path too and re-shuffles nobody there, because that cell
- * has one arm; `rampPhaseReset` carries the rule for why only that one door holds
- * it back. So a promotion is a deliberate act, never something the hourly loop
- * does on its own, and it is the ONE upward door — `resetCellPhase` is
- * downward-only precisely so that this gate cannot be walked around.
+ * recipient of the cell lands in (the mix generation). The generation advances on
+ * the PACE path too and re-shuffles nobody there, because that cell has one arm;
+ * `rampPhaseReset` carries the rule for why only that one door holds it back. So
+ * a promotion is a deliberate act, never something the hourly loop does on its
+ * own, and it is the ONE upward door — `resetCellPhase` is downward-only
+ * precisely so that this gate cannot be walked around.
  *
  * ONE WRITE PATH, ONE ENTRY. `applyRampPhasePromotion` is the whole rule and
  * `promoteCellPhase` is the only door onto it. A machine-facing internalMutation
@@ -192,7 +192,7 @@ interface RampPromotionResult {
  *
  * A promotion does NOT move the share — it raises the bound the share may climb
  * to — so the `mixDecisions` row it writes records the same number on both sides
- * (plan D12 asks for every decision, not only the ones that moved a number). The
+ * (the audit covers every decision, not only the ones that moved a number). The
  * pair is written by the shared helper for the reason every other control uses
  * it: an action in the audit log with no decision row would leave the cell's
  * timeline showing an unexplained jump in its ceiling.

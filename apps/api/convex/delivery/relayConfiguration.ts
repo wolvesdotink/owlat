@@ -39,10 +39,10 @@ type RelayReadCtx = QueryCtx | MutationCtx;
  * it of the route the send plan resolved, to tell "the plan already swapped us
  * onto the relay" from "we are still on the own arm and must go find one". That
  * site used to spell the question `route?.providerType !== 'ses'`, which was
- * the same set only while SES was the one saveable relay: since P0.2 it is not,
- * and an identically-configured Mandrill/SMTP/plugin relay took a different
- * code path (re-resolving a governed relay route it was already on) purely
- * because of its name.
+ * the same set only while SES was the one saveable relay. It no longer is, and
+ * an identically-configured Mandrill/SMTP/plugin relay took a different code
+ * path (re-resolving a governed relay route it was already on) purely because
+ * of its name.
  *
  * ABSENT IS NOT A RELAY. An unset `providerType` means the route named no
  * transport at all, which is the caller's cue to go resolve one — never a

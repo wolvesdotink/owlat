@@ -44,8 +44,8 @@ import type { SendingDomainProviderKind } from '../domains/providers/types';
  * `frozen-sibling-read` family, with that owner, in `SURVIVING_KIND_LITERALS`
  * (`scripts/check-kind-literal-custody.ts`), which fails the moment this declaration is deleted
  * without the entry going with it. That map is the register for kind DECLARATIONS in the backend;
- * the P0.5 ratchet's allowlist carries COMPARISONS, and this file is deliberately absent from it
- * because it makes none.
+ * the comparison ratchet's allowlist carries COMPARISONS, and this file is deliberately absent from
+ * it because it makes none.
  */
 export const RELAY_IDENTITY_PROOF_KIND = 'ses' as const;
 

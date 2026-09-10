@@ -133,9 +133,9 @@ function deferralTelemetryObserved(input: RampGateEvaluationInput): boolean {
  * gate, so this `insufficient_data` outranks every `pass` beside it and clears
  * `greenSince` on controller rung 7 — a hold that could not end would stop a cell
  * raising its own-MTA share AND restart its fourteen-day graduation clock every
- * tick, for ever, which plan D2 forbids an absent signal from doing. So the
- * reader's observation is satisfied by ONE recorded deferral over the telemetry
- * span OR by own-arm traffic SPREAD ACROSS that span without one — see
+ * tick, for ever, which an absent signal must never do. So the reader's
+ * observation is satisfied by ONE recorded deferral over the telemetry span OR by
+ * own-arm traffic SPREAD ACROSS that span without one — see
  * `hasUsableDeferralTelemetry`, which owns that rule for every reader, and which
  * asks the span rather than any one day inside it precisely because a cell that
  * does not send at weekends would otherwise re-enter the hold every week. A

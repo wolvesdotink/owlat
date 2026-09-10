@@ -2,7 +2,7 @@
 
 /**
  * Recipient-key discovery — the `'use node'` plane of Sealed Mail key discovery
- * (locked decision D1 PGP/MIME).
+ * (PGP/MIME).
  *
  * To seal to a remote address we learn its OpenPGP key in two SSRF-disciplined
  * HTTPS fetches against the address's OWN domain: (1) `/.well-known/owlat.json`,

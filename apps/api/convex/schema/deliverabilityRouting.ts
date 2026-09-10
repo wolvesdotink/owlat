@@ -50,7 +50,7 @@ export const deliverabilityRoutingTables = {
 		ownShare: v.optional(v.number()),
 		phaseCeiling: v.optional(v.number()),
 		// WHEN THE CELL ARRIVED AT ITS CURRENT RUNG — the dwell clock the promotion
-		// rule reads ("2x the normal dwell time at the current ceiling", plan D3's
+		// rule reads ("2x the normal dwell time at the current ceiling" on the
 		// standalone route). Stamped by the three writes that SET a rung —
 		// enrolment, a promotion and a downward phase reset — and by nothing else:
 		// the hourly AIMD loop moves the SHARE, never the rung, so a tick must not

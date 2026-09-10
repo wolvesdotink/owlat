@@ -10,12 +10,12 @@ import { isOwnPrimarySendingDomain, providerFor } from './providers';
  * Refresh the independent DNS and provider proof for an SES relay identity
  * COEXISTING on a sending domain whose primary provider is our own MTA.
  *
- * The gate below is D3's sanctioned own-vs-not-own identity, read from the
- * domain-provider registry's single declaration; it used to be
- * `providerType === 'ses'` — the relay's name standing in for the rule. Same
- * rows either way: an SES sibling with DNS records is written only by the
- * ordinary lifecycle (SES-primary domains, refused by both spellings) and by
- * the relay provisioning pair, which provisions own-MTA-primary domains and
+ * The gate below is the sanctioned own-vs-not-own identity, read from the
+ * domain-provider registry's single declaration; it used to be `providerType
+ * === 'ses'` — the relay's name standing in for the rule. Same rows either
+ * way: an SES sibling with DNS records is written only by the ordinary
+ * lifecycle (SES-primary domains, refused by both spellings) and by the
+ * relay provisioning pair, which provisions own-MTA-primary domains and
  * nothing else (`lib/sendProviders/fallbackRelays.ts`).
  *
  * `isOwnPrimarySendingDomain` rather than a bare comparison for the reason that

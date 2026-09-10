@@ -1,6 +1,6 @@
 /**
  * Trust-on-first-use (TOFU) pinning — the pure decision core of recipient-key
- * discovery (Sealed Mail, plan 2026-07-11, locked decision D1 PGP/MIME).
+ * discovery (Sealed Mail, PGP/MIME).
  *
  * When we discover a recipient's OpenPGP key (via their instance manifest + WKD,
  * see `e2ee/discovery.ts`) we PIN its fingerprint the first time we see it. On

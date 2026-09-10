@@ -178,35 +178,34 @@ export interface RampHardStopSignals {
 /**
  * The capacity projection, taken as a NARROW INPUT rather than computed here.
  *
- * P3-3 owns the real per-(IP x mailbox provider) projection. Keeping it behind
- * this type means that piece can replace the projection wholesale without
- * touching the decision function, and means the decision function stays
- * testable against a projection that is deliberately hostile.
+ * The real per-(IP x mailbox provider) projection is owned elsewhere. Keeping it
+ * behind this type means the projection can be replaced wholesale without
+ * touching the decision function, and means the decision function stays testable
+ * against a projection that is deliberately hostile.
  *
- * "NO PROJECTION AT ALL" IS ITS OWN SHAPE, not a pair of zeros. Until P3-3
- * lands there is no per-cell warming projection to read, and the share is
- * bounded by its PHASE CEILING alone — but a projected reading of zero headroom
- * against zero volume is also a perfectly legitimate thing P3-3 can produce for
- * a cell whose cap is spent and whose projected volume is zero, and the two must
- * not be the same value. `kind` is the difference, in the type rather than
- * in a constant whose meaning depends on a short-circuit three modules away.
+ * "NO PROJECTION AT ALL" IS ITS OWN SHAPE, not a pair of zeros. With no per-cell warming projection
+ * to read the share is bounded by its PHASE CEILING alone — but a projected reading of zero
+ * headroom against zero volume is also a perfectly legitimate reading for a cell whose cap is spent
+ * and whose projected volume is zero, and the two must not be the same value. `kind` is the
+ * difference, in the type rather than in a constant whose meaning depends on a short-circuit three
+ * modules away.
  *
- * WHAT P3-3 ACTUALLY SUPPLIES, and how it answers the two hazards this comment
- * used to reject a stand-in for. The shipped warming sync reports headroom for
- * the CAMPAIGN POOL as a whole, not per (IP x mailbox provider), so a ceiling
- * that divided the pool's headroom by ONE cell's volume would hand the same
- * numerator to all fifteen cells and the sum of what they were allowed would
- * exceed the cap fifteenfold. The bound that actually holds comes straight out
- * of the constraint it has to satisfy — with a share `s_c` and a projected
- * demand `V_c` per cell, own-arm volume is `sum(s_c * V_c)`, so
- * `s_c <= headroom / sum(V_c)` for every cell is what keeps the total inside the
- * cap. The denominator is therefore the DEPLOYMENT'S projected demand, summed
- * over per-cell projections, and the resulting ceiling is legitimately the same
- * number for every cell. The second hazard — a remaining cap decaying toward
- * zero against a denominator that does not, sawtoothing healthy cells into the
- * relay every afternoon — is answered by comparing like with like: both sides
- * are what is LEFT OF TODAY (`remainingDemandToday`), and the last sliver of the
- * day holds rather than decides.
+ * WHAT THE PROJECTION ACTUALLY SUPPLIES, and how it answers the two hazards a
+ * stand-in would not. The shipped warming sync reports headroom for the CAMPAIGN
+ * POOL as a whole, not per (IP x mailbox provider), so a ceiling that divided
+ * the pool's headroom by ONE cell's volume would hand the same numerator to all
+ * fifteen cells and the sum of what they were allowed would exceed the cap
+ * fifteenfold. The bound that actually holds comes straight out of the
+ * constraint it has to satisfy — with a share `s_c` and a projected demand `V_c`
+ * per cell, own-arm volume is `sum(s_c * V_c)`, so `s_c <= headroom / sum(V_c)`
+ * for every cell is what keeps the total inside the cap. The denominator is
+ * therefore the DEPLOYMENT'S projected demand, summed over per-cell projections,
+ * and the resulting ceiling is legitimately the same number for every cell. The
+ * second hazard — a remaining cap decaying toward zero against a denominator
+ * that does not, sawtoothing healthy cells into the relay every afternoon — is
+ * answered by comparing like with like: both sides are what is LEFT OF TODAY
+ * (`remainingDemandToday`), and the last sliver of the day holds rather than
+ * decides.
  *
  * ABSENCE IS NOT A CONSTRAINT: a missing warming reading is never
  * evidence of a full cap, so it stays `unconstrained`. An unusable DEMAND
@@ -247,7 +246,7 @@ export type RampCapacityInput =
 			 * Sends the DEPLOYMENT is projected to make in the rest of today — the
 			 * denominator that keeps the sum of every cell's own-arm volume inside the
 			 * cap (see above). ZERO means "nothing to send", which is not a constraint;
-			 * P3-3's projection never produces it, because a zero projection is an
+			 * the projection never produces it, because a zero projection is an
 			 * `unknown` decided in `projectCellVolume` rather than a division here.
 			 */
 			readonly projectedVolume: number;
@@ -323,7 +322,7 @@ export interface RampControllerInput {
 	 * taken and a replay can be reproduced from the row alone.
 	 */
 	readonly absentIntegrations: readonly RampIntegrationId[];
-	/** Plan P3-2's global kill switch. Honoured before every other rule. */
+	/** The global kill switch. Honoured before every other rule. */
 	readonly isKillSwitchEngaged: boolean;
 	readonly now: number;
 }

@@ -28,11 +28,11 @@ import {
  * EVERY kind takes one path through the shared `sendProviderDispatch`, and this
  * module names none of them: the per-send knobs come from `buildSystemMailExtras`
  * on the provider module (folding this file's `provider === 'mta'` arm and
- * `provider === 'resend'` ternary into the same contract P0.1 gave the governed
- * boundary). The MTA's adapter still supplies ipPool 'transactional' plus the
- * system intake scope and still defaults dkimDomain to the from-domain and mints
- * a random messageId, so the /send/system body is byte-for-byte what it was and
- * the default self-host is unchanged.
+ * `provider === 'resend'` ternary into the same contract the governed boundary
+ * uses). The MTA's adapter still supplies ipPool 'transactional' plus the system
+ * intake scope and still defaults dkimDomain to the from-domain and mints a
+ * random messageId, so the /send/system body is byte-for-byte what it was and the
+ * default self-host is unchanged.
  *
  * Fail-closed: if no provider is configured the action throws — a deployment
  * that uses email-based auth must configure a transport. RFC 3834 §5: these are
@@ -117,7 +117,7 @@ export async function attemptSystemEmail(
 		// There used to be two arms here: an `if (provider === 'mta')` copy of this
 		// whole call whose only difference was an inline MTA payload, and a
 		// `provider === 'resend' && key` ternary for the dedup header. Same shape
-		// the governed boundary shed in P0.1, one file over — and the same cost, a
+		// the governed boundary one file over does not carry — and the same cost, a
 		// send path every new kind had to edit to be allowed any knob at all. The
 		// facts go in, the module decides what to make of them.
 		const dispatched = await sendProviderDispatch(

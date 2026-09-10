@@ -1,21 +1,20 @@
 /**
  * The SYSTEM/AUTH mail extras seam — the vocabulary half.
  *
- * `systemMail.ts` is the single transport for password resets, invitations,
- * double opt-in and email-change mail. It used to decide the per-send knobs
- * itself: an `if (provider === 'mta')` arm building the MTA's system-intake
- * payload inline, and a `provider === 'resend' && key` ternary for the dedup
- * header — the same `providerKind === 'mta' ? … : 'resend' ? …` shape the seams
- * plan's P0.1 removed from the governed boundary, one file over, with the same
- * cost: every new kind had to edit the send path to be allowed any knob at all.
+ * `systemMail.ts` is the single transport for password resets, invitations, double opt-in and
+ * email-change mail. It used to decide the per-send knobs itself: an `if (provider === 'mta')` arm
+ * building the MTA's system-intake payload inline, and a `provider === 'resend' && key` ternary for
+ * the dedup header — the same `providerKind === 'mta' ? … : 'resend' ? …` shape the governed
+ * boundary one file over does not carry, and for the same reason: every new kind had to edit the
+ * send path to be allowed any knob at all.
  *
  * A SEPARATE FILE, not two more declarations in `./types.ts`, because that file
  * sits within a few dozen lines of the ~500 LOC ratchet
- * (`scripts/check-file-size.sh`) — the same reason P0.1's declaration vocabulary
- * became `./catalogTypes.ts` (and, in P1.1, `@owlat/shared`). The mix-in is
- * parameterized by the EXTRAS type rather than by the kind so that nothing here
- * has to import `ExtrasFor`, which keeps the dependency one-directional:
- * `./types.ts` reads this, never the reverse.
+ * (`scripts/check-file-size.sh`) — the same reason the declaration vocabulary
+ * lives in `./catalogTypes.ts` and `@owlat/shared`. The mix-in is parameterized
+ * by the EXTRAS type rather than by the kind so that nothing here has to import
+ * `ExtrasFor`, which keeps the dependency one-directional: `./types.ts` reads
+ * this, never the reverse.
  */
 
 /**

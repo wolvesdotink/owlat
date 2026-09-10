@@ -59,8 +59,8 @@ export const integrationProviderConfigValidator = v.union(
 		provider: v.literal('mailchimp'),
 		apiKey: v.string(),
 		listId: v.string(),
-		// Opt-in suppression carry-over. Absent = the pre-P4.1
-		// behavior: non-subscribed members are skipped and nothing is suppressed.
+		// Opt-in suppression carry-over. Absent: non-subscribed members are skipped
+		// and nothing is suppressed.
 		importSuppressions: v.optional(v.boolean()),
 	}),
 	v.object({

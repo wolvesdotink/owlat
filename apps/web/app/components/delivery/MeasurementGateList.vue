@@ -15,8 +15,8 @@
  * server sends the span, and a hard-coded "24 hours" would outlive a change to
  * the controller's cadence.
  *
- * Prop-driven and read-only: no writes, no controls. P3-6 owns the control
- * surface.
+ * Prop-driven and read-only: no writes, no controls. The control surface lives
+ * elsewhere.
  */
 import {
 	gateExplanation,

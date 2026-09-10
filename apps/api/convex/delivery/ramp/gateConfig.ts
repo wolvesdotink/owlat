@@ -108,7 +108,7 @@ export interface RampGateSampleFloors {
 	readonly engagementRecent: number;
 	/**
 	 * Calibration-slice sends the STANDALONE trailing engagement gate requires
-	 * (plan D10's second minimum: >=2000 sends over a 7-day window).
+	 * (the second minimum: >=2000 sends over a 7-day window).
 	 *
 	 * 5x the concurrent floor, and deliberately so. The concurrent gate compares
 	 * two arms of the SAME send, so subject, content, timing and audience are held

@@ -203,9 +203,9 @@ type RecordRelayDeferralResult = RecordDeferralOutcomeResult | 'send_not_found';
  * WHAT THAT LEAVES OPEN, said plainly rather than buried: the two arms now write
  * this counter from different points on the delivery path — ours before remote
  * acceptance, the relay's after it — so gate 2 compares two arms on rulers that
- * are not yet proven identical. P2.3 (ramp-signal verification) owns that
- * question; `hasDeferralTelemetry` on `RampGateEvaluationInput` is where a
- * decision to distrust the comparison would land.
+ * are not yet proven identical. Ramp-signal verification owns that question;
+ * `hasDeferralTelemetry` on `RampGateEvaluationInput` is where a decision to
+ * distrust the comparison would land.
  *
  * FAIL-SOFT like its sibling: an unknown provider message id (a send purged, or
  * an event for a message this deployment never sent) records nothing and says so

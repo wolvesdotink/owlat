@@ -105,15 +105,14 @@ function undescribableRelayDetail(domain: string, relayKinds: readonly string[])
  * we cannot describe — one we have no verified signing identity for, or more
  * than one at once — and it HOLDS rather than opening the gate.
  *
- * REGISTRY-DRIVEN since P3.1. This used to read
- * `relayKinds[0] === 'ses' && sesIdentity !== null`, which quietly made "a
- * describable second arm" mean "is SES": a deployment migrating from Mandrill —
- * the exact configuration the ramp exists to serve — reported `unknown`
- * forever and could never leave s=0, however verified its relay was. The
- * question is now put to the sending-domain provider for the relay's kind
- * (`describeReferenceArm`), so a provider ships its own arm the same way it
- * ships its own relay proof, and this file holds only the two rules that are
- * NOT per-provider:
+ * REGISTRY-DRIVEN. A narrower read of `relayKinds[0] === 'ses' && sesIdentity
+ * !== null` would quietly make "a describable second arm" mean "is SES": a
+ * deployment migrating from Mandrill — the exact configuration the ramp exists
+ * to serve — would report `unknown` forever and could never leave s=0, however
+ * verified its relay was. The question is instead put to the sending-domain
+ * provider for the relay's kind (`describeReferenceArm`), so a provider ships
+ * its own arm the same way it ships its own relay proof, and this file holds
+ * only the two rules that are NOT per-provider:
  *
  *  - exactly ONE relay, or there is no single second arm to compare against
  *    (unchanged — the multi-relay case still reports `unknown` with its own

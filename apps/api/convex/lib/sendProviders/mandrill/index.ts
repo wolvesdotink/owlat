@@ -3,8 +3,8 @@
 /**
  * Mailchimp Transactional (Mandrill) Send provider adapter (module).
  *
- * Per ADR-0020, plan D1–D5. The MIGRATION arm: a team arriving from Mailchimp
- * keeps sending through their existing Mandrill account while the shipped ramp
+ * Per ADR-0020. The MIGRATION arm: a team arriving from Mailchimp keeps
+ * sending through their existing Mandrill account while the shipped ramp
  * controller walks traffic onto Owlat's own MTA cell by cell. Mandrill is
  * therefore just another reference arm — nothing in routing, the ramp, or the
  * measurement plane knows this file exists.
