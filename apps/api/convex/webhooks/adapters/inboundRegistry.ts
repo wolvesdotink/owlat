@@ -14,9 +14,10 @@
  * hard-returned healthy, a `validateSignature` that hard-returned true); that
  * class is gone and its one real method is inlined below, unchanged.
  *
- * This lived in `@owlat/channels` until the package was folded away: two files
- * behind a workspace boundary that only this folder ever crossed, next to the
- * bidirectional adapters that already moved to `convex/channels/adapters/`.
+ * This lived in `@owlat/channels` until that package was folded away: one
+ * module behind a workspace boundary only this folder ever crossed, mirroring
+ * the bidirectional adapters that had already moved to
+ * `convex/channels/adapters/`.
  */
 
 /**
@@ -61,9 +62,9 @@ export type InboundSource = 'mta' | 'resend';
  * A source key and one translation function producing the canonical, fully
  * typed `InboundEmailMessage`. There is no outbound half, no health probe and
  * no signature check: sending belongs to the send-provider seam, and verifying
- * an inbound request belongs to the caller's own route handler
- * (`apps/api/convex/webhooks/adapters/`), which does it against a real secret
- * before it ever asks this registry to parse.
+ * an inbound request belongs to the route handler that received it — the
+ * sibling modules in this folder — which does it against a real secret before
+ * it ever asks this registry to parse.
  */
 export interface InboundChannelAdapter {
 	source: InboundSource;
