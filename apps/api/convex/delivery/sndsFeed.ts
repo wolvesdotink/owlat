@@ -138,7 +138,7 @@ export function sndsCellKey(ip: string, periodStart: number): string {
 	return `${ip}${SNDS_CELL_KEY_SEPARATOR}${periodStart}`;
 }
 
-export interface SndsParseResult {
+interface SndsParseResult {
 	rows: SndsFeedRow[];
 	/** Rows the parser refused. Counted, never thrown — the feed is internet input. */
 	dropped: number;
@@ -401,7 +401,7 @@ export const SNDS_MAX_DAY_CELLS = 8_000;
  * stored as a replay, quietly discarding one feed's counters instead of adding
  * them to the other's.
  */
-export interface SndsDayFold {
+interface SndsDayFold {
 	readonly byCell: Map<string, SndsDayObservation>;
 	readonly maxCells: number;
 	/** Rows dropped because the fold was already holding `maxCells` cells. */

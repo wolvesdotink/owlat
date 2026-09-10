@@ -17,7 +17,7 @@ import type { Id } from '../_generated/dataModel';
 type JunctionTableName = 'knowledgeEntryContacts' | 'semanticFileContacts';
 type JunctionParentTable = 'knowledgeEntries' | 'semanticFiles';
 
-export type ContactJunctionSpec = {
+type ContactJunctionSpec = {
 	/** Junction table that carries `(parentIdField, contactId)` rows. */
 	junctionTable: JunctionTableName;
 	/** Parent table the junction's `parentIdField` points at. */

@@ -30,7 +30,7 @@ import { RELATION_WEIGHTS, type RelationType } from '../lib/graphRank';
 import { entryTypeValidator } from '../schema/knowledge';
 
 /** A visible neighbour reached by the traversal, with ranking + render metadata. */
-export interface ExpandedNeighbor {
+interface ExpandedNeighbor {
 	id: Id<'knowledgeEntries'>;
 	title: string;
 	entryType: Doc<'knowledgeEntries'>['entryType'];
@@ -45,14 +45,14 @@ export interface ExpandedNeighbor {
 }
 
 /** A directed edge among the visible subgraph (both endpoints are visible). */
-export interface ExpandedEdge {
+interface ExpandedEdge {
 	fromId: Id<'knowledgeEntries'>;
 	toId: Id<'knowledgeEntries'>;
 	relationType: RelationType;
 	confidence: number;
 }
 
-export interface ExpandNeighborsResult {
+interface ExpandNeighborsResult {
 	neighbors: ExpandedNeighbor[];
 	edges: ExpandedEdge[];
 }
@@ -109,7 +109,7 @@ export const expandNeighbors = internalQuery({
 		const seenEdge = new Set<string>();
 
 		let frontier: { id: Id<'knowledgeEntries'>; rootSeedIndex: number }[] = args.seedIds.map(
-			(id, i) => ({ id, rootSeedIndex: i }),
+			(id, i) => ({ id, rootSeedIndex: i })
 		);
 
 		for (let hop = 1; hop <= hops; hop++) {
@@ -127,8 +127,7 @@ export const expandNeighbors = internalQuery({
 
 				for (const edge of [...outgoing, ...incoming]) {
 					if (edges.length >= MAX_EDGES) break;
-					const neighborId =
-						edge.fromEntryId === node.id ? edge.toEntryId : edge.fromEntryId;
+					const neighborId = edge.fromEntryId === node.id ? edge.toEntryId : edge.fromEntryId;
 					const relation = edge.relationType as RelationType;
 					const edgeConfidence = edge.confidence;
 
@@ -196,7 +195,7 @@ function recordEdge(
 	edges: ExpandedEdge[],
 	seen: Set<string>,
 	rowId: Id<'knowledgeRelations'>,
-	edge: ExpandedEdge,
+	edge: ExpandedEdge
 ): void {
 	if (seen.has(rowId)) return;
 	seen.add(rowId);
@@ -213,7 +212,7 @@ function bumpNeighborMeta(
 	id: Id<'knowledgeEntries'>,
 	relation: RelationType,
 	confidence: number,
-	rootSeedIndex: number,
+	rootSeedIndex: number
 ): void {
 	const existing = neighbors.get(id);
 	if (!existing) return;

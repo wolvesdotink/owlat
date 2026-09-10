@@ -24,7 +24,7 @@ import { loadCellDegradation } from './rampIntegrationPresence';
 import { bindsPhaseLadder } from './ramp/degradation';
 
 /** The cell a control resolved to, as much of it as a sentence needs. */
-export interface RampControlTarget {
+interface RampControlTarget {
 	readonly organizationId: string;
 	readonly cell: DeliverabilityCell;
 }

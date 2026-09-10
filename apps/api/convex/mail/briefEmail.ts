@@ -105,7 +105,7 @@ export interface BriefEmailItem {
 	path?: string;
 }
 
-export interface BriefEmailPayload {
+interface BriefEmailPayload {
 	mailboxId: Id<'mailboxes'>;
 	address: string;
 	/** The recipient's interface language (`userProfiles.locale`); absent = English. */

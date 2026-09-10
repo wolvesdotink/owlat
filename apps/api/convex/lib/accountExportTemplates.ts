@@ -14,7 +14,7 @@ export const ACCOUNT_EXPORT_TEMPLATE_ASSET_MAX_BYTES = 8 * 1024 * 1024;
 export const ACCOUNT_EXPORT_TEMPLATE_MEDIA_MAX_BYTES = 16 * 1024 * 1024;
 class TemplateMediaLimitError extends Error {}
 
-export type AccountExportMediaAsset = {
+type AccountExportMediaAsset = {
 	mediaAssetId: string;
 	storageId: string;
 };

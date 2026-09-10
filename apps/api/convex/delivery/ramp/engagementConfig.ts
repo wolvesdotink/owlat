@@ -57,7 +57,7 @@ export function resolveEngagementMetric(
 	return overrides?.[provider] ?? ENGAGEMENT_METRIC_BY_PROVIDER[provider];
 }
 
-export interface EngagementGateThresholds {
+interface EngagementGateThresholds {
 	/**
 	 * Gate 4's ratio floor: `ownRate / referenceRate` must be at least this.
 	 *

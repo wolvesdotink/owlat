@@ -87,7 +87,7 @@ export type RampGateSignalKey = (typeof RAMP_GATE_SIGNAL_KEYS)[number];
  * means widening this one can never widen what routing acts on.
  */
 export const PROVIDER_FEED_SIGNAL_KEYS = ['yahoo_cfl', 'google_postmaster'] as const;
-export type ProviderFeedSignalKey = (typeof PROVIDER_FEED_SIGNAL_KEYS)[number];
+type ProviderFeedSignalKey = (typeof PROVIDER_FEED_SIGNAL_KEYS)[number];
 
 export type SignalSourceKey = RampGateSignalKey | ProviderFeedSignalKey;
 

@@ -121,7 +121,7 @@ export function insufficient(
 }
 
 /** Which series a hold is about, and therefore which vocabulary it speaks. */
-export type HoldArm = 'own' | 'reference' | 'baseline';
+type HoldArm = 'own' | 'reference' | 'baseline';
 
 /** The hold reasons every arm has: its evidence was absent, thin, stale or poisoned. */
 interface ArmHoldReasons {

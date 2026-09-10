@@ -281,7 +281,7 @@ export const reorder = authedMutation({
 export const PREVIEW_SCAN_WINDOW = 300;
 
 /** Rows the preview hands back — enough to recognise a message, no body. */
-export interface FilterPreviewMatch {
+interface FilterPreviewMatch {
 	messageId: Id<'mailMessages'>;
 	fromAddress: string;
 	subject: string;

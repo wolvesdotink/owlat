@@ -72,10 +72,10 @@ import type { StoredEmbeddingProviderKind } from './aiProviderConfigValidators';
  */
 export type LLMTask = 'classify' | 'extract' | 'guard' | 'summarize' | 'draft' | 'plan';
 /** Model tiers exposed to callers. */
-export type LLMTier = 'fast' | 'capable';
+type LLMTier = 'fast' | 'capable';
 
 /** The resolved language plane — kind + secret-bearing client + per-tier models. */
-export interface ResolvedLanguagePlane {
+interface ResolvedLanguagePlane {
 	readonly kind: LanguageProviderKind;
 	readonly endpointProvenance: LanguageEndpointProvenance;
 	/** Decrypted client config (apiKey present only for hosted providers). */
@@ -89,7 +89,7 @@ export interface ResolvedLanguagePlane {
  * carries the local sidecar base URL or the decrypted hosted-embedder key;
  * `modelVersion` is the stored dimension-guard version (absent for env fallback).
  */
-export interface ResolvedEmbeddingPlane {
+interface ResolvedEmbeddingPlane {
 	readonly kind: StoredEmbeddingProviderKind;
 	readonly modelId: string;
 	/** Base URL (local sidecar) / decrypted key (hosted). Empty for env-keyless. */
@@ -99,7 +99,7 @@ export interface ResolvedEmbeddingPlane {
 }
 
 /** The dual-source-resolved AI config for both planes. */
-export interface ResolvedProviderConfig {
+interface ResolvedProviderConfig {
 	readonly language: ResolvedLanguagePlane;
 	readonly embedding: ResolvedEmbeddingPlane;
 	/** Whether the config came from the stored per-org row or the env fallback. */

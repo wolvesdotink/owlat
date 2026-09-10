@@ -18,21 +18,21 @@ import { isSendProviderKind } from '../lib/sendProviders/types';
 import { isValidEmail } from '../lib/inputGuards';
 import { normalizeEmail } from '@owlat/shared';
 
-export type DeliveryTestStageKey =
+type DeliveryTestStageKey =
 	| 'provider_configuration'
 	| 'recipient_validation'
 	| 'sender_resolution'
 	| 'provider_acceptance'
 	| 'result_recording';
 
-export interface DeliveryTestStage {
+interface DeliveryTestStage {
 	key: DeliveryTestStageKey;
 	label: string;
 	status: 'passed' | 'failed' | 'not_run';
 	detail: string;
 }
 
-export interface DeliveryTestResult {
+interface DeliveryTestResult {
 	success: boolean;
 	error: string | null;
 	provider: string | null;

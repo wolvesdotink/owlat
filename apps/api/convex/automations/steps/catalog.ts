@@ -30,7 +30,7 @@ type GeneratedPluginStepKind =
 		: never;
 
 /** Editor metadata + gating metadata copied verbatim from the plugin manifest. */
-export interface GeneratedPluginStepCatalogEntry extends HostedContributionDefinition<PluginAutomationStepCapability> {
+interface GeneratedPluginStepCatalogEntry extends HostedContributionDefinition<PluginAutomationStepCapability> {
 	readonly localId: string;
 	readonly label: string;
 	readonly description: string;

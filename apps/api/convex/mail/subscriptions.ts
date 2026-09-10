@@ -59,7 +59,7 @@ const SELECTION_RESOLVE_MAX = 200;
  *   - `http`      → a web page the user has to finish by hand
  *   - `mailto`    → an unsubscribe email the composer can prefill
  */
-export type SubscriptionMethod = 'one-click' | 'http' | 'mailto';
+type SubscriptionMethod = 'one-click' | 'http' | 'mailto';
 
 /** Best-method-first ordering, so a group adopts the strongest it has seen. */
 const METHOD_RANK: Record<SubscriptionMethod, number> = { 'one-click': 3, http: 2, mailto: 1 };
@@ -73,7 +73,7 @@ export interface SubscriptionMessageInput {
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 }
 
-export interface SubscriptionSender {
+interface SubscriptionSender {
 	senderEmail: string;
 	senderName?: string;
 	/** Messages from this sender inside the scanned window. */
@@ -222,7 +222,7 @@ export const list = publicQuery({
  * older than the panel's inbox window, none of which the `list` snapshot knows
  * about.
  */
-export interface SubscriptionSelectionTarget {
+interface SubscriptionSelectionTarget {
 	senderEmail: string;
 	actionMessageId: Id<'mailMessages'>;
 }
@@ -337,7 +337,7 @@ export const archiveSenderInInbox = internalMutation({
  *                        sender's page or by mail (`httpUrl` / `mailtoUrl`)
  *   - `not_found`      → the sender has no list mail left in the window
  */
-export type SubscriptionBatchOutcome = {
+type SubscriptionBatchOutcome = {
 	senderEmail: string;
 	status: 'unsubscribed' | 'failed' | 'manual' | 'not_found';
 	archived: number;

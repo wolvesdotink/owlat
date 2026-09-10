@@ -34,7 +34,7 @@ import { getOptional } from '../lib/env';
 import { armoredToBinaryBase64, wkdHashForAddress, splitAddress } from './wkd';
 import { sealPrivateKey } from './sealing';
 
-export interface GeneratedKeypair {
+interface GeneratedKeypair {
 	fingerprint: string;
 	publicKeyArmored: string;
 	privateKeyArmored: string;

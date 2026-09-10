@@ -16,7 +16,7 @@
 
 import type { Doc } from '../_generated/dataModel';
 
-export type AbFanout = {
+type AbFanout = {
 	config: NonNullable<Doc<'campaigns'>['abTestConfig']>;
 };
 

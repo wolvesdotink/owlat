@@ -36,7 +36,7 @@ import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/
 
 export type EmailTemplateStatus = 'draft' | 'published';
 
-export type EmailTemplateTransitionInput =
+type EmailTemplateTransitionInput =
 	| {
 			to: 'published';
 			at: number;
@@ -45,7 +45,7 @@ export type EmailTemplateTransitionInput =
 	  }
 	| { to: 'draft'; at: number };
 
-export type EmailTemplateTransitionOutcome =
+type EmailTemplateTransitionOutcome =
 	| {
 			ok: true;
 			applied: 'transitioned' | 'recorded';
@@ -60,16 +60,16 @@ export type EmailTemplateTransitionOutcome =
 			to?: EmailTemplateStatus;
 	  };
 
-export type EmailTemplateCreateOutcome = {
+type EmailTemplateCreateOutcome = {
 	ok: true;
 	templateId: Id<'emailTemplates'>;
 };
 
-export type EmailTemplateDuplicateOutcome =
+type EmailTemplateDuplicateOutcome =
 	| { ok: true; templateId: Id<'emailTemplates'> }
 	| { ok: false; reason: 'template_not_found' };
 
-export type EmailTemplateRemoveOutcome = { ok: true } | { ok: false; reason: 'template_not_found' };
+type EmailTemplateRemoveOutcome = { ok: true } | { ok: false; reason: 'template_not_found' };
 
 // ─── Validators ─────────────────────────────────────────────────────────────
 

@@ -22,7 +22,7 @@ import { bumpStatShard, sumStatShards } from '../lib/statShards';
 
 const ROLLUP_PAGE_SIZE = 50;
 
-export type AutomationStatField = 'statsEntered' | 'statsCompleted' | 'statsCancelled';
+type AutomationStatField = 'statsEntered' | 'statsCompleted' | 'statsCancelled';
 
 const FIELDS: readonly AutomationStatField[] = ['statsEntered', 'statsCompleted', 'statsCancelled'];
 
@@ -34,7 +34,7 @@ const FIELDS: readonly AutomationStatField[] = ['statsEntered', 'statsCompleted'
 export async function bumpAutomationStats(
 	ctx: MutationCtx,
 	automationId: Doc<'automations'>['_id'],
-	deltas: Partial<Record<AutomationStatField, number>>,
+	deltas: Partial<Record<AutomationStatField, number>>
 ): Promise<void> {
 	await bumpStatShard<AutomationStatField, Doc<'automationStatShards'>>(
 		{
@@ -43,18 +43,18 @@ export async function bumpAutomationStats(
 				ctx.db
 					.query('automationStatShards')
 					.withIndex('by_automation_and_shard', (q) =>
-						q.eq('automationId', automationId).eq('shardKey', shardKey),
+						q.eq('automationId', automationId).eq('shardKey', shardKey)
 					)
 					.unique(),
 			patchShard: (shard, patch) => ctx.db.patch(shard._id, patch),
 			insertShard: (shardKey, d) =>
 				ctx.db.insert('automationStatShards', { automationId, shardKey, ...d }),
 		},
-		deltas,
+		deltas
 	);
 }
 
-export interface AutomationStatsSummary {
+interface AutomationStatsSummary {
 	statsEntered: number;
 	statsCompleted: number;
 	statsCancelled: number;
@@ -63,7 +63,7 @@ export interface AutomationStatsSummary {
 /** Sum an automation's shards. Bounded: ≤ SHARD_COUNT rows. */
 export async function summarizeAutomationStats(
 	db: DatabaseReader,
-	automationId: Doc<'automations'>['_id'],
+	automationId: Doc<'automations'>['_id']
 ): Promise<AutomationStatsSummary> {
 	const shards = await db
 		.query('automationStatShards')
@@ -81,7 +81,7 @@ export async function summarizeAutomationStats(
  */
 export async function rollupAutomationStatsRow(
 	ctx: MutationCtx,
-	automation: Doc<'automations'>,
+	automation: Doc<'automations'>
 ): Promise<void> {
 	const sum = await summarizeAutomationStats(ctx.db, automation._id);
 	const statsActive = Math.max(0, sum.statsEntered - sum.statsCompleted - sum.statsCancelled);

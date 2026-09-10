@@ -25,7 +25,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 
 type SessionWithRole = NonNullable<Awaited<ReturnType<typeof getBetterAuthSessionWithRole>>>;
 /** A session narrowed to a real org member — `role` is guaranteed non-null. */
-export type MoverSession = SessionWithRole & { role: NonNullable<SessionWithRole['role']> };
+type MoverSession = SessionWithRole & { role: NonNullable<SessionWithRole['role']> };
 
 /**
  * Resolve the caller's own movable external mailbox — the thing a move operates

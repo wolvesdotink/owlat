@@ -69,7 +69,7 @@ import {
 import { isShareSplitRoute } from './routeMixContext';
 
 /** Batch-wide inputs for {@link prepareCellMixResolver}. */
-export interface CellRouteContext {
+interface CellRouteContext {
 	/** Envelope From; feeds the shipped relay-domain verification input. */
 	readonly from?: string;
 	readonly now: number;

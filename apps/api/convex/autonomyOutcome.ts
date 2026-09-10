@@ -39,7 +39,7 @@ export const OUTCOME_SIGNAL = {
 	clarification_unedited_send: 'approved',
 } as const;
 
-export type OutcomeSignal = keyof typeof OUTCOME_SIGNAL;
+type OutcomeSignal = keyof typeof OUTCOME_SIGNAL;
 
 const outcomeSignalValidator = v.union(
 	v.literal('reply_negative'),

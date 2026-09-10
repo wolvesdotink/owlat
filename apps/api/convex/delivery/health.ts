@@ -24,7 +24,7 @@ import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive
 export type DeliveryHealthLevel = 'ok' | 'warn' | 'error';
 
 /** Reputation risk buckets produced by `calculateRiskLevel`. */
-export type ReputationRisk = 'low' | 'medium' | 'high' | 'critical';
+type ReputationRisk = 'low' | 'medium' | 'high' | 'critical';
 
 /** Sending-domain verification states (`domains.status`). */
 export type DomainStatus = 'registering' | 'pending' | 'verified' | 'failed';
@@ -40,7 +40,7 @@ export interface DeliveryHealthInputs {
 	mtaInfrastructure: 'healthy' | 'degraded' | 'unreachable' | 'stale' | 'unchecked' | null;
 }
 
-export interface DeliveryHealthRollup {
+interface DeliveryHealthRollup {
 	level: DeliveryHealthLevel;
 	/** One human line naming the worst offender, for the dot's title tooltip. */
 	reason: string;

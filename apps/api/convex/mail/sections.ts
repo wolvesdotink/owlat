@@ -85,7 +85,7 @@ export const REMAINDER_SCAN_FACTOR = 5;
 export const REMAINDER_MAX_SCAN = 500;
 
 /** One section of the split inbox, as the renderer consumes it. */
-export interface InboxSection {
+interface InboxSection {
 	/** The section name, or `null` for the trailing "Everything else". */
 	name: string | null;
 	messages: Doc<'mailMessages'>[];

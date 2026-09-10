@@ -73,7 +73,7 @@ interface GovernedDispatchRequest {
  * than a private twin is what makes the worker's `returns` gate, this
  * function's return, and the completion callback's switch the same five cases.
  */
-export type GovernedDispatchResult = Exclude<SendWorkerOutcome, { kind: 'suppressed' }>;
+type GovernedDispatchResult = Exclude<SendWorkerOutcome, { kind: 'suppressed' }>;
 
 function currentRetryState(
 	retryState: WorkerRetryState | undefined,

@@ -7,7 +7,7 @@ import { authedQuery } from './lib/authedFunctions';
 import { loadAccessibleMailboxes } from './mail/permissions';
 import { batchGet } from './_utils/batchLoader';
 
-export interface GlobalSearchResults {
+interface GlobalSearchResults {
 	contacts: Array<{ id: string; type: 'contact'; title: string; subtitle: string; url: string }>;
 	emails: Array<{ id: string; type: 'email'; title: string; subtitle: string; url: string }>;
 	campaigns: Array<{ id: string; type: 'campaign'; title: string; subtitle: string; url: string }>;

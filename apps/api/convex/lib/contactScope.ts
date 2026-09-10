@@ -14,7 +14,7 @@ import type { Id } from '../_generated/dataModel';
  * explicit `'org-wide'` sentinel of `RetrievalScope` instead, so a forgotten arg
  * can never silently fall back to org-wide.
  */
-export type ContactScope = Id<'contacts'> | 'org-general-only';
+type ContactScope = Id<'contacts'> | 'org-general-only';
 
 /**
  * The scope a caller passes to the agent-facing semantic search. It is a
@@ -40,7 +40,7 @@ export type RetrievalScope = ContactScope | 'org-wide';
  */
 export function isContactScopeVisible(
 	contactIds: Id<'contacts'>[] | undefined,
-	scope: ContactScope,
+	scope: ContactScope
 ): boolean {
 	if (!contactIds || contactIds.length === 0) return true;
 	if (scope === 'org-general-only') return false;
@@ -64,7 +64,7 @@ export function isContactScopeVisible(
  */
 export function contactScopesCanLink(
 	a: Id<'contacts'>[] | undefined,
-	b: Id<'contacts'>[] | undefined,
+	b: Id<'contacts'>[] | undefined
 ): boolean {
 	if (!a || a.length === 0) return true;
 	if (!b || b.length === 0) return true;
@@ -82,7 +82,7 @@ export function contactScopesCanLink(
  */
 export function sameContactScope(
 	a: Id<'contacts'>[] | undefined,
-	b: Id<'contacts'>[] | undefined,
+	b: Id<'contacts'>[] | undefined
 ): boolean {
 	const aset = new Set(a ?? []);
 	const bset = new Set(b ?? []);

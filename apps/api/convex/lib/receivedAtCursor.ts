@@ -16,7 +16,7 @@
  * Both call sites now share this implementation; they only provide the three
  * index reads for their own table.
  */
-export interface ReceivedAtCursorPage<T> {
+interface ReceivedAtCursorPage<T> {
 	rows: T[];
 	hasMore: boolean;
 }

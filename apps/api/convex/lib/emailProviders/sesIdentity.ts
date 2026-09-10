@@ -50,12 +50,12 @@ export function buildSesClient(config: {
 	});
 }
 
-export interface SESRegistrationResult {
+interface SESRegistrationResult {
 	verificationToken: string;
 	dkimTokens: string[];
 }
 
-export interface SESVerificationStatus {
+interface SESVerificationStatus {
 	verificationStatus: string; // "Pending" | "Success" | "Failed" | "TemporaryFailure" | "NotStarted"
 	dkimStatus: string; // "Pending" | "Success" | "Failed" | "TemporaryFailure" | "NotStarted"
 	dkimTokens: string[];

@@ -46,7 +46,7 @@ export const structuredExtractionSchema = z.object({
 		),
 });
 
-export type StructuredExtraction = z.infer<typeof structuredExtractionSchema>;
+type StructuredExtraction = z.infer<typeof structuredExtractionSchema>;
 
 /**
  * Build the quarantined-extraction prompt. Pure + exported so a unit test can

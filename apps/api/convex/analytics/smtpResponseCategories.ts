@@ -106,7 +106,7 @@ const MAX_CATEGORY_KEYS = SMTP_FAILURE_CATEGORIES.size;
 
 // ============ READ SIDE ============
 
-export interface SmtpCategoryWindowQuery extends TransportOutcomeWindow {
+interface SmtpCategoryWindowQuery extends TransportOutcomeWindow {
 	readonly organizationId: string;
 	readonly cell: DeliverabilityCellKey;
 	readonly arm: TransportOutcomeArm;
@@ -272,7 +272,7 @@ async function ensureCategoryShardBucket(
 	return created;
 }
 
-export interface RecordSmtpResponseInput {
+interface RecordSmtpResponseInput {
 	readonly organizationId: string;
 	readonly cell: DeliverabilityCellKey;
 	readonly arm: TransportOutcomeArm;
@@ -328,7 +328,7 @@ export async function recordSmtpResponseForCell(
 }
 
 /** Why a classified response was not recorded — returned, never thrown. */
-export type RecordSmtpResponseResult =
+type RecordSmtpResponseResult =
 	| 'recorded'
 	| 'no_organization'
 	| 'send_not_found'

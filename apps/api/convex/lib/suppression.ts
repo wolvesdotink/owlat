@@ -155,7 +155,7 @@ export async function suppressEmail(
 }
 
 /** A suppression set that may be INCOMPLETE, plus the fact of it. */
-export interface BoundedSuppressionSet {
+interface BoundedSuppressionSet {
 	blockedEmails: ReadonlySet<string>;
 	/**
 	 * More than `limit` suppressed addresses exist, so the set is a SUBSET of the

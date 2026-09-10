@@ -85,7 +85,7 @@ export const SETTLED_RETURN_PATH_PROBE_REASONS = RETURN_PATH_PROBE_REASONS.filte
  * year. The re-probe periodically switching OFF the very stamp it exists to
  * confirm is the opposite of what it is for.
  */
-export interface SettledReturnPathVerdict {
+interface SettledReturnPathVerdict {
 	readonly status: (typeof SETTLED_RETURN_PATH_PROBE_STATUSES)[number];
 	readonly reason: (typeof SETTLED_RETURN_PATH_PROBE_REASONS)[number];
 	readonly settledAt: number;

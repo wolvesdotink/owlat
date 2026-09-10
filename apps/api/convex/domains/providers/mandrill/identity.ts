@@ -38,7 +38,7 @@ export const MANDRILL_CHECK_INTERVAL_MS = {
 export const MANDRILL_UNAVAILABLE_RETRY_MS = 15 * 60 * 1000;
 
 /** The `providerDetails` blob for a Mandrill identity (Mandrill plan D7, versioned). */
-export interface MandrillProviderDetails {
+interface MandrillProviderDetails {
 	readonly kind: 'mandrill';
 	/** Mandrill's aggregate signing verdict. */
 	readonly isValidSigning: boolean;

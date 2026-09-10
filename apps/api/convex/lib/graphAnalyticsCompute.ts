@@ -33,7 +33,7 @@ export const SURPRISE_W_TAG_DISJOINT = 0.15;
 // Re-exported so graph analytics consumers keep importing it from this module.
 export { cosineSimilarity } from './vectorMath';
 
-export interface ConfidenceStats {
+interface ConfidenceStats {
 	/** Per-bucket counts over [0,1]; length === CONFIDENCE_BUCKET_COUNT; sums to values.length. */
 	buckets: number[];
 	mean: number;

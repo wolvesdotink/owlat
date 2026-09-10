@@ -13,17 +13,17 @@ const MAX_CIPHERTEXT_BYTES = 6 * 1024;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-export interface PluginStorageCursorScope {
+interface PluginStorageCursorScope {
 	readonly organizationId: string;
 	readonly pluginId: string;
 }
 
-export interface PluginStorageCursorRequest {
+interface PluginStorageCursorRequest {
 	readonly prefix: string;
 	readonly limit: number;
 }
 
-export type PluginStorageCursorFailure = 'invalid_token' | 'crypto_unavailable';
+type PluginStorageCursorFailure = 'invalid_token' | 'crypto_unavailable';
 
 /** Redacted internal failure; the storage facade maps this to its public taxonomy. */
 export class PluginStorageCursorError extends Error {

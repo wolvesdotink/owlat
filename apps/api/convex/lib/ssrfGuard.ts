@@ -39,7 +39,7 @@ export { isDisallowedIpAddress } from './ipBlocklist';
  *   - `resolve_failed` — DNS resolution errored.
  *   - `no_address`     — DNS resolved to no addresses.
  */
-export type UrlRejectionCode =
+type UrlRejectionCode =
 	| 'invalid_format'
 	| 'protocol'
 	| 'missing_host'
@@ -47,9 +47,7 @@ export type UrlRejectionCode =
 	| 'resolve_failed'
 	| 'no_address';
 
-export type ValidatedUrl =
-	| { ok: true; url: URL }
-	| { ok: false; error: string; code: UrlRejectionCode };
+type ValidatedUrl = { ok: true; url: URL } | { ok: false; error: string; code: UrlRejectionCode };
 
 /**
  * Parse + validate a user-supplied URL for safe server-side fetching: enforces

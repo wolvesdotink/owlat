@@ -18,9 +18,9 @@ import {
 import { accountExportBytesToBase64 } from './accountExportEncoding';
 import { readSealedBlobBytesForExport, readSealedBlobTextForExport } from './sealedBlob';
 
-export type ExportBodyAvailability = 'available' | 'missing' | 'corrupt';
+type ExportBodyAvailability = 'available' | 'missing' | 'corrupt';
 
-export interface ExportBodyContent {
+interface ExportBodyContent {
 	content: string;
 	availability: Exclude<ExportBodyAvailability, 'missing'>;
 }

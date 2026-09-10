@@ -46,7 +46,7 @@ export const NEW_MAIL_STALE_THRESHOLD = 5;
  */
 export const OVERNIGHT_LOOKBACK_MS = 12 * 60 * 60 * 1000;
 
-export interface BriefCardFreshnessInput {
+interface BriefCardFreshnessInput {
 	/** The cached card's local day, or null when no card exists yet. */
 	cachedLocalDay: string | null;
 	/** The viewer's current local day (YYYY-MM-DD). */
@@ -74,7 +74,7 @@ const MAX_COUNTED_MESSAGES = 99;
 /** Bound on scanned needs-reply / recent threads per regeneration. */
 const THREAD_SCAN_LIMIT = 200;
 
-export interface BriefCardCounts {
+interface BriefCardCounts {
 	newMail: number;
 	drafted: number;
 	questions: number;

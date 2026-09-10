@@ -6,7 +6,7 @@ import {
 
 export const DEFAULT_DRAFT_STRATEGY_KIND = 'default' as const;
 
-export interface HostedDraftStrategyDefinition extends HostedContributionDefinition<'draft:strategy'> {
+interface HostedDraftStrategyDefinition extends HostedContributionDefinition<'draft:strategy'> {
 	readonly label: string;
 	readonly timeoutMs: number;
 	readonly requiredEnvVars: readonly string[];

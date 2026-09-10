@@ -344,7 +344,7 @@ export const recordSeedProbeUnsubscribe = internalMutation({
 
 // ============ THE PROVIDER ROLL-UP ============
 
-export interface SeedPlacementSummary {
+interface SeedPlacementSummary {
 	rollups: SeedProviderRollup[];
 	/** Seed mailboxes currently connected — the honesty denominator for the UI. */
 	seedAccountCount: number;

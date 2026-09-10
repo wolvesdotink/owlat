@@ -246,12 +246,12 @@ export const recordUnsubscribeLatency = internalMutation({
 	},
 });
 
-export interface GmailPrimaryDomainVolume {
+interface GmailPrimaryDomainVolume {
 	primaryDomain: string;
 	delivered24h: number;
 }
 
-export interface GmailVolumeReadResult {
+interface GmailVolumeReadResult {
 	domains: GmailPrimaryDomainVolume[];
 	isDomainListTruncated: boolean;
 	domainLimit: number;

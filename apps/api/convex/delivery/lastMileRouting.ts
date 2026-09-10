@@ -33,7 +33,7 @@ interface LastMileInput {
 	sendId?: string;
 }
 
-export interface LastMileRoutingReady {
+interface LastMileRoutingReady {
 	kind: 'ready';
 	providerKind: SendProviderKind;
 	route: ResolvedRoute | null;
@@ -88,7 +88,7 @@ export interface LastMileRoutingDeferred {
 /** Poll at the deliverability signal's own freshness horizon while held. */
 const POLICY_HOLD_RETRY_MS = 10 * 60 * 1000;
 
-export type LastMileRoutingResult = LastMileRoutingReady | LastMileRoutingDeferred;
+type LastMileRoutingResult = LastMileRoutingReady | LastMileRoutingDeferred;
 
 /**
  * A reconciliation attempt exists because an earlier `POST /send` may already

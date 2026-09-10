@@ -124,7 +124,7 @@ export const SUBDOMAIN_ADVICE_COPY: Record<SubdomainAdviceKey, string> = {
 };
 
 /** One subdomain in the proposal. */
-export interface SendingSubdomainPlan {
+interface SendingSubdomainPlan {
 	role: SendingSubdomainRole;
 	label: string;
 	/** Fully-qualified host, e.g. `news.example.com`. */
@@ -146,7 +146,7 @@ export type SigningSubdomainPlan = SendingSubdomainPlan & {
 };
 
 /** The return-path host: it signs nothing and warms nothing. */
-export type BounceSubdomainPlan = SendingSubdomainPlan & {
+type BounceSubdomainPlan = SendingSubdomainPlan & {
 	sends: false;
 	pool: null;
 };
@@ -157,7 +157,7 @@ export type BounceSubdomainPlan = SendingSubdomainPlan & {
  * that cannot be missing — and the per-role types make "the bounce host has no
  * selector" a fact of the type rather than a `null` every caller re-checks.
  */
-export interface SubdomainsByRole {
+interface SubdomainsByRole {
 	transactional: SigningSubdomainPlan;
 	bulk: SigningSubdomainPlan;
 	bounce: BounceSubdomainPlan;
@@ -207,7 +207,7 @@ export interface SubdomainLayoutInput {
 }
 
 /** Pool IPs, parsed once and read the same way by every consumer. */
-export interface NormalizedPoolIps {
+interface NormalizedPoolIps {
 	ip4: string[];
 	ip6: string[];
 	/** Distinct addresses across both families — what "one IP" actually means. */
@@ -244,7 +244,7 @@ export function normalizePoolIps(ips: readonly string[] | undefined): Normalized
 }
 
 /** A domain with no registrable zone renders an explanation, never a stack. */
-export type SubdomainLayoutResult =
+type SubdomainLayoutResult =
 	| { ok: true; proposal: SubdomainLayoutProposal }
 	| { ok: false; reason: 'invalid_domain' };
 
@@ -364,7 +364,7 @@ export type TransportArm = 'own' | 'reference';
  */
 export type ArmDkimSelectors = Readonly<Partial<Record<TransportArm, string>>>;
 
-export interface CellSendingIdentity {
+interface CellSendingIdentity {
 	stream: SendingStream;
 	arm: TransportArm;
 	/** The From domain. Derived from the STREAM alone. */

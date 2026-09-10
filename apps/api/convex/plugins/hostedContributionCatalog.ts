@@ -21,7 +21,7 @@ export interface HostedContributionDefinition<C extends PluginCapability = Plugi
 }
 
 /** A composed catalog: the generated entry list plus one lookup. */
-export interface HostedContributionCatalog<E extends HostedContributionDefinition> {
+interface HostedContributionCatalog<E extends HostedContributionDefinition> {
 	readonly all: readonly E[];
 	/** The entry for `kind`, or `undefined` when unknown. */
 	byKind(kind: string): E | undefined;

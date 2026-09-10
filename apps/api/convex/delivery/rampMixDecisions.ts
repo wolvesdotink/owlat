@@ -131,7 +131,7 @@ function rampDecisionSnapshot(
  * the evidence it was made against, and whether the composition interlock held
  * it back (plan D3, D12).
  */
-export interface RecordedPaceDecision {
+interface RecordedPaceDecision {
 	readonly decision: PaceDecision;
 	readonly utilisation: PaceUtilisationReading;
 	readonly isDeferred: boolean;

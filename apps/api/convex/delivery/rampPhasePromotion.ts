@@ -56,7 +56,7 @@ import {
  * the cell moved, it was already at the top, the evidence is short (and can be
  * named), or a hard stop stands.
  */
-export type RampPhasePromotion =
+type RampPhasePromotion =
 	| {
 			readonly status: 'promoted';
 			readonly fromCeiling: number;
@@ -178,7 +178,7 @@ export async function applyRampPhasePromotion(
 	};
 }
 
-export interface RampPromotionResult {
+interface RampPromotionResult {
 	readonly applied: boolean;
 	readonly refusal?: RampControlRefusal;
 	/** The rung the cell stands on AFTER the call — unchanged on a refusal. */

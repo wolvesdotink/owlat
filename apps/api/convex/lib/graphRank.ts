@@ -68,7 +68,7 @@ export interface GraphRankEdge {
 	relationType: RelationType;
 }
 
-export interface RankWithGraphInput {
+interface RankWithGraphInput {
 	/** Vector-leg ranking, filtered to the visible pool. */
 	vectorRanked: readonly Id<'knowledgeEntries'>[];
 	/** FTS-leg ranking, filtered to the visible pool. */
@@ -79,7 +79,7 @@ export interface RankWithGraphInput {
 	edges: readonly GraphRankEdge[];
 }
 
-export interface RankWithGraphResult {
+interface RankWithGraphResult {
 	/** The fused, deterministically re-ranked id list (seeds + neighbours). */
 	orderedIds: Id<'knowledgeEntries'>[];
 	/** Endpoints of a `contradicts` edge — KEPT, but flagged as a caveat. */
@@ -127,9 +127,7 @@ export function rankWithGraph(input: RankWithGraphInput): RankWithGraphResult {
 		const score = weight * (1 / hop) * clamp01(n.seedProximity) * clamp01(n.confidence);
 		neighborScore.set(n.id, Math.max(neighborScore.get(n.id) ?? 0, score));
 	}
-	const neighborRanked = [...neighborScore.entries()]
-		.sort((a, b) => b[1] - a[1])
-		.map(([id]) => id);
+	const neighborRanked = [...neighborScore.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
 
 	// (2) Fuse the three legs (reuse the one shared RRF). An empty leg adds
 	// nothing, so with no neighbours this equals RRF([vector, fts]).

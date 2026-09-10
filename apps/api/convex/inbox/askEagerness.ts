@@ -156,7 +156,7 @@ export function shouldSampleDraftDelta(rand: number = Math.random()): boolean {
 	return rand < DRAFT_DELTA_SAMPLE_RATE;
 }
 
-export interface DraftDelta {
+interface DraftDelta {
 	/** Token-level similarity of the with-answers vs answers-omitted draft. */
 	similarity: number;
 	/** 1 - similarity. */

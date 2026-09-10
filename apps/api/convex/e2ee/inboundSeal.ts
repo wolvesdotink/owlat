@@ -92,7 +92,7 @@ export function isSealedPgpMime(raw: string): boolean {
 }
 
 /** The real headers + bodies recovered from a decrypted inner MIME message. */
-export interface RestoredMessage {
+interface RestoredMessage {
 	/** The real `Subject` (protected header D4), or undefined when the inner has none. */
 	subject?: string;
 	/** The decrypted `text/plain` body, if any. */

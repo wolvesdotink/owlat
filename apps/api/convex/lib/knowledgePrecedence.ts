@@ -25,7 +25,7 @@
  * tied to the Convex Doc type) so the pure helper is trivially unit-testable and
  * usable from both the action and its tests.
  */
-export interface PrecedenceEntry {
+interface PrecedenceEntry {
 	isAuthoritative?: boolean;
 	/** Set by graph expansion when this entry is superseded by a newer fact. */
 	_stale?: boolean;

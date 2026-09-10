@@ -123,7 +123,7 @@ export function dashboardWindow(now: number): DashboardWindow {
 
 // ============ TREND ============
 
-export interface DashboardTrendPoint {
+interface DashboardTrendPoint {
 	/** UTC day start this point summarizes. */
 	readonly day: number;
 	readonly own: TransportOutcomeSummary;
@@ -212,7 +212,7 @@ export type DashboardConfidenceImprovement =
 	| 'add_seed_mailboxes'
 	| 'send_more_volume';
 
-export interface DashboardConfidence {
+interface DashboardConfidence {
 	readonly level: DashboardConfidenceLevel;
 	readonly improvements: readonly DashboardConfidenceImprovement[];
 }
@@ -301,7 +301,7 @@ export function dashboardConfidence(input: {
  * exhaustiveness. The numbers behind the verdict travel with it and are rendered
  * beside it, never re-derived.
  */
-export type DashboardGateView = RampGateResult;
+type DashboardGateView = RampGateResult;
 
 export interface DashboardCellView {
 	readonly cell: DeliverabilityCell;

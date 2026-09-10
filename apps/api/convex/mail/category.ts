@@ -52,7 +52,7 @@ export const MAIL_CATEGORIES = [
 export type MailCategory = (typeof MAIL_CATEGORIES)[number];
 
 /** Categories a user may pick in "Recategorize as…" (no ambiguity there). */
-export type MailCategorySource = 'heuristic' | 'llm' | 'user';
+type MailCategorySource = 'heuristic' | 'llm' | 'user';
 
 /** Subject keywords that mark transactional receipts / orders / invoices. */
 const RECEIPT_SUBJECT =

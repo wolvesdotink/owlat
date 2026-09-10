@@ -28,7 +28,7 @@
  *      DURING business hours).
  */
 
-export type WorkingHoursConfig = {
+type WorkingHoursConfig = {
 	isWorkingHoursEnabled?: boolean;
 	workingHoursTimezone?: string;
 	workingHoursStart?: number; // minutes from local midnight, inclusive

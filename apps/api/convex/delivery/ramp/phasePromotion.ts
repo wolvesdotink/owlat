@@ -64,11 +64,11 @@ export type PromotionConditionId = (typeof PROMOTION_CONDITION_IDS)[number];
  * condition is `unknown`, is reported by name, and never counts as met. A
  * boolean would fold the two together and promote a cell on evidence nobody has.
  */
-export type PromotionConditionState = 'met' | 'unmet' | 'unknown';
+type PromotionConditionState = 'met' | 'unmet' | 'unknown';
 
-export type PromotionConditions = Readonly<Record<PromotionConditionId, PromotionConditionState>>;
+type PromotionConditions = Readonly<Record<PromotionConditionId, PromotionConditionState>>;
 
-export interface PromotionRoute {
+interface PromotionRoute {
 	readonly id: 'google_compliance' | 'snds_band' | 'standalone_corroboration';
 	readonly label: string;
 	/** Providers this route can speak for; `'all'` for the standalone route. */
@@ -249,7 +249,7 @@ export function derivePromotionConditions(
 	};
 }
 
-export interface PromotionRouteResult {
+interface PromotionRouteResult {
 	readonly route: PromotionRoute;
 	readonly satisfied: boolean;
 	/** Conditions that are not `met`, with the state that stopped them. */
@@ -259,7 +259,7 @@ export interface PromotionRouteResult {
 	}[];
 }
 
-export interface PhasePromotionDecision {
+interface PhasePromotionDecision {
 	readonly allowed: boolean;
 	/** Which route permitted it — `null` when none did or none was needed. */
 	readonly viaRoute: PromotionRoute['id'] | null;

@@ -78,7 +78,7 @@ export function resolveSpfQualifier(raw: string | undefined | null): SpfQualifie
 	return isSpfQualifier(trimmed) ? trimmed : DEFAULT_SPF_QUALIFIER;
 }
 
-export type SpfRecordParts = {
+type SpfRecordParts = {
 	/** `include:` host (e.g. an upstream relay's SPF macro). */
 	include?: string;
 	/** `ip4:` addresses to authorize directly (e.g. each IP pool address). */
@@ -202,7 +202,7 @@ export function buildReturnPathSpfRecord(
  * A `mailFrom` DNS record entry for a return-path host — an absolute-hostname
  * MX (bounce-DSN routing) or TXT (SPF) record.
  */
-export type ReturnPathMailFromRecord = {
+type ReturnPathMailFromRecord = {
 	readonly type: 'MX' | 'TXT';
 	readonly hostname: string;
 	readonly value: string;

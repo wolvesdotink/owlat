@@ -223,10 +223,10 @@ export const getCampaignSendEstimate = authedQuery({
 });
 
 /** Per-record email-auth verification state for a sending domain. */
-export type DomainAuthState = { spf: boolean; dkim: boolean; dmarc: boolean };
+type DomainAuthState = { spf: boolean; dkim: boolean; dmarc: boolean };
 
 /** One row of the Delivery health page's domain table. */
-export interface DeliveryDomainRow {
+interface DeliveryDomainRow {
 	domain: string;
 	status: 'registering' | 'pending' | 'verified' | 'failed';
 	auth: DomainAuthState;

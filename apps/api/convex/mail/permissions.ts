@@ -41,7 +41,7 @@ import { batchGet } from '../_utils/batchLoader';
  * from the schema so the `'owner' | 'member'` union has a single source of
  * truth (`mailboxMembers.role`) and the two can never drift.
  */
-export type MailboxMemberRole = Doc<'mailboxMembers'>['role'];
+type MailboxMemberRole = Doc<'mailboxMembers'>['role'];
 
 /** Does `role` satisfy the required `minRole`? `owner` satisfies both. */
 function roleSatisfies(role: MailboxMemberRole, minRole: MailboxMemberRole): boolean {
@@ -131,7 +131,7 @@ export async function loadPersonalMailboxForUser(
 		: null;
 }
 
-export type MessageAccessOutcome =
+type MessageAccessOutcome =
 	| {
 			ok: true;
 			userId: string;

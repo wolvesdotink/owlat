@@ -45,12 +45,12 @@ interface EditorBlock {
 	savedBlockRef?: SavedBlockRef;
 }
 
-export type SavedBlockCreateOutcome = {
+type SavedBlockCreateOutcome = {
 	ok: true;
 	blockId: Id<'emailBlocks'>;
 };
 
-export type SavedBlockUpdateOutcome =
+type SavedBlockUpdateOutcome =
 	| {
 			ok: true;
 			blockId: Id<'emailBlocks'>;
@@ -60,11 +60,11 @@ export type SavedBlockUpdateOutcome =
 	  }
 	| { ok: false; reason: 'block_not_found' };
 
-export type SavedBlockDuplicateOutcome =
+type SavedBlockDuplicateOutcome =
 	| { ok: true; blockId: Id<'emailBlocks'> }
 	| { ok: false; reason: 'block_not_found' };
 
-export type SavedBlockRemoveOutcome = { ok: true } | { ok: false; reason: 'block_not_found' };
+type SavedBlockRemoveOutcome = { ok: true } | { ok: false; reason: 'block_not_found' };
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 

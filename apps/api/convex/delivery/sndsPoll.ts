@@ -41,7 +41,7 @@ export const SNDS_INGEST_BATCH_SIZE = 64;
  */
 export const SNDS_MAX_OBSERVATIONS_PER_POLL = 2_000;
 
-export interface SndsPollSummary {
+interface SndsPollSummary {
 	enrolled: boolean;
 	feeds: number;
 	feedsFailed: number;

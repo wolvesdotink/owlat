@@ -1,7 +1,7 @@
 import type { Id } from '../../_generated/dataModel';
 import type { ConditionTypeModule, TopicMembershipCondition } from '../types';
 
-export interface TopicMembershipLookup {
+interface TopicMembershipLookup {
 	/** Map of topicId → set of contactIds in the topic. */
 	membersByTopic: Map<string, Set<string>>;
 }

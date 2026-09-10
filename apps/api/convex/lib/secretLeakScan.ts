@@ -51,7 +51,7 @@ const SECRET_PATTERNS: SecretPattern[] = [
 	},
 ];
 
-export interface SecretLeakResult {
+interface SecretLeakResult {
 	detected: boolean;
 	kind?: string;
 }

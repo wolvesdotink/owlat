@@ -147,7 +147,7 @@ function mentionsRateLimit(lowerMessage: string): boolean {
 }
 
 /** Per-send knobs of the relay adapter's INTERNAL entry point. */
-export interface RelaySendOptions {
+interface RelaySendOptions {
 	/**
 	 * The return-path host to stamp as the VERP envelope sender, or `undefined`
 	 * to keep the composer's (the shipped behaviour). The caller owns every
@@ -166,7 +166,7 @@ export interface RelaySendOptions {
 	readonly verpMessageId?: string;
 }
 
-export interface RelaySendOutcome {
+interface RelaySendOutcome {
 	readonly attempt: EmailSendAttempt;
 	/**
 	 * The RFC5321.MailFrom actually put on the wire. Returned rather than

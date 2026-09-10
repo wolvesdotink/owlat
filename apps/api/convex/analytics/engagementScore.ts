@@ -135,7 +135,7 @@ export type EngagementScoreState = {
 };
 
 /** One tally per activity kind. */
-export type EngagementActivityCounts = {
+type EngagementActivityCounts = {
 	openCount: number;
 	clickCount: number;
 	replyCount: number;

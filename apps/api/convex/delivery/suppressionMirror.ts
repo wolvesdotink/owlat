@@ -51,7 +51,7 @@ export type BlockReason = 'bounced' | 'complained' | 'manual' | 'unengaged';
  */
 export const MARKETING_ONLY_BLOCK_REASONS = ['unengaged'] as const;
 
-export type MarketingOnlyBlockReason = (typeof MARKETING_ONLY_BLOCK_REASONS)[number];
+type MarketingOnlyBlockReason = (typeof MARKETING_ONLY_BLOCK_REASONS)[number];
 
 /** The reasons that DO reach the MTA backstop — everything not marketing-only. */
 export type MirroredBlockReason = Exclude<BlockReason, MarketingOnlyBlockReason>;
@@ -89,7 +89,7 @@ export function isMarketingOnlyBlockReason(
 // SuppressionReason — the MTA-side vocabulary (apps/mta/.../suppressionList.ts).
 // Kept in sync by hand: the two enums live in separate deploy units (Convex
 // backend vs the MTA service) with no shared type.
-export type MtaSuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
+type MtaSuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
 
 /**
  * Map a Convex `blockedEmails.reason` (+ optional bounceType) onto the MTA's

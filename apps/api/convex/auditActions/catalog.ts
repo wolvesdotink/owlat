@@ -297,7 +297,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('connected_app.secret_rotated'),
 ] as const;
 
-export type AuditActionLiteral = (typeof AUDIT_ACTION_LITERALS)[number];
+type AuditActionLiteral = (typeof AUDIT_ACTION_LITERALS)[number];
 
 /** Hosted operations safe to persist and display in plugin audit metadata. */
 export const HOSTED_PLUGIN_OPERATION_LITERALS = [
@@ -359,7 +359,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'connected_app',
 ] as const;
 
-export type AuditResourceLiteral = (typeof AUDIT_RESOURCE_LITERALS)[number];
+type AuditResourceLiteral = (typeof AUDIT_RESOURCE_LITERALS)[number];
 
 // ---------------------------------------------------------------------------
 // Convex validators — derived from the catalogs above. The variadic spread

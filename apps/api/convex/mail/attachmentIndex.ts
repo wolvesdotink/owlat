@@ -18,7 +18,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 
 /** One attachment's metadata, as it sits on a `mailMessages` row. */
-export interface IndexableAttachment {
+interface IndexableAttachment {
 	filename: string;
 	contentType: string;
 	size: number;

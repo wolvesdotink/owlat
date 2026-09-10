@@ -59,7 +59,7 @@ export const TTL_FOUND_MS = 24 * 60 * 60 * 1000;
 export const TTL_NEGATIVE_MS = 60 * 60 * 1000;
 
 /** The outcome of a discovery fetch, BEFORE pin evaluation / persistence. */
-export type DiscoveryFetch =
+type DiscoveryFetch =
 	| {
 			outcome: 'found';
 			fingerprint: string;

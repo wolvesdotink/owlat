@@ -118,7 +118,7 @@ function isPreWireFailure(errorCode: EmailErrorCode | undefined): boolean {
 }
 
 /** Why a probe run did nothing. All benign — see the D2 note above. */
-export type ReturnPathProbeSkipReason =
+type ReturnPathProbeSkipReason =
 	| 'unresolvable_transport'
 	| 'not_probeable'
 	| 'not_configured'
@@ -132,7 +132,7 @@ export type ReturnPathProbeSkipReason =
 	 */
 	| 'no_envelope_control';
 
-export type ReturnPathProbeRunResult =
+type ReturnPathProbeRunResult =
 	| { readonly ran: false; readonly reason: ReturnPathProbeSkipReason }
 	| { readonly ran: true; readonly probeId: string; readonly accepted: boolean };
 

@@ -13,7 +13,7 @@ export const PLUGIN_AGENT_STEP_INPUT_LIMITS = Object.freeze({
 });
 const MAX_CAUTION_REASON_CODE_POINTS = 500;
 
-export interface HostedPluginStepResult {
+interface HostedPluginStepResult {
 	readonly kind: 'continue' | 'caution';
 	readonly to?: 'archived' | 'draft_ready' | 'failed';
 	/** Fixed host-owned metadata. No plugin-authored text crosses this boundary. */

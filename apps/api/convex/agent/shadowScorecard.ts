@@ -228,7 +228,7 @@ async function bumpScorecard(
 // Reading the scorecard (graduation offers for the autonomy UI)
 // ============================================================
 
-export type ShadowScorecardSlice = {
+type ShadowScorecardSlice = {
 	category: string;
 	sender: string;
 	samples: number;

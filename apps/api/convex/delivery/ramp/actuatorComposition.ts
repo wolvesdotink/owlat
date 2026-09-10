@@ -45,7 +45,7 @@
 import type { RampDecision } from './controllerTypes';
 import type { PaceDecision } from './paceTypes';
 
-export interface ActuatorCompositionInput {
+interface ActuatorCompositionInput {
 	/** The share decision, or `null` for a standalone deployment (s === 1). */
 	readonly share: RampDecision | null;
 	readonly pace: PaceDecision;

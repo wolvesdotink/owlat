@@ -14,7 +14,7 @@
  * `dispatchReachability.test.ts`.
  */
 
-export interface HostedCatalog<E extends { readonly kind: string }> {
+interface HostedCatalog<E extends { readonly kind: string }> {
 	/** Frozen core-then-plugin entry list, in composition order. */
 	readonly all: readonly E[];
 	/** Frozen list of every composed kind, in composition order. */

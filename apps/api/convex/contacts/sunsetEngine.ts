@@ -104,7 +104,7 @@ export const SUNSET_QUIET_RESETTING_LITERALS: readonly ContactActivityType[] =
 			SUNSET_ENGAGEMENT_LITERALS.includes(literal) || SUNSET_CONSENT_LITERAL_SET.has(literal)
 	);
 
-export type SunsetTransition = {
+type SunsetTransition = {
 	verdict: SunsetVerdict;
 	/** True when the verdict actually changed something. `hold` never does. */
 	applied: boolean;

@@ -30,7 +30,7 @@ import { urgencyFallbackScore } from './ai/priorityScore';
 
 // ─── Pure ranking + bundling (unit-tested, framework-free) ───────────────────
 
-export type BriefItemKind = 'needs_reply' | 'clarification' | 'followup' | 'commitment';
+type BriefItemKind = 'needs_reply' | 'clarification' | 'followup' | 'commitment';
 
 export interface BriefItem {
 	kind: BriefItemKind;
@@ -60,7 +60,7 @@ export function rankBriefItems(items: BriefItem[]): BriefItem[] {
 	});
 }
 
-export type BundledCategory = 'newsletter' | 'notification' | 'receipt';
+type BundledCategory = 'newsletter' | 'notification' | 'receipt';
 
 export interface BundledEntry {
 	threadId: Id<'mailThreads'>;

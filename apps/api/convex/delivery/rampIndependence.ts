@@ -93,7 +93,7 @@ function utcMonthStart(at: number): number {
  * or a graduated pool all mean there is no ceiling to quote. The screen says so
  * plainly rather than printing a zero that reads as "you may not send".
  */
-export interface WarmupCapacityHeadline {
+interface WarmupCapacityHeadline {
 	readonly remainingToday: number | null;
 	readonly projectedDays: readonly number[];
 }

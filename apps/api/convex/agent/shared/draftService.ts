@@ -247,7 +247,7 @@ export async function generateDraftOptions(
 // ─── Primary draft generation (the extracted core) ───────────────────────────
 
 /** Classification signals rendered into the (separate, uncached) system message. */
-export type DraftClassificationBlock = Readonly<{
+type DraftClassificationBlock = Readonly<{
 	category: string;
 	intent: string;
 	sentiment: string;

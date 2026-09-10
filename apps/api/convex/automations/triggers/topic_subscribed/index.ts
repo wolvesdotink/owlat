@@ -1,10 +1,7 @@
 import type { Id } from '../../../_generated/dataModel';
-import type {
-	TopicSubscribedFireInput,
-	TriggerModule,
-} from '../types';
+import type { TopicSubscribedFireInput, TriggerModule } from '../types';
 
-export interface TopicSubscribedConfig {
+interface TopicSubscribedConfig {
 	topicId: string;
 }
 
@@ -15,7 +12,12 @@ export const topicSubscribedTrigger: TriggerModule<
 > = {
 	kind: 'topic_subscribed',
 	parseConfig(raw) {
-		if (raw && typeof raw === 'object' && 'topicId' in raw && typeof (raw as { topicId: unknown }).topicId === 'string') {
+		if (
+			raw &&
+			typeof raw === 'object' &&
+			'topicId' in raw &&
+			typeof (raw as { topicId: unknown }).topicId === 'string'
+		) {
 			return { topicId: (raw as { topicId: string }).topicId };
 		}
 		return null;

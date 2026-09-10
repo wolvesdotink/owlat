@@ -62,7 +62,7 @@ export const TALLY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const RETENTION_BATCH = 200;
 
 /** The shape the dominance predicate needs from a tally row. */
-export interface TallyLike {
+interface TallyLike {
 	verb: MailTriageVerb;
 	count: number;
 	sessions: number;
@@ -70,7 +70,7 @@ export interface TallyLike {
 	actedFilterId?: unknown;
 }
 
-export interface TriageSuggestion {
+interface TriageSuggestion {
 	verb: MailTriageVerb;
 	count: number;
 	/** Everything tallied for this sender, so the UI can be honest about share. */

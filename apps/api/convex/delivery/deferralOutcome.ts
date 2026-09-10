@@ -91,7 +91,7 @@ import {
  * row and the effect runner records nothing for it, which is still an
  * observation this send and day have been processed.
  */
-export type RecordDeferralOutcomeResult =
+type RecordDeferralOutcomeResult =
 	| 'observed'
 	| 'already_observed_today'
 	| 'send_missing'
@@ -178,7 +178,7 @@ async function stampAndRecordDeferralDay(
 }
 
 /** Where a RELAY-reported deferral ended up — returned, never thrown. */
-export type RecordRelayDeferralResult = RecordDeferralOutcomeResult | 'send_not_found';
+type RecordRelayDeferralResult = RecordDeferralOutcomeResult | 'send_not_found';
 
 /**
  * THE SECOND WRITER the module docstring said there could be: a deferral a
