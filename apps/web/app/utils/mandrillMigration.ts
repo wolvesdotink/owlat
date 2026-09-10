@@ -7,7 +7,7 @@
  * same queries the screen subscribes to. The page renders it; it decides
  * nothing.
  *
- * THE SHAPE THE PRESET WRITES (plan §10, D8). A migration is not a per-stream
+ * THE SHAPE THE PRESET WRITES (plan §10). A migration is not a per-stream
  * experiment: the runbook moves the deployment, so all three message types get
  * the same treatment — `adaptive_mix` over `[mta, mandrill]` with Mandrill named
  * as the deliverability-fallback relay — and all three streams get the
@@ -16,7 +16,7 @@
  * rather than a new backend mutation that would duplicate two shipped
  * permission checks and two shipped audit trails.
  *
- * THE ONE RULE THE FLOW POLICES (D8). The alignment machinery wants EXACTLY ONE
+ * THE ONE RULE THE FLOW POLICES. The alignment machinery wants EXACTLY ONE
  * reference relay. A second enabled relay does not fail the write — it degrades
  * measurement confidence, which holds the ramp at ownShare 0 while looking
  * perfectly healthy — so it is surfaced here as a warning naming the kinds, and
@@ -57,7 +57,7 @@ const MIGRATION_OWN_KIND = 'mta';
 export const MIGRATION_MESSAGE_TYPES = ['transactional', 'campaign', 'automation'] as const;
 export type MigrationMessageType = (typeof MIGRATION_MESSAGE_TYPES)[number];
 
-/** Migrations ramp at the cautious pace (plan P4.2). */
+/** Migrations ramp at the cautious pace. */
 export const MIGRATION_RAMP_PRESET = 'conservative';
 
 const MIGRATION_STEP_IDS = ['connect', 'history', 'domain', 'preset', 'watch'] as const;

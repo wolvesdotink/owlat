@@ -14,7 +14,7 @@
  * piece exists to eliminate — a third promotion path (a future integration)
  * would then be a third `if` rather than a fourth row.
  *
- * PURE (plan D15): the clock, the evidence and the target rung are parameters.
+ * PURE: the clock, the evidence and the target rung are parameters.
  *
  * D2 STILL HOLDS. No route is reachable only with an external account: the
  * standalone route exists precisely so a deployment with zero third-party

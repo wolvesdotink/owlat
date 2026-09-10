@@ -102,7 +102,7 @@ export type ApiVerifiedSendProviderKind = Extract<
  * exactly when the manifest declared a feedback `webhook` (the seams plan's
  * P3.1) — so `hasProviderFeedbackFor` answers true for plugin kinds too and the
  * governed boundary takes the `awaitingFeedback` branch for them. That
- * promise is kept by the generated `/webhooks/plugin/<pluginId>` surface (P2.2),
+ * promise is kept by the generated `/webhooks/plugin/<pluginId>` surface,
  * not by this mapped-type guard, which is why the tier stays outside the
  * `Extract` rather than being missing from it by oversight.
  */
@@ -120,7 +120,7 @@ const pluginCatalog =
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG as readonly GeneratedSendTransportCatalogEntry[];
 
 /**
- * THE UNTYPED TIER FAILS CLOSED TOO (the seams plan's P0.1 / D2).
+ * THE UNTYPED TIER FAILS CLOSED TOO.
  *
  * {@link CoreSendProviderCatalogEntry} makes the two dangerous declarations a
  * BUILD BREAK for the five kinds that ship in this repo, but bundled plugin
@@ -170,7 +170,7 @@ function assertPluginDispatchSemanticsAreGeneral(
 }
 
 /**
- * THE RETURN-PATH CLAIM, RE-ASSERTED ON THE ARTIFACT (the seams plan's P3.1).
+ * THE RETURN-PATH CLAIM, RE-ASSERTED ON THE ARTIFACT.
  *
  * `supportsCustomReturnPath` says our own bounce processor can attribute this
  * transport's bounces, and only `no` is true of a bundled one. Both other values
@@ -210,7 +210,7 @@ function assertPluginReturnPathClaimsAreHonest(
 }
 
 /**
- * THE CONFIGURATION CONTRACT, RE-ASSERTED (the seams plan's P3.1) — the namespace
+ * THE CONFIGURATION CONTRACT, RE-ASSERTED — the namespace
  * a declared variable lives in, and how many of them there may be.
  *
  * `instanceEnvVars` is the one plugin declaration whose VALUES the host reads and
@@ -314,7 +314,7 @@ export const SEND_PROVIDER_KINDS = Object.freeze(SEND_PROVIDER_CATALOG.map((entr
 
 /**
  * Re-exported from the catalog's own package rather than restated: the predicate
- * and the list it reads are one declaration (D1).
+ * and the list it reads are one declaration.
  */
 export { isCoreSendProviderKind };
 
@@ -369,7 +369,7 @@ export function hasProviderFeedbackFor(kind: SendProviderKind): boolean {
  * mistaken for custody the transport never took.
  *
  * This is the capability that replaced `providerKind === 'mta'` at the two
- * acceptance sites in `delivery/governedDispatch.ts` (the seams plan's D2).
+ * acceptance sites in `delivery/governedDispatch.ts`.
  */
 export function acceptanceSemanticsFor(kind: SendProviderKind): AcceptanceSemantics {
 	return acceptanceSemanticsOf(sendProviderCatalogEntry(kind));

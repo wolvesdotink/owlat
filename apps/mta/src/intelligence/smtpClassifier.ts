@@ -20,7 +20,7 @@ import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting
  * re-exported here so every existing importer keeps working unchanged.
  *
  * It moved because it grew a SECOND consumer in another deployable: the ramp
- * controller's standalone gate suite (plan D2/D14) treats a subset of these
+ * controller's standalone gate suite treats a subset of these
  * categories — the ones that mean "the receiver is refusing this sending
  * identity" rather than "slow down" — as a hard stop. Two independent spellings
  * of the same names across two apps would drift silently, and the failure mode

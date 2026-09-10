@@ -31,7 +31,7 @@ import { relayIdentityProviderFor } from '../../domains/providers';
  * an unverifiable relay simply never gets handed the domain, and the routing gate
  * turns that into an actionable `DeliverabilityRouteError`.
  *
- * THE REGISTRY IS THE COMPOSED ONE (the seams plan's P3.2), so a bundled plugin
+ * THE REGISTRY IS THE COMPOSED ONE, so a bundled plugin
  * transport that contributed a `domainIdentity` answers here exactly as `ses` and
  * `mandrill` do — same call, same fail-closed default, no branch on tier. This
  * file has named no provider since P0.3 and it still names none.

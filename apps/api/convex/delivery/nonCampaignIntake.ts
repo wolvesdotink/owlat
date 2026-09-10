@@ -210,7 +210,7 @@ export const intake = internalMutation({
 			{}
 		);
 
-		// Experiment record (plan D7), same transaction, before dispatch. An
+		// Experiment record, same transaction, before dispatch. An
 		// automation step is the `automation` stream; an agent 1:1 reply is
 		// `transactional` — the same table the route resolution above read, so the
 		// new cell axis and the envelope's shipped `messageType` cannot drift.

@@ -299,7 +299,7 @@ function hasPostmasterObservation(signals: PostmasterDomainSignals): boolean {
 }
 
 /**
- * Google Postmaster Tools as a signal source (plan D9).
+ * Google Postmaster Tools as a signal source.
  *
  * ADVISORY, in the shared vocabulary's sense of the word: the reading is
  * recorded and readable and moves nothing by itself. No gate folds a Postmaster

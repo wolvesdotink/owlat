@@ -1,5 +1,5 @@
 /**
- * PUTTING A CELL ON THE RAMP — the opt-in (plan D1, D3, D14).
+ * PUTTING A CELL ON THE RAMP — the opt-in.
  *
  * NOTHING ELSE WRITES A CELL'S FIRST SHARE. The MTA snapshot writes STREAM-LESS
  * rows and never an `ownShare`; the controller reads `ownShare === undefined` as
@@ -92,7 +92,7 @@ interface RampEnrollmentResult {
 	readonly refusal?: RampControlRefusal;
 	/** The share the cell now starts from. Absent on a refusal. */
 	readonly share?: number;
-	/** Which setup path the deployment enrolled on (plan D14). Absent on a refusal. */
+	/** Which setup path the deployment enrolled on. Absent on a refusal. */
 	readonly path?: RampSetupPathId;
 	/**
 	 * Whether the stream's route splits traffic by that share TODAY. False means
@@ -239,7 +239,7 @@ function enrollmentMessage(args: {
  * cell enrolled without an anchor would depend on a backfill to ever be
  * promotable.
  *
- * `mixVersion` advances because enrolment IS a mix generation (plan D7): on the
+ * `mixVersion` advances because enrolment IS a mix generation: on the
  * ESP path the cell's recipients are being assigned to two arms for the first
  * time, and a cell re-enrolled after a spell off the ramp must not reuse the
  * previous generation's assignment. It advances on the PACE path too, where
@@ -279,7 +279,7 @@ async function writeEnrolledCell(
 	const { organizationId, cell, perStream, share, phaseCeiling, now } = args;
 	const rampFields = {
 		ownShare: share,
-		// The derived boolean view of the share stays consistent with it (plan D1).
+		// The derived boolean view of the share stays consistent with it.
 		isFallbackActive: isFallbackActiveForShare(share),
 		phaseCeiling,
 		phaseCeilingSince: now,

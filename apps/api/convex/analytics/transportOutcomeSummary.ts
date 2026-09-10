@@ -1,10 +1,10 @@
 /**
- * Transport outcomes — the PURE core (plan D5, D15).
+ * Transport outcomes — the PURE core.
  *
  * Everything in this file is a total function of its arguments: no clock, no
  * database, no environment. Two decisions live here and nowhere else:
  *
- *   1. WHICH COUNTER an event bumps (including the calibration twin, plan D8),
+ *   1. WHICH COUNTER an event bumps (including the calibration twin),
  *      and which Send lifecycle transition is a transport outcome at all;
  *   2. HOW A WINDOW OF BUCKETS BECOMES A SUMMARY — the ONE place a rate is
  *      computed. Rates are DERIVED ON READ and never stored (ADR-0042), so the
@@ -85,7 +85,7 @@ const GENERAL_COUNTER_FOR_EVENT: Readonly<Record<TransportOutcomeEvent, Transpor
 	};
 
 /**
- * The calibration slice (plan D8) is counted SEPARATELY — it is the ONLY input
+ * The calibration slice is counted SEPARATELY — it is the ONLY input
  * to the engagement-ratio gate, because stratified assignment biases every other
  * comparison. Only the three counters the gate reads have a calibration twin;
  * a calibration bounce is still a bounce and belongs in the general counter.
@@ -237,7 +237,7 @@ export interface TransportOutcomeSummary extends TransportOutcomeTotals {
 	/**
 	 * Freshness: the newest `lastRecordedAt` across the summed buckets, or
 	 * `null` when the window is empty. The controller may only INCREASE on fresh
-	 * evidence (plan D9/D10), and it learns how fresh the evidence is through
+	 * evidence, and it learns how fresh the evidence is through
 	 * this one read seam rather than by re-reading the raw rows.
 	 */
 	readonly lastRecordedAt: number | null;

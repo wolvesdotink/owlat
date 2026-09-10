@@ -1,5 +1,5 @@
 /**
- * THE PACE ACTUATOR'S READS (plan D3, D13, D15).
+ * THE PACE ACTUATOR'S READS.
  *
  * `rampControllerCron.ts` decides and writes; this module is everything the
  * SECOND actuator reads — the stored dial on the route-state row, the
@@ -11,9 +11,9 @@
  * WHY NOT IN `delivery/ramp/`: that directory is the PURE core and its purity
  * guard forbids a clock or a database handle in any file it finds.
  *
- * ABSENCE IS A SUPPORTED CONFIGURATION (plan D2). No warming state, a stale
+ * ABSENCE IS A SUPPORTED CONFIGURATION. No warming state, a stale
  * sync, a graduated pool, a cell that has never been evaluated: every one of
- * them answers "unknown", the actuator HOLDS on it (plan D10), and nothing
+ * them answers "unknown", the actuator HOLDS on it, and nothing
  * throws, blocks or warns.
  */
 
@@ -41,10 +41,9 @@ type Ctx = MutationCtx | QueryCtx;
  * buy the day's +STEP. That is the exact rule the one sanctioned D19 change
  * exists to enforce — an unexercised cap is not evidence of anything.
  *
- * The /ip-reputation sync runs every five minutes, so this is a handful of
- * missed syncs and no more. Past it the reading is `unknown`, the actuator HOLDS
- * (plan D10), and a broken measurement pipe slows the ramp instead of steering
- * it.
+ * The /ip-reputation sync runs every five minutes, so this is a handful of missed syncs and no
+ * more. Past it the reading is `unknown`, the actuator HOLDS, and a broken measurement pipe slows
+ * the ramp instead of steering it.
  */
 const WARMING_STATE_MAX_AGE_MS = 30 * 60 * 1000;
 
@@ -79,7 +78,7 @@ export function readPaceState(row: Doc<'deliverabilityRouteStates'>): PaceState 
  *
  * Summed over the ACTIVE CAMPAIGN IPs, which is the population the warming
  * schedule the dial modifies actually governs. A missing, stale or capless
- * reading answers `unknown`, which HOLDS the dial (plan D10) — it never reads as
+ * reading answers `unknown`, which HOLDS the dial — it never reads as
  * "the cap was not exercised", because those are different facts and only the
  * second one is evidence.
  */
@@ -118,7 +117,7 @@ export async function loadPaceUtilisation(
  *
  * ONLY A RETREAT REACHES THIS FAR, and that is correct rather than a shortfall:
  * the published base warming schedule is a HARD CEILING the controller may never
- * exceed for the day (plan D19), and the projection is already stated in terms
+ * exceed for the day, and the projection is already stated in terms
  * of that ceiling. The dial's increase range buys per-(IP x mailboxProvider)
  * headroom BELOW the IP's published cap, which is enforced inside the MTA's
  * own provider store — so it neither can nor should lift this pool-wide number.
@@ -152,7 +151,7 @@ export async function loadCampaignPaceMultiplier(
 	for (const row of rows) {
 		const stored = row?.paceMultiplier;
 		// An absent dial is the published schedule, unmodified; an unreadable one
-		// is not a reason to slow a deployment down (plan D2).
+		// is not a reason to slow a deployment down.
 		if (stored === undefined || !Number.isFinite(stored) || stored <= 0) continue;
 		smallest = Math.min(smallest, stored);
 	}
@@ -177,7 +176,7 @@ export function applyPaceToCapacityByDay(byDay: readonly number[], multiplier: n
 	//     which is the campaign-facing cap Convex itself meters, so a retreat
 	//     shortens today's slice on the very next walker hop.
 	//   · m > 1 (increase) is NOT applied here and MUST NOT BE: the published base
-	//     schedule is a HARD CEILING for the current day (plan D19) and this
+	//     schedule is a HARD CEILING for the current day and this
 	//     projection is stated in terms of it. The increase buys per-(IP x
 	//     mailboxProvider) headroom BELOW that published cap, which lives in the
 	//     MTA's own provider store — publishing the dial into that store is a NEW

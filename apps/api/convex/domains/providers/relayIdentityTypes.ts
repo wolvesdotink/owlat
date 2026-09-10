@@ -52,7 +52,7 @@ export type EnsureRelayIdentityOptions = {
  * The three relay seams, keyed by a `string` rather than by a member of
  * `SendingDomainProviderKind` (`./types.ts`).
  *
- * WHY IT EXISTS (the seams plan's P3.2). A bundled plugin transport can now
+ * WHY IT EXISTS. A bundled plugin transport can now
  * contribute a sending-domain identity, and its kind is `plugin.<id>.<local>` —
  * a value no static union can hold, since the set is decided by
  * `plugins.config.ts` at composition time. But that is only half the reason; the

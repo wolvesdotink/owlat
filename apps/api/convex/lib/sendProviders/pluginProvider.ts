@@ -88,7 +88,7 @@ export function createHostedSendProvider(
 		kind,
 		retryDelays: Object.freeze([...retryDelays]),
 		/**
-		 * THE RECORD IS READ NOW (the seams plan's P3.1). A hosted transport that
+		 * THE RECORD IS READ NOW. A hosted transport that
 		 * declared configuration of its own is sent through the instance the id
 		 * named: the host resolves that instance's variables — the base names for
 		 * the default instance, the `__<INSTANCEKEY>`-suffixed ones for a named one

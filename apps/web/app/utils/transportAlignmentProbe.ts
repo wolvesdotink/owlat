@@ -1,5 +1,5 @@
 /**
- * Live-DNS gather for the transport wizard's alignment step (P2-4).
+ * Live-DNS gather for the transport wizard's alignment step.
  *
  * The DECISION is not made here. This module resolves the three TXT names the
  * shipped pre-flight reads — the From domain, `_dmarc.<from>` and one

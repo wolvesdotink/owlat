@@ -29,7 +29,7 @@
  * feedback loop, and a retreat would shrink the ceiling that justifies the next
  * retreat.
  *
- * ABSENCE IS A SUPPORTED CONFIGURATION (plan D2): no organization, no dial, an
+ * ABSENCE IS A SUPPORTED CONFIGURATION: no organization, no dial, an
  * unreadable dial — every one of them returns the projection untouched, and the
  * campaign behaves exactly as it did before the dial existed.
  */
@@ -81,7 +81,7 @@ export async function loadPacedWarmingCapacity(
  *
  * A fresh install with no organization is a supported configuration and not an
  * error: no row can match the empty id, so the dial reads as unmodified and the
- * projection passes through (plan D2).
+ * projection passes through.
  */
 async function resolveOrganizationId(ctx: Ctx): Promise<string> {
 	try {

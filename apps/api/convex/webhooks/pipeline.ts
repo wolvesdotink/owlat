@@ -7,7 +7,7 @@
  * Replaces the verify/parse/audit/dispatch ceremony that each provider's own
  * HTTP entry point used to open-code. The send-provider half of those entry
  * points is now one parameterized dispatcher over one registry
- * (`./providerFeedbackHttp.ts` + `./adapters/index.ts`, the seams plan's P2.1);
+ * (`./providerFeedbackHttp.ts` + `./adapters/index.ts`);
  * the channel half still registers a handler per vendor (`./channels.ts`).
  */
 

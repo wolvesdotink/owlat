@@ -156,7 +156,7 @@ type StreamSubdomainWizardResult =
  * DKIM row for a transport that cannot dispatch. `isSendProviderReady` is the
  * shipped check both the route resolver and the worker use.
  *
- * Absence stays entirely non-blocking (D2): it removes one DKIM row from the
+ * Absence stays entirely non-blocking: it removes one DKIM row from the
  * table and changes nothing else.
  */
 async function referenceTransportConfigured(ctx: QueryCtx): Promise<boolean> {

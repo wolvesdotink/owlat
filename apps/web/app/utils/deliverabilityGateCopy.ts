@@ -14,7 +14,7 @@
  * / plan D5) and this module formats the number it was handed.
  *
  * STATES ARE THE FEATURE: `insufficient_data` is not a failure, and nothing that
- * is merely UNMEASURED is ever rendered in an error tone (plan D2).
+ * is merely UNMEASURED is ever rendered in an error tone.
  *
  * "THE CHECKS' WINDOW", NEVER "THIS WINDOW". Every number here is the
  * evaluator's, over the DECIDING span, under a card whose table covers the wider
@@ -44,10 +44,9 @@ export type GateStatus = DeliverabilityDashboardGate['status'];
  * How each verdict is presented — its TONE and its WORDS, decided together in
  * one table rather than in two switches over the same union.
  *
- * The pairing is the point: `insufficient_data` reads "Not enough data yet" and
- * is rendered NEUTRAL, because the measurement is thin and thin is not broken
- * (plan D10/D2). Splitting tone and label across two functions is how a status
- * ends up with alarming colour and calm words.
+ * The pairing is the point: `insufficient_data` reads "Not enough data yet" and is rendered
+ * NEUTRAL, because the measurement is thin and thin is not broken. Splitting tone and label across
+ * two functions is how a status ends up with alarming colour and calm words.
  */
 const GATE_STATUS_PRESENTATION = {
 	pass: { tone: 'ok', label: 'shared.deliverabilityMeasurement.gateStatus.pass' },
@@ -101,7 +100,7 @@ function unitKey(base: string, unit: 'probes' | 'sends'): string {
 
 /**
  * THE SEED GATE'S DECIDED SENTENCE — status words and PROBE COUNTS, and no
- * share of anything (plan D17).
+ * share of anything.
  *
  * SEEDS ARE A TRIPWIRE, NOT A GAUGE, and the two modules that produce the
  * reading enforce that on their own side: `seedPlacementGate.ts` keeps both

@@ -1,5 +1,5 @@
 /**
- * BIMI — OFFERED, never required, never a nag (P4-7).
+ * BIMI — OFFERED, never required, never a nag.
  *
  * BIMI puts a brand logo next to the message at participating receivers, and it
  * is meaningful ONLY once DMARC is actually enforcing: the spec requires the

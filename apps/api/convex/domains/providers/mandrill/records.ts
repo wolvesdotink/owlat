@@ -9,7 +9,7 @@
  * include. SES mints per-domain DKIM tokens and a per-identity verification
  * token, so its records can only be remembered; Mandrill's can only be derived.
  *
- * Pure and dependency-light on purpose: the domain-setup UI (P3.2) renders the
+ * Pure and dependency-light on purpose: the domain-setup UI renders the
  * same records from the same helper rather than reading them back out of a row
  * that could disagree with what we actually told Mandrill.
  */

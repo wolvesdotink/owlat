@@ -1,5 +1,5 @@
 /**
- * THE ONLY WAY A PHASE CEILING RISES (plan D3, D12).
+ * THE ONLY WAY A PHASE CEILING RISES.
  *
  * A promotion moves the two things that matter most: it raises the rung the AIMD
  * ladder may climb to, and — on the ESP path — it re-randomises which arm every
@@ -75,7 +75,7 @@ type RampPhasePromotion =
 	| {
 			readonly status: 'outstanding';
 			readonly phaseCeiling: number;
-			/** Every applicable route's unmet conditions, by name (plan D12/D14). */
+			/** Every applicable route's unmet conditions, by name. */
 			readonly outstanding: readonly PromotionConditionId[];
 	  }
 	| { readonly status: 'refused'; readonly refusal: RampControlRefusal };
@@ -128,12 +128,12 @@ export async function applyRampPhasePromotion(
 	// for a no-op would cost the comparison its continuity for nothing.
 	if (phaseCeiling === current) return { status: 'at_top', phaseCeiling, share };
 
-	// CROSSING THE 0.5 CEILING IS EVIDENCE-GATED (plan D3), and the rule is a
+	// CROSSING THE 0.5 CEILING IS EVIDENCE-GATED, and the rule is a
 	// table of ROUTES rather than a branch: either an external reading for this
 	// cell within the last 7 days, or the four corroborating self-hosted
 	// conditions. Below that line no route is consulted and the promotion is the
 	// ordinary ladder step it has always been — so a deployment with no external
-	// account is slowed, never stopped (plan D2).
+	// account is slowed, never stopped.
 	const degradation = await loadCellDegradation(ctx, { organizationId, cell, now });
 	const promotion = evaluatePhasePromotion({
 		targetCeiling: phaseCeiling,
@@ -150,7 +150,7 @@ export async function applyRampPhasePromotion(
 	if (!promotion.allowed) {
 		// NOT AN ERROR AND NOT A FAILURE — the cell keeps ramping at its current
 		// rung. The outstanding conditions travel back by name so the screen can
-		// say what would unlock it (plan D12/D14).
+		// say what would unlock it.
 		return {
 			status: 'outstanding',
 			phaseCeiling: current,

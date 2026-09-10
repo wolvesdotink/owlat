@@ -1,5 +1,5 @@
 /**
- * Send assignments — the experiment record (ADR-0054 §8, plan D7 / D16).
+ * Send assignments — the experiment record (ADR-0054 §8).
  *
  * Send rows record `providerType` POST-HOC, from the dispatch result. That is
  * enough to know what happened to one message and not enough to compare two
@@ -58,7 +58,7 @@ import {
 // surface: it is what the write-amplification regression asserts against.
 export { destinationProvidersForEmails } from './sendAssignmentRouting';
 
-/** Assignment rows age out after 90 days (D16 — write amplification is bounded). */
+/** Assignment rows age out after 90 days (write amplification is bounded). */
 export const SEND_ASSIGNMENT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** Rows deleted per retention tick; the sweep re-schedules itself while full. */
@@ -135,7 +135,7 @@ export interface SendAssignmentRecipient {
 	readonly sendId: string;
 	readonly email: string;
 	/**
-	 * THE per-recipient salt for the deterministic mix split (D7). Absent for a
+	 * THE per-recipient salt for the deterministic mix split. Absent for a
 	 * send with no contact row (a preview, an agent reply to an unknown
 	 * address); the split then salts with `sendId`, which is stable, unique and
 	 * uncorrelated with anything — see `MixRecipientIdentity.fallbackKey`.
@@ -147,7 +147,7 @@ export interface SendAssignmentRecipient {
 	 * percentile helper — this module never re-implements scoring.
 	 *
 	 * A producer may NOT hand in a ready-made percentile. A supplied rank would
-	 * bypass the minimum-cohort rule ("thin data holds", D10) and the band
+	 * bypass the minimum-cohort rule ("thin data holds") and the band
 	 * treatment the cohort path applies, and there is no caller that knows a
 	 * percentile the batch does not: the ranking cohort IS the batch.
 	 *
@@ -208,7 +208,7 @@ interface RecordSendAssignmentsInput {
 	readonly routing: SendAssignmentRouting;
 	readonly recipients: readonly SendAssignmentRecipient[];
 	/**
-	 * THE anti-cohort salt (D7). Salting the split with `contactId` alone would
+	 * THE anti-cohort salt. Salting the split with `contactId` alone would
 	 * pin a contact to one arm forever and turn the two arms into two fixed
 	 * cohorts, so every ratio the controller reads would compare cohort quality
 	 * instead of transport quality. A campaign passes its campaign id; a
@@ -312,7 +312,7 @@ export async function recordSendAssignments(
  * tenant-scoped lookup — a second copy of this index expression is a copy that
  * will be missed when the index or the `.first()` choice changes. A consumer
  * that needs it over the wire wraps THIS; do not add a second query shell for
- * it before something calls one (D20).
+ * it before something calls one.
  *
  * Org-leading: a caller holding another tenant's send id still gets nothing.
  */
@@ -328,7 +328,7 @@ export async function readAssignmentForSend(
 }
 
 /**
- * Retention sweep (D16). Indexed, bounded, and self-resuming: deletes the
+ * Retention sweep. Indexed, bounded, and self-resuming: deletes the
  * oldest expired rows through `by_assigned_at` and reschedules itself while a
  * tick comes back full, so a large backlog drains across ticks instead of
  * blowing one transaction.

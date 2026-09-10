@@ -9,7 +9,7 @@
  * normal pipeline (categorize / needs-reply / agent / knowledge / search all keep
  * working); the sealed original is retained as the raw `.eml`. The body is
  * decrypted with the recipient's vault key, the signature is verified against the
- * discovered/pinned SENDER key, and the protected headers (real Subject, D4) are
+ * discovered/pinned SENDER key, and the protected headers (real Subject) are
  * restored from the inner MIME.
  *
  * FAILURE HONESTY (asserted in tests): a message we cannot decrypt (no usable
@@ -208,7 +208,7 @@ export const openInboundForMailbox = internalAction({
 /**
  * INTERNAL: decrypt a sealed inbound message on the AI-inbox path and hand the
  * PLAINTEXT to `inbox.messages.receiveMessage`, so the agent pipeline + the
- * unified-timeline mirror consume decrypted text (D3). Called by
+ * unified-timeline mirror consume decrypted text. Called by
  * `webhooks/dispatcher.ts` when an inbound event carries an armored ciphertext.
  * On a decrypt failure the ORIGINAL (ciphertext) body is passed through with the
  * `sealed` flag but NO signature claim — the reader's existing "Encrypted" path.
@@ -267,7 +267,7 @@ export const decryptAndReceive = internalAction({
 			const restored = parseInnerMessage(outcome.innerMime);
 			if (restored.subject !== undefined) subject = restored.subject;
 			// The decrypted plaintext REPLACES the ciphertext body so the agent
-			// pipeline + the unified mirror consume real text (D3). Fail-safe: only
+			// pipeline + the unified mirror consume real text. Fail-safe: only
 			// replace when the restore yields a usable body — see usableRestoredBodies.
 			const bodies = usableRestoredBodies(restored);
 			if (bodies) {

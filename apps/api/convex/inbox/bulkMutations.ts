@@ -1,5 +1,5 @@
 /**
- * Bulk review-queue decisions (adoption-gaps piece C2, decision D6).
+ * Bulk review-queue decisions.
  *
  * Batch counterparts to the single-message mutations in `./mutations.ts`,
  * backing the review queue's multi-select: `approveDrafts` / `rejectDrafts`
@@ -9,7 +9,7 @@
  * (approve feedback records later, at send-fire time — see
  * `decisionFeedback.recordApprovalSignalsAtSend`), and every approve in a
  * batch shares one undo window
- * (`agentConfig.humanApproveUndoDelayMs`, piece C1) — cancelled per id through
+ * (`agentConfig.humanApproveUndoDelayMs`) — cancelled per id through
  * the companion `undoAutoSends`.
  *
  * A sibling of `mutations.ts` rather than more lines in it: that file already
@@ -35,7 +35,7 @@ import { recordAutonomyFeedback, resolveReplyCollisionHold } from './decisionFee
 const BULK_DECISION_LIMIT = 50;
 
 /** Per-id outcome of a bulk approve — `approved` queued the send; the other
- * arms are the honest partial-failure vocabulary (decision D6). */
+ * arms are the honest partial-failure vocabulary. */
 type ApproveOutcome =
 	| { inboundMessageId: Id<'inboundMessages'>; outcome: 'approved' }
 	| { inboundMessageId: Id<'inboundMessages'>; outcome: 'no_draft' }

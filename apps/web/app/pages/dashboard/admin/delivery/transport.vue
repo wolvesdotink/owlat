@@ -42,7 +42,7 @@ const canSend = computed(() => status.value?.canSend === true);
 // Provider feedback loop -----------------------------------------------------
 // WHICH panel (if any) this transport's feedback channel needs, and where the
 // provider posts — both are declarations on its catalog entry, resolved by
-// `providerFeedbackPanel` (the seams plan's D2: capabilities, not identity). The
+// `providerFeedbackPanel` (capabilities, not identity). The
 // page therefore names no provider: a sixth one gets the panel its declaration
 // earns, and a kind whose channel needs nothing from the operator — our own MTA,
 // which we wire ourselves — renders none, exactly as before.
@@ -106,7 +106,7 @@ const envSetCommand = computed(() => {
 });
 
 
-// Transport connection wizard (P2-4) — an OFFER, never a to-do item (plan D2).
+// Transport connection wizard — an OFFER, never a to-do item.
 // Both reads are DNS-facing and non-secret, and both are answered ENTIRELY on
 // the server: which domain we sign as, and which transport is the REFERENCE arm,
 // are facts about the `domains` table and the configured transport surface, not
@@ -246,7 +246,7 @@ const {
 
 				<!-- Optional guided "connect an ESP" flow: credentials → live send test
 				     → live-DNS alignment → return-path capability. Skipping it leaves the
-				     deployment fully functional on its own MTA (plan D2), so it renders as
+				     deployment fully functional on its own MTA, so it renders as
 				     a plain offer with no warning state of any kind. -->
 				<DeliveryTransportConnectionWizard
 					:alignment-arms="alignmentArms"
@@ -339,7 +339,7 @@ const {
 							</p>
 						</div>
 						<!-- The kinds this build carries, from the catalog: a provider added
-						     there is offered here without an edit (plan D1). -->
+						     there is offered here without an edit. -->
 						<I18nT
 							v-else
 							keypath="dashboard.admin.delivery.transport.config.selectProvider"

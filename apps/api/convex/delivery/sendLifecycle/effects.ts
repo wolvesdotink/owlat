@@ -93,7 +93,7 @@ export type Effect =
 			domain?: string;
 	  }
 	| {
-			// Per-cell, per-arm DELIVERABILITY counter (plan D5). Reuses this
+			// Per-cell, per-arm DELIVERABILITY counter. Reuses this
 			// existing effect list rather than a parallel event stream: the cell
 			// and arm are learned by joining the send to its `sendAssignments`
 			// row, and a send without one records nothing.

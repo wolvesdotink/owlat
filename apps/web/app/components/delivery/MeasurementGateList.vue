@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * The per-gate status list for one ramp cell (plan D12, D14).
+ * The per-gate status list for one ramp cell.
  *
  * Every gate is rendered WITH the numbers that produced its verdict, because a
  * verdict nobody can check is not a measurement. A gate that is holding renders
  * in a neutral tone and says how far off its floor it is — "not enough data
- * yet, 124 of 400 sends in the checks' window" — never as a failure (D10/D2).
+ * yet, 124 of 400 sends in the checks' window" — never as a failure.
  *
  * AND WITH THE SPAN THOSE NUMBERS ARE OVER, which is NOT the window the cards
  * around this list report. Every verdict here is reached over the ramp
@@ -28,7 +28,7 @@ import type { DeliverabilityDashboardGate } from '~/utils/deliverabilityMeasurem
 
 const props = defineProps<{
 	gates: readonly DeliverabilityDashboardGate[];
-	/** Named so the corroboration caveat (D17) can point at the right gate. */
+	/** Named so the corroboration caveat can point at the right gate. */
 	failedGate: DeliverabilityDashboardGate['gate'] | null;
 	requiresCorroboration: boolean;
 	/**

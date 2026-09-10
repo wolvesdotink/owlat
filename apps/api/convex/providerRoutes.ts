@@ -33,7 +33,7 @@ import { internalMutation } from './_generated/server';
  *
  * Each organization can configure which email provider — any
  * `SendTransportKind` the catalog declares, core or plugin; the kinds are not
- * re-listed here (ADR-0055, D10) — to use for each message type (campaign,
+ * re-listed here (ADR-0055) — to use for each message type (campaign,
  * transactional, automation).
  */
 
@@ -287,7 +287,7 @@ export const listRelayDomainIdentities = authedQuery({
  * Cursor drain used when fallback is enabled; future domains use lifecycle
  * provisioning.
  *
- * WHICH relay is a PARAMETER, not a literal (plan D2). This mutation used to
+ * WHICH relay is a PARAMETER, not a literal. This mutation used to
  * name `sendingDomainSesIdentities` and `domains.sesRelay.provision` directly,
  * which was correct only for as long as SES was the one relay a route could
  * name. Since the fallback gate became a capability question, `resend`, `smtp`
@@ -417,7 +417,7 @@ export const setRoute = authedMutation({
 		}
 		const fallback = args.deliverabilityFallback;
 		if (fallback?.isEnabled) {
-			// THE SAME QUESTION ROUTING ASKS (D6). `resolveRoute` gates the relay on
+			// THE SAME QUESTION ROUTING ASKS. `resolveRoute` gates the relay on
 			// `isFallbackRelayEligible`; this gate used to be
 			// `relayProviderType !== 'ses'`, a list of one. Two different rules for
 			// one decision is how a route becomes unsaveable through the mutation

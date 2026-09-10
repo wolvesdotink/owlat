@@ -10,7 +10,7 @@
  * number is the failure mode ADR-0042 was written about; a dashboard and its own
  * server disagreeing is the same bug one layer up.
  *
- * NOTHING HERE READS A CLOCK, A DATABASE OR AN ENVIRONMENT (plan D15). `now` is
+ * NOTHING HERE READS A CLOCK, A DATABASE OR AN ENVIRONMENT. `now` is
  * a parameter, the series is a parameter, and every degenerate input — an empty
  * series, a single point, a flat line, a retreating line, a NaN — has a named
  * answer rather than an exception.
@@ -18,7 +18,7 @@
  * D2 LIVES HERE TOO. A deployment with no reference transport has no relay to
  * become independent OF: the projection returns `already_independent` and the
  * spend figure is simply absent. Neither is an error, a warning or an incomplete
- * setup — the screen renames itself (plan D14) and carries on.
+ * setup — the screen renames itself and carries on.
  */
 
 import type { DeliverabilityStream } from './deliverabilityRouting';
@@ -182,7 +182,7 @@ function fitDailySlope(
  *
  * `hasReferenceTransport === false` short-circuits to `already_independent`
  * BEFORE any arithmetic: with no relay there is no spend to end and no date to
- * project, and that is the supported standalone configuration (plan D2), not a
+ * project, and that is the supported standalone configuration, not a
  * missing measurement.
  */
 export function projectIndependenceDate(input: {
@@ -248,7 +248,7 @@ export function ownSendsSince(points: readonly IndependenceDayPoint[], sinceDay:
 	return total;
 }
 
-// ============ THE PRESETS (plan D9) ============
+// ============ THE PRESETS ============
 
 export const RAMP_PRESET_KEYS = ['conservative', 'balanced', 'aggressive'] as const;
 export type RampPreset = (typeof RAMP_PRESET_KEYS)[number];
@@ -262,7 +262,7 @@ export type RampPreset = (typeof RAMP_PRESET_KEYS)[number];
  * running the same controller it ran yesterday, and the preset is a knob over
  * `RAMP_STREAM_CONFIGS` rather than a fork of it.
  *
- * The asymmetry is the plan's (D9): a preset may make the ADVANCE cheaper or
+ * The asymmetry is the plan's: a preset may make the ADVANCE cheaper or
  * dearer and may never touch the RETREAT. Multiplicative decrease, the floor,
  * the cooldown ladder and every hard stop are outside a preset's reach by
  * construction — there is no field here that could express them.

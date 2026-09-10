@@ -1,5 +1,5 @@
 /**
- * THE INDEPENDENCE SCREEN'S ONE READ (plan D2, D5, D14, P3-6).
+ * THE INDEPENDENCE SCREEN'S ONE READ.
  *
  * This is the screen people screenshot: the share of mail their own server
  * carries, how it has moved, when they stop paying, and what they have not spent
@@ -37,7 +37,7 @@
  * union's degradation half would put an `unsafe` removal warning on a genuinely
  * standalone deployment that has no relay to remove.
  *
- * THE PRICE COMES FROM SETTINGS, NOT FROM A NEW TABLE (plan D4). An admin
+ * THE PRICE COMES FROM SETTINGS, NOT FROM A NEW TABLE. An admin
  * records what their relay charges per thousand messages on the existing
  * `instanceSettings` row (Settings → Delivery, and the Controls screen links
  * there); unset is the ordinary state and costs the screen one line of copy
@@ -135,7 +135,7 @@ export interface IndependenceSummary {
  * sanitiser the one summarizer applies — rather than re-summarized per day per
  * cell, which would run the full derivation 900 times to read one field. No rate
  * is computed here; every rate on the delivery screens still comes off the
- * summarizer (plan D5).
+ * summarizer.
  */
 async function readIndependenceSeries(
 	ctx: QueryCtx,
@@ -154,7 +154,7 @@ async function readIndependenceSeries(
 	// them in a loop made thirty round trips serial for no reason.
 	//
 	// The reference arm is not read at all on a standalone deployment: there is no
-	// second arm, so those fifteen ranges could only ever come back empty (D2).
+	// second arm, so those fifteen ranges could only ever come back empty.
 	// THE SKIP KEYS ON "IS THERE A RELAY AT ALL", never on "is there exactly one
 	// to name" (#513): under the narrower reading a two-relay deployment skipped
 	// the reads, and the relay's sends went missing from the denominator rather
@@ -278,7 +278,7 @@ export const getIndependenceSummary = authedQuery({
 			relayRemoval: isRelayConfigured
 				? assessRelayRemoval({ cells, projection })
 				: // NO RELAY AT ALL: nothing to remove, so nothing to warn about. Not an
-					// error, not a "setup incomplete" — the supported standalone shape (D2),
+					// error, not a "setup incomplete" — the supported standalone shape,
 					// and the only configuration that may reach this branch. Two relay kinds
 					// took it too until #513, and `safe` is what the apply-transport endpoint
 					// skips its confirmation phrase on.

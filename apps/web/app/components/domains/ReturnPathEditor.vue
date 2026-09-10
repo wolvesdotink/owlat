@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Return-path (bounce) host editor for an expanded domain row (piece D3).
+ * Return-path (bounce) host editor for an expanded domain row.
  *
  * Extracted from RecordRow.vue: the row was already near the ~500-LOC cap, and
  * the editor is a self-contained widget (its own toggle, input, validation and

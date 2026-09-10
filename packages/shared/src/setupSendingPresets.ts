@@ -5,7 +5,7 @@
  *
  * The per-provider DATA this used to declare beside that rule — the SMTP relay
  * presets and the env-key allowlist — is now derived from the send-provider
- * catalog (`./sendProviderCatalog`, the seams plan's D1). What stays here is the
+ * catalog (`./sendProviderCatalog`). What stays here is the
  * POLICY: the allowlist's two ends, the From-identity exception, and
  * {@link planTransportEnvChange}.
  */

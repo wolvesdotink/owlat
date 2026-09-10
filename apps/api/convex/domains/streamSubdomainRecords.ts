@@ -106,7 +106,7 @@ export type StreamSubdomainRecord =
 	| (StreamSubdomainRecordBase & {
 			purpose: 'dkim';
 			type: 'TXT';
-			/** Which arm signs with this selector (D11). */
+			/** Which arm signs with this selector. */
 			arm: TransportArm;
 			key: StreamSubdomainDkimKey;
 	  })
@@ -450,7 +450,7 @@ interface UnpublishedSigningSelector {
  *
  * Only arms that actually PUBLISH a selector are checked — a pending row names
  * no selector, and standalone there is no reference row at all. Both absences
- * are supported configurations (D2), not violations.
+ * are supported configurations, not violations.
  */
 export function findUnpublishedSigningSelectors(
 	recordSet: StreamSubdomainRecordSet

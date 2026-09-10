@@ -1,5 +1,5 @@
 /**
- * Pure toast-copy builders for the Review Queue's bulk actions (piece C2).
+ * Pure toast-copy builders for the Review Queue's bulk actions.
  * The bulk mutations return one outcome PER id (never throwing on partial
  * failure — decision D6), and these keep the partial results honest in one
  * shared line: "8 approved, 2 held — Dana is replying, 1 had no draft".

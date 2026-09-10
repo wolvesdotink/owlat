@@ -1,5 +1,5 @@
 /**
- * RFC 6376 §3.4 DKIM canonicalization — a PUBLIC API (locked decision D4).
+ * RFC 6376 §3.4 DKIM canonicalization — a PUBLIC API.
  *
  * Both the inbound verifier (`dkim/verify.ts`) and the outbound signer
  * (repointed in piece A3), plus any future ARC implementation, consume this

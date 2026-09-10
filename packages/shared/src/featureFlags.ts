@@ -767,7 +767,7 @@ export function getActiveProfiles(
 	// hosted send. The receiving cases add the 'mta' profile via their
 	// dockerProfiles; the provider case is env-driven, so it is added here.
 	//
-	// TWO VOCABULARIES, one spelling. The question is the OWN-ARM one (D3) and is
+	// TWO VOCABULARIES, one spelling. The question is the OWN-ARM one and is
 	// asked through the catalog's declaration; the string added is a docker
 	// COMPOSE PROFILE name, which belongs to compose and moves only when the
 	// compose file does.
@@ -820,7 +820,7 @@ export function needsDeliveryProvider(
  * The delivery-provider kinds the bulk send path can route through, selected by
  * the `EMAIL_PROVIDER` env var.
  *
- * DERIVED from the send-provider catalog (the seams plan's D1), not a local
+ * DERIVED from the send-provider catalog, not a local
  * list: this was the second of two declarations of the same union inside THIS
  * package, and the two did not import each other. `./sendProviderCatalog` is
  * data only, so the module stays browser-safe.

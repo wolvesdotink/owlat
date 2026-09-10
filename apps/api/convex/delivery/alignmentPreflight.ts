@@ -1,5 +1,5 @@
 /**
- * Dual-transport alignment pre-flight — state half (P3-5).
+ * Dual-transport alignment pre-flight — state half.
  *
  * Reads the sending domains that are due for a re-check, assembles each one's
  * two ARMS from the SHIPPED surfaces — the `domains` identity tables, the
@@ -101,14 +101,14 @@ function undescribableRelayDetail(domain: string, relayKinds: readonly string[])
 }
 
 /**
- * The second arm. `none` is the standalone deployment (D2). `unknown` is a relay
+ * The second arm. `none` is the standalone deployment. `unknown` is a relay
  * we cannot describe — one we have no verified signing identity for, or more
  * than one at once — and it HOLDS rather than opening the gate.
  *
  * REGISTRY-DRIVEN since P3.1. This used to read
  * `relayKinds[0] === 'ses' && sesIdentity !== null`, which quietly made "a
  * describable second arm" mean "is SES": a deployment migrating from Mandrill —
- * the exact configuration the ramp exists to serve (D8) — reported `unknown`
+ * the exact configuration the ramp exists to serve — reported `unknown`
  * forever and could never leave s=0, however verified its relay was. The
  * question is now put to the sending-domain provider for the relay's kind
  * (`describeReferenceArm`), so a provider ships its own arm the same way it
@@ -147,7 +147,7 @@ async function referenceFor(
  *    an operator could do about a "no DKIM key published" verdict. Recording
  *    `blocked` for it would manufacture a permanent, unactionable error state for
  *    a supported configuration.
- *  - A domain with NO reference transport (D2) has no second arm. The evaluator
+ *  - A domain with NO reference transport has no second arm. The evaluator
  *    short-circuits that case without reading a single DNS fact, and the gate
  *    answers it from the live transport surface rather than from a row, so
  *    gathering DNS and writing a `single_arm` row would be three live TXT lookups
@@ -290,7 +290,7 @@ export const recordAlignmentResult = internalMutation({
 
 /**
  * The two ARMS for one sending domain, for the transport connection wizard's
- * live alignment step (P2-4).
+ * live alignment step.
  *
  * The wizard runs the SHIPPED pure evaluator in the browser against live DNS
  * (DNS-over-HTTPS — Convex queries cannot resolve DNS), so it needs the same
@@ -352,7 +352,7 @@ export const getAlignmentArms = authedQuery({
  * Readiness-card view of the alignment pre-flight, consumed by the delivery
  * readiness panel (`apps/web/app/utils/deliveryReadiness.ts`). A standalone
  * domain has no row here at all, so it contributes nothing to the card — the
- * panel renders a gate only when a reference transport is really in play (D2).
+ * panel renders a gate only when a reference transport is really in play.
  * A leftover `single_arm` row (written before the sweep stopped producing them)
  * is reported as a PASS with plain copy — never a warning, never a nag.
  */

@@ -1,5 +1,5 @@
 /**
- * Ramp controller — the GATE EVALUATION CORE (plan D9, D10, D12, D15).
+ * Ramp controller — the GATE EVALUATION CORE.
  *
  * This is where the controller's correctness lives. Everything here is a pure,
  * total function of its arguments: no clock, no database, no environment, no
@@ -8,7 +8,7 @@
  * instead of against production.
  *
  * WHAT A GATE RETURNS. Not a boolean — a verdict TOGETHER WITH THE NUMBERS THAT
- * PRODUCED IT (plan D12). The audit row and the delivery dashboard both render
+ * PRODUCED IT. The audit row and the delivery dashboard both render
  * those numbers, so the measurement is part of the return type rather than
  * something the caller reconstructs (and reconstructs differently in two
  * places, which is exactly how a controller and a dashboard come to disagree).

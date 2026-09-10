@@ -64,7 +64,7 @@
  * One validator family is the point. A renderer that already knows how to draw a
  * plugin's `secret` field draws a core provider's the same way, and the two
  * tiers converge rather than diverge when plugin transports gain capability
- * metadata (the seams plan's P3.1). The composites earn their place by carrying
+ * metadata. The composites earn their place by carrying
  * a RELATIONSHIP the base kinds cannot express and a renderer would otherwise
  * have to hard-code per vendor: a region belongs to the provider's own closed
  * set of region identifiers, and a relay endpoint is host + port + implicit-TLS

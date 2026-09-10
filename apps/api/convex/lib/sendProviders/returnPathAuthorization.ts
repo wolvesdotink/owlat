@@ -54,7 +54,7 @@ interface ReturnPathAuthorizationInput {
  *
  * Total and fail-closed: a missing host, no configured terms, an unverified,
  * stale or clock-skewed proof all return `false`, which means "do not stamp" —
- * a degraded measurement, never an error and never a blocked send (plan D2).
+ * a degraded measurement, never an error and never a blocked send.
  */
 export function returnPathAuthorizesRelay(input: ReturnPathAuthorizationInput): boolean {
 	if (!input.host || input.relaySpfTerms.length === 0) return false;

@@ -1,5 +1,5 @@
 /**
- * Suppression carry-over — the write half of a migration import (plan D9).
+ * Suppression carry-over — the write half of a migration import.
  *
  * A team arriving from Mailchimp/Mandrill brings years of accumulated recipient
  * truth with them: people who unsubscribed, addresses that hard-bounced, people

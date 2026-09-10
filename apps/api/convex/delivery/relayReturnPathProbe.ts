@@ -67,15 +67,14 @@ function isProbeableTransport(transport: SendTransportRecord): boolean {
  * probes it on a plain built-in-MTA install with no relay at all: the send
  * fails on the missing credentials and the transport is recorded `unsupported`
  * / `rejected_by_relay` — a permanently misleading operator-facing verdict
- * about a relay that does not exist. Absence is a supported configuration
- * (plan D2), so the probe simply does not run.
+ * about a relay that does not exist. Absence is a supported configuration, so the probe simply does not run.
  */
 function isConfiguredTransport(transport: SendTransportRecord): boolean {
 	return providerKindConfigured(transport.kind);
 }
 
 /**
- * THE PROBE RIDES THE PROBED TRANSPORT'S OWN WIRE (plan D5) — the invariant this
+ * THE PROBE RIDES THE PROBED TRANSPORT'S OWN WIRE — the invariant this
  * lookup exists to enforce.
  *
  * A verdict is written against ONE `transportId`, so the send that produced it

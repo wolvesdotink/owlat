@@ -15,7 +15,7 @@
  * deliberate, not a compatibility shim: the kind does not disappear, it is one
  * field of the resolved transport record.
  *
- * There is deliberately NO transports table (plan D4). The catalog
+ * There is deliberately NO transports table. The catalog
  * (`./catalog.ts`, fed by `plugins/sendTransportCatalog.generated.ts`) already
  * answers "which transports exist and what config do they need"; a second
  * credential model would be a competing abstraction.

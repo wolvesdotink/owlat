@@ -2,7 +2,7 @@
  * THE RAMP CONTROLLER'S WRITE PATH — the only place a decision becomes a row.
  *
  * Split out of `rampControllerCron.ts` so the cron is the SHELL the plan says it
- * is (D15: load, call the pure functions, write): the read half already lives in
+ * is (load, call the pure functions, write): the read half already lives in
  * `rampControllerInputs.ts`, and this is its sibling on the way out. Nothing
  * here decides anything — every value written was produced by a pure decision
  * function upstream.
@@ -200,12 +200,12 @@ function shareFields(
  * shared between them would let a share cooldown suppress a pace retreat for a
  * reason the pace gates never measured.
  *
- * `paceLastEvaluatedUtcDay` MOVES ONLY ON A COUNTED DAY (plan D19). An
+ * `paceLastEvaluatedUtcDay` MOVES ONLY ON A COUNTED DAY. An
  * evaluation that held — thin evidence, an unexercised cap, or the composition
  * interlock deferring the step — deliberately leaves the anchor where it found
  * it, so a later tick the same day can still evaluate that day once.
  *
- * `paceDeferredAt` IS THE INTERLOCK'S MEMORY (plan D3). It is stamped on the
+ * `paceDeferredAt` IS THE INTERLOCK'S MEMORY. It is stamped on the
  * tick the interlock fired and left alone otherwise — including on the tick that
  * finally takes the deferred step, because the rung that reads it is written
  * against elapsed time and not against a flag anyone has to remember to clear.

@@ -1,5 +1,5 @@
 /**
- * THE SIGNAL-SOURCE REGISTRY (seams plan D9) — one inventory of where this
+ * THE SIGNAL-SOURCE REGISTRY — one inventory of where this
  * deployment's deliverability evidence comes from.
  *
  * WHAT THE REGISTRY IS FOR. Not dispatch: the ramp's own measurements are

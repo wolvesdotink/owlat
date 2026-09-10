@@ -15,7 +15,7 @@ export const integrationTables = {
 	integrationImports: defineTable({
 		// Widening a literal union is additive: every existing row still
 		// deserializes. `mandrill` runs carry no contacts at all — they import the
-		// account's rejection blacklist (plan D9).
+		// account's rejection blacklist.
 		provider: v.union(v.literal('mailchimp'), v.literal('stripe'), v.literal('mandrill')),
 		status: v.union(v.literal('running'), v.literal('completed'), v.literal('failed')),
 		// Pagination state
@@ -28,7 +28,7 @@ export const integrationTables = {
 		errors: v.array(v.string()),
 		totalEstimate: v.optional(v.number()),
 		// AGGREGATED — per-disposition tally of the suppression carry-over half of
-		// this run (plan D9). Absent on every contacts-only run, including every
+		// this run. Absent on every contacts-only run, including every
 		// row written before P4.1. Written only by the walker's per-page
 		// accumulation; the terminal hop reports it once as
 		// `blocklist.provider_import_summary`.

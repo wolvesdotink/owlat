@@ -1,5 +1,5 @@
 /**
- * The AIMD controller's constants (ADR-0054 §4, plan D9).
+ * The AIMD controller's constants (ADR-0054 §4).
  *
  * THE ASYMMETRY IS THE WHOLE POINT: cheap to retreat, expensive to advance. An
  * increase costs three consecutive clean windows and moves a few percentage
@@ -28,7 +28,7 @@ import { DAY_MS, HOUR_MS } from '../../lib/constants';
  * THE COOLDOWN LADDER'S INPUTS, and nothing else.
  *
  * Narrowed from `RampMixState` deliberately: BOTH actuators climb the same
- * ladder (plan D3 — one controller, two actuators), and the pace actuator's
+ * ladder (one controller, two actuators), and the pace actuator's
  * stored state is not a mix state. Taking the two fields the rule actually
  * reads is what lets the ladder stay one function instead of two copies that
  * can drift apart. `RampMixState` and `PaceState` both satisfy it structurally.
@@ -135,7 +135,7 @@ export const RAMP_MAX_FREEZE_MS: number = Math.max(
 );
 
 /**
- * The cooldown ladder (plan D9): 6h, DOUBLING when the breach repeats within 24h
+ * The cooldown ladder: 6h, DOUBLING when the breach repeats within 24h
  * of the previous freeze's EXPIRY, capped at 48h.
  *
  * THE ANCHOR IS THE EXPIRY, AND THAT IS THE WHOLE RULE. A ladder freeze lasts

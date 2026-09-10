@@ -1,5 +1,5 @@
 /**
- * Placement adapter — ONE interface, exactly TWO implementations (P4-7).
+ * Placement adapter — ONE interface, exactly TWO implementations.
  *
  * P2-6 shipped the self-hosted seed-mailbox placement probe and gate 5 on top
  * of it. This module generalises the SOURCE of that evidence behind a small
@@ -11,7 +11,7 @@
  *   - `commercialPlacementApiAdapter` — a commercial panel. STRICTLY AN
  *     UPGRADE.
  *
- * TWO implementations, not N (D20 — Speculative Generality is blocking): there
+ * TWO implementations, not N (Speculative Generality is blocking): there
  * is no registry, no dynamic discovery, no `register()` hook. The union of
  * evidence shapes is CLOSED and lives here; adding a third source would mean
  * editing this file, which is exactly the friction we want.
@@ -21,14 +21,14 @@
  * change", because seeds are the expected configuration rather than a degraded
  * one. Nothing here throws, blocks a send, blocks a phase promotion, or renders
  * an error state. The only thing an absent SOURCE can do is leave gate 5 with
- * `insufficient_data`, which HOLDS the controller (D10).
+ * `insufficient_data`, which HOLDS the controller.
  *
  * D17 — the reading is a TRIPWIRE, not a gauge. The commercial adapter reports
  * mailbox COUNTS and is folded into the same `SeedObservation` roll-up as the
  * seeds, so neither source can produce a placement percentage and the two can
  * never disagree about what "collapse" means.
  *
- * Pure: no clock, no I/O, no env reads — every input is a parameter (D15).
+ * Pure: no clock, no I/O, no env reads — every input is a parameter.
  */
 
 import type { DestinationProviderKey } from './deliverabilityRouting';
@@ -121,7 +121,7 @@ export const MAX_PANEL_REPORTS = 50;
  * Clamp a mailbox count from an untrusted source to a non-negative integer no
  * larger than `cap`. Junk (non-number, non-finite, negative, fractional) reads
  * as the nearest sane count rather than throwing — a bad panel response may not
- * take a screen or a controller tick down (D2).
+ * take a screen or a controller tick down.
  */
 function nonNegativeMailboxCount(value: number | undefined, cap: number): number {
 	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0;
@@ -193,7 +193,7 @@ export interface PlacementSourceConfig {
 
 /**
  * The one advisory this resolution may carry. It is a HINT rendered next to a
- * measurement-confidence label (D14), never an error, never a "setup
+ * measurement-confidence label, never an error, never a "setup
  * incomplete" nag, and never a reason to withhold a screen or a send.
  */
 export type PlacementImprovementHint = 'none' | 'add_seed_mailboxes';

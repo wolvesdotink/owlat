@@ -1,5 +1,5 @@
 /**
- * THE CEILING GATE — one cascade, four specs (plan D15).
+ * THE CEILING GATE — one cascade, four specs.
  *
  * Gates 1 and 3 are the same gate with different numbers: "the own arm is under
  * an absolute ceiling AND is not worse than the series we compare it against".
@@ -14,7 +14,7 @@
  * different, and they would disagree only in production — which is precisely the
  * degraded-path rot this module exists to prevent.
  *
- * PURE (plan D15): `now` is a parameter, nothing reads a clock, a database or the
+ * PURE: `now` is a parameter, nothing reads a clock, a database or the
  * environment.
  */
 
@@ -115,7 +115,7 @@ interface CeilingSecondSeries {
  *
  * `reference_tolerance_breached` names a second transport to go and look at;
  * `trailing_baseline_breached` names the cell's own past. Both reach the audit
- * row (plan D12), the admin notification and `gateExplanation`, so telling a
+ * row, the admin notification and `gateExplanation`, so telling a
  * standalone deployment that its relay drifted sends an operator after a relay
  * that does not exist.
  *
@@ -315,7 +315,7 @@ export function evaluateCeilingGate(
 
 /**
  * CAN A RELATIVE CEILING BE COMPUTED FROM THIS SERIES, AND CAN THE RESULT FAIL
- * ANYTHING? Two ways it cannot, and both must HOLD rather than decide (plan D10).
+ * ANYTHING? Two ways it cannot, and both must HOLD rather than decide.
  *
  * 1. A ZERO SECOND RATE IS A DIVISION BY ZERO WEARING A MULTIPLICATION'S CLOTHES.
  *    `safeRate(0)` is a perfectly good rate and `armEvidence` only counts SENDS,

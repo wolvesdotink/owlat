@@ -54,7 +54,7 @@ export const transportOutcomeTables = {
 		clicked: v.number(),
 		unsubscribed: v.number(),
 
-		// The randomized calibration slice (plan D8) is counted SEPARATELY, not
+		// The randomized calibration slice is counted SEPARATELY, not
 		// as a subset a reader has to remember to exclude: the engagement-ratio
 		// gate reads ONLY the calibration slice, because stratified assignment
 		// destroys the causal comparison. A summarizer that folded these into the

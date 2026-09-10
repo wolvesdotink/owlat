@@ -1,5 +1,5 @@
 /**
- * THE CELLS AND CONTROLS SCREENS' READS (plan D12, D14, P3-6).
+ * THE CELLS AND CONTROLS SCREENS' READS.
  *
  * THE BINDING CONSTRAINT IS NOT DERIVED HERE — IT IS READ. The controller
  * already records, for every evaluation including the no-ops, which rung bounded
@@ -12,7 +12,7 @@
  *
  * A CELL WITH NO DECISIONS IS NOT AN ERROR. Most cells in most deployments have
  * never been ramp-managed; they render as "not on the ramp yet", calmly, with no
- * warning styling and nothing to fix (plan D2).
+ * warning styling and nothing to fix.
  */
 
 import { v } from 'convex/values';
@@ -64,7 +64,7 @@ interface RampCellDecisionView {
 	readonly reason: RampDecisionReason;
 	readonly message: string;
 	readonly failedGate: RampGateId | null;
-	/** Present only on a decrease with a named cause — the admin notice (D12). */
+	/** Present only on a decrease with a named cause — the admin notice. */
 	readonly adminNotice: string | null;
 	readonly frozenUntil: number | null;
 }
@@ -312,7 +312,7 @@ export interface RampAdminNotice {
 }
 
 /**
- * EVERY DECREASE NAMES THE GATE THAT BROKE AND WHAT TO DO ABOUT IT (plan D12).
+ * EVERY DECREASE NAMES THE GATE THAT BROKE AND WHAT TO DO ABOUT IT.
  *
  * The notice text is the controller's own — `rampDecisionAdminNotice` composed
  * it when the decision was made, and it is read back verbatim. Composing a

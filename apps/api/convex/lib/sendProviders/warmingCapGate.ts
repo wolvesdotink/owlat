@@ -8,7 +8,7 @@
  * route resolution with the relay-identity proof, which is a distinct concern
  * from resolving where a single message goes.
  *
- * WHAT THIS SEAM CANNOT DO, said out loud (D14). The stream's own-arm FLOOR is
+ * WHAT THIS SEAM CANNOT DO, said out loud. The stream's own-arm FLOOR is
  * zero as soon as ONE cell carries nothing on the own MTA — a stored share of 0,
  * or (see {@link campaignStreamShare}) a fresh actionable signal that the
  * dispatch path relays or defers the whole cell on — and a zero floor can never
@@ -107,7 +107,7 @@ export type WarmingCapNotBindingReason =
 	/**
 	 * Nothing is known about where campaigns dispatch: no enabled+ready route
 	 * entry AND no resolvable base route. This is genuinely MISSING DATA — the
-	 * send is allowed (D10: never act on thin data), but unlike the other two
+	 * send is allowed (never act on thin data), but unlike the other two
 	 * this one is worth surfacing as low measurement confidence rather than as
 	 * reassurance.
 	 */
@@ -227,7 +227,7 @@ const WHOLE_AUDIENCE_SHARE: OwnArmShareBounds = Object.freeze({
  * extreme.
  *
  * READS A WHOLE-ORGANIZATION RANGE, inside a send mutation: the OCC footprint
- * that buys is stated on `loadStreamRouteStateCells` (D16). A gate judging an
+ * that buys is stated on `loadStreamRouteStateCells`. A gate judging an
  * AUDIENCE has no single cell to point-read, so the range is what the question
  * costs. The pool-wide `'all'` row is one extra point read on top.
  */
@@ -251,7 +251,7 @@ async function campaignStreamShare(
 		// reading this module exists to remove — and it would be indistinguishable
 		// from an unconfigured deployment. It propagates instead, and the
 		// pre-flight's fail-open records it as `measurement_failed`: capacity
-		// unmeasured, send allowed, and said out loud (D12).
+		// unmeasured, send allowed, and said out loud.
 		if (extractOperationError(error)?.category !== 'forbidden') throw error;
 		return null;
 	}
@@ -294,7 +294,7 @@ function adaptiveMixDispatch(
 	// reference transport, so no campaign byte meets the cap.
 	if (!enabledKinds.includes(OWN_ARM_TRANSPORT_KIND)) return { why: 'not_own_mta' };
 	// ONE ARM CONFIGURED IS NOT A MIX. With no reference transport enabled+ready
-	// the strategy's additive-only rule (D2) sends the whole cell on the own MTA
+	// the strategy's additive-only rule sends the whole cell on the own MTA
 	// however low the stored share is, so the cap binds against ALL of it.
 	if (enabledKinds.every((kind) => kind === OWN_ARM_TRANSPORT_KIND)) {
 		return { ownArmShare: WHOLE_AUDIENCE_SHARE };
@@ -386,7 +386,7 @@ async function campaignDispatchSurface(
 
 	// The deterministic tail, and the env fallback for the two strategies above.
 	// With no base route either, nothing is known about where campaigns dispatch:
-	// hold and allow (D10).
+	// hold and allow.
 	if (!input.baseRoute) return { why: 'dispatch_unknown' };
 	if (input.baseRoute.providerType !== OWN_ARM_TRANSPORT_KIND) return { why: 'not_own_mta' };
 	return { ownArmShare: WHOLE_AUDIENCE_SHARE };

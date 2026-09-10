@@ -1,6 +1,6 @@
 /**
  * THE COMPOSITION ORDER — one controller, two actuators, a FIXED order between
- * them (plan D3).
+ * them.
  *
  * When both actuators exist they do NOT compose commutatively:
  *
@@ -60,7 +60,7 @@ export interface ComposedActuators {
 	 * Whether the interlock held the pace increase back this window. Recorded
 	 * rather than inferred: `pace.reason` says `share_moved_first`, but a caller
 	 * writing an audit row should not have to compare a string to know that a
-	 * decision was overridden (plan D12).
+	 * decision was overridden.
 	 */
 	readonly isPaceDeferred: boolean;
 }

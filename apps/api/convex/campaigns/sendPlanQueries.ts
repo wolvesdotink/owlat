@@ -10,7 +10,7 @@
  * graduated deployment with no cap at all: every one of them answers "no day
  * budget", and the walker then sends exactly as the shipped single-day walker
  * always has. Capacity we could not measure has never been grounds to withhold
- * mail (plan D2).
+ * mail.
  */
 
 import { v } from 'convex/values';
@@ -27,7 +27,7 @@ import { campaignSendPlanProgress, type CampaignSendPlanProgress } from './sendP
  * pre-flight gate's budget: this count is advisory — it is the denominator of a
  * progress line, never a refusal — so it may not compete with the send hop's own
  * reads. A count that stops early yields a LOWER bound, which the copy says out
- * loud rather than rounding into a promise (plan D14).
+ * loud rather than rounding into a promise.
  */
 const PLAN_AUDIENCE_DOCUMENT_BUDGET = 3_000;
 
@@ -36,7 +36,7 @@ interface SendPlanCapacity {
 	/**
 	 * The audience size, or `null` when it was not counted on this hop.
 	 * `isPlannedTotalLowerBound` says WHICH OF TWO THINGS the number is: an
-	 * audience size, or the floor under one (plan D14). The distinction is
+	 * audience size, or the floor under one. The distinction is
 	 * load-bearing — a lower bound may lengthen the plan, may never shorten it,
 	 * and may never be read as "the audience is finished".
 	 */

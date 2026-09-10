@@ -5,7 +5,7 @@
  * only LOADS the inputs (projection, audience size) and maps "we could not
  * measure" onto "allow the send".
  *
- * The governing rule: NEVER refuse on missing data (plan D2/D10). No warming
+ * The governing rule: NEVER refuse on missing data. No warming
  * state, stale warming state, a graduated deployment with no cap, an audience
  * too large to count inside the read budget, or a projection with no positive
  * capacity at all ALL resolve to "capacity unknown → allow". Blocking a
@@ -42,7 +42,7 @@ type Ctx = MutationCtx | QueryCtx;
  * `campaigns.scheduling.schedule`, where an
  * unbounded segment scan would both exceed the Convex per-execution read limit
  * — turning a failure to MEASURE into a blocked SEND — and pull the whole live
- * contacts table into the mutation's OCC read set (D16).
+ * contacts table into the mutation's OCC read set.
  *
  * DERIVATION. Convex allows 16,384 documents read per function execution. The
  * budget is charged in DOCUMENTS, not rows, because a row is not one document:
@@ -129,7 +129,7 @@ export type CapacityUnknownReason =
 	 * not at its PEAK. Under a split route (`adaptive_mix`) how much of an
 	 * audience meets the warming cap depends on how it falls across the ramp
 	 * cells, and nothing has counted that: the campaign is neither provably
-	 * unfinishable (so refusing would be a false blocker, D2) nor provably fine
+	 * unfinishable (so refusing would be a false blocker) nor provably fine
 	 * (so claiming `capacityKnown: true` would be the exact tail-expiry this gate
 	 * exists to prevent). "Unmeasured" is the only honest answer, and it allows.
 	 */
@@ -187,7 +187,7 @@ async function measureCampaignCapacity(
 	// Under a split route (`adaptive_mix`) the reference arm's share of the
 	// audience relays out unmetered, so the warming projection bounds own-arm
 	// volume and nothing more — measuring the whole audience against it would
-	// quote a 95%-relayed campaign a multi-day plan it does not need (D2). But
+	// quote a 95%-relayed campaign a multi-day plan it does not need. But
 	// own-arm volume is `sum over cells of share_c x audience_c` and nothing has
 	// counted THIS audience by cell, so only two statements are sound: at least
 	// `floor x audience` messages meet the cap, and at most `peak x audience` do.
@@ -385,8 +385,7 @@ export function audienceCountCeiling(
  *  - A plan that fits is a MEASUREMENT only when the count was exact. "At least
  *    N recipients fit" says nothing about the audience behind the N, and calling
  *    it `capacityKnown: true` is precisely how a 2M-contact audience gets blessed
- *    off a count that stopped at 25,000. It is unmeasured — which still ALLOWS
- *    (D2), and says why.
+ *    off a count that stopped at 25,000. It is unmeasured — which still ALLOWS, and says why.
  *
  * `suppression_truncated` is excluded by TYPE rather than by branch: an
  * over-count bounds the audience in neither direction, so it may not license

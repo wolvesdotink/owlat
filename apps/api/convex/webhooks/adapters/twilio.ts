@@ -34,7 +34,7 @@ import type { InboundEvent } from '../types';
  * immediately followed by value, no separator).
  *
  * Delegates to the shared construction in `webhooks/security.ts`; Mandrill
- * signs the identical string under its own key (plan D10).
+ * signs the identical string under its own key.
  */
 export function twilioValidationString(url: string, params: Record<string, string>): string {
 	return urlAndSortedParamsSigningBase(url, params);

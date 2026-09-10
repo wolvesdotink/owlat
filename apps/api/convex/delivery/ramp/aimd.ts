@@ -19,7 +19,7 @@
 
 /** The bounds one actuator moves between. */
 interface AimdBounds {
-	/** The value a SOFT failure may never fall below (never fully zero, D9). */
+	/** The value a SOFT failure may never fall below (never fully zero). */
 	readonly floor: number;
 	/** The hard upper bound an increase may never exceed. */
 	readonly ceiling: number;
@@ -40,7 +40,7 @@ export function aimdClamp(value: number, floor: number, ceiling: number): number
 }
 
 /**
- * THE MULTIPLICATIVE DECREASE — cheap to retreat (plan D9).
+ * THE MULTIPLICATIVE DECREASE — cheap to retreat.
  *
  * `floor` is passed rather than assumed because the two callers genuinely
  * differ: a gate breach retreats to the SOFT floor (keep a trickle so the cell
@@ -57,7 +57,7 @@ export function aimdDecrease(
 }
 
 /**
- * THE ADDITIVE INCREASE — expensive to advance (plan D9), and bounded by the
+ * THE ADDITIVE INCREASE — expensive to advance, and bounded by the
  * ceiling in the same expression so no caller can add first and clamp later.
  *
  * Deliberately does NOT apply the floor: an increase that a floor had to rescue

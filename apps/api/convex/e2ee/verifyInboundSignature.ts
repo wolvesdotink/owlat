@@ -2,7 +2,7 @@
 
 /**
  * Inbound PGP signature verification — the `'use node'` plane of the F1
- * verification pipeline (adoption-gaps plan 2026-08-16, decision D9).
+ * verification pipeline (adoption-gaps plan 2026-08-16).
  *
  * A message that arrived SIGNED but not encrypted (RFC 3156 `multipart/signed`
  * or an inline clearsigned body) gets its signature verified at ingest:
@@ -18,7 +18,7 @@
  * refused key change, a tampered body, a malformed signature part, even an
  * internal verifier error — yields a persisted verdict with
  * `isSignatureValid: false`; NOTHING here ever throws into the ingest path, so
- * delivery is never blocked (D10: verification adds data, never routing).
+ * delivery is never blocked (verification adds data, never routing).
  *
  * The pure record vocabulary lives in the sibling `e2ee/inboundSignature.ts`;
  * the structural gates live in `@owlat/shared/secureMessage` (shared with the
@@ -143,7 +143,7 @@ type ResolvedSenderKey =
  * Resolve the sender's verification key through the SAME TOFU ladder sealed
  * mail uses (`e2ee/open.ts:resolvePinnedSenderKey`), extended with the key's
  * SOURCE for the persisted verdict and running discovery WKD-first
- * (`skipManifest`, D9). Fail-CLOSED throughout: a `keyChanged` conflict is
+ * (`skipManifest`). Fail-CLOSED throughout: a `keyChanged` conflict is
  * NEVER silently re-pinned, and any discovery error resolves to `notFound`
  * rather than a false claim.
  */

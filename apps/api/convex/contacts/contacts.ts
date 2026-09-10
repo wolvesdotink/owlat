@@ -724,7 +724,7 @@ export const listByTeam = internalQuery({
 });
 
 // ==========================================
-// RECONCILIATION (P0-3)
+// RECONCILIATION
 // Internal mutations for correcting cached contact count drift.
 // ==========================================
 

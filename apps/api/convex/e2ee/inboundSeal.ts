@@ -1,6 +1,6 @@
 /**
  * Inbound Sealed-Mail — the PURE decision + parsing core of decrypt-on-ingest
- * (Sealed Mail plan 2026-07-11, locked decision D3).
+ * (Sealed Mail plan 2026-07-11).
  *
  * NO `ctx`, NO db, NO network, NO `openpgp` — plain strings in, plain data out —
  * so the detection + protected-header restoration is fully unit-testable without
@@ -25,7 +25,7 @@ import { extractFirstPartByType } from '@owlat/shared/mailMime';
 
 /**
  * The cipher-suite label recorded for an opened sealed message. PGP/MIME (RFC
- * 9580 profile) is the only sealing profile today (locked decision D1); the
+ * 9580 profile) is the only sealing profile today; the
  * outbound record calls the same thing `algorithm: 'pgp-mime'`.
  */
 export const INBOUND_CIPHER_SUITE = 'pgp-mime';
@@ -103,7 +103,7 @@ interface RestoredMessage {
 
 /**
  * Restore the protected headers + bodies from a decrypted inner MIME message
- * (locked decision D4: the real Subject + body travel INSIDE the ciphertext).
+ * (the real Subject + body travel INSIDE the ciphertext).
  * Handles single-part `text/plain` / `text/html` and multipart bodies alike via
  * the shared MIME leaf extractor (which decodes transfer-encodings). Pure.
  */

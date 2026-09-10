@@ -177,7 +177,7 @@ export type InboundEvent =
 			suppression?: ProviderSuppression;
 	  }
 	| {
-			// Transient RELAY-side deferral (Mandrill `deferral`, plan D10). The
+			// Transient RELAY-side deferral (Mandrill `deferral`). The
 			// receiver 4xx'd AFTER the relay accepted the message for delivery, so
 			// the Send's own status is not in question — the relay keeps retrying —
 			// and the only thing this event moves is the (cell, arm) `deferred`
@@ -191,7 +191,7 @@ export type InboundEvent =
 	  }
 	| {
 			// The recipient left through the RELAY's own unsubscribe surface
-			// (Mandrill `unsub`, plan D10). It carries an ADDRESS and not a Send:
+			// (Mandrill `unsub`). It carries an ADDRESS and not a Send:
 			// the dispatcher joins it to a Contact and replays the ordinary public
 			// one-click unsubscribe, so relay-side and first-party departures reach
 			// the same membership delete, the same campaign counter and the same

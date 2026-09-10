@@ -15,7 +15,7 @@
  *
  * Pure module: no db, no clock, no env, no catalog. Every input is a parameter,
  * every function is total — a corrupt row or a skewed clock resolves to
- * "re-probe it", never to a throw and never to a wedged scheduler (plan D2).
+ * "re-probe it", never to a throw and never to a wedged scheduler.
  */
 
 /**

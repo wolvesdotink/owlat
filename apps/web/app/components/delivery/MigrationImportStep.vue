@@ -102,7 +102,7 @@ async function startMandrillSuppressions(): Promise<void> {
 	}
 	phase.value = 'suppressions';
 	// No credential field: the reject-list import reads MANDRILL_API_KEY from the
-	// deployment environment (plan D2), which is the key step 1 already checked.
+	// deployment environment, which is the key step 1 already checked.
 	const importId = await convex().mutation(api.integrationImports.walker.startIntegrationImport, {
 		config: { provider: 'mandrill' },
 		handleDuplicates: 'skip',

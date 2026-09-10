@@ -24,11 +24,11 @@
 import { randomBytes } from 'node:crypto';
 import * as openpgp from 'openpgp';
 
-/** The literal outer subject for a sealed message (locked decision D4). */
+/** The literal outer subject for a sealed message. */
 export const OUTER_SUBJECT_PLACEHOLDER = '...';
 
 interface SealMimeOptions {
-	/** Armored PUBLIC keys of every recipient (D2 — all-or-nothing; verified upstream). */
+	/** Armored PUBLIC keys of every recipient (all-or-nothing; verified upstream). */
 	recipientPublicKeysArmored: string[];
 	/** Armored PRIVATE key of the sender address (already opened from the vault). */
 	signingKeyArmored: string;

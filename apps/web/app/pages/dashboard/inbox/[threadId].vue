@@ -325,7 +325,7 @@ const onSaveEdit = async (messageId: Id<'inboundMessages'>) => {
 	}
 };
 
-// Inline Save (piece D1'): persist the edit as a draft revision WITHOUT
+// Inline Save: persist the edit as a draft revision WITHOUT
 // approving. The message stays in the review queue ("Saved · edited by you");
 // no collision hold applies because nothing is sent.
 const onSaveOnly = async (messageId: Id<'inboundMessages'>) => {

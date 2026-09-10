@@ -1,6 +1,6 @@
 /**
  * From "what a bundled plugin said" to "what the identity row holds" — the pure
- * half of the plugin sending-domain provider (the seams plan's P3.2).
+ * half of the plugin sending-domain provider.
  *
  * Its own file for the same reason `../mandrill/identity.ts` is: every rule here
  * is a JUDGEMENT that must be pinned by a test rather than exercised through a

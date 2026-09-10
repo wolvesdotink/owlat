@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * CELLS — the grid, and the evidence behind every verdict (plan D12, P3-6).
+ * CELLS — the grid, and the evidence behind every verdict.
  *
  * The grid answers the four questions an operator has about a cell: what share
  * it carries, what state it is in, what is holding it back, and what the

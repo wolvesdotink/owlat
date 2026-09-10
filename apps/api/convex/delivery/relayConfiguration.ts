@@ -91,7 +91,7 @@ export async function configuredRelayKinds(ctx: RelayReadCtx): Promise<string[]>
  *
  * A kind maps onto its DEFAULT transport id, which is the kind itself
  * (`defaultSendTransportId`); an id this deployment cannot resolve is resolved
- * by every caller to a degraded posture rather than an error (D2).
+ * by every caller to a degraded posture rather than an error.
  */
 export async function referenceRelayTransportId(ctx: RelayReadCtx): Promise<string | null> {
 	return referenceTransportIdOf(await configuredRelayKinds(ctx));

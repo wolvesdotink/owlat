@@ -15,7 +15,7 @@
  * with the one that actually moved it. What this module adds is ORDER — which of
  * fifteen cells to speak about first — and nothing else.
  *
- * AND NOTHING UNCONFIGURED IS A WARNING (plan D2). A deployment with no cell on
+ * AND NOTHING UNCONFIGURED IS A WARNING. A deployment with no cell on
  * the ramp is a deployment that has not made an optional choice yet; it gets an
  * invitation with a calm sentence, never a "setup incomplete".
  */

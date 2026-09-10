@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Admin surfacing point for access requests (piece b5).
+ * Admin surfacing point for access requests.
  *
  * A signed-in user who belongs to no organization hits the invite-only wall on
  * /setup/team and asks for access via `auth.accessRequest.request`. Those open

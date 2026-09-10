@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * "Move my mailbox here" — Node-runtime surface (piece c5).
+ * "Move my mailbox here" — Node-runtime surface.
  *
  * The live inbound-MX check that backs the cutover stage. It reads the domain
  * being moved and this deployment's inbound MX host authoritatively from the

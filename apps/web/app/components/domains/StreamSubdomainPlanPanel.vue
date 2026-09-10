@@ -260,7 +260,7 @@ const bimiOffers = computed(() =>
 				:domain="ready.domain"
 			/>
 			<!-- A value we could not publish as given: say which one, and stop.
-			     Still never a blocker — BIMI is an offer (D2). -->
+			     Still never a blocker — BIMI is an offer. -->
 			<p
 				v-else-if="entry.offer.rejectedInputs.length > 0"
 				class="mt-2 text-xs text-text-tertiary"

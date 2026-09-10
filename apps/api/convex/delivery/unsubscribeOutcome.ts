@@ -1,6 +1,5 @@
 /**
- * The `unsubscribed` transport outcome — the standalone twin's complaint proxy
- * (plan D5 / D10).
+ * The `unsubscribed` transport outcome — the standalone twin's complaint proxy.
  *
  * Every other outcome event is a property of ONE MESSAGE'S TRANSPORT, so the
  * Send lifecycle emits it next to the shipped counter it must agree with. An

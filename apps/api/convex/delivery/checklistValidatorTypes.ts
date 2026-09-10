@@ -39,14 +39,12 @@ import type { SendingDomainProviderKind } from '../domains/providers/types';
  * `as const` rather than annotated so the literal type survives to be asserted;
  * both assertions are paid at build time and cost nothing at runtime.
  *
- * NOT DEFINITIONAL: it is a statement about WHICH TABLE the context loader
- * reads, and it is deleted by the generic `sendingDomainRelayIdentities` read
- * (P1.2). It is enumerated under the `frozen-sibling-read` family, with that
- * owner, in `SURVIVING_KIND_LITERALS`
- * (`scripts/check-kind-literal-custody.ts`), which fails the
- * moment this declaration is deleted without the entry going with it. That map
- * is the register for kind DECLARATIONS in the backend; the P0.5 ratchet's
- * allowlist carries COMPARISONS, and this file is deliberately absent from it
+ * NOT DEFINITIONAL: it is a statement about WHICH TABLE the context loader reads, and it is deleted
+ * by the generic `sendingDomainRelayIdentities` read. It is enumerated under the
+ * `frozen-sibling-read` family, with that owner, in `SURVIVING_KIND_LITERALS`
+ * (`scripts/check-kind-literal-custody.ts`), which fails the moment this declaration is deleted
+ * without the entry going with it. That map is the register for kind DECLARATIONS in the backend;
+ * the P0.5 ratchet's allowlist carries COMPARISONS, and this file is deliberately absent from it
  * because it makes none.
  */
 export const RELAY_IDENTITY_PROOF_KIND = 'ses' as const;

@@ -6,7 +6,7 @@
  * draws with `Math.random()` on every call, so the same recipient can land on a
  * different transport at enqueue than at dispatch, and a recorded arm is a
  * guess. `adaptive_mix` decides per RECIPIENT, deterministically, from the
- * cell's controlled share (plan D7).
+ * cell's controlled share.
  *
  * The share it splits against is the D1 expression
  * (`ownShare ?? (isFallbackActive ? 0 : 1)`), resolved by the caller. That
@@ -63,7 +63,7 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * restating the literal.
  *
  * IT IS NOT A DECLARATION — it is a RE-EXPORT of the catalog's `tier: 'own'`
- * (`OWN_SEND_PROVIDER_KIND` in `@owlat/shared`, the seams plan's P1.1), which
+ * (`OWN_SEND_PROVIDER_KIND` in `@owlat/shared`), which
  * DERIVES the same fact from the entry declaring that tier. Before the catalog
  * moved, `apps/web`, `apps/setup-cli` and `packages/shared` — none of which may
  * import backend code — had no declaration to read and restated `=== 'mta'` in
@@ -78,7 +78,7 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * send-transport kinds, as opposed to the sending-domain provider kinds its twin
  * lives in. Same string, two unions.
  *
- * THE OWN-ARM SWEEP IS DONE (the seams plan's P0.4). Every site outside the
+ * THE OWN-ARM SWEEP IS DONE. Every site outside the
  * adapter folders that asked "is this our own MTA?" now reads this constant or
  * its domain-provider twin — the send lifecycle, the webhook dispatcher and the
  * complaint handler, delivery status, the seed-probe arm attribution in the
@@ -168,7 +168,7 @@ export const adaptiveMixStrategy: SendRouteStrategyModule<'adaptive_mix'> = {
 			decided !== null && decided.isCalibration && (own === undefined || reference === undefined)
 				? { ...decided, isCalibration: false }
 				: decided;
-		// THE ADDITIVE-ONLY THIRD-PARTY RULE (D2): a cell whose share says
+		// THE ADDITIVE-ONLY THIRD-PARTY RULE: a cell whose share says
 		// "reference" on a deployment with no reference transport configured
 		// still sends — on the own MTA. Absence of an external account lowers
 		// measurement confidence; it never blocks a send.

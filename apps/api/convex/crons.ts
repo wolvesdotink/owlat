@@ -98,7 +98,7 @@ crons.interval(
 	{}
 );
 
-// Sweep expired bundled-plugin replay claims (D6/P2.2). The claim mutation ages
+// Sweep expired bundled-plugin replay claims. The claim mutation ages
 // its own table out on the hot path, but only while deliveries keep arriving:
 // disabling a plugin or a provider going quiet strands whatever the last sweep
 // left. Rows expire within the signature contract's tolerance (≤ 15 minutes), so

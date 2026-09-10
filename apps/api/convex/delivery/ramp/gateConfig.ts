@@ -1,5 +1,5 @@
 /**
- * Ramp controller — units and per-stream constants (plan D6, D9, D10, D15).
+ * Ramp controller — units and per-stream constants.
  *
  * UNITS ARE A TYPE-LEVEL CONCERN. This module decides whether a deployment
  * ramps into the spam folder, and every threshold in the plan is quoted in two
@@ -45,22 +45,22 @@ export function ppToFraction(value: PercentagePoints): RateFraction {
 }
 
 /**
- * Which gates are OPTIONAL, declared ONCE (plan D2). Optionality is a fixed
+ * Which gates are OPTIONAL, declared ONCE. Optionality is a fixed
  * property of the gate, not of a particular evaluation: an optional gate's
  * `insufficient_data` never holds the ramp, because a deployment with no seed
  * mailboxes is a supported configuration rather than an incomplete setup. Its
  * `fail` still counts in full.
  *
  * The aggregator consults this by gate id rather than trusting a flag on the
- * result, so a caller-supplied result (the engagement gate, P1-5) cannot remove
+ * result, so a caller-supplied result (the engagement gate) cannot remove
  * itself from the ramp's holding logic by mislabelling itself.
  */
 export const OPTIONAL_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>(['seed_placement']);
 
 /**
- * Gates whose FAIL is a tripwire rather than a measurement (plan D17). Seeds are
+ * Gates whose FAIL is a tripwire rather than a measurement. Seeds are
  * 5-10 mailboxes: a collapse across all of them is actionable at any sample
- * size, but it is SUSPECT on its own and the controller (P3-2) must corroborate
+ * size, but it is SUSPECT on its own and the controller must corroborate
  * it against the deferral or bounce gate before acting.
  *
  * THIS SET ONLY NAMES THE GATES. What the flag MEANS is decided downstream:
@@ -79,7 +79,7 @@ export const CORROBORATION_REQUIRED_RAMP_GATES: ReadonlySet<RampGateId> = new Se
 ]);
 
 /**
- * Minimum samples (plan D10). A gate returning a verdict below its minimum
+ * Minimum samples. A gate returning a verdict below its minimum
  * sample is a defect, so every threshold carries the sample size at which it
  * first means anything.
  *
@@ -95,10 +95,10 @@ export interface RampGateSampleFloors {
 	readonly deferral: number;
 	/** Sends per arm before the complaint gate may return a verdict. */
 	readonly complaint: number;
-	/** Calibration-slice sends per arm for the concurrent engagement gate (D10). */
+	/** Calibration-slice sends per arm for the concurrent engagement gate. */
 	readonly engagement: number;
 	/**
-	 * Calibration-slice sends in the RECENT window of the slow-poison floor (D10).
+	 * Calibration-slice sends in the RECENT window of the slow-poison floor.
 	 *
 	 * A distinct knob from `engagement` even though the two currently agree: they
 	 * govern different windows (one evaluation window vs the trailing recent one)
@@ -128,7 +128,7 @@ export interface RampGateSampleFloors {
 	 */
 	readonly smtpBlock: number;
 	/**
-	 * Seeds per arm before the placement tripwire may return a verdict (D17).
+	 * Seeds per arm before the placement tripwire may return a verdict.
 	 *
 	 * DERIVED, not declared: the roll-up in `@owlat/shared/seedPlacement` is what
 	 * actually enforces it, and gate 5 reports this number beside the sample it
@@ -206,14 +206,14 @@ export interface RampGateThresholds {
 	 * roll-up that applies them lives. Gate 5 never compares a rate against
 	 * either of these: it consumes the roll-up's STATUS and reports these two
 	 * numbers only so the screen can render the line the verdict was measured
-	 * against (plan D5 — the controller and the dashboard may not disagree).
+	 * against (the controller and the dashboard may not disagree).
 	 */
 	readonly seedInboxMin: RateFraction;
 	readonly seedInboxTolerance: PercentagePoints;
 	/**
 	 * Evidence older than this is not evidence. A gate whose arm has no fresher
 	 * observation than this holds (`insufficient_data`) rather than passing on a
-	 * stale window (plan D9/D10 — never increase without fresh evidence).
+	 * stale window (never increase without fresh evidence).
 	 *
 	 * Deliberately much larger than the routing snapshot's staleness window: a
 	 * transport-outcome bucket is a DAILY aggregate of a whole cell, not a
@@ -235,7 +235,7 @@ export interface RampGateThresholds {
 	 *
 	 * So the baseline gets its own allowance — 33 days, the full width of the
 	 * contracted window plus slack — rather than `maxEvidenceAgeMs` being widened,
-	 * which would loosen "never increase without fresh evidence" (plan D9/D10) for
+	 * which would loosen "never increase without fresh evidence" for
 	 * every gate that legitimately depends on it.
 	 */
 	readonly maxBaselineAgeMs: number;
@@ -269,8 +269,8 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 };
 
 /**
- * Per-stream ramp constants (ADR-0054 §4, plan D6/D9). Defined ONCE here; the
- * AIMD controller (P3-2) reuses this object rather than re-declaring the
+ * Per-stream ramp constants (ADR-0054 §4). Defined ONCE here; the
+ * AIMD controller reuses this object rather than re-declaring the
  * numbers. Like `RAMP_AIMD`, these are a safety surface rather than a config
  * surface — `docs/adr/0054-deliverability-ramp-controller.md` argues why.
  *
@@ -304,7 +304,7 @@ export interface RampStreamConfig {
 	readonly initialShareFraction: RateFraction;
 	/** Additive increase per clean window, in percentage points of share. */
 	readonly increaseStep: PercentagePoints;
-	/** Consecutive clean windows required before any increase (K_CLEAN, D9). */
+	/** Consecutive clean windows required before any increase (K_CLEAN). */
 	readonly cleanWindowsRequired: number;
 	readonly thresholds: RampGateThresholds;
 	readonly sampleFloors: RampGateSampleFloors;

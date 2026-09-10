@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The fresh-start setup (piece c3) — the body of the DEFAULT welcome branch.
+ * The fresh-start setup — the body of the DEFAULT welcome branch.
  *
  * Owlat is its own platform by default (locked decision 5): this is a pure
  * product welcome, never an import prompt. The two-minute setup personalises the

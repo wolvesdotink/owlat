@@ -1,5 +1,5 @@
 /**
- * Deliverability dashboard — the PURE view assembly (plan D5, D14, D15).
+ * Deliverability dashboard — the PURE view assembly.
  *
  * SHIP THE MEASUREMENT BEFORE THE CONTROL. Everything here is a total function
  * of its arguments: no clock, no database, no environment. The query shell in
@@ -17,7 +17,7 @@
  * summarizer, and labels the result. If you find yourself typing `/` next to a
  * counter in this file, you are writing the bug D5 exists to prevent.
  *
- * CONFIDENCE (plan D14) COMES FROM THE EVALUATOR, NOT FROM HERE. The grade this
+ * CONFIDENCE COMES FROM THE EVALUATOR, NOT FROM HERE. The grade this
  * module starts from is `RampGateEvaluation.measuredConfidence` — the weakest
  * level among the gates that actually DECIDED something, produced by the same
  * pure core the controller runs. Two judgements are layered on top of it here,
@@ -127,7 +127,7 @@ interface DashboardTrendPoint {
 	/** UTC day start this point summarizes. */
 	readonly day: number;
 	readonly own: TransportOutcomeSummary;
-	/** `null` when no reference transport is configured (D2), not "no data". */
+	/** `null` when no reference transport is configured, not "no data". */
 	readonly reference: TransportOutcomeSummary | null;
 }
 
@@ -184,7 +184,7 @@ export function buildDashboardTrend(input: {
 	return points;
 }
 
-// ============ CONFIDENCE (D14) ============
+// ============ CONFIDENCE ============
 
 /**
  * How much this cell's measurement is worth — `RampGateConfidence` plus the one
@@ -195,7 +195,7 @@ export function buildDashboardTrend(input: {
  *               confidence beside no measurement at all.
  *  - `low`    — the weakest contributing gate was a weak signal (the standalone
  *               trailing-baseline engagement check). The ramp still moves; it
- *               just may not move UP on that evidence (plan D14).
+ *               just may not move UP on that evidence.
  *  - `medium` — the weakest contributing gate was a proxy or a tripwire: the
  *               one-click unsubscribe stand-in for a feedback loop, or a seed
  *               sweep. Real evidence, honestly labelled as second-hand.
@@ -231,7 +231,7 @@ interface DashboardConfidence {
  *      connect a relay or add seed mailboxes to improve". With NEITHER of those
  *      the cap is `low`; with seeds but no second arm it is `medium`; a cell
  *      with a reference arm has no cap, so absent seeds beside one remain an
- *      invitation rather than a downgrade (plan D2).
+ *      invitation rather than a downgrade.
  *
  *      This is not pessimism about the gates that DID decide — a standalone
  *      bounce gate really is high-confidence direct measurement, and it still
@@ -253,7 +253,7 @@ interface DashboardConfidence {
  * The IMPROVEMENT CODES are this module's, because they are the one thing the
  * evaluator does not answer: it grades what it measured, and these name what an
  * operator could add to make the next grade better. They are advice and never a
- * warning (plan D2) — `connect_reference_transport` is offered to a supported
+ * warning — `connect_reference_transport` is offered to a supported
  * configuration, not to an incomplete one.
  *
  * WHICH IS WHY THE CAP AND THE OFFER TAKE DIFFERENT INPUTS. The cap is about
@@ -325,7 +325,7 @@ export interface DashboardCellView {
 	 */
 	readonly own: TransportOutcomeSummary;
 	/**
-	 * `null` = standalone cell (D2), rendered with its confidence caveat — and
+	 * `null` = standalone cell, rendered with its confidence caveat — and
 	 * `null` exactly when the DECIDING span found no reference arm, so the column
 	 * is present precisely when the verdict was graded against a second arm.
 	 */
@@ -349,11 +349,10 @@ export interface DashboardCellView {
  * rate the summarizer already derived; this function copies, it does not
  * compute.
  *
- * TWO SPANS ARRIVE HERE AND NEITHER IS DERIVED HERE: `own`/`reference` are the
- * REPORTED window's summaries and `evaluation` carries the DECIDING span's
- * verdicts. Keeping them separate arguments is what lets the shell hand each
- * consumer the right one — the confidence denominator takes the reported sample
- * (plan D2/D5), the gate rows take the evaluator's (#510).
+ * TWO SPANS ARRIVE HERE AND NEITHER IS DERIVED HERE: `own`/`reference` are the REPORTED window's
+ * summaries and `evaluation` carries the DECIDING span's verdicts. Keeping them separate arguments
+ * is what lets the shell hand each consumer the right one — the confidence denominator takes the
+ * reported sample, the gate rows take the evaluator's (#510).
  */
 export function buildDashboardCellView(input: {
 	readonly cell: DeliverabilityCell;

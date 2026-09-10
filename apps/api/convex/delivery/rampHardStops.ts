@@ -1,6 +1,6 @@
 /**
  * THE RAMP'S HARD STOPS, READ OFF THE ROWS — and the one question every door
- * that can RAISE a cell has to ask first (plan D2, D13, P3-6).
+ * that can RAISE a cell has to ask first.
  *
  * Split out of `rampControllerInputs.ts` when that file passed the ~500 LOC line
  * the conventions draw: the tick's read half is one job, and "does anything
@@ -80,7 +80,7 @@ export function readHardStopSignals(
 /**
  * IS AN OPERATOR ALLOWED TO RAISE THIS CELL RIGHT NOW?
  *
- * The controls (P3-6) can write a share directly, which means they can reach
+ * The controls can write a share directly, which means they can reach
  * past the decision function that normally enforces the plan's hard stops. That
  * would make every hard stop optional in exactly the situation it exists for:
  * while the ramp is globally paused for an incident, while the organization is

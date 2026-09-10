@@ -14,7 +14,7 @@
  * The legacy profile (what Proton mints) is required for interop: GnuPG 2.5.x,
  * Thunderbird/RNP and older gpg all REJECT the RFC 9580 new-style ed25519/x25519
  * algorithm IDs (25/27) — so encrypting TO an Owlat-published WKD key would fail.
- * The on-the-wire message/signature format is unchanged (locked decision D1);
+ * The on-the-wire message/signature format is unchanged;
  * only the KEY algorithm-ID profile differs.
  *
  * Actions:

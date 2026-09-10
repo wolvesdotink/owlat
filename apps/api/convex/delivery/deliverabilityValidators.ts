@@ -12,7 +12,7 @@ import { literalUnion } from '../lib/convexValidators';
 
 /**
  * The destination-provider cell axis. DERIVED from `DESTINATION_PROVIDER_KEYS`
- * (D8) rather than restated: a hand-written union here compiles fine after a
+ * rather than restated: a hand-written union here compiles fine after a
  * sixth provider joins the taxonomy and then throws `ArgumentValidationError`
  * on the first write of that provider — a runtime failure where the one
  * declaration is supposed to buy a build failure.
@@ -73,7 +73,7 @@ export const deliverabilitySignalValidator = v.object({
 });
 
 /**
- * Dual-transport alignment pre-flight (P3-5). DERIVED from the vocabulary in
+ * Dual-transport alignment pre-flight. DERIVED from the vocabulary in
  * @owlat/shared/deliverabilityAlignment; AlignmentVerdict parity is asserted
  * in delivery/__tests__/alignmentBlocking.test.ts.
  */
@@ -140,7 +140,7 @@ export const rampDecisionReasonValidator = v.union(
 	v.literal('degradation_ceiling'),
 	v.literal('healthy'),
 	v.literal('graduated'),
-	// THE OPERATOR'S OWN REASONS (plan D12). A human hand on the ramp is still a
+	// THE OPERATOR'S OWN REASONS. A human hand on the ramp is still a
 	// decision, and a decision with no audit row is exactly the silence D12
 	// forbids — so an operator hold, pin, force-advance or phase reset writes a
 	// `mixDecisions` row with a reason of its own rather than borrowing a gate's.
@@ -154,7 +154,7 @@ export const rampDecisionReasonValidator = v.union(
 );
 
 /**
- * THE PACE ACTUATOR'S REASONS, as a stored vocabulary (plan D3, D12).
+ * THE PACE ACTUATOR'S REASONS, as a stored vocabulary.
  *
  * The second actuator answers the SAME questions in the same order, so it
  * reports the share actuator's whole vocabulary and adds only the reasons that
@@ -172,7 +172,7 @@ export const paceDecisionReasonValidator = v.union(
 );
 
 /**
- * The per-stream aggressiveness preset (plan D9, P3-6), DERIVED from
+ * The per-stream aggressiveness preset, DERIVED from
  * `RAMP_PRESET_KEYS`. The assertion below pins the stored union to the shared
  * `RampPreset` type so neither can drift from the other.
  */

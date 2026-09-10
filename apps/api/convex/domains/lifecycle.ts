@@ -174,7 +174,7 @@ const providerIdentityValidator = v.union(
 		dkimTokens: v.array(v.string()),
 		verificationToken: v.string(),
 	}),
-	// Mandrill (P3.1). State rather than key material: one shared selector, so
+	// Mandrill. State rather than key material: one shared selector, so
 	// the DNS is derived from the domain name and only Mandrill's own view of
 	// it is worth carrying across the action → mutation boundary. Imported
 	// rather than restated — the relay sweep's store mutation validates the same
@@ -958,7 +958,7 @@ function buildReturnPathMailFrom(
 }
 
 /**
- * Set (or change) the domain's per-domain VERP return-path host (D1/D2).
+ * Set (or change) the domain's per-domain VERP return-path host.
  *
  * Regenerates the `mailFrom` SPF record on the new host and clears the stale
  * MAIL FROM verification result — the customer must publish the record at the

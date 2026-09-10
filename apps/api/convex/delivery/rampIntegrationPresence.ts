@@ -1,5 +1,5 @@
 /**
- * WHICH INTEGRATIONS THIS DEPLOYMENT ACTUALLY HAS (plan D2, D3).
+ * WHICH INTEGRATIONS THIS DEPLOYMENT ACTUALLY HAS.
  *
  * The READ half of the degradation matrix: `delivery/ramp/degradationMatrix.ts`
  * says what an absent integration costs, and this module answers whether it is
@@ -16,7 +16,7 @@
  * within one evaluation window and with no operator action — which is the
  * acceptance criterion this piece is measured against.
  *
- * ABSENCE IS A SUPPORTED CONFIGURATION (D2): every read below is allowed to find
+ * ABSENCE IS A SUPPORTED CONFIGURATION: every read below is allowed to find
  * nothing, and finding nothing is never an error.
  */
 
@@ -120,8 +120,8 @@ export async function loadRampDeploymentPresence(
 		complaint_feedback_loop: enrollments.some((row) => row.state === 'enrolled'),
 		// NOTHING IN THIS DEPLOYMENT INTEGRATES A COMMERCIAL PLACEMENT SERVICE, and
 		// the matrix says that costs nothing — self-hosted seeds are the EXPECTED
-		// configuration for placement (plan D17). Hard `false` rather than a
-		// speculative credential lookup for a product we do not integrate (D20).
+		// configuration for placement. Hard `false` rather than a
+		// speculative credential lookup for a product we do not integrate.
 		//
 		// Its table entry therefore carries `offersImprovement: false`: permanently
 		// absent AND permanently free, so it contributes neither a note nor an offer

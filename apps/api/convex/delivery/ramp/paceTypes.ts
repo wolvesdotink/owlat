@@ -1,5 +1,5 @@
 /**
- * THE PACE ACTUATOR'S VOCABULARY (plan D3, D12, D15).
+ * THE PACE ACTUATOR'S VOCABULARY.
  *
  * The second actuator behind the SAME controller. Everything it shares with the
  * share actuator is imported rather than restated — the hard-stop signals, the
@@ -23,7 +23,7 @@ import type { RampGateEvaluation, RampGateId, RampVerdict } from './gateTypes';
  */
 type PaceControlReason =
 	/**
-	 * THE ONE SANCTIONED BEHAVIOUR CHANGE (plan D19). The cap was not exercised
+	 * THE ONE SANCTIONED BEHAVIOUR CHANGE. The cap was not exercised
 	 * enough for the window to say anything, so the actuator HOLDS. The shipped
 	 * MTA evaluator treated the same reading as a failure to qualify for
 	 * acceleration and advanced the schedule anyway; under pace control low
@@ -31,13 +31,13 @@ type PaceControlReason =
 	 */
 	| 'low_utilisation'
 	/**
-	 * The per-UTC-day idempotency guard (plan D19). An hourly controller must
+	 * The per-UTC-day idempotency guard. An hourly controller must
 	 * advance a warming schedule at most ONCE per UTC day; this window's day has
 	 * already been counted, so the cell holds until tomorrow.
 	 */
 	| 'day_already_advanced'
 	/**
-	 * The composition interlock (plan D3). The SHARE moved first this window —
+	 * The composition interlock. The SHARE moved first this window —
 	 * cheap and instantly reversible, because the relay absorbs the difference —
 	 * so the reputation-bearing pace dial waits. A cell may never increase both in
 	 * one window, and "window" means the share's whole evaluation window, not the
@@ -49,7 +49,7 @@ type PaceControlReason =
 	/**
 	 * The dial is already at M_MAX. What limits the cap from here is the published
 	 * base warming schedule, which the controller may never exceed for the current
-	 * day (plan D19).
+	 * day.
 	 */
 	| 'schedule_ceiling';
 
@@ -77,7 +77,7 @@ export interface PaceState {
 	 */
 	readonly lastEvaluatedUtcDay: string | undefined;
 	/**
-	 * THE COMPOSITION INTERLOCK'S ANCHOR (plan D3): the instant a pace increase
+	 * THE COMPOSITION INTERLOCK'S ANCHOR: the instant a pace increase
 	 * was last WITHHELD because the share moved first. Absent for a cell that has
 	 * never been deferred — the standalone case, where there is no share decision
 	 * at all and the interlock has nothing to interlock.
@@ -117,7 +117,7 @@ export interface PaceControllerInput {
 	readonly evaluation: RampGateEvaluation | null;
 	readonly utilisation: PaceUtilisationReading;
 	/**
-	 * THE SUBSTITUTION TABLE'S STEP FACTOR for this cell (plan D3) —
+	 * THE SUBSTITUTION TABLE'S STEP FACTOR for this cell —
 	 * `RampDegradation.stepMultiplier`, applied to `PACE_AIMD.increaseStep`.
 	 *
 	 * IT IS PASSED RAW RATHER THAN READ OFF `config`, and that is not an

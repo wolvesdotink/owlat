@@ -5,7 +5,7 @@
  * (DNS-over-HTTPS, RFC 8484 JSON form) resolver and returns the parsed,
  * DNSSEC-authenticated records the sender matches the MX certificate against.
  *
- * DNSSEC IS THE TRUST ANCHOR (locked decision D6). DANE is only safe when the
+ * DNSSEC IS THE TRUST ANCHOR. DANE is only safe when the
  * TLSA lookup is DNSSEC-validated: an on-path attacker who can forge DNS can
  * otherwise strip the TLSA RRset and defeat DANE. We therefore trust the
  * configured resolver's AD (Authenticated Data) bit and REQUIRE it — an answer

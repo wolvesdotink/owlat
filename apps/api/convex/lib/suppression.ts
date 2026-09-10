@@ -179,7 +179,7 @@ interface BoundedSuppressionSet {
  * MUTATION. `.collect()`ing the whole `blockedEmails` table there drops every
  * suppressed address into the mutation's OCC read set, so a concurrent
  * bounce/complaint write conflicts the mutation at COMMIT time — after any
- * fail-open `try/catch` has already returned (deliverability plan D16).
+ * fail-open `try/catch` has already returned.
  *
  * `limit` bounds the read; exceeding it is reported, never thrown.
  */

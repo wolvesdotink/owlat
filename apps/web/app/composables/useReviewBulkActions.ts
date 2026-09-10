@@ -1,5 +1,5 @@
 /**
- * Bulk approve / reject wiring for the Review Queue browse list (piece C2).
+ * Bulk approve / reject wiring for the Review Queue browse list.
  *
  * Runs the batch mutations (`inbox/bulkMutations.ts`) against the current
  * selection, keeps the optimistic row-hiding honest per id (only rows whose

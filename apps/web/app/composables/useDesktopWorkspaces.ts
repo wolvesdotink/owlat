@@ -338,7 +338,7 @@ async function switchTo(id: string, opts?: { destination?: string }): Promise<vo
 	activeId.value = id;
 	await persistStore();
 
-	// Perceived-instant switch (piece d4): before the (unavoidable) reload,
+	// Perceived-instant switch: before the (unavoidable) reload,
 	// repaint the destination accent and drop a skeleton washed in it so the eye
 	// sees the target workspace's colour immediately. A sessionStorage flag hands
 	// the same skeleton to the fresh document (consumed by the boot plugin), which

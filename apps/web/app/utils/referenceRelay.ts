@@ -1,5 +1,5 @@
 /**
- * The single-reference-relay rule (plan D8), turned into something a screen can
+ * The single-reference-relay rule, turned into something a screen can
  * say.
  *
  * The measurement plane compares TWO arms: our own MTA and one reference relay.

@@ -5,7 +5,7 @@
  * only a bilateral enrollment the operator performs on Yahoo's sender site
  * against a domain we already sign with DKIM. So the whole integration is a
  * GUIDED FLOW plus a recorded state, and every decision it makes is a pure
- * function of (record, DKIM precondition, clock) — no I/O, no `Date.now()` (D15).
+ * function of (record, DKIM precondition, clock) — no I/O, no `Date.now()`.
  *
  * ARF PARSING IS NOT HERE. A Yahoo CFL report is an ordinary RFC 5965 ARF
  * message and routes through the SHIPPED processor
@@ -192,7 +192,7 @@ function unchanged(
  * The state machine. Pure: same inputs, same output, no clock read.
  *
  * A refused transition is NOT an error — it returns `changed: false` plus the
- * reason, so the caller renders guidance instead of throwing (D2).
+ * reason, so the caller renders guidance instead of throwing.
  */
 export function applyYahooCflEvent(
 	record: YahooCflEnrollmentRecord,
@@ -203,7 +203,7 @@ export function applyYahooCflEvent(
 	// absorb `Infinity` or a negative value and pin the row permanently `enrolled`
 	// (or permanently un-lapsable), which would hold the yahoo complaint gate on
 	// the looser direct threshold forever. Refuse it instead — refusing is not an
-	// error, it is a reason (D2).
+	// error, it is a reason.
 	if (!Number.isFinite(event.at) || event.at <= 0) return unchanged(record, 'invalid_timestamp');
 	switch (event.kind) {
 		case 'submit': {
@@ -262,18 +262,17 @@ export function applyYahooCflEvent(
 			// gate with a signal that reads ~0 forever (the confident wrong signal
 			// D14 exists to forbid).
 			//
-			// A report may therefore CONFIRM and REFRESH an enrollment, never create
-			// one. `not_started` is refused — which is not an error, it is a reason
-			// (D2) — so no row is ever written by an internet-triggered path. The
-			// step-4 promise ("the first Yahoo complaint that arrives confirms it
-			// automatically") is attached to `awaiting_yahoo`, and keeps working.
+			// A report may therefore CONFIRM and REFRESH an enrollment, never create one. `not_started` is
+			// refused — which is not an error, it is a reason — so no row is ever written by an
+			// internet-triggered path. The step-4 promise ("the first Yahoo complaint that arrives confirms
+			// it automatically") is attached to `awaiting_yahoo`, and keeps working.
 			if (record.state === 'not_started') return unchanged(record, 'not_submitted');
 			// Keep the newest observation; an out-of-order replay must never rewind
 			// the clock. A report also silently un-lapses the derived state, because
 			// the derived state is a function of exactly this timestamp.
 			const lastReportAt = Math.max(record.lastReportAt ?? 0, event.at);
 			if (record.state === 'enrolled') {
-				// COALESCED (D16): an already-enrolled row is only patched once the
+				// COALESCED: an already-enrolled row is only patched once the
 				// liveness timestamp moves by a full coalesce window, so a burst of
 				// complaints for one domain is a single write instead of one per report.
 				if (lastReportAt - (record.lastReportAt ?? 0) < YAHOO_CFL_REPORT_COALESCE_MS) {

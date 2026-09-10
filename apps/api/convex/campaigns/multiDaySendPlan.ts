@@ -24,10 +24,10 @@
  * cancel today's budget, because the campaigns whose count truncates are exactly
  * the large ones this feature exists for.
  *
- * PURE (plan D15): the clock, the capacity projection and the counters are all
+ * PURE: the clock, the capacity projection and the counters are all
  * parameters. The ctx-bound half is the walker in `campaigns/send.ts`.
  *
- * DEGENERATE INPUT NEVER BLOCKS A SEND (plan D2). No capacity projection, a
+ * DEGENERATE INPUT NEVER BLOCKS A SEND. No capacity projection, a
  * hostile day count, a clock that makes no sense — every one of them resolves to
  * "no day budget applies", which is the shipped single-day behaviour. A
  * measurement we could not take has never been grounds to withhold mail.
@@ -74,7 +74,7 @@ export interface SendPlanState {
 	/**
 	 * `plannedTotal` is a LOWER BOUND rather than the audience size — the bounded
 	 * count stopped at a ceiling or ran out of read budget. The plan is then AT
-	 * LEAST as long as it computes, and the copy says so (plan D14).
+	 * LEAST as long as it computes, and the copy says so.
 	 */
 	readonly isPlannedTotalLowerBound: boolean | undefined;
 }
@@ -211,7 +211,7 @@ export function planTodaysSlice(input: SendPlanSliceInput): SendPlanSlice {
 	//
 	// NO PROJECTION AT ALL (an empty array) is UNKNOWN capacity: it yields NO
 	// budget, and the walk proceeds exactly as the shipped single-day walker
-	// always has. A measurement we could not take never withholds mail (plan D2).
+	// always has. A measurement we could not take never withholds mail.
 	//
 	// A PROJECTED ZERO for today is the opposite — a real reading that today's cap
 	// is already spent — and it exhausts the day rather than waiving the budget.
@@ -314,7 +314,7 @@ interface EngagementOrdered {
 }
 
 /**
- * ENGAGEMENT ORDER — best remaining audience first (plan P0-2/P0-3).
+ * ENGAGEMENT ORDER — best remaining audience first.
  *
  * Each day's slice should be the best audience still unsent: it is what a
  * warming IP wants (engaged recipients open, and openers are what receivers

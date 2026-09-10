@@ -49,7 +49,7 @@ import {
 	type GovernedMessageType,
 } from '@owlat/shared';
 
-/** The stream axis of a ramp cell — the shipped governed message types (D6). */
+/** The stream axis of a ramp cell — the shipped governed message types. */
 export type SendingStream = GovernedMessageType;
 
 /** What a subdomain in the proposed layout is FOR. */
@@ -359,7 +359,7 @@ export type TransportArm = 'own' | 'reference';
  * that subdomain (`sendingDomainMtaIdentities.dkimSelector`, which is also what
  * `delivery/alignmentPreflight.ts` reads); the reference arm's comes from the
  * ESP. `null` means "no selector exists yet" — the subdomain has not been added,
- * or the relay has not published one — which is a supported state (D2), not a
+ * or the relay has not published one — which is a supported state, not a
  * defect, and is why nothing here invents a name to fill the gap.
  */
 export type ArmDkimSelectors = Readonly<Partial<Record<TransportArm, string>>>;

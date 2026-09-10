@@ -13,7 +13,7 @@
  * config cache and a timeout wrapper around one single-attempt call. Two things
  * differ, and both are decisions rather than accidents:
  *
- *  - **We send our own MIME (D3).** Owlat's composition pipeline IS the product:
+ *  - **We send our own MIME.** Owlat's composition pipeline IS the product:
  *    first-party open/click tracking, RFC 8058 one-click unsubscribe headers,
  *    `Feedback-ID`, `List-Id`, a plain-text part derived from the UNTRACKED
  *    HTML. So this adapter composes the whole message with `@owlat/mail-message`
@@ -22,7 +22,7 @@
  *    Mandrill `open`/`click` webhook events are ignored for the same reason: both
  *    arms must be measured on identical instrumentation or the `engagement_ratio`
  *    ramp gate is comparing two different rulers.
- *  - **A timeout is TERMINAL (D4).** Mandrill's API has no idempotency key, so a
+ *  - **A timeout is TERMINAL.** Mandrill's API has no idempotency key, so a
  *    timed-out request may or may not have been accepted. Retrying would
  *    double-deliver, which is why this returns `AMBIGUOUS_TIMEOUT` +
  *    `acceptanceUnknown` — the SES posture, never the Resend one.
@@ -143,7 +143,7 @@ interface MandrillSendRawBody {
  * Our pipeline sends ONE recipient per send (`EmailSendParams.to` is a single
  * address), so the array has exactly one meaningful entry and the first is it.
  * A `sent | queued | scheduled` entry is a success whose `_id` becomes the
- * `providerMessageId` the webhook adapter joins on (P2.1); `rejected` and
+ * `providerMessageId` the webhook adapter joins on; `rejected` and
  * `invalid` are failures even though the HTTP call succeeded.
  */
 function readRecipientResult(payload: unknown): EmailSendAttempt {
@@ -396,7 +396,7 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 	},
 
 	/**
-	 * `sendReturnPathProbe` IS DELIBERATELY ABSENT (plan D5).
+	 * `sendReturnPathProbe` IS DELIBERATELY ABSENT.
 	 *
 	 * The probe proves one thing and proves it one way: it puts a SIGNED VERP
 	 * ADDRESS on the wire as the RFC5321.MailFrom and waits for the DSN, because

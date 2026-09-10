@@ -1003,7 +1003,7 @@ const shownCapacityPlan = computed(() => {
 
 							<!-- The multi-day schedule: previewed BEFORE the send, and re-rendered
 							     from the refusal itself when pre-flight hands one back. Capacity is a
-							     schedule, not a failure (deliverability plan D14). -->
+							     schedule, not a failure. -->
 							<CampaignsCapacitySchedulePanel
 								v-if="shownCapacityPlan"
 								:plan="shownCapacityPlan"
@@ -1042,7 +1042,7 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Sending readiness, immediately above the send/schedule buttons: the
 					     ramp cap belongs where the decision is made, not in a pre-flight
-					     refusal after it (deliverability plan D14). Renders nothing when
+					     refusal after it. Renders nothing when
 					     capacity is unmeasured or uncapped-and-unremarkable. -->
 					<CampaignsSendReadinessNote
 						:readiness="sendingReadiness"

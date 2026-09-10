@@ -1,5 +1,5 @@
 /**
- * The `deferred` transport outcome — gate 2's numerator (plan D5, D10).
+ * The `deferred` transport outcome — gate 2's numerator.
  *
  * Gate 2 is the ramp's fast signal: the own arm's deferral rate against a 10%
  * ceiling, with 25% an immediate halt (`ramp/gates.ts`), and the phase-promotion
@@ -65,7 +65,7 @@
  * tomorrow's evidence and counts again.
  *
  * FAIL-SOFT, like every other outcome write: a send with no `sendAssignments`
- * row records nothing (the seed-probe seam, plan D18), and the counter bump
+ * row records nothing (the seed-probe seam), and the counter bump
  * itself is scheduled off this mutation by the effect runner into
  * `analytics.transportOutcomes.recordOutcomeForSend`, which degrades its own
  * failure to a warning rather than rolling back the retry it describes.
@@ -182,7 +182,7 @@ type RecordRelayDeferralResult = RecordDeferralOutcomeResult | 'send_not_found';
 
 /**
  * THE SECOND WRITER the module docstring said there could be: a deferral a
- * RELAY reports back over its webhook (Mandrill `deferral`, plan D10).
+ * RELAY reports back over its webhook (Mandrill `deferral`).
  *
  * The docstring above names this half explicitly and says it is uninstrumented:
  * "A remote 4xx AFTER the MTA has accepted the message for delivery never comes

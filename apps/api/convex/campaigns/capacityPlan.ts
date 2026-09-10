@@ -1,6 +1,6 @@
 /**
  * Campaign capacity planner — the PURE decision function behind the binding
- * pre-flight capacity check (deliverability plan rev 3, P0-5).
+ * pre-flight capacity check (deliverability plan rev 3).
  *
  * A warming deployment with no relay to overflow to can start a campaign it
  * provably cannot finish: the MTA hits the warming cap, defers the tail, and
@@ -8,7 +8,7 @@
  * pre-flight refuses the send and hands back a multi-day SCHEDULE — capacity is
  * a schedule, not a failure (plan D2/D14 honesty rule).
  *
- * Purity is the point (D15): no `Date.now()`, no DB reads, no env reads. The
+ * Purity is the point: no `Date.now()`, no DB reads, no env reads. The
  * clock and every input are parameters, so the predicate is exhaustively
  * table-testable. The ctx-bound half (reading warming state, counting the
  * audience) lives in `capacityPreflight.ts`.
@@ -96,7 +96,7 @@ export interface CampaignCapacitySchedule {
 	/**
 	 * Recipients the returned slices actually cover. Equals the audience size
 	 * unless `truncated` is set, so a caller can never mistake a partial
-	 * schedule for a complete one (plan D14 — say the quiet part).
+	 * schedule for a complete one (say the quiet part).
 	 */
 	covered: number;
 	/**
@@ -272,7 +272,7 @@ export function buildCapacitySchedule(input: CapacityScheduleInput): CampaignCap
  *
  * Degenerate inputs deliberately answer `{ fits: true }` — an empty audience,
  * a hostile audience size, or a non-sensical retention horizon are never
- * grounds to block a send (D2: absence of measurement never blocks).
+ * grounds to block a send (absence of measurement never blocks).
  */
 export function planCampaignCapacity(input: CampaignCapacityPlanInput): CampaignCapacityPlan {
 	const audienceSize = sanitizeCount(input.audienceSize);

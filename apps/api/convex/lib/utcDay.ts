@@ -13,7 +13,7 @@
  * The guard on this side means the same thing as the guard on that side, so it
  * is written the same way.
  *
- * Pure: `now` is always a parameter (plan D15).
+ * Pure: `now` is always a parameter.
  */
 
 import { DAY_MS } from './constants';

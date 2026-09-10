@@ -36,7 +36,7 @@ export const TENANT_TABLES = [
 	'contactActivities',
 	'contactIdentities',
 	'contactRelationships',
-	// Per-topic sunset-policy overrides (P4-4). Configuration, not contact data,
+	// Per-topic sunset-policy overrides. Configuration, not contact data,
 	// but it is tenant-owned and must not survive an org wipe.
 	'sunsetPolicies',
 	'emailSends',
@@ -85,7 +85,7 @@ export const TENANT_TABLES = [
 	'sendingDomainMtaIdentities',
 	'yahooCflEnrollments',
 	'sendingDomainSesIdentities',
-	// The generic per-provider relay identity (D7) that succeeds the two
+	// The generic per-provider relay identity that succeeds the two
 	// frozen siblings above. Org-scoped sending-domain state — a wipe must not
 	// leave the org's relay verification records behind.
 	'sendingDomainRelayIdentities',
@@ -119,10 +119,10 @@ export const TENANT_TABLES = [
 	// same experiment record one classification further in. Tenant sending
 	// history: a wipe must not leave it behind.
 	'smtpResponseCategories',
-	// Every ramp-controller decision, including no-ops (plan D12). Tenant
+	// Every ramp-controller decision, including no-ops. Tenant
 	// sending history: a wipe must not leave the org's ramp audit trail behind.
 	'mixDecisions',
-	// The per-stream ramp aggressiveness preset an operator chose (plan D9).
+	// The per-stream ramp aggressiveness preset an operator chose.
 	// Per-organization business configuration — a wipe must not leave it behind.
 	'rampStreamPresets',
 	// Derived from sendingReputation (tenant data), so a tenant wipe must delete the org's delivery history too.
@@ -342,7 +342,7 @@ export const NON_TENANT_TABLES = [
 	// infrastructure, not this org's contact business data, so it is out of the
 	// tenant wipe like `keyVault` / `recipientKeys`.
 	'keyRotations',
-	// Replay claims for the bundled-plugin feedback route (D6/P2.2). One row per
+	// Replay claims for the bundled-plugin feedback route. One row per
 	// accepted delivery, holding a HASH of the caller's signature and nothing
 	// else: no address, no message id, no payload. It is wire-protocol
 	// bookkeeping about requests the deployment received, it self-expires within

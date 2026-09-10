@@ -163,7 +163,7 @@ export const EMPTY_ROUTE_STATE_CELL: RouteStateCellRows = Object.freeze({
  * Providers with no row are simply absent from the map — a reader defaults them
  * to {@link EMPTY_ROUTE_STATE_CELL} rather than to a fabricated row.
  *
- * OCC FOOTPRINT (D16). This is an INDEX RANGE over the whole organization, so a
+ * OCC FOOTPRINT. This is an INDEX RANGE over the whole organization, so a
  * caller inside a mutation — the campaign warming-cap gate runs in
  * `campaigns.scheduling.schedule` — puts EVERY
  * route-state row of the organization in that mutation's read set, where the MTA

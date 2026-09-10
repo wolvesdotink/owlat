@@ -1,6 +1,6 @@
 /**
  * The adapter between the `contactActivities` catalog and the engagement
- * score's own vocabulary (deliverability plan P0-2).
+ * score's own vocabulary.
  *
  * It lives beside `engagementScore.ts` rather than inside it so the scoring
  * core stays a closed piece of arithmetic: the core knows six abstract activity

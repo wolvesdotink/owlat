@@ -1,6 +1,5 @@
 /**
- * Host-side revalidation of the events a bundled plugin's webhook module parsed
- * (the seams plan's D6/P2.2).
+ * Host-side revalidation of the events a bundled plugin's webhook module parsed.
  *
  * A plugin's parse output is UNTRUSTED INPUT — the same stance
  * `pluginProvider.parsePluginAttempt` takes toward a send result. Authenticity

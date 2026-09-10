@@ -269,7 +269,7 @@ const startImport = async () => {
 			});
 		} else if (selectedIntegration.value === 'mandrill') {
 			// No credentials step: the key is `MANDRILL_API_KEY` in the backend
-			// environment, the same one the send transport uses (plan D2).
+			// environment, the same one the send transport uses.
 			await convex.mutation(api.integrationImports.walker.startIntegrationImport, {
 				config: { provider: 'mandrill' },
 				handleDuplicates: handleDuplicates.value,
@@ -505,7 +505,7 @@ const suppressionSummary = computed(() => {
 			</div>
 
 			<!-- Mandrill Config — nothing to configure: the key is an
-						     environment variable (plan D2). -->
+						     environment variable. -->
 			<div v-else-if="selectedIntegration === 'mandrill'" class="space-y-4">
 				<div class="p-4 rounded-lg bg-bg-surface">
 					<I18nT
@@ -762,7 +762,7 @@ const suppressionSummary = computed(() => {
 					</p>
 				</div>
 			</div>
-			<!-- Suppression carry-over (plan D9) -->
+			<!-- Suppression carry-over -->
 			<div v-if="suppressionSummary" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
 				<div class="p-4 rounded-lg bg-bg-surface text-center">
 					<p class="text-2xl font-medium tracking-[-0.02em] text-warning">{{ suppressionSummary.blocked }}</p>

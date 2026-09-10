@@ -40,7 +40,7 @@ export const deliverabilityRoutingTables = {
 		// consecutive all-gates-green window count; and the mix GENERATION that
 		// salts per-recipient assignment. Written by the ramp controller only.
 		//
-		// `mixVersion` NAMES A GENERATION, NOT A STEP (plan D7). It salts
+		// `mixVersion` NAMES A GENERATION, NOT A STEP. It salts
 		// `${contactId}:${campaignId}:${mixVersion}`, so every bump re-shuffles
 		// which arm each recipient lands in. It therefore advances only on a
 		// deliberate generation change — a phase promotion or an operator action —
@@ -61,7 +61,7 @@ export const deliverabilityRoutingTables = {
 		// though: dwell is one of the four conditions on the standalone promotion
 		// route, and for a provider with no external route that is the only route
 		// there is, so an anchor nobody ever writes would leave the cell
-		// unpromotable for ever with no operator remedy (plan D2). The controller
+		// unpromotable for ever with no operator remedy. The controller
 		// therefore ADOPTS the row's creation instant the first time it manages a
 		// row without one — the earliest moment the rung could have been set, so the
 		// backfill can only understate the dwell served, never manufacture it.
@@ -114,7 +114,7 @@ export const deliverabilityRoutingTables = {
 		freezeReason: v.optional(
 			v.union(v.literal('gate_breach'), v.literal('breaker'), v.literal('dnsbl'))
 		),
-		// Graduation (plan D9): s = 1.0 held 14 days with every gate green PINS the
+		// Graduation: s = 1.0 held 14 days with every gate green PINS the
 		// cell and drops the relay to priority_failover standby. Set once, and
 		// cleared only when the share leaves 1.0.
 		graduatedAt: v.optional(v.number()),
@@ -131,7 +131,7 @@ export const deliverabilityRoutingTables = {
 		// controller stamping that column would re-arm every signal on the row as
 		// "fresh" on every tick, for ever — one column with two meanings across two
 		// row shapes, the same objection `snapshotGeneratedAt` is kept clear of.
-		// THE SECOND ACTUATOR'S STATE (plan D3, P3-7). Standalone there is no mix to
+		// THE SECOND ACTUATOR'S STATE. Standalone there is no mix to
 		// control — s === 1 by definition — so the controller writes a WARMING-PACE
 		// MULTIPLIER against the per-(IP x mailboxProvider) daily cap instead. Same
 		// gates, same AIMD, same freeze ladder; a different dial. Every field is
@@ -150,12 +150,12 @@ export const deliverabilityRoutingTables = {
 		paceFreezeReason: v.optional(
 			v.union(v.literal('gate_breach'), v.literal('breaker'), v.literal('dnsbl'))
 		),
-		// THE PER-UTC-DAY IDEMPOTENCY ANCHOR (plan D19), as the `YYYY-MM-DD` key the
+		// THE PER-UTC-DAY IDEMPOTENCY ANCHOR, as the `YYYY-MM-DD` key the
 		// shipped MTA evaluator stores in `lastEvaluatedDate` — same shape, same
 		// meaning. The controller ticks hourly and a warming schedule must advance
 		// AT MOST ONCE per UTC day, so a tick that finds today's key here holds.
 		paceLastEvaluatedUtcDay: v.optional(v.string()),
-		// THE COMPOSITION INTERLOCK'S MEMORY (plan D3). The instant a pace increase
+		// THE COMPOSITION INTERLOCK'S MEMORY. The instant a pace increase
 		// was WITHHELD because the share moved first in the same tick. The interlock
 		// has to outlive the tick that fired it: the cron ticks hourly while the
 		// share's evaluation window is a whole day, so an in-memory hand-off would
@@ -165,7 +165,7 @@ export const deliverabilityRoutingTables = {
 		// RETREATS ARE NEVER GATED BY IT; only the increase rung reads it.
 		paceDeferredAt: v.optional(v.number()),
 		decidedAt: v.optional(v.number()),
-		// THE OPERATOR'S HAND ON THE RAMP (P3-6), and both fields are deliberately
+		// THE OPERATOR'S HAND ON THE RAMP, and both fields are deliberately
 		// one-directional. `operatorPausedAt` suppresses INCREASES only and
 		// `operatorPinnedShare` caps them; neither can block a retreat, because a
 		// safety response an operator can switch off is not a safety response. The
@@ -195,7 +195,7 @@ export const deliverabilityRoutingTables = {
 		.index('by_org_domain', ['organizationId', 'domain'])
 		.index('by_expires_at', ['expiresAt']),
 
-	// EVERY ramp-controller evaluation, including the no-ops (plan D12).
+	// EVERY ramp-controller evaluation, including the no-ops.
 	//
 	// A controller that silently retreats will be experienced as a bug, so the
 	// audit row is not a log line: it is the record that makes a share change
@@ -231,7 +231,7 @@ export const deliverabilityRoutingTables = {
 		// 100% of decisions carry one, so it is REQUIRED, not optional.
 		message: v.string(),
 		failedGate: v.optional(rampGateIdValidator),
-		// THE ADMIN NOTIFICATION for a retreat (plan D12): what broke and what to do
+		// THE ADMIN NOTIFICATION for a retreat: what broke and what to do
 		// about it. Present when the decision has a NAMED cause — a breached gate or
 		// a hard stop — AND that decision CHANGED something.
 		// `rampDecisionChangedState` is the discriminator for the second half, and
@@ -254,10 +254,10 @@ export const deliverabilityRoutingTables = {
 		// else. Without it the feed can only take a fixed page of `by_org_time` —
 		// which the controller fills with roughly a hundred no-op rows a day, so a
 		// retreat older than a day or two could never appear in a screen whose
-		// whole promise (D12) is that every decrease surfaces here.
+		// whole promise is that every decrease surfaces here.
 		noticeAt: v.optional(v.number()),
 		frozenUntil: v.optional(v.number()),
-		// THE SECOND ACTUATOR'S HALF OF THE SAME EVALUATION (plan D3, D12). One
+		// THE SECOND ACTUATOR'S HALF OF THE SAME EVALUATION. One
 		// controller decides both dials in one tick, so one row records both —
 		// splitting them across two rows would make "what did the controller do to
 		// this cell at 14:00" a join. Absent on a row written for a deployment with
@@ -290,16 +290,16 @@ export const deliverabilityRoutingTables = {
 		// screens want fifteen cells' most recent rows; scanning `by_org_cell_time`
 		// once per cell reads fifteen pages to build one grid.
 		.index('by_org_time', ['organizationId', 'at'])
-		// THE ADMIN NOTIFICATION FEED (plan D12). `noticeAt` is set only on rows
+		// THE ADMIN NOTIFICATION FEED. `noticeAt` is set only on rows
 		// carrying an `adminNotice`, so this index holds exactly the retreats and a
 		// range read over it never pages past a no-op.
 		.index('by_org_notice', ['organizationId', 'noticeAt'])
 		.index('by_expires_at', ['expiresAt']),
 
-	// The per-stream aggressiveness preset (plan D9, P3-6).
+	// The per-stream aggressiveness preset.
 	//
 	// A ROW ONLY WHERE A HUMAN CHOSE ONE. Absence is the default — `balanced`
-	// with a relay, `conservative` standalone (plan D14) — so a deployment that
+	// with a relay, `conservative` standalone — so a deployment that
 	// never opens the Controls screen has no rows here and runs exactly the
 	// shipped constants. The preset is a SUBSTITUTION over `RAMP_STREAM_CONFIGS`
 	// (`applyRampPreset` in @owlat/shared), never a second constant table, and it

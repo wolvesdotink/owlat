@@ -3,7 +3,7 @@
  * produces them (apps/mta/src/intelligence/smtpClassifier.ts) and the ramp gate
  * that consumes them (apps/api/convex/delivery/ramp/trailingBaselineGates.ts).
  *
- * WHY THIS LIVES IN `shared`. Standalone mode (plan D2/D14) is meant to lean
+ * WHY THIS LIVES IN `shared`. Standalone mode is meant to lean
  * hardest on what receivers tell us in their own 4xx/5xx text: with no reference
  * arm and no third-party placement API, the SMTP conversation is the fastest
  * signal available to it. That makes the producer and the consumer of these

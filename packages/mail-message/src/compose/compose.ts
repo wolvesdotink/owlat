@@ -348,7 +348,7 @@ function deriveEnvelope(input: ComposeMessageInput): { from: string; to: string[
  * injection-stripped extra headers, and an explicit-or-generated Message-ID.
  *
  * Body encoding is always 7-bit safe (quoted-printable / base64) — never 8bit,
- * any version (locked decision D2). Given seeded `date`/`boundarySeed` inputs the
+ * any version. Given seeded `date`/`boundarySeed` inputs the
  * output is byte-identical across calls, which is what makes DKIM-stable retries
  * and golden tests possible.
  */

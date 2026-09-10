@@ -1,5 +1,5 @@
 /**
- * Sunset policy — the PURE decision core (deliverability plan P4-4, D15).
+ * Sunset policy — the PURE decision core.
  *
  * WHY IT EXISTS. Unengaged recipients are the dominant source of spam-folder
  * placement and spam-trap hits, and those are the two things that pin a young

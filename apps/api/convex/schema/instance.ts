@@ -66,7 +66,7 @@ export const instanceTables = {
 		// derived by `@owlat/shared/mtaStsPolicy`. Admin-gated write via
 		// `settings.update`, served publicly by the `getMtaStsPolicy` query.
 		mtaStsMode: v.optional(mtaStsModeValidator),
-		// Sealed Mail (E3) org-level sealing policy (locked decision D2): `auto`
+		// Sealed Mail (E3) org-level sealing policy: `auto`
 		// seals whenever every recipient has a usable pinned key, `ask` defers to
 		// the composer opt-in (E5), `off` never seals. Unset ⇒ `auto`. Admin-gated
 		// write via `workspaces/settings.update`.

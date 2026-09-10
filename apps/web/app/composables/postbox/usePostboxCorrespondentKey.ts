@@ -13,8 +13,8 @@ import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
  * subscription per thread, and lets the chip go amber on a key change without
  * opening a second read.
  *
- * `correspondent` is a getter so the reader can pass its computed 1:1 plane
- * (locked decision D5); an empty address skips the query entirely.
+ * `correspondent` is a getter so the reader can pass its computed 1:1 plane; an empty address skips
+ * the query entirely.
  */
 export function usePostboxCorrespondentKey(correspondent: () => string) {
 	const statusQuery = useConvexQuery(api.e2ee.recipientKeys.getRecipientKeyStatus, () =>

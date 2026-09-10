@@ -1,5 +1,5 @@
 /**
- * Which complaint signal the `yahoo` cell's gate 3 actually runs on (D2 / P3-8).
+ * Which complaint signal the `yahoo` cell's gate 3 actually runs on.
  *
  * Split out of `packages/shared/src/yahooCfl.ts` because it is a different
  * concern with a different owner: that module is the enrollment STATE MACHINE,
@@ -7,7 +7,7 @@
  * substitution table subsumes exactly this file, not the state machine.
  *
  * It lives HERE, under `delivery/signals/` — one of the three provider
- * reputation feeds registered in `./registry` (seams plan D9) — rather than in
+ * reputation feeds registered in `./registry` — rather than in
  * `@owlat/shared`, for one reason: the threshold it substitutes for is gate 3's,
  * and gate 3's threshold has exactly one home —
  * `RAMP_GATE_THRESHOLDS.complaintMax` in `../ramp/gateConfig`.
@@ -26,7 +26,7 @@
  *
  * ONE complaint pipeline, three sources. Absence of an enrollment substitutes a
  * weaker source with an honest confidence caveat; it never blanks the gate out,
- * never blocks anything, and never surfaces an error (D2 / D14).
+ * never blocks anything, and never surfaces an error.
  */
 
 import type { YahooCflEnrollmentState } from '@owlat/shared/yahooCfl';
@@ -89,7 +89,7 @@ export interface YahooComplaintSubstitution {
 	 * consumes when it subsumes this function, and because the gate that ACTUALLY
 	 * runs — `evaluateStandaloneComplaintGate` in `../ramp/trailingBaselineGates` —
 	 * applies exactly this rule. The dashboard states what the controller
-	 * enforces, or the two can disagree about a number (plan D5).
+	 * enforces, or the two can disagree about a number.
 	 *
 	 * `compareYahooComplaintRate` below is this field as code — consume it rather
 	 * than re-deriving the comparison.
@@ -141,14 +141,13 @@ export interface YahooComplaintSubstitution {
  * THREE-VALUED ON PURPOSE — "cannot tell" is not "fine".
  *
  * The running gate distinguishes `pass` from `own_rate_unmeasurable` from
- * `baseline_not_a_denominator`, because a hold has to NAME the thing to fix
- * (plan D12). A boolean comparator would fold the last two into the first, and
- * P3-8's substitution table — the consumer of this module — would read
- * "unmeasurable" as "healthy" and let a cell advance on a number nobody
+ * `baseline_not_a_denominator`, because a hold has to NAME the thing to fix. A boolean comparator
+ * would fold the last two into the first, and P3-8's substitution table — the consumer of this
+ * module — would read "unmeasurable" as "healthy" and let a cell advance on a number nobody
  * actually has.
  *
  * `not_comparable` maps to a HOLD, never to a breach and never to a pass: the
- * comparison could not be built, so absence still blocks nothing (plan D2/D10).
+ * comparison could not be built, so absence still blocks nothing.
  */
 export type YahooComplaintComparison = 'breach' | 'no_breach' | 'not_comparable';
 
@@ -203,7 +202,7 @@ export function compareYahooComplaintRate(
  * A `lapsed` enrollment is treated exactly like no enrollment — the point of the
  * derived lapse is that we can no longer trust the feed to be live.
  *
- * SCOPE NOTE (D3): P3-8 owns the ONE substitution table for every gate. When it
+ * SCOPE NOTE: P3-8 owns the ONE substitution table for every gate. When it
  * lands it SUBSUMES this function; the thresholds do NOT move with it, because
  * they already live in `../ramp/gateConfig` where the rest of the ramp reads them.
  */
@@ -315,7 +314,7 @@ const NOTHING_CONFIGURED = yahooComplaintSubstitution({
 });
 
 /**
- * Yahoo's Complaint Feed as a signal source (plan D9).
+ * Yahoo's Complaint Feed as a signal source.
  *
  * PRESENT MEANS YAHOO'S OWN FEED, nothing weaker. The other two branches of
  * `yahooComplaintSubstitution` are exactly what this source's absence means: a

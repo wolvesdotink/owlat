@@ -14,9 +14,9 @@ import type { ReviewRow } from '~/utils/reviewRow';
 /**
  * The Review Queue's keyboard-first browse view: a listbox of shared agent task
  * cards (trust chips, revise box, draft options, coach panel — each card's
- * anatomy lives in ReviewBrowseCard) with multi-select bulk approve/reject
- * (piece C2). Split out of review.vue so the page just switches between this
- * and the Focus card-stack flow (ReviewFocusFlow). Emits `focus` when the
+ * anatomy lives in ReviewBrowseCard) with multi-select bulk approve/reject.
+ * Split out of review.vue so the page just switches between this and the Focus
+ * card-stack flow (ReviewFocusFlow). Emits `focus` when the
  * reviewer opens the focused one-task-at-a-time flow instead.
  */
 const emit = defineEmits<{ (e: 'focus'): void }>();
@@ -111,7 +111,7 @@ const rows = computed<ReviewRow[]>(() =>
 // subscription confirms it; a failed action restores the row (usePostboxOptimisticHide).
 const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOptimisticHide(rows);
 
-// Multi-select + bulk approve/reject (piece C2): a selection Set in the
+// Multi-select + bulk approve/reject: a selection Set in the
 // Postbox bulk idiom, the sticky action bar above the listbox, and batch
 // mutations whose per-id outcomes drive one shared partial-result undo toast.
 const bulk = useReviewBulkSelect(visibleRows);
@@ -134,7 +134,7 @@ function handledReplyCollision(result: unknown): boolean {
 }
 
 // Countdown-undo toast for approvals inside their server-side undo window
-// (agentConfig.humanApproveUndoDelayMs, piece C1). Armed with this list's true
+// (agentConfig.humanApproveUndoDelayMs). Armed with this list's true
 // inverse: undoAutoSend routes the draft back to `draft_ready` and the row is
 // unhidden immediately rather than waiting on the live subscription round-trip.
 const { arm: armApproveUndo } = useReviewApproveUndo();

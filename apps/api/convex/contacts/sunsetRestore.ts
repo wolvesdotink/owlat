@@ -1,5 +1,5 @@
 /**
- * The sunset OPERATOR paths — restore and exemption (deliverability plan P4-4).
+ * The sunset OPERATOR paths — restore and exemption.
  *
  * Split out of `sunsetEngine.ts` because they are a different job with a
  * different actor: the engine decides and writes on a cron with

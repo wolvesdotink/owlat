@@ -11,7 +11,7 @@
  * the probe ledger and the per-provider roll-up read out of it.
  *
  * Every decision lives in the pure core (`@owlat/shared/seedPlacement`): this
- * file loads, calls, and writes (D15).
+ * file loads, calls, and writes.
  *
  * D17 — TRIPWIRE, NOT A GAUGE. Nothing here returns a placement percentage.
  * The roll-up is a STATUS per mailbox provider, and a provider-wide collapse
@@ -82,7 +82,7 @@ export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 // the ledger's cost profile can be read without walking the file.
 
 /**
- * Hard page bound — the ledger is never `.collect()`ed (D16).
+ * Hard page bound — the ledger is never `.collect()`ed.
  *
  * IT NOW BOUNDS A GATE VERDICT, not just a screen. Since gate 5 reads its
  * per-cell sweeps off this same page, this number is also the largest sample any
@@ -94,7 +94,7 @@ export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  * TRUNCATION IS SAFE IN THIS DIRECTION, which is why the bound stays where it
  * is: the read is newest-first, so what is dropped is the OLDEST evidence, and a
  * cell left with too thin a sweep gets `insufficient_data` — a HOLD, and on an
- * optional gate a hold that costs the ramp nothing (D2/D10). The failure mode of
+ * optional gate a hold that costs the ramp nothing. The failure mode of
  * raising it is a slower read; the failure mode of a tripwire deciding off
  * stale rows is a verdict about a week that is over.
  *
@@ -105,7 +105,7 @@ export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  *   - the ramp controller cron, LAZILY and once per tick — a thunk memoized by
  *     `rampControllerCron.ts` and resolved by `rampControllerInputs.ts` only when
  *     a cell in the slice actually consumes gate 5, so a slice with no
- *     ramp-managed cell in it (the normal state during rollout, plan D1) pays
+ *     ramp-managed cell in it (the normal state during rollout) pays
  *     nothing;
  *   - `delivery/deliverabilityDashboard.ts`, EAGERLY, ONCE PER SCREEN LOAD. The
  *     read is unconditional there: it happens whether or not any cell has
@@ -351,10 +351,10 @@ interface SeedPlacementSummary {
 	/** Seeds the operator should rotate. Advisory only. */
 	rotationRemindersDue: number;
 	windowStart: number;
-	/** Which placement adapter produced {@link rollups} (P4-7). */
+	/** Which placement adapter produced {@link rollups}. */
 	placementSource: PlacementSourceKind;
 	/**
-	 * How much this reading is worth (D14). Placement evidence is NEVER high
+	 * How much this reading is worth. Placement evidence is NEVER high
 	 * confidence whoever gathered it; the one grade it can carry is the gate's
 	 * own `SEED_GATE_CONFIDENCE`, imported rather than restated so the screen
 	 * and the controller cannot hold two opinions of one reading. `none` means
@@ -365,7 +365,7 @@ interface SeedPlacementSummary {
 	/**
 	 * The ONE advisory the reading may carry, for rendering next to the
 	 * confidence label. A hint, never an error, never a "setup incomplete" nag
-	 * and never a reason to withhold a screen or a send (D2).
+	 * and never a reason to withhold a screen or a send.
 	 */
 	placementImprovement: PlacementImprovementHint;
 }
@@ -402,7 +402,7 @@ async function readSeedProbeWindow(
  * evidence rule, narrower answer.
  *
  * A cell absent from the index has no classified probes: gate 5 holds, and
- * because it is optional the hold costs the ramp nothing (plan D2).
+ * because it is optional the hold costs the ramp nothing.
  */
 export async function summarizeSeedPlacementSweeps(
 	db: DatabaseReader,
@@ -442,7 +442,7 @@ export async function summarizeSeedPlacementWindow(
 
 	const accounts = await loadSeedAccounts(db, organizationId, now);
 	// Gate 5 reads its evidence through the placement ADAPTER rather than the
-	// roll-up directly (P4-7). With no commercial placement key — the default and
+	// roll-up directly. With no commercial placement key — the default and
 	// expected configuration — this resolves to the self-hosted seed adapter and
 	// the reading is byte-identical to the shipped one; a deployment that later
 	// adds a panel feeds the SAME gate through the SAME interface (D2: the key is

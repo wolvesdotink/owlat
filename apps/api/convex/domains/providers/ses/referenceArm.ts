@@ -56,7 +56,7 @@ export async function sesReferenceArm(
 		dkimSelectors: identity.dkimTokens,
 		spfMechanisms: relaySpfMechanisms(identity.dnsRecords?.spf?.value),
 		// A verified custom MAIL FROM is what lets the relay carry our own return
-		// path; without it bounce attribution on that arm is coarser (P2-3).
+		// path; without it bounce attribution on that arm is coarser.
 		supportsCustomReturnPath: (identity.dnsRecords?.mailFrom?.length ?? 0) > 0,
 	};
 }

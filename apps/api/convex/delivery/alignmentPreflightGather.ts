@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Dual-transport alignment pre-flight — live-DNS gather half (P3-5).
+ * Dual-transport alignment pre-flight — live-DNS gather half.
  *
  * Separate from `alignmentPreflight.ts` because it needs `node:dns` and must be
  * a `'use node'` module, where Convex forbids queries and mutations. The DNS

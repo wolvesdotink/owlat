@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Postbox → "Move my mailbox here" (piece c5).
+ * Postbox → "Move my mailbox here".
  *
  * The staged full move of a connected external mailbox onto an Owlat-hosted
  * mailbox on the SAME address. Three stages the user drives at their own pace:

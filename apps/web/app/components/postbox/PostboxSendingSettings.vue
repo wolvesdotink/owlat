@@ -2,12 +2,12 @@
 /**
  * Postbox → Sending. Two things live under this heading:
  *
- * 1. The UNDO-SEND WINDOW (plan idea 8) — how long a message is held after Send
+ * 1. The UNDO-SEND WINDOW — how long a message is held after Send
  *    before it actually dispatches: Off / 10s / 30s / 60s. Everyone has this,
  *    hosted and connected alike, so it renders unconditionally.
- * 2. The reversible OUTBOUND-TRANSPORT choice for a connected external mailbox
- *    (piece c4). After an import a mailbox keeps sending through the user's own
- *    SMTP; once their from-domain is verified on THIS instance and a transport
+ * 2. The reversible OUTBOUND-TRANSPORT choice for a connected external mailbox.
+ *    After an import a mailbox keeps sending through the user's own SMTP; once
+ *    their from-domain is verified on THIS instance and a transport
  *    is configured, they can flip outbound to the Owlat instance so mail ships
  *    from its reputation. Reversible any time. When every gate holds
  *    (`promptEligible`) it renders a highlighted nudge — the same one-click
@@ -140,7 +140,7 @@ async function choose(preference: 'external' | 'instance') {
 			</select>
 		</div>
 
-		<!-- Outbound transport (piece c4). Self-hides for a hosted-only user, who
+		<!-- Outbound transport. Self-hides for a hosted-only user, who
 		     has no external mailbox and so nothing to choose. -->
 		<template v-if="showSection">
 			<div class="border-t border-border-subtle" />

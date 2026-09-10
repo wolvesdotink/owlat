@@ -2,9 +2,9 @@
 import { api } from '@owlat/api';
 
 /**
- * Sealed Mail settings (E5, flag `sealedMail`). The org-level sealing policy
- * (locked decision D2): `auto` seals whenever every recipient can receive sealed
- * mail; `ask` keeps sealing available but never seals automatically; `off` never
+ * Sealed Mail settings (flag `sealedMail`). The org-level sealing policy:
+ * `auto` seals whenever every recipient can receive sealed mail; `ask` keeps
+ * sealing available but never seals automatically; `off` never
  * seals. Owner/admin only — the backend floor is `settings:manage`, and the
  * `admin` route middleware below redirects a non-admin to /dashboard before this
  * page renders, so the page itself never has to say "owners and admins only".
@@ -83,7 +83,7 @@ async function setInboundTlsRequired(value: boolean) {
 	if (!result.ok) isInboundTlsRequired.value = previous;
 }
 
-// ── Recovery kit (E6, locked decision D7). The armored private key + plain-words
+// ── Recovery kit (E6). The armored private key + plain-words
 // instructions for one address — the only sanctioned private-key egress, and the
 // import path to restore access after a rebuild. Owner/admin only.
 const kitAddress = ref('');

@@ -1,6 +1,6 @@
 /**
  * Pure logic for the first-login welcome flow and the resumable per-user
- * onboarding checklist (piece c1).
+ * onboarding checklist.
  *
  * Everything the Vue components and the route middleware decide is derived from
  * these functions, so the behaviour is unit-testable without mounting Nuxt or a

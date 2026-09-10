@@ -217,7 +217,7 @@ export function providerFor<K extends SendingDomainProviderKind>(
 }
 
 /**
- * THE RELAY-IDENTITY REGISTRY (the seams plan's P3.2) — the same registry, asked
+ * THE RELAY-IDENTITY REGISTRY — the same registry, asked
  * the smaller of its two questions, and composed with the bundled plugin tier.
  *
  * "Can this RELAY kind prove a sending domain?" is a different question from "is

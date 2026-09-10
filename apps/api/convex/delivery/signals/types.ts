@@ -1,5 +1,5 @@
 /**
- * THE SIGNAL-SOURCE CONTRACT (seams plan D9).
+ * THE SIGNAL-SOURCE CONTRACT.
  *
  * A signal source is one answer to "where does this deployment's evidence about
  * its own deliverability come from" — the ramp's own outcome counters, the
@@ -22,7 +22,7 @@
  *     evidence was gathered — a provider's complaint feed is advisory here
  *     because no decision path consults it, not because complaints are advice.
  *  3. `absence` — what happens when the source is NOT CONFIGURED, declared as
- *     data. "Not configured" is a supported verdict (plan D2): every absence
+ *     data. "Not configured" is a supported verdict: every absence
  *     carries `isBlocking: false` by TYPE, so a source that blocked on its own
  *     absence could not be declared at all.
  *
@@ -96,9 +96,9 @@ export type SignalSourceKey = RampGateSignalKey | ProviderFeedSignalKey;
  * unrepresentable.
  *
  *  - `substitute` — a weaker signal stands in and the reading continues, more
- *    slowly and with a lower confidence that is said out loud (plan D14).
+ *    slowly and with a lower confidence that is said out loud.
  *  - `hold` — the source still answers, and its answer is "not enough evidence
- *    this window", which neither advances nor retreats the ramp (plan D10).
+ *    this window", which neither advances nor retreats the ramp.
  *  - `omit` — the source contributes nothing at all: nothing is measured, so
  *    nothing is folded, so an absent source cannot hold anything either.
  *

@@ -1,6 +1,6 @@
 /**
  * Mandrill (Mailchimp Transactional) **Integration import provider adapter** —
- * the rejection-blacklist carry-over (plan D9, P4.1).
+ * the rejection-blacklist carry-over.
  *
  * The one import in this folder that imports no contacts. A migrating team's
  * Mandrill account holds a rejection blacklist built up over years — every
@@ -14,7 +14,7 @@
  *
  * Three things are worth knowing before changing this file:
  *
- *  - **The credential is env, not config (D2).** Mandrill is a SEND provider;
+ *  - **The credential is env, not config.** Mandrill is a SEND provider;
  *    plan D2 froze send-provider credentials as env-only, so the key comes from
  *    `MANDRILL_API_KEY` — the same variable the send adapter and the webhook
  *    verifier read — and never from the import form. That is why

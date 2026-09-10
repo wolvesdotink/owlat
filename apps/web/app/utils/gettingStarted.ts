@@ -271,7 +271,7 @@ export const SEND_BLOCKED_REASON = 'shared.gettingStarted.sendBlockedReason';
  * rather than as a pre-flight refusal after the operator has built a campaign
  * for an audience today's capacity cannot carry. `null` is "not measured, or no
  * cap applies", and then the step says nothing extra: an invented number beside
- * a checklist item is worse than no number (deliverability plan D14).
+ * a checklist item is worse than no number.
  *
  * WHY THIS IS NOT `sendReadinessNote`. That helper (`~/lib/sendReadiness`)
  * builds the same measurement into a two-line NOTE — a heading and a detail —

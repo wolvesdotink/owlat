@@ -103,7 +103,7 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// runtime (delivery status + campaign From-picker), so it must be pushed.
 	'OUTBOUND_DKIM_DOMAIN',
 	'SPF_QUALIFIER',
-	// BIMI (P4-7). The DOMAIN WIZARD generates the `_bimi` record at Convex
+	// BIMI. The DOMAIN WIZARD generates the `_bimi` record at Convex
 	// function runtime, so these must reach the deployment and not merely the
 	// MTA's env — a self-hoster who set them would otherwise find the wizard
 	// still reporting that no logo is known, with no error to explain it.
@@ -222,7 +222,7 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// runtime by the SNDS poller via getOptional(). Without the push a self-hoster
 	// who sets it in .env would find getOptional('SNDS_DATA_FEED_URLS') always
 	// undefined and the poller silently dead in production. Unset ⇒ the poller
-	// returns immediately: SNDS enrollment is additive-only (D2).
+	// returns immediately: SNDS enrollment is additive-only.
 	'SNDS_DATA_FEED_URLS',
 ] as const;
 

@@ -59,7 +59,7 @@ export const integrationProviderConfigValidator = v.union(
 		provider: v.literal('mailchimp'),
 		apiKey: v.string(),
 		listId: v.string(),
-		// Opt-in suppression carry-over (plan D9). Absent = the pre-P4.1
+		// Opt-in suppression carry-over. Absent = the pre-P4.1
 		// behavior: non-subscribed members are skipped and nothing is suppressed.
 		importSuppressions: v.optional(v.boolean()),
 	}),
@@ -336,7 +336,7 @@ export const processIntegrationPage = internalAction({
 			}
 		}
 
-		// Suppression carry-over (plan D9). A separate hop from `importBatch`
+		// Suppression carry-over. A separate hop from `importBatch`
 		// because it is a different kind of write to a different table with a
 		// different idempotency story — and because a contacts import that
 		// carries no suppressions must be able to fail without one, and the

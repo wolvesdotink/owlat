@@ -142,7 +142,7 @@ type RelayIdentityBackfillOutcome = {
  * relay) — which is the same "nothing to backfill" the hand-written if-chain
  * achieved by not listing them.
  *
- * A BUNDLED PLUGIN TRANSPORT NO LONGER DOES (the seams plan's P3.2): the registry
+ * A BUNDLED PLUGIN TRANSPORT NO LONGER DOES: the registry
  * is the composed one, so a plugin kind that contributed a `domainIdentity` gets
  * its backfill through this loop exactly as `ses` and `mandrill` do. That was the
  * missing half of the promise — its `relayDomainVerified` reads a row, and

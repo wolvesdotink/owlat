@@ -59,7 +59,7 @@ export type SendProviderCatalogEntry = SendProviderCatalogEntryShape & {
 	readonly pluginId?: PluginId;
 	readonly requiredCapability?: 'send:transport';
 	/**
-	 * THE THIRD PLUGIN-TIER FIELD (the seams plan's P3.1): the variables this
+	 * THE THIRD PLUGIN-TIER FIELD: the variables this
 	 * transport's own configuration lives in, which the host resolves PER INSTANCE
 	 * and hands to the plugin's module.
 	 *

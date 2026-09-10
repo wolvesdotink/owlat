@@ -1,5 +1,5 @@
 /**
- * The AIMD ramp controller's vocabulary (plan D9, D12, D15).
+ * The AIMD ramp controller's vocabulary.
  *
  * Shared vocabulary: the types the pure decision function, the cron shell that
  * feeds it and the audit writer that records it all agree on, plus the two tiny
@@ -40,7 +40,7 @@ export type RampControlReason =
 	| 'freeze_unreadable'
 	/** The stored share was not a share (negative, above 1, or non-finite). */
 	| 'share_unreadable'
-	/** Thin or absent evidence (plan D10): hold, in both directions. */
+	/** Thin or absent evidence: hold, in both directions. */
 	| 'holding'
 	/**
 	 * The gate aggregate is not a reading of the PRESENT: it was computed longer
@@ -49,7 +49,7 @@ export type RampControlReason =
 	 */
 	| 'evidence_stale'
 	/**
-	 * A tripwire gate failed alone (plan D17). Seeds are 5-10 mailboxes: a
+	 * A tripwire gate failed alone. Seeds are 5-10 mailboxes: a
 	 * collapse is actionable, but on its own it is SUSPECT, so the controller
 	 * waits for the deferral or bounce gate to corroborate before halving.
 	 */
@@ -75,7 +75,7 @@ export type RampControlReason =
 	 * Named apart from `phase_ceiling` because the two are indistinguishable to an
 	 * operator otherwise, and the remedies are opposite: `phase_ceiling` says
 	 * "promote the phase", while this one says "the Microsoft cell is a rung low
-	 * because SNDS is absent, and it lifts by itself when SNDS returns" (plan D12).
+	 * because SNDS is absent, and it lifts by itself when SNDS returns".
 	 */
 	| 'degradation_ceiling'
 	/** An additive increase. The only reason that ever raises a share. */
@@ -83,7 +83,7 @@ export type RampControlReason =
 	/** s = 1.0 held 14 days with every gate green: the cell PINS. */
 	| 'graduated'
 	/**
-	 * THE OPERATOR'S OWN REASONS (P3-6, D3), in the order below — each written by a
+	 * THE OPERATOR'S OWN REASONS, in the order below — each written by a
 	 * CONTROL MUTATION and never by a rung, which the controller has no way to
 	 * reach on its own. A pause suppresses an increase and NEVER a retreat, so
 	 * `operator_pause` appears only on a hold; `operator_pin` is a pinned share
@@ -130,7 +130,7 @@ export interface RampMixState {
 	/**
 	 * The STORED own share, verbatim and unsanitised — `-0.5`, `1.5` and `NaN`
 	 * all reach the decision function as themselves. Only an ABSENT stored share
-	 * is resolved by the caller (to `isFallbackActive ? 0 : 1`, plan D1), because
+	 * is resolved by the caller (to `isFallbackActive ? 0 : 1`), because
 	 * absence is the one case that has a defined answer.
 	 */
 	readonly share: number;
@@ -208,7 +208,7 @@ export interface RampHardStopSignals {
  * are what is LEFT OF TODAY (`remainingDemandToday`), and the last sliver of the
  * day holds rather than decides.
  *
- * ABSENCE IS NOT A CONSTRAINT (plan D2): a missing warming reading is never
+ * ABSENCE IS NOT A CONSTRAINT: a missing warming reading is never
  * evidence of a full cap, so it stays `unconstrained`. An unusable DEMAND
  * reading is a different thing — it is a ceiling we cannot compute at all — and
  * it holds.
@@ -216,7 +216,7 @@ export interface RampHardStopSignals {
 /**
  * WHY a known cap could not be turned into a ceiling — a CLOSED union, never a
  * free string, so the audit snapshot cannot carry a reason no reader recognises
- * and a switch over it stays exhaustive (plan D12).
+ * and a switch over it stays exhaustive.
  *
  * The per-cell reasons come straight through from `projectCellVolume`, because
  * "this cell has never sent" and "this cell is paused" are different facts an
@@ -231,7 +231,7 @@ export type RampCapacityUnknownReason =
 	| CellVolumeUnknownReason;
 
 export type RampCapacityInput =
-	/** No warming reading at all; only the phase ceiling binds (plan D2). */
+	/** No warming reading at all; only the phase ceiling binds. */
 	| { readonly kind: 'unconstrained' }
 	/**
 	 * A warming cap is known but the demand it must be divided by is not (a
@@ -307,11 +307,11 @@ export interface RampControllerInput {
 	 * nothing caps this cell. Resolved by the substitution fold, never by the
 	 * decision path: the controller applies a number and REPORTS a name, and the
 	 * two must come from the same table read or the audit row would explain the
-	 * cap with an integration that did not cause it (plan D12).
+	 * cap with an integration that did not cause it.
 	 */
 	readonly ceilingCapSource: RampIntegrationId | undefined;
 	/**
-	 * DOES A PHASE CEILING APPLY TO THIS CELL AT ALL (plan D3)? A property of the
+	 * DOES A PHASE CEILING APPLY TO THIS CELL AT ALL? A property of the
 	 * TICK and never of the row — see `phaseLadderBounds` in `controllerBounds.ts`.
 	 */
 	readonly isPhaseLadderBinding: boolean;
@@ -320,7 +320,7 @@ export interface RampControllerInput {
 	 * the AUDIT ROW, not for the decision. The controller reads none of it; the
 	 * snapshot in `mixDecisions` does, so a decision whose reason is
 	 * `degradation_ceiling` can say exactly which feeds were missing when it was
-	 * taken and a replay can be reproduced from the row alone (plan D12).
+	 * taken and a replay can be reproduced from the row alone.
 	 */
 	readonly absentIntegrations: readonly RampIntegrationId[];
 	/** Plan P3-2's global kill switch. Honoured before every other rule. */

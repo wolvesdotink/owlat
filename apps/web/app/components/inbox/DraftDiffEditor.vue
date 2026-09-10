@@ -60,7 +60,7 @@ const emit = defineEmits<{
 	(e: 'update:modelValue', value: string): void;
 	(e: 'apply'): void;
 	/**
-	 * Save WITHOUT approving (piece D1'): persist the edit as a draft revision
+	 * Save WITHOUT approving: persist the edit as a draft revision
 	 * and stay in `draft_ready`. Rendered only when {@link showSave} is set, so
 	 * surfaces without a save path keep the two-button layout.
 	 */

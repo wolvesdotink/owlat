@@ -15,7 +15,7 @@
  * rule below, so the screen's provider roll-up and the controller's per-cell
  * verdict cannot be derived from two different reads (ADR-0042 / plan D5).
  *
- * COUNTS, NEVER A RATE (plan D17). Nothing here divides. The sweeps are integers
+ * COUNTS, NEVER A RATE. Nothing here divides. The sweeps are integers
  * per placement; the reached share is the shared module's to compute, once.
  *
  * PURE: `now` never enters, no database handle, no clock. The caller reads the
@@ -28,7 +28,7 @@
  * probe (`delivery/seedScheduledProbe.ts`) carrying a fixed neutral body,
  * because those streams have no bulk transaction to clone from. Same cell axis,
  * same evidence rule, same reduction; the CONTENT behind a non-campaign sweep is
- * synthetic, which is why placement stays a tripwire for collapse (D17) rather
+ * synthetic, which is why placement stays a tripwire for collapse rather
  * than a content-quality gauge. A cell whose stream is never probed still holds,
  * and still does not borrow another stream's sweep.
  */
@@ -190,7 +190,7 @@ export function buildSeedPlacementSweeps(
 
 /**
  * This cell's sweeps, with ABSENCE as the answer for a cell the ledger has
- * nothing for — the default and supported configuration (plan D2), and the one
+ * nothing for — the default and supported configuration, and the one
  * place that default is spelled.
  */
 export function seedSweepsForCell(

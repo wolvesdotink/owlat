@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Deliverability measurement — v1, READ-ONLY (plan D2, D5, D14).
+ * Deliverability measurement — v1, READ-ONLY.
  *
  * The measurement ships before the control. This page proves the signal is
  * trustworthy before anything acts on it: per cell, both arms' outcomes, every
@@ -11,7 +11,7 @@
  * D14: with a reference arm the feature is "Sending independence"; with none it
  * is "Warm-up autopilot" — a different, honest feature, not a degraded one.
  * Either way, a fresh install with zero third-party credentials renders this
- * screen cleanly (plan D2).
+ * screen cleanly.
  *
  * THE FRAMING IS KEYED TO THE CELLS, NOT TO THE RELAY LIST. Whether a cell has a
  * second arm is a MEASUREMENT the server already made — `cell.reference`, the
@@ -176,7 +176,7 @@ const decisionLabel = computed(() => {
 		<!--
 			No `empty` binding: the query always answers with the full cell product,
 			and a cell nobody has sent through renders as its own calm empty state
-			rather than as the boundary's generic "nothing to show" (plan D2/D14).
+			rather than as the boundary's generic "nothing to show".
 		-->
 		<UiQueryBoundary
 			:loading="isLoading"

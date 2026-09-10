@@ -3,7 +3,7 @@
  *
  * Scoring answers "how engaged is this contact"; this module answers "where in
  * a cohort does that score sit", which is a different question with a different
- * consumer: the stratified half of the mix assignment (plan D8). It lives in its
+ * consumer: the stratified half of the mix assignment. It lives in its
  * own file because `engagementScore.ts` is at the ~500 LOC guideline
  * CONVENTIONS.md sets, and because ranking has no business knowing how a score
  * is computed.

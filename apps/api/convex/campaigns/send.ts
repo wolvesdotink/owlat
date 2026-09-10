@@ -597,7 +597,7 @@ export const resolveCampaignPage = internalAction({
 			return { done: true, pageEnqueued: 0 };
 		}
 
-		// THE MULTI-DAY SEND PLAN (deliverability plan P3-7). A warming deployment
+		// THE MULTI-DAY SEND PLAN. A warming deployment
 		// with no relay to overflow to cannot deliver a large campaign in one day,
 		// and enqueueing the whole audience anyway does not make it faster — it makes
 		// the tail expire at `maxMessageAgeMs` after churning the MTA's queue for
@@ -877,7 +877,7 @@ export const resolveCampaignPage = internalAction({
 		// Record what today's slice has carried so far. Written AFTER the advance so
 		// the two never disagree about a page, and written on every hop — including
 		// the ones that enqueued nothing — because the day-of-N line has to be there
-		// from the first moment (plan D14), not once a plan turns out to be long.
+		// from the first moment, not once a plan turns out to be long.
 		// No `resumeAt`: this hop made progress, so any previous park is cleared and
 		// the stuck-walk watchdog can see the row again.
 		await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {

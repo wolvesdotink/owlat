@@ -1,5 +1,5 @@
 /**
- * Send-provider catalog — the DECLARATION vocabulary (the seams plan's D1).
+ * Send-provider catalog — the DECLARATION vocabulary.
  *
  * PLAN NUMBERS: this file's comments cite THREE plans, so each citation names
  * its own — the seams plan (which owns the branch), the Mandrill provider plan,
@@ -47,7 +47,7 @@ export type HostedSendTransportKind = `plugin.${string}.${string}`;
  * How a provider is INTEGRATED — the seams plan's D4 ("two relay tiers, one
  * contract").
  *
- *  - `own`    Owlat's own MTA. Special BY DEFINITION (D3) and by nothing else:
+ *  - `own`    Owlat's own MTA. Special BY DEFINITION and by nothing else:
  *             it is the arm a deliverability fallback moves traffic away from,
  *             so "own vs. not-own" is the one identity question that legitimately
  *             exists. Exactly one entry may carry it.
@@ -321,7 +321,7 @@ export interface SendProviderCatalogEntryShape {
 	 */
 	readonly optionalEnvVars?: readonly string[];
 	/**
-	 * The credential FORM, as typed descriptors (D5). Optional because a generated
+	 * The credential FORM, as typed descriptors. Optional because a generated
 	 * plugin entry carries it only when its manifest declared one — see the note
 	 * on `./sendProviderCredentialFields`.
 	 */

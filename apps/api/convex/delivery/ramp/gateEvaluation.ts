@@ -1,5 +1,5 @@
 /**
- * Ramp controller — gate AGGREGATION (plan D3, D9, D10, D12, D17).
+ * Ramp controller — gate AGGREGATION.
  *
  * Pure, like `gates.ts`: `now` is a parameter and nothing here reads a clock, a
  * database or the environment.
@@ -22,10 +22,10 @@
  * controller raise a share, so it is never the default: an evaluation in which
  * NOTHING contributed — an empty gate list, or nothing but optional gates that
  * are all holding — returns `insufficient_data` and holds the streak where it
- * was. Never increase, and never decrease, on nothing (plan D10).
+ * was. Never increase, and never decrease, on nothing.
  *
  * WHAT THIS MODULE DOES NOT DECIDE. D17's corroboration rule is the
- * controller's (P3-2): a `fail` from a tripwire gate is flagged here through
+ * controller's: a `fail` from a tripwire gate is flagged here through
  * `requiresCorroboration`, and P3-2 must confirm it against the deferral or
  * bounce results in `perGate` before halving a share. Acting on `verdict` alone
  * when `requiresCorroboration` is set is a defect in the caller.
@@ -80,7 +80,7 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 
 	for (const result of perGate) {
 		if (!contributes(result)) continue;
-		// A GATE THAT MEASURED NOTHING HAS NO CONFIDENCE TO CONTRIBUTE (plan D14).
+		// A GATE THAT MEASURED NOTHING HAS NO CONFIDENCE TO CONTRIBUTE.
 		// `measuredConfidence` grades how much a VERDICT is worth, and a hold is not a
 		// verdict — folding a holding gate's grade in would let a column of "not
 		// enough data yet" fold to `high` and tell the operator the cell is
@@ -100,7 +100,7 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 	// exactly the state `pass` must not be reachable from.
 	const contributedOrHold: RampVerdict = winner === undefined ? 'insufficient_data' : winner.status;
 
-	// THE ASYMMETRY (plan D14). A window in which everything that passed was a
+	// THE ASYMMETRY. A window in which everything that passed was a
 	// low-confidence gate is not a clean window — it is a window with no evidence
 	// for going UP, and it holds. The same gate's FAIL is untouched by this: a weak
 	// signal is allowed to retreat a share, it is just never allowed to advance one.
@@ -146,7 +146,7 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 }
 
 /**
- * ONE EVALUATION BODY, ASKED PER ARM (plan D9).
+ * ONE EVALUATION BODY, ASKED PER ARM.
  *
  * Which measurements exist, in which order they fold, and which of them an arm
  * evaluates are declared once in `../signals/rampGateSources` — so this module
@@ -184,7 +184,7 @@ function armGateEvaluator(kind: RampArm): RampGateEvaluator {
 export const referenceArmGateEvaluator: RampGateEvaluator = armGateEvaluator('reference_arm');
 
 /**
- * The STANDALONE evaluator (plan D2, D3, D14): no reference transport, and no
+ * The STANDALONE evaluator: no reference transport, and no
  * apology for it.
  *
  * SAME INTERFACE, SAME PRECEDENCE, SAME AGGREGATOR. The five gates are evaluated

@@ -1,5 +1,5 @@
 /**
- * The controller's decisions, in sentences (plan D12).
+ * The controller's decisions, in sentences.
  *
  * THE KPI IS 100%: every controller decision must carry a recorded,
  * human-readable reason. A controller that silently retreats will be
@@ -66,7 +66,7 @@ const RAMP_GATE_REMEDIES: Record<RampGateId, string> = {
  * Two reasons are deliberately ABSENT and are absent STRUCTURALLY, not as a
  * consequence of some second half of a predicate. `awaiting_corroboration`
  * carries a `failedGate`, but it is the branch in which the controller has
- * decided NOT to believe the seed tripwire on its own (plan D17): nothing moved,
+ * decided NOT to believe the seed tripwire on its own: nothing moved,
  * nothing froze, and the remedy sentence would be an alarm asking the operator to
  * go and find out whether there is an alarm. A ceiling-bound pull-back is absent
  * for the plainer reason that nothing failed — no gate to name, nothing to act
@@ -91,7 +91,7 @@ function gateRemedy(decision: RampDecision): string {
 }
 
 /**
- * THE ADMIN NOTICE for a retreat (plan D12), or `undefined` when there is
+ * THE ADMIN NOTICE for a retreat, or `undefined` when there is
  * nothing an operator can act on. The notice IS the decision's sentence: it
  * already names what broke and what to do about it, and a second wording could
  * only drift from the first.
@@ -243,7 +243,7 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 		// DIRECTION too, for the same reason the two ceiling arms above do. "Reduced
 		// ... (1% -> 1%)" reads as a no-op sentence for what is actually a fresh
 		// breach, a fresh freeze and another rung of the cooldown ladder.
-		// THE OPERATOR'S OWN REASONS (P3-6). Each one names the HUMAN as the cause,
+		// THE OPERATOR'S OWN REASONS. Each one names the HUMAN as the cause,
 		// because the worst thing an audit trail can do is present a person's
 		// decision as the controller's judgement — an operator who pinned a cell
 		// last month and forgot must be able to read why it stopped moving.
@@ -273,7 +273,7 @@ export function describeRampDecision(cell: DeliverabilityCell, decision: RampDec
 }
 
 /**
- * THE PACE DIAL'S SENTENCE (plan D12), in the SAME vocabulary as the share's.
+ * THE PACE DIAL'S SENTENCE, in the SAME vocabulary as the share's.
  *
  * It lives in this file rather than a parallel one for the reason the pace
  * fixtures live with the share fixtures: the two actuators answer the same
@@ -298,7 +298,7 @@ function multiple(multiplier: number): string {
 const NOTIFIABLE_PACE_REASONS: ReadonlySet<PaceDecisionReason> = NOTIFIABLE_REASONS;
 
 /**
- * THE ADMIN NOTICE FOR A PACE RETREAT (plan D12).
+ * THE ADMIN NOTICE FOR A PACE RETREAT.
  *
  * IT IS ITS OWN NOTICE BECAUSE A PACE-ONLY RETREAT IS REACHABLE. The two dials
  * keep separate freeze columns by design, so a share still inside an earlier
@@ -412,7 +412,7 @@ export function describePaceDecision(cell: DeliverabilityCell, decision: PaceDec
 		case 'degradation_ceiling':
 		case 'window_open':
 		case 'graduated':
-		// THE REST OF THE OPERATOR'S CONTROLS ARE SHARE-ONLY (P3-6). A pin, a forced
+		// THE REST OF THE OPERATOR'S CONTROLS ARE SHARE-ONLY. A pin, a forced
 		// advance and a phase reset all rewrite a SHARE decision and are expressed
 		// in share; the pace ladder is never handed one, so these rungs cannot
 		// reach this dial. The PAUSE is the exception and has its own sentence

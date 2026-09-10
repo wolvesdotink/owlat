@@ -1,6 +1,6 @@
 /**
  * Inbound PGP-SIGNED (unencrypted) mail — the PURE record vocabulary of the F1
- * signature-verification plane (adoption-gaps plan 2026-08-16, decision D9).
+ * signature-verification plane (adoption-gaps plan 2026-08-16).
  *
  * This is the SIGNED-plaintext sibling of `e2ee/inboundSeal.ts`'s
  * `InboundEncryptionInfo`: a message that arrived as RFC 3156

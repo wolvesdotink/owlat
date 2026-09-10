@@ -1,5 +1,5 @@
 /**
- * Send assignments — the ROUTING half (plan D7 / D8 / D16).
+ * Send assignments — the ROUTING half.
  *
  * `delivery/sendAssignments.ts` owns the record: what a row means, when it is
  * written, how it is read back and when it ages out. This module owns the
@@ -165,7 +165,7 @@ export function buildEngagementRanker(
 		if (cohort === undefined) cohorts.set(provider, [score]);
 		else cohort.push(score);
 	}
-	// Sorted once per cell, and cells too thin to rank (D10 — thin data holds)
+	// Sorted once per cell, and cells too thin to rank (thin data holds)
 	// are dropped here rather than re-tested per recipient. A dropped cell ranks
 	// nobody, so all of it falls back to the random bucket.
 	const rankable = new Map<DestinationProviderKey, readonly number[]>();
@@ -214,7 +214,7 @@ interface TransportLookupInput {
  * batch is — what became per-recipient is the pure DECISION, not the I/O.
  *
  * That distinction is the piece: under `adaptive_mix` the arm is a function of
- * the recipient (D7), so a per-provider answer would stamp one recipient's arm
+ * the recipient, so a per-provider answer would stamp one recipient's arm
  * onto the whole cell. Under every shipped strategy the answer does not depend
  * on the recipient at all and the result is identical to the per-provider
  * lookup this replaced.

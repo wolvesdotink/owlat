@@ -211,7 +211,7 @@ function grade(
  * The posture for a transport we cannot resolve AT ALL — an id this deployment
  * no longer configures. Same shape, same grading function, so it can never
  * drift from what {@link resolveReturnPathCapability} returns for a transport
- * that simply has no evidence yet. Never an error (plan D2).
+ * that simply has no evidence yet. Never an error.
  */
 export const unresolvableReturnPathCapability: ResolvedReturnPathCapability = Object.freeze(
 	grade('unknown', 'probe', 'never_probed', 'awaiting_delivery', { hasProviderFeedback: false })

@@ -5,7 +5,7 @@
  * The no-op rows are the POINT, not noise to be filtered out. A history that
  * only showed changes would answer "what moved" and never "was the controller
  * even looking", which is the question an operator actually has when a share has
- * sat still for a week (plan D12).
+ * sat still for a week.
  *
  * The sentence is the controller's own, verbatim. Composing a second one here
  * would let the screen and the audit row describe the same retreat differently,

@@ -1,5 +1,5 @@
 /**
- * THE READ HALF OF THE PHASE-PROMOTION RULE (plan D3, D15).
+ * THE READ HALF OF THE PHASE-PROMOTION RULE.
  *
  * `delivery/ramp/phasePromotion.ts` owns the rule — the routes, the conditions
  * and the arithmetic — and is pure. This module loads the instants it judges.
@@ -97,7 +97,7 @@ async function domainCompliancePassAt(
  * promotion must never read an unbounded table, and the only bounded answer that
  * does not invent a verdict is the one that fails CLOSED.
  *
- * Absence is still never a block (plan D2): `null` here costs the `google_
+ * Absence is still never a block: `null` here costs the `google_
  * compliance` route, and the standalone route is unaffected.
  */
 async function latestGoogleCompliancePassAt(
@@ -160,7 +160,7 @@ async function latestSndsGreenBandAt(ctx: RampReadCtx, since: number): Promise<n
  * through the promotion door instead.
  *
  * An absent reading is `null`, which reports `unknown` and never PERMANENTLY
- * blocks a promotion (plan D2) — so narrowing here costs a cell nothing but the
+ * blocks a promotion — so narrowing here costs a cell nothing but the
  * borrowed claim.
  */
 async function latestSeedProbePassAt(
@@ -220,7 +220,7 @@ function snapshotPoolBlocklisted(snapshot: string | undefined): boolean | null {
  *
  * READ FROM THE RECORDED SIGNAL, NEVER FROM THE WINNING REASON. `mixDecisions`
  * records every evaluation including the no-ops, each with a snapshot of every
- * gate's inputs (plan D12) — and `dnsbl` is only ever the WINNING reason at its
+ * gate's inputs — and `dnsbl` is only ever the WINNING reason at its
  * own rung. The kill switch, a suspended org, an active freeze and the circuit
  * breaker all outrank it, and those are exactly the states a real listing
  * produces: the 24h freeze that FOLLOWS a critical listing is reason `frozen`,
@@ -352,7 +352,7 @@ export async function loadRampPromotionEvidence(
 	const { organizationId, cell, perStream, degradation, now } = args;
 	const since = now - EVIDENCE_WINDOW_MS;
 	// THE DWELL ANCHOR, WITH A FALLBACK — because an absent reading must never
-	// PERMANENTLY block a promotion (plan D2).
+	// PERMANENTLY block a promotion.
 	//
 	// `phaseCeilingSince` is stamped only by the writes that SET a rung (enrolment,
 	// a promotion, a downward phase reset), so a row that arrived at a rung any

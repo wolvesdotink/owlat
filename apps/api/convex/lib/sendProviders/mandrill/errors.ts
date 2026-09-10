@@ -168,7 +168,7 @@ export function categorizeMandrillError(message: string, httpStatus?: number): E
 }
 
 /**
- * Was this failure an ambiguous post-dispatch timeout (D4)?
+ * Was this failure an ambiguous post-dispatch timeout?
  *
  * Mandrill's API has NO idempotency key — unlike Resend, which is why the Resend
  * adapter can let a timeout stay retryable. A timed-out `send-raw` may already

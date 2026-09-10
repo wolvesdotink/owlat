@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * PER-STREAM AGGRESSIVENESS (plan D9, D14).
+ * PER-STREAM AGGRESSIVENESS.
  *
  * NONE OF THE THREE IS LABELLED "RECOMMENDED". Each is described by what it
  * costs and what it buys, and the deployment's default is stated separately as a
@@ -8,7 +8,7 @@
  * signal is genuinely the weaker one, which is a statement about evidence rather
  * than about nerve, and the copy says exactly that.
  *
- * SAY THE QUIET PART (plan D14). On a standalone deployment the two faster
+ * SAY THE QUIET PART. On a standalone deployment the two faster
  * paces run the reference-arm constants with no reference arm to corroborate
  * them, so each of them carries the sentence that says so. They stay selectable
  * — this is an operator's deployment and the trade-off is theirs to take — but

@@ -63,7 +63,7 @@ export interface LastMileRoutingDeferred {
 	 */
 	isPolicyHold?: boolean;
 	/**
-	 * WHOSE FACT THIS DEFERRAL IS — gate 2's numerator (plan D5, D10), and the
+	 * WHOSE FACT THIS DEFERRAL IS — gate 2's numerator, and the
 	 * reason this field is REQUIRED rather than defaulted: a new defer site that
 	 * forgot to answer would quietly pick a side.
 	 *

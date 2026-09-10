@@ -104,7 +104,7 @@ export async function loadSeedAccounts(
  * operator owns, and telling them to "add seed mailboxes" when they have some
  * that need reconnecting is the wrong sentence.
  *
- * Absence is a SUPPORTED CONFIGURATION (plan D2): `false` lowers measurement
+ * Absence is a SUPPORTED CONFIGURATION: `false` lowers measurement
  * confidence and offers an improvement, and does nothing else.
  */
 export async function hasSeedAccounts(

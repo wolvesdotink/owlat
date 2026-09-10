@@ -87,7 +87,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 	// sent thread as a follow-up watch (mail/followUps.ts). null = off.
 	const followUpRemindAt = ref<number | null>(null);
 
-	// Offline outbox (D8): send() queues instead of failing while offline; the
+	// Offline outbox: send() queues instead of failing while offline; the
 	// drain replays queued payloads on reconnect (usePostboxOfflineOutbox).
 	const offlineOutbox = usePostboxOfflineOutbox(() => String(seed.mailboxId));
 

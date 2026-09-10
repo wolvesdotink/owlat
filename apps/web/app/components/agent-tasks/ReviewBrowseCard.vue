@@ -21,7 +21,7 @@ const props = defineProps<{
 	aiEnabled: boolean;
 	/** An action for this row is in flight. */
 	busy: boolean;
-	/** Part of the bulk selection (piece C2) — checkbox state and ring. */
+	/** Part of the bulk selection — checkbox state and ring. */
 	selected: boolean;
 }>();
 
@@ -102,7 +102,7 @@ const why = computed<string | undefined>(() => {
 					</NuxtLink>
 				</template>
 			</template>
-			<!-- One roll-up trust chip (human language; reasons + raw numbers in its popover) + category chip + saved-edit chip (D7). -->
+			<!-- One roll-up trust chip (human language; reasons + raw numbers in its popover) + category chip + saved-edit chip. -->
 			<template #trailing>
 				<div
 					v-if="row.message.classification || row.message.draftSavedAt"

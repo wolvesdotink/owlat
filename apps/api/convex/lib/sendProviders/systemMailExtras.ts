@@ -1,5 +1,5 @@
 /**
- * The SYSTEM/AUTH mail extras seam — the vocabulary half (the seams plan's P0.4).
+ * The SYSTEM/AUTH mail extras seam — the vocabulary half.
  *
  * `systemMail.ts` is the single transport for password resets, invitations,
  * double opt-in and email-change mail. It used to decide the per-send knobs

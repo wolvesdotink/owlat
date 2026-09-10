@@ -21,7 +21,7 @@ import type { SendTransportId, SendTransportRecord } from './transports';
 /**
  * The provider kinds, as a runtime list so both the `SendProviderKind` type and
  * the `isSendProviderKind` guard derive from one source. That source is the
- * send-provider catalog in `@owlat/shared` (the seams plan's D1): its entries
+ * send-provider catalog in `@owlat/shared`: its entries
  * are the declaration, `SEND_TRANSPORT_KINDS` is `entries.map(e => e.kind)`, and
  * the outbound DMARC-alignment guard reads the SAME derivation. Re-exported here
  * so a new provider kind can't be added on either side without the other seeing
@@ -115,7 +115,7 @@ export interface MtaExtras {
 	routingReentryToken?: string;
 	/**
 	 * Callback material whose canonical digest is authenticated by the token:
-	 * the wire's {@link MtaRoutingReentry} (D7) with `retryState` narrowed to
+	 * the wire's {@link MtaRoutingReentry} with `retryState` narrowed to
 	 * {@link DispatchReentryRetryState}. `reentryRetryState()` in
 	 * `delivery/governedDispatch.ts` drops the wire's optional `workAttemptId`
 	 * and `acceptanceReconciliation` so a successor mints its own work identity.
@@ -172,13 +172,13 @@ export interface SmtpExtras {
 	 * two arms present the same envelope-sender domain, D11), and that host's
 	 * published SPF authorises this transport. Absent ⇒ leave the envelope
 	 * sender exactly as the composer built it (the shipped behaviour) and treat
-	 * the cell's bounce data as degraded — never an error, never a blocker (D2).
+	 * the cell's bounce data as degraded — never an error, never a blocker.
 	 */
 	returnPathHost?: string;
 }
 
 /**
- * Mailchimp Transactional (Mandrill) per-send knobs (plan D3/D5).
+ * Mailchimp Transactional (Mandrill) per-send knobs.
  *
  * Only the two facts the ROUTE decides. The subaccount is deliberately NOT here:
  * it is instance-level configuration (`MANDRILL_SUBACCOUNT`), read inside the
@@ -202,7 +202,7 @@ export interface MandrillExtras {
 	 *
 	 * Present ONLY when the routing pass proved the transport honours a custom
 	 * return path — the catalog declares `supportsCustomReturnPath: 'probe'`, so
-	 * this is the probe verdict, not an assumption (D5). Absent ⇒ leave
+	 * this is the probe verdict, not an assumption. Absent ⇒ leave
 	 * Mandrill's own bounce domain in place and treat the cell's bounce data as
 	 * degraded; never an error, never a blocker.
 	 */

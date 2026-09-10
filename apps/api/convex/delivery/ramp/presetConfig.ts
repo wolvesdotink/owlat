@@ -1,6 +1,6 @@
 /**
  * THE PRESET, APPLIED — the one place a chosen aggressiveness turns into a
- * stream config (plan D9, P3-6).
+ * stream config.
  *
  * A SUBSTITUTION, NEVER A SECOND TABLE. `RAMP_STREAM_CONFIGS` remains the only
  * constant table in the ramp; a preset scales the additive step and adds clean

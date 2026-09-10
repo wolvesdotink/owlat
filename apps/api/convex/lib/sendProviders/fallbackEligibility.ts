@@ -1,5 +1,5 @@
 /**
- * Deliverability-fallback relay eligibility (plan D6).
+ * Deliverability-fallback relay eligibility.
  *
  * "May this kind be the relay we fall back TO?" — asked of the CATALOG rather
  * than of a hard-coded identity. The shipped gate was

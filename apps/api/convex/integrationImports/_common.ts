@@ -39,7 +39,7 @@ export type IntegrationProviderConfig =
 			listId: string;
 			/**
 			 * Opt-in: also carry over the audience's `unsubscribed` and `cleaned`
-			 * members as suppressions (plan D9). Absent/false = the pre-P4.1
+			 * members as suppressions. Absent/false = the pre-P4.1
 			 * behavior exactly — those members are skipped and nothing is written
 			 * to the blocklist.
 			 */
@@ -73,7 +73,7 @@ export class RetryableProviderError extends Error {
 	}
 }
 
-// ─── Suppression carry-over (plan D9) ───────────────────────────────────────
+// ─── Suppression carry-over ───────────────────────────────────────
 
 /**
  * One address a provider has already stopped mailing, on its way into Owlat's

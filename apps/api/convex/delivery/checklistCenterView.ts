@@ -2,7 +2,7 @@
  * The Deliverability Center's PURE view helpers — row → DTO, and the copy the
  * grade turns into.
  *
- * Split out of `./checklist.ts` when the leak sweep (the seams plan's P0.4)
+ * Split out of `./checklist.ts` when the leak sweep
  * took that file past the ~500 LOC ratchet `scripts/check-file-size.sh`
  * enforces. The seam is the one the file already had: `checklist.ts` is the
  * bounded READS (`loadCenterDomains`, `loadTrackingDomains`, the verification

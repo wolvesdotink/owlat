@@ -20,11 +20,11 @@
  * That is the one honest gap between this probe and the campaign shadow copy,
  * and it is stated here rather than left for a reader to infer: a deployment
  * whose transactional templates are themselves filter-bait will still see a
- * clean probe. Placement is a TRIPWIRE for collapse (D17), and stream-wide
+ * clean probe. Placement is a TRIPWIRE for collapse, and stream-wide
  * collapse — a route, a reputation, an authentication failure — is exactly what
  * this shape does catch.
  *
- * NOT COUNTABLE, BY CONSTRUCTION (D18). A probe carries NO `sendId`, so there
+ * NOT COUNTABLE, BY CONSTRUCTION. A probe carries NO `sendId`, so there
  * is no `transactionalSends` row; it is enqueued with NO `onComplete` and no
  * `sendRef` context, so the Send lifecycle — and with it every daily stat, every
  * `sendingReputation` event, every customer webhook and every contact activity
@@ -143,7 +143,7 @@ async function lastProbedAt(
 	return newest?.sentAt ?? null;
 }
 
-/** The deployment's default sending identity, or `null` when none is set (D2). */
+/** The deployment's default sending identity, or `null` when none is set. */
 async function resolveProbeSender(ctx: MutationCtx): Promise<string | null> {
 	const settings = await ctx.db.query('instanceSettings').first();
 	const fromEmail = settings?.defaultFromEmail ?? getOptional('DEFAULT_FROM_EMAIL');

@@ -286,10 +286,9 @@ type RecordTransportOutcomeResult =
  * The lifecycle entry point: learn (cell, arm, isCalibration) by joining the
  * send to its `sendAssignments` row, then bump one shard.
  *
- * FAIL-SOFT BY CONSTRUCTION. A send with no assignment row — a seed shadow copy
- * (plan D18), a send enqueued before this pipeline existed, a recipient whose
- * cell could not be named — records NOTHING and returns a reason. Measurement
- * degrades; delivery never does.
+ * FAIL-SOFT BY CONSTRUCTION. A send with no assignment row — a seed shadow copy, a send enqueued
+ * before this pipeline existed, a recipient whose cell could not be named — records NOTHING and
+ * returns a reason. Measurement degrades; delivery never does.
  */
 export async function recordTransportOutcomeForSend(
 	ctx: MutationCtx,

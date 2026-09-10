@@ -1,15 +1,15 @@
 /**
- * THE PER-STREAM AGGRESSIVENESS PRESETS — the read half (plan D9, D14, P3-6).
+ * THE PER-STREAM AGGRESSIVENESS PRESETS — the read half.
  *
  * At most three rows per deployment, and USUALLY NONE: absence is the default,
  * not an unconfigured state. A deployment that has never opened the Controls
  * screen has no rows here and runs the shipped constants exactly — which is what
  * makes the preset additive rather than a fork of `RAMP_STREAM_CONFIGS`.
  *
- * THE FALLBACK IS THE IDENTITY PRESET, DELIBERATELY (plan D3).
+ * THE FALLBACK IS THE IDENTITY PRESET, DELIBERATELY.
  * An earlier revision of this module defaulted a STANDALONE deployment to
  * `conservative`, on the reasoning that a weaker engagement gate deserves a
- * slower ramp (plan D14). That reasoning is right, but it is ALREADY IMPLEMENTED
+ * slower ramp. That reasoning is right, but it is ALREADY IMPLEMENTED
  * — by the substitution table, which answers a missing `reference_transport`
  * with `cleanWindowsRequired: 5` and `stepMultiplier: 0.5`
  * (`ramp/degradationMatrix.ts`). Defaulting to `conservative` here made the SAME
@@ -20,8 +20,8 @@
  * one number and real in the other.
  *
  * So the division of labour is: the TABLE owns what an ABSENT INTEGRATION costs
- * (D3 — one substitution table, never a second mechanism agreeing with it), and
- * a PRESET owns what the OPERATOR CHOSE (D9). An operator who explicitly picks
+ * (one substitution table, never a second mechanism agreeing with it), and
+ * a PRESET owns what the OPERATOR CHOSE. An operator who explicitly picks
  * `conservative` still stacks on top of the table's tightening, because that is
  * a deliberate instruction rather than an inference the system made twice.
  */

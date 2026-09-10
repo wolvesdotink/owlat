@@ -1,5 +1,5 @@
 /**
- * THE DOWNWARD PHASE DOOR (plan D3, D12).
+ * THE DOWNWARD PHASE DOOR.
  *
  * A rung moves in exactly two places and they are deliberately not the same
  * module: `rampPhasePromotion` raises one on the evidence routes, and this
@@ -53,13 +53,12 @@ import { refusedControl, resolveControlTarget, type RampControlResult } from './
  * cell's mail, so a cut below full share revokes it and a held share leaves the
  * claim true. Earned-ness is not what spares it; the share is.
  *
- * DOWNWARD ONLY, and that is the point. A RESET IS NOT A PROMOTION: raising a
- * ceiling opens the share to the next rung and, where a second sender splits the
- * cell, re-shuffles which arm every recipient lands in — which is exactly the
- * move plan D3's evidence gate exists to guard. Letting this mutation do it too — on nothing but the hard-stop
- * check, with no promotion evidence and no typed confirmation — would make the
- * gate optional, and an optional gate is not a gate. The upward move lives in
- * `rampPhasePromotion.promoteCellPhase` and nowhere else.
+ * DOWNWARD ONLY, and that is the point. A RESET IS NOT A PROMOTION: raising a ceiling opens the
+ * share to the next rung and, where a second sender splits the cell, re-shuffles which arm every
+ * recipient lands in — which is exactly the move plan D3's evidence gate exists to guard. Letting
+ * this mutation do it too — on nothing but the hard-stop check, with no promotion evidence and no
+ * typed confirmation — would make the gate optional, and an optional gate is not a gate. The upward
+ * move lives in `rampPhasePromotion.promoteCellPhase` and nowhere else.
  */
 export const resetCellPhase = adminMutation({
 	args: {
@@ -87,12 +86,11 @@ export const resetCellPhase = adminMutation({
 		const currentCeiling = normalizePhaseCeiling(target.row.phaseCeiling);
 		if (args.phaseCeiling > currentCeiling)
 			return refusedControl('phase_increase_requires_promotion');
-		// THE SHARE IS CUT ONLY WHERE THERE IS A SECOND SENDER TO HOLD IT BACK FOR
-		// (plan D3). Cutting a standalone cell from 1.0 to the 25% rung would move
-		// three quarters of its mail toward a relay that does not exist, flip
-		// `isFallbackActive`, revoke a graduation pin and re-randomise a cohort with
-		// one arm in it — the move `phaseLadderBounds` was added to prevent, arrived
-		// at from the operator's door instead.
+		// THE SHARE IS CUT ONLY WHERE THERE IS A SECOND SENDER TO HOLD IT BACK FOR. Cutting a standalone
+		// cell from 1.0 to the 25% rung would move three quarters of its mail toward a relay that does
+		// not exist, flip `isFallbackActive`, revoke a graduation pin and re-randomise a cohort with one
+		// arm in it — the move `phaseLadderBounds` was added to prevent, arrived at from the operator's
+		// door instead.
 		//
 		// AND "IS THERE ONE" IS A CONFIGURATION QUESTION AT THIS DOOR, asked of the
 		// same reader the enrolment door asks (`hasSecondSender`). Asking the

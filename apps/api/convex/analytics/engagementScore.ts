@@ -1,5 +1,5 @@
 /**
- * Contact engagement score — the PURE decision core (deliverability plan D15).
+ * Contact engagement score — the PURE decision core.
  *
  * A 0-100, recency-weighted measure of how engaged a contact is with our mail,
  * derived from the `contactActivities` timeline. Nothing in this module reads
@@ -11,7 +11,7 @@
  * bands in `apps/mta/src/intelligence/engagementPriority.ts` cut at 80/50/20 —
  * but Convex never set it (the shipped docs claim it is "supplied by Convex";
  * that claim was false). This module is the producer. The share controller's
- * stratified assignment (plan P2-5) derives a recipient's percentile within a
+ * stratified assignment derives a recipient's percentile within a
  * cell from the same score via the sibling `engagementPercentile.ts` — the
  * scoring logic is NOT duplicated there. The `contactActivities` catalog
  * adapter lives in the sibling `engagementActivity.ts`, so this file stays

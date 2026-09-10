@@ -30,7 +30,7 @@
  * (`twilio`, `meta`, `generic`) — inbound SMS/WhatsApp/webhook channels, not
  * send transports, with no catalog entry and no kind. And this is not the plugin
  * platform's reserved `inboundAdapters` contribution bucket, which is held for
- * genuine inbound-MAIL sources; conflating the two is deliberately avoided (D6).
+ * genuine inbound-MAIL sources; conflating the two is deliberately avoided.
  * A plugin transport's feedback arrives on its own route surface keyed by plugin
  * id — the seams plan's P2.2.
  */
@@ -56,7 +56,7 @@ export const PROVIDER_FEEDBACK_ADAPTERS = Object.fromEntries(
 export type ProviderFeedbackKind = keyof typeof PROVIDER_FEEDBACK_ADAPTERS;
 
 /**
- * Compile-time completeness guard (D6): every core kind whose catalog entry
+ * Compile-time completeness guard: every core kind whose catalog entry
  * declares `hasProviderFeedback: true` MUST have an adapter registered here, and
  * that adapter must identify itself BY THAT KEY.
  *

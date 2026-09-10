@@ -55,7 +55,7 @@ export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 	 *
 	 * `options.returnPathHost` is ignored, and deliberately: Mandrill mints its
 	 * own bounce local part, so there is no custom MAIL FROM host to reflect or
-	 * publish (D5). `domains.create` already refuses a return-path host for any
+	 * publish. `domains.create` already refuses a return-path host for any
 	 * kind but MTA/SES; this is the quieter second half of the same rule.
 	 */
 	async registerDomain(domain) {

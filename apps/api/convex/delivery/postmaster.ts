@@ -339,7 +339,7 @@ export const getPostmasterStatus = authedQuery({
 					deliveryErrors: stats?.deliveryErrors ?? [],
 					checks: compliance?.checks ?? [],
 				};
-				// THROUGH THE REGISTERED SOURCE, not around it (plan D9). The value is
+				// THROUGH THE REGISTERED SOURCE, not around it. The value is
 				// unchanged either way — the source's absent branch is exactly the
 				// empty card list the derivation returns for a domain Google has said
 				// nothing about — but the cards now come from the one declared

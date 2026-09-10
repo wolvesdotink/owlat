@@ -1,5 +1,5 @@
 /**
- * THE SUBSTITUTION FOLD (plan D2, D3, D14) — the one consumer of the matrix.
+ * THE SUBSTITUTION FOLD — the one consumer of the matrix.
  *
  * `./degradationMatrix.ts` is the table; this module is the ONLY place that
  * reads it and turns it into the numbers the controller and the dashboard use.
@@ -44,7 +44,7 @@ import { weakestConfidence } from './gateGrades';
 import type { RampGateConfidence } from './gateTypes';
 
 /**
- * WHICH ACTUATOR THIS CELL DRIVES (D3). One controller, two actuators: with a
+ * WHICH ACTUATOR THIS CELL DRIVES. One controller, two actuators: with a
  * reference transport it writes a SHARE, standalone it writes a warming-PACE
  * multiplier. The choice is read off the table's `substitutes` list rather than
  * from a `hasRelay` boolean, so it is the same substitution mechanism as every
@@ -71,13 +71,13 @@ export interface RampDegradation {
 	 * Resolved HERE rather than re-derived by whoever renders the sentence,
 	 * because the number and the name have to come from one fold: an audit row
 	 * that blames an integration the cap did not come from is worse than one that
-	 * blames nobody (plan D12).
+	 * blames nobody.
 	 */
 	readonly ceilingCappedBy: RampIntegrationId | undefined;
 	readonly complaintMaxOverride: RateFraction | undefined;
 	/**
 	 * The furthest warming-schedule DAY the pace actuator may reach.
-	 * CONSUMED BY the pace-actuator piece (P4-4), which is what clamps the warming
+	 * CONSUMED BY the pace-actuator piece, which is what clamps the warming
 	 * schedule; resolved here because it is the substitution table's number and
 	 * this is the table's one fold.
 	 */
@@ -97,7 +97,7 @@ export interface RampDegradation {
 	 * — so the operator copy for the table's entries lives in `absent`'s
 	 * `confidenceNote` / `improvement` fields and is read by nothing.
 	 */
-	/** ALWAYS false. Absence never blocks anything (D2). */
+	/** ALWAYS false. Absence never blocks anything. */
 	readonly isBlocking: false;
 }
 
@@ -214,7 +214,7 @@ export function degradedStreamConfig(
  * Applied to the LADDER INDEX rather than to the number, because "one phase
  * lower" is a rung, not a subtraction: 0.8 - 1 is not a ceiling. Never falls
  * below the lowest rung — a capped cell still ramps, just not as far, which is
- * the whole difference between slowing down and halting (D2).
+ * the whole difference between slowing down and halting.
  */
 export function degradedCeilingCap(degradation: RampDegradation): number {
 	const top = RAMP_PHASE_CEILINGS.length - 1;
@@ -223,7 +223,7 @@ export function degradedCeilingCap(degradation: RampDegradation): number {
 }
 
 /**
- * DOES THE PHASE LADDER BIND THIS CELL AT ALL (plan D3)?
+ * DOES THE PHASE LADDER BIND THIS CELL AT ALL?
  *
  * Both phase bounds — the stored rung and the table's cap on it — govern the
  * SHARE dial, so they bind exactly the cells that have a second sender to hold a
@@ -257,7 +257,7 @@ export function usesTrailingBaseline(degradation: RampDegradation): boolean {
  * decision path must never read `presence.complaint_feedback_loop` itself. An
  * integration's presence is read exactly once, by the fold, and every consumer
  * asks the RESOLUTION what to do — which is what keeps adding an integration a
- * table row and nothing else (plan D3).
+ * table row and nothing else.
  */
 export function usesUnsubscribeProxy(degradation: RampDegradation): boolean {
 	return degradation.substitutes.includes('unsubscribe_rate_proxy');

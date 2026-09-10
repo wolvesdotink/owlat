@@ -301,7 +301,7 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * `providerRoutes.provisionDeliverabilityRelayBatch` walks them and asks
 	 * this of the kind the route named.
 	 *
-	 * BOTH HALVES ASK THIS METHOD (the seams plan's P0.4). Domains verified after
+	 * BOTH HALVES ASK THIS METHOD. Domains verified after
 	 * the operator switched the fallback on get theirs from the lifecycle's
 	 * `provision_relay_identity_if_enabled` effect, which walks the same registry
 	 * with the same relay kinds — so the two paths together cover every domain

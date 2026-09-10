@@ -1,6 +1,6 @@
 /**
  * Contact engagement score — the Convex plumbing around the pure core in
- * `engagementScore.ts` (deliverability plan P0-2).
+ * `engagementScore.ts`.
  *
  * Two write paths, one scoring model:
  *
