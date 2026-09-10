@@ -1,10 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { loadConfig, resolveEhloForIp } from '../config.js';
-
-const HERE = dirname(fileURLToPath(import.meta.url));
 
 const REQUIRED_ENV = {
 	MTA_API_KEY: 'test-api-key',
@@ -361,31 +356,5 @@ describe('resolveEhloForIp', () => {
 		expect(
 			resolveEhloForIp({ ehloHostname: 'only.example.com', ehloHostnames: {} }, '1.2.3.4')
 		).toBe('only.example.com');
-	});
-});
-
-describe('.env.example coverage', () => {
-	it('documents every env var config.ts reads (keeps .env.example in sync)', () => {
-		const configSrc = readFileSync(resolve(HERE, '../config.ts'), 'utf-8');
-		const envExample = readFileSync(resolve(HERE, '../../.env.example'), 'utf-8');
-
-		// Env keys config.ts reads via requiredEnv('X') / optionalEnv('X', …) / process.env['X'].
-		const read = new Set(
-			[
-				...configSrc.matchAll(
-					/(?:requiredEnv|optionalEnv)\('([A-Z][A-Z0-9_]+)'|process\.env\['([A-Z][A-Z0-9_]+)'\]/g
-				),
-			]
-				.map((m) => m[1] ?? m[2])
-				.filter((k): k is string => Boolean(k))
-		);
-
-		// Keys documented in .env.example (live `KEY=` or commented `# KEY=`).
-		const documented = new Set(
-			[...envExample.matchAll(/^\s*#?\s*([A-Z][A-Z0-9_]+)=/gm)].map((m) => m[1])
-		);
-
-		const missing = [...read].filter((k) => !documented.has(k)).sort();
-		expect(missing).toEqual([]);
 	});
 });

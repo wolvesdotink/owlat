@@ -6,31 +6,10 @@ vi.mock('../../../scaling/ipPool.js', () => ({
 
 import { selectIpPhase } from '../selectIp.js';
 import * as ipPool from '../../../scaling/ipPool.js';
-import type { CtxWithPool, PhaseDeps } from '../../types.js';
-import type { EmailJob, IpPoolConfig } from '../../../types.js';
+import type { PhaseDeps } from '../../types.js';
+import type { IpPoolConfig } from '../../../types.js';
 import type { MtaConfig } from '../../../config.js';
-
-function makeCtx(overrides: Partial<CtxWithPool> = {}): CtxWithPool {
-	const job: EmailJob = {
-		messageId: 'msg-1',
-		to: 'user@example.com',
-		from: 'sender@owlat.com',
-		subject: 'Test',
-		html: '<p>Hello</p>',
-		ipPool: 'transactional',
-		organizationId: 'org-1',
-		dkimDomain: 'owlat.com',
-	};
-	return {
-		job,
-		domain: 'example.com',
-		isp: 'other',
-		fromDomain: 'owlat.com',
-		pool: 'transactional',
-		dedicatedIp: undefined,
-		...overrides,
-	};
-}
+import { makeCtxWithPool } from '../../../__tests__/helpers/dispatchCtx.js';
 
 const ipPools: IpPoolConfig = { transactional: ['10.0.0.1'], campaign: ['10.0.0.2'] };
 const deps: PhaseDeps = {
@@ -46,7 +25,7 @@ describe('selectIpPhase', () => {
 			ip: '10.0.0.1',
 			eligibilityGeneration: 7,
 		});
-		const out = await selectIpPhase.run(deps, makeCtx());
+		const out = await selectIpPhase.run(deps, makeCtxWithPool());
 		expect(out.kind).toBe('continue');
 		if (out.kind === 'continue') {
 			expect(out.ctx.ip).toBe('10.0.0.1');
@@ -56,7 +35,7 @@ describe('selectIpPhase', () => {
 
 	it('defers 60s when no IPs are available', async () => {
 		vi.mocked(ipPool.selectIpWithLease).mockResolvedValueOnce(null);
-		const out = await selectIpPhase.run(deps, makeCtx());
+		const out = await selectIpPhase.run(deps, makeCtxWithPool());
 		expect(out).toEqual({
 			kind: 'defer',
 			delayMs: 60_000,
@@ -69,7 +48,7 @@ describe('selectIpPhase', () => {
 			ip: '10.0.0.99',
 			eligibilityGeneration: 2,
 		});
-		const ctx = makeCtx({ pool: 'campaign', dedicatedIp: '10.0.0.99' });
+		const ctx = makeCtxWithPool({ pool: 'campaign', dedicatedIp: '10.0.0.99' });
 		await selectIpPhase.run(deps, ctx);
 		expect(ipPool.selectIpWithLease).toHaveBeenCalledWith(
 			expect.anything(),

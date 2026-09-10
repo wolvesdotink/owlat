@@ -119,6 +119,13 @@ import type { MtaConfig } from '../../config.js';
 import type { CtxWithIp } from '../../dispatch/types.js';
 import { runJournaledSmtpAttempt } from '../../queue/journaledSmtpAttempt.js';
 import { reserveSmtpOutcome, smtpOutcomeJournalKeys } from '../../queue/smtpOutcomeJournal.js';
+import { createOwlatHostConfig, createOwlatJob } from '../../__tests__/helpers/fixtures.js';
+
+const createJob = (overrides: Partial<EmailJob> = {}): EmailJob =>
+	createOwlatJob({ messageId: 'msg-001', ...overrides });
+
+const createConfig = (overrides: Partial<MtaConfig> = {}): MtaConfig =>
+	createOwlatHostConfig({ mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!', ...overrides });
 
 // A fresh live-connection stub whose `secured` flag the test controls.
 function liveConn(secured = true): { secured: boolean; close: ReturnType<typeof vi.fn> } {
@@ -133,71 +140,6 @@ function okReply(text = '2.0.0 OK'): { code: number; text: string; lines: string
 /** A structured SmtpError, exactly as the client throws. */
 function smtpError(init: SmtpErrorInit): SmtpError {
 	return new SmtpError(init);
-}
-
-function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
-	return {
-		messageId: 'msg-001',
-		to: 'user@example.com',
-		from: 'sender@owlat.com',
-		subject: 'Test',
-		html: '<p>Hello</p>',
-		ipPool: 'transactional',
-		organizationId: 'org-1',
-		dkimDomain: 'owlat.com',
-		...overrides,
-	};
-}
-
-function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
-	return {
-		port: 3100,
-		bouncePort: 25,
-		redisUrl: 'redis://localhost:6379',
-		apiKey: 'test-key',
-		mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
-		convexSiteUrl: 'https://test.convex.site',
-		webhookSecret: 'secret',
-		ipPools: { transactional: ['10.0.0.1'], campaign: ['10.0.0.2'] },
-		dkimKeys: {},
-		workerConcurrency: 50,
-		serverId: 'test-server',
-		smtpPool: {
-			maxPerHost: 3,
-			idleTimeoutMs: 30000,
-			maxAgeMs: 300000,
-			maxMessagesPerConnection: 100,
-		},
-		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
-		submissionPort: 587,
-		submissionEnabled: false,
-		submissionImplicitTlsPort: 465,
-		submissionImplicitTlsEnabled: false,
-		submissionMaxConnectionsPerIp: 10,
-		submissionMaxClients: 200,
-		submissionMaxAuthFailuresPerIp: 10,
-		contentScreeningEnabled: true,
-		contentMaxSizeKb: 500,
-		deliveryLogMaxLen: 100000,
-		deliveryLogTtlHours: 72,
-		smtpOutcomeJournalMaxSize: 10000,
-		webhookDlqMaxSize: 10000,
-		bounceMaxConnectionsPerIp: 10,
-		bounceMaxClients: 200,
-		bounceTarpitEnabled: false,
-		bounceTarpitDelayMs: 5000,
-		inboundSpfEnabled: false,
-		inboundDkimEnabled: false,
-		inboundDmarcEnabled: false,
-		inboundArcEnabled: false,
-		rspamdRejectThreshold: 15,
-		smtpPoolGlobalMaxPerHost: 10,
-		maxMessageAgeMs: 432_000_000,
-		...overrides,
-	} satisfies MtaConfig;
 }
 
 function createAttempt(job: EmailJob): CtxWithIp {

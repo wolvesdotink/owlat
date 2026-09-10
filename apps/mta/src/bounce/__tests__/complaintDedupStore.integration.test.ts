@@ -8,6 +8,11 @@ import {
 	type RedisClusterFixture,
 } from '../../__tests__/helpers/redisCluster.js';
 import {
+	startRedisStandaloneFixture,
+	stopRedisStandaloneFixture,
+	type RedisStandaloneFixture,
+} from '../../__tests__/helpers/redisStandalone.js';
+import {
 	completeComplaint,
 	releaseComplaint,
 	reserveComplaint,
@@ -25,6 +30,52 @@ import { recordDefer, throttleStateKey } from '../../intelligence/domainThrottle
 import { getDomainHealth, recordResponse } from '../../intelligence/smtpResponse.js';
 import { recordBounce } from '../../intelligence/warming.js';
 import { recordDomainFailure, shouldBackoffDomain } from '../../scaling/degradation.js';
+
+describe.runIf(dockerRedisAvailable())('complaint deduplication on standalone Redis', () => {
+	const suffix = randomUUID().slice(0, 8);
+	let fixture: RedisStandaloneFixture;
+	let redis: Redis;
+
+	beforeAll(async () => {
+		fixture = await startRedisStandaloneFixture('fbl');
+		redis = fixture.client;
+	}, 15_000);
+
+	afterAll(async () => {
+		await stopRedisStandaloneFixture(fixture);
+	});
+
+	it('recovers a legacy pre-effect crash into versioned owned state', async () => {
+		const identity = `legacy-crash-${suffix}`;
+		const legacyKey = `mta:fbl:dedup:${identity}`;
+		await redis.set(legacyKey, '1', 'EX', 60);
+
+		const reservation = await reserveComplaint(redis, identity);
+		if (reservation.kind !== 'reserved') throw new Error('expected reservation');
+		expect(await redis.hget(reservation.reservation.key, 'version')).toBe('2');
+		expect(await redis.hget(reservation.reservation.key, 'status')).toBe('reserved');
+		expect(await redis.get(legacyKey)).toBe('1');
+	}, 10_000);
+
+	it('retains one effect application across release and retry', async () => {
+		const identity = `legacy-retry-${suffix}`;
+		await redis.set(`mta:fbl:dedup:${identity}`, '1', 'EX', 60);
+		const apply = vi.fn().mockResolvedValue(undefined);
+
+		const first = await reserveComplaint(redis, identity);
+		if (first.kind !== 'reserved') throw new Error('expected reservation');
+		await runComplaintEffect(redis, first.reservation, 'breaker-control', apply);
+		await releaseComplaint(redis, first.reservation);
+
+		const retry = await reserveComplaint(redis, identity);
+		if (retry.kind !== 'reserved') throw new Error('expected retry reservation');
+		await runComplaintEffect(redis, retry.reservation, 'breaker-control', apply);
+		await completeComplaint(redis, retry.reservation);
+
+		expect(apply).toHaveBeenCalledOnce();
+		expect(await reserveComplaint(redis, identity)).toEqual({ kind: 'completed' });
+	}, 10_000);
+});
 
 describe.runIf(dockerRedisAvailable())('complaint deduplication on Redis Cluster', () => {
 	const suffix = randomUUID().slice(0, 8);
