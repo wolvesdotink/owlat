@@ -8,12 +8,15 @@
  */
 
 import { v } from 'convex/values';
-import {
-	getUserIdFromSession,
-	requireOrgPermission,
-} from '../lib/sessionOrganization';
+import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { throwInvalidInput } from '../_utils/errors';
-import { chatQuery, chatMutation, assertChatTargetsAreOrgMembers, loadProfileSummary, normalizeDmKey } from './_helpers';
+import {
+	chatQuery,
+	chatMutation,
+	assertChatTargetsAreOrgMembers,
+	loadProfileSummary,
+	normalizeDmKey,
+} from './_helpers';
 
 /**
  * Find or create a DM between the caller and `otherMemberIds`. Idempotent —
@@ -45,7 +48,7 @@ export const findOrCreateDm = chatMutation({
 		const existing = await ctx.db
 			.query('chatRooms')
 			.withIndex('by_kind_and_normalized_name', (q) =>
-				q.eq('kind', 'dm').eq('normalizedName', normalizedName),
+				q.eq('kind', 'dm').eq('normalizedName', normalizedName)
 			)
 			.first();
 		if (existing) return existing._id;
@@ -60,8 +63,7 @@ export const findOrCreateDm = chatMutation({
 			names.push(profile?.name ?? profile?.email ?? otherId);
 		}
 		const previewNames = names.slice(0, 3).join(', ');
-		const label =
-			names.length <= 3 ? previewNames : `${previewNames} +${names.length - 3} more`;
+		const label = names.length <= 3 ? previewNames : `${previewNames} +${names.length - 3} more`;
 
 		const now = Date.now();
 		const roomId = await ctx.db.insert('chatRooms', {
@@ -105,33 +107,36 @@ export const listMyDms = chatQuery({
 			.withIndex('by_member', (q) => q.eq('memberId', userId))
 			.collect(); // bounded: caller's chat rooms (~tens)
 
-		const dms = [];
-		for (const membership of memberships) {
-			const room = await ctx.db.get(membership.roomId);
-			if (!room || room.kind !== 'dm' || room.archivedAt) continue;
+		// Each membership resolves an independent room, member list and set of
+		// participant profiles, so the whole fan-out runs in parallel instead of
+		// room-by-room.
+		const resolved = await Promise.all(
+			memberships.map(async (membership) => {
+				const room = await ctx.db.get(membership.roomId);
+				if (!room || room.kind !== 'dm' || room.archivedAt) return null;
 
-			// Other participants (excluding the caller) for the label.
-			const allMembers = await ctx.db
-				.query('chatRoomMembers')
-				.withIndex('by_room', (q) => q.eq('roomId', room._id))
-				.collect(); // bounded: members of a single DM (1:1 or small group, ~tens max)
-			const otherMembers = allMembers.filter((m) => m.memberId !== userId);
+				// Other participants (excluding the caller) for the label.
+				const allMembers = await ctx.db
+					.query('chatRoomMembers')
+					.withIndex('by_room', (q) => q.eq('roomId', room._id))
+					.collect(); // bounded: members of a single DM (1:1 or small group, ~tens max)
+				const otherMembers = allMembers.filter((m) => m.memberId !== userId);
 
-			const otherProfiles = [];
-			for (const m of otherMembers) {
-				const profile = await loadProfileSummary(ctx, m.memberId);
-				otherProfiles.push({
-					memberId: m.memberId,
-					...profile,
-				});
-			}
+				const otherProfiles = await Promise.all(
+					otherMembers.map(async (m) => ({
+						memberId: m.memberId,
+						...(await loadProfileSummary(ctx, m.memberId)),
+					}))
+				);
 
-			dms.push({
-				...room,
-				otherParticipants: otherProfiles,
-				myLastReadAt: membership.lastReadAt,
-			});
-		}
+				return {
+					...room,
+					otherParticipants: otherProfiles,
+					myLastReadAt: membership.lastReadAt,
+				};
+			})
+		);
+		const dms = resolved.filter((dm) => dm !== null);
 
 		dms.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
 		return dms.slice(0, limit);

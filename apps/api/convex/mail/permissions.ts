@@ -34,6 +34,7 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { batchGet } from '../_utils/batchLoader';
 
 /**
  * Membership role on a mailbox. `owner` is a superset of `member`. Derived
@@ -197,9 +198,15 @@ export async function loadAccessibleMailboxes(
 		.query('mailboxMembers')
 		.withIndex('by_user', (q) => q.eq('authUserId', userId))
 		.collect(); // bounded: shared mailboxes one user belongs to
+	// The membership rows point at independent mailboxes; `batchGet` dedupes
+	// them and reads the rest in parallel.
+	const memberMailboxes = await batchGet(
+		ctx,
+		memberships.map((row) => row.mailboxId)
+	);
 	for (const row of memberships) {
 		if (seen.has(row.mailboxId)) continue;
-		const mailbox = await ctx.db.get(row.mailboxId);
+		const mailbox = memberMailboxes.get(row.mailboxId);
 		if (!mailbox) continue;
 		// Same reason as the owned side: `provisionMailbox` writes an implicit
 		// owner membership for every mailbox, including a seed's.

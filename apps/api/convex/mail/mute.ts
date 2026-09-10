@@ -34,6 +34,7 @@ import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess } from './permissions';
 import { clearThreadNeedsReply } from './needsReply';
+import { batchGet } from '../_utils/batchLoader';
 
 /** The mailbox's Archive folder, or null when it hasn't been provisioned. */
 async function findArchiveFolder(
@@ -96,10 +97,15 @@ async function applyMute(
 		.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
 		.collect(); // bounded: one thread's messages
 	const inboxMessageIds: Id<'mailMessages'>[] = [];
+	// Read the (few, deduplicated) folders behind this thread's messages in one
+	// go; the move below is the only write and stays a single call.
+	const folders = await batchGet(
+		ctx,
+		messages.filter((m) => m.folderId !== archive._id).map((m) => m.folderId)
+	);
 	for (const m of messages) {
 		if (m.folderId === archive._id) continue;
-		const folder = await ctx.db.get(m.folderId);
-		if (folder?.role === 'inbox') inboxMessageIds.push(m._id);
+		if (folders.get(m.folderId)?.role === 'inbox') inboxMessageIds.push(m._id);
 	}
 	if (inboxMessageIds.length > 0) {
 		await ctx.runMutation(api.mail.messageActions.move, {

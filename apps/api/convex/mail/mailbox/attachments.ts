@@ -18,6 +18,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { loadReadableMailbox } from '../permissions';
 import { attachmentKind, type AttachmentKind } from '../attachmentIndex';
+import { batchGet } from '../../_utils/batchLoader';
 
 /** The coarse type facet, as the wire spells it. */
 const attachmentKindValidator = v.union(
@@ -59,26 +60,23 @@ async function decorate(
 ): Promise<AttachmentListRow[]> {
 	const out: AttachmentListRow[] = [];
 	// One message can contribute several files, and a mailbox has a handful of
-	// folders; both caches keep a page of files to a few reads rather than one
-	// per row.
-	const messages = new Map<Id<'mailMessages'>, Doc<'mailMessages'> | null>();
-	const folderParams = new Map<Id<'mailFolders'>, string>();
+	// folders; both batched reads keep a page of files to a few round trips
+	// rather than one per row, in two waves (folders depend on the messages).
+	const messages = await batchGet(
+		ctx,
+		rows.map((row) => row.messageId)
+	);
+	const folders = await batchGet(
+		ctx,
+		[...messages.values()].filter((m) => m !== null).map((m) => m.folderId)
+	);
 	for (const row of rows) {
-		let message = messages.get(row.messageId);
-		if (message === undefined) {
-			message = await ctx.db.get(row.messageId);
-			messages.set(row.messageId, message);
-		}
+		const message = messages.get(row.messageId);
 		// A junction row whose message is gone is a teardown that lost a race.
 		// Skipping it here means the view never opens a file into nothing; the
 		// row itself is cleaned up by whichever delete path missed it.
 		if (!message) continue;
-		let folderParam = folderParams.get(message.folderId);
-		if (folderParam === undefined) {
-			const folder = await ctx.db.get(message.folderId);
-			folderParam = folder?.role ?? message.folderId;
-			folderParams.set(message.folderId, folderParam);
-		}
+		const folderParam = folders.get(message.folderId)?.role ?? message.folderId;
 		out.push({
 			_id: row._id,
 			messageId: row.messageId,

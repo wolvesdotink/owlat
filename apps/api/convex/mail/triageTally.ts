@@ -122,8 +122,11 @@ export async function recordTriageVerb(
 	// One session per call, however many messages it covered — that is the whole
 	// point of counting sessions separately from messages.
 	const perSender = new Map<string, { mailboxId: Id<'mailboxes'>; count: number }>();
-	for (const id of messageIds.slice(0, MAX_RECORDED_PER_CALL)) {
-		const message = await ctx.db.get(id);
+	// The messages are independent reads; only the tally fold below is ordered.
+	const messages = await Promise.all(
+		messageIds.slice(0, MAX_RECORDED_PER_CALL).map((id) => ctx.db.get(id))
+	);
+	for (const message of messages) {
 		if (!message) continue;
 		const sender = message.fromAddress.trim().toLowerCase();
 		if (!sender) continue;
