@@ -9,9 +9,15 @@
 	// that flags a real entrypoint is worse than one that misses some dead code.
 	"workspaces": {
 		// plugins.config.ts is read by the plugin codegen CLI, not imported, so its
-		// default export has no importer by design.
+		// default export has no importer by design. scripts/list-shared-production-
+		// exports.ts is spawned by scripts/check-shared-production-exports.sh, and
+		// knip does not read shell scripts.
 		".": {
-			"entry": ["plugins.config.ts", "scripts/__tests__/**/*.ts"],
+			"entry": [
+				"plugins.config.ts",
+				"scripts/__tests__/**/*.ts",
+				"scripts/list-shared-production-exports.ts",
+			],
 			"includeEntryExports": false,
 		},
 		// ---- Convex backend ----------------------------------------------

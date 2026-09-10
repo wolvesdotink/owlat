@@ -77,7 +77,7 @@
 		"lint": "turbo lint",
 		"lint:fix": "turbo lint:fix",
 		"lint:scripts": "oxlint --config oxlintrc.json scripts",
-		"lint:deadcode": "bash scripts/check-dead-code.sh && bun scripts/check-shared-production-exports.ts",
+		"lint:deadcode": "bash scripts/check-dead-code.sh && bash scripts/check-shared-production-exports.sh",
 		"lint:build-graph": "bun scripts/check-build-graph.ts",
 		"lint:convex-orphans": "bun scripts/check-convex-plugin-orphans.ts",
 		"lint:filesize": "bash scripts/check-file-size.sh",
