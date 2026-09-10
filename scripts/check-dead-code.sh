@@ -96,9 +96,6 @@ current=$(printf '%s' "$raw" | node -e '
 				const name = nameOf(e);
 				if (name) lines.add("export:" + file + ":" + name);
 			}
-			// enum/namespace members: knip 6 reports these as flat arrays of
-			// {name} (name already carries any owner prefix); knip 5 used an
-			// owner-keyed object ({ Owner: [members] }). Handle both.
 			// dependency issue types: flat arrays of {name} hanging off the
 			// package.json they were declared in.
 			for (const [prefix, bag] of [
@@ -110,6 +107,9 @@ current=$(printf '%s' "$raw" | node -e '
 					if (name) lines.add(prefix + file + ":" + name);
 				}
 			}
+			// enum/namespace members: knip 6 reports these as flat arrays of
+			// {name} (name already carries any owner prefix); knip 5 used an
+			// owner-keyed object ({ Owner: [members] }). Handle both.
 			for (const bag of [issue.enumMembers, issue.namespaceMembers]) {
 				if (Array.isArray(bag)) {
 					for (const m of bag) {
