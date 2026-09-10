@@ -77,6 +77,6 @@ So when a release adds a new service image, expect its first run to stop at
 
 - `docs/adr/` — architecture decisions, including supply-chain hardening.
 - `scripts/gen-release-compose.sh` — release compose generation + digest
-  pinning (unit-tested via `bun run lint:release-compose`).
+  pinning (unit-tested via `bun run lint:script-tests`).
 - `install.sh` / `scripts/owlat upgrade` — the consumer side of the release
   assets.
