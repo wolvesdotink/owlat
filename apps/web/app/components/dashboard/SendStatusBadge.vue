@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
  * Status pill for an email send (campaign or transactional). Single home for
- * the status icon/color config + pill markup that was duplicated across the
- * campaign-send and transactional-send detail pages; they differed only in the
- * fallback status used for unknown values.
+ * the status icon/variant config that was duplicated across the campaign-send
+ * and transactional-send detail pages; they differed only in the fallback
+ * status used for unknown values. The pill itself is UiBadge.
  */
 interface Props {
 	status: string;
@@ -17,14 +17,16 @@ const props = withDefaults(defineProps<Props>(), {
 
 const { t } = useI18n();
 
-const STATUS_CONFIG: Record<string, { icon: string; color: string; bg: string }> = {
-	queued: { icon: 'lucide:clock', color: 'text-text-secondary', bg: 'bg-bg-surface' },
-	sent: { icon: 'lucide:send', color: 'text-brand', bg: 'bg-brand/10' },
-	delivered: { icon: 'lucide:check-circle-2', color: 'text-success', bg: 'bg-success/10' },
-	opened: { icon: 'lucide:eye', color: 'text-brand', bg: 'bg-brand/10' },
-	clicked: { icon: 'lucide:mouse-pointer-click', color: 'text-warning', bg: 'bg-warning/10' },
-	bounced: { icon: 'lucide:x-circle', color: 'text-error', bg: 'bg-error/10' },
-	complained: { icon: 'lucide:alert-triangle', color: 'text-error', bg: 'bg-error/10' },
+type SendStatusVariant = 'default' | 'success' | 'warning' | 'error' | 'neutral';
+
+const STATUS_CONFIG: Record<string, { icon: string; variant: SendStatusVariant }> = {
+	queued: { icon: 'lucide:clock', variant: 'neutral' },
+	sent: { icon: 'lucide:send', variant: 'default' },
+	delivered: { icon: 'lucide:check-circle-2', variant: 'success' },
+	opened: { icon: 'lucide:eye', variant: 'default' },
+	clicked: { icon: 'lucide:mouse-pointer-click', variant: 'warning' },
+	bounced: { icon: 'lucide:x-circle', variant: 'error' },
+	complained: { icon: 'lucide:alert-triangle', variant: 'error' },
 };
 
 const config = computed(
@@ -52,14 +54,10 @@ const label = computed(() => {
 </script>
 
 <template>
-	<span
-		:class="[
-			'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0',
-			config.bg,
-			config.color,
-		]"
-	>
-		<Icon :name="config.icon" class="w-3 h-3" />
+	<UiBadge :variant="config.variant" size="md" pill class="shrink-0">
+		<template #icon>
+			<Icon :name="config.icon" class="w-3 h-3" />
+		</template>
 		{{ label }}
-	</span>
+	</UiBadge>
 </template>
