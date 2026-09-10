@@ -107,7 +107,7 @@ async function makeComposer() {
 }
 
 function sentDelay(): unknown {
-	return (sendRun.mock.calls[0]?.[0] as { undoSendDelayMs?: number }).undoSendDelayMs;
+	return (sendRun.mock.calls[0]![0] as { undoSendDelayMs?: number }).undoSendDelayMs;
 }
 
 describe('usePostboxCompose — undo-send window on the wire', () => {
