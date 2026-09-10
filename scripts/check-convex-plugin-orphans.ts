@@ -20,7 +20,7 @@
  *
  * Run by `bun run lint:convex-orphans`, and from `ci:lint` / `ci:verify`.
  * Exercised against throwaway trees by
- * `examples/conformance/src/__tests__/convexPluginOrphans.test.ts`.
+ * `scripts/__tests__/check-convex-plugin-orphans.test.ts`, run by the same gate.
  */
 
 import { readdir, readFile } from 'node:fs/promises';
