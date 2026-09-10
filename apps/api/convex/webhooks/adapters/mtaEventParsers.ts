@@ -11,7 +11,7 @@
  * `POST /webhooks/mta-mailbox` (`mail/webhookHttp.ts`), never to this surface.
  */
 
-import { getInboundChannelAdapter } from '@owlat/channels';
+import { getInboundChannelAdapter } from './inboundRegistry';
 import { isRecord } from '@owlat/shared';
 import type {
 	MtaWebhookEventType,
@@ -214,7 +214,7 @@ export const MTA_EVENT_PARSERS = {
 	},
 	'inbound.received': (payload) => {
 		if (!payload.inboundPayload) return null;
-		// Delegate envelope normalization to @owlat/channels so the
+		// Delegate envelope normalization to the inbound registry so the
 		// MTA SMTP server and webhook share one parser.
 		const normalized = getInboundChannelAdapter('mta').parseInbound(payload);
 		return { kind: 'inbound.received', mail: normalized };

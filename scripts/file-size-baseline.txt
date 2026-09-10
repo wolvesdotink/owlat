@@ -26,7 +26,6 @@ apps/docs/app/components/content/ScopeMap.vue
 apps/docs/app/components/content/SmtpSession.vue
 apps/docs/app/pages/index.vue
 apps/mail-sync/src/connection.ts
-apps/mta/src/smtp/sender.ts
 apps/mta/src/smtp/submissionServer.ts
 apps/mta/src/smtp/tlsRpt.ts
 apps/setup-cli/src/commands/quickstart.ts
@@ -66,9 +65,9 @@ apps/web/app/pages/dashboard/send/transactional/index.vue
 apps/web/app/pages/desktop/setup.vue
 packages/email-builder/src/components/EmailBuilder.vue
 packages/email-builder/src/components/canvas/InlineTextEditor.vue
-packages/email-previewer/src/components/ClientSelector.vue
-packages/email-previewer/src/components/EmailPreviewer.vue
-packages/email-previewer/src/components/RenderOptionsPanel.vue
+packages/email-builder/src/preview/components/ClientSelector.vue
+packages/email-builder/src/preview/components/EmailPreviewer.vue
+packages/email-builder/src/preview/components/RenderOptionsPanel.vue
 packages/email-renderer/src/analyzer.ts
 packages/shared/src/featureFlags.ts
 packages/shared/src/types/blocks.ts

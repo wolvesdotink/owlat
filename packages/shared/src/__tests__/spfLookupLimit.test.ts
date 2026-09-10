@@ -8,12 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-	countSpfDnsLookups,
-	evaluateSpfCoexistence,
-	mechanismLookupCost,
-	SPF_MAX_DNS_LOOKUPS,
-} from '../spfCoexistence';
+import { countSpfDnsLookups, evaluateSpfCoexistence, mechanismLookupCost } from '../spfCoexistence';
 
 const OWN = 'ip4:203.0.113.10';
 const RELAY = 'include:amazonses.com';
@@ -55,7 +50,6 @@ describe('lookup accounting', () => {
 
 	it('sums a whole record', () => {
 		expect(countSpfDnsLookups(published(...NINE_LOOKUPS))).toBe(9);
-		expect(SPF_MAX_DNS_LOOKUPS).toBe(10);
 	});
 });
 

@@ -431,7 +431,7 @@ describe('mtaAdapter.parseEvent', () => {
 		});
 	});
 
-	it('parses inbound.received via @owlat/channels', () => {
+	it('parses inbound.received via the inbound adapter registry', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'inbound.received',

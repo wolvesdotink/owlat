@@ -335,7 +335,11 @@ export default defineNuxtConfig({
 		dirs: ['composables/postbox', 'composables/chat'],
 	},
 
-	css: ['@owlat/email-builder/styles', '@owlat/email-previewer/styles', '~/assets/css/main.css'],
+	css: [
+		'@owlat/email-builder/styles',
+		'@owlat/email-builder/preview-styles',
+		'~/assets/css/main.css',
+	],
 
 	vite: {
 		plugins: [tailwindcss() as PluginOption],
