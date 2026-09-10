@@ -199,10 +199,11 @@ export async function loadAccessibleMailboxes(
 		.withIndex('by_user', (q) => q.eq('authUserId', userId))
 		.collect(); // bounded: shared mailboxes one user belongs to
 	// The membership rows point at independent mailboxes; `batchGet` dedupes
-	// them and reads the rest in parallel.
+	// them and reads the rest in parallel. Rows for a mailbox the caller already
+	// owns stay out of the read set, exactly as the `seen` skip below intends.
 	const memberMailboxes = await batchGet(
 		ctx,
-		memberships.map((row) => row.mailboxId)
+		memberships.filter((row) => !seen.has(row.mailboxId)).map((row) => row.mailboxId)
 	);
 	for (const row of memberships) {
 		if (seen.has(row.mailboxId)) continue;
