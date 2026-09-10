@@ -263,7 +263,7 @@ async function loadLastQuietResetAt(
  * stays `undefined` / `false` — the decision core treats that as "unmeasured"
  * and holds, which is exactly the behaviour the empty-history guard needs.
  */
-export async function loadSunsetFacts(
+async function loadSunsetFacts(
 	ctx: QueryCtx | MutationCtx,
 	contact: Doc<'contacts'>,
 	clock: SunsetClock

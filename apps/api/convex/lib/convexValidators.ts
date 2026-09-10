@@ -183,7 +183,7 @@ const topicMembershipConditionValidator = v.object({
 	operator: v.union(v.literal('equals'), v.literal('not_equals')),
 });
 
-export const filterConditionValidator = v.union(
+const filterConditionValidator = v.union(
 	contactPropertyConditionValidator,
 	emailActivityConditionValidator,
 	topicMembershipConditionValidator

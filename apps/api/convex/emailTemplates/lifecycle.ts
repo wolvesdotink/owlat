@@ -91,7 +91,7 @@ const transitionInputValidator = v.union(
 // (publish and unpublish are both reversible) and the published outcome union
 // carries only `illegal_edge`.
 
-export const EMAIL_TEMPLATE_LIFECYCLE = defineLifecycle<EmailTemplateStatus>({
+const EMAIL_TEMPLATE_LIFECYCLE = defineLifecycle<EmailTemplateStatus>({
 	draft: ['published'],
 	published: ['draft'],
 });

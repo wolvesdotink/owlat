@@ -63,7 +63,7 @@ export type MirroredBlockReason = Exclude<BlockReason, MarketingOnlyBlockReason>
  * marketing-only reason narrows `MirroredBlockReason` and fails this line rather
  * than leaving a validator that still accepts the excluded reason.
  */
-export const MIRRORED_BLOCK_REASONS = [
+const MIRRORED_BLOCK_REASONS = [
 	'bounced',
 	'complained',
 	'manual',
@@ -74,7 +74,7 @@ export const MIRRORED_BLOCK_REASONS = [
  * literal narrowing, so it is cast back once here (cf.
  * `contactActivities/catalog.ts`'s `contactActivityTypeValidator`).
  */
-export const mirroredBlockReasonValidator = v.union(
+const mirroredBlockReasonValidator = v.union(
 	...MIRRORED_BLOCK_REASONS.map((reason) => v.literal(reason))
 ) as unknown as Validator<MirroredBlockReason>;
 

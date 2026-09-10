@@ -43,7 +43,7 @@ export const MATCH_SIMILARITY_THRESHOLD = 0.95;
 export const GRADUATION_MIN_SAMPLE = 10;
 
 /** Minimum matched / would-have-sent rate for a graduation offer. */
-export const GRADUATION_MATCH_RATE = 0.9;
+const GRADUATION_MATCH_RATE = 0.9;
 
 // ============================================================
 // Shadow-mode gate
@@ -243,7 +243,7 @@ type ShadowScorecardSlice = {
  * Derive a slice's match rate + whether it clears the graduation thresholds.
  * Shared so the read query and any future consumer agree on the bar.
  */
-export function summarizeSlice(row: Doc<'agentShadowScorecard'>): ShadowScorecardSlice {
+function summarizeSlice(row: Doc<'agentShadowScorecard'>): ShadowScorecardSlice {
 	const matchRate = row.wouldHaveSent > 0 ? row.matched / row.wouldHaveSent : 0;
 	const offerGraduation =
 		row.wouldHaveSent >= GRADUATION_MIN_SAMPLE && matchRate >= GRADUATION_MATCH_RATE;

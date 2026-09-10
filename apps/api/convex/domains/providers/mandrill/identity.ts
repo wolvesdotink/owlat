@@ -65,7 +65,7 @@ interface MandrillProviderDetails {
  *    perfect DNS but no ownership proof as verified would hand the relay a
  *    domain it is about to bounce.
  */
-export function isMandrillDomainVerified(state: MandrillDomainState): boolean {
+function isMandrillDomainVerified(state: MandrillDomainState): boolean {
 	return (
 		state.spf.isValid &&
 		state.dkim.isValid &&

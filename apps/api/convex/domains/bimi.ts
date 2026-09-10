@@ -58,7 +58,7 @@ type BimiRejectedInput = 'logoUrl' | 'vmcUrl';
  * rather than throwing: this is a rendering surface, and the screen must survive
  * the value it exists to help the operator fix.
  */
-export function publishableBimiUri(raw: string | undefined): string | null {
+function publishableBimiUri(raw: string | undefined): string | null {
 	const trimmed = raw?.trim() ?? '';
 	// Printable ASCII only, which rules out every space, tab, newline and control
 	// character in one predicate; `;` is excluded separately for legibility.

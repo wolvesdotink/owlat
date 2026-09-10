@@ -53,7 +53,7 @@ import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSu
  * The pp -> fraction conversion happens HERE and only here, so no caller can
  * accidentally compare a percentage-point tolerance against a rate fraction.
  */
-export function withinTolerance(
+function withinTolerance(
 	ownRate: number,
 	referenceRate: number,
 	tolerance: PercentagePoints,

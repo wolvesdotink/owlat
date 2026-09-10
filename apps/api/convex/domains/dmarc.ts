@@ -35,7 +35,7 @@ export const DMARC_POLICIES = ['none', 'quarantine', 'reject'] as const;
 export type DmarcPolicy = (typeof DMARC_POLICIES)[number];
 
 /** DMARC alignment modes (RFC 7489 §6.3): `r` relaxed, `s` strict. */
-export const DMARC_ALIGNMENTS = ['r', 's'] as const;
+const DMARC_ALIGNMENTS = ['r', 's'] as const;
 
 type DmarcAlignment = (typeof DMARC_ALIGNMENTS)[number];
 

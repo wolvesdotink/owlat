@@ -156,7 +156,7 @@ interface RelativeArmHoldReasons extends ArmHoldReasons {
  * is a real, decidable verdict rather than a hold. `notADenominatorReason` will
  * not accept it, and the table is why.
  */
-export const HOLD_REASONS_BY_ARM: {
+const HOLD_REASONS_BY_ARM: {
 	readonly own: ArmHoldReasons;
 	readonly reference: RelativeArmHoldReasons;
 	readonly baseline: RelativeArmHoldReasons;

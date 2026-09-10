@@ -37,10 +37,10 @@ type WorkingHoursConfig = {
 };
 
 /** Default business-hours window applied when a field is unset but the gate is on. */
-export const DEFAULT_WORKING_HOURS_START = 9 * 60; // 09:00
-export const DEFAULT_WORKING_HOURS_END = 17 * 60; // 17:00
-export const DEFAULT_WORKING_HOURS_DAYS = [1, 2, 3, 4, 5]; // Mon–Fri
-export const DEFAULT_WORKING_HOURS_TZ = 'UTC';
+const DEFAULT_WORKING_HOURS_START = 9 * 60; // 09:00
+const DEFAULT_WORKING_HOURS_END = 17 * 60; // 17:00
+const DEFAULT_WORKING_HOURS_DAYS = [1, 2, 3, 4, 5]; // Mon–Fri
+const DEFAULT_WORKING_HOURS_TZ = 'UTC';
 
 const WEEKDAY_INDEX: Record<string, number> = {
 	Sun: 0,

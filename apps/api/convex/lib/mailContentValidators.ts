@@ -55,7 +55,7 @@ export type MailTriageVerb = Infer<typeof mailTriageVerbValidator>;
 // meaningful for). A body token with no declaration falls back to an implicit
 // name table client-side, so every snippet saved before this field keeps
 // working: absent = exactly today's `{{firstName}}` behaviour.
-export const mailSnippetVariableSourceValidator = v.union(
+const mailSnippetVariableSourceValidator = v.union(
 	v.literal('recipientFirstName'),
 	v.literal('recipientFullName'),
 	v.literal('recipientCompany'),

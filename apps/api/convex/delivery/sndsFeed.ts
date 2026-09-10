@@ -73,19 +73,19 @@ export function complaintBandSeverity(band: SndsComplaintBand): number | null {
 }
 
 /** The worse of two bands; `unknown` loses to anything banded. */
-export function worseComplaintBand(a: SndsComplaintBand, b: SndsComplaintBand): SndsComplaintBand {
+function worseComplaintBand(a: SndsComplaintBand, b: SndsComplaintBand): SndsComplaintBand {
 	return worstOf(BAND_SEVERITY_ORDER, a, b);
 }
 
 /** SNDS "Filter result" — the traffic-light verdict on the IP's mail. */
-export const SNDS_FILTER_RESULTS = ['unknown', 'green', 'yellow', 'red'] as const;
+const SNDS_FILTER_RESULTS = ['unknown', 'green', 'yellow', 'red'] as const;
 export type SndsFilterResult = (typeof SNDS_FILTER_RESULTS)[number];
 
 /** The filter results in ascending severity, without the `unknown` sentinel. */
 const FILTER_SEVERITY_ORDER: readonly SndsFilterResult[] = SNDS_FILTER_RESULTS.slice(1);
 
 /** The worse of two filter results; `unknown` loses to anything reported. */
-export function worseFilterResult(a: SndsFilterResult, b: SndsFilterResult): SndsFilterResult {
+function worseFilterResult(a: SndsFilterResult, b: SndsFilterResult): SndsFilterResult {
 	return worstOf(FILTER_SEVERITY_ORDER, a, b);
 }
 
@@ -389,7 +389,7 @@ export function parseSndsFeed(body: string, maxRows: number = SNDS_MAX_ROWS): Sn
  * externally-supplied input. Rows for a cell beyond the cap are counted, not
  * folded — dropping them silently would make a poll's numbers unexplainable.
  */
-export const SNDS_MAX_DAY_CELLS = 8_000;
+const SNDS_MAX_DAY_CELLS = 8_000;
 
 /**
  * An in-progress fold of feed rows into (IP, UTC day) observations.

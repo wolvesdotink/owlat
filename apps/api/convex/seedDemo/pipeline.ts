@@ -125,7 +125,7 @@ export const SEEDED_TABLES: TableNames[] = [
  * `devShortcuts/forceVerifyDomain` (which never tags a row the operator
  * created). Anything untagged is the operator's own data and is never touched.
  */
-export const REMOVABLE_SEED_TAGS: readonly string[] = ['demo', 'dev-forced'];
+const REMOVABLE_SEED_TAGS: readonly string[] = ['demo', 'dev-forced'];
 
 export interface SeedSummary {
 	inserted: Record<string, number>;

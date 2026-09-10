@@ -59,7 +59,7 @@ export type SendingSubdomainRole = 'transactional' | 'bulk' | 'bounce';
 export type SigningSubdomainRole = Exclude<SendingSubdomainRole, 'bounce'>;
 
 /** The label each role takes under the registrable root. */
-export const STREAM_SUBDOMAIN_LABELS = {
+const STREAM_SUBDOMAIN_LABELS = {
 	transactional: 'mail',
 	bulk: 'news',
 	bounce: 'bounces',
@@ -91,7 +91,7 @@ export const SIGNING_SUBDOMAIN_ROLES = [
 ] as const satisfies readonly SigningSubdomainRole[];
 
 /** The IP pool a role sends from. The bounce host does not send. */
-export const SUBDOMAIN_ROLE_POOLS = {
+const SUBDOMAIN_ROLE_POOLS = {
 	transactional: 'transactional',
 	bulk: 'campaign',
 } as const satisfies Record<Exclude<SendingSubdomainRole, 'bounce'>, GovernedIpPool>;

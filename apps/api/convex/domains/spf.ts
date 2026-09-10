@@ -53,7 +53,7 @@ export { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
 import { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
 import { parseIpAddress } from '@owlat/shared/ipAddress';
 
-export const SPF_QUALIFIERS = ['~all', '-all', '?all', '+all'] as const;
+const SPF_QUALIFIERS = ['~all', '-all', '?all', '+all'] as const;
 
 export type SpfQualifier = (typeof SPF_QUALIFIERS)[number];
 

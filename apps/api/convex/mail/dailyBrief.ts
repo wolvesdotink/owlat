@@ -42,7 +42,7 @@ export interface BriefItem {
 }
 
 /** A lapsing promise/deadline is urgent — rank commitments at the high baseline. */
-export const COMMITMENT_PRIORITY = urgencyFallbackScore('high');
+const COMMITMENT_PRIORITY = urgencyFallbackScore('high');
 
 /**
  * Rank the "needs you" items: highest priority first, then the SOONER deadline

@@ -31,9 +31,9 @@ const EXTRACTION_MAX_CHARS = 24000;
 /** Upper bounds on how many extracted lines we render (defense against a
  * runaway/adversarial model returning thousands of entries). */
 export const MAX_STRUCTURED_FACTS = 30;
-export const MAX_STRUCTURED_QUESTIONS = 30;
+const MAX_STRUCTURED_QUESTIONS = 30;
 
-export const structuredExtractionSchema = z.object({
+const structuredExtractionSchema = z.object({
 	facts: z
 		.array(z.string())
 		.describe(

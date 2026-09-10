@@ -19,7 +19,7 @@ import {
  * Convex validator, and the runtime lookups.
  */
 
-export const CORE_STEP_KINDS = ['email', 'delay', 'condition'] as const;
+const CORE_STEP_KINDS = ['email', 'delay', 'condition'] as const;
 export type CoreStepKind = (typeof CORE_STEP_KINDS)[number];
 
 type GeneratedPluginStepKind =

@@ -110,7 +110,7 @@ const transitionInputValidator = v.union(
 // effects below stay here. `reportsTerminalRefusals` is off — no state is
 // terminal here and the published outcome union carries only `illegal_edge`.
 
-export const TRANSACTIONAL_EMAIL_LIFECYCLE = defineLifecycle<TransactionalEmailStatus>({
+const TRANSACTIONAL_EMAIL_LIFECYCLE = defineLifecycle<TransactionalEmailStatus>({
 	draft: ['published', 'pending_review'],
 	pending_review: ['published', 'draft'],
 	published: ['draft'],

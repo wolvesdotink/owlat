@@ -26,7 +26,7 @@ import { internal } from '../../_generated/api';
 import { loadReadableMailbox } from '../permissions';
 
 /** Messages per page. */
-export const RAW_EXPORT_PAGE_SIZE = 25;
+const RAW_EXPORT_PAGE_SIZE = 25;
 
 type RawExportRow = {
 	messageId: Id<'mailMessages'>;

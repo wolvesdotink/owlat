@@ -50,7 +50,7 @@ export function asEagernessMode(value: string | null | undefined): EagernessMode
  * `factual_lookup` are routine lookups. Under `confident` only these are worth
  * a question.
  */
-export const HIGH_STAKES_SLOTS: ReadonlySet<SlotType> = new Set<SlotType>([
+const HIGH_STAKES_SLOTS: ReadonlySet<SlotType> = new Set<SlotType>([
 	'price_number',
 	'decision',
 	'date_time',
@@ -141,7 +141,7 @@ export function predictedAskValue(slotTypes: readonly string[]): number {
 }
 
 /** Divergence at/above which the answer is judged to have CHANGED the draft. */
-export const DRAFT_CHANGED_DIVERGENCE = 0.15;
+const DRAFT_CHANGED_DIVERGENCE = 0.15;
 
 /**
  * How often to pay for the second (answers-omitted) draft used to measure the

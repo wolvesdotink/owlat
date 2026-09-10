@@ -17,7 +17,7 @@ import { checklistTraits } from './checklistTraits';
 import { resolveDeliverabilityAlert } from './checklistAlertResolution';
 
 const LEASE_MS = 2 * 60_000;
-export const SCHEDULED_RETRY_GRACE_MS = 60_000;
+const SCHEDULED_RETRY_GRACE_MS = 60_000;
 export const DNS_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000] as const;
 
 export function nextDnsRetry(

@@ -40,10 +40,10 @@ import { buildSearchBody, isBodySearchIndexingEnabled } from './searchBody';
  * here may cost a storage round-trip to unseal a body blob, so the ACTION's
  * wall-clock, not the transaction's write budget, is the binding constraint.
  */
-export const BODY_SEARCH_BACKFILL_BATCH = 48;
+const BODY_SEARCH_BACKFILL_BATCH = 48;
 
 /** Rows cleared per transaction by the purge. No blob reads, so it can be wider. */
-export const BODY_SEARCH_PURGE_BATCH = 256;
+const BODY_SEARCH_PURGE_BATCH = 256;
 
 /**
  * The current backfill job for a mailbox, or null. Drives the settings screen's

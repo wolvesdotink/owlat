@@ -42,7 +42,7 @@ const CONTACT_REPOINT_TABLES = [
  * `contactPropertyValues` by property) carry their own dedupe logic in the
  * merge callers and are excluded here on purpose.
  */
-export async function repointSimpleContactRefs(
+async function repointSimpleContactRefs(
 	ctx: MutationCtx,
 	targetContactId: Id<'contacts'>,
 	sourceContactId: Id<'contacts'>

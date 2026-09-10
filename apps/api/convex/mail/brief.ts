@@ -44,7 +44,7 @@ export const NEW_MAIL_STALE_THRESHOLD = 5;
  * evening) up to now. Chosen so "overnight" copy stays honest for the usual
  * morning open without tracking per-user working hours.
  */
-export const OVERNIGHT_LOOKBACK_MS = 12 * 60 * 60 * 1000;
+const OVERNIGHT_LOOKBACK_MS = 12 * 60 * 60 * 1000;
 
 interface BriefCardFreshnessInput {
 	/** The cached card's local day, or null when no card exists yet. */
@@ -61,7 +61,7 @@ interface BriefCardFreshnessInput {
  * NEW_MAIL_STALE_THRESHOLD messages arrived since generation. Anything else
  * serves the cache untouched ("at most once per local morning").
  */
-export function isBriefCardStale(input: BriefCardFreshnessInput): boolean {
+function isBriefCardStale(input: BriefCardFreshnessInput): boolean {
 	if (input.cachedLocalDay === null) return true;
 	if (input.cachedLocalDay !== input.localDay) return true;
 	return input.newSinceGenerated >= NEW_MAIL_STALE_THRESHOLD;

@@ -217,7 +217,7 @@ export function buildDraftOptionsPrompt(args: { context: string; voiceSection: s
  * or when fewer than 2 distinct options result — the caller then persists the
  * single primary draft unchanged. Never throws; never blocks the pipeline.
  */
-export async function generateDraftOptions(
+async function generateDraftOptions(
 	ctx: SpendCtx,
 	args: { context: string; voiceSection: string; primaryDraft: string; spendLabel: string }
 ): Promise<string[]> {

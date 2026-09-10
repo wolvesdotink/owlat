@@ -334,7 +334,7 @@ export const listDeliverabilityAlertRecipientStates = internalQuery({
  * counts are bounded by {@link EXPORT_COUNT_CAP}: past it the manifest says
  * "more than N" instead of pretending to a number it did not finish counting.
  */
-export const EXPORT_COUNT_CAP = 2_000;
+const EXPORT_COUNT_CAP = 2_000;
 
 async function boundedCount<T>(query: {
 	take: (n: number) => Promise<T[]>;

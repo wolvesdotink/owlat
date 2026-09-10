@@ -22,7 +22,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow } from '../_utils/errors';
 
 /** `savedBy` marker for the seeded revision-0 agent original. */
-export const AGENT_REVISION_AUTHOR = 'agent';
+const AGENT_REVISION_AUTHOR = 'agent';
 
 /**
  * True when the CURRENT draft text differs (trim-insensitively) from the

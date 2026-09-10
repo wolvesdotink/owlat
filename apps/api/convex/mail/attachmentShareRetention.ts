@@ -33,7 +33,7 @@ import { internal } from '../_generated/api';
 import { releaseShareBytes } from './attachmentShares';
 
 /** Lapsed rows examined per sweep run. The next tick continues where it stopped. */
-export const ATTACHMENT_SHARE_SWEEP_BATCH = 64;
+const ATTACHMENT_SHARE_SWEEP_BATCH = 64;
 
 /**
  * Release the bytes of every share whose expiry has passed, then delete the

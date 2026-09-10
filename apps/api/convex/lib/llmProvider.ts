@@ -193,7 +193,7 @@ function resolveEmbeddingPlane(
 }
 
 /** Resolve both planes from the env `LLM_*` fallback (no stored row present). */
-export function resolveEnvProviderConfig(): ResolvedProviderConfig {
+function resolveEnvProviderConfig(): ResolvedProviderConfig {
 	// The language and embedding planes share the env key/base-URL here (the
 	// prior single-client behavior); resolve it once.
 	const clientConfig = resolveEnvClientConfig();

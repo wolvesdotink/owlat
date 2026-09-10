@@ -18,7 +18,7 @@ import { abVariantValidator } from '../lib/convexValidators';
  * Reduced shape behind the `getABTestStats` query that powers the report's A/B
  * fold-in.
  */
-export function computeAbVariantStats(sends: ReadonlyArray<Doc<'emailSends'>>): {
+function computeAbVariantStats(sends: ReadonlyArray<Doc<'emailSends'>>): {
 	sent: number;
 	delivered: number;
 	opened: number;
@@ -57,7 +57,7 @@ const AB_VARIANT_SCAN_LIMIT = 10000;
  * shared `computeAbVariantStats` shape. Single source of truth behind the
  * `getABTestStats` query so the load bound and stat math stay in one place.
  */
-export async function loadAbTestStats(
+async function loadAbTestStats(
 	ctx: QueryCtx,
 	campaignId: Id<'campaigns'>
 ): Promise<{

@@ -61,7 +61,7 @@ interface SESVerificationStatus {
 	dkimTokens: string[];
 }
 
-export class SESIdentityManager {
+class SESIdentityManager {
 	private client: SESClient;
 	private region: string;
 

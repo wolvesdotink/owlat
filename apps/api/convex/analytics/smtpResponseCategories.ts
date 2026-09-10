@@ -78,7 +78,7 @@ import {
  * documents instead of contending on one. Purely write-side: the summarizer sums
  * across all shards.
  */
-export const SMTP_RESPONSE_CATEGORY_SHARD_COUNT = 8;
+const SMTP_RESPONSE_CATEGORY_SHARD_COUNT = 8;
 
 /**
  * Buckets age out after 90 days — the `transportOutcomes` horizon, because the
@@ -344,7 +344,7 @@ type RecordSmtpResponseResult =
  * our own MTA produced the response would be a second answer, and it would be
  * wrong the day a relay starts reporting classified responses of its own.
  */
-export async function recordSmtpResponseForSend(
+async function recordSmtpResponseForSend(
 	ctx: MutationCtx,
 	input: {
 		readonly providerMessageId: string;

@@ -66,10 +66,7 @@ const INBOUND_SIGNING_FIELD: Record<OutboundChannel, keyof ChannelCreds> = {
 };
 
 /** Which stored secret an inbound caller is asking for. */
-export const channelSecretFieldValidator = v.union(
-	v.literal('signature'),
-	v.literal('verifyToken')
-);
+const channelSecretFieldValidator = v.union(v.literal('signature'), v.literal('verifyToken'));
 
 /**
  * Open a stored `channelConfigs.config` envelope. Returns null for anything

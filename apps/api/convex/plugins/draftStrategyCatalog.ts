@@ -4,7 +4,7 @@ import {
 	type HostedContributionDefinition,
 } from './hostedContributionCatalog';
 
-export const DEFAULT_DRAFT_STRATEGY_KIND = 'default' as const;
+const DEFAULT_DRAFT_STRATEGY_KIND = 'default' as const;
 
 interface HostedDraftStrategyDefinition extends HostedContributionDefinition<'draft:strategy'> {
 	readonly label: string;

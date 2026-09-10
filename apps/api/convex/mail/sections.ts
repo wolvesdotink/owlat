@@ -72,7 +72,7 @@ export const MAX_SECTION_LIMIT = 200;
  * Unread counting stops here. A section header says "9+" past the cap rather
  * than walking an unbounded range to print an exact number nobody reads.
  */
-export const UNREAD_COUNT_CAP = 99;
+const UNREAD_COUNT_CAP = 99;
 
 /**
  * Rows the remainder walk may read per row it keeps. The remainder filters in

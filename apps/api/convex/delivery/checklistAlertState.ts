@@ -15,7 +15,7 @@ import {
 	type RecipientEntry,
 } from './checklistAlertRecipientPersistence';
 
-export const ALERT_SEND_BOUNDARY_GRACE_MS = 5 * 60_000;
+const ALERT_SEND_BOUNDARY_GRACE_MS = 5 * 60_000;
 
 async function notificationAlert(ctx: MutationCtx, organizationId: string, identity: string) {
 	const alert = await ctx.db

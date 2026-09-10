@@ -51,7 +51,7 @@ export const DELIVERY_WINDOW_MINUTES = 15;
 export const MAX_EMAIL_ITEMS = 12;
 
 /** Users considered per cron tick — one `mailUserSettings` row per person. */
-export const MAX_BRIEF_EMAIL_USERS = 500;
+const MAX_BRIEF_EMAIL_USERS = 500;
 
 /** Minutes past local midnight for an instant, given the user's stored offset. */
 export function localMinuteOfDay(nowMs: number, utcOffsetMinutes: number): number {

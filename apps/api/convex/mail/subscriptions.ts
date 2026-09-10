@@ -37,7 +37,7 @@ import type { OneClickResult } from './unsubscribe';
 export const SUBSCRIPTION_SCAN_LIMIT = 300;
 
 /** Most senders one batch may act on. Keeps a single action bounded. */
-export const SUBSCRIPTION_BATCH_MAX = 25;
+const SUBSCRIPTION_BATCH_MAX = 25;
 
 /**
  * Gap between two senders' unsubscribe POSTs. Politeness, not throughput: a
@@ -45,7 +45,7 @@ export const SUBSCRIPTION_BATCH_MAX = 25;
  * which belong to the same ESP, and a burst from one IP is exactly what their
  * abuse heuristics are looking for.
  */
-export const SUBSCRIPTION_BATCH_DELAY_MS = 400;
+const SUBSCRIPTION_BATCH_DELAY_MS = 400;
 
 /** Messages from one sender archived per batch entry. */
 const ARCHIVE_LIMIT_PER_SENDER = 200;

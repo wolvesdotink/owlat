@@ -32,7 +32,7 @@ import { getSenderRule } from './lib/autonomyRules';
  * consume them unchanged — an angry reply / bounce / complaint reads as a
  * `rejected`, an unedited answered-clarification send as an `approved`.
  */
-export const OUTCOME_SIGNAL = {
+const OUTCOME_SIGNAL = {
 	reply_negative: 'rejected',
 	bounce: 'rejected',
 	complaint: 'rejected',

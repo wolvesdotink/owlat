@@ -97,7 +97,7 @@ async function searchMail(
  * (`searchInternal`). No auth inside — callers gate, which is exactly why the
  * mailbox set is an ARGUMENT: a caller that cannot name a user cannot get mail.
  */
-export async function runGlobalSearch(
+async function runGlobalSearch(
 	ctx: QueryCtx,
 	rawQuery: string,
 	rawLimit?: number,

@@ -292,8 +292,8 @@ export const get = publicQuery({
 });
 
 /** Max standing instructions retained, and per-instruction character bound. */
-export const MAX_STANDING_INSTRUCTIONS = 20;
-export const MAX_STANDING_INSTRUCTION_CHARS = 200;
+const MAX_STANDING_INSTRUCTIONS = 20;
+const MAX_STANDING_INSTRUCTION_CHARS = 200;
 
 /**
  * Replace the mailbox's user-authored standing instructions ("never use

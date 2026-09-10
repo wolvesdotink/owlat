@@ -182,7 +182,7 @@ export function ssrfLookup(
  * non-2xx status/body) and so can't go through {@link fetchGuarded}; they must
  * still call {@link validatePublicUrl} for the up-front check.
  */
-export function guardedDispatcher(): Agent {
+function guardedDispatcher(): Agent {
 	return new Agent({
 		connect: {
 			lookup: (hostname, options, callback) =>
@@ -243,7 +243,7 @@ export async function readCappedBytes(
  * type is a stable contract. A plain network error (DNS/socket failure) is NOT
  * an instance of this class, so `unreachable`-style fallbacks still catch it.
  */
-export class FetchGuardError extends Error {}
+class FetchGuardError extends Error {}
 
 /**
  * The destination is on the SSRF blocklist — it resolved to a private, internal,

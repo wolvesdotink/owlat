@@ -10,7 +10,7 @@ import type { ConditionKind } from './types';
  * executable modules.
  */
 
-export const CORE_CONDITION_KINDS = [
+const CORE_CONDITION_KINDS = [
 	'contact_property',
 	'email_activity',
 	'topic_membership',

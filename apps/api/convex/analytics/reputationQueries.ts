@@ -263,7 +263,7 @@ interface DeliveryDomainRow {
  * counts as verified only when every selector is present and verified. Pure —
  * unit-testable, and the single place the "is this record good?" rule lives.
  */
-export function domainAuthState(
+function domainAuthState(
 	results:
 		| {
 				spf?: { verified: boolean } | undefined;
@@ -282,7 +282,7 @@ export function domainAuthState(
 }
 
 /** The record names in `auth` that are not yet verified, in display order. */
-export function missingAuthRecords(auth: DomainAuthState): string[] {
+function missingAuthRecords(auth: DomainAuthState): string[] {
 	const missing: string[] = [];
 	if (!auth.spf) missing.push('SPF');
 	if (!auth.dkim) missing.push('DKIM');

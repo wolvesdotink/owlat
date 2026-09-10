@@ -183,7 +183,7 @@ interface RelaySendOutcome {
  * {@link SendProviderModule} face of it; the return-path probe calls it
  * directly because it needs the envelope sender back.
  */
-export async function sendViaRelay(
+async function sendViaRelay(
 	transport: SendTransportRecord,
 	params: EmailSendParams,
 	options: RelaySendOptions
@@ -377,7 +377,7 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
  * `categorizeError` + the compose-failure path) so the whole module shares one
  * taxonomy.
  */
-export function categorizeSmtpError(message: string, smtpReplyCode?: number): EmailErrorCode {
+function categorizeSmtpError(message: string, smtpReplyCode?: number): EmailErrorCode {
 	if (smtpReplyCode !== undefined) {
 		const byCode = smtpReplyCodeToErrorCode(smtpReplyCode, message);
 		if (byCode !== undefined) return byCode;

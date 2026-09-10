@@ -111,7 +111,7 @@ function stripHtml(input: string): string {
 }
 
 /** Normalize either HTML or plain text into comparable plain text. */
-export function normalizeBody(input: string): string {
+function normalizeBody(input: string): string {
 	const looksHtml = /<[a-z!/][\s\S]*>/i.test(input);
 	const text = looksHtml ? stripHtml(input) : input;
 	return text.replace(/\r\n?/g, '\n').trim();
@@ -138,14 +138,14 @@ const SIGNOFF_RE =
 	/^(thanks|thank you|cheers|best|regards|best regards|kind regards|warm regards|sincerely|yours|talk soon|speak soon|all the best|many thanks)\b/i;
 const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/u;
 
-export function hasGreeting(text: string): boolean {
+function hasGreeting(text: string): boolean {
 	const lines = nonEmptyLines(text);
 	if (lines.length === 0) return false;
 	const first = lines[0] ?? '';
 	return GREETING_RE.test(first) && wordCount(first) <= 6;
 }
 
-export function hasSignoff(text: string): boolean {
+function hasSignoff(text: string): boolean {
 	const lines = nonEmptyLines(text);
 	// Inspect the last two non-empty lines (sign-off + name).
 	for (let i = Math.max(0, lines.length - 2); i < lines.length; i++) {
@@ -160,7 +160,7 @@ export function hasSignoff(text: string): boolean {
  * between drafts (latin ↔ cyrillic ↔ cjk ↔ greek) without a heavy NLP dep.
  * Returns 'latin' when there is no strong non-latin signal.
  */
-export function dominantScript(text: string): 'latin' | 'cyrillic' | 'cjk' | 'greek' {
+function dominantScript(text: string): 'latin' | 'cyrillic' | 'cjk' | 'greek' {
 	let cyr = 0;
 	let cjk = 0;
 	let grk = 0;

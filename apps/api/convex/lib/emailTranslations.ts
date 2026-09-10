@@ -83,7 +83,7 @@ export function serializeTranslations(translations: Record<string, Translation>)
 // --- translatable-content extraction ---------------------------------------
 
 // Recursive helper to extract translatable content from any block-like item.
-export function extractFromItem(
+function extractFromItem(
 	item: { id: string; type: string; content: Record<string, unknown> },
 	translatableContent: Record<string, TranslatableBlockContent>
 ): void {

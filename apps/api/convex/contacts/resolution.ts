@@ -38,24 +38,11 @@ import { literalUnion } from '../lib/convexValidators';
 // Types
 // ============================================================
 
-export const CHANNEL_KIND_LITERALS = [
-	'email',
-	'sms',
-	'whatsapp',
-	'phone',
-	'generic',
-	'chat',
-] as const;
+const CHANNEL_KIND_LITERALS = ['email', 'sms', 'whatsapp', 'phone', 'generic', 'chat'] as const;
 
 export type ChannelKind = (typeof CHANNEL_KIND_LITERALS)[number];
 
-export const CONTACT_SOURCE_LITERALS = [
-	'api',
-	'import',
-	'form',
-	'transactional',
-	'inbound',
-] as const;
+const CONTACT_SOURCE_LITERALS = ['api', 'import', 'form', 'transactional', 'inbound'] as const;
 
 export type ContactSource = (typeof CONTACT_SOURCE_LITERALS)[number];
 
@@ -64,11 +51,11 @@ export const contactSourceValidator = literalUnion(CONTACT_SOURCE_LITERALS);
 // Sources a caller may set when CREATING a contact. 'inbound' is excluded — it
 // is assigned only internally the first time a contact appears via an inbound
 // message, never accepted from the create API.
-export const CONTACT_CREATE_SOURCE_LITERALS = ['api', 'import', 'form', 'transactional'] as const;
+const CONTACT_CREATE_SOURCE_LITERALS = ['api', 'import', 'form', 'transactional'] as const;
 
 export const contactCreateSourceValidator = literalUnion(CONTACT_CREATE_SOURCE_LITERALS);
 
-export const RESOLVE_MODE_LITERALS = ['strict', 'upsert', 'merge'] as const;
+const RESOLVE_MODE_LITERALS = ['strict', 'upsert', 'merge'] as const;
 
 export type ResolveMode = (typeof RESOLVE_MODE_LITERALS)[number];
 

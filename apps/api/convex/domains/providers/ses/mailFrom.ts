@@ -18,7 +18,7 @@
 import type { DnsRecord } from '../../domains';
 
 /** Default MAIL FROM sub-label when a domain sets no explicit return-path host. */
-export const SES_DEFAULT_MAIL_FROM_LABEL = 'mail';
+const SES_DEFAULT_MAIL_FROM_LABEL = 'mail';
 
 /**
  * The resolved SES custom MAIL FROM for a domain: the sub-label the DNS records

@@ -107,7 +107,7 @@ function roundMultiplier(value: number): number {
 }
 
 /** Is the stored multiplier a multiplier at all? */
-export function isStoredMultiplierReadable(stored: number): boolean {
+function isStoredMultiplierReadable(stored: number): boolean {
 	return (
 		Number.isFinite(stored) &&
 		stored >= PACE_AIMD.multiplierFloor &&
