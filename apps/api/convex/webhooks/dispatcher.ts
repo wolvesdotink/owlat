@@ -413,13 +413,8 @@ const DISPATCH: DispatchTable = {
 			try {
 				await ctx.scheduler.runAfter(0, internal.delivery.warmingSync.syncWarmingState, {});
 			} catch (err) {
-				// Fail soft: the warming sync is a refresh, and the event itself has
-				// already been recorded. Say which event could not schedule it.
-				logError('[Webhook Dispatcher] failed to trigger warming sync', {
-					subkind: e.subkind,
-					severity: e.severity,
-					error: err,
-				});
+				// Fail soft: the sync is a refresh and the event is already recorded.
+				logError(`[Webhook Dispatcher] warming sync did not schedule (${e.subkind})`, err);
 			}
 		}
 	},
