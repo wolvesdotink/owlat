@@ -28,7 +28,6 @@
         "@convex-dev/better-auth": "catalog:convex",
         "@convex-dev/rate-limiter": "^0.3.2",
         "@convex-dev/workpool": "^0.4.3",
-        "@owlat/channels": "workspace:*",
         "@owlat/email-renderer": "workspace:*",
         "@owlat/email-scanner": "workspace:*",
         "@owlat/mail-canon": "workspace:*",
@@ -362,16 +361,6 @@
       "dependencies": {
         "@owlat/plugin-kit": "workspace:*",
       },
-      "devDependencies": {
-        "@types/node": "catalog:",
-        "@vitest/coverage-v8": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:",
-      },
-    },
-    "packages/channels": {
-      "name": "@owlat/channels",
-      "version": "0.4.4",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -1199,8 +1188,6 @@
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.40.0", "", {}, "sha512-cifvXDhcqMwwTlTK04GBNeIe7yyo28Mfby85QXFe1Yk8nmi36Ab/5UQwptOx84SsoGNRg+EVSjwzfSZMy6pmlw=="],
 
     "@owlat/api": ["@owlat/api@workspace:apps/api"],
-
-    "@owlat/channels": ["@owlat/channels@workspace:packages/channels"],
 
     "@owlat/code-worker": ["@owlat/code-worker@workspace:apps/code-worker"],
 

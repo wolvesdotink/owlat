@@ -1,27 +1,12 @@
 /**
- * The inbound normalization contract — the whole of what this package is after
- * the D10 honesty pass.
- *
- * Two things are pinned here. First the translation itself: what each
- * registered source turns a raw envelope into, field by field, including the
- * fallbacks that only fire on a malformed payload and the auth verdicts that
- * must stay *absent* rather than become a pass. Second the package's public
- * surface, which is now inbound-only — the bidirectional `ChannelAdapter` half
- * (a `send` that hard-returned failure, a `healthCheck` that hard-returned
- * healthy, a `validateSignature` that hard-returned `true`) is gone, and this
- * suite fails if any of it comes back.
+ * The inbound normalization contract: what each source turns a raw envelope
+ * into, field by field, including the fallbacks that only fire on a malformed
+ * payload and the auth verdicts that must stay *absent* rather than become a
+ * pass.
  */
 
-import { readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import * as channels from '../index';
-import {
-	getInboundChannelAdapter,
-	registerInboundChannelAdapter,
-	type InboundChannelAdapter,
-	type InboundEmailMessage,
-	type InboundSource,
-} from '../index';
+import { getInboundChannelAdapter } from '../inboundRegistry';
 
 /** A well-formed `inbound.received` envelope from owlat-mta. */
 function mtaEnvelope(overrides: Record<string, unknown> = {}, timestamp = 1_700_000_000_000) {
@@ -188,69 +173,12 @@ describe('ResendInboundAdapter', () => {
 });
 
 // =============================================================================
-// Bucket 3 — the registry: lookup, loud failure, registration
+// Bucket 3 — the registry: lookup
 // =============================================================================
 describe('inbound channel adapter registry', () => {
 	it('returns an adapter whose declared source matches the lookup key', () => {
 		for (const source of ['mta', 'resend'] as const) {
 			expect(getInboundChannelAdapter(source).source).toBe(source);
 		}
-	});
-
-	it('throws for a registered-but-unimplemented source, naming it and the fix', () => {
-		expect(() => getInboundChannelAdapter('postmark')).toThrow(/postmark/);
-		expect(() => getInboundChannelAdapter('postmark')).toThrow(/registerInboundChannelAdapter/);
-	});
-
-	it('accepts a new source without any edit to the lookup', () => {
-		const source: InboundSource = 'mailgun';
-		const stub: InboundChannelAdapter = {
-			source,
-			parseInbound: (): InboundEmailMessage => ({
-				from: 'mg@example.com',
-				to: 'inbox@owlat.test',
-				subject: 'from mailgun',
-				headers: {},
-				messageId: 'mg-1',
-				attachments: [],
-				timestamp: 1,
-			}),
-		};
-
-		expect(() => getInboundChannelAdapter(source)).toThrow();
-
-		// The registry is module-level state and there is no unregister; vitest
-		// gives each test FILE its own module instance, so this mutation is
-		// confined here. Keep it the last case that reads the registry.
-		registerInboundChannelAdapter(stub);
-
-		expect(getInboundChannelAdapter(source)).toBe(stub);
-		expect(getInboundChannelAdapter(source).parseInbound({}).messageId).toBe('mg-1');
-	});
-});
-
-// =============================================================================
-// Bucket 4 — the honesty gate: the surface is inbound-only
-//
-// These fail against the pre-D10 package, which is the point: they are what
-// stops the stub adapters from being re-added, or a new one from being written
-// against a `ChannelAdapter` interface that no longer has a home here.
-// =============================================================================
-describe('package surface', () => {
-	it('exports exactly the inbound registry, and nothing that sends', () => {
-		expect(Object.keys(channels).sort()).toEqual([
-			'MtaInboundAdapter',
-			'ResendInboundAdapter',
-			'getInboundChannelAdapter',
-			'registerInboundChannelAdapter',
-		]);
-	});
-
-	it('ships exactly the two inbound modules', () => {
-		const modules = readdirSync(new URL('..', import.meta.url))
-			.filter((entry) => entry.endsWith('.ts'))
-			.sort();
-
-		expect(modules).toEqual(['inboundRegistry.ts', 'index.ts']);
 	});
 });

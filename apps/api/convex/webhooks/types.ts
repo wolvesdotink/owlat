@@ -5,7 +5,7 @@
  */
 
 import type { Validator } from 'convex/values';
-import type { InboundEmailMessage } from '@owlat/channels';
+import type { InboundEmailMessage } from './adapters/inboundRegistry';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DeliveryDomain } from '@owlat/shared';
 import type {
@@ -17,7 +17,7 @@ import type { WorkerEnvelopeInput, WorkerRetryState } from '../delivery/workerEn
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
 
-/** Normalized inbound mail shape — canonical type from @owlat/channels. */
+/** Normalized inbound mail shape — canonical type from `adapters/inboundRegistry`. */
 export type NormalizedInboundMail = InboundEmailMessage;
 
 /** Provider-agnostic discriminator for non-email customer channels. */

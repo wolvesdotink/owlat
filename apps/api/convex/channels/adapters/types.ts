@@ -8,7 +8,8 @@
  * parsing for these same channels live in `webhooks/adapters/`.
  *
  * OUTBOUND ONLY, on purpose. The contract carried a `parseInbound` and a
- * `validateSignature` for as long as it lived in `@owlat/channels`, and neither
+ * `validateSignature` for as long as it lived in the old `@owlat/channels`
+ * package, and neither
  * ever had a host caller: the shipped inbound route verifies and parses through
  * `webhooks/adapters/{twilio,meta,generic}.ts`. Two expressions of one rule is
  * how a Twilio field change gets fixed in one place and silently missed in the

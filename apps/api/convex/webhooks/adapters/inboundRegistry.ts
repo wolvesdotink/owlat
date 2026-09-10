@@ -1,13 +1,10 @@
 /**
- * Inbound channel adapter registry.
+ * Inbound channel adapter registry — vendor envelope → canonical inbound mail.
  *
- * Webhook adapters (the MTA's, and future Postmark/Mailgun/IMAP sources)
- * delegate payload parsing to a source-keyed adapter. Each adapter normalizes
- * the vendor-specific raw payload into a canonical `InboundEmailMessage` shape
- * so the persistence layer stays source-agnostic.
- *
- * Adding a new inbound source is a single new adapter file plus a
- * `registerInboundChannelAdapter()` call — no handler edits required.
+ * A webhook route hands the raw body to the adapter for its source, which
+ * normalizes it into the `InboundEmailMessage` that
+ * `internal.inbound.receiveMessage` persists, so the persistence layer stays
+ * source-agnostic. Adding a source is one adapter plus one entry in `ADAPTERS`.
  *
  * Each adapter owns the whole translation for its source: the vendor envelope
  * (Resend / Postmark / Mailgun all have different shells) and the inner field
@@ -16,6 +13,10 @@
  * fictions (a `send` that hard-returned failure, a `healthCheck` that
  * hard-returned healthy, a `validateSignature` that hard-returned true); that
  * class is gone and its one real method is inlined below, unchanged.
+ *
+ * This lived in `@owlat/channels` until the package was folded away: two files
+ * behind a workspace boundary that only this folder ever crossed, next to the
+ * bidirectional adapters that already moved to `convex/channels/adapters/`.
  */
 
 /**
@@ -49,9 +50,10 @@ export interface InboundEmailMessage {
 }
 
 /**
- * Source identifier — the registry key.
+ * Source identifier — the registry key. Only sources with an adapter belong
+ * here: a member without one is a lookup that compiles and then throws.
  */
-export type InboundSource = 'mta' | 'resend' | 'ses' | 'postmark' | 'mailgun';
+export type InboundSource = 'mta' | 'resend';
 
 /**
  * Inbound channel adapter contract — the whole of it.
@@ -73,7 +75,7 @@ export interface InboundChannelAdapter {
  * `inbound.received` event shape parsed by the backend's
  * `webhooks/adapters/mta.ts`.
  */
-export class MtaInboundAdapter implements InboundChannelAdapter {
+class MtaInboundAdapter implements InboundChannelAdapter {
 	source: InboundSource = 'mta';
 
 	parseInbound(raw: unknown): InboundEmailMessage {
@@ -146,7 +148,7 @@ interface ResendInboundPayload {
  * `unknown-<timestamp>` using the ALREADY-DEFAULTED timestamp, so the two
  * fields can never disagree about which clock produced them.
  */
-export class ResendInboundAdapter implements InboundChannelAdapter {
+class ResendInboundAdapter implements InboundChannelAdapter {
 	source: InboundSource = 'resend';
 
 	parseInbound(raw: unknown): InboundEmailMessage {
@@ -168,29 +170,12 @@ export class ResendInboundAdapter implements InboundChannelAdapter {
 	}
 }
 
-const REGISTRY: Partial<Record<InboundSource, InboundChannelAdapter>> = {
+const ADAPTERS: Record<InboundSource, InboundChannelAdapter> = {
 	mta: new MtaInboundAdapter(),
 	resend: new ResendInboundAdapter(),
 };
 
-/**
- * Look up the inbound adapter for a source. Throws if not registered so
- * callers can fail loudly when a webhook arrives from an unknown vendor.
- */
+/** Look up the inbound adapter for a source. Total over `InboundSource`. */
 export function getInboundChannelAdapter(source: InboundSource): InboundChannelAdapter {
-	const adapter = REGISTRY[source];
-	if (!adapter) {
-		throw new Error(
-			`No inbound channel adapter registered for source "${source}". ` +
-				`Register one with registerInboundChannelAdapter() from @owlat/channels.`
-		);
-	}
-	return adapter;
-}
-
-/**
- * Register a custom adapter — used by tests or by new source implementations.
- */
-export function registerInboundChannelAdapter(adapter: InboundChannelAdapter): void {
-	REGISTRY[adapter.source] = adapter;
+	return ADAPTERS[source];
 }
