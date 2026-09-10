@@ -1,6 +1,9 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
 	"plugins": ["import", "typescript", "unicorn"],
+	"categories": {
+		"suspicious": "warn"
+	},
 	"env": {
 		"browser": true,
 		"node": true,
@@ -26,19 +29,38 @@
 		"eqeqeq": ["error", "always", { "null": "ignore" }],
 		"no-unused-vars": "error",
 		"no-console": ["warn", { "allow": ["info", "warn", "error"] }],
-		"@typescript-eslint/no-explicit-any": "error"
+		"@typescript-eslint/no-explicit-any": "error",
+
+		"@typescript-eslint/ban-ts-comment": "error",
+		"@typescript-eslint/no-non-null-asserted-optional-chain": "error",
+		"@typescript-eslint/prefer-optional-chain": "error",
+		"no-unsafe-optional-chaining": "error",
+
+		"@typescript-eslint/consistent-type-imports": "warn",
+		"import/no-duplicates": "warn",
+		"unicorn/no-array-for-each": "warn",
+
+		"@typescript-eslint/no-non-null-assertion": "warn",
+		"no-nested-ternary": "warn",
+		"unicorn/no-useless-undefined": "warn",
+		"import/no-cycle": "warn",
+
+		"no-underscore-dangle": "off",
+		"unicorn/no-array-sort": "off",
+		"unicorn/no-array-reverse": "off",
+		"unicorn/consistent-function-scoping": "off",
+		"no-shadow": "off",
+		"import/no-named-as-default-member": "off",
+		"import/no-unassigned-import": "off"
 	},
 	"overrides": [
 		{
-			"files": [
-				"**/__tests__/**",
-				"**/*.test.ts",
-				"**/*.spec.ts",
-				"**/_generated/**"
-			],
+			"files": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts", "**/_generated/**"],
 			"rules": {
 				"@typescript-eslint/no-explicit-any": "off",
-				"no-unused-vars": "off"
+				"no-unused-vars": "off",
+				"@typescript-eslint/no-non-null-assertion": "off",
+				"unicorn/no-useless-undefined": "off"
 			}
 		}
 	],
