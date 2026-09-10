@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
-import {
-	X,
-	Plus,
-	Trash2,
-	ChevronDown,
-} from '@lucide/vue';
+import { X, Plus, Trash2, ChevronDown } from '@lucide/vue';
 import type { PreviewRenderOptions } from '../types';
 
 const props = defineProps<{
@@ -21,16 +16,19 @@ const emit = defineEmits<{
 const local = reactive({
 	baseWidth: props.options.baseWidth ?? 600,
 	breakpoint: props.options.breakpoint ?? 480,
-	direction: props.options.direction ?? 'ltr' as 'ltr' | 'rtl',
+	direction: props.options.direction ?? ('ltr' as 'ltr' | 'rtl'),
 	minify: props.options.minify ?? false,
 	inlineCss: props.options.inlineCss ?? true,
-	validationLevel: props.options.validationLevel ?? 'soft' as string,
+	validationLevel: props.options.validationLevel ?? ('soft' as string),
 	lang: props.options.lang ?? 'en',
 	customCss: props.options.customCss ?? '',
 	fontUrls: [...(props.options.fontUrls ?? [])],
 	preheaderText: props.options.preheaderText ?? '',
 	title: props.options.title ?? '',
-	variableValues: Object.entries(props.options.variableValues ?? {}).map(([key, value]) => ({ key, value })),
+	variableValues: Object.entries(props.options.variableValues ?? {}).map(([key, value]) => ({
+		key,
+		value,
+	})),
 });
 
 const advancedExpanded = reactive({ value: false });
@@ -47,12 +45,14 @@ function emitUpdate() {
 		validationLevel: local.validationLevel as PreviewRenderOptions['validationLevel'],
 		lang: local.lang,
 		customCss: local.customCss || undefined,
-		fontUrls: local.fontUrls.filter(Boolean).length > 0 ? local.fontUrls.filter(Boolean) : undefined,
+		fontUrls:
+			local.fontUrls.filter(Boolean).length > 0 ? local.fontUrls.filter(Boolean) : undefined,
 		preheaderText: local.preheaderText || undefined,
 		title: local.title || undefined,
-		variableValues: local.variableValues.length > 0
-			? Object.fromEntries(local.variableValues.filter((v) => v.key).map((v) => [v.key, v.value]))
-			: undefined,
+		variableValues:
+			local.variableValues.length > 0
+				? Object.fromEntries(local.variableValues.filter((v) => v.key).map((v) => [v.key, v.value]))
+				: undefined,
 	};
 	emit('update:options', opts);
 }
@@ -76,11 +76,15 @@ function removeVariable(index: number) {
 }
 
 // Sync props changes to local state
-watch(() => props.options, (newOpts) => {
-	if (newOpts.baseWidth !== undefined) local.baseWidth = newOpts.baseWidth;
-	if (newOpts.direction !== undefined) local.direction = newOpts.direction;
-	if (newOpts.minify !== undefined) local.minify = newOpts.minify;
-}, { deep: true });
+watch(
+	() => props.options,
+	(newOpts) => {
+		if (newOpts.baseWidth !== undefined) local.baseWidth = newOpts.baseWidth;
+		if (newOpts.direction !== undefined) local.direction = newOpts.direction;
+		if (newOpts.minify !== undefined) local.minify = newOpts.minify;
+	},
+	{ deep: true }
+);
 </script>
 
 <template>
@@ -116,14 +120,20 @@ watch(() => props.options, (newOpts) => {
 						<button
 							class="ep-settings-toggle"
 							:class="{ 'ep-settings-toggle-active': local.direction === 'ltr' }"
-							@click="local.direction = 'ltr'; emitUpdate()"
+							@click="
+								local.direction = 'ltr';
+								emitUpdate();
+							"
 						>
 							LTR
 						</button>
 						<button
 							class="ep-settings-toggle"
 							:class="{ 'ep-settings-toggle-active': local.direction === 'rtl' }"
-							@click="local.direction = 'rtl'; emitUpdate()"
+							@click="
+								local.direction = 'rtl';
+								emitUpdate();
+							"
 						>
 							RTL
 						</button>
@@ -136,7 +146,10 @@ watch(() => props.options, (newOpts) => {
 					<button
 						class="ep-settings-checkbox"
 						:class="{ 'ep-settings-checkbox-active': local.minify }"
-						@click="local.minify = !local.minify; emitUpdate()"
+						@click="
+							local.minify = !local.minify;
+							emitUpdate();
+						"
 					>
 						<span class="ep-settings-checkbox-dot"></span>
 					</button>
@@ -148,7 +161,10 @@ watch(() => props.options, (newOpts) => {
 					<button
 						class="ep-settings-checkbox"
 						:class="{ 'ep-settings-checkbox-active': local.inlineCss }"
-						@click="local.inlineCss = !local.inlineCss; emitUpdate()"
+						@click="
+							local.inlineCss = !local.inlineCss;
+							emitUpdate();
+						"
 					>
 						<span class="ep-settings-checkbox-dot"></span>
 					</button>
@@ -247,11 +263,7 @@ watch(() => props.options, (newOpts) => {
 					<div class="ep-settings-field">
 						<label class="ep-settings-label">Font URLs</label>
 						<div class="ep-settings-list">
-							<div
-								v-for="(url, idx) in local.fontUrls"
-								:key="idx"
-								class="ep-settings-list-item"
-							>
+							<div v-for="(url, idx) in local.fontUrls" :key="idx" class="ep-settings-list-item">
 								<input
 									v-model="local.fontUrls[idx]"
 									type="text"
@@ -407,7 +419,8 @@ watch(() => props.options, (newOpts) => {
 	font-size: 12px;
 	font-family: inherit;
 	outline: none;
-	transition: border-color var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition: border-color var(--motion-fast, 80ms)
+		var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-settings-input:focus {
@@ -542,7 +555,8 @@ watch(() => props.options, (newOpts) => {
 	width: 14px;
 	height: 14px;
 	color: var(--ep-text-tertiary);
-	transition: transform var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition: transform var(--motion-moderate, 160ms)
+		var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-settings-accordion-open {

@@ -40,9 +40,3 @@ export interface CanIEmailData {
 	nicenames: CanIEmailNicenames;
 	data: CanIEmailFeature[];
 }
-
-export interface FeatureSupportResult {
-	feature: CanIEmailFeature;
-	support: SupportCode;
-	note?: string;
-}

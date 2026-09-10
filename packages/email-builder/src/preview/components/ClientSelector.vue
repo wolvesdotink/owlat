@@ -295,7 +295,8 @@ function closeDropdowns() {
 	width: 14px;
 	height: 14px;
 	color: var(--ep-text-tertiary);
-	transition: transform var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition: transform var(--motion-moderate, 160ms)
+		var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-chevron-up {

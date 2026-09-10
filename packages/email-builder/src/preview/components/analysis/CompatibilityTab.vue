@@ -17,7 +17,9 @@ const compatibilityIssues = computed(() => {
 		issues.unshift({
 			severity: 'warning',
 			feature: 'container-nesting',
-			message: props.nestingDepthWarning.warningMessage || 'Deep container nesting may cause rendering issues',
+			message:
+				props.nestingDepthWarning.warningMessage ||
+				'Deep container nesting may cause rendering issues',
 			clients: ['Outlook (Windows)', 'Outlook (Mac)', 'Windows Mail'],
 		});
 	}
@@ -55,7 +57,9 @@ const compatibilityScoreColor = computed(() => {
 		<div v-if="compatibilityIssues.errors.length > 0" class="ep-compat-group">
 			<div class="ep-compat-group-title ep-compat-errors">
 				<AlertCircle class="ep-compat-group-icon" />
-				{{ compatibilityIssues.errors.length }} Error{{ compatibilityIssues.errors.length === 1 ? '' : 's' }}
+				{{ compatibilityIssues.errors.length }} Error{{
+					compatibilityIssues.errors.length === 1 ? '' : 's'
+				}}
 			</div>
 			<div
 				v-for="(issue, idx) in compatibilityIssues.errors"
@@ -69,7 +73,9 @@ const compatibilityScoreColor = computed(() => {
 		<div v-if="compatibilityIssues.warnings.length > 0" class="ep-compat-group">
 			<div class="ep-compat-group-title ep-compat-warnings">
 				<AlertTriangle class="ep-compat-group-icon" />
-				{{ compatibilityIssues.warnings.length }} Warning{{ compatibilityIssues.warnings.length === 1 ? '' : 's' }}
+				{{ compatibilityIssues.warnings.length }} Warning{{
+					compatibilityIssues.warnings.length === 1 ? '' : 's'
+				}}
 			</div>
 			<div
 				v-for="(issue, idx) in compatibilityIssues.warnings"
@@ -83,7 +89,9 @@ const compatibilityScoreColor = computed(() => {
 		<div v-if="compatibilityIssues.info.length > 0" class="ep-compat-group">
 			<div class="ep-compat-group-title ep-compat-info">
 				<Info class="ep-compat-group-icon" />
-				{{ compatibilityIssues.info.length }} Note{{ compatibilityIssues.info.length === 1 ? '' : 's' }}
+				{{ compatibilityIssues.info.length }} Note{{
+					compatibilityIssues.info.length === 1 ? '' : 's'
+				}}
 			</div>
 			<div
 				v-for="(issue, idx) in compatibilityIssues.info"
@@ -95,7 +103,11 @@ const compatibilityScoreColor = computed(() => {
 			</div>
 		</div>
 		<AnalysisEmpty
-			v-if="compatibilityIssues.errors.length === 0 && compatibilityIssues.warnings.length === 0 && compatibilityIssues.info.length === 0"
+			v-if="
+				compatibilityIssues.errors.length === 0 &&
+				compatibilityIssues.warnings.length === 0 &&
+				compatibilityIssues.info.length === 0
+			"
 			success
 		>
 			No compatibility issues found.

@@ -77,7 +77,7 @@ describe('useCanIEmail data loading + queries', () => {
 	beforeEach(() => {
 		vi.stubGlobal(
 			'fetch',
-			vi.fn().mockResolvedValue({ ok: true, statusText: 'OK', json: async () => fixture }),
+			vi.fn().mockResolvedValue({ ok: true, statusText: 'OK', json: async () => fixture })
 		);
 	});
 
@@ -106,7 +106,12 @@ describe('useCanIEmail data loading + queries', () => {
 		expect(c.searchFeatures('GRID').map((f) => f.slug)).toEqual(['grid']);
 		expect(c.searchFeatures('flex').map((f) => f.slug)).toEqual(['flexbox']);
 		// "layout" appears in both descriptions.
-		expect(c.searchFeatures('layout').map((f) => f.slug).sort()).toEqual(['flexbox', 'grid']);
+		expect(
+			c
+				.searchFeatures('layout')
+				.map((f) => f.slug)
+				.sort()
+		).toEqual(['flexbox', 'grid']);
 		expect(c.searchFeatures('nonexistent-token')).toEqual([]);
 	});
 

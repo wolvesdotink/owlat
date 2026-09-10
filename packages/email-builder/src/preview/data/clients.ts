@@ -341,20 +341,6 @@ export const popularClients = [
 ];
 
 /**
- * Get client by ID
- */
-export function getClientById(id: string): EmailClient | undefined {
-	return emailClients.find((c) => c.id === id);
-}
-
-/**
- * Get device preset by ID
- */
-export function getDeviceById(id: string): DevicePreset | undefined {
-	return devicePresets.find((d) => d.id === id);
-}
-
-/**
  * Map our client families to caniemail family keys.
  * Multiple candidates allow graceful fallback if caniemail naming differs by feature.
  */
@@ -390,6 +376,9 @@ export const canIEmailPlatformMap: Record<string, string[]> = {
 	'thunderbird-desktop': ['desktop-app', 'windows', 'macos'],
 };
 
-export function getCanIEmailPlatformCandidates(clientId: string, platform: EmailPlatform): string[] {
+export function getCanIEmailPlatformCandidates(
+	clientId: string,
+	platform: EmailPlatform
+): string[] {
 	return canIEmailPlatformMap[clientId] ?? canIEmailPlatformMap[platform] ?? [platform];
 }

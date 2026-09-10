@@ -5,7 +5,6 @@ export type {
 	FeatureStats,
 	CanIEmailFeature,
 	CanIEmailData,
-	FeatureSupportResult,
 } from './caniemail';
 
 // Client types
@@ -15,7 +14,6 @@ export type {
 	EmailClient,
 	EmailClientGroup,
 	DevicePreset,
-	PreviewSettings,
 } from './clients';
 
 export interface CompatibilityIssue {

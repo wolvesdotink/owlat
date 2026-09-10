@@ -179,7 +179,6 @@
 		},
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
-		"packages/email-previewer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-scanner": {
 			"entry": [
 				"src/index.ts",

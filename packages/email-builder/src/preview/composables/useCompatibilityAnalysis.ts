@@ -249,8 +249,13 @@ export function useCompatibilityAnalysis(): {
 	getClientSupport: (feature: CanIEmailFeature, client: EmailClient) => SupportCode | null;
 	getUnsupportedClients: (feature: CanIEmailFeature, clients?: EmailClient[]) => EmailClient[];
 } {
-	const { fetchData, getFeatureBySlug, getFeatureSupport, features, error: canIEmailError } =
-		useCanIEmail();
+	const {
+		fetchData,
+		getFeatureBySlug,
+		getFeatureSupport,
+		features,
+		error: canIEmailError,
+	} = useCanIEmail();
 
 	const isAnalyzing = ref(false);
 	const report = ref<CompatibilityReport | null>(null);

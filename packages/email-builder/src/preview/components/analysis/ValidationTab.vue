@@ -72,7 +72,13 @@ function toggleSeverity(severity: string) {
 				:class="`ep-issue-${issue.severity}`"
 			>
 				<component
-					:is="issue.severity === 'error' ? AlertCircle : issue.severity === 'warning' ? AlertTriangle : Info"
+					:is="
+						issue.severity === 'error'
+							? AlertCircle
+							: issue.severity === 'warning'
+								? AlertTriangle
+								: Info
+					"
 					class="ep-issue-icon"
 				/>
 				<div class="ep-issue-content">

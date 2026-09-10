@@ -33,7 +33,13 @@ const simulationProfilesByFamily: Partial<Record<EmailClient['family'], Simulati
 		unsupportedElements: ['video', 'audio', 'form', 'dialog', 'canvas'],
 	},
 	outlook: {
-		unsupportedCssProperties: ['filter', 'mix-blend-mode', 'clip-path', 'object-fit', 'object-position'],
+		unsupportedCssProperties: [
+			'filter',
+			'mix-blend-mode',
+			'clip-path',
+			'object-fit',
+			'object-position',
+		],
 		unsupportedElements: ['video', 'audio', 'form'],
 	},
 	yahoo: {
@@ -89,7 +95,17 @@ const simulationProfilesByClientId: Record<string, Partial<SimulationProfile>> =
 			'transition',
 			'transform',
 		],
-		unsupportedElements: ['video', 'audio', 'form', 'input', 'select', 'textarea', 'canvas', 'dialog', 'svg'],
+		unsupportedElements: [
+			'video',
+			'audio',
+			'form',
+			'input',
+			'select',
+			'textarea',
+			'canvas',
+			'dialog',
+			'svg',
+		],
 	},
 	'outlook-webmail': {
 		unsupportedCssProperties: ['mix-blend-mode', 'clip-path', 'filter'],
@@ -166,14 +182,20 @@ function mergeSimulationProfile(
 			...(base?.unsupportedCssProperties ?? []),
 			...(override?.unsupportedCssProperties ?? []),
 		]),
-		unsupportedElements: uniq([...(base?.unsupportedElements ?? []), ...(override?.unsupportedElements ?? [])]),
+		unsupportedElements: uniq([
+			...(base?.unsupportedElements ?? []),
+			...(override?.unsupportedElements ?? []),
+		]),
 		stripClassAttributes: override?.stripClassAttributes ?? base?.stripClassAttributes ?? false,
 		stripIdAttributes: override?.stripIdAttributes ?? base?.stripIdAttributes ?? false,
 		blockRemoteImages: override?.blockRemoteImages ?? base?.blockRemoteImages ?? false,
 	};
 }
 
-function buildReportDrivenProfile(client: EmailClient, compatibilityReport: CompatibilityReport | null): SimulationProfile | null {
+function buildReportDrivenProfile(
+	client: EmailClient,
+	compatibilityReport: CompatibilityReport | null
+): SimulationProfile | null {
 	if (!compatibilityReport) return null;
 	if (compatibilityReport.testedClients.length !== 1) return null;
 	if (compatibilityReport.testedClients[0] !== client.name) return null;
@@ -206,7 +228,10 @@ function buildReportDrivenProfile(client: EmailClient, compatibilityReport: Comp
 	};
 }
 
-function getSimulationProfile(client: EmailClient, compatibilityReport: CompatibilityReport | null): SimulationProfile | null {
+function getSimulationProfile(
+	client: EmailClient,
+	compatibilityReport: CompatibilityReport | null
+): SimulationProfile | null {
 	const familyProfile = simulationProfilesByFamily[client.family];
 	const clientProfile = simulationProfilesByClientId[client.id];
 	const reportProfile = buildReportDrivenProfile(client, compatibilityReport);
@@ -280,7 +305,10 @@ function stripUnsupportedCssFromStyleTag(
 		filtered = filtered.replace(propertyPattern, '$1');
 	}
 
-	filtered = filtered.replace(/;\s*;/g, ';').replace(/\{\s*;/g, '{').replace(/;\s*}/g, '}');
+	filtered = filtered
+		.replace(/;\s*;/g, ';')
+		.replace(/\{\s*;/g, '{')
+		.replace(/;\s*}/g, '}');
 	return { filtered, removedCount };
 }
 
@@ -312,7 +340,10 @@ export function applyClientSimulation(
 		const styleValue = element.getAttribute('style');
 		if (!styleValue) continue;
 
-		const { filtered, removedCount } = filterInlineStyle(styleValue, profile.unsupportedCssProperties);
+		const { filtered, removedCount } = filterInlineStyle(
+			styleValue,
+			profile.unsupportedCssProperties
+		);
 		removedCssDeclarations += removedCount;
 
 		if (filtered) {
@@ -340,7 +371,9 @@ export function applyClientSimulation(
 	}
 
 	if (profile.unsupportedElements.length > 0) {
-		const unsupportedNodes = Array.from(doc.querySelectorAll(profile.unsupportedElements.join(',')));
+		const unsupportedNodes = Array.from(
+			doc.querySelectorAll(profile.unsupportedElements.join(','))
+		);
 		removedElements = unsupportedNodes.length;
 		for (const node of unsupportedNodes) {
 			node.remove();

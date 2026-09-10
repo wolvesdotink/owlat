@@ -435,10 +435,7 @@ function handleClickOutside(event: MouseEvent) {
 							<Check v-if="copiedFormat === 'text'" class="ep-export-check" />
 						</button>
 						<div class="ep-export-divider"></div>
-						<button
-							class="ep-export-item"
-							@click="downloadFile(html, 'email.html', 'text/html')"
-						>
+						<button class="ep-export-item" @click="downloadFile(html, 'email.html', 'text/html')">
 							<Download class="ep-export-item-icon" />
 							<span>Download .html</span>
 						</button>
@@ -549,11 +546,9 @@ function handleClickOutside(event: MouseEvent) {
 								}}
 								and {{ simulationResult.removedElements }} unsupported element{{
 									simulationResult.removedElements === 1 ? '' : 's'
-								}},
-								stripped {{ simulationResult.strippedAttributes }} class/id attribute{{
+								}}, stripped {{ simulationResult.strippedAttributes }} class/id attribute{{
 									simulationResult.strippedAttributes === 1 ? '' : 's'
-								}},
-								blocked {{ simulationResult.blockedImages }} remote image{{
+								}}, blocked {{ simulationResult.blockedImages }} remote image{{
 									simulationResult.blockedImages === 1 ? '' : 's'
 								}}.
 							</template>
@@ -595,10 +590,9 @@ function handleClickOutside(event: MouseEvent) {
 					aria-label="Plain text body"
 					@input="updatePlainTextOverride(($event.target as HTMLTextAreaElement).value)"
 				></textarea>
-				<pre
-					v-else
-					class="ep-code-block ep-plaintext-block"
-				>{{ displayPlainText || 'No plain text generated.' }}</pre>
+				<pre v-else class="ep-code-block ep-plaintext-block">{{
+					displayPlainText || 'No plain text generated.'
+				}}</pre>
 			</div>
 
 			<!-- AMP Mode -->

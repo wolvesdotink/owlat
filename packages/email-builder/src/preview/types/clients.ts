@@ -49,11 +49,3 @@ export interface DevicePreset {
 	type: 'desktop' | 'tablet' | 'mobile';
 	scale?: number;
 }
-
-export interface PreviewSettings {
-	client: EmailClient | null;
-	device: DevicePreset;
-	darkMode: boolean;
-	showImages: boolean;
-	zoom: number;
-}

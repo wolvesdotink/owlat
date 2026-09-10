@@ -1,17 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import {
-	X,
-	Plus,
-	Minus,
-	Pencil,
-	FileText,
-	Image,
-	Link,
-	Palette,
-	Layout,
-	Tag,
-} from '@lucide/vue';
+import { X, Plus, Minus, Pencil, FileText, Image, Link, Palette, Layout, Tag } from '@lucide/vue';
 import type { PreviewEmailDiff, PreviewEmailDiffChange } from '../types';
 
 const props = defineProps<{
@@ -41,22 +30,33 @@ const sizeDeltaColor = computed(() => {
 
 function getCategoryIcon(category: PreviewEmailDiffChange['category']) {
 	switch (category) {
-		case 'text': return FileText;
-		case 'style': return Palette;
-		case 'image': return Image;
-		case 'link': return Link;
-		case 'structure': return Layout;
-		case 'meta': return Tag;
-		default: return FileText;
+		case 'text':
+			return FileText;
+		case 'style':
+			return Palette;
+		case 'image':
+			return Image;
+		case 'link':
+			return Link;
+		case 'structure':
+			return Layout;
+		case 'meta':
+			return Tag;
+		default:
+			return FileText;
 	}
 }
 
 function getTypeIcon(type: PreviewEmailDiffChange['type']) {
 	switch (type) {
-		case 'added': return Plus;
-		case 'removed': return Minus;
-		case 'modified': return Pencil;
-		default: return Pencil;
+		case 'added':
+			return Plus;
+		case 'removed':
+			return Minus;
+		case 'modified':
+			return Pencil;
+		default:
+			return Pencil;
 	}
 }
 </script>
@@ -79,9 +79,7 @@ function getTypeIcon(type: PreviewEmailDiffChange['type']) {
 		</div>
 
 		<div class="ep-diff-body">
-			<div v-if="emailDiff.identical" class="ep-diff-identical">
-				No changes detected.
-			</div>
+			<div v-if="emailDiff.identical" class="ep-diff-identical">No changes detected.</div>
 			<template v-else>
 				<!-- Summary -->
 				<div class="ep-diff-summary">

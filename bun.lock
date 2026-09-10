@@ -263,7 +263,6 @@
         "@nuxtjs/i18n": "^10.6.0",
         "@owlat/api": "workspace:*",
         "@owlat/email-builder": "workspace:*",
-        "@owlat/email-previewer": "workspace:*",
         "@owlat/email-renderer": "workspace:*",
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
@@ -372,7 +371,6 @@
       "name": "@owlat/email-builder",
       "version": "0.4.4",
       "dependencies": {
-        "@owlat/email-previewer": "workspace:*",
         "@owlat/email-renderer": "workspace:*",
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
@@ -392,24 +390,6 @@
         "@owlat/ui": "workspace:*",
         "vue": "^3.5.0",
         "vue-draggable-plus": "^0.6.0",
-      },
-    },
-    "packages/email-previewer": {
-      "name": "@owlat/email-previewer",
-      "version": "0.4.4",
-      "dependencies": {
-        "@owlat/shared": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "catalog:",
-        "typescript": "catalog:",
-        "vitest": "catalog:",
-        "vue": "catalog:vue",
-        "vue-tsc": "catalog:",
-      },
-      "peerDependencies": {
-        "@lucide/vue": "^1.0.0",
-        "vue": "^3.5.0",
       },
     },
     "packages/email-renderer": {
@@ -1198,8 +1178,6 @@
     "@owlat/docs": ["@owlat/docs@workspace:apps/docs"],
 
     "@owlat/email-builder": ["@owlat/email-builder@workspace:packages/email-builder"],
-
-    "@owlat/email-previewer": ["@owlat/email-previewer@workspace:packages/email-previewer"],
 
     "@owlat/email-renderer": ["@owlat/email-renderer@workspace:packages/email-renderer"],
 

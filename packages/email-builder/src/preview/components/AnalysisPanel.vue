@@ -30,7 +30,9 @@ const emit = defineEmits<{
 const activeTab = ref<'health' | 'size' | 'validation' | 'compatibility'>('health');
 
 // Error count drives the badge on the Validation tab.
-const errorCount = computed(() => props.validationIssues.filter((i) => i.severity === 'error').length);
+const errorCount = computed(
+	() => props.validationIssues.filter((i) => i.severity === 'error').length
+);
 
 // Summary for the collapsed header.
 const headerSummary = computed(() => {
@@ -81,7 +83,9 @@ const headerSummary = computed(() => {
 					@click="activeTab = 'validation'"
 				>
 					Validation
-					<span v-if="errorCount > 0" class="ep-analysis-tab-badge ep-badge-error">{{ errorCount }}</span>
+					<span v-if="errorCount > 0" class="ep-analysis-tab-badge ep-badge-error">{{
+						errorCount
+					}}</span>
 				</button>
 				<button
 					class="ep-analysis-tab"
@@ -97,7 +101,10 @@ const headerSummary = computed(() => {
 				<div class="ep-analysis-section">
 					<HealthTab v-if="activeTab === 'health'" :health-score="healthScore" />
 					<SizeTab v-else-if="activeTab === 'size'" :email-analysis="emailAnalysis" />
-					<ValidationTab v-else-if="activeTab === 'validation'" :validation-issues="validationIssues" />
+					<ValidationTab
+						v-else-if="activeTab === 'validation'"
+						:validation-issues="validationIssues"
+					/>
 					<CompatibilityTab
 						v-else
 						:compatibility-report="compatibilityReport"
@@ -166,7 +173,8 @@ const headerSummary = computed(() => {
 	width: 14px;
 	height: 14px;
 	color: var(--ep-text-tertiary);
-	transition: transform var(--motion-moderate, 160ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition: transform var(--motion-moderate, 160ms)
+		var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-analysis-chevron-open {

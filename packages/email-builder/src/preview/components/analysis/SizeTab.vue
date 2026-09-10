@@ -25,12 +25,42 @@ const sizeBreakdownBars = computed(() => {
 	const bd = props.emailAnalysis.sizeBreakdown;
 	const total = bd.totalBytes || 1;
 	return [
-		{ label: 'Styles', bytes: bd.styleBlockBytes, pct: (bd.styleBlockBytes / total) * 100, color: 'var(--ep-brand)' },
-		{ label: 'VML', bytes: bd.msoConditionalBytes, pct: (bd.msoConditionalBytes / total) * 100, color: 'var(--ep-warning)' },
-		{ label: 'Images', bytes: bd.imageTagBytes, pct: (bd.imageTagBytes / total) * 100, color: 'var(--ep-success)' },
-		{ label: 'Text', bytes: bd.textContentBytes, pct: (bd.textContentBytes / total) * 100, color: 'var(--ep-text-secondary)' },
-		{ label: 'Whitespace', bytes: bd.whitespaceBytes, pct: (bd.whitespaceBytes / total) * 100, color: 'var(--ep-text-tertiary)' },
-		{ label: 'Markup', bytes: bd.markupOverheadBytes, pct: (bd.markupOverheadBytes / total) * 100, color: 'var(--ep-error)' },
+		{
+			label: 'Styles',
+			bytes: bd.styleBlockBytes,
+			pct: (bd.styleBlockBytes / total) * 100,
+			color: 'var(--ep-brand)',
+		},
+		{
+			label: 'VML',
+			bytes: bd.msoConditionalBytes,
+			pct: (bd.msoConditionalBytes / total) * 100,
+			color: 'var(--ep-warning)',
+		},
+		{
+			label: 'Images',
+			bytes: bd.imageTagBytes,
+			pct: (bd.imageTagBytes / total) * 100,
+			color: 'var(--ep-success)',
+		},
+		{
+			label: 'Text',
+			bytes: bd.textContentBytes,
+			pct: (bd.textContentBytes / total) * 100,
+			color: 'var(--ep-text-secondary)',
+		},
+		{
+			label: 'Whitespace',
+			bytes: bd.whitespaceBytes,
+			pct: (bd.whitespaceBytes / total) * 100,
+			color: 'var(--ep-text-tertiary)',
+		},
+		{
+			label: 'Markup',
+			bytes: bd.markupOverheadBytes,
+			pct: (bd.markupOverheadBytes / total) * 100,
+			color: 'var(--ep-error)',
+		},
 	].filter((b) => b.bytes > 0);
 });
 

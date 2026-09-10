@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-	calculateNestingDepth,
-	useCompatibilityAnalysis,
-} from '../useCompatibilityAnalysis';
+import { calculateNestingDepth, useCompatibilityAnalysis } from '../useCompatibilityAnalysis';
 import type { AnalyzableBlock } from '../../types';
 
 const text = (): AnalyzableBlock => ({ type: 'text', content: {} });
