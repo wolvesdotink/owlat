@@ -159,3 +159,58 @@ if [ -n "$fixtures" ]; then
 fi
 
 echo "ok:   @owlat/mta-protocol/wireFixtures imported only from __tests__/ folders"
+
+# ── `@owlat/mail-message` stays importable straight from a Convex node action ──
+#
+# The composer is imported by `@owlat/shared`, which Convex bundles. Its only
+# sanctioned runtime edges are the `node:crypto` builtin and the dependency-free
+# `@owlat/mail-canon` leaf (the shared DKIM canonicalizer the outbound signer
+# needs). A bare npm import, an extra `node:` builtin, or the `@owlat/mail-auth`
+# root (which pulls dns/Redis and would close a build cycle
+# mail-message → mail-auth → shared → mail-message) would break the Convex
+# bundle in a released image rather than in CI. nodemailer, mailparser and
+# mailauth exist here only as devDependencies for the differential/oracle
+# suites, so the runtime dependency list is pinned too.
+purity=$(git ls-files -- 'packages/mail-message/src/*.ts' |
+	grep -v '/__tests__/' |
+	node -e '
+		const fs = require("node:fs");
+		const allowed = new Set(["node:crypto", "@owlat/mail-canon"]);
+		// Every form that pulls a module at build- or run-time. A gate that only
+		// read `import … from` would let `import "nodemailer";` through.
+		const patterns = [
+			/(?:import|export)\b[^"\x27`]*?\bfrom\s*["\x27]([^"\x27]+)["\x27]/g,
+			/\bimport\s*["\x27]([^"\x27]+)["\x27]/g,
+			/\bimport\s*\(\s*["\x27]([^"\x27]+)["\x27]\s*\)/g,
+			/\brequire\s*\(\s*["\x27]([^"\x27]+)["\x27]\s*\)/g,
+		];
+		for (const p of fs.readFileSync(0, "utf8").split("\n").filter(Boolean)) {
+			const src = fs.readFileSync(p, "utf8");
+			for (const re of patterns) {
+				for (const m of src.matchAll(re)) {
+					const spec = m[1];
+					if (spec.startsWith("./") || spec.startsWith("../")) continue;
+					if (allowed.has(spec)) continue;
+					process.stdout.write(`${p} imports ${spec}\n`);
+				}
+			}
+		}
+	' | sort -u)
+
+runtime_deps=$(node -p '
+	JSON.stringify(require("./packages/mail-message/package.json").dependencies ?? {})
+')
+if [ "$runtime_deps" != '{"@owlat/mail-canon":"workspace:*"}' ]; then
+	purity="${purity}packages/mail-message/package.json declares runtime dependencies $runtime_deps (expected only @owlat/mail-canon)"$'\n'
+fi
+
+if [ -n "$purity" ]; then
+	echo ""
+	echo "FAIL: @owlat/mail-message must import nothing beyond relative modules,"
+	echo "node:crypto and @owlat/mail-canon — Convex bundles it through @owlat/shared."
+	echo ""
+	printf '%s\n' "$purity" | grep -v '^$' | sed 's#^#  #'
+	exit 1
+fi
+
+echo "ok:   @owlat/mail-message imports only relative modules, node:crypto and @owlat/mail-canon"

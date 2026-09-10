@@ -255,8 +255,8 @@ const NON_ASCII = /[^\x00-\x7F]/;
 /**
  * IDNA ToASCII (U-label → A-label / punycode) using the global WHATWG `URL`
  * class — no `node:url` import, so mail-message keeps its pure import contract
- * (node:crypto + @owlat/mail-canon only; see packagePurity.test.ts). The
- * `URL` constructor runs the same UAX-46 ToASCII the browser does and exposes
+ * (node:crypto + @owlat/mail-canon only, pinned by
+ * scripts/check-cross-package-imports.sh). The `URL` constructor runs the same UAX-46 ToASCII the browser does and exposes
  * the A-label form on `.hostname`. It THROWS on an undecodable label where
  * `url.domainToASCII` returns `''`; we map both to the empty string so the
  * caller's undecodable-label fallback semantics are identical (pinned by test).
