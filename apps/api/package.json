@@ -40,7 +40,8 @@
 		"typecheck": "tsc --noEmit -p convex/tsconfig.json",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"test:coverage": "vitest run --coverage"
+		"test:coverage": "vitest run --coverage",
+		"test:ramp": "bash scripts/test-ramp.sh"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "catalog:ai",

@@ -36,9 +36,12 @@ updates:
       - dependency-name: convex
         update-types: [version-update:semver-major]
 
-  # ── GitHub Actions (third-party actions in .github/workflows) ──────────
+  # ── GitHub Actions (third-party actions in .github/workflows and the
+  #    composite actions under .github/actions; "/" only covers workflows) ──
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/setup-bun"
     schedule:
       interval: weekly
       day: monday
@@ -55,6 +58,7 @@ updates:
   - package-ecosystem: docker
     directories:
       - "/apps/code-worker"
+      - "/apps/convex-fn-proxy"
       - "/apps/docs"
       - "/apps/imap"
       - "/apps/mail-sync"

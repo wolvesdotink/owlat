@@ -77,6 +77,7 @@ const ROOT_CWD_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
 	'plugins:prepare': SHARED_ARTIFACTS.map(({ directory }) => directory),
 	'goldens:update': ['packages/mail-message'],
 	setup: ['apps/setup-cli'],
+	'test:ramp': ['apps/api'],
 };
 
 /** Scripts in the producing package that may drive its `tsup --clean`. */

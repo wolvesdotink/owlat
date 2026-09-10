@@ -52,6 +52,12 @@
 		"package": "@owlat/code-worker"
 	},
 	{
+		"name": "convex-fn-proxy",
+		"dockerfile": "apps/convex-fn-proxy/Dockerfile",
+		"context": ".",
+		"package": "@owlat/convex-fn-proxy"
+	},
+	{
 		"name": "setup",
 		"dockerfile": "apps/setup-cli/Dockerfile",
 		"context": ".",
