@@ -2,6 +2,12 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES, FEATURE_FLAGS } from '@owlat/shared';
+import {
+	GMAIL_BULK_SENDER_THRESHOLD,
+	GMAIL_PROXIMITY_WARNING_THRESHOLD,
+	MICROSOFT_HIGH_VOLUME_SENDER_THRESHOLD,
+	UNSUBSCRIBE_HONOR_WINDOW_MS,
+} from '@owlat/shared/deliverabilityPolicy';
 import { backtickSpans, docPages, REPO_ROOT } from './repoVocabulary';
 
 /**
@@ -200,6 +206,44 @@ describe('plugin-chapter TypeScript samples', () => {
 			.filter((fence) => !executable.has(fence.code))
 			.map((fence) => `${fence.page}: ${fence.code.split('\n')[0]}…`);
 		expect(handWritten, 'these ```ts fences are compiled and run by nothing').toEqual([]);
+	});
+});
+
+/**
+ * The receiver thresholds the deliverability guide quotes as numbers.
+ *
+ * `deliverabilityPolicy.ts` is the single source of truth for these, and the
+ * guide restates them in prose in both locales. This pins the VALUE only, in
+ * each locale's number format, so the page still reads however its author
+ * wants but a threshold cannot be changed in code and left stale in the docs.
+ */
+const DELIVERABILITY_GUIDE = '1.guide/21.deliverability.md';
+const LOCALE_TAGS: ReadonlyArray<readonly [string, string]> = [
+	['en', 'en-US'],
+	['de', 'de-DE'],
+];
+const QUOTED_THRESHOLDS: ReadonlyArray<readonly [string, number]> = [
+	['Gmail bulk sender', GMAIL_BULK_SENDER_THRESHOLD],
+	['Gmail proximity warning', GMAIL_PROXIMITY_WARNING_THRESHOLD],
+	['Outlook.com high volume', MICROSOFT_HIGH_VOLUME_SENDER_THRESHOLD],
+];
+
+describe('deliverability thresholds', () => {
+	it.each(LOCALE_TAGS)('quotes every policy threshold on the %s guide', (locale, tag) => {
+		const page = read(`apps/docs/content/${locale}/${DELIVERABILITY_GUIDE}`);
+		const missing = QUOTED_THRESHOLDS.filter(
+			([, value]) => !page.includes(value.toLocaleString(tag))
+		).map(([name]) => name);
+		expect(missing, 'these thresholds changed in code but not on the page').toEqual([]);
+	});
+
+	it.each(LOCALE_TAGS)('quotes the unsubscribe honour window on the %s guide', (locale) => {
+		const page = read(`apps/docs/content/${locale}/${DELIVERABILITY_GUIDE}`);
+		const hours = UNSUBSCRIBE_HONOR_WINDOW_MS / (60 * 60 * 1000);
+		const unit = locale === 'de' ? 'Stunden' : 'hours';
+		expect(page, `the guide no longer states a ${hours}-hour honour window`).toContain(
+			`${hours} ${unit}`
+		);
 	});
 });
 
