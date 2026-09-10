@@ -13,7 +13,7 @@
  * THIS CELL land, where a cell is `(stream, destinationProvider)`. Both
  * questions are answered from the same ledger rows through the same evidence
  * rule below, so the screen's provider roll-up and the controller's per-cell
- * verdict cannot be derived from two different reads (ADR-0042 / plan D5).
+ * verdict cannot be derived from two different reads (ADR-0042).
  *
  * COUNTS, NEVER A RATE. Nothing here divides. The sweeps are integers
  * per placement; the reached share is the shared module's to compute, once.

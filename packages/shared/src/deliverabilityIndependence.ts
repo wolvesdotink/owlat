@@ -4,11 +4,11 @@
  * The Independence screen quotes three numbers an operator will screenshot: the
  * share of mail their own server carries, the date they stop paying a relay, and
  * the money not spent so far this month. Every one of them is a projection off
- * the SAME daily series the server already derives (plan D5: derive on read,
- * never store), so the arithmetic lives in ONE place that the Convex query and
- * the web screen both import. A dashboard and a controller that disagree about a
- * number is the failure mode ADR-0042 was written about; a dashboard and its own
- * server disagreeing is the same bug one layer up.
+ * the SAME daily series the server already derives (derive on read, never
+ * store), so the arithmetic lives in ONE place that the Convex query and the web
+ * screen both import. A dashboard and a controller that disagree about a number
+ * is the failure mode ADR-0042 was written about; a dashboard and its own server
+ * disagreeing is the same bug one layer up.
  *
  * NOTHING HERE READS A CLOCK, A DATABASE OR AN ENVIRONMENT. `now` is
  * a parameter, the series is a parameter, and every degenerate input — an empty
@@ -364,12 +364,12 @@ export type RelayRemovalSafety =
 /**
  * Is it safe to disconnect the reference transport, and if not, when will it be?
  *
- * "Safe" means every cell has GRADUATED (plan D9: s = 1.0 held 14 days with all
- * gates green). Anything short of that is a cell whose traffic the relay is
- * still absorbing, and pulling the relay does not move that traffic to the own
- * server gently — it moves all of it at once, which is the exact failure the
- * ramp exists to avoid. The projection is the shared one, so the date the
- * removal dialog quotes is the date the Independence screen quotes.
+ * "Safe" means every cell has GRADUATED (s = 1.0 held 14 days with all gates
+ * green). Anything short of that is a cell whose traffic the relay is still
+ * absorbing, and pulling the relay does not move that traffic to the own server
+ * gently — it moves all of it at once, which is the exact failure the ramp
+ * exists to avoid. The projection is the shared one, so the date the removal
+ * dialog quotes is the date the Independence screen quotes.
  */
 export function assessRelayRemoval(input: {
 	readonly cells: readonly RelayRemovalCellState[];

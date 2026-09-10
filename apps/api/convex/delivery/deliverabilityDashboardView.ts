@@ -7,15 +7,15 @@
  *
  * THE ONE RULE THIS MODULE EXISTS TO ENFORCE: a rate is never computed here.
  * Every rate on the wire comes out of `summarizeTransportOutcomeBuckets` — the
- * ONE derivation seam (ADR-0042 / plan D5) — so the controller's gates and this
- * screen cannot disagree about how a number is DERIVED from a set of rows. WHICH
- * ROWS each is handed used to be a separate question and is no longer: the
- * verdicts on a cell view are reached over the controller's own evaluation
- * window, and the counters beside them are reported over
- * `DASHBOARD_WINDOW_DAYS`, with the query naming both spans on the wire (#510).
- * This module groups buckets into days, hands each day's rows to that
- * summarizer, and labels the result. If you find yourself typing `/` next to a
- * counter in this file, you are writing the bug D5 exists to prevent.
+ * ONE derivation seam (ADR-0042) — so the controller's gates and this screen
+ * cannot disagree about how a number is DERIVED from a set of rows. WHICH ROWS
+ * each is handed used to be a separate question and is no longer: the verdicts
+ * on a cell view are reached over the controller's own evaluation window, and
+ * the counters beside them are reported over `DASHBOARD_WINDOW_DAYS`, with the
+ * query naming both spans on the wire (#510). This module groups buckets into
+ * days, hands each day's rows to that summarizer, and labels the result. If you
+ * find yourself typing `/` next to a counter in this file, you are writing the
+ * bug D5 exists to prevent.
  *
  * CONFIDENCE COMES FROM THE EVALUATOR, NOT FROM HERE. The grade this
  * module starts from is `RampGateEvaluation.measuredConfidence` — the weakest

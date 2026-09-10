@@ -1,9 +1,9 @@
 /**
  * Turning Google Postmaster Tools v2 telemetry into operator actions.
  *
- * ONE OF THE THREE PROVIDER REPUTATION FEEDS registered in `./registry` (seams
- * plan D9). The durable half — the two ingest mutations, the retention sweep and
- * the org-facing status query — stays in `delivery/postmaster.ts`, whose Convex
+ * ONE OF THE THREE PROVIDER REPUTATION FEEDS registered in `./registry`. The
+ * durable half — the two ingest mutations, the retention sweep and the
+ * org-facing status query — stays in `delivery/postmaster.ts`, whose Convex
  * function paths are addressed by the webhook dispatcher, the cron registration
  * and the delivery screens. What lives here is the READING: stored signals in,
  * operator cards out.

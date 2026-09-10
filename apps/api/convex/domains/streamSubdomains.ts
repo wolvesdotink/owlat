@@ -1,6 +1,6 @@
 /**
  * Per-STREAM sending subdomains — the layout the domain wizard proposes by
- * default (P4-7, plan gap G-14).
+ * default.
  *
  * WHY THIS EXISTS. Domain reputation is evaluated PER FQDN and does NOT
  * inherit from the registrable root, so a bad campaign on `example.com` drags

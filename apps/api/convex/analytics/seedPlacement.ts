@@ -445,8 +445,8 @@ export async function summarizeSeedPlacementWindow(
 	// roll-up directly. With no commercial placement key — the default and
 	// expected configuration — this resolves to the self-hosted seed adapter and
 	// the reading is byte-identical to the shipped one; a deployment that later
-	// adds a panel feeds the SAME gate through the SAME interface (D2: the key is
-	// an upgrade, its absence changes nothing).
+	// adds a panel feeds the SAME gate through the SAME interface (the key is an
+	// upgrade, its absence changes nothing).
 	const placement = resolvePlacementAdapter({
 		seedMailboxCount: accounts.length,
 		commercialApiConfigured: false,

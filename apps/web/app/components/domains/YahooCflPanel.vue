@@ -10,11 +10,11 @@
  *
  * D2 (additive-only third-party rule) drives the whole visual grammar: a domain
  * that never enrolls is `not_started`, which is a SUPPORTED CONFIGURATION. It
- * renders as a calm unstarted option — no warning badge, no error, no
- * "setup incomplete" nag — and the panel states which complaint signal the yahoo
- * cell is running on instead, with the confidence caveat spelled out (D14: an
- * honest weak signal beats a confident wrong one). `lapsed` is a prompt to
- * re-check at Yahoo, styled like every other to-do, never like a failure.
+ * renders as a calm unstarted option — no warning badge, no error, no "setup
+ * incomplete" nag — and the panel states which complaint signal the yahoo cell
+ * is running on instead, with the confidence caveat spelled out (an honest weak
+ * signal beats a confident wrong one). `lapsed` is a prompt to re-check at
+ * Yahoo, styled like every other to-do, never like a failure.
  *
  * Every decision shown here is DERIVED by the backend's pure core
  * (`@owlat/shared/yahooCfl`): this component renders `getGuide` and never

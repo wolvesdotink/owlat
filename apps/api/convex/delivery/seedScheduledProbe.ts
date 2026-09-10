@@ -1,6 +1,6 @@
 /**
  * The SCHEDULED seed probe — placement evidence for the streams that have no
- * campaign to shadow (plan P4-7, issue #500).
+ * campaign to shadow (issue #500).
  *
  * `delivery/seedShadowCopy.ts` measures the `campaign` cells by cloning a real
  * campaign envelope inside the transaction that enqueues it. The other two

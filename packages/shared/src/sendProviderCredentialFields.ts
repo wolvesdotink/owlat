@@ -292,8 +292,8 @@ export interface SendProviderHostPortField extends SendProviderCredentialFieldCo
 	/**
 	 * Well-known endpoints this field prefills from — the field's own data, which
 	 * is why the preset table moved here from `setupSendingPresets.ts` when the
-	 * catalog became the single declaration (the seams plan's P1.1: "SMTP presets
-	 * become catalog-attached data").
+	 * catalog became the single declaration ("SMTP presets become
+	 * catalog-attached data").
 	 */
 	readonly presets?: Readonly<Record<string, SmtpRelayPresetConfig>>;
 }

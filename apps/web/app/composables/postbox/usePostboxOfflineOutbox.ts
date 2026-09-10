@@ -1,6 +1,5 @@
 /**
- * Offline outbox flow (adoption-gaps D8): queue sends composed offline, drain
- * them on reconnect.
+ * Offline outbox flow: queue sends composed offline, drain them on reconnect.
  *
  * Queue side — `usePostboxCompose.send()` calls {@link queueSend} when the
  * device is offline (or a send network-fails): the FULL compose payload goes

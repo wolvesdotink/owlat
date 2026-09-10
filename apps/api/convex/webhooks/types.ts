@@ -150,11 +150,11 @@ export type InboundEvent =
 			 * The address the terminal failure names, when the provider reports one.
 			 *
 			 * Set by an adapter whose provider names the address it refused (the
-			 * Mandrill `reject`, plan D9/D10): mirroring that hit into
-			 * `blockedEmails` needs the address. Untrusted telemetry, exactly like
-			 * the `recipient` on `email.delivered` — it is acted on because the
-			 * SIGNED callback said so and the adapter minted a {@link suppression}
-			 * from it, never because the field was present.
+			 * Mandrill `reject`): mirroring that hit into `blockedEmails` needs
+			 * the address. Untrusted telemetry, exactly like the `recipient` on
+			 * `email.delivered` — it is acted on because the SIGNED callback said
+			 * so and the adapter minted a {@link suppression} from it, never
+			 * because the field was present.
 			 */
 			recipient?: string;
 			/**

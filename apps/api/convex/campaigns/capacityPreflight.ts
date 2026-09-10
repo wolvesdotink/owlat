@@ -102,9 +102,9 @@ export type CampaignCapacityAssessment =
 
 /**
  * WHY capacity could not be measured. Every `capacityKnown: false` arm carries
- * one (plan D12 — every decision carries a recorded, human-readable reason;
- * D14 — the UI has to be able to say "measurement confidence: low" and name
- * what would improve it).
+ * one (every decision carries a recorded, human-readable reason; D14 — the UI
+ * has to be able to say "measurement confidence: low" and name what would
+ * improve it).
  *
  * The first three are the warming-cap gate's verdict (`warmingCapGate.ts`) and
  * mean the cap is not a constraint at all; the rest are genuine measurement

@@ -210,8 +210,8 @@ export function applyYahooCflEvent(
 			// A LIVE enrollment has nothing to submit. A LAPSED one does: that is the
 			// whole point of the derived lapse, and re-submitting Yahoo's form is the
 			// documented remedy the fourth step names. So the refusal is keyed on the
-			// DERIVED state, not the stored one — `event.at` is the clock (D15: the
-			// clock is a parameter, never read here).
+			// DERIVED state, not the stored one — `event.at` is the clock (the clock
+			// is a parameter, never read here).
 			const derived = deriveYahooCflState(record, event.at).state;
 			// Checked BEFORE the precondition: a live enrollment on a domain that has
 			// since lost its DKIM readiness must not be told to "publish a DKIM record"

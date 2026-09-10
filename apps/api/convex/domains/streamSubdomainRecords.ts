@@ -1,5 +1,5 @@
 /**
- * ONE-PASS DNS generation for the per-stream subdomain layout (P4-7, G-14).
+ * ONE-PASS DNS generation for the per-stream subdomain layout.
  *
  * The wizard proposes the layout (`streamSubdomains.ts`) and this module emits
  * EVERY record it needs in a single pass — SPF, a per-subdomain DKIM selector

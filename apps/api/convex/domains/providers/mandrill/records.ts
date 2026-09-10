@@ -66,8 +66,8 @@ export function buildMandrillVerifyRecord(verifyTxtKey: string): {
  * Shaped exactly like the SES adapter's (SPF at the apex, DKIM, a monitor-only
  * DMARC for a brand-new domain) so the domain-setup UI renders one thing. No
  * `mailFrom` records: Mandrill mints its own bounce local part, so there is no
- * custom MAIL FROM subdomain to publish (plan D5, and the reason the send
- * adapter declines the return-path probe outright).
+ * custom MAIL FROM subdomain to publish (and the reason the send adapter
+ * declines the return-path probe outright).
  */
 export function buildMandrillDnsRecords(domain: string): DnsRecords {
 	return {

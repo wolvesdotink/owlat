@@ -30,9 +30,9 @@ import type { SendTransportRecord } from './transports';
  * else's wire — which is why the kit's `supportsCustomReturnPath` union has only
  * `no` in it, and why `catalog.ts` re-asserts that on the generated artifact.
  *
- * The two extras builders mirror the core adapter interface exactly (the seams
- * plan's P3.1): the governed boundary and the system-mail path ask every module
- * the same question and neither knows which tier answered.
+ * The two extras builders mirror the core adapter interface exactly: the
+ * governed boundary and the system-mail path ask every module the same question
+ * and neither knows which tier answered.
  */
 export interface HostedSendProviderModule extends ReturnPathProbeCapableModule {
 	readonly kind: PluginSendTransportKind;

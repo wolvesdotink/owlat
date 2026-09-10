@@ -1,5 +1,5 @@
 /**
- * THE WIZARD SURFACE for the per-stream subdomain layout (P4-7, gap G-14).
+ * THE WIZARD SURFACE for the per-stream subdomain layout.
  *
  * `streamSubdomains.ts` decides the layout, `streamSubdomainRecords.ts` renders
  * every record in one pass and `bimi.ts` decides the BIMI offer — all pure. This

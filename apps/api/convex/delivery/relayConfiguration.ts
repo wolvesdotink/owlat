@@ -31,7 +31,7 @@ type RelayReadCtx = QueryCtx | MutationCtx;
 
 /**
  * THE RELAY DEFINITION ITSELF, over one transport kind: a relay is any named
- * transport that is not our own arm (D3 — "own MTA is special by definition;
+ * transport that is not our own arm ("own MTA is special by definition;
  * everything else is a relay discovered from config").
  *
  * The scan below is this predicate applied to the stored routes; this is it

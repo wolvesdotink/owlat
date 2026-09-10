@@ -23,11 +23,11 @@ import { v } from 'convex/values';
 export type SealPolicy = 'auto' | 'ask' | 'off';
 
 /**
- * Convex validator for the org sealing policy (`instanceSettings.sealPolicy`,
- * locked decision D2). `auto` seals whenever every recipient has a usable pinned
- * key; `ask` keeps sealing available but never seals automatically (the message
- * goes out normally); `off` never seals. Unset ⇒ treated as `auto` at resolution
- * time. Mirrors {@link SealPolicy}.
+ * Convex validator for the org sealing policy (`instanceSettings.sealPolicy`).
+ * `auto` seals whenever every recipient has a usable pinned key; `ask` keeps
+ * sealing available but never seals automatically (the message goes out
+ * normally); `off` never seals. Unset ⇒ treated as `auto` at resolution time.
+ * Mirrors {@link SealPolicy}.
  */
 export const sealPolicyValidator = v.union(v.literal('auto'), v.literal('ask'), v.literal('off'));
 
@@ -196,7 +196,7 @@ export const mailEncryptionInfoValidator = v.union(
 
 /**
  * Decide whether THIS dispatch auto-seals. Order matters: the cheapest / most
- * decisive gates first, then the all-recipients rule (D2 — one keyless recipient
+ * decisive gates first, then the all-recipients rule (one keyless recipient
  * forces plaintext), then the signer check, and only `policy === 'auto'` actually
  * seals automatically. `policy === 'ask'` is a deliberate plaintext-with-reason
  * here: it keeps sealing available but never seals automatically, so the message

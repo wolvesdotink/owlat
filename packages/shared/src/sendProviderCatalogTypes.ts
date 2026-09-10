@@ -80,8 +80,8 @@ export type SendProviderTier = 'own' | 'core' | 'plugin';
 export type DeclaredCustomReturnPathSupport = 'yes' | 'no' | 'probe';
 
 /**
- * How this transport's SENDING DOMAINS are verified (Mandrill plan D6/D7 — the
- * seams plan adopts the field in its D1 and the registry it feeds in P0.3).
+ * How this transport's SENDING DOMAINS are verified (the seams plan adopts the
+ * field in its D1 and the registry it feeds in P0.3).
  *
  *  - `api`  the provider has a domain-identity API, so a registered sending
  *           domain provider (`domains/providers/<kind>/`) can report whether a

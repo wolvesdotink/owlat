@@ -1,9 +1,9 @@
 /**
  * Mandrill's answers to the two questions asked ABOUT an identity rather than
  * of Mandrill: "may we hand this From domain to the relay right now?" (the
- * enqueue-path proof, Mandrill plan D6) and "describe this domain's second
- * arm" (the dual-transport alignment pre-flight). Plan
- * numbers in this folder are the Mandrill plan's — qualified in `../index.ts`.
+ * enqueue-path proof) and "describe this domain's second arm" (the
+ * dual-transport alignment pre-flight). Plan numbers in this folder are the
+ * Mandrill plan's — qualified in `../index.ts`.
  *
  * Both read the same row and both are pure reads, which is why they live
  * together and away from `./index.ts`: everything there is an HTTP call made
@@ -76,13 +76,13 @@ export async function mandrillReferenceArm(
 		fromDomain: domain.domain,
 		// Mandrill signs with the customer's own domain as `d=` — which is what
 		// makes it comparable to the own MTA at all (same From domain, same d=,
-		// different selector: the alignment contract, D11).
+		// different selector: the alignment contract).
 		dkimDomain: domain.domain,
 		dkimSelectors: [MANDRILL_DKIM_SELECTOR],
 		spfMechanisms: [MANDRILL_SPF_MECHANISM],
 		// Mandrill mints its own `bounce-md_*` return path and offers only a
-		// return-path DOMAIN, so our signed VERP local part cannot survive (D5 —
-		// the same fact that makes the send adapter decline the probe).
+		// return-path DOMAIN, so our signed VERP local part cannot survive (the
+		// same fact that makes the send adapter decline the probe).
 		supportsCustomReturnPath: false,
 	};
 }

@@ -64,10 +64,10 @@ export const create = authedMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		inReplyToMessageId: v.optional(v.id('mailMessages')),
-		// Idempotency key for offline-outbox replays (adoption-gaps D8): the
-		// queued outbox item's client-generated id. A retry after a lost
-		// response finds the draft the first attempt already created instead
-		// of forking a duplicate (and, downstream, a duplicate send).
+		// Idempotency key for offline-outbox replays: the queued outbox
+		// item's client-generated id. A retry after a lost response finds the
+		// draft the first attempt already created instead of forking a
+		// duplicate (and, downstream, a duplicate send).
 		clientNonce: v.optional(v.string()),
 	},
 	handler: async (

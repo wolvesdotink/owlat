@@ -1,8 +1,8 @@
 /**
  * Reader signature-badge derivation for inbound PGP-SIGNED (unencrypted) mail
- * (F2, adoption-gaps plan 2026-08-16). Turns the honest signature
- * verdict persisted at ingest (F1, `mailMessages.inboundSignatureInfo`) into
- * ONE badge state, and owns the badge PRECEDENCE rule:
+ * (F2). Turns the honest signature verdict persisted at ingest (F1,
+ * `mailMessages.inboundSignatureInfo`) into ONE badge state, and owns the
+ * badge PRECEDENCE rule:
  *
  *   sealed record → signature record → structural class ("not verified")
  *

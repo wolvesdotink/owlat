@@ -252,11 +252,11 @@ export type RampCapacityInput =
 			 */
 			readonly projectedVolume: number;
 			/**
-			 * THIS CELL'S own trailing evidence, carried for the audit snapshot (plan
-			 * D12) and read by NO rung. The numbers above are deployment-level by
-			 * derivation, so without this the row could not say which cell's demand
-			 * contributed what, nor that the own arm failed to carry the share it was
-			 * assigned (`deliveredShareShortfall`).
+			 * THIS CELL'S own trailing evidence, carried for the audit snapshot and
+			 * read by NO rung. The numbers above are deployment-level by derivation,
+			 * so without this the row could not say which cell's demand contributed
+			 * what, nor that the own arm failed to carry the share it was assigned
+			 * (`deliveredShareShortfall`).
 			 */
 			readonly cellEvidence?: {
 				readonly projectedCellVolume: number;
@@ -284,8 +284,8 @@ export interface RampControllerInput {
 	readonly evaluation: RampGateEvaluation | null;
 	readonly capacity: RampCapacityInput;
 	/**
-	 * THE DEGRADATION MATRIX'S CEILING CAP (plan D3, piece P3-8) — the highest
-	 * rung this cell may occupy while an integration is missing.
+	 * THE DEGRADATION MATRIX'S CEILING CAP (piece P3-8) — the highest rung
+	 * this cell may occupy while an integration is missing.
 	 *
 	 * REQUIRED, not optional. `degradedCeilingCap` is TOTAL: it answers for every
 	 * presence map and returns the top rung when nothing caps anything, so an

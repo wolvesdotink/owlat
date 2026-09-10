@@ -21,7 +21,7 @@
  *   - zero volume             -> an empty, calm cell. Nothing is wrong.
  *
  * Nothing here divides: every rate comes off the server summary verbatim
- * (ADR-0042 / plan D5).
+ * (ADR-0042).
  *
  * TWO SPANS ON ONE CARD, both named. The table and the trend are the REPORTED
  * window — seven days, the span the page heading gives dates for — and the checks

@@ -74,8 +74,8 @@ export async function queuedTerminalSendAccountingEffects(
 }
 
 /**
- * The per-cell, per-arm DELIVERABILITY outcome of one transition (plan D5,
- * fixing G-05: acceptance is not delivery).
+ * The per-cell, per-arm DELIVERABILITY outcome of one transition (fixing
+ * G-05: acceptance is not delivery).
  *
  * `failed` maps to no event (a local non-delivery is not a transport outcome),
  * and neither do `delivered`/`opened`/`clicked` — those are emitted next to the

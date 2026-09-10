@@ -2,7 +2,7 @@
 
 /**
  * Inbound unsealing — the `'use node'` plane of decrypt-on-ingest (Sealed Mail
- * plan 2026-07-11, locked decision D3).
+ * plan 2026-07-11).
  *
  * D3: DECRYPT-ON-INGEST. When a sealed PGP/MIME message arrives for an address we
  * hold a vault key for, we decrypt it here and let the PLAINTEXT flow into the

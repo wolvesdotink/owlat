@@ -87,9 +87,8 @@ async function resolveCampaignBase(
  * Why the own-MTA warming cap does NOT bind this deployment's campaign
  * traffic. A verdict, not a footnote: it is what the "capacity unknown" arm of
  * the pre-flight assessment renders as its measurement-confidence reason
- * (plan D12 — every decision carries a recorded reason; D14 — say the quiet
- * part), and the three cases are materially different things to tell an
- * operator.
+ * (every decision carries a recorded reason; D14 — say the quiet part), and
+ * the three cases are materially different things to tell an operator.
  */
 export type WarmingCapNotBindingReason =
 	/**
@@ -400,9 +399,9 @@ async function campaignDispatchSurface(
  * overflow to, where exceeding the per-IP warming cap defers the tail until it
  * expires at `maxMessageAgeMs`. In every other configuration the cap cannot
  * strand a campaign, and a gate that refused anyway would be a false blocker on
- * traffic that ships fine today (plan D2 — never block on a measurement that
- * does not apply). Answering `{ binds: false }` therefore means "not subject to
- * the cap, or unknown → allow", and `why` says WHICH — the three cases are not
+ * traffic that ships fine today (never block on a measurement that does not
+ * apply). Answering `{ binds: false }` therefore means "not subject to the cap,
+ * or unknown → allow", and `why` says WHICH — the three cases are not
  * interchangeable and the caller has to be able to tell them apart.
  *
  * Two shipped configurations answer `binds: false`:

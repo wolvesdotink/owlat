@@ -126,8 +126,8 @@ function deferralTelemetryObserved(input: RampGateEvaluationInput): boolean {
  * nobody took — a gate that could only ever agree with going faster.
  *
  * The empty numerator is therefore checked against the instrument BEFORE the
- * ceiling is applied, and the hold is reported as its own reason (plan D12: a
- * hold names the thing to fix, and "not enough sends" would name the wrong one).
+ * ceiling is applied, and the hold is reported as its own reason (a hold names
+ * the thing to fix, and "not enough sends" would name the wrong one).
  *
  * AND THE HOLD HAS AN EXIT, which is not optional. `deferral` is not an optional
  * gate, so this `insufficient_data` outranks every `pass` beside it and clears

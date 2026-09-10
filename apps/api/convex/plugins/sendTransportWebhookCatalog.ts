@@ -16,9 +16,8 @@ import {
 import { readExactFunctionModule } from './hostedModuleSnapshot';
 
 /**
- * Host view of a bundled send transport's FEEDBACK half (the seams plan's D6,
- * wired by P2.2) — the declaration side, plus the executable parse half it is
- * paired with.
+ * Host view of a bundled send transport's FEEDBACK half (wired by P2.2) — the
+ * declaration side, plus the executable parse half it is paired with.
  *
  * Two things live here because they are one fact with two representations, and
  * the whole value of the pair is that they are checked against each other at

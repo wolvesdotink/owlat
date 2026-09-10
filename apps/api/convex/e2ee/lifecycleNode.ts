@@ -2,8 +2,8 @@
 
 /**
  * Key lifecycle — the Node (`'use node'`) plane of Sealed Mail key rotation,
- * revocation, INSTANCE_SECRET re-sealing, and the recovery kit (plan 2026-07-11,
- * E6; locked decision D7: recovery kit only, NO admin escrow).
+ * revocation, INSTANCE_SECRET re-sealing, and the recovery kit (E6; locked
+ * decision D7: recovery kit only, NO admin escrow).
  *
  * These need `openpgp` (keygen, statement signing, key parsing) and the Node
  * secret box (`e2ee/sealing.ts`), so they live here; all DB work is delegated to
@@ -232,8 +232,8 @@ async function importRecoveryKitCore(
 /**
  * Admin: build the RECOVERY KIT for an address — its armored private key plus
  * plain-language instructions. This is the ONLY sanctioned path a private key
- * ever leaves the vault in the clear (locked decision D7: no admin escrow, no
- * server-side plaintext copy). Returns null when the address has no active key.
+ * ever leaves the vault in the clear (no admin escrow, no server-side plaintext
+ * copy). Returns null when the address has no active key.
  */
 // authz: admin floor asserted at the top (assertOrgAdmin) — a `'use node'` action
 // cannot run requireOrgPermission against ctx.db itself.

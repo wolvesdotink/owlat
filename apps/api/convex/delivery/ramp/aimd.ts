@@ -1,6 +1,5 @@
 /**
- * THE AIMD ARITHMETIC — one implementation, parameterised by bounds (plan D3,
- * D9).
+ * THE AIMD ARITHMETIC — one implementation, parameterised by bounds.
  *
  * The controller has TWO actuators. With a reference transport it moves a SHARE
  * in [0, 1]; standalone (s === 1 by definition) it moves a WARMING-PACE

@@ -140,9 +140,9 @@ export const getSendPlanCapacity = internalQuery({
  * THE PROGRESS LINE — "Sending over 4 days · day 1 of 4 · 5 000 of 20 000".
  *
  * Present from the moment the send starts, and NEVER an error state: a
- * multi-day send is a normal, visible state for a warming deployment (plan
- * D14). A campaign with no walk IN FLIGHT answers `null`, which the UI renders
- * as nothing at all rather than as a problem — and that is why the phase is
+ * multi-day send is a normal, visible state for a warming deployment. A
+ * campaign with no walk IN FLIGHT answers `null`, which the UI renders as
+ * nothing at all rather than as a problem — and that is why the phase is
  * checked at all: `campaignSendJobs` rows outlive the walk, and the report page
  * is mostly read for campaigns that finished sending days ago. A present-tense
  * sentence about a finished send is worse than no sentence.

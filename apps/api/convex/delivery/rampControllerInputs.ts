@@ -157,8 +157,8 @@ function readMixState(row: ManagedRouteState): RampMixState {
  * cell is still governed entirely by the shipped boolean + hysteresis on the
  * stream-less row. The controller does not seed a share here — seeding is the
  * transport-connection flow's act, and a controller that invented one would
- * change shipped routing on a deployment that never opted into the ramp (D1:
- * no behaviour change until the controller starts writing shares).
+ * change shipped routing on a deployment that never opted into the ramp (no
+ * behaviour change until the controller starts writing shares).
  */
 export async function loadCellInput(
 	ctx: MutationCtx,
@@ -177,11 +177,11 @@ export async function loadCellInput(
 		 * bound is deployment-level by derivation (see `rampCapacityInputs.ts`), so
 		 * reading it per cell would be the same index reads repeated once per cell
 		 * — and a slice with no ramp-managed cell in it (the normal state during
-		 * rollout, plan D1) must not pay for a reading no cell will consume, which
-		 * is why it is a thunk rather than a value. It is handed to
-		 * `capacityInputForCell` UNRESOLVED, so a slice of cells the campaign pool
-		 * does not govern — the stream-major cursor produces exactly such slices —
-		 * does not resolve it either.
+		 * rollout) must not pay for a reading no cell will consume, which is why it
+		 * is a thunk rather than a value. It is handed to `capacityInputForCell`
+		 * UNRESOLVED, so a slice of cells the campaign pool does not govern — the
+		 * stream-major cursor produces exactly such slices — does not resolve it
+		 * either.
 		 */
 		capacity: () => Promise<RampCapacityContext>;
 		/**
@@ -302,10 +302,10 @@ export async function loadCellInput(
 		now,
 	});
 
-	// THE SUBSTITUTION TABLE CHOOSES EVERYTHING BELOW (plan D3, piece P3-8). Which
-	// evaluator runs, how many clean windows an increase costs, how big a step is,
-	// which complaint line applies and how high the phase ladder may go are all
-	// folded out of `RAMP_DEGRADATION_MATRIX`. There is no `if (no relay)` here or
+	// THE SUBSTITUTION TABLE CHOOSES EVERYTHING BELOW (piece P3-8). Which evaluator
+	// runs, how many clean windows an increase costs, how big a step is, which
+	// complaint line applies and how high the phase ladder may go are all folded
+	// out of `RAMP_DEGRADATION_MATRIX`. There is no `if (no relay)` here or
 	// anywhere else in the controller: a conditional naming an integration would be
 	// a substitution living outside the table, which is the exact failure mode the
 	// table exists to prevent.

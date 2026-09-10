@@ -4,9 +4,9 @@
  * Reads the sending domains that are due for a re-check, assembles each one's
  * two ARMS from the SHIPPED surfaces — the `domains` identity tables, the
  * `providerRoutes` transport configuration and `MTA_IP_POOLS` (no new credential
- * model, D4) — and persists the verdict the pure evaluator produced. The live
- * DNS half lives in `alignmentPreflightGather.ts` because it needs the Node
- * runtime, where Convex forbids queries and mutations.
+ * model) — and persists the verdict the pure evaluator produced. The live DNS
+ * half lives in `alignmentPreflightGather.ts` because it needs the Node runtime,
+ * where Convex forbids queries and mutations.
  *
  * D2: a deployment with NO reference transport has no second arm. That is a
  * SUPPORTED CONFIGURATION, and the sweep does nothing at all for it: `buildTarget`

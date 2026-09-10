@@ -6,9 +6,9 @@ const { t } = useI18n();
 
 const { state, dismiss } = usePostboxUndoSend();
 const stack = usePostboxComposerStack();
-// Offline-queued sends arm this toast with a synthetic `outbox:` token
-// (adoption-gaps D8); undo for those un-queues on-device instead of asking
-// the server to cancel.
+// Offline-queued sends arm this toast with a synthetic `outbox:` token;
+// undo for those un-queues on-device instead of asking the server to
+// cancel.
 const offlineOutbox = usePostboxOfflineOutbox();
 const cancelPending = useBackendOperation(api.mail.drafts.cancelPendingSend, {
 	label: () => t('components.postbox.postboxUndoSendToast.undoSendOperation'),

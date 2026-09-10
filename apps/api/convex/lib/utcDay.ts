@@ -2,11 +2,11 @@
  * THE UTC DAY, in one place.
  *
  * Three modules need to agree about where a day starts: the pace actuator's
- * per-UTC-day idempotency guard (plan D19 — an hourly controller must advance a
- * warming schedule at most once a day), the multi-day send plan's day slices,
- * and the campaign capacity planner. Two spellings of "the start of today" is
- * how an off-by-one-day bug ships, and this one would be invisible: the
- * controller would advance twice on the boundary day.
+ * per-UTC-day idempotency guard (an hourly controller must advance a warming
+ * schedule at most once a day), the multi-day send plan's day slices, and the
+ * campaign capacity planner. Two spellings of "the start of today" is how an
+ * off-by-one-day bug ships, and this one would be invisible: the controller
+ * would advance twice on the boundary day.
  *
  * The KEY FORMAT IS THE MTA'S — `YYYY-MM-DD`, the same string
  * `apps/mta/src/intelligence/warmingKeys.ts` stamps into `lastEvaluatedDate`.

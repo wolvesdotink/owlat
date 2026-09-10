@@ -1,5 +1,5 @@
 /**
- * Transport outcomes — per-cell, per-arm rolling counters (plan D5, ADR-0042).
+ * Transport outcomes — per-cell, per-arm rolling counters (ADR-0042).
  *
  * The shipped delivery stack measures ACCEPTANCE: a transport took the message,
  * so the send is a success. A message Gmail accepts and files into Spam is
@@ -47,11 +47,11 @@
  * It is still ONE writer; what differs is who supplies the send id.
  *
  * WHAT IS EXCLUDED: anything with no `sendAssignments` row records NOTHING. That
- * is the seam seed shadow copies rely on (plan D18 — a seed probe is a shadow
- * copy through the identical composer and transport, NOT audience membership, so
- * it never gets an assignment row and can never enter a denominator here).
- * Transactional `test` sends are excluded one layer up, by the lifecycle's
- * existing `withoutTestSendEffects`.
+ * is the seam seed shadow copies rely on (a seed probe is a shadow copy through
+ * the identical composer and transport, NOT audience membership, so it never
+ * gets an assignment row and can never enter a denominator here). Transactional
+ * `test` sends are excluded one layer up, by the lifecycle's existing
+ * `withoutTestSendEffects`.
  */
 
 import { v } from 'convex/values';

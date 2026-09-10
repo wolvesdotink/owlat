@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * PER-STREAM SENDING SUBDOMAINS — the wizard panel (P4-7, gap G-14).
+ * PER-STREAM SENDING SUBDOMAINS — the wizard panel.
  *
  * Domain reputation is evaluated PER FQDN and does NOT inherit from the
  * registrable root, so a bad campaign on one name can drag password resets down

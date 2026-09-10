@@ -169,7 +169,7 @@ export interface SmtpExtras {
 	 * once: this transport's `supportsCustomReturnPath` capability is
 	 * `supported`, the From domain has a return-path host (its own override, or
 	 * the deployment-global one — the SAME host the direct-MX arm stamps, so the
-	 * two arms present the same envelope-sender domain, D11), and that host's
+	 * two arms present the same envelope-sender domain), and that host's
 	 * published SPF authorises this transport. Absent ⇒ leave the envelope
 	 * sender exactly as the composer built it (the shipped behaviour) and treat
 	 * the cell's bounce data as degraded — never an error, never a blocker.

@@ -1,7 +1,7 @@
 /**
  * WHICH FEEDBACK PANEL THE DELIVERY CONFIG PAGE DRAWS, and what endpoint it
- * shows — derived from the active transport's catalog entry (the seams plan's
- * D2/D5: capabilities, not identity).
+ * shows — derived from the active transport's catalog entry (capabilities,
+ * not identity).
  *
  * The page used to ask `status.provider === 'ses'` and `=== 'mandrill'`, which
  * meant a provider with a real feedback channel got no panel, no endpoint and no

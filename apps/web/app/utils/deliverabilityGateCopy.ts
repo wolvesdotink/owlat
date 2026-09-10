@@ -10,8 +10,8 @@
  * neither re-exports the other's names.
  *
  * THE RULE THE WHOLE SCREEN OBEYS APPLIES HERE TOO: nothing in this module
- * divides. Every rate is DERIVED ON READ by the server's one summarizer (ADR-0042
- * / plan D5) and this module formats the number it was handed.
+ * divides. Every rate is DERIVED ON READ by the server's one summarizer
+ * (ADR-0042) and this module formats the number it was handed.
  *
  * STATES ARE THE FEATURE: `insufficient_data` is not a failure, and nothing that
  * is merely UNMEASURED is ever rendered in an error tone.

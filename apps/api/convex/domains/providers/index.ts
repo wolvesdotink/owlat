@@ -128,9 +128,9 @@ const _typecheck: { [K in SendingDomainProviderKind]: SendingDomainProviderModul
 void _typecheck;
 
 /**
- * Compile-time completeness guard (Mandrill D6/D7): every send-transport kind whose
- * catalog entry declares `domainVerification: 'api'` MUST have a registered
- * domain-identity provider here.
+ * Compile-time completeness guard: every send-transport kind whose catalog entry
+ * declares `domainVerification: 'api'` MUST have a registered domain-identity
+ * provider here.
  *
  * The catalog is a PROMISE — "this relay can prove a domain is verified" — and
  * the relay-verification seam reads that promise by asking this registry. A
@@ -150,13 +150,13 @@ void _typecheck;
  * `_relayProofTypecheck` below, and it always will: its kinds are decided by
  * `plugins.config.ts` at composition time, which no literal type can see.
  *
- * THE PLUGIN TIER KEEPS THE SAME PROMISE BY CONSTRUCTION INSTEAD (the seams
- * plan's P3.2). Its `domainVerification: 'api'` is DERIVED from whether the
- * manifest contributed a `domainIdentity` module, and that same declaration is
- * what puts the kind in {@link relayIdentityProviderFor} below — so a plugin
- * cannot declare the promise without registering the code that keeps it, which is
- * the property this mapped type buys for core kinds. The runtime walk over the
- * COMPOSED catalog lives in `./__tests__/pluginDomainIdentity.test.ts`.
+ * THE PLUGIN TIER KEEPS THE SAME PROMISE BY CONSTRUCTION INSTEAD. Its
+ * `domainVerification: 'api'` is DERIVED from whether the manifest contributed a
+ * `domainIdentity` module, and that same declaration is what puts the kind in
+ * {@link relayIdentityProviderFor} below — so a plugin cannot declare the promise
+ * without registering the code that keeps it, which is the property this mapped
+ * type buys for core kinds. The runtime walk over the COMPOSED catalog lives in
+ * `./__tests__/pluginDomainIdentity.test.ts`.
  */
 type ApiVerifiedKindMissingProvider = Exclude<
 	ApiVerifiedSendProviderKind,

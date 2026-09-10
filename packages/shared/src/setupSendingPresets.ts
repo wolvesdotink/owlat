@@ -17,9 +17,9 @@ import {
 
 /**
  * The SMTP relay presets moved to `./sendProviderCredentialFields` when the
- * catalog became the single declaration (the seams plan's P1.1: "SMTP presets
- * become catalog-attached data") — they are the data of ONE field descriptor,
- * the `smtp` entry's `host-port` endpoint, and nothing else ever needed them
+ * catalog became the single declaration ("SMTP presets become
+ * catalog-attached data") — they are the data of ONE field descriptor, the
+ * `smtp` entry's `host-port` endpoint, and nothing else ever needed them
  * apart from it.
  *
  * Re-exported here because the web setup wizard

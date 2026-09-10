@@ -107,10 +107,10 @@ export interface PlacementAdapter {
 /**
  * The panel's numbers are THIRD-PARTY INPUT and are expanded into one row per
  * mailbox, so an unclamped count is an allocation someone else controls. Both
- * caps are sized generously against the shipped self-hosted set
- * ({@link SEED_ACCOUNTS_PER_ORG_LIMIT}) — a panel reporting more mailboxes than
- * this per provider is not measuring anything gate 5 reads differently (D17:
- * status, never a percentage), so clamping costs no fidelity.
+ * caps are sized generously against the shipped self-hosted set ({@link
+ * SEED_ACCOUNTS_PER_ORG_LIMIT}) — a panel reporting more mailboxes than this
+ * per provider is not measuring anything gate 5 reads differently (status,
+ * never a percentage), so clamping costs no fidelity.
  */
 export const MAX_PANEL_MAILBOXES_PER_REPORT = 200;
 

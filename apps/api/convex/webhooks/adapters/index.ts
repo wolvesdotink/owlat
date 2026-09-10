@@ -1,6 +1,6 @@
 /**
- * PROVIDER FEEDBACK ADAPTER REGISTRY — the feedback plane's seam (the seams
- * plan's D6, delivered by P2.1).
+ * PROVIDER FEEDBACK ADAPTER REGISTRY — the feedback plane's seam (delivered
+ * by P2.1).
  *
  * A send transport that reports its own outcomes posts them to a route of ours.
  * That used to be a hand-wired pair per kind — a thin `httpAction` file at the

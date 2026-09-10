@@ -22,18 +22,17 @@ import {
  * Single transport for every system / auth / DOI email (password reset,
  * invitation, account-deletion, double opt-in, email-change).
  *
- * Routes through the configured delivery provider so a Resend/SES deployment
- * does NOT need the built-in MTA running just to send auth mail — the
- * prerequisite that lets the MTA become an opt-in service (see the `mta`
- * docker profile). EVERY kind takes one path through the shared
- * `sendProviderDispatch`, and this module names none of them: the per-send knobs
- * come from `buildSystemMailExtras` on the provider module (the seams plan's
- * P0.4, folding this file's `provider === 'mta'` arm and `provider === 'resend'`
- * ternary into the same contract P0.1 gave the governed boundary). The MTA's
- * adapter still supplies ipPool 'transactional' plus the system intake scope and
- * still defaults dkimDomain to the from-domain and mints a random messageId, so
- * the /send/system body is byte-for-byte what it was and the default self-host is
- * unchanged.
+ * Routes through the configured delivery provider so a Resend/SES deployment does
+ * NOT need the built-in MTA running just to send auth mail — the prerequisite
+ * that lets the MTA become an opt-in service (see the `mta` docker profile).
+ * EVERY kind takes one path through the shared `sendProviderDispatch`, and this
+ * module names none of them: the per-send knobs come from `buildSystemMailExtras`
+ * on the provider module (folding this file's `provider === 'mta'` arm and
+ * `provider === 'resend'` ternary into the same contract P0.1 gave the governed
+ * boundary). The MTA's adapter still supplies ipPool 'transactional' plus the
+ * system intake scope and still defaults dkimDomain to the from-domain and mints
+ * a random messageId, so the /send/system body is byte-for-byte what it was and
+ * the default self-host is unchanged.
  *
  * Fail-closed: if no provider is configured the action throws — a deployment
  * that uses email-based auth must configure a transport. RFC 3834 §5: these are

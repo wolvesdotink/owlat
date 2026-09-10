@@ -99,12 +99,12 @@ export type ApiVerifiedSendProviderKind = Extract<
  *
  * `Extract` over the CORE catalog literal, so it narrows to the kinds this repo
  * ships. A bundled plugin entry carries a DERIVED `hasProviderFeedback` — true
- * exactly when the manifest declared a feedback `webhook` (the seams plan's
- * P3.1) — so `hasProviderFeedbackFor` answers true for plugin kinds too and the
- * governed boundary takes the `awaitingFeedback` branch for them. That
- * promise is kept by the generated `/webhooks/plugin/<pluginId>` surface,
- * not by this mapped-type guard, which is why the tier stays outside the
- * `Extract` rather than being missing from it by oversight.
+ * exactly when the manifest declared a feedback `webhook` — so
+ * `hasProviderFeedbackFor` answers true for plugin kinds too and the governed
+ * boundary takes the `awaitingFeedback` branch for them. That promise is kept
+ * by the generated `/webhooks/plugin/<pluginId>` surface, not by this
+ * mapped-type guard, which is why the tier stays outside the `Extract` rather
+ * than being missing from it by oversight.
  */
 export type FeedbackReportingSendProviderKind = Extract<
 	(typeof CORE_SEND_PROVIDER_CATALOG_ENTRIES)[number],
@@ -125,13 +125,13 @@ const pluginCatalog =
  * {@link CoreSendProviderCatalogEntry} makes the two dangerous declarations a
  * BUILD BREAK for the five kinds that ship in this repo, but bundled plugin
  * entries are generated and reach the catalog through a cast, so the type says
- * nothing about them. Since plugin-tier contract parity (the seams plan's P3.1 —
- * not the Mandrill plan's P3.1) a manifest CAN declare capability fields, which
- * is exactly when this stops being hypothetical: a bundled plugin declaring
- * `idempotency-key` gets `bindMtaProviderIdentity` stamping `providerType: 'mta'`
- * onto its Sends, and one declaring `accepted` gets its ambiguous outcomes
- * replayed down an arm `withReconciliationSafety` defers until the delivery
- * deadline terminalizes them as definite failures.
+ * nothing about them. Since plugin-tier contract parity (not the Mandrill plan's
+ * P3.1) a manifest CAN declare capability fields, which is exactly when this
+ * stops being hypothetical: a bundled plugin declaring `idempotency-key` gets
+ * `bindMtaProviderIdentity` stamping `providerType: 'mta'` onto its Sends, and
+ * one declaring `accepted` gets its ambiguous outcomes replayed down an arm
+ * `withReconciliationSafety` defers until the delivery deadline terminalizes them
+ * as definite failures.
  *
  * A note is not a control. This is: composing a catalog with either declaration
  * on a plugin entry throws at module load — a boot/codegen failure the author of

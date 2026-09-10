@@ -1,8 +1,8 @@
 /**
- * Sunset engine — the ctx-bound half of the sunset policy (deliverability plan
- * P4-4). The decision itself lives in the pure `sunsetPolicy.ts`; this module
- * only LOADS the facts, CALLS the decision, and WRITES the consequence, so the
- * interesting logic stays testable without a database.
+ * Sunset engine — the ctx-bound half of the sunset policy. The decision itself
+ * lives in the pure `sunsetPolicy.ts`; this module only LOADS the facts, CALLS
+ * the decision, and WRITES the consequence, so the interesting logic stays
+ * testable without a database.
  *
  * WHAT IT REUSES RATHER THAN REBUILDS:
  *   - "which activities count as engagement" — `analytics/engagementActivity.ts`

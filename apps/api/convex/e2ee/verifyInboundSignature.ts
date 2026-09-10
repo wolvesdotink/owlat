@@ -2,7 +2,7 @@
 
 /**
  * Inbound PGP signature verification — the `'use node'` plane of the F1
- * verification pipeline (adoption-gaps plan 2026-08-16).
+ * verification pipeline.
  *
  * A message that arrived SIGNED but not encrypted (RFC 3156 `multipart/signed`
  * or an inline clearsigned body) gets its signature verified at ingest:

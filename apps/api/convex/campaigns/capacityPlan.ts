@@ -108,8 +108,8 @@ export interface CampaignCapacitySchedule {
 	 * The audience size the schedule was built from is itself a LOWER bound — the
 	 * count stopped at a ceiling or ran out of read budget. A DIFFERENT fact from
 	 * `truncated`: the enumeration finished, but of an audience that is at least
-	 * this big, so the copy says "at least N days" (plan D14 — say the quiet
-	 * part). The two can be true independently.
+	 * this big, so the copy says "at least N days" (say the quiet part). The two
+	 * can be true independently.
 	 */
 	audienceUnderCounted: boolean;
 }

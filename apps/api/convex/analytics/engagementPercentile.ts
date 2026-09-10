@@ -17,10 +17,10 @@
  *
  * The two differ exactly when the score is TIED, and the width of the gap is
  * the size of the tied group. A consumer that ranks recipients (stratified
- * assignment, plan D8) needs the interval rather than a single number: handing
- * every member of a tied group the group's upper percentile means an entirely
- * tied cohort — a cold or freshly-imported list — ranks everybody at 1.0, and
- * any "top s fraction" cut then selects the whole cohort. The interval lets the
+ * assignment) needs the interval rather than a single number: handing every
+ * member of a tied group the group's upper percentile means an entirely tied
+ * cohort — a cold or freshly-imported list — ranks everybody at 1.0, and any
+ * "top s fraction" cut then selects the whole cohort. The interval lets the
  * consumer spread the tie instead.
  */
 export function engagementPercentileRange(

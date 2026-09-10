@@ -1,11 +1,11 @@
 /**
  * Mandrill (Mailchimp Transactional) sending domain provider adapter.
  *
- * Owns the Mandrill-side surface of one **Sending domain** — the provider API
- * calls (`registerDomain`, `runProviderCheck`) and the rows this kind keeps in
- * the GENERIC `sendingDomainRelayIdentities` table (Mandrill plan D7: the per-provider
- * sibling pattern stopped at `sendingDomainMtaIdentities` /
- * `sendingDomainSesIdentities`, and Mandrill is the first kind after it).
+ * Owns the Mandrill-side surface of one **Sending domain** — the provider API calls
+ * (`registerDomain`, `runProviderCheck`) and the rows this kind keeps in the GENERIC
+ * `sendingDomainRelayIdentities` table (the per-provider sibling pattern stopped at
+ * `sendingDomainMtaIdentities` / `sendingDomainSesIdentities`, and Mandrill is the
+ * first kind after it).
  *
  * Three things differ from the SES adapter, and each one is a fact about
  * Mandrill rather than a shortcut:
@@ -106,9 +106,8 @@ export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 		return { verified: false, lastError: `Mandrill check error: ${result.error}` };
 	},
 
-	// The relay-verification read seam (Mandrill D6) and the alignment pre-flight's
-	// second arm (Mandrill P3.1) — both pure reads of the identity row; see
-	// `./relayVerification.ts`.
+	// The relay-verification read seam and the alignment pre-flight's second arm —
+	// both pure reads of the identity row; see `./relayVerification.ts`.
 	relayDomainVerified: mandrillRelayDomainVerified,
 	describeReferenceArm: mandrillReferenceArm,
 
@@ -118,11 +117,11 @@ export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 	describeRelayIdentity: mandrillRelayIdentityFacts,
 
 	/**
-	 * The relay-identity backfill for the domains that predate the fallback
-	 * being switched to Mandrill. The existence read is on the GENERIC
-	 * `sendingDomainRelayIdentities` row (Mandrill D7) rather than on a sibling table of
-	 * its own, which is the only thing that differs from the SES adapter's
-	 * implementation of the same contract.
+	 * The relay-identity backfill for the domains that predate the fallback being
+	 * switched to Mandrill. The existence read is on the GENERIC
+	 * `sendingDomainRelayIdentities` row rather than on a sibling table of its own,
+	 * which is the only thing that differs from the SES adapter's implementation of the
+	 * same contract.
 	 *
 	 * The caller hands over the whole domain doc, so the name this table keys on
 	 * is read straight off it — no `resolveDomainName` round-trip per drained

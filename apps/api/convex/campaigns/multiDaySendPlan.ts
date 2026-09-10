@@ -1,6 +1,5 @@
 /**
- * THE MULTI-DAY SEND PLAN — the standalone answer to capacity overflow (plan
- * P3-7, D14).
+ * THE MULTI-DAY SEND PLAN — the standalone answer to capacity overflow.
  *
  * With a relay there is somewhere for the overflow to go. Without one there is
  * not, so a campaign larger than today's warming capacity is not an error and

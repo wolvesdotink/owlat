@@ -69,10 +69,10 @@ export const mailCompositionTables = {
 		// discovery/crypto so a trust change during the undo window fails closed.
 		isUnsealedSendAllowed: v.optional(v.boolean()),
 
-		// Idempotency key for offline-outbox replays (adoption-gaps D8): the
-		// queued outbox item's client-generated id, threaded through
-		// `drafts.create` so a drain retry after a lost response reuses the
-		// draft it already created instead of forking a duplicate send.
+		// Idempotency key for offline-outbox replays: the queued outbox
+		// item's client-generated id, threaded through `drafts.create` so a
+		// drain retry after a lost response reuses the draft it already
+		// created instead of forking a duplicate send.
 		clientNonce: v.optional(v.string()),
 
 		// Scheduled send / undo-send window
