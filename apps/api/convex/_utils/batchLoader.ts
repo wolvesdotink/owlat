@@ -10,7 +10,7 @@ import type { Doc, Id, TableNames } from '../_generated/dataModel';
  * the union of every table.
  */
 export async function batchGet<K extends TableNames>(
-	ctx: { db: { get: <T extends TableNames>(id: Id<T>) => Promise<Doc<T> | null> } },
+	ctx: { db: { get: (id: Id<K>) => Promise<Doc<K> | null> } },
 	ids: ReadonlyArray<Id<K>>
 ): Promise<Map<string, Doc<K> | null>> {
 	const seen = new Map<string, Id<K>>();
