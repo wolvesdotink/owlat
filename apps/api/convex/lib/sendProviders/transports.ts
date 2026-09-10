@@ -92,10 +92,10 @@ const MAX_TRANSPORT_ID_LENGTH =
  * what is INSTANCE-SPECIFIC, and anything a reader wants about the kind itself
  * is one `sendProviderCatalogEntry(record.kind)` away.
  *
- * The retry schedule is the worked example. It used to be copied onto every
- * record and read by nobody: the dispatch loop drives retries off the resolved
- * MODULE's `retryDelays`, which is the catalog entry's own array in both tiers.
- * A second copy here could only ever have disagreed with it.
+ * The retry schedule is the worked example: it is NOT copied onto the record.
+ * The dispatch loop drives retries off the resolved MODULE's `retryDelays`,
+ * which is the catalog entry's own array in both tiers, and a second copy here
+ * could only ever disagree with it.
  */
 export interface SendTransportRecord {
 	readonly id: SendTransportId;

@@ -141,7 +141,7 @@ const REASON_LABELS = {
 	building_confidence: 'shared.deliverabilityRamp.reason.buildingConfidence',
 	capacity_ceiling: 'shared.deliverabilityRamp.reason.capacityCeiling',
 	phase_ceiling: 'shared.deliverabilityRamp.reason.phaseCeiling',
-	// P3-8's cap: the substitution table lowers the phase ceiling a rung while an
+	// The substitution table's cap: it lowers the phase ceiling a rung while an
 	// integration is missing, which is a DIFFERENT fact from having reached the
 	// ceiling this cell was granted — the operator can act on one and not the other.
 	degradation_ceiling: 'shared.deliverabilityRamp.reason.degradationCeiling',

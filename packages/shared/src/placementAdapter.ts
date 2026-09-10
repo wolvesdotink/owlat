@@ -1,10 +1,10 @@
 /**
  * Placement adapter — ONE interface, exactly TWO implementations.
  *
- * P2-6 shipped the self-hosted seed-mailbox placement probe and gate 5 on top
- * of it. This module generalises the SOURCE of that evidence behind a small
- * adapter so a deployment that pays for a commercial placement API can feed the
- * SAME gate without a second tripwire implementation:
+ * Gate 5 runs on the self-hosted seed-mailbox placement probe. This module
+ * generalises the SOURCE of that evidence behind a small adapter so a
+ * deployment that pays for a commercial placement API can feed the SAME gate
+ * without a second tripwire implementation:
  *
  *   - `selfHostedSeedPlacementAdapter` — seed mailboxes. THE DEFAULT AND THE
  *     EXPECTED CONFIGURATION.
@@ -163,7 +163,7 @@ export function commercialReportsToObservations(
 	return observations;
 }
 
-/** THE DEFAULT: seed mailboxes shipped in P2-6. */
+/** THE DEFAULT: self-hosted seed mailboxes. */
 export const selfHostedSeedPlacementAdapter: PlacementAdapter = {
 	kind: 'self_hosted_seeds',
 	confidence: SEED_GATE_CONFIDENCE,

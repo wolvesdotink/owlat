@@ -367,14 +367,14 @@ export interface BounceClassification {
 export type MetricOutcome = 'delivered' | 'bounced' | 'deferred' | 'rejected' | 'error';
 
 /*
- * DestinationProviderKey is NOT exported from this module — deliberately (D8).
+ * DestinationProviderKey is NOT exported from this module — deliberately.
  *
- * It used to be spelled out here as a second union, so a provider added to the
- * shared taxonomy widened the ramp's cell axis on the Convex side while the
- * MTA's own consumers — cell keys, warming dimensions, ISP metrics, profile
- * shaping — kept the old five and never failed to compile. A re-export would
- * have fixed the divergence but left ONE taxonomy behind TWO doors, with no
- * rule for which to use: the next person widening the taxonomy greps
+ * Spelling it out here as a second union means a provider added to the shared
+ * taxonomy widens the ramp's cell axis on the Convex side while the MTA's own
+ * consumers — cell keys, warming dimensions, ISP metrics, profile shaping — keep
+ * the old five and never fail to compile. A re-export would have fixed the
+ * divergence but left ONE taxonomy behind TWO doors, with no rule for which to
+ * use: the next person widening the taxonomy greps
  * `@owlat/shared/deliverabilityRouting` for its consumers and silently misses
  * every file that typed itself through `types.js`. So every MTA consumer now
  * imports the type from the one module that declares it, and this file only

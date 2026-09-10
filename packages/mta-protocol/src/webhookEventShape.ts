@@ -1,15 +1,15 @@
 /**
- * The MTA -> Convex webhook event SHAPE (D7) — ONE declaration of the field
+ * The MTA -> Convex webhook event SHAPE — ONE declaration of the field
  * set, read from both ends.
  *
- * It used to be two. `packages/shared/src/mtaWebhookEvent.ts` held the
+ * NOT two declarations. `packages/shared/src/mtaWebhookEvent.ts` held the
  * discriminated union Convex validates arriving events against, and
  * `apps/mta/src/webhookEventTypes.ts` held a wide flat interface the MTA's
- * producers built events into — overlapping but not equal field sets, each
- * free to gain a field the other never heard of. Both are now views of
- * {@link MtaWebhookEventFields}: {@link MtaWebhookEventDraft} is the producer's
- * (every field optional, the payload types its own), and
- * {@link ValidatedMtaWebhookEvent} is the wire union `isMtaWebhookEvent` proves.
+ * producers built events into — overlapping but not equal field sets, each free
+ * to gain a field the other never heard of. Both are now views of {@link
+ * MtaWebhookEventFields}: {@link MtaWebhookEventDraft} is the producer's (every
+ * field optional, the payload types its own), and {@link
+ * ValidatedMtaWebhookEvent} is the wire union `isMtaWebhookEvent` proves.
  *
  * ON THE TWO NAMES. The validated union is deliberately NOT called
  * `MtaWebhookEvent`: `apps/mta` already owns that name for its producer draft

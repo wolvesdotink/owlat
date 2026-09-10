@@ -223,7 +223,7 @@ const {
 			</template>
 
 			<div v-if="status" class="space-y-6 max-w-3xl">
-				<!-- Plan D8: exactly one reference relay, or the ramp has no single
+				<!-- Exactly one reference relay, or the ramp has no single
 				     second arm to judge the own server against and every cell holds.
 				     Renders nothing in every healthy configuration, standalone included. -->
 				<DeliveryReferenceRelayNotice />

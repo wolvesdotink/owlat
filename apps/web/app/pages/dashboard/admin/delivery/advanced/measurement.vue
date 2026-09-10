@@ -6,9 +6,9 @@
  * trustworthy before anything acts on it: per cell, both arms' outcomes, every
  * gate's verdict with the numbers behind it, how much the measurement is worth,
  * and the trend across the window. There are no controls on this page and no
- * writes behind it; P3-6 adds the control surface.
+ * writes behind it; the control surface lives elsewhere.
  *
- * D14: with a reference arm the feature is "Sending independence"; with none it
+ * With a reference arm the feature is "Sending independence"; with none it
  * is "Warm-up autopilot" — a different, honest feature, not a degraded one.
  * Either way, a fresh install with zero third-party credentials renders this
  * screen cleanly.

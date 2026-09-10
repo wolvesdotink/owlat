@@ -9,7 +9,7 @@
  *   - offline (or a send that network-fails), send() instead queues the full
  *     compose payload in the on-device outbox and returns a synthetic
  *     {undoToken, sendAt} — the emit contract is unchanged, and the undo
- *     toast un-queues via the token (adoption-gaps D8)
+ *     toast un-queues via the token
  */
 
 import type { FunctionReturnType } from 'convex/server';

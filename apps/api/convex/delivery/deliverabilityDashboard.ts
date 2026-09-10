@@ -5,7 +5,7 @@
  * sanity-check on the gates: per cell, both arms' outcomes, every gate's
  * verdict WITH the numbers that produced it, and how much the measurement is
  * worth. It is READ-ONLY by construction — there is no mutation in this module
- * and there will not be one; P3-6 adds the control surface separately.
+ * and there will not be one; the control surface lives separately.
  *
  * SHAPE. One index read per (cell, arm) over the widest window any sub-view needs
  * (the deciding span, the reported window, the trailing baseline, the daily
@@ -379,8 +379,8 @@ export const getDeliverabilityDashboard = authedQuery({
 					ownShare: resolveOwnShare(routeState),
 					phaseCeiling: routeState?.phaseCeiling ?? null,
 					// THE REPORTED PAIR: columns, counters and the honesty denominator are
-					// the seven days plan D2/D5 specifies. The VERDICT beside them travels
-					// inside `evaluation`, over the deciding span.
+					// the seven reported days. The VERDICT beside them travels inside
+					// `evaluation`, over the deciding span.
 					own: reportedOwn,
 					reference,
 					evaluation,

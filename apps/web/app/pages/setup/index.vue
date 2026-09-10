@@ -12,12 +12,12 @@ const router = useRouter();
 /**
  * The splash's preview of the wizard, DERIVED from the wizard's own step list.
  *
- * It used to be a hand-written array, and it drifted: it promised four steps
- * (mode → features → email → "Admin & review") while `SETUP_STEPS` has run five
- * since the admin step was split out, so the first-run screen quietly lied about
- * the journey and then produced an unannounced account step. Mapping the real
- * list means the promise cannot diverge from the wizard again — a step added
- * there appears here, and its copy is keyed by the step's own id.
+ * NOT a hand-written array: one drifts. A hand-written list promised four steps
+ * (mode → features → email → "Admin & review") while `SETUP_STEPS` runs five, so
+ * the first-run screen quietly lied about the journey and then produced an
+ * unannounced account step. Mapping the real list means the promise cannot
+ * diverge from the wizard — a step added there appears here, and its copy is
+ * keyed by the step's own id.
  */
 const steps = computed(() =>
 	SETUP_STEPS.map((step) => ({

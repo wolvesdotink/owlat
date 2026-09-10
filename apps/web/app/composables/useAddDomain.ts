@@ -23,7 +23,7 @@ export interface AddDomainFlowDeps {
 }
 
 /**
- * Add-domain orchestration (piece D3; F2 finding 1).
+ * Add-domain orchestration.
  *
  * The custom return-path host is passed straight into `create` as ONE atomic
  * write — not a second `setReturnPathHost` call. That keeps the domain out of the

@@ -9,10 +9,10 @@
  * configured transport (deployment-scoped, like the transport configuration
  * itself).
  *
- * Plan D2: everything here is additive. A transport that was never probed, a
- * probe that never came back, a deployment with no relay at all — all resolve
- * to a usable posture with `degraded` measurement. Nothing throws, nothing
- * blocks a send, nothing surfaces an error state.
+ * Everything here is additive. A transport that was never probed, a probe
+ * that never came back, a deployment with no relay at all — all resolve to a
+ * usable posture with `degraded` measurement. Nothing throws, nothing blocks
+ * a send, nothing surfaces an error state.
  */
 
 import { v } from 'convex/values';

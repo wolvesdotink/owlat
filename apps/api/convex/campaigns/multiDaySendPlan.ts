@@ -217,9 +217,9 @@ export function planTodaysSlice(input: SendPlanSliceInput): SendPlanSlice {
 	// Collapsing the two would let a cap-spent deployment empty a 20 000-recipient
 	// campaign into a queue that expires it.
 	//
-	// THE PLAN'S LENGTH IS NOT PART OF THIS TEST. It used to be, and that is what
-	// let a truncated audience count — which yields the planner's "cannot be
-	// planned" sentinel — silently waive the budget on the largest campaigns.
+	// THE PLAN'S LENGTH IS NOT PART OF THIS TEST. Folding it in lets a truncated
+	// audience count — which yields the planner's "cannot be planned" sentinel —
+	// silently waive the budget on the largest campaigns.
 	const hasProjection = capacityByDay.length > 0;
 	const capacityToday = hasProjection ? sanitizeCount(capacityByDay[0]) : undefined;
 

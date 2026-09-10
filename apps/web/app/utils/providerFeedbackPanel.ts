@@ -10,12 +10,11 @@
  * all, and `providerFeedback` says where it arrives and what wiring it up asks
  * of the operator.
  *
- * PURE, and in `~/utils` rather than inline in the page, because this is the one
- * behaviour change P1.2 makes to a shipped dashboard: a mistyped path or a
- * missing declaration would make a live panel (and its polling query) appear or
- * vanish with nothing failing. Here it is a unit test —
- * `__tests__/providerFeedbackPanel.test.ts` pins the panel and the endpoint for
- * every kind the catalog declares.
+ * PURE, and in `~/utils` rather than inline in the page, because it changes the
+ * behaviour of a shipped dashboard: a mistyped path or a missing declaration
+ * would make a live panel (and its polling query) appear or vanish with nothing
+ * failing. Here it is a unit test — `__tests__/providerFeedbackPanel.test.ts`
+ * pins the panel and the endpoint for every kind the catalog declares.
  */
 
 import {

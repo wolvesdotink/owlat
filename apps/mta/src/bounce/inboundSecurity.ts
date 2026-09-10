@@ -5,9 +5,9 @@
  * bounce/inbound SMTP server.
  *
  * SPF validation (RFC 7208) and DMARC evaluation (RFC 7489) moved into the
- * in-house `@owlat/mail-auth` package as part of the Own-the-Inbound migration
- * — `server.ts` imports `checkSpf` / `evaluateDmarc` from there. This module now
- * holds only rate limiting (no back-compat shim; see plan decision D3).
+ * in-house `@owlat/mail-auth` package as part of the Own-the-Inbound migration —
+ * `server.ts` imports `checkSpf` / `evaluateDmarc` from there. This module now
+ * holds only rate limiting (no back-compat shim).
  */
 
 import type Redis from 'ioredis';

@@ -90,7 +90,7 @@ export type ReferenceArmInput =
 
 /**
  * The opening of the `unknown` detail written when MORE THAN ONE relay is
- * enabled — plan D8's "keep the reference relay singular" rule.
+ * enabled — the "keep the reference relay singular" rule.
  *
  * The two `unknown` branches want opposite remedies: one relay we cannot
  * describe means "verify it", several relays means "there is no single second

@@ -172,7 +172,7 @@ function seedPlacementExplanation(gate: DeliverabilityDashboardGate): LocalizedT
 			// past, and the standalone seed evaluator does not swap a baseline clause
 			// in for the comparative one — it drops the second clause entirely. Copy
 			// written ahead of a variant that does not exist is the speculative seam
-			// `trailingBaselineGates.ts` cites plan D20 against.
+			// `trailingBaselineGates.ts` warns against.
 			//
 			// The status WORD is part of this sentence, so there is one sentence per
 			// status rather than a status key slotted into a shared frame.

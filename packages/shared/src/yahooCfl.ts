@@ -24,9 +24,9 @@
  * promotion, and never produces an error state or a "setup incomplete" nag.
  *
  * WHICH complaint signal that substitution picks lives in
- * `apps/api/convex/delivery/signals/yahooCfl.ts` — a different concern
- * with a different owner (P3-8's substitution table subsumes that file, not this
- * state machine), and it lives next to the ramp because gate 3's threshold has
+ * `apps/api/convex/delivery/signals/yahooCfl.ts` — a different concern with a
+ * different owner (the substitution table subsumes that file, not this state
+ * machine), and it lives next to the ramp because gate 3's threshold has
  * exactly one home there.
  */
 

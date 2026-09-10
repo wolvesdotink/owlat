@@ -909,9 +909,9 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								<p class="text-text-primary">{{ thread.messageCount ?? 0 }}</p>
 							</div>
 							<!-- Assignment READS here and is CHANGED in the header (and on row
-							     hover in the list). It used to be a second assign popover, so
-							     the same verb rendered twice on one screen; the details card is
-							     a list of facts about the thread, and this is one of them. -->
+							     hover in the list). A second assign popover here would render
+							     the same verb twice on one screen; the details card is a list
+							     of facts about the thread, and this is one of them. -->
 							<div>
 								<p class="text-xs text-text-tertiary mb-1">
 									{{ t('dashboard.inbox.detail.assignedTo') }}

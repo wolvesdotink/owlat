@@ -432,8 +432,8 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		label: 'Sealed Mail (end-to-end encryption)',
 		description:
 			'Encrypt personal mail end-to-end between Owlat instances when every recipient has a usable key, and render a "Sealed" badge for encrypted messages.',
-		// Ships ON by default (Sealed Mail release): auto-seals per locked
-		// decision D2 wherever Postbox + sender authenticity resolve on.
+		// Ships ON by default (Sealed Mail release): auto-seals wherever Postbox +
+		// sender authenticity resolve on.
 		default: true,
 		// End-to-end sealing applies to the Postbox 1:1 plane, and the honest
 		// "Sealed - sender verified" badge builds on sender authenticity.
