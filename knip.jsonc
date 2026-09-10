@@ -62,6 +62,21 @@
 				"i18n/**/*.ts",
 				"service-worker/**/*.js",
 			],
+			// Nuxt MODULES are wired in nuxt.config `modules:` and knip only sees
+			// that wiring through the generated .nuxt/*.d.ts files, which a clean
+			// CI checkout does not have until `nuxt prepare` has run. Ignoring
+			// them by name keeps the dependency ratchet from flipping on whether
+			// .nuxt happens to exist (measured: 17 phantom unused deps without
+			// it).
+			"ignoreDependencies": [
+				"@nuxt/fonts",
+				"@nuxt/icon",
+				"@nuxtjs/color-mode",
+				"@nuxtjs/i18n",
+				"@nuxtjs/seo",
+				"nuxt-security",
+				"tailwindcss",
+			],
 			"playwright": { "config": ["e2e/playwright.config.ts"] },
 			// See the includeEntryExports note at the bottom of this file.
 			"includeEntryExports": false,
@@ -72,11 +87,31 @@
 			// environment-sensitive, and without this entry they are mis-reported
 			// as unused files in CI. `i18n/` is loaded by @nuxtjs/i18n by
 			// convention, same as in apps/web.
+			// Nuxt modules: see the apps/web block.
+			"ignoreDependencies": [
+				"@nuxt/fonts",
+				"@nuxt/icon",
+				"@nuxtjs/color-mode",
+				"@nuxtjs/i18n",
+				"@nuxtjs/seo",
+				"nuxt-security",
+				"tailwindcss",
+			],
 			"entry": ["content.config.ts", "app/**/*.{vue,ts}", "__tests__/**/*.ts", "i18n/**/*.ts"],
 			"includeEntryExports": false,
 		},
 		"apps/marketing": {
 			// `i18n/` is loaded by @nuxtjs/i18n by convention, same as in apps/web.
+			// Nuxt modules: see the apps/web block.
+			"ignoreDependencies": [
+				"@nuxt/fonts",
+				"@nuxt/icon",
+				"@nuxtjs/color-mode",
+				"@nuxtjs/i18n",
+				"@nuxtjs/seo",
+				"nuxt-security",
+				"tailwindcss",
+			],
 			"entry": ["app/**/*.{vue,ts}", "i18n/**/*.ts"],
 			"includeEntryExports": false,
 		},
@@ -247,7 +282,20 @@
 		},
 		// packages/ui is a Nuxt layer — every composable/component is reachable
 		// by auto-import convention (path prefix), so the whole tree stays entry.
-		"packages/ui": { "entry": ["**/*.{vue,ts}"], "includeEntryExports": false },
+		"packages/ui": {
+			"entry": ["**/*.{vue,ts}"],
+			"includeEntryExports": false,
+			// Nuxt modules: see the apps/web block.
+			"ignoreDependencies": [
+				"@nuxt/fonts",
+				"@nuxt/icon",
+				"@nuxtjs/color-mode",
+				"@nuxtjs/i18n",
+				"@nuxtjs/seo",
+				"nuxt-security",
+				"tailwindcss",
+			],
+		},
 	},
 
 	// Global ignores: generated code, build output, vendored SDKs, the non-JS
