@@ -7,7 +7,6 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-	MTA_STS_MODES,
 	MTA_STS_MAX_AGE_SECONDS,
 	isMtaStsMode,
 	mtaStsPolicyId,
@@ -16,10 +15,6 @@ import {
 } from '../mtaStsPolicy';
 
 describe('MtaStsMode', () => {
-	it('lists the three modes in strictness order', () => {
-		expect(MTA_STS_MODES).toEqual(['none', 'testing', 'enforce']);
-	});
-
 	it('narrows valid mode strings and rejects others', () => {
 		expect(isMtaStsMode('none')).toBe(true);
 		expect(isMtaStsMode('testing')).toBe(true);

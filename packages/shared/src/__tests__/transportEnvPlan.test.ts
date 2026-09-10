@@ -23,9 +23,11 @@ describe('planTransportEnvChange — allowlist', () => {
 	});
 
 	it('reports the offending key on the error', () => {
+		// expect.assertions is what makes the catch block load-bearing: without it
+		// a planner that stopped throwing would run zero assertions and pass.
+		expect.assertions(2);
 		try {
 			planTransportEnvChange({}, { EMAIL_PROVIDER: 'resend', NODE_ENV: 'production' });
-			expect.unreachable('should have thrown');
 		} catch (e) {
 			expect(e).toBeInstanceOf(UnexpectedTransportEnvKeyError);
 			expect((e as UnexpectedTransportEnvKeyError).key).toBe('NODE_ENV');
