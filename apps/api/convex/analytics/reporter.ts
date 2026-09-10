@@ -3,6 +3,7 @@ import { internalAction, internalMutation, internalQuery } from '../_generated/s
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { summarize } from './sendingReputation';
+import { logError, logWarn } from '../lib/runtimeLog';
 
 /**
  * Gather instance metrics for reporting to the control plane.
@@ -18,12 +19,9 @@ export const gatherMetrics = internalQuery({
 		contactCount: v.number(),
 		bounceRate: v.optional(v.number()),
 		complaintRate: v.optional(v.number()),
-		riskLevel: v.optional(v.union(
-			v.literal('low'),
-			v.literal('medium'),
-			v.literal('high'),
-			v.literal('critical'),
-		)),
+		riskLevel: v.optional(
+			v.union(v.literal('low'), v.literal('medium'), v.literal('high'), v.literal('critical'))
+		),
 	}),
 	handler: async (ctx) => {
 		// 1. Marketing emails sent: sum statsSent across sent + sending campaigns.
@@ -40,7 +38,7 @@ export const gatherMetrics = internalQuery({
 
 		const marketingEmailsSent = [...sentCampaigns, ...sendingCampaigns].reduce(
 			(sum, c) => sum + (c.statsSent ?? 0),
-			0,
+			0
 		);
 
 		// 2. Transactional emails sent: read cached count
@@ -91,10 +89,7 @@ export const reportMetrics = internalAction({
 		}
 
 		try {
-			const metrics = await ctx.runQuery(
-				internal.analytics.reporter.gatherMetrics,
-				{},
-			);
+			const metrics = await ctx.runQuery(internal.analytics.reporter.gatherMetrics, {});
 
 			const response = await fetch(`${controlPlaneUrl}/instance-metrics`, {
 				method: 'POST',
@@ -110,14 +105,14 @@ export const reportMetrics = internalAction({
 			});
 
 			if (!response.ok) {
-				// eslint-disable-next-line no-console
-				console.error(
-					`[AnalyticsReporter] Control plane returned ${response.status}: ${response.statusText}`,
-				);
+				logError('[AnalyticsReporter] control plane rejected the metrics report', {
+					status: response.status,
+					statusText: response.statusText,
+				});
 			}
 		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.error('[AnalyticsReporter] Failed to report metrics:', error);
+			// Fail soft: reporting is telemetry, and the next cron tick retries.
+			logError('[AnalyticsReporter] failed to report metrics', { error });
 		}
 	},
 });
@@ -161,14 +156,13 @@ export const reconcileTransactionalSendCount = internalMutation({
 			// Running counter undercounted somewhere — log so an operator can
 			// investigate the insert paths in transactionalSends.ts. Don't
 			// auto-mutate the counter; that hides the bug.
-			// eslint-disable-next-line no-console
-			console.warn(
+			logWarn(
 				JSON.stringify({
 					event: 'transactional_count_drift',
 					cachedCount,
 					recentCount,
 					windowDays: 30,
-				}),
+				})
 			);
 		}
 	},

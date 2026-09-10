@@ -26,7 +26,7 @@ import {
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
 import { embed } from 'ai';
 import { z } from 'zod';
-import { logInfo } from './lib/runtimeLog';
+import { logError, logInfo } from './lib/runtimeLog';
 import { runLlmObject } from './lib/llm/dispatch';
 import { recordLlmSpend } from './analytics/llmUsage';
 import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
@@ -64,8 +64,14 @@ export const processFile = internalAction({
 		try {
 			extractedText = await extractText(blob, file.mimeType, file.filename);
 		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.error('Text extraction failed:', error);
+			// Fail soft: the file still gets filename/tag metadata below. Name the
+			// file so an operator can tell which upload lost its text.
+			logError('[semantic_file] text extraction failed', {
+				fileId: args.fileId,
+				filename: file.filename,
+				mimeType: file.mimeType,
+				error,
+			});
 		}
 
 		if (!extractedText && !file.title) {
@@ -134,8 +140,11 @@ ${textForAI}`,
 				summary = result.object.summary;
 				autoTags = result.object.tags;
 			} catch (error) {
-				// eslint-disable-next-line no-console
-				console.error('LLM processing failed:', error);
+				logError('[semantic_file] summarize/tag call failed', {
+					fileId: args.fileId,
+					filename: file.filename,
+					error,
+				});
 				// Fallback: use filename as title
 				title = title || file.filename;
 			}
@@ -158,8 +167,11 @@ ${textForAI}`,
 				assertEmbeddingDimension(embeddingResult.embedding);
 				embedding = embeddingResult.embedding;
 			} catch (error) {
-				// eslint-disable-next-line no-console
-				console.error('Embedding generation failed:', error);
+				logError('[semantic_file] embedding generation failed', {
+					fileId: args.fileId,
+					filename: file.filename,
+					error,
+				});
 			}
 		}
 
@@ -397,8 +409,10 @@ export async function extractText(blob: Blob, mimeType: string, filename: string
 			const cleaned = text.replace(/\s+/g, ' ').trim();
 			return cleaned.length > 0 ? cleaned : placeholder;
 		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.error('PDF text extraction failed:', error);
+			logError('[semantic_file] PDF text extraction failed', {
+				filename,
+				error,
+			});
 			return placeholder;
 		}
 	}
