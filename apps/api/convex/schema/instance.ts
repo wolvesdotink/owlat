@@ -10,6 +10,7 @@ import {
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
 } from '../lib/aiProviderConfigValidators';
+import { successOrFailedValidator } from '../lib/literalValidators';
 
 /**
  * Instance-administration tables — the deployment-wide singletons an operator
@@ -278,7 +279,7 @@ export const instanceTables = {
 		isScheduleEnabled: v.boolean(),
 		// Last manual backup the operator logged after running scripts/backup.sh.
 		lastRunAt: v.optional(v.number()),
-		lastRunStatus: v.optional(v.union(v.literal('success'), v.literal('failed'))),
+		lastRunStatus: v.optional(successOrFailedValidator),
 		// Audit: who last changed this record (auth user email) and when.
 		updatedAt: v.number(),
 		updatedBy: v.optional(v.string()),

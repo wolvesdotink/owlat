@@ -23,6 +23,7 @@ import { requirePlatformAdmin } from './platformAdmin/platformAdmin';
 import { updateStepResultValidator } from './lib/convexValidators';
 import { requireAuthenticatedIdentity } from './lib/sessionOrganization';
 import { throwForbidden, throwInternal } from './_utils/errors';
+import { successOrFailedValidator } from './lib/literalValidators';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -199,7 +200,7 @@ export const recordUpdateStart = internalMutation({
 export const recordUpdateFinish = internalMutation({
 	args: {
 		runId: v.id('systemUpdates'),
-		status: v.union(v.literal('success'), v.literal('failed')),
+		status: successOrFailedValidator,
 		steps: v.optional(updateStepResultValidator),
 		error: v.optional(v.string()),
 	},

@@ -7,6 +7,7 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../../_generated/server';
+import { folderRoleValidator } from '../mailbox/shared';
 
 /** LIST output for a single mailbox account. Includes role + counts so the
  *  IMAP server can emit `* LIST (\Inbox \HasNoChildren) "/" "INBOX"` etc. */
@@ -84,14 +85,7 @@ export const selectFolder = internalQuery({
 export const resolveSpecialFolder = internalQuery({
 	args: {
 		mailboxId: v.id('mailboxes'),
-		role: v.union(
-			v.literal('inbox'),
-			v.literal('sent'),
-			v.literal('drafts'),
-			v.literal('trash'),
-			v.literal('spam'),
-			v.literal('archive')
-		),
+		role: folderRoleValidator,
 	},
 	handler: async (ctx, args) => {
 		const folder = await ctx.db

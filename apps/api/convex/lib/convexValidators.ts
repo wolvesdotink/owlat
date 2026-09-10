@@ -122,10 +122,7 @@ export const activityMetadataValidator = v.object({
 });
 
 // Data variables schema definition (transactionalEmails)
-export const dataVariablesSchemaValidator = v.record(
-	v.string(),
-	v.union(v.literal('string'), v.literal('number'), v.literal('boolean'), v.literal('date'))
-);
+export const dataVariablesSchemaValidator = v.record(v.string(), fieldTypeValidator);
 
 // ─── Webhook payload contract (FROZEN) ─────────────────────────────────────
 // Per-event payload shapes are documented in apps/api/convex/docs/webhook-payloads.md.
@@ -137,6 +134,7 @@ export const dataVariablesSchemaValidator = v.record(
 // `lib/validators` consumers keep working.
 
 import { webhookEventValidator } from '../webhooks/events';
+import { fieldTypeValidator } from './literalValidators';
 export { webhookEventValidator };
 
 // Container the row stores. `data` is the inner event payload — kept as

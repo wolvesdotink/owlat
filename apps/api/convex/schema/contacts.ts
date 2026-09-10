@@ -3,6 +3,7 @@ import { v } from 'convex/values';
 import { activityMetadataValidator, segmentFiltersValidator } from '../lib/convexValidators';
 import { contactActivityTypeValidator } from '../contactActivities/catalog';
 import { contactSourceValidator } from '../contacts/resolution';
+import { fieldTypeValidator } from '../lib/literalValidators';
 
 /**
  * Contact tables — CRM contacts + custom properties + activity timeline + relationships + segments.
@@ -190,12 +191,7 @@ export const contactTables = {
 	contactProperties: defineTable({
 		key: v.string(), // Internal key (e.g., "company", "phone_number")
 		label: v.string(), // Display label (e.g., "Company", "Phone Number")
-		type: v.union(
-			v.literal('string'),
-			v.literal('number'),
-			v.literal('boolean'),
-			v.literal('date')
-		),
+		type: fieldTypeValidator,
 		// True when the row was inserted by the **Contact import (module)**'s
 		// integration-driven property-key policy (Mailchimp `merge_fields`,
 		// Stripe `metadata`). Operators can review + rename + delete these
