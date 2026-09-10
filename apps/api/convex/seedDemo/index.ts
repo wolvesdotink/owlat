@@ -17,7 +17,6 @@
 
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
-import { internal } from '../_generated/api';
 import { applyLoaders, isRemovableSeedRow, SEEDED_TABLES, type SeedSummary } from './pipeline';
 
 export type { SeedSummary } from './pipeline';

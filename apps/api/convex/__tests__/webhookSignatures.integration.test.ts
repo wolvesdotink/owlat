@@ -279,10 +279,7 @@ describe('handleVerifyCredential (/webhooks/mta-verify-credential)', () => {
 
 	it('rejects (401) when the timestamp header is missing', async () => {
 		const t = setupTest();
-		const sig = await hmacSha256Hex(
-			'mta-test-secret',
-			`${nowSeconds()}.${VERIFY_BODY}`
-		);
+		const sig = await hmacSha256Hex('mta-test-secret', `${nowSeconds()}.${VERIFY_BODY}`);
 		const res = await t.fetch(VERIFY_PATH, {
 			method: 'POST',
 			body: VERIFY_BODY,
