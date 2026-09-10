@@ -156,6 +156,53 @@ describe('environment variables', () => {
 	});
 });
 
+describe('plugin-chapter TypeScript samples', () => {
+	/**
+	 * Every sample in the plugin chapter is compiled and exercised by
+	 * `packages/plugin-kit/src/__tests__/docsSamples.test.ts`, inside a
+	 * `// #region <name>` marker. That only holds while the page quotes the
+	 * region verbatim — a fence that merely resembles the region, or one written
+	 * by hand, is pseudocode that nothing compiles.
+	 *
+	 * Both directions, and no per-page map: a region must appear somewhere in the
+	 * chapter, and a ```ts fence in the chapter must be a region. Shape sketches
+	 * that are not compilable TypeScript are tagged ```text instead.
+	 */
+	const samples = read('packages/plugin-kit/src/__tests__/docsSamples.test.ts');
+	const regions = new Map(
+		[...samples.matchAll(/\/\/ #region ([\w-]+)\n([\s\S]*?)\/\/ #endregion \1/g)].map((match) => [
+			match[1]!,
+			match[2]!.trimEnd(),
+		])
+	);
+	const fences = docPages()
+		.filter((page) => /\/en\/3\.developer\/4\d\./.test(page.path))
+		.flatMap((page) =>
+			[
+				...readFileSync(resolve(REPO_ROOT, page.path), 'utf8').matchAll(/```ts\n([\s\S]*?)```/g),
+			].map((match) => ({ page: page.path, code: match[1]!.trimEnd() }))
+		);
+
+	it('parses regions and fences', () => {
+		expect(regions.size, 'no #region markers in docsSamples.test.ts').toBeGreaterThan(5);
+		expect(fences.length, 'no ```ts fences in the plugin chapter').toBeGreaterThan(5);
+	});
+
+	it('quotes every executable sample region verbatim', () => {
+		const quoted = new Set(fences.map((fence) => fence.code));
+		const unquoted = [...regions].filter(([, code]) => !quoted.has(code)).map(([name]) => name);
+		expect(unquoted, 'no plugin page quotes these sample regions verbatim').toEqual([]);
+	});
+
+	it('carries no TypeScript fence that is not an executable sample', () => {
+		const executable = new Set(regions.values());
+		const handWritten = fences
+			.filter((fence) => !executable.has(fence.code))
+			.map((fence) => `${fence.page}: ${fence.code.split('\n')[0]}…`);
+		expect(handWritten, 'these ```ts fences are compiled and run by nothing').toEqual([]);
+	});
+});
+
 describe('the corpus these invariants read', () => {
 	it('still has both locales and a developer chapter', () => {
 		const paths = docPages().map((page) => page.path);
