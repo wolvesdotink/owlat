@@ -4376,7 +4376,7 @@ Four entry points:
   family is the only writer of the wipe; this entry is the public
   shell (auth + scheduler call + synchronous response).
 - `createInternal(ctx, args)` — internal mutation; no auth (called by
-  `seedAdmin.ts`). Idempotent: skips if a row already exists.
+  `seedAdminHttp.ts`). Idempotent: skips if a row already exists.
 
 Replaces the duplicate `get`/`update`/`create` pair across
 `convex/instanceSettings.ts` and `convex/organizationSettings.ts`. Both

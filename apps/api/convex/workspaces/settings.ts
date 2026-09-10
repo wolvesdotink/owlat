@@ -16,7 +16,7 @@
  *   - `remove`           — schedules the **Organization deletion**
  *                         walker; owner-only.
  *   - `createInternal`   — idempotent bootstrap insert (called by
- *                         `seedAdmin.ts`).
+ *                         `seedAdminHttp.ts`).
  *
  * See docs/adr/0026-organization-settings-modules.md.
  */
@@ -238,7 +238,7 @@ export const createInternal = internalMutation({
  * unset, stamps it — creating the `instanceSettings` singleton (with the seed's
  * settings columns) when none exists yet. Returns `{ claimed }`.
  *
- * `seedAdmin.ts` calls this BEFORE creating any user. Because the check and the
+ * `seedAdminHttp.ts` calls this BEFORE creating any user. Because the check and the
  * write happen in one Convex transaction (OCC-serialized on the singleton), two
  * concurrent `/seed/admin` requests can no longer both pass a separate
  * check-then-write and both seed: exactly one wins the claim, the loser reads the
@@ -278,7 +278,7 @@ export const claimAdminSeedInternal = internalMutation({
 
 /**
  * Whether the durable admin-seed latch has been stamped. Read by
- * `seedAdmin.ts`'s one-shot gate alongside the "any user exists?" probe: the
+ * `seedAdminHttp.ts`'s one-shot gate alongside the "any user exists?" probe: the
  * probe re-arms if every user is deleted, this latch does not.
  */
 export const hasCompletedAdminSeedInternal = internalQuery({

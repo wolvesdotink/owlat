@@ -18,7 +18,7 @@
  * DispatchTable pattern), so a kind added to the wire contract is a compile
  * error there until an entry says what it means. Exactly one kind,
  * `inbound.mailbox.received`, is an explicit documented ignore: the MTA's
- * notifier delivers it to `POST /webhooks/mta-mailbox` (`mail/webhook.ts`),
+ * notifier delivers it to `POST /webhooks/mta-mailbox` (`mail/webhookHttp.ts`),
  * never to this surface.
  */
 

@@ -714,7 +714,7 @@ describe('mtaAdapter.parseEvent', () => {
 
 	it('maps inbound.mailbox.received to the explicit ignore entry with a trace', () => {
 		// The kind is IN the wire union but is served by /webhooks/mta-mailbox
-		// (mail/webhook.ts) — the registry entry exists only to keep the table
+		// (mail/webhookHttp.ts) — the registry entry exists only to keep the table
 		// total, and an event of this kind arriving here is a routing bug.
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		try {

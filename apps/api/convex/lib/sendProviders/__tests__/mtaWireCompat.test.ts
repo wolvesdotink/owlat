@@ -344,7 +344,7 @@ describe('MTA -> Convex webhook event bytes', () => {
 	// is a missing property here — and a missing fixture in
 	// `WEBHOOK_EVENT_BYTES` — until this round-trip names its meaning.
 	// `null` marks the ONE explicit ignore entry: `inbound.mailbox.received`
-	// is served by `POST /webhooks/mta-mailbox` (`mail/webhook.ts`), never by
+	// is served by `POST /webhooks/mta-mailbox` (`mail/webhookHttp.ts`), never by
 	// this adapter's route.
 	const EXPECTED_INBOUND_KIND: Record<MtaWebhookEventType, InboundEventKind | null> = {
 		sent: 'email.delivered',

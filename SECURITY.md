@@ -80,9 +80,9 @@ accepting unsigned/unverified traffic.
 | `MTA_WEBHOOK_SECRET`      | `webhooks/adapters/mta.ts` (`POST /webhooks/mta`)            | 503.                        |
 | `RESEND_WEBHOOK_SECRET`   | `webhooks/adapters/resend.ts` (`POST /webhooks/resend`)      | 503.                        |
 | `TWILIO_AUTH_TOKEN`       | `webhooks/adapters/twilio.ts` (SMS webhook verification)     | 503.                        |
-| `META_APP_SECRET`         | `webhooks/channels.ts` `handleWhatsAppWebhook` POST          | 503.                        |
-| `META_VERIFY_TOKEN`       | `webhooks/channels.ts` `handleWhatsAppWebhook` GET           | 503.                        |
-| `GENERIC_WEBHOOK_SECRET`  | `webhooks/channels.ts` `handleGenericWebhook`                | 503.                        |
+| `META_APP_SECRET`         | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` POST          | 503.                        |
+| `META_VERIFY_TOKEN`       | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` GET           | 503.                        |
+| `GENERIC_WEBHOOK_SECRET`  | `webhooks/channelsHttp.ts` `handleGenericWebhook`                | 503.                        |
 | `UNSUBSCRIBE_SECRET`      | Unsubscribe-link HMAC.                                       | Link generation/verify fails.|
 | `GOOGLE_SAFE_BROWSING_API_KEY` (optional) | URL-reputation scanner.                          | Reputation skipped.         |
 

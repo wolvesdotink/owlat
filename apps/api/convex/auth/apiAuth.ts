@@ -9,16 +9,14 @@
  *   - `auth/apiHandlers.ts`  — the body cap, `requireScope`, and
  *     `createAuthenticatedHandler`.
  *
- * What stays here is what has a generated path (`internal.auth.apiAuth.*`) or is
- * registered as a route in `http.ts`.
+ * What stays here is what has a generated path (`internal.auth.apiAuth.*`);
+ * the CORS-preflight and health-check routes live in `auth/apiAuthHttp.ts`.
  */
-import { httpAction, internalMutation } from '../_generated/server';
+import { internalMutation } from '../_generated/server';
 import { v } from 'convex/values';
 import { rateLimiter } from '../rateLimiter';
-import { corsHeaders as sharedCorsHeaders } from '../lib/cors';
 import { deriveEffectiveScopes } from '../plugins/apiKeyBinding';
 import { isApiKeyUsable } from './apiKeyAuth';
-import { jsonResponse } from './apiResponses';
 
 // ============ INTERNAL QUERIES/MUTATIONS ============
 
@@ -107,30 +105,4 @@ export const updateKeyLastUsed = internalMutation({
 			lastUsedAt: Date.now(),
 		});
 	},
-});
-
-// ============ HTTP ACTION HANDLERS ============
-
-/**
- * Handle CORS preflight requests
- */
-export const handleCors = httpAction(async (_ctx, request) => {
-	const origin = request.headers.get('Origin');
-	return new Response(null, {
-		status: 204,
-		headers: {
-			...sharedCorsHeaders(undefined, origin),
-			'Access-Control-Max-Age': '86400',
-		},
-	});
-});
-
-/**
- * API health check endpoint
- */
-export const healthCheck = httpAction(async () => {
-	return jsonResponse({
-		status: 'ok',
-		timestamp: new Date().toISOString(),
-	});
 });

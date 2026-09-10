@@ -2,7 +2,7 @@
  * Seed loader: accounts — dummy teammate sign-ins for local dev.
  *
  * Creates BetterAuth user + credential account + org member rows via the
- * component adapter (the same direct-adapter path `seedAdmin.ts` uses; the
+ * component adapter (the same direct-adapter path `seedAdminHttp.ts` uses; the
  * public signup flow is closed because this deployment enforces the
  * single-org invariant), plus the matching `userProfiles` row.
  *

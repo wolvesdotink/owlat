@@ -10,7 +10,7 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
  * Covered here:
  *   - POST /webhooks/github               (webhooks/githubHttp.ts handleGithubWebhook)
  *   - POST /webhooks/mta-verify-credential (mail/authHttp.ts handleVerifyCredential)
- *   - POST /webhooks/mta-mailbox          (mail/webhook.ts handleMailWebhook)
+ *   - POST /webhooks/mta-mailbox          (mail/webhookHttp.ts handleMailWebhook)
  *
  * Each handler verifies an HMAC over the raw body before doing any work, so we
  * assert the exact reject statuses (503 missing secret, 401 missing/bad sig,
