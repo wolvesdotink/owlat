@@ -8,8 +8,8 @@
  *
  * Everything it does is the SHIPPED path:
  *   1. credentials → `TransportCredentialsStep.vue`, which drives the sealed
- *      `/api/delivery/apply-transport` env patch (no second credential model,
- *      D4). The shell learns only WHETHER the step settled — a secret never
+ *      `/api/delivery/apply-transport` env patch (no second credential
+ *      model). The shell learns only WHETHER the step settled — a secret never
  *      reaches this component at all.
  *   2. live send test → the shipped `DeliveryTestSendCard`, mounted here rather
  *      than reimplemented, advancing the step from its `result` event.

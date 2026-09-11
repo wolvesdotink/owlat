@@ -271,7 +271,7 @@ export function evaluateEngagementComparison(
 		referenceSample: reference?.sample ?? null,
 		// `minSample` always names the OWN arm's floor and `referenceMinSample`
 		// always names the second series' — on every path, hold and decided alike.
-		// On gate 4b the two differ by 3x, so a D12 audit row or a dashboard cell
+		// On gate 4b the two differ by 3x, so an audit row or a dashboard cell
 		// that reported only one of them would state something false about the
 		// other arm whichever one it picked.
 		minSample,

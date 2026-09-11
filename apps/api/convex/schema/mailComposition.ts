@@ -256,7 +256,7 @@ export const mailCompositionTables = {
 		name: v.string(),
 		shortcut: v.string(),
 		bodyHtml: v.string(),
-		// Typed variables the composer resolves at insertion (plan idea 13):
+		// Typed variables the composer resolves at insertion:
 		// recipient facts, the sender identity, the date, or a prompt-on-insert
 		// question. Optional so existing rows read as undefined — an undeclared
 		// token still resolves through the client's implicit name table, so

@@ -141,8 +141,8 @@ export const rampDecisionReasonValidator = v.union(
 	v.literal('healthy'),
 	v.literal('graduated'),
 	// THE OPERATOR'S OWN REASONS. A human hand on the ramp is still a
-	// decision, and a decision with no audit row is exactly the silence D12
-	// forbids — so an operator hold, pin, force-advance or phase reset writes a
+	// decision, and a decision with no audit row is exactly the silence the audit
+	// rule forbids — so an operator hold, pin, force-advance or phase reset writes a
 	// `mixDecisions` row with a reason of its own rather than borrowing a gate's.
 	v.literal('operator_pause'),
 	v.literal('operator_pin'),

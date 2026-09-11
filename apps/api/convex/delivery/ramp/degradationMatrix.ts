@@ -12,7 +12,7 @@
  * `__tests__/noScatteredConditionals.test.ts` proves that every entry is
  * exercised and that no consumer re-derives a substitution inline.
  *
- * D2 IS THE INVARIANT THIS FILE EXISTS TO ENCODE. An absent integration lowers
+ * THE INVARIANT THIS FILE EXISTS TO ENCODE: an absent integration lowers
  * measurement confidence and slows the ramp. It NEVER blocks a send, never
  * blocks a phase promotion outright, never surfaces an error and never renders a
  * "setup incomplete" nag — which is why every entry carries `isBlocking: false`
@@ -113,14 +113,14 @@ export interface RampSubstitutionEntry {
 	readonly label: string;
 	readonly scope: RampSubstitutionScope;
 	/**
-	 * What runs INSTEAD. EMPTY IS A LEGITIMATE VALUE and means exactly what the
-	 * plan says about seed mailboxes: "substitute NOTHING — this is the one true
-	 * gap". An empty list is why `paceCeilingDay` exists.
+	 * What runs INSTEAD. EMPTY IS A LEGITIMATE VALUE and is what seed mailboxes
+	 * get: substitute NOTHING — this is the one true gap. An empty list is why `paceCeilingDay` exists.
 	 */
 	readonly substitutes: readonly RampSubstituteSource[];
 	/**
-	 * ABSOLUTE override of K_CLEAN, not a delta: the plan states "K_CLEAN 3 -> 5",
-	 * a number, and two entries that each added one would silently compose into 7.
+	 * ABSOLUTE override of K_CLEAN, not a delta: a substitution names a number
+	 * ("K_CLEAN 3 -> 5"), and two entries that each added one would silently
+	 * compose into 7.
 	 * When several entries carry one, `./degradation.ts` takes the STRICTEST.
 	 */
 	readonly cleanWindowsRequired?: number;
@@ -150,7 +150,7 @@ export interface RampSubstitutionEntry {
 	 *
 	 * NOTHING RENDERS IT TODAY, said here because this is the field a later change
 	 * would ask "how much care does this deserve?" about. Its only consumer was
-	 * `rampCellConfidence`, a projection no screen ever called, removed under D20
+	 * `rampCellConfidence`, a projection no screen ever called, since removed
 	 * (issue #515); the delivery dashboard grades a cell through
 	 * `dashboardConfidence` instead and the copy for THAT lives in
 	 * `apps/web/app/utils/deliverabilityMeasurement.ts`. So this sentence is
@@ -171,22 +171,21 @@ export interface RampSubstitutionEntry {
 	 * `false` for an integration Owlat does not implement: its absence costs
 	 * nothing and there is no button to press, so surfacing its note and its offer
 	 * on every cell for ever would be an unactionable permanent nag — precisely
-	 * what D2 forbids. The entry still exists (the table is the plan's table, and
-	 * the absence has a stated, non-alarming answer); it simply contributes no
-	 * copy. Every entry an operator CAN act on carries `true`.
+	 * what the additive-only rule forbids. The entry still exists (the table is
+	 * exhaustive, and the absence has a stated, non-alarming answer); it simply
+	 * contributes no copy. Every entry an operator CAN act on carries `true`.
 	 *
 	 * A RULE FOR A RENDERER, and there is none right now (see `confidenceNote`).
 	 */
 	readonly offersImprovement: boolean;
-	/** Always false, as a FIELD so a fixture asserts D2 rather than assuming it. */
+	/** Always false, as a FIELD so a fixture asserts it rather than assuming it. */
 	readonly isBlocking: false;
 }
 
 const COMPLAINT_TIGHTENED: RateFraction = rateFraction(0.0005);
 
 /**
- * THE TABLE. One entry per absent integration, verbatim from the plan's
- * "gates, degraded honestly" section.
+ * THE TABLE. One entry per absent integration — the gates, degraded honestly.
  *
  * ORDER IS NOT SIGNIFICANT — every fold in `./degradation.ts` is commutative
  * (strictest wins, multipliers multiply, deltas sum) precisely so that a reader
@@ -322,7 +321,8 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 		// NOT AN OFFER THIS DEPLOYMENT CAN TAKE UP. Owlat integrates no commercial
 		// placement service, so this entry is absent in EVERY deployment for ever.
 		// Rendering its note and its offer on every cell would be a permanent,
-		// unactionable nag — the exact thing D2 forbids — so it contributes only its
+		// unactionable nag — the exact thing the additive-only rule forbids — so it
+		// contributes only its
 		// (unchanged) confidence and nothing else.
 		offersImprovement: false,
 		isBlocking: false,

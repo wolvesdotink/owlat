@@ -252,7 +252,7 @@ export async function resolveLastMileRouting(
 	if (input.mtaReconciliation) {
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	}
-	// GO FIND A RELAY, unless the plan already put us on one. The second half of
+	// GO FIND A RELAY, unless the route already put us on one. The second half of
 	// this gate used to read `route?.providerType !== 'ses'`, which picked out the
 	// same routes only while SES was the one relay `setRoute` would save. It is no
 	// longer, so an identically-configured Mandrill / bring-your-own-SMTP / plugin

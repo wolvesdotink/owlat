@@ -77,7 +77,7 @@ export type MixAssignmentBasis =
 	| 'unidentified';
 
 /**
- * The cell's controller state. `ownShare` is the resolved D1 expression
+ * The cell's controller state. `ownShare` is the resolved share expression
  * (`ownShare ?? (isFallbackActive ? 0 : 1)`) — this module never reads a route
  * state row itself.
  */
@@ -137,8 +137,8 @@ export interface MixAssignment {
 	readonly bucket: number | null;
 	/**
 	 * Why this decision came out the way it did. DIAGNOSTIC ONLY: it is not
-	 * persisted on the assignment row, because the audit trail D12 asks for is
-	 * owned by P3's `mixDecisions` table, which records the CONTROLLER's
+	 * persisted on the assignment row, because the audit trail the ramp owes an
+	 * operator lives in the `mixDecisions` table, which records the CONTROLLER's
 	 * per-cell evaluation (from/to share, verdict, failed gate, gate inputs) —
 	 * the decision a human can act on. A per-recipient copy of a branch label
 	 * would be a second, far larger audit trail of a decision nobody reviews
@@ -181,8 +181,8 @@ export type MixContext =
  * all — marking rows `isCalibration` there would feed the engagement-ratio gate
  * a one-armed sample. `s = 0` is the mirror image. A separate `isGraduated`
  * knob would have been a second, unwired way to say what the share already
- * says; if P3 ever needs to zero the slice at a share below the ceiling, it can
- * add the parameter then.
+ * says; if the controller ever needs to zero the slice at a share below the
+ * ceiling, it can add the parameter then.
  */
 export function calibrationSliceFor(ownShare: number): number {
 	const share = clampOwnShare(ownShare);
@@ -231,7 +231,7 @@ type MixHashConsumer =
  * `automation` and `transactional` streams — passes its send id as the fallback
  * key, and THAT is the salt: a constant salt segment there would pin a contact
  * to one arm for the entire life of a mix version, which is precisely the two
- * fixed cohorts D7 exists to prevent, and `automation` is a first-class
+ * fixed cohorts the salt exists to prevent, and `automation` is a first-class
  * high-volume stream. With the send id in the salt the arm is re-drawn per
  * MESSAGE and stays stable within one message, which is exactly the property
  * the assignment row records.

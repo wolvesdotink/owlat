@@ -99,7 +99,7 @@ export const resetCellPhase = adminMutation({
 		// sends nothing through the relay by construction, so it has no reference
 		// arm — and "start it over" could never start it over. A configured relay is
 		// one the cut can move mail to, and the cut is what creates the traffic the
-		// tick then measures (the enrolment fork's own convergence, D14 x D3).
+		// tick then measures — the enrolment fork's own convergence.
 		//
 		// THE MEASURED ARM IS THE OTHER HALF OF THE UNION, not a leftover: a relay
 		// disconnected in the last day can still be carrying this cell inside the

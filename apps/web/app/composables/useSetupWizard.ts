@@ -94,7 +94,7 @@ export function setupStepPath(stepId: SetupStepId): string {
  * What the wizard's provider picker can be set to: any kind the catalog
  * declares, or the receive-only answer.
  *
- * DERIVED, per the seams plan's D1 — this used to be the fifth independent
+ * DERIVED, never restated — this used to be the fifth independent
  * spelling of the kind union (the catalog, `SEND_TRANSPORT_KINDS`,
  * `DELIVERY_PROVIDER_KINDS`, `RelayProviderChoice` and this one), so a provider
  * had to be remembered here as well as declared. `'none'` is this surface's own
@@ -168,7 +168,7 @@ export interface EmailStepDraft {
  * `next()` handler. Resend keys are validated over the network in the page
  * before this is committed; this only assembles values.
  *
- * THE PER-PROVIDER IF-CHAIN IS GONE (the seams plan's D1/D5). This function used
+ * THE PER-PROVIDER IF-CHAIN IS GONE. This function used
  * to restate, as imperative code, the same mapping the catalog declares: one
  * `if (draft.provider === …)` per vendor, each naming that vendor's env
  * variables and its normalisation rules. It now writes whatever the selected
@@ -192,7 +192,7 @@ export function buildProviderEnv(
 		next['EMAIL_PROVIDER'] = draft.provider;
 		Object.assign(next, transportCredentialEnv(draft.provider, credentialValues));
 	}
-	// The sending IPs and the EHLO identity are the OWN ARM's — D3's one
+	// The sending IPs and the EHLO identity are the OWN ARM's — the one
 	// legitimate identity question, asked through the catalog's `tier: 'own'`
 	// declaration rather than by comparing the choice to a literal. They are also
 	// collected when the MTA runs only as a receiving profile beside a relay.
@@ -235,7 +235,7 @@ export interface SetupSummary {
  * review step resolves whatever it gets with `t()` (a catalog label, which no
  * message defines, resolves to itself).
  *
- * DERIVED (D1): the hand-written table this replaced restated `entry.label` for
+ * DERIVED: the hand-written table this replaced restated `entry.label` for
  * all four relays, so a provider had to be remembered here as well as declared.
  * TWO STRINGS SURVIVE IT, and neither is a vendor's:
  *
@@ -244,7 +244,7 @@ export interface SetupSummary {
  *  - the OWN ARM's qualifier. This step summarises a CHOICE rather than naming a
  *    product — "(self-hosted)" is what distinguishes it from the managed options
  *    listed beside it — and it is the string the shipped review step has always
- *    shown. Keyed by `OWN_SEND_PROVIDER_KIND`, D3's one definitional identity,
+ *    shown. Keyed by `OWN_SEND_PROVIDER_KIND`, the one definitional identity,
  *    so it is not a vendor table and cannot grow one: any other kind, present or
  *    future, reads its label from the entry.
  *

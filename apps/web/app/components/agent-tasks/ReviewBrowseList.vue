@@ -221,7 +221,7 @@ const onRejectClick = (messageId: Id<'inboundMessages'>) =>
 
 // Keyboard-first triage: j/k move, Enter opens the thread, a approves (through
 // the SAME undo-guarded send the button calls), e edits, # rejects — plus the
-// C2 selection layer (Space/x select, Shift+J/K extend, * select-all-visible).
+// selection layer (Space/x select, Shift+J/K extend, * select-all-visible).
 // Built by reusing the Postbox house composables; keys stay inert while the
 // inline compose input/textarea is focused.
 function openThread(row: ReviewRow) {

@@ -33,8 +33,8 @@ const props = defineProps<{
 	/**
 	 * Whether the deployment has a reference arm configured. Stated by the view
 	 * object the parent renders from (`RampControlsView.referenceTransportId`)
-	 * rather than inferred from the pace, so the D14 copy below depends on the
-	 * fact instead of on a constant that happens to correlate with it.
+	 * rather than inferred from the pace, so the copy below depends on the fact
+	 * instead of on a constant that happens to correlate with it.
 	 */
 	hasReferenceArm: boolean;
 	busy?: boolean;

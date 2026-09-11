@@ -81,7 +81,7 @@ export function readHardStopSignals(
  * IS AN OPERATOR ALLOWED TO RAISE THIS CELL RIGHT NOW?
  *
  * The controls can write a share directly, which means they can reach
- * past the decision function that normally enforces the plan's hard stops. That
+ * past the decision function that normally enforces the hard stops. That
  * would make every hard stop optional in exactly the situation it exists for:
  * while the ramp is globally paused for an incident, while the organization is
  * abuse-suspended, while a critical blocklist freeze is running or while the

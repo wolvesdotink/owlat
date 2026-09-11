@@ -10,13 +10,13 @@
  *
  * IMPLEMENTED AS ROUTES, NOT AS BRANCHING. A route is a named list of
  * conditions; promotion is allowed when ANY route's conditions are all met. Two
- * `if`s in a row would encode the same rule and would be the exact shape this
- * piece exists to eliminate — a third promotion path (a future integration)
- * would then be a third `if` rather than a fourth row.
+ * `if`s in a row would encode the same rule and would be the exact shape the
+ * route table exists to eliminate — a third promotion path (a future
+ * integration) would then be a third `if` rather than a fourth row.
  *
  * PURE: the clock, the evidence and the target rung are parameters.
  *
- * D2 STILL HOLDS. No route is reachable only with an external account: the
+ * NO EXTERNAL ACCOUNT IS LOAD-BEARING. No route is reachable only with one: the
  * standalone route exists precisely so a deployment with zero third-party
  * credentials can reach 1.0 — slower, on corroborated self-hosted evidence.
  */
@@ -25,7 +25,7 @@ import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting
 import { startOfDayUtc } from '../../lib/clock';
 import { DAY_MS } from '../../lib/constants';
 
-/** External evidence older than this is not evidence — the plan's 7 days. */
+/** External evidence older than this is not evidence — seven days. */
 const PROMOTION_EVIDENCE_MAX_AGE_MS = 7 * DAY_MS;
 
 /** The plan's "14 CONSECUTIVE days across EVERY pool IP". */
@@ -80,7 +80,7 @@ interface PromotionRoute {
  * THE ROUTES. Any one of them, fully met, permits the promotion.
  *
  * The two external routes are single-condition and provider-scoped; the
- * standalone route is the plan's four conditions, all of which are measured on
+ * standalone route carries four conditions, all of which are measured on
  * our own infrastructure.
  */
 const PROMOTION_ROUTES: readonly PromotionRoute[] = [

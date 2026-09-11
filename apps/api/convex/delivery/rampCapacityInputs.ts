@@ -25,10 +25,10 @@
  * (`systemMail`, `mail/outbound`, `mail/deliveryHooks`) sends `ipPool:
  * 'transactional'`, and the MTA adapter's default is `'transactional'` too — so
  * a transactional cell is NOT bounded by this reading at all. Bounding it by a
- * cap that does not govern it would throttle the stream the plan wants to
- * ramp last and fastest, for no measured reason.
+ * cap that does not govern it would throttle the stream that should ramp last
+ * and fastest, for no measured reason.
  *
- * That also stops the plan's SAFETY = 0.8 double-counting itself. The 20% it
+ * That also stops SAFETY = 0.8 double-counting itself. The 20% it
  * holds back is explicitly the reserve for TRANSACTIONAL BURSTS against the
  * shared IPs; summing transactional demand into the denominator as well would
  * charge that traffic to the ramp twice.
@@ -44,8 +44,8 @@
  * plumbing a demand total through the cursor chain and keeping a second, staler
  * source of truth for it. The reading is also taken LAZILY — `capacityInputForCell`
  * takes a THUNK and resolves it only after the cell is known to be governed — so
- * a slice with no ramp-managed cell in it (the normal state during rollout, plan
- * D1), and a slice of transactional cells (which the stream-major cell order
+ * a slice with no ramp-managed cell in it (the normal state during rollout),
+ * and a slice of transactional cells (which the stream-major cell order
  * produces exactly), never ask for it at all.
  *
  * ABSENCE IS A SUPPORTED CONFIGURATION. No warming state, a stale sync, a
@@ -132,7 +132,7 @@ async function readCellVolumeDays(
 /**
  * THE REASON THE CELLS AGREE ON, or the generic one when they do not.
  *
- * D12 wants an operator told WHY, not merely that. "Every governed cell has
+ * AN OPERATOR HAS TO BE TOLD WHY, not merely that. "Every governed cell has
  * never sent" (`no_history`) and "every governed cell is paused"
  * (`no_volume`) are different situations with different responses, and both are
  * lost if the tick reports one hardcoded string. A mixed set has no single true

@@ -30,7 +30,8 @@
  * interlock; that rung is what makes it last a window.
  *
  * WHAT IS NOT INTERLOCKED, and why. RETREATS compose freely in both directions
- * and at the same time: the asymmetry in D9 is the whole point, and a rule that
+ * and at the same time: retreat is cheap and advance is expensive by design,
+ * and a rule that
  * made a share retreat delay a pace retreat would ration the one thing that must
  * never be rationed. A HOLD on either side constrains nothing.
  *

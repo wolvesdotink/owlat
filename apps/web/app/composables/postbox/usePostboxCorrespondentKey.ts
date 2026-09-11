@@ -2,11 +2,11 @@ import { api } from '@owlat/api';
 import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 
 /**
- * The thread correspondent's PUBLIC sealing-key status (Sealed Mail E5, flag
+ * The thread correspondent's PUBLIC sealing-key status (Sealed Mail, flag
  * `sealedMail`), read ONCE for the whole conversation.
  *
  * Previously owned by PostboxThreadSealSurfaces, which rendered both trust
- * surfaces itself. The two have different homes now (plan §05): the key-change
+ * surfaces itself. The two have different homes now: the key-change
  * banner is an alarm and stays at thread level, while the key PANEL — pinned
  * fingerprint, first seen, source, the human verification ritual — moved into
  * the sender's trust chip popover. Hoisting the query here keeps that one
@@ -26,8 +26,8 @@ export function usePostboxCorrespondentKey(correspondent: () => string) {
 	);
 
 	/**
-	 * Did a human here verify the key this contact just rotated AWAY from (plan
-	 * idea 54)? A key change is always worth reading; a key change to a key
+	 * Did a human here verify the key this contact just rotated AWAY from? A key
+	 * change is always worth reading; a key change to a key
 	 * somebody physically checked is worth stopping over, and the banner says so
 	 * differently. On a `keyChanged` row the pin is still the OLD key, so a
 	 * verification that matches the pin is a verification of the key being

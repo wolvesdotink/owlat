@@ -7,7 +7,7 @@
  * updater sidecar. This composable accumulates that drift and drives the
  * persistent "Services out of sync — Apply & restart" banner.
  *
- * Two sources feed the banner (plan FU4):
+ * Two sources feed the banner:
  *   - the optimistic in-session accumulation from `trackFlagChange`, which is
  *     instant and needs no round trip, and
  *   - a one-shot server-side probe (`/api/system/profile-drift`) comparing the

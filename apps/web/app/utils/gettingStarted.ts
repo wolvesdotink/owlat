@@ -38,8 +38,8 @@ export type ViewerRole = 'admin' | 'member';
 /**
  * Which backend records a single "dismiss" action must clear. Because the card
  * can show admin (instance-scoped) and personal (per-user) steps at once, a
- * dismiss has to cover whatever is currently on screen — that is the "one
- * coherent dismissal model" the plan calls for.
+ * dismiss has to cover whatever is currently on screen, so there is one
+ * coherent dismissal model.
  * - `instance` — only the instance go-live steps are showing.
  * - `user` — only the personal steps are showing.
  * - `both` — an admin sees both sections; dismiss clears both records.

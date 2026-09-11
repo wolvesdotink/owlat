@@ -160,7 +160,8 @@ export const deliverabilityRoutingTables = {
 		// has to outlive the tick that fired it: the cron ticks hourly while the
 		// share's evaluation window is a whole day, so an in-memory hand-off would
 		// only postpone the pace step by an hour and both dials would still have
-		// increased inside one window — the thing D3 forbids. The pace ladder holds
+		// increased inside one window, which the interlock exists to forbid. The
+		// pace ladder holds
 		// on this anchor until a whole `RAMP_AIMD.evaluationWindowMs` has passed.
 		// RETREATS ARE NEVER GATED BY IT; only the increase rung reads it.
 		paceDeferredAt: v.optional(v.number()),

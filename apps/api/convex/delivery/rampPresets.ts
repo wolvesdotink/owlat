@@ -15,7 +15,7 @@
  * (`ramp/degradationMatrix.ts`). Defaulting to `conservative` here made the SAME
  * fact slow the SAME cell TWICE: the preset halved the step and the table halved
  * it again, so a standalone campaign cell advanced at a QUARTER step instead of
- * the half the plan specifies. The windows did not double-count (the table's
+ * the half a standalone cell is meant to get. The windows did not double-count (the table's
  * value is an absolute override) which is exactly why the bug was invisible in
  * one number and real in the other.
  *

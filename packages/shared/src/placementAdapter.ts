@@ -16,14 +16,14 @@
  * evidence shapes is CLOSED and lives here; adding a third source would mean
  * editing this file, which is exactly the friction we want.
  *
- * D2 — THE ADDITIVE-ONLY THIRD-PARTY RULE. The commercial key is optional and
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE. The commercial key is optional and
  * its absence changes NOTHING: the substitution table for this signal says "no
  * change", because seeds are the expected configuration rather than a degraded
  * one. Nothing here throws, blocks a send, blocks a phase promotion, or renders
  * an error state. The only thing an absent SOURCE can do is leave gate 5 with
  * `insufficient_data`, which HOLDS the controller.
  *
- * D17 — the reading is a TRIPWIRE, not a gauge. The commercial adapter reports
+ * THE READING IS A TRIPWIRE, NOT A GAUGE. The commercial adapter reports
  * mailbox COUNTS and is folded into the same `SeedObservation` roll-up as the
  * seeds, so neither source can produce a placement percentage and the two can
  * never disagree about what "collapse" means.
@@ -55,8 +55,8 @@ export const DEFAULT_PLACEMENT_SOURCE_KIND: PlacementSourceKind = 'self_hosted_s
 /**
  * One provider's reading from a commercial panel, for one arm.
  *
- * Deliberately COUNTS, never a percentage: D17 forbids quoting a placement
- * number, and counts are what the shared roll-up already consumes. A panel that
+ * Deliberately COUNTS, never a percentage: a tripwire must not be quoted as a
+ * placement number, and counts are what the shared roll-up already consumes. A panel that
  * only reports percentages must convert them against its own panel size before
  * calling — the conversion is the caller's lie to own, not ours.
  */
@@ -68,7 +68,7 @@ export interface CommercialPlacementReport {
 	/** Gmail-style tabbed delivery. Counted as REACHED, exactly as seeds are. */
 	category?: number;
 	spam: number;
-	/** Not found in any folder — D17's most alarming outcome. */
+	/** Not found in any folder — the most alarming outcome. */
 	missing?: number;
 }
 
@@ -86,7 +86,7 @@ export type PlacementEvidence =
 export interface PlacementAdapter {
 	readonly kind: PlacementSourceKind;
 	/**
-	 * D14/D17 — placement evidence is never high confidence, whoever gathered
+	 * PLACEMENT EVIDENCE IS NEVER HIGH CONFIDENCE, whoever gathered
 	 * it. The grade has ONE home (`SEED_GATE_CONFIDENCE`, declared beside the
 	 * thresholds that produce the reading) and both implementations import it:
 	 * a commercial panel is a bigger sample of the SAME signal, so it reads
@@ -204,7 +204,8 @@ export interface PlacementSourceResolution {
 	confidence: SeedConfidence;
 	improvement: PlacementImprovementHint;
 	/**
-	 * ALWAYS `false`, as a literal type. D2 in the type system: no caller can
+	 * ALWAYS `false`, as a literal type — the additive-only rule in the type
+	 * system: no caller can
 	 * write `if (resolution.blocking)` and have it mean anything, and no future
 	 * edit can flip it without changing this type and failing its test.
 	 */

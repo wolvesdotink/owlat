@@ -4,8 +4,8 @@
  * Split out of `deliveryReadiness.ts` (which sits at the repo's 500-LOC cap):
  * that file owns the go-live verdict — can this instance send at all — while this
  * one owns a strictly ADVISORY gate about the gradual own-server/relay
- * switchover. Keeping them apart is also what makes the D2 rule easy to see: this
- * module's only job is to decide when to say NOTHING.
+ * switchover. Keeping them apart is also what makes the additive-only rule easy
+ * to see: this module's only job is to decide when to say NOTHING.
  *
  * Pure primitives in, plain data out — no Convex client, no DOM.
  */

@@ -116,7 +116,7 @@ export interface EmailJobResult {
 	error?: string;
 	/**
 	 * Bounce classification. `'ambiguous'` is the post-DATA drop with no server
-	 * reply (AMBIGUOUS_TIMEOUT, W8): the message may already have been accepted,
+	 * reply (AMBIGUOUS_TIMEOUT): the message may already have been accepted,
 	 * so it is TERMINAL but must NOT be treated as a hard bounce — no recipient
 	 * suppression and no bounce-reputation penalties (see `dispatch/outcome.ts`).
 	 */
@@ -160,7 +160,7 @@ export interface InboundAuthVerdicts {
 	/** DMARC alignment input: the d= domain of the passing DKIM signature. */
 	dkimSigningDomain?: string;
 	/**
-	 * ARC chain-validation result (`cv=`, RFC 8617, Sealed Mail A5). Only `pass`
+	 * ARC chain-validation result (`cv=`, RFC 8617). Only `pass`
 	 * is eligible to rescue a DMARC fail. Absent on older MTA builds / no chain.
 	 */
 	arcCv?: string;
@@ -295,7 +295,7 @@ export interface DkimKeyConfig {
 	selector: string;
 	privateKey: string;
 	/**
-	 * Owning organization (H2 cross-tenant DKIM guard). When set, the key may only
+	 * Owning organization (the cross-tenant DKIM guard). When set, the key may only
 	 * sign for jobs from this organization — see {@link getDkimOptions}. Absent on
 	 * legacy keys (registered before ownership was recorded) and on env-seeded
 	 * keys, which stay usable by any org until re-registered with an owner.

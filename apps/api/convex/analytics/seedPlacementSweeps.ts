@@ -70,7 +70,7 @@ const NO_SWEEPS: SeedCellSweeps = { own: null, reference: null };
  * MODULE-LOCAL: it names `seedProbeEvidence`'s return, and both callers — the
  * per-cell sweeps below and the provider roll-up in `analytics/seedPlacement.ts`
  * — read fields off the value rather than the name. Exporting a shape nobody
- * imports is the declared-and-unread seam this wave is closing.
+ * imports would be a declared-and-unread seam.
  */
 interface SeedProbeEvidence {
 	readonly provider: DestinationProviderKey;

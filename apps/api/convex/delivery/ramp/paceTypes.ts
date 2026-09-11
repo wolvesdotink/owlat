@@ -59,7 +59,7 @@ export type PaceDecisionReason = RampDecisionReason | PaceControlReason;
  * The pace actuator's stored state for one cell, read off the route-state row.
  * Verbatim and unsanitised, exactly like `RampMixState`: making sense of a
  * degenerate reading is the decision function's job, and doing it at the read
- * boundary would hide the hostile input the plan requires us to survive.
+ * boundary would hide the hostile input we have to survive.
  */
 export interface PaceState {
 	/** The stored growth multiplier, unsanitised. */

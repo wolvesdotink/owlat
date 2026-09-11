@@ -1,7 +1,6 @@
 /**
- * Pure helpers for the campaign wizard's sender picker (2026-07-10 experience
- * plan, decision 8). The Setup step replaces the free-text from-name /
- * from-email fields with a SELECT over the ENABLED curated senders; a "Custom
+ * Pure helpers for the campaign wizard's sender picker. The Setup step
+ * replaces the free-text from-name / from-email fields with a SELECT over the ENABLED curated senders; a "Custom
  * address…" option is revealed ONLY when the instance allows custom campaign
  * senders (when off it is invisible, never a disabled row).
  *

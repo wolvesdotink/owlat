@@ -88,8 +88,8 @@ export interface InboundParser<S extends string = string> {
 /**
  * A parser for a provider that delivers a BATCH of events per request.
  *
- * Mandrill posts a `mandrill_events` array of up to thousands of items (plan
- * D10) where Resend, SES and the MTA post one event each. Rather than widening
+ * Mandrill posts a `mandrill_events` array of up to thousands of items where
+ * Resend, SES and the MTA post one event each. Rather than widening
  * `parseEvent` — which would make every single-event adapter's return type
  * `InboundEvent | InboundEvent[] | null` and push the narrowing onto every
  * caller — a batch provider implements `parseEvents` and the pipeline

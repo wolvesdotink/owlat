@@ -20,8 +20,8 @@
  * production (`../postmaster.ts`'s `getPostmasterStatus`); `yahoo_cfl` is
  * declared, tested and unconsumed through this contract — the Yahoo stand-in is read directly, as
  * `yahooComplaintSubstitution`, by `../../domains/yahooCfl.ts`. Wiring either
- * feed into a decision path would change what the ramp does and is its own piece.
- * That is also what their `kind: 'advisory'` says out loud.
+ * feed into a decision path would change what the ramp does and is its own
+ * change. That is also what their `kind: 'advisory'` says out loud.
  *
  * WHAT IS DELIBERATELY NOT HERE. The shipped relay-fallback triggers
  * (`ip_quarantined`, `dnsbl_listed`, `dnsbl_partial`, `dnsbl_unknown`) are
@@ -30,7 +30,7 @@
  * collector would be an inventory row that promises a reader there is not.
  *
  * NO PLUGIN BUCKET (deliberate). Third-party signal sources are deferred: the
- * registry is the seam, and opening it is a one-piece follow-up on the day
+ * registry is the seam, and opening it is a follow-up on the day
  * someone wants it. Nothing here reads a manifest or a contribution.
  */
 

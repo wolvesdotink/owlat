@@ -17,8 +17,8 @@
  * IT DECIDES NOTHING OF ITS OWN. No threshold is declared here and no rate is
  * compared against one here: the pass/fail comes out of the roll-up's status.
  * A second home for the 90 % line would be a second answer to "did the seeds
- * reach the inbox", and D5's rule is that the controller and the dashboard must
- * never be able to disagree about a number. The rates in the MEASUREMENT shape
+ * reach the inbox", and the controller and the dashboard must never be able to
+ * disagree about a number. The rates in the MEASUREMENT shape
  * are RENDERED, never consulted, and they are counted with the shared module's
  * own `isSeedPlacementReached` predicate so even the displayed number cannot
  * disagree with the verdict beside it.
@@ -34,9 +34,9 @@
  * was deleted rather than left as a second route to one rule.
  *
  * ONE IMPLEMENTATION, NOT TWO. Standalone is the DEGENERATE CASE, exactly as
- * D1's boolean is a degenerate share: with no reference-arm probes the roll-up
- * reports `no_reference_arm` and the absolute clause is the whole gate (D3's
- * substitution). The standalone entry point below is the same function with the
+ * the standalone boolean is a degenerate share: with no reference-arm probes
+ * the roll-up reports `no_reference_arm` and the absolute clause is the whole
+ * gate. The standalone entry point below is the same function with the
  * reference sweep dropped at the boundary, so the degraded path cannot diverge
  * from the equipped one — there is nothing for it to diverge from.
  *

@@ -153,7 +153,7 @@ export function resolveRoute(
 			? 'warmup_overflow'
 			: undefined);
 	if (!reason || !fallbackConfig?.isEnabled) return resolved;
-	// D6: a CAPABILITY question, not an identity check. Judged against this
+	// A CAPABILITY question, not an identity check. Judged against this
 	// resolution's own readiness predicate — the same one `enabledEntries` was
 	// filtered by — so the gate and the relay lookup below can never disagree
 	// about whether a transport is configured.

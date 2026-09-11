@@ -146,10 +146,10 @@ export interface ComposeMessageInput {
 	 * composer auto-enables it iff an addr-spec carries a non-ASCII LOCAL-PART (which
 	 * has no encoded-word or punycode form, so native UTF-8 is the only faithful wire
 	 * form). A non-ASCII DOMAIN does NOT trip it — domains are IDN-punycoded to
-	 * A-labels at composition (W6), so a domain-only-IDN address rides as pure ASCII.
-	 * Leaving it `false`/absent for an all-ASCII-addr-spec message keeps the exact
-	 * pre-X3 output (encoded-words for non-ASCII display names / subjects) — the
-	 * property the R2 golden corpus pins. Set it explicitly to force native UTF-8
+	 * A-labels at composition, so a domain-only-IDN address rides as pure ASCII.
+	 * Leaving it `false`/absent for an all-ASCII-addr-spec message keeps the
+	 * encoded-word output (for non-ASCII display names / subjects) — the property
+	 * the golden corpus pins. Set it explicitly to force native UTF-8
 	 * even when only a display name / subject is non-ASCII.
 	 */
 	eai?: boolean;
@@ -273,8 +273,8 @@ function idnToAscii(domain: string): string {
  * IDN-normalize the DOMAIN of an `addr-spec` / `name-addr` to IDNA A-labels
  * (punycode), preserving the display name and local-part exactly. A non-ASCII
  * domain has a lossless ASCII downgrade (RFC 5890 U-label → A-label), so it never
- * requires SMTPUTF8: `user@例え.test` becomes `user@xn--r8jz45g.test` (W6 —
- * "envelope domains IDN-punycoded at composition"), which also lets DNS MX
+ * requires SMTPUTF8: `user@例え.test` becomes `user@xn--r8jz45g.test`
+ * (envelope domains are IDN-punycoded at composition), which also lets DNS MX
  * resolution find it (RFC 6531 §3.7.1 needs A-labels). A non-ASCII LOCAL-PART is
  * left untouched: no ASCII form exists for it, so it can only ride SMTPUTF8/EAI.
  */
@@ -301,8 +301,8 @@ function idnNormalizeAddress(addr: string): string {
  * check (`idnNormalizeAddress`), so a domain-only-IDN address is all-ASCII here and
  * does NOT trip EAI. A message whose only non-ASCII text is a display name or
  * subject does NOT trip this either — those round-trip losslessly through RFC 2047
- * encoded-words, so the pre-X3 output is preserved and the R2 golden corpus is
- * unchanged. Callers pass the already-domain-normalized address list.
+ * encoded-words, so the encoded-word output is preserved and the golden corpus
+ * is unchanged. Callers pass the already-domain-normalized address list.
  */
 function messageRequiresEai(addresses: string[]): boolean {
 	for (const addr of addresses) {
@@ -353,7 +353,7 @@ function deriveEnvelope(input: ComposeMessageInput): { from: string; to: string[
  * and golden tests possible.
  */
 export function composeMessage(input: ComposeMessageInput): ComposedMessage {
-	// IDN-normalize every address domain to A-labels up front (W6): the header
+	// IDN-normalize every address domain to A-labels up front: the header
 	// forms, the derived envelope, the Message-ID domain and the EAI decision all
 	// key off the SAME normalized addresses, so a domain-only-IDN address renders
 	// pure ASCII and never needs SMTPUTF8, while a non-ASCII local-part still does.

@@ -77,7 +77,7 @@ export interface RampDegradation {
 	readonly complaintMaxOverride: RateFraction | undefined;
 	/**
 	 * The furthest warming-schedule DAY the pace actuator may reach.
-	 * CONSUMED BY the pace-actuator piece, which is what clamps the warming
+	 * CONSUMED BY the pace actuator, which is what clamps the warming
 	 * schedule; resolved here because it is the substitution table's number and
 	 * this is the table's one fold.
 	 */

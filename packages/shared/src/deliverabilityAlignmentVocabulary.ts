@@ -101,7 +101,7 @@ export type ReferenceArmInput =
  */
 export const MULTI_RELAY_DETAIL_PREFIX = 'More than one relay is enabled';
 
-/** True when an `unknown` reference detail is D8's multi-relay case. */
+/** True when an `unknown` reference detail is the multi-relay case. */
 export function isMultiRelayDetail(detail: string): boolean {
 	return detail.startsWith(MULTI_RELAY_DETAIL_PREFIX);
 }

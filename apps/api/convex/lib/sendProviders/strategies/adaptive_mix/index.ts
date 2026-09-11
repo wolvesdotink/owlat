@@ -8,14 +8,14 @@
  * guess. `adaptive_mix` decides per RECIPIENT, deterministically, from the
  * cell's controlled share.
  *
- * The share it splits against is the D1 expression
+ * The share it splits against is the resolution expression
  * (`ownShare ?? (isFallbackActive ? 0 : 1)`), resolved by the caller. That
  * makes the degenerate cases the shipped behaviour exactly: `s = 0` sends the
  * whole cell to the reference arm (what a fallback-active cell does today),
  * `s = 1` sends it all to the own MTA (what a cell with no state does today).
  *
- * The strategy IS deterministic (`isDeterministic: true`) — that is the point
- * of the piece — but only when it is given a mix context. WITHOUT ONE IT
+ * The strategy IS deterministic (`isDeterministic: true`) — that is the whole
+ * point of it — but only when it is given a mix context. WITHOUT ONE IT
  * RETURNS NULL, and the caller falls back explicitly (the env fallback). It
  * deliberately does NOT degrade to "the first enabled provider": that answer is
  * `single`'s, it is silent, and it would put 100% of a split cell on one
@@ -55,8 +55,8 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * The transport kind that IS the own arm. Every other catalog transport (SES,
  * Resend, an SMTP relay, a plugin transport) is a reference arm.
  *
- * THE ONE IDENTITY THE SEAMS PLAN SANCTIONS (its D3): own vs. not-own is a
- * definition, not a branch on a provider's name, and this name plus its
+ * THE ONE SANCTIONED IDENTITY: own vs. not-own is a definition, not a branch
+ * on a provider's name, and this name plus its
  * domain-provider twin (`OWN_SENDING_DOMAIN_PROVIDER_KIND`, pinned equal to it
  * at build time) are where that definition lives for backend code. The rule is
  * that every other "is this our own MTA?" test READS one of the two rather than
@@ -105,9 +105,9 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  *     That map holds declarations ONLY.
  *   * COMPARISONS that are debt — `scripts/provider-identity-allowlist.txt`,
  *     read by `bun run lint:providers` over `apps/`, `packages/` and
- *     `examples/`. Each entry sits under a family header naming the piece that
- *     deletes it; the count is what acceptance criterion A1 measures, and the
- *     gate fails on an entry that no longer excuses anything.
+ *     `examples/`. Each entry sits under a family header naming what would
+ *     delete it, and the gate fails on an entry that no longer excuses
+ *     anything.
  *   * COMPARISONS that are NOT debt — `scripts/provider-identity-collisions.txt`,
  *     for a spelling that belongs to another alphabet: the MTA routing API's
  *     `'mta' | 'relay' | 'defer'` answer (`delivery/lastMileRouting.ts`), a

@@ -24,7 +24,7 @@ import {
 
 const { t } = useI18n();
 
-// ── Undo-send window (plan idea 8) ───────────────────────────────────────────
+// ── Undo-send window ─────────────────────────────────────────────────────────
 // Not gated on anything: the hold applies to every send from this account.
 const { undoSendSeconds, setUndoSendSeconds, isSaving } = usePostboxSettings();
 

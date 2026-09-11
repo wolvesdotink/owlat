@@ -9,7 +9,7 @@
  * nags, and the ramp still moves — on weaker evidence, at a slower pace, and
  * SAYING SO.
  *
- * THE SUBSTITUTIONS, straight from the plan's "gates, degraded honestly" table:
+ * THE SUBSTITUTIONS — the gates, degraded honestly:
  *
  *   1 HARD BOUNCE  absolute <=2% AND <=1.5x the cell's own 30-day trailing rate.
  *                  Confidence HIGH — bounce processing is entirely self-hosted

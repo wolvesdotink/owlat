@@ -854,7 +854,7 @@ export function isDeliveryProviderKind(value: string | undefined): value is Deli
 export function getSendPathRequiredEnv(provider: string | undefined): string[] {
 	// The catalog's `requiredEnvVars` IS this table — it was a per-kind switch
 	// here, a per-kind list in the backend catalog and a third in
-	// `./setupSendingPresets` until the seams plan's D1 collapsed them. Which
+	// `./setupSendingPresets` until one derivation collapsed them. Which
 	// variables are the presence gate (and why an optional refinement such as
 	// `MANDRILL_WEBHOOK_KEY` is not one) is argued on the entries themselves.
 	return [...(coreSendProviderCatalogEntry(provider)?.requiredEnvVars ?? [])];

@@ -123,7 +123,7 @@ export class SmtpConnection {
 	 * fully-parsed reply queued, or bytes mid-line in the parser. After a clean
 	 * transaction this is `false`; a `true` here before reusing the socket means a
 	 * leftover/unsolicited reply would desync the next command, so the reuse layer
-	 * (X1 `resetTransaction`) refuses to reuse the connection.
+	 * (`resetTransaction`) refuses to reuse the connection.
 	 */
 	get hasPendingData(): boolean {
 		return this.reader.hasBufferedData;
@@ -151,7 +151,7 @@ export class SmtpConnection {
 	 * checks a single line (exactly one trailing CRLF, no interior CR/LF), so a
 	 * hand-built or attacker-influenced line can never smuggle a second command into
 	 * the batch. The caller then reads one reply per line, in order, via
-	 * {@link readReply}: the D5 sequential-READ invariant is untouched — pipelining
+	 * {@link readReply}: the sequential-READ invariant is untouched — pipelining
 	 * batches the WRITE side only, and the reply reader still hands out exactly one
 	 * reply per read regardless of how the peer frames them on the wire.
 	 *
@@ -169,8 +169,9 @@ export class SmtpConnection {
 	/**
 	 * Refuse to enqueue a command (or batch) while a reply is still awaited, BEFORE
 	 * any bytes reach the wire — writing first (then letting `reader.read` reject)
-	 * would leave an orphan line whose reply desyncs the next read. D5 is sequential
-	 * command/reply, and a batch can never be interleaved with an outstanding read.
+	 * would leave an orphan line whose reply desyncs the next read. The protocol is
+	 * sequential command/reply, and a batch can never be interleaved with an
+	 * outstanding read.
 	 * The single implementation shared by {@link command} and {@link writePipeline}.
 	 */
 	private assertReaderIdle(phase: SmtpPhase): void {
@@ -185,7 +186,7 @@ export class SmtpConnection {
 
 	/**
 	 * Enforce exactly-one-command framing on a command line — one trailing CRLF, no
-	 * interior CR/LF — even though the S1 serializers already guard their fields.
+	 * interior CR/LF — even though the serializers already guard their fields.
 	 * This is public package API: a line with an interior CR/LF would inject a second
 	 * command (batch command smuggling on {@link writePipeline}), and a line missing
 	 * its CRLF terminator would silently hang until the command timeout. A future call
@@ -315,7 +316,7 @@ export class SmtpConnection {
 		// Fail closed on a contradictory floor: `none` never reaches TLS, so a
 		// caller that also set `requireTls` (e.g. a config-driven flag combined
 		// with a loopback-computed `'none'` mode) would otherwise silently proceed
-		// in cleartext — a fail-open trap for the cutover pieces. `implicit`
+		// in cleartext — a fail-open trap. `implicit`
 		// trivially satisfies the floor, so only `none` is a contradiction here.
 		if (options.tlsMode === 'none' && options.requireTls === true) {
 			throw new SmtpError({

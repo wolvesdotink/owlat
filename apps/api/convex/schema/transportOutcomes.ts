@@ -25,7 +25,7 @@ import { transportArmValidator } from '../lib/convexValidators';
  *     derived on read, in that one summarizer, so the ramp controller and the
  *     dashboard cannot disagree about a number.
  *
- * `organizationId` is not in the plan's sketch and is deliberately added, for
+ * `organizationId` is not part of the cell key and is deliberately added, for
  * the same reason as `sendAssignments`: a cell-keyed table readable across
  * tenants is a security defect, so the bucket index is org-leading and no query
  * can cross tenants.
@@ -69,7 +69,7 @@ export const transportOutcomeTables = {
 		// rather than making a second pass over the raw rows.
 		lastRecordedAt: v.number(),
 	})
-		// Org-leading, then the cell/arm/day/shard prefix the plan names. The
+		// Org-leading, then the cell/arm/day/shard prefix a bucket is keyed by. The
 		// index NAME carries `org` because the key order does; `by_org_send` on
 		// `sendAssignments` sets the same precedent.
 		.index('by_org_cell_arm_period_shard', [

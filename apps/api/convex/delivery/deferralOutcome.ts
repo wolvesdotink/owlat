@@ -187,7 +187,7 @@ type RecordRelayDeferralResult = RecordDeferralOutcomeResult | 'send_not_found';
  * The docstring above names this half explicitly and says it is uninstrumented:
  * "A remote 4xx AFTER the MTA has accepted the message for delivery never comes
  * back through this path at all." For the reference arm it does come back — the
- * relay is the one holding the message and it tells us so — and D10 puts it in
+ * relay is the one holding the message and it tells us so — so it belongs in
  * `transportOutcomes.deferred` for that arm, which is what this mutation does.
  *
  * WHY THE `queued` GUARD IS ABSENT, and this is the whole difference between the

@@ -9,7 +9,7 @@
  *
  * PROMOTION IS A RARE, DELIBERATE ACT, which is what makes the deferral read
  * below affordable: it walks every cell (fifteen bounded index reads) because
- * the plan's standalone route asks for "deferral rate under threshold in EVERY
+ * the standalone route asks for "deferral rate under threshold in EVERY
  * cell, not just this one", and a cheaper approximation would answer a different
  * question.
  */
@@ -36,7 +36,7 @@ import { RAMP_GATE_THRESHOLDS } from './ramp/gateConfig';
 import { PROMOTION_BASE_DWELL_MS, type RampPromotionEvidence } from './ramp/phasePromotion';
 import type { RampDegradation } from './ramp/degradation';
 
-/** How far back the evidence readers look. One week, the plan's window. */
+/** How far back the evidence readers look. One week. */
 const EVIDENCE_WINDOW_MS = 7 * DAY_MS;
 /** DNSBL day coverage the streak condition needs. Two weeks, plus slack. */
 const DNSBL_WINDOW_MS = 21 * DAY_MS;
@@ -267,8 +267,8 @@ async function dnsblDays(
  *
  * The null is the point. `deferred` is only partly instrumented (see
  * `delivery/deferralOutcome.ts`), and a cell whose counter has no writer folds
- * to a rate of `0` — under every ceiling, `met`, and the plan's "deferral rate
- * under threshold in EVERY cell" condition satisfied by a measurement nobody
+ * to a rate of `0` — under every ceiling, `met`, and the "deferral rate under
+ * threshold in EVERY cell" condition satisfied by a measurement nobody
  * took, on the rung that costs the most to get wrong.
  *
  * TWO SPANS, ONE READ, and that is the whole shape of this function. The RATE is
@@ -335,7 +335,7 @@ async function worstCellDeferralRate(
  * Load everything the promotion rule judges for one cell.
  *
  * `requiredDwellMs` carries the substitution table's dwell multiplier (absent
- * Postmaster or SNDS doubles it), so the plan's "DWELL TIME x2" and the
+ * Postmaster or SNDS doubles it), so that "DWELL TIME x2" and the
  * standalone route's own doubling compose in the pure rule rather than being
  * multiplied together at two different call sites.
  */

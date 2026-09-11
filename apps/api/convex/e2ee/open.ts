@@ -1,10 +1,9 @@
 'use node';
 
 /**
- * Inbound unsealing — the `'use node'` plane of decrypt-on-ingest (Sealed Mail
- * plan 2026-07-11).
+ * Inbound unsealing — the `'use node'` plane of decrypt-on-ingest.
  *
- * D3: DECRYPT-ON-INGEST. When a sealed PGP/MIME message arrives for an address we
+ * DECRYPT ON INGEST. When a sealed PGP/MIME message arrives for an address we
  * hold a vault key for, we decrypt it here and let the PLAINTEXT flow into the
  * normal pipeline (categorize / needs-reply / agent / knowledge / search all keep
  * working); the sealed original is retained as the raw `.eml`. The body is
@@ -61,7 +60,7 @@ interface OpenParams {
 /**
  * Decrypt + signature-verify a sealed message. PURE of `ctx`/db — bytes and keys
  * in, an outcome out — so it is unit-testable against committed fixtures and the
- * E3 sealer without a network or the vault. Never throws: a decrypt failure
+ * sealer without a network or the vault. Never throws: a decrypt failure
  * (wrong/absent key, corrupt ciphertext) resolves to `cannotDecrypt`, and a
  * signature that does not verify resolves to `signatureValid: false` (never a
  * thrown error that would fail ingest).
@@ -317,7 +316,7 @@ async function openWithVault(
 	from: string
 ): Promise<OpenOutcome> {
 	// Load EVERY sealed private key for the address — the active key plus any
-	// retired decrypt-only keys kept across a rotation (E6) — and open the sealed
+	// retired decrypt-only keys kept across a rotation — and open the sealed
 	// envelope against all of them, so a message sealed to a now-rotated key still
 	// decrypts (the DKIM overlap-rotation property for decryption).
 	const sealedKeys = await ctx.runQuery(internal.e2ee.keys.getAddressPrivateKeysInternal, {

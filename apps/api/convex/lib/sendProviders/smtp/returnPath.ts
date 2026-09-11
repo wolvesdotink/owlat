@@ -45,8 +45,9 @@ export interface RelayEnvelopeSender {
  *
  * ONLY the RFC5321.MailFrom is affected. The From header, the DKIM `d=` and
  * therefore DMARC's DKIM leg are untouched — the composed message bytes are not
- * even read here. Giving the two arms different sending identities is what D11
- * forbids; giving them different *envelope senders* is what makes their bounce
+ * even read here. Giving the two arms different sending identities is what the
+ * one-identity rule forbids; giving them different *envelope senders* is what
+ * makes their bounce
  * data comparable in the first place. DMARC's SPF leg is evaluated on exactly
  * the value this function changes, which is why the host reaches it only once
  * it is proven to authorise this transport.

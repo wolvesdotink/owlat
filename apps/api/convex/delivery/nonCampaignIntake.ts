@@ -110,9 +110,9 @@ const SUPPRESSION_SCOPE_BY_KIND = {
 /**
  * The route table each kind resolves against, and the `messageType` the
  * envelope ships. Derived ONCE from the same table so the route resolution,
- * the experiment stream and the envelope's `messageType` cannot drift apart —
- * pre-C2 the producers picked the message type for their upstream route query
- * by hand while the mutation derived the stream separately.
+ * the experiment stream and the envelope's `messageType` cannot drift apart.
+ * The producers used to pick the message type for their upstream route query by
+ * hand while the mutation derived the stream separately.
  */
 const MESSAGE_TYPE_BY_KIND = {
 	automation: 'automation',
@@ -222,7 +222,7 @@ export const intake = internalMutation({
 			// single-recipient experiment. The split then salts with the SEND id
 			// (`MixRecipientIdentity.fallbackKey`), so the contact's arm is
 			// re-drawn on every message instead of being pinned for the life of
-			// the mix version — the fixed-cohort bias D7 exists to prevent, and
+			// the mix version — the fixed-cohort bias the split exists to prevent, and
 			// `automation` is a first-class high-volume stream, not an edge.
 			recipients: [
 				{

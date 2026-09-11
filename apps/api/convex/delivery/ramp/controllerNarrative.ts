@@ -305,8 +305,8 @@ const NOTIFIABLE_PACE_REASONS: ReadonlySet<PaceDecisionReason> = NOTIFIABLE_REAS
  * gate cooldown returns `frozen` — a hold, and not notifiable — while the pace
  * dial, whose own freeze has expired, halves and freezes on the same breach.
  * Deriving the notice from the share decision alone would write that incident to
- * the audit row and tell nobody. D12: every DECREASE names the gate that broke
- * and what to do about it.
+ * the audit row and tell nobody. EVERY DECREASE NAMES THE GATE THAT BROKE and
+ * what to do about it.
  *
  * The predicate mirrors the share's exactly, and for the same two reasons: a
  * NAMED cause (so ceiling pull-backs and the un-corroborated tripwire stay

@@ -36,7 +36,7 @@ export type IndependenceSummary = FunctionReturnType<
  *
  * ONE FUNCTION, TWO SCREENS. The Measurement dashboard shipped this exact rename
  * first; re-deciding it here would let the two screens disagree about what the
- * standalone feature is CALLED, which is the one thing D14 cares about. So the
+ * standalone feature is CALLED. So the
  * two words come from there, not from a copy — the SUBHEAD below is genuinely
  * different prose (that screen is read-only; this one is the ramp) and stays
  * local.

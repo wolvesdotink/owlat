@@ -91,7 +91,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 	// drain replays queued payloads on reconnect (usePostboxOfflineOutbox).
 	const offlineOutbox = usePostboxOfflineOutbox(() => String(seed.mailboxId));
 
-	// Undo-send window (plan idea 8). The per-user preference decides how long a
+	// Undo-send window. The per-user preference decides how long a
 	// send is held; `postboxUndoSendDelayMsArg` returns undefined on the default
 	// window, so a user who never touched the setting still sends the exact
 	// mutation args this composable sent before the preference existed.
@@ -309,7 +309,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 	}
 
 	async function send(opts?: SendOpts) {
-		// D8: offline never touches the network — queue the payload on-device.
+		// Offline never touches the network — queue the payload on-device.
 		if (offlineOutbox.isOffline.value) return queueSendOffline(opts);
 
 		interceptingSend = true;

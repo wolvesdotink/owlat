@@ -11,8 +11,8 @@
  * TWO READS, NOT ONE, AND DELIBERATELY SO. The ramp position comes from the
  * control query and the gate evidence from the shipped measurement dashboard;
  * merging them server-side would have made one screen's read the other's
- * dependency, and the measurement dashboard is the piece that must keep working
- * on its own.
+ * dependency, and the measurement dashboard is the screen that must keep
+ * working on its own.
  */
 import { api } from '@owlat/api';
 import { rampCellLabel, type RampCellControl } from '~/utils/deliverabilityRamp';

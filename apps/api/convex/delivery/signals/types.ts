@@ -29,13 +29,13 @@
  * WHY ABSENCE IS A FIELD AND NOT A DOCSTRING. The Yahoo provider feed already
  * encoded exactly this invariant one module at a time
  * (`YahooComplaintSubstitution.isBlocking`, "encoded as a field rather than
- * left implicit so the D2 invariant is asserted by a test rather than assumed
+ * left implicit so the invariant is asserted by a test rather than assumed
  * by a reader"). This is that idea with one home: the registry test walks every
  * source and asks it, so a source added next year answers the question whether
- * or not its author read the plan.
+ * or not its author went looking for the rule.
  *
  * NO PLUGIN BUCKET. Third-party signal sources are deliberately deferred — the
- * registry is the seam; opening it to plugins is its own piece, on the day
+ * registry is the seam; opening it to plugins is its own change, on the day
  * someone wants it.
  */
 
@@ -64,7 +64,7 @@ export type SignalSourceKind = (typeof SIGNAL_SOURCE_KINDS)[number];
  * would be a promise the tree does not keep.
  *
  * THE ORDER IS THIS ARRAY'S OWN, not shared's: the keys are shared's, but the
- * sequence is the plan's gate numbering (1 hard bounce … 5 seed placement), and
+ * sequence is the gate numbering (1 hard bounce … 5 seed placement), and
  * `rampGateSources` folds in it, so the FIRST breach at the winning rank — the
  * one the operator is shown — is decided here and nowhere else.
  */

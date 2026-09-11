@@ -45,7 +45,7 @@ export {
  *    never inject an unrelated env var such as `INSTANCE_SECRET`) and as the set
  *    of keys to clear in the Convex deployment when they are dropped.
  *
- * DERIVED, per the seams plan's D1: the per-provider middle is every env
+ * DERIVED, never restated: the per-provider middle is every env
  * variable the catalog's `credentialFields` declare, in catalog × field order.
  * The three keys around them are this list's own — `EMAIL_PROVIDER` names which
  * kind is active (it belongs to no kind) and the two From-identity keys are the

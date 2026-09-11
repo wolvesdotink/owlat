@@ -72,9 +72,9 @@ export function gateStatusLabel(status: GateStatus): LocalizedText {
  * Almost every verdict is denominated in SENDS, and the server's `ownSample`
  * docblock (`gateTypes.ts`) names the two that are not: `seed_placement` counts
  * SEED PROBES, and the `block_message_detected` halt counts CLASSIFIED SMTP
- * RESPONSES. Under D17 the placement gate is a tripwire whose numbers an
- * operator reads directly, and under D12 the same fields render into the audit
- * row and the admin notification — so the unit is decided once, here, rather
+ * RESPONSES. The placement gate is a tripwire whose numbers an operator reads
+ * directly, and the same fields render into the audit row and the admin
+ * notification — so the unit is decided once, here, rather
  * than assumed to be "sends" by each sentence.
  *
  * A PROBE IS NOT A MAILBOX. `seedShadowCopy.ts` writes one probe per connected
@@ -252,7 +252,7 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): LocalizedTex
 		}
 	}
 	// THE VERDICT THAT MAY NOT QUOTE A RATE AT ALL — decided BEFORE any rate is
-	// formatted, so the D17 sentence cannot pick one up by accident.
+	// formatted, so the tripwire sentence cannot pick one up by accident.
 	if (gate.gate === 'seed_placement') return seedPlacementExplanation(gate);
 	const own = measurement.ownRate === null ? null : formatPercentage(measurement.ownRate, 2);
 	const threshold = formatPercentage(measurement.thresholdRate, 2);

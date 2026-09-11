@@ -235,7 +235,7 @@ const hasQuietRelayHistory = computed(
 				</div>
 			</template>
 
-			<!-- D2/D14: absence lowers confidence and says what would raise it. Calm invitation, never a warning. -->
+			<!-- Absence lowers confidence and says what would raise it. Calm invitation, never a warning. -->
 			<div
 				v-if="cell.confidence.improvements.length > 0"
 				class="rounded-lg border border-border-subtle p-3"

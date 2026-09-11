@@ -38,8 +38,8 @@ type Ctx = MutationCtx | QueryCtx;
  * asks "was the cap EXERCISED", and `sentToday` / `dailyCap` are counters that
  * reset at the UTC boundary: a reading from yesterday describes a day that is
  * over, and accepting it would let a stale snapshot satisfy `isCapExercised` and
- * buy the day's +STEP. That is the exact rule the one sanctioned D19 change
- * exists to enforce — an unexercised cap is not evidence of anything.
+ * buy the day's +STEP. The rule this tolerance exists to enforce is that an
+ * unexercised cap is not evidence of anything.
  *
  * The /ip-reputation sync runs every five minutes, so this is a handful of missed syncs and no
  * more. Past it the reading is `unknown`, the actuator HOLDS, and a broken measurement pipe slows

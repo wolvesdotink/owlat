@@ -124,7 +124,7 @@ async function start(): Promise<void> {
 						provider: 'mailchimp',
 						apiKey: apiKey.value.trim(),
 						listId: listId.value.trim(),
-						// D9: the unsubscribes and cleaned addresses come across in the
+						// The unsubscribes and cleaned addresses come across in the
 						// same pass as the audience. A migration that carried contacts
 						// but not their opt-outs would re-mail people who left.
 						importSuppressions: true,

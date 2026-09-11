@@ -13,7 +13,7 @@
  * be remembered in both, and neither sequence said what an absent one meant.
  *
  * ORDER IS PART OF THE DECLARATION. `aggregateRampGates` names the FIRST result
- * at the winning rank, and the sources are folded in the plan's gate numbering
+ * at the winning rank, and the sources are folded in gate-number order
  * (1 hard bounce, 2 deferral, 3 complaint, 4 engagement ratio, 5 seed
  * placement), so the earliest, most fundamental problem is the one reported.
  * That order is `RAMP_GATE_SIGNAL_KEYS`' own — the KEYS come from the shared
@@ -271,7 +271,7 @@ type AssertEveryRampGateIsFolded<_T extends never> = true;
 export type _EveryRampGateIsFolded = AssertEveryRampGateIsFolded<UnfoldedRampGate>;
 
 /**
- * The five measurements, in the plan's gate numbering. ORDER IS CONTRACT, and it
+ * The five measurements, in gate-number order. ORDER IS CONTRACT, and it
  * is `RAMP_GATE_SIGNAL_KEYS`' order (declared in `./types`) rather than a second
  * hand-written sequence: the aggregator names the FIRST result at the winning
  * rank, so re-ordering that array — and only that array — re-orders which breach

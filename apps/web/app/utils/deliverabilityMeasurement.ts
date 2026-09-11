@@ -50,7 +50,7 @@ export type DeliverabilityConfidence = DeliverabilityDashboardCell['confidence']
 export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 
 /**
- * The headline, D14 literally: with nothing to compare against, the feature is
+ * The headline, honestly: with nothing to compare against, the feature is
  * "Warm-up autopilot" (how much can I send today, and what is holding it back),
  * not a degraded "Sending independence".
  *

@@ -14,8 +14,8 @@
  * the counters beside them are reported over `DASHBOARD_WINDOW_DAYS`, with the
  * query naming both spans on the wire (#510). This module groups buckets into
  * days, hands each day's rows to that summarizer, and labels the result. If you
- * find yourself typing `/` next to a counter in this file, you are writing the
- * bug D5 exists to prevent.
+ * find yourself typing `/` next to a counter in this file, you are re-deriving
+ * a rate the summarizer already owns.
  *
  * CONFIDENCE COMES FROM THE EVALUATOR, NOT FROM HERE. The grade this
  * module starts from is `RampGateEvaluation.measuredConfidence` — the weakest
@@ -24,7 +24,7 @@
  * and BOTH are about what the deployment could not measure rather than about
  * any rate: `none` when nothing was sent, and the cap by the missing
  * instruments. That is why the two levels are NAMED APART — the evaluation's
- * number grades the DECISION (and is what the D12 audit row records), the level
+ * number grades the DECISION (and is what the audit row records), the level
  * this module produces grades the CELL (and is what the screen renders). See
  * `dashboardConfidence` and `RampGateEvaluation.measuredConfidence`.
  *
@@ -32,10 +32,10 @@
  * (is the sample above the floors). It was replaced rather than extended,
  * because a healthy standalone cell graded `medium` by the decision core and
  * `low` by the screen is the controller and the dashboard disagreeing about a
- * number — the exact failure the D5 single-derivation rule exists to prevent,
- * landing in the one configuration D14 says must be told the truth.
+ * number — the exact failure the single-derivation rule exists to prevent,
+ * landing in the one configuration that most needs to be told the truth.
  *
- * D2 IS THE FRAME. A missing reference transport, a missing seed set and a
+ * ABSENCE IS THE FRAME. A missing reference transport, a missing seed set and a
  * missing external account are all SUPPORTED CONFIGURATIONS. They lower
  * confidence and they say so plainly. Nothing here produces an error, a warning
  * or a "setup incomplete" state, and no field on the wire is named as one.
@@ -306,7 +306,7 @@ type DashboardGateView = RampGateResult;
 export interface DashboardCellView {
 	readonly cell: DeliverabilityCell;
 	readonly cellKey: string;
-	/** Fraction of the cell the own MTA carries, resolved through D1's helper. */
+	/** Fraction of the cell the own MTA carries, resolved through the shared helper. */
 	readonly ownShare: number;
 	readonly phaseCeiling: number | null;
 	/**

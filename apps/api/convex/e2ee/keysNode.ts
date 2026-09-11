@@ -44,13 +44,13 @@ interface GeneratedKeypair {
 /**
  * Algorithm label stored on the `keyVault` row (metadata only — no logic keys
  * off it). `eddsaLegacy` names the GnuPG-compatible signing primary. Shared with
- * the E6 lifecycle plane so a rotated key carries the same label.
+ * the key-lifecycle plane so a rotated key carries the same label.
  */
 export const KEY_ALGORITHM = 'eddsaLegacy';
 
 /**
  * Generate a GnuPG-compatible OpenPGP keypair (EdDSA-legacy signing primary +
- * ECDH encryption subkey, both Curve25519) bound to `email`. Exported so the E6
+ * ECDH encryption subkey, both Curve25519) bound to `email`. Exported so the
  * key-lifecycle plane (`e2ee/lifecycleNode.ts`) mints rotated keys on the exact
  * same profile.
  */

@@ -2,7 +2,7 @@
  * Ramp controller — units and per-stream constants.
  *
  * UNITS ARE A TYPE-LEVEL CONCERN. This module decides whether a deployment
- * ramps into the spam folder, and every threshold in the plan is quoted in two
+ * ramps into the spam folder, and every threshold is quoted in two
  * different units in the same sentence ("own arm <= 2% AND <= reference arm +
  * 0.5pp"). A percentage-point tolerance and a rate fraction are both "small
  * numbers near zero", so a mix-up is invisible at review time and catastrophic
@@ -71,7 +71,8 @@ export const OPTIONAL_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>(
  *
  * IT IS ALSO THE ONLY ROUTE. `analytics.seedPlacement.getGateVerdict` used to
  * state the same rule over the provider roll-up with no production caller; two
- * routes to one rule is one more than D5 allows, so #504 deleted that query and
+ * routes to one rule is one more than a single derivation allows, so #504
+ * deleted that query and
  * left the flag above as the whole of the corroboration behaviour.
  */
 export const CORROBORATION_REQUIRED_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>([

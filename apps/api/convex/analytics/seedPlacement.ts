@@ -457,7 +457,7 @@ export async function summarizeSeedPlacementWindow(
 		rotationRemindersDue: accounts.filter((a) => a.rotationReminderDue).length,
 		windowStart,
 		// The resolution's own verdict, carried through rather than recomputed:
-		// this IS D14's "measurement confidence — add seed mailboxes" hint, and
+		// this IS the "measurement confidence — add seed mailboxes" hint, and
 		// it is the resolution that decides both the grade and the hint, not the
 		// screen.
 		placementSource: placement.kind,

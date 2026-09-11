@@ -24,7 +24,7 @@
  * that has not been added yet has no selector and no key, and the table says so
  * instead of filling the gap with a name nothing signs with.
  *
- * D2 — NOTHING HERE IS LOAD-BEARING ON A THIRD PARTY. No relay, no ESP, no
+ * NOTHING HERE IS LOAD-BEARING ON A THIRD PARTY. No relay, no ESP, no
  * commercial anything: with zero external credentials the table renders in full
  * and the reference-arm DKIM row simply is not part of it. An unusable domain
  * (no registrable zone) renders an explanation in place of the table rather
@@ -144,7 +144,7 @@ type StreamSubdomainWizardResult =
  * A reference transport is connected iff some NON-MTA send transport this
  * deployment can ACTUALLY DISPATCH THROUGH is ready.
  *
- * D4 — the plugin/transport catalog is the single source of truth for "which
+ * THE PLUGIN/TRANSPORT CATALOG is the single source of truth for "which
  * transports exist here". The return-path relay SPF env var is not: it
  * authorises a relay on the BOUNCE HOST and says nothing about whether a
  * transport is registered, so inferring one from the other gets both directions

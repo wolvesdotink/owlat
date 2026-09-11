@@ -148,19 +148,18 @@ type CeilingComparison =
 			/** @see CeilingFailReason */
 			readonly failReason: CeilingFailReason;
 			/**
-			 * WHICH SIDE THE BOUNDARY ITSELF FALLS ON, because the plan's two
-			 * substitutions state it differently and one shared operator cannot be
-			 * right for both.
+			 * WHICH SIDE THE BOUNDARY ITSELF FALLS ON, because the two substitutions
+			 * state it differently and one shared operator cannot be right for both.
 			 *
-			 *  - `inclusive_pass` — the plan says gate 1 allows "AT MOST 1.5x the
-			 *    cell's own trailing rate", so exactly 1.5x PASSES (`own <= k*base`).
-			 *  - `inclusive_fail` — the plan says gate 3's unsubscribe proxy breaches
+			 *  - `inclusive_pass` — gate 1 allows "AT MOST 1.5x the cell's own
+			 *    trailing rate", so exactly 1.5x PASSES (`own <= k*base`).
+			 *  - `inclusive_fail` — gate 3's unsubscribe proxy breaches
 			 *    "AT OR ABOVE 3x the trailing baseline", so exactly 3.0x FAILS
 			 *    (`own < k*base` to pass).
 			 *
 			 * Stated on the comparison rather than left to whichever operator the
 			 * cascade happens to use: a single `<=` shared by both would silently
-			 * move one of the plan's two thresholds by one send.
+			 * move one of the two thresholds by one send.
 			 */
 			readonly boundary: 'inclusive_pass' | 'inclusive_fail';
 	  };

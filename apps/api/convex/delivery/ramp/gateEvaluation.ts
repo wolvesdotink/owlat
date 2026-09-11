@@ -64,8 +64,8 @@ function contributes(result: RampGateResult): boolean {
 
 /**
  * Fold per-gate results into one verdict, in the order given. The first gate at
- * the winning rank is the one named: gates are evaluated in the plan's
- * numbering, so the earliest, most fundamental problem is the one reported.
+ * the winning rank is the one named: gates are evaluated in gate-number order,
+ * so the earliest, most fundamental problem is the one reported.
  */
 export function aggregateRampGates(args: RampGateAggregationInput): RampGateEvaluation {
 	const { perGate, previousCleanStreak, now } = args;
@@ -89,7 +89,7 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 		if (result.status !== 'insufficient_data') confidences.push(result.confidence);
 		if (result.status === 'pass' && result.mayJustifyIncrease) increaseEvidence = true;
 		// STRICTLY greater: the FIRST gate at the winning rank is the one named,
-		// and gates arrive in the plan's numbering, so the earliest, most
+		// and gates arrive in gate-number order, so the earliest, most
 		// fundamental problem is the one reported.
 		if (winner === undefined || STATUS_RANK[result.status] > STATUS_RANK[winner.status]) {
 			winner = result;
@@ -187,7 +187,7 @@ export const referenceArmGateEvaluator: RampGateEvaluator = armGateEvaluator('re
  * apology for it.
  *
  * SAME INTERFACE, SAME PRECEDENCE, SAME AGGREGATOR. The five gates are evaluated
- * in the plan's numbering and folded by `aggregateRampGates` exactly as the
+ * in gate-number order and folded by `aggregateRampGates` exactly as the
  * reference-arm ones are, so halt-over-fail-over-hold-over-pass, the optional-gate
  * rule, the clean-streak rule and the corroboration flag are shared rather than
  * reimplemented. What differs is entirely inside the specs: which second series

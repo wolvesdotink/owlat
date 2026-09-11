@@ -10,7 +10,7 @@
  *   · `cellCap` is the per-(IP x mailboxProvider) cap the cell actually sends
  *     against — the IP's daily cap narrowed by the provider's own multiplier
  *     (`warmingProviderStore.providerCapVerdict`). THIS is what the dial
- *     multiplies, and it is the number the plan means by `dailyCap(cell)`.
+ *     multiplies, and it is what `dailyCap(cell)` means.
  *   · `baseScheduleCap` is the IP's PUBLISHED schedule cap for the current
  *     schedule day. That is the HARD CEILING: the controller may go slower than
  *     the published ramp, and may never exceed it for the day.

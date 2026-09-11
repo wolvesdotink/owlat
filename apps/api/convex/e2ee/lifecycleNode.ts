@@ -18,7 +18,7 @@
  *   - `exportRecoveryKit` (admin) — the ONLY sanctioned private-key egress: the
  *     armored private key + plain-language instructions for one address;
  *   - `exportOwnRecoveryKit` (member) — the SAME egress, narrowed to the
- *     caller's own address and gated on a password re-prompt (plan idea 55);
+ *     caller's own address and gated on a password re-prompt;
  *   - `importRecoveryKit` (admin) — restore an address key from a recovery kit.
  */
 
@@ -268,7 +268,7 @@ const ownRecoveryKitValidator = v.union(
 
 /**
  * MEMBER: build the recovery kit for one of the caller's OWN addresses, behind a
- * password re-prompt (plan idea 55).
+ * password re-prompt.
  *
  * Same egress as the admin export above, with two narrowings that are the whole
  * point of it existing: the address must be one the caller actually sends as,

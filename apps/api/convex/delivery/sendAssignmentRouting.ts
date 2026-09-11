@@ -37,8 +37,8 @@ import type { SendAssignmentRecipient, SendAssignmentRouting } from './sendAssig
 
 /**
  * Minimum cohort size before a batch's engagement scores are turned into
- * percentiles for stratified assignment (D10's rule applied to ranking: thin
- * data holds). A cohort of one always ranks its single member in the top
+ * percentiles for stratified assignment — thin data holds, the same rule every
+ * gate obeys. A cohort of one always ranks its single member in the top
  * percentile, which would send every low-volume batch to the own arm on
  * evidence that does not exist. Below this the recipient carries NO rank and
  * the split falls back to the unbiased random bucket.
@@ -94,9 +94,8 @@ export async function destinationProvidersForEmails(
 }
 
 /**
- * Engagement percentile WITHIN THE RECIPIENT'S CELL (D8's stratification
- * input; the piece card's "the recipient's engagement percentile in this
- * cell").
+ * Engagement percentile WITHIN THE RECIPIENT'S CELL — the stratification input
+ * the split ranks against.
  *
  * The cohort is the batch's own scored recipients, PARTITIONED BY DESTINATION
  * PROVIDER: stratification asks "is this recipient in the top `s` of this
@@ -213,7 +212,7 @@ interface TransportLookupInput {
  * `DESTINATION_PROVIDER_KEYS.length` route-state reads no matter how large the
  * batch is — what became per-recipient is the pure DECISION, not the I/O.
  *
- * That distinction is the piece: under `adaptive_mix` the arm is a function of
+ * That distinction is the whole point: under `adaptive_mix` the arm is a function of
  * the recipient, so a per-provider answer would stamp one recipient's arm
  * onto the whole cell. Under every shipped strategy the answer does not depend
  * on the recipient at all and the result is identical to the per-provider

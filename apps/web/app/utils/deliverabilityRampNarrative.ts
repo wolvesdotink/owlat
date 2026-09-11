@@ -414,7 +414,7 @@ export interface RampAdvancedScreen {
 /**
  * THE FOUR SCREENS BEHIND THIS CARD, each described by what it ANSWERS.
  *
- * The independence entry follows the D14 rename: with no relay connected there
+ * The independence entry follows that rename: with no relay connected there
  * is nothing to become independent OF, and that screen calls itself "Warm-up
  * autopilot" — a link that promised "Independence" would land the operator on a
  * heading they never asked for.

@@ -7,7 +7,7 @@
  * same queries the screen subscribes to. The page renders it; it decides
  * nothing.
  *
- * THE SHAPE THE PRESET WRITES (plan §10). A migration is not a per-stream
+ * THE SHAPE THE PRESET WRITES. A migration is not a per-stream
  * experiment: the runbook moves the deployment, so all three message types get
  * the same treatment — `adaptive_mix` over `[mta, mandrill]` with Mandrill named
  * as the deliverability-fallback relay — and all three streams get the
@@ -151,7 +151,7 @@ export function isMigrationDomainReady(
 	return migrationDomainRows(identities, now).some((row) => row.isReady);
 }
 
-// ── D8: exactly one reference relay ────────────────────────────────
+// ── Exactly one reference relay ──────────────────────────────────
 
 export interface MigrationRouteView {
 	readonly messageType: string;
@@ -176,7 +176,7 @@ export function competingRelayKinds(
 	return [...kinds].sort();
 }
 
-/** The D8 warning, or null when Mandrill is already the only relay. */
+/** The competing-relay warning, or null when Mandrill is already the only relay. */
 export function competingRelayWarning(
 	routes: readonly MigrationRouteView[] | null | undefined
 ): MigrationMessage | null {

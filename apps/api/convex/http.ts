@@ -234,7 +234,7 @@ http.route({
 });
 
 // GET /attachment-share/{token} - the PUBLIC expiring-token download for a file
-// the composer lifted out of a message (plan idea 10). No session and no
+// the composer lifted out of a message. No session and no
 // signature: the token in the path is the whole capability, and every gate
 // (revoked / expired / narrowed to the mailbox / bytes reclaimed) is decided
 // per request inside the handler.

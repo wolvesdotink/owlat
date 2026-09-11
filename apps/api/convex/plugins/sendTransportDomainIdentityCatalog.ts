@@ -22,7 +22,7 @@ import { readExactFunctionModule } from './hostedModuleSnapshot';
  * the deployment serves a request, exactly as `sendTransportWebhookCatalog.ts`
  * does for the feedback half and `lib/sendProviders/index.ts` for the send half.
  *
- * ISOLATE-SAFE ON PURPOSE, and it is the constraint that shaped the piece.
+ * ISOLATE-SAFE ON PURPOSE, and it is the constraint that shaped this module.
  * `domains/providers/index.ts` composes its relay-identity registry from this
  * file, and that registry is read by the ENQUEUE transaction (`may this From
  * domain be handed to the configured relay?`). Nothing here — and nothing in the

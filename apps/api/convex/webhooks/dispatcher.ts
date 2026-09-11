@@ -253,7 +253,7 @@ const DISPATCH: DispatchTable = {
 		const m = e.mail;
 		const attachmentMeta = m.attachments.length > 0 ? JSON.stringify(m.attachments) : undefined;
 
-		// Sealed Mail (E4): decrypt-on-ingest for the AI-inbox path. When Sealed
+		// Sealed Mail decrypt-on-ingest for the AI-inbox path. When Sealed
 		// Mail is on and the body carries an armored PGP ciphertext, route through the
 		// Node decrypt action so the PLAINTEXT reaches `receiveMessage` (and thus the
 		// agent pipeline + the unified-timeline mirror). Anything else — plaintext,
@@ -300,7 +300,7 @@ const DISPATCH: DispatchTable = {
 			dkimResult: m.dkimResult,
 			dmarcResult: m.dmarcResult,
 			dmarcPolicy: m.dmarcPolicy,
-			// F1: AI-inbox mirror of the clearsigned-body signature verdict —
+			// AI-inbox mirror of the clearsigned-body signature verdict —
 			// see webhooks/inboundSignatureMirror.ts. Best-effort, never blocks.
 			...((await clearsignedSignatureMirror(ctx, m.textBody, m.from)) ?? {}),
 		});

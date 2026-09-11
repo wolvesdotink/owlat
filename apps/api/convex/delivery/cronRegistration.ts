@@ -234,7 +234,7 @@ export function registerDeliveryCrons(crons: Crons): void {
 	// Gate 5's evidence for the streams that have no campaign to shadow.
 	// The campaign shadow copy rides a real send, so the `transactional` and
 	// `automation` cells had no probes at all and gate 5 held on them forever;
-	// this is the plan's "or on a schedule for transactional streams".
+	// so this supplies their evidence on a schedule instead.
 	//
 	// SIX-HOURLY, while the CADENCE is daily and lives in the sweep itself
 	// (`SCHEDULED_SEED_PROBE_INTERVAL_MS`). A tick that finds a cell already

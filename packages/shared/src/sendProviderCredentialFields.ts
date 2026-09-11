@@ -20,7 +20,7 @@
  * `credentialFields` should reuse the plugin platform's `settingsSchema` field
  * vocabulary exactly (`string | secret | number | boolean | select`,
  * `packages/plugin-kit/src/settingsSchema.ts`) or that base plus composite
- * kinds. The answer implemented here is the plan's recommendation: THE SAME FIVE
+ * kinds. The answer implemented here is THE SAME FIVE
  * BASE KINDS, SPELLED IDENTICALLY, plus exactly two composites — {@link
  * SendProviderRegionSelectField} and {@link SendProviderHostPortField}. "Spelled
  * identically" is ENFORCED rather than asserted in prose — see {@link

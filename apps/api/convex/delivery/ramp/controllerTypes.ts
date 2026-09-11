@@ -14,8 +14,8 @@ import type { RampGateEvaluation, RampGateId, RampVerdict } from './gateTypes';
 
 /**
  * Why the controller decided what it decided, as a stable machine-readable
- * code. A gate failure reports the GATE ID itself — the plan's `reason:
- * failedGate` — so an operator reading the audit row is told which measurement
+ * code. A gate failure reports the GATE ID itself — `reason: failedGate` — so
+ * an operator reading the audit row is told which measurement
  * broke rather than the useless fact that "a gate" broke.
  */
 export type RampControlReason =
@@ -124,7 +124,7 @@ export type RampDecisionDirection = 'increase' | 'decrease' | 'hold';
  * The controller's stored state for one cell, already read out of the route
  * state row. Every field is what was STORED, not what is valid: sanitising
  * degenerate values is the decision function's job, and doing it at the read
- * boundary instead would hide the hostile input the plan requires us to handle.
+ * boundary instead would hide the hostile input we have to handle.
  */
 export interface RampMixState {
 	/**
@@ -385,7 +385,7 @@ export interface RampDecision {
 	 *
 	 * Derived once, in the shell, rather than left to each caller to reconstruct by
 	 * comparing `decision.graduatedAt` against a row it would have to still be
-	 * holding: a pin transition is the piece's TERMINAL state change (the cell pins
+	 * holding: a pin transition is the ramp's TERMINAL state change (the cell pins
 	 * and the relay drops to `priority_failover` standby) and it happens while the
 	 * SHARE DOES NOT MOVE, so `direction` cannot see it.
 	 */
@@ -483,7 +483,7 @@ export function rampDecisionDirection(fromShare: number, share: number): RampDec
  * The audit emit and the admin notice MUST agree about this, so they share the
  * predicate rather than each spelling out the same condition.
  *
- * THE PIN TRANSITION IS THE THIRD ARM, and it is the piece's TERMINAL state
+ * THE PIN TRANSITION IS THE THIRD ARM, and it is the ramp's TERMINAL state
  * change: graduation returns `direction: 'hold'` (the pinned target IS the
  * current share) and imposes no freeze, yet it writes `graduatedAt` onto a row
  * that had none — the cell pins and the relay drops to `priority_failover`

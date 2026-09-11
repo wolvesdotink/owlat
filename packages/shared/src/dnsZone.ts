@@ -20,8 +20,8 @@
  * Convex verifier, where a wrong registrable domain means the wrong DNS lookup
  * target and a domain that never verifies — the precise bug this work exists to
  * fix. A hand-trimmed suffix subset would silently corrupt any domain under an
- * omitted suffix, on the client *and* the server, and the card forbids environment
- * coupling so we cannot ship "full PSL on the server, trimmed on the client".
+ * omitted suffix, on the client *and* the server, and environment coupling is
+ * out, so we cannot ship "full PSL on the server, trimmed on the client".
  * `tldts` (~40 kB gzipped) carries the full compiled PSL, is pure and isomorphic
  * (no Node- or browser-only APIs), and is *already resolved in the lockfile* as a
  * transitive dependency of `mailauth` (which pins `tldts@7.0.30`), deduped to that

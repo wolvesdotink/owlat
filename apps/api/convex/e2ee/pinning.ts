@@ -31,7 +31,7 @@ import { normalizeEmail } from '@owlat/shared';
  * rotation feed (`e2ee/lifecycle.ts` writes it, `e2ee/manifest.ts` serves it)
  * and verified by a peer against the fingerprint it already pinned.
  *
- * The rotated ADDRESS is deliberately NOT on the wire (L7): the manifest is a
+ * The rotated ADDRESS is deliberately NOT on the wire: the manifest is a
  * world-readable, unauthenticated document, so carrying `address` here turned
  * the rotation feed into a directory that enumerated every mailbox that had ever
  * rotated a key. The binding to an address is preserved by the SIGNATURE, whose
@@ -174,7 +174,7 @@ export function reacceptObservedKey(observedFingerprint: string): PinDecision {
 	return decide('reaccept', observedFingerprint, observedFingerprint, 'pinned', true);
 }
 
-// ─── Human verification (plan idea 54) ───────────────────────────────────────
+// ─── Human verification ──────────────────────────────────────────────────────
 //
 // TOFU says "this is the key we saw first". Verification says "a person compared
 // this fingerprint with its owner over some other channel and it matched". The

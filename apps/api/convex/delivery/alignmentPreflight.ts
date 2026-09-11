@@ -8,7 +8,7 @@
  * half lives in `alignmentPreflightGather.ts` because it needs the Node runtime,
  * where Convex forbids queries and mutations.
  *
- * D2: a deployment with NO reference transport has no second arm. That is a
+ * A DEPLOYMENT WITH NO REFERENCE TRANSPORT HAS NO SECOND ARM. That is a
  * SUPPORTED CONFIGURATION, and the sweep does nothing at all for it: `buildTarget`
  * returns null, no DNS is gathered and no verdict row is written. The gate opens
  * anyway, because it answers "is there a second arm?" from the LIVE transport
@@ -93,7 +93,7 @@ function ownSpfMechanisms(): string[] {
 function undescribableRelayDetail(domain: string, relayKinds: readonly string[]): string {
 	if (relayKinds.length > 1) {
 		// The prefix is shared (`MULTI_RELAY_DETAIL_PREFIX`) because the operator
-		// screens classify the two `unknown` branches from this sentence — D8's
+		// screens classify the two `unknown` branches from this sentence, and the
 		// "keep the reference relay singular" warning is the multi-relay one.
 		return `${MULTI_RELAY_DETAIL_PREFIX} (${relayKinds.join(', ')}), so there is no single second arm for ${domain} to be compared against.`;
 	}
@@ -116,7 +116,7 @@ function undescribableRelayDetail(domain: string, relayKinds: readonly string[])
  *
  *  - exactly ONE relay, or there is no single second arm to compare against
  *    (unchanged — the multi-relay case still reports `unknown` with its own
- *    remedy, which is what D8's "keep the relay singular" warning reads);
+ *    remedy, which is what the "keep the relay singular" warning reads);
  *  - a kind with no registered provider, or a provider that cannot describe
  *    this domain, is `unknown` — never `none`.
  */
@@ -308,7 +308,7 @@ export const recordAlignmentResult = internalMutation({
  * mechanisms are all published DNS facts. No credential, sealed or otherwise,
  * is read or returned.
  *
- * D2: a domain with no reference transport returns `{ kind: 'none' }` — the
+ * A domain with no reference transport returns `{ kind: 'none' }` — the
  * evaluator turns that into a `single_arm` PASS, so a standalone deployment
  * walks the wizard cleanly instead of meeting an error.
  */

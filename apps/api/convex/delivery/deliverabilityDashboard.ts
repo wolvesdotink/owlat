@@ -38,7 +38,7 @@
  * clauses that compare a cell against its OWN past where the baseline is thin at
  * exactly that edge, and never enough to grade the two arms on different rows.
  *
- * D2. A cell with no reference arm is a SUPPORTED CONFIGURATION, not an
+ * A CELL WITH NO REFERENCE ARM IS A SUPPORTED CONFIGURATION, not an
  * incomplete setup. `reference` is `null`, the TRAILING-BASELINE evaluator runs
  * instead of the two-armed one — the standalone implementation is the honest
  * answer for a standalone cell, not a fallback — and `dashboardConfidence` caps

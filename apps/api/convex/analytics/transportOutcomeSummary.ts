@@ -37,8 +37,8 @@ export type TransportOutcomeArm = TransportOutcomeBucket['arm'];
  *     (gate 2, and the phase-promotion rule's every-cell condition).
  *
  * A VALUE, with the type derived from it, so the vocabulary can be ENUMERATED
- * rather than only checked. Three counters in this plan shipped with readers and
- * no writer; the guard that now forbids that
+ * rather than only checked. Three counters once shipped with readers and no
+ * writer; the guard that now forbids that
  * (`scripts/check-transport-outcome-wiring.ts`) has to be able to iterate the
  * whole vocabulary, and a hand-kept second list is a second chance to disagree.
  */
@@ -193,8 +193,8 @@ export interface TransportOutcomeTotals {
  *   - `deliveryRate`, `deferralRate`, `bounceRate`, `hardBounceRate` and
  *     `complaintRate` are denominated on `sent`;
  *   - `openRate`, `clickRate` and `unsubscribeRate` are denominated on
- *     `delivered`. The plan makes unsubscribe the complaint-equivalent for the
- *     standalone arm (no feedback loop to report complaints), so a standalone
+ *     `delivered`. Unsubscribe is the complaint-equivalent for the standalone
+ *     arm (no feedback loop to report complaints), so a standalone
  *     gate comparing `unsubscribeRate` against `complaintRate` is comparing two
  *     differently-denominated numbers — convert, or compare like for like.
  *
@@ -305,7 +305,7 @@ export const DEFERRAL_TELEMETRY_SPAN_MS = 30 * DAY_MS;
  * not is TRAFFIC SPREAD ACROSS THE SPAN, which is what this measures.
  *
  * Fourteen days because that is the ramp's own graduation dwell: the shortest
- * period the plan is willing to call sustained evidence about a cell.
+ * period we are willing to call sustained evidence about a cell.
  */
 export const DEFERRAL_TELEMETRY_MIN_OBSERVED_MS = 14 * DAY_MS;
 

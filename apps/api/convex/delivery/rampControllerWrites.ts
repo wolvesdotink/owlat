@@ -1,8 +1,8 @@
 /**
  * THE RAMP CONTROLLER'S WRITE PATH — the only place a decision becomes a row.
  *
- * Split out of `rampControllerCron.ts` so the cron is the SHELL the plan says it
- * is (load, call the pure functions, write): the read half already lives in
+ * Split out of `rampControllerCron.ts` so the cron is nothing but a SHELL
+ * (load, call the pure functions, write): the read half already lives in
  * `rampControllerInputs.ts`, and this is its sibling on the way out. Nothing
  * here decides anything — every value written was produced by a pure decision
  * function upstream.
@@ -105,8 +105,8 @@ function resolveFreezeFields(
 /**
  * Persist one decision onto the cell's per-stream route-state row.
  *
- * `mixVersion` is NOT touched here. It salts per-recipient assignment (plan
- * D7), so it names a mix GENERATION, not a step: bumping it on an ordinary
+ * `mixVersion` is NOT touched here. It salts per-recipient assignment, so it
+ * names a mix GENERATION, not a step: bumping it on an ordinary
  * +5pp promotion would re-shuffle every recipient's arm mid-comparison, ~20
  * times during a single ramp. It advances only where re-randomising IS the
  * point — the four deliberate writes that open or re-open a comparison:

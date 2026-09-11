@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Inbound PGP signature verification — the `'use node'` plane of the F1
+ * Inbound PGP signature verification — the `'use node'` plane of the
  * verification pipeline.
  *
  * A message that arrived SIGNED but not encrypted (RFC 3156 `multipart/signed`
@@ -10,7 +10,7 @@
  *   extraction (`@owlat/mail-canon` byte-exact RFC 3156 first part, or the
  *   clearsigned armor straight from the body)
  *     → sender-key resolution (the SAME TOFU ladder sealed mail uses, but
- *       WKD-first: the instance-manifest fetch is skipped per D9)
+ *       WKD-first: the instance-manifest fetch is skipped)
  *     → the detached-verify primitive (`manifest.ts:verifyManifest`'s shape)
  *     → an honest {@link InboundSignatureInfo} verdict.
  *

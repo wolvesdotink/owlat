@@ -27,8 +27,8 @@ import type { RelayIdentityStatus } from '../types';
 /**
  * How long an observation still licenses handing a From domain to this relay.
  *
- * A HOST CONSTANT, not a manifest field, and that is the piece's one
- * non-negotiable declaration. This bound is what limits the blast radius of an
+ * A HOST CONSTANT, not a manifest field, and that is not negotiable by a
+ * plugin. This bound is what limits the blast radius of an
  * identity revoked, suspended or deleted at the provider while our row survives:
  * nothing in the stored state distinguishes "still fine" from "removed an hour
  * ago", so the only thing that ever retires a stale proof is its age. A
@@ -112,7 +112,7 @@ export type PluginRelayCallOutcome =
 	| { readonly outcome: 'auth_failed'; readonly error: string }
 	| { readonly outcome: 'unavailable'; readonly error: string };
 
-/** The `providerDetails` blob for a plugin identity (D7, versioned). */
+/** The `providerDetails` blob for a plugin identity, versioned. */
 export interface PluginRelayProviderDetails {
 	readonly kind: 'plugin';
 	/** The DNS the alignment pre-flight resolves for this domain's second arm. */

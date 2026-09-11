@@ -19,8 +19,8 @@
  * WHAT A PRESET CANNOT REACH, by the shape of `RampPresetTuning` rather than by
  * a rule someone has to remember: the multiplicative decrease, the share floor,
  * the cooldown ladder, the phase ceilings and every hard stop. There is no field
- * that could express any of them. Cheap to retreat, expensive to advance (plan
- * D9) is not negotiable by an operator preference.
+ * that could express any of them. Cheap to retreat, expensive to advance is not
+ * negotiable by an operator preference.
  */
 
 import { applyRampPreset, type RampPreset } from '@owlat/shared/deliverabilityIndependence';

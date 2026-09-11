@@ -108,8 +108,8 @@ export function resolveSetupFork(args: {
 }
 
 /**
- * THE PATH A CELL IS ENROLLED ON, and therefore WHICH SHARE it opens at
- * (D3 x D14). The fork's preselection IS the answer: 'esp_relay' exactly when a
+ * THE PATH A CELL IS ENROLLED ON, and therefore WHICH SHARE it opens at.
+ * The fork's preselection IS the answer: 'esp_relay' exactly when a
  * relay is configured, and no preselection means there is no second sender to
  * move traffic away from — the own-server path, by definition rather than by
  * default.

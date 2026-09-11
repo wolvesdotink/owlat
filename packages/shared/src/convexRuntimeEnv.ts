@@ -47,7 +47,7 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'BETTER_AUTH_SECRET',
 	'INSTANCE_SECRET',
 	// The PREVIOUS INSTANCE_SECRET — set ONLY during a secret-rotation window
-	// (Sealed Mail key lifecycle, E6). Pushed into the deployment so the E2EE key
+	// for the Sealed Mail key lifecycle. Pushed into the deployment so the E2EE key
 	// box's mixed-vault fallback (open under current, else previous) actually
 	// reaches the Convex function runtime while the re-seal migration runs; a
 	// self-hoster who set it only in the compose .env would otherwise find the
@@ -55,7 +55,7 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'INSTANCE_SECRET_PREVIOUS',
 	'OWLAT_VERSION',
 	'OWLAT_DEV_MODE',
-	// Email-verification opt-in (H3). Read at Convex function runtime by
+	// Email-verification opt-in. Read at Convex function runtime by
 	// auth/auth.ts to enable BetterAuth `requireEmailVerification` / `sendOnSignUp`
 	// and the org plugin's `requireEmailVerificationOnInvitation`. Must reach the
 	// deployment or the opt-in is un-enableable through the supported flows.
@@ -193,12 +193,12 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'RATE_LIMIT_TRUSTED_PROXY',
 	// Shared secret the reverse proxy must present in `X-Owlat-Proxy-Secret` for
 	// the `cloudflare`/`xrealip` trust modes to believe their forwarded-IP header
-	// (M2). Read at Convex function runtime by publicRateLimit.getClientIp, so it
+	// header. Read at Convex function runtime by publicRateLimit.getClientIp, so it
 	// must be pushed into the deployment — otherwise those modes never trust the
 	// header and every caller collapses to the shared 'unknown' bucket.
 	'RATE_LIMIT_PROXY_SECRET',
 	// Reverse-proxy IPs / CIDRs that front this deployment, used by the BetterAuth
-	// login limiter's right-anchored X-Forwarded-For walk (M12). Read at Convex
+	// login limiter's right-anchored X-Forwarded-For walk. Read at Convex
 	// function runtime by auth/auth.ts, so it must be pushed into the deployment —
 	// otherwise a multi-hop XFF chain degrades to single-value-only trust.
 	'RATE_LIMIT_TRUSTED_PROXIES',

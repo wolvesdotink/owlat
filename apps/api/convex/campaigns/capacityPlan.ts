@@ -1,6 +1,6 @@
 /**
  * Campaign capacity planner — the PURE decision function behind the binding
- * pre-flight capacity check (deliverability plan rev 3).
+ * pre-flight capacity check.
  *
  * A warming deployment with no relay to overflow to can start a campaign it
  * provably cannot finish: the MTA hits the warming cap, defers the tail, and

@@ -207,7 +207,7 @@ export async function validateReadyToSend(
 		};
 	}
 
-	// Curated-sender gate (2026-07-10 plan, decision 8). The from-address must be
+	// Curated-sender gate. The from-address must be
 	// an ENABLED campaign sender, OR custom senders must be allowed org-wide. The
 	// verified-domain check above stays the floor for BOTH branches, so a custom
 	// sender still cannot spoof an unverified domain.
@@ -231,7 +231,7 @@ export async function validateReadyToSend(
 		}
 	}
 
-	// BINDING capacity check (deliverability plan rev 3) — added LAST so
+	// BINDING capacity check — added LAST so
 	// every shipped check keeps its first-failure surface. A warming deployment
 	// with no relay to overflow to can otherwise start a campaign whose tail
 	// silently expires in the MTA queue. When capacity cannot be measured the

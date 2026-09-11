@@ -96,8 +96,8 @@ async function gatherAlignmentDns(
 
 /**
  * The wizard's alignment step: gather live DNS, then run the shipped evaluator.
- * `checkedAt` is a parameter so the caller owns the clock (D15 applies to the
- * evaluator; this shell simply refuses to invent one).
+ * `checkedAt` is a parameter so the caller owns the clock; this shell refuses
+ * to invent one.
  */
 export async function runAlignmentProbe(
 	ownArm: AlignmentArm,

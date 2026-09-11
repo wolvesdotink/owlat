@@ -12,7 +12,7 @@
  *
  * ONE WRITE PATH, ONE ENTRY. `applyRampPhasePromotion` is the whole rule and
  * `promoteCellPhase` is the only door onto it. A machine-facing internalMutation
- * shell over the same rule shipped alongside it and was removed under D20: no
+ * shell over the same rule shipped alongside it and was removed: no
  * cron registered it and no module called it, so it was a second entry to a gate
  * with nothing behind it — and the second entry is always the one that drifts.
  * `apps/api/scripts/check-entry-wiring.ts` is what keeps a replacement from

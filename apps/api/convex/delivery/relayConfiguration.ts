@@ -36,7 +36,7 @@ type RelayReadCtx = QueryCtx | MutationCtx;
  *
  * The scan below is this predicate applied to the stored routes; this is it
  * applied to a kind a caller already holds — `delivery/lastMileRouting.ts` asks
- * it of the route the send plan resolved, to tell "the plan already swapped us
+ * it of the route the send plan resolved, to tell "routing already swapped us
  * onto the relay" from "we are still on the own arm and must go find one". That
  * site used to spell the question `route?.providerType !== 'ses'`, which was
  * the same set only while SES was the one saveable relay. It no longer is, and

@@ -38,7 +38,7 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 		// host and the MTA keeps its global (historic behavior).
 		const customReturnPathHost = options?.returnPathHost?.trim() || undefined;
 
-		// H2: bind the domain's DKIM key to its owning org so it is born owned and
+		// Bind the domain's DKIM key to its owning org so it is born owned and
 		// can never be used to sign for another tenant. Absent ⇒ no org is sent
 		// (unchanged behaviour); the register action supplies the deployment's
 		// singleton org.

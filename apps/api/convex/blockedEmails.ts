@@ -92,7 +92,7 @@ export const listByTeam = authedQuery({
  * Mandrill reject sync it can also mean "the provider's own blacklist
  * rejected it and we mirrored that", with no operator behind it at all. Those
  * two are indistinguishable on the row itself, and deliberately so: the
- * suppression schema gained no provenance column (plan §5) because provenance
+ * suppression schema gained no provenance column because provenance
  * is an EVENT, not a property of the address — re-blocking an address that was
  * already blocked writes nothing, so a column would record only whichever cause
  * happened to arrive first.

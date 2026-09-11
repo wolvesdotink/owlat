@@ -13,12 +13,12 @@
  * news.<root> (campaign pool — steady lifecycle volume is the best warming fuel)
  * bounce/VERP → bounces.<root> (already the MTA's return-path host)
  *
- * D11 — PER-STREAM IS CORRECT, PER-TRANSPORT IS FORBIDDEN. This is the piece
+ * PER-STREAM IS CORRECT, PER-TRANSPORT IS FORBIDDEN. This module is the one
  * most likely to violate it, so the violation is not expressible HERE: nothing
  * in this module takes a transport, a provider id or an arm as an input to the
  * From domain or the DKIM `d=`. {@link resolveCellSendingIdentity} takes an arm
- * ONLY to name that arm's DKIM SELECTOR — the one thing D11 explicitly allows
- * to differ.
+ * ONLY to name that arm's DKIM SELECTOR — the one thing that is allowed to
+ * differ.
  *
  * The two guards that CAN fail therefore live in `streamSubdomainRecords.ts`,
  * because both compare this layout against something outside it:
@@ -248,7 +248,7 @@ type SubdomainLayoutResult =
 
 /**
  * Build the proposed layout for a domain. This is what the wizard shows FIRST —
- * the plan's layout is the default, not an option behind a toggle.
+ * the proposed layout is the default, not an option behind a toggle.
  *
  * Returns a RESULT rather than throwing: `localhost`, an internal TLD or a typo
  * has no registrable zone, and the wizard must say so in place of the table
@@ -345,7 +345,7 @@ export function planStreamSubdomains(input: SubdomainLayoutInput): SubdomainLayo
 	};
 }
 
-// ============ D11: ONE SENDING IDENTITY PER CELL, WHICHEVER ARM CARRIES IT ====
+// ====== ONE SENDING IDENTITY PER CELL, WHICHEVER ARM CARRIES IT ======
 
 /** The two arms of a ramp cell. Only the DKIM SELECTOR may differ between them. */
 export type TransportArm = 'own' | 'reference';
@@ -372,7 +372,7 @@ interface CellSendingIdentity {
 	/** The return-path host. Shared by every stream and both arms. */
 	returnPathDomain: DnsName;
 	/**
-	 * The ONE thing D11 allows to differ per arm: each transport signs with its
+	 * The ONE thing allowed to differ per arm: each transport signs with its
 	 * own key under the SAME `d=`, so `Received` headers and the selector are
 	 * the only observable difference between the arms. `null` when that arm has
 	 * no selector yet.
@@ -385,8 +385,8 @@ interface CellSendingIdentity {
  *
  * `arm` reaches exactly one field — the selector. There is no code path by
  * which a transport can influence `fromDomain`, `dkimDomain` or
- * `returnPathDomain`, which is D11 enforced by construction rather than by
- * review.
+ * `returnPathDomain`, so the one-identity rule holds by construction rather
+ * than by review.
  */
 export function resolveCellSendingIdentity(input: {
 	layout: SubdomainLayoutProposal;
@@ -406,7 +406,7 @@ export function resolveCellSendingIdentity(input: {
 	};
 }
 
-// THE D11 GUARD lives in `streamSubdomainRecords.ts`
+// THE ONE-IDENTITY GUARD lives in `streamSubdomainRecords.ts`
 // (`findPerTransportSubdomainViolations`, `findUnpublishedSigningSelectors`)
 // because it must compare what a cell SIGNS with against what the wizard
 // PUBLISHES. A guard that only re-derived both arms from this module's own

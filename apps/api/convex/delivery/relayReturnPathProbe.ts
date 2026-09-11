@@ -116,7 +116,7 @@ function isPreWireFailure(errorCode: EmailErrorCode | undefined): boolean {
 	return errorCode !== undefined && PRE_WIRE_ERROR_CODES.has(errorCode);
 }
 
-/** Why a probe run did nothing. All benign — see the D2 note above. */
+/** Why a probe run did nothing. All benign — see the additive-only note above. */
 type ReturnPathProbeSkipReason =
 	| 'unresolvable_transport'
 	| 'not_probeable'

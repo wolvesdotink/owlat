@@ -31,7 +31,7 @@
  *    the Send lifecycle's reducers are idempotent per transition, so an already
  *    applied event replays as `duplicate`/`terminal` rather than as a second
  *    suppression or a second counter bump.
- *  - **`open` and `click` are dropped** (D3, the Resend precedent). Owlat's own
+ *  - **`open` and `click` are dropped**, as they are for Resend. Owlat's own
  *    tracking pixel and link rewriter instrument BOTH arms identically; consuming
  *    Mandrill's counters for one of them would make the `engagement_ratio` ramp
  *    gate compare two different rulers.
@@ -268,7 +268,7 @@ function instantOf(item: MandrillEventItem): number {
 }
 
 /**
- * Map ONE Mandrill event onto the normalized union — the D10 table, in code.
+ * Map ONE Mandrill event onto the normalized union — the mapping table, in code.
  *
  * Returns null for everything Owlat does not act on: `open`/`click`,
  * `sync` blacklist/whitelist notifications, inbound-routing events, unknown
@@ -340,7 +340,7 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 			// and non-bounce, so it takes the `email.failed` edge: the send row
 			// leaves "sending" without a bounce's reputation penalty.
 			//
-			// D9: the recipient half of that same fact — Mandrill's blacklist holds
+			// The recipient half of that same fact — Mandrill's blacklist holds
 			// this address, which the own arm has to mirror or the two arms stop
 			// mailing the same population — is minted HERE, as a normalized
 			// `suppression`, because deciding what `reject_reason: 'custom'` means is

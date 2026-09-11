@@ -19,7 +19,7 @@
  * delivers the isolation that matters, because domain reputation is what is
  * doing the work. Nothing on this screen assumes a second IP.
  *
- * D2 — no external account is load-bearing. With zero third-party credentials
+ * NO EXTERNAL ACCOUNT IS LOAD-BEARING. With zero third-party credentials
  * the table renders in full; a relay arm simply contributes no second DKIM row.
  * BIMI is an OFFER gated on the DMARC precondition — never a nag, and absent
  * entirely when the precondition does not hold.
@@ -193,7 +193,7 @@ const bimiOffers = computed(() =>
 			</li>
 		</ul>
 
-		<!-- The advice the card requires to live in the wizard, not the docs. The
+		<!-- The advice belongs in the wizard, not the docs. The
 		     copy is resolved by the backend so this component owns no wording. -->
 		<ul class="mt-3 space-y-1.5" data-testid="stream-subdomain-advice">
 			<li

@@ -2,7 +2,7 @@
 /**
  * The fresh-start setup — the body of the DEFAULT welcome branch.
  *
- * Owlat is its own platform by default (locked decision 5): this is a pure
+ * Owlat is its own platform by default: this is a pure
  * product welcome, never an import prompt. The two-minute setup personalises the
  * mailbox reserved for the member (display name, signature, notification scope)
  * and — ONLY when the instance actually has a sending transport — offers an

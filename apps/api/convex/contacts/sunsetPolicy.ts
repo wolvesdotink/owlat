@@ -20,9 +20,9 @@
  * engagement" instant from that same table (see `contacts/sunsetEngine.ts`). Nothing here
  * re-derives engagement from raw activities a second time.
  *
- * SAFETY IS THE POINT. Auto-suppression is the most destructive thing in the
- * deliverability plan, so every path that can suppress is guarded BEFORE any
- * arithmetic runs, and each guard has a named reason that reaches the audit
+ * SAFETY IS THE POINT. Auto-suppression is the most destructive thing the
+ * deliverability stack does, so every path that can suppress is guarded BEFORE
+ * any arithmetic runs, and each guard has a named reason that reaches the audit
  * log:
  *
  *   - a disabled policy never fires;

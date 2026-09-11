@@ -665,7 +665,8 @@ export const create = internalMutation({
 		domain: v.string(),
 		userId: v.string(),
 		// Optional per-domain VERP return-path host, set ATOMICALLY with creation
-		// (F2 finding 1). Threading it here — rather than a second `setReturnPathHost`
+		// rather than by a follow-up write. Threading it here — rather than a second
+		// `setReturnPathHost`
 		// write after `create` — means the row already carries the host when the
 		// register-completion `→ pending` transition lands, so that transition is a
 		// real edge (not a `pending → pending` self-loop that would drop the DKIM/
@@ -969,9 +970,9 @@ function buildReturnPathMailFrom(
  *
  * The provider must ALSO learn the new host so its bounce envelope uses it:
  *   - MTA: reflected out-of-band via the scheduled `pushReturnPathHost` action —
- *     the D1 register endpoint is idempotent for the DKIM key, so this touches
+ *     the register endpoint is idempotent for the DKIM key, so this touches
  *     only the return-path host, never the signing key.
- *   - SES (X1): reflected via `reflectSesMailFrom`, which calls SES's
+ *   - SES: reflected via `reflectSesMailFrom`, which calls SES's
  *     `SetIdentityMailFromDomain`. SES's custom MAIL FROM must be a *subdomain of
  *     the sending domain*, so an out-of-zone/apex host is rejected
  *     (`host_not_subdomain`); the regenerated records are SES's MX + SPF TXT
@@ -994,7 +995,7 @@ export const setReturnPathHost = internalMutation({
 		if (!domain) return { ok: false, reason: 'domain_not_found' };
 
 		const providerType = domain.providerType;
-		// Return-path host is honored by the built-in MTA and by SES (X1); other
+		// Return-path host is honored by the built-in MTA and by SES; other
 		// providers manage their own bounce path and are not supported.
 		if (providerType !== 'mta' && providerType !== 'ses') {
 			return { ok: false, reason: 'unsupported_provider' };

@@ -75,7 +75,7 @@ const isStandalone = computed(() => !isRelayConfigured.value);
 const headline = computed(() => localized(independenceHeadline(isRelayConfigured.value)));
 // THE TAB TITLE FOLLOWS THE H1. A static "Sending independence" would leave a
 // standalone deployment reading "Warm-up autopilot" on the page and something
-// else in its browser tab — the D14 rename half-applied.
+// else in its browser tab — the rename half-applied.
 useHead({
 	title: () =>
 		t('dashboard.admin.delivery.advanced.independence.pageTitle', { headline: headline.value }),

@@ -1,5 +1,5 @@
 /**
- * Deliverability route-state lookup (the D1 resolution seam).
+ * Deliverability route-state lookup — the one resolution seam.
  *
  * One place that knows how a `(stream, destinationProvider)` ramp cell maps
  * onto `deliverabilityRouteStates` rows, so the stream widening cannot fork
@@ -122,7 +122,7 @@ export async function loadRouteStateCell(
 }
 
 /**
- * The ramp's view of one cell: D1's resolution expression, in ONE place.
+ * The ramp's view of one cell: the share resolution expression, in ONE place.
  *
  * `ownShare ?? (isFallbackActive ? 0 : 1)` (via `resolveOwnShare`) over
  * `perStream ?? streamless` — the share convention this module documents. The

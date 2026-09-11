@@ -15,7 +15,8 @@
  * series, a single point, a flat line, a retreating line, a NaN — has a named
  * answer rather than an exception.
  *
- * D2 LIVES HERE TOO. A deployment with no reference transport has no relay to
+ * THE ADDITIVE-ONLY RULE LIVES HERE TOO. A deployment with no reference
+ * transport has no relay to
  * become independent OF: the projection returns `already_independent` and the
  * spend figure is simply absent. Neither is an error, a warning or an incomplete
  * setup — the screen renames itself and carries on.
@@ -262,7 +263,7 @@ export type RampPreset = (typeof RAMP_PRESET_KEYS)[number];
  * running the same controller it ran yesterday, and the preset is a knob over
  * `RAMP_STREAM_CONFIGS` rather than a fork of it.
  *
- * The asymmetry is the plan's: a preset may make the ADVANCE cheaper or
+ * The asymmetry is deliberate: a preset may make the ADVANCE cheaper or
  * dearer and may never touch the RETREAT. Multiplicative decrease, the floor,
  * the cooldown ladder and every hard stop are outside a preset's reach by
  * construction — there is no field here that could express them.
@@ -275,7 +276,7 @@ export interface RampPresetTuning {
 }
 
 const RAMP_PRESET_TUNING: Record<RampPreset, RampPresetTuning> = {
-	// `conservative` IS the plan's standalone substitution, not a coincidence
+	// `conservative` IS the standalone substitution, not a coincidence
 	// that happens to match it: step halved, K_CLEAN +2 (3 -> 5). Applying that
 	// substitution anywhere else as well would compound it to x0.25 / K_CLEAN 7.
 	conservative: { increaseStepScale: 0.5, extraCleanWindows: 2 },
@@ -286,13 +287,13 @@ const RAMP_PRESET_TUNING: Record<RampPreset, RampPresetTuning> = {
 /**
  * The preset a stream runs under when nobody has chosen one.
  *
- * STANDALONE DEFAULTS TO CONSERVATIVE, and the reason is D14 rather than
+ * STANDALONE DEFAULTS TO CONSERVATIVE, and the reason is honesty rather than
  * timidity: with no reference arm the engagement gate is a genuinely weak
  * signal, so the honest response to weaker evidence is to advance more slowly —
  * not to advance at the same pace and hope.
  *
- * THIS IS THE PLAN'S STANDALONE SUBSTITUTION, AND ITS ONLY APPLICATION. The
- * substitution the plan describes — K_CLEAN 3 -> 5, step halved with no
+ * THIS IS THE STANDALONE SUBSTITUTION, AND ITS ONLY APPLICATION. The
+ * substitution a standalone cell gets — K_CLEAN 3 -> 5, step halved with no
  * reference transport — is precisely `RAMP_PRESET_TUNING.conservative`, so it is
  * delivered here rather than a second time inside the gate table. The resulting
  * standalone constants are fixture-pinned (K_CLEAN 5; campaign and automation

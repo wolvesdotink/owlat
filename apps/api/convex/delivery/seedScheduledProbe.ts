@@ -35,7 +35,7 @@
  * `delivery/worker.ts#assertSeedShadowExclusion`, which now covers both envelope
  * kinds precisely because this module exists.
  *
- * D2 — ADDITIVE-ONLY. Zero seed mailboxes, no default sender, an unverified
+ * ADDITIVE-ONLY. Zero seed mailboxes, no default sender, an unverified
  * sending domain or no configured route each make this a permanent no-op. It
  * never throws, never blocks a send, never nags, and gate 5 simply keeps
  * holding on the cells it has no evidence for, which costs the ramp nothing.
@@ -250,7 +250,7 @@ async function probeStream(
  * organization split across two pages is harmless: the cadence guard in
  * {@link probeStream} sees the rows the first page wrote.
  *
- * D16: cursor-paged and self-rescheduling, so no organization can be starved by
+ * Cursor-paged and self-rescheduling, so no organization can be starved by
  * sorting last.
  */
 export const sweepScheduledSeedProbes = internalMutation({

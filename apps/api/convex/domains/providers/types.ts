@@ -168,7 +168,7 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * deployment-global `MTA_RETURN_PATH_DOMAIN` env (historic behavior). SES has
 	 * no return-path concept and ignores it.
 	 *
-	 * `options.organizationId` is the owning tenant for the domain's DKIM key (H2):
+	 * `options.organizationId` is the owning tenant for the domain's DKIM key:
 	 * the MTA adapter binds the key to it so it is born owned and can never sign
 	 * for another org. The generic register action resolves it from the
 	 * deployment's singleton org. Providers with no per-domain key (SES) ignore it.

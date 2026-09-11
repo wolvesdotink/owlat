@@ -187,7 +187,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	// 1. An unusable clock cannot date a freeze, age evidence or measure a hold.
 	if (!isClockUsable) return { ...held, reason: 'clock_unusable' };
 
-	// 2-4. HARD STOPS, in the plan's order. They bypass the gates entirely and
+	// 2-4. HARD STOPS, in precedence order. They bypass the gates entirely and
 	//      each resets the clean streak AND REVOKES THE GRADUATION PIN: a cell in
 	//      one of these states has no clean history left to spend.
 	//
@@ -313,7 +313,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	// 6. A breached gate: multiplicative decrease to the floor, then a cooldown.
 	if (evaluation.verdict === 'fail' || evaluation.verdict === 'halt') {
 		const failedGate = evaluation.failedGate;
-		// D17: a tripwire alone is suspect. Hold — the streak is already zero, so
+		// A TRIPWIRE ALONE IS SUSPECT. Hold — the streak is already zero, so
 		// holding still forbids an increase; it just does not halve on one signal.
 		//
 		// NO SECOND CORROBORATION SCAN HERE, deliberately. `aggregateRampGates`

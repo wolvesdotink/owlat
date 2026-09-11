@@ -352,8 +352,9 @@ export async function dispatchGovernedEmail(
 		//
 		// NOT A DEFERRAL, and deliberately not routed through one. An ambiguous
 		// timeout is our own request outcome going missing, not a receiver holding
-		// the message: borrowing the deferral shape would re-enqueue the send (D4
-		// forbids it) and would put a non-observation into
+		// the message: borrowing the deferral shape would re-enqueue the send — a
+		// blind retry on an ambiguous timeout is exactly what we never do — and
+		// would put a non-observation into
 		// `transportOutcomes.deferred`, whose two writers already measure from
 		// different points on the delivery path (see the ruler-asymmetry note in
 		// `delivery/deferralOutcome.ts`). Gate 2's numerator stays untouched here.

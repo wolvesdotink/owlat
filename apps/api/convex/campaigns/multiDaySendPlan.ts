@@ -53,8 +53,8 @@ export interface SendPlanState {
 	 * Carried rather than re-derived from `planTotalDays >= MAX_PLAN_DAYS`,
 	 * because a plan that covers the audience EXACTLY on day `MAX_PLAN_DAYS` is
 	 * complete: the length alone cannot tell the two apart, and describing a
-	 * finished plan as "more than 60 days" is the D14 dishonesty this whole
-	 * module exists to avoid.
+	 * finished plan as "more than 60 days" is the dishonesty this whole module
+	 * exists to avoid.
 	 *
 	 * `undefined` READS AS NOT TRUNCATED — the reading every pre-migration row
 	 * gets, and every row this build has not hopped since. A checkpoint that

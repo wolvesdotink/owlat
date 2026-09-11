@@ -199,7 +199,7 @@ export type MtaWebhookEventDraft<P extends MtaWebhookPayloads = MtaWebhookPayloa
  *
  * Three fields are subtracted, and the subtraction is the point: `bounceType`,
  * `reportedDomain` and `sourceIsp` belong to `bounced`/`complained` alone, and
- * the pre-D7 Convex union forbade reading them anywhere else. Sharing one field
+ * the Convex union has always forbidden reading them anywhere else. Sharing one field
  * declaration with the producer draft must not quietly hand every variant a
  * `sourceIsp` that is always `undefined` — the variants below re-add each one
  * where it genuinely travels.

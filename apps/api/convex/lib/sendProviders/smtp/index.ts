@@ -9,7 +9,7 @@
  * non-secret client config is resolved lazily (once) from the instance-level
  * `SMTP_RELAY_*` env and cached across sends on the warm worker; each send
  * composes the message with `@owlat/mail-message` and delivers it with the
- * in-house `@owlat/smtp-client` (one connection per send, W3).
+ * in-house `@owlat/smtp-client`, one connection per send.
  *
  * Single-attempt `sendEmail`; the **Send dispatch (helper)** owns the retry
  * loop and consumes `retryDelays` + `categorizeError`. This module runs on the

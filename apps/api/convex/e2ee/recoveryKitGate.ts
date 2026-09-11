@@ -1,9 +1,9 @@
 /**
- * The gate in front of a MEMBER's own recovery kit (plan idea 55).
+ * The gate in front of a MEMBER's own recovery kit.
  *
  * A recovery kit is the one sanctioned egress of a private key from the vault. Until now only an
- * admin could ask for one, for any address. Idea 55 puts the same download on the member's own
- * preferences page, which means the gate — not the crypto — is the security-sensitive part: a live
+ * admin could ask for one, for any address. Putting the same download on the member's own
+ * preferences page means the gate — not the crypto — is the security-sensitive part: a live
  * session on an unlocked laptop must not be enough to walk away with the key that opens someone's
  * sealed mail.
  *

@@ -15,7 +15,7 @@
  * plainly on the offer rather than discovered after the operator has published
  * a record and wondered why nothing changed.
  *
- * D2 — this is a third-party-shaped feature (a VMC is bought from an external
+ * A THIRD-PARTY-SHAPED FEATURE (a VMC is bought from an external
  * CA) and is therefore ADDITIVE-ONLY: no BIMI record, no VMC, no logo is ever a
  * blocked send, a blocked phase promotion, an error state, or an unresolvable
  * warning. The offer's `required` and `nag` fields are literal `false` so no

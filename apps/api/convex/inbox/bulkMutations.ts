@@ -54,10 +54,10 @@ function normalizeBatchIds(ids: Id<'inboundMessages'>[], label: string): Id<'inb
 }
 
 /**
- * Approve a batch of agent drafts for sending — per D6, one outcome per id
+ * Approve a batch of agent drafts for sending — one outcome per id
  * (`approved | no_draft | reply_in_progress | not_found`), never throwing on a
- * partial failure. All approved items share ONE undo window (the C1
- * human-approve window resolved once for the batch), returned as
+ * partial failure. All approved items share ONE undo window (the human-approve
+ * window resolved once for the batch), returned as
  * `undo.sendAt` exactly like the single `approveDraft`, so the shared
  * countdown toast can cancel any of them via `undoAutoSends` while it is open.
  *

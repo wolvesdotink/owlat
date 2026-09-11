@@ -8,7 +8,7 @@
  * so the page and the server cannot disagree about a figure an operator is about
  * to put in front of their boss.
  *
- * D14 IS THE WHOLE SHAPE OF THIS FILE. With NO RELAY AT ALL there is nothing to
+ * HONESTY IS THE WHOLE SHAPE OF THIS FILE. With NO RELAY AT ALL there is nothing to
  * become independent OF, so the screen is not a degraded "Independence" — it is
  * "Warm-up autopilot", whose headline is TODAY'S CAPACITY and what is holding it
  * back. Both variants are answered here, from the same read, and neither is an
@@ -43,7 +43,7 @@
  * there); unset is the ordinary state and costs the screen one line of copy
  * rather than a warning.
  *
- * D2: absence lowers confidence and does nothing else. No credential is read
+ * ABSENCE LOWERS CONFIDENCE AND DOES NOTHING ELSE. No credential is read
  * here, nothing throws, and a fresh install with only an MTA renders every field
  * on this screen.
  */

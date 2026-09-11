@@ -94,7 +94,7 @@ export function armForTransport(transport: SendProviderKind): SendAssignmentArm 
  * the namespaced kinds bundled plugins contribute, which no validator can
  * express, so the wire carries `v.string()`. This narrows it back through the
  * catalog's own membership test rather than re-deriving the arm from a second
- * comparison — {@link armForTransport} stays the only place D3's own-arm
+ * comparison — {@link armForTransport} stays the only place the own-arm
  * declaration is read.
  *
  * A label naming no transport this build can dispatch to is not the own arm by

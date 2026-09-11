@@ -39,8 +39,8 @@ import type { RampReadCtx } from './rampReadCtx';
  * has to absorb an ordinary missed day or two — two spare cadences do that, and
  * a wider window buys nothing but staleness.
  *
- * THE ACCEPTANCE CRITERION IS "WITHIN ONE WINDOW" (the piece's own), and the
- * evaluation window is `RAMP_AIMD.evaluationWindowMs` — 24h. A 30-day window would
+ * THE ACCEPTANCE CRITERION IS "WITHIN ONE WINDOW", and the evaluation window is
+ * `RAMP_AIMD.evaluationWindowMs` — 24h. A 30-day window would
  * have kept the EQUIPPED constants (full step, K_CLEAN 3, no doubled dwell, no capped
  * ceiling) running for thirty windows after a key was revoked, which is exactly the
  * "the degraded path is never taken so it rots" failure the freshness window exists to
@@ -112,8 +112,8 @@ export async function loadRampDeploymentPresence(
 		seed_mailboxes: seedRow !== null,
 		// WHAT IS ACTUALLY OBSERVED TODAY is a live Yahoo CFL enrollment — that is
 		// the only feedback loop this deployment enrols in so far. The matrix key is
-		// the general one ("any FBL enrollment") because the plan's row is, and
-		// because a JMRP enrollment is meant to satisfy the same key rather than a
+		// the general one ("any FBL enrollment") because a JMRP enrollment is meant
+		// to satisfy the same key rather than a
 		// second one; when JMRP lands it is an extra clause HERE, not a new entry in
 		// the table and not a second confidence note.
 		complaint_feedback_loop: enrollments.some((row) => row.state === 'enrolled'),

@@ -4,12 +4,12 @@
  * NOTHING ELSE WRITES A CELL'S FIRST SHARE. The MTA snapshot writes STREAM-LESS
  * rows and never an `ownShare`; the controller reads `ownShare === undefined` as
  * "not mine" and leaves the cell alone; every control refuses an unmanaged cell
- * rather than creating one. That is deliberate — D1's promise is that shipped
- * routing does not change until someone asks — but it means the ramp needs one
+ * rather than creating one. That is deliberate — shipped routing does not
+ * change until someone asks — but it means the ramp needs one
  * door, and this is it: an admin-gated, org-scoped, audited act that turns the
  * shipped boolean into a measured share.
  *
- * WHICH SHARE THE CELL OPENS ON IS THE SETUP FORK'S ANSWER (D14 x D3), read from
+ * WHICH SHARE THE CELL OPENS ON IS THE SETUP FORK'S ANSWER, read from
  * `ramp/setupFork.ts` rather than decided here. With a relay configured the cell
  * enrols on the ESP path and opens at its stream's `initialShareFraction` — a
  * measured sliver of traffic on the own MTA, the rest still on the relay.

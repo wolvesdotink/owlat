@@ -19,7 +19,7 @@ export type EnvKey =
 	| 'BETTER_AUTH_SECRET'
 	| 'INSTANCE_SECRET'
 	// The PREVIOUS INSTANCE_SECRET, set ONLY during a secret rotation window
-	// (Sealed Mail key lifecycle, E6). While set, the E2EE key box opens a sealed
+	// for the Sealed Mail key lifecycle. While set, the E2EE key box opens a sealed
 	// private key under the current secret and, on failure, falls back to this one
 	// — so the vault keeps reading correctly mid-migration while
 	// `e2ee/lifecycleNode.ts:reSealVault` re-seals every row under the new secret.

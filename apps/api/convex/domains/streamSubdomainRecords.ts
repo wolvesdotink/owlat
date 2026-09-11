@@ -33,7 +33,8 @@
  * 100 % of a stream. Both are threaded through; nothing beyond what the schema
  * stores is invented here.
  *
- * D11 — the generated records keep BOTH ARMS OF A CELL on the same From domain
+ * ONE SENDING IDENTITY PER CELL — the generated records keep BOTH ARMS on the
+ * same From domain
  * and the same `d=`. The only per-arm record is a second DKIM selector under
  * the SAME subdomain; there is no input by which a transport can acquire a
  * subdomain of its own. {@link findUnpublishedSigningSelectors} closes the one
@@ -119,7 +120,7 @@ export function streamSubdomainRecordValue(record: StreamSubdomainRecord): strin
 	return record.key.status === 'published' ? record.key.value : null;
 }
 
-/** The selectors that exist per signing role, indexed for the D11 guard. */
+/** The selectors that exist per signing role, indexed for the guard below. */
 type SigningSelectorsByRole = Readonly<Record<SigningSubdomainRole, ArmDkimSelectors>>;
 
 export interface StreamSubdomainRecordSet {
@@ -210,7 +211,7 @@ interface StreamSubdomainRecordOptions {
 	/**
 	 * A reference transport (relay/ESP) is connected.
 	 *
-	 * D2/D3 — standalone is the DEFAULT and the expected configuration, so the
+	 * STANDALONE IS THE DEFAULT and the expected configuration, so the
 	 * reference arm's DKIM row is emitted only when one actually exists. Its key
 	 * comes from the ESP, so the row is always pending: the wizard shows the
 	 * SHAPE (a second selector under the SAME subdomain) and the operator pastes
@@ -249,7 +250,8 @@ function dkimRows(input: {
 		// we never hold; the own arm's is minted once the name is registered.
 		const identity = arm === 'own' ? input.identity : undefined;
 		// THE SAME SUBDOMAIN FOR BOTH ARMS. Only the selector label differs —
-		// which is exactly what D11 permits and all it permits. With no selector
+		// which is exactly what the one-identity rule permits and all it permits.
+		// With no selector
 		// yet the row still names the `_domainkey` parent it will live under, so
 		// nothing has to invent a label to have a host.
 		const host =
@@ -380,7 +382,7 @@ export function generateStreamSubdomainRecords(
 	return { ok: true, recordSet: buildStreamSubdomainRecords(planned.proposal, input) };
 }
 
-// ============ THE D11 GUARDS (both can fail) ============
+// ============ THE ONE-IDENTITY GUARDS (both can fail) ============
 
 /** A generated row that gives one arm a name the other arm does not share. */
 interface PerTransportSubdomainViolation {
@@ -393,7 +395,7 @@ interface PerTransportSubdomainViolation {
 }
 
 /**
- * THE D11 GUARD, over the GENERATED RECORDS.
+ * THE ONE-IDENTITY GUARD, over the GENERATED RECORDS.
  *
  * Per-STREAM subdomains are correct; per-TRANSPORT subdomains are forbidden —
  * they split domain reputation, make the two arms incomparable and throw away
@@ -438,7 +440,7 @@ interface UnpublishedSigningSelector {
 /**
  * Cross-check the SIGNING side against the PUBLISHING side.
  *
- * D11 permits exactly one difference between the two arms of a cell — the DKIM
+ * Exactly one difference is permitted between the two arms of a cell — the DKIM
  * selector — so the selector is where a divergence is REACHABLE, and it is the
  * expensive kind: mail signed with a selector that has no published TXT record
  * fails DKIM for every message on that subdomain, and nothing in the send path

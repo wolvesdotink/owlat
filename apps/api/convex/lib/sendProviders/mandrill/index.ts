@@ -112,8 +112,8 @@ const ACCEPTED_STATUSES: ReadonlySet<string> = new Set(['sent', 'queued', 'sched
 /**
  * The `messages/send-raw` request body.
  *
- * The feature-off flags are the executable form of D3 and are asserted verbatim
- * by `__tests__/sendRaw.test.ts`. They are sent UNCONDITIONALLY — never omitted
+ * The feature-off flags are the executable form of that rule and are asserted
+ * verbatim by `__tests__/sendRaw.test.ts`. They are sent UNCONDITIONALLY — never omitted
  * when falsy — because an omitted flag inherits the ACCOUNT's default, and an
  * operator who left click-tracking on in the Mandrill dashboard would otherwise
  * get every link in every campaign silently rewritten to a Mandrill redirector:
@@ -240,7 +240,7 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 	 *
 	 * `ipPool` passes the resolved route's pool name straight through — free-form
 	 * because Mandrill pool names are whatever the account created. The
-	 * return-path domain is the D5 probe verdict: `relayReturnPathHost` is set
+	 * return-path domain is the probe verdict: `relayReturnPathHost` is set
 	 * only once the routing pass has PROVEN this transport honours a custom
 	 * return path and the From domain's host authorises it, so no separate field
 	 * (and no second probe) is needed here.
@@ -304,10 +304,10 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 			to: composed.envelope.to,
 			from_email: composed.envelope.from,
 			// Accept-then-queue, so one slow recipient domain cannot hold the HTTP
-			// call open past our deadline and manufacture a D4 ambiguity.
+			// call open past our deadline and manufacture an ambiguous outcome.
 			async: true,
-			// ── D3: every Mandrill feature that would rewrite or re-instrument our
-			// MIME, off. Unconditional; see MandrillSendRawBody.
+			// ── Every Mandrill feature that would rewrite or re-instrument our MIME,
+			// off. Unconditional; see MandrillSendRawBody.
 			track_opens: false,
 			track_clicks: false,
 			auto_html: false,
@@ -359,7 +359,7 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 			);
 			const errorName = error instanceof Error ? error.name : undefined;
 
-			// D4 — NEVER blind-retry a timeout. Mandrill has no idempotency surface,
+			// NEVER blind-retry a timeout. Mandrill has no idempotency surface,
 			// so a lost response may sit on top of an accepted (and delivered)
 			// message. `AMBIGUOUS_TIMEOUT` is not retryable, and `acceptanceUnknown`
 			// tells the governed boundary the outcome is genuinely undecided rather

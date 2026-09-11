@@ -27,7 +27,7 @@ import type { ReferenceArmInput } from '@owlat/shared/deliverabilityAlignment';
  * backend's own sentence, rendered as it arrived.
  */
 export interface ReferenceRelayNotice {
-	/** `multi_relay` is D8's rule; `undescribed` is one relay we cannot see. */
+	/** `multi_relay` is more than one relay enabled; `undescribed` is one relay we cannot see. */
 	readonly kind: 'multi_relay' | 'undescribed';
 	readonly title: string;
 	/** The backend's own sentence, unedited — it names the relays involved. */

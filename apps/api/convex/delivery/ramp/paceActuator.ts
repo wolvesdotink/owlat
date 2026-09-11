@@ -290,7 +290,7 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 	//    ABOVE the per-day guard on purpose — a retreat is never rationed.
 	if (evaluation.verdict === 'fail' || evaluation.verdict === 'halt') {
 		const failedGate = evaluation.failedGate;
-		// D17: a tripwire alone is suspect. Hold — the streak is already zero, so
+		// A TRIPWIRE ALONE IS SUSPECT. Hold — the streak is already zero, so
 		// holding still forbids an increase; it just does not halve on one signal.
 		if (evaluation.requiresCorroboration) {
 			return {

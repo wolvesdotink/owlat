@@ -44,7 +44,7 @@ export type RampGateDecidedReason =
 	| 'reference_tolerance_breached'
 	/**
 	 * The cell moved against ITS OWN 30-day trailing rate by more than the
-	 * standalone substitution allows (plan's "gates, degraded honestly" table).
+	 * standalone substitution allows.
 	 *
 	 * A distinct reason from `reference_tolerance_breached` because the operator
 	 * story is different in a way that changes what they go and look at: the

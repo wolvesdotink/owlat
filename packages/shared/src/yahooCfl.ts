@@ -17,7 +17,7 @@
  * pure function of the last observed report and the clock, so the re-check needs
  * no cron and no write, and the wizard can never show a stale verdict.
  *
- * D2 (the additive-only third-party rule) is the invariant this module exists
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE is the invariant this module exists
  * to honour: being un-enrolled is a SUPPORTED CONFIGURATION. It lowers
  * measurement confidence and substitutes a tighter proxy threshold for the
  * complaint gate. It never throws, never blocks a send, never blocks a phase
@@ -72,7 +72,7 @@ export const YAHOO_CFL_SUBMISSION_PATIENCE_MS = 14 * 24 * 60 * 60 * 1000;
 /**
  * How much `lastReportAt` must ADVANCE before a report is worth a write.
  *
- * D16 / ADR-0042: complaints arrive in bursts, and every report for a domain
+ * ADR-0042: complaints arrive in bursts, and every report for a domain
  * lands on the SAME enrollment row — patching it per complaint is exactly the
  * single-document OCC contention ADR-0042 was written about, and on the complaint
  * hot path a write conflict costs a complaint. The row exists only to prove
@@ -259,8 +259,8 @@ export function applyYahooCflEvent(
 			// the FBL address would otherwise MANUFACTURE an enrollment for a domain
 			// the operator never enrolled — and with it `confidence: 'high'` and the
 			// looser direct complaint threshold, silencing the yahoo cell's complaint
-			// gate with a signal that reads ~0 forever (the confident wrong signal
-			// D14 exists to forbid).
+			// gate with a signal that reads ~0 forever — a confident wrong signal is
+			// the one thing the measurement must never produce.
 			//
 			// A report may therefore CONFIRM and REFRESH an enrollment, never create one. `not_started` is
 			// refused — which is not an error, it is a reason — so no row is ever written by an

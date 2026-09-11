@@ -36,14 +36,14 @@
  *     blocked by any of them.
  *   - move a PHASE CEILING from here at all. The rung has its own two doors and
  *     they are separate modules: `rampPhaseReset.resetCellPhase` takes it down,
- *     `rampPhasePromotion.promoteCellPhase` runs the plan's evidence routes to
+ *     `rampPhasePromotion.promoteCellPhase` runs the evidence routes to
  *     take it up. A ceiling that could also rise on a control with no evidence
  *     behind it would leave the gate guarding one of two doors.
  *
  * AN UNMANAGED CELL IS REFUSED CALMLY, never created. Writing a row with an
  * `ownShare` would opt a cell into the ramp as a side effect of pausing it —
- * which is the opposite of what the operator asked for, and a behaviour change
- * D1 does not sanction. Opting in is its own deliberate act, and it has its own
+ * which is the opposite of what the operator asked for, and a change in shipped
+ * routing nobody asked for. Opting in is its own deliberate act, and it has its own
  * mutation: `rampEnrollment.enrollCell`.
  *
  * THE REFUSAL UNION, THE RESULT SHAPE AND THE TARGET RESOLUTION ARE SHARED, and

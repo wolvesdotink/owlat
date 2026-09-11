@@ -10,7 +10,7 @@
  * too large to count inside the read budget, or a projection with no positive
  * capacity at all ALL resolve to "capacity unknown → allow". Blocking a
  * campaign because we could not read warming state, or because we ran out of
- * budget counting it, would be exactly the false blocker the plan forbids.
+ * budget counting it, would be exactly the false blocker that rule forbids.
  */
 
 import { v } from 'convex/values';
@@ -69,7 +69,8 @@ type Ctx = MutationCtx | QueryCtx;
  * a few thousand a day around schedule day 12), an audience larger than the
  * budget can count is allowed through and its tail expires exactly as it did
  * before this gate existed. That is a deliberate bound, not an oversight: the
- * alternative is refusing sends on an unmeasured audience, which D2 forbids.
+ * alternative is refusing sends on an unmeasured audience, which the
+ * never-refuse-on-missing-data rule forbids.
  * The real fix for very large audiences is a denormalized audience-size
  * counter — the same follow-up `COUNT_CEILING` names — not a bigger budget.
  */
@@ -102,9 +103,9 @@ export type CampaignCapacityAssessment =
 
 /**
  * WHY capacity could not be measured. Every `capacityKnown: false` arm carries
- * one (every decision carries a recorded, human-readable reason; D14 — the UI
- * has to be able to say "measurement confidence: low" and name what would
- * improve it).
+ * one: every decision carries a recorded, human-readable reason, and the UI has
+ * to be able to say "measurement confidence: low" and name what would improve
+ * it.
  *
  * The first three are the warming-cap gate's verdict (`warmingCapGate.ts`) and
  * mean the cap is not a constraint at all; the rest are genuine measurement
@@ -154,7 +155,8 @@ export async function assessCampaignCapacity(
 	// FAIL OPEN, unconditionally. This runs inside `campaigns.scheduling.schedule`:
 	// an exception escaping here would not
 	// refuse the campaign, it would make the send mutation THROW — a failure to
-	// MEASURE blocking a SEND, exactly what D2 forbids. Every measurement fault
+	// MEASURE blocking a SEND, exactly what this module exists to prevent. Every
+	// measurement fault
 	// (a read limit, a corrupt segment, an unreadable row) degrades to "capacity
 	// unknown → allow".
 	try {
@@ -421,8 +423,7 @@ export function assessCountedPlan(
  * rather than folded into `truncated`: "the enumeration stopped at
  * MAX_PLAN_DAYS" and "the audience is at least N" are different facts and get
  * different copy ("at least N days" vs "more than 60 days"). Folding them made
- * a five-day schedule render as "more than 60 days", which is simply false
- * (D14 honesty).
+ * a five-day schedule render as "more than 60 days", which is simply false.
  */
 export function toAssessment(
 	plan: CampaignCapacityPlan,

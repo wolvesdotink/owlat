@@ -7,8 +7,8 @@
  * (`mixDecisions.message`). Recomputing "what is holding this cell back" on the
  * read side would be a second implementation of the precedence ladder that could
  * disagree with the one that actually moved the share — which is the exact class
- * of bug D5 was written about, one layer up. So the grid shows the last
- * decision, verbatim.
+ * of bug the single-derivation rule was written about, one layer up. So the
+ * grid shows the last decision, verbatim.
  *
  * A CELL WITH NO DECISIONS IS NOT AN ERROR. Most cells in most deployments have
  * never been ramp-managed; they render as "not on the ramp yet", calmly, with no

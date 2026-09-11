@@ -29,10 +29,10 @@
  * Return-Path state is RECORDED, never blocking: a relay that cannot carry our
  * VERP return path only flags the cell's measurement as degraded.
  *
- * D2 — THE ADDITIVE-ONLY THIRD-PARTY RULE: with NO reference transport there is
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE: with NO reference transport there is
  * no second arm and therefore nothing to align. The pre-flight then passes
  * trivially as `single_arm` — no error, no warning, no block. This is the single
- * easiest place in the plan to accidentally make an ESP mandatory.
+ * easiest place to accidentally make an ESP mandatory.
  *
  * The third reference state is the one that keeps that rule honest without
  * opening a hole: a relay IS configured but its signing identity is not known to

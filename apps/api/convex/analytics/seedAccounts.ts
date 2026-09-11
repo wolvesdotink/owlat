@@ -143,7 +143,7 @@ export async function hasSeedAccounts(
  * in the same deployment; there is no worker on the other side of the boundary
  * any more, so an org argument to re-check would be an argument nobody supplies.
  *
- * D2: advisory only. It never blocks a send, a promotion, or a screen, and it
+ * ADVISORY ONLY. It never blocks a send, a promotion, or a screen, and it
  * is not a "setup incomplete" nag — a seed that is never rotated keeps being
  * measured, it just measures less well.
  */

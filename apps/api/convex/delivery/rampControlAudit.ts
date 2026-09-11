@@ -1,7 +1,8 @@
 /**
  * AN OPERATOR ACTION, RECORDED — the write half every control mutation shares.
  *
- * D12 IS NOT "THE CONTROLLER IS AUDITED", IT IS "EVERY DECISION IS AUDITED". A
+ * THE RULE IS NOT "THE CONTROLLER IS AUDITED", IT IS "EVERY DECISION IS
+ * AUDITED". A
  * human pinning a cell at 20% is a decision about that cell's share, and if it
  * only reached `auditLogs` then the `mixDecisions` timeline — the one place an
  * operator goes to ask "why is this cell not moving" — would show an unbroken

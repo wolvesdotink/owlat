@@ -15,7 +15,7 @@
  * is the liveness proof the re-check reads. One complaint pipeline, three
  * sources — never a second parser.
  *
- * D2 (additive-only third-party rule): every function here tolerates absence.
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE: every function here tolerates absence.
  * No enrollment row means `not_started`, which yields the documented
  * substitution (CFBL feed, else the unsubscribe-rate proxy) with a
  * confidence caveat. Nothing here throws on absence, blocks a send, blocks a

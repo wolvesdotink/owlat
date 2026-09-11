@@ -228,7 +228,7 @@ export const sendApprovedReply = internalAction({
 
 		// Send-fire is the moment a HUMAN approve becomes a real send: record the
 		// graduated-autonomy learning signals HERE, not at approve time, so an
-		// approve undone inside its C1 window trains nothing and a re-approve
+		// approve undone inside its undo window trains nothing and a re-approve
 		// records exactly once (the mutation is idempotent per message — the
 		// stuck-approved reconcile may legitimately re-fire this action).
 		// Best-effort: learning-loop bookkeeping must never fail — or duplicate —
