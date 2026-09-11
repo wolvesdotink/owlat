@@ -29,12 +29,15 @@ type Result = { status: number; stdout: string; stderr: string };
  * Run the runner in a throwaway directory: `baseline` is written to
  * baseline.txt (unless null), and the generator is a shell command that echoes
  * `current` — or, when `generatorExit` is set, fails with that status instead.
+ * `env` is merged over the inherited environment, which is how the locale case
+ * below reaches `comm`.
  */
 function ratchet(options: {
 	current: string[];
 	baseline: string[] | null;
 	flags?: string[];
 	generatorExit?: number;
+	env?: Record<string, string>;
 }): Result & { dir: string; baselineText: string } {
 	const dir = mkdtempSync(join(tmpdir(), 'owlat-ratchet-'));
 	sandboxes.push(dir);
@@ -67,7 +70,7 @@ function ratchet(options: {
 			'-c',
 			generator,
 		],
-		{ cwd: dir, encoding: 'utf8' }
+		{ cwd: dir, encoding: 'utf8', env: { ...process.env, ...options.env } }
 	);
 	return {
 		status: run.status ?? -1,
@@ -114,6 +117,21 @@ describe('the ratchet runner, comparing against a baseline', () => {
 		expect(twice.status).toBe(1);
 		const once = ratchet({ current: ['a:dup'], baseline: ['a:dup'] });
 		expect(once.status).toBe(0);
+	});
+
+	it('compares in C collation even when the caller runs under a UTF-8 locale', () => {
+		// `B:x` sorts before `a:x` in bytes and after it in en_US.UTF-8. Both
+		// sort and comm must agree, or comm's merge desynchronises and reports
+		// `a:x` — present on both sides — as a new entry as well as a stale one.
+		const run = ratchet({
+			current: ['a:x'],
+			baseline: ['B:x', 'a:x'],
+			env: { LC_ALL: 'en_US.UTF-8' },
+		});
+		expect(run.stdout).toContain('FAIL: 1 stale entr(y/ies) in baseline.txt (thing fixed):');
+		expect(run.stdout).toContain('B:x');
+		expect(run.stdout).not.toContain('new thing(s)');
+		expect(run.status).toBe(1);
 	});
 
 	it('reads a baseline that is out of order, or commented, or blank-padded', () => {

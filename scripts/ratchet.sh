@@ -41,10 +41,11 @@
 # Templates expand {n} (the entry count) and {baseline} (the baseline path).
 #
 # Blank lines and `#` comments in a baseline are ignored, so a baseline may
-# document itself. Both sides of every comparison are sorted with LC_ALL=C
-# because `comm` compares bytes while `sort` honours LC_COLLATE: under a UTF-8
-# locale the two disagree about where `_`, `.` and `/` fall in a path, and comm
-# then reports the same entry as both new AND stale.
+# document itself. `sort` and `comm` BOTH honour LC_COLLATE — comm's merge
+# assumes its two inputs are ordered the way comm itself collates — so both are
+# pinned to LC_ALL=C here. Pin only one and the pair disagrees about where `_`,
+# `.`, `/` and case fall in a path, comm's merge desynchronises, and it reports
+# entries that are in both lists as new AND stale.
 
 set -uo pipefail
 
@@ -115,7 +116,7 @@ say() {
 	fi
 }
 
-# Non-empty, non-comment lines only — in C collation, the one `comm` speaks.
+# Non-empty, non-comment lines only — in the C collation both sides compare in.
 entries() { grep -v '^[[:space:]]*#' | grep . | LC_ALL=C sort; }
 
 generated=$("$@")
@@ -145,8 +146,8 @@ if [ ! -f "$baseline" ]; then
 fi
 
 frozen=$(entries <"$baseline")
-new=$(comm -23 <(printf '%s\n' "$current" | grep .) <(printf '%s\n' "$frozen" | grep .))
-stale=$(comm -13 <(printf '%s\n' "$current" | grep .) <(printf '%s\n' "$frozen" | grep .))
+new=$(LC_ALL=C comm -23 <(printf '%s\n' "$current" | grep .) <(printf '%s\n' "$frozen" | grep .))
+stale=$(LC_ALL=C comm -13 <(printf '%s\n' "$current" | grep .) <(printf '%s\n' "$frozen" | grep .))
 
 fail=0
 if [ -n "$new" ]; then
