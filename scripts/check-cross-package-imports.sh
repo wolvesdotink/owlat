@@ -171,8 +171,14 @@ echo "ok:   @owlat/mta-protocol/wireFixtures imported only from __tests__/ folde
 # bundle in a released image rather than in CI. nodemailer, mailparser and
 # mailauth exist here only as devDependencies for the differential/oracle
 # suites, so the runtime dependency list is pinned too.
-purity=$(git ls-files -- 'packages/mail-message/src/*.ts' |
-	grep -v '/__tests__/' |
+mail_message_sources=$(git ls-files -- 'packages/mail-message/src/*.ts' | grep -v '/__tests__/')
+mail_message_count=$(printf '%s\n' "$mail_message_sources" | grep -c '.')
+# Non-triviality: a pathspec that matches nothing has nothing to reject.
+if [ "$mail_message_count" -lt 10 ]; then
+	echo "FAIL: expected at least 10 @owlat/mail-message source modules to check, found $mail_message_count"
+	exit 1
+fi
+purity=$(printf '%s\n' "$mail_message_sources" |
 	node -e '
 		const fs = require("node:fs");
 		const allowed = new Set(["node:crypto", "@owlat/mail-canon"]);
