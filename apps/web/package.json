@@ -30,7 +30,6 @@
 		"@nuxtjs/i18n": "^10.6.0",
 		"@owlat/api": "workspace:*",
 		"@owlat/email-builder": "workspace:*",
-		"@owlat/email-previewer": "workspace:*",
 		"@owlat/email-renderer": "workspace:*",
 		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*",

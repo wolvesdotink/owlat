@@ -67,9 +67,9 @@ apps/web/app/pages/dashboard/send/transactional/index.vue
 apps/web/app/pages/desktop/setup.vue
 packages/email-builder/src/components/EmailBuilder.vue
 packages/email-builder/src/components/canvas/InlineTextEditor.vue
-packages/email-previewer/src/components/ClientSelector.vue
-packages/email-previewer/src/components/EmailPreviewer.vue
-packages/email-previewer/src/components/RenderOptionsPanel.vue
+packages/email-builder/src/preview/components/ClientSelector.vue
+packages/email-builder/src/preview/components/EmailPreviewer.vue
+packages/email-builder/src/preview/components/RenderOptionsPanel.vue
 packages/email-renderer/src/analyzer.ts
 packages/shared/src/featureFlags.ts
 packages/shared/src/types/blocks.ts
