@@ -7,6 +7,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
 	sealAtRest,
 	openAtRest,
@@ -170,5 +172,48 @@ describe('atRestBodies BLOB (byte) cipher', () => {
 		const sealed = await sealBytesAtRest(SECRET, magicish);
 		expect(Array.from(sealed)).not.toEqual(Array.from(magicish));
 		expect(Array.from(await openBytesAtRest(SECRET, sealed))).toEqual(Array.from(magicish));
+	});
+});
+
+/**
+ * Wire-format lock. `fixtures/at-rest-sealers/atRestBodies-v1.json` holds an
+ * inline envelope and a blob envelope produced by the implementation that
+ * predates the shared `lib/webSecretBox` primitive. They must still open
+ * byte-identically: every body already sealed on a running instance depends on
+ * it, and there is no re-seal migration for a silent KDF or framing change.
+ */
+describe('atRestBodies backward compatibility', () => {
+	const fixture = JSON.parse(
+		readFileSync(
+			resolve(__dirname, '../../../../../fixtures/at-rest-sealers/atRestBodies-v1.json'),
+			'utf-8'
+		)
+	) as {
+		secret: string;
+		inlinePlaintext: string;
+		inlineSealed: string;
+		blobPlaintextBase64: string;
+		blobSealedBase64: string;
+	};
+
+	it('opens an inline envelope sealed by the pre-consolidation implementation', async () => {
+		expect(isSealedAtRest(fixture.inlineSealed)).toBe(true);
+		expect(await openAtRest(fixture.secret, fixture.inlineSealed)).toBe(fixture.inlinePlaintext);
+	});
+
+	it('opens a blob envelope sealed by the pre-consolidation implementation', async () => {
+		const sealed = new Uint8Array(Buffer.from(fixture.blobSealedBase64, 'base64'));
+		expect(isSealedBytesAtRest(sealed)).toBe(true);
+		const opened = await openBytesAtRest(fixture.secret, sealed);
+		expect(Buffer.from(opened).toString('base64')).toBe(fixture.blobPlaintextBase64);
+	});
+
+	it('keeps the inline and blob keys domain-separated (a blob will not open as inline)', async () => {
+		// The two envelopes derive different keys from the SAME secret. Feeding the
+		// blob ciphertext to the inline key must fail the GCM tag, not decrypt.
+		const blobCiphertext = Buffer.from(fixture.blobSealedBase64, 'base64');
+		const iv = blobCiphertext.subarray(7, 19).toString('base64');
+		const ct = blobCiphertext.subarray(19).toString('base64');
+		await expect(openAtRest(fixture.secret, `atrest:1:${iv}:${ct}`)).rejects.toThrow();
 	});
 });

@@ -691,6 +691,7 @@ import type * as lib_tenantTables from '../lib/tenantTables.js';
 import type * as lib_textPreview from '../lib/textPreview.js';
 import type * as lib_utcDay from '../lib/utcDay.js';
 import type * as lib_vectorMath from '../lib/vectorMath.js';
+import type * as lib_webSecretBox from '../lib/webSecretBox.js';
 import type * as lib_workingHours from '../lib/workingHours.js';
 import type * as mail_ai_assist from '../mail/ai/assist.js';
 import type * as mail_ai_categoryClassify from '../mail/ai/categoryClassify.js';
@@ -1752,6 +1753,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/textPreview': typeof lib_textPreview;
 	'lib/utcDay': typeof lib_utcDay;
 	'lib/vectorMath': typeof lib_vectorMath;
+	'lib/webSecretBox': typeof lib_webSecretBox;
 	'lib/workingHours': typeof lib_workingHours;
 	'mail/ai/assist': typeof mail_ai_assist;
 	'mail/ai/categoryClassify': typeof mail_ai_categoryClassify;

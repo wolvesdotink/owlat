@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
 	sealImportCredential,
 	openImportCredential,
@@ -61,5 +63,32 @@ describe('integration-import credential sealing', () => {
 		expect(await sealImportCredential('plain-key')).toBe('plain-key');
 		// A value sealed while a secret existed can no longer be opened — fail closed.
 		await expect(openImportCredential(sealed)).rejects.toThrow(/INSTANCE_SECRET/);
+	});
+});
+
+/**
+ * Wire-format lock. `fixtures/at-rest-sealers/credentialSeal-v1.json` was sealed
+ * by the implementation that predates the shared `lib/webSecretBox` primitive.
+ * A sealed credential can sit in `_scheduled_functions` args across a deploy, so
+ * an envelope written by the old code must still open under the new one.
+ */
+describe('integration-import credential backward compatibility', () => {
+	const fixture = JSON.parse(
+		readFileSync(
+			resolve(__dirname, '../../../../../fixtures/at-rest-sealers/credentialSeal-v1.json'),
+			'utf-8'
+		)
+	) as { secret: string; plaintext: string; sealed: string };
+
+	beforeEach(() => {
+		vi.stubEnv('INSTANCE_SECRET', fixture.secret);
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it('opens an envelope sealed by the pre-consolidation implementation', async () => {
+		expect(isSealedImportCredential(fixture.sealed)).toBe(true);
+		expect(await openImportCredential(fixture.sealed)).toBe(fixture.plaintext);
 	});
 });
