@@ -80,7 +80,7 @@
 		"lint:script-tests": "vitest run scripts/__tests__",
 		"lint:deadcode": "bash scripts/check-dead-code.sh && bash scripts/check-shared-production-exports.sh",
 		"lint:build-graph": "bun scripts/check-build-graph.ts",
-		"lint:convex-orphans": "vitest run scripts/__tests__/check-convex-plugin-orphans.test.ts && bun scripts/check-convex-plugin-orphans.ts",
+		"lint:convex-orphans": "bun scripts/check-convex-plugin-orphans.ts",
 		"lint:filesize": "bash scripts/check-file-size.sh",
 		"lint:adr": "bash scripts/check-adr-numbers.sh",
 		"lint:branding": "bash scripts/check-branding.sh",
