@@ -105,7 +105,7 @@ export type RampSubstituteSource = (typeof RAMP_SUBSTITUTE_SOURCES)[number];
  * that adding a destination provider does not silently narrow an existing
  * substitution to the providers someone remembered to type out.
  */
-export type RampSubstitutionScope = 'all' | readonly DestinationProviderKey[];
+type RampSubstitutionScope = 'all' | readonly DestinationProviderKey[];
 
 export interface RampSubstitutionEntry {
 	readonly integration: RampIntegrationId;

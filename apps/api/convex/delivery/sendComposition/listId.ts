@@ -31,7 +31,7 @@
  * from the Convex V8 runtime, mirroring `feedbackId.ts` / `trackingUrl.ts`.
  */
 
-export type BuildListIdInput = {
+type BuildListIdInput = {
 	/** The sending domain (host part of the From address, e.g. `mail.acme.com`). */
 	domain: string;
 	/** The topic this campaign targets — its stable id + display name. */

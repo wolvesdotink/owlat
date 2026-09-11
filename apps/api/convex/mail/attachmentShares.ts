@@ -54,7 +54,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
  * click at a time, so this sits far above any real usage; it exists so the
  * settings query can never become an unbounded read.
  */
-export const ATTACHMENT_SHARE_LIST_LIMIT = 200;
+const ATTACHMENT_SHARE_LIST_LIMIT = 200;
 
 /**
  * The row projection the management list reads, plus its state at `now`.

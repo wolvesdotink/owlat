@@ -82,7 +82,7 @@ const compiledRuleSchema = z.object({
 		.describe('What to do when the matcher fires.'),
 });
 
-export type CompiledRule = z.infer<typeof compiledRuleSchema>;
+type CompiledRule = z.infer<typeof compiledRuleSchema>;
 
 /**
  * Build the compile prompt. Pure + exported so the unit test can assert the

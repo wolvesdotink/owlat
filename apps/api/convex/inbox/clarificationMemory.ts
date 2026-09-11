@@ -130,7 +130,7 @@ interface StandingFillResult {
 
 /** One captured answer: the slot kind, the question the owner answered, and the
  * value they supplied. */
-export interface CaptureAnswer {
+interface CaptureAnswer {
 	slotType: string;
 	questionText: string;
 	value: string;
@@ -210,7 +210,7 @@ export async function captureStandingAnswers(
 }
 
 /** A learned standing answer as shown on the settings surface. */
-export interface ClarificationMemoryItem {
+interface ClarificationMemoryItem {
 	id: Id<'clarificationMemory'>;
 	contactId?: Id<'contacts'>;
 	contactName?: string;

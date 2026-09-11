@@ -54,12 +54,12 @@ import {
 export type { RotationStatement } from './pinning';
 
 /** Positive discovery hit is refreshed after 24h. */
-export const TTL_FOUND_MS = 24 * 60 * 60 * 1000;
+const TTL_FOUND_MS = 24 * 60 * 60 * 1000;
 /** A negative result (no usable key) is re-checked after 1h. */
 export const TTL_NEGATIVE_MS = 60 * 60 * 1000;
 
 /** The outcome of a discovery fetch, BEFORE pin evaluation / persistence. */
-export type DiscoveryFetch =
+type DiscoveryFetch =
 	| {
 			outcome: 'found';
 			fingerprint: string;

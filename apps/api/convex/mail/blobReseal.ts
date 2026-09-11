@@ -110,7 +110,7 @@ export const repointResealedBlobs = internalMutation({
 
 /** The storage-blob ids of one mailMessages row (raw `.eml` required, body blobs
  * optional). Shared by the back-fill page walker and the per-message reseal action. */
-export interface MessageBlobIds {
+interface MessageBlobIds {
 	id: Id<'mailMessages'>;
 	rawStorageId: Id<'_storage'>;
 	textBodyStorageId?: Id<'_storage'>;

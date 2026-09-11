@@ -91,7 +91,7 @@ interface StreamSubdomainRecordBase {
  * means the wizard cannot render a copyable value or a fictional selector for a
  * subdomain that has not been added yet, even by accident.
  */
-export type StreamSubdomainDkimKey =
+type StreamSubdomainDkimKey =
 	| { status: 'published'; selector: string; value: string }
 	| { status: 'pending' };
 
@@ -120,7 +120,7 @@ export function streamSubdomainRecordValue(record: StreamSubdomainRecord): strin
 }
 
 /** The selectors that exist per signing role, indexed for the D11 guard. */
-export type SigningSelectorsByRole = Readonly<Record<SigningSubdomainRole, ArmDkimSelectors>>;
+type SigningSelectorsByRole = Readonly<Record<SigningSubdomainRole, ArmDkimSelectors>>;
 
 export interface StreamSubdomainRecordSet {
 	layout: SubdomainLayoutProposal;
@@ -130,7 +130,7 @@ export interface StreamSubdomainRecordSet {
 }
 
 /** A domain with no registrable zone renders an explanation, never a stack. */
-export type StreamSubdomainRecordResult =
+type StreamSubdomainRecordResult =
 	| { ok: true; recordSet: StreamSubdomainRecordSet }
 	| { ok: false; reason: 'invalid_domain' };
 
@@ -166,7 +166,7 @@ export interface SubdomainDmarcSettings {
 	pct?: number;
 }
 
-export interface StreamSubdomainRecordOptions {
+interface StreamSubdomainRecordOptions {
 	/**
 	 * The DMARC knobs to publish, PER SIGNING ROLE.
 	 *
@@ -383,7 +383,7 @@ export function generateStreamSubdomainRecords(
 // ============ THE D11 GUARDS (both can fail) ============
 
 /** A generated row that gives one arm a name the other arm does not share. */
-export interface PerTransportSubdomainViolation {
+interface PerTransportSubdomainViolation {
 	/** The record host that is not a shared sending identity. */
 	host: string;
 	subdomain: string;
@@ -425,7 +425,7 @@ export function findPerTransportSubdomainViolations(
 // ============ THE GUARD THAT CAN FAIL: SIGNED SELECTOR vs PUBLISHED ==========
 
 /** A selector a cell signs with that no generated row publishes. */
-export interface UnpublishedSigningSelector {
+interface UnpublishedSigningSelector {
 	stream: SendingStream;
 	arm: TransportArm;
 	host: string;

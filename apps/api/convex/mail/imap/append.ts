@@ -24,7 +24,7 @@ import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
  * prefix to surface the protocol-level [NO-PERM] response instead of a
  * generic "APPEND failed".
  */
-export const FROM_NOT_AUTHORIZED_ERROR = 'From address not authorized';
+const FROM_NOT_AUTHORIZED_ERROR = 'From address not authorized';
 
 /** Mint an upload URL for APPEND so the IMAP server can store a raw message
  *  in file storage before recording it via `appendMessage`. */

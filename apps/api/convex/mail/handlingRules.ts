@@ -32,10 +32,10 @@ import {
  * list and the per-message evaluation both cap their fetch at this ceiling
  * (via `.take(MAX_HANDLING_RULES)`) rather than reading the table unbounded.
  */
-export const MAX_HANDLING_RULES = 500;
+const MAX_HANDLING_RULES = 500;
 
 // Shared validators — the persisted shape mirrors schema/autonomy.ts:handlingRules.
-export const matcherValidator = v.object({
+const matcherValidator = v.object({
 	senders: v.optional(v.array(v.string())),
 	subjectContains: v.optional(v.array(v.string())),
 	bodyContains: v.optional(v.array(v.string())),

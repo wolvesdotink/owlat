@@ -52,13 +52,13 @@ export interface HostedSendTransportDomainIdentityDefinition extends HostedContr
  * consumed rather than believed because a `satisfies` in a generated file said
  * so.
  */
-export interface HostedSendTransportDomainIdentityModule {
+interface HostedSendTransportDomainIdentityModule {
 	registerDomain(domain: string, config: unknown): Promise<unknown>;
 	checkDomain(domain: string, config: unknown): Promise<unknown>;
 }
 
 /** One resolved identity surface: what it is, and what to ask it with. */
-export interface HostedSendTransportDomainIdentity {
+interface HostedSendTransportDomainIdentity {
 	readonly definition: HostedSendTransportDomainIdentityDefinition;
 	readonly module: HostedSendTransportDomainIdentityModule;
 }

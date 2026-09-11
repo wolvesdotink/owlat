@@ -25,7 +25,7 @@ import type { TokenUsage } from '../agent/steps/types';
 export const MAX_REPLY_OPTIONS = 3;
 
 /** Structured output: up to {@link MAX_REPLY_OPTIONS} short reply variants. */
-export const replyOptionsSchema = z.object({
+const replyOptionsSchema = z.object({
 	replies: z.array(z.string()).max(MAX_REPLY_OPTIONS),
 });
 

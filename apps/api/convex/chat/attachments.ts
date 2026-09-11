@@ -11,10 +11,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	getUserIdFromSession,
-	requireOrgPermission,
-} from '../lib/sessionOrganization';
+import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { throwInvalidInput } from '../_utils/errors';
 import { chatQuery, chatMutation, assertCanReadRoom, getRoomOrThrow } from './_helpers';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
@@ -52,7 +49,7 @@ export const registerAttachment = chatMutation({
 		if (args.fileSize <= 0) throwInvalidInput('File size must be positive');
 		if (args.fileSize > MAX_ATTACHMENT_BYTES) {
 			throwInvalidInput(
-				`File exceeds ${Math.floor(MAX_ATTACHMENT_BYTES / 1024 / 1024)} MiB attachment limit`,
+				`File exceeds ${Math.floor(MAX_ATTACHMENT_BYTES / 1024 / 1024)} MiB attachment limit`
 			);
 		}
 
@@ -102,9 +99,10 @@ export const getAttachmentDetails = chatQuery({
 		const room = await getRoomOrThrow(ctx, message.roomId);
 		await assertCanReadRoom(ctx, room, userId);
 
+		// The attachment rows are independent of each other.
+		const assets = await Promise.all((message.attachmentIds ?? []).map((id) => ctx.db.get(id)));
 		const result = [];
-		for (const id of message.attachmentIds ?? []) {
-			const asset = await ctx.db.get(id);
+		for (const asset of assets) {
 			if (!asset) continue;
 			result.push({
 				_id: asset._id,

@@ -57,7 +57,7 @@ import type { ActionCtx } from '../_generated/server';
 import type { InboundEventOf, ProviderSuppression, ProviderSuppressionReason } from './types';
 
 /** What the host does about one suppression reason. */
-export type ProviderSuppressionEffect =
+type ProviderSuppressionEffect =
 	| { readonly kind: 'block'; readonly reason: 'bounced'; readonly bounceType: 'hard' | 'soft' }
 	| { readonly kind: 'block'; readonly reason: 'complained' | 'manual' }
 	| { readonly kind: 'unsubscribe' };

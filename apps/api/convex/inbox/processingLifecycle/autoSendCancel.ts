@@ -29,12 +29,12 @@ import type { Doc } from '../../_generated/dataModel';
 import { recordAuditLog } from '../../lib/auditLog';
 import { dispatch } from './effects';
 
-export type CancelAutoSendReason = 'thread_reply' | 'kill_switch' | 'user_cancel';
+type CancelAutoSendReason = 'thread_reply' | 'kill_switch' | 'user_cancel';
 
 export const cancelAutoSendReasonValidator = v.union(
 	v.literal('thread_reply'),
 	v.literal('kill_switch'),
-	v.literal('user_cancel'),
+	v.literal('user_cancel')
 );
 
 export type CancelAutoSendOutcome = {
@@ -50,7 +50,7 @@ async function recordAutoSendCancellation(
 	ctx: MutationCtx,
 	message: Doc<'inboundMessages'>,
 	reason: CancelAutoSendReason,
-	userId: string | undefined,
+	userId: string | undefined
 ): Promise<void> {
 	await recordAuditLog(ctx, {
 		userId: userId ?? 'system',
@@ -68,7 +68,7 @@ export async function cancelPendingAutoSend(
 	ctx: MutationCtx,
 	message: Doc<'inboundMessages'>,
 	reason: CancelAutoSendReason,
-	userId?: string,
+	userId?: string
 ): Promise<CancelAutoSendOutcome> {
 	const pending = message.pendingAutoSend;
 	if (!pending) return { cancelled: false, reason: 'no_pending_send' };

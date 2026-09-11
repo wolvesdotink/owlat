@@ -184,9 +184,9 @@ async function persist(
  */
 export type YahooCflShellReason = 'domain_missing';
 
-export type YahooCflReason = YahooCflTransitionReason | YahooCflShellReason;
+type YahooCflReason = YahooCflTransitionReason | YahooCflShellReason;
 
-export interface YahooCflEventResult {
+interface YahooCflEventResult {
 	state: YahooCflStoredState;
 	changed: boolean;
 	reason: YahooCflReason;

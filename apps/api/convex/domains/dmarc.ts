@@ -35,9 +35,9 @@ export const DMARC_POLICIES = ['none', 'quarantine', 'reject'] as const;
 export type DmarcPolicy = (typeof DMARC_POLICIES)[number];
 
 /** DMARC alignment modes (RFC 7489 §6.3): `r` relaxed, `s` strict. */
-export const DMARC_ALIGNMENTS = ['r', 's'] as const;
+const DMARC_ALIGNMENTS = ['r', 's'] as const;
 
-export type DmarcAlignment = (typeof DMARC_ALIGNMENTS)[number];
+type DmarcAlignment = (typeof DMARC_ALIGNMENTS)[number];
 
 /** New domains start in monitor-only mode. */
 export const DEFAULT_DMARC_POLICY: DmarcPolicy = 'none';
@@ -62,7 +62,7 @@ export function isDmarcAlignment(value: string | undefined | null): value is Dma
  * when set (so a monitor-only domain still renders the minimal
  * `v=DMARC1; p=none`).
  */
-export interface DmarcRecordOptions {
+interface DmarcRecordOptions {
 	/** Headline policy — the `p=` tag. */
 	policy: DmarcPolicy;
 	/** Subdomain policy — the `sp=` tag. Omitted ⇒ DMARC's default `sp=p`. */

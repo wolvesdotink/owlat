@@ -37,7 +37,7 @@ export interface AttachmentCandidate {
 /** Outcome of ranking the contact-scoped file matches. Generic over the
  * candidate shape so callers keep the extra fields (storageId, mimeType, …) they
  * need to persist / attach — the ranker only reads `score`. */
-export interface AttachmentSuggestionResult<T extends AttachmentCandidate = AttachmentCandidate> {
+interface AttachmentSuggestionResult<T extends AttachmentCandidate = AttachmentCandidate> {
 	/** The proposed file(s). One entry when we are confident; the shortlist when
 	 * the choice is ambiguous. Empty when nothing matched. */
 	candidates: T[];

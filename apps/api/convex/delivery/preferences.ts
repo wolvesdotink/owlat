@@ -7,7 +7,7 @@ import { makeContactToken, verifyContactToken } from './contactToken';
 // Preference-center tokens use the shared contact-token codec with the 'pref:'
 // namespace prefix so they can't be replayed as unsubscribe tokens (same secret,
 // different signed payload). Format: {contactId}:{timestamp}:{signature}.
-export function generatePreferenceToken(contactId: string): string {
+function generatePreferenceToken(contactId: string): string {
 	return makeContactToken('pref:', contactId);
 }
 

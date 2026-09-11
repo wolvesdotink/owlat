@@ -14,7 +14,7 @@ import type { MutationCtx } from '../_generated/server';
 import { recordAuditLog } from '../lib/auditLog';
 import { normalizeEmail } from '../lib/inputGuards';
 
-export type SunsetRestoreResult = {
+type SunsetRestoreResult = {
 	/**
 	 * WHAT HAPPENED, not why. Named `outcome` rather than `reason` because
 	 * `sunsetPolicy.ts` owns `SunsetReason` — the engine's decision vocabulary —

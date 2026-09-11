@@ -73,10 +73,10 @@ export function resolveBudgetConfig(): SpendBudgetConfig {
 	return { dailyUsd, monthlyUsd, warnFraction, advisoryReserveFraction };
 }
 
-export type BudgetState = 'ok' | 'warn' | 'exceeded';
+type BudgetState = 'ok' | 'warn' | 'exceeded';
 
 /** Budget picture for a single period (day or month). */
-export interface PeriodBudget {
+interface PeriodBudget {
 	/** Whether a ceiling is configured for this period. */
 	configured: boolean;
 	/** The ceiling in USD (`0` when unconfigured). */
@@ -91,7 +91,7 @@ export interface PeriodBudget {
 }
 
 /** Combined budget status across both periods, shared by every consumer. */
-export interface BudgetStatus {
+interface BudgetStatus {
 	/** True when at least one period has a ceiling configured. */
 	configured: boolean;
 	daily: PeriodBudget;

@@ -26,7 +26,7 @@ import { isAllowedSnsHost } from './adapters/ses';
 import { isPostboxMessageId, isReturnPathProbeMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
-import { logError } from '../lib/runtimeLog';
+import { logError, logWarn } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
 import { applyFailureSuppression, applyProviderSuppression } from './providerSuppression';
 import { recordUnresolvedBounce } from './unresolvedBounce';
@@ -315,8 +315,7 @@ const DISPATCH: DispatchTable = {
 		});
 	},
 	'internal.circuit_breaker_tripped': async (ctx, e) => {
-		// eslint-disable-next-line no-console
-		console.warn(`[Webhook Dispatcher] Circuit breaker tripped: ${e.message}`);
+		logWarn(`[Webhook Dispatcher] Circuit breaker tripped: ${e.message}`);
 		try {
 			// Per ADR-0011 the legacy `throttled` literal was dropped; the
 			// circuit-breaker signal re-targets to `warned` (no operational
@@ -382,8 +381,7 @@ const DISPATCH: DispatchTable = {
 		// flip the instance abuse status to `warned` (advisory, never auto-pauses
 		// sends) with a campaign-specific reason + audit entry so the alert is
 		// persisted and operator-visible instead of being a dead drop.
-		// eslint-disable-next-line no-console
-		console.warn(`[Webhook Dispatcher] Campaign complaint rate alert: ${e.message}`);
+		logWarn(`[Webhook Dispatcher] Campaign complaint rate alert: ${e.message}`);
 		const outcome = await ctx.runMutation(
 			internal.workspaces.abuseStatus.recordCampaignComplaintAlert,
 			{
@@ -405,8 +403,8 @@ const DISPATCH: DispatchTable = {
 		return outcome;
 	},
 	'internal.ip_event': async (ctx, e) => {
-		const level = e.severity === 'critical' ? 'error' : 'warn';
-		console[level](`[Webhook Dispatcher] ${e.subkind}: ${e.message ?? ''}`);
+		const log = e.severity === 'critical' ? logError : logWarn;
+		log(`[Webhook Dispatcher] ${e.subkind}: ${e.message ?? ''}`);
 		if (
 			e.subkind === 'warming_complete' ||
 			e.subkind === 'blocklisted' ||
@@ -415,8 +413,8 @@ const DISPATCH: DispatchTable = {
 			try {
 				await ctx.scheduler.runAfter(0, internal.delivery.warmingSync.syncWarmingState, {});
 			} catch (err) {
-				// eslint-disable-next-line no-console
-				console.error('[Webhook Dispatcher] Failed to trigger warming sync:', err);
+				// Fail soft: the sync is a refresh and the event is already recorded.
+				logError(`[Webhook Dispatcher] warming sync did not schedule (${e.subkind})`, err);
 			}
 		}
 	},

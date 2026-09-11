@@ -17,7 +17,7 @@
  */
 
 /** The inputs a recovery kit is built from (all PUBLIC except the private key itself). */
-export interface RecoveryKitInput {
+interface RecoveryKitInput {
 	/** The email address the key belongs to (`localpart@domain`). */
 	address: string;
 	/** The uppercase-hex OpenPGP fingerprint of the key. */

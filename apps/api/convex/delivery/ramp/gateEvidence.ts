@@ -121,7 +121,7 @@ export function insufficient(
 }
 
 /** Which series a hold is about, and therefore which vocabulary it speaks. */
-export type HoldArm = 'own' | 'reference' | 'baseline';
+type HoldArm = 'own' | 'reference' | 'baseline';
 
 /** The hold reasons every arm has: its evidence was absent, thin, stale or poisoned. */
 interface ArmHoldReasons {
@@ -156,7 +156,7 @@ interface RelativeArmHoldReasons extends ArmHoldReasons {
  * is a real, decidable verdict rather than a hold. `notADenominatorReason` will
  * not accept it, and the table is why.
  */
-export const HOLD_REASONS_BY_ARM: {
+const HOLD_REASONS_BY_ARM: {
 	readonly own: ArmHoldReasons;
 	readonly reference: RelativeArmHoldReasons;
 	readonly baseline: RelativeArmHoldReasons;

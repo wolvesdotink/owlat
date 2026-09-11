@@ -72,7 +72,7 @@ export function capacityCeiling(capacity: RampCapacityInput): number | null {
 }
 
 /** The two PHASE bounds a tick applies, and the cause the cap would name. */
-export interface RampPhaseBounds {
+interface RampPhaseBounds {
 	readonly phaseCeiling: number;
 	readonly phaseCeilingCap: number;
 	readonly ceilingCapSource: RampIntegrationId | undefined;
@@ -118,7 +118,7 @@ export function phaseLadderBounds(
 }
 
 /** Which of the three ceilings bound the cell, and — for the cap — what caused it. */
-export interface RampCeilingBound {
+interface RampCeilingBound {
 	/** The effective ceiling: the LOWEST of the three, never above full share. */
 	readonly ceiling: number;
 	readonly reason: RampDecisionReason;

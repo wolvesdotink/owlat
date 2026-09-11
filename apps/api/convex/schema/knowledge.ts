@@ -48,7 +48,7 @@ export const POLICY_ENTRY_TYPES = ['policy', 'faq'] as const;
  * fresh extractions that don't set it, stay recallable until a human resolves
  * them). Only `fulfilled` / `cancelled` drop a commitment out of the open-recall.
  */
-export const COMMITMENT_STATUSES = ['open', 'fulfilled', 'cancelled'] as const;
+const COMMITMENT_STATUSES = ['open', 'fulfilled', 'cancelled'] as const;
 
 /**
  * Validator for `knowledgeEntries.commitmentStatus`, derived from
@@ -138,7 +138,7 @@ export const EDGE_PROVENANCES = ['deterministic', 'llm', 'manual'] as const;
 /**
  * Validator for `knowledgeRelations.provenance`, derived from `EDGE_PROVENANCES`.
  */
-export const edgeProvenanceValidator = v.union(...EDGE_PROVENANCES.map((p) => v.literal(p)));
+const edgeProvenanceValidator = v.union(...EDGE_PROVENANCES.map((p) => v.literal(p)));
 
 /**
  * Knowledge graph + semantic file tables — typed knowledge extracted from communications,

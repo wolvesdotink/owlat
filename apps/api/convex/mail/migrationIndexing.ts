@@ -32,6 +32,7 @@ import { isFeatureEnabled } from '../lib/featureFlags';
 import { resolveContact } from '../contacts/resolution';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { normalizeEmail } from '@owlat/shared';
+import { logError } from '../lib/runtimeLog';
 
 // Tunables — kept in step with agent/knowledgeBackfill.ts.
 const INTER_MESSAGE_DELAY_MS = 150;
@@ -311,8 +312,13 @@ export const runIndexChunk = internalAction({
 						contactIds: [contactId],
 					});
 				} catch (err) {
-					// eslint-disable-next-line no-console
-					console.error('[mailMigration] extraction error', err);
+					// One message failing extraction must not abort the chunk; the
+					// migration id and message id make the gap traceable afterwards.
+					logError('[mailMigration] extraction failed for one message', {
+						migrationId: args.migrationId,
+						mailMessageId: msg._id,
+						error: err,
+					});
 				}
 
 				// Light pacing between LLM calls.
@@ -347,8 +353,12 @@ export const runIndexChunk = internalAction({
 			}
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
-			// eslint-disable-next-line no-console
-			console.error('[mailMigration] runIndexChunk failed', err);
+			// The chunk is abandoned and the migration row is marked failed below,
+			// so the operator sees this in the UI as well as in the logs.
+			logError('[mailMigration] runIndexChunk failed', {
+				migrationId: args.migrationId,
+				error: err,
+			});
 			try {
 				await ctx.runMutation(internal.mail.migrationIndexing.finalizeMigration, {
 					migrationId: args.migrationId,

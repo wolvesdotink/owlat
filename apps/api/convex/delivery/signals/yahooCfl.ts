@@ -44,7 +44,7 @@ export const YAHOO_COMPLAINT_SIGNAL_SOURCES = [
 	'cfbl_address',
 	'unsubscribe_rate_proxy',
 ] as const;
-export type YahooComplaintSignalSource = (typeof YAHOO_COMPLAINT_SIGNAL_SOURCES)[number];
+type YahooComplaintSignalSource = (typeof YAHOO_COMPLAINT_SIGNAL_SOURCES)[number];
 
 /**
  * WHERE THE TRIP POINT COMES FROM — a union, because the three sources do not
@@ -254,7 +254,7 @@ export function yahooComplaintSubstitution(input: {
 }
 
 /** What this cell's enrollment state and CFBL-Address presence are. */
-export interface YahooComplaintSignalInput {
+interface YahooComplaintSignalInput {
 	enrollmentState: YahooCflEnrollmentState;
 	hasCfblAddress: boolean;
 }
@@ -264,7 +264,7 @@ export interface YahooComplaintSignalInput {
  * `yahoo_cfl` is excluded because it is the feed itself, and a live Yahoo feed is
  * a PRESENT reading rather than a substitution for one.
  */
-export type YahooStandIn = Exclude<YahooComplaintSignalSource, 'yahoo_cfl'>;
+type YahooStandIn = Exclude<YahooComplaintSignalSource, 'yahoo_cfl'>;
 
 /**
  * This module's names for its stand-ins, in the ONE substitute vocabulary the

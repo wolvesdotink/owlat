@@ -56,7 +56,7 @@ export interface NeedsReplyMessageInput {
 	receivedAt: number;
 }
 
-export type NeedsReplyEvaluation =
+type NeedsReplyEvaluation =
 	| { candidate: true; latestInboundIndex: number }
 	| {
 			candidate: false;

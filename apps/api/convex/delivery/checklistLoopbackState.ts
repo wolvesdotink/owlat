@@ -31,7 +31,7 @@ type InboundEvidenceResult = {
 	status?: 'passed' | 'failed';
 };
 
-export function isModernTlsProtocol(value: string): boolean {
+function isModernTlsProtocol(value: string): boolean {
 	return value === 'TLSv1.2' || value === 'TLSv1.3';
 }
 

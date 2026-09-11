@@ -35,7 +35,7 @@ import { getMailSyncConfig, getMtaConfig } from '../mail/mtaClient';
  */
 
 /** How a fresh readiness sample relates to the previously recorded one. */
-export type ReadinessEdge = 'baseline' | 'unchanged' | 'became_ready' | 'became_unready';
+type ReadinessEdge = 'baseline' | 'unchanged' | 'became_ready' | 'became_unready';
 
 /**
  * Classify a readiness sample against the last recorded one. `previous === null`

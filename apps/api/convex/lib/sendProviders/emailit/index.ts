@@ -17,7 +17,7 @@ import { transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
 
 export const EMAILIT_SEND_URL = 'https://api.emailit.com/v2/emails';
-export const EMAILIT_SEND_TIMEOUT_MS = 30_000;
+const EMAILIT_SEND_TIMEOUT_MS = 30_000;
 const EMAILIT_TIMEOUT_MESSAGE = 'Emailit API call timed out';
 
 interface EmailitErrorBody {

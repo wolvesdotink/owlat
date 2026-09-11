@@ -17,7 +17,7 @@ const PROXY_SECRET_HEADER = 'X-Owlat-Proxy-Secret';
  * Rate limit types for public endpoints. The validator is the single source —
  * the TS type is derived from it and the mutation arg reuses it.
  */
-export const publicRateLimitTypeValidator = v.union(
+const publicRateLimitTypeValidator = v.union(
 	v.literal('formSubmission'),
 	v.literal('emailTracking'),
 	v.literal('subscriptionManagement'),

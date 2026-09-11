@@ -39,8 +39,13 @@ const SKIP_DIRS = new Set([
 	'.turbo',
 	'.git',
 	'coverage',
-	'content',
+	// Tests are not declaration sites. Reading them would make this file's own
+	// exemption table declare every name in it, so an exemption could never be
+	// proven stale.
+	'__tests__',
 ]);
+
+const TEST_FILE = /\.(?:test|spec)\.[jt]sx?$/;
 
 function walk(dir: string, matches: (path: string) => boolean, out: string[] = []): string[] {
 	let entries;
@@ -53,7 +58,7 @@ function walk(dir: string, matches: (path: string) => boolean, out: string[] = [
 		if (SKIP_DIRS.has(entry.name)) continue;
 		const path = join(dir, entry.name);
 		if (entry.isDirectory()) walk(path, matches, out);
-		else if (matches(path)) out.push(path);
+		else if (matches(path) && !TEST_FILE.test(entry.name)) out.push(path);
 	}
 	return out;
 }
@@ -93,7 +98,7 @@ function buildVocabulary(): ReadonlySet<string> {
 			add(m[1]);
 		}
 		// Re-export lists, taking the exported name of an `as` rename.
-		for (const m of source.matchAll(/export\s*\{([^}]*)\}/g)) {
+		for (const m of source.matchAll(/export\s*(?:type\s*)?\{([^}]*)\}/g)) {
 			for (const part of m[1]!.split(','))
 				add(
 					part
@@ -133,6 +138,10 @@ function buildVocabulary(): ReadonlySet<string> {
 		const base = file.slice(file.lastIndexOf('/') + 1, -'.vue'.length);
 		add(base);
 		add(`Ui${base}`);
+	}
+	// The web app's own components, cited by file name (`AppCommandPalette`).
+	for (const file of walk(join(REPO_ROOT, 'apps/web/app/components'), (p) => p.endsWith('.vue'))) {
+		add(file.slice(file.lastIndexOf('/') + 1, -'.vue'.length));
 	}
 
 	// Shell variables: the installer and the CLI wrapper are pure bash.

@@ -25,7 +25,7 @@ import type { EngagementActivity, EngagementActivityKind } from './engagementSco
  * score does not react to the literal at all (topic changes, property edits,
  * `created`, `email_sent` — a send is our action, not the contact's).
  */
-export type EngagementActivityMapping = EngagementActivityKind | 'bounce' | null;
+type EngagementActivityMapping = EngagementActivityKind | 'bounce' | null;
 
 /**
  * The mapping table. It is a total `Record` over the catalog union on purpose:

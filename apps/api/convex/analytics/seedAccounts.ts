@@ -31,7 +31,7 @@ import { recordAuditLog } from '../lib/auditLog';
  * IV, no auth tag, no username, no host — a seed account's credentials never
  * leave the sealed envelope the mail-sync worker already owns.
  */
-export interface SeedAccountView {
+interface SeedAccountView {
 	accountId: Id<'externalMailAccounts'>;
 	provider: DestinationProviderKey;
 	address: string;

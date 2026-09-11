@@ -26,7 +26,7 @@ import { startOfDayUtc } from '../../lib/clock';
 import { DAY_MS } from '../../lib/constants';
 
 /** External evidence older than this is not evidence — the plan's 7 days. */
-export const PROMOTION_EVIDENCE_MAX_AGE_MS = 7 * DAY_MS;
+const PROMOTION_EVIDENCE_MAX_AGE_MS = 7 * DAY_MS;
 
 /** The plan's "14 CONSECUTIVE days across EVERY pool IP". */
 export const PROMOTION_DNSBL_CLEAN_DAYS = 14;
@@ -46,9 +46,9 @@ export const PROMOTION_BASE_DWELL_MS = 7 * DAY_MS;
  * "crossing the 0.5 ceiling": a target ABOVE 0.5 crosses it, promotion TO 0.5
  * does not. Below it the ordinary AIMD ladder governs and no route is consulted.
  */
-export const PROMOTION_EVIDENCE_REQUIRED_ABOVE = 0.5;
+const PROMOTION_EVIDENCE_REQUIRED_ABOVE = 0.5;
 
-export const PROMOTION_CONDITION_IDS = [
+const PROMOTION_CONDITION_IDS = [
 	'google_compliance_pass',
 	'snds_complaint_band_green',
 	'dwell_multiple_served',
@@ -64,11 +64,11 @@ export type PromotionConditionId = (typeof PROMOTION_CONDITION_IDS)[number];
  * condition is `unknown`, is reported by name, and never counts as met. A
  * boolean would fold the two together and promote a cell on evidence nobody has.
  */
-export type PromotionConditionState = 'met' | 'unmet' | 'unknown';
+type PromotionConditionState = 'met' | 'unmet' | 'unknown';
 
-export type PromotionConditions = Readonly<Record<PromotionConditionId, PromotionConditionState>>;
+type PromotionConditions = Readonly<Record<PromotionConditionId, PromotionConditionState>>;
 
-export interface PromotionRoute {
+interface PromotionRoute {
 	readonly id: 'google_compliance' | 'snds_band' | 'standalone_corroboration';
 	readonly label: string;
 	/** Providers this route can speak for; `'all'` for the standalone route. */
@@ -83,7 +83,7 @@ export interface PromotionRoute {
  * standalone route is the plan's four conditions, all of which are measured on
  * our own infrastructure.
  */
-export const PROMOTION_ROUTES: readonly PromotionRoute[] = [
+const PROMOTION_ROUTES: readonly PromotionRoute[] = [
 	{
 		id: 'google_compliance',
 		label: 'Google Postmaster Compliance Status passing in the last 7 days',
@@ -136,7 +136,7 @@ export interface DnsblDayObservation {
  * treating it as a pass is how a paused controller promotes a cell nobody
  * watched.
  */
-export const PROMOTION_DNSBL_MAX_STALENESS_MS = DAY_MS;
+const PROMOTION_DNSBL_MAX_STALENESS_MS = DAY_MS;
 
 /**
  * Whether the observations reach up to `now`. False for an empty list — a window
@@ -249,7 +249,7 @@ export function derivePromotionConditions(
 	};
 }
 
-export interface PromotionRouteResult {
+interface PromotionRouteResult {
 	readonly route: PromotionRoute;
 	readonly satisfied: boolean;
 	/** Conditions that are not `met`, with the state that stopped them. */
@@ -259,7 +259,7 @@ export interface PromotionRouteResult {
 	}[];
 }
 
-export interface PhasePromotionDecision {
+interface PhasePromotionDecision {
 	readonly allowed: boolean;
 	/** Which route permitted it — `null` when none did or none was needed. */
 	readonly viaRoute: PromotionRoute['id'] | null;

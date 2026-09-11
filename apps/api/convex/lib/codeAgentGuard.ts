@@ -85,7 +85,7 @@ export function isDmarcAligned(verdicts: { dmarcResult?: string | undefined }): 
 	return (verdicts.dmarcResult ?? '').trim().toLowerCase() === 'pass';
 }
 
-export interface CodeAgentSafetyResult {
+interface CodeAgentSafetyResult {
 	/** True when the request may be turned into a code-work task. */
 	safe: boolean;
 	/** Populated only when `safe` is false: which check rejected it. */

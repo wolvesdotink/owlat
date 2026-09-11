@@ -49,7 +49,7 @@ export const MAX_PLAN_DAYS = 60;
 export const MAX_HORIZON_DAYS = 400;
 
 /** Inputs to the schedule builder — the planner minus the retention horizon. */
-export interface CapacityScheduleInput {
+interface CapacityScheduleInput {
 	/** Eligible recipients. A lower bound is fine — refusing on one is sound. */
 	audienceSize: number;
 	/**
@@ -66,7 +66,7 @@ export interface CapacityScheduleInput {
  * EXTENSION rather than a second copy of the clump so each field's meaning is
  * stated exactly once.
  */
-export interface CampaignCapacityPlanInput extends CapacityScheduleInput {
+interface CampaignCapacityPlanInput extends CapacityScheduleInput {
 	/** How long a queued message survives before the MTA expires it. */
 	maxMessageAgeMs: number;
 }

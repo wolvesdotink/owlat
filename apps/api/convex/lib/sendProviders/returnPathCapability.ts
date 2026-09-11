@@ -51,9 +51,9 @@ import {
  * return path — we simply do not stamp one, and we mark the measurement
  * degraded.
  */
-export type ReturnPathCapability = 'supported' | 'unsupported' | 'unknown';
+type ReturnPathCapability = 'supported' | 'unsupported' | 'unknown';
 
-export type MeasurementQuality = 'comparable' | 'degraded';
+type MeasurementQuality = 'comparable' | 'degraded';
 
 /**
  * Multiplier applied to a bounce-gate tolerance when the arm's bounce data
@@ -109,7 +109,7 @@ export function resolveReturnPathCapability(
  * moves this fold with it instead of leaving the sweep grading a plugin-
  * contributed transport by the old reading.
  */
-export type ReturnPathCatalogDeclaration = Readonly<{
+type ReturnPathCatalogDeclaration = Readonly<{
 	supportsCustomReturnPath?: DeclaredCustomReturnPathSupport;
 	hasProviderFeedback?: boolean;
 }>;

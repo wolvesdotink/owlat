@@ -67,7 +67,7 @@ export type DraftInput = {
 	confirmedContext?: string;
 };
 
-export type DraftOutput = {
+type DraftOutput = {
 	draftResponse: string;
 	draftSubject: string;
 	confidenceScore: number;

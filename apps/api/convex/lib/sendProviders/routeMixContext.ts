@@ -69,7 +69,7 @@ export async function isStreamShareSplitRouted(
  * (`route.ts`) extends this, so the resolver can hand its context straight
  * through without this module depending on the resolver's shape.
  */
-export interface MixAddressIdentity {
+interface MixAddressIdentity {
 	to?: string;
 	now?: number;
 	/**

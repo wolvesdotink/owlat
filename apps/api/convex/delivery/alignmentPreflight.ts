@@ -53,7 +53,7 @@ const ALIGNMENT_READINESS_LIMIT = 50;
  * that HAS a second arm (see `buildTarget`), so the standalone case is excluded
  * at the TYPE level rather than being a branch the gather has to remember.
  */
-export type TargetReferenceArm = Exclude<ReferenceArmInput, { kind: 'none' }>;
+type TargetReferenceArm = Exclude<ReferenceArmInput, { kind: 'none' }>;
 
 export interface AlignmentTarget {
 	domain: string;

@@ -37,7 +37,7 @@ export type AbTestStatus = 'pending' | 'testing' | 'winner_selected';
  * `abTestStatus === undefined` (AB test not enabled). Only used internally;
  * the persisted column is `AbTestStatus | undefined`.
  */
-export type AbTestMachineState = AbTestStatus | 'none';
+type AbTestMachineState = AbTestStatus | 'none';
 
 type AbTestConfig = NonNullable<Doc<'campaigns'>['abTestConfig']>;
 

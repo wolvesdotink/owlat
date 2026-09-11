@@ -64,7 +64,7 @@ export type RampGateDecidedReason =
  *    deferral-rate breach: throttling gets better by slowing down, a block does
  *    not get better by sending at all.
  */
-export type RampGateHaltReason = 'halt_threshold_breached' | 'block_message_detected';
+type RampGateHaltReason = 'halt_threshold_breached' | 'block_message_detected';
 
 /**
  * Why a gate HELD. Every one of these says which arm was unusable and how, so

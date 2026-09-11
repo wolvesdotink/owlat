@@ -77,10 +77,10 @@ export type RampArm = RampGateEvaluator['kind'];
  * family in `./types` stops compiling here instead of forking the ramp's union
  * from the registry's.
  */
-export type RampMeasurementKind = Exclude<SignalSourceKind, 'advisory'>;
+type RampMeasurementKind = Exclude<SignalSourceKind, 'advisory'>;
 
 /** One arm's question about one window. */
-export interface RampGateSignalInput {
+interface RampGateSignalInput {
 	readonly arm: RampArm;
 	readonly input: RampGateEvaluationInput;
 }

@@ -120,7 +120,7 @@ export function takeConnectableSeedAccounts(
  * credential shape, so adding a field (e.g. an `oauth` authMethod) is one edit
  * here instead of a shotgun across the insert + both rotation patches.
  */
-export type ExternalConnectFields = {
+type ExternalConnectFields = {
 	imapHost: string;
 	imapPort: number;
 	isImapSecure: boolean;

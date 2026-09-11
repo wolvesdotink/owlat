@@ -123,7 +123,7 @@ export interface RampControlResult {
 	readonly share?: number;
 }
 
-export interface ResolvedCell {
+interface ResolvedCell {
 	readonly organizationId: string;
 	readonly userId: string;
 	readonly cell: DeliverabilityCell;

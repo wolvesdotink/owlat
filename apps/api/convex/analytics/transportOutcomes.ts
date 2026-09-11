@@ -108,7 +108,7 @@ export const TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE = 200;
 
 // ============ READ SIDE ============
 
-export interface CellArmWindowQuery extends TransportOutcomeWindow {
+interface CellArmWindowQuery extends TransportOutcomeWindow {
 	readonly organizationId: string;
 	readonly cell: DeliverabilityCellKey;
 	readonly arm: TransportOutcomeArm;
@@ -236,7 +236,7 @@ async function ensureOutcomeShardBucket(
 	return created;
 }
 
-export interface RecordTransportOutcomeInput {
+interface RecordTransportOutcomeInput {
 	readonly organizationId: string;
 	readonly cell: DeliverabilityCellKey;
 	readonly arm: TransportOutcomeArm;
@@ -276,7 +276,7 @@ export async function recordTransportOutcomeForCell(
 }
 
 /** Why an outcome was not recorded — returned, never thrown. */
-export type RecordTransportOutcomeResult =
+type RecordTransportOutcomeResult =
 	| 'recorded'
 	| 'no_organization'
 	| 'no_assignment'

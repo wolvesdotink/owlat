@@ -19,7 +19,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
  * exclusions of one operator are a conjunction, unlike the positive operators
  * where the parser's last occurrence wins.
  */
-export const searchNegationValidator = v.object({
+const searchNegationValidator = v.object({
 	text: v.optional(v.array(v.string())),
 	from: v.optional(v.array(v.string())),
 	to: v.optional(v.array(v.string())),

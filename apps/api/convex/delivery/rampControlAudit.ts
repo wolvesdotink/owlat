@@ -25,7 +25,7 @@ import type { RampDecisionReason } from './ramp/controllerTypes';
 import { rampDecisionDirection } from './ramp/controllerTypes';
 import { MIX_DECISION_RETENTION_MS } from './rampMixDecisions';
 
-export interface OperatorRampAction {
+interface OperatorRampAction {
 	readonly organizationId: string;
 	readonly userId: string;
 	readonly cell: DeliverabilityCell;

@@ -74,7 +74,7 @@ const MAX_PROPOSED_TIMES = 6;
 const MAX_TIME_PHRASE_CHARS = 80;
 const MAX_TOPIC_CHARS = 120;
 
-export interface MeetingIntent {
+interface MeetingIntent {
 	isScheduling: boolean;
 	proposedTimes: string[];
 	topic?: string;

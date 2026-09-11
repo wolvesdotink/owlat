@@ -5,9 +5,9 @@ export const PLUGIN_LLM_MAX_INPUT_BYTES = 64 * 1024;
 export const PLUGIN_LLM_MAX_MESSAGE_BYTES = 32 * 1024;
 export const PLUGIN_LLM_MAX_MESSAGES = 32;
 export const PLUGIN_LLM_MAX_OUTPUT_TOKENS = 2048;
-export const PLUGIN_LLM_PROTOCOL_TOKEN_RESERVE = 1024;
+const PLUGIN_LLM_PROTOCOL_TOKEN_RESERVE = 1024;
 
-export interface ValidatedPluginLlmRequest {
+interface ValidatedPluginLlmRequest {
 	readonly tier: PluginLlmTier;
 	readonly inputTokensUpperBound: number;
 	readonly dispatchInput:

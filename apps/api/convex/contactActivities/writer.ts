@@ -61,7 +61,7 @@ type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : fa
 const _assert: AssertEqual<keyof typeof ACTIVITY_MODULES, ContactActivityType> = true;
 void _assert;
 
-export type ActivityModuleMap = typeof ACTIVITY_MODULES;
+type ActivityModuleMap = typeof ACTIVITY_MODULES;
 
 /**
  * Activity literals that trigger the single post-insert contact patch: the

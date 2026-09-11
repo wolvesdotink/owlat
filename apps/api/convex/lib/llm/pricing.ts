@@ -164,7 +164,7 @@ function admissionPriceForModel(
 	return admission ? PRICING.find((price) => price.prefix === admission.pricePrefix) : undefined;
 }
 
-export interface CostEstimate {
+interface CostEstimate {
 	costUsd: number;
 	/** True when the model id didn't match the table (priced with the default). */
 	estimated: boolean;

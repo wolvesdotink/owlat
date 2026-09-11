@@ -151,7 +151,7 @@ export function eagernessForCategory(classification: {
 /** How the ask-eagerness dial narrows which divergent slots become questions:
  * a hard per-email cap (batched into one micro-form, never dripped) and an
  * optional high-stakes-only filter. Defaults reproduce today's behaviour. */
-export interface QuestionSelectionPolicy {
+interface QuestionSelectionPolicy {
 	maxQuestions: number;
 	highStakesOnly: boolean;
 }

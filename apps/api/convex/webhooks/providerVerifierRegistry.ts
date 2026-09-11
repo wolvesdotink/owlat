@@ -16,7 +16,7 @@ import {
 	missingSecretResult,
 } from './security';
 
-export type ProviderVerificationResult =
+type ProviderVerificationResult =
 	| { readonly ok: true }
 	| { readonly ok: false; readonly status: number; readonly reason: string };
 

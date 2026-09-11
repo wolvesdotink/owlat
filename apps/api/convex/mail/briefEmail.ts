@@ -38,6 +38,7 @@ import { internalMutation, internalQuery, type MutationCtx } from '../_generated
 import type { Doc, Id } from '../_generated/dataModel';
 import { mailMessageAttachmentValidator } from '../lib/mailContentValidators';
 import { insertDeliveredMessage } from './deliveryPipeline/insert';
+import { batchGet } from '../_utils/batchLoader';
 
 /**
  * How often the delivery cron runs. A brief is due when the user's local
@@ -50,7 +51,7 @@ export const DELIVERY_WINDOW_MINUTES = 15;
 export const MAX_EMAIL_ITEMS = 12;
 
 /** Users considered per cron tick — one `mailUserSettings` row per person. */
-export const MAX_BRIEF_EMAIL_USERS = 500;
+const MAX_BRIEF_EMAIL_USERS = 500;
 
 /** Minutes past local midnight for an instant, given the user's stored offset. */
 export function localMinuteOfDay(nowMs: number, utcOffsetMinutes: number): number {
@@ -104,7 +105,7 @@ export interface BriefEmailItem {
 	path?: string;
 }
 
-export interface BriefEmailPayload {
+interface BriefEmailPayload {
 	mailboxId: Id<'mailboxes'>;
 	address: string;
 	/** The recipient's interface language (`userProfiles.locale`); absent = English. */
@@ -151,10 +152,15 @@ export const listDue = internalQuery({
 			// send nothing rather than an empty digest that looks like a bug.
 			if (!brief || brief.items.length === 0) continue;
 
-			const items: BriefEmailItem[] = [];
-			for (const item of brief.items.slice(0, MAX_EMAIL_ITEMS)) {
-				const thread = await ctx.db.get(item.threadId);
-				items.push({
+			// The item threads are independent rows — read them in one pass.
+			const itemRows = brief.items.slice(0, MAX_EMAIL_ITEMS);
+			const threads = await batchGet(
+				ctx,
+				itemRows.map((item) => item.threadId)
+			);
+			const items: BriefEmailItem[] = itemRows.map((item) => {
+				const thread = threads.get(item.threadId);
+				return {
 					kind: item.kind,
 					title: item.title,
 					subtitle: item.subtitle,
@@ -165,8 +171,8 @@ export const listDue = internalQuery({
 					path: thread?.latestMessageId
 						? `/dashboard/postbox/inbox/${thread.latestMessageId}`
 						: undefined,
-				});
-			}
+				};
+			});
 			// The digest is composed on a scheduler with no request behind it, so the
 			// language has to come from the profile rather than a cookie.
 			const profile = await ctx.db

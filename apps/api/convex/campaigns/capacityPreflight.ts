@@ -76,7 +76,7 @@ type Ctx = MutationCtx | QueryCtx;
 const AUDIENCE_DOCUMENT_BUDGET = 6_000;
 
 /** What the gate needs to know about the send it is judging. */
-export interface CampaignCapacityOptions {
+interface CampaignCapacityOptions {
 	audience: StoredAudience;
 	/**
 	 * The campaign's From address. Used ONLY to re-verify the relay domain when
