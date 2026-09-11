@@ -57,7 +57,7 @@ const CAP_EXERCISE_HEADROOM = 1.5;
  */
 const MINIMUM_DAILY_CAP = 50;
 
-export interface EffectiveDailyCapInput {
+interface EffectiveDailyCapInput {
 	/**
 	 * The per-(IP x mailboxProvider) cap the cell sends against today, BEFORE the
 	 * pace dial. This is what the multiplier multiplies.

@@ -42,17 +42,11 @@ import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
-export const MAIL_CATEGORIES = [
-	'person',
-	'newsletter',
-	'notification',
-	'receipt',
-	'other',
-] as const;
+const MAIL_CATEGORIES = ['person', 'newsletter', 'notification', 'receipt', 'other'] as const;
 export type MailCategory = (typeof MAIL_CATEGORIES)[number];
 
 /** Categories a user may pick in "Recategorize as…" (no ambiguity there). */
-export type MailCategorySource = 'heuristic' | 'llm' | 'user';
+type MailCategorySource = 'heuristic' | 'llm' | 'user';
 
 /** Subject keywords that mark transactional receipts / orders / invoices. */
 const RECEIPT_SUBJECT =
@@ -156,7 +150,7 @@ export async function enqueueCategoryCheck(
 // ─── Convex functions ────────────────────────────────────────────────────────
 
 /** How many newest thread messages the classify action considers. */
-export const CATEGORY_CONTEXT_MESSAGES = 4;
+const CATEGORY_CONTEXT_MESSAGES = 4;
 
 /**
  * Bounded thread context for the classify action: owner address, latest

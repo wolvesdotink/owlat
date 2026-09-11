@@ -89,7 +89,7 @@ export const PLUGIN_UNAVAILABLE_RETRY_MS = 15 * 60 * 1000;
 export const PLUGIN_DENIED_RETRY_MS = PLUGIN_CHECK_INTERVAL_MS.failed;
 
 /** One record verdict, as the host keeps it. */
-export type PluginRecordVerdict = {
+type PluginRecordVerdict = {
 	readonly isValid: boolean;
 	readonly error?: string;
 };

@@ -53,7 +53,7 @@ import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSu
  * The pp -> fraction conversion happens HERE and only here, so no caller can
  * accidentally compare a percentage-point tolerance against a rate fraction.
  */
-export function withinTolerance(
+function withinTolerance(
 	ownRate: number,
 	referenceRate: number,
 	tolerance: PercentagePoints,
@@ -98,7 +98,7 @@ export interface CeilingGateSpec {
  * floor with no series to apply them to is four chances to describe a comparison
  * that is not happening.
  */
-export interface CeilingSecondSeries {
+interface CeilingSecondSeries {
 	/** The concurrent reference arm, or — standalone — the cell's own past. */
 	readonly of: (input: RampGateEvaluationInput) => TransportOutcomeSummary | null;
 	/** Which vocabulary a hold speaks (`gateEvidence.evidenceReason`). */
@@ -126,7 +126,7 @@ export interface CeilingSecondSeries {
  * trailing-baseline breach about a relay. `EngagementComparisonSpec` already
  * carries its `failReason` for the same reason; this makes the two modules agree.
  */
-export type CeilingFailReason = 'reference_tolerance_breached' | 'trailing_baseline_breached';
+type CeilingFailReason = 'reference_tolerance_breached' | 'trailing_baseline_breached';
 
 /**
  * How the comparative half is expressed. Two units, never interchangeable:
@@ -135,7 +135,7 @@ export type CeilingFailReason = 'reference_tolerance_breached' | 'trailing_basel
  * substitutions). Modelling them as a discriminated union rather than as two
  * nullable number fields is what stops a 1.5 from ever being read as 1.5pp.
  */
-export type CeilingComparison =
+type CeilingComparison =
 	| {
 			readonly kind: 'tolerance_pp';
 			readonly of: (t: RampGateThresholds) => PercentagePoints;

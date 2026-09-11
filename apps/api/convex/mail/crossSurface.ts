@@ -65,7 +65,7 @@ export function messageIdCandidates(raw: string): string[] {
 }
 
 /** Team Inbox state the Postbox reader is allowed to show. */
-export interface TeamInboxCounterpart {
+interface TeamInboxCounterpart {
 	threadId: Id<'conversationThreads'> | null;
 	inboundMessageId: Id<'inboundMessages'>;
 	/** Display name (or email) of the teammate the thread is assigned to. */
@@ -77,7 +77,7 @@ export interface TeamInboxCounterpart {
 }
 
 /** Postbox state the Team Inbox reader is allowed to show. */
-export interface PostboxCounterpart {
+interface PostboxCounterpart {
 	messageId: Id<'mailMessages'>;
 	mailboxAddress: string;
 	/** System folder role the personal copy currently sits in. */

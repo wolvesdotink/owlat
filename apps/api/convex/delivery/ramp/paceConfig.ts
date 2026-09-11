@@ -27,7 +27,7 @@
 
 import { RAMP_AIMD } from './controllerConfig';
 
-export interface PaceAimdConfig {
+interface PaceAimdConfig {
 	/**
 	 * M_MIN — the multiplier a SOFT failure may never fall below. Never zero, for
 	 * the reason the share floor is never zero: a cap of nothing sends nothing,

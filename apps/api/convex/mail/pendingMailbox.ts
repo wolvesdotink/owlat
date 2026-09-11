@@ -52,7 +52,7 @@ const LOCALPART_PATTERN = /^[a-z0-9._-]+$/;
  * On success it provisions the mailbox at the reserved address, deletes the
  * reservation, marks the user's onboarding mailbox-ready, and returns the id.
  */
-export type ClaimReservedResult =
+type ClaimReservedResult =
 	| { ok: true; mailboxId: Id<'mailboxes'> }
 	| { ok: false; reason: 'domain_unverified' | 'address_taken' };
 

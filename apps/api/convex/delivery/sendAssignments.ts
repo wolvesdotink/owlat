@@ -68,8 +68,8 @@ export const SEND_ASSIGNMENT_CLEANUP_BATCH_SIZE = 200;
  * Derived from the schema rather than re-declared, so the literal sets cannot
  * drift from the table they are written into.
  */
-export type SendAssignmentArm = Doc<'sendAssignments'>['arm'];
-export type SendAssignmentKind = Doc<'sendAssignments'>['sendKind'];
+type SendAssignmentArm = Doc<'sendAssignments'>['arm'];
+type SendAssignmentKind = Doc<'sendAssignments'>['sendKind'];
 
 /**
  * Pure: which arm a transport belongs to. The own MTA is the `own` arm; every
@@ -197,7 +197,7 @@ export interface SendAssignmentRouting {
 	readonly from?: string;
 }
 
-export interface RecordSendAssignmentsInput {
+interface RecordSendAssignmentsInput {
 	/**
 	 * `null` is accepted alongside `undefined`: an optional string returned by
 	 * a Convex query arrives as `null` at the call site.

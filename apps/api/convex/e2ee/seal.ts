@@ -27,7 +27,7 @@ import * as openpgp from 'openpgp';
 /** The literal outer subject for a sealed message (locked decision D4). */
 export const OUTER_SUBJECT_PLACEHOLDER = '...';
 
-export interface SealMimeOptions {
+interface SealMimeOptions {
 	/** Armored PUBLIC keys of every recipient (D2 — all-or-nothing; verified upstream). */
 	recipientPublicKeysArmored: string[];
 	/** Armored PRIVATE key of the sender address (already opened from the vault). */

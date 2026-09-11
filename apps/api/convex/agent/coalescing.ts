@@ -31,7 +31,7 @@ import { internal } from '../_generated/api';
 /**
  * Default coalescing window in milliseconds (30 seconds)
  */
-export const DEFAULT_COALESCE_WINDOW_MS = 30_000;
+const DEFAULT_COALESCE_WINDOW_MS = 30_000;
 
 /**
  * Hard-cap multiplier: a burst may defer at most `window * this` from its first

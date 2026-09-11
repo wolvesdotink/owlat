@@ -52,7 +52,7 @@ const DECISION_PAGE_SIZE = 50;
  */
 const LATEST_DECISION_SCAN_LIMIT = 120;
 
-export interface RampCellDecisionView {
+interface RampCellDecisionView {
 	readonly at: number;
 	readonly fromShare: number;
 	readonly toShare: number;
@@ -69,7 +69,7 @@ export interface RampCellDecisionView {
 	readonly frozenUntil: number | null;
 }
 
-export interface RampCellControlView {
+interface RampCellControlView {
 	readonly cell: DeliverabilityCell;
 	readonly cellKey: string;
 	/** `false` for a cell the ramp has never taken over. Never an error state. */

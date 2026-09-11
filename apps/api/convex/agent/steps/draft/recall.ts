@@ -38,7 +38,7 @@ export const RECALL_RESULT_LIMIT = 5;
 /** Per-fact content clamp (chars) before untrusted text re-enters the model. */
 const RECALL_CONTENT_CHARS = 800;
 
-export interface RecallToolArgs {
+interface RecallToolArgs {
 	runAction: ActionCtx['runAction'];
 	/** The SAME contact-scope gate the context step used: the inbound's contact,
 	 * or 'org-general-only' when the inbound has no resolved contact. Never

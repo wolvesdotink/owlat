@@ -332,7 +332,7 @@ export interface RampControllerInput {
  * A FREEZE, WHOLE. The instant it ends, the rung that imposed it, and — only for
  * a gate breach — the cooldown-ladder position the next breach doubles from.
  */
-export interface RampDecisionFreeze {
+interface RampDecisionFreeze {
 	/** Absolute instant the cell is frozen until. */
 	readonly until: number;
 	/**
@@ -411,7 +411,7 @@ export interface RampDecision {
  * A graduation pin AWARDED to a cell that did not have one, or REVOKED from a
  * cell that did.
  */
-export type RampPinChange = 'awarded' | 'revoked';
+type RampPinChange = 'awarded' | 'revoked';
 
 /**
  * The pin transition between what the row stored and what this decision writes.

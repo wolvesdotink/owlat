@@ -47,7 +47,7 @@ export interface ProviderRouteConfig {
 	};
 }
 
-export type DeliverabilityReason = NonNullable<ResolvedRoute['deliverabilityReason']>;
+type DeliverabilityReason = NonNullable<ResolvedRoute['deliverabilityReason']>;
 
 export interface DeliverabilityRouteInput {
 	activeReasons: readonly Exclude<DeliverabilityReason, 'warmup_overflow'>[];

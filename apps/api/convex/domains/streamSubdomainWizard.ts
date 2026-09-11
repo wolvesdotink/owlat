@@ -65,13 +65,13 @@ import {
 } from './streamSubdomains';
 
 /** One line of wizard advice, resolved to its copy so the UI owns no wording. */
-export interface StreamSubdomainAdvice {
+interface StreamSubdomainAdvice {
 	key: SubdomainAdviceKey;
 	text: string;
 }
 
 /** One proposed sending name, flattened for the table. */
-export interface StreamSubdomainProposalRow {
+interface StreamSubdomainProposalRow {
 	/** The layout's own union, kept on the wire so the UI's labels are TOTAL. */
 	role: SendingSubdomainRole;
 	host: string;
@@ -108,7 +108,7 @@ interface StreamSubdomainRecordRowBase {
  * re-narrow by hand, and widening `purpose`/`type` to `string` would turn every
  * label map into a partial one with a `??` fallback that can never fire.
  */
-export type StreamSubdomainRecordRow =
+type StreamSubdomainRecordRow =
 	| (StreamSubdomainRecordRowBase & { purpose: 'spf'; type: 'TXT'; value: string })
 	| (StreamSubdomainRecordRowBase & { purpose: 'dmarc'; type: 'TXT'; value: string })
 	| (StreamSubdomainRecordRowBase & {
@@ -125,7 +125,7 @@ export type StreamSubdomainRecordRow =
 			priority: number;
 	  });
 
-export type StreamSubdomainWizardResult =
+type StreamSubdomainWizardResult =
 	| { ok: false; reason: 'unknown_domain' | 'invalid_domain' }
 	| {
 			ok: true;

@@ -149,7 +149,7 @@ export const sealSkipReasonValidator = v.union(
 );
 
 /** The dispatch-time decision: seal (with the exact recipient keys) or send plaintext. */
-export type SealDecision =
+type SealDecision =
 	| { seal: true; recipientPublicKeysArmored: string[] }
 	| { seal: false; reason: SealSkipReason };
 

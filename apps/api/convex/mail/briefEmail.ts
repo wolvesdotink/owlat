@@ -51,7 +51,7 @@ export const DELIVERY_WINDOW_MINUTES = 15;
 export const MAX_EMAIL_ITEMS = 12;
 
 /** Users considered per cron tick — one `mailUserSettings` row per person. */
-export const MAX_BRIEF_EMAIL_USERS = 500;
+const MAX_BRIEF_EMAIL_USERS = 500;
 
 /** Minutes past local midnight for an instant, given the user's stored offset. */
 export function localMinuteOfDay(nowMs: number, utcOffsetMinutes: number): number {
@@ -105,7 +105,7 @@ export interface BriefEmailItem {
 	path?: string;
 }
 
-export interface BriefEmailPayload {
+interface BriefEmailPayload {
 	mailboxId: Id<'mailboxes'>;
 	address: string;
 	/** The recipient's interface language (`userProfiles.locale`); absent = English. */

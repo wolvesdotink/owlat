@@ -87,7 +87,7 @@ import {
 } from './deliverabilityValidators';
 import { ROUTE_STATE_TTL_MS } from './rampControllerWrites';
 
-export interface RampEnrollmentResult {
+interface RampEnrollmentResult {
 	readonly enrolled: boolean;
 	readonly refusal?: RampControlRefusal;
 	/** The share the cell now starts from. Absent on a refusal. */

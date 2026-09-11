@@ -1,9 +1,6 @@
-import type {
-	ContactUpdatedFireInput,
-	TriggerModule,
-} from '../types';
+import type { ContactUpdatedFireInput, TriggerModule } from '../types';
 
-export interface ContactUpdatedConfig {
+interface ContactUpdatedConfig {
 	propertyKey: string;
 }
 
@@ -14,7 +11,12 @@ export const contactUpdatedTrigger: TriggerModule<
 > = {
 	kind: 'contact_updated',
 	parseConfig(raw) {
-		if (raw && typeof raw === 'object' && 'propertyKey' in raw && typeof (raw as { propertyKey: unknown }).propertyKey === 'string') {
+		if (
+			raw &&
+			typeof raw === 'object' &&
+			'propertyKey' in raw &&
+			typeof (raw as { propertyKey: unknown }).propertyKey === 'string'
+		) {
 			return { propertyKey: (raw as { propertyKey: string }).propertyKey };
 		}
 		return null;
@@ -24,8 +26,6 @@ export const contactUpdatedTrigger: TriggerModule<
 		return input.changedProperties.includes(config.propertyKey);
 	},
 	buildTriggerData(_input, config) {
-		return config
-			? ({ propertyKey: config.propertyKey } as const)
-			: ({} as Record<string, string>);
+		return config ? ({ propertyKey: config.propertyKey } as const) : ({} as Record<string, string>);
 	},
 };

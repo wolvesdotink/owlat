@@ -7,7 +7,7 @@ import { authedQuery } from './lib/authedFunctions';
 import { loadAccessibleMailboxes } from './mail/permissions';
 import { batchGet } from './_utils/batchLoader';
 
-export interface GlobalSearchResults {
+interface GlobalSearchResults {
 	contacts: Array<{ id: string; type: 'contact'; title: string; subtitle: string; url: string }>;
 	emails: Array<{ id: string; type: 'email'; title: string; subtitle: string; url: string }>;
 	campaigns: Array<{ id: string; type: 'campaign'; title: string; subtitle: string; url: string }>;
@@ -97,7 +97,7 @@ async function searchMail(
  * (`searchInternal`). No auth inside — callers gate, which is exactly why the
  * mailbox set is an ARGUMENT: a caller that cannot name a user cannot get mail.
  */
-export async function runGlobalSearch(
+async function runGlobalSearch(
 	ctx: QueryCtx,
 	rawQuery: string,
 	rawLimit?: number,

@@ -30,7 +30,7 @@ const attachmentKindValidator = v.union(
 );
 
 /** One Files-view row: the file, plus the message it hangs off. */
-export interface AttachmentListRow {
+interface AttachmentListRow {
 	_id: Id<'mailAttachments'>;
 	messageId: Id<'mailMessages'>;
 	filename: string;

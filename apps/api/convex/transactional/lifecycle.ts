@@ -49,7 +49,7 @@ export type TransactionalEmailStatus = 'draft' | 'pending_review' | 'published';
  * status patches (`published` / `draft`) inside the reducer but carry
  * distinct audit-log actions so the admin surface is identifiable.
  */
-export type TransactionalEmailTransitionInput =
+type TransactionalEmailTransitionInput =
 	| {
 			to: 'published';
 			at: number;
@@ -60,7 +60,7 @@ export type TransactionalEmailTransitionInput =
 	| { to: 'approved'; at: number }
 	| { to: 'rejected'; at: number };
 
-export type TransactionalEmailTransitionOutcome =
+type TransactionalEmailTransitionOutcome =
 	| {
 			ok: true;
 			applied: 'transitioned' | 'recorded';
@@ -75,20 +75,18 @@ export type TransactionalEmailTransitionOutcome =
 			to?: TransactionalEmailStatus;
 	  };
 
-export type TransactionalEmailCreateOutcome =
+type TransactionalEmailCreateOutcome =
 	| { ok: true; emailId: Id<'transactionalEmails'> }
 	| {
 			ok: false;
 			reason: 'invalid_slug_format' | 'slug_already_exists';
 	  };
 
-export type TransactionalEmailDuplicateOutcome =
+type TransactionalEmailDuplicateOutcome =
 	| { ok: true; emailId: Id<'transactionalEmails'> }
 	| { ok: false; reason: 'email_not_found' };
 
-export type TransactionalEmailRemoveOutcome =
-	| { ok: true }
-	| { ok: false; reason: 'email_not_found' };
+type TransactionalEmailRemoveOutcome = { ok: true } | { ok: false; reason: 'email_not_found' };
 
 // ─── Validators ─────────────────────────────────────────────────────────────
 
@@ -112,7 +110,7 @@ const transitionInputValidator = v.union(
 // effects below stay here. `reportsTerminalRefusals` is off — no state is
 // terminal here and the published outcome union carries only `illegal_edge`.
 
-export const TRANSACTIONAL_EMAIL_LIFECYCLE = defineLifecycle<TransactionalEmailStatus>({
+const TRANSACTIONAL_EMAIL_LIFECYCLE = defineLifecycle<TransactionalEmailStatus>({
 	draft: ['published', 'pending_review'],
 	pending_review: ['published', 'draft'],
 	published: ['draft'],

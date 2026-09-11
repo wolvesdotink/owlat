@@ -143,7 +143,7 @@ export type SendingDomainTransitionOutcome =
 			to?: SendingDomainStatus;
 	  };
 
-export type SendingDomainCreateOutcome =
+type SendingDomainCreateOutcome =
 	| { ok: true; domainId: Id<'domains'> }
 	| {
 			ok: false;
@@ -155,7 +155,7 @@ export type SendingDomainCreateOutcome =
 				| 'return_path_not_subdomain';
 	  };
 
-export type SendingDomainRemoveOutcome = { ok: true } | { ok: false; reason: 'domain_not_found' };
+type SendingDomainRemoveOutcome = { ok: true } | { ok: false; reason: 'domain_not_found' };
 
 // Ingestion permits one row per UTC day and retains 90 days. Leave headroom
 // for an in-flight cleanup, but fail the parent deletion atomically if that
@@ -803,7 +803,7 @@ export const recordVerification = internalMutation({
 	},
 });
 
-export type SendingDomainDmarcOutcome =
+type SendingDomainDmarcOutcome =
 	| { ok: true; policy: 'none' | 'quarantine' | 'reject'; changed: boolean }
 	| { ok: false; reason: 'domain_not_found' | 'no_dmarc_record' };
 
@@ -906,7 +906,7 @@ export const setDmarcPolicy = internalMutation({
 	},
 });
 
-export type SendingDomainReturnPathOutcome =
+type SendingDomainReturnPathOutcome =
 	| { ok: true; returnPathHost: string; changed: boolean }
 	| {
 			ok: false;
@@ -1309,7 +1309,7 @@ export const recordReturnPathPushResult = internalMutation({
 	},
 });
 
-export type SendingDomainDkimRotationOutcome =
+type SendingDomainDkimRotationOutcome =
 	| { ok: true; phase: 'pending' | 'activated'; selector: string; changed: boolean }
 	| { ok: false; reason: 'domain_not_found' };
 

@@ -50,19 +50,19 @@ export const MIN_SESSIONS = 3;
 export const DOMINANCE_RATIO = 0.8;
 
 /** Distinct sender rows one mailbox keeps. Least-recently-touched is evicted. */
-export const MAX_TALLY_SENDERS = 500;
+const MAX_TALLY_SENDERS = 500;
 
 /** Messages a single triage call records. A bulk sweep is one session, not 500 writes. */
-export const MAX_RECORDED_PER_CALL = 100;
+const MAX_RECORDED_PER_CALL = 100;
 
 /** How long an untouched tally row survives the retention sweep (90 days). */
-export const TALLY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+const TALLY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** Rows the retention cron prunes per tick. */
 const RETENTION_BATCH = 200;
 
 /** The shape the dominance predicate needs from a tally row. */
-export interface TallyLike {
+interface TallyLike {
 	verb: MailTriageVerb;
 	count: number;
 	sessions: number;
@@ -70,7 +70,7 @@ export interface TallyLike {
 	actedFilterId?: unknown;
 }
 
-export interface TriageSuggestion {
+interface TriageSuggestion {
 	verb: MailTriageVerb;
 	count: number;
 	/** Everything tallied for this sender, so the UI can be honest about share. */

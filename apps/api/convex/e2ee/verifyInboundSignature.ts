@@ -39,7 +39,7 @@ import { shouldRefetch } from './discovery';
 import { inboundSignatureInfoValidator, type InboundSignatureInfo } from './inboundSignature';
 
 /** The outcome of one low-level verify attempt. Bytes + a key in, structured out. */
-export interface VerifyAttempt {
+interface VerifyAttempt {
 	verified: boolean;
 	/** Uppercase-hex fingerprint of the verification key — present only when verified. */
 	signerFingerprint?: string;

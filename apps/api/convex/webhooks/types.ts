@@ -93,7 +93,7 @@ export interface ProviderSuppression {
  * `channel.received` event. JSON-serialized into `unifiedMessages.content`
  * by the dispatcher.
  */
-export interface ChannelContent {
+interface ChannelContent {
 	text?: string;
 	html?: string;
 	subject?: string;
@@ -391,7 +391,7 @@ export type InboundEvent =
 export type InboundEventKind = InboundEvent['kind'];
 
 /** The five optional Postmaster metrics that always travel together. */
-export interface PostmasterStatsMetrics {
+interface PostmasterStatsMetrics {
 	spfSuccessRatio?: number;
 	dkimSuccessRatio?: number;
 	dmarcSuccessRatio?: number;

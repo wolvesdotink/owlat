@@ -63,7 +63,7 @@ export const CAMPAIGN_ALERT_RECEIPT_RETENTION_MS = 35 * 24 * 60 * 60 * 1000;
  * `no_settings_row` (transient early-deployment state) and `event_id_conflict`
  * (an identity reused with different content) are failures.
  */
-export type CampaignAlertOutcome =
+type CampaignAlertOutcome =
 	| {
 			ok: true;
 			applied: 'transitioned' | 'recorded' | 'duplicate' | 'skipped';

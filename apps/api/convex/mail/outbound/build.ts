@@ -21,7 +21,7 @@ import { decideSeal, type OutboundEncryptionInfo } from '../sealPolicy';
 import { sealMime, type SealedMime } from '../../e2ee/seal';
 import { openPrivateKey } from '../../e2ee/sealing';
 
-export interface DraftAttachmentBuffer {
+interface DraftAttachmentBuffer {
 	filename: string;
 	contentType: string;
 	isInline: boolean;

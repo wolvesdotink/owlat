@@ -57,7 +57,7 @@ export type RelayDnsRecordView = {
 };
 
 /** A provider's own verdict on one published record. */
-export type RelayRecordVerdict = {
+type RelayRecordVerdict = {
 	readonly isValid: boolean;
 	readonly error?: string;
 };

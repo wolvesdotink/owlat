@@ -119,7 +119,7 @@ export async function isBodySearchIndexComplete(
 }
 
 /** Which search index a free-text query for this mailbox should read. */
-export type BodySearchMode = 'body' | 'snippet';
+type BodySearchMode = 'body' | 'snippet';
 
 /**
  * Resolve the index for one mailbox. `'body'` needs BOTH the instance switch
@@ -137,7 +137,7 @@ export async function resolveBodySearchMode(
 /** The narrowing both search indexes can express. `from` is deliberately absent:
  * the grammar's `from:` is a partial token, not a full address, so it cannot use
  * an exact `.eq('fromAddress')` and stays a post-filter at the call site. */
-export interface TextSearchNarrowing {
+interface TextSearchNarrowing {
 	mailboxId: Id<'mailboxes'>;
 	text: string;
 	folderId?: Id<'mailFolders'>;

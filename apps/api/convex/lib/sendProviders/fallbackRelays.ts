@@ -126,7 +126,7 @@ export type RelayIdentityBackfill = {
 };
 
 /** What one page (or one domain) of backfill actually managed to do. */
-export type RelayIdentityBackfillOutcome = {
+type RelayIdentityBackfillOutcome = {
 	readonly attempted: number;
 	/** The kinds whose `ensureRelayIdentity` threw, deduplicated. */
 	readonly failedKinds: readonly string[];

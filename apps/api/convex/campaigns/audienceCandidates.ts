@@ -174,7 +174,7 @@ export const SEND_PAGE_SIZE = 500;
  * live contacts table into the mutation's OCC read set. Such callers pass a
  * budget and treat `exhausted` as "could not measure" rather than as a count.
  */
-export interface ExamineBudget {
+interface ExamineBudget {
 	/** Documents this scan may read in total. */
 	readonly limit: number;
 	/** Documents charged so far. */

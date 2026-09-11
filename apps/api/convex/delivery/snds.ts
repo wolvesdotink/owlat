@@ -33,7 +33,7 @@ import { DAY_MS } from '../lib/constants';
 const RETENTION_MS = 90 * DAY_MS;
 const FETCHED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;
 
-export const SNDS_CLEANUP_BATCH_SIZE = 128;
+const SNDS_CLEANUP_BATCH_SIZE = 128;
 
 const observationValidator = v.object({
 	ip: v.string(),

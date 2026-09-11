@@ -23,7 +23,7 @@ export interface ReturnPathSpfProof {
 	readonly foundValue?: string | undefined;
 }
 
-export interface ReturnPathAuthorizationInput {
+interface ReturnPathAuthorizationInput {
 	/** The resolved return-path host (per-domain override, else the global env). */
 	readonly host: string | undefined;
 	/** The configured relay-authorisation terms (`MTA_RETURN_PATH_RELAY_SPF`). */

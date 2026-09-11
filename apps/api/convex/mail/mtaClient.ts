@@ -67,7 +67,7 @@ interface AttachmentScanResponse {
  *     proceeds without a clean assertion.
  *   - `'clean'` — the file was scanned and came back clean.
  */
-export type AttachmentScanVerdict =
+type AttachmentScanVerdict =
 	| { kind: 'clean' }
 	| { kind: 'infected'; reason: string }
 	| { kind: 'skipped'; reason?: string };

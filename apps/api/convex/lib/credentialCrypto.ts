@@ -145,7 +145,7 @@ export function createSecretBox(secret: string, context: SecretBoxContext): Secr
  * minimum below which the KDF input can no longer be assumed to carry a full
  * key's worth of entropy.
  */
-export const MIN_INSTANCE_SECRET_BYTES = 16;
+const MIN_INSTANCE_SECRET_BYTES = 16;
 
 /**
  * Read INSTANCE_SECRET and assert it clears the entropy floor before it is fed
@@ -153,7 +153,7 @@ export const MIN_INSTANCE_SECRET_BYTES = 16;
  * external-mail credential box refuses to seal/open under a weak key rather than
  * producing recoverable ciphertext.
  */
-export function requireStrongInstanceSecret(): string {
+function requireStrongInstanceSecret(): string {
 	const secret = getRequired('INSTANCE_SECRET');
 	if (Buffer.byteLength(secret, 'utf8') < MIN_INSTANCE_SECRET_BYTES) {
 		throw new Error(

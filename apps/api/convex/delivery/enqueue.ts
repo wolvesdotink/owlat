@@ -39,7 +39,7 @@ import { abVariantValidator } from '../lib/convexValidators';
  * rather than hand-duplicating the shape, so adding a field here is one edit
  * and a drift is a type error rather than a silently dropped value.
  */
-export const campaignEnqueueEmailValidator = v.object({
+const campaignEnqueueEmailValidator = v.object({
 	emailSendId: v.id('emailSends'),
 	contactId: v.id('contacts'),
 	email: v.string(),

@@ -93,7 +93,7 @@ export type RemainingRecipients =
 	| { readonly kind: 'atLeast'; readonly count: number }
 	| { readonly kind: 'exact'; readonly count: number };
 
-export interface SendPlanSliceInput {
+interface SendPlanSliceInput {
 	readonly state: SendPlanState;
 	/**
 	 * Recipients still to enqueue. UNKNOWN NEVER WAIVES THE DAY BUDGET: the
@@ -110,7 +110,7 @@ export interface SendPlanSliceInput {
 	readonly now: number;
 }
 
-export interface SendPlanSlice {
+interface SendPlanSlice {
 	/** The `YYYY-MM-DD` day this slice belongs to. */
 	readonly dayKey: string;
 	/** 0-based day index within the plan. */
@@ -309,7 +309,7 @@ function planLength(args: {
 }
 
 /** A recipient the walker can order. Only the score is read. */
-export interface EngagementOrdered {
+interface EngagementOrdered {
 	readonly engagementScore?: number | undefined;
 }
 

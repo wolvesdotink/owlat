@@ -27,7 +27,7 @@ export const EMERGENCY_BUDGET = {
 };
 
 /** One-line activity content snippet (chars). Keeps [RECENT ACTIVITY] terse. */
-export const ACTIVITY_SNIPPET_CHARS = 120;
+const ACTIVITY_SNIPPET_CHARS = 120;
 
 /** Truncate to `max` chars with an ellipsis marker, collapsing internal newlines
  * so a compacted one-liner stays one line. */

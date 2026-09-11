@@ -51,7 +51,7 @@ export interface MandrillDomainState {
 	readonly verifyTxtKey?: string;
 }
 
-export type MandrillDomainCall =
+type MandrillDomainCall =
 	| { outcome: 'ok'; state: MandrillDomainState }
 	| { outcome: 'auth_failed'; error: string }
 	| { outcome: 'unavailable'; error: string };

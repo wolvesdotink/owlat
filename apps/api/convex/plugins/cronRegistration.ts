@@ -8,7 +8,7 @@ import { CRON_CATALOG, type HostedCronDefinition } from './cronCatalog';
 
 type Crons = ReturnType<typeof cronJobs>;
 
-export interface PluginCronRegistration {
+interface PluginCronRegistration {
 	/** Unique Convex cron identifier; equals the namespaced cron kind. */
 	readonly name: string;
 	readonly intervalMinutes: number;

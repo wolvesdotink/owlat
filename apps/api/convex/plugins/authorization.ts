@@ -47,7 +47,7 @@ export function getBundledPluginManifest(pluginId: PluginId): PluginManifest {
  * must be the resolved manifest for `pluginId`; a plugin whose manifest declares
  * no `flag` is never enabled.
  */
-export interface PluginRuntimeFacts {
+interface PluginRuntimeFacts {
 	readonly flagEnabled: boolean;
 	readonly grants: Readonly<Record<string, boolean>> | undefined;
 }

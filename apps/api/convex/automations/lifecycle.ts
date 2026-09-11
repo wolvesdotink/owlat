@@ -232,9 +232,7 @@ function buildPatch(
  * `automations.ts:360-368` — runs on `draft → active` AND `paused → active`,
  * closing the resume-skips-validation drift.
  */
-export function validateTriggerConfig(
-	automation: Doc<'automations'>
-): 'invalid_trigger_config' | null {
+function validateTriggerConfig(automation: Doc<'automations'>): 'invalid_trigger_config' | null {
 	if (automation.triggerType === 'contact_updated' && !automation.triggerConfig) {
 		return 'invalid_trigger_config';
 	}

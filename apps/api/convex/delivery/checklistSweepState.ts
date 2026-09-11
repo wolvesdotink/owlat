@@ -7,9 +7,7 @@ import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
 
 const DOMAIN_BATCH_SIZE = 5;
-export const HOURLY_DEPLOYMENT_CHECKS = new Set<DeliverabilityCheckId>(
-	HOURLY_DELIVERABILITY_CHECK_IDS
-);
+const HOURLY_DEPLOYMENT_CHECKS = new Set<DeliverabilityCheckId>(HOURLY_DELIVERABILITY_CHECK_IDS);
 
 export const schedulePage = internalMutation({
 	args: {

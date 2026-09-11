@@ -97,7 +97,7 @@ export function readHardStopSignals(
  * INCREASES only; a retreat is always permitted, because a safety response an
  * operator cannot reach downward is not a safety response either.
  */
-export type RampIncreaseBlock = 'controller_paused' | 'hard_stop_active';
+type RampIncreaseBlock = 'controller_paused' | 'hard_stop_active';
 
 export async function readRampIncreaseBlock(
 	ctx: MutationCtx,

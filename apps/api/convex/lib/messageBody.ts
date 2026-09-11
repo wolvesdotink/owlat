@@ -160,7 +160,7 @@ export async function sealMailInlineBodyPatch(
 }
 
 /** The `content` JSON blob of a `unifiedMessages` row (sealed as one string). */
-export interface UnifiedMessageContentField {
+interface UnifiedMessageContentField {
 	content: string;
 	contentVersion?: number;
 	contentStorageVersion?: number;
@@ -193,7 +193,7 @@ export async function sealConversationThreadPreviewPatch(row: {
 
 /** The body columns of a `mailDrafts` row. `bodyHtml` is required; the text and
  * block variants are optional. */
-export interface MailDraftBodyFields {
+interface MailDraftBodyFields {
 	bodyHtml: string;
 	bodyText?: string;
 	bodyBlocks?: string;
@@ -278,14 +278,14 @@ export async function openInboundMessageBody(
 /** The inline body fields on a `mailMessages` row (both optional). Large
  * bodies are NOT here — they live in the `*BodyStorageId` blobs; use
  * {@link readMailMessageText} when the full body is required. */
-export interface MailMessageInlineFields {
+interface MailMessageInlineFields {
 	textBodyInline?: string;
 	htmlBodyInline?: string;
 }
 
 /** Normalized inline body of a `mailMessages` row. Values are the row's inline
  * fields verbatim (the blob, if any, is not fetched). */
-export interface MailMessageInlineBody {
+interface MailMessageInlineBody {
 	text: string | undefined;
 	html: string | undefined;
 }
@@ -315,7 +315,7 @@ export interface BodyBlobStorageReader {
 }
 
 /** The text-body fields of a `mailMessages` row, inline or blob. */
-export interface MailMessageTextFields {
+interface MailMessageTextFields {
 	textBodyInline?: string;
 	textBodyStorageId?: Id<'_storage'>;
 }

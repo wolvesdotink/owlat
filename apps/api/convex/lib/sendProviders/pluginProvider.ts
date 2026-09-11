@@ -57,7 +57,7 @@ export interface HostedSendProviderModule extends ReturnPathProbeCapableModule {
  * deployment-wide flag variables, and those are the plugin's, not this
  * transport's to be handed.
  */
-export interface HostedSendTransportConfigSpec {
+interface HostedSendTransportConfigSpec {
 	readonly instanceEnvVars: readonly string[];
 	readonly requiredEnvVars: readonly string[];
 }
