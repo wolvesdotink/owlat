@@ -13,6 +13,25 @@
 		".": {
 			"entry": ["plugins.config.ts", "scripts/__tests__/**/*.ts"],
 			"includeEntryExports": false,
+			// @owlat/plugin-kit, @owlat/provider-kit and @owlat/sdk-js are tsup
+			// builds whose package.json `exports["."]` points at dist/, which the
+			// global ignore below drops. In a clean CI checkout dist/ does not
+			// exist, so the 160+ `from '@owlat/plugin-kit'` imports across apps/
+			// are unresolved and every barrel symbol whose only consumer is
+			// apps/api, apps/code-worker or apps/web is reported as dead
+			// (measured 2026-09-11: 13 false positives in plugin-kit). knip
+			// consults `paths` only after normal resolution fails, so this
+			// mapping is what carries the dist-less case; it is scoped to the
+			// root workspace so it applies to every importing file. When dist/
+			// IS present, resolution succeeds and knip maps dist/index.js back
+			// to src/index.ts through each package's tsconfig outDir (with no
+			// rootDir override; see those tsconfigs). Keep in sync with the
+			// three packages' `exports`; none declares a subpath today.
+			"paths": {
+				"@owlat/plugin-kit": ["packages/plugin-kit/src/index.ts"],
+				"@owlat/provider-kit": ["packages/provider-kit/src/index.ts"],
+				"@owlat/sdk-js": ["packages/sdk-js/src/index.ts"],
+			},
 		},
 		// ---- Convex backend ----------------------------------------------
 		// Every file under convex/ is reachable by the Convex runtime (queries,
@@ -280,6 +299,8 @@
 		"packages/plugin-kit": {
 			"entry": ["src/index.ts", "scripts/*.ts", "src/**/__tests__/**/*.ts"],
 		},
+		// Single barrel; its one spec sits next to the module, not in __tests__.
+		"packages/provider-kit": { "entry": ["src/index.ts", "src/**/*.test.ts"] },
 		// packages/ui is a Nuxt layer — every composable/component is reachable
 		// by auto-import convention (path prefix), so the whole tree stays entry.
 		"packages/ui": {
