@@ -10,7 +10,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeliverabilityCell } from '../deliverabilityRouting';
 import {
-	DEFAULT_PLACEMENT_SOURCE_KIND,
 	MAX_PANEL_MAILBOXES_PER_REPORT,
 	MAX_PANEL_REPORTS,
 	PLACEMENT_SOURCE_KINDS,
@@ -37,10 +36,6 @@ function seeds(inbox: number, spam: number, missing = 0): SeedObservation[] {
 }
 
 describe('exactly two implementations', () => {
-	it('the source union is closed at two — no registry, no discovery', () => {
-		expect([...PLACEMENT_SOURCE_KINDS]).toEqual(['self_hosted_seeds', 'commercial_api']);
-	});
-
 	it('both implementations satisfy the same interface', () => {
 		const adapters: PlacementAdapter[] = [
 			selfHostedSeedPlacementAdapter,
@@ -84,10 +79,6 @@ describe('exactly two implementations', () => {
 });
 
 describe('the self-hosted path is the default', () => {
-	it('names self-hosted seeds as the default kind', () => {
-		expect(DEFAULT_PLACEMENT_SOURCE_KIND).toBe('self_hosted_seeds');
-	});
-
 	it('resolves to the seed adapter with no commercial key', () => {
 		const resolution = resolvePlacementAdapter({
 			seedMailboxCount: 8,

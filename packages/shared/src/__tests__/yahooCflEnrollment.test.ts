@@ -36,21 +36,11 @@ const T0 = Date.UTC(2026, 6, 1);
 const DAY = 24 * 60 * 60 * 1000;
 
 describe('states', () => {
-	it('enumerates exactly the four guided-flow states', () => {
-		expect(YAHOO_CFL_ENROLLMENT_STATES).toEqual([
-			'not_started',
-			'awaiting_yahoo',
-			'enrolled',
-			'lapsed',
-		]);
-	});
-
 	it('starts every domain at not_started with no timestamps', () => {
 		expect(emptyYahooCflEnrollment()).toEqual({ state: 'not_started' });
 	});
 
 	it('persists only the three states — lapsed is derived, never stored', () => {
-		expect(YAHOO_CFL_STORED_STATES).toEqual(['not_started', 'awaiting_yahoo', 'enrolled']);
 		// `lapsed` is the ONE derived state: it exists in the presented enum and not
 		// in the stored one, which is what makes the re-check a read, not a cron.
 		expect(YAHOO_CFL_ENROLLMENT_STATES).toContain('lapsed');

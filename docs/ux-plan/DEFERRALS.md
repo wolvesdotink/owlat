@@ -34,7 +34,7 @@ where someone's mail client was last configured).
 
 ## 61 — `--color-brand` as text misses the AA floor
 
-`packages/ui/__tests__/tokenContrast.test.ts` holds the neutral text ladder and
+`scripts/check-token-contrast.ts` holds the neutral text ladder and
 the four status colours to 4.5:1 on every content surface. `--color-brand` is
 excluded, and it does not clear the floor: 3.83:1 on `--color-bg-base` in light
 mode, 4.06:1 in dark.
