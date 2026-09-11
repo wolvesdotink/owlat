@@ -180,7 +180,8 @@ export const recordUpdateStart = internalMutation({
 		// Structured log for external log sinks. stdout JSON lines are
 		// trivially scraped by Loki/DataDog/Vector — gives us a time-
 		// correlated record of every update attempt without coupling to a
-		// specific provider. eslint-disable-next-line no-console
+		// specific provider.
+		// eslint-disable-next-line no-console
 		console.info(
 			JSON.stringify({
 				event: 'update_start',
@@ -214,7 +215,7 @@ export const recordUpdateFinish = internalMutation({
 
 		// Pairs with recordUpdateStart's structured event so a log sink can
 		// compute duration + success rate without running a Convex query.
-		// Include run metadata so each line is self- contained (no join
+		// Include run metadata so each line is self-contained (no join
 		// needed).
 		const run = await ctx.db.get(args.runId);
 		const durationMs = run?.startedAt ? finishedAt - run.startedAt : undefined;
