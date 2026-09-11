@@ -9,7 +9,7 @@
 		"dev": "tauri dev",
 		"build": "tauri build",
 		"typecheck": "tsc --noEmit",
-		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint": "oxlint --config ../../oxlintrc.json src scripts",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
