@@ -4,9 +4,9 @@
  * `CONTRIBUTION_CAPABILITY_REQUIREMENTS` states a bucket's dispatch class in two
  * places once a bucket carries more than one executable half: on the row, and on
  * each `moduleExports` entry. Two readers consume the two statements — the
- * published Contribution Reference splits its bucket tables by the ROW literal
- * (`apps/docs/__tests__/pluginDocs.test.ts` greps this file for it), while the
- * conformance reachability gate asserts real host consumers per MODULE EXPORT.
+ * published Contribution Reference splits its bucket tables by the ROW literal,
+ * while the conformance reachability gate asserts real host consumers per
+ * MODULE EXPORT.
  * Nothing else makes them agree, so a row declared `'declared'` with a half
  * classed `'wired'` would put the bucket in the docs page's "not yet invoked"
  * table while the gate simultaneously demanded and found a production consumer,
