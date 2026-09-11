@@ -1,14 +1,9 @@
 /**
- * Send-provider catalog — the DECLARATION vocabulary (the seams plan's D1).
+ * Send-provider catalog — the DECLARATION vocabulary.
  *
- * PLAN NUMBERS: this file's comments cite THREE plans, so each citation names
- * its own — the seams plan (which owns the branch), the Mandrill provider plan,
- * and the deliverability plan that shipped the return-path probe. A bare `D2`
- * here would be ambiguous between at least two of them.
- *
- * WHY IT LIVES IN packages/shared. D1 promotes the catalog to the single source
- * of truth for what a provider IS, needs and can do, and moves its DATA HALF out
- * of the Convex backend so web, setup-cli and docs generation consume the same
+ * WHY IT LIVES IN packages/shared. The catalog is the single source of truth
+ * for what a provider IS, needs and can do, and its DATA HALF lives outside the
+ * Convex backend so web, setup-cli and docs generation consume the same
  * declaration instead of restating it — which is what the kind union, the
  * required-env tables and the credential forms each did in three to five places
  * before. The CODE half (adapter modules, client caches, the plugin-tier
@@ -26,7 +21,7 @@
  * capability unions and the entry shapes are the vocabulary an entry is written
  * in, `./sendProviderCatalog` is the entries themselves plus the accessors that
  * apply each field's fail-closed default, and the descriptor vocabulary an entry
- * is written in sits beside it — `./sendProviderCredentialFields` (D5's form
+ * is written in sits beside it — `./sendProviderCredentialFields` (the form
  * fields) and `./sendProviderFeedback` (where a provider's feedback arrives).
  * IMPORT THROUGH `./sendProviderCatalog`: it re-exports every name this module
  * exports.
@@ -44,10 +39,9 @@ import type { SendProviderFeedbackChannel } from './sendProviderFeedback';
 export type HostedSendTransportKind = `plugin.${string}.${string}`;
 
 /**
- * How a provider is INTEGRATED — the seams plan's D4 ("two relay tiers, one
- * contract").
+ * How a provider is INTEGRATED — two relay tiers, one contract.
  *
- *  - `own`    Owlat's own MTA. Special BY DEFINITION (D3) and by nothing else:
+ *  - `own`    Owlat's own MTA. Special BY DEFINITION and by nothing else:
  *             it is the arm a deliverability fallback moves traffic away from,
  *             so "own vs. not-own" is the one identity question that legitimately
  *             exists. Exactly one entry may carry it.
@@ -57,16 +51,15 @@ export type HostedSendTransportKind = `plugin.${string}.${string}`;
  *             which is the only tier a generated entry can have come from.
  *
  * `core` and `plugin` are an INTEGRATION difference, not a capability one: after
- * plugin parity (the seams plan's Wave 3) both satisfy the same contract, and
- * nothing may gate behaviour on the distinction.
+ * plugin parity both satisfy the same contract, and nothing may gate behaviour
+ * on the distinction.
  */
 export type SendProviderTier = 'own' | 'core' | 'plugin';
 
 /**
  * Whether this transport lets us set the RFC5321.MailFrom (the VERP envelope
- * sender) on a send — the ONE capability the catalog did not express (the
- * DELIVERABILITY plan's D4: a flag on the existing catalog, never a second
- * credential model).
+ * sender) on a send — the ONE capability the catalog did not express: a flag on
+ * the existing catalog, never a second credential model.
  *
  *  - `yes`   the transport is under our control or documented to honour it.
  *  - `no`    the transport owns the envelope sender; bounces land at the
@@ -74,14 +67,12 @@ export type SendProviderTier = 'own' | 'core' | 'plugin';
  *  - `probe` unknowable statically — a bring-your-own SMTP relay. The verdict
  *            comes from a probe whose delivered bounce we actually observed;
  *            until then it resolves to `unknown`, which is treated exactly
- *            like `no` (never an error, never a blocker — the DELIVERABILITY
- *            plan's D2).
+ *            like `no` (never an error, never a blocker).
  */
 export type DeclaredCustomReturnPathSupport = 'yes' | 'no' | 'probe';
 
 /**
- * How this transport's SENDING DOMAINS are verified (Mandrill plan D6/D7 — the
- * seams plan adopts the field in its D1 and the registry it feeds in P0.3).
+ * How this transport's SENDING DOMAINS are verified.
  *
  *  - `api`  the provider has a domain-identity API, so a registered sending
  *           domain provider (`domains/providers/<kind>/`) can report whether a
@@ -98,8 +89,7 @@ export type DomainVerificationSupport = 'api' | 'none';
 
 /**
  * What a SUCCESSFUL dispatch means for this transport, and therefore what an
- * AMBIGUOUS one may be answered with (the SEAMS plan's D2 — capabilities, not
- * identity).
+ * AMBIGUOUS one may be answered with (capabilities, not identity).
  *
  *  - `accepted`  the transport takes CUSTODY of the message. Success is an
  *                intake acceptance, not a delivery: the Send stays `queued`
@@ -113,8 +103,7 @@ export type DomainVerificationSupport = 'api' | 'none';
  *  - `unknown-on-timeout` the send IS the handoff — there is no separate
  *                custody state to report — and a lost response CANNOT be
  *                re-asked: a replay on a transport with no idempotency surface
- *                would double-deliver (the MANDRILL plan's D4, which is where
- *                that posture was first argued). An ambiguous outcome parks
+ *                would double-deliver. An ambiguous outcome parks
  *                awaiting provider feedback where the kind has a feedback
  *                channel, and fails where it has none.
  *
@@ -204,7 +193,7 @@ export type MessageIdSource = 'provider' | 'idempotency-key' | 'composed';
 
 /**
  * Does handing this transport the SAME idempotency key twice deliver the message
- * once? (the SEAMS plan's D2 — capabilities, not identity.)
+ * once? (capabilities, not identity.)
  *
  * A narrower question than {@link AcceptanceSemantics}, and deliberately a
  * separate field rather than a derivation of it. Acceptance semantics answer what
@@ -235,8 +224,7 @@ export type IdempotencyKeyDeduplication = boolean;
 
 /**
  * Does the feedback this transport sends us carry OUR OWN provenance tag —
- * `deliveryDomain` on the inbound event? (the SEAMS plan's D2 — capabilities,
- * not identity.)
+ * `deliveryDomain` on the inbound event? (capabilities, not identity.)
  *
  * `deliveryDomain` is not a provider field. It has exactly one writer,
  * `applyFeedbackProvenancePolicy` in `apps/mta/src/bounce/outcome.ts`, which
@@ -271,8 +259,8 @@ export type FeedbackProvenanceTagging = boolean;
  * A descriptor, not a function: this module is data, and the probes themselves
  * (a Resend API call, a real SMTP submission handshake with AUTH) are network
  * code living in `./setupValidators`. `validator` names the exported function
- * there, so the two cannot drift silently — the seams plan's P1.3 pins the name
- * against that module's surface.
+ * there, so the two cannot drift silently: the name is pinned against that
+ * module's surface.
  *
  * ABSENCE IS A DECLARATION. A kind with no `setupProbe` cannot be checked before
  * applying, which is the honest answer for SES, Mandrill and our own MTA: their
@@ -291,11 +279,11 @@ export interface SendProviderSetupProbe {
  * a fail-closed default behind each.
  *
  * `kind` is a plain `string` HERE and a narrowed union everywhere else. It has
- * to be: the union is DERIVED from the entries (`SendProviderKind =
- * (typeof CATALOG)[number]['kind']`, D1), so a vocabulary that named the union
- * would be defined in terms of the literal that is defined in terms of it.
- * Once the literal exists, `./sendProviderCatalog` derives the narrowed union
- * from it (`CoreSendProviderKind`) and the backend's `SendProviderCatalogEntry`
+ * to be: the union is DERIVED from the entries (`SendProviderKind = (typeof
+ * CATALOG)[number]['kind']`), so a vocabulary that named the union would be
+ * defined in terms of the literal that is defined in terms of it. Once the
+ * literal exists, `./sendProviderCatalog` derives the narrowed union from it
+ * (`CoreSendProviderKind`) and the backend's `SendProviderCatalogEntry`
  * (`apps/api/convex/lib/sendProviders/catalogTypes.ts`) is this shape with
  * `kind` narrowed to the COMPOSED union and widened by its plugin-kit-typed
  * fields — so no consumer outside the declaration itself sees the loose form.
@@ -321,7 +309,7 @@ export interface SendProviderCatalogEntryShape {
 	 */
 	readonly optionalEnvVars?: readonly string[];
 	/**
-	 * The credential FORM, as typed descriptors (D5). Optional because a generated
+	 * The credential FORM, as typed descriptors. Optional because a generated
 	 * plugin entry carries it only when its manifest declared one — see the note
 	 * on `./sendProviderCredentialFields`.
 	 */
@@ -391,12 +379,10 @@ export interface SendProviderCatalogEntryShape {
  * go unrecorded, or how a transport that DOES dedup leaves every ambiguous
  * system mail unresendable. Bundled plugin transports keep the optional fields —
  * they are generated from plugin manifests, which have no such surface to
- * declare (plugin-tier parity is the SEAMS plan's P3.1 — contract parity for
- * capabilities, extras and instances, NOT the Mandrill plan's P3.1, which is the
- * domain-identity adapter that already shipped) — and are held to the same
- * custody prerequisites at composition time by
- * `assertPluginDispatchSemanticsAreGeneral` in the backend's `catalog.ts`
- * instead.
+ * declare (plugin-tier parity means contract parity for capabilities, extras and
+ * instances, not the domain-identity adapter) — and are held to the same custody
+ * prerequisites at composition time by `assertPluginDispatchSemanticsAreGeneral`
+ * in the backend's `catalog.ts` instead.
  *
  * For a CORE kind the two dispatch semantics are a PAIR, not two independent
  * fields, so they are declared as a union rather than side by side — and the

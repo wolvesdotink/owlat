@@ -1,18 +1,17 @@
 /**
- * Deliverability measurement screen — presentation only (plan D2, D5, D14).
+ * Deliverability measurement screen — presentation only.
  *
  * THE RULE: nothing in this module divides. Every rate on this screen is
- * DERIVED ON READ by the server's one summarizer (ADR-0042 / plan D5), and the
- * screen's job is to format the number it was handed and to put the right
- * sentence next to it. A percentage here is a unit conversion of a server rate,
- * never a rate computed from two counters — that is precisely how a dashboard
- * and a controller end up disagreeing about the same traffic.
+ * DERIVED ON READ by the server's one summarizer (ADR-0042), and the screen's
+ * job is to format the number it was handed and to put the right sentence next
+ * to it. A percentage here is a unit conversion of a server rate, never a rate
+ * computed from two counters — that is precisely how a dashboard and a
+ * controller end up disagreeing about the same traffic.
  *
  * STATES ARE THE FEATURE. `insufficient_data` is not a failure, an absent
  * reference transport is not an incomplete setup, and a quiet cell is not a
  * problem. The copy below says so in words, and the tones below say so in
- * colour: nothing that is merely UNMEASURED is ever rendered in an error tone
- * (plan D2).
+ * colour: nothing that is merely UNMEASURED is ever rendered in an error tone.
  *
  * TWO SPANS, AND EVERY SENTENCE SAYS WHICH ONE IT IS OVER. The server counts
  * over a WINDOW of seven days and reaches every gate verdict over the ramp
@@ -51,7 +50,7 @@ export type DeliverabilityConfidence = DeliverabilityDashboardCell['confidence']
 export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 
 /**
- * The headline, D14 literally: with nothing to compare against, the feature is
+ * The headline, honestly: with nothing to compare against, the feature is
  * "Warm-up autopilot" (how much can I send today, and what is holding it back),
  * not a degraded "Sending independence".
  *
@@ -183,7 +182,7 @@ export function cellLabel(cell: DeliverabilityDashboardCell['cell']): LocalizedT
 	return `shared.deliverabilityMeasurement.cell.${cell.stream}.${cell.destinationProvider}`;
 }
 
-// ============ CONFIDENCE (D14) ============
+// ============ CONFIDENCE ============
 
 export function confidenceLabel(level: DeliverabilityConfidence['level']): LocalizedText {
 	switch (level) {
@@ -201,7 +200,7 @@ export function confidenceLabel(level: DeliverabilityConfidence['level']): Local
 /**
  * What would make this cell's measurement better, as an INVITATION. Never a
  * warning, never a nag: the absence of a relay or of seed mailboxes is a
- * supported configuration (plan D2).
+ * supported configuration.
  */
 export function improvementCopy(
 	improvement: DeliverabilityConfidence['improvements'][number]
@@ -308,7 +307,7 @@ export function isZeroVolume(cell: DeliverabilityDashboardCell): boolean {
 	return cell.own.sent === 0 && (cell.reference === null || cell.reference.sent === 0);
 }
 
-/** Share of the cell the own server carries, as a display string (D1). */
+/** Share of the cell the own server carries, as a display string. */
 export function ownShareLabel(cell: DeliverabilityDashboardCell): string {
 	return formatPercentage(cell.ownShare, 0);
 }

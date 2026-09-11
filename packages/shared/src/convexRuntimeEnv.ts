@@ -47,7 +47,7 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'BETTER_AUTH_SECRET',
 	'INSTANCE_SECRET',
 	// The PREVIOUS INSTANCE_SECRET — set ONLY during a secret-rotation window
-	// (Sealed Mail key lifecycle, E6). Pushed into the deployment so the E2EE key
+	// for the Sealed Mail key lifecycle. Pushed into the deployment so the E2EE key
 	// box's mixed-vault fallback (open under current, else previous) actually
 	// reaches the Convex function runtime while the re-seal migration runs; a
 	// self-hoster who set it only in the compose .env would otherwise find the
@@ -55,7 +55,7 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'INSTANCE_SECRET_PREVIOUS',
 	'OWLAT_VERSION',
 	'OWLAT_DEV_MODE',
-	// Email-verification opt-in (H3). Read at Convex function runtime by
+	// Email-verification opt-in. Read at Convex function runtime by
 	// auth/auth.ts to enable BetterAuth `requireEmailVerification` / `sendOnSignUp`
 	// and the org plugin's `requireEmailVerificationOnInvitation`. Must reach the
 	// deployment or the opt-in is un-enableable through the supported flows.
@@ -103,7 +103,7 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// runtime (delivery status + campaign From-picker), so it must be pushed.
 	'OUTBOUND_DKIM_DOMAIN',
 	'SPF_QUALIFIER',
-	// BIMI (P4-7). The DOMAIN WIZARD generates the `_bimi` record at Convex
+	// BIMI. The DOMAIN WIZARD generates the `_bimi` record at Convex
 	// function runtime, so these must reach the deployment and not merely the
 	// MTA's env — a self-hoster who set them would otherwise find the wizard
 	// still reporting that no logo is known, with no error to explain it.
@@ -193,12 +193,12 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'RATE_LIMIT_TRUSTED_PROXY',
 	// Shared secret the reverse proxy must present in `X-Owlat-Proxy-Secret` for
 	// the `cloudflare`/`xrealip` trust modes to believe their forwarded-IP header
-	// (M2). Read at Convex function runtime by publicRateLimit.getClientIp, so it
+	// header. Read at Convex function runtime by publicRateLimit.getClientIp, so it
 	// must be pushed into the deployment — otherwise those modes never trust the
 	// header and every caller collapses to the shared 'unknown' bucket.
 	'RATE_LIMIT_PROXY_SECRET',
 	// Reverse-proxy IPs / CIDRs that front this deployment, used by the BetterAuth
-	// login limiter's right-anchored X-Forwarded-For walk (M12). Read at Convex
+	// login limiter's right-anchored X-Forwarded-For walk. Read at Convex
 	// function runtime by auth/auth.ts, so it must be pushed into the deployment —
 	// otherwise a multi-hop XFF chain degrades to single-value-only trust.
 	'RATE_LIMIT_TRUSTED_PROXIES',
@@ -222,7 +222,7 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// runtime by the SNDS poller via getOptional(). Without the push a self-hoster
 	// who sets it in .env would find getOptional('SNDS_DATA_FEED_URLS') always
 	// undefined and the poller silently dead in production. Unset ⇒ the poller
-	// returns immediately: SNDS enrollment is additive-only (D2).
+	// returns immediately: SNDS enrollment is additive-only.
 	'SNDS_DATA_FEED_URLS',
 ] as const;
 

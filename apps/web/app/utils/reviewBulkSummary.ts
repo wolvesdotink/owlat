@@ -1,9 +1,9 @@
 /**
- * Pure toast-copy builders for the Review Queue's bulk actions (piece C2).
- * The bulk mutations return one outcome PER id (never throwing on partial
- * failure — decision D6), and these keep the partial results honest in one
- * shared line: "8 approved, 2 held — Dana is replying, 1 had no draft".
- * Split out of the composable so the copy is unit-testable without Convex.
+ * Pure toast-copy builders for the Review Queue's bulk actions. The bulk
+ * mutations return one outcome PER id (never throwing on partial failure),
+ * and these keep the partial results honest in one shared line: "8
+ * approved, 2 held — Dana is replying, 1 had no draft". Split out of the
+ * composable so the copy is unit-testable without Convex.
  *
  * Nothing here calls `useI18n`: this module is pure, so each clause comes back
  * as an i18n key plus the values it interpolates and the composable runs the

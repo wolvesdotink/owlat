@@ -59,7 +59,7 @@ export interface DeliverabilityRouteInput {
 /**
  * The two ways a configured deliverability fallback refuses to relay.
  *
- * NEITHER MESSAGE NAMES A PROVIDER (plan D2). The `unavailable` copy used to
+ * NEITHER MESSAGE NAMES A PROVIDER. The `unavailable` copy used to
  * read "enable the verified Amazon SES transport", which was accurate only
  * while the gate above it was `relayProviderType !== 'ses'`: it told an
  * operator whose route names Resend, an SMTP relay or Mandrill to go configure
@@ -153,7 +153,7 @@ export function resolveRoute(
 			? 'warmup_overflow'
 			: undefined);
 	if (!reason || !fallbackConfig?.isEnabled) return resolved;
-	// D6: a CAPABILITY question, not an identity check. Judged against this
+	// A CAPABILITY question, not an identity check. Judged against this
 	// resolution's own readiness predicate — the same one `enabledEntries` was
 	// filtered by — so the gate and the relay lookup below can never disagree
 	// about whether a transport is configured.

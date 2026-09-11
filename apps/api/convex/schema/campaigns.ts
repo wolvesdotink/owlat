@@ -68,7 +68,7 @@ const campaignSendJobs = defineTable({
 	enqueuedCount: v.number(),
 	// Running total of raw candidates examined (the count denominator).
 	totalCandidates: v.number(),
-	// THE MULTI-DAY SEND PLAN (deliverability plan P3-7). A warming deployment
+	// THE MULTI-DAY SEND PLAN. A warming deployment
 	// with no relay to overflow to sends a large campaign over several days: the
 	// walker enqueues only today's capacity slice and resumes in the next cap
 	// window. Every field is OPTIONAL and absent on a pre-migration row — a walk
@@ -225,7 +225,7 @@ export const campaignTables = {
 		.index('by_archive_token', ['archiveToken'])
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` indexes campaign
 		// METADATA (name, subject), not a sealed 1:1 message body — campaigns are the
-		// plaintext broadcast plane (D5) and are out of E8b's at-rest sealing scope.
+		// plaintext broadcast plane and are out of E8b's at-rest sealing scope.
 		// See lib/atRestBodies.ts and apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_campaigns', {
 			searchField: 'searchableText',
@@ -290,7 +290,7 @@ export const campaignTables = {
 		// Provider routing metadata (multi-tenant sending platform).
 		// Which provider sent this email: a `SendTransportKind` (`@owlat/shared`),
 		// core or `plugin.<pluginId>.<localId>`, written POST-HOC from the dispatch
-		// result. Stored open per ADR-0055 (D10); the kinds have one declaration,
+		// result. Stored open per ADR-0055; the kinds have one declaration,
 		// which is the catalog, so they are deliberately not re-listed here.
 		providerType: v.optional(v.string()),
 		// Correlation ID for end-to-end traceability (API request → send → webhook)

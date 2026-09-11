@@ -8,7 +8,7 @@
  * verification, audit storage, event parsing, dispatch — lives in
  * `./pipeline.ts` and the per-kind adapter, and always did; the files were
  * ceremony ABOUT the ceremony. See CONTEXT.md "Webhook dispatcher" and "Inbound
- * adapter", and the seams plan's D6/P2.1.
+ * adapter".
  *
  * WHAT THE PARAMETER IS AND IS NOT. `providerFeedbackWebhook(kind)` picks the
  * adapter; it does NOT pick the route. Each kind keeps its own static

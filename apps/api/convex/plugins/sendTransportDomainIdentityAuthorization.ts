@@ -11,7 +11,7 @@ import { completedOrFailedValidator } from '../lib/convexValidators';
 
 /**
  * Runtime authorization seam for a bundled send transport's SENDING-DOMAIN
- * IDENTITY calls (the seams plan's P3.2) — the third sibling of
+ * IDENTITY calls — the third sibling of
  * `sendTransportAuthorization` and `sendTransportWebhookAuthorization`.
  *
  * WHY IT IS ITS OWN SEAM rather than a reuse of the send one. The question is the

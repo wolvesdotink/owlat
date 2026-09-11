@@ -2,7 +2,7 @@
 
 /**
  * Recipient-key discovery — the `'use node'` plane of Sealed Mail key discovery
- * (plan 2026-07-11, locked decision D1 PGP/MIME).
+ * (PGP/MIME).
  *
  * To seal to a remote address we learn its OpenPGP key in two SSRF-disciplined
  * HTTPS fetches against the address's OWN domain: (1) `/.well-known/owlat.json`,
@@ -79,7 +79,7 @@ type DiscoveryFetch =
  * hostile peer can't wedge a send — the guard is still exercised (and asserted)
  * at `guardedFetchBytes`. Never throws.
  *
- * `skipManifest` (F1, D9) goes WKD-FIRST for a sender we have no reason to
+ * `skipManifest` goes WKD-FIRST for a sender we have no reason to
  * believe is an Owlat instance: the inbound signature verifier resolves keys
  * for arbitrary PGP senders, where `/.well-known/owlat.json` buys nothing (it
  * only supplies the instance fingerprint + rotation feed) and would cost an
@@ -260,7 +260,7 @@ export const discoverRecipientKey = internalAction({
 	args: {
 		address: v.string(),
 		force: v.optional(v.boolean()),
-		// F1 (D9): WKD-first for arbitrary inbound senders — see discoverKeyForAddress.
+		// WKD-first for arbitrary inbound senders — see discoverKeyForAddress.
 		skipManifest: v.optional(v.boolean()),
 	},
 	handler: (ctx, args) => runRecipientKeyDiscovery(ctx, args),

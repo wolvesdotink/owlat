@@ -12,16 +12,15 @@
  * recipient, vs a stored template + `dataVariables` + contact upsert), not on
  * what they do with it.
  *
- * WHAT THIS REPLACES. Until PIECE C2 this was `delivery/enqueue.ts:
- * enqueueNonCampaignSend`, which signalled its two refusals by throwing
- * `new Error('recipient_blocked')` / `new Error('no_delivery_provider')` from
- * exported magic-string constants. The automation step re-classified the
- * refusal by string-matching `error.message`; the agent reply path did not
- * match at all and flattened a SUPPRESSED RECIPIENT — an expected, permanent,
- * per-recipient outcome — into the same generic `failed` transition as a real
- * fault. The outcome union below is what both call sites now switch on, and
- * both mappings are total records, so a new rejection reason is a compile
- * error at every consumer rather than a silently mis-handled string.
+ * WHY AN OUTCOME UNION AND NOT THROWN ERRORS. Signalling the two refusals by
+ * throwing `new Error('recipient_blocked')` / `new Error('no_delivery_provider')`
+ * from exported magic-string constants forces every caller to re-classify the
+ * refusal by string-matching `error.message`, and a caller that does not match
+ * flattens a SUPPRESSED RECIPIENT — an expected, permanent, per-recipient outcome
+ * — into the same generic `failed` transition as a real fault. The outcome union
+ * below is what both call sites switch on, and both mappings are total records,
+ * so a new rejection reason is a compile error at every consumer rather than a
+ * silently mis-handled string.
  *
  * The subject + html are PRE-RENDERED by the caller (automation personalizes
  * against the contact; agent escapes its draft). They are passed straight to
@@ -111,9 +110,9 @@ const SUPPRESSION_SCOPE_BY_KIND = {
 /**
  * The route table each kind resolves against, and the `messageType` the
  * envelope ships. Derived ONCE from the same table so the route resolution,
- * the experiment stream and the envelope's `messageType` cannot drift apart —
- * pre-C2 the producers picked the message type for their upstream route query
- * by hand while the mutation derived the stream separately.
+ * the experiment stream and the envelope's `messageType` cannot drift apart.
+ * The producers used to pick the message type for their upstream route query by
+ * hand while the mutation derived the stream separately.
  */
 const MESSAGE_TYPE_BY_KIND = {
 	automation: 'automation',
@@ -210,7 +209,7 @@ export const intake = internalMutation({
 			{}
 		);
 
-		// Experiment record (plan D7), same transaction, before dispatch. An
+		// Experiment record, same transaction, before dispatch. An
 		// automation step is the `automation` stream; an agent 1:1 reply is
 		// `transactional` — the same table the route resolution above read, so the
 		// new cell axis and the envelope's shipped `messageType` cannot drift.
@@ -223,7 +222,7 @@ export const intake = internalMutation({
 			// single-recipient experiment. The split then salts with the SEND id
 			// (`MixRecipientIdentity.fallbackKey`), so the contact's arm is
 			// re-drawn on every message instead of being pinned for the life of
-			// the mix version — the fixed-cohort bias D7 exists to prevent, and
+			// the mix version — the fixed-cohort bias the split exists to prevent, and
 			// `automation` is a first-class high-volume stream, not an edge.
 			recipients: [
 				{

@@ -1,6 +1,6 @@
 /**
  * THE OPERATOR-FACING PROGRESS STATE — "Sending over 4 days · day 1 of 4 · 5 000
- * of 20 000", present FROM THE MOMENT THE SEND STARTS (plan D14, P3-7).
+ * of 20 000", present FROM THE MOMENT THE SEND STARTS.
  *
  * Its own module rather than a third concern inside `multiDaySendPlan.ts`: the
  * planner decides how much goes out today, and this shapes a sentence for a
@@ -12,7 +12,7 @@
  * all, and a plan it cannot describe degrades to the single-day sentence rather
  * than to a nag.
  *
- * PURE (plan D15): every input is a parameter.
+ * PURE: every input is a parameter.
  */
 
 import type { SendPlanState } from './multiDaySendPlan';
@@ -28,7 +28,7 @@ export interface CampaignSendPlanProgress {
 	readonly total: number;
 	/**
 	 * `total` is a LOWER BOUND — the audience count stopped at a ceiling or ran
-	 * out of read budget. The copy says "of at least N", never "of N" (plan D14).
+	 * out of read budget. The copy says "of at least N", never "of N".
 	 */
 	readonly isTotalLowerBound: boolean;
 	/**

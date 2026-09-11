@@ -28,16 +28,12 @@ import type {
 } from './catalogTypes';
 
 /**
- * PLAN NUMBERS below name their own plan: the comment on the entries table is
- * the SEAMS plan's, the ones on the plugin guards are too, and a bare `D2` would
- * be ambiguous with the MANDRILL plan.
- *
- * THE ENTRIES MOVED to `packages/shared/src/sendProviderCatalog.ts` — the seams
- * plan's P1.1 / D1: one catalog, in a leaf package, so web, setup-cli and docs
- * generation consume the same declaration instead of restating it (the kind
- * union alone had five declarations, two of them inside `packages/shared`). The
- * declaration vocabulary went with them; `./catalogTypes.ts` re-exports it and
- * adds the two plugin-kit-typed fields a leaf package cannot name.
+ * THE ENTRIES LIVE in `packages/shared/src/sendProviderCatalog.ts` — one
+ * catalog, in a leaf package, so web, setup-cli and docs generation consume the
+ * same declaration instead of restating it (the kind union alone had five
+ * declarations, two of them inside `packages/shared`). The declaration
+ * vocabulary went with them; `./catalogTypes.ts` re-exports it and adds the two
+ * plugin-kit-typed fields a leaf package cannot name.
  *
  * WHAT IS LEFT HERE IS THE CODE-HALF JOIN, which is the half that cannot move:
  * the bundled plugin tier's generated entries (an `apps/api` artifact), the
@@ -72,7 +68,7 @@ export type {
 /**
  * The core kinds whose sending domains are verified through a provider API —
  * exactly the kinds `domains/providers` must register a domain-identity adapter
- * for (Mandrill plan D7 = the seams plan's P0.3).
+ * for.
  *
  * DERIVED from the catalog literal rather than restated beside it, so declaring
  * `domainVerification: 'api'` on a new kind without registering its domain
@@ -86,8 +82,7 @@ export type ApiVerifiedSendProviderKind = Extract<
 
 /**
  * The core kinds that report their own delivery outcomes back to us out of band
- * — exactly the kinds `webhooks/adapters` must register an inbound adapter for
- * (the seams plan's D6 = P2.1).
+ * — exactly the kinds `webhooks/adapters` must register an inbound adapter for.
  *
  * The twin of {@link ApiVerifiedSendProviderKind}, derived the same way and for
  * the same reason: `hasProviderFeedback: true` is a promise that somewhere a
@@ -99,12 +94,12 @@ export type ApiVerifiedSendProviderKind = Extract<
  *
  * `Extract` over the CORE catalog literal, so it narrows to the kinds this repo
  * ships. A bundled plugin entry carries a DERIVED `hasProviderFeedback` — true
- * exactly when the manifest declared a feedback `webhook` (the seams plan's
- * P3.1) — so `hasProviderFeedbackFor` answers true for plugin kinds too and the
- * governed boundary takes the `awaitingFeedback` branch for them. That
- * promise is kept by the generated `/webhooks/plugin/<pluginId>` surface (P2.2),
- * not by this mapped-type guard, which is why the tier stays outside the
- * `Extract` rather than being missing from it by oversight.
+ * exactly when the manifest declared a feedback `webhook` — so
+ * `hasProviderFeedbackFor` answers true for plugin kinds too and the governed
+ * boundary takes the `awaitingFeedback` branch for them. That promise is kept
+ * by the generated `/webhooks/plugin/<pluginId>` surface, not by this
+ * mapped-type guard, which is why the tier stays outside the `Extract` rather
+ * than being missing from it by oversight.
  */
 export type FeedbackReportingSendProviderKind = Extract<
 	(typeof CORE_SEND_PROVIDER_CATALOG_ENTRIES)[number],
@@ -120,18 +115,17 @@ const pluginCatalog =
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG as readonly GeneratedSendTransportCatalogEntry[];
 
 /**
- * THE UNTYPED TIER FAILS CLOSED TOO (the seams plan's P0.1 / D2).
+ * THE UNTYPED TIER FAILS CLOSED TOO.
  *
  * {@link CoreSendProviderCatalogEntry} makes the two dangerous declarations a
  * BUILD BREAK for the five kinds that ship in this repo, but bundled plugin
  * entries are generated and reach the catalog through a cast, so the type says
- * nothing about them. Since plugin-tier contract parity (the seams plan's P3.1 —
- * not the Mandrill plan's P3.1) a manifest CAN declare capability fields, which
- * is exactly when this stops being hypothetical: a bundled plugin declaring
- * `idempotency-key` gets `bindMtaProviderIdentity` stamping `providerType: 'mta'`
- * onto its Sends, and one declaring `accepted` gets its ambiguous outcomes
- * replayed down an arm `withReconciliationSafety` defers until the delivery
- * deadline terminalizes them as definite failures.
+ * nothing about them. Under plugin-tier contract parity a manifest CAN declare
+ * capability fields, which is exactly when this stops being hypothetical: a
+ * bundled plugin declaring `idempotency-key` gets `bindMtaProviderIdentity`
+ * stamping `providerType: 'mta'` onto its Sends, and one declaring `accepted`
+ * gets its ambiguous outcomes replayed down an arm `withReconciliationSafety`
+ * defers until the delivery deadline terminalizes them as definite failures.
  *
  * A note is not a control. This is: composing a catalog with either declaration
  * on a plugin entry throws at module load — a boot/codegen failure the author of
@@ -170,7 +164,7 @@ function assertPluginDispatchSemanticsAreGeneral(
 }
 
 /**
- * THE RETURN-PATH CLAIM, RE-ASSERTED ON THE ARTIFACT (the seams plan's P3.1).
+ * THE RETURN-PATH CLAIM, RE-ASSERTED ON THE ARTIFACT.
  *
  * `supportsCustomReturnPath` says our own bounce processor can attribute this
  * transport's bounces, and only `no` is true of a bundled one. Both other values
@@ -210,7 +204,7 @@ function assertPluginReturnPathClaimsAreHonest(
 }
 
 /**
- * THE CONFIGURATION CONTRACT, RE-ASSERTED (the seams plan's P3.1) — the namespace
+ * THE CONFIGURATION CONTRACT, RE-ASSERTED — the namespace
  * a declared variable lives in, and how many of them there may be.
  *
  * `instanceEnvVars` is the one plugin declaration whose VALUES the host reads and
@@ -314,7 +308,7 @@ export const SEND_PROVIDER_KINDS = Object.freeze(SEND_PROVIDER_CATALOG.map((entr
 
 /**
  * Re-exported from the catalog's own package rather than restated: the predicate
- * and the list it reads are one declaration (D1).
+ * and the list it reads are one declaration.
  */
 export { isCoreSendProviderKind };
 
@@ -369,7 +363,7 @@ export function hasProviderFeedbackFor(kind: SendProviderKind): boolean {
  * mistaken for custody the transport never took.
  *
  * This is the capability that replaced `providerKind === 'mta'` at the two
- * acceptance sites in `delivery/governedDispatch.ts` (the seams plan's D2).
+ * acceptance sites in `delivery/governedDispatch.ts`.
  */
 export function acceptanceSemanticsFor(kind: SendProviderKind): AcceptanceSemantics {
 	return acceptanceSemanticsOf(sendProviderCatalogEntry(kind));

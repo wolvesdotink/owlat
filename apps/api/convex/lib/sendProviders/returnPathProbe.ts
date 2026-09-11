@@ -1,5 +1,5 @@
 /**
- * The return-path probe state machine (plan G-08).
+ * The return-path probe state machine.
  *
  * ONE probe, for ONE configured transport, and the timing rules around it:
  * when a probe is due, when an open one has aged out, and what each event does
@@ -15,7 +15,7 @@
  *
  * Pure module: no db, no clock, no env, no catalog. Every input is a parameter,
  * every function is total — a corrupt row or a skewed clock resolves to
- * "re-probe it", never to a throw and never to a wedged scheduler (plan D2).
+ * "re-probe it", never to a throw and never to a wedged scheduler.
  */
 
 /**

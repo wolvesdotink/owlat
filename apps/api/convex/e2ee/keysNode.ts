@@ -14,7 +14,7 @@
  * The legacy profile (what Proton mints) is required for interop: GnuPG 2.5.x,
  * Thunderbird/RNP and older gpg all REJECT the RFC 9580 new-style ed25519/x25519
  * algorithm IDs (25/27) — so encrypting TO an Owlat-published WKD key would fail.
- * The on-the-wire message/signature format is unchanged (locked decision D1);
+ * The on-the-wire message/signature format is unchanged;
  * only the KEY algorithm-ID profile differs.
  *
  * Actions:
@@ -44,13 +44,13 @@ interface GeneratedKeypair {
 /**
  * Algorithm label stored on the `keyVault` row (metadata only — no logic keys
  * off it). `eddsaLegacy` names the GnuPG-compatible signing primary. Shared with
- * the E6 lifecycle plane so a rotated key carries the same label.
+ * the key-lifecycle plane so a rotated key carries the same label.
  */
 export const KEY_ALGORITHM = 'eddsaLegacy';
 
 /**
  * Generate a GnuPG-compatible OpenPGP keypair (EdDSA-legacy signing primary +
- * ECDH encryption subkey, both Curve25519) bound to `email`. Exported so the E6
+ * ECDH encryption subkey, both Curve25519) bound to `email`. Exported so the
  * key-lifecycle plane (`e2ee/lifecycleNode.ts`) mints rotated keys on the exact
  * same profile.
  */
@@ -63,7 +63,7 @@ export async function generateKeypair(email: string, name: string): Promise<Gene
 		// profile (Ed25519=27 / X25519=25) is rejected by GnuPG 2.5.x, Thunderbird
 		// /RNP and older gpg, so a WKD/manifest key minted that way cannot be
 		// encrypted TO. Only the key algorithm-ID profile changes here — the
-		// message/signature format stays per locked decision D1.
+		// message/signature format is unchanged.
 		type: 'ecc',
 		curve: 'curve25519Legacy',
 		userIDs: [{ name, email }],

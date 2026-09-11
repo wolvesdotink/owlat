@@ -1,34 +1,34 @@
 /**
- * Placement adapter — ONE interface, exactly TWO implementations (P4-7).
+ * Placement adapter — ONE interface, exactly TWO implementations.
  *
- * P2-6 shipped the self-hosted seed-mailbox placement probe and gate 5 on top
- * of it. This module generalises the SOURCE of that evidence behind a small
- * adapter so a deployment that pays for a commercial placement API can feed the
- * SAME gate without a second tripwire implementation:
+ * Gate 5 runs on the self-hosted seed-mailbox placement probe. This module
+ * generalises the SOURCE of that evidence behind a small adapter so a
+ * deployment that pays for a commercial placement API can feed the SAME gate
+ * without a second tripwire implementation:
  *
  *   - `selfHostedSeedPlacementAdapter` — seed mailboxes. THE DEFAULT AND THE
  *     EXPECTED CONFIGURATION.
  *   - `commercialPlacementApiAdapter` — a commercial panel. STRICTLY AN
  *     UPGRADE.
  *
- * TWO implementations, not N (D20 — Speculative Generality is blocking): there
+ * TWO implementations, not N (Speculative Generality is blocking): there
  * is no registry, no dynamic discovery, no `register()` hook. The union of
  * evidence shapes is CLOSED and lives here; adding a third source would mean
  * editing this file, which is exactly the friction we want.
  *
- * D2 — THE ADDITIVE-ONLY THIRD-PARTY RULE. The commercial key is optional and
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE. The commercial key is optional and
  * its absence changes NOTHING: the substitution table for this signal says "no
  * change", because seeds are the expected configuration rather than a degraded
  * one. Nothing here throws, blocks a send, blocks a phase promotion, or renders
  * an error state. The only thing an absent SOURCE can do is leave gate 5 with
- * `insufficient_data`, which HOLDS the controller (D10).
+ * `insufficient_data`, which HOLDS the controller.
  *
- * D17 — the reading is a TRIPWIRE, not a gauge. The commercial adapter reports
+ * THE READING IS A TRIPWIRE, NOT A GAUGE. The commercial adapter reports
  * mailbox COUNTS and is folded into the same `SeedObservation` roll-up as the
  * seeds, so neither source can produce a placement percentage and the two can
  * never disagree about what "collapse" means.
  *
- * Pure: no clock, no I/O, no env reads — every input is a parameter (D15).
+ * Pure: no clock, no I/O, no env reads — every input is a parameter.
  */
 
 import type { DestinationProviderKey } from './deliverabilityRouting';
@@ -55,8 +55,8 @@ export const DEFAULT_PLACEMENT_SOURCE_KIND: PlacementSourceKind = 'self_hosted_s
 /**
  * One provider's reading from a commercial panel, for one arm.
  *
- * Deliberately COUNTS, never a percentage: D17 forbids quoting a placement
- * number, and counts are what the shared roll-up already consumes. A panel that
+ * Deliberately COUNTS, never a percentage: a tripwire must not be quoted as a
+ * placement number, and counts are what the shared roll-up already consumes. A panel that
  * only reports percentages must convert them against its own panel size before
  * calling — the conversion is the caller's lie to own, not ours.
  */
@@ -68,7 +68,7 @@ export interface CommercialPlacementReport {
 	/** Gmail-style tabbed delivery. Counted as REACHED, exactly as seeds are. */
 	category?: number;
 	spam: number;
-	/** Not found in any folder — D17's most alarming outcome. */
+	/** Not found in any folder — the most alarming outcome. */
 	missing?: number;
 }
 
@@ -86,7 +86,7 @@ export type PlacementEvidence =
 export interface PlacementAdapter {
 	readonly kind: PlacementSourceKind;
 	/**
-	 * D14/D17 — placement evidence is never high confidence, whoever gathered
+	 * PLACEMENT EVIDENCE IS NEVER HIGH CONFIDENCE, whoever gathered
 	 * it. The grade has ONE home (`SEED_GATE_CONFIDENCE`, declared beside the
 	 * thresholds that produce the reading) and both implementations import it:
 	 * a commercial panel is a bigger sample of the SAME signal, so it reads
@@ -107,10 +107,10 @@ export interface PlacementAdapter {
 /**
  * The panel's numbers are THIRD-PARTY INPUT and are expanded into one row per
  * mailbox, so an unclamped count is an allocation someone else controls. Both
- * caps are sized generously against the shipped self-hosted set
- * ({@link SEED_ACCOUNTS_PER_ORG_LIMIT}) — a panel reporting more mailboxes than
- * this per provider is not measuring anything gate 5 reads differently (D17:
- * status, never a percentage), so clamping costs no fidelity.
+ * caps are sized generously against the shipped self-hosted set ({@link
+ * SEED_ACCOUNTS_PER_ORG_LIMIT}) — a panel reporting more mailboxes than this
+ * per provider is not measuring anything gate 5 reads differently (status,
+ * never a percentage), so clamping costs no fidelity.
  */
 export const MAX_PANEL_MAILBOXES_PER_REPORT = 200;
 
@@ -121,7 +121,7 @@ export const MAX_PANEL_REPORTS = 50;
  * Clamp a mailbox count from an untrusted source to a non-negative integer no
  * larger than `cap`. Junk (non-number, non-finite, negative, fractional) reads
  * as the nearest sane count rather than throwing — a bad panel response may not
- * take a screen or a controller tick down (D2).
+ * take a screen or a controller tick down.
  */
 function nonNegativeMailboxCount(value: number | undefined, cap: number): number {
 	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0;
@@ -163,7 +163,7 @@ export function commercialReportsToObservations(
 	return observations;
 }
 
-/** THE DEFAULT: seed mailboxes shipped in P2-6. */
+/** THE DEFAULT: self-hosted seed mailboxes. */
 export const selfHostedSeedPlacementAdapter: PlacementAdapter = {
 	kind: 'self_hosted_seeds',
 	confidence: SEED_GATE_CONFIDENCE,
@@ -193,7 +193,7 @@ export interface PlacementSourceConfig {
 
 /**
  * The one advisory this resolution may carry. It is a HINT rendered next to a
- * measurement-confidence label (D14), never an error, never a "setup
+ * measurement-confidence label, never an error, never a "setup
  * incomplete" nag, and never a reason to withhold a screen or a send.
  */
 export type PlacementImprovementHint = 'none' | 'add_seed_mailboxes';
@@ -204,7 +204,8 @@ export interface PlacementSourceResolution {
 	confidence: SeedConfidence;
 	improvement: PlacementImprovementHint;
 	/**
-	 * ALWAYS `false`, as a literal type. D2 in the type system: no caller can
+	 * ALWAYS `false`, as a literal type — the additive-only rule in the type
+	 * system: no caller can
 	 * write `if (resolution.blocking)` and have it mean anything, and no future
 	 * edit can flip it without changing this type and failing its test.
 	 */

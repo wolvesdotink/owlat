@@ -1,5 +1,5 @@
 /**
- * Resolution helpers for the "move my mailbox here" flow (piece c5).
+ * Resolution helpers for the "move my mailbox here" flow.
  *
  * Split out of `mailboxMove.ts` (which holds the Convex queries/mutations) to
  * keep each file focused and under the file-size cap. No Convex functions live

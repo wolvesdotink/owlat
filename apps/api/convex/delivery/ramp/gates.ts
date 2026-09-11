@@ -1,5 +1,5 @@
 /**
- * Ramp controller — the GATE EVALUATION CORE (plan D9, D10, D12, D15).
+ * Ramp controller — the GATE EVALUATION CORE.
  *
  * This is where the controller's correctness lives. Everything here is a pure,
  * total function of its arguments: no clock, no database, no environment, no
@@ -8,7 +8,7 @@
  * instead of against production.
  *
  * WHAT A GATE RETURNS. Not a boolean — a verdict TOGETHER WITH THE NUMBERS THAT
- * PRODUCED IT (plan D12). The audit row and the delivery dashboard both render
+ * PRODUCED IT. The audit row and the delivery dashboard both render
  * those numbers, so the measurement is part of the return type rather than
  * something the caller reconstructs (and reconstructs differently in two
  * places, which is exactly how a controller and a dashboard come to disagree).
@@ -126,16 +126,16 @@ function deferralTelemetryObserved(input: RampGateEvaluationInput): boolean {
  * nobody took — a gate that could only ever agree with going faster.
  *
  * The empty numerator is therefore checked against the instrument BEFORE the
- * ceiling is applied, and the hold is reported as its own reason (plan D12: a
- * hold names the thing to fix, and "not enough sends" would name the wrong one).
+ * ceiling is applied, and the hold is reported as its own reason (a hold names
+ * the thing to fix, and "not enough sends" would name the wrong one).
  *
  * AND THE HOLD HAS AN EXIT, which is not optional. `deferral` is not an optional
  * gate, so this `insufficient_data` outranks every `pass` beside it and clears
  * `greenSince` on controller rung 7 — a hold that could not end would stop a cell
  * raising its own-MTA share AND restart its fourteen-day graduation clock every
- * tick, for ever, which plan D2 forbids an absent signal from doing. So the
- * reader's observation is satisfied by ONE recorded deferral over the telemetry
- * span OR by own-arm traffic SPREAD ACROSS that span without one — see
+ * tick, for ever, which an absent signal must never do. So the reader's
+ * observation is satisfied by ONE recorded deferral over the telemetry span OR by
+ * own-arm traffic SPREAD ACROSS that span without one — see
  * `hasUsableDeferralTelemetry`, which owns that rule for every reader, and which
  * asks the span rather than any one day inside it precisely because a cell that
  * does not send at weekends would otherwise re-enter the hold every week. A

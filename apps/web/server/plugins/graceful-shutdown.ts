@@ -1,5 +1,5 @@
 /**
- * Graceful shutdown plugin (P5.3 / S Phase 5).
+ * Graceful shutdown plugin.
  *
  * Docker Compose sends SIGTERM, waits `stop_grace_period` (45s in our
  * templates), then SIGKILLs. Nuxt/Nitro's default handler closes the HTTP

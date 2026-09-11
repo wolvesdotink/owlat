@@ -323,7 +323,7 @@ export function reduceOpened(
 	if (isFirstOpen) {
 		// Unique opens — drives the dashboard openRate denominator.
 		effects.push({ kind: 'daily_stats_bump', field: 'opened', at: args.at });
-		// The per-cell, per-arm outcome counter (plan D5) is emitted from INSIDE
+		// The per-cell, per-arm outcome counter is emitted from INSIDE
 		// this uniqueness gate on purpose: it has to mean the same thing as the
 		// dashboard counter one line above it. A re-fire (image prefetch reopens a
 		// message several times) must not bump it, or the cell's open rate would

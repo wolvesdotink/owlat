@@ -1,6 +1,6 @@
 /**
  * Recovery-kit assembly — the PURE core of the Sealed Mail key-recovery kit
- * (plan 2026-07-11, locked decision D7: RECOVERY KIT ONLY, no admin escrow).
+ * (RECOVERY KIT ONLY, no admin escrow).
  *
  * A recovery kit is the armored OpenPGP PRIVATE key for one address plus
  * plain-language instructions for keeping it safe and using it to restore access

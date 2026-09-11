@@ -31,7 +31,7 @@
  * had affirmatively observed a clean SMTP conversation it never had.
  *
  * FAIL-SOFT, LIKE EVERY OTHER MEASUREMENT WRITE. A send with no assignment row —
- * a seed shadow copy (plan D18), a legacy send, a member preview — records
+ * a seed shadow copy, a legacy send, a member preview — records
  * NOTHING and returns a reason. Measurement degrades; delivery never does.
  *
  * NOT EXACTLY-ONCE, and it does not need to be. The MTA's outbox retries a

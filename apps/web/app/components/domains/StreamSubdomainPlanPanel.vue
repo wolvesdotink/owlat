@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * PER-STREAM SENDING SUBDOMAINS — the wizard panel (P4-7, gap G-14).
+ * PER-STREAM SENDING SUBDOMAINS — the wizard panel.
  *
  * Domain reputation is evaluated PER FQDN and does NOT inherit from the
  * registrable root, so a bad campaign on one name can drag password resets down
@@ -19,7 +19,7 @@
  * delivers the isolation that matters, because domain reputation is what is
  * doing the work. Nothing on this screen assumes a second IP.
  *
- * D2 — no external account is load-bearing. With zero third-party credentials
+ * NO EXTERNAL ACCOUNT IS LOAD-BEARING. With zero third-party credentials
  * the table renders in full; a relay arm simply contributes no second DKIM row.
  * BIMI is an OFFER gated on the DMARC precondition — never a nag, and absent
  * entirely when the precondition does not hold.
@@ -193,7 +193,7 @@ const bimiOffers = computed(() =>
 			</li>
 		</ul>
 
-		<!-- The advice the card requires to live in the wizard, not the docs. The
+		<!-- The advice belongs in the wizard, not the docs. The
 		     copy is resolved by the backend so this component owns no wording. -->
 		<ul class="mt-3 space-y-1.5" data-testid="stream-subdomain-advice">
 			<li
@@ -260,7 +260,7 @@ const bimiOffers = computed(() =>
 				:domain="ready.domain"
 			/>
 			<!-- A value we could not publish as given: say which one, and stop.
-			     Still never a blocker — BIMI is an offer (D2). -->
+			     Still never a blocker — BIMI is an offer. -->
 			<p
 				v-else-if="entry.offer.rejectedInputs.length > 0"
 				class="mt-2 text-xs text-text-tertiary"

@@ -25,7 +25,7 @@ export function useReviewQueue() {
 		() => ({ limit: 50 })
 	);
 
-	// Saved-first sort bump (piece D1'): drafts the reviewer already saved work
+	// Saved-first sort bump: drafts the reviewer already saved work
 	// into ("Saved · edited by you") float to the top, most recently saved
 	// first; the untouched remainder keeps the server's newest-first order.
 	const reviewItems = computed(() => {

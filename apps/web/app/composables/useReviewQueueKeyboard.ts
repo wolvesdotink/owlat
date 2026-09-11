@@ -41,11 +41,11 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 	/** 1–9 — pick the matching option chip on the focused card (optional). */
 	onPickOption?: (row: T, index: number) => void;
 	/**
-	 * Multi-select model (piece C2, optional). When provided, the selection
-	 * vocabulary is resolved BEFORE the single-card keys — so Space/`x` toggle
-	 * the focused card (`x` no longer rejects; `#` still does), Shift+J/K select
-	 * the focused + next/previous card while moving focus, and `*` selects all
-	 * visible. Surfaces without a selection model (the focus flow) are untouched.
+	 * Multi-select model (optional). When provided, the selection vocabulary is
+	 * resolved BEFORE the single-card keys — so Space/`x` toggle the focused card
+	 * (`x` no longer rejects; `#` still does), Shift+J/K select the focused +
+	 * next/previous card while moving focus, and `*` selects all visible.
+	 * Surfaces without a selection model (the focus flow) are untouched.
 	 */
 	selection?: {
 		toggle: (row: T) => void;

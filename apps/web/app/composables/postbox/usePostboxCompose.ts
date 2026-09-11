@@ -9,7 +9,7 @@
  *   - offline (or a send that network-fails), send() instead queues the full
  *     compose payload in the on-device outbox and returns a synthetic
  *     {undoToken, sendAt} — the emit contract is unchanged, and the undo
- *     toast un-queues via the token (adoption-gaps D8)
+ *     toast un-queues via the token
  */
 
 import type { FunctionReturnType } from 'convex/server';
@@ -87,11 +87,11 @@ export function usePostboxCompose(seed: DraftSeed) {
 	// sent thread as a follow-up watch (mail/followUps.ts). null = off.
 	const followUpRemindAt = ref<number | null>(null);
 
-	// Offline outbox (D8): send() queues instead of failing while offline; the
+	// Offline outbox: send() queues instead of failing while offline; the
 	// drain replays queued payloads on reconnect (usePostboxOfflineOutbox).
 	const offlineOutbox = usePostboxOfflineOutbox(() => String(seed.mailboxId));
 
-	// Undo-send window (plan idea 8). The per-user preference decides how long a
+	// Undo-send window. The per-user preference decides how long a
 	// send is held; `postboxUndoSendDelayMsArg` returns undefined on the default
 	// window, so a user who never touched the setting still sends the exact
 	// mutation args this composable sent before the preference existed.
@@ -309,7 +309,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 	}
 
 	async function send(opts?: SendOpts) {
-		// D8: offline never touches the network — queue the payload on-device.
+		// Offline never touches the network — queue the payload on-device.
 		if (offlineOutbox.isOffline.value) return queueSendOffline(opts);
 
 		interceptingSend = true;

@@ -62,7 +62,7 @@ export const contactTables = {
 		// it reaches `SOFT_BOUNCE_SUPPRESSION_THRESHOLD`, and resets it to 0 on
 		// the next `delivered`. Absent (undefined) means 0.
 		softBounceCount: v.optional(v.number()),
-		// ─── Contact engagement score (deliverability plan P0-2) ───────────────
+		// ─── Contact engagement score ───────────────
 		// Cached 0-100 recency-weighted engagement score, produced by
 		// `analytics/engagementScore.ts` and consumed by the MTA's priority bands
 		// (80/50/20) and by the share controller's stratified assignment. ADDITIVE
@@ -94,7 +94,7 @@ export const contactTables = {
 				lastFoldedKey: v.optional(v.string()),
 			})
 		),
-		// ─── Sunset policy (deliverability plan P4-4) ──────────────────────────
+		// ─── Sunset policy ──────────────────────────
 		// Where this contact sits on the sunset track, owned by
 		// `contacts/sunsetEngine.ts`. ADDITIVE and optional: absent means
 		// `engaged`, so legacy rows read as "on the normal track" and no
@@ -163,7 +163,7 @@ export const contactTables = {
 		// stamps `engagementScoreUpdatedAt = now`, which moves it out of the stale
 		// range — the range IS the cursor, and it cannot go stale.
 		.index('by_engagement_score_updated_at', ['engagementScoreUpdatedAt'])
-		// Cursor index for the daily sunset sweep (P4-4), the same shape as the
+		// Cursor index for the daily sunset sweep, the same shape as the
 		// engagement-score staleness index above: ascending order puts
 		// never-evaluated rows first (a missing field sorts before every number),
 		// then the stalest. Evaluating a contact stamps `sunsetEvaluatedAt = now`,
@@ -172,9 +172,9 @@ export const contactTables = {
 		.index('by_sunset_evaluated_at', ['sunsetEvaluatedAt'])
 		// The re-engagement TRACK, addressable. Moving a contact onto the track is
 		// pointless if nobody can enumerate who is on it, and scanning `contacts`
-		// for a stage is exactly the full-table walk this piece is not allowed to
-		// do — so the stage gets its own index and `contacts.sunset.listSunsetStage`
-		// pages over it.
+		// for a stage is exactly the full-table walk this must not do — so the
+		// stage gets its own index and `contacts.sunset.listSunsetStage` pages
+		// over it.
 		.index('by_sunset_stage', ['sunsetStage'])
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` here indexes contact
 		// METADATA (name, email, company), not a sealed message body, so E8b at-rest
@@ -237,7 +237,7 @@ export const contactTables = {
 	})
 		.index('by_contact', ['contactId'])
 		.index('by_contact_and_occurred_at', ['contactId', 'occurredAt'])
-		// REPLACES the old `by_contact_and_type` (P4-4), which was a strict prefix
+		// REPLACES the old `by_contact_and_type`, which was a strict prefix
 		// of this key and had no caller left once the sunset engine needed the
 		// ordering. That index ordered WITHIN its key by `_creationTime`, i.e. by
 		// INSERTION, so a backfilled/imported batch of historical opens sorted
@@ -253,7 +253,7 @@ export const contactTables = {
 		// where a redundant index is a permanent tax on every send.
 		.index('by_contact_type_and_occurred_at', ['contactId', 'activityType', 'occurredAt']),
 
-	// Sunset policies (deliverability plan P4-4) — per-topic tuning of the
+	// Sunset policies — per-topic tuning of the
 	// re-engagement/auto-suppression windows owned by `contacts/sunsetPolicy.ts`.
 	//
 	// The engine's suppressions land on the SHIPPED `blockedEmails` list with

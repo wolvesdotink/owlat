@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The single-reference-relay warning (plan D8), on the two screens where the
+ * The single-reference-relay warning, on the two screens where the
  * consequence is visible: the delivery provider page (where relays are chosen)
  * and the cells page (where the share it freezes is watched).
  *
@@ -12,7 +12,7 @@
  *
  * Renders NOTHING in every healthy configuration, including the standalone one
  * (`reference.kind === 'none'`): a deployment with no relay is a supported shape
- * (plan D2) and must never see a warning about a second arm it deliberately does
+ * and must never see a warning about a second arm it deliberately does
  * not have.
  */
 import { api } from '@owlat/api';

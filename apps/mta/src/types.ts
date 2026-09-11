@@ -116,7 +116,7 @@ export interface EmailJobResult {
 	error?: string;
 	/**
 	 * Bounce classification. `'ambiguous'` is the post-DATA drop with no server
-	 * reply (AMBIGUOUS_TIMEOUT, W8): the message may already have been accepted,
+	 * reply (AMBIGUOUS_TIMEOUT): the message may already have been accepted,
 	 * so it is TERMINAL but must NOT be treated as a hard bounce — no recipient
 	 * suppression and no bounce-reputation penalties (see `dispatch/outcome.ts`).
 	 */
@@ -160,7 +160,7 @@ export interface InboundAuthVerdicts {
 	/** DMARC alignment input: the d= domain of the passing DKIM signature. */
 	dkimSigningDomain?: string;
 	/**
-	 * ARC chain-validation result (`cv=`, RFC 8617, Sealed Mail A5). Only `pass`
+	 * ARC chain-validation result (`cv=`, RFC 8617). Only `pass`
 	 * is eligible to rescue a DMARC fail. Absent on older MTA builds / no chain.
 	 */
 	arcCv?: string;
@@ -295,7 +295,7 @@ export interface DkimKeyConfig {
 	selector: string;
 	privateKey: string;
 	/**
-	 * Owning organization (H2 cross-tenant DKIM guard). When set, the key may only
+	 * Owning organization (the cross-tenant DKIM guard). When set, the key may only
 	 * sign for jobs from this organization — see {@link getDkimOptions}. Absent on
 	 * legacy keys (registered before ownership was recorded) and on env-seeded
 	 * keys, which stay usable by any org until re-registered with an owner.
@@ -367,14 +367,14 @@ export interface BounceClassification {
 export type MetricOutcome = 'delivered' | 'bounced' | 'deferred' | 'rejected' | 'error';
 
 /*
- * DestinationProviderKey is NOT exported from this module — deliberately (D8).
+ * DestinationProviderKey is NOT exported from this module — deliberately.
  *
- * It used to be spelled out here as a second union, so a provider added to the
- * shared taxonomy widened the ramp's cell axis on the Convex side while the
- * MTA's own consumers — cell keys, warming dimensions, ISP metrics, profile
- * shaping — kept the old five and never failed to compile. A re-export would
- * have fixed the divergence but left ONE taxonomy behind TWO doors, with no
- * rule for which to use: the next person widening the taxonomy greps
+ * Spelling it out here as a second union means a provider added to the shared
+ * taxonomy widens the ramp's cell axis on the Convex side while the MTA's own
+ * consumers — cell keys, warming dimensions, ISP metrics, profile shaping — keep
+ * the old five and never fail to compile. A re-export would have fixed the
+ * divergence but left ONE taxonomy behind TWO doors, with no rule for which to
+ * use: the next person widening the taxonomy greps
  * `@owlat/shared/deliverabilityRouting` for its consumers and silently misses
  * every file that typed itself through `types.js`. So every MTA consumer now
  * imports the type from the one module that declares it, and this file only

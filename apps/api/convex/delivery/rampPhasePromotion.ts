@@ -1,18 +1,18 @@
 /**
- * THE ONLY WAY A PHASE CEILING RISES (plan D3, D12).
+ * THE ONLY WAY A PHASE CEILING RISES.
  *
  * A promotion moves the two things that matter most: it raises the rung the AIMD
  * ladder may climb to, and — on the ESP path — it re-randomises which arm every
- * recipient of the cell lands in (plan D7's mix generation). The generation
- * advances on the PACE path too and re-shuffles nobody there, because that cell
- * has one arm; `rampPhaseReset` carries the rule for why only that one door holds
- * it back. So a promotion is a deliberate act, never something the hourly loop
- * does on its own, and it is the ONE upward door — `resetCellPhase` is
- * downward-only precisely so that this gate cannot be walked around.
+ * recipient of the cell lands in (the mix generation). The generation advances on
+ * the PACE path too and re-shuffles nobody there, because that cell has one arm;
+ * `rampPhaseReset` carries the rule for why only that one door holds it back. So
+ * a promotion is a deliberate act, never something the hourly loop does on its
+ * own, and it is the ONE upward door — `resetCellPhase` is downward-only
+ * precisely so that this gate cannot be walked around.
  *
  * ONE WRITE PATH, ONE ENTRY. `applyRampPhasePromotion` is the whole rule and
  * `promoteCellPhase` is the only door onto it. A machine-facing internalMutation
- * shell over the same rule shipped alongside it and was removed under D20: no
+ * shell over the same rule shipped alongside it and was removed: no
  * cron registered it and no module called it, so it was a second entry to a gate
  * with nothing behind it — and the second entry is always the one that drifts.
  * `apps/api/scripts/check-entry-wiring.ts` is what keeps a replacement from
@@ -75,7 +75,7 @@ type RampPhasePromotion =
 	| {
 			readonly status: 'outstanding';
 			readonly phaseCeiling: number;
-			/** Every applicable route's unmet conditions, by name (plan D12/D14). */
+			/** Every applicable route's unmet conditions, by name. */
 			readonly outstanding: readonly PromotionConditionId[];
 	  }
 	| { readonly status: 'refused'; readonly refusal: RampControlRefusal };
@@ -128,12 +128,12 @@ export async function applyRampPhasePromotion(
 	// for a no-op would cost the comparison its continuity for nothing.
 	if (phaseCeiling === current) return { status: 'at_top', phaseCeiling, share };
 
-	// CROSSING THE 0.5 CEILING IS EVIDENCE-GATED (plan D3), and the rule is a
+	// CROSSING THE 0.5 CEILING IS EVIDENCE-GATED, and the rule is a
 	// table of ROUTES rather than a branch: either an external reading for this
 	// cell within the last 7 days, or the four corroborating self-hosted
 	// conditions. Below that line no route is consulted and the promotion is the
 	// ordinary ladder step it has always been — so a deployment with no external
-	// account is slowed, never stopped (plan D2).
+	// account is slowed, never stopped.
 	const degradation = await loadCellDegradation(ctx, { organizationId, cell, now });
 	const promotion = evaluatePhasePromotion({
 		targetCeiling: phaseCeiling,
@@ -150,7 +150,7 @@ export async function applyRampPhasePromotion(
 	if (!promotion.allowed) {
 		// NOT AN ERROR AND NOT A FAILURE — the cell keeps ramping at its current
 		// rung. The outstanding conditions travel back by name so the screen can
-		// say what would unlock it (plan D12/D14).
+		// say what would unlock it.
 		return {
 			status: 'outstanding',
 			phaseCeiling: current,
@@ -192,7 +192,7 @@ interface RampPromotionResult {
  *
  * A promotion does NOT move the share — it raises the bound the share may climb
  * to — so the `mixDecisions` row it writes records the same number on both sides
- * (plan D12 asks for every decision, not only the ones that moved a number). The
+ * (the audit covers every decision, not only the ones that moved a number). The
  * pair is written by the shared helper for the reason every other control uses
  * it: an action in the audit log with no decision row would leave the cell's
  * timeline showing an unexplained jump in its ceiling.

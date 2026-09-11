@@ -142,7 +142,7 @@ type RelayIdentityBackfillOutcome = {
  * relay) — which is the same "nothing to backfill" the hand-written if-chain
  * achieved by not listing them.
  *
- * A BUNDLED PLUGIN TRANSPORT NO LONGER DOES (the seams plan's P3.2): the registry
+ * A BUNDLED PLUGIN TRANSPORT NO LONGER DOES: the registry
  * is the composed one, so a plugin kind that contributed a `domainIdentity` gets
  * its backfill through this loop exactly as `ses` and `mandrill` do. That was the
  * missing half of the promise — its `relayDomainVerified` reads a row, and
@@ -163,7 +163,7 @@ export function relayIdentityBackfills(
  * OWN-MTA-PRIMARY ONLY, and that gate lives here rather than at each caller: a
  * relay identity COEXISTS on a domain whose primary provider is our own
  * infrastructure, while a domain already hosted at some provider owns its
- * identity through the ordinary lifecycle. D3's sanctioned identity check, read
+ * identity through the ordinary lifecycle. The sanctioned identity check, read
  * from the domain-provider registry's single declaration — these are
  * domain-provider kinds, not send transports, so the constant is the registry's
  * and not `OWN_ARM_TRANSPORT_KIND`, and the two are pinned equal at build time

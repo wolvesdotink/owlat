@@ -1,5 +1,5 @@
 /**
- * THE PACE ACTUATOR — the standalone twin of `nextShare` (plan D3, D9, D19).
+ * THE PACE ACTUATOR — the standalone twin of `nextShare`.
  *
  * With no reference transport there is no mix to control (s === 1 by
  * definition), but the controller was never really about transport share: it is
@@ -23,14 +23,14 @@
  *  5a. no evaluation at all   -> hold
  *  5b. stale/skewed evidence  -> hold
  *   6. gate halt / fail       -> max(M_MIN, m x 0.5), freeze COOLDOWN
- *   7. insufficient data      -> hold (plan D10: never up, and never DOWN either)
- *   8. day already advanced   -> hold  (THE PRESERVED PER-UTC-DAY GUARD, D19)
- *  8b. share moved first      -> hold  (THE COMPOSITION INTERLOCK, D3)
- *   9. low utilisation        -> hold  (THE ONE SANCTIONED CHANGE, D19)
+ *   7. insufficient data      -> hold (never up, and never DOWN either)
+ *   8. day already advanced   -> hold  (THE PRESERVED PER-UTC-DAY GUARD)
+ *  8b. share moved first      -> hold  (THE COMPOSITION INTERLOCK)
+ *   9. low utilisation        -> hold  (THE ONE SANCTIONED CHANGE)
  *  10. K_CLEAN                -> hold while building confidence
  *  11. additive increase      -> min(M_MAX, m + STEP), at most once per UTC day
  *
- * TWO SHIPPED PROPERTIES ARE PRESERVED EXACTLY (plan D19).
+ * TWO SHIPPED PROPERTIES ARE PRESERVED EXACTLY.
  *
  * (1) THE PER-UTC-DAY IDEMPOTENCY GUARD. The controller ticks hourly; a warming
  *     schedule must advance AT MOST ONCE per UTC day, or a clean deployment
@@ -55,7 +55,7 @@
  * evidence of anything, and the day is deliberately left UNCOUNTED so a later
  * tick — once the volume arrives — can still evaluate it once.
  *
- * PURE (plan D15): no `Date.now()`, no database, no environment. `now` is a
+ * PURE: no `Date.now()`, no database, no environment. `now` is a
  * parameter.
  */
 
@@ -79,8 +79,7 @@ import type {
 } from './paceTypes';
 
 /**
- * THE MINIMUM CAP UTILISATION THAT COUNTS AS EVIDENCE — the one sanctioned
- * behaviour change in this piece (plan D19).
+ * THE MINIMUM CAP UTILISATION THAT COUNTS AS EVIDENCE.
  *
  * The shipped MTA evaluator REQUIRES this much utilisation to accelerate and
  * otherwise falls through to the normal one-day advance, so a deployment sending
@@ -193,7 +192,7 @@ interface PaceDecideArgs {
 
 /**
  * The precedence ladder, in one function on purpose — the ORDER is the safety
- * property, and it is the property the reviewer of this piece reads first.
+ * property, and it is the property a reader should check first.
  */
 function decide(args: PaceDecideArgs): PaceDecisionDraft {
 	const { fromMultiplier, storedStreak, isClockUsable, input } = args;
@@ -277,7 +276,7 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 	if (storedFreeze.kind === 'active') return { ...held, reason: 'frozen' };
 	if (storedFreeze.kind === 'unreadable') return { ...held, reason: 'freeze_unreadable' };
 
-	// 5a. No evaluation at all is thin evidence, not a failure (plan D10).
+	// 5a. No evaluation at all is thin evidence, not a failure.
 	if (evaluation === null) return { ...held, reason: 'holding' };
 
 	// 5b. EVIDENCE HAS AN EXPIRY, in both directions: a `pass` of any age would
@@ -291,7 +290,7 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 	//    ABOVE the per-day guard on purpose — a retreat is never rationed.
 	if (evaluation.verdict === 'fail' || evaluation.verdict === 'halt') {
 		const failedGate = evaluation.failedGate;
-		// D17: a tripwire alone is suspect. Hold — the streak is already zero, so
+		// A TRIPWIRE ALONE IS SUSPECT. Hold — the streak is already zero, so
 		// holding still forbids an increase; it just does not halve on one signal.
 		if (evaluation.requiresCorroboration) {
 			return {
@@ -324,7 +323,7 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 		};
 	}
 
-	// 7. Thin data HOLDS (plan D10) — the streak is held, not reset.
+	// 7. Thin data HOLDS — the streak is held, not reset.
 	if (evaluation.verdict !== 'pass') {
 		return { ...held, reason: 'holding', verdict: evaluation.verdict, cleanStreak: streak };
 	}
@@ -336,7 +335,7 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 	const green = { ...held, verdict: 'pass' as const, cleanStreak: streak };
 	const today = utcDayKey(now);
 
-	// 8. THE PER-UTC-DAY IDEMPOTENCY GUARD (plan D19), PRESERVED. Twenty-four
+	// 8. THE PER-UTC-DAY IDEMPOTENCY GUARD, PRESERVED. Twenty-four
 	//    hourly ticks in one UTC day advance the schedule exactly once. The empty
 	//    key is never a match here because rung 1 already returned for the only
 	//    clock that produces one — and an absent stored anchor is `undefined`,
@@ -345,7 +344,7 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 		return { ...green, reason: 'day_already_advanced' };
 	}
 
-	// 8b. THE COMPOSITION INTERLOCK, ACROSS THE WHOLE WINDOW (plan D3).
+	// 8b. THE COMPOSITION INTERLOCK, ACROSS THE WHOLE WINDOW.
 	//     `composeActuators` withholds a pace increase on the tick the share moved
 	//     and records the instant; this rung is what makes that deferral survive
 	//     the window rather than the hour. Without it the next hourly tick would
@@ -361,7 +360,7 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 		return { ...green, reason: 'share_moved_first' };
 	}
 
-	// 9. THE ONE SANCTIONED BEHAVIOUR CHANGE (plan D19). An unexercised cap is not
+	// 9. THE ONE SANCTIONED BEHAVIOUR CHANGE. An unexercised cap is not
 	//    evidence, so this HOLDS where the shipped evaluator advanced anyway — and
 	//    it deliberately leaves the day UNCOUNTED, exactly as the shipped
 	//    evaluator leaves its guard unset on a day with no sends, so a later tick
@@ -383,7 +382,7 @@ function decide(args: PaceDecideArgs): PaceDecisionDraft {
 	//     the same way — the folded `increaseStep` is in percentage points of
 	//     SHARE — so it arrives RAW as `input.stepMultiplier` and is applied to
 	//     `PACE_AIMD.increaseStep` at rung 11. Nothing here branches on the
-	//     configuration itself (plan D3).
+	//     configuration itself.
 	if (streak < config.cleanWindowsRequired) {
 		return { ...counted, reason: 'building_confidence' };
 	}

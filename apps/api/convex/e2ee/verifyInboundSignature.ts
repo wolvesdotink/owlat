@@ -1,8 +1,8 @@
 'use node';
 
 /**
- * Inbound PGP signature verification — the `'use node'` plane of the F1
- * verification pipeline (adoption-gaps plan 2026-08-16, decision D9).
+ * Inbound PGP signature verification — the `'use node'` plane of the
+ * verification pipeline.
  *
  * A message that arrived SIGNED but not encrypted (RFC 3156 `multipart/signed`
  * or an inline clearsigned body) gets its signature verified at ingest:
@@ -10,7 +10,7 @@
  *   extraction (`@owlat/mail-canon` byte-exact RFC 3156 first part, or the
  *   clearsigned armor straight from the body)
  *     → sender-key resolution (the SAME TOFU ladder sealed mail uses, but
- *       WKD-first: the instance-manifest fetch is skipped per D9)
+ *       WKD-first: the instance-manifest fetch is skipped)
  *     → the detached-verify primitive (`manifest.ts:verifyManifest`'s shape)
  *     → an honest {@link InboundSignatureInfo} verdict.
  *
@@ -18,7 +18,7 @@
  * refused key change, a tampered body, a malformed signature part, even an
  * internal verifier error — yields a persisted verdict with
  * `isSignatureValid: false`; NOTHING here ever throws into the ingest path, so
- * delivery is never blocked (D10: verification adds data, never routing).
+ * delivery is never blocked (verification adds data, never routing).
  *
  * The pure record vocabulary lives in the sibling `e2ee/inboundSignature.ts`;
  * the structural gates live in `@owlat/shared/secureMessage` (shared with the
@@ -143,7 +143,7 @@ type ResolvedSenderKey =
  * Resolve the sender's verification key through the SAME TOFU ladder sealed
  * mail uses (`e2ee/open.ts:resolvePinnedSenderKey`), extended with the key's
  * SOURCE for the persisted verdict and running discovery WKD-first
- * (`skipManifest`, D9). Fail-CLOSED throughout: a `keyChanged` conflict is
+ * (`skipManifest`). Fail-CLOSED throughout: a `keyChanged` conflict is
  * NEVER silently re-pinned, and any discovery error resolves to `notFound`
  * rather than a false claim.
  */

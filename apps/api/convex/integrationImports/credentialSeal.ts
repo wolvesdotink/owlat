@@ -1,5 +1,5 @@
 /**
- * Integration-import credential sealing (plan L9).
+ * Integration-import credential sealing.
  *
  * The walker fans one import out across many `ctx.scheduler.runAfter` hops, and
  * each hop's arguments are persisted in the `_scheduled_functions` system table

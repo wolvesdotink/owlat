@@ -5,11 +5,9 @@
  * projections from these primitives. The `scripts/check-body-access.sh`
  * ratchet fails the build on direct body reads outside this module family.
  *
- * Why one accessor matters for Sealed Mail: E8b later seals ALL bodies at rest.
- * When every body read funnels through this family, the "unseal on read" hook
- * stays centralized instead of spreading across ~30 call sites. This piece
- * (E8a) is the behaviour-neutral refactor that creates that choke point — it
- * changes no output; the proof is the existing api suite passing unmodified.
+ * Why one accessor matters for Sealed Mail: sealing ALL bodies at rest needs an
+ * "unseal on read" hook, and when every body read funnels through this family
+ * that hook stays centralized instead of spreading across ~30 call sites.
  *
  * The three shapes:
  *   1. inboundMessages — inline `textBody` / `htmlBody` string fields.

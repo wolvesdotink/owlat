@@ -1,6 +1,6 @@
 /**
  * WHERE THE MULTIPLIER BECOMES A CAP — and the ONE place the published base
- * warming schedule is applied as a HARD CEILING (plan D19).
+ * warming schedule is applied as a HARD CEILING.
  *
  *   dailyCap(cell) = clamp(dailyCap(cell) * m, floor, BASE_SCHEDULE_CEILING(day))
  *
@@ -10,7 +10,7 @@
  *   · `cellCap` is the per-(IP x mailboxProvider) cap the cell actually sends
  *     against — the IP's daily cap narrowed by the provider's own multiplier
  *     (`warmingProviderStore.providerCapVerdict`). THIS is what the dial
- *     multiplies, and it is the number the plan means by `dailyCap(cell)`.
+ *     multiplies, and it is what `dailyCap(cell)` means.
  *   · `baseScheduleCap` is the IP's PUBLISHED schedule cap for the current
  *     schedule day. That is the HARD CEILING: the controller may go slower than
  *     the published ramp, and may never exceed it for the day.
@@ -32,7 +32,7 @@
  * unexercised cap is not evidence that a bigger one is safe, so growth tracks
  * demand: the cap may exceed the volume recently exercised by
  * `CAP_EXERCISE_HEADROOM` and no more. ABSENCE OF THE READING IS NOT A
- * CONSTRAINT (plan D2): a deployment we have no volume history for is bounded by
+ * CONSTRAINT: a deployment we have no volume history for is bounded by
  * the published schedule alone, never by a zero we invented.
  *
  * Pure: every input is a parameter.
@@ -72,7 +72,7 @@ interface EffectiveDailyCapInput {
 	readonly multiplier: number;
 	/**
 	 * The largest volume actually sent against the cap in the recent window, or
-	 * `undefined` when there is no reading. Absence never constrains (plan D2).
+	 * `undefined` when there is no reading. Absence never constrains.
 	 */
 	readonly exercisedVolume?: number | undefined;
 }

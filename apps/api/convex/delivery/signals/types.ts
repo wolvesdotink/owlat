@@ -1,5 +1,5 @@
 /**
- * THE SIGNAL-SOURCE CONTRACT (seams plan D9).
+ * THE SIGNAL-SOURCE CONTRACT.
  *
  * A signal source is one answer to "where does this deployment's evidence about
  * its own deliverability come from" — the ramp's own outcome counters, the
@@ -22,20 +22,20 @@
  *     evidence was gathered — a provider's complaint feed is advisory here
  *     because no decision path consults it, not because complaints are advice.
  *  3. `absence` — what happens when the source is NOT CONFIGURED, declared as
- *     data. "Not configured" is a supported verdict (plan D2): every absence
+ *     data. "Not configured" is a supported verdict: every absence
  *     carries `isBlocking: false` by TYPE, so a source that blocked on its own
  *     absence could not be declared at all.
  *
  * WHY ABSENCE IS A FIELD AND NOT A DOCSTRING. The Yahoo provider feed already
  * encoded exactly this invariant one module at a time
  * (`YahooComplaintSubstitution.isBlocking`, "encoded as a field rather than
- * left implicit so the D2 invariant is asserted by a test rather than assumed
+ * left implicit so the invariant is asserted by a test rather than assumed
  * by a reader"). This is that idea with one home: the registry test walks every
  * source and asks it, so a source added next year answers the question whether
- * or not its author read the plan.
+ * or not its author went looking for the rule.
  *
  * NO PLUGIN BUCKET. Third-party signal sources are deliberately deferred — the
- * registry is the seam; opening it to plugins is its own piece, on the day
+ * registry is the seam; opening it to plugins is its own change, on the day
  * someone wants it.
  */
 
@@ -64,7 +64,7 @@ export type SignalSourceKind = (typeof SIGNAL_SOURCE_KINDS)[number];
  * would be a promise the tree does not keep.
  *
  * THE ORDER IS THIS ARRAY'S OWN, not shared's: the keys are shared's, but the
- * sequence is the plan's gate numbering (1 hard bounce … 5 seed placement), and
+ * sequence is the gate numbering (1 hard bounce … 5 seed placement), and
  * `rampGateSources` folds in it, so the FIRST breach at the winning rank — the
  * one the operator is shown — is decided here and nowhere else.
  */
@@ -96,9 +96,9 @@ export type SignalSourceKey = RampGateSignalKey | ProviderFeedSignalKey;
  * unrepresentable.
  *
  *  - `substitute` — a weaker signal stands in and the reading continues, more
- *    slowly and with a lower confidence that is said out loud (plan D14).
+ *    slowly and with a lower confidence that is said out loud.
  *  - `hold` — the source still answers, and its answer is "not enough evidence
- *    this window", which neither advances nor retreats the ramp (plan D10).
+ *    this window", which neither advances nor retreats the ramp.
  *  - `omit` — the source contributes nothing at all: nothing is measured, so
  *    nothing is folded, so an absent source cannot hold anything either.
  *

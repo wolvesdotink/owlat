@@ -1,6 +1,6 @@
 /**
  * "Move my mailbox here" — the staged full move of a connected external mailbox
- * onto an Owlat-hosted mailbox on the SAME address (piece c5).
+ * onto an Owlat-hosted mailbox on the SAME address.
  *
  * A migration (mail/migration.ts) is a one-time HISTORICAL import that leaves
  * the external account live and syncing. A *move* goes the rest of the way: it

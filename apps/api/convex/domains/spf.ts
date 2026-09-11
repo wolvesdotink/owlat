@@ -7,7 +7,7 @@
  * DKIM signing belong to the RELAY provider, so SPF/DKIM authentication is set
  * up in that provider's dashboard against the From-domain — not through this
  * built-in-MTA record bundle. The operator-facing transport UX for this lands
- * in the Sending-transport settings surface (plan piece a4).
+ * in the Sending-transport settings surface.
  *
  * Three concerns live here, all pure (no Convex / no DNS I/O):
  *
@@ -131,7 +131,7 @@ export function buildSpfRecordValue(parts: SpfRecordParts): string {
  * 7208 §4.6.4's budget of ten, and `ptr`/`exists`/`redirect` are either
  * deprecated or capable of relocating the whole evaluation. Anything else in
  * the configured value is IGNORED, never rejected — this value is read on the
- * send path, where throwing would turn a typo into blocked mail (plan D2).
+ * send path, where throwing would turn a typo into blocked mail.
  */
 const RELAY_SPF_TERM_PATTERN =
 	/^(?:include:[A-Za-z0-9._-]+|a:[A-Za-z0-9._-]+|mx:[A-Za-z0-9._-]+|ip4:[0-9./]+|ip6:[0-9A-Fa-f:./]+)$/;

@@ -1,13 +1,14 @@
 /**
- * Pure Sealed-Mail sealing-decision logic (plan 2026-07-11, locked decisions D2
- * + D5). No `ctx`, no db, no `openpgp` — plain data in, a decision out — so BOTH
+ * Pure Sealed-Mail sealing-decision logic. No `ctx`, no db, no `openpgp` —
+ * plain data in, a decision out — so BOTH
  * the V8 plane (`mail/draftLifecycle.ts`, for the composer's `sealState`) and the
  * Node plane (`mail/outbound.ts`, at dispatch) share ONE source of truth and can
  * never drift into two subtly-different "should we seal?" answers.
  *
- * D2: AUTO-SEAL only when EVERY recipient has a usable pinned key — never a mixed
+ * AUTO-SEAL only when EVERY recipient has a usable pinned key — never a mixed
  * send. An org policy override (`auto` / `ask` / `off`) sits in front of that.
- * D5: this governs the Postbox 1:1 plane only; campaigns/transactional are
+ *
+ * This governs the Postbox 1:1 plane only; campaigns/transactional are
  * untouched and never reach this module.
  *
  * This module owns the Sealed-Mail Convex validators too (`sealPolicyValidator`,
@@ -23,11 +24,11 @@ import { v } from 'convex/values';
 export type SealPolicy = 'auto' | 'ask' | 'off';
 
 /**
- * Convex validator for the org sealing policy (`instanceSettings.sealPolicy`,
- * locked decision D2). `auto` seals whenever every recipient has a usable pinned
- * key; `ask` keeps sealing available but never seals automatically (the message
- * goes out normally); `off` never seals. Unset ⇒ treated as `auto` at resolution
- * time. Mirrors {@link SealPolicy}.
+ * Convex validator for the org sealing policy (`instanceSettings.sealPolicy`).
+ * `auto` seals whenever every recipient has a usable pinned key; `ask` keeps
+ * sealing available but never seals automatically (the message goes out
+ * normally); `off` never seals. Unset ⇒ treated as `auto` at resolution time.
+ * Mirrors {@link SealPolicy}.
  */
 export const sealPolicyValidator = v.union(v.literal('auto'), v.literal('ask'), v.literal('off'));
 
@@ -45,8 +46,8 @@ export interface RecipientKeyState {
 	/** Armored PUBLIC key of the pinned fingerprint; present only when trusted. */
 	pinnedPublicKeyArmored?: string;
 	/**
-	 * Whether a human here verified the fingerprint we would seal to (plan idea
-	 * 54, resolved by `e2ee/pinning.ts:resolveVerificationState`). Display only:
+	 * Whether a human here verified the fingerprint we would seal to (resolved by
+	 * `e2ee/pinning.ts:resolveVerificationState`). Display only:
 	 * it NEVER changes whether a message seals, only how confidently the composer
 	 * says so — an unverified pinned key still seals exactly as it always did.
 	 */
@@ -68,7 +69,7 @@ function hasUsableSealKey(
 }
 
 /**
- * ONE recipient's key as the composer shows it on their chip (plan idea 11).
+ * ONE recipient's key as the composer shows it on their chip.
  * Carries the public trust state plus `hasUsableKey` — whether that key can
  * actually seal to them. The two are NOT the same: a `trusted` row whose pinned
  * public key is missing cannot seal, and a composer that reasoned from `outcome`
@@ -82,7 +83,7 @@ export interface RecipientSealView {
 	hasUsableKey: boolean;
 	/**
 	 * A human here compared this recipient's fingerprint with its owner and it
-	 * matched (plan idea 54). Only ever true for a key that can actually seal —
+	 * matched. Only ever true for a key that can actually seal —
 	 * "verified" about a key we would not use is a claim with no referent.
 	 */
 	verified: boolean;
@@ -196,7 +197,7 @@ export const mailEncryptionInfoValidator = v.union(
 
 /**
  * Decide whether THIS dispatch auto-seals. Order matters: the cheapest / most
- * decisive gates first, then the all-recipients rule (D2 — one keyless recipient
+ * decisive gates first, then the all-recipients rule (one keyless recipient
  * forces plaintext), then the signer check, and only `policy === 'auto'` actually
  * seals automatically. `policy === 'ask'` is a deliberate plaintext-with-reason
  * here: it keeps sealing available but never seals automatically, so the message
@@ -210,7 +211,7 @@ export function decideSeal(inputs: SealInputs): SealDecision {
 	if (inputs.recipients.some((r) => r.outcome === 'keyChanged')) {
 		return { seal: false, reason: 'key_changed' };
 	}
-	// D2: seal ONLY when ALL recipients have a usable pinned key.
+	// Seal ONLY when ALL recipients have a usable pinned key.
 	const keys: string[] = [];
 	for (const r of inputs.recipients) {
 		if (!hasUsableSealKey(r)) return { seal: false, reason: 'recipient_no_key' };
@@ -223,8 +224,8 @@ export function decideSeal(inputs: SealInputs): SealDecision {
 }
 
 /**
- * The composer-facing seal readiness for a draft (consumed by the E5 compose
- * surface). Answers "can this draft be sealed?" — distinct from `decideSeal`,
+ * The composer-facing seal readiness for a draft, consumed by the compose
+ * surface. Answers "can this draft be sealed?" — distinct from `decideSeal`,
  * which answers "does THIS automatic dispatch seal?". `willSeal` means the keys
  * are present and the org allows sealing; `keyChanged` surfaces the addresses
  * whose key rotated without a signed statement (the reader must re-accept);

@@ -4,16 +4,16 @@ import { transportArmValidator } from '../lib/convexValidators';
 
 /**
  * Per-cell, per-arm rolling OUTCOME counters — the table that measures
- * DELIVERABILITY rather than ACCEPTANCE (plan G-05: a message Gmail accepts and
- * files into Spam currently counts as a 100% success, because the only thing
- * recorded is that the transport took it).
+ * DELIVERABILITY rather than ACCEPTANCE (a message Gmail accepts and files into
+ * Spam currently counts as a 100% success, because the only thing recorded is
+ * that the transport took it).
  *
  * Its own schema sibling rather than another entry in `schema/delivery.ts`: that
  * file sits at the file-size cap, and CONVENTIONS.md → "Add new tables"
  * sanctions a feature-named sibling in exactly that case (the
  * `schema/sendAssignments.ts` precedent).
  *
- * SHAPE IS COPIED FROM `sendingReputation` DELIBERATELY (plan D5, ADR-0042):
+ * SHAPE IS COPIED FROM `sendingReputation` DELIBERATELY (ADR-0042):
  *   - Each (org, cell, arm, day) bucket is SHARDED into `shardKey` 0..N-1 rows.
  *     One lifecycle event bumps ONE random shard, so a blast's per-recipient
  *     writes spread across N documents instead of read-modify-writing a single
@@ -25,7 +25,7 @@ import { transportArmValidator } from '../lib/convexValidators';
  *     derived on read, in that one summarizer, so the ramp controller and the
  *     dashboard cannot disagree about a number.
  *
- * `organizationId` is not in the plan's sketch and is deliberately added, for
+ * `organizationId` is not part of the cell key and is deliberately added, for
  * the same reason as `sendAssignments`: a cell-keyed table readable across
  * tenants is a security defect, so the bucket index is org-leading and no query
  * can cross tenants.
@@ -54,7 +54,7 @@ export const transportOutcomeTables = {
 		clicked: v.number(),
 		unsubscribed: v.number(),
 
-		// The randomized calibration slice (plan D8) is counted SEPARATELY, not
+		// The randomized calibration slice is counted SEPARATELY, not
 		// as a subset a reader has to remember to exclude: the engagement-ratio
 		// gate reads ONLY the calibration slice, because stratified assignment
 		// destroys the causal comparison. A summarizer that folded these into the
@@ -69,7 +69,7 @@ export const transportOutcomeTables = {
 		// rather than making a second pass over the raw rows.
 		lastRecordedAt: v.number(),
 	})
-		// Org-leading, then the cell/arm/day/shard prefix the plan names. The
+		// Org-leading, then the cell/arm/day/shard prefix a bucket is keyed by. The
 		// index NAME carries `org` because the key order does; `by_org_send` on
 		// `sendAssignments` sets the same precedent.
 		.index('by_org_cell_arm_period_shard', [

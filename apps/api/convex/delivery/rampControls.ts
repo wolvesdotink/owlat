@@ -1,12 +1,12 @@
 /**
- * THE CONTROLS — pause, pin, force-advance, presets (P3-6).
+ * THE CONTROLS — pause, pin, force-advance, presets.
  *
  * DELIVERABILITY FEATURES FAIL WHEN THEY FEEL LIKE MAGIC. A controller that
  * moves a share on its own is only trustworthy if a human can stop it, hold it,
  * push it, or start it over — and can see afterwards that they did. Every
  * mutation here is admin-gated, org-scoped FROM THE SESSION (there is no
  * `organizationId` argument to forge), and writes both a `mixDecisions` row and
- * an `auditLogs` entry through the one shared helper (plan D12).
+ * an `auditLogs` entry through the one shared helper.
  *
  * WHAT AN OPERATOR CANNOT DO, by construction rather than by convention:
  *
@@ -36,14 +36,14 @@
  *     blocked by any of them.
  *   - move a PHASE CEILING from here at all. The rung has its own two doors and
  *     they are separate modules: `rampPhaseReset.resetCellPhase` takes it down,
- *     `rampPhasePromotion.promoteCellPhase` runs the plan's evidence routes to
+ *     `rampPhasePromotion.promoteCellPhase` runs the evidence routes to
  *     take it up. A ceiling that could also rise on a control with no evidence
  *     behind it would leave the gate guarding one of two doors.
  *
  * AN UNMANAGED CELL IS REFUSED CALMLY, never created. Writing a row with an
  * `ownShare` would opt a cell into the ramp as a side effect of pausing it —
- * which is the opposite of what the operator asked for, and a behaviour change
- * D1 does not sanction. Opting in is its own deliberate act, and it has its own
+ * which is the opposite of what the operator asked for, and a change in shipped
+ * routing nobody asked for. Opting in is its own deliberate act, and it has its own
  * mutation: `rampEnrollment.enrollCell`.
  *
  * THE REFUSAL UNION, THE RESULT SHAPE AND THE TARGET RESOLUTION ARE SHARED, and
@@ -114,7 +114,7 @@ export type RampControlRefusal =
 	// mutation that owns it.
 	| 'phase_increase_requires_promotion'
 	// The evidence gate consulted its routes and none was satisfied. The
-	// outstanding conditions travel back BY NAME alongside this (plan D12/D14).
+	// outstanding conditions travel back BY NAME alongside this.
 	| 'promotion_evidence_outstanding';
 
 export interface RampControlResult {
@@ -316,10 +316,10 @@ export const forceAdvanceCellShare = adminMutation({
 		}
 		await ctx.db.patch(target.row._id, {
 			ownShare: share,
-			// The derived view of the share stays consistent with it (plan D1).
+			// The derived view of the share stays consistent with it.
 			isFallbackActive: isFallbackActiveForShare(share),
 			// A manual move is a new mix generation: the cohort is deliberately
-			// re-randomised, exactly as it is on a phase promotion (plan D7).
+			// re-randomised, exactly as it is on a phase promotion.
 			mixVersion: (target.row.mixVersion ?? 0) + 1,
 			// The streak is NOT carried across a move nobody measured — and neither
 			// is the GRADUATION PIN when the move lands below 1.0. A graduated cell
@@ -359,7 +359,7 @@ export const forceAdvanceCellShare = adminMutation({
  * Choose how hard one stream ramps.
  *
  * A row only exists where a human chose one; deleting the choice returns the
- * stream to the deployment default (plan D14) rather than to a stored
+ * stream to the deployment default rather than to a stored
  * "balanced", so a deployment that later connects a relay picks up the new
  * default automatically instead of silently keeping a conservative pace it never
  * asked for.

@@ -38,8 +38,8 @@ interface MailchimpListResponse {
 }
 
 /**
- * What one non-subscribed audience member means for Owlat's suppression state
- * (plan D9), or `null` when it means nothing.
+ * What one non-subscribed audience member means for Owlat's suppression state, or `null` when it
+ * means nothing.
  *
  * NO SECOND FETCH IS NEEDED, and that is the whole shape of this feature on the
  * Mailchimp side. `GET /lists/{id}/members` is not status-filtered here: every

@@ -10,7 +10,7 @@ export interface AddDomainFlowDeps {
 	hasActiveOrganization: () => boolean;
 	/**
 	 * Register the domain — optionally with a custom return-path host set
-	 * ATOMICALLY (F2 finding 1). Resolves to the new id, or `ok: false` on
+	 * ATOMICALLY, in one write. Resolves to the new id, or `ok: false` on
 	 * failure (the operation layer surfaces the error, including an invalid host).
 	 */
 	createDomain: (args: {
@@ -23,7 +23,7 @@ export interface AddDomainFlowDeps {
 }
 
 /**
- * Add-domain orchestration (piece D3; F2 finding 1).
+ * Add-domain orchestration.
  *
  * The custom return-path host is passed straight into `create` as ONE atomic
  * write — not a second `setReturnPathHost` call. That keeps the domain out of the

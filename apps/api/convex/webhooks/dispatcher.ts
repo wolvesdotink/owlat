@@ -216,7 +216,7 @@ const DISPATCH: DispatchTable = {
 		// A relay holding a message it already accepted moves NO send state — the
 		// relay is still retrying and owns the terminal edge. The only thing this
 		// records is the (cell, arm) `deferred` counter ramp gate 2 divides; the
-		// recorder is fail-soft on an id it cannot resolve. See plan D10 and the
+		// recorder is fail-soft on an id it cannot resolve. See the
 		// `recordRelayDeferral` docstring for why it, unlike the governed writer,
 		// accepts a send that is already `sent`.
 		return await ctx.runMutation(internal.delivery.deferralOutcome.recordRelayDeferral, {
@@ -253,7 +253,7 @@ const DISPATCH: DispatchTable = {
 		const m = e.mail;
 		const attachmentMeta = m.attachments.length > 0 ? JSON.stringify(m.attachments) : undefined;
 
-		// Sealed Mail (E4, D3): decrypt-on-ingest for the AI-inbox path. When Sealed
+		// Sealed Mail decrypt-on-ingest for the AI-inbox path. When Sealed
 		// Mail is on and the body carries an armored PGP ciphertext, route through the
 		// Node decrypt action so the PLAINTEXT reaches `receiveMessage` (and thus the
 		// agent pipeline + the unified-timeline mirror). Anything else — plaintext,
@@ -300,7 +300,7 @@ const DISPATCH: DispatchTable = {
 			dkimResult: m.dkimResult,
 			dmarcResult: m.dmarcResult,
 			dmarcPolicy: m.dmarcPolicy,
-			// F1 (D9): AI-inbox mirror of the clearsigned-body signature verdict —
+			// AI-inbox mirror of the clearsigned-body signature verdict —
 			// see webhooks/inboundSignatureMirror.ts. Best-effort, never blocks.
 			...((await clearsignedSignatureMirror(ctx, m.textBody, m.from)) ?? {}),
 		});

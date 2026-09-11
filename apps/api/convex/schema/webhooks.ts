@@ -85,7 +85,7 @@ export const webhookTables = {
 		// Built-in/channel adapters retain by default and may opt out through
 		// `shouldStoreRawPayload`; plugin transports do the inverse and must opt in
 		// through their manifest's `storeRawPayload`. Deliberately NOT re-listed here
-		// (ADR-0055, D10): a fixed literal set silently drops new plugin transports
+		// (ADR-0055): a fixed literal set silently drops new plugin transports
 		// and channels.
 		source: v.string(),
 		rawPayload: v.string(), // JSON string of the raw webhook body
@@ -97,7 +97,7 @@ export const webhookTables = {
 		.index('by_source_and_received_at', ['source', 'receivedAt']),
 
 	// Replay defense for the bundled-plugin feedback route
-	// (`/webhooks/plugin/<pluginId>`, the seams plan's D6/P2.2). One row per
+	// (`/webhooks/plugin/<pluginId>`). One row per
 	// ACCEPTED delivery, named by a digest of the caller's signature — an HMAC
 	// over the signed timestamp and the exact body under a secret only the sender
 	// holds, so two requests share a digest exactly when they are the same signed

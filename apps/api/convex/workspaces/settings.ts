@@ -57,17 +57,17 @@ export const update = authedMutation({
 		// MTA-STS publishing posture for inbound mail (RFC 8461). Defaults to
 		// `none` (nothing published) — step through `testing` before `enforce`.
 		mtaStsMode: v.optional(mtaStsModeValidator),
-		// Trusted ARC forwarders (Sealed Mail A5) — domains whose validated ARC seal
+		// Trusted ARC forwarders — domains whose validated ARC seal
 		// rescues an inbound DMARC fail. Unset keeps the seeded default list; an
 		// explicit `[]` turns the override off.
 		trustedArcForwarders: v.optional(v.array(v.string())),
-		// Sealed Mail (E3) org sealing policy (locked decision D2): `auto` / `ask` /
+		// Sealed Mail org sealing policy: `auto` / `ask` /
 		// `off`. Unset ⇒ `auto` at resolution time.
 		sealPolicy: v.optional(sealPolicyValidator),
-		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH (plan P3-2). True pins every ramp
+		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH. True pins every ramp
 		// cell at its current share: the hourly controller still evaluates and
-		// audits, but writes no share. It is the plan's named mitigation for
-		// controller complexity, so an owner/admin must be able to pull it from the
+		// audits, but writes no share. It is the named mitigation for controller
+		// complexity, so an owner/admin must be able to pull it from the
 		// product — not only from an internal mutation.
 		isRampControllerPaused: v.optional(v.boolean()),
 		// What the relay charges, in minor units per thousand messages, with its

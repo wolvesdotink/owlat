@@ -235,10 +235,9 @@ export const CORE_SEND_PROVIDER_CATALOG = [
 		// Mandrill accepts a per-message `return_path_domain`, but only for a
 		// domain SPF'd to Mandrill in the account — and whether VERP-style
 		// envelope senders survive is deployment-specific. Only an observed
-		// delivered bounce settles it (Mandrill plan D5).
+		// delivered bounce settles it.
 		supportsCustomReturnPath: 'probe',
-		// Mandrill webhooks report send/deferral/bounce/spam/unsub/reject
-		// (Mandrill plan D10).
+		// Mandrill webhooks report send/deferral/bounce/spam/unsub/reject.
 		hasProviderFeedback: true,
 		// The operator creates the webhook in Mandrill's console and copies the key
 		// it issues in — which is why the panel reports that variable's PRESENCE.
@@ -248,19 +247,18 @@ export const CORE_SEND_PROVIDER_CATALOG = [
 			setupPanel: 'signed-webhook',
 		},
 		// Mandrill's sender-domain API (`senders/add-domain` / `check-domain`) is
-		// read by `domains/providers/mandrill` (the MANDRILL plan's P3.1), which
-		// registers the kind in `SENDING_DOMAIN_PROVIDERS` and answers the
-		// relay-verification seam from `sendingDomainRelayIdentities`. Declaring
-		// 'api' without that provider is a compile error (the
-		// `ApiVerifiedSendProviderKind` completeness guard), so this line and that
-		// registration can only move together.
+		// read by `domains/providers/mandrill`, which registers the kind in
+		// `SENDING_DOMAIN_PROVIDERS` and answers the relay-verification seam from
+		// `sendingDomainRelayIdentities`. Declaring 'api' without that provider is
+		// a compile error (the `ApiVerifiedSendProviderKind` completeness guard),
+		// so this line and that registration can only move together.
 		domainVerification: 'api',
-		// `send-raw` has no idempotency surface (Mandrill plan D4): a lost response
+		// `send-raw` has no idempotency surface: a lost response
 		// may sit on top of an accepted and delivered message, so the ambiguity
 		// parks on Mandrill's webhook feedback instead of being replayed.
 		acceptanceSemantics: 'unknown-on-timeout',
 		messageIdSource: 'provider',
-		// `send-raw` has no idempotency surface either (Mandrill plan D4), so a
+		// `send-raw` has no idempotency surface either, so a
 		// repeat under the same key is a second delivery.
 		deduplicatesOnIdempotencyKey: false,
 		// A third-party ESP's webhook, unannotated by us.

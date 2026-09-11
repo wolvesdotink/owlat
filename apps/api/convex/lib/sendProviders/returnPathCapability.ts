@@ -1,5 +1,5 @@
 /**
- * Custom return-path capability — the measurement-bias fix (plan G-08).
+ * Custom return-path capability — the measurement-bias fix.
  *
  * The own-MTA arm stamps a VERP envelope sender and runs its own bounce
  * server, so its feedback is rich. Resend and SES report bounces over their
@@ -15,7 +15,7 @@
  *     bounce gate runs on a WIDER tolerance instead of pretending the two
  *     arms' numbers are comparable.
  *
- * Plan D2 (additive-only third-party rule) is absolute here: an unsupported,
+ * The additive-only third-party rule is absolute here: an unsupported,
  * unprobed or never-configured relay lowers confidence and widens a tolerance.
  * It never throws, never blocks a send, never blocks a promotion and never
  * renders an error. Every function in this module is total.
@@ -211,7 +211,7 @@ function grade(
  * The posture for a transport we cannot resolve AT ALL — an id this deployment
  * no longer configures. Same shape, same grading function, so it can never
  * drift from what {@link resolveReturnPathCapability} returns for a transport
- * that simply has no evidence yet. Never an error (plan D2).
+ * that simply has no evidence yet. Never an error.
  */
 export const unresolvableReturnPathCapability: ResolvedReturnPathCapability = Object.freeze(
 	grade('unknown', 'probe', 'never_probed', 'awaiting_delivery', { hasProviderFeedback: false })

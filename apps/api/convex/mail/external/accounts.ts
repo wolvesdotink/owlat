@@ -202,7 +202,7 @@ export const purge = authedMutation({
 		// Purge the LIVE personal account (the one the migrate page renders for), not
 		// the oldest row: after a completed move the oldest row is the read-only
 		// archive, and purging that would irreversibly delete the moved-mailbox
-		// history this piece promises to keep. Only when NO personal account is live
+		// history a completed move must keep. Only when NO personal account is live
 		// (purging a lone archive) do we fall back to the caller's newest PERSONAL
 		// row so a deliberate archive purge stays possible — a shared team inbox is
 		// org infrastructure and is never reachable through this personal path.

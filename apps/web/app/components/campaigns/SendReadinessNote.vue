@@ -10,7 +10,7 @@
  * render this note do (the campaign editor and the wizard's review step).
  *
  * Informational treatment, never the error one: a capped day is a normal state
- * for a warming deployment (deliverability plan D14). Nothing renders at all
+ * for a warming deployment. Nothing renders at all
  * when capacity could not be measured — a readiness line nobody can stand behind
  * is worse than no line.
  */

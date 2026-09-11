@@ -44,7 +44,7 @@ export function resolveReviewShortcut(key: string): ReviewShortcutAction | null 
 }
 
 /**
- * Multi-select vocabulary for the browse list (piece C2): Space / `x` toggle
+ * Multi-select vocabulary for the browse list: Space / `x` toggle
  * the focused card, Shift+J / Shift+K extend the selection while moving, `*`
  * selects everything visible (Gmail's select-all chord, first half). Resolved
  * BEFORE the single-card vocabulary above so `x` means "select" wherever a

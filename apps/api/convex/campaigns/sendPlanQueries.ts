@@ -1,5 +1,5 @@
 /**
- * THE MULTI-DAY SEND PLAN'S READS — the ctx-bound half of P3-7.
+ * THE MULTI-DAY SEND PLAN'S READS — the ctx-bound half.
  *
  * The pure planner is `multiDaySendPlan.ts`; this module only LOADS what it
  * needs (the warming projection, and — once per walk — a bounded audience count
@@ -10,7 +10,7 @@
  * graduated deployment with no cap at all: every one of them answers "no day
  * budget", and the walker then sends exactly as the shipped single-day walker
  * always has. Capacity we could not measure has never been grounds to withhold
- * mail (plan D2).
+ * mail.
  */
 
 import { v } from 'convex/values';
@@ -27,7 +27,7 @@ import { campaignSendPlanProgress, type CampaignSendPlanProgress } from './sendP
  * pre-flight gate's budget: this count is advisory — it is the denominator of a
  * progress line, never a refusal — so it may not compete with the send hop's own
  * reads. A count that stops early yields a LOWER bound, which the copy says out
- * loud rather than rounding into a promise (plan D14).
+ * loud rather than rounding into a promise.
  */
 const PLAN_AUDIENCE_DOCUMENT_BUDGET = 3_000;
 
@@ -36,7 +36,7 @@ interface SendPlanCapacity {
 	/**
 	 * The audience size, or `null` when it was not counted on this hop.
 	 * `isPlannedTotalLowerBound` says WHICH OF TWO THINGS the number is: an
-	 * audience size, or the floor under one (plan D14). The distinction is
+	 * audience size, or the floor under one. The distinction is
 	 * load-bearing — a lower bound may lengthen the plan, may never shorten it,
 	 * and may never be read as "the audience is finished".
 	 */
@@ -140,9 +140,9 @@ export const getSendPlanCapacity = internalQuery({
  * THE PROGRESS LINE — "Sending over 4 days · day 1 of 4 · 5 000 of 20 000".
  *
  * Present from the moment the send starts, and NEVER an error state: a
- * multi-day send is a normal, visible state for a warming deployment (plan
- * D14). A campaign with no walk IN FLIGHT answers `null`, which the UI renders
- * as nothing at all rather than as a problem — and that is why the phase is
+ * multi-day send is a normal, visible state for a warming deployment. A
+ * campaign with no walk IN FLIGHT answers `null`, which the UI renders as
+ * nothing at all rather than as a problem — and that is why the phase is
  * checked at all: `campaignSendJobs` rows outlive the walk, and the report page
  * is mostly read for campaigns that finished sending days ago. A present-tense
  * sentence about a finished send is worse than no sentence.

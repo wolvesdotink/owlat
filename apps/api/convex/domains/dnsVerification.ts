@@ -445,15 +445,15 @@ export const verifyDomain = authedAction({
 		// and provider verdict; never borrow the primary domain's status or DNS
 		// proof.
 		//
-		// The gate is D3's sanctioned own-vs-not-own identity, read from the
-		// domain-provider registry — it used to be `providerType !== 'ses'`, which
-		// named the RELAY rather than the rule and so had to be re-read every time
-		// a second relay kind landed. Same rows either way: the only writers of an
-		// SES sibling with DNS records are the ordinary lifecycle (SES-primary
-		// domains, excluded by both) and the relay provisioning pair, which
-		// provisions own-MTA-primary domains and nothing else. Legacy rows that
-		// never recorded a `providerType` are INCLUDED, exactly as `!== 'ses'`
-		// included them — see `isOwnPrimarySendingDomain`, which owns that reading.
+		// The gate is the sanctioned own-vs-not-own identity, read from the
+		// domain-provider registry, not `providerType !== 'ses'`, which would name
+		// the RELAY rather than the rule and so have to be re-read every time a
+		// second relay kind lands. Same rows either way: the only writers of an SES
+		// sibling with DNS records are the ordinary lifecycle (SES-primary domains,
+		// excluded by both) and the relay provisioning pair, which provisions
+		// own-MTA-primary domains and nothing else. Legacy rows that never recorded
+		// a `providerType` are INCLUDED, exactly as `!== 'ses'` included them — see
+		// `isOwnPrimarySendingDomain`, which owns that reading.
 		const sesIdentity = await ctx.runQuery(internal.domains.queries.getSesIdentity, {
 			domainId: args.domainId,
 		});

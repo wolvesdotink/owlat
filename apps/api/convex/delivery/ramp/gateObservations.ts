@@ -55,7 +55,7 @@ export interface SmtpBlockObservation {
 	 *
 	 * RATE PRESSURE BELONGS IN HERE TOO. `rate_limited` and friends are not blocks
 	 * and never contribute to the numerator, but they are what the receiver said and
-	 * the audit row (plan D12) is better for having them.
+	 * the audit row is better for having them.
 	 *
 	 * THE SHARED VOCABULARY, not free text. The stored row is
 	 * `v.array(v.string())`, so the narrowing happens ONCE where that row is read
@@ -70,7 +70,7 @@ export interface SmtpBlockObservation {
 /**
  * One arm's seed sweep for this cell: PER-PLACEMENT PROBE COUNTS over the
  * placement window, plus the instant the newest of them was classified. A
- * tripwire and never a gauge (plan D17) — there is no share in here, and the
+ * tripwire and never a gauge — there is no share in here, and the
  * gate derives none of its own from it.
  *
  * THE WHOLE SHARED VOCABULARY (`SeedArmPlacementCounts` over `SEED_PLACEMENTS`),

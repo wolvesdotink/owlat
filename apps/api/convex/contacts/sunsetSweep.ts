@@ -1,8 +1,8 @@
 /**
- * The sunset SWEEP — the hourly cron that converges the book (deliverability
- * plan P4-4). The decision lives in `sunsetPolicy.ts` (pure), the per-contact
- * reads and writes in `sunsetEngine.ts`, the operator surface in `sunset.ts`;
- * this file is only the bounded scan around them.
+ * The sunset SWEEP — the hourly cron that converges the book. The decision
+ * lives in `sunsetPolicy.ts` (pure), the per-contact reads and writes in
+ * `sunsetEngine.ts`, the operator surface in `sunset.ts`; this file is only
+ * the bounded scan around them.
  *
  * THE SWEEP IS A BOUNDED, RESUMABLE SCAN — never a full-table walk. It ranges
  * the `contacts.by_sunset_evaluated_at` index for rows whose stamp is older

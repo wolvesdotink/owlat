@@ -1,5 +1,5 @@
 /**
- * THE CEILING GATE — one cascade, four specs (plan D15).
+ * THE CEILING GATE — one cascade, four specs.
  *
  * Gates 1 and 3 are the same gate with different numbers: "the own arm is under
  * an absolute ceiling AND is not worse than the series we compare it against".
@@ -14,7 +14,7 @@
  * different, and they would disagree only in production — which is precisely the
  * degraded-path rot this module exists to prevent.
  *
- * PURE (plan D15): `now` is a parameter, nothing reads a clock, a database or the
+ * PURE: `now` is a parameter, nothing reads a clock, a database or the
  * environment.
  */
 
@@ -115,7 +115,7 @@ interface CeilingSecondSeries {
  *
  * `reference_tolerance_breached` names a second transport to go and look at;
  * `trailing_baseline_breached` names the cell's own past. Both reach the audit
- * row (plan D12), the admin notification and `gateExplanation`, so telling a
+ * row, the admin notification and `gateExplanation`, so telling a
  * standalone deployment that its relay drifted sends an operator after a relay
  * that does not exist.
  *
@@ -148,19 +148,18 @@ type CeilingComparison =
 			/** @see CeilingFailReason */
 			readonly failReason: CeilingFailReason;
 			/**
-			 * WHICH SIDE THE BOUNDARY ITSELF FALLS ON, because the plan's two
-			 * substitutions state it differently and one shared operator cannot be
-			 * right for both.
+			 * WHICH SIDE THE BOUNDARY ITSELF FALLS ON, because the two substitutions
+			 * state it differently and one shared operator cannot be right for both.
 			 *
-			 *  - `inclusive_pass` — the plan says gate 1 allows "AT MOST 1.5x the
-			 *    cell's own trailing rate", so exactly 1.5x PASSES (`own <= k*base`).
-			 *  - `inclusive_fail` — the plan says gate 3's unsubscribe proxy breaches
+			 *  - `inclusive_pass` — gate 1 allows "AT MOST 1.5x the cell's own
+			 *    trailing rate", so exactly 1.5x PASSES (`own <= k*base`).
+			 *  - `inclusive_fail` — gate 3's unsubscribe proxy breaches
 			 *    "AT OR ABOVE 3x the trailing baseline", so exactly 3.0x FAILS
 			 *    (`own < k*base` to pass).
 			 *
 			 * Stated on the comparison rather than left to whichever operator the
 			 * cascade happens to use: a single `<=` shared by both would silently
-			 * move one of the plan's two thresholds by one send.
+			 * move one of the two thresholds by one send.
 			 */
 			readonly boundary: 'inclusive_pass' | 'inclusive_fail';
 	  };
@@ -183,7 +182,7 @@ export function ceilingGateSpecIsDecidable(
  *   2. Own arm over the absolute ceiling -> fail, EVEN IF the reference arm is
  *      thin or absent. A 20% hard-bounce rate on ample own-arm data is real
  *      evidence; making it wait for the relay's sample would be a safety hole,
- *      and plan D2 forbids an external account being load-bearing — including
+ *      and an external account may never be load-bearing — including
  *      load-bearing for a RETREAT.
  *   3. Reference arm thin/stale/absent -> insufficient_data. The comparative
  *      half is unmeasurable, so the gate holds rather than passing on half a
@@ -315,7 +314,7 @@ export function evaluateCeilingGate(
 
 /**
  * CAN A RELATIVE CEILING BE COMPUTED FROM THIS SERIES, AND CAN THE RESULT FAIL
- * ANYTHING? Two ways it cannot, and both must HOLD rather than decide (plan D10).
+ * ANYTHING? Two ways it cannot, and both must HOLD rather than decide.
  *
  * 1. A ZERO SECOND RATE IS A DIVISION BY ZERO WEARING A MULTIPLICATION'S CLOTHES.
  *    `safeRate(0)` is a perfectly good rate and `armEvidence` only counts SENDS,

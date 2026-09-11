@@ -1,5 +1,5 @@
 /**
- * The dual-transport alignment VOCABULARY (P3-5) — the words the pre-flight
+ * The dual-transport alignment VOCABULARY — the words the pre-flight
  * speaks, with no logic that decides anything.
  *
  * Types, the four check ids, the DNS-observation union, the operator-facing remedy
@@ -34,7 +34,7 @@ export type AlignmentVerdict = 'aligned' | 'single_arm' | 'blocked' | 'unknown';
 export const ALIGNMENT_RECHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const ALIGNMENT_UNKNOWN_RETRY_MS = 60 * 60 * 1000;
 
-/** Domains re-checked per sweep page, so the cron stays bounded (D16). */
+/** Domains re-checked per sweep page, so the cron stays bounded. */
 export const ALIGNMENT_SWEEP_PAGE_SIZE = 5;
 /** Pages one sweep run walks before handing off to a scheduled continuation. */
 export const ALIGNMENT_SWEEP_MAX_PAGES = 5;
@@ -67,7 +67,7 @@ export interface AlignmentArm {
 
 /**
  * The reference arm additionally declares whether it can carry our VERP return
- * path (P2-3). The own MTA always can, so the flag lives HERE rather than on
+ * path. The own MTA always can, so the flag lives HERE rather than on
  * every arm — a field only one shape can meaningfully answer.
  */
 export interface ReferenceAlignmentArm extends AlignmentArm {
@@ -78,7 +78,7 @@ export interface ReferenceAlignmentArm extends AlignmentArm {
 /**
  * How the second arm stands. Three states, not a boolean:
  *  - `none`    — no reference transport at all. The supported standalone
- *                deployment (D2): nothing to align, the gate opens.
+ *                deployment: nothing to align, the gate opens.
  *  - `unknown` — a relay IS configured but we cannot describe its signing
  *                identity. HOLD; never laundered into `none`.
  *  - `arm`     — the relay's identity is known and can be checked.
@@ -90,7 +90,7 @@ export type ReferenceArmInput =
 
 /**
  * The opening of the `unknown` detail written when MORE THAN ONE relay is
- * enabled — plan D8's "keep the reference relay singular" rule.
+ * enabled — the "keep the reference relay singular" rule.
  *
  * The two `unknown` branches want opposite remedies: one relay we cannot
  * describe means "verify it", several relays means "there is no single second
@@ -101,7 +101,7 @@ export type ReferenceArmInput =
  */
 export const MULTI_RELAY_DETAIL_PREFIX = 'More than one relay is enabled';
 
-/** True when an `unknown` reference detail is D8's multi-relay case. */
+/** True when an `unknown` reference detail is the multi-relay case. */
 export function isMultiRelayDetail(detail: string): boolean {
 	return detail.startsWith(MULTI_RELAY_DETAIL_PREFIX);
 }

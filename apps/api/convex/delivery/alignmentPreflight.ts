@@ -1,14 +1,14 @@
 /**
- * Dual-transport alignment pre-flight — state half (P3-5).
+ * Dual-transport alignment pre-flight — state half.
  *
  * Reads the sending domains that are due for a re-check, assembles each one's
  * two ARMS from the SHIPPED surfaces — the `domains` identity tables, the
  * `providerRoutes` transport configuration and `MTA_IP_POOLS` (no new credential
- * model, D4) — and persists the verdict the pure evaluator produced. The live
- * DNS half lives in `alignmentPreflightGather.ts` because it needs the Node
- * runtime, where Convex forbids queries and mutations.
+ * model) — and persists the verdict the pure evaluator produced. The live DNS
+ * half lives in `alignmentPreflightGather.ts` because it needs the Node runtime,
+ * where Convex forbids queries and mutations.
  *
- * D2: a deployment with NO reference transport has no second arm. That is a
+ * A DEPLOYMENT WITH NO REFERENCE TRANSPORT HAS NO SECOND ARM. That is a
  * SUPPORTED CONFIGURATION, and the sweep does nothing at all for it: `buildTarget`
  * returns null, no DNS is gathered and no verdict row is written. The gate opens
  * anyway, because it answers "is there a second arm?" from the LIVE transport
@@ -93,7 +93,7 @@ function ownSpfMechanisms(): string[] {
 function undescribableRelayDetail(domain: string, relayKinds: readonly string[]): string {
 	if (relayKinds.length > 1) {
 		// The prefix is shared (`MULTI_RELAY_DETAIL_PREFIX`) because the operator
-		// screens classify the two `unknown` branches from this sentence — D8's
+		// screens classify the two `unknown` branches from this sentence, and the
 		// "keep the reference relay singular" warning is the multi-relay one.
 		return `${MULTI_RELAY_DETAIL_PREFIX} (${relayKinds.join(', ')}), so there is no single second arm for ${domain} to be compared against.`;
 	}
@@ -101,23 +101,22 @@ function undescribableRelayDetail(domain: string, relayKinds: readonly string[])
 }
 
 /**
- * The second arm. `none` is the standalone deployment (D2). `unknown` is a relay
+ * The second arm. `none` is the standalone deployment. `unknown` is a relay
  * we cannot describe — one we have no verified signing identity for, or more
  * than one at once — and it HOLDS rather than opening the gate.
  *
- * REGISTRY-DRIVEN since P3.1. This used to read
- * `relayKinds[0] === 'ses' && sesIdentity !== null`, which quietly made "a
- * describable second arm" mean "is SES": a deployment migrating from Mandrill —
- * the exact configuration the ramp exists to serve (D8) — reported `unknown`
- * forever and could never leave s=0, however verified its relay was. The
- * question is now put to the sending-domain provider for the relay's kind
- * (`describeReferenceArm`), so a provider ships its own arm the same way it
- * ships its own relay proof, and this file holds only the two rules that are
- * NOT per-provider:
+ * REGISTRY-DRIVEN. A narrower read of `relayKinds[0] === 'ses' && sesIdentity
+ * !== null` would quietly make "a describable second arm" mean "is SES": a
+ * deployment migrating from Mandrill — the exact configuration the ramp exists
+ * to serve — would report `unknown` forever and could never leave s=0, however
+ * verified its relay was. The question is instead put to the sending-domain
+ * provider for the relay's kind (`describeReferenceArm`), so a provider ships
+ * its own arm the same way it ships its own relay proof, and this file holds
+ * only the two rules that are NOT per-provider:
  *
  *  - exactly ONE relay, or there is no single second arm to compare against
  *    (unchanged — the multi-relay case still reports `unknown` with its own
- *    remedy, which is what D8's "keep the relay singular" warning reads);
+ *    remedy, which is what the "keep the relay singular" warning reads);
  *  - a kind with no registered provider, or a provider that cannot describe
  *    this domain, is `unknown` — never `none`.
  */
@@ -147,7 +146,7 @@ async function referenceFor(
  *    an operator could do about a "no DKIM key published" verdict. Recording
  *    `blocked` for it would manufacture a permanent, unactionable error state for
  *    a supported configuration.
- *  - A domain with NO reference transport (D2) has no second arm. The evaluator
+ *  - A domain with NO reference transport has no second arm. The evaluator
  *    short-circuits that case without reading a single DNS fact, and the gate
  *    answers it from the live transport surface rather than from a row, so
  *    gathering DNS and writing a `single_arm` row would be three live TXT lookups
@@ -290,7 +289,7 @@ export const recordAlignmentResult = internalMutation({
 
 /**
  * The two ARMS for one sending domain, for the transport connection wizard's
- * live alignment step (P2-4).
+ * live alignment step.
  *
  * The wizard runs the SHIPPED pure evaluator in the browser against live DNS
  * (DNS-over-HTTPS — Convex queries cannot resolve DNS), so it needs the same
@@ -309,7 +308,7 @@ export const recordAlignmentResult = internalMutation({
  * mechanisms are all published DNS facts. No credential, sealed or otherwise,
  * is read or returned.
  *
- * D2: a domain with no reference transport returns `{ kind: 'none' }` — the
+ * A domain with no reference transport returns `{ kind: 'none' }` — the
  * evaluator turns that into a `single_arm` PASS, so a standalone deployment
  * walks the wizard cleanly instead of meeting an error.
  */
@@ -352,7 +351,7 @@ export const getAlignmentArms = authedQuery({
  * Readiness-card view of the alignment pre-flight, consumed by the delivery
  * readiness panel (`apps/web/app/utils/deliveryReadiness.ts`). A standalone
  * domain has no row here at all, so it contributes nothing to the card — the
- * panel renders a gate only when a reference transport is really in play (D2).
+ * panel renders a gate only when a reference transport is really in play.
  * A leftover `single_arm` row (written before the sweep stopped producing them)
  * is reported as a PASS with plain copy — never a warning, never a nag.
  */

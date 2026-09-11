@@ -15,8 +15,8 @@
  *
  * Crypto + the plaintext-key path live in the sibling `'use node'` file
  * `aiProviderConfigActions.ts` (saveConfig / testConnection). Env `LLM_*`
- * remains the deployment fallback; a present row wins (resolution is a later
- * plan piece — this piece is storage + surface only).
+ * remains the deployment fallback; a present row wins. Storage + surface only:
+ * resolution lives elsewhere.
  */
 
 import { v } from 'convex/values';

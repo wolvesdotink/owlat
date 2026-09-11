@@ -83,7 +83,7 @@ export interface PreflightOptions {
 /**
  * One sentence describing a multi-day capacity schedule. All three refusal
  * messages open the same way; only the tail differs, and each tail says exactly
- * as much as the plan actually knows (D14 — say the quiet part):
+ * as much as the plan actually knows (say the quiet part):
  *
  *  - `truncated` — the enumeration stopped at `MAX_PLAN_DAYS` with recipients
  *    still unscheduled, so the real finish is later than any number the plan
@@ -207,7 +207,7 @@ export async function validateReadyToSend(
 		};
 	}
 
-	// Curated-sender gate (2026-07-10 plan, decision 8). The from-address must be
+	// Curated-sender gate. The from-address must be
 	// an ENABLED campaign sender, OR custom senders must be allowed org-wide. The
 	// verified-domain check above stays the floor for BOTH branches, so a custom
 	// sender still cannot spoof an unverified domain.
@@ -231,7 +231,7 @@ export async function validateReadyToSend(
 		}
 	}
 
-	// BINDING capacity check (deliverability plan rev 3, P0-5) — added LAST so
+	// BINDING capacity check — added LAST so
 	// every shipped check keeps its first-failure surface. A warming deployment
 	// with no relay to overflow to can otherwise start a campaign whose tail
 	// silently expires in the MTA queue. When capacity cannot be measured the

@@ -1,5 +1,5 @@
 /**
- * The `deferred` transport outcome — gate 2's numerator (plan D5, D10).
+ * The `deferred` transport outcome — gate 2's numerator.
  *
  * Gate 2 is the ramp's fast signal: the own arm's deferral rate against a 10%
  * ceiling, with 25% an immediate halt (`ramp/gates.ts`), and the phase-promotion
@@ -65,7 +65,7 @@
  * tomorrow's evidence and counts again.
  *
  * FAIL-SOFT, like every other outcome write: a send with no `sendAssignments`
- * row records nothing (the seed-probe seam, plan D18), and the counter bump
+ * row records nothing (the seed-probe seam), and the counter bump
  * itself is scheduled off this mutation by the effect runner into
  * `analytics.transportOutcomes.recordOutcomeForSend`, which degrades its own
  * failure to a warning rather than rolling back the retry it describes.
@@ -182,12 +182,12 @@ type RecordRelayDeferralResult = RecordDeferralOutcomeResult | 'send_not_found';
 
 /**
  * THE SECOND WRITER the module docstring said there could be: a deferral a
- * RELAY reports back over its webhook (Mandrill `deferral`, plan D10).
+ * RELAY reports back over its webhook (Mandrill `deferral`).
  *
  * The docstring above names this half explicitly and says it is uninstrumented:
  * "A remote 4xx AFTER the MTA has accepted the message for delivery never comes
  * back through this path at all." For the reference arm it does come back — the
- * relay is the one holding the message and it tells us so — and D10 puts it in
+ * relay is the one holding the message and it tells us so — so it belongs in
  * `transportOutcomes.deferred` for that arm, which is what this mutation does.
  *
  * WHY THE `queued` GUARD IS ABSENT, and this is the whole difference between the
@@ -203,9 +203,9 @@ type RecordRelayDeferralResult = RecordDeferralOutcomeResult | 'send_not_found';
  * WHAT THAT LEAVES OPEN, said plainly rather than buried: the two arms now write
  * this counter from different points on the delivery path — ours before remote
  * acceptance, the relay's after it — so gate 2 compares two arms on rulers that
- * are not yet proven identical. P2.3 (ramp-signal verification) owns that
- * question; `hasDeferralTelemetry` on `RampGateEvaluationInput` is where a
- * decision to distrust the comparison would land.
+ * are not yet proven identical. Ramp-signal verification owns that question;
+ * `hasDeferralTelemetry` on `RampGateEvaluationInput` is where a decision to
+ * distrust the comparison would land.
  *
  * FAIL-SOFT like its sibling: an unknown provider message id (a send purged, or
  * an event for a message this deployment never sent) records nothing and says so

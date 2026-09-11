@@ -297,7 +297,7 @@ const registrationSettled = computed(
 						@dmarc-change="emit('dmarcChange', $event)"
 					/>
 
-					<!-- Per-STREAM sending subdomains (G-14): the proposed layout, the
+					<!-- Per-STREAM sending subdomains: the proposed layout, the
 					     reputation-inheritance advice and every record for it in one pass. -->
 					<DomainsStreamSubdomainPlanPanel
 						v-if="registrationSettled"

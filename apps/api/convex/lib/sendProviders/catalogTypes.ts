@@ -2,10 +2,10 @@
  * Send-provider catalog — the backend half of the DECLARATION vocabulary.
  *
  * THE VOCABULARY ITSELF MOVED to `packages/shared/src/sendProviderCatalogTypes.ts`
- * with the entries it describes (the seams plan's P1.1 / D1: "one capability
- * catalog, in packages/shared, and everything derives from it"), so web,
- * setup-cli and docs generation read the same declaration instead of restating
- * it. Every name it exports is re-exported below, unchanged.
+ * with the entries it describes ("one capability catalog, in packages/shared, and
+ * everything derives from it"), so web, setup-cli and docs generation read the
+ * same declaration instead of restating it. Every name it exports is re-exported
+ * below, unchanged.
  *
  * WHAT STAYS HERE is the part that cannot live in a leaf package: the plugin
  * tier's types come from `@owlat/plugin-kit`, which `packages/shared` does not
@@ -59,7 +59,7 @@ export type SendProviderCatalogEntry = SendProviderCatalogEntryShape & {
 	readonly pluginId?: PluginId;
 	readonly requiredCapability?: 'send:transport';
 	/**
-	 * THE THIRD PLUGIN-TIER FIELD (the seams plan's P3.1): the variables this
+	 * THE THIRD PLUGIN-TIER FIELD: the variables this
 	 * transport's own configuration lives in, which the host resolves PER INSTANCE
 	 * and hands to the plugin's module.
 	 *

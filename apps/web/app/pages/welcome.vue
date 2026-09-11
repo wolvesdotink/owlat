@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 
 /**
- * First-login welcome screen (piece c1).
+ * First-login welcome screen.
  *
  * A brand-new member is routed here once by the `first-login` middleware. The
  * screen adapts to the instance mode:

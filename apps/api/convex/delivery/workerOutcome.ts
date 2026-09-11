@@ -72,7 +72,7 @@ const deferredArm = v.object({
 });
 
 /**
- * ACCEPTANCE IS OPEN AND CAN BE RE-ASKED (plan D4).
+ * ACCEPTANCE IS OPEN AND CAN BE RE-ASKED.
  *
  * A transport that takes custody under an idempotency key we minted answers the
  * same question twice without mailing anyone twice: its idempotency key IS the
@@ -91,7 +91,7 @@ const acceptanceUnknownArm = v.object({
 });
 
 /**
- * ACCEPTANCE IS OPEN AND CANNOT BE RE-ASKED (plan D4).
+ * ACCEPTANCE IS OPEN AND CANNOT BE RE-ASKED.
  *
  * A relay that has no idempotency surface — Mandrill's `send-raw` has none —
  * offers no second question. The lost response may sit on top of an ACCEPTED

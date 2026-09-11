@@ -10,8 +10,8 @@ import {
 import { completedOrFailedValidator } from '../lib/convexValidators';
 
 /**
- * Runtime authorization seam for a bundled send transport's FEEDBACK deliveries
- * (the seams plan's D6/P2.2) — the inbound twin of `sendTransportAuthorization`.
+ * Runtime authorization seam for a bundled send transport's FEEDBACK deliveries — the inbound twin
+ * of `sendTransportAuthorization`.
  *
  * WHY IT IS ITS OWN SEAM rather than a reuse of the send one. The question is
  * the same (may this plugin's transport contribution act right now: registered,

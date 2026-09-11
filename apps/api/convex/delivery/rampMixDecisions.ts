@@ -1,5 +1,5 @@
 /**
- * THE RAMP AUDIT TRAIL (plan D12).
+ * THE RAMP AUDIT TRAIL.
  *
  * One `mixDecisions` row for EVERY evaluation, INCLUDING THE NO-OPS. A row only
  * on change would answer "what moved" but never "was the controller even
@@ -7,11 +7,10 @@
  * still for a week. The KPI is that 100% of decisions carry a recorded,
  * human-readable reason, so `message` is a required field, not an optional one.
  *
- * NO READ PATH SHIPS HERE. The delivery dashboard is a later piece and owns the
- * query it needs; a read function with no consumer is a seam with no
- * requirements behind it (plan D20), and the unscoped version this file used to
- * carry read a TENANT table without pinning the tenant. The index the dashboard
- * will read through — `by_org_cell_time` — is in the schema and is exercised by
+ * NO READ PATH SHIPS HERE. The delivery dashboard owns the query it needs; a read function
+ * with no consumer is a seam with no requirements behind it, and an unscoped one reads a
+ * TENANT table without pinning the tenant. The index the dashboard will read through —
+ * `by_org_cell_time` — is in the schema and is exercised by
  * `__tests__/mixDecisions.test.ts`.
  *
  * A decision with a NAMED CAUSE — a breached gate or a hard stop — that also
@@ -41,7 +40,7 @@ import {
 } from './ramp/controllerNarrative';
 
 /**
- * Decisions age out with the experiment record they explain (plan D16).
+ * Decisions age out with the experiment record they explain.
  *
  * EXPORTED, because this table has a second writer: an operator action writes a
  * `mixDecisions` row too (`rampControlAudit.ts`), and the horizon is a property
@@ -77,7 +76,7 @@ function rampDecisionSnapshot(
 		// THE SUBSTITUTION TABLE'S CONTRIBUTION, recorded alongside the constants it
 		// produced. Without it a `degradation_ceiling` row states a cap and cannot
 		// say which integration produced it — and the KPI is that 100% of decisions
-		// carry a reason a human can act on (plan D12).
+		// carry a reason a human can act on.
 		degradation: {
 			phaseCeilingCap: input.phaseCeilingCap,
 			absent: input.absentIntegrations,
@@ -129,7 +128,7 @@ function rampDecisionSnapshot(
 /**
  * The pace half of one evaluation, as the audit row records it: the decision,
  * the evidence it was made against, and whether the composition interlock held
- * it back (plan D3, D12).
+ * it back.
  */
 interface RecordedPaceDecision {
 	readonly decision: PaceDecision;
@@ -155,7 +154,7 @@ export async function recordMixDecision(
 ): Promise<void> {
 	const { organizationId, cell, input, decision, pace, at } = args;
 	const message = describeRampDecision(cell, decision);
-	// THE NOTICE COVERS BOTH DIALS (plan D12). A PACE-ONLY RETREAT IS REACHABLE:
+	// THE NOTICE COVERS BOTH DIALS. A PACE-ONLY RETREAT IS REACHABLE:
 	// the two actuators keep separate freeze columns by design, so a share still
 	// inside an earlier gate cooldown returns `frozen` — a hold, and not
 	// notifiable — while the pace dial, whose own freeze has expired, halves and

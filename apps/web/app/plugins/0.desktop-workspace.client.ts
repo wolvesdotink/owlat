@@ -48,7 +48,7 @@ export default defineNuxtPlugin({
 		// location assignment (a cold re-boot). Desktop-only — never touches web.
 		window.__NUXT_ROUTER__ = nuxtApp['$router'] as Router;
 
-		// Perceived-instant switch (piece d4): if we arrived here via a workspace
+		// Perceived-instant switch: if we arrived here via a workspace
 		// switch, re-paint its skeleton FIRST — before Nuxt mounts — so the reload
 		// replaces like with like instead of flashing bg-base. A stale flag (reload
 		// that never landed within the TTL) is discarded rather than shown. The

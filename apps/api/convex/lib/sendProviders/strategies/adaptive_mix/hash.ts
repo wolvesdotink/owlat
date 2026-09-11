@@ -1,5 +1,5 @@
 /**
- * The mix hash — the deterministic per-recipient bucket function (plan D7).
+ * The mix hash — the deterministic per-recipient bucket function.
  *
  * Requirements, in the order they matter:
  *
@@ -27,7 +27,7 @@
  * would otherwise notice that "contacts created in the same second land in the
  * same arm". Keying it with a secret would make the buckets unreproducible
  * from the recorded assignment rows, which is a worse trade for a measurement
- * system whose whole job is to be auditable (D12).
+ * system whose whole job is to be auditable.
  */
 
 /**

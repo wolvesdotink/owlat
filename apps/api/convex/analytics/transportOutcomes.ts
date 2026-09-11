@@ -1,14 +1,13 @@
 /**
- * Transport outcomes — per-cell, per-arm rolling counters (plan D5, ADR-0042).
+ * Transport outcomes — per-cell, per-arm rolling counters (ADR-0042).
  *
  * The shipped delivery stack measures ACCEPTANCE: a transport took the message,
  * so the send is a success. A message Gmail accepts and files into Spam is
- * therefore indistinguishable from one that landed in the inbox (plan G-05).
- * This module is the counter half of the fix: it records what actually HAPPENED
- * to a message — delivered, deferred, bounced, complained, opened, clicked —
- * against the CELL and the ARM the recipient was assigned to, so the ramp
- * controller can compare "our own MTA" with "the reference transport" instead of
- * comparing nothing.
+ * therefore indistinguishable from one that landed in the inbox. This module is
+ * the counter half of the fix: it records what actually HAPPENED to a message —
+ * delivered, deferred, bounced, complained, opened, clicked — against the CELL
+ * and the ARM the recipient was assigned to, so the ramp controller can compare
+ * "our own MTA" with "the reference transport" instead of comparing nothing.
  *
  * The shape is copied from `analytics/sendingReputation.ts` on purpose:
  *
@@ -47,11 +46,11 @@
  * It is still ONE writer; what differs is who supplies the send id.
  *
  * WHAT IS EXCLUDED: anything with no `sendAssignments` row records NOTHING. That
- * is the seam seed shadow copies rely on (plan D18 — a seed probe is a shadow
- * copy through the identical composer and transport, NOT audience membership, so
- * it never gets an assignment row and can never enter a denominator here).
- * Transactional `test` sends are excluded one layer up, by the lifecycle's
- * existing `withoutTestSendEffects`.
+ * is the seam seed shadow copies rely on (a seed probe is a shadow copy through
+ * the identical composer and transport, NOT audience membership, so it never
+ * gets an assignment row and can never enter a denominator here). Transactional
+ * `test` sends are excluded one layer up, by the lifecycle's existing
+ * `withoutTestSendEffects`.
  */
 
 import { v } from 'convex/values';
@@ -286,10 +285,9 @@ type RecordTransportOutcomeResult =
  * The lifecycle entry point: learn (cell, arm, isCalibration) by joining the
  * send to its `sendAssignments` row, then bump one shard.
  *
- * FAIL-SOFT BY CONSTRUCTION. A send with no assignment row — a seed shadow copy
- * (plan D18), a send enqueued before this pipeline existed, a recipient whose
- * cell could not be named — records NOTHING and returns a reason. Measurement
- * degrades; delivery never does.
+ * FAIL-SOFT BY CONSTRUCTION. A send with no assignment row — a seed shadow copy, a send enqueued
+ * before this pipeline existed, a recipient whose cell could not be named — records NOTHING and
+ * returns a reason. Measurement degrades; delivery never does.
  */
 export async function recordTransportOutcomeForSend(
 	ctx: MutationCtx,

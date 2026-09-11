@@ -331,7 +331,7 @@ export async function main() {
 	await worker.run();
 	logger.info('GroupMQ worker started');
 
-	// ── Graceful shutdown (P5.3) ──
+	// ── Graceful shutdown ──
 	//
 	// Matches stop_grace_period: 45s in the compose templates — we target
 	// a 40s drain so Docker's SIGKILL never fires. Idempotent: a second

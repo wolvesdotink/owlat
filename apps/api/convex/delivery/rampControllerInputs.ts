@@ -1,5 +1,5 @@
 /**
- * THE RAMP CONTROLLER'S READ HALF (plan D15).
+ * THE RAMP CONTROLLER'S READ HALF.
  *
  * `rampControllerCron.ts` is the shell that DECIDES and WRITES; this module is
  * everything it READS. Splitting on that line keeps both halves under the
@@ -23,7 +23,7 @@
  * needs a database handle. Keeping it outside means the guard stays at full
  * strength and "is delivery/ramp/ pure?" stays a question with a yes/no answer.
  *
- * ABSENCE IS A SUPPORTED CONFIGURATION (plan D2). No organization, no warming
+ * ABSENCE IS A SUPPORTED CONFIGURATION. No organization, no warming
  * state, no reference transport, no seed mailboxes: every one of those makes the
  * controller measure less and move slower. None of them makes it throw.
  */
@@ -97,7 +97,7 @@ function ownHistorySince(now: number): number {
  * The deployment's tenant, through the SAME resolver every other org-scoped
  * background writer uses (`analytics/transportOutcomes.ts` does exactly this).
  * A cron must never be able to fail on an auth lookup, so a throw is read as
- * "no organization yet" — a supported configuration, not an error (plan D2).
+ * "no organization yet" — a supported configuration, not an error.
  */
 export async function resolveRampOrganizationId(ctx: MutationCtx): Promise<string | null> {
 	try {
@@ -110,7 +110,7 @@ export async function resolveRampOrganizationId(ctx: MutationCtx): Promise<strin
 /**
  * A cell the ramp MANAGES: a per-stream route-state row that carries a stored
  * share. A row without one is governed entirely by the shipped boolean plus
- * hysteresis, and the controller leaves it alone (plan D1).
+ * hysteresis, and the controller leaves it alone.
  */
 type ManagedRouteState = Doc<'deliverabilityRouteStates'> & { readonly ownShare: number };
 
@@ -157,8 +157,8 @@ function readMixState(row: ManagedRouteState): RampMixState {
  * cell is still governed entirely by the shipped boolean + hysteresis on the
  * stream-less row. The controller does not seed a share here — seeding is the
  * transport-connection flow's act, and a controller that invented one would
- * change shipped routing on a deployment that never opted into the ramp (D1:
- * no behaviour change until the controller starts writing shares).
+ * change shipped routing on a deployment that never opted into the ramp (no
+ * behaviour change until the controller starts writing shares).
  */
 export async function loadCellInput(
 	ctx: MutationCtx,
@@ -177,11 +177,11 @@ export async function loadCellInput(
 		 * bound is deployment-level by derivation (see `rampCapacityInputs.ts`), so
 		 * reading it per cell would be the same index reads repeated once per cell
 		 * — and a slice with no ramp-managed cell in it (the normal state during
-		 * rollout, plan D1) must not pay for a reading no cell will consume, which
-		 * is why it is a thunk rather than a value. It is handed to
-		 * `capacityInputForCell` UNRESOLVED, so a slice of cells the campaign pool
-		 * does not govern — the stream-major cursor produces exactly such slices —
-		 * does not resolve it either.
+		 * rollout) must not pay for a reading no cell will consume, which is why it
+		 * is a thunk rather than a value. It is handed to `capacityInputForCell`
+		 * UNRESOLVED, so a slice of cells the campaign pool does not govern — the
+		 * stream-major cursor produces exactly such slices — does not resolve it
+		 * either.
 		 */
 		capacity: () => Promise<RampCapacityContext>;
 		/**
@@ -206,12 +206,12 @@ export async function loadCellInput(
 		isKillSwitchEngaged: boolean;
 		isSendingPermitted: boolean;
 		/**
-		 * THE PER-STREAM PRESETS (P3-6), read ONCE for the whole tick: at most three
+		 * THE PER-STREAM PRESETS, read ONCE for the whole tick: at most three
 		 * rows, shared by every cell in the slice. `balanced` is the identity, so a
 		 * deployment with no preset rows runs the shipped constants unchanged.
 		 */
 		presets: RampPresetsByStream;
-		/** The deployment default when a stream has no preset row (plan D14). */
+		/** The deployment default when a stream has no preset row. */
 		presetFallback: RampPreset;
 		now: number;
 	}
@@ -221,7 +221,7 @@ export async function loadCellInput(
 	/**
 	 * THE CELL'S SUBSTITUTION RESOLUTION, returned rather than re-derived by the
 	 * caller. The cron needs exactly one field off it — `actuator`, which dial
-	 * this cell drives (plan D3) — and resolving it a second time up there would
+	 * this cell drives — and resolving it a second time up there would
 	 * be a second read of the table, free to disagree with the constants this
 	 * input was actually built from.
 	 */
@@ -291,7 +291,7 @@ export async function loadCellInput(
 
 	// The reference arm is ABSENT, not empty, when nothing was sent through it:
 	// an empty summary would read as "the relay engaged 0% of its recipients"
-	// and fail a ratio the deployment never opted into (plan D2).
+	// and fail a ratio the deployment never opted into.
 	const referenceArm = reference.sent > 0 ? reference : null;
 	const engagement = evaluateEngagementGate({
 		cell,
@@ -302,15 +302,15 @@ export async function loadCellInput(
 		now,
 	});
 
-	// THE SUBSTITUTION TABLE CHOOSES EVERYTHING BELOW (plan D3, piece P3-8). Which
-	// evaluator runs, how many clean windows an increase costs, how big a step is,
-	// which complaint line applies and how high the phase ladder may go are all
-	// folded out of `RAMP_DEGRADATION_MATRIX`. There is no `if (no relay)` here or
-	// anywhere else in the controller: a conditional naming an integration would be
-	// a substitution living outside the table, which is the exact failure mode the
+	// THE SUBSTITUTION TABLE CHOOSES EVERYTHING BELOW. Which evaluator runs, how
+	// many clean windows an increase costs, how big a step is, which complaint line
+	// applies and how high the phase ladder may go are all folded out of
+	// `RAMP_DEGRADATION_MATRIX`. There is no `if (no relay)` here or anywhere else
+	// in the controller: a conditional naming an integration would be a
+	// substitution living outside the table, which is the exact failure mode the
 	// table exists to prevent.
 	//
-	// THE OPERATOR'S PRESET AND THE TABLE COMPOSE IN THIS ORDER (plan D9 then D3):
+	// THE OPERATOR'S PRESET AND THE TABLE COMPOSE IN THIS ORDER:
 	// `config` above is the per-stream constant table tuned by the operator's
 	// aggressiveness preset; the table's tightening is applied ON TOP of it here,
 	// LAST, so a missing integration always slows a cell down and an "aggressive"
@@ -334,7 +334,7 @@ export async function loadCellInput(
 		// an integration's presence is read exactly ONCE — by
 		// `resolveRampDegradation` — and every consumer asks the RESOLUTION. A
 		// direct `presence.<id>` read here would be a substitution living outside
-		// the table, which is the one thing this piece exists to prevent (D3).
+		// the table, which is the one thing the resolution exists to prevent.
 		hasComplaintFeedback: !usesUnsubscribeProxy(degradation),
 		// OBSERVED, NEVER CONFIGURED, exactly as integration presence is
 		// (`rampIntegrationPresence.ts` says why), and asked THROUGH THE ONE
@@ -375,7 +375,7 @@ export async function loadCellInput(
 			// `increaseStep` sizes it — so handing it the pre-table config would
 			// leave the substitution reaching the GATE EVALUATION and nothing else,
 			// and the audit snapshot would report constants the tick never used.
-			// This is one config for the whole tick, by construction (plan D3, D12).
+			// This is one config for the whole tick, by construction.
 			config: degradedConfig,
 			mix,
 			// THE CEILING CAP IS THE TABLE'S TOO (the Microsoft cell caps one rung
@@ -384,7 +384,7 @@ export async function loadCellInput(
 			// outage and the cap lifts by itself when the feed returns.
 			phaseCeilingCap: degradedCeilingCap(degradation),
 			// The cap's CAUSE travels with the cap, so the audit row and the operator
-			// sentence can name the integration whose return would lift it (plan D12).
+			// sentence can name the integration whose return would lift it.
 			ceilingCapSource: degradation.ceilingCappedBy,
 			// DOES A PHASE CEILING APPLY TO THIS CELL AT ALL — the fold's answer,
 			// read off the SAME resolution that chose the evaluator, the K_CLEAN and
@@ -394,9 +394,9 @@ export async function loadCellInput(
 			// sender is observed. Encoding "no ceiling" as the ladder's TOP RUNG
 			// instead would hand that cell a ceiling nobody promoted it to, and the
 			// AIMD ladder could then climb through every rung without the promotion
-			// gate ever being consulted (plan D3).
+			// gate ever being consulted.
 			isPhaseLadderBinding: bindsPhaseLadder(degradation),
-			// FOR THE AUDIT ROW ONLY (D12) — the snapshot names the absences behind
+			// FOR THE AUDIT ROW ONLY — the snapshot names the absences behind
 			// the constants this tick used, so a decision can be explained without
 			// re-deriving what the deployment looked like at the time.
 			absentIntegrations: degradation.absent.map((entry) => entry.integration),
@@ -405,7 +405,7 @@ export async function loadCellInput(
 				now,
 			}),
 			evaluation,
-			// THE PREDICTIVE CAPACITY BOUND (P3-3), read ONCE for the tick — lazily,
+			// THE PREDICTIVE CAPACITY BOUND, read ONCE for the tick — lazily,
 			// so an unmanaged slice never pays for it — and specialised here with this
 			// cell's own trailing evidence for the audit row. The shortfall is
 			// measured against the STORED share, which makes it a LAGGING indicator

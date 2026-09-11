@@ -32,10 +32,10 @@ interface RampControlTarget {
 /**
  * WHICH DIAL IS THIS CELL'S RAMP — the tick's own answer to its own question.
  *
- * `bindsPhaseLadder` is `actuator === 'share'`, read off the same substitution
- * resolution that chooses the cell's evaluator, its K_CLEAN and its ceiling cap
- * (plan D3). What the audit row TELLS an operator depends on it, and a control
- * that named the dial the controller is NOT climbing would be read back for ever.
+ * `bindsPhaseLadder` is `actuator === 'share'`, read off the same substitution resolution that
+ * chooses the cell's evaluator, its K_CLEAN and its ceiling cap. What the audit row TELLS an
+ * operator depends on it, and a control that named the dial the controller is NOT climbing would be
+ * read back for ever.
  *
  * DELIBERATELY NOT `hasSecondSender`, which is what the two phase doors cut on.
  * That union also counts a relay that is CONFIGURED but carried nothing this

@@ -38,8 +38,8 @@ export type ViewerRole = 'admin' | 'member';
 /**
  * Which backend records a single "dismiss" action must clear. Because the card
  * can show admin (instance-scoped) and personal (per-user) steps at once, a
- * dismiss has to cover whatever is currently on screen — that is the "one
- * coherent dismissal model" the plan calls for.
+ * dismiss has to cover whatever is currently on screen, so there is one
+ * coherent dismissal model.
  * - `instance` — only the instance go-live steps are showing.
  * - `user` — only the personal steps are showing.
  * - `both` — an admin sees both sections; dismiss clears both records.
@@ -271,7 +271,7 @@ export const SEND_BLOCKED_REASON = 'shared.gettingStarted.sendBlockedReason';
  * rather than as a pre-flight refusal after the operator has built a campaign
  * for an audience today's capacity cannot carry. `null` is "not measured, or no
  * cap applies", and then the step says nothing extra: an invented number beside
- * a checklist item is worse than no number (deliverability plan D14).
+ * a checklist item is worse than no number.
  *
  * WHY THIS IS NOT `sendReadinessNote`. That helper (`~/lib/sendReadiness`)
  * builds the same measurement into a two-line NOTE — a heading and a detail —

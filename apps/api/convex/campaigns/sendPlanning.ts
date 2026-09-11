@@ -282,7 +282,7 @@ export interface RecipientBucket<T> {
  * actual recipient at the worker's last pre-attempt boundary, so a
  * custom-domain MX classification cannot misroute a whole bucket.
  *
- * ENGAGEMENT ORDER (deliverability plan P0-2/P0-3, P3-7): each day's slice
+ * ENGAGEMENT ORDER: each day's slice
  * should be the best remaining audience — engaged recipients open, and openers
  * are what a receiver reads as a positive signal on a warming IP, so the ideal
  * warming behaviour and the ideal recipient experience are the same order.

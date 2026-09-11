@@ -66,15 +66,15 @@ export const instanceTables = {
 		// derived by `@owlat/shared/mtaStsPolicy`. Admin-gated write via
 		// `settings.update`, served publicly by the `getMtaStsPolicy` query.
 		mtaStsMode: v.optional(mtaStsModeValidator),
-		// Sealed Mail (E3) org-level sealing policy (locked decision D2): `auto`
+		// Sealed Mail org-level sealing policy: `auto`
 		// seals whenever every recipient has a usable pinned key, `ask` defers to
-		// the composer opt-in (E5), `off` never seals. Unset ⇒ `auto`. Admin-gated
+		// the composer opt-in, `off` never seals. Unset ⇒ `auto`. Admin-gated
 		// write via `workspaces/settings.update`.
 		sealPolicy: v.optional(sealPolicyValidator),
 		// Plaintext SMTP is rejected by default with 550 5.7.10. Owners/admins
 		// may explicitly disable the floor for compatibility with legacy senders.
 		isInboundTlsRequired: v.optional(v.boolean()),
-		// DEEP BODY SEARCH (idea 32, ADR-0059). When on, delivery writes a ~8KB
+		// DEEP BODY SEARCH (ADR-0059). When on, delivery writes a ~8KB
 		// normalized excerpt to `mailMessages.searchBody` and mail search reads the
 		// `search_message_bodies` index instead of the 200-character `snippet` one.
 		// That WIDENS the sealed-at-rest plaintext carve-out, so it is opt-in:
@@ -82,7 +82,7 @@ export const instanceTables = {
 		// back to false schedules a sweep that clears every excerpt already
 		// written. Admin-gated write via `workspaces/settings.update`.
 		isBodySearchIndexingEnabled: v.optional(v.boolean()),
-		// Trusted ARC forwarders (Sealed Mail A5): domains whose validated ARC seal
+		// Trusted ARC forwarders: domains whose validated ARC seal
 		// (RFC 8617) we honour to RESCUE a DMARC fail on inbound forwarded mail —
 		// a mailing-list / forwarding message that broke DKIM but whose sealer
 		// attests the original passed skips Spam-routing instead of false-failing.
@@ -90,8 +90,8 @@ export const instanceTables = {
 		// `@owlat/shared/arcTrust`; an explicit `[]` disables the override entirely.
 		// Admin-gated write via `settings.update`, editable in Settings → Delivery.
 		trustedArcForwarders: v.optional(v.array(v.string())),
-		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH (plan P3-2's named mitigation for
-		// controller complexity). When true, every ramp cell is PINNED at its
+		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH — the named mitigation for
+		// controller complexity. When true, every ramp cell is PINNED at its
 		// current share: the hourly controller still evaluates and still audits, so
 		// an operator can watch what it WOULD have done, but it writes no share.
 		// Honoured before every other rule, including the hard stops — a paused
@@ -287,7 +287,7 @@ export const instanceTables = {
 
 	// Pluggable AI providers (bring-your-own-key) — PER-ORG SINGLETON (single-org
 	// per deployment; at most one row). Records the admin's choice of AI backend
-	// across TWO DECOUPLED PLANES (2026-07-10 pluggable-AI-providers plan):
+	// across TWO DECOUPLED PLANES:
 	//
 	//   • LANGUAGE plane (all text generation) — `languageProviderKind` selects a
 	//     registered adapter (hosted OpenAI/Anthropic/Google/OpenRouter via an
@@ -301,12 +301,12 @@ export const instanceTables = {
 	//
 	// SECRETS AT REST: the language key (and optional hosted-embedder key) are
 	// stored ONLY as an AES-256-GCM envelope (secretCiphertext/Iv/AuthTag +
-	// EnvelopeVersion), exactly like `externalMailAccounts`, encrypted in a
-	// `'use node'` action with `lib/credentialCrypto`. All envelope columns are
-	// OPTIONAL — a local provider needs no key. Queries NEVER return the envelope,
-	// only `keyPreview` + a "configured" boolean. Decrypt happens only at call time
+	// EnvelopeVersion), exactly like `externalMailAccounts`, encrypted in a `'use
+	// node'` action with `lib/credentialCrypto`. All envelope columns are OPTIONAL
+	// — a local provider needs no key. Queries NEVER return the envelope, only
+	// `keyPreview` + a "configured" boolean. Decrypt happens only at call time
 	// inside a Node action. Env `LLM_*` remains the deployment fallback when this
-	// row is absent; a present row wins (resolution is a later plan piece).
+	// row is absent; a present row wins.
 	//
 	// `embeddingModelVersion` is the dimension guard: it is bumped whenever the
 	// embedding model/provider changes so stale vectors are never silently mixed

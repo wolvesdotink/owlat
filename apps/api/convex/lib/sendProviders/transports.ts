@@ -15,7 +15,7 @@
  * deliberate, not a compatibility shim: the kind does not disappear, it is one
  * field of the resolved transport record.
  *
- * There is deliberately NO transports table (plan D4). The catalog
+ * There is deliberately NO transports table. The catalog
  * (`./catalog.ts`, fed by `plugins/sendTransportCatalog.generated.ts`) already
  * answers "which transports exist and what config do they need"; a second
  * credential model would be a competing abstraction.
@@ -27,12 +27,12 @@
  * configured" — silently borrowing another transport's credentials would be
  * both a routing and a security regression.
  *
- * Named instances follow the CONFIGURATION, not the tier (the seams plan's D4 —
- * "two relay tiers, one contract"). A kind can have them when it declares
- * variables that are its own and instance-scoped: for a core kind that is every
- * variable it declares, resolved inside the adapter through `transportEnv.ts`;
- * for a plugin kind it is `instanceEnvVars`, which the host resolves under the
- * same `__<INSTANCEKEY>` suffix and hands to the plugin's module.
+ * Named instances follow the CONFIGURATION, not the tier ("two relay tiers, one
+ * contract"). A kind can have them when it declares variables that are its own
+ * and instance-scoped: for a core kind that is every variable it declares,
+ * resolved inside the adapter through `transportEnv.ts`; for a plugin kind it
+ * is `instanceEnvVars`, which the host resolves under the same
+ * `__<INSTANCEKEY>` suffix and hands to the plugin's module.
  *
  * A plugin transport that declares NO configuration of its own is still refused
  * `instances_unsupported`, and for the original reason: its module reads the
@@ -92,10 +92,10 @@ const MAX_TRANSPORT_ID_LENGTH =
  * what is INSTANCE-SPECIFIC, and anything a reader wants about the kind itself
  * is one `sendProviderCatalogEntry(record.kind)` away.
  *
- * The retry schedule is the worked example. It used to be copied onto every
- * record and read by nobody: the dispatch loop drives retries off the resolved
- * MODULE's `retryDelays`, which is the catalog entry's own array in both tiers.
- * A second copy here could only ever have disagreed with it.
+ * The retry schedule is the worked example: it is NOT copied onto the record.
+ * The dispatch loop drives retries off the resolved MODULE's `retryDelays`,
+ * which is the catalog entry's own array in both tiers, and a second copy here
+ * could only ever disagree with it.
  */
 export interface SendTransportRecord {
 	readonly id: SendTransportId;
@@ -152,9 +152,9 @@ export class SendTransportResolutionError extends Error {
  *
  * This is also the instance a GOVERNED send dispatches a resolved provider kind
  * to — which matters because two sites have to agree on it: the last-mile
- * routing pass grades a relay's return-path capability (plan G-08) and the
- * dispatcher sends through it. Both call this function with the resolved kind,
- * so a named relay instance can never be graded on the default instance's probe.
+ * routing pass grades a relay's return-path capability and the dispatcher sends
+ * through it. Both call this function with the resolved kind, so a named relay
+ * instance can never be graded on the default instance's probe.
  */
 export function defaultSendTransportId(kind: SendProviderKind): SendTransportId {
 	return kind;

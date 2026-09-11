@@ -19,7 +19,7 @@ export type EnvKey =
 	| 'BETTER_AUTH_SECRET'
 	| 'INSTANCE_SECRET'
 	// The PREVIOUS INSTANCE_SECRET, set ONLY during a secret rotation window
-	// (Sealed Mail key lifecycle, E6). While set, the E2EE key box opens a sealed
+	// for the Sealed Mail key lifecycle. While set, the E2EE key box opens a sealed
 	// private key under the current secret and, on failure, falls back to this one
 	// — so the vault keeps reading correctly mid-migration while
 	// `e2ee/lifecycleNode.ts:reSealVault` re-seals every row under the new secret.
@@ -110,11 +110,11 @@ export type EnvKey =
 	// Unset ⇒ no `rua=` tag (Owlat does not provision a per-customer
 	// `dmarc@<domain>` mailbox, so reports would otherwise go unread).
 	| 'MTA_DMARC_RUA'
-	// BIMI (P4-7) — OPTIONAL IN EVERY SENSE. The domain wizard offers a BIMI
+	// BIMI — OPTIONAL IN EVERY SENSE. The domain wizard offers a BIMI
 	// record only once the domain's DMARC is at `p=quarantine` or stricter, and
 	// only once a logo is known; unset ⇒ the wizard states that BIMI exists and
 	// what a VMC is, and generates no record. Never a blocked send, never a
-	// blocked promotion, never an unresolvable warning (D2).
+	// blocked promotion, never an unresolvable warning.
 	// HTTPS URL of the SVG Tiny PS brand logo (the `l=` tag).
 	| 'MTA_BIMI_LOGO_URL'
 	// HTTPS URL of the Verified Mark Certificate PEM (the `a=` tag). Gmail and

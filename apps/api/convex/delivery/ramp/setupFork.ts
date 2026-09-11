@@ -1,5 +1,5 @@
 /**
- * THE SETUP FORK (plan D14) — two paths, offered as EQUAL choices.
+ * THE SETUP FORK — two paths, offered as EQUAL choices.
  *
  * "Start on my own server" and "Ramp up safely using an ESP I already pay for"
  * are both first-class ways to run this deployment. The trade-off is stated
@@ -11,7 +11,7 @@
  * invariant is asserted by a fixture instead of resting on nobody adding a
  * badge later.
  *
- * THE FORK NAMES AN ACTUATOR; IT DOES NOT DECIDE ONE (D3). One controller, two
+ * THE FORK NAMES AN ACTUATOR; IT DOES NOT DECIDE ONE. One controller, two
  * actuators, and the path an operator picks is the one they mean to run — but
  * the actuator the controller actually drives is re-resolved on EVERY tick by
  * `resolveRampDegradation`, from reference-arm traffic OBSERVED for that cell,
@@ -108,8 +108,8 @@ export function resolveSetupFork(args: {
 }
 
 /**
- * THE PATH A CELL IS ENROLLED ON, and therefore WHICH SHARE it opens at
- * (D3 x D14). The fork's preselection IS the answer: 'esp_relay' exactly when a
+ * THE PATH A CELL IS ENROLLED ON, and therefore WHICH SHARE it opens at.
+ * The fork's preselection IS the answer: 'esp_relay' exactly when a
  * relay is configured, and no preselection means there is no second sender to
  * move traffic away from — the own-server path, by definition rather than by
  * default.

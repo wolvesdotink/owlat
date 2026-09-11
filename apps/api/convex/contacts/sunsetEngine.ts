@@ -1,12 +1,12 @@
 /**
- * Sunset engine — the ctx-bound half of the sunset policy (deliverability plan
- * P4-4). The decision itself lives in the pure `sunsetPolicy.ts`; this module
- * only LOADS the facts, CALLS the decision, and WRITES the consequence, so the
- * interesting logic stays testable without a database (D15).
+ * Sunset engine — the ctx-bound half of the sunset policy. The decision itself
+ * lives in the pure `sunsetPolicy.ts`; this module only LOADS the facts, CALLS
+ * the decision, and WRITES the consequence, so the interesting logic stays
+ * testable without a database.
  *
  * WHAT IT REUSES RATHER THAN REBUILDS:
  *   - "which activities count as engagement" — `analytics/engagementActivity.ts`
- *     (the P0-2 mapping table). This module derives its literals from that
+ *     (the engagement mapping table). This module derives its literals from that
  *     table BY EXCLUSION, so adding a new positive engagement activity type
  *     reaches the sunset engine automatically and no second definition of
  *     "engaged" exists.
@@ -48,7 +48,7 @@ import {
 
 /**
  * The activity literals that count as the contact ENGAGING with us, derived
- * from the P0-2 mapping table.
+ * from the engagement mapping table.
  *
  * DEFINED BY EXCLUSION, ON PURPOSE. The rule is "every literal the engagement
  * machinery reacts to, except the two NEGATIVE ones", not an allow-list of the

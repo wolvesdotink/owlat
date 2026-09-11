@@ -16,7 +16,7 @@ import { getActiveMailboxForUser } from '../mail/mailbox/identity';
  * Steps are written idempotently from the real product flows via
  * {@link markOnboardingStep} — no polling, no client-driven progress. A user can
  * only ever read or write THEIR OWN row (`requireSelf`); there is no cross-user
- * read path here. The consuming UI (piece c1) subscribes to `get`.
+ * read path here. The consuming UI subscribes to `get`.
  */
 
 /**

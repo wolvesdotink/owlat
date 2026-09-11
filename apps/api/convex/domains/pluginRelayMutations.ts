@@ -1,6 +1,6 @@
 /**
- * The transactional half of a bundled plugin's sending-domain identity (the
- * seams plan's P3.2): persist what a provider call found.
+ * The transactional half of a bundled plugin's sending-domain identity:
+ * persist what a provider call found.
  *
  * Split from `pluginRelay.ts` for the runtime reason every `*Mutations.ts`
  * sibling here is (`mandrillRelayMutations.ts` is the same pair): that file is an

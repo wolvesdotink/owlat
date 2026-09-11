@@ -1,11 +1,11 @@
 /**
  * Mandrill (Mailchimp Transactional) sending domain provider adapter.
  *
- * Owns the Mandrill-side surface of one **Sending domain** — the provider API
- * calls (`registerDomain`, `runProviderCheck`) and the rows this kind keeps in
- * the GENERIC `sendingDomainRelayIdentities` table (Mandrill plan D7: the per-provider
- * sibling pattern stopped at `sendingDomainMtaIdentities` /
- * `sendingDomainSesIdentities`, and Mandrill is the first kind after it).
+ * Owns the Mandrill-side surface of one **Sending domain** — the provider API calls
+ * (`registerDomain`, `runProviderCheck`) and the rows this kind keeps in the GENERIC
+ * `sendingDomainRelayIdentities` table (the per-provider sibling pattern stopped at
+ * `sendingDomainMtaIdentities` / `sendingDomainSesIdentities`, and Mandrill is the
+ * first kind after it).
  *
  * Three things differ from the SES adapter, and each one is a fact about
  * Mandrill rather than a shortcut:
@@ -21,8 +21,7 @@
  *    (`senders/*` is add / check / verify / list), so `deleteFromProvider` is a
  *    documented no-op rather than a best-effort call that would always fail.
  *
- * Per ADR-0018, extended by Mandrill plan D6/D7 (plan numbers in this folder
- * are the Mandrill plan's — qualified in `../index.ts`).
+ * Per ADR-0018.
  */
 
 import { internal } from '../../../_generated/api';
@@ -55,7 +54,7 @@ export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 	 *
 	 * `options.returnPathHost` is ignored, and deliberately: Mandrill mints its
 	 * own bounce local part, so there is no custom MAIL FROM host to reflect or
-	 * publish (D5). `domains.create` already refuses a return-path host for any
+	 * publish. `domains.create` already refuses a return-path host for any
 	 * kind but MTA/SES; this is the quieter second half of the same rule.
 	 */
 	async registerDomain(domain) {
@@ -106,9 +105,8 @@ export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 		return { verified: false, lastError: `Mandrill check error: ${result.error}` };
 	},
 
-	// The relay-verification read seam (Mandrill D6) and the alignment pre-flight's
-	// second arm (Mandrill P3.1) — both pure reads of the identity row; see
-	// `./relayVerification.ts`.
+	// The relay-verification read seam and the alignment pre-flight's second arm —
+	// both pure reads of the identity row; see `./relayVerification.ts`.
 	relayDomainVerified: mandrillRelayDomainVerified,
 	describeReferenceArm: mandrillReferenceArm,
 
@@ -118,11 +116,11 @@ export const mandrillProvider: RelayProvingProviderModule<'mandrill'> = {
 	describeRelayIdentity: mandrillRelayIdentityFacts,
 
 	/**
-	 * The relay-identity backfill for the domains that predate the fallback
-	 * being switched to Mandrill. The existence read is on the GENERIC
-	 * `sendingDomainRelayIdentities` row (Mandrill D7) rather than on a sibling table of
-	 * its own, which is the only thing that differs from the SES adapter's
-	 * implementation of the same contract.
+	 * The relay-identity backfill for the domains that predate the fallback being
+	 * switched to Mandrill. The existence read is on the GENERIC
+	 * `sendingDomainRelayIdentities` row rather than on a sibling table of its own,
+	 * which is the only thing that differs from the SES adapter's implementation of the
+	 * same contract.
 	 *
 	 * The caller hands over the whole domain doc, so the name this table keys on
 	 * is read straight off it — no `resolveDomainName` round-trip per drained

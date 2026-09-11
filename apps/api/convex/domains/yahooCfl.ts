@@ -15,7 +15,7 @@
  * is the liveness proof the re-check reads. One complaint pipeline, three
  * sources — never a second parser.
  *
- * D2 (additive-only third-party rule): every function here tolerates absence.
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE: every function here tolerates absence.
  * No enrollment row means `not_started`, which yields the documented
  * substitution (CFBL feed, else the unsubscribe-rate proxy) with a
  * confidence caveat. Nothing here throws on absence, blocks a send, blocks a
@@ -281,7 +281,7 @@ export const getGuide = authedQuery({
 			// The DERIVED state (`lapsed` included) is the only state reported. The
 			// stored record, the resolved precondition and the domain name are NOT on
 			// the wire: the steps already interpolate the domain and the selector, so
-			// a second copy would be payload with no consumer (D20).
+			// a second copy would be payload with no consumer.
 			state,
 			// How long the feed has actually been silent. The one fact the steps
 			// cannot state for themselves — the lapsed step is written from the
@@ -295,12 +295,12 @@ export const getGuide = authedQuery({
 			// machine refuses, which is a dead control.
 			actions: yahooCflAvailableActions(record, precondition, now),
 			// The yahoo cell's gate-3 source. Always present — absence of an
-			// enrollment substitutes, it never blanks the gate out (D2).
+			// enrollment substitutes, it never blanks the gate out.
 			//
-			// `hasCfblAddress` is resolved SERVER-side and is `false` until P2-7 lands
-			// the RFC 9477 CFBL-Address feed: there is nothing to read yet, and a
+			// `hasCfblAddress` is resolved SERVER-side and is `false` until the RFC
+			// 9477 CFBL-Address feed lands: there is nothing to read yet, and a
 			// client-supplied flag steering the reported confidence and threshold
-			// would be a speculative seam (D20).
+			// would be a speculative seam.
 			complaintSignal: yahooComplaintSubstitution({
 				enrollmentState: state,
 				hasCfblAddress: false,
@@ -352,7 +352,7 @@ export const resetEnrollment = authedMutation({
  * with no second pass, no cron, and no chance of a stale verdict. The write is
  * COALESCED in the pure core (`YAHOO_CFL_REPORT_COALESCE_MS`): complaints arrive
  * in bursts and all of a domain's reports land on ONE row, so patching per report
- * is the single-document OCC contention ADR-0042 was written about (D16).
+ * is the single-document OCC contention ADR-0042 was written about.
  */
 export const observeReport = internalMutation({
 	args: { reportedDomain: v.string(), at: v.number() },

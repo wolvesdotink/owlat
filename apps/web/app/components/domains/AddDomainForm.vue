@@ -19,8 +19,8 @@
  *
  * An "Advanced" disclosure (collapsed by default) adds an optional custom
  * return-path (bounce) subdomain. It composes to a sibling host of the sending
- * name; the value rides the submit payload so the page can set it (via the D2
- * mutation) right after registration, which is when the new domain id exists.
+ * name; the value rides the submit payload so the page can set it right after
+ * registration, which is when the new domain id exists.
  * The return path is a sending-only concern, so the whole disclosure is gated on
  * `context === 'sending'` — the tracking context (no return path) suppresses it.
  */
@@ -64,8 +64,8 @@ const emit = defineEmits<{
 	/**
 	 * The composed domain to register, plus an optional custom return-path
 	 * (bounce) host. The page registers the domain first (create returns the new
-	 * id) and then sets the return-path host via the D2 mutation, which needs
-	 * that id — so both travel together and the page orchestrates.
+	 * id) and then sets the return-path host, which needs that id — so both
+	 * travel together and the page orchestrates.
 	 */
 	submit: [payload: AddDomainSubmitPayload];
 	cancel: [];
@@ -272,7 +272,7 @@ const {
 				</template>
 			</p>
 
-			<!-- Per-STREAM subdomains (G-14). Domain reputation is evaluated per name
+			<!-- Per-STREAM subdomains. Domain reputation is evaluated per name
 			     and does NOT inherit from the root, so one name per kind of mail is
 			     what keeps a bad campaign away from password resets. Said here, in
 			     the wizard, rather than in the docs — and stated as the recommended
