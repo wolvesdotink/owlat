@@ -1,0 +1,13 @@
+{
+  "secret": "fixture-instance-secret-do-not-use-in-production",
+  "scope": {
+    "organizationId": "org_fixture_123",
+    "pluginId": "plugin_fixture_456"
+  },
+  "request": {
+    "prefix": "contacts/",
+    "limit": 50
+  },
+  "nativeCursor": "native-convex-cursor-value-abcdef0123456789",
+  "token": "plugin-storage-cursor.1.tdRrpIYB5K68KRW2.3VGZtNkB3QxzQZFLpf0ljzJ5NXpWj-EZHBdgistPtFNLxbzD2wu3RWadqHGmh0sJuu47WiSOL3TYFAc"
+}

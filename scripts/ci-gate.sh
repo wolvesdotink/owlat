@@ -40,9 +40,9 @@ step bun packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts
 step bunx turbo "${turbo_tasks[@]}" --filter='!@owlat/desktop'
 
 # script-tests is the single vitest boot for scripts/__tests__ — the unit tests
-# for the gate scripts themselves. It used to be five separate `vitest run`
-# prefixes inside five lint:* entries, which booted vitest five times and left
-# two of the eight test files running only in security.yml.
+# for the gate scripts themselves. It used to be a `vitest run <file>` prefix
+# inside each lint:* entry, which booted vitest once per gate and left the
+# test files without a matching lint:* entry running only in security.yml.
 for gate in scripts script-tests deadcode build-graph convex-orphans filesize adr branding format imports providers \
 	ui-buttons tokens member-jargon docker-workspaces deploy-closure installer compose; do
 	step bun run "lint:$gate"

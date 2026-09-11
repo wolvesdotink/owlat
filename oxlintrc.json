@@ -40,9 +40,6 @@
 		"import/no-duplicates": "warn",
 		"unicorn/no-array-for-each": "warn",
 
-		"@typescript-eslint/no-non-null-assertion": "warn",
-		"no-nested-ternary": "warn",
-		"unicorn/no-useless-undefined": "warn",
 		"import/no-cycle": "warn",
 
 		"no-underscore-dangle": "off",
@@ -58,9 +55,7 @@
 			"files": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts", "**/_generated/**"],
 			"rules": {
 				"@typescript-eslint/no-explicit-any": "off",
-				"no-unused-vars": "off",
-				"@typescript-eslint/no-non-null-assertion": "off",
-				"unicorn/no-useless-undefined": "off"
+				"no-unused-vars": "off"
 			}
 		}
 	],
