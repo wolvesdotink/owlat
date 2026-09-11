@@ -5,7 +5,7 @@
  * path: inbound email, channel webhook, bulk import, HTTP API, automation
  * trigger. Behaviour forks on `mode`:
  *
- *   strict — match → throw ALREADY_EXISTS. create otherwise.
+ *   strict — match → throw already_exists. create otherwise.
  *   upsert — match → return matched id, no field update. create otherwise.
  *   merge  — match → patch fields where new value is non-empty
  *            (existing wins for undefined/empty). create otherwise.
