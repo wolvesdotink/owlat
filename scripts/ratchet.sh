@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# The one ratchet runner. Nine baselines in this repo (dead code, file size,
+# The one ratchet runner. Seven baselines in this repo (dead code, file size,
 # shared production exports, query authz, session threading, boolean naming,
-# token redaction, …) all want the SAME comparison, and each check script used
+# token redaction) all want the SAME comparison, and each check script used
 # to carry its own copy of it — same `comm -23` / `comm -13` pair, same
 # `--write-baseline`, same off-by-one traps, drifting in the details (three of
 # them forgot LC_ALL=C, three had no missing-baseline guard, four had no

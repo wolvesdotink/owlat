@@ -129,7 +129,7 @@ runs `ci:verify` locally.
 
 ### Writing a baseline ratchet
 
-Seven gates share one comparison. A check script owns a *generator* — the walk
+Seven gates share one comparison. A check script owns a _generator_ — the walk
 that prints today's violation set, one entry per line — and hands the rest to
 `scripts/ratchet.sh`, which compares that set against the frozen baseline,
 strict in both directions, and prints the wording the check passes in as flags:
