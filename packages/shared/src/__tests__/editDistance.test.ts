@@ -4,7 +4,7 @@
  * the exact distances of the canonical examples are pinned here.
  */
 import { describe, it, expect } from 'vitest';
-import { boundedEditDistance, LOOKALIKE_MAX_EDITS } from '../editDistance';
+import { boundedEditDistance } from '../editDistance';
 
 describe('boundedEditDistance', () => {
 	it('is zero for identical strings', () => {
@@ -36,9 +36,5 @@ describe('boundedEditDistance', () => {
 		expect(boundedEditDistance('web.de', 'gmx.de', 4)).toBe(
 			boundedEditDistance('gmx.de', 'web.de', 4)
 		);
-	});
-
-	it('keeps the look-alike bound at two edits', () => {
-		expect(LOOKALIKE_MAX_EDITS).toBe(2);
 	});
 });

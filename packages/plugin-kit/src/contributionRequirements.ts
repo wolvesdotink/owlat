@@ -45,8 +45,7 @@ import { PLUGIN_WEBHOOK_EVENT_CAPABILITY } from './webhookEvent';
  * `PLUGIN_DISPATCHED_/UNDISPATCHED_CONTRIBUTION_KINDS` are DERIVED from the
  * halves (`bucketDispatch`), so a bucket counts as wired only when every half of
  * it is. The row's own `dispatch` survives because the published Contribution
- * Reference splits its bucket tables by it (`apps/docs/__tests__/pluginDocs.test.ts`
- * reads this literal out of the source), and `contributionRequirements.test.ts`
+ * Reference splits its bucket tables by it, and `contributionRequirements.test.ts`
  * asserts the two agree — so a row cannot tell the docs one story and the
  * reachability gate another.
  */
