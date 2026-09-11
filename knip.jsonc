@@ -95,6 +95,14 @@
 				"@nuxtjs/seo",
 				"nuxt-security",
 				"tailwindcss",
+				// Convention consumers knip cannot trace, not debt: @nuxt/icon loads
+				// the `@iconify-json/<set>` collection behind every `i-lucide-*`
+				// name (500+ files); `@owlat/email-previewer` is consumed only via
+				// the nuxt.config `css:` array; `nuxt typecheck` shells out to
+				// vue-tsc.
+				"@iconify-json/lucide",
+				"@owlat/email-previewer",
+				"vue-tsc",
 			],
 			"playwright": { "config": ["e2e/playwright.config.ts"] },
 			// See the includeEntryExports note at the bottom of this file.
@@ -115,6 +123,9 @@
 				"@nuxtjs/seo",
 				"nuxt-security",
 				"tailwindcss",
+				// nuxt-og-image's optional renderer peer; auto-detected when
+				// installed, so nothing in the source graph imports it.
+				"@takumi-rs/core",
 			],
 			"entry": ["content.config.ts", "app/**/*.{vue,ts}", "__tests__/**/*.ts", "i18n/**/*.ts"],
 			"includeEntryExports": false,
@@ -130,6 +141,9 @@
 				"@nuxtjs/seo",
 				"nuxt-security",
 				"tailwindcss",
+				// See apps/docs (renderer peer) and apps/web (nuxt typecheck).
+				"@takumi-rs/core",
+				"vue-tsc",
 			],
 			"entry": ["app/**/*.{vue,ts}", "i18n/**/*.ts"],
 			"includeEntryExports": false,
@@ -265,6 +279,17 @@
 			],
 		},
 		"packages/channels": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		// Known knip false positives that live in the baseline:
+		// packages/shared/src/types/blocks.ts UniversalPadding + UniversalMargin.
+		// src/types/controls.ts here re-exports them under aliases (`as Padding`,
+		// `as Margin`) and src/types/index.ts re-exports both spellings; knip's
+		// reference walk (graph-explorer/operations/is-referenced.js) keys its
+		// visited set by file path only, so the alias branch marks types/index.ts
+		// seen and the direct branch — where defaults/index.ts and
+		// utils/blocks.ts really import them — is never checked. Verified with
+		// `knip --trace-export UniversalPadding --trace-file
+		// packages/shared/src/types/blocks.ts` (2026-09-11). UniversalBorder is
+		// aliased the same way but has no terminal importer, so it is real debt.
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-previewer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
@@ -315,6 +340,8 @@
 				"@nuxtjs/seo",
 				"nuxt-security",
 				"tailwindcss",
+				// `nuxi typecheck` shells out to vue-tsc; see apps/web.
+				"vue-tsc",
 			],
 		},
 	},
