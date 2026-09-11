@@ -31,6 +31,7 @@ import type { ContactActivityType } from '../contactActivities/catalog';
 import { recordAuditLog } from '../lib/auditLog';
 import { defineLifecycle, refuse, type LifecycleReason } from '../lib/lifecycle';
 import { logWarn } from '../lib/runtimeLog';
+import { batchGet } from '../_utils/batchLoader';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -400,8 +401,13 @@ async function loadDoiRequiredMemberships(
 		.collect(); // bounded: one contact's topic memberships
 	const topics: Array<DoiRequiredTopic> = [];
 	const clearMembershipIds: Array<Id<'contactTopics'>> = [];
+	// The topic rows are independent of each other and of the loop below.
+	const topicsById = await batchGet(
+		ctx,
+		memberships.map((m) => m.topicId)
+	);
 	for (const m of memberships) {
-		const topic = await ctx.db.get(m.topicId);
+		const topic = topicsById.get(m.topicId);
 		// Include topic-DOI memberships AND form-forced-DOI memberships (the
 		// latter flagged at subscribe time on a non-DOI topic).
 		const deferredByForm = m.pendingDoiConfirmation === true;

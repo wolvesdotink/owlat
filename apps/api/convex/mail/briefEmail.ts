@@ -38,6 +38,7 @@ import { internalMutation, internalQuery, type MutationCtx } from '../_generated
 import type { Doc, Id } from '../_generated/dataModel';
 import { mailMessageAttachmentValidator } from '../lib/mailContentValidators';
 import { insertDeliveredMessage } from './deliveryPipeline/insert';
+import { batchGet } from '../_utils/batchLoader';
 
 /**
  * How often the delivery cron runs. A brief is due when the user's local
@@ -151,10 +152,15 @@ export const listDue = internalQuery({
 			// send nothing rather than an empty digest that looks like a bug.
 			if (!brief || brief.items.length === 0) continue;
 
-			const items: BriefEmailItem[] = [];
-			for (const item of brief.items.slice(0, MAX_EMAIL_ITEMS)) {
-				const thread = await ctx.db.get(item.threadId);
-				items.push({
+			// The item threads are independent rows — read them in one pass.
+			const itemRows = brief.items.slice(0, MAX_EMAIL_ITEMS);
+			const threads = await batchGet(
+				ctx,
+				itemRows.map((item) => item.threadId)
+			);
+			const items: BriefEmailItem[] = itemRows.map((item) => {
+				const thread = threads.get(item.threadId);
+				return {
 					kind: item.kind,
 					title: item.title,
 					subtitle: item.subtitle,
@@ -165,8 +171,8 @@ export const listDue = internalQuery({
 					path: thread?.latestMessageId
 						? `/dashboard/postbox/inbox/${thread.latestMessageId}`
 						: undefined,
-				});
-			}
+				};
+			});
 			// The digest is composed on a scheduler with no request behind it, so the
 			// language has to come from the profile rather than a cookie.
 			const profile = await ctx.db

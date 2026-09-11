@@ -250,8 +250,12 @@ export const sendersOfMessages = publicQuery({
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		const targets = new Map<string, { actionMessageId: Id<'mailMessages'>; receivedAt: number }>();
-		for (const messageId of args.messageIds.slice(0, SELECTION_RESOLVE_MAX)) {
-			const message = await ctx.db.get(messageId);
+		// Independent reads; the "newest wins" fold below still runs in selection
+		// order, so ties resolve exactly as they did one-at-a-time.
+		const messages = await Promise.all(
+			args.messageIds.slice(0, SELECTION_RESOLVE_MAX).map((id) => ctx.db.get(id))
+		);
+		for (const message of messages) {
 			if (!message || message.mailboxId !== args.mailboxId) continue;
 			if (subscriptionMethodOf(message.unsubscribe) !== 'one-click') continue;
 			const senderEmail = normalizeEmail(message.fromAddress);
