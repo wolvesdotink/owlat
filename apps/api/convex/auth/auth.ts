@@ -321,7 +321,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				// installs are not locked out.
 				requireEmailVerificationOnInvitation: requireEmailVerification,
 				// Single-org-per-instance: the one org is bootstrapped by the
-				// /seed/admin HTTP action (apps/api/convex/seedAdmin.ts) which
+				// /seed/admin HTTP action (apps/api/convex/seedAdminHttp.ts) which
 				// writes through the BetterAuth adapter directly. The public
 				// `auth/organization/create` endpoint stays disabled so users
 				// cannot create additional orgs and silently merge data with

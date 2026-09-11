@@ -112,7 +112,7 @@ export function _resetSingletonOrgCacheForTests(): void {
 
 /**
  * Owlat is single-organization-per-deployment. The one org is bootstrapped by
- * `/seed/admin` (apps/api/convex/seedAdmin.ts); BetterAuth's public
+ * `/seed/admin` (apps/api/convex/seedAdminHttp.ts); BetterAuth's public
  * `auth/organization/create` endpoint is disabled in `auth.ts`. This helper is
  * the runtime defense-in-depth: it asserts that exactly one organization exists
  * and that the session's active org matches it. Throws otherwise.

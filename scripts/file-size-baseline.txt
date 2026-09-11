@@ -7,7 +7,6 @@ apps/api/convex/domains/lifecycle.ts
 apps/api/convex/emailBlocks/module.ts
 apps/api/convex/knowledge/graph.ts
 apps/api/convex/lib/sessionOrganization.ts
-apps/api/convex/schema/mail.ts
 apps/api/convex/semanticFiles.ts
 apps/api/convex/topics/subscription.ts
 apps/api/convex/topics/topics.ts

@@ -10,13 +10,22 @@ import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
 import type { CampaignEnqueueEmail } from '../delivery/enqueue';
 import { composeForSend, personalizeSubject } from '../delivery/sendComposition';
 import { getListIdHeader } from '../delivery/sendComposition/listId';
+import { planTodaysSlice, remainingRecipients } from './multiDaySendPlan';
 import {
-	orderByEngagement,
-	planTodaysSlice,
-	remainingRecipients,
-	type SendPlanState,
-} from './multiDaySendPlan';
-import { nextUtcDayStart } from '../lib/utcDay';
+	bucketPageRecipients,
+	buildPlanCheckpoint,
+	buildSendPlanState,
+	classifyContentScan,
+	classifyStartSendSkip,
+	combineContentScan,
+	isEmptyAudienceComplete,
+	isPlannedTotalCounted,
+	isTimezoneScheduled,
+	makeVariantBucketer,
+	pageSizeForSlice,
+	resolveParkInstant,
+	resolveVariantBSource,
+} from './sendPlanning';
 import { nanoid } from 'nanoid';
 // Campaign send orchestrator (module) — the single live action that takes a
 // campaign from `draft|scheduled|sending` through content scan, archive,
@@ -48,12 +57,7 @@ import {
 	type ContentFlag,
 	type UrlReputationCache,
 } from '@owlat/email-scanner';
-import {
-	resolveAbFanout,
-	hashFraction,
-	testFractionForSplit,
-	variantForHash,
-} from './sendVariantSplit';
+import { resolveAbFanout, testFractionForSplit } from './sendVariantSplit';
 import { logWarn } from '../lib/runtimeLog';
 
 // Convex-backed implementation of the email-scanner's `UrlReputationCache`,
@@ -160,51 +164,12 @@ export const startCampaignSend = internalAction({
 			throw new Error('Campaign not found');
 		}
 
-		// Status-race guards: the scheduler-tick may fire after the campaign
-		// has been cancelled / unscheduled / already sent. Race protection
-		// against double-orchestrator-firing is owned by the Campaign
-		// lifecycle (`scheduled → sending` is single-write; same-state
-		// `sending → sending` is recorded but does NOT refire the
-		// `schedule_campaign_send_orchestrator` effect) — so we don't skip
-		// on `sending` here. The scheduler hop arrives with status already
-		// flipped to `sending` (lifecycle ran first, then scheduled this
-		// orchestrator), and the cron-tick path arrives with `scheduled`.
-		if (campaign.status === 'cancelled' || campaign.status === 'draft') {
-			return {
-				totalRecipients: 0,
-				totalBatches: 0,
-				skipped: true,
-				reason:
-					campaign.status === 'cancelled' ? 'Campaign was cancelled' : 'Campaign was unscheduled',
-			};
-		}
-		if (campaign.status === 'sent') {
-			return {
-				totalRecipients: 0,
-				totalBatches: 0,
-				skipped: true,
-				reason: 'Campaign was already sent',
-			};
-		}
-
-		// Fire-time guard for a still-`scheduled` campaign: `reschedule` patches
-		// scheduledAt + schedules a fresh hop but does NOT cancel the original one,
-		// so without this an early-firing stale hop would transition the campaign to
-		// `sending` and send at the OLD time. If scheduledAt is still in the future,
-		// skip — the correct hop (or the per-minute `process scheduled campaigns`
-		// cron, which only picks up scheduledAt <= now) sends it on time. A hop
-		// that arrives as `sending` is unaffected.
-		if (
-			campaign.status === 'scheduled' &&
-			campaign.scheduledAt !== undefined &&
-			campaign.scheduledAt > Date.now()
-		) {
-			return {
-				totalRecipients: 0,
-				totalBatches: 0,
-				skipped: true,
-				reason: 'Not yet due (rescheduled)',
-			};
+		// Fire-time race guards — cancelled, unscheduled, already sent, or a
+		// stale early-firing hop for a rescheduled campaign. `sending` is
+		// deliberately NOT skipped; see `classifyStartSendSkip`.
+		const guardSkip = classifyStartSendSkip(campaign, Date.now());
+		if (guardSkip !== undefined) {
+			return { totalRecipients: 0, totalBatches: 0, skipped: true, reason: guardSkip };
 		}
 
 		// Pre-flight re-validation at fire time — catches state that drifted
@@ -267,39 +232,34 @@ export const startCampaignSend = internalAction({
 
 		// URL reputation checking via Google Safe Browsing (blocking for campaigns)
 		const safeBrowsingApiKey = getOptional('GOOGLE_SAFE_BROWSING_API_KEY');
-		const allFlags: ContentFlag[] = [...scanResultBase.flags];
-		let urlReputationScore = 0;
-
+		let urlFlags: ContentFlag[] = [];
 		if (safeBrowsingApiKey) {
 			try {
 				const urlResults = await checkUrlReputation(template.htmlContent, {
 					apiKey: safeBrowsingApiKey,
 					cache: makeUrlReputationCache(ctx),
 				});
-				const urlFlags = urlReputationToFlags(urlResults);
-				allFlags.push(...urlFlags);
-				for (const flag of urlFlags) {
-					urlReputationScore += flag.severity === 'high' ? 20 : flag.severity === 'medium' ? 10 : 3;
-				}
+				urlFlags = urlReputationToFlags(urlResults);
 			} catch {
 				// URL reputation check failure should not block campaign sending
 			}
 		}
 
-		const combinedScore = Math.min(100, scanResultBase.score + urlReputationScore);
-		const combinedLevel = levelForScore(combinedScore);
+		const verdict = combineContentScan(scanResultBase, urlFlags);
+		const combinedLevel = levelForScore(verdict.score);
+		const scanOutcome = classifyContentScan(combinedLevel, verdict);
 
-		if (combinedLevel !== 'clean') {
+		if (scanOutcome.kind !== 'proceed') {
 			await ctx.runMutation(internal.campaigns.sendQueries.storeContentScanResult, {
 				resourceType: 'campaign',
 				resourceId: args.campaignId,
-				score: combinedScore,
+				score: verdict.score,
 				level: combinedLevel,
-				flags: allFlags,
+				flags: verdict.flags,
 				scannedAt: Date.now(),
 			});
 
-			if (combinedLevel === 'blocked') {
+			if (scanOutcome.kind === 'blocked') {
 				// Revert campaign to draft via the lifecycle (writes
 				// contentBlockReason atomically with the status patch).
 				await ctx.runMutation(internal.campaigns.lifecycle.transition, {
@@ -307,32 +267,24 @@ export const startCampaignSend = internalAction({
 					input: {
 						to: 'draft',
 						at: Date.now(),
-						contentBlockReason: `Content blocked: ${allFlags.map((f) => f.description).join('; ')}`,
+						contentBlockReason: scanOutcome.contentBlockReason,
 					},
 					userId: LIFECYCLE_USER_CONTENT_SCAN,
 				});
-				return {
-					totalRecipients: 0,
-					totalBatches: 0,
-					skipped: true,
-					reason: `Content blocked by scanner (score: ${combinedScore}/100)`,
-				};
-			}
-
-			if (combinedLevel === 'suspicious') {
+			} else {
 				// Flag for platform admin review via the lifecycle.
 				await ctx.runMutation(internal.campaigns.lifecycle.transition, {
 					campaignId: args.campaignId,
 					input: { to: 'pending_review', at: Date.now() },
 					userId: LIFECYCLE_USER_CONTENT_SCAN,
 				});
-				return {
-					totalRecipients: 0,
-					totalBatches: 0,
-					skipped: true,
-					reason: `Content flagged for review (score: ${combinedScore}/100)`,
-				};
 			}
+			return {
+				totalRecipients: 0,
+				totalBatches: 0,
+				skipped: true,
+				reason: scanOutcome.reason,
+			};
 		}
 
 		// Version history: record the template state this send is going out
@@ -665,57 +617,19 @@ export const resolveCampaignPage = internalAction({
 					job.plannedTotal === undefined && job.isPlannedTotalCountAttempted !== true,
 			}
 		);
-		/** Has this walk now paid for its audience count, whatever it returned? */
-		const isPlannedTotalCounted =
-			job.isPlannedTotalCountAttempted === true || planCapacity.isPlannedTotalCounted;
-		// The denominator is counted ONCE per walk and then carried on the row —
-		// together with whether it is the audience size or only a floor under one,
-		// because a floor may lengthen the plan and may never shorten it.
-		const planState: SendPlanState = {
-			planDayKey: job.planDayKey,
-			enqueuedToday: job.enqueuedToday,
-			planDayIndex: job.planDayIndex,
-			planTotalDays: job.planTotalDays,
-			isPlanTruncated: job.isPlanTruncated,
-			// A hop that did not count keeps the row's denominator; only a hop that
-			// counted may replace it, and the flag travels with the number so the
-			// two can never describe different counts.
-			...(planCapacity.plannedTotal === null
-				? {
-						plannedTotal: job.plannedTotal,
-						isPlannedTotalLowerBound: job.isPlannedTotalLowerBound,
-					}
-				: {
-						plannedTotal: planCapacity.plannedTotal,
-						isPlannedTotalLowerBound: planCapacity.isPlannedTotalLowerBound,
-					}),
-		};
+		const planState = buildSendPlanState(job, planCapacity);
 		const slice = planTodaysSlice({
 			state: planState,
 			remaining: remainingRecipients(planState, job.enqueuedCount),
 			capacityByDay: planCapacity.capacityByDay,
 			now: Date.now(),
 		});
-		/** The plan state this hop checkpoints, whichever branch it takes. */
-		const planCheckpoint = {
-			planDayKey: slice.dayKey,
-			planDayIndex: slice.dayIndex,
-			planTotalDays: slice.totalDays,
-			isPlanTruncated: slice.isTruncated,
-			...(planState.plannedTotal === undefined
-				? {}
-				: {
-						plannedTotal: planState.plannedTotal,
-						isPlannedTotalLowerBound: planState.isPlannedTotalLowerBound === true,
-					}),
-			...(isPlannedTotalCounted ? { isPlannedTotalCountAttempted: true } : {}),
-		};
-		// A spent day ALWAYS parks. The planner gives the resume instant with the
-		// verdict, and the fallback exists only so a spent budget can never fall
-		// through into the page read below with nothing left to enqueue.
-		const parkUntil = slice.isDayExhausted
-			? (slice.resumeAt ?? nextUtcDayStart(Date.now()))
-			: undefined;
+		const planCheckpoint = buildPlanCheckpoint(
+			planState,
+			slice,
+			isPlannedTotalCounted(job, planCapacity)
+		);
+		const parkUntil = resolveParkInstant(slice, Date.now());
 		if (parkUntil !== undefined) {
 			// Today's slice is spent. PARK the walk until the next cap window: the
 			// checkpoint carries `resumeAt`, which both records the day's counters and
@@ -740,30 +654,13 @@ export const resolveCampaignPage = internalAction({
 		}
 
 		// Resolve ONE page at the job cursor — the bounded read that replaces the
-		// whole-audience resolve, NARROWED to what is left of today's slice so a
-		// page can never overshoot the day's capacity. `remainingToday` is
-		// `undefined` for "no day budget applies" (no projection, or an exact
-		// denominator that is already satisfied), which resolves a full page exactly
-		// as the shipped walker does — and it is never 0 here, because a spent
-		// budget took the park branch above.
-		//
-		// THE DAY BUDGET HAS TO BOUND THE READ, not just the enqueue, and the reason
-		// is the CURSOR. The cursor is the walk's only record of progress and it
-		// advances by exactly what was read, so anything read and not enqueued is
-		// dropped. Truncating the enqueue while HOLDING the cursor does not fix
-		// that: the next day re-reads the identical page, orders it by the same
-		// engagement scores, selects the identical prefix, and `createBatch`'s
-		// idempotency guard turns the whole hop into a no-op — the walk stops
-		// advancing rather than resuming. The amplification this costs is bounded
-		// and self-limiting: a hop that spends the day's budget parks until the next
-		// cap window, so the extra hops only appear while a run of candidates is
-		// ineligible and enqueues nothing.
+		// whole-audience resolve, narrowed to what is left of today's slice (see
+		// `pageSizeForSlice`). Never 0 here: a spent budget took the park branch.
+		const pageSize = pageSizeForSlice(slice, SEND_PAGE_SIZE);
 		const page = await ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipientPage, {
 			audience: job.audience,
 			cursor: job.cursor,
-			...(slice.remainingToday === undefined
-				? {}
-				: { numItems: Math.min(SEND_PAGE_SIZE, slice.remainingToday) }),
+			...(pageSize === undefined ? {} : { numItems: pageSize }),
 		});
 
 		const audienceType = job.audience.kind;
@@ -854,16 +751,8 @@ export const resolveCampaignPage = internalAction({
 			}
 		}
 
-		// `ab_winner` deliberately ignores timezone-aware scheduling: by the
-		// time the winner is declared, the original scheduled hour/minute is no
-		// longer the user's intent (they just want the rest delivered). `plain`
-		// and `ab_test` honor it.
 		const variantMode = job.variantMode ?? 'plain';
-		const useTimezone =
-			variantMode !== 'ab_winner' &&
-			campaign.useRecipientTimezone === true &&
-			campaign.scheduledHour !== undefined &&
-			campaign.scheduledMinute !== undefined;
+		const useTimezone = isTimezoneScheduled(campaign, variantMode);
 
 		// Org-level timezone (General settings) — the fallback zone for
 		// timezone-aware scheduling when a recipient has no valid zone of their
@@ -874,33 +763,16 @@ export const resolveCampaignPage = internalAction({
 				: undefined) ?? undefined;
 
 		// Classify THIS page's recipients into variant buckets per the job's
-		// variantMode + the deterministic per-contact hash, then group each
-		// bucket by language and enqueue. `null` from `bucketFor` means the
-		// contact belongs to the OTHER phase (held-back remainder in `ab_test`,
-		// already-tested cohort in `ab_winner`) and is skipped — the hash
-		// guarantees the two phases partition the audience disjointly.
-		const testFraction = job.testFraction ?? 0;
-		const bucketFor = (contactId: string): 'A' | 'B' | undefined | null => {
-			if (variantMode === 'plain') return undefined; // no tag, always enqueue
-			const h = hashFraction(args.campaignId, contactId);
-			if (variantMode === 'ab_test') {
-				// h < testFraction ⇒ test cohort (A/B by sub-bucket); else remainder.
-				return variantForHash(h, testFraction);
-			}
-			// ab_winner: h >= testFraction ⇒ remainder gets the winning variant;
-			// the test cohort (h < testFraction) is skipped (already sent).
-			return h >= testFraction ? (job.winningVariant ?? 'A') : null;
-		};
-
-		// content-test variant-B template id (subject tests reuse A's html).
-		const variantBTemplateId =
-			campaign.abTestConfig?.testType === 'content' && campaign.abTestConfig.variantBTemplateId
-				? (campaign.abTestConfig.variantBTemplateId as Id<'emailTemplates'>)
-				: undefined;
-		const variantBSubject =
-			campaign.abTestConfig?.testType === 'subject'
-				? campaign.abTestConfig.variantBSubject
-				: undefined;
+		// variantMode + the deterministic per-contact hash.
+		const bucketFor = makeVariantBucketer({
+			variantMode,
+			campaignId: args.campaignId,
+			testFraction: job.testFraction ?? 0,
+			winningVariant: job.winningVariant,
+		});
+		const variantB = resolveVariantBSource(campaign);
+		const variantBTemplateId = variantB.templateId as Id<'emailTemplates'> | undefined;
+		const variantBSubject = variantB.subject;
 
 		let pageEnqueued = 0;
 		if (page.recipients.length > 0) {
@@ -910,38 +782,8 @@ export const resolveCampaignPage = internalAction({
 			const tmplDefaultLanguage = template?.defaultLanguage ?? 'en';
 			const campaignSubjectOverride = campaign.subject;
 
-			// Group only by content. Destination-provider routing is resolved for
-			// each actual recipient at the worker's last pre-attempt boundary, so a
-			// custom-domain MX classification cannot misroute this whole bucket.
-			type Bucket = {
-				language: string;
-				variant: 'A' | 'B' | undefined;
-			};
-			const byBucket = new Map<string, { bucket: Bucket; recipients: typeof page.recipients }>();
-			// ENGAGEMENT ORDER (plan P0-2/P0-3, P3-7). Each day's slice should be the
-			// best remaining audience: engaged recipients open, and openers are what a
-			// receiver reads as a positive signal on a warming IP — so the ideal
-			// warming behaviour and the ideal recipient experience are the same order.
-			//
-			// WITHIN THE PAGE, honestly. Pages arrive in the audience index's order, so
-			// this orders each slice rather than the whole audience; a globally ordered
-			// walk would need an engagement-ordered index, which is not this piece's
-			// scope. The property that matters for the daily slice still holds when a
-			// day is one page, and never regresses when it is more.
-			for (const recipient of orderByEngagement(page.recipients)) {
-				const variant = bucketFor(recipient._id);
-				if (variant === null) continue; // belongs to the other phase — skip
-				const language = recipient.language ?? tmplDefaultLanguage;
-				const key = `${language}\u0000${variant ?? '-'}`;
-				if (!byBucket.has(key))
-					byBucket.set(key, {
-						bucket: { language, variant },
-						recipients: [],
-					});
-				byBucket.get(key)!.recipients.push(recipient);
-			}
-
-			for (const { bucket, recipients } of byBucket.values()) {
+			for (const bucket of bucketPageRecipients(page.recipients, bucketFor, tmplDefaultLanguage)) {
+				const { recipients } = bucket;
 				if (recipients.length === 0) continue;
 
 				// Resolve the content for this (language, variant). Variant A and
@@ -1052,23 +894,11 @@ export const resolveCampaignPage = internalAction({
 		}
 
 		// Last page. Decide whether the campaign can complete NOW (empty-audience
-		// fast-path), preserving the prior behaviour without a full-table scan:
-		//   - plain:     enqueued nobody ⇒ empty audience ⇒ mark sent.
-		//   - ab_test:   the audience itself is empty (`totalCandidates === 0`) ⇒
-		//                no test cohort AND no remainder ⇒ mark sent. A non-empty
-		//                audience that simply put nobody in the test cohort is NOT
-		//                complete — the winner phase still sends the remainder, so
-		//                we leave the campaign in `sending`/`testing`.
-		//   - ab_winner: enqueued nobody ⇒ the remainder was empty ⇒ the whole
-		//                campaign (test cohort sent in phase 1 + empty remainder)
-		//                is done ⇒ mark sent.
-		// In every other case the per-send completion callback / reconcile cron
-		// completes it once the last queued send clears (the guard no longer
-		// blocks now that phase === 'done').
-		const emptyAudienceComplete =
-			advanced &&
-			(variantMode === 'ab_test' ? advanced.totalCandidates === 0 : advanced.enqueuedCount === 0);
-		if (emptyAudienceComplete) {
+		// fast-path) — see `isEmptyAudienceComplete`. In every other case the
+		// per-send completion callback / reconcile cron completes it once the last
+		// queued send clears (the guard no longer blocks now that phase ===
+		// 'done').
+		if (isEmptyAudienceComplete(variantMode, advanced)) {
 			await ctx.runMutation(internal.campaigns.lifecycle.transition, {
 				campaignId: args.campaignId,
 				input: { to: 'sent', at: Date.now() },

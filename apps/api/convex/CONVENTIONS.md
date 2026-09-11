@@ -107,6 +107,15 @@ forms/
 └── apiHttp.ts    # HTTP routes that call into api.ts
 ```
 
+The rule holds for a file that grew an `httpAction` next to its
+queries/mutations: move the route into the `*Http.ts` sibling rather than
+renaming the whole module, so the generated paths its callers already use
+(`internal.<domain>.<feature>.*`) do not move. `webhooks/channels.ts` +
+`channelsHttp.ts`, `auth/apiAuth.ts` + `apiAuthHttp.ts`, `devShortcuts/reset.ts`
++ `resetHttp.ts` and `seedDemo/index.ts` + `indexHttp.ts` are that split; a file
+that is ONLY routes is simply named `*Http.ts` (`mail/webhookHttp.ts`,
+`seedAdminHttp.ts`).
+
 ---
 
 ## Imports & paths
@@ -527,6 +536,22 @@ feature-named `schema/<feature>.ts` sibling exporting its own
 `schema/sendAssignments.ts`, split out because `schema/delivery.ts` sits at the
 cap. That is the sanctioned escape hatch; do NOT add a file-size baseline entry
 to keep growing a capped domain module.
+
+A domain that has outgrown one file splits into feature siblings that the
+domain module composes, so `schema.ts` keeps importing one name. Personal Mail
+is the worked example: `schema/mail.ts` is now only
+
+```ts
+export const mailTables = {
+	...mailboxesTables,
+	...mailMessagesTables,
+	// ... one spread per schema/mail*.ts sibling
+};
+```
+
+with the 41 table definitions living in `schema/mailboxes.ts`,
+`schema/mailMessages.ts`, `schema/mailThreads.ts` and the rest. Put a new
+Postbox table in the sibling that owns its feature, not in `schema/mail.ts`.
 
 ## Schema evolution (post-launch immutability)
 
