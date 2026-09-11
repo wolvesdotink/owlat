@@ -7,18 +7,17 @@
  * never be reported. A gate that nobody exercises would inherit exactly the
  * blind spot it was written to close, so it is run here against throwaway trees
  * that contain the shapes it must catch, in the same spirit as
- * `dockerWorkspaces.test.ts`.
+ * `check-docker-workspaces.test.ts`.
  */
 
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-	AWAITING_CALL_SITE,
-	findConvexPluginOrphanFailures,
-} from '../../../../scripts/check-convex-plugin-orphans';
-import { REPOSITORY_ROOT } from '../repository';
+import { AWAITING_CALL_SITE, findConvexPluginOrphanFailures } from '../check-convex-plugin-orphans';
+
+const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 const PLUGINS_DIR = 'apps/api/convex/plugins';
 const created: string[] = [];

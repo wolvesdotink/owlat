@@ -20,8 +20,10 @@ import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { REPOSITORY_ROOT } from '../repository';
+
+const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 const run = promisify(execFile);
 

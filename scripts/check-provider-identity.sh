@@ -157,10 +157,10 @@ ADAPTER_ROOTS=(lib/sendProviders domains/providers integrationImports/providers 
 # have a `kind:` too (`kind: 'secret'`, `kind: 'host-port'`), and reading those
 # as transport kinds would turn `=== 'string'` anywhere in the repo into a
 # provider-identity violation. The docs-lint over the same literal anchors on the
-# same two tabs, for the same reason, and has exactly one parser for both suites
-# that need it: apps/docs/__tests__/catalogSource.ts. This script cannot import
-# it — it runs before any TypeScript does — so it is the ONE deliberate second
-# reader, and the entry shape is a contract between these two places.
+# same two tabs, for the same reason. Everything that CAN import the catalog
+# does (`CORE_SEND_PROVIDER_CATALOG_ENTRIES` from `@owlat/shared`); this script
+# cannot — it runs before any TypeScript does — so it is the ONE deliberate
+# second reader, and the entry shape is a contract between the two.
 #
 # A PARTIAL PARSE IS A FAILURE, NOT A SHORTER LIST. The array this replaced was
 # read as ONE match, so a format change made the read EMPTY and tripped the

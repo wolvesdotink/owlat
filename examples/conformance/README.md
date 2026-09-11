@@ -135,27 +135,12 @@ rather than three unrelated demos.
   with: a last-hex-character near miss is rejected in constant time, a truncated
   signature is rejected rather than thrown at, a missing header fails closed, and
   the signature is bound to the nonce, app id, body and secret.
-- **`convexPluginOrphans.test.ts`** — the guard on
-  `scripts/check-convex-plugin-orphans.ts`, the dead-code gate for the Convex
-  plugin host. knip declares the whole Convex tree as `entry`, so an orphaned
-  composition seam there is invisible to `lint:deadcode`; that gate closes the
-  hole, and this suite runs it against throwaway repositories so it cannot go
-  quiet on the drift it exists to catch. Covers a seam nothing reaches, the three
-  ways a seam can legitimately be reached (relative import, generated function
-  reference, worker client path string), a test-only or codegen-only "consumer",
-  an allowlisted seam that quietly gains a caller, and a stale allowlist entry.
 - **`namespacedKindGrammar.test.ts`** — the guard that keeps
   `plugin.<pluginId>.<localId>` a single definition. The grammar is a security
   boundary (core-vs-plugin dispatch and every ownership compare read it), so this
   suite fails on any module outside `@owlat/plugin-kit`'s `namespacedKind.ts`
   that constructs it inline, and round-trips every contributed kind of every
   reference plugin through the one builder and its parser.
-- **`dockerWorkspaces.test.ts`** — the guard that keeps the examples installable
-  in every image: `scripts/check-docker-workspaces.sh` is run against throwaway
-  repositories so it cannot go quiet on the drift it exists to catch. Covers a
-  COPY wrapped across backslash continuations (still checked, globs intact and
-  glob dropped) and an image that runs `bun install --frozen-lockfile` while
-  copying no manifest at all.
 
 ## Why a temporary workspace
 
