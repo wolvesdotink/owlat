@@ -1,11 +1,11 @@
 import { httpRouter } from 'convex/server';
 import { authComponent, createAuth } from './auth/auth';
 import { trackOpen, trackClick } from './delivery/trackingHttp';
-import { seedAdmin } from './seedAdmin';
-import { seedDemoHttp } from './seedDemo';
+import { seedAdmin } from './seedAdminHttp';
+import { seedDemoHttp } from './seedDemo/indexHttp';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';
 import { registerPublicApiRoutes } from './apiV1Http';
-import { resetHttp } from './devShortcuts/reset';
+import { resetHttp } from './devShortcuts/resetHttp';
 import {
 	handleOneClickUnsubscribe,
 	handleSeedProbeUnsubscribe,
@@ -18,12 +18,16 @@ import {
 	webhookUrlValidationProbe,
 } from './webhooks/providerFeedbackHttp';
 import { pluginFeedbackWebhook } from './webhooks/pluginFeedbackHttp';
-import { handleMailWebhook } from './mail/webhook';
+import { handleMailWebhook } from './mail/webhookHttp';
 import { serveSealedBlob } from './mail/sealedBlobHttp';
 import { serveAttachmentShare } from './mail/attachmentShareHttp';
 import { handleVerifyCredential } from './mail/authHttp';
 import { handleTlsReportWebhook } from './domains/tlsReportsHttp';
-import { handleSmsWebhook, handleWhatsAppWebhook, handleGenericWebhook } from './webhooks/channels';
+import {
+	handleSmsWebhook,
+	handleWhatsAppWebhook,
+	handleGenericWebhook,
+} from './webhooks/channelsHttp';
 import { handleGithubWebhook } from './webhooks/githubHttp';
 import { verifyContactDoiToken, confirmContactDoi } from './topics/doiHttp';
 import { getCampaignArchive } from './campaigns/archiveHttp';

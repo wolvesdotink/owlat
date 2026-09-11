@@ -10,7 +10,7 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
  * Covered here:
  *   - POST /webhooks/github               (webhooks/githubHttp.ts handleGithubWebhook)
  *   - POST /webhooks/mta-verify-credential (mail/authHttp.ts handleVerifyCredential)
- *   - POST /webhooks/mta-mailbox          (mail/webhook.ts handleMailWebhook)
+ *   - POST /webhooks/mta-mailbox          (mail/webhookHttp.ts handleMailWebhook)
  *
  * Each handler verifies an HMAC over the raw body before doing any work, so we
  * assert the exact reject statuses (503 missing secret, 401 missing/bad sig,
@@ -279,10 +279,7 @@ describe('handleVerifyCredential (/webhooks/mta-verify-credential)', () => {
 
 	it('rejects (401) when the timestamp header is missing', async () => {
 		const t = setupTest();
-		const sig = await hmacSha256Hex(
-			'mta-test-secret',
-			`${nowSeconds()}.${VERIFY_BODY}`
-		);
+		const sig = await hmacSha256Hex('mta-test-secret', `${nowSeconds()}.${VERIFY_BODY}`);
 		const res = await t.fetch(VERIFY_PATH, {
 			method: 'POST',
 			body: VERIFY_BODY,

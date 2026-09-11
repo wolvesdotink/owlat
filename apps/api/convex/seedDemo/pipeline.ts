@@ -4,7 +4,7 @@
  * the plumbing its two callers share.
  *
  * Two callers, two audiences:
- *   - `seedDemo/index.ts` — `POST /seed/demo`, DEV deployments only
+ *   - `seedDemo/indexHttp.ts` — `POST /seed/demo`, DEV deployments only
  *     (`OWLAT_DEV_MODE`), runs EVERY loader, including the dummy teammate
  *     sign-ins and their hosted mailboxes.
  *   - `sampleData/*` — the opt-in "explore with sample data" path a REAL

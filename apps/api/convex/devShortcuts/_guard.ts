@@ -14,8 +14,8 @@
  * Production deployments leave it unset.
  *
  * Used by:
- *   - apps/api/convex/seedDemo/index.ts       (POST /seed/demo)
- *   - apps/api/convex/devShortcuts/reset.ts   (POST /dev/reset)
+ *   - apps/api/convex/seedDemo/indexHttp.ts   (POST /seed/demo)
+ *   - apps/api/convex/devShortcuts/resetHttp.ts (POST /dev/reset)
  *   - apps/api/convex/devShortcuts/forceVerifyDomain.ts
  *   - apps/api/convex/auth/auth.ts            (disables BetterAuth rate limiting on dev)
  *   - apps/api/convex/auth/trustedOrigins.ts  (keeps the loopback origin defaults on dev)
