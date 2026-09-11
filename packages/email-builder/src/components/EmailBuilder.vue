@@ -41,7 +41,7 @@ import { useSlashCommands } from '../composables/useSlashCommands';
 import { usePreview } from '../composables/usePreview';
 
 // Render options surfaced in the preview's RenderOptionsPanel.
-import type { PreviewRenderOptions } from '@owlat/email-previewer';
+import type { PreviewRenderOptions } from '../preview/types';
 
 // Utilities
 import { createBlock, createColumnItem, withPrimaryStoredImage } from '../utils/blocks';
@@ -1139,10 +1139,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 		/>
 
 		<!-- Keyboard shortcuts help sheet -->
-		<KeyboardShortcutsDialog
-			:show="showShortcutsDialog"
-			@close="showShortcutsDialog = false"
-		/>
+		<KeyboardShortcutsDialog :show="showShortcutsDialog" @close="showShortcutsDialog = false" />
 
 		<!-- Detach confirmation dialog -->
 		<UiConfirmationDialog

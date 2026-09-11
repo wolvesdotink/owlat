@@ -1016,6 +1016,7 @@ import type * as visualizationAgent from '../visualizationAgent.js';
 import type * as visualizationAgentActions from '../visualizationAgentActions.js';
 import type * as webhooks_adapters_emailit from '../webhooks/adapters/emailit.js';
 import type * as webhooks_adapters_generic from '../webhooks/adapters/generic.js';
+import type * as webhooks_adapters_inboundRegistry from '../webhooks/adapters/inboundRegistry.js';
 import type * as webhooks_adapters_index from '../webhooks/adapters/index.js';
 import type * as webhooks_adapters_mandrill from '../webhooks/adapters/mandrill.js';
 import type * as webhooks_adapters_meta from '../webhooks/adapters/meta.js';
@@ -2093,6 +2094,7 @@ declare const fullApi: ApiFromModules<{
 	visualizationAgentActions: typeof visualizationAgentActions;
 	'webhooks/adapters/emailit': typeof webhooks_adapters_emailit;
 	'webhooks/adapters/generic': typeof webhooks_adapters_generic;
+	'webhooks/adapters/inboundRegistry': typeof webhooks_adapters_inboundRegistry;
 	'webhooks/adapters/index': typeof webhooks_adapters_index;
 	'webhooks/adapters/mandrill': typeof webhooks_adapters_mandrill;
 	'webhooks/adapters/meta': typeof webhooks_adapters_meta;

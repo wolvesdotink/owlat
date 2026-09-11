@@ -496,36 +496,31 @@ the route strips `Bearer ` first). D10 deleted the pair rather than keep two
 expressions of one rule. A new inbound source is a new `webhooks/adapters/`
 module, never a method here.
 
-## Inbound mail normalization (`packages/channels/`)
+## Inbound mail normalization (`apps/api/convex/webhooks/adapters/inboundRegistry.ts`)
 
-`@owlat/channels` is exactly one thing, whatever its name still suggests, and
-this is its only row: the source-keyed registry in
-`packages/channels/src/inboundRegistry.ts` that turns a vendor's inbound
-envelope into the canonical `InboundEmailMessage`. The package holds nothing
-else — the stub outbound `ChannelAdapter` classes that used to live beside it
-were deleted by the D10 honesty pass, and the three real ones moved to
-`apps/api/convex/channels/adapters/` (the section above).
+The source-keyed registry that turns a vendor's inbound envelope into the
+canonical `InboundEmailMessage` the backend persists. It was `@owlat/channels`
+until that package was folded away: after the D10 honesty pass it held nothing
+but this registry, behind a workspace boundary only `webhooks/` ever crossed,
+so it moved next to its caller — as the three real outbound adapters already
+had (the section above).
 
 | `InboundSource` key | Adapter                                                     |
 | ------------------- | ----------------------------------------------------------- |
 | `mta`               | `MtaInboundAdapter` — the `inbound.received` event envelope |
 | `resend`            | `ResendInboundAdapter` — flat inbound-mail payload          |
-| `ses`               | declared, **not registered** — lookup throws                |
-| `postmark`          | declared, **not registered** — lookup throws                |
-| `mailgun`           | declared, **not registered** — lookup throws                |
 
-The last three are keys in the `InboundSource` union with no adapter behind
-them, on purpose: `getInboundChannelAdapter` throws a named error for them, so a
-caller can tell "source registered but not implemented" from "unknown source"
-instead of silently parsing nothing. Consumers reach an adapter through
-`getInboundChannelAdapter(source)` — today the MTA feedback adapter (for
-`inbound.received`). **A new inbound vendor is a new adapter module plus a
-`registerInboundChannelAdapter()` call**; no handler and no other row in this
-file needs editing for it.
+The union holds exactly the sources with an adapter. It used to also declare
+`ses`, `postmark` and `mailgun`, which nothing implemented, so
+`getInboundChannelAdapter` compiled for them and threw at runtime; the lookup
+is now total over the union and cannot throw. Consumers reach an adapter
+through `getInboundChannelAdapter(source)` — today the MTA feedback adapter
+(for `inbound.received`). A new inbound vendor is a new adapter plus a key in
+`ADAPTERS`; no handler and no other row in this file needs editing for it.
 
-Not to be confused with `webhooks/adapters/` in apps/api, which verifies and
-parses _channel_ (SMS/WhatsApp/generic) webhooks — a different seam with a
-different job. This registry only ever sees mail.
+Not to be confused with the sibling `webhooks/adapters/{twilio,meta,generic}.ts`
+modules, which verify and parse _channel_ (SMS/WhatsApp/generic) webhooks — a
+different seam with a different job. This registry only ever sees mail.
 
 ---
 

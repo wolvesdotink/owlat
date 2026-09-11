@@ -88,7 +88,6 @@ COPY packages/smtp-client/ packages/smtp-client/
 COPY packages/mta-protocol/ packages/mta-protocol/
 COPY packages/email-renderer/ packages/email-renderer/
 COPY packages/email-scanner/ packages/email-scanner/
-COPY packages/channels/ packages/channels/
 COPY packages/plugin-host/ packages/plugin-host/
 COPY packages/provider-kit/package.json packages/provider-kit/package.json
 COPY --from=deps /app/packages/provider-kit/dist/ packages/provider-kit/dist/

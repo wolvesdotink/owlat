@@ -8,8 +8,6 @@
 
 @source "../../../../../packages/email-builder/src/**/*.vue";
 @source "../../../../../packages/email-builder/src/**/*.ts";
-@source "../../../../../packages/email-previewer/src/**/*.vue";
-@source "../../../../../packages/email-previewer/src/**/*.ts";
 @source "../../../../../packages/ui/components/**/*.vue";
 @source "../../../../../packages/ui/composables/**/*.ts";
 
