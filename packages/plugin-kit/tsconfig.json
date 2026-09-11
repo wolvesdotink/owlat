@@ -8,7 +8,6 @@
 		"declarationMap": true,
 		"noEmit": true,
 		"outDir": "./dist",
-		"rootDir": ".",
 		"ignoreDeprecations": "6.0",
 		"baseUrl": ".",
 		"paths": {

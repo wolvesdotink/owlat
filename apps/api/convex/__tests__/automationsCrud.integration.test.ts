@@ -436,7 +436,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 			config: { duration: 3, unit: 'days' },
 		});
 		const updated = await t.run(async (ctx) => ctx.db.get(stepId));
-		expect((updated?.config as { duration: number }).duration).toBe(3);
+		expect((updated!.config as { duration: number }).duration).toBe(3);
 
 		// Flip the automation to active; the same edit is now refused.
 		await t.run(async (ctx) => ctx.db.patch(draftId, { status: 'active' }));
@@ -447,7 +447,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 			})
 		).rejects.toThrow();
 		const unchanged = await t.run(async (ctx) => ctx.db.get(stepId));
-		expect((unchanged?.config as { duration: number }).duration).toBe(3);
+		expect((unchanged!.config as { duration: number }).duration).toBe(3);
 	});
 
 	it('reorderSteps: allowed on a draft, rejected on an active automation', async () => {
