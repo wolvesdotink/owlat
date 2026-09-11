@@ -1,17 +1,21 @@
 /**
- * Ratchet public runtime exports from @owlat/shared that have no production
- * consumer. The regular Knip pass includes tests, so a test can make a public
- * helper look live. This source walk deliberately excludes tests, comments,
- * type-only imports and package re-export barrels.
+ * Generator for the shared-production-export ratchet: lists every public
+ * runtime export of @owlat/shared that has no production consumer, one
+ * `export:<file>:<name>` per line on stdout. The regular Knip pass includes
+ * tests, so a test can make a public helper look live; this source walk
+ * deliberately excludes tests, comments, type-only imports and package
+ * re-export barrels.
+ *
+ * scripts/check-shared-production-exports.sh feeds this into scripts/ratchet.sh,
+ * which owns the comparison against
+ * scripts/shared-production-export-baseline.txt.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const repoRoot = join(import.meta.dirname, '..');
 const sharedRoot = join(repoRoot, 'packages', 'shared', 'src');
-const baselinePath = join(repoRoot, 'scripts', 'shared-production-export-baseline.txt');
-
 const skippedDirectories = new Set([
 	'.git',
 	'.nuxt',
@@ -73,37 +77,4 @@ for (const file of sourceFiles(sharedRoot)) {
 	}
 }
 
-const current = [...new Set(unreached)].sort();
-if (process.argv.includes('--print-current')) {
-	console.log(current.join('\n'));
-	process.exit(0);
-}
-
-if (!existsSync(baselinePath)) {
-	console.error('FAIL: scripts/shared-production-export-baseline.txt is missing.');
-	process.exit(1);
-}
-
-const baseline = readFileSync(baselinePath, 'utf8')
-	.split(/\r?\n/)
-	.map((line) => line.trim())
-	.filter((line) => line.length > 0 && !line.startsWith('#'))
-	.sort();
-const baselineSet = new Set(baseline);
-const currentSet = new Set(current);
-const added = current.filter((entry) => !baselineSet.has(entry));
-const stale = baseline.filter((entry) => !currentSet.has(entry));
-
-if (added.length > 0) {
-	console.error('FAIL: new @owlat/shared exports have no production caller:\n');
-	console.error(added.join('\n'));
-	console.error('\nWire them into production, keep them private, or remove them.');
-}
-if (stale.length > 0) {
-	console.error('FAIL: shared production-export baseline entries are now stale:\n');
-	console.error(stale.join('\n'));
-	console.error('\nDelete these lines so the inventory only moves down.');
-}
-if (added.length > 0 || stale.length > 0) process.exit(1);
-
-console.log(`ok:   no new test-only shared exports (${baseline.length} baseline entries remain)`);
+for (const entry of [...new Set(unreached)].sort()) console.log(entry);

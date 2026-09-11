@@ -14,11 +14,11 @@ git push origin main v<X.Y.Z>
 
 Pushing the tag triggers one of three pipelines:
 
-| Tag | Workflow | Ships |
-| --- | --- | --- |
-| `vX.Y.Z` | `release.yml` (unified) | server images + desktop apps + install assets — the line `install.sh` and the updater follow |
-| `server-vX.Y.Z` | `server-release.yml` | server images + compose assets only |
-| `desktop-vX.Y.Z` | `desktop-release.yml` | desktop apps only |
+| Tag              | Workflow                | Ships                                                                                        |
+| ---------------- | ----------------------- | -------------------------------------------------------------------------------------------- |
+| `vX.Y.Z`         | `release.yml` (unified) | server images + desktop apps + install assets — the line `install.sh` and the updater follow |
+| `server-vX.Y.Z`  | `server-release.yml`    | server images + compose assets only                                                          |
+| `desktop-vX.Y.Z` | `desktop-release.yml`   | desktop apps only                                                                            |
 
 ## What gates the release
 
@@ -77,6 +77,6 @@ So when a release adds a new service image, expect its first run to stop at
 
 - `docs/adr/` — architecture decisions, including supply-chain hardening.
 - `scripts/gen-release-compose.sh` — release compose generation + digest
-  pinning (unit-tested via `bun run lint:release-compose`).
+  pinning (unit-tested via `bun run lint:script-tests`).
 - `install.sh` / `scripts/owlat upgrade` — the consumer side of the release
   assets.

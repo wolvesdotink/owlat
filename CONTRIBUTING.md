@@ -127,6 +127,31 @@ job runs `bun run ci:lint`, the gate is enforced on every PR there — the same
 path that runs `apps/api/scripts/check-query-authz.sh` — not only when someone
 runs `ci:verify` locally.
 
+### Writing a baseline ratchet
+
+Seven gates share one comparison. A check script owns a _generator_ — the walk
+that prints today's violation set, one entry per line — and hands the rest to
+`scripts/ratchet.sh`, which compares that set against the frozen baseline,
+strict in both directions, and prints the wording the check passes in as flags:
+
+```bash
+exec scripts/ratchet.sh \
+	--baseline scripts/<name>-baseline.txt \
+	--ok "no new <thing>" \
+	--new-header "FAIL: {n} new <thing>(s) not in {baseline}:" \
+	--new-advice "How to fix one." \
+	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (<thing> fixed):" \
+	"$@" \
+	-- bash "$self" --generate
+```
+
+Every such gate therefore accepts `--write-baseline` to reseed itself, ignores
+blank lines and `#` comments in a baseline, and never depends on the baseline
+file's own sort order. Duplicate entries are significant, so a generator that
+wants them collapsed sorts with `sort -u` itself. The runner's own tests are in
+`scripts/__tests__/ratchet.test.ts`; the unit tests for all the gate scripts
+run in one pass with `bun run lint:script-tests`.
+
 ## Pull Request Process
 
 ### Branch Naming
