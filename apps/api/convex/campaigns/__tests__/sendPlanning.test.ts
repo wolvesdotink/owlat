@@ -200,7 +200,11 @@ describe('the day budget', () => {
 	it('parks a spent day at the planner instant, falling back to the next UTC day', () => {
 		const spent = sliceFor([50], 50, 1_000);
 		expect(spent.isDayExhausted).toBe(true);
-		expect(resolveParkInstant(spent, NOW)).toBe(spent.resumeAt ?? nextUtcDayStart(NOW));
+		expect(spent.resumeAt).toBeDefined();
+		expect(resolveParkInstant(spent, NOW)).toBe(spent.resumeAt);
+		// A planner instant that is NOT the next UTC day start proves it wins over the fallback.
+		const plannerInstant = NOW + 3_600_000;
+		expect(resolveParkInstant({ ...spent, resumeAt: plannerInstant }, NOW)).toBe(plannerInstant);
 		expect(resolveParkInstant({ ...spent, resumeAt: undefined }, NOW)).toBe(nextUtcDayStart(NOW));
 	});
 });
