@@ -30,7 +30,7 @@ import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { RampPresetsByStream } from './ramp/presetConfig';
 
-export interface RampPresetContext {
+interface RampPresetContext {
 	readonly presets: RampPresetsByStream;
 	/** What a stream with no row of its own runs under. */
 	readonly fallback: RampPreset;

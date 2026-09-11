@@ -29,10 +29,7 @@ type ReputationBucket = Doc<'sendingReputation'>;
  * This view deliberately does not change the sent-denominator breaker. The
  * breaker remains a conservative Owlat stop; this is the provider-facing rate.
  */
-export function deriveSpamRateSummary(
-	buckets: readonly ReputationBucket[],
-	now: number
-): SpamRateSummary {
+function deriveSpamRateSummary(buckets: readonly ReputationBucket[], now: number): SpamRateSummary {
 	const cutoff = now - WINDOW_MS;
 	let totalDelivered = 0;
 	let totalComplaints = 0;

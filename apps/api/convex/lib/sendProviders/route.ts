@@ -240,7 +240,7 @@ export function selectRouteFromFacts(
  * boundary turns into a bounded retry (capped by the routing attempt limit and
  * the four-day delivery deadline).
  */
-export type RoutingDeferralCode =
+type RoutingDeferralCode =
 	| 'GLOBAL_DELIVERY_CIRCUIT_OPEN'
 	| 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED'
 	| 'DELIVERABILITY_RELAY_UNAVAILABLE';

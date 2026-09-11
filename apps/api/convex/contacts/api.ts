@@ -35,7 +35,7 @@ interface UpdateContactBody {
 }
 
 // Response types
-export interface ContactResponse {
+interface ContactResponse {
 	id: string;
 	email: string;
 	firstName: string | null;

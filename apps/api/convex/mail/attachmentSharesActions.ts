@@ -35,7 +35,7 @@ import { throwForbidden, throwInvalidState } from '../_utils/errors';
 import { getMtaConfig, scanAttachmentBytes } from './mtaClient';
 
 /** What the composer gets back: either a usable link, or why there is none. */
-export type ShareDraftAttachmentResult =
+type ShareDraftAttachmentResult =
 	| {
 			ok: true;
 			shareId: string;

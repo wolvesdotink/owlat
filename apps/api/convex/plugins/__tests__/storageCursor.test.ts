@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
 	decryptPluginStorageCursor,
 	encryptPluginStorageCursor,
@@ -99,3 +101,53 @@ function replaceMiddleBase64UrlCharacter(value: string): string {
 	const replacement = value[index] === 'A' ? 'B' : 'A';
 	return `${value.slice(0, index)}${replacement}${value.slice(index + 1)}`;
 }
+
+/**
+ * Wire-format lock. `fixtures/at-rest-sealers/storageCursor-v1.json` was sealed
+ * by the implementation that predates the shared `lib/webSecretBox` primitive.
+ * A cursor token is held by a plugin between pages and survives a deploy, so a
+ * token minted by the old code must still open — and must still be bound to the
+ * exact tenant/plugin/prefix/limit it was minted under.
+ */
+describe('plugin storage cursor backward compatibility', () => {
+	const fixture = JSON.parse(
+		readFileSync(
+			resolve(__dirname, '../../../../../fixtures/at-rest-sealers/storageCursor-v1.json'),
+			'utf-8'
+		)
+	) as {
+		secret: string;
+		scope: { organizationId: string; pluginId: string };
+		request: { prefix: string; limit: number };
+		nativeCursor: string;
+		token: string;
+	};
+
+	beforeEach(() => vi.stubEnv('INSTANCE_SECRET', fixture.secret));
+
+	it('opens a token minted by the pre-consolidation implementation', async () => {
+		expect(await decryptPluginStorageCursor(fixture.scope, fixture.request, fixture.token)).toBe(
+			fixture.nativeCursor
+		);
+	});
+
+	it('still rejects that token under a different tenant (AAD binding preserved)', async () => {
+		await expect(
+			decryptPluginStorageCursor(
+				{ ...fixture.scope, organizationId: 'other-tenant' },
+				fixture.request,
+				fixture.token
+			)
+		).rejects.toThrow(PluginStorageCursorError);
+	});
+
+	it('still rejects that token under a different page request (AAD binding preserved)', async () => {
+		await expect(
+			decryptPluginStorageCursor(
+				fixture.scope,
+				{ ...fixture.request, limit: fixture.request.limit + 1 },
+				fixture.token
+			)
+		).rejects.toThrow(PluginStorageCursorError);
+	});
+});

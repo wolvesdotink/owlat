@@ -237,7 +237,7 @@ export type SunsetFacts = SunsetClock & {
  * any arithmetic, so it deliberately carries no day counts: there is no honest
  * number to report when the reason for holding is "we could not measure".
  */
-export type SunsetHoldVerdict = {
+type SunsetHoldVerdict = {
 	action: 'hold';
 	/** The stage the contact stays in. */
 	stage: SunsetStage;

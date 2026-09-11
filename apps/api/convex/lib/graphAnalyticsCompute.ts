@@ -13,7 +13,7 @@
  */
 
 /** Number of confidence histogram buckets over the [0,1] range. */
-export const CONFIDENCE_BUCKET_COUNT = 10;
+const CONFIDENCE_BUCKET_COUNT = 10;
 
 /** Clamp `n` (truncated to an integer) into the inclusive `[lo, hi]` range. */
 export function clamp(n: number, lo: number, hi: number): number {
@@ -26,14 +26,14 @@ export function clamp(n: number, lo: number, hi: number): number {
  * boundary (w2), and links disjoint topic tags (w3). Tuned so semantic distance
  * dominates but structure/tags break ties.
  */
-export const SURPRISE_W_DISSIMILARITY = 0.6;
-export const SURPRISE_W_CROSS_COMMUNITY = 0.25;
-export const SURPRISE_W_TAG_DISJOINT = 0.15;
+const SURPRISE_W_DISSIMILARITY = 0.6;
+const SURPRISE_W_CROSS_COMMUNITY = 0.25;
+const SURPRISE_W_TAG_DISJOINT = 0.15;
 
 // Re-exported so graph analytics consumers keep importing it from this module.
 export { cosineSimilarity } from './vectorMath';
 
-export interface ConfidenceStats {
+interface ConfidenceStats {
 	/** Per-bucket counts over [0,1]; length === CONFIDENCE_BUCKET_COUNT; sums to values.length. */
 	buckets: number[];
 	mean: number;

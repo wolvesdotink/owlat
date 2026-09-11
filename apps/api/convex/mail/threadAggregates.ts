@@ -10,6 +10,7 @@
 
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
+import { batchGet } from '../_utils/batchLoader';
 
 /** Re-derive a thread's aggregate counters from its current messages. */
 export async function rebuildThreadAggregates(
@@ -35,9 +36,15 @@ export async function rebuildThreadAggregates(
 	const hasFlagged = messages.some((m) => m.flagFlagged);
 	const hasAttachments = messages.some((m) => m.hasAttachments);
 	const folderRoles = new Set<string>();
+	// One thread's messages sit in a handful of folders; `batchGet` dedupes the
+	// ids and reads what is left in parallel.
+	const folders = await batchGet(
+		ctx,
+		messages.map((m) => m.folderId)
+	);
 	for (const m of messages) {
-		const folder = await ctx.db.get(m.folderId);
-		if (folder?.role) folderRoles.add(folder.role);
+		const role = folders.get(m.folderId)?.role;
+		if (role) folderRoles.add(role);
 	}
 	const labelIds = new Set<Id<'mailLabels'>>();
 	for (const m of messages) {

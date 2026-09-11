@@ -19,6 +19,7 @@ import { loadReadableMailbox, loadAccessibleMailboxes } from '../permissions';
 import { isMessageSnoozed } from '../../lib/mailSnooze';
 import { isThreadMuted } from '../../lib/mailMute';
 import { readSession, type FolderRole } from './shared';
+import { batchGet } from '../../_utils/batchLoader';
 
 /**
  * Follow-up watch state attached to each list row ("No reply yet" chip /
@@ -44,12 +45,14 @@ async function attachThreadState(
 	ctx: QueryCtx,
 	messages: Doc<'mailMessages'>[]
 ): Promise<Array<Doc<'mailMessages'> & RowThreadState>> {
-	const cache = new Map<Id<'mailThreads'>, Doc<'mailThreads'> | null>();
+	// A page of messages collapses to far fewer threads; `batchGet` keeps the
+	// dedupe and reads what is left in parallel rather than row by row.
+	const cache = await batchGet(
+		ctx,
+		messages.map((m) => m.threadId)
+	);
 	const out: Array<Doc<'mailMessages'> & RowThreadState> = [];
 	for (const m of messages) {
-		if (!cache.has(m.threadId)) {
-			cache.set(m.threadId, await ctx.db.get(m.threadId));
-		}
 		const thread = cache.get(m.threadId) ?? null;
 		const followUp = thread?.followUp;
 		const state: RowThreadState = {

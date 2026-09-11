@@ -103,7 +103,7 @@ function referenceTransportIdOf(kinds: readonly string[]): string | null {
 }
 
 /** Both readings of the relay list — see {@link relayConfiguration}. */
-export interface RelayConfiguration {
+interface RelayConfiguration {
 	/** The single second arm, or null when there is not exactly one. */
 	readonly referenceTransportId: string | null;
 	/** Is there a second sender AT ALL — the question the ramp's doors ask. */

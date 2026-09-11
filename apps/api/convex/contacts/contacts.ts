@@ -18,6 +18,7 @@ import { validateStringLength, normalizeEmail, STRING_LIMITS } from '../lib/inpu
 import { getOrThrow, throwNotFound, throwAlreadyExists, throwInvalidInput } from '../_utils/errors';
 import { createContact } from './creation';
 import { duplicateHandlingValidator } from '../lib/convexValidators';
+import { batchGet } from '../_utils/batchLoader';
 
 // Query to get a single contact by ID (session-authenticated client callers).
 export const get = authedQuery({
@@ -48,8 +49,10 @@ export const getByIds = authedQuery({
 			firstName?: string;
 			lastName?: string;
 		}> = [];
+		// Independent rows: one batched read rather than a round trip per id.
+		const contacts = await batchGet(ctx, args.contactIds);
 		for (const contactId of args.contactIds) {
-			const contact = await ctx.db.get(contactId);
+			const contact = contacts.get(contactId);
 			if (!contact || contact.deletedAt !== undefined) continue;
 			out.push({
 				_id: contact._id,
@@ -381,8 +384,11 @@ export const bulkDelete = authedMutation({
 		const errors: string[] = [];
 		const validContacts: { id: Id<'contacts'>; email: string | null }[] = [];
 
+		// The lookups are independent (the deletions below are not, and stay
+		// sequential); batch them so a 100-id bulk delete is one read round trip.
+		const contacts = await batchGet(ctx, args.contactIds);
 		for (const contactId of args.contactIds) {
-			const contact = await ctx.db.get(contactId);
+			const contact = contacts.get(contactId);
 			if (!contact) {
 				failed++;
 				errors.push(`Contact ${contactId} not found`);

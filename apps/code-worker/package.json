@@ -14,8 +14,8 @@
 		"build": "tsc",
 		"typecheck": "tsc --noEmit",
 		"start": "node dist/index.js",
-		"lint": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src",
-		"lint:fix": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src --fix",
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
 		"test": "vitest run --passWithNoTests",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage --passWithNoTests"

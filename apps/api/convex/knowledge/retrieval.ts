@@ -42,7 +42,7 @@ import {
  * entry is the `to`. `otherTitle` is UNTRUSTED (a neighbour's title) — callers
  * that feed it to a model must scrub it.
  */
-export interface KnowledgeVia {
+interface KnowledgeVia {
 	relation: RelationType;
 	otherTitle: string;
 	direction: 'outgoing' | 'incoming';

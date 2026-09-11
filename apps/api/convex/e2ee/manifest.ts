@@ -48,7 +48,7 @@ export type ManifestPayload = {
 };
 
 /** The served manifest: the payload plus its armored detached signature. */
-export type SignedManifest = ManifestPayload & {
+type SignedManifest = ManifestPayload & {
 	signature: string;
 	/**
 	 * The key-rotation feed (E6) — signed old->new statements a peer verifies

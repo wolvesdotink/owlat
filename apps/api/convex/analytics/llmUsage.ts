@@ -37,7 +37,7 @@ export const record = internalMutation({
 	},
 });
 
-export interface LlmUsageAttribution {
+interface LlmUsageAttribution {
 	readonly organizationId: string;
 	readonly pluginId: string;
 }

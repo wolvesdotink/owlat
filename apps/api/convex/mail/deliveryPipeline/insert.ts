@@ -49,7 +49,7 @@ function parseReferences(refs: string | undefined): string[] {
 		.filter(Boolean);
 }
 
-export interface DeliveredAttachment {
+interface DeliveredAttachment {
 	filename: string;
 	contentType: string;
 	size: number;

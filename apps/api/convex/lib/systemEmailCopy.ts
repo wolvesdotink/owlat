@@ -106,7 +106,7 @@ export function deletionEmailCopy(locale: SystemEmailLocale): DeletionEmailCopy 
 }
 
 /** The sentences the opt-in Daily Brief digest (idea 29) is made of. */
-export interface DailyBriefEmailCopy {
+interface DailyBriefEmailCopy {
 	subject: (count: number) => string;
 	heading: string;
 	emptyLine: string;

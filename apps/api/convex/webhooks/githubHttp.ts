@@ -38,7 +38,7 @@ const SIGNATURE_PREFIX = 'sha256=';
  * format is `sha256=<hex>`. Returns false on a missing prefix or a mismatch
  * (constant-time compare).
  */
-export async function verifyGithubSignature(
+async function verifyGithubSignature(
 	rawBody: string,
 	headerValue: string,
 	secret: string

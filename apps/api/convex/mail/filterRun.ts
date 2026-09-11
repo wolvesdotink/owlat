@@ -32,7 +32,7 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
  * a matching row here can move folders and rewrite two folders' counters, so
  * the write budget binds well before the read budget does.
  */
-export const FILTER_RUN_BATCH = 64;
+const FILTER_RUN_BATCH = 64;
 
 /** Action types a retroactive sweep is allowed to perform. */
 const SAFE_ACTION_TYPES = new Set([

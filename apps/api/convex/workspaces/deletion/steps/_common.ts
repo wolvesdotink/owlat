@@ -376,7 +376,7 @@ export const organizationDeletionTableValidator = v.union(
 
 export const DEFAULT_BATCH_SIZE = 100;
 
-export interface DeleteBatchOutcome {
+interface DeleteBatchOutcome {
 	deletedCount: number;
 	hasMore: boolean;
 }

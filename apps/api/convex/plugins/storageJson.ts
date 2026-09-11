@@ -14,7 +14,7 @@ export const PLUGIN_STORAGE_LIMITS = Object.freeze({
 	maxObjectFields: 1_024,
 });
 
-export interface EncodedPluginStorageValue {
+interface EncodedPluginStorageValue {
 	readonly json: string;
 	readonly version: typeof CURRENT_PLUGIN_STORAGE_VALUE_JSON_VERSION;
 	readonly bytes: number;

@@ -6,7 +6,7 @@ import { getRequired } from '../env';
  * Handles domain DKIM key generation and deletion.
  */
 
-export interface MtaRegistrationResult {
+interface MtaRegistrationResult {
 	selector: string;
 	dnsRecord: string; // e.g., "v=DKIM1; k=rsa; p=MIGfMA0..."
 	/** Whether the MTA generated a brand-new key (vs. returning an existing one). */
@@ -22,7 +22,7 @@ export interface MtaRegistrationResult {
 }
 
 /** One org credential as the MTA's `?includeKeys=1` list returns it. */
-export interface MtaOrgCredential {
+interface MtaOrgCredential {
 	apiKey: string;
 	credential: {
 		organizationId: string;

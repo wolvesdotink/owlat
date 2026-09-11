@@ -70,13 +70,13 @@ export function rotationStatementText(statement: {
 }
 
 /** Persisted trust state for a discovered recipient key. */
-export type PinState = 'pinned' | 'keyChanged';
+type PinState = 'pinned' | 'keyChanged';
 
 /** Which transition a pin evaluation took (for logging / UI copy / tests). */
-export type PinAction = 'firstUse' | 'unchanged' | 'signedRotation' | 'keyChanged' | 'reaccept';
+type PinAction = 'firstUse' | 'unchanged' | 'signedRotation' | 'keyChanged' | 'reaccept';
 
 /** Inputs to a pin evaluation. */
-export interface PinContext {
+interface PinContext {
 	/** The currently trusted (pinned) fingerprint, or `null` on first contact. */
 	pinnedFingerprint: string | null;
 	/** The fingerprint just observed via discovery. */
@@ -188,7 +188,7 @@ export function reacceptObservedKey(observedFingerprint: string): PinDecision {
 // unverified again, with no sweep, no migration and no way to forget.
 
 /** What a stored verification amounts to, given where the pin is NOW. */
-export type VerificationState =
+type VerificationState =
 	/** Never verified by anyone here. */
 	| 'unverified'
 	/** A human verified exactly the key we would seal to today. */

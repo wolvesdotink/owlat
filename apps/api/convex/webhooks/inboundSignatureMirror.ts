@@ -19,7 +19,7 @@ import { isClearsigned } from '@owlat/shared/secureMessage';
 import { logError } from '../lib/runtimeLog';
 
 /** The two mirrored display fields `inbox.messages.receiveMessage` accepts. */
-export interface SignatureMirrorFields {
+interface SignatureMirrorFields {
 	isInboundSignatureValid: boolean;
 	inboundSignerFingerprint?: string;
 }

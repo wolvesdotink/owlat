@@ -52,7 +52,7 @@ export async function getDraftHandler(ctx: QueryCtx, args: { draftId: Id<'mailDr
  * empty whenever the aggregate verdict did not turn on recipient keys at all
  * (flag off, no draft recipients).
  */
-export interface ComposerSealView {
+interface ComposerSealView {
 	state: SealState;
 	recipients: RecipientSealView[];
 }

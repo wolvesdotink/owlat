@@ -27,7 +27,7 @@ export function codeTaskRetryDelayMs(attempts: number): number {
 	return CODE_TASK_RETRY_DELAYS_MS[index]!;
 }
 
-export type CodeTaskRetryDecision =
+type CodeTaskRetryDecision =
 	| { retry: true; attempts: number; nextAttemptAt: number }
 	| { retry: false; attempts: number };
 

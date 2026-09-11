@@ -10,6 +10,7 @@ import { hasPermission, loadOwnUserProfile, requireSelf } from '../lib/sessionOr
 import type { OrganizationRole } from '../lib/sessionOrganization';
 import { loadPersonalMailboxForUser } from '../mail/permissions';
 import { throwNotFound } from '../_utils/errors';
+import { batchGet } from '../_utils/batchLoader';
 
 const organizationExportTableValidator = v.union(
 	...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map((resource) => v.literal(resource))
@@ -162,11 +163,14 @@ export const listAuthorizedTemplateMedia = internalQuery({
 	},
 	handler: async (ctx, args) => {
 		if (!(await hasOrganizationExportAccess(ctx, args.userId, args.organizationId))) return [];
+		// Independent ids: normalize first, then one batched read.
+		const assetIds = args.mediaAssetIds
+			.map((candidate) => ctx.db.normalizeId('mediaAssets', candidate))
+			.filter((id) => id !== null);
+		const byId = await batchGet(ctx, assetIds);
 		const assets: Array<{ mediaAssetId: string; storageId: string }> = [];
-		for (const candidate of args.mediaAssetIds) {
-			const assetId = ctx.db.normalizeId('mediaAssets', candidate);
-			if (!assetId) continue;
-			const asset = await ctx.db.get(assetId);
+		for (const assetId of assetIds) {
+			const asset = byId.get(assetId);
 			if (asset) assets.push({ mediaAssetId: asset._id, storageId: asset.storageId });
 		}
 		return assets;
@@ -330,7 +334,7 @@ export const listDeliverabilityAlertRecipientStates = internalQuery({
  * counts are bounded by {@link EXPORT_COUNT_CAP}: past it the manifest says
  * "more than N" instead of pretending to a number it did not finish counting.
  */
-export const EXPORT_COUNT_CAP = 2_000;
+const EXPORT_COUNT_CAP = 2_000;
 
 async function boundedCount<T>(query: {
 	take: (n: number) => Promise<T[]>;

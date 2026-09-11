@@ -76,6 +76,7 @@
 		"typecheck": "turbo typecheck",
 		"lint": "turbo lint",
 		"lint:fix": "turbo lint:fix",
+		"lint:scripts": "oxlint --config oxlintrc.json scripts",
 		"lint:deadcode": "bash scripts/check-dead-code.sh && bun scripts/check-shared-production-exports.ts",
 		"lint:build-graph": "bun scripts/check-build-graph.ts",
 		"lint:convex-orphans": "vitest run scripts/__tests__/check-convex-plugin-orphans.test.ts && bun scripts/check-convex-plugin-orphans.ts",

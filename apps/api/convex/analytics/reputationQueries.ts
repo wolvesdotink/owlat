@@ -223,10 +223,10 @@ export const getCampaignSendEstimate = authedQuery({
 });
 
 /** Per-record email-auth verification state for a sending domain. */
-export type DomainAuthState = { spf: boolean; dkim: boolean; dmarc: boolean };
+type DomainAuthState = { spf: boolean; dkim: boolean; dmarc: boolean };
 
 /** One row of the Delivery health page's domain table. */
-export interface DeliveryDomainRow {
+interface DeliveryDomainRow {
 	domain: string;
 	status: 'registering' | 'pending' | 'verified' | 'failed';
 	auth: DomainAuthState;
@@ -263,7 +263,7 @@ export interface DeliveryDomainRow {
  * counts as verified only when every selector is present and verified. Pure —
  * unit-testable, and the single place the "is this record good?" rule lives.
  */
-export function domainAuthState(
+function domainAuthState(
 	results:
 		| {
 				spf?: { verified: boolean } | undefined;
@@ -282,7 +282,7 @@ export function domainAuthState(
 }
 
 /** The record names in `auth` that are not yet verified, in display order. */
-export function missingAuthRecords(auth: DomainAuthState): string[] {
+function missingAuthRecords(auth: DomainAuthState): string[] {
 	const missing: string[] = [];
 	if (!auth.spf) missing.push('SPF');
 	if (!auth.dkim) missing.push('DKIM');

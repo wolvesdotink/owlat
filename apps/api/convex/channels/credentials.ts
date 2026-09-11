@@ -27,6 +27,7 @@ import { decryptSecret } from '../lib/credentialCrypto';
 import type { EncryptedEnvelope } from '../lib/credentialCrypto';
 import { outboundChannelValidator } from '../lib/convexValidators';
 import type { OutboundChannel } from '../lib/convexValidators';
+import { logError } from '../lib/runtimeLog';
 
 /**
  * Shape of the plaintext credential blob entered in the channel config form
@@ -65,10 +66,7 @@ const INBOUND_SIGNING_FIELD: Record<OutboundChannel, keyof ChannelCreds> = {
 };
 
 /** Which stored secret an inbound caller is asking for. */
-export const channelSecretFieldValidator = v.union(
-	v.literal('signature'),
-	v.literal('verifyToken')
-);
+const channelSecretFieldValidator = v.union(v.literal('signature'), v.literal('verifyToken'));
 
 /**
  * Open a stored `channelConfigs.config` envelope. Returns null for anything
@@ -87,9 +85,9 @@ export function decryptChannelCreds(config: string, channel: string): ChannelCre
 		const envelope = JSON.parse(config) as EncryptedEnvelope;
 		return JSON.parse(decryptSecret(envelope)) as ChannelCreds;
 	} catch (error) {
-		// eslint-disable-next-line no-console
-		console.error(
-			`[channels] stored credential envelope for '${channel}' could not be opened (tampered row, or encrypted under a rotated INSTANCE_SECRET) — treating the channel as not configured: ${error instanceof Error ? error.message : String(error)}`
+		logError(
+			`[channels] stored credential envelope for '${channel}' could not be opened (tampered row, or encrypted under a rotated INSTANCE_SECRET) — treating the channel as not configured`,
+			{ channel, error: error instanceof Error ? error.message : String(error) }
 		);
 		return null;
 	}
@@ -134,9 +132,9 @@ export const getInboundSecret = internalAction({
 			// leave the inbound ones blank. Say which field is missing (name only,
 			// never a value) so the fallback-or-503 in webhooks/channelSecrets.ts is
 			// traceable to a configuration gap rather than a decryption failure.
-			// eslint-disable-next-line no-console
-			console.error(
-				`[channels] stored credentials for '${args.channel}' carry no '${key}' — falling back to the deployment env var for inbound ${args.field}`
+			logError(
+				`[channels] stored credentials for '${args.channel}' carry no '${key}' — falling back to the deployment env var for inbound ${args.field}`,
+				{ channel: args.channel, field: args.field, missingKey: key }
 			);
 			return null;
 		}

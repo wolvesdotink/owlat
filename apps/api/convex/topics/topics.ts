@@ -70,7 +70,7 @@ export const getContacts = authedQuery({
 
 		// Batch-load all contacts at once
 		const contactIds = result.page.map((membership) => membership.contactId);
-		const contactsMap = await batchGet<Doc<'contacts'>>(ctx, contactIds);
+		const contactsMap = await batchGet(ctx, contactIds);
 
 		const contacts = result.page.map((membership) => {
 			const contact = contactsMap.get(membership.contactId);
@@ -103,7 +103,7 @@ async function getTopicsForContactImpl(ctx: QueryCtx, contactId: Id<'contacts'>)
 
 	// Batch-load all topics at once
 	const topicIds = memberships.map((membership) => membership.topicId);
-	const topicsMap = await batchGet<Doc<'topics'>>(ctx, topicIds);
+	const topicsMap = await batchGet(ctx, topicIds);
 
 	const topics = memberships.map((membership) => {
 		const topic = topicsMap.get(membership.topicId);

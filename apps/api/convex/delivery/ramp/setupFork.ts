@@ -41,7 +41,7 @@ import type { RampActuator } from './degradation';
 
 export type RampSetupPathId = 'own_server' | 'esp_relay';
 
-export interface RampSetupPath {
+interface RampSetupPath {
 	readonly id: RampSetupPathId;
 	readonly title: string;
 	/** What this path does, in one sentence. */
@@ -88,7 +88,7 @@ export const RAMP_SETUP_PATHS: readonly RampSetupPath[] = [
 	RAMP_SETUP_PATHS_BY_ID.esp_relay,
 ];
 
-export interface RampSetupForkChoice {
+interface RampSetupForkChoice {
 	readonly paths: readonly RampSetupPath[];
 	/**
 	 * Which path the form opens on. `null` — nothing pre-selected — unless a

@@ -31,7 +31,7 @@ import { campaignSendPlanProgress, type CampaignSendPlanProgress } from './sendP
  */
 const PLAN_AUDIENCE_DOCUMENT_BUDGET = 3_000;
 
-export interface SendPlanCapacity {
+interface SendPlanCapacity {
 	readonly capacityByDay: number[];
 	/**
 	 * The audience size, or `null` when it was not counted on this hop.

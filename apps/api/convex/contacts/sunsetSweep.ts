@@ -38,7 +38,7 @@ export const SUNSET_STALE_MS = DAY_MS;
 export const SUNSET_BATCH_SIZE = 50;
 
 /** Chained batches per tick — the hard ceiling on one sweep's work. */
-export const SUNSET_MAX_BATCHES = 20;
+const SUNSET_MAX_BATCHES = 20;
 
 /**
  * Contacts one tick can converge: 50 x 20 = 1000.
@@ -67,7 +67,7 @@ export const SUNSET_CONTACTS_PER_TICK = SUNSET_BATCH_SIZE * SUNSET_MAX_BATCHES;
  * genuine backlog (a real book that really is that quiet) drains at 100 an hour
  * with an audit trail at every step, which is the pace this decision deserves.
  */
-export const SUNSET_MAX_SUPPRESSIONS_PER_TICK = 100;
+const SUNSET_MAX_SUPPRESSIONS_PER_TICK = 100;
 
 /**
  * ONE statement of how a caller-supplied bound is coerced. THE TWO FAILURE

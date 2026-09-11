@@ -40,7 +40,7 @@ import { scrubForInjection } from './prompt';
  * workspace state or sends mail (decision B1), and the conformance suite asserts
  * every built-in stays inside this union.
  */
-export type AssistantToolScope = 'workspace:read' | 'workspace:draft';
+type AssistantToolScope = 'workspace:read' | 'workspace:draft';
 
 /**
  * Spend-attribution feature tag shared by the two draft tools. Kept as one
@@ -67,7 +67,7 @@ export interface HostedAssistantToolModule {
 }
 
 /** Resolved feature-flag state as returned by the host's flag resolver. */
-export type ResolvedFlags = Readonly<Record<string, boolean>>;
+type ResolvedFlags = Readonly<Record<string, boolean>>;
 
 /** True for an async-iterable value (a streaming tool result). */
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {

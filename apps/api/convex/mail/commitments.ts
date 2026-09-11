@@ -194,7 +194,7 @@ export const applyCommitment = internalMutation({
 /** Active mailboxes scanned per sweep tick. */
 const MAILBOX_SCAN_LIMIT = 50;
 /** Surface an open commitment this long before its deadline (pre-lapse). */
-export const REMIND_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const REMIND_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 /** Open commitments inspected per mailbox per tick. */
 const COMMITMENT_SCAN_LIMIT = 50;
 /** Global cap on extractions scheduled per sweep tick. */

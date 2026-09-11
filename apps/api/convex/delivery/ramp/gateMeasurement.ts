@@ -22,7 +22,7 @@
  * one-armed gate has no comparison, and a renderer must be able to tell "no
  * second arm by design" from "a second arm we could not measure".
  */
-export interface OneArmedMeasurementShape {
+interface OneArmedMeasurementShape {
 	readonly referenceRate: null;
 	readonly thresholdRate: number;
 	readonly toleranceValuePp: null;

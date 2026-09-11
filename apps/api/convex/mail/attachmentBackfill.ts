@@ -27,7 +27,7 @@ import { indexMessageAttachments, indexableFromMessage } from './attachmentIndex
  * batch: each row here can write several junction rows, so the write budget,
  * not the read budget, is the binding constraint.
  */
-export const ATTACHMENT_BACKFILL_BATCH = 128;
+const ATTACHMENT_BACKFILL_BATCH = 128;
 
 /**
  * The current backfill job for a mailbox, or null. Drives the Files view's

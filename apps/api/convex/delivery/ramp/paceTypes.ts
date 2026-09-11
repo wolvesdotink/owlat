@@ -21,7 +21,7 @@ import type { RampGateEvaluation, RampGateId, RampVerdict } from './gateTypes';
  * the two share reports the same code, so an operator reading a pace decision
  * and a share decision is reading one vocabulary.
  */
-export type PaceControlReason =
+type PaceControlReason =
 	/**
 	 * THE ONE SANCTIONED BEHAVIOUR CHANGE (plan D19). The cap was not exercised
 	 * enough for the window to say anything, so the actuator HOLDS. The shipped
@@ -135,7 +135,7 @@ export interface PaceControllerInput {
 }
 
 /** A freeze the pace actuator imposes. Same shape and rules as the share's. */
-export interface PaceDecisionFreeze {
+interface PaceDecisionFreeze {
 	readonly until: number;
 	readonly origin: RampFreezeOrigin;
 	/** Present only on a gate-breach freeze — only a breach advances the ladder. */

@@ -41,7 +41,7 @@ import {
  * extraction (dozens of facts from one message) from writing a quadratic blow-up
  * of rows in one mutation. Extra entries beyond the cap are simply not cliqued.
  */
-export const STRUCTURAL_MAX_BATCH = 25;
+const STRUCTURAL_MAX_BATCH = 25;
 
 /**
  * How many pre-existing same-thread entries each freshly-ingested entry links to.
@@ -73,7 +73,7 @@ async function patchEdgeAttrs(
 	ctx: MutationCtx,
 	id: Id<'knowledgeRelations'>,
 	attrs: EdgeAttrs,
-	now: number,
+	now: number
 ): Promise<void> {
 	await ctx.db.patch(id, {
 		confidence: attrs.confidence,
@@ -106,7 +106,7 @@ export async function upsertEdge(
 		toEntryId: Id<'knowledgeEntries'>;
 		relationType: Doc<'knowledgeRelations'>['relationType'];
 		attrs: EdgeAttrs;
-	},
+	}
 ): Promise<Id<'knowledgeRelations'> | null> {
 	if (args.fromEntryId === args.toEntryId) return null;
 
@@ -114,7 +114,7 @@ export async function upsertEdge(
 	const pair = await ctx.db
 		.query('knowledgeRelations')
 		.withIndex('by_pair', (q) =>
-			q.eq('fromEntryId', args.fromEntryId).eq('toEntryId', args.toEntryId),
+			q.eq('fromEntryId', args.fromEntryId).eq('toEntryId', args.toEntryId)
 		)
 		.collect(); // bounded: edges between one directed entry pair (≤ relationType count)
 	const existing = pair.find((r) => r.relationType === args.relationType);
@@ -162,7 +162,7 @@ export async function repointEdge(
 	ctx: MutationCtx,
 	edge: Doc<'knowledgeRelations'>,
 	newFromEntryId: Id<'knowledgeEntries'>,
-	newToEntryId: Id<'knowledgeEntries'>,
+	newToEntryId: Id<'knowledgeEntries'>
 ): Promise<void> {
 	const now = Date.now();
 	if (newFromEntryId === newToEntryId) {
@@ -172,20 +172,16 @@ export async function repointEdge(
 
 	const pair = await ctx.db
 		.query('knowledgeRelations')
-		.withIndex('by_pair', (q) =>
-			q.eq('fromEntryId', newFromEntryId).eq('toEntryId', newToEntryId),
-		)
+		.withIndex('by_pair', (q) => q.eq('fromEntryId', newFromEntryId).eq('toEntryId', newToEntryId))
 		.collect(); // bounded: edges between one directed entry pair (≤ relationType count)
-	const existing = pair.find(
-		(r) => r.relationType === edge.relationType && r._id !== edge._id,
-	);
+	const existing = pair.find((r) => r.relationType === edge.relationType && r._id !== edge._id);
 
 	if (existing) {
 		await patchEdgeAttrs(
 			ctx,
 			existing._id,
 			mergeEdgeAttrs(edgeAttrsOf(existing), edgeAttrsOf(edge)),
-			now,
+			now
 		);
 		await ctx.db.delete(edge._id);
 		return;
@@ -232,7 +228,7 @@ export const linkStructural = internalMutation({
 		// Cap the clique so a pathological batch can't write a quadratic edge set.
 		const batchIds = args.entryIds.slice(0, STRUCTURAL_MAX_BATCH);
 		const batch = (await Promise.all(batchIds.map((id) => ctx.db.get(id)))).filter(
-			(d): d is Doc<'knowledgeEntries'> => d !== null,
+			(d): d is Doc<'knowledgeEntries'> => d !== null
 		);
 		if (batch.length === 0) return;
 

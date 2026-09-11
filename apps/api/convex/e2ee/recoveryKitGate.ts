@@ -45,9 +45,7 @@ export type RecoveryKitDenial =
 	/** The address has no active sealing key to export. */
 	| 'no_key';
 
-export type RecoveryKitGateResult<Kit> =
-	| { ok: true; kit: Kit }
-	| { ok: false; reason: RecoveryKitDenial };
+type RecoveryKitGateResult<Kit> = { ok: true; kit: Kit } | { ok: false; reason: RecoveryKitDenial };
 
 /** Every effect the gate needs, injected so the ordering is testable without a database. */
 export interface RecoveryKitGateDeps<Kit> {

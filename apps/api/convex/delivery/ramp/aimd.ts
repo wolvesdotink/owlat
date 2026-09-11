@@ -18,7 +18,7 @@
  */
 
 /** The bounds one actuator moves between. */
-export interface AimdBounds {
+interface AimdBounds {
 	/** The value a SOFT failure may never fall below (never fully zero, D9). */
 	readonly floor: number;
 	/** The hard upper bound an increase may never exceed. */

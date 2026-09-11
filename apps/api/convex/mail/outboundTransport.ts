@@ -19,7 +19,7 @@ import type { Doc, Id } from '../_generated/dataModel';
  * path; `external` = the mail-sync worker driving the user's own SMTP. The
  * external variant never carries the password.
  */
-export type MailboxTransport =
+type MailboxTransport =
 	| { kind: 'hosted' }
 	| {
 			kind: 'external';

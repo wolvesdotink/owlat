@@ -45,7 +45,7 @@ import {
 
 type RuntimeTransport = SendProviderModule<SendProviderKind> | HostedSendProviderModule;
 
-export interface RuntimeProviderBundle extends ComposedSendProviderBundle<
+interface RuntimeProviderBundle extends ComposedSendProviderBundle<
 	SendProviderKind,
 	RuntimeTransport,
 	unknown

@@ -45,11 +45,11 @@ import {
 } from './inboundSeal';
 
 /** The outcome of a low-level open attempt. Bytes + keys in, structured out. */
-export type OpenOutcome =
+type OpenOutcome =
 	| { status: 'opened'; innerMime: string; signatureValid: boolean; signerFingerprint?: string }
 	| { status: 'cannotDecrypt' };
 
-export interface OpenParams {
+interface OpenParams {
 	/** The raw sealed message (PGP/MIME) or its inline-armored body. */
 	raw: string;
 	/** Armored PRIVATE keys of the recipient addresses we hold in the vault. */

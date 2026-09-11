@@ -263,11 +263,11 @@ async function detectPhishingUrls(
 // which the validator marks optional — a fully-populated value is assignable.
 type SecurityFlags = Infer<typeof securityFlagsValidator>;
 
-export interface SecurityScanInput {
+interface SecurityScanInput {
 	inboundMessageId: Id<'inboundMessages'>;
 }
 
-export interface SecurityScanOutput {
+interface SecurityScanOutput {
 	securityFlags: SecurityFlags;
 	isInjection: boolean;
 	maxConfidence: number;

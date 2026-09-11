@@ -32,14 +32,14 @@ import { getSenderRule } from './lib/autonomyRules';
  * consume them unchanged — an angry reply / bounce / complaint reads as a
  * `rejected`, an unedited answered-clarification send as an `approved`.
  */
-export const OUTCOME_SIGNAL = {
+const OUTCOME_SIGNAL = {
 	reply_negative: 'rejected',
 	bounce: 'rejected',
 	complaint: 'rejected',
 	clarification_unedited_send: 'approved',
 } as const;
 
-export type OutcomeSignal = keyof typeof OUTCOME_SIGNAL;
+type OutcomeSignal = keyof typeof OUTCOME_SIGNAL;
 
 const outcomeSignalValidator = v.union(
 	v.literal('reply_negative'),

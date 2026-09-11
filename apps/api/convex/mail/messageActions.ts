@@ -31,7 +31,7 @@ type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
  * archive / trash / reportSpam / notSpam) so the client can offer an
  * "Undo" that moves each message back to the folder it came from.
  */
-export type MovedMessage = {
+type MovedMessage = {
 	messageId: Id<'mailMessages'>;
 	sourceFolderId: Id<'mailFolders'>;
 };

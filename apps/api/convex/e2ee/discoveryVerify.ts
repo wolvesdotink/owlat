@@ -21,7 +21,7 @@ import { verifyManifest, type ManifestPayload } from './manifest';
 import { fingerprintsEqual, rotationStatementText, type RotationStatement } from './pinning';
 
 /** The parsed `/.well-known/owlat.json` body — the signed payload plus extras. */
-export interface FetchedManifest extends ManifestPayload {
+interface FetchedManifest extends ManifestPayload {
 	signature: string;
 	/** Optional rotation feed (outside the signed payload; verified per-entry). */
 	keyRotations?: RotationStatement[];

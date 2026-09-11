@@ -15,7 +15,7 @@ const scopeValidator = v.union(
 	v.object({ type: v.literal('classification'), id: v.string() })
 );
 
-export interface DraftStrategySelectionScope {
+interface DraftStrategySelectionScope {
 	readonly mailboxId?: string;
 	readonly contactId?: string;
 	readonly classification: string;

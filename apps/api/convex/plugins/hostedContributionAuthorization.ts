@@ -40,7 +40,7 @@ export interface HostedContributionAuthorizationSpec {
  * sequence: the one bucket with an extra field must not be a reason to fork the
  * authorization path.
  */
-export type HostedContributionAuditExtras = Readonly<Omit<HostedPluginAuditMetadata, 'reasonCode'>>;
+type HostedContributionAuditExtras = Readonly<Omit<HostedPluginAuditMetadata, 'reasonCode'>>;
 
 /**
  * The plugin actor scope for `kind`, or `null` when the kind is unknown or the

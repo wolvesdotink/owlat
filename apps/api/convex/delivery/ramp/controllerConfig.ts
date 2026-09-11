@@ -45,7 +45,7 @@ export interface RampCooldownState {
 	readonly cooldownMs: number | undefined;
 }
 
-export interface RampAimdConfig {
+interface RampAimdConfig {
 	/** Multiplicative decrease applied the instant any gate breaches. */
 	readonly decreaseFactor: number;
 	/**

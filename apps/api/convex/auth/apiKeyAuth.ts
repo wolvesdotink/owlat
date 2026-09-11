@@ -46,14 +46,14 @@ export function isApiKeyUsable(
 /**
  * API authentication result
  */
-export interface ApiAuthResult {
+interface ApiAuthResult {
 	success: true;
 	keyId: Id<'apiKeys'>;
 	scopes: string[];
 	rateLimit: RateLimitHeaders;
 }
 
-export interface ApiAuthError {
+interface ApiAuthError {
 	success: false;
 	error: string;
 	status: number;

@@ -68,7 +68,7 @@ export const listByOrganization = authedQuery({
  * not inbound MX delivery, so they are intentionally excluded — the Receiving
  * panel is about receiving mail, not sending it.
  */
-export const INBOUND_SMTP_PORT = 25;
+const INBOUND_SMTP_PORT = 25;
 
 // Query: Deployment-level inbound mail config for the Settings → Domains
 // "Receiving" panel. Returns the MTA's public EHLO/MX hostname (the target a

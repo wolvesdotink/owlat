@@ -33,7 +33,7 @@ import { latestAttributableCampaignSend } from '../delivery/marketingSendAttribu
 
 // ─── Source discriminators ──────────────────────────────────────────────────
 
-export const SUBSCRIBE_SOURCE_LITERALS = [
+const SUBSCRIBE_SOURCE_LITERALS = [
 	'admin',
 	'form',
 	'import',
@@ -46,7 +46,7 @@ export type SubscribeSource = (typeof SUBSCRIBE_SOURCE_LITERALS)[number];
 
 const subscribeSourceValidator = v.union(...SUBSCRIBE_SOURCE_LITERALS.map((l) => v.literal(l)));
 
-export const UNSUBSCRIBE_SOURCE_LITERALS = [
+const UNSUBSCRIBE_SOURCE_LITERALS = [
 	'admin',
 	'public_email_link',
 	'preferences_page',

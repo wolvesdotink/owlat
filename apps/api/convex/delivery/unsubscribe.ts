@@ -6,7 +6,7 @@ import { makeContactToken, verifyContactToken } from './contactToken';
 
 // Unsubscribe tokens use the shared contact-token codec with an empty namespace
 // prefix. Format: {contactId}:{timestamp}:{signature}, signed with UNSUBSCRIBE_SECRET.
-export function generateUnsubscribeToken(contactId: string): string {
+function generateUnsubscribeToken(contactId: string): string {
 	return makeContactToken('', contactId);
 }
 
@@ -35,7 +35,7 @@ export function getUnsubscribeUrl(siteUrl: string, contactId: string): string {
  * carries no recipient or campaign PII, and the namespace prefix means a probe
  * token can never be replayed against the contact unsubscribe endpoint.
  */
-export const SEED_PROBE_TOKEN_PREFIX = 'seedprobe:';
+const SEED_PROBE_TOKEN_PREFIX = 'seedprobe:';
 
 /**
  * The token payload is `${organizationId}.${probeId}`.

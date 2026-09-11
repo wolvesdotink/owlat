@@ -5,7 +5,7 @@ import {
 import { absoluteDnsRecordName, type ChecklistDnsRecord } from './checklistRecords';
 import { pendingDnsStatus } from './checklistValidatorTypes';
 
-export type DnsObservationResult = {
+type DnsObservationResult = {
 	verified: boolean;
 	lastChecked?: number;
 	error?: string;

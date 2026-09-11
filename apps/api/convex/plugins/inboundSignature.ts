@@ -132,13 +132,13 @@ export async function compareSignature(
  * mattering, because the timestamp check below would reject the same request by
  * then anyway.
  */
-export interface ReplayBoundVerification {
+interface ReplayBoundVerification {
 	readonly ok: true;
 	readonly deliveryDigest: string;
 	readonly expiresAtMs: number;
 }
 
-export type ReplayBoundSignatureResult =
+type ReplayBoundSignatureResult =
 	| ReplayBoundVerification
 	| { readonly ok: false; readonly status: 401 | 503; readonly reason: string };
 

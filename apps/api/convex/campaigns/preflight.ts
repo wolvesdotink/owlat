@@ -36,7 +36,7 @@ export type PreflightResult =
 	  };
 
 /** The discriminant a failed pre-flight carries, for clients that branch on it. */
-export type PreflightFailureReason = Extract<PreflightResult, { ok: false }>['reason'];
+type PreflightFailureReason = Extract<PreflightResult, { ok: false }>['reason'];
 
 /**
  * Structured error payload for a failed pre-flight. `capacityPlan` is what

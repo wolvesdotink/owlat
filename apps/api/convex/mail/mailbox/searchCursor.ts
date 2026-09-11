@@ -47,7 +47,7 @@ export interface MailboxScanPosition {
  * Presence is meaningful: a mailbox key that is ABSENT is exhausted and is not
  * scanned again; a key mapped to `null` is "start from the newest row".
  */
-export type MultiSearchCursor = Record<string, MailboxScanPosition | null>;
+type MultiSearchCursor = Record<string, MailboxScanPosition | null>;
 
 /** Version tag, so a cursor minted by an older deployment is rejected rather than misread. */
 const CURSOR_VERSION = 1;
@@ -101,7 +101,7 @@ export interface ScannedRow {
 }
 
 /** A scanned row paired with the position it occupies in its mailbox's walk. */
-export interface PositionedRow<T extends ScannedRow> {
+interface PositionedRow<T extends ScannedRow> {
 	row: T;
 	position: MailboxScanPosition;
 }
@@ -160,7 +160,7 @@ export interface MailboxPage<T extends ScannedRow> {
 }
 
 /** The assembled page plus the cursor state that continues it. */
-export interface MergedSearchPage<T extends ScannedRow> {
+interface MergedSearchPage<T extends ScannedRow> {
 	page: T[];
 	cursor: MultiSearchCursor;
 	hasMore: boolean;

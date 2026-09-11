@@ -12,9 +12,10 @@
  *
  * RUNTIME: Web Crypto (`crypto.subtle`) only — no `node:crypto` — so it runs in
  * the Convex V8 mutation (`startIntegrationImport`) that seals and the V8 action
- * (`processIntegrationPage`) that opens, and under vitest. This mirrors
- * `lib/atRestBodies.ts`; `lib/credentialCrypto.ts` is `'use node'` and therefore
- * unusable here.
+ * (`processIntegrationPage`) that opens, and under vitest. The crypto core, the
+ * base64 helpers and the envelope parser are shared with `lib/atRestBodies.ts`
+ * via `lib/webSecretBox.ts`; `lib/credentialCrypto.ts`'s `createSecretBox` is
+ * the same construction but `'use node'`, and therefore unusable here.
  *
  * KEY: HKDF-SHA256 over `INSTANCE_SECRET` under a DISTINCT, version-pinned
  * salt + info label, domain-separating this key from every other INSTANCE_SECRET
@@ -27,6 +28,12 @@
  */
 
 import { getOptional } from '../lib/env';
+import {
+	createWebSecretBox,
+	formatTextEnvelope,
+	parseTextEnvelope,
+	type WebSealedBytes,
+} from '../lib/webSecretBox';
 
 const ENVELOPE_PREFIX = 'impcred';
 /** Envelope format version — bump + re-seal on any cipher change. */
@@ -35,67 +42,20 @@ const ENVELOPE_VERSION = 1;
 const HKDF_SALT = 'owlat:integration-import:cred:salt:v1';
 /** HKDF info — the per-use domain-separation label for this key. */
 const HKDF_INFO = 'owlat:integration-import:cred:v1';
-const IV_BYTES = 12; // AES-GCM 96-bit nonce
-const GCM_TAG_BYTES = 16; // AES-GCM 128-bit auth tag — the minimum ciphertext length
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function toBase64(bytes: Uint8Array): string {
-	let binary = '';
-	for (const b of bytes) binary += String.fromCharCode(b);
-	return btoa(binary);
-}
-
-function tryFromBase64(value: string): Uint8Array<ArrayBuffer> | null {
-	let binary: string;
-	try {
-		binary = atob(value);
-	} catch {
-		return null;
-	}
-	const out = new Uint8Array(binary.length);
-	for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
-	if (toBase64(out) !== value) return null; // reject non-canonical base64
-	return out;
-}
-
-async function deriveAesKey(secret: string): Promise<CryptoKey> {
-	const ikm = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
-		'deriveKey',
-	]);
-	return crypto.subtle.deriveKey(
-		{
-			name: 'HKDF',
-			hash: 'SHA-256',
-			salt: encoder.encode(HKDF_SALT),
-			info: encoder.encode(HKDF_INFO),
-		},
-		ikm,
-		{ name: 'AES-GCM', length: 256 },
-		false,
-		['encrypt', 'decrypt']
-	);
-}
-
-interface ParsedEnvelope {
-	iv: Uint8Array<ArrayBuffer>;
-	ciphertext: Uint8Array<ArrayBuffer>;
+/** The import-credential box: the instance secret under the pinned context. */
+function credentialBox(secret: string) {
+	return createWebSecretBox(secret, { salt: HKDF_SALT, info: HKDF_INFO });
 }
 
 /** STRICT, keyless parse: exactly `impcred:<version>:<base64 iv>:<base64 ct>`,
  * a known version, canonical base64, a 12-byte IV and a ciphertext of at least
  * the GCM tag length. Anything else is NOT our envelope (treated as plaintext). */
-function parseEnvelope(stored: string): ParsedEnvelope | null {
-	if (!stored.startsWith(`${ENVELOPE_PREFIX}:`)) return null;
-	const parts = stored.split(':');
-	if (parts.length !== 4) return null;
-	if (Number(parts[1]) !== ENVELOPE_VERSION) return null;
-	const iv = tryFromBase64(parts[2] ?? '');
-	if (iv === null || iv.length !== IV_BYTES) return null;
-	const ciphertext = tryFromBase64(parts[3] ?? '');
-	if (ciphertext === null || ciphertext.length < GCM_TAG_BYTES) return null;
-	return { iv, ciphertext };
+function parseEnvelope(stored: string): WebSealedBytes | null {
+	return parseTextEnvelope(ENVELOPE_PREFIX, ENVELOPE_VERSION, stored);
 }
 
 /** Is `stored` a sealed import credential? Keyless structural check. */
@@ -112,16 +72,8 @@ export async function sealImportCredential(plaintext: string): Promise<string> {
 	if (plaintext === '') return '';
 	const secret = getOptional('INSTANCE_SECRET');
 	if (!secret) return plaintext;
-	const key = await deriveAesKey(secret);
-	const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
-	const ciphertext = await crypto.subtle.encrypt(
-		{ name: 'AES-GCM', iv },
-		key,
-		encoder.encode(plaintext)
-	);
-	return `${ENVELOPE_PREFIX}:${ENVELOPE_VERSION}:${toBase64(iv)}:${toBase64(
-		new Uint8Array(ciphertext)
-	)}`;
+	const sealed = await credentialBox(secret).sealBytes(encoder.encode(plaintext));
+	return formatTextEnvelope(ENVELOPE_PREFIX, ENVELOPE_VERSION, sealed);
 }
 
 /**
@@ -136,11 +88,5 @@ export async function openImportCredential(stored: string): Promise<string> {
 	if (!secret) {
 		throw new Error('Cannot open sealed import credential: INSTANCE_SECRET is not configured');
 	}
-	const key = await deriveAesKey(secret);
-	const plaintext = await crypto.subtle.decrypt(
-		{ name: 'AES-GCM', iv: envelope.iv },
-		key,
-		envelope.ciphertext
-	);
-	return decoder.decode(plaintext);
+	return decoder.decode(await credentialBox(secret).openBytes(envelope));
 }

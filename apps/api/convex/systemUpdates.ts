@@ -38,7 +38,7 @@ import { successOrFailedValidator } from './lib/literalValidators';
  * equivalent release ("1.2.0-beta.1" < "1.2.0"). Between two pre-releases,
  * the suffix is compared lexicographically.
  */
-export function semverCompare(a: string, b: string): number {
+function semverCompare(a: string, b: string): number {
 	const pa = parseVersion(a);
 	const pb = parseVersion(b);
 	for (let i = 0; i < 3; i++) {

@@ -26,7 +26,7 @@ import { signalAbsent, signalPresent, type SignalSource } from './types';
 
 export type { PostmasterComplianceCheck, PostmasterDeliveryError };
 
-export type PostmasterCardSeverity = 'critical' | 'warning' | 'info';
+type PostmasterCardSeverity = 'critical' | 'warning' | 'info';
 
 export interface PostmasterCard {
 	/** Stable identity for keyed rendering and de-duplication. */

@@ -28,9 +28,9 @@ import { rebuildThreadAggregates } from './threadAggregates';
 import { DAY_MS } from '../lib/constants';
 
 /** Settings rows examined per sweep run. */
-export const TRASH_RETENTION_SETTINGS_BATCH = 32;
+const TRASH_RETENTION_SETTINGS_BATCH = 32;
 /** Messages deleted per settings row per run. The next tick continues. */
-export const TRASH_RETENTION_PURGE_BATCH = 64;
+const TRASH_RETENTION_PURGE_BATCH = 64;
 
 /**
  * Delete one page of expired trash for one owner.

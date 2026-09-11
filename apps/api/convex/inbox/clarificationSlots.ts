@@ -170,13 +170,13 @@ function senderDomain(fromAddress: string): string | undefined {
  * knows a question was DERIVED from an untrusted email, plus the standing
  * promise that Owlat will never ask for a secret.
  */
-export function attributeQuestion(fromAddress: string): string {
+function attributeQuestion(fromAddress: string): string {
 	const domain = senderDomain(fromAddress);
 	const origin = domain ? `an email from ${domain}` : 'an email';
 	return `Generated from ${origin} — Owlat will never ask for your password.`;
 }
 
-export interface SanitizedClarificationQuestion {
+interface SanitizedClarificationQuestion {
 	id: string;
 	slotType: string;
 	text: string;
@@ -186,7 +186,7 @@ export interface SanitizedClarificationQuestion {
 }
 
 /** A raw generated question before the safety filter. */
-export interface RawClarificationQuestion {
+interface RawClarificationQuestion {
 	slotType: string;
 	text: string;
 	options?: string[];

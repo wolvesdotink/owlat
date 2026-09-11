@@ -9,11 +9,17 @@
 # silently (speculative seams: authProviders/, repositories/, dead providers)
 # with no tooling to notice.
 #
-# DELIBERATELY EXCLUDED issue types: dependencies / unlisted / unresolved /
-# binaries. knip does not model bun catalogs, Nuxt aliases (#imports,
-# ../../packages/ui) or transitive deps (zod, vite, h3, tslib), so those
-# categories are pure noise here. CSS files are ignored in knip.jsonc for the
-# same reason (the Nuxt `css:` array and @import chains are not traced).
+# `dependencies` / `devDependencies` ARE included: a package.json entry nothing
+# imports is dead weight in the install graph and, for a runtime `dependencies`
+# entry, dead weight in every shipped image.
+#
+# DELIBERATELY EXCLUDED issue types: unlisted / unresolved / binaries. Measured
+# on 2026-09-10: 46 unlisted + 20 unresolved, of which 62 are bun-catalog and
+# workspace-hoisting artifacts (h3, vue-i18n, @vue/test-utils, vitest, tslib,
+# `../../packages/ui`) that knip cannot model, so the categories are noise-
+# dominated and a baseline over them would never be read. CSS files are ignored
+# in knip.jsonc for the same reason (the Nuxt `css:` array and @import chains
+# are not traced).
 #
 # The ratchet is strict in BOTH directions, exactly like query-authz:
 #   * a NEW dead-code entry not present in the baseline FAILS (regression), and
@@ -23,6 +29,8 @@
 # Normalised line format (sorted, stable, no line/col so edits don't churn it):
 #   file:<path>                       an entire unused file
 #   export:<path>:<name>              an unused named export / type / member
+#   dep:<path>:<name>                 an unused runtime dependency
+#   devdep:<path>:<name>              an unused devDependency
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -48,7 +56,7 @@ raw=$("$knip_bin" \
 	--no-progress \
 	--no-config-hints \
 	--no-exit-code \
-	--include files,exports,nsExports,types,nsTypes,enumMembers,namespaceMembers,duplicates \
+	--include files,exports,nsExports,types,nsTypes,enumMembers,namespaceMembers,duplicates,dependencies,devDependencies \
 	--reporter json 2>/dev/null)
 
 if [ -z "$raw" ]; then
@@ -88,6 +96,17 @@ current=$(printf '%s' "$raw" | node -e '
 				const name = nameOf(e);
 				if (name) lines.add("export:" + file + ":" + name);
 			}
+			// dependency issue types: flat arrays of {name} hanging off the
+			// package.json they were declared in.
+			for (const [prefix, bag] of [
+				["dep:", issue.dependencies],
+				["devdep:", issue.devDependencies],
+			]) {
+				for (const d of bag || []) {
+					const name = nameOf(d);
+					if (name) lines.add(prefix + file + ":" + name);
+				}
+			}
 			// enum/namespace members: knip 6 reports these as flat arrays of
 			// {name} (name already carries any owner prefix); knip 5 used an
 			// owner-keyed object ({ Owner: [members] }). Handle both.
@@ -107,9 +126,9 @@ current=$(printf '%s' "$raw" | node -e '
 				}
 			}
 		}
-		process.stdout.write([...lines].sort().join("\n"));
+		process.stdout.write([...lines].join("\n"));
 	});
-')
+' | LC_ALL=C sort)
 
 if [ ! -f "$baseline_file" ]; then
 	echo "FAIL: $baseline_file missing. Seed it with the current output:" >&2
@@ -125,8 +144,12 @@ if [ "${1:-}" = "--write-baseline" ]; then
 	exit 0
 fi
 
-new=$(comm -23 <(printf '%s\n' "$current" | grep . || true) <(sort "$baseline_file"))
-stale=$(comm -13 <(printf '%s\n' "$current" | grep . || true) <(sort "$baseline_file"))
+# comm needs BOTH sides in the same collation; the normaliser above and the
+# baseline are therefore both sorted with LC_ALL=C. Locale collation ignores
+# punctuation, which reorders entries like `@faker-js/faker` vs `faker` and made
+# comm report the same line as both new AND stale.
+new=$(comm -23 <(printf '%s\n' "$current" | grep . || true) <(LC_ALL=C sort "$baseline_file"))
+stale=$(comm -13 <(printf '%s\n' "$current" | grep . || true) <(LC_ALL=C sort "$baseline_file"))
 
 fail=0
 if [ -n "$new" ]; then
@@ -135,9 +158,10 @@ if [ -n "$new" ]; then
 	echo ""
 	echo "$new"
 	echo ""
-	echo "Either delete the dead file/export, or — if it is intentionally kept —"
-	echo "tag it for knip (e.g. a JSDoc '@public' / add the file to an entry glob"
-	echo "in knip.jsonc). Do NOT add new lines to $baseline_file; it is frozen debt."
+	echo "Either delete the dead file/export/dependency, or — if it is"
+	echo "intentionally kept — tag it for knip (e.g. a JSDoc '@public' / add the"
+	echo "file to an entry glob in knip.jsonc). Do NOT add new lines to"
+	echo "$baseline_file; it is frozen debt."
 	fail=1
 fi
 if [ -n "$stale" ]; then

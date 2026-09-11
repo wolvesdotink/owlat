@@ -147,7 +147,7 @@ function mentionsRateLimit(lowerMessage: string): boolean {
 }
 
 /** Per-send knobs of the relay adapter's INTERNAL entry point. */
-export interface RelaySendOptions {
+interface RelaySendOptions {
 	/**
 	 * The return-path host to stamp as the VERP envelope sender, or `undefined`
 	 * to keep the composer's (the shipped behaviour). The caller owns every
@@ -166,7 +166,7 @@ export interface RelaySendOptions {
 	readonly verpMessageId?: string;
 }
 
-export interface RelaySendOutcome {
+interface RelaySendOutcome {
 	readonly attempt: EmailSendAttempt;
 	/**
 	 * The RFC5321.MailFrom actually put on the wire. Returned rather than
@@ -183,7 +183,7 @@ export interface RelaySendOutcome {
  * {@link SendProviderModule} face of it; the return-path probe calls it
  * directly because it needs the envelope sender back.
  */
-export async function sendViaRelay(
+async function sendViaRelay(
 	transport: SendTransportRecord,
 	params: EmailSendParams,
 	options: RelaySendOptions
@@ -377,7 +377,7 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
  * `categorizeError` + the compose-failure path) so the whole module shares one
  * taxonomy.
  */
-export function categorizeSmtpError(message: string, smtpReplyCode?: number): EmailErrorCode {
+function categorizeSmtpError(message: string, smtpReplyCode?: number): EmailErrorCode {
 	if (smtpReplyCode !== undefined) {
 		const byCode = smtpReplyCodeToErrorCode(smtpReplyCode, message);
 		if (byCode !== undefined) return byCode;

@@ -24,7 +24,7 @@ export const STAT_SHARD_COUNT = 8;
  * union; `Shard` is the shard `Doc` (which carries those counters as optional
  * numbers, hence the `extends`).
  */
-export interface ShardWriter<Field extends string, Shard extends Partial<Record<Field, number>>> {
+interface ShardWriter<Field extends string, Shard extends Partial<Record<Field, number>>> {
 	readonly fields: readonly Field[];
 	/** The shard row for this shardKey, or null on its first event. */
 	findShard(shardKey: number): Promise<Shard | null>;
@@ -39,10 +39,10 @@ export interface ShardWriter<Field extends string, Shard extends Partial<Record<
  * Increment counter(s) on a random shard, creating the shard row on its first
  * event. (Mutations may use randomness; only the workflow runtime forbids it.)
  */
-export async function bumpStatShard<Field extends string, Shard extends Partial<Record<Field, number>>>(
-	writer: ShardWriter<Field, Shard>,
-	deltas: Partial<Record<Field, number>>,
-): Promise<void> {
+export async function bumpStatShard<
+	Field extends string,
+	Shard extends Partial<Record<Field, number>>,
+>(writer: ShardWriter<Field, Shard>, deltas: Partial<Record<Field, number>>): Promise<void> {
 	const shardKey = Math.floor(Math.random() * STAT_SHARD_COUNT);
 	const existing = await writer.findShard(shardKey);
 
@@ -63,7 +63,7 @@ export async function bumpStatShard<Field extends string, Shard extends Partial<
  * collecting ≤ STAT_SHARD_COUNT rows. */
 export function sumStatShards<Field extends string>(
 	fields: readonly Field[],
-	shards: ReadonlyArray<Partial<Record<Field, number>>>,
+	shards: ReadonlyArray<Partial<Record<Field, number>>>
 ): Record<Field, number> {
 	const sum = Object.fromEntries(fields.map((f) => [f, 0])) as Record<Field, number>;
 	for (const s of shards) {

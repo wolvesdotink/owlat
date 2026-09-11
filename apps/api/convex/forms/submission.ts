@@ -36,7 +36,7 @@ import { logWarn } from '../lib/runtimeLog';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export const SUBMIT_ACTION_LITERALS = [
+const SUBMIT_ACTION_LITERALS = [
 	'spam',
 	'invalid',
 	'duplicate',
