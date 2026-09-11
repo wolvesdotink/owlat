@@ -4,10 +4,9 @@
  *
  * Lifted verbatim out of `lib/sendProviders/relayDomainVerification.ts`, which
  * used to hard-code `relayProviderType !== 'ses' → false` and then inline this
- * proof. It now dispatches through the sending-domain provider registry (plan
- * numbers in this folder are the Mandrill plan's, qualified in `../index.ts`)
- * and this module is SES's registered implementation, so a new relay ships its
- * own proof instead of editing the seam.
+ * proof. It now dispatches through the sending-domain provider registry and
+ * this module is SES's registered implementation, so a new relay ships its own
+ * proof instead of editing the seam.
  *
  * Its own file rather than a method body in `./index.ts`: everything else in
  * that adapter is a provider API call made from a `'use node'` action, while
