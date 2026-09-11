@@ -14,11 +14,11 @@ git push origin main v<X.Y.Z>
 
 Pushing the tag triggers one of three pipelines:
 
-| Tag | Workflow | Ships |
-| --- | --- | --- |
-| `vX.Y.Z` | `release.yml` (unified) | server images + desktop apps + install assets — the line `install.sh` and the updater follow |
-| `server-vX.Y.Z` | `server-release.yml` | server images + compose assets only |
-| `desktop-vX.Y.Z` | `desktop-release.yml` | desktop apps only |
+| Tag              | Workflow                | Ships                                                                                        |
+| ---------------- | ----------------------- | -------------------------------------------------------------------------------------------- |
+| `vX.Y.Z`         | `release.yml` (unified) | server images + desktop apps + install assets — the line `install.sh` and the updater follow |
+| `server-vX.Y.Z`  | `server-release.yml`    | server images + compose assets only                                                          |
+| `desktop-vX.Y.Z` | `desktop-release.yml`   | desktop apps only                                                                            |
 
 ## What gates the release
 

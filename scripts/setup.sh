@@ -1033,7 +1033,7 @@ configure_selfhost_core() {
   # Auto-generate instance secret
   SELFHOST_INSTANCE_SECRET=$(openssl rand -hex 32)
   set_selfhost_var "INSTANCE_SECRET" "$SELFHOST_INSTANCE_SECRET"
-  # Convex needs it too: seedAdmin.ts compares the X-Instance-Secret header
+  # Convex needs it too: seedAdminHttp.ts compares the X-Instance-Secret header
   # against INSTANCE_SECRET, so /seed/admin returns 401 unless it is set here.
   set_convex_var "INSTANCE_SECRET" "$SELFHOST_INSTANCE_SECRET"
   success "Generated INSTANCE_SECRET"
