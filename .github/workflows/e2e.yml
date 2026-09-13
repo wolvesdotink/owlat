@@ -3,7 +3,9 @@ name: E2E
 # Playwright e2e runs nightly, on merges to main that touch apps/web, and on
 # manual dispatch — NOT on every PR: it needs the CONVEX_TEST_URL secrets and a
 # full browser install, so it executes out-of-band where a failure can't block
-# PR merges. The job FAILS when the test-deployment secrets are missing: a
+# PR merges. The job owns the whole test deployment for the length of a run: it
+# pushes this commit's functions to it and resets its data, so the suite always
+# meets the blank instance it is written against. The job FAILS when the test-deployment secrets are missing: a
 # nightly that reports green without running anything is not a gate. The
 # secrets are listed in CONTRIBUTING.md under "CI secrets". The push-to-main
 # trigger surfaces web regressions within hours instead of waiting for the
@@ -37,16 +39,59 @@ jobs:
         env:
           CONVEX_TEST_URL: ${{ secrets.CONVEX_TEST_URL }}
           CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
+          CONVEX_TEST_ADMIN_KEY: ${{ secrets.CONVEX_TEST_ADMIN_KEY }}
+          CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
         run: |
           missing=""
           [ -n "$CONVEX_TEST_URL" ] || missing="$missing CONVEX_TEST_URL"
           [ -n "$CONVEX_TEST_SITE_URL" ] || missing="$missing CONVEX_TEST_SITE_URL"
+          [ -n "$CONVEX_TEST_ADMIN_KEY" ] || missing="$missing CONVEX_TEST_ADMIN_KEY"
+          [ -n "$CONVEX_TEST_INSTANCE_SECRET" ] || missing="$missing CONVEX_TEST_INSTANCE_SECRET"
           if [ -n "$missing" ]; then
             echo "::error::E2E cannot run: repository secret(s) not set:$missing. Add them under Settings > Secrets and variables > Actions (see CONTRIBUTING.md, CI secrets)."
             exit 1
           fi
 
       - uses: ./.github/actions/setup-bun
+
+      # The suite drives the app built from THIS commit, so the backend it talks
+      # to has to run this commit's functions too — otherwise a green run only
+      # proves the app agrees with whatever was deployed last.
+      #
+      # `convex/**/__tests__` must not reach the push: the CLI treats every file
+      # under convex/ as a function module and dies analysing the test helpers
+      # ("import.meta unsupported"). The production deploy image excludes the
+      # same paths at COPY time (docker/convex-deploy.Dockerfile); here the
+      # checkout is throwaway, so delete them in place.
+      - name: Deploy this commit's functions to the test deployment
+        env:
+          CONVEX_TEST_URL: ${{ secrets.CONVEX_TEST_URL }}
+          CONVEX_TEST_ADMIN_KEY: ${{ secrets.CONVEX_TEST_ADMIN_KEY }}
+        run: |
+          set -euo pipefail
+          find apps/api/convex -type d -name __tests__ -exec rm -rf {} +
+          cd apps/api
+          bunx convex deploy --url "$CONVEX_TEST_URL" \
+            --admin-key "$CONVEX_TEST_ADMIN_KEY" --yes
+
+      # Registration is invite-only once any account exists
+      # (convex/auth/registrationGate.ts), and `e2e/auth.setup.ts` registers a
+      # fresh account every run — so a second run against a used instance dies
+      # on 403. Reset to a blank slate first; that is what /dev/reset exists for.
+      - name: Reset the test deployment to a blank slate
+        env:
+          CONVEX_TEST_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
+          CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/dev-reset.json -w '%{http_code}' -X POST \
+            "${CONVEX_TEST_SITE_URL}/dev/reset" \
+            -H "X-Instance-Secret: ${CONVEX_TEST_INSTANCE_SECRET}" --max-time 120)
+          if [ "$code" != "200" ]; then
+            echo "::error::/dev/reset returned HTTP ${code}: $(cat /tmp/dev-reset.json)"
+            exit 1
+          fi
+          echo "Test deployment reset: $(cat /tmp/dev-reset.json)"
 
       - name: Install Playwright browsers
         run: cd apps/web && bunx playwright install chromium --with-deps
