@@ -75,7 +75,11 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          GIT_SHA=$(git rev-parse --short HEAD)
+          # Full sha, not --short: the value reaches the browser through Nitro's
+          # env overlay, which runs everything through `destr`, and an all-digit
+          # short sha ("12345678") would arrive as a number — or "1e234567" as
+          # Infinity. The UI truncates for display anyway.
+          GIT_SHA=$(git rev-parse HEAD)
           BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "git_sha=${GIT_SHA}" >> "$GITHUB_OUTPUT"
           echo "build_date=${BUILD_DATE}" >> "$GITHUB_OUTPUT"

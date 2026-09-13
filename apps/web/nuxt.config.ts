@@ -385,9 +385,8 @@ export default defineNuxtConfig({
 			// Offline app shell kill switch (`NUXT_PUBLIC_OFFLINE_SHELL=false`).
 			// ON by default: the service worker only ever caches the SPA shell and
 			// content-hashed build assets, and answers navigations network-first.
-			// Baked at build time like every other public value in an ssr:false
-			// bundle, so flipping it needs a rebuild — and flipping it OFF actively
-			// unregisters the worker (app/plugins/service-worker.client.ts).
+			// Overlaid at startup like every other NUXT_PUBLIC_* value, so an
+			// operator can flip it with env; no rebuild needed.
 			offlineShell: process.env['NUXT_PUBLIC_OFFLINE_SHELL'] !== 'false',
 			// Deployment mode — 'selfhost' or 'hosted'
 			// Drives the onboarding banner, hides hosted-only UI (billing tabs,

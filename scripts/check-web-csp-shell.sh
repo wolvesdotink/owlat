@@ -120,7 +120,10 @@ esac
 case "$html" in
 	*'setupMode:true'*) ;;
 	*)
-		echo "::error::the shell ignored NUXT_PUBLIC_SETUP_MODE=true — runtime config is baked at image build, so every deployment gets the build's value"
+		# Nitro overlays by config KEY, so this survives a wrong name in
+		# nuxt.config — it catches the key disappearing or the overlay breaking.
+		# The version assertion below is the one that proves the naming.
+		echo "::error::the shell carries no setupMode:true — the key is gone from runtime config, or Nitro stopped overlaying NUXT_PUBLIC_* env"
 		exit 1
 		;;
 esac

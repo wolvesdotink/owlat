@@ -114,8 +114,25 @@ services:
       # NUXT_PUBLIC_ prefix required: that is the only form Nitro maps onto the
       # app's runtime config. The operator-facing name in .env stays OWLAT_*.
       NUXT_PUBLIC_DEPLOYMENT_MODE: ${OWLAT_DEPLOYMENT_MODE:-selfhost}
-      # First-run setup mode — gates the client-side redirect to /setup.
+      # First-run web setup wizard. OFF by default — the wizard is normally
+      # driven from the `owlat setup` CLI. Both halves are wired from the SAME
+      # variable and must stay that way: the server gate reads OWLAT_SETUP_MODE,
+      # the client-side redirect reads runtime config (NUXT_PUBLIC_* only). Wire
+      # one without the other and the app redirects every route to a wizard whose
+      # API answers 403, with no way back except hand-editing .env.
+      #
+      # To let THIS container serve /setup: set OWLAT_SETUP_MODE=true AND
+      # uncomment the writable ./ mount below (so /api/setup/apply can write
+      # .env), then undo both once setup is finished.
+      OWLAT_SETUP_MODE: ${OWLAT_SETUP_MODE:-false}
       NUXT_PUBLIC_SETUP_MODE: ${OWLAT_SETUP_MODE:-false}
+      # One-time token gating the unauthenticated /api/setup/* endpoints while
+      # setup mode is on. `owlat setup` mints it into .env and prints it; the
+      # wizard echoes it back. Without it the first caller could seize the
+      # instance (create the admin, rewrite .env).
+      OWLAT_SETUP_TOKEN: ${OWLAT_SETUP_TOKEN:-}
+      OWLAT_DIR: /opt/owlat
+      CONVEX_SITE_URL: ${CONVEX_SITE_URL:-http://convex:3211}
       # Version metadata (for in-app update UI)
       OWLAT_VERSION: ${OWLAT_VERSION:-dev}
       OWLAT_GIT_SHA: ${OWLAT_GIT_SHA:-unknown}
@@ -137,6 +154,12 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    # Uncomment ONLY while running the first-run web setup wizard (with
+    # OWLAT_SETUP_MODE=true). It grants the public web tier write access to the
+    # secrets dir so /api/setup/apply can write .env — remove it again once
+    # setup completes.
+    # volumes:
+    #   - ./:/opt/owlat
     restart: unless-stopped
     # Must exceed the web app's graceful-shutdown HARD_EXIT_MS (40s) so the
     # hard-exit watchdog can fire before Docker SIGKILLs. Matches the VPS template.

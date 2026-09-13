@@ -194,10 +194,23 @@ else bad "$root web service must set read_only: true with a tmpfs /tmp"; fi
 # fills ONLY from NUXT_PUBLIC_* names. An operator-facing OWLAT_* variable that
 # is not mapped across is silently frozen at whatever the image was built with —
 # that is how every release shipped with the in-app updater hidden.
-if grep -qE '^ {6}NUXT_PUBLIC_DEPLOYMENT_MODE: \$\{OWLAT_DEPLOYMENT_MODE:-selfhost\}$' <<<"$web_block" \
-	&& grep -qE '^ {6}NUXT_PUBLIC_SETUP_MODE: \$\{OWLAT_SETUP_MODE:-false\}$' <<<"$web_block"; then
-	ok "$root maps the operator's OWLAT_* deployment vars onto NUXT_PUBLIC_* for the web tier"
-else bad "$root web service must map OWLAT_DEPLOYMENT_MODE/OWLAT_SETUP_MODE onto NUXT_PUBLIC_* or the app cannot see them"; fi
+if grep -qE '^ {6}NUXT_PUBLIC_DEPLOYMENT_MODE: \$\{OWLAT_DEPLOYMENT_MODE:-selfhost\}$' <<<"$web_block"; then
+	ok "$root maps OWLAT_DEPLOYMENT_MODE onto NUXT_PUBLIC_* for the web tier"
+else bad "$root web service must map OWLAT_DEPLOYMENT_MODE onto NUXT_PUBLIC_DEPLOYMENT_MODE or the app cannot see it"; fi
+
+# Setup mode has TWO halves — the server gate (OWLAT_SETUP_MODE) and the client
+# redirect (NUXT_PUBLIC_SETUP_MODE, the only form Nitro maps). Wire one without
+# the other and the app redirects every route to a wizard whose API answers 403,
+# with no way back except editing .env by hand. Both compose files, keyed off the
+# same variable.
+for compose in "$root" "$vps"; do
+	block=$(service_block "$compose" web)
+	server_half=$(grep -cE '^ {6}OWLAT_SETUP_MODE: \$\{OWLAT_SETUP_MODE:-false\}$' <<<"$block" || true)
+	client_half=$(grep -cE '^ {6}NUXT_PUBLIC_SETUP_MODE: \$\{OWLAT_SETUP_MODE:-false\}$' <<<"$block" || true)
+	if [ "${server_half:-0}" -eq 1 ] && [ "${client_half:-0}" -eq 1 ]; then
+		ok "$compose wires both halves of setup mode from OWLAT_SETUP_MODE"
+	else bad "$compose web service must set BOTH OWLAT_SETUP_MODE and NUXT_PUBLIC_SETUP_MODE from \${OWLAT_SETUP_MODE:-false} (server gate=${server_half:-0}, client redirect=${client_half:-0})"; fi
+done
 
 # The version belongs to the IMAGE. A compose override would let the app report a
 # version the running image is not.
