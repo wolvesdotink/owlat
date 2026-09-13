@@ -68,6 +68,13 @@ interface SessionState {
 	activeOrganizationId: Ref<string | null>;
 	organizations: Ref<FakeOrganization[]>;
 	members: Ref<Array<{ userId: string; role: FakeRole }>>;
+	/**
+	 * The active-organization request settled with an ERROR — what better-auth
+	 * returns when the session still names an organization the user is no longer
+	 * a member of (an admin removed them; it only self-clears when a member
+	 * removes themselves), or on any transient failure.
+	 */
+	activeOrganizationError: Ref<{ message: string } | null>;
 }
 
 function freshSession(): SessionState {
@@ -77,6 +84,7 @@ function freshSession(): SessionState {
 		activeOrganizationId: ref<string | null>(null),
 		organizations: ref<FakeOrganization[]>([]),
 		members: ref<Array<{ userId: string; role: FakeRole }>>([]),
+		activeOrganizationError: ref<{ message: string } | null>(null),
 	};
 }
 
@@ -148,9 +156,11 @@ export function authClientMock() {
 		getSession: authClient.getSession,
 		useActiveOrganization: () =>
 			computed(() => ({
-				data:
-					session.organizations.value.find((o) => o.id === session.activeOrganizationId.value) ??
-					null,
+				data: session.activeOrganizationError.value
+					? null
+					: (session.organizations.value.find((o) => o.id === session.activeOrganizationId.value) ??
+						null),
+				error: session.activeOrganizationError.value,
 				isPending: false,
 			})),
 		useListOrganizations: () => computed(() => ({ data: session.organizations.value })),
