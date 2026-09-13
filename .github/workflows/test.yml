@@ -278,7 +278,7 @@ jobs:
           push: false
           # Runtime-smoked images must be loaded into the local Docker daemon;
           # the remaining matrix entries can stay cache-only Buildx outputs.
-          load: ${{ matrix.runtimeSmoke == true }}
+          load: ${{ matrix.runtimeSmoke == true || matrix.cspShellSmoke == true }}
           tags: owlat-ci-${{ matrix.name }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
@@ -289,6 +289,15 @@ jobs:
           docker run --rm --entrypoint node \
             "owlat-ci-${{ matrix.name }}:${{ github.sha }}" \
             --input-type=module -e "await import('./dist/index.js')"
+
+      # The shell can answer 200 on every route and still be an app no browser
+      # will run: its inline scripts are nonced, and if the CSP header does not
+      # carry that nonce the mount dies on the first one. Every published web
+      # image up to 0.4.5 shipped that way. Cheap enough for the PR gate, and it
+      # runs against the real image rather than the config.
+      - name: Smoke-test SPA shell CSP
+        if: matrix.cspShellSmoke == true
+        run: bash scripts/check-web-csp-shell.sh "owlat-ci-${{ matrix.name }}:${{ github.sha }}"
 
   # E2E (Playwright) runs nightly + on manual dispatch in .github/workflows/e2e.yml
   # — out-of-band so a failure can't block PR merges. It does NOT skip on unset

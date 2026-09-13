@@ -98,13 +98,24 @@ export default defineNuxtConfig({
 				// party (icons are bundled via @nuxt/icon's clientBundle, fonts
 				// ride font-src). Keeping 'https:' here would let an injected
 				// <script src="https://attacker…"> through and void the policy.
-				// If your build emits an inline script (e.g. color-mode FOUC
-				// prevention), enable nuxt-security nonce mode or move it to a
-				// static file.
-				// Desktop builds keep 'unsafe-inline': the dev SPA shell boots via
-				// inline scripts (WebKit blocks them without it → blank window), and
-				// the packaged app's enforcement boundary is tauri.conf.json's CSP,
-				// which allows inline scripts anyway.
+				// The SPA shell DOES emit inline scripts, and one of them is
+				// load-bearing: Nitro renders `window.__NUXT__.config` per request
+				// (that is how a self-hosted deployment's NUXT_PUBLIC_* reach the
+				// browser at all), and `nuxt/dist/app/nuxt.js` reads
+				// `payload.config.app` straight after. Block it and the app never
+				// mounts — a blank window, not a degraded one. The importmap and the
+				// colour-mode FOUC script are inline too.
+				// They are served WITH a nonce; the nonce reaches this header only
+				// because of the literal `'nonce-{{nonce}}'` source below, which
+				// nuxt-security substitutes per request (runtime/nitro/plugins/
+				// 50-updateCsp.js). Replacing this array without that token silently
+				// un-nonces the policy while the tags keep their nonce attribute,
+				// which is exactly how every published web image up to 0.4.5 shipped
+				// a blank app. Keep the token whenever you touch this line.
+				// Desktop builds keep 'unsafe-inline' instead: `generate:desktop`
+				// prerenders (hash mode, no per-request nonce), WebKit blocks the dev
+				// SPA shell's inline scripts without it → blank window, and the
+				// packaged app's enforcement boundary is tauri.conf.json's CSP.
 				'style-src': ["'self'", 'https:', "'unsafe-inline'"],
 				// The offline app shell worker (/sw.js). Same value on both branches
 				// — it is only ever registered from this origin, and the desktop
@@ -116,7 +127,7 @@ export default defineNuxtConfig({
 				'script-src':
 					process.env['OWLAT_DESKTOP'] === 'true'
 						? ["'self'", 'https:', "'unsafe-inline'"]
-						: ["'self'"],
+						: ["'self'", "'nonce-{{nonce}}'"],
 				// Every iframe in the app is srcdoc-based (email previews, postbox
 				// bodies, archives, share pages — all sanitized + sandboxed), so
 				// remote frame loads are never legitimate. Local-scheme frames
