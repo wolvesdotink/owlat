@@ -203,8 +203,37 @@ export default defineNuxtConfig({
 			credentials: true,
 		},
 
-		// rateLimiter and requestSizeLimiter removed — Workers are stateless,
-		// use Cloudflare WAF rate limiting rules instead (configured in dashboard).
+		// OFF, explicitly. Omitting the key does NOT disable these — nuxt-security
+		// merges its own defaults, so leaving them out shipped a 150-request /
+		// 5-minute cap on EVERY Nitro route in every self-hosted build, which is
+		// the opposite of what the previous comment here claimed. It is not a
+		// theoretical cost: the limiter's 429 on `/api/auth/*` reads to the app as
+		// "no session", so a busy tab signs the user out and lands them on the
+		// login page. Worse behind a reverse proxy or NAT, where every user shares
+		// one bucket.
+		//
+		// It also bought less than it looked: the bucket keyed on the LEFTMOST
+		// X-Forwarded-For value, so anyone could set that header and skip it,
+		// while a real user behind a proxy could not.
+		//
+		// What remains in front of each route on this tier: `/api/auth/**` has
+		// BetterAuth's limiter (`convex/auth/auth.ts`, on outside dev) — itself
+		// one shared bucket behind a proxy, since this proxy deliberately
+		// overwrites XFF with the peer IP; `/api/setup/*` a 238-bit timing-safe
+		// token; `/api/self-update` and `/api/internal/*` the instance secret;
+		// `/api/system/*` and `/api/delivery/*` an admin check. The gap worth
+		// knowing about is the unauthenticated `.well-known` handlers, which run
+		// Convex QUERIES that `publicRateLimit` (HTTP actions only) does not
+		// cover — a per-route limit or a proxy rule is the right home for that,
+		// not a blanket cap that logs legitimate users out.
+		rateLimiter: false,
+		// requestSizeLimiter stays ON (module default: 2 MB, 8 MB multipart). It is
+		// the only body cap in front of the auth proxy, which buffers the whole
+		// request with readRawBody before forwarding, and nothing legitimate on
+		// this tier comes close — env/flag JSON and credentials; real uploads go
+		// straight to Convex. A chunked body slips past a content-length check, so
+		// it is partial cover, but partial beats none on a route that buffers into
+		// memory.
 
 		xssValidator: {},
 

@@ -158,6 +158,16 @@ export function useOrganization() {
 	const members = useState<OrganizationMember[]>('org-members', () => []);
 	const invitations = useState<OrganizationInvitation[]>('org-invitations', () => []);
 	const isLoadingMembers = useState<boolean>('org-loading-members', () => false);
+	// Whether the members fetch has SETTLED at least once this session.
+	//
+	// `isLoadingMembers` starts false and only turns true inside `fetchMembers`,
+	// which a watcher fires when `organizationId` arrives from BetterAuth — a
+	// separate async request. On a cold load there is a window where the session
+	// is known, the role is not, and nothing is "loading": the admin guard read
+	// that as "loaded, and not an admin" and bounced owners off every admin deep
+	// link (a refresh or a bookmark; in-app navigation was fine because the role
+	// was already cached). Guards must wait on this, not on `isLoadingMembers`.
+	const hasResolvedMembers = useState<boolean>('org-members-resolved', () => false);
 	// Non-null once a members/invitations fetch fails, so the team page can render
 	// an explicit error state (with a retry) instead of an ambiguous empty list.
 	const membersError = useState<string | null>('org-members-error', () => null);
@@ -170,6 +180,22 @@ export function useOrganization() {
 	});
 
 	const organizationId = computed(() => organization.value?.id ?? null);
+
+	/**
+	 * The active-organization request failed.
+	 *
+	 * It settles with an error rather than an organization when the session still
+	 * names an organization the user is no longer in — better-auth only clears
+	 * `activeOrganizationId` when a member removes THEMSELVES, so an admin
+	 * removing someone leaves that person's open tab pointing at a `FORBIDDEN`
+	 * — and on any transient failure, such as the backend restarting mid-update.
+	 *
+	 * That is a settled answer: no organization is coming, so no role is coming
+	 * either. Callers that wait for the role must stop waiting, or the guards
+	 * stall for their whole timeout on every navigation and every page that folds
+	 * this into its loading flag spins forever.
+	 */
+	const activeOrganizationError = computed(() => activeOrgRef.value?.error ?? null);
 
 	const isLoading = computed(() => {
 		// Only track our own loading state (members/invitations fetch).
@@ -297,6 +323,9 @@ export function useOrganization() {
 				membersError.value = t('shared.useOrganization.errors.membersLoadFailed');
 			} finally {
 				isLoadingMembers.value = false;
+				// Settled — success or failure. A failed fetch must still release
+				// the guards, or an unreachable backend wedges every admin route.
+				hasResolvedMembers.value = true;
 				inflightFetch = null;
 				inflightOrgId = null;
 			}
@@ -650,6 +679,11 @@ export function useOrganization() {
 					members.value = [];
 					invitations.value = [];
 					currentMemberRole.value = null;
+					// Re-arm: the next organization's role is unknown again. Leaving
+					// this true let a sign-out-then-sign-in in the same tab reuse the
+					// previous session's "resolved", which puts the admin-deep-link
+					// bounce straight back.
+					hasResolvedMembers.value = false;
 				}
 			},
 			{ immediate: true }
@@ -666,6 +700,8 @@ export function useOrganization() {
 		currentMemberRole,
 		isLoading,
 		isLoadingMembers,
+		hasResolvedMembers,
+		activeOrganizationError,
 		membersError,
 
 		// Permission checks
