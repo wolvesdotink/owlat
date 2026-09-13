@@ -26,16 +26,33 @@ NAME="owlat-csp-shell-$$"
 cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
+# Whatever goes wrong below, the container's own log is the thing that explains
+# it — and the EXIT trap is about to delete it.
+dump_logs() {
+	echo "--- docker logs ($IMAGE) ---"
+	docker logs "$NAME" 2>&1 | tail -40 || true
+	echo "--- end docker logs ---"
+}
+
 docker run -d --name "$NAME" -p "127.0.0.1:${PORT}:3000" \
 	-e NUXT_PUBLIC_CONVEX_URL="$CONVEX_URL" \
 	-e NUXT_PUBLIC_CONVEX_SITE_URL="http://convex-site.smoke.invalid:3211" \
 	-e NUXT_PUBLIC_SITE_URL="http://localhost:${PORT}" \
 	"$IMAGE" >/dev/null
 
+ready=false
 for _ in $(seq 1 60); do
-	curl -fsS -o /dev/null "http://127.0.0.1:${PORT}/" 2>/dev/null && break
+	if curl -fsS -o /dev/null "http://127.0.0.1:${PORT}/" 2>/dev/null; then
+		ready=true
+		break
+	fi
 	sleep 2
 done
+if [ "$ready" != true ]; then
+	echo "::error::web image never served a response on :${PORT} within 120s"
+	dump_logs
+	exit 1
+fi
 
 # ONE request for both halves: the nonce is minted per request, so headers from
 # one response and HTML from another can never match, and the check would fail
@@ -61,8 +78,12 @@ if [ -z "$nonce" ]; then
 fi
 
 # Executable inline scripts: no src=, and not a data block (application/json).
-inline_total=$(printf '%s' "$html" | grep -o '<script[^>]*>' | grep -v ' src=' | grep -v 'type="application/json"' | wc -l | tr -d ' ')
+# `|| true` on both: under `pipefail` a grep -v that selects nothing exits 1,
+# which would abort the script instead of reaching the messages below.
+inline_total=$(printf '%s' "$html" | grep -o '<script[^>]*>' | grep -v ' src=' | grep -v 'type="application/json"' | wc -l | tr -d ' ' || true)
 inline_nonced=$(printf '%s' "$html" | grep -o '<script[^>]*>' | grep -v ' src=' | grep -v 'type="application/json"' | grep -c "nonce=\"${nonce}\"" || true)
+inline_total=${inline_total:-0}
+inline_nonced=${inline_nonced:-0}
 
 if [ "$inline_total" -eq 0 ]; then
 	echo "::error::no executable inline script in the shell — this check would pass vacuously; update it to match how Nuxt now renders the shell"

@@ -21,25 +21,40 @@ import { defineNitroPlugin, useRuntimeConfig } from 'nitropack/runtime';
 export default defineNitroPlugin((nitroApp) => {
 	nitroApp.hooks.hook('nuxt-security:routeRules', (rules: Record<string, unknown>) => {
 		const { public: publicConfig } = useRuntimeConfig();
-		const origins = [
-			publicConfig['convexUrl'] as string | undefined,
-			publicConfig['convexSiteUrl'] as string | undefined,
-			publicConfig['posthogHost'] as string | undefined,
-		].filter((url): url is string => typeof url === 'string' && url.length > 0);
+		// `generate:desktop` prerenders with no instance to point at — the webview
+		// picks its workspace at runtime and tauri.conf.json is its real CSP
+		// boundary — so there is nothing here to widen.
+		if (publicConfig['isDesktopBuild'] === true) return;
+
+		const asUrl = (value: unknown): string | undefined =>
+			typeof value === 'string' && value.length > 0 ? value : undefined;
+
+		const backends = [
+			asUrl(publicConfig['convexUrl']),
+			asUrl(publicConfig['convexSiteUrl']),
+		].filter((url): url is string => url !== undefined);
+		const origins = [...backends, asUrl(publicConfig['posthogHost'])].filter(
+			(url): url is string => url !== undefined
+		);
 
 		if (origins.length === 0) return;
 
 		const sources = origins.flatMap((url) => [url, url.replace(/^http/, 'ws')]);
 
-		// `upgrade-insecure-requests` rewrites this deployment's OWN ws:// backend
-		// to wss:// before the request leaves the browser. Where the operator
-		// reaches Convex over plaintext (an IP or a bare host with no TLS in
-		// front) there is nothing listening on the upgraded scheme, so the sync
-		// socket never opens and the app sits on empty data with no error a user
-		// could act on. An http backend is already unencrypted; forcing the
-		// upgrade does not make it private, it only breaks it. Deployments on
-		// https keep the directive.
-		const plaintextBackend = origins.some((url) => url.startsWith('http://'));
+		// `upgrade-insecure-requests` rewrites this deployment's OWN plaintext URLs
+		// before the request leaves the browser. Where the operator runs without
+		// TLS (an IP, or a bare host with nothing in front) there is nothing
+		// listening on the upgraded scheme: the Convex socket never opens, and on
+		// an http-served site even the shell's own /_nuxt chunks are upgraded.
+		// Plaintext is already unencrypted; forcing the upgrade does not make it
+		// private, it only breaks it. Anything served over https keeps the
+		// directive.
+		//
+		// Only this deployment's own URLs count. A third-party analytics host on
+		// http is not a reason to drop the directive for the whole site.
+		const plaintext = [...backends, asUrl(publicConfig['siteUrl'])].some((url) =>
+			url?.startsWith('http://')
+		);
 
 		for (const rule of Object.values(rules)) {
 			const csp = (rule as { headers?: { contentSecurityPolicy?: Record<string, unknown> } })
@@ -47,7 +62,7 @@ export default defineNitroPlugin((nitroApp) => {
 			const connectSrc = csp?.['connect-src'];
 			if (!Array.isArray(connectSrc)) continue;
 			csp['connect-src'] = [...new Set([...(connectSrc as string[]), ...sources])];
-			if (plaintextBackend && csp['upgrade-insecure-requests'] !== undefined) {
+			if (plaintext && csp['upgrade-insecure-requests'] !== undefined) {
 				csp['upgrade-insecure-requests'] = false;
 			}
 		}
