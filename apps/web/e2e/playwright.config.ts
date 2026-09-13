@@ -31,7 +31,15 @@ export default defineConfig({
 			retries: 0,
 		},
 		{
+			// No `dependencies` and no storage state: this one answers "does the
+			// app run at all", so it must not be skipped by a failing auth setup —
+			// that is precisely the case where its answer matters most.
+			name: 'shell',
+			testMatch: /csp-boot\.spec\.ts/,
+		},
+		{
 			name: 'chromium',
+			testIgnore: /csp-boot\.spec\.ts/,
 			use: {
 				...devices['Desktop Chrome'],
 				storageState: '.auth/user.json',

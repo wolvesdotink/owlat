@@ -1,5 +1,11 @@
 [
-	{ "name": "web", "dockerfile": "apps/web/Dockerfile", "context": ".", "package": "@owlat/web" },
+	{
+		"name": "web",
+		"dockerfile": "apps/web/Dockerfile",
+		"context": ".",
+		"package": "@owlat/web",
+		"cspShellSmoke": true
+	},
 	{
 		"name": "docs",
 		"dockerfile": "apps/docs/Dockerfile",
