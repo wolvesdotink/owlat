@@ -40,10 +40,24 @@ export default defineConfig({
 		},
 	],
 
+	// Locally: the dev server, so a spec can be re-run against an edit.
+	//
+	// In CI: a production build, served by `nuxt preview`. `nuxt dev` compiles
+	// the route graph on demand, and with `ssr: false` the browser sits on the
+	// SPA loading template until that finishes — on a 2-core runner the first
+	// navigation blew the 45s test budget while Vite was still working, which is
+	// what failed the first real run of this suite (the page snapshot was
+	// `status "Loading Owlat"`). Building up front moves that cost into the
+	// webServer's own (generous) startup window, where it is not racing a test
+	// timeout, and has the browser drive the bundle that actually ships.
+	//
+	// The build bakes `NUXT_PUBLIC_*` into the client bundle (`ssr: false`), so
+	// the deployment URLs have to be in the environment for THIS command, not
+	// merely for the test run — .github/workflows/e2e.yml puts them there.
 	webServer: {
-		command: 'bun run dev',
+		command: process.env['CI'] ? 'bun run build && bun run preview' : 'bun run dev',
 		url: 'http://localhost:3000',
 		reuseExistingServer: !process.env['CI'],
-		timeout: 120_000,
+		timeout: process.env['CI'] ? 600_000 : 120_000,
 	},
 });

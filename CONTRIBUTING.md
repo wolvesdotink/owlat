@@ -216,7 +216,10 @@ Out of band:
   wipes the data (`POST /dev/reset`) and pushes the commit's functions before
   driving the browser, so nothing on it survives a run and two runs must never
   overlap. The deployment therefore needs `OWLAT_DEV_MODE` enabled and its
-  `INSTANCE_SECRET` equal to `CONVEX_TEST_INSTANCE_SECRET`.
+  `INSTANCE_SECRET` equal to `CONVEX_TEST_INSTANCE_SECRET`. The reset spares the
+  non-tenant tables (`convex/lib/tenantTables.ts` — `keyVault`, `warmingState`,
+  `providerHealth`, …), so a breaking schema change to one of those needs the
+  deployment's volume recreated by hand before the next run can push.
 - **release.yml**, **server-release.yml**, **desktop-release.yml**.
   Tag-triggered. Each starts with the shared `_verify.yml` job, which runs
   `bun run ci:verify` (`scripts/ci-gate.sh verify`: the lint gate plus
