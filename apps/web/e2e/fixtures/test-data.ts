@@ -1,7 +1,3 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 export interface TestUser {
 	name: string;
 	email: string;
@@ -9,37 +5,28 @@ export interface TestUser {
 }
 
 /**
- * The account `auth.setup.ts` registers is persisted next to the storage state
- * it produces. Every Playwright project loads this module in its own worker,
- * so a module-level `Date.now()` handed the setup project one e-mail and the
- * chromium project another; the login specs then signed in as a user nobody
- * had registered.
+ * The instance owner the run works as.
+ *
+ * It is SEEDED, not registered: `/auth/register` only renders a form behind an
+ * `?redirect=/invite/accept…` invite link, and the backend refuses any signup
+ * once an account exists (convex/auth/registrationGate.ts). A real instance is
+ * bootstrapped through `POST /seed/admin` — the same call `owlat bootstrap-org`
+ * makes — so that is what the setup project does, and every spec then signs in
+ * as the owner it created.
+ *
+ * Credentials are fixed rather than minted per run: the workflow wipes the
+ * deployment before each run, so there is nothing to collide with, and a failed
+ * run leaves an account someone can actually log into to look around.
  */
-const REGISTERED_USER_FILE = fileURLToPath(new URL('../.auth/test-user.json', import.meta.url));
+const OWNER: TestUser = {
+	name: 'E2E Owner',
+	email: 'e2e-owner@example.com',
+	password: 'TestPassword123!',
+};
 
-const TEST_PASSWORD = 'TestPassword123!';
-
-/** A fresh account for the setup project to register, written for the specs. */
-export function registerTestUser(): TestUser {
-	const user: TestUser = {
-		name: 'E2E Test User',
-		email: `e2e-test-${Date.now()}@example.com`,
-		password: TEST_PASSWORD,
-	};
-	mkdirSync(dirname(REGISTERED_USER_FILE), { recursive: true });
-	writeFileSync(REGISTERED_USER_FILE, JSON.stringify(user));
-	return user;
-}
-
-/** The account the setup project registered for this run. */
+/** The seeded instance owner. */
 export function testUser(): TestUser {
-	if (!existsSync(REGISTERED_USER_FILE)) {
-		throw new Error(
-			`${REGISTERED_USER_FILE} is missing: the setup project (auth.setup.ts) registers the ` +
-				'test user and writes it there. Run the suite through playwright.config.ts.'
-		);
-	}
-	return JSON.parse(readFileSync(REGISTERED_USER_FILE, 'utf8')) as TestUser;
+	return { ...OWNER };
 }
 
 const contactSeed = Date.now();

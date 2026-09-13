@@ -123,6 +123,10 @@ jobs:
           NUXT_PUBLIC_CONVEX_URL: ${{ secrets.CONVEX_TEST_URL }}
           NUXT_PUBLIC_CONVEX_SITE_URL: ${{ secrets.CONVEX_TEST_SITE_URL }}
           NUXT_PUBLIC_SITE_URL: http://localhost:3000
+          # The setup project bootstraps its own owner through POST /seed/admin,
+          # which is what a real instance does — self-registration is invite-only
+          # and its page has no form without an invite link.
+          CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
 
       - name: Upload Playwright report
         if: always()

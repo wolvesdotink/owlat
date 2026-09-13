@@ -24,10 +24,10 @@ export default defineConfig({
 			name: 'setup',
 			testDir: '.',
 			testMatch: /auth\.setup\.ts/,
-			// No retries: registerTestUser() mints a new address per call, and
-			// the instance only grants ONE bootstrap signup (the rest is
-			// invite-only), so a retry after a half-succeeded registration
-			// registers a different user and is refused. Fail the run instead.
+			// No retries: /seed/admin is one-shot (it refuses once any account
+			// exists), so a retry cannot re-bootstrap. A second attempt would
+			// either sign in — masking whatever broke the first — or fail with a
+			// seed error that says nothing about the real cause.
 			retries: 0,
 		},
 		{
