@@ -10,7 +10,8 @@ export class EmailEditorPage extends BasePage {
 		// Save button in EditorHeader: has text "Save" or "Saving..."
 		this.saveButton = page.getByRole('button', { name: /save/i });
 		// EditorHeader names its icon-only back control for assistive tech.
-		this.backButton = page.getByRole('button', { name: 'Back' });
+		// "Back to Emails" in the editor; a bare 'Back' matched nothing.
+		this.backButton = page.getByRole('button', { name: /Back to Emails/i });
 	}
 
 	/**
@@ -18,13 +19,17 @@ export class EmailEditorPage extends BasePage {
 	 */
 	async gotoNewTemplate() {
 		await this.page.goto('/dashboard/send/marketing');
-		await this.waitForHeading();
+		await this.expectOnPage('Marketing Templates');
 
 		// Click "New Marketing Template" button
 		await this.page.getByRole('button', { name: /New Marketing Template/i }).click();
 
-		// Template library modal opens - click "Start from Blank" (first preset option)
-		const blankPreset = this.page.getByText('Empty Canvas');
+		// Pick the blank preset by its NAME, inside the modal.
+		// `getByText('Empty Canvas')` matched two nodes — the preset's description
+		// ("Empty Canvas") and the copy around it — so it was a strict-mode
+		// violation; the preset itself is "Start from Blank"
+		// (shared.data.marketingTemplatePresets.blank.name).
+		const blankPreset = this.modal.getByRole('button', { name: /Start from Blank/i });
 		await blankPreset.waitFor({ timeout: 10_000 });
 		await blankPreset.click();
 

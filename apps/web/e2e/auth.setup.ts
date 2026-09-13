@@ -1,6 +1,7 @@
 import { test as setup, expect } from '@playwright/test';
 import { hashPassword } from '@owlat/shared/passwordHash';
 import { testUser } from './fixtures/test-data';
+import { STORAGE_STATE } from './storage-state';
 
 /**
  * Bootstrap the instance and sign in, once, for every other spec.
@@ -53,8 +54,19 @@ setup('bootstrap the instance and save auth state', async ({ page, request }) =>
 	await page.getByLabel('Password').fill(owner.password);
 	await page.getByRole('button', { name: 'Sign in' }).click();
 
-	await page.waitForURL('**/dashboard**', { timeout: 30_000 });
-	await expect(page).toHaveURL(/\/dashboard/);
+	// A brand-new owner has never seen the welcome screen, so `first-login.global`
+	// routes them there — but only when its Convex query wins the race against JWT
+	// setup, which makes a bare wait for /dashboard flaky. Accept either, and when
+	// we do land on /welcome let it stamp `welcomedAt` (it fires markWelcomed on
+	// mount) so every later spec gets a deterministic /dashboard.
+	await page.waitForURL(/\/(dashboard|welcome)/, { timeout: 30_000 });
 
-	await page.context().storageState({ path: '.auth/user.json' });
+	if (new URL(page.url()).pathname.startsWith('/welcome')) {
+		await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15_000 });
+		await page.goto('/dashboard');
+	}
+
+	await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
+
+	await page.context().storageState({ path: STORAGE_STATE });
 });

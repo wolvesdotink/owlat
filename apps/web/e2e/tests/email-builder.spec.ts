@@ -12,7 +12,11 @@ test.describe('Email Builder', () => {
 		await page.goto('/dashboard/send/marketing');
 
 		// Verify page loaded with correct heading
-		await expect(page.getByText('Marketing Templates')).toBeVisible({ timeout: 15_000 });
+		// By role: the string also appears in the breadcrumb, so getByText matched
+		// two nodes.
+		await expect(page.getByRole('heading', { level: 1, name: 'Marketing Templates' })).toBeVisible({
+			timeout: 15_000,
+		});
 
 		// Verify "New Marketing Template" button is visible
 		await expect(page.getByRole('button', { name: /New Marketing Template/i })).toBeVisible();

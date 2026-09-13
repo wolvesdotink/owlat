@@ -1,6 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { CampaignWizardPage } from '../page-objects/CampaignWizardPage';
 
+/**
+ * The wizard is Setup → Content → Review (`pages/dashboard/campaigns/new.vue`).
+ *
+ * Two tests were deleted here rather than repaired. They drove an AUDIENCE step
+ * that no longer exists, through `#fromName` / `#fromEmail` fields that the
+ * sender picker replaced — and completing the Setup step now needs a verified
+ * sending identity, which a blank instance cannot have and the suite has no way
+ * to seed (the "force verify" shortcut is `import.meta.dev`-only and absent from
+ * the production build the suite drives). A test that cannot reach its second
+ * step is not a test of a wizard. Reinstating them needs a seedable sender
+ * first; the per-field validation is covered by `useCampaignForm`'s unit tests.
+ */
 test.describe('Campaign Creation Wizard', () => {
 	let wizard: CampaignWizardPage;
 
@@ -9,55 +21,9 @@ test.describe('Campaign Creation Wizard', () => {
 		await wizard.goto();
 	});
 
-	test('complete basics step and advance to audience', async ({ page }) => {
-		// Step 1: Basics
-		await expect(page.getByText('Campaign Details')).toBeVisible();
-		await wizard.fillBasics({
-			campaignName: 'E2E Test Campaign',
-			fromName: 'Test Sender',
-			fromEmail: 'test@example.com',
-		});
+	test('submitting the empty setup step shows a validation error', async ({ page }) => {
 		await wizard.submitBasicsStep();
 
-		// Step 2: Audience - wait for step to load
-		await expect(page.getByText(/audience|subscribers|recipients/i)).toBeVisible({
-			timeout: 10_000,
-		});
-	});
-
-	test('submitting empty basics step shows validation errors', async ({ page }) => {
-		// Try to submit without filling anything
-		await wizard.submitBasicsStep();
-
-		// Should show validation error messages (as <p> tags with text-error class)
-		const errors = page.locator('p.text-error');
-		await expect(errors.first()).toBeVisible({ timeout: 5_000 });
-
-		// Verify specific error messages
-		await expect(page.getByText('Campaign name is required')).toBeVisible();
-		await expect(page.getByText('From name is required')).toBeVisible();
-		await expect(page.getByText('From email is required')).toBeVisible();
-	});
-
-	test('step navigation allows going back and forward', async ({ page }) => {
-		// Fill basics and proceed
-		await wizard.fillBasics({
-			campaignName: 'Navigation Test',
-			fromName: 'Test Sender',
-			fromEmail: 'test@example.com',
-		});
-		await wizard.submitBasicsStep();
-
-		// Wait for audience step
-		await expect(page.getByText(/audience|subscribers|recipients/i)).toBeVisible({
-			timeout: 10_000,
-		});
-
-		// Go back
-		await page.getByRole('button', { name: /back/i }).click();
-
-		// Should be back on basics step with form data preserved
-		await expect(page.getByText('Campaign Details')).toBeVisible({ timeout: 5_000 });
-		await expect(wizard.campaignNameInput).toHaveValue('Navigation Test');
+		await expect(page.getByText('Campaign name is required')).toBeVisible({ timeout: 5_000 });
 	});
 });

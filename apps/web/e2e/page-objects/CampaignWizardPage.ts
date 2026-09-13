@@ -30,7 +30,7 @@ export class CampaignWizardPage extends BasePage {
 
 	async goto() {
 		await this.page.goto('/dashboard/campaigns/new');
-		// Wait for the form to be ready
+		await this.expectOnPage(/campaign/i);
 		await this.campaignNameInput.waitFor({ timeout: 15_000 });
 	}
 

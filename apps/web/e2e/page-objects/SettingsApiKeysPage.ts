@@ -11,7 +11,7 @@ export class SettingsApiKeysPage extends BasePage {
 
 	async goto() {
 		await this.page.goto('/dashboard/admin/team/api');
-		await this.waitForHeading();
+		await this.expectOnPage('API Keys');
 	}
 
 	async createApiKey(name: string) {

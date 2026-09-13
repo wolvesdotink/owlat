@@ -1,8 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
+import { STORAGE_STATE } from './storage-state';
 
 export default defineConfig({
 	testDir: './tests',
-	fullyParallel: true,
+	// Files still spread across workers; tests WITHIN a file run in order. The
+	// whole suite shares ONE backend instance and one seeded owner, so letting
+	// tests from the same file interleave buys minutes and costs determinism —
+	// several selectors depend on whether a list is empty, which the sibling test
+	// running beside them decides.
+	fullyParallel: false,
 	forbidOnly: !!process.env['CI'],
 	retries: process.env['CI'] ? 1 : 0,
 	workers: undefined,
@@ -42,7 +48,7 @@ export default defineConfig({
 			testIgnore: /csp-boot\.spec\.ts/,
 			use: {
 				...devices['Desktop Chrome'],
-				storageState: '.auth/user.json',
+				storageState: STORAGE_STATE,
 			},
 			dependencies: ['setup'],
 		},

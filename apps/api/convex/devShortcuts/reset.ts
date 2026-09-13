@@ -29,6 +29,7 @@ import type { Doc } from '../_generated/dataModel';
 
 interface ResetCounts {
 	users: number;
+	sessions: number;
 	accounts: number;
 	organizations: number;
 	members: number;
@@ -46,6 +47,7 @@ export const runReset = internalMutation({
 	handler: async (ctx): Promise<ResetCounts> => {
 		const counts: ResetCounts = {
 			users: 0,
+			sessions: 0,
 			accounts: 0,
 			organizations: 0,
 			members: 0,
@@ -72,6 +74,12 @@ export const runReset = internalMutation({
 
 		// 2. Wipe BetterAuth tables via the component adapter. Order matters:
 		// dependants (member) before parents (user/organization).
+		// `session` first: a surviving session row keeps authenticating a cookie
+		// whose USER this reset is about to delete. The app then renders its shell
+		// for a ghost account and every query comes back empty — which reads as
+		// "the page is broken", not "you are signed out", and cost a full
+		// debugging session to track down.
+		counts.sessions = await wipeBetterAuthModel(ctx, 'session');
 		counts.members = await wipeBetterAuthModel(ctx, 'member');
 		counts.organizations = await wipeBetterAuthModel(ctx, 'organization');
 		counts.accounts = await wipeBetterAuthModel(ctx, 'account');

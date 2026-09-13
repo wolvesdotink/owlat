@@ -7,13 +7,13 @@ export class SegmentsPage extends BasePage {
 
 	constructor(page: Page) {
 		super(page);
-		this.newSegmentButton = page.getByRole('button', { name: 'New Segment' });
+		this.newSegmentButton = this.headerAction('New Segment');
 		this.searchInput = page.getByPlaceholder('Search segments...');
 	}
 
 	async goto() {
 		await this.page.goto('/dashboard/audience/segments');
-		await this.waitForHeading();
+		await this.expectOnPage('Segments');
 	}
 
 	async createSegment(data: { name: string; description?: string }) {
