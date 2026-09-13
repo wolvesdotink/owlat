@@ -94,3 +94,6 @@ previews/
 .planning/
 .claude/
 .agents/
+
+# Pipeline worktrees (the builder/reviewer skills check branches out here).
+.worktrees/
