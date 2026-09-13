@@ -190,6 +190,34 @@ if grep -qE '^ {4}read_only: true$' <<<"$web_block" && grep -Pzq '\n {4}tmpfs:\n
 	ok "$root runs the web tier read-only with a tmpfs /tmp"
 else bad "$root web service must set read_only: true with a tmpfs /tmp"; fi
 
+# The app reads its deployment-specific config from runtime config, which Nitro
+# fills ONLY from NUXT_PUBLIC_* names. An operator-facing OWLAT_* variable that
+# is not mapped across is silently frozen at whatever the image was built with —
+# that is how every release shipped with the in-app updater hidden.
+if grep -qE '^ {6}NUXT_PUBLIC_DEPLOYMENT_MODE: \$\{OWLAT_DEPLOYMENT_MODE:-selfhost\}$' <<<"$web_block"; then
+	ok "$root maps OWLAT_DEPLOYMENT_MODE onto NUXT_PUBLIC_* for the web tier"
+else bad "$root web service must map OWLAT_DEPLOYMENT_MODE onto NUXT_PUBLIC_DEPLOYMENT_MODE or the app cannot see it"; fi
+
+# Setup mode has TWO halves — the server gate (OWLAT_SETUP_MODE) and the client
+# redirect (NUXT_PUBLIC_SETUP_MODE, the only form Nitro maps). Wire one without
+# the other and the app redirects every route to a wizard whose API answers 403,
+# with no way back except editing .env by hand. Both compose files, keyed off the
+# same variable.
+for compose in "$root" "$vps"; do
+	block=$(service_block "$compose" web)
+	server_half=$(grep -cE '^ {6}OWLAT_SETUP_MODE: \$\{OWLAT_SETUP_MODE:-false\}$' <<<"$block" || true)
+	client_half=$(grep -cE '^ {6}NUXT_PUBLIC_SETUP_MODE: \$\{OWLAT_SETUP_MODE:-false\}$' <<<"$block" || true)
+	if [ "${server_half:-0}" -eq 1 ] && [ "${client_half:-0}" -eq 1 ]; then
+		ok "$compose wires both halves of setup mode from OWLAT_SETUP_MODE"
+	else bad "$compose web service must set BOTH OWLAT_SETUP_MODE and NUXT_PUBLIC_SETUP_MODE from \${OWLAT_SETUP_MODE:-false} (server gate=${server_half:-0}, client redirect=${client_half:-0})"; fi
+done
+
+# The version belongs to the IMAGE. A compose override would let the app report a
+# version the running image is not.
+if grep -qE '^ {6}NUXT_PUBLIC_OWLAT_(VERSION|GIT_SHA|BUILD_DATE):' <<<"$web_block"; then
+	bad "$root must not set NUXT_PUBLIC_OWLAT_VERSION/GIT_SHA/BUILD_DATE — the web image exports them"
+else ok "$root leaves the web version metadata to the image"; fi
+
 # --- receiving profiles stay bootable -----------------------------------------
 # An empty MAIL_SYNC_API_KEY default makes apps/mail-sync/src/config.ts throw on
 # boot, and apps/imap/src/server.ts refuses to start in production without a TLS

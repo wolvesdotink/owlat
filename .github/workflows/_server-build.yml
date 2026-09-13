@@ -75,7 +75,11 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          GIT_SHA=$(git rev-parse --short HEAD)
+          # Full sha, not --short: the value reaches the browser through Nitro's
+          # env overlay, which runs everything through `destr`, and an all-digit
+          # short sha ("12345678") would arrive as a number — or "1e234567" as
+          # Infinity. The UI truncates for display anyway.
+          GIT_SHA=$(git rev-parse HEAD)
           BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "git_sha=${GIT_SHA}" >> "$GITHUB_OUTPUT"
           echo "build_date=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
@@ -567,7 +571,19 @@ jobs:
               | jq -e '.redis == "connected" and .worker.alive == true'
           }
           wait_http "mta worker (redis connected + heartbeat alive)" 600 mta_check
-          echo "E2E install (${{ matrix.volumes }} volumes) succeeded: compose verified, images pulled anonymously, functions deployed, stack healthy."
+          # The app must report the version it IS. nuxt.config.ts is evaluated at
+          # image build and Nitro only overlays NUXT_PUBLIC_* env, so a naming slip
+          # leaves every install reporting "dev" — which makes the admin page's
+          # update check short-circuit and hides the in-app updater entirely. This
+          # is the only gate that runs the real release build-args end to end.
+          if ! curl -fsS --max-time 15 http://localhost:3000/auth/login \
+            | grep -q "owlatVersion:\"${VERSION}\""; then
+            echo "::error::the web shell does not report version ${VERSION}; the in-app updater will be hidden on this release"
+            curl -fsS --max-time 15 http://localhost:3000/auth/login \
+              | grep -o 'owlatVersion:"[^"]*"' | head -1 || echo "(no owlatVersion in the shell at all)"
+            exit 1
+          fi
+          echo "E2E install (${{ matrix.volumes }} volumes) succeeded: compose verified, images pulled anonymously, functions deployed, stack healthy, shell reports ${VERSION}."
 
       - name: Dump stack state on failure
         if: failure()

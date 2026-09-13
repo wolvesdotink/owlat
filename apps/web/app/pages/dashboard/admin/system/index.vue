@@ -15,7 +15,9 @@ definePageMeta({
 // ── Current + latest version state ───────────────────────────────────────────
 
 const config = useRuntimeConfig();
-const currentVersion = computed(() => (config.public.owlatVersion as string) || 'dev');
+// String(): values reach runtime config through Nitro's env overlay, which
+// destr's them, so a numeric-looking version would arrive as a number.
+const currentVersion = computed(() => String(config.public.owlatVersion ?? '') || 'dev');
 
 // Cached latest-release info from Convex (read-only, reactive)
 const { data: latestRelease } = useConvexQuery(api.systemUpdates.getLatestRelease, () => ({}));
