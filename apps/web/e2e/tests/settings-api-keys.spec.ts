@@ -23,7 +23,9 @@ test.describe('Settings — API Keys', () => {
 		await apiKeysPage.createApiKey(keyName);
 
 		// The "API Key Created" modal should be visible with the key
-		await expect(page.getByText('API Key Created')).toBeVisible({ timeout: 10_000 });
+		await expect(
+			page.locator('[role="dialog"]').getByRole('heading', { name: 'API Key Created' })
+		).toBeVisible({ timeout: 10_000 });
 
 		// Close the created key modal
 		await apiKeysPage.closeCreatedKeyModal();

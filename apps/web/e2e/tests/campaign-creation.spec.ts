@@ -21,9 +21,18 @@ test.describe('Campaign Creation Wizard', () => {
 		await wizard.goto();
 	});
 
-	test('submitting the empty setup step shows a validation error', async ({ page }) => {
-		await wizard.submitBasicsStep();
+	test('will not advance out of an incomplete setup step', async ({ page }) => {
+		// Not "submit and read the error": Next is DISABLED until the step is
+		// valid, so there is nothing to submit — the previous version of this
+		// clicked a disabled button and waited out its timeout. The guard itself
+		// is the behaviour worth pinning, and it stays disabled even once the name
+		// is filled, because a campaign also needs a sending identity that a blank
+		// instance has no way to provide.
+		const next = page.getByRole('button', { name: 'Next' });
+		await expect(next).toBeDisabled();
 
-		await expect(page.getByText('Campaign name is required')).toBeVisible({ timeout: 5_000 });
+		await page.locator('#campaignName').fill(`E2E Campaign ${Date.now()}`);
+
+		await expect(next).toBeDisabled();
 	});
 });

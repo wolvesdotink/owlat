@@ -16,9 +16,17 @@ export class BasePage {
 	// Modal Helpers
 	// ============================================
 
-	/** Get the currently visible modal dialog */
+	/**
+	 * The modal the user is looking at.
+	 *
+	 * Scoped to VISIBLE dialogs: a page can have more than one mounted at once
+	 * (a create form whose success state opens a second one), and a bare
+	 * `[role="dialog"]` then resolves to two elements and fails Playwright's
+	 * strict mode — reported as "strict mode violation", which says nothing about
+	 * the flow under test.
+	 */
 	get modal(): Locator {
-		return this.page.locator('[role="dialog"]');
+		return this.page.locator('[role="dialog"]:visible').first();
 	}
 
 	/** Wait for a modal to open */
@@ -27,9 +35,9 @@ export class BasePage {
 		return this.modal;
 	}
 
-	/** Wait for the modal to close */
+	/** Wait until no modal is on screen. */
 	async waitForModalClose(timeout = 10_000) {
-		await this.modal.waitFor({ state: 'hidden', timeout });
+		await expect(this.page.locator('[role="dialog"]:visible')).toHaveCount(0, { timeout });
 	}
 
 	/** Click a button inside the current modal by name */

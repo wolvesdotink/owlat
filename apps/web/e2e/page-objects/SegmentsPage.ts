@@ -26,12 +26,19 @@ export class SegmentsPage extends BasePage {
 			await modal.locator('#segment-description').fill(data.description);
 		}
 
-		// Add a condition (defaults to "List Membership" type)
+		// A segment needs a COMPLETE condition, not just a row. The kind already
+		// defaults to "Contact Property"; leaving the property unset leaves the
+		// form invalid ("Condition 1: Please select a property") and the modal
+		// silently refuses to close — which this spec used to sit and time out on,
+		// reported as "the modal never closed".
 		await modal.getByRole('button', { name: /Add Condition/i }).click();
 
-		// Change condition type to "Contact Property" via the select dropdown
-		const conditionTypeSelect = modal.locator('select.input').first();
-		await conditionTypeSelect.selectOption('contact_property');
+		// Drive the kind explicitly. It defaults to "Topic Membership", whose
+		// second select lists TOPICS — so which control sits at which index
+		// depends on the instance's data. Contact Property needs nothing seeded.
+		await modal.getByRole('combobox').first().selectOption({ label: 'Contact Property' });
+		await modal.getByRole('combobox').nth(1).selectOption({ label: 'Email' });
+		await modal.getByPlaceholder('Enter value...').fill('e2e@example.com');
 
 		await modal.getByRole('button', { name: /Create Segment/i }).click();
 		await this.waitForModalClose();
