@@ -5,12 +5,11 @@ const { t, locale } = useI18n();
 
 const config = useRuntimeConfig();
 
-// String(), not a cast: these arrive through Nitro's env overlay, which runs
-// every value through `destr`. A short git sha that happens to be all digits
-// ("12345678") therefore arrives as a NUMBER, and one shaped like an exponent
-// ("1e234567") as Infinity — either way `.slice()` below would throw and take
-// this whole page, the one that hosts the updater, down with it. Roughly one
-// release in forty draws such a sha.
+// String(), not a cast: these reach runtime config through Nitro's env overlay,
+// which runs every value through `destr`. A short git sha that happens to be all
+// digits ("12345678") therefore arrives as a NUMBER, and one shaped like an
+// exponent ("1e234567") as Infinity — either way `.slice()` below would throw and
+// take down this page, the one that hosts the updater.
 const version = computed(() => String(config.public.owlatVersion ?? '') || 'dev');
 const gitSha = computed(() => String(config.public.owlatGitSha ?? '') || 'unknown');
 const buildDate = computed(() => String(config.public.owlatBuildDate ?? '') || 'unknown');
@@ -46,9 +45,7 @@ const isDevBuild = computed(() => version.value === 'dev' || version.value === '
 	<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
 		<div class="flex items-start justify-between gap-6 flex-wrap">
 			<div class="min-w-0">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">
-					{{ t('components.system.versionCard.currentVersion') }}
-				</h3>
+				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">{{ t('components.system.versionCard.currentVersion') }}</h3>
 				<div class="flex items-baseline gap-3 flex-wrap">
 					<span class="font-display text-3xl font-semibold text-text-primary tracking-tight">
 						{{ version }}
