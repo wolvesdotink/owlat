@@ -41,8 +41,8 @@ apps/web/app/layouts/dashboard.vue
 apps/web/app/pages/dashboard/admin/instance/forms.vue
 apps/web/app/pages/dashboard/admin/instance/properties.vue
 apps/web/app/pages/dashboard/admin/operator/index.vue
-apps/web/app/pages/dashboard/admin/team.vue
 apps/web/app/pages/dashboard/admin/team/api/index.vue
+apps/web/app/pages/dashboard/admin/team/index.vue
 apps/web/app/pages/dashboard/audience/contacts/[id].vue
 apps/web/app/pages/dashboard/audience/contacts/index.vue
 apps/web/app/pages/dashboard/audience/segments/[id]/index.vue
