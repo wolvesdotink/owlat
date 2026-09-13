@@ -210,8 +210,13 @@ manual dispatch run the full set as a safety valve.
 Out of band:
 
 - **e2e.yml** (`E2E`). Playwright against a test deployment; nightly, on
-  pushes to `main` that touch `apps/web/**`, and on dispatch. Fails when the
-  `CONVEX_TEST_*` secrets are unset rather than reporting green.
+  pushes to `main` that touch `apps/web/**`, `apps/api/**` or `packages/**`,
+  and on dispatch. Fails when the `CONVEX_TEST_*` secrets are unset rather than
+  reporting green. The job owns that deployment for the length of a run: it
+  wipes the data (`POST /dev/reset`) and pushes the commit's functions before
+  driving the browser, so nothing on it survives a run and two runs must never
+  overlap. The deployment therefore needs `OWLAT_DEV_MODE` enabled and its
+  `INSTANCE_SECRET` equal to `CONVEX_TEST_INSTANCE_SECRET`.
 - **release.yml**, **server-release.yml**, **desktop-release.yml**.
   Tag-triggered. Each starts with the shared `_verify.yml` job, which runs
   `bun run ci:verify` (`scripts/ci-gate.sh verify`: the lint gate plus
@@ -231,6 +236,8 @@ by Actions and is not listed.
 | Secret                                                                      | Used by                                                                                                                       | When unset                                                                        |
 | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `CONVEX_TEST_URL`, `CONVEX_TEST_SITE_URL`                                   | e2e.yml, as `NUXT_PUBLIC_CONVEX_URL` / `NUXT_PUBLIC_CONVEX_SITE_URL` of a dedicated test deployment                           | the E2E job fails with an error naming the missing secret                         |
+| `CONVEX_TEST_ADMIN_KEY`                                                     | e2e.yml, to push the commit under test's functions to that deployment before the suite runs                                  | the E2E job fails with an error naming the missing secret                         |
+| `CONVEX_TEST_INSTANCE_SECRET`                                               | e2e.yml, to call `POST /dev/reset` on that deployment (needs `OWLAT_DEV_MODE` set on it)                                      | the E2E job fails with an error naming the missing secret                         |
 | `DEPENDABOT_LOCKFILE_PAT`                                                   | dependabot-lockfile.yml; a fine-grained PAT (Contents: read & write) stored as a **Dependabot** secret, not an Actions secret | the job warns and skips; Dependabot PRs then fail `bun install --frozen-lockfile` |
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`           | _desktop-build.yml, updater bundle signing                                                                                    | unsigned artifacts with a `::warning::`                                           |
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` | _desktop-build.yml, macOS code signing                                                                                        | unsigned artifacts                                                                |
