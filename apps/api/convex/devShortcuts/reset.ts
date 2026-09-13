@@ -10,7 +10,14 @@
  *
  * Order of operations:
  *   1. Wipe all tenant tables (contacts/automations/templates/campaigns/…)
- *   2. Wipe BetterAuth tables (user/account/organization/member)
+ *   2. Wipe BetterAuth tables (session/invitation/member/organization/account/
+ *      user). `session` and `invitation` matter as much as `user`: a surviving
+ *      session row keeps authenticating a cookie whose user this reset deletes,
+ *      and a surviving pending invitation lets that address self-register into
+ *      an organization that no longer exists (see auth/registrationGate.ts).
+ *      Note the reset cannot close the ~5 minute window of BetterAuth's session
+ *      cookie cache (auth.ts `cookieCache.maxAge`), during which a pre-reset
+ *      cookie still authenticates with no session row at all.
  *   3. Wipe Owlat-local auth tables (userProfiles/instanceSettings/
  *      onboardingProgress/userOnboarding/sendReadyNotices/sendPathReadiness)
  *
@@ -30,6 +37,7 @@ import type { Doc } from '../_generated/dataModel';
 interface ResetCounts {
 	users: number;
 	sessions: number;
+	invitations: number;
 	accounts: number;
 	organizations: number;
 	members: number;
@@ -48,6 +56,7 @@ export const runReset = internalMutation({
 		const counts: ResetCounts = {
 			users: 0,
 			sessions: 0,
+			invitations: 0,
 			accounts: 0,
 			organizations: 0,
 			members: 0,
@@ -80,6 +89,10 @@ export const runReset = internalMutation({
 		// "the page is broken", not "you are signed out", and cost a full
 		// debugging session to track down.
 		counts.sessions = await wipeBetterAuthModel(ctx, 'session');
+		// Pending invitations outlive their organization otherwise, and
+		// `registrationGate` reads them to allow a post-bootstrap signup — so a
+		// stale invite lets that address register into a deleted org.
+		counts.invitations = await wipeBetterAuthModel(ctx, 'invitation');
 		counts.members = await wipeBetterAuthModel(ctx, 'member');
 		counts.organizations = await wipeBetterAuthModel(ctx, 'organization');
 		counts.accounts = await wipeBetterAuthModel(ctx, 'account');

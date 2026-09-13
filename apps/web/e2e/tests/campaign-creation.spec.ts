@@ -21,18 +21,20 @@ test.describe('Campaign Creation Wizard', () => {
 		await wizard.goto();
 	});
 
-	test('will not advance out of an incomplete setup step', async ({ page }) => {
-		// Not "submit and read the error": Next is DISABLED until the step is
-		// valid, so there is nothing to submit — the previous version of this
-		// clicked a disabled button and waited out its timeout. The guard itself
-		// is the behaviour worth pinning, and it stays disabled even once the name
-		// is filled, because a campaign also needs a sending identity that a blank
-		// instance has no way to provide.
-		const next = page.getByRole('button', { name: 'Next' });
-		await expect(next).toBeDisabled();
+	test('will not advance while the instance has no campaign sender', async ({ page }) => {
+		// Assert the PAGE got somewhere first. `canSubmit` (SetupStep.vue) is
+		// false while loading, false while the sender picker is not ready, and
+		// false without an audience — so "Next is disabled" is equally true of a
+		// wizard that never rendered, and asserting it alone is a test that
+		// passes on a dead page.
+		await expect(page.getByText('No campaign senders have been set up yet.')).toBeVisible({
+			timeout: 15_000,
+		});
 
-		await page.locator('#campaignName').fill(`E2E Campaign ${Date.now()}`);
-
-		await expect(next).toBeDisabled();
+		// With the picker resolved to its empty state, the disabled Next is the
+		// real guard: a blank instance has no verified sending identity, so the
+		// wizard refuses to advance. Note it is NOT the campaign name doing this —
+		// `canSubmit` never reads it.
+		await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
 	});
 });

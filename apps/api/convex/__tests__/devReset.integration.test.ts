@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newBetterAuthHarness } from './testModules';
-import { internal } from '../_generated/api';
+import { components, internal } from '../_generated/api';
 
 const SECRET = 'dev-reset-test-secret-at-least-32-characters';
 
@@ -61,6 +61,55 @@ describe('dev reset — onboarding notice tables', () => {
 		}));
 		expect(left.notices).toEqual([]);
 		expect(left.readiness).toEqual([]);
+	});
+
+	it('wipes the session and invitation rows a stale cookie or invite rides on', async () => {
+		// Both outlive the user they belong to unless drained explicitly, and both
+		// are worse than leftover data. A surviving session keeps authenticating a
+		// cookie whose user this reset just deleted — the app then renders its
+		// shell with every query empty, which reads as "the page is broken" rather
+		// than "you are signed out", and cost a full debugging session. A
+		// surviving pending invitation lets that address self-register into an
+		// organization that no longer exists (auth/registrationGate.ts).
+		const t = newBetterAuthHarness();
+		const now = Date.now();
+
+		await t.mutation(components.betterAuth.adapter.create, {
+			input: {
+				model: 'session',
+				data: {
+					token: 'stale-session-token',
+					userId: 'auth-user-1',
+					expiresAt: now + 86_400_000,
+					createdAt: now,
+					updatedAt: now,
+				},
+			},
+		} as never);
+		await t.mutation(components.betterAuth.adapter.create, {
+			input: {
+				model: 'invitation',
+				data: {
+					email: 'invited@example.com',
+					organizationId: 'org-1',
+					inviterId: 'auth-user-1',
+					role: 'member',
+					status: 'pending',
+					expiresAt: now + 86_400_000,
+				},
+			},
+		} as never);
+
+		const counts = await t.mutation(internal.devShortcuts.reset.runReset, {});
+		expect(counts.sessions).toBe(1);
+		expect(counts.invitations).toBe(1);
+
+		const left = await t.query(components.betterAuth.adapter.findMany, {
+			model: 'session',
+			where: [],
+			paginationOpts: { cursor: null, numItems: 10 },
+		} as never);
+		expect((left as { page?: unknown[] }).page ?? []).toEqual([]);
 	});
 
 	it('is idempotent — a second reset reports zeros', async () => {

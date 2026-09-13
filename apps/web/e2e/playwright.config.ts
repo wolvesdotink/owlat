@@ -11,7 +11,12 @@ export default defineConfig({
 	fullyParallel: false,
 	forbidOnly: !!process.env['CI'],
 	retries: process.env['CI'] ? 1 : 0,
-	workers: undefined,
+	// ONE worker. Every test drives the same single Convex deployment — a 2-vCPU
+	// box — so parallel workers contend on the backend rather than on the runner:
+	// at two workers the sender query and a contact create both blew their
+	// budgets while passing comfortably in serial. The whole suite is ~3 minutes
+	// serially, which is a cheap price for a deterministic answer.
+	workers: 1,
 	reporter: 'html',
 
 	timeout: 45_000,

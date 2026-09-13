@@ -6,7 +6,12 @@ export class SettingsApiKeysPage extends BasePage {
 
 	constructor(page: Page) {
 		super(page);
-		this.createKeyButton = page.getByRole('button', { name: 'Create API Key' });
+		// Scoped to the header: this page renders the SAME label in its empty
+		// state too, so unscoped it is ambiguous the moment the list query
+		// resolves. It passed serially only because the assertion polled before
+		// the list loaded — one button in the DOM, instant pass — and failed under
+		// two workers. Green while the page was still loading is not green.
+		this.createKeyButton = this.headerAction('Create API Key');
 	}
 
 	async goto() {

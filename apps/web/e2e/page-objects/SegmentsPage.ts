@@ -26,11 +26,10 @@ export class SegmentsPage extends BasePage {
 			await modal.locator('#segment-description').fill(data.description);
 		}
 
-		// A segment needs a COMPLETE condition, not just a row. The kind already
-		// defaults to "Contact Property"; leaving the property unset leaves the
-		// form invalid ("Condition 1: Please select a property") and the modal
-		// silently refuses to close — which this spec used to sit and time out on,
-		// reported as "the modal never closed".
+		// A segment needs a COMPLETE condition, not just a row: leaving the
+		// property unset keeps the form invalid ("Condition 1: Please select a
+		// property") and the modal silently refuses to close — which this spec
+		// used to sit and time out on, reported as "the modal never closed".
 		await modal.getByRole('button', { name: /Add Condition/i }).click();
 
 		// Drive the kind explicitly. It defaults to "Topic Membership", whose
