@@ -191,15 +191,14 @@ export default defineNuxtConfig({
 		},
 
 		corsHandler: {
-			origin: [
-				process.env['NUXT_PUBLIC_SITE_URL'] || DEFAULT_SITE_URL,
-				// Desktop app webview origins — needed so a packaged desktop client
-				// can reach this instance's public `/api/instance-info` discovery
-				// endpoint cross-origin. (Auth itself goes to the Convex site URL and
-				// is governed by BetterAuth trustedOrigins, not this handler.)
-				'tauri://localhost',
-				'https://tauri.localhost',
-			].filter(Boolean) as string[],
+			// Desktop app webview origins only. The browser app calls /api/* from
+			// its own origin, where CORS is never consulted, so listing the site
+			// URL here achieved nothing — and being read at build time it was
+			// baked to the localhost default in every published image anyway,
+			// which quietly allow-listed http://localhost:3000 with credentials.
+			// (Auth itself goes to the Convex site URL and is governed by
+			// BetterAuth trustedOrigins, not this handler.)
+			origin: ['tauri://localhost', 'https://tauri.localhost'],
 			methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
 			credentials: true,
 		},
@@ -393,14 +392,25 @@ export default defineNuxtConfig({
 			// Deployment mode — 'selfhost' or 'hosted'
 			// Drives the onboarding banner, hides hosted-only UI (billing tabs,
 			// upgrade prompts), and gates the in-app update feature.
-			deploymentMode: process.env['OWLAT_DEPLOYMENT_MODE'] || 'selfhost',
+			// Every name here is the one Nitro maps onto public runtime config at
+			// STARTUP: NUXT_PUBLIC_ + CONSTANT_CASE(key). This file is evaluated
+			// when the IMAGE IS BUILT, so a key that reads any other name is
+			// frozen at its build-time value in every published image and no
+			// amount of operator env will move it. That is not theoretical: these
+			// five read OWLAT_* until v0.4.5, so `owlatVersion` was "dev" in every
+			// release — which made the admin page's update check short-circuit and
+			// hid the in-app updater from every self-hosted install.
+			deploymentMode: process.env['NUXT_PUBLIC_DEPLOYMENT_MODE'] || 'selfhost',
 			// First-run setup mode — when true the global setup middleware
 			// redirects all routes to /setup/* until the wizard completes.
-			setupMode: process.env['OWLAT_SETUP_MODE'] === 'true',
-			// Build-time version metadata (for Settings → System)
-			owlatVersion: process.env['OWLAT_VERSION'] || 'dev',
-			owlatGitSha: process.env['OWLAT_GIT_SHA'] || 'unknown',
-			owlatBuildDate: process.env['OWLAT_BUILD_DATE'] || 'unknown',
+			setupMode: process.env['NUXT_PUBLIC_SETUP_MODE'] === 'true',
+			// Version metadata (for Settings → System). A property of the IMAGE,
+			// not of the deployment: the web Dockerfile's runtime stage exports
+			// these, and compose must not override them or the app would report a
+			// version the running image does not have.
+			owlatVersion: process.env['NUXT_PUBLIC_OWLAT_VERSION'] || 'dev',
+			owlatGitSha: process.env['NUXT_PUBLIC_OWLAT_GIT_SHA'] || 'unknown',
+			owlatBuildDate: process.env['NUXT_PUBLIC_OWLAT_BUILD_DATE'] || 'unknown',
 			// PostHog product analytics
 			posthogApiKey: process.env['NUXT_PUBLIC_POSTHOG_API_KEY'] || '',
 			posthogHost: process.env['NUXT_PUBLIC_POSTHOG_HOST'] || POSTHOG_DEFAULT_HOST,

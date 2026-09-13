@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Prove the built web image serves a SPA shell the browser will actually EXECUTE.
+# Prove the built web image serves a SPA shell the browser will actually EXECUTE,
+# carrying the config of the deployment it is RUNNING IN.
 #
 # The shell's inline scripts carry a per-request nonce, and one of them
 # (`window.__NUXT__.config`) is load-bearing — block it and the app never mounts,
@@ -14,8 +15,16 @@
 #   2. every executable inline script tag carries that same value
 #   3. there IS at least one inline script (otherwise 1+2 pass vacuously)
 #   4. connect-src names the backend given at RUN time, not at build time
+#   5. the shell's runtime config reflects RUN-time env, not build-time env
+#
+# (5) is its own trap: nuxt.config.ts is evaluated at image build, and Nitro only
+# overlays env named NUXT_PUBLIC_*, so a key reading any other name is frozen in
+# every published image. `owlatVersion` read OWLAT_VERSION and so was always
+# "dev", which made the admin page hide the in-app updater on every release.
 #
 # Usage: bash scripts/check-web-csp-shell.sh <image>
+#   EXPECTED_VERSION=<v>  assert the shell reports this version (CI passes the
+#                         same value it built the image with)
 set -euo pipefail
 
 IMAGE="${1:?usage: check-web-csp-shell.sh <image>}"
@@ -34,10 +43,13 @@ dump_logs() {
 	echo "--- end docker logs ---"
 }
 
+# SETUP_MODE is deliberately the non-default value: it only proves anything if
+# the shell had to have picked it up at run time.
 docker run -d --name "$NAME" -p "127.0.0.1:${PORT}:3000" \
 	-e NUXT_PUBLIC_CONVEX_URL="$CONVEX_URL" \
 	-e NUXT_PUBLIC_CONVEX_SITE_URL="http://convex-site.smoke.invalid:3211" \
 	-e NUXT_PUBLIC_SITE_URL="http://localhost:${PORT}" \
+	-e NUXT_PUBLIC_SETUP_MODE=true \
 	"$IMAGE" >/dev/null
 
 ready=false
@@ -103,4 +115,25 @@ case "$connect_src" in
 		;;
 esac
 
-echo "✓ shell is executable: ${inline_total} inline script(s) nonced, connect-src follows runtime config"
+# The shell inlines runtime config as `window.__NUXT__.config` (devalue output:
+# unquoted keys, quoted string values).
+case "$html" in
+	*'setupMode:true'*) ;;
+	*)
+		echo "::error::the shell ignored NUXT_PUBLIC_SETUP_MODE=true — runtime config is baked at image build, so every deployment gets the build's value"
+		exit 1
+		;;
+esac
+
+if [ -n "${EXPECTED_VERSION:-}" ]; then
+	case "$html" in
+		*"owlatVersion:\"${EXPECTED_VERSION}\""*) ;;
+		*)
+			reported=$(printf '%s' "$html" | grep -o 'owlatVersion:"[^"]*"' | head -1)
+			echo "::error::the shell reports ${reported:-no owlatVersion} but the image was built as ${EXPECTED_VERSION}; the admin page hides the updater whenever this reads dev"
+			exit 1
+			;;
+	esac
+fi
+
+echo "✓ shell is executable: ${inline_total} inline script(s) nonced, connect-src and runtime config follow the running deployment"

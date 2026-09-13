@@ -280,6 +280,11 @@ jobs:
           # the remaining matrix entries can stay cache-only Buildx outputs.
           load: ${{ matrix.runtimeSmoke == true || matrix.cspShellSmoke == true }}
           tags: owlat-ci-${{ matrix.name }}:${{ github.sha }}
+          # A real version, so the shell smoke can prove the image reports the
+          # version it was built with. Ignored (with a warning) by the images
+          # that declare no such ARG.
+          build-args: |
+            OWLAT_VERSION=0.0.0-ci
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
@@ -297,6 +302,8 @@ jobs:
       # runs against the real image rather than the config.
       - name: Smoke-test SPA shell CSP
         if: matrix.cspShellSmoke == true
+        env:
+          EXPECTED_VERSION: 0.0.0-ci
         run: bash scripts/check-web-csp-shell.sh "owlat-ci-${{ matrix.name }}:${{ github.sha }}"
 
   # E2E (Playwright) runs nightly + on manual dispatch in .github/workflows/e2e.yml

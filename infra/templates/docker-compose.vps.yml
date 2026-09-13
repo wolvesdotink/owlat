@@ -85,6 +85,10 @@ services:
       # CONVEX_SITE_URL is the in-network URL the apply handler uses to reach the
       # backend's HTTP routes (/seed/admin).
       OWLAT_SETUP_MODE: ${OWLAT_SETUP_MODE:-false}
+      # The server gate reads OWLAT_SETUP_MODE above; the client-side redirect
+      # reads runtime config, which Nitro fills only from NUXT_PUBLIC_ names.
+      # Both have to be set or the wizard is reachable but never redirected to.
+      NUXT_PUBLIC_SETUP_MODE: ${OWLAT_SETUP_MODE:-false}
       # One-time token that gates the unauthenticated /api/setup/* endpoints while
       # OWLAT_SETUP_MODE=true. `owlat setup` mints it into .env and prints it; the
       # wizard must echo it back. Without it the first caller could seize the

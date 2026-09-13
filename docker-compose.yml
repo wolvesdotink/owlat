@@ -110,8 +110,12 @@ services:
       NUXT_PUBLIC_CONVEX_SITE_URL: ${NUXT_PUBLIC_CONVEX_SITE_URL:-http://localhost:3211}
       NUXT_CONVEX_SITE_URL_INTERNAL: http://convex:3211
       NUXT_PUBLIC_SITE_URL: ${NUXT_PUBLIC_SITE_URL:-http://localhost:3000}
-      # Deployment mode — shown in onboarding banner, hides hosted-only UI
-      OWLAT_DEPLOYMENT_MODE: ${OWLAT_DEPLOYMENT_MODE:-selfhost}
+      # Deployment mode — shown in onboarding banner, hides hosted-only UI.
+      # NUXT_PUBLIC_ prefix required: that is the only form Nitro maps onto the
+      # app's runtime config. The operator-facing name in .env stays OWLAT_*.
+      NUXT_PUBLIC_DEPLOYMENT_MODE: ${OWLAT_DEPLOYMENT_MODE:-selfhost}
+      # First-run setup mode — gates the client-side redirect to /setup.
+      NUXT_PUBLIC_SETUP_MODE: ${OWLAT_SETUP_MODE:-false}
       # Version metadata (for in-app update UI)
       OWLAT_VERSION: ${OWLAT_VERSION:-dev}
       OWLAT_GIT_SHA: ${OWLAT_GIT_SHA:-unknown}
