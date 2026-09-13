@@ -291,7 +291,8 @@ jobs:
             --input-type=module -e "await import('./dist/index.js')"
 
   # E2E (Playwright) runs nightly + on manual dispatch in .github/workflows/e2e.yml
-  # — out-of-band so a failure or unset CONVEX_TEST_URL secret can't block PR merges.
+  # — out-of-band so a failure can't block PR merges. It does NOT skip on unset
+  # secrets any more: the job fails and names them.
 
   # packages/sdk-java is outside the bun workspace, so turbo can't track it; the
   # detect job flags it from a Dockerfile-style path diff. Its JUnit suite never

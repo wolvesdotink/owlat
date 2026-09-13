@@ -24,6 +24,11 @@ export default defineConfig({
 			name: 'setup',
 			testDir: '.',
 			testMatch: /auth\.setup\.ts/,
+			// No retries: registerTestUser() mints a new address per call, and
+			// the instance only grants ONE bootstrap signup (the rest is
+			// invite-only), so a retry after a half-succeeded registration
+			// registers a different user and is refused. Fail the run instead.
+			retries: 0,
 		},
 		{
 			name: 'chromium',

@@ -7,7 +7,12 @@ import { testUser } from '../fixtures/test-data';
 test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe('Authentication', () => {
-	test('register a new user and redirect to dashboard', async ({ page }) => {
+	// The happy path — first account on a blank instance — is what auth.setup.ts
+	// does before every run; asserting it a second time here cannot work.
+	// Registration is invite-only once ANY account exists
+	// (convex/auth/registrationGate.ts), and the setup project has just taken
+	// the one bootstrap signup, so what is left to pin is the refusal.
+	test('refuses a self-registration once the instance has an account', async ({ page }) => {
 		const registerPage = new RegisterPage(page);
 		await registerPage.goto();
 
@@ -18,8 +23,9 @@ test.describe('Authentication', () => {
 			'SecurePassword123!'
 		);
 
-		await page.waitForURL('**/dashboard**', { timeout: 15_000 });
-		await expect(page).toHaveURL(/\/dashboard/);
+		await expect(registerPage.errorAlert).toBeVisible({ timeout: 10_000 });
+		await expect(registerPage.errorAlert).toContainText(/invite-only/i);
+		await expect(page).toHaveURL(/\/auth\/register/);
 	});
 
 	test('login with valid credentials and redirect to dashboard', async ({ page }) => {

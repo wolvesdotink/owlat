@@ -210,8 +210,13 @@ manual dispatch run the full set as a safety valve.
 Out of band:
 
 - **e2e.yml** (`E2E`). Playwright against a test deployment; nightly, on
-  pushes to `main` that touch `apps/web/**`, and on dispatch. Fails when the
-  `CONVEX_TEST_*` secrets are unset rather than reporting green.
+  pushes to `main` that touch `apps/web/**`, `apps/api/**` or `packages/**`,
+  and on dispatch. Fails when the `CONVEX_TEST_*` secrets are unset rather than
+  reporting green. The job owns that deployment for the length of a run: it
+  wipes the data (`POST /dev/reset`) and pushes the commit's functions before
+  driving the browser, so nothing on it survives a run and two runs must never
+  overlap. The deployment therefore needs `OWLAT_DEV_MODE` enabled and its
+  `INSTANCE_SECRET` equal to `CONVEX_TEST_INSTANCE_SECRET`.
 - **release.yml**, **server-release.yml**, **desktop-release.yml**.
   Tag-triggered. Each starts with the shared `_verify.yml` job, which runs
   `bun run ci:verify` (`scripts/ci-gate.sh verify`: the lint gate plus
