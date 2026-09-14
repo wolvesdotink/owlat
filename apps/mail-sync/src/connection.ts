@@ -369,6 +369,9 @@ export class AccountConnection {
 		try {
 			for (const folder of this.folders) {
 				if (this.stopped || !this.client) break;
+				// Let mail that arrived since the last pass land as forward sync
+				// BEFORE this folder's ceiling is snapshotted — see the method note.
+				await this.pollInboxForward();
 				const meta = await this.readFolderMeta(folder.remoteName);
 				if (!meta) continue;
 				await backfillFolder(this.makeBackfillDeps(meta.uidValidity, migrationId), {
@@ -426,6 +429,42 @@ export class AccountConnection {
 		} finally {
 			this.backfillRunning = false;
 			await this.resumeInboxIdle();
+		}
+	}
+
+	/**
+	 * Forward-poll the INBOX from inside the backfill loop, so new mail is never
+	 * swallowed by the historical import.
+	 *
+	 * While a backfill runs the client hops from folder to folder, so INBOX IDLE
+	 * is effectively off and forward sync only fires on the folderPollIntervalMs
+	 * timer (5 minutes by default). A mail that arrives inside that window also
+	 * lands in Gmail's All Mail (mapped to `archive`), and the walk that starts
+	 * from a freshly read ceiling goes newest-first — so the backfill ingests the
+	 * All Mail copy FIRST with origin 'backfill'. When the INBOX poll finally
+	 * runs, `ingestExternalMessage` dedupes on Message-ID and returns skipped,
+	 * and the sync-origin branch (Reply Queue + category checks) never runs: the
+	 * user gets no draft for a message that arrived while importing.
+	 *
+	 * Polling the INBOX immediately before each folder's ceiling snapshot lets
+	 * the arriving copy win that race with origin 'sync'. Safe to call with
+	 * `backfillRunning` set: it takes the same per-mailbox IMAP lock as every
+	 * other fetch (the backfill holds no lock between batches) and never waits on
+	 * the backfill, and it doesn't touch the IDLE state — `maybeRunBackfill`
+	 * already returns to INBOX in its `finally`. Failures are logged and
+	 * swallowed so a bad poll can't abort the import or count as a backfill
+	 * failure.
+	 */
+	private async pollInboxForward(): Promise<void> {
+		const inbox = this.folders.find((f) => f.role === 'inbox');
+		if (!inbox || this.stopped || !this.client) return;
+		try {
+			await this.pollFolder(inbox.remoteName, inbox.role);
+		} catch (err) {
+			logger.warn(
+				{ accountId: this.account.accountId, err },
+				'inbox forward poll during backfill failed'
+			);
 		}
 	}
 

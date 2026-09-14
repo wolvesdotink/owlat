@@ -13,6 +13,10 @@
  * The last case also covers the anti-loop headers: `ingestExternalRaw` parses
  * `Precedence:` out of the raw message and hands it down, so bulk mail reaches
  * the classifiers already flagged (the header is never persisted on the row).
+ *
+ * The final block drives that ACTION itself — raw bytes in, `origin` and the
+ * parsed Precedence out — so the worker-facing plumbing is pinned too, not just
+ * the mutation it delegates to.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -306,6 +310,94 @@ describe('ingestExternalRaw header extraction', () => {
 		expect(extractAntiLoopHeaders(raw)).toEqual({
 			precedence: 'bulk',
 			'list-id': '<news.acme.test>',
+		});
+	});
+});
+
+/**
+ * The same gate one level up, through the REAL action the worker calls.
+ *
+ * `ingestExternalRaw` is where `origin` is forwarded and where `Precedence:` is
+ * parsed out of the raw bytes — the cases above hand the mutation both by hand,
+ * so nothing covered the action's own plumbing. These drive it end to end: raw
+ * base64 in, sealed blob staged into convex-test's `ctx.storage`, mutation run.
+ */
+describe('ingestExternalRaw → Reply Queue enqueue', () => {
+	/** A minimal RFC 5322 message carrying the bulk-mail marker. */
+	function rawBulkMessage(): string {
+		const raw = [
+			`From: Sam <${SENDER}>`,
+			`To: ${OWNER_ADDRESS}`,
+			'Subject: Weekly digest',
+			'Date: Tue, 6 May 2025 10:00:00 +0000',
+			'Message-ID: <digest-1@acme.test>',
+			'Precedence: bulk',
+			'MIME-Version: 1.0',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Can you confirm Friday works?',
+			'',
+		].join('\r\n');
+		return Buffer.from(raw, 'utf-8').toString('base64');
+	}
+
+	/** Run the worker-facing action for one message. */
+	async function ingestRaw(
+		t: TestConvex<typeof schema>,
+		seeded: Seeded,
+		origin: 'sync' | 'backfill'
+	): Promise<void> {
+		await t.action(internal.mail.external.delivery.ingestExternalRaw, {
+			accountId: seeded.accountId,
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 42,
+			remoteUidValidity: 7,
+			rawBytesBase64: rawBulkMessage(),
+			from: `Sam <${SENDER}>`,
+			to: [OWNER_ADDRESS],
+			cc: [],
+			bcc: [],
+			subject: 'Weekly digest',
+			textBodyInline: 'Can you confirm Friday works?',
+			messageId: '<digest-1@acme.test>',
+			receivedAt: Date.now(),
+			attachments: [],
+			origin,
+		});
+	}
+
+	it("forwards origin 'sync' and the parsed Precedence to both classifiers", async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedExternalAccount(t);
+
+		await withHeldScheduler(async () => {
+			await ingestRaw(t, seeded, 'sync');
+
+			expect(await pendingAt(t, seeded.mailboxId)).toEqual(expect.any(Number));
+			const jobs = await scheduled(t);
+			expect(jobs.map((job) => job.name)).toEqual(
+				expect.arrayContaining([
+					expect.stringContaining('needsReplyClassify'),
+					expect.stringContaining('categoryClassify'),
+				])
+			);
+			expect(jobs).toHaveLength(2);
+			for (const job of jobs) {
+				expect(job.args['precedence']).toBe('bulk');
+			}
+		});
+	});
+
+	it("forwards origin 'backfill', which schedules nothing", async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedExternalAccount(t);
+
+		await withHeldScheduler(async () => {
+			await ingestRaw(t, seeded, 'backfill');
+
+			expect(await pendingAt(t, seeded.mailboxId)).toBeNull();
+			expect(await scheduled(t)).toEqual([]);
 		});
 	});
 });
