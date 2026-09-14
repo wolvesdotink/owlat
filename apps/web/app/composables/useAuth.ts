@@ -220,6 +220,33 @@ export function useAuth() {
 		return result.data;
 	};
 
+	/**
+	 * Wait for the session STORE to show signed-out, not just the request.
+	 *
+	 * `refetch` resolves on its own direct `getSession` and then notifies the
+	 * store, which refetches asynchronously — and BetterAuth's atom sets
+	 * `isPending: current.data === null`, so while a signed-in session is being
+	 * refetched the store still reports "not pending, signed in". Navigating on
+	 * that stale answer starts a fight: `guest` sees a session on /auth/login and
+	 * sends the user back to /dashboard, `auth` has meanwhile seen the truth and
+	 * sends them forward again, and vue-router aborts the ping-pong — leaving the
+	 * browser on the page it started from, signed out, with no error anywhere.
+	 */
+	const waitUntilSignedOut = async (timeoutMs = READY_TIMEOUT_MS) => {
+		if (sessionData.value === null) return;
+		await new Promise<void>((resolve) => {
+			const timer = setTimeout(finish, timeoutMs);
+			const stop = watch(sessionData, (value) => {
+				if (value === null) finish();
+			});
+			function finish() {
+				clearTimeout(timer);
+				stop();
+				resolve();
+			}
+		});
+	};
+
 	const signOut = async () => {
 		const result = await authClient.signOut();
 
@@ -228,6 +255,7 @@ export function useAuth() {
 		}
 
 		await refetch({ force: true, expected: 'unauthenticated' });
+		await waitUntilSignedOut();
 
 		await navigateTo('/auth/login');
 

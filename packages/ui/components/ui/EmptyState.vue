@@ -85,10 +85,7 @@ const showClear = computed(() => isNoResults.value && !hasAction.value && hasCle
 </script>
 
 <template>
-	<div
-		class="flex flex-col items-center px-6 text-center"
-		:class="isNoResults ? 'py-12' : 'py-16'"
-	>
+	<div class="flex flex-col items-center px-6 text-center" :class="isNoResults ? 'py-12' : 'py-16'">
 		<p class="lp-eyebrow flex items-center justify-center gap-1.5">
 			<Icon v-if="icon" :name="icon" class="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
 			<span>{{ eyebrowText }}</span>
@@ -106,7 +103,8 @@ const showClear = computed(() => isNoResults.value && !hasAction.value && hasCle
 			{{ description }}
 		</p>
 
-		<div v-if="hasAction" class="mt-6">
+		<!-- Pairs with page-header-actions: same label, different region. -->
+		<div v-if="hasAction" data-testid="empty-state-action" class="mt-6">
 			<slot name="action" />
 			<slot />
 		</div>

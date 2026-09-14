@@ -1,32 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { LoginPage } from '../page-objects/LoginPage';
-import { RegisterPage } from '../page-objects/RegisterPage';
 import { testUser } from '../fixtures/test-data';
 
 // Auth tests run without pre-saved auth state
 test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe('Authentication', () => {
-	// The happy path — first account on a blank instance — is what auth.setup.ts
-	// does before every run; asserting it a second time here cannot work.
-	// Registration is invite-only once ANY account exists
-	// (convex/auth/registrationGate.ts), and the setup project has just taken
-	// the one bootstrap signup, so what is left to pin is the refusal.
-	test('refuses a self-registration once the instance has an account', async ({ page }) => {
-		const registerPage = new RegisterPage(page);
-		await registerPage.goto();
-
-		const timestamp = Date.now();
-		await registerPage.register(
-			'New Test User',
-			`new-user-${timestamp}@example.com`,
-			'SecurePassword123!'
-		);
-
-		await expect(registerPage.errorAlert).toBeVisible({ timeout: 10_000 });
-		await expect(registerPage.errorAlert).toContainText(/invite-only/i);
-		await expect(page).toHaveURL(/\/auth\/register/);
-	});
+	// The self-registration test that used to sit here was deleted, not repaired:
+	// `/auth/register` renders no form at all without `?redirect=/invite/accept…`
+	// (pages/auth/register.vue), so it filled fields that do not exist. The gate
+	// it meant to cover — signup refused once an account exists — is unit-tested
+	// in convex/auth/registrationGate.
 
 	test('login with valid credentials and redirect to dashboard', async ({ page }) => {
 		const loginPage = new LoginPage(page);

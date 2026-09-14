@@ -78,9 +78,13 @@ previews/
 # unaffected. Plans and pipelines are written as either Markdown or a
 # self-contained HTML page, hence both extensions.
 /*_REVIEW_*.md
+/*_REVIEW_*.html
 /*_AUDIT_*.md
+/*_AUDIT_*.html
 /*_PLAN_*.md
 /*_PLAN_*.html
+# Scratch plans written during a session; never product content.
+/docs/plans/
 /*-plan.html
 /*-pipeline.html
 

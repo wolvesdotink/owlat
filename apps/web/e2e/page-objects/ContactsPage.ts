@@ -11,7 +11,7 @@ export class ContactsPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 		this.searchInput = page.getByPlaceholder('Search by email or name...');
-		this.addContactButton = page.getByRole('button', { name: 'Add Contact' });
+		this.addContactButton = this.headerAction('Add Contact');
 		this.importButton = page.getByRole('button', { name: 'Import' });
 		this.selectAllCheckbox = page.locator('thead button').first();
 		this.selectedCountText = page.locator('text=/\\d+ selected/');
@@ -19,8 +19,10 @@ export class ContactsPage extends BasePage {
 
 	async goto() {
 		await this.page.goto('/dashboard/audience/contacts');
-		// Wait for Convex data to load
-		await this.page.waitForSelector('table, [class*="empty"]', { timeout: 15_000 });
+		// The old wait was `table, [class*="empty"]`: UiEmptyState has no class
+		// containing "empty", and the table only renders once rows exist, so on a
+		// blank instance this never resolved and every contacts spec died here.
+		await this.expectOnPage('Contacts');
 	}
 
 	async addContact(data: { email: string; firstName?: string; lastName?: string }) {
@@ -52,8 +54,10 @@ export class ContactsPage extends BasePage {
 		// Click the Import dropdown trigger
 		await this.importButton.click();
 
-		// Select "CSV File" from dropdown menu
-		await this.page.getByText('CSV File').click();
+		// The dropdown entry is a BUTTON ("CSV File Import from spreadsheet"), and
+		// the words "CSV File" also appear in the modal it opens — so a bare
+		// getByText matched two nodes and a menuitem role matched none.
+		await this.page.getByRole('button', { name: /CSV File/i }).click();
 
 		const modal = await this.waitForModal();
 

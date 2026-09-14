@@ -1,11 +1,21 @@
 import { defineConfig, devices } from '@playwright/test';
+import { STORAGE_STATE } from './storage-state';
 
 export default defineConfig({
 	testDir: './tests',
-	fullyParallel: true,
+	// Tests run in declaration order, one at a time (see `workers` above). The
+	// whole suite shares ONE backend instance and one seeded owner, so letting
+	// tests interleave buys minutes and costs determinism — several selectors
+	// depend on whether a list is empty, which a sibling test decides.
+	fullyParallel: false,
 	forbidOnly: !!process.env['CI'],
 	retries: process.env['CI'] ? 1 : 0,
-	workers: undefined,
+	// ONE worker. Every test drives the same single Convex deployment — a 2-vCPU
+	// box — so parallel workers contend on the backend rather than on the runner:
+	// at two workers the sender query and a contact create both blew their
+	// budgets while passing comfortably in serial. The whole suite is ~3 minutes
+	// serially, which is a cheap price for a deterministic answer.
+	workers: 1,
 	reporter: 'html',
 
 	timeout: 45_000,
@@ -42,7 +52,7 @@ export default defineConfig({
 			testIgnore: /csp-boot\.spec\.ts/,
 			use: {
 				...devices['Desktop Chrome'],
-				storageState: '.auth/user.json',
+				storageState: STORAGE_STATE,
 			},
 			dependencies: ['setup'],
 		},
