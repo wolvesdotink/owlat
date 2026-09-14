@@ -220,8 +220,14 @@ export const finalizeMigration = internalMutation({
 		});
 		// Only a sweep that ran to its natural end counts as knowledge indexed for
 		// the migration owner's onboarding checklist — a mid-sweep feature disable
-		// finalizes with status 'completed' too, but leaves the step unmarked.
-		if (args.status === 'completed' && args.indexingRanToCompletion === true) {
+		// finalizes with status 'completed' too, but leaves the step unmarked. A
+		// `shared` migration indexed a TEAM inbox (org infrastructure, opt-in), so
+		// it never counts toward the admin's personal checklist either.
+		if (
+			args.status === 'completed' &&
+			args.indexingRanToCompletion === true &&
+			migration.scope !== 'shared'
+		) {
 			await markOnboardingStep(ctx, migration.userId, 'knowledgeIndexed');
 		}
 	},
