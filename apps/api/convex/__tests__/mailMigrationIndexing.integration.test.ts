@@ -56,8 +56,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledge/extraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 // Suppress "Could not find module" rejections from the scheduler trying to run
@@ -164,12 +164,10 @@ async function seedMailbox(ctx: SeedCtx): Promise<Seeded> {
 async function seedMessage(
 	ctx: SeedCtx,
 	s: Seeded,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'mailMessages'>> {
 	const now = Date.now();
-	const rawStorageId = await ctx.storage.store(
-		new Blob(['raw bytes'], { type: 'message/rfc822' }),
-	);
+	const rawStorageId = await ctx.storage.store(new Blob(['raw bytes'], { type: 'message/rfc822' }));
 	return (await ctx.db.insert('mailMessages', {
 		mailboxId: s.mailboxId,
 		folderId: s.folderId,
@@ -208,7 +206,7 @@ async function seedMessage(
 async function seedMigration(
 	ctx: SeedCtx,
 	s: Seeded,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'mailboxMigrations'>> {
 	const now = Date.now();
 	return (await ctx.db.insert('mailboxMigrations', {
@@ -249,7 +247,7 @@ describe('migrationIndexing.resolveSenderContact', () => {
 			const identity = await ctx.db
 				.query('contactIdentities')
 				.withIndex('by_identifier', (q) =>
-					q.eq('channel', 'email').eq('identifier', 'bob.jones@example.com'),
+					q.eq('channel', 'email').eq('identifier', 'bob.jones@example.com')
 				)
 				.first();
 			expect(identity).not.toBeNull();
@@ -367,7 +365,7 @@ describe('migrationIndexing.runIndexChunk', () => {
 				const msgId = await seedMessage(ctx, s, { receivedAt: 1000 + i });
 				await ctx.db.insert(
 					'knowledgeEntries',
-					createTestKnowledgeEntry({ sourceType: 'email', sourceId: msgId }),
+					createTestKnowledgeEntry({ sourceType: 'email', sourceId: msgId })
 				);
 			}
 			migrationId = await seedMigration(ctx, s, { messagesImported: 2 });
@@ -400,7 +398,7 @@ describe('migrationIndexing.runIndexChunk', () => {
 				const msgId = await seedMessage(ctx, s, { receivedAt: 1000 + i });
 				await ctx.db.insert(
 					'knowledgeEntries',
-					createTestKnowledgeEntry({ sourceType: 'email', sourceId: msgId }),
+					createTestKnowledgeEntry({ sourceType: 'email', sourceId: msgId })
 				);
 				ids.push(msgId);
 			}
@@ -546,5 +544,78 @@ describe('migrationIndexing — cancel during indexing is sticky', () => {
 			expect(m!.messagesIndexed).toBe(0);
 			expect(m!.indexCursorReceivedAt).toBeUndefined();
 		});
+	});
+});
+
+// =====================================================================
+// scope guard — a shared (team inbox) import has no onboarding side effects
+// =====================================================================
+
+describe('migrationIndexing — onboarding stamps are personal-only', () => {
+	async function onboardingRows(t: ReturnType<typeof convexTest>) {
+		return await t.run((ctx) => ctx.db.query('userOnboarding').collect());
+	}
+
+	it('finalizeMigration skips knowledgeIndexed for a scope=shared migration', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		let shared!: Id<'mailboxMigrations'>;
+		let personal!: Id<'mailboxMigrations'>;
+		await t.run(async (ctx) => {
+			const s = await seedMailbox(ctx);
+			shared = await seedMigration(ctx, s, { scope: 'shared' });
+			personal = await seedMigration(ctx, s);
+		});
+
+		// Same terminal transition, same "ran to completion" flag — the team
+		// inbox's import stamps nothing, the personal one stamps the step.
+		await t.mutation(internal.mail.migrationIndexing.finalizeMigration, {
+			migrationId: shared,
+			status: 'completed',
+			indexingRanToCompletion: true,
+		});
+		expect(await onboardingRows(t)).toHaveLength(0);
+
+		await t.mutation(internal.mail.migrationIndexing.finalizeMigration, {
+			migrationId: personal,
+			status: 'completed',
+			indexingRanToCompletion: true,
+		});
+		const rows = await onboardingRows(t);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]!.authUserId).toBe('test-user');
+		expect(rows[0]!.knowledgeIndexed).toBeDefined();
+	});
+
+	it('a shared sweep still completes and counts its messages', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		let s!: Seeded;
+		let migrationId!: Id<'mailboxMigrations'>;
+		await t.run(async (ctx) => {
+			s = await seedMailbox(ctx);
+			for (let i = 0; i < 2; i++) {
+				const msgId = await seedMessage(ctx, s, { receivedAt: 1000 + i });
+				await ctx.db.insert(
+					'knowledgeEntries',
+					createTestKnowledgeEntry({ sourceType: 'email', sourceId: msgId })
+				);
+			}
+			migrationId = await seedMigration(ctx, s, { scope: 'shared', messagesImported: 2 });
+		});
+
+		await t.action(internal.mail.migrationIndexing.runIndexChunk, {
+			migrationId,
+			chunkSize: 30,
+			interChunkDelayMs: 0,
+		});
+		await t.finishInProgressScheduledFunctions();
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('completed');
+			expect(m!.messagesIndexed).toBe(2);
+		});
+		expect(await onboardingRows(t)).toHaveLength(0);
 	});
 });

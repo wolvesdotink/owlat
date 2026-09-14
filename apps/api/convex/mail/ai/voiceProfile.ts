@@ -151,6 +151,29 @@ export const markIdle = internalMutation({
 });
 
 /**
+ * Schedule ONE background voice-profile refresh for a mailbox whose corpus just
+ * changed wholesale — today only the end of a historical import
+ * (`mail/migration.completeBackfillImport`), where thousands of Sent messages
+ * land at once and the next draft would otherwise pay the refresh latency.
+ *
+ * No-op unless personalization is on for that mailbox (`isEnabled`) and the `ai`
+ * feature is enabled, so an import never spends an LLM call for an org that
+ * turned personalization off. The `status` check is the same in-flight guard the
+ * lazy path uses: a profile already `refreshing` gets no second job.
+ */
+export async function scheduleVoiceProfileRefresh(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'>
+): Promise<boolean> {
+	const row = await findRow(ctx, mailboxId);
+	if (!row || !row.isEnabled || row.status !== 'idle') return false;
+	if (!(await isFeatureEnabled(ctx, 'ai'))) return false;
+	await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
+	await ctx.scheduler.runAfter(0, internal.mail.ai.voiceProfileActions.refresh, { mailboxId });
+	return true;
+}
+
+/**
  * Promoted per-recipient style directives for one address, or [] when there is
  * no override row / no promoted rule yet. Keyed by the exact lowercased address
  * so an override learned for contact X is only ever blended when drafting to X.

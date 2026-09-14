@@ -6848,6 +6848,46 @@
 						"description": "Create a shared address like {supportAddress} so your whole team can read and reply from one place. You choose who's a member; everyone else can't see it.",
 						"title": "No team inboxes yet"
 					},
+					"import": {
+						"action": "Import history",
+						"actionTitle": "Import the mail that was already in this inbox",
+						"cancel": "Stop the import",
+						"cancelDialog": {
+							"description": "Stop importing the existing mail for {address}? Everything imported so far is kept, and you can start again later.",
+							"thisInbox": "this inbox",
+							"title": "Stop this import?"
+						},
+						"cancelled": "Import stopped. The {imported} messages imported so far were kept.",
+						"completed": "Import finished — {imported} messages are now in this inbox.",
+						"completedIndexed": "{indexed} conversations were learned from.",
+						"count": "{imported} of {total} messages imported",
+						"description": "Bring in the mail that was already in this inbox before you connected it. Everything found is added to the team inbox in Owlat; nothing is changed or removed at the provider.",
+						"discovering": "Looking through the inbox for what there is to import…",
+						"discoveringFolders": "Counting folders…",
+						"failed": "The import stopped before it finished.",
+						"failedKept": "The {imported} messages imported so far were kept.",
+						"idleNote": "A large archive can take a few hours. You can close this panel — the import keeps running, and imported conversations never land in the reply queue.",
+						"importing": "Bringing the existing mail in. This keeps running if you close the panel.",
+						"indexCount": "{indexed} of {imported} conversations learned",
+						"indexProgressLabel": "Learning progress",
+						"indexing": "Learning from the imported mail.",
+						"inline": {
+							"discovering": "History import starting…",
+							"failed": "The history import stopped before it finished.",
+							"importing": "History import in progress · {imported} of {total}",
+							"indexing": "Learning from the imported mail…"
+						},
+						"knowledgeDescription": "Builds the shared knowledge profile for each contact from this team's history. Off by default, because it reads the whole archive.",
+						"knowledgeLabel": "Also learn from the imported mail",
+						"progressLabel": "Import progress",
+						"reconnectFirst": "Reconnect this inbox before importing its history.",
+						"retry": "Try again",
+						"start": "Import existing mail",
+						"startAgain": "Start the import again",
+						"title": "Import existing mail",
+						"toastCancelled": "Import stopped",
+						"toastStarted": "Import started"
+					},
 					"intro": "Shared addresses your team reads and sends from together — like {supportAddress} or {salesAddress}.",
 					"loadError": "Could not load team inboxes. Please try again.",
 					"manageMembers": "Manage members",
@@ -8921,7 +8961,7 @@
 				"personalTitle": "Choose your email address",
 				"selectDomain": "Select domain",
 				"successBody": "Your mailbox is connected.",
-				"successExternalNote": "New mail sent to this address will start appearing here shortly. Mail already in the account isn't imported — only messages that arrive from now on.",
+				"successExternalNote": "New mail sent to this address will start appearing here shortly. Mail already in the account isn't imported yet — an admin can pull it in from Administration → Team & access → Team inboxes.",
 				"successHostedNote": "Make sure your domain sends incoming mail to this Owlat instance so messages start flowing.",
 				"successTeamBody": "Your team inbox is ready. Members can open it from their Postbox.",
 				"successTeamTitle": "Your team inbox is connected",
@@ -11938,7 +11978,9 @@
 			},
 			"useMailMigration": {
 				"cancelOperation": "Cancel mailbox migration",
-				"startOperation": "Start mailbox migration"
+				"cancelSharedOperation": "Stop team inbox import",
+				"startOperation": "Start mailbox migration",
+				"startSharedOperation": "Start team inbox import"
 			},
 			"usePostboxAppPasswords": {
 				"generateOperation": "Generate app password",

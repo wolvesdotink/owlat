@@ -10,6 +10,12 @@
  *
  * Shared insert/threading logic is reused via `insertDeliveredMessage`.
  * These are all internal functions — the worker calls them with the admin key.
+ *
+ * Each ingest carries an `origin`: `'sync'` for forward IDLE/poll sync,
+ * `'backfill'` for a historical import. Only `'sync'` inbox mail enters the
+ * Reply Queue + category classification, so importing years of history never
+ * fans out background LLM work. A worker one release behind sends no `origin`
+ * at all, which is read as a backfill — the safe direction.
  */
 
 import { v } from 'convex/values';
@@ -26,6 +32,9 @@ import {
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { insertDeliveredMessage, buildSnippet } from '../deliveryPipeline/insert';
+import { enqueueNeedsReplyCheck } from '../needsReply';
+import { enqueueCategoryCheck } from '../category';
+import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { buildSearchBody } from '../searchBody';
 import { splitBodyForStorage } from '../deliveryPipeline/ingest';
 import { storeSealedBlob } from '../../lib/sealedBlob';
@@ -75,6 +84,13 @@ export const ingestExternalMessage = internalMutation({
 		flagFlagged: v.optional(v.boolean()),
 		// Parsed List-Unsubscribe target (extracted at ingest by ingestExternalRaw).
 		unsubscribe: v.optional(mailUnsubscribeValidator),
+		// Which worker loop produced this message. Absent ⇒ treated as a backfill
+		// (an older worker); see the file header.
+		origin: v.optional(v.union(v.literal('sync'), v.literal('backfill'))),
+		// Anti-loop headers parsed by ingestExternalRaw — same shape as the hosted
+		// path (mail/delivery.ts). Only `precedence` is read, to suppress bulk mail
+		// in the classifiers; nothing here is persisted on the message row.
+		antiLoopHeaders: v.optional(v.record(v.string(), v.string())),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const dropBlob = async () => {
@@ -152,6 +168,20 @@ export const ingestExternalMessage = internalMutation({
 			// Remote provider already filtered spam/virus; no verdict fields.
 			countUsedBytes: true,
 		});
+
+		// Reply Queue + smart-inbox categories, mirroring mail/delivery.ts:380-399.
+		// Forward sync only: a history import ('backfill', or an older worker that
+		// sends no origin) must never fan out background LLM work. Inbox deliveries
+		// only, and the row's ACTUAL folder counts — a muted thread was re-routed
+		// to Archive inside the insert (mail/mute.ts).
+		if (args.origin === 'sync' && folder.role === 'inbox') {
+			const delivered = await ctx.db.get(messageId);
+			if (delivered && delivered.folderId === folder._id) {
+				const precedence = args.antiLoopHeaders?.['precedence'];
+				await enqueueNeedsReplyCheck(ctx, delivered.threadId, { precedence });
+				await enqueueCategoryCheck(ctx, delivered.threadId, { precedence });
+			}
+		}
 
 		await advanceCursor(ctx, args, mailbox._id);
 		await ctx.db.patch(args.accountId, { lastSyncAt: Date.now(), updatedAt: Date.now() });
@@ -307,6 +337,8 @@ export const ingestExternalRaw = internalAction({
 		attachments: v.array(mailMessageAttachmentValidator),
 		flagSeen: v.optional(v.boolean()),
 		flagFlagged: v.optional(v.boolean()),
+		// Forward sync vs historical import; see the file header.
+		origin: v.optional(v.union(v.literal('sync'), v.literal('backfill'))),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const rawBytes = Buffer.from(args.rawBytesBase64, 'base64');
@@ -329,10 +361,15 @@ export const ingestExternalRaw = internalAction({
 		// Deep-search excerpt (idea 32) from the pre-split body, same as the hosted
 		// inbound path; persisted only when the instance opted in.
 		const searchBody = buildSearchBody(args.textBodyInline, args.htmlBodyInline);
-		// List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 / 8058), parsed once
-		// at ingest so the reader's Unsubscribe chip never re-opens the raw .eml.
-		const unsubscribe =
-			extractListUnsubscribe(rawBytes.subarray(0, 65536).toString('utf8')) ?? undefined;
+		// The first 64 KB is the header block for every real message; decoded once
+		// and read twice. List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 /
+		// 8058) is parsed here so the reader's Unsubscribe chip never re-opens the
+		// raw .eml, and the anti-loop headers give the classifiers the same
+		// bulk-mail suppression the hosted path gets (Precedence is not persisted
+		// on the message row, so it has to ride along with the ingest call).
+		const headerBlock = rawBytes.subarray(0, 65536).toString('utf8');
+		const unsubscribe = extractListUnsubscribe(headerBlock) ?? undefined;
+		const antiLoopHeaders = extractAntiLoopHeaders(headerBlock);
 		// `ingestExternalMessage` deletes the staged blobs itself on skip/dup.
 		return await ctx.runMutation(internal.mail.external.delivery.ingestExternalMessage, {
 			accountId: args.accountId,
@@ -362,6 +399,8 @@ export const ingestExternalRaw = internalAction({
 			flagSeen: args.flagSeen,
 			flagFlagged: args.flagFlagged,
 			unsubscribe,
+			origin: args.origin,
+			antiLoopHeaders,
 		});
 	},
 });

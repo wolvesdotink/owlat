@@ -6848,6 +6848,46 @@
 						"description": "Legen Sie eine gemeinsame Adresse wie {supportAddress} an, damit Ihr ganzes Team an einem Ort lesen und antworten kann. Sie bestimmen, wer Mitglied ist; alle anderen sehen sie nicht.",
 						"title": "Noch keine Team-Postfächer"
 					},
+					"import": {
+						"action": "Verlauf importieren",
+						"actionTitle": "Die bereits in diesem Postfach vorhandene Mail importieren",
+						"cancel": "Import stoppen",
+						"cancelDialog": {
+							"description": "Den Import der vorhandenen Mail für {address} stoppen? Alles bisher Importierte bleibt erhalten, und Sie können später erneut starten.",
+							"thisInbox": "dieses Postfach",
+							"title": "Diesen Import stoppen?"
+						},
+						"cancelled": "Import gestoppt. Die bisher importierten {imported} Nachrichten wurden behalten.",
+						"completed": "Import abgeschlossen — {imported} Nachrichten liegen jetzt in diesem Postfach.",
+						"completedIndexed": "Aus {indexed} Unterhaltungen wurde gelernt.",
+						"count": "{imported} von {total} Nachrichten importiert",
+						"description": "Holen Sie die Mail herein, die schon vor dem Verbinden in diesem Postfach lag. Alles Gefundene wird dem Team-Postfach in Owlat hinzugefügt; beim Anbieter wird nichts verändert oder gelöscht.",
+						"discovering": "Das Postfach wird durchgesehen, was es zu importieren gibt…",
+						"discoveringFolders": "Ordner werden gezählt…",
+						"failed": "Der Import wurde vor dem Ende abgebrochen.",
+						"failedKept": "Die bisher importierten {imported} Nachrichten wurden behalten.",
+						"idleNote": "Ein großes Archiv kann einige Stunden dauern. Sie können dieses Panel schließen — der Import läuft weiter, und importierte Unterhaltungen landen nie in der Antwort-Warteschlange.",
+						"importing": "Die vorhandene Mail wird hereingeholt. Das läuft weiter, wenn Sie das Panel schließen.",
+						"indexCount": "{indexed} von {imported} Unterhaltungen gelernt",
+						"indexProgressLabel": "Lernfortschritt",
+						"indexing": "Aus der importierten Mail wird gelernt.",
+						"inline": {
+							"discovering": "Verlaufsimport startet…",
+							"failed": "Der Verlaufsimport wurde vor dem Ende abgebrochen.",
+							"importing": "Verlaufsimport läuft · {imported} von {total}",
+							"indexing": "Aus der importierten Mail wird gelernt…"
+						},
+						"knowledgeDescription": "Erstellt aus dem Verlauf dieses Teams das gemeinsame Wissensprofil je Kontakt. Standardmäßig aus, weil dafür das gesamte Archiv gelesen wird.",
+						"knowledgeLabel": "Auch aus der importierten Mail lernen",
+						"progressLabel": "Import-Fortschritt",
+						"reconnectFirst": "Verbinden Sie dieses Postfach neu, bevor Sie seinen Verlauf importieren.",
+						"retry": "Erneut versuchen",
+						"start": "Vorhandene Mail importieren",
+						"startAgain": "Import erneut starten",
+						"title": "Vorhandene Mail importieren",
+						"toastCancelled": "Import gestoppt",
+						"toastStarted": "Import gestartet"
+					},
 					"intro": "Gemeinsame Adressen, die Ihr Team zusammen liest und von denen es sendet — etwa {supportAddress} oder {salesAddress}.",
 					"loadError": "Team-Postfächer konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
 					"manageMembers": "Mitglieder verwalten",
@@ -8921,7 +8961,7 @@
 				"personalTitle": "Wählen Sie Ihre E-Mail-Adresse",
 				"selectDomain": "Domain auswählen",
 				"successBody": "Ihr Postfach ist verbunden.",
-				"successExternalNote": "Neue E-Mails an diese Adresse erscheinen in Kürze hier. Bereits im Konto vorhandene E-Mails werden nicht importiert — nur Nachrichten, die ab jetzt eintreffen.",
+				"successExternalNote": "Neue E-Mails an diese Adresse erscheinen in Kürze hier. Bereits im Konto vorhandene E-Mails sind noch nicht importiert — eine Administratorin oder ein Administrator kann sie unter Administration → Team & Zugriff → Team-Postfächer nachholen.",
 				"successHostedNote": "Stellen Sie sicher, dass Ihre Domain eingehende E-Mails an diese Owlat-Instanz sendet, damit Nachrichten ankommen.",
 				"successTeamBody": "Ihr Team-Postfach ist bereit. Mitglieder können es in ihrem Postbox öffnen.",
 				"successTeamTitle": "Ihr Team-Postfach ist verbunden",
@@ -11938,7 +11978,9 @@
 			},
 			"useMailMigration": {
 				"cancelOperation": "Postfachmigration abbrechen",
-				"startOperation": "Postfachmigration starten"
+				"cancelSharedOperation": "Import des Team-Postfachs stoppen",
+				"startOperation": "Postfachmigration starten",
+				"startSharedOperation": "Import des Team-Postfachs starten"
 			},
 			"usePostboxAppPasswords": {
 				"generateOperation": "App-Passwort erzeugen",

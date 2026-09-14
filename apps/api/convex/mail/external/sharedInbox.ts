@@ -39,15 +39,17 @@
  *   Internal: _connectSharedInternal, _updateCredentialsSharedInternal (both
  *             called by accountsActions after encryption).
  *
- * NO HISTORICAL BACKFILL (deliberate scope decision — issue #234): a connected
- * shared inbox starts empty and only receives mail that arrives from the connect
- * onward (the forward-sync worker seeds its cursor at `uidNext-1`). The historical
- * migration path (`mail/migration.ts`) is intentionally personal-only — it drives
- * onboarding side effects and resolves the caller's LIVE PERSONAL account — so a
- * team inbox never masks a user's own migration. Importing an external team
- * inbox's existing mail (an admin-gated migration keyed by `mailboxId`) is a
- * separate follow-up; the wizard success copy is honest about it
- * (`add-account.vue`: "Mail already in the account isn't imported").
+ * HISTORICAL IMPORT (was deferred with issue #234, now shipped): a freshly
+ * connected shared inbox still starts EMPTY — the forward-sync worker seeds its
+ * cursor at `uidNext-1`, so it only receives mail that arrives from the connect
+ * onward. Pulling the existing history in is an explicit, owner/admin-triggered
+ * action: `mail/migrationShared.ts` (`startShared` / `getStatusShared` /
+ * `cancelShared`, keyed by `mailboxId` and gated by `requireSharedExternalAccount`
+ * below) writes a `scope='shared'` `mailboxMigrations` row, which the mail-sync
+ * worker picks up by account exactly like a personal one. The public trio in
+ * `mail/migration.ts` stays personal-only (it resolves the caller's LIVE PERSONAL
+ * account and drives onboarding), so a team inbox never masks a user's own
+ * migration and a shared import never stamps anyone's onboarding checklist.
  */
 
 import { v } from 'convex/values';
@@ -57,7 +59,11 @@ import { internal } from '../../_generated/api';
 import { requireAdminContext } from '../../lib/sessionOrganization';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
 import { connectFieldsValidator } from './accounts';
-import { insertExternalAccountRow, applyCredentialRotation } from './accountShared';
+import {
+	insertExternalAccountRow,
+	applyCredentialRotation,
+	cancelActiveMigrationForAccount,
+} from './accountShared';
 import { seedSharedInboxRoster } from '../mailboxMembers';
 import { requireMailboxAccess } from '../permissions';
 import { isFeatureEnabled } from '../../lib/featureFlags';
@@ -72,12 +78,37 @@ import type { Doc, Id } from '../../_generated/dataModel';
 
 /**
  * Load the `scope='shared'`, `kind='external'` mailbox + its linked credential
- * account for an admin-gated repair/purge, or throw. Gated at the `owner` floor
- * of `requireMailboxAccess` (which also admits org owner/admin — the same floor
- * every team-inbox management surface uses). Refuses a personal or hosted mailbox
- * so these twins can only ever touch a shared external inbox.
+ * account for an owner/admin caller, or `null` when the caller lacks access or
+ * the mailbox isn't a shared external inbox. The SOFT twin of
+ * {@link requireSharedExternalAccount} — for reads that degrade to "nothing to
+ * show" instead of surfacing an error (a member of another team must not be
+ * able to tell a team inbox apart from a missing one).
  */
-async function requireSharedExternalAccount(
+export async function resolveSharedExternalAccount(
+	ctx: QueryCtx | MutationCtx,
+	mailboxId: Id<'mailboxes'>
+): Promise<{ mailbox: Doc<'mailboxes'>; account: Doc<'externalMailAccounts'> } | null> {
+	const access = await requireMailboxAccess(ctx, mailboxId, 'owner');
+	if (!access.ok) return null;
+	const { mailbox } = access;
+	if (mailbox.scope !== 'shared' || mailbox.kind !== 'external' || !mailbox.externalAccountId) {
+		return null;
+	}
+	const account = await ctx.db.get(mailbox.externalAccountId);
+	if (!account) return null;
+	return { mailbox, account };
+}
+
+/**
+ * Load the `scope='shared'`, `kind='external'` mailbox + its linked credential
+ * account for an admin-gated repair/purge/import, or throw. Gated at the `owner`
+ * floor of `requireMailboxAccess` (which also admits org owner/admin — the same
+ * floor every team-inbox management surface uses). Refuses a personal or hosted
+ * mailbox so these twins can only ever touch a shared external inbox. Exported
+ * for the team-inbox migration twins in `mail/migrationShared.ts`, which are
+ * gated at exactly this floor.
+ */
+export async function requireSharedExternalAccount(
 	ctx: QueryCtx | MutationCtx,
 	mailboxId: Id<'mailboxes'>
 ): Promise<{ mailbox: Doc<'mailboxes'>; account: Doc<'externalMailAccounts'> }> {
@@ -169,14 +200,10 @@ export const _connectSharedInternal = internalMutation({
 export const getSharedExternalAccount = authedQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const access = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
-		if (!access.ok) return { configured: false as const };
-		const { mailbox } = access;
-		if (mailbox.scope !== 'shared' || mailbox.kind !== 'external' || !mailbox.externalAccountId) {
-			return { configured: false as const };
-		}
-		const account = await ctx.db.get(mailbox.externalAccountId);
-		if (!account) return { configured: false as const };
+		// authz: resolveSharedExternalAccount → requireMailboxAccess(owner) + shared-external gate (soft: not configured).
+		const resolved = await resolveSharedExternalAccount(ctx, args.mailboxId);
+		if (!resolved) return { configured: false as const };
+		const { mailbox, account } = resolved;
 		return {
 			configured: true as const,
 			mailboxId: mailbox._id,
@@ -260,8 +287,12 @@ export const purgeShared = authedMutation({
 				address: mailbox.address,
 			});
 		}
-		// Stop the worker syncing into a draining mailbox, then hide it.
+		// Stop the worker syncing into a draining mailbox, then hide it. An import
+		// still running is cancelled here rather than when the last purge chunk
+		// deletes its row: `getBackfillWork` reports inactive on the worker's very
+		// next poll, so a mid-walk backfill stops fetching straight away.
 		await ctx.db.patch(mailbox.externalAccountId, { status: 'disconnected', updatedAt: now });
+		await cancelActiveMigrationForAccount(ctx, mailbox.externalAccountId);
 		await ctx.db.patch(mailbox._id, { status: 'deleted', updatedAt: now });
 		// Drop the roster + any un-accepted grants up front (bounded per inbox); the
 		// scheduled cascade below handles the unbounded per-message data.

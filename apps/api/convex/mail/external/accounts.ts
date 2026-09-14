@@ -48,6 +48,7 @@ import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '.
 import {
 	insertExternalAccountRow,
 	applyCredentialRotation,
+	cancelActiveMigrationForAccount,
 	CONNECTABLE_ACCOUNT_STATUSES,
 } from './accountShared';
 import { markOnboardingStep } from '../../auth/userOnboarding';
@@ -175,6 +176,9 @@ export const disconnect = authedMutation({
 		}
 		const now = Date.now();
 		await ctx.db.patch(account._id, { status: 'disconnected', updatedAt: now });
+		// Stop an in-flight import too, so the worker's very next `getBackfillWork`
+		// poll goes idle instead of backfilling into a disconnected mailbox.
+		await cancelActiveMigrationForAccount(ctx, account._id);
 		// Hide from the inbox UI (requireMailboxAccess refuses non-active rows).
 		await ctx.db.patch(account.mailboxId, { status: 'deleted', updatedAt: now });
 		await ctx.db.insert('mailAuditLog', {
@@ -218,8 +222,11 @@ export const purge = authedMutation({
 				.find(isPersonalAccount);
 		if (!account) throwNotFound('External mail account');
 		const now = Date.now();
-		// Mark disconnected first so the worker stops syncing into a draining mailbox.
+		// Mark disconnected first so the worker stops syncing into a draining mailbox,
+		// and cancel any in-flight import up front rather than leaving it live until
+		// the last purge chunk deletes its row.
 		await ctx.db.patch(account._id, { status: 'disconnected', updatedAt: now });
+		await cancelActiveMigrationForAccount(ctx, account._id);
 		await ctx.db.patch(account.mailboxId, { status: 'deleted', updatedAt: now });
 		await ctx.scheduler.runAfter(0, internal.mail.external.accounts._purgeChunk, {
 			accountId: account._id,
@@ -286,6 +293,18 @@ export const _purgeChunk = internalMutation({
 			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
 			.collect(); // bounded: per-account folder cursors (≤ a handful)
 		for (const sr of syncRows) await ctx.db.delete(sr._id);
+
+		// The account's import jobs (personal migrations AND team-inbox ones) point
+		// at a row that is about to stop existing — drop them. Deleting is enough to
+		// stop an IN-FLIGHT import: `getBackfillWork` finds no row and reports
+		// inactive, and a still-in-flight batch's `recordBackfillProgress` /
+		// `completeBackfillImport` load the migration by id and bail on null. No
+		// cancel-then-delete dance, and no orphan rows for an account that is gone.
+		const migrations = await ctx.db
+			.query('mailboxMigrations')
+			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
+			.collect(); // bounded: a handful of import jobs per account
+		for (const mg of migrations) await ctx.db.delete(mg._id);
 
 		// A staged "move my mailbox here" job points at this account — drop it too,
 		// so its move row (and the terminal truth getLatestCallerMove surfaces from

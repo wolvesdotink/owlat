@@ -95,6 +95,14 @@ export interface IngestParams {
 	remoteUidValidity: number;
 	raw: Buffer;
 	flags: Set<string>;
+	/**
+	 * Which loop produced this message. Forward IDLE/poll sync is `'sync'`;
+	 * a historical import is `'backfill'`. The server enqueues the Reply Queue +
+	 * category classification for `'sync'` inbox mail ONLY, so importing years of
+	 * history never fans out background LLM work. The worker is the only party
+	 * that knows which loop it is in, so it has to say so.
+	 */
+	origin: 'sync' | 'backfill';
 }
 
 export async function ingestMessage(convex: ConvexClient, params: IngestParams): Promise<void> {
@@ -136,6 +144,7 @@ export async function ingestMessage(convex: ConvexClient, params: IngestParams):
 			attachments,
 			flagSeen: params.flags.has('\\Seen'),
 			flagFlagged: params.flags.has('\\Flagged'),
+			origin: params.origin,
 		} as never
 	);
 }

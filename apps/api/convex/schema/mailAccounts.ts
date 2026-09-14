@@ -166,6 +166,18 @@ export const mailAccountsTables = {
 		organizationId: v.string(),
 		accountId: v.id('externalMailAccounts'),
 		mailboxId: v.id('mailboxes'),
+		// Which kind of mailbox this import belongs to. MISSING = 'personal' —
+		// every row written before shared imports existed is a personal migration.
+		// A `shared` row imports a TEAM inbox's history (`mail/migrationShared.ts`,
+		// owner/admin-gated by mailbox id) and differs from a personal one in two
+		// ways the completion paths read off this field rather than re-deriving
+		// from a mailbox that may already be soft-deleted:
+		//   · it NEVER stamps an onboarding step — a team inbox is org
+		//     infrastructure, not the admin's own mailbox setup;
+		//   · knowledge indexing defaults OFF (opt-in per import) — fanning a
+		//     team's whole history into the org knowledge graph is a privacy and
+		//     cost decision the person starting the import has to make.
+		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'))),
 		// Provider label — drives wizard copy only ("Migrate from Google").
 		source: v.union(v.literal('google'), v.literal('imap')),
 		status: v.union(
