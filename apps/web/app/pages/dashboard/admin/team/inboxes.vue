@@ -70,18 +70,35 @@ async function confirmRevokeKey() {
 // One inbox's management panel open at a time — the page stays scannable and
 // the expanded roster is unambiguous.
 const expandedId = ref<Id<'mailboxes'> | null>(null);
+const reconnectId = ref<Id<'mailboxes'> | null>(null);
+const importId = ref<Id<'mailboxes'> | null>(null);
 function toggleExpanded(id: Id<'mailboxes'>) {
 	expandedId.value = expandedId.value === id ? null : id;
-	if (expandedId.value) reconnectId.value = null;
+	if (expandedId.value) {
+		reconnectId.value = null;
+		importId.value = null;
+	}
 }
 
-// Which inbox's in-place credential-repair panel is open. The panel itself (and
-// its non-secret prefill subscription) lives in PostboxTeamInboxCard; only the
-// "one at a time" rule is the page's.
-const reconnectId = ref<Id<'mailboxes'> | null>(null);
+// The in-place credential-repair panel. It (and its non-secret prefill
+// subscription) lives in PostboxTeamInboxCard; only the "one at a time" rule is
+// the page's.
 function toggleReconnect(id: Id<'mailboxes'>) {
 	reconnectId.value = reconnectId.value === id ? null : id;
-	if (reconnectId.value) expandedId.value = null;
+	if (reconnectId.value) {
+		expandedId.value = null;
+		importId.value = null;
+	}
+}
+
+// The history-import panel, same rule: an import runs for hours unattended, so
+// nothing is lost by closing it — the roster row keeps reporting its progress.
+function toggleImport(id: Id<'mailboxes'>) {
+	importId.value = importId.value === id ? null : id;
+	if (importId.value) {
+		expandedId.value = null;
+		reconnectId.value = null;
+	}
 }
 
 // Deleting an external team inbox is a hard, irreversible purge: it
@@ -100,6 +117,7 @@ async function confirmPurge() {
 	if (!res.ok) return;
 	if (expandedId.value === target._id) expandedId.value = null;
 	if (reconnectId.value === target._id) reconnectId.value = null;
+	if (importId.value === target._id) importId.value = null;
 	purgeTarget.value = null;
 }
 </script>
@@ -209,9 +227,11 @@ async function confirmPurge() {
 				:inbox="inbox"
 				:expanded="expandedId === inbox._id"
 				:reconnecting="reconnectId === inbox._id"
+				:importing="importId === inbox._id"
 				:sealed-mail-enabled="sealedMailEnabled"
 				@toggle-expanded="toggleExpanded(inbox._id)"
 				@toggle-reconnect="toggleReconnect(inbox._id)"
+				@toggle-import="toggleImport(inbox._id)"
 				@open="switchToMailbox(inbox._id)"
 				@rotate-key="rotateKey(inbox.address)"
 				@revoke-key="revokeKeyTarget = inbox"

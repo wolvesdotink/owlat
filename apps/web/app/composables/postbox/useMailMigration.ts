@@ -1,5 +1,7 @@
 import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
+import type { MaybeRefOrGetter } from 'vue';
+import type { Id } from '@owlat/api/dataModel';
 
 /**
  * Drives the "Migrate from Google" wizard. Reads the live migration status
@@ -95,6 +97,92 @@ export function useMailMigration() {
 	}
 	async function cancel() {
 		return await cancelOp.run({});
+	}
+
+	return {
+		migration,
+		account,
+		isConnected,
+		step,
+		importPercent,
+		indexPercent,
+		isAiIndexing,
+		isDiscovering,
+		start,
+		cancel,
+		startBusy: startOp.isLoading,
+		cancelBusy: cancelOp.isLoading,
+	};
+}
+
+/**
+ * The same migration lifecycle for a SHARED TEAM INBOX, keyed by mailbox.
+ *
+ * A team inbox is org infrastructure rather than one person's mailbox, so the
+ * backend has its own owner/admin-gated trio (`mail/migrationShared`) and the
+ * web side needs a second binding — but nothing about how progress READS
+ * differs, so the step derivation and the percent/discovering helpers above are
+ * shared verbatim and can never drift between the personal wizard and the admin
+ * card.
+ *
+ * Two deliberate differences from {@link useMailMigration}:
+ *   - `connect` is unreachable: a team inbox only exists once its connection
+ *     does, so the pre-migration step is `ready` (or `reconnect` when the stored
+ *     credentials went stale);
+ *   - knowledge indexing is OPT-IN — `start({ indexKnowledge })` — because
+ *     indexing a team's mail history into the org-wide knowledge graph is a
+ *     privacy and cost decision, not a default.
+ */
+export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes'>>) {
+	const { t } = useI18n();
+	const { data: statusData } = useConvexQuery(api.mail.migrationShared.getStatusShared, () => ({
+		mailboxId: toValue(mailboxId),
+	}));
+	const { data: accountData } = useConvexQuery(
+		api.mail.external.sharedInbox.getSharedExternalAccount,
+		() => ({ mailboxId: toValue(mailboxId) })
+	);
+
+	const migration = computed(() => statusData.value ?? null);
+	const account = computed(() => accountData.value ?? null);
+	const isConnected = computed(() => account.value?.configured === true);
+	const accountStatus = computed(() => (account.value?.configured ? account.value.status : null));
+
+	// Gmail gets the 'google' backfill path, every other host the generic one —
+	// the same mapping the personal wizard makes from its picked provider.
+	const source = computed<'google' | 'imap'>(() =>
+		account.value?.configured && account.value.imapHost.toLowerCase().includes('gmail')
+			? 'google'
+			: 'imap'
+	);
+
+	const startOp = useBackendOperation(api.mail.migrationShared.startShared, {
+		label: () => t('shared.postbox.useMailMigration.startSharedOperation'),
+	});
+	const cancelOp = useBackendOperation(api.mail.migrationShared.cancelShared, {
+		label: () => t('shared.postbox.useMailMigration.cancelSharedOperation'),
+	});
+
+	const step = computed<MigrationStep>(() =>
+		deriveMigrationStep(migration.value?.status, isConnected.value, accountStatus.value)
+	);
+
+	const importPercent = computed(() => migration.value?.importPercent ?? 0);
+	const indexPercent = computed(() => migration.value?.indexPercent ?? 0);
+	const isAiIndexing = computed(() => migration.value?.isAiIndexingEnabled === true);
+	const isDiscovering = computed(
+		() => step.value === 'importing' && (migration.value?.messagesTotal ?? 0) === 0
+	);
+
+	async function start(options?: { indexKnowledge?: boolean }) {
+		return await startOp.run({
+			mailboxId: toValue(mailboxId),
+			source: source.value,
+			indexKnowledge: options?.indexKnowledge === true,
+		});
+	}
+	async function cancel() {
+		return await cancelOp.run({ mailboxId: toValue(mailboxId) });
 	}
 
 	return {
