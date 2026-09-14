@@ -26,7 +26,10 @@ export class BasePage {
 	 * the flow under test.
 	 */
 	get modal(): Locator {
-		return this.page.locator('[role="dialog"]:visible').first();
+		// `.last()`, not `.first()`: Teleport appends each dialog to the end of
+		// <body>, so when one modal hands over to another the OLDEST is first —
+		// and during the leave transition that is the one on its way out.
+		return this.page.locator('[role="dialog"]:visible').last();
 	}
 
 	/** Wait for a modal to open */
@@ -128,12 +131,19 @@ export class BasePage {
 	 * loudly if we landed on the sign-in page instead.
 	 */
 	async expectOnPage(heading: string | RegExp, timeout = 15_000) {
+		// Wait for EITHER outcome first. Asserting the URL up front passes
+		// instantly — an SPA redirect lands after the middleware runs — so the
+		// message below could never actually fire, and the H1 timeout carried the
+		// failure while saying nothing about the redirect.
+		const ownHeading = this.page.getByRole('heading', { level: 1, name: heading });
+		await expect(
+			ownHeading.or(this.page.getByRole('heading', { name: /sign in|welcome back/i })).first()
+		).toBeVisible({ timeout });
+
 		await expect(
 			this.page,
 			`expected ${String(heading)}, but the app redirected to sign-in`
 		).not.toHaveURL(/\/auth\/login/);
-		await expect(this.page.getByRole('heading', { level: 1, name: heading })).toBeVisible({
-			timeout,
-		});
+		await expect(ownHeading).toBeVisible({ timeout });
 	}
 }

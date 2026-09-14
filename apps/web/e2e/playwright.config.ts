@@ -3,11 +3,10 @@ import { STORAGE_STATE } from './storage-state';
 
 export default defineConfig({
 	testDir: './tests',
-	// Files still spread across workers; tests WITHIN a file run in order. The
+	// Tests run in declaration order, one at a time (see `workers` above). The
 	// whole suite shares ONE backend instance and one seeded owner, so letting
-	// tests from the same file interleave buys minutes and costs determinism —
-	// several selectors depend on whether a list is empty, which the sibling test
-	// running beside them decides.
+	// tests interleave buys minutes and costs determinism — several selectors
+	// depend on whether a list is empty, which a sibling test decides.
 	fullyParallel: false,
 	forbidOnly: !!process.env['CI'],
 	retries: process.env['CI'] ? 1 : 0,
