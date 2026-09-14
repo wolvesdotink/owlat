@@ -136,8 +136,10 @@ const createdOn = computed(() =>
 <template>
 	<div class="card !p-0 overflow-hidden">
 		<div class="p-5">
-			<div class="flex items-start justify-between gap-4">
-				<div class="flex items-center gap-3 min-w-0">
+			<!-- The action group wraps under the name on narrow widths instead of
+			     squeezing the name/address block to nothing. -->
+			<div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+				<div class="flex items-center gap-3 min-w-0 flex-1 basis-64">
 					<UiIconBox icon="lucide:mails" size="md" variant="surface" rounded="lg" />
 					<div class="min-w-0">
 						<p class="font-semibold text-text-primary truncate">
@@ -148,7 +150,7 @@ const createdOn = computed(() =>
 						</p>
 					</div>
 				</div>
-				<div class="flex items-center gap-2 shrink-0">
+				<div class="flex flex-wrap items-center gap-2">
 					<span
 						v-if="inbox.status === 'suspended'"
 						class="text-xs px-2 py-0.5 rounded bg-warning/10 text-warning"
