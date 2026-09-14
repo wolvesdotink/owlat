@@ -142,12 +142,10 @@ export function isCalendarAttachment(att: { filename: string; contentType: strin
 export const NEEDS_REPLY_CONTEXT_MESSAGES = 6;
 
 /**
- * Mark the thread pending and schedule the classify action. Called from the
- * inbound webhook delivery path (deliverToMailbox) and from the external
- * IMAP-sync path (mail/external/delivery.ts), both for inbox deliveries only.
- * The external path enqueues for FORWARD sync (`origin: 'sync'`) only —
- * a historical import ingests old mail in bulk and must not fan out LLM work;
- * the reconcile cron stays bounded the same way.
+ * Mark the thread pending and schedule the classify action. Called for inbox
+ * deliveries only, from hosted delivery (deliverToMailbox) and forward IMAP
+ * sync (mail/external/delivery.ts, `origin: 'sync'`): a bulk history import
+ * must never fan out LLM work, and the reconcile cron stays bounded likewise.
  */
 export async function enqueueNeedsReplyCheck(
 	ctx: MutationCtx,
@@ -272,17 +270,14 @@ const needsReplyResultValidator = v.union(
 );
 
 /**
- * Persist a classification result and clear the pending marker. Guarded
- * against staleness: if a newer message arrived while classification was in
- * flight (thread.latestMessageId moved), the result is dropped — the newer
- * ingest already re-enqueued a check.
- *
- * When a result is being set, this is also the single place the unified
- * priority score is computed (from the address book, server-side) and the
- * HEY-style screener gate is applied — an unknown first-time sender is held
+ * Persist a classification result and clear the pending marker. Stale-guarded:
+ * if a newer message arrived while classification was in flight
+ * (thread.latestMessageId moved) the result is dropped — that ingest already
+ * re-enqueued a check. When a result is set this is also the single place the
+ * unified priority score is computed (server-side, from the address book) and
+ * the HEY-style screener gate is applied: an unknown first-time sender is held
  * OUT of the queue (result forced to null) when the owner enabled the screener.
- * Fail-soft: a missing message/mailbox row falls back to persisting the result
- * without a score rather than dropping the signal.
+ * Fail-soft: a missing message/mailbox row persists the result without a score.
  */
 export const applyResult = internalMutation({
 	args: {
@@ -312,11 +307,8 @@ export const applyResult = internalMutation({
 				// message/mailbox row skips scoring and persists the raw result.
 				resolved = await scoreAndScreenResult(ctx, {
 					mailboxId: thread.mailboxId,
-					// A SHARED team inbox has no single owner whose screener
-					// preference should speak for everyone: `mailbox.userId` is just
-					// the admin who connected it, and their "hold unknown senders"
-					// setting would silently hold the whole team's queue. Omitting
-					// the owner turns the screener off for shared mailboxes only.
+					// A shared team inbox has no single owner: `mailbox.userId` is only the
+					// connecting admin, so omit it and the screener stays off for the team.
 					ownerUserId: mailbox.scope === 'shared' ? undefined : mailbox.userId,
 					message,
 					resolved,
