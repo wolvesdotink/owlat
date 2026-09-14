@@ -118,6 +118,7 @@ describe('forward INBOX poll inside the backfill loop', () => {
 			remoteName: string
 		): Promise<{ ceilingUid: number; messageCount: number; uidValidity: number } | null>;
 		maybeRunBackfill(): Promise<void>;
+		pollFolder(remoteName: string, role: string): Promise<void>;
 	};
 
 	/** Two mapped folders, INBOX holding exactly one unseen UID (42). */
@@ -169,6 +170,13 @@ describe('forward INBOX poll inside the backfill loop', () => {
 			trace.push(`ceiling:${remoteName}`);
 			return await readFolderMeta(remoteName);
 		};
+		// Same for the forward poll, so the trace can tell a poll's INBOX lock
+		// apart from the lock readFolderMeta(INBOX) itself takes.
+		const pollFolder = conn.pollFolder.bind(conn);
+		conn.pollFolder = async (remoteName: string, role: string) => {
+			trace.push(`poll:${remoteName}`);
+			return await pollFolder(remoteName, role);
+		};
 		return conn;
 	}
 
@@ -178,11 +186,21 @@ describe('forward INBOX poll inside the backfill loop', () => {
 
 		await conn.maybeRunBackfill();
 
-		const ceilings = trace.filter((e) => e.startsWith('ceiling:'));
-		expect(ceilings).toEqual(['ceiling:INBOX', 'ceiling:[Gmail]/All Mail']);
-		// Each snapshot is immediately preceded by an INBOX fetch attempt.
-		for (const ceiling of ceilings) {
-			expect(trace[trace.indexOf(ceiling) - 1]).toBe('lock:INBOX');
+		// One forward INBOX poll per folder, each landing after the previous
+		// folder's snapshot and before this one's — a single poll hoisted above
+		// the loop would leave every later folder exposed to the race again.
+		expect(trace.filter((e) => e.startsWith('ceiling:'))).toEqual([
+			'ceiling:INBOX',
+			'ceiling:[Gmail]/All Mail',
+		]);
+		expect(trace.filter((e) => e === 'poll:INBOX')).toHaveLength(2);
+		let previousCeiling = -1;
+		for (const ceiling of ['ceiling:INBOX', 'ceiling:[Gmail]/All Mail']) {
+			const at = trace.indexOf(ceiling);
+			const poll = trace.lastIndexOf('poll:INBOX', at);
+			expect(poll).toBeGreaterThan(previousCeiling);
+			expect(trace.slice(poll + 1, at)).toEqual(['lock:INBOX']);
+			previousCeiling = at;
 		}
 	});
 
