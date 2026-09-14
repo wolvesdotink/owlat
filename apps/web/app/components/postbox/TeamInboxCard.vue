@@ -13,6 +13,7 @@
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
+import { formatNumber } from '~/utils/formatters';
 
 type SharedInbox = FunctionReturnType<typeof api.mail.mailboxMembers.listShared>[number];
 
@@ -82,10 +83,6 @@ const { data: importStatus } = useConvexQuery(api.mail.migrationShared.getStatus
 	props.inbox.kind === 'external' ? { mailboxId: props.inbox._id } : 'skip'
 );
 
-function formatCount(value: number | undefined): string {
-	return new Intl.NumberFormat(locale.value).format(value ?? 0);
-}
-
 // The import panel is reachable on an ACTIVE external inbox only — every shared
 // migration entry point goes through `requireMailboxAccess`, which refuses a
 // suspended mailbox. The summary line above still reports an import that was
@@ -102,8 +99,8 @@ const importSummary = computed(() => {
 		// a "0 of 0" line reads as a stalled import rather than a starting one.
 		return status.messagesTotal > 0
 			? t('dashboard.admin.team.inboxes.import.inline.importing', {
-					imported: formatCount(status.messagesImported),
-					total: formatCount(status.messagesTotal),
+					imported: formatNumber(status.messagesImported, locale.value),
+					total: formatNumber(status.messagesTotal, locale.value),
 				})
 			: t('dashboard.admin.team.inboxes.import.inline.discovering');
 	}

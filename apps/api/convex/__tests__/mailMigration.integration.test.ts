@@ -206,7 +206,7 @@ describe('mail.migration.start', () => {
 			lastError: 'Invalid credentials',
 		});
 		await expect(t.mutation(api.mail.migration.start, {})).rejects.toThrow(
-			/re-enter your credentials/i
+			/re-enter its credentials/i
 		);
 		await t.run(async (ctx) => {
 			const all = await ctx.db.query('mailboxMigrations').collect();

@@ -48,6 +48,7 @@ import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '.
 import {
 	insertExternalAccountRow,
 	applyCredentialRotation,
+	cancelActiveMigrationForAccount,
 	CONNECTABLE_ACCOUNT_STATUSES,
 } from './accountShared';
 import { markOnboardingStep } from '../../auth/userOnboarding';
@@ -175,6 +176,9 @@ export const disconnect = authedMutation({
 		}
 		const now = Date.now();
 		await ctx.db.patch(account._id, { status: 'disconnected', updatedAt: now });
+		// Stop an in-flight import too, so the worker's very next `getBackfillWork`
+		// poll goes idle instead of backfilling into a disconnected mailbox.
+		await cancelActiveMigrationForAccount(ctx, account._id);
 		// Hide from the inbox UI (requireMailboxAccess refuses non-active rows).
 		await ctx.db.patch(account.mailboxId, { status: 'deleted', updatedAt: now });
 		await ctx.db.insert('mailAuditLog', {
@@ -218,8 +222,11 @@ export const purge = authedMutation({
 				.find(isPersonalAccount);
 		if (!account) throwNotFound('External mail account');
 		const now = Date.now();
-		// Mark disconnected first so the worker stops syncing into a draining mailbox.
+		// Mark disconnected first so the worker stops syncing into a draining mailbox,
+		// and cancel any in-flight import up front rather than leaving it live until
+		// the last purge chunk deletes its row.
 		await ctx.db.patch(account._id, { status: 'disconnected', updatedAt: now });
+		await cancelActiveMigrationForAccount(ctx, account._id);
 		await ctx.db.patch(account.mailboxId, { status: 'deleted', updatedAt: now });
 		await ctx.scheduler.runAfter(0, internal.mail.external.accounts._purgeChunk, {
 			accountId: account._id,

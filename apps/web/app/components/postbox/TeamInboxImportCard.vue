@@ -19,6 +19,7 @@
  * happens to be the admin clicking the button.
  */
 import type { Id } from '@owlat/api/dataModel';
+import { formatNumber } from '~/utils/formatters';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -33,6 +34,7 @@ const { isEnabled } = useFeatureFlag();
 const {
 	migration,
 	step,
+	isLoading,
 	importPercent,
 	indexPercent,
 	isAiIndexing,
@@ -42,11 +44,6 @@ const {
 	startBusy,
 	cancelBusy,
 } = useSharedMailMigration(() => props.mailboxId);
-
-/** Counts read as body copy, so they follow the active locale's grouping. */
-function formatCount(value: number | undefined): string {
-	return new Intl.NumberFormat(locale.value).format(value ?? 0);
-}
 
 // The checkbox only exists where the knowledge graph does — the backend honours
 // `indexKnowledge` solely when `ai.knowledge` is on, so offering it otherwise
@@ -93,8 +90,19 @@ const errorPreview = computed(() => {
 			</p>
 		</div>
 
+		<!-- ── Loading: neither subscription has reported yet ───────────────────
+		     Without this the derivation's default reads as "nothing is running",
+		     so an inbox mid-import would flash the Start button before flipping
+		     to a progress bar. -->
+		<div v-if="isLoading" data-testid="team-inbox-import-loading" class="p-4 flex justify-center">
+			<Icon
+				name="lucide:loader-2"
+				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+			/>
+		</div>
+
 		<!-- ── Idle: explain, offer the opt-in, start ───────────────────────── -->
-		<div v-if="isIdle" class="space-y-4">
+		<div v-else-if="isIdle" class="space-y-4">
 			<p class="text-xs text-text-tertiary">
 				{{ t('dashboard.admin.team.inboxes.import.idleNote') }}
 			</p>
@@ -148,8 +156,8 @@ const errorPreview = computed(() => {
 				<span v-else>
 					{{
 						t('dashboard.admin.team.inboxes.import.count', {
-							imported: formatCount(migration?.messagesImported),
-							total: formatCount(migration?.messagesTotal),
+							imported: formatNumber(migration?.messagesImported, locale),
+							total: formatNumber(migration?.messagesTotal, locale),
 						})
 					}}
 				</span>
@@ -175,8 +183,8 @@ const errorPreview = computed(() => {
 				<span>
 					{{
 						t('dashboard.admin.team.inboxes.import.indexCount', {
-							indexed: formatCount(migration?.messagesIndexed),
-							imported: formatCount(migration?.messagesImported),
+							indexed: formatNumber(migration?.messagesIndexed, locale),
+							imported: formatNumber(migration?.messagesImported, locale),
 						})
 					}}
 				</span>
@@ -191,25 +199,40 @@ const errorPreview = computed(() => {
 		<div
 			v-else-if="step === 'completed'"
 			data-testid="team-inbox-import-completed"
-			class="flex items-start gap-2"
+			class="space-y-3"
 		>
-			<Icon name="lucide:check-circle-2" class="w-4 h-4 mt-0.5 text-success shrink-0" />
-			<div>
-				<p class="text-sm text-text-primary">
-					{{
-						t('dashboard.admin.team.inboxes.import.completed', {
-							imported: formatCount(migration?.messagesImported),
-						})
-					}}
-				</p>
-				<p v-if="isAiIndexing" class="text-xs text-text-tertiary mt-0.5">
-					{{
-						t('dashboard.admin.team.inboxes.import.completedIndexed', {
-							indexed: formatCount(migration?.messagesIndexed),
-						})
-					}}
-				</p>
+			<div class="flex items-start gap-2">
+				<Icon name="lucide:check-circle-2" class="w-4 h-4 mt-0.5 text-success shrink-0" />
+				<div>
+					<p class="text-sm text-text-primary">
+						{{
+							t('dashboard.admin.team.inboxes.import.completed', {
+								imported: formatNumber(migration?.messagesImported, locale),
+							})
+						}}
+					</p>
+					<p v-if="isAiIndexing" class="text-xs text-text-tertiary mt-0.5">
+						{{
+							t('dashboard.admin.team.inboxes.import.completedIndexed', {
+								indexed: formatNumber(migration?.messagesIndexed, locale),
+							})
+						}}
+					</p>
+				</div>
 			</div>
+			<!-- The backend starts a fresh run on a completed job — for folders the
+			     team added since, or mail a first pass cut short — so offer that
+			     here. Without it the only way back to a Start button is
+			     disconnecting the inbox. -->
+			<UiButton
+				data-testid="team-inbox-import-again"
+				variant="secondary"
+				size="sm"
+				:loading="startBusy"
+				@click="handleStart"
+			>
+				{{ t('dashboard.admin.team.inboxes.import.startAgain') }}
+			</UiButton>
 		</div>
 
 		<!-- ── Failed ───────────────────────────────────────────────────────── -->
@@ -226,7 +249,7 @@ const errorPreview = computed(() => {
 					<p class="text-xs text-text-tertiary mt-0.5">
 						{{
 							t('dashboard.admin.team.inboxes.import.failedKept', {
-								imported: formatCount(migration?.messagesImported),
+								imported: formatNumber(migration?.messagesImported, locale),
 							})
 						}}
 					</p>
@@ -252,7 +275,7 @@ const errorPreview = computed(() => {
 			<p class="text-sm text-text-secondary">
 				{{
 					t('dashboard.admin.team.inboxes.import.cancelled', {
-						imported: formatCount(migration?.messagesImported),
+						imported: formatNumber(migration?.messagesImported, locale),
 					})
 				}}
 			</p>

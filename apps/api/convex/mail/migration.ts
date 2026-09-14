@@ -33,6 +33,7 @@ import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { getLivePersonalExternalAccountForUser } from './external/accounts';
+import { isActiveMigrationStatus, cancelActiveMigrationForAccount } from './external/accountShared';
 import { scheduleVoiceProfileRefresh } from './ai/voiceProfile';
 
 // Chunk size for the post-import knowledge sweep (paced inside runIndexChunk).
@@ -40,11 +41,6 @@ const INDEX_CHUNK_SIZE = 25;
 
 /** Provider label on a migration row — shared with the team-inbox twins. */
 export const migrationSourceValidator = v.union(v.literal('google'), v.literal('imap'));
-
-/** Active = the worker/indexer still has work to do. */
-function isActiveStatus(status: string): boolean {
-	return status === 'importing' || status === 'indexing';
-}
 
 // ============================================================
 // Scope-agnostic core — shared by the personal surface below and the
@@ -132,14 +128,16 @@ export async function startMigrationForAccount(
 	// forever with no connection ever opened. Refuse it and steer the caller
 	// back to re-entering credentials first.
 	if (account.status === 'auth_error') {
+		// Neutral phrasing: the same core serves the personal wizard and the admin
+		// team-inbox panel, where the mailbox is the org's and not the reader's.
 		throwInvalidInput(
-			"Your mailbox connection isn't working — re-enter your credentials before starting a migration."
+			"This mailbox's connection isn't working. Re-enter its credentials, then try again."
 		);
 	}
 
 	// Idempotent: reuse an in-flight migration rather than spawning a second.
 	const existing = await latestMigrationRow(ctx, account._id);
-	if (existing && isActiveStatus(existing.status)) {
+	if (existing && isActiveMigrationStatus(existing.status)) {
 		return { migrationId: existing._id, status: existing.status };
 	}
 
@@ -184,25 +182,21 @@ export async function startMigrationForAccount(
 }
 
 /**
- * Cancel the account's in-flight migration, if any. Returns whether anything
- * was cancelled. Already-imported mail + extracted knowledge are kept.
+ * Cancel the account's in-flight migration, if any, and audit it. Returns
+ * whether anything was cancelled. Already-imported mail + extracted knowledge
+ * are kept. Teardown paths (disconnect / purge) use the quiet
+ * `cancelActiveMigrationForAccount` instead — same state change, no audit line
+ * on a mailbox that is being hidden or deleted in the same transaction.
  */
 export async function cancelMigrationForAccount(
 	ctx: MutationCtx,
 	account: Doc<'externalMailAccounts'>
 ): Promise<boolean> {
-	const migration = await latestMigrationRow(ctx, account._id);
-	if (!migration || !isActiveStatus(migration.status)) return false;
-	const now = Date.now();
-	await ctx.db.patch(migration._id, {
-		status: 'cancelled',
-		completedAt: now,
-		updatedAt: now,
-	});
+	if (!(await cancelActiveMigrationForAccount(ctx, account._id))) return false;
 	await ctx.db.insert('mailAuditLog', {
 		mailboxId: account.mailboxId,
 		event: 'migration.cancelled',
-		occurredAt: now,
+		occurredAt: Date.now(),
 	});
 	return true;
 }

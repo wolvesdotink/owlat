@@ -230,3 +230,44 @@ export async function applyCredentialRotation(
 		updatedAt: now,
 	});
 }
+
+/**
+ * Active = the worker/indexer still has work to do on this account's import.
+ * Declared here rather than in `mail/migration.ts` because the teardown paths
+ * below need it and that module imports `accounts.ts` (importing back would
+ * close a cycle).
+ */
+export function isActiveMigrationStatus(status: string): boolean {
+	return status === 'importing' || status === 'indexing';
+}
+
+/**
+ * Mark the account's in-flight import `cancelled`, if it has one. Returns
+ * whether anything was cancelled.
+ *
+ * The quiet half of `mail/migration.cancelMigrationForAccount`: the same state
+ * change, without the `mailAuditLog` entry. It is what the teardown paths
+ * (disconnect / purge / purgeShared) call, because they hide or delete the
+ * mailbox in the same transaction, and on a purge the migration row and the
+ * audit rows are deleted moments later anyway. A deliberate, user-visible cancel
+ * still goes through the audited helper.
+ *
+ * Teardown calls this BEFORE scheduling the purge cascade: `getBackfillWork`
+ * then reports inactive on the worker's very next poll, instead of leaving a
+ * mid-walk worker fetching into a draining mailbox until the last purge chunk
+ * finally deletes the row.
+ */
+export async function cancelActiveMigrationForAccount(
+	ctx: MutationCtx,
+	accountId: Id<'externalMailAccounts'>
+): Promise<boolean> {
+	const migration = await ctx.db
+		.query('mailboxMigrations')
+		.withIndex('by_account', (q) => q.eq('accountId', accountId))
+		.order('desc')
+		.first();
+	if (!migration || !isActiveMigrationStatus(migration.status)) return false;
+	const now = Date.now();
+	await ctx.db.patch(migration._id, { status: 'cancelled', completedAt: now, updatedAt: now });
+	return true;
+}

@@ -59,7 +59,11 @@ import { internal } from '../../_generated/api';
 import { requireAdminContext } from '../../lib/sessionOrganization';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
 import { connectFieldsValidator } from './accounts';
-import { insertExternalAccountRow, applyCredentialRotation } from './accountShared';
+import {
+	insertExternalAccountRow,
+	applyCredentialRotation,
+	cancelActiveMigrationForAccount,
+} from './accountShared';
 import { seedSharedInboxRoster } from '../mailboxMembers';
 import { requireMailboxAccess } from '../permissions';
 import { isFeatureEnabled } from '../../lib/featureFlags';
@@ -283,8 +287,12 @@ export const purgeShared = authedMutation({
 				address: mailbox.address,
 			});
 		}
-		// Stop the worker syncing into a draining mailbox, then hide it.
+		// Stop the worker syncing into a draining mailbox, then hide it. An import
+		// still running is cancelled here rather than when the last purge chunk
+		// deletes its row: `getBackfillWork` reports inactive on the worker's very
+		// next poll, so a mid-walk backfill stops fetching straight away.
 		await ctx.db.patch(mailbox.externalAccountId, { status: 'disconnected', updatedAt: now });
+		await cancelActiveMigrationForAccount(ctx, mailbox.externalAccountId);
 		await ctx.db.patch(mailbox._id, { status: 'deleted', updatedAt: now });
 		// Drop the roster + any un-accepted grants up front (bounded per inbox); the
 		// scheduled cascade below handles the unbounded per-message data.

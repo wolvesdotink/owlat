@@ -582,6 +582,23 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 		expect(await t.query(api.mail.migrationShared.getStatusShared, { mailboxId })).toBeNull();
 	});
 
+	it('getStatusShared reports nothing at all when mail.external is off', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const { mailboxId } = await connectInbox(t);
+		await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+		expect(await t.query(api.mail.migrationShared.getStatusShared, { mailboxId })).not.toBeNull();
+
+		// Read-side degradation, not a throw: the admin page renders this card
+		// alongside others, and an instance without external mail has no team inbox
+		// to report on.
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, { featureFlags: { 'mail.external': false } });
+		});
+		expect(await t.query(api.mail.migrationShared.getStatusShared, { mailboxId })).toBeNull();
+	});
+
 	it('cancelShared stops an in-flight import and is a no-op afterwards', async () => {
 		const t = convexTest(schema, modules);
 		await enableFlags(t, { 'mail.external': true });
@@ -754,6 +771,42 @@ describe('purging a removed shared external inbox', () => {
 				.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailboxId))
 				.collect();
 			expect(roster).toHaveLength(0);
+		});
+	});
+
+	it('cancels an in-flight import before the first purge chunk runs', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		setSession('admin-user', 'admin');
+		const { mailboxId, externalAccountId } = await t.mutation(
+			internal.mail.external.sharedInbox._connectSharedInternal,
+			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
+		);
+		const { migrationId } = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+
+		vi.useFakeTimers();
+		try {
+			// No `finishAllScheduledFunctions`: the point is the state the purge
+			// leaves BEFORE its cascade runs. A mid-walk worker polls in that window,
+			// and an `importing` row would keep it fetching into a draining mailbox.
+			await t.mutation(api.mail.external.sharedInbox.purgeShared, { mailboxId });
+
+			const cancelled = await t.run((ctx) => ctx.db.get(migrationId));
+			expect(cancelled!.status).toBe('cancelled');
+			expect(cancelled!.completedAt).toBeDefined();
+			const work = await t.query(internal.mail.migration.getBackfillWork, {
+				accountId: externalAccountId,
+			});
+			expect(work.isActive).toBe(false);
+
+			// The cascade still runs to completion afterwards.
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(externalAccountId)).toBeNull();
+			expect(await ctx.db.get(migrationId)).toBeNull();
 		});
 	});
 

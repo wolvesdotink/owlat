@@ -32,6 +32,8 @@ const MAILBOX_ID = 'mailbox_support' as Id<'mailboxes'>;
 const status: Ref<Status> = ref(null);
 const account: Ref<Account> = ref({ configured: false });
 const knowledgeFlag = ref(false);
+/** Neither subscription has delivered a first value yet. */
+const queryLoading = ref(false);
 const runs: { name: string; args: unknown }[] = [];
 
 function migrationRow(overrides: Partial<NonNullable<Status>>): Status {
@@ -60,6 +62,7 @@ beforeEach(() => {
 		status: 'connected',
 	} as unknown as Account;
 	knowledgeFlag.value = false;
+	queryLoading.value = false;
 	runs.length = 0;
 
 	vi.stubGlobal('useSharedMailMigration', useSharedMailMigration);
@@ -68,7 +71,7 @@ beforeEach(() => {
 			getFunctionName(reference) === getFunctionName(api.mail.migrationShared.getStatusShared)
 				? status
 				: account,
-		isLoading: ref(false),
+		isLoading: queryLoading,
 		error: ref(null),
 	}));
 	vi.stubGlobal('useBackendOperation', (reference: Parameters<typeof getFunctionName>[0]) => ({
@@ -182,6 +185,25 @@ describe('TeamInboxImportCard', () => {
 		expect(wrapper.text()).not.toContain('0 of 0');
 	});
 
+	it('waits for the subscriptions instead of flashing a Start button', async () => {
+		// An inbox halfway through an import looks exactly like an idle one until
+		// the status query reports: same `step`, same derivation default. Showing
+		// the idle branch there would offer "Import existing mail" to an admin
+		// whose import is already running.
+		queryLoading.value = true;
+		status.value = migrationRow({});
+		const wrapper = mountCard();
+
+		expect(wrapper.find('[data-testid="team-inbox-import-loading"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="team-inbox-import-start"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="team-inbox-import-running"]').exists()).toBe(false);
+
+		queryLoading.value = false;
+		await flushPromises();
+		expect(wrapper.find('[data-testid="team-inbox-import-loading"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="team-inbox-import-running"]').exists()).toBe(true);
+	});
+
 	it('reports what landed when the import is done', () => {
 		status.value = migrationRow({
 			status: 'completed',
@@ -196,6 +218,26 @@ describe('TeamInboxImportCard', () => {
 		expect(done.exists()).toBe(true);
 		expect(done.text()).toContain('8,300 messages are now in this inbox');
 		expectFullyLocalized(wrapper);
+	});
+
+	it('lets a finished import be run again — the backend allows a second one', async () => {
+		status.value = migrationRow({
+			status: 'completed',
+			messagesImported: 8300,
+			importPercent: 100,
+			completedAt: 3,
+		});
+		const wrapper = mountCard();
+
+		await wrapper.find('[data-testid="team-inbox-import-again"]').trigger('click');
+		await flushPromises();
+
+		expect(runs).toEqual([
+			{
+				name: 'mail/migrationShared:startShared',
+				args: { mailboxId: MAILBOX_ID, source: 'google', indexKnowledge: false },
+			},
+		]);
 	});
 
 	it('shows a failure with its reason, truncated, and a way to retry', async () => {

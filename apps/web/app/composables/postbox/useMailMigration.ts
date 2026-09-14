@@ -135,13 +135,21 @@ export function useMailMigration() {
  */
 export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes'>>) {
 	const { t } = useI18n();
-	const { data: statusData } = useConvexQuery(api.mail.migrationShared.getStatusShared, () => ({
-		mailboxId: toValue(mailboxId),
-	}));
-	const { data: accountData } = useConvexQuery(
+	const { data: statusData, isLoading: statusLoading } = useConvexQuery(
+		api.mail.migrationShared.getStatusShared,
+		() => ({ mailboxId: toValue(mailboxId) })
+	);
+	const { data: accountData, isLoading: accountLoading } = useConvexQuery(
 		api.mail.external.sharedInbox.getSharedExternalAccount,
 		() => ({ mailboxId: toValue(mailboxId) })
 	);
+
+	// Until BOTH subscriptions have delivered a first value, `step` is only the
+	// default of its derivation — indistinguishable from a genuine "nothing is
+	// running here". A card that renders that would flash a Start button at an
+	// inbox whose import is already half done, so it renders a loading state
+	// instead. (`null` IS a value here: an inbox that never imported reports it.)
+	const isLoading = computed(() => statusLoading.value || accountLoading.value);
 
 	const migration = computed(() => statusData.value ?? null);
 	const account = computed(() => accountData.value ?? null);
@@ -189,6 +197,7 @@ export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes
 		migration,
 		account,
 		isConnected,
+		isLoading,
 		step,
 		importPercent,
 		indexPercent,
