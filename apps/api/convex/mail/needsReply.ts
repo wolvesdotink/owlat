@@ -143,9 +143,11 @@ export const NEEDS_REPLY_CONTEXT_MESSAGES = 6;
 
 /**
  * Mark the thread pending and schedule the classify action. Called from the
- * inbound webhook delivery path (deliverToMailbox) for inbox deliveries only —
- * external IMAP backfill ingests old mail in bulk and must not fan out LLM
- * work; the reconcile cron stays bounded the same way.
+ * inbound webhook delivery path (deliverToMailbox) and from the external
+ * IMAP-sync path (mail/external/delivery.ts), both for inbox deliveries only.
+ * The external path enqueues for FORWARD sync (`origin: 'sync'`) only —
+ * a historical import ingests old mail in bulk and must not fan out LLM work;
+ * the reconcile cron stays bounded the same way.
  */
 export async function enqueueNeedsReplyCheck(
 	ctx: MutationCtx,
@@ -310,7 +312,12 @@ export const applyResult = internalMutation({
 				// message/mailbox row skips scoring and persists the raw result.
 				resolved = await scoreAndScreenResult(ctx, {
 					mailboxId: thread.mailboxId,
-					ownerUserId: mailbox.userId,
+					// A SHARED team inbox has no single owner whose screener
+					// preference should speak for everyone: `mailbox.userId` is just
+					// the admin who connected it, and their "hold unknown senders"
+					// setting would silently hold the whole team's queue. Omitting
+					// the owner turns the screener off for shared mailboxes only.
+					ownerUserId: mailbox.scope === 'shared' ? undefined : mailbox.userId,
 					message,
 					resolved,
 				});

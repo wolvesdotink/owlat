@@ -309,6 +309,9 @@ export class AccountConnection {
 						remoteUidValidity: uidValidity,
 						raw: msg.source,
 						flags: msg.flags ?? new Set<string>(),
+						// Forward sync: this mail is arriving now, so the server may
+						// enqueue the Reply Queue + category classification for it.
+						origin: 'sync',
 					});
 				} catch (err) {
 					// Skip one bad message (e.g. oversized) and advance past it so it
@@ -493,6 +496,8 @@ export class AccountConnection {
 					remoteUidValidity: uidValidity,
 					raw,
 					flags,
+					// Historical import: never enqueue background LLM work for it.
+					origin: 'backfill',
 				}),
 			recordProgress: async (remoteName, newCursor, importedDelta) => {
 				const res = (await this.convex.mutation(

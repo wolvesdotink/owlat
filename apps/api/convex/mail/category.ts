@@ -19,8 +19,9 @@
  * A per-sender user override (mailSenderCategoryOverrides) always wins and is
  * remembered for that sender — see `resolveCategory` and `recategorize`.
  *
- * Trigger: `enqueueCategoryCheck` on inbound webhook delivery (inbox only,
- * bounded to the affected thread), plus the hand-run
+ * Trigger: `enqueueCategoryCheck` on inbound webhook delivery and on forward
+ * external IMAP sync (inbox only, bounded to the affected thread; a historical
+ * import never enqueues), plus the hand-run
  * `migrations/0037_backfill_mail_categories:run` for recent existing threads.
  */
 
@@ -133,8 +134,9 @@ export function resolveCategory(opts: {
 
 /**
  * Schedule category classification for a thread. Called from the inbound
- * webhook delivery path for inbox deliveries only (bulk IMAP backfill must not
- * fan out background work), and from the one-shot `backfill` action.
+ * webhook delivery path and from forward external IMAP sync, for inbox
+ * deliveries only (a bulk IMAP history import must not fan out background
+ * work), and from the one-shot `backfill` action.
  */
 export async function enqueueCategoryCheck(
 	ctx: MutationCtx,

@@ -37,6 +37,7 @@ describe('ingestMessage', () => {
 			remoteUidValidity: 7,
 			raw: Buffer.from(RAW),
 			flags: new Set(['\\Seen']),
+			origin: 'sync',
 		});
 
 		expect(action).toHaveBeenCalledTimes(1);
@@ -50,6 +51,9 @@ describe('ingestMessage', () => {
 		expect(payload.to).toEqual(['bob@example.com', 'carol@example.com']);
 		expect(payload.cc).toEqual(['dave@example.com']);
 		expect(payload.messageId).toBe('<msg-123@example.com>');
+		// Forward sync tags the payload, which is what lets the server enqueue the
+		// Reply Queue + category classification for this message.
+		expect(payload.origin).toBe('sync');
 		// Body is well under the 64 KiB inline threshold, so it is sent inline.
 		expect(payload.textBodyInline).toContain('This is the body text.');
 		// Raw bytes are shipped base64-encoded.
@@ -69,6 +73,7 @@ describe('ingestMessage', () => {
 			remoteUidValidity: 1,
 			raw: Buffer.from(RAW),
 			flags: new Set(['\\Flagged']),
+			origin: 'sync',
 		});
 		const payload = lastPayload();
 		expect(payload.flagSeen).toBe(false);
@@ -86,6 +91,7 @@ describe('ingestMessage', () => {
 			remoteUidValidity: 3,
 			raw: Buffer.from(noId),
 			flags: new Set(),
+			origin: 'sync',
 		});
 		expect(lastPayload().messageId).toMatch(/@owlat-mail-sync>$/);
 	});
@@ -100,6 +106,7 @@ describe('ingestMessage', () => {
 			remoteUidValidity: 3,
 			raw: Buffer.from(noId),
 			flags: new Set<string>(),
+			origin: 'sync' as const,
 		};
 
 		// First ingest run.
@@ -151,6 +158,7 @@ describe('ingestMessage', () => {
 			remoteUidValidity: 2,
 			raw: Buffer.from(raw, 'latin1'),
 			flags: new Set(),
+			origin: 'sync',
 		});
 
 		const payload = lastPayload();
@@ -197,6 +205,7 @@ describe('ingestMessage', () => {
 			remoteUidValidity: 2,
 			raw: Buffer.from(raw),
 			flags: new Set(),
+			origin: 'sync',
 		});
 
 		const attachments = lastPayload().attachments as Array<Record<string, unknown>>;
@@ -249,6 +258,7 @@ describe('ingestMessage', () => {
 			remoteUidValidity: 2,
 			raw: Buffer.from(raw),
 			flags: new Set(),
+			origin: 'sync',
 		});
 
 		const attachments = lastPayload().attachments as Array<Record<string, unknown>>;
@@ -290,6 +300,7 @@ describe('ingestMessage', () => {
 			remoteUidValidity: 2,
 			raw: Buffer.from(raw),
 			flags: new Set(),
+			origin: 'sync',
 		});
 
 		expect(lastPayload().replyTo).toBe('ben@example.org');
@@ -321,6 +332,7 @@ describe('ingestMessage', () => {
 			remoteUidValidity: 2,
 			raw: Buffer.from(raw),
 			flags: new Set(),
+			origin: 'sync',
 		});
 
 		expect(lastPayload().from).toBe('second@example.org');
@@ -342,8 +354,28 @@ describe('ingestMessage', () => {
 			remoteUidValidity: 2,
 			raw: Buffer.from(raw),
 			flags: new Set(),
+			origin: 'sync',
 		});
 
 		expect(lastPayload().replyTo).toBe('Amy <amy@example.com>');
+	});
+
+	// The `origin` flag is the ONLY thing separating a forward-synced message
+	// from an imported one on the server: `ingestExternalMessage` enqueues the
+	// Reply Queue + category classification for 'sync' inbox mail and nothing
+	// else, so a history import can never fan out background LLM work.
+	it('ships the origin verbatim, so a backfill ingest is tagged as one', async () => {
+		const { client, lastPayload } = mockConvex();
+		await ingestMessage(client, {
+			accountId: 'a',
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 11,
+			remoteUidValidity: 2,
+			raw: Buffer.from(RAW),
+			flags: new Set(),
+			origin: 'backfill',
+		});
+		expect(lastPayload().origin).toBe('backfill');
 	});
 });
