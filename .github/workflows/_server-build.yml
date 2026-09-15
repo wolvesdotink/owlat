@@ -136,6 +136,14 @@ jobs:
           - name: setup
             dockerfile: apps/setup-cli/Dockerfile
             context: .
+          # Thin first-party wrappers around upstream images that are not
+          # multi-arch under one name (see the Dockerfiles for the reasoning).
+          - name: clamav
+            dockerfile: docker/clamav.Dockerfile
+            context: docker
+          - name: tinyproxy
+            dockerfile: docker/tinyproxy.Dockerfile
+            context: docker
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
         with:
@@ -225,7 +233,7 @@ jobs:
       fail-fast: false
       matrix:
         # Keep in sync with the build-and-push matrix above.
-        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup]
+        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup, clamav, tinyproxy]
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
         with:
@@ -355,7 +363,7 @@ jobs:
           set -euo pipefail
           failed=0
           # Keep this list in sync with the build-and-push matrix above.
-          for name in web mta updater convex-deploy imap mail-sync code-worker convex-fn-proxy setup; do
+          for name in web mta updater convex-deploy imap mail-sync code-worker convex-fn-proxy setup clamav tinyproxy; do
             image="${IMAGE_PREFIX}/${name}:${{ inputs.version }}"
             if manifest=$(docker manifest inspect "$image" 2>/dev/null); then
               # Anonymously visible AND multi-arch: an image that lost a platform
@@ -525,12 +533,6 @@ jobs:
           COMPOSE_PROFILES=mta,clamav
           OWLAT_INSTALL_DIR=${INSTALL_DIR}
           EOF
-          # Same per-arch ClamAV image selection the setup CLI applies
-          # (apps/setup-cli/src/lib/setupEnvDefaults.ts): the alpine
-          # clamav/clamav image is amd64-only.
-          if [ "$(uname -m)" = "aarch64" ]; then
-            echo "CLAMAV_IMAGE=clamav/clamav-debian" >> .env
-          fi
           cat > e2e-lib.sh <<'EOF'
           # Wait until a compose service's docker healthcheck reports healthy.
           # $1 is one compose file, or several space-separated ones (each is

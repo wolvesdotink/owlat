@@ -273,28 +273,25 @@ services:
     restart: unless-stopped
 
   # ── ClamAV (antivirus scanning) ──────────────────────────────────────
-  # Tag-pinned only (see the pinning policy above for why upstream images
-  # are not digest-pinned).
+  # First-party wrapper around upstream ClamAV (docker/clamav.Dockerfile):
+  # upstream's alpine image is amd64-only and its arm64 build lives under a
+  # different repository, while the updater allowlist on every existing
+  # install only accepts ghcr.io/wolvesdotink/*. The wrapper picks the base
+  # per architecture and is digest-pinned like every other Owlat image.
   clamav:
-    # `stable` tracks the current supported release — ClamAV deletes old minor
-    # tags from Docker Hub (1.3 is gone), so a numeric default rots into a 404.
-    # The default (alpine-based) clamav/clamav image is published for amd64
-    # ONLY; arm64 hosts need the debian variant, which is otherwise identical
-    # (same entrypoint, healthcheck helper and env) but runs clamav as uid 1000
-    # instead of 100 — so it is NOT swapped in for existing amd64 installs, whose
-    # signature-DB volume is owned by the alpine uid. The setup CLI writes
-    # CLAMAV_IMAGE=clamav/clamav-debian into .env on arm64 hosts
-    # (apps/setup-cli/src/lib/setupEnvDefaults.ts).
-    image: ${CLAMAV_IMAGE:-clamav/clamav}:${CLAMAV_VERSION:-stable}
+    image: ghcr.io/wolvesdotink/clamav:${OWLAT_VERSION:-dev}
+    build:
+      context: docker
+      dockerfile: clamav.Dockerfile
     # No published port: only the MTA talks to clamd, over the internal
     # docker network.
     volumes:
       - clamav-data:/var/lib/clamav
     healthcheck:
       # ClamAV 1.5 renamed the healthcheck helper to clamdcheck.sh (the bare
-      # `clamdcheck` alias is gone from clamav/clamav:stable as of 1.5.4);
-      # older images only have the bare name. Probe both so the floating
-      # `stable` tag can move in either direction without going unhealthy.
+      # `clamdcheck` alias is gone from upstream `stable` as of 1.5.4); older
+      # images only have the bare name. Probe both so a base-image bump can
+      # move in either direction without going unhealthy.
       test: ["CMD-SHELL", "clamdcheck.sh || clamdcheck"]
       interval: 60s
       timeout: 10s
@@ -648,12 +645,12 @@ services:
   # the ONLY container on BOTH the isolated `code-worker` network (to reach
   # convex-fn-proxy) and the internet-capable `default` network.
   code-worker-egress:
-    # kalaksi/tinyproxy rather than vimagick/tinyproxy: the latter is published
-    # for amd64 only. The mounted tinyproxy.conf short-circuits the image's own
-    # env-driven config templating (it only runs when no config exists), so the
-    # allowlist below is applied verbatim. The image runs unprivileged (uid
-    # 57981), which tinyproxy handles by skipping its own User/Group switch.
-    image: kalaksi/tinyproxy:${TINYPROXY_VERSION:-1.7}
+    # First-party wrapper (docker/tinyproxy.Dockerfile) around a multi-arch
+    # tinyproxy; see that file for why it is not pulled from Docker Hub directly.
+    image: ghcr.io/wolvesdotink/tinyproxy:${OWLAT_VERSION:-dev}
+    build:
+      context: docker
+      dockerfile: tinyproxy.Dockerfile
     volumes:
       - ./infra/code-worker/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
       - ./infra/code-worker/tinyproxy.filter:/etc/tinyproxy/filter:ro

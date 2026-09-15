@@ -75,7 +75,9 @@ So when a release adds a new service image, expect its first run to stop at
 `verify-anonymous-pull` by design. Checklist for a new image:
 
 - add it to the `build-and-push` matrix AND the `merge-manifests` matrix in
-  `_server-build.yml`;
+  `_server-build.yml` (the `clamav` and `tinyproxy` wrappers added in 0.4.10
+  are the most recent example — expect their first release to stop at
+  `verify-anonymous-pull` until both packages are flipped public);
 - add it to the image list in the `verify-anonymous-pull` job (kept in sync by
   hand);
 - after the first release run pushes it: flip the package public, then re-run.

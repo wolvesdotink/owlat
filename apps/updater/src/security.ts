@@ -29,10 +29,11 @@ export const ALLOWED_IMAGE_PREFIXES = [
 	'ghcr.io/get-convex/convex-backend',
 	'ghcr.io/wolvesdotink/', // canonical org — emitted by the root docker-compose.yml, the VPS template, and gen-release-compose.sh
 	'redis:',
-	'clamav/clamav:',
+	// ClamAV and the code-worker egress proxy ship as first-party wrappers
+	// (ghcr.io/wolvesdotink/clamav, ghcr.io/wolvesdotink/tinyproxy) — see
+	// docker/clamav.Dockerfile for why they are not pulled from Docker Hub.
 	'goacme/lego:', // ACME/Let's Encrypt cert issuance
 	'tecnativa/docker-socket-proxy:', // least-privilege docker socket proxy
-	'vimagick/tinyproxy:', // allowlisted egress forward-proxy for the code-worker (M4)
 	'ollama/ollama:', // optional local LLM provider
 	'busybox:', // setup-CLI override marker service
 ];
