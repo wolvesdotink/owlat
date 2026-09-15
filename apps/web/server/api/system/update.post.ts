@@ -1,6 +1,6 @@
 import type { FunctionReference } from 'convex/server';
 import { api, internal } from '@owlat/api';
-import { isValidTargetVersion } from '@owlat/shared/composeVerify';
+import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';

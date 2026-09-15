@@ -1,4 +1,4 @@
-import { isValidTargetVersion } from '@owlat/shared/composeVerify';
+import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { requireInstanceSecret, callUpdater } from '~~/server/utils/updater';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 

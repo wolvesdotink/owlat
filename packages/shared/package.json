@@ -281,6 +281,14 @@
 			"types": "./src/spf.ts",
 			"import": "./src/spf.ts"
 		},
+		"./semver": {
+			"types": "./src/semver.ts",
+			"import": "./src/semver.ts"
+		},
+		"./releaseArtifacts": {
+			"types": "./src/releaseArtifacts.ts",
+			"import": "./src/releaseArtifacts.ts"
+		},
 		"./composeVerify": {
 			"types": "./src/composeVerify.ts",
 			"import": "./src/composeVerify.ts"

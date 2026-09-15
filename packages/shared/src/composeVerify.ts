@@ -15,35 +15,11 @@ import { createHash } from 'node:crypto';
  * The functions here are intentionally I/O-free (no fetch, no HTTP-framework
  * error shapes) so they can be exhaustively unit-tested. The web server owns
  * the download + `createError` wrapping around them.
+ *
+ * Artifact URLs and version validation live in the sibling `releaseArtifacts.ts`
+ * — they are needed by the Convex backend too, which runs in a V8 isolate that
+ * cannot import the `node:crypto` this module hashes with.
  */
-
-/** Canonical GitHub Releases download prefix for the public `owlat` repo. */
-export const RELEASE_DOWNLOAD_BASE = 'https://github.com/wolvesdotink/owlat/releases/download';
-
-/** Semver with an optional pre-release suffix, e.g. `1.2.3` or `1.2.3-rc.1`. */
-const SEMVER_RE = /^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$/;
-
-/**
- * True when `version` is a well-formed target version (semver, optional
- * pre-release). Rejects anything that could smuggle path segments or shell
- * metacharacters into the release URL.
- */
-export function isValidTargetVersion(version: string): boolean {
-	return SEMVER_RE.test(version);
-}
-
-/**
- * The release-artifact URLs for a target version: the pinned compose file and
- * its detached SHA-256 manifest (published side-by-side by the release
- * workflow).
- */
-export function composeArtifactUrls(targetVersion: string): {
-	composeUrl: string;
-	sha256Url: string;
-} {
-	const composeUrl = `${RELEASE_DOWNLOAD_BASE}/v${targetVersion}/docker-compose-${targetVersion}.yml`;
-	return { composeUrl, sha256Url: `${composeUrl}.sha256` };
-}
 
 /**
  * Extract the expected digest from a `sha256sum`-style manifest. That format is

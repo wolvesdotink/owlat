@@ -15,6 +15,8 @@
  * routes that have already verified admin.
  */
 import { v } from 'convex/values';
+import { GITHUB_REPO_SLUG } from '@owlat/shared/releaseArtifacts';
+import { semverCompare } from '@owlat/shared/semver';
 import { getOptional } from './lib/env';
 import { internalMutation, internalQuery } from './_generated/server';
 import { authedAction, authedQuery } from './lib/authedFunctions';
@@ -26,44 +28,6 @@ import { throwForbidden, throwInternal } from './_utils/errors';
 import { successOrFailedValidator } from './lib/literalValidators';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Compare two semver strings.
- * Returns:
- *   +1 if a > b   (e.g. "1.2.4" > "1.2.3")
- *    0 if a == b
- *   -1 if a < b
- *
- * Tolerant of pre-release suffixes: a pre-release compares LESS than the
- * equivalent release ("1.2.0-beta.1" < "1.2.0"). Between two pre-releases,
- * the suffix is compared lexicographically.
- */
-function semverCompare(a: string, b: string): number {
-	const pa = parseVersion(a);
-	const pb = parseVersion(b);
-	for (let i = 0; i < 3; i++) {
-		const av = pa.parts[i] ?? 0;
-		const bv = pb.parts[i] ?? 0;
-		if (av !== bv) {
-			return av > bv ? 1 : -1;
-		}
-	}
-	// Pre-release < release (empty string beats any suffix)
-	if (pa.pre === '' && pb.pre === '') return 0;
-	if (pa.pre === '') return 1;
-	if (pb.pre === '') return -1;
-	return pa.pre > pb.pre ? 1 : pa.pre < pb.pre ? -1 : 0;
-}
-
-function parseVersion(v: string): { parts: [number, number, number]; pre: string } {
-	const clean = v.replace(/^v/, '').trim();
-	const [main = '', pre = ''] = clean.split('-');
-	const parts = main.split('.').map((p) => parseInt(p, 10) || 0);
-	return {
-		parts: [parts[0] || 0, parts[1] || 0, parts[2] || 0] as [number, number, number],
-		pre,
-	};
-}
 
 /**
  * Extract the semver string from a GitHub release tag, but ONLY for the
@@ -87,7 +51,7 @@ export function parseReleaseTag(tag: string): string | null {
 }
 
 const CHECK_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const GITHUB_RELEASES_URL = 'https://api.github.com/repos/wolvesdotink/owlat/releases/latest';
+const GITHUB_RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO_SLUG}/releases/latest`;
 
 // ── Internal mutations / queries (cache + history) ───────────────────────────
 
