@@ -292,6 +292,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'desktop.setup.domain.placeholderRequired',
 	'desktop.setup.fields.branch',
 	'desktop.setup.fields.port',
+	'desktop.setup.fields.version',
 	'desktop.setup.packs.marketing',
 	'desktop.setup.sending.resend',
 	'desktop.setup.sending.ses',

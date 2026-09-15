@@ -9841,6 +9841,8 @@
 				"authentication": "Authentifizierung",
 				"branch": "Branch",
 				"browse": "Durchsuchen…",
+				"devInstall": "Entwicklungsinstallation",
+				"devInstallHint": "Installiert einen Branch (oder einen lokalen Checkout) statt des Releases. Der Stack wird auf dem Server aus dem Quellcode gebaut.",
 				"host": "Serveradresse",
 				"hostPlaceholder": "203.0.113.5 oder vps.example.com",
 				"installDir": "Installationsverzeichnis",
@@ -9852,7 +9854,10 @@
 				"port": "Port",
 				"sshPasswordPlaceholder": "SSH-Passwort",
 				"sshUser": "SSH-Benutzer",
-				"useKeyFileInstead": "Stattdessen eine Schlüsseldatei verwenden"
+				"useKeyFileInstead": "Stattdessen eine Schlüsseldatei verwenden",
+				"version": "Version",
+				"versionHint": "Das neueste veröffentlichte Server-Release, wird beim Start der Installation ermittelt.",
+				"versionLatest": "Neuestes Release"
 			},
 			"finishing": {
 				"body": "Owlat ist unter {url} installiert, aber die Adresse ist noch nicht erreichbar. Legen Sie die untenstehenden Einträge an; sobald sie auflösen und TLS ausgestellt ist, wird hieraus automatisch „Workspace öffnen“.",
@@ -11609,6 +11614,7 @@
 					"mtaIdentity": "Identität der ausgehenden IP prüfen",
 					"preflight": "Voraussetzungen prüfen",
 					"pushImages": "Images auf den Server hochladen",
+					"resolveRelease": "Neuestes Release ermitteln",
 					"seedDemo": "Demodaten einspielen",
 					"sshConnect": "Über SSH verbinden",
 					"systemCheck": "Server prüfen",
@@ -13725,12 +13731,14 @@
 		},
 		"useServerProvisioning": {
 			"alreadyInstalled": "bereits installiert",
+			"developmentInstall": "Entwicklungsinstallation",
 			"didNotComplete": "Die Einrichtung wurde nicht abgeschlossen (Exit {code}).",
 			"exitCode": "Exit {code}",
 			"hostKeyAccepted": "akzeptiert",
 			"knownHost": "bekannter Host",
 			"localBuildFailed": "Der lokale Image-Build ist fehlgeschlagen (Exit {code}). Läuft Docker auf diesem Rechner?",
 			"localSetupImageFailed": "Der lokale Setup-Image-Build ist fehlgeschlagen (Exit {code}).",
+			"releaseNotFound": "Es wurde kein veröffentlichtes Owlat-Release gefunden. Prüfen Sie die Netzwerkverbindung des Servers und versuchen Sie es erneut.",
 			"stepFailed": "„{step}“ fehlgeschlagen (Exit {code}).",
 			"unknownError": "Etwas ist schiefgelaufen.",
 			"uploadedLocalSource": "lokalen Arbeitsstand hochgeladen"

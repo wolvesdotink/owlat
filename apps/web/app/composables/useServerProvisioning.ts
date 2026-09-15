@@ -30,6 +30,9 @@ import {
 	type RemoteOptions,
 	type SetupConfigInput,
 	type TimelineStep,
+	needsReleaseResolution,
+	parseResolvedRelease,
+	resolveLatestReleaseCommand,
 } from '~/lib/desktop/provisioning';
 import {
 	removeSetupConfigCommand,
@@ -269,6 +272,35 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 				);
 			} else {
 				await runExecStep(sessionId, 'install-docker', installDockerCommand());
+			}
+
+			// resolve-release — the default install targets the newest published
+			// release; a pinned version, a branch or a local checkout skips this.
+			if (needsReleaseResolution(remote)) {
+				let resolved: string | null = null;
+				await runExecStep(
+					sessionId,
+					'resolve-release',
+					resolveLatestReleaseCommand(remote),
+					(line) => {
+						resolved ??= parseResolvedRelease(line);
+					}
+				);
+				if (!resolved) {
+					setStepState(steps, 'resolve-release', 'failed');
+					throw new Error(t('shared.useServerProvisioning.releaseNotFound'));
+				}
+				remote = { ...remote, version: resolved };
+				setStepState(steps, 'resolve-release', 'ok', `v${resolved}`);
+			} else {
+				setStepState(
+					steps,
+					'resolve-release',
+					'skipped',
+					remote.version
+						? `v${remote.version}`
+						: t('shared.useServerProvisioning.developmentInstall')
+				);
 			}
 
 			const source = installSource(remote);
