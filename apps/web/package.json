@@ -15,7 +15,7 @@
 		"preview": "nuxt preview",
 		"postinstall": "nuxt prepare",
 		"typecheck": "nuxt typecheck && tsc -p e2e/tsconfig.json",
-		"lint": "oxlint --config ../../oxlintrc.json app server e2e scripts && bash scripts/check-dead-tokens.sh",
+		"lint": "oxlint --config ../../oxlintrc.json app server e2e scripts && bash scripts/check-dead-tokens.sh && bash scripts/check-icon-names.sh",
 		"lint:fix": "oxlint --config ../../oxlintrc.json app server e2e scripts --fix",
 		"test": "vitest run",
 		"test:watch": "vitest",

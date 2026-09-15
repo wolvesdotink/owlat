@@ -229,7 +229,7 @@ const createdOn = computed(() =>
 						:title="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
 						@click="emit('revokeKey')"
 					>
-						<Icon name="lucide:key-round-x" class="w-4 h-4" />
+						<Icon name="lucide:shield-off" class="w-4 h-4" />
 					</UiButton>
 					<UiButton
 						v-if="inbox.kind === 'external'"

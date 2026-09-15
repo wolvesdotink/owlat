@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
+import { uiLayerIconNames } from './scripts/uiLayerIcons';
 
 // Local default endpoints, single-sourced so the CSP connect-src and the
 // runtimeConfig fallbacks (and the PostHog plugin) can't drift.
@@ -291,13 +292,36 @@ export default defineNuxtConfig({
 
 	icon: {
 		serverBundle: 'local',
+		// Render icons as inline <svg> instead of @nuxt/icon's default CSS mode,
+		// which paints an icon by inserting a <style> element at runtime whose
+		// rule masks a data: URL. Inside the Tauri webview that chain has two
+		// extra links that can break it — this app's CSP is layered under Tauri's
+		// own, and the webview is WebKit, whose mask handling differs from the
+		// Chromium one every dev session runs against — and when either breaks,
+		// the icon is an empty box with nothing in the console. Inline SVG needs
+		// nothing beyond the icon data already in the bundle below.
+		mode: 'svg',
 		// The desktop build (`generate:desktop`) is served statically inside the
 		// Tauri webview — there is no Nitro server, so the default
-		// /api/_nuxt_icon endpoint never exists and every icon request fails.
-		// Bundling all statically-referenced icons into the client JS makes them
-		// render offline in the desktop app (and skips the fetch on the web too).
+		// /api/_nuxt_icon endpoint never exists, and an icon that is not in the
+		// client bundle falls back to fetching api.iconify.design, which a
+		// desktop user (or a firewalled one) cannot reach. Everything referenced
+		// anywhere in the app therefore has to be bundled.
 		clientBundle: {
-			scan: true,
+			// The packages/ui layer, which the scan below cannot reach — see
+			// scripts/uiLayerIcons.ts for why it needs its own reader.
+			icons: uiLayerIconNames(),
+			scan: {
+				// `ts` is added to @nuxt/icon's defaults because plenty of this app's
+				// icon names live in plain modules (nav tables, status → icon maps,
+				// composables) rather than in the component that renders them. They
+				// were silently missing from the bundle: an icon the scan does not see
+				// is not a build error, the module just leaves it to the runtime — and
+				// on the desktop the runtime has nowhere to fetch it from.
+				// `scripts/check-icon-names.sh` fails the lint if a referenced icon is
+				// unresolvable or sits in a file outside these globs.
+				globInclude: ['**/*.{vue,jsx,tsx,ts,md,mdc,mdx,yml,yaml}'],
+			},
 			sizeLimitKb: 512,
 		},
 	},
