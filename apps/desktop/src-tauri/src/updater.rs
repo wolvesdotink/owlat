@@ -102,12 +102,20 @@ pub struct UpdateInfo {
 /// variant need `rename_all_fields` as well, or `content_length` would go over
 /// the wire as-is while apps/desktop/src/updater.ts reads `contentLength`.
 #[derive(Serialize, Clone)]
-#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum UpdateProgress {
     /// First chunk: `content_length` is absent when the server sent no
     /// `Content-Length` (the UI then shows an indeterminate bar).
-    Started { content_length: Option<u64> },
-    Progress { chunk_length: usize },
+    Started {
+        content_length: Option<u64>,
+    },
+    Progress {
+        chunk_length: usize,
+    },
     Finished,
 }
 
@@ -160,9 +168,8 @@ fn release_path_prefix() -> String {
 /// client back; or point at any host at all and have the app buffer whatever
 /// comes back before the signature check ever runs.
 fn vet_download_url(url: &Url, version: &str) -> Result<(), String> {
-    let refuse = || {
-        format!("signature: {url} is not a release asset of this app for version {version}")
-    };
+    let refuse =
+        || format!("signature: {url} is not a release asset of this app for version {version}");
     if url.scheme() != "https" || url.host_str() != Some(RELEASE_HOST) {
         return Err(refuse());
     }
@@ -357,7 +364,10 @@ pub async fn updater_install(
 
     // Verified against the minisign key inside `download`; an unsigned or
     // mislabelled bundle never reaches the slot.
-    let downloaded = update.download(on_chunk, on_finish).await.map_err(updater_error);
+    let downloaded = update
+        .download(on_chunk, on_finish)
+        .await
+        .map_err(updater_error);
 
     let mut pending = state.0.lock().map_err(|_| poisoned())?;
     match downloaded {
