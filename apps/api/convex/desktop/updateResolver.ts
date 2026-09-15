@@ -45,6 +45,57 @@ export interface ResolvableRelease {
 	publishedAt?: number;
 }
 
+/** The fields of a cached row (`desktopReleases`, kind `release`) the cache helpers read. */
+export interface CachedReleaseRow {
+	version?: string;
+	line?: 'unified' | 'desktop';
+	isPrerelease?: boolean;
+	fetchedAt?: number;
+}
+
+/**
+ * Which of two cached rows carrying the SAME version clients should be served.
+ * The cache is keyed by tag, so a desktop hot-fix `desktop-v0.4.7` and a later
+ * unified `v0.4.7` both survive a refresh; the unified line wins (it is the line
+ * GitHub marks latest and the one `release:cut` produces), and the most recently
+ * fetched row breaks any remaining tie.
+ */
+export function preferCachedRelease<R extends CachedReleaseRow>(candidate: R, current: R): boolean {
+	if (candidate.line !== current.line) return candidate.line === 'unified';
+	return (candidate.fetchedAt ?? 0) > (current.fetchedAt ?? 0);
+}
+
+/**
+ * One row per version, chosen by `preferCachedRelease`, so a client asking
+ * about 0.4.7 gets the same bundle on every check rather than whichever line
+ * the last refresh happened to touch.
+ */
+export function oneRowPerVersion<R extends CachedReleaseRow>(releases: R[]): R[] {
+	const byVersion = new Map<string, R>();
+	for (const release of releases) {
+		const version = release.version ?? '';
+		const current = byVersion.get(version);
+		if (!current || preferCachedRelease(release, current)) byVersion.set(version, release);
+	}
+	return [...byVersion.values()];
+}
+
+/** Newest cached release on a channel, by semver. */
+export function newestRelease<R extends CachedReleaseRow>(
+	releases: R[],
+	channel: DesktopUpdateChannel
+): R | null {
+	return releases
+		.filter((release) => !release.isPrerelease || channel === 'prerelease')
+		.reduce<R | null>(
+			(best, release) =>
+				best === null || semverCompare(release.version ?? '', best.version ?? '') > 0
+					? release
+					: best,
+			null
+		);
+}
+
 /**
  * Why nothing is being offered. Reported to the admin surface and logged; the
  * wire answer for every one of these is the same 204.

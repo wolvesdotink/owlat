@@ -139,6 +139,7 @@ function mountPage() {
 const MODE_PINNED = '[data-testid="desktop-updates-mode-pinned"]';
 const MODE_PAUSED = '[data-testid="desktop-updates-mode-paused"]';
 const CHANNEL_PRERELEASE = '[data-testid="desktop-updates-channel-prerelease"]';
+const CHANNEL_STABLE = '[data-testid="desktop-updates-channel-stable"]';
 const PIN = '[data-testid="desktop-updates-pin"]';
 const DEFER = '[data-testid="desktop-updates-defer"]';
 const SAVE = '[data-testid="desktop-updates-save"]';
@@ -162,6 +163,23 @@ describe('Desktop updates — the pin picker', () => {
 
 		await wrapper.find(CHANNEL_PRERELEASE).setValue();
 		expect(pinOptions(wrapper)).toEqual(['0.5.0-rc.1', '0.4.7', '0.4.6']);
+	});
+
+	it('drops a pinned pre-release when the channel goes back to stable', async () => {
+		policy.value = storedPolicy({
+			mode: 'pinned',
+			channel: 'prerelease',
+			pinnedVersion: '0.5.0-rc.1',
+		});
+		const wrapper = mountPage();
+		expect((wrapper.find(PIN).element as HTMLSelectElement).value).toBe('0.5.0-rc.1');
+
+		await wrapper.find(CHANNEL_STABLE).setValue();
+
+		// The stable channel cannot see the rc, so the pin is gone rather than
+		// submitted invisibly: the save button waits for a new choice.
+		expect((wrapper.find(PIN).element as HTMLSelectElement).value).toBe('');
+		expect(wrapper.find(SAVE).attributes('disabled')).toBeDefined();
 	});
 
 	it('names the newest cached release and its line', () => {

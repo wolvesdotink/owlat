@@ -45,6 +45,9 @@ import {
 	DEFAULT_DESKTOP_UPDATE_POLICY,
 	DESKTOP_RELEASE_CACHE_LIMIT,
 	MAX_DEFER_HOURS,
+	newestRelease,
+	oneRowPerVersion,
+	preferCachedRelease,
 	resolveDesktopUpdate,
 	type DesktopUpdatePolicy,
 } from './updateResolver';
@@ -109,22 +112,6 @@ async function readCheckState(ctx: QueryCtx): Promise<Doc<'desktopReleases'> | n
 		.first();
 }
 
-/** Newest cached release on a channel, by semver. */
-function newestRelease(
-	releases: Doc<'desktopReleases'>[],
-	channel: DesktopUpdatePolicy['channel']
-): Doc<'desktopReleases'> | null {
-	return releases
-		.filter((release) => !release.isPrerelease || channel === 'prerelease')
-		.reduce<Doc<'desktopReleases'> | null>(
-			(best, release) =>
-				best === null || semverCompare(release.version ?? '', best.version ?? '') > 0
-					? release
-					: best,
-			null
-		);
-}
-
 // ── Internal cache plumbing ──────────────────────────────────────────────────
 
 export const listCachedTagsInternal = internalQuery({
@@ -157,9 +144,11 @@ export const cacheRelease = internalMutation({
 		manifest: v.string(),
 	},
 	handler: async (ctx, args): Promise<Id<'desktopReleases'>> => {
+		// Keyed by tag, not version: `refreshReleases` decides what is new by tag,
+		// and two release lines can legitimately publish the same version.
 		const existing = await ctx.db
 			.query('desktopReleases')
-			.withIndex('by_kind_and_version', (q) => q.eq('kind', 'release').eq('version', args.version))
+			.withIndex('by_kind_and_tag', (q) => q.eq('kind', 'release').eq('tag', args.tag))
 			.first();
 		const row = { kind: 'release' as const, ...args, fetchedAt: Date.now() };
 		if (existing) {
@@ -325,7 +314,7 @@ export const manifestForClient = publicQuery({
 		const [policy, releases] = await Promise.all([readPolicy(ctx), readReleases(ctx)]);
 		const decision = resolveDesktopUpdate({
 			policy,
-			releases: releases.map((release) => ({
+			releases: oneRowPerVersion(releases).map((release) => ({
 				version: release.version ?? '',
 				isPrerelease: release.isPrerelease,
 				publishedAt: release.publishedAt,
@@ -350,7 +339,7 @@ export const getPolicySummary = publicQuery({
 			readReleases(ctx),
 			readCheckState(ctx),
 		]);
-		const latest = newestRelease(releases, policy.channel);
+		const latest = newestRelease(oneRowPerVersion(releases), policy.channel);
 		return {
 			mode: policy.mode,
 			channel: policy.channel,
@@ -391,7 +380,12 @@ export const listReleases = authedQuery({
 		);
 		const releases = await readReleases(ctx);
 		return releases
-			.sort((a, b) => semverCompare(b.version ?? '', a.version ?? ''))
+			.sort(
+				(a, b) =>
+					semverCompare(b.version ?? '', a.version ?? '') ||
+					// Same version on both lines: list the one clients are served first.
+					(preferCachedRelease(a, b) ? -1 : 1)
+			)
 			.map((release) => ({
 				version: release.version ?? '',
 				tag: release.tag ?? '',
@@ -441,10 +435,19 @@ export const updatePolicy = authedMutation({
 				throwInvalidInput('Pinning needs a version to pin to');
 			}
 			const releases = await readReleases(ctx);
-			if (!releases.some((release) => release.version === pinnedVersion)) {
+			const pinned = releases.find((release) => release.version === pinnedVersion);
+			if (!pinned) {
 				// The UI can only offer cached versions; this is what stops a hand-
 				// crafted call from pinning the fleet to a release nobody has.
 				throwInvalidInput(`No cached desktop release for version ${pinnedVersion}`);
+			}
+			if (pinned.isPrerelease && args.channel !== 'prerelease') {
+				// The resolver hides pre-releases on the stable channel before it
+				// looks for the pin, so this combination would serve nothing to
+				// anyone while the page says "pinned to …".
+				throwInvalidInput(
+					`${pinnedVersion} is a pre-release; pinning to it needs the prerelease channel`
+				);
 			}
 		}
 

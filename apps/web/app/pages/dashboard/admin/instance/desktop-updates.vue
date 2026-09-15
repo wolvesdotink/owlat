@@ -85,6 +85,19 @@ const pinnableReleases = computed(() =>
 /** `listReleases` hands back newest-first, so the head of the filtered list is it. */
 const newestRelease = computed(() => pinnableReleases.value[0] ?? null);
 
+// Switching the channel can hide the release the pin points at (an rc pinned on
+// `prerelease`, then `stable` chosen). The picker would show blank while the
+// stale value was still submitted — and the backend refuses that combination —
+// so drop the pin as soon as the channel can no longer see it.
+watch(pinnableReleases, (offered) => {
+	if (
+		form.pinnedVersion !== '' &&
+		!offered.some((release) => release.version === form.pinnedVersion)
+	) {
+		form.pinnedVersion = '';
+	}
+});
+
 const checkedAt = computed(() => policy.value?.check.checkedAt ?? null);
 const checkError = computed(() => policy.value?.check.error ?? null);
 const lastChange = computed(() => policy.value?.lastChange ?? null);

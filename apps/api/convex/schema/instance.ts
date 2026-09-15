@@ -329,6 +329,10 @@ export const instanceTables = {
 		error: v.optional(v.string()), // e.g. 'rate_limited'
 	})
 		.index('by_kind_and_version', ['kind', 'version'])
+		// The refresh upserts by TAG: the unified `v0.4.7` and a desktop hot-fix
+		// `desktop-v0.4.7` are two releases with two signed bundles, and keying on
+		// the version would make them overwrite each other on every refresh.
+		.index('by_kind_and_tag', ['kind', 'tag'])
 		.index('by_kind_and_checkedAt', ['kind', 'checkedAt']),
 
 	// Operator-recorded backup plan for a self-hosted deployment. The Convex

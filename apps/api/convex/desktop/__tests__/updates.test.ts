@@ -286,6 +286,49 @@ describe('desktop.updates.refreshReleases', () => {
 		expect(await cachedReleases(t)).toHaveLength(1);
 	});
 
+	it('keeps a desktop hot-fix and a unified release of the same version side by side', async () => {
+		// `desktop-v0.4.7` cut one patch above main, then `release:cut patch` on
+		// main produces `v0.4.7`: two signed bundles, one version. A cache keyed
+		// by version made them overwrite each other on alternate refreshes.
+		const t = harness();
+		const desktopManifest = manifestFor(
+			'0.4.7',
+			'https://github.com/wolvesdotink/owlat/d.AppImage'
+		);
+		const unifiedManifest = manifestFor(
+			'0.4.7',
+			'https://github.com/wolvesdotink/owlat/u.AppImage'
+		);
+		stubFetch({
+			releases: [githubRelease('desktop-v0.4.7')],
+			manifests: { 'desktop-v0.4.7': desktopManifest },
+		});
+		await t.action(internal.desktop.updates.refreshReleases, {});
+
+		const both = {
+			releases: [githubRelease('v0.4.7'), githubRelease('desktop-v0.4.7')],
+			manifests: { 'v0.4.7': unifiedManifest, 'desktop-v0.4.7': desktopManifest },
+		};
+		stubFetch(both);
+		await t.action(internal.desktop.updates.refreshReleases, {});
+		const calls = stubFetch(both);
+		await t.action(internal.desktop.updates.refreshReleases, {});
+
+		const rows = await cachedReleases(t);
+		expect(rows.map((row) => row.tag).sort()).toEqual(['desktop-v0.4.7', 'v0.4.7']);
+		// Nothing left to fetch on the third pass: both tags are known.
+		expect(calls.filter((url) => url.includes('latest.json'))).toHaveLength(0);
+
+		// Clients get the unified bundle for 0.4.7, on every check.
+		const served = await t.query(api.desktop.updates.manifestForClient, {
+			target: 'linux',
+			arch: 'x86_64',
+			currentVersion: '0.4.6',
+		});
+		expect(served).toEqual({ manifest: unifiedManifest, version: '0.4.7' });
+		expect((await t.query(api.desktop.updates.getPolicySummary, {})).latestVersion).toBe('0.4.7');
+	});
+
 	it('prunes the cache to the newest 30 releases', async () => {
 		const t = harness();
 		await t.run(async (ctx) => {
@@ -476,6 +519,39 @@ describe('desktop.updates.updatePolicy', () => {
 			pinnedVersion: '0.4.6',
 		});
 		expect(saved.pinnedVersion).toBe('0.4.6');
+	});
+
+	it('refuses a pre-release pin on the stable channel', async () => {
+		// The resolver hides pre-releases on `stable` before it looks for the pin,
+		// so this policy would answer 204 to every client while claiming a pin.
+		const t = harness();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('desktopReleases', {
+				kind: 'release',
+				tag: 'v0.5.0-rc.1',
+				version: '0.5.0-rc.1',
+				line: 'unified',
+				isPrerelease: true,
+				publishedAt: Date.parse(PUBLISHED),
+				manifest: manifestFor('0.5.0-rc.1'),
+				fetchedAt: Date.now(),
+			});
+		});
+
+		await expect(
+			t.mutation(api.desktop.updates.updatePolicy, {
+				mode: 'pinned',
+				channel: 'stable',
+				pinnedVersion: '0.5.0-rc.1',
+			})
+		).rejects.toThrow(/prerelease channel/);
+
+		const saved = await t.mutation(api.desktop.updates.updatePolicy, {
+			mode: 'pinned',
+			channel: 'prerelease',
+			pinnedVersion: '0.5.0-rc.1',
+		});
+		expect(saved.pinnedVersion).toBe('0.5.0-rc.1');
 	});
 
 	it('bounds the defer window to 0..168 whole hours', async () => {

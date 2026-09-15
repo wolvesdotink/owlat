@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
 	DEFAULT_DESKTOP_UPDATE_POLICY,
+	newestRelease,
+	oneRowPerVersion,
 	resolveDesktopUpdate,
 	type DesktopUpdatePolicy,
 } from '../updateResolver';
@@ -78,6 +80,45 @@ describe('resolveDesktopUpdate — channel', () => {
 		const releases = [release('0.4.6'), release('0.5.0-rc.1', { isPrerelease: true })];
 		const decision = resolve({ channel: 'prerelease' }, releases, '0.4.5');
 		expect(decision.kind === 'update' && decision.release.version).toBe('0.5.0-rc.1');
+	});
+
+	it('orders release candidates numerically, so rc.10 is offered over rc.9', () => {
+		const releases = [
+			release('0.5.0-rc.9', { isPrerelease: true }),
+			release('0.5.0-rc.10', { isPrerelease: true }),
+		];
+		const fromStable = resolve({ channel: 'prerelease' }, releases, '0.4.7');
+		expect(fromStable.kind === 'update' && fromStable.release.version).toBe('0.5.0-rc.10');
+		const fromRc9 = resolve({ channel: 'prerelease' }, releases, '0.5.0-rc.9');
+		expect(fromRc9.kind === 'update' && fromRc9.release.version).toBe('0.5.0-rc.10');
+	});
+});
+
+describe('cached rows sharing a version', () => {
+	const desktop = { version: '0.4.7', line: 'desktop' as const, fetchedAt: 2 };
+	const unified = { version: '0.4.7', line: 'unified' as const, fetchedAt: 1 };
+
+	it('keeps one row per version and prefers the unified line whatever the order', () => {
+		expect(oneRowPerVersion([desktop, unified])).toEqual([unified]);
+		expect(oneRowPerVersion([unified, desktop])).toEqual([unified]);
+	});
+
+	it('breaks a same-line tie by the most recent fetch', () => {
+		const older = { ...desktop, fetchedAt: 1 };
+		const newer = { ...desktop, fetchedAt: 5 };
+		expect(oneRowPerVersion([newer, older])).toEqual([newer]);
+		expect(oneRowPerVersion([older, newer])).toEqual([newer]);
+	});
+
+	it('finds the newest release on a channel by semver', () => {
+		const rows = [
+			{ version: '0.9.0', isPrerelease: false },
+			{ version: '0.10.0', isPrerelease: false },
+			{ version: '0.11.0-rc.1', isPrerelease: true },
+		];
+		expect(newestRelease(rows, 'stable')?.version).toBe('0.10.0');
+		expect(newestRelease(rows, 'prerelease')?.version).toBe('0.11.0-rc.1');
+		expect(newestRelease([], 'stable')).toBeNull();
 	});
 });
 
