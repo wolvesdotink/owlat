@@ -63,7 +63,10 @@ if [ "$sentinel_count" -ne 0 ]; then
 	status=1
 fi
 
-if ! sed -n '/^  test-summary:/,$p' "$workflow" | grep -q 'ramp-gate-matrix'; then
+# Here-string, not a pipe — see check-ramp-decision-path.sh for why `grep -q`
+# downstream of a still-writing producer fails under pipefail.
+test_summary=$(sed -n '/^  test-summary:/,$p' "$workflow")
+if ! grep -q 'ramp-gate-matrix' <<<"$test_summary"; then
 	echo "FAIL: test-summary does not need ramp-gate-matrix — the matrix is not a required check" >&2
 	status=1
 fi
