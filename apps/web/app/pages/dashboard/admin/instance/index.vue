@@ -103,6 +103,12 @@ const groups = computed(() => [
 		icon: 'lucide:radio',
 	},
 	{
+		title: t('dashboard.admin.instance.index.groups.desktopUpdates.title'),
+		description: t('dashboard.admin.instance.index.groups.desktopUpdates.description'),
+		href: '/dashboard/admin/instance/desktop-updates',
+		icon: 'lucide:monitor-down',
+	},
+	{
 		title: t('dashboard.admin.instance.index.groups.aiProvider.title'),
 		description: t('dashboard.admin.instance.index.groups.aiProvider.description'),
 		href: '/dashboard/admin/instance/ai-provider',

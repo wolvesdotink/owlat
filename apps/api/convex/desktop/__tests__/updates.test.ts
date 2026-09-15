@@ -413,6 +413,28 @@ describe('desktop.updates.updatePolicy', () => {
 		expect(audit[0]?.action).toBe('settings.updated');
 	});
 
+	it('resolves who last changed the policy for the admin page audit line', async () => {
+		const t = harness();
+		mockRole = 'admin';
+		await t.run(async (ctx) => {
+			await ctx.db.insert('userProfiles', {
+				authUserId: 'test-user',
+				email: 'marcel@example.com',
+				name: 'Marcel',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		expect((await t.query(api.desktop.updates.getPolicy, {})).lastChange).toBeNull();
+
+		await t.mutation(api.desktop.updates.updatePolicy, { mode: 'paused', channel: 'stable' });
+
+		const { lastChange } = await t.query(api.desktop.updates.getPolicy, {});
+		expect(lastChange?.by).toBe('Marcel');
+		expect(typeof lastChange?.at).toBe('number');
+	});
+
 	it('refuses a pin to a version nothing has cached', async () => {
 		const t = harness();
 

@@ -85,6 +85,22 @@ async function readReleases(ctx: QueryCtx): Promise<Doc<'desktopReleases'>[]> {
 	return rows.filter((row) => typeof row.version === 'string' && typeof row.manifest === 'string');
 }
 
+/**
+ * Who last wrote the policy and when, resolved to a name for the audit line on
+ * the admin page. Null before anyone has touched it — a fresh instance runs on
+ * the default policy, which nobody chose.
+ */
+async function readLastChange(ctx: QueryCtx): Promise<{ at: number; by: string | null } | null> {
+	const settings = await ctx.db.query('instanceSettings').first();
+	const stored = settings?.desktopUpdates;
+	if (!stored) return null;
+	const profile = await ctx.db
+		.query('userProfiles')
+		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', stored.updatedBy))
+		.first();
+	return { at: stored.updatedAt, by: profile?.name || profile?.email || null };
+}
+
 async function readCheckState(ctx: QueryCtx): Promise<Doc<'desktopReleases'> | null> {
 	return await ctx.db
 		.query('desktopReleases')
@@ -353,10 +369,15 @@ export const getPolicySummary = publicQuery({
 export const getPolicy = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const [policy, check] = await Promise.all([readPolicy(ctx), readCheckState(ctx)]);
+		const [policy, check, lastChange] = await Promise.all([
+			readPolicy(ctx),
+			readCheckState(ctx),
+			readLastChange(ctx),
+		]);
 		return {
 			policy,
 			check: { checkedAt: check?.checkedAt ?? null, error: check?.error ?? null },
+			lastChange,
 		};
 	},
 });
