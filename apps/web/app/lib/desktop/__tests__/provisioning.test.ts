@@ -22,6 +22,12 @@ import {
 	setupConfigPath,
 	DEFAULT_REMOTE,
 	LOCAL_SETUP_IMAGE,
+	installRef,
+	isReleaseVersion,
+	releaseSetupImage,
+	needsReleaseResolution,
+	resolveLatestReleaseCommand,
+	parseResolvedRelease,
 } from '../provisioning';
 import {
 	assessPassword,
@@ -165,6 +171,80 @@ describe('remote commands', () => {
 		expect(cmd).toContain("git clone --depth 1 --branch 'main'");
 		expect(cmd).toContain("'/opt/owlat'");
 		expect(cmd).toContain('https://github.com/wolvesdotink/owlat.git');
+	});
+
+	it('fetch fast-forwards an existing clone from FETCH_HEAD so a tag ref works too', () => {
+		const cmd = fetchOwlatCommand(remote);
+		expect(cmd).toContain("git fetch --depth 1 origin 'main' && git reset --hard FETCH_HEAD");
+		expect(cmd).not.toContain('origin/main');
+	});
+
+	it('release install checks out the v<version> tag', () => {
+		const release = { ...remote, version: '0.4.4' };
+		expect(installRef(release)).toBe('v0.4.4');
+		expect(installRef(remote)).toBe('main');
+		const cmd = fetchOwlatCommand(release);
+		expect(cmd).toContain("git clone --depth 1 --branch 'v0.4.4'");
+		expect(cmd).toContain("git fetch --depth 1 origin 'v0.4.4' && git reset --hard FETCH_HEAD");
+		expect(cmd).not.toContain("'main'");
+	});
+
+	it('release install pins the setup image and threads the version to quickstart as a flag', () => {
+		const cmd = installerCommand({ ...remote, version: '0.4.4' });
+		expect(cmd).toContain("OWLAT_SETUP_IMAGE='ghcr.io/wolvesdotink/setup:0.4.4'");
+		expect(cmd).toContain(
+			"quickstart --terminal --owlat-version '0.4.4' --config '/opt/owlat/.owlat-setup.json'"
+		);
+		// The version must reach quickstart as a flag only: an OWLAT_VERSION env
+		// var would override the .env pin in compose interpolation.
+		expect(cmd).not.toContain('OWLAT_VERSION=');
+		expect(cmd).not.toContain('OWLAT_BUILD_LOCAL');
+		expect(cmd).not.toContain('OWLAT_LOCAL_IMAGES');
+		expect(releaseSetupImage('0.4.4')).toBe('ghcr.io/wolvesdotink/setup:0.4.4');
+	});
+
+	it('branch install (no version) leaves the version unpinned', () => {
+		const cmd = installerCommand(remote);
+		expect(cmd).not.toContain('--owlat-version');
+		expect(cmd).not.toContain('OWLAT_SETUP_IMAGE');
+	});
+
+	it('the default remote resolves the latest release; a version, branch or local checkout does not', () => {
+		expect(needsReleaseResolution(DEFAULT_REMOTE)).toBe(true);
+		expect(needsReleaseResolution({ ...DEFAULT_REMOTE, version: '0.4.6' })).toBe(false);
+		expect(needsReleaseResolution({ ...DEFAULT_REMOTE, branch: 'main' })).toBe(false);
+		expect(needsReleaseResolution({ ...DEFAULT_REMOTE, localSource: '/x' })).toBe(false);
+		expect(() => installRef(DEFAULT_REMOTE)).toThrow(/not resolved/);
+	});
+
+	it('resolve-release asks the GitHub releases API of the clone repo for the newest stable vX.Y.Z tag', () => {
+		const cmd = resolveLatestReleaseCommand(DEFAULT_REMOTE);
+		expect(cmd).toContain('https://api.github.com/repos/wolvesdotink/owlat/releases?per_page=30');
+		expect(cmd).toContain('curl -fsSL --max-time 10');
+		expect(cmd).toContain('head -1');
+		expect(cmd).toContain('release=');
+		expect(
+			resolveLatestReleaseCommand({ ...DEFAULT_REMOTE, repo: 'git@github.com:acme/fork.git' })
+		).toContain('repos/acme/fork/releases');
+	});
+
+	it('parses the resolved release line and rejects anything else', () => {
+		expect(parseResolvedRelease('release=0.4.6')).toBe('0.4.6');
+		expect(parseResolvedRelease('release=0.4.6\n')).toBe('0.4.6');
+		expect(parseResolvedRelease('release=')).toBeNull();
+		expect(parseResolvedRelease('release=dev')).toBeNull();
+		expect(parseResolvedRelease('curl: (6) Could not resolve host')).toBeNull();
+		expect(parseResolvedRelease('')).toBeNull();
+	});
+
+	it('only a semver names a release', () => {
+		expect(isReleaseVersion('0.4.4')).toBe(true);
+		expect(isReleaseVersion('1.0.0-rc.1')).toBe(true);
+		expect(isReleaseVersion('dev')).toBe(false);
+		expect(isReleaseVersion('unknown')).toBe(false);
+		expect(isReleaseVersion('')).toBe(false);
+		expect(isReleaseVersion(undefined)).toBe(false);
+		expect(isReleaseVersion('v0.4.4')).toBe(false);
 	});
 
 	it('fetch script is valid shell — no line starts with a dangling operator', () => {

@@ -9841,6 +9841,8 @@
 				"authentication": "Authentication",
 				"branch": "Branch",
 				"browse": "Browse…",
+				"devInstall": "Development install",
+				"devInstallHint": "Install a branch (or a local checkout) instead of the release. The stack is built from source on the server.",
 				"host": "Server address",
 				"hostPlaceholder": "203.0.113.5 or vps.example.com",
 				"installDir": "Install directory",
@@ -9852,7 +9854,10 @@
 				"port": "Port",
 				"sshPasswordPlaceholder": "SSH password",
 				"sshUser": "SSH user",
-				"useKeyFileInstead": "Use a key file instead"
+				"useKeyFileInstead": "Use a key file instead",
+				"version": "Version",
+				"versionHint": "The newest published server release, looked up when the install starts.",
+				"versionLatest": "Latest release"
 			},
 			"finishing": {
 				"body": "Owlat is installed at {url}, but the address can't be reached yet. Create the records below; once they resolve and TLS is issued, this turns into “Open workspace” automatically.",
@@ -11609,6 +11614,7 @@
 					"mtaIdentity": "Verify outbound IP identity",
 					"preflight": "Check prerequisites",
 					"pushImages": "Upload images to the server",
+					"resolveRelease": "Find the latest release",
 					"seedDemo": "Seed demo data",
 					"sshConnect": "Connect over SSH",
 					"systemCheck": "Check the server",
@@ -13725,12 +13731,14 @@
 		},
 		"useServerProvisioning": {
 			"alreadyInstalled": "already installed",
+			"developmentInstall": "development install",
 			"didNotComplete": "Provisioning did not complete (exit {code}).",
 			"exitCode": "exit {code}",
 			"hostKeyAccepted": "accepted",
 			"knownHost": "known host",
 			"localBuildFailed": "Local image build failed (exit {code}). Is Docker running here?",
 			"localSetupImageFailed": "Local setup-image build failed (exit {code}).",
+			"releaseNotFound": "Could not find a published Owlat release. Check the server's network connection and try again.",
 			"stepFailed": "\"{step}\" failed (exit {code}).",
 			"unknownError": "Something went wrong.",
 			"uploadedLocalSource": "uploaded local working tree"
