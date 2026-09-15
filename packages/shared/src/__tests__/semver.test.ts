@@ -25,6 +25,21 @@ describe('semverCompare', () => {
 		expect(semverCompare('1.2.0-rc.1', '1.2.0-rc.1')).toBe(0);
 	});
 
+	it('orders pre-release identifiers numerically, so rc.10 follows rc.9', () => {
+		// The resolver's `latest` mode on the prerelease channel picks the maximum
+		// with this comparator; a string comparison would put rc.10 below rc.2.
+		expect(semverCompare('0.5.0-rc.10', '0.5.0-rc.9')).toBe(1);
+		expect(semverCompare('0.5.0-rc.2', '0.5.0-rc.10')).toBe(-1);
+		expect(semverCompare('0.5.0-rc.10', '0.5.0-rc.10')).toBe(0);
+		// Numeric identifiers sort below alphanumeric ones, and a shorter list of
+		// otherwise equal identifiers sorts first (semver spec, section 11).
+		expect(semverCompare('1.0.0-1', '1.0.0-alpha')).toBe(-1);
+		expect(semverCompare('1.0.0-alpha', '1.0.0-alpha.1')).toBe(-1);
+		expect(semverCompare('1.0.0-alpha.beta', '1.0.0-beta')).toBe(-1);
+		expect(semverCompare('1.0.0-beta.11', '1.0.0-beta.2')).toBe(1);
+		expect(semverCompare('1.0.0-rc.1', '1.0.0-beta.11')).toBe(1);
+	});
+
 	it('tolerates a leading v and missing components', () => {
 		expect(semverCompare('v1.2.3', '1.2.3')).toBe(0);
 		expect(semverCompare('1.3', '1.2.9')).toBe(1);

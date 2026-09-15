@@ -44,8 +44,11 @@ export function parseVersion(version: string): ParsedSemver {
  *   -1 if a < b
  *
  * Tolerant of pre-release suffixes: a pre-release compares LESS than the
- * equivalent release ("1.2.0-beta.1" < "1.2.0"). Between two pre-releases,
- * the suffix is compared lexicographically.
+ * equivalent release ("1.2.0-beta.1" < "1.2.0"). Between two pre-releases the
+ * dot-separated identifiers are compared one by one the way semver spec §11
+ * says: numeric identifiers numerically ("rc.10" > "rc.9"), alphanumeric ones
+ * lexically, numeric below alphanumeric, and a shorter list of otherwise equal
+ * identifiers below the longer one ("rc" < "rc.1").
  */
 export function semverCompare(a: string, b: string): number {
 	const pa = parseVersion(a);
@@ -61,5 +64,26 @@ export function semverCompare(a: string, b: string): number {
 	if (pa.pre === '' && pb.pre === '') return 0;
 	if (pa.pre === '') return 1;
 	if (pb.pre === '') return -1;
-	return pa.pre > pb.pre ? 1 : pa.pre < pb.pre ? -1 : 0;
+	return comparePrerelease(pa.pre, pb.pre);
+}
+
+const NUMERIC_RE = /^\d+$/;
+
+/** Order two non-empty pre-release suffixes identifier by identifier. */
+function comparePrerelease(a: string, b: string): number {
+	const as = a.split('.');
+	const bs = b.split('.');
+	const shared = Math.min(as.length, bs.length);
+	for (let i = 0; i < shared; i++) {
+		const ai = as[i] ?? '';
+		const bi = bs[i] ?? '';
+		if (ai === bi) continue;
+		const aNumeric = NUMERIC_RE.test(ai);
+		const bNumeric = NUMERIC_RE.test(bi);
+		if (aNumeric && bNumeric) return Number(ai) > Number(bi) ? 1 : -1;
+		// Numeric identifiers always sort below alphanumeric ones.
+		if (aNumeric !== bNumeric) return aNumeric ? -1 : 1;
+		return ai > bi ? 1 : -1;
+	}
+	return as.length === bs.length ? 0 : as.length > bs.length ? 1 : -1;
 }
