@@ -12,19 +12,6 @@ import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { applyFreshFblDedupDefaults } from './fblDedupSetup';
 
 /**
- * ClamAV image for the host CPU. The alpine-based `clamav/clamav` image is
- * published for amd64 only; arm64 hosts (Hetzner CAX, Oracle Ampere, Graviton,
- * Raspberry Pi) get the otherwise-identical debian variant. Keyed on the CLI's
- * own arch: the setup container is multi-arch, so it always matches the host.
- * Only arm64 gets an explicit value — amd64 keeps the compose default, and an
- * existing amd64 install's signature-DB volume (owned by the alpine uid 100)
- * is never handed to the debian image (uid 1000).
- */
-export function defaultClamavImage(arch: string = process.arch): string | undefined {
-	return arch === 'arm64' ? 'clamav/clamav-debian' : undefined;
-}
-
-/**
  * Fill in default deployment values for keys not already present (preserves an
  * operator's manual edits). Shared by the interactive wizard and the config
  * path so the two cannot diverge. CONVEX_SITE_URL points at the SITE proxy
@@ -87,8 +74,6 @@ export function applySetupDefaults(
 	if (flags?.['mail.external']) {
 		defaults['MAIL_SYNC_API_URL'] = 'http://mail-sync:3200';
 	}
-	const clamavImage = defaultClamavImage();
-	if (clamavImage) defaults['CLAMAV_IMAGE'] = clamavImage;
 	for (const [key, value] of Object.entries(defaults)) {
 		if (env[key] === undefined || env[key] === '') env[key] = value;
 	}
