@@ -10,7 +10,12 @@ import {
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
 } from '../lib/aiProviderConfigValidators';
-import { successOrFailedValidator } from '../lib/literalValidators';
+import {
+	desktopReleaseLineValidator,
+	desktopUpdateChannelValidator,
+	desktopUpdateModeValidator,
+	successOrFailedValidator,
+} from '../lib/literalValidators';
 
 /**
  * Instance-administration tables — the deployment-wide singletons an operator
@@ -226,6 +231,34 @@ export const instanceTables = {
 		// on a non-open → open transition, decremented on open → non-open.
 		// `getInboundStats` reads this instead of collecting the whole
 		// open-thread set per subscriber.
+		// SERVER-MANAGED DESKTOP UPDATES. What connected Owlat desktop apps are
+		// offered when they ask this instance which version to install. Absent —
+		// the ordinary state — means `latest` on the `stable` channel with no
+		// defer window, which is what the app used to get straight from GitHub.
+		// The server can only choose among releases GitHub already published and
+		// this instance already cached; bundles stay signed with a key no server
+		// holds, so a policy can withhold an update but never substitute one.
+		// Admin-gated write via `desktop/updates.updatePolicy` (`settings:manage`).
+		desktopUpdates: v.optional(
+			v.object({
+				// `latest` serves the newest eligible cached release, `pinned` serves
+				// exactly `pinnedVersion`, `paused` serves nothing.
+				mode: desktopUpdateModeValidator,
+				// `prerelease` additionally admits `vX.Y.Z-rc.N` tags.
+				channel: desktopUpdateChannelValidator,
+				// Required when mode is `pinned`; validated against the cache at write
+				// time, so the policy can never point at a release nobody has.
+				pinnedVersion: v.optional(v.string()),
+				// Optional floor. Recorded here and surfaced to clients; ENFORCEMENT
+				// (the blocking "update required" prompt) is not built yet.
+				requiredVersion: v.optional(v.string()),
+				// Hold a release back until `publishedAt + deferHours`. 0..168.
+				deferHours: v.optional(v.number()),
+				// Audit line for the admin page.
+				updatedAt: v.number(),
+				updatedBy: v.string(), // auth user id
+			})
+		),
 		openThreads: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.optional(v.number()),
@@ -261,6 +294,46 @@ export const instanceTables = {
 	})
 		.index('by_kind_and_checkedAt', ['kind', 'checkedAt'])
 		.index('by_kind_and_startedAt', ['kind', 'startedAt']),
+
+	// Desktop release cache — what GitHub has published on the two desktop-
+	// bearing release lines (`v*` and `desktop-v*`), so the manifest route can
+	// answer a connected app from cached rows instead of calling GitHub on every
+	// check. Populated by the `desktop-releases-refresh` cron and the admin
+	// "Check now" button (apps/api/convex/desktop/updates.ts); pruned to the
+	// newest 30 release rows.
+	//
+	// Two kinds of documents share this table, following the `systemUpdates`
+	// precedent:
+	//   - kind='release'      — one row per cached release
+	//   - kind='latestCheck'  — singleton recording the last refresh attempt
+	desktopReleases: defineTable({
+		kind: v.union(v.literal('release'), v.literal('latestCheck')),
+
+		// ── Fields for kind='release' ──
+		tag: v.optional(v.string()), // 'v0.4.6' | 'desktop-v0.4.7'
+		version: v.optional(v.string()), // '0.4.6'
+		line: v.optional(desktopReleaseLineValidator),
+		isPrerelease: v.optional(v.boolean()),
+		publishedAt: v.optional(v.number()), // release publish time (epoch ms)
+		notes: v.optional(v.string()), // GitHub release body, for the admin page
+		// The release's `latest.json` as VERBATIM JSON TEXT, not a Convex object:
+		// the manifest route serves it byte-for-byte, so platform keys a future
+		// tauri-action adds round-trip untouched. Validated before it is stored
+		// (version matches the tag, every platform has a URL + signature, every
+		// URL host is on the GitHub allow-list).
+		manifest: v.optional(v.string()),
+		fetchedAt: v.optional(v.number()),
+
+		// ── Fields for kind='latestCheck' (singleton) ──
+		checkedAt: v.optional(v.number()),
+		error: v.optional(v.string()), // e.g. 'rate_limited'
+	})
+		.index('by_kind_and_version', ['kind', 'version'])
+		// The refresh upserts by TAG: the unified `v0.4.7` and a desktop hot-fix
+		// `desktop-v0.4.7` are two releases with two signed bundles, and keying on
+		// the version would make them overwrite each other on every refresh.
+		.index('by_kind_and_tag', ['kind', 'tag'])
+		.index('by_kind_and_checkedAt', ['kind', 'checkedAt']),
 
 	// Operator-recorded backup plan for a self-hosted deployment. The Convex
 	// backend runs in a container and cannot introspect the host's systemd

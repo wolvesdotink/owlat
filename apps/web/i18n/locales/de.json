@@ -5865,6 +5865,74 @@
 					"subtitleTransportLink": "Zustellanbieter",
 					"title": "Nachrichtenkanäle"
 				},
+				"desktopUpdates": {
+					"auditLine": "Zuletzt geändert von {who}, {date}.",
+					"auditLineUnknown": "Zuletzt geändert am {date}.",
+					"auditNever": "Hier hat noch niemand etwas geändert — die Instanz läuft mit der Voreinstellung.",
+					"channel": {
+						"label": "Kanal",
+						"prerelease": "Vorabversionen einschließen",
+						"stable": "Stabil"
+					},
+					"checkNow": "Jetzt prüfen",
+					"checkedToast": "Versionsliste aktualisiert.",
+					"defer": {
+						"help": "Eine Version wird erst so lange nach ihrer Veröffentlichung auf GitHub angeboten. 0 bis {max} Stunden.",
+						"invalid": "Geben Sie eine ganze Stundenzahl von 0 bis {max} ein.",
+						"label": "Vor dem Anbieten einer neuen Version warten",
+						"suffix": "Stunden"
+					},
+					"empty": {
+						"description": "Diese Instanz hat GitHub noch nicht nach veröffentlichten Versionen gefragt. Prüfen Sie jetzt, um die Liste zu füllen.",
+						"title": "Noch keine Versionen zwischengespeichert"
+					},
+					"intro": "Was verbundene Owlat-Desktop-Apps angeboten bekommen. Die Pakete werden von GitHub geladen und auf dem Gerät geprüft.",
+					"lastCheckError": "Die letzte Prüfung hatte einen Fehler: {error}",
+					"lines": {
+						"desktop": "reine Desktop-Reihe",
+						"unified": "gemeinsame Reihe"
+					},
+					"modes": {
+						"label": "Modus",
+						"latest": {
+							"description": "Die neueste zwischengespeicherte Version aus dem Kanal unten anbieten.",
+							"title": "Neueste"
+						},
+						"paused": {
+							"description": "Gar nichts anbieten. Die Apps behalten ihre Version, bis Sie das wieder einschalten.",
+							"title": "Pausiert"
+						},
+						"pinned": {
+							"description": "Alle Geräte auf einer bewährten Version halten. Apps, die schon weiter sind, bleiben, wo sie sind.",
+							"title": "Festgelegt auf …"
+						}
+					},
+					"newest": {
+						"checked": "geprüft {date}",
+						"label": "Neueste Version",
+						"neverChecked": "nie geprüft",
+						"none": "Noch nichts zwischengespeichert",
+						"published": "veröffentlicht {date}"
+					},
+					"pageTitle": "Desktop-App-Updates — Owlat",
+					"pin": {
+						"label": "Version, auf die festgelegt wird",
+						"noneCached": "In diesem Kanal ist keine Version zwischengespeichert. Prüfen Sie zuerst.",
+						"placeholder": "Zwischengespeicherte Version wählen"
+					},
+					"readOnly": "Sie können diese Richtlinie sehen, aber nicht ändern. Wenden Sie sich an Ihre Administration.",
+					"releases": {
+						"line": "Reihe",
+						"notes": "Versionshinweise",
+						"prerelease": "Vorabversion",
+						"published": "Veröffentlicht",
+						"title": "Zwischengespeicherte Versionen",
+						"version": "Versionsnummer"
+					},
+					"save": "Speichern",
+					"savedToast": "Richtlinie für Desktop-Updates gespeichert.",
+					"title": "Desktop-App-Updates"
+				},
 				"emailTheme": {
 					"backgroundColor": "Hintergrundfarbe",
 					"backgroundColorHelp": "Die Hintergrundfarbe Ihres E-Mail-Textkörpers.",
@@ -6138,6 +6206,10 @@
 						"channels": {
 							"description": "Nachrichtenkanäle, die in der gesamten Instanz verfügbar sind.",
 							"title": "Kanäle"
+						},
+						"desktopUpdates": {
+							"description": "Legen Sie fest, welche Version verbundene Desktop-Apps installieren — oder halten Sie alle zurück.",
+							"title": "Desktop-Updates"
 						},
 						"emailTheme": {
 							"description": "Standardgestaltung für Nachrichten, die dieser Workspace versendet.",
@@ -9747,11 +9819,28 @@
 				"title": "Ungelesen-Zähler"
 			},
 			"updates": {
+				"channel": {
+					"prerelease": "inklusive Vorabversionen",
+					"stable": "stabil"
+				},
 				"checkNow": "Jetzt nach Updates suchen",
 				"checking": "Wird geprüft — Sie erhalten eine Benachrichtigung mit dem Ergebnis.",
 				"description": "Beim Start der App nach neuen Versionen suchen.",
+				"downloading": "Owlat {version} wird geladen.",
+				"failed": "Die Update-Prüfung wurde nicht abgeschlossen. Owlat versucht es später erneut.",
+				"lastChecked": "Zuletzt um {time} Uhr geprüft.",
+				"managedBy": "Verwaltet von {host} — {policy}.",
+				"policy": {
+					"latest": "neueste Version, {channel}",
+					"paused": "Updates von Ihrer Administration pausiert",
+					"pinned": "festgelegt auf {version}"
+				},
+				"ready": "Owlat {version} ist geladen und bereit.",
+				"restartNow": "Jetzt neu starten",
 				"title": "Updates",
-				"version": "Owlat {version}."
+				"unreachable": "Ihre Owlat-Instanz war nicht erreichbar, es wurde nichts geprüft. Versuchen Sie es erneut, sobald Sie wieder online sind.",
+				"version": "Owlat {version}.",
+				"viaGithub": "Updates kommen direkt von den GitHub-Releases."
 			},
 			"workspaces": {
 				"accent": "Akzent",
@@ -10660,6 +10749,7 @@
 				"controls": "Steuerung",
 				"deliverability": "Zustellbarkeit",
 				"deliveryProvider": "Zustelldienst",
+				"desktopUpdates": "Desktop-Updates",
 				"emailTheme": "E-Mail-Design",
 				"features": "Funktionen",
 				"forms": "Formulare",
@@ -11643,6 +11733,10 @@
 				"serverIpPlaceholder": "die öffentliche IP Ihres Servers"
 			},
 			"updater": {
+				"unreachable": {
+					"body": "{host} war nicht erreichbar. Owlat versucht es später erneut.",
+					"title": "Update-Prüfung übersprungen"
+				},
 				"upToDate": {
 					"body": "Sie haben die neueste Version.",
 					"title": "Owlat ist aktuell"
@@ -13560,6 +13654,10 @@
 				"body": "1 Nachricht ist während der Ruhezeiten eingegangen | {count} Nachrichten sind während der Ruhezeiten eingegangen",
 				"title": "Während Sie weg waren"
 			}
+		},
+		"useDesktopUpdatePolicy": {
+			"checkOperation": "Nach Desktop-Releases suchen",
+			"saveOperation": "Richtlinie für Desktop-Updates speichern"
 		},
 		"useDesktopWorkspaces": {
 			"errors": {

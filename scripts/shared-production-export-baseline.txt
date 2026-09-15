@@ -8,7 +8,6 @@ export:packages/shared/src/compatibility/registry.ts:registerBlockCompatibility
 export:packages/shared/src/compatibility/registry.ts:registerEmailClient
 export:packages/shared/src/compatibility/registry.ts:unregisterBlockCompatibility
 export:packages/shared/src/compatibility/registry.ts:unregisterEmailClient
-export:packages/shared/src/composeVerify.ts:RELEASE_DOWNLOAD_BASE
 export:packages/shared/src/convexRuntimeEnv.ts:CONVEX_RUNTIME_ENV_KEYS
 export:packages/shared/src/dane.ts:DANE_MATCHING
 export:packages/shared/src/dane.ts:DANE_SELECTOR

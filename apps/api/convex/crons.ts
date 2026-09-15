@@ -436,6 +436,19 @@ crons.interval(
 	{}
 );
 
+// Desktop release cache — list the repo's releases and pull in any new
+// desktop-bearing one's `latest.json` (desktop/updates.ts). Six hours keeps a
+// fresh self-host well inside GitHub's unauthenticated budget even alongside
+// the server's own hourly update check; the admin "Check now" button covers "a
+// release just went out". Fail-soft: a rate-limited or failed poll records the
+// error and leaves the cache serving what it already has.
+crons.interval(
+	'desktop-releases-refresh',
+	{ hours: 6 },
+	internal.desktop.updates.refreshReleases,
+	{}
+);
+
 // Contact-book hygiene (retention cascade, duplicate auto-merge, engagement
 // score decay, sunset policy). Grouped in `contacts/crons.ts`.
 registerContactHygieneCrons(crons);

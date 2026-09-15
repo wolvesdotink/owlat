@@ -300,6 +300,9 @@ export const NON_TENANT_TABLES = [
 	'aiProviderConfig',
 	// Instance infrastructure / regenerable caches — not org business data.
 	'systemUpdates',
+	// Cache of the desktop releases GitHub has published, refetched by a cron —
+	// public release metadata and manifests, regenerable in one poll.
+	'desktopReleases',
 	'backupState',
 	'urlReputationCache',
 	'providerRoutes',

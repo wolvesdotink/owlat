@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { semverCompare } from '@owlat/shared/semver';
 import { formatDateTime } from '~/utils/formatters';
 
 const { t } = useI18n();
@@ -46,27 +47,8 @@ const updateAvailable = computed(() => {
 	const latest = latestRelease.value?.latestVersion;
 	const current = currentVersion.value;
 	if (!latest || current === 'dev' || current === 'unknown') return false;
-	return semverGreater(latest, current);
+	return semverCompare(latest, current) > 0;
 });
-
-function semverGreater(a: string, b: string): boolean {
-	const parse = (s: string) =>
-		s
-			.replace(/^v/, '')
-			.split('.')
-			.map((n) => parseInt(n, 10) || 0);
-	const aParts = parse(a);
-	const bParts = parse(b);
-	const am = aParts[0] ?? 0,
-		ai = aParts[1] ?? 0,
-		ap = aParts[2] ?? 0;
-	const bm = bParts[0] ?? 0,
-		bi = bParts[1] ?? 0,
-		bp = bParts[2] ?? 0;
-	if (am !== bm) return am > bm;
-	if (ai !== bi) return ai > bi;
-	return ap > bp;
-}
 
 // ── Update history ───────────────────────────────────────────────────────────
 

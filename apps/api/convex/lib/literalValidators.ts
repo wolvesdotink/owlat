@@ -117,3 +117,20 @@ export const fieldTypeValidator = v.union(
 	v.literal('boolean'),
 	v.literal('date')
 );
+
+/**
+ * How this instance decides which desktop release a connected app is offered:
+ * `latest` (newest cached release on the channel), `pinned` (exactly the
+ * recorded version) or `paused` (nothing at all).
+ */
+export const desktopUpdateModeValidator = v.union(
+	v.literal('latest'),
+	v.literal('pinned'),
+	v.literal('paused')
+);
+
+/** Which desktop release channel an instance follows; `prerelease` also admits `vX.Y.Z-rc.N` tags. */
+export const desktopUpdateChannelValidator = v.union(v.literal('stable'), v.literal('prerelease'));
+
+/** Which GitHub release line a cached desktop release came from (`v*` vs `desktop-v*`). */
+export const desktopReleaseLineValidator = v.union(v.literal('unified'), v.literal('desktop'));

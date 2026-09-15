@@ -5865,6 +5865,74 @@
 					"subtitleTransportLink": "delivery provider",
 					"title": "Messaging channels"
 				},
+				"desktopUpdates": {
+					"auditLine": "Last changed by {who}, {date}.",
+					"auditLineUnknown": "Last changed {date}.",
+					"auditNever": "Nobody has changed this yet — the instance is running on the default.",
+					"channel": {
+						"label": "Channel",
+						"prerelease": "Include pre-releases",
+						"stable": "Stable"
+					},
+					"checkNow": "Check now",
+					"checkedToast": "Release list refreshed.",
+					"defer": {
+						"help": "A release is not offered until this long after GitHub published it. 0 to {max} hours.",
+						"invalid": "Enter a whole number of hours, 0 to {max}.",
+						"label": "Wait before offering a new release",
+						"suffix": "hours"
+					},
+					"empty": {
+						"description": "This instance has not asked GitHub what it has published. Check now to fill the list.",
+						"title": "No releases cached yet"
+					},
+					"intro": "What connected Owlat desktop apps are offered. Bundles are downloaded from GitHub and verified on the device.",
+					"lastCheckError": "Last check had an error: {error}",
+					"lines": {
+						"desktop": "desktop-only line",
+						"unified": "unified line"
+					},
+					"modes": {
+						"label": "Mode",
+						"latest": {
+							"description": "Offer the newest cached release on the channel below.",
+							"title": "Latest"
+						},
+						"paused": {
+							"description": "Offer nothing at all. Apps keep the version they have until you turn this back on.",
+							"title": "Paused"
+						},
+						"pinned": {
+							"description": "Hold the fleet on one known-good release. Apps already past it stay where they are.",
+							"title": "Pinned to…"
+						}
+					},
+					"newest": {
+						"checked": "checked {date}",
+						"label": "Newest release",
+						"neverChecked": "never checked",
+						"none": "Nothing cached yet",
+						"published": "published {date}"
+					},
+					"pageTitle": "Desktop app updates — Owlat",
+					"pin": {
+						"label": "Release to pin to",
+						"noneCached": "No cached release on this channel to pin to. Check now first.",
+						"placeholder": "Choose a cached release"
+					},
+					"readOnly": "You can read this policy but not change it. Ask an owner or an admin.",
+					"releases": {
+						"line": "Line",
+						"notes": "Release notes",
+						"prerelease": "pre-release",
+						"published": "Published",
+						"title": "Cached releases",
+						"version": "Version"
+					},
+					"save": "Save",
+					"savedToast": "Desktop update policy saved.",
+					"title": "Desktop app updates"
+				},
 				"emailTheme": {
 					"backgroundColor": "Background Color",
 					"backgroundColorHelp": "The background color of your email body.",
@@ -6138,6 +6206,10 @@
 						"channels": {
 							"description": "Messaging channels available across the instance.",
 							"title": "Channels"
+						},
+						"desktopUpdates": {
+							"description": "Choose which release connected desktop apps install, or hold them all.",
+							"title": "Desktop updates"
 						},
 						"emailTheme": {
 							"description": "Default visual styling for messages sent by this workspace.",
@@ -9747,11 +9819,28 @@
 				"title": "Unread badge"
 			},
 			"updates": {
+				"channel": {
+					"prerelease": "including pre-releases",
+					"stable": "stable"
+				},
 				"checkNow": "Check for updates now",
 				"checking": "Checking — you'll get a notification with the result.",
 				"description": "Check for new versions when the app starts.",
+				"downloading": "Downloading Owlat {version}.",
+				"failed": "The update check did not finish. Owlat will try again later.",
+				"lastChecked": "Last checked at {time}.",
+				"managedBy": "Managed by {host} — {policy}.",
+				"policy": {
+					"latest": "newest release, {channel}",
+					"paused": "updates paused by your admin",
+					"pinned": "pinned to {version}"
+				},
+				"ready": "Owlat {version} is downloaded and ready.",
+				"restartNow": "Restart now",
 				"title": "Updates",
-				"version": "Owlat {version}."
+				"unreachable": "Your Owlat instance could not be reached, so nothing was checked. Try again once you're back online.",
+				"version": "Owlat {version}.",
+				"viaGithub": "Updates come straight from GitHub releases."
 			},
 			"workspaces": {
 				"accent": "Accent",
@@ -10660,6 +10749,7 @@
 				"controls": "Controls",
 				"deliverability": "Deliverability",
 				"deliveryProvider": "Delivery provider",
+				"desktopUpdates": "Desktop updates",
 				"emailTheme": "Email Theme",
 				"features": "Features",
 				"forms": "Forms",
@@ -11643,6 +11733,10 @@
 				"serverIpPlaceholder": "your server's public IP"
 			},
 			"updater": {
+				"unreachable": {
+					"body": "{host} could not be reached. Owlat will try again later.",
+					"title": "Update check skipped"
+				},
 				"upToDate": {
 					"body": "You have the latest version.",
 					"title": "Owlat is up to date"
@@ -13560,6 +13654,10 @@
 				"body": "1 message arrived during quiet hours | {count} messages arrived during quiet hours",
 				"title": "While you were away"
 			}
+		},
+		"useDesktopUpdatePolicy": {
+			"checkOperation": "Check for desktop releases",
+			"saveOperation": "Save desktop update policy"
 		},
 		"useDesktopWorkspaces": {
 			"errors": {

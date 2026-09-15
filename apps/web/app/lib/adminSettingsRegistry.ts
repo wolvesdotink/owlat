@@ -233,6 +233,13 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		area: 'instance',
 	},
 	{
+		id: 'desktopUpdates',
+		path: `${ADMIN_ROOT}/instance/desktop-updates`,
+		titleKey: label('desktopUpdates'),
+		icon: 'lucide:monitor-down',
+		area: 'instance',
+	},
+	{
 		// Deliberately ungated: this is the page where AI gets turned on, so
 		// hiding it behind the `ai` flag would be a chicken-and-egg lockout (the
 		// page itself makes the same call in its `definePageMeta`).
