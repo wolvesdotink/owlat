@@ -13555,6 +13555,10 @@
 				"title": "While you were away"
 			}
 		},
+		"useDesktopUpdatePolicy": {
+			"checkOperation": "Check for desktop releases",
+			"saveOperation": "Save desktop update policy"
+		},
 		"useDesktopWorkspaces": {
 			"errors": {
 				"stateMismatch": "Unexpected sign-in response (state mismatch).",

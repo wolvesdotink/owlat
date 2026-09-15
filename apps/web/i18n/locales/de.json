@@ -13555,6 +13555,10 @@
 				"title": "Während Sie weg waren"
 			}
 		},
+		"useDesktopUpdatePolicy": {
+			"checkOperation": "Nach Desktop-Releases suchen",
+			"saveOperation": "Richtlinie für Desktop-Updates speichern"
+		},
 		"useDesktopWorkspaces": {
 			"errors": {
 				"stateMismatch": "Unerwartete Anmeldeantwort (State stimmt nicht überein).",
