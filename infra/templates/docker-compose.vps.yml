@@ -291,7 +291,10 @@ services:
   # tags from Docker Hub, so a numeric pin rots into a 404 (and a digest pin
   # would rot even faster; see the image pinning policy above).
   clamav:
-    image: clamav/clamav:stable
+    # The alpine clamav/clamav image is amd64-only; set CLAMAV_IMAGE=clamav/clamav-debian
+    # on arm64 hosts (the setup wizard does this). Never switch an EXISTING amd64
+    # install: the debian image runs as a different uid than the alpine-owned volume.
+    image: ${CLAMAV_IMAGE:-clamav/clamav}:stable
     volumes:
       - clamav-data:/var/lib/clamav
     healthcheck:
@@ -544,7 +547,9 @@ services:
   # and the internet-capable `default` network. Copy infra/code-worker/*.conf/
   # *.filter next to your compose file and add your LLM host to the filter.
   code-worker-egress:
-    image: vimagick/tinyproxy:latest
+    # kalaksi/tinyproxy is multi-arch (vimagick/tinyproxy is amd64-only) and
+    # applies the mounted config verbatim.
+    image: kalaksi/tinyproxy:1.7
     volumes:
       - ./tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
       - ./tinyproxy.filter:/etc/tinyproxy/filter:ro

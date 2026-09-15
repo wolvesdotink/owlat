@@ -115,10 +115,28 @@ require_linux() {
 	die "Unsupported host OS for the server installer: ${platform}."
 }
 
+require_supported_arch() {
+	# The release images are published for linux/amd64 and linux/arm64 only.
+	# On anything else (armv7 boards, RISC-V, s390x, 32-bit x86) every `docker
+	# pull` would fail minutes later with "no matching manifest for <platform>",
+	# after Docker has been installed and the repo cloned — refuse up front.
+	local machine
+	machine="$(uname -m 2>/dev/null || printf 'unknown')"
+	case "$machine" in
+		x86_64|amd64|aarch64|arm64) return ;;
+	esac
+	error "Unsupported CPU architecture: ${machine}."
+	error ""
+	error "Owlat publishes server images for x86_64 (amd64) and aarch64 (arm64)"
+	error "only. Pick a VPS of either kind and re-run this installer there."
+	die "Unsupported CPU architecture for the server installer: ${machine}."
+}
+
 preflight() {
 	info "Running preflight checks…"
 
 	require_linux
+	require_supported_arch
 
 	check_cmd curl
 	check_cmd git
