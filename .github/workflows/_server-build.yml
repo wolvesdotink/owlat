@@ -102,8 +102,17 @@ jobs:
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
+      # `name` MUST be a base matrix key alongside `platform`. With `platform`
+      # alone, each `include` entry below carries a key (`name`) that is not an
+      # original matrix value, so GitHub merges every entry into the SAME two
+      # combinations in turn and only the last image survives — v0.4.10 built
+      # nothing but tinyproxy. With `name` in the base matrix, each include
+      # entry only adds `dockerfile`/`context` to the combinations whose `name`
+      # matches, which is the documented merge behaviour.
       matrix:
         platform: [linux/amd64, linux/arm64]
+        # Keep in sync with the merge-manifests matrix and verify-anonymous-pull.
+        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup, clamav, tinyproxy]
         include:
           - name: web
             dockerfile: apps/web/Dockerfile
