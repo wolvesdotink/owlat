@@ -18,7 +18,7 @@ import { restartToUpdate } from '~/lib/desktop/updater.client';
 
 const { t, locale } = useI18n();
 const { settings, isReady, setGlobal } = useDesktopAppSettings();
-const { phase, version, percent, downloadedBytes, totalBytes, lastCheckedAt, source } =
+const { phase, version, percent, downloadedBytes, totalBytes, lastCheckedAt, source, errorKind } =
 	useDesktopUpdateState();
 
 const appVersion = ref('');
@@ -157,7 +157,11 @@ async function restart() {
 				{{ t('desktop.settings.updates.checking') }}
 			</p>
 			<p v-else-if="phase === 'error'" class="mt-2 text-xs text-error">
-				{{ t('desktop.settings.updates.failed') }}
+				{{
+					errorKind === 'unreachable'
+						? t('desktop.settings.updates.unreachable')
+						: t('desktop.settings.updates.failed')
+				}}
 			</p>
 			<p v-else-if="lastChecked" class="mt-2 text-xs text-text-tertiary">{{ lastChecked }}</p>
 		</template>

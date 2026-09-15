@@ -119,6 +119,8 @@ export default defineNuxtPlugin({
 		// Non-blocking: deep links can arrive any time after boot.
 		void setupDeepLinks();
 		// Non-blocking auto-update check (+ a manual `owlat:check-updates` trigger).
+		// Gates itself to the main window: the compose webview boots this plugin
+		// too, and must not run a second updater against the shared native slot.
 		setupUpdateChecks();
 	},
 });

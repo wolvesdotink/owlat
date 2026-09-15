@@ -9838,6 +9838,7 @@
 				"ready": "Owlat {version} is downloaded and ready.",
 				"restartNow": "Restart now",
 				"title": "Updates",
+				"unreachable": "Your Owlat instance could not be reached, so nothing was checked. Try again once you're back online.",
 				"version": "Owlat {version}.",
 				"viaGithub": "Updates come straight from GitHub releases."
 			},
@@ -11726,6 +11727,10 @@
 				"serverIpPlaceholder": "your server's public IP"
 			},
 			"updater": {
+				"unreachable": {
+					"body": "{host} could not be reached. Owlat will try again later.",
+					"title": "Update check skipped"
+				},
 				"upToDate": {
 					"body": "You have the latest version.",
 					"title": "Owlat is up to date"

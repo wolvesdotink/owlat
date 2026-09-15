@@ -36,6 +36,13 @@ vi.mock('~/composables/useDesktopAppSettings', () => ({
 	loadDesktopAppSettings: () => loadDesktopAppSettings(),
 }));
 
+// Which webview this is. The compose window boots the same plugin and must
+// stay out of the updater entirely.
+let windowLabel = 'main';
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+	getCurrentWebviewWindow: () => ({ label: windowLabel }),
+}));
+
 type UpdateFound = { version: string; notes?: string };
 type ProgressEvent_ =
 	| { kind: 'started'; contentLength?: number }
@@ -83,6 +90,7 @@ async function load() {
 }
 
 beforeEach(() => {
+	windowLabel = 'main';
 	getActiveWorkspace.mockReturnValue(null);
 	checkForUpdate.mockReset().mockResolvedValue(null);
 	installUpdate.mockReset().mockResolvedValue(undefined);
@@ -150,7 +158,7 @@ describe('resolveUpdateSource', () => {
 
 		// Deliberately NOT GitHub: an instance that manages updates and is having
 		// a bad minute must not be gone around.
-		await expect(resolveUpdateSource()).resolves.toEqual({ kind: 'skip' });
+		await expect(resolveUpdateSource()).resolves.toEqual({ kind: 'skip', host: 'acme.example' });
 	});
 
 	it('skips the round when the probe never lands (offline / timeout)', async () => {
@@ -158,7 +166,34 @@ describe('resolveUpdateSource', () => {
 		fetchMock.mockRejectedValue(new Error('network down'));
 		const { resolveUpdateSource } = await load();
 
-		await expect(resolveUpdateSource()).resolves.toEqual({ kind: 'skip' });
+		await expect(resolveUpdateSource()).resolves.toEqual({ kind: 'skip', host: 'acme.example' });
+	});
+
+	it('asks GitHub while a managing instance has nothing cached yet', async () => {
+		// A server upgraded minutes ago, before its first refresh: it would answer
+		// 204 to everyone, and the app would call itself up to date although a
+		// newer release exists. The instance has nothing to offer, so GitHub decides.
+		getActiveWorkspace.mockReturnValue(workspace('https://acme.example'));
+		fetchMock.mockResolvedValue(
+			policyResponse(200, {
+				...POLICY,
+				latestVersion: null,
+				latestPublishedAt: null,
+				checkedAt: null,
+			})
+		);
+		const { resolveUpdateSource } = await load();
+
+		await expect(resolveUpdateSource()).resolves.toEqual({ kind: 'github', endpoint: null });
+	});
+
+	it('still honours a paused policy when nothing is cached', async () => {
+		getActiveWorkspace.mockReturnValue(workspace('https://acme.example'));
+		const paused = { ...POLICY, mode: 'paused', latestVersion: null, latestPublishedAt: null };
+		fetchMock.mockResolvedValue(policyResponse(200, paused));
+		const { resolveUpdateSource } = await load();
+
+		await expect(resolveUpdateSource()).resolves.toMatchObject({ kind: 'server', policy: paused });
 	});
 });
 
@@ -225,6 +260,60 @@ describe('runUpdateCheck', () => {
 
 		expect(state.phase.value).toBe('idle');
 		expect(checkForUpdate).not.toHaveBeenCalled();
+		expect(sendDesktopNotification).not.toHaveBeenCalled();
+	});
+
+	it('tells a manual check that the instance could not be reached', async () => {
+		// The automatic cadence stays quiet, but "Check for updates now" must not
+		// look like a dead button while the instance is down.
+		getActiveWorkspace.mockReturnValue(workspace('https://acme.example'));
+		fetchMock.mockRejectedValue(new Error('offline'));
+		const { runUpdateCheck, state } = await load();
+
+		await runUpdateCheck({ announce: true });
+
+		expect(state.phase.value).toBe('error');
+		expect(state.errorKind.value).toBe('unreachable');
+		expect(state.lastCheckedAt.value).not.toBeNull();
+		expect(checkForUpdate).not.toHaveBeenCalled();
+		expect(sendDesktopNotification).toHaveBeenCalledWith(
+			'shared.desktop.updater.unreachable.title',
+			'shared.desktop.updater.unreachable.body'
+		);
+	});
+
+	it('does not download again once an update is waiting for the restart', async () => {
+		// The running binary still reports the old version, so a second check
+		// would be offered the same release; re-fetching it (and, if that fetch
+		// failed, dropping the Restart button) is exactly what must not happen.
+		checkForUpdate.mockResolvedValue({ version: '0.4.7' });
+		const { runUpdateCheck, state } = await load();
+
+		await runUpdateCheck();
+		expect(state.phase.value).toBe('ready');
+
+		installUpdate.mockRejectedValue(Object.assign(new Error('down'), { error: 'network' }));
+		await runUpdateCheck();
+		await runUpdateCheck({ announce: true });
+
+		expect(checkForUpdate).toHaveBeenCalledTimes(1);
+		expect(installUpdate).toHaveBeenCalledTimes(1);
+		expect(state.phase.value).toBe('ready');
+		expect(state.version.value).toBe('0.4.7');
+		// The manual trigger is reminded of what is waiting rather than ignored.
+		expect(notifyUpdateReady).toHaveBeenCalledTimes(2);
+	});
+
+	it('reports a failed restart-time install on the card instead of throwing', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		restartApp.mockRejectedValueOnce(Object.assign(new Error('bad'), { error: 'signature' }));
+		const { restartToUpdate, state } = await load();
+
+		await expect(restartToUpdate()).resolves.toBeUndefined();
+
+		expect(state.phase.value).toBe('error');
+		expect(state.errorKind.value).toBe('signature');
+		warn.mockRestore();
 	});
 
 	it('does not stack a second run on top of a download in flight', async () => {
@@ -276,16 +365,95 @@ describe('setupUpdateChecks', () => {
 		setInterval_.mockRestore();
 	});
 
-	it('honours the device setting: no boot check and no timer when it is off', async () => {
+	it('honours the device setting: no boot check when it is off', async () => {
 		loadDesktopAppSettings.mockResolvedValue({ global: { autoCheckUpdates: false } });
 		const setInterval_ = vi.spyOn(globalThis, 'setInterval');
 		const { setupUpdateChecks } = await load();
 
 		setupUpdateChecks();
-		await vi.waitFor(() => expect(loadDesktopAppSettings).toHaveBeenCalled());
+		await vi.waitFor(() => expect(setInterval_).toHaveBeenCalledTimes(1));
 
 		expect(checkForUpdate).not.toHaveBeenCalled();
+		clearInterval(setInterval_.mock.results[0]?.value as ReturnType<typeof setInterval>);
+		setInterval_.mockRestore();
+	});
+
+	/** The six-hour tick as the timer would fire it, without waiting six hours. */
+	async function armedTick(setInterval_: ReturnType<typeof vi.spyOn>): Promise<() => void> {
+		await vi.waitFor(() => expect(setInterval_).toHaveBeenCalledTimes(1));
+		return setInterval_.mock.calls[0]?.[0] as () => void;
+	}
+
+	it('re-reads the setting at every tick, so switching it off mid-session stops the timer runs', async () => {
+		const setInterval_ = vi.spyOn(globalThis, 'setInterval');
+		const { setupUpdateChecks } = await load();
+		setupUpdateChecks();
+		const tick = await armedTick(setInterval_);
+		await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledTimes(1));
+
+		// The user unticks "check for new versions" and leaves the app open.
+		loadDesktopAppSettings.mockResolvedValue({ global: { autoCheckUpdates: false } });
+		tick();
+		await vi.waitFor(() => expect(loadDesktopAppSettings).toHaveBeenCalledTimes(2));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(checkForUpdate).toHaveBeenCalledTimes(1);
+		clearInterval(setInterval_.mock.results[0]?.value as ReturnType<typeof setInterval>);
+		setInterval_.mockRestore();
+	});
+
+	it('picks the setting up when it is switched on mid-session', async () => {
+		loadDesktopAppSettings.mockResolvedValue({ global: { autoCheckUpdates: false } });
+		const setInterval_ = vi.spyOn(globalThis, 'setInterval');
+		const { setupUpdateChecks } = await load();
+		setupUpdateChecks();
+		const tick = await armedTick(setInterval_);
+		expect(checkForUpdate).not.toHaveBeenCalled();
+
+		loadDesktopAppSettings.mockResolvedValue({ global: { autoCheckUpdates: true } });
+		tick();
+
+		await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledTimes(1));
+		clearInterval(setInterval_.mock.results[0]?.value as ReturnType<typeof setInterval>);
+		setInterval_.mockRestore();
+	});
+
+	it('stops the timer once an update is downloaded and waiting', async () => {
+		checkForUpdate.mockResolvedValue({ version: '0.4.7' });
+		const setInterval_ = vi.spyOn(globalThis, 'setInterval');
+		const clearInterval_ = vi.spyOn(globalThis, 'clearInterval');
+		const { setupUpdateChecks, state } = await load();
+
+		setupUpdateChecks();
+		await vi.waitFor(() => expect(setInterval_).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(state.phase.value).toBe('ready'));
+
+		expect(clearInterval_).toHaveBeenCalledWith(setInterval_.mock.results[0]?.value);
+		setInterval_.mockRestore();
+		clearInterval_.mockRestore();
+	});
+
+	it('does nothing at all in a secondary window such as compose', async () => {
+		windowLabel = 'compose';
+		const setInterval_ = vi.spyOn(globalThis, 'setInterval');
+		// Listeners from earlier cases outlive `vi.resetModules()` on the shared
+		// window, so drive this module's own handler rather than dispatching.
+		const addEventListener_ = vi.spyOn(window, 'addEventListener');
+		const { setupUpdateChecks } = await load();
+
+		setupUpdateChecks();
+		const handler = addEventListener_.mock.calls.find(
+			([name]) => name === 'owlat:check-updates'
+		)?.[1];
+		expect(handler).toBeTypeOf('function');
+		(handler as EventListener)(new Event('owlat:check-updates'));
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		// No boot check, no timer, and the shared menu event is left to main.
+		expect(checkForUpdate).not.toHaveBeenCalled();
+		expect(loadDesktopAppSettings).not.toHaveBeenCalled();
 		expect(setInterval_).not.toHaveBeenCalled();
+		addEventListener_.mockRestore();
 		setInterval_.mockRestore();
 	});
 

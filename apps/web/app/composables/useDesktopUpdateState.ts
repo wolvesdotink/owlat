@@ -21,8 +21,12 @@ export type DesktopUpdatePhase =
 	| 'upToDate'
 	| 'error';
 
-/** The failure kinds the Rust bridge distinguishes (see apps/desktop/src/updater.ts). */
-export type DesktopUpdateErrorKind = 'network' | 'signature' | 'unknown';
+/**
+ * The failure kinds the Rust bridge distinguishes (see apps/desktop/src/updater.ts),
+ * plus `unreachable`: the run never got as far as the bridge because the
+ * instance that should decide could not be asked (a manual check while offline).
+ */
+export type DesktopUpdateErrorKind = 'network' | 'signature' | 'unknown' | 'unreachable';
 
 /** `GET /api/desktop/update-policy` — what the active instance offers. */
 export interface DesktopUpdatePolicySummary {

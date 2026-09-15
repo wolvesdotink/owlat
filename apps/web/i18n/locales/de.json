@@ -9838,6 +9838,7 @@
 				"ready": "Owlat {version} ist geladen und bereit.",
 				"restartNow": "Jetzt neu starten",
 				"title": "Updates",
+				"unreachable": "Ihre Owlat-Instanz war nicht erreichbar, es wurde nichts geprüft. Versuchen Sie es erneut, sobald Sie wieder online sind.",
 				"version": "Owlat {version}.",
 				"viaGithub": "Updates kommen direkt von den GitHub-Releases."
 			},
@@ -11726,6 +11727,10 @@
 				"serverIpPlaceholder": "die öffentliche IP Ihres Servers"
 			},
 			"updater": {
+				"unreachable": {
+					"body": "{host} war nicht erreichbar. Owlat versucht es später erneut.",
+					"title": "Update-Prüfung übersprungen"
+				},
 				"upToDate": {
 					"body": "Sie haben die neueste Version.",
 					"title": "Owlat ist aktuell"
