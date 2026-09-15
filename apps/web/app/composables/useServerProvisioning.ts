@@ -30,9 +30,6 @@ import {
 	type RemoteOptions,
 	type SetupConfigInput,
 	type TimelineStep,
-	needsReleaseResolution,
-	parseResolvedRelease,
-	resolveLatestReleaseCommand,
 } from '~/lib/desktop/provisioning';
 import {
 	removeSetupConfigCommand,
@@ -42,6 +39,7 @@ import {
 	resolveServerIp,
 } from '~/lib/desktop/provisioningForm';
 import { installLocalSource } from '~/composables/serverProvisioningLocalSource';
+import { resolveInstallRelease } from '~/composables/serverProvisioningRelease';
 
 export type ProvisionStage =
 	| 'idle'
@@ -276,32 +274,12 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 
 			// resolve-release — the default install targets the newest published
 			// release; a pinned version, a branch or a local checkout skips this.
-			if (needsReleaseResolution(remote)) {
-				let resolved: string | null = null;
-				await runExecStep(
-					sessionId,
-					'resolve-release',
-					resolveLatestReleaseCommand(remote),
-					(line) => {
-						resolved ??= parseResolvedRelease(line);
-					}
-				);
-				if (!resolved) {
-					setStepState(steps, 'resolve-release', 'failed');
-					throw new Error(t('shared.useServerProvisioning.releaseNotFound'));
-				}
-				remote = { ...remote, version: resolved };
-				setStepState(steps, 'resolve-release', 'ok', `v${resolved}`);
-			} else {
-				setStepState(
-					steps,
-					'resolve-release',
-					'skipped',
-					remote.version
-						? `v${remote.version}`
-						: t('shared.useServerProvisioning.developmentInstall')
-				);
-			}
+			remote = await resolveInstallRelease({
+				steps,
+				remote,
+				runExecStep: (stepId, command, onLine) => runExecStep(sessionId, stepId, command, onLine),
+				t,
+			});
 
 			const source = installSource(remote);
 			if (source !== 'git' && remote.localSource) {
