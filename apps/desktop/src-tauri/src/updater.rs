@@ -16,10 +16,21 @@
 //!      state rather than returned, because an `Update` cannot cross the IPC
 //!      boundary and the install has to act on the very object the check
 //!      verified.
-//!   2. `updater_install(on_event)` — downloads and installs the stashed
+//!   2. `updater_install(on_event)` — downloads and VERIFIES the stashed
 //!      update, streaming progress over a `Channel` the same way
-//!      `ssh_exec_stream` streams remote output.
-//!   3. `updater_restart()` — applies it.
+//!      `ssh_exec_stream` streams remote output, and keeps the verified bytes.
+//!   3. `updater_restart()` — installs those bytes and relaunches. Kept apart
+//!      from the download on purpose: on Windows the plugin's install hands
+//!      over to the NSIS/MSI installer and exits the process on the spot, so
+//!      doing it inside step 2 would close the app in the middle of whatever
+//!      the user was doing, at whatever six-hour tick found the update. Here
+//!      the process only ever goes away on the user's own "Restart now".
+//!
+//! The state between the steps is one `Pending` slot: idle → found →
+//! downloading → ready. A check while a download is in flight is refused, a
+//! check while an update is ready just reports that update again, and an
+//! install is never run twice for the same bytes — two webviews (the compose
+//! window boots the same SPA) cannot race each other through it.
 //!
 //! Plus `updater_notify_ready`, the native "update is ready" toast with a
 //! Restart-now action on the platforms that can render one (see below).
@@ -29,8 +40,16 @@
 //! download). A server chooses among signed releases; it can never substitute
 //! one. Endpoints are required to be https — the plugin refuses plain http
 //! unless `dangerousInsecureTransportProtocol` is set, and that flag stays off.
+//!
+//! The manifest itself is not signed, only the bundle is, so the plugin's
+//! "newer than me?" decision reads a version string the endpoint can make up.
+//! `vet_download_url` closes that gap: the bundle URL a check came back with
+//! has to be a GitHub release asset of THIS repository under a tag carrying the
+//! very version the manifest claims. An endpoint can therefore only ever name
+//! one of our own releases, honestly labelled — it cannot pair "9.9.9" with an
+//! old bundle and its genuine (public) signature to roll a client back, and it
+//! cannot point the download at some other host at all.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -39,20 +58,31 @@ use tauri::ipc::Channel;
 // `Manager` is what puts `package_info()` and `config()` on an `AppHandle`
 // (same reason menu.rs and notifications.rs import it).
 use tauri::{command, AppHandle, Manager, State, Url};
-use tauri_plugin_updater::UpdaterExt;
+use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// How long the whole check (connect + manifest fetch) may take. The manifest
 /// route is one cached Convex read, so a server that has not answered in 30s is
 /// down rather than slow, and the next scheduled check will pick it up.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// The update found by the last successful check, waiting to be installed.
-///
-/// `Update` carries the verified manifest entry (URL + signature) for THIS
-/// platform; keeping it means the install downloads exactly what the check
-/// resolved, with no second round trip to the endpoint.
+/// Where an update stands between the three commands.
 #[derive(Default)]
-pub struct PendingUpdate(Mutex<Option<tauri_plugin_updater::Update>>);
+pub enum Pending {
+    #[default]
+    Idle,
+    /// The last check found this; `Update` carries the vetted manifest entry
+    /// (URL + signature) for THIS platform, so the download fetches exactly
+    /// what the check resolved with no second round trip to the endpoint.
+    Found(Update),
+    /// A download is in flight; checks and installs are refused until it lands.
+    Downloading,
+    /// Downloaded and signature-verified, waiting for "Restart now".
+    Ready { update: Update, bytes: Vec<u8> },
+}
+
+/// The one update slot, shared by every webview of the process.
+#[derive(Default)]
+pub struct PendingUpdate(Mutex<Pending>);
 
 /// What the webview learns about an available update.
 #[derive(Serialize, Clone)]
@@ -67,8 +97,12 @@ pub struct UpdateInfo {
 }
 
 /// Download progress, streamed over the `Channel` the install command is given.
+///
+/// `rename_all` on an enum renames the VARIANTS; the fields inside a struct
+/// variant need `rename_all_fields` as well, or `content_length` would go over
+/// the wire as-is while apps/desktop/src/updater.ts reads `contentLength`.
 #[derive(Serialize, Clone)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum UpdateProgress {
     /// First chunk: `content_length` is absent when the server sent no
     /// `Content-Length` (the UI then shows an indeterminate bar).
@@ -100,6 +134,60 @@ fn parse_endpoint(raw: &str) -> Result<Url, String> {
 fn user_agent(version: &str) -> String {
     format!("owlat-desktop/{version}")
 }
+
+/// The host every bundle has to come from.
+const RELEASE_HOST: &str = "github.com";
+
+/// `/<owner>/<repo>/releases/download/`, from the `repository` field in
+/// Cargo.toml so a fork or a rename is the same single edit it is on the web
+/// side (`GITHUB_REPO_SLUG` in @owlat/shared).
+fn release_path_prefix() -> String {
+    let repo = env!("CARGO_PKG_REPOSITORY")
+        .trim_end_matches('/')
+        .strip_prefix("https://github.com")
+        .expect("Cargo.toml `repository` must be a github.com URL");
+    format!("{repo}/releases/download/")
+}
+
+/// Refuse a bundle URL that is not a release asset of this repository under a
+/// tag matching the version the manifest claims (`v<version>` on the unified
+/// line, `desktop-v<version>` on the desktop-only line).
+///
+/// This is what binds the unsigned `version` field — the only thing the
+/// plugin's "is it newer?" check looks at — to something GitHub, not the
+/// endpoint, controls. Without it an endpoint could announce "9.9.9", point at
+/// an older release's bundle with that bundle's genuine signature, and roll a
+/// client back; or point at any host at all and have the app buffer whatever
+/// comes back before the signature check ever runs.
+fn vet_download_url(url: &Url, version: &str) -> Result<(), String> {
+    let refuse = || {
+        format!("signature: {url} is not a release asset of this app for version {version}")
+    };
+    if url.scheme() != "https" || url.host_str() != Some(RELEASE_HOST) {
+        return Err(refuse());
+    }
+    let prefix = release_path_prefix();
+    let path = url.path();
+    let asset = [format!("v{version}/"), format!("desktop-v{version}/")]
+        .iter()
+        .find_map(|tag| path.strip_prefix(&format!("{prefix}{tag}")));
+    match asset {
+        // A tag directory alone, or a path that keeps going, is not an asset.
+        Some(name) if !name.is_empty() && !name.contains('/') => Ok(()),
+        _ => Err(refuse()),
+    }
+}
+
+fn info_of(update: &Update) -> UpdateInfo {
+    UpdateInfo {
+        version: update.version.clone(),
+        current_version: update.current_version.clone(),
+        notes: update.body.clone(),
+        date: update.date.map(|d| d.unix_timestamp()),
+    }
+}
+
+const ALREADY_DOWNLOADING: &str = "unknown: an update is already downloading";
 
 /// A poisoned state mutex means a previous command panicked mid-update; there
 /// is nothing to recover, so report it like any other unclassified failure.
@@ -151,13 +239,26 @@ fn updater_error(e: impl std::fmt::Display) -> String {
 /// Check for an update, optionally against a server-provided endpoint.
 ///
 /// Returns `None` when the endpoint says "nothing for you" (a 204 from an
-/// instance holding the fleet back, or simply no newer release).
+/// instance holding the fleet back, or simply no newer release). An update
+/// that is already downloaded is reported again without asking anyone — the
+/// running binary still says the old version, so an endpoint would only offer
+/// the same release a second time — and a download in flight is left alone.
 #[command]
 pub async fn updater_check(
     app: AppHandle,
     state: State<'_, PendingUpdate>,
     endpoint: Option<String>,
 ) -> Result<Option<UpdateInfo>, String> {
+    {
+        let pending = state.0.lock().map_err(|_| poisoned())?;
+        if let Pending::Ready { update, .. } = &*pending {
+            return Ok(Some(info_of(update)));
+        }
+        if matches!(*pending, Pending::Downloading) {
+            return Err(ALREADY_DOWNLOADING.to_string());
+        }
+    }
+
     let ua = user_agent(&app.package_info().version.to_string());
     let mut builder = app.updater_builder().timeout(CHECK_TIMEOUT);
     builder = builder.header("User-Agent", ua).map_err(updater_error)?;
@@ -167,24 +268,48 @@ pub async fn updater_check(
     }
 
     let updater = builder.build().map_err(updater_error)?;
-    let found = updater.check().await.map_err(updater_error)?;
-    let info = found.as_ref().map(|update| UpdateInfo {
-        version: update.version.clone(),
-        current_version: update.current_version.clone(),
-        notes: update.body.clone(),
-        date: update.date.map(|d| d.unix_timestamp()),
-    });
+    let checked = updater
+        .check()
+        .await
+        .map_err(updater_error)
+        .and_then(|found| match found {
+            Some(update) => {
+                vet_download_url(&update.download_url, &update.version)?;
+                Ok(Some(update))
+            }
+            None => Ok(None),
+        });
 
     let mut pending = state.0.lock().map_err(|_| poisoned())?;
-    *pending = found;
-    Ok(info)
+    // Another webview may have got ahead while this check was on the wire.
+    if let Pending::Ready { update, .. } = &*pending {
+        return Ok(Some(info_of(update)));
+    }
+    if matches!(*pending, Pending::Downloading) {
+        return Err(ALREADY_DOWNLOADING.to_string());
+    }
+    match checked {
+        Ok(found) => {
+            let info = found.as_ref().map(info_of);
+            *pending = found.map_or(Pending::Idle, Pending::Found);
+            Ok(info)
+        }
+        Err(e) => {
+            *pending = Pending::Idle;
+            Err(e)
+        }
+    }
 }
 
-/// Download and install the update the last check found, reporting progress.
+/// Download and verify the update the last check found, reporting progress.
+/// The bytes stay in the slot for `updater_restart`; nothing is installed yet.
 ///
-/// Consumes the pending update: a failed install leaves nothing behind to
-/// retry, so the webview re-checks (cheap — one cached read) rather than
-/// reusing a manifest entry whose download already went wrong.
+/// A failed download leaves nothing behind to retry, so the webview re-checks
+/// (cheap — one cached read) rather than reusing a manifest entry whose
+/// download already went wrong. An update that is already downloaded is
+/// reported as finished straight away, so a webview that boots into a ready
+/// slot (a workspace switch reloads it) converges on "ready" without a second
+/// download.
 #[command]
 pub async fn updater_install(
     state: State<'_, PendingUpdate>,
@@ -192,16 +317,36 @@ pub async fn updater_install(
 ) -> Result<(), String> {
     let update = {
         let mut pending = state.0.lock().map_err(|_| poisoned())?;
-        pending.take()
-    }
-    .ok_or_else(|| "unknown: no update is ready to install".to_string())?;
+        match std::mem::take(&mut *pending) {
+            Pending::Found(update) => {
+                *pending = Pending::Downloading;
+                update
+            }
+            Pending::Ready { update, bytes } => {
+                let size = bytes.len();
+                *pending = Pending::Ready { update, bytes };
+                let _ = on_event.send(UpdateProgress::Started {
+                    content_length: Some(size as u64),
+                });
+                let _ = on_event.send(UpdateProgress::Progress { chunk_length: size });
+                let _ = on_event.send(UpdateProgress::Finished);
+                return Ok(());
+            }
+            Pending::Downloading => {
+                *pending = Pending::Downloading;
+                return Err(ALREADY_DOWNLOADING.to_string());
+            }
+            Pending::Idle => return Err("unknown: no update is ready to install".to_string()),
+        }
+    };
 
     // The plugin reports the total length on every chunk; the UI wants it once,
     // up front, so the first chunk doubles as the "download started" event.
     let progress = on_event.clone();
-    let started = AtomicBool::new(false);
+    let mut started = false;
     let on_chunk = move |chunk_length: usize, content_length: Option<u64>| {
-        if !started.swap(true, Ordering::Relaxed) {
+        if !started {
+            started = true;
             let _ = progress.send(UpdateProgress::Started { content_length });
         }
         let _ = progress.send(UpdateProgress::Progress { chunk_length });
@@ -210,18 +355,51 @@ pub async fn updater_install(
         let _ = on_event.send(UpdateProgress::Finished);
     };
 
-    update
-        .download_and_install(on_chunk, on_finish)
-        .await
-        .map_err(updater_error)?;
-    Ok(())
+    // Verified against the minisign key inside `download`; an unsigned or
+    // mislabelled bundle never reaches the slot.
+    let downloaded = update.download(on_chunk, on_finish).await.map_err(updater_error);
+
+    let mut pending = state.0.lock().map_err(|_| poisoned())?;
+    match downloaded {
+        Ok(bytes) => {
+            *pending = Pending::Ready { update, bytes };
+            Ok(())
+        }
+        Err(e) => {
+            *pending = Pending::Idle;
+            Err(e)
+        }
+    }
 }
 
-/// Relaunch into the installed version. Needs no extra plugin: `restart()`
-/// exits the process and starts the (now replaced) binary again.
+/// Install the downloaded update and relaunch into it.
+///
+/// macOS and Linux: the plugin replaces the bundle (the AppImage in place; deb
+/// and rpm through the system package manager, which may ask for a password
+/// here) and `restart()` starts the new binary. Windows: the plugin launches
+/// the NSIS/MSI installer and exits this process itself; the installer
+/// relaunches the app when it is done, so `restart()` is never reached there.
+/// Either way the process only ends because the user asked for it.
+///
+/// Consumes the slot: a failed install is reported and the next check starts
+/// over rather than retrying bytes that already went wrong on disk.
 #[command]
-pub fn updater_restart(app: AppHandle) {
-    app.restart();
+pub async fn updater_restart(
+    app: AppHandle,
+    state: State<'_, PendingUpdate>,
+) -> Result<(), String> {
+    let (update, bytes) = {
+        let mut pending = state.0.lock().map_err(|_| poisoned())?;
+        match std::mem::take(&mut *pending) {
+            Pending::Ready { update, bytes } => (update, bytes),
+            other => {
+                *pending = other;
+                return Err("unknown: no update is ready to install".to_string());
+            }
+        }
+    };
+    update.install(bytes).map_err(updater_error)?;
+    app.restart()
 }
 
 // ── "Update ready" notification ────────────────────────────────────────────
@@ -230,9 +408,10 @@ pub fn updater_restart(app: AppHandle) {
 // buttons on mobile, so the Restart-now action is driven through the native
 // crates directly (mac-notification-sys on macOS, notify-rust on Linux, both
 // already dependencies). Windows falls back to a plain notification and the
-// in-app "Restart to update" button on the device page. The action is delivered
-// to the webview as an `updater-action` event rather than restarting from here,
-// so the restart always runs through the same command path the button uses.
+// in-app "Restart now" button on the device page, which on Windows hands over
+// to the installer (see `updater_restart`). The action is delivered to the
+// webview as an `updater-action` event rather than restarting from here, so
+// the restart always runs through the same command path the button uses.
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[derive(Clone, serde::Serialize)]
@@ -311,7 +490,96 @@ pub fn updater_notify_ready(app: AppHandle, title: String, body: String, action_
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_error, parse_endpoint, updater_error, user_agent};
+    use super::{
+        classify_error, parse_endpoint, release_path_prefix, updater_error, user_agent,
+        vet_download_url, UpdateProgress,
+    };
+    use tauri::Url;
+
+    fn url(s: &str) -> Url {
+        Url::parse(s).unwrap()
+    }
+
+    /// A release asset URL as tauri-action publishes them in `latest.json`.
+    fn asset(tag: &str, name: &str) -> Url {
+        url(&format!(
+            "https://github.com/wolvesdotink/owlat/releases/download/{tag}/{name}"
+        ))
+    }
+
+    #[test]
+    fn release_path_prefix_comes_from_the_cargo_repository_field() {
+        let prefix = release_path_prefix();
+        assert_eq!(prefix, "/wolvesdotink/owlat/releases/download/");
+    }
+
+    #[test]
+    fn bundle_url_must_be_a_release_asset_under_a_tag_carrying_the_claimed_version() {
+        let unified = asset("v0.4.7", "Owlat.app.tar.gz");
+        assert!(vet_download_url(&unified, "0.4.7").is_ok());
+        let desktop_line = asset("desktop-v0.4.7", "Owlat_0.4.7_amd64.AppImage");
+        assert!(vet_download_url(&desktop_line, "0.4.7").is_ok());
+        let rc = asset("v0.5.0-rc.1", "Owlat.app.tar.gz");
+        assert!(vet_download_url(&rc, "0.5.0-rc.1").is_ok());
+    }
+
+    #[test]
+    fn bundle_url_naming_another_release_is_refused_as_a_signature_problem() {
+        // The rollback: "9.9.9" announced, an old bundle (with its genuine,
+        // public signature) named. The tag does not carry the claimed version.
+        let old = asset("v0.4.0", "Owlat.app.tar.gz");
+        let err = vet_download_url(&old, "9.9.9").unwrap_err();
+        assert!(err.starts_with("signature: "), "{err}");
+        assert_eq!(classify_error(&err), "signature");
+        // A tag that merely starts with the version is not the version.
+        let longer = asset("v0.4.70", "x.tar.gz");
+        assert!(vet_download_url(&longer, "0.4.7").is_err());
+    }
+
+    #[test]
+    fn bundle_url_off_github_or_off_this_repository_is_refused() {
+        let releases = "https://github.com/wolvesdotink/owlat/releases/download";
+        for bad in [
+            "https://attacker.example/blob".to_string(),
+            "http://192.168.1.1:8080/blob".to_string(),
+            "https://objects.githubusercontent.com/x/v0.4.7/Owlat.app.tar.gz".to_string(),
+            "https://github.com/someone-else/owlat/releases/download/v0.4.7/x.tar.gz".to_string(),
+            format!("{releases}/v0.4.7/"),
+            format!("{releases}/v0.4.7/nested/x.tar.gz"),
+            "https://github.com/wolvesdotink/owlat/archive/v0.4.7.tar.gz".to_string(),
+        ] {
+            assert!(vet_download_url(&url(&bad), "0.4.7").is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn progress_events_cross_the_ipc_boundary_in_camel_case() {
+        // The webview (apps/desktop/src/updater.ts) reads `contentLength` and
+        // `chunkLength`; a snake_case field would leave the progress bar at NaN.
+        let sized = UpdateProgress::Started {
+            content_length: Some(1),
+        };
+        let unknown_size = UpdateProgress::Started {
+            content_length: None,
+        };
+        let progress = UpdateProgress::Progress { chunk_length: 40 };
+        assert_eq!(
+            serde_json::to_string(&sized).unwrap(),
+            r#"{"kind":"started","contentLength":1}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&unknown_size).unwrap(),
+            r#"{"kind":"started","contentLength":null}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&progress).unwrap(),
+            r#"{"kind":"progress","chunkLength":40}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&UpdateProgress::Finished).unwrap(),
+            r#"{"kind":"finished"}"#
+        );
+    }
 
     #[test]
     fn endpoint_keeps_the_tauri_placeholders_and_requires_https() {

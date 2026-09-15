@@ -45,9 +45,10 @@ fn main() {
         )
         // Hold live SSH sessions for the "set up a new server" flow.
         .manage(ssh::SshState::default())
-        // The update found by the last check, held between `updater_check` and
-        // `updater_install` (an `Update` cannot cross the IPC boundary, and the
-        // install must act on the entry the check verified). See updater.rs.
+        // The one update slot: found by `updater_check`, downloaded and verified
+        // by `updater_install`, installed by `updater_restart` (an `Update`
+        // cannot cross the IPC boundary, and the install must act on the entry
+        // the check vetted). See updater.rs.
         .manage(updater::PendingUpdate::default())
         // One-shot allowlist of paths the user authorized to read (native pick
         // or OS drop). See files.rs — it keeps `read_authorized_file` from being

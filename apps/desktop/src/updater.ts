@@ -91,9 +91,12 @@ export async function checkForUpdate(endpoint: string | null): Promise<UpdateChe
 }
 
 /**
- * Download and install the update the last check found, reporting progress.
- * The bytes are verified against the app's minisign public key by the plugin
- * before anything is written, whoever named the release.
+ * Download and verify the update the last check found, reporting progress.
+ * The bytes are checked against the app's minisign public key by the plugin
+ * and then held on the native side for {@link restartApp}; nothing is
+ * installed yet, so the app keeps running untouched until the user asks.
+ * Resolves at once, replaying a single full-size progress event, when the
+ * update is already downloaded (a webview that reloaded into a ready slot).
  */
 export async function installUpdate(onProgress: (event: UpdateProgress) => void): Promise<void> {
 	const channel = new Channel<UpdateProgress>();
@@ -105,7 +108,13 @@ export async function installUpdate(onProgress: (event: UpdateProgress) => void)
 	}
 }
 
-/** Relaunch into the freshly installed version. Does not return on success. */
+/**
+ * Install the downloaded update and relaunch into it. Does not return on
+ * success: macOS and Linux replace the bundle and restart; Windows hands over
+ * to the installer, which exits this process and relaunches the app itself.
+ * Rejects with a typed {@link UpdateError} when the install fails or nothing
+ * was downloaded.
+ */
 export async function restartApp(): Promise<void> {
 	try {
 		await invoke('updater_restart');
@@ -118,7 +127,7 @@ export async function restartApp(): Promise<void> {
  * Show the native "update ready" notification. macOS and Linux render the
  * `actionLabel` button and emit the restart request picked up by
  * {@link onUpdateRestartRequest}; every other target shows a plain
- * notification and leaves the restart to the in-app button.
+ * notification and leaves the install-and-relaunch to the in-app button.
  *
  * Resolves `false` when the command is unavailable (an older shell), so the
  * caller can fall back to a plain notification rather than say nothing.

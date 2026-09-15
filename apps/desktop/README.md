@@ -205,7 +205,20 @@ take one, the check lives in `src-tauri/src/updater.rs` (`updater_check`,
 `updater_install`, `updater_restart`) with `src/updater.ts` as the bridge.
 Bundles are still downloaded from GitHub and still verified against the
 minisign public key baked into the app, so an instance can choose among signed
-releases or withhold them all — it can never substitute one.
+releases or withhold them all — it can never substitute one. The manifest is
+not signed, so the Rust side additionally refuses any bundle URL that is not a
+release asset of this repository under a tag carrying the version the manifest
+claims (`v<version>` or `desktop-v<version>`): an endpoint cannot label an old
+bundle as a newer version to roll a client back, and cannot send the download
+anywhere but GitHub.
+
+The download and the install are two steps. `updater_install` downloads and
+verifies in the background and keeps the bytes; `updater_restart` (the "Restart
+now" button or the notification action) installs them and relaunches. On
+Windows that last step hands over to the NSIS/MSI installer, which exits the
+app and relaunches it itself — the app never closes on a timer tick. Only the
+main window runs the updater; the compose window shares the process's one
+update slot and stays out of it.
 
 ## Webview CSP rationale
 
