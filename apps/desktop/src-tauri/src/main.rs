@@ -7,6 +7,7 @@ mod notifications;
 mod secrets;
 mod shortcuts;
 mod ssh;
+mod updater;
 mod window;
 
 // `Manager` brings `get_webview_window` into scope — used by the macOS
@@ -44,6 +45,10 @@ fn main() {
         )
         // Hold live SSH sessions for the "set up a new server" flow.
         .manage(ssh::SshState::default())
+        // The update found by the last check, held between `updater_check` and
+        // `updater_install` (an `Update` cannot cross the IPC boundary, and the
+        // install must act on the entry the check verified). See updater.rs.
+        .manage(updater::PendingUpdate::default())
         // One-shot allowlist of paths the user authorized to read (native pick
         // or OS drop). See files.rs — it keeps `read_authorized_file` from being
         // an arbitrary-path read.
@@ -70,6 +75,10 @@ fn main() {
             ssh::ssh_push_images,
             ssh::local_exec_stream,
             ssh::ssh_disconnect,
+            updater::updater_check,
+            updater::updater_install,
+            updater::updater_restart,
+            updater::updater_notify_ready,
         ])
         // Capture OS-level file drops in Rust so `read_authorized_file` will
         // serve their bytes. This runs synchronously in the event loop before

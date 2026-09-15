@@ -36,17 +36,6 @@ const { autostartEnabled, isReady: autostartReady, setAutostart } = useDesktopSe
 const { workspaces, activeId, switchTo, removeWorkspace, setWorkspaceAccent } =
 	useDesktopWorkspaces();
 
-const appVersion = ref('');
-onMounted(async () => {
-	if (!isDesktop.value) return;
-	try {
-		const { getVersion } = await import('@tauri-apps/api/app');
-		appVersion.value = await getVersion();
-	} catch {
-		// Tauri not available.
-	}
-});
-
 function checked(event: Event): boolean {
 	return (event.target as HTMLInputElement).checked;
 }
@@ -58,14 +47,6 @@ async function onAutostartToggle(event: Event) {
 function onStartupWorkspaceChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value;
 	setGlobal('startupWorkspaceId', value || null);
-}
-
-// Manual update check rides the same window event the auto-updater listens for;
-// the result arrives as a native notification.
-const updateCheckRequested = ref(false);
-function checkForUpdatesNow() {
-	window.dispatchEvent(new Event('owlat:check-updates'));
-	updateCheckRequested.value = true;
 }
 
 /** Server-side settings live in the dashboard — switch there (reloads the
@@ -188,28 +169,7 @@ async function confirmRemoveWorkspace() {
 			</section>
 
 			<section id="updates" class="card mb-6 scroll-mt-6">
-				<div class="flex items-center justify-between gap-4">
-					<span>
-						<span class="block text-sm font-medium">{{ t('desktop.settings.updates.title') }}</span>
-						<span class="block text-xs text-text-tertiary">
-							{{ appVersion ? t('desktop.settings.updates.version', { version: appVersion }) : '' }}
-							{{ t('desktop.settings.updates.description') }}
-						</span>
-					</span>
-					<input
-						type="checkbox"
-						class="h-5 w-5 shrink-0 accent-brand"
-						:checked="settings.global.autoCheckUpdates"
-						:disabled="!isReady"
-						@change="setGlobal('autoCheckUpdates', checked($event))"
-					/>
-				</div>
-				<UiButton variant="outline" size="sm" class="mt-3" @click="checkForUpdatesNow">
-					{{ t('desktop.settings.updates.checkNow') }}
-				</UiButton>
-				<p v-if="updateCheckRequested" class="mt-2 text-xs text-text-tertiary">
-					{{ t('desktop.settings.updates.checking') }}
-				</p>
+				<DesktopUpdateCard />
 			</section>
 
 			<!-- macOS, Windows and Linux all require a user action in the OS

@@ -9747,11 +9747,27 @@
 				"title": "Unread badge"
 			},
 			"updates": {
+				"channel": {
+					"prerelease": "including pre-releases",
+					"stable": "stable"
+				},
 				"checkNow": "Check for updates now",
 				"checking": "Checking — you'll get a notification with the result.",
 				"description": "Check for new versions when the app starts.",
+				"downloading": "Downloading Owlat {version}.",
+				"failed": "The update check did not finish. Owlat will try again later.",
+				"lastChecked": "Last checked at {time}.",
+				"managedBy": "Managed by {host} — {policy}.",
+				"policy": {
+					"latest": "newest release, {channel}",
+					"paused": "updates paused by your admin",
+					"pinned": "pinned to {version}"
+				},
+				"ready": "Owlat {version} is downloaded and ready.",
+				"restartNow": "Restart now",
 				"title": "Updates",
-				"version": "Owlat {version}."
+				"version": "Owlat {version}.",
+				"viaGithub": "Updates come straight from GitHub releases."
 			},
 			"workspaces": {
 				"accent": "Accent",

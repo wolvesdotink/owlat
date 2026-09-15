@@ -9747,11 +9747,27 @@
 				"title": "Ungelesen-Zähler"
 			},
 			"updates": {
+				"channel": {
+					"prerelease": "inklusive Vorabversionen",
+					"stable": "stabil"
+				},
 				"checkNow": "Jetzt nach Updates suchen",
 				"checking": "Wird geprüft — Sie erhalten eine Benachrichtigung mit dem Ergebnis.",
 				"description": "Beim Start der App nach neuen Versionen suchen.",
+				"downloading": "Owlat {version} wird geladen.",
+				"failed": "Die Update-Prüfung wurde nicht abgeschlossen. Owlat versucht es später erneut.",
+				"lastChecked": "Zuletzt um {time} Uhr geprüft.",
+				"managedBy": "Verwaltet von {host} — {policy}.",
+				"policy": {
+					"latest": "neueste Version, {channel}",
+					"paused": "Updates von Ihrer Administration pausiert",
+					"pinned": "festgelegt auf {version}"
+				},
+				"ready": "Owlat {version} ist geladen und bereit.",
+				"restartNow": "Jetzt neu starten",
 				"title": "Updates",
-				"version": "Owlat {version}."
+				"version": "Owlat {version}.",
+				"viaGithub": "Updates kommen direkt von den GitHub-Releases."
 			},
 			"workspaces": {
 				"accent": "Akzent",
