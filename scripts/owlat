@@ -220,6 +220,21 @@ fi
 OWLAT_VERSION_TAG="${OWLAT_VERSION_TAG:-latest}"
 OWLAT_SETUP_IMAGE="${OWLAT_SETUP_IMAGE:-ghcr.io/wolvesdotink/setup:${OWLAT_VERSION_TAG}}"
 
+# The release images exist for linux/amd64 and linux/arm64 only. Refuse the
+# wizard on any other CPU up front, instead of failing on the first `docker
+# pull` with "no matching manifest for <platform>" (install.sh runs the same
+# check earlier; this covers a hand-cloned `owlat quickstart`).
+require_supported_arch() {
+	local machine
+	machine="$(uname -m 2>/dev/null || printf 'unknown')"
+	case "$machine" in
+		x86_64|amd64|aarch64|arm64) return ;;
+	esac
+	echo "Error: unsupported CPU architecture '${machine}'." >&2
+	echo "Owlat publishes server images for x86_64 (amd64) and aarch64 (arm64) only." >&2
+	exit 1
+}
+
 # Run the TS setup CLI inside the owlat/setup container.
 # Falls back to legacy bash wizard with --legacy.
 run_setup_container() {
@@ -281,6 +296,12 @@ case "$cmd" in
 				set -- "$@" --config "$CONFIG_IN_CONTAINER"
 			fi
 		fi
+		;;
+esac
+
+case "$cmd" in
+	setup|quickstart|config|sample-data|feature|env|doctor)
+		require_supported_arch
 		;;
 esac
 

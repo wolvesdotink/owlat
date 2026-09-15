@@ -8,7 +8,7 @@ import {
 	type SetupConfig,
 } from '../setupConfig';
 import { buildEnvPatchFromConfig } from '../setupConfig';
-import { applySetupDefaults } from '../setupEnvDefaults';
+import { applySetupDefaults, defaultClamavImage } from '../setupEnvDefaults';
 import { assertFblDedupCutoverConfigured } from '../fblDedupSetup';
 
 /** A minimal valid config; tests clone + mutate it. The default flags enable
@@ -470,7 +470,23 @@ describe('send-path env reaches the Convex runtime', () => {
 	});
 });
 
+describe('defaultClamavImage', () => {
+	it('selects the debian ClamAV image on arm64 (the alpine image is amd64-only)', () => {
+		expect(defaultClamavImage('arm64')).toBe('clamav/clamav-debian');
+	});
+
+	it('leaves amd64 on the compose default so existing volumes keep their owner uid', () => {
+		expect(defaultClamavImage('x64')).toBeUndefined();
+	});
+});
+
 describe('applySetupDefaults', () => {
+	it('never overrides an operator-supplied CLAMAV_IMAGE', () => {
+		const env: Record<string, string> = { CLAMAV_IMAGE: 'registry.example/clamav' };
+		applySetupDefaults(env, 'selfhost');
+		expect(env['CLAMAV_IMAGE']).toBe('registry.example/clamav');
+	});
+
 	it('sets URLs + closed dev mode for selfhost', () => {
 		const env: Record<string, string> = {};
 		applySetupDefaults(env, 'selfhost');
