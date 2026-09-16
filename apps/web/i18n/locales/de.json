@@ -2545,8 +2545,11 @@
 					"finish": "Abschließen",
 					"server": "Bereitstellen"
 				},
+				"jumpToLatest": "Zum Ende springen",
+				"logRegionLabel": "Ausgabe des Serverprotokolls",
 				"progressLabel": "Fortschritt der Server-Bereitstellung",
 				"serverLog": "Serverprotokoll",
+				"trimmed": "{count} frühere Zeile entfernt | {count} frühere Zeilen entfernt",
 				"waitingForOutput": "Warten auf Ausgabe…"
 			},
 			"workspaceMenu": {
