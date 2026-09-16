@@ -53,7 +53,7 @@ describe('PostboxMailboxGuard reserved copy', () => {
 	it('renders the awaiting-domain progress copy for a pre-verification reservation', () => {
 		freshStatusRef.value = {
 			hasMailbox: false,
-			reservedAddress: 'marcel@hinterland.camp',
+			reservedAddress: 'marcel@owlat.test',
 			reservationAwaitingDomain: true,
 			hasOpenRequest: false,
 		};
@@ -61,7 +61,7 @@ describe('PostboxMailboxGuard reserved copy', () => {
 
 		expect(w.find('[data-testid="mailbox-guard-reserved"]').exists()).toBe(true);
 		expect(w.find('[data-testid="mailbox-guard-reserved-awaiting"]').exists()).toBe(true);
-		expect(w.text()).toContain('marcel@hinterland.camp');
+		expect(w.text()).toContain('marcel@owlat.test');
 		expect(w.text()).toContain('sending domain verifies');
 		// Not the dead-end state.
 		expect(w.find('[data-testid="mailbox-guard-deadend"]').exists()).toBe(false);
@@ -70,7 +70,7 @@ describe('PostboxMailboxGuard reserved copy', () => {
 	it('renders the standard provisioning copy once the domain is verified', () => {
 		freshStatusRef.value = {
 			hasMailbox: false,
-			reservedAddress: 'marcel@hinterland.camp',
+			reservedAddress: 'marcel@owlat.test',
 			reservationAwaitingDomain: false,
 			hasOpenRequest: false,
 		};

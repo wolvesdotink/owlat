@@ -153,7 +153,7 @@ describe('resolveSectionLimit', () => {
 describe('pinToSection in the filter engine', () => {
 	const message = {
 		from: 'ci@example.com',
-		to: ['me@hinterland.camp'],
+		to: ['me@owlat.test'],
 		cc: [],
 		subject: 'deploy #4112 green',
 		bodyText: 'green',

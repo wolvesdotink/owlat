@@ -90,8 +90,8 @@ describe('drafts.create clientNonce idempotency', () => {
 
 	it('never reuses a nonce hit that belongs to a different mailbox', async () => {
 		const t = convexTest(schema, modules);
-		const mailboxA = await seedMailbox(t, { address: 'a@hinterland.camp' });
-		const mailboxB = await seedMailbox(t, { address: 'b@hinterland.camp' });
+		const mailboxA = await seedMailbox(t, { address: 'a@owlat.test' });
+		const mailboxB = await seedMailbox(t, { address: 'b@owlat.test' });
 
 		const inA = await t.mutation(api.mail.drafts.create, {
 			mailboxId: mailboxA,
@@ -115,8 +115,8 @@ describe('drafts.create clientNonce idempotency', () => {
 		// subsequent retry forked yet another draft (double-send risk). The
 		// caller's own match must win regardless of index order.
 		const t = convexTest(schema, modules);
-		const mailboxA = await seedMailbox(t, { address: 'a@hinterland.camp' });
-		const mailboxB = await seedMailbox(t, { address: 'b@hinterland.camp' });
+		const mailboxA = await seedMailbox(t, { address: 'a@owlat.test' });
+		const mailboxB = await seedMailbox(t, { address: 'b@owlat.test' });
 
 		// Mailbox A claims the nonce FIRST, so its row is the index's `.first()`.
 		await t.mutation(api.mail.drafts.create, {

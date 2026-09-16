@@ -90,7 +90,7 @@ async function seedBothSides(t: TestConvex<typeof schema>): Promise<{
 		await ctx.db.insert('userProfiles', {
 			authUserId: 'user-ana',
 			name: 'Ana',
-			email: 'ana@hinterland.camp',
+			email: 'ana@owlat.test',
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
 		});
@@ -109,7 +109,7 @@ async function seedBothSides(t: TestConvex<typeof schema>): Promise<{
 			// Stored WITH brackets — the spelling the AI-inbox path keeps.
 			messageId: `<${RFC_ID}>`,
 			from: 'sofia@example.com',
-			to: 'team@hinterland.camp',
+			to: 'team@owlat.test',
 			subject: 'Refund never arrived',
 			threadId,
 			processingStatus: 'draft_ready',
@@ -164,7 +164,7 @@ describe('mail.crossSurface.postboxFor', () => {
 		const strip = await t.query(api.mail.crossSurface.postboxFor, { inboundMessageId });
 		expect(strip).toMatchObject({
 			messageId,
-			mailboxAddress: 'a@hinterland.camp',
+			mailboxAddress: 'a@owlat.test',
 			folderRole: 'inbox',
 			isAnswered: false,
 		});

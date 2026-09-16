@@ -52,7 +52,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-	mailbox.value = { _id: 'mailbox-1', address: 'marcel@hinterland.camp' };
+	mailbox.value = { _id: 'mailbox-1', address: 'marcel@owlat.test' };
 	mailboxLoading.value = false;
 	canSendData.value = undefined;
 	transportLoading.value = true;
@@ -85,7 +85,7 @@ describe('FreshStart copy', () => {
 		await settleTransport(true);
 		const w = mountFreshStart();
 
-		expect(w.text()).toContain("You'll send from marcel@hinterland.camp.");
+		expect(w.text()).toContain("You'll send from marcel@owlat.test.");
 		expect(w.text()).toContain('Your name');
 		expect(w.text()).toContain('This is the name people see on your mail.');
 		expect(w.text()).toContain('Signature');

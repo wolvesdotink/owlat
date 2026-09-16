@@ -180,7 +180,7 @@ describe('owner-grade endpoints enforce the owner floor for shared-mailbox membe
 		const id = await seedSharedTeamMailbox(t);
 		setSession('user-B', 'editor');
 		await expect(
-			t.mutation(api.mail.aliases.create, { mailboxId: id, alias: 'sales@hinterland.camp' })
+			t.mutation(api.mail.aliases.create, { mailboxId: id, alias: 'sales@owlat.test' })
 		).rejects.toThrow('Mailbox not accessible');
 	});
 
@@ -188,14 +188,14 @@ describe('owner-grade endpoints enforce the owner floor for shared-mailbox membe
 		const t = convexTest(schema, modules);
 		const id = await seedSharedTeamMailbox(t);
 		setSession('user-C', 'editor');
-		await t.mutation(api.mail.aliases.create, { mailboxId: id, alias: 'sales@hinterland.camp' });
+		await t.mutation(api.mail.aliases.create, { mailboxId: id, alias: 'sales@owlat.test' });
 		const aliases = await t.run((ctx) =>
 			ctx.db
 				.query('mailAliases')
 				.withIndex('by_target', (q) => q.eq('targetMailboxId', id))
 				.collect()
 		);
-		expect(aliases.map((a) => a.alias)).toContain('sales@hinterland.camp');
+		expect(aliases.map((a) => a.alias)).toContain('sales@owlat.test');
 	});
 });
 
@@ -225,8 +225,8 @@ describe('provisionMailbox — writes the implicit owner membership row', () => 
 			provisionMailbox(ctx, {
 				userId: 'user-A',
 				organizationId: 'org-1',
-				address: 'fresh@hinterland.camp',
-				domain: 'hinterland.camp',
+				address: 'fresh@owlat.test',
+				domain: 'owlat.test',
 			})
 		);
 

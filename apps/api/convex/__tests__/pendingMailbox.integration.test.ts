@@ -135,24 +135,24 @@ describe('pendingMailbox.setForInvitation', () => {
 	it('reserves a mailbox on a verified domain', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 
 		const result = await t.mutation(api.mail.pendingMailbox.setForInvitation, {
 			invitationId: 'inv-1',
 			inviteeEmail: 'invitee@example.com',
 			localpart: 'marcel',
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 			displayName: 'Marcel Pfeifer',
 		});
 
-		expect(result.address).toBe('marcel@hinterland.camp');
+		expect(result.address).toBe('marcel@owlat.test');
 		await t.run(async (ctx) => {
 			const row = await ctx.db
 				.query('pendingMailboxes')
 				.withIndex('by_invitation', (q) => q.eq('invitationId', 'inv-1'))
 				.first();
 			expect(row).toBeTruthy();
-			expect(row?.address).toBe('marcel@hinterland.camp');
+			expect(row?.address).toBe('marcel@owlat.test');
 			expect(row?.displayName).toBe('Marcel Pfeifer');
 			expect(row?.createdByUserId).toBe('admin-user');
 		});
@@ -161,14 +161,14 @@ describe('pendingMailbox.setForInvitation', () => {
 	it('rejects non-admin callers', async () => {
 		setEditorSession();
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 
 		await expect(
 			t.mutation(api.mail.pendingMailbox.setForInvitation, {
 				invitationId: 'inv-1',
 				inviteeEmail: 'invitee@example.com',
 				localpart: 'marcel',
-				domain: 'hinterland.camp',
+				domain: 'owlat.test',
 			})
 		).rejects.toThrow();
 	});
@@ -236,14 +236,14 @@ describe('pendingMailbox.setForInvitation', () => {
 	it('rejects an invalid local part', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 
 		await expect(
 			t.mutation(api.mail.pendingMailbox.setForInvitation, {
 				invitationId: 'inv-1',
 				inviteeEmail: 'invitee@example.com',
 				localpart: 'has spaces',
-				domain: 'hinterland.camp',
+				domain: 'owlat.test',
 			})
 		).rejects.toThrow(/local part/i);
 	});
@@ -251,14 +251,14 @@ describe('pendingMailbox.setForInvitation', () => {
 	it('rejects when an active mailbox already owns the address', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		await t.run(async (ctx) => {
 			const now = Date.now();
 			await ctx.db.insert('mailboxes', {
 				userId: 'other-user',
 				organizationId: 'test-org',
-				address: 'marcel@hinterland.camp',
-				domain: 'hinterland.camp',
+				address: 'marcel@owlat.test',
+				domain: 'owlat.test',
 				status: 'active',
 				usedBytes: 0,
 				uidValidity: now,
@@ -272,7 +272,7 @@ describe('pendingMailbox.setForInvitation', () => {
 				invitationId: 'inv-1',
 				inviteeEmail: 'invitee@example.com',
 				localpart: 'marcel',
-				domain: 'hinterland.camp',
+				domain: 'owlat.test',
 			})
 		).rejects.toThrow(/already exists/i);
 	});
@@ -280,13 +280,13 @@ describe('pendingMailbox.setForInvitation', () => {
 	it('rejects when another pending invite already reserved the address', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 
 		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
 			invitationId: 'inv-a',
 			inviteeEmail: 'invitee@example.com',
 			localpart: 'marcel',
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 		});
 
 		await expect(
@@ -294,7 +294,7 @@ describe('pendingMailbox.setForInvitation', () => {
 				invitationId: 'inv-b',
 				inviteeEmail: 'invitee@example.com',
 				localpart: 'marcel',
-				domain: 'hinterland.camp',
+				domain: 'owlat.test',
 			})
 		).rejects.toThrow(/already reserved/i);
 	});
@@ -302,19 +302,19 @@ describe('pendingMailbox.setForInvitation', () => {
 	it('replaces an existing pending row for the same invitation', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 
 		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
 			invitationId: 'inv-1',
 			inviteeEmail: 'invitee@example.com',
 			localpart: 'first-pick',
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 		});
 		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
 			invitationId: 'inv-1',
 			inviteeEmail: 'invitee@example.com',
 			localpart: 'second-pick',
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 		});
 
 		await t.run(async (ctx) => {
@@ -332,12 +332,12 @@ describe('pendingMailbox.cancelForInvitation', () => {
 	it('deletes the pending row when present', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
 			invitationId: 'inv-1',
 			inviteeEmail: 'invitee@example.com',
 			localpart: 'marcel',
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 		});
 
 		const result = await t.mutation(api.mail.pendingMailbox.cancelForInvitation, {
@@ -369,12 +369,12 @@ describe('pendingMailbox.claimForInvitation', () => {
 	it('provisions the live mailbox + folders for the accepting user', async () => {
 		setAdminSession('admin-user', 'test-org');
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
 			invitationId: 'inv-1',
 			inviteeEmail: 'invitee@example.com',
 			localpart: 'marcel',
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 			displayName: 'Marcel Pfeifer',
 		});
 
@@ -390,7 +390,7 @@ describe('pendingMailbox.claimForInvitation', () => {
 
 		await t.run(async (ctx) => {
 			const mailbox = await ctx.db.get(result.mailboxId);
-			expect(mailbox?.address).toBe('marcel@hinterland.camp');
+			expect(mailbox?.address).toBe('marcel@owlat.test');
 			expect(mailbox?.userId).toBe('invitee-user');
 			expect(mailbox?.displayName).toBe('Marcel Pfeifer');
 			expect(mailbox?.status).toBe('active');
@@ -422,12 +422,12 @@ describe('pendingMailbox.claimForInvitation', () => {
 	it('is idempotent on a second call', async () => {
 		setAdminSession('admin-user', 'test-org');
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
 			invitationId: 'inv-1',
 			inviteeEmail: 'invitee@example.com',
 			localpart: 'marcel',
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 		});
 
 		setAdminSession('invitee-user', 'test-org');
@@ -445,12 +445,12 @@ describe('pendingMailbox.claimForInvitation', () => {
 	it('drops the pending row and reports address_taken when a live mailbox now owns the address', async () => {
 		setAdminSession('admin-user', 'test-org');
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
 			invitationId: 'inv-1',
 			inviteeEmail: 'invitee@example.com',
 			localpart: 'marcel',
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 		});
 
 		// Someone else takes the live address in the meantime.
@@ -459,8 +459,8 @@ describe('pendingMailbox.claimForInvitation', () => {
 			await ctx.db.insert('mailboxes', {
 				userId: 'other-user',
 				organizationId: 'test-org',
-				address: 'marcel@hinterland.camp',
-				domain: 'hinterland.camp',
+				address: 'marcel@owlat.test',
+				domain: 'owlat.test',
 				status: 'active',
 				usedBytes: 0,
 				uidValidity: now,
@@ -490,12 +490,12 @@ describe('pendingMailbox.claimForInvitation', () => {
 	it('rejects the claim if the caller is in a different organization', async () => {
 		setAdminSession('admin-user', 'test-org');
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
 			invitationId: 'inv-1',
 			inviteeEmail: 'invitee@example.com',
 			localpart: 'marcel',
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 		});
 
 		setAdminSession('invitee-user', 'other-org');
@@ -513,12 +513,12 @@ describe('pendingMailbox.claimForInvitation — invitee binding', () => {
 	it('refuses a different org member and keeps the row for the real invitee', async () => {
 		setAdminSession('admin-user', 'test-org');
 		const t = convexTest(schema, modules);
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
 			invitationId: 'inv-bind',
 			inviteeEmail: 'Invitee@Example.com',
 			localpart: 'marcel',
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 		});
 
 		// A different member who learned the invitation id tries to claim it.

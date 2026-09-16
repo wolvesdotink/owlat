@@ -67,7 +67,7 @@ async function seedDraftWithAttachment(
 			toAddresses: ['b@example.com'],
 			ccAddresses: [],
 			bccAddresses: [],
-			fromAddress: 'a@hinterland.camp',
+			fromAddress: 'a@owlat.test',
 			subject: 'Here is the file',
 			bodyHtml: '<p>hi</p>',
 			attachments: [
@@ -172,7 +172,7 @@ describe('creating a share from a draft attachment', () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t, {
 			userId: 'user-B',
-			address: 'b@hinterland.camp',
+			address: 'b@owlat.test',
 		});
 		const { draftId, storageId } = await seedDraftWithAttachment(t, mailboxId);
 
@@ -434,7 +434,7 @@ describe('the owner-side download', () => {
 
 describe('the expiry sweep', () => {
 	async function seedExpired(t: TestConvex<typeof schema>, expiresAt: number, token: string) {
-		const mailboxId = await seedMailbox(t, { address: `${token}@hinterland.camp` });
+		const mailboxId = await seedMailbox(t, { address: `${token}@owlat.test` });
 		const { draftId, storageId } = await seedDraftWithAttachment(t, mailboxId);
 		const created = await createShare(t, draftId, storageId, { token });
 		await t.run(async (ctx) => {

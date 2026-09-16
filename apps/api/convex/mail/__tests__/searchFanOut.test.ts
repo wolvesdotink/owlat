@@ -59,8 +59,8 @@ async function seedAt(t: Ctx, mailboxId: Id<'mailboxes'>, subject: string, recei
 
 /** Two mailboxes of user-A with interleaved arrival times. */
 async function seedTwoMailboxes(t: Ctx) {
-	const personal = await seedInbox(t, 'user-A', 'a@hinterland.camp');
-	const team = await seedInbox(t, 'user-A', 'team@hinterland.camp');
+	const personal = await seedInbox(t, 'user-A', 'a@owlat.test');
+	const team = await seedInbox(t, 'user-A', 'team@owlat.test');
 	await seedAt(t, personal, 'oldest', 1_000);
 	await seedAt(t, team, 'middle', 2_000);
 	await seedAt(t, personal, 'newest', 3_000);
@@ -85,7 +85,7 @@ describe('search — single mailbox (legacy shape)', () => {
 
 	it('returns empty for a mailbox the caller cannot read', async () => {
 		const t = convexTest(schema, modules);
-		const foreign = await seedInbox(t, 'user-B', 'b@hinterland.camp');
+		const foreign = await seedInbox(t, 'user-B', 'b@owlat.test');
 		await seedAt(t, foreign, 'secret', 5_000);
 		const result = await t.query(api.mail.mailbox.search.search, { mailboxId: foreign, text: '' });
 		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
@@ -113,7 +113,7 @@ describe('search — fan-out', () => {
 	it('drops a requested mailbox the caller cannot read', async () => {
 		const t = convexTest(schema, modules);
 		const { personal } = await seedTwoMailboxes(t);
-		const foreign = await seedInbox(t, 'user-B', 'b@hinterland.camp');
+		const foreign = await seedInbox(t, 'user-B', 'b@owlat.test');
 		await seedAt(t, foreign, 'secret', 9_000);
 		const result = await t.query(api.mail.mailbox.search.search, {
 			mailboxIds: [personal, foreign],
@@ -125,7 +125,7 @@ describe('search — fan-out', () => {
 	it('never leaks another user’s mailbox into the "everything readable" default', async () => {
 		const t = convexTest(schema, modules);
 		await seedTwoMailboxes(t);
-		const foreign = await seedInbox(t, 'user-B', 'b@hinterland.camp');
+		const foreign = await seedInbox(t, 'user-B', 'b@owlat.test');
 		await seedAt(t, foreign, 'secret', 9_000);
 		const result = await t.query(api.mail.mailbox.search.search, { text: '' });
 		expect(subjects(result)).not.toContain('secret');
@@ -151,7 +151,7 @@ describe('search — fan-out', () => {
 		// loops on forever or steps over; walking them one row at a time must still
 		// terminate having seen each exactly once.
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedInbox(t, 'user-A', 'a@hinterland.camp');
+		const mailboxId = await seedInbox(t, 'user-A', 'a@owlat.test');
 		for (const subject of ['tie-1', 'tie-2', 'tie-3']) {
 			await seedAt(t, mailboxId, subject, 4_000);
 		}
@@ -179,8 +179,8 @@ describe('search — fan-out', () => {
 
 	it('merges free-text hits from every mailbox', async () => {
 		const t = convexTest(schema, modules);
-		const personal = await seedInbox(t, 'user-A', 'a@hinterland.camp');
-		const team = await seedInbox(t, 'user-A', 'team@hinterland.camp');
+		const personal = await seedInbox(t, 'user-A', 'a@owlat.test');
+		const team = await seedInbox(t, 'user-A', 'team@owlat.test');
 		await seedAt(t, personal, 'invoice overdue', 1_000);
 		await seedAt(t, team, 'invoice paid', 2_000);
 		await seedAt(t, personal, 'lunch', 3_000);
@@ -194,8 +194,8 @@ describe('search — fan-out', () => {
 		// the same relevance page, so a truncated text page must end its mailbox
 		// rather than continue it — one page per mailbox, as the deferral records.
 		const t = convexTest(schema, modules);
-		const personal = await seedInbox(t, 'user-A', 'a@hinterland.camp');
-		const team = await seedInbox(t, 'user-A', 'team@hinterland.camp');
+		const personal = await seedInbox(t, 'user-A', 'a@owlat.test');
+		const team = await seedInbox(t, 'user-A', 'team@owlat.test');
 		await seedAt(t, personal, 'invoice h1', 2_000);
 		await seedAt(t, personal, 'invoice h2', 1_000);
 		await seedAt(t, team, 'invoice b1', 3_000);

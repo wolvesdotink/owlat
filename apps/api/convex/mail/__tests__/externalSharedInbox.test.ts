@@ -83,7 +83,7 @@ async function seedUsers(t: TestConvex<typeof schema>, ...authUserIds: string[])
 		for (const authUserId of authUserIds) {
 			await ctx.db.insert('userProfiles', {
 				authUserId,
-				email: `${authUserId}@hinterland.camp`,
+				email: `${authUserId}@owlat.test`,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -842,7 +842,7 @@ describe('member erasure preserves a shared team inbox (org infrastructure)', ()
 			const now = Date.now();
 			return await ctx.db.insert('accountDeletionRequests', {
 				userProfileId: profile!._id,
-				email: 'admin-user@hinterland.camp',
+				email: 'admin-user@owlat.test',
 				requestedAt: now,
 				scheduledForDeletion: now,
 				cancellationToken: 'tok',

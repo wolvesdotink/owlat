@@ -66,7 +66,7 @@ async function seedSharedInboxWithUnread(t: TestConvex<typeof schema>): Promise<
 	const mailboxId = await seedMailbox(t, {
 		userId: 'user-A',
 		scope: 'shared',
-		address: 'sales@hinterland.camp',
+		address: 'sales@owlat.test',
 	});
 	const { messageId } = await t.run(async (ctx) => {
 		const now = Date.now();
@@ -124,7 +124,7 @@ async function seedSharedInboxWithUnread(t: TestConvex<typeof schema>): Promise<
 			rfc822MessageId: '<c1@acme.com>',
 			threadId,
 			fromAddress: 'customer@acme.com',
-			toAddresses: ['sales@hinterland.camp'],
+			toAddresses: ['sales@owlat.test'],
 			ccAddresses: [],
 			bccAddresses: [],
 			subject: 'help',

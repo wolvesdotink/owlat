@@ -124,13 +124,13 @@ describe('pendingInboxMembership.reserveInboxMembership', () => {
 	it('reserves a grant on a team inbox for a not-yet-member email', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		const mailboxId = await seedSharedMailbox(t, 'support@owlat.test');
 
 		const result = await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'Newbie@Example.com',
 		});
-		expect(result.address).toBe('support@hinterland.camp');
+		expect(result.address).toBe('support@owlat.test');
 		expect(result.alreadyReserved).toBe(false);
 
 		await t.run(async (ctx) => {
@@ -150,8 +150,8 @@ describe('pendingInboxMembership.reserveInboxMembership', () => {
 			personalId = await ctx.db.insert('mailboxes', {
 				userId: 'admin-user',
 				organizationId: 'test-org',
-				address: 'me@hinterland.camp',
-				domain: 'hinterland.camp',
+				address: 'me@owlat.test',
+				domain: 'owlat.test',
 				status: 'active',
 				usedBytes: 0,
 				uidValidity: now,
@@ -171,7 +171,7 @@ describe('pendingInboxMembership.reserveInboxMembership', () => {
 	it('rejects an existing org member (they should be added from the list)', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		const mailboxId = await seedSharedMailbox(t, 'support@owlat.test');
 		await seedUserProfile(t, 'existing-user', 'existing@example.com');
 
 		await expect(
@@ -185,7 +185,7 @@ describe('pendingInboxMembership.reserveInboxMembership', () => {
 	it('is idempotent for a repeat reservation of the same inbox + email', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		const mailboxId = await seedSharedMailbox(t, 'support@owlat.test');
 
 		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
@@ -208,7 +208,7 @@ describe('pendingInboxMembership.claimInboxMemberships', () => {
 	it('materializes the reserved membership when the invitee accepts', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		const mailboxId = await seedSharedMailbox(t, 'support@owlat.test');
 		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
@@ -220,7 +220,7 @@ describe('pendingInboxMembership.claimInboxMemberships', () => {
 		await seedUserProfile(t, 'newbie-user', 'newbie@example.com');
 
 		const result = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
-		expect(result.claimed).toEqual(['support@hinterland.camp']);
+		expect(result.claimed).toEqual(['support@owlat.test']);
 
 		await t.run(async (ctx) => {
 			const membership = await ctx.db
@@ -239,7 +239,7 @@ describe('pendingInboxMembership.claimInboxMemberships', () => {
 	it('binds the grant to the invitee email — a different-email accept cannot claim it', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		const mailboxId = await seedSharedMailbox(t, 'support@owlat.test');
 		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
@@ -268,13 +268,13 @@ describe('pendingInboxMembership.claimInboxMemberships', () => {
 		setInviteeSession('newbie-user');
 		await seedUserProfile(t, 'newbie-user', 'Newbie@Example.com');
 		const claimed = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
-		expect(claimed.claimed).toEqual(['support@hinterland.camp']);
+		expect(claimed.claimed).toEqual(['support@owlat.test']);
 	});
 
 	it('is idempotent on a second accept (membership stays single)', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		const mailboxId = await seedSharedMailbox(t, 'support@owlat.test');
 		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
@@ -284,7 +284,7 @@ describe('pendingInboxMembership.claimInboxMemberships', () => {
 		await seedUserProfile(t, 'newbie-user', 'newbie@example.com');
 
 		const first = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
-		expect(first.claimed).toEqual(['support@hinterland.camp']);
+		expect(first.claimed).toEqual(['support@owlat.test']);
 		const second = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
 		expect(second.claimed).toEqual([]);
 
@@ -304,8 +304,8 @@ describe('pendingInboxMembership.cancelInboxMembershipsForEmail', () => {
 	it('sweeps every un-claimed grant for the email in the caller org', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		const supportId = await seedSharedMailbox(t, 'support@hinterland.camp');
-		const salesId = await seedSharedMailbox(t, 'sales@hinterland.camp');
+		const supportId = await seedSharedMailbox(t, 'support@owlat.test');
+		const salesId = await seedSharedMailbox(t, 'sales@owlat.test');
 		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId: supportId,
 			inviteeEmail: 'newbie@example.com',
@@ -332,8 +332,8 @@ describe('pendingInboxMembership.cancelInboxMembershipsForEmail', () => {
 	it('scopes the sweep to one inbox when mailboxId is given, leaving siblings live', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		const supportId = await seedSharedMailbox(t, 'support@hinterland.camp');
-		const salesId = await seedSharedMailbox(t, 'sales@hinterland.camp');
+		const supportId = await seedSharedMailbox(t, 'support@owlat.test');
+		const salesId = await seedSharedMailbox(t, 'sales@owlat.test');
 		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId: supportId,
 			inviteeEmail: 'newbie@example.com',
@@ -357,7 +357,7 @@ describe('pendingInboxMembership.cancelInboxMembershipsForEmail', () => {
 		setInviteeSession('newbie-user');
 		await seedUserProfile(t, 'newbie-user', 'newbie@example.com');
 		const claimed = await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
-		expect(claimed.claimed).toEqual(['support@hinterland.camp']);
+		expect(claimed.claimed).toEqual(['support@owlat.test']);
 
 		await t.run(async (ctx) => {
 			const membership = await ctx.db
@@ -373,7 +373,7 @@ describe('pendingInboxMembership.cancelInboxMembershipsForEmail', () => {
 	it('leaves a subsequent accept with no membership to claim', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		const mailboxId = await seedSharedMailbox(t, 'support@owlat.test');
 		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
@@ -393,7 +393,7 @@ describe('mail.mailbox.identity.remove cascade', () => {
 	it('drops pending grants pointing at a deleted team inbox', async () => {
 		setAdminSession();
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedSharedMailbox(t, 'support@hinterland.camp');
+		const mailboxId = await seedSharedMailbox(t, 'support@owlat.test');
 		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
 			mailboxId,
 			inviteeEmail: 'newbie@example.com',
@@ -414,7 +414,7 @@ describe('mail.mailbox.identity.remove cascade', () => {
 		// Admin of `test-org`, but the mailbox lives in `other-org`.
 		setAdminSession('admin-user', 'test-org');
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedSharedMailbox(t, 'foreign@hinterland.camp', 'other-org');
+		const mailboxId = await seedSharedMailbox(t, 'foreign@owlat.test', 'other-org');
 
 		await expect(t.mutation(api.mail.mailbox.identity.remove, { mailboxId })).rejects.toThrow(
 			/not accessible/i
@@ -429,7 +429,7 @@ describe('mail.mailbox.identity.remove cascade', () => {
 	it('throws not-found when remove targets a mailbox id that no longer exists', async () => {
 		setAdminSession('admin-user', 'test-org');
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedSharedMailbox(t, 'gone@hinterland.camp', 'test-org');
+		const mailboxId = await seedSharedMailbox(t, 'gone@owlat.test', 'test-org');
 		await t.run(async (ctx) => {
 			await ctx.db.delete(mailboxId);
 		});
