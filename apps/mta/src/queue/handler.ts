@@ -13,9 +13,11 @@
  * which dead-letters a warming-capped or greylisted message after ~5 defers.
  * Instead, this handler re-enqueues the job itself with the *computed* delay
  * (greylist 300s, rate-limit 900s, warming-cap, breaker-cooldown, …) and
- * returns normally, so a defer never burns a delivery attempt. The only
- * give-up is the max-message-age cap (RFC 5321 §4.5.4.1), measured from the
- * first enqueue so it survives re-queues.
+ * returns normally, so a defer never burns a delivery attempt. Two things stop
+ * a ladder: the max-message-age cap (RFC 5321 §4.5.4.1), measured from the
+ * first enqueue so it survives re-queues, and the per-message successor budget
+ * (`deferBudget.ts`) that catches a ladder advancing faster than the delays it
+ * asked for — the age cap alone bounds a ladder in time but not in count.
  *
  * See `docs/adr/0007-mta-dispatch-modules.md` and CONTEXT.md's MTA
  * dispatch section.
@@ -54,7 +56,8 @@ import {
 import { resumeJournaledSmtpAttempt, runJournaledSmtpAttempt } from './journaledSmtpAttempt.js';
 import { releaseRoutingReservations } from './routingReservations.js';
 import { handoffRoutingReentry, resumeRoutingReentryHandoff } from './routingReentryHandoff.js';
-import { emitExpiredBounce, handleDrop } from './nonDeliveryOutcomes.js';
+import { emitExpiredBounce, emitRunawayDeferBounce, handleDrop } from './nonDeliveryOutcomes.js';
+import { claimDeferSuccessor } from './deferBudget.js';
 
 /**
  * Process a single email job through the Dispatch pipeline + Dispatch
@@ -302,6 +305,15 @@ async function disposeDefer(
 
 	if (ageMs >= deps.config.maxMessageAgeMs) {
 		await emitExpiredBounce(job, deps, domain, providerKey, ageMs, reason);
+		return;
+	}
+
+	// The age cap bounds the ladder in time but not in count, and a defer costs
+	// no delivery attempt, so nothing else stops a ladder that advances faster
+	// than the delays it asks for. Count the rung before minting it.
+	const budget = await claimDeferSuccessor(deps.redis, data.messageId);
+	if (!budget.granted) {
+		await emitRunawayDeferBounce(job, deps, domain, providerKey, budget.spent, reason);
 		return;
 	}
 

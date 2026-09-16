@@ -86,6 +86,69 @@ export async function emitExpiredBounce(
 }
 
 /**
+ * Give up on a message whose defer ladder ran away.
+ *
+ * Reached only when a message has asked for more successors than any honest
+ * retry ladder could need before it expires (see `deferBudget.ts`), which means
+ * the ladder is advancing faster than the delays it asked for. Minting one more
+ * successor would feed the runaway, so this is terminal — reported like the
+ * max-age give-up, as a soft bounce, because the message genuinely kept being
+ * deferred and never reached the wire.
+ *
+ * The Convex payload is anchored to the message's own first enqueue rather than
+ * to this run's clock: the protected outbox compares payloads byte-for-byte, so
+ * a replay has to rebuild exactly the same one.
+ */
+export async function emitRunawayDeferBounce(
+	job: ReservedJob<EmailJob>,
+	deps: { redis: Redis; config: MtaConfig },
+	domain: string,
+	providerKey: DestinationProviderKey,
+	successors: number,
+	reason: string
+): Promise<void> {
+	const data = job.data;
+	const startedAt = data.firstEnqueuedAt ?? job.timestamp;
+	logger.error(
+		{ messageId: data.messageId, to: data.to, domain, successors, reason },
+		'Defer ladder runaway — giving up instead of enqueuing another successor'
+	);
+
+	const effects: DispatchEffect[] = [
+		{
+			kind: 'log_delivery_event',
+			event: {
+				messageId: data.messageId,
+				to: data.to,
+				from: data.from,
+				orgId: data.organizationId,
+				status: 'expired',
+				bounceType: 'soft',
+				domain,
+				provider: providerKey,
+				pool: data.ipPool,
+				reason: `Defer ladder runaway after ${successors} re-enqueues: ${reason}`,
+			},
+		},
+		{
+			kind: 'notify_convex',
+			event: {
+				event: 'bounced',
+				messageId: data.messageId,
+				organizationId: data.organizationId,
+				deliveryDomain: data.deliveryDomain,
+				bounceType: 'soft',
+				message: `Message was deferred ${successors} times without delivery`,
+				timestamp: startedAt,
+			},
+		},
+	];
+
+	await applyEffects(effects, deps);
+	await releaseRoutingReservations(data, deps);
+}
+
+/**
  * Apply the side effects for a pipeline drop. Status-specific:
  *   - `screened`: warn log, Prometheus rejected-counter inc, delivery log.
  *   - `suppressed`: info log, delivery log.
