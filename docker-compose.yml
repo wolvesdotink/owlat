@@ -782,6 +782,16 @@ services:
       # fixed where it belongs: quickstart re-runs `up -d` once the key lands,
       # which recreates exactly the containers whose env changed.
       CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
+      # Backing store for the LOGIN brute-force limiter (apps/imap/src/rateLimit.ts).
+      # Port 993 is internet-facing and LOGIN is the only thing between the internet
+      # and a user's mail, so this is NOT optional: without it the limiter has no
+      # counters, every password guess is free, and the sole signal is one level-40
+      # log line at boot. Every deployment shipped that way until now.
+      # apps/imap/src/config.ts refuses to boot in production if this is unset —
+      # safe here because REDIS_PASSWORD is already `:?` (setup always mints it),
+      # so a missing password aborts the compose command rather than creating a
+      # container that crash-loops on its own baked-in env.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}@redis:6379
       TLS_CERT_DIR: /opt/owlat/certs
       LOG_LEVEL: ${IMAP_LOG_LEVEL:-info}
       NODE_ENV: production
@@ -789,6 +799,10 @@ services:
       - mail-certs:/opt/owlat/certs:ro
     depends_on:
       convex:
+        condition: service_healthy
+      # service_healthy, not service_started: the limiter is a security control,
+      # so port 993 should not accept its first LOGIN before the store answers.
+      redis:
         condition: service_healthy
       # Block until the self-signed default cert is in the shared volume,
       # otherwise the IMAPS listener refuses to start (production TLS guard).
