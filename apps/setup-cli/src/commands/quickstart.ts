@@ -418,7 +418,8 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		envPath,
 		reporter,
 		opts.buildLocal ?? false,
-		checkpoint
+		checkpoint,
+		composeProfilesUnion
 	);
 	if (deployCode !== 0) {
 		reporter.done(false);
@@ -595,7 +596,8 @@ async function deployBackend(
 	envPath: string,
 	reporter: Reporter,
 	buildLocal: boolean,
-	checkpoint: ProvisioningCheckpoint
+	checkpoint: ProvisioningCheckpoint,
+	composeProfiles: string[]
 ): Promise<number> {
 	const s = progressSpinner();
 
@@ -609,6 +611,7 @@ async function deployBackend(
 			env = { ...env, CONVEX_ADMIN_KEY: key };
 			await writeEnv(envPath, env);
 			s.stop(pc.green('Admin key generated and saved to .env'));
+			await reapplyEnvToRunningStack(owlatDir, composeProfiles);
 			reporter.ok();
 		} catch (e) {
 			s.stop(pc.red(`Could not generate admin key: ${(e as Error).message}`));
@@ -780,6 +783,49 @@ async function dockerComposeUp(
 	}
 	s.stop(pc.green('Stack is up'));
 	return 0;
+}
+
+/**
+ * Re-apply `.env` to the already-running stack after the Convex admin key lands.
+ *
+ * The stack's first `docker compose up` necessarily happens BEFORE the admin key
+ * exists: only an already-running backend can mint it (`generateConvexAdminKey`),
+ * and `ensureSecrets` deliberately refuses to fabricate one. Docker bakes a
+ * container's environment at CREATE time, so every service that consumes the key
+ * — imap, mail-sync, convex-fn-proxy — was created holding an EMPTY one. Each of
+ * those throws `CONVEX_ADMIN_KEY is required` on boot and, under
+ * `restart: unless-stopped`, crash-loops on it forever. Nothing else in the run
+ * touches them again (the remaining compose calls are one-shot
+ * `run --rm convex-deploy`), so without this step a fresh install with Postbox or
+ * external mail enabled ships a permanently broken container. A live instance
+ * burnt 11h that way before anyone noticed.
+ *
+ * A second plain `up -d` is the whole fix, and `--force-recreate` is deliberately
+ * NOT used: compose compares each service's config hash against its running
+ * container and recreates only those whose resolved environment actually changed.
+ * That is exactly the key consumers. `convex` — which we just waited to become
+ * healthy — keeps its hash and is left alone.
+ *
+ * Non-fatal: the key is already persisted, so a failure here is fully recoverable
+ * with `owlat start`, and aborting mid-deploy would be worse than reporting it.
+ */
+async function reapplyEnvToRunningStack(cwd: string, profiles: string[]): Promise<void> {
+	const s = progressSpinner();
+	s.start('Applying the admin key to containers created before it existed');
+	const env = profiles.length
+		? { ...process.env, COMPOSE_PROFILES: profiles.join(',') }
+		: undefined;
+	const code = await spawnExitCode('docker', ['compose', 'up', '-d'], { cwd, env });
+	if (code !== 0) {
+		s.stop(
+			pc.yellow(
+				`Could not re-apply .env to the running stack (exit ${code}). Services that need ` +
+					'the admin key (imap, mail-sync) may crash-loop until you run `owlat start`.'
+			)
+		);
+		return;
+	}
+	s.stop(pc.green('Admin key applied to the running stack'));
 }
 
 function spawnExitCode(

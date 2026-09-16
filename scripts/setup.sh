@@ -1450,6 +1450,19 @@ run_docker_compose() {
     sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
     rm -f .env.bak
     success "Admin key saved to .env"
+
+    # Re-apply .env to containers that were CREATED before the key existed.
+    # The bring-up above is unscoped and necessarily runs first — only a running
+    # backend can mint the key — so imap, mail-sync and convex-fn-proxy were
+    # created holding an EMPTY CONVEX_ADMIN_KEY, which they reject at boot
+    # ("CONVEX_ADMIN_KEY is required"), crash-looping forever under
+    # `restart: unless-stopped` because Docker bakes env at CREATE time.
+    # A plain `up -d` recreates ONLY the containers whose resolved config
+    # changed (not --force-recreate, which would also bounce the healthy
+    # backend). Non-fatal: the key is saved, so `owlat start` also repairs it.
+    if ! docker compose up -d >/dev/null 2>&1; then
+      warn "Could not re-apply .env to the running stack. If Postbox or external mail is enabled, run: docker compose up -d"
+    fi
   fi
 
   # 4. Deploy Convex functions
