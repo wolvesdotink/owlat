@@ -519,7 +519,7 @@ services:
     image: ghcr.io/wolvesdotink/convex-fn-proxy:${OWLAT_VERSION:?OWLAT_VERSION must be set}
     environment:
       CONVEX_URL: http://convex:3210
-      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY:-}
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
       CODE_WORKER_PROXY_TOKEN: ${CODE_WORKER_PROXY_TOKEN:-}
     cap_drop:
       - ALL
