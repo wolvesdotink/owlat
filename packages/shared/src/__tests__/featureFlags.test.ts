@@ -166,6 +166,22 @@ describe('featureFlags — env vars and docker profiles', () => {
 		expect(vars).not.toContain('GOOGLE_SAFE_BROWSING_API_KEY');
 	});
 
+	// The mail-sync worker is reached from the Convex function runtime over these
+	// two; without them a connected mailbox never syncs and every external send
+	// fails with EXTERNAL_NOT_CONFIGURED. They must be REPORTABLE (doctor,
+	// `env --show`, the Features "needs config" badge) whenever the flag is on.
+	it('requires the mail-sync worker vars when mail.external is on', () => {
+		const vars = getRequiredEnvVars({ 'mail.external': true });
+		expect(vars).toContain('MAIL_SYNC_API_URL');
+		expect(vars).toContain('MAIL_SYNC_API_KEY');
+	});
+
+	it('omits the mail-sync worker vars when mail.external is off', () => {
+		const vars = getRequiredEnvVars({ 'mail.external': false });
+		expect(vars).not.toContain('MAIL_SYNC_API_URL');
+		expect(vars).not.toContain('MAIL_SYNC_API_KEY');
+	});
+
 	it('aggregates docker profiles from active flags', () => {
 		const stored: FeatureFlagState = {
 			ai: true,

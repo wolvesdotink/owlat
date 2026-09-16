@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { FeatureFlagDefinition } from '@owlat/shared/featureFlags';
-import { flagsNeedingConfig, missingPluginEnvironmentVariables } from '../featureConfig';
+import {
+	enableTimeMissingEnvVars,
+	flagsNeedingConfig,
+	missingPluginEnvironmentVariables,
+} from '../featureConfig';
 
 describe('flagsNeedingConfig', () => {
 	it('badges an enabled flag that is missing configuration', () => {
@@ -64,5 +68,42 @@ describe('plugin feature configuration', () => {
 	it('returns no env gaps while config status is loading or fully satisfied', () => {
 		expect(missingPluginEnvironmentVariables(definition, undefined)).toEqual([]);
 		expect(missingPluginEnvironmentVariables(definition, {})).toEqual([]);
+	});
+});
+
+describe('enableTimeMissingEnvVars', () => {
+	const mailExternal = {
+		key: 'mail.external',
+		category: 'receiving',
+		label: 'Connect external mailbox',
+		description: 'Connect an existing mailbox over IMAP+SMTP.',
+		default: false,
+		requiredEnvVars: ['MAIL_SYNC_API_URL', 'MAIL_SYNC_API_KEY'],
+	} satisfies FeatureFlagDefinition;
+
+	it('names only the variables the deployment is missing', () => {
+		expect(
+			enableTimeMissingEnvVars(mailExternal, { 'mail.external': ['MAIL_SYNC_API_URL'] })
+		).toEqual(['MAIL_SYNC_API_URL']);
+	});
+
+	it('names nothing when the deployment already has them all', () => {
+		expect(enableTimeMissingEnvVars(mailExternal, {})).toEqual([]);
+	});
+
+	it('names the full declared list when the config status is unavailable', () => {
+		expect(enableTimeMissingEnvVars(mailExternal, undefined)).toEqual([
+			'MAIL_SYNC_API_URL',
+			'MAIL_SYNC_API_KEY',
+		]);
+		expect(enableTimeMissingEnvVars(mailExternal, null)).toEqual([
+			'MAIL_SYNC_API_URL',
+			'MAIL_SYNC_API_KEY',
+		]);
+	});
+
+	it('names nothing for a flag that declares no variables', () => {
+		const flag = { ...mailExternal, requiredEnvVars: undefined } as FeatureFlagDefinition;
+		expect(enableTimeMissingEnvVars(flag, undefined)).toEqual([]);
 	});
 });
