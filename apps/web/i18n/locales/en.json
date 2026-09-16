@@ -2545,8 +2545,11 @@
 					"finish": "Finish",
 					"server": "Provision"
 				},
+				"jumpToLatest": "Jump to latest",
+				"logRegionLabel": "Server log output",
 				"progressLabel": "Server provisioning progress",
 				"serverLog": "Server log",
+				"trimmed": "{count} earlier line trimmed | {count} earlier lines trimmed",
 				"waitingForOutput": "Waiting for output…"
 			},
 			"workspaceMenu": {
