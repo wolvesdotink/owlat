@@ -133,6 +133,11 @@ services:
       HETZNER_API_TOKEN: ${HETZNER_API_TOKEN:-}
       ACME_STAGING: ${ACME_STAGING:-0}
       TLS_CERT_DIR: /opt/owlat/certs
+      # lego publishes the key as root:root 0600; the imap container runs as this
+      # uid:gid and mounts mail-certs :ro, so acme-entrypoint.sh hands ownership
+      # over on every publish or IMAP crash-loops on EACCES. Pinned against the
+      # build-time uid assertion in apps/imap/Dockerfile.
+      IMAP_RUNTIME_USER: ${IMAP_RUNTIME_USER:-1000:1000}
     cap_drop:
       - ALL
     security_opt:
@@ -152,6 +157,11 @@ services:
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
       CONVEX_URL: http://convex:3210
       CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
+      # Backing store for the LOGIN brute-force limiter (apps/imap/src/rateLimit.ts).
+      # Port 993 is published on 0.0.0.0 here, so an unbacked limiter means
+      # unlimited password guessing. apps/imap/src/config.ts refuses to boot in
+      # production without it. Same URL the MTA uses.
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       TLS_CERT_DIR: /opt/owlat/certs
       LOG_LEVEL: ${IMAP_LOG_LEVEL:-info}
       NODE_ENV: production
@@ -159,6 +169,8 @@ services:
       - mail-certs:/opt/owlat/certs:ro
     depends_on:
       convex:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     cap_drop:
       - ALL

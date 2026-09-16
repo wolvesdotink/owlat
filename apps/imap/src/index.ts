@@ -25,7 +25,15 @@ export async function main() {
 			logger.warn({ err }, 'redis error — auth rate limiter will fail-open');
 		});
 	} else {
-		logger.warn('REDIS_URL not set — IMAP auth rate limiter disabled (fails open)');
+		// Production never reaches here: loadConfig refuses to boot without
+		// REDIS_URL unless IMAP_ALLOW_UNTHROTTLED_AUTH=true. So this is either a
+		// dev run or a deliberate opt-out — both worth saying plainly rather than
+		// in the old "fails open" phrasing, which read like a safe degraded mode.
+		logger.warn(
+			'REDIS_URL not set — LOGIN brute-force protection is OFF: password guessing ' +
+				'against port 993 is unlimited. Production boots refuse this unless ' +
+				'IMAP_ALLOW_UNTHROTTLED_AUTH=true.'
+		);
 	}
 
 	const rateLimiter = new AuthRateLimiter(redis, config.authRateLimit);

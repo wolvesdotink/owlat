@@ -727,6 +727,23 @@ services:
   # ACME-provisioned default.crt/default.key is left untouched, so dropping in a
   # CA-issued pair just works. For a public mailbox host, replace the self-signed
   # pair with a real certificate (or front IMAPS with a TLS-terminating proxy).
+  #
+  # OWNERSHIP is the second half of the very same crash-loop, and it cost a live
+  # instance 724 restarts: this one-shot runs as root, so the 0600 key it writes
+  # lands as root:root — while the imap image runs as uid 1000 and mounts this
+  # volume `:ro`, so it can neither read the key nor repair it. The symptom is
+  # `EACCES: permission denied, open '/opt/owlat/certs/default.key'` thrown by
+  # loadConfig, forever. Hence the fixup below runs on EVERY boot and on BOTH
+  # branches, not only the one that generates a cert: that is what heals a volume
+  # already poisoned by an older install, or a key an ACME sidecar has just
+  # re-published as root. Contents are still left untouched — only ownership and
+  # mode are normalised, and the key stays 0600 (owner-read only, never group- or
+  # world-readable).
+  #
+  # The uid is a chown target here and the image's `USER` there, so the two are
+  # pinned together: apps/imap/Dockerfile ASSERTS at build time that its runtime
+  # user is exactly IMAP_RUNTIME_USER's default, and
+  # scripts/check-compose-invariants.sh fails the build if either side drifts.
   imap-cert-init:
     image: alpine:${ALPINE_VERSION:-3.20}
     command:
@@ -735,24 +752,31 @@ services:
       - |
         cert_dir=/opt/owlat/certs
         if [ -s "$$cert_dir/default.crt" ] && [ -s "$$cert_dir/default.key" ]; then
-          echo "imap-cert-init: TLS cert already present in $$cert_dir — leaving it untouched"
-          exit 0
+          echo "imap-cert-init: TLS cert already present in $$cert_dir — leaving its contents untouched"
+        else
+          echo "imap-cert-init: generating self-signed IMAP TLS cert in $$cert_dir"
+          apk add --no-cache openssl >/dev/null
+          openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+            -keyout "$$cert_dir/default.key" \
+            -out "$$cert_dir/default.crt" \
+            -subj "/CN=$${IMAP_GREETING_HOST}" \
+            -addext "subjectAltName=DNS:$${IMAP_GREETING_HOST}"
         fi
-        echo "imap-cert-init: generating self-signed IMAP TLS cert in $$cert_dir"
-        apk add --no-cache openssl >/dev/null
-        openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-          -keyout "$$cert_dir/default.key" \
-          -out "$$cert_dir/default.crt" \
-          -subj "/CN=$${IMAP_GREETING_HOST}" \
-          -addext "subjectAltName=DNS:$${IMAP_GREETING_HOST}"
+        # Unconditional — see the ownership note above. Runs on the
+        # already-present branch too, so a broken volume heals on the next `up`.
+        chown -R "$${IMAP_RUNTIME_USER}" "$$cert_dir"
+        chmod 644 "$$cert_dir/default.crt"
         chmod 600 "$$cert_dir/default.key"
-        echo "imap-cert-init: done"
+        echo "imap-cert-init: cert dir owned by $${IMAP_RUNTIME_USER}, key kept 0600 — done"
     environment:
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
+      # uid:gid the imap container runs as, and therefore the only owner that can
+      # read a 0600 key off the shared volume. Pinned against apps/imap/Dockerfile.
+      IMAP_RUNTIME_USER: ${IMAP_RUNTIME_USER:-1000:1000}
     volumes:
       - mail-certs:/opt/owlat/certs
-    # no-new-privileges only: this one-shot runs `apk add` (needs CAP_CHOWN to
-    # extract packages), so a blanket cap_drop would break the cert bootstrap.
+    # no-new-privileges only: this one-shot runs `apk add` and `chown` (both need
+    # CAP_CHOWN), so a blanket cap_drop would break the cert bootstrap.
     security_opt:
       - no-new-privileges:true
     profiles:
@@ -785,6 +809,16 @@ services:
       # fixed where it belongs: quickstart re-runs `up -d` once the key lands,
       # which recreates exactly the containers whose env changed.
       CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
+      # Backing store for the LOGIN brute-force limiter (apps/imap/src/rateLimit.ts).
+      # Port 993 is internet-facing and LOGIN is the only thing between the internet
+      # and a user's mail, so this is NOT optional: without it the limiter has no
+      # counters, every password guess is free, and the sole signal is one level-40
+      # log line at boot. Every deployment shipped that way until now.
+      # apps/imap/src/config.ts refuses to boot in production if this is unset —
+      # safe here because REDIS_PASSWORD is already `:?` (setup always mints it),
+      # so a missing password aborts the compose command rather than creating a
+      # container that crash-loops on its own baked-in env.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}@redis:6379
       TLS_CERT_DIR: /opt/owlat/certs
       LOG_LEVEL: ${IMAP_LOG_LEVEL:-info}
       NODE_ENV: production
@@ -792,6 +826,10 @@ services:
       - mail-certs:/opt/owlat/certs:ro
     depends_on:
       convex:
+        condition: service_healthy
+      # service_healthy, not service_started: the limiter is a security control,
+      # so port 993 should not accept its first LOGIN before the store answers.
+      redis:
         condition: service_healthy
       # Block until the self-signed default cert is in the shared volume,
       # otherwise the IMAPS listener refuses to start (production TLS guard).
