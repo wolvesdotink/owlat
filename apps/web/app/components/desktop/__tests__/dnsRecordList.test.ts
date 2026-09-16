@@ -128,7 +128,9 @@ describe('DesktopDnsRecordList', () => {
 		// itself ship to the panel, which is exactly what it once did.
 		const w = mountList([{ ...A_RECORD, note: 'shared.desktop.provisioningForm.dnsNotes.ptr' }]);
 		const note = w.get('p');
-		expect(note.text()).toBe('Also set reverse DNS (PTR) for this IP at your host.');
+		expect(note.text()).toBe(
+			'Reverse DNS — set where you rent the IP (your hosting provider), not in your DNS zone. Sending stays blocked until it matches.'
+		);
 	});
 
 	it('omits the note element when a record has no note', () => {
@@ -163,6 +165,8 @@ describe('DesktopDnsRecordList', () => {
 		expect(notes).toHaveLength(records.filter((r) => r.note).length);
 		expect(notes.length).toBeGreaterThan(0);
 		for (const text of notes) expect(text).not.toMatch(/^[a-z][\w]*(?:\.[\w]+)+$/);
-		expect(notes).toContain('Also set reverse DNS (PTR) for this IP at your host.');
+		expect(notes).toContain(
+			'Reverse DNS — set where you rent the IP (your hosting provider), not in your DNS zone. Sending stays blocked until it matches.'
+		);
 	});
 });

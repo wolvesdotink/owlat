@@ -272,8 +272,56 @@ export async function probeMtaHealth(
 	}
 }
 
-/** Setup-time identity-only probe; worker traffic is not required yet. */
-export async function probeMtaIdentityHealth(baseUrl: string): Promise<MtaHealthFinding[]> {
+/**
+ * Force a live re-observation of every sending identity, and read the result.
+ *
+ * `/health` answers with the verdict the MTA's last sweep STORED — at boot, then
+ * hourly. That is the wrong source for the one question setup asks: the operator
+ * has just fixed a PTR record and wants to know whether it took. Nothing would
+ * re-observe it in time — `docker compose up -d` leaves an unchanged container
+ * running, so there is not even a boot sweep — and the install would fail again
+ * on DNS that is already correct. `POST /identity/recheck` re-resolves now.
+ *
+ * Returns null (rather than findings) when the endpoint is unavailable — no key,
+ * an older MTA image without the route, a timeout — so the caller falls back to
+ * `/health` and an install never fails because a re-check was not possible.
+ */
+export async function refreshMtaIdentity(
+	baseUrl: string,
+	apiKey: string | undefined
+): Promise<MtaHealthFinding[] | null> {
+	if (!apiKey) return null;
+	const url = `${baseUrl.replace(/\/+$/, '')}/identity/recheck`;
+	const ctrl = new AbortController();
+	// DNS, not HTTP, sets the floor here: each identity may wait out a 5s
+	// resolver budget, so allow more than the 3s the read-only probes use.
+	const timer = setTimeout(() => ctrl.abort(), 30_000);
+	try {
+		const resp = await fetch(url, {
+			method: 'POST',
+			signal: ctrl.signal,
+			headers: { Authorization: `Bearer ${apiKey}` },
+		});
+		if (!resp.ok) return null;
+		return evaluateMtaIdentityHealth(await resp.json());
+	} catch {
+		return null;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/**
+ * Setup-time identity-only probe; worker traffic is not required yet. Prefers a
+ * forced re-check so a PTR fixed minutes ago is seen, and falls back to the
+ * stored `/health` verdict when that is not available.
+ */
+export async function probeMtaIdentityHealth(
+	baseUrl: string,
+	apiKey?: string
+): Promise<MtaHealthFinding[]> {
+	const refreshed = await refreshMtaIdentity(baseUrl, apiKey);
+	if (refreshed) return refreshed;
 	try {
 		return evaluateMtaIdentityHealth(await fetchMtaHealth(baseUrl));
 	} catch (err) {
@@ -323,6 +371,10 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
 		isOwnSendProviderKind(env['EMAIL_PROVIDER']) &&
 		env['MTA_API_URL']
 	) {
+		// `owlat doctor` is what the docs tell an operator to run after changing
+		// reverse DNS, so re-observe before reporting: the stored verdict can be up
+		// to an hour old and would answer about the PTR they just replaced.
+		await refreshMtaIdentity(env['MTA_API_URL'], env['MTA_API_KEY']);
 		for (const finding of await probeMtaHealth(env['MTA_API_URL'], env)) {
 			check(finding.ok, `SEND PATH: ${finding.message}`);
 		}

@@ -528,8 +528,15 @@ describe('server-IP resolution + DNS records', () => {
 		expect(rows.some((r) => r.type === 'TXT' && r.value.startsWith('v=DMARC1'))).toBe(true);
 		expect(rows.some((r) => r.name === `_dmarc.${hosts.bounce}`)).toBe(true);
 		expect(rows.some((r) => r.type === 'MX' && r.value === hosts.mail)).toBe(true);
-		// PTR guidance rides along the mail A record as a note, not a fake record.
-		expect(t(rows.find((r) => r.name === hosts.mail && r.type === 'A')?.note ?? '')).toMatch(/PTR/);
+	});
+
+	it('gives reverse DNS its own row, keyed by IP and pointing at the mail host', () => {
+		const rows = buildDnsRecords({ hosts, withMta: true, serverIp: '203.0.113.5' });
+		const ptr = rows.find((r) => r.type === 'PTR');
+		expect(ptr).toMatchObject({ name: '203.0.113.5', value: hosts.mail });
+		// The hostname is real even before the IP is known, so it stays copyable.
+		expect(ptr?.placeholder).toBeUndefined();
+		expect(t(ptr?.note ?? '')).toMatch(/hosting provider/);
 	});
 
 	it('omits the mail records entirely for a non-MTA provider', () => {

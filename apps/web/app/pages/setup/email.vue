@@ -373,6 +373,21 @@ async function next() {
 							placeholder='{"203.0.113.11":"mail2.example.com"}'
 							:help-text="t('setup.email.ehloOverridesHelp')"
 						/>
+						<!--
+							The PTR record is the one piece of this step that is not a field:
+							it is set in the hosting provider's console, by hand, and setup
+							refuses to finish without it. Saying so here — rather than only in
+							the failure message — is the difference between a five-minute
+							detour and an install that dies on "FCrDNS blocked".
+						-->
+						<div class="rounded-xl border border-border-subtle p-4">
+							<h3 class="font-medium text-text-primary">
+								{{ t('setup.email.reverseDnsHeading') }}
+							</h3>
+							<p class="text-sm text-text-secondary mt-1">
+								{{ t('setup.email.reverseDnsBody') }}
+							</p>
+						</div>
 						<p v-if="showErrors && errors.mtaIdentity" class="text-sm text-error">
 							{{ errorText(errors.mtaIdentity) }}
 						</p>

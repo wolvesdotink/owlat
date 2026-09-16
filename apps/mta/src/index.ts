@@ -17,9 +17,7 @@ import {
 	startSubmissionServer,
 } from './smtp/submissionServer.js';
 import { initializePools } from './scaling/ipPool.js';
-import { runFcrdnsReadinessCheck } from './scaling/fcrdns.js';
-import { runIpv6SpfReadinessCheck } from './scaling/ipv6SpfReadiness.js';
-import { runSourceAddressReadinessCheck } from './scaling/sourceAddressReadiness.js';
+import { refreshOutboundIdentity } from './scaling/outboundIdentityRefresh.js';
 import { flushPendingIpReadinessAlerts } from './scaling/ipReadinessAlerts.js';
 import { startDnsblChecker } from './intelligence/dnsbl.js';
 import { configuredAuditIps, defaultIpAuditDeps, startIpAuditor } from './scaling/ipAudit.js';
@@ -108,9 +106,7 @@ export async function main() {
 	// ── 4b. FCrDNS readiness gate ──
 	// Complete the first observation before a worker can select an IP. A fresh,
 	// never-verified address therefore cannot race its quarantine at startup.
-	await runSourceAddressReadinessCheck(redis, config);
-	await runFcrdnsReadinessCheck(redis, config);
-	await runIpv6SpfReadinessCheck(redis, config);
+	await refreshOutboundIdentity(redis, config);
 	await flushPendingIpReadinessAlerts(redis, config);
 
 	// ── 4c. Finish this process's first DNSBL sweep, then elect the cron leader ──
@@ -207,9 +203,7 @@ export async function main() {
 		async () => {
 			if (!isLeader()) return;
 			try {
-				await runSourceAddressReadinessCheck(redis, config);
-				await runFcrdnsReadinessCheck(redis, config);
-				await runIpv6SpfReadinessCheck(redis, config);
+				await refreshOutboundIdentity(redis, config);
 			} catch (err) {
 				logger.error({ err }, 'Periodic outbound-IP readiness check failed');
 			}

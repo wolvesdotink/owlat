@@ -10349,6 +10349,8 @@
 				}
 			},
 			"resendKeyLabel": "Resend-API-Schlüssel",
+			"reverseDnsBody": "Jede Versand-IP oben braucht einen PTR-Eintrag auf ihren EHLO-Hostnamen. Er wird dort gesetzt, wo Sie die IP mieten — in der Konsole Ihres Hosters —, nicht in Ihrer DNS-Zone. Das Setup prüft das vor dem Abschluss, und bis es passt, verlässt keine E-Mail den Server.",
+			"reverseDnsHeading": "Reverse DNS (PTR) — vor dem Abschluss einrichten",
 			"sesAccessKeyLabel": "Access-Key-ID",
 			"sesRegionLabel": "Region",
 			"sesSecretKeyLabel": "Secret Access Key",
@@ -11719,7 +11721,7 @@
 			"provisioningForm": {
 				"dnsNotes": {
 					"dmarc": "DMARC — Startwert; nach der Beobachtung verschärfen.",
-					"ptr": "Richten Sie für diese IP zusätzlich Reverse DNS (PTR) bei Ihrem Hoster ein.",
+					"ptr": "Reverse DNS — dort setzen, wo Sie die IP mieten (bei Ihrem Hoster), nicht in Ihrer DNS-Zone. Bis es passt, wird kein Versand zugelassen.",
 					"spf": "SPF — Startwert; bestätigen Sie ihn unter Einstellungen → Domains."
 				},
 				"errors": {
