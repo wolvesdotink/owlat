@@ -5708,6 +5708,13 @@
 						"title": "Team & access"
 					}
 				},
+				"claimPlatform": {
+					"action": "Enable for my account",
+					"body": "Nobody on this instance holds platform admin, so system updates, backups, and the operator console are unreachable. As the owner of this workspace you can take that role now — you'll be able to grant it to other members afterwards.",
+					"operation": "Claim platform admin",
+					"success": "Operator tools enabled. System updates, backups, and the operator console are now available.",
+					"title": "Operator tools are not enabled yet"
+				},
 				"deliveryVerdict": "Delivery verdict",
 				"eyebrow": "Administration",
 				"learnMore": "Learn more →",
@@ -6570,6 +6577,7 @@
 					"admins": {
 						"add": "Add admin",
 						"added": "Added",
+						"allPromoted": "Every member already holds platform admin.",
 						"footnote": "Only superadmins can add or remove platform admins. You cannot remove yourself.",
 						"role": "Role",
 						"title": "Platform admins"

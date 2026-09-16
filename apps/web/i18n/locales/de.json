@@ -5708,6 +5708,13 @@
 						"title": "Team & Zugriff"
 					}
 				},
+				"claimPlatform": {
+					"action": "Für mein Konto aktivieren",
+					"body": "Auf dieser Installation hat niemand die Rolle „Plattformadministrator“, daher sind Systemaktualisierungen, Backups und die Betriebskonsole nicht erreichbar. Als Inhaber dieses Workspace können Sie die Rolle jetzt übernehmen — danach können Sie sie auch anderen Mitgliedern erteilen.",
+					"operation": "Plattformadministrator übernehmen",
+					"success": "Betriebswerkzeuge aktiviert. Systemaktualisierungen, Backups und die Betriebskonsole stehen jetzt zur Verfügung.",
+					"title": "Betriebswerkzeuge sind noch nicht aktiviert"
+				},
 				"deliveryVerdict": "Zustellungsbewertung",
 				"eyebrow": "Administration",
 				"learnMore": "Mehr erfahren →",
@@ -6570,6 +6577,7 @@
 					"admins": {
 						"add": "Admin hinzufügen",
 						"added": "Hinzugefügt",
+						"allPromoted": "Alle Mitglieder sind bereits Plattformadministratoren.",
 						"footnote": "Nur Superadmins können Plattform-Admins hinzufügen oder entfernen. Sie können sich nicht selbst entfernen.",
 						"role": "Rolle",
 						"title": "Plattform-Admins"
