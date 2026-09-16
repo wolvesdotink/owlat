@@ -17,6 +17,13 @@ export interface EmailJob {
 	workAttemptId?: string;
 	/** Durable predecessor→successor handoff promoted when a deferred job starts. */
 	deferHandoffId?: string;
+	/**
+	 * Stable identity of this job's defer chain, carried verbatim across every
+	 * re-enqueue. One retry ladder owns ONE handoff receipt slot keyed by this,
+	 * rather than a fresh four-day key per deferral. Absent on the first attempt
+	 * (the root derives it) and on jobs enqueued before chains existed.
+	 */
+	deferChainId?: string;
 	/** Recipient email address */
 	to: string;
 	/** Sender email address */
