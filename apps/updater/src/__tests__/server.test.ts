@@ -37,7 +37,10 @@ afterAll(() => server.close());
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
 	execSyncMock.mockReset().mockReturnValue('');
-	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n');
+	writeFileSync(
+		join(OWLAT_DIR, '.env'),
+		'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n'
+	);
 });
 
 const AUTH = { 'x-instance-secret': 'test-instance-secret-0123456789' };
@@ -97,7 +100,9 @@ describe('POST /update', () => {
 	});
 
 	it('stages the template, promotes it only after pull + deploy succeed', async () => {
-		const template = ['services:', '  web:', "    image: ghcr.io/wolvesdotink/web:1.0.0", ''].join('\n');
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:1.0.0', ''].join(
+			'\n'
+		);
 		const res = await post('/update', { composeTemplate: template });
 		const json = (await res.json()) as { steps?: Array<{ step: string }> };
 		expect(json.steps?.map((s) => s.step)).toEqual([
@@ -126,10 +131,14 @@ describe('POST /update', () => {
 			}
 			return '';
 		});
-		const template = ['services:', '  web:', "    image: ghcr.io/wolvesdotink/web:9.9.9", ''].join('\n');
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:9.9.9', ''].join(
+			'\n'
+		);
 		const res = await post('/update', { composeTemplate: template });
 		expect(res.status).toBe(500);
-		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe('services: {} # original\n');
+		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(
+			'services: {} # original\n'
+		);
 		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
 	});
 
@@ -202,7 +211,10 @@ describe('POST /rotate-env', () => {
 	});
 
 	it('rejects CR/LF injection into the env file', async () => {
-		const res = await post('/rotate-env', { ...valid, mtaApiKey: 'evil\nINJECTED=1-padme-16chars' });
+		const res = await post('/rotate-env', {
+			...valid,
+			mtaApiKey: 'evil\nINJECTED=1-padme-16chars',
+		});
 		expect(res.status).toBe(400);
 	});
 
@@ -225,7 +237,7 @@ describe('GET /health', () => {
 
 	it('reports parsed container rows with image tags', async () => {
 		execSyncMock.mockReturnValue(
-			'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:1.2.3","Health":"healthy"}\n',
+			'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:1.2.3","Health":"healthy"}\n'
 		);
 		const res = await fetch(`${base}/health`, { headers: AUTH });
 		expect(res.status).toBe(200);
@@ -246,7 +258,7 @@ describe('GET /health', () => {
 						version: string;
 						configuredVersion: string | null;
 						versionDrift: boolean | null;
-					}>,
+					}>
 			);
 		}
 
@@ -257,9 +269,9 @@ describe('GET /health', () => {
 				['web', 'mta', 'imap']
 					.map(
 						(name) =>
-							`{"Service":"${name}","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/${name}:0.4.12","Health":"healthy"}`,
+							`{"Service":"${name}","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/${name}:0.4.12","Health":"healthy"}`
 					)
-					.join('\n'),
+					.join('\n')
 			);
 			const json = await health();
 			expect(json.configuredVersion).toBe('0.4.13');
@@ -269,7 +281,7 @@ describe('GET /health', () => {
 		it('reports no drift when every container runs the configured version', async () => {
 			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\n');
 			execSyncMock.mockReturnValue(
-				'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}\n',
+				'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}\n'
 			);
 			const json = await health();
 			expect(json.configuredVersion).toBe('0.4.13');
@@ -283,7 +295,7 @@ describe('GET /health', () => {
 					'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}',
 					'{"Service":"redis","State":"running","Status":"Up","Image":"redis:7.4-alpine","Health":"healthy"}',
 					'{"Service":"caddy","State":"running","Status":"Up","Image":"caddy:2.8-alpine","Health":""}',
-				].join('\n'),
+				].join('\n')
 			);
 			expect((await health()).versionDrift).toBe(false);
 		});
@@ -291,7 +303,7 @@ describe('GET /health', () => {
 		it('answers null — never a false verdict — when .env carries no OWLAT_VERSION', async () => {
 			writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n');
 			execSyncMock.mockReturnValue(
-				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n',
+				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n'
 			);
 			const json = await health();
 			expect(json.configuredVersion).toBeNull();
@@ -301,7 +313,7 @@ describe('GET /health', () => {
 		it('still reports container facts when .env cannot be read', async () => {
 			rmSync(join(OWLAT_DIR, '.env'));
 			execSyncMock.mockReturnValue(
-				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n',
+				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n'
 			);
 			const res = await fetch(`${base}/health`, { headers: AUTH });
 			expect(res.status).toBe(200);
