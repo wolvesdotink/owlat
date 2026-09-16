@@ -10128,6 +10128,11 @@
 			"haveServer": "Sie haben bereits einen Server?",
 			"heading": "Willkommen bei {brand}",
 			"pageTitle": "Willkommen — Owlat",
+			"reconnect": {
+				"action": "Erneut verbinden",
+				"heading": "Erneut anmelden",
+				"tagline": "Deine Sitzung für diesen Server ist beendet. Verbinde dich erneut, um weiterzumachen."
+			},
 			"setup": {
 				"description": "Installieren Sie Owlat per SSH auf einem frischen Linux-Server.",
 				"title": "Neuen Server einrichten"
@@ -13766,9 +13771,13 @@
 		},
 		"useDesktopWorkspaces": {
 			"errors": {
-				"stateMismatch": "Unerwartete Anmeldeantwort (State stimmt nicht überein).",
+				"generic": "Verbindung zu diesem Server nicht möglich.",
+				"noSession": "Der Server hat die Anmeldung akzeptiert, aber keine Sitzung zurückgegeben. Bitte erneut anmelden.",
+				"stateMismatch": "Dieser Anmeldelink ist abgelaufen oder wurde bereits verwendet. Starte die Verbindung erneut.",
 				"unreachable": "Unter {siteUrl} war keine Owlat-Instanz erreichbar",
-				"unusableConfig": "Diese Instanz hat keine verwendbare Konfiguration zurückgegeben."
+				"unusableConfig": "Diese Instanz hat keine verwendbare Konfiguration zurückgegeben.",
+				"verifyFailed": "Die Anmeldung bei {siteUrl} konnte nicht abgeschlossen werden (Fehler {status}). Bitte erneut anmelden.",
+				"verifyRouteMissing": "{siteUrl} unterstützt die Desktop-Anmeldung nicht. Aktualisiere den Server auf v0.4.14 oder neuer und verbinde dich erneut."
 			}
 		},
 		"useEmailEditorBridge": {

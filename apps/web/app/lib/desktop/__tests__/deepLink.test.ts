@@ -6,8 +6,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // relevant to the routing logic under test, so stub both so the module imports
 // cleanly and we can assert on the calls.
 const completeConnection = vi.fn();
+const recordConnectFailure = vi.fn();
 vi.mock('~/composables/useDesktopWorkspaces', () => ({
 	completeConnection: (...args: unknown[]) => completeConnection(...args),
+	recordConnectFailure: (...args: unknown[]) => recordConnectFailure(...args),
 }));
 
 const openCompose = vi.fn();
@@ -22,6 +24,7 @@ describe('handleDeepLink', () => {
 
 	beforeEach(() => {
 		completeConnection.mockReset().mockResolvedValue(undefined);
+		recordConnectFailure.mockReset();
 		openCompose.mockReset().mockResolvedValue(undefined);
 		assign = vi.fn();
 		// happy-dom's window.location.assign is a no-op; replace it so we can
@@ -51,11 +54,20 @@ describe('handleDeepLink', () => {
 			expect(completeConnection).not.toHaveBeenCalled();
 		});
 
-		it('swallows a failed connection without throwing', async () => {
-			completeConnection.mockRejectedValueOnce(new Error('boom'));
+		// A deep link has no caller to reject into, so the handler must not throw
+		// — but it must not swallow the reason either. The connect screen reads it
+		// back from the composable; without that, a handshake that failed AFTER
+		// the user left for the browser is indistinguishable from nothing having
+		// happened at all.
+		it('records a failed connection instead of only logging it', async () => {
+			const failure = new Error('boom');
+			completeConnection.mockRejectedValueOnce(failure);
 			vi.spyOn(console, 'error').mockImplementation(() => {});
+
 			await expect(handleDeepLink('owlat://auth?ott=t&state=s')).resolves.toBeUndefined();
+
 			expect(completeConnection).toHaveBeenCalledTimes(1);
+			expect(recordConnectFailure).toHaveBeenCalledWith(failure);
 		});
 	});
 
