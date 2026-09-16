@@ -40,14 +40,15 @@ export interface ContainerFinding {
 }
 
 /**
- * Split an image reference into repository and tag.
+ * Split an image reference into repository and tag. Internal: exercised
+ * through `parseComposePs` (which reports the tag) and `isOwlatOwnedImage`.
  *
  * Naive `split(':').pop()` is wrong for a registry that carries a PORT
  * (`registry.example.com:5000/owlat/web`) — it would return `5000/owlat/web` as
  * the "tag". Only a colon after the final `/` introduces a tag. A digest pin
  * (`repo@sha256:…`) has no tag at all.
  */
-export function splitImageRef(image: string): { repository: string; tag: string } {
+function splitImageRef(image: string): { repository: string; tag: string } {
 	const atIndex = image.indexOf('@');
 	const ref = atIndex === -1 ? image : image.slice(0, atIndex);
 	const lastColon = ref.lastIndexOf(':');
@@ -57,14 +58,15 @@ export function splitImageRef(image: string): { repository: string; tag: string 
 }
 
 /**
- * Is this image one the Owlat release pins to `${OWLAT_VERSION}`?
+ * Is this image one the Owlat release pins to `${OWLAT_VERSION}`? Internal:
+ * exercised through `evaluateVersionDrift`, which only judges owned images.
  *
  * Only these may be compared against the configured version. Third-party pins
  * (`redis:7.4-alpine`, `caddy:2.8-alpine`, `ghcr.io/get-convex/convex-backend`,
  * `alpine`, `ollama/ollama`, `tecnativa/docker-socket-proxy`) carry their own
  * independent versions and would otherwise all report as drifted.
  */
-export function isOwlatOwnedImage(image: string): boolean {
+function isOwlatOwnedImage(image: string): boolean {
 	const { repository } = splitImageRef(image);
 	// Published release images, and the two images compose builds locally
 	// (`owlat-code-worker`, `owlat-convex-fn-proxy`) — both are pinned to
@@ -121,8 +123,11 @@ export function parseComposePs(stdout: string): ComposeService[] {
 	return services;
 }
 
-/** A container is fine when it is `running` and not failing its healthcheck. */
-export function isServiceHealthy(service: ComposeService): boolean {
+/**
+ * A container is fine when it is `running` and not failing its healthcheck.
+ * Internal: exercised through `evaluateContainerStates`.
+ */
+function isServiceHealthy(service: ComposeService): boolean {
 	return service.state === 'running' && service.health !== 'unhealthy';
 }
 

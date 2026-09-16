@@ -3,12 +3,21 @@ import {
 	evaluateContainerStates,
 	evaluateVersionDrift,
 	hasVersionDrift,
-	isOwlatOwnedImage,
 	parseComposePs,
 	parseConfiguredVersionFromEnv,
-	splitImageRef,
 	type ComposeService,
 } from '../containerHealth';
+
+/** Tag that `parseComposePs` derives for an image reference. */
+function tagOf(image: string): string | undefined {
+	return parseComposePs(JSON.stringify({ Service: 'x', Image: image }))[0]?.imageTag;
+}
+
+/** Does `evaluateVersionDrift` consider this image one of ours to judge? */
+function isJudgedForDrift(image: string): boolean {
+	const services = parseComposePs(JSON.stringify({ Service: 'x', Image: image }));
+	return evaluateVersionDrift(services, 'some-configured-version').length > 0;
+}
 
 function service(overrides: Partial<ComposeService> = {}): ComposeService {
 	return {
@@ -22,43 +31,35 @@ function service(overrides: Partial<ComposeService> = {}): ComposeService {
 	};
 }
 
-describe('splitImageRef', () => {
+describe('image tag extraction (via parseComposePs)', () => {
 	it('splits a normal tagged reference', () => {
-		expect(splitImageRef('ghcr.io/wolvesdotink/web:0.4.13')).toEqual({
-			repository: 'ghcr.io/wolvesdotink/web',
-			tag: '0.4.13',
-		});
+		expect(tagOf('ghcr.io/wolvesdotink/web:0.4.13')).toBe('0.4.13');
 	});
 
 	it('does NOT mistake a registry port for a tag', () => {
 		// `split(':').pop()` would answer "5000/owlat/web" here.
-		expect(splitImageRef('registry.example.com:5000/owlat/web')).toEqual({
-			repository: 'registry.example.com:5000/owlat/web',
-			tag: '',
-		});
-		expect(splitImageRef('registry.example.com:5000/owlat/web:0.4.13')).toEqual({
-			repository: 'registry.example.com:5000/owlat/web',
-			tag: '0.4.13',
-		});
+		expect(tagOf('registry.example.com:5000/owlat/web')).toBe('');
+		expect(tagOf('registry.example.com:5000/owlat/web:0.4.13')).toBe('0.4.13');
 	});
 
 	it('reports no tag for a digest pin', () => {
-		expect(splitImageRef('ghcr.io/wolvesdotink/web@sha256:abc123')).toEqual({
-			repository: 'ghcr.io/wolvesdotink/web',
-			tag: '',
-		});
+		expect(tagOf('ghcr.io/wolvesdotink/web@sha256:abc123')).toBe('');
 	});
 });
 
-describe('isOwlatOwnedImage', () => {
-	it('claims published and locally-built Owlat images', () => {
-		expect(isOwlatOwnedImage('ghcr.io/wolvesdotink/web:0.4.13')).toBe(true);
-		expect(isOwlatOwnedImage('ghcr.io/wolvesdotink/imap:0.4.12')).toBe(true);
-		expect(isOwlatOwnedImage('owlat-code-worker:0.4.13')).toBe(true);
-		expect(isOwlatOwnedImage('owlat-convex-fn-proxy:dev')).toBe(true);
+describe('which images are judged for drift', () => {
+	it('judges published and locally-built Owlat images', () => {
+		for (const image of [
+			'ghcr.io/wolvesdotink/web:0.4.13',
+			'ghcr.io/wolvesdotink/imap:0.4.12',
+			'owlat-code-worker:0.4.13',
+			'owlat-convex-fn-proxy:dev',
+		]) {
+			expect(isJudgedForDrift(image)).toBe(true);
+		}
 	});
 
-	it('does NOT claim third-party images pinned to their own versions', () => {
+	it('does NOT judge third-party images pinned to their own versions', () => {
 		// These would otherwise all report as "drifted" on every install.
 		for (const image of [
 			'redis:7.4-alpine',
@@ -68,7 +69,7 @@ describe('isOwlatOwnedImage', () => {
 			'tecnativa/docker-socket-proxy:0.3',
 			'ghcr.io/get-convex/convex-backend:latest',
 		]) {
-			expect(isOwlatOwnedImage(image)).toBe(false);
+			expect(isJudgedForDrift(image)).toBe(false);
 		}
 	});
 });
