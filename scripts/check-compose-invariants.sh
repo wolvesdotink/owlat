@@ -228,6 +228,30 @@ if grep -qE '^ {6}MAIL_SYNC_API_KEY: \$\{MAIL_SYNC_API_KEY\}$' <<<"$mail_sync" \
 	ok "$root runs mail-sync under external-mail with a defaultless MAIL_SYNC_API_KEY"
 else bad "$root mail-sync must use MAIL_SYNC_API_KEY: \${MAIL_SYNC_API_KEY} (no :- default) under the external-mail profile"; fi
 
+# A required secret must never be interpolated with the `${VAR:-}` empty
+# default. Compose bakes the resolved value into the container at CREATE time,
+# so an empty one is not a degraded mode — it is a container that rejects its
+# own config at boot and then crash-loops on it FOREVER, long after .env is
+# fixed. imap burnt 11h of a live instance that way. Every consumer of
+# CONVEX_ADMIN_KEY throws on an empty value (apps/imap/src/config.ts,
+# apps/mail-sync/src/config.ts, apps/convex-fn-proxy/src/proxy.ts), so the
+# defaultless `${CONVEX_ADMIN_KEY}` form is pinned here in BOTH compose files.
+#
+# It is NOT `${CONVEX_ADMIN_KEY:?}`, and must not be "upgraded" to it: the key
+# can only be minted by an already-running backend, so .env legitimately holds
+# it empty during the install's first `up` — and because compose interpolates
+# the whole file before profile filtering, `:?` would abort that `up` along with
+# every later `down`/`logs`/`ps`, scripts/backup.sh and scripts/restore.sh.
+# The creation-order half is fixed in the setup flow, which re-runs `up -d`
+# after the key lands (apps/setup-cli/src/commands/quickstart.ts, scripts/setup.sh).
+for compose in "$root" "$vps"; do
+	defaulted=$(grep -cE '^ {6}CONVEX_ADMIN_KEY: \$\{CONVEX_ADMIN_KEY:-\}$' "$compose" || true)
+	consumers=$(grep -cE '^ {6}CONVEX_ADMIN_KEY: \$\{CONVEX_ADMIN_KEY\}$' "$compose" || true)
+	if [ "${defaulted:-0}" -eq 0 ] && [ "${consumers:-0}" -ge 1 ]; then
+		ok "$compose interpolates CONVEX_ADMIN_KEY with no empty default ($consumers consumer(s))"
+	else bad "$compose must use CONVEX_ADMIN_KEY: \${CONVEX_ADMIN_KEY} with no :- default (found ${defaulted:-0} defaulted, ${consumers:-0} defaultless) — an empty admin key crash-loops imap/mail-sync/convex-fn-proxy forever"; fi
+done
+
 cert_init=$(service_block "$root" imap-cert-init)
 imap_block=$(service_block "$root" imap)
 if [ -n "$cert_init" ] && grep -qE '^ {6}- personal-mail$' <<<"$cert_init" \
