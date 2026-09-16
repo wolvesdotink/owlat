@@ -329,6 +329,13 @@ jobs:
       # then proves the image came from this repo's release workflow.
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          # cosign-installer v4 defaults to cosign 3.x, which signs with the new
+          # bundle format stored as an OCI 1.1 referrer. cosign 2.x clients (what
+          # most operators still have, and what the release notes' `cosign verify`
+          # assumes) cannot find those signatures. Stay on the 2.x line until the
+          # format switch is made deliberately and announced in the release notes.
+          cosign-release: v2.6.5
 
       - name: Sign published image digest (cosign keyless)
         env:
