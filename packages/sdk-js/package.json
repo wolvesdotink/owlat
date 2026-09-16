@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/sdk-js",
-	"version": "0.4.14",
+	"version": "0.4.15",
 	"description": "Official Owlat SDK for JavaScript and TypeScript",
 	"keywords": [
 		"owlat",
