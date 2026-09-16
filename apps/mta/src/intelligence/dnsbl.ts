@@ -36,6 +36,16 @@ const DNSBL_PREFIX = 'mta:dnsbl:';
 const IP_POOL_BLOCKED = 'mta:ip-pool:blocked';
 /** Set while the fully-listed halt alert has already been sent for the day. */
 const ALL_IPS_BLOCKED_ALERT_KEY = 'mta:dnsbl:all-ips-blocked-alerted';
+/**
+ * Upper bound on how long a sweep waits for Convex to acknowledge an alert it
+ * awaits inline. The notifier's full retry ladder runs ~6.5 minutes, and the
+ * boot sweep sits in front of the HTTP listener: on a fresh install the
+ * function runtime is not deployed yet (the installer deploys it only after
+ * /health answers), so every attempt 404s and the installer times out waiting
+ * for a listener that is still sleeping between retries. Past the deadline the
+ * event lands in the dead-letter queue, which the leader sweeps every minute.
+ */
+export const SWEEP_ALERT_DEADLINE_MS = 20_000;
 const DAY_SECONDS = 24 * 60 * 60;
 /**
  * Addresses whose zone lookups may be in flight at once.
@@ -218,7 +228,8 @@ export async function runDnsblCheck(
 					timestamp: Date.now(),
 				},
 				config,
-				redis
+				redis,
+				{ deadline: Date.now() + SWEEP_ALERT_DEADLINE_MS }
 			).catch(() =>
 				logger.error(
 					{
@@ -324,7 +335,8 @@ export async function runDnsblCheck(
 						timestamp: Date.now(),
 					},
 					config,
-					redis
+					redis,
+					{ deadline: Date.now() + SWEEP_ALERT_DEADLINE_MS }
 				).catch(() =>
 					// A THROWN alert never reached the notifier's own durability, so it
 					// must not consume the day's slot: drop the dedup key and the next

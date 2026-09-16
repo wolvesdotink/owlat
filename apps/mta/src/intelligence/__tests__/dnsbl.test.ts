@@ -18,6 +18,7 @@ import {
 	getDnsblStatus,
 	startDnsblChecker,
 	SWEEP_ADDRESS_CONCURRENCY,
+	SWEEP_ALERT_DEADLINE_MS,
 } from '../dnsbl.js';
 import { ALERT_MESSAGE_MAX_LENGTH } from '../dnsblAlert.js';
 import { dnsblQueryName } from '../dnsblLookup.js';
@@ -145,7 +146,8 @@ describe('DNSBL checking', () => {
 			expect(notifyConvex).toHaveBeenCalledWith(
 				expect.objectContaining({ event: 'ip.blocklisted', severity: 'critical' }),
 				config,
-				redis
+				redis,
+				{ deadline: expect.any(Number) }
 			);
 		});
 
@@ -323,8 +325,29 @@ describe('DNSBL checking', () => {
 			expect(notifyConvex).toHaveBeenCalledWith(
 				expect.objectContaining({ event: 'all_ips_blocked', severity: 'critical' }),
 				config,
-				redis
+				redis,
+				{ deadline: expect.any(Number) }
 			);
+		});
+
+		it('bounds the inline all-IPs-blocked alert so a boot sweep cannot stall the HTTP listener', async () => {
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				if (hostname.includes('zen.spamhaus.org')) {
+					return ['127.0.0.2'];
+				}
+				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+			});
+
+			const before = Date.now();
+			await runDnsblCheck(redis, config, lookupDeps);
+
+			const call = vi
+				.mocked(notifyConvex)
+				.mock.calls.find(([event]) => event.event === 'all_ips_blocked');
+			expect(call).toBeDefined();
+			const deadline = call![3]?.deadline;
+			expect(deadline).toBeGreaterThanOrEqual(before + SWEEP_ALERT_DEADLINE_MS);
+			expect(deadline).toBeLessThanOrEqual(Date.now() + SWEEP_ALERT_DEADLINE_MS);
 		});
 
 		it('preserves a critical quarantine through resolver failure and releases it only on confirmed clean results', async () => {
@@ -500,7 +523,8 @@ describe('shipped behaviour regression', () => {
 		expect(notifyConvex).toHaveBeenCalledWith(
 			expect.objectContaining({ event: 'ip.blocklisted', severity: 'critical' }),
 			defaultConfig,
-			redis
+			redis,
+			{ deadline: expect.any(Number) }
 		);
 
 		vi.mocked(resolve4).mockRejectedValue(dnsError('ENOTFOUND'));

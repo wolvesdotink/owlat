@@ -47,6 +47,7 @@ import type { CliOptions } from '../lib/cliOptions';
 import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioningCheckpoint';
 import { resolveLocalHost } from '../lib/localHost';
 import { probeMtaIdentityHealth } from './doctor';
+import { applyOutboundIpDefaults, detectPrimaryIpv4 } from '../lib/outboundIp';
 
 export type Mode = 'populated' | 'blank' | 'custom';
 
@@ -227,6 +228,24 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		);
 	}
 
+	// Direct delivery needs a real source address. docker-compose.yml defaults
+	// IP_POOLS_* to 127.0.0.1, whose PTR can never match EHLO_HOSTNAME, so the
+	// MTA's identity gate below would always fail. Default both pools to the
+	// box's primary IPv4 unless the operator already chose one.
+	if (composeProfilesUnion.includes('mta')) {
+		const envForPools = await readEnv(envPath);
+		const detected = detectPrimaryIpv4();
+		if (applyOutboundIpDefaults(envForPools, detected)) {
+			await writeEnv(envPath, envForPools);
+			reporter.log(`Sending pools default to this server's address ${detected}`);
+		} else if (!detected && !envForPools['IP_POOLS_TRANSACTIONAL']) {
+			reporter.log(
+				'Could not detect a routable IPv4 for the sending pools; set IP_POOLS_TRANSACTIONAL and IP_POOLS_CAMPAIGN in .env',
+				'stderr'
+			);
+		}
+	}
+
 	const knownAdminEmail = shouldBootstrap
 		? (config?.admin.email ?? flags.email ?? (opts.assumeYes ? 'dev@example.com' : undefined))
 		: undefined;
@@ -280,10 +299,15 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	if (composeProfilesUnion.includes('mta')) {
 		const localMtaUrl = `http://${resolveLocalHost(process.env)}:${envAfterCompose['MTA_HTTP_PORT'] ?? '3100'}`;
 		reporter.step(SetupStep.MtaIdentity, 'Verifying outbound IP identity');
+		// The MTA finishes its boot-time identity, source-address and DNSBL
+		// sweeps before it opens the listener, and each sweep may wait on DNS
+		// and a bounded Convex alert. Allow for all of that before giving up.
 		try {
-			await waitForUrl({ url: `${localMtaUrl}/health`, timeoutMs: 30_000 });
+			await waitForUrl({ url: `${localMtaUrl}/health`, timeoutMs: 120_000 });
 		} catch (err) {
-			reporter.fail(`MTA health endpoint did not become ready: ${(err as Error).message}`);
+			reporter.fail(
+				`MTA health endpoint did not become ready: ${(err as Error).message}. Inspect it with \`docker compose logs mta\`.`
+			);
 			reporter.done(false);
 			return 1;
 		}
