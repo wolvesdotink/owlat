@@ -1173,6 +1173,40 @@ describe('handleEmailJob', () => {
 		}
 	});
 
+	// The defer-handoff receipt used to be keyed by the SUCCESSOR job id, which
+	// is re-derived on every deferral, so each rung of a ladder minted a fresh
+	// key held for the full four-day message lifetime. A personal instance stuck
+	// in a 60s self-throttle loop accumulated 6.37M of them and OOM-killed Redis.
+	// Keyed by the chain instead, a ladder of any length occupies exactly one.
+	it('PR-04 (b): a long self-throttle ladder holds exactly ONE defer-handoff key', async () => {
+		const { checkCap } = await import('../../intelligence/warming.js');
+		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
+
+		let data = createJob();
+		let jobId = 'ladder-root';
+		let chainKey: string | undefined;
+
+		for (let rung = 0; rung < 25; rung++) {
+			queue.add.mockClear();
+			await expect(run(data, { id: jobId })).resolves.toBeUndefined();
+			expect(queue.add).toHaveBeenCalledTimes(1);
+
+			// The leak this guards: one key per rung, each pinned for four days.
+			const keys = await redis.keys('mta:defer-handoffs:*');
+			expect(keys).toHaveLength(1);
+			// ...and it is the same slot every rung, overwritten in place.
+			chainKey ??= keys[0];
+			expect(keys[0]).toBe(chainKey);
+
+			const enqueued = queue.add.mock.calls[0]![0] as { jobId: string; data: EmailJob };
+			data = enqueued.data;
+			jobId = enqueued.jobId;
+		}
+
+		expect(chainKey).toMatch(/^mta:defer-handoffs:chain-[0-9a-f]{64}$/);
+		expect(data.deferChainId).toBe(chainKey!.split(':').pop());
+	});
+
 	it('PR-04 (b): circuit breaker open re-enqueues with the cooldown delay, no throw', async () => {
 		const { canSend } = await import('../../intelligence/circuitBreaker.js');
 		vi.mocked(canSend).mockResolvedValue({ allowed: false, state: 'open', retryAfter: 60000 });

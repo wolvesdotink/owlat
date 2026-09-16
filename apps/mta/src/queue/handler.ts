@@ -87,10 +87,14 @@ export async function handleEmailJob(
 			return;
 		}
 	}
-	await promoteDeferredHandoff(redis, data);
+	// Resume before promote. Once this job has durably handed off, its chain slot
+	// holds the SUCCESSOR's receipt rather than its own, so a redelivery has to
+	// take the resume exit first — reading for its own receipt there would find
+	// an advanced chain and mistake it for a missing one.
 	if (await resumeDeferredHandoff(redis, queue, job.id, data)) {
 		return;
 	}
+	await promoteDeferredHandoff(redis, data);
 	// Ownership may already have moved back to Convex routing on an earlier run
 	// of this job. Re-entering dispatch here would send a message the successor
 	// is also sending. Only a governed job can own a re-entry receipt.

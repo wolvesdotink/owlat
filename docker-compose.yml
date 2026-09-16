@@ -260,12 +260,39 @@ services:
     user: "999:1000"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}
+    # Two independent ceilings, because an unbounded Redis is a whole-host
+    # outage: a defer-handoff leak grew this keyspace to 3.9 GB on a 7.5 GB box
+    # and the KERNEL oom-killer took redis-server down twice in eight minutes,
+    # stopping the MTA rate limiter and the IMAP auth limiter with it.
+    #
+    #   --maxmemory       Redis's own accounting, so it reacts before the cgroup.
+    #   mem_limit         the cgroup ceiling, so a miss (fragmentation, an AOF
+    #                     rewrite fork's copy-on-write, client output buffers)
+    #                     kills this container instead of the host. Kept well
+    #                     above --maxmemory: BGREWRITEAOF forks and COW can
+    #                     briefly approach double the dataset.
+    #
+    # POLICY: noeviction, deliberately. This Redis mixes disposable rate-limiter
+    # counters with DURABILITY records the MTA cannot lose — defer handoffs,
+    # intake receipts, routing-reentry handoffs, idempotency receipts — and all
+    # of those carry a TTL, so no `volatile-*` policy can tell them apart from
+    # the disposable ones and `allkeys-lru` cannot either. Evicting one of them
+    # silently breaks an at-most-once guarantee: a dropped handoff receipt means
+    # a redelivered job forks a second successor and the message is sent twice.
+    # Refusing writes is loud, retried by the MTA, and visible to an operator;
+    # evicting is silent and corrupts mail. Redis already defaults to
+    # noeviction — it is pinned here so the default cannot drift underneath us.
+    command: >-
+      redis-server --appendonly yes
+      --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}
+      --maxmemory ${REDIS_MAXMEMORY:-512mb}
+      --maxmemory-policy noeviction
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
+    mem_limit: ${REDIS_MEM_LIMIT:-1g}
     cap_drop:
       - ALL
     security_opt:
