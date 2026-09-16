@@ -9,7 +9,7 @@
  * Driven from the boot plugin (a path that definitely runs in the webview),
  * handling both the cold-start URL and links delivered while already running.
  */
-import { completeConnection, recordConnectFailure } from '~/composables/useDesktopWorkspaces';
+import { completeConnection, recordConnectFailure } from '~/lib/desktop/workspaceConnect';
 import { parseMailto } from '~/lib/desktop/mailto';
 
 const NAV_ROUTE_MAP: Record<string, string> = {

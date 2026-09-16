@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// The module under test imports `completeConnection` (the workspace handshake)
-// from a composable whose entry transitively pulls in better-auth + Convex
-// singletons, and it dynamically imports the Tauri compose bridge. Neither is
-// relevant to the routing logic under test, so stub both so the module imports
-// cleanly and we can assert on the calls.
+// The module under test imports the workspace handshake, whose module
+// transitively pulls in better-auth + Convex singletons, and it dynamically
+// imports the Tauri compose bridge. Neither is relevant to the routing logic
+// under test, so stub both so the module imports cleanly and we can assert on
+// the calls.
 const completeConnection = vi.fn();
 const recordConnectFailure = vi.fn();
-vi.mock('~/composables/useDesktopWorkspaces', () => ({
+vi.mock('~/lib/desktop/workspaceConnect', () => ({
 	completeConnection: (...args: unknown[]) => completeConnection(...args),
 	recordConnectFailure: (...args: unknown[]) => recordConnectFailure(...args),
 }));

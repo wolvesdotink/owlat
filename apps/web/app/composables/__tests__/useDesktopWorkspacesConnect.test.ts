@@ -76,11 +76,19 @@ const INSTANCE = {
 	deploymentMode: 'selfhost',
 };
 
-/** A fresh copy of the composable — it keeps module-level workspace state, so
- * cases would otherwise leak into each other. */
+/**
+ * A fresh copy of the modules under test. The workspace list is module-level
+ * singleton state (lib/desktop/workspaceState.ts), so cases would otherwise leak
+ * into each other. Both modules are imported after the SAME reset so they share
+ * one module graph — and therefore one workspace list, as they do at runtime.
+ */
 async function freshModule() {
 	vi.resetModules();
-	return import('../useDesktopWorkspaces');
+	const [composable, connect] = await Promise.all([
+		import('../useDesktopWorkspaces'),
+		import('~/lib/desktop/workspaceConnect'),
+	]);
+	return { ...composable, ...connect };
 }
 
 /** Run the browser half of the handshake and return the state nonce it minted. */
