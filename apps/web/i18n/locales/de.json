@@ -2621,6 +2621,48 @@
 				"value": "Wert",
 				"verified": "Bestätigt"
 			},
+			"externalReceiving": {
+				"providers": {
+					"google": "Google Workspace",
+					"microsoft": "Microsoft 365",
+					"other": "Ihrem bisherigen Anbieter",
+					"otherOption": "Anderer Anbieter"
+				}
+			},
+			"externalReceivingSection": {
+				"heading": "Empfang (bleibt bei Ihrem Anbieter)",
+				"operation": "Prüfen, wohin die Mail dieser Domain zugestellt wird",
+				"introHeadline": "Ändern Sie Ihre MX-Einträge nicht.",
+				"intro": "{headline} Eingehende Mail für {domain} bleibt bei {provider} — Owlat versendet für diese Domain nur. Nichts auf dieser Seite verlangt, dass Sie etwas an der Zustellung Ihrer eingehenden Mail ändern.",
+				"mx": {
+					"pointsHereHeadline": "Eingehende Mail erreicht Ihren Anbieter nicht mehr.",
+					"pointsHere": "{headline} Der MX-Eintrag für {domain} zeigt auf diese Owlat-Instanz ({hosts}); die Zustellung liegt damit nicht mehr bei {provider} — jede an diese Domain gesendete Nachricht kommt stattdessen hier an. Stellen Sie bei Ihrem DNS-Anbieter die MX-Einträge Ihres Mailanbieters wieder her, damit Ihre Mail wieder ankommt.",
+					"missing": "Für {domain} wurde kein MX-Eintrag gefunden — an diese Domain gesendete Mail kann derzeit nirgendwo zugestellt werden. Veröffentlichen Sie bei Ihrem DNS-Anbieter die MX-Einträge, die Sie von {provider} bekommen. Versenden kann Owlat von der Domain in jedem Fall.",
+					"confirmed": "Bestätigt — Mail für {domain} wird weiterhin bei {provider} zugestellt ({hosts}). Lassen Sie diese Einträge genau so, wie sie sind.",
+					"elsewhere": "Mail für {domain} wird an {hosts} zugestellt. Das ist nicht diese Owlat-Instanz, Ihr Empfang ist also unberührt — prüfen Sie nur, ob es der erwartete Host ist.",
+					"providerMismatchHeadline": "Das sieht nach {observed} aus, nicht nach {declared}.",
+					"providerMismatch": "{headline} Diese Domain ist für {declared} eingerichtet, der SPF-Eintrag oben autorisiert also {declared} und Owlat. Liegt die Mail jetzt tatsächlich bei {observed}, stellen Sie den Anbieter unten um, damit der SPF-Eintrag auch das abdeckt, was Sie von dort versenden."
+				},
+				"bounces": {
+					"headline": "Bounces laufen über eine eigene Subdomain.",
+					"body": "{headline} Zustellberichte kommen an {host} zurück, einen eigenen Namen — der MX-Eintrag von {domain} selbst wird dabei nie angefasst."
+				},
+				"spf": {
+					"mergedHeadline": "SPF ist bereits zusammengeführt.",
+					"merged": "{headline} Der SPF-Eintrag oben trägt die Freigabe von {provider} und die von Owlat in einem einzigen Eintrag. Veröffentlichen Sie ihn genau so und legen Sie keinen zweiten Eintrag an, der mit v=spf1 beginnt — zwei davon sind ein dauerhafter Fehler.",
+					"manualHeadline": "Führen Sie den SPF-Eintrag selbst zusammen.",
+					"manual": "{headline} Owlat kennt den SPF-Eintrag Ihres Anbieters nicht, deshalb autorisiert der Eintrag oben nur Owlat. Fügen Sie ihn in den SPF-Eintrag ein, den Sie bereits veröffentlichen, sodass es genau einen Eintrag gibt, der mit v=spf1 beginnt — zwei davon sind ein dauerhafter Fehler, der SPF für alles bricht, was Sie versenden.",
+					"noneHeadline": "Es gibt noch keinen SPF-Eintrag.",
+					"none": "{headline} Owlat hat für diese Domain noch keinen erzeugt, oben steht also nichts zum Veröffentlichen. Lassen Sie den SPF-Eintrag, den Sie für {provider} veröffentlichen, unverändert. Wenn die Einrichtung fertig ist, führen Sie den erzeugten Eintrag darin zusammen.",
+					"addIncludeHeadline": "Ergänzen Sie den SPF-Eintrag Ihres Anbieters.",
+					"addInclude": "{headline} Der Eintrag oben autorisiert Owlat, aber nicht {provider}. Ergänzen Sie {include}, bevor Sie ihn veröffentlichen, damit ein Eintrag, der mit v=spf1 beginnt, beides abdeckt. Ein zweiter Eintrag mit v=spf1 ist ein dauerhafter Fehler, der SPF für alles bricht, was Sie versenden."
+				},
+				"migrate": {
+					"headline": "Diese Mail in Owlat lesen?",
+					"body": "{headline} Verbinden Sie das Postfach über IMAP. Die Zustellung und die Mail selbst bleiben bei {provider}; Owlat synchronisiert nur eine Kopie, damit Sie hier lesen und antworten können.",
+					"link": "Postfach verbinden"
+				}
+			},
 			"receivingDnsSection": {
 				"firewall": {
 					"body": "{headline} Andere Mailserver verbinden sich mit {mailHost} auf TCP-Port {portCode}, um Mail zuzustellen; geben Sie eingehendes TCP {port} in Ihrer Firewall / Sicherheitsgruppe frei. Viele Cloud-Anbieter sperren Port {port} standardmäßig — stellen Sie sicher, dass Ihr Hoster eingehendes SMTP erlaubt.",
@@ -2647,6 +2689,39 @@
 				},
 				"reverseDnsOperation": "Reverse-DNS für den Empfang prüfen"
 			},
+			"receivingModeChoice": {
+				"legend": "Wer empfängt die Mail für diese Domain?",
+				"owlat": {
+					"label": "Owlat empfängt sie",
+					"hint": "Owlat wird zum Mailserver für diese Domain. Sie veröffentlichen einen MX-Eintrag, und eingehende Mail landet hier."
+				},
+				"external": {
+					"label": "Mein bisheriger Anbieter behält den Empfang",
+					"hint": "Owlat versendet nur. Wer heute Ihre Mail bearbeitet, behält jede eingehende Nachricht, und Ihre MX-Einträge bleiben unverändert."
+				},
+				"providerLabel": "Wer empfängt sie heute?",
+				"reassurance": "Owlat wird Sie nie bitten, für diese Domain einen MX-Eintrag zu ändern. Jeder erzeugte Eintrag ist ein Sendeeintrag, und der SPF-Eintrag wird mit dem Ihres Anbieters zusammengeführt, sodass beide autorisiert bleiben."
+			},
+			"receivingModeSwitch": {
+				"heading": "Empfangsmodus",
+				"operation": "Empfangsmodus aktualisieren",
+				"current": {
+					"owlat": "Owlat empfängt die Mail für diese Domain.",
+					"external": "Der Empfang bleibt bei {provider}."
+				},
+				"change": "Ändern",
+				"save": "Empfangsmodus speichern",
+				"consequence": "Beim Speichern wird der SPF-Eintrag dieser Domain neu erzeugt und die Domain auf ausstehend zurückgesetzt; Sie müssen den aktualisierten Eintrag veröffentlichen und erneut verifizieren. Owlat ändert nie einen MX-Eintrag für Sie.",
+				"confirm": {
+					"title": "Empfänger dieser Mail ändern?",
+					"description": "{domain} wird wieder auf ausstehend gesetzt und der SPF-Eintrag neu erzeugt; Sie müssen den neuen Eintrag veröffentlichen und erneut verifizieren. Bei Ihrem DNS-Anbieter ändert sich nichts, bis Sie es selbst tun.",
+					"action": "Empfangsmodus ändern"
+				},
+				"toasts": {
+					"external": "Der Empfang bleibt bei Ihrem Anbieter. Veröffentlichen Sie den aktualisierten SPF-Eintrag und verifizieren Sie dann erneut.",
+					"owlat": "Owlat empfängt künftig die Mail für diese Domain. Veröffentlichen Sie die aktualisierten Einträge und verifizieren Sie dann erneut."
+				}
+			},
 			"recordRow": {
 				"autoRecheckTitle": "Wir prüfen Ihr DNS automatisch alle 30 Sekunden, solange dieses Panel geöffnet ist.",
 				"bouncesVia": "Bounces über {host}",
@@ -2669,6 +2744,7 @@
 					"headline": "Wozu diese Domain dient."
 				},
 				"mailFromHeading": "MAIL-FROM-Domain",
+				"receivingVia": "Empfang bei {provider}",
 				"registering": "Wird registriert…",
 				"registrationFailed": "Registrierung fehlgeschlagen",
 				"removeDomain": "Domain entfernen",

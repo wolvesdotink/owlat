@@ -10,6 +10,11 @@
  */
 import { useId } from 'vue';
 import { trySplitZone, isDnsLabel } from '@owlat/shared';
+import type {
+	DomainReceivingMode,
+	ExternalReceivingProvider,
+} from '@owlat/shared/externalReceiving';
+import { DEFAULT_EXTERNAL_RECEIVING_PROVIDER } from '~/utils/externalReceivingLabels';
 import { isFreemailDomain, resolveNs } from '~/utils/domainPrecheck';
 import { useFormValidation, rules, type ValidationRule } from '~/composables/useFormValidation';
 
@@ -43,10 +48,35 @@ export interface AddDomainFormProps {
 	submitLabel?: string;
 }
 
-/** The composed submit payload: the domain to register + an optional return path. */
+/**
+ * Who accepts INBOUND mail for the domain being added.
+ *
+ * `'owlat'` is the historical (and still default) answer — this deployment
+ * becomes the mail server and the setup panel hands over an apex MX record.
+ * `'external'` is send-only: the operator's existing provider keeps the MX and
+ * every incoming message, and Owlat must never ask them to change it.
+ *
+ * Re-exported from the shared union rather than restated, so the form, the row
+ * and the Convex validator can never disagree about what the two modes are.
+ */
+export type ReceivingMode = DomainReceivingMode;
+
+/**
+ * The composed submit payload: the domain to register, an optional return path,
+ * and the receiving answer.
+ *
+ * The receiving fields ride the CREATE payload rather than a follow-up write
+ * because the generated records depend on them — the apex SPF is merged with the
+ * provider's include and TLS-RPT is dropped for an external-receiving domain. A
+ * second call would mean the domain briefly publishes records that are wrong for
+ * the mode the operator just picked.
+ */
 export interface AddDomainSubmitPayload {
 	domain: string;
 	returnPathHost: string | null;
+	receivingMode: ReceivingMode;
+	/** The provider that keeps the MX; `null` whenever the mode is `'owlat'`. */
+	externalReceivingProvider: ExternalReceivingProvider | null;
 }
 
 export function useAddDomainForm(
@@ -68,6 +98,19 @@ export function useAddDomainForm(
 	// the MTA keys the return-path SPF record.
 	const advancedOpen = ref(false);
 	const returnPathSub = ref('');
+
+	// Receiving mode. Defaults to today's behaviour so an operator who ignores the
+	// question gets byte-identical setup guidance to before. The provider pick is
+	// kept even while the mode is `'owlat'` (rather than nulled) so toggling back
+	// and forth doesn't silently reset an answer the operator already gave.
+	const receivingMode = ref<ReceivingMode>('owlat');
+	const externalProvider = ref<ExternalReceivingProvider>(DEFAULT_EXTERNAL_RECEIVING_PROVIDER);
+	// The tracking flow has no inbound mail at all, so the question is neither
+	// asked nor answered there — `isExternalReceiving` stays false and the payload
+	// carries the default, exactly as it did before the choice existed.
+	const isExternalReceiving = computed(
+		() => props.context === 'sending' && receivingMode.value === 'external'
+	);
 	const normalizedReturnPathSub = computed(() => returnPathSub.value.trim().toLowerCase());
 
 	const normalizedDomain = computed(() => domain.value.trim().toLowerCase());
@@ -250,7 +293,12 @@ export function useAddDomainForm(
 			return;
 		}
 		if (isFreemail.value) return;
-		emitSubmit({ domain: combinedDomain.value, returnPathHost: returnPathHost.value });
+		emitSubmit({
+			domain: combinedDomain.value,
+			returnPathHost: returnPathHost.value,
+			receivingMode: isExternalReceiving.value ? 'external' : 'owlat',
+			externalReceivingProvider: isExternalReceiving.value ? externalProvider.value : null,
+		});
 	}
 
 	return {
@@ -260,7 +308,10 @@ export function useAddDomainForm(
 		nsUnresolved,
 		advancedOpen,
 		returnPathSub,
+		receivingMode,
+		externalProvider,
 		// derived
+		isExternalReceiving,
 		normalizedSub,
 		normalizedReturnPathSub,
 		isApex,

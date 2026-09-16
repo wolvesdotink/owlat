@@ -83,6 +83,8 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.domains.dnsRecordPanel.rfc.dkim',
 	'components.domains.dnsRecordPanel.rfc.dmarc',
 	'components.domains.dnsRecordPanel.rfc.mtaSts',
+	'components.domains.externalReceiving.providers.google',
+	'components.domains.externalReceiving.providers.microsoft',
 	'components.domains.recordRow.devBadge',
 	'components.domains.returnPathEditor.inputPlaceholder',
 	'components.domains.streamSubdomainPlanPanel.dkimLabel',

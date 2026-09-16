@@ -281,6 +281,10 @@
 			"types": "./src/spf.ts",
 			"import": "./src/spf.ts"
 		},
+		"./externalReceiving": {
+			"types": "./src/externalReceiving.ts",
+			"import": "./src/externalReceiving.ts"
+		},
 		"./semver": {
 			"types": "./src/semver.ts",
 			"import": "./src/semver.ts"

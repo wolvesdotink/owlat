@@ -27,6 +27,10 @@
  */
 
 import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignment';
+import type {
+	DomainReceivingMode,
+	ExternalReceivingProvider,
+} from '@owlat/shared/externalReceiving';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { DnsRecords } from '../domains';
@@ -172,10 +176,30 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * the MTA adapter binds the key to it so it is born owned and can never sign
 	 * for another org. The generic register action resolves it from the
 	 * deployment's singleton org. Providers with no per-domain key (SES) ignore it.
+	 *
+	 * `options.receiving` is the domain's inbound-mail arrangement, read off the
+	 * row by the register action. ABSENT MEANS `'owlat'` — the historic behaviour
+	 * — so a provider that ignores it generates exactly what it generated before
+	 * the send-only mode existed, and ignoring it is the correct default for a
+	 * new adapter.
+	 *
+	 * An adapter uses it for ONE thing: dropping records that describe INBOUND
+	 * delivery, which for an external-receiving domain terminates at Google or
+	 * Microsoft rather than at us (the MTA adapter's `_smtp._tls` is the only
+	 * such record today). It must NOT try to fold the receiver's SPF include into
+	 * its apex record — the register action does that for every provider at the
+	 * one seam every registration passes through, precisely so a new adapter
+	 * cannot forget and hand a Google Workspace customer a record that breaks
+	 * their SPF. DKIM, DMARC and MAIL FROM are untouched in both modes — all
+	 * three are purely about the mail WE send.
 	 */
 	registerDomain(
 		domain: string,
-		options?: { returnPathHost?: string; organizationId?: string }
+		options?: {
+			returnPathHost?: string;
+			organizationId?: string;
+			receiving?: { mode: DomainReceivingMode; provider?: ExternalReceivingProvider };
+		}
 	): Promise<{
 		dnsRecords: DnsRecords;
 		identity: ProviderIdentityFor<K>;

@@ -1,5 +1,9 @@
 import { v, type Infer, type VLiteral, type VUnion } from 'convex/values';
 import { DELIVERABILITY_CHECKLIST_STATUSES, GOVERNED_MESSAGE_TYPES } from '@owlat/shared';
+import {
+	DOMAIN_RECEIVING_MODES,
+	EXTERNAL_RECEIVING_PROVIDER_IDS,
+} from '@owlat/shared/externalReceiving';
 import { MTA_STS_MODES } from '@owlat/shared/mtaStsPolicy';
 import { YAHOO_CFL_STORED_STATES } from '@owlat/shared/yahooCfl';
 
@@ -23,6 +27,12 @@ export const yahooCflStoredStateValidator = literalUnion(YAHOO_CFL_STORED_STATES
 /** Message type a provider route governs — `providerRoutes.messageType` and its readers. */
 export const messageTypeValidator = literalUnion(GOVERNED_MESSAGE_TYPES);
 export const deliverabilityStatusValidator = literalUnion(DELIVERABILITY_CHECKLIST_STATUSES);
+/** Who accepts INBOUND mail for a sending domain, and which provider keeps its
+ * MX when that is not us (`domains.receivingMode` /
+ * `domains.externalReceivingProvider`, plus every arg that writes them). Absent
+ * ⇒ `'owlat'`: the default lives in absence, not in a backfill. */
+export const receivingModeValidator = literalUnion(DOMAIN_RECEIVING_MODES);
+export const externalReceivingProviderValidator = literalUnion(EXTERNAL_RECEIVING_PROVIDER_IDS);
 
 // Two-to-three literal unions that several tables and function args share.
 export const completedOrFailedValidator = v.union(v.literal('completed'), v.literal('failed'));
