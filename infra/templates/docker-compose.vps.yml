@@ -274,12 +274,29 @@ services:
     user: "999:1000"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    # Bounded on purpose — an unbounded Redis is a whole-host outage. A
+    # defer-handoff leak grew this keyspace to 3.9 GB on a 7.5 GB box and the
+    # kernel oom-killer took redis-server down twice in eight minutes, stopping
+    # the MTA rate limiter and the IMAP auth limiter with it.
+    #
+    # noeviction is deliberate: this instance mixes disposable rate-limiter
+    # counters with durability records the MTA cannot lose (defer handoffs,
+    # intake receipts, idempotency receipts), and all of them carry a TTL, so
+    # neither `volatile-*` nor `allkeys-lru` can tell the two apart. Refusing a
+    # write is loud and retried; evicting a handoff receipt silently sends an
+    # email twice. `mem_limit` sits well above `--maxmemory` to leave room for
+    # the copy-on-write of an append-only-file rewrite fork.
+    command: >-
+      redis-server --appendonly yes
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory ${REDIS_MAXMEMORY:-512mb}
+      --maxmemory-policy noeviction
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
+    mem_limit: ${REDIS_MEM_LIMIT:-1g}
     cap_drop:
       - ALL
     security_opt:
