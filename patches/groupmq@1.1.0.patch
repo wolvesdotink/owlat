@@ -1,0 +1,26 @@
+diff --git a/dist/lua/complete-and-reserve-next-with-metadata.lua b/dist/lua/complete-and-reserve-next-with-metadata.lua
+index 8c2c211193f10b60473a086029ef641c303fc895..91b69b39f9b8806b72c9891ca5798a562f7b2ecb 100644
+--- a/dist/lua/complete-and-reserve-next-with-metadata.lua
++++ b/dist/lua/complete-and-reserve-next-with-metadata.lua
+@@ -121,6 +121,21 @@ else
+ end
+ 
+ local gZ = ns .. ":g:" .. gid
++
++-- Skip chaining while the group's head is still delayed. A delayed job sits in
++-- BOTH the group ZSET and the :delayed ZSET, so popping it here would hand the
++-- worker a job before its runAt AND strand its :delayed entry forever, because
++-- only the promoter removes that entry. Every other reservation path already
++-- makes this check (reserve.lua, reserve-atomic.lua, reserve-batch.lua); the
++-- promoter will make this job ready at its runAt.
++local delayedHead = redis.call("ZRANGE", gZ, 0, 0)
++if delayedHead and #delayedHead > 0 then
++  local headStatus = redis.call("HGET", ns .. ":job:" .. delayedHead[1], "status")
++  if headStatus == "delayed" then
++    return nil
++  end
++end
++
+ local zpop = redis.call("ZPOPMIN", gZ, 1)
+ if not zpop or #zpop == 0 then
+   -- Clean up empty group
