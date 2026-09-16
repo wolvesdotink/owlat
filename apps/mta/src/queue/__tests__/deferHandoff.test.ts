@@ -181,4 +181,87 @@ describe('deferred handoff receipts', () => {
 			[handoffKey(legacyJobId), handoffKey(chainOf(legacyJobId))].sort()
 		);
 	});
+
+	/** A receipt in the shape the pre-chain scheme wrote: keyed by the successor. */
+	async function writeLegacyReceipt(
+		successorJobId: string,
+		job: EmailJob,
+		state: 'reserved' | 'accepted'
+	) {
+		await redis.set(
+			handoffKey(successorJobId),
+			JSON.stringify({
+				state,
+				messageId: job.messageId,
+				successorJobId,
+				groupId: GROUP_ID,
+				delay: DELAY_MS,
+				reservedAt: Date.now(),
+				...(state === 'accepted' ? { acceptedAt: Date.now() } : {}),
+			})
+		);
+	}
+
+	it('stops a redelivered root whose handoff was committed before chains existed', async () => {
+		// Killed between `handoffDeferredJob` resolving and `completeJob`, then
+		// restarted onto the chain scheme. The root carries no chain stamp, so its
+		// chain slot is empty — but its successor is queued and must not be forked.
+		const root = createJob();
+		const successorJobId = successorOf('root-job');
+		await writeLegacyReceipt(successorJobId, root, 'accepted');
+		await queue.add({
+			groupId: GROUP_ID,
+			data: { ...root, deferHandoffId: successorJobId },
+			delay: DELAY_MS,
+			jobId: successorJobId,
+		});
+
+		await expect(resumeDeferredHandoff(redis as never, queue, 'root-job', root)).resolves.toBe(
+			true
+		);
+		expect(added).toHaveLength(1);
+	});
+
+	it('stops a redelivered legacy successor that had already handed off again', async () => {
+		// Mid-ladder version of the same kill: the job holds its own pre-chain
+		// receipt, and wrote a second one for the rung after it.
+		const legacyJobId = successorOf('pre-deploy-job');
+		const legacy = createJob({ deferHandoffId: legacyJobId });
+		await writeLegacyReceipt(legacyJobId, legacy, 'accepted');
+		const nextJobId = successorOf(legacyJobId);
+		await writeLegacyReceipt(nextJobId, legacy, 'accepted');
+		await queue.add({
+			groupId: GROUP_ID,
+			data: { ...legacy, deferHandoffId: nextJobId },
+			delay: DELAY_MS,
+			jobId: nextJobId,
+		});
+
+		await expect(resumeDeferredHandoff(redis as never, queue, legacyJobId, legacy)).resolves.toBe(
+			true
+		);
+		expect(added).toHaveLength(1);
+	});
+
+	it('re-enqueues a pre-chain successor that was reserved but never committed', async () => {
+		const root = createJob();
+		const successorJobId = successorOf('root-job');
+		await writeLegacyReceipt(successorJobId, root, 'reserved');
+
+		await expect(resumeDeferredHandoff(redis as never, queue, 'root-job', root)).resolves.toBe(
+			true
+		);
+		expect(added).toHaveLength(1);
+		expect(added[0]!.jobId).toBe(successorJobId);
+		// Unstamped, so the successor's own promotion still finds the rung receipt
+		// that is sitting there waiting for it.
+		expect(added[0]!.data.deferChainId).toBeUndefined();
+		await expect(promoteDeferredHandoff(redis as never, added[0]!.data)).resolves.toBeUndefined();
+	});
+
+	it('leaves a job with no receipt in either scheme owning its disposition', async () => {
+		await expect(
+			resumeDeferredHandoff(redis as never, queue, 'root-job', createJob())
+		).resolves.toBe(false);
+	});
 });

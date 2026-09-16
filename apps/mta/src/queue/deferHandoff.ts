@@ -164,6 +164,56 @@ async function enqueueExactSuccessor(
 }
 
 /**
+ * Settle a redelivery whose handoff was committed before chains existed.
+ *
+ * The pre-chain scheme wrote the receipt under the SUCCESSOR's id, so a job
+ * that handed off just before the upgrade restart left nothing in the chain
+ * slot the reader below consults. Left at that, the chain reader calls the
+ * handoff missing, the job falls through to `promote` — which either has no
+ * receipt id to check (a root) or finds its own pre-chain receipt accepted (a
+ * mid-ladder rung) — and dispatches while its successor sits queued: the exact
+ * fork the receipt exists to prevent. So read the rung key the job actually
+ * wrote, and apply the rule that wrote it.
+ *
+ * Only reachable for a job with no `deferChainId`, and only ever finds a
+ * receipt this MTA wrote before the upgrade: nothing in the chain scheme
+ * reserves a `defer-<hex>` key, it only reads the one a legacy rung left.
+ */
+async function resumePreChainHandoff(
+	redis: Redis,
+	queue: Queue<EmailJob>,
+	predecessorJobId: string,
+	job: EmailJob
+): Promise<boolean> {
+	const successorJobId = deferredJobId(predecessorJobId);
+	const key = handoffKey(successorJobId);
+	const raw = await redis.get(key);
+	if (!raw) return false;
+	const receipt = parseReceipt(raw);
+	if (
+		!receipt ||
+		receipt.messageId !== job.messageId ||
+		receipt.successorJobId !== successorJobId
+	) {
+		throw new Error('Deferred handoff receipt is corrupt or identity-mismatched');
+	}
+	if (receipt.state === 'accepted') return true;
+	if (!(await queue.getJob(successorJobId).catch(() => null))) {
+		// Re-enqueued WITHOUT a chain stamp, so the successor's own promotion
+		// keeps reading the rung key this receipt lives under. It stamps a chain
+		// on the rung after it and the ladder rejoins the bounded scheme there.
+		await queue.add({
+			groupId: receipt.groupId,
+			data: { ...job, deferHandoffId: receipt.successorJobId },
+			delay: receipt.delay,
+			jobId: receipt.successorJobId,
+		});
+	}
+	await markAccepted(redis, key, raw, receipt);
+	return true;
+}
+
+/**
  * Stop a predecessor retry from forking after a committed/lost handoff. A
  * queued successor is authoritative before start; its promoted receipt remains
  * authoritative after completion and GroupMQ trimming.
@@ -177,7 +227,10 @@ export async function resumeDeferredHandoff(
 	const chainId = deferChainId(job, predecessorJobId);
 	const key = handoffKey(chainId);
 	const raw = await redis.get(key);
-	if (!raw) return false;
+	if (!raw) {
+		if (job.deferChainId) return false;
+		return resumePreChainHandoff(redis, queue, predecessorJobId, job);
+	}
 	const receipt = parseReceipt(raw);
 	if (!receipt || receipt.messageId !== job.messageId) {
 		throw new Error('Deferred handoff receipt is corrupt or identity-mismatched');
