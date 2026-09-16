@@ -18,7 +18,7 @@
  *      Note the reset cannot close the ~5 minute window of BetterAuth's session
  *      cookie cache (auth.ts `cookieCache.maxAge`), during which a pre-reset
  *      cookie still authenticates with no session row at all.
- *   3. Wipe Owlat-local auth tables (userProfiles/instanceSettings/
+ *   3. Wipe Owlat-local auth tables (userProfiles/platformAdmins/instanceSettings/
  *      onboardingProgress/userOnboarding/sendReadyNotices/sendPathReadiness)
  *
  * Driven by the `POST /dev/reset` route in `devShortcuts/resetHttp.ts`, which
@@ -42,6 +42,7 @@ interface ResetCounts {
 	organizations: number;
 	members: number;
 	userProfiles: number;
+	platformAdmins: number;
 	instanceSettings: number;
 	onboardingProgress: number;
 	userOnboarding: number;
@@ -61,6 +62,7 @@ export const runReset = internalMutation({
 			organizations: 0,
 			members: 0,
 			userProfiles: 0,
+			platformAdmins: 0,
 			instanceSettings: 0,
 			onboardingProgress: 0,
 			userOnboarding: 0,
@@ -103,6 +105,17 @@ export const runReset = internalMutation({
 		for (const p of profiles) {
 			await ctx.db.delete(p._id);
 			counts.userProfiles++;
+		}
+
+		// Platform-admin grants are keyed by BetterAuth user id, and step 2 just
+		// deleted every user. A surviving row would keep granting the deployment
+		// surface to a ghost id, and — because both bootstrap paths refuse once
+		// the roster is non-empty — would also stop the NEXT seed from handing
+		// the fresh setup user their own grant. A blank instance means blank.
+		const platformAdmins = await ctx.db.query('platformAdmins').collect(); // bounded: dev-only; operator roster (low tens at most)
+		for (const a of platformAdmins) {
+			await ctx.db.delete(a._id);
+			counts.platformAdmins++;
 		}
 
 		const settings = await ctx.db.query('instanceSettings').collect(); // bounded: dev-only; singleton instance-settings row
