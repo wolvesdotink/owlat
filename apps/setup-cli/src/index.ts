@@ -25,7 +25,7 @@ import { runSeed } from './commands/seed';
 import { runSampleData } from './commands/sampleData';
 import { runReset } from './commands/reset';
 
-const VERSION = '0.4.12'; // x-release-version (kept in sync by scripts/release.ts)
+const VERSION = '0.4.13'; // x-release-version (kept in sync by scripts/release.ts)
 
 function help(): void {
 	console.log(`Owlat Setup CLI v${VERSION}

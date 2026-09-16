@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/plugin-codegen",
-	"version": "0.4.12",
+	"version": "0.4.13",
 	"private": true,
 	"description": "Validated build-time composition for bundled Owlat plugins",
 	"license": "Apache-2.0",
