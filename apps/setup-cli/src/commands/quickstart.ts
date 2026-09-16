@@ -48,6 +48,12 @@ import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioni
 import { resolveLocalHost } from '../lib/localHost';
 import { probeMtaIdentityHealth } from './doctor';
 import { applyOutboundIpDefaults, detectPrimaryIpv4 } from '../lib/outboundIp';
+import {
+	announceReverseDns,
+	plannedOutboundIdentities,
+	reverseDnsInstructions,
+	checkReverseDns,
+} from '../lib/reverseDns';
 
 export type Mode = 'populated' | 'blank' | 'custom';
 
@@ -244,6 +250,19 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 				'stderr'
 			);
 		}
+		// Reverse DNS is the one record the installer cannot create on the
+		// operator's behalf, and the MTA identity gate further down refuses to let
+		// the stack finish without it. Ask for it HERE — before anything comes up —
+		// so a missing PTR is a five-minute detour through the provider console
+		// instead of an install that dies on `FCrDNS blocked for <ip>` having never
+		// mentioned the record existed.
+		await announceReverseDns(plannedOutboundIdentities(envForPools), envForPools, {
+			// A config-file, --assume-yes or machine-driven run has nobody at the
+			// keyboard to go set the record; it gets the same instructions, without
+			// the re-check prompt (which would hang a non-TTY install forever).
+			interactive: !opts.assumeYes && !config && !reporter.isJson,
+			emit: (line, stream) => reporter.log(line, stream),
+		});
 	}
 
 	const knownAdminEmail = shouldBootstrap
@@ -311,7 +330,14 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			reporter.done(false);
 			return 1;
 		}
-		const identityFindings = await probeMtaIdentityHealth(localMtaUrl);
+		// Pass the master key so the probe can force a live re-check rather than
+		// read the boot sweep's stored verdict: an operator who fixed their PTR
+		// after the first attempt re-runs quickstart, and `docker compose up -d`
+		// does not restart an unchanged MTA container to re-observe it.
+		const identityFindings = await probeMtaIdentityHealth(
+			localMtaUrl,
+			envAfterCompose['MTA_API_KEY']
+		);
 		for (const finding of identityFindings) {
 			reporter.log(
 				`${finding.ok ? '✓' : '✗'} ${finding.message}`,
@@ -322,6 +348,29 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		}
 		const failedIdentity = identityFindings.find((finding) => !finding.ok);
 		if (failedIdentity) {
+			// Spell the fix out again rather than leaving the operator with one
+			// `FCrDNS blocked` line: the record lives at the hosting provider, and
+			// the run that just stopped resumes from its checkpoint once it is live.
+			const lines = reverseDnsInstructions(
+				await checkReverseDns(plannedOutboundIdentities(envAfterCompose), envAfterCompose)
+			);
+			if (lines.length === 0) {
+				// This process resolves the records correctly, yet the MTA — which was
+				// just asked to re-observe — still refuses. What differs is the
+				// resolver: its cache is holding the previous answer, and a PTR TTL
+				// runs to a day. Restarting the container is what clears it.
+				lines.push(
+					'Reverse DNS resolves correctly from the installer, but the MTA still reports the old verdict — its DNS resolver is holding the previous answer.',
+					'Run `docker compose restart mta`, then re-run this install.'
+				);
+			}
+			for (const line of lines) {
+				log.warn(line);
+				reporter.log(line, 'stderr');
+			}
+			log.info(
+				`Re-run ${pc.cyan('owlat quickstart')} once the PTR record resolves — provisioning resumes where it stopped.`
+			);
 			reporter.fail(failedIdentity.message);
 			reporter.done(false);
 			return 1;
@@ -511,10 +560,14 @@ export function dnsInstructions(config: SetupConfig): string[] {
 	// our own MTA needs an EHLO A record and a bounce-domain MX pointed here.
 	if (isOwnSendProviderKind(config.sending?.provider) && config.domain) {
 		lines.push(
-			`  ${config.domain.ehloHostname.padEnd(pad)}A    <server IP>  (+ matching PTR via your host)`,
+			`  ${config.domain.ehloHostname.padEnd(pad)}A    <server IP>`,
 			...(config.domain.bounceDomain
 				? [`  ${config.domain.bounceDomain.padEnd(pad)}MX   ${config.domain.ehloHostname}`]
-				: [])
+				: []),
+			// PTR is not a zone record — it is set wherever the IP is rented, and no
+			// mail leaves the box until it matches. It earns its own line.
+			"Reverse DNS (PTR), set in your VPS provider's console, not your DNS zone:",
+			`  <server IP>${' '.repeat(Math.max(1, pad - 11))}PTR  ${config.domain.ehloHostname}`
 		);
 	}
 	lines.push(

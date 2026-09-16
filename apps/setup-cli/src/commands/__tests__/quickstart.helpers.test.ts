@@ -123,6 +123,21 @@ describe('dnsInstructions', () => {
 		expect(text).toContain('mail.example.com');
 		expect(text).toMatch(/bounces\.example\.com\s+MX\s+mail\.example\.com/);
 	});
+
+	it('spells out the PTR record and where it is set', () => {
+		const lines = dnsInstructions({
+			network: {
+				siteUrl: 'https://app.example.com',
+				convexUrl: 'https://convex.example.com',
+				convexSiteUrl: 'https://cs.example.com',
+			},
+			sending: { provider: 'mta' },
+			domain: { ehloHostname: 'mail.example.com', bounceDomain: 'bounces.example.com' },
+		} as SetupConfig);
+		const text = lines.join('\n');
+		expect(text).toMatch(/PTR\s+mail\.example\.com/);
+		expect(text).toContain("VPS provider's console");
+	});
 });
 
 describe('formatSummary', () => {

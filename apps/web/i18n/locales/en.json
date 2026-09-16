@@ -10349,6 +10349,8 @@
 				}
 			},
 			"resendKeyLabel": "Resend API key",
+			"reverseDnsBody": "Every sending IP above needs a PTR record pointing at its EHLO hostname. You set it where you rent the IP — your hosting provider's console — not in your DNS zone. Setup checks it before it completes, and no mail leaves the server until it matches.",
+			"reverseDnsHeading": "Reverse DNS (PTR) — set this before you finish",
 			"sesAccessKeyLabel": "Access key ID",
 			"sesRegionLabel": "Region",
 			"sesSecretKeyLabel": "Secret access key",
@@ -11719,7 +11721,7 @@
 			"provisioningForm": {
 				"dnsNotes": {
 					"dmarc": "DMARC — starter value; tighten after monitoring.",
-					"ptr": "Also set reverse DNS (PTR) for this IP at your host.",
+					"ptr": "Reverse DNS — set where you rent the IP (your hosting provider), not in your DNS zone. Sending stays blocked until it matches.",
 					"spf": "SPF — starter value; confirm in Settings → Domains."
 				},
 				"errors": {

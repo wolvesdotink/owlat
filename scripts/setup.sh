@@ -1193,6 +1193,17 @@ configure_selfhost_mta() {
 
   prompt_default "Campaign IP pool" "127.0.0.1" ip_campaign
   set_selfhost_var "IP_POOLS_CAMPAIGN" "$ip_campaign"
+
+  # Reverse DNS is the one record this wizard cannot create, and the MTA will
+  # not send a single message until it forward-confirms to the EHLO hostname.
+  # Spell it out here rather than leaving it to the runtime failure.
+  echo ""
+  echo -e "  ${BOLD}Reverse DNS (PTR) — you must set this yourself${RESET}"
+  echo -e "  ${DIM}Point the PTR record of every sending IP above at ${RESET}${BOLD}${ehlo_hostname}${RESET}${DIM},${RESET}"
+  echo -e "  ${DIM}and point ${ehlo_hostname} back at the IP with an A record.${RESET}"
+  echo -e "  ${DIM}PTR is set where you rent the IP (your hosting provider's console),${RESET}"
+  echo -e "  ${DIM}not in your DNS zone. Verify with: dig -x <ip> +short${RESET}"
+  echo -e "  ${DIM}Until it matches, the MTA refuses to send. Re-check with 'owlat doctor'.${RESET}"
   set_convex_var "MTA_IP_POOLS" "$(derive_mta_ip_pools "$ip_transactional" "$ip_campaign")"
   # The legacy wizard keeps the safe default. Guided IPv6 enablement belongs to
   # the verified setup flow; advanced operators may set this after setup.
