@@ -3651,12 +3651,13 @@
 				"emailPlaceholder": "you{'@'}example.com",
 				"failed": "failed",
 				"google": {
-					"continue": "Continue with Google",
+					"continue": "Sign in with Google",
 					"desktopHint": "Finish signing in with Google in the browser window that just opened. This page updates by itself once the mailbox is connected.",
-					"explain": "Google asks you to sign in instead of handing over a password. Owlat receives only a revocable token for your mail, never your password.",
+					"explain": "Sign in with Google instead of creating an app password. Owlat receives only a revocable token for your mail, never your password.",
+					"or": "or",
 					"reconnect": "Reconnect with Google",
-					"startOperation": "Start Google sign-in",
-					"useAppPassword": "Use an app password instead"
+					"reconnectExplain": "This mailbox is connected with Google sign-in. Reconnecting restores its access without an app password — or switch it to an app password below.",
+					"startOperation": "Start Google sign-in"
 				},
 				"imapHost": "IMAP host",
 				"imapHostPlaceholder": "imap.example.com",

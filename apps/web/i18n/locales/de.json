@@ -3652,11 +3652,12 @@
 				"failed": "fehlgeschlagen",
 				"google": {
 					"continue": "Mit Google anmelden",
-					"desktopHint": "Schließe die Anmeldung bei Google im soeben geöffneten Browserfenster ab. Diese Seite aktualisiert sich von selbst, sobald das Postfach verbunden ist.",
-					"explain": "Google bittet dich um eine Anmeldung statt um ein Passwort. Owlat erhält nur ein widerrufbares Token für deine Mails, niemals dein Passwort.",
+					"desktopHint": "Schließen Sie die Anmeldung bei Google im soeben geöffneten Browserfenster ab. Diese Seite aktualisiert sich von selbst, sobald das Postfach verbunden ist.",
+					"explain": "Melden Sie sich mit Google an, statt ein App-Passwort zu erstellen. Owlat erhält dabei nur ein widerrufbares Token für Ihre Mail, niemals Ihr Passwort.",
+					"or": "oder",
 					"reconnect": "Erneut mit Google verbinden",
-					"startOperation": "Google-Anmeldung starten",
-					"useAppPassword": "Stattdessen App-Passwort verwenden"
+					"reconnectExplain": "Dieses Postfach ist per Google-Anmeldung verbunden. Ein erneutes Verbinden stellt seinen Zugriff ohne App-Passwort wieder her — alternativ wechseln Sie unten auf ein App-Passwort.",
+					"startOperation": "Google-Anmeldung starten"
 				},
 				"imapHost": "IMAP-Host",
 				"imapHostPlaceholder": "imap.beispiel.de",

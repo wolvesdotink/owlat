@@ -88,26 +88,28 @@ type TestResult = FunctionReturnType<typeof api.mail.external.accountsActions.te
 const testResult = ref<TestResult | null>(null);
 
 // ── Google sign-in branch ───────────────────────────────────────────────────
-// A provider can only be connected with OAuth when BOTH halves agree: the
-// provider supports it (only Gmail does) and the operator configured a client
-// on this instance. Without a client the query answers `configured: false` and
-// this form is exactly the app-password form it has always been.
+// An ADDITION to the app-password form, never a replacement for it. Google
+// sign-in needs an operator to have created an OAuth client for this instance,
+// which most self-hosters will not have done, so the password path below always
+// renders exactly as it did before OAuth existed. The extra block appears only
+// when both halves agree: the provider supports it (only Gmail does) and the
+// query says a client is configured.
 const { data: googleOAuth } = useConvexQuery(api.mail.external.googleOAuth.isConfigured, () =>
 	props.provider.oauth ? {} : 'skip'
 );
 const googleConfigured = computed(
 	() => !!props.provider.oauth && googleOAuth.value?.configured === true
 );
-/**
- * The app-password form, requested explicitly. Google sign-in is the lead
- * option when it is available, but never the only one: Workspace admins can
- * block third-party OAuth apps, and an app password still gets those users in.
- * Not persisted — the choice belongs to this one connect attempt.
- */
-const showPasswordForm = ref(false);
-/** The password fields, the callout, the test button and advanced settings. */
-const showCredentialFields = computed(() => !googleConfigured.value || showPasswordForm.value);
 const isOauthAccount = computed(() => props.account?.authMethod === 'oauth2');
+/**
+ * Re-authorizing a mailbox that already uses Google is the one case where the
+ * Google block leads: the account has no password to re-enter, so "Reconnect
+ * with Google" is what the user came for. The password form still follows it —
+ * rotating such an account onto an app password is allowed.
+ */
+const googleLeads = computed(
+	() => googleConfigured.value && props.mode === 'update' && isOauthAccount.value
+);
 
 // Copy the six IMAP/SMTP server fields from a preset (or an existing account,
 // which shares the same shape) into the form. The single source of truth for
@@ -351,84 +353,77 @@ function testStatus(result?: { ok: boolean; error?: string }): string {
 
 <template>
 	<form class="space-y-5" @submit.prevent="handleSubmit">
+		<!-- Only a mailbox already connected with Google leads with the Google
+		     block; every other mount keeps the app-password form first. -->
 		<PostboxGoogleSignIn
-			v-if="googleConfigured && !showPasswordForm"
+			v-if="googleLeads"
 			:mode="mode"
 			:oauth-account="isOauthAccount"
+			placement="above"
 			:loading="google.isLoading.value"
 			:handed-off-to-browser="google.handedOffToBrowser.value"
 			@connect="handleGoogleConnect"
-			@use-app-password="showPasswordForm = true"
 		/>
 
-		<template v-if="showCredentialFields">
-			<PostboxAppPasswordCallout
-				v-if="provider.appPassword"
-				:help="provider.appPassword"
-				:auth-error="hasAuthError"
-			/>
+		<PostboxAppPasswordCallout
+			v-if="provider.appPassword"
+			:help="provider.appPassword"
+			:auth-error="hasAuthError"
+		/>
 
-			<UiInput
-				v-model="form.emailAddress"
-				type="email"
-				:label="
-					t('components.postbox.postboxMailboxConnectForm.addressLabel', { provider: providerName })
-				"
-				:placeholder="t('components.postbox.postboxMailboxConnectForm.emailPlaceholder')"
-				autocomplete="email"
-				:disabled="mode === 'update'"
-				required
-			/>
+		<UiInput
+			v-model="form.emailAddress"
+			type="email"
+			:label="
+				t('components.postbox.postboxMailboxConnectForm.addressLabel', { provider: providerName })
+			"
+			:placeholder="t('components.postbox.postboxMailboxConnectForm.emailPlaceholder')"
+			autocomplete="email"
+			:disabled="mode === 'update'"
+			required
+		/>
 
-			<UiInput
-				v-model="form.password"
-				type="password"
-				:label="t('components.postbox.postboxMailboxConnectForm.passwordLabel')"
-				:placeholder="
-					provider.appPassword
-						? t('components.postbox.postboxMailboxConnectForm.appPasswordPlaceholder')
-						: t('components.postbox.postboxMailboxConnectForm.passwordPlaceholder')
-				"
-				:help-text="t('components.postbox.postboxMailboxConnectForm.passwordHelp')"
-				autocomplete="off"
-				required
-			/>
+		<UiInput
+			v-model="form.password"
+			type="password"
+			:label="t('components.postbox.postboxMailboxConnectForm.passwordLabel')"
+			:placeholder="
+				provider.appPassword
+					? t('components.postbox.postboxMailboxConnectForm.appPasswordPlaceholder')
+					: t('components.postbox.postboxMailboxConnectForm.passwordPlaceholder')
+			"
+			:help-text="t('components.postbox.postboxMailboxConnectForm.passwordHelp')"
+			autocomplete="off"
+			required
+		/>
 
-			<!-- Raw inputs (not UiInput) so a native `input` event fires only on real
-			     typing — a programmatic autodiscover fill must not mark the fields
-			     "touched" and switch autofill off. -->
-			<PostboxMailboxServerFields
-				v-model="form"
-				v-model:open="showAdvanced"
-				@touched="markServerFieldsTouched"
-			/>
+		<!-- Raw inputs (not UiInput) so a native `input` event fires only on real
+		     typing — a programmatic autodiscover fill must not mark the fields
+		     "touched" and switch autofill off. -->
+		<PostboxMailboxServerFields
+			v-model="form"
+			v-model:open="showAdvanced"
+			@touched="markServerFieldsTouched"
+		/>
 
-			<div v-if="testResult" class="text-sm space-y-1">
-				<p :class="testResult.imap.ok ? 'text-success' : 'text-error'">
-					<Icon :name="testResult.imap.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
-					{{ t('components.postbox.postboxMailboxConnectForm.incomingMail', { status: imapStatus }) }}
-				</p>
-				<p :class="testResult.smtp.ok ? 'text-success' : 'text-error'">
-					<Icon :name="testResult.smtp.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
-					{{ t('components.postbox.postboxMailboxConnectForm.outgoingMail', { status: smtpStatus }) }}
-				</p>
-			</div>
-		</template>
+		<div v-if="testResult" class="text-sm space-y-1">
+			<p :class="testResult.imap.ok ? 'text-success' : 'text-error'">
+				<Icon :name="testResult.imap.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
+				{{ t('components.postbox.postboxMailboxConnectForm.incomingMail', { status: imapStatus }) }}
+			</p>
+			<p :class="testResult.smtp.ok ? 'text-success' : 'text-error'">
+				<Icon :name="testResult.smtp.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
+				{{ t('components.postbox.postboxMailboxConnectForm.outgoingMail', { status: smtpStatus }) }}
+			</p>
+		</div>
 
 		<UiErrorAlert v-if="formError" :message="formError" />
 
 		<div class="flex flex-wrap items-center gap-3 pt-1">
-			<UiButton
-				v-if="showCredentialFields"
-				type="submit"
-				variant="primary"
-				:loading="busy"
-				:disabled="!canSubmit || busy"
-			>
+			<UiButton type="submit" variant="primary" :loading="busy" :disabled="!canSubmit || busy">
 				{{ submitLabel }}
 			</UiButton>
 			<UiButton
-				v-if="showCredentialFields"
 				type="button"
 				variant="ghost"
 				:loading="testOp.isLoading.value"
@@ -452,5 +447,17 @@ function testStatus(result?: { ok: boolean; error?: string }): string {
 				{{ mode === 'update' ? t('common.cancel') : t('common.back') }}
 			</UiButton>
 		</div>
+
+		<!-- The optional extra: only on instances whose operator created a Google
+		     OAuth client, and only below the path every Gmail user can take. -->
+		<PostboxGoogleSignIn
+			v-if="googleConfigured && !googleLeads"
+			:mode="mode"
+			:oauth-account="isOauthAccount"
+			placement="below"
+			:loading="google.isLoading.value"
+			:handed-off-to-browser="google.handedOffToBrowser.value"
+			@connect="handleGoogleConnect"
+		/>
 	</form>
 </template>

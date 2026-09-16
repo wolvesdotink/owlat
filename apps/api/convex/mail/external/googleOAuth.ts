@@ -9,10 +9,9 @@
  * short-lived access tokens minted from it.
  *
  * App passwords are NOT replaced. They remain the path for every other
- * provider, the fallback on instances with no Google OAuth client configured,
- * and a supported alternative for Google even when one IS configured — the
- * connect form offers Google sign-in as the recommended option and an app
- * password beside it.
+ * provider and the default path for Gmail too — the connect form always renders
+ * the password fields, and only adds a Google sign-in button beneath them once
+ * an admin has configured a Google OAuth client.
  *
  * This file holds the pieces that must run in the v8 isolate: the "is this
  * instance configured" query the connect form reads, and the state-row

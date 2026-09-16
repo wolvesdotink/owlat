@@ -40,7 +40,7 @@ vi.mock('@owlat/api', () => {
 
 /** Whether `googleOAuth.isConfigured` answers yes for the mounted form. */
 let googleConfigured: boolean;
-/** Calls the Google branch made: one per "Continue with Google" click. */
+/** Calls the Google branch made: one per "Sign in with Google" click. */
 let googleConnect: ReturnType<typeof vi.fn>;
 
 const CONNECT = 'Connect mailbox';
@@ -279,18 +279,34 @@ function connectedWith(): { intent: GoogleConnectIntent; returnTo: string } {
 
 const oauthAccount = { ...account, authMethod: 'oauth2', status: 'active' };
 
+/**
+ * The rendered order of the two paths: which one the user meets first. Compared
+ * in DOM order rather than by searching the markup, so the component's own
+ * comments can never be mistaken for its copy.
+ */
+function googleComesBeforePassword(wrapper: VueWrapper): boolean {
+	const google = wrapper.findComponent(PostboxGoogleSignIn);
+	expect(google.exists(), 'no Google block rendered').toBe(true);
+	const password = wrapper.find('input[type="password"]').element;
+	// DOCUMENT_POSITION_FOLLOWING: the password field comes after the block.
+	return (google.element.compareDocumentPosition(password) & 4) !== 0;
+}
+
 describe('PostboxMailboxConnectForm Google branch', () => {
-	it('leads with Google sign-in, and asks for no password, when a client is configured', () => {
+	it('keeps the app-password form whole, and adds Google under it, when a client is configured', () => {
 		googleConfigured = true;
 		const wrapper = mountForm({ provider: googleProvider, mode: 'connect' });
 
-		expect(wrapper.text()).toContain('Continue with Google');
-		// The whole point of OAuth here: no password is typed, so none of the
-		// password-path surface may render.
-		expect(wrapper.find('input[type="password"]').exists()).toBe(false);
-		expect(wrapper.find('input[type="email"]').exists()).toBe(false);
-		expect(wrapper.text()).not.toContain('Test connection');
-		expect(wrapper.findComponent({ name: 'PostboxAppPasswordCallout' }).exists()).toBe(false);
+		// Google sign-in is an EXTRA. Configuring an OAuth client is work only an
+		// admin can do, so it must never cost the path every Gmail user can take:
+		// the password form renders whole, and first.
+		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+		expect(wrapper.find('input[type="email"]').exists()).toBe(true);
+		expect(wrapper.text()).toContain('Test connection');
+		expect(wrapper.findComponent({ name: 'PostboxAppPasswordCallout' }).exists()).toBe(true);
+
+		expect(wrapper.text()).toContain('Sign in with Google');
+		expect(googleComesBeforePassword(wrapper)).toBe(false);
 		expectFullyLocalized(wrapper);
 	});
 
@@ -298,32 +314,16 @@ describe('PostboxMailboxConnectForm Google branch', () => {
 		googleConfigured = false;
 		const wrapper = mountForm({ provider: googleProvider, mode: 'connect' });
 
-		expect(wrapper.text()).not.toContain('Continue with Google');
+		expect(wrapper.text()).not.toContain('with Google');
 		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
 		expect(wrapper.find('input[type="email"]').exists()).toBe(true);
 		expect(wrapper.text()).toContain('Test connection');
+		expect(wrapper.findComponent({ name: 'PostboxAppPasswordCallout' }).exists()).toBe(true);
 	});
 
-	it('hands the whole app-password form back when the user asks for it', async () => {
-		// Workspace tenants can block third-party OAuth apps outright, so the
-		// password path has to stay reachable even where Google sign-in works.
+	it('submits the password path even where Google sign-in is on offer', async () => {
 		googleConfigured = true;
 		const wrapper = mountForm({ provider: googleProvider, mode: 'connect' });
-		expect(wrapper.find('input[type="password"]').exists()).toBe(false);
-
-		await clickButton(wrapper, 'Use an app password instead');
-
-		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
-		expect(wrapper.find('input[type="email"]').exists()).toBe(true);
-		expect(wrapper.text()).toContain('Test connection');
-		// Nothing was submitted by the toggle itself.
-		expect(runFor(CONNECT)!).not.toHaveBeenCalled();
-	});
-
-	it('still submits the password path once the form is toggled back on', async () => {
-		googleConfigured = true;
-		const wrapper = mountForm({ provider: googleProvider, mode: 'connect' });
-		await clickButton(wrapper, 'Use an app password instead');
 
 		await fill(wrapper, { email: 'me@gmail.com' });
 		await wrapper.find('form').trigger('submit');
@@ -333,7 +333,7 @@ describe('PostboxMailboxConnectForm Google branch', () => {
 		expect(googleConnect).not.toHaveBeenCalled();
 	});
 
-	it('offers a re-authorization, and the password escape hatch, for an OAuth account', async () => {
+	it('leads with the re-authorization, password form still below, for an OAuth account', async () => {
 		googleConfigured = true;
 		const wrapper = mountForm({
 			provider: googleProvider,
@@ -341,26 +341,33 @@ describe('PostboxMailboxConnectForm Google branch', () => {
 			account: oauthAccount,
 		});
 
+		// The one mount where Google leads: there is no password on this account to
+		// re-enter, so reconnecting is what the user came for. Rotating it onto an
+		// app password stays available underneath.
 		expect(wrapper.text()).toContain('Reconnect with Google');
-		expect(wrapper.text()).toContain('Use an app password instead');
+		expect(googleComesBeforePassword(wrapper)).toBe(true);
+		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+		expect(wrapper.text()).toContain('Test connection');
+		expectFullyLocalized(wrapper);
 
 		await clickButton(wrapper, 'Reconnect with Google');
 		expect(connectedWith().intent).toEqual({ kind: 'update' });
 	});
 
-	it('says "Continue", not "Reconnect", when the account still uses a password', () => {
+	it('does not lead with Google, or say "Reconnect", when the account uses a password', () => {
 		googleConfigured = true;
 		const wrapper = mountForm({ provider: googleProvider, mode: 'update', account });
 
-		expect(wrapper.text()).toContain('Continue with Google');
+		expect(wrapper.text()).toContain('Sign in with Google');
 		expect(wrapper.text()).not.toContain('Reconnect with Google');
+		expect(googleComesBeforePassword(wrapper)).toBe(false);
 	});
 
 	it('flags the return path so the wizard can start the import on the way back', async () => {
 		googleConfigured = true;
 		const wrapper = mountForm({ provider: googleProvider, mode: 'connect' });
 
-		await clickButton(wrapper, 'Continue with Google');
+		await clickButton(wrapper, 'with Google');
 
 		expect(connectedWith().returnTo).toBe('/dashboard/postbox/migrate?googleConnected=1');
 	});

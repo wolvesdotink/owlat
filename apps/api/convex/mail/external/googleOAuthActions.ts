@@ -16,8 +16,8 @@
  * present for the whole handshake. No token, code, or client secret is ever
  * logged or returned to the browser.
  *
- * App passwords remain fully supported, including for Gmail: this is the
- * recommended path, not the only one.
+ * App passwords remain the default path, including for Gmail: Google sign-in
+ * is an optional extra an admin enables by configuring an OAuth client.
  */
 
 import { v } from 'convex/values';
