@@ -67,7 +67,7 @@ function takeoutMessage(options: {
 		'From nobody@example.com Mon Jan 01 00:00:00 +0000 2018',
 		...(options.labels ? [`X-Gmail-Labels: ${options.labels}`] : []),
 		'From: sender@isp.example',
-		'To: me@hinterland.camp',
+		'To: me@owlat.test',
 		`Subject: ${options.subject}`,
 		`Message-ID: <${options.messageId}>`,
 		'Date: Mon, 1 Jan 2018 00:00:00 +0000',
@@ -233,7 +233,7 @@ describe('archive import', () => {
 		const mailboxId = await seedMailboxWithFolders(t);
 		const eml = [
 			'From: sender@isp.example',
-			'To: me@hinterland.camp',
+			'To: me@owlat.test',
 			'Subject: Saved message',
 			'Message-ID: <saved@x>',
 			'',

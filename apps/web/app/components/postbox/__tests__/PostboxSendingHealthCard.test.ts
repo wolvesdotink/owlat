@@ -38,7 +38,7 @@ const loading = ref(false);
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('usePostboxMailbox', () => ({
-		currentMailbox: ref({ _id: 'mb_1', address: 'me@hinterland.camp' }),
+		currentMailbox: ref({ _id: 'mb_1', address: 'me@owlat.test' }),
 	}));
 	// Both reads are mailbox-scoped; the card only ever asks for the mailbox it
 	// is already looking at, so one stub serves both by shape.
@@ -58,9 +58,7 @@ function nextRead() {
 beforeEach(() => {
 	readCount = 0;
 	loading.value = false;
-	identities.value = [
-		{ address: 'me@hinterland.camp', domainVerified: true, alignment: 'aligned' },
-	];
+	identities.value = [{ address: 'me@owlat.test', domainVerified: true, alignment: 'aligned' }];
 	stats.value = {
 		sends: 12,
 		attempts: 14,
@@ -93,10 +91,10 @@ describe('PostboxSendingHealthCard', () => {
 
 	it('reports on the address the member actually sends as', () => {
 		identities.value = [
-			{ address: 'someone-else@hinterland.camp', domainVerified: false, alignment: 'unknown' },
-			{ address: 'me@hinterland.camp', domainVerified: true, alignment: 'aligned' },
+			{ address: 'someone-else@owlat.test', domainVerified: false, alignment: 'unknown' },
+			{ address: 'me@owlat.test', domainVerified: true, alignment: 'aligned' },
 		];
-		expect(mountCard().text()).toContain('me@hinterland.camp is verified');
+		expect(mountCard().text()).toContain('me@owlat.test is verified');
 	});
 
 	it('names the newest bounce’s own next action as the one thing to fix', () => {
@@ -121,9 +119,7 @@ describe('PostboxSendingHealthCard', () => {
 	});
 
 	it('says sending is off when the member’s domain is not verified', () => {
-		identities.value = [
-			{ address: 'me@hinterland.camp', domainVerified: false, alignment: 'unknown' },
-		];
+		identities.value = [{ address: 'me@owlat.test', domainVerified: false, alignment: 'unknown' }];
 		const text = mountCard().text();
 		expect(text).toContain('Sending is off');
 		expect(text).toContain('sending from it is turned off');

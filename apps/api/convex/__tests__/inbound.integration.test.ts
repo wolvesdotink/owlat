@@ -683,13 +683,13 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 	it('stamps Auto-Submitted:auto-replied + X-Auto-Response-Suppress:All on the auto-reply', async () => {
 		const t = convexTest(schema, modules);
 		const { sends } = installMtaFetch();
-		const { mailboxId, folderId } = await seedMailbox(t, 'me@hinterland.camp');
+		const { mailboxId, folderId } = await seedMailbox(t, 'me@owlat.test');
 		const messageId = await seedMessage(t, mailboxId, folderId);
 		await enableVacation(t, mailboxId);
 
 		await t.action(internal.mail.deliveryHooks.runPostDelivery, {
 			mailboxId,
-			mailboxAddress: 'me@hinterland.camp',
+			mailboxAddress: 'me@owlat.test',
 			messageId,
 			fromAddress: 'human@example.com',
 			subject: 'Question',
@@ -699,7 +699,7 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 
 		const vac = sends.find((s) => s.to === 'human@example.com');
 		expect(vac).toBeDefined();
-		expect(vac!.from).toBe('me@hinterland.camp');
+		expect(vac!.from).toBe('me@owlat.test');
 		expect(vac!.headers!['Auto-Submitted']).toBe('auto-replied');
 		expect(vac!.headers!['X-Auto-Response-Suppress']).toBe('All');
 	});
@@ -707,13 +707,13 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 	it('does NOT auto-reply to automated mail (Auto-Submitted set)', async () => {
 		const t = convexTest(schema, modules);
 		const { sends } = installMtaFetch();
-		const { mailboxId, folderId } = await seedMailbox(t, 'me@hinterland.camp');
+		const { mailboxId, folderId } = await seedMailbox(t, 'me@owlat.test');
 		const messageId = await seedMessage(t, mailboxId, folderId);
 		await enableVacation(t, mailboxId);
 
 		await t.action(internal.mail.deliveryHooks.runPostDelivery, {
 			mailboxId,
-			mailboxAddress: 'me@hinterland.camp',
+			mailboxAddress: 'me@owlat.test',
 			messageId,
 			fromAddress: 'robot@example.com',
 			subject: 'Out of office',
@@ -727,15 +727,15 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 	it('does NOT auto-reply to a self-send (from == to)', async () => {
 		const t = convexTest(schema, modules);
 		const { sends } = installMtaFetch();
-		const { mailboxId, folderId } = await seedMailbox(t, 'me@hinterland.camp');
+		const { mailboxId, folderId } = await seedMailbox(t, 'me@owlat.test');
 		const messageId = await seedMessage(t, mailboxId, folderId);
 		await enableVacation(t, mailboxId);
 
 		await t.action(internal.mail.deliveryHooks.runPostDelivery, {
 			mailboxId,
-			mailboxAddress: 'me@hinterland.camp',
+			mailboxAddress: 'me@owlat.test',
 			messageId,
-			fromAddress: 'ME@hinterland.camp',
+			fromAddress: 'ME@owlat.test',
 			subject: 'note to self',
 			bodyText: 'x',
 			headers: {},
@@ -748,14 +748,14 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 	it('replies once per sender within the dedup window, then suppresses repeats', async () => {
 		const t = convexTest(schema, modules);
 		const { sends } = installMtaFetch();
-		const { mailboxId, folderId } = await seedMailbox(t, 'me@hinterland.camp');
+		const { mailboxId, folderId } = await seedMailbox(t, 'me@owlat.test');
 		const messageId = await seedMessage(t, mailboxId, folderId);
 		await enableVacation(t, mailboxId, { replyIntervalDays: 7 });
 
 		const call = () =>
 			t.action(internal.mail.deliveryHooks.runPostDelivery, {
 				mailboxId,
-				mailboxAddress: 'me@hinterland.camp',
+				mailboxAddress: 'me@owlat.test',
 				messageId,
 				fromAddress: 'persistent@example.com',
 				subject: 'ping',
@@ -784,16 +784,16 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 	it('de-dups forwarding targets and skips the mailbox itself, stamping anti-loop headers', async () => {
 		const t = convexTest(schema, modules);
 		const { sends } = installMtaFetch();
-		const { mailboxId, folderId } = await seedMailbox(t, 'me@hinterland.camp');
+		const { mailboxId, folderId } = await seedMailbox(t, 'me@owlat.test');
 		const messageId = await seedMessage(t, mailboxId, folderId);
 		// Two rules to the same external target (a dup) + a rule back to self.
 		await enableForwarding(t, mailboxId, 'archive@example.com');
 		await enableForwarding(t, mailboxId, 'ARCHIVE@example.com'); // case-dup
-		await enableForwarding(t, mailboxId, 'me@hinterland.camp'); // self
+		await enableForwarding(t, mailboxId, 'me@owlat.test'); // self
 
 		await t.action(internal.mail.deliveryHooks.runPostDelivery, {
 			mailboxId,
-			mailboxAddress: 'me@hinterland.camp',
+			mailboxAddress: 'me@owlat.test',
 			messageId,
 			fromAddress: 'human@example.com',
 			subject: 'Please archive',
@@ -808,22 +808,22 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 		expect(forwards).toHaveLength(1);
 		const fwd = forwards[0]!;
 		expect(fwd.to).toBe('archive@example.com');
-		expect(fwd.from).toBe('me@hinterland.camp');
-		expect(fwd.headers!['X-Owlat-Forwarded']).toBe('me@hinterland.camp');
+		expect(fwd.from).toBe('me@owlat.test');
+		expect(fwd.headers!['X-Owlat-Forwarded']).toBe('me@owlat.test');
 		expect(fwd.headers!['Auto-Submitted']).toBe('auto-forwarded');
 	});
 
 	it('does NOT forward or auto-reply a message already touched by another Owlat mailbox', async () => {
 		const t = convexTest(schema, modules);
 		const { sends } = installMtaFetch();
-		const { mailboxId, folderId } = await seedMailbox(t, 'me@hinterland.camp');
+		const { mailboxId, folderId } = await seedMailbox(t, 'me@owlat.test');
 		const messageId = await seedMessage(t, mailboxId, folderId);
 		await enableForwarding(t, mailboxId, 'archive@example.com');
 		await enableVacation(t, mailboxId);
 
 		await t.action(internal.mail.deliveryHooks.runPostDelivery, {
 			mailboxId,
-			mailboxAddress: 'me@hinterland.camp',
+			mailboxAddress: 'me@owlat.test',
 			messageId,
 			fromAddress: 'human@example.com',
 			subject: 'Re: forwarded',
@@ -839,13 +839,13 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 	it('skips disabled forwarding rules', async () => {
 		const t = convexTest(schema, modules);
 		const { sends } = installMtaFetch();
-		const { mailboxId, folderId } = await seedMailbox(t, 'me@hinterland.camp');
+		const { mailboxId, folderId } = await seedMailbox(t, 'me@owlat.test');
 		const messageId = await seedMessage(t, mailboxId, folderId);
 		await enableForwarding(t, mailboxId, 'archive@example.com', false);
 
 		await t.action(internal.mail.deliveryHooks.runPostDelivery, {
 			mailboxId,
-			mailboxAddress: 'me@hinterland.camp',
+			mailboxAddress: 'me@owlat.test',
 			messageId,
 			fromAddress: 'human@example.com',
 			subject: 'hi',

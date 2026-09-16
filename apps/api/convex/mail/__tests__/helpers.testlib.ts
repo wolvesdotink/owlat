@@ -75,8 +75,8 @@ export async function seedMailbox(
 		id = await ctx.db.insert('mailboxes', {
 			userId: seed.userId ?? 'user-A',
 			organizationId: seed.organizationId ?? 'org-1',
-			address: seed.address ?? 'a@hinterland.camp',
-			domain: seed.domain ?? 'hinterland.camp',
+			address: seed.address ?? 'a@owlat.test',
+			domain: seed.domain ?? 'owlat.test',
 			...(seed.scope ? { scope: seed.scope } : {}),
 			...(seed.kind ? { kind: seed.kind } : {}),
 			status: seed.status ?? 'active',

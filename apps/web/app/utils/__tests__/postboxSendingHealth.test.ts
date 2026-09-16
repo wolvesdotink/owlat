@@ -24,7 +24,7 @@ function render(value: string | { key: string; params?: Record<string, unknown> 
 }
 
 const verified: SendingHealthIdentity = {
-	address: 'me@hinterland.camp',
+	address: 'me@owlat.test',
 	domainVerified: true,
 	alignment: 'aligned',
 };

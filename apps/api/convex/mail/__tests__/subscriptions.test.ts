@@ -173,7 +173,7 @@ async function seedMailboxWithFolders(
 	t: TestConvex<typeof schema>,
 	userId = 'user-A'
 ): Promise<SeededMailbox> {
-	const mailboxId = await seedMailbox(t, { userId, address: `${userId}@hinterland.camp` });
+	const mailboxId = await seedMailbox(t, { userId, address: `${userId}@owlat.test` });
 	const folders = await t.run(async (ctx) => {
 		const now = Date.now();
 		const makeFolder = (name: string, role: 'inbox' | 'archive') =>
@@ -242,7 +242,7 @@ async function seedListMessage(
 			rfc822MessageId: `<${uid}@list.example>`,
 			threadId,
 			fromAddress: options.fromAddress,
-			toAddresses: ['user-A@hinterland.camp'],
+			toAddresses: ['user-A@owlat.test'],
 			ccAddresses: [],
 			bccAddresses: [],
 			subject: 'digest',

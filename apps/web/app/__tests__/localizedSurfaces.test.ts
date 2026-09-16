@@ -389,13 +389,13 @@ describe('auth/forgot-password', () => {
 
 	it('interpolates the address into the confirmation instead of leaking {email}', async () => {
 		const w = mountSurface(ForgotPasswordPage);
-		await w.get('#email').setValue('marcel@hinterland.camp');
+		await w.get('#email').setValue('marcel@owlat.test');
 		await w.get('form').trigger('submit');
 		await flushPromises();
 
-		expect(forgotPassword).toHaveBeenCalledWith('marcel@hinterland.camp');
+		expect(forgotPassword).toHaveBeenCalledWith('marcel@owlat.test');
 		expect(w.text()).toContain('Check your email');
-		expect(w.text()).toContain('If an account exists for marcel@hinterland.camp');
+		expect(w.text()).toContain('If an account exists for marcel@owlat.test');
 		expectFullyLocalized(w);
 	});
 });

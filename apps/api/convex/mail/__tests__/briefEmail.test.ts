@@ -176,7 +176,7 @@ describe('mail.briefEmail.deliverBriefEmail', () => {
 			mailboxId,
 			rawStorageId,
 			rawSize: 3,
-			messageId: 'brief-1@hinterland.camp',
+			messageId: 'brief-1@owlat.test',
 			subject: 'Your daily brief — 1 thing needs you',
 			bodyText: 'What needs you today',
 			bodyHtml: '<p>What needs you today</p>',
@@ -192,9 +192,7 @@ describe('mail.briefEmail.deliverBriefEmail', () => {
 		const delivered = await t.run(async (ctx) =>
 			ctx.db
 				.query('mailMessages')
-				.withIndex('by_rfc822_message_id', (q) =>
-					q.eq('rfc822MessageId', 'brief-1@hinterland.camp')
-				)
+				.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', 'brief-1@owlat.test'))
 				.first()
 		);
 		expect(delivered?.mailboxId).toBe(mailboxId);
@@ -225,9 +223,7 @@ describe('mail.briefEmail.deliverBriefEmail', () => {
 		const briefThread = await t.run(async (ctx) => {
 			const delivered = await ctx.db
 				.query('mailMessages')
-				.withIndex('by_rfc822_message_id', (q) =>
-					q.eq('rfc822MessageId', 'brief-1@hinterland.camp')
-				)
+				.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', 'brief-1@owlat.test'))
 				.first();
 			return ctx.db.get(delivered!.threadId);
 		});

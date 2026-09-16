@@ -48,7 +48,7 @@ export const mailboxesTables = {
 		// accepted invitees' mailboxes provision the moment the domain goes live.
 		.index('by_domain', ['domain']),
 
-	// Per-user mailbox identity (e.g. marcel@hinterland.camp).
+	// Per-user mailbox identity (e.g. user@owlat.test).
 	// One BetterAuth user can own multiple mailboxes.
 
 	mailboxes: defineTable({

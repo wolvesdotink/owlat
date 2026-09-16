@@ -91,7 +91,7 @@ describe('requireMailboxAccess', () => {
 		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		if (!result.ok) throw new Error('expected ok');
 		expect(result.userId).toBe('user-A');
-		expect(result.mailbox.address).toBe('a@hinterland.camp');
+		expect(result.mailbox.address).toBe('a@owlat.test');
 		expect(result.mailbox._id).toBe(id);
 	});
 

@@ -127,7 +127,7 @@ describe('buildSearchBody', () => {
 
 describe('delivery — the excerpt is written only when the instance opted in', () => {
 	async function deliver(t: TestConvex<typeof schema>): Promise<Id<'mailMessages'>> {
-		const mailboxId = await seedMailbox(t, { address: 'me@hinterland.camp' });
+		const mailboxId = await seedMailbox(t, { address: 'me@owlat.test' });
 		await seedFolder(t, mailboxId);
 		await seedFolder(t, mailboxId, 'spam');
 		let rawStorageId!: Id<'_storage'>;
@@ -137,9 +137,9 @@ describe('delivery — the excerpt is written only when the instance opted in', 
 		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {
 			rawStorageId,
 			rawSize: 3,
-			recipientAddress: 'me@hinterland.camp',
+			recipientAddress: 'me@owlat.test',
 			from: 'ines@brightpath.example',
-			to: ['me@hinterland.camp'],
+			to: ['me@owlat.test'],
 			cc: [],
 			bcc: [],
 			subject: 'Renewal terms, redlined',
