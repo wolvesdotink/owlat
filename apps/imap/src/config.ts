@@ -33,11 +33,52 @@ export interface ImapConfig {
 	authRateLimit: { failuresPerWindow: number; windowMs: number; tarpitMs: number };
 }
 
+/**
+ * Explicit, out-loud opt-out from the LOGIN brute-force limiter.
+ *
+ * Exact-match `true` only: a typo, an empty string, or a stray `0` must read as
+ * "no", because the failure direction of this switch is an internet-facing auth
+ * port with unlimited password guessing.
+ */
+function allowsUnthrottledAuth(): boolean {
+	return process.env['IMAP_ALLOW_UNTHROTTLED_AUTH'] === 'true';
+}
+
+/**
+ * Read a PEM off disk, turning the one failure that actually happens in
+ * production into an actionable message.
+ *
+ * `existsSync` passes and `readFileSync` throws EACCES whenever the file is
+ * present but owned by another uid — which is precisely what a root-written
+ * 0600 key on the shared mail-certs volume looks like to this process. The bare
+ * `EACCES: permission denied, open '…/default.key'` that used to escape
+ * loadConfig named no cause and no fix, and crash-looped 724 times on a live
+ * instance. The volume is mounted read-only, so the repair belongs to whoever
+ * wrote the file; say so.
+ */
+function readCertFile(path: string): string {
+	try {
+		return readFileSync(path, 'utf-8');
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === 'EACCES') {
+			throw new Error(
+				`Cannot read TLS material at ${path}: permission denied. The IMAP process runs ` +
+					`as uid ${typeof process.getuid === 'function' ? process.getuid() : 'unknown'} and ` +
+					'mounts the cert volume read-only, so it cannot fix this itself — whatever writes ' +
+					'the cert must hand ownership over (docker-compose.yml: imap-cert-init chowns to ' +
+					'IMAP_RUNTIME_USER; on the VPS: infra/templates/acme-entrypoint.sh).',
+				{ cause: err }
+			);
+		}
+		throw err;
+	}
+}
+
 function readPemEnv(envName: string, fileEnvName: string): string | null {
 	const inline = process.env[envName];
 	if (inline) return inline;
 	const path = process.env[fileEnvName];
-	if (path && existsSync(path)) return readFileSync(path, 'utf-8');
+	if (path && existsSync(path)) return readCertFile(path);
 	return null;
 }
 
@@ -52,6 +93,29 @@ export function loadConfig(): ImapConfig {
 	if (!convexUrl) throw new Error('CONVEX_URL is required');
 	if (!convexAdminKey) throw new Error('CONVEX_ADMIN_KEY is required');
 
+	// Port 993 faces the internet and LOGIN is the only thing between it and a
+	// user's mail, so the brute-force limiter (rateLimit.ts) is not optional in
+	// production. A missing REDIS_URL is a MISCONFIGURATION, not a degraded mode:
+	// it is silent, permanent, and applies to 100% of authentication attempts —
+	// and it shipped in every release because the only symptom was one level-40
+	// log line at boot that nobody reads. Refuse it, exactly like the missing-TLS
+	// guard in server.ts, which is gated the same way so `bun dev` keeps working.
+	//
+	// Deliberately NOT the same call as a Redis that is configured but unhealthy:
+	// that outage is transient and loud, and locking every user out of their mail
+	// because the cache blinked is the worse failure — so the request path stays
+	// fail-open (see AuthRateLimiter). This guard is only about never again
+	// running an internet-facing auth port with no limiter configured at all.
+	// An operator who really wants that must opt out in so many words.
+	if (!redisUrl && !allowsUnthrottledAuth() && process.env['NODE_ENV'] === 'production') {
+		throw new Error(
+			'IMAP refusing to start in production without REDIS_URL: it backs the LOGIN ' +
+				'brute-force limiter, and port 993 is internet-facing. Set REDIS_URL ' +
+				'(docker-compose.yml wires it for you), or set IMAP_ALLOW_UNTHROTTLED_AUTH=true ' +
+				'to accept unlimited password guessing.'
+		);
+	}
+
 	let tls: ImapConfig['tls'] = null;
 	const cert = readPemEnv('IMAP_TLS_CERT', 'IMAP_TLS_CERT_FILE');
 	const key = readPemEnv('IMAP_TLS_KEY', 'IMAP_TLS_KEY_FILE');
@@ -64,8 +128,8 @@ export function loadConfig(): ImapConfig {
 		const defaultKey = join(certDir, 'default.key');
 		if (existsSync(defaultCert) && existsSync(defaultKey)) {
 			tls = {
-				cert: readFileSync(defaultCert, 'utf-8'),
-				key: readFileSync(defaultKey, 'utf-8'),
+				cert: readCertFile(defaultCert),
+				key: readCertFile(defaultKey),
 			};
 		}
 	}
