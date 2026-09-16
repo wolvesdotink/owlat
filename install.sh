@@ -305,7 +305,7 @@ OWLAT_REF must be a tag, a branch, or a commit reachable on the remote."
 # installer, and they need the CLI on PATH just as much.
 install_owlat_cli() {
 	OWLAT_DIR="$OWLAT_INSTALL_DIR" bash "$OWLAT_INSTALL_DIR/scripts/owlat" install-cli \
-		|| warn "Could not install the 'owlat' CLI — run manually: sudo $OWLAT_INSTALL_DIR/scripts/owlat install-cli"
+		|| warn "Continuing without the 'owlat' CLI on PATH — see the message above."
 }
 
 # ── Hand off to the setup wizard ──────────────────────────────────────────────
