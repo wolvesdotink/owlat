@@ -3325,10 +3325,10 @@ The cap at `apps/mta/src/queue/deferBudget.ts` on how many successors one
 `messageId` may mint, counted in Redis across every chain of that message —
 governed sends carry their own `workAttemptId` per attempt, so one message
 can have several roots and therefore several ladders. Sized as the rungs a
-one-per-minute ladder could take before the message expires anyway, so only
-a ladder advancing faster than the delays it asked for can reach it.
-Exhausting it is terminal: a soft bounce naming the runaway, never another
-successor.
+one-per-minute ladder could take before the message expires anyway — a
+policy floor, not the shortest defer the MTA issues, which is a flat 5s on
+a contended domain slot. Exhausting it is terminal: a soft bounce naming
+the runaway, never another successor.
 _Avoid_: Rate limit (this is a lifetime count, not a per-interval rate).
 
 **Dispatch pipeline (module)**:

@@ -21,17 +21,31 @@ import type Redis from 'ioredis';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 
 /**
- * The shortest delay a defer ladder sustains in practice. Individual defers go
- * as low as 5s (a contended connection slot), but every ladder that can repeat
- * for days — greylisting, rate limiting, warming caps — is measured in minutes.
+ * The defer interval the cap is SIZED for. A policy floor, not an observation:
+ * the shortest defer this MTA actually issues is 5s, flat and repeatable —
+ * `dispatch/phases/acquireSlot.ts` returns it every time the per-IP-per-domain
+ * window is full and keeps returning it for as long as the domain stays
+ * saturated. Measured against THAT floor the cap below is about eight hours of
+ * unbroken starvation, not four days.
+ *
+ * Sizing it off 5s instead would allow ~69,000 successors per message: a
+ * twelvefold weaker bound on precisely the failure this guard was written for.
+ * A minute is chosen because eight hours of one message losing every slot is
+ * not a retry pattern. The checked-in pacing profiles floor at 2-5 messages
+ * per minute (`deliverabilityPolicy.ts`), so a starved message gets its slot
+ * within ~30s; an operator who overrides a profile below roughly one per
+ * minute moves into the range where an honest ladder could reach the cap and
+ * soft-bounce before the max-age deadline. That is the trade this number
+ * encodes, and the reason to revisit it is a lower pacing floor, not a lower
+ * individual defer.
  */
 const SUSTAINED_DEFER_INTERVAL_MS = 60_000;
 
 /**
  * The most successors one message may mint: as many rungs as a one-per-minute
  * ladder could take before the message expires anyway. Reaching it means the
- * ladder is advancing faster than any delay it asked for, which is a runaway,
- * not a retry.
+ * message averaged better than a rung a minute for its entire lifetime, which
+ * is a runaway, not a retry.
  */
 export const MAX_DEFER_SUCCESSORS_PER_MESSAGE = Math.ceil(
 	GOVERNED_MTA_MAX_MESSAGE_AGE_MS / SUSTAINED_DEFER_INTERVAL_MS

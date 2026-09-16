@@ -101,9 +101,10 @@ describe('defer successor budget', () => {
 		expect(await redis.pttl(deferBudgetKey('msg-1'))).toBeGreaterThan(0);
 	});
 
-	it('allows any ladder a message could honestly need', async () => {
-		// Four days of one-per-minute retries: longer than the max message age,
-		// so the budget can only bite a ladder that is outrunning its delays.
+	it('allows a rung a minute for the whole message lifetime', async () => {
+		// The cap is sized off a one-per-minute pace, not off the shortest defer
+		// the MTA can issue (a flat 5s when a domain slot is contended). See
+		// deferBudget.ts for why that trade is deliberate.
 		expect(MAX_DEFER_SUCCESSORS_PER_MESSAGE).toBe(
 			Math.ceil(GOVERNED_MTA_MAX_MESSAGE_AGE_MS / 60_000)
 		);
