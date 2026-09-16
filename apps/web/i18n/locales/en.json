@@ -2621,6 +2621,48 @@
 				"value": "Value",
 				"verified": "Verified"
 			},
+			"externalReceiving": {
+				"providers": {
+					"google": "Google Workspace",
+					"microsoft": "Microsoft 365",
+					"other": "your current provider",
+					"otherOption": "Another provider"
+				}
+			},
+			"externalReceivingSection": {
+				"heading": "Receiving (stays with your provider)",
+				"operation": "Check where this domain's mail is delivered",
+				"introHeadline": "Don't change your MX records.",
+				"intro": "{headline} Mail for {domain} keeps going to {provider} — Owlat only sends from this domain. Nothing on this page asks you to change where your incoming mail is delivered.",
+				"mx": {
+					"pointsHereHeadline": "Incoming mail is no longer reaching your provider.",
+					"pointsHere": "{headline} The MX record for {domain} resolves to this Owlat instance ({hosts}), so delivery no longer sits with {provider} — every message sent to this domain is arriving here instead. Restore your provider's MX records at your DNS host to get your mail back.",
+					"missing": "No MX record found for {domain}, so mail sent to this domain can't be delivered anywhere right now. Publish the MX records you get from {provider} at your DNS host. Owlat can still send from the domain either way.",
+					"confirmed": "Confirmed — mail for {domain} is still delivered to {provider} ({hosts}). Leave these records exactly as they are.",
+					"elsewhere": "Mail for {domain} is delivered to {hosts}. That is not this Owlat instance, so your incoming mail is unaffected — just check it is the host you expect.",
+					"providerMismatchHeadline": "That looks like {observed}, not {declared}.",
+					"providerMismatch": "{headline} This domain is set up for {declared}, so the SPF record above authorizes {declared} and Owlat. If mail now really lives at {observed}, change the provider below so the SPF record covers what you send from there too."
+				},
+				"bounces": {
+					"headline": "Bounces use a subdomain of their own.",
+					"body": "{headline} Delivery reports come back to {host}, which is a separate name — the MX record for {domain} itself is never touched."
+				},
+				"spf": {
+					"mergedHeadline": "SPF is already merged.",
+					"merged": "{headline} The SPF record above carries the authorization from {provider} and Owlat's in one single record. Publish it exactly as shown and don't add a second record starting with v=spf1 — two of them is a permanent error.",
+					"manualHeadline": "Merge the SPF record yourself.",
+					"manual": "{headline} Owlat doesn't know your provider's SPF entry, so the record above authorizes Owlat only. Fold it into the SPF record you already publish, so there is exactly one record starting with v=spf1 — publishing two is a permanent error that fails SPF for everything you send.",
+					"noneHeadline": "There is no SPF record yet.",
+					"none": "{headline} Owlat has not generated one for this domain, so there is nothing above to publish. Keep the SPF record you publish for {provider} as it is. Once setup finishes, come back and merge the generated record into it.",
+					"addIncludeHeadline": "Add your provider's SPF entry.",
+					"addInclude": "{headline} The record above authorizes Owlat but not {provider}. Add {include} to it before you publish, so one record starting with v=spf1 covers both. A second record starting with v=spf1 is a permanent error that fails SPF for everything you send."
+				},
+				"migrate": {
+					"headline": "Want to read this mail in Owlat?",
+					"body": "{headline} Connect the mailbox over IMAP. Delivery and the mail itself stay with {provider}; Owlat only syncs a copy so you can read and reply here.",
+					"link": "Connect a mailbox"
+				}
+			},
 			"receivingDnsSection": {
 				"firewall": {
 					"body": "{headline} other mail servers connect to {mailHost} on TCP port {portCode} to deliver mail, so open inbound TCP {port} on your firewall / security group. Many cloud providers block port {port} by default — confirm your host allows inbound SMTP.",
@@ -2647,6 +2689,39 @@
 				},
 				"reverseDnsOperation": "Check receiving reverse DNS"
 			},
+			"receivingModeChoice": {
+				"legend": "Who receives mail for this domain?",
+				"owlat": {
+					"label": "Owlat receives it",
+					"hint": "Owlat becomes the mail server for this domain. You publish an MX record and incoming mail arrives here."
+				},
+				"external": {
+					"label": "Keep my current provider",
+					"hint": "Owlat only sends. Whoever handles your mail today keeps every incoming message, and your MX records stay exactly as they are."
+				},
+				"providerLabel": "Who receives mail for it today?",
+				"reassurance": "Owlat will never ask you to change an MX record for this domain. Every record it generates is a sending record, and the SPF record is merged with your provider's so both stay authorized."
+			},
+			"receivingModeSwitch": {
+				"heading": "Receiving mode",
+				"operation": "Update receiving mode",
+				"current": {
+					"owlat": "Owlat receives mail for this domain.",
+					"external": "Receiving stays with {provider}."
+				},
+				"change": "Change",
+				"save": "Save receiving mode",
+				"consequence": "Saving regenerates this domain's SPF record and drops the domain back to pending, so you have to publish the updated record and verify again. Owlat never changes an MX record for you.",
+				"confirm": {
+					"title": "Change who receives this mail?",
+					"description": "{domain} goes back to pending and its SPF record is regenerated, so you have to publish the new record and verify again. Nothing changes at your DNS host until you do it yourself.",
+					"action": "Change receiving mode"
+				},
+				"toasts": {
+					"external": "Receiving stays with your provider. Publish the updated SPF record, then verify again.",
+					"owlat": "Owlat will receive mail for this domain. Publish the updated records, then verify again."
+				}
+			},
 			"recordRow": {
 				"autoRecheckTitle": "We recheck your DNS automatically every 30 seconds while this panel is open.",
 				"bouncesVia": "bounces via {host}",
@@ -2669,6 +2744,7 @@
 					"headline": "What this domain does."
 				},
 				"mailFromHeading": "MAIL FROM Domain",
+				"receivingVia": "receiving via {provider}",
 				"registering": "Registering...",
 				"registrationFailed": "Registration Failed",
 				"removeDomain": "Remove domain",

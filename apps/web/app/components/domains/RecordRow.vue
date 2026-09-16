@@ -9,6 +9,7 @@ import {
 	hasDnsRecords,
 	type DmarcPolicy,
 } from '~/utils/domainStatus';
+import { EXTERNAL_RECEIVING_PROVIDER_KEYS } from '~/utils/externalReceivingLabels';
 // Explicit import (rather than the Nuxt auto-import) so the section resolves in
 // the row's own component tests, which stub only the leaf panels.
 import SendingDnsSection from './SendingDnsSection.vue';
@@ -77,6 +78,24 @@ const mailFromHost = computed<string | null>(() => {
 // ambiguity at a glance. The sending identity IS the domain string itself.
 const sendsAsAddress = computed(() => `anyone@${props.domain.domain}`);
 
+// WHO RECEIVES MAIL for this domain. Absent means `'owlat'` — every row written
+// before the send-only mode existed, and every row where the operator took the
+// default — so the branch below is a pure addition: an unmarked domain renders
+// byte-identically to how it always has.
+//
+// This decides which receiving section the expanded panel shows, and the two are
+// opposites: one hands over an apex MX record pointing here, the other says not
+// to touch the apex MX at all. Getting it wrong in the `'external'` direction is
+// the destructive one — it silently takes inbound mail away from Google/Microsoft
+// — so the branch reads the stored mode and never infers it.
+const isExternalReceiving = computed(() => props.domain.receivingMode === 'external');
+// Named in the COLLAPSED row too: the whole point of the mode is that an
+// operator can tell at a glance that this domain only sends, without expanding
+// anything and without having to remember what they chose.
+const receivingProviderLabel = computed(() =>
+	t(EXTERNAL_RECEIVING_PROVIDER_KEYS[props.domain.externalReceivingProvider ?? 'other'])
+);
+
 // Registration has SETTLED: the domain is no longer mid-registration and is not
 // sitting on a registration failure. The registering placeholder and the
 // failure notice REPLACE the setup sections rather than sitting alongside them,
@@ -117,7 +136,10 @@ const registrationSettled = computed(
 						>
 							<Icon
 								:name="getStatusIcon(domain.status)"
-								:class="['w-3 h-3', domain.status === 'registering' && 'animate-spin motion-reduce:animate-none']"
+								:class="[
+									'w-3 h-3',
+									domain.status === 'registering' && 'animate-spin motion-reduce:animate-none',
+								]"
 							/>
 							{{ statusLabel }}
 						</span>
@@ -129,7 +151,14 @@ const registrationSettled = computed(
 					     existing status / added-date info. -->
 					<p class="text-sm text-text-tertiary mt-0.5" data-testid="sends-as-line">
 						{{ t('components.domains.recordRow.sendsAs', { address: sendsAsAddress })
-						}}<template v-if="mailFromHost">
+						}}<template v-if="isExternalReceiving">
+							·
+							<span data-testid="receiving-via-hint">{{
+								t('components.domains.recordRow.receivingVia', {
+									provider: receivingProviderLabel,
+								})
+							}}</span></template
+						><template v-if="mailFromHost">
 							·
 							{{ t('components.domains.recordRow.bouncesVia', { host: mailFromHost }) }}</template
 						>
@@ -173,7 +202,11 @@ const registrationSettled = computed(
 					:disabled="isForcing"
 					@click.stop="emit('forceVerify')"
 				>
-					<Icon v-if="isForcing" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<Icon
+						v-if="isForcing"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
 					<Icon v-else name="lucide:wand-2" class="w-4 h-4" />
 					{{ t('components.domains.recordRow.forceVerify') }}
 					<span
@@ -260,7 +293,10 @@ const registrationSettled = computed(
 						v-if="domain.status === 'registering'"
 						class="flex items-center gap-3 py-8 justify-center"
 					>
-						<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-info" />
+						<Icon
+							name="lucide:loader-2"
+							class="w-5 h-5 animate-spin motion-reduce:animate-none text-info"
+						/>
 						<p class="text-sm text-text-secondary">
 							{{ t('components.domains.recordRow.settingUp') }}
 						</p>
@@ -314,19 +350,47 @@ const registrationSettled = computed(
 						:can-manage="canManageDomains"
 					/>
 
-					<!-- Receiving (inbound MX) — renders whenever the deployment exposes a
-					     mail host, whether or not inbound is enabled yet; the section
-					     itself shows a "not turned on yet" state when off so setup
-					     is not a chicken-and-egg. -->
+					<!-- Receiving. TWO mutually exclusive sections, because the guidance
+					     is opposite: `external` means the operator's own provider keeps
+					     the MX and must not be disturbed, so the apex-MX/MTA-STS panel
+					     is REPLACED rather than supplemented — showing both would hand
+					     a Google Workspace operator the exact record that breaks their
+					     inbound mail. The owlat arm is unchanged, including its "not
+					     turned on yet" state (the guidance renders whether or not
+					     inbound is enabled, so setup is not a chicken-and-egg).
+
+					     The external arm does not depend on a deployment mail host —
+					     a send-only install has nothing to point an MX at and the
+					     guidance is still exactly right. -->
 					<div
-						v-if="showReceivingDns && registrationSettled"
+						v-if="registrationSettled && (isExternalReceiving || showReceivingDns)"
 						class="mt-4 pt-4 border-t border-border-subtle"
 					>
+						<DomainsExternalReceivingSection
+							v-if="isExternalReceiving"
+							:domain="domain.domain"
+							:provider="domain.externalReceivingProvider ?? null"
+							:spf-value="domain.dnsRecords.spf?.value ?? null"
+							:return-path-host="mailFromHost"
+							:can-manage="canManageDomains"
+						/>
 						<DomainsReceivingDnsSection
+							v-else
 							:domain="domain.domain"
 							:mail-host="inboundMailHost"
 							:inbound-port="inboundPort"
 							:inbound-enabled="inboundEnabled"
+						/>
+
+						<!-- Changing the answer is an admin task and a destructive-ish
+						     write (it re-drops the domain to pending), so the control
+						     owns its own confirmation rather than living inline here. -->
+						<DomainsReceivingModeSwitch
+							v-if="canManageDomains"
+							:domain-id="domain._id"
+							:domain="domain.domain"
+							:mode="isExternalReceiving ? 'external' : 'owlat'"
+							:provider="domain.externalReceivingProvider ?? null"
 						/>
 					</div>
 

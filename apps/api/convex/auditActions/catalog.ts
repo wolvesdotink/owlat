@@ -148,6 +148,11 @@ export const AUDIT_ACTION_LITERALS = [
 	action('sending_domain.verification_failed'),
 	action('sending_domain.regenerated'),
 	action('sending_domain.dmarc_policy_changed'),
+	// Send-only mode: who receives mail for the domain moved between Owlat and
+	// the customer's existing provider. Its own literal rather than the generic
+	// verification edge, because the status drop to `pending` it causes is a
+	// deliberate operator change, not a DNS verification failure.
+	action('sending_domain.receiving_mode_changed'),
 	action('sending_domain.return_path_changed'),
 	action('sending_domain.dkim_rotated'),
 	action('sending_domain.deleted'),

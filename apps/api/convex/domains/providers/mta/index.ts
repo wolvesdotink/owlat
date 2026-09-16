@@ -38,6 +38,13 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 		// host and the MTA keeps its global (historic behavior).
 		const customReturnPathHost = options?.returnPathHost?.trim() || undefined;
 
+		// Send-only mode. Absent ⇒ `'owlat'`, which is the only value every row
+		// written before this feature can have — so the branch below is unreachable
+		// for them and their records are byte-identical to before. The ONE record
+		// this adapter owns in that mode is `_smtp._tls`; the apex SPF fold is the
+		// register action's, for every provider at once.
+		const externalReceiving = options?.receiving?.mode === 'external';
+
 		// Bind the domain's DKIM key to its owning org so it is born owned and
 		// can never be used to sign for another tenant. Absent ⇒ no org is sent
 		// (unchanged behaviour); the register action supplies the deployment's
@@ -83,6 +90,11 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 			dnsRecords.spf = {
 				type: 'TXT',
 				host: '@',
+				// OUR sending hosts only, in both modes. Folding the external
+				// receiver's include into this record is the register action's job
+				// (`../registerAction.ts`) — it does it for EVERY provider, so the
+				// relay adapters that build their own apex record are covered by the
+				// same code path instead of each having to remember.
 				value: buildSpfRecordValue({ include: spfInclude, qualifier }),
 			};
 		} else {
@@ -99,7 +111,15 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 		// plus an `https://mta-sts.<domain>/.well-known/mta-sts.txt` policy file
 		// (RFC 8461) — that policy file lives on the operator's web host, not in
 		// DNS, so we document it rather than generate it here.
-		const tlsRptValue = buildTlsRptRecordValue(getOptional('MTA_TLSRPT_RUA'));
+		//
+		// Omitted entirely in send-only mode: the reports it solicits are about TLS
+		// on INBOUND delivery, and for an external-receiving domain that delivery
+		// terminates at Google/Microsoft. Publishing it would ask the world to
+		// report on a hop we neither run nor can fix, and pointing `rua=` at our
+		// address for someone else's MX is at best noise.
+		const tlsRptValue = externalReceiving
+			? undefined
+			: buildTlsRptRecordValue(getOptional('MTA_TLSRPT_RUA'));
 		if (tlsRptValue) {
 			dnsRecords.tlsRpt = {
 				type: 'TXT',
