@@ -251,6 +251,20 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 		// path, where env vars are unavailable — would throw and fail every push.
 		trustedOrigins: () => resolveTrustedOrigins(),
 		plugins: [
+			// One-time token: the /desktop/connect browser page mints a short-lived
+			// token (bound to the just-authenticated session) that it hands back to
+			// the desktop app via the `owlat://auth?ott=` deep link.
+			//
+			// ORDER MATTERS: this plugin and `crossDomain` both export an endpoint
+			// under the key `verifyOneTimeToken`, and BetterAuth merges plugin
+			// endpoints by key, so whichever plugin comes later wins. With
+			// `oneTimeToken` last, its `/one-time-token/verify` route replaced the
+			// cross-domain `/cross-domain/one-time-token/verify` route the desktop
+			// app redeems its token against, and every "connect an existing
+			// server" handshake ended in a 404. Keep `oneTimeToken` FIRST so the
+			// cross-domain verify survives; the generate endpoint has a unique key
+			// and is kept either way. Pinned by crossDomainVerifyRoute.test.ts.
+			oneTimeToken(),
 			// Cross-domain plugin: enables cookieless, cross-origin auth for the
 			// Tauri desktop app. It rewrites the `Better-Auth-Cookie` request
 			// header into a real cookie before session resolution and moves
@@ -259,10 +273,6 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			// Must precede `convex` so its before-hook resolves the session that
 			// `/convex/token` then mints a JWT from.
 			crossDomain({ siteUrl: getOptional('SITE_URL') || 'http://localhost:3000' }),
-			// One-time token: the /desktop/connect browser page mints a short-lived
-			// token (bound to the just-authenticated session) that it hands back to
-			// the desktop app via the `owlat://auth?ott=` deep link.
-			oneTimeToken(),
 			// TOTP two-factor. Enrolment is entirely opt-in and lives on
 			// /dashboard/preferences/security: nothing about sign-in changes for an
 			// account that never enables it, and the plugin only intercepts
