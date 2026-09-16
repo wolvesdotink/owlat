@@ -16,6 +16,7 @@
  * They union: whichever notices first wins, and a successful Apply clears both.
  */
 import { ref } from 'vue';
+import { apiFetch } from '~/lib/csrfFetch';
 import {
 	getActiveProfiles,
 	type FeatureFlagRegistry,
@@ -122,7 +123,7 @@ export function useProfileSync() {
 		isApplying.value = true;
 		applyError.value = null;
 		try {
-			const resp = await $fetch<ApplyProfilesResponse>('/api/system/apply-profiles', {
+			const resp = await apiFetch<ApplyProfilesResponse>('/api/system/apply-profiles', {
 				method: 'POST',
 				body: { flags },
 				retry: 0,

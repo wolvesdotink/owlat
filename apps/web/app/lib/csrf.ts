@@ -1,5 +1,5 @@
 /**
- * CSRF plumbing for same-origin, state-changing requests.
+ * CSRF rules for same-origin, state-changing requests.
  *
  * `security.csrf: true` (nuxt.config.ts) puts nuxt-csurf's middleware in front
  * of every POST/PUT/PATCH that `routeRules` does not exempt. It pairs an
@@ -15,13 +15,8 @@
  * handler tests never caught it because they import the handler directly and
  * so never run the middleware.
  *
- * The fix is deliberately NOT per-call-site: forgetting the header at one call
- * site is exactly what happened, so `plugins/0.csrf-fetch.client.ts` wraps the
- * global `$fetch` once and every caller inherits it. The rules live here, pure,
- * so the origin and method tests need no browser.
- *
- * The one bypass left is a raw `fetch()` to a same-origin `/api/` path; the
- * spec in `app/__tests__/noRawApiFetch.test.ts` fails the build if one appears.
+ * `~/lib/csrfFetch` applies these rules; `app/__tests__/noRawApiFetch.test.ts`
+ * fails the build if a state-changing call site skips it.
  */
 
 /**
@@ -49,9 +44,6 @@ export function isCsrfRejection(body: unknown): boolean {
 	);
 }
 
-/** The request argument shapes ofetch accepts. */
-type FetchRequest = string | URL | { url?: unknown };
-
 function urlOf(request: unknown): string | null {
 	if (typeof request === 'string') return request;
 	if (request instanceof URL) return request.href;
@@ -59,6 +51,14 @@ function urlOf(request: unknown): string | null {
 	// to exist in every runtime this module is loaded in.
 	const url = (request as { url?: unknown } | null)?.url;
 	return typeof url === 'string' ? url : null;
+}
+
+function methodOf(request: unknown, method: string | undefined): string {
+	if (method) return method;
+	// A `Request` carries its own method, and ofetch leaves it alone when the
+	// caller passes no `method` option.
+	const own = (request as { method?: unknown } | null)?.method;
+	return typeof own === 'string' ? own : 'GET';
 }
 
 function resolve(url: string, base: string): URL | null {
@@ -71,8 +71,8 @@ function resolve(url: string, base: string): URL | null {
 
 export interface CsrfRequestContext {
 	/** ofetch's request argument, before `baseURL` is applied. */
-	request: FetchRequest;
-	/** The request method, in any casing. Absent means GET. */
+	request: unknown;
+	/** The request method, in any casing. Absent falls back to the request's own. */
 	method?: string;
 	/** ofetch's `baseURL` option, which it prepends to a string request. */
 	baseURL?: string;
@@ -85,10 +85,19 @@ export interface CsrfRequestContext {
  * state-changing method aimed at this origin.
  *
  * The origin test is what keeps the token out of third-party requests — a
- * cross-origin `$fetch` (Convex storage uploads, DoH lookups, another
- * instance's `/api/instance-info`) must never carry it. `//evil.example` and an
- * absolute URL both resolve through the same `URL` construction as ofetch's
- * own, so neither can masquerade as a relative path.
+ * cross-origin request (Convex storage uploads, the Convex site URL, DoH
+ * lookups, another instance's `/api/instance-info`) must never carry it.
+ *
+ * ofetch joins `baseURL` with ufo string helpers rather than with `URL`, so the
+ * two resolutions are not identical: ufo does not treat `//host/path` as
+ * absolute, so a protocol-relative request under a `baseURL` stays same-origin
+ * for ofetch while this returns false. That divergence withholds a token from a
+ * request that needed one (a 403 the caller sees), never the reverse — the
+ * direction that matters for a rule whose job is to not leak the token.
+ *
+ * An opaque origin (a `tauri://` page in the desktop shell, say) compares equal
+ * to itself as the string `"null"`, so it is excluded explicitly: there is no
+ * nuxt-csurf middleware behind a custom scheme to satisfy.
  */
 export function shouldAttachCsrfToken({
 	request,
@@ -96,13 +105,13 @@ export function shouldAttachCsrfToken({
 	baseURL,
 	href,
 }: CsrfRequestContext): boolean {
-	if (!PROTECTED_METHODS.has((method ?? 'GET').toUpperCase())) return false;
+	if (!PROTECTED_METHODS.has(methodOf(request, method).toUpperCase())) return false;
 
 	const raw = urlOf(request);
 	if (raw === null) return false;
 
 	const page = resolve(href, href);
-	if (!page) return false;
+	if (!page || page.origin === 'null') return false;
 
 	const base = baseURL ? resolve(baseURL, href) : page;
 	if (!base) return false;

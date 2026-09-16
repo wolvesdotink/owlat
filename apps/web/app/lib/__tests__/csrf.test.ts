@@ -79,14 +79,33 @@ describe('shouldAttachCsrfToken — origin', () => {
 		).toBe(false);
 	});
 
-	it('reads the url off a Request instance', () => {
+	it('reads the url and the method off a Request instance', () => {
+		// ofetch leaves a `Request`'s own method alone when no option overrides
+		// it, so the rule has to read it from there too.
 		expect(
 			shouldAttachCsrfToken({
 				request: new Request('https://mail.acme.test/api/system/update', { method: 'POST' }),
-				method: 'POST',
 				href: HREF,
 			})
 		).toBe(true);
+		expect(
+			shouldAttachCsrfToken({
+				request: new Request('https://mail.acme.test/api/system/update'),
+				href: HREF,
+			})
+		).toBe(false);
+	});
+
+	it('declines an opaque origin, which compares equal to every other', () => {
+		// The desktop shell renders from a custom scheme; `new URL(...).origin`
+		// is the string "null" there, for the page and for the target alike.
+		expect(
+			shouldAttachCsrfToken({
+				request: '/api/system/update',
+				method: 'POST',
+				href: 'tauri://localhost/dashboard',
+			})
+		).toBe(false);
 	});
 
 	it('declines anything it cannot resolve to a URL', () => {
