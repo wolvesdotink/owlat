@@ -5,6 +5,7 @@ import {
 	buildApplyBody,
 	setupSignInHref,
 } from '~/composables/useSetupWizard';
+import { isCsrfRejection } from '~/lib/csrf';
 
 definePageMeta({ layout: false });
 
@@ -55,12 +56,18 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null;
 // restart lands, at which point it's safe to navigate.
 async function probeSetupCleared(): Promise<boolean> {
 	try {
-		const res = await fetch('/api/setup/validate-provider', {
+		// `$fetch.raw` (not a bare `fetch`) so the global CSRF wrapper stamps the
+		// token — without it the csurf middleware answers 403 itself, which this
+		// probe would read as the all-clear. `ignoreResponseError` keeps the
+		// status readable instead of thrown.
+		const res = await $fetch.raw('/api/setup/validate-provider', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'X-Setup-Token': trimmedToken.value },
 			body: '{}',
+			retry: 0,
+			ignoreResponseError: true,
 		});
-		return interpretSetupModeProbe(res.status);
+		return interpretSetupModeProbe(res.status, isCsrfRejection(res._data));
 	} catch {
 		// A transient failure mid-restart counts as "not ready yet".
 		return false;

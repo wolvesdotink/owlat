@@ -412,6 +412,9 @@ describe('post-apply readiness probe', () => {
 		expect(interpretSetupModeProbe(200)).toBe(false);
 		expect(interpretSetupModeProbe(503)).toBe(false);
 	});
+	it('does not mistake the CSRF middleware\u2019s 403 for the all-clear', () => {
+		expect(interpretSetupModeProbe(403, true)).toBe(false);
+	});
 });
 
 describe('draft persistence round-trip', () => {

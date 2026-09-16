@@ -38,11 +38,14 @@ let states: Map<string, Ref<unknown>>;
 let applyCalls: number;
 /** HTTP status the restart probe answers with; 403 means "setup mode is gone". */
 let probeStatus: number;
+/** The parsed error body behind that status — h3 puts `statusMessage` in it. */
+let probeBody: Record<string, unknown>;
 
 beforeEach(() => {
 	states = new Map();
 	applyCalls = 0;
 	probeStatus = 403;
+	probeBody = { statusCode: 403, statusMessage: 'Forbidden' };
 	installNuxtStubs({
 		...i18nStubs,
 		useSetupWizard,
@@ -65,11 +68,16 @@ beforeEach(() => {
 		// back. The page must not be able to be steered off-site by the response.
 		safeRedirect: (value: unknown, fallback: string) =>
 			typeof value === 'string' && value.startsWith('/') ? value : fallback,
-		$fetch: vi.fn(async () => {
-			applyCalls += 1;
-			return { ok: true, message: 'Setup applied.', redirectTo: REDIRECT_TO };
-		}),
-		fetch: vi.fn(async () => ({ status: probeStatus })),
+		// Apply goes through `$fetch`; the restart probe goes through `$fetch.raw`
+		// (for the status, and so the global CSRF wrapper stamps its token), so
+		// the stub has to carry both entry points the page really dispatches to.
+		$fetch: Object.assign(
+			vi.fn(async () => {
+				applyCalls += 1;
+				return { ok: true, message: 'Setup applied.', redirectTo: REDIRECT_TO };
+			}),
+			{ raw: vi.fn(async () => ({ status: probeStatus, _data: probeBody })) }
+		),
 	});
 });
 
@@ -147,6 +155,22 @@ describe('the first-run finale', () => {
 				expect(hrefs).toContain(`${REDIRECT_TO}&redirect=%2Fdashboard%2Fpostbox`);
 				// Every exit is an anchor — no button quietly assigning location.
 				expect(hrefs.every((href) => href?.startsWith('/auth/login'))).toBe(true);
+			},
+		});
+	});
+
+	it('does not read a CSRF rejection as the restart landing', async () => {
+		// nuxt-csurf answers 403 too. Before the token was wired onto `$fetch`
+		// every probe came back that way, so the wizard declared victory
+		// immediately and handed the operator to a login form the un-restarted
+		// process bounced straight back to /setup.
+		probeBody = { statusCode: 403, statusMessage: 'CSRF Token Mismatch' };
+		await auditA11y(SetupReviewPage, {
+			global: { plugins: [createTestI18n()] },
+			prepare: async (wrapper) => {
+				await launch(wrapper);
+				expect(wrapper.text()).not.toContain('Setup complete');
+				expect(wrapper.text()).toContain('Setup applied');
 			},
 		});
 	});
