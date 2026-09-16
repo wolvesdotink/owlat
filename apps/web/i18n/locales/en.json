@@ -3650,6 +3650,14 @@
 				"connectSharedOperation": "Connect team inbox",
 				"emailPlaceholder": "you{'@'}example.com",
 				"failed": "failed",
+				"google": {
+					"continue": "Continue with Google",
+					"desktopHint": "Finish signing in with Google in the browser window that just opened. This page updates by itself once the mailbox is connected.",
+					"explain": "Google asks you to sign in instead of handing over a password. Owlat receives only a revocable token for your mail, never your password.",
+					"reconnect": "Reconnect with Google",
+					"startOperation": "Start Google sign-in",
+					"useAppPassword": "Use an app password instead"
+				},
 				"imapHost": "IMAP host",
 				"imapHostPlaceholder": "imap.example.com",
 				"imapPort": "IMAP port",
@@ -10139,6 +10147,21 @@
 			"successBody": "You've successfully joined {organization}.",
 			"successTitle": "Welcome to the Team!",
 			"teamInboxAdded": "The team inbox {address} is in your sidebar."
+		}
+	},
+	"oauth": {
+		"google": {
+			"callback": {
+				"back": "Back to mail import",
+				"connecting": "Connecting your Google mailbox…",
+				"denied": "The sign-in was cancelled, so nothing was connected. You can start again whenever you like.",
+				"deniedTitle": "Google sign-in cancelled",
+				"failed": "The Google sign-in could not be completed. Please start again.",
+				"failedTitle": "Could not finish connecting",
+				"missingParams": "This link is incomplete. Start the Google sign-in again from the mail import page.",
+				"operation": "Finish Google sign-in",
+				"pageTitle": "Connecting Google"
+			}
 		}
 	},
 	"postbox": {

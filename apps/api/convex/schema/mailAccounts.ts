@@ -12,6 +12,34 @@ import { archiveFormatValidator } from '../lib/literalValidators';
  *
  * Spread into `mailTables` from schema/mail.ts.
  */
+/**
+ * What a completed Google authorization should DO — captured when the flow
+ * STARTS, so the callback (which only carries `code` + `state`) cannot redirect
+ * the grant into a different operation than the one the user consented to.
+ *
+ * Declared here rather than in `mail/external/googleOAuth.ts` because the state
+ * table persists it: the schema module is the leaf both the table definition and
+ * the functions can import without closing a cycle. `googleOAuth.ts` re-exports
+ * it (with its TS type) as the feature's public surface.
+ *
+ *   connect       — a new personal BYO mailbox
+ *   update        — re-authorize the caller's existing personal mailbox
+ *   connectShared — a new team inbox, with its initial roster
+ *   updateShared  — re-authorize an existing team inbox
+ *   connectSeed   — a deliverability seed mailbox
+ */
+export const googleOAuthIntentValidator = v.union(
+	v.object({ kind: v.literal('connect') }),
+	v.object({ kind: v.literal('update') }),
+	v.object({
+		kind: v.literal('connectShared'),
+		displayName: v.optional(v.string()),
+		memberUserIds: v.array(v.string()),
+	}),
+	v.object({ kind: v.literal('updateShared'), mailboxId: v.id('mailboxes') }),
+	v.object({ kind: v.literal('connectSeed'), seedProvider: destinationProviderValidator })
+);
+
 export const mailAccountsTables = {
 	externalMailAccounts: defineTable({
 		userId: v.string(), // BetterAuth user (connector / credential custodian)
@@ -66,16 +94,31 @@ export const mailAccountsTables = {
 		isSmtpSecure: v.boolean(),
 
 		// Auth. Most providers share one login across IMAP+SMTP; smtpUsername is
-		// optional and defaults to imapUsername when unset. Only password auth is
-		// supported today (providers connect via an IMAP/SMTP app password); there is
-		// no OAuth2 connect/token-refresh/XOAUTH2 path, so the enum stays a single
-		// literal rather than carrying an unreachable 'oauth2' branch.
-		authMethod: v.literal('password'),
+		// optional and defaults to imapUsername when unset.
+		//
+		// 'password' — an IMAP/SMTP app password, the path every provider supports
+		// and the one that needs no operator configuration.
+		// 'oauth2' — an authorization-code grant the user completed in their
+		// provider's own sign-in (today: Google, `oauthProvider: 'google'`). The
+		// mail-sync worker authenticates with SASL XOAUTH2 using a short-lived
+		// access token the backend mints on demand from a stored REFRESH token.
+		// That refresh token lives INSIDE the same encrypted envelope below
+		// (`{ oauthRefreshToken }` instead of `{ imapPassword, smtpPassword }`), so
+		// there is exactly one encrypt site and one decrypt site for both methods
+		// and no access-token column ever hits disk.
+		//
+		// Every pre-OAuth row is 'password', so widening the union adds a case
+		// rather than changing one (CONVENTIONS.md §Schema evolution).
+		authMethod: v.union(v.literal('password'), v.literal('oauth2')),
+		// Which provider's authorization server issued the refresh token. Absent on
+		// every password row; set together with `authMethod: 'oauth2'`.
+		oauthProvider: v.optional(v.literal('google')),
 		imapUsername: v.string(),
 		smtpUsername: v.optional(v.string()),
 
 		// Encrypted credential envelope (AES-256-GCM). The plaintext is a JSON blob
-		// ({ imapPassword, smtpPassword? }); these fields hold its ciphertext/iv/tag.
+		// — `{ imapPassword, smtpPassword? }` on a password row, `{ oauthRefreshToken }`
+		// on an oauth2 one; these fields hold its ciphertext/iv/tag.
 		// secretEnvelopeVersion pairs the blob per the CONVENTIONS.md versioning rule.
 		secretCiphertext: v.string(),
 		secretIv: v.string(),
@@ -118,6 +161,36 @@ export const mailAccountsTables = {
 		// more connectable accounts than the page bound; a bounded page of seeds
 		// with no cursor starves whichever orgs sort last, permanently.
 		.index('by_purpose', ['purpose']),
+
+	// One in-flight Google authorization-code exchange.
+	//
+	// The OAuth handshake spans two HTTP round trips through a third party, so the
+	// `state` nonce and the PKCE `code_verifier` have to outlive the request that
+	// minted them. This row is that storage and nothing more: single-use (the
+	// exchange deletes it, success or failure), short-lived (15 minutes), and
+	// scoped to the user who started the flow — a callback presenting another
+	// user's `state` is refused. It carries no token and no secret; the
+	// `code_verifier` is a per-attempt nonce whose only power is to complete an
+	// exchange the same user already began.
+	//
+	// `intent` is what the completed exchange should DO (connect a personal
+	// mailbox, re-authorize one, connect or re-authorize a team inbox, connect a
+	// deliverability seed) — captured at start so the callback page, which knows
+	// only `code` + `state`, cannot choose a different one. `returnTo` is the
+	// same-site relative path the callback navigates back to.
+	externalMailOAuthStates: defineTable({
+		userId: v.string(),
+		organizationId: v.string(),
+		provider: v.literal('google'),
+		state: v.string(),
+		codeVerifier: v.string(),
+		intent: googleOAuthIntentValidator,
+		returnTo: v.string(),
+		createdAt: v.number(),
+		expiresAt: v.number(),
+	})
+		.index('by_state', ['state'])
+		.index('by_user', ['userId']),
 
 	// Per-(account, folder) IMAP sync cursor. Separate from mailFolders' own
 	// uidValidity/uidNext (those track Owlat-as-IMAP-server); these track

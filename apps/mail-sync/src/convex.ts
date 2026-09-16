@@ -68,10 +68,75 @@ export interface WorkerCredentials {
 	 * OAuth bearer access token for the user's SMTP submission endpoint (Gmail /
 	 * Microsoft). When present, the outbound relay authenticates with SASL XOAUTH2
 	 * instead of a password. Acquisition and refresh of this token are owned by the
-	 * external-accounts OAuth feature — this worker only forwards whatever token the
-	 * backend handed it; `smtpPassword` is ignored on the XOAUTH2 path.
+	 * external-accounts OAuth feature (`mail/external/googleOAuth*` in apps/api) —
+	 * this worker only forwards whatever token the backend handed it;
+	 * `smtpPassword` is ignored on the XOAUTH2 path.
 	 */
 	smtpAccessToken?: string;
+	/**
+	 * The IMAP twin of {@link WorkerCredentials.smtpAccessToken}. Present (with
+	 * both password fields empty) on an `authMethod: 'oauth2'` account, where
+	 * ImapFlow authenticates with `AUTHENTICATE XOAUTH2` instead of LOGIN. Minted
+	 * per credential fetch by the backend from the stored refresh token, so it is
+	 * already live and this worker never refreshes or persists it.
+	 */
+	imapAccessToken?: string;
+}
+
+/** Why a credential fetch came back empty. Mirrors the backend's union. */
+export type CredentialsUnavailableReason = 'missing' | 'auth_revoked' | 'refresh_failed';
+
+/**
+ * What `getCredentialsForWorker` answers with.
+ *
+ * Mirrors `WorkerCredentialsResult` in
+ * `apps/api/convex/mail/external/accountsActions.ts`. The discriminant exists so
+ * this worker can tell the one TERMINAL outcome apart from the retryable ones:
+ * `auth_revoked` means the backend has already marked the account `auth_error`
+ * with the message that tells the user to reconnect, so there is nothing to
+ * retry and nothing better to say.
+ */
+export type WorkerCredentialsResult =
+	| { kind: 'credentials'; credentials: WorkerCredentials }
+	| { kind: 'unavailable'; reason: CredentialsUnavailableReason };
+
+/**
+ * A credential fetch that produced no credentials, carrying WHY so the caller
+ * can decide between backing off and giving up.
+ */
+export class CredentialsUnavailableError extends Error {
+	constructor(readonly reason: CredentialsUnavailableReason) {
+		super(`credentials unavailable (${reason})`);
+		this.name = 'CredentialsUnavailableError';
+	}
+
+	/** Terminal: only the user reconnecting the account can change the answer. */
+	get isTerminal(): boolean {
+		return this.reason === 'auth_revoked';
+	}
+}
+
+/**
+ * Fetch one account's plaintext credentials. The single call site for the
+ * untyped Convex reference, so the connect loop, the /send route and the seed
+ * sweep all read the same shape.
+ */
+export async function fetchWorkerCredentials(
+	convex: ConvexClient,
+	accountId: string
+): Promise<WorkerCredentialsResult> {
+	const result = (await convex.action(
+		fn.getCredentialsForWorker as never,
+		{
+			accountId,
+		} as never
+	)) as WorkerCredentialsResult | WorkerCredentials | null;
+	// A deployment mid-rollout (older backend, newer worker) still speaks the
+	// pre-OAuth shape: `null` on a miss, a bare credential bundle on success. Map
+	// both onto the typed result so a split-version stack keeps syncing.
+	if (result === null) return { kind: 'unavailable', reason: 'missing' };
+	if (!('kind' in result)) return { kind: 'credentials', credentials: result };
+	return result;
 }
 
 /** Summary row from listConnectableAccounts. */

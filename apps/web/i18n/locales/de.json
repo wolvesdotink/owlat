@@ -3650,6 +3650,14 @@
 				"connectSharedOperation": "Team-Postfach verbinden",
 				"emailPlaceholder": "sie{'@'}beispiel.de",
 				"failed": "fehlgeschlagen",
+				"google": {
+					"continue": "Mit Google anmelden",
+					"desktopHint": "Schließe die Anmeldung bei Google im soeben geöffneten Browserfenster ab. Diese Seite aktualisiert sich von selbst, sobald das Postfach verbunden ist.",
+					"explain": "Google bittet dich um eine Anmeldung statt um ein Passwort. Owlat erhält nur ein widerrufbares Token für deine Mails, niemals dein Passwort.",
+					"reconnect": "Erneut mit Google verbinden",
+					"startOperation": "Google-Anmeldung starten",
+					"useAppPassword": "Stattdessen App-Passwort verwenden"
+				},
 				"imapHost": "IMAP-Host",
 				"imapHostPlaceholder": "imap.beispiel.de",
 				"imapPort": "IMAP-Port",
@@ -10139,6 +10147,21 @@
 			"successBody": "Sie sind {organization} erfolgreich beigetreten.",
 			"successTitle": "Willkommen im Team!",
 			"teamInboxAdded": "Das Team-Postfach {address} finden Sie in Ihrer Seitenleiste."
+		}
+	},
+	"oauth": {
+		"google": {
+			"callback": {
+				"back": "Zurück zum Mail-Import",
+				"connecting": "Dein Google-Postfach wird verbunden …",
+				"denied": "Die Anmeldung wurde abgebrochen, es wurde nichts verbunden. Du kannst jederzeit neu starten.",
+				"deniedTitle": "Google-Anmeldung abgebrochen",
+				"failed": "Die Google-Anmeldung konnte nicht abgeschlossen werden. Bitte starte sie erneut.",
+				"failedTitle": "Verbindung nicht abgeschlossen",
+				"missingParams": "Dieser Link ist unvollständig. Starte die Google-Anmeldung erneut auf der Seite für den Mail-Import.",
+				"operation": "Google-Anmeldung abschließen",
+				"pageTitle": "Google wird verbunden"
+			}
 		}
 	},
 	"postbox": {

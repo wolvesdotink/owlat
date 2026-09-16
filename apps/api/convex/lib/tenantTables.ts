@@ -215,6 +215,10 @@ export const TENANT_TABLES = [
 	'mailboxMoves',
 	'externalMailFolderSync',
 	'externalMailAccounts',
+	// In-flight Google sign-in handshakes for connecting an external mailbox.
+	// User- and org-attributed, short-lived, and meaningless once the org is gone
+	// — wiped with it like the account rows the finished handshake would write.
+	'externalMailOAuthStates',
 	// Seed-mailbox placement probe ledger (deliverability gate 5). One row per
 	// shadow copy this org's sends dropped into its own seed mailboxes —
 	// org-scoped observation data, wiped with the org.

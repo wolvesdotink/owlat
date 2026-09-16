@@ -261,6 +261,15 @@ export type EnvKey =
 	| 'GENERIC_WEBHOOK_SECRET'
 	// Code-work / GitHub PR merge webhook
 	| 'GITHUB_WEBHOOK_SECRET'
+	// Google OAuth client for CONNECTING an external Gmail/Workspace mailbox with
+	// Google sign-in (authorization-code + PKCE) instead of an app password. The
+	// client's redirect URI must be `${SITE_URL}/oauth/google/callback`.
+	// Unset ⇒ Google sign-in is unavailable and the Gmail connect form offers the
+	// app-password path only; app passwords keep working either way.
+	| 'GOOGLE_OAUTH_CLIENT_ID'
+	// Client secret of the same Google OAuth client. Used only server-side, in the
+	// token exchange/refresh. Unset ⇒ same as above: no Google sign-in.
+	| 'GOOGLE_OAUTH_CLIENT_SECRET'
 	// Calendar / availability grounding for scheduling replies (mail/availability).
 	// Optional read-only ICS/CalDAV subscription URL for the owner's own calendar
 	// (a private iCal export). Fetched server-side, in-deployment, to derive

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MailProvider } from '~/utils/mailAutodiscover';
-import { GENERIC_IMAP_PROVIDER, MAIL_PROVIDERS } from '~/utils/mailAutodiscover';
+import { MAIL_PROVIDERS, providerForImapHost } from '~/utils/mailAutodiscover';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
@@ -18,6 +18,8 @@ function formatCount(value: number | undefined): string {
 	return new Intl.NumberFormat(locale.value).format(value ?? 0);
 }
 
+const route = useRoute();
+const router = useRouter();
 const { showToast } = useToast();
 const { isEnabled, isLoading: flagsLoading } = useFeatureFlag();
 // Gate inline rather than via requiresAnyFeature: when external mailboxes are
@@ -70,11 +72,9 @@ async function handleConnected() {
 // ── Ready step (already connected) ──────────────────────────────────────────
 // Derive the provider from the connected account's IMAP host so the edit form
 // keeps the right guidance; unknown hosts fall back to the generic IMAP form.
-const connectedProvider = computed<MailProvider>(() => {
-	const host = account.value?.configured ? account.value.imapHost.toLowerCase() : '';
-	const match = MAIL_PROVIDERS.find((p) => p.preset && host === p.preset.imapHost.toLowerCase());
-	return match ?? GENERIC_IMAP_PROVIDER;
-});
+const connectedProvider = computed<MailProvider>(() =>
+	providerForImapHost(account.value?.configured ? account.value.imapHost : null)
+);
 const connectedSource = computed<'google' | 'imap'>(() =>
 	account.value?.configured && account.value.imapHost.includes('gmail') ? 'google' : 'imap'
 );
@@ -82,6 +82,39 @@ async function handleStartImport() {
 	const res = await start(connectedSource.value);
 	if (res.ok) showToast(t('dashboard.postbox.migrate.toastImportStarted'), 'success');
 }
+
+// ── Returning from Google sign-in ───────────────────────────────────────────
+// The OAuth callback lands back on whatever page started the flow, flagged with
+// `googleConnected=1`. The connect FORM cannot start the import itself — the
+// browser left the page mid-flow and its `submitted` event never fired — so the
+// wizard picks the thread back up here: strip the flag, then start the import
+// once the account subscription reports the new mailbox.
+const googleReturn = ref(route.query['googleConnected'] === '1');
+
+onMounted(() => {
+	if (!googleReturn.value) return;
+	const query = { ...route.query };
+	delete query['googleConnected'];
+	void router.replace({ query });
+
+	// `account` is a live subscription: with a warm cache it is already resolved
+	// at mount, on a cold load it resolves a tick or two later. Register the
+	// watcher FIRST and only then probe the current value — an `immediate: true`
+	// watcher cannot call its own stop handle (the binding is still in its
+	// temporal dead zone on the immediate run), which is a ReferenceError on
+	// exactly the already-resolved path. `googleReturn` keeps this to one start.
+	let stop: (() => void) | undefined;
+	function startIfConnected() {
+		if (!googleReturn.value || !account.value?.configured) return;
+		googleReturn.value = false;
+		stop?.();
+		// An import already running (or finished) needs nothing started.
+		if (migration.value) return;
+		void handleStartImport();
+	}
+	stop = watch([account, migration], startIfConnected);
+	startIfConnected();
+});
 
 // The existing account, for pre-filling the edit form. The connected account
 // already carries every field the form's `account` prop needs (plus a few it

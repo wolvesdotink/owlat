@@ -14,13 +14,13 @@
  * account provisions a `kind='external', scope='shared'` mailbox (access
  * governed by `mailboxMembers`) instead of a personal 1:1 account. That path
  * lives in the sibling `mail/external/sharedInbox.ts` (it reuses this file's
- * `connectFieldsValidator` + `getLivePersonalExternalAccountForUser` semantics);
+ * shared `connectFieldsValidator` + `getLivePersonalExternalAccountForUser`);
  * see the `scope` field on `externalMailAccounts` for the ownership/credential
  * model. The `scope='shared'` discriminator is what keeps a team inbox out of
  * the personal-external surfaces below.
  *
  * A third path — the DELIVERABILITY SEED mailbox — lives in the sibling
- * `mail/external/accountsSeed.ts`. It reuses this file's `connectFieldsValidator`
+ * `mail/external/accountsSeed.ts`. It reuses the shared `connectFieldsValidator`
  * and the same sealed envelope, but a seed is not an inbox at all: the
  * `purpose='seed'` discriminator keeps it off every personal-external surface
  * below and out of `listConnectableAccounts`.
@@ -46,6 +46,7 @@ import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../../lib/featureFlags';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
 import {
+	connectFieldsValidator,
 	insertExternalAccountRow,
 	applyCredentialRotation,
 	cancelActiveMigrationForAccount,
@@ -141,6 +142,10 @@ export const getForCurrentUser = publicQuery({
 			isSmtpSecure: account.isSmtpSecure,
 			imapUsername: account.imapUsername,
 			smtpUsername: account.smtpUsername,
+			// How the account authenticates, so the connect form can offer
+			// "Reconnect with Google" instead of a password field. Never a credential.
+			authMethod: account.authMethod,
+			oauthProvider: account.oauthProvider,
 			status: account.status,
 			lastError: account.lastError,
 			lastSyncAt: account.lastSyncAt,
@@ -321,23 +326,11 @@ export const _purgeChunk = internalMutation({
 });
 
 // ── Internal: write path (called by the connect/update actions) ────────────
+// The argument shape every persistence mutation here takes lives beside the row
+// writers in `accountShared.ts` (`connectFieldsValidator`), re-exported below so
+// the sibling connect paths keep importing one name.
 
-export const connectFieldsValidator = {
-	emailAddress: v.string(),
-	imapHost: v.string(),
-	imapPort: v.number(),
-	isImapSecure: v.boolean(),
-	smtpHost: v.string(),
-	smtpPort: v.number(),
-	isSmtpSecure: v.boolean(),
-	imapUsername: v.string(),
-	smtpUsername: v.optional(v.string()),
-	authMethod: v.literal('password'),
-	secretCiphertext: v.string(),
-	secretIv: v.string(),
-	secretAuthTag: v.string(),
-	secretEnvelopeVersion: v.number(),
-};
+export { connectFieldsValidator };
 
 /**
  * Insert the account row + provision its external mailbox. Re-resolves the

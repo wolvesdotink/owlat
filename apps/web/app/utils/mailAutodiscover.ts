@@ -279,6 +279,14 @@ export type MailProvider = {
 	preset: MailPreset | null;
 	/** App-password guidance, or `null` when the provider needs no app password. */
 	appPassword: AppPasswordHelp | null;
+	/**
+	 * The OAuth provider this mailbox can be connected with instead of an app
+	 * password, or `null` when the only route in is a password. Set means the
+	 * connect form MAY offer the provider's sign-in button — it still asks the
+	 * backend whether this instance has an OAuth client configured, and falls
+	 * back to the app-password form when it has not.
+	 */
+	oauth: { provider: 'google' } | null;
 	/** Whether the user must fill in the IMAP/SMTP servers by hand. */
 	manualServer: boolean;
 };
@@ -296,6 +304,7 @@ export const GENERIC_IMAP_PROVIDER: MailProvider = {
 	hint: 'shared.mailAutodiscover.provider.imap.hint',
 	preset: null,
 	appPassword: null,
+	oauth: null,
 	manualServer: true,
 };
 
@@ -312,6 +321,9 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 		hint: 'shared.mailAutodiscover.provider.gmail.hint',
 		preset: DOMAIN_PRESETS['gmail.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['gmail.com'] ?? null,
+		// The only provider with a sign-in flow today: Google deprecates password
+		// auth for IMAP, and OAuth is what it asks new clients to use.
+		oauth: { provider: 'google' },
 		manualServer: false,
 	},
 	{
@@ -321,6 +333,7 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 		hint: 'shared.mailAutodiscover.provider.outlook.hint',
 		preset: DOMAIN_PRESETS['outlook.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['outlook.com'] ?? null,
+		oauth: null,
 		manualServer: false,
 	},
 	{
@@ -334,6 +347,7 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 			url: 'https://app.fastmail.com/settings/security/apppasswords',
 			steps: 'shared.mailAutodiscover.appPassword.fastmail',
 		},
+		oauth: null,
 		manualServer: false,
 	},
 	{
@@ -343,6 +357,7 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 		hint: 'shared.mailAutodiscover.provider.icloud.hint',
 		preset: DOMAIN_PRESETS['icloud.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['icloud.com'] ?? null,
+		oauth: null,
 		manualServer: false,
 	},
 	{
@@ -352,6 +367,7 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 		hint: 'shared.mailAutodiscover.provider.yahoo.hint',
 		preset: DOMAIN_PRESETS['yahoo.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['yahoo.com'] ?? null,
+		oauth: null,
 		manualServer: false,
 	},
 	GENERIC_IMAP_PROVIDER,
@@ -360,6 +376,18 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 /** Look up a provider by id, or `undefined` for an unknown id. */
 export function providerById(id: string): MailProvider | undefined {
 	return MAIL_PROVIDERS.find((p) => p.id === id);
+}
+
+/**
+ * The guided provider whose preset matches a CONNECTED account's IMAP host, or
+ * the generic IMAP one. Lets an existing account's edit/reconnect form carry
+ * the right guidance (Gmail's Google sign-in, a provider's app-password steps)
+ * without the account having to remember which card it was created from.
+ */
+export function providerForImapHost(host: string | null | undefined): MailProvider {
+	const needle = (host ?? '').toLowerCase();
+	const match = MAIL_PROVIDERS.find((p) => p.preset?.imapHost.toLowerCase() === needle);
+	return match ?? GENERIC_IMAP_PROVIDER;
 }
 
 /** The IMAP/SMTP preset for a provider id, or `null` (generic IMAP / unknown). */
