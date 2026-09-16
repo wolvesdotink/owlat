@@ -133,6 +133,11 @@ services:
       HETZNER_API_TOKEN: ${HETZNER_API_TOKEN:-}
       ACME_STAGING: ${ACME_STAGING:-0}
       TLS_CERT_DIR: /opt/owlat/certs
+      # lego publishes the key as root:root 0600; the imap container runs as this
+      # uid:gid and mounts mail-certs :ro, so acme-entrypoint.sh hands ownership
+      # over on every publish or IMAP crash-loops on EACCES. Pinned against the
+      # build-time uid assertion in apps/imap/Dockerfile.
+      IMAP_RUNTIME_USER: ${IMAP_RUNTIME_USER:-1000:1000}
     cap_drop:
       - ALL
     security_opt:
