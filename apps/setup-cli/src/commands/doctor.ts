@@ -13,6 +13,12 @@
  *       no audit has been recorded.
  *   4. docker-compose.override.yml exists and matches the stored flags.
  *   5. Containers are running (best-effort: `docker compose ps` parse).
+ *   5b. CONTAINERS: no container is crash-looping or failing its healthcheck —
+ *       being LISTED by `docker compose ps` is not the same as being up.
+ *   5c. VERSION: every Owlat container actually runs the configured
+ *       OWLAT_VERSION. Compose pins images to `${OWLAT_VERSION:-dev}`, so
+ *       advancing `.env` without recreating the containers leaves the version
+ *       the product REPORTS diverged from the one it RUNS.
  *
  * Reports findings as a checklist; non-zero exit on any failure.
  */
@@ -30,6 +36,11 @@ import {
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
 import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
+import {
+	evaluateContainerStates,
+	evaluateVersionDrift,
+	parseComposePs,
+} from '@owlat/shared/containerHealth';
 import { readEnv, type EnvMap } from '../lib/env';
 import {
 	fcrdnsReasonMessage,
@@ -396,9 +407,23 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
 			stderr: 'pipe',
 		});
 		const output = await new Response(proc.stdout).text();
-		const lines = output.trim().split('\n').filter(Boolean);
-		const running = lines.length;
-		check(running > 0, `${running} compose service(s) running`);
+		const services = parseComposePs(output);
+		check(services.length > 0, `${services.length} compose service(s) running`);
+
+		// Being LISTED is not being up. `docker compose ps` reports a container
+		// that has been crash-looping for hours exactly like a healthy one, so
+		// counting services green-lit an install with a dead service in it.
+		for (const finding of evaluateContainerStates(services)) {
+			check(finding.ok, `CONTAINERS: ${finding.message}`);
+		}
+
+		// VERSION DRIFT — the configured version (.env, which every version
+		// surface in the product reports) against the tag each container was
+		// actually created from. Advancing .env without recreating the
+		// containers leaves the product claiming a version it is not running.
+		for (const finding of evaluateVersionDrift(services, env['OWLAT_VERSION'] ?? '')) {
+			check(finding.ok, `VERSION: ${finding.message}`);
+		}
 	} catch {
 		check(false, 'docker compose not callable from this shell');
 	}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -231,5 +231,86 @@ describe('GET /health', () => {
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { containers: Array<Record<string, unknown>> };
 		expect(json.containers[0]).toMatchObject({ service: 'web', imageTag: '1.2.3' });
+	});
+
+	/**
+	 * `version` is the updater container's baked-in OWLAT_VERSION — what is
+	 * RUNNING. Without the CONFIGURED value from `.env` alongside it, no caller
+	 * of /health can tell that the two have diverged.
+	 */
+	describe('version drift', () => {
+		function health() {
+			return fetch(`${base}/health`, { headers: AUTH }).then(
+				(res) =>
+					res.json() as Promise<{
+						version: string;
+						configuredVersion: string | null;
+						versionDrift: boolean | null;
+					}>,
+			);
+		}
+
+		it('reports drift when .env was advanced but containers were never recreated', async () => {
+			// The observed production case: .env says 0.4.13, every container 0.4.12.
+			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\nFOO=bar\n');
+			execSyncMock.mockReturnValue(
+				['web', 'mta', 'imap']
+					.map(
+						(name) =>
+							`{"Service":"${name}","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/${name}:0.4.12","Health":"healthy"}`,
+					)
+					.join('\n'),
+			);
+			const json = await health();
+			expect(json.configuredVersion).toBe('0.4.13');
+			expect(json.versionDrift).toBe(true);
+		});
+
+		it('reports no drift when every container runs the configured version', async () => {
+			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\n');
+			execSyncMock.mockReturnValue(
+				'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}\n',
+			);
+			const json = await health();
+			expect(json.configuredVersion).toBe('0.4.13');
+			expect(json.versionDrift).toBe(false);
+		});
+
+		it('ignores third-party images pinned to their own versions', async () => {
+			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\n');
+			execSyncMock.mockReturnValue(
+				[
+					'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}',
+					'{"Service":"redis","State":"running","Status":"Up","Image":"redis:7.4-alpine","Health":"healthy"}',
+					'{"Service":"caddy","State":"running","Status":"Up","Image":"caddy:2.8-alpine","Health":""}',
+				].join('\n'),
+			);
+			expect((await health()).versionDrift).toBe(false);
+		});
+
+		it('answers null — never a false verdict — when .env carries no OWLAT_VERSION', async () => {
+			writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n');
+			execSyncMock.mockReturnValue(
+				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n',
+			);
+			const json = await health();
+			expect(json.configuredVersion).toBeNull();
+			expect(json.versionDrift).toBeNull();
+		});
+
+		it('still reports container facts when .env cannot be read', async () => {
+			rmSync(join(OWLAT_DIR, '.env'));
+			execSyncMock.mockReturnValue(
+				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n',
+			);
+			const res = await fetch(`${base}/health`, { headers: AUTH });
+			expect(res.status).toBe(200);
+			const json = (await res.json()) as {
+				configuredVersion: string | null;
+				containers: Array<Record<string, unknown>>;
+			};
+			expect(json.configuredVersion).toBeNull();
+			expect(json.containers[0]).toMatchObject({ service: 'web' });
+		});
 	});
 });

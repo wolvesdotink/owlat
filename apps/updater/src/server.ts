@@ -1,7 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
+import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
 import {
 	applyEnvUpdates,
 	isRateLimited,
@@ -154,10 +156,27 @@ function handleHealth(req: IncomingMessage, res: ServerResponse) {
 	// Get running container info
 	const { containers, raw } = composePsServices();
 
+	// `version` below is this container's baked-in OWLAT_VERSION: compose
+	// interpolated it when the updater container was CREATED, so it reports what
+	// is RUNNING. The CONFIGURED version lives in `.env` and is read here, per
+	// request, because the two diverge exactly when nobody recreated the
+	// containers — and without both values in the payload no caller can tell.
+	let configuredVersion: string | undefined;
+	try {
+		configuredVersion = parseConfiguredVersionFromEnv(
+			readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')
+		);
+	} catch {
+		// An unreadable .env is reported by the other endpoints; /health must
+		// still answer with the container facts it does have.
+	}
+
 	json(res, 200, {
 		status: 'ok',
 		timestamp: Date.now(),
 		version: process.env['OWLAT_VERSION'] || 'dev',
+		configuredVersion: configuredVersion ?? null,
+		versionDrift: configuredVersion ? hasVersionDrift(containers, configuredVersion) : null,
 		gitSha: process.env['OWLAT_GIT_SHA'] || 'unknown',
 		buildDate: process.env['OWLAT_BUILD_DATE'] || 'unknown',
 		containers: containers.length > 0 ? containers : raw,
