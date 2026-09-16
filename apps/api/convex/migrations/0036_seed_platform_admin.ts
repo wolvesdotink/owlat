@@ -1,10 +1,15 @@
 /**
- * One-shot platform-admin bootstrap.
+ * One-shot platform-admin bootstrap — the break-glass path.
  *
- * This is deliberately hand-run: OSS self-hosts have no production control
- * plane that grants instance-wide operator power. An operator who chooses to
- * enable that surface invokes
+ * Normal installs no longer need this: `/seed/admin` grants the setup user the
+ * first `superadmin` row, and an instance seeded before that shipped is claimed
+ * by its org owner from the admin hub (`platformAdmin/bootstrap.ts`). What is
+ * left for this migration is recovery — an instance whose last superadmin was
+ * removed, or one where the owner account itself is gone, so no in-app caller
+ * can satisfy either bootstrap path. An operator with shell access then runs
  * `convex run migrations/0036_seed_platform_admin:run '{...}'` once.
+ *
+ * Like the in-app paths, it only succeeds while the table is empty.
  */
 
 import { v } from 'convex/values';

@@ -5833,18 +5833,24 @@ matching code comment at the cited file.
   (id + short expiry) like `trackClick` if open-count integrity ever needs to
   be stronger than rate-limited best-effort.
 
-- **`platformAdmin/*` is control-plane-only and inert on OSS self-host.**
-  No production path populates the `platformAdmins` table on an OSS
-  deployment (the optional first-admin bootstrap is the hand-run
-  `migrations/0036_seed_platform_admin:run`; `addPlatformAdmin` needs an
-  existing admin), so
-  `requirePlatformAdmin` always throws FORBIDDEN and the console renders empty.
-  Intentional: the multi-tenant control plane that would seed and use these
-  admins lives in the separate private Nest repo (see _Nest Extracted_); this
-  repo is single-org-per-deployment OSS. The module is kept so the control
-  plane reuses it unchanged, but no OSS bootstrap is wired — granting one
-  operator instance-wide power is a deployer decision, not a default. Intended
-  authz model: each `platformAdmin/*` function is an `authedMutation` /
+- **`platformAdmin/*` is the deployment tier, and the setup user holds it.**
+  Org roles (owner/admin/editor) govern the product; `platformAdmins` governs
+  the box — in-app updates, backups, the operator console. An org owner is not
+  automatically a platform admin. The roster is bootstrapped by
+  `platformAdmin/bootstrap.ts`: `/seed/admin` grants the setup user
+  `superadmin` on every fresh install, and an instance seeded before that
+  shipped is claimed once by its org owner from the admin hub
+  (`claimInitialPlatformAdmin`, an `ownerMutation` — its only caller).
+  `migrations/0036_seed_platform_admin:run` survives as the break-glass path
+  when neither in-app caller can run. All three refuse once ANY platform admin
+  exists: that empty-table precondition, not the caller's org role, is what
+  keeps the bootstrap from being an escalation route; past it, promotion goes
+  through `addPlatformAdmin` (superadmin-only, driven by Operator → Admins).
+  The grant is revoked by member erasure and by `POST /dev/reset` alongside the
+  users it is keyed to. The same module still backs the multi-tenant control
+  plane in the separate private Nest repo (see _Nest Extracted_), which is why
+  the cross-org queries here look bigger than a single-org deployment needs.
+  Authz model: each `platformAdmin/*` function is an `authedMutation` /
   `authedQuery` whose handler calls `requirePlatformAdmin(ctx)` first
   (superadmin-only ops also check `role === 'superadmin'`).
 
