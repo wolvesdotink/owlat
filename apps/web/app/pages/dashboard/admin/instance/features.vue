@@ -16,7 +16,11 @@ import {
 	type FeatureFlagState,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
-import { flagsNeedingConfig, missingPluginEnvironmentVariables } from '~/utils/featureConfig';
+import {
+	enableTimeMissingEnvVars,
+	flagsNeedingConfig,
+	missingPluginEnvironmentVariables,
+} from '~/utils/featureConfig';
 import { hasInboundFeature, INBOUND_FEATURE_FLAGS } from '~/utils/inboundDns';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 import FeatureFlagMetadata from '~/components/settings/FeatureFlagMetadata.vue';
@@ -145,7 +149,16 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 		return;
 	}
 	if (value && (def.requiredEnvVars?.length ?? 0) > 0) {
-		missingEnv.value = { flag, vars: [...(def.requiredEnvVars ?? [])] };
+		// Name only what the deployment is actually missing — `mail.external`
+		// declares its worker variables, and an instance that already has them set
+		// should not be told to go set them. The status query is the only evidence
+		// available here (the browser cannot read `.env`); when it has not answered,
+		// `enableTimeMissingEnvVars` falls back to the full declared list.
+		const vars = enableTimeMissingEnvVars(
+			def,
+			configStatusError.value ? null : flagsConfigStatus.value
+		);
+		if (vars.length > 0) missingEnv.value = { flag, vars };
 	}
 
 	// Sending flags declare no requiredEnvVars (the provider is env+capability,

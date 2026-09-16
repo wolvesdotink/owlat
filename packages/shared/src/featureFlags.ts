@@ -260,6 +260,16 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		// — that would force the hosted ACME + IMAP-server stack (personal-mail
 		// profile) the no-domain user is avoiding.
 		dockerProfiles: ['external-mail'],
+		// The Convex function runtime reaches the worker over these two
+		// (mail/mtaClient.ts:getMailSyncConfig). Declared so the gap is REPORTED:
+		// flipping this flag on in Settings → Features starts no container and
+		// pushes no deployment env, so an instance can sit flag-on/worker-unwired,
+		// where connecting a mailbox fails the credential check with "The mail sync
+		// service is not configured on this instance." and an external send fails
+		// every recipient with EXTERNAL_NOT_CONFIGURED. With them declared, the
+		// Features page badges the flag "needs config", and `owlat-setup env --show`
+		// / `doctor` name the two missing variables.
+		requiredEnvVars: ['MAIL_SYNC_API_URL', 'MAIL_SYNC_API_KEY'],
 	},
 
 	ai: {
