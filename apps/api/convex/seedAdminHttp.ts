@@ -26,6 +26,11 @@ import { logError } from './lib/runtimeLog';
  *
  * `isMigrationMode` (optional) carries the wizard's "moving from another platform?"
  * answer onto instanceSettings.isMigrationMode. Defaults to false (fresh start).
+ *
+ * The seeded user is also granted the initial `platformAdmins` superadmin row
+ * (see `platformAdmin/bootstrap.ts`), which is what makes the operator surface —
+ * System & Updates, Backups, the Operator console — reachable on a fresh
+ * install without a hand-run migration.
  */
 
 export const seedAdmin = httpAction(async (ctx, request) => {
@@ -237,6 +242,22 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		// was already created by `createInternal`, and its durable one-shot latch
 		// stamped by the atomic `claimAdminSeedInternal` claim above, before any
 		// user was created.
+
+		// Give the setup user the operator surface too. On a single-org self-host
+		// the person who ran setup owns both the org and the box, so withholding
+		// System & Updates / Backups / Operator from them only meant NOBODY could
+		// reach those pages without a `convex run` against the container.
+		//
+		// Deliberately best-effort: the account, org and settings above are all
+		// written by now and the one-shot latch is claimed, so throwing here would
+		// leave a half-seeded instance that no retry can finish. If the grant
+		// fails, the owner can still claim it from the admin hub
+		// (`claimInitialPlatformAdmin`) — a worse first-run, not a broken one.
+		try {
+			await ctx.runMutation(internal.platformAdmin.bootstrap.seedInitialPlatformAdmin, {});
+		} catch (error) {
+			logError('[seedAdmin] platform-admin grant failed (instance is still usable):', error);
+		}
 
 		// Persist the wizard's chosen feature flags (if provided) so the
 		// selections take effect at runtime instead of falling back to defaults.

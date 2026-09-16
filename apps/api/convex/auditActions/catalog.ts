@@ -251,6 +251,9 @@ export const AUDIT_ACTION_LITERALS = [
 	action('platform_admin.waitlist_rejected'),
 	action('platform_admin.admin_added'),
 	action('platform_admin.admin_removed'),
+	// The one-shot roster bootstrap — the setup user's automatic grant and the
+	// org owner's self-claim both land here (`details.via` tells them apart).
+	action('platform_admin.bootstrap_granted'),
 	// Conversation thread lifecycle — fired by the Conversation thread
 	// module on inbound-driven reopen + human status/assignment changes +
 	// the draft-status projection. See ADR-0032.
