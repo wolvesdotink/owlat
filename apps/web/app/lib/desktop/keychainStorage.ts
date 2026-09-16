@@ -53,8 +53,17 @@ export const keychainStorage = {
 export function configureKeychainStorage(
 	key: string,
 	initialBlob: string | null,
-	persist: Persister,
+	persist: Persister
 ): void {
+	// Cancel any flush still queued for the PREVIOUS account. Its closure holds
+	// the old account key but would serialize the cache as it is when the timer
+	// fires — i.e. the new workspace's secrets written into the old workspace's
+	// keychain entry. Re-pointing the cache must drop the writes that belonged
+	// to where it used to point.
+	if (flushTimer) {
+		clearTimeout(flushTimer);
+		flushTimer = null;
+	}
 	accountKey = key;
 	persister = persist;
 	cache = {};
@@ -67,6 +76,31 @@ export function configureKeychainStorage(
 			cache = {};
 		}
 	}
+}
+
+/**
+ * The account key the cache is currently bound to, or null before the first
+ * `configure`. Lets a caller that re-points the cache (the connect handshake)
+ * capture the previous binding so it can put it back if the handshake fails.
+ */
+export function currentKeychainAccount(): string | null {
+	return accountKey;
+}
+
+/**
+ * Unbind the cache entirely — no flush, no persister, no account. Used to undo
+ * a `configure` whose workspace is being abandoned: `clearKeychainStorage`
+ * would instead SCHEDULE a write of the emptied cache to that account, racing
+ * (and losing to) the keychain delete that follows.
+ */
+export function resetKeychainStorage(): void {
+	if (flushTimer) {
+		clearTimeout(flushTimer);
+		flushTimer = null;
+	}
+	cache = {};
+	accountKey = null;
+	persister = null;
 }
 
 /** Drop all stored secrets for the active workspace (sign-out). */

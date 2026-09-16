@@ -10136,6 +10136,11 @@
 			"haveServer": "Already have a server?",
 			"heading": "Welcome to {brand}",
 			"pageTitle": "Welcome — Owlat",
+			"reconnect": {
+				"action": "Reconnect",
+				"heading": "Sign back in",
+				"tagline": "Your session for this server has ended. Reconnect to pick up where you left off."
+			},
 			"setup": {
 				"description": "Install Owlat on a fresh Linux server over SSH.",
 				"title": "Set up a new server"
@@ -13774,9 +13779,13 @@
 		},
 		"useDesktopWorkspaces": {
 			"errors": {
-				"stateMismatch": "Unexpected sign-in response (state mismatch).",
+				"generic": "Could not connect to that server.",
+				"noSession": "That server accepted the sign-in but returned no session. Try signing in again.",
+				"stateMismatch": "That sign-in link has expired or was already used. Start the connection again.",
 				"unreachable": "Could not reach an owlat instance at {siteUrl}",
-				"unusableConfig": "That instance did not return a usable configuration."
+				"unusableConfig": "That instance did not return a usable configuration.",
+				"verifyFailed": "Sign-in could not be completed with {siteUrl} (error {status}). Try signing in again.",
+				"verifyRouteMissing": "{siteUrl} does not support desktop sign-in. Update the server to v0.4.14 or later, then reconnect."
 			}
 		},
 		"useEmailEditorBridge": {
