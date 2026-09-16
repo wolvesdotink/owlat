@@ -44,7 +44,11 @@ export function deferBudgetKey(messageId: string): string {
 export interface DeferBudgetClaim {
 	/** False once the message has spent its budget: mint nothing further. */
 	granted: boolean;
-	/** Successors this message has now asked for, including this one. */
+	/**
+	 * Successors this message has asked for, including this one, and the number
+	 * the runaway give-up reports to the operator. Stops one past the cap: see
+	 * `claimDeferSuccessor`.
+	 */
 	spent: number;
 }
 
@@ -56,16 +60,29 @@ export interface DeferBudgetClaim {
  * is the class of bug this whole guard exists to prevent. EVAL sends the body,
  * so unlike EVALSHA it cannot fail against a restarted server's empty script
  * cache; a guard that breaks when Redis restarts would be no guard at all.
+ *
+ * Counting STOPS one past the cap, because `spent` is not just a decision — it
+ * is quoted in the terminal Convex callback the give-up emits, and that outbox
+ * row is protected: a replay rebuilds the payload and it is compared
+ * byte-for-byte against the stored one. An unbounded counter made every replay
+ * of an already-refused job produce a number one higher, so the rebuilt payload
+ * never matched, the attempt threw, and the job dead-lettered on a decision
+ * that had already been taken correctly. Clamping keeps the count in the
+ * operator's message — which is where it earns its keep — and makes it a
+ * function of durable state like every other field in that payload.
  */
 export async function claimDeferSuccessor(
 	redis: Redis,
 	messageId: string
 ): Promise<DeferBudgetClaim> {
 	const spent = (await redis.eval(
-		"local n = redis.call('INCR', KEYS[1]) redis.call('PEXPIRE', KEYS[1], ARGV[1]) return n",
+		"local n = tonumber(redis.call('GET', KEYS[1])) or 0 " +
+			"if n <= tonumber(ARGV[2]) then n = redis.call('INCR', KEYS[1]) end " +
+			"redis.call('PEXPIRE', KEYS[1], ARGV[1]) return n",
 		1,
 		deferBudgetKey(messageId),
-		String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS)
+		String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS),
+		String(MAX_DEFER_SUCCESSORS_PER_MESSAGE)
 	)) as number;
 
 	return { granted: spent <= MAX_DEFER_SUCCESSORS_PER_MESSAGE, spent };

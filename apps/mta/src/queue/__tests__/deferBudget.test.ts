@@ -57,10 +57,24 @@ describe('defer successor budget', () => {
 			granted: false,
 			spent: MAX_DEFER_SUCCESSORS_PER_MESSAGE + 1,
 		});
-		expect(await claimDeferSuccessor(redis as never, 'msg-1')).toEqual({
-			granted: false,
-			spent: MAX_DEFER_SUCCESSORS_PER_MESSAGE + 2,
-		});
+	});
+
+	it('reports the same count to every replay of an already-refused job', async () => {
+		// `spent` is quoted in the terminal Convex callback, whose outbox row is
+		// protected: a replay rebuilds the payload and it is compared
+		// byte-for-byte. A counter that kept climbing made the rebuild differ
+		// every time, so the replay threw and the job dead-lettered on a
+		// give-up that had already been decided correctly.
+		await seedSpent('msg-1', MAX_DEFER_SUCCESSORS_PER_MESSAGE);
+
+		const refused = await claimDeferSuccessor(redis as never, 'msg-1');
+		expect(refused.granted).toBe(false);
+		for (let replay = 0; replay < 3; replay++) {
+			expect(await claimDeferSuccessor(redis as never, 'msg-1')).toEqual(refused);
+		}
+		expect(await redis.get(deferBudgetKey('msg-1'))).toBe(
+			String(MAX_DEFER_SUCCESSORS_PER_MESSAGE + 1)
+		);
 	});
 
 	it('shares one budget across every chain of the same message', async () => {

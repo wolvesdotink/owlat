@@ -97,7 +97,9 @@ export async function emitExpiredBounce(
  *
  * The Convex payload is anchored to the message's own first enqueue rather than
  * to this run's clock: the protected outbox compares payloads byte-for-byte, so
- * a replay has to rebuild exactly the same one.
+ * a replay has to rebuild exactly the same one. `successors` is quoted in it
+ * for the same reason it is durable — `deferBudget.ts` stops counting one past
+ * the cap, so every replay of a refused claim reports the same number.
  */
 export async function emitRunawayDeferBounce(
 	job: ReservedJob<EmailJob>,
