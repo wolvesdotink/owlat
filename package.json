@@ -119,11 +119,11 @@
 	},
 	"dependencies": {
 		"nuxt": "4.5.2",
-		"vite": "8.2.1"
+		"vite": "8.3.0"
 	},
 	"devDependencies": {
 		"knip": "6.23.0",
-		"oxfmt": "^0.62.0",
+		"oxfmt": "^0.67.0",
 		"oxlint": "^1.69.0",
 		"turbo": "^2.9.18"
 	},
