@@ -461,6 +461,43 @@ describe('memberErasure.eraseMemberData', () => {
 		});
 	});
 
+	it("revokes the departing member's platform-admin grant", async () => {
+		// The row is keyed by BetterAuth user id, not by org membership, so
+		// nothing else in the erasure walk touches it. Left behind it would keep
+		// satisfying `requirePlatformAdmin` for a departed identity — and it
+		// carries the email this erasure exists to remove.
+		const t = newHarness();
+		const authUserId = 'auth-user-admin';
+		const profileId = await seedProfile(t, authUserId);
+		const requestId = await t.run(async (ctx) => {
+			await ctx.db.insert('platformAdmins', {
+				authUserId,
+				email: 'me@example.com',
+				role: 'superadmin',
+				createdAt: Date.now(),
+			});
+			return await ctx.db.insert('accountDeletionRequests', {
+				userProfileId: profileId,
+				email: 'me@example.com',
+				requestedAt: Date.now(),
+				scheduledForDeletion: Date.now(),
+				cancellationToken: 'tok-admin',
+				status: 'pending',
+				createdAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.auth.memberErasure.eraseMemberData, {
+			authUserId,
+			requestId,
+			isAlertErasureDone: true,
+			isAlertReceiptErasureDone: true,
+		});
+
+		const left = await t.run(async (ctx) => ctx.db.query('platformAdmins').collect());
+		expect(left).toEqual([]);
+	});
+
 	it('purges staged export leases, artifacts, and blobs in bounded member-erasure hops', async () => {
 		const t = newHarness();
 		const authUserId = 'auth-user-export-staging';

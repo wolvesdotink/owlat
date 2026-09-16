@@ -854,6 +854,7 @@ import type * as migrations_0037_backfill_mail_categories from '../migrations/00
 import type * as migrations_0038_rebuild_file_search_text from '../migrations/0038_rebuild_file_search_text.js';
 import type * as migrations_0039_backfill_dkim_ownership from '../migrations/0039_backfill_dkim_ownership.js';
 import type * as migrations_0040_backfill_credential_allowed_domains from '../migrations/0040_backfill_credential_allowed_domains.js';
+import type * as platformAdmin_bootstrap from '../platformAdmin/bootstrap.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
 import type * as platformAdmin_queries from '../platformAdmin/queries.js';
@@ -1940,6 +1941,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0038_rebuild_file_search_text': typeof migrations_0038_rebuild_file_search_text;
 	'migrations/0039_backfill_dkim_ownership': typeof migrations_0039_backfill_dkim_ownership;
 	'migrations/0040_backfill_credential_allowed_domains': typeof migrations_0040_backfill_credential_allowed_domains;
+	'platformAdmin/bootstrap': typeof platformAdmin_bootstrap;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;
 	'platformAdmin/queries': typeof platformAdmin_queries;

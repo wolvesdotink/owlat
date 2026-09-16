@@ -63,6 +63,29 @@ describe('dev reset — onboarding notice tables', () => {
 		expect(left.readiness).toEqual([]);
 	});
 
+	it('wipes the platform-admin roster so the next seed can grant it again', async () => {
+		// Two failures ride on this row surviving: it keeps granting the
+		// deployment surface (updates, backups, operator console) to a user id
+		// step 2 just deleted, and — because the bootstrap paths refuse a
+		// non-empty roster — it stops the NEXT `/seed/admin` from giving the
+		// fresh setup user their own grant, leaving the instance unoperatable.
+		const t = newBetterAuthHarness();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('platformAdmins', {
+				authUserId: 'auth-user-1',
+				email: 'owner@example.com',
+				role: 'superadmin',
+				createdAt: Date.now(),
+			});
+		});
+
+		const counts = await t.mutation(internal.devShortcuts.reset.runReset, {});
+		expect(counts.platformAdmins).toBe(1);
+
+		const left = await t.run(async (ctx) => ctx.db.query('platformAdmins').collect());
+		expect(left).toEqual([]);
+	});
+
 	it('wipes the session and invitation rows a stale cookie or invite rides on', async () => {
 		// Both outlive the user they belong to unless drained explicitly, and both
 		// are worse than leftover data. A surviving session keeps authenticating a

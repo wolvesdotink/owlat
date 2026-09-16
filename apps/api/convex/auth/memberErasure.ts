@@ -231,6 +231,18 @@ export const eraseMemberData = internalMutation({
 			.collect(); // bounded: at most one pending notice per readiness edge
 		for (const notice of sendReadyNotices) await ctx.db.delete(notice._id);
 
+		// Platform-admin grant. This is deployment-level power (in-app updates,
+		// backups, the operator console) keyed by BetterAuth user id, so leaving
+		// the row behind would mean a departed member's id still satisfies
+		// `requirePlatformAdmin` — and the id is reusable ground for whoever
+		// claims that identity next. It also carries their email, which this
+		// erasure is meant to remove.
+		const platformAdminRows = await ctx.db
+			.query('platformAdmins')
+			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
+			.collect(); // bounded: at most one row per user
+		for (const row of platformAdminRows) await ctx.db.delete(row._id);
+
 		// Open/resolved mailbox requests carry the member's email + name; drop
 		// them so no PII survives on the admin dashboard.
 		const mailboxRequests = await ctx.db
