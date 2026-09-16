@@ -9,21 +9,19 @@
  *
  * Reconnect uses exponential backoff with jitter. An authentication failure is
  * terminal: we mark the account `auth_error` and stop until the user re-enters
- * credentials (the reconcile loop then restarts us).
+ * credentials (the reconcile loop then restarts us). So is the backend refusing
+ * to mint credentials because the OAuth grant was revoked — there it has already
+ * written `auth_error` and the reconnect instruction, so we stop and leave the
+ * message alone.
  */
 
 import { ImapFlow } from 'imapflow';
 import { sleep } from '@owlat/shared';
-import type {
-	BackfillWork,
-	ConnectableAccount,
-	ConvexClient,
-	FolderCursor,
-	WorkerCredentials,
-} from './convex.js';
-import { fn } from './convex.js';
+import type { BackfillWork, ConnectableAccount, ConvexClient, FolderCursor } from './convex.js';
+import { CredentialsUnavailableError, fetchWorkerCredentials, fn } from './convex.js';
 import type { MailSyncConfig } from './config.js';
 import { mapFolderRole, type FolderRole } from './folders.js';
+import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
 import { ingestMessage } from './ingest.js';
 import {
@@ -50,7 +48,19 @@ const MAX_BACKOFF_MS = 5 * 60 * 1000;
 // stuck case the user otherwise sits on 'importing' forever.
 const MAX_BACKFILL_FAILURES = 5;
 
-function isAuthError(err: unknown): boolean {
+/**
+ * Terminal "the credentials are wrong" — as opposed to a transient drop worth
+ * backing off and retrying.
+ *
+ * ImapFlow sets `authenticationFailed` on the error it throws from
+ * `connect()`, but the message it carries is whatever the server said, and the
+ * XOAUTH2 path says different things to the password path: Gmail answers a dead
+ * or unauthorized token with `[AUTHENTICATIONFAILED] Invalid credentials
+ * (Failure)` and a revoked grant with `invalid_grant`. Matching those too keeps
+ * an expired Google authorization from looping on exponential backoff forever
+ * instead of surfacing the "Reconnect with Google" prompt the user must act on.
+ */
+export function isAuthError(err: unknown): boolean {
 	const e = err as { authenticationFailed?: boolean; responseStatus?: string } | null;
 	if (e?.authenticationFailed) return true;
 	const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
@@ -59,7 +69,11 @@ function isAuthError(err: unknown): boolean {
 		msg.includes('authenticationfailed') ||
 		msg.includes('invalid credentials') ||
 		msg.includes('login failed') ||
-		msg.includes('[alert] invalid')
+		msg.includes('[alert] invalid') ||
+		// XOAUTH2: the SASL exchange failed, or the grant behind the token is gone.
+		msg.includes('invalid_grant') ||
+		msg.includes('invalid status code for xoauth2') ||
+		msg.includes('xoauth2 authentication failed')
 	);
 }
 
@@ -113,6 +127,20 @@ export class AccountConnection {
 				return; // connected; event-driven + timer from here
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
+				// The backend refused to hand over credentials because the grant
+				// behind them is gone (a revoked Google authorization). It has already
+				// written `auth_error` and the "reconnect" instruction the user has to
+				// act on, so stop WITHOUT a status write: overwriting it with our own
+				// message would replace the only actionable text with a generic one,
+				// and retrying would spend a Google token request per pass forever.
+				if (err instanceof CredentialsUnavailableError && err.isTerminal) {
+					logger.warn(
+						{ accountId: this.account.accountId, reason: err.reason },
+						'account authorization revoked — pausing until it is reconnected'
+					);
+					this.stopped = true;
+					return;
+				}
 				if (isAuthError(err)) {
 					logger.warn(
 						{ accountId: this.account.accountId },
@@ -141,13 +169,9 @@ export class AccountConnection {
 	}
 
 	private async connectOnce(): Promise<void> {
-		const creds = (await this.convex.action(
-			fn.getCredentialsForWorker as never,
-			{
-				accountId: this.account.accountId,
-			} as never
-		)) as WorkerCredentials | null;
-		if (!creds) throw new Error('credentials unavailable');
+		const fetched = await fetchWorkerCredentials(this.convex, this.account.accountId);
+		if (fetched.kind !== 'credentials') throw new CredentialsUnavailableError(fetched.reason);
+		const creds = fetched.credentials;
 
 		const client = new ImapFlow({
 			host: creds.imapHost,
@@ -157,7 +181,11 @@ export class AccountConnection {
 			// matching the send path (send.ts). Plain `secure: false` would let
 			// imapflow fall back to plaintext if STARTTLS isn't advertised.
 			...imapTlsOptions(creds.imapHost, creds.isImapSecure),
-			auth: { user: creds.imapUsername, pass: creds.imapPassword },
+			auth: imapAuth({
+				user: creds.imapUsername,
+				pass: creds.imapPassword,
+				accessToken: creds.imapAccessToken,
+			}),
 			logger: false,
 			emitLogs: false,
 		});

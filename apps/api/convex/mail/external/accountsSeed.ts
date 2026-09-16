@@ -19,12 +19,12 @@ import { adminMutation } from '../../lib/authedFunctions';
 import { requireAdminContext } from '../../lib/sessionOrganization';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
 import {
+	connectFieldsValidator,
 	insertExternalAccountRow,
 	seedAgeDays,
 	seedProviderOf,
 	takeLiveSeedAccounts,
 } from './accountShared';
-import { connectFieldsValidator } from './accounts';
 import { destinationProviderValidator } from '../../delivery/deliverabilityValidators';
 import { recordAuditLog } from '../../lib/auditLog';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';

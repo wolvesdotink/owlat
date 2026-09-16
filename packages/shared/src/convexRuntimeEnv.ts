@@ -217,6 +217,12 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// timezone used to label open slots. Unset ⇒ exactly today's sender-phrase-only
 	// scheduling replies.
 	'CALENDAR_FREEBUSY_ICS_URL',
+	// Google OAuth client for connecting an external Gmail mailbox with Google
+	// sign-in. Read at Convex function runtime (`mail/external/googleOAuth*`), so
+	// it must reach the deployment env store — left in the compose `.env` alone,
+	// the Gmail card would silently keep offering only the app-password path.
+	'GOOGLE_OAUTH_CLIENT_ID',
+	'GOOGLE_OAUTH_CLIENT_SECRET',
 	'CALENDAR_TIMEZONE',
 	// Microsoft SNDS "Automated Data Access" feed URLs, read at Convex function
 	// runtime by the SNDS poller via getOptional(). Without the push a self-hoster

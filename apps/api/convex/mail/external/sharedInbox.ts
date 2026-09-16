@@ -5,7 +5,7 @@
  * Split out of `accounts.ts` (kept under the ~500 LOC cap): the personal
  * BYO-mailbox lifecycle there is per-user 1:1, whereas this path provisions a
  * `kind='external', scope='shared'` mailbox governed by `mailboxMembers`. It
- * reuses that file's `connectFieldsValidator` (the encrypted-envelope shape the
+ * reuses the shared `connectFieldsValidator` (the encrypted-envelope shape the
  * connect action hands over) and the shared provisioning helpers, so the two
  * connect paths never drift on address normalization or credential storage.
  *
@@ -58,8 +58,8 @@ import { authedMutation, authedQuery } from '../../lib/authedFunctions';
 import { internal } from '../../_generated/api';
 import { requireAdminContext } from '../../lib/sessionOrganization';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
-import { connectFieldsValidator } from './accounts';
 import {
+	connectFieldsValidator,
 	insertExternalAccountRow,
 	applyCredentialRotation,
 	cancelActiveMigrationForAccount,
@@ -216,6 +216,10 @@ export const getSharedExternalAccount = authedQuery({
 			isSmtpSecure: account.isSmtpSecure,
 			imapUsername: account.imapUsername,
 			smtpUsername: account.smtpUsername,
+			// Lets the admin reconnect form render the Google branch for an
+			// oauth2-backed team inbox. Never a credential.
+			authMethod: account.authMethod,
+			oauthProvider: account.oauthProvider,
 			status: account.status,
 			lastError: account.lastError,
 			lastSyncAt: account.lastSyncAt,

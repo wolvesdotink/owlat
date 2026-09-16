@@ -9,6 +9,7 @@
  * (mailbox re-activation, audit prefixes) that differ between personal and shared.
  */
 
+import { v } from 'convex/values';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DatabaseReader, MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -115,6 +116,34 @@ export function takeConnectableSeedAccounts(
 }
 
 /**
+ * The Convex argument validator for {@link ExternalConnectFields} plus the
+ * address — the shape `_connectInternal`, `_connectSharedInternal`,
+ * `_connectSeedInternal` and both rotation mutations declare. Declared beside the
+ * writers below so the validator and the TypeScript shape it validates into
+ * cannot drift.
+ */
+export const connectFieldsValidator = {
+	emailAddress: v.string(),
+	imapHost: v.string(),
+	imapPort: v.number(),
+	isImapSecure: v.boolean(),
+	smtpHost: v.string(),
+	smtpPort: v.number(),
+	isSmtpSecure: v.boolean(),
+	imapUsername: v.string(),
+	smtpUsername: v.optional(v.string()),
+	// Widened for Google sign-in: an 'oauth2' row's envelope holds a refresh
+	// token instead of passwords (see schema/mailAccounts.ts). App passwords are
+	// unchanged and remain supported for every provider, Gmail included.
+	authMethod: v.union(v.literal('password'), v.literal('oauth2')),
+	oauthProvider: v.optional(v.literal('google')),
+	secretCiphertext: v.string(),
+	secretIv: v.string(),
+	secretAuthTag: v.string(),
+	secretEnvelopeVersion: v.number(),
+};
+
+/**
  * The non-secret IMAP/SMTP settings + the encrypted-password envelope that every
  * external-account write persists — the single source of truth for the row's
  * credential shape, so adding a field (e.g. an `oauth` authMethod) is one edit
@@ -127,7 +156,13 @@ type ExternalConnectFields = {
 	smtpHost: string;
 	smtpPort: number;
 	isSmtpSecure: boolean;
-	authMethod: 'password';
+	/**
+	 * 'password' — an app password in the envelope. 'oauth2' — a provider refresh
+	 * token in the envelope (Google sign-in). Both write through this one shape,
+	 * so a row can rotate from one to the other and back without a second path.
+	 */
+	authMethod: 'password' | 'oauth2';
+	oauthProvider?: 'google';
 	imapUsername: string;
 	smtpUsername?: string;
 	secretCiphertext: string;
@@ -175,6 +210,7 @@ export async function insertExternalAccountRow(
 		smtpPort: fields.smtpPort,
 		isSmtpSecure: fields.isSmtpSecure,
 		authMethod: fields.authMethod,
+		oauthProvider: fields.oauthProvider,
 		imapUsername: fields.imapUsername,
 		smtpUsername: fields.smtpUsername,
 		secretCiphertext: fields.secretCiphertext,
@@ -217,7 +253,13 @@ export async function applyCredentialRotation(
 		smtpHost: fields.smtpHost,
 		smtpPort: fields.smtpPort,
 		isSmtpSecure: fields.isSmtpSecure,
+		// Rotating an account between auth methods must move BOTH of these, or an
+		// app-password repair of an oauth2 row would leave it claiming XOAUTH2 with
+		// a password in the envelope (and vice versa) — the worker would then
+		// authenticate with the wrong mechanism forever. Writing `undefined` clears
+		// `oauthProvider` on the oauth2 → password direction.
 		authMethod: fields.authMethod,
+		oauthProvider: fields.oauthProvider,
 		imapUsername: fields.imapUsername,
 		smtpUsername: fields.smtpUsername,
 		secretCiphertext: fields.secretCiphertext,

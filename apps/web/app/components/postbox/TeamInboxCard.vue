@@ -12,7 +12,7 @@
  */
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
-import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
+import { providerForImapHost } from '~/utils/mailAutodiscover';
 import { formatNumber } from '~/utils/formatters';
 
 type SharedInbox = FunctionReturnType<typeof api.mail.mailboxMembers.listShared>[number];
@@ -71,6 +71,13 @@ const { data: reconnectAccount, isLoading: reconnectLoading } = useConvexQuery(
 );
 const reconnectAccountForForm = computed(() =>
 	reconnectAccount.value?.configured ? reconnectAccount.value : null
+);
+// Match the provider to the inbox's real IMAP host, so a Gmail team inbox is
+// re-authorized the way it was connected — with Google sign-in where the
+// instance has an OAuth client, rather than an app-password field Google no
+// longer accepts.
+const reconnectProvider = computed(() =>
+	providerForImapHost(reconnectAccountForForm.value?.imapHost)
 );
 
 // A history import runs for hours on a large archive, and everyone on the
@@ -349,7 +356,7 @@ const createdOn = computed(() =>
 			</div>
 			<PostboxMailboxConnectForm
 				v-else-if="reconnectAccountForForm"
-				:provider="GENERIC_IMAP_PROVIDER"
+				:provider="reconnectProvider"
 				mode="update"
 				shared
 				:mailbox-id="inbox._id"
