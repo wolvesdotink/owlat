@@ -152,7 +152,7 @@
 		"vite": "^8.2.0",
 		"ws": "^8.21.0"
 	},
-	"packageManager": "bun@1.3.11",
+	"packageManager": "bun@1.4.2",
 	"patchedDependencies": {
 		"image-size@2.0.2": "patches/image-size@2.0.2.patch"
 	},
