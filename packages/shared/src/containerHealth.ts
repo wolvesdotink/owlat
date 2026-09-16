@@ -198,6 +198,25 @@ export function evaluateVersionDrift(
 	return findings;
 }
 
+/**
+ * Read the CONFIGURED version (`OWLAT_VERSION`) out of a `.env` file's text.
+ *
+ * This must be read from the file at the moment it is asked for. Reading
+ * `process.env.OWLAT_VERSION` inside a container answers a different question:
+ * compose interpolates that value when the container is CREATED, so it reports
+ * the version the container is RUNNING — exactly the half of the comparison
+ * that cannot reveal drift.
+ *
+ * Returns `undefined` for anything outside a docker tag's charset, so a
+ * hand-mangled line is never echoed back as if it were a version.
+ */
+export function parseConfiguredVersionFromEnv(envText: string): string | undefined {
+	const match = envText.match(/^\s*OWLAT_VERSION\s*=\s*(.*?)\s*$/m);
+	const raw = match?.[1]?.replace(/^["']|["']$/g, '').trim();
+	if (!raw || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(raw)) return undefined;
+	return raw;
+}
+
 /** True when any Owlat container runs a tag other than the configured version. */
 export function hasVersionDrift(services: ComposeService[], configuredVersion: string): boolean {
 	return evaluateVersionDrift(services, configuredVersion).some((finding) => !finding.ok);
