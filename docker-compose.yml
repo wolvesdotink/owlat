@@ -644,8 +644,9 @@ services:
       dockerfile: apps/convex-fn-proxy/Dockerfile
     environment:
       CONVEX_URL: http://convex:3210
-      # No `:-` default, and deliberately not the `:?` form either — see imap
-      # service for the full rationale. An empty key throws at boot here too
+      # No `:-` fallback, and not the `:?` form either — see the imap service
+      # for why compose cannot guard this and what stops the crash-loop
+      # instead. An empty key throws at boot here too
       # (apps/convex-fn-proxy/src/proxy.ts).
       CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
       CODE_WORKER_PROXY_TOKEN: ${CODE_WORKER_PROXY_TOKEN:-}
@@ -796,18 +797,26 @@ services:
       IMAP_PORT: "993"
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
       CONVEX_URL: http://convex:3210
-      # No `:-` default, deliberately. An EMPTY key is not a degraded mode: it
-      # makes apps/imap/src/config.ts throw `CONVEX_ADMIN_KEY is required` at
-      # boot, and `restart: unless-stopped` then crash-loops on it forever,
-      # because Docker bakes a container's environment at CREATE time — a live
-      # instance burnt 11h that way. Equally deliberately NOT the `:?` fail-closed form: the
-      # key can only be minted by an ALREADY-RUNNING backend, so `.env` holds it
-      # empty during the first `docker compose up` by design (setup.sh writes
-      # `CONVEX_ADMIN_KEY=` up front), and compose interpolates the whole file
+      # Written with no `:-` fallback as DOCUMENTATION, not as a guard: compose
+      # substitutes a blank string either way. `${VAR}` differs from `${VAR:-}`
+      # only by printing "variable is not set, defaulting to a blank string",
+      # and only when the name is absent from `.env` altogether — setup.sh
+      # writes `CONVEX_ADMIN_KEY=` up front, so it is normally present and
+      # empty and not even the warning fires. The form that WOULD fail closed,
+      # `:?`, is unusable here: the key can only be minted by an
+      # ALREADY-RUNNING backend, so `.env` holds it empty during the first
+      # `docker compose up` by design, and compose interpolates the whole file
       # before profile filtering — `:?` would abort every compose command,
-      # `down` and `logs` included, mid-install. The creation-order half is
-      # fixed where it belongs: quickstart re-runs `up -d` once the key lands,
-      # which recreates exactly the containers whose env changed.
+      # `down` and `logs` included, mid-install.
+      #
+      # So the crash-loop is stopped where it is actually caused, not here. An
+      # EMPTY key is not a degraded mode: apps/imap/src/config.ts throws
+      # `CONVEX_ADMIN_KEY is required` at boot and `restart: unless-stopped`
+      # retries that forever, because Docker bakes a container's environment at
+      # CREATE time — a live instance burnt 11h that way. Both installers
+      # therefore re-run `up -d` once the key lands (setup.sh
+      # `persist_admin_key`, quickstart `reapplyEnvToRunningStack`), which
+      # recreates exactly the containers whose resolved env changed.
       CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
       # Backing store for the LOGIN brute-force limiter (apps/imap/src/rateLimit.ts).
       # Port 993 is internet-facing and LOGIN is the only thing between the internet
@@ -859,8 +868,9 @@ services:
     environment:
       MAIL_SYNC_PORT: "3200"
       CONVEX_URL: http://convex:3210
-      # No `:-` default, and deliberately not the `:?` form either — see imap
-      # service for the full rationale. An empty key throws at boot here too
+      # No `:-` fallback, and not the `:?` form either — see the imap service
+      # for why compose cannot guard this and what stops the crash-loop
+      # instead. An empty key throws at boot here too
       # (apps/mail-sync/src/config.ts).
       CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
       # Storage URLs are minted on the PUBLIC convex origin; allow fetching there.
