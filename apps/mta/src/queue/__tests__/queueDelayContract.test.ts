@@ -81,6 +81,9 @@ describe('queue delay contract', () => {
 		);
 
 		expect(chained).toBeNull();
+		// Only the chaining is skipped: the completing job still completes, so
+		// this is a queue that waits rather than a queue that stalls.
+		expect(await redis.hget(jobStatusKey(root), 'status')).toBe('completed');
 		// Still scheduled, and still the promoter's to release — a job popped
 		// early would leave this entry behind with no owner.
 		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual(['successor']);
