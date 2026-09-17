@@ -107,6 +107,68 @@ describe('suppressionList', () => {
 		});
 	});
 
+	// THE LAZY EXPIRY PATH IS NOT A READ-THEN-DELETE. The metadata read and the
+	// delete are a full application round trip apart — far wider than any
+	// intra-pipeline window — so a hard bounce written in between would be
+	// deleted by a decision taken before it existed, leaving the address
+	// deliverable with no record that it ever bounced. `redis.get` is stubbed to
+	// land exactly that write between the read and the delete.
+	describe('lazy expiry races', () => {
+		const raceOnGet = (concurrentWrite: () => Promise<unknown>) => {
+			const originalGet = redis.get.bind(redis);
+			let fired = false;
+			redis.get = (async (key: string) => {
+				const value = await originalGet(key);
+				if (!fired) {
+					fired = true;
+					await concurrentWrite();
+				}
+				return value;
+			}) as typeof redis.get;
+			return () => {
+				redis.get = originalGet;
+			};
+		};
+
+		it('does not delete a permanent suppression that lands mid-check', async () => {
+			await suppress(redis, 'race@example.com', 'manual', { ttlSeconds: 60 });
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			const restore = raceOnGet(() => suppress(redis, 'race@example.com', 'hard_bounce'));
+			expect(await isSuppressed(redis, 'race@example.com')).toBe(true);
+			restore();
+
+			expect(await isSuppressed(redis, 'race@example.com')).toBe(true);
+			expect(await redis.sismember(SUPPRESSION_SET, 'race@example.com')).toBe(1);
+			expect(await redis.exists(metaKeyFor('race@example.com'))).toBe(1);
+		});
+
+		it('reports the re-suppression rather than the stale expiry it read', async () => {
+			await suppress(redis, 'race@example.com', 'manual', { ttlSeconds: 60 });
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			const restore = raceOnGet(() =>
+				suppress(redis, 'race@example.com', 'complaint', { source: 'feedback-loop' })
+			);
+			const status = await getSuppressionStatus(redis, 'race@example.com');
+			restore();
+
+			expect(status.suppressed).toBe(true);
+			expect(status.reason).toBe('complaint');
+			expect(status.expiresAt).toBeUndefined();
+		});
+
+		it('still reclaims an entry nothing re-suppressed', async () => {
+			await suppress(redis, 'lapsed@example.com', 'manual', { ttlSeconds: 60 });
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			expect(await isSuppressed(redis, 'lapsed@example.com')).toBe(false);
+			expect(await redis.sismember(SUPPRESSION_SET, 'lapsed@example.com')).toBe(0);
+			expect(await redis.exists(metaKeyFor('lapsed@example.com'))).toBe(0);
+			expect(await redis.zscore(EXPIRY_ZSET, 'lapsed@example.com')).toBeNull();
+		});
+	});
+
 	describe('unsuppress', () => {
 		it('removes and returns true', async () => {
 			await suppress(redis, 'remove@example.com', 'hard_bounce');

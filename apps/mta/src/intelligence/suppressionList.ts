@@ -64,9 +64,11 @@ export async function isSuppressed(redis: Redis, email: string): Promise<boolean
 	// Check if metadata has an expiry
 	const meta = await getMetadata(redis, normalized);
 	if (meta?.expiresAt && Date.now() > meta.expiresAt) {
-		// Expired — auto-remove
-		await unsuppress(redis, email);
-		return false;
+		// Expired — hand the decision to Redis rather than acting on the read
+		// above. `expireIfDue` re-reads the metadata inside one script, so a hard
+		// bounce that landed while this round trip was in flight is seen and the
+		// entry is kept; it reports back whether the address is still suppressed.
+		return !(await expireIfDue(redis, normalized));
 	}
 
 	return true;
@@ -275,6 +277,44 @@ export async function sweepExpiredSuppressions(
 	return { processed, removed };
 }
 
+const EXPIRE_ONE_LUA = `${RECLAIM_ENTRY_LUA}
+local email = ARGV[2]
+return reclaimEntry(KEYS[1], KEYS[2], ARGV[1] .. email, email, tonumber(ARGV[3]))
+`;
+
+/**
+ * Apply the sweep's decision to ONE address, for the lazy expiry path.
+ *
+ * The read that gets us here — `GET` the metadata, notice a past `expiresAt` —
+ * is a full application round trip away from the write that acts on it, which
+ * is a far wider window than anything inside a pipeline. Deleting on the
+ * strength of that stale read is how a hard bounce written during the round trip
+ * gets erased, leaving the address deliverable with no record that it ever
+ * bounced. So the read decides only whether to ASK; Redis re-reads the metadata
+ * and decides, in the same script, whether to delete.
+ *
+ * Returns whether the address was reclaimed. `false` means the entry was kept —
+ * it was re-suppressed permanently, or its window was extended — and the caller
+ * must keep treating the address as suppressed.
+ */
+async function expireIfDue(redis: Redis, normalizedEmail: string): Promise<boolean> {
+	const removed =
+		(await redis.eval(
+			EXPIRE_ONE_LUA,
+			2,
+			SUPPRESSION_EXPIRY_ZSET,
+			SUPPRESSION_SET,
+			SUPPRESSION_META_PREFIX,
+			normalizedEmail,
+			String(Date.now())
+		)) === 1;
+
+	if (removed) {
+		logger.info({ email: normalizedEmail }, 'Expired suppression reclaimed on read');
+	}
+	return removed;
+}
+
 /**
  * Check suppression status with full metadata
  */
@@ -295,12 +335,25 @@ export async function getSuppressionStatus(
 	const meta = await getMetadata(redis, normalized);
 	if (!meta) return { suppressed: true };
 
-	// Check expiry
+	// Check expiry — same compare-and-delete as `isSuppressed`, so a report can
+	// no more destroy a concurrently written permanent entry than a send gate can.
 	if (meta.expiresAt && Date.now() > meta.expiresAt) {
-		await unsuppress(redis, email);
-		return { suppressed: false };
+		if (await expireIfDue(redis, normalized)) return { suppressed: false };
+		// Kept: something re-suppressed the address while we were deciding.
+		const fresh = await getMetadata(redis, normalized);
+		return fresh ? toStatus(fresh) : { suppressed: false };
 	}
 
+	return toStatus(meta);
+}
+
+function toStatus(meta: SuppressionMeta): {
+	suppressed: boolean;
+	reason?: SuppressionReason;
+	source?: string;
+	suppressedAt?: number;
+	expiresAt?: number;
+} {
 	return {
 		suppressed: true,
 		reason: meta.reason,
