@@ -410,10 +410,16 @@ function toStatus(meta: SuppressionMeta): {
  * Every entry is written PERMANENTLY, including `manual` ones — unlike the
  * single-address {@link suppress}, which gives `manual` a 7-day TTL. That
  * asymmetry is the shipped behaviour of `POST /suppression/bulk` and is kept:
- * the bulk endpoint is how an operator carries an accumulated suppression list
- * onto this MTA, and silently expiring an imported list after a week would be a
- * far worse defect than the inconsistency. The `zrem` below states it: a bulk
- * write CLEARS any pending due date the address had.
+ * the endpoint exists so an operator can carry an accumulated suppression list
+ * onto this MTA in one request, and silently expiring an imported list after a
+ * week would be a far worse defect than the inconsistency. The `zrem` below
+ * states it: a bulk write CLEARS any pending due date the address had.
+ *
+ * NOTHING IN OWLAT CALLS IT TODAY. The migration import goes through Convex's
+ * `blockedEmails.addFromEvent`, whose mirror POSTs to `/suppression` one address
+ * at a time, so an imported entry that maps to `manual` gets the 7-day TTL like
+ * any other. Bulk permanence is a property of this endpoint, not a guarantee
+ * about imports — do not describe it as one.
  */
 export async function suppressBulk(
 	redis: Redis,
