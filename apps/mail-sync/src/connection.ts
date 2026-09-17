@@ -23,7 +23,7 @@ import type { MailSyncConfig } from './config.js';
 import { mapFolderRole, type FolderRole } from './folders.js';
 import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
-import { ingestMessage, isMessageLanded } from './ingest.js';
+import { ingestMessage, isMessageLanded, type RawUploadConfig } from './ingest.js';
 import {
 	backfillFolder,
 	type BackfillFetchedMessage,
@@ -97,6 +97,11 @@ export class AccountConnection {
 		private readonly convex: ConvexClient,
 		private readonly config: MailSyncConfig
 	) {}
+
+	/** Where `ingestMessage` PUTs the raw `.eml` before referencing it. */
+	private get rawUploadConfig(): RawUploadConfig {
+		return { convexSiteUrl: this.config.convexSiteUrl, apiKey: this.config.apiKey };
+	}
 
 	async start(): Promise<void> {
 		this.stopped = false;
@@ -329,7 +334,7 @@ export class AccountConnection {
 				const uid = Number(msg.uid);
 				if (!msg.source || uid <= cursor.lastSeenUid) continue;
 				try {
-					await ingestMessage(this.convex, {
+					await ingestMessage(this.convex, this.rawUploadConfig, {
 						accountId: this.account.accountId,
 						folderRole: role,
 						remoteName,
@@ -555,7 +560,7 @@ export class AccountConnection {
 				}
 			},
 			ingest: async (remoteName, role, uid, raw, flags) => {
-				const outcome = await ingestMessage(this.convex, {
+				const outcome = await ingestMessage(this.convex, this.rawUploadConfig, {
 					accountId,
 					folderRole: role,
 					remoteName,

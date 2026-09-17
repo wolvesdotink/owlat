@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
-import { ingestMessage, syntheticMessageId } from '../ingest.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+import { ingestMessage, syntheticMessageId, type RawUploadConfig } from '../ingest.js';
 import type { ConvexClient } from '../convex.js';
 
 /** Build a mock Convex client that records the args of the single `action` call. */
@@ -10,6 +11,26 @@ function mockConvex() {
 		action,
 		lastPayload: () => action.mock.calls[0]?.[1] as Record<string, unknown>,
 	};
+}
+
+/** Where the raw `.eml` is PUT before the action is told its storage id. */
+const UPLOAD: RawUploadConfig = { convexSiteUrl: 'http://convex:3210/http', apiKey: 'msk_test' };
+
+/** Stub the out-of-band raw upload; returns the requests it received. */
+function mockUpload(response: Partial<Response> = {}) {
+	const calls: { url: string; init: RequestInit }[] = [];
+	const fetchMock = vi.fn(async (url: string | URL, init: RequestInit) => {
+		calls.push({ url: String(url), init });
+		return {
+			ok: true,
+			status: 200,
+			json: async () => ({ storageId: 'kg_raw_1', size: 1234 }),
+			text: async () => '',
+			...response,
+		} as Response;
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	return { calls };
 }
 
 const RAW = [
@@ -25,11 +46,18 @@ const RAW = [
 	'',
 ].join('\r\n');
 
+beforeEach(() => {
+	mockUpload();
+});
+afterEach(() => {
+	vi.unstubAllGlobals();
+});
+
 describe('ingestMessage', () => {
 	it('parses headers + addresses and forwards them to ingestExternalRaw', async () => {
 		const { client, action, lastPayload } = mockConvex();
 
-		await ingestMessage(client, {
+		await ingestMessage(client, UPLOAD, {
 			accountId: 'acct_1',
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -56,16 +84,66 @@ describe('ingestMessage', () => {
 		expect(payload.origin).toBe('sync');
 		// Body is well under the 64 KiB inline threshold, so it is sent inline.
 		expect(payload.textBodyInline).toContain('This is the body text.');
-		// Raw bytes are shipped base64-encoded.
-		expect(typeof payload.rawBytesBase64).toBe('string');
-		expect(Buffer.from(payload.rawBytesBase64 as string, 'base64').toString()).toContain(
+		// The raw `.eml` goes out of band; the call carries only its storage id,
+		// its size, and the 64 KiB header block the action reads headers from.
+		expect(payload.rawBytesBase64).toBeUndefined();
+		expect(payload.rawStorageId).toBe('kg_raw_1');
+		expect(payload.rawSize).toBe(1234);
+		expect(Buffer.from(payload.headerBlockBase64 as string, 'base64').toString()).toContain(
 			'Hello there'
 		);
 	});
 
+	it('uploads the raw bytes out of band, authenticated, before referencing them', async () => {
+		const { calls } = mockUpload();
+		const { client } = mockConvex();
+
+		await ingestMessage(client, UPLOAD, {
+			accountId: 'acct_1',
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 42,
+			remoteUidValidity: 7,
+			raw: Buffer.from(RAW),
+			flags: new Set<string>(),
+			origin: 'sync',
+		});
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]!.url).toBe('http://convex:3210/http/mail-sync/raw-message');
+		expect(calls[0]!.init.method).toBe('POST');
+		expect((calls[0]!.init.headers as Record<string, string>)['Authorization']).toBe(
+			'Bearer msk_test'
+		);
+		// The WHOLE message goes up, not a capped prefix — the size ceiling this
+		// replaced is exactly what used to drop large mail.
+		expect(Buffer.from(calls[0]!.init.body as Uint8Array).toString()).toBe(RAW);
+	});
+
+	it('throws when the raw upload fails, so the walk counts the message as failed', async () => {
+		mockUpload({ ok: false, status: 413, text: async () => 'Message too large' });
+		const { client, action } = mockConvex();
+
+		await expect(
+			ingestMessage(client, UPLOAD, {
+				accountId: 'acct_1',
+				folderRole: 'inbox',
+				remoteName: 'INBOX',
+				remoteUid: 42,
+				remoteUidValidity: 7,
+				raw: Buffer.from(RAW),
+				flags: new Set<string>(),
+				origin: 'sync',
+			})
+		).rejects.toThrow(/raw upload failed: HTTP 413/);
+		// Never ingested: a row pointing at bytes that were never stored would be
+		// worse than the message staying on the server.
+		expect(action).not.toHaveBeenCalled();
+	});
+
 	it('reflects IMAP flags into flagSeen / flagFlagged', async () => {
 		const { client, lastPayload } = mockConvex();
-		await ingestMessage(client, {
+		await ingestMessage(client, UPLOAD, {
 			accountId: 'a',
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -83,7 +161,7 @@ describe('ingestMessage', () => {
 	it('synthesises a messageId when the source has none', async () => {
 		const { client, lastPayload } = mockConvex();
 		const noId = RAW.replace('Message-ID: <msg-123@example.com>\r\n', '');
-		await ingestMessage(client, {
+		await ingestMessage(client, UPLOAD, {
 			accountId: 'a',
 			folderRole: 'archive',
 			remoteName: 'Archive',
@@ -111,11 +189,11 @@ describe('ingestMessage', () => {
 
 		// First ingest run.
 		const first = mockConvex();
-		await ingestMessage(first.client, params);
+		await ingestMessage(first.client, UPLOAD, params);
 		// Second ingest run (simulates a mid-batch crash re-fetching the range,
 		// where Date.now() would otherwise have advanced).
 		const second = mockConvex();
-		await ingestMessage(second.client, params);
+		await ingestMessage(second.client, UPLOAD, params);
 
 		const id1 = first.lastPayload().messageId;
 		const id2 = second.lastPayload().messageId;
@@ -150,7 +228,7 @@ describe('ingestMessage', () => {
 			'',
 		].join('\r\n');
 
-		await ingestMessage(client, {
+		await ingestMessage(client, UPLOAD, {
 			accountId: 'a',
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -197,7 +275,7 @@ describe('ingestMessage', () => {
 			'',
 		].join('\r\n');
 
-		await ingestMessage(client, {
+		await ingestMessage(client, UPLOAD, {
 			accountId: 'a',
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -250,7 +328,7 @@ describe('ingestMessage', () => {
 			'',
 		].join('\r\n');
 
-		await ingestMessage(client, {
+		await ingestMessage(client, UPLOAD, {
 			accountId: 'a',
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -292,7 +370,7 @@ describe('ingestMessage', () => {
 			'',
 		].join('\r\n');
 
-		await ingestMessage(client, {
+		await ingestMessage(client, UPLOAD, {
 			accountId: 'a',
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -324,7 +402,7 @@ describe('ingestMessage', () => {
 			'',
 		].join('\r\n');
 
-		await ingestMessage(client, {
+		await ingestMessage(client, UPLOAD, {
 			accountId: 'a',
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -346,7 +424,7 @@ describe('ingestMessage', () => {
 			'Reply-To: Amy <amy@example.com>\r\nSubject: Hello there\r\n'
 		);
 
-		await ingestMessage(client, {
+		await ingestMessage(client, UPLOAD, {
 			accountId: 'a',
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -366,7 +444,7 @@ describe('ingestMessage', () => {
 	// else, so a history import can never fan out background LLM work.
 	it('ships the origin verbatim, so a backfill ingest is tagged as one', async () => {
 		const { client, lastPayload } = mockConvex();
-		await ingestMessage(client, {
+		await ingestMessage(client, UPLOAD, {
 			accountId: 'a',
 			folderRole: 'inbox',
 			remoteName: 'INBOX',

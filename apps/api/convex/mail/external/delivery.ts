@@ -37,7 +37,6 @@ import { enqueueCategoryCheck } from '../category';
 import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { buildSearchBody } from '../searchBody';
 import { splitBodyForStorage } from '../deliveryPipeline/ingest';
-import { storeSealedBlob } from '../../lib/sealedBlob';
 import { base64ToBytes } from '../../lib/bytes';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 import { folderRoleValidator } from '../mailbox/shared';
@@ -324,11 +323,20 @@ export const recordFolderMapping = internalMutation({
 });
 
 /**
- * Raw-bytes ingestion entry point for the mail-sync worker. The worker can't
- * generate a Convex upload URL (that needs a user session; the worker holds
- * the admin key), so — mirroring `delivery.ingestFromWebhook` — it passes the
- * raw RFC822 as base64 to this action, which stores the blob and delegates to
- * the `ingestExternalMessage` mutation.
+ * Ingestion entry point for the mail-sync worker.
+ *
+ * The raw `.eml` arrives OUT OF BAND: the worker PUTs the bytes to
+ * `/mail-sync/raw-message` (mail/external/rawUploadHttp.ts) and passes the
+ * resulting storage id here. It used to ride in as a base64 argument, which
+ * capped an importable message at ~12 MiB of source — Convex limits a
+ * function-call body to 16 MiB and base64 inflates by 4/3 — and dropped
+ * everything above it at the backend's HTTP layer, before any of this ran.
+ * Every argument below is bounded by construction, so message size no longer
+ * decides whether a message imports.
+ *
+ * `headerBlockBase64` is the first 64 KiB of the message. The two header
+ * extractions below need it and nothing else does; sending it beats reading the
+ * blob back, which would mean unsealing the whole message to look at its top.
  */
 export const ingestExternalRaw = internalAction({
 	args: {
@@ -337,7 +345,12 @@ export const ingestExternalRaw = internalAction({
 		remoteName: v.string(),
 		remoteUid: v.number(),
 		remoteUidValidity: v.number(),
-		rawBytesBase64: v.string(),
+		/** Sealed raw `.eml`, already stored by `/mail-sync/raw-message`. */
+		rawStorageId: v.id('_storage'),
+		/** Size of the raw message in bytes, as uploaded. */
+		rawSize: v.number(),
+		/** First 64 KiB of the raw message, base64 — the header block. */
+		headerBlockBase64: v.string(),
 		from: v.string(),
 		to: v.array(v.string()),
 		cc: v.array(v.string()),
@@ -357,17 +370,14 @@ export const ingestExternalRaw = internalAction({
 		origin: v.optional(v.union(v.literal('sync'), v.literal('backfill'))),
 	},
 	handler: async (ctx, args): Promise<ExternalIngestOutcome> => {
-		const rawBytes = base64ToBytes(args.rawBytesBase64);
 		// `base64ToBytes` answers undecodable input with zero bytes rather than
-		// throwing. A real RFC822 message is never empty, so an empty decode here
-		// means the payload was corrupt — throw, so the worker counts the message
-		// as failed instead of storing a zero-byte blob and an empty row.
-		if (rawBytes.length === 0) {
-			throw new Error('ingestExternalRaw: rawBytesBase64 decoded to zero bytes');
+		// throwing. A real RFC822 message always has a header block, so an empty
+		// decode here means the payload was corrupt — throw, so the worker counts
+		// the message as failed instead of inserting a header-less row.
+		const headerBytes = base64ToBytes(args.headerBlockBase64);
+		if (headerBytes.length === 0) {
+			throw new Error('ingestExternalRaw: headerBlockBase64 decoded to zero bytes');
 		}
-		// E8b: seal the raw `.eml` at rest (byte cipher); the reader path + the
-		// `/sealed-blob` proxy unseal it for the web reader / IMAP bridge.
-		const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');
 		// Bodies arrive uncapped from the worker; inline small ones, stash large
 		// ones as blobs (served lazily by mailbox.getMessageBody).
 		const textBody = await splitBodyForStorage(
@@ -384,13 +394,12 @@ export const ingestExternalRaw = internalAction({
 		// Deep-search excerpt (idea 32) from the pre-split body, same as the hosted
 		// inbound path; persisted only when the instance opted in.
 		const searchBody = buildSearchBody(args.textBodyInline, args.htmlBodyInline);
-		// The first 64 KB is the header block for every real message; decoded once
-		// and read twice. List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 /
+		// The header block, decoded once and read twice. List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 /
 		// 8058) is parsed here so the reader's Unsubscribe chip never re-opens the
 		// raw .eml, and the anti-loop headers give the classifiers the same
 		// bulk-mail suppression the hosted path gets (Precedence is not persisted
 		// on the message row, so it has to ride along with the ingest call).
-		const headerBlock = new TextDecoder().decode(rawBytes.subarray(0, 65536));
+		const headerBlock = new TextDecoder().decode(headerBytes);
 		const unsubscribe = extractListUnsubscribe(headerBlock) ?? undefined;
 		const antiLoopHeaders = extractAntiLoopHeaders(headerBlock);
 		// `ingestExternalMessage` deletes the staged blobs itself on skip/dup.
@@ -400,8 +409,8 @@ export const ingestExternalRaw = internalAction({
 			remoteName: args.remoteName,
 			remoteUid: args.remoteUid,
 			remoteUidValidity: args.remoteUidValidity,
-			rawStorageId,
-			rawSize: rawBytes.length,
+			rawStorageId: args.rawStorageId,
+			rawSize: args.rawSize,
 			from: args.from,
 			to: args.to,
 			cc: args.cc,

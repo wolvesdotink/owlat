@@ -762,6 +762,7 @@ import type * as mail_external_accounts from '../mail/external/accounts.js';
 import type * as mail_external_accountsActions from '../mail/external/accountsActions.js';
 import type * as mail_external_accountsSeed from '../mail/external/accountsSeed.js';
 import type * as mail_external_delivery from '../mail/external/delivery.js';
+import type * as mail_external_rawUploadHttp from '../mail/external/rawUploadHttp.js';
 import type * as mail_external_externalFeature from '../mail/external/externalFeature.js';
 import type * as mail_external_googleOAuth from '../mail/external/googleOAuth.js';
 import type * as mail_external_googleOAuthActions from '../mail/external/googleOAuthActions.js';
@@ -1850,6 +1851,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/accountsActions': typeof mail_external_accountsActions;
 	'mail/external/accountsSeed': typeof mail_external_accountsSeed;
 	'mail/external/delivery': typeof mail_external_delivery;
+	'mail/external/rawUploadHttp': typeof mail_external_rawUploadHttp;
 	'mail/external/externalFeature': typeof mail_external_externalFeature;
 	'mail/external/googleOAuth': typeof mail_external_googleOAuth;
 	'mail/external/googleOAuthActions': typeof mail_external_googleOAuthActions;

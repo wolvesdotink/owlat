@@ -88,7 +88,7 @@ describe('ingest origin at the connection call sites', () => {
 		await conn.pollFolder('INBOX', 'inbox');
 
 		expect(ingest.ingestMessage).toHaveBeenCalledTimes(1);
-		const params = ingest.ingestMessage.mock.calls[0]![1] as Record<string, unknown>;
+		const params = ingest.ingestMessage.mock.calls[0]![2] as Record<string, unknown>;
 		expect(params.origin).toBe('sync');
 		expect(params.remoteUid).toBe(42);
 		expect(params.folderRole).toBe('inbox');
@@ -101,7 +101,7 @@ describe('ingest origin at the connection call sites', () => {
 		await deps.ingest('INBOX', 'inbox', 17, RAW, new Set<string>());
 
 		expect(ingest.ingestMessage).toHaveBeenCalledTimes(1);
-		const params = ingest.ingestMessage.mock.calls[0]![1] as Record<string, unknown>;
+		const params = ingest.ingestMessage.mock.calls[0]![2] as Record<string, unknown>;
 		expect(params.origin).toBe('backfill');
 		expect(params.remoteUid).toBe(17);
 	});
@@ -219,7 +219,7 @@ describe('forward INBOX poll inside the backfill loop', () => {
 		// Exactly one ingest: the forward poll's, tagged 'sync' — and it happened
 		// before the first folder's walk could reach the same message.
 		expect(ingest.ingestMessage).toHaveBeenCalledTimes(1);
-		const params = ingest.ingestMessage.mock.calls[0]![1] as Record<string, unknown>;
+		const params = ingest.ingestMessage.mock.calls[0]![2] as Record<string, unknown>;
 		expect(params.origin).toBe('sync');
 		expect(params.folderRole).toBe('inbox');
 		expect(params.remoteUid).toBe(42);

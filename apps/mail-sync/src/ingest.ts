@@ -1,9 +1,14 @@
 /**
  * Parse a raw RFC822 message (in-house `@owlat/mail-message.parseMessage`) and
- * hand it to Convex for storage + insertion via the `ingestExternalRaw` action.
- * The worker holds the admin key but cannot mint storage upload URLs (those need
- * a user session), so it ships the raw bytes as base64 and Convex stores them
- * server-side.
+ * hand it to Convex for insertion via the `ingestExternalRaw` action.
+ *
+ * The raw bytes go OUT OF BAND first, to the `/mail-sync/raw-message` HTTP
+ * action, which answers with a storage id. They used to ride along as a base64
+ * ARGUMENT, and Convex caps a function-call body at 16 MiB: with base64's 4/3
+ * inflation that silently rejected every message over ~12 MiB of source — on a
+ * real mailbox about one message in twenty — at the backend's HTTP layer,
+ * before any ingest code ran. HTTP action bodies have no such cap, and what is
+ * left in the call's arguments is bounded by construction.
  */
 
 import { parseMessage, type AddressObject } from '@owlat/mail-message';
@@ -11,12 +16,20 @@ import type { ConvexClient } from './convex.js';
 import { fn } from './convex.js';
 import type { FolderRole } from './folders.js';
 
-// Bodies ride alongside the base64 raw .eml in one action call; cap them so a
-// pathological message can't blow Convex's per-call arg limit. Over-cap bodies
+// Bodies still ride inside the action call; cap them so a pathological message
+// can't blow Convex's per-call arg limit. Over-cap bodies
 // are truncated to a byte-accurate prefix (rare; HTML email bodies are ~tens of
 // KB) so the server still derives a usable snippet + preview; the full message
 // is always preserved in the raw .eml blob regardless.
 const WIRE_BODY_LIMIT = 1024 * 1024; // 1 MB
+
+/**
+ * How much of the message the ingest action needs to read headers from. It
+ * extracts List-Unsubscribe and the RFC 3834 anti-loop headers and nothing
+ * else, and 64 KiB covers the header section of any real message — the same
+ * slice the action used to take off the inline raw bytes itself.
+ */
+const HEADER_BLOCK_BYTES = 64 * 1024;
 
 function capBody(body: string | undefined): string | undefined {
 	if (!body) return undefined;
@@ -121,8 +134,42 @@ export function isMessageLanded(outcome: IngestOutcome): boolean {
 	return !('skipped' in outcome) || outcome.skipped === 'duplicate';
 }
 
+/**
+ * Upload the raw `.eml` and return its Convex storage id.
+ *
+ * A plain byte body to an HTTP action, which has no 16 MiB function-call cap —
+ * that cap is what used to drop every large message. A non-2xx answer throws,
+ * so the caller counts the message as failed rather than ingesting a message
+ * whose raw bytes were never stored.
+ */
+async function uploadRawMessage(
+	config: RawUploadConfig,
+	raw: Buffer
+): Promise<{ storageId: string; size: number }> {
+	const response = await fetch(`${config.convexSiteUrl}/mail-sync/raw-message`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${config.apiKey}`,
+			'Content-Type': 'message/rfc822',
+		},
+		body: new Uint8Array(raw),
+	});
+	if (!response.ok) {
+		const detail = await response.text().catch(() => '');
+		throw new Error(`raw upload failed: HTTP ${response.status} ${detail.slice(0, 200)}`);
+	}
+	return (await response.json()) as { storageId: string; size: number };
+}
+
+/** What `ingestMessage` needs to reach the raw-upload endpoint. */
+export interface RawUploadConfig {
+	convexSiteUrl: string;
+	apiKey: string;
+}
+
 export async function ingestMessage(
 	convex: ConvexClient,
+	config: RawUploadConfig,
 	params: IngestParams
 ): Promise<IngestOutcome> {
 	const parsed = parseMessage(params.raw);
@@ -139,6 +186,10 @@ export async function ingestMessage(
 		? parsed.references.join(' ')
 		: (parsed.references ?? undefined);
 
+	// Bytes first: a storage id the action can point at costs nothing in the
+	// call's argument budget, however large the message is.
+	const uploaded = await uploadRawMessage(config, params.raw);
+
 	return (await convex.action(
 		fn.ingestExternalRaw as never,
 		{
@@ -147,7 +198,9 @@ export async function ingestMessage(
 			remoteName: params.remoteName,
 			remoteUid: params.remoteUid,
 			remoteUidValidity: params.remoteUidValidity,
-			rawBytesBase64: params.raw.toString('base64'),
+			rawStorageId: uploaded.storageId,
+			rawSize: uploaded.size,
+			headerBlockBase64: params.raw.subarray(0, HEADER_BLOCK_BYTES).toString('base64'),
 			from: primaryAddress(parsed.from),
 			to: addrList(parsed.to),
 			cc: addrList(parsed.cc),
