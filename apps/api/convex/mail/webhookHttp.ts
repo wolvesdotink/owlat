@@ -10,13 +10,16 @@
  *
  * Reuses the shared verifyMtaHeaders (HMAC-SHA256 over `${timestamp}.${body}` +
  * 5-minute staleness window) from webhooks/adapters/mta.ts — the same
- * verification the main MTA webhook uses — and audit-stores the raw payload.
+ * verification the main MTA webhook uses — and audit-stores a bounded SUMMARY of
+ * the delivery (see `auditDelivery` below; the body carries the whole message,
+ * so retaining it verbatim would keep a second copy of every email).
  * The postbox dispatch target (mail.delivery.ingestFromWebhook) is distinct
  * from the customer-inbound dispatcher, so this stays a standalone handler
  * rather than a runInboundPipeline adapter.
  */
 
 import { httpAction } from '../_generated/server';
+import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
 import { logError } from '../lib/runtimeLog';
@@ -75,6 +78,81 @@ interface MailWebhookPayload {
 		arcSealerDomain?: string;
 		arcAttestsOriginalPass?: boolean;
 	};
+}
+
+/**
+ * AUDIT, NOT A SECOND COPY OF THE MAIL.
+ *
+ * This route's body carries `rawBytesBase64` — the entire message. Retaining it
+ * verbatim in `webhookPayloads` kept a second full base64 copy of every email in
+ * the database for 90 days beside the `_storage` blob that already holds it, and
+ * for anything over roughly 768 KiB raw the insert hit the 1 MiB document cap and
+ * threw into a bare `catch`, so the audit trail silently did not exist for
+ * exactly the messages that have attachments.
+ *
+ * What a delivery dispute actually asks is "did these bytes arrive, when, from
+ * whom, for whom" — which a digest answers better than a copy, because a digest
+ * also proves the bytes were not altered afterwards. So we keep the SHA-256 of
+ * the exact body we verified the HMAC over, its size, and the envelope
+ * identifiers. The message content (subject, bodies, attachment payloads) stays
+ * only in the mailbox, where retention and erasure already govern it.
+ */
+const AUDIT_SUMMARY_VERSION = 1;
+
+/** Cap on any single caller-supplied string copied into the audit row. */
+const AUDIT_FIELD_MAX_CHARS = 256;
+
+function clampAuditField(value: unknown): string | undefined {
+	if (typeof value !== 'string' || value.length === 0) return undefined;
+	return value.length > AUDIT_FIELD_MAX_CHARS ? value.slice(0, AUDIT_FIELD_MAX_CHARS) : value;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+	return Array.from(new Uint8Array(digest))
+		.map((byte) => byte.toString(16).padStart(2, '0'))
+		.join('');
+}
+
+/** Decoded size of a base64 string, without decoding it. */
+function base64ByteLength(value: string): number {
+	if (value.length === 0) return 0;
+	const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+	return Math.max(0, Math.floor((value.length * 3) / 4) - padding);
+}
+
+/**
+ * Write the bounded audit row for one inbound delivery. Never fails the webhook
+ * — a message that arrived is not dropped because its audit row would not write
+ * — but it SAYS so when it could not write, because an audit that can fail
+ * invisibly is worse than no audit at all.
+ */
+async function auditDelivery(
+	ctx: ActionCtx,
+	bodyText: string,
+	payload: MailWebhookPayload | null
+): Promise<void> {
+	try {
+		const mp = payload?.mailboxPayload;
+		const summary = {
+			version: AUDIT_SUMMARY_VERSION,
+			event: clampAuditField(payload?.event) ?? 'unparseable',
+			bodyChars: bodyText.length,
+			bodySha256: await sha256Hex(bodyText),
+			deliveryId: clampAuditField(mp?.deliveryId),
+			messageId: clampAuditField(mp?.messageId),
+			recipientAddress: clampAuditField(mp?.recipientAddress),
+			from: clampAuditField(mp?.from),
+			rawMessageBytes: mp?.rawBytesBase64 ? base64ByteLength(mp.rawBytesBase64) : undefined,
+			attachmentCount: mp?.attachments?.length,
+		};
+		await ctx.runMutation(internal.webhooks.payloads.store, {
+			source: 'mta-mailbox',
+			rawPayload: JSON.stringify(summary),
+		});
+	} catch (error) {
+		logError('[Mail Webhook] Failed to store the delivery audit row:', error);
+	}
 }
 
 export const handleMailWebhook = httpAction(async (ctx, request) => {
@@ -138,21 +216,18 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 		});
 	}
 
-	// Audit-store the raw payload (non-blocking — never fail the webhook on it),
-	// matching runInboundPipeline. The postbox inbound path previously skipped this.
-	try {
-		await ctx.runMutation(internal.webhooks.payloads.store, {
-			source: 'mta-mailbox',
-			rawPayload: bodyText,
-		});
-	} catch {
-		// intentionally swallowed
-	}
-
-	let payload: MailWebhookPayload;
+	let payload: MailWebhookPayload | null = null;
 	try {
 		payload = JSON.parse(bodyText) as MailWebhookPayload;
 	} catch {
+		payload = null;
+	}
+
+	// Audit FIRST, including a body we could not parse — an MTA sending us
+	// garbage is precisely the thing the audit trail is for.
+	await auditDelivery(ctx, bodyText, payload);
+
+	if (!payload) {
 		return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
 			status: 400,
 			headers: { 'Content-Type': 'application/json' },

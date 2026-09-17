@@ -11,7 +11,28 @@ import { internal } from '../_generated/api';
  */
 
 /**
+ * Hard ceiling on what one audit row keeps, in UTF-16 code units.
+ *
+ * A Convex document is capped at 1 MiB and an insert over that cap THROWS — into
+ * callers that deliberately never fail a webhook over its audit trail, which
+ * means invisibly. The inbound routes accept bodies far larger than this
+ * (`webhooks/pipeline.ts` allows 5 MiB), so without a cap here the audit trail
+ * was missing exactly for the biggest deliveries, the ones a dispute is most
+ * likely to be about. 64K code units is at most 256 KiB of UTF-8, comfortably
+ * inside the document cap, and a marked-truncated head is strictly more audit
+ * than the row that was never written.
+ */
+export const MAX_RETAINED_PAYLOAD_CHARS = 64 * 1024;
+
+/**
  * Store a raw webhook payload for audit purposes.
+ *
+ * Oversized bodies are retained as a truncation envelope
+ * (`{"truncated":true,"originalChars":…,"head":"…"}`) rather than dropped. The
+ * mailbox-inbound route does not reach this at all: it hands us a bounded
+ * SUMMARY of the delivery, because its body carries the whole message and
+ * keeping a second full copy of every email for 90 days is not an audit trail
+ * (see `mail/webhookHttp.ts`).
  */
 export const store = internalMutation({
 	args: {
@@ -23,9 +44,17 @@ export const store = internalMutation({
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
+		const rawPayload =
+			args.rawPayload.length > MAX_RETAINED_PAYLOAD_CHARS
+				? JSON.stringify({
+						truncated: true,
+						originalChars: args.rawPayload.length,
+						head: args.rawPayload.slice(0, MAX_RETAINED_PAYLOAD_CHARS),
+					})
+				: args.rawPayload;
 		await ctx.db.insert('webhookPayloads', {
 			source: args.source,
-			rawPayload: args.rawPayload,
+			rawPayload,
 			receivedAt: Date.now(),
 		});
 		return null;
