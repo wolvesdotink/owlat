@@ -96,6 +96,9 @@ function mountPage(): VueWrapper {
 			UiConfirmationDialog: true,
 			PostboxMailboxConnectForm: true,
 			PostboxArchiveImportCard: true,
+			// Renders below every wizard step (it owns disconnect / delete for the
+			// connected mailbox); it has its own suite and its own subscriptions.
+			PostboxConnectedAccountCard: true,
 		},
 	});
 	return wrapper;

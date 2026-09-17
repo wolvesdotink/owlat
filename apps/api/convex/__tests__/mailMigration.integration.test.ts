@@ -919,7 +919,7 @@ describe('purging an external account drops its migration rows', () => {
 		await t.run((ctx) => ctx.db.patch(finished.migrationId, { status: 'completed' }));
 		const inFlight = await t.mutation(api.mail.migration.start, {});
 
-		await t.mutation(internal.mail.external.accounts._purgeChunk, { accountId, mailboxId });
+		await t.mutation(internal.mail.external.accountTeardown._purgeChunk, { accountId, mailboxId });
 
 		await t.run(async (ctx) => {
 			expect(await ctx.db.get(finished.migrationId)).toBeNull();

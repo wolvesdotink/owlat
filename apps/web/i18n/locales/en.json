@@ -2111,6 +2111,11 @@
 				"addMailbox": "Add test mailbox",
 				"credentialsRotated": "Credentials rotated",
 				"detailsLabel": "Measurement details",
+				"disconnect": "Disconnect",
+				"disconnectAriaLabel": "Disconnect the test mailbox {address}",
+				"disconnectDialogDescription": "Owlat stops sending test copies to {address} and forgets its password. Everything it has measured so far is kept, and the slot it held frees up for another one.",
+				"disconnectDialogTitle": "Disconnect this test mailbox?",
+				"disconnectOperation": "Disconnect test mailbox",
 				"feedbackConnected": "connected",
 				"feedbackNotConnected": "not connected",
 				"feedsConfigured": "{count} feed configured | {count} feeds configured",
@@ -2123,7 +2128,8 @@
 				},
 				"summary": "{count} test mailboxes connected · Microsoft feedback {feedback}",
 				"testMailboxes": "Test mailboxes",
-				"title": "Measurement coverage"
+				"title": "Measurement coverage",
+				"toastDisconnected": "{address} disconnected."
 			},
 			"domainDnsGuidance": {
 				"heading": "DNS for {transport}"
@@ -4718,6 +4724,44 @@
 				"delete": "Delete folder",
 				"deleteAriaLabel": "Delete the folder {name}",
 				"empty": "No custom folders yet. Create one above."
+			},
+			"postboxConnectedAccountCard": {
+				"connectCta": "Connect a mailbox",
+				"delete": "Disconnect and delete",
+				"deleteConfirm": "Delete everything",
+				"deleteDialogDescription": "Every message, draft, folder and label brought over is erased here, along with the saved sign-in and any app passwords for this mailbox. Mail at your provider is untouched. This cannot be undone.",
+				"deleteDialogTitle": "Delete this mailbox and everything in it?",
+				"deleteOperation": "Delete mailbox and its mail",
+				"deleteRetained": "Delete the mail that was kept",
+				"deleteRetainedDialogDescription": "Every message, draft, folder and label brought over from this mailbox is erased, along with any app passwords for it. Mail at your provider is untouched. This cannot be undone.",
+				"deletingBody": "Deleting this mailbox and everything brought over from it. You can leave this page.",
+				"disconnect": "Disconnect",
+				"disconnectDialogDescription": "Owlat stops fetching mail and forgets how it signs in to this mailbox. The mailbox and the mail already brought over leave your inbox, and both come back if you connect the same address again.",
+				"disconnectDialogImporting": "The import still running will stop. Owlat forgets how it signs in to this mailbox; the mailbox and the mail brought over so far leave your inbox and come back if you connect the same address again.",
+				"disconnectDialogTitle": "Disconnect this mailbox?",
+				"disconnectOperation": "Disconnect mailbox",
+				"disconnectedOn": "Disconnected {when}",
+				"emptyBody": "No other mailbox is connected. Owlat can bring mail over from Gmail, Fastmail, Outlook or any other provider.",
+				"errorFallback": "Owlat can't reach this mailbox at the moment.",
+				"heading": "Connected mailbox",
+				"lastSynced": "Last checked for new mail {when}",
+				"loadError": "Owlat could not load your connected mailbox just now. Reload the page to try again.",
+				"loading": "Loading your connected mailbox",
+				"neverSynced": "No mail has come through yet",
+				"reauthorize": "Reconnect this mailbox",
+				"reconnect": "Connect it again",
+				"retainedBody": "Nothing is syncing and the saved sign-in is gone. The mail brought over before you disconnected is out of your inbox but not deleted: connect the same address again to bring it back, or delete it for good.",
+				"retainedRemovedBody": "An admin removed this mailbox from Owlat. The mail brought over from it is still stored here and nothing is syncing. Connecting the address again gives you a new, empty mailbox, so delete this one if you no longer want what it kept.",
+				"status": {
+					"authError": "Needs reconnecting",
+					"connected": "Syncing",
+					"error": "Connection problem",
+					"pending": "Connecting"
+				},
+				"toastCredentialsUpdated": "Password updated.",
+				"toastDeleting": "Deleting this mailbox and its mail.",
+				"toastDisconnected": "Mailbox disconnected.",
+				"updateCredentials": "Update password"
 			}
 		},
 		"preferences": {
@@ -8958,11 +9002,6 @@
 				"skippedTitle": "{count} message couldn't be imported | {count} messages couldn't be imported",
 				"skippedBody": "They're still on your mail server — nothing was deleted there. Importing again retries them.",
 				"connectProvider": "Connect {provider}",
-				"deleteMailboxAndData": "Delete mailbox & data",
-				"disconnect": "Disconnect",
-				"disconnectDialogDescription": "Syncing stops and it's hidden from your inbox. Synced messages are kept unless you delete them separately.",
-				"disconnectDialogTitle": "Disconnect this mailbox?",
-				"disconnectOperation": "Disconnect mailbox",
 				"discoveringFolders": "Looking at your folders…",
 				"discoveringProgressLabel": "Discovering mailbox",
 				"discoveringTitle": "Discovering your mailbox…",
@@ -8986,10 +9025,6 @@
 				"openInbox": "Open your inbox",
 				"pageTitle": "Import your mail — Owlat",
 				"providerPickTitle": "Where does your mail live now?",
-				"purgeConfirm": "Delete everything",
-				"purgeDialogDescription": "Every imported message, draft, folder and label is erased and cannot be recovered. Use this if you connected the wrong mailbox or want your imported mail genuinely removed.",
-				"purgeDialogTitle": "Delete mailbox and all synced data?",
-				"purgeOperation": "Delete mailbox and synced data",
 				"readyBody": "We'll import your entire mail history — Inbox, Sent, and all your archived mail.",
 				"readyBulletAiOff": "Enable the AI knowledge feature first to let the assistant learn from your mail.",
 				"readyBulletAiOn": "Your AI assistant learns from each conversation, scoped per contact.",
@@ -9017,13 +9052,9 @@
 				"subheading": "Bring your existing mailbox into Owlat — and let your AI assistant learn from it.",
 				"toastCancelled": "Migration cancelled. Imported mail was kept.",
 				"toastCredentialsUpdated": "Credentials updated.",
-				"toastDisconnected": "Mailbox disconnected.",
 				"toastImportStarted": "Importing your mail history now.",
-				"toastPurging": "Mailbox and all synced data are being deleted.",
 				"toastSignatureSaved": "Saved as your default signature.",
 				"tryAgain": "Try again",
-				"updateCredentials": "Update credentials",
-				"updateCredentialsTitle": "Update {email} credentials",
 				"useThisSignature": "Use this signature"
 			},
 			"replyQueue": {
@@ -9478,6 +9509,12 @@
 				"intro": "Owlat can learn how you write from your sent mail so AI reply suggestions sound like you. This is advisory only — nothing is ever sent automatically.",
 				"noMailboxes": "No mailboxes yet. Add an account and send a few messages first.",
 				"pageTitle": "Writing voice — Owlat"
+			},
+			"externalAccount": {
+				"featureOffBody": "This Owlat instance has the feature switched off. An admin can turn it on from Settings, and then you can connect a mailbox here.",
+				"featureOffTitle": "Connected mailboxes are turned off",
+				"pageTitle": "Connected mailboxes — Owlat",
+				"subheading": "A mailbox somewhere else that Owlat keeps in step with this one."
 			}
 		},
 		"send": {
@@ -13044,6 +13081,10 @@
 				"sealedMail": {
 					"keywords": "sealed mail, encryption, recovery kit, private key, end-to-end",
 					"title": "Sealed mail"
+				},
+				"connectedAccount": {
+					"keywords": "disconnect, remove, delete, unlink, connected mailbox, external account, gmail, outlook, fastmail",
+					"title": "Disconnect a connected mailbox"
 				}
 			}
 		},

@@ -30,6 +30,10 @@
  *             connect actions after encryption), _getRowInternal,
  *             listConnectableAccounts, setSyncStatus
  *
+ * What DISCONNECTING does — forgetting the password, cancelling a running
+ * import, hiding the mailbox — and the purge cascade both live in the sibling
+ * `mail/external/accountTeardown.ts`, shared with the seed and team-inbox paths.
+ *
  * The outbound transport decision for a mailbox (hosted MTA vs the user's own
  * SMTP) lives in the sibling `mail/outboundTransport.ts`, not here — it is not
  * external-account-specific and is shared with the onboarding "first send" gate.
@@ -40,8 +44,8 @@
 
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../../_generated/server';
-import { authedMutation, publicQuery } from '../../lib/authedFunctions';
 import { internal } from '../../_generated/api';
+import { authedMutation, publicQuery } from '../../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../../lib/featureFlags';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
@@ -49,11 +53,10 @@ import {
 	connectFieldsValidator,
 	insertExternalAccountRow,
 	applyCredentialRotation,
-	cancelActiveMigrationForAccount,
 	CONNECTABLE_ACCOUNT_STATUSES,
 } from './accountShared';
+import { stopExternalAccountSync, prepareAccountPurge } from './accountTeardown';
 import { markOnboardingStep } from '../../auth/userOnboarding';
-import { removeMessageAttachments } from '../attachmentIndex';
 import {
 	throwForbidden,
 	throwInvalidInput,
@@ -62,8 +65,6 @@ import {
 } from '../../_utils/errors';
 import type { QueryCtx, MutationCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
-
-const PURGE_CHUNK = 200;
 
 /** A shared account backs a team inbox; it is never the caller's PERSONAL account. */
 function isPersonalAccount(a: Doc<'externalMailAccounts'>): boolean {
@@ -102,6 +103,63 @@ export async function getLivePersonalExternalAccountForUser(
 	return accounts.find((a) => isPersonalAccount(a) && a.status !== 'disconnected') ?? null;
 }
 
+/**
+ * The mailbox this caller DISCONNECTED on `address`, if there is one — the row a
+ * reconnect re-attaches to instead of provisioning a second mailbox on the same
+ * address.
+ *
+ * Soft-disconnect keeps the synced mail; without this lookup that promise is
+ * empty, because the dup-check below only sees ACTIVE mailboxes, so reconnecting
+ * would mint a fresh empty mailbox and strand every retained message in a row no
+ * screen can reach. Deliberately narrow: the caller's own PERSONAL account, the
+ * same canonical address, and a mailbox that is soft-deleted. A completed move's
+ * archive keeps its mailbox ACTIVE, so it can never be resurrected here, and a
+ * shared team inbox or a seed is not a personal account at all.
+ */
+async function findRetainedPersonalAccount(
+	ctx: QueryCtx | MutationCtx,
+	userId: string,
+	options: { address?: string; forDeletion?: boolean } = {}
+): Promise<{ account: Doc<'externalMailAccounts'>; mailbox: Doc<'mailboxes'> } | null> {
+	const { address, forDeletion = false } = options;
+	const rows = await ctx.db
+		.query('externalMailAccounts')
+		.withIndex('by_user', (q) => q.eq('userId', userId))
+		.collect(); // bounded: a handful of the caller's own account rows
+	const candidates = rows
+		.filter(
+			(a) =>
+				isPersonalAccount(a) &&
+				a.status === 'disconnected' &&
+				// A purge is already deleting this one: it has no mail to hand back,
+				// and re-attaching it would hand the owner a mailbox the cascade is
+				// about to delete underneath them.
+				a.purgeStartedAt === undefined &&
+				// An admin retired this mailbox. Reconnecting must not undo that
+				// silently — but DELETING it must stay possible, or an admin removal
+				// would strand the owner's mail somewhere neither of them can reach:
+				// the admin has no purge for a personal mailbox, and the owner would
+				// have no surface for it.
+				(forDeletion || a.adminRetiredAt === undefined)
+		)
+		.sort((a, b) => b.updatedAt - a.updatedAt);
+	for (const account of candidates) {
+		const mailbox = await ctx.db.get(account.mailboxId);
+		// Ownership follows the ACCOUNT (read through `by_user` on the caller, and
+		// personal by `isPersonalAccount`), which is 1:1 with its mailbox — so there
+		// is no second ownership question to ask here. The one write that can move a
+		// mailbox's `userId` out from under its account row,
+		// `mailboxMembers.transferOwnership`, refuses anything that is not
+		// `scope === 'shared'`, and a shared account is not personal. What is asked
+		// is the state: only a soft-deleted external mailbox is one a disconnect
+		// left behind.
+		if (!mailbox || mailbox.status !== 'deleted' || mailbox.kind !== 'external') continue;
+		if (address !== undefined && mailbox.address !== address) continue;
+		return { account, mailbox };
+	}
+	return null;
+}
+
 const accountStatusValidator = v.union(
 	v.literal('pending'),
 	v.literal('connected'),
@@ -127,7 +185,28 @@ export const getForCurrentUser = publicQuery({
 		// leaves a disconnected archive that would otherwise mask the reconnected
 		// account. A shared team inbox the caller connected is not their own mailbox.
 		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
-		if (!account) return { configured: false as const };
+		if (!account) {
+			// Nothing syncing — but a disconnected mailbox may still be holding the
+			// mail it kept. The settings card offers exactly two things for that
+			// state (reconnect, or delete what was kept), and it can only offer them
+			// if it knows the mailbox is there.
+			const retained = await findRetainedPersonalAccount(ctx, s.userId, { forDeletion: true });
+			if (!retained) return { configured: false as const };
+			return {
+				configured: false as const,
+				retained: {
+					emailAddress: retained.mailbox.address,
+					imapHost: retained.account.imapHost,
+					imapUsername: retained.account.imapUsername,
+					disconnectedAt: retained.account.updatedAt,
+					// Whether reconnecting this address re-opens THIS mailbox. False
+					// when an admin retired it: connecting again is allowed and
+					// provisions a fresh mailbox, but the mail kept here does not come
+					// back with it, so the screen must not promise that it will.
+					canReattach: retained.account.adminRetiredAt === undefined,
+				},
+			};
+		}
 		const mailbox = await ctx.db.get(account.mailboxId);
 		return {
 			configured: true as const,
@@ -155,9 +234,13 @@ export const getForCurrentUser = publicQuery({
 });
 
 /**
- * Soft-disconnect: stop syncing and hide the mailbox, but RETAIN the synced
- * messages (re-connect can re-attach). Use `purge` to also delete the data.
+ * Soft-disconnect: stop syncing, forget the stored password, and hide the
+ * mailbox, while RETAINING the messages already synced. Reconnecting the same
+ * address re-attaches this mailbox (see `_connectInternal`), so the retained
+ * mail comes back rather than sitting in a row nobody can reach. Use `purge` to
+ * delete the data instead of keeping it.
  */
+// authz: self — disconnects only the caller's own external account (resolved by userId).
 export const disconnect = authedMutation({
 	args: {},
 	handler: async (ctx) => {
@@ -176,30 +259,23 @@ export const disconnect = authedMutation({
 				.query('externalMailAccounts')
 				.withIndex('by_user', (q) => q.eq('userId', s.userId))
 				.collect(); // bounded: a handful of the caller's own account rows
-			if (rows.some(isPersonalAccount)) return { ok: true };
+			if (rows.some(isPersonalAccount)) return { ok: true, cancelledMigration: false };
 			throwNotFound('External mail account');
 		}
-		const now = Date.now();
-		await ctx.db.patch(account._id, { status: 'disconnected', updatedAt: now });
-		// Stop an in-flight import too, so the worker's very next `getBackfillWork`
-		// poll goes idle instead of backfilling into a disconnected mailbox.
-		await cancelActiveMigrationForAccount(ctx, account._id);
-		// Hide from the inbox UI (requireMailboxAccess refuses non-active rows).
-		await ctx.db.patch(account.mailboxId, { status: 'deleted', updatedAt: now });
-		await ctx.db.insert('mailAuditLog', {
-			mailboxId: account.mailboxId,
-			event: 'external_account.disconnected',
-			occurredAt: now,
+		const { cancelledMigration } = await stopExternalAccountSync(ctx, account, {
+			now: Date.now(),
+			reason: 'member',
 		});
-		return { ok: true };
+		return { ok: true, cancelledMigration };
 	},
 });
 
 /**
  * Hard delete: disconnect AND cascade-delete all synced data (messages + their
- * storage blobs, folders, threads, drafts, labels, sync cursors, the account
- * and mailbox rows). Runs in self-scheduling chunks so a large mailbox does not
- * exceed a single mutation's limits.
+ * storage blobs, folders, threads, drafts, labels, app passwords, memberships,
+ * sync cursors, migration records, the account and mailbox rows). Runs in
+ * self-scheduling chunks so a large mailbox does not exceed a single mutation's
+ * limits. The cascade itself is `accountTeardown._purgeChunk`.
  */
 // authz: self — purges only the caller's own external account (resolved by userId).
 export const purge = authedMutation({
@@ -208,120 +284,27 @@ export const purge = authedMutation({
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
-		// Purge the LIVE personal account (the one the migrate page renders for), not
-		// the oldest row: after a completed move the oldest row is the read-only
-		// archive, and purging that would irreversibly delete the moved-mailbox
-		// history a completed move must keep. Only when NO personal account is live
-		// (purging a lone archive) do we fall back to the caller's newest PERSONAL
-		// row so a deliberate archive purge stays possible — a shared team inbox is
-		// org infrastructure and is never reachable through this personal path.
+		// The LIVE personal account, or else the exact mailbox `getForCurrentUser`
+		// reports as retained — the two resolutions have to agree, because the only
+		// screen that calls this shows one address and offers one button.
+		//
+		// They did not. This used to fall back to the caller's NEWEST personal row
+		// with no state filter, which on a second disconnected row deleted a
+		// different mailbox than the one named on screen, and on a completed move
+		// deleted the read-only archive this docstring promises to keep. A shared
+		// team inbox is org infrastructure and is never reachable through this
+		// personal path either way.
+		const live = await getLivePersonalExternalAccountForUser(ctx, s.userId);
 		const account =
-			(await getLivePersonalExternalAccountForUser(ctx, s.userId)) ??
-			(
-				await ctx.db
-					.query('externalMailAccounts')
-					.withIndex('by_user', (q) => q.eq('userId', s.userId))
-					.order('desc')
-					.collect()
-			) // bounded: a handful of the caller's own account rows
-				.find(isPersonalAccount);
+			live ?? (await findRetainedPersonalAccount(ctx, s.userId, { forDeletion: true }))?.account;
 		if (!account) throwNotFound('External mail account');
-		const now = Date.now();
-		// Mark disconnected first so the worker stops syncing into a draining mailbox,
-		// and cancel any in-flight import up front rather than leaving it live until
-		// the last purge chunk deletes its row.
-		await ctx.db.patch(account._id, { status: 'disconnected', updatedAt: now });
-		await cancelActiveMigrationForAccount(ctx, account._id);
-		await ctx.db.patch(account.mailboxId, { status: 'deleted', updatedAt: now });
-		await ctx.scheduler.runAfter(0, internal.mail.external.accounts._purgeChunk, {
+		// Stop the worker (so it isn't syncing into a draining mailbox), then cascade.
+		await prepareAccountPurge(ctx, account, Date.now());
+		await ctx.scheduler.runAfter(0, internal.mail.external.accountTeardown._purgeChunk, {
 			accountId: account._id,
 			mailboxId: account.mailboxId,
 		});
 		return { ok: true };
-	},
-});
-
-/**
- * One purge step: delete up to PURGE_CHUNK messages (and their storage blobs),
- * re-scheduling itself while messages remain. Once messages are drained, delete
- * the remaining per-mailbox rows and the account/mailbox themselves.
- */
-export const _purgeChunk = internalMutation({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		mailboxId: v.id('mailboxes'),
-	},
-	handler: async (ctx, args) => {
-		const messages = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
-			.take(PURGE_CHUNK);
-		for (const m of messages) {
-			await ctx.storage.delete(m.rawStorageId).catch(() => undefined);
-			if (m.textBodyStorageId) await ctx.storage.delete(m.textBodyStorageId).catch(() => undefined);
-			if (m.htmlBodyStorageId) await ctx.storage.delete(m.htmlBodyStorageId).catch(() => undefined);
-			await removeMessageAttachments(ctx, m._id);
-			await ctx.db.delete(m._id);
-		}
-		if (messages.length === PURGE_CHUNK) {
-			await ctx.scheduler.runAfter(0, internal.mail.external.accounts._purgeChunk, args);
-			return;
-		}
-
-		// Messages drained — delete the rest. Each set is small per mailbox.
-		const folders = await ctx.db
-			.query('mailFolders')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect(); // bounded: per-mailbox folder set
-		for (const f of folders) await ctx.db.delete(f._id);
-
-		const threads = await ctx.db
-			.query('mailThreads')
-			.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', args.mailboxId))
-			.take(1000); // bounded: drained after messages; capped defensively
-		for (const t of threads) await ctx.db.delete(t._id);
-
-		const drafts = await ctx.db
-			.query('mailDrafts')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect(); // bounded: per-mailbox drafts
-		for (const d of drafts) await ctx.db.delete(d._id);
-
-		const labels = await ctx.db
-			.query('mailLabels')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.collect(); // bounded: per-mailbox labels
-		for (const l of labels) await ctx.db.delete(l._id);
-
-		const syncRows = await ctx.db
-			.query('externalMailFolderSync')
-			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
-			.collect(); // bounded: per-account folder cursors (≤ a handful)
-		for (const sr of syncRows) await ctx.db.delete(sr._id);
-
-		// The account's import jobs (personal migrations AND team-inbox ones) point
-		// at a row that is about to stop existing — drop them. Deleting is enough to
-		// stop an IN-FLIGHT import: `getBackfillWork` finds no row and reports
-		// inactive, and a still-in-flight batch's `recordBackfillProgress` /
-		// `completeBackfillImport` load the migration by id and bail on null. No
-		// cancel-then-delete dance, and no orphan rows for an account that is gone.
-		const migrations = await ctx.db
-			.query('mailboxMigrations')
-			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
-			.collect(); // bounded: a handful of import jobs per account
-		for (const mg of migrations) await ctx.db.delete(mg._id);
-
-		// A staged "move my mailbox here" job points at this account — drop it too,
-		// so its move row (and the terminal truth getLatestCallerMove surfaces from
-		// it) doesn't linger as the newest move after the account is gone.
-		const moves = await ctx.db
-			.query('mailboxMoves')
-			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
-			.collect(); // bounded: ≤ 1 move per account
-		for (const mv of moves) await ctx.db.delete(mv._id);
-
-		await ctx.db.delete(args.accountId);
-		await ctx.db.delete(args.mailboxId);
 	},
 });
 
@@ -365,6 +348,24 @@ export const _connectInternal = internalMutation({
 		}
 
 		const now = Date.now();
+		// Reconnecting an address this person disconnected re-opens THAT mailbox,
+		// with the mail it kept, rather than starting a second one beside it. The
+		// row's own organization has to be the caller's active one: everything else
+		// in this handler takes the org off the session, and a row carrying another
+		// one is not this tenant's to revive.
+		const retained = await findRetainedPersonalAccount(ctx, s.userId, { address });
+		if (retained && retained.account.organizationId === s.activeOrganizationId) {
+			await applyCredentialRotation(ctx, retained.account._id, args, now);
+			await ctx.db.patch(retained.mailbox._id, { status: 'active', updatedAt: now });
+			await ctx.db.insert('mailAuditLog', {
+				mailboxId: retained.mailbox._id,
+				event: 'external_account.reconnected',
+				details: address,
+				occurredAt: now,
+			});
+			await markOnboardingStep(ctx, s.userId, 'mailboxReady');
+			return { mailboxId: retained.mailbox._id, externalAccountId: retained.account._id };
+		}
 		const mailboxId = await provisionMailbox(ctx, {
 			userId: s.userId,
 			organizationId: s.activeOrganizationId,
@@ -471,6 +472,15 @@ export const setSyncStatus = internalMutation({
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
 		if (!account) return;
+		// Disconnection is the member's decision, never the worker's observation of
+		// one. A connection already in its reconnect backoff keeps reporting for up
+		// to a reconcile tick after the account is torn down, and its very next
+		// report is `error` — "credentials unavailable", because the teardown just
+		// dropped them. Letting that land would put the row back into a connectable
+		// status with no password, permanently: the worker would keep retrying, the
+		// mailbox would stay hidden, and the one-live-account guard would refuse the
+		// reconnect that could fix it.
+		if (account.status === 'disconnected') return;
 		const now = Date.now();
 		const patch: Record<string, unknown> = { status: args.status, updatedAt: now };
 		if (args.status === 'connected') {

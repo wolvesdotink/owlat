@@ -160,6 +160,9 @@ export const AUDIT_ACTION_LITERALS = [
 	// hygiene trail (`analytics/seedPlacement.ts`). Advisory only.
 	action('seed_mailbox.rotation_reminder'),
 	action('seed_mailbox.rotation_acknowledged'),
+	// Retiring a seed: the operator disconnects the mailbox (its placement
+	// history stays, the stored password does not).
+	action('seed_mailbox.disconnected'),
 	// Yahoo Complaint Feedback Loop — the guided DKIM-domain enrollment
 	// (`domains/yahooCfl.ts`). The reset is the sharp one: it clears the
 	// submitted/enrolled dates and downgrades the yahoo cell's complaint

@@ -132,16 +132,18 @@ export class AccountConnection {
 				return; // connected; event-driven + timer from here
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
-				// The backend refused to hand over credentials because the grant
-				// behind them is gone (a revoked Google authorization). It has already
-				// written `auth_error` and the "reconnect" instruction the user has to
-				// act on, so stop WITHOUT a status write: overwriting it with our own
-				// message would replace the only actionable text with a generic one,
-				// and retrying would spend a Google token request per pass forever.
+				// The backend refused to hand over credentials and only the user can
+				// change that: the Google grant behind them was revoked, or the member
+				// disconnected the account and the password was dropped with it. Either
+				// way the backend has already written the status that is true, so stop
+				// WITHOUT a status write — ours would overwrite the only actionable
+				// message with a generic one, and on a disconnected account it would
+				// put the row back into a connectable state with no credential in it.
+				// Retrying would spend a token request per pass forever.
 				if (err instanceof CredentialsUnavailableError && err.isTerminal) {
 					logger.warn(
 						{ accountId: this.account.accountId, reason: err.reason },
-						'account authorization revoked — pausing until it is reconnected'
+						'account can no longer be connected — pausing until the user reconnects it'
 					);
 					this.stopped = true;
 					return;
