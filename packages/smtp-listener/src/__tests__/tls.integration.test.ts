@@ -252,3 +252,52 @@ describe('resolveTlsConfig applies the hardened defaults', () => {
 		expect(resolved.SNICallback).toBe(sni);
 	});
 });
+
+describe('handshakeTimeoutMs is validated, because node fails open on every bad value', () => {
+	it('passes a usable window through untouched, and omits the option entirely when unset', () => {
+		expect(
+			resolveTlsConfig({ cert, key, handshakeTimeoutMs: 30_000 }).options.handshakeTimeout
+		).toBe(30_000);
+		expect(resolveTlsConfig({ cert, key }).options).not.toHaveProperty('handshakeTimeout');
+	});
+
+	// The load-bearing case. Node arms the handshake timer only
+	// `if (options.handshakeTimeout > 0)`, so a negative window arms NO timer —
+	// re-opening the unbounded pre-handshake slowloris and silently disabling
+	// server.ts's teardown, which only ever runs off `'tlsClientError'`.
+	it('rejects a negative window rather than silently arming no timer at all', () => {
+		expect(() => resolveTlsConfig({ cert, key, handshakeTimeoutMs: -1 })).toThrow(
+			/handshakeTimeoutMs must be an integer/
+		);
+	});
+
+	// `options.handshakeTimeout || (120 * 1000)`: both of these become 120 s.
+	it('rejects zero and NaN rather than silently restoring the 120 s node default', () => {
+		expect(() => resolveTlsConfig({ cert, key, handshakeTimeoutMs: 0 })).toThrow(RangeError);
+		expect(() => resolveTlsConfig({ cert, key, handshakeTimeoutMs: Number.NaN })).toThrow(
+			RangeError
+		);
+	});
+
+	// Node's timer is a 32-bit signed ms value: 2**31 warns per connection and
+	// clamps to ~24.8 days, which is not a timeout.
+	it('rejects a window that overflows the 32-bit node timer, and non-integers', () => {
+		expect(() => resolveTlsConfig({ cert, key, handshakeTimeoutMs: 2 ** 31 })).toThrow(RangeError);
+		expect(() => resolveTlsConfig({ cert, key, handshakeTimeoutMs: 1.5 })).toThrow(RangeError);
+		expect(() =>
+			resolveTlsConfig({ cert, key, handshakeTimeoutMs: Number.POSITIVE_INFINITY })
+		).toThrow(RangeError);
+	});
+
+	// A bad window must fail where an operator sees it — at construction, before
+	// a single connection is accepted — not as a hole that opens under load.
+	it('fails at listener construction, not at connect time', () => {
+		expect(() =>
+			createSmtpListener({
+				hostname: 'mx.test',
+				implicitTls: true,
+				tls: { cert, key, handshakeTimeoutMs: -1 },
+			})
+		).toThrow(RangeError);
+	});
+});
