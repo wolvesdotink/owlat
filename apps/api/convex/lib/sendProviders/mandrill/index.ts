@@ -285,8 +285,11 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 				attachments: params.attachments?.map((a) => ({
 					filename: a.filename,
 					contentType: a.contentType ?? 'application/octet-stream',
+					// `EmailAttachment.content` is runtime-neutral bytes (the isolate has no
+					// Buffer); this module is `'use node'`, so the composer's Buffer is
+					// available here at the boundary.
 					isInline: false,
-					data: a.content,
+					data: Buffer.from(a.content),
 				})),
 			});
 		} catch (error) {

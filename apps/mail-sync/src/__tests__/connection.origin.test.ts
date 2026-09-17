@@ -14,8 +14,14 @@ import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
 import type { BackfillFolderDeps } from '../backfill.js';
 
-const ingest = vi.hoisted(() => ({ ingestMessage: vi.fn(async () => {}) }));
-vi.mock('../ingest.js', () => ({ ingestMessage: ingest.ingestMessage }));
+const ingest = vi.hoisted(() => ({
+	ingestMessage: vi.fn(async () => ({ messageId: 'msg_1' })),
+	isMessageLanded: vi.fn(() => true),
+}));
+vi.mock('../ingest.js', () => ({
+	ingestMessage: ingest.ingestMessage,
+	isMessageLanded: ingest.isMessageLanded,
+}));
 
 // The folder walk itself is covered by backfill.test.ts; stubbing it here keeps
 // the backfill-loop test about ORDER (forward poll vs. ceiling snapshot).
@@ -82,7 +88,7 @@ describe('ingest origin at the connection call sites', () => {
 		await conn.pollFolder('INBOX', 'inbox');
 
 		expect(ingest.ingestMessage).toHaveBeenCalledTimes(1);
-		const params = ingest.ingestMessage.mock.calls[0]![1] as Record<string, unknown>;
+		const params = ingest.ingestMessage.mock.calls[0]![2] as Record<string, unknown>;
 		expect(params.origin).toBe('sync');
 		expect(params.remoteUid).toBe(42);
 		expect(params.folderRole).toBe('inbox');
@@ -95,7 +101,7 @@ describe('ingest origin at the connection call sites', () => {
 		await deps.ingest('INBOX', 'inbox', 17, RAW, new Set<string>());
 
 		expect(ingest.ingestMessage).toHaveBeenCalledTimes(1);
-		const params = ingest.ingestMessage.mock.calls[0]![1] as Record<string, unknown>;
+		const params = ingest.ingestMessage.mock.calls[0]![2] as Record<string, unknown>;
 		expect(params.origin).toBe('backfill');
 		expect(params.remoteUid).toBe(17);
 	});
@@ -213,7 +219,7 @@ describe('forward INBOX poll inside the backfill loop', () => {
 		// Exactly one ingest: the forward poll's, tagged 'sync' — and it happened
 		// before the first folder's walk could reach the same message.
 		expect(ingest.ingestMessage).toHaveBeenCalledTimes(1);
-		const params = ingest.ingestMessage.mock.calls[0]![1] as Record<string, unknown>;
+		const params = ingest.ingestMessage.mock.calls[0]![2] as Record<string, unknown>;
 		expect(params.origin).toBe('sync');
 		expect(params.folderRole).toBe('inbox');
 		expect(params.remoteUid).toBe(42);

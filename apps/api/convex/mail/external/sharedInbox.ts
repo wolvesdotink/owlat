@@ -62,11 +62,10 @@ import {
 	connectFieldsValidator,
 	insertExternalAccountRow,
 	applyCredentialRotation,
-	cancelActiveMigrationForAccount,
 } from './accountShared';
+import { prepareAccountPurge } from './accountTeardown';
 import { seedSharedInboxRoster } from '../mailboxMembers';
 import { requireMailboxAccess } from '../permissions';
-import { isFeatureEnabled } from '../../lib/featureFlags';
 import {
 	throwInvalidInput,
 	throwAlreadyExists,
@@ -276,44 +275,29 @@ export const purgeShared = authedMutation({
 		if (mailbox.scope !== 'shared' || mailbox.kind !== 'external' || !mailbox.externalAccountId) {
 			throwInvalidInput('This is not an external team inbox.');
 		}
+		const account = await ctx.db.get(mailbox.externalAccountId);
+		if (!account) throwNotFound('External mail account');
 		const now = Date.now();
 		// A purge may be invoked directly on a still-ACTIVE inbox (the docstring
-		// promises any status), so mirror `mailbox.remove`'s address teardown that a
-		// prior `remove` would otherwise have done: evict the address from the routing
-		// cache and, when Sealed Mail is on, revoke its E2EE address key. Without this,
-		// purging a live shared inbox deletes the mailbox while other instances keep
-		// sealing mail to a now-dead published address.
+		// promises any status), so mirror the address teardown a prior
+		// `mailbox.remove` would have done: evict the address from the routing cache,
+		// or the MTA keeps accepting mail for a mailbox that is being deleted. The
+		// Sealed Mail key revocation is `prepareAccountPurge`'s, below.
 		await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.removeFromCache, {
 			address: mailbox.address,
 		});
-		if (await isFeatureEnabled(ctx, 'sealedMail')) {
-			await ctx.scheduler.runAfter(0, internal.e2ee.lifecycle.deactivateAddressKeys, {
-				address: mailbox.address,
-			});
-		}
-		// Stop the worker syncing into a draining mailbox, then hide it. An import
-		// still running is cancelled here rather than when the last purge chunk
-		// deletes its row: `getBackfillWork` reports inactive on the worker's very
-		// next poll, so a mid-walk backfill stops fetching straight away.
-		await ctx.db.patch(mailbox.externalAccountId, { status: 'disconnected', updatedAt: now });
-		await cancelActiveMigrationForAccount(ctx, mailbox.externalAccountId);
-		await ctx.db.patch(mailbox._id, { status: 'deleted', updatedAt: now });
-		// Drop the roster + any un-accepted grants up front (bounded per inbox); the
-		// scheduled cascade below handles the unbounded per-message data.
-		for (const row of await ctx.db
-			.query('mailboxMembers')
-			.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailbox._id))
-			.collect()) {
-			await ctx.db.delete(row._id); // bounded: one team's roster
-		}
+		// Drop any un-accepted grants up front (bounded per inbox); the scheduled
+		// cascade handles the roster and the unbounded per-message data.
 		for (const grant of await ctx.db
 			.query('pendingMailboxMembers')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
 			.collect()) {
 			await ctx.db.delete(grant._id); // bounded: open invites on one inbox
 		}
-		await ctx.scheduler.runAfter(0, internal.mail.external.accounts._purgeChunk, {
-			accountId: mailbox.externalAccountId,
+		// Stops the worker (and forgets the stored password), then cascades.
+		await prepareAccountPurge(ctx, account, now);
+		await ctx.scheduler.runAfter(0, internal.mail.external.accountTeardown._purgeChunk, {
+			accountId: account._id,
 			mailboxId: mailbox._id,
 		});
 		return { ok: true as const };

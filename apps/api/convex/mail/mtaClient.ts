@@ -91,7 +91,7 @@ type AttachmentScanVerdict =
 export async function scanAttachmentBytes(
 	mta: MtaConfig | null,
 	filename: string,
-	data: Buffer
+	data: Uint8Array
 ): Promise<AttachmentScanVerdict> {
 	if (!mta) return { kind: 'skipped' }; // scanner not configured → fail-open, silent
 

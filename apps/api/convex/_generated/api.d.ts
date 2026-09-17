@@ -555,6 +555,7 @@ import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
 import type * as lib_aiProviderConfigValidators from '../lib/aiProviderConfigValidators.js';
 import type * as lib_atRestBodies from '../lib/atRestBodies.js';
+import type * as lib_bytes from '../lib/bytes.js';
 import type * as lib_auditLog from '../lib/auditLog.js';
 import type * as lib_authedFunctions from '../lib/authedFunctions.js';
 import type * as lib_automationConfigTypes from '../lib/automationConfigTypes.js';
@@ -617,7 +618,6 @@ import type * as lib_mailContentValidators from '../lib/mailContentValidators.js
 import type * as lib_mailSettingsValidators from '../lib/mailSettingsValidators.js';
 import type * as lib_mailMute from '../lib/mailMute.js';
 import type * as lib_mailSnooze from '../lib/mailSnooze.js';
-import type * as lib_accountExportEncoding from '../lib/accountExportEncoding.js';
 import type * as lib_accountExportTemplates from '../lib/accountExportTemplates.js';
 import type * as lib_messageBody from '../lib/messageBody.js';
 import type * as lib_messageBodyExport from '../lib/messageBodyExport.js';
@@ -761,7 +761,9 @@ import type * as mail_external_accountShared from '../mail/external/accountShare
 import type * as mail_external_accounts from '../mail/external/accounts.js';
 import type * as mail_external_accountsActions from '../mail/external/accountsActions.js';
 import type * as mail_external_accountsSeed from '../mail/external/accountsSeed.js';
+import type * as mail_external_accountTeardown from '../mail/external/accountTeardown.js';
 import type * as mail_external_delivery from '../mail/external/delivery.js';
+import type * as mail_external_rawUploadHttp from '../mail/external/rawUploadHttp.js';
 import type * as mail_external_externalFeature from '../mail/external/externalFeature.js';
 import type * as mail_external_googleOAuth from '../mail/external/googleOAuth.js';
 import type * as mail_external_googleOAuthActions from '../mail/external/googleOAuthActions.js';
@@ -808,6 +810,7 @@ import type * as mail_memberMailboxStatus from '../mail/memberMailboxStatus.js';
 import type * as mail_messageActions from '../mail/messageActions.js';
 import type * as mail_messagePurge from '../mail/messagePurge.js';
 import type * as mail_migration from '../mail/migration.js';
+import type * as mail_migrationBackfill from '../mail/migrationBackfill.js';
 import type * as mail_migrationIndexing from '../mail/migrationIndexing.js';
 import type * as mail_migrationShared from '../mail/migrationShared.js';
 import type * as mail_mtaClient from '../mail/mtaClient.js';
@@ -854,6 +857,7 @@ import type * as migrations_0037_backfill_mail_categories from '../migrations/00
 import type * as migrations_0038_rebuild_file_search_text from '../migrations/0038_rebuild_file_search_text.js';
 import type * as migrations_0039_backfill_dkim_ownership from '../migrations/0039_backfill_dkim_ownership.js';
 import type * as migrations_0040_backfill_credential_allowed_domains from '../migrations/0040_backfill_credential_allowed_domains.js';
+import type * as migrations_0041_forget_disconnected_credentials from '../migrations/0041_forget_disconnected_credentials.js';
 import type * as platformAdmin_bootstrap from '../platformAdmin/bootstrap.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
@@ -1642,6 +1646,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/retrieval': typeof knowledge_retrieval;
 	'lib/aiProviderConfigValidators': typeof lib_aiProviderConfigValidators;
 	'lib/atRestBodies': typeof lib_atRestBodies;
+	'lib/bytes': typeof lib_bytes;
 	'lib/auditLog': typeof lib_auditLog;
 	'lib/authedFunctions': typeof lib_authedFunctions;
 	'lib/automationConfigTypes': typeof lib_automationConfigTypes;
@@ -1704,7 +1709,6 @@ declare const fullApi: ApiFromModules<{
 	'lib/mailSettingsValidators': typeof lib_mailSettingsValidators;
 	'lib/mailMute': typeof lib_mailMute;
 	'lib/mailSnooze': typeof lib_mailSnooze;
-	'lib/accountExportEncoding': typeof lib_accountExportEncoding;
 	'lib/accountExportTemplates': typeof lib_accountExportTemplates;
 	'lib/messageBody': typeof lib_messageBody;
 	'lib/messageBodyExport': typeof lib_messageBodyExport;
@@ -1848,7 +1852,9 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/accounts': typeof mail_external_accounts;
 	'mail/external/accountsActions': typeof mail_external_accountsActions;
 	'mail/external/accountsSeed': typeof mail_external_accountsSeed;
+	'mail/external/accountTeardown': typeof mail_external_accountTeardown;
 	'mail/external/delivery': typeof mail_external_delivery;
+	'mail/external/rawUploadHttp': typeof mail_external_rawUploadHttp;
 	'mail/external/externalFeature': typeof mail_external_externalFeature;
 	'mail/external/googleOAuth': typeof mail_external_googleOAuth;
 	'mail/external/googleOAuthActions': typeof mail_external_googleOAuthActions;
@@ -1895,6 +1901,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/messageActions': typeof mail_messageActions;
 	'mail/messagePurge': typeof mail_messagePurge;
 	'mail/migration': typeof mail_migration;
+	'mail/migrationBackfill': typeof mail_migrationBackfill;
 	'mail/migrationIndexing': typeof mail_migrationIndexing;
 	'mail/migrationShared': typeof mail_migrationShared;
 	'mail/mtaClient': typeof mail_mtaClient;
@@ -1941,6 +1948,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0038_rebuild_file_search_text': typeof migrations_0038_rebuild_file_search_text;
 	'migrations/0039_backfill_dkim_ownership': typeof migrations_0039_backfill_dkim_ownership;
 	'migrations/0040_backfill_credential_allowed_domains': typeof migrations_0040_backfill_credential_allowed_domains;
+	'migrations/0041_forget_disconnected_credentials': typeof migrations_0041_forget_disconnected_credentials;
 	'platformAdmin/bootstrap': typeof platformAdmin_bootstrap;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;

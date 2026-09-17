@@ -41,15 +41,15 @@ export const fn = {
 
 	// ── Historical backfill (migration) ──────────────────────────────────
 	// Whether a migration is importing + each folder's backfill cursor (internalQuery).
-	getBackfillWork: 'mail/migration:getBackfillWork' as FnRef,
+	getBackfillWork: 'mail/migrationBackfill:getBackfillWork' as FnRef,
 	// Snapshot a folder's high-water UID + count; returns the start cursor (internalMutation).
-	initFolderBackfill: 'mail/migration:initFolderBackfill' as FnRef,
+	initFolderBackfill: 'mail/migrationBackfill:initFolderBackfill' as FnRef,
 	// Persist one descending backfill batch's progress (internalMutation).
-	recordBackfillProgress: 'mail/migration:recordBackfillProgress' as FnRef,
+	recordBackfillProgress: 'mail/migrationBackfill:recordBackfillProgress' as FnRef,
 	// Signal "all folders backfilled" → hand off to AI indexing / finalize (internalMutation).
-	completeBackfillImport: 'mail/migration:completeBackfillImport' as FnRef,
+	completeBackfillImport: 'mail/migrationBackfill:completeBackfillImport' as FnRef,
 	// Signal "backfill threw and won't self-heal" → migration → failed (internalMutation).
-	markImportFailed: 'mail/migration:markImportFailed' as FnRef,
+	markImportFailed: 'mail/migrationBackfill:markImportFailed' as FnRef,
 };
 
 /** Plaintext credential bundle returned by getCredentialsForWorker. */
@@ -84,17 +84,23 @@ export interface WorkerCredentials {
 }
 
 /** Why a credential fetch came back empty. Mirrors the backend's union. */
-export type CredentialsUnavailableReason = 'missing' | 'auth_revoked' | 'refresh_failed';
+export type CredentialsUnavailableReason =
+	| 'missing'
+	| 'disconnected'
+	| 'auth_revoked'
+	| 'refresh_failed';
 
 /**
  * What `getCredentialsForWorker` answers with.
  *
  * Mirrors `WorkerCredentialsResult` in
  * `apps/api/convex/mail/external/accountsActions.ts`. The discriminant exists so
- * this worker can tell the one TERMINAL outcome apart from the retryable ones:
+ * this worker can tell the TERMINAL outcomes apart from the retryable ones:
  * `auth_revoked` means the backend has already marked the account `auth_error`
- * with the message that tells the user to reconnect, so there is nothing to
- * retry and nothing better to say.
+ * with the message that tells the user to reconnect, and `disconnected` means
+ * the member ended the connection and the password is gone. Neither can be
+ * changed by retrying, and in both cases the backend has already written the
+ * status that is true.
  */
 export type WorkerCredentialsResult =
 	| { kind: 'credentials'; credentials: WorkerCredentials }
@@ -112,7 +118,7 @@ export class CredentialsUnavailableError extends Error {
 
 	/** Terminal: only the user reconnecting the account can change the answer. */
 	get isTerminal(): boolean {
-		return this.reason === 'auth_revoked';
+		return this.reason === 'auth_revoked' || this.reason === 'disconnected';
 	}
 }
 

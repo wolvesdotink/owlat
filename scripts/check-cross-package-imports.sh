@@ -160,6 +160,37 @@ fi
 
 echo "ok:   @owlat/mta-protocol/wireFixtures imported only from __tests__/ folders"
 
+# ── `@owlat/smtp-listener/testClient` is test-only, and only this says so ──
+#
+# Same shape, same reason as the wire fixtures above: the raw-socket SMTP client
+# the listener suites drive lives in `src/` because it is the only place BOTH
+# this package's suites and `apps/mta`'s MX suites can import ONE copy from. The
+# fork it replaced is what this gate is really about — `apps/mta` carried a
+# stale copy whose non-consuming `waitCode` raced the server's `220 Ready to
+# start TLS`, and the suite flaked for months instead of failing. The cost of
+# one copy is a public subpath export that a shipped handler could import just
+# as happily as a suite; nothing else in CI would notice test bytes reaching
+# production.
+test_client=$(scan "['\"]@owlat/smtp-listener/testClient['\"]" "${SOURCES[@]}" |
+	grep -v -e '/__tests__/' -e '^scripts/check-cross-package-imports\.sh$' || true)
+[ -n "$test_client" ] && test_client="$test_client"$'\n'
+
+if [ -n "$test_client" ]; then
+	count=$(printf '%s' "$test_client" | grep -c .)
+	echo ""
+	echo "FAIL: $count file(s) outside a __tests__/ folder import @owlat/smtp-listener/testClient."
+	echo "The raw-socket SMTP client is test-only; production code must import the"
+	echo "listener itself ('@owlat/smtp-listener')."
+	echo ""
+	printf '%s' "$test_client" | while IFS= read -r f; do
+		[ -n "$f" ] || continue
+		grep -nE "['\"]@owlat/smtp-listener/testClient['\"]" "$f" | sed "s#^#  $f:#"
+	done
+	exit 1
+fi
+
+echo "ok:   @owlat/smtp-listener/testClient imported only from __tests__/ folders"
+
 # ── `@owlat/mail-message` stays importable straight from a Convex node action ──
 #
 # The composer is imported by `@owlat/shared`, which Convex bundles. Its only

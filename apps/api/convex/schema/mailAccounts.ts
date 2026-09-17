@@ -120,10 +120,33 @@ export const mailAccountsTables = {
 		// — `{ imapPassword, smtpPassword? }` on a password row, `{ oauthRefreshToken }`
 		// on an oauth2 one; these fields hold its ciphertext/iv/tag.
 		// secretEnvelopeVersion pairs the blob per the CONVENTIONS.md versioning rule.
-		secretCiphertext: v.string(),
-		secretIv: v.string(),
-		secretAuthTag: v.string(),
-		secretEnvelopeVersion: v.number(),
+		//
+		// OPTIONAL because disconnecting is supposed to FORGET the credential:
+		// `mail/external/accountTeardown.ts` drops all four fields when a member
+		// disconnects their mailbox (or an admin retires it, or a seed is retired),
+		// leaving the row for its audit trail and its retained mail with no secret
+		// in it. A live account always carries the envelope — connect and every
+		// credential rotation write all four together — so absent means
+		// "disconnected", and `getCredentialsForWorker` answers such a row with the
+		// terminal `disconnected` reason instead of handing the worker anything.
+		secretCiphertext: v.optional(v.string()),
+		secretIv: v.optional(v.string()),
+		secretAuthTag: v.optional(v.string()),
+		secretEnvelopeVersion: v.optional(v.number()),
+
+		// A hard purge is draining this account's data (set when `purge` schedules
+		// the cascade, cleared only by the row's own deletion at the end of it).
+		// The rows survive for as long as the chunked delete runs, so without this
+		// marker the account reads as an ordinary disconnected one with mail kept —
+		// and reconnecting mid-drain would re-attach a mailbox the cascade is about
+		// to delete.
+		purgeStartedAt: v.optional(v.number()),
+		// An ADMIN retired this mailbox (`mail/mailbox/identity.ts`'s `remove`),
+		// rather than its owner disconnecting it. A reconnect must not re-attach
+		// such a mailbox — that would undo an administrative decision — so the
+		// owner reconnecting the same address gets a fresh mailbox, as they did
+		// before re-attach existed.
+		adminRetiredAt: v.optional(v.number()),
 
 		// Connection/sync status — the mail-sync worker is the writer.
 		status: v.union(
@@ -265,7 +288,17 @@ export const mailAccountsTables = {
 
 		// AGGREGATED — progress counters.
 		messagesTotal: v.number(), // Σ per-folder backfillTotal (import denominator)
-		messagesImported: v.number(), // Σ per-folder backfillDone (import numerator)
+		// Messages that are IN the mailbox because of this walk — stored by it, or
+		// already present when it got there (Gmail's "All Mail" repeats every other
+		// folder, so a dedup hit is mail the user has, not mail that was lost).
+		messagesImported: v.number(),
+		// Messages the worker walked past without storing — an ingest that threw,
+		// or a UID the server listed but returned no body for. MISSING = 0 (rows
+		// written before the two were told apart, when a failed ingest still
+		// counted as an import and a wholly failed run looked like a clean one).
+		// Progress is `(messagesImported + messagesFailed) / messagesTotal`, so the
+		// bar still completes while the imported count stays true.
+		messagesFailed: v.optional(v.number()),
 		messagesIndexed: v.number(), // messages swept into the knowledge graph
 
 		// Index-sweep cursor over mailMessages (mirrors knowledgeBackfill).

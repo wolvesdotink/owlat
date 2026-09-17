@@ -23,7 +23,7 @@ import type { MailSyncConfig } from './config.js';
 import { mapFolderRole, type FolderRole } from './folders.js';
 import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
-import { ingestMessage } from './ingest.js';
+import { ingestMessage, isMessageLanded, type RawUploadConfig } from './ingest.js';
 import {
 	backfillFolder,
 	type BackfillFetchedMessage,
@@ -98,6 +98,11 @@ export class AccountConnection {
 		private readonly config: MailSyncConfig
 	) {}
 
+	/** Where `ingestMessage` PUTs the raw `.eml` before referencing it. */
+	private get rawUploadConfig(): RawUploadConfig {
+		return { convexSiteUrl: this.config.convexSiteUrl, apiKey: this.config.apiKey };
+	}
+
 	async start(): Promise<void> {
 		this.stopped = false;
 		await this.connectLoop();
@@ -127,16 +132,18 @@ export class AccountConnection {
 				return; // connected; event-driven + timer from here
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
-				// The backend refused to hand over credentials because the grant
-				// behind them is gone (a revoked Google authorization). It has already
-				// written `auth_error` and the "reconnect" instruction the user has to
-				// act on, so stop WITHOUT a status write: overwriting it with our own
-				// message would replace the only actionable text with a generic one,
-				// and retrying would spend a Google token request per pass forever.
+				// The backend refused to hand over credentials and only the user can
+				// change that: the Google grant behind them was revoked, or the member
+				// disconnected the account and the password was dropped with it. Either
+				// way the backend has already written the status that is true, so stop
+				// WITHOUT a status write — ours would overwrite the only actionable
+				// message with a generic one, and on a disconnected account it would
+				// put the row back into a connectable state with no credential in it.
+				// Retrying would spend a token request per pass forever.
 				if (err instanceof CredentialsUnavailableError && err.isTerminal) {
 					logger.warn(
 						{ accountId: this.account.accountId, reason: err.reason },
-						'account authorization revoked — pausing until it is reconnected'
+						'account can no longer be connected — pausing until the user reconnects it'
 					);
 					this.stopped = true;
 					return;
@@ -329,7 +336,7 @@ export class AccountConnection {
 				const uid = Number(msg.uid);
 				if (!msg.source || uid <= cursor.lastSeenUid) continue;
 				try {
-					await ingestMessage(this.convex, {
+					await ingestMessage(this.convex, this.rawUploadConfig, {
 						accountId: this.account.accountId,
 						folderRole: role,
 						remoteName,
@@ -554,8 +561,8 @@ export class AccountConnection {
 					lock.release();
 				}
 			},
-			ingest: async (remoteName, role, uid, raw, flags) =>
-				ingestMessage(this.convex, {
+			ingest: async (remoteName, role, uid, raw, flags) => {
+				const outcome = await ingestMessage(this.convex, this.rawUploadConfig, {
 					accountId,
 					folderRole: role,
 					remoteName,
@@ -565,8 +572,28 @@ export class AccountConnection {
 					flags,
 					// Historical import: never enqueue background LLM work for it.
 					origin: 'backfill',
-				}),
-			recordProgress: async (remoteName, newCursor, importedDelta) => {
+				});
+				const landed = isMessageLanded(outcome);
+				if (!landed && 'skipped' in outcome) {
+					// Stored nothing and did not throw — the shape that used to be
+					// indistinguishable from a successful import.
+					logger.warn(
+						{ accountId, remoteName, uid, reason: outcome.skipped },
+						'backfill ingest stored nothing'
+					);
+				}
+				return landed;
+			},
+			reportIngestFailure: (remoteName, uid, err) => {
+				// The forward-sync loop logs its skips (pollFolder below); the backfill
+				// used to swallow them, which is how an ingest that threw on every
+				// message still reported a completed import.
+				logger.warn(
+					{ accountId, remoteName, uid, err },
+					'backfill ingest failed; skipping message'
+				);
+			},
+			recordProgress: async (remoteName, newCursor, importedDelta, failedDelta) => {
 				const res = (await this.convex.mutation(
 					fn.recordBackfillProgress as never,
 					{
@@ -575,6 +602,7 @@ export class AccountConnection {
 						remoteName,
 						newCursor,
 						importedDelta,
+						failedDelta,
 					} as never
 				)) as { stillImporting: boolean };
 				return res.stillImporting;

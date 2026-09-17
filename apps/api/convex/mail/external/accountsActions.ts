@@ -76,7 +76,10 @@ export interface WorkerCredentials {
  */
 export type WorkerCredentialsResult =
 	| { kind: 'credentials'; credentials: WorkerCredentials }
-	| { kind: 'unavailable'; reason: 'missing' | 'auth_revoked' | 'refresh_failed' };
+	| {
+			kind: 'unavailable';
+			reason: 'missing' | 'disconnected' | 'auth_revoked' | 'refresh_failed';
+	  };
 
 const credentialArgs = {
 	emailAddress: v.string(),
@@ -339,6 +342,32 @@ export const getCredentialsForWorker = internalAction({
 			accountId: args.accountId,
 		});
 		if (!row) return { kind: 'unavailable', reason: 'missing' };
+		// A disconnected account has had its sealed envelope dropped — the member
+		// asked us to forget the credential, and `mail/external/accountTeardown.ts`
+		// did. Nothing here can change that answer except the member reconnecting,
+		// so it is terminal: a worker still holding a connection through the
+		// teardown stops instead of retrying (and instead of writing a status that
+		// would put the row back into a connectable state with no credential).
+		//
+		// Read into locals so the rest of this handler has the envelope narrowed:
+		// the four fields are written together and dropped together, and every
+		// decrypt below needs all four present.
+		const { secretCiphertext, secretIv, secretAuthTag, secretEnvelopeVersion } = row;
+		if (
+			row.status === 'disconnected' ||
+			secretCiphertext === undefined ||
+			secretIv === undefined ||
+			secretAuthTag === undefined ||
+			secretEnvelopeVersion === undefined
+		) {
+			return { kind: 'unavailable', reason: 'disconnected' };
+		}
+		const envelope = {
+			ciphertext: secretCiphertext,
+			iv: secretIv,
+			authTag: secretAuthTag,
+			version: secretEnvelopeVersion,
+		};
 
 		// An OAuth account carries a refresh token where a password row carries
 		// passwords. Mint a short-lived access token from it and hand the worker
@@ -348,21 +377,13 @@ export const getCredentialsForWorker = internalAction({
 		if (row.authMethod === 'oauth2') {
 			let refreshToken: string | undefined;
 			try {
-				refreshToken = (
-					JSON.parse(
-						decryptSecret({
-							ciphertext: row.secretCiphertext,
-							iv: row.secretIv,
-							authTag: row.secretAuthTag,
-							version: row.secretEnvelopeVersion,
-						})
-					) as { oauthRefreshToken?: string }
-				).oauthRefreshToken;
+				refreshToken = (JSON.parse(decryptSecret(envelope)) as { oauthRefreshToken?: string })
+					.oauthRefreshToken;
 			} catch {
 				return { kind: 'unavailable', reason: 'missing' };
 			}
 			if (!refreshToken) return { kind: 'unavailable', reason: 'missing' };
-			const token = await refreshGoogleAccessToken(ctx, row._id, refreshToken, row.secretIv);
+			const token = await refreshGoogleAccessToken(ctx, row._id, refreshToken, secretIv);
 			if (token.kind !== 'token') {
 				return {
 					kind: 'unavailable',
@@ -390,14 +411,7 @@ export const getCredentialsForWorker = internalAction({
 
 		let creds: { imapPassword: string; smtpPassword?: string };
 		try {
-			creds = JSON.parse(
-				decryptSecret({
-					ciphertext: row.secretCiphertext,
-					iv: row.secretIv,
-					authTag: row.secretAuthTag,
-					version: row.secretEnvelopeVersion,
-				})
-			);
+			creds = JSON.parse(decryptSecret(envelope));
 		} catch {
 			return { kind: 'unavailable', reason: 'missing' };
 		}

@@ -78,6 +78,28 @@ const connectedProvider = computed<MailProvider>(() =>
 const connectedSource = computed<'google' | 'imap'>(() =>
 	account.value?.configured && account.value.imapHost.includes('gmail') ? 'google' : 'imap'
 );
+
+/**
+ * Messages the import walked past without storing — an ingest that failed, or a
+ * message the server would not hand over. They are still on the remote server,
+ * so re-running the import retries them.
+ */
+const skippedCount = computed(() => migration.value?.messagesFailed ?? 0);
+
+/**
+ * "Your mail history is in Owlat" is not true of an import that left messages
+ * behind, and claiming it directly above the count that says otherwise is the
+ * same kind of overstatement this screen used to make about the whole import.
+ */
+const completedBodyCopy = computed(() => {
+	const prefix = 'dashboard.postbox.migrate.';
+	if (skippedCount.value > 0) {
+		return t(
+			isAiIndexing.value ? `${prefix}completedPartialBodyWithAi` : `${prefix}completedPartialBody`
+		);
+	}
+	return t(isAiIndexing.value ? `${prefix}completedBodyWithAi` : `${prefix}completedBody`);
+});
 async function handleStartImport() {
 	const res = await start(connectedSource.value);
 	if (res.ok) showToast(t('dashboard.postbox.migrate.toastImportStarted'), 'success');
@@ -122,30 +144,13 @@ onMounted(() => {
 // to object literals, so passing the whole object through type-checks cleanly.
 const editAccount = computed(() => (account.value?.configured ? account.value : null));
 
-// ── Manage: edit credentials / disconnect / purge ───────────────────────────
-const editing = ref(false);
+// ── Re-enter credentials (the reconnect step) ───────────────────────────────
+// Everything else about managing the connection — changing the password from a
+// healthy state, disconnecting, deleting — belongs to
+// PostboxConnectedAccountCard, rendered below the wizard in every state, so it
+// is reachable long after this wizard is done rather than only at `ready`.
 function handleUpdated() {
-	editing.value = false;
 	showToast(t('dashboard.postbox.migrate.toastCredentialsUpdated'), 'success');
-}
-
-const disconnectOp = useBackendOperation(api.mail.external.accounts.disconnect, {
-	label: () => t('dashboard.postbox.migrate.disconnectOperation'),
-});
-const purgeOp = useBackendOperation(api.mail.external.accounts.purge, {
-	label: () => t('dashboard.postbox.migrate.purgeOperation'),
-});
-const showDisconnect = ref(false);
-const showPurge = ref(false);
-async function handleDisconnect() {
-	const res = await disconnectOp.run({});
-	showDisconnect.value = false;
-	if (res.ok) showToast(t('dashboard.postbox.migrate.toastDisconnected'), 'success');
-}
-async function handlePurge() {
-	const res = await purgeOp.run({});
-	showPurge.value = false;
-	if (res.ok) showToast(t('dashboard.postbox.migrate.toastPurging'), 'success');
 }
 
 // ── Detected signature (completion nice-touch) ──────────────────────────────
@@ -325,7 +330,7 @@ const steps = computed(() =>
 
 			<!-- ───────────────────────── Ready ───────────────────────── -->
 			<section v-else-if="step === 'ready'" class="space-y-5">
-				<UiCard v-if="!editing" padding="lg">
+				<UiCard padding="lg">
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:check-circle-2" size="md" variant="success" rounded="xl" />
 						<div>
@@ -357,36 +362,7 @@ const steps = computed(() =>
 						<UiButton variant="primary" :loading="startBusy" @click="handleStartImport">
 							{{ t('dashboard.postbox.migrate.startImport') }}
 						</UiButton>
-						<UiButton variant="ghost" @click="editing = true">
-							{{ t('dashboard.postbox.migrate.updateCredentials') }}
-						</UiButton>
-						<UiButton variant="ghost" class="text-error" @click="showDisconnect = true">
-							{{ t('dashboard.postbox.migrate.disconnect') }}
-						</UiButton>
-						<UiButton variant="ghost" class="text-error" @click="showPurge = true">
-							{{ t('dashboard.postbox.migrate.deleteMailboxAndData') }}
-						</UiButton>
 					</div>
-				</UiCard>
-
-				<!-- Edit credentials -->
-				<UiCard v-else padding="lg">
-					<template #header>
-						<h2 class="font-semibold">
-							{{
-								t('dashboard.postbox.migrate.updateCredentialsTitle', {
-									email: account?.emailAddress ?? '',
-								})
-							}}
-						</h2>
-					</template>
-					<PostboxMailboxConnectForm
-						:provider="connectedProvider"
-						mode="update"
-						:account="editAccount"
-						@submitted="handleUpdated"
-						@cancel="editing = false"
-					/>
 				</UiCard>
 			</section>
 
@@ -516,21 +492,21 @@ const steps = computed(() =>
 				<UiCard padding="lg">
 					<div class="text-center py-2">
 						<UiIconBox
-							icon="lucide:party-popper"
+							:icon="skippedCount > 0 ? 'lucide:package-check' : 'lucide:party-popper'"
 							size="xl"
-							variant="success"
+							:variant="skippedCount > 0 ? 'warning' : 'success'"
 							rounded="2xl"
 							class="mx-auto"
 						/>
 						<h2 class="text-xl font-semibold mt-4">
-							{{ t('dashboard.postbox.migrate.completedTitle') }}
+							{{
+								skippedCount > 0
+									? t('dashboard.postbox.migrate.completedPartialTitle')
+									: t('dashboard.postbox.migrate.completedTitle')
+							}}
 						</h2>
 						<p class="text-text-secondary mt-1">
-							{{
-								isAiIndexing
-									? t('dashboard.postbox.migrate.completedBodyWithAi')
-									: t('dashboard.postbox.migrate.completedBody')
-							}}
+							{{ completedBodyCopy }}
 						</p>
 
 						<div class="grid grid-cols-2 gap-3 mt-6 text-left">
@@ -548,6 +524,31 @@ const steps = computed(() =>
 								</p>
 								<p class="text-xs text-text-tertiary mt-0.5">
 									{{ t('dashboard.postbox.migrate.statConversationsLearned') }}
+								</p>
+							</div>
+						</div>
+
+						<div
+							v-if="skippedCount > 0"
+							class="mt-6 rounded-xl border border-warning/20 bg-warning/5 p-4 text-left flex items-start gap-3"
+						>
+							<UiIconBox
+								icon="lucide:alert-triangle"
+								size="sm"
+								variant="warning"
+								rounded="lg"
+								class="mt-0.5"
+							/>
+							<div>
+								<p class="text-sm font-medium">
+									{{
+										t('dashboard.postbox.migrate.skippedTitle', skippedCount, {
+											named: { count: formatCount(skippedCount) },
+										})
+									}}
+								</p>
+								<p class="text-xs text-text-secondary mt-0.5">
+									{{ t('dashboard.postbox.migrate.skippedBody') }}
 								</p>
 							</div>
 						</div>
@@ -665,6 +666,20 @@ const steps = computed(() =>
 		</template>
 
 		<!--
+			The connection itself: its state, changing the password, disconnecting,
+			deleting. Inside the feature gate (there is no connection to manage
+			without it) but outside the step branches, because ending a connection
+			has to stay reachable in every one of them — including long after the
+			import has finished, which is where this used to disappear.
+		-->
+		<PostboxConnectedAccountCard
+			v-if="externalEnabled && !flagsLoading"
+			class="mt-8"
+			:show-empty-state="false"
+			:show-credential-update="step !== 'reconnect'"
+		/>
+
+		<!--
 			Import from a file. Outside the feature gate above on purpose: the IMAP
 			half of this wizard needs `mail.external`, but taking someone's Takeout
 			archive needs nothing but a mailbox to put it in — and the people with
@@ -683,32 +698,6 @@ const steps = computed(() =>
 			@confirm="handleCancel"
 			@cancel="showCancel = false"
 			@update:open="showCancel = $event"
-		/>
-
-		<!-- Disconnect confirm -->
-		<UiConfirmationDialog
-			:open="showDisconnect"
-			:title="t('dashboard.postbox.migrate.disconnectDialogTitle')"
-			:description="t('dashboard.postbox.migrate.disconnectDialogDescription')"
-			:confirm-text="t('dashboard.postbox.migrate.disconnect')"
-			variant="warning"
-			:is-loading="disconnectOp.isLoading.value"
-			@confirm="handleDisconnect"
-			@cancel="showDisconnect = false"
-			@update:open="showDisconnect = $event"
-		/>
-
-		<!-- Purge confirm -->
-		<UiConfirmationDialog
-			:open="showPurge"
-			:title="t('dashboard.postbox.migrate.purgeDialogTitle')"
-			:description="t('dashboard.postbox.migrate.purgeDialogDescription')"
-			:confirm-text="t('dashboard.postbox.migrate.purgeConfirm')"
-			variant="danger"
-			:is-loading="purgeOp.isLoading.value"
-			@confirm="handlePurge"
-			@cancel="showPurge = false"
-			@update:open="showPurge = $event"
 		/>
 	</div>
 </template>

@@ -216,6 +216,13 @@ export const eraseMemberData = internalMutation({
 				.withIndex('by_account', (q) => q.eq('accountId', account._id))
 				.collect(); // bounded: folders of one account
 			for (const row of syncRows) await ctx.db.delete(row._id);
+			// The import records name the account row deleted below, and carry the
+			// erased member's `userId` themselves.
+			const migrations = await ctx.db
+				.query('mailboxMigrations')
+				.withIndex('by_account', (q) => q.eq('accountId', account._id))
+				.collect(); // bounded: one migration per import attempt
+			for (const migration of migrations) await ctx.db.delete(migration._id);
 			await ctx.db.delete(account._id);
 		}
 		const userPasswords = await ctx.db

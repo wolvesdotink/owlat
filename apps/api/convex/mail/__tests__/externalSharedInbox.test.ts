@@ -510,7 +510,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 		const { migrationId } = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
 		expect(await onboardingRows(t)).toHaveLength(0);
 
-		await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
 		expect(await onboardingRows(t)).toHaveLength(0);
 
 		// And the knowledge sweep's terminal transition stamps nothing either.
@@ -612,7 +612,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 			expect(m!.completedAt).toBeDefined();
 		});
 		// The worker's next poll goes idle.
-		const work = await t.query(internal.mail.migration.getBackfillWork, {
+		const work = await t.query(internal.mail.migrationBackfill.getBackfillWork, {
 			accountId: externalAccountId,
 		});
 		expect(work.isActive).toBe(false);
@@ -794,7 +794,7 @@ describe('purging a removed shared external inbox', () => {
 			const cancelled = await t.run((ctx) => ctx.db.get(migrationId));
 			expect(cancelled!.status).toBe('cancelled');
 			expect(cancelled!.completedAt).toBeDefined();
-			const work = await t.query(internal.mail.migration.getBackfillWork, {
+			const work = await t.query(internal.mail.migrationBackfill.getBackfillWork, {
 				accountId: externalAccountId,
 			});
 			expect(work.isActive).toBe(false);

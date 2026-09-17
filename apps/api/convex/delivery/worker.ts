@@ -372,7 +372,8 @@ export const sendSingleEmail = internalAction({
 		// gate before dispatch — to honor the suppression obligation (CAN-SPAM
 		// §316.5 + the Gmail/Yahoo 2024 sender requirements). O(1) indexed point
 		// read via `blockedEmails.by_email`; NOT a scan. The non-campaign path
-		// already gates at enqueue (delivery/enqueue.ts), so it is not re-checked.
+		// already gates at intake (delivery/nonCampaignIntake.ts, via
+		// delivery/sendIntakeGates.ts), so it is not re-checked.
 		if (envelopeInput.kind === 'campaign') {
 			const blocked = await ctx.runQuery(internal.blockedEmails.isBlockedInternal, {
 				email: envelopeInput.to,

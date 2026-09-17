@@ -141,7 +141,7 @@ describe('userOnboarding — real hook wiring', () => {
 		expect(state.knowledgeIndexed).toBeNull();
 
 		// Import done → hands off to the indexing phase (ai.knowledge is on).
-		await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
 		state = await t.query(api.auth.userOnboarding.get, { userId: 'user-A' });
 		expect(typeof state.importDone).toBe('number');
 		// Still indexing — knowledge is not indexed until the sweep finalizes.
@@ -164,7 +164,7 @@ describe('userOnboarding — real hook wiring', () => {
 
 		await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 		const { migrationId } = await t.mutation(api.mail.migration.start, {});
-		await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
 
 		// The feature-disable branch finalizes 'completed' but ran-to-completion is
 		// false — the knowledge sweep was cut off, so the step must NOT be marked.
@@ -187,7 +187,7 @@ describe('userOnboarding — real hook wiring', () => {
 
 			await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 			const { migrationId } = await t.mutation(api.mail.migration.start, {});
-			await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });
+			await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
 
 			await t.mutation(internal.mail.migrationIndexing.finalizeMigration, {
 				migrationId,

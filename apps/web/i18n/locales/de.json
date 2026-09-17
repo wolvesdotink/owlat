@@ -2111,6 +2111,11 @@
 				"addMailbox": "Testpostfach hinzufügen",
 				"credentialsRotated": "Zugangsdaten gewechselt",
 				"detailsLabel": "Messdetails",
+				"disconnect": "Trennen",
+				"disconnectAriaLabel": "Testpostfach {address} trennen",
+				"disconnectDialogDescription": "Owlat schickt keine Testkopien mehr an {address} und vergisst dessen Passwort. Alle bisherigen Messungen bleiben erhalten, und der belegte Platz wird für ein anderes Postfach frei.",
+				"disconnectDialogTitle": "Dieses Testpostfach trennen?",
+				"disconnectOperation": "Testpostfach trennen",
 				"feedbackConnected": "verbunden",
 				"feedbackNotConnected": "nicht verbunden",
 				"feedsConfigured": "{count} Feed konfiguriert | {count} Feeds konfiguriert",
@@ -2123,7 +2128,8 @@
 				},
 				"summary": "{count} Testpostfächer verbunden · Microsoft-Feedback {feedback}",
 				"testMailboxes": "Testpostfächer",
-				"title": "Messabdeckung"
+				"title": "Messabdeckung",
+				"toastDisconnected": "{address} getrennt."
 			},
 			"domainDnsGuidance": {
 				"heading": "DNS für {transport}"
@@ -4718,6 +4724,44 @@
 				"delete": "Ordner löschen",
 				"deleteAriaLabel": "Ordner {name} löschen",
 				"empty": "Noch keine eigenen Ordner. Erstellen Sie oben einen."
+			},
+			"postboxConnectedAccountCard": {
+				"connectCta": "Postfach verbinden",
+				"delete": "Trennen und löschen",
+				"deleteConfirm": "Alles löschen",
+				"deleteDialogDescription": "Jede übernommene Nachricht, jeder Entwurf, Ordner und jedes Label wird hier gelöscht, dazu die gespeicherten Anmeldedaten und alle App-Passwörter für dieses Postfach. Die Mails bei deinem Anbieter bleiben unangetastet. Das lässt sich nicht rückgängig machen.",
+				"deleteDialogTitle": "Dieses Postfach mit allen Inhalten löschen?",
+				"deleteOperation": "Postfach und Mails löschen",
+				"deleteRetained": "Aufbewahrte Mails löschen",
+				"deleteRetainedDialogDescription": "Jede aus diesem Postfach übernommene Nachricht, jeder Entwurf, Ordner und jedes Label wird gelöscht, dazu alle App-Passwörter dafür. Die Mails bei deinem Anbieter bleiben unangetastet. Das lässt sich nicht rückgängig machen.",
+				"deletingBody": "Dieses Postfach und alles daraus Übernommene werden gelöscht. Du kannst die Seite verlassen.",
+				"disconnect": "Trennen",
+				"disconnectDialogDescription": "Owlat holt keine Mails mehr ab und vergisst die Anmeldedaten für dieses Postfach. Das Postfach und die bereits übernommenen Mails verschwinden aus deinem Posteingang und sind beide wieder da, sobald du dieselbe Adresse erneut verbindest.",
+				"disconnectDialogImporting": "Der laufende Import wird abgebrochen. Owlat vergisst die Anmeldedaten für dieses Postfach; das Postfach und die bisher übernommenen Mails verschwinden aus deinem Posteingang und sind wieder da, sobald du dieselbe Adresse erneut verbindest.",
+				"disconnectDialogTitle": "Dieses Postfach trennen?",
+				"disconnectOperation": "Postfach trennen",
+				"disconnectedOn": "Getrennt am {when}",
+				"emptyBody": "Es ist kein weiteres Postfach verbunden. Owlat kann Mails von Gmail, Fastmail, Outlook oder jedem anderen Anbieter übernehmen.",
+				"errorFallback": "Owlat erreicht dieses Postfach gerade nicht.",
+				"heading": "Verbundenes Postfach",
+				"lastSynced": "Zuletzt auf neue Mails geprüft: {when}",
+				"loadError": "Owlat konnte dein verbundenes Postfach gerade nicht laden. Lade die Seite neu, um es erneut zu versuchen.",
+				"loading": "Verbundenes Postfach wird geladen",
+				"neverSynced": "Bisher sind keine Mails angekommen",
+				"reauthorize": "Postfach neu verbinden",
+				"reconnect": "Erneut verbinden",
+				"retainedBody": "Es wird nichts mehr abgeglichen und die gespeicherten Anmeldedaten sind gelöscht. Die vor dem Trennen übernommenen Mails sind aus deinem Posteingang verschwunden, aber nicht gelöscht: Verbinde dieselbe Adresse erneut, um sie zurückzuholen, oder lösche sie endgültig.",
+				"retainedRemovedBody": "Eine Administratorin hat dieses Postfach aus Owlat entfernt. Die daraus übernommenen Mails sind weiterhin hier gespeichert, und es wird nichts mehr abgeglichen. Wenn du die Adresse erneut verbindest, bekommst du ein neues, leeres Postfach — lösche dieses hier also, wenn du das Aufbewahrte nicht mehr brauchst.",
+				"status": {
+					"authError": "Muss neu verbunden werden",
+					"connected": "Wird abgeglichen",
+					"error": "Verbindungsproblem",
+					"pending": "Verbindung wird aufgebaut"
+				},
+				"toastCredentialsUpdated": "Passwort aktualisiert.",
+				"toastDeleting": "Postfach und Mails werden gelöscht.",
+				"toastDisconnected": "Postfach getrennt.",
+				"updateCredentials": "Passwort aktualisieren"
 			}
 		},
 		"preferences": {
@@ -7074,6 +7118,7 @@
 						"cancelled": "Import gestoppt. Die bisher importierten {imported} Nachrichten wurden behalten.",
 						"completed": "Import abgeschlossen — {imported} Nachrichten liegen jetzt in diesem Postfach.",
 						"completedIndexed": "Aus {indexed} Unterhaltungen wurde gelernt.",
+						"completedSkipped": "{count} Nachricht konnte nicht importiert werden und liegt weiterhin auf dem Server | {count} Nachrichten konnten nicht importiert werden und liegen weiterhin auf dem Server",
 						"count": "{imported} von {total} Nachrichten importiert",
 						"description": "Holen Sie die Mail herein, die schon vor dem Verbinden in diesem Postfach lag. Alles Gefundene wird dem Team-Postfach in Owlat hinzugefügt; beim Anbieter wird nichts verändert oder gelöscht.",
 						"discovering": "Das Postfach wird durchgesehen, was es zu importieren gibt…",
@@ -8951,12 +8996,12 @@
 				"completedBody": "Ihr E-Mail-Verlauf ist in Owlat.",
 				"completedBodyWithAi": "Ihr E-Mail-Verlauf ist in Owlat und Ihr KI-Assistent hat daraus gelernt.",
 				"completedTitle": "Sie sind vollständig umgezogen",
+				"completedPartialTitle": "Fast alles ist umgezogen",
+				"completedPartialBody": "Der größte Teil deiner Mail-Historie ist in Owlat.",
+				"completedPartialBodyWithAi": "Der größte Teil deiner Mail-Historie ist in Owlat, und deine KI-Assistenz hat daraus gelernt.",
+				"skippedTitle": "{count} Nachricht konnte nicht importiert werden | {count} Nachrichten konnten nicht importiert werden",
+				"skippedBody": "Sie liegen weiterhin auf deinem Mailserver — dort wurde nichts gelöscht. Ein erneuter Import versucht es noch einmal.",
 				"connectProvider": "{provider} verbinden",
-				"deleteMailboxAndData": "Postfach & Daten löschen",
-				"disconnect": "Trennen",
-				"disconnectDialogDescription": "Die Synchronisierung stoppt und das Postfach wird in Ihrem Posteingang ausgeblendet. Synchronisierte Nachrichten bleiben erhalten, sofern Sie sie nicht separat löschen.",
-				"disconnectDialogTitle": "Dieses Postfach trennen?",
-				"disconnectOperation": "Postfach trennen",
 				"discoveringFolders": "Ihre Ordner werden geprüft…",
 				"discoveringProgressLabel": "Postfach wird erkundet",
 				"discoveringTitle": "Ihr Postfach wird erkundet…",
@@ -8980,10 +9025,6 @@
 				"openInbox": "Posteingang öffnen",
 				"pageTitle": "E-Mails importieren — Owlat",
 				"providerPickTitle": "Wo liegen Ihre E-Mails derzeit?",
-				"purgeConfirm": "Alles löschen",
-				"purgeDialogDescription": "Jede importierte Nachricht, jeder Entwurf, jeder Ordner und jedes Label wird gelöscht und kann nicht wiederhergestellt werden. Verwenden Sie dies, wenn Sie das falsche Postfach verbunden haben oder Ihre importierten E-Mails wirklich entfernen möchten.",
-				"purgeDialogTitle": "Postfach und alle synchronisierten Daten löschen?",
-				"purgeOperation": "Postfach und synchronisierte Daten löschen",
 				"readyBody": "Wir importieren Ihren gesamten E-Mail-Verlauf — Posteingang, Gesendet und Ihr komplettes Archiv.",
 				"readyBulletAiOff": "Aktivieren Sie zuerst die KI-Wissensfunktion, damit der Assistent aus Ihren E-Mails lernen kann.",
 				"readyBulletAiOn": "Ihr KI-Assistent lernt aus jeder Konversation, jeweils pro Kontakt.",
@@ -9011,13 +9052,9 @@
 				"subheading": "Holen Sie Ihr bestehendes Postfach zu Owlat — und lassen Sie Ihren KI-Assistenten daraus lernen.",
 				"toastCancelled": "Migration abgebrochen. Importierte E-Mails wurden behalten.",
 				"toastCredentialsUpdated": "Zugangsdaten aktualisiert.",
-				"toastDisconnected": "Postfach getrennt.",
 				"toastImportStarted": "Ihr E-Mail-Verlauf wird jetzt importiert.",
-				"toastPurging": "Postfach und alle synchronisierten Daten werden gelöscht.",
 				"toastSignatureSaved": "Als Ihre Standardsignatur gespeichert.",
 				"tryAgain": "Erneut versuchen",
-				"updateCredentials": "Zugangsdaten aktualisieren",
-				"updateCredentialsTitle": "Zugangsdaten für {email} aktualisieren",
 				"useThisSignature": "Diese Signatur verwenden"
 			},
 			"replyQueue": {
@@ -9472,6 +9509,12 @@
 				"intro": "Owlat kann aus Ihren gesendeten Mails lernen, wie Sie schreiben, damit KI-Antwortvorschläge nach Ihnen klingen. Das ist nur beratend — es wird nie etwas automatisch gesendet.",
 				"noMailboxes": "Noch keine Postfächer. Fügen Sie ein Konto hinzu und senden Sie zuerst ein paar Nachrichten.",
 				"pageTitle": "Schreibstil — Owlat"
+			},
+			"externalAccount": {
+				"featureOffBody": "Auf dieser Owlat-Instanz ist die Funktion abgeschaltet. Eine Administratorin kann sie in den Einstellungen einschalten, danach kannst du hier ein Postfach verbinden.",
+				"featureOffTitle": "Verbundene Postfächer sind ausgeschaltet",
+				"pageTitle": "Verbundene Postfächer — Owlat",
+				"subheading": "Ein Postfach woanders, das Owlat mit diesem hier im Gleichschritt hält."
 			}
 		},
 		"send": {
@@ -13038,6 +13081,10 @@
 				"sealedMail": {
 					"keywords": "versiegelte Post, Verschlüsselung, Wiederherstellungspaket, privater Schlüssel, Ende-zu-Ende",
 					"title": "Versiegelte Post"
+				},
+				"connectedAccount": {
+					"keywords": "trennen, entfernen, löschen, verbundenes Postfach, externes Konto, gmail, outlook, fastmail",
+					"title": "Verbundenes Postfach trennen"
 				}
 			}
 		},
