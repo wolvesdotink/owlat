@@ -338,6 +338,48 @@ describe('TLS-handshake abandonment', () => {
 		await c.waitCode(220);
 		c.end();
 	});
+
+	it('implicit-TLS port then total silence: the handshake timer tears the connection down', async () => {
+		// The 465 sibling of the STARTTLS-silence case above, and the ONE teardown
+		// node does not perform for us. A peer that opens the connection and sends no
+		// ClientHello reaches `'tlsClientError'` with `ERR_TLS_HANDSHAKE_TIMEOUT` and
+		// the socket STILL OPEN, and node leaves it open. Nothing else in this
+		// package can reach that socket: it never became a session, so no command
+		// idle timer is armed, and `close()` only knows about accepted connections.
+		// Without server.ts's teardown the peer holds the FD indefinitely — this is
+		// the slowloris the plaintext path bounds with its idle timer.
+		const errors: Error[] = [];
+		const { port } = await start({
+			tls: { cert, key, handshakeTimeoutMs: 150 },
+			implicitTls: true,
+			onError: (e) => void errors.push(e),
+		});
+		const closed = await new Promise<boolean>((resolve) => {
+			// Connect and say NOTHING — not even a ClientHello.
+			const sock = net.connect(port, '127.0.0.1');
+			sock.resume(); // see the sibling case: an unread socket never sees the FIN
+			const fallback = setTimeout(() => {
+				sock.destroy();
+				resolve(false);
+			}, 4000);
+			const settle = (dropped: boolean): void => {
+				clearTimeout(fallback);
+				resolve(dropped);
+			};
+			sock.on('close', () => settle(true));
+			sock.on('error', () => settle(true));
+		});
+		expect(closed).toBe(true);
+		// Reported, because this is the one path where the listener — not the peer,
+		// and not node — decided the connection was over.
+		expect(
+			errors.some((e) => (e as NodeJS.ErrnoException).code === 'ERR_TLS_HANDSHAKE_TIMEOUT')
+		).toBe(true);
+		// A proper implicit-TLS client still connects afterward.
+		const c = await Client.connectTls(port, 'mx.test');
+		await c.waitCode(220);
+		c.end();
+	});
 });
 
 // ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@
  */
 
 import { createServer, type Server, type Socket } from 'node:net';
-import { createServer as createTlsServer } from 'node:tls';
+import { createServer as createTlsServer, type TLSSocket, type TlsOptions } from 'node:tls';
 import { handleConnection, resolveConfig } from './session.js';
 import type { SmtpListenerOptions } from './types.js';
 
@@ -23,6 +23,59 @@ export interface SmtpListener {
 	address(): ReturnType<Server['address']>;
 	/** Escape hatch to the underlying `net.Server` (event wiring, tests). */
 	readonly raw: Server;
+}
+
+/**
+ * The implicit-TLS (465) server, with the teardown node does NOT do for us.
+ *
+ * A failed handshake reaches `'tlsClientError'`, and node's own cleanup is
+ * SPLIT across that event — measured on node 22.20.0:
+ *
+ *  - A bogus record (`ERR_SSL_PACKET_LENGTH_TOO_LONG`, i.e. a peer speaking
+ *    plaintext SMTP at a 465 listener) and a genuine negotiation failure
+ *    (`ERR_SSL_NO_SHARED_CIPHER`) both arrive with the socket ALREADY
+ *    destroyed. OpenSSL has written its alert and node has torn the connection
+ *    down; there is nothing left to do and nothing left to truncate.
+ *  - A handshake that simply never progresses (`ERR_TLS_HANDSHAKE_TIMEOUT`)
+ *    arrives with the socket STILL OPEN, and node never closes it. The peer
+ *    holds the FD for as long as it likes. That socket never reached `accept`,
+ *    so it is in neither the command loop's idle timers nor `close()`'s
+ *    teardown set — nothing else in this package can reach it.
+ *
+ * The asymmetry is in node's own source, not in the OS, so it is the same on
+ * every platform we ship to: `TLSSocket.prototype._handleTimeout` is
+ * `this._emitTLSError(new ERR_TLS_HANDSHAKE_TIMEOUT())` and nothing else, and
+ * the `'_tlsError'` handler behind `tlsClientError` only re-emits. The window
+ * itself is `options.handshakeTimeout || 120 * 1000`.
+ *
+ * So: destroy what is still open. The guard is not a micro-optimization, it is
+ * the whole discriminator — it fires only on the connections node abandoned,
+ * and it cannot cut short an alert that a real client is mid-way through
+ * reading, because those sockets are already destroyed when we see them.
+ *
+ * `onError` is reported on exactly the same condition, for two reasons. It is
+ * the only case where this listener CHANGED the outcome, so it is the only one
+ * an operator cannot infer from the peer's own behavior; and it is the only one
+ * that cannot be used as a log-volume amplifier. Both silent paths are free for
+ * an attacker to trigger in a tight loop, while a timeout costs a held
+ * connection for the whole `handshakeTimeout` — a peer wanting N lines per
+ * second must park N × timeout connections, which the OS bounds long before the
+ * log does.
+ */
+function createImplicitTlsServer(
+	options: TlsOptions,
+	accept: (socket: Socket, initialSecure: boolean) => void,
+	onError: ((err: Error) => void) | undefined
+): Server {
+	const server = createTlsServer(options, (socket: Socket) => {
+		accept(socket, true);
+	});
+	server.on('tlsClientError', (err: Error, socket: TLSSocket) => {
+		if (socket.destroyed) return;
+		onError?.(err);
+		socket.destroy();
+	});
+	return server;
 }
 
 /**
@@ -48,9 +101,7 @@ export function createSmtpListener<S = unknown, T = unknown>(
 	// upgrade later via STARTTLS.
 	const server: Server =
 		config.implicitTls && config.tls
-			? createTlsServer(config.tls.options, (socket: Socket) => {
-					accept(socket, true);
-				})
+			? createImplicitTlsServer(config.tls.options, accept, opts.onError)
 			: createServer({ pauseOnConnect: false }, (socket: Socket) => {
 					accept(socket, false);
 				});

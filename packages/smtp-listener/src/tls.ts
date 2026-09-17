@@ -56,6 +56,15 @@ export interface SmtpTlsConfig {
 	honorCipherOrder?: boolean;
 	/** Optional SNI resolver for multi-cert deployments. */
 	SNICallback?: SmtpSniCallback;
+	/**
+	 * How long an implicit-TLS peer may take to complete the handshake, in ms.
+	 * The pre-handshake sibling of `timeouts.commandMs`: the command loop's idle
+	 * timers only arm once a session exists, so on a 465-style listener this is
+	 * the ONLY bound on a peer that connects and then stalls. Defaults to node's
+	 * 120 s. Ignored on a plaintext listener, where a STARTTLS upgrade runs with
+	 * the command idle timer already armed.
+	 */
+	handshakeTimeoutMs?: number;
 }
 
 /**
@@ -82,7 +91,12 @@ export function resolveTlsConfig(cfg: SmtpTlsConfig): ResolvedTlsConfig {
 	// implicit-TLS `tls.createServer` options and the resolved config's single
 	// source of truth (read by `upgradeTls` for the STARTTLS path).
 	const sniOption = cfg.SNICallback ? { SNICallback: cfg.SNICallback } : {};
-	const options: TlsOptions = { ...contextOptions, ...sniOption };
+	// `handshakeTimeout` belongs to the SERVER, not the secure context, so it is
+	// applied to `options` only — the STARTTLS path reuses `secureContext` and
+	// bounds an abandoned upgrade with the command idle timer instead.
+	const handshakeOption =
+		cfg.handshakeTimeoutMs === undefined ? {} : { handshakeTimeout: cfg.handshakeTimeoutMs };
+	const options: TlsOptions = { ...contextOptions, ...sniOption, ...handshakeOption };
 	return {
 		options,
 		secureContext: createSecureContext(contextOptions),
