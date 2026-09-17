@@ -43,7 +43,6 @@ const EXTERNAL_NAMES: Readonly<Record<string, string>> = {
 	AmazonSESFullAccess: 'AWS managed IAM policy',
 	CONVEX_DEPLOYMENT: 'set by the Convex CLI, not by Owlat',
 	ConvexHttpClient: "the Convex client library's class",
-	DeferError: "GroupMQ's reschedule signal",
 	DeleteIdentity: 'Amazon SES API action',
 	FromCity: 'Twilio webhook form field',
 	FromCountry: 'Twilio webhook form field',

@@ -147,6 +147,32 @@ export function evaluateSendPath(flags: FeatureFlagState, env: EnvMap): SendPath
 	}));
 }
 
+/**
+ * The retry ladder's one unowned structure.
+ *
+ * A GroupMQ `:delayed` member whose job hash is gone can never be delivered and
+ * is removed by nothing, so it accrues silently until Redis runs out of memory.
+ * ADDITIVE-ONLY: an MTA that predates the probe reports no `queue` block, and
+ * that must read as "nothing to say", never as a failure.
+ */
+export function evaluateMtaQueueHealth(value: unknown): MtaHealthFinding[] {
+	if (!isRecord(value)) return [];
+	const queue = isRecord(value['queue']) ? value['queue'] : null;
+	if (!queue || typeof queue['status'] !== 'string') return [];
+	if (queue['status'] !== 'orphaned') return [];
+	const orphaned = typeof queue['orphaned'] === 'number' ? queue['orphaned'] : 0;
+	const sampled = typeof queue['sampled'] === 'number' ? queue['sampled'] : 0;
+	const overdue = typeof queue['overdue'] === 'number' ? queue['overdue'] : 0;
+	return [
+		{
+			ok: false,
+			message:
+				`MTA retry queue is leaking — ${orphaned} of ${sampled} sampled overdue jobs have no message left to send, ` +
+				`out of ${overdue} overdue. These grow until Redis runs out of memory; capture \`owlat logs mta\` and report this.`,
+		},
+	];
+}
+
 /** Pure interpretation of the MTA health body, separated for unit tests. */
 export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFinding[] {
 	if (!isRecord(value)) return [{ ok: false, message: 'MTA returned an invalid health response' }];
@@ -167,6 +193,7 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 		},
 	];
 	findings.push(...evaluateMtaIdentityHealth(value));
+	findings.push(...evaluateMtaQueueHealth(value));
 
 	if (smtp['ips'].length === 0) {
 		findings.push({ ok: false, message: 'MTA has no sending IPs to probe' });

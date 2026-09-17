@@ -223,6 +223,12 @@ services:
       BOUNCE_PORT: "25"
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       MTA_API_KEY: ${MTA_API_KEY}
+      # Seals DKIM private keys + relay credentials at rest (>= 32 bytes). The
+      # MTA asserts its presence + strength at boot (config.ts → secretBox.ts),
+      # so an omission here is a crash-loop, not a silent downgrade. Minted by
+      # the control plane alongside MTA_API_KEY; keep it STABLE across restarts,
+      # because rotating it strands every already-sealed value.
+      MTA_SECRET: ${MTA_SECRET:?MTA_SECRET is required (the control plane mints it; generate manually with openssl rand -hex 32)}
       EHLO_HOSTNAME: ${EHLO_HOSTNAME:-mail.localhost}
       EHLO_HOSTNAMES: ${EHLO_HOSTNAMES:-}
       MTA_GENERIC_PTR_SUFFIXES: ${MTA_GENERIC_PTR_SUFFIXES:-}

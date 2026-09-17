@@ -202,6 +202,36 @@ describe('doctor — evaluateMtaHealth', () => {
 			{ ok: false, message: 'MTA returned an incomplete health response' },
 		]);
 	});
+
+	// ── The retry queue's one unowned structure ──
+	// A `:delayed` member whose job hash is gone can never be delivered and is
+	// removed by nothing. Left unnamed it grows until Redis is OOM-killed.
+
+	it('stays silent about a queue that is merely behind', () => {
+		const findings = evaluateMtaHealth({
+			...healthy,
+			queue: { status: 'behind', delayed: 90_000, overdue: 4_000, sampled: 20, orphaned: 0 },
+		});
+		expect(findings).toHaveLength(8);
+		expect(findings.every((finding) => finding.ok)).toBe(true);
+	});
+
+	it('names a delay set holding jobs with no message left to send', () => {
+		const findings = evaluateMtaHealth({
+			...healthy,
+			queue: { status: 'orphaned', delayed: 6_036_169, overdue: 5_000, sampled: 20, orphaned: 20 },
+		});
+		const failed = findings.filter((finding) => !finding.ok);
+		expect(failed).toHaveLength(1);
+		expect(failed[0]?.message).toContain('20 of 20');
+		expect(failed[0]?.message).toContain('Redis runs out of memory');
+	});
+
+	it('says nothing when the MTA predates the queue probe', () => {
+		// ADDITIVE-ONLY: an older MTA reports no `queue` block, and an absent
+		// probe is a supported configuration rather than a failure.
+		expect(evaluateMtaHealth(healthy)).toHaveLength(8);
+	});
 });
 
 /**

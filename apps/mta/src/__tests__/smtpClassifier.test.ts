@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifySmtpResponse } from '../intelligence/smtpClassifier.js';
+import { classifySmtpResponse, MAX_GREYLIST_DELAY_MS } from '../intelligence/smtpClassifier.js';
 
 describe('Enhanced SMTP response classifier', () => {
 	describe('provider feedback signatures', () => {
@@ -81,6 +81,47 @@ describe('Enhanced SMTP response classifier', () => {
 			const result = classifySmtpResponse(450, '450 Temporarily rejected');
 			expect(result.category).toBe('greylisted');
 			expect(result.suggestedDelayMs).toBe(120_000);
+		});
+
+		// ── The one delay in this MTA a stranger gets to name ──
+		// A remote MX that asks for a wait longer than the message's own
+		// four-day lifetime does not buy itself a 694-day defer: it parks a
+		// payload in a `noeviction` Redis and wakes past its defer-handoff
+		// receipt's TTL, where `promoteDeferredHandoff` throws and the message
+		// dead-letters with the Convex Send still `queued`.
+
+		it('clamps a hostile minute count to the greylist ceiling', () => {
+			const result = classifySmtpResponse(450, '450 4.7.1 Greylisted, try again in 999999 minutes');
+			expect(result.category).toBe('greylisted');
+			expect(result.suggestedDelayMs).toBe(MAX_GREYLIST_DELAY_MS);
+		});
+
+		it('clamps a hostile second count to the greylist ceiling', () => {
+			const result = classifySmtpResponse(450, '450 Greylisted, try again in 99999999 seconds');
+			expect(result.suggestedDelayMs).toBe(MAX_GREYLIST_DELAY_MS);
+		});
+
+		it('clamps a digit run that overflows to Infinity', () => {
+			// Unclamped this reached `pressureAdjustedDelayMs` as `Infinity` and
+			// came back out as `0` — an immediate re-enqueue, not a long wait.
+			const result = classifySmtpResponse(
+				450,
+				`450 Greylisted, try again in ${'9'.repeat(400)} minutes`
+			);
+			expect(Number.isFinite(result.suggestedDelayMs)).toBe(true);
+			expect(result.suggestedDelayMs).toBe(MAX_GREYLIST_DELAY_MS);
+		});
+
+		it('names the clamp in an annotation rather than applying it silently', () => {
+			const result = classifySmtpResponse(450, '450 4.7.1 Greylisted, try again in 999999 minutes');
+			expect(result.annotation).toContain('999999 minutes');
+			expect(result.annotation).toContain('60-minute greylist ceiling');
+		});
+
+		it('leaves an interval inside the ceiling untouched and unannotated', () => {
+			const result = classifySmtpResponse(450, '450 Greylisted, try again in 60 minutes');
+			expect(result.suggestedDelayMs).toBe(MAX_GREYLIST_DELAY_MS);
+			expect(result.annotation).toBeUndefined();
 		});
 	});
 

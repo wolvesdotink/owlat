@@ -17,6 +17,8 @@ import { getSmtpReachability } from './smtpReachability.js';
 import { getFcrdnsReadiness } from '../scaling/fcrdns.js';
 import { getIpv6SpfReadiness } from '../scaling/ipv6SpfReadiness.js';
 import { getSourceAddressReadiness } from '../scaling/sourceAddressReadiness.js';
+import { probeDelayedQueue } from '../queue/delayedOrphans.js';
+import { logger } from '../monitoring/logger.js';
 
 const startTime = Date.now();
 const CERTIFICATE_EXPIRY_WARNING_MS = 14 * 24 * 60 * 60 * 1_000;
@@ -179,6 +181,18 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 		const smtpProbe = await getSmtpReachability(sendingIps);
 		const smtpTls = inspectSmtpTlsCertificate(config.bounceServerTlsCert, config.ehloHostname);
 
+		// Delay-set integrity. Deliberately NOT folded into `degraded` below: a
+		// leak in the retry ladder is not a reason to tell an operator their
+		// delivery path is down, and the two failures want different answers.
+		// It is loud where it belongs — the MTA's own log, and `owlat doctor`.
+		const queueProbe = await probeDelayedQueue(redis);
+		if (queueProbe.status === 'orphaned') {
+			logger.warn(
+				queueProbe,
+				'Delayed queue holds overdue jobs with no payload — these can never be delivered and nothing will reclaim them'
+			);
+		}
+
 		// Determine overall status
 		const identityNotReady = ipStatus.some(
 			(ip) =>
@@ -206,6 +220,7 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 			dns: dnsOk ? 'ok' : 'unreachable',
 			smtpOutbound: smtpProbe,
 			smtpTls,
+			queue: queueProbe,
 		});
 	};
 }
