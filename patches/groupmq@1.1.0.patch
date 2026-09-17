@@ -25,10 +25,10 @@ index 8c2c211193f10b60473a086029ef641c303fc895..91b69b39f9b8806b72c9891ca5798a56
  if not zpop or #zpop == 0 then
    -- Clean up empty group
 diff --git a/dist/lua/record-job-result.lua b/dist/lua/record-job-result.lua
-index ebfbb8d0aa3a5835b90b584c785a5c0ca69a0fe3..9c6d3f7d3c4d31b12467b86fa9e0b5a638bd2563 100644
+index ebfbb8d0aa3a5835b90b584c785a5c0ca69a0fe3..fb0b0786af0d9afc89f31577907f162413680f7b 100644
 --- a/dist/lua/record-job-result.lua
 +++ b/dist/lua/record-job-result.lua
-@@ -91,8 +91,40 @@ elseif status == "failed" then
+@@ -91,8 +91,58 @@ elseif status == "failed" then
        "maxAttempts", maxAttempts
      )
      redis.call("ZADD", failedKey, timestamp, jobId)
@@ -55,6 +55,20 @@ index ebfbb8d0aa3a5835b90b584c785a5c0ca69a0fe3..9c6d3f7d3c4d31b12467b86fa9e0b5a6
 +    -- Deleted in a loop rather than with `DEL unpack(oldIds)` (the shape the
 +    -- `completed` branch uses) to match `complete-with-metadata.lua` and to keep
 +    -- a large trim off the Lua stack.
++    --
++    -- Each eviction re-reads the evicted job's own status, because a `<ns>:failed`
++    -- entry is NOT proof that the job behind it is still dead. `dead-letter.lua`
++    -- deletes `<ns>:unique:<id>` "to allow reuse" but leaves the `<ns>:failed`
++    -- entry standing, and MTA job ids are deterministic (`routes/send.ts` uses the
++    -- messageId; `queue/deferHandoff.ts` hashes the predecessor id). So the same
++    -- id can be enqueued again once its intake receipt has expired, sail through
++    -- `enqueue.lua`'s `SET NX`, and be sitting LIVE in its group ZSET while the
++    -- stale entry from its previous life is still queued for eviction here.
++    -- Deleting that job's hash would strand a real message in a group with
++    -- nothing to reserve — silent mail loss, the exact failure mode this
++    -- retention work exists to prevent. Only a hash that still says `failed` is
++    -- the thing this entry refers to; a missing hash is already-collected and
++    -- takes its orphaned unique key with it.
 +    local failedCount = redis.call("ZCARD", failedKey)
 +    local toRemoveFailed = failedCount - keepFailed
 +    if toRemoveFailed > 0 then
@@ -63,8 +77,12 @@ index ebfbb8d0aa3a5835b90b584c785a5c0ca69a0fe3..9c6d3f7d3c4d31b12467b86fa9e0b5a6
 +        redis.call("ZREMRANGEBYRANK", failedKey, 0, toRemoveFailed - 1)
 +        for i = 1, #oldFailedIds do
 +          local oldId = oldFailedIds[i]
-+          redis.call("DEL", ns .. ":job:" .. oldId)
-+          redis.call("DEL", ns .. ":unique:" .. oldId)
++          local oldJobKey = ns .. ":job:" .. oldId
++          local oldStatus = redis.call("HGET", oldJobKey, "status")
++          if (not oldStatus) or oldStatus == "failed" then
++            redis.call("DEL", oldJobKey)
++            redis.call("DEL", ns .. ":unique:" .. oldId)
++          end
 +        end
 +      end
 +    end

@@ -9,6 +9,10 @@
  * `html` included) grew forever. `patches/groupmq@1.1.0.patch` makes the failure
  * branch trim the way the completion branch already did.
  *
+ * The same patch guards each eviction on the evicted job's own status, because
+ * `dead-letter.lua` frees the id for reuse without clearing its `<ns>:failed`
+ * entry — so a trim that deleted blindly could collect a LIVE job's hash.
+ *
  * This suite runs the REAL, patched Lua out of `node_modules` rather than a
  * re-implementation, so it fails if the patch stops applying (a groupmq bump, a
  * dropped `patchedDependencies` entry) — which is the whole point of having it.
@@ -131,6 +135,69 @@ describe('failed-job retention', () => {
 		await recordFinalFailure('job-a', 3_000, 5);
 		expect(await redis.hget(`${NS}:job:job-a`, 'failedReason')).toBe('permanent 550');
 		expect(await redis.hget(`${NS}:job:job-a`, 'attempts')).toBe('5');
+	});
+
+	/**
+	 * Simulate what `dead-letter.lua` does right after `recordFinalFailure`: it
+	 * drops `<ns>:unique:<id>` "to allow reuse" and leaves the `<ns>:failed`
+	 * entry standing.
+	 */
+	async function deadLetter(jobId: string): Promise<void> {
+		await redis.del(`${NS}:unique:${jobId}`);
+	}
+
+	/** What `enqueue.lua` leaves behind when that freed id is enqueued again. */
+	async function reEnqueue(jobId: string): Promise<void> {
+		await redis.set(`${NS}:unique:${jobId}`, jobId);
+		await redis.hset(`${NS}:job:${jobId}`, 'status', 'waiting', 'data', FAT_PAYLOAD);
+		await redis.zadd(`${NS}:g:campaign:example.com`, 1, jobId);
+	}
+
+	it('never collects a job id that was dead-lettered and then re-enqueued', async () => {
+		// MTA job ids are deterministic — `routes/send.ts` queues under the
+		// messageId and `queue/deferHandoff.ts` hashes the predecessor id — so the
+		// id of a dead-lettered message can come back as a LIVE job once its
+		// intake receipt has expired. Its stale `<ns>:failed` entry outlives the
+		// dead-letter, and an unguarded trim would eventually evict that entry by
+		// deleting the live job's hash, stranding a real message in its group
+		// ZSET with nothing to reserve.
+		const keepFailed = 2;
+		await reserveJob('reused-id');
+		await recordFinalFailure('reused-id', 5_000, keepFailed);
+		await deadLetter('reused-id');
+		await reEnqueue('reused-id');
+
+		// Enough further dead-letters to push the stale entry past the bound.
+		for (let index = 0; index < 4; index += 1) {
+			const jobId = `later-${index}`;
+			await reserveJob(jobId);
+			await recordFinalFailure(jobId, 6_000 + index, keepFailed);
+		}
+
+		// The stale membership is gone — that entry was genuinely obsolete...
+		expect(await redis.zscore(`${NS}:failed`, 'reused-id')).toBeNull();
+		// ...but the live job it names is untouched.
+		expect(await redis.hget(`${NS}:job:reused-id`, 'status')).toBe('waiting');
+		expect(await redis.hget(`${NS}:job:reused-id`, 'data')).toBe(FAT_PAYLOAD);
+		expect(await redis.get(`${NS}:unique:reused-id`)).toBe('reused-id');
+	});
+
+	it('still reclaims the idempotence key of an entry whose hash is already gone', async () => {
+		// A `<ns>:failed` entry with no hash behind it has nothing live to protect,
+		// so the guard must not turn into a leak of orphaned `<ns>:unique:` keys.
+		const keepFailed = 2;
+		await reserveJob('collected-id');
+		await recordFinalFailure('collected-id', 7_000, keepFailed);
+		await redis.del(`${NS}:job:collected-id`);
+
+		for (let index = 0; index < 4; index += 1) {
+			const jobId = `after-${index}`;
+			await reserveJob(jobId);
+			await recordFinalFailure(jobId, 8_000 + index, keepFailed);
+		}
+
+		expect(await redis.zscore(`${NS}:failed`, 'collected-id')).toBeNull();
+		expect(await redis.exists(`${NS}:unique:collected-id`)).toBe(0);
 	});
 
 	it('still deletes outright when retention is switched off', async () => {
