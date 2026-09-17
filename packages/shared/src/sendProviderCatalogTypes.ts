@@ -29,6 +29,7 @@
 
 import type { SendProviderCredentialField } from './sendProviderCredentialFields';
 import type { SendProviderFeedbackChannel } from './sendProviderFeedback';
+import type { SendTransportEgress } from './sendTransportEgress';
 
 /**
  * A send transport contributed by a bundled plugin, namespaced by its plugin id
@@ -293,6 +294,12 @@ export interface SendProviderCatalogEntryShape {
 	readonly label: string;
 	/** How the provider is integrated. Absent ⇒ `plugin` — see {@link SendProviderTier}. */
 	readonly tier?: SendProviderTier;
+	/**
+	 * Which outbound network path this transport needs open — see
+	 * {@link SendTransportEgress}. Read through `egressOf()`, never
+	 * by comparing `kind`.
+	 */
+	readonly egress?: SendTransportEgress;
 	readonly retryDelays: readonly number[];
 	/**
 	 * The PRESENCE GATE: every variable that must be set for this kind to be
