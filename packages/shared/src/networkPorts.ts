@@ -66,12 +66,17 @@ export interface PortCheckSpec {
 /**
  * Every port Owlat can depend on, in the order the UI lists them.
  *
+ * Module-private on purpose: the catalog is only ever read THROUGH
+ * `selectPortChecks`, which annotates each entry with whether this instance
+ * needs it. A caller holding the bare list would have the port and not the
+ * judgement, which is the half that makes a row mean something.
+ *
  * Inbound entries dial a compose SERVICE, which proves the listener is up and
  * bound — not that the internet can reach it. Nothing running on this host can
  * prove the latter (a packet to our own public address never leaves it), so the
  * UI says so rather than implying a reachability guarantee it cannot make.
  */
-export const PORT_CHECKS: readonly PortCheckSpec[] = Object.freeze([
+const PORT_CHECKS: readonly PortCheckSpec[] = Object.freeze([
 	{
 		id: 'inbound-https',
 		protocol: 'HTTPS',

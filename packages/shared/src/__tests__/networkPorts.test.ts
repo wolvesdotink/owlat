@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { coreSendProviderCatalogEntry, SEND_TRANSPORT_KINDS } from '../sendProviderCatalog';
 import { egressOf } from '../sendProviderCapabilities';
 import {
-	PORT_CHECKS,
 	selectPortChecks,
 	summarizePortChecks,
 	type PortCheckId,
@@ -24,14 +23,22 @@ function outcome(
 	return { id, status, relevance };
 }
 
-describe('PORT_CHECKS', () => {
+/** The catalog is only reachable through the selector, so it is asserted there. */
+const CATALOG = selectPortChecks({ profiles: [] });
+
+describe('the catalog', () => {
 	it('declares every check exactly once', () => {
-		const ids = PORT_CHECKS.map((check) => check.id);
+		const ids = CATALOG.map((check) => check.id);
 		expect(new Set(ids).size).toBe(ids.length);
 	});
 
+	it('covers both directions', () => {
+		expect(CATALOG.some((check) => check.direction === 'inbound')).toBe(true);
+		expect(CATALOG.some((check) => check.direction === 'outbound')).toBe(true);
+	});
+
 	it('dials a compose service inbound and a public host outbound', () => {
-		for (const check of PORT_CHECKS) {
+		for (const check of CATALOG) {
 			if (check.direction === 'inbound') expect(check.target).not.toContain('.');
 			else expect(check.target).toContain('.');
 		}
@@ -47,7 +54,10 @@ describe('selectPortChecks', () => {
 	});
 
 	it('lists every catalog entry whether or not it is required', () => {
-		expect(selectPortChecks({ profiles: [] })).toHaveLength(PORT_CHECKS.length);
+		// Not a filter: an operator checks a port BEFORE turning the feature on,
+		// so an unneeded port is listed as unneeded rather than hidden.
+		expect(selectPortChecks({ profiles: ['mta'] })).toHaveLength(CATALOG.length);
+		expect(CATALOG.some((check) => check.relevance === 'optional')).toBe(true);
 	});
 
 	it('requires ACME port 80 only when Caddy terminates TLS', () => {
