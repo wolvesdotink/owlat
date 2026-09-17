@@ -333,20 +333,39 @@ describe('TLS-handshake abandonment', () => {
 		expect(outcome.closed).toBe(true);
 		// The handshake never completed, so the command loop never ran: the peer must
 		// not have seen a greeting — nor ANY other SMTP reply, including a 4xx/5xx
-		// refusal, which a code-specific assertion would have let through.
+		// refusal, which a code-specific assertion would have let through. This half
+		// is code-agnostic and names the security claim, but note that it is VACUOUS
+		// when nothing arrives at all (see below) — which is why the byte assertion
+		// underneath it must enumerate the whole outcome rather than be dropped.
 		expect(outcome.received.toString('latin1')).not.toMatch(/^\d{3}[ -]/m);
-		// And the bytes are fully determined, so pin all of them rather than a shape.
-		// OpenSSL reads `E`(0x45) as the record's content type, `HL` as its version
-		// and `O ` as its length (20256 > 2**14+2048), so it answers with one fatal
-		// `record_overflow` alert and nothing else:
-		//   15      alert record
-		//   03 03   legacy record version (TLS 1.2; fixed for alerts in TLS 1.3 too)
-		//   00 02   payload length
-		//   02      fatal
-		//   16      record_overflow (RFC 8446 §6.2)
-		// Measured identical across repeated runs on node 22.20.0; node ships its own
-		// OpenSSL, so this is a property of the runtime, not of the host.
-		expect(outcome.received.toString('hex')).toBe('15030300020216');
+		// WHAT THE PEER RECEIVES IS THE HOST'S CHOICE, NOT OURS — DO NOT RE-TIGHTEN.
+		//
+		// The listener's side is fully determined: OpenSSL reads `E`(0x45) as the
+		// record's content type, `HL` as its version and `O ` as its length
+		// (20256 > 2**14+2048), so it writes one fatal `record_overflow` alert and
+		// nothing else, and node then destroys the socket. What is NOT determined is
+		// whether those 7 bytes survive the teardown, because that is settled by the
+		// two kernels' TCP stacks after our code has stopped running:
+		//   - macOS/node 22: measured 6/6 identical, delivered, `'close'` with
+		//     `hadError=false` after a clean FIN — the peer reads the alert.
+		//   - Linux/CI: the peer receives NOTHING. The leading hypothesis is that the
+		//     server-side close emits an RST rather than a FIN and the RST makes the
+		//     peer's kernel discard its still-unread receive queue, but that
+		//     mechanism is UNVERIFIED; only the observable above is measured.
+		// So the honest invariant is the union of the two, each pinned exactly:
+		// nothing, or the alert in full. That is not a tolerance — it is an
+		// exhaustive two-element set, and every other outcome still fails: a banner,
+		// a 421, a truncated or repeated alert, an alert with any SMTP byte appended.
+		// It is also the strongest claim this test is entitled to make, because the
+		// choice between the two members is not something the listener can influence:
+		// asserting one of them would be asserting a property of the build host.
+		const RECORD_OVERFLOW_ALERT =
+			'15' + //    alert record
+			'0303' + //  legacy record version (TLS 1.2; fixed for alerts in TLS 1.3 too)
+			'0002' + //  payload length
+			'02' + //    fatal
+			'16'; //     record_overflow (RFC 8446 §6.2)
+		expect([RECORD_OVERFLOW_ALERT, '']).toContain(outcome.received.toString('hex'));
 		// A proper implicit-TLS client still connects afterward.
 		const c = await Client.connectTls(port, 'mx.test');
 		await c.waitCode(220);
