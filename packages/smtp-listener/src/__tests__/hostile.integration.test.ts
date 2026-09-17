@@ -298,26 +298,116 @@ describe('TLS-handshake abandonment', () => {
 		const { port } = await start({ tls: { cert, key }, implicitTls: true });
 		// Connect with a RAW (non-TLS) socket and shove plaintext at the 465-style
 		// listener; the TLS server rejects the bogus ClientHello and drops us.
-		const closed = await new Promise<boolean>((resolve) => {
+		const outcome = await new Promise<{ closed: boolean; received: Buffer }>((resolve) => {
+			const chunks: Buffer[] = [];
 			const sock = net.connect(port, '127.0.0.1', () => {
 				sock.write('EHLO plaintext-on-implicit-tls\r\n');
+			});
+			// READ THE SOCKET. A `net.Socket` nobody reads stays PAUSED, and a paused
+			// stream with unread bytes in it (the server's TLS alert) never reaches
+			// EOF — so no 'end', no 'close', and this test reported "still open" for a
+			// connection the listener had already dropped. It failed 6 of 6 runs on
+			// macOS/Node 22 for that reason alone. Attaching 'data' puts the socket in
+			// flowing mode, which is also what any real client does, and the bytes it
+			// collects pin the other half of the claim below. Kept as BUFFERS, not a
+			// utf8 string: what the peer receives is a binary TLS record, and the
+			// assertion is on the exact bytes.
+			sock.on('data', (chunk: Buffer) => {
+				chunks.push(chunk);
 			});
 			// Capture the fallback timer so it can be cleared once close/error wins —
 			// otherwise it stays armed and holds the event loop after the test resolves.
 			const fallback = setTimeout(() => {
 				sock.destroy();
-				resolve(false);
+				resolve({ closed: false, received: Buffer.concat(chunks) });
 			}, 4000);
 			sock.on('close', () => {
 				clearTimeout(fallback);
-				resolve(true);
+				resolve({ closed: true, received: Buffer.concat(chunks) });
 			});
 			sock.on('error', () => {
 				clearTimeout(fallback);
-				resolve(true);
+				resolve({ closed: true, received: Buffer.concat(chunks) });
 			});
 		});
+		expect(outcome.closed).toBe(true);
+		// The handshake never completed, so the command loop never ran: the peer must
+		// not have seen a greeting — nor ANY other SMTP reply, including a 4xx/5xx
+		// refusal, which a code-specific assertion would have let through. This half
+		// is code-agnostic and names the security claim, but note that it is VACUOUS
+		// when nothing arrives at all (see below) — which is why the byte assertion
+		// underneath it must enumerate the whole outcome rather than be dropped.
+		expect(outcome.received.toString('latin1')).not.toMatch(/^\d{3}[ -]/m);
+		// WHAT THE PEER RECEIVES IS THE HOST'S CHOICE, NOT OURS — DO NOT RE-TIGHTEN.
+		//
+		// The listener's side is fully determined: OpenSSL reads `E`(0x45) as the
+		// record's content type, `HL` as its version and `O ` as its length
+		// (20256 > 2**14+2048), so it writes one fatal `record_overflow` alert and
+		// nothing else, and node then destroys the socket. What is NOT determined is
+		// whether those 7 bytes survive the teardown, because that is settled by the
+		// two kernels' TCP stacks after our code has stopped running:
+		//   - macOS/node 22: measured 6/6 identical, delivered, `'close'` with
+		//     `hadError=false` after a clean FIN — the peer reads the alert.
+		//   - Linux/CI: the peer receives NOTHING. The leading hypothesis is that the
+		//     server-side close emits an RST rather than a FIN and the RST makes the
+		//     peer's kernel discard its still-unread receive queue, but that
+		//     mechanism is UNVERIFIED; only the observable above is measured.
+		// So the honest invariant is the union of the two, each pinned exactly:
+		// nothing, or the alert in full. That is not a tolerance — it is an
+		// exhaustive two-element set, and every other outcome still fails: a banner,
+		// a 421, a truncated or repeated alert, an alert with any SMTP byte appended.
+		// It is also the strongest claim this test is entitled to make, because the
+		// choice between the two members is not something the listener can influence:
+		// asserting one of them would be asserting a property of the build host.
+		const RECORD_OVERFLOW_ALERT =
+			'15' + //    alert record
+			'0303' + //  legacy record version (TLS 1.2; fixed for alerts in TLS 1.3 too)
+			'0002' + //  payload length
+			'02' + //    fatal
+			'16'; //     record_overflow (RFC 8446 §6.2)
+		expect([RECORD_OVERFLOW_ALERT, '']).toContain(outcome.received.toString('hex'));
+		// A proper implicit-TLS client still connects afterward.
+		const c = await Client.connectTls(port, 'mx.test');
+		await c.waitCode(220);
+		c.end();
+	});
+
+	it('implicit-TLS port then total silence: the handshake timer tears the connection down', async () => {
+		// The 465 sibling of the STARTTLS-silence case above, and the ONE teardown
+		// node does not perform for us. A peer that opens the connection and sends no
+		// ClientHello reaches `'tlsClientError'` with `ERR_TLS_HANDSHAKE_TIMEOUT` and
+		// the socket STILL OPEN, and node leaves it open. Nothing else in this
+		// package can reach that socket: it never became a session, so no command
+		// idle timer is armed, and `close()` only knows about accepted connections.
+		// Without server.ts's teardown the peer holds the FD indefinitely — this is
+		// the slowloris the plaintext path bounds with its idle timer.
+		const errors: Error[] = [];
+		const { port } = await start({
+			tls: { cert, key, handshakeTimeoutMs: 150 },
+			implicitTls: true,
+			onError: (e) => void errors.push(e),
+		});
+		const closed = await new Promise<boolean>((resolve) => {
+			// Connect and say NOTHING — not even a ClientHello.
+			const sock = net.connect(port, '127.0.0.1');
+			sock.resume(); // see the sibling case: an unread socket never sees the FIN
+			const fallback = setTimeout(() => {
+				sock.destroy();
+				resolve(false);
+			}, 4000);
+			const settle = (dropped: boolean): void => {
+				clearTimeout(fallback);
+				resolve(dropped);
+			};
+			sock.on('close', () => settle(true));
+			sock.on('error', () => settle(true));
+		});
 		expect(closed).toBe(true);
+		// Reported, because this is the one path where the listener — not the peer,
+		// and not node — decided the connection was over.
+		expect(
+			errors.some((e) => (e as NodeJS.ErrnoException).code === 'ERR_TLS_HANDSHAKE_TIMEOUT')
+		).toBe(true);
 		// A proper implicit-TLS client still connects afterward.
 		const c = await Client.connectTls(port, 'mx.test');
 		await c.waitCode(220);
