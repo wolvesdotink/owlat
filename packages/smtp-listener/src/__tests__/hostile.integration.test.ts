@@ -298,26 +298,41 @@ describe('TLS-handshake abandonment', () => {
 		const { port } = await start({ tls: { cert, key }, implicitTls: true });
 		// Connect with a RAW (non-TLS) socket and shove plaintext at the 465-style
 		// listener; the TLS server rejects the bogus ClientHello and drops us.
-		const closed = await new Promise<boolean>((resolve) => {
+		const outcome = await new Promise<{ closed: boolean; received: string }>((resolve) => {
+			let received = '';
 			const sock = net.connect(port, '127.0.0.1', () => {
 				sock.write('EHLO plaintext-on-implicit-tls\r\n');
+			});
+			// READ THE SOCKET. A `net.Socket` nobody reads stays PAUSED, and a paused
+			// stream with unread bytes in it (the server's TLS alert) never reaches
+			// EOF — so no 'end', no 'close', and this test reported "still open" for a
+			// connection the listener had already dropped. It failed 6 of 6 runs on
+			// macOS/Node 22 for that reason alone. Attaching 'data' puts the socket in
+			// flowing mode, which is also what any real client does, and the buffer it
+			// collects pins the other half of the claim: a peer that fails the
+			// handshake never gets an SMTP banner.
+			sock.on('data', (chunk: Buffer) => {
+				received += chunk.toString('utf8');
 			});
 			// Capture the fallback timer so it can be cleared once close/error wins —
 			// otherwise it stays armed and holds the event loop after the test resolves.
 			const fallback = setTimeout(() => {
 				sock.destroy();
-				resolve(false);
+				resolve({ closed: false, received });
 			}, 4000);
 			sock.on('close', () => {
 				clearTimeout(fallback);
-				resolve(true);
+				resolve({ closed: true, received });
 			});
 			sock.on('error', () => {
 				clearTimeout(fallback);
-				resolve(true);
+				resolve({ closed: true, received });
 			});
 		});
-		expect(closed).toBe(true);
+		expect(outcome.closed).toBe(true);
+		// The handshake never completed, so the command loop never ran: the peer must
+		// not have seen a greeting (nor any other SMTP reply) on the way out.
+		expect(outcome.received).not.toMatch(/^2\d\d[ -]/m);
 		// A proper implicit-TLS client still connects afterward.
 		const c = await Client.connectTls(port, 'mx.test');
 		await c.waitCode(220);
