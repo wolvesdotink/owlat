@@ -48,10 +48,35 @@ export interface SmtpListener {
  * the `'_tlsError'` handler behind `tlsClientError` only re-emits. The window
  * itself is `options.handshakeTimeout || 120 * 1000`.
  *
- * So: destroy what is still open. The guard is not a micro-optimization, it is
- * the whole discriminator — it fires only on the connections node abandoned,
- * and it cannot cut short an alert that a real client is mid-way through
- * reading, because those sockets are already destroyed when we see them.
+ * So: destroy what is still open. The `destroyed` guard is not a
+ * micro-optimization, it is the discriminator between those two halves — but it
+ * is NOT a guarantee that the peer had abandoned the connection, and the
+ * difference is worth stating plainly.
+ *
+ * Node's `handshakeTimeout` is ADVISORY: `_handleTimeout` emits and walks away,
+ * it never touches the socket, and the handshake keeps running. Measured on
+ * node 22.20.0 with an `SNICallback` that resolves in 700 ms against a 250 ms
+ * window, node emits `tlsClientError: ERR_TLS_HANDSHAKE_TIMEOUT` with
+ * `destroyed === false` and THEN completes the handshake and emits
+ * `'secureConnection'` — the client connects, late. With this handler that same
+ * client gets an `ECONNRESET` instead. That is deliberate: a deadline that a
+ * merely-slow handshake survives is not a deadline (enforcing is the semantics
+ * node's own `renegotiate()` docs assert), and from the outside a listener
+ * cannot tell an abandoned handshake from a very slow one.
+ *
+ * What it costs: a deployment whose SNI resolver does a network or database
+ * lookup flips from "succeeds late" to "reset" once the resolver outruns the
+ * window. Nothing in this repo supplies `SNICallback` today — `tls.ts` carries
+ * the seam, and the MTA passes cert/key only — and the MTA's window is 30 s, so
+ * a resolver would have to stall for 30 s to notice. Anyone tightening
+ * `handshakeTimeoutMs` further MUST re-check it against what their SNI resolver
+ * actually costs; that trade-off is the reason the window is a deliberate
+ * per-listener number rather than "as small as possible".
+ *
+ * What the guard does still guarantee is the other direction: it cannot cut
+ * short an alert a real client is mid-way through reading, because every
+ * failure that produces one arrives already destroyed — OpenSSL has written the
+ * alert before node ever re-emits.
  *
  * `onError` is reported on exactly the same condition, for two reasons. It is
  * the only case where this listener CHANGED the outcome, so it is the only one
