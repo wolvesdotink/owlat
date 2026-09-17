@@ -36,6 +36,22 @@
  *    machine load rather than on behavior. Here a slow event loop DELAYS the
  *    resolution; it cannot turn it into a failure, because the timer callback
  *    and the event are queued in the same loop and the event was queued first.
+ *
+ * SELF-SIGNED FIXTURE CERTS. Both `tls.connect` sites set
+ * `rejectUnauthorized: false`, and both carry a rule-scoped `nosemgrep` for
+ * `bypass-tls-verification`. The suites serve a keypair minted in-process by
+ * `__tests__/tlsTestUtil.ts`'s `generateCert('mx.test')` — self-signed, no
+ * issuing CA anywhere, discarded when the suite ends. There is nothing to
+ * verify it against, so verification here would fail every TLS case instead of
+ * exercising one; the alternative is shipping a CA into the repo to satisfy a
+ * scanner. The finding is only reachable at all because this module sits in
+ * `src/` (semgrep skips `__tests__/`), which it must, to be the ONE copy both
+ * this package's suites and `apps/mta`'s MX suites import. What keeps that
+ * acceptable is the guard named above: `scripts/check-cross-package-imports.sh`
+ * fails if anything outside a `__tests__/` folder imports this subpath, so
+ * these sockets cannot reach production. The suppression is per-rule and
+ * per-site on purpose — every OTHER semgrep rule still runs on this file, and a
+ * third `rejectUnauthorized: false` added later still fails the scan.
  */
 
 import net from 'node:net';
@@ -114,10 +130,12 @@ export class Client {
 	): Promise<Client> {
 		return new Promise((resolve, reject) => {
 			const socket = tls.connect(
+				// nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
 				{
 					port,
 					host: '127.0.0.1',
 					servername,
+					// See SELF-SIGNED FIXTURE CERTS in the file header.
 					rejectUnauthorized: false,
 					...(maxVersion && { maxVersion }),
 				},
@@ -140,9 +158,11 @@ export class Client {
 		this.cursor = 0;
 		const tlsSocket = await new Promise<tls.TLSSocket>((resolve, reject) => {
 			const s = tls.connect(
+				// nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
 				{
 					socket: raw as net.Socket,
 					servername,
+					// See SELF-SIGNED FIXTURE CERTS in the file header.
 					rejectUnauthorized: false,
 					...(maxVersion && { maxVersion }),
 				},
