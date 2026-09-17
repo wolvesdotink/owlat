@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { findConvexNodeGlobalUses } from '../check-convex-node-globals';
+import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -38,9 +39,19 @@ async function fixture(files: Readonly<Record<string, string>>): Promise<string>
 }
 
 describe('convex isolate-runtime Node-global gate', () => {
-	it('passes on the real repository', async () => {
-		expect(await findConvexNodeGlobalUses({ root: REPOSITORY_ROOT })).toEqual([]);
-	});
+	// The only case here that touches the real tree: it parses every Convex
+	// module and every workspace source they reach — ~1,150 files through the
+	// TypeScript parser. That fixed cost is ~1s standalone and several times that
+	// under a loaded CI runner, so it takes the shared gate budget rather than
+	// vitest's 5s default (see vitest.timeouts.ts). Every other case below builds
+	// a two-file tree and stays fast.
+	it(
+		'passes on the real repository',
+		async () => {
+			expect(await findConvexNodeGlobalUses({ root: REPOSITORY_ROOT })).toEqual([]);
+		},
+		PARALLEL_GATE_TIMEOUT_MS
+	);
 
 	it('reports a Buffer used in a V8-runtime module', async () => {
 		const root = await fixture({
