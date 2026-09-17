@@ -47,7 +47,7 @@ import {
 	promoteDeferredHandoff,
 	resumeDeferredHandoff,
 } from './deferHandoff.js';
-import { messageAgeMs, withJitter, type DeferKind } from './deferPolicy.js';
+import { boundedDeferDelayMs, messageAgeMs, withJitter, type DeferKind } from './deferPolicy.js';
 import {
 	runSmtpSecondaryEffect,
 	markSmtpEffectsApplied,
@@ -317,7 +317,10 @@ async function disposeDefer(
 		return;
 	}
 
-	const delay = withJitter(delayMs);
+	// Bound AFTER jitter: jitter can add 15%, which is exactly the margin that
+	// would otherwise push a deadline-hugging rung past the receipt's TTL.
+	const requestedDelay = withJitter(delayMs);
+	const delay = boundedDeferDelayMs(requestedDelay, deps.config.maxMessageAgeMs - ageMs);
 	const requeued: EmailJob = { ...data, firstEnqueuedAt: data.firstEnqueuedAt ?? job.timestamp };
 
 	await handoffDeferredJob(
@@ -330,7 +333,18 @@ async function disposeDefer(
 	);
 
 	logger.info(
-		{ messageId: data.messageId, to: data.to, domain, kind, delay, reason },
+		{
+			messageId: data.messageId,
+			to: data.to,
+			domain,
+			kind,
+			delay,
+			// Present ONLY when the bound actually moved the wait — because the
+			// message would have expired first, or because the requested delay
+			// was not a readable interval at all.
+			...(requestedDelay === delay ? {} : { requestedDelay }),
+			reason,
+		},
 		`Deferred (${kind}) — re-enqueued in ${delay}ms (no attempt consumed)`
 	);
 }
@@ -363,6 +377,9 @@ function logOutcome(outcome: DispatchOutcome, job: EmailJob, ctx: AttemptCtx): v
 					smtpCode: outcome.smtpCode,
 					category: outcome.classification.category,
 					suggestedDelay: outcome.classification.suggestedDelayMs,
+					// Carries the clamp note when the receiver dictated a retry
+					// interval we refused to honour in full.
+					annotation: outcome.classification.annotation,
 				},
 				`Deferred (${outcome.classification.category}) — will retry`
 			);

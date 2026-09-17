@@ -10,7 +10,14 @@
  *    the `:delayed` ZSET with nothing left to remove it. That is how one
  *    message reached six million delayed entries and 3.9 GB of Redis.
  *
- * 2. A Redis restart does not wedge the queue. GroupMQ memoises each script's
+ * 2. The promoter can always let go of a member. A `:delayed` entry whose job
+ *    hash has been trimmed or deleted has no payload left to deliver, so the
+ *    only question is whether anything can still remove the entry. Upstream's
+ *    bulk `promote-delayed-jobs` could not — it asked for the group id first
+ *    and skipped the `ZREM` when the hash was gone — which is precisely the
+ *    six-million-member state that had to be cleared by hand.
+ *
+ * 3. A Redis restart does not wedge the queue. GroupMQ memoises each script's
  *    SHA per client object and only ever calls EVALSHA, so once the server
  *    forgets the script every queue operation fails NOSCRIPT for good.
  */
@@ -130,6 +137,44 @@ describe('queue delay contract', () => {
 		}
 
 		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual(['rung-1']);
+	});
+
+	/** Leave a `:delayed` member behind with its payload already gone. */
+	async function orphanDelayedMember(jobId: string, dueAt: number) {
+		await queue.add({ groupId: GROUP, data: { rung: 1 }, jobId, delay: 60_000 });
+		await redis.del(jobStatusKey(jobId));
+		await redis.del(`groupmq:${NAMESPACE}:job:${jobId}:data`);
+		await redis.zadd(DELAYED_KEY, String(dueAt), jobId);
+	}
+
+	it('drains a due member whose job hash is gone', async () => {
+		await orphanDelayedMember('orphan', Date.now() - 1_000);
+
+		expect(await queue.promoteDelayedJobs()).toBe(1);
+
+		// Nothing else in the system can remove this entry: the job it names has
+		// no payload, so it will never be reserved, run, completed or trimmed.
+		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual([]);
+	});
+
+	it('still promotes a due member that has its payload', async () => {
+		await queue.add({ groupId: GROUP, data: { rung: 1 }, jobId: 'real', delay: 60_000 });
+		await redis.zadd(DELAYED_KEY, String(Date.now() - 1_000), 'real');
+
+		expect(await queue.promoteDelayedJobs()).toBe(1);
+
+		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual([]);
+		expect(await redis.zrange(`groupmq:${NAMESPACE}:ready`, 0, -1)).toEqual([GROUP]);
+	});
+
+	it('leaves a member that is not due yet alone, payload or not', async () => {
+		// The bound that makes dropping safe: only an entry the promoter was
+		// about to release anyway is released. A future rung is untouched.
+		await orphanDelayedMember('not-due', Date.now() + 600_000);
+
+		expect(await queue.promoteDelayedJobs()).toBe(0);
+
+		expect(await redis.zrange(DELAYED_KEY, 0, -1)).toEqual(['not-due']);
 	});
 
 	it('keeps enqueuing after a restart empties the script cache', async () => {
