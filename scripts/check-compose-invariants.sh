@@ -31,6 +31,10 @@
 #   • IPv6: the shipped install is IPv4-only behind one explicit flag.
 #   • Feature-flag registry: every activatable docker profile exists in both
 #     compose files and every required env var is in the VPS template.
+#   • VPS fill contract: every variable the VPS compose file interpolates is
+#     either assigned in .env.vps.template or declared `# owlat:external`.
+#     MTA_SECRET and the FBL_DEDUP pair were both missing for months; a missing
+#     `${VAR:?}` aborts every compose subcommand, `logs` and `down` included.
 #
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -387,5 +391,64 @@ if [ -n "$registry" ]; then
 		ok "infra/templates/.env.vps.template documents every non-hosted required env var"
 	else bad "infra/templates/.env.vps.template is missing required env vars:$undocumented"; fi
 fi
+
+# --- the VPS compose file vs the env template that fills it -------------------
+# The check above only covers variables the FEATURE-FLAG REGISTRY names. Nothing
+# covered the variables the compose file itself interpolates, and two got in:
+#
+#   • MTA_SECRET (#317) was added to the root compose and not to the VPS pair,
+#     so the VPS MTA crash-looped on its own boot assertion.
+#   • FBL_DEDUP_PROTOCOL / FBL_DEDUP_CUTOVER_ACK reached the VPS compose but
+#     never the template.
+#
+# The second kind is the expensive one. Compose resolves `${VAR:?}` across the
+# WHOLE FILE before it dispatches the subcommand, so one missing name breaks
+# `down`, `logs`, `ps` and `config` as surely as `up` — the operator cannot read
+# the logs to find out what is wrong. The bare `${VAR}` form is checked too: it
+# interpolates to an empty string, which is how the root compose shipped empty
+# secrets until e12fbafc2.
+#
+# .env.vps.template is the only declaration of the fill contract that lives in
+# this repo. The control plane substitutes {{PLACEHOLDER}} values into it, so a
+# name missing from the template is a name the control plane never learns about.
+# Variables it genuinely supplies from outside the file (release pins, not
+# instance config) opt out by name via an `# owlat:external NAME` line, so that
+# "supplied elsewhere" is a written-down claim rather than an absence.
+vps_env=infra/templates/.env.vps.template
+
+# Both interpolation forms, as written in the compose file.
+vps_required=$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:\?' "$vps" |
+	sed -e 's/^[$][{]//' -e 's/:?$//' | sort -u)
+vps_bare=$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' "$vps" |
+	sed -e 's/^[$][{]//' -e 's/[}]$//' | sort -u)
+
+unfilled=
+for var in $vps_required $vps_bare; do
+	grep -qE "^$var=" "$vps_env" && continue
+	grep -qE "^# owlat:external $var( |\$)" "$vps_env" && continue
+	unfilled="$unfilled $var"
+done
+if [ -z "$unfilled" ]; then
+	ok "$vps_env assigns or externally declares every variable $vps interpolates"
+else bad "$vps interpolates variables $vps_env neither assigns nor declares \`# owlat:external\`:$unfilled — a \${VAR:?} among them aborts every compose subcommand, not just up"; fi
+
+# An `# owlat:external` line is a claim about a variable that is still used; when
+# the compose file stops interpolating one, the opt-out has to go with it.
+# Space-joined so the `case` below matches on word boundaries: the extracted
+# lists are newline-separated, and " $vps_required " would not pad the interior
+# entries with the spaces the pattern looks for.
+vps_interpolated=$(printf '%s\n%s\n' "$vps_required" "$vps_bare" | tr '\n' ' ')
+
+stale_external=
+for var in $(grep -oE '^# owlat:external [A-Za-z_][A-Za-z0-9_]*' "$vps_env" |
+	sed 's/^# owlat:external //'); do
+	case " $vps_interpolated " in
+	*" $var "*) ;;
+	*) stale_external="$stale_external $var" ;;
+	esac
+done
+if [ -z "$stale_external" ]; then
+	ok "$vps_env declares no \`# owlat:external\` variable $vps has stopped using"
+else bad "$vps_env still declares \`# owlat:external\` for unused variables:$stale_external"; fi
 
 exit $fail
