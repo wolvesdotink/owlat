@@ -28,7 +28,7 @@ import {
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
 import { isClearsigned, isSignedPgpMime } from '@owlat/shared/secureMessage';
 import { storeSealedBlob, type BlobStore } from '../../lib/sealedBlob';
-import { base64ToBytes, bytesToBinaryString, utf8ByteLength } from '../../lib/bytes';
+import { base64ToBytes, bytesToBinaryString, utf8Bytes } from '../../lib/bytes';
 import { buildSnippet } from './insert';
 import { buildSearchBody } from '../searchBody';
 import { scanInboundAttachments } from './scan';
@@ -48,12 +48,16 @@ export async function splitBodyForStorage(
 	contentType: string
 ): Promise<{ inline?: string; storageId?: Id<'_storage'> }> {
 	if (!body) return {};
-	if (utf8ByteLength(body) <= INLINE_BODY_THRESHOLD_BYTES) {
+	// Encoded ONCE: the threshold is a byte count (`body.length` counts UTF-16
+	// code units and under-counts every non-ASCII character), and the same bytes
+	// are what gets stored when it is over.
+	const bytes = utf8Bytes(body);
+	if (bytes.byteLength <= INLINE_BODY_THRESHOLD_BYTES) {
 		return { inline: body };
 	}
 	// E8b: seal the over-threshold body blob at rest (byte cipher). The reader
 	// (`readMailMessageText`) and the web-reader proxy both unseal transparently.
-	const storageId = await storeSealedBlob(ctx.storage, new TextEncoder().encode(body), contentType);
+	const storageId = await storeSealedBlob(ctx.storage, bytes, contentType);
 	return { storageId };
 }
 
@@ -78,8 +82,14 @@ export async function prepareInboundMessage(
 		virusVerdict?: 'clean' | 'infected' | 'skipped';
 	}
 ) {
-	// Decode raw MIME and stash in Convex storage.
+	// Decode raw MIME and stash in Convex storage. `base64ToBytes` answers
+	// undecodable input with zero bytes rather than throwing; a real RFC822
+	// message is never empty, so refuse it here instead of delivering an empty
+	// row with a zero-byte `.eml` behind it.
 	const rawBytes = base64ToBytes(args.rawBytesBase64);
+	if (rawBytes.length === 0) {
+		throw new Error('prepareInboundMessage: rawBytesBase64 decoded to zero bytes');
+	}
 	const rawSize = rawBytes.length;
 	// Raw header block decoded once (64KB covers any header section) for both
 	// extractions below.

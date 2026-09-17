@@ -65,6 +65,7 @@ function fakeDeps(opts: {
 		},
 		ingest: async (_remoteName, _role, uid) => {
 			rec.ingested.push(uid);
+			return true;
 		},
 		reportIngestFailure: (_remoteName, uid, error) => {
 			rec.failures.push({ uid, error });
@@ -167,6 +168,7 @@ describe('backfillFolder', () => {
 			},
 			ingest: async (_n, _r, uid) => {
 				rec.ingested.push(uid);
+				return true;
 			},
 			reportIngestFailure: (_n, uid, error) => {
 				rec.failures.push({ uid, error });
@@ -202,6 +204,7 @@ describe('backfillFolder', () => {
 			ingest: async (_n, _r, uid) => {
 				if (uid === 2) throw new Error('oversized');
 				rec.ingested.push(uid);
+				return true;
 			},
 			reportIngestFailure: (_n, uid, error) => {
 				rec.failures.push({ uid, error });
@@ -222,6 +225,46 @@ describe('backfillFolder', () => {
 		// ...and counted as failed, never as imported.
 		expect(rec.progress.reduce((n, p) => n + p.importedDelta, 0)).toBe(2);
 		expect(rec.progress.reduce((n, p) => n + p.failedDelta, 0)).toBe(1);
+	});
+
+	it('counts an ingest that stored nothing without throwing as failed', async () => {
+		// `ingestExternalRaw` answers `{skipped: 'no_target'}` — mailbox suspended,
+		// folder row missing — without raising. Reading only the throw would call
+		// that an import and hand back the original lie.
+		const rec = recorder();
+		const deps: BackfillFolderDeps = {
+			batchSize: 10,
+			initFolder: async () => ({ startCursor: 3 }),
+			fetchBatch: async (_n, start, end) => {
+				rec.fetchedRanges.push({ start, end });
+				return [1, 2, 3].map((u) => ({
+					uid: u,
+					source: Buffer.from(`r-${u}`),
+					flags: new Set<string>(),
+				}));
+			},
+			// uid 2 lands, the others are skipped server-side.
+			ingest: async (_n, _r, uid) => {
+				if (uid !== 2) return false;
+				rec.ingested.push(uid);
+				return true;
+			},
+			reportIngestFailure: (_n, uid, error) => {
+				rec.failures.push({ uid, error });
+			},
+			recordProgress: async (_n, newCursor, importedDelta, failedDelta) => {
+				rec.progress.push({ newCursor, importedDelta, failedDelta });
+				return true;
+			},
+			isStopped: () => false,
+		};
+
+		const done = await backfillFolder(deps, target);
+
+		expect(done).toBe(true);
+		expect(rec.ingested).toEqual([2]);
+		expect(rec.progress.reduce((n, p) => n + p.importedDelta, 0)).toBe(1);
+		expect(rec.progress.reduce((n, p) => n + p.failedDelta, 0)).toBe(2);
 	});
 
 	it('reports a wholly failed walk as zero imported, not as a full import', async () => {

@@ -42,6 +42,21 @@ import { base64ToBytes } from '../../lib/bytes';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 import { folderRoleValidator } from '../mailbox/shared';
 
+/**
+ * What one ingest did, so the worker can tell the three apart.
+ *
+ * `duplicate` is a NON-EVENT: the message is already in the mailbox (Gmail's
+ * "All Mail" repeats every other folder, and the Sent copy the worker APPENDs
+ * after an outbound send re-arrives), so the mail IS there and the walk should
+ * count it as landed. `no_target` is a genuine failure — the account, the
+ * mailbox or the folder the message belongs in is gone, and NOTHING was stored.
+ * Collapsing the two into one `{skipped: true}`, as this returned before, let a
+ * walk that stored nothing at all report a complete import.
+ */
+export type ExternalIngestOutcome =
+	| { messageId: Id<'mailMessages'> }
+	| { skipped: 'duplicate' | 'no_target' };
+
 /** Strip RFC 5322 angle brackets from a Message-ID for dedup. */
 function canonicalMessageId(raw: string): string {
 	return raw.replace(/[<>]/g, '').trim() || raw;
@@ -93,7 +108,7 @@ export const ingestExternalMessage = internalMutation({
 		// in the classifiers; nothing here is persisted on the message row.
 		antiLoopHeaders: v.optional(v.record(v.string(), v.string())),
 	},
-	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
+	handler: async (ctx, args): Promise<ExternalIngestOutcome> => {
 		const dropBlob = async () => {
 			await ctx.storage.delete(args.rawStorageId).catch(() => undefined);
 			if (args.textBodyStorageId) {
@@ -107,12 +122,12 @@ export const ingestExternalMessage = internalMutation({
 		const account = await ctx.db.get(args.accountId);
 		if (!account || account.status === 'disconnected') {
 			await dropBlob();
-			return { skipped: true };
+			return { skipped: 'no_target' };
 		}
 		const mailbox = await ctx.db.get(account.mailboxId);
 		if (!mailbox || mailbox.status !== 'active') {
 			await dropBlob();
-			return { skipped: true };
+			return { skipped: 'no_target' };
 		}
 
 		// Dedup on Message-ID within this mailbox. This also catches the Sent
@@ -127,7 +142,7 @@ export const ingestExternalMessage = internalMutation({
 		if (dup) {
 			await dropBlob();
 			await advanceCursor(ctx, args, mailbox._id);
-			return { skipped: true };
+			return { skipped: 'duplicate' };
 		}
 
 		const folder = await ctx.db
@@ -138,7 +153,7 @@ export const ingestExternalMessage = internalMutation({
 			.first();
 		if (!folder) {
 			await dropBlob();
-			return { skipped: true };
+			return { skipped: 'no_target' };
 		}
 
 		const messageId = await insertDeliveredMessage(ctx, {
@@ -341,8 +356,15 @@ export const ingestExternalRaw = internalAction({
 		// Forward sync vs historical import; see the file header.
 		origin: v.optional(v.union(v.literal('sync'), v.literal('backfill'))),
 	},
-	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
+	handler: async (ctx, args): Promise<ExternalIngestOutcome> => {
 		const rawBytes = base64ToBytes(args.rawBytesBase64);
+		// `base64ToBytes` answers undecodable input with zero bytes rather than
+		// throwing. A real RFC822 message is never empty, so an empty decode here
+		// means the payload was corrupt — throw, so the worker counts the message
+		// as failed instead of storing a zero-byte blob and an empty row.
+		if (rawBytes.length === 0) {
+			throw new Error('ingestExternalRaw: rawBytesBase64 decoded to zero bytes');
+		}
 		// E8b: seal the raw `.eml` at rest (byte cipher); the reader path + the
 		// `/sealed-blob` proxy unseal it for the web reader / IMAP bridge.
 		const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');

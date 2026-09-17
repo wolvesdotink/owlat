@@ -27,7 +27,7 @@ import type { MutationCtx } from '../_generated/server';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { recordHostedPluginAudit } from './audit';
 import type { HostedPluginActorScope } from './authorization';
-import { utf8ByteLength } from '../lib/bytes';
+import { utf8CharWidth } from '../lib/bytes';
 
 /**
  * Default lease window: a `running` row whose heartbeat is older than this is
@@ -56,7 +56,7 @@ function clampUntrustedText(text: string, maxBytes: number): string {
 	for (const character of text) {
 		const codePoint = character.codePointAt(0) ?? 0;
 		const safe = codePoint < 0x20 || codePoint === 0x7f ? ' ' : character;
-		const width = utf8ByteLength(safe);
+		const width = utf8CharWidth(safe);
 		if (bytes + width > maxBytes) break;
 		out += safe;
 		bytes += width;

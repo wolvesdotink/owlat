@@ -23,7 +23,7 @@ import type { MailSyncConfig } from './config.js';
 import { mapFolderRole, type FolderRole } from './folders.js';
 import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
-import { ingestMessage } from './ingest.js';
+import { ingestMessage, isMessageLanded } from './ingest.js';
 import {
 	backfillFolder,
 	type BackfillFetchedMessage,
@@ -554,8 +554,8 @@ export class AccountConnection {
 					lock.release();
 				}
 			},
-			ingest: async (remoteName, role, uid, raw, flags) =>
-				ingestMessage(this.convex, {
+			ingest: async (remoteName, role, uid, raw, flags) => {
+				const outcome = await ingestMessage(this.convex, {
 					accountId,
 					folderRole: role,
 					remoteName,
@@ -565,7 +565,18 @@ export class AccountConnection {
 					flags,
 					// Historical import: never enqueue background LLM work for it.
 					origin: 'backfill',
-				}),
+				});
+				const landed = isMessageLanded(outcome);
+				if (!landed && 'skipped' in outcome) {
+					// Stored nothing and did not throw — the shape that used to be
+					// indistinguishable from a successful import.
+					logger.warn(
+						{ accountId, remoteName, uid, reason: outcome.skipped },
+						'backfill ingest stored nothing'
+					);
+				}
+				return landed;
+			},
 			reportIngestFailure: (remoteName, uid, err) => {
 				// The forward-sync loop logs its skips (pollFolder below); the backfill
 				// used to swallow them, which is how an ingest that threw on every

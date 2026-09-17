@@ -30,10 +30,21 @@
  * `scripts/__tests__/check-convex-node-globals.test.ts`, run by the same gate.
  */
 
+import { builtinModules } from 'node:module';
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+
+/**
+ * Every Node builtin, in BOTH spellings. `node:crypto` and a bare `crypto` are
+ * the same module to the bundler; only checking the prefixed form would let the
+ * spelling already used in this tree (`delivery/contactToken.ts` imports from
+ * `'crypto'`) walk past the gate the day someone drops a `'use node'`.
+ */
+const NODE_BUILTIN_SPECIFIERS: ReadonlySet<string> = new Set(
+	builtinModules.flatMap((name) => [name, `node:${name}`])
+);
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONVEX_DIR = 'apps/api/convex';
@@ -206,11 +217,24 @@ function findGlobalUses(
 ): { symbol: string; line: number }[] {
 	const wanted = new Set(globals);
 	const found: { symbol: string; line: number }[] = [];
-	// A module that declares or imports the name shadows the global; then the
-	// reference is to its own binding and resolves fine in the isolate.
+	// A module that gives the name its OWN top-level binding shadows the global,
+	// and the reference resolves fine in the isolate. Two kinds do not count:
+	//
+	//   · `declare const Buffer: …` — a type-space assertion that emits NOTHING.
+	//     It is the one-line way a developer silences the type error and puts the
+	//     original ReferenceError straight back;
+	//   · a binding imported FROM a Node builtin (`import { Buffer } from
+	//     'buffer'`, which is what IDE auto-import offers) — that import is
+	//     itself the problem, and is reported separately.
 	const shadowed = new Set<string>();
 	for (const statement of sourceFile.statements) {
 		if (ts.isImportDeclaration(statement)) {
+			if (
+				ts.isStringLiteral(statement.moduleSpecifier) &&
+				NODE_BUILTIN_SPECIFIERS.has(statement.moduleSpecifier.text)
+			) {
+				continue;
+			}
 			const bindings = statement.importClause?.namedBindings;
 			if (bindings !== undefined && ts.isNamedImports(bindings)) {
 				for (const element of bindings.elements) shadowed.add(element.name.text);
@@ -218,6 +242,10 @@ function findGlobalUses(
 			const defaultName = statement.importClause?.name;
 			if (defaultName !== undefined) shadowed.add(defaultName.text);
 		} else if (ts.isVariableStatement(statement)) {
+			const isAmbient = statement.modifiers?.some(
+				(modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword
+			);
+			if (isAmbient === true) continue;
 			for (const declaration of statement.declarationList.declarations) {
 				if (ts.isIdentifier(declaration.name)) shadowed.add(declaration.name.text);
 			}
@@ -226,29 +254,73 @@ function findGlobalUses(
 		}
 	}
 
-	function visit(node: ts.Node): void {
+	/** Names bound by the construct at hand — a parameter, a catch, a local. */
+	function localNames(node: ts.Node): string[] {
+		const names: string[] = [];
+		const collect = (name: ts.BindingName): void => {
+			if (ts.isIdentifier(name)) names.push(name.text);
+			else
+				for (const element of name.elements) {
+					if (ts.isBindingElement(element)) collect(element.name);
+				}
+		};
+		if (ts.isFunctionLike(node)) {
+			for (const parameter of node.parameters) collect(parameter.name);
+			if (!ts.isArrowFunction(node) && node.name && ts.isIdentifier(node.name)) {
+				names.push(node.name.text);
+			}
+		} else if (ts.isCatchClause(node) && node.variableDeclaration) {
+			collect(node.variableDeclaration.name);
+		} else if (ts.isVariableStatement(node)) {
+			for (const declaration of node.declarationList.declarations) collect(declaration.name);
+		}
+		return names;
+	}
+
+	function visit(node: ts.Node, scope: ReadonlySet<string>): void {
 		// Types are erased before the bundle exists, so `x: Buffer` cannot throw.
-		if (ts.isTypeNode(node) || ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node)) {
+		// A HERITAGE clause is the exception: `class X extends Buffer {}` parses as
+		// a type node but evaluates the expression, and throws at MODULE LOAD.
+		const isHeritageExpression =
+			ts.isExpressionWithTypeArguments(node) &&
+			node.parent !== undefined &&
+			ts.isHeritageClause(node.parent);
+		if (
+			!isHeritageExpression &&
+			(ts.isTypeNode(node) || ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node))
+		) {
 			return;
 		}
 		if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
+		// `typeof X` on an undeclared name is the one reference that CANNOT throw —
+		// it is how a module feature-detects the runtime it is in.
+		if (ts.isTypeOfExpression(node) && ts.isIdentifier(node.expression)) return;
 		if (ts.isIdentifier(node) && wanted.has(node.text) && !shadowed.has(node.text)) {
-			if (!isPropertyName(node)) {
+			if (!isPropertyName(node) && !scope.has(node.text)) {
 				const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
 				found.push({ symbol: node.text, line: line + 1 });
 			}
 			return;
 		}
-		ts.forEachChild(node, visit);
+		const bound = localNames(node);
+		const inner = bound.length > 0 ? new Set([...scope, ...bound]) : scope;
+		ts.forEachChild(node, (child) => visit(child, inner));
 	}
-	ts.forEachChild(sourceFile, visit);
+	ts.forEachChild(sourceFile, (node) => visit(node, new Set<string>()));
 	return found;
 }
 
-/** Every `node:*` specifier the module value-imports, with its 1-indexed line. */
+/**
+ * Every Node builtin the module pulls in, with its 1-indexed line — static
+ * imports/re-exports, plus the two dynamic forms (`await import('node:fs')`,
+ * `require('buffer')`) that a static import-declaration walk would miss.
+ */
 function findNodeBuiltinImports(sourceFile: ts.SourceFile): { symbol: string; line: number }[] {
 	const valueImports = new Set(valueImportSpecifiers(sourceFile));
 	const found: { symbol: string; line: number }[] = [];
+	const at = (node: ts.Node): number =>
+		sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+
 	for (const statement of sourceFile.statements) {
 		const moduleSpecifier = ts.isImportDeclaration(statement)
 			? statement.moduleSpecifier
@@ -256,11 +328,28 @@ function findNodeBuiltinImports(sourceFile: ts.SourceFile): { symbol: string; li
 				? statement.moduleSpecifier
 				: undefined;
 		if (moduleSpecifier === undefined || !ts.isStringLiteral(moduleSpecifier)) continue;
-		if (!moduleSpecifier.text.startsWith('node:')) continue;
+		if (!NODE_BUILTIN_SPECIFIERS.has(moduleSpecifier.text)) continue;
 		if (!valueImports.has(moduleSpecifier.text)) continue;
-		const { line } = sourceFile.getLineAndCharacterOfPosition(moduleSpecifier.getStart(sourceFile));
-		found.push({ symbol: moduleSpecifier.text, line: line + 1 });
+		found.push({ symbol: moduleSpecifier.text, line: at(moduleSpecifier) });
 	}
+
+	const visit = (node: ts.Node): void => {
+		if (ts.isCallExpression(node)) {
+			const isDynamic = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+			const isRequire = ts.isIdentifier(node.expression) && node.expression.text === 'require';
+			const argument = node.arguments[0];
+			if (
+				(isDynamic || isRequire) &&
+				argument !== undefined &&
+				ts.isStringLiteral(argument) &&
+				NODE_BUILTIN_SPECIFIERS.has(argument.text)
+			) {
+				found.push({ symbol: argument.text, line: at(argument) });
+			}
+		}
+		ts.forEachChild(node, visit);
+	};
+	ts.forEachChild(sourceFile, visit);
 	return found;
 }
 
@@ -380,7 +469,7 @@ if (import.meta.main) {
 			console.error(`  - ${use.file}:${use.line}  ${use.symbol}${via}`);
 		}
 		console.error(
-			`\nUse the Web equivalents (apps/api/convex/lib/base64.ts, TextEncoder/TextDecoder,\n` +
+			`\nUse the Web equivalents (apps/api/convex/lib/bytes.ts, TextEncoder/TextDecoder,\n` +
 				`crypto.subtle), or move the module to the Node runtime with 'use node'.`
 		);
 		process.exit(1);

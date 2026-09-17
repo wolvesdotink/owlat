@@ -92,7 +92,12 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 						attachments: params.attachments?.map((a) => ({
 							filename: a.filename,
 							content: bytesToBase64(a.content),
-							content_type: a.contentType,
+							// `contentType`, not `content_type`: the SDK's own
+							// `parseAttachments` reads this key and emits the snake_case
+							// wire field itself. Passing the wire spelling made it an
+							// excess property that was dropped, leaving Resend to guess the
+							// type from the filename.
+							contentType: a.contentType,
 						})),
 					},
 					// Stable idempotency key → Resend `Idempotency-Key` header, so a

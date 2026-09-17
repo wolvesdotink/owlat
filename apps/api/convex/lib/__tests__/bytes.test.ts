@@ -13,7 +13,8 @@ import {
 	base64ToBytes,
 	bytesToBase64,
 	bytesToBinaryString,
-	utf8ByteLength,
+	utf8Bytes,
+	utf8CharWidth,
 	utf8ToBase64,
 } from '../bytes';
 
@@ -69,6 +70,39 @@ describe('base64ToBytes', () => {
 	it('yields an empty array for input that cannot be decoded at all', () => {
 		expect(base64ToBytes('!!!!')).toEqual(new Uint8Array(0));
 	});
+
+	it('decodes the URL-SAFE alphabet instead of shifting every byte after it', () => {
+		// Dropping `-`/`_` rather than translating them decodes to something
+		// plausible and WRONG, which is worse than refusing the input.
+		for (const value of ['-_-_AP8', 'a-b_cd']) {
+			expect(base64ToBytes(value), value).toEqual(new Uint8Array(Buffer.from(value, 'base64')));
+		}
+	});
+
+	it('stops at the first padding character, so trailing junk cannot extend it', () => {
+		expect(base64ToBytes('aGVsbG8=Zm9v')).toEqual(
+			new Uint8Array(Buffer.from('aGVsbG8=Zm9v', 'base64'))
+		);
+	});
+
+	it('drops a trailing orphan character instead of failing the whole string', () => {
+		expect(base64ToBytes('aGVsb')).toEqual(new Uint8Array(Buffer.from('aGVsb', 'base64')));
+	});
+
+	it('matches Buffer over random payloads in both alphabets', () => {
+		for (let seed = 1; seed <= 200; seed++) {
+			const bytes = Uint8Array.from(
+				{ length: (seed % 50) + 1 },
+				(_, i) => (seed * 31 + i * 7) % 256
+			);
+			for (const encoding of ['base64', 'base64url'] as const) {
+				const encoded = Buffer.from(bytes).toString(encoding);
+				expect(base64ToBytes(encoded), encoded).toEqual(
+					new Uint8Array(Buffer.from(encoded, 'base64'))
+				);
+			}
+		}
+	});
 });
 
 describe('bytesToBinaryString', () => {
@@ -88,16 +122,33 @@ describe('utf8ToBase64', () => {
 	});
 });
 
-describe('utf8ByteLength', () => {
-	it('counts bytes, not characters', () => {
-		expect(utf8ByteLength('owl')).toBe(3);
-		expect(utf8ByteLength('🦉')).toBe(4);
-		expect('🦉'.length).toBe(2); // the under-count `.length` would have given
-	});
-
-	it('agrees with Buffer.byteLength', () => {
+describe('utf8Bytes', () => {
+	it('encodes UTF-8 bytes, not UTF-16 code units', () => {
 		const text = 'Grüße aus der Hinterland-Kamera 🦉 — ünïcodé';
 
-		expect(utf8ByteLength(text)).toBe(Buffer.byteLength(text, 'utf-8'));
+		expect(utf8Bytes(text)).toEqual(new Uint8Array(Buffer.from(text, 'utf-8')));
+		expect(utf8Bytes(text).byteLength).toBe(Buffer.byteLength(text, 'utf-8'));
+	});
+});
+
+describe('utf8CharWidth', () => {
+	it('gives each code point its UTF-8 byte width without encoding it', () => {
+		for (const character of ['a', '\u0000', '\u007f', 'ü', 'ß', '€', '한', '🦉', '𝄞']) {
+			expect(utf8CharWidth(character), character).toBe(Buffer.byteLength(character, 'utf-8'));
+		}
+	});
+
+	it('charges a lone surrogate the three bytes U+FFFD costs, as the encoder does', () => {
+		const loneSurrogate = '\ud83e';
+
+		expect(utf8CharWidth(loneSurrogate)).toBe(3);
+		expect(utf8CharWidth(loneSurrogate)).toBe(Buffer.byteLength(loneSurrogate, 'utf-8'));
+	});
+
+	it('sums to the encoded length over a mixed string', () => {
+		const text = 'owl 🦉 Grüße — €';
+		const summed = [...text].reduce((total, character) => total + utf8CharWidth(character), 0);
+
+		expect(summed).toBe(Buffer.byteLength(text, 'utf-8'));
 	});
 });

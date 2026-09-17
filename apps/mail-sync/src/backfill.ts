@@ -67,14 +67,16 @@ export interface BackfillFolderDeps {
 	 * during the per-message ingest that follows. Sparse UIDs ⇒ fewer than
 	 * `end-start+1` results. */
 	fetchBatch(remoteName: string, start: number, end: number): Promise<BackfillFetchedMessage[]>;
-	/** Ingest one message (reuses the forward-sync `ingestMessage` path). */
+	/** Ingest one message (reuses the forward-sync `ingestMessage` path). Resolves
+	 * false when the server stored NOTHING and the message is not already in the
+	 * mailbox either — a skip the caller must not read as an import. */
 	ingest(
 		remoteName: string,
 		role: FolderRole,
 		uid: number,
 		raw: Buffer,
 		flags: Set<string>
-	): Promise<void>;
+	): Promise<boolean>;
 	/** Report one message this walk could not store, so the failure is visible
 	 * somewhere. The backfill swallowing ingest errors in silence is how an
 	 * ingest that threw on EVERY message still finished as "100% imported". */
@@ -130,8 +132,18 @@ export async function backfillFolder(
 				continue;
 			}
 			try {
-				await deps.ingest(target.remoteName, target.role, msg.uid, msg.source, msg.flags);
-				imported++;
+				const landed = await deps.ingest(
+					target.remoteName,
+					target.role,
+					msg.uid,
+					msg.source,
+					msg.flags
+				);
+				// A server-side skip stores nothing and does NOT throw, so counting
+				// every non-throwing ingest as an import would reopen exactly the hole
+				// this split closes.
+				if (landed) imported++;
+				else failed++;
 			} catch (error) {
 				// Skip one bad message (e.g. oversized); the cursor still advances
 				// past the whole range below. The message stays on the remote server.

@@ -105,7 +105,26 @@ export interface IngestParams {
 	origin: 'sync' | 'backfill';
 }
 
-export async function ingestMessage(convex: ConvexClient, params: IngestParams): Promise<void> {
+/**
+ * What the server did with one message. Mirrors `ExternalIngestOutcome` in
+ * `apps/api/convex/mail/external/delivery.ts`.
+ *
+ * `duplicate` means the message is ALREADY in the mailbox (Gmail's "All Mail"
+ * repeats every other folder), so it counts as landed; `no_target` means the
+ * account/mailbox/folder it belongs in is gone and nothing was stored. Reading
+ * this is what stops a walk that stored nothing from reporting a full import.
+ */
+export type IngestOutcome = { messageId: string } | { skipped: 'duplicate' | 'no_target' };
+
+/** True when the message is in the mailbox now — stored by this call, or already there. */
+export function isMessageLanded(outcome: IngestOutcome): boolean {
+	return !('skipped' in outcome) || outcome.skipped === 'duplicate';
+}
+
+export async function ingestMessage(
+	convex: ConvexClient,
+	params: IngestParams
+): Promise<IngestOutcome> {
 	const parsed = parseMessage(params.raw);
 	const text = parsed.text ?? undefined;
 	const html = typeof parsed.html === 'string' ? parsed.html : undefined;
@@ -120,7 +139,7 @@ export async function ingestMessage(convex: ConvexClient, params: IngestParams):
 		? parsed.references.join(' ')
 		: (parsed.references ?? undefined);
 
-	await convex.action(
+	return (await convex.action(
 		fn.ingestExternalRaw as never,
 		{
 			accountId: params.accountId,
@@ -146,5 +165,5 @@ export async function ingestMessage(convex: ConvexClient, params: IngestParams):
 			flagFlagged: params.flags.has('\\Flagged'),
 			origin: params.origin,
 		} as never
-	);
+	)) as IngestOutcome;
 }

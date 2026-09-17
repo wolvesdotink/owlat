@@ -808,6 +808,7 @@ import type * as mail_memberMailboxStatus from '../mail/memberMailboxStatus.js';
 import type * as mail_messageActions from '../mail/messageActions.js';
 import type * as mail_messagePurge from '../mail/messagePurge.js';
 import type * as mail_migration from '../mail/migration.js';
+import type * as mail_migrationBackfill from '../mail/migrationBackfill.js';
 import type * as mail_migrationIndexing from '../mail/migrationIndexing.js';
 import type * as mail_migrationShared from '../mail/migrationShared.js';
 import type * as mail_mtaClient from '../mail/mtaClient.js';
@@ -1895,6 +1896,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/messageActions': typeof mail_messageActions;
 	'mail/messagePurge': typeof mail_messagePurge;
 	'mail/migration': typeof mail_migration;
+	'mail/migrationBackfill': typeof mail_migrationBackfill;
 	'mail/migrationIndexing': typeof mail_migrationIndexing;
 	'mail/migrationShared': typeof mail_migrationShared;
 	'mail/mtaClient': typeof mail_mtaClient;

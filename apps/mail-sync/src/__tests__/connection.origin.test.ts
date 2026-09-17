@@ -14,8 +14,14 @@ import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
 import type { BackfillFolderDeps } from '../backfill.js';
 
-const ingest = vi.hoisted(() => ({ ingestMessage: vi.fn(async () => {}) }));
-vi.mock('../ingest.js', () => ({ ingestMessage: ingest.ingestMessage }));
+const ingest = vi.hoisted(() => ({
+	ingestMessage: vi.fn(async () => ({ messageId: 'msg_1' })),
+	isMessageLanded: vi.fn(() => true),
+}));
+vi.mock('../ingest.js', () => ({
+	ingestMessage: ingest.ingestMessage,
+	isMessageLanded: ingest.isMessageLanded,
+}));
 
 // The folder walk itself is covered by backfill.test.ts; stubbing it here keeps
 // the backfill-loop test about ORDER (forward poll vs. ceiling snapshot).

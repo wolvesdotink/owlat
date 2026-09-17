@@ -187,6 +187,110 @@ describe('convex isolate-runtime Node-global gate', () => {
 		expect(await findConvexNodeGlobalUses({ root })).toEqual([]);
 	});
 
+	// ── shapes that slipped past the first cut of this gate ──────────────────
+
+	it('reports an ambient `declare` of a Node global, which emits nothing', async () => {
+		// The one-line way to silence the type error and put the ReferenceError
+		// straight back. `declare` is type space: it binds no runtime value.
+		const root = await fixture({
+			[`${CONVEX}/mail/ingest.ts`]: [
+				'declare const Buffer: { from(v: string, e: string): Uint8Array };',
+				"export const decode = (b64: string) => Buffer.from(b64, 'base64');",
+				'',
+			].join('\n'),
+		});
+
+		const uses = await findConvexNodeGlobalUses({ root });
+
+		expect(uses.map((use) => use.symbol)).toEqual(['Buffer']);
+	});
+
+	it('reports a Node builtin imported without the node: prefix', async () => {
+		// `delivery/contactToken.ts` already spells it `from 'crypto'`; the day a
+		// module like that loses its `'use node'`, the prefix check alone is blind.
+		const root = await fixture({
+			[`${CONVEX}/delivery/sign.ts`]: [
+				"import { createHash } from 'crypto';",
+				"export const sign = (v: string) => createHash('sha256').update(v).digest('hex');",
+				'',
+			].join('\n'),
+		});
+
+		const uses = await findConvexNodeGlobalUses({ root });
+
+		expect(uses.map((use) => use.symbol)).toEqual(['crypto']);
+	});
+
+	it('reports `import { Buffer } from "buffer"` — the auto-import shape', async () => {
+		// Double blind spot: a bare builtin, AND a named import that used to be
+		// read as the module shadowing the global for itself.
+		const root = await fixture({
+			[`${CONVEX}/mail/ingest.ts`]: [
+				"import { Buffer } from 'buffer';",
+				"export const decode = (b64: string) => Buffer.from(b64, 'base64');",
+				'',
+			].join('\n'),
+		});
+
+		const uses = await findConvexNodeGlobalUses({ root });
+
+		expect(uses.map((use) => use.symbol).sort()).toEqual(['Buffer', 'buffer']);
+	});
+
+	it('reports a Node global in a heritage clause, which throws at module load', async () => {
+		const root = await fixture({
+			[`${CONVEX}/mail/frame.ts`]: 'export class Frame extends Buffer {}\n',
+		});
+
+		const uses = await findConvexNodeGlobalUses({ root });
+
+		expect(uses.map((use) => use.symbol)).toEqual(['Buffer']);
+	});
+
+	it('reports a Node builtin behind a dynamic import or require', async () => {
+		const root = await fixture({
+			[`${CONVEX}/mail/lazy.ts`]: [
+				"export const hash = async () => (await import('node:crypto')).randomUUID();",
+				'',
+			].join('\n'),
+			[`${CONVEX}/mail/legacy.ts`]: [
+				"export const buf = () => require('buffer').Buffer.alloc(4);",
+				'',
+			].join('\n'),
+		});
+
+		const uses = await findConvexNodeGlobalUses({ root });
+
+		expect(uses.map((use) => use.symbol).sort()).toEqual(['buffer', 'node:crypto']);
+	});
+
+	it('allows `typeof Buffer`, the one reference that cannot throw', async () => {
+		const root = await fixture({
+			[`${CONVEX}/lib/runtime.ts`]: "export const hasBuffer = typeof Buffer !== 'undefined';\n",
+		});
+
+		expect(await findConvexNodeGlobalUses({ root })).toEqual([]);
+	});
+
+	it('does not let a nested binding of the name silence the rest of the file', async () => {
+		// A parameter or catch binding named `Buffer` shadows it INSIDE that scope
+		// only; the module-level use next to it is still a ReferenceError.
+		const root = await fixture({
+			[`${CONVEX}/mail/mixed.ts`]: [
+				'export function size(Buffer: Uint8Array): number {',
+				'\treturn Buffer.byteLength;',
+				'}',
+				"export const decode = (b64: string) => Buffer.from(b64, 'base64');",
+				'',
+			].join('\n'),
+		});
+
+		const uses = await findConvexNodeGlobalUses({ root });
+
+		expect(uses).toHaveLength(1);
+		expect(uses[0]).toMatchObject({ symbol: 'Buffer', line: 4 });
+	});
+
 	it('skips tests and generated code, which never run in the deployment', async () => {
 		const root = await fixture({
 			[`${CONVEX}/mail/__tests__/ingest.test.ts`]: "const raw = Buffer.from('x');\n",
