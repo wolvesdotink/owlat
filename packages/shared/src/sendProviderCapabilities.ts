@@ -43,6 +43,7 @@ import type {
 	MessageIdSource,
 	SendProviderCatalogEntryShape,
 } from './sendProviderCatalogTypes';
+import type { SendTransportEgress } from './sendTransportEgress';
 
 /**
  * A declaration carrying the field this accessor reads, or nothing at all — see
@@ -97,6 +98,18 @@ export function deduplicatesOnIdempotencyKeyOf(
 	entry: Declaring<'deduplicatesOnIdempotencyKey'>
 ): boolean {
 	return entry?.deduplicatesOnIdempotencyKey === true;
+}
+
+/**
+ * Which outbound network path this transport dials; see {@link SendTransportEgress}.
+ *
+ * Fail closed to `https-api`: the answer that claims no mail port. An entry that
+ * declares nothing — a bundled plugin's transport, which this package cannot
+ * see — must not have a red "outbound 25 blocked" row drawn on its behalf for a
+ * port it never dials.
+ */
+export function egressOf(entry: Declaring<'egress'>): SendTransportEgress {
+	return entry?.egress ?? 'https-api';
 }
 
 /** Does this transport's inbound feedback carry our own provenance tag? */
