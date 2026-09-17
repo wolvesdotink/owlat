@@ -79,9 +79,12 @@ describe('command loop over a raw socket', () => {
 		c.write(
 			'EHLO batch.test\r\nMAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nRCPT TO:<c@c.test>\r\nNOOP\r\n'
 		);
-		await c.waitFor((b) => (b.match(/(^|\n)250 /gm) ?? []).length >= 4, 3000);
+		// EHLO(1) + MAIL(1) + 2×RCPT + NOOP = 5 final 250 lines. WAIT FOR ALL FIVE:
+		// waiting for four and asserting five resolves the moment the fourth lands
+		// and reads the fifth before the server has written it — a 3ms failure in
+		// roughly a third of runs, with nothing wrong on the server side.
+		await c.waitFor((b) => (b.match(/(^|\n)250 /gm) ?? []).length >= 5, 3000);
 		const finals = c.received.match(/(^|\n)250 /gm) ?? [];
-		// EHLO(1) + MAIL(1) + 2×RCPT + NOOP = 5 final 250 lines.
 		expect(finals.length).toBeGreaterThanOrEqual(5);
 		c.end();
 	});
