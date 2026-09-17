@@ -78,6 +78,28 @@ const connectedProvider = computed<MailProvider>(() =>
 const connectedSource = computed<'google' | 'imap'>(() =>
 	account.value?.configured && account.value.imapHost.includes('gmail') ? 'google' : 'imap'
 );
+
+/**
+ * Messages the import walked past without storing — an ingest that failed, or a
+ * message the server would not hand over. They are still on the remote server,
+ * so re-running the import retries them.
+ */
+const skippedCount = computed(() => migration.value?.messagesFailed ?? 0);
+
+/**
+ * "Your mail history is in Owlat" is not true of an import that left messages
+ * behind, and claiming it directly above the count that says otherwise is the
+ * same kind of overstatement this screen used to make about the whole import.
+ */
+const completedBodyCopy = computed(() => {
+	const prefix = 'dashboard.postbox.migrate.';
+	if (skippedCount.value > 0) {
+		return t(
+			isAiIndexing.value ? `${prefix}completedPartialBodyWithAi` : `${prefix}completedPartialBody`
+		);
+	}
+	return t(isAiIndexing.value ? `${prefix}completedBodyWithAi` : `${prefix}completedBody`);
+});
 async function handleStartImport() {
 	const res = await start(connectedSource.value);
 	if (res.ok) showToast(t('dashboard.postbox.migrate.toastImportStarted'), 'success');
@@ -516,21 +538,21 @@ const steps = computed(() =>
 				<UiCard padding="lg">
 					<div class="text-center py-2">
 						<UiIconBox
-							icon="lucide:party-popper"
+							:icon="skippedCount > 0 ? 'lucide:package-check' : 'lucide:party-popper'"
 							size="xl"
-							variant="success"
+							:variant="skippedCount > 0 ? 'warning' : 'success'"
 							rounded="2xl"
 							class="mx-auto"
 						/>
 						<h2 class="text-xl font-semibold mt-4">
-							{{ t('dashboard.postbox.migrate.completedTitle') }}
+							{{
+								skippedCount > 0
+									? t('dashboard.postbox.migrate.completedPartialTitle')
+									: t('dashboard.postbox.migrate.completedTitle')
+							}}
 						</h2>
 						<p class="text-text-secondary mt-1">
-							{{
-								isAiIndexing
-									? t('dashboard.postbox.migrate.completedBodyWithAi')
-									: t('dashboard.postbox.migrate.completedBody')
-							}}
+							{{ completedBodyCopy }}
 						</p>
 
 						<div class="grid grid-cols-2 gap-3 mt-6 text-left">
@@ -548,6 +570,31 @@ const steps = computed(() =>
 								</p>
 								<p class="text-xs text-text-tertiary mt-0.5">
 									{{ t('dashboard.postbox.migrate.statConversationsLearned') }}
+								</p>
+							</div>
+						</div>
+
+						<div
+							v-if="skippedCount > 0"
+							class="mt-6 rounded-xl border border-warning/20 bg-warning/5 p-4 text-left flex items-start gap-3"
+						>
+							<UiIconBox
+								icon="lucide:alert-triangle"
+								size="sm"
+								variant="warning"
+								rounded="lg"
+								class="mt-0.5"
+							/>
+							<div>
+								<p class="text-sm font-medium">
+									{{
+										t('dashboard.postbox.migrate.skippedTitle', skippedCount, {
+											named: { count: formatCount(skippedCount) },
+										})
+									}}
+								</p>
+								<p class="text-xs text-text-secondary mt-0.5">
+									{{ t('dashboard.postbox.migrate.skippedBody') }}
 								</p>
 							</div>
 						</div>

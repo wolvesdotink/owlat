@@ -44,6 +44,7 @@ function migrationRow(overrides: Partial<NonNullable<Status>>): Status {
 		isAiIndexingEnabled: false,
 		messagesTotal: 8300,
 		messagesImported: 1204,
+		messagesFailed: 0,
 		messagesIndexed: 0,
 		importPercent: 14,
 		indexPercent: 0,
@@ -218,6 +219,38 @@ describe('TeamInboxImportCard', () => {
 		expect(done.exists()).toBe(true);
 		expect(done.text()).toContain('8,300 messages are now in this inbox');
 		expectFullyLocalized(wrapper);
+	});
+
+	it('says so when a finished import left messages behind', () => {
+		// A partial loss used to be as silent as a total one: the card reported
+		// what landed and nothing about what did not.
+		status.value = migrationRow({
+			status: 'completed',
+			messagesImported: 3100,
+			messagesFailed: 160,
+			importPercent: 100,
+			importCompletedAt: 2,
+			completedAt: 3,
+		});
+		const wrapper = mountCard();
+
+		const done = wrapper.find('[data-testid="team-inbox-import-completed"]');
+		expect(done.text()).toContain('3,100 messages are now in this inbox');
+		expect(done.text()).toContain("160 messages couldn't be imported");
+		expectFullyLocalized(wrapper);
+	});
+
+	it('stays quiet about skipped messages when none were skipped', () => {
+		status.value = migrationRow({
+			status: 'completed',
+			messagesImported: 8300,
+			messagesFailed: 0,
+			importPercent: 100,
+			completedAt: 3,
+		});
+		const wrapper = mountCard();
+
+		expect(wrapper.text()).not.toContain("couldn't be imported");
 	});
 
 	it('lets a finished import be run again — the backend allows a second one', async () => {

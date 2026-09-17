@@ -96,6 +96,10 @@ export async function latestMigrationForAccount(
 		isAiIndexingEnabled: migration.isAiIndexingEnabled,
 		messagesTotal: migration.messagesTotal,
 		messagesImported: migration.messagesImported,
+		// Rendered by the wizard's completed card: an import that finished having
+		// LOST messages must say so, or a partial loss is as silent as the total
+		// one used to be.
+		messagesFailed: migration.messagesFailed ?? 0,
 		messagesIndexed: migration.messagesIndexed,
 		importPercent,
 		indexPercent,
