@@ -28,12 +28,15 @@
  */
 
 import type Redis from 'ioredis';
+import { QUEUE_NAMESPACE } from './setup.js';
 
 /**
  * The full Redis key prefix GroupMQ derives from the queue namespace
  * (`Queue` prepends `groupmq:` to the configured name — see `createEmailQueue`).
+ * Derived from the one owner of that name rather than restated, so a rename
+ * cannot leave this probe silently watching a prefix nothing writes.
  */
-export const QUEUE_KEY_NAMESPACE = 'groupmq:owlat-mta';
+export const QUEUE_KEY_NAMESPACE = `groupmq:${QUEUE_NAMESPACE}`;
 
 /**
  * How far past its `runAt` a member must be before its presence is evidence of

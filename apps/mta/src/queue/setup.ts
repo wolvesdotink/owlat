@@ -13,7 +13,13 @@ import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { recordWorkerHeartbeat, WORKER_HEARTBEAT_INTERVAL_MS } from '../routes/health.js';
 
-const QUEUE_NAMESPACE = 'owlat-mta';
+/**
+ * The queue's name. Exported because `delayedOrphans` must derive the same
+ * Redis prefix from it: a probe that hard-codes its own copy reports `ok`
+ * forever the moment either side is renamed, which is exactly the false green
+ * `routes/queue.ts` has been living with.
+ */
+export const QUEUE_NAMESPACE = 'owlat-mta';
 
 /**
  * Create the email queue
