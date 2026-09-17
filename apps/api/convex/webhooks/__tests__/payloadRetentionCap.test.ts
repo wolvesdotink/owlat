@@ -75,4 +75,43 @@ describe('webhookPayloads retention cap', () => {
 		expect(envelope['originalChars']).toBe(body.length);
 		expect(String(envelope['head'])).toHaveLength(MAX_RETAINED_PAYLOAD_CHARS);
 	});
+
+	it('keeps a body that fits the document cap verbatim and still parseable', async () => {
+		const t = convexTest(schema, modules);
+		// 100K code units: below the document cap, so this used to be retained
+		// byte for byte. A truncated head is not parseable JSON, which is a
+		// downgrade for an adapter that opted into raw retention to replay a
+		// disputed batch — the truncation only has to start where the cap does.
+		const body = JSON.stringify({
+			event: 'bounce',
+			recipients: Array.from({ length: 6_000 }, (_, i) => `r${i}@acme.test`),
+		});
+		expect(body.length).toBeGreaterThan(64 * 1024);
+		expect(body.length).toBeLessThan(MAX_RETAINED_PAYLOAD_CHARS);
+
+		await t.mutation(internal.webhooks.payloads.store, { source: 'ses', rawPayload: body });
+
+		const stored = await storedPayload(t);
+		expect(stored).toBe(body);
+		expect((JSON.parse(stored) as { event: string }).event).toBe('bounce');
+	});
+
+	it('shrinks the head when escaping would blow the document cap', async () => {
+		const t = convexTest(schema, modules);
+		// `JSON.stringify` escapes a control character to six bytes, so a head of
+		// MAX_RETAINED_PAYLOAD_CHARS of them serializes to 1.5 MiB — over the cap
+		// this whole helper exists to stay inside.
+		const body = String.fromCharCode(0).repeat(2 * 1024 * 1024);
+
+		await t.mutation(internal.webhooks.payloads.store, { source: 'ses', rawPayload: body });
+
+		const stored = await storedPayload(t);
+		expect(new TextEncoder().encode(stored).length).toBeLessThan(CONVEX_DOCUMENT_MAX_BYTES);
+		const envelope = JSON.parse(stored) as Record<string, unknown>;
+		expect(envelope['truncated']).toBe(true);
+		expect(envelope['originalChars']).toBe(body.length);
+		// Still a real head, just a shorter one.
+		expect(String(envelope['head']).length).toBeGreaterThan(0);
+		expect(String(envelope['head']).length).toBeLessThan(MAX_RETAINED_PAYLOAD_CHARS);
+	});
 });
