@@ -331,7 +331,11 @@ export function buildApplyBody(
  * Rather than race that with a fixed timeout, the review step polls a setup-only
  * endpoint: while setup mode is live it answers 4xx for a bad probe body; once
  * the restart lands it answers 403 ("Setup mode is not active"). A 403 is
- * therefore the all-clear to navigate. Pure so the page's poller stays testable.
+ * therefore the all-clear to navigate — as long as it came from the endpoint
+ * and not from the CSRF middleware in front of it, which the caller rules out
+ * before asking (see `~/lib/csrf`).
+ *
+ * Pure so the page's poller stays testable.
  */
 export function interpretSetupModeProbe(status: number): boolean {
 	return status === 403;

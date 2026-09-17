@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { SETUP_WIZARD_STEPS, buildProviderEnv } from '~/composables/useSetupWizard';
+import { apiFetch } from '~/lib/csrfFetch';
 import { emailStepIsValid } from '~/composables/setupWizardValidation';
 import { useSetupEmailStepForm } from '~/composables/useSetupEmailStepForm';
 
@@ -83,7 +84,7 @@ async function next() {
 		// Validate a Resend key against the live API before committing it, so the
 		// operator finds out here rather than at first send.
 		if (provider.value === 'resend') {
-			const res = await $fetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
+			const res = await apiFetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
 				method: 'POST',
 				headers: setupHeaders,
 				body: { provider: 'resend', apiKey: resendKey.value },
@@ -94,7 +95,7 @@ async function next() {
 			}
 		}
 		if (provider.value === 'emailit') {
-			const res = await $fetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
+			const res = await apiFetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
 				method: 'POST',
 				headers: setupHeaders,
 				body: { provider: 'emailit', apiKey: emailitKey.value },
@@ -108,7 +109,7 @@ async function next() {
 		// real handshake, so a wrong host/port/password is caught here, not at send.
 		if (provider.value === 'smtp') {
 			const trimmedPort = smtpPort.value.trim();
-			const res = await $fetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
+			const res = await apiFetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
 				method: 'POST',
 				headers: setupHeaders,
 				body: {

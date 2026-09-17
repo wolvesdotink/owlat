@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { apiFetch } from '~/lib/csrfFetch';
 import { semverCompare } from '@owlat/shared/semver';
 import { formatDateTime } from '~/utils/formatters';
 
@@ -105,7 +106,7 @@ async function confirmUpdate() {
 	updateSteps.value = null;
 
 	try {
-		const resp = await $fetch<{
+		const resp = await apiFetch<{
 			steps?: Array<{ step: string; stdout?: string; stderr?: string }>;
 		}>('/api/system/update', {
 			method: 'POST',
