@@ -1,5 +1,5 @@
 /**
- * THE QUEUE READS GROUPMQ HAS NO API FOR.
+ * THE TWO QUEUE READS GROUPMQ HAS NO API FOR.
  *
  * `routes/queue.ts` goes through the `Queue` object for everything it can,
  * because a route layer that restates the queue's internal schema drifts from
@@ -15,8 +15,13 @@
  *    sample, so polling never surfaces the missing groups either. The group key
  *    already encodes the domain, so the filter can be exact instead.
  *
- * It is keyed off `QUEUE_KEY_NAMESPACE`, the single owner of the prefix, for the
- * same reason `delayedOrphans` is.
+ *  - WHEN A DELAYED JOB IS DUE. `Job.opts.delay` is `delayUntil - now`, and
+ *    GroupMQ drops it to `undefined` the moment that is not positive — so a job
+ *    stuck past its release time, the one delay worth looking at, reports "no
+ *    delay set". The delay ZSET's score IS the due time and stays readable.
+ *
+ * Both are keyed off `QUEUE_KEY_NAMESPACE`, the single owner of the prefix, for
+ * the same reason `delayedOrphans` is.
  */
 
 import type Redis from 'ioredis';
@@ -97,4 +102,15 @@ export async function scanWaitingByDomain(
 		waiting,
 		groups: groupIds.length,
 	};
+}
+
+/**
+ * When a delayed job comes due, ms since epoch, or `null` if it is not in the
+ * delay set.
+ */
+export async function readDelayedRunAt(redis: Redis, jobId: string): Promise<number | null> {
+	const score = await redis.zscore(`${QUEUE_KEY_NAMESPACE}:delayed`, jobId);
+	if (score === null) return null;
+	const runAt = Number(score);
+	return Number.isFinite(runAt) ? runAt : null;
 }

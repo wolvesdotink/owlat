@@ -42,7 +42,7 @@ import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { probeDelayedQueue } from '../queue/delayedOrphans.js';
-import { scanWaitingByDomain } from '../queue/inspect.js';
+import { readDelayedRunAt, scanWaitingByDomain } from '../queue/inspect.js';
 
 /**
  * Ceiling on `/pending?limit=`. This endpoint exists to let an operator eyeball
@@ -254,8 +254,12 @@ export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: 
 		const jobId = c.req.param('jobId');
 
 		try {
-			const job = await queue.getJob(jobId);
+			// One ZSCORE alongside the job read: `Job.opts.delay` is `undefined`
+			// once the job is due, so the delay set's score is the only place the
+			// release time of an overdue job survives.
+			const [job, runAt] = await Promise.all([queue.getJob(jobId), readDelayedRunAt(redis, jobId)]);
 			const data = job.data as EmailJob | null;
+			const now = Date.now();
 
 			return c.json({
 				...summarizeJob(job),
@@ -277,8 +281,20 @@ export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: 
 				},
 				processedOn: job.processedOn ?? null,
 				finishedOn: job.finishedOn ?? null,
-				/** Remaining wait, ms, for a job on the retry ladder. */
-				delayMs: job.opts.delay ?? null,
+				/** When the retry ladder releases this job, ms since epoch. */
+				runAt,
+				/**
+				 * Remaining wait, ms, for a job on the retry ladder — `0`, not
+				 * `null`, once it is due. `null` means "not on the ladder".
+				 */
+				delayMs: runAt === null ? null : Math.max(0, runAt - now),
+				/**
+				 * How long past its release time the job has been sitting, ms.
+				 * Anything much above zero means the promoter is behind or the
+				 * member is stranded (`/stats` → `delayedQueue`), which is the
+				 * state the old `delayMs` reported as "no delay set".
+				 */
+				overdueBy: runAt === null ? null : Math.max(0, now - runAt),
 				lastError: job.failedReason || null,
 			});
 		} catch (err) {

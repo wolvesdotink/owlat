@@ -296,6 +296,23 @@ describe('GET /jobs/:jobId', () => {
 
 		expect(body.state).toBe('delayed');
 		expect(body.delayMs).toBeGreaterThan(0);
+		expect(body.runAt).toBeGreaterThan(Date.now());
+		expect(body.overdueBy).toBe(0);
+	});
+
+	it('reports an overdue delayed job as overdue, not as undelayed', async () => {
+		// GroupMQ zeroes `Job.opts.delay` the moment `delayUntil` passes, so the
+		// one delayed job worth looking at — the one the promoter has not
+		// released — used to read `delayMs: null`, i.e. "no delay set".
+		await enqueue('stuck', {}, { delay: 60_000 });
+		await redis.zadd(DELAYED_KEY, String(Date.now() - 90 * 60_000), 'stuck');
+
+		const { body } = await json('GET', '/jobs/stuck');
+
+		expect(body.state).toBe('delayed');
+		expect(body.runAt).toBeLessThan(Date.now());
+		expect(body.delayMs).toBe(0);
+		expect(body.overdueBy).toBeGreaterThan(60 * 60_000);
 	});
 
 	it('404s for a job id nothing knows', async () => {
