@@ -32,6 +32,11 @@ vi.mock('../../monitoring/logger.js', () => ({
 /**
  * Redis discipline for the per-provider dimension: every new key carries a TTL,
  * every write is one atomic script, and no key set grows with traffic.
+ *
+ * The whole-attempt version of this — every key ONE delivery attempt leaves in
+ * Redis, its TTL, and how many of them are per-attempt rather than shared —
+ * lives in `src/dispatch/__tests__/deliveryAttemptRedisBudget.test.ts`. Put a
+ * new per-message key's bound there; this file stays scoped to warming.
  */
 describe('per-provider warming Redis discipline', () => {
 	let redis: RealRedis;
