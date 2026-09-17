@@ -298,8 +298,8 @@ describe('TLS-handshake abandonment', () => {
 		const { port } = await start({ tls: { cert, key }, implicitTls: true });
 		// Connect with a RAW (non-TLS) socket and shove plaintext at the 465-style
 		// listener; the TLS server rejects the bogus ClientHello and drops us.
-		const outcome = await new Promise<{ closed: boolean; received: string }>((resolve) => {
-			let received = '';
+		const outcome = await new Promise<{ closed: boolean; received: Buffer }>((resolve) => {
+			const chunks: Buffer[] = [];
 			const sock = net.connect(port, '127.0.0.1', () => {
 				sock.write('EHLO plaintext-on-implicit-tls\r\n');
 			});
@@ -308,31 +308,45 @@ describe('TLS-handshake abandonment', () => {
 			// EOF — so no 'end', no 'close', and this test reported "still open" for a
 			// connection the listener had already dropped. It failed 6 of 6 runs on
 			// macOS/Node 22 for that reason alone. Attaching 'data' puts the socket in
-			// flowing mode, which is also what any real client does, and the buffer it
-			// collects pins the other half of the claim: a peer that fails the
-			// handshake never gets an SMTP banner.
+			// flowing mode, which is also what any real client does, and the bytes it
+			// collects pin the other half of the claim below. Kept as BUFFERS, not a
+			// utf8 string: what the peer receives is a binary TLS record, and the
+			// assertion is on the exact bytes.
 			sock.on('data', (chunk: Buffer) => {
-				received += chunk.toString('utf8');
+				chunks.push(chunk);
 			});
 			// Capture the fallback timer so it can be cleared once close/error wins —
 			// otherwise it stays armed and holds the event loop after the test resolves.
 			const fallback = setTimeout(() => {
 				sock.destroy();
-				resolve({ closed: false, received });
+				resolve({ closed: false, received: Buffer.concat(chunks) });
 			}, 4000);
 			sock.on('close', () => {
 				clearTimeout(fallback);
-				resolve({ closed: true, received });
+				resolve({ closed: true, received: Buffer.concat(chunks) });
 			});
 			sock.on('error', () => {
 				clearTimeout(fallback);
-				resolve({ closed: true, received });
+				resolve({ closed: true, received: Buffer.concat(chunks) });
 			});
 		});
 		expect(outcome.closed).toBe(true);
 		// The handshake never completed, so the command loop never ran: the peer must
-		// not have seen a greeting (nor any other SMTP reply) on the way out.
-		expect(outcome.received).not.toMatch(/^2\d\d[ -]/m);
+		// not have seen a greeting — nor ANY other SMTP reply, including a 4xx/5xx
+		// refusal, which a code-specific assertion would have let through.
+		expect(outcome.received.toString('latin1')).not.toMatch(/^\d{3}[ -]/m);
+		// And the bytes are fully determined, so pin all of them rather than a shape.
+		// OpenSSL reads `E`(0x45) as the record's content type, `HL` as its version
+		// and `O ` as its length (20256 > 2**14+2048), so it answers with one fatal
+		// `record_overflow` alert and nothing else:
+		//   15      alert record
+		//   03 03   legacy record version (TLS 1.2; fixed for alerts in TLS 1.3 too)
+		//   00 02   payload length
+		//   02      fatal
+		//   16      record_overflow (RFC 8446 §6.2)
+		// Measured identical across repeated runs on node 22.20.0; node ships its own
+		// OpenSSL, so this is a property of the runtime, not of the host.
+		expect(outcome.received.toString('hex')).toBe('15030300020216');
 		// A proper implicit-TLS client still connects afterward.
 		const c = await Client.connectTls(port, 'mx.test');
 		await c.waitCode(220);
