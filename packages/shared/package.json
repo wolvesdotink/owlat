@@ -305,6 +305,10 @@
 			"types": "./src/composeOverride.ts",
 			"import": "./src/composeOverride.ts"
 		},
+		"./networkPorts": {
+			"types": "./src/networkPorts.ts",
+			"import": "./src/networkPorts.ts"
+		},
 		"./dnsZone": {
 			"types": "./src/dnsZone.ts",
 			"import": "./src/dnsZone.ts"
