@@ -42,8 +42,8 @@ import type {
 	DomainVerificationSupport,
 	MessageIdSource,
 	SendProviderCatalogEntryShape,
-	SendTransportEgress,
 } from './sendProviderCatalogTypes';
+import type { SendTransportEgress } from './sendTransportEgress';
 
 /**
  * A declaration carrying the field this accessor reads, or nothing at all — see

@@ -29,6 +29,7 @@
 
 import type { SendProviderCredentialField } from './sendProviderCredentialFields';
 import type { SendProviderFeedbackChannel } from './sendProviderFeedback';
+import type { SendTransportEgress } from './sendTransportEgress';
 
 /**
  * A send transport contributed by a bundled plugin, namespaced by its plugin id
@@ -288,23 +289,6 @@ export interface SendProviderSetupProbe {
  * `kind` narrowed to the COMPOSED union and widened by its plugin-kit-typed
  * fields — so no consumer outside the declaration itself sees the loose form.
  */
-/**
- * The network path this transport dials on the way out — the one thing a
- * hosting provider can close underneath it.
- *
- *  - `recipient-mx` opens TCP/25 to each recipient's own mail server. Direct
- *                   delivery, and the port stock VPS products block by default.
- *  - `smtp-relay`   opens one submission connection to a relay the operator
- *                   configured (587, or 465 when the relay wants implicit TLS).
- *  - `https-api`    posts over 443 like any other API integration.
- *
- * Absent ⇒ `https-api`. That is what every generated (plugin) entry is, and it
- * is the reading that never claims a mail port an instance may not have — the
- * port checks derive "is 25 required here?" from this, and a wrong `recipient-mx`
- * would paint a red row on an instance that never dials an MX.
- */
-export type SendTransportEgress = 'recipient-mx' | 'smtp-relay' | 'https-api';
-
 export interface SendProviderCatalogEntryShape {
 	readonly kind: string;
 	readonly label: string;
