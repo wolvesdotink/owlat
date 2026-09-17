@@ -276,6 +276,18 @@ describe('GET /jobs/:jobId', () => {
 		expect(body.error).toBe('Job not found');
 	});
 
+	it('keeps an unreadable queue a 500 rather than flattening it into 404', async () => {
+		// `isJobNotFound` matches GroupMQ's message exactly so that everything
+		// else — a dropped connection, a NOSCRIPT — keeps its 500. A 404 here
+		// would say "no such message" about a message nobody could read.
+		vi.spyOn(queue, 'getJob').mockRejectedValue(new Error('Connection is closed.'));
+
+		const { status, body } = await json('GET', '/jobs/anything');
+
+		expect(status).toBe(500);
+		expect(body.error).toBe('Failed to get job details');
+	});
+
 	it('does not return the message body', async () => {
 		await enqueue('wanted');
 
@@ -329,12 +341,70 @@ describe('DELETE /jobs/:jobId', () => {
 		expect(await queue.getActiveCount()).toBe(1);
 	});
 
+	it('refuses a job a worker reserves between the state read and the removal', async () => {
+		// The guard used to be a plain read-then-remove, and losing that race did
+		// not merely delete an in-flight job: GroupMQ's `remove.lua` never touches
+		// the per-group `:active` list that `reserve.lua` gates on, no completion
+		// script cleans it once the job hash is gone, and `check-stalled.lua` only
+		// looks at `:processing`, which `remove` already ZREM'd. The group wedges
+		// permanently and every later message to that recipient domain sits in
+		// `waiting` forever — busy-looking, not broken-looking.
+		await enqueue('doomed');
+		await enqueue('next', { messageId: 'm-next' });
+
+		const readJob = queue.getJob.bind(queue);
+		let reserved: Awaited<ReturnType<typeof queue.reserve>> = null;
+		let raced = false;
+		vi.spyOn(queue, 'getJob').mockImplementation(async (id: string) => {
+			const job = await readJob(id);
+			// A worker takes the head of the group in the window between the
+			// route's state read and its removal.
+			if (!raced) {
+				raced = true;
+				reserved = await queue.reserve();
+			}
+			return job;
+		});
+
+		const { status, body } = await json('DELETE', '/jobs/doomed');
+
+		expect(status).toBe(409);
+		expect(body.state).toBe('active');
+		expect(reserved!.id).toBe('doomed');
+		// The job survives, so the worker that holds it can settle it...
+		expect(await redis.exists(`${QUEUE_KEY_NAMESPACE}:job:doomed`)).toBe(1);
+		await queue.completeWithMetadata(reserved!, null, {
+			processedOn: Date.now(),
+			finishedOn: Date.now(),
+			attempts: 1,
+			maxAttempts: 5,
+		});
+		// ...and the group goes on draining. This is the assertion the endpoint
+		// most needs: it fails with `undefined` when the active list is stranded.
+		expect((await queue.reserve())?.id).toBe('next');
+	});
+
 	it('removes a delayed job from the retry ladder', async () => {
 		await enqueue('later', {}, { delay: 60_000 });
 
 		expect((await json('DELETE', '/jobs/later')).status).toBe(200);
 
 		expect(await redis.zcard(DELAYED_KEY)).toBe(0);
+	});
+
+	it('does not answer 404 when the queue merely failed to remove', async () => {
+		// `Queue.remove` catches its own Redis errors and returns `false`, so a
+		// dropped connection or a NOSCRIPT is indistinguishable from "no such
+		// job" at the call site. Reporting 404 would tell an operator the message
+		// does not exist while it is still queued and about to be delivered.
+		await enqueue('doomed');
+		vi.spyOn(queue, 'remove').mockResolvedValue(false);
+
+		const { status, body } = await json('DELETE', '/jobs/doomed');
+
+		expect(status).toBe(500);
+		expect(body.error).toBe('Failed to remove job');
+		expect(await queue.getWaitingCount()).toBe(1);
 	});
 
 	it('404s instead of claiming a removal it did not make', async () => {

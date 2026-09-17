@@ -24,6 +24,51 @@ index 8c2c211193f10b60473a086029ef641c303fc895..91b69b39f9b8806b72c9891ca5798a56
  local zpop = redis.call("ZPOPMIN", gZ, 1)
  if not zpop or #zpop == 0 then
    -- Clean up empty group
+diff --git a/dist/lua/promote-delayed-jobs.lua b/dist/lua/promote-delayed-jobs.lua
+index fcd0058e66054ce198a7523a7b4ece9245b6f122..137b28fce72d8416ebd0ce7b29a355c9663109ac 100644
+--- a/dist/lua/promote-delayed-jobs.lua
++++ b/dist/lua/promote-delayed-jobs.lua
+@@ -14,13 +14,26 @@ for i = 1, #readyJobs do
+   local jobId = readyJobs[i]
+   local jobKey = ns .. ":job:" .. jobId
+   local groupId = redis.call("HGET", jobKey, "groupId")
+-  
++
++  -- Release the member FIRST, before anything that can decide not to.
++  -- A due entry whose job hash has been trimmed or deleted has no payload to
++  -- deliver and no group to be promoted into, but it is still a member of
++  -- :delayed, and this promoter is the only thing that ever removes one.
++  -- Asking for the group id first and skipping the ZREM when it was missing
++  -- stranded such members permanently: they were re-read by every subsequent
++  -- ZRANGEBYSCORE, an entry (plus one HGET per pass) that nothing could drain.
++  -- Dropping is safe precisely because the hash is gone — there is no message
++  -- left to lose, only an entry to release — and it is bounded to entries that
++  -- are already due, so a rung still waiting for its runAt is untouched.
++  -- promote-delayed-one.lua, the script the scheduler actually runs, has always
++  -- ordered it this way ("treat as moved even if metadata missing"); this makes
++  -- the bulk script agree with it.
++  redis.call("ZREM", delayedKey, jobId)
++  promotedCount = promotedCount + 1
++
+   if groupId then
+     local gZ = ns .. ":g:" .. groupId
+-    
+-    -- Remove from delayed set
+-    redis.call("ZREM", delayedKey, jobId)
+-    
++
+     -- Check if this job is the head of its group (earliest in group)
+     local head = redis.call("ZRANGE", gZ, 0, 0)
+     if head and #head > 0 and head[1] == jobId then
+@@ -30,8 +43,6 @@ for i = 1, #readyJobs do
+         redis.call("ZADD", readyKey, headScore, groupId)
+       end
+     end
+-    
+-    promotedCount = promotedCount + 1
+   end
+ end
+ 
 diff --git a/dist/lua/record-job-result.lua b/dist/lua/record-job-result.lua
 index ebfbb8d0aa3a5835b90b584c785a5c0ca69a0fe3..fb0b0786af0d9afc89f31577907f162413680f7b 100644
 --- a/dist/lua/record-job-result.lua
@@ -89,48 +134,37 @@ index ebfbb8d0aa3a5835b90b584c785a5c0ca69a0fe3..fb0b0786af0d9afc89f31577907f1624
    else
      -- keepFailed == 0: Delete immediately (batch operation)
      redis.call("DEL", jobKey, ns .. ":unique:" .. jobId)
-diff --git a/dist/lua/promote-delayed-jobs.lua b/dist/lua/promote-delayed-jobs.lua
-index fcd0058e66054ce198a7523a7b4ece9245b6f122..137b28fce72d8416ebd0ce7b29a355c9663109ac 100644
---- a/dist/lua/promote-delayed-jobs.lua
-+++ b/dist/lua/promote-delayed-jobs.lua
-@@ -14,13 +14,26 @@ for i = 1, #readyJobs do
-   local jobId = readyJobs[i]
-   local jobKey = ns .. ":job:" .. jobId
-   local groupId = redis.call("HGET", jobKey, "groupId")
--  
-+
-+  -- Release the member FIRST, before anything that can decide not to.
-+  -- A due entry whose job hash has been trimmed or deleted has no payload to
-+  -- deliver and no group to be promoted into, but it is still a member of
-+  -- :delayed, and this promoter is the only thing that ever removes one.
-+  -- Asking for the group id first and skipping the ZREM when it was missing
-+  -- stranded such members permanently: they were re-read by every subsequent
-+  -- ZRANGEBYSCORE, an entry (plus one HGET per pass) that nothing could drain.
-+  -- Dropping is safe precisely because the hash is gone — there is no message
-+  -- left to lose, only an entry to release — and it is bounded to entries that
-+  -- are already due, so a rung still waiting for its runAt is untouched.
-+  -- promote-delayed-one.lua, the script the scheduler actually runs, has always
-+  -- ordered it this way ("treat as moved even if metadata missing"); this makes
-+  -- the bulk script agree with it.
-+  redis.call("ZREM", delayedKey, jobId)
-+  promotedCount = promotedCount + 1
-+
-   if groupId then
-     local gZ = ns .. ":g:" .. groupId
--    
--    -- Remove from delayed set
--    redis.call("ZREM", delayedKey, jobId)
--    
-+
-     -- Check if this job is the head of its group (earliest in group)
-     local head = redis.call("ZRANGE", gZ, 0, 0)
-     if head and #head > 0 and head[1] == jobId then
-@@ -30,8 +43,6 @@ for i = 1, #readyJobs do
-         redis.call("ZADD", readyKey, headScore, groupId)
-       end
-     end
--    
--    promotedCount = promotedCount + 1
-   end
+diff --git a/dist/lua/remove.lua b/dist/lua/remove.lua
+index ce637b12460648d3cf370136df1a8ee036c44f67..a45cb1cd308941c8faa5cec9a723139bb470c637 100644
+--- a/dist/lua/remove.lua
++++ b/dist/lua/remove.lua
+@@ -12,6 +12,29 @@ if redis.call("EXISTS", jobKey) == 0 then
+   return 0
  end
  
++-- OWLAT PATCH: refuse a job a worker has already reserved.
++--
++-- The rest of this script tears the job out of `:processing` and deletes its
++-- hash, but it never touches `<ns>:g:<gid>:active` — the per-group list
++-- `reserve.lua` gates on (`LLEN == 0`). Nothing else can repair that: both
++-- completion scripts bail before their `LREM` when the job hash is gone, and
++-- `check-stalled.lua` only considers members of `:processing`, which the ZREM
++-- below has already removed. The stranded entry blocks the group forever, so
++-- every subsequent message for that `{ipPool}:{recipientDomain}` sits in
++-- `waiting` and is never delivered.
++--
++-- Removing a reserved job cannot cancel the SMTP conversation it names anyway;
++-- it only destroys the bookkeeping that would have recorded one. Refusing is
++-- the only safe answer, and it has to be decided in here: a caller that checks
++-- the state first and removes second loses the race in a 1-4 round-trip window,
++-- on exactly the head-of-group job an operator reaches for.
++--
++-- -1 (distinct from 0 = "no such job") so the caller can say 409 rather than
++-- 404.
++if redis.call("ZSCORE", processingKey, jobId) then
++  return -1
++end
++
+ local groupId = redis.call("HGET", jobKey, "groupId")
+ 
+ -- Remove from delayed and processing structures

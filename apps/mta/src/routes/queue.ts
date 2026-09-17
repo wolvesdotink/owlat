@@ -272,8 +272,14 @@ export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: 
 	//    happily tears an id out of `:processing`, but the SMTP conversation it
 	//    names is in flight in another process and will not stop. Removing it
 	//    does not cancel a delivery, it only destroys the bookkeeping that would
-	//    have recorded one — so the answer is 409 and "wait for it to settle",
-	//    which for a deferred job is one retry rung away.
+	//    have recorded one — and, worse, strands the job id in the per-group
+	//    `:active` list that `reserve` gates on, wedging that recipient domain
+	//    forever. So the answer is 409 and "wait for it to settle", which for a
+	//    deferred job is one retry rung away. THE REFUSAL IS DECIDED INSIDE
+	//    `remove.lua` (see `patches/groupmq@1.1.0.patch`): a read here followed
+	//    by a remove there is a race an operator loses on exactly the
+	//    head-of-group job they reach for. The read below is a fast path and a
+	//    source of log identity, not the guard.
 	//  - Every removal is logged with the identity of what was destroyed, so
 	//    "where did that message go" has an answer that is not "nowhere".
 	app.delete('/jobs/:jobId', async (c) => {
@@ -295,8 +301,32 @@ export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: 
 			const summary = summarizeJob(job);
 			const removed = await queue.remove(jobId);
 			if (!removed) {
-				// Read then vanished: something else settled it in between.
-				return c.json({ error: 'Job not found' }, 404);
+				// `remove` collapses three different things into `false`: the job
+				// was gone, the patched script refused it because a worker
+				// reserved it since the read above, or the call itself blew up —
+				// GroupMQ catches Redis errors in `remove` and returns `false`
+				// too. Answering 404 to all three would tell an operator a
+				// message does not exist while it is queued and about to be
+				// delivered, which is the class of confident wrong answer this
+				// file exists to stop. Re-read to find out which it was: a job
+				// that is gone throws `not found` into the catch below and 404s,
+				// and anything else means the job is still in the queue.
+				const survivor = await queue.getJob(jobId);
+				if (survivor.status === 'active') {
+					return c.json(
+						{
+							error: 'Job is being delivered and cannot be removed',
+							jobId,
+							state: survivor.status,
+						},
+						409
+					);
+				}
+				logger.error(
+					{ jobId, state: survivor.status },
+					'Queue reported no removal but the job is still queued'
+				);
+				return c.json({ error: 'Failed to remove job' }, 500);
 			}
 
 			logger.warn(
