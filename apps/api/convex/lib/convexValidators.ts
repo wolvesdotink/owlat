@@ -105,6 +105,10 @@ export const jsonPrimitiveRecord = v.record(v.string(), jsonPrimitiveValue);
 export const updateStepResultValidator = v.array(
 	v.object({
 		step: v.string(),
+		// The sidecar's per-step verdict. Object validators reject unknown fields,
+		// so while this was unlisted every recordUpdateFinish call failed argument
+		// validation; optional because the compose-file steps report without one.
+		ok: v.optional(v.boolean()),
 		stdout: v.string(),
 		stderr: v.string(),
 	})
