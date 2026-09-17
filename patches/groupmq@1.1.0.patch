@@ -24,6 +24,71 @@ index 8c2c211193f10b60473a086029ef641c303fc895..91b69b39f9b8806b72c9891ca5798a56
  local zpop = redis.call("ZPOPMIN", gZ, 1)
  if not zpop or #zpop == 0 then
    -- Clean up empty group
+diff --git a/dist/lua/record-job-result.lua b/dist/lua/record-job-result.lua
+index ebfbb8d0aa3a5835b90b584c785a5c0ca69a0fe3..fb0b0786af0d9afc89f31577907f162413680f7b 100644
+--- a/dist/lua/record-job-result.lua
++++ b/dist/lua/record-job-result.lua
+@@ -91,8 +91,58 @@ elseif status == "failed" then
+       "maxAttempts", maxAttempts
+     )
+     redis.call("ZADD", failedKey, timestamp, jobId)
+-    
+-    -- Note: No retention trimming for failed jobs (let clean() handle it)
++
++    -- Trim old entries atomically, exactly as the `completed` branch above does.
++    --
++    -- Upstream left this branch untrimmed ("let clean() handle it"), which makes
++    -- `keepFailed` silently inert for anyone who never schedules `clean()` — and
++    -- nothing in this repository calls it. `<ns>:failed` and every failed job's
++    -- hash then grow forever, and a failed job hash holds the whole EmailJob
++    -- payload, `html` included, so this is bytes and not merely key count. Since
++    -- the Redis this queue lives on runs `--maxmemory` with
++    -- `maxmemory-policy noeviction`, unbounded growth is not bloat but an
++    -- outage with a fuse on it: at the cap Redis refuses writes and the MTA
++    -- stops accepting mail.
++    --
++    -- Trimmed here rather than from a sweeper so the retention contract stays
++    -- atomic with the write that creates the thing it bounds: no interval, no
++    -- leader election and no second code path can fail to run, and `keepFailed`
++    -- means what its name and the option's own docs say it means.
++    --
++    -- Deleted in a loop rather than with `DEL unpack(oldIds)` (the shape the
++    -- `completed` branch uses) to match `complete-with-metadata.lua` and to keep
++    -- a large trim off the Lua stack.
++    --
++    -- Each eviction re-reads the evicted job's own status, because a `<ns>:failed`
++    -- entry is NOT proof that the job behind it is still dead. `dead-letter.lua`
++    -- deletes `<ns>:unique:<id>` "to allow reuse" but leaves the `<ns>:failed`
++    -- entry standing, and MTA job ids are deterministic (`routes/send.ts` uses the
++    -- messageId; `queue/deferHandoff.ts` hashes the predecessor id). So the same
++    -- id can be enqueued again once its intake receipt has expired, sail through
++    -- `enqueue.lua`'s `SET NX`, and be sitting LIVE in its group ZSET while the
++    -- stale entry from its previous life is still queued for eviction here.
++    -- Deleting that job's hash would strand a real message in a group with
++    -- nothing to reserve — silent mail loss, the exact failure mode this
++    -- retention work exists to prevent. Only a hash that still says `failed` is
++    -- the thing this entry refers to; a missing hash is already-collected and
++    -- takes its orphaned unique key with it.
++    local failedCount = redis.call("ZCARD", failedKey)
++    local toRemoveFailed = failedCount - keepFailed
++    if toRemoveFailed > 0 then
++      local oldFailedIds = redis.call("ZRANGE", failedKey, 0, toRemoveFailed - 1)
++      if #oldFailedIds > 0 then
++        redis.call("ZREMRANGEBYRANK", failedKey, 0, toRemoveFailed - 1)
++        for i = 1, #oldFailedIds do
++          local oldId = oldFailedIds[i]
++          local oldJobKey = ns .. ":job:" .. oldId
++          local oldStatus = redis.call("HGET", oldJobKey, "status")
++          if (not oldStatus) or oldStatus == "failed" then
++            redis.call("DEL", oldJobKey)
++            redis.call("DEL", ns .. ":unique:" .. oldId)
++          end
++        end
++      end
++    end
+   else
+     -- keepFailed == 0: Delete immediately (batch operation)
+     redis.call("DEL", jobKey, ns .. ":unique:" .. jobId)
 diff --git a/dist/lua/promote-delayed-jobs.lua b/dist/lua/promote-delayed-jobs.lua
 index fcd0058e66054ce198a7523a7b4ece9245b6f122..137b28fce72d8416ebd0ce7b29a355c9663109ac 100644
 --- a/dist/lua/promote-delayed-jobs.lua
