@@ -146,10 +146,11 @@ export async function unsuppress(redis: Redis, email: string): Promise<boolean> 
 export const SUPPRESSION_SWEEP_BATCH = 500;
 
 /**
- * Reclaim a batch of temporary suppressions whose due date has passed.
+ * The decision one indexed entry gets, shared verbatim by the batch sweep and by
+ * the lazy expiry check so the two can never disagree about what an entry means.
  *
  * ONE SCRIPT, because the decision and the deletion must not be separable. A
- * two-step sweep reads the due list and then deletes, and an address that hard
+ * two-step reclaim reads the metadata and then deletes, and an address that hard
  * bounces between those two steps is rewritten as permanent and then deleted
  * anyway. Redis runs this start to finish with nothing interleaved, so a
  * re-suppression is either already visible to the metadata read below — and the
@@ -166,16 +167,71 @@ export const SUPPRESSION_SWEEP_BATCH = 500;
  *     this address was suppressed temporarily, and the score is the evidence
  *     that its window has closed.
  *
+ * WHY THE REPAIR ARM IS `pcall`ED. `ZADD` is a `denyoom` command and this Redis
+ * runs `--maxmemory ... --maxmemory-policy noeviction` (docker-compose.yml, and
+ * the VPS template), so at the cap Redis refuses it. An uncaught `redis.call`
+ * error aborts the WHOLE `EVAL` — the sweep would reclaim nothing, and it would
+ * fail identically every hour because the offending entry stays at the head of
+ * the due range. That is a total failure at precisely the moment the sweep is
+ * what frees memory. Skipping the repair costs nothing durable: the metadata is
+ * untouched, `isSuppressed` still honours the future `expiresAt`, and the stale
+ * score is simply reconsidered on the next run. The delete arm below uses only
+ * `SREM`/`DEL`/`ZREM`, none of which is `denyoom`, so the sweep keeps doing its
+ * actual job at the cap.
+ *
+ * `#!lua flags=allow-oom` would also let the `ZADD` through, and is rejected
+ * here: the shebang is Redis 7.0+ only (on anything older it is not a Lua
+ * comment and the script does not compile at all — and nothing pins or checks
+ * the server version behind `REDIS_URL`), it grants every `denyoom` command in
+ * the script rather than the one that needs it, and it opts the script into
+ * Redis 7's stricter script-flag validation, which a script that deliberately
+ * touches a key outside `KEYS` has no reason to invite.
+ *
+ * NOT CLUSTER-SAFE, deliberately: `metaKey` is derived inside the script and is
+ * therefore an undeclared key, and it does not share a hash slot with the zset
+ * or the set. The MTA's Redis is standalone (one container in the compose file),
+ * and the alternative — hash-tagging all three key families the way
+ * `webhooks/dlq.ts` and `scaling/ipReadinessAlerts.ts` do — would rename keys
+ * that already exist in every deployment. If this client ever grows a cluster
+ * mode, that migration is the prerequisite.
+ */
+const RECLAIM_ENTRY_LUA = `
+local function reclaimEntry(zkey, setkey, metaKey, email, now)
+  local raw = redis.call('GET', metaKey)
+  local expiresAt = nil
+  if raw then expiresAt = tonumber(string.match(raw, '"expiresAt":(%d+)')) end
+  if raw and not expiresAt then
+    redis.call('ZREM', zkey, email)
+    return 0
+  end
+  if expiresAt and expiresAt >= now then
+    redis.pcall('ZADD', zkey, expiresAt, email)
+    return 0
+  end
+  redis.call('SREM', setkey, email)
+  redis.call('DEL', metaKey)
+  redis.call('ZREM', zkey, email)
+  return 1
+end
+`;
+
+/**
+ * Reclaim a batch of temporary suppressions whose due date has passed.
+ *
  * Only temporary suppressions are ever indexed, so a hard bounce or a complaint
  * is not reachable from here at all — the safety argument is a property of the
  * data, not of a filter this code could get wrong. `ZRANGEBYSCORE ... LIMIT`
  * reads only what is actually due, so the cost is O(log N + batch) and does not
  * grow with the size of the suppression list; nothing scans the membership set.
  *
- * Returns how many addresses were removed; a caller that gets its full `limit`
- * back knows more may be due and can call again.
+ * Returns BOTH counts, because they answer different questions and only one of
+ * them tells a draining caller whether to come back. `removed` is what was
+ * reclaimed; `processed` is how much of the due range was looked at, and a batch
+ * that was entirely keep/repair arms reports `processed === limit` with
+ * `removed === 0`. A loop that stopped on `removed` alone would quit with work
+ * still due.
  */
-const SWEEP_EXPIRED_LUA = `
+const SWEEP_EXPIRED_LUA = `${RECLAIM_ENTRY_LUA}
 local zkey = KEYS[1]
 local setkey = KEYS[2]
 local prefix = ARGV[1]
@@ -184,32 +240,26 @@ local due = redis.call('ZRANGEBYSCORE', zkey, '-inf', '(' .. ARGV[2], 'LIMIT', 0
 local removed = 0
 for index = 1, #due do
   local email = due[index]
-  local metaKey = prefix .. email
-  local raw = redis.call('GET', metaKey)
-  local expiresAt = nil
-  if raw then expiresAt = tonumber(string.match(raw, '"expiresAt":(%d+)')) end
-  if raw and not expiresAt then
-    redis.call('ZREM', zkey, email)
-  elseif expiresAt and expiresAt >= now then
-    redis.call('ZADD', zkey, expiresAt, email)
-  else
-    redis.call('SREM', setkey, email)
-    redis.call('DEL', metaKey)
-    redis.call('ZREM', zkey, email)
-    removed = removed + 1
-  end
+  removed = removed + reclaimEntry(zkey, setkey, prefix .. email, email, now)
 end
-return removed
+return { #due, removed }
 `;
+
+export interface SuppressionSweepResult {
+	/** Due entries the sweep looked at. Equal to the limit ⇒ more may be due. */
+	processed: number;
+	/** Due entries it actually reclaimed. */
+	removed: number;
+}
 
 export async function sweepExpiredSuppressions(
 	redis: Redis,
 	options?: { now?: number; limit?: number }
-): Promise<number> {
+): Promise<SuppressionSweepResult> {
 	const now = options?.now ?? Date.now();
 	const limit = options?.limit ?? SUPPRESSION_SWEEP_BATCH;
 
-	const removed = (await redis.eval(
+	const [processed = 0, removed = 0] = (await redis.eval(
 		SWEEP_EXPIRED_LUA,
 		2,
 		SUPPRESSION_EXPIRY_ZSET,
@@ -217,12 +267,12 @@ export async function sweepExpiredSuppressions(
 		SUPPRESSION_META_PREFIX,
 		String(now),
 		String(limit)
-	)) as number;
+	)) as [number, number];
 
 	if (removed > 0) {
 		logger.info({ count: removed }, 'Expired suppressions swept');
 	}
-	return removed;
+	return { processed, removed };
 }
 
 /**

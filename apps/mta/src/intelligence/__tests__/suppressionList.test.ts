@@ -171,7 +171,7 @@ describe('suppressionList', () => {
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
-			expect(await sweepExpiredSuppressions(redis)).toBe(1);
+			expect((await sweepExpiredSuppressions(redis)).removed).toBe(1);
 			expect(await redis.sismember(SUPPRESSION_SET, 'gone@example.com')).toBe(0);
 			expect(await redis.exists(metaKeyFor('gone@example.com'))).toBe(0);
 			expect(await redis.zcard(EXPIRY_ZSET)).toBe(0);
@@ -182,7 +182,7 @@ describe('suppressionList', () => {
 
 			vi.setSystemTime(new Date(Date.now() + 59_000));
 
-			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect((await sweepExpiredSuppressions(redis)).removed).toBe(0);
 			expect(await isSuppressed(redis, 'later@example.com')).toBe(true);
 		});
 
@@ -195,7 +195,7 @@ describe('suppressionList', () => {
 
 			vi.setSystemTime(new Date(Date.now() + 10 * 365 * 86400 * 1000));
 
-			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect((await sweepExpiredSuppressions(redis)).removed).toBe(0);
 			expect(await isSuppressed(redis, 'hard@example.com')).toBe(true);
 			expect(await isSuppressed(redis, 'spam@example.com')).toBe(true);
 		});
@@ -211,7 +211,7 @@ describe('suppressionList', () => {
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
-			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect((await sweepExpiredSuppressions(redis)).removed).toBe(0);
 			expect(await isSuppressed(redis, 'escalate@example.com')).toBe(true);
 		});
 
@@ -221,7 +221,7 @@ describe('suppressionList', () => {
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
-			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect((await sweepExpiredSuppressions(redis)).removed).toBe(0);
 			expect(await isSuppressed(redis, 'bulk@example.com')).toBe(true);
 		});
 
@@ -232,9 +232,9 @@ describe('suppressionList', () => {
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
-			expect(await sweepExpiredSuppressions(redis, { limit: 2 })).toBe(2);
+			expect((await sweepExpiredSuppressions(redis, { limit: 2 })).removed).toBe(2);
 			expect(await redis.zcard(EXPIRY_ZSET)).toBe(3);
-			expect(await sweepExpiredSuppressions(redis)).toBe(3);
+			expect((await sweepExpiredSuppressions(redis)).removed).toBe(3);
 			expect(await redis.scard(SUPPRESSION_SET)).toBe(0);
 			expect(SUPPRESSION_SWEEP_BATCH).toBeGreaterThan(0);
 		});
@@ -252,7 +252,7 @@ describe('suppressionList', () => {
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
-			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect((await sweepExpiredSuppressions(redis)).removed).toBe(0);
 			expect(await isSuppressed(redis, 'torn@example.com')).toBe(true);
 			// ...and the stale due date is gone, so it is not reconsidered forever.
 			expect(await redis.zcard(EXPIRY_ZSET)).toBe(0);
@@ -268,7 +268,7 @@ describe('suppressionList', () => {
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
-			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect((await sweepExpiredSuppressions(redis)).removed).toBe(0);
 			expect(await isSuppressed(redis, 'extended@example.com')).toBe(true);
 			expect(await redis.zscore(EXPIRY_ZSET, 'extended@example.com')).toBe(String(later));
 		});
@@ -281,12 +281,40 @@ describe('suppressionList', () => {
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
-			expect(await sweepExpiredSuppressions(redis)).toBe(1);
+			expect((await sweepExpiredSuppressions(redis)).removed).toBe(1);
 			expect(await redis.sismember(SUPPRESSION_SET, 'nometa@example.com')).toBe(0);
 		});
 
+		// The hourly drain loop in `index.ts` comes back while a batch is FULL, and
+		// a batch that is entirely keep/repair arms reclaims nothing while still
+		// consuming the whole limit. Reporting only `removed` would stop that loop
+		// on its first such batch with the rest of the backlog still due.
+		it('reports the due entries it looked at, not only the ones it reclaimed', async () => {
+			for (let index = 0; index < 2; index += 1) {
+				await suppress(redis, `keep${index}@example.com`, 'manual', { ttlSeconds: 60 });
+				// Re-suppressed permanently without its index update — the keep arm.
+				await redis.set(
+					metaKeyFor(`keep${index}@example.com`),
+					JSON.stringify({ reason: 'hard_bounce', suppressedAt: Date.now() })
+				);
+			}
+			await suppress(redis, 'drop@example.com', 'manual', { ttlSeconds: 120 });
+
+			vi.setSystemTime(new Date(Date.now() + 121_000));
+
+			// Lowest scores first, so the full batch is the two keeps.
+			expect(await sweepExpiredSuppressions(redis, { limit: 2 })).toEqual({
+				processed: 2,
+				removed: 0,
+			});
+			expect(await sweepExpiredSuppressions(redis, { limit: 2 })).toEqual({
+				processed: 1,
+				removed: 1,
+			});
+		});
+
 		it('creates nothing when there is nothing due', async () => {
-			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect((await sweepExpiredSuppressions(redis)).removed).toBe(0);
 			expect(await redis.keys('mta:suppressed*')).toEqual([]);
 		});
 	});

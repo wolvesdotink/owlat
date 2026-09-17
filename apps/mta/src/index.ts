@@ -227,8 +227,12 @@ export async function main() {
 			try {
 				// Drain in bounded batches so a backlog is cleared over one run
 				// rather than one per hour, but stop well short of an unbounded walk.
+				// The stop condition is `processed`, not `removed`: a batch that was
+				// all keep/repair arms reclaims nothing while still consuming the
+				// whole limit, and stopping on `removed` would leave the rest due.
 				for (let batch = 0; batch < 20; batch += 1) {
-					if ((await sweepExpiredSuppressions(redis)) < SUPPRESSION_SWEEP_BATCH) break;
+					const swept = await sweepExpiredSuppressions(redis);
+					if (swept.processed < SUPPRESSION_SWEEP_BATCH) break;
 				}
 			} catch (err) {
 				logger.error({ err }, 'Expired-suppression sweep failed');
