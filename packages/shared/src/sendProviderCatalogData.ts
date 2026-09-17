@@ -14,6 +14,7 @@ import type { CoreSendProviderCatalogEntry } from './sendProviderCatalogTypes';
 export const CORE_SEND_PROVIDER_CATALOG = [
 	{
 		kind: 'mta',
+		egress: 'recipient-mx',
 		label: 'Owlat MTA',
 		tier: 'own',
 		retryDelays: [1_000, 5_000],
@@ -40,6 +41,7 @@ export const CORE_SEND_PROVIDER_CATALOG = [
 	},
 	{
 		kind: 'ses',
+		egress: 'https-api',
 		label: 'Amazon SES',
 		tier: 'core',
 		retryDelays: [1_000, 5_000, 30_000],
@@ -103,6 +105,7 @@ export const CORE_SEND_PROVIDER_CATALOG = [
 	},
 	{
 		kind: 'resend',
+		egress: 'https-api',
 		label: 'Resend',
 		tier: 'core',
 		retryDelays: [1_000, 5_000, 30_000],
@@ -148,6 +151,7 @@ export const CORE_SEND_PROVIDER_CATALOG = [
 	},
 	{
 		kind: 'smtp',
+		egress: 'smtp-relay',
 		label: 'SMTP relay',
 		tier: 'core',
 		retryDelays: [1_000, 5_000, 30_000],
@@ -206,6 +210,7 @@ export const CORE_SEND_PROVIDER_CATALOG = [
 	},
 	{
 		kind: 'mandrill',
+		egress: 'https-api',
 		label: 'Mailchimp Transactional (Mandrill)',
 		tier: 'core',
 		// Mirrors Resend's schedule: another HTTP-API ESP whose retryable
@@ -266,6 +271,7 @@ export const CORE_SEND_PROVIDER_CATALOG = [
 	},
 	{
 		kind: 'emailit',
+		egress: 'https-api',
 		label: 'Emailit',
 		tier: 'core',
 		retryDelays: [1_000, 5_000, 30_000],

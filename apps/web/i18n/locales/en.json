@@ -5036,6 +5036,52 @@
 				"spendBudget": "Spend budget",
 				"title": "LLM spend · last 7 days"
 			},
+			"portChecksCard": {
+				"title": "Network ports",
+				"intro": "Features here depend on ports your hosting provider can block without telling you — a blocked port looks like a broken feature, not like a firewall. These probes run from this server when you ask them to.",
+				"run": "Check ports",
+				"running": "Checking…",
+				"idle": "Nothing has been checked yet. Running this opens one connection per port to a well-known host (Google's mail servers for the mail ports, ghcr.io for image pulls) and closes it immediately — no mail is sent and no command is issued.",
+				"unreachable": "Port checks need the updater sidecar, and it did not answer. On an instance that runs the full compose stack, check that the `updater` service is up.",
+				"allOpen": "Every port this instance needs is open.",
+				"degraded": "{count} port this instance needs is closed. | {count} ports this instance needs are closed.",
+				"degradedHint": "A blocked port is almost always the hosting provider, not this server. Ask them to open it for this machine — many block outbound mail ports by default.",
+				"notNeeded": "not needed by your current setup",
+				"checkedAt": "Checked at {time}",
+				"unknownError": "The port check failed for an unknown reason.",
+				"groups": {
+					"inbound": "Inbound — services listening on this server",
+					"outbound": "Outbound — this server reaching the internet"
+				},
+				"groupHints": {
+					"inbound": "Checked from inside the stack, so this proves the service is listening. Whether the internet gets through depends on your provider firewall, which nothing on this machine can test.",
+					"outbound": "Checked end to end against a real host, so this is exactly the path the feature takes."
+				},
+				"status": {
+					"open": "open",
+					"listening": "listening",
+					"blocked": "blocked",
+					"refused": "nothing listening",
+					"error": "could not tell",
+					"skipped": "not running here",
+					"rejected": "rejected"
+				},
+				"needs": {
+					"inbound-https": "The app, the API, webhooks, tracking and click links, and the desktop app",
+					"inbound-http": "Renewing the TLS certificate over Let's Encrypt",
+					"inbound-smtp": "Receiving mail and delivery bounces on the built-in mail server",
+					"inbound-imaps": "Reading the built-in mailbox from Apple Mail, Outlook or a phone",
+					"outbound-smtp": "Delivering mail straight to recipient servers",
+					"outbound-submission": "Handing mail to an external SMTP relay",
+					"outbound-smtps": "Sending from a connected mailbox over implicit TLS",
+					"outbound-imaps": "Connecting an existing mailbox to a team inbox or the Postbox",
+					"outbound-https": "Updates, image pulls, and every provider and AI API",
+					"outbound-dns": "MX lookups for delivery, domain verification, and blocklist checks"
+				},
+				"unknown": "{count} port this instance needs could not be measured. | {count} ports this instance needs could not be measured.",
+				"unknownHint": "The probe reached neither a verdict nor a firewall — the service that would answer is not running here, or the name did not resolve. That is not the same as a closed port, so nothing is claimed either way.",
+				"declined": "The port check did not run. The updater is up; it declined this request."
+			},
 			"updateProgress": {
 				"heading": "Updating to v{version}",
 				"restartNotice": "The web app may restart during the update. This page will reconnect automatically.",
