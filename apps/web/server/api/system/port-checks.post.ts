@@ -1,3 +1,4 @@
+import { errorMessage } from '@owlat/shared';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
 
@@ -14,6 +15,11 @@ import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
  * an instance that runs no updater (a dev tree, a hand-rolled compose) has no
  * way to run these probes at all, and the card says exactly that instead of
  * rendering a failure the operator cannot act on.
+ *
+ * A sidecar that ANSWERS and refuses — its rate limit, an unreadable `.env` —
+ * stays `reachable: true` with the reason attached. Folding that into
+ * "unreachable" told an operator who pressed the button three times in a minute
+ * to go and check whether the updater container was running.
  */
 interface PortChecksResult {
 	reachable: boolean;
@@ -30,7 +36,7 @@ export default defineEventHandler(async (event): Promise<PortChecksResult> => {
 	try {
 		instanceSecret = getInstanceSecret('Port checks not configured (INSTANCE_SECRET missing)');
 	} catch (err) {
-		return { reachable: false, error: errorText(err) };
+		return { reachable: false, error: errorMessage(err) };
 	}
 
 	try {
@@ -43,18 +49,10 @@ export default defineEventHandler(async (event): Promise<PortChecksResult> => {
 		});
 		const body = (await resp.json()) as PortChecksResult;
 		if (!resp.ok) {
-			return { reachable: false, error: body.error || `Updater returned ${resp.status}` };
+			return { reachable: true, error: body.error || `Updater returned ${resp.status}` };
 		}
 		return { ...body, reachable: true };
 	} catch (err) {
-		return { reachable: false, error: errorText(err) };
+		return { reachable: false, error: errorMessage(err) };
 	}
 });
-
-function errorText(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	if (typeof err === 'object' && err !== null && 'message' in err) {
-		return String((err as { message: unknown }).message);
-	}
-	return 'Unknown updater error';
-}

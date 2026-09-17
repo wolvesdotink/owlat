@@ -14,22 +14,22 @@
  * party, so it takes an operator pressing the button.
  */
 import { apiFetch } from '~/lib/csrfFetch';
-import type { PortCheckId, PortCheckStatus, PortRelevance } from '@owlat/shared/networkPorts';
+import {
+	summarizePortChecks,
+	type PortChecksVerdict,
+	type SelectedPortCheck,
+	type PortCheckStatus,
+} from '@owlat/shared/networkPorts';
 
-interface PortCheckRow {
-	id: PortCheckId;
-	direction: 'inbound' | 'outbound';
-	port: number;
-	protocol: string;
-	target: string;
-	relevance: PortRelevance;
+/** A catalog entry as the probe hands it back: the selection, plus what it found. */
+interface PortCheckRow extends SelectedPortCheck {
 	status: PortCheckStatus;
 	durationMs: number;
 }
 
 interface PortChecksResponse {
 	reachable: boolean;
-	verdict?: 'ok' | 'degraded' | 'unknown';
+	verdict?: PortChecksVerdict;
 	checkedAt?: number;
 	checks?: PortCheckRow[];
 	error?: string;
@@ -60,10 +60,36 @@ const groups = computed(() =>
 /** Required ports that came back shut — the only rows that mean "act now". */
 const failing = computed(() =>
 	rows.value.filter(
-		(row) =>
-			row.relevance === 'required' && (row.status === 'blocked' || row.status === 'refused')
+		(row) => row.relevance === 'required' && (row.status === 'blocked' || row.status === 'refused')
 	)
 );
+
+/**
+ * The headline, from the SAME rule the sidecar applied.
+ *
+ * Deriving it from the blocked rows alone called an instance "all open" while a
+ * port it needs went unmeasured — a required check that came back `error` or
+ * `skipped` is precisely what an operator must not read as a green light. The
+ * server's verdict is used when it sent one and recomputed from the rows
+ * otherwise, so the two ends can only ever answer the same way.
+ */
+const verdict = computed<PortChecksVerdict>(
+	() => result.value?.verdict ?? summarizePortChecks(rows.value)
+);
+
+/** Required rows the probe could not measure at all — what `unknown` is about. */
+const unmeasured = computed(() =>
+	rows.value.filter(
+		(row) => row.relevance === 'required' && (row.status === 'error' || row.status === 'skipped')
+	)
+);
+
+/**
+ * The sidecar answered, but with a refusal of its own (a rate limit, an
+ * unreadable `.env`). That is not "the updater is missing", and the CLI advice
+ * on that branch would send the operator after a container that is running fine.
+ */
+const refusedByUpdater = computed(() => Boolean(result.value?.reachable && result.value?.error));
 
 async function runChecks() {
 	state.value = 'running';
@@ -76,7 +102,8 @@ async function runChecks() {
 	} catch (err) {
 		result.value = {
 			reachable: false,
-			error: err instanceof Error ? err.message : t('components.system.portChecksCard.unknownError'),
+			error:
+				err instanceof Error ? err.message : t('components.system.portChecksCard.unknownError'),
 		};
 	} finally {
 		state.value = 'done';
@@ -91,6 +118,12 @@ async function runChecks() {
 function statusLabel(row: PortCheckRow): string {
 	if (row.status === 'open' && row.direction === 'inbound') {
 		return t('components.system.portChecksCard.status.listening');
+	}
+	// "Nothing is listening" is only true of our own service. Outbound, a reset
+	// comes from something in the path that is refusing us — a middlebox, not a
+	// missing listener on a stranger's mail server.
+	if (row.status === 'refused' && row.direction === 'outbound') {
+		return t('components.system.portChecksCard.status.rejected');
 	}
 	return t(`components.system.portChecksCard.status.${row.status}`);
 }
@@ -159,7 +192,19 @@ function statusIcon(row: PortCheckRow): string {
 			{{ t('components.system.portChecksCard.idle') }}
 		</p>
 
-		<!-- No updater sidecar (or it refused): the probes cannot run at all here. -->
+		<!-- The sidecar answered and refused (rate limit, unreadable .env). The
+		     probes did not run, but nothing is missing — so this must not carry
+		     the "is the updater up?" advice below. -->
+		<div
+			v-else-if="state === 'done' && refusedByUpdater"
+			data-testid="port-checks-declined"
+			class="mt-4 rounded-lg bg-bg-surface px-3 py-2.5 text-caption text-text-secondary"
+		>
+			<p>{{ t('components.system.portChecksCard.declined') }}</p>
+			<p class="mt-1 text-text-tertiary">{{ result?.error }}</p>
+		</div>
+
+		<!-- No updater sidecar at all: the probes cannot run on this deployment. -->
 		<div
 			v-else-if="state === 'done' && !result?.reachable"
 			data-testid="port-checks-unreachable"
@@ -170,10 +215,12 @@ function statusIcon(row: PortCheckRow): string {
 		</div>
 
 		<template v-else-if="state === 'done'">
-			<!-- The verdict, then the rows. A required port that is shut is the
-			     only thing that needs a sentence of its own. -->
+			<!-- The verdict, then the rows. Three outcomes, three sentences: a
+			     required port that is shut, a required port nobody could measure,
+			     and the all-clear — which may only be said when neither of the
+			     other two is true. -->
 			<div
-				v-if="failing.length > 0"
+				v-if="verdict === 'degraded'"
 				data-testid="port-checks-verdict"
 				class="mt-4 rounded-lg border border-error/40 bg-error/5 px-3 py-2.5 text-caption text-text-secondary"
 			>
@@ -181,6 +228,16 @@ function statusIcon(row: PortCheckRow): string {
 					{{ t('components.system.portChecksCard.degraded', { count: failing.length }) }}
 				</p>
 				<p class="mt-1">{{ t('components.system.portChecksCard.degradedHint') }}</p>
+			</div>
+			<div
+				v-else-if="verdict === 'unknown'"
+				data-testid="port-checks-verdict"
+				class="mt-4 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2.5 text-caption text-text-secondary"
+			>
+				<p class="font-medium text-text-primary">
+					{{ t('components.system.portChecksCard.unknown', { count: unmeasured.length }) }}
+				</p>
+				<p class="mt-1">{{ t('components.system.portChecksCard.unknownHint') }}</p>
 			</div>
 			<p
 				v-else
@@ -205,7 +262,11 @@ function statusIcon(row: PortCheckRow): string {
 						:data-testid="`port-check-${row.id}`"
 						class="flex items-start gap-3 py-2"
 					>
-						<Icon :name="statusIcon(row)" class="w-4 h-4 mt-0.5 shrink-0" :class="statusTone(row)" />
+						<Icon
+							:name="statusIcon(row)"
+							class="w-4 h-4 mt-0.5 shrink-0"
+							:class="statusTone(row)"
+						/>
 						<div class="min-w-0 flex-1">
 							<p class="text-sm text-text-primary">
 								<span class="font-mono">{{ row.port }}</span>

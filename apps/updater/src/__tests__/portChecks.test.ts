@@ -138,7 +138,7 @@ describe('relevance comes from the host .env', () => {
 		writeFileSync(ENV_FILE, 'EMAIL_PROVIDER=resend\n');
 		const body = await checks();
 		const required = body.checks.filter((check) => check.relevance === 'required').map((c) => c.id);
-		expect(required.sort()).toEqual(['inbound-https', 'outbound-dns', 'outbound-https']);
+		expect(required.sort()).toEqual(['outbound-dns', 'outbound-https']);
 	});
 });
 
@@ -146,6 +146,8 @@ describe('verdicts', () => {
 	it('reports ok when every required port answers', async () => {
 		const body = await checks();
 		expect(body.verdict).toBe('ok');
+		// Every row answered, so none may have been re-read as "not deployed".
+		expect(body.checks.filter((check) => check.status !== 'open')).toEqual([]);
 		expect(body.checkedAt).toBeGreaterThan(0);
 	});
 

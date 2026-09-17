@@ -5050,7 +5050,7 @@
 				"checkedAt": "Geprüft um {time}",
 				"unknownError": "Die Portprüfung ist aus unbekanntem Grund fehlgeschlagen.",
 				"groups": {
-					"inbound": "Eingehend — das Internet erreicht diesen Server",
+					"inbound": "Eingehend — Dienste, die auf diesem Server lauschen",
 					"outbound": "Ausgehend — dieser Server erreicht das Internet"
 				},
 				"groupHints": {
@@ -5063,7 +5063,8 @@
 					"blocked": "gesperrt",
 					"refused": "niemand lauscht",
 					"error": "nicht feststellbar",
-					"skipped": "hier nicht aktiv"
+					"skipped": "hier nicht aktiv",
+					"rejected": "abgewiesen"
 				},
 				"needs": {
 					"inbound-https": "Die App, die API, Webhooks, Tracking- und Klick-Links sowie die Desktop-App",
@@ -5076,7 +5077,10 @@
 					"outbound-imaps": "Ein bestehendes Postfach mit einem Team-Postfach oder der Postbox verbinden",
 					"outbound-https": "Updates, Image-Downloads und alle Provider- und KI-APIs",
 					"outbound-dns": "MX-Abfragen für die Zustellung, Domain-Prüfung und Blocklist-Checks"
-				}
+				},
+				"unknown": "{count} benötigter Port konnte nicht gemessen werden. | {count} benötigte Ports konnten nicht gemessen werden.",
+				"unknownHint": "Die Prüfung kam weder zu einem Urteil noch an eine Firewall — der antwortende Dienst läuft hier nicht, oder der Name wurde nicht aufgelöst. Das ist etwas anderes als ein gesperrter Port, also wird in keine Richtung etwas behauptet.",
+				"declined": "Die Portprüfung lief nicht. Der Updater läuft; er hat diese Anfrage abgelehnt."
 			},
 			"updateProgress": {
 				"heading": "Update auf v{version} läuft",

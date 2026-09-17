@@ -147,6 +147,69 @@ describe('after a run', () => {
 		expect(w.find('[data-testid="port-check-outbound-smtp"]').text()).toContain('not needed');
 	});
 
+	/**
+	 * The failure the card shipped with: a required port that was never measured
+	 * (no edge container, a name that did not resolve) is not a blocked port, and
+	 * deriving the headline from blocked rows alone painted it green. An operator
+	 * reading "every port is open" over an unmeasured row has been told something
+	 * false.
+	 */
+	it('never says all-clear while a required port went unmeasured', async () => {
+		const w = await run({
+			reachable: true,
+			verdict: 'unknown',
+			checks: [
+				check({
+					id: 'inbound-smtp',
+					direction: 'inbound',
+					port: 25,
+					protocol: 'SMTP',
+					status: 'skipped',
+				}),
+			],
+		});
+
+		const verdict = w.find('[data-testid="port-checks-verdict"]');
+		expect(verdict.text()).not.toMatch(/is open/i);
+		expect(verdict.text()).toMatch(/could not be measured/i);
+		expectFullyLocalized(w);
+	});
+
+	it('recomputes the verdict when the sidecar sent none', async () => {
+		// An older updater answers without the field; the card must not fall back
+		// to the green branch by omission.
+		const w = await run({
+			reachable: true,
+			checks: [check({ status: 'blocked' })],
+		});
+		expect(w.find('[data-testid="port-checks-verdict"]').text()).toMatch(/closed/i);
+	});
+
+	it('says an outbound refusal was rejected, not that nothing is listening', async () => {
+		const w = await run({
+			reachable: true,
+			verdict: 'degraded',
+			checks: [check({ status: 'refused' })],
+		});
+		const row = w.find('[data-testid="port-check-outbound-imaps"]');
+		expect(row.text()).toContain('rejected');
+		expect(row.text()).not.toContain('nothing listening');
+	});
+
+	it('separates a sidecar that refused from a sidecar that is missing', async () => {
+		const w = await run({
+			reachable: true,
+			error: 'Too many port-check requests. Try again in a minute.',
+		});
+
+		const declined = w.find('[data-testid="port-checks-declined"]');
+		expect(declined.exists()).toBe(true);
+		expect(declined.text()).toContain('Too many port-check requests');
+		// The "is the updater container up?" advice belongs to the other branch.
+		expect(w.find('[data-testid="port-checks-unreachable"]').exists()).toBe(false);
+		expectFullyLocalized(w);
+	});
+
 	it('explains itself when the updater sidecar is not there', async () => {
 		const w = await run({ reachable: false, error: 'connect ECONNREFUSED' });
 

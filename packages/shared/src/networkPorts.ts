@@ -195,15 +195,21 @@ function requiredIds(context: PortRelevanceContext): ReadonlySet<PortCheckId> {
 	const profiles = new Set(context.profiles);
 	const provider = context.deliveryProvider ?? undefined;
 	const ids = new Set<PortCheckId>([
-		// The app itself, plus image pulls, update checks and every provider API.
-		'inbound-https',
+		// Image pulls, update checks and every provider API.
 		'outbound-https',
 		// MX lookups, SPF/DKIM/DMARC verification and blocklist checks.
 		'outbound-dns',
 	]);
-	// Caddy answers the ACME HTTP-01 challenge on 80; without the tls profile
-	// the operator terminates TLS somewhere else and owns that port there.
-	if (profiles.has('tls')) ids.add('inbound-http');
+	// The bundled Caddy edge serves the app on 443 and answers the ACME HTTP-01
+	// challenge on 80. WITHOUT the tls profile there is no edge container to ask:
+	// the operator terminates TLS in their own nginx (the alternative the
+	// production guide documents) or in front of the host entirely, and owns
+	// those ports there. Requiring them anyway would hold every such instance at
+	// a permanent "could not tell" for a proxy that is working fine.
+	if (profiles.has('tls')) {
+		ids.add('inbound-https');
+		ids.add('inbound-http');
+	}
 	// The built-in MTA receives mail and bounces on 25.
 	if (profiles.has('mta')) ids.add('inbound-smtp');
 	// Mail clients reach the built-in mailbox over IMAPS.

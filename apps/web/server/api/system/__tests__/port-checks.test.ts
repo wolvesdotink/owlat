@@ -99,18 +99,24 @@ describe('proxying', () => {
 		expect(result.checks).toEqual(checks);
 	});
 
-	it('maps a non-OK updater response to unreachable with its reason', async () => {
+	/**
+	 * A sidecar that ANSWERS and refuses is not a missing sidecar. Reporting its
+	 * rate limit as `reachable: false` sent an operator who pressed the button
+	 * three times in a minute to go and check whether the container was running.
+	 */
+	it('keeps a refusing updater reachable, with its reason', async () => {
 		callUpdaterMock.mockResolvedValue(
 			updaterResponse({ error: 'Too many port-check requests. Try again in a minute.' }, false, 429)
 		);
 
 		const result = await callRoute();
 
-		expect(result.reachable).toBe(false);
+		expect(result.reachable).toBe(true);
 		expect(result.error).toContain('Too many port-check requests');
+		expect(result.checks).toBeUndefined();
 	});
 
-	it('maps a refused sidecar to unreachable rather than throwing', async () => {
+	it('maps a sidecar that never answered to unreachable rather than throwing', async () => {
 		callUpdaterMock.mockRejectedValue(new Error('connect ECONNREFUSED 172.20.0.9:3200'));
 
 		const result = await callRoute();

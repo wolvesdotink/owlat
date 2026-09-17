@@ -5050,7 +5050,7 @@
 				"checkedAt": "Checked at {time}",
 				"unknownError": "The port check failed for an unknown reason.",
 				"groups": {
-					"inbound": "Inbound — the internet reaching this server",
+					"inbound": "Inbound — services listening on this server",
 					"outbound": "Outbound — this server reaching the internet"
 				},
 				"groupHints": {
@@ -5063,7 +5063,8 @@
 					"blocked": "blocked",
 					"refused": "nothing listening",
 					"error": "could not tell",
-					"skipped": "not running here"
+					"skipped": "not running here",
+					"rejected": "rejected"
 				},
 				"needs": {
 					"inbound-https": "The app, the API, webhooks, tracking and click links, and the desktop app",
@@ -5076,7 +5077,10 @@
 					"outbound-imaps": "Connecting an existing mailbox to a team inbox or the Postbox",
 					"outbound-https": "Updates, image pulls, and every provider and AI API",
 					"outbound-dns": "MX lookups for delivery, domain verification, and blocklist checks"
-				}
+				},
+				"unknown": "{count} port this instance needs could not be measured. | {count} ports this instance needs could not be measured.",
+				"unknownHint": "The probe reached neither a verdict nor a firewall — the service that would answer is not running here, or the name did not resolve. That is not the same as a closed port, so nothing is claimed either way.",
+				"declined": "The port check did not run. The updater is up; it declined this request."
 			},
 			"updateProgress": {
 				"heading": "Updating to v{version}",

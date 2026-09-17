@@ -46,11 +46,23 @@ describe('the catalog', () => {
 });
 
 describe('selectPortChecks', () => {
-	it('always requires the app, egress-HTTPS and DNS paths', () => {
+	it('always requires the egress-HTTPS and DNS paths', () => {
 		const context = { profiles: [] };
-		expect(relevanceOf('inbound-https', context)).toBe('required');
 		expect(relevanceOf('outbound-https', context)).toBe('required');
 		expect(relevanceOf('outbound-dns', context)).toBe('required');
+	});
+
+	/**
+	 * An instance that terminates TLS in its own nginx — the alternative the
+	 * production guide documents — runs no edge container for the probe to
+	 * reach. Requiring those rows would park every such install at a permanent
+	 * "could not tell" for a proxy that works.
+	 */
+	it('requires the edge ports only when the bundled proxy is the edge', () => {
+		expect(relevanceOf('inbound-https', { profiles: [] })).toBe('optional');
+		expect(relevanceOf('inbound-http', { profiles: [] })).toBe('optional');
+		expect(relevanceOf('inbound-https', { profiles: ['tls'] })).toBe('required');
+		expect(relevanceOf('inbound-http', { profiles: ['tls'] })).toBe('required');
 	});
 
 	it('lists every catalog entry whether or not it is required', () => {
@@ -58,11 +70,6 @@ describe('selectPortChecks', () => {
 		// so an unneeded port is listed as unneeded rather than hidden.
 		expect(selectPortChecks({ profiles: ['mta'] })).toHaveLength(CATALOG.length);
 		expect(CATALOG.some((check) => check.relevance === 'optional')).toBe(true);
-	});
-
-	it('requires ACME port 80 only when Caddy terminates TLS', () => {
-		expect(relevanceOf('inbound-http', { profiles: [] })).toBe('optional');
-		expect(relevanceOf('inbound-http', { profiles: ['tls'] })).toBe('required');
 	});
 
 	it('requires inbound 25 with the built-in MTA and inbound 993 with personal mail', () => {

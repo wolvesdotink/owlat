@@ -42,7 +42,9 @@ async function runCheck(check: SelectedPortCheck): Promise<PortCheckReport> {
 	// An inbound probe dials a compose SERVICE name. When the feature is off the
 	// container does not exist, so the name does not resolve — that is "this
 	// instance does not run that service", not a broken port, and saying
-	// `skipped` keeps it out of the failure count.
+	// `skipped` keeps it out of the blocked-port count. It still counts as
+	// unmeasured, which is what keeps a REQUIRED service that is missing from
+	// reading as an all-clear.
 	const status: PortCheckStatus =
 		check.direction === 'inbound' && isNameResolutionCode(result.code) ? 'skipped' : result.status;
 
