@@ -7,6 +7,24 @@
  * Uses dual storage:
  * - Redis Set for O(1) lookup (mta:suppressed)
  * - Redis Hash per entry for metadata (mta:suppressed-meta:{email})
+ *
+ * WHY EXPIRY NEEDS ITS OWN INDEX. Membership lives in a SET, and Redis has no
+ * per-member TTL for a set — only whole keys expire. The shipped code expressed
+ * a temporary suppression by writing `expiresAt` into the metadata and putting
+ * the SAME ttl on the metadata KEY, so the two died at the same instant: by the
+ * time `Date.now() > meta.expiresAt` could be true, `getMetadata` already
+ * returned null, the expiry branch could not fire, and `isSuppressed` fell
+ * through to "member, no metadata ⇒ suppressed". A 7-day soft-bounce
+ * suppression was therefore PERMANENT, and it left a set member behind that
+ * nothing could ever attribute to an expired entry — one more address on a
+ * list that only ever grows, on a Redis that refuses writes at `--maxmemory`.
+ *
+ * So the metadata key no longer expires (it is the evidence the expiry check
+ * reads), and the due date is indexed separately in a sorted set scored by
+ * `expiresAt`. That index is what makes expiry both LAZY-correct (a read past
+ * the date removes the entry) and COMPLETE (`sweepExpiredSuppressions` reclaims
+ * the entries nobody reads again) — without ever scanning the membership set,
+ * and without a permanent suppression appearing in it at all.
  */
 
 import type Redis from 'ioredis';
@@ -15,6 +33,13 @@ import { logger } from '../monitoring/logger.js';
 
 const SUPPRESSION_SET = 'mta:suppressed';
 const SUPPRESSION_META_PREFIX = 'mta:suppressed-meta:';
+/**
+ * Due-date index for TEMPORARY suppressions only: member = normalized address,
+ * score = `expiresAt` in epoch ms. A permanent suppression (hard bounce,
+ * complaint) is never a member, which is what keeps the sweep below incapable
+ * of dropping one.
+ */
+const SUPPRESSION_EXPIRY_ZSET = 'mta:suppressed-expiring';
 
 export type SuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
 
@@ -66,7 +91,9 @@ export async function suppress(
 	};
 
 	// Set TTL for soft bounces by default
-	const ttl = options?.ttlSeconds ?? (reason === 'hard_bounce' || reason === 'complaint' ? undefined : SOFT_BOUNCE_TTL_SECONDS);
+	const ttl =
+		options?.ttlSeconds ??
+		(reason === 'hard_bounce' || reason === 'complaint' ? undefined : SOFT_BOUNCE_TTL_SECONDS);
 	if (ttl) {
 		meta.expiresAt = now + ttl * 1000;
 	}
@@ -75,13 +102,21 @@ export async function suppress(
 	pipeline.sadd(SUPPRESSION_SET, normalized);
 	pipeline.set(`${SUPPRESSION_META_PREFIX}${normalized}`, JSON.stringify(meta));
 
-	// Set Redis TTL on metadata key for auto-cleanup (if applicable)
-	if (ttl) {
-		pipeline.expire(`${SUPPRESSION_META_PREFIX}${normalized}`, ttl);
+	// Index (or de-index) the due date. The `zrem` arm is the load-bearing one:
+	// an address that soft-bounced last week and hard-bounces today is rewritten
+	// here as permanent, and leaving its old due date in the index would let the
+	// sweep delete a hard-bounce suppression seven days later.
+	if (meta.expiresAt) {
+		pipeline.zadd(SUPPRESSION_EXPIRY_ZSET, meta.expiresAt, normalized);
+	} else {
+		pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
 	}
 
 	await pipeline.exec();
-	logger.info({ email: normalized, reason, source: options?.source }, 'Address added to suppression list');
+	logger.info(
+		{ email: normalized, reason, source: options?.source },
+		'Address added to suppression list'
+	);
 }
 
 /**
@@ -92,6 +127,7 @@ export async function unsuppress(redis: Redis, email: string): Promise<boolean> 
 	const pipeline = redis.pipeline();
 	pipeline.srem(SUPPRESSION_SET, normalized);
 	pipeline.del(`${SUPPRESSION_META_PREFIX}${normalized}`);
+	pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
 	const results = await pipeline.exec();
 
 	const removed = (results?.[0]?.[1] as number) > 0;
@@ -102,9 +138,63 @@ export async function unsuppress(redis: Redis, email: string): Promise<boolean> 
 }
 
 /**
+ * Largest number of expired entries one {@link sweepExpiredSuppressions} call
+ * will reclaim. The sweep runs on the leader's hourly timer beside the other
+ * maintenance crons, so it must return promptly rather than walk an arbitrarily
+ * long backlog while the delivery workers share the same Redis.
+ */
+export const SUPPRESSION_SWEEP_BATCH = 500;
+
+/**
+ * Reclaim temporary suppressions whose due date has passed.
+ *
+ * ONLY due-indexed entries are eligible, and only a temporary suppression is
+ * ever indexed — a hard bounce or a complaint is not a member of the index, so
+ * there is no input to this function that can remove one. That is the whole
+ * safety argument, and it is a property of the data rather than of a filter
+ * this code could get wrong.
+ *
+ * `ZRANGEBYSCORE ... LIMIT` reads only the entries that are actually due, so
+ * the cost is O(log N + batch) and does not grow with the size of the
+ * suppression list. Nothing here scans the membership set.
+ *
+ * Returns how many entries were removed; a caller that gets
+ * {@link SUPPRESSION_SWEEP_BATCH} back knows more may be due and can call again.
+ */
+export async function sweepExpiredSuppressions(
+	redis: Redis,
+	options?: { now?: number; limit?: number }
+): Promise<number> {
+	const now = options?.now ?? Date.now();
+	const limit = options?.limit ?? SUPPRESSION_SWEEP_BATCH;
+
+	// Exclusive upper bound, so "due" here means exactly what the lazy check in
+	// `isSuppressed` means by it (`Date.now() > meta.expiresAt`).
+	const due = await redis.zrangebyscore(
+		SUPPRESSION_EXPIRY_ZSET,
+		'-inf',
+		`(${now}`,
+		'LIMIT',
+		0,
+		limit
+	);
+	if (due.length === 0) return 0;
+
+	for (const email of due) {
+		await unsuppress(redis, email);
+	}
+
+	logger.info({ count: due.length }, 'Expired suppressions swept');
+	return due.length;
+}
+
+/**
  * Check suppression status with full metadata
  */
-export async function getSuppressionStatus(redis: Redis, email: string): Promise<{
+export async function getSuppressionStatus(
+	redis: Redis,
+	email: string
+): Promise<{
 	suppressed: boolean;
 	reason?: SuppressionReason;
 	source?: string;
@@ -134,7 +224,15 @@ export async function getSuppressionStatus(redis: Redis, email: string): Promise
 }
 
 /**
- * Bulk suppress multiple addresses
+ * Bulk suppress multiple addresses.
+ *
+ * Every entry is written PERMANENTLY, including `manual` ones — unlike the
+ * single-address {@link suppress}, which gives `manual` a 7-day TTL. That
+ * asymmetry is the shipped behaviour of `POST /suppression/bulk` and is kept:
+ * the bulk endpoint is how an operator carries an accumulated suppression list
+ * onto this MTA, and silently expiring an imported list after a week would be a
+ * far worse defect than the inconsistency. The `zrem` below states it: a bulk
+ * write CLEARS any pending due date the address had.
  */
 export async function suppressBulk(
 	redis: Redis,
@@ -157,6 +255,7 @@ export async function suppressBulk(
 
 			pipeline.sadd(SUPPRESSION_SET, normalized);
 			pipeline.set(`${SUPPRESSION_META_PREFIX}${normalized}`, JSON.stringify(meta));
+			pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
 		}
 
 		await pipeline.exec();

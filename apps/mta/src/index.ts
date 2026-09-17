@@ -22,6 +22,10 @@ import { flushPendingIpReadinessAlerts } from './scaling/ipReadinessAlerts.js';
 import { startDnsblChecker } from './intelligence/dnsbl.js';
 import { configuredAuditIps, defaultIpAuditDeps, startIpAuditor } from './scaling/ipAudit.js';
 import { initializeWarming, evaluateDay } from './intelligence/warming.js';
+import {
+	sweepExpiredSuppressions,
+	SUPPRESSION_SWEEP_BATCH,
+} from './intelligence/suppressionList.js';
 import * as orgLimits from './intelligence/orgLimits.js';
 import { pool } from './smtp/connectionPool.js';
 import { assertLeaseProtocolCutoverSafe } from './smtp/poolGlobalCap.js';
@@ -211,6 +215,28 @@ export async function main() {
 		60 * 60 * 1000
 	);
 
+	// ── 10c. Reclaim expired temporary suppressions (hourly — leader only) ──
+	// Only TEMPORARY suppressions are due-indexed, so this can never remove a
+	// hard bounce or a complaint. It exists because the lazy expiry check in
+	// `isSuppressed` only fires for an address somebody tries to mail again:
+	// without a sweep, every soft-bounce suppression nobody retries would stay
+	// on a list that grows forever on a Redis configured `noeviction`.
+	const suppressionSweepInterval = setInterval(
+		async () => {
+			if (!isLeader()) return;
+			try {
+				// Drain in bounded batches so a backlog is cleared over one run
+				// rather than one per hour, but stop well short of an unbounded walk.
+				for (let batch = 0; batch < 20; batch += 1) {
+					if ((await sweepExpiredSuppressions(redis)) < SUPPRESSION_SWEEP_BATCH) break;
+				}
+			} catch (err) {
+				logger.error({ err }, 'Expired-suppression sweep failed');
+			}
+		},
+		60 * 60 * 1000
+	);
+
 	// ── 11. Start warming evaluation cron (daily check — leader only) ──
 	const warmingInterval = setInterval(
 		async () => {
@@ -367,6 +393,7 @@ export async function main() {
 		clearInterval(tlsRptInterval);
 		clearInterval(dkimRotationInterval);
 		clearInterval(webhookDlqInterval);
+		clearInterval(suppressionSweepInterval);
 		// Stop claiming liveness the moment we start draining.
 		stopHeartbeat();
 

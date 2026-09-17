@@ -7,7 +7,13 @@ import {
 	unsuppress,
 	getSuppressionStatus,
 	suppressBulk,
+	sweepExpiredSuppressions,
+	SUPPRESSION_SWEEP_BATCH,
 } from '../suppressionList.js';
+
+const SUPPRESSION_SET = 'mta:suppressed';
+const EXPIRY_ZSET = 'mta:suppressed-expiring';
+const metaKeyFor = (email: string) => `mta:suppressed-meta:${email}`;
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -64,21 +70,40 @@ describe('suppressionList', () => {
 			expect(status.expiresAt).toBe(Date.now() + sevenDaysMs);
 		});
 
-		it('auto-removes expired entries on isSuppressed check', async () => {
-			// Suppress with a very short TTL (1 second) so it's already expired by the time we check
-			await suppress(redis, 'temp@example.com', 'manual', { ttlSeconds: 1 });
+		// THE OLD VERSION OF THIS TEST PROVED NOTHING. It re-`set` the metadata
+		// with a past `expiresAt` "to avoid the ioredis-mock TTL race" — and a
+		// bare `SET` clears the key's TTL, so it manufactured the one state
+		// production could never be in: metadata still present after its due
+		// date. In production the metadata key carried the SAME ttl as
+		// `expiresAt`, so it was already gone by the time the check could fire,
+		// `getMetadata` returned null, and `isSuppressed` fell through to
+		// "member ⇒ suppressed". The entry never expired and the set member
+		// leaked. Nothing here touches Redis by hand any more: the clock moves,
+		// and the production key shapes answer for themselves.
+		it('stops suppressing once the due date passes, and leaves nothing behind', async () => {
+			await suppress(redis, 'temp@example.com', 'manual', { ttlSeconds: 60 });
+			expect(await isSuppressed(redis, 'temp@example.com')).toBe(true);
 
-			// Set system time 2 seconds past the TTL expiry, without advancing timers
-			// We need the metadata key to still be in Redis (not expired by ioredis-mock)
-			// but Date.now() to be past expiresAt
-			// Since ioredis-mock may check TTL at read time, directly re-insert metadata with past expiresAt
-			const metaKey = 'mta:suppressed-meta:temp@example.com';
-			const meta = JSON.parse((await redis.get(metaKey))!);
-			meta.expiresAt = Date.now() - 1000; // Already expired
-			await redis.set(metaKey, JSON.stringify(meta));
+			vi.setSystemTime(new Date(Date.now() + 61_000));
 
-			const result = await isSuppressed(redis, 'temp@example.com');
-			expect(result).toBe(false);
+			expect(await isSuppressed(redis, 'temp@example.com')).toBe(false);
+			expect(await redis.sismember(SUPPRESSION_SET, 'temp@example.com')).toBe(0);
+			expect(await redis.exists(metaKeyFor('temp@example.com'))).toBe(0);
+			expect(await redis.zscore(EXPIRY_ZSET, 'temp@example.com')).toBeNull();
+		});
+
+		it('keeps the metadata readable past the due date — it IS the expiry evidence', async () => {
+			await suppress(redis, 'temp@example.com', 'manual', { ttlSeconds: 60 });
+			// No TTL on the metadata key: one that expired alongside `expiresAt`
+			// would take the evidence with it and make the entry permanent.
+			expect(await redis.ttl(metaKeyFor('temp@example.com'))).toBe(-1);
+			expect(await redis.zscore(EXPIRY_ZSET, 'temp@example.com')).toBe(String(Date.now() + 60_000));
+		});
+
+		it('never due-indexes a permanent suppression', async () => {
+			await suppress(redis, 'hard@example.com', 'hard_bounce');
+			await suppress(redis, 'spam@example.com', 'complaint');
+			expect(await redis.zcard(EXPIRY_ZSET)).toBe(0);
 		});
 	});
 
@@ -112,16 +137,13 @@ describe('suppressionList', () => {
 		});
 
 		it('auto-cleans expired entries', async () => {
-			await suppress(redis, 'expire@example.com', 'manual', { ttlSeconds: 1 });
+			await suppress(redis, 'expire@example.com', 'manual', { ttlSeconds: 60 });
 
-			// Re-insert metadata with past expiresAt (to avoid ioredis-mock TTL race)
-			const metaKey = 'mta:suppressed-meta:expire@example.com';
-			const meta = JSON.parse((await redis.get(metaKey))!);
-			meta.expiresAt = Date.now() - 1000; // Already expired
-			await redis.set(metaKey, JSON.stringify(meta));
+			vi.setSystemTime(new Date(Date.now() + 61_000));
 
 			const status = await getSuppressionStatus(redis, 'expire@example.com');
 			expect(status.suppressed).toBe(false);
+			expect(await redis.sismember(SUPPRESSION_SET, 'expire@example.com')).toBe(0);
 		});
 	});
 
@@ -140,6 +162,86 @@ describe('suppressionList', () => {
 			expect(await isSuppressed(redis, 'a@example.com')).toBe(true);
 			expect(await isSuppressed(redis, 'b@example.com')).toBe(true);
 			expect(await isSuppressed(redis, 'c@example.com')).toBe(true);
+		});
+	});
+
+	describe('sweepExpiredSuppressions', () => {
+		it('reclaims every key an expired temporary suppression owns', async () => {
+			await suppress(redis, 'gone@example.com', 'manual', { ttlSeconds: 60 });
+
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			expect(await sweepExpiredSuppressions(redis)).toBe(1);
+			expect(await redis.sismember(SUPPRESSION_SET, 'gone@example.com')).toBe(0);
+			expect(await redis.exists(metaKeyFor('gone@example.com'))).toBe(0);
+			expect(await redis.zcard(EXPIRY_ZSET)).toBe(0);
+		});
+
+		it('leaves an entry that is not due yet alone', async () => {
+			await suppress(redis, 'later@example.com', 'manual', { ttlSeconds: 60 });
+
+			vi.setSystemTime(new Date(Date.now() + 59_000));
+
+			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect(await isSuppressed(redis, 'later@example.com')).toBe(true);
+		});
+
+		// THE COMPLIANCE PROPERTY. A hard bounce or a complaint is never a member
+		// of the due-date index, so no amount of sweeping — at any clock — can
+		// reach one.
+		it('cannot remove a hard bounce or a complaint, however far the clock moves', async () => {
+			await suppress(redis, 'hard@example.com', 'hard_bounce');
+			await suppress(redis, 'spam@example.com', 'complaint');
+
+			vi.setSystemTime(new Date(Date.now() + 10 * 365 * 86400 * 1000));
+
+			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect(await isSuppressed(redis, 'hard@example.com')).toBe(true);
+			expect(await isSuppressed(redis, 'spam@example.com')).toBe(true);
+		});
+
+		// The escalation case: an address soft-bounces, then hard-bounces inside
+		// the soft window. Re-suppressing it permanently must CLEAR the pending
+		// due date, or the sweep would delete a hard-bounce suppression when the
+		// superseded soft one came due.
+		it('drops the pending due date when an address is re-suppressed permanently', async () => {
+			await suppress(redis, 'escalate@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'escalate@example.com', 'hard_bounce');
+			expect(await redis.zcard(EXPIRY_ZSET)).toBe(0);
+
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect(await isSuppressed(redis, 'escalate@example.com')).toBe(true);
+		});
+
+		it('clears the pending due date on a bulk re-suppression too', async () => {
+			await suppress(redis, 'bulk@example.com', 'manual', { ttlSeconds: 60 });
+			await suppressBulk(redis, [{ email: 'bulk@example.com', reason: 'hard_bounce' }]);
+
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect(await isSuppressed(redis, 'bulk@example.com')).toBe(true);
+		});
+
+		it('stops at the batch limit and reports it, so the caller can come back', async () => {
+			for (let index = 0; index < 5; index += 1) {
+				await suppress(redis, `batch${index}@example.com`, 'manual', { ttlSeconds: 60 });
+			}
+
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			expect(await sweepExpiredSuppressions(redis, { limit: 2 })).toBe(2);
+			expect(await redis.zcard(EXPIRY_ZSET)).toBe(3);
+			expect(await sweepExpiredSuppressions(redis)).toBe(3);
+			expect(await redis.scard(SUPPRESSION_SET)).toBe(0);
+			expect(SUPPRESSION_SWEEP_BATCH).toBeGreaterThan(0);
+		});
+
+		it('creates nothing when there is nothing due', async () => {
+			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect(await redis.keys('mta:suppressed*')).toEqual([]);
 		});
 	});
 });
