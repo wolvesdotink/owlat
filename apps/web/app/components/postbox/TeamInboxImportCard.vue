@@ -70,6 +70,9 @@ async function handleCancel() {
 // A worker error is a raw provider string and can be paragraphs long; show
 // enough to recognise it and keep the card readable.
 const ERROR_PREVIEW_LENGTH = 200;
+/** Messages the walk passed over without storing — still on the remote server. */
+const skippedCount = computed(() => migration.value?.messagesFailed ?? 0);
+
 const errorPreview = computed(() => {
 	const message = migration.value?.lastError;
 	if (!message) return null;
@@ -215,6 +218,13 @@ const errorPreview = computed(() => {
 						{{
 							t('dashboard.admin.team.inboxes.import.completedIndexed', {
 								indexed: formatNumber(migration?.messagesIndexed, locale),
+							})
+						}}
+					</p>
+					<p v-if="skippedCount > 0" class="text-xs text-warning mt-0.5">
+						{{
+							t('dashboard.admin.team.inboxes.import.completedSkipped', skippedCount, {
+								named: { count: formatNumber(skippedCount, locale) },
 							})
 						}}
 					</p>

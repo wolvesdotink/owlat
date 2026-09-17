@@ -19,6 +19,7 @@ import {
 } from './webhooks/providerFeedbackHttp';
 import { pluginFeedbackWebhook } from './webhooks/pluginFeedbackHttp';
 import { handleMailWebhook } from './mail/webhookHttp';
+import { handleRawMessageUpload } from './mail/external/rawUploadHttp';
 import { serveSealedBlob } from './mail/sealedBlobHttp';
 import { serveAttachmentShare } from './mail/attachmentShareHttp';
 import { handleVerifyCredential } from './mail/authHttp';
@@ -207,6 +208,16 @@ http.route({
 	path: '/webhooks/mta-mailbox',
 	method: 'POST',
 	handler: handleMailWebhook,
+});
+
+// POST /mail-sync/raw-message - raw `.eml` upload from the mail-sync worker.
+// An HTTP action, not a function argument: a function-call body is capped at
+// 16 MiB and base64 inflates by 4/3, which silently dropped every message over
+// ~12 MiB of source (see mail/external/rawUploadHttp.ts).
+http.route({
+	path: '/mail-sync/raw-message',
+	method: 'POST',
+	handler: handleRawMessageUpload,
 });
 
 // POST /webhooks/mta-verify-credential - app-password verification for MTA SMTP submission

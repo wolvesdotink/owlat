@@ -19,6 +19,7 @@ import {
 	type SystemMailExtrasInput,
 } from '../types';
 import { sendProviderCatalogEntry } from '../catalog';
+import { bytesToBase64 } from '../../bytes';
 import { transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
 const RESEND_TIMEOUT_MS = 30_000;
@@ -90,8 +91,13 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 							params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,
 						attachments: params.attachments?.map((a) => ({
 							filename: a.filename,
-							content: a.content,
-							content_type: a.contentType,
+							content: bytesToBase64(a.content),
+							// `contentType`, not `content_type`: the SDK's own
+							// `parseAttachments` reads this key and emits the snake_case
+							// wire field itself. Passing the wire spelling made it an
+							// excess property that was dropped, leaving Resend to guess the
+							// type from the filename.
+							contentType: a.contentType,
 						})),
 					},
 					// Stable idempotency key → Resend `Idempotency-Key` header, so a

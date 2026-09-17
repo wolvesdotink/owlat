@@ -23,7 +23,7 @@ import type { MailSyncConfig } from './config.js';
 import { mapFolderRole, type FolderRole } from './folders.js';
 import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
-import { ingestMessage } from './ingest.js';
+import { ingestMessage, isMessageLanded, type RawUploadConfig } from './ingest.js';
 import {
 	backfillFolder,
 	type BackfillFetchedMessage,
@@ -97,6 +97,11 @@ export class AccountConnection {
 		private readonly convex: ConvexClient,
 		private readonly config: MailSyncConfig
 	) {}
+
+	/** Where `ingestMessage` PUTs the raw `.eml` before referencing it. */
+	private get rawUploadConfig(): RawUploadConfig {
+		return { convexSiteUrl: this.config.convexSiteUrl, apiKey: this.config.apiKey };
+	}
 
 	async start(): Promise<void> {
 		this.stopped = false;
@@ -329,7 +334,7 @@ export class AccountConnection {
 				const uid = Number(msg.uid);
 				if (!msg.source || uid <= cursor.lastSeenUid) continue;
 				try {
-					await ingestMessage(this.convex, {
+					await ingestMessage(this.convex, this.rawUploadConfig, {
 						accountId: this.account.accountId,
 						folderRole: role,
 						remoteName,
@@ -554,8 +559,8 @@ export class AccountConnection {
 					lock.release();
 				}
 			},
-			ingest: async (remoteName, role, uid, raw, flags) =>
-				ingestMessage(this.convex, {
+			ingest: async (remoteName, role, uid, raw, flags) => {
+				const outcome = await ingestMessage(this.convex, this.rawUploadConfig, {
 					accountId,
 					folderRole: role,
 					remoteName,
@@ -565,8 +570,28 @@ export class AccountConnection {
 					flags,
 					// Historical import: never enqueue background LLM work for it.
 					origin: 'backfill',
-				}),
-			recordProgress: async (remoteName, newCursor, importedDelta) => {
+				});
+				const landed = isMessageLanded(outcome);
+				if (!landed && 'skipped' in outcome) {
+					// Stored nothing and did not throw — the shape that used to be
+					// indistinguishable from a successful import.
+					logger.warn(
+						{ accountId, remoteName, uid, reason: outcome.skipped },
+						'backfill ingest stored nothing'
+					);
+				}
+				return landed;
+			},
+			reportIngestFailure: (remoteName, uid, err) => {
+				// The forward-sync loop logs its skips (pollFolder below); the backfill
+				// used to swallow them, which is how an ingest that threw on every
+				// message still reported a completed import.
+				logger.warn(
+					{ accountId, remoteName, uid, err },
+					'backfill ingest failed; skipping message'
+				);
+			},
+			recordProgress: async (remoteName, newCursor, importedDelta, failedDelta) => {
 				const res = (await this.convex.mutation(
 					fn.recordBackfillProgress as never,
 					{
@@ -575,6 +600,7 @@ export class AccountConnection {
 						remoteName,
 						newCursor,
 						importedDelta,
+						failedDelta,
 					} as never
 				)) as { stillImporting: boolean };
 				return res.stillImporting;

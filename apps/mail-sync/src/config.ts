@@ -3,6 +3,14 @@ export interface MailSyncConfig {
 	port: number;
 	listenAddress: string;
 	convexUrl: string;
+	/**
+	 * Origin serving the deployment's HTTP ACTIONS, which is where the raw `.eml`
+	 * upload lives — a function-call body is capped at 16 MiB and a message is
+	 * not. Self-hosted Convex serves them both on their own port and under
+	 * `/http` on the API port, so the default needs no new deployment variable;
+	 * `CONVEX_SITE_URL` overrides it where the two are split.
+	 */
+	convexSiteUrl: string;
 	convexAdminKey: string;
 	/** Bearer token Convex must present on /send and /test (MAIL_SYNC_API_KEY). */
 	apiKey: string;
@@ -34,10 +42,16 @@ export function loadConfig(): MailSyncConfig {
 		port: parseInt(process.env['MAIL_SYNC_PORT'] ?? '3200', 10),
 		listenAddress: process.env['MAIL_SYNC_LISTEN'] ?? '0.0.0.0',
 		convexUrl,
+		convexSiteUrl: (
+			process.env['CONVEX_SITE_URL'] || `${convexUrl.replace(/\/+$/, '')}/http`
+		).replace(/\/+$/, ''),
 		convexAdminKey,
 		apiKey,
 		reconcileIntervalMs: parseInt(process.env['MAIL_SYNC_RECONCILE_MS'] ?? '30000', 10),
-		folderPollIntervalMs: parseInt(process.env['MAIL_SYNC_FOLDER_POLL_MS'] ?? `${5 * 60 * 1000}`, 10),
+		folderPollIntervalMs: parseInt(
+			process.env['MAIL_SYNC_FOLDER_POLL_MS'] ?? `${5 * 60 * 1000}`,
+			10
+		),
 		backfillBatchSize: parseInt(process.env['MAIL_SYNC_BACKFILL_BATCH'] ?? '200', 10),
 		allowedFetchOrigins: [
 			new URL(convexUrl).origin,

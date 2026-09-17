@@ -347,13 +347,20 @@ describe('ingestExternalRaw → Reply Queue enqueue', () => {
 		seeded: Seeded,
 		origin: 'sync' | 'backfill'
 	): Promise<void> {
+		// The raw `.eml` is uploaded out of band (`/mail-sync/raw-message`); the
+		// action only ever sees the storage id it produced.
+		const rawStorageId = await t.run(async (ctx) =>
+			ctx.storage.store(new Blob([Buffer.from(rawBulkMessage(), 'base64')]))
+		);
 		await t.action(internal.mail.external.delivery.ingestExternalRaw, {
 			accountId: seeded.accountId,
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
 			remoteUid: 42,
 			remoteUidValidity: 7,
-			rawBytesBase64: rawBulkMessage(),
+			rawStorageId,
+			rawSize: Buffer.from(rawBulkMessage(), 'base64').byteLength,
+			headerBlockBase64: rawBulkMessage(),
 			from: `Sam <${SENDER}>`,
 			to: [OWNER_ADDRESS],
 			cc: [],

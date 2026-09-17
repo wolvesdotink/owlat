@@ -265,7 +265,17 @@ export const mailAccountsTables = {
 
 		// AGGREGATED — progress counters.
 		messagesTotal: v.number(), // Σ per-folder backfillTotal (import denominator)
-		messagesImported: v.number(), // Σ per-folder backfillDone (import numerator)
+		// Messages that are IN the mailbox because of this walk — stored by it, or
+		// already present when it got there (Gmail's "All Mail" repeats every other
+		// folder, so a dedup hit is mail the user has, not mail that was lost).
+		messagesImported: v.number(),
+		// Messages the worker walked past without storing — an ingest that threw,
+		// or a UID the server listed but returned no body for. MISSING = 0 (rows
+		// written before the two were told apart, when a failed ingest still
+		// counted as an import and a wholly failed run looked like a clean one).
+		// Progress is `(messagesImported + messagesFailed) / messagesTotal`, so the
+		// bar still completes while the imported count stays true.
+		messagesFailed: v.optional(v.number()),
 		messagesIndexed: v.number(), // messages swept into the knowledge graph
 
 		// Index-sweep cursor over mailMessages (mirrors knowledgeBackfill).

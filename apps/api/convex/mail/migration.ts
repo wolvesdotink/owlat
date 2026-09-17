@@ -17,27 +17,24 @@
  * getStatus / cancel) is the wizard's, and is PERSONAL-only (it resolves the
  * caller's live personal account); the mailbox-keyed team-inbox twins live in
  * `mail/migrationShared.ts` and share this file's scope-agnostic core. The
- * internal surface (getBackfillWork / initFolderBackfill /
- * recordBackfillProgress / completeBackfillImport) is the mail-sync worker's
- * (admin-key only) and is scope-agnostic — it keys off the account alone.
+ * worker-facing internal surface (getBackfillWork / initFolderBackfill /
+ * recordBackfillProgress / completeBackfillImport / markImportFailed) lives in
+ * `mail/migrationBackfill.ts`, split out under CONVENTIONS.md's ~500-LOC
+ * ceiling; it is admin-key-only and scope-agnostic — it keys off the account
+ * alone. The knowledge sweep that follows the import is
+ * `mail/migrationIndexing.ts`.
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../_generated/server';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
-import { internal } from '../_generated/api';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { getLivePersonalExternalAccountForUser } from './external/accounts';
 import { isActiveMigrationStatus, cancelActiveMigrationForAccount } from './external/accountShared';
-import { scheduleVoiceProfileRefresh } from './ai/voiceProfile';
-
-// Chunk size for the post-import knowledge sweep (paced inside runIndexChunk).
-const INDEX_CHUNK_SIZE = 25;
 
 /** Provider label on a migration row — shared with the team-inbox twins. */
 export const migrationSourceValidator = v.union(v.literal('google'), v.literal('imap'));
@@ -51,8 +48,9 @@ export const migrationSourceValidator = v.union(v.literal('google'), v.literal('
 // effects (only the personal caller stamps a step).
 // ============================================================
 
-/** Newest migration row for an account (1:1 `by_account`), or null. */
-async function latestMigrationRow(ctx: QueryCtx, accountId: Id<'externalMailAccounts'>) {
+/** Newest migration row for an account (1:1 `by_account`), or null. Exported for
+ * `mail/migrationBackfill.ts`, which resolves the same row for the worker. */
+export async function latestMigrationRow(ctx: QueryCtx, accountId: Id<'externalMailAccounts'>) {
 	return await ctx.db
 		.query('mailboxMigrations')
 		.withIndex('by_account', (q) => q.eq('accountId', accountId))
@@ -74,6 +72,10 @@ export async function latestMigrationForAccount(
 	// Past the importing phase the import is, by definition, complete — show
 	// 100 rather than a ratio that can fall short when the server returned
 	// fewer fetchable bodies than its message count.
+	// Deliberately over `messagesImported` alone, NOT over the walk: the bar and
+	// the "N of M" beside it must not disagree, and lagging the walk is the
+	// honest reading — those messages are not in the mailbox. It still ends at
+	// 100 because the branch above pins a finished import there regardless.
 	const importPercent =
 		migration.status !== 'importing'
 			? 100
@@ -94,6 +96,10 @@ export async function latestMigrationForAccount(
 		isAiIndexingEnabled: migration.isAiIndexingEnabled,
 		messagesTotal: migration.messagesTotal,
 		messagesImported: migration.messagesImported,
+		// Rendered by the wizard's completed card: an import that finished having
+		// LOST messages must say so, or a partial loss is as silent as the total
+		// one used to be.
+		messagesFailed: migration.messagesFailed ?? 0,
 		messagesIndexed: migration.messagesIndexed,
 		importPercent,
 		indexPercent,
@@ -281,211 +287,5 @@ export const cancel = authedMutation({
 		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
 		if (!account) return false;
 		return await cancelMigrationForAccount(ctx, account);
-	},
-});
-
-// ============================================================
-// Internal surface — the mail-sync worker (admin-key only)
-// ============================================================
-
-/**
- * Whether a migration is currently importing for this account, and which one.
- * The worker polls this to decide whether to run the historical backfill; it
- * discovers the remote folders and resumes each folder's cursor itself (via
- * `initFolderBackfill`). The `migrationId` pins every write of this run to the
- * job it belongs to, so a cancel+restart can't make an in-flight batch credit a
- * freshly-started migration.
- */
-export const getBackfillWork = internalQuery({
-	args: { accountId: v.id('externalMailAccounts') },
-	handler: async (ctx, args) => {
-		const migration = await latestMigrationRow(ctx, args.accountId);
-		if (!migration || migration.status !== 'importing') {
-			return { isActive: false as const, migrationId: null };
-		}
-		return { isActive: true as const, migrationId: migration._id };
-	},
-});
-
-/**
- * Initialize a folder's backfill on first sight: snapshot its high-water UID as
- * the descending cursor, and its actual message count as the progress
- * denominator (IMAP UIDs are sparse, so the UID ceiling overstates the count).
- * Idempotent — a resume returns the persisted cursor without double-counting.
- * Returns the UID to start fetching down from, or null if the given migration is
- * no longer importing / there's no sync row.
- */
-export const initFolderBackfill = internalMutation({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		migrationId: v.id('mailboxMigrations'),
-		remoteName: v.string(),
-		ceilingUid: v.number(),
-		messageCount: v.number(),
-	},
-	handler: async (ctx, args): Promise<{ startCursor: number } | null> => {
-		const migration = await ctx.db.get(args.migrationId);
-		if (!migration || migration.status !== 'importing') return null;
-
-		const row = await ctx.db
-			.query('externalMailFolderSync')
-			.withIndex('by_account_and_remote', (q) =>
-				q.eq('accountId', args.accountId).eq('remoteName', args.remoteName)
-			)
-			.first();
-		if (!row) return null;
-
-		// Already initialized (resume after a worker restart) — require BOTH the
-		// cursor AND the total. A cancel+restart clears the row's backfill* fields
-		// (start()), and a still-in-flight batch from the prior run can re-write
-		// backfillCursor alone; re-initialise in that case so the new migration's
-		// messagesTotal denominator isn't left stuck at 0.
-		if (row.backfillCursor !== undefined && row.backfillTotal !== undefined) {
-			return { startCursor: row.backfillCursor };
-		}
-
-		const ceiling = Math.max(0, args.ceilingUid);
-		const total = Math.max(0, args.messageCount);
-		await ctx.db.patch(row._id, {
-			backfillCursor: ceiling,
-			backfillTotal: total,
-			backfillDone: 0,
-		});
-		await ctx.db.patch(migration._id, {
-			messagesTotal: migration.messagesTotal + total,
-			updatedAt: Date.now(),
-		});
-		return { startCursor: ceiling };
-	},
-});
-
-/**
- * Persist one backfill batch: drop the folder cursor to `newCursor` and add the
- * batch's imported count to both the folder and the migration totals. Returns
- * whether the migration is still importing — the worker stops at this batch
- * boundary if it isn't (so Cancel takes effect promptly even mid-folder, rather
- * than only after the current — possibly huge — folder finishes).
- */
-export const recordBackfillProgress = internalMutation({
-	args: {
-		accountId: v.id('externalMailAccounts'),
-		migrationId: v.id('mailboxMigrations'),
-		remoteName: v.string(),
-		newCursor: v.number(),
-		importedDelta: v.number(),
-	},
-	handler: async (ctx, args): Promise<{ stillImporting: boolean }> => {
-		// Bail before touching the folder row when this batch's migration is no
-		// longer importing (cancelled, or superseded by a newer start()): a fresh
-		// migration may already own these sync rows, and writing here would clobber
-		// its reset cursors or mis-credit its counters.
-		const migration = await ctx.db.get(args.migrationId);
-		if (!migration || migration.status !== 'importing') {
-			return { stillImporting: false };
-		}
-
-		const row = await ctx.db
-			.query('externalMailFolderSync')
-			.withIndex('by_account_and_remote', (q) =>
-				q.eq('accountId', args.accountId).eq('remoteName', args.remoteName)
-			)
-			.first();
-		if (!row) return { stillImporting: false };
-
-		await ctx.db.patch(row._id, {
-			backfillCursor: Math.max(0, args.newCursor),
-			backfillDone: (row.backfillDone ?? 0) + args.importedDelta,
-		});
-		await ctx.db.patch(migration._id, {
-			messagesImported: migration.messagesImported + args.importedDelta,
-			updatedAt: Date.now(),
-		});
-		return { stillImporting: true };
-	},
-});
-
-/**
- * Worker signals "historical backfill threw and won't self-heal". Transition the
- * still-importing migration → failed with the error message, so the wizard's
- * existing 'failed → Try again' recovery surfaces instead of spinning on
- * 'importing' forever. Guarded like the other terminal transitions: a row that
- * already left the importing phase (cancelled, or superseded by a newer start())
- * is left untouched. The truncation keeps an oversized IMAP error from bloating
- * the row / the audit log.
- */
-export const markImportFailed = internalMutation({
-	args: {
-		migrationId: v.id('mailboxMigrations'),
-		errorMessage: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const migration = await ctx.db.get(args.migrationId);
-		if (!migration || migration.status !== 'importing') return;
-		const message = args.errorMessage?.slice(0, 500);
-		const now = Date.now();
-		await ctx.db.patch(migration._id, {
-			status: 'failed',
-			completedAt: now,
-			updatedAt: now,
-			lastError: message ?? migration.lastError,
-		});
-		await ctx.db.insert('mailAuditLog', {
-			mailboxId: migration.mailboxId,
-			event: 'migration.import_failed',
-			details: message ? `error=${message}` : undefined,
-			occurredAt: now,
-		});
-	},
-});
-
-/**
- * Worker signals "all folders backfilled". Transition import → indexing (and
- * kick off the knowledge sweep) when AI indexing is on and `ai.knowledge` is
- * still enabled, otherwise straight to completed.
- */
-export const completeBackfillImport = internalMutation({
-	args: { migrationId: v.id('mailboxMigrations') },
-	handler: async (ctx, args) => {
-		const migration = await ctx.db.get(args.migrationId);
-		if (!migration || migration.status !== 'importing') return;
-
-		const now = Date.now();
-		const wantsIndexing =
-			migration.isAiIndexingEnabled && (await isFeatureEnabled(ctx, 'ai.knowledge'));
-
-		if (wantsIndexing) {
-			await ctx.db.patch(migration._id, {
-				status: 'indexing',
-				importCompletedAt: now,
-				updatedAt: now,
-			});
-			await ctx.scheduler.runAfter(0, internal.mail.migrationIndexing.runIndexChunk, {
-				migrationId: migration._id,
-				chunkSize: INDEX_CHUNK_SIZE,
-			});
-		} else {
-			await ctx.db.patch(migration._id, {
-				status: 'completed',
-				importCompletedAt: now,
-				completedAt: now,
-				updatedAt: now,
-			});
-		}
-		await ctx.db.insert('mailAuditLog', {
-			mailboxId: migration.mailboxId,
-			event: 'migration.import_complete',
-			details: `imported=${migration.messagesImported} indexing=${wantsIndexing}`,
-			occurredAt: now,
-		});
-		// A `shared` migration imports a TEAM inbox — org infrastructure, not the
-		// admin's own mailbox setup — so it never touches anyone's checklist.
-		if (migration.scope !== 'shared') {
-			await markOnboardingStep(ctx, migration.userId, 'importDone');
-		}
-		// The import just dropped the mailbox's whole Sent history in at once, which
-		// is exactly the corpus the writing-voice profile samples. Refresh it in the
-		// background now (no-op when personalization is off for this mailbox) so the
-		// first draft after the import doesn't pay the derivation latency.
-		await scheduleVoiceProfileRefresh(ctx, migration.mailboxId);
 	},
 });

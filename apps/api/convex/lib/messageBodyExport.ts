@@ -15,7 +15,7 @@ import {
 	type InboundMessageBodyFields,
 	type MailMessageExportBodyFields,
 } from './messageBody';
-import { accountExportBytesToBase64 } from './accountExportEncoding';
+import { bytesToBase64 } from './bytes';
 import { readSealedBlobBytesForExport, readSealedBlobTextForExport } from './sealedBlob';
 
 type ExportBodyAvailability = 'available' | 'missing' | 'corrupt';
@@ -104,8 +104,7 @@ export async function openMailDraftForAccountExport(
 			const opened = await readSealedBlobBytesForExport(storage, storageId);
 			return {
 				...attachment,
-				contentBase64:
-					opened.availability === 'available' ? accountExportBytesToBase64(opened.content) : null,
+				contentBase64: opened.availability === 'available' ? bytesToBase64(opened.content) : null,
 				isContentAvailable: opened.availability === 'available',
 				contentAvailability: opened.availability,
 			};
@@ -165,7 +164,7 @@ export async function readMailMessageBodiesForAccountExport(
 	return {
 		textBody: text.content,
 		htmlBody: html.content,
-		rawMessage: accountExportBytesToBase64(raw.content),
+		rawMessage: bytesToBase64(raw.content),
 		rawMessageEncoding: 'base64',
 		bodyAvailability: {
 			text: text.availability,

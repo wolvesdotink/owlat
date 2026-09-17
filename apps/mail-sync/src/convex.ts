@@ -41,15 +41,15 @@ export const fn = {
 
 	// ── Historical backfill (migration) ──────────────────────────────────
 	// Whether a migration is importing + each folder's backfill cursor (internalQuery).
-	getBackfillWork: 'mail/migration:getBackfillWork' as FnRef,
+	getBackfillWork: 'mail/migrationBackfill:getBackfillWork' as FnRef,
 	// Snapshot a folder's high-water UID + count; returns the start cursor (internalMutation).
-	initFolderBackfill: 'mail/migration:initFolderBackfill' as FnRef,
+	initFolderBackfill: 'mail/migrationBackfill:initFolderBackfill' as FnRef,
 	// Persist one descending backfill batch's progress (internalMutation).
-	recordBackfillProgress: 'mail/migration:recordBackfillProgress' as FnRef,
+	recordBackfillProgress: 'mail/migrationBackfill:recordBackfillProgress' as FnRef,
 	// Signal "all folders backfilled" → hand off to AI indexing / finalize (internalMutation).
-	completeBackfillImport: 'mail/migration:completeBackfillImport' as FnRef,
+	completeBackfillImport: 'mail/migrationBackfill:completeBackfillImport' as FnRef,
 	// Signal "backfill threw and won't self-heal" → migration → failed (internalMutation).
-	markImportFailed: 'mail/migration:markImportFailed' as FnRef,
+	markImportFailed: 'mail/migrationBackfill:markImportFailed' as FnRef,
 };
 
 /** Plaintext credential bundle returned by getCredentialsForWorker. */

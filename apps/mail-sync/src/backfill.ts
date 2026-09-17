@@ -9,7 +9,8 @@
  *
  * The Convex side (mail/migration.ts) owns the per-folder cursor on
  * `externalMailFolderSync.backfillCursor`, so a worker restart resumes
- * mid-folder. This module is dependency-injected (no ImapFlow / Convex imports)
+ * mid-folder, and the split between messages that landed and messages that did
+ * not (`messagesImported` / `messagesFailed`). This module is dependency-injected (no ImapFlow / Convex imports)
  * so the descending-walk logic is unit-testable; `connection.ts` wires the real
  * IMAP fetch + Convex mutations in.
  */
@@ -60,25 +61,37 @@ export interface BackfillFolderDeps {
 	initFolder(
 		remoteName: string,
 		ceilingUid: number,
-		messageCount: number,
+		messageCount: number
 	): Promise<{ startCursor: number } | null>;
 	/** Fetch one UID range (inclusive) — collected fully, with no IMAP lock held
 	 * during the per-message ingest that follows. Sparse UIDs ⇒ fewer than
 	 * `end-start+1` results. */
 	fetchBatch(remoteName: string, start: number, end: number): Promise<BackfillFetchedMessage[]>;
-	/** Ingest one message (reuses the forward-sync `ingestMessage` path). */
+	/** Ingest one message (reuses the forward-sync `ingestMessage` path). Resolves
+	 * false when the server stored NOTHING and the message is not already in the
+	 * mailbox either — a skip the caller must not read as an import. */
 	ingest(
 		remoteName: string,
 		role: FolderRole,
 		uid: number,
 		raw: Buffer,
-		flags: Set<string>,
-	): Promise<void>;
-	/** Persist batch progress: cursor dropped to `newCursor`, `+importedDelta`.
-	 * Returns false once the migration is no longer importing (e.g. the user hit
-	 * Cancel), so the walk stops at this batch boundary instead of finishing a
-	 * possibly-huge folder first. */
-	recordProgress(remoteName: string, newCursor: number, importedDelta: number): Promise<boolean>;
+		flags: Set<string>
+	): Promise<boolean>;
+	/** Report one message this walk could not store, so the failure is visible
+	 * somewhere. The backfill swallowing ingest errors in silence is how an
+	 * ingest that threw on EVERY message still finished as "100% imported". */
+	reportIngestFailure(remoteName: string, uid: number, error: unknown): void;
+	/** Persist batch progress: cursor dropped to `newCursor`, with the batch split
+	 * into messages that landed and messages that did not. Returns false once the
+	 * migration is no longer importing (e.g. the user hit Cancel), so the walk
+	 * stops at this batch boundary instead of finishing a possibly-huge folder
+	 * first. */
+	recordProgress(
+		remoteName: string,
+		newCursor: number,
+		importedDelta: number,
+		failedDelta: number
+	): Promise<boolean>;
 	/** Cooperative cancellation (worker stop). */
 	isStopped(): boolean;
 }
@@ -93,7 +106,7 @@ export interface BackfillFolderDeps {
  */
 export async function backfillFolder(
 	deps: BackfillFolderDeps,
-	target: BackfillFolderTarget,
+	target: BackfillFolderTarget
 ): Promise<boolean> {
 	const init = await deps.initFolder(target.remoteName, target.ceilingUid, target.messageCount);
 	if (!init) return false; // no active migration / sync row — nothing to do
@@ -105,27 +118,54 @@ export async function backfillFolder(
 
 		const messages = await deps.fetchBatch(target.remoteName, range.start, range.end);
 		let imported = 0;
+		let failed = 0;
 		for (const msg of messages) {
 			if (deps.isStopped()) break;
 			// A server quirk can return a UID outside the requested range — don't
 			// count it against this folder's `messageCount` denominator.
 			if (msg.uid < range.start || msg.uid > range.end) continue;
-			if (msg.source) {
-				try {
-					await deps.ingest(target.remoteName, target.role, msg.uid, msg.source, msg.flags);
-				} catch {
-					// Skip one bad message (e.g. oversized); the cursor still advances
-					// past the whole range below. The message stays on the remote server.
-				}
+			if (!msg.source) {
+				// The server listed the message but returned no body. Nothing was
+				// stored, so it is not an import — but it did consume one of the
+				// folder's messages, so it counts toward progress like a failure.
+				failed++;
+				continue;
 			}
-			// Count every in-range message (incl. ingest failures and source-less
-			// rows the server didn't return a body for) so the percentage tracks the
-			// `messageCount` denominator and reaches 100%.
-			imported++;
+			try {
+				const landed = await deps.ingest(
+					target.remoteName,
+					target.role,
+					msg.uid,
+					msg.source,
+					msg.flags
+				);
+				// A server-side skip stores nothing and does NOT throw, so counting
+				// every non-throwing ingest as an import would reopen exactly the hole
+				// this split closes.
+				if (landed) imported++;
+				else failed++;
+			} catch (error) {
+				// Skip one bad message (e.g. oversized); the cursor still advances
+				// past the whole range below. The message stays on the remote server.
+				// It is NOT counted as imported: a run where every ingest threw has
+				// to end up looking like the total failure it is, not like a
+				// completed import of the same size.
+				deps.reportIngestFailure(target.remoteName, msg.uid, error);
+				failed++;
+			}
 		}
 
 		const newCursor = range.start - 1;
-		const stillImporting = await deps.recordProgress(target.remoteName, newCursor, imported);
+		// Progress advances on `imported + failed`, so the walk still reaches the
+		// folder's `messageCount` denominator and the bar still completes; the two
+		// numbers stay apart on the migration row so the count of mail that
+		// actually landed is the truth.
+		const stillImporting = await deps.recordProgress(
+			target.remoteName,
+			newCursor,
+			imported,
+			failed
+		);
 		cursor = newCursor;
 		if (!stillImporting) return false; // migration cancelled — stop promptly
 	}

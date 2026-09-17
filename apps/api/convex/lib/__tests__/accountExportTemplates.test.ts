@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { accountExportBytesToBase64 } from '../accountExportEncoding';
+import { bytesToBase64 } from '../bytes';
 import {
 	ACCOUNT_EXPORT_TEMPLATE_MEDIA_MAX_BYTES,
 	openEmailTemplateContent,
@@ -75,12 +75,12 @@ describe('account export template media projection', () => {
 					content: {
 						alt: 'Customer-authored alt text',
 						storedContent: {
-							contentBase64: accountExportBytesToBase64(primaryBytes),
+							contentBase64: bytesToBase64(primaryBytes),
 							contentEncoding: 'base64',
 							availability: 'available',
 						},
 						darkStoredContent: {
-							contentBase64: accountExportBytesToBase64(darkBytes),
+							contentBase64: bytesToBase64(darkBytes),
 							contentEncoding: 'base64',
 							availability: 'available',
 						},
