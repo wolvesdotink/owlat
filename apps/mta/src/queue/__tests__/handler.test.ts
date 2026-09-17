@@ -85,6 +85,7 @@ import type { MtaConfig } from '../../config.js';
 import type { CtxWithIp } from '../../dispatch/types.js';
 import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
 import { deferBudgetKey, MAX_DEFER_SUCCESSORS_PER_MESSAGE } from '../deferBudget.js';
+import { MAX_GREYLIST_DELAY_MS } from '../../intelligence/smtpClassifier.js';
 
 const createConfig = (overrides: Partial<MtaConfig> = {}): MtaConfig =>
 	createOwlatHostConfig({ maxMessageAgeMs: 4 * 24 * 60 * 60 * 1000, ...overrides });
@@ -1121,6 +1122,52 @@ describe('handleEmailJob', () => {
 		expect(queue.add).toHaveBeenCalledTimes(1);
 		const opts = queue.add.mock.calls[0]![0];
 		expectJitteredDelay(opts.delay as number, 300_000);
+	});
+
+	// ── The successor must always wake inside its own receipt's TTL ──
+	// Both halves of the strand that put 6.37M entries in `:delayed`: a delay a
+	// stranger dictated, and a wake scheduled past the point at which anything
+	// could still promote it.
+
+	it('bounds a hostile greylist interval instead of parking the job for ~694 days', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 450,
+			error: '450 4.7.1 Greylisted, try again in 999999 minutes',
+		});
+
+		await run(createJob());
+
+		expect(queue.add).toHaveBeenCalledTimes(1);
+		const delay = queue.add.mock.calls[0]![0].delay as number;
+		expectJitteredDelay(delay, MAX_GREYLIST_DELAY_MS);
+		// The bound that matters: the defer-handoff receipt is written with a
+		// GOVERNED_MTA_MAX_MESSAGE_AGE_MS TTL, so a wake beyond it can only
+		// dead-letter.
+		expect(delay).toBeLessThan(config.maxMessageAgeMs);
+	});
+
+	it('pulls a deadline-hugging defer back to the message expiry', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 450,
+			error: '450 4.7.1 Greylisted, try again in 55 minutes',
+		});
+
+		// Ten minutes of lifetime left, against a 55-minute rung: waking on the
+		// remote's schedule would find the receipt expired. Waking at the
+		// deadline earns a proper expired-bounce instead.
+		const remainingMs = 10 * 60_000;
+		await run(createJob({ firstEnqueuedAt: Date.now() - config.maxMessageAgeMs + remainingMs }));
+
+		expect(queue.add).toHaveBeenCalledTimes(1);
+		expect(queue.add.mock.calls[0]![0].delay as number).toBeLessThanOrEqual(remainingMs);
 	});
 
 	it('PR-04 (a): soft bounce re-enqueues at ~60000ms', async () => {
