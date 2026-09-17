@@ -84,8 +84,21 @@ describe('command loop over a raw socket', () => {
 		// and reads the fifth before the server has written it — a 3ms failure in
 		// roughly a third of runs, with nothing wrong on the server side.
 		await c.waitFor((b) => (b.match(/(^|\n)250 /gm) ?? []).length >= 5, 3000);
-		const finals = c.received.match(/(^|\n)250 /gm) ?? [];
-		expect(finals.length).toBeGreaterThanOrEqual(5);
+		// Then match replies to commands POSITIONALLY. Counting five 250s proves the
+		// server answered five times; it does NOT prove it answered IN ORDER, which
+		// is the claim above and the only thing pipelining can actually get wrong.
+		// Every command in the batch has a distinct enhanced status (RFC 3463), so
+		// the sequence is a fingerprint: greeting, EHLO's capability terminator
+		// (`Reply.helloOk` carries no enhanced code), MAIL 2.1.0, RCPT 2.1.5 twice,
+		// NOOP 2.0.0. A desynced loop reorders or drops one of these.
+		const finals = c.received
+			.split('\r\n')
+			.filter((line) => /^\d{3} /.test(line))
+			.map((line) => {
+				const enhanced = /^\d{3} (\d+\.\d+\.\d+)(?: |$)/.exec(line);
+				return enhanced ? `${line.slice(0, 3)} ${enhanced[1]}` : line.slice(0, 3);
+			});
+		expect(finals).toEqual(['220', '250', '250 2.1.0', '250 2.1.5', '250 2.1.5', '250 2.0.0']);
 		c.end();
 	});
 
