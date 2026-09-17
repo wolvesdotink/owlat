@@ -77,7 +77,11 @@ describe('attributed feedback durability at the SMTP boundary', () => {
 		mocks.queueConvexWebhook
 			.mockRejectedValueOnce(new Error('Redis unavailable'))
 			.mockResolvedValueOnce('outbox-hard');
-		const redis = { hincrby: vi.fn().mockRejectedValue(new Error('secondary Redis failure')) };
+		// The secondary effect batches its counter bump and its EXPIRE into one
+		// pipeline, so the pipeline call is what marks it as having started.
+		const exec = vi.fn().mockRejectedValue(new Error('secondary Redis failure'));
+		const chain = { hincrby: vi.fn(() => chain), expire: vi.fn(() => chain), exec };
+		const redis = { pipeline: vi.fn(() => chain) };
 		const handler = buildOnData(
 			{
 				inboundDkimEnabled: false,
@@ -96,11 +100,11 @@ describe('attributed feedback durability at the SMTP boundary', () => {
 
 		const first = await handler(message, session);
 		expect(first).toMatchObject({ code: 451, enhanced: '4.3.0' });
-		expect(redis.hincrby).not.toHaveBeenCalled();
+		expect(redis.pipeline).not.toHaveBeenCalled();
 		const retry = await handler(message, session);
 		expect(retry).toBeUndefined();
 		expect(mocks.queueConvexWebhook).toHaveBeenCalledTimes(2);
-		expect(redis.hincrby).toHaveBeenCalledOnce();
+		expect(redis.pipeline).toHaveBeenCalledOnce();
 	});
 
 	it('completes FBL dedup after a generic effect error that the SMTP boundary ACKs', async () => {

@@ -98,12 +98,17 @@ describe('applyEffects — per-effect dispatch', () => {
 		expect(metrics.unattributedBouncesTotal.inc).toHaveBeenCalled();
 	});
 
-	it('fbl_stats_record → daily redis hincrby', async () => {
+	it('fbl_stats_record → daily redis hincrby, expired', async () => {
 		const deps = makeDeps();
 		await applyEffects([{ kind: 'fbl_stats_record' }], deps);
 		const today = new Date().toISOString().split('T')[0];
 		const value = await deps.redis.hget(fblStatsKey(today), 'total');
 		expect(value).toBe('1');
+		// The counter is keyed by UTC day, so without a TTL this un-guarded path
+		// left one permanent key per day behind.
+		const ttl = await deps.redis.ttl(fblStatsKey(today));
+		expect(ttl).toBeGreaterThan(0);
+		expect(ttl).toBeLessThanOrEqual(48 * 60 * 60);
 	});
 
 	it('forward_to_endpoint → forwarder.forwardToEndpoint', async () => {
