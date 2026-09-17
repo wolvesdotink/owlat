@@ -104,6 +104,19 @@ function summarizeJob(job: {
 	};
 }
 
+/** Encoded size of a string body part, in bytes rather than code units. */
+function utf8Bytes(value: string | undefined): number {
+	return value === undefined ? 0 : Buffer.byteLength(value, 'utf8');
+}
+
+/**
+ * Decoded size of a base64 payload, in bytes — what the message actually
+ * carries, rather than the ~1.33x larger transport encoding of it.
+ */
+function base64Bytes(value: string | undefined): number {
+	return value === undefined ? 0 : Buffer.byteLength(value, 'base64');
+}
+
 /** A query parameter read as a positive integer, or the fallback. */
 function positiveIntParam(raw: string | undefined, fallback: number, max: number): number {
 	const parsed = Number.parseInt(raw ?? '', 10);
@@ -272,12 +285,29 @@ export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: 
 				dkimDomain: data?.dkimDomain ?? null,
 				/** First enqueue of the whole defer chain, not of this attempt. */
 				firstEnqueuedAt: data?.firstEnqueuedAt ?? null,
-				/** Body sizes only — see `summarizeJob` on why not the body. */
+				/**
+				 * Body sizes only — see `summarizeJob` on why not the body.
+				 *
+				 * Every field is a BYTE count, UTF-8, and every field is named
+				 * for what it counts. The previous shape called itself `bytes`
+				 * and then reported `attachments` as a COUNT (three 4 MB PDFs
+				 * read as `3`), the text parts as UTF-16 code units, `sealedMime`
+				 * as base64 characters, and left `amp` — a whole extra body part
+				 * — out. It answered "why is this job 12 MB" by making a huge job
+				 * look tiny, which is the wrong direction to be wrong in.
+				 */
 				bytes: {
-					html: data?.html?.length ?? 0,
-					text: data?.text?.length ?? 0,
-					sealedMime: data?.sealedMimeBase64?.length ?? 0,
-					attachments: data?.attachments?.length ?? 0,
+					htmlBytes: utf8Bytes(data?.html),
+					textBytes: utf8Bytes(data?.text),
+					ampBytes: utf8Bytes(data?.amp),
+					/** Decoded size of the sealed MIME, not its base64 length. */
+					sealedMimeBytes: base64Bytes(data?.sealedMimeBase64),
+					attachmentCount: data?.attachments?.length ?? 0,
+					/** Decoded attachment payload, summed. */
+					attachmentBytes: (data?.attachments ?? []).reduce(
+						(total, attachment) => total + base64Bytes(attachment.contentBase64),
+						0
+					),
 				},
 				processedOn: job.processedOn ?? null,
 				finishedOn: job.finishedOn ?? null,

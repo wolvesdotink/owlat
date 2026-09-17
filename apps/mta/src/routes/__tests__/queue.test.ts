@@ -286,7 +286,31 @@ describe('GET /jobs/:jobId', () => {
 			attempts: 0,
 			maxAttempts: 5,
 		});
-		expect(body.bytes.html).toBe(BODY.length);
+		expect(body.bytes.htmlBytes).toBe(Buffer.byteLength(BODY, 'utf8'));
+	});
+
+	it('reports attachment bytes, not an attachment count, under `bytes`', async () => {
+		// Three 4 MB PDFs used to report `attachments: 3` inside an object called
+		// `bytes`, so "why is this job 12 MB" answered "3".
+		const pdf = 'A'.repeat(4_000_000);
+		await enqueue('fat', {
+			html: '€uro',
+			amp: '<amp>body</amp>',
+			attachments: [
+				{ filename: 'a.pdf', contentType: 'application/pdf', contentBase64: pdf },
+				{ filename: 'b.pdf', contentType: 'application/pdf', contentBase64: pdf },
+			],
+		});
+
+		const { body } = await json('GET', '/jobs/fat');
+
+		expect(body.bytes.attachmentCount).toBe(2);
+		expect(body.bytes.attachmentBytes).toBe(2 * Buffer.byteLength(pdf, 'base64'));
+		expect(body.bytes.attachmentBytes).toBeGreaterThan(5_000_000);
+		// UTF-8 bytes, not UTF-16 code units: '€' is three bytes.
+		expect(body.bytes.htmlBytes).toBe(6);
+		// `amp` is a whole body part and used not to be counted at all.
+		expect(body.bytes.ampBytes).toBe(15);
 	});
 
 	it('reports the delay a retrying job is sitting out', async () => {
