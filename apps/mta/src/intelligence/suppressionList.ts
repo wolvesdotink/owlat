@@ -46,6 +46,12 @@ export type SuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
 /** Default TTL for soft-bounce suppressions (7 days) */
 const SOFT_BOUNCE_TTL_SECONDS = 7 * 86400;
 
+/**
+ * The reasons that are evidence about a mailbox rather than a policy choice
+ * about it, and therefore never expire.
+ */
+const PERMANENT_REASONS: ReadonlySet<SuppressionReason> = new Set(['hard_bounce', 'complaint']);
+
 export interface SuppressionMeta {
 	reason: SuppressionReason;
 	source?: string;
@@ -92,13 +98,29 @@ export async function suppress(
 		suppressedAt: now,
 	};
 
-	// Set TTL for soft bounces by default
-	const ttl =
-		options?.ttlSeconds ??
-		(reason === 'hard_bounce' || reason === 'complaint' ? undefined : SOFT_BOUNCE_TTL_SECONDS);
+	// A TTL IS IGNORED FOR A PERMANENT REASON, rather than merely unused by
+	// today's callers. "A hard bounce or a complaint is never in the due index"
+	// is the whole safety argument for the sweep, and honouring an explicit
+	// `ttlSeconds` here is the one way to put one there. Nothing passes one
+	// today; this makes the claim a property of the code instead of a property
+	// of the call sites.
+	const ttl = PERMANENT_REASONS.has(reason)
+		? undefined
+		: (options?.ttlSeconds ?? SOFT_BOUNCE_TTL_SECONDS);
 	if (ttl) {
 		meta.expiresAt = now + ttl * 1000;
 	}
+
+	// KNOWN, DELIBERATELY UNFIXED HERE: this write is unconditional, so a later
+	// weaker signal downgrades a stronger one — `POST /suppression` defaults an
+	// omitted reason to `manual` (routes/suppression.ts), and a `manual` write
+	// over a `hard_bounce` entry turns a permanent suppression into a 7-day one.
+	// A read-before-write guard here would be the very stale-read pattern
+	// `expireIfDue` exists to remove, and the atomic alternative changes what a
+	// failed write does on the uncaught `suppress_recipient` effect path
+	// (dispatch/effects.ts). It dissolves entirely once `manual` becomes
+	// permanent, which is the follow-up that also ships the un-mirror on
+	// `blockedEmails.remove` that has to land with it.
 
 	// METADATA BEFORE MEMBERSHIP, and the due date in between. `pipeline()` is
 	// not `multi()`: the commands are only batched on the wire, and another
@@ -123,6 +145,13 @@ export async function suppress(
 
 	pipeline.sadd(SUPPRESSION_SET, normalized);
 
+	// `exec()` resolves with per-command results INCLUDING per-command errors,
+	// and nothing here inspects them: at `maxmemory` with `noeviction` the `SET`
+	// and `SADD` above are both refused (`denyoom`) and the only trace is the
+	// success line below. A Redis at the cap therefore loses hard-bounce
+	// suppressions silently. Surfacing that is a follow-up, because a throw here
+	// reaches `applyEffects`' uncaught `suppress_recipient` await and would fail
+	// the delivery attempt that reported the bounce.
 	await pipeline.exec();
 	logger.info(
 		{ email: normalized, reason, source: options?.source },

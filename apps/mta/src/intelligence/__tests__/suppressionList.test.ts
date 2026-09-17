@@ -100,6 +100,20 @@ describe('suppressionList', () => {
 			expect(await redis.zscore(EXPIRY_ZSET, 'temp@example.com')).toBe(String(Date.now() + 60_000));
 		});
 
+		// The sweep's safety argument is "a permanent suppression is never in the
+		// due index". An honoured `ttlSeconds` would be the one way to put one
+		// there, so the reason wins over the option rather than the other way round.
+		it('ignores an explicit ttl for a permanent reason', async () => {
+			await suppress(redis, 'hard@example.com', 'hard_bounce', { ttlSeconds: 60 });
+
+			const status = await getSuppressionStatus(redis, 'hard@example.com');
+			expect(status.expiresAt).toBeUndefined();
+			expect(await redis.zcard(EXPIRY_ZSET)).toBe(0);
+
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+			expect(await isSuppressed(redis, 'hard@example.com')).toBe(true);
+		});
+
 		it('never due-indexes a permanent suppression', async () => {
 			await suppress(redis, 'hard@example.com', 'hard_bounce');
 			await suppress(redis, 'spam@example.com', 'complaint');
