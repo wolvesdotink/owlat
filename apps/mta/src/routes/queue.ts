@@ -42,11 +42,14 @@ import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { probeDelayedQueue } from '../queue/delayedOrphans.js';
+import { scanWaitingByDomain } from '../queue/inspect.js';
 
 /**
- * Ceiling on `/pending?limit=`. GroupMQ's own `getJobsByStatus` scan is capped
- * at 500 ids internally, and this endpoint exists to let an operator eyeball
- * the head of the queue, not to export it.
+ * Ceiling on `/pending?limit=`. This endpoint exists to let an operator eyeball
+ * the head of the queue, not to export it. The unfiltered listing is bounded
+ * more tightly than this anyway: GroupMQ's waiting scan reads at most 500 ids
+ * and, more sharply, only the first 100 groups — which is why `?domain=` does
+ * not go through it.
  */
 export const PENDING_LIMIT_MAX = 200;
 /** `/pending?limit=` when the caller does not say. */
@@ -99,11 +102,6 @@ function summarizeJob(job: {
 		attempts: job.attemptsMade,
 		maxAttempts: job.opts.attempts,
 	};
-}
-
-/** Recipient domain of a summarized job, lowercased, or null. */
-function recipientDomain(summary: QueuedJobSummary): string | null {
-	return summary.to?.split('@')[1]?.toLowerCase() ?? null;
 }
 
 /** A query parameter read as a positive integer, or the fallback. */
@@ -193,29 +191,57 @@ export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: 
 	// endpoint's failure mode, re-earned. `offset` is therefore gone; `waiting`
 	// and `sampled` are returned so a caller can always tell how much of the
 	// queue it just saw.
+	//
+	// `?domain=` is NOT that sample filtered. "Why is mail to X not moving" is
+	// the query an operator runs during an incident, and answering it from the
+	// unfiltered scan means answering "nothing is queued for X" as soon as the
+	// queue holds more than 100 groups — see `queue/inspect.ts`. It is resolved
+	// against the groups that encode the domain instead, so both the listing and
+	// `waiting` are exact for that domain.
 	app.get('/pending', async (c) => {
 		const limit = positiveIntParam(c.req.query('limit'), PENDING_LIMIT_DEFAULT, PENDING_LIMIT_MAX);
 		const domainFilter = c.req.query('domain')?.toLowerCase();
 
 		try {
+			if (domainFilter) {
+				const scan = await scanWaitingByDomain(redis, domainFilter, limit);
+				const hydrated = await Promise.all(
+					scan.jobIds.map(async (jobId) => {
+						// A job settled between the scan and the read is not an
+						// error; it is simply no longer queued. `sampled` counts
+						// the ids, so the gap stays visible.
+						try {
+							return summarizeJob(await queue.getJob(jobId));
+						} catch {
+							return null;
+						}
+					})
+				);
+
+				return c.json({
+					jobs: hydrated.filter((job): job is QueuedJobSummary => job !== null),
+					limit,
+					/** Waiting job ids this call read, before hydration. */
+					sampled: scan.jobIds.length,
+					/** Waiting jobs FOR THIS DOMAIN — exact, not a sample. */
+					waiting: scan.waiting,
+					domain: domainFilter,
+				});
+			}
+
 			const [sample, waiting] = await Promise.all([
 				queue.getJobsByStatus(['waiting'], 0, limit - 1),
 				queue.getWaitingCount(),
 			]);
 
-			const summaries = sample.map(summarizeJob);
-			const jobs = domainFilter
-				? summaries.filter((job) => recipientDomain(job) === domainFilter)
-				: summaries;
-
 			return c.json({
-				jobs,
+				jobs: sample.map(summarizeJob),
 				limit,
-				/** Waiting jobs this scan actually looked at, before filtering. */
+				/** Waiting jobs this scan could still read a payload for. */
 				sampled: sample.length,
 				/** Waiting jobs in the whole queue. */
 				waiting,
-				domain: domainFilter ?? null,
+				domain: null,
 			});
 		} catch (err) {
 			logger.error({ err }, 'Failed to list pending jobs');

@@ -208,9 +208,38 @@ describe('GET /pending', () => {
 
 		expect(body.jobs.map((j: { jobId: string }) => j.jobId)).toEqual(['keep']);
 		expect(body.domain).toBe('keep.example');
-		// The sample is reported unfiltered so a caller can see the filter ran
-		// against a partial view of the queue rather than the whole of it.
-		expect(body.sampled).toBe(2);
+		// Scoped to the domain, not to the whole queue: a filtered call reports
+		// the domain's backlog, which is the number the operator asked about.
+		expect(body.sampled).toBe(1);
+		expect(body.waiting).toBe(1);
+	});
+
+	it('finds a domain backlog that the waiting scan would never have sampled', async () => {
+		// GroupMQ's waiting scan reads `SMEMBERS <ns>:groups`, keeps the first
+		// 100 group ids and reads a slice of each — so filtering its output in JS
+		// answers "nothing queued for that domain" for any sender with more than
+		// 100 `{ipPool}:{recipientDomain}` groups, which is every real one, and
+		// certain during the runaway backlog this endpoint exists for. It is not
+		// even a random sample: the same groups come back every poll.
+		for (let i = 0; i < 150; i++) {
+			await enqueue(`filler-${i}`, { to: `user@filler-${i}.example` });
+		}
+		for (let i = 0; i < 5; i++) {
+			await enqueue(`backlog-${i}`, { to: `user-${i}@backlog.example` });
+		}
+
+		const { body } = await json('GET', '/pending?domain=backlog.example&limit=10');
+
+		expect(body.jobs.map((j: { jobId: string }) => j.jobId).sort()).toEqual([
+			'backlog-0',
+			'backlog-1',
+			'backlog-2',
+			'backlog-3',
+			'backlog-4',
+		]);
+		// And the count is the domain's real backlog, not what a sample saw.
+		expect(body.waiting).toBe(5);
+		expect(body.sampled).toBe(5);
 	});
 
 	it('says how much of the queue the sample missed', async () => {
