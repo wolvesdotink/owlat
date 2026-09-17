@@ -173,4 +173,113 @@ describe('POST /webhooks/mta-mailbox audit row', () => {
 		expect(summary['event']).toBe('unparseable');
 		expect(summary['bodySha256']).toBe(await sha256Hex(body));
 	});
+
+	it('still audits a delivery whose rawBytesBase64 is not a string', async () => {
+		const t = setupTest();
+		// Nothing validates the parsed body's shape. A numeric `rawBytesBase64` is
+		// truthy, so the byte-length helper used to throw a `TypeError` into
+		// `auditDelivery`'s catch and the delivery went through with no audit row —
+		// the exact silent gap the summary was written to close.
+		const body = JSON.stringify({
+			event: 'inbound.mailbox.received',
+			timestamp: Date.now(),
+			mailboxPayload: {
+				deliveryId: 'delivery-odd',
+				recipientAddress: 'inbox@acme.test',
+				rawBytesBase64: 12345,
+				from: 'sender@example.com',
+				to: ['inbox@acme.test'],
+				subject: 'odd',
+				messageId: '<odd-1@example.com>',
+			},
+		});
+
+		const res = await postSigned(t, body);
+		expect(res.status).not.toBe(401);
+
+		const rows = await auditRows(t);
+		expect(rows).toHaveLength(1);
+		const summary = JSON.parse(rows[0]!.rawPayload) as Record<string, unknown>;
+		expect(summary['deliveryId']).toBe('delivery-odd');
+		expect(summary['bodySha256']).toBe(await sha256Hex(body));
+		// No number to report, and no exception either.
+		expect(summary['rawMessageBytes']).toBeUndefined();
+	});
+
+	it('counts line-wrapped base64 as the bytes it decodes to', async () => {
+		const t = setupTest();
+		// MIME wraps base64 at 76 columns (RFC 2045 §6.8). 300 wrapped lines of
+		// 'AAA' repeats decode to 17,100 bytes; counting the CRLFs as payload
+		// over-reports by 448 against the `rawSize` this number is compared with.
+		const rawBytesBase64 = Array.from({ length: 300 }, () => 'QUFB'.repeat(19)).join('\r\n');
+		const body = JSON.stringify({
+			event: 'inbound.mailbox.received',
+			timestamp: Date.now(),
+			mailboxPayload: {
+				deliveryId: 'delivery-wrapped',
+				recipientAddress: 'inbox@acme.test',
+				rawBytesBase64,
+				from: 'sender@example.com',
+				to: ['inbox@acme.test'],
+				subject: 'wrapped',
+				messageId: '<wrapped-1@example.com>',
+			},
+		});
+
+		await postSigned(t, body);
+
+		const rows = await auditRows(t);
+		const summary = JSON.parse(rows[0]!.rawPayload) as Record<string, unknown>;
+		expect(summary['rawMessageBytes']).toBe(17_100);
+	});
+
+	it('does not call a parseable body unparseable just because its event is not a string', async () => {
+		const t = setupTest();
+		const body = JSON.stringify({ event: 42, timestamp: Date.now(), mailboxPayload: {} });
+
+		await postSigned(t, body);
+
+		const rows = await auditRows(t);
+		const summary = JSON.parse(rows[0]!.rawPayload) as Record<string, unknown>;
+		// 'unparseable' is the one label an operator reads as "the MTA sent us
+		// bytes that are not JSON" — this body is JSON.
+		expect(summary['event']).toBe('missing-event');
+	});
+
+	it('keeps a bounded head of a body it could not parse', async () => {
+		const t = setupTest();
+		const body = '<<<not json at all>>>';
+
+		await postSigned(t, body);
+
+		const rows = await auditRows(t);
+		const summary = JSON.parse(rows[0]!.rawPayload) as Record<string, unknown>;
+		// A digest of bytes nobody kept proves only that we could not read them.
+		expect(summary['head']).toBe(body);
+	});
+
+	it('keeps no head of a body it COULD parse — the body is the message', async () => {
+		const t = setupTest();
+		const body = JSON.stringify({
+			event: 'inbound.mailbox.received',
+			timestamp: Date.now(),
+			mailboxPayload: {
+				deliveryId: 'delivery-headless',
+				recipientAddress: 'inbox@acme.test',
+				rawBytesBase64: 'QUFB',
+				from: 'sender@example.com',
+				to: ['inbox@acme.test'],
+				subject: 'secret subject',
+				textBody: 'secret body',
+				messageId: '<headless-1@example.com>',
+			},
+		});
+
+		await postSigned(t, body);
+
+		const rows = await auditRows(t);
+		const summary = JSON.parse(rows[0]!.rawPayload) as Record<string, unknown>;
+		expect(summary['head']).toBeUndefined();
+		expect(rows[0]!.rawPayload).not.toContain('secret body');
+	});
 });

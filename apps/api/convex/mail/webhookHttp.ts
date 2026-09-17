@@ -114,11 +114,39 @@ async function sha256Hex(value: string): Promise<string> {
 		.join('');
 }
 
-/** Decoded size of a base64 string, without decoding it. */
-function base64ByteLength(value: string): number {
-	if (value.length === 0) return 0;
-	const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
-	return Math.max(0, Math.floor((value.length * 3) / 4) - padding);
+/**
+ * Decoded size of a base64 string, without decoding it — `undefined` when the
+ * MTA sent something that is not a string at all.
+ *
+ * The parsed body is JSON we have only ASSERTED a shape for; nothing validates
+ * it. A numeric or object `rawBytesBase64` is truthy, so it used to reach
+ * `value.endsWith` and throw a `TypeError` into `auditDelivery`'s catch — the
+ * delivery then succeeded with NO audit row at all, the exact silent gap this
+ * function exists inside of.
+ *
+ * MIME wraps base64 at 76 columns (RFC 2045 §6.8), so the line breaks have to
+ * come off before the arithmetic or the answer over-reports against the
+ * `rawSize` it exists to be compared with. With whitespace and padding gone,
+ * each 4 characters are 3 bytes and a 2- or 3-character tail is 1 or 2 bytes —
+ * `floor(n * 3 / 4)` exactly, no padding correction needed.
+ */
+function base64ByteLength(value: unknown): number | undefined {
+	if (typeof value !== 'string') return undefined;
+	const base64Chars = value.replace(/[\s=]+/g, '').length;
+	return Math.floor((base64Chars * 3) / 4);
+}
+
+/**
+ * The `event` label an operator reads as "what did the MTA send us".
+ *
+ * Two different failures used to collapse into `'unparseable'`: a body that is
+ * not JSON at all, and a perfectly parseable body whose `event` is a number or
+ * an object. Only the first is the MTA speaking nonsense at the wire level, and
+ * telling an operator the wrong one sends them to the wrong side of the link.
+ */
+function auditEventLabel(payload: MailWebhookPayload | null): string {
+	if (payload === null) return 'unparseable';
+	return clampAuditField(payload.event) ?? 'missing-event';
 }
 
 /**
@@ -136,15 +164,21 @@ async function auditDelivery(
 		const mp = payload?.mailboxPayload;
 		const summary = {
 			version: AUDIT_SUMMARY_VERSION,
-			event: clampAuditField(payload?.event) ?? 'unparseable',
+			event: auditEventLabel(payload),
 			bodyChars: bodyText.length,
 			bodySha256: await sha256Hex(bodyText),
 			deliveryId: clampAuditField(mp?.deliveryId),
 			messageId: clampAuditField(mp?.messageId),
 			recipientAddress: clampAuditField(mp?.recipientAddress),
 			from: clampAuditField(mp?.from),
-			rawMessageBytes: mp?.rawBytesBase64 ? base64ByteLength(mp.rawBytesBase64) : undefined,
+			rawMessageBytes: base64ByteLength(mp?.rawBytesBase64),
 			attachmentCount: mp?.attachments?.length,
+			// A body we could not parse has no envelope fields to summarise, so the
+			// row would be a digest of bytes nobody can read — proof only that we
+			// could not read them either. Keep a bounded head of the garbage: it is
+			// the whole reason anyone opens THIS row. A parseable body keeps none,
+			// because on this route the body IS the message.
+			...(payload === null ? { head: clampAuditField(bodyText) } : {}),
 		};
 		await ctx.runMutation(internal.webhooks.payloads.store, {
 			source: 'mta-mailbox',
