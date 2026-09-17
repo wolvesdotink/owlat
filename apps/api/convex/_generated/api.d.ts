@@ -761,6 +761,7 @@ import type * as mail_external_accountShared from '../mail/external/accountShare
 import type * as mail_external_accounts from '../mail/external/accounts.js';
 import type * as mail_external_accountsActions from '../mail/external/accountsActions.js';
 import type * as mail_external_accountsSeed from '../mail/external/accountsSeed.js';
+import type * as mail_external_accountTeardown from '../mail/external/accountTeardown.js';
 import type * as mail_external_delivery from '../mail/external/delivery.js';
 import type * as mail_external_externalFeature from '../mail/external/externalFeature.js';
 import type * as mail_external_googleOAuth from '../mail/external/googleOAuth.js';
@@ -854,6 +855,7 @@ import type * as migrations_0037_backfill_mail_categories from '../migrations/00
 import type * as migrations_0038_rebuild_file_search_text from '../migrations/0038_rebuild_file_search_text.js';
 import type * as migrations_0039_backfill_dkim_ownership from '../migrations/0039_backfill_dkim_ownership.js';
 import type * as migrations_0040_backfill_credential_allowed_domains from '../migrations/0040_backfill_credential_allowed_domains.js';
+import type * as migrations_0041_forget_disconnected_credentials from '../migrations/0041_forget_disconnected_credentials.js';
 import type * as platformAdmin_bootstrap from '../platformAdmin/bootstrap.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
@@ -1848,6 +1850,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/accounts': typeof mail_external_accounts;
 	'mail/external/accountsActions': typeof mail_external_accountsActions;
 	'mail/external/accountsSeed': typeof mail_external_accountsSeed;
+	'mail/external/accountTeardown': typeof mail_external_accountTeardown;
 	'mail/external/delivery': typeof mail_external_delivery;
 	'mail/external/externalFeature': typeof mail_external_externalFeature;
 	'mail/external/googleOAuth': typeof mail_external_googleOAuth;
@@ -1941,6 +1944,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0038_rebuild_file_search_text': typeof migrations_0038_rebuild_file_search_text;
 	'migrations/0039_backfill_dkim_ownership': typeof migrations_0039_backfill_dkim_ownership;
 	'migrations/0040_backfill_credential_allowed_domains': typeof migrations_0040_backfill_credential_allowed_domains;
+	'migrations/0041_forget_disconnected_credentials': typeof migrations_0041_forget_disconnected_credentials;
 	'platformAdmin/bootstrap': typeof platformAdmin_bootstrap;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;

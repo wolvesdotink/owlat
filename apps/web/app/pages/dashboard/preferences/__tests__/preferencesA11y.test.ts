@@ -232,15 +232,14 @@ function suspended(page: Component): Component {
 }
 
 /**
- * The two routes that legitimately paint (almost) nothing, and why:
- *  - `external-account` is a kept-alive bookmark target that redirects to the
- *    import wizard; its whole body is a spinner;
- *  - `members/[mailboxId]` is a heading over a roster, and the roster is empty
- *    until the mailbox read lands.
- * Everything else has copy before its data does, so a near-empty body means the
- * page threw at setup and the audit covered nothing.
+ * The one route that legitimately paints (almost) nothing:
+ * `members/[mailboxId]` is a heading over a roster, and the roster is empty
+ * until the mailbox read lands. Everything else has copy before its data does,
+ * so a near-empty body means the page threw at setup and the audit covered
+ * nothing. (`external-account` used to be here too, back when it was a redirect
+ * to the import wizard with a spinner for a body.)
  */
-const INTENTIONALLY_THIN = new Set(['external-account', 'members/[mailboxId]']);
+const INTENTIONALLY_THIN = new Set(['members/[mailboxId]']);
 
 describe.each(pages)('preferences/$name — accessibility', ({ name, module }) => {
 	it('has no axe violations on a fresh account', async () => {

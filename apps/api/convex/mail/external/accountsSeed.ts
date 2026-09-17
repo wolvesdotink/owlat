@@ -25,6 +25,7 @@ import {
 	seedProviderOf,
 	takeLiveSeedAccounts,
 } from './accountShared';
+import { stopExternalAccountSync } from './accountTeardown';
 import { destinationProviderValidator } from '../../delivery/deliverabilityValidators';
 import { recordAuditLog } from '../../lib/auditLog';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
@@ -159,5 +160,60 @@ export const acknowledgeSeedRotation = adminMutation({
 			},
 		});
 		return { acknowledgedAt: now };
+	},
+});
+
+/**
+ * Retire a seed mailbox: stop polling it and forget its stored password.
+ *
+ * Without this the connect cap is a dead end — `_connectSeedInternal` refuses
+ * the (limit+1)th seed with "Disconnect one before connecting another", and
+ * until now nothing in the product could. The retired row stays: the placement
+ * measurements that named it (`seedPlacementProbes`) must keep resolving, and
+ * `takeLiveSeedAccounts` counts by status, so a disconnected seed frees its slot
+ * under the cap without erasing what it measured.
+ *
+ * Soft by design, and idempotent — disconnecting an already-retired seed is a
+ * no-op rather than an error, so a double-click can't turn into a failure toast.
+ *
+ * authz: adminMutation, matching `_connectSeedInternal` and
+ * `acknowledgeSeedRotation` — a seed is org infrastructure.
+ */
+export const disconnectSeed = adminMutation({
+	args: { accountId: v.id('externalMailAccounts') },
+	handler: async (ctx, args, session) => {
+		const account = await ctx.db.get(args.accountId);
+		// Tenant scoping before existence: a foreign id must not be distinguishable
+		// from a missing one.
+		if (!account || account.organizationId !== session.activeOrganizationId) {
+			throwNotFound('Seed mailbox');
+		}
+		if (account.purpose !== 'seed') throwInvalidInput('Not a deliverability seed mailbox.');
+		// Idempotent — but only once there is nothing left to forget. A seed retired
+		// before this shipped is `disconnected` and STILL holds its sealed password,
+		// and returning early here would keep it that way forever.
+		if (account.status === 'disconnected' && account.secretCiphertext === undefined) {
+			return { ok: true as const };
+		}
+
+		const now = Date.now();
+		await stopExternalAccountSync(ctx, account, {
+			now,
+			reason: 'member',
+			details: 'deliverability seed',
+		});
+		// Provider + age, the same two facts the rotation trail carries.
+		await recordAuditLog(ctx, {
+			userId: session.userId,
+			organizationId: session.activeOrganizationId,
+			action: 'seed_mailbox.disconnected',
+			resource: 'seed_mailbox',
+			resourceId: args.accountId,
+			details: {
+				provider: seedProviderOf(account),
+				ageDays: seedAgeDays(account.createdAt, now),
+			},
+		});
+		return { ok: true as const };
 	},
 });
