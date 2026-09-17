@@ -88,7 +88,20 @@ export const webhookTables = {
 		// (ADR-0055): a fixed literal set silently drops new plugin transports
 		// and channels.
 		source: v.string(),
-		rawPayload: v.string(), // JSON string of the raw webhook body
+		// A JSON string in one of THREE shapes, each discriminable on read:
+		//   1. the provider's webhook body verbatim — the default, and the only
+		//      shape whose top level is the provider's own;
+		//   2. `{truncated: true, originalChars, head}` — a body past the
+		//      retention cap in `webhooks/payloads.ts`. Convex caps a document at
+		//      1 MiB while the routes accept bodies several times that, and the
+		//      oversized insert threw into callers that never fail a webhook over
+		//      its audit trail, so the trail vanished for the biggest deliveries;
+		//   3. `{version, event, bodyChars, bodySha256, …}` — the bounded delivery
+		//      SUMMARY written by `mail/webhookHttp.ts` (`source: 'mta-mailbox'`),
+		//      whose body IS the message it describes, so retaining it verbatim
+		//      kept a second copy of every email for 90 days. A digest answers
+		//      "did these bytes arrive" better than a copy does anyway.
+		rawPayload: v.string(),
 		receivedAt: v.number(),
 	})
 		.index('by_received_at', ['receivedAt'])

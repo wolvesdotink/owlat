@@ -28,6 +28,7 @@ import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { removeMessageAttachments } from '../attachmentIndex';
+import { deleteMessageRowAndBlobs } from '../messagePurge';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { cancelActiveMigrationForAccount } from './accountShared';
 import type { Doc } from '../../_generated/dataModel';
@@ -173,11 +174,11 @@ export const _purgeChunk = internalMutation({
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
 			.take(PURGE_CHUNK);
 		for (const m of messages) {
-			await ctx.storage.delete(m.rawStorageId).catch(() => undefined);
-			if (m.textBodyStorageId) await ctx.storage.delete(m.textBodyStorageId).catch(() => undefined);
-			if (m.htmlBodyStorageId) await ctx.storage.delete(m.htmlBodyStorageId).catch(() => undefined);
 			await removeMessageAttachments(ctx, m._id);
-			await ctx.db.delete(m._id);
+			// Refcount-aware (mail/messagePurge.ts): an IMAP COPY leaves two rows
+			// sharing one blob, so freeing it here unconditionally would make the
+			// surviving sibling's raw MIME unreadable forever.
+			await deleteMessageRowAndBlobs(ctx, m);
 		}
 		if (messages.length === PURGE_CHUNK) {
 			await ctx.scheduler.runAfter(0, internal.mail.external.accountTeardown._purgeChunk, args);

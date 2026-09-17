@@ -292,7 +292,13 @@ describe('GET /jobs/:jobId', () => {
 	it('reports attachment bytes, not an attachment count, under `bytes`', async () => {
 		// Three 4 MB PDFs used to report `attachments: 3` inside an object called
 		// `bytes`, so "why is this job 12 MB" answered "3".
-		const pdf = 'A'.repeat(4_000_000);
+		//
+		// 64 KiB, not the 4 MB the defect was reported at: the exact-equality
+		// assertion below proves bytes-vs-count at any size, and pushing 8 MB of
+		// base64 through ioredis-mock's Lua VM under coverage instrumentation put
+		// this one test within a whisker of the 5s budget — it passed on main and
+		// timed out on the next PR's run.
+		const pdf = 'A'.repeat(64 * 1024);
 		await enqueue('fat', {
 			html: '€uro',
 			amp: '<amp>body</amp>',
@@ -306,7 +312,9 @@ describe('GET /jobs/:jobId', () => {
 
 		expect(body.bytes.attachmentCount).toBe(2);
 		expect(body.bytes.attachmentBytes).toBe(2 * Buffer.byteLength(pdf, 'base64'));
-		expect(body.bytes.attachmentBytes).toBeGreaterThan(5_000_000);
+		// The defect reported the count in this field, so the two must not be
+		// confusable — orders of magnitude apart, whatever the fixture size.
+		expect(body.bytes.attachmentBytes).toBeGreaterThan(body.bytes.attachmentCount * 1000);
 		// UTF-8 bytes, not UTF-16 code units: '€' is three bytes.
 		expect(body.bytes.htmlBytes).toBe(6);
 		// `amp` is a whole body part and used not to be counted at all.

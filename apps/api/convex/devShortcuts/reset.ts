@@ -9,7 +9,9 @@
  * `TENANT_TABLES` from `lib/tenantTables.ts` (also used by account deletion).
  *
  * Order of operations:
- *   1. Wipe all tenant tables (contacts/automations/templates/campaigns/…)
+ *   1. Wipe all tenant tables (contacts/automations/templates/campaigns/…),
+ *      freeing the storage blobs the row-bearing ones own — `mailMessages`
+ *      through `deleteMessageRowAndBlobs`, `accountExportArtifacts` directly.
  *   2. Wipe BetterAuth tables (session/invitation/member/organization/account/
  *      user). `session` and `invitation` matter as much as `user`: a surviving
  *      session row keeps authenticating a cookie whose user this reset deletes,
@@ -32,6 +34,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { components } from '../_generated/api';
 import { TENANT_TABLES } from '../lib/tenantTables';
 import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';
+import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
 import type { Doc } from '../_generated/dataModel';
 
 interface ResetCounts {
@@ -75,6 +78,15 @@ export const runReset = internalMutation({
 		for (const table of TENANT_TABLES) {
 			const rows = await ctx.db.query(table).collect(); // bounded: dev-only full wipe of each tenant table
 			for (const row of rows) {
+				if (table === 'mailMessages') {
+					// A `mailMessages` row owns up to three storage blobs, and the
+					// generic wipe freed none of them — every reset orphaned the whole
+					// instance's mail in storage, which nothing ever collects. Route it
+					// through the one helper that destroys these rows.
+					await deleteMessageRowAndBlobs(ctx, row as Doc<'mailMessages'>);
+					counts.tenantRows++;
+					continue;
+				}
 				if (table === 'accountExportArtifacts') {
 					await ctx.storage.delete((row as Doc<'accountExportArtifacts'>).storageId);
 				}

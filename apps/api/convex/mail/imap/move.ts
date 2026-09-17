@@ -13,10 +13,13 @@ import type { Id } from '../../_generated/dataModel';
 import { rebuildThreadAggregates } from '../messageActions';
 import { bumpFolderModseq } from '../folders';
 import { indexMessageAttachments, removeMessageAttachments } from '../attachmentIndex';
+import { deleteMessageRowAndBlobs } from '../messagePurge';
 
 /**
  * COPY — clones a message into another folder of the SAME mailbox.
- * Storage blob is shared (just a new mailMessages row pointing at it).
+ * Storage blob is shared (just a new mailMessages row pointing at it), and is
+ * freed only with the LAST row referencing it — see `deleteMessageRowAndBlobs`
+ * in `mail/messagePurge.ts`.
  * Returns the (sourceUid, targetUid) pairs for `COPYUID` response.
  */
 export const copyMessages = internalMutation({
@@ -39,6 +42,7 @@ export const copyMessages = internalMutation({
 		let modseq = target.highestModseq + 1;
 		let totalDelta = 0;
 		let unseenDelta = 0;
+		let bytesAdded = 0;
 
 		for (const id of args.messageIds) {
 			const m = await ctx.db.get(id);
@@ -47,6 +51,7 @@ export const copyMessages = internalMutation({
 			const newUid = uidNext++;
 			const newModseq = modseq++;
 			totalDelta += 1;
+			bytesAdded += m.rawSize;
 			if (!m.flagSeen) unseenDelta += 1;
 
 			const {
@@ -96,6 +101,21 @@ export const copyMessages = internalMutation({
 				unseenCount: target.unseenCount + unseenDelta,
 				updatedAt: now,
 			});
+			// `usedBytes` counts PER ROW, not per distinct blob — the same thing
+			// IMAP QUOTA (RFC 2087) reports, and the only accounting that can
+			// balance: every delete path decrements one row's `rawSize`
+			// unconditionally (`mail/messagePurge.ts`, `expungeFolder` below), so a
+			// COPY that added nothing made a copy-then-expunge cycle drive the
+			// counter down forever. The blob itself is shared and refcounted
+			// separately; this counter answers "how much mail does this mailbox
+			// hold", which is what the MTA's over-quota recipient gate asks.
+			const mailbox = await ctx.db.get(target.mailboxId);
+			if (mailbox) {
+				await ctx.db.patch(mailbox._id, {
+					usedBytes: mailbox.usedBytes + bytesAdded,
+					updatedAt: now,
+				});
+			}
 		}
 
 		return {
@@ -218,13 +238,11 @@ export const expungeFolder = internalMutation({
 			bytesRemoved += m.rawSize;
 			touchedThreads.add(m.threadId);
 
-			try {
-				await ctx.storage.delete(m.rawStorageId);
-			} catch {
-				/* storage may already be gone */
-			}
 			await removeMessageAttachments(ctx, m._id);
-			await ctx.db.delete(m._id);
+			// Refcount-aware: a COPY sibling in another folder of this mailbox may
+			// still point at the same blobs (see mail/messagePurge.ts). This also
+			// frees the body blobs, which the hand-rolled delete here never did.
+			await deleteMessageRowAndBlobs(ctx, m);
 		}
 
 		// Re-derive thread aggregates (incl. latestMessageId) for any thread that

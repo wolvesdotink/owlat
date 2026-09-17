@@ -14,7 +14,8 @@
  *
  * Phases per hop:
  *   1. While the user has a mailbox: drain one batch of its mailMessages
- *      (purging the up-to-three storage blobs per row); once drained, delete
+ *      (its `mailAttachments` index rows, then the up-to-three storage blobs
+ *      per row, freed with the LAST row referencing them); once drained, delete
  *      the mailbox's children (folders/labels/filters/signatures/drafts incl.
  *      attachment blobs/threads/aliases/imap-sync/app-passwords) and the
  *      mailbox row itself.
@@ -38,6 +39,8 @@ import {
 	boundedDeliverabilityAlertRecipientRows,
 	deliverabilityAlertNotificationPatch,
 } from '../delivery/checklistAlertRecipients';
+import { removeMessageAttachments } from '../mail/attachmentIndex';
+import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
@@ -87,10 +90,15 @@ export const eraseMemberData = internalMutation({
 				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailbox._id))
 				.take(MESSAGE_BATCH);
 			for (const msg of messages) {
-				await ctx.storage.delete(msg.rawStorageId);
-				if (msg.textBodyStorageId) await ctx.storage.delete(msg.textBodyStorageId);
-				if (msg.htmlBodyStorageId) await ctx.storage.delete(msg.htmlBodyStorageId);
-				await ctx.db.delete(msg._id);
+				// The attachment index is a function of the message table, and this
+				// walk deletes the MAILBOX row too — so nothing ever walks those rows
+				// again. A junction row left behind survives a COMPLETED erasure with
+				// the correspondent's address and the filename they sent still on it,
+				// still reachable through `search_filenames`/`by_mailbox_and_from`.
+				await removeMessageAttachments(ctx, msg._id);
+				// Refcount-aware (mail/messagePurge.ts): IMAP COPY shares one blob
+				// across rows, so a blob is freed only with its LAST row.
+				await deleteMessageRowAndBlobs(ctx, msg);
 			}
 			if (messages.length === MESSAGE_BATCH) {
 				await reschedule();

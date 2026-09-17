@@ -146,4 +146,102 @@ describe('dev reset — onboarding notice tables', () => {
 		expect(second.sendReadyNotices).toBe(0);
 		expect(second.sendPathReadiness).toBe(0);
 	});
+
+	it('frees the storage blobs of every wiped mailMessages row', async () => {
+		// The generic `TENANT_TABLES` walker deletes rows; it knows nothing about
+		// the up-to-three blobs a `mailMessages` row owns, so every reset used to
+		// orphan the whole instance's mail in storage with nothing left pointing at
+		// it — and nothing ever collects an unreferenced blob.
+		const t = newBetterAuthHarness();
+		const blobs = await t.run(async (ctx) => {
+			const now = Date.now();
+			const mailboxId = await ctx.db.insert('mailboxes', {
+				userId: 'auth-user-1',
+				organizationId: 'org-x',
+				address: 'user@example.com',
+				domain: 'example.com',
+				status: 'active' as const,
+				usedBytes: 13,
+				uidValidity: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const folderId = await ctx.db.insert('mailFolders', {
+				mailboxId,
+				name: 'INBOX',
+				role: 'inbox' as const,
+				uidValidity: now,
+				uidNext: 2,
+				highestModseq: 1,
+				totalCount: 1,
+				unseenCount: 0,
+				subscribed: true,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const threadId = await ctx.db.insert('mailThreads', {
+				mailboxId,
+				normalizedSubject: 'hi',
+				participants: ['user@example.com'],
+				messageCount: 1,
+				unreadCount: 0,
+				hasFlagged: false,
+				hasAttachments: false,
+				lastMessageAt: now,
+				firstMessageAt: now,
+				latestSnippet: 'hi',
+				latestFromAddress: 'a@example.com',
+				latestSubject: 'hi',
+				folderRoles: ['inbox'],
+				labelIds: [],
+				createdAt: now,
+				updatedAt: now,
+			});
+			const rawStorageId = await ctx.storage.store(new Blob(['raw eml bytes']));
+			const textBodyStorageId = await ctx.storage.store(new Blob(['text body']));
+			const htmlBodyStorageId = await ctx.storage.store(new Blob(['<p>html</p>']));
+			await ctx.db.insert('mailMessages', {
+				mailboxId,
+				folderId,
+				uid: 1,
+				modseq: 1,
+				rfc822MessageId: '<m1@example.com>',
+				threadId,
+				fromAddress: 'a@example.com',
+				toAddresses: ['user@example.com'],
+				ccAddresses: [],
+				bccAddresses: [],
+				subject: 'hi',
+				normalizedSubject: 'hi',
+				snippet: 'hi',
+				rawStorageId,
+				textBodyStorageId,
+				htmlBodyStorageId,
+				rawSize: 13,
+				attachments: [],
+				hasAttachments: false,
+				flagSeen: false,
+				flagFlagged: false,
+				flagAnswered: false,
+				flagDraft: false,
+				flagDeleted: false,
+				customFlags: [],
+				labelIds: [],
+				receivedAt: now,
+				internalDate: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+			return [rawStorageId, textBodyStorageId, htmlBodyStorageId];
+		});
+
+		await t.mutation(internal.devShortcuts.reset.runReset, {});
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('mailMessages').collect()).toEqual([]);
+			for (const storageId of blobs) {
+				expect(await ctx.storage.get(storageId)).toBeNull();
+			}
+		});
+	});
 });
