@@ -38,6 +38,7 @@ import {
 	boundedDeliverabilityAlertRecipientRows,
 	deliverabilityAlertNotificationPatch,
 } from '../delivery/checklistAlertRecipients';
+import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
@@ -87,10 +88,9 @@ export const eraseMemberData = internalMutation({
 				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailbox._id))
 				.take(MESSAGE_BATCH);
 			for (const msg of messages) {
-				await ctx.storage.delete(msg.rawStorageId);
-				if (msg.textBodyStorageId) await ctx.storage.delete(msg.textBodyStorageId);
-				if (msg.htmlBodyStorageId) await ctx.storage.delete(msg.htmlBodyStorageId);
-				await ctx.db.delete(msg._id);
+				// Refcount-aware (mail/messagePurge.ts): IMAP COPY shares one blob
+				// across rows, so a blob is freed only with its LAST row.
+				await deleteMessageRowAndBlobs(ctx, msg);
 			}
 			if (messages.length === MESSAGE_BATCH) {
 				await reschedule();

@@ -54,6 +54,7 @@ import {
 } from './accountShared';
 import { markOnboardingStep } from '../../auth/userOnboarding';
 import { removeMessageAttachments } from '../attachmentIndex';
+import { deleteMessageRowAndBlobs } from '../messagePurge';
 import {
 	throwForbidden,
 	throwInvalidInput,
@@ -257,11 +258,10 @@ export const _purgeChunk = internalMutation({
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
 			.take(PURGE_CHUNK);
 		for (const m of messages) {
-			await ctx.storage.delete(m.rawStorageId).catch(() => undefined);
-			if (m.textBodyStorageId) await ctx.storage.delete(m.textBodyStorageId).catch(() => undefined);
-			if (m.htmlBodyStorageId) await ctx.storage.delete(m.htmlBodyStorageId).catch(() => undefined);
 			await removeMessageAttachments(ctx, m._id);
-			await ctx.db.delete(m._id);
+			// Refcount-aware (mail/messagePurge.ts): IMAP COPY shares one blob
+			// across rows, so a blob is freed only with its LAST row.
+			await deleteMessageRowAndBlobs(ctx, m);
 		}
 		if (messages.length === PURGE_CHUNK) {
 			await ctx.scheduler.runAfter(0, internal.mail.external.accounts._purgeChunk, args);

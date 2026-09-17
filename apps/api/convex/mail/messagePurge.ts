@@ -17,6 +17,93 @@ import type { MutationCtx } from '../_generated/server';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { removeMessageAttachments } from './attachmentIndex';
 
+/** The `mailMessages` columns that hold a storage blob a SIBLING row may share. */
+type SharedBlobColumn = 'rawStorageId' | 'textBodyStorageId' | 'htmlBodyStorageId';
+
+/**
+ * Does any `mailMessages` row still point at `storageId` through `column`?
+ *
+ * One indexed `.first()` per column — the `by_*_storage` indexes exist for
+ * exactly this question (see the SHARING-AWARE SEAL note in
+ * `schema/mailMessages.ts`); `mail/blobReseal.ts` was their only reader.
+ */
+async function isBlobStillReferenced(
+	ctx: MutationCtx,
+	column: SharedBlobColumn,
+	storageId: Id<'_storage'>
+): Promise<boolean> {
+	switch (column) {
+		case 'rawStorageId':
+			return (
+				(await ctx.db
+					.query('mailMessages')
+					.withIndex('by_raw_storage', (q) => q.eq('rawStorageId', storageId))
+					.first()) !== null
+			);
+		case 'textBodyStorageId':
+			return (
+				(await ctx.db
+					.query('mailMessages')
+					.withIndex('by_text_body_storage', (q) => q.eq('textBodyStorageId', storageId))
+					.first()) !== null
+			);
+		case 'htmlBodyStorageId':
+			return (
+				(await ctx.db
+					.query('mailMessages')
+					.withIndex('by_html_body_storage', (q) => q.eq('htmlBodyStorageId', storageId))
+					.first()) !== null
+			);
+	}
+}
+
+/**
+ * Delete `message`'s row, then each of its storage blobs that NO OTHER row still
+ * references. The one way to destroy a `mailMessages` row.
+ *
+ * WHY A REFCOUNT: IMAP COPY (`mail/imap/move.ts` copyMessages) inserts a second
+ * row spreading the SAME `rawStorageId`/`textBodyStorageId`/`htmlBodyStorageId`,
+ * so one blob can back several rows. Deleting the blob unconditionally with one
+ * of them left every surviving sibling pointing at a deleted id: the message was
+ * still listed, and its body and attachments were unreadable forever
+ * (`readSealedBlobBytes` → `null`, `/sealed-blob` 404, IMAP `FETCH RFC822`
+ * empty). `mail/blobReseal.ts` already treated the blobs as shared; the deletion
+ * paths did not.
+ *
+ * ORDER IS LOAD-BEARING: the row goes first, and only then do we ask the index
+ * whether anything is left. A Convex mutation is one serializable transaction
+ * whose reads observe its own writes, so the question is asked of the state in
+ * which this row is already gone — no need to special-case "except me".
+ *
+ * CONCURRENCY: two mutations purging sibling rows of one blob cannot both
+ * conclude "I am the last", nor both conclude "someone else will". Each reads
+ * the blob's `by_*_storage` range and each writes into it (its own row delete),
+ * so under Convex's OCC they conflict: the one that commits second is re-run
+ * against the committed state and then sees the range empty. Exactly one frees
+ * the blob, and neither can free it while the other's row still points at it.
+ */
+export async function deleteMessageRowAndBlobs(
+	ctx: MutationCtx,
+	message: Doc<'mailMessages'>
+): Promise<void> {
+	await ctx.db.delete(message._id);
+
+	const blobs: ReadonlyArray<readonly [SharedBlobColumn, Id<'_storage'> | undefined]> = [
+		['rawStorageId', message.rawStorageId],
+		['textBodyStorageId', message.textBodyStorageId],
+		['htmlBodyStorageId', message.htmlBodyStorageId],
+	];
+	for (const [column, storageId] of blobs) {
+		if (!storageId) continue;
+		if (await isBlobStillReferenced(ctx, column, storageId)) continue;
+		try {
+			await ctx.storage.delete(storageId);
+		} catch {
+			// Storage may already be gone — the row is what had to disappear.
+		}
+	}
+}
+
 /**
  * Delete `message` for good. Returns the thread it belonged to so the caller can
  * rebuild that thread's aggregates once per batch rather than once per message.
@@ -45,22 +132,9 @@ export async function purgeMessageRow(
 		});
 	}
 
-	for (const storageId of [
-		message.rawStorageId,
-		message.textBodyStorageId,
-		message.htmlBodyStorageId,
-	]) {
-		if (!storageId) continue;
-		try {
-			await ctx.storage.delete(storageId);
-		} catch {
-			// Storage may already be gone — proceed to the row deletion.
-		}
-	}
-
 	// The attachment index is a function of the message table; a row that
 	// outlived its message would list a file that opens into nothing.
 	await removeMessageAttachments(ctx, message._id);
-	await ctx.db.delete(message._id);
+	await deleteMessageRowAndBlobs(ctx, message);
 	return message.threadId;
 }

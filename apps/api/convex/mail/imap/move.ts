@@ -13,6 +13,7 @@ import type { Id } from '../../_generated/dataModel';
 import { rebuildThreadAggregates } from '../messageActions';
 import { bumpFolderModseq } from '../folders';
 import { indexMessageAttachments, removeMessageAttachments } from '../attachmentIndex';
+import { deleteMessageRowAndBlobs } from '../messagePurge';
 
 /**
  * COPY — clones a message into another folder of the SAME mailbox.
@@ -218,13 +219,11 @@ export const expungeFolder = internalMutation({
 			bytesRemoved += m.rawSize;
 			touchedThreads.add(m.threadId);
 
-			try {
-				await ctx.storage.delete(m.rawStorageId);
-			} catch {
-				/* storage may already be gone */
-			}
 			await removeMessageAttachments(ctx, m._id);
-			await ctx.db.delete(m._id);
+			// Refcount-aware: a COPY sibling in another folder of this mailbox may
+			// still point at the same blobs (see mail/messagePurge.ts). This also
+			// frees the body blobs, which the hand-rolled delete here never did.
+			await deleteMessageRowAndBlobs(ctx, m);
 		}
 
 		// Re-derive thread aggregates (incl. latestMessageId) for any thread that
