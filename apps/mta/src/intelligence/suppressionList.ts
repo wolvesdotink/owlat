@@ -100,8 +100,15 @@ export async function suppress(
 		meta.expiresAt = now + ttl * 1000;
 	}
 
+	// METADATA BEFORE MEMBERSHIP, and the due date in between. `pipeline()` is
+	// not `multi()`: the commands are only batched on the wire, and another
+	// client — the sweep — can be served between any two of them. With membership
+	// written first, a sweep landing in the gap deletes the address off the OLD
+	// metadata and the `SET` below then resurrects that metadata with no
+	// membership behind it: not suppressed, plus an orphaned key. Writing the
+	// metadata first inverts that: whatever the sweep reads in the gap is already
+	// this write's answer, so it keeps the entry and the `SADD` is a no-op repeat.
 	const pipeline = redis.pipeline();
-	pipeline.sadd(SUPPRESSION_SET, normalized);
 	pipeline.set(`${SUPPRESSION_META_PREFIX}${normalized}`, JSON.stringify(meta));
 
 	// Index (or de-index) the due date. The `zrem` arm is the load-bearing one:
@@ -113,6 +120,8 @@ export async function suppress(
 	} else {
 		pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
 	}
+
+	pipeline.sadd(SUPPRESSION_SET, normalized);
 
 	await pipeline.exec();
 	logger.info(
@@ -156,7 +165,10 @@ export const SUPPRESSION_SWEEP_BATCH = 500;
  * bounces between those two steps is rewritten as permanent and then deleted
  * anyway. Redis runs this start to finish with nothing interleaved, so a
  * re-suppression is either already visible to the metadata read below — and the
- * entry is kept — or has not happened yet, and it will re-add the address.
+ * entry is kept — or has not happened yet, and its own write lands afterwards.
+ * (`suppress` writes its metadata before its membership precisely so that the
+ * first of those is what a re-suppression interleaved with this script looks
+ * like; the reverse order let a sweep strand the metadata with no membership.)
  *
  * The metadata is what each decision turns on, and the branches are the things
  * it can say:
@@ -393,9 +405,13 @@ export async function suppressBulk(
 				suppressedAt: Date.now(),
 			};
 
-			pipeline.sadd(SUPPRESSION_SET, normalized);
+			// Metadata, then de-index, then membership — see `suppress`. It matters
+			// MORE here: a 100-entry batch is ~26 KB of commands, past Redis's 16 KB
+			// client read buffer, so this pipeline genuinely spans several reads and
+			// other clients really are served in the middle of it.
 			pipeline.set(`${SUPPRESSION_META_PREFIX}${normalized}`, JSON.stringify(meta));
 			pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
+			pipeline.sadd(SUPPRESSION_SET, normalized);
 		}
 
 		await pipeline.exec();

@@ -227,6 +227,67 @@ describe('suppressionList', () => {
 		});
 	});
 
+	// `redis.pipeline()` is not `multi()` — the commands are batched on the wire
+	// and another client can be served between any two of them. A 100-entry bulk
+	// batch is ~26 KB, past Redis's 16 KB client read buffer, so this really does
+	// happen there. The stub replays a pipeline one command at a time with the
+	// sweep run after the first, which is the interleaving that matters: the
+	// sweep is the only other writer that touches these three keys.
+	describe('write ordering against an interleaved sweep', () => {
+		const interleaveSweepAfterFirstCommand = () => {
+			const original = redis.pipeline.bind(redis);
+			redis.pipeline = (() => {
+				const queued: Array<[string, unknown[]]> = [];
+				const stub: Record<string, unknown> = {
+					exec: async () => {
+						for (const [index, [command, args]] of queued.entries()) {
+							const run = (
+								redis as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>
+							)[command]!;
+							await run.apply(redis, args);
+							if (index === 0) await sweepExpiredSuppressions(redis);
+						}
+						return [];
+					},
+				};
+				for (const command of ['sadd', 'set', 'zadd', 'zrem', 'srem', 'del']) {
+					stub[command] = (...args: unknown[]) => {
+						queued.push([command, args]);
+						return stub;
+					};
+				}
+				return stub;
+			}) as unknown as typeof redis.pipeline;
+			return () => {
+				redis.pipeline = original;
+			};
+		};
+
+		it('does not let a sweep orphan an escalating suppress', async () => {
+			await suppress(redis, 'esc@example.com', 'manual', { ttlSeconds: 60 });
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			const restore = interleaveSweepAfterFirstCommand();
+			await suppress(redis, 'esc@example.com', 'hard_bounce');
+			restore();
+
+			expect(await isSuppressed(redis, 'esc@example.com')).toBe(true);
+			expect(await redis.sismember(SUPPRESSION_SET, 'esc@example.com')).toBe(1);
+		});
+
+		it('does not let a sweep orphan a bulk entry', async () => {
+			await suppress(redis, 'orphan@example.com', 'manual', { ttlSeconds: 60 });
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			const restore = interleaveSweepAfterFirstCommand();
+			await suppressBulk(redis, [{ email: 'orphan@example.com', reason: 'hard_bounce' }]);
+			restore();
+
+			expect(await isSuppressed(redis, 'orphan@example.com')).toBe(true);
+			expect(await redis.sismember(SUPPRESSION_SET, 'orphan@example.com')).toBe(1);
+		});
+	});
+
 	describe('sweepExpiredSuppressions', () => {
 		it('reclaims every key an expired temporary suppression owns', async () => {
 			await suppress(redis, 'gone@example.com', 'manual', { ttlSeconds: 60 });
