@@ -146,21 +146,62 @@ export async function unsuppress(redis: Redis, email: string): Promise<boolean> 
 export const SUPPRESSION_SWEEP_BATCH = 500;
 
 /**
- * Reclaim temporary suppressions whose due date has passed.
+ * Reclaim a batch of temporary suppressions whose due date has passed.
  *
- * ONLY due-indexed entries are eligible, and only a temporary suppression is
- * ever indexed — a hard bounce or a complaint is not a member of the index, so
- * there is no input to this function that can remove one. That is the whole
- * safety argument, and it is a property of the data rather than of a filter
- * this code could get wrong.
+ * ONE SCRIPT, because the decision and the deletion must not be separable. A
+ * two-step sweep reads the due list and then deletes, and an address that hard
+ * bounces between those two steps is rewritten as permanent and then deleted
+ * anyway. Redis runs this start to finish with nothing interleaved, so a
+ * re-suppression is either already visible to the metadata read below — and the
+ * entry is kept — or has not happened yet, and it will re-add the address.
  *
- * `ZRANGEBYSCORE ... LIMIT` reads only the entries that are actually due, so
- * the cost is O(log N + batch) and does not grow with the size of the
- * suppression list. Nothing here scans the membership set.
+ * The metadata is what each decision turns on, and the branches are the things
+ * it can say:
+ *   - no `expiresAt` — re-suppressed permanently since it was indexed, so drop
+ *     the stale due date and KEEP the suppression;
+ *   - an `expiresAt` in the future — re-suppressed with a longer window by a
+ *     write whose index update did not land, so repair the score instead;
+ *   - anything else — expired; remove the address entirely. Missing metadata
+ *     belongs here too: membership of the due index is itself the evidence that
+ *     this address was suppressed temporarily, and the score is the evidence
+ *     that its window has closed.
  *
- * Returns how many entries were removed; a caller that gets
- * {@link SUPPRESSION_SWEEP_BATCH} back knows more may be due and can call again.
+ * Only temporary suppressions are ever indexed, so a hard bounce or a complaint
+ * is not reachable from here at all — the safety argument is a property of the
+ * data, not of a filter this code could get wrong. `ZRANGEBYSCORE ... LIMIT`
+ * reads only what is actually due, so the cost is O(log N + batch) and does not
+ * grow with the size of the suppression list; nothing scans the membership set.
+ *
+ * Returns how many addresses were removed; a caller that gets its full `limit`
+ * back knows more may be due and can call again.
  */
+const SWEEP_EXPIRED_LUA = `
+local zkey = KEYS[1]
+local setkey = KEYS[2]
+local prefix = ARGV[1]
+local now = tonumber(ARGV[2])
+local due = redis.call('ZRANGEBYSCORE', zkey, '-inf', '(' .. ARGV[2], 'LIMIT', 0, tonumber(ARGV[3]))
+local removed = 0
+for index = 1, #due do
+  local email = due[index]
+  local metaKey = prefix .. email
+  local raw = redis.call('GET', metaKey)
+  local expiresAt = nil
+  if raw then expiresAt = tonumber(string.match(raw, '"expiresAt":(%d+)')) end
+  if raw and not expiresAt then
+    redis.call('ZREM', zkey, email)
+  elseif expiresAt and expiresAt >= now then
+    redis.call('ZADD', zkey, expiresAt, email)
+  else
+    redis.call('SREM', setkey, email)
+    redis.call('DEL', metaKey)
+    redis.call('ZREM', zkey, email)
+    removed = removed + 1
+  end
+end
+return removed
+`;
+
 export async function sweepExpiredSuppressions(
 	redis: Redis,
 	options?: { now?: number; limit?: number }
@@ -168,24 +209,20 @@ export async function sweepExpiredSuppressions(
 	const now = options?.now ?? Date.now();
 	const limit = options?.limit ?? SUPPRESSION_SWEEP_BATCH;
 
-	// Exclusive upper bound, so "due" here means exactly what the lazy check in
-	// `isSuppressed` means by it (`Date.now() > meta.expiresAt`).
-	const due = await redis.zrangebyscore(
+	const removed = (await redis.eval(
+		SWEEP_EXPIRED_LUA,
+		2,
 		SUPPRESSION_EXPIRY_ZSET,
-		'-inf',
-		`(${now}`,
-		'LIMIT',
-		0,
-		limit
-	);
-	if (due.length === 0) return 0;
+		SUPPRESSION_SET,
+		SUPPRESSION_META_PREFIX,
+		String(now),
+		String(limit)
+	)) as number;
 
-	for (const email of due) {
-		await unsuppress(redis, email);
+	if (removed > 0) {
+		logger.info({ count: removed }, 'Expired suppressions swept');
 	}
-
-	logger.info({ count: due.length }, 'Expired suppressions swept');
-	return due.length;
+	return removed;
 }
 
 /**

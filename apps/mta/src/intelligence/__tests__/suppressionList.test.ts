@@ -239,6 +239,52 @@ describe('suppressionList', () => {
 			expect(SUPPRESSION_SWEEP_BATCH).toBeGreaterThan(0);
 		});
 
+		// A pipeline is not atomic, so a permanent re-suppression can land its
+		// metadata and lose its `zrem`. The sweep must read the metadata and keep
+		// the suppression, not trust a due date the metadata contradicts.
+		it('keeps a suppression whose metadata says it is permanent, despite a stale due date', async () => {
+			await suppress(redis, 'torn@example.com', 'manual', { ttlSeconds: 60 });
+			// The permanent rewrite, minus the index update it should have made.
+			await redis.set(
+				metaKeyFor('torn@example.com'),
+				JSON.stringify({ reason: 'hard_bounce', suppressedAt: Date.now() })
+			);
+
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect(await isSuppressed(redis, 'torn@example.com')).toBe(true);
+			// ...and the stale due date is gone, so it is not reconsidered forever.
+			expect(await redis.zcard(EXPIRY_ZSET)).toBe(0);
+		});
+
+		it('repairs a due date the metadata says is further out', async () => {
+			await suppress(redis, 'extended@example.com', 'manual', { ttlSeconds: 60 });
+			const later = Date.now() + 600_000;
+			await redis.set(
+				metaKeyFor('extended@example.com'),
+				JSON.stringify({ reason: 'manual', suppressedAt: Date.now(), expiresAt: later })
+			);
+
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			expect(await sweepExpiredSuppressions(redis)).toBe(0);
+			expect(await isSuppressed(redis, 'extended@example.com')).toBe(true);
+			expect(await redis.zscore(EXPIRY_ZSET, 'extended@example.com')).toBe(String(later));
+		});
+
+		// Metadata gone is the EXPIRED case, not an unknown one: membership of the
+		// due index is itself proof the address was suppressed temporarily.
+		it('removes a due entry whose metadata has gone missing', async () => {
+			await suppress(redis, 'nometa@example.com', 'manual', { ttlSeconds: 60 });
+			await redis.del(metaKeyFor('nometa@example.com'));
+
+			vi.setSystemTime(new Date(Date.now() + 61_000));
+
+			expect(await sweepExpiredSuppressions(redis)).toBe(1);
+			expect(await redis.sismember(SUPPRESSION_SET, 'nometa@example.com')).toBe(0);
+		});
+
 		it('creates nothing when there is nothing due', async () => {
 			expect(await sweepExpiredSuppressions(redis)).toBe(0);
 			expect(await redis.keys('mta:suppressed*')).toEqual([]);
