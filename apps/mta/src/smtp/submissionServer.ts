@@ -508,10 +508,48 @@ export function buildOnMailFrom() {
  * policy — see `@owlat/smtp-listener` `DEFAULT_SMTP_CIPHERS`). Asserts the
  * cert/key are present first so neither listener can be built over plaintext
  * (RFC 8314 §3.3).
+ *
+ * `handshakeTimeoutMs` is the pre-session sibling of the listener's
+ * `timeouts.commandMs`: on the implicit-TLS listener the command idle timer does
+ * not exist yet, so this is the ONLY bound on a peer that completes the TCP
+ * handshake and then stalls. It is ignored on the 587 listener, whose STARTTLS
+ * upgrade runs with the command idle timer already armed (both submission
+ * listeners take the listener default, 300 s).
+ *
+ * 30 SECONDS, and it is a policy number, not a tuning knob — hence a literal
+ * rather than an env var:
+ *
+ *  - The floor is set by legitimate LOSS, not by slow clients. The server does
+ *    the expensive part of a handshake, so the pathological honest case is a
+ *    lossy mobile link retransmitting the ClientHello: RFC 6298 starts the RTO
+ *    at 1 s and doubles it, so three consecutive losses cost ~7 s and four cost
+ *    ~15 s. A single-digit window would cut off a real client at three or four
+ *    losses; 30 s leaves ~2x headroom over four.
+ *  - The ceiling is set by LOG VOLUME. The teardown in `@owlat/smtp-listener`'s
+ *    `server.ts` logs on exactly this path, so the sustained attacker-driven
+ *    line rate is (connections they can hold) / (this window): every factor
+ *    shaved off the window multiplies it, into a container log with no rotation
+ *    policy. 30 s is 4x node's 120 s default, which is a bounded, deliberate
+ *    increase rather than an open-ended one.
+ *  - It is conservative against every comparable: Postfix `smtpd_starttls_timeout`
+ *    300 s (10 s only in stress mode), Dovecot ~3 min, nginx
+ *    `ssl_handshake_timeout` 60 s, node 120 s — and the `smtp-server` package
+ *    this path replaced had NO handshake timeout at all. In-repo precedent for
+ *    rejecting a library's long default is `bounce/server.ts`, which pins its
+ *    idle timers at 60 s.
+ *
+ * Read `createImplicitTlsServer`'s note in `@owlat/smtp-listener` before going
+ * lower: enforcing the deadline resets a handshake that is merely slow, which is
+ * free today (no `SNICallback` is supplied anywhere) but would not be for a
+ * multi-cert deployment whose SNI resolver does a network or database lookup.
  */
 function submissionTls(config: MtaConfig): SmtpTlsConfig {
 	assertSubmissionTlsConfigured(config.submissionTlsCert, config.submissionTlsKey);
-	return { cert: config.submissionTlsCert!, key: config.submissionTlsKey! };
+	return {
+		cert: config.submissionTlsCert!,
+		key: config.submissionTlsKey!,
+		handshakeTimeoutMs: 30_000,
+	};
 }
 
 /**

@@ -1339,4 +1339,31 @@ describe('submission TLS gate — wire-level', () => {
 			await server.close();
 		}
 	});
+
+	it('465: the TLS handshake window is bounded at 30 s, not the 120 s node default', () => {
+		// On 465 the handshake runs BEFORE any SMTP session, so the command idle
+		// timer is not armed yet and this window is the only bound on a peer that
+		// connects and then goes silent. Dropping `handshakeTimeoutMs` from
+		// `submissionTls` would silently restore node's 120 s, during which an
+		// unauthenticated peer pins a connection slot; nothing else in the listener
+		// would notice, so the wiring is pinned here.
+		//
+		// Read back off the tls.Server rather than waited out (30 s of wall clock is
+		// not a unit test). The teardown BEHAVIOUR this window drives is covered
+		// end-to-end in `@owlat/smtp-listener`'s hostile suite with a short window.
+		const server = createImplicitTlsSubmissionServer(
+			queue,
+			new Redis() as unknown as RealRedis,
+			tlsConfig()
+		);
+		// Never listened, so nothing to close: the window is baked into the
+		// tls.Server at construction, which is exactly the wiring under test.
+		const raw = server.raw as unknown as Record<symbol, unknown>;
+		const key = Object.getOwnPropertySymbols(server.raw).find(
+			(sym) => sym.description === 'handshake-timeout'
+		);
+		// Fail loudly if node ever renames the slot, rather than passing vacuously.
+		if (!key) throw new Error('node no longer stores the window under Symbol(handshake-timeout)');
+		expect(raw[key]).toBe(30_000);
+	});
 });
