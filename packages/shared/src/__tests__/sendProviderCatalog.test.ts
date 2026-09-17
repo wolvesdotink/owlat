@@ -22,6 +22,7 @@ import {
 	isOwnSendProviderKind,
 	messageIdSourceOf,
 	supportsCustomReturnPathOf,
+	egressOf,
 	tagsFeedbackProvenanceOf,
 	type CoreSendProviderCatalogEntry,
 	type OwnSendProviderKind,
@@ -464,6 +465,7 @@ describe('the fail-closed defaults are code, not just docblocks', () => {
 		expect(messageIdSourceOf(UNDECLARED)).toBe('provider');
 		expect(deduplicatesOnIdempotencyKeyOf(UNDECLARED)).toBe(false);
 		expect(tagsFeedbackProvenanceOf(UNDECLARED)).toBe(false);
+		expect(egressOf(UNDECLARED)).toBe('https-api');
 	});
 
 	it('reads an ABSENT entry the same way — an unknown kind has declared nothing', () => {
@@ -478,6 +480,7 @@ describe('the fail-closed defaults are code, not just docblocks', () => {
 		expect(messageIdSourceOf(undefined)).toBe('provider');
 		expect(deduplicatesOnIdempotencyKeyOf(undefined)).toBe(false);
 		expect(tagsFeedbackProvenanceOf(undefined)).toBe(false);
+		expect(egressOf(undefined)).toBe('https-api');
 	});
 
 	it('hands back what a core entry actually declares, default or not', () => {
@@ -491,6 +494,11 @@ describe('the fail-closed defaults are code, not just docblocks', () => {
 		expect(supportsCustomReturnPathOf(ses)).toBe('no');
 		expect(deduplicatesOnIdempotencyKeyOf(ses)).toBe(false);
 		expect(supportsCustomReturnPathOf(coreSendProviderCatalogEntry('smtp'))).toBe('probe');
+		// The outbound path each transport dials, which the port checks read to
+		// decide whether a blocked 25 is this instance's problem.
+		expect(egressOf(mta)).toBe('recipient-mx');
+		expect(egressOf(coreSendProviderCatalogEntry('smtp'))).toBe('smtp-relay');
+		expect(egressOf(ses)).toBe('https-api');
 	});
 });
 

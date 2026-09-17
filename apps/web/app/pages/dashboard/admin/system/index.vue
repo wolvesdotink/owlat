@@ -239,6 +239,12 @@ function formatDuration(start?: number, end?: number) {
 			</div>
 		</div>
 
+		<!-- Network ports: which ports this instance's features need, and whether
+		     the host's provider actually lets them through. Sits next to container
+		     health because it answers the same question one layer down — a service
+		     can be "running" and still be unreachable. -->
+		<SystemPortChecksCard />
+
 		<!-- LLM spend card (spend by feature + by provider + budget headroom) -->
 		<SystemLlmSpendCard />
 

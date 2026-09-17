@@ -77,6 +77,10 @@ describe('Send provider registry', () => {
 		// pinned per kind, as literals, by the shared catalog suite — restating a
 		// route here would be the second copy that suite exists to prevent.
 		'providerFeedback',
+		// Which outbound port the transport dials: pinned per kind by the shared
+		// catalog suite, beside the fail-closed default the port checks read it
+		// through (`egressOf`).
+		'egress',
 		// Bundled plugin entries only; the built-ins carry neither.
 		'pluginId',
 		'requiredCapability',

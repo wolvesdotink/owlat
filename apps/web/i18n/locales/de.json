@@ -5036,6 +5036,52 @@
 				"spendBudget": "Ausgabenbudget",
 				"title": "LLM-Ausgaben · letzte 7 Tage"
 			},
+			"portChecksCard": {
+				"title": "Netzwerk-Ports",
+				"intro": "Funktionen hier hängen an Ports, die Ihr Hoster unangekündigt sperren kann — ein gesperrter Port sieht aus wie eine kaputte Funktion, nicht wie eine Firewall. Diese Prüfungen laufen auf Wunsch von diesem Server aus.",
+				"run": "Ports prüfen",
+				"running": "Prüfe…",
+				"idle": "Es wurde noch nichts geprüft. Der Test öffnet pro Port eine Verbindung zu einem bekannten Host (Googles Mailserver für die Mail-Ports, ghcr.io für Image-Downloads) und schließt sie sofort wieder — es wird keine Mail gesendet und kein Kommando abgesetzt.",
+				"unreachable": "Die Portprüfung braucht den Updater-Sidecar, und der hat nicht geantwortet. Prüfen Sie auf einer Instanz mit vollem Compose-Stack, ob der Dienst `updater` läuft.",
+				"allOpen": "Alle Ports, die diese Instanz braucht, sind offen.",
+				"degraded": "{count} benötigter Port ist gesperrt. | {count} benötigte Ports sind gesperrt.",
+				"degradedHint": "Ein gesperrter Port liegt fast immer am Hoster, nicht an diesem Server. Bitten Sie ihn, den Port für diese Maschine freizuschalten — viele sperren ausgehende Mail-Ports standardmäßig.",
+				"notNeeded": "für Ihre aktuelle Konfiguration nicht nötig",
+				"checkedAt": "Geprüft um {time}",
+				"unknownError": "Die Portprüfung ist aus unbekanntem Grund fehlgeschlagen.",
+				"groups": {
+					"inbound": "Eingehend — Dienste, die auf diesem Server lauschen",
+					"outbound": "Ausgehend — dieser Server erreicht das Internet"
+				},
+				"groupHints": {
+					"inbound": "Aus dem Stack heraus geprüft: Das belegt, dass der Dienst lauscht. Ob das Internet durchkommt, hängt an der Firewall Ihres Hosters, die von dieser Maschine aus niemand testen kann.",
+					"outbound": "Ende zu Ende gegen einen echten Host geprüft — genau der Weg, den die Funktion nimmt."
+				},
+				"status": {
+					"open": "offen",
+					"listening": "lauscht",
+					"blocked": "gesperrt",
+					"refused": "niemand lauscht",
+					"error": "nicht feststellbar",
+					"skipped": "hier nicht aktiv",
+					"rejected": "abgewiesen"
+				},
+				"needs": {
+					"inbound-https": "Die App, die API, Webhooks, Tracking- und Klick-Links sowie die Desktop-App",
+					"inbound-http": "Erneuerung des TLS-Zertifikats über Let's Encrypt",
+					"inbound-smtp": "Empfang von Mail und Bounces im eingebauten Mailserver",
+					"inbound-imaps": "Zugriff auf das eingebaute Postfach aus Apple Mail, Outlook oder vom Handy",
+					"outbound-smtp": "Direkte Zustellung an die Server der Empfänger",
+					"outbound-submission": "Übergabe an ein externes SMTP-Relay",
+					"outbound-smtps": "Versand aus einem verbundenen Postfach über implizites TLS",
+					"outbound-imaps": "Ein bestehendes Postfach mit einem Team-Postfach oder der Postbox verbinden",
+					"outbound-https": "Updates, Image-Downloads und alle Provider- und KI-APIs",
+					"outbound-dns": "MX-Abfragen für die Zustellung, Domain-Prüfung und Blocklist-Checks"
+				},
+				"unknown": "{count} benötigter Port konnte nicht gemessen werden. | {count} benötigte Ports konnten nicht gemessen werden.",
+				"unknownHint": "Die Prüfung kam weder zu einem Urteil noch an eine Firewall — der antwortende Dienst läuft hier nicht, oder der Name wurde nicht aufgelöst. Das ist etwas anderes als ein gesperrter Port, also wird in keine Richtung etwas behauptet.",
+				"declined": "Die Portprüfung lief nicht. Der Updater läuft; er hat diese Anfrage abgelehnt."
+			},
 			"updateProgress": {
 				"heading": "Update auf v{version} läuft",
 				"restartNotice": "Die Web-App startet während des Updates möglicherweise neu. Diese Seite verbindet sich automatisch wieder.",

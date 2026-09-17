@@ -54,6 +54,7 @@ import type {
 export * from './sendProviderCapabilities';
 export * from './sendProviderCatalogTypes';
 export * from './sendProviderFeedback';
+export * from './sendTransportEgress';
 export * from './sendProviderCredentialFields';
 
 import { CORE_SEND_PROVIDER_CATALOG } from './sendProviderCatalogData';
