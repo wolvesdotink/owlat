@@ -19,19 +19,23 @@
  * silently, and did, for the entire life of the file. So the schema is no
  * longer restated: every read goes through GroupMQ's own public API on the
  * `Queue` instance, which is the only thing that can be wrong at the same time
- * as the queue itself. The one remaining raw-key reader, `probeDelayedQueue`,
- * derives its prefix from `QUEUE_NAMESPACE` for the same reason.
+ * as the queue itself. The exceptions are the reads GroupMQ has no API for, and
+ * they are not written here: `probeDelayedQueue` and `queue/inspect.ts` own
+ * them, both keyed off `QUEUE_KEY_NAMESPACE`, so the prefix has one owner.
  *
  * NO `/flush`. The old `POST /flush?orgId=` claimed to cancel an
  * organization's pending mail. GroupMQ groups jobs by `{ipPool}:{domain}` —
- * there is no organization dimension in the queue and no bulk remove — so the
- * only possible implementation is "read every waiting job id, fetch every
- * payload, delete the matches", which is unbounded work on exactly the runaway
- * backlog an operator would reach for it during, and which destroys deliverable
- * mail from a single unconfirmed HTTP call. It has never once removed a job, so
- * nothing is lost by deleting it, and `DELETE /jobs/:jobId` covers the targeted
- * case with the state checks below. Do not reintroduce it without a queue-side
- * index and a dry-run.
+ * there is no organization dimension in the queue, and no bulk remove along the
+ * dimension a flush would need. (GroupMQ does have a bounded
+ * `clean(graceTimeMs, limit, status)`, but only over `completed | failed |
+ * delayed`; it cannot touch `waiting`, which is where an org's pending mail
+ * sits.) So the only possible implementation is "read every waiting job id,
+ * fetch every payload, delete the matches", which is unbounded work on exactly
+ * the runaway backlog an operator would reach for it during, and which destroys
+ * deliverable mail from a single unconfirmed HTTP call. It has never once
+ * removed a job, so nothing is lost by deleting it, and `DELETE /jobs/:jobId`
+ * covers the targeted case with the state checks below. Do not reintroduce it
+ * without a queue-side index and a dry-run.
  */
 
 import { Hono } from 'hono';
@@ -153,8 +157,17 @@ export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: 
 				/**
 				 * Jobs held in a group, i.e. not yet taken by a worker. GroupMQ
 				 * keeps a delayed job in its group as well as in the delay set,
-				 * so `delayed` is a SUBSET of this and the two do not sum:
-				 * `waiting - delayed` is what a worker could pick up right now.
+				 * so in a healthy queue `delayed` is a SUBSET of this and the two
+				 * do not sum: `waiting - delayed` is what a worker could pick up
+				 * right now.
+				 *
+				 * The containment is an invariant of the HEALTHY state only. A
+				 * delay-set member whose group entry is gone — the 6,037,170-member
+				 * population from the Redis OOM incident — is delayed and not
+				 * waiting, so `delayed` can exceed `waiting` and the subtraction
+				 * goes negative. Read that as the diagnosis it is: a negative
+				 * `waiting - delayed` means the delay set is holding entries
+				 * nothing can drain, and `delayedQueue.status` below names it.
 				 */
 				waiting: counts.waiting,
 				/** Jobs reserved by a worker right now. */
@@ -164,8 +177,10 @@ export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: 
 				/**
 				 * Retained terminal jobs — bounded by the queue's `keepCompleted`
 				 * / `keepFailed`, so these are retention-window sizes and not
-				 * lifetime totals. Lifetime delivery outcomes live in
-				 * `/delivery-logs`.
+				 * lifetime totals. Neither is `/delivery-logs`, which is itself
+				 * capped (`DELIVERY_LOG_MAX_LEN`, `DELIVERY_LOG_TTL_HOURS`): the
+				 * lifetime record of what was sent is in Convex, fed by the
+				 * delivery webhooks.
 				 */
 				completed: counts.completed,
 				failed: counts.failed,
@@ -354,6 +369,13 @@ export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: 
 	//    source of log identity, not the guard.
 	//  - Every removal is logged with the identity of what was destroyed, so
 	//    "where did that message go" has an answer that is not "nowhere".
+	//
+	// `removed: true` is not quite finality in one narrow case: a deferred
+	// successor whose handoff receipt is still `reserved` is re-enqueued by its
+	// predecessor if that predecessor runs again (`queue/deferHandoff.ts`,
+	// `resumeDeferredHandoff`), because the receipt is the record that the
+	// message still owes a delivery attempt. Delete the successor after the
+	// predecessor has settled, or expect it back once.
 	app.delete('/jobs/:jobId', async (c) => {
 		const jobId = c.req.param('jobId');
 
