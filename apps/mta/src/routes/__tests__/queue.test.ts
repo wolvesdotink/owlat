@@ -30,7 +30,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 }));
 
 const { createQueueRoutes } = await import('../queue.js');
-const { QUEUE_NAMESPACE } = await import('../../queue/setup.js');
+const { QUEUE_NAMESPACE } = await import('../../queue/namespace.js');
 const { QUEUE_KEY_NAMESPACE } = await import('../../queue/delayedOrphans.js');
 const { logger } = await import('../../monitoring/logger.js');
 
