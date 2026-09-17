@@ -35,7 +35,6 @@ import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { getLivePersonalExternalAccountForUser } from './external/accounts';
 import { isActiveMigrationStatus, cancelActiveMigrationForAccount } from './external/accountShared';
-import { scheduleVoiceProfileRefresh } from './ai/voiceProfile';
 
 /** Provider label on a migration row — shared with the team-inbox twins. */
 export const migrationSourceValidator = v.union(v.literal('google'), v.literal('imap'));
