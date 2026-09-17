@@ -224,7 +224,10 @@ async function sendViaRelay(
 				filename: a.filename,
 				contentType: a.contentType ?? 'application/octet-stream',
 				isInline: false,
-				data: a.content,
+				// `EmailAttachment.content` is runtime-neutral bytes (the isolate has no
+				// Buffer); this module is `'use node'`, so the composer's Buffer is
+				// available here at the boundary.
+				data: Buffer.from(a.content),
 			})),
 		});
 	} catch (error) {

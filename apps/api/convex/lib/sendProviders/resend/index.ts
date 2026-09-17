@@ -19,6 +19,7 @@ import {
 	type SystemMailExtrasInput,
 } from '../types';
 import { sendProviderCatalogEntry } from '../catalog';
+import { bytesToBase64 } from '../../bytes';
 import { transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
 const RESEND_TIMEOUT_MS = 30_000;
@@ -90,7 +91,7 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 							params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,
 						attachments: params.attachments?.map((a) => ({
 							filename: a.filename,
-							content: a.content,
+							content: bytesToBase64(a.content),
 							content_type: a.contentType,
 						})),
 					},

@@ -555,6 +555,7 @@ import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
 import type * as lib_aiProviderConfigValidators from '../lib/aiProviderConfigValidators.js';
 import type * as lib_atRestBodies from '../lib/atRestBodies.js';
+import type * as lib_bytes from '../lib/bytes.js';
 import type * as lib_auditLog from '../lib/auditLog.js';
 import type * as lib_authedFunctions from '../lib/authedFunctions.js';
 import type * as lib_automationConfigTypes from '../lib/automationConfigTypes.js';
@@ -617,7 +618,6 @@ import type * as lib_mailContentValidators from '../lib/mailContentValidators.js
 import type * as lib_mailSettingsValidators from '../lib/mailSettingsValidators.js';
 import type * as lib_mailMute from '../lib/mailMute.js';
 import type * as lib_mailSnooze from '../lib/mailSnooze.js';
-import type * as lib_accountExportEncoding from '../lib/accountExportEncoding.js';
 import type * as lib_accountExportTemplates from '../lib/accountExportTemplates.js';
 import type * as lib_messageBody from '../lib/messageBody.js';
 import type * as lib_messageBodyExport from '../lib/messageBodyExport.js';
@@ -1642,6 +1642,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/retrieval': typeof knowledge_retrieval;
 	'lib/aiProviderConfigValidators': typeof lib_aiProviderConfigValidators;
 	'lib/atRestBodies': typeof lib_atRestBodies;
+	'lib/bytes': typeof lib_bytes;
 	'lib/auditLog': typeof lib_auditLog;
 	'lib/authedFunctions': typeof lib_authedFunctions;
 	'lib/automationConfigTypes': typeof lib_automationConfigTypes;
@@ -1704,7 +1705,6 @@ declare const fullApi: ApiFromModules<{
 	'lib/mailSettingsValidators': typeof lib_mailSettingsValidators;
 	'lib/mailMute': typeof lib_mailMute;
 	'lib/mailSnooze': typeof lib_mailSnooze;
-	'lib/accountExportEncoding': typeof lib_accountExportEncoding;
 	'lib/accountExportTemplates': typeof lib_accountExportTemplates;
 	'lib/messageBody': typeof lib_messageBody;
 	'lib/messageBodyExport': typeof lib_messageBodyExport;

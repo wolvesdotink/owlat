@@ -30,6 +30,8 @@
  * so a change here cannot silently break them.
  */
 
+import { bytesToBase64 } from './bytes';
+
 /** AES-GCM 96-bit nonce — the size every consumer's envelope reserves for it. */
 export const IV_BYTES = 12;
 /** AES-GCM 128-bit auth tag — the minimum length of any ciphertext we produce. */
@@ -133,9 +135,7 @@ export function createWebSecretBox(secret: string, context: WebSecretBoxContext)
  * and Node runtimes.
  */
 export function toBase64(bytes: Uint8Array): string {
-	let binary = '';
-	for (const b of bytes) binary += String.fromCharCode(b);
-	return btoa(binary);
+	return bytesToBase64(bytes);
 }
 
 /**

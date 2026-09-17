@@ -28,6 +28,7 @@ import {
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
 import { isClearsigned, isSignedPgpMime } from '@owlat/shared/secureMessage';
 import { storeSealedBlob, type BlobStore } from '../../lib/sealedBlob';
+import { base64ToBytes, bytesToBinaryString, utf8ByteLength } from '../../lib/bytes';
 import { buildSnippet } from './insert';
 import { buildSearchBody } from '../searchBody';
 import { scanInboundAttachments } from './scan';
@@ -47,7 +48,7 @@ export async function splitBodyForStorage(
 	contentType: string
 ): Promise<{ inline?: string; storageId?: Id<'_storage'> }> {
 	if (!body) return {};
-	if (Buffer.byteLength(body, 'utf-8') <= INLINE_BODY_THRESHOLD_BYTES) {
+	if (utf8ByteLength(body) <= INLINE_BODY_THRESHOLD_BYTES) {
 		return { inline: body };
 	}
 	// E8b: seal the over-threshold body blob at rest (byte cipher). The reader
@@ -78,11 +79,11 @@ export async function prepareInboundMessage(
 	}
 ) {
 	// Decode raw MIME and stash in Convex storage.
-	const rawBytes = Buffer.from(args.rawBytesBase64, 'base64');
+	const rawBytes = base64ToBytes(args.rawBytesBase64);
 	const rawSize = rawBytes.length;
 	// Raw header block decoded once (64KB covers any header section) for both
 	// extractions below.
-	const rawHeaderBlock = rawBytes.subarray(0, 65536).toString('utf8');
+	const rawHeaderBlock = new TextDecoder().decode(rawBytes.subarray(0, 65536));
 	// RFC 3834 anti-loop headers so forwarding + vacation hooks skip
 	// list/auto-submitted mail.
 	const antiLoopHeaders = extractAntiLoopHeaders(rawHeaderBlock);
@@ -109,7 +110,7 @@ export async function prepareInboundMessage(
 	// open action — it would only return `{ sealed: false }` anyway. Mirrors the
 	// cheap `extractArmoredCiphertext` pre-gate the AI-inbox path already uses
 	// before its decrypt action.
-	const rawText = rawBytes.toString('utf8');
+	const rawText = new TextDecoder().decode(rawBytes);
 	const opened = isSealedPgpMime(rawText)
 		? await ctx.runAction(internal.e2ee.open.openInboundForMailbox, {
 				rawBytesBase64: args.rawBytesBase64,
@@ -237,12 +238,12 @@ export async function captureAttachments(
 		runMutation: ActionCtx['runMutation'];
 		runQuery: ActionCtx['runQuery'];
 	},
-	rawBytes: Buffer,
+	rawBytes: Uint8Array,
 	messageId: string,
 	fromRaw: string
 ): Promise<void> {
 	// The extractor wants a binary string (one char per byte) so binary parts survive.
-	const binary = rawBytes.toString('latin1');
+	const binary = bytesToBinaryString(rawBytes);
 	const parts = extractAttachments(binary);
 
 	// Scope captured files to the sender's EXISTING contact (find-only). A
@@ -272,7 +273,7 @@ export async function captureAttachments(
 		if (size === 0 || size > MAX_ATTACHMENT_BYTES) continue;
 
 		const storageId = await ctx.storage.store(
-			new Blob([Buffer.from(part.bytes)], { type: part.contentType })
+			new Blob([part.bytes as unknown as BlobPart], { type: part.contentType })
 		);
 		// `ingest` runs the file-type policy and deletes the blob if rejected.
 		await ctx.runMutation(internal.semanticFiles.ingest, {

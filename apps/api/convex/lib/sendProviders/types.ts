@@ -75,8 +75,16 @@ export type MtaIpPool = (typeof MTA_IP_POOL_NAMES)[number];
 export interface EmailAttachment {
 	/** Filename for the attachment */
 	filename: string;
-	/** Binary content of the attachment */
-	content: Buffer;
+	/**
+	 * Binary content of the attachment.
+	 *
+	 * `Uint8Array`, not `Buffer`: providers are composed in the Convex V8
+	 * runtime, which has no Node `Buffer` — a value typed as one here could only
+	 * ever BE a `Uint8Array` at runtime, and `content.toString('base64')` on it
+	 * silently yields a comma-joined list of decimal byte values instead of
+	 * base64. Encode through `lib/bytes.ts::bytesToBase64`.
+	 */
+	content: Uint8Array;
 	/** MIME type (defaults to application/octet-stream) */
 	contentType?: string;
 }

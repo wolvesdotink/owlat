@@ -19,6 +19,7 @@ import {
 	type SuppressionRow,
 } from '../../_common';
 import type { ImportRow } from '../../../contacts/import';
+import { utf8ToBase64 } from '../../../lib/bytes';
 
 const PAGE_SIZE = 100;
 
@@ -118,7 +119,7 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 			response = await fetch(url, {
 				method: 'GET',
 				headers: {
-					Authorization: `Basic ${Buffer.from(`anystring:${config.apiKey}`).toString('base64')}`,
+					Authorization: `Basic ${utf8ToBase64(`anystring:${config.apiKey}`)}`,
 					'Content-Type': 'application/json',
 				},
 			});

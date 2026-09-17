@@ -38,6 +38,7 @@ import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { buildSearchBody } from '../searchBody';
 import { splitBodyForStorage } from '../deliveryPipeline/ingest';
 import { storeSealedBlob } from '../../lib/sealedBlob';
+import { base64ToBytes } from '../../lib/bytes';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 import { folderRoleValidator } from '../mailbox/shared';
 
@@ -341,7 +342,7 @@ export const ingestExternalRaw = internalAction({
 		origin: v.optional(v.union(v.literal('sync'), v.literal('backfill'))),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
-		const rawBytes = Buffer.from(args.rawBytesBase64, 'base64');
+		const rawBytes = base64ToBytes(args.rawBytesBase64);
 		// E8b: seal the raw `.eml` at rest (byte cipher); the reader path + the
 		// `/sealed-blob` proxy unseal it for the web reader / IMAP bridge.
 		const rawStorageId = await storeSealedBlob(ctx.storage, rawBytes, 'message/rfc822');
@@ -367,7 +368,7 @@ export const ingestExternalRaw = internalAction({
 		// raw .eml, and the anti-loop headers give the classifiers the same
 		// bulk-mail suppression the hosted path gets (Precedence is not persisted
 		// on the message row, so it has to ride along with the ingest call).
-		const headerBlock = rawBytes.subarray(0, 65536).toString('utf8');
+		const headerBlock = new TextDecoder().decode(rawBytes.subarray(0, 65536));
 		const unsubscribe = extractListUnsubscribe(headerBlock) ?? undefined;
 		const antiLoopHeaders = extractAntiLoopHeaders(headerBlock);
 		// `ingestExternalMessage` deletes the staged blobs itself on skip/dup.
