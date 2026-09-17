@@ -16,6 +16,9 @@
  * not know.
  */
 
+import { egressOf } from './sendProviderCapabilities';
+import { coreSendProviderCatalogEntry } from './sendProviderCatalog';
+
 /** Which way through the firewall a check exercises. */
 export type PortDirection = 'inbound' | 'outbound';
 
@@ -200,11 +203,13 @@ function requiredIds(context: PortRelevanceContext): ReadonlySet<PortCheckId> {
 	if (profiles.has('mta')) ids.add('inbound-smtp');
 	// Mail clients reach the built-in mailbox over IMAPS.
 	if (profiles.has('personal-mail')) ids.add('inbound-imaps');
-	// Direct-to-MX delivery is the only transport that dials 25 outbound.
-	if (provider === 'mta') ids.add('outbound-smtp');
-	// A relay is reached on submission; 465 stays optional because a relay uses
-	// one port or the other and the catalog cannot know which.
-	if (provider === 'smtp') ids.add('outbound-submission');
+	// Which mail port the configured transport needs is a property OF THE
+	// TRANSPORT, declared on its catalog entry — not something to rediscover by
+	// name here. A relay is reached on submission; 465 stays optional because a
+	// relay uses one port or the other and the catalog cannot know which.
+	const egress = egressOf(coreSendProviderCatalogEntry(provider));
+	if (egress === 'recipient-mx') ids.add('outbound-smtp');
+	if (egress === 'smtp-relay') ids.add('outbound-submission');
 	// Connecting somebody's existing mailbox dials THEIR provider: IMAP over
 	// 993 to read, implicit-TLS SMTP over 465 to send.
 	if (profiles.has('external-mail')) {

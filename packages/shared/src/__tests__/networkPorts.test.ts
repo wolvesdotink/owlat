@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { coreSendProviderCatalogEntry, SEND_TRANSPORT_KINDS } from '../sendProviderCatalog';
+import { egressOf } from '../sendProviderCapabilities';
 import {
 	PORT_CHECKS,
 	selectPortChecks,
@@ -74,6 +76,32 @@ describe('selectPortChecks', () => {
 		const context = { profiles: [], deliveryProvider: 'smtp' };
 		expect(relevanceOf('outbound-submission', context)).toBe('required');
 		expect(relevanceOf('outbound-smtps', context)).toBe('optional');
+	});
+
+	/**
+	 * The mail port a transport needs is read off its catalog entry, not matched
+	 * against its name — so a transport this module has never heard of (a bundled
+	 * plugin's, which `@owlat/shared` cannot see) claims no mail port rather than
+	 * painting a red row for a port the instance never dials.
+	 */
+	it('asks the transport catalog which egress path is in use', () => {
+		for (const kind of SEND_TRANSPORT_KINDS) {
+			const context = { profiles: [], deliveryProvider: kind };
+			const egress = egressOf(coreSendProviderCatalogEntry(kind));
+			expect(relevanceOf('outbound-smtp', context)).toBe(
+				egress === 'recipient-mx' ? 'required' : 'optional'
+			);
+			expect(relevanceOf('outbound-submission', context)).toBe(
+				egress === 'smtp-relay' ? 'required' : 'optional'
+			);
+		}
+	});
+
+	it('claims no mail port for a transport the core catalog does not declare', () => {
+		const context = { profiles: [], deliveryProvider: 'acme-plugin/courier' };
+		expect(relevanceOf('outbound-smtp', context)).toBe('optional');
+		expect(relevanceOf('outbound-submission', context)).toBe('optional');
+		expect(relevanceOf('outbound-https', context)).toBe('required');
 	});
 
 	it('requires both mailbox ports once external mailboxes are enabled', () => {
