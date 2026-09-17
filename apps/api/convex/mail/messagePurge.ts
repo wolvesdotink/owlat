@@ -26,6 +26,19 @@ type SharedBlobColumn = 'rawStorageId' | 'textBodyStorageId' | 'htmlBodyStorageI
  * One indexed `.first()` per column — the `by_*_storage` indexes exist for
  * exactly this question (see the SHARING-AWARE SEAL note in
  * `schema/mailMessages.ts`); `mail/blobReseal.ts` was their only reader.
+ *
+ * INVARIANT THIS RELIES ON: a storage id is referenced through exactly ONE
+ * column, never two. Asking only the index matching the column the id came from
+ * is sound because of that and nothing else — if some future writer pointed a
+ * row's `textBodyStorageId` at another row's `rawStorageId`, purging the second
+ * row would free the blob out from under the first. It holds today: every row
+ * creator takes its three ids from separate `ctx.storage.store` calls
+ * (`splitBodyForStorage`, `storeSealedBlob`), IMAP COPY spreads a row's ids
+ * without moving one between columns, and `blobReseal` repoints per column.
+ * There is no cheap way to ENFORCE it here — proving it would mean asking all
+ * three indexes for all three ids, tripling the reads of a loop that runs over
+ * whole mailboxes — so it is stated rather than checked. Anything that changes
+ * where a blob id may live has to come back to this function.
  */
 async function isBlobStillReferenced(
 	ctx: MutationCtx,
@@ -59,7 +72,9 @@ async function isBlobStillReferenced(
 
 /**
  * Delete `message`'s row, then each of its storage blobs that NO OTHER row still
- * references. The one way to destroy a `mailMessages` row.
+ * references. The one way to destroy a `mailMessages` row — literally: this is
+ * the only `ctx.db.delete` of one in the tree, and the generic tenant wipe
+ * behind `/dev/reset` special-cases the table to come through here too.
  *
  * WHY A REFCOUNT: IMAP COPY (`mail/imap/move.ts` copyMessages) inserts a second
  * row spreading the SAME `rawStorageId`/`textBodyStorageId`/`htmlBodyStorageId`,
