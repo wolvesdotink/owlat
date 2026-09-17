@@ -78,6 +78,11 @@ export interface SmtpListener {
  * failure that produces one arrives already destroyed — OpenSSL has written the
  * alert before node ever re-emits.
  *
+ * The socket is destroyed BEFORE `onError` runs. The FD must be released even
+ * if the caller's reporter throws; reporting first would leak the connection
+ * this handler exists to reclaim and escape the throw out of node's
+ * `tlsClientError` emit as an uncaughtException.
+ *
  * `onError` is reported on exactly the same condition, for two reasons. It is
  * the only case where this listener CHANGED the outcome, so it is the only one
  * an operator cannot infer from the peer's own behavior; and it is the only one
@@ -97,8 +102,8 @@ function createImplicitTlsServer(
 	});
 	server.on('tlsClientError', (err: Error, socket: TLSSocket) => {
 		if (socket.destroyed) return;
-		onError?.(err);
 		socket.destroy();
+		onError?.(err);
 	});
 	return server;
 }
