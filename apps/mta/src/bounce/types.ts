@@ -159,9 +159,10 @@ export interface InboundAttachmentInput {
 
 /**
  * Per-attachment payload for the personal-mailbox `inbound.mailbox.received`
- * Convex payload. As with `InboundAttachmentMeta`, metadata only:
- * Convex stores the full raw RFC822, so attachments can be re-extracted
- * downstream.
+ * Convex payload. Metadata only here too, but unlike the `inbound.received`
+ * route this one also ships the whole message as `rawBytesBase64`, so the bytes
+ * stay reachable: Convex keeps the raw `.eml` and the reader re-extracts parts
+ * from it by `partIndex`.
  */
 export interface MailboxAttachmentMeta {
 	readonly filename: string;

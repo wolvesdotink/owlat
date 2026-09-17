@@ -13,10 +13,19 @@
  * `--maxmemory` with `maxmemory-policy noeviction`, where reaching the cap
  * means Redis refuses writes and the MTA stops accepting mail.
  *
- * Attachment bytes are not lost by dropping it: the personal-mailbox route
- * already ships the full raw RFC822 to Convex and the reader re-extracts MIME
- * parts from that (see `MailboxAttachmentMeta`), which is the design this route
- * follows too.
+ * Dropping it loses nothing that was reachable — no caller ever fetched one of
+ * those copies. It does not make the bytes reachable either, and on THIS route
+ * they never were: `InboundEmailPayload` (`../../types.ts`) has no raw field, and
+ * Convex's `inboundMessages` stores only the `attachmentMeta` JSON. So the
+ * team/AI-inbox route carries attachment METADATA ONLY — filename, content type
+ * and size — and the bytes are not available downstream at all, before this
+ * change or after it. That is a pre-existing product gap, not a design.
+ *
+ * The route that does carry the bytes is the personal-mailbox one: its
+ * `inbound.mailbox.received` payload ships the whole message as `rawBytesBase64`,
+ * Convex keeps it at `mailMessages.rawStorageId`, and the Postbox reader
+ * re-extracts MIME parts from that raw `.eml` by `partIndex` (see
+ * `MailboxAttachmentMeta`). Nothing equivalent exists here.
  */
 
 import type { Phase } from '../pipeline.js';
