@@ -21,21 +21,39 @@ import {
 // ── Allowed Docker images that may appear in compose templates ──
 // Any image not in this list will cause the compose template to be rejected.
 //
-// This MUST cover every image emitted by infra/templates/docker-compose.vps.yml
-// (and the setup-CLI compose override), since update.post.ts forwards that
-// template here for validation. The vpsComposeImagesAreAllowed test in
-// __tests__/security.test.ts asserts the two never drift.
+// This MUST cover every image in the templates the update routes forward here:
+//   - the RELEASE template (`docker-compose-<v>.yml`, generated from the root
+//     docker-compose.yml by scripts/gen-release-compose.sh) — what both
+//     /api/system/update and /api/self-update download and POST to /update;
+//   - infra/templates/docker-compose.vps.yml, the installer's own template;
+//   - the setup-CLI compose override.
+// An image missing here does not fail a test or a lint — it aborts the
+// operator's update with `Disallowed image: …`, which is how caddy, alpine,
+// the Convex dashboard and the two locally built sidecars managed to block
+// every in-app update on a release install. The releaseComposeImagesAreAllowed
+// / vpsComposeImagesAreAllowed tests in __tests__/security.test.ts assert the
+// allowlist and the shipped compose files never drift apart again.
 export const ALLOWED_IMAGE_PREFIXES = [
 	'ghcr.io/get-convex/convex-backend',
+	'ghcr.io/get-convex/convex-dashboard', // `dashboard` profile, localhost-only
 	'ghcr.io/wolvesdotink/', // canonical org — emitted by the root docker-compose.yml, the VPS template, and gen-release-compose.sh
 	'redis:',
 	// ClamAV and the code-worker egress proxy ship as first-party wrappers
 	// (ghcr.io/wolvesdotink/clamav, ghcr.io/wolvesdotink/tinyproxy) — see
 	// docker/clamav.Dockerfile for why they are not pulled from Docker Hub.
+	'caddy:', // `tls` profile reverse proxy (release + quickstart installs)
+	'alpine:', // one-shot init helpers (e.g. imap-cert-init)
 	'goacme/lego:', // ACME/Let's Encrypt cert issuance
 	'tecnativa/docker-socket-proxy:', // least-privilege docker socket proxy
 	'ollama/ollama:', // optional local LLM provider
 	'busybox:', // setup-CLI override marker service
+	// Built on the host, never published: the untrusted code-worker and the
+	// admin-key-holding Convex function proxy in front of it. Both are
+	// profile-gated (`inbox-codetasks` / `plugin-tasks`) and carry a `build:`
+	// section, so compose resolves them locally — but the release template
+	// still names them, and a name it cannot validate is a refused update.
+	'owlat-code-worker:',
+	'owlat-convex-fn-proxy:',
 ];
 
 // ── Rate limiting ──
@@ -249,4 +267,24 @@ export function validateComposeTemplate(template: string): { valid: boolean; rea
 	}
 
 	return { valid: true };
+}
+
+/**
+ * Read the release version out of a verified compose template.
+ *
+ * The template pins the web image to `ghcr.io/wolvesdotink/web:<semver>`
+ * (optionally `@sha256:<digest>`) — the web server verifies exactly that
+ * before forwarding it (packages/shared/src/composeVerify.ts), so it is the
+ * template's own statement of which release it is, and needs no separate,
+ * spoofable `version` field in the request body.
+ *
+ * Returns null for a template that pins no concrete version — a dev tree's
+ * `:${OWLAT_VERSION:-dev}` interpolation, say — so callers can skip the
+ * version bookkeeping rather than write a bogus value.
+ */
+export function parseReleaseVersionFromTemplate(template: string): string | null {
+	const match = template.match(
+		/^\s*image:\s*["']?ghcr\.io\/wolvesdotink\/web:(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:@sha256:[0-9a-f]{64})?["']?\s*$/m
+	);
+	return match?.[1] ?? null;
 }

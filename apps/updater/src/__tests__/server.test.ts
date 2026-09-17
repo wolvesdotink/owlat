@@ -110,6 +110,7 @@ describe('POST /update', () => {
 			'pull',
 			'convex-deploy',
 			'write-compose',
+			'pin-version',
 			'up',
 		]);
 		// pull/deploy ran against the STAGED file, not the live one
@@ -118,6 +119,79 @@ describe('POST /update', () => {
 		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(template);
 		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
 		expect(res.status).toBe(200);
+	});
+
+	/**
+	 * `.env` is the CONFIGURED version of the deployment — compose interpolates
+	 * it into every container's OWLAT_VERSION, which is what the dashboard
+	 * reports as installed and what /health diffs against the running images.
+	 * Nothing else in the update path writes it, so a successful update used to
+	 * leave the dashboard claiming the old version was still installed with the
+	 * same update still available.
+	 */
+	it('pins .env OWLAT_VERSION to the applied release, before the containers are recreated', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.16\n');
+		const template = [
+			'services:',
+			'  web:',
+			`    image: ghcr.io/wolvesdotink/web:0.4.17@sha256:${'a'.repeat(64)}`,
+			'',
+		].join('\n');
+
+		const envAtUp: string[] = [];
+		execSyncMock.mockImplementation((cmd: string) => {
+			if (String(cmd).includes('up -d')) {
+				envAtUp.push(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8'));
+			}
+			return '';
+		});
+
+		const res = await post('/update', { composeTemplate: template });
+		expect(res.status).toBe(200);
+
+		const json = (await res.json()) as { steps?: Array<{ step: string; ok?: boolean }> };
+		expect(json.steps?.map((s) => s.step)).toEqual([
+			'stage-compose',
+			'pull',
+			'convex-deploy',
+			'write-compose',
+			'pin-version',
+			'up',
+		]);
+		expect(json.steps?.find((s) => s.step === 'pin-version')?.ok).toBe(true);
+
+		const env = readFileSync(join(OWLAT_DIR, '.env'), 'utf-8');
+		expect(env).toContain('OWLAT_VERSION=0.4.17');
+		expect(env).toContain('FOO=bar'); // untouched lines preserved
+		// The recreate must see the new pin, or the containers come back on the
+		// old version and the bookkeeping is a lie.
+		expect(envAtUp).toHaveLength(1);
+		expect(envAtUp[0]).toContain('OWLAT_VERSION=0.4.17');
+	});
+
+	it('appends OWLAT_VERSION when .env has no pin yet', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n');
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:1.2.3', ''].join(
+			'\n'
+		);
+		const res = await post('/update', { composeTemplate: template });
+		expect(res.status).toBe(200);
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toContain('OWLAT_VERSION=1.2.3');
+	});
+
+	it('leaves .env alone for a template that pins no concrete version', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.16\n');
+		const template = [
+			'services:',
+			'  web:',
+			'    image: ghcr.io/wolvesdotink/web:${OWLAT_VERSION:-dev}',
+			'',
+		].join('\n');
+		const res = await post('/update', { composeTemplate: template });
+		expect(res.status).toBe(200);
+		const json = (await res.json()) as { steps?: Array<{ step: string }> };
+		expect(json.steps?.map((s) => s.step)).not.toContain('pin-version');
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toBe('OWLAT_VERSION=0.4.16\n');
 	});
 
 	it('leaves the live compose file untouched when the pull fails', async () => {
