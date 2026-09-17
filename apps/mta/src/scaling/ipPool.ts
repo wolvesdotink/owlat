@@ -9,7 +9,11 @@
 
 import type Redis from 'ioredis';
 import { normalizeIpAddress } from '@owlat/shared/ipAddress';
-import { isIpReadinessBlockReason, type IpReadinessBlockReason } from '@owlat/shared/ipReadiness';
+import {
+	IP_READINESS_BLOCK_REASONS,
+	isIpReadinessBlockReason,
+	type IpReadinessBlockReason,
+} from '@owlat/shared/ipReadiness';
 import type { IpPoolConfig, IpPoolType } from '../types.js';
 import { logger } from '../monitoring/logger.js';
 
@@ -78,6 +82,7 @@ local underlyingKey = KEYS[6]
 local eligibilityGenerationKey = KEYS[7]
 local emergencyKey = KEYS[8]
 local pendingAlertsKey = KEYS[9]
+local sequenceKey = KEYS[10]
 
 local ip = ARGV[1]
 local reason = ARGV[2]
@@ -102,7 +107,15 @@ if not isConfigured then
   return {0, 0, tonumber(redis.call('HGET', eligibilityGenerationKey, ip) or '0'), existingUnderlying and 1 or 0, 0}
 end
 
-if observationGeneration <= appliedGeneration then
+-- Two ways an observation is out of date. It lost the CAS to a newer sweep, or
+-- it outranks the counter that issued it, which can only mean the counter was
+-- reset under it: retiring an address deletes both the counter and this
+-- reason's applied generation, so an observation allocated before that
+-- retirement belongs to a previous configuration epoch. Without this clause
+-- such an observation would land on the re-added address with a generation no
+-- fresh sweep can beat for a long time, freezing it at a stale verdict.
+local sequence = tonumber(redis.call('GET', sequenceKey) or '0')
+if observationGeneration <= appliedGeneration or observationGeneration > sequence then
   local existingUnderlying = redis.call('HGET', underlyingKey, ip) == '1'
   return {0, wasActive and 1 or 0, tonumber(redis.call('HGET', eligibilityGenerationKey, ip) or '0'), existingUnderlying and 1 or 0, 0}
 end
@@ -182,9 +195,13 @@ local dnsblPrefix = ARGV[3]
 local ipv4IdentityPrefix = ARGV[4]
 local sourceAddressPrefix = ARGV[5]
 local spfPrefix = ARGV[6]
-local allowUnverifiedFcrdns = ARGV[7] == '1'
+local observationSequencePrefix = ARGV[7]
+local allowUnverifiedFcrdns = ARGV[8] == '1'
+local reasonCount = tonumber(ARGV[9])
+local reasons = {}
+for index = 1, reasonCount do reasons[index] = ARGV[9 + index] end
 local newIps = {}
-for index = 8, #ARGV do newIps[ARGV[index]] = true end
+for index = 10 + reasonCount, #ARGV do newIps[ARGV[index]] = true end
 
 local previousIps = redis.call('SMEMBERS', configuredKey)
 for _, ip in ipairs(previousIps) do
@@ -208,6 +225,14 @@ for _, ip in ipairs(previousIps) do
     redis.call('HDEL', ipv4IdentityUnderlyingKey, ip)
     redis.call('HDEL', sourceAddressUnderlyingKey, ip)
     redis.call('HDEL', spfUnderlyingKey, ip)
+    -- The per-reason observation counters are the last per-address keys left
+    -- behind by a retirement, and they carry no TTL. They go with the applied
+    -- generations they are compared against: reset together, or the pair is
+    -- inconsistent. APPLY_OBSERVATION_SCRIPT's out-of-epoch clause is what
+    -- makes discarding them safe for an address that is later re-added.
+    for _, reason in ipairs(reasons) do
+      redis.call('DEL', observationSequencePrefix .. reason .. ':' .. ip)
+    end
     if wasActive then redis.call('HINCRBY', generationKey, ip, 1) end
   end
 end
@@ -259,12 +284,27 @@ const STATE_PREFIX_BY_BLOCK_REASON: Record<IpPoolBlockReason, string> = {
 	spf: SPF_PREFIX,
 };
 
+function observationSequenceKey(ip: string, reason: IpPoolBlockReason): string {
+	return `${OBSERVATION_SEQUENCE_PREFIX}${reason}:${ip}`;
+}
+
+/**
+ * Allocate the fencing token for one observation, BEFORE its DNS work starts.
+ *
+ * The counter carries no TTL on purpose: it is the monotonic ordering of every
+ * observation ever made about this (address, reason), and an expiry that fired
+ * mid-life would restart it below the applied generation it is compared
+ * against, after which every fresh sweep would read as stale and the address
+ * would freeze at whatever verdict it last held. Its lifetime is instead tied
+ * to the address: `INITIALIZE_POOLS_SCRIPT` deletes it when the address is
+ * retired, alongside the applied generation.
+ */
 export async function nextIpPoolObservationGeneration(
 	redis: Redis,
 	ip: string,
 	reason: IpPoolBlockReason
 ): Promise<number> {
-	return redis.incr(`${OBSERVATION_SEQUENCE_PREFIX}${reason}:${ip}`);
+	return redis.incr(observationSequenceKey(ip, reason));
 }
 
 export async function applyIpPoolObservation(
@@ -289,7 +329,7 @@ export async function applyIpPoolObservation(
 	);
 	const raw = (await redis.eval(
 		APPLY_OBSERVATION_SCRIPT,
-		9,
+		10,
 		observation.stateKey,
 		`${BLOCK_REASONS_PREFIX}${observation.ip}`,
 		IP_POOL_ACTIVE,
@@ -299,6 +339,7 @@ export async function applyIpPoolObservation(
 		IP_POOL_ELIGIBILITY_GENERATIONS,
 		EMERGENCY_KEY,
 		IP_READINESS_ALERTS_PENDING,
+		observationSequenceKey(observation.ip, observation.reason),
 		...args
 	)) as number[];
 	return {
@@ -471,7 +512,10 @@ export async function initializePools(
 		IPV4_IDENTITY_PREFIX,
 		SOURCE_ADDRESS_PREFIX,
 		SPF_PREFIX,
+		OBSERVATION_SEQUENCE_PREFIX,
 		allowUnverifiedFcrdns ? '1' : '0',
+		IP_READINESS_BLOCK_REASONS.length,
+		...IP_READINESS_BLOCK_REASONS,
 		...allIps
 	);
 	logger.info(

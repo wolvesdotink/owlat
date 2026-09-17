@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Redis from 'ioredis-mock';
+import { IP_READINESS_BLOCK_REASONS } from '@owlat/shared/ipReadiness';
 import {
 	selectIp,
 	selectIpWithLease,
@@ -139,6 +140,84 @@ describe('ipPool', () => {
 
 			await initializePools(redis, testConfig, true);
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
+		});
+
+		/**
+		 * The observation counters are the per-address keys that carry no TTL —
+		 * deliberately, since an expiry firing mid-life would restart the sequence
+		 * below the applied generation it is compared against and every later sweep
+		 * would read as stale. Their bound is membership instead: retiring the
+		 * address has to take them with it, or every pool reconfiguration leaves
+		 * one permanent key per reason behind on a `noeviction` Redis.
+		 */
+		it('takes the retired address observation counters with it', async () => {
+			await initializePools(redis, testConfig);
+			for (const reason of IP_READINESS_BLOCK_REASONS) {
+				await nextIpPoolObservationGeneration(redis, '10.0.0.1', reason);
+				await nextIpPoolObservationGeneration(redis, '10.0.0.2', reason);
+			}
+			const counters = (ip: string) =>
+				redis.keys(`mta:ip-pool:observation-sequence:*:${ip}`) as Promise<string[]>;
+			expect(await counters('10.0.0.1')).toHaveLength(IP_READINESS_BLOCK_REASONS.length);
+			// Unexpired on purpose; membership, not a TTL, is what bounds them.
+			for (const key of await counters('10.0.0.1')) expect(await redis.ttl(key)).toBe(-1);
+
+			await initializePools(redis, {
+				transactional: testConfig.transactional.slice(1),
+				campaign: testConfig.campaign,
+			});
+
+			expect(await counters('10.0.0.1')).toEqual([]);
+			// The addresses that stayed configured keep their sequence.
+			expect(await counters('10.0.0.2')).toHaveLength(IP_READINESS_BLOCK_REASONS.length);
+		});
+
+		it('discards an observation allocated before a retire-and-re-add', async () => {
+			await initializePools(redis, testConfig);
+			// Give the address some observation history, then allocate one more
+			// token and leave its DNS work outstanding across the reconfiguration.
+			await nextIpPoolObservationGeneration(redis, '10.0.0.1', 'fcrdns');
+			await nextIpPoolObservationGeneration(redis, '10.0.0.1', 'fcrdns');
+			const previousEpochGeneration = await nextIpPoolObservationGeneration(
+				redis,
+				'10.0.0.1',
+				'fcrdns'
+			);
+			await initializePools(redis, {
+				transactional: testConfig.transactional.slice(1),
+				campaign: testConfig.campaign,
+			});
+			await redis.hset('mta:fcrdns:10.0.0.1', 'verdict', 'pass', 'checkedAt', '1');
+			await initializePools(redis, testConfig);
+
+			// The re-added address starts a fresh sequence, so the outstanding
+			// token now outranks the counter that issued it.
+			const currentGeneration = await nextIpPoolObservationGeneration(redis, '10.0.0.1', 'fcrdns');
+			expect(currentGeneration).toBe(1);
+			expect(previousEpochGeneration).toBeGreaterThan(currentGeneration);
+
+			const previousEpoch = await applyIpPoolObservation(redis, {
+				ip: '10.0.0.1',
+				reason: 'fcrdns',
+				generation: previousEpochGeneration,
+				decision: 'clear',
+				stateKey: 'mta:fcrdns:10.0.0.1',
+				stateFields: { verdict: 'pass', checkedAt: '2' },
+			});
+			expect(previousEpoch.applied).toBe(false);
+			expect(await redis.hget('mta:ip-pool:applied-observations:fcrdns', '10.0.0.1')).toBeNull();
+
+			// ...and the sweep that belongs to this epoch is still authoritative.
+			const current = await applyIpPoolObservation(redis, {
+				ip: '10.0.0.1',
+				reason: 'fcrdns',
+				generation: currentGeneration,
+				decision: 'block',
+				stateKey: 'mta:fcrdns:10.0.0.1',
+				stateFields: { verdict: 'fail', checkedAt: '3' },
+			});
+			expect(current.applied).toBe(true);
+			expect(current.active).toBe(false);
 		});
 	});
 
