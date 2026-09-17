@@ -74,11 +74,15 @@ export async function latestMigrationForAccount(
 	// Past the importing phase the import is, by definition, complete — show
 	// 100 rather than a ratio that can fall short when the server returned
 	// fewer fetchable bodies than its message count.
+	// Walked = stored + skipped. Both consume a message from the denominator, so
+	// progress tracks the walk; only `messagesImported` claims mail landed.
+	const messagesFailed = migration.messagesFailed ?? 0;
+	const messagesWalked = migration.messagesImported + messagesFailed;
 	const importPercent =
 		migration.status !== 'importing'
 			? 100
 			: migration.messagesTotal > 0
-				? Math.min(100, Math.round((migration.messagesImported / migration.messagesTotal) * 100))
+				? Math.min(100, Math.round((messagesWalked / migration.messagesTotal) * 100))
 				: 0;
 	const indexPercent =
 		migration.messagesImported > 0
@@ -94,6 +98,7 @@ export async function latestMigrationForAccount(
 		isAiIndexingEnabled: migration.isAiIndexingEnabled,
 		messagesTotal: migration.messagesTotal,
 		messagesImported: migration.messagesImported,
+		messagesFailed,
 		messagesIndexed: migration.messagesIndexed,
 		importPercent,
 		indexPercent,
@@ -372,7 +377,13 @@ export const recordBackfillProgress = internalMutation({
 		migrationId: v.id('mailboxMigrations'),
 		remoteName: v.string(),
 		newCursor: v.number(),
+		/** Messages in this batch the worker STORED. */
 		importedDelta: v.number(),
+		/** Messages in this batch it walked past without storing. Optional so a
+		 * worker container still on the previous release — the gap between
+		 * `docker compose up` replacing the image and the functions deploying —
+		 * keeps making progress instead of failing every batch on arg validation. */
+		failedDelta: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<{ stillImporting: boolean }> => {
 		// Bail before touching the folder row when this batch's migration is no
@@ -392,12 +403,16 @@ export const recordBackfillProgress = internalMutation({
 			.first();
 		if (!row) return { stillImporting: false };
 
+		const failedDelta = args.failedDelta ?? 0;
 		await ctx.db.patch(row._id, {
 			backfillCursor: Math.max(0, args.newCursor),
-			backfillDone: (row.backfillDone ?? 0) + args.importedDelta,
+			// The folder's own counter tracks the WALK, so it reaches the folder's
+			// message count and the per-folder progress still completes.
+			backfillDone: (row.backfillDone ?? 0) + args.importedDelta + failedDelta,
 		});
 		await ctx.db.patch(migration._id, {
 			messagesImported: migration.messagesImported + args.importedDelta,
+			messagesFailed: (migration.messagesFailed ?? 0) + failedDelta,
 			updatedAt: Date.now(),
 		});
 		return { stillImporting: true };
@@ -442,6 +457,12 @@ export const markImportFailed = internalMutation({
  * Worker signals "all folders backfilled". Transition import → indexing (and
  * kick off the knowledge sweep) when AI indexing is on and `ai.knowledge` is
  * still enabled, otherwise straight to completed.
+ *
+ * A walk that reached the end of every folder without STORING anything is not a
+ * completed import, however cleanly it finished — that is the shape a broken
+ * ingest takes, and it used to render as "100%, N messages imported" over an
+ * empty mailbox. It fails here instead, so the wizard's existing
+ * 'failed → Try again' step is what the user sees.
  */
 export const completeBackfillImport = internalMutation({
 	args: { migrationId: v.id('mailboxMigrations') },
@@ -450,6 +471,24 @@ export const completeBackfillImport = internalMutation({
 		if (!migration || migration.status !== 'importing') return;
 
 		const now = Date.now();
+		const messagesFailed = migration.messagesFailed ?? 0;
+		if (migration.messagesImported === 0 && messagesFailed > 0) {
+			const message = `Walked ${messagesFailed} message(s) without storing any of them.`;
+			await ctx.db.patch(migration._id, {
+				status: 'failed',
+				completedAt: now,
+				updatedAt: now,
+				lastError: message,
+			});
+			await ctx.db.insert('mailAuditLog', {
+				mailboxId: migration.mailboxId,
+				event: 'migration.import_failed',
+				details: `error=${message}`,
+				occurredAt: now,
+			});
+			return;
+		}
+
 		const wantsIndexing =
 			migration.isAiIndexingEnabled && (await isFeatureEnabled(ctx, 'ai.knowledge'));
 
@@ -471,10 +510,17 @@ export const completeBackfillImport = internalMutation({
 				updatedAt: now,
 			});
 		}
+		if (messagesFailed > 0) {
+			// Some mail landed and some did not. The import is genuinely done, so it
+			// is not a failure — but the row must not read as if nothing was lost.
+			await ctx.db.patch(migration._id, {
+				lastError: `${messagesFailed} message(s) could not be stored and stayed on the server.`,
+			});
+		}
 		await ctx.db.insert('mailAuditLog', {
 			mailboxId: migration.mailboxId,
 			event: 'migration.import_complete',
-			details: `imported=${migration.messagesImported} indexing=${wantsIndexing}`,
+			details: `imported=${migration.messagesImported} failed=${messagesFailed} indexing=${wantsIndexing}`,
 			occurredAt: now,
 		});
 		// A `shared` migration imports a TEAM inbox — org infrastructure, not the

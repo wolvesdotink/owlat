@@ -265,7 +265,14 @@ export const mailAccountsTables = {
 
 		// AGGREGATED — progress counters.
 		messagesTotal: v.number(), // Σ per-folder backfillTotal (import denominator)
-		messagesImported: v.number(), // Σ per-folder backfillDone (import numerator)
+		messagesImported: v.number(), // messages the worker actually STORED
+		// Messages the worker walked past without storing — an ingest that threw,
+		// or a UID the server listed but returned no body for. MISSING = 0 (rows
+		// written before the two were told apart, when a failed ingest still
+		// counted as an import and a wholly failed run looked like a clean one).
+		// Progress is `(messagesImported + messagesFailed) / messagesTotal`, so the
+		// bar still completes while the imported count stays true.
+		messagesFailed: v.optional(v.number()),
 		messagesIndexed: v.number(), // messages swept into the knowledge graph
 
 		// Index-sweep cursor over mailMessages (mirrors knowledgeBackfill).

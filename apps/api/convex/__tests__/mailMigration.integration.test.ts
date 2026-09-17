@@ -587,6 +587,102 @@ describe('mail.migration — worker backfill surface', () => {
 		});
 	});
 
+	it('recordBackfillProgress keeps messages that failed out of the imported count', async () => {
+		const { t, accountId, migrationId } = await setup();
+		await t.mutation(internal.mail.migration.initFolderBackfill, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			ceilingUid: 100,
+			messageCount: 80,
+		});
+
+		await t.mutation(internal.mail.migration.recordBackfillProgress, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			newCursor: 50,
+			importedDelta: 30,
+			failedDelta: 20,
+		});
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.messagesImported).toBe(30); // only what actually landed
+			expect(m!.messagesFailed).toBe(20);
+			const row = await ctx.db
+				.query('externalMailFolderSync')
+				.withIndex('by_account', (q) => q.eq('accountId', accountId))
+				.first();
+			// The folder counter tracks the WALK, so progress still completes.
+			expect(row!.backfillDone).toBe(50);
+		});
+	});
+
+	it('completeBackfillImport fails a walk that stored nothing at all', async () => {
+		// The shape the broken ingest took: every folder walked to the end, every
+		// message skipped. Finishing the walk is not importing the mail.
+		const { t, accountId, migrationId } = await setup();
+		await t.mutation(internal.mail.migration.initFolderBackfill, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			ceilingUid: 100,
+			messageCount: 80,
+		});
+		await t.mutation(internal.mail.migration.recordBackfillProgress, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			newCursor: 0,
+			importedDelta: 0,
+			failedDelta: 80,
+		});
+
+		await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('failed');
+			expect(m!.lastError).toContain('80');
+			expect(m!.importCompletedAt).toBeUndefined();
+			const audit = await ctx.db.query('mailAuditLog').collect();
+			expect(audit.some((row) => row.event === 'migration.import_failed')).toBe(true);
+			expect(audit.some((row) => row.event === 'migration.import_complete')).toBe(false);
+		});
+	});
+
+	it('completeBackfillImport completes a partial import but records what was lost', async () => {
+		const { t, accountId, migrationId } = await setup();
+		await t.mutation(internal.mail.migration.initFolderBackfill, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			ceilingUid: 100,
+			messageCount: 80,
+		});
+		await t.mutation(internal.mail.migration.recordBackfillProgress, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			newCursor: 0,
+			importedDelta: 78,
+			failedDelta: 2,
+		});
+
+		await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('completed');
+			expect(m!.lastError).toContain('2');
+			const audit = await ctx.db.query('mailAuditLog').collect();
+			const complete = audit.find((row) => row.event === 'migration.import_complete');
+			expect(complete!.details).toContain('imported=78');
+			expect(complete!.details).toContain('failed=2');
+		});
+	});
+
 	it('completeBackfillImport finalizes completed when AI indexing is off', async () => {
 		const { t, accountId, migrationId } = await setup(); // ai.knowledge not enabled
 		await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });

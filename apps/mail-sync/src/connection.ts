@@ -566,7 +566,16 @@ export class AccountConnection {
 					// Historical import: never enqueue background LLM work for it.
 					origin: 'backfill',
 				}),
-			recordProgress: async (remoteName, newCursor, importedDelta) => {
+			reportIngestFailure: (remoteName, uid, err) => {
+				// The forward-sync loop logs its skips (pollFolder below); the backfill
+				// used to swallow them, which is how an ingest that threw on every
+				// message still reported a completed import.
+				logger.warn(
+					{ accountId, remoteName, uid, err },
+					'backfill ingest failed; skipping message'
+				);
+			},
+			recordProgress: async (remoteName, newCursor, importedDelta, failedDelta) => {
 				const res = (await this.convex.mutation(
 					fn.recordBackfillProgress as never,
 					{
@@ -575,6 +584,7 @@ export class AccountConnection {
 						remoteName,
 						newCursor,
 						importedDelta,
+						failedDelta,
 					} as never
 				)) as { stillImporting: boolean };
 				return res.stillImporting;

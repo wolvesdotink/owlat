@@ -32,8 +32,14 @@ describe('nextBackfillRange', () => {
 
 interface Recorder {
 	ingested: number[];
-	progress: Array<{ newCursor: number; importedDelta: number }>;
+	progress: Array<{ newCursor: number; importedDelta: number; failedDelta: number }>;
 	fetchedRanges: Array<{ start: number; end: number }>;
+	failures: Array<{ uid: number; error: unknown }>;
+}
+
+/** A recorder with every list empty. */
+function recorder(): Recorder {
+	return { ingested: [], progress: [], fetchedRanges: [], failures: [] };
 }
 
 /** A fake folder of sparse UIDs, wired into BackfillFolderDeps. */
@@ -45,12 +51,11 @@ function fakeDeps(opts: {
 	// recordProgress returns false from this batch on (simulates Cancel).
 	cancelAfterBatches?: number;
 }): { deps: BackfillFolderDeps; rec: Recorder } {
-	const rec: Recorder = { ingested: [], progress: [], fetchedRanges: [] };
+	const rec = recorder();
 	let batches = 0;
 	const deps: BackfillFolderDeps = {
 		batchSize: opts.batchSize,
-		initFolder: async () =>
-			opts.startCursor === null ? null : { startCursor: opts.startCursor },
+		initFolder: async () => (opts.startCursor === null ? null : { startCursor: opts.startCursor }),
 		fetchBatch: async (_remoteName, start, end): Promise<BackfillFetchedMessage[]> => {
 			rec.fetchedRanges.push({ start, end });
 			batches++;
@@ -61,12 +66,14 @@ function fakeDeps(opts: {
 		ingest: async (_remoteName, _role, uid) => {
 			rec.ingested.push(uid);
 		},
-		recordProgress: async (_remoteName, newCursor, importedDelta) => {
-			rec.progress.push({ newCursor, importedDelta });
+		reportIngestFailure: (_remoteName, uid, error) => {
+			rec.failures.push({ uid, error });
+		},
+		recordProgress: async (_remoteName, newCursor, importedDelta, failedDelta) => {
+			rec.progress.push({ newCursor, importedDelta, failedDelta });
 			return !(opts.cancelAfterBatches !== undefined && batches >= opts.cancelAfterBatches);
 		},
-		isStopped: () =>
-			opts.stopAfterBatches !== undefined && batches >= opts.stopAfterBatches,
+		isStopped: () => opts.stopAfterBatches !== undefined && batches >= opts.stopAfterBatches,
 	};
 	return { deps, rec };
 }
@@ -112,6 +119,7 @@ describe('backfillFolder', () => {
 		// Two batches: [6,10] then [1,5] (empty), cursor 5 → 0.
 		expect(rec.progress.map((p) => p.newCursor)).toEqual([5, 0]);
 		expect(rec.progress.map((p) => p.importedDelta)).toEqual([2, 0]);
+		expect(rec.progress.map((p) => p.failedDelta)).toEqual([0, 0]);
 	});
 
 	it('stops cooperatively mid-walk and reports interrupted', async () => {
@@ -145,7 +153,7 @@ describe('backfillFolder', () => {
 	});
 
 	it('counts a source-less message toward progress without ingesting it', async () => {
-		const rec: Recorder = { ingested: [], progress: [], fetchedRanges: [] };
+		const rec = recorder();
 		const deps: BackfillFolderDeps = {
 			batchSize: 10,
 			initFolder: async () => ({ startCursor: 3 }),
@@ -160,22 +168,26 @@ describe('backfillFolder', () => {
 			ingest: async (_n, _r, uid) => {
 				rec.ingested.push(uid);
 			},
-			recordProgress: async (_n, newCursor, importedDelta) => {
-				rec.progress.push({ newCursor, importedDelta });
+			reportIngestFailure: (_n, uid, error) => {
+				rec.failures.push({ uid, error });
+			},
+			recordProgress: async (_n, newCursor, importedDelta, failedDelta) => {
+				rec.progress.push({ newCursor, importedDelta, failedDelta });
 				return true;
 			},
 			isStopped: () => false,
 		};
 		const done = await backfillFolder(deps, target);
 		expect(done).toBe(true);
-		// uid 2 had no source → not ingested, but still counted so the percentage
-		// can reach the `messageCount` denominator.
+		// uid 2 had no source → not ingested, and NOT counted as imported; it is
+		// still counted as walked so the percentage can reach `messageCount`.
 		expect(rec.ingested.sort()).toEqual([1, 3]);
-		expect(rec.progress.reduce((n, p) => n + p.importedDelta, 0)).toBe(3);
+		expect(rec.progress.reduce((n, p) => n + p.importedDelta, 0)).toBe(2);
+		expect(rec.progress.reduce((n, p) => n + p.failedDelta, 0)).toBe(1);
 	});
 
 	it('keeps advancing when a single message fails to ingest', async () => {
-		const rec: Recorder = { ingested: [], progress: [], fetchedRanges: [] };
+		const rec = recorder();
 		const deps: BackfillFolderDeps = {
 			batchSize: 10,
 			initFolder: async () => ({ startCursor: 3 }),
@@ -191,8 +203,11 @@ describe('backfillFolder', () => {
 				if (uid === 2) throw new Error('oversized');
 				rec.ingested.push(uid);
 			},
-			recordProgress: async (_n, newCursor, importedDelta) => {
-				rec.progress.push({ newCursor, importedDelta });
+			reportIngestFailure: (_n, uid, error) => {
+				rec.failures.push({ uid, error });
+			},
+			recordProgress: async (_n, newCursor, importedDelta, failedDelta) => {
+				rec.progress.push({ newCursor, importedDelta, failedDelta });
 				return true;
 			},
 			isStopped: () => false,
@@ -202,7 +217,48 @@ describe('backfillFolder', () => {
 		// uid 2 threw but 1 and 3 still ingested; cursor still reached 0.
 		expect(rec.ingested.sort()).toEqual([1, 3]);
 		expect(rec.progress.at(-1)!.newCursor).toBe(0);
-		// All 3 counted as processed (progress %, not insert count).
-		expect(rec.progress.reduce((n, p) => n + p.importedDelta, 0)).toBe(3);
+		// The message that threw is reported, not swallowed...
+		expect(rec.failures.map((f) => f.uid)).toEqual([2]);
+		// ...and counted as failed, never as imported.
+		expect(rec.progress.reduce((n, p) => n + p.importedDelta, 0)).toBe(2);
+		expect(rec.progress.reduce((n, p) => n + p.failedDelta, 0)).toBe(1);
+	});
+
+	it('reports a wholly failed walk as zero imported, not as a full import', async () => {
+		// The shape the `Buffer is not defined` ingest took: every message fetched,
+		// every ingest throwing, the walk finishing cleanly. It must not be
+		// indistinguishable from importing the same messages successfully.
+		const rec = recorder();
+		const deps: BackfillFolderDeps = {
+			batchSize: 10,
+			initFolder: async () => ({ startCursor: 3 }),
+			fetchBatch: async (_n, start, end) => {
+				rec.fetchedRanges.push({ start, end });
+				return [1, 2, 3].map((u) => ({
+					uid: u,
+					source: Buffer.from(`r-${u}`),
+					flags: new Set<string>(),
+				}));
+			},
+			ingest: async () => {
+				throw new ReferenceError('Buffer is not defined');
+			},
+			reportIngestFailure: (_n, uid, error) => {
+				rec.failures.push({ uid, error });
+			},
+			recordProgress: async (_n, newCursor, importedDelta, failedDelta) => {
+				rec.progress.push({ newCursor, importedDelta, failedDelta });
+				return true;
+			},
+			isStopped: () => false,
+		};
+
+		const done = await backfillFolder(deps, target);
+
+		expect(done).toBe(true); // the walk did finish — that part was never a lie
+		expect(rec.ingested).toEqual([]);
+		expect(rec.failures.map((f) => f.uid)).toEqual([1, 2, 3]);
+		expect(rec.progress.reduce((n, p) => n + p.importedDelta, 0)).toBe(0);
+		expect(rec.progress.reduce((n, p) => n + p.failedDelta, 0)).toBe(3);
 	});
 });
