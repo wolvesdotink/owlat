@@ -1380,6 +1380,32 @@ write_selfhost_env() {
 
 # ── Self-Hosted: Docker Compose ─────────────────────────────────────────────
 
+# Persist the admin key to .env AND re-apply .env to the containers that were
+# created before it existed.
+#
+# The bring-up is unscoped and necessarily runs first — only an already-running
+# backend can mint the key — so imap, mail-sync and convex-fn-proxy were created
+# holding an EMPTY CONVEX_ADMIN_KEY, which they reject at boot
+# ("CONVEX_ADMIN_KEY is required"), crash-looping forever under
+# `restart: unless-stopped`, because Docker bakes env at CREATE time.
+# A plain `up -d` recreates ONLY the containers whose resolved config changed
+# (not --force-recreate, which would also bounce the healthy backend).
+# Non-fatal: the key is saved, so `owlat start` also repairs it.
+#
+# Both ways the key can arrive — auto-generated, or pasted by hand when
+# generate_admin_key.sh fails — land here, so neither can leave the stack
+# crash-looping.
+persist_admin_key() {
+  [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]] || return 0
+  sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
+  rm -f .env.bak
+  success "Admin key saved to .env"
+
+  if ! docker compose up -d >/dev/null 2>&1; then
+    warn "Could not re-apply .env to the running stack. If Postbox or external mail is enabled, run: docker compose up -d"
+  fi
+}
+
 run_docker_compose() {
   section "Starting Docker Compose Stack"
 
@@ -1428,11 +1454,7 @@ run_docker_compose() {
     warn "Could not auto-generate admin key"
     echo -e "    ${DIM}Run manually: docker compose exec convex ./generate_admin_key.sh${RESET}"
     prompt_default "Paste the admin key here" "" SELFHOST_CONVEX_ADMIN_KEY
-    # Update .env
-    if [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]]; then
-      sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
-      rm -f .env.bak
-    fi
+    persist_admin_key
     return
   }
 
@@ -1445,12 +1467,8 @@ run_docker_compose() {
     prompt_default "Paste the admin key" "" SELFHOST_CONVEX_ADMIN_KEY
   fi
 
-  # Write admin key back to .env
-  if [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]]; then
-    sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
-    rm -f .env.bak
-    success "Admin key saved to .env"
-  fi
+  # Write admin key back to .env and re-apply it to the stack.
+  persist_admin_key
 
   # 4. Deploy Convex functions
   echo ""

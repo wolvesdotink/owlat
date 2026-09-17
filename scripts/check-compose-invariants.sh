@@ -24,6 +24,10 @@
 #   • Docker socket: only the read-only docker-socket-proxy mounts it, and the
 #     privileged Docker API sits on an internal-only network.
 #   • Receiving profiles: external-mail and personal-mail stay bootable.
+#   • IMAP: the TLS key is owned by the uid the image actually runs as (and
+#     stays 0600), and the LOGIN brute-force limiter has a Redis behind it.
+#     Both were broken from the first release: 724 crash-loops and an
+#     internet-facing auth port with no throttling.
 #   • IPv6: the shipped install is IPv4-only behind one explicit flag.
 #   • Feature-flag registry: every activatable docker profile exists in both
 #     compose files and every required env var is in the VPS template.
@@ -228,12 +232,108 @@ if grep -qE '^ {6}MAIL_SYNC_API_KEY: \$\{MAIL_SYNC_API_KEY\}$' <<<"$mail_sync" \
 	ok "$root runs mail-sync under external-mail with a defaultless MAIL_SYNC_API_KEY"
 else bad "$root mail-sync must use MAIL_SYNC_API_KEY: \${MAIL_SYNC_API_KEY} (no :- default) under the external-mail profile"; fi
 
+# A required secret must never be interpolated with the `${VAR:-}` empty
+# default. Compose bakes the resolved value into the container at CREATE time,
+# so an empty one is not a degraded mode — it is a container that rejects its
+# own config at boot and then crash-loops on it FOREVER, long after .env is
+# fixed. imap burnt 11h of a live instance that way. Every consumer of
+# CONVEX_ADMIN_KEY throws on an empty value (apps/imap/src/config.ts,
+# apps/mail-sync/src/config.ts, apps/convex-fn-proxy/src/proxy.ts), so the
+# defaultless `${CONVEX_ADMIN_KEY}` form is pinned here in BOTH compose files.
+#
+# It is NOT `${CONVEX_ADMIN_KEY:?}`, and must not be "upgraded" to it: the key
+# can only be minted by an already-running backend, so .env legitimately holds
+# it empty during the install's first `up` — and because compose interpolates
+# the whole file before profile filtering, `:?` would abort that `up` along with
+# every later `down`/`logs`/`ps`, scripts/backup.sh and scripts/restore.sh.
+# The creation-order half is fixed in the setup flow, which re-runs `up -d`
+# after the key lands (apps/setup-cli/src/commands/quickstart.ts, scripts/setup.sh).
+for compose in "$root" "$vps"; do
+	defaulted=$(grep -cE '^ {6}CONVEX_ADMIN_KEY: \$\{CONVEX_ADMIN_KEY:-\}$' "$compose" || true)
+	consumers=$(grep -cE '^ {6}CONVEX_ADMIN_KEY: \$\{CONVEX_ADMIN_KEY\}$' "$compose" || true)
+	if [ "${defaulted:-0}" -eq 0 ] && [ "${consumers:-0}" -ge 1 ]; then
+		ok "$compose interpolates CONVEX_ADMIN_KEY with no empty default ($consumers consumer(s))"
+	else bad "$compose must use CONVEX_ADMIN_KEY: \${CONVEX_ADMIN_KEY} with no :- default (found ${defaulted:-0} defaulted, ${consumers:-0} defaultless) — an empty admin key crash-loops imap/mail-sync/convex-fn-proxy forever"; fi
+done
+
 cert_init=$(service_block "$root" imap-cert-init)
 imap_block=$(service_block "$root" imap)
 if [ -n "$cert_init" ] && grep -qE '^ {6}- personal-mail$' <<<"$cert_init" \
 	&& grep -Pzq 'imap-cert-init:\n {8}condition: service_completed_successfully\n' <<<"$imap_block"; then
 	ok "$root provisions the IMAP TLS cert under personal-mail before the imap server starts"
 else bad "$root needs an imap-cert-init service on the personal-mail profile that imap depends on with service_completed_successfully"; fi
+
+# --- the IMAP TLS key must be readable BY THE PROCESS THAT NEEDS IT -----------
+# Provisioning the cert is only half of it. imap-cert-init runs as root, so the
+# 0600 key it writes lands as root:root — while the imap image runs as uid 1000
+# and mounts mail-certs `:ro`, so it can neither read the key nor repair it.
+# `EACCES: permission denied, open '/opt/owlat/certs/default.key'` out of
+# loadConfig, then `restart: unless-stopped` forever: a live instance logged 724
+# restarts having never once served IMAP. Four properties are pinned.
+if grep -qF 'chown -R "$${IMAP_RUNTIME_USER}" "$$cert_dir"' <<<"$cert_init"; then
+	ok "$root imap-cert-init hands the cert dir to the uid the imap image runs as"
+else bad "$root imap-cert-init must chown the cert dir to \${IMAP_RUNTIME_USER}, or imap EACCESes on its own TLS key and crash-loops"; fi
+
+# The fixup has to run on EVERY boot, including the branch that finds a cert
+# already there — that is the only thing that heals a volume an older install
+# already poisoned, or a key an ACME sidecar has just re-published as root. An
+# early `exit 0` on the already-present branch silently skips it.
+if grep -qF 'exit 0' <<<"$cert_init"; then
+	bad "$root imap-cert-init exits early on the already-present branch — the ownership fixup must run on every boot or a poisoned volume stays broken forever"
+else ok "$root imap-cert-init applies the ownership fixup on every boot, not just when it generates a cert"; fi
+
+# Fixing ownership must not be done by widening the mode instead.
+key_modes=$(grep -oE 'chmod [0-7]+ "\$\$cert_dir/default\.key"' <<<"$cert_init" | awk '{print $2}' | sort -u | tr '\n' ' ')
+if [ "$key_modes" = "600 " ]; then
+	ok "$root imap-cert-init keeps the private key 0600 (never group- or world-readable)"
+else bad "$root imap-cert-init must chmod the private key to exactly 600 (found: ${key_modes:-none})"; fi
+
+# The chown target here and the image's USER there are the same fact in two
+# files, so they are pinned to each other: apps/imap/Dockerfile asserts its
+# runtime uid:gid at BUILD time, and every declared default must agree with it.
+image_user=$(grep -oE '= "[0-9]+:[0-9]+"' apps/imap/Dockerfile | head -1 | tr -d '= "')
+pinned_users=$(grep -ohE 'IMAP_RUNTIME_USER:-[0-9]+:[0-9]+' \
+	"$root" "$vps" infra/templates/acme-entrypoint.sh | sed 's/.*:-//' | sort -u)
+if [ -n "$image_user" ] && [ "$(printf '%s\n' "$pinned_users" | wc -l | tr -d ' ')" = 1 ] \
+	&& [ "$pinned_users" = "$image_user" ]; then
+	ok "every IMAP_RUNTIME_USER default matches the uid:gid apps/imap/Dockerfile asserts ($image_user)"
+else bad "IMAP_RUNTIME_USER defaults (${pinned_users:-none}) must all equal the uid:gid asserted in apps/imap/Dockerfile (${image_user:-none}) — drift here means imap cannot read its own TLS key"; fi
+
+# Same defect, second delivery path: on the VPS the ACME sidecar (lego, root)
+# re-publishes default.key on every renewal, so without a chown the EACCES comes
+# back every time the certificate rolls over — even after a manual fix.
+acme_sh=infra/templates/acme-entrypoint.sh
+acme_key_modes=$(grep -oE 'install -m [0-7]+ "\$key"' "$acme_sh" | awk '{print $3}' | sort -u | tr '\n' ' ')
+if grep -qF 'chown "$IMAP_RUNTIME_USER"' "$acme_sh" && [ "$acme_key_modes" = "0600 " ]; then
+	ok "$acme_sh publishes the key 0600 and hands ownership to IMAP_RUNTIME_USER on every renewal"
+else bad "$acme_sh must install the key with mode 0600 (found: ${acme_key_modes:-none}) and chown it to \$IMAP_RUNTIME_USER, or IMAP EACCESes again at the next renewal"; fi
+
+if grep -qE '^ {6}IMAP_RUNTIME_USER: \$\{IMAP_RUNTIME_USER:-[0-9]+:[0-9]+\}$' <<<"$(service_block "$vps" acme)"; then
+	ok "$vps passes IMAP_RUNTIME_USER to the acme sidecar"
+else bad "$vps acme service must set IMAP_RUNTIME_USER so acme-entrypoint.sh knows who may read the published key"; fi
+
+# --- the IMAP auth rate limiter must have a backing store --------------------
+# Port 993 is internet-facing and LOGIN is the only thing between it and a
+# user's mail, but REDIS_URL used to be set on exactly one service per compose
+# file (mta). apps/imap's brute-force limiter therefore had no counters on every
+# deployment ever made, announced solely by a level-40 line at boot. The app now
+# refuses to start in production without it, so an omission here is a crash-loop
+# rather than a silent hole — pin it in both files.
+for compose in "$root" "$vps"; do
+	block=$(service_block "$compose" imap)
+	if grep -qE '^ {6}REDIS_URL: redis://:\$\{REDIS_PASSWORD[^}]*\}@redis:6379$' <<<"$block"; then
+		ok "$compose backs the IMAP auth rate limiter with the shared Redis"
+	else bad "$compose imap service must set REDIS_URL=redis://:\${REDIS_PASSWORD…}@redis:6379 — without it port 993 accepts unlimited password guessing"; fi
+
+	# service_healthy, not service_started: a security control should be
+	# answering before the listener takes its first LOGIN.
+	if awk '/^ {4}depends_on:$/ { d=1; next }
+		d && /^ {6}redis:$/ { p=1; next }
+		p && /^ {6}[a-z]/ { exit }
+		p { print }' <<<"$block" | grep -qE '^ {8}condition: service_healthy$'; then
+		ok "$compose holds imap back until Redis is healthy"
+	else bad "$compose imap service must depend_on redis with condition: service_healthy"; fi
+done
 
 # --- outbound IPv6 stays off by default ---------------------------------------
 for compose in "$root" "$vps"; do

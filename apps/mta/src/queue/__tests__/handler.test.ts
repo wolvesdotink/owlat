@@ -84,6 +84,7 @@ import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
 import type { CtxWithIp } from '../../dispatch/types.js';
 import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
+import { deferBudgetKey, MAX_DEFER_SUCCESSORS_PER_MESSAGE } from '../deferBudget.js';
 
 const createConfig = (overrides: Partial<MtaConfig> = {}): MtaConfig =>
 	createOwlatHostConfig({ maxMessageAgeMs: 4 * 24 * 60 * 60 * 1000, ...overrides });
@@ -1157,6 +1158,50 @@ describe('handleEmailJob', () => {
 		expectJitteredDelay(queue.add.mock.calls[0]![0].delay as number, capDeferDelayMs(Date.now()));
 	});
 
+	it('stops minting successors once a message has spent its defer budget', async () => {
+		// A defer costs no delivery attempt, so nothing in GroupMQ bounds a
+		// ladder that advances faster than the delays it asks for. Seed the
+		// message at its last honest rung and take the two after it.
+		const { checkCap } = await import('../../intelligence/warming.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
+		await redis.set(deferBudgetKey('msg-001'), String(MAX_DEFER_SUCCESSORS_PER_MESSAGE - 1));
+
+		await expect(run(createJob(), { id: 'last-rung' })).resolves.toBeUndefined();
+		expect(queue.add).toHaveBeenCalledTimes(1);
+
+		queue.add.mockClear();
+		await expect(run(createJob(), { id: 'one-rung-too-far' })).resolves.toBeUndefined();
+
+		// Dead-lettered loudly instead: no successor, one terminal bounce.
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: 'bounced',
+				messageId: 'msg-001',
+				bounceType: 'soft',
+				message: expect.stringContaining('deferred'),
+			}),
+			config,
+			redis
+		);
+	});
+
+	it('budgets every chain of a message together, not each chain separately', async () => {
+		// Each governed /send mints its own root job and its own defer chain for
+		// the same message, so a per-chain cap would multiply by the number of
+		// roots. A second root inherits the exhausted budget.
+		const { checkCap } = await import('../../intelligence/warming.js');
+		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
+		await redis.set(deferBudgetKey('msg-001'), String(MAX_DEFER_SUCCESSORS_PER_MESSAGE));
+
+		await expect(
+			run(createJob({ intakeReceiptId: 'work-attempt-2' }), { id: 'another-root' })
+		).resolves.toBeUndefined();
+
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
 	it('PR-04 (b): warming-capped 5x in a row stays retryable (re-enqueued, never dead-lettered)', async () => {
 		const { checkCap } = await import('../../intelligence/warming.js');
 		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
@@ -1171,6 +1216,40 @@ describe('handleEmailJob', () => {
 			).resolves.toBeUndefined();
 			expect(queue.add).toHaveBeenCalledTimes(1);
 		}
+	});
+
+	// The defer-handoff receipt used to be keyed by the SUCCESSOR job id, which
+	// is re-derived on every deferral, so each rung of a ladder minted a fresh
+	// key held for the full four-day message lifetime. A personal instance stuck
+	// in a 60s self-throttle loop accumulated 6.37M of them and OOM-killed Redis.
+	// Keyed by the chain instead, a ladder of any length occupies exactly one.
+	it('PR-04 (b): a long self-throttle ladder holds exactly ONE defer-handoff key', async () => {
+		const { checkCap } = await import('../../intelligence/warming.js');
+		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
+
+		let data = createJob();
+		let jobId = 'ladder-root';
+		let chainKey: string | undefined;
+
+		for (let rung = 0; rung < 25; rung++) {
+			queue.add.mockClear();
+			await expect(run(data, { id: jobId })).resolves.toBeUndefined();
+			expect(queue.add).toHaveBeenCalledTimes(1);
+
+			// The leak this guards: one key per rung, each pinned for four days.
+			const keys = await redis.keys('mta:defer-handoffs:*');
+			expect(keys).toHaveLength(1);
+			// ...and it is the same slot every rung, overwritten in place.
+			chainKey ??= keys[0];
+			expect(keys[0]).toBe(chainKey);
+
+			const enqueued = queue.add.mock.calls[0]![0] as { jobId: string; data: EmailJob };
+			data = enqueued.data;
+			jobId = enqueued.jobId;
+		}
+
+		expect(chainKey).toMatch(/^mta:defer-handoffs:chain-[0-9a-f]{64}$/);
+		expect(data.deferChainId).toBe(chainKey!.split(':').pop());
 	});
 
 	it('PR-04 (b): circuit breaker open re-enqueues with the cooldown delay, no throw', async () => {

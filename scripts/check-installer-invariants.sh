@@ -73,6 +73,26 @@ if grep -qE '"\$OWLAT_CONFIG_FILE:\$CONFIG_IN_CONTAINER:ro"' "$owlat_cli"; then
 	ok "scripts/owlat bind-mounts OWLAT_CONFIG_FILE read-only"
 else bad "scripts/owlat must mount OWLAT_CONFIG_FILE at CONFIG_IN_CONTAINER with :ro"; fi
 
+# --- every provisioning path puts `owlat` on PATH ------------------------------
+# The day-2 ops docs promise a `/usr/local/bin/owlat`, but install.sh is not the
+# only provisioner: the desktop SSH wizard and the hand-clone flow both run
+# `scripts/owlat quickstart` and never reach install.sh. The link therefore lives
+# in the wrapper, and install.sh must delegate rather than keep a second copy.
+if grep -qE '^ensure_cli_on_path\(\) \{' "$owlat_cli" \
+	&& grep -qE '^[[:blank:]]setup\|quickstart\|config\)' "$owlat_cli" \
+	&& grep -q 'ensure_cli_on_path || true' "$owlat_cli"; then
+	ok "scripts/owlat links the CLI onto PATH on its provisioning subcommands"
+else bad "scripts/owlat must call ensure_cli_on_path for setup|quickstart|config"; fi
+
+if grep -qE '^[[:blank:]]install-cli\)' "$owlat_cli"; then
+	ok "scripts/owlat exposes 'install-cli' as the explicit repair command"
+else bad "scripts/owlat must expose an 'install-cli' subcommand"; fi
+
+install_cli=$(fn install_owlat_cli "$install_sh")
+if grep -q 'install-cli' <<<"$install_cli" && ! grep -q 'ln -s' <<<"$install_cli"; then
+	ok "install.sh delegates the CLI symlink to scripts/owlat install-cli"
+else bad "install.sh install_owlat_cli must delegate to 'scripts/owlat install-cli', not re-implement ln -s"; fi
+
 # --- quickstart never turns dev mode on ---------------------------------------
 if grep -qE "OWLAT_DEV_MODE:\s*'true'|OWLAT_DEV_MODE['\"]?\]?\s*=\s*['\"]true" "$quickstart_ts"; then
 	bad "quickstart.ts must never write OWLAT_DEV_MODE=true (it unlocks POST /dev/reset)"

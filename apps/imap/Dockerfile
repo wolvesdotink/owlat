@@ -57,6 +57,17 @@ ENV OWLAT_VERSION=${OWLAT_VERSION} \
     OWLAT_GIT_SHA=${OWLAT_GIT_SHA} \
     OWLAT_BUILD_DATE=${OWLAT_BUILD_DATE}
 
+# The runtime uid:gid is a published contract, not an implementation detail:
+# docker-compose.yml's imap-cert-init chowns the shared mail-certs volume to
+# exactly this user so the IMAPS listener can read its 0600 TLS key (the volume
+# is mounted :ro here, so the app cannot fix ownership itself). If a base-image
+# bump ever renumbers `node`, fail the BUILD here rather than ship an IMAP that
+# EACCESes on its own key and crash-loops. Keep in step with IMAP_RUNTIME_USER.
+RUN [ "$(id -u node):$(id -g node)" = "1000:1000" ] || { \
+	echo "node is $(id -u node):$(id -g node), not 1000:1000 — update IMAP_RUNTIME_USER in docker-compose.yml and infra/templates/docker-compose.vps.yml" >&2; \
+	exit 1; \
+	}
+
 USER node
 EXPOSE 993
 

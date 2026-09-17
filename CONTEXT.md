@@ -3308,6 +3308,29 @@ dispatcher** to a `sent → delivered` Send lifecycle transition.
 _Avoid_: Send (Convex-side term — one Send spans 1..N attempts), Job
 alone (GroupMQ vocabulary; doesn't signal the per-attempt scope).
 
+**Defer ladder**:
+The chain of jobs one message walks while it keeps being deferred. A defer
+is never thrown back at GroupMQ — `handler.ts` enqueues a successor with the
+computed per-category delay and completes — so a defer consumes no delivery
+attempt and `maxAttempts` cannot end a ladder. Two things do: the
+max-message-age cap (bounds it in time) and the **Defer successor budget**
+(bounds it in count). Each rung's successor id is derived from its
+predecessor's, and the whole ladder shares one handoff receipt slot keyed by
+its chain.
+_Avoid_: Retry chain (GroupMQ's `attempts` are a different, unrelated
+counter), re-queue loop (names the failure mode, not the mechanism).
+
+**Defer successor budget**:
+The cap at `apps/mta/src/queue/deferBudget.ts` on how many successors one
+`messageId` may mint, counted in Redis across every chain of that message —
+governed sends carry their own `workAttemptId` per attempt, so one message
+can have several roots and therefore several ladders. Sized as the rungs a
+one-per-minute ladder could take before the message expires anyway — a
+policy floor, not the shortest defer the MTA issues, which is a flat 5s on
+a contended domain slot. Exhausting it is terminal: a soft bounce naming
+the runaway, never another successor.
+_Avoid_: Rate limit (this is a lifetime count, not a per-interval rate).
+
 **Dispatch pipeline (module)**:
 The module at `apps/mta/src/dispatch/pipeline.ts` that owns the ordered
 pre-send check sequence for a Dispatch attempt. Composed of typed

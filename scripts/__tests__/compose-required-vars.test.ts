@@ -25,6 +25,8 @@ const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const COMPOSE = 'docker-compose.yml';
 const WORKFLOW = '.github/workflows/_server-build.yml';
 const VERIFY_STEP = 'Verify compose file is parseable';
+/** The e2e-install job writes a real `.env` with this heredoc before `up`. */
+const E2E_ENV_HEREDOC = 'cat > .env <<EOF';
 
 function read(relativePath: string): string {
 	return readFileSync(join(REPOSITORY_ROOT, relativePath), 'utf8');
@@ -60,6 +62,24 @@ function verifyStepEnvKeys(workflow: string): string[] {
 	return keys.sort();
 }
 
+/**
+ * The `KEY=` names of the e2e-install job's `.env` heredoc, read as written.
+ * Stops at the heredoc terminator so the shell around it cannot leak in.
+ */
+function e2eEnvKeys(workflow: string): string[] {
+	const lines = workflow.split('\n');
+	const start = lines.findIndex((line) => line.includes(E2E_ENV_HEREDOC));
+	expect(start, `heredoc "${E2E_ENV_HEREDOC}" not found in ${WORKFLOW}`).toBeGreaterThan(-1);
+
+	const keys: string[] = [];
+	for (const line of lines.slice(start + 1)) {
+		if (line.trim() === 'EOF') break;
+		const key = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)=/)?.[1];
+		if (key) keys.push(key);
+	}
+	return keys.sort();
+}
+
 describe('release compose placeholder env', () => {
 	it('supplies a placeholder for every required compose variable', () => {
 		const required = requiredComposeVars(read(COMPOSE));
@@ -69,6 +89,26 @@ describe('release compose placeholder env', () => {
 		expect(
 			required.filter((name) => !supplied.has(name)),
 			`add these to the "${VERIFY_STEP}" env in ${WORKFLOW}, or the release will build but never publish`
+		).toEqual([]);
+	});
+});
+
+/**
+ * The verify step above only proves the compose file PARSES. The e2e-install job
+ * then brings the stack UP for real against a `.env` it writes itself — a second,
+ * independent list that nothing used to check. A `${VAR:?}` missing from it
+ * parses fine in the verify step and then fails the actual `docker compose up`,
+ * so it is pinned against the same source of truth here.
+ */
+describe('e2e-install .env', () => {
+	it('sets every required compose variable before bringing the stack up', () => {
+		const required = requiredComposeVars(read(COMPOSE));
+		const supplied = new Set(e2eEnvKeys(read(WORKFLOW)));
+
+		expect(required.length).toBeGreaterThan(0);
+		expect(
+			required.filter((name) => !supplied.has(name)),
+			`add these to the "${E2E_ENV_HEREDOC}" block in ${WORKFLOW}, or e2e-install fails at \`docker compose up\``
 		).toEqual([]);
 	});
 });

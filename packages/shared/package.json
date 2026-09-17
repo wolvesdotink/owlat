@@ -81,6 +81,10 @@
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
 		},
+		"./containerHealth": {
+			"types": "./src/containerHealth.ts",
+			"import": "./src/containerHealth.ts"
+		},
 		"./convexRuntimeEnv": {
 			"types": "./src/convexRuntimeEnv.ts",
 			"import": "./src/convexRuntimeEnv.ts"

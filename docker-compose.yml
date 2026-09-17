@@ -188,7 +188,7 @@ services:
       # Seals DKIM private keys + relay credentials at rest (>= 32 bytes). Minted
       # by setup (ensureSecrets) alongside MTA_API_KEY. The MTA asserts its
       # presence + strength at boot (config.ts), matching the MTA_API_KEY contract.
-      MTA_SECRET: ${MTA_SECRET:-}
+      MTA_SECRET: ${MTA_SECRET:?MTA_SECRET is required (owlat-setup generates it; manual installs use openssl rand -hex 32)}
       EHLO_HOSTNAME: ${EHLO_HOSTNAME:-mail.localhost}
       EHLO_HOSTNAMES: ${EHLO_HOSTNAMES:-}
       MTA_GENERIC_PTR_SUFFIXES: ${MTA_GENERIC_PTR_SUFFIXES:-}
@@ -260,12 +260,39 @@ services:
     user: "999:1000"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}
+    # Two independent ceilings, because an unbounded Redis is a whole-host
+    # outage: a defer-handoff leak grew this keyspace to 3.9 GB on a 7.5 GB box
+    # and the KERNEL oom-killer took redis-server down twice in eight minutes,
+    # stopping the MTA rate limiter and the IMAP auth limiter with it.
+    #
+    #   --maxmemory       Redis's own accounting, so it reacts before the cgroup.
+    #   mem_limit         the cgroup ceiling, so a miss (fragmentation, an AOF
+    #                     rewrite fork's copy-on-write, client output buffers)
+    #                     kills this container instead of the host. Kept well
+    #                     above --maxmemory: BGREWRITEAOF forks and COW can
+    #                     briefly approach double the dataset.
+    #
+    # POLICY: noeviction, deliberately. This Redis mixes disposable rate-limiter
+    # counters with DURABILITY records the MTA cannot lose — defer handoffs,
+    # intake receipts, routing-reentry handoffs, idempotency receipts — and all
+    # of those carry a TTL, so no `volatile-*` policy can tell them apart from
+    # the disposable ones and `allkeys-lru` cannot either. Evicting one of them
+    # silently breaks an at-most-once guarantee: a dropped handoff receipt means
+    # a redelivered job forks a second successor and the message is sent twice.
+    # Refusing writes is loud, retried by the MTA, and visible to an operator;
+    # evicting is silent and corrupts mail. Redis already defaults to
+    # noeviction — it is pinned here so the default cannot drift underneath us.
+    command: >-
+      redis-server --appendonly yes
+      --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}
+      --maxmemory ${REDIS_MAXMEMORY:-512mb}
+      --maxmemory-policy noeviction
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
+    mem_limit: ${REDIS_MEM_LIMIT:-1g}
     cap_drop:
       - ALL
     security_opt:
@@ -617,7 +644,11 @@ services:
       dockerfile: apps/convex-fn-proxy/Dockerfile
     environment:
       CONVEX_URL: http://convex:3210
-      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY:-}
+      # No `:-` fallback, and not the `:?` form either — see the imap service
+      # for why compose cannot guard this and what stops the crash-loop
+      # instead. An empty key throws at boot here too
+      # (apps/convex-fn-proxy/src/proxy.ts).
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
       CODE_WORKER_PROXY_TOKEN: ${CODE_WORKER_PROXY_TOKEN:-}
     # Nothing untrusted runs here, but it holds the admin key, so lock it down:
     # no capabilities, read-only rootfs, no privilege escalation.
@@ -697,6 +728,23 @@ services:
   # ACME-provisioned default.crt/default.key is left untouched, so dropping in a
   # CA-issued pair just works. For a public mailbox host, replace the self-signed
   # pair with a real certificate (or front IMAPS with a TLS-terminating proxy).
+  #
+  # OWNERSHIP is the second half of the very same crash-loop, and it cost a live
+  # instance 724 restarts: this one-shot runs as root, so the 0600 key it writes
+  # lands as root:root — while the imap image runs as uid 1000 and mounts this
+  # volume `:ro`, so it can neither read the key nor repair it. The symptom is
+  # `EACCES: permission denied, open '/opt/owlat/certs/default.key'` thrown by
+  # loadConfig, forever. Hence the fixup below runs on EVERY boot and on BOTH
+  # branches, not only the one that generates a cert: that is what heals a volume
+  # already poisoned by an older install, or a key an ACME sidecar has just
+  # re-published as root. Contents are still left untouched — only ownership and
+  # mode are normalised, and the key stays 0600 (owner-read only, never group- or
+  # world-readable).
+  #
+  # The uid is a chown target here and the image's `USER` there, so the two are
+  # pinned together: apps/imap/Dockerfile ASSERTS at build time that its runtime
+  # user is exactly IMAP_RUNTIME_USER's default, and
+  # scripts/check-compose-invariants.sh fails the build if either side drifts.
   imap-cert-init:
     image: alpine:${ALPINE_VERSION:-3.20}
     command:
@@ -705,24 +753,31 @@ services:
       - |
         cert_dir=/opt/owlat/certs
         if [ -s "$$cert_dir/default.crt" ] && [ -s "$$cert_dir/default.key" ]; then
-          echo "imap-cert-init: TLS cert already present in $$cert_dir — leaving it untouched"
-          exit 0
+          echo "imap-cert-init: TLS cert already present in $$cert_dir — leaving its contents untouched"
+        else
+          echo "imap-cert-init: generating self-signed IMAP TLS cert in $$cert_dir"
+          apk add --no-cache openssl >/dev/null
+          openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+            -keyout "$$cert_dir/default.key" \
+            -out "$$cert_dir/default.crt" \
+            -subj "/CN=$${IMAP_GREETING_HOST}" \
+            -addext "subjectAltName=DNS:$${IMAP_GREETING_HOST}"
         fi
-        echo "imap-cert-init: generating self-signed IMAP TLS cert in $$cert_dir"
-        apk add --no-cache openssl >/dev/null
-        openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-          -keyout "$$cert_dir/default.key" \
-          -out "$$cert_dir/default.crt" \
-          -subj "/CN=$${IMAP_GREETING_HOST}" \
-          -addext "subjectAltName=DNS:$${IMAP_GREETING_HOST}"
+        # Unconditional — see the ownership note above. Runs on the
+        # already-present branch too, so a broken volume heals on the next `up`.
+        chown -R "$${IMAP_RUNTIME_USER}" "$$cert_dir"
+        chmod 644 "$$cert_dir/default.crt"
         chmod 600 "$$cert_dir/default.key"
-        echo "imap-cert-init: done"
+        echo "imap-cert-init: cert dir owned by $${IMAP_RUNTIME_USER}, key kept 0600 — done"
     environment:
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
+      # uid:gid the imap container runs as, and therefore the only owner that can
+      # read a 0600 key off the shared volume. Pinned against apps/imap/Dockerfile.
+      IMAP_RUNTIME_USER: ${IMAP_RUNTIME_USER:-1000:1000}
     volumes:
       - mail-certs:/opt/owlat/certs
-    # no-new-privileges only: this one-shot runs `apk add` (needs CAP_CHOWN to
-    # extract packages), so a blanket cap_drop would break the cert bootstrap.
+    # no-new-privileges only: this one-shot runs `apk add` and `chown` (both need
+    # CAP_CHOWN), so a blanket cap_drop would break the cert bootstrap.
     security_opt:
       - no-new-privileges:true
     profiles:
@@ -742,7 +797,37 @@ services:
       IMAP_PORT: "993"
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
       CONVEX_URL: http://convex:3210
-      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY:-}
+      # Written with no `:-` fallback as DOCUMENTATION, not as a guard: compose
+      # substitutes a blank string either way. `${VAR}` differs from `${VAR:-}`
+      # only by printing "variable is not set, defaulting to a blank string",
+      # and only when the name is absent from `.env` altogether — setup.sh
+      # writes `CONVEX_ADMIN_KEY=` up front, so it is normally present and
+      # empty and not even the warning fires. The form that WOULD fail closed,
+      # `:?`, is unusable here: the key can only be minted by an
+      # ALREADY-RUNNING backend, so `.env` holds it empty during the first
+      # `docker compose up` by design, and compose interpolates the whole file
+      # before profile filtering — `:?` would abort every compose command,
+      # `down` and `logs` included, mid-install.
+      #
+      # So the crash-loop is stopped where it is actually caused, not here. An
+      # EMPTY key is not a degraded mode: apps/imap/src/config.ts throws
+      # `CONVEX_ADMIN_KEY is required` at boot and `restart: unless-stopped`
+      # retries that forever, because Docker bakes a container's environment at
+      # CREATE time — a live instance burnt 11h that way. Both installers
+      # therefore re-run `up -d` once the key lands (setup.sh
+      # `persist_admin_key`, quickstart `reapplyEnvToRunningStack`), which
+      # recreates exactly the containers whose resolved env changed.
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
+      # Backing store for the LOGIN brute-force limiter (apps/imap/src/rateLimit.ts).
+      # Port 993 is internet-facing and LOGIN is the only thing between the internet
+      # and a user's mail, so this is NOT optional: without it the limiter has no
+      # counters, every password guess is free, and the sole signal is one level-40
+      # log line at boot. Every deployment shipped that way until now.
+      # apps/imap/src/config.ts refuses to boot in production if this is unset —
+      # safe here because REDIS_PASSWORD is already `:?` (setup always mints it),
+      # so a missing password aborts the compose command rather than creating a
+      # container that crash-loops on its own baked-in env.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}@redis:6379
       TLS_CERT_DIR: /opt/owlat/certs
       LOG_LEVEL: ${IMAP_LOG_LEVEL:-info}
       NODE_ENV: production
@@ -750,6 +835,10 @@ services:
       - mail-certs:/opt/owlat/certs:ro
     depends_on:
       convex:
+        condition: service_healthy
+      # service_healthy, not service_started: the limiter is a security control,
+      # so port 993 should not accept its first LOGIN before the store answers.
+      redis:
         condition: service_healthy
       # Block until the self-signed default cert is in the shared volume,
       # otherwise the IMAPS listener refuses to start (production TLS guard).
@@ -779,7 +868,11 @@ services:
     environment:
       MAIL_SYNC_PORT: "3200"
       CONVEX_URL: http://convex:3210
-      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY:-}
+      # No `:-` fallback, and not the `:?` form either — see the imap service
+      # for why compose cannot guard this and what stops the crash-loop
+      # instead. An empty key throws at boot here too
+      # (apps/mail-sync/src/config.ts).
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
       # Storage URLs are minted on the PUBLIC convex origin; allow fetching there.
       MAIL_SYNC_FETCH_ORIGINS: ${NUXT_PUBLIC_CONVEX_URL:-http://localhost:3210}
       # Required — generated by setup (ensureSecrets, alongside MTA_API_KEY) and

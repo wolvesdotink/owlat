@@ -629,6 +629,7 @@
     "@owlat/ui",
   ],
   "patchedDependencies": {
+    "groupmq@1.1.0": "patches/groupmq@1.1.0.patch",
     "image-size@2.0.2": "patches/image-size@2.0.2.patch",
   },
   "overrides": {
