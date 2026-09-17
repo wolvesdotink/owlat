@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createHash } from 'crypto';
+import RedisMock from 'ioredis-mock';
+import type Redis from 'ioredis';
 import { AuthRateLimiter } from '../rateLimit.js';
 
 vi.mock('../logger.js', () => ({
@@ -10,66 +13,31 @@ vi.mock('../logger.js', () => ({
 	},
 }));
 
-interface ZsetEntry {
-	score: number;
-	member: string;
+/**
+ * ioredis-mock, not a hand-rolled stub: `recordFailure` is one Lua script and
+ * the properties under test here are Redis semantics — sorted-set cardinality,
+ * key TTLs and the exact shape of the key space. A double that answers those
+ * from a Map would be testing the double.
+ */
+function newRedis(): Redis {
+	return new RedisMock() as unknown as Redis;
 }
 
-/**
- * Hand-rolled in-memory ioredis stub: just the surface our limiter
- * actually uses (pipeline → zadd/expire/zremrangebyscore/zcard → exec).
- */
-class FakeRedis {
-	private store = new Map<string, ZsetEntry[]>();
-	public throwOnExec = false;
+const cfg = { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 };
 
-	pipeline() {
-		const ops: Array<() => unknown> = [];
-		const pipeline = {
-			zadd: (key: string, score: number, member: string) => {
-				ops.push(() => {
-					const list = this.store.get(key) ?? [];
-					list.push({ score, member });
-					this.store.set(key, list);
-					return 1;
-				});
-				return pipeline;
-			},
-			expire: (_key: string, _ttl: number) => {
-				ops.push(() => 1);
-				return pipeline;
-			},
-			zremrangebyscore: (key: string, min: number, max: number) => {
-				ops.push(() => {
-					const list = this.store.get(key) ?? [];
-					const filtered = list.filter((e) => e.score < min || e.score > max);
-					this.store.set(key, filtered);
-					return list.length - filtered.length;
-				});
-				return pipeline;
-			},
-			zcard: (key: string) => {
-				ops.push(() => (this.store.get(key) ?? []).length);
-				return pipeline;
-			},
-			exec: async () => {
-				if (this.throwOnExec) throw new Error('redis unreachable');
-				return ops.map((op) => [null, op()] as [Error | null, unknown]);
-			},
-		};
-		return pipeline;
-	}
+function authKeyFor(ip: string, address: string): string {
+	return `imap:lim:{${ip}}:auth:${createHash('sha256').update(address.toLowerCase()).digest('hex')}`;
 }
 
 describe('AuthRateLimiter', () => {
-	const cfg = { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 };
-
-	let redis: FakeRedis;
+	let redis: Redis;
 	let limiter: AuthRateLimiter;
 
-	beforeEach(() => {
-		redis = new FakeRedis();
-		limiter = new AuthRateLimiter(redis as never, cfg);
+	beforeEach(async () => {
+		redis = newRedis();
+		// ioredis-mock shares one keyspace across instances.
+		await redis.flushall();
+		limiter = new AuthRateLimiter(redis, cfg);
 	});
 
 	it('does not throttle the first request', async () => {
@@ -108,13 +76,17 @@ describe('AuthRateLimiter', () => {
 	});
 
 	it('fails open when redis throws', async () => {
-		redis.throwOnExec = true;
-		const result = await limiter.check('1.2.3.4', 'alice@example.com');
+		const broken = {
+			pipeline: () => {
+				throw new Error('redis unreachable');
+			},
+			eval: vi.fn().mockRejectedValue(new Error('redis unreachable')),
+		} as unknown as Redis;
+		const failing = new AuthRateLimiter(broken, cfg);
+		const result = await failing.check('1.2.3.4', 'alice@example.com');
 		expect(result.throttled).toBe(false);
 		// recordFailure also swallows errors
-		await expect(
-			limiter.recordFailure('1.2.3.4', 'alice@example.com')
-		).resolves.toBeUndefined();
+		await expect(failing.recordFailure('1.2.3.4', 'alice@example.com')).resolves.toBeUndefined();
 	});
 
 	it('fails open when no redis client is configured', async () => {
@@ -134,5 +106,55 @@ describe('AuthRateLimiter', () => {
 		const result = await limiter.check('1.2.3.4', 'fresh@example.com');
 		expect(result.ipCount).toBeGreaterThanOrEqual(50);
 		expect(result.throttled).toBe(true);
+	});
+
+	describe('key-space bounds against an unauthenticated peer', () => {
+		it('keeps the key size constant however long the claimed address is', async () => {
+			// A pre-auth LOGIN line may be up to maxLineBytes (64 KiB), and the
+			// address used to go into the key verbatim.
+			const huge = `${'a'.repeat(60_000)}@example.com`;
+			await limiter.recordFailure('1.2.3.4', huge);
+
+			const keys = await redis.keys('imap:lim:*');
+			expect(keys).toHaveLength(2);
+			for (const key of keys) {
+				expect(key.length).toBeLessThan(200);
+			}
+			expect(keys).toContain(authKeyFor('1.2.3.4', huge));
+		});
+
+		it('stops minting new credential keys once the IP is past its global budget', async () => {
+			for (let i = 0; i < 400; i++) {
+				await limiter.recordFailure('9.9.9.9', `target${i}@example.com`);
+			}
+
+			// One per-IP counter plus at most one credential key per allowed
+			// failure — not one per address the peer chose to name.
+			const authKeys = await redis.keys('imap:lim:{9.9.9.9}:auth:*');
+			expect(authKeys.length).toBeLessThanOrEqual(50);
+			expect(await redis.zcard('imap:lim:{9.9.9.9}:ip')).toBe(400);
+		});
+
+		it('still records against a credential bucket that already exists', async () => {
+			// Push the IP far past its budget on other addresses first...
+			for (let i = 0; i < 80; i++) {
+				await limiter.recordFailure('9.9.9.9', `target${i}@example.com`);
+			}
+			// ...then keep failing against one of the buckets that did get minted.
+			const victim = 'target0@example.com';
+			const before = await redis.zcard(authKeyFor('9.9.9.9', victim));
+			await limiter.recordFailure('9.9.9.9', victim);
+			expect(await redis.zcard(authKeyFor('9.9.9.9', victim))).toBe(before + 1);
+		});
+
+		it('expires both counters so an idle attacker leaves nothing behind', async () => {
+			await limiter.recordFailure('1.2.3.4', 'alice@example.com');
+			const expectedTtl = Math.ceil(cfg.windowMs / 1000) + 60;
+			for (const key of await redis.keys('imap:lim:*')) {
+				const ttl = await redis.ttl(key);
+				expect(ttl).toBeGreaterThan(0);
+				expect(ttl).toBeLessThanOrEqual(expectedTtl);
+			}
+		});
 	});
 });

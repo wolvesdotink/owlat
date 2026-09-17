@@ -33,11 +33,15 @@ export interface InboundEmailMessage {
 	messageId: string;
 	inReplyTo?: string;
 	references?: string;
+	/**
+	 * Metadata only. The MTA does not ship attachment bytes on this event and
+	 * does not stash them anywhere for a later fetch — a `redisKey` field used
+	 * to point at an hour-long Redis copy that no reader ever asked for.
+	 */
 	attachments: Array<{
 		filename?: string;
 		contentType: string;
 		size: number;
-		redisKey?: string;
 	}>;
 	/** Timestamp from the webhook envelope (ms since epoch). */
 	timestamp: number;
@@ -96,7 +100,6 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 					filename?: string;
 					contentType: string;
 					size: number;
-					redisKey?: string;
 				}>;
 				spfResult?: string;
 				dkimResult?: string;

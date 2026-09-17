@@ -4,25 +4,21 @@
  *
  * The bounce server imports `mainPipeline` only; individual phase files
  * are imported here exclusively. Reordering a phase in this file is a
- * TypeScript error if it violates the ctx-chain — e.g., `stageAttachmentsPhase`
+ * TypeScript error if it violates the ctx-chain — e.g., `attachmentMetaPhase`
  * cannot run before `resolveRoutePhase` because it consumes `route`.
  */
 
 import { compose } from '../pipeline.js';
 import { parseFblOrDsnPhase } from './parseFblOrDsn.js';
 import { resolveRoutePhase } from './resolveRoute.js';
-import { stageAttachmentsPhase } from './stageAttachments.js';
+import { attachmentMetaPhase } from './attachmentMeta.js';
 
-export { parseFblOrDsnPhase, resolveRoutePhase, stageAttachmentsPhase };
+export { attachmentMetaPhase, parseFblOrDsnPhase, resolveRoutePhase };
 
 /**
  * The main bounce intake pipeline composed in the order the pre-deepening
  * onData handler ran its check blocks. Type-checking enforces the chain:
- * `resolveRoutePhase` must precede `stageAttachmentsPhase` (which consumes
+ * `resolveRoutePhase` must precede `attachmentMetaPhase` (which consumes
  * the `route` it produces for the accept branch).
  */
-export const mainPipeline = compose(
-	parseFblOrDsnPhase,
-	resolveRoutePhase,
-	stageAttachmentsPhase,
-);
+export const mainPipeline = compose(parseFblOrDsnPhase, resolveRoutePhase, attachmentMetaPhase);

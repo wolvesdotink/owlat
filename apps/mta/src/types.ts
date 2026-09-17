@@ -232,13 +232,13 @@ export interface InboundEmailPayload extends Pick<
 	messageId?: string;
 	inReplyTo?: string;
 	references?: string;
+	// Metadata only — attachment content is NOT included in the webhook payload,
+	// and is not staged anywhere else either. An earlier `redisKey` here pointed
+	// at an hour-long Redis copy of the bytes that no caller ever fetched.
 	attachments: Array<{
 		filename?: string;
 		contentType: string;
 		size: number;
-		// Note: attachment content is NOT included in the webhook payload
-		// to avoid size issues. Attachments can be fetched separately via MTA API.
-		redisKey?: string;
 	}>;
 }
 

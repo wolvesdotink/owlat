@@ -7,7 +7,7 @@
  *   - no route at all (unrecognized)
  *
  * The fourth case — an inbound route in `accept` mode — `continue`s with
- * the ctx widened (`CtxWithAcceptRoute`) so `stageAttachments` can read
+ * the ctx widened (`CtxWithAcceptRoute`) so `attachmentMeta` can read
  * the route. Without an rcptTo we can't look up either table, so we
  * short-circuit to `unrecognized`.
  */

@@ -308,7 +308,7 @@ export function buildOnMailFrom(
  * `parseMessage` reads it (replacing `mailparser`'s `simpleParser`). SPF / DKIM /
  * DMARC / ARC are evaluated over the raw bytes before parsing mangles
  * canonicalization, then the intake pipeline (parseFblOrDsn → resolveRoute →
- * stageAttachments) classifies and the reducer runs the effects. The handler
+ * attachmentMeta) classifies and the reducer runs the effects. The handler
  * ACKs by default, with a narrow transient-storage 451 exception — see
  * {@link AckAndSwallowErrors}.
  */
