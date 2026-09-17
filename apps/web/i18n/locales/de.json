@@ -4751,6 +4751,7 @@
 				"reauthorize": "Postfach neu verbinden",
 				"reconnect": "Erneut verbinden",
 				"retainedBody": "Es wird nichts mehr abgeglichen und die gespeicherten Anmeldedaten sind gelöscht. Die vor dem Trennen übernommenen Mails sind aus deinem Posteingang verschwunden, aber nicht gelöscht: Verbinde dieselbe Adresse erneut, um sie zurückzuholen, oder lösche sie endgültig.",
+				"retainedRemovedBody": "Eine Administratorin hat dieses Postfach aus Owlat entfernt. Die daraus übernommenen Mails sind weiterhin hier gespeichert, und es wird nichts mehr abgeglichen. Wenn du die Adresse erneut verbindest, bekommst du ein neues, leeres Postfach — lösche dieses hier also, wenn du das Aufbewahrte nicht mehr brauchst.",
 				"status": {
 					"authError": "Muss neu verbunden werden",
 					"connected": "Wird abgeglichen",

@@ -330,6 +330,28 @@ describe('which mailboxes a reconnect may re-open', () => {
 		expect(retiredAccount?.adminRetiredAt).toBeTypeOf('number');
 	});
 
+	it('still lets the owner delete what an admin removal left behind', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		setSession('user-A', 'owner');
+		const { mailboxId, messageId } = await connectWithMail(t);
+		await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
+
+		// The card says so plainly: reconnecting gives a fresh mailbox, and this
+		// one's mail is the owner's to delete.
+		const view = await t.query(api.mail.external.accounts.getForCurrentUser, {});
+		expect(view.retained?.canReattach).toBe(false);
+
+		await drainPurge(t);
+
+		const gone = await t.run(async (ctx) => ({
+			mailbox: await ctx.db.get(mailboxId),
+			message: await ctx.db.get(messageId),
+		}));
+		expect(gone.mailbox).toBeNull();
+		expect(gone.message).toBeNull();
+	});
+
 	it('will not re-open a mailbox a purge is still draining', async () => {
 		const t = convexTest(schema, modules);
 		await enableExternal(t);

@@ -119,8 +119,9 @@ export async function getLivePersonalExternalAccountForUser(
 async function findRetainedPersonalAccount(
 	ctx: QueryCtx | MutationCtx,
 	userId: string,
-	address?: string
+	options: { address?: string; forDeletion?: boolean } = {}
 ): Promise<{ account: Doc<'externalMailAccounts'>; mailbox: Doc<'mailboxes'> } | null> {
+	const { address, forDeletion = false } = options;
 	const rows = await ctx.db
 		.query('externalMailAccounts')
 		.withIndex('by_user', (q) => q.eq('userId', userId))
@@ -134,9 +135,12 @@ async function findRetainedPersonalAccount(
 				// and re-attaching it would hand the owner a mailbox the cascade is
 				// about to delete underneath them.
 				a.purgeStartedAt === undefined &&
-				// An admin retired this mailbox. Reconnecting the address is allowed;
-				// silently undoing the administrative removal is not.
-				a.adminRetiredAt === undefined
+				// An admin retired this mailbox. Reconnecting must not undo that
+				// silently — but DELETING it must stay possible, or an admin removal
+				// would strand the owner's mail somewhere neither of them can reach:
+				// the admin has no purge for a personal mailbox, and the owner would
+				// have no surface for it.
+				(forDeletion || a.adminRetiredAt === undefined)
 		)
 		.sort((a, b) => b.updatedAt - a.updatedAt);
 	for (const account of candidates) {
@@ -186,7 +190,7 @@ export const getForCurrentUser = publicQuery({
 			// mail it kept. The settings card offers exactly two things for that
 			// state (reconnect, or delete what was kept), and it can only offer them
 			// if it knows the mailbox is there.
-			const retained = await findRetainedPersonalAccount(ctx, s.userId);
+			const retained = await findRetainedPersonalAccount(ctx, s.userId, { forDeletion: true });
 			if (!retained) return { configured: false as const };
 			return {
 				configured: false as const,
@@ -195,6 +199,11 @@ export const getForCurrentUser = publicQuery({
 					imapHost: retained.account.imapHost,
 					imapUsername: retained.account.imapUsername,
 					disconnectedAt: retained.account.updatedAt,
+					// Whether reconnecting this address re-opens THIS mailbox. False
+					// when an admin retired it: connecting again is allowed and
+					// provisions a fresh mailbox, but the mail kept here does not come
+					// back with it, so the screen must not promise that it will.
+					canReattach: retained.account.adminRetiredAt === undefined,
 				},
 			};
 		}
@@ -286,7 +295,8 @@ export const purge = authedMutation({
 		// team inbox is org infrastructure and is never reachable through this
 		// personal path either way.
 		const live = await getLivePersonalExternalAccountForUser(ctx, s.userId);
-		const account = live ?? (await findRetainedPersonalAccount(ctx, s.userId))?.account;
+		const account =
+			live ?? (await findRetainedPersonalAccount(ctx, s.userId, { forDeletion: true }))?.account;
 		if (!account) throwNotFound('External mail account');
 		// Stop the worker (so it isn't syncing into a draining mailbox), then cascade.
 		await prepareAccountPurge(ctx, account, Date.now());
@@ -343,7 +353,7 @@ export const _connectInternal = internalMutation({
 		// row's own organization has to be the caller's active one: everything else
 		// in this handler takes the org off the session, and a row carrying another
 		// one is not this tenant's to revive.
-		const retained = await findRetainedPersonalAccount(ctx, s.userId, address);
+		const retained = await findRetainedPersonalAccount(ctx, s.userId, { address });
 		if (retained && retained.account.organizationId === s.activeOrganizationId) {
 			await applyCredentialRotation(ctx, retained.account._id, args, now);
 			await ctx.db.patch(retained.mailbox._id, { status: 'active', updatedAt: now });

@@ -50,6 +50,7 @@ type Retained = {
 		imapHost: string;
 		imapUsername: string;
 		disconnectedAt: number;
+		canReattach?: boolean;
 	};
 };
 
@@ -262,6 +263,7 @@ describe('PostboxConnectedAccountCard — after a disconnect', () => {
 				imapHost: 'imap.example.com',
 				imapUsername: 'me@example.com',
 				disconnectedAt: Date.UTC(2026, 8, 16, 12, 0),
+				canReattach: true,
 			},
 		};
 	});
@@ -333,6 +335,7 @@ describe('PostboxConnectedAccountCard — states that are not the happy path', (
 				imapHost: 'imap.example.com',
 				imapUsername: 'me@example.com',
 				disconnectedAt: Date.now(),
+				canReattach: true,
 			},
 		};
 		await flushPromises();
@@ -353,6 +356,7 @@ describe('PostboxConnectedAccountCard — states that are not the happy path', (
 				imapHost: 'imap.example.com',
 				imapUsername: 'me@example.com',
 				disconnectedAt: Date.now(),
+				canReattach: true,
 			},
 		};
 		const wrapper = mountCard();
@@ -379,6 +383,7 @@ describe('PostboxConnectedAccountCard — states that are not the happy path', (
 				imapHost: 'imap.example.com',
 				imapUsername: 'me@example.com',
 				disconnectedAt: Date.now(),
+				canReattach: true,
 			},
 		};
 		const wrapper = mountCard();
@@ -412,5 +417,37 @@ describe('PostboxConnectedAccountCard — what it subscribes to', () => {
 		accountData.value = { ...CONNECTED };
 		await flushPromises();
 		expect(argsFor('migration')?.()).toEqual({});
+	});
+});
+
+describe('PostboxConnectedAccountCard — a mailbox an admin removed', () => {
+	beforeEach(() => {
+		accountData.value = {
+			configured: false,
+			retained: {
+				emailAddress: 'me@example.com',
+				imapHost: 'imap.example.com',
+				imapUsername: 'me@example.com',
+				disconnectedAt: Date.UTC(2026, 8, 16, 12, 0),
+				canReattach: false,
+			},
+		};
+	});
+
+	it('does not promise the mail comes back, and does not offer a reconnect that would not', () => {
+		const wrapper = mountCard();
+		const retained = wrapper.find('[data-testid="connected-account-retained"]');
+		expect(retained.text()).toContain('An admin removed this mailbox');
+		expect(retained.text()).toContain('new, empty mailbox');
+		expect(wrapper.text()).not.toContain('Connect it again');
+		expectFullyLocalized(wrapper);
+	});
+
+	it('still offers to delete what it kept', async () => {
+		const wrapper = mountCard();
+		await wrapper.find('[data-testid="connected-account-delete"]').trigger('click');
+		await wrapper.find('.dialog-confirm').trigger('click');
+		await flushPromises();
+		expect(purgeRun).toHaveBeenCalledTimes(1);
 	});
 });

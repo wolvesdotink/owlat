@@ -4751,6 +4751,7 @@
 				"reauthorize": "Reconnect this mailbox",
 				"reconnect": "Connect it again",
 				"retainedBody": "Nothing is syncing and the saved sign-in is gone. The mail brought over before you disconnected is out of your inbox but not deleted: connect the same address again to bring it back, or delete it for good.",
+				"retainedRemovedBody": "An admin removed this mailbox from Owlat. The mail brought over from it is still stored here and nothing is syncing. Connecting the address again gives you a new, empty mailbox, so delete this one if you no longer want what it kept.",
 				"status": {
 					"authError": "Needs reconnecting",
 					"connected": "Syncing",

@@ -305,10 +305,14 @@ const showCard = computed(
 				}}
 			</p>
 			<p class="text-sm text-text-secondary mt-3">
-				{{ t('components.postbox.postboxConnectedAccountCard.retainedBody') }}
+				{{
+					retained.canReattach
+						? t('components.postbox.postboxConnectedAccountCard.retainedBody')
+						: t('components.postbox.postboxConnectedAccountCard.retainedRemovedBody')
+				}}
 			</p>
 			<div class="mt-4 flex flex-wrap items-center gap-3">
-				<UiButton variant="secondary" size="sm" @click="goConnect">
+				<UiButton v-if="retained.canReattach" variant="secondary" size="sm" @click="goConnect">
 					{{ t('components.postbox.postboxConnectedAccountCard.reconnect') }}
 				</UiButton>
 				<UiButton
