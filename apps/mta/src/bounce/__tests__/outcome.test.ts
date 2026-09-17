@@ -423,28 +423,16 @@ describe('reduce(endpoint_forward)', () => {
 });
 
 describe('reduce(inbound_accept)', () => {
-	it('emits one stage_attachment per attachment with content, plus a single notify_convex with redisKeys', () => {
+	it('emits a single notify_convex carrying attachment metadata and no bytes', () => {
 		const route = makeRoute();
 		const attempt: BounceAttempt = {
 			kind: 'inbound_accept',
 			route,
 			rcptTo: 'inbox@org.example',
 			attachments: [
-				{
-					index: 0,
-					filename: 'a.pdf',
-					contentType: 'application/pdf',
-					size: 10,
-					contentBase64: 'AAAA',
-				},
-				{
-					index: 1,
-					filename: 'b.txt',
-					contentType: 'text/plain',
-					size: 5,
-					contentBase64: undefined,
-				},
-				{ index: 2, filename: 'c.png', contentType: 'image/png', size: 20, contentBase64: 'BBBB' },
+				{ index: 0, filename: 'a.pdf', contentType: 'application/pdf', size: 10 },
+				{ index: 1, filename: 'b.txt', contentType: 'text/plain', size: 5 },
+				{ index: 2, filename: 'c.png', contentType: 'image/png', size: 20 },
 			],
 			headers: { from: 'bob@isp.example' },
 		};
@@ -460,67 +448,21 @@ describe('reduce(inbound_accept)', () => {
 				}),
 			})
 		);
-		expect(effects.map((e) => e.kind)).toEqual([
-			'stage_attachment',
-			'stage_attachment',
-			'notify_convex',
-		]);
-
-		const staged = effects.filter((e) => e.kind === 'stage_attachment');
-		expect(staged).toEqual([
-			{
-				kind: 'stage_attachment',
-				redisKey: 'mta:inbound-att:orig-msg-1:0',
-				contentBase64: 'AAAA',
-				ttlSeconds: 3600,
-			},
-			{
-				kind: 'stage_attachment',
-				redisKey: 'mta:inbound-att:orig-msg-1:2',
-				contentBase64: 'BBBB',
-				ttlSeconds: 3600,
-			},
-		]);
+		// One effect, whatever the attachment count: inbound accept no longer
+		// copies attachment bodies into Redis, so there is nothing to stage.
+		expect(effects.map((e) => e.kind)).toEqual(['notify_convex']);
 
 		const notify = effects.find((e) => e.kind === 'notify_convex');
 		if (notify?.kind === 'notify_convex') {
 			expect(notify.event.event).toBe('inbound.received');
 			expect(notify.event.organizationId).toBe('org-1');
 			expect(notify.event.inboundPayload?.attachments).toEqual([
-				{
-					filename: 'a.pdf',
-					contentType: 'application/pdf',
-					size: 10,
-					redisKey: 'mta:inbound-att:orig-msg-1:0',
-				},
-				{ filename: 'b.txt', contentType: 'text/plain', size: 5, redisKey: undefined },
-				{
-					filename: 'c.png',
-					contentType: 'image/png',
-					size: 20,
-					redisKey: 'mta:inbound-att:orig-msg-1:2',
-				},
+				{ filename: 'a.pdf', contentType: 'application/pdf', size: 10 },
+				{ filename: 'b.txt', contentType: 'text/plain', size: 5 },
+				{ filename: 'c.png', contentType: 'image/png', size: 20 },
 			]);
 			expect(notify.event.inboundPayload?.headers).toEqual({ from: 'bob@isp.example' });
 			expect(notify.event.inboundPayload?.from).toBe('bob@isp.example');
-		}
-	});
-
-	it('falls back to "unknown" messageId in the redisKey when parsed.messageId is missing', () => {
-		const attempt: BounceAttempt = {
-			kind: 'inbound_accept',
-			route: makeRoute(),
-			rcptTo: 'inbox@org.example',
-			attachments: [
-				{ index: 0, filename: 'x', contentType: 'application/pdf', size: 1, contentBase64: 'AA' },
-			],
-			headers: {},
-		};
-		const ctx = makeCtx({ parsed: makeParsed({ messageId: undefined }) });
-		const { effects } = reduce(attempt, ctx);
-		const staged = effects.find((e) => e.kind === 'stage_attachment');
-		if (staged?.kind === 'stage_attachment') {
-			expect(staged.redisKey).toBe('mta:inbound-att:unknown:0');
 		}
 	});
 });

@@ -110,12 +110,6 @@ export type BounceEffect =
 			event: MtaWebhookEvent;
 	  }
 	| {
-			kind: 'stage_attachment';
-			redisKey: string;
-			contentBase64: string;
-			ttlSeconds: number;
-	  }
-	| {
 			kind: 'mailbox_quota_bump';
 			address: string;
 			deltaBytes: number;
@@ -270,15 +264,6 @@ function applyOne(
 				// Non-critical — daily stats counter; missing increments are tolerable.
 			});
 		}
-		case 'stage_attachment':
-			if (downstreamIdentity) {
-				return deps.redis.setex(effect.redisKey, effect.ttlSeconds, effect.contentBase64);
-			}
-			return deps.redis
-				.setex(effect.redisKey, effect.ttlSeconds, effect.contentBase64)
-				.catch((err: unknown) => {
-					logger.warn({ err, redisKey: effect.redisKey }, 'Failed to stage attachment in Redis');
-				});
 		case 'forward_to_endpoint':
 			return downstreamIdentity
 				? forwardToEndpoint(
