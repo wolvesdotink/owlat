@@ -89,7 +89,7 @@ onMounted(fetchContainerHealth);
 
 type UpdateState = 'idle' | 'confirming' | 'running' | 'success' | 'failed';
 const updateState = ref<UpdateState>('idle');
-const updateSteps = ref<Array<{ step: string; stdout?: string; stderr?: string }> | null>(null);
+const updateSteps = ref<Array<{ step: string; ok?: boolean; stdout?: string; stderr?: string }> | null>(null);
 const updateError = ref<string>('');
 const pendingTargetVersion = ref<string>('');
 
@@ -107,7 +107,9 @@ async function confirmUpdate() {
 
 	try {
 		const resp = await apiFetch<{
-			steps?: Array<{ step: string; stdout?: string; stderr?: string }>;
+			// `ok` is the sidecar's per-step verdict; the progress list needs it to
+			// tell a real failure from docker's progress output on stderr.
+			steps?: Array<{ step: string; ok?: boolean; stdout?: string; stderr?: string }>;
 		}>('/api/system/update', {
 			method: 'POST',
 			body: { targetVersion: pendingTargetVersion.value },

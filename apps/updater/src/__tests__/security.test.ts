@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import {
 	isRateLimited,
 	isValidIPv4,
+	parseReleaseVersionFromTemplate,
 	safeCompare,
 	validateComposeTemplate,
 	__resetRateLimits,
@@ -117,6 +118,24 @@ describe('validateComposeTemplate', () => {
 		expect(validateComposeTemplate(template)).toEqual({ valid: true });
 	});
 
+	// Regression (the 500-on-update incident): the template the update routes
+	// ACTUALLY forward is the release one — `docker-compose-<v>.yml`, which
+	// scripts/gen-release-compose.sh generates from the root docker-compose.yml.
+	// Only the VPS template was pinned here, so five images the root compose
+	// ships (caddy, alpine, the Convex dashboard, and the two locally built
+	// sidecars) were never allowlisted and every in-app update on a release
+	// install died with `Disallowed image: caddy:…`.
+	//
+	// Validating the generator's INPUT is equivalent to validating its output
+	// for this policy: the script rewrites `ghcr.io/wolvesdotink/*` tags only
+	// (adding `:<version>@sha256:<digest>`, which still matches the org
+	// prefix) and leaves every other image line byte-identical — the property
+	// scripts/__tests__/gen-release-compose.test.ts pins from the other side.
+	it('accepts the root compose the release template is generated from (releaseComposeImagesAreAllowed)', () => {
+		const template = readFileSync(resolve(REPO_ROOT, 'docker-compose.yml'), 'utf-8');
+		expect(validateComposeTemplate(template)).toEqual({ valid: true });
+	});
+
 	it.each([
 		['/etc/shadow', '/etc/shadow:/x'],
 		['/etc/passwd', '/etc/passwd:/x'],
@@ -180,5 +199,38 @@ describe('validateComposeTemplate', () => {
       - named-vol:/data
 `;
 		expect(validateComposeTemplate(named)).toEqual({ valid: true });
+	});
+});
+
+describe('parseReleaseVersionFromTemplate', () => {
+	it('reads the version from a tag-pinned web image', () => {
+		const template = 'services:\n  web:\n    image: ghcr.io/wolvesdotink/web:1.2.3\n';
+		expect(parseReleaseVersionFromTemplate(template)).toBe('1.2.3');
+	});
+
+	it('reads the version from the digest-pinned form the release template ships', () => {
+		const template = `services:
+  web:
+    image: ghcr.io/wolvesdotink/web:0.4.17@sha256:${'a'.repeat(64)}
+  mta:
+    image: ghcr.io/wolvesdotink/mta:0.4.17@sha256:${'b'.repeat(64)}
+`;
+		expect(parseReleaseVersionFromTemplate(template)).toBe('0.4.17');
+	});
+
+	it('reads a prerelease version', () => {
+		const template = 'services:\n  web:\n    image: "ghcr.io/wolvesdotink/web:1.2.3-rc.1"\n';
+		expect(parseReleaseVersionFromTemplate(template)).toBe('1.2.3-rc.1');
+	});
+
+	it('returns null when the web image carries no concrete version', () => {
+		const template =
+			'services:\n  web:\n    image: ghcr.io/wolvesdotink/web:${OWLAT_VERSION:-dev}\n';
+		expect(parseReleaseVersionFromTemplate(template)).toBeNull();
+	});
+
+	it('ignores versions pinned on other services', () => {
+		const template = 'services:\n  mta:\n    image: ghcr.io/wolvesdotink/mta:9.9.9\n';
+		expect(parseReleaseVersionFromTemplate(template)).toBeNull();
 	});
 });

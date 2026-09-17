@@ -6,25 +6,38 @@
  *      caches the result, returns it (with `updateAvailable` computed from
  *      current vs latest).
  *   2. UI calls `/api/system/update` (Nitro route in apps/web) to apply
- *      the update. That route records an `updateRun` doc via
- *      `recordUpdateStart` / `recordUpdateFinish` internal mutations.
+ *      the update. That route records an `updateRun` doc via the
+ *      `recordUpdateStart` / `recordUpdateFinish` mutations below.
  *   3. UI calls `listUpdateHistory` to render the history table.
  *
- * Gating: all UI-facing queries/actions are platform-admin only. Internal
- * mutations are trusted because they're only callable from server-side
- * routes that have already verified admin.
+ * Gating: every function here is platform-admin only.
+ *
+ * WHY THE TWO RECORD MUTATIONS ARE PUBLIC, NOT INTERNAL
+ * -----------------------------------------------------
+ * They are called by a Nitro route in `apps/web`, i.e. over the deployment's
+ * HTTP client API with the admin's session — and that API resolves PUBLIC
+ * functions only. An `internal*` function is not addressable from it at all:
+ * Convex answers `Could not find public function for
+ * 'systemUpdates:recordUpdateStart'`, which is precisely how every in-app
+ * update failed with a 500 before this changed. The `internal` reference was
+ * re-tagged as public at the call site to satisfy the client's types, so
+ * nothing but a real update on a real deployment could catch it.
+ *
+ * Being public means the auth floor has to be real, so each one runs the same
+ * `requirePlatformAdmin` gate the route applies, and `initiatedBy` is stamped
+ * from the authenticated admin instead of being accepted as an argument.
  */
 import { v } from 'convex/values';
 import { GITHUB_REPO_SLUG } from '@owlat/shared/releaseArtifacts';
 import { semverCompare } from '@owlat/shared/semver';
 import { getOptional } from './lib/env';
 import { internalMutation, internalQuery } from './_generated/server';
-import { authedAction, authedQuery } from './lib/authedFunctions';
+import { authedAction, authedMutation, authedQuery } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { requirePlatformAdmin } from './platformAdmin/platformAdmin';
 import { updateStepResultValidator } from './lib/convexValidators';
 import { requireAuthenticatedIdentity } from './lib/sessionOrganization';
-import { throwForbidden, throwInternal } from './_utils/errors';
+import { throwForbidden, throwInternal, throwNotFound } from './_utils/errors';
 import { successOrFailedValidator } from './lib/literalValidators';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -53,7 +66,7 @@ export function parseReleaseTag(tag: string): string | null {
 const CHECK_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const GITHUB_RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO_SLUG}/releases/latest`;
 
-// ── Internal mutations / queries (cache + history) ───────────────────────────
+// ── Internal mutations / queries (release-check cache) ───────────────────────
 
 export const cacheLatestRelease = internalMutation({
 	args: {
@@ -124,13 +137,25 @@ export const getLatestCheckInternal = internalQuery({
 	},
 });
 
-export const recordUpdateStart = internalMutation({
+// ── Update-run recording (platform-admin; called by /api/system/update) ──────
+
+/**
+ * Open the `updateRun` row for an update the admin has just triggered.
+ *
+ * Platform-admin only, and public on purpose — see the module header. Returns
+ * the row id so the route can close the same row with `recordUpdateFinish`.
+ */
+export const recordUpdateStart = authedMutation({
 	args: {
 		versionFrom: v.string(),
 		versionTo: v.string(),
-		initiatedBy: v.string(),
 	},
 	handler: async (ctx, args) => {
+		// The acting admin, not a caller-supplied id: an audit trail whose
+		// actor field is an argument records whatever the caller claims.
+		const admin = await requirePlatformAdmin(ctx);
+		const initiatedBy = admin.authUserId;
+
 		const startedAt = Date.now();
 		const runId = await ctx.db.insert('systemUpdates', {
 			kind: 'updateRun',
@@ -138,7 +163,7 @@ export const recordUpdateStart = internalMutation({
 			versionTo: args.versionTo,
 			startedAt,
 			status: 'running',
-			initiatedBy: args.initiatedBy,
+			initiatedBy,
 		});
 
 		// Structured log for external log sinks. stdout JSON lines are
@@ -152,7 +177,7 @@ export const recordUpdateStart = internalMutation({
 				runId: runId,
 				versionFrom: args.versionFrom,
 				versionTo: args.versionTo,
-				initiatedBy: args.initiatedBy,
+				initiatedBy,
 				startedAt,
 				timestamp: new Date(startedAt).toISOString(),
 			})
@@ -161,7 +186,15 @@ export const recordUpdateStart = internalMutation({
 	},
 });
 
-export const recordUpdateFinish = internalMutation({
+/**
+ * Close an `updateRun` row with the updater sidecar's verdict and step log.
+ *
+ * Platform-admin only, and public on purpose — see the module header. The id
+ * is checked to be an `updateRun` row: `systemUpdates` also holds the
+ * singleton `latestCheck` document, and patching THAT with a run status would
+ * corrupt the update-check cache the dashboard reads.
+ */
+export const recordUpdateFinish = authedMutation({
 	args: {
 		runId: v.id('systemUpdates'),
 		status: successOrFailedValidator,
@@ -169,6 +202,13 @@ export const recordUpdateFinish = internalMutation({
 		error: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		await requirePlatformAdmin(ctx);
+
+		const existing = await ctx.db.get(args.runId);
+		if (!existing || existing.kind !== 'updateRun') {
+			throwNotFound('update run');
+		}
+
 		const finishedAt = Date.now();
 		await ctx.db.patch(args.runId, {
 			finishedAt,
@@ -180,19 +220,19 @@ export const recordUpdateFinish = internalMutation({
 		// Pairs with recordUpdateStart's structured event so a log sink can
 		// compute duration + success rate without running a Convex query.
 		// Include run metadata so each line is self-contained (no join
-		// needed).
-		const run = await ctx.db.get(args.runId);
-		const durationMs = run?.startedAt ? finishedAt - run.startedAt : undefined;
+		// needed). Read from the pre-patch document — the patch touches none
+		// of these fields, so re-reading the row would only cost a second read.
+		const durationMs = existing.startedAt ? finishedAt - existing.startedAt : undefined;
 		// eslint-disable-next-line no-console
 		console.info(
 			JSON.stringify({
 				event: 'update_finish',
 				runId: args.runId,
-				versionFrom: run?.versionFrom,
-				versionTo: run?.versionTo,
+				versionFrom: existing.versionFrom,
+				versionTo: existing.versionTo,
 				status: args.status,
 				durationMs,
-				initiatedBy: run?.initiatedBy,
+				initiatedBy: existing.initiatedBy,
 				error: args.error,
 				timestamp: new Date(finishedAt).toISOString(),
 			})
