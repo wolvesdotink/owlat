@@ -17,8 +17,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 case "${1:-}" in
-	lint) turbo_tasks=(lint) ;;
-	verify) turbo_tasks=(lint typecheck test) ;;
+	lint)
+		turbo_tasks=(lint)
+		turbo_concurrency_args=()
+		;;
+	verify)
+		turbo_tasks=(lint typecheck test)
+		# A cold full-workspace verify gives every test runner its own worker pool.
+		# Bound the number of simultaneous Turbo tasks so those pools do not starve
+		# one another. CI can keep its runner-specific lower override.
+		turbo_concurrency_args=(--concurrency="${TURBO_CONCURRENCY:-4}")
+		;;
 	*)
 		echo "usage: bash scripts/ci-gate.sh lint|verify" >&2
 		exit 2
@@ -37,7 +46,7 @@ step bun run plugins:test-clean
 step node packages/plugin-codegen/scripts/convexBundleSmoke.ts
 step bun packages/plugin-codegen/scripts/convexFunctionGraphSmoke.ts
 
-step bunx turbo "${turbo_tasks[@]}" --filter='!@owlat/desktop'
+step bunx turbo "${turbo_tasks[@]}" "${turbo_concurrency_args[@]}" --filter='!@owlat/desktop'
 
 # script-tests is the single vitest boot for scripts/__tests__ — the unit tests
 # for the gate scripts themselves. It used to be a `vitest run <file>` prefix
