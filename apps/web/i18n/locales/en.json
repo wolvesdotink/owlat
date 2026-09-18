@@ -5762,6 +5762,61 @@
 				},
 				"aiProvider": {
 					"connectionWorks": "Connection works",
+					"decision": {
+						"apiKeyHelp": "Sent once over TLS, encrypted at rest, and never shown again. Leave it blank to keep the key already on file.",
+						"apiKeyLabel": "Decision API key",
+						"baseUrlDisclosure": "Advanced: custom API origin (proxy / gateway)",
+						"baseUrlHelp": "The origin only, like https://api.example.com. The endpoint path is appended for you, so a full endpoint URL here would be requested twice over.",
+						"baseUrlLabel": "API origin",
+						"consent": {
+							"acknowledge": "I have read what leaves this deployment, and I am enabling TypeSafe with a key of our own.",
+							"controller": "Who answers for it: in a self-hosted deployment you are the data controller and TypeSafe is your processor, not ours. Owlat brokers no keys and signs nothing on your behalf.",
+							"endpoint": "Where it goes: every decision request is sent to {host} over TLS, and to no other third party.",
+							"payload": "What leaves: the visible text of the item being judged — a message, a draft, an excerpt of a thread — and the questions asked about it. No attachments, no files, no images, no credentials.",
+							"privacyLink": "TypeSafe's privacy statement and contact",
+							"retention": "Region, retention and training: their documentation states none of the three, and the US-only claim comes from a launch post. Ask them in writing before you route regulated mail through this plane.",
+							"title": "Before you turn this on",
+							"vendor": "Who it is: TypeSafe, the company behind the Jev decision models. You bring your own key; it is encrypted at rest inside your deployment and never leaves it in readable form."
+						},
+						"degraded": {
+							"breakerOpen": "The plane has failed often enough to be cut off for the moment. Until it recovers, judgements run the way they did before it was configured.",
+							"keyMissing": "No key is stored for this provider. Unless this deployment supplies TYPESAFE_API_KEY in its environment, every judgement resolves to your language model instead.",
+							"languageBacked": "Your language model is answering these judgements. It returns a label without a calibrated probability, so a number that looks like confidence here is the model's own guess about itself.",
+							"testFailed": "The last key test came back with an error, so the stored configuration may not be able to run.",
+							"title": "This plane is degraded"
+						},
+						"description": "Answer the yes/no, category and score judgements the AI features make with a provider built for exactly that, instead of asking a text model to pick a label and then guess how sure it was. Optional, off until you turn it on, and reversible from this dropdown.",
+						"enableDisclosure": "Use a dedicated decision provider",
+						"fallback": {
+							"description": "When a decision call fails, one hop onto your language model can answer instead. It is decided per surface, because the same hop is a safety net on one path and an open tab on another.",
+							"never": "Never",
+							"title": "Fall back to the language model"
+						},
+						"getKey": "Get a key",
+						"health": {
+							"attempts": "Measured over {count} decision calls.",
+							"description": "What the plane did over the last {hours} hours, counted from the same ledger your spend ceiling reads.",
+							"fallback": "Answered by your language model instead",
+							"throttled": "Refused by the provider (rate limit or overload)",
+							"title": "Recent activity",
+							"uncalibrated": "Came back without a calibrated probability"
+						},
+						"modelHint": "Pinned to a version on purpose. You can name another one, and it is the id that gets sent — but answers from any version other than the pinned one are treated as uncalibrated, so every threshold goes inert until the calibration has been re-run.",
+						"modelLabel": "Decision model",
+						"offBody": "Your language model answers every yes/no, category and score judgement, exactly as it does today. Nothing is sent to a third-party decision provider.",
+						"offTitle": "No decision provider — nothing leaves your deployment",
+						"providerLabel": "Decision provider",
+						"saveFirstTest": "Save first, then test.",
+						"testConnection": "Test decision key",
+						"testOk": "The provider answered a test question — the key, the endpoint and the model version all work",
+						"thresholds": {
+							"active": "These apply to every judgement the plane answers.",
+							"description": "Each answer type is judged on its own scale, so there is no single confidence slider here. A yes/no answer carries no confidence field at all: its probability is the answer.",
+							"inert": "These are inert while the plane is degraded. Nothing reads a probability off it, so every surface keeps the deterministic answer it had before.",
+							"title": "Answer thresholds"
+						},
+						"title": "Decision provider"
+					},
 					"embeddings": {
 						"apiKeyHelp": "Encrypted at rest, never shown again.",
 						"apiKeyLabel": "Embedding API key",
@@ -10360,6 +10415,42 @@
 		"aiProviders": {
 			"currentModel": "{model} (current)",
 			"customModel": "Custom model id…",
+			"decision": {
+				"fallback": {
+					"agent": {
+						"body": "On. Someone is waiting on the reply, so a judgement that cannot be answered should be answered by your language model rather than hold the draft.",
+						"label": "Agent pipeline"
+					},
+					"classifiers": {
+						"body": "Off, and not settable. Category and needs-reply run on every message that arrives, so one outage would re-route your whole inbound flow onto a model that costs twenty to fifty times more. They keep their deterministic answer and try again later.",
+						"label": "Background classifiers"
+					}
+				},
+				"keyFromEnvironment": "No key here yet. Saving still works if this deployment supplies TYPESAFE_API_KEY in its environment; otherwise the plane resolves to your language model.",
+				"providers": {
+					"llm": {
+						"hint": "No third party. The same questions go to your configured language model, which answers them without calibrated probabilities.",
+						"label": "Use the language model (no third party)"
+					},
+					"typesafe": {
+						"hint": "The Jev decision models. Paste a TypeSafe API key; it is encrypted at rest and only ever sent to their API.",
+						"label": "TypeSafe Jev (recommended)"
+					}
+				},
+				"thresholds": {
+					"choice": {
+						"body": "Judged by the confidence the provider returns alongside the chosen option, which describes how peaked the distribution across the options is.",
+						"label": "Category and score answers"
+					},
+					"noul": {
+						"body": "Judged by distance from 0.5, because a yes/no answer carries no confidence field. A 0.55 and a 0.95 are both a yes, and only one of them is worth acting on.",
+						"label": "Yes/no answers"
+					}
+				},
+				"validation": {
+					"consentRequired": "Read what leaves this deployment and tick the box before enabling a third-party decision provider."
+				}
+			},
 			"embedders": {
 				"google": {
 					"label": "Google (hosted)"
@@ -14211,6 +14302,10 @@
 					"autonomy": {
 						"description": "Let the agent send replies and take actions without human approval when confidence is high.",
 						"label": "Autonomous actions"
+					},
+					"decisionPlane": {
+						"description": "Answer the yes/no, category and score judgements the AI features make with a dedicated decision provider instead of a text model. Off, every judgement stays on your configured language model.",
+						"label": "Decision plane"
 					},
 					"description": "Master toggle for all AI-powered features. Requires an LLM provider.",
 					"knowledge": {

@@ -15,11 +15,14 @@ import {
 	type LanguageProviderKind,
 	type TestConnectionState,
 } from '~/utils/aiProviders';
+import { useAiDecisionPlane } from './useAiDecisionPlane';
 
 /**
  * The AI-provider settings form as a self-contained state machine: the reactive
  * form, its derived option lists / validation, provider-default watchers, config
- * hydration, and the save / test / load-models handlers. Extracted from
+ * hydration, and the save / test / load-models handlers. Three planes now —
+ * language, embedding and the opt-in decision plane, whose rules live in
+ * `utils/aiDecisionPlane.ts` so this file stays a wiring layer. Extracted from
  * `pages/dashboard/admin/instance/ai-provider.vue` so the page is a thin template over
  * this logic (and each file stays under the size cap). Everything the template
  * binds is returned; internal derivations (`saved`, `hydrate`, effective-model
@@ -74,6 +77,18 @@ export function useAiProviderForm() {
 	const liveModels = ref<string[]>([]);
 	const liveModelsError = ref<string | null>(null);
 
+	// The third card's state, hydration and save arguments. It marks THIS form's
+	// dirty flag rather than keeping one of its own, so the unsaved-changes guard
+	// stays a single question the page can ask.
+	const decision = useAiDecisionPlane({
+		config: () => config.value ?? null,
+		runTest: (args) => runTest(args),
+		testFailedMessage: () => t('shared.useAiProviderForm.testFailed'),
+		markDirty: () => {
+			isDirty.value = true;
+		},
+	});
+
 	const languageMeta = computed(() => languageProviderMeta(form.languageProviderKind));
 	const embeddingMeta = computed(() => embeddingProviderMeta(form.embeddingProviderKind));
 	const requiresKey = computed(() => languageProviderRequiresKey(form.languageProviderKind));
@@ -114,7 +129,6 @@ export function useAiProviderForm() {
 	const storedEmbeddingKeySet = computed(() => saved.value?.isEmbeddingKeySet ?? false);
 	const keyPreview = computed(() => saved.value?.keyPreview);
 	const embeddingKeyPreview = computed(() => saved.value?.embeddingKeyPreview);
-
 	// Changing the embedding provider/model needs a re-index (embeddingModelVersion bump); warn first.
 	const embeddingChanged = computed(() => {
 		const c = saved.value;
@@ -217,6 +231,7 @@ export function useAiProviderForm() {
 			langMeta?.requiresBaseUrl === true;
 		showHostedEmbedder.value = embMeta?.isLocal === false;
 		hydrating.value = false;
+		decision.hydrateDecision();
 	}
 
 	watch(config, () => hydrate(), { immediate: true });
@@ -232,7 +247,11 @@ export function useAiProviderForm() {
 	});
 
 	async function handleSave() {
-		languageError.value = liveLanguageError.value;
+		// `validateLanguageConfig` answers in message KEYS (it is a pure module and
+		// cannot translate), so translate before it reaches an input's error slot —
+		// otherwise the admin reads a key path where a sentence belongs.
+		const languageKey = liveLanguageError.value;
+		languageError.value = languageKey ? t(languageKey) : null;
 		if (languageError.value) return;
 
 		// A hosted embedder needs a key too (stored or freshly typed).
@@ -254,6 +273,11 @@ export function useAiProviderForm() {
 			return;
 		}
 
+		// The consent gate. A save that has not been consented to writes NOTHING —
+		// not the decision plane, and not the two cards above it either, because a
+		// half-applied save is the one outcome an operator cannot reason about.
+		if (decision.decisionSaveBlocked()) return;
+
 		const apiKey = form.apiKey.trim();
 		const embeddingApiKey = form.embeddingApiKey.trim();
 		const baseUrl = form.languageBaseUrl.trim();
@@ -267,12 +291,16 @@ export function useAiProviderForm() {
 			embeddingProviderKind: form.embeddingProviderKind,
 			embeddingModel: effectiveEmbeddingModel.value || undefined,
 			embeddingApiKey: embeddingApiKey || undefined,
+			// `{}` for every install that never opted in — an absent
+			// `decisionProviderKind` leaves the decision plane exactly as it was.
+			...decision.decisionSaveArgs(),
 		});
 		if (!result.ok) return;
 
 		// Never keep the plaintext key in memory once persisted.
 		form.apiKey = '';
 		form.embeddingApiKey = '';
+		decision.afterDecisionSave();
 		isDirty.value = false;
 		testState.value = { status: 'idle' };
 		showToast(t('shared.useAiProviderForm.saved'));
@@ -358,5 +386,8 @@ export function useAiProviderForm() {
 		handleSave,
 		handleTest,
 		handleLoadModels,
+		// The decision card's whole surface, spread so the page destructures one
+		// flat set of bindings the way it already does for the other two planes.
+		...decision,
 	};
 }
