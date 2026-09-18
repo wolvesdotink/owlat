@@ -203,6 +203,28 @@ export type EnvKey =
 	| 'LLM_COMPLEXITY_ROUTING'
 	| 'OPENAI_API_KEY'
 	| 'OPENROUTER_API_KEY'
+	// DECISION plane (the third AI plane — typed questions in, typed answers with
+	// their probabilities out). OPT-IN IN EVERY VARIABLE: an install that sets
+	// none of them resolves to the language-backed adapter, which is exactly its
+	// behaviour before the plane existed. Read only by lib/decisionProvider.ts.
+	// The TypeSafe (Jev) API key — the deployment-level equivalent of the stored
+	// per-org key, for a self-hoster who configures through the environment. A
+	// stored key wins when both are present. Unset ⇒ the plane has no credential
+	// and resolution degrades to the language plane.
+	| 'TYPESAFE_API_KEY'
+	// Which decision adapter answers: 'typesafe' or 'llm'. Consulted only when the
+	// stored row names no kind; an unrecognised value is ignored rather than
+	// thrown on, so a typo degrades to today's behaviour instead of taking the
+	// inbound path down.
+	| 'DECISION_PROVIDER'
+	// Decision model id override. Unset ⇒ the adapter's pinned version (never an
+	// alias — a model that moved underneath a calibrated threshold is the failure
+	// this pin exists to prevent).
+	| 'DECISION_MODEL'
+	// Decision API ORIGIN override, for an operator fronting the vendor with their
+	// own proxy. The endpoint path is appended by the adapter, so this is an origin
+	// and not a full URL. Unset ⇒ the adapter's own origin.
+	| 'DECISION_BASE_URL'
 	// Per-org dollar-spend budget for LLM calls (analytics/spendBudget.ts).
 	// Daily / monthly USD ceilings — unset or `0` ⇒ no limit for that period
 	// (the budget gate is a no-op). When a ceiling is hit the autonomous path

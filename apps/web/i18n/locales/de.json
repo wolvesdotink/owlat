@@ -5947,6 +5947,68 @@
 				},
 				"aiProvider": {
 					"connectionWorks": "Verbindung funktioniert",
+					"decision": {
+						"apiKeyHelp": "Einmalig über TLS übertragen, verschlüsselt gespeichert und nie wieder angezeigt. Leer lassen, um den hinterlegten Schlüssel zu behalten.",
+						"apiKeyLabel": "API-Schlüssel der Entscheidungsebene",
+						"baseUrlDisclosure": "Erweitert: eigener API-Origin (Proxy / Gateway)",
+						"baseUrlHelp": "Nur der Origin, etwa https://api.example.com. Den Endpunktpfad hängt der Adapter selbst an; eine vollständige Endpunkt-URL stünde hier also doppelt.",
+						"baseUrlLabel": "API-Origin",
+						"consent": {
+							"acknowledge": "Ich habe gelesen, was diese Installation verlässt, und aktiviere TypeSafe mit einem eigenen Schlüssel.",
+							"controller": "Wer dafür einsteht: In einer selbst gehosteten Installation sind Sie die verantwortliche Stelle und TypeSafe ist Ihr Auftragsverarbeiter, nicht unserer. Owlat vermittelt keine Schlüssel und unterschreibt nichts in Ihrem Namen.",
+							"endpoint": "Wohin es geht: Jede Entscheidungsanfrage geht über TLS an {host} und an keinen weiteren Dritten.",
+							"payload": "Was übertragen wird: der sichtbare Text des beurteilten Objekts — eine Nachricht, ein Entwurf, ein Auszug aus einem Verlauf — und die Fragen dazu. Keine Anhänge, keine Dateien, keine Bilder, keine Zugangsdaten.",
+							"privacyLink": "Datenschutzerklärung und Kontakt von TypeSafe",
+							"retention": "Region, Speicherdauer und Training: Die Dokumentation nennt keinen dieser drei Punkte, und die Angabe „nur USA“ stammt aus einem Blogbeitrag zum Start. Fragen Sie schriftlich nach, bevor Sie regulierte Post über diese Ebene leiten.",
+							"title": "Bevor Sie das einschalten",
+							"vendor": "Wer es ist: TypeSafe, das Unternehmen hinter den Jev-Entscheidungsmodellen. Sie bringen Ihren eigenen Schlüssel mit; er wird in Ihrer Installation verschlüsselt gespeichert und verlässt sie nie im Klartext."
+						},
+						"degraded": {
+							"breakerOpen": "Die Ebene ist so oft ausgefallen, dass sie vorerst abgeschaltet wurde. Bis sie sich erholt, laufen die Entscheidungen so wie vor ihrer Einrichtung.",
+							"keyMissing": "Für diesen Anbieter ist kein Schlüssel hinterlegt. Sofern die Installation nicht TYPESAFE_API_KEY in ihrer Umgebung bereitstellt, beantwortet stattdessen Ihr Sprachmodell jede Entscheidung.",
+							"languageBacked": "Ihr Sprachmodell beantwortet diese Entscheidungen. Es liefert ein Label ohne kalibrierte Wahrscheinlichkeit; eine Zahl, die hier nach Konfidenz aussieht, ist die Selbsteinschätzung des Modells.",
+							"testFailed": "Der letzte Schlüsseltest endete mit einem Fehler, die gespeicherte Konfiguration ist also möglicherweise nicht lauffähig.",
+							"title": "Diese Ebene ist eingeschränkt"
+						},
+						"description": "Konfigurieren Sie einen eigenen Anbieter für Ja/Nein-, Kategorie- und Bewertungsfragen. Das Speichern aktiviert keine Anfragen: Aktivieren oder pausieren Sie die Entscheidungsebene separat unter Funktionen.",
+						"enableDisclosure": "Eigenen Entscheidungsanbieter konfigurieren",
+						"fallback": {
+							"description": "Scheitert eine Entscheidungsanfrage, kann ersatzweise Ihr Sprachmodell antworten. Das wird pro Oberfläche entschieden, denn derselbe Sprung ist auf dem einen Weg ein Sicherheitsnetz und auf dem anderen eine offene Rechnung.",
+							"never": "Nie",
+							"title": "Auf das Sprachmodell zurückfallen"
+						},
+						"getKey": "Schlüssel anfordern",
+						"health": {
+							"attempts": "Gemessen über {count} Entscheidungsanfragen.",
+							"description": "Was die Ebene in den letzten {hours} Stunden getan hat, gezählt aus demselben Journal, aus dem auch Ihre Kostengrenze liest.",
+							"fallback": "Stattdessen von Ihrem Sprachmodell beantwortet",
+							"throttled": "Vom Anbieter abgelehnt (Ratenlimit oder Überlast)",
+							"title": "Letzte Aktivität",
+							"uncalibrated": "Kam ohne kalibrierte Wahrscheinlichkeit zurück"
+						},
+						"modelHint": "Bewusst auf eine Version festgelegt. Sie können eine andere angeben, und genau diese Kennung wird gesendet — Antworten aus einer anderen als der festgelegten Version gelten jedoch als unkalibriert, sodass alle Schwellenwerte ruhen, bis die Kalibrierung erneut gelaufen ist.",
+						"modelLabel": "Entscheidungsmodell",
+						"offBody": "Ihr Sprachmodell beantwortet jede Ja/Nein-, Kategorie- und Bewertungsentscheidung, genau wie bisher. An einen fremden Entscheidungsanbieter geht nichts.",
+						"offTitle": "Kein Entscheidungsanbieter — nichts verlässt Ihre Installation",
+						"providerLabel": "Entscheidungsanbieter",
+						"saveFirstTest": "Erst speichern, dann testen.",
+						"testConnection": "Entscheidungsschlüssel testen",
+						"testOk": "Der Anbieter hat eine Testfrage beantwortet — Schlüssel, Endpunkt und Modellversion funktionieren",
+						"thresholds": {
+							"active": "Sie gelten für jede Entscheidung, die diese Ebene beantwortet.",
+							"description": "Jede Antwortart wird auf ihrer eigenen Skala beurteilt; einen einzelnen Konfidenzregler gibt es hier deshalb nicht. Eine Ja/Nein-Antwort trägt überhaupt keine Konfidenz: Ihre Wahrscheinlichkeit ist die Antwort.",
+							"inert": "Solange die Ebene eingeschränkt ist, greifen sie nicht. Keine Oberfläche liest eine Wahrscheinlichkeit von ihr, jede behält ihre deterministische Antwort.",
+							"title": "Schwellenwerte je Antwortart"
+						},
+						"title": "Entscheidungsanbieter",
+						"feature": {
+							"disabled": "Entscheidungsanfragen sind deaktiviert. Speichern Sie den Anbieter und aktivieren Sie KI und Entscheidungsebene unter Funktionen, um ihn zu testen.",
+							"enabled": "Entscheidungsanfragen sind unter Funktionen aktiviert. Tests verwenden die gespeicherten Anbietereinstellungen.",
+							"loading": "Der Status der Entscheidungsanfragen wird geprüft…",
+							"error": "Der Funktionsstatus konnte nicht geprüft werden. Tests sind erst nach der Bestätigung des Status verfügbar.",
+							"manage": "Unter Funktionen verwalten"
+						}
+					},
 					"embeddings": {
 						"apiKeyHelp": "Verschlüsselt gespeichert, wird nie wieder angezeigt.",
 						"apiKeyLabel": "Embedding-API-Schlüssel",
@@ -10701,6 +10763,42 @@
 		"aiProviders": {
 			"currentModel": "{model} (aktuell)",
 			"customModel": "Eigene Modell-ID…",
+			"decision": {
+				"fallback": {
+					"agent": {
+						"body": "An. Jemand wartet auf die Antwort; eine Entscheidung, die nicht beantwortet werden kann, sollte daher Ihr Sprachmodell beantworten, statt den Entwurf aufzuhalten.",
+						"label": "Agenten-Pipeline"
+					},
+					"classifiers": {
+						"body": "Aus, und nicht einstellbar. Kategorie und Antwortbedarf laufen für jede eingehende Nachricht; ein einziger Ausfall würde den gesamten Posteingang auf ein Modell umleiten, das zwanzig- bis fünfzigmal so viel kostet. Sie behalten ihre deterministische Antwort und versuchen es später erneut.",
+						"label": "Klassifikatoren im Hintergrund"
+					}
+				},
+				"keyFromEnvironment": "Hier ist noch kein Schlüssel hinterlegt. Das Speichern gelingt trotzdem, wenn die Installation TYPESAFE_API_KEY in ihrer Umgebung bereitstellt; andernfalls löst die Ebene auf Ihr Sprachmodell auf.",
+				"providers": {
+					"llm": {
+						"hint": "Kein Dritter. Dieselben Fragen gehen an Ihr konfiguriertes Sprachmodell, das sie ohne kalibrierte Wahrscheinlichkeiten beantwortet.",
+						"label": "Sprachmodell verwenden (kein Dritter)"
+					},
+					"typesafe": {
+						"hint": "Die Jev-Entscheidungsmodelle. Fügen Sie einen TypeSafe-API-Schlüssel ein; er wird verschlüsselt gespeichert und ausschließlich an deren API gesendet.",
+						"label": "TypeSafe Jev (empfohlen)"
+					}
+				},
+				"thresholds": {
+					"choice": {
+						"body": "Beurteilt anhand der Konfidenz, die der Anbieter zur gewählten Option mitliefert; sie beschreibt, wie ausgeprägt die Verteilung über die Optionen ist.",
+						"label": "Kategorie- und Bewertungsantworten"
+					},
+					"noul": {
+						"body": "Beurteilt anhand des Abstands zu 0,5, denn eine Ja/Nein-Antwort trägt kein Konfidenzfeld. 0,55 und 0,95 sind beide ein Ja, und nur eines davon taugt als Grundlage zum Handeln.",
+						"label": "Ja/Nein-Antworten"
+					}
+				},
+				"validation": {
+					"consentRequired": "Lesen Sie, was diese Installation verlässt, und setzen Sie den Haken, bevor Sie einen fremden Entscheidungsanbieter aktivieren."
+				}
+			},
 			"embedders": {
 				"google": {
 					"label": "Google (gehostet)"
@@ -14574,6 +14672,10 @@
 					"autonomy": {
 						"description": "Der Agent versendet Antworten und führt Aktionen ohne menschliche Freigabe aus, wenn die Konfidenz hoch ist.",
 						"label": "Autonome Aktionen"
+					},
+					"decisionPlane": {
+						"description": "Ja/Nein-, Kategorie- und Bewertungsentscheidungen der KI-Funktionen von einem eigenen Entscheidungsanbieter statt von einem Textmodell beantworten lassen. Ausgeschaltet bleibt jede Entscheidung bei dem von Ihnen konfigurierten Sprachmodell.",
+						"label": "Entscheidungsebene"
 					},
 					"description": "Hauptschalter für alle KI-gestützten Funktionen. Benötigt einen LLM-Anbieter.",
 					"knowledge": {

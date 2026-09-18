@@ -63,18 +63,20 @@ const pairs = markdownFiles(englishRoot).map((englishPath) => {
 /**
  * Existing translation debt is recorded explicitly so this suite is a ratchet:
  * a new mismatch fails, while fixing one requires deleting its baseline here.
+ * Decision-plane rows were added equally to EN and DE; their table sizes below
+ * include those rows without increasing the pre-existing translation difference.
  */
 const knownStructureDrift = {
 	'1.guide/23.feature-flags.md': {
 		en: {
 			headings: '123311322222',
 			fences: ['sh', 'plain', 'sh', 'plain'],
-			tables: ['5x3', '9x3', '34x4'],
+			tables: ['5x3', '9x3', '35x4'],
 		},
 		de: {
 			headings: '123311322222',
 			fences: ['sh', 'plain', 'sh', 'plain'],
-			tables: ['5x3', '8x3', '33x4'],
+			tables: ['5x3', '8x3', '34x4'],
 		},
 	},
 	'1.guide/29.team-inbox.md': {
@@ -219,7 +221,7 @@ const knownStructureDrift = {
 				'4x2',
 				'5x3',
 				'6x2',
-				'28x3',
+				'32x3',
 				'8x5',
 				'7x2',
 				'4x2',
@@ -237,7 +239,7 @@ const knownStructureDrift = {
 				'14x3',
 				'4x3',
 				'5x2',
-				'72x5',
+				'76x5',
 				'8x5',
 				'5x5',
 				'14x5',
@@ -285,7 +287,7 @@ const knownStructureDrift = {
 				'4x2',
 				'4x2',
 				'6x2',
-				'25x3',
+				'29x3',
 				'8x5',
 				'7x2',
 				'4x2',
@@ -303,7 +305,7 @@ const knownStructureDrift = {
 				'14x3',
 				'4x3',
 				'5x2',
-				'72x5',
+				'76x5',
 				'8x5',
 				'5x5',
 				'14x5',

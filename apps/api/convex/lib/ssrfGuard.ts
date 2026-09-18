@@ -243,7 +243,7 @@ export async function readCappedBytes(
  * type is a stable contract. A plain network error (DNS/socket failure) is NOT
  * an instance of this class, so `unreachable`-style fallbacks still catch it.
  */
-class FetchGuardError extends Error {}
+export class FetchGuardError extends Error {}
 
 /**
  * The destination is on the SSRF blocklist — it resolved to a private, internal,

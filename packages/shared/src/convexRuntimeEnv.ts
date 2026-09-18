@@ -172,6 +172,17 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'LLM_COMPLEXITY_ROUTING',
 	'OPENAI_API_KEY',
 	'OPENROUTER_API_KEY',
+	// DECISION plane (the third AI plane). Read at Convex function runtime by
+	// lib/decisionProvider.ts via getOptional(), so a self-hoster who configures
+	// the plane through .env alone would otherwise find it silently never applied:
+	// the resolver would see no key, degrade to the language-backed adapter, and
+	// the deployment would keep paying language-plane prices for every decision
+	// with nothing on screen to explain why. Every one of these is optional —
+	// unset means the plane resolves exactly as it did before it existed.
+	'TYPESAFE_API_KEY',
+	'DECISION_PROVIDER',
+	'DECISION_MODEL',
+	'DECISION_BASE_URL',
 	// Per-org dollar-spend budget for LLM calls (analytics/spendBudget.ts).
 	// Pushed into the deployment so resolveBudgetConfig() reads real ceilings
 	// at function runtime; without these the gate reads the '0' default and the

@@ -7,12 +7,28 @@
  * (mid-tier) default and flagged `estimated`, so a single unpriced call never
  * silently under-reports spend to $0. Prices are approximate list prices and
  * will drift — this is a dashboard estimate, not billing.
+ *
+ * ONE table for all three planes. The DECISION plane (`lib/decision/*`) bills
+ * on a different shape — input only, output returned but free — yet its rows
+ * live here with everything else, because the ledger, the dashboard and the
+ * enforced dollar ceiling sum one number across planes and a second price table
+ * would be a second thing to forget. `lib/decision/pricing.ts` owns the
+ * decision-TYPED view of these rows (which ids belong to the plane, and
+ * admission keyed on a decision provenance); it reads them from here.
  */
 
 import type { TokenUsage } from '../../agent/steps/types';
+import type { DecisionEndpointProvenance } from '../decisionProviders/types';
 import type { LanguageEndpointProvenance } from '../llmProviders/types';
 
 type Price = { prefix: string; inputPerM: number; outputPerM: number };
+
+/**
+ * Catch-all prefix for the decision plane's model family. Exported because
+ * `lib/decision/pricing.ts` decides "is this id on the decision plane?" from the
+ * same string the price row and the admission aliases are written from.
+ */
+export const DECISION_MODEL_PRICE_PREFIX = 'jev-';
 
 // Ordered most-specific-first so `gpt-4o-mini` matches before `gpt-4o`.
 const PRICING: Price[] = [
@@ -68,6 +84,15 @@ const PRICING: Price[] = [
 	{ prefix: 'minimax-m3', inputPerM: 0.3, outputPerM: 1.2 },
 	{ prefix: 'mimo-v2.5-pro', inputPerM: 0.435, outputPerM: 0.87 },
 	{ prefix: 'kimi-k2.6', inputPerM: 0.66, outputPerM: 3.41 },
+	// TypeSafe (the DECISION plane). Input only: output tokens ARE returned and
+	// nonzero — a decision answer carries its probabilities — they are simply not
+	// charged, so the zero is written down rather than left to the absence of a
+	// row. The pinned version first, then the `jev-` catch-all so `jev-latest`,
+	// `jev-preview` and whatever the vendor pins next are never billed at the
+	// $3/$12 unknown-model default, which would over-report this plane by ~70×
+	// and hand the enforced ceiling a number with no relation to the bill.
+	{ prefix: 'jev-1.13.0', inputPerM: 0.042, outputPerM: 0 },
+	{ prefix: DECISION_MODEL_PRICE_PREFIX, inputPerM: 0.042, outputPerM: 0 },
 ];
 
 // Conservative fallback (≈ a mid-tier model) — never price an unknown model $0.
@@ -89,6 +114,20 @@ interface AdmissionModel {
 function admissionModel(modelId: string, pricePrefix = modelId): AdmissionModel {
 	return { modelId, pricePrefix };
 }
+
+/**
+ * The endpoint identities admission is keyed on: the LANGUAGE plane's, plus the
+ * DECISION plane's. One catalog rather than two, because admission is a single
+ * question — "may this exact model, reached through this exact endpoint, be
+ * charged against a hard budget?" — and the plugin host asks it through one
+ * function (`plugins/llmAccounting.ts` → `reserve`). A decision provenance the
+ * catalog did not know would fail closed there, and a future plugin decision
+ * capability would die with a bare `access_denied` nobody could trace to a
+ * missing price row. Note both unions spell `custom`: an operator-pointed
+ * endpoint is untrusted on either plane and admits nothing, so the shared key
+ * carries the same empty list either way.
+ */
+export type AdmissionProvenance = LanguageEndpointProvenance | DecisionEndpointProvenance;
 
 /**
  * Exact model identities eligible for hard-budget admission. This deliberately
@@ -146,15 +185,29 @@ const ADMISSION_MODELS = {
 		admissionModel('xiaomi/mimo-v2.5-pro', 'mimo-v2.5-pro'),
 		admissionModel('moonshotai/kimi-k2.6', 'kimi-k2.6'),
 	],
+	// DECISION plane. The adapter pins the version and never sends an alias, but
+	// `modelUsed` is what the PROVIDER reported answering with, so both aliases
+	// are admitted at the catch-all row's price rather than denied for spelling.
+	'typesafe-native': [
+		admissionModel('jev-1.13.0'),
+		admissionModel('jev-latest', DECISION_MODEL_PRICE_PREFIX),
+		admissionModel('jev-preview', DECISION_MODEL_PRICE_PREFIX),
+	],
+	// A decision answered by the language-backed adapter was billed by the
+	// LANGUAGE plane, at a language model's price. It is admitted under the
+	// language provenance that call actually ran on — which is why this list is
+	// empty rather than a copy of the language catalog. See
+	// `estimateKnownDecisionCostMicrousd` in `lib/decision/pricing.ts`.
+	'llm-backed': [],
 	custom: [],
-} as const satisfies Record<LanguageEndpointProvenance, readonly AdmissionModel[]>;
+} as const satisfies Record<AdmissionProvenance, readonly AdmissionModel[]>;
 
 /**
  * Admission pricing is intentionally stricter than dashboard reporting. Both
  * endpoint provenance and model id must exactly match the trusted catalog.
  */
 function admissionPriceForModel(
-	endpointProvenance: LanguageEndpointProvenance,
+	endpointProvenance: AdmissionProvenance,
 	modelUsed: string | undefined
 ): Price | undefined {
 	if (!modelUsed) return undefined;
@@ -164,7 +217,7 @@ function admissionPriceForModel(
 	return admission ? PRICING.find((price) => price.prefix === admission.pricePrefix) : undefined;
 }
 
-interface CostEstimate {
+export interface CostEstimate {
 	costUsd: number;
 	/** True when the model id didn't match the table (priced with the default). */
 	estimated: boolean;
@@ -190,7 +243,7 @@ export function estimateCost(
  * unknown models return undefined instead of using the fallback price.
  */
 export function estimateKnownCostMicrousd(
-	endpointProvenance: LanguageEndpointProvenance,
+	endpointProvenance: AdmissionProvenance,
 	modelUsed: string | undefined,
 	usage: TokenUsage
 ): number | undefined {
@@ -222,6 +275,9 @@ const PROVIDER_LABELS: { prefix: string; label: string }[] = [
 	{ prefix: 'o3', label: 'OpenAI' },
 	{ prefix: 'o4', label: 'OpenAI' },
 	{ prefix: 'claude', label: 'Anthropic' },
+	// The decision plane's family, so per-backend spend names TypeSafe rather
+	// than filing the cheapest plane under `Other`.
+	{ prefix: 'jev', label: 'TypeSafe' },
 	{ prefix: 'gemini', label: 'Google' },
 	{ prefix: 'llama', label: 'Local' },
 	{ prefix: 'qwen', label: 'Local' },

@@ -7,6 +7,14 @@
  * inbound-agent step view in `agentHealth.getCostByStep` (which reads
  * agentActions). `recordLlmSpend` is the helper action callers invoke after each
  * LLM call.
+ *
+ * The ledger spans all three planes. A row's `plane` tag is optional and absent
+ * means `language`, which is what every row written before the decision plane
+ * existed is; nothing migrates. DECISION rows carry three more optional flags
+ * (`isFallback`, `isCalibrated`, `isThrottled`) so the plane's three counters are
+ * derivable from the same rows the enforced ceiling reads, rather than from a
+ * second store that can disagree with the bill. See
+ * {@link summarizeDecisionPlane}.
  */
 
 import { v } from 'convex/values';
@@ -22,20 +30,60 @@ import { tokenUsageValidator } from '../lib/convexValidators';
 import type { TokenUsage } from '../agent/steps/types';
 import { estimateCostUsd, providerLabelForModel } from '../lib/llm/pricing';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { llmUsagePlaneValidator, type LlmUsagePlane } from '../lib/llmUsageTags';
 
-/** Persist one LLM call's token usage + priced cost. No-ops when usage is absent. */
+/**
+ * Per-row annotations beyond feature and cost, mirroring the table's optional
+ * tag columns (`lib/llmUsageTags.ts`). `plane` applies to every plane; the
+ * three flags below it are the DECISION plane's and are absent elsewhere. All
+ * optional, so a caller that knows none of them writes exactly today's row.
+ */
+export interface LlmUsageTags {
+	readonly plane?: LlmUsagePlane;
+	/** The dispatch's id for one logical call, repeated across its retries and its hop. */
+	readonly requestId?: string;
+	/** The attempt ran on the language-backed fallback hop, not the native plane. */
+	readonly isFallback?: boolean;
+	/** The answering adapter's probabilities are calibrated across groups. */
+	readonly isCalibrated?: boolean;
+	/** Upstream pushed back: 429, or 529 (their overload code). */
+	readonly isThrottled?: boolean;
+}
+
+/**
+ * Persist one LLM call's token usage + priced cost. No-ops when usage is absent
+ * AND the row is untagged — a call that produced nothing and says nothing about
+ * itself is not worth a row. A TAGGED row is written even with no usage, because
+ * a throttled or failed decision attempt is precisely what the 429/529 counter
+ * is counting, and one that only counts successes hides the outage.
+ */
 export const record = internalMutation({
 	args: {
 		feature: v.string(),
 		modelUsed: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
+		plane: v.optional(llmUsagePlaneValidator),
+		requestId: v.optional(v.string()),
+		isFallback: v.optional(v.boolean()),
+		isCalibrated: v.optional(v.boolean()),
+		isThrottled: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
+		const tags: LlmUsageTags = {
+			plane: args.plane,
+			requestId: args.requestId,
+			isFallback: args.isFallback,
+			isCalibrated: args.isCalibrated,
+			isThrottled: args.isThrottled,
+		};
 		const usage = args.tokenUsage;
-		if (!usage) return;
-		await insertLlmUsage(ctx, args.feature, usage, args.modelUsed);
+		if (!usage && args.plane === undefined) return;
+		await insertLlmUsage(ctx, args.feature, usage ?? ZERO_USAGE, args.modelUsed, undefined, tags);
 	},
 });
+
+/** No reported usage: an unknown spend, or a request refused before billing. */
+const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
 interface LlmUsageAttribution {
 	readonly organizationId: string;
@@ -48,7 +96,8 @@ export async function insertLlmUsage(
 	feature: string,
 	tokenUsage: TokenUsage,
 	modelUsed: string | undefined,
-	attribution?: LlmUsageAttribution
+	attribution?: LlmUsageAttribution,
+	tags?: LlmUsageTags
 ): Promise<void> {
 	await ctx.db.insert('llmUsageEvents', {
 		feature,
@@ -60,6 +109,11 @@ export async function insertLlmUsage(
 		totalTokens: tokenUsage.totalTokens,
 		costUsd: estimateCostUsd(modelUsed, tokenUsage),
 		createdAt: Date.now(),
+		plane: tags?.plane,
+		requestId: tags?.requestId,
+		isFallback: tags?.isFallback,
+		isCalibrated: tags?.isCalibrated,
+		isThrottled: tags?.isThrottled,
 	});
 }
 
@@ -76,6 +130,35 @@ export async function recordLlmSpend(
 ): Promise<void> {
 	if (!tokenUsage) return;
 	await ctx.runMutation(internal.analytics.llmUsage.record, { feature, modelUsed, tokenUsage });
+}
+
+/**
+ * The decision plane's writer. Separate from {@link recordLlmSpend} only so no
+ * call site has to remember the plane tag or the three flags: the dispatch hands
+ * over one attempt record, this turns it into one row, and the row lands BEFORE
+ * the answer is used so the enforced ceiling sees the spend it authorised.
+ *
+ * A failed or throttled attempt is recorded too (using reported usage, if available), because the
+ * counters read from these rows are about what the plane DID, not about what it
+ * returned.
+ */
+export async function recordDecisionSpend(
+	ctx: ActionCtx,
+	feature: string,
+	tokenUsage: TokenUsage | undefined,
+	modelUsed: string | undefined,
+	tags: Omit<LlmUsageTags, 'plane'> = {}
+): Promise<void> {
+	await ctx.runMutation(internal.analytics.llmUsage.record, {
+		feature,
+		modelUsed,
+		tokenUsage,
+		plane: 'decision',
+		requestId: tags.requestId,
+		isFallback: tags.isFallback,
+		isCalibrated: tags.isCalibrated,
+		isThrottled: tags.isThrottled,
+	});
 }
 
 type SpendTotals = { totalTokens: number; costUsd: number; calls: number };
@@ -162,6 +245,89 @@ export const getSpendByProvider = adminQuery({
 		const { groups, totalCostUsd } = groupSpend(events, (e) => providerLabelForModel(e.modelUsed));
 		const providers = groups.map(({ key, ...totals }) => ({ provider: key, ...totals }));
 		return { providers, totalCostUsd, hoursBack };
+	},
+});
+
+/** The fields the decision counters read. Structural, so it is testable with plain rows. */
+export interface DecisionCountableEvent {
+	readonly plane?: LlmUsagePlane;
+	readonly isFallback?: boolean;
+	readonly isCalibrated?: boolean;
+	readonly isThrottled?: boolean;
+	readonly costUsd: number;
+}
+
+/** The three rates the decision plane is judged by, plus the counts behind them. */
+export interface DecisionPlaneCounters {
+	/** Rows tagged `decision` in the window — attempts, not answers. */
+	attempts: number;
+	/** Attempts that ran on the language-backed fallback hop. */
+	fallbackAttempts: number;
+	/** Attempts answered by an adapter whose probabilities are not calibrated. */
+	uncalibratedAttempts: number;
+	/** Attempts upstream refused with 429 or 529. */
+	throttledAttempts: number;
+	/** Attempts that reported a calibration flag at all — the uncalibrated denominator. */
+	calibrationReported: number;
+	/** `fallbackAttempts / attempts`, 0 when there were none. */
+	fallbackRate: number;
+	/** `uncalibratedAttempts / calibrationReported`, 0 when nothing reported. */
+	uncalibratedRate: number;
+	/** `throttledAttempts / attempts`, 0 when there were none. */
+	throttledRate: number;
+	/** Decision-plane spend in the window. */
+	costUsd: number;
+}
+
+/**
+ * Count the decision plane's three rates off the ledger. Pure, and filtering in
+ * memory over a slice the caller already bounded — the `plane` tag is unindexed
+ * by design, so this never turns into a fourth index every writer pays for.
+ *
+ * The denominators differ on purpose. Fallback and throttling are properties of
+ * an ATTEMPT (a failed attempt is exactly what they are counting), while
+ * calibration is a property of an ANSWER: an attempt that never got one reports
+ * no flag and must not be counted as calibrated OR as uncalibrated, which is why
+ * it has a denominator of its own.
+ */
+export function summarizeDecisionPlane(
+	events: readonly DecisionCountableEvent[]
+): DecisionPlaneCounters {
+	const decisions = events.filter((event) => event.plane === 'decision');
+	const attempts = decisions.length;
+	const fallbackAttempts = decisions.filter((event) => event.isFallback === true).length;
+	const calibrationReported = decisions.filter((event) => event.isCalibrated !== undefined).length;
+	const uncalibratedAttempts = decisions.filter((event) => event.isCalibrated === false).length;
+	const throttledAttempts = decisions.filter((event) => event.isThrottled === true).length;
+	const rate = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
+	return {
+		attempts,
+		fallbackAttempts,
+		uncalibratedAttempts,
+		throttledAttempts,
+		calibrationReported,
+		fallbackRate: rate(fallbackAttempts, attempts),
+		uncalibratedRate: rate(uncalibratedAttempts, calibrationReported),
+		throttledRate: rate(throttledAttempts, attempts),
+		costUsd: decisions.reduce((sum, event) => sum + event.costUsd, 0),
+	};
+}
+
+/**
+ * Decision-plane health over a recent window: how often the expensive fallback
+ * hop fired, how often an answer came back uncalibrated (so every threshold
+ * downstream went inert), and how often upstream pushed back. Same bounded slice
+ * as the spend queries above.
+ */
+export const getDecisionPlaneCounters = adminQuery({
+	args: {
+		hoursBack: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const hoursBack = readHoursBack(args.hoursBack);
+		const organizationId = await activeLlmOrganizationId(ctx);
+		const events = await recentUsageEvents(ctx, hoursBack, organizationId);
+		return { ...summarizeDecisionPlane(events), hoursBack };
 	},
 });
 

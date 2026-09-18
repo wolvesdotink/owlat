@@ -12,6 +12,7 @@ import {
 import { pendingClarificationValidator } from '../inbox/clarificationValidators';
 import { attachmentSuggestionsValidator } from '../inbox/attachmentValidators';
 import { agentStepKindValidator } from '../agent/steps/catalog';
+import { llmUsageTagFields } from '../lib/llmUsageTags';
 import { agentMetricTypeValidator, contextTierValidator } from '../lib/literalValidators';
 
 /**
@@ -389,10 +390,10 @@ export const inboxTables = {
 		// filtering windowStart in memory after an equality-only index seek.
 		.index('by_metric_type_and_window_start', ['metricType', 'windowStart']),
 
-	// Per-call LLM usage + estimated cost for EVERY feature, not just the inbound
-	// agent (which also records to agentActions). Gives a deployment-wide AI-spend
-	// view, the data foundation for budget alerts. Windowed reads via the system
-	// by_creation_time index; retention prunes the tail.
+	// Per-call LLM usage + estimated cost for EVERY feature and every plane, not
+	// just the inbound agent (which also records to agentActions). Windowed reads
+	// via the system by_creation_time index; retention prunes the tail. The four
+	// optional tags — plane, plus the decision plane's — are lib/llmUsageTags.ts.
 	llmUsageEvents: defineTable({
 		feature: v.string(),
 		organizationId: v.optional(v.string()),
@@ -403,6 +404,7 @@ export const inboxTables = {
 		totalTokens: v.number(),
 		costUsd: v.number(),
 		createdAt: v.number(),
+		...llmUsageTagFields,
 	})
 		.index('by_feature', ['feature'])
 		.index('by_organization_id_and_created_at', ['organizationId', 'createdAt'])

@@ -49,10 +49,9 @@ import { applySetupDefaults } from '../lib/setupEnvDefaults';
 import { assertFblDedupCutoverConfigured } from '../lib/fblDedupSetup';
 import { applyAssumeYes, applyConfigFile } from './setupNonInteractive';
 import { pickSendingProvider } from './setupSendingProvider';
+import { pickAIProvider, pickDecisionProvider } from './setupAiProvider';
 import { collectDomain } from './setupDomain';
 import {
-	validateOpenAIKey,
-	validateOpenRouterKey,
 	validatePostHogHost,
 	validateGoogleSafeBrowsingKey,
 	isValidEmail,
@@ -151,11 +150,22 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 		envPatch = { ...envPatch, ...sendingResult };
 	}
 
-	// Step 4: AI provider (only if AI is enabled)
+	// Step 4: AI provider (only if AI is enabled), then the decision plane —
+	// one extra question, asked in the same breath as the provider it sits
+	// beside, because that is the only place an operator is already thinking
+	// about which vendors see their mail.
 	if (flags.ai) {
 		const aiResult = await pickAIProvider();
 		if (!aiResult) return 1;
 		envPatch = { ...envPatch, ...aiResult };
+
+		const decision = await pickDecisionProvider();
+		if (!decision) return 1;
+		envPatch = { ...envPatch, ...decision.env };
+		// Configuring a provider IS the opt-in. Writing the key while leaving
+		// the flag off would produce a deployment that holds a credential and
+		// never uses it — the quiet kind of wrong. Skipping touches neither.
+		if (decision.isPlaneConfigured) flags['ai.decisionPlane'] = true;
 	}
 
 	// Step 5: optional integrations
@@ -299,90 +309,6 @@ function categoryLabel(cat: string): string {
 		hosted: 'Hosted-mode',
 	};
 	return map[cat] ?? cat;
-}
-
-async function pickAIProvider(): Promise<EnvMap | null> {
-	const provider = await select({
-		message: 'AI provider',
-		options: [
-			{ label: 'OpenRouter (200+ models, recommended)', value: 'openrouter' },
-			{ label: 'OpenAI', value: 'openai' },
-			{ label: 'Ollama (local — bundled ollama service, no API key)', value: 'ollama' },
-			{ label: 'Custom (Anthropic, Together, Groq, local LM Studio…)', value: 'custom' },
-		],
-	});
-	if (isCancel(provider)) return null;
-
-	if (provider === 'openrouter') {
-		const apiKey = await password({ message: 'OpenRouter API key (sk-or-...)' });
-		if (isCancel(apiKey)) return null;
-		if (
-			!(await validateWithSpinner('Validating OpenRouter key', () =>
-				validateOpenRouterKey(apiKey as string)
-			))
-		) {
-			return null;
-		}
-		return {
-			LLM_PROVIDER: 'openrouter',
-			LLM_API_KEY: apiKey as string,
-			OPENROUTER_API_KEY: apiKey as string,
-		};
-	}
-
-	if (provider === 'openai') {
-		const apiKey = await password({ message: 'OpenAI API key (sk-...)' });
-		if (isCancel(apiKey)) return null;
-		if (
-			!(await validateWithSpinner('Validating OpenAI key', () =>
-				validateOpenAIKey(apiKey as string)
-			))
-		) {
-			return null;
-		}
-		return {
-			LLM_PROVIDER: 'openai',
-			LLM_API_KEY: apiKey as string,
-			OPENAI_API_KEY: apiKey as string,
-		};
-	}
-
-	if (provider === 'ollama') {
-		// Local model server — no key, no remote validation. The provider factory
-		// resolves http://ollama:11434/v1 automatically when LLM_PROVIDER=ollama.
-		// The bundled `ollama` service comes up under the same profile as the AI
-		// worker; pull a model into it after boot (e.g. `docker compose exec ollama
-		// ollama pull llama3.1`) and set LLM_MODEL_* to match.
-		log.info(
-			'Ollama runs locally on the internal Docker network (ollama:11434). No API key needed.\n' +
-				'After the stack is up, pull a model into it, e.g.: docker compose exec ollama ollama pull llama3.1'
-		);
-		return {
-			LLM_PROVIDER: 'ollama',
-		};
-	}
-
-	if (provider === 'custom') {
-		const result = await group({
-			baseUrl: () =>
-				text({
-					message: 'OpenAI-compatible base URL',
-					placeholder: 'https://api.anthropic.com/v1',
-				}),
-			apiKey: () => password({ message: 'API key' }),
-			fast: () => text({ message: 'Fast model name', placeholder: 'claude-3-5-haiku' }),
-			capable: () => text({ message: 'Capable model name', placeholder: 'claude-3-5-sonnet' }),
-		});
-		return {
-			LLM_PROVIDER: 'custom',
-			LLM_BASE_URL: result.baseUrl,
-			LLM_API_KEY: result.apiKey,
-			LLM_MODEL_FAST: result.fast,
-			LLM_MODEL_CAPABLE: result.capable,
-		};
-	}
-
-	return null;
 }
 
 async function collectGoogleSafeBrowsing(): Promise<EnvMap | null> {
