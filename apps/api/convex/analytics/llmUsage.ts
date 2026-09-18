@@ -82,7 +82,7 @@ export const record = internalMutation({
 	},
 });
 
-/** A recorded attempt that spent nothing: refused upstream, or cancelled. */
+/** No reported usage: an unknown spend, or a request refused before billing. */
 const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
 export interface LlmUsageAttribution {
@@ -138,7 +138,7 @@ export async function recordLlmSpend(
  * over one attempt record, this turns it into one row, and the row lands BEFORE
  * the answer is used so the enforced ceiling sees the spend it authorised.
  *
- * A failed or throttled attempt is recorded too (at zero cost), because the
+ * A failed or throttled attempt is recorded too (using reported usage, if available), because the
  * counters read from these rows are about what the plane DID, not about what it
  * returned.
  */

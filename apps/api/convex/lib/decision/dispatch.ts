@@ -68,7 +68,7 @@ import { DEFAULT_DECISION_DEADLINE_MS } from '../decisionProviders/typesafe';
 import { DecisionWireError } from '../decisionProviders/wire';
 import { errorStatus, isRetriableLlmError } from '../llm/dispatch';
 import { MAX_LLM_ATTEMPTS } from '../llm/retryPolicy';
-import { DecisionRateLimitRefusal } from './contract';
+import { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
 import type {
 	DecisionFallbackBreaker,
 	DecisionRateLimiter,
@@ -82,7 +82,7 @@ import type { AnswersFor, QuestionSet } from './questions';
 // One import for a call site: the contract next door is re-exported here, so
 // nothing downstream has to know the plane's types and its dispatch are two
 // files (they are two because this one is `'use node'` and a contract is not).
-export { DecisionRateLimitRefusal } from './contract';
+export { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
 export type {
 	DecisionAttemptRecord,
 	DecisionFallbackBreaker,
@@ -161,6 +161,7 @@ function retryAfterOf(error: unknown): number | undefined {
  * status; everything else goes to the repo's one classifier.
  */
 export function isRetriableDecisionError(error: unknown): boolean {
+	if (error instanceof DecisionAccountingFailure) return false;
 	// Our own ceiling, not the provider's: the bucket a retry would charge is the
 	// one that just said no, so a retry is three requests' worth of waiting for
 	// the same answer.
@@ -177,6 +178,7 @@ export function isRetriableDecisionError(error: unknown): boolean {
  * own key, question set or codec stays an error the operator has to see.
  */
 export function mayFallBack(error: unknown): boolean {
+	if (error instanceof DecisionAccountingFailure) return false;
 	// A refused call is not a failed provider. Hopping here would answer the
 	// volume we just declined to serve on a model that costs 24 to 50 times more.
 	if (error instanceof DecisionRateLimitRefusal) return false;
@@ -301,7 +303,15 @@ async function askOnce<Q extends QuestionSet>(
 		result = await decisionProviderFor(provider.kind).ask(provider.config, request);
 	} catch (error) {
 		try {
-			await ctx.recordUsage({ ...base, outcome: 'failed', durationMs: elapsed(), error });
+			await ctx.recordUsage({
+				...base,
+				outcome: 'failed',
+				durationMs: elapsed(),
+				error,
+				...(error instanceof DecisionWireError
+					? { usage: error.usage, modelUsed: error.modelUsed }
+					: {}),
+			});
 		} catch {
 			// Swallowed: a failing recorder must not replace the vendor's error,
 			// which is the one the operator needs to read.
@@ -309,15 +319,19 @@ async function askOnce<Q extends QuestionSet>(
 		throw error;
 	}
 
-	await ctx.recordUsage({
-		...base,
-		outcome: 'answered',
-		durationMs: elapsed(),
-		usage: result.usage,
-		modelUsed: result.modelUsed,
-		provenance: result.provenance,
-		calibrated: result.calibrated,
-	});
+	try {
+		await ctx.recordUsage({
+			...base,
+			outcome: 'answered',
+			durationMs: elapsed(),
+			usage: result.usage,
+			modelUsed: result.modelUsed,
+			provenance: result.provenance,
+			calibrated: result.calibrated,
+		});
+	} catch (error) {
+		throw new DecisionAccountingFailure(error);
+	}
 	return result;
 }
 
@@ -421,6 +435,7 @@ export async function runDecision<Q extends QuestionSet>(
 			// hop, nothing told to the breaker. The provider did not fail — we
 			// changed our mind.
 			assertNotAborted(abortSignal);
+			if (error instanceof DecisionAccountingFailure) throw error;
 			lastError = error;
 			if (!isRetriableDecisionError(error) || attempt === maxAttempts) break;
 			const delayMs = backoffDelayMs(attempt - 1, retryAfterOf(error), random);

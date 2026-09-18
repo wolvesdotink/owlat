@@ -88,17 +88,14 @@ export const JEV_MODEL_ALIASES = ['jev-latest', 'jev-preview'] as const;
 
 /**
  * Whether a model id the PROVIDER reported is the version our thresholds were
- * calibrated against. The two aliases resolve here today, so a response naming
- * one of them is the pinned version under another name; anything else is a
+ * calibrated against. Aliases can move, so they cannot prove the version that
+ * answered. Anything other than the exact pinned id is a
  * version we have not measured — whether the operator asked for it or the vendor
  * rerouted us onto it — and the answer is honest about that rather than trusted.
  */
 export function isPinnedDecisionModel(modelUsed: string): boolean {
 	const reported = modelUsed.trim();
-	return (
-		reported === PINNED_DECISION_MODEL ||
-		(JEV_MODEL_ALIASES as readonly string[]).includes(reported)
-	);
+	return reported === PINNED_DECISION_MODEL;
 }
 
 /**

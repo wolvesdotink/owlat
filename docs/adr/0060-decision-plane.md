@@ -113,10 +113,10 @@ probability key spaces, with `calibrated` the only thing allowed to differ.
 A set built inline at a call site is a set no conformance run ever put through
 the language-backed path, and the day the vendor is unreachable is the day that
 is discovered. The Score legend is where that gap first opened: the
-language-backed adapter keys a Score's probabilities `'1'..'N'`, so the codec now
-refuses a legend keyed any other way rather than accepting the vendor's own
-words — which also keeps the out-of-range check alive, since it can only be
-stated over numeric keys.
+language-backed adapter keys a Score's probabilities `'1'..'N'`. The codec validates
+TypeSafe's documented `'0'..'N-1'` legend and shifts both the weighted score and
+its probability keys by one. Vendor-response fixtures test that translation
+independently of the synthesized conformance responses.
 
 ### 3. The dispatch contract
 
@@ -150,6 +150,11 @@ Each needs a Convex `ctx` this module has no business holding, and keeping them
 out is what lets the whole contract be tested against three fakes. The two whose
 absence costs money rather than observability — the breaker and the recorder —
 are required alongside `fallbackTo` rather than defaulted away.
+
+A successful provider response followed by an accounting failure is terminal:
+it cannot retry the provider, charge the fallback breaker, or buy a fallback
+answer. Codec refusals retain validated token usage and the reported model, so
+rejecting an answer does not erase billed spend.
 
 ### 4. The fallback hop is default-off, breakered, and budgeted
 
@@ -196,8 +201,8 @@ on the wire, because an id that is stored, echoed back to an operator and then
 quietly dropped is worse than not offering the field. What keeps the pin honest
 is the answer rather than the request. The adapter reads the model the provider
 reports back and stamps `calibrated: false` on anything that is not the pinned
-version or one of its aliases, so a deliberate bump and a vendor-side reroute are
-handled by one rule: the answers still arrive, and every threshold downstream
+version. Movable aliases do not prove that identity. A deliberate bump and a
+vendor-side reroute are handled by one rule: the answers still arrive, and every threshold downstream
 goes inert until the calibration harness has been re-run. The settings page's
 test button reports the same thing in words rather than a plain success.
 
@@ -248,6 +253,10 @@ in the web card — so neither reads as a stray string. They are two declaration
 not one shared export: the wizard runs in the setup CLI and the card in the web
 app, and neither may import the other's. Lifting both into `packages/shared`
 beside `featureFlags` is the right home and is not done here.
+
+The settings card distinguishes saved provider configuration from the live
+feature flag. It shows the flag state, links to Features, and disables the probe
+until that flag is known to be enabled. Saving credentials never flips the flag.
 
 ### 8. No decision answer may widen auto-send
 

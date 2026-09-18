@@ -64,9 +64,9 @@ function nativeAnswer(question: DecisionQuestion): Record<string, unknown> {
 			const share = Number((1 / levels.length).toFixed(4));
 			return {
 				type: 'score',
-				score: 1,
-				legend: Object.fromEntries(levels.map((level, index) => [String(index + 1), level])),
-				probabilities: Object.fromEntries(levels.map((_, index) => [String(index + 1), share])),
+				score: 0,
+				legend: Object.fromEntries(levels.map((level, index) => [String(index), level])),
+				probabilities: Object.fromEntries(levels.map((_, index) => [String(index), share])),
 				confidence: 0.8,
 			};
 		}

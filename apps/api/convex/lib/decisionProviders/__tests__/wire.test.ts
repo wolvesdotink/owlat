@@ -43,9 +43,9 @@ const answers = {
 	},
 	urgency: {
 		type: 'score',
-		score: 2.4,
-		legend: { '1': 'Not urgent', '2': 'This week', '3': 'Immediately' },
-		probabilities: { '1': 0.1, '2': 0.5, '3': 0.4 },
+		score: 1.4,
+		legend: { '0': 'Not urgent', '1': 'This week', '2': 'Immediately' },
+		probabilities: { '0': 0.1, '1': 0.5, '2': 0.4 },
 		confidence: 0.61,
 	},
 };
@@ -94,6 +94,52 @@ describe('encodeQuestions()', () => {
 });
 
 describe('decodeAnswers()', () => {
+	it.each([0, 1, 2])('maps vendor level %i and its probability key together', (level) => {
+		const probabilities = Object.fromEntries(
+			[0, 1, 2].map((i) => [String(i), i === level ? 1 : 0])
+		);
+		const decoded = decodeAnswers(
+			{ urgency: questions.urgency },
+			{
+				urgency: { ...answers.urgency, score: level, probabilities },
+			}
+		);
+		expect(decoded['urgency']).toMatchObject({
+			value: level + 1,
+			probabilities: { [String(level + 1)]: 1 },
+		});
+	});
+
+	it('normalizes the documented TypeSafe score example to the public 1-based scale', () => {
+		// https://docs.typesafe.ai/api — Score answer. Keep this vendor fixture
+		// independent of our encoder and the synthesized conformance responses.
+		const decoded = decodeResponse(
+			{
+				frustration: score('How frustrated is the customer?', ['Calm', 'Frustrated', 'Very angry']),
+			},
+			{
+				model: 'jev-1.13.0',
+				answers: {
+					frustration: {
+						type: 'score',
+						score: 1.6,
+						legend: { '0': 'Calm', '1': 'Frustrated', '2': 'Very angry' },
+						probabilities: { '0': 0.05, '1': 0.3, '2': 0.65 },
+						confidence: 0.78,
+					},
+				},
+				usage: { input_tokens: 312, output_tokens: 48 },
+			}
+		);
+		expect(decoded.answers['frustration']).toEqual({
+			kind: 'score',
+			value: 2.6,
+			levels: ['Calm', 'Frustrated', 'Very angry'],
+			probabilities: { '1': 0.05, '2': 0.3, '3': 0.65 },
+			confidence: 0.78,
+		});
+	});
+
 	it('maps the three wire shapes onto the discriminated answer union', () => {
 		expect(decodeAnswers(questions, answers)).toEqual({
 			needsReply: { kind: 'noul', probability: 0.91 },
@@ -127,9 +173,9 @@ describe('decodeAnswers()', () => {
 			{
 				urgency: {
 					type: 'score',
-					score: 1,
+					score: 0,
 					legend: ['Not urgent', 'This week', 'Immediately'],
-					probabilities: { '1': 0.7, '2': 0.2, '3': 0.1 },
+					probabilities: { '0': 0.7, '1': 0.2, '2': 0.1 },
 					confidence: 0.5,
 				},
 			}
@@ -237,7 +283,7 @@ describe('decodeAnswers()', () => {
 					},
 				}
 			)
-		).toThrow(/legend key 'low', but the levels that were sent are numbered 1 to 3/);
+		).toThrow(/legend key 'low', but the levels that were sent are numbered 0 to 2/);
 	});
 
 	it('refuses a legend numbered outside the scale, or twice over', () => {
@@ -247,21 +293,21 @@ describe('decodeAnswers()', () => {
 				{
 					urgency: {
 						...answers.urgency,
-						legend: { '0': 'Not urgent', '1': 'This week', '2': 'Immediately' },
-						probabilities: { '0': 0.7, '1': 0.2, '2': 0.1 },
+						legend: { '1': 'Not urgent', '2': 'This week', '3': 'Immediately' },
+						probabilities: { '1': 0.7, '2': 0.2, '3': 0.1 },
 					},
 				}
 			)
-		).toThrow(/legend key '0'/);
+		).toThrow(/legend key '3'/);
 	});
 
 	it('keeps the range check alive for a record legend, whatever its order', () => {
 		// Same three levels, listed high-first. The keys are still the ordinals, so
-		// the scale is still 1–3 and a 9 is still off it.
+		// the scale is still 0–2 and a 9 is still off it.
 		const highFirst = {
 			urgency: {
 				...answers.urgency,
-				legend: { '3': 'Immediately', '2': 'This week', '1': 'Not urgent' },
+				legend: { '2': 'Immediately', '1': 'This week', '0': 'Not urgent' },
 			},
 		};
 		expect(decodeAnswers({ urgency: questions.urgency }, highFirst)).toMatchObject({
@@ -269,16 +315,16 @@ describe('decodeAnswers()', () => {
 		});
 		expect(() =>
 			decodeAnswers({ urgency: questions.urgency }, { urgency: { ...highFirst.urgency, score: 9 } })
-		).toThrow(/scored 9, outside its 1–3 legend/);
+		).toThrow(/scored 9, outside its 0–2 legend/);
 	});
 
 	it('accepts a score between levels but not one off the scale', () => {
 		expect(
 			decodeAnswers({ urgency: questions.urgency }, { urgency: { ...answers.urgency, score: 1.5 } })
-		).toMatchObject({ urgency: { value: 1.5 } });
+		).toMatchObject({ urgency: { value: 2.5 } });
 		expect(() =>
 			decodeAnswers({ urgency: questions.urgency }, { urgency: { ...answers.urgency, score: 4 } })
-		).toThrow(/scored 4, outside its 1–3 legend/);
+		).toThrow(/scored 4, outside its 0–2 legend/);
 	});
 
 	it('rejects a non-object answers member', () => {
@@ -308,6 +354,20 @@ describe('decodeUsage()', () => {
 });
 
 describe('decodeResponse()', () => {
+	it('does not carry invalid usage into a failed attempt record', () => {
+		try {
+			decodeResponse(questions, {
+				model: 'jev-1.13.0',
+				answers: {},
+				usage: { input_tokens: -1, output_tokens: 2 },
+			});
+			expect.fail('Expected a codec refusal');
+		} catch (error) {
+			expect(error).toBeInstanceOf(DecisionWireError);
+			expect(error).toMatchObject({ usage: undefined, modelUsed: undefined });
+		}
+	});
+
 	it('decodes answers, usage and the model the provider reported', () => {
 		expect(
 			decodeResponse(questions, {

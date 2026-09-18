@@ -67,9 +67,9 @@ const answers = {
 	},
 	urgency: {
 		type: 'score',
-		score: 2.4,
-		legend: { '1': 'Not urgent', '2': 'This week', '3': 'Immediately' },
-		probabilities: { '1': 0.1, '2': 0.5, '3': 0.4 },
+		score: 1.4,
+		legend: { '0': 'Not urgent', '1': 'This week', '2': 'Immediately' },
+		probabilities: { '0': 0.1, '1': 0.5, '2': 0.4 },
 		confidence: 0.61,
 	},
 };
@@ -212,10 +212,10 @@ describe('typesafeDecisionAdapter.ask() — the happy path', () => {
 		expect(JSON.parse(String(init.body)).model).toBe(PINNED_DECISION_MODEL);
 	});
 
-	it('treats an alias reported back as the pinned version it resolves to', async () => {
+	it('treats a movable alias reported back as uncalibrated', async () => {
 		for (const alias of JEV_MODEL_ALIASES) {
 			const result = await ask(respondWith(jsonResponse(okBody({ model: alias }))));
-			expect(result.calibrated).toBe(true);
+			expect(result.calibrated).toBe(false);
 		}
 	});
 
@@ -537,9 +537,9 @@ describe('typesafeDecisionAdapter.validateCredentials()', () => {
 		['https://127.0.0.1', /private or internal address/],
 		['not-a-url', /must be a valid absolute URL/],
 	])('refuses an origin that %s could not safely carry the key to', (baseUrl, says) => {
-		expect(() =>
-			typesafeDecisionAdapter.validateCredentials({ apiKey: API_KEY, baseUrl })
-		).toThrow(says);
+		expect(() => typesafeDecisionAdapter.validateCredentials({ apiKey: API_KEY, baseUrl })).toThrow(
+			says
+		);
 	});
 
 	it('explains that the endpoint path is appended, not pasted', () => {

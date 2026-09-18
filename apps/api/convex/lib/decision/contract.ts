@@ -69,7 +69,7 @@ export interface DecisionAttemptRecord {
 	readonly fallback: boolean;
 	readonly outcome: 'answered' | 'failed';
 	readonly durationMs: number;
-	/** Present on `answered`. Output tokens count even where they cost nothing. */
+	/** Present on answered calls and billed responses rejected by the codec. */
 	readonly usage?: TokenUsage;
 	readonly modelUsed?: string;
 	readonly provenance?: DecisionEndpointProvenance;
@@ -86,9 +86,17 @@ export interface DecisionAttemptRecord {
  * Where a decision's spend is written. Injected rather than imported: the write
  * needs a Convex ctx, and the row must land BEFORE the answer is used so the
  * enforced ceiling sees it. A recorder that throws on a SUCCESSFUL attempt
- * therefore fails the call; on a failed one it is swallowed.
+ * therefore ends the call without retry or fallback; on a failed one it is swallowed.
  */
 export type DecisionUsageRecorder = (record: DecisionAttemptRecord) => void | Promise<void>;
+
+/** Persistence failed after the provider answered. Never retry the provider or hop. */
+export class DecisionAccountingFailure extends Error {
+	constructor(cause: unknown) {
+		super('Decision usage could not be recorded.', { cause });
+		this.name = 'DecisionAccountingFailure';
+	}
+}
 
 /** An attempt limiter, injected. Consumed once per ATTEMPT, since an attempt is
  * a request upstream — which is what makes it a different reading from the one

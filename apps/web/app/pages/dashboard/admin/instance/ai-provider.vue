@@ -93,7 +93,7 @@ const decisionErrorText = computed(() => (decisionError.value ? t(decisionError.
 // has answered nothing reports zeroes and the card stays quiet about it.
 const { data: decisionCounters } = useOrganizationQuery(
 	api.analytics.llmUsage.getDecisionPlaneCounters,
-	() => ({ hoursBack: DECISION_HEALTH_HOURS }),
+	() => ({ hoursBack: DECISION_HEALTH_HOURS })
 );
 const decisionHealth = computed(() =>
 	decisionCounters.value && decisionCounters.value.attempts > 0
@@ -103,10 +103,16 @@ const decisionHealth = computed(() =>
 				uncalibratedRate: decisionCounters.value.uncalibratedRate,
 				throttledRate: decisionCounters.value.throttledRate,
 			}
-		: null,
+		: null
 );
 // Both test buttons read the STORED row, so both wait for a clean, saved form.
 const canTest = computed(() => !isDirty.value && config.value?.configured === true);
+const decisionFeature = useFeatureFlag();
+const decisionFeatureState = computed(() => {
+	if (decisionFeature.error.value) return 'error';
+	if (decisionFeature.isLoading.value) return 'loading';
+	return decisionFeature.isEnabled('ai.decisionPlane') ? 'enabled' : 'disabled';
+});
 
 // Unsaved-changes guard: navigating away with an unsaved provider edit — a
 // pasted API key above all — prompts to save/discard instead of dropping it.
@@ -391,6 +397,7 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 					:is-testing="isTesting"
 					:is-saving="isSaving"
 					:can-test="canTest"
+					:feature-state="decisionFeatureState"
 					@test="handleDecisionTest"
 				/>
 

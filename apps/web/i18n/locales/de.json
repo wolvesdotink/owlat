@@ -5785,8 +5785,8 @@
 							"testFailed": "Der letzte Schlüsseltest endete mit einem Fehler, die gespeicherte Konfiguration ist also möglicherweise nicht lauffähig.",
 							"title": "Diese Ebene ist eingeschränkt"
 						},
-						"description": "Lassen Sie die Ja/Nein-, Kategorie- und Bewertungsentscheidungen der KI-Funktionen von einem Anbieter beantworten, der genau dafür gebaut ist, statt ein Textmodell ein Label wählen und anschließend seine Sicherheit schätzen zu lassen. Optional, standardmäßig aus und über dieses Auswahlfeld jederzeit zurücknehmbar.",
-						"enableDisclosure": "Eigenen Entscheidungsanbieter verwenden",
+						"description": "Konfigurieren Sie einen eigenen Anbieter für Ja/Nein-, Kategorie- und Bewertungsfragen. Das Speichern aktiviert keine Anfragen: Aktivieren oder pausieren Sie die Entscheidungsebene separat unter Funktionen.",
+						"enableDisclosure": "Eigenen Entscheidungsanbieter konfigurieren",
 						"fallback": {
 							"description": "Scheitert eine Entscheidungsanfrage, kann ersatzweise Ihr Sprachmodell antworten. Das wird pro Oberfläche entschieden, denn derselbe Sprung ist auf dem einen Weg ein Sicherheitsnetz und auf dem anderen eine offene Rechnung.",
 							"never": "Nie",
@@ -5815,7 +5815,14 @@
 							"inert": "Solange die Ebene eingeschränkt ist, greifen sie nicht. Keine Oberfläche liest eine Wahrscheinlichkeit von ihr, jede behält ihre deterministische Antwort.",
 							"title": "Schwellenwerte je Antwortart"
 						},
-						"title": "Entscheidungsanbieter"
+						"title": "Entscheidungsanbieter",
+						"feature": {
+							"disabled": "Entscheidungsanfragen sind deaktiviert. Speichern Sie den Anbieter und aktivieren Sie KI und Entscheidungsebene unter Funktionen, um ihn zu testen.",
+							"enabled": "Entscheidungsanfragen sind unter Funktionen aktiviert. Tests verwenden die gespeicherten Anbietereinstellungen.",
+							"loading": "Der Status der Entscheidungsanfragen wird geprüft…",
+							"error": "Der Funktionsstatus konnte nicht geprüft werden. Tests sind erst nach der Bestätigung des Status verfügbar.",
+							"manage": "Unter Funktionen verwalten"
+						}
 					},
 					"embeddings": {
 						"apiKeyHelp": "Verschlüsselt gespeichert, wird nie wieder angezeigt.",

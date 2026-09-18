@@ -31,6 +31,7 @@ import {
 	DECISION_BACKOFF_BASE_MS,
 	DEFAULT_LANGUAGE_DECISION_DEADLINE_MS,
 	DecisionRateLimitRefusal,
+	DecisionAccountingFailure,
 	MAX_DECISION_BACKOFF_MS,
 	MAX_HONOURED_RETRY_AFTER_MS,
 	RETRY_AFTER_JITTER_MS,
@@ -657,15 +658,43 @@ describe('accounting', () => {
 	it('fails the call when the spend of an answer could not be recorded', async () => {
 		const h = harness();
 		adapters.typesafe.mockResolvedValue(NATIVE_ANSWER);
+		const breaker = openableBreaker();
+		const failure = new Error('usage write failed');
 
 		// The ceiling has to see the row before the caller acts on the answer.
 		await expect(
 			run(h, {
+				fallbackTo,
+				breaker,
 				recordUsage: () => {
-					throw new Error('usage write failed');
+					throw failure;
 				},
 			})
-		).rejects.toThrow('usage write failed');
+		).rejects.toMatchObject({ name: 'DecisionAccountingFailure', cause: failure });
+		expect(adapters.typesafe).toHaveBeenCalledTimes(1);
+		expect(adapters.llm).not.toHaveBeenCalled();
+		expect(breaker.recordFailure).not.toHaveBeenCalled();
+		expect(h.delays).toEqual([]);
+		expect(isRetriableDecisionError(new DecisionAccountingFailure(failure))).toBe(false);
+		expect(mayFallBack(new DecisionAccountingFailure(failure))).toBe(false);
+	});
+
+	it('records billed usage when the codec refuses an answer, without retry or fallback', async () => {
+		const h = harness();
+		const error = new DecisionWireError('Invalid answer', {
+			usage: NATIVE_ANSWER.usage,
+			modelUsed: NATIVE_ANSWER.modelUsed,
+		});
+		adapters.typesafe.mockRejectedValue(error);
+		await expect(run(h, { fallbackTo })).rejects.toBe(error);
+		expect(adapters.typesafe).toHaveBeenCalledTimes(1);
+		expect(adapters.llm).not.toHaveBeenCalled();
+		expect(h.records).toHaveLength(1);
+		expect(h.records[0]).toMatchObject({
+			outcome: 'failed',
+			usage: NATIVE_ANSWER.usage,
+			modelUsed: NATIVE_ANSWER.modelUsed,
+		});
 	});
 
 	it('keeps the vendor error when a failed attempt cannot be recorded', async () => {

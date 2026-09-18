@@ -122,6 +122,21 @@ beforeEach(() => {
 });
 
 describe("testConnection({ plane: 'decision' })", () => {
+	it('preserves billed usage when an answer is refused by the codec', async () => {
+		const t = await setup({ ai: true, 'ai.decisionPlane': true });
+		const body = JSON.parse(probeBody());
+		body.answers.reachable.noul = 2;
+		guard.fetchGuarded.mockResolvedValue(jsonResponse(JSON.stringify(body)));
+		const res = await t.action(api.aiProviderConfigActions.testConnection, { plane: 'decision' });
+		expect(res.ok).toBe(false);
+		const rows = await t.run(async (ctx) => await ctx.db.query('llmUsageEvents').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.promptTokens).toBe(21);
+		expect(rows[0]?.costUsd).toBeGreaterThan(0);
+		expect(rows[0]?.isCalibrated).toBeUndefined();
+		expect(guard.fetchGuarded).toHaveBeenCalledTimes(1);
+	});
+
 	it('sends nothing at all while the kill switch is off', async () => {
 		const t = await setup({ ai: true, 'ai.decisionPlane': false });
 

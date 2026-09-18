@@ -5785,8 +5785,8 @@
 							"testFailed": "The last key test came back with an error, so the stored configuration may not be able to run.",
 							"title": "This plane is degraded"
 						},
-						"description": "Answer the yes/no, category and score judgements the AI features make with a provider built for exactly that, instead of asking a text model to pick a label and then guess how sure it was. Optional, off until you turn it on, and reversible from this dropdown.",
-						"enableDisclosure": "Use a dedicated decision provider",
+						"description": "Configure a dedicated provider for yes/no, category and score judgements. Saving its settings does not enable requests: enable or pause the decision plane separately in Features.",
+						"enableDisclosure": "Configure a dedicated decision provider",
 						"fallback": {
 							"description": "When a decision call fails, one hop onto your language model can answer instead. It is decided per surface, because the same hop is a safety net on one path and an open tab on another.",
 							"never": "Never",
@@ -5815,7 +5815,14 @@
 							"inert": "These are inert while the plane is degraded. Nothing reads a probability off it, so every surface keeps the deterministic answer it had before.",
 							"title": "Answer thresholds"
 						},
-						"title": "Decision provider"
+						"title": "Decision provider",
+						"feature": {
+							"disabled": "Decision requests are off. After saving your provider, enable AI and Decision plane in Features to test it.",
+							"enabled": "Decision requests are enabled in Features. Tests use your saved provider settings.",
+							"loading": "Checking whether decision requests are enabled…",
+							"error": "Could not check the feature status. Testing is unavailable until the status is confirmed.",
+							"manage": "Manage in Features"
+						}
 					},
 					"embeddings": {
 						"apiKeyHelp": "Encrypted at rest, never shown again.",

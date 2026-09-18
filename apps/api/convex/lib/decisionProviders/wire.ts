@@ -42,9 +42,14 @@ import type {
 
 /** Raised when the response disagrees with the question set that produced it. */
 export class DecisionWireError extends Error {
-	constructor(message: string) {
+	readonly usage?: TokenUsage;
+	readonly modelUsed?: string;
+
+	constructor(message: string, billed?: { usage: TokenUsage; modelUsed: string }) {
 		super(message);
 		this.name = 'DecisionWireError';
+		this.usage = billed?.usage;
+		this.modelUsed = billed?.modelUsed;
 	}
 }
 
@@ -173,23 +178,15 @@ function decodeProbabilities(
 }
 
 /**
- * The level keys the provider scored against, ALWAYS the 1-based ordinals of the
- * scale we sent. An array is read as an ordered legend and keyed by position; a
- * record must already be keyed by those same ordinals, and one keyed any other
- * way is refused rather than accepted on its own terms.
- *
- * Refused, and not translated, for two reasons. The range check below is the
- * only thing standing between an out-of-domain score and a caller reading it as
- * a verdict, and it can only be stated over numeric keys. And the language-
- * backed adapter always keys a Score's probabilities `'1'..'N'`, so a legend
- * keyed `low/mid/high` would hand the two adapters different key spaces for the
- * same question — a composite reading `probabilities[String(value)]` would get a
- * number under one and `undefined` under the other.
+ * Validate the vendor's 0..N-1 legend before decoding its score. Array legends
+ * use the same indices. Noncanonical keys are refused, not inferred from order.
+ * `decodeScore` translates the validated value and probabilities to our 1..N
+ * scale, shared with the language adapter.
  */
 function decodeLegend(value: unknown, question: ScoreQuestion, id: string): Record<string, string> {
 	const levels = question.criteria.length;
 	const entries: [string, unknown][] = Array.isArray(value)
-		? value.map((description, index) => [String(index + 1), description])
+		? value.map((description, index) => [String(index), description])
 		: Object.entries(requireRecord(value, `answer '${id}' legend`));
 	if (entries.length !== levels) {
 		throw new DecisionWireError(
@@ -200,10 +197,10 @@ function decodeLegend(value: unknown, question: ScoreQuestion, id: string): Reco
 	const legend: Record<string, string> = {};
 	for (const [key, description] of entries) {
 		const ordinal = Number(key);
-		if (!Number.isInteger(ordinal) || ordinal < 1 || ordinal > levels) {
+		if (!Number.isInteger(ordinal) || ordinal < 0 || ordinal >= levels || key !== String(ordinal)) {
 			throw new DecisionWireError(
 				`Decision response: answer '${id}' has a legend key '${echo(key)}', ` +
-					`but the levels that were sent are numbered 1 to ${levels}.`
+					`but the levels that were sent are numbered 0 to ${levels - 1}.`
 			);
 		}
 		if (hasKey(legend, key)) {
@@ -265,11 +262,19 @@ function decodeScore(
 			`Decision response: answer '${id}' scored ${value}, outside its ${low}–${high} legend.`
 		);
 	}
+	const probabilities = decodeProbabilities(answer['probabilities'], levelKeys, id);
+	// Keep the public scale shared with the language adapter at 1..N. Both the
+	// weighted value and every probability key must move by the same offset.
 	return {
 		kind: 'score',
-		value,
+		value: value + 1,
 		levels: [...question.criteria],
-		probabilities: decodeProbabilities(answer['probabilities'], levelKeys, id),
+		probabilities: Object.fromEntries(
+			Object.entries(probabilities).map(([key, probability]) => [
+				String(Number(key) + 1),
+				probability,
+			])
+		),
 		confidence: requireUnitNumber(answer['confidence'], `answer '${id}' confidence`),
 	};
 }
@@ -351,9 +356,15 @@ export function decodeResponse(questions: QuestionSet, body: unknown): DecodedDe
 	if (typeof modelUsed !== 'string' || modelUsed.trim().length === 0) {
 		throw new DecisionWireError('Decision response: no model id reported.');
 	}
-	return {
-		answers: decodeAnswers(questions, raw['answers']),
-		usage: decodeUsage(raw['usage']),
-		modelUsed,
-	};
+	const usage = decodeUsage(raw['usage']);
+	try {
+		return { answers: decodeAnswers(questions, raw['answers']), usage, modelUsed };
+	} catch (error) {
+		// A rejected answer can still be billed. Carry only validated accounting
+		// metadata to dispatch, never the response body or an untrusted usage value.
+		if (error instanceof DecisionWireError) {
+			throw new DecisionWireError(error.message, { usage, modelUsed });
+		}
+		throw error;
+	}
 }

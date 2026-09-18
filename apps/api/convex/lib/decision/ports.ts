@@ -58,7 +58,7 @@ export function decisionBreakerPort(ctx: ActionCtx): DecisionFallbackBreaker {
 /**
  * One attempt → one `llmUsageEvents` row, tagged `decision`.
  *
- * Failed attempts are recorded too, at zero cost: the plane's three counters are
+ * Failed attempts retain reported usage when available; otherwise cost is zero: the plane's three counters are
  * about what it DID, and a ledger that only sees answers cannot show an outage.
  * The error itself is never persisted — only whether upstream was throttling —
  * because an adapter's message can quote a vendor body, and a ledger row is not

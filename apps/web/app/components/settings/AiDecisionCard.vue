@@ -71,6 +71,8 @@ const props = defineProps<{
 	isSaving: boolean;
 	/** False while the form is dirty or unsaved — the test reads the STORED row. */
 	canTest: boolean;
+	/** Live flag state, including its AI dependency; separate from saved credentials. */
+	featureState: 'loading' | 'error' | 'enabled' | 'disabled';
 }>();
 
 const emit = defineEmits<{ test: [] }>();
@@ -91,6 +93,7 @@ const providerOptions = computed(() =>
 );
 
 const healthRows = computed(() => (props.health ? decisionHealthRows(props.health) : []));
+const canReachPlane = computed(() => props.featureState === 'enabled');
 // Whole percent: these are rates over a few hundred calls at most, and a decimal
 // place would imply a precision the window does not have.
 const formatRate = (rate: number) => `${Math.round(rate * 100)}%`;
@@ -111,6 +114,20 @@ watch(baseUrl, (value) => {
 		<p class="text-sm text-text-secondary mb-4">
 			{{ t('dashboard.admin.instance.aiProvider.decision.description') }}
 		</p>
+		<div
+			class="rounded-lg border border-border-subtle bg-bg-surface-hover p-4 text-sm"
+			role="status"
+		>
+			<p class="text-text-primary">
+				{{ t(`dashboard.admin.instance.aiProvider.decision.feature.${featureState}`) }}
+			</p>
+			<NuxtLink
+				to="/dashboard/admin/instance/features"
+				class="mt-2 inline-block text-brand hover:underline"
+			>
+				{{ t('dashboard.admin.instance.aiProvider.decision.feature.manage') }}
+			</NuxtLink>
+		</div>
 
 		<!--
 			The resting state, and the one every install that never opted in sees:
@@ -119,7 +136,7 @@ watch(baseUrl, (value) => {
 		-->
 		<div
 			v-if="!enabled"
-			class="flex items-start gap-3 rounded-lg bg-success-subtle/50 border border-border-subtle p-4"
+			class="mt-4 flex items-start gap-3 rounded-lg bg-success-subtle/50 border border-border-subtle p-4"
 		>
 			<Icon name="lucide:check-circle-2" class="w-5 h-5 text-success shrink-0 mt-0.5" />
 			<div class="text-sm">
@@ -266,11 +283,7 @@ watch(baseUrl, (value) => {
 								<p class="text-text-primary font-medium">
 									{{ t('dashboard.admin.instance.aiProvider.decision.degraded.title') }}
 								</p>
-								<p
-									v-for="reason in degradedReasons"
-									:key="reason"
-									class="text-text-secondary"
-								>
+								<p v-for="reason in degradedReasons" :key="reason" class="text-text-secondary">
 									{{ t(`dashboard.admin.instance.aiProvider.decision.degraded.${reason}`) }}
 								</p>
 							</div>
@@ -284,10 +297,7 @@ watch(baseUrl, (value) => {
 						entirely until the plane has answered something, because a row of
 						zeroes reads as a problem rather than as silence.
 					-->
-					<div
-						v-if="health"
-						class="rounded-lg border border-border-subtle p-4 text-sm"
-					>
+					<div v-if="health" class="rounded-lg border border-border-subtle p-4 text-sm">
 						<h3 class="text-sm font-medium text-text-primary">
 							{{ t('dashboard.admin.instance.aiProvider.decision.health.title') }}
 						</h3>
@@ -374,7 +384,7 @@ watch(baseUrl, (value) => {
 								<p class="text-text-secondary mt-0.5">{{ t(threshold.body) }}</p>
 							</div>
 						</div>
-						<p v-if="thresholdsInert" class="mt-3 text-xs text-warning">
+						<p v-if="thresholdsInert || !canReachPlane" class="mt-3 text-xs text-warning">
 							{{ t('dashboard.admin.instance.aiProvider.decision.thresholds.inert') }}
 						</p>
 						<p v-else class="mt-3 text-xs text-text-tertiary">
@@ -388,7 +398,7 @@ watch(baseUrl, (value) => {
 							variant="secondary"
 							size="sm"
 							:loading="isTesting"
-							:disabled="isSaving || isTesting || !canTest"
+							:disabled="isSaving || isTesting || !canTest || !canReachPlane"
 							@click="emit('test')"
 						>
 							<template #iconLeft>
@@ -397,7 +407,7 @@ watch(baseUrl, (value) => {
 							{{ t('dashboard.admin.instance.aiProvider.decision.testConnection') }}
 						</UiButton>
 						<p
-							v-if="testState.status === 'ok'"
+							v-if="testState.status === 'ok' && canReachPlane"
 							class="text-sm text-success flex items-center gap-1.5"
 						>
 							<Icon name="lucide:check" class="w-4 h-4" />

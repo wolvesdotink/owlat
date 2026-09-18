@@ -105,7 +105,7 @@ export interface ScoreAnswer {
 	readonly value: number;
 	/** The level descriptions that were sent, lowest first. */
 	readonly levels: readonly string[];
-	/** Probability per level, keyed by the provider's own level keys. */
+	/** Probability per level, keyed by 1-based ordinals on both adapters. */
 	readonly probabilities: Readonly<Record<string, number>>;
 	/** How peaked the distribution is, in [0, 1]. */
 	readonly confidence: number;
