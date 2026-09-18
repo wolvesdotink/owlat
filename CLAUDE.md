@@ -61,3 +61,13 @@ scaffolding, not product — so none of it may ever be committed.
 
 Capture the "before" shots _before_ you start editing: once the change is in
 the working tree the original state is gone.
+
+If it makes sense, feel free to also include video of the changes.
+
+## Issues
+
+If you find things along the way that can be improved, feel free to fan out a sub agent that investigates the issue and then optionally creates an issue on GitHub. If it is a real issue.
+
+## Personal Info
+
+Please make sure to not include personal information in PRs or commits. So for example, private IP addresses or domains should not be included. Use general Owlat addresses.
