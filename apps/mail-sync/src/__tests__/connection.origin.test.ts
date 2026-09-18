@@ -267,3 +267,21 @@ describe('forward INBOX poll inside the backfill loop', () => {
 		);
 	});
 });
+
+it('persists holes even if the fetch stream disconnects', async () => {
+	const mutation = vi.fn(async () => ({ retry: true, attempts: 1 }));
+	const convex = { query: vi.fn(), mutation, action: vi.fn() } as unknown as ConvexClient;
+	const conn = new AccountConnection(ACCOUNT, convex, CONFIG) as unknown as ConnectionInternals;
+	conn.cursors.set('INBOX', { uidValidity: 7, lastSeenUid: 41 });
+	conn.client = {
+		...fakeClient({ uidValidity: 7, uidNext: 45 }),
+		async *fetch() {
+			yield { uid: 42, source: RAW, flags: new Set<string>() };
+			yield { uid: 43, source: RAW, flags: new Set<string>() };
+			throw new Error('remote disconnected after UID 43 committed');
+		},
+	};
+	ingest.ingestMessage.mockRejectedValueOnce(new Error('UID 42 ingest failed'));
+	await expect(conn.pollFolder('INBOX', 'inbox')).rejects.toThrow('remote disconnected');
+	expect(mutation).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ uid: 42 }));
+});

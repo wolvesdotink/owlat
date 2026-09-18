@@ -1419,4 +1419,38 @@ describe('submission TLS gate — wire-level', () => {
 	it('pins the SMTP command idle window to two minutes', () => {
 		expect(SUBMISSION_COMMAND_TIMEOUT_MS).toBe(120_000);
 	});
+	it('waits for admission before starting a TLS handshake', async () => {
+		const liveRedis = new Redis() as unknown as RealRedis;
+		let decide!: (n: number) => void;
+		vi.spyOn(liveRedis, 'eval').mockImplementationOnce(
+			() =>
+				new Promise<number>((resolve) => {
+					decide = resolve;
+				}) as never
+		);
+		const server = createImplicitTlsSubmissionServer(queue, liveRedis, tlsConfig());
+		const port = await boot(server);
+		const client = tls.connect({ port, host: '127.0.0.1', rejectUnauthorized: false });
+		client.on('error', () => {});
+		let secured = false;
+		let greeting = '';
+		client.on('secureConnect', () => {
+			secured = true;
+		});
+		client.on('data', (chunk) => {
+			greeting += chunk.toString();
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 100));
+			expect(secured).toBe(false);
+			expect(greeting).toBe('');
+			decide(1);
+			await waitFor(async () => greeting.startsWith('220 '));
+			expect(secured).toBe(true);
+		} finally {
+			decide?.(0);
+			client.destroy();
+			await server.close();
+		}
+	});
 });

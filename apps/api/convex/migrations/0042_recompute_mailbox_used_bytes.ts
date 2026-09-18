@@ -46,6 +46,7 @@ export const messageSizePage = internalQuery({
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
 			.paginate({ numItems: PAGE_SIZE, cursor });
 		return {
+			revision: (await ctx.db.get(mailboxId))?.usageRevision ?? 0,
 			bytes: result.page.reduce((sum, message) => sum + message.rawSize, 0),
 			cursor: result.continueCursor,
 			isDone: result.isDone,
@@ -54,31 +55,51 @@ export const messageSizePage = internalQuery({
 });
 
 export const setMailboxUsedBytes = internalMutation({
-	args: { mailboxId: v.id('mailboxes'), usedBytes: v.number() },
-	handler: async (ctx, { mailboxId, usedBytes }) => {
+	args: { mailboxId: v.id('mailboxes'), usedBytes: v.number(), revision: v.number() },
+	handler: async (ctx, { mailboxId, usedBytes, revision }) => {
 		const mailbox = await ctx.db.get(mailboxId);
-		if (!mailbox) return false;
-		await ctx.db.patch(mailboxId, { usedBytes, updatedAt: Date.now() });
-		return true;
+		if (!mailbox) return 'missing' as const;
+		if ((mailbox.usageRevision ?? 0) !== revision) return 'retry' as const;
+		await ctx.db.patch(mailboxId, {
+			usedBytes,
+			usageRevision: revision + 1,
+			updatedAt: Date.now(),
+		});
+		return 'updated' as const;
 	},
 });
 
 async function recomputeMailbox(ctx: ActionCtx, mailboxId: Id<'mailboxes'>): Promise<boolean> {
-	let cursor: string | null = null;
-	let usedBytes = 0;
-	for (;;) {
-		const page: { bytes: number; cursor: string; isDone: boolean } = await ctx.runQuery(
-			internal.migrations['0042_recompute_mailbox_used_bytes'].messageSizePage,
-			{ mailboxId, cursor }
+	// Every size-changing write increments usageRevision in its transaction.
+	// A changed revision invalidates the entire scan, not just its final page.
+	for (let attempt = 0; attempt < 5; attempt++) {
+		let cursor: string | null = null;
+		let usedBytes = 0;
+		let revision: number | undefined;
+		let changed = false;
+		for (;;) {
+			const page: { bytes: number; revision: number; cursor: string; isDone: boolean } =
+				await ctx.runQuery(
+					internal.migrations['0042_recompute_mailbox_used_bytes'].messageSizePage,
+					{ mailboxId, cursor }
+				);
+			revision ??= page.revision;
+			if (revision !== page.revision) {
+				changed = true;
+				break;
+			}
+			usedBytes += page.bytes;
+			if (page.isDone) break;
+			cursor = page.cursor;
+		}
+		if (changed) continue;
+		const result = await ctx.runMutation(
+			internal.migrations['0042_recompute_mailbox_used_bytes'].setMailboxUsedBytes,
+			{ mailboxId, usedBytes, revision: revision! }
 		);
-		usedBytes += page.bytes;
-		if (page.isDone) break;
-		cursor = page.cursor;
+		if (result !== 'retry') return result === 'updated';
 	}
-	return ctx.runMutation(
-		internal.migrations['0042_recompute_mailbox_used_bytes'].setMailboxUsedBytes,
-		{ mailboxId, usedBytes }
-	);
+	throw new Error(`Mailbox ${mailboxId} changed during every quota scan; rerun the migration`);
 }
 
 export const run = internalAction({

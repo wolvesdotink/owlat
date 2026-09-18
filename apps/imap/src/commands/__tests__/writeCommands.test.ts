@@ -165,7 +165,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 			'* 220 EXPUNGE',
 			'* 149 EXPUNGE',
 		]);
-		expect(committed[0]!.selected).toMatchObject({ totalCount: 247, highestModseq: 9 });
+		expect(committed.at(-1)!.selected).toMatchObject({ totalCount: 247, highestModseq: 9 });
 	});
 
 	it('refuses EXPUNGE on a read-only mailbox', async () => {
@@ -358,4 +358,22 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 		expect(lines.some((l) => l.includes('FETCH'))).toBe(false);
 		expect(lines.pop()).toBe('a1 OK STORE completed');
 	});
+});
+
+it('sends committed deletions when page two fails', async () => {
+	const convex = mockConvex();
+	convex.mutation
+		.mockResolvedValueOnce({
+			sequenceNumbers: [5],
+			modseq: 8,
+			done: false,
+			beforeUid: 5,
+			nextSequenceNumber: 4,
+		})
+		.mockRejectedValueOnce(new Error('page two failed'));
+	const { deps, committed } = makeDeps(convex);
+	const { start, lines } = startArgs(deps, selectedState(), {}, 'EXPUNGE');
+	await expungeModule.start(start).completion;
+	expect(lines).toContain('* 5 EXPUNGE');
+	expect(committed.at(-1)?.selected?.totalCount).toBe(4);
 });

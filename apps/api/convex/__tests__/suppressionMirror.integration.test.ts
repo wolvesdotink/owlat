@@ -238,7 +238,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 		expect(global.fetch).not.toHaveBeenCalled();
 	});
 
-	it('reconciles missing durable entries and removes Redis-only or marketing entries', async () => {
+	it('repairs durable mirrors and removes only stale Convex-owned entries', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('blockedEmails', {
@@ -279,8 +279,11 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 						entries: [
 							{ email: 'hard@example.com', orphan: true },
 							{ email: 'mixed@example.com' },
-							{ email: 'quiet@example.com' },
-							{ email: 'stale@example.com', orphan: true },
+							{ email: 'quiet@example.com', source: 'convex-blocklist', suppressedAt: 123 },
+							{ email: 'stale@example.com', source: 'convex-reconcile', suppressedAt: 456 },
+							{ email: 'postbox@example.com', reason: 'hard_bounce', suppressedAt: 789 },
+							{ email: 'imported@example.com', source: 'operator-import', reason: 'manual' },
+							{ email: 'orphan@example.com', orphan: true },
 						],
 					}),
 					{ status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -298,18 +301,43 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 		expect(JSON.parse((bulk![1] as RequestInit).body as string)).toEqual({
 			entries: [
 				{ email: 'hard@example.com', reason: 'hard_bounce', source: 'convex-reconcile' },
-				{ email: 'soft@example.com', reason: 'soft_bounce', source: 'convex-reconcile' },
+				{
+					email: 'soft@example.com',
+					reason: 'soft_bounce',
+					source: 'convex-reconcile',
+					expiresAt: Date.now() + 7 * 86400 * 1000,
+				},
 				{ email: 'mixed@example.com', reason: 'hard_bounce', source: 'convex-reconcile' },
 			],
 		});
 		const deletes = fetchSpy.mock.calls
 			.filter((call) => (call[1] as RequestInit | undefined)?.method === 'DELETE')
-			.map((call) => String(call[0]))
+			.map((call) => String(call[0]).split('?')[0])
 			.sort();
 		expect(deletes).toEqual([
 			'https://mta.internal/suppression/quiet%40example.com',
 			'https://mta.internal/suppression/stale%40example.com',
 		]);
+	});
+
+	it('does not resurrect an expired soft-bounce mirror', async () => {
+		const t = convexTest(schema, modules);
+		await t.run((ctx) =>
+			ctx.db.insert('blockedEmails', {
+				email: 'expired@example.com',
+				reason: 'bounced',
+				bounceType: 'soft',
+				createdAt: Date.now() - 8 * 86400 * 1000,
+			})
+		);
+		vi.mocked(global.fetch).mockResolvedValue(new Response(JSON.stringify({ entries: [] })));
+		expect(await t.action(internal.delivery.suppressionMirror.reconcile, {})).toEqual({
+			mirrored: 0,
+			removed: 0,
+		});
+		expect(
+			vi.mocked(global.fetch).mock.calls.every((call) => !String(call[0]).endsWith('/bulk'))
+		).toBe(true);
 	});
 
 	it('a provider-webhook bounce (addFromEvent) mirrors the address to the MTA', async () => {

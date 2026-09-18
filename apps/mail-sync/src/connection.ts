@@ -397,7 +397,6 @@ export class AccountConnection {
 			if (uidNext <= cursor.lastSeenUid + 1) return; // nothing new
 
 			let maxUid = cursor.lastSeenUid;
-			const failedUids: number[] = [];
 			for await (const msg of client.fetch(
 				`${cursor.lastSeenUid + 1}:*`,
 				{ uid: true, source: true, flags: true },
@@ -421,19 +420,12 @@ export class AccountConnection {
 					});
 				} catch (err) {
 					// Advance past one bad message so it cannot head-of-line-block newer
-					// mail, but persist the hole below. Every hole is retried independently
+					// mail, but persist the hole before ingesting any later UID. Every hole is retried independently
 					// and becomes a visible terminal-failure count after three attempts.
 					logger.warn(
 						{ accountId: this.account.accountId, remoteName, uid, err },
 						'ingest failed; skipping message'
 					);
-					failedUids.push(uid);
-				}
-				// Advance even on failure so the cursor never sticks on one message.
-				if (uid > maxUid) maxUid = uid;
-			}
-			if (maxUid > cursor.lastSeenUid) {
-				for (const uid of failedUids.filter((failedUid) => failedUid <= maxUid)) {
 					const state = (await this.convex.mutation(
 						fn.recordForwardIngestFailure as never,
 						{
@@ -457,6 +449,10 @@ export class AccountConnection {
 						);
 					}
 				}
+				// Advance only after successful ingest or a durable retry/terminal record.
+				if (uid > maxUid) maxUid = uid;
+			}
+			if (maxUid > cursor.lastSeenUid) {
 				this.cursors.set(remoteName, { ...cursor, uidValidity, lastSeenUid: maxUid });
 			}
 		} finally {

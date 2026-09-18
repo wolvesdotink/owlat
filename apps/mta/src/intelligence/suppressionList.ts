@@ -57,6 +57,97 @@ function assertPipelineSucceeded(
 	if (failure) throw new Error(`${operation}: ${failure.message}`, { cause: failure });
 }
 
+// A Convex repair must not take ownership of an independently created permanent
+// block (e.g. a Postbox hard bounce). Check and publish atomically in Redis.
+const WRITE_MIRROR_SCRIPT = `
+if (redis.call('GET', KEYS[1]) or '') ~= ARGV[4] then return 0 end
+redis.call('SET', KEYS[1], ARGV[2])
+if ARGV[3] ~= '' then redis.call('ZADD', KEYS[3], ARGV[3], ARGV[1])
+else redis.call('ZREM', KEYS[3], ARGV[1]) end
+redis.call('SADD', KEYS[2], ARGV[1])
+return 1
+`;
+
+async function queueSuppressionWrite(
+	redis: Redis,
+	pipeline: ReturnType<Redis['pipeline']>,
+	email: string,
+	meta: SuppressionMeta
+): Promise<void> {
+	if (meta.source === 'convex-reconcile' || meta.source === 'convex-blocklist') {
+		const key = `${SUPPRESSION_META_PREFIX}${email}`;
+		for (let attempt = 0; attempt < 5; attempt++) {
+			const raw = await redis.get(key);
+			if (raw) {
+				let previous: SuppressionMeta;
+				try {
+					previous = JSON.parse(raw);
+				} catch {
+					return;
+				}
+				if (
+					previous.source !== 'convex-blocklist' &&
+					previous.source !== 'convex-reconcile' &&
+					PERMANENT_REASONS.has(previous.reason)
+				)
+					return;
+			}
+			const written = await redis.eval(
+				WRITE_MIRROR_SCRIPT,
+				3,
+				key,
+				SUPPRESSION_SET,
+				SUPPRESSION_EXPIRY_ZSET,
+				email,
+				JSON.stringify(meta),
+				meta.expiresAt ?? '',
+				raw ?? ''
+			);
+			if (Number(written) === 1) return;
+		}
+		throw new Error('Suppression changed during every mirror attempt');
+	}
+	pipeline.set(`${SUPPRESSION_META_PREFIX}${email}`, JSON.stringify(meta));
+	if (meta.expiresAt) pipeline.zadd(SUPPRESSION_EXPIRY_ZSET, meta.expiresAt, email);
+	else pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, email);
+	pipeline.sadd(SUPPRESSION_SET, email);
+}
+
+/** Compare-and-delete prevents a reconciliation snapshot erasing a newer block. */
+export async function unsuppressMirror(
+	redis: Redis,
+	email: string,
+	source: string,
+	suppressedAt: number
+): Promise<boolean> {
+	if (source !== 'convex-blocklist' && source !== 'convex-reconcile') return false;
+	const normalized = normalizeEmail(email);
+	const raw = await redis.get(`${SUPPRESSION_META_PREFIX}${normalized}`);
+	if (!raw) return false;
+	let meta: SuppressionMeta;
+	try {
+		meta = JSON.parse(raw);
+	} catch {
+		return false;
+	}
+	if (meta.source !== source || meta.suppressedAt !== suppressedAt) return false;
+	const result = await redis.eval(
+		`
+if redis.call('GET', KEYS[1]) ~= ARGV[2] then return 0 end
+redis.call('DEL', KEYS[1])
+redis.call('ZREM', KEYS[3], ARGV[1])
+return redis.call('SREM', KEYS[2], ARGV[1])
+`,
+		3,
+		`${SUPPRESSION_META_PREFIX}${normalized}`,
+		SUPPRESSION_SET,
+		SUPPRESSION_EXPIRY_ZSET,
+		normalized,
+		raw
+	);
+	return Number(result) > 0;
+}
+
 export interface SuppressionMeta {
 	reason: SuppressionReason;
 	source?: string;
@@ -92,7 +183,7 @@ export async function suppress(
 	redis: Redis,
 	email: string,
 	reason: SuppressionReason,
-	options?: { source?: string; ttlSeconds?: number }
+	options?: { source?: string; ttlSeconds?: number; expiresAt?: number }
 ): Promise<void> {
 	const normalized = normalizeEmail(email);
 	const now = Date.now();
@@ -113,7 +204,8 @@ export async function suppress(
 		? undefined
 		: (options?.ttlSeconds ?? SOFT_BOUNCE_TTL_SECONDS);
 	if (ttl) {
-		meta.expiresAt = now + ttl * 1000;
+		meta.expiresAt = options?.expiresAt ?? now + ttl * 1000;
+		if (meta.expiresAt <= now) return;
 	}
 
 	// METADATA BEFORE MEMBERSHIP, and the due date in between. `pipeline()` is
@@ -125,19 +217,7 @@ export async function suppress(
 	// metadata first inverts that: whatever the sweep reads in the gap is already
 	// this write's answer, so it keeps the entry and the `SADD` is a no-op repeat.
 	const pipeline = redis.pipeline();
-	pipeline.set(`${SUPPRESSION_META_PREFIX}${normalized}`, JSON.stringify(meta));
-
-	// Index (or de-index) the due date. The `zrem` arm is the load-bearing one:
-	// an address that soft-bounced last week and hard-bounces today is rewritten
-	// here as permanent, and leaving its old due date in the index would let the
-	// sweep delete a hard-bounce suppression seven days later.
-	if (meta.expiresAt) {
-		pipeline.zadd(SUPPRESSION_EXPIRY_ZSET, meta.expiresAt, normalized);
-	} else {
-		pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
-	}
-
-	pipeline.sadd(SUPPRESSION_SET, normalized);
+	await queueSuppressionWrite(redis, pipeline, normalized, meta);
 
 	// `exec()` resolves with per-command errors instead of rejecting the promise.
 	// Inspect every result so `maxmemory noeviction` cannot turn a refused
@@ -229,7 +309,7 @@ function toStatus(meta: SuppressionMeta): {
  */
 export async function suppressBulk(
 	redis: Redis,
-	entries: Array<{ email: string; reason: SuppressionReason; source?: string }>
+	entries: Array<{ email: string; reason: SuppressionReason; source?: string; expiresAt?: number }>
 ): Promise<{ suppressed: number }> {
 	let count = 0;
 
@@ -246,17 +326,15 @@ export async function suppressBulk(
 				suppressedAt: Date.now(),
 			};
 			if (!PERMANENT_REASONS.has(entry.reason)) {
-				meta.expiresAt = meta.suppressedAt + SOFT_BOUNCE_TTL_SECONDS * 1000;
+				meta.expiresAt = entry.expiresAt ?? meta.suppressedAt + SOFT_BOUNCE_TTL_SECONDS * 1000;
+				if (meta.expiresAt <= meta.suppressedAt) continue;
 			}
 
 			// Metadata, then de-index, then membership — see `suppress`. It matters
 			// MORE here: a 100-entry batch is ~26 KB of commands, past Redis's 16 KB
 			// client read buffer, so this pipeline genuinely spans several reads and
 			// other clients really are served in the middle of it.
-			pipeline.set(`${SUPPRESSION_META_PREFIX}${normalized}`, JSON.stringify(meta));
-			if (meta.expiresAt) pipeline.zadd(SUPPRESSION_EXPIRY_ZSET, meta.expiresAt, normalized);
-			else pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
-			pipeline.sadd(SUPPRESSION_SET, normalized);
+			await queueSuppressionWrite(redis, pipeline, normalized, meta);
 		}
 
 		assertPipelineSucceeded(await pipeline.exec(), 'bulk suppress');

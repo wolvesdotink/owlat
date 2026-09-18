@@ -643,6 +643,10 @@ function buildSubmissionListener(
 	// pending. `prependListener` runs this AHEAD of the listener's internal accept
 	// handler so `count` includes the connection under decision when `onConnect` runs
 	// its synchronous `isOverCapacity()` check (see the `liveConnections` note above).
+	// Node's TLS connection handler wraps the raw socket and starts reading even
+	// if that socket was paused. Defer that handler until admission resolves.
+	const tlsAccept = implicitTls ? listener.raw.listeners('connection') : [];
+	if (implicitTls) listener.raw.removeAllListeners('connection');
 	listener.raw.prependListener('connection', (socket) => {
 		liveConnections.count += 1;
 		socket.once('close', () => {
@@ -661,6 +665,13 @@ function buildSubmissionListener(
 			return;
 		}
 		socket.pause();
+		const admissionDeadline = setTimeout(() => socket.destroy(), 30_000);
+		socket.once('close', () => clearTimeout(admissionDeadline));
+		const acceptTls = () => {
+			clearTimeout(admissionDeadline);
+			if (socket.destroyed) return;
+			for (const accept of tlsAccept) accept.call(listener.raw, socket);
+		};
 		const peer = {
 			remoteAddress: socket.remoteAddress ?? 'unknown',
 			remotePort: socket.remotePort ?? 0,
@@ -673,12 +684,12 @@ function buildSubmissionListener(
 					return;
 				}
 				slots.hold(peer);
-				socket.resume();
+				acceptTls();
 			})
 			.catch((err) => {
 				// Match the post-handshake limiter's fail-open posture on Redis faults.
 				logger.error({ err, remoteIp: peer.remoteAddress }, 'TLS admission rate limit failed');
-				socket.resume();
+				acceptTls();
 			});
 	});
 

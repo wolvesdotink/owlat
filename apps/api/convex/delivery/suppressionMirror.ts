@@ -120,6 +120,7 @@ export const mirror = internalAction({
 		email: v.string(),
 		reason: mirroredBlockReasonValidator,
 		bounceType: v.optional(bounceTypeValidator),
+		expiresAt: v.optional(v.number()),
 	},
 	handler: async (_ctx, args) => {
 		const mta = getMtaConfig();
@@ -143,6 +144,7 @@ export const mirror = internalAction({
 					emails: [args.email],
 					reason: mtaReason,
 					source: 'convex-blocklist',
+					...(args.expiresAt !== undefined ? { expiresAt: args.expiresAt } : {}),
 				}),
 			});
 			if (!res.ok) {
@@ -188,6 +190,7 @@ export const blockedEmailPage = internalQuery({
 				email: row.email,
 				reason: row.reason,
 				bounceType: row.bounceType,
+				createdAt: row.createdAt,
 			})),
 			cursor: result.continueCursor,
 			isDone: result.isDone,
@@ -195,7 +198,18 @@ export const blockedEmailPage = internalQuery({
 	},
 });
 
+const SOFT_BOUNCE_TTL_MS = 7 * 86400 * 1000;
+
+function isExpiredSoftBounce(row: ReconcileRow): boolean {
+	return (
+		row.reason === 'bounced' &&
+		row.bounceType === 'soft' &&
+		row.createdAt + SOFT_BOUNCE_TTL_MS <= Date.now()
+	);
+}
+
 type ReconcileRow = {
+	createdAt: number;
 	email: string;
 	reason: BlockReason;
 	bounceType?: 'hard' | 'soft';
@@ -213,8 +227,8 @@ async function requireMtaResponse(response: Response, operation: string): Promis
 }
 
 /**
- * Rebuild the MTA copy from Convex and remove Redis-only entries. This repairs
- * failed fire-and-forget writes, Redis loss, legacy metadata-less orphans and
+ * Rebuild Convex-owned mirrors and remove stale owned entries. Preserve
+ * independently created and metadata-less MTA blocks. This repairs Redis loss and
  * unmirrors that failed while the MTA was unavailable.
  */
 export const reconcile = internalAction({
@@ -241,13 +255,16 @@ export const reconcile = internalAction({
 		}
 
 		const entries = [...authoritative.values()].flatMap((row) =>
-			isMarketingOnlyBlockReason(row.reason)
+			isMarketingOnlyBlockReason(row.reason) || isExpiredSoftBounce(row)
 				? []
 				: [
 						{
 							email: row.email,
 							reason: toMtaSuppressionReason(row.reason, row.bounceType),
 							source: 'convex-reconcile',
+							...(row.reason === 'bounced' && row.bounceType === 'soft'
+								? { expiresAt: row.createdAt + SOFT_BOUNCE_TTL_MS }
+								: {}),
 						},
 					]
 		);
@@ -265,7 +282,7 @@ export const reconcile = internalAction({
 			);
 		}
 
-		const removals: string[] = [];
+		const removals: Array<{ email: string; source: string; suppressedAt: number }> = [];
 		let exportCursor: string | undefined;
 		do {
 			const url = new URL(`${mta.baseUrl}/suppression/export`);
@@ -276,22 +293,34 @@ export const reconcile = internalAction({
 			});
 			await requireMtaResponse(response, 'MTA suppression export');
 			const page = (await response.json()) as {
-				entries: Array<{ email: string }>;
+				entries: Array<{ email: string; source?: string; suppressedAt?: number }>;
 				nextCursor?: string;
 			};
 			for (const entry of page.entries) {
 				const row = authoritative.get(entry.email);
-				if (row && !isMarketingOnlyBlockReason(row.reason)) continue;
-				removals.push(entry.email);
+				if (row && !isMarketingOnlyBlockReason(row.reason) && !isExpiredSoftBounce(row)) continue;
+				// Unknown/orphan entries and independently created MTA blocks are not
+				// ours to delete. Personal-mail bounces never enter blockedEmails.
+				if (
+					(entry.source === 'convex-blocklist' || entry.source === 'convex-reconcile') &&
+					typeof entry.suppressedAt === 'number'
+				) {
+					removals.push({
+						email: entry.email,
+						source: entry.source,
+						suppressedAt: entry.suppressedAt,
+					});
+				}
 			}
 			exportCursor = page.nextCursor;
 		} while (exportCursor);
 
 		// Do not mutate the Redis set while its SSCAN cursor is still in flight;
 		// deleting during a scan can reshuffle buckets and skip an orphan forever.
-		for (const email of removals) {
+		for (const { email, source, suppressedAt } of removals) {
+			const params = new URLSearchParams({ source, suppressedAt: String(suppressedAt) });
 			await requireMtaResponse(
-				await fetch(`${mta.baseUrl}/suppression/${encodeURIComponent(email)}`, {
+				await fetch(`${mta.baseUrl}/suppression/${encodeURIComponent(email)}?${params}`, {
 					method: 'DELETE',
 					headers: { Authorization: `Bearer ${mta.apiKey}` },
 				}),

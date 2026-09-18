@@ -7,6 +7,7 @@ import {
 	unsuppress,
 	getSuppressionStatus,
 	suppressBulk,
+	unsuppressMirror,
 	exportSuppressionList,
 	sweepExpiredSuppressions,
 	SUPPRESSION_SWEEP_BATCH,
@@ -83,6 +84,55 @@ describe('suppressionList', () => {
 				entries: [{ email: 'orphan@example.com', orphan: true }],
 				nextCursor: undefined,
 			});
+		});
+	});
+
+	describe('Convex reconciliation ownership and expiry', () => {
+		it('does not renew an absolute soft-bounce expiry during daily repair', async () => {
+			const start = Date.now();
+			const expiresAt = start + 7 * 86400 * 1000;
+			await suppress(redis, 'soft@example.com', 'soft_bounce', {
+				source: 'convex-blocklist',
+				expiresAt,
+			});
+			for (let day = 1; day <= 8; day++) {
+				vi.setSystemTime(start + day * 86400 * 1000);
+				await suppressBulk(redis, [
+					{
+						email: 'soft@example.com',
+						reason: 'soft_bounce',
+						source: 'convex-reconcile',
+						expiresAt,
+					},
+				]);
+			}
+			expect(await isSuppressed(redis, 'soft@example.com')).toBe(false);
+		});
+		it('preserves independently created permanent blocks when mirroring the same address', async () => {
+			await suppress(redis, 'postbox@example.com', 'hard_bounce');
+			await suppressBulk(redis, [
+				{ email: 'postbox@example.com', reason: 'soft_bounce', source: 'convex-reconcile' },
+			]);
+			expect(await getSuppressionStatus(redis, 'postbox@example.com')).toMatchObject({
+				reason: 'hard_bounce',
+				expiresAt: undefined,
+			});
+			expect(
+				await unsuppressMirror(redis, 'postbox@example.com', 'convex-reconcile', Date.now())
+			).toBe(false);
+		});
+		it('deletes an unchanged owned mirror but preserves a newer independent block', async () => {
+			const oldTime = Date.now();
+			await suppress(redis, 'stale@example.com', 'manual', { source: 'convex-blocklist' });
+			expect(await unsuppressMirror(redis, 'stale@example.com', 'convex-blocklist', oldTime)).toBe(
+				true
+			);
+			await suppress(redis, 'changed@example.com', 'manual', { source: 'convex-blocklist' });
+			await suppress(redis, 'changed@example.com', 'hard_bounce');
+			expect(
+				await unsuppressMirror(redis, 'changed@example.com', 'convex-blocklist', oldTime)
+			).toBe(false);
+			expect(await isSuppressed(redis, 'changed@example.com')).toBe(true);
 		});
 	});
 

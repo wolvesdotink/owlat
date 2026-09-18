@@ -113,6 +113,7 @@ export const copyMessages = internalMutation({
 			if (mailbox) {
 				await ctx.db.patch(mailbox._id, {
 					usedBytes: mailbox.usedBytes + bytesAdded,
+					usageRevision: (mailbox.usageRevision ?? 0) + 1,
 					updatedAt: now,
 				});
 			}

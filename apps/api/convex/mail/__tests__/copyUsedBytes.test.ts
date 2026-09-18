@@ -85,3 +85,31 @@ describe('mailbox usedBytes across IMAP COPY', () => {
 		expect(await usedBytes(t, mailboxId)).toBe(rawSize * 2);
 	});
 });
+
+it('migration must not overwrite a concurrent COPY charge', async () => {
+	const t = convexTest(schema, modules);
+	const mailboxId = await seedMailbox(t);
+	const inboxId = await seedFolder(t, mailboxId, 'inbox');
+	const archiveId = await seedFolder(t, mailboxId, 'archive');
+	const messageId = await seedMessage(t, mailboxId, { subject: 'race' });
+	const rawSize = await t.run(async (ctx) => (await ctx.db.get(messageId))!.rawSize);
+	await t.run((ctx) => ctx.db.patch(mailboxId, { usedBytes: rawSize }));
+	const page = await t.query(
+		internal.migrations['0042_recompute_mailbox_used_bytes'].messageSizePage,
+		{ mailboxId, cursor: null }
+	);
+	await t.mutation(internal.mail.imap.move.copyMessages, {
+		sourceFolderId: inboxId,
+		targetFolderId: archiveId,
+		messageIds: [messageId],
+	});
+	expect(
+		await t.mutation(internal.migrations['0042_recompute_mailbox_used_bytes'].setMailboxUsedBytes, {
+			mailboxId,
+			usedBytes: page.bytes,
+			revision: page.revision,
+		})
+	).toBe('retry');
+	await t.action(internal.migrations['0042_recompute_mailbox_used_bytes'].run, {});
+	expect(await usedBytes(t, mailboxId)).toBe(rawSize * 2);
+});

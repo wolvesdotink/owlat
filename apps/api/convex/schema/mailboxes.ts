@@ -90,6 +90,8 @@ export const mailboxesTables = {
 		status: v.union(v.literal('active'), v.literal('suspended'), v.literal('deleted')),
 		quotaBytes: v.optional(v.number()), // null = unlimited (always unset for external)
 		usedBytes: v.number(),
+		// Monotonic CAS guard for paginated quota repairs, including same-ms writes.
+		usageRevision: v.optional(v.number()),
 		uidValidity: v.number(), // initialized to Date.now()
 		createdAt: v.number(),
 		updatedAt: v.number(),

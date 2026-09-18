@@ -101,6 +101,9 @@ export async function deleteMessageRowAndBlobs(
 	ctx: MutationCtx,
 	message: Doc<'mailMessages'>
 ): Promise<void> {
+	const mailbox = await ctx.db.get(message.mailboxId);
+	if (mailbox) await ctx.db.patch(mailbox._id, { usageRevision: (mailbox.usageRevision ?? 0) + 1 });
+
 	await ctx.db.delete(message._id);
 
 	const blobs: ReadonlyArray<readonly [SharedBlobColumn, Id<'_storage'> | undefined]> = [

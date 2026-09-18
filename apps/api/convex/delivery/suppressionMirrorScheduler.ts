@@ -17,6 +17,7 @@ export async function scheduleSuppressionMirror(
 ): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.delivery.suppressionMirror.mirror, {
 		email: args.email,
+		...(args.bounceType === 'soft' ? { expiresAt: Date.now() + 7 * 86400 * 1000 } : {}),
 		reason: args.reason,
 		...(args.bounceType ? { bounceType: args.bounceType } : {}),
 	});
