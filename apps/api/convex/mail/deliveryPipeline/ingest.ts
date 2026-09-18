@@ -91,6 +91,10 @@ export async function prepareInboundMessage(
 		throw new Error('prepareInboundMessage: rawBytesBase64 decoded to zero bytes');
 	}
 	const rawSize = rawBytes.length;
+	// MIME extraction needs the byte-preserving binary-string projection. It is
+	// expensive for large messages, so build it once and thread the same value to
+	// malware scanning and semantic attachment capture.
+	const rawBinary = bytesToBinaryString(rawBytes);
 	// Raw header block decoded once (64KB covers any header section) for both
 	// extractions below.
 	const rawHeaderBlock = new TextDecoder().decode(rawBytes.subarray(0, 65536));
@@ -120,8 +124,7 @@ export async function prepareInboundMessage(
 	// open action — it would only return `{ sealed: false }` anyway. Mirrors the
 	// cheap `extractArmoredCiphertext` pre-gate the AI-inbox path already uses
 	// before its decrypt action.
-	const rawText = new TextDecoder().decode(rawBytes);
-	const opened = isSealedPgpMime(rawText)
+	const opened = isSealedPgpMime(rawHeaderBlock)
 		? await ctx.runAction(internal.e2ee.open.openInboundForMailbox, {
 				rawBytesBase64: args.rawBytesBase64,
 				recipientAddress: args.recipientAddress,
@@ -139,7 +142,7 @@ export async function prepareInboundMessage(
 	// an honest `verification_error` verdict — signature verification adds
 	// data, never blocks delivery (D10).
 	let inboundSignatureInfo: InboundSignatureInfo | undefined;
-	if (!opened.isSealed && (isSignedPgpMime(rawText) || isClearsigned(rawText))) {
+	if (!opened.isSealed && (isSignedPgpMime(rawBinary) || isClearsigned(rawBinary))) {
 		try {
 			const verdict = await ctx.runAction(internal.e2ee.verifyInboundSignature.forInbound, {
 				rawBytesBase64: args.rawBytesBase64,
@@ -196,14 +199,14 @@ export async function prepareInboundMessage(
 	// fails open with a `'skipped'` verdict (the message still delivers, and
 	// the skip is surfaced via `scannerHealth.warnScanSkipped`). Any verdict
 	// the MTA pipeline already set on `args` is preserved (infected wins).
-	const inboundVerdict = await scanInboundAttachments(getMtaConfig(), rawBytes);
+	const inboundVerdict = await scanInboundAttachments(getMtaConfig(), rawBinary);
 	const virusVerdict: 'clean' | 'infected' | 'skipped' | undefined =
 		args.virusVerdict === 'infected' || inboundVerdict === 'infected'
 			? 'infected'
 			: (inboundVerdict ?? args.virusVerdict);
 
 	return {
-		rawBytes,
+		rawBinary,
 		rawSize,
 		rawStorageId,
 		antiLoopHeaders,
@@ -248,13 +251,11 @@ export async function captureAttachments(
 		runMutation: ActionCtx['runMutation'];
 		runQuery: ActionCtx['runQuery'];
 	},
-	rawBytes: Uint8Array,
+	rawBinary: string,
 	messageId: string,
 	fromRaw: string
 ): Promise<void> {
-	// The extractor wants a binary string (one char per byte) so binary parts survive.
-	const binary = bytesToBinaryString(rawBytes);
-	const parts = extractAttachments(binary);
+	const parts = extractAttachments(rawBinary);
 
 	// Scope captured files to the sender's EXISTING contact (find-only). A
 	// missing/unresolvable sender leaves the file org-general — we do not create
@@ -282,9 +283,7 @@ export async function captureAttachments(
 		const size = part.bytes.byteLength;
 		if (size === 0 || size > MAX_ATTACHMENT_BYTES) continue;
 
-		const storageId = await ctx.storage.store(
-			new Blob([part.bytes as unknown as BlobPart], { type: part.contentType })
-		);
+		const storageId = await ctx.storage.store(new Blob([part.bytes], { type: part.contentType }));
 		// `ingest` runs the file-type policy and deletes the blob if rejected.
 		await ctx.runMutation(internal.semanticFiles.ingest, {
 			storageId,

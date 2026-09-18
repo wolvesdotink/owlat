@@ -65,18 +65,29 @@ describe('degradation', () => {
 	});
 
 	describe('checkSystemHealth', () => {
+		const queue = { getWaitingCount: vi.fn(async () => 0) };
+
 		it('returns redisHealthy=true when isRedisHealthy returns true', async () => {
 			mockIsRedisHealthy.mockResolvedValue(true);
 
-			const state = await checkSystemHealth(redis);
+			const state = await checkSystemHealth(redis, queue as never);
 			expect(state.redisHealthy).toBe(true);
 		});
 
 		it('returns redisHealthy=false when isRedisHealthy returns false', async () => {
 			mockIsRedisHealthy.mockResolvedValue(false);
 
-			const state = await checkSystemHealth(redis);
+			const state = await checkSystemHealth(redis, queue as never);
 			expect(state.redisHealthy).toBe(false);
+		});
+
+		it('engages backpressure from GroupMQ waiting depth', async () => {
+			mockIsRedisHealthy.mockResolvedValue(true);
+			queue.getWaitingCount.mockResolvedValueOnce(10_001);
+
+			const state = await checkSystemHealth(redis, queue as never);
+
+			expect(state.backpressure).toBe(true);
 		});
 	});
 

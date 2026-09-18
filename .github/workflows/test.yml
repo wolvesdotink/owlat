@@ -85,7 +85,10 @@ jobs:
         uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
 
       - name: Run tests with coverage
-        run: bunx turbo run test:coverage --filter=${{ matrix.package }}
+        # The non-PR matrix is the uncached safety valve: it must execute the
+        # suite against today's runner/dependencies instead of replaying a prior
+        # green log whose task inputs happened not to change.
+        run: bunx turbo run test:coverage --filter=${{ matrix.package }} ${{ github.event_name != 'pull_request' && '--force' || '' }}
 
       - name: Upload coverage report
         # Coverage thresholds are enforced during the run regardless; only keep

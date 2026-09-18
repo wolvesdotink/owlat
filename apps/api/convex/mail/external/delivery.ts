@@ -227,6 +227,9 @@ async function advanceCursor(
 			lastSeenUid: Math.max(existing.lastSeenUid, args.remoteUid),
 			remoteUidValidity: args.remoteUidValidity,
 			lastSyncedAt: now,
+			forwardIngestFailures: existing.forwardIngestFailures?.filter(
+				(failure) => failure.uid !== args.remoteUid
+			),
 		});
 		return;
 	}
@@ -264,7 +267,59 @@ export const getSyncState = internalQuery({
 			remoteUidValidity: r.remoteUidValidity,
 			lastSeenUid: r.lastSeenUid,
 			folderId: r.folderId,
+			forwardIngestFailures: r.forwardIngestFailures ?? [],
+			forwardIngestFailureCount: r.forwardIngestFailureCount ?? 0,
 		}));
+	},
+});
+
+/** Persist one forward-sync miss that the high-water cursor has moved past. */
+export const recordForwardIngestFailure = internalMutation({
+	args: {
+		accountId: v.id('externalMailAccounts'),
+		remoteName: v.string(),
+		remoteUidValidity: v.number(),
+		uid: v.number(),
+	},
+	handler: async (ctx, args): Promise<{ retry: boolean; attempts: number }> => {
+		const row = await ctx.db
+			.query('externalMailFolderSync')
+			.withIndex('by_account_and_remote', (q) =>
+				q.eq('accountId', args.accountId).eq('remoteName', args.remoteName)
+			)
+			.first();
+		if (!row || row.remoteUidValidity !== args.remoteUidValidity) {
+			return { retry: false, attempts: 0 };
+		}
+		const failures = row.forwardIngestFailures ?? [];
+		const previous = failures.find((failure) => failure.uid === args.uid)?.attempts ?? 0;
+		const attempts = previous + 1;
+		if (attempts >= 3) {
+			await ctx.db.patch(row._id, {
+				lastSeenUid: Math.max(row.lastSeenUid, args.uid),
+				forwardIngestFailures: failures.filter((failure) => failure.uid !== args.uid),
+				forwardIngestFailureCount: (row.forwardIngestFailureCount ?? 0) + 1,
+				lastSyncedAt: Date.now(),
+			});
+			return { retry: false, attempts };
+		}
+		const next = failures.filter((failure) => failure.uid !== args.uid);
+		// Bound live retry state. Overflow is still counted rather than disappearing.
+		if (next.length >= 100) {
+			await ctx.db.patch(row._id, {
+				lastSeenUid: Math.max(row.lastSeenUid, args.uid),
+				forwardIngestFailureCount: (row.forwardIngestFailureCount ?? 0) + 1,
+				lastSyncedAt: Date.now(),
+			});
+			return { retry: false, attempts };
+		}
+		next.push({ uid: args.uid, attempts });
+		await ctx.db.patch(row._id, {
+			lastSeenUid: Math.max(row.lastSeenUid, args.uid),
+			forwardIngestFailures: next,
+			lastSyncedAt: Date.now(),
+		});
+		return { retry: true, attempts };
 	},
 });
 
@@ -306,6 +361,7 @@ export const recordFolderMapping = internalMutation({
 					remoteUidValidity: args.remoteUidValidity,
 					lastSeenUid: args.initialLastSeenUid,
 					lastSyncedAt: now,
+					forwardIngestFailures: undefined,
 				});
 			}
 			return;

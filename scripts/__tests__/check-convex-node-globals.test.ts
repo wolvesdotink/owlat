@@ -95,7 +95,7 @@ describe('convex isolate-runtime Node-global gate', () => {
 		expect(await findConvexNodeGlobalUses({ root })).toEqual([]);
 	});
 
-	it('does not follow a value import into a Node-runtime module', async () => {
+	it('rejects a value import from an isolate module into a Node-runtime module', async () => {
 		const root = await fixture({
 			[`${CONVEX}/mail/nodeOnly.ts`]: "'use node';\n\nexport const pad = () => Buffer.alloc(4);\n",
 			[`${CONVEX}/mail/caller.ts`]: [
@@ -105,7 +105,14 @@ describe('convex isolate-runtime Node-global gate', () => {
 			].join('\n'),
 		});
 
-		expect(await findConvexNodeGlobalUses({ root })).toEqual([]);
+		expect(await findConvexNodeGlobalUses({ root })).toEqual([
+			expect.objectContaining({
+				file: `${CONVEX}/mail/caller.ts`,
+				line: 1,
+				symbol: "./nodeOnly ('use node')",
+				reachedFrom: `${CONVEX}/mail/caller.ts`,
+			}),
+		]);
 	});
 
 	it('does not follow a type-only import', async () => {

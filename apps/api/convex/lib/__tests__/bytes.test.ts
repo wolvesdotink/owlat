@@ -11,8 +11,11 @@
 import { describe, expect, it } from 'vitest';
 import {
 	base64ToBytes,
+	base64UrlToBytes,
 	bytesToBase64,
+	bytesToBase64Url,
 	bytesToBinaryString,
+	bytesToHex,
 	utf8Bytes,
 	utf8CharWidth,
 	utf8ToBase64,
@@ -38,6 +41,25 @@ describe('bytesToBase64', () => {
 
 	it('encodes empty input as the empty string', () => {
 		expect(bytesToBase64(new Uint8Array(0))).toBe('');
+	});
+});
+
+describe('base64url', () => {
+	it('matches Buffer and round-trips every byte value without padding', () => {
+		const bytes = Uint8Array.from({ length: 256 }, (_, index) => index);
+		const encoded = bytesToBase64Url(bytes);
+
+		expect(encoded).toBe(Buffer.from(bytes).toString('base64url'));
+		expect(encoded).not.toContain('=');
+		expect(base64UrlToBytes(encoded)).toEqual(bytes);
+	});
+});
+
+describe('bytesToHex', () => {
+	it('matches Buffer for typed arrays and ArrayBuffers', () => {
+		const bytes = Uint8Array.from([0, 15, 255, 16, 171]);
+		expect(bytesToHex(bytes)).toBe(Buffer.from(bytes).toString('hex'));
+		expect(bytesToHex(bytes.buffer)).toBe(Buffer.from(bytes).toString('hex'));
 	});
 });
 

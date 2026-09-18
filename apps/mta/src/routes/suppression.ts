@@ -24,7 +24,7 @@ export function createSuppressionRoutes(redis: Redis, config: MtaConfig): Hono {
 
 	// POST / — add addresses to suppression list
 	app.post('/', async (c) => {
-		let body: { emails: string[]; reason?: SuppressionReason; source?: string };
+		let body: { emails: string[]; reason?: SuppressionReason; source?: string; expiresAt?: number };
 		try {
 			body = await c.req.json();
 		} catch {
@@ -35,12 +35,19 @@ export function createSuppressionRoutes(redis: Redis, config: MtaConfig): Hono {
 			return c.json({ error: 'Missing required field: emails (non-empty array)' }, 400);
 		}
 
+		if (body.expiresAt !== undefined && !Number.isFinite(body.expiresAt)) {
+			return c.json({ error: 'Invalid expiresAt' }, 400);
+		}
+
 		const reason: SuppressionReason = body.reason ?? 'manual';
 
 		try {
 			await Promise.all(
 				body.emails.map((email) =>
-					suppressionList.suppress(redis, email, reason, { source: body.source })
+					suppressionList.suppress(redis, email, reason, {
+						source: body.source,
+						expiresAt: body.expiresAt,
+					})
 				)
 			);
 			return c.json({ success: true, suppressed: body.emails.length });
@@ -53,7 +60,12 @@ export function createSuppressionRoutes(redis: Redis, config: MtaConfig): Hono {
 	// POST /bulk — add up to 10,000 addresses in one request
 	app.post('/bulk', async (c) => {
 		let body: {
-			entries: Array<{ email: string; reason: SuppressionReason; source?: string }>;
+			entries: Array<{
+				email: string;
+				reason: SuppressionReason;
+				source?: string;
+				expiresAt?: number;
+			}>;
 		};
 		try {
 			body = await c.req.json();
@@ -63,6 +75,14 @@ export function createSuppressionRoutes(redis: Redis, config: MtaConfig): Hono {
 
 		if (!body.entries || !Array.isArray(body.entries)) {
 			return c.json({ error: 'Missing required field: entries (array)' }, 400);
+		}
+
+		if (
+			body.entries.some(
+				(entry) => entry.expiresAt !== undefined && !Number.isFinite(entry.expiresAt)
+			)
+		) {
+			return c.json({ error: 'Invalid expiresAt' }, 400);
 		}
 
 		if (body.entries.length > 10_000) {
@@ -113,7 +133,18 @@ export function createSuppressionRoutes(redis: Redis, config: MtaConfig): Hono {
 		const email = decodeURIComponent(c.req.param('email'));
 
 		try {
-			const removed = await suppressionList.unsuppress(redis, email);
+			const source = c.req.query('source');
+			const timestamp = c.req.query('suppressedAt');
+			if (
+				(source !== undefined || timestamp !== undefined) &&
+				(source === undefined || timestamp === undefined || !Number.isFinite(Number(timestamp)))
+			) {
+				return c.json({ error: 'Invalid mirror snapshot' }, 400);
+			}
+			const removed =
+				source !== undefined
+					? await suppressionList.unsuppressMirror(redis, email, source, Number(timestamp))
+					: await suppressionList.unsuppress(redis, email);
 			return c.json({ success: true, removed });
 		} catch (err) {
 			logger.error({ err, email }, 'Failed to remove from suppression list');

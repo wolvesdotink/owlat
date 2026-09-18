@@ -169,6 +169,7 @@ export const appendMessage = internalMutation({
 		});
 		await ctx.db.patch(mailbox._id, {
 			usedBytes: mailbox.usedBytes + args.rawSize,
+			usageRevision: (mailbox.usageRevision ?? 0) + 1,
 			updatedAt: now,
 		});
 

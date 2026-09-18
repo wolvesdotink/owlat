@@ -38,8 +38,13 @@ export function bytesToBinaryString(bytes: Uint8Array): string {
 }
 
 /** Standard PADDED base64 of `bytes` — the `Buffer#toString('base64')` shape. */
-export function bytesToBase64(bytes: Uint8Array): string {
-	return btoa(bytesToBinaryString(bytes));
+export function bytesToBase64(bytes: Uint8Array | ArrayBuffer): string {
+	return btoa(bytesToBinaryString(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)));
+}
+
+/** Unpadded URL-safe base64, matching Node's `base64url` encoding. */
+export function bytesToBase64Url(bytes: Uint8Array | ArrayBuffer): string {
+	return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 /**
@@ -85,6 +90,17 @@ export function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
 	const bytes = new Uint8Array(binary.length);
 	for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
 	return bytes;
+}
+
+/** Decode either padded or unpadded URL-safe base64. */
+export function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
+	return base64ToBytes(value);
+}
+
+/** Lower-case hexadecimal encoding used by Web Crypto signature surfaces. */
+export function bytesToHex(bytes: Uint8Array | ArrayBuffer): string {
+	const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+	return Array.from(view, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 /** Standard PADDED base64 of `text`'s UTF-8 bytes. */

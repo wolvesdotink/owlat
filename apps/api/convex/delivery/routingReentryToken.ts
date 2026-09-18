@@ -17,6 +17,7 @@
 
 import { ROUTING_REENTRY_TOKEN_MAX_LENGTH } from '@owlat/shared';
 import { getOptional } from '../lib/env';
+import { base64UrlToBytes, bytesToBase64Url } from '../lib/bytes';
 
 const TOKEN_PREFIX = 'rr2.';
 const LEGACY_TOKEN_PREFIX = 'rr1.';
@@ -60,24 +61,10 @@ interface LegacyCompactTokenPayload {
 	d: string;
 }
 
-function bytesToBase64Url(bytes: Uint8Array): string {
-	let binary = '';
-	for (const byte of bytes) binary += String.fromCharCode(byte);
-	return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
-}
-
-function base64UrlToBytes(value: string): Uint8Array | null {
+function decodeBase64Url(value: string): Uint8Array | null {
 	if (!/^[A-Za-z0-9_-]+$/u.test(value)) return null;
-	try {
-		const padded = value
-			.replaceAll('-', '+')
-			.replaceAll('_', '/')
-			.padEnd(Math.ceil(value.length / 4) * 4, '=');
-		const binary = atob(padded);
-		return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-	} catch {
-		return null;
-	}
+	const decoded = base64UrlToBytes(value);
+	return decoded.length > 0 || value.length === 0 ? decoded : null;
 }
 
 function isCompactTokenPayload(value: unknown): value is CompactTokenPayload {
@@ -183,7 +170,7 @@ async function tryDecrypt(
 	const prefix = isCurrent ? TOKEN_PREFIX : LEGACY_TOKEN_PREFIX;
 	const additionalData = isCurrent ? TOKEN_AAD : LEGACY_TOKEN_AAD;
 	const encoded = token.slice(prefix.length);
-	const bytes = base64UrlToBytes(encoded);
+	const bytes = decodeBase64Url(encoded);
 	if (!bytes || bytes.length <= 28) return null;
 	try {
 		const plaintext = await crypto.subtle.decrypt(

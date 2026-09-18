@@ -32,7 +32,7 @@ export interface ExtractedAttachment {
 	contentType: string;
 	contentId?: string;
 	disposition: 'attachment' | 'inline';
-	bytes: Uint8Array;
+	bytes: Uint8Array<ArrayBuffer>;
 }
 
 function parseHeaders(headerText: string): Map<string, string> {
@@ -60,7 +60,7 @@ function getBoundary(contentType: string): string | null {
 	return getRawParam(contentType, 'boundary') ?? null;
 }
 
-function decodeBody(body: string, encoding: string): Uint8Array {
+function decodeBody(body: string, encoding: string): Uint8Array<ArrayBuffer> {
 	const enc = encoding.toLowerCase().trim();
 	if (enc === 'base64') {
 		const clean = body.replace(/[^A-Za-z0-9+/=]/g, '');

@@ -24,6 +24,7 @@ import {
 	type WebSealedBytes,
 	type WebSecretBox,
 } from '../lib/webSecretBox';
+import { base64UrlToBytes, bytesToBase64Url } from '../lib/bytes';
 
 export const MAX_PLUGIN_STORAGE_CURSOR_CHARS = 8_192;
 
@@ -155,21 +156,10 @@ function parseToken(value: string): WebSealedBytes {
 	return { iv, ciphertext };
 }
 
-function bytesToBase64Url(bytes: Uint8Array): string {
-	let binary = '';
-	for (const byte of bytes) binary += String.fromCharCode(byte);
-	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
 function tryBase64UrlToBytes(value: string): Uint8Array<ArrayBuffer> | undefined {
 	if (!/^[A-Za-z0-9_-]+$/.test(value)) return undefined;
 	try {
-		const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-		const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='));
-		const bytes = new Uint8Array(binary.length);
-		for (let index = 0; index < binary.length; index += 1) {
-			bytes[index] = binary.charCodeAt(index);
-		}
+		const bytes = base64UrlToBytes(value);
 		return bytesToBase64Url(bytes) === value ? bytes : undefined;
 	} catch {
 		return undefined;

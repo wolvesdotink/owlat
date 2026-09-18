@@ -20,10 +20,10 @@
  * So the runtime split has to be checked statically. This gate walks the import
  * graph from every isolate-runtime module under `apps/api/convex/` — following
  * value imports only (a type-only import is erased and bundles nothing) and
- * stopping at `'use node'` modules (a different bundle) — and fails on any Node
- * global used in a VALUE position, or any `node:*` import, in the modules it
- * reaches. Type positions are ignored: `rawBytes: Buffer` is erased at build
- * time and cannot throw.
+ * rejecting a value-import edge into a `'use node'` module (the two runtimes
+ * cannot share that bundle) — and fails on any Node global used in a VALUE
+ * position, or any `node:*` import, in the modules it reaches. Type positions
+ * are ignored: `rawBytes: Buffer` is erased at build time and cannot throw.
  *
  * Run by `bun run lint:convex-globals`, and from `ci:lint` / `ci:verify`.
  * Exercised against throwaway trees by
@@ -165,6 +165,28 @@ function valueImportSpecifiers(sourceFile: ts.SourceFile): string[] {
 		}
 	}
 	return specifiers;
+}
+
+/** The source line of a value import/re-export, used to report runtime edges. */
+function valueImportLine(sourceFile: ts.SourceFile, wanted: string): number {
+	for (const statement of sourceFile.statements) {
+		const moduleSpecifier = ts.isImportDeclaration(statement)
+			? statement.moduleSpecifier
+			: ts.isExportDeclaration(statement)
+				? statement.moduleSpecifier
+				: undefined;
+		if (
+			moduleSpecifier !== undefined &&
+			ts.isStringLiteral(moduleSpecifier) &&
+			moduleSpecifier.text === wanted &&
+			valueImportSpecifiers(sourceFile).includes(wanted)
+		) {
+			return (
+				sourceFile.getLineAndCharacterOfPosition(moduleSpecifier.getStart(sourceFile)).line + 1
+			);
+		}
+	}
+	return 1;
 }
 
 /**
@@ -414,10 +436,11 @@ export async function findConvexNodeGlobalUses(
 	}
 	await indexWorkspaceSources();
 
-	// Breadth-first from every isolate-runtime Convex module. Traversal stops at
-	// a `'use node'` module: it is built into the other bundle, so what it
-	// touches is none of this gate's business.
+	// Breadth-first from every isolate-runtime Convex module. A value import into
+	// a `'use node'` module is itself invalid: silently stopping there used to
+	// turn the runtime boundary into an unenforced assumption.
 	const reachedFrom = new Map<string, string>();
+	const runtimeEdges: NodeGlobalUse[] = [];
 	const queue: string[] = [];
 	for (const path of convexModules) {
 		const sourceFile = await load(path);
@@ -432,13 +455,22 @@ export async function findConvexNodeGlobalUses(
 			const target = resolveSpecifier(path, specifier, known);
 			if (target === null || reachedFrom.has(target)) continue;
 			const targetSource = await load(target);
-			if (!targetSource || isNodeRuntimeModule(targetSource)) continue;
+			if (!targetSource) continue;
+			if (isNodeRuntimeModule(targetSource)) {
+				runtimeEdges.push({
+					file: path,
+					line: valueImportLine(sourceFile, specifier),
+					symbol: `${specifier} ('use node')`,
+					reachedFrom: reachedFrom.get(path)!,
+				});
+				continue;
+			}
 			reachedFrom.set(target, reachedFrom.get(path)!);
 			queue.push(target);
 		}
 	}
 
-	const uses: NodeGlobalUse[] = [];
+	const uses: NodeGlobalUse[] = [...runtimeEdges];
 	for (const path of [...reachedFrom.keys()].sort()) {
 		const sourceFile = sources.get(path)!;
 		const hits = [

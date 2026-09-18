@@ -138,7 +138,7 @@ describe('sunset suppression reuses the shipped path', () => {
 
 	it('keeps the shipped MTA reason mapping intact for the mirrored reasons', () => {
 		expect(toMtaSuppressionReason('bounced')).toBe('hard_bounce');
-		expect(toMtaSuppressionReason('bounced', 'soft')).toBe('manual');
+		expect(toMtaSuppressionReason('bounced', 'soft')).toBe('soft_bounce');
 		expect(toMtaSuppressionReason('complained')).toBe('complaint');
 		expect(toMtaSuppressionReason('manual')).toBe('manual');
 	});
