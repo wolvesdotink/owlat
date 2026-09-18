@@ -164,6 +164,11 @@ describe('the admin rail', () => {
 			'Page under the admin shell',
 		]);
 	});
+
+	it('gives the global layout transition a native element root', () => {
+		const wrapper = mountLayout();
+		expect(typeof wrapper.vm.$.subTree.type).toBe('string');
+	});
 });
 
 describe('the admin palette provider', () => {
