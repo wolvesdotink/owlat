@@ -85,8 +85,8 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 	app.post('/send/system', createSendHandler(queue, redis, 'system'));
 	app.post('/send/decision', createRoutingDecisionHandler(redis, config));
 	app.get('/send/receipt/:workAttemptId', createSendReceiptHandler(redis));
-	app.get('/health', createHealthHandler(redis, config));
-	app.get('/metrics', createMetricsHandler());
+	app.get('/health', createHealthHandler(redis, config, queue));
+	app.get('/metrics', createMetricsHandler(queue));
 
 	// Credential management (master-key protected internally)
 	app.route('/credentials', createCredentialRoutes(redis, config));

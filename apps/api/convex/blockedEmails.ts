@@ -6,7 +6,7 @@ import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { isValidEmail, normalizeEmail } from './lib/inputGuards';
 import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/errors';
-import { scheduleSuppressionMirror } from './delivery/suppressionMirrorScheduler';
+import * as sm from './delivery/suppressionMirrorScheduler';
 import { recordAuditLog } from './lib/auditLog';
 import { restoreSunsetSuppression } from './contacts/sunsetRestore';
 import { bounceTypeValidator } from './lib/convexValidators';
@@ -200,7 +200,7 @@ export const add = authedMutation({
 
 		// Mirror to the MTA's Redis suppression backstop (manual UI blocks never
 		// reach it otherwise). Fire-and-forget; never rolls back the insert.
-		await scheduleSuppressionMirror(ctx, {
+		await sm.scheduleSuppressionMirror(ctx, {
 			email: normalizedEmail,
 			reason: args.reason,
 		});
@@ -246,7 +246,6 @@ export const remove = authedMutation({
 					actorUserId: session.userId,
 					now: Date.now(),
 				});
-				// The restore removed the row and reset the stage — nothing left to do.
 				if (restore.outcome === 'restored') return { success: true };
 			}
 			// No live contact row behind the address (imported, merged away,
@@ -264,6 +263,7 @@ export const remove = authedMutation({
 			details: { email: blockedEmail.email, reason: blockedEmail.reason },
 		});
 
+		await sm.scheduleSuppressionUnmirror(ctx, blockedEmail.email, blockedEmail.reason);
 		return { success: true };
 	},
 });
@@ -340,7 +340,7 @@ export const bulkAdd = authedMutation({
 			});
 
 			// Mirror to the MTA's Redis suppression backstop. Fire-and-forget.
-			await scheduleSuppressionMirror(ctx, {
+			await sm.scheduleSuppressionMirror(ctx, {
 				email: normalizedEmail,
 				reason: item.reason,
 			});
@@ -488,7 +488,7 @@ export const addFromEvent = internalMutation({
 		// Mirror provider-webhook bounce/complaint suppressions to the MTA's
 		// Redis backstop (Resend/SES events land here, never on the MTA list
 		// otherwise). Fire-and-forget; never rolls back the insert.
-		await scheduleSuppressionMirror(ctx, {
+		await sm.scheduleSuppressionMirror(ctx, {
 			email: normalizedEmail,
 			reason: args.reason,
 			...(args.bounceType ? { bounceType: args.bounceType } : {}),

@@ -228,6 +228,11 @@ export const mailAccountsTables = {
 		lastSeenUid: v.number(), // incremental (forward) fetch = lastSeenUid+1:*
 		lastSeenModseq: v.optional(v.number()), // CONDSTORE fast-resync, if supported
 		lastSyncedAt: v.number(),
+		// UIDs skipped behind the forward high-water mark. The worker retries each
+		// on later polls without head-of-line blocking new mail; after three failed
+		// attempts it removes the entry and increments the operator-visible count.
+		forwardIngestFailures: v.optional(v.array(v.object({ uid: v.number(), attempts: v.number() }))),
+		forwardIngestFailureCount: v.optional(v.number()),
 
 		// ── Historical backfill (migration) ──────────────────────────────────
 		// Forward sync (lastSeenUid) only ever pulls NEW mail. A migration

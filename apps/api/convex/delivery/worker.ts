@@ -283,7 +283,7 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 // send.
 async function resolveAttachments(
 	refs: { filename: string; contentType?: string; url: string }[]
-): Promise<{ filename: string; content: Buffer; contentType?: string }[]> {
+): Promise<{ filename: string; content: Uint8Array; contentType?: string }[]> {
 	return Promise.all(
 		refs.map(async (att) => {
 			// SSRF guard: the attachment URL is attacker-influenced (any API-key

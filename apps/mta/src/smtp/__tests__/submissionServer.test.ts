@@ -27,6 +27,7 @@ import {
 	buildOnMailFrom,
 	createSubmissionServer,
 	createImplicitTlsSubmissionServer,
+	SUBMISSION_COMMAND_TIMEOUT_MS,
 	type SubmissionSessionState,
 	type AuthenticatedSession,
 } from '../submissionServer.js';
@@ -1175,6 +1176,14 @@ describe('submission TLS gate — wire-level', () => {
 		conn.write(`${line}\r\n`);
 	}
 
+	async function waitFor(check: () => Promise<boolean>, timeoutMs = 1_000): Promise<void> {
+		const deadline = Date.now() + timeoutMs;
+		while (!(await check())) {
+			if (Date.now() >= deadline) throw new Error('timed out waiting for condition');
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+	}
+
 	const plainAuth = (user: string, pass: string): string =>
 		Buffer.from(`\0${user}\0${pass}`, 'utf8').toString('base64');
 
@@ -1340,6 +1349,46 @@ describe('submission TLS gate — wire-level', () => {
 		}
 	});
 
+	it('465: silent pre-handshake sockets consume and release the per-IP connection cap', async () => {
+		const liveRedis = new Redis() as unknown as RealRedis;
+		const server = createImplicitTlsSubmissionServer(
+			queue,
+			liveRedis,
+			tlsConfig({ submissionMaxConnectionsPerIp: 1 })
+		);
+		const port = await boot(server);
+		const first = net.connect(port, '127.0.0.1');
+		let second: net.Socket | undefined;
+		try {
+			await new Promise<void>((resolve, reject) => {
+				first.once('connect', resolve);
+				first.once('error', reject);
+			});
+			await waitFor(async () => (await liveRedis.get('mta:submission:conn:127.0.0.1')) === '1');
+
+			second = net.connect(port, '127.0.0.1');
+			await new Promise<void>((resolve, reject) => {
+				const timer = setTimeout(() => reject(new Error('over-cap socket stayed open')), 1_000);
+				second!.once('error', () => {
+					clearTimeout(timer);
+					resolve();
+				});
+				second!.once('close', () => {
+					clearTimeout(timer);
+					resolve();
+				});
+			});
+			expect(await liveRedis.get('mta:submission:conn:127.0.0.1')).toBe('1');
+
+			first.destroy();
+			await waitFor(async () => (await liveRedis.exists('mta:submission:conn:127.0.0.1')) === 0);
+		} finally {
+			first.destroy();
+			second?.destroy();
+			await server.close();
+		}
+	});
+
 	it('465: the TLS handshake window is bounded at 30 s, not the 120 s node default', () => {
 		// On 465 the handshake runs BEFORE any SMTP session, so the command idle
 		// timer is not armed yet and this window is the only bound on a peer that
@@ -1365,5 +1414,9 @@ describe('submission TLS gate — wire-level', () => {
 		// Fail loudly if node ever renames the slot, rather than passing vacuously.
 		if (!key) throw new Error('node no longer stores the window under Symbol(handshake-timeout)');
 		expect(raw[key]).toBe(30_000);
+	});
+
+	it('pins the SMTP command idle window to two minutes', () => {
+		expect(SUBMISSION_COMMAND_TIMEOUT_MS).toBe(120_000);
 	});
 });

@@ -250,6 +250,85 @@ describe('mail.migration.start', () => {
 });
 
 // =====================================================================
+// forward-sync retry ledger
+// =====================================================================
+
+describe('external mail forward-sync retry ledger', () => {
+	it('keeps a skipped UID retryable, then records it as terminal on the third miss', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const accountId = await connect(t);
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUidValidity: 7,
+			initialLastSeenUid: 41,
+		});
+
+		for (const attempts of [1, 2]) {
+			await expect(
+				t.mutation(internal.mail.external.delivery.recordForwardIngestFailure, {
+					accountId,
+					remoteName: 'INBOX',
+					remoteUidValidity: 7,
+					uid: 42,
+				})
+			).resolves.toEqual({ retry: true, attempts });
+		}
+		await expect(
+			t.mutation(internal.mail.external.delivery.recordForwardIngestFailure, {
+				accountId,
+				remoteName: 'INBOX',
+				remoteUidValidity: 7,
+				uid: 42,
+			})
+		).resolves.toEqual({ retry: false, attempts: 3 });
+
+		const [state] = await t.query(internal.mail.external.delivery.getSyncState, { accountId });
+		expect(state).toMatchObject({
+			lastSeenUid: 42,
+			forwardIngestFailures: [],
+			forwardIngestFailureCount: 1,
+		});
+	});
+
+	it('drops stale retry UIDs when UIDVALIDITY rotates', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const accountId = await connect(t);
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUidValidity: 7,
+			initialLastSeenUid: 41,
+		});
+		await t.mutation(internal.mail.external.delivery.recordForwardIngestFailure, {
+			accountId,
+			remoteName: 'INBOX',
+			remoteUidValidity: 7,
+			uid: 42,
+		});
+
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUidValidity: 8,
+			initialLastSeenUid: 3,
+		});
+
+		const [state] = await t.query(internal.mail.external.delivery.getSyncState, { accountId });
+		expect(state).toMatchObject({
+			remoteUidValidity: 8,
+			lastSeenUid: 3,
+			forwardIngestFailures: [],
+		});
+	});
+});
+
+// =====================================================================
 // worker backfill surface
 // =====================================================================
 
@@ -363,6 +442,7 @@ describe('mail.migration — worker backfill surface', () => {
 			remoteName: 'INBOX',
 			newCursor: 50,
 			importedDelta: 50,
+			failedDelta: 0,
 		});
 		expect(res).toEqual({ stillImporting: true });
 
@@ -396,6 +476,7 @@ describe('mail.migration — worker backfill surface', () => {
 			remoteName: 'INBOX',
 			newCursor: 50,
 			importedDelta: 50,
+			failedDelta: 0,
 		});
 		expect(res).toEqual({ stillImporting: false });
 
@@ -428,6 +509,7 @@ describe('mail.migration — worker backfill surface', () => {
 			remoteName: 'INBOX',
 			newCursor: 50,
 			importedDelta: 50,
+			failedDelta: 0,
 		});
 		expect(res).toEqual({ stillImporting: false }); // worker stops #1's walk
 
@@ -534,6 +616,7 @@ describe('mail.migration — worker backfill surface', () => {
 			remoteName: 'No Such Folder',
 			newCursor: 10,
 			importedDelta: 5,
+			failedDelta: 0,
 		});
 		expect(res).toEqual({ stillImporting: false });
 		await t.run(async (ctx) => {
@@ -756,6 +839,7 @@ describe('mail.migration.getStatus', () => {
 				remoteName: 'INBOX',
 				newCursor: 25,
 				importedDelta: 75,
+				failedDelta: 0,
 			});
 			return { t };
 		})();
@@ -846,6 +930,7 @@ describe('mail.migrationShared — the worker backfill surface is scope-agnostic
 				remoteName: 'INBOX',
 				newCursor: 50,
 				importedDelta: 50,
+				failedDelta: 0,
 			})
 		).toEqual({ stillImporting: true });
 
@@ -880,6 +965,7 @@ describe('mail.migrationShared — the worker backfill surface is scope-agnostic
 				remoteName: 'INBOX',
 				newCursor: 50,
 				importedDelta: 50,
+				failedDelta: 0,
 			})
 		).toEqual({ stillImporting: false });
 		expect(

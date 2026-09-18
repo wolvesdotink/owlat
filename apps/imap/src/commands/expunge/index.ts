@@ -13,6 +13,9 @@ export interface ExpungeArgs {
 interface ExpungeResult {
 	readonly sequenceNumbers: number[];
 	readonly modseq: number;
+	readonly done?: boolean;
+	readonly beforeUid?: number;
+	readonly nextSequenceNumber?: number;
 }
 
 /**
@@ -50,25 +53,38 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 
 		return asyncSession(async () => {
 			try {
-				const result = (await deps.convex.mutation(
-					fn.expungeFolder as never,
-					{
-						folderId: state.selected!.folderId,
-						uidSet,
-					} as never
-				)) as ExpungeResult;
+				const sequenceNumbers: number[] = [];
+				let beforeUid: number | undefined;
+				let nextSequenceNumber: number | undefined;
+				let modseq = state.selected!.highestModseq;
+				do {
+					const result = (await deps.convex.mutation(
+						fn.expungeFolder as never,
+						{
+							folderId: state.selected!.folderId,
+							uidSet,
+							beforeUid,
+							nextSequenceNumber,
+						} as never
+					)) as ExpungeResult;
+					sequenceNumbers.push(...result.sequenceNumbers);
+					modseq = result.modseq;
+					if (result.done !== false) break;
+					beforeUid = result.beforeUid;
+					nextSequenceNumber = result.nextSequenceNumber;
+				} while (beforeUid !== undefined && nextSequenceNumber !== undefined);
 
 				// IMAP wants EXPUNGE responses in DESCENDING sequence order so
 				// the client's local seq map stays valid across iterations.
-				for (const seq of [...result.sequenceNumbers].reverse()) {
+				for (const seq of [...sequenceNumbers].sort((a, b) => b - a)) {
 					send(`* ${seq} EXPUNGE`);
 				}
 				send(`${tag} OK ${label} completed`);
 
 				const updatedSelected: SelectedState = {
 					...state.selected!,
-					totalCount: Math.max(0, state.selected!.totalCount - result.sequenceNumbers.length),
-					highestModseq: result.modseq,
+					totalCount: Math.max(0, state.selected!.totalCount - sequenceNumbers.length),
+					highestModseq: modseq,
 				};
 				deps.commit({ ...state, selected: updatedSelected });
 			} catch (err) {

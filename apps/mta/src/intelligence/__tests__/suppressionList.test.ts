@@ -7,6 +7,7 @@ import {
 	unsuppress,
 	getSuppressionStatus,
 	suppressBulk,
+	exportSuppressionList,
 	sweepExpiredSuppressions,
 	SUPPRESSION_SWEEP_BATCH,
 } from '../suppressionList.js';
@@ -30,6 +31,7 @@ describe('suppressionList', () => {
 
 	afterEach(async () => {
 		vi.useRealTimers();
+		vi.restoreAllMocks();
 		await redis.flushall();
 	});
 
@@ -50,6 +52,38 @@ describe('suppressionList', () => {
 			const result = await isSuppressed(redis, 'bad@example.com');
 			expect(result).toBe(true);
 		});
+
+		it('throws when a pipelined Redis write is refused at maxmemory', async () => {
+			const pipeline = {
+				set: vi.fn(),
+				zrem: vi.fn(),
+				sadd: vi.fn(),
+				exec: vi.fn(async () => [
+					[null, 'OK'],
+					[null, 0],
+					[new Error('OOM command not allowed when used memory > maxmemory'), null],
+				]),
+			};
+			pipeline.set.mockReturnValue(pipeline);
+			pipeline.zrem.mockReturnValue(pipeline);
+			pipeline.sadd.mockReturnValue(pipeline);
+			vi.spyOn(redis, 'pipeline').mockReturnValue(pipeline as never);
+
+			await expect(suppress(redis, 'oom@example.com', 'hard_bounce')).rejects.toThrow(
+				/OOM command not allowed/
+			);
+		});
+	});
+
+	describe('exportSuppressionList', () => {
+		it('enumerates metadata-less legacy members for reconciliation', async () => {
+			await redis.sadd(SUPPRESSION_SET, 'orphan@example.com');
+
+			await expect(exportSuppressionList(redis)).resolves.toEqual({
+				entries: [{ email: 'orphan@example.com', orphan: true }],
+				nextCursor: undefined,
+			});
+		});
 	});
 
 	describe('suppress TTL behavior', () => {
@@ -60,14 +94,12 @@ describe('suppressionList', () => {
 			expect(status.expiresAt).toBeUndefined();
 		});
 
-		it('manual suppression gets 7-day TTL expiry', async () => {
+		it('manual suppression is permanent until explicitly removed', async () => {
 			await suppress(redis, 'manual@example.com', 'manual');
 			const status = await getSuppressionStatus(redis, 'manual@example.com');
 			expect(status.suppressed).toBe(true);
-			expect(status.expiresAt).toBeDefined();
-			// 7 days in ms from now
-			const sevenDaysMs = 7 * 86400 * 1000;
-			expect(status.expiresAt).toBe(Date.now() + sevenDaysMs);
+			expect(status.expiresAt).toBeUndefined();
+			expect(await redis.zscore(EXPIRY_ZSET, 'manual@example.com')).toBeNull();
 		});
 
 		// THE OLD VERSION OF THIS TEST PROVED NOTHING. It re-`set` the metadata
@@ -81,7 +113,7 @@ describe('suppressionList', () => {
 		// leaked. Nothing here touches Redis by hand any more: the clock moves,
 		// and the production key shapes answer for themselves.
 		it('stops suppressing once the due date passes, and leaves nothing behind', async () => {
-			await suppress(redis, 'temp@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'temp@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			expect(await isSuppressed(redis, 'temp@example.com')).toBe(true);
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
@@ -93,7 +125,7 @@ describe('suppressionList', () => {
 		});
 
 		it('keeps the metadata readable past the due date — it IS the expiry evidence', async () => {
-			await suppress(redis, 'temp@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'temp@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			// No TTL on the metadata key: one that expired alongside `expiresAt`
 			// would take the evidence with it and make the entry permanent.
 			expect(await redis.ttl(metaKeyFor('temp@example.com'))).toBe(-1);
@@ -145,7 +177,7 @@ describe('suppressionList', () => {
 		};
 
 		it('does not delete a permanent suppression that lands mid-check', async () => {
-			await suppress(redis, 'race@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'race@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
 			const restore = raceOnGet(() => suppress(redis, 'race@example.com', 'hard_bounce'));
@@ -158,7 +190,7 @@ describe('suppressionList', () => {
 		});
 
 		it('reports the re-suppression rather than the stale expiry it read', async () => {
-			await suppress(redis, 'race@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'race@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
 			const restore = raceOnGet(() =>
@@ -173,7 +205,7 @@ describe('suppressionList', () => {
 		});
 
 		it('still reclaims an entry nothing re-suppressed', async () => {
-			await suppress(redis, 'lapsed@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'lapsed@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
 			expect(await isSuppressed(redis, 'lapsed@example.com')).toBe(false);
@@ -213,7 +245,7 @@ describe('suppressionList', () => {
 		});
 
 		it('auto-cleans expired entries', async () => {
-			await suppress(redis, 'expire@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'expire@example.com', 'soft_bounce', { ttlSeconds: 60 });
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
@@ -278,7 +310,7 @@ describe('suppressionList', () => {
 		};
 
 		it('does not let a sweep orphan an escalating suppress', async () => {
-			await suppress(redis, 'esc@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'esc@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
 			const restore = interleaveSweepAfterFirstCommand();
@@ -290,7 +322,7 @@ describe('suppressionList', () => {
 		});
 
 		it('does not let a sweep orphan a bulk entry', async () => {
-			await suppress(redis, 'orphan@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'orphan@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
 			const restore = interleaveSweepAfterFirstCommand();
@@ -304,7 +336,7 @@ describe('suppressionList', () => {
 
 	describe('sweepExpiredSuppressions', () => {
 		it('reclaims every key an expired temporary suppression owns', async () => {
-			await suppress(redis, 'gone@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'gone@example.com', 'soft_bounce', { ttlSeconds: 60 });
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
 
@@ -315,7 +347,7 @@ describe('suppressionList', () => {
 		});
 
 		it('leaves an entry that is not due yet alone', async () => {
-			await suppress(redis, 'later@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'later@example.com', 'soft_bounce', { ttlSeconds: 60 });
 
 			vi.setSystemTime(new Date(Date.now() + 59_000));
 
@@ -342,7 +374,7 @@ describe('suppressionList', () => {
 		// due date, or the sweep would delete a hard-bounce suppression when the
 		// superseded soft one came due.
 		it('drops the pending due date when an address is re-suppressed permanently', async () => {
-			await suppress(redis, 'escalate@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'escalate@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			await suppress(redis, 'escalate@example.com', 'hard_bounce');
 			expect(await redis.zcard(EXPIRY_ZSET)).toBe(0);
 
@@ -353,7 +385,7 @@ describe('suppressionList', () => {
 		});
 
 		it('clears the pending due date on a bulk re-suppression too', async () => {
-			await suppress(redis, 'bulk@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'bulk@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			await suppressBulk(redis, [{ email: 'bulk@example.com', reason: 'hard_bounce' }]);
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
@@ -364,7 +396,7 @@ describe('suppressionList', () => {
 
 		it('stops at the batch limit and reports it, so the caller can come back', async () => {
 			for (let index = 0; index < 5; index += 1) {
-				await suppress(redis, `batch${index}@example.com`, 'manual', { ttlSeconds: 60 });
+				await suppress(redis, `batch${index}@example.com`, 'soft_bounce', { ttlSeconds: 60 });
 			}
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
@@ -380,7 +412,7 @@ describe('suppressionList', () => {
 		// metadata and lose its `zrem`. The sweep must read the metadata and keep
 		// the suppression, not trust a due date the metadata contradicts.
 		it('keeps a suppression whose metadata says it is permanent, despite a stale due date', async () => {
-			await suppress(redis, 'torn@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'torn@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			// The permanent rewrite, minus the index update it should have made.
 			await redis.set(
 				metaKeyFor('torn@example.com'),
@@ -396,7 +428,7 @@ describe('suppressionList', () => {
 		});
 
 		it('repairs a due date the metadata says is further out', async () => {
-			await suppress(redis, 'extended@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'extended@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			const later = Date.now() + 600_000;
 			await redis.set(
 				metaKeyFor('extended@example.com'),
@@ -413,7 +445,7 @@ describe('suppressionList', () => {
 		// Metadata gone is the EXPIRED case, not an unknown one: membership of the
 		// due index is itself proof the address was suppressed temporarily.
 		it('removes a due entry whose metadata has gone missing', async () => {
-			await suppress(redis, 'nometa@example.com', 'manual', { ttlSeconds: 60 });
+			await suppress(redis, 'nometa@example.com', 'soft_bounce', { ttlSeconds: 60 });
 			await redis.del(metaKeyFor('nometa@example.com'));
 
 			vi.setSystemTime(new Date(Date.now() + 61_000));
@@ -428,14 +460,14 @@ describe('suppressionList', () => {
 		// on its first such batch with the rest of the backlog still due.
 		it('reports the due entries it looked at, not only the ones it reclaimed', async () => {
 			for (let index = 0; index < 2; index += 1) {
-				await suppress(redis, `keep${index}@example.com`, 'manual', { ttlSeconds: 60 });
+				await suppress(redis, `keep${index}@example.com`, 'soft_bounce', { ttlSeconds: 60 });
 				// Re-suppressed permanently without its index update — the keep arm.
 				await redis.set(
 					metaKeyFor(`keep${index}@example.com`),
 					JSON.stringify({ reason: 'hard_bounce', suppressedAt: Date.now() })
 				);
 			}
-			await suppress(redis, 'drop@example.com', 'manual', { ttlSeconds: 120 });
+			await suppress(redis, 'drop@example.com', 'soft_bounce', { ttlSeconds: 120 });
 
 			vi.setSystemTime(new Date(Date.now() + 121_000));
 

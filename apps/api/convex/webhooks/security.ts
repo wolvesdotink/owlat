@@ -1,3 +1,7 @@
+import { bytesToBase64, bytesToHex } from '../lib/bytes';
+
+export { bytesToBase64, bytesToHex };
+
 /**
  * Shared HMAC + constant-time-comparison primitives used by Inbound adapters
  * and channel webhook handlers. Consolidates the three near-identical copies
@@ -68,16 +72,6 @@ export function constantTimeEqual(a: string, b: string): boolean {
 		mismatch |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i) | 0);
 	}
 	return mismatch === 0;
-}
-
-export function bytesToHex(buffer: ArrayBuffer): string {
-	return Array.from(new Uint8Array(buffer))
-		.map((b) => b.toString(16).padStart(2, '0'))
-		.join('');
-}
-
-export function bytesToBase64(buffer: ArrayBuffer): string {
-	return btoa(String.fromCharCode(...new Uint8Array(buffer)));
 }
 
 async function importHmacKey(

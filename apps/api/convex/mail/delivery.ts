@@ -161,7 +161,7 @@ export const ingestFromWebhook = internalAction({
 		// pull them here while the raw MIME is still in hand. Best-effort: a
 		// failed capture never fails delivery (the message is already stored).
 		try {
-			await captureAttachments(ctx, prepared.rawBytes, args.messageId, args.from);
+			await captureAttachments(ctx, prepared.rawBinary, args.messageId, args.from);
 		} catch (err) {
 			logError('[Mail Webhook] attachment capture failed', err);
 		}

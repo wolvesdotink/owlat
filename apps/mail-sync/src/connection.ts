@@ -34,6 +34,7 @@ import { logger } from './logger.js';
 interface Cursor {
 	uidValidity: number;
 	lastSeenUid: number;
+	forwardIngestFailures?: Array<{ uid: number; attempts: number }>;
 }
 
 const INITIAL_BACKOFF_MS = 5000;
@@ -249,6 +250,7 @@ export class AccountConnection {
 			this.cursors.set(r.remoteName, {
 				uidValidity: r.remoteUidValidity,
 				lastSeenUid: r.lastSeenUid,
+				forwardIngestFailures: r.forwardIngestFailures ?? [],
 			});
 		}
 	}
@@ -320,13 +322,82 @@ export class AccountConnection {
 						initialLastSeenUid: initial,
 					} as never
 				);
-				this.cursors.set(remoteName, { uidValidity, lastSeenUid: initial });
+				this.cursors.set(remoteName, {
+					uidValidity,
+					lastSeenUid: initial,
+					forwardIngestFailures: [],
+				});
 				return;
+			}
+			cursor.forwardIngestFailures ??= [];
+
+			// Retry holes the high-water cursor previously moved past. A failed retry
+			// stays persisted (up to three attempts), while successful ingest clears
+			// it atomically in `advanceCursor`.
+			for (const failure of cursor.forwardIngestFailures) {
+				let landed = false;
+				try {
+					for await (const msg of client.fetch(
+						String(failure.uid),
+						{ uid: true, source: true, flags: true },
+						{ uid: true }
+					)) {
+						if (!msg.source || Number(msg.uid) !== failure.uid) continue;
+						await ingestMessage(this.convex, this.rawUploadConfig, {
+							accountId: this.account.accountId,
+							folderRole: role,
+							remoteName,
+							remoteUid: failure.uid,
+							remoteUidValidity: uidValidity,
+							raw: msg.source,
+							flags: msg.flags ?? new Set<string>(),
+							origin: 'sync',
+						});
+						landed = true;
+					}
+				} catch (err) {
+					logger.warn(
+						{ accountId: this.account.accountId, remoteName, uid: failure.uid, err },
+						'forward-sync retry failed'
+					);
+				}
+				if (landed) {
+					cursor.forwardIngestFailures = cursor.forwardIngestFailures.filter(
+						(entry) => entry.uid !== failure.uid
+					);
+					continue;
+				}
+				const state = (await this.convex.mutation(
+					fn.recordForwardIngestFailure as never,
+					{
+						accountId: this.account.accountId,
+						remoteName,
+						remoteUidValidity: uidValidity,
+						uid: failure.uid,
+					} as never
+				)) as { retry: boolean; attempts: number };
+				if (!state.retry) {
+					cursor.forwardIngestFailures = cursor.forwardIngestFailures.filter(
+						(entry) => entry.uid !== failure.uid
+					);
+					logger.error(
+						{
+							accountId: this.account.accountId,
+							remoteName,
+							uid: failure.uid,
+							attempts: state.attempts,
+						},
+						'forward-sync message reached the terminal failure limit'
+					);
+				} else {
+					failure.attempts = state.attempts;
+				}
 			}
 
 			if (uidNext <= cursor.lastSeenUid + 1) return; // nothing new
 
 			let maxUid = cursor.lastSeenUid;
+			const failedUids: number[] = [];
 			for await (const msg of client.fetch(
 				`${cursor.lastSeenUid + 1}:*`,
 				{ uid: true, source: true, flags: true },
@@ -349,22 +420,44 @@ export class AccountConnection {
 						origin: 'sync',
 					});
 				} catch (err) {
-					// Skip one bad message (e.g. oversized) and advance past it so it
-					// doesn't head-of-line-block newer mail in this folder. The message
-					// is NOT synced: it's retried on reconnect only if no later message
-					// in this batch advanced the persisted cursor past it — otherwise the
-					// skip is effectively permanent. The message still exists on the
-					// upstream IMAP server regardless; this only affects the local copy.
+					// Advance past one bad message so it cannot head-of-line-block newer
+					// mail, but persist the hole below. Every hole is retried independently
+					// and becomes a visible terminal-failure count after three attempts.
 					logger.warn(
 						{ accountId: this.account.accountId, remoteName, uid, err },
 						'ingest failed; skipping message'
 					);
+					failedUids.push(uid);
 				}
 				// Advance even on failure so the cursor never sticks on one message.
 				if (uid > maxUid) maxUid = uid;
 			}
 			if (maxUid > cursor.lastSeenUid) {
-				this.cursors.set(remoteName, { uidValidity, lastSeenUid: maxUid });
+				for (const uid of failedUids.filter((failedUid) => failedUid <= maxUid)) {
+					const state = (await this.convex.mutation(
+						fn.recordForwardIngestFailure as never,
+						{
+							accountId: this.account.accountId,
+							remoteName,
+							remoteUidValidity: uidValidity,
+							uid,
+						} as never
+					)) as { retry: boolean; attempts: number };
+					if (state.retry) {
+						cursor.forwardIngestFailures.push({ uid, attempts: state.attempts });
+					} else {
+						logger.error(
+							{
+								accountId: this.account.accountId,
+								remoteName,
+								uid,
+								attempts: state.attempts,
+							},
+							'forward-sync message could not enter the retry ledger'
+						);
+					}
+				}
+				this.cursors.set(remoteName, { ...cursor, uidValidity, lastSeenUid: maxUid });
 			}
 		} finally {
 			lock.release();

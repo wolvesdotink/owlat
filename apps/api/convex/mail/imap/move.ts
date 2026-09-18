@@ -201,23 +201,36 @@ export const moveMessages = internalMutation({
  * EXPUNGE — permanently delete all `\Deleted`-flagged messages in a
  * folder. UID EXPUNGE narrows to a UID set.
  *
- * Returns the deleted message-sequence numbers (1-based, ordered by
- * UID asc) so the IMAP server can emit `* {seq} EXPUNGE` per row.
+ * Returns one bounded page of deleted message-sequence numbers (1-based) plus
+ * a keyset cursor so the IMAP server can drain the folder without placing every
+ * row in one Convex transaction.
  */
 export const expungeFolder = internalMutation({
 	args: {
 		folderId: v.id('mailFolders'),
 		uidSet: v.optional(v.array(v.number())),
+		beforeUid: v.optional(v.number()),
+		nextSequenceNumber: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.folderId);
-		if (!folder) return { sequenceNumbers: [], modseq: 0 };
+		if (!folder) return { sequenceNumbers: [], modseq: 0, done: true };
 
-		const allMessages = await ctx.db
+		// Keyset-walk from the highest UID down. Sequence numbers are positions in
+		// the folder view that existed when EXPUNGE started, so the caller threads
+		// the next sequence alongside the UID cursor while each transaction stays
+		// bounded. Descending order also keeps later sequence numbers stable as this
+		// page deletes rows above them.
+		const batchSize = 100;
+		const page = await ctx.db
 			.query('mailMessages')
-			.withIndex('by_folder_and_uid', (q) => q.eq('folderId', args.folderId))
-			.collect(); // bounded: one folder's messages in a UID range
-		allMessages.sort((a, b) => a.uid - b.uid);
+			.withIndex('by_folder_and_uid', (q) => {
+				const folderRange = q.eq('folderId', args.folderId);
+				return args.beforeUid === undefined ? folderRange : folderRange.lt('uid', args.beforeUid);
+			})
+			.order('desc')
+			.take(batchSize);
+		let sequenceNumber = args.nextSequenceNumber ?? folder.totalCount;
 
 		const uidFilter = args.uidSet ? new Set(args.uidSet) : null;
 		const expungedSequences: number[] = [];
@@ -226,13 +239,12 @@ export const expungeFolder = internalMutation({
 		let unseenRemoved = 0;
 		let bytesRemoved = 0;
 
-		// Iterate from the END so sequence numbers stay stable as we delete
-		for (let i = allMessages.length - 1; i >= 0; i--) {
-			const m = allMessages[i];
-			if (!m || !m.flagDeleted) continue;
+		for (const m of page) {
+			const currentSequence = sequenceNumber--;
+			if (!m.flagDeleted) continue;
 			if (uidFilter && !uidFilter.has(m.uid)) continue;
 
-			expungedSequences.push(i + 1);
+			expungedSequences.push(currentSequence);
 			totalRemoved += 1;
 			if (!m.flagSeen) unseenRemoved += 1;
 			bytesRemoved += m.rawSize;
@@ -251,7 +263,8 @@ export const expungeFolder = internalMutation({
 			await rebuildThreadAggregates(ctx, tid);
 		}
 
-		const newModseq = await bumpFolderModseq(ctx, args.folderId);
+		const newModseq =
+			totalRemoved > 0 ? await bumpFolderModseq(ctx, args.folderId) : folder.highestModseq;
 		if (totalRemoved > 0) {
 			await ctx.db.patch(args.folderId, {
 				totalCount: Math.max(0, folder.totalCount - totalRemoved),
@@ -267,9 +280,15 @@ export const expungeFolder = internalMutation({
 			}
 		}
 
-		// Return ascending so IMAP server can iterate naturally (the array
-		// is currently descending because we walked in reverse).
-		expungedSequences.reverse();
-		return { sequenceNumbers: expungedSequences, modseq: newModseq };
+		const done = page.length < batchSize;
+		return {
+			// This page was walked in descending UID/sequence order. The IMAP bridge
+			// aggregates pages in that same order and can emit the values directly.
+			sequenceNumbers: expungedSequences,
+			modseq: newModseq,
+			done,
+			beforeUid: done ? undefined : page[page.length - 1]!.uid,
+			nextSequenceNumber: done ? undefined : sequenceNumber,
+		};
 	},
 });

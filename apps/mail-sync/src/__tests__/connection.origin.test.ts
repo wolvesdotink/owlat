@@ -58,7 +58,14 @@ function fakeClient(opts: { uidValidity: number; uidNext: number }) {
 /** Reach into the private members the two call sites live behind. */
 type ConnectionInternals = {
 	client: unknown;
-	cursors: Map<string, { uidValidity: number; lastSeenUid: number }>;
+	cursors: Map<
+		string,
+		{
+			uidValidity: number;
+			lastSeenUid: number;
+			forwardIngestFailures?: Array<{ uid: number; attempts: number }>;
+		}
+	>;
 	pollFolder(remoteName: string, role: string): Promise<void>;
 	makeBackfillDeps(uidValidity: number, migrationId: string): BackfillFolderDeps;
 };
@@ -104,6 +111,37 @@ describe('ingest origin at the connection call sites', () => {
 		const params = ingest.ingestMessage.mock.calls[0]![2] as Record<string, unknown>;
 		expect(params.origin).toBe('backfill');
 		expect(params.remoteUid).toBe(17);
+	});
+
+	it('persists a failed forward UID and retries it even when no newer mail arrives', async () => {
+		const mutation = vi.fn(async () => ({ retry: true, attempts: 1 }));
+		const convex = {
+			query: vi.fn(async () => []),
+			mutation,
+			action: vi.fn(async () => ({})),
+		} as unknown as ConvexClient;
+		const conn = new AccountConnection(ACCOUNT, convex, CONFIG) as unknown as ConnectionInternals;
+		conn.client = fakeClient({ uidValidity: 7, uidNext: 43 });
+		conn.cursors.set('INBOX', { uidValidity: 7, lastSeenUid: 41, forwardIngestFailures: [] });
+		ingest.ingestMessage.mockRejectedValueOnce(new Error('temporary ingest failure'));
+
+		await conn.pollFolder('INBOX', 'inbox');
+
+		expect(mutation).toHaveBeenCalledTimes(1);
+		expect(mutation.mock.calls[0]![1]).toMatchObject({
+			remoteName: 'INBOX',
+			remoteUidValidity: 7,
+			uid: 42,
+		});
+		expect(conn.cursors.get('INBOX')).toMatchObject({
+			lastSeenUid: 42,
+			forwardIngestFailures: [{ uid: 42, attempts: 1 }],
+		});
+
+		// uidNext has not changed, so only the persisted-hole retry can ingest 42.
+		await conn.pollFolder('INBOX', 'inbox');
+		expect(ingest.ingestMessage).toHaveBeenCalledTimes(2);
+		expect(conn.cursors.get('INBOX')?.forwardIngestFailures).toEqual([]);
 	});
 });
 

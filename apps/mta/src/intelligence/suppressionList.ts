@@ -33,7 +33,7 @@ export {
 	type SuppressionSweepResult,
 } from './suppressionExpiry.js';
 
-export type SuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
+export type SuppressionReason = 'hard_bounce' | 'soft_bounce' | 'complaint' | 'manual';
 
 /** Default TTL for soft-bounce suppressions (7 days) */
 const SOFT_BOUNCE_TTL_SECONDS = 7 * 86400;
@@ -42,7 +42,20 @@ const SOFT_BOUNCE_TTL_SECONDS = 7 * 86400;
  * The reasons that are evidence about a mailbox rather than a policy choice
  * about it, and therefore never expire.
  */
-const PERMANENT_REASONS: ReadonlySet<SuppressionReason> = new Set(['hard_bounce', 'complaint']);
+const PERMANENT_REASONS: ReadonlySet<SuppressionReason> = new Set([
+	'hard_bounce',
+	'complaint',
+	'manual',
+]);
+
+function assertPipelineSucceeded(
+	results: Array<[Error | null, unknown]> | null,
+	operation: string
+): void {
+	if (results === null) throw new Error(`${operation}: Redis pipeline returned no results`);
+	const failure = results.find(([error]) => error !== null)?.[0];
+	if (failure) throw new Error(`${operation}: ${failure.message}`, { cause: failure });
+}
 
 export interface SuppressionMeta {
 	reason: SuppressionReason;
@@ -103,17 +116,6 @@ export async function suppress(
 		meta.expiresAt = now + ttl * 1000;
 	}
 
-	// KNOWN, DELIBERATELY UNFIXED HERE: this write is unconditional, so a later
-	// weaker signal downgrades a stronger one — `POST /suppression` defaults an
-	// omitted reason to `manual` (routes/suppression.ts), and a `manual` write
-	// over a `hard_bounce` entry turns a permanent suppression into a 7-day one.
-	// A read-before-write guard here would be the very stale-read pattern
-	// `expireIfDue` exists to remove, and the atomic alternative changes what a
-	// failed write does on the uncaught `suppress_recipient` effect path
-	// (dispatch/effects.ts). It dissolves entirely once `manual` becomes
-	// permanent, which is the follow-up that also ships the un-mirror on
-	// `blockedEmails.remove` that has to land with it.
-
 	// METADATA BEFORE MEMBERSHIP, and the due date in between. `pipeline()` is
 	// not `multi()`: the commands are only batched on the wire, and another
 	// client — the sweep — can be served between any two of them. With membership
@@ -137,14 +139,12 @@ export async function suppress(
 
 	pipeline.sadd(SUPPRESSION_SET, normalized);
 
-	// `exec()` resolves with per-command results INCLUDING per-command errors,
-	// and nothing here inspects them: at `maxmemory` with `noeviction` the `SET`
-	// and `SADD` above are both refused (`denyoom`) and the only trace is the
-	// success line below. A Redis at the cap therefore loses hard-bounce
-	// suppressions silently. Surfacing that is a follow-up, because a throw here
-	// reaches `applyEffects`' uncaught `suppress_recipient` await and would fail
-	// the delivery attempt that reported the bounce.
-	await pipeline.exec();
+	// `exec()` resolves with per-command errors instead of rejecting the promise.
+	// Inspect every result so `maxmemory noeviction` cannot turn a refused
+	// hard-bounce/complaint write into a false success. The throw reaches the
+	// delivery effect runner, while the durable Convex row is repaired by the
+	// daily reconciliation pass.
+	assertPipelineSucceeded(await pipeline.exec(), `suppress ${normalized}`);
 	logger.info(
 		{ email: normalized, reason, source: options?.source },
 		'Address added to suppression list'
@@ -161,6 +161,7 @@ export async function unsuppress(redis: Redis, email: string): Promise<boolean> 
 	pipeline.del(`${SUPPRESSION_META_PREFIX}${normalized}`);
 	pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
 	const results = await pipeline.exec();
+	assertPipelineSucceeded(results, `unsuppress ${normalized}`);
 
 	const removed = (results?.[0]?.[1] as number) > 0;
 	if (removed) {
@@ -220,19 +221,11 @@ function toStatus(meta: SuppressionMeta): {
 /**
  * Bulk suppress multiple addresses.
  *
- * Every entry is written PERMANENTLY, including `manual` ones — unlike the
- * single-address {@link suppress}, which gives `manual` a 7-day TTL. That
- * asymmetry is the shipped behaviour of `POST /suppression/bulk` and is kept:
- * the endpoint exists so an operator can carry an accumulated suppression list
- * onto this MTA in one request, and silently expiring an imported list after a
- * week would be a far worse defect than the inconsistency. The `zrem` below
- * states it: a bulk write CLEARS any pending due date the address had.
+ * Every imported block is written with its reason's normal policy. Manual,
+ * hard-bounce and complaint entries are permanent; only `soft_bounce` expires.
  *
- * NOTHING IN OWLAT CALLS IT TODAY. The migration import goes through Convex's
- * `blockedEmails.addFromEvent`, whose mirror POSTs to `/suppression` one address
- * at a time, so an imported entry that maps to `manual` gets the 7-day TTL like
- * any other. Bulk permanence is a property of this endpoint, not a guarantee
- * about imports — do not describe it as one.
+ * Convex reconciliation calls this endpoint to rebuild the Redis mirror from
+ * the durable blocklist after a transient MTA/Redis failure.
  */
 export async function suppressBulk(
 	redis: Redis,
@@ -252,17 +245,21 @@ export async function suppressBulk(
 				source: entry.source,
 				suppressedAt: Date.now(),
 			};
+			if (!PERMANENT_REASONS.has(entry.reason)) {
+				meta.expiresAt = meta.suppressedAt + SOFT_BOUNCE_TTL_SECONDS * 1000;
+			}
 
 			// Metadata, then de-index, then membership — see `suppress`. It matters
 			// MORE here: a 100-entry batch is ~26 KB of commands, past Redis's 16 KB
 			// client read buffer, so this pipeline genuinely spans several reads and
 			// other clients really are served in the middle of it.
 			pipeline.set(`${SUPPRESSION_META_PREFIX}${normalized}`, JSON.stringify(meta));
-			pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
+			if (meta.expiresAt) pipeline.zadd(SUPPRESSION_EXPIRY_ZSET, meta.expiresAt, normalized);
+			else pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
 			pipeline.sadd(SUPPRESSION_SET, normalized);
 		}
 
-		await pipeline.exec();
+		assertPipelineSucceeded(await pipeline.exec(), 'bulk suppress');
 		count += batch.length;
 	}
 
@@ -277,11 +274,11 @@ export async function exportSuppressionList(
 	redis: Redis,
 	options?: { reason?: SuppressionReason; cursor?: string; limit?: number }
 ): Promise<{
-	entries: Array<{ email: string } & SuppressionMeta>;
+	entries: Array<{ email: string; orphan?: true } & Partial<SuppressionMeta>>;
 	nextCursor?: string;
 }> {
 	const limit = options?.limit ?? 100;
-	const entries: Array<{ email: string } & SuppressionMeta> = [];
+	const entries: Array<{ email: string; orphan?: true } & Partial<SuppressionMeta>> = [];
 	let cursor = options?.cursor ?? '0';
 
 	// We need to scan more than `limit` since we may filter by reason
@@ -290,10 +287,13 @@ export async function exportSuppressionList(
 	const [nextCursor, members] = await redis.sscan(SUPPRESSION_SET, cursor, 'COUNT', scanCount);
 
 	for (const email of members) {
-		if (entries.length >= limit) break;
-
 		const meta = await getMetadata(redis, email);
-		if (!meta) continue;
+		if (!meta) {
+			// Metadata-less members are precisely the legacy expiry/torn-write
+			// orphans reconciliation must be able to enumerate and remove or repair.
+			if (!options?.reason) entries.push({ email, orphan: true });
+			continue;
+		}
 
 		// Filter by reason if specified
 		if (options?.reason && meta.reason !== options.reason) continue;
@@ -319,6 +319,7 @@ export async function getSuppressionStats(redis: Redis): Promise<{
 	// Sample to estimate distribution (full scan would be expensive)
 	const byReason: Record<string, number> = {
 		hard_bounce: 0,
+		soft_bounce: 0,
 		complaint: 0,
 		manual: 0,
 		unknown: 0,

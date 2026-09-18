@@ -20,12 +20,7 @@ import { expungeModule } from '../expunge/index.js';
 import { copyModule } from '../copy/index.js';
 import { storeModule } from '../store/index.js';
 import { uidModule } from '../uid/index.js';
-import type {
-	CommandDeps,
-	ConnectionState,
-	SelectedState,
-	StartArgs,
-} from '../types.js';
+import type { CommandDeps, ConnectionState, SelectedState, StartArgs } from '../types.js';
 
 vi.mock('../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -76,7 +71,7 @@ function startArgs<T>(
 	deps: CommandDeps,
 	state: ConnectionState,
 	args: T,
-	verb: StartArgs<T>['verb'],
+	verb: StartArgs<T>['verb']
 ): { start: StartArgs<T>; lines: string[] } {
 	const lines: string[] = [];
 	return {
@@ -97,7 +92,12 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		const { deps } = makeDeps(convex);
 		const parsed = expungeModule.parseArgs([]);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'EXPUNGE');
+		const { start, lines } = startArgs(
+			deps,
+			selectedState(),
+			(parsed as { args: never }).args,
+			'EXPUNGE'
+		);
 		await expungeModule.start(start).completion;
 
 		const expunges = lines.filter((l) => l.endsWith('EXPUNGE'));
@@ -116,7 +116,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		// Bare EXPUNGE sends no uidSet — the convex side scans \Deleted only.
 		expect(convex.mutation).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ folderId: 'f1', uidSet: undefined }),
+			expect.objectContaining({ folderId: 'f1', uidSet: undefined })
 		);
 	});
 
@@ -133,6 +133,41 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 		expect(committed[0]!.selected!.totalCount).toBe(SELECTED.totalCount - 2);
 	});
 
+	it('drains bounded Convex pages and threads the keyset + sequence cursor', async () => {
+		const convex = mockConvex();
+		convex.mutation
+			.mockResolvedValueOnce({
+				sequenceNumbers: [250, 220],
+				modseq: 8,
+				done: false,
+				beforeUid: 151,
+				nextSequenceNumber: 150,
+			})
+			.mockResolvedValueOnce({ sequenceNumbers: [149], modseq: 9, done: true });
+		const { deps, committed } = makeDeps(convex);
+		const parsed = expungeModule.parseArgs([]);
+		const { start, lines } = startArgs(
+			deps,
+			selectedState({ totalCount: 250 }),
+			(parsed as { args: never }).args,
+			'EXPUNGE'
+		);
+
+		await expungeModule.start(start).completion;
+
+		expect(convex.mutation).toHaveBeenCalledTimes(2);
+		expect(convex.mutation.mock.calls[1]![1]).toMatchObject({
+			beforeUid: 151,
+			nextSequenceNumber: 150,
+		});
+		expect(lines.filter((line) => line.endsWith('EXPUNGE'))).toEqual([
+			'* 250 EXPUNGE',
+			'* 220 EXPUNGE',
+			'* 149 EXPUNGE',
+		]);
+		expect(committed[0]!.selected).toMatchObject({ totalCount: 247, highestModseq: 9 });
+	});
+
 	it('refuses EXPUNGE on a read-only mailbox', async () => {
 		const convex = mockConvex();
 		const { deps } = makeDeps(convex);
@@ -141,7 +176,7 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 			deps,
 			selectedState({ readOnly: true }),
 			(parsed as { args: never }).args,
-			'EXPUNGE',
+			'EXPUNGE'
 		);
 		await expungeModule.start(start).completion;
 		expect(lines.pop()).toBe('a1 NO Mailbox is read-only');
@@ -165,7 +200,12 @@ describe('UIDPLUS — COPYUID carries the folder uidValidity (RFC 4315)', () => 
 		const { deps } = makeDeps(convex);
 		const parsed = copyModule.parseArgs(['3:4', 'Archive']);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'COPY');
+		const { start, lines } = startArgs(
+			deps,
+			selectedState(),
+			(parsed as { args: never }).args,
+			'COPY'
+		);
 		await copyModule.start(start).completion;
 
 		expect(lines.pop()).toBe('a1 OK [COPYUID 9999 3,4 17,18] COPY completed');
@@ -180,13 +220,18 @@ describe('UIDPLUS — UID EXPUNGE honors the UID set (RFC 4315 §2.1)', () => {
 
 		const parsed = uidModule.parseArgs(['EXPUNGE', '5,7:8']);
 		expect(parsed.ok).toBe(true);
-		const { start, lines } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'UID');
+		const { start, lines } = startArgs(
+			deps,
+			selectedState(),
+			(parsed as { args: never }).args,
+			'UID'
+		);
 		await uidModule.start(start).completion;
 
 		// 5,7:8 → {5,7,8}; bare EXPUNGE would send uidSet undefined.
 		expect(convex.mutation).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ folderId: 'f1', uidSet: [5, 7, 8] }),
+			expect.objectContaining({ folderId: 'f1', uidSet: [5, 7, 8] })
 		);
 		expect(lines.pop()).toBe('a1 OK UID EXPUNGE completed');
 	});
@@ -200,7 +245,7 @@ describe('UIDPLUS — UID EXPUNGE honors the UID set (RFC 4315 §2.1)', () => {
 		await uidModule.start(start).completion;
 		expect(convex.mutation).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ uidSet: undefined }),
+			expect.objectContaining({ uidSet: undefined })
 		);
 	});
 });
@@ -225,7 +270,7 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 
 		expect(convex.mutation).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ unchangedSinceModseq: 5, mode: 'add', flags: ['\\Seen'] }),
+			expect.objectContaining({ unchangedSinceModseq: 5, mode: 'add', flags: ['\\Seen'] })
 		);
 	});
 
@@ -243,7 +288,12 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 		});
 		const { deps } = makeDeps(convex);
 		const parsed = storeModule.parseArgs(['1:2', '(UNCHANGEDSINCE 8)', '+FLAGS', '(\\Flagged)']);
-		const { start, lines } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'STORE');
+		const { start, lines } = startArgs(
+			deps,
+			selectedState(),
+			(parsed as { args: never }).args,
+			'STORE'
+		);
 		await storeModule.start(start).completion;
 
 		// The updated row reports its NEW (higher) modseq, the skipped uid 2 is
@@ -297,7 +347,12 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 		const { deps } = makeDeps(convex);
 		const parsed = storeModule.parseArgs(['1', '+FLAGS.SILENT', '(\\Seen)']);
 		expect((parsed as { args: { silent: boolean } }).args.silent).toBe(true);
-		const { start, lines } = startArgs(deps, selectedState(), (parsed as { args: never }).args, 'STORE');
+		const { start, lines } = startArgs(
+			deps,
+			selectedState(),
+			(parsed as { args: never }).args,
+			'STORE'
+		);
 		await storeModule.start(start).completion;
 
 		expect(lines.some((l) => l.includes('FETCH'))).toBe(false);

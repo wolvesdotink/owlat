@@ -32,6 +32,7 @@ export const fn = {
 	getSyncState: 'mail/external/delivery:getSyncState' as FnRef,
 	// Record remote→local folder mapping + initial high-water UID (internalMutation).
 	recordFolderMapping: 'mail/external/delivery:recordFolderMapping' as FnRef,
+	recordForwardIngestFailure: 'mail/external/delivery:recordForwardIngestFailure' as FnRef,
 
 	// ── Deliverability seed-probe sweep (gate 5) ─────────────────────────
 	// Seed mailboxes with outstanding probes (internalQuery).
@@ -162,6 +163,8 @@ export interface FolderCursor {
 	remoteUidValidity: number;
 	lastSeenUid: number;
 	folderId: string;
+	forwardIngestFailures: Array<{ uid: number; attempts: number }>;
+	forwardIngestFailureCount: number;
 }
 
 /** Backfill work for an account from getBackfillWork. */

@@ -9,7 +9,7 @@
 
 import { internal } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
-import type { MirroredBlockReason } from './suppressionMirror';
+import type { BlockReason, MirroredBlockReason } from './suppressionMirror';
 
 export async function scheduleSuppressionMirror(
 	ctx: MutationCtx,
@@ -20,4 +20,15 @@ export async function scheduleSuppressionMirror(
 		reason: args.reason,
 		...(args.bounceType ? { bounceType: args.bounceType } : {}),
 	});
+}
+
+export async function scheduleSuppressionUnmirror(
+	ctx: MutationCtx,
+	email: string,
+	reason: BlockReason
+): Promise<void> {
+	// Marketing-only sunset suppressions never reached the MTA. Removing one
+	// must not erase a hard-bounce/complaint mirror for the same address.
+	if (reason === 'unengaged') return;
+	await ctx.scheduler.runAfter(0, internal.delivery.suppressionMirror.unmirror, { email });
 }
