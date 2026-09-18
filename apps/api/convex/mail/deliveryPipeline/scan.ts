@@ -10,7 +10,6 @@
 import { extractAttachments } from '@owlat/shared/mailMime';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { scanAttachmentBytes } from '../mtaClient';
-import { bytesToBinaryString } from '../../lib/bytes';
 
 /**
  * Scan an inbound message's attachments for malware before mailbox delivery.
@@ -39,12 +38,11 @@ import { bytesToBinaryString } from '../../lib/bytes';
  */
 export async function scanInboundAttachments(
 	mta: { baseUrl: string; apiKey: string } | null,
-	rawBytes: Uint8Array
+	rawBinary: string
 ): Promise<'clean' | 'infected' | 'skipped' | undefined> {
 	if (!mta) return undefined; // scanner not configured → no verdict asserted
 
-	// The extractor wants a binary string (one char per byte) so binary parts survive.
-	const parts = extractAttachments(bytesToBinaryString(rawBytes));
+	const parts = extractAttachments(rawBinary);
 	// Only real (non-inline) attachment leaves carry a malware risk worth gating
 	// delivery on; inline images (logos/signatures) are skipped, matching the
 	// `captureAttachments` policy.

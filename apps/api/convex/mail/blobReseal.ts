@@ -66,6 +66,7 @@ export const repointResealedBlobs = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const maxSharedBlobReferences = 1_000;
+		const used = { raw: false, text: false, html: false };
 		if (args.rawStorageId && args.oldRawStorageId) {
 			const newId = args.rawStorageId;
 			const oldId = args.oldRawStorageId;
@@ -76,8 +77,9 @@ export const repointResealedBlobs = internalMutation({
 			if (rows.length > maxSharedBlobReferences) {
 				throw new Error('raw blob has too many shared references to migrate atomically');
 			}
+			used.raw = rows.length > 0;
 			for (const r of rows) await ctx.db.patch(r._id, { rawStorageId: newId });
-			await ctx.storage.delete(oldId);
+			await ctx.storage.delete(oldId).catch(() => undefined);
 		}
 		if (args.textBodyStorageId && args.oldTextBodyStorageId) {
 			const newId = args.textBodyStorageId;
@@ -89,8 +91,9 @@ export const repointResealedBlobs = internalMutation({
 			if (rows.length > maxSharedBlobReferences) {
 				throw new Error('text body blob has too many shared references to migrate atomically');
 			}
+			used.text = rows.length > 0;
 			for (const r of rows) await ctx.db.patch(r._id, { textBodyStorageId: newId });
-			await ctx.storage.delete(oldId);
+			await ctx.storage.delete(oldId).catch(() => undefined);
 		}
 		if (args.htmlBodyStorageId && args.oldHtmlBodyStorageId) {
 			const newId = args.htmlBodyStorageId;
@@ -102,9 +105,11 @@ export const repointResealedBlobs = internalMutation({
 			if (rows.length > maxSharedBlobReferences) {
 				throw new Error('HTML body blob has too many shared references to migrate atomically');
 			}
+			used.html = rows.length > 0;
 			for (const r of rows) await ctx.db.patch(r._id, { htmlBodyStorageId: newId });
-			await ctx.storage.delete(oldId);
+			await ctx.storage.delete(oldId).catch(() => undefined);
 		}
+		return used;
 	},
 });
 
@@ -140,14 +145,31 @@ export async function resealRowBlobs(ctx: ActionCtx, row: MessageBlobIds): Promi
 	// the still-readable plaintext original (mixed tolerance) and a re-run reseals;
 	// an interrupt cannot orphan a plaintext blob behind an already-sealed pointer,
 	// nor a sibling copy behind a deleted blob, because all-or-nothing per column.
-	await ctx.runMutation(internal.mail.blobReseal.repointResealedBlobs, {
-		rawStorageId: newRaw ?? undefined,
-		oldRawStorageId: newRaw ? row.rawStorageId : undefined,
-		textBodyStorageId: newText ?? undefined,
-		oldTextBodyStorageId: newText && row.textBodyStorageId ? row.textBodyStorageId : undefined,
-		htmlBodyStorageId: newHtml ?? undefined,
-		oldHtmlBodyStorageId: newHtml && row.htmlBodyStorageId ? row.htmlBodyStorageId : undefined,
-	});
+	const freshIds = [newRaw, newText, newHtml].filter((id): id is Id<'_storage'> => id !== null);
+	try {
+		const used = await ctx.runMutation(internal.mail.blobReseal.repointResealedBlobs, {
+			rawStorageId: newRaw ?? undefined,
+			oldRawStorageId: newRaw ? row.rawStorageId : undefined,
+			textBodyStorageId: newText ?? undefined,
+			oldTextBodyStorageId: newText && row.textBodyStorageId ? row.textBodyStorageId : undefined,
+			htmlBodyStorageId: newHtml ?? undefined,
+			oldHtmlBodyStorageId: newHtml && row.htmlBodyStorageId ? row.htmlBodyStorageId : undefined,
+		});
+		// A purge may remove the final reference after the action sealed the bytes
+		// but before the mutation ran. No row can use that fresh blob, so remove it
+		// here instead of leaving an unreachable sealed copy behind.
+		const unused = [
+			newRaw && !used.raw ? newRaw : null,
+			newText && !used.text ? newText : null,
+			newHtml && !used.html ? newHtml : null,
+		].filter((id): id is Id<'_storage'> => id !== null);
+		await Promise.all(unused.map((id) => ctx.storage.delete(id).catch(() => undefined)));
+	} catch (error) {
+		// The mutation is atomic. If it rejected, none of the fresh ids were
+		// published, so all of them are safe to reclaim before the action retries.
+		await Promise.all(freshIds.map((id) => ctx.storage.delete(id).catch(() => undefined)));
+		throw error;
+	}
 	return true;
 }
 

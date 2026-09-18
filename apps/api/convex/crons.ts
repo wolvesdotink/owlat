@@ -7,6 +7,13 @@ import { registerSeedPlacementCrons } from './analytics/cronRegistration';
 
 const crons = cronJobs();
 
+crons.interval(
+	'reconcile MTA suppressions',
+	{ hours: 24 },
+	internal.delivery.suppressionMirror.reconcile,
+	{}
+);
+
 // Process scheduled campaigns every minute
 // Catches campaigns whose scheduledAt has passed (backup for scheduler-based sends)
 crons.interval(

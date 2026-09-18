@@ -320,12 +320,11 @@ export async function insertDeliveredMessage(
 		});
 	}
 
-	if (params.countUsedBytes) {
-		await ctx.db.patch(mailbox._id, {
-			usedBytes: mailbox.usedBytes + params.rawSize,
-			updatedAt: now,
-		});
-	}
+	await ctx.db.patch(mailbox._id, {
+		...(params.countUsedBytes ? { usedBytes: mailbox.usedBytes + params.rawSize } : {}),
+		usageRevision: (mailbox.usageRevision ?? 0) + 1,
+		updatedAt: now,
+	});
 
 	await ctx.db.insert('mailAuditLog', {
 		mailboxId: mailbox._id,

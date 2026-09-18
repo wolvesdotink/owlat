@@ -141,11 +141,10 @@ export const recordBackfillProgress = internalMutation({
 		newCursor: v.number(),
 		/** Messages in this batch the worker STORED. */
 		importedDelta: v.number(),
-		/** Messages in this batch it walked past without storing. Optional so a
-		 * worker container still on the previous release — the gap between
-		 * `docker compose up` replacing the image and the functions deploying —
-		 * keeps making progress instead of failing every batch on arg validation. */
-		failedDelta: v.optional(v.number()),
+		/** Messages in this batch it walked past without storing. Required so an
+		 * older worker cannot report failed ingests as successful imports during a
+		 * rolling deploy; the resumable cursor makes a brief loud failure safe. */
+		failedDelta: v.number(),
 	},
 	handler: async (ctx, args): Promise<{ stillImporting: boolean }> => {
 		// Bail before touching the folder row when this batch's migration is no
@@ -165,7 +164,7 @@ export const recordBackfillProgress = internalMutation({
 			.first();
 		if (!row) return { stillImporting: false };
 
-		const failedDelta = args.failedDelta ?? 0;
+		const failedDelta = args.failedDelta;
 		await ctx.db.patch(row._id, {
 			backfillCursor: Math.max(0, args.newCursor),
 			// The folder's own counter tracks the WALK, so it reaches the folder's

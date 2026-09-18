@@ -1,3 +1,5 @@
+import { base64ToBytes } from '../../lib/bytes';
+
 /**
  * AWS SES / SNS webhook adapter — verifies SNS message signatures FAIL-CLOSED
  * and parses SES bounce / complaint / delivery notifications into
@@ -121,10 +123,6 @@ export function buildSnsCanonicalString(msg: SnsEnvelope): string | null {
 		out += `${key}\n${value}\n`;
 	}
 	return out;
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-	return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
 /** Decode a PEM-armored certificate into its DER bytes. */

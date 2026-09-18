@@ -11,7 +11,6 @@ export:apps/imap/src/commands/helpers/auth.ts:assertSelected
 export:apps/mta/src/bounce/pipeline.ts:PhaseOutcome
 export:apps/mta/src/bounce/types.ts:InboundAttachmentMeta
 export:apps/mta/src/dispatch/pipeline.ts:PhaseOutcome
-export:apps/mta/src/monitoring/collector.ts:queueDepth
 export:apps/mta/src/monitoring/collector.ts:warmingPhase
 export:apps/mta/src/types.ts:DomainHealthStatus
 export:apps/mta/src/types.ts:SmtpResponseRecord

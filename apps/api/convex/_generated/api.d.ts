@@ -874,6 +874,8 @@ import type * as migrations_0038_rebuild_file_search_text from '../migrations/00
 import type * as migrations_0039_backfill_dkim_ownership from '../migrations/0039_backfill_dkim_ownership.js';
 import type * as migrations_0040_backfill_credential_allowed_domains from '../migrations/0040_backfill_credential_allowed_domains.js';
 import type * as migrations_0041_forget_disconnected_credentials from '../migrations/0041_forget_disconnected_credentials.js';
+import type * as migrations_0042_recompute_mailbox_used_bytes from '../migrations/0042_recompute_mailbox_used_bytes.js';
+import type * as migrations_0043_detect_missing_mail_blobs from '../migrations/0043_detect_missing_mail_blobs.js';
 import type * as platformAdmin_bootstrap from '../platformAdmin/bootstrap.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
@@ -1981,6 +1983,8 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0039_backfill_dkim_ownership': typeof migrations_0039_backfill_dkim_ownership;
 	'migrations/0040_backfill_credential_allowed_domains': typeof migrations_0040_backfill_credential_allowed_domains;
 	'migrations/0041_forget_disconnected_credentials': typeof migrations_0041_forget_disconnected_credentials;
+	'migrations/0042_recompute_mailbox_used_bytes': typeof migrations_0042_recompute_mailbox_used_bytes;
+	'migrations/0043_detect_missing_mail_blobs': typeof migrations_0043_detect_missing_mail_blobs;
 	'platformAdmin/bootstrap': typeof platformAdmin_bootstrap;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;

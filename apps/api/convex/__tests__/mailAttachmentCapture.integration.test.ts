@@ -212,7 +212,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 					return null;
 				}) as unknown as ActionCtx['runMutation'],
 			},
-			Buffer.from(raw, 'latin1'),
+			raw,
 			'<many-1@example.com>',
 			'Bob <bob@example.com>'
 		);

@@ -121,7 +121,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: EICAR,
 			})
 		);
-		const verdict = await scanInboundAttachments(MTA, raw);
+		const verdict = await scanInboundAttachments(MTA, raw.toString('latin1'));
 
 		expect(verdict).toBe('infected');
 		// The inbound scan was actually invoked against the MTA endpoint.
@@ -144,7 +144,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: 'pretend pdf',
 			})
 		);
-		const verdict = await scanInboundAttachments(MTA, raw);
+		const verdict = await scanInboundAttachments(MTA, raw.toString('latin1'));
 
 		expect(verdict).toBe('skipped');
 		expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -162,7 +162,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: 'hi',
 			})
 		);
-		const verdict = await scanInboundAttachments(MTA, raw);
+		const verdict = await scanInboundAttachments(MTA, raw.toString('latin1'));
 
 		expect(verdict).toBe('skipped');
 		expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -179,7 +179,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: 'hi',
 			})
 		);
-		const verdict = await scanInboundAttachments(MTA, raw);
+		const verdict = await scanInboundAttachments(MTA, raw.toString('latin1'));
 
 		expect(verdict).toBe('skipped');
 		expect(warnSpy).toHaveBeenCalledWith('doc.txt', 'ClamAV unavailable');
@@ -194,7 +194,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: 'hi',
 			})
 		);
-		expect(await scanInboundAttachments(MTA, raw)).toBe('clean');
+		expect(await scanInboundAttachments(MTA, raw.toString('latin1'))).toBe('clean');
 		expect(calls).toHaveLength(1);
 	});
 
@@ -207,14 +207,14 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: 'hi',
 			})
 		);
-		expect(await scanInboundAttachments(null, raw)).toBeUndefined();
+		expect(await scanInboundAttachments(null, raw.toString('latin1'))).toBeUndefined();
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
 	it('returns undefined when there are no attachments to scan', async () => {
 		const fetchSpy = vi.spyOn(globalThis, 'fetch');
 		const raw = Buffer.from(['Content-Type: text/plain', '', 'just text'].join('\r\n'));
-		expect(await scanInboundAttachments(MTA, raw)).toBeUndefined();
+		expect(await scanInboundAttachments(MTA, raw.toString('latin1'))).toBeUndefined();
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 });

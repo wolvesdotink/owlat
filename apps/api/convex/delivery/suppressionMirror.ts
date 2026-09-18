@@ -12,18 +12,17 @@
  * check.
  *
  * The sibling `suppressionMirrorScheduler.ts` is the bridge: every
- * `blockedEmails` insert schedules `mirror`, an action that POSTs the address to the MTA `POST /suppression`
- * endpoint. It is fire-and-forget defense-in-depth — a failed mirror is
- * logged, never thrown, so it can't roll back the originating mutation or
- * block a user action. (Once PR-08 lands the single send-time chokepoint
- * check this becomes pure belt-and-suspenders.)
+ * `blockedEmails` insert schedules `mirror`, an action that POSTs the address to
+ * the MTA `POST /suppression` endpoint. It is fire-and-forget defense-in-depth;
+ * the daily reconcile action repairs a missed write from the durable table.
  *
  * Runs in the default Convex runtime (not `'use node'`) — `fetch` is available
  * there (cf. domains/trackingDomains.ts's DoH lookup).
  */
 
 import { v, type Validator } from 'convex/values';
-import { internalAction } from '../_generated/server';
+import { internalAction, internalQuery } from '../_generated/server';
+import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { getMtaConfig } from '../mail/mtaClient';
 import { bounceTypeValidator } from '../lib/convexValidators';
@@ -89,15 +88,13 @@ export function isMarketingOnlyBlockReason(
 // SuppressionReason — the MTA-side vocabulary (apps/mta/.../suppressionList.ts).
 // Kept in sync by hand: the two enums live in separate deploy units (Convex
 // backend vs the MTA service) with no shared type.
-type MtaSuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
+type MtaSuppressionReason = 'hard_bounce' | 'soft_bounce' | 'complaint' | 'manual';
 
 /**
  * Map a Convex `blockedEmails.reason` (+ optional bounceType) onto the MTA's
- * `SuppressionReason`. The mapping is load-bearing for TTL: the MTA expires
- * `manual`-reason suppressions after 7 days but keeps `hard_bounce` /
- * `complaint` permanently, so a soft-bounce escalation must NOT masquerade as a
- * hard bounce (we let it ride the default `manual` TTL) while a real hard
- * bounce / complaint must map to its permanent counterpart.
+ * `SuppressionReason`. The mapping is load-bearing for TTL: only
+ * `soft_bounce` expires; explicit manual blocks, hard bounces and complaints
+ * remain until the durable source of truth removes them.
  */
 export function toMtaSuppressionReason(
 	reason: MirroredBlockReason,
@@ -105,9 +102,7 @@ export function toMtaSuppressionReason(
 ): MtaSuppressionReason {
 	if (reason === 'complained') return 'complaint';
 	if (reason === 'bounced') {
-		// A hard bounce is permanent; a soft-bounce escalation is recoverable, so
-		// it rides the MTA's expiring `manual` reason rather than a permanent one.
-		return bounceType === 'soft' ? 'manual' : 'hard_bounce';
+		return bounceType === 'soft' ? 'soft_bounce' : 'hard_bounce';
 	}
 	return 'manual';
 }
@@ -125,6 +120,7 @@ export const mirror = internalAction({
 		email: v.string(),
 		reason: mirroredBlockReasonValidator,
 		bounceType: v.optional(bounceTypeValidator),
+		expiresAt: v.optional(v.number()),
 	},
 	handler: async (_ctx, args) => {
 		const mta = getMtaConfig();
@@ -148,6 +144,7 @@ export const mirror = internalAction({
 					emails: [args.email],
 					reason: mtaReason,
 					source: 'convex-blocklist',
+					...(args.expiresAt !== undefined ? { expiresAt: args.expiresAt } : {}),
 				}),
 			});
 			if (!res.ok) {
@@ -158,5 +155,183 @@ export const mirror = internalAction({
 		} catch (err) {
 			logError('[suppressionMirror] failed to mirror to MTA:', err);
 		}
+	},
+});
+
+/** Remove a durable block's last-hop copy after an operator unblocks it. */
+export const unmirror = internalAction({
+	args: { email: v.string() },
+	handler: async (_ctx, { email }) => {
+		const mta = getMtaConfig();
+		if (!mta) return;
+		try {
+			const res = await fetch(`${mta.baseUrl}/suppression/${encodeURIComponent(email)}`, {
+				method: 'DELETE',
+				headers: { Authorization: `Bearer ${mta.apiKey}` },
+			});
+			if (!res.ok) {
+				logError(`[suppressionMirror] MTA unmirror returned ${res.status} for ${email}`);
+				return;
+			}
+			logInfo(`[suppressionMirror] removed ${email} from MTA`);
+		} catch (error) {
+			logError('[suppressionMirror] failed to remove MTA mirror:', error);
+		}
+	},
+});
+
+/** Bounded source-of-truth page for the daily Redis reconciliation. */
+export const blockedEmailPage = internalQuery({
+	args: { cursor: v.union(v.string(), v.null()) },
+	handler: async (ctx, { cursor }) => {
+		const result = await ctx.db.query('blockedEmails').paginate({ numItems: 500, cursor });
+		return {
+			rows: result.page.map((row) => ({
+				email: row.email,
+				reason: row.reason,
+				bounceType: row.bounceType,
+				createdAt: row.createdAt,
+			})),
+			cursor: result.continueCursor,
+			isDone: result.isDone,
+		};
+	},
+});
+
+const SOFT_BOUNCE_TTL_MS = 7 * 86400 * 1000;
+
+function isExpiredSoftBounce(row: ReconcileRow): boolean {
+	return (
+		row.reason === 'bounced' &&
+		row.bounceType === 'soft' &&
+		row.createdAt + SOFT_BOUNCE_TTL_MS <= Date.now()
+	);
+}
+
+type ReconcileRow = {
+	createdAt: number;
+	email: string;
+	reason: BlockReason;
+	bounceType?: 'hard' | 'soft';
+};
+
+/** Prefer the strictest durable record when historical duplicates exist. */
+function reconcilePriority(row: ReconcileRow): number {
+	if (isMarketingOnlyBlockReason(row.reason)) return 0;
+	const reason = toMtaSuppressionReason(row.reason, row.bounceType);
+	return { soft_bounce: 1, manual: 2, hard_bounce: 3, complaint: 4 }[reason];
+}
+
+async function requireMtaResponse(response: Response, operation: string): Promise<void> {
+	if (!response.ok) throw new Error(`${operation} returned HTTP ${response.status}`);
+}
+
+/**
+ * Rebuild Convex-owned mirrors and remove stale owned entries. Preserve
+ * independently created and metadata-less MTA blocks. This repairs Redis loss and
+ * unmirrors that failed while the MTA was unavailable.
+ */
+export const reconcile = internalAction({
+	args: {},
+	handler: async (ctx): Promise<{ mirrored: number; removed: number }> => {
+		const mta = getMtaConfig();
+		if (!mta) return { mirrored: 0, removed: 0 };
+
+		const authoritative = new Map<string, ReconcileRow>();
+		let cursor: string | null = null;
+		for (;;) {
+			const page: { rows: ReconcileRow[]; cursor: string; isDone: boolean } = await ctx.runQuery(
+				internal.delivery.suppressionMirror.blockedEmailPage,
+				{ cursor }
+			);
+			for (const row of page.rows) {
+				const existing = authoritative.get(row.email);
+				if (!existing || reconcilePriority(row) > reconcilePriority(existing)) {
+					authoritative.set(row.email, row);
+				}
+			}
+			if (page.isDone) break;
+			cursor = page.cursor;
+		}
+
+		const entries = [...authoritative.values()].flatMap((row) =>
+			isMarketingOnlyBlockReason(row.reason) || isExpiredSoftBounce(row)
+				? []
+				: [
+						{
+							email: row.email,
+							reason: toMtaSuppressionReason(row.reason, row.bounceType),
+							source: 'convex-reconcile',
+							...(row.reason === 'bounced' && row.bounceType === 'soft'
+								? { expiresAt: row.createdAt + SOFT_BOUNCE_TTL_MS }
+								: {}),
+						},
+					]
+		);
+		for (let index = 0; index < entries.length; index += 1000) {
+			await requireMtaResponse(
+				await fetch(`${mta.baseUrl}/suppression/bulk`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${mta.apiKey}`,
+					},
+					body: JSON.stringify({ entries: entries.slice(index, index + 1000) }),
+				}),
+				'MTA suppression bulk reconcile'
+			);
+		}
+
+		const removals: Array<{ email: string; source: string; suppressedAt: number }> = [];
+		let exportCursor: string | undefined;
+		do {
+			const url = new URL(`${mta.baseUrl}/suppression/export`);
+			url.searchParams.set('limit', '10000');
+			if (exportCursor) url.searchParams.set('cursor', exportCursor);
+			const response = await fetch(url, {
+				headers: { Authorization: `Bearer ${mta.apiKey}` },
+			});
+			await requireMtaResponse(response, 'MTA suppression export');
+			const page = (await response.json()) as {
+				entries: Array<{ email: string; source?: string; suppressedAt?: number }>;
+				nextCursor?: string;
+			};
+			for (const entry of page.entries) {
+				const row = authoritative.get(entry.email);
+				if (row && !isMarketingOnlyBlockReason(row.reason) && !isExpiredSoftBounce(row)) continue;
+				// Unknown/orphan entries and independently created MTA blocks are not
+				// ours to delete. Personal-mail bounces never enter blockedEmails.
+				if (
+					(entry.source === 'convex-blocklist' || entry.source === 'convex-reconcile') &&
+					typeof entry.suppressedAt === 'number'
+				) {
+					removals.push({
+						email: entry.email,
+						source: entry.source,
+						suppressedAt: entry.suppressedAt,
+					});
+				}
+			}
+			exportCursor = page.nextCursor;
+		} while (exportCursor);
+
+		// Do not mutate the Redis set while its SSCAN cursor is still in flight;
+		// deleting during a scan can reshuffle buckets and skip an orphan forever.
+		for (const { email, source, suppressedAt } of removals) {
+			const params = new URLSearchParams({ source, suppressedAt: String(suppressedAt) });
+			await requireMtaResponse(
+				await fetch(`${mta.baseUrl}/suppression/${encodeURIComponent(email)}?${params}`, {
+					method: 'DELETE',
+					headers: { Authorization: `Bearer ${mta.apiKey}` },
+				}),
+				`MTA suppression delete ${email}`
+			);
+		}
+
+		logInfo('[suppressionMirror] reconciliation complete', {
+			mirrored: entries.length,
+			removed: removals.length,
+		});
+		return { mirrored: entries.length, removed: removals.length };
 	},
 });

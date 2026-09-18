@@ -77,6 +77,9 @@ import {
  */
 const MAX_SUBMISSION_BYTES = MAX_ATTACHMENT_BYTES;
 
+/** Deliberate 587/465 command-idle policy (the listener default is 5 minutes). */
+export const SUBMISSION_COMMAND_TIMEOUT_MS = 120_000;
+
 /** The authenticated identity of a submission session. */
 export interface AuthenticatedSession {
 	organizationId: string;
@@ -513,8 +516,7 @@ export function buildOnMailFrom() {
  * `timeouts.commandMs`: on the implicit-TLS listener the command idle timer does
  * not exist yet, so this is the ONLY bound on a peer that completes the TCP
  * handshake and then stalls. It is ignored on the 587 listener, whose STARTTLS
- * upgrade runs with the command idle timer already armed (both submission
- * listeners take the listener default, 300 s).
+ * upgrade runs with the explicit 120 s command idle timer already armed.
  *
  * 30 SECONDS, and it is a policy number, not a tuning knob — hence a literal
  * rather than an env var:
@@ -569,10 +571,10 @@ function buildSubmissionListener(
 	// cannot be required before AUTH (RFC 8314 §3.3). Fail fast.
 	const tls = submissionTls(config);
 
-	// Reconciles per-IP slot increments against socket lifetime. It marks a slot for
-	// release only for connections that actually incremented in `onConnect`, so the
-	// 465 raw-accept never decrements a slot it never took (cap bypass) and a
-	// 421-refused connect never double-decrements (587) — and it self-heals the race
+	// Reconciles per-IP slot increments against socket lifetime. Port 465 takes
+	// the slot at raw TCP accept, before TLS; port 587 takes it in `onConnect`.
+	// Rejected connects are never marked, preventing a double decrement, and the
+	// tracker self-heals the race
 	// where a connection RSTs while its async rate-limit check is still in flight.
 	const slots = createSlotTracker(redis, releaseConnection);
 
@@ -595,6 +597,10 @@ function buildSubmissionListener(
 		banner: `${config.ehloHostname} Owlat SMTP Submission`,
 		extensions: [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER, SUBMISSION_DEDUPLICATION_MAIL_PARAMETER],
 		maxMessageBytes: MAX_SUBMISSION_BYTES, // advertised via EHLO SIZE; enforced in the loop
+		// A silent 587/STARTTLS peer should not occupy a submission slot for the
+		// listener default of five minutes. Two minutes still leaves ample room for
+		// an authenticated client sending DATA over a slow link.
+		timeouts: { commandMs: SUBMISSION_COMMAND_TIMEOUT_MS },
 		tls,
 		implicitTls,
 		auth: {
@@ -603,16 +609,18 @@ function buildSubmissionListener(
 			authenticate: buildAuthenticate({ redis, config }),
 		},
 		createSession: () => ({}),
-		onConnect: buildOnConnect(
-			{ redis, config },
-			(session) => {
-				// Mark this connection as holding a slot so — and only so — its socket
-				// close releases it. If the peer already left while the rate-limit check
-				// was in flight, `hold` releases the increment immediately instead.
-				slots.hold(session);
-			},
-			() => liveConnections.count > config.submissionMaxClients
-		),
+		onConnect: implicitTls
+			? () => undefined // 465 is admitted before TLS in the raw-accept hook below.
+			: buildOnConnect(
+					{ redis, config },
+					(session) => {
+						// Mark this connection as holding a slot so — and only so — its socket
+						// close releases it. If the peer already left while the rate-limit check
+						// was in flight, `hold` releases the increment immediately instead.
+						slots.hold(session);
+					},
+					() => liveConnections.count > config.submissionMaxClients
+				),
 		// Submission never relays unauthenticated: refuse MAIL FROM until AUTH.
 		onMailFrom: buildOnMailFrom(),
 		onData: buildOnData({ queue, redis }),
@@ -628,19 +636,61 @@ function buildSubmissionListener(
 	// state lives in submissionSecurity.ts (I8); the listener exposes only the socket,
 	// so the release is wired here on the raw server's `connection` event (emitted for
 	// both the plaintext 587 and implicit-TLS 465 servers). The raw event fires on TCP
-	// accept — for 465 that is BEFORE the TLS handshake, so a failed/plaintext
-	// handshake connection never reaches `onConnect` and thus never releases a slot it
-	// never incremented (cap bypass). Tracking the live connection at accept also lets
+	// accept — for 465 that is BEFORE the TLS handshake, so this hook takes the slot
+	// below and the close tracker releases it even when a failed/plaintext handshake
+	// never reaches `onConnect`. Tracking the live connection at accept also lets
 	// `hold` self-heal a connection that RSTs while its async rate-limit check is still
 	// pending. `prependListener` runs this AHEAD of the listener's internal accept
 	// handler so `count` includes the connection under decision when `onConnect` runs
 	// its synchronous `isOverCapacity()` check (see the `liveConnections` note above).
+	// Node's TLS connection handler wraps the raw socket and starts reading even
+	// if that socket was paused. Defer that handler until admission resolves.
+	const tlsAccept = implicitTls ? listener.raw.listeners('connection') : [];
+	if (implicitTls) listener.raw.removeAllListeners('connection');
 	listener.raw.prependListener('connection', (socket) => {
 		liveConnections.count += 1;
 		socket.once('close', () => {
 			liveConnections.count -= 1;
 		});
 		slots.track(socket);
+
+		if (!implicitTls) return;
+		// TLS's `onConnect` runs only after a handshake, which let silent peers on
+		// 465 bypass the per-IP cap. Pause before reading a ClientHello, acquire the
+		// same slot the plaintext listener uses, then resume only admitted peers.
+		// The global cap is also applied here because pre-handshake sockets must not
+		// be invisible to either admission policy.
+		if (liveConnections.count > config.submissionMaxClients) {
+			socket.destroy();
+			return;
+		}
+		socket.pause();
+		const admissionDeadline = setTimeout(() => socket.destroy(), 30_000);
+		socket.once('close', () => clearTimeout(admissionDeadline));
+		const acceptTls = () => {
+			clearTimeout(admissionDeadline);
+			if (socket.destroyed) return;
+			for (const accept of tlsAccept) accept.call(listener.raw, socket);
+		};
+		const peer = {
+			remoteAddress: socket.remoteAddress ?? 'unknown',
+			remotePort: socket.remotePort ?? 0,
+		};
+		void checkConnectionRateLimit(redis, peer.remoteAddress, config.submissionMaxConnectionsPerIp)
+			.then((allowed) => {
+				if (!allowed) {
+					logger.warn({ remoteIp: peer.remoteAddress }, 'Submission TLS connection rate limited');
+					socket.destroy();
+					return;
+				}
+				slots.hold(peer);
+				acceptTls();
+			})
+			.catch((err) => {
+				// Match the post-handshake limiter's fail-open posture on Redis faults.
+				logger.error({ err, remoteIp: peer.remoteAddress }, 'TLS admission rate limit failed');
+				acceptTls();
+			});
 	});
 
 	return listener;

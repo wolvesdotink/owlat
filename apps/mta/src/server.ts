@@ -85,8 +85,8 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 	app.post('/send/system', createSendHandler(queue, redis, 'system'));
 	app.post('/send/decision', createRoutingDecisionHandler(redis, config));
 	app.get('/send/receipt/:workAttemptId', createSendReceiptHandler(redis));
-	app.get('/health', createHealthHandler(redis, config));
-	app.get('/metrics', createMetricsHandler());
+	app.get('/health', createHealthHandler(redis, config, queue));
+	app.get('/metrics', createMetricsHandler(queue));
 
 	// Credential management (master-key protected internally)
 	app.route('/credentials', createCredentialRoutes(redis, config));
@@ -140,7 +140,7 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 	app.get('/', (c) =>
 		c.json({
 			service: 'owlat-mta',
-			version: '0.4.18', // x-release-version (kept in sync by scripts/release.ts)
+			version: '0.4.19', // x-release-version (kept in sync by scripts/release.ts)
 			docs: 'POST /send, GET /health, GET /metrics, /credentials, /org-limits, /suppression, /dkim, /outbound-tls, /pool-rules, /identity, /inbound/routes, /delivery-logs, /queue, /dlq, /isp-profiles, /ip-reputation, /scan',
 		})
 	);

@@ -6,14 +6,7 @@ import { isValidConvexId, isSafeRedirectUrl } from '../lib/inputGuards';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
 import { isSeedProbeId } from '@owlat/shared/seedPlacement';
-
-// Base64url-encode raw bytes WITHOUT padding, matching Node's
-// `createHmac(...).digest('base64url')` used on the encode side (transform.ts).
-function bytesToBase64Url(bytes: Uint8Array): string {
-	let binary = '';
-	for (const b of bytes) binary += String.fromCharCode(b);
-	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+import { bytesToBase64Url } from '../lib/bytes';
 
 // Constant-time string compare for the tracking signature.
 function timingSafeStrEqual(a: string, b: string): boolean {

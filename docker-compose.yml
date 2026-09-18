@@ -33,9 +33,16 @@
 #     `latest` (matching Convex's own self-hosted compose): upstream only
 #     publishes `latest` + per-commit SHA tags.
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   # ── Convex Backend (database + serverless functions) ──────────────────
   convex:
+    logging: *default-logging
     image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_VERSION:-latest}
     # Bound to localhost by default: the SPA reaches Convex through the same
     # host (local quickstart) or through the Caddy tls profile (production).
@@ -76,6 +83,7 @@ services:
   #   docker compose --profile dashboard up -d convex-dashboard
   # then reach it through an SSH tunnel (ssh -L 6791:127.0.0.1:6791 host).
   convex-dashboard:
+    logging: *default-logging
     image: ghcr.io/get-convex/convex-dashboard:${CONVEX_DASHBOARD_VERSION:-latest}
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-6791}:6791"
@@ -92,6 +100,7 @@ services:
 
   # ── Web UI (Nuxt SPA) ────────────────────────────────────────────────
   web:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/web:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -167,6 +176,7 @@ services:
 
   # ── MTA (Mail Transfer Agent) ─────────────────────────────────────────
   mta:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/mta:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -251,6 +261,7 @@ services:
   # network. The password is defense-in-depth for that internal hop (and a
   # hard requirement if you ever do publish the port).
   redis:
+    logging: *default-logging
     image: redis:${REDIS_VERSION:-7.4-alpine}
     # Run directly as the image's redis user (uid 999, gid 1000). With
     # cap_drop: ALL the root entrypoint has no DAC_OVERRIDE, so it cannot
@@ -306,6 +317,7 @@ services:
   # install only accepts ghcr.io/wolvesdotink/*. The wrapper picks the base
   # per architecture and is digest-pinned like every other Owlat image.
   clamav:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/clamav:${OWLAT_VERSION:-dev}
     build:
       context: docker
@@ -361,6 +373,7 @@ services:
   # and exposes only the handful of endpoints `docker compose pull/up/ps` needs.
   # Backported from the production VPS template (infra/templates).
   docker-socket-proxy:
+    logging: *default-logging
     image: tecnativa/docker-socket-proxy:${DOCKER_SOCKET_PROXY_VERSION:-0.3}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -405,6 +418,7 @@ services:
   # rather than mounting the raw RW socket; mounts only the install dir so it can
   # write a new compose template before rolling containers.
   updater:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/updater:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -446,6 +460,7 @@ services:
   # and mta (3100) on subdomains; terminates TLS via Let's Encrypt.
   # Edit Caddyfile to match your domains before bringing this up.
   caddy:
+    logging: *default-logging
     image: caddy:${CADDY_VERSION:-2.8-alpine}
     ports:
       - "80:80"
@@ -481,6 +496,7 @@ services:
   # Required at least once after first boot to push apps/api functions.
   # Re-run after pulling new images: `docker compose --profile deploy run --rm convex-deploy`
   convex-deploy:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/convex-deploy:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -509,6 +525,7 @@ services:
   # about — never a parallel worker. Activated by the `inbox-codetasks` profile
   # (coding agent) and/or the `plugin-tasks` profile (Tier-3 plugin jobs).
   code-worker:
+    logging: *default-logging
     # Never published to a registry — the explicit name just makes the locally
     # built tag deterministic (compose's default name depends on the project
     # directory), so dev-mode image pushes can address it.
@@ -638,6 +655,7 @@ services:
   # The untrusted code-worker therefore never holds admin. Shares the isolated
   # `code-worker` network with convex (which it forwards to) and the worker.
   convex-fn-proxy:
+    logging: *default-logging
     image: owlat-convex-fn-proxy:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -676,6 +694,7 @@ services:
   # the ONLY container on BOTH the isolated `code-worker` network (to reach
   # convex-fn-proxy) and the internet-capable `default` network.
   code-worker-egress:
+    logging: *default-logging
     # First-party wrapper (docker/tinyproxy.Dockerfile) around a multi-arch
     # tinyproxy; see that file for why it is not pulled from Docker Hub directly.
     image: ghcr.io/wolvesdotink/tinyproxy:${OWLAT_VERSION:-dev}
@@ -705,6 +724,7 @@ services:
   # ollama:11434 — the host must never expose 11434. Gated under --profile dev
   # alongside the other optional AI sidecar.
   ollama:
+    logging: *default-logging
     image: ollama/ollama:${OLLAMA_VERSION:-latest}
     volumes:
       - ollama-data:/root/.ollama
@@ -746,6 +766,7 @@ services:
   # user is exactly IMAP_RUNTIME_USER's default, and
   # scripts/check-compose-invariants.sh fails the build if either side drifts.
   imap-cert-init:
+    logging: *default-logging
     image: alpine:${ALPINE_VERSION:-3.20}
     command:
       - /bin/sh
@@ -787,6 +808,7 @@ services:
   # ── IMAP server (Postbox personal mailboxes — port 993) ──────────────
   # Activated by feature-flag profile "personal-mail" (postbox flag).
   imap:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/imap:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -861,6 +883,7 @@ services:
   # Connects OUT to users' own mailboxes; exposes only an internal /send +
   # /test API to Convex — no public ports.
   mail-sync:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/mail-sync:${OWLAT_VERSION:-dev}
     build:
       context: .
