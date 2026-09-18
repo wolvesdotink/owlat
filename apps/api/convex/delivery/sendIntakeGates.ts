@@ -48,7 +48,7 @@ export type SendIntakeRejectionReason =
  * intake with reasons of its own — the Template API also refuses for template
  * and variable problems — can widen the union without redeclaring the shape.
  */
-export type SendIntakeRejection<Reason extends string = SendIntakeRejectionReason> = {
+type SendIntakeRejection<Reason extends string = SendIntakeRejectionReason> = {
 	ok: false;
 	reason: Reason;
 	detail?: string;
@@ -68,18 +68,18 @@ export type SendIntakeRejection<Reason extends string = SendIntakeRejectionReaso
  *     the row and the envelope are stamped from the SAME resolution the gate
  *     judged, never a second one.
  */
-export type ProviderReadinessProbe =
+type ProviderReadinessProbe =
 	| { kind: 'message_type'; messageType: MessageType }
 	| { kind: 'resolved_route'; messageType: MessageType; to: string; from: string };
 
 /** The gates passed. `route` is non-null only for a `resolved_route` probe. */
-export interface SendIntakeGatesPassed {
+interface SendIntakeGatesPassed {
 	ok: true;
 	route: ResolvedRoute | null;
 }
 
 /** What {@link runSendIntakeGates} needs to answer the three questions. */
-export interface SendIntakeGateInput {
+interface SendIntakeGateInput {
 	/** The recipient address the suppression gate reads. */
 	email: string;
 	/**

@@ -205,6 +205,9 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		icon: 'lucide:mail-plus',
 		section: 'mail',
 		gate: hasMail,
+		// Someone looking for "disconnect" types that word, not "connected
+		// mailboxes" — the control anchor is what makes the palette find it.
+		controls: [control('connectedAccount', 'connected-account', flag('mail.external'))],
 	}),
 	entry('addAccount', {
 		path: `${SETTINGS_ROOT}/add-account`,

@@ -155,11 +155,9 @@ owlat/
 │   ├── desktop/          # Desktop client shell (alpha)
 │   └── code-worker/      # Code-task worker (for `inbox.codeTasks`)
 ├── packages/
-│   ├── email-builder/    # Block-based email editor (Vue)
+│   ├── email-builder/    # Block-based email editor + cross-client preview (Vue)
 │   ├── email-renderer/   # HTML rendering engine
 │   ├── email-scanner/    # Content/URL/file security scanning + ClamAV
-│   ├── email-previewer/  # Email client preview / compatibility analysis
-│   ├── channels/         # Notification channel abstractions
 │   ├── shared/           # Shared types, validation, feature flag registry
 │   ├── ui/               # Reusable UI component library (Nuxt layer)
 │   ├── sdk-js/           # JavaScript SDK

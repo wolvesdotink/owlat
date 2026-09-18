@@ -2,7 +2,7 @@
  * "Who put this here?" for a suppressed address.
  *
  * A `manual` suppression used to have exactly one meaning: a person typed the
- * address in. Since the Mandrill reject sync (plan D9) it can also mean the
+ * address in. Since the Mandrill reject sync it can also mean the
  * provider's own blacklist rejected the address and Owlat mirrored that
  * decision — no operator anywhere in the story. Those two are identical on the
  * row, so the screen has to say which one it was, or every provider-driven

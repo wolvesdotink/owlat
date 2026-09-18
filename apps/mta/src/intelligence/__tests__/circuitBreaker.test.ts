@@ -6,10 +6,6 @@ import {
 	recordOutcome,
 	reserveHalfOpenProbe,
 	getState,
-	COMPLAINT_SLOW_THRESHOLD,
-	COMPLAINT_FAST_THRESHOLD,
-	SLOW_WINDOW,
-	FAST_WINDOW,
 	COOLDOWN_MS,
 	EXTENDED_COOLDOWN_MS,
 	HALF_OPEN_LIMIT,
@@ -564,16 +560,6 @@ describe('circuitBreaker', () => {
 	// cooldown on a re-open from a failed half-open probe.
 	// ──────────────────────────────────────────────────────────────────────
 	describe('PR-73: complaint slow threshold is the industry-standard 0.2%', () => {
-		it('locks the threshold constants', () => {
-			expect(COMPLAINT_SLOW_THRESHOLD).toBe(0.002);
-			expect(COMPLAINT_FAST_THRESHOLD).toBe(0.04);
-			expect(SLOW_WINDOW).toBe(100);
-			expect(FAST_WINDOW).toBe(50);
-			expect(COOLDOWN_MS).toBe(30 * 60 * 1000);
-			expect(EXTENDED_COOLDOWN_MS).toBe(60 * 60 * 1000);
-			expect(HALF_OPEN_LIMIT).toBe(5);
-		});
-
 		it('1 complaint + 99 deliveries over 100 (1% > 0.2%) trips on the complaint slow window', async () => {
 			// 1/100 = 1.0% > 0.2% slow threshold. The single complaint is in the
 			// last 50 too (2% < 4% fast), so the SLOW complaint check is what trips.

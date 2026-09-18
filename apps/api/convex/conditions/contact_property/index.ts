@@ -20,7 +20,7 @@ function distinctCustomFields(conditions: readonly ContactPropertyCondition[]): 
 	return customFields;
 }
 
-export interface ContactPropertyLookup {
+interface ContactPropertyLookup {
 	propertyIds: Map<string, Id<'contactProperties'>>;
 	values: Map<string, unknown>;
 }

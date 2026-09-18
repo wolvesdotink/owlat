@@ -176,7 +176,7 @@ describe('runPluginJob — sandbox wiring', () => {
 		});
 
 		const completeCall = client.calls.find((c) => c.name === 'complete');
-		const result = (completeCall?.args as { result: string }).result;
+		const result = (completeCall!.args as { result: string }).result;
 		expect(Buffer.byteLength(result)).toBeLessThanOrEqual(PLUGIN_WORKER_RESULT_MAX_BYTES);
 		// Every retained code point is a whole '😀' — no truncated surrogate half.
 		expect([...result].every((codePoint) => codePoint === '😀')).toBe(true);
@@ -220,7 +220,7 @@ describe('runPluginJob — sandbox wiring', () => {
 			// Whole group reaped via the NEGATIVE pid, then reported as a timeout.
 			expect(kill).toHaveBeenCalledWith(-777, 'SIGKILL');
 			const failCall = client.calls.find((c) => c.name === 'fail');
-			expect((failCall?.args as { reasonCode?: string }).reasonCode).toBe('worker_timeout');
+			expect((failCall!.args as { reasonCode?: string }).reasonCode).toBe('worker_timeout');
 		} finally {
 			vi.useRealTimers();
 		}
@@ -305,7 +305,7 @@ describe('runPluginJob — sandbox wiring', () => {
 		});
 
 		const failCall = client.calls.find((c) => c.name === 'fail');
-		const message = (failCall?.args as { errorMessage: string }).errorMessage;
+		const message = (failCall!.args as { errorMessage: string }).errorMessage;
 		const codePoints = [...message];
 		expect(codePoints).toHaveLength(500); // clamped to the code-point cap
 		// No retained unit is a lone surrogate (a split '😀' half would be).

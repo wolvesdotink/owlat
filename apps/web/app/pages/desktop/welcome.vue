@@ -6,6 +6,12 @@
  *
  * Two steps: a branded welcome with the core choice (connect an existing
  * server vs. provision a new one), then the workspace connector form.
+ *
+ * It is ALSO where a signed-out desktop lands: the packaged app has no in-app
+ * login form, so middleware/auth.ts bounces an expired or never-completed
+ * session here. That arrival must not look like a first run — the connected
+ * servers are listed with a way to reconnect or remove them, and the reason the
+ * app bounced back (`connectError`) is shown rather than left in the console.
  */
 const { t } = useI18n();
 
@@ -15,8 +21,16 @@ definePageMeta({ layout: false });
 import { parseConnectionCode } from '~/lib/desktop/connectionCode';
 
 const { isDesktop } = useDesktopContext();
-const { workspaces, activeId, addWorkspace, completeConnection, switchTo, removeWorkspace } =
-	useDesktopWorkspaces();
+const {
+	workspaces,
+	activeId,
+	addWorkspace,
+	completeConnection,
+	connectError,
+	clearConnectFailure,
+	switchTo,
+	removeWorkspace,
+} = useDesktopWorkspaces();
 
 const view = ref<'welcome' | 'connect'>('welcome');
 
@@ -32,8 +46,18 @@ const browserOpened = ref(false);
 const pastedCode = ref('');
 const isRedeeming = ref(false);
 
+/** Re-run the browser handshake for an already-connected server. Connecting a
+ * known siteUrl re-authenticates that workspace in place (same id), so this
+ * repairs the dead session instead of adding a second row for the same host. */
+async function reconnect(url: string) {
+	view.value = 'connect';
+	siteUrl.value = url;
+	await handleAdd();
+}
+
 async function handleAdd() {
 	errorMessage.value = '';
+	clearConnectFailure();
 	if (!siteUrl.value.trim()) {
 		errorMessage.value = t('desktop.welcome.errors.urlRequired');
 		return;
@@ -91,17 +115,64 @@ function startOver() {
 		<!-- ============ STEP 1: WELCOME ============ -->
 		<div v-else-if="view === 'welcome'" class="w-full max-w-md text-center">
 			<img src="/owlat.svg" alt="" class="mx-auto mb-6 size-14" />
-			<I18nT
-				keypath="desktop.welcome.heading"
-				tag="h1"
-				class="font-display text-4xl mb-2"
-				scope="global"
-			>
-				<template #brand><span class="italic">Owlat</span></template>
-			</I18nT>
-			<p class="text-md text-text-secondary mb-10">
-				{{ t('desktop.welcome.tagline') }}
-			</p>
+
+			<!--
+				Two framings for one screen. With nothing connected this is a first
+				run. With workspaces present the user was bounced here by a dead
+				session, and the first-run copy would be a lie.
+			-->
+			<template v-if="workspaces.length">
+				<h1 class="font-display text-4xl mb-2">{{ t('desktop.welcome.reconnect.heading') }}</h1>
+				<p class="text-md text-text-secondary mb-8">
+					{{ t('desktop.welcome.reconnect.tagline') }}
+				</p>
+			</template>
+			<template v-else>
+				<I18nT
+					keypath="desktop.welcome.heading"
+					tag="h1"
+					class="font-display text-4xl mb-2"
+					scope="global"
+				>
+					<template #brand><span class="italic">Owlat</span></template>
+				</I18nT>
+				<p class="text-md text-text-secondary mb-10">
+					{{ t('desktop.welcome.tagline') }}
+				</p>
+			</template>
+
+			<!-- Why the app bounced back here, when it knows. -->
+			<p v-if="connectError" class="mb-6 text-sm text-error">{{ connectError }}</p>
+
+			<!--
+				The connected servers. Without this the screen is indistinguishable
+				from a fresh install: the workspace is saved and active (the titlebar
+				even names it) but nothing on the page acknowledges it, so it cannot
+				be reconnected or removed.
+			-->
+			<ul v-if="workspaces.length" class="mb-8 space-y-1.5 text-left">
+				<li
+					v-for="ws in workspaces"
+					:key="ws.id"
+					class="flex items-center gap-3 rounded-xl surface-1 px-3 py-2"
+				>
+					<span class="min-w-0 flex-1">
+						<span class="block truncate text-sm" :class="ws.id === activeId ? 'font-semibold' : ''">
+							{{ ws.label }}
+						</span>
+						<span class="block truncate text-xs text-text-secondary">{{ ws.siteUrl }}</span>
+					</span>
+					<UiButton variant="outline" size="sm" class="shrink-0" @click="reconnect(ws.siteUrl)">
+						{{ t('desktop.welcome.reconnect.action') }}
+					</UiButton>
+					<button
+						class="shrink-0 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-error"
+						@click="removeWorkspace(ws.id)"
+					>
+						{{ t('common.remove') }}
+					</button>
+				</li>
+			</ul>
 
 			<NuxtLink
 				to="/desktop/setup"
@@ -171,6 +242,9 @@ function startOver() {
 				<p class="text-sm text-text-secondary">
 					{{ t('desktop.welcome.connect.finishInBrowser') }}
 				</p>
+				<!-- A deep link that came back and failed: the browser half looks
+				     finished, so the reason has to land here. -->
+				<p v-if="connectError" class="text-sm text-error">{{ connectError }}</p>
 				<form
 					class="space-y-3 border-t border-border-subtle pt-4"
 					@submit.prevent="handlePastedCode"

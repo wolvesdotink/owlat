@@ -1,5 +1,5 @@
 /**
- * Non-destructive draft revisions (adoption-gaps piece D1', decision D7).
+ * Non-destructive draft revisions.
  *
  * A human save on the review surface APPENDS to `draftRevisions[]` instead of
  * overwriting the agent's text: the first save seeds revision 0 with the agent
@@ -22,7 +22,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow } from '../_utils/errors';
 
 /** `savedBy` marker for the seeded revision-0 agent original. */
-export const AGENT_REVISION_AUTHOR = 'agent';
+const AGENT_REVISION_AUTHOR = 'agent';
 
 /**
  * True when the CURRENT draft text differs (trim-insensitively) from the
@@ -48,7 +48,7 @@ export function draftDiffersFromAgentOriginal(message: Doc<'inboundMessages'>): 
  * actually exists, so a human-composed reply to a draftless escalation has no
  * fake "agent original". A save whose text matches the latest revision skips
  * the duplicate append but still stamps `draftSavedAt` and patches the
- * subject. Records NO autonomy feedback (D7).
+ * subject. Records NO autonomy feedback.
  */
 export async function appendDraftRevision(
 	ctx: MutationCtx,

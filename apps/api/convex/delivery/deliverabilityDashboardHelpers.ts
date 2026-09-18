@@ -19,7 +19,7 @@ const ROUTE_STATE_SCAN_LIMIT = 16;
 /**
  * The cell's route-state row: the per-stream row when the controller has
  * written one, otherwise the legacy stream-less row the MTA snapshot writes.
- * Legacy rows carry no `ownShare` and must keep working (plan D1).
+ * Legacy rows carry no `ownShare` and must keep working.
  */
 export function pickRouteState(
 	rows: readonly Doc<'deliverabilityRouteStates'>[],

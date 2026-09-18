@@ -335,7 +335,7 @@ export const dispatch = internalMutation({
 			{}
 		);
 
-		// Experiment record (plan D7): the Template API is the primary producer
+		// Experiment record: the Template API is the primary producer
 		// of the `transactional` stream, so its cell axis would otherwise be
 		// populated only by agent 1:1 replies. Written inside THIS transaction,
 		// before the workpool enqueue.
@@ -357,7 +357,7 @@ export const dispatch = internalMutation({
 			// No campaign salt: a transactional send is its own single-recipient
 			// experiment. The contact id is the stable per-recipient identity and
 			// the SEND id is the salt, so the arm is re-drawn per message rather
-			// than pinning the contact to one arm forever (plan D7).
+			// than pinning the contact to one arm forever.
 			recipients: [{ sendId, email: args.email, contactId: resolved.contactId }],
 		});
 

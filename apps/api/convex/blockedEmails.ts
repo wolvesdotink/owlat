@@ -10,6 +10,7 @@ import { scheduleSuppressionMirror } from './delivery/suppressionMirrorScheduler
 import { recordAuditLog } from './lib/auditLog';
 import { restoreSunsetSuppression } from './contacts/sunsetRestore';
 import { bounceTypeValidator } from './lib/convexValidators';
+import { blockReasonValidator } from './lib/literalValidators';
 
 // Look up a blocklist row by email. Normalizes (lowercase + trim) so every
 // caller hits the `by_email` index with the same key, then returns the first
@@ -62,7 +63,7 @@ export const listByTeam = authedQuery({
 				v.literal('bounced'),
 				v.literal('complained'),
 				v.literal('manual'),
-				// The sunset engine's own reason (P4-4). Filterable like the rest:
+				// The sunset engine's own reason. Filterable like the rest:
 				// an operator looking at the blocklist has to be able to separate
 				// "we stopped mailing this address because it never engaged" from a
 				// bounce, a complaint, or a human decision.
@@ -88,10 +89,10 @@ export const listByTeam = authedQuery({
  * blocklist screen.
  *
  * A `manual`-reason row used to mean "a human typed this address in". Since the
- * Mandrill reject sync (plan D9) it can also mean "the provider's own blacklist
+ * Mandrill reject sync it can also mean "the provider's own blacklist
  * rejected it and we mirrored that", with no operator behind it at all. Those
  * two are indistinguishable on the row itself, and deliberately so: the
- * suppression schema gained no provenance column (plan §5) because provenance
+ * suppression schema gained no provenance column because provenance
  * is an EVENT, not a property of the address — re-blocking an address that was
  * already blocked writes nothing, so a column would record only whichever cause
  * happened to arrive first.
@@ -152,7 +153,7 @@ export const getByEmail = authedQuery({
 export const add = authedMutation({
 	args: {
 		email: v.string(),
-		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
+		reason: blockReasonValidator,
 		notes: v.optional(v.string()),
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
@@ -278,7 +279,7 @@ export const bulkAdd = authedMutation({
 		emails: v.array(
 			v.object({
 				email: v.string(),
-				reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
+				reason: blockReasonValidator,
 				notes: v.optional(v.string()),
 			})
 		),
@@ -404,13 +405,13 @@ export const isBlockedInternal = internalQuery({
 //
 // THE ONE WRITER FOR PROVIDER-SOURCED SUPPRESSIONS. Two callers share it today
 // — the redacted-complaint path (`webhooks/complaintDispatch.ts`) and the
-// Mandrill reject sync (`webhooks/mandrillRejectSuppression.ts`, plan D9) — and
+// Mandrill reject sync (`webhooks/mandrillRejectSuppression.ts`) — and
 // the suppression IMPORT that carries a migrating deployment's accumulated
 // Mandrill/Mailchimp list over is meant to be the third, so that "already
 // blocked ⇒ no second row, no second mirror, no second audit entry" is decided
 // once rather than once per ingress.
 //
-// Three additive widenings serve that (plan D9), all optional so every shipped
+// Three additive widenings serve that, all optional so every shipped
 // caller is untouched:
 //   - `reason` accepts `'manual'`, the class an operator-curated blacklist
 //     entry belongs to (Mandrill `custom` / `rule`). The schema union has
@@ -426,7 +427,7 @@ export const isBlockedInternal = internalQuery({
 export const addFromEvent = internalMutation({
 	args: {
 		email: v.string(),
-		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
+		reason: blockReasonValidator,
 		bounceType: v.optional(bounceTypeValidator),
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),

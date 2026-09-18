@@ -31,7 +31,7 @@ import { recordAuditLog } from '../lib/auditLog';
  * IV, no auth tag, no username, no host — a seed account's credentials never
  * leave the sealed envelope the mail-sync worker already owns.
  */
-export interface SeedAccountView {
+interface SeedAccountView {
 	accountId: Id<'externalMailAccounts'>;
 	provider: DestinationProviderKey;
 	address: string;
@@ -104,7 +104,7 @@ export async function loadSeedAccounts(
  * operator owns, and telling them to "add seed mailboxes" when they have some
  * that need reconnecting is the wrong sentence.
  *
- * Absence is a SUPPORTED CONFIGURATION (plan D2): `false` lowers measurement
+ * Absence is a SUPPORTED CONFIGURATION: `false` lowers measurement
  * confidence and offers an improvement, and does nothing else.
  */
 export async function hasSeedAccounts(
@@ -143,7 +143,7 @@ export async function hasSeedAccounts(
  * in the same deployment; there is no worker on the other side of the boundary
  * any more, so an org argument to re-check would be an argument nobody supplies.
  *
- * D2: advisory only. It never blocks a send, a promotion, or a screen, and it
+ * ADVISORY ONLY. It never blocks a send, a promotion, or a screen, and it
  * is not a "setup incomplete" nag — a seed that is never rotated keeps being
  * measured, it just measures less well.
  */

@@ -7,13 +7,13 @@ export class TopicsPage extends BasePage {
 
 	constructor(page: Page) {
 		super(page);
-		this.newTopicButton = page.getByRole('button', { name: 'New Topic' });
+		this.newTopicButton = this.headerAction('New Topic');
 		this.searchInput = page.getByPlaceholder('Search topics...');
 	}
 
 	async goto() {
 		await this.page.goto('/dashboard/audience/topics');
-		await this.waitForHeading();
+		await this.expectOnPage('Subscription topics');
 	}
 
 	async createTopic(data: { name: string; description?: string; requireDoubleOptIn?: boolean }) {

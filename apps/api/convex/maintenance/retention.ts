@@ -23,7 +23,7 @@ import { AUDIT_LOG_RETENTION_MS } from '../lib/constants';
 const BATCH = 200;
 
 /** Operational metadata on form submissions ages out after 90 days. */
-export const FORM_META_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+const FORM_META_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 export const sweepAuditLogs = internalMutation({
 	args: {},

@@ -59,7 +59,7 @@ async function drainScheduler(t: TestConvex<typeof schema>): Promise<void> {
 
 const MESSAGE: EvalMessage = {
 	from: 'ines@brightpath.example',
-	to: ['me@hinterland.camp'],
+	to: ['me@owlat.test'],
 	cc: [],
 	subject: 'Invoice 4471',
 	bodyText: 'the invoice is attached',

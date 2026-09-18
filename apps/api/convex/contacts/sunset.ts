@@ -1,5 +1,5 @@
 /**
- * Sunset policy — the OPERATOR surface (deliverability plan P4-4). The decision
+ * Sunset policy — the OPERATOR surface. The decision
  * lives in `sunsetPolicy.ts` (pure), the per-contact reads and writes in
  * `sunsetEngine.ts`, the restore/exemption paths in `sunsetRestore.ts`, and the
  * hourly cron in `sunsetSweep.ts`; this file is what a person can call.

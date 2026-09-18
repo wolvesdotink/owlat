@@ -3,6 +3,7 @@ import {
 	isValidNonGraduatedWarmingCap,
 	NON_GRADUATED_WARMING_CAP_RANGE,
 } from '@owlat/shared/warming';
+import { WARMING_DAILY_STATS_TTL_SECONDS } from './warmingKeys.js';
 
 export const WARMING_RESERVATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -119,7 +120,7 @@ if redis.call('EXISTS', receiptKey) == 1 then return 0 end
 if redis.call('ZREM', reservationsKey, messageId) ~= 1 then return -1 end
 redis.call('HINCRBY', hashKey, 'sentToday', 1)
 redis.call('HINCRBY', statsKey, 'sent', 1)
-redis.call('EXPIRE', statsKey, 172800)
+redis.call('EXPIRE', statsKey, ${WARMING_DAILY_STATS_TTL_SECONDS})
 -- The receipt must outlive the reservation it guards; anything shorter would
 -- silently stop guarding replays that arrive late in the reservation horizon.
 redis.call('SET', receiptKey, '1', 'PX', ${WARMING_RESERVATION_TTL_MS})

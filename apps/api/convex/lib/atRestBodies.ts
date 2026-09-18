@@ -18,9 +18,12 @@
  *
  * RUNTIME: Web Crypto (`crypto.subtle`) only — no `node:crypto`. Runs unchanged
  * in the Convex V8 query/mutation runtime, in Convex Node actions, and under
- * Node/vitest (`globalThis.crypto`). This is why the sealing lives here and not
- * in `lib/credentialCrypto.ts` (which is `'use node'` and therefore unusable
- * from the V8 body readers).
+ * Node/vitest (`globalThis.crypto`). This is why the sealing builds on
+ * `lib/webSecretBox.ts` and not on `lib/credentialCrypto.ts`'s `createSecretBox`
+ * (which is `'use node'` and therefore unusable from the V8 body readers).
+ * The crypto core, the base64 helpers and the string-envelope parser all live in
+ * `webSecretBox`; what stays here is the two domain-separation contexts, the
+ * two envelope formats, and the mixed-tolerance / keyed-idempotency policy.
  *
  * ENVELOPE: an opaque, self-describing string
  *   `atrest:1:<base64(iv)>:<base64(ciphertext‖gcmTag)>`
@@ -58,6 +61,15 @@
  * (`apps/docs/content/…/sealed-mail-at-rest.md`).
  */
 
+import {
+	createWebSecretBox,
+	formatTextEnvelope,
+	GCM_TAG_BYTES,
+	IV_BYTES,
+	parseTextEnvelope,
+	type WebSealedBytes,
+} from './webSecretBox';
+
 const ENVELOPE_PREFIX = 'atrest';
 /** Envelope format version. Bump + add a re-seal migration on any cipher change. */
 const ENVELOPE_VERSION = 1;
@@ -65,81 +77,23 @@ const ENVELOPE_VERSION = 1;
 const HKDF_INFO = 'owlat:at-rest:bodies:v1';
 /** HKDF salt — pinned alongside the info label; changing either is a key change. */
 const HKDF_SALT = 'owlat:at-rest:bodies:salt:v1';
-const IV_BYTES = 12; // AES-GCM 96-bit nonce
-const GCM_TAG_BYTES = 16; // AES-GCM 128-bit auth tag — the minimum ciphertext length
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-/** Standard padded base64. The envelope is colon-delimited and stored internally
- * (never placed in a URL), so `+`/`/`/`=` are safe and padding keeps `atob`
- * round-tripping identically across the V8, edge, and Node runtimes. */
-function toBase64(bytes: Uint8Array): string {
-	let binary = '';
-	for (const b of bytes) binary += String.fromCharCode(b);
-	return btoa(binary);
-}
-
-/** Decode padded base64. Returns `null` on any malformed input so callers can
- * reject a non-envelope string without a `try/catch` at each site. */
-function tryFromBase64(value: string): Uint8Array<ArrayBuffer> | null {
-	let binary: string;
-	try {
-		binary = atob(value);
-	} catch {
-		return null;
-	}
-	// Reject non-canonical base64 (whitespace, wrong padding) by round-tripping.
-	const out = new Uint8Array(binary.length);
-	for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
-	if (toBase64(out) !== value) return null;
-	return out;
-}
-
-/** Derive the 256-bit AES-GCM key from the instance secret via HKDF-SHA256. */
-async function deriveAesKey(secret: string): Promise<CryptoKey> {
-	const ikm = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
-		'deriveKey',
-	]);
-	return crypto.subtle.deriveKey(
-		{
-			name: 'HKDF',
-			hash: 'SHA-256',
-			salt: encoder.encode(HKDF_SALT),
-			info: encoder.encode(HKDF_INFO),
-		},
-		ikm,
-		{ name: 'AES-GCM', length: 256 },
-		false,
-		['encrypt', 'decrypt']
-	);
-}
-
-/** A structurally valid sealed envelope, parsed. */
-interface ParsedEnvelope {
-	iv: Uint8Array<ArrayBuffer>;
-	ciphertext: Uint8Array<ArrayBuffer>;
+/** The inline-body box: the instance secret under the pinned string-body context. */
+function inlineBox(secret: string) {
+	return createWebSecretBox(secret, { salt: HKDF_SALT, info: HKDF_INFO });
 }
 
 /**
  * Parse `stored` into a sealed envelope, or `null` if it is NOT one. STRICT —
  * this is what lets an attacker-controlled plaintext beginning with `atrest:`
- * be told apart from a real envelope WITHOUT a key: it must be exactly
- * `atrest:<version>:<base64 iv>:<base64 ct>`, the version must parse to the
- * known version, both segments must be canonical base64, the IV must be
- * `IV_BYTES` long, and the ciphertext must be at least the GCM tag length.
- * Anything else is plaintext.
+ * be told apart from a real envelope WITHOUT a key. See
+ * {@link parseTextEnvelope} for the exact rules.
  */
-function parseEnvelope(stored: string): ParsedEnvelope | null {
-	if (!stored.startsWith(`${ENVELOPE_PREFIX}:`)) return null;
-	const parts = stored.split(':');
-	if (parts.length !== 4) return null;
-	if (Number(parts[1]) !== ENVELOPE_VERSION) return null;
-	const iv = tryFromBase64(parts[2] ?? '');
-	if (iv === null || iv.length !== IV_BYTES) return null;
-	const ciphertext = tryFromBase64(parts[3] ?? '');
-	if (ciphertext === null || ciphertext.length < GCM_TAG_BYTES) return null;
-	return { iv, ciphertext };
+function parseEnvelope(stored: string): WebSealedBytes | null {
+	return parseTextEnvelope(ENVELOPE_PREFIX, ENVELOPE_VERSION, stored);
 }
 
 /**
@@ -172,26 +126,19 @@ export function hasAtRestEnvelopePrefix(stored: string): boolean {
  */
 export async function sealAtRest(secret: string, plaintext: string): Promise<string> {
 	if (plaintext === '') return '';
-	const key = await deriveAesKey(secret);
+	const box = inlineBox(secret);
 	const existing = parseEnvelope(plaintext);
 	if (existing !== null) {
 		try {
-			await crypto.subtle.decrypt({ name: 'AES-GCM', iv: existing.iv }, key, existing.ciphertext);
+			await box.openBytes(existing);
 			return plaintext; // genuinely our ciphertext — idempotent no-op
 		} catch {
 			// Envelope-shaped but not ours (attacker-crafted plaintext): fall through
 			// and seal it for real, so it is protected and never misread as sealed.
 		}
 	}
-	const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
-	const ciphertext = await crypto.subtle.encrypt(
-		{ name: 'AES-GCM', iv },
-		key,
-		encoder.encode(plaintext)
-	);
-	return `${ENVELOPE_PREFIX}:${ENVELOPE_VERSION}:${toBase64(iv)}:${toBase64(
-		new Uint8Array(ciphertext)
-	)}`;
+	const sealed = await box.sealBytes(encoder.encode(plaintext));
+	return formatTextEnvelope(ENVELOPE_PREFIX, ENVELOPE_VERSION, sealed);
 }
 
 /**
@@ -204,13 +151,7 @@ export async function sealAtRest(secret: string, plaintext: string): Promise<str
 export async function openAtRest(secret: string, stored: string): Promise<string> {
 	const envelope = parseEnvelope(stored);
 	if (envelope === null) return stored;
-	const key = await deriveAesKey(secret);
-	const plaintext = await crypto.subtle.decrypt(
-		{ name: 'AES-GCM', iv: envelope.iv },
-		key,
-		envelope.ciphertext
-	);
-	return decoder.decode(plaintext);
+	return decoder.decode(await inlineBox(secret).openBytes(envelope));
 }
 
 // ── BINARY (blob) sealing ────────────────────────────────────────────────────
@@ -238,29 +179,15 @@ const BLOB_MAGIC = new Uint8Array([0x41, 0x52, 0x42, 0x4c, 0x42, 0x31]); // "ARB
 const BLOB_VERSION = 1;
 const BLOB_HEADER_BYTES = BLOB_MAGIC.length + 1 + IV_BYTES; // magic + version + iv
 
-/** Derive the 256-bit AES-GCM key for BLOBS from the instance secret. */
-async function deriveBlobKey(secret: string): Promise<CryptoKey> {
-	const ikm = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
-		'deriveKey',
-	]);
-	return crypto.subtle.deriveKey(
-		{
-			name: 'HKDF',
-			hash: 'SHA-256',
-			salt: encoder.encode(BLOB_HKDF_SALT),
-			info: encoder.encode(BLOB_HKDF_INFO),
-		},
-		ikm,
-		{ name: 'AES-GCM', length: 256 },
-		false,
-		['encrypt', 'decrypt']
-	);
+/** The BLOB box: the instance secret under the pinned, distinct blob context. */
+function blobBox(secret: string) {
+	return createWebSecretBox(secret, { salt: BLOB_HKDF_SALT, info: BLOB_HKDF_INFO });
 }
 
 /** Parse a sealed BLOB envelope into `{ iv, ciphertext }`, or `null` if `bytes`
  * is NOT a structurally valid sealed blob (legacy plaintext). STRICT, keyless —
  * the magic + version must match and the length must leave room for a GCM tag. */
-function parseBlobEnvelope(bytes: Uint8Array): ParsedEnvelope | null {
+function parseBlobEnvelope(bytes: Uint8Array): WebSealedBytes | null {
 	if (bytes.length < BLOB_HEADER_BYTES + GCM_TAG_BYTES) return null;
 	for (let i = 0; i < BLOB_MAGIC.length; i++) {
 		if (bytes[i] !== BLOB_MAGIC[i]) return null;
@@ -301,20 +228,17 @@ export async function sealBytesAtRest(
 	plaintext: Uint8Array
 ): Promise<Uint8Array<ArrayBuffer>> {
 	if (plaintext.length === 0) return new Uint8Array(0);
-	const key = await deriveBlobKey(secret);
+	const box = blobBox(secret);
 	const existing = parseBlobEnvelope(plaintext);
 	if (existing !== null) {
 		try {
-			await crypto.subtle.decrypt({ name: 'AES-GCM', iv: existing.iv }, key, existing.ciphertext);
+			await box.openBytes(existing);
 			return new Uint8Array(plaintext) as Uint8Array<ArrayBuffer>; // already our ciphertext
 		} catch {
 			// Magic-shaped but not ours: fall through and seal for real.
 		}
 	}
-	const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
-	const ciphertext = new Uint8Array(
-		await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext as BufferSource)
-	);
+	const { iv, ciphertext } = await box.sealBytes(plaintext);
 	const out = new Uint8Array(BLOB_HEADER_BYTES + ciphertext.length);
 	out.set(BLOB_MAGIC, 0);
 	out[BLOB_MAGIC.length] = BLOB_VERSION;
@@ -335,11 +259,5 @@ export async function openBytesAtRest(
 ): Promise<Uint8Array<ArrayBuffer>> {
 	const envelope = parseBlobEnvelope(stored);
 	if (envelope === null) return new Uint8Array(stored) as Uint8Array<ArrayBuffer>;
-	const key = await deriveBlobKey(secret);
-	const plaintext = await crypto.subtle.decrypt(
-		{ name: 'AES-GCM', iv: envelope.iv },
-		key,
-		envelope.ciphertext
-	);
-	return new Uint8Array(plaintext) as Uint8Array<ArrayBuffer>;
+	return blobBox(secret).openBytes(envelope);
 }

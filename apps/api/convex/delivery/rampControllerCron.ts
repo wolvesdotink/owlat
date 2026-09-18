@@ -1,5 +1,5 @@
 /**
- * THE RAMP CONTROLLER'S CRON SHELL (plan D13, D15).
+ * THE RAMP CONTROLLER'S CRON SHELL.
  *
  * Convex owns the decision — it has the reputation and the outcome data, and it
  * reads MTA state through the EXISTING `/ip-reputation` sync rather than
@@ -29,7 +29,7 @@
  * outside means the guard stays at full strength and "is delivery/ramp/ pure?"
  * stays a question with a yes/no answer.
  *
- * ABSENCE IS A SUPPORTED CONFIGURATION (plan D2). No organization, no warming
+ * ABSENCE IS A SUPPORTED CONFIGURATION. No organization, no warming
  * state, no reference transport, no seed mailboxes: every one of those makes
  * the controller measure less and move slower. None of them makes it throw,
  * and none of them blocks a send.
@@ -109,7 +109,7 @@ export const runRampController = internalMutation({
 		if (cursor >= cells.length) return { evaluated: 0, done: true as const };
 
 		// No organization yet means nothing to ramp — a supported configuration,
-		// not an error (plan D2). See `resolveRampOrganizationId`.
+		// not an error. See `resolveRampOrganizationId`.
 		const organizationId = await resolveRampOrganizationId(ctx);
 		if (organizationId === null) return { evaluated: 0, done: true as const };
 
@@ -122,7 +122,7 @@ export const runRampController = internalMutation({
 		const pool = await loadStreamlessRouteState(ctx, organizationId, 'all');
 
 		// AT MOST THREE ROWS, READ ONCE for the whole slice: the per-stream
-		// aggressiveness presets (P3-6). `balanced` is the identity, so a deployment
+		// aggressiveness presets. `balanced` is the identity, so a deployment
 		// that has never chosen one runs the shipped constants unchanged.
 		const { presets, fallback: presetFallback } = await loadRampPresets(ctx, organizationId);
 
@@ -133,7 +133,7 @@ export const runRampController = internalMutation({
 		// `rampCapacityInputs.ts`). Read once per tick; each cell then attaches its
 		// own trailing evidence for the audit row.
 		//
-		// AND READ LAZILY. During rollout (plan D1) most slices contain no
+		// AND READ LAZILY. During rollout most slices contain no
 		// ramp-managed cell at all, and the reading is a bounded index read per
 		// governed cell. Deferring it until the first managed cell asks means a
 		// deployment that has warming state but has not opted any cell into the ramp
@@ -160,7 +160,7 @@ export const runRampController = internalMutation({
 		// the probe ledger read is org-wide and covers every cell in the slice, and
 		// a slice with no ramp-managed cell must not pay for it. A deployment with
 		// no seed mailboxes reads an empty index, which HOLDS gate 5 — the
-		// supported default, not a fault (plan D2).
+		// supported default, not a fault.
 		let seedSweepIndex: SeedPlacementSweepIndex | null = null;
 		const seeds = async (): Promise<SeedPlacementSweepIndex> => {
 			seedSweepIndex ??= await summarizeSeedPlacementSweeps(ctx.db, organizationId, now);
@@ -169,7 +169,7 @@ export const runRampController = internalMutation({
 
 		// WHICH INTEGRATIONS THIS DEPLOYMENT HAS, read ONCE per tick: every entry but
 		// the reference arm is deployment-level, so reading it per cell would repeat
-		// the same four index lookups fifteen times. The substitution table (plan D3)
+		// the same four index lookups fifteen times. The substitution table
 		// is what turns it into each cell's constants — see `rampControllerInputs.ts`.
 		const presence = await loadRampDeploymentPresence(ctx, { organizationId, now });
 
@@ -194,7 +194,7 @@ export const runRampController = internalMutation({
 				// about, and inventing one would change shipped routing.
 				if (loaded === null) continue;
 				const { input, perStream, degradation } = loaded;
-				// WHICH DIAL THIS CELL DRIVES (plan D3), off the substitution table and
+				// WHICH DIAL THIS CELL DRIVES, off the substitution table and
 				// not off a `hasRelay` boolean here: `resolveRampDegradation` returns
 				// 'pace' exactly when the reference transport is absent, which is the
 				// same mechanism that chose this cell's evaluator, its K_CLEAN and its
@@ -203,7 +203,7 @@ export const runRampController = internalMutation({
 				// branch scattered through the controller.
 				const isPaceActuated = degradation.actuator === 'pace';
 				// THE OPERATOR'S HAND, applied AFTER the pure ladder and BEFORE anything is
-				// recorded (P3-6): a pause suppresses an increase and a pin caps one, and
+				// recorded: a pause suppresses an increase and a pin caps one, and
 				// neither can hold a retreat. Rewriting the decision here — rather than
 				// threading a control flag through the ladder — is what keeps the audit row
 				// honest: it records what the operator's setting actually produced, and the
@@ -221,7 +221,7 @@ export const runRampController = internalMutation({
 				};
 				const decision = applyRampCellControl(nextShare(input), control);
 				// THE SECOND ACTUATOR, on the SAME gates, the SAME hard stops and the
-				// SAME kill switch (plan D3). Standalone it is the only dial that moves —
+				// SAME kill switch. Standalone it is the only dial that moves —
 				// s === 1 by definition — and with a reference arm it is the slow,
 				// reputation-bearing half of a composed decision.
 				const paceReading = await utilisation();
@@ -247,7 +247,7 @@ export const runRampController = internalMutation({
 					}),
 					control
 				);
-				// THE COMPOSITION ORDER IS FIXED (plan D3): share moves FIRST (cheap and
+				// THE COMPOSITION ORDER IS FIXED: share moves FIRST (cheap and
 				// instantly reversible — the relay absorbs the difference), pace moves
 				// SECOND (slow and reputation-bearing), and a cell may NEVER increase both
 				// in one window. The interlock lives in one pure function so that
@@ -264,19 +264,19 @@ export const runRampController = internalMutation({
 				// shift traffic to would hold the only dial this cell owns for the entire
 				// ramp — the headline deliverable of the standalone twin, starved.
 				//
-				// THE SHARE DECISION IS STILL APPLIED. Composition only ever holds the
-				// PACE dial back, and the share half of the row is still the deployment's
-				// safety interlock: a hard stop zeroes it, a critical blocklist freezes it,
-				// and `isFallbackActive` is derived from it. Declining to write it on a
+				// THE SHARE DECISION IS STILL APPLIED. Composition only ever holds the PACE
+				// dial back, and the share half of the row is still the deployment's safety
+				// interlock: a hard stop zeroes it, a critical blocklist freezes it, and
+				// `isFallbackActive` is derived from it. Declining to write it on a
 				// pace-actuated cell would silently drop shipped hard-stop behaviour on
-				// exactly the configuration this piece exists to serve.
+				// exactly the configuration the pace actuator exists to serve.
 				const composed = composeActuators({
 					share: isPaceActuated ? null : decision,
 					pace: paceDecision,
 				});
 				evaluated += 1;
 
-				// THE AUDIT ROW COMES FIRST AND ALWAYS (plan D12) — including for the
+				// THE AUDIT ROW COMES FIRST AND ALWAYS — including for the
 				// no-ops, and including while the kill switch is pinning every cell. It
 				// carries BOTH actuators, so "what did the controller do to this cell at
 				// 14:00" is one row rather than a join.
@@ -308,7 +308,7 @@ export const runRampController = internalMutation({
 					isPaceDeferred: composed.isPaceDeferred,
 					now,
 				});
-				// EVERY AUTOMATIC CHANGE IS AUDITED (plan D12) — which is a wider predicate
+				// EVERY AUTOMATIC CHANGE IS AUDITED — which is a wider predicate
 				// than "the share moved". A gate breach on a cell already sitting on
 				// `RAMP_AIMD.shareFloor` returns direction 'hold' (`max(floor, floor x
 				// 0.5)` is the floor), yet `applyDecision` has just rewritten the freeze
@@ -368,7 +368,7 @@ export const runRampController = internalMutation({
 					},
 				});
 			} catch (error) {
-				// ONE CELL MUST NOT TAKE THE SLICE DOWN WITH IT (plan D2, D13).
+				// ONE CELL MUST NOT TAKE THE SLICE DOWN WITH IT.
 				//
 				// A mutation that throws rolls back its WHOLE transaction, the
 				// self-scheduled continuation at the bottom of this handler included — so a

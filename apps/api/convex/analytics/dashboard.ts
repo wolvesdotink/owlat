@@ -4,6 +4,7 @@ import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getCachedContactCount } from '../lib/contactCountHelpers';
 import { countWithPagination } from '../lib/pagination';
 import { readDailyStats } from '../lib/sendDailyStats';
+import { batchGet } from '../_utils/batchLoader';
 
 // Get dashboard stats for the instance.
 //
@@ -20,9 +21,7 @@ export const getStats = authedQuery({
 
 		let totalContacts = await getCachedContactCount(ctx);
 		if (totalContacts === null) {
-			totalContacts = await countWithPagination(ctx.db, 'contacts', 'by_created_at', (q) =>
-				q
-			);
+			totalContacts = await countWithPagination(ctx.db, 'contacts', 'by_created_at', (q) => q);
 		}
 
 		// Read the last 30 days of daily roll-up stats, summed across write shards.
@@ -65,16 +64,10 @@ export const getRecentActivity = authedQuery({
 		const limit = args.limit ?? 10;
 
 		// Get recent audit logs (organization member actions)
-		const auditLogs = await ctx.db
-			.query('auditLogs')
-			.order('desc')
-			.take(limit);
+		const auditLogs = await ctx.db.query('auditLogs').order('desc').take(limit);
 
 		// Get recent contact activities (email events)
-		const contactActivities = await ctx.db
-			.query('contactActivities')
-			.order('desc')
-			.take(limit);
+		const contactActivities = await ctx.db.query('contactActivities').order('desc').take(limit);
 
 		// Convert to unified activity format
 		type ActivityItem = {
@@ -101,10 +94,16 @@ export const getRecentActivity = authedQuery({
 			}
 		}
 
-		// Process contact activities - focus on email events
+		// Process contact activities - focus on email events. The contacts behind
+		// a feed page are independent rows (and repeat), so read them once, in
+		// parallel, up front.
+		const activityContacts = await batchGet(
+			ctx,
+			contactActivities.map((activity) => activity.contactId)
+		);
 		for (const activity of contactActivities) {
 			// Get contact details for display
-			const contact = await ctx.db.get(activity.contactId);
+			const contact = activityContacts.get(activity.contactId);
 			const contactName = contact
 				? contact.firstName || contact.email?.split('@')[0] || 'User'
 				: 'Unknown';

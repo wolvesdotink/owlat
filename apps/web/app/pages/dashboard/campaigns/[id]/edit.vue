@@ -170,13 +170,12 @@ const sendEstimate = computed(() => {
 
 // The BINDING capacity plan, previewed BEFORE the operator presses send.
 //
-// Same assessment pre-flight makes, so the operator sees "Sending over N days"
-// as a first-class choice rather than discovering it as a refusal (deliverability
-// plan D14 — a multi-day send is a normal, visible state for a warming
-// deployment, never a surprise). Skips until there is an audience and a valid
-// From address; `fromEmail` is what decides whether warm-up overflow to a
-// verified relay absorbs the tail, so previewing without it would answer a
-// different question than the gate.
+// Same assessment pre-flight makes, so the operator sees "Sending over N days" as
+// a first-class choice rather than discovering it as a refusal (a multi-day send
+// is a normal, visible state for a warming deployment, never a surprise). Skips
+// until there is an audience and a valid From address; `fromEmail` is what
+// decides whether warm-up overflow to a verified relay absorbs the tail, so
+// previewing without it would answer a different question than the gate.
 const { data: capacityPreviewRaw } = useOrganizationQuery(
 	api.campaigns.capacityPreflight.getCampaignCapacityPlan,
 	() => {
@@ -1003,7 +1002,7 @@ const shownCapacityPlan = computed(() => {
 
 							<!-- The multi-day schedule: previewed BEFORE the send, and re-rendered
 							     from the refusal itself when pre-flight hands one back. Capacity is a
-							     schedule, not a failure (deliverability plan D14). -->
+							     schedule, not a failure. -->
 							<CampaignsCapacitySchedulePanel
 								v-if="shownCapacityPlan"
 								:plan="shownCapacityPlan"
@@ -1042,7 +1041,7 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Sending readiness, immediately above the send/schedule buttons: the
 					     ramp cap belongs where the decision is made, not in a pre-flight
-					     refusal after it (deliverability plan D14). Renders nothing when
+					     refusal after it. Renders nothing when
 					     capacity is unmeasured or uncapped-and-unremarkable. -->
 					<CampaignsSendReadinessNote
 						:readiness="sendingReadiness"

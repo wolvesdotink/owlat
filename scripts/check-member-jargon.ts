@@ -8,8 +8,10 @@ const roots = [
 	join(workspace, 'apps/web/app/pages/dashboard/postbox/migrate.vue'),
 ];
 const allowlisted = new Set([
-	'apps/web/app/components/postbox/PostboxMailboxConnectForm.vue',
 	'apps/web/app/components/postbox/PostboxMailboxMove.vue',
+	// The IMAP/SMTP server fields the connect form used to inline, split out of
+	// it when the Google sign-in branch landed; the jargon moved with them.
+	'apps/web/app/components/postbox/PostboxMailboxServerFields.vue',
 	'apps/web/app/pages/dashboard/preferences/app-passwords.vue',
 ]);
 const jargon = /\b(?:SPF|DKIM|DMARC|IMAP|SMTP)\b|\bMX records?\b/g;

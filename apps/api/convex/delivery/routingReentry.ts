@@ -34,13 +34,13 @@ export const sendRefValidator = v.union(
  * governed boundary needs for an idempotency key and a re-entry token.
  * Deliberately outside `SendRef`: no lifecycle, no completion, no stat shard.
  */
-export const seedProbeRefValidator = v.object({
+const seedProbeRefValidator = v.object({
 	kind: v.literal('seedProbe'),
 	id: v.id('seedPlacementProbes'),
 });
 
 /** Everything the governed dispatch boundary can issue a re-entry token for. */
-export const reentryRefValidator = v.union(sendRefValidator, seedProbeRefValidator);
+const reentryRefValidator = v.union(sendRefValidator, seedProbeRefValidator);
 
 /** Issue a self-contained authenticated callback token after verifying its exact Send. */
 export const issueSnapshot = internalMutation({

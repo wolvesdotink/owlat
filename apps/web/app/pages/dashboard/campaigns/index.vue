@@ -201,7 +201,7 @@ function runAttentionAction(row: DecoratedRow) {
 	const id = row.campaign._id;
 	switch (row.reason) {
 		case 'ab_decision':
-			// A/B results are folded into the campaign report (piece c3b).
+			// A/B results are folded into the campaign report.
 			router.push(`/dashboard/campaigns/${id}/report`);
 			break;
 		case 'needs_review':

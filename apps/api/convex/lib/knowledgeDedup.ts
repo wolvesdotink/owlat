@@ -14,7 +14,7 @@ import { cosineSimilarity } from './vectorMath';
 export const DEDUP_SIMILARITY_THRESHOLD = 0.95;
 
 /** Cap on merged-content length so a runaway cluster can't bloat one row. */
-export const MAX_MERGED_CONTENT_CHARS = 4000;
+const MAX_MERGED_CONTENT_CHARS = 4000;
 
 // Re-exported so callers and tests keep importing it from this module.
 export { cosineSimilarity };

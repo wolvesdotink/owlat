@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
 	evaluateIpAuditReport,
 	evaluateMtaHealth,
 	evaluateMtaIdentityHealth,
 	evaluateSendPath,
+	probeMtaIdentityHealth,
 } from '../doctor';
 import { DELIVERY_PROVIDER_KINDS, type FeatureFlagState } from '@owlat/shared/featureFlags';
 
@@ -201,6 +202,36 @@ describe('doctor — evaluateMtaHealth', () => {
 			{ ok: false, message: 'MTA returned an incomplete health response' },
 		]);
 	});
+
+	// ── The retry queue's one unowned structure ──
+	// A `:delayed` member whose job hash is gone can never be delivered and is
+	// removed by nothing. Left unnamed it grows until Redis is OOM-killed.
+
+	it('stays silent about a queue that is merely behind', () => {
+		const findings = evaluateMtaHealth({
+			...healthy,
+			queue: { status: 'behind', delayed: 90_000, overdue: 4_000, sampled: 20, orphaned: 0 },
+		});
+		expect(findings).toHaveLength(8);
+		expect(findings.every((finding) => finding.ok)).toBe(true);
+	});
+
+	it('names a delay set holding jobs with no message left to send', () => {
+		const findings = evaluateMtaHealth({
+			...healthy,
+			queue: { status: 'orphaned', delayed: 6_036_169, overdue: 5_000, sampled: 20, orphaned: 20 },
+		});
+		const failed = findings.filter((finding) => !finding.ok);
+		expect(failed).toHaveLength(1);
+		expect(failed[0]?.message).toContain('20 of 20');
+		expect(failed[0]?.message).toContain('Redis runs out of memory');
+	});
+
+	it('says nothing when the MTA predates the queue probe', () => {
+		// ADDITIVE-ONLY: an older MTA reports no `queue` block, and an absent
+		// probe is a supported configuration rather than a failure.
+		expect(evaluateMtaHealth(healthy)).toHaveLength(8);
+	});
 });
 
 /**
@@ -336,5 +367,87 @@ describe('doctor — FCrDNS setup guidance', () => {
 		expect(findings[0]?.ok).toBe(false);
 		expect(findings[0]?.message).toContain('Set its PTR exactly to mail.example.com');
 		expect(findings[0]?.message).toContain('Hetzner Console');
+	});
+});
+
+/**
+ * `/health` reports the verdict the MTA's LAST sweep stored — at boot, then
+ * hourly. An operator who fixes a PTR and re-runs the installer would keep
+ * failing on that stale `fail` (`docker compose up -d` leaves an unchanged
+ * container running, so nothing re-observes), which is why the identity probe
+ * asks for a live re-check first and only falls back to the stored verdict.
+ */
+describe('doctor — identity probe freshness', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	function stubFetch(handler: (url: string, init?: RequestInit) => Response) {
+		const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) =>
+			handler(String(input), init)
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		return fetchMock;
+	}
+
+	const stale = {
+		ips: [
+			{
+				ip: '192.0.2.10',
+				fcrdns: {
+					verdict: 'fail',
+					reason: 'ehlo-mismatch',
+					ehlo: 'mail.example.com',
+					ptrNames: [],
+				},
+			},
+		],
+	};
+	const fresh = {
+		ips: [
+			{
+				ip: '192.0.2.10',
+				fcrdns: { verdict: 'pass', ehlo: 'mail.example.com', ptrNames: ['mail.example.com'] },
+			},
+		],
+	};
+
+	it('prefers the forced re-check over the stored health verdict', async () => {
+		const fetchMock = stubFetch((url) =>
+			Response.json(url.endsWith('/identity/recheck') ? fresh : stale)
+		);
+
+		const findings = await probeMtaIdentityHealth('http://mta:3100', 'master-key');
+
+		expect(findings[0]?.ok).toBe(true);
+		expect(fetchMock.mock.calls[0]?.[0]).toBe('http://mta:3100/identity/recheck');
+		expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+			method: 'POST',
+			headers: { Authorization: 'Bearer master-key' },
+		});
+		// The stored verdict is not consulted once a live one is in hand.
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('falls back to /health when the MTA has no re-check route (older image)', async () => {
+		const fetchMock = stubFetch((url) =>
+			url.endsWith('/identity/recheck')
+				? new Response('Not Found', { status: 404 })
+				: Response.json(stale)
+		);
+
+		const findings = await probeMtaIdentityHealth('http://mta:3100', 'master-key');
+
+		expect(findings[0]?.ok).toBe(false);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not attempt the master-key route without a key', async () => {
+		const fetchMock = stubFetch(() => Response.json(stale));
+
+		await probeMtaIdentityHealth('http://mta:3100');
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(fetchMock.mock.calls[0]?.[0]).toBe('http://mta:3100/health');
 	});
 });

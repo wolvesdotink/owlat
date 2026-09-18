@@ -44,7 +44,7 @@ export function registerContactHygieneCrons(crons: Crons): void {
 		{}
 	);
 
-	// Sunset policy (deliverability plan P4-4): move contacts that have ignored
+	// Sunset policy: move contacts that have ignored
 	// every message for the configured window onto the re-engagement track, then
 	// auto-suppress them. Bounded per tick (`SUNSET_CONTACTS_PER_TICK`) and
 	// resumable from its index cursor. HOURLY, not daily: `SUNSET_STALE_MS`

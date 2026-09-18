@@ -34,8 +34,8 @@ export function isDaneMode(value: string): value is DaneMode {
 /** Resolved DANE configuration (subset of `MtaConfig`). */
 export interface DaneConfig {
 	/**
-	 * How DANE participates in outbound delivery. Default: `off`, matching locked
-	 * decision D6: operators must opt in before Owlat performs TLSA lookups.
+	 * How DANE participates in outbound delivery. Default: `off` — operators must
+	 * opt in before Owlat performs TLSA lookups.
 	 */
 	daneMode: DaneMode;
 	/**

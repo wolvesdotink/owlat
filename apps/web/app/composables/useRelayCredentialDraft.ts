@@ -24,6 +24,7 @@
  */
 
 import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue';
+import { apiFetch } from '~/lib/csrfFetch';
 import {
 	OWN_SEND_PROVIDER_KIND,
 	isOwnSendProviderKind,
@@ -379,7 +380,7 @@ export function useRelayCredentialDraft(
 	async function validateLive(): Promise<ValidateTransportResponse | null> {
 		const buildBody = probeRequestBuilder(activeProbe.value?.validator);
 		if (buildBody === undefined) return null;
-		return await $fetch<ValidateTransportResponse>('/api/delivery/validate-transport', {
+		return await apiFetch<ValidateTransportResponse>('/api/delivery/validate-transport', {
 			method: 'POST',
 			body: {
 				provider: provider.value,
@@ -420,7 +421,7 @@ export async function applyTransportEnv(
 	// An empty base, so only the transport keys are sent; the backend allowlists
 	// and clears the rest.
 	const providerEnv = buildProviderEnv({}, draft, credentialValues);
-	return await $fetch<ApplyTransportResponse>('/api/delivery/apply-transport', {
+	return await apiFetch<ApplyTransportResponse>('/api/delivery/apply-transport', {
 		method: 'POST',
 		body: { providerEnv, relayRemovalConfirmation },
 	});

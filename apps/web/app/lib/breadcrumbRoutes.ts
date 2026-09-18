@@ -169,6 +169,13 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		subsectionHref: '/dashboard/admin/instance',
 		page: 'shared.breadcrumbRoutes.pages.features',
 	},
+	'/dashboard/admin/instance/desktop-updates': {
+		section: 'shared.breadcrumbRoutes.sections.administration',
+		sectionHref: '/dashboard/admin',
+		subsection: 'shared.breadcrumbRoutes.subsections.instance',
+		subsectionHref: '/dashboard/admin/instance',
+		page: 'shared.breadcrumbRoutes.pages.desktopUpdates',
+	},
 	'/dashboard/admin/instance/channels': {
 		section: 'shared.breadcrumbRoutes.sections.administration',
 		sectionHref: '/dashboard/admin',

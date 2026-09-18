@@ -3308,6 +3308,29 @@ dispatcher** to a `sent → delivered` Send lifecycle transition.
 _Avoid_: Send (Convex-side term — one Send spans 1..N attempts), Job
 alone (GroupMQ vocabulary; doesn't signal the per-attempt scope).
 
+**Defer ladder**:
+The chain of jobs one message walks while it keeps being deferred. A defer
+is never thrown back at GroupMQ — `handler.ts` enqueues a successor with the
+computed per-category delay and completes — so a defer consumes no delivery
+attempt and `maxAttempts` cannot end a ladder. Two things do: the
+max-message-age cap (bounds it in time) and the **Defer successor budget**
+(bounds it in count). Each rung's successor id is derived from its
+predecessor's, and the whole ladder shares one handoff receipt slot keyed by
+its chain.
+_Avoid_: Retry chain (GroupMQ's `attempts` are a different, unrelated
+counter), re-queue loop (names the failure mode, not the mechanism).
+
+**Defer successor budget**:
+The cap at `apps/mta/src/queue/deferBudget.ts` on how many successors one
+`messageId` may mint, counted in Redis across every chain of that message —
+governed sends carry their own `workAttemptId` per attempt, so one message
+can have several roots and therefore several ladders. Sized as the rungs a
+one-per-minute ladder could take before the message expires anyway — a
+policy floor, not the shortest defer the MTA issues, which is a flat 5s on
+a contended domain slot. Exhausting it is terminal: a soft bounce naming
+the runaway, never another successor.
+_Avoid_: Rate limit (this is a lifetime count, not a per-interval rate).
+
 **Dispatch pipeline (module)**:
 The module at `apps/mta/src/dispatch/pipeline.ts` that owns the ordered
 pre-send check sequence for a Dispatch attempt. Composed of typed
@@ -4376,7 +4399,7 @@ Four entry points:
   family is the only writer of the wipe; this entry is the public
   shell (auth + scheduler call + synchronous response).
 - `createInternal(ctx, args)` — internal mutation; no auth (called by
-  `seedAdmin.ts`). Idempotent: skips if a row already exists.
+  `seedAdminHttp.ts`). Idempotent: skips if a row already exists.
 
 Replaces the duplicate `get`/`update`/`create` pair across
 `convex/instanceSettings.ts` and `convex/organizationSettings.ts`. Both
@@ -5833,18 +5856,24 @@ matching code comment at the cited file.
   (id + short expiry) like `trackClick` if open-count integrity ever needs to
   be stronger than rate-limited best-effort.
 
-- **`platformAdmin/*` is control-plane-only and inert on OSS self-host.**
-  No production path populates the `platformAdmins` table on an OSS
-  deployment (the optional first-admin bootstrap is the hand-run
-  `migrations/0036_seed_platform_admin:run`; `addPlatformAdmin` needs an
-  existing admin), so
-  `requirePlatformAdmin` always throws FORBIDDEN and the console renders empty.
-  Intentional: the multi-tenant control plane that would seed and use these
-  admins lives in the separate private Nest repo (see _Nest Extracted_); this
-  repo is single-org-per-deployment OSS. The module is kept so the control
-  plane reuses it unchanged, but no OSS bootstrap is wired — granting one
-  operator instance-wide power is a deployer decision, not a default. Intended
-  authz model: each `platformAdmin/*` function is an `authedMutation` /
+- **`platformAdmin/*` is the deployment tier, and the setup user holds it.**
+  Org roles (owner/admin/editor) govern the product; `platformAdmins` governs
+  the box — in-app updates, backups, the operator console. An org owner is not
+  automatically a platform admin. The roster is bootstrapped by
+  `platformAdmin/bootstrap.ts`: `/seed/admin` grants the setup user
+  `superadmin` on every fresh install, and an instance seeded before that
+  shipped is claimed once by its org owner from the admin hub
+  (`claimInitialPlatformAdmin`, an `ownerMutation` — its only caller).
+  `migrations/0036_seed_platform_admin:run` survives as the break-glass path
+  when neither in-app caller can run. All three refuse once ANY platform admin
+  exists: that empty-table precondition, not the caller's org role, is what
+  keeps the bootstrap from being an escalation route; past it, promotion goes
+  through `addPlatformAdmin` (superadmin-only, driven by Operator → Admins).
+  The grant is revoked by member erasure and by `POST /dev/reset` alongside the
+  users it is keyed to. The same module still backs the multi-tenant control
+  plane in the separate private Nest repo (see _Nest Extracted_), which is why
+  the cross-org queries here look bigger than a single-org deployment needs.
+  Authz model: each `platformAdmin/*` function is an `authedMutation` /
   `authedQuery` whose handler calls `requirePlatformAdmin(ctx)` first
   (superadmin-only ops also check `role === 'superadmin'`).
 

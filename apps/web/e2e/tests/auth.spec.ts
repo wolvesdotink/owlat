@@ -1,26 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { LoginPage } from '../page-objects/LoginPage';
-import { RegisterPage } from '../page-objects/RegisterPage';
 import { testUser } from '../fixtures/test-data';
 
 // Auth tests run without pre-saved auth state
 test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe('Authentication', () => {
-	test('register a new user and redirect to dashboard', async ({ page }) => {
-		const registerPage = new RegisterPage(page);
-		await registerPage.goto();
-
-		const timestamp = Date.now();
-		await registerPage.register(
-			'New Test User',
-			`new-user-${timestamp}@example.com`,
-			'SecurePassword123!'
-		);
-
-		await page.waitForURL('**/dashboard**', { timeout: 15_000 });
-		await expect(page).toHaveURL(/\/dashboard/);
-	});
+	// The self-registration test that used to sit here was deleted, not repaired:
+	// `/auth/register` renders no form at all without `?redirect=/invite/accept…`
+	// (pages/auth/register.vue), so it filled fields that do not exist. The gate
+	// it meant to cover — signup refused once an account exists — is unit-tested
+	// in convex/auth/registrationGate.
 
 	test('login with valid credentials and redirect to dashboard', async ({ page }) => {
 		const loginPage = new LoginPage(page);

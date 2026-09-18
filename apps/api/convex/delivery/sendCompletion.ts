@@ -153,7 +153,7 @@ export const completeSend = internalMutation({
 
 		const outcome: SendWorkerOutcome = result.returnValue;
 		switch (outcome.kind) {
-			// AN AMBIGUITY WITH NO SECOND QUESTION TO ASK (plan D4). Its own arm,
+			// AN AMBIGUITY WITH NO SECOND QUESTION TO ASK. Its own arm,
 			// and the opposite of `acceptanceUnknown` below: that one replays the
 			// attempt (safe — its idempotency key is the transport's message id),
 			// this one must never be replayed, because the lost response may sit on
@@ -364,7 +364,7 @@ async function failSend(
 }
 
 /**
- * Close a parked ambiguous-acceptance Send at the delivery deadline (plan D4).
+ * Close a parked ambiguous-acceptance Send at the delivery deadline.
  *
  * The ONLY thing that terminalizes a park, and it is a one-way door with two
  * guards. A Send that is no longer `queued` has already been settled by

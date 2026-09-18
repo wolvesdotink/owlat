@@ -1,5 +1,5 @@
 /**
- * Perceived-instant workspace switch choreography (piece d4).
+ * Perceived-instant workspace switch choreography.
  *
  * Switching workspaces reloads the whole webview (useDesktopWorkspaces.switchTo
  * → location.assign) so the auth + Convex singletons re-seed cleanly. A cold

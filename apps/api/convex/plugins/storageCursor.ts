@@ -1,4 +1,29 @@
+/**
+ * Plugin storage cursor sealing.
+ *
+ * A native Convex cursor leaks the shape of the underlying page, so a plugin
+ * only ever holds an AES-256-GCM token instead. The token is bound to its
+ * tenant, plugin, prefix and limit through GCM additional-authenticated-data,
+ * so replaying it under any other scope fails the tag rather than paging
+ * another tenant's rows.
+ *
+ * RUNTIME: Web Crypto only. The crypto core is `lib/webSecretBox.ts`, shared
+ * with the at-rest body sealer and the integration-import credential sealer;
+ * `lib/credentialCrypto.ts`'s `createSecretBox` is the same construction over
+ * `node:crypto` and is `'use node'`, so the V8 storage facade cannot use it.
+ * What stays local here is the token's base64URL framing (the token travels in
+ * plugin-facing JSON, unlike the padded-base64 database envelopes) and the AAD
+ * binding.
+ */
+
 import { getRequired } from '../lib/env';
+import {
+	createWebSecretBox,
+	GCM_TAG_BYTES,
+	IV_BYTES,
+	type WebSealedBytes,
+	type WebSecretBox,
+} from '../lib/webSecretBox';
 
 export const MAX_PLUGIN_STORAGE_CURSOR_CHARS = 8_192;
 
@@ -7,23 +32,21 @@ const TOKEN_VERSION = '1';
 const HKDF_SALT = 'owlat:plugin-storage:cursor:salt:v1';
 const HKDF_INFO = 'owlat:plugin-storage:cursor:key:v1';
 const AAD_CONTEXT = 'owlat:plugin-storage:cursor:aad:v1';
-const IV_BYTES = 12;
-const GCM_TAG_BYTES = 16;
 const MAX_CIPHERTEXT_BYTES = 6 * 1024;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-export interface PluginStorageCursorScope {
+interface PluginStorageCursorScope {
 	readonly organizationId: string;
 	readonly pluginId: string;
 }
 
-export interface PluginStorageCursorRequest {
+interface PluginStorageCursorRequest {
 	readonly prefix: string;
 	readonly limit: number;
 }
 
-export type PluginStorageCursorFailure = 'invalid_token' | 'crypto_unavailable';
+type PluginStorageCursorFailure = 'invalid_token' | 'crypto_unavailable';
 
 /** Redacted internal failure; the storage facade maps this to its public taxonomy. */
 export class PluginStorageCursorError extends Error {
@@ -43,18 +66,9 @@ export async function encryptPluginStorageCursor(
 	nativeCursor: string
 ): Promise<string> {
 	try {
-		const key = await deriveEncryptionKey();
-		const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
-		const ciphertext = new Uint8Array(
-			await crypto.subtle.encrypt(
-				{
-					name: 'AES-GCM',
-					iv,
-					additionalData: additionalData(scope, request),
-				},
-				key,
-				encoder.encode(nativeCursor)
-			)
+		const { iv, ciphertext } = await cursorBox().sealBytes(
+			encoder.encode(nativeCursor),
+			additionalData(scope, request)
 		);
 		if (ciphertext.length > MAX_CIPHERTEXT_BYTES) throw new Error();
 		const token = [
@@ -78,23 +92,14 @@ export async function decryptPluginStorageCursor(
 	token: string
 ): Promise<string> {
 	const envelope = parseToken(token);
-	let key: CryptoKey;
+	let box: WebSecretBox;
 	try {
-		key = await deriveEncryptionKey();
+		box = cursorBox();
 	} catch {
 		throw new PluginStorageCursorError('crypto_unavailable');
 	}
 	try {
-		const plaintext = await crypto.subtle.decrypt(
-			{
-				name: 'AES-GCM',
-				iv: envelope.iv,
-				additionalData: additionalData(scope, request),
-			},
-			key,
-			envelope.ciphertext
-		);
-		return decoder.decode(plaintext);
+		return decoder.decode(await box.openBytes(envelope, additionalData(scope, request)));
 	} catch {
 		throw new PluginStorageCursorError('invalid_token');
 	}
@@ -116,36 +121,22 @@ function additionalData(
 	);
 }
 
-async function deriveEncryptionKey(): Promise<CryptoKey> {
+/**
+ * The cursor box: INSTANCE_SECRET under the pinned, distinct context. Throws
+ * the redacted `crypto_unavailable` failure when the instance has no secret, so
+ * a misconfigured deployment can never mint an unauthenticated cursor.
+ */
+function cursorBox(): WebSecretBox {
 	let secret: string;
 	try {
 		secret = getRequired('INSTANCE_SECRET');
 	} catch {
 		throw new PluginStorageCursorError('crypto_unavailable');
 	}
-	const inputKey = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
-		'deriveKey',
-	]);
-	return crypto.subtle.deriveKey(
-		{
-			name: 'HKDF',
-			hash: 'SHA-256',
-			salt: encoder.encode(HKDF_SALT),
-			info: encoder.encode(HKDF_INFO),
-		},
-		inputKey,
-		{ name: 'AES-GCM', length: 256 },
-		false,
-		['encrypt', 'decrypt']
-	);
+	return createWebSecretBox(secret, { salt: HKDF_SALT, info: HKDF_INFO });
 }
 
-interface CursorEnvelope {
-	readonly iv: Uint8Array<ArrayBuffer>;
-	readonly ciphertext: Uint8Array<ArrayBuffer>;
-}
-
-function parseToken(value: string): CursorEnvelope {
+function parseToken(value: string): WebSealedBytes {
 	const parts = value.split('.');
 	if (parts.length !== 4 || parts[0] !== TOKEN_PREFIX || parts[1] !== TOKEN_VERSION) {
 		throw new PluginStorageCursorError('invalid_token');

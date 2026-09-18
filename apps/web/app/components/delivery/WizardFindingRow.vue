@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * One result row of the transport connection wizard (P2-4): status glyph, label,
+ * One result row of the transport connection wizard: status glyph, label,
  * detail, and — when there is something to do — the exact change to make.
  *
  * One component rather than the same markup in the alignment list and the

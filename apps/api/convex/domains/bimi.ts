@@ -1,5 +1,5 @@
 /**
- * BIMI — OFFERED, never required, never a nag (P4-7).
+ * BIMI — OFFERED, never required, never a nag.
  *
  * BIMI puts a brand logo next to the message at participating receivers, and it
  * is meaningful ONLY once DMARC is actually enforcing: the spec requires the
@@ -15,7 +15,7 @@
  * plainly on the offer rather than discovered after the operator has published
  * a record and wondered why nothing changed.
  *
- * D2 — this is a third-party-shaped feature (a VMC is bought from an external
+ * A THIRD-PARTY-SHAPED FEATURE (a VMC is bought from an external
  * CA) and is therefore ADDITIVE-ONLY: no BIMI record, no VMC, no logo is ever a
  * blocked send, a blocked phase promotion, an error state, or an unresolvable
  * warning. The offer's `required` and `nag` fields are literal `false` so no
@@ -42,10 +42,10 @@ export const BIMI_VMC_REQUIRED_RECEIVERS = ['gmail', 'apple'] as const;
 export const BIMI_VMC_NOTE =
 	'Gmail and Apple Mail require a Verified Mark Certificate (VMC) — a paid certificate for your trademarked logo — before they will display it. Other receivers show the logo from the record alone. Publishing BIMI without a VMC is safe; it simply does nothing at those two.';
 
-export type BimiIneligibleReason = 'dmarc_policy_below_quarantine' | 'dmarc_pct_below_100';
+type BimiIneligibleReason = 'dmarc_policy_below_quarantine' | 'dmarc_pct_below_100';
 
 /** An operator-supplied URL the offer could not put in a published record. */
-export type BimiRejectedInput = 'logoUrl' | 'vmcUrl';
+type BimiRejectedInput = 'logoUrl' | 'vmcUrl';
 
 /**
  * Accept a URL only if it can be published verbatim inside a BIMI TXT value.
@@ -58,7 +58,7 @@ export type BimiRejectedInput = 'logoUrl' | 'vmcUrl';
  * rather than throwing: this is a rendering surface, and the screen must survive
  * the value it exists to help the operator fix.
  */
-export function publishableBimiUri(raw: string | undefined): string | null {
+function publishableBimiUri(raw: string | undefined): string | null {
 	const trimmed = raw?.trim() ?? '';
 	// Printable ASCII only, which rules out every space, tab, newline and control
 	// character in one predicate; `;` is excluded separately for legibility.

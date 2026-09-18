@@ -2,9 +2,9 @@
 import { api } from '@owlat/api';
 
 /**
- * Sealed Mail settings (E5, flag `sealedMail`). The org-level sealing policy
- * (locked decision D2): `auto` seals whenever every recipient can receive sealed
- * mail; `ask` keeps sealing available but never seals automatically; `off` never
+ * Sealed Mail settings (flag `sealedMail`). The org-level sealing policy:
+ * `auto` seals whenever every recipient can receive sealed mail; `ask` keeps
+ * sealing available but never seals automatically; `off` never
  * seals. Owner/admin only — the backend floor is `settings:manage`, and the
  * `admin` route middleware below redirects a non-admin to /dashboard before this
  * page renders, so the page itself never has to say "owners and admins only".
@@ -83,7 +83,7 @@ async function setInboundTlsRequired(value: boolean) {
 	if (!result.ok) isInboundTlsRequired.value = previous;
 }
 
-// ── Recovery kit (E6, locked decision D7). The armored private key + plain-words
+// ── Recovery kit. The armored private key + plain-words
 // instructions for one address — the only sanctioned private-key egress, and the
 // import path to restore access after a rebuild. Owner/admin only.
 const kitAddress = ref('');
@@ -138,7 +138,7 @@ async function restoreKit() {
 	}
 }
 
-// ── Re-seal after an instance-secret change (E6). After rotating INSTANCE_SECRET
+// ── Re-seal after an instance-secret change. After rotating INSTANCE_SECRET
 // (with the previous value kept in INSTANCE_SECRET_PREVIOUS during the window),
 // this re-encrypts every stored key under the new secret so the old secret can be
 // retired. The reachable operator trigger the self-host docs point at. Admin only.
@@ -232,7 +232,7 @@ async function runReSeal() {
 			     sealing policy because that is what it trades against. -->
 			<SettingsBodySearchIndexCard />
 
-			<!-- Recovery kit.result (E6 / D7): download the private key for an address so
+			<!-- Recovery kit: download the private key for an address so
 			     sealed mail can be restored later; import one to restore access. -->
 			<section class="space-y-4 card p-5">
 				<div>
@@ -314,7 +314,7 @@ async function runReSeal() {
 				</div>
 			</section>
 
-			<!-- Re-seal after an instance-secret change (E6). The reachable trigger the
+			<!-- Re-seal after an instance-secret change. The reachable trigger the
 			     self-host docs point at for the INSTANCE_SECRET rotation acceptance. -->
 			<section class="space-y-4 card p-5">
 				<div>

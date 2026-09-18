@@ -1,15 +1,15 @@
 /**
- * THE TRAILING-BASELINE GATES — the standalone implementation (plan D2, D3, D14).
+ * THE TRAILING-BASELINE GATES — the standalone implementation.
  *
  * The second and FINAL implementation of the gate interface, for a deployment
  * with no reference transport. It exists because "no ESP account" is a
- * FIRST-CLASS CONFIGURATION and not a degraded one (plan D2), and this module is
+ * FIRST-CLASS CONFIGURATION and not a degraded one, and this module is
  * what makes that claim true at the measurement layer rather than only in the
  * marketing copy: every gate still returns a verdict, nothing errors, nothing
  * nags, and the ramp still moves — on weaker evidence, at a slower pace, and
  * SAYING SO.
  *
- * THE SUBSTITUTIONS, straight from the plan's "gates, degraded honestly" table:
+ * THE SUBSTITUTIONS — the gates, degraded honestly:
  *
  *   1 HARD BOUNCE  absolute <=2% AND <=1.5x the cell's own 30-day trailing rate.
  *                  Confidence HIGH — bounce processing is entirely self-hosted
@@ -31,7 +31,7 @@
  *                  window widened to 7 days, minimum 2000 calibration sends.
  *                  Confidence LOW, and it may NEVER justify an INCREASE.
  *   5 PLACEMENT    self-hosted seed mailboxes, absolute floor only, promoted from
- *                  optional to RECOMMENDED. Confidence MEDIUM (a tripwire, D17).
+ *                  optional to RECOMMENDED. Confidence MEDIUM (a tripwire).
  *                  Its cascade is shared with the reference-arm gate and lives in
  *                  `seedGate.ts`; the entry point is RE-EXPORTED below so all five
  *                  standalone gates are reachable from this one module.
@@ -43,7 +43,7 @@
  * the thin-sample rule or the poisoned-rate rule lands in both implementations at
  * once because there is only one of each.
  *
- * THE COLD START, NAMED (plan D10), because the population this module exists
+ * THE COLD START, NAMED, because the population this module exists
  * for is a FRESH INSTALL and this is what it sees on day one. With no
  * `ownTrailingBaseline` — or one below the sample floors — gate 1 holds on
  * `evidence_absent` / `baseline_sample_below_floor`, and the gate-3 unsubscribe
@@ -52,15 +52,15 @@
  * hard-bounce (200) and complaint (1000) floors, and the ramp sits at the
  * stream's initial `s` for that long.
  *
- * THAT IS CORRECT, NOT A DEFECT. D10 says thin data HOLDS: it never increases on
- * it and never decreases on it either, so the cost of the cold start is time, not
- * risk. What UNFREEZES it is volume — and P3-2's cron should hand this module a
- * PARTIAL-HISTORY trailing summary as soon as the window clears those floors,
- * rather than passing `null` until some notional thirty days have elapsed. The
- * gates already judge the summary they are given on its own sample and freshness;
- * withholding a usable one only lengthens the freeze.
+ * THAT IS CORRECT, NOT A DEFECT. Thin data HOLDS: the controller never increases on it and
+ * never decreases on it either, so the cost of the cold start is time, not risk. What
+ * UNFREEZES it is volume — and the controller's cron should hand this module a
+ * PARTIAL-HISTORY trailing summary as soon as the window clears those floors, rather than
+ * passing `null` until some notional thirty days have elapsed. The gates already judge the
+ * summary they are given on its own sample and freshness; withholding a usable one only
+ * lengthens the freeze.
  *
- * PURE (plan D15): `now` is a parameter, nothing reads a clock, a database or the
+ * PURE: `now` is a parameter, nothing reads a clock, a database or the
  * environment.
  */
 
@@ -160,7 +160,7 @@ export const CFBL_COMPLAINT_SPEC: CeilingGateSpec = {
  * unsubscribes against unsubscribes.
  *
  * MEDIUM confidence, and the verdict says so. It is a proxy, it is labelled as
- * one, and the UI renders the label (plan D14).
+ * one, and the UI renders the label.
  */
 export const UNSUBSCRIBE_PROXY_SPEC: CeilingGateSpec = {
 	gate: 'complaint',
@@ -189,8 +189,7 @@ export const UNSUBSCRIBE_PROXY_SPEC: CeilingGateSpec = {
  * so it is selected here rather than inside the cascade.
  *
  * Absence of a feedback loop lowers the confidence of the answer and changes
- * which series it is measured against. It does not block, error, warn or nag
- * (plan D2).
+ * which series it is measured against. It does not block, error, warn or nag.
  */
 export function evaluateStandaloneComplaintGate(input: RampGateEvaluationInput): RampGateResult {
 	return evaluateCeilingGate(
@@ -210,7 +209,7 @@ export function evaluateStandaloneComplaintGate(input: RampGateEvaluationInput):
  * positive count. Rate pressure in the map is carried, counted by nobody, and
  * never reaches the numerator.
  *
- * Exported because the admin notification (plan D12) names the categories and the
+ * Exported because the admin notification names the categories and the
  * gate applies the rate: two readers, one derivation, no second opinion.
  */
 export function summarizeSmtpBlocks(observation: SmtpBlockObservation): {
@@ -262,7 +261,7 @@ function blockRate(observation: SmtpBlockObservation): number | null {
  * content is spam or our IP is not one it takes mail from does not get better if
  * we send at all. So the block detector outranks the rate check and produces a
  * HALT — the same hard stop the deferral halt line produces, named differently so
- * the admin notification (plan D12) can tell the operator which thing happened.
+ * the admin notification can tell the operator which thing happened.
  *
  * The CLASSIFICATION is the MTA's (`classifySmtpResponse`) and the category names
  * are the shared vocabulary in `@owlat/shared/smtpBlockCategories`. This side only
@@ -364,15 +363,14 @@ export function evaluateSmtpBlockMessages(input: RampGateEvaluationInput): RampG
  * The concurrent ratio holds subject, content, timing and audience constant by
  * construction — it is two arms of the SAME send. This holds NONE of them: it is
  * this week against last month, and a redesigned newsletter that opens 20% worse
- * is indistinguishable from a 20% placement loss (plan D14). So the floor drops
+ * is indistinguishable from a 20% placement loss. So the floor drops
  * from 0.95 to 0.85, the window widens to 7 days, and the minimum sample rises
  * from 400 to 2000.
  *
  * TWO of those three are constants here; the 7-day WINDOW is not, because the
- * gate takes its windows as PARAMETERS (plan D15) and nothing in this piece
- * builds one. It lands with the cron that summarises the window (P3), rather than
- * sitting here as a constant with no consumer, asserted by a test to equal
- * itself (plan D20: no speculative seams).
+ * gate takes its windows as PARAMETERS and nothing here builds one. It belongs
+ * with the cron that summarises the window, rather than sitting here as a
+ * constant with no consumer, asserted by a test to equal itself.
  *
  * AND IT MAY NEVER JUSTIFY AN INCREASE. `WEAK_TRAILING_SIGNAL` carries
  * `mayJustifyIncrease: false`, which the aggregator enforces: this gate can pull a
@@ -413,7 +411,7 @@ export function evaluateTrailingEngagementGate(input: EngagementGateInput): Ramp
  * except at the one seam where it could be bypassed.
  *
  * RE-GRADING WITHOUT RE-REASONING IS HALF A GUARD. A hold reason exists to NAME
- * THE THING TO FIX (plan D12), and `reference_*` names a second transport. A
+ * THE THING TO FIX, and `reference_*` names a second transport. A
  * standalone deployment has none, so an audit row and an admin notification
  * carrying `reference_evidence_stale` send the operator hunting a relay that does
  * not exist — which is precisely why the `baseline_*` vocabulary was introduced.

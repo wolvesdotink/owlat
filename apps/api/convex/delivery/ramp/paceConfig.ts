@@ -1,5 +1,5 @@
 /**
- * THE PACE ACTUATOR'S BOUNDS (ADR-0054 §1 and §4, plan D3, D9, D19).
+ * THE PACE ACTUATOR'S BOUNDS (ADR-0054 §1 and §4).
  *
  * These are a safety surface, not a config surface, for the same reason
  * `RAMP_AIMD` is: see `docs/adr/0054-deliverability-ramp-controller.md`.
@@ -17,7 +17,7 @@
  *
  * WHAT BOUNDS THE MULTIPLIER, and what does NOT. M_MAX is a bound on the DIAL,
  * not on the cap: the published base warming schedule is a HARD ceiling the
- * controller may never exceed for the current day (plan D19), and that ceiling
+ * controller may never exceed for the current day, and that ceiling
  * is applied in `effectiveDailyCap` where the cap is actually computed. The dial
  * can therefore ask for more per-provider headroom than the shipped fixed split
  * allows — up to the IP's own published cap and not one send further — while a
@@ -27,7 +27,7 @@
 
 import { RAMP_AIMD } from './controllerConfig';
 
-export interface PaceAimdConfig {
+interface PaceAimdConfig {
 	/**
 	 * M_MIN — the multiplier a SOFT failure may never fall below. Never zero, for
 	 * the reason the share floor is never zero: a cap of nothing sends nothing,

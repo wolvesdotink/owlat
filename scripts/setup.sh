@@ -1033,7 +1033,7 @@ configure_selfhost_core() {
   # Auto-generate instance secret
   SELFHOST_INSTANCE_SECRET=$(openssl rand -hex 32)
   set_selfhost_var "INSTANCE_SECRET" "$SELFHOST_INSTANCE_SECRET"
-  # Convex needs it too: seedAdmin.ts compares the X-Instance-Secret header
+  # Convex needs it too: seedAdminHttp.ts compares the X-Instance-Secret header
   # against INSTANCE_SECRET, so /seed/admin returns 401 unless it is set here.
   set_convex_var "INSTANCE_SECRET" "$SELFHOST_INSTANCE_SECRET"
   success "Generated INSTANCE_SECRET"
@@ -1193,6 +1193,17 @@ configure_selfhost_mta() {
 
   prompt_default "Campaign IP pool" "127.0.0.1" ip_campaign
   set_selfhost_var "IP_POOLS_CAMPAIGN" "$ip_campaign"
+
+  # Reverse DNS is the one record this wizard cannot create, and the MTA will
+  # not send a single message until it forward-confirms to the EHLO hostname.
+  # Spell it out here rather than leaving it to the runtime failure.
+  echo ""
+  echo -e "  ${BOLD}Reverse DNS (PTR) — you must set this yourself${RESET}"
+  echo -e "  ${DIM}Point the PTR record of every sending IP above at ${RESET}${BOLD}${ehlo_hostname}${RESET}${DIM},${RESET}"
+  echo -e "  ${DIM}and point ${ehlo_hostname} back at the IP with an A record.${RESET}"
+  echo -e "  ${DIM}PTR is set where you rent the IP (your hosting provider's console),${RESET}"
+  echo -e "  ${DIM}not in your DNS zone. Verify with: dig -x <ip> +short${RESET}"
+  echo -e "  ${DIM}Until it matches, the MTA refuses to send. Re-check with 'owlat doctor'.${RESET}"
   set_convex_var "MTA_IP_POOLS" "$(derive_mta_ip_pools "$ip_transactional" "$ip_campaign")"
   # The legacy wizard keeps the safe default. Guided IPv6 enablement belongs to
   # the verified setup flow; advanced operators may set this after setup.
@@ -1369,6 +1380,32 @@ write_selfhost_env() {
 
 # ── Self-Hosted: Docker Compose ─────────────────────────────────────────────
 
+# Persist the admin key to .env AND re-apply .env to the containers that were
+# created before it existed.
+#
+# The bring-up is unscoped and necessarily runs first — only an already-running
+# backend can mint the key — so imap, mail-sync and convex-fn-proxy were created
+# holding an EMPTY CONVEX_ADMIN_KEY, which they reject at boot
+# ("CONVEX_ADMIN_KEY is required"), crash-looping forever under
+# `restart: unless-stopped`, because Docker bakes env at CREATE time.
+# A plain `up -d` recreates ONLY the containers whose resolved config changed
+# (not --force-recreate, which would also bounce the healthy backend).
+# Non-fatal: the key is saved, so `owlat start` also repairs it.
+#
+# Both ways the key can arrive — auto-generated, or pasted by hand when
+# generate_admin_key.sh fails — land here, so neither can leave the stack
+# crash-looping.
+persist_admin_key() {
+  [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]] || return 0
+  sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
+  rm -f .env.bak
+  success "Admin key saved to .env"
+
+  if ! docker compose up -d >/dev/null 2>&1; then
+    warn "Could not re-apply .env to the running stack. If Postbox or external mail is enabled, run: docker compose up -d"
+  fi
+}
+
 run_docker_compose() {
   section "Starting Docker Compose Stack"
 
@@ -1417,11 +1454,7 @@ run_docker_compose() {
     warn "Could not auto-generate admin key"
     echo -e "    ${DIM}Run manually: docker compose exec convex ./generate_admin_key.sh${RESET}"
     prompt_default "Paste the admin key here" "" SELFHOST_CONVEX_ADMIN_KEY
-    # Update .env
-    if [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]]; then
-      sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
-      rm -f .env.bak
-    fi
+    persist_admin_key
     return
   }
 
@@ -1434,12 +1467,8 @@ run_docker_compose() {
     prompt_default "Paste the admin key" "" SELFHOST_CONVEX_ADMIN_KEY
   fi
 
-  # Write admin key back to .env
-  if [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]]; then
-    sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
-    rm -f .env.bak
-    success "Admin key saved to .env"
-  fi
+  # Write admin key back to .env and re-apply it to the stack.
+  persist_admin_key
 
   # 4. Deploy Convex functions
   echo ""

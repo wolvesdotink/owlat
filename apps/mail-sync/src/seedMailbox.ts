@@ -12,6 +12,7 @@
  */
 
 import { ImapFlow } from 'imapflow';
+import { imapAuth } from './auth.js';
 import { parseBody } from '@owlat/mail-message';
 // The header is the feature's ONLY join key between the send and the IMAP
 // observation, so both ends read the same constant rather than two copies
@@ -163,7 +164,11 @@ export async function openSeedMailbox(
 		host: credentials.imapHost,
 		port: credentials.imapPort,
 		secure: credentials.isImapSecure,
-		auth: { user: credentials.imapUsername, pass: credentials.imapPassword },
+		auth: imapAuth({
+			user: credentials.imapUsername,
+			pass: credentials.imapPassword,
+			accessToken: credentials.imapAccessToken,
+		}),
 		logger: false,
 	});
 	try {

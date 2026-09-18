@@ -219,7 +219,7 @@ export async function runLlmText(opts: LlmTextOptions): Promise<LlmTextResult> {
 	return result;
 }
 
-export interface LlmTextAttemptResult {
+interface LlmTextAttemptResult {
 	readonly result: LlmTextResult;
 	readonly attempts: number;
 	/** Raw, validated provider echo for hard-budget settlement. */
@@ -260,7 +260,7 @@ export async function runLlmTextWithAttemptMetadata(
 	};
 }
 
-export type LlmTextWithToolsOptions = {
+type LlmTextWithToolsOptions = {
 	model: LanguageModel;
 	messages: ModelMessage[];
 	/** AI SDK tool set (built via `tool({...})`). The model may call these across
@@ -346,23 +346,23 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
  */
 export const DEFAULT_MAX_TOOL_STEPS = 8;
 
-export interface LlmStreamToolCall {
+interface LlmStreamToolCall {
 	toolCallId: string;
 	toolName: string;
 	input: unknown;
 }
-export interface LlmStreamToolResult {
+interface LlmStreamToolResult {
 	toolCallId: string;
 	toolName: string;
 	output: unknown;
 }
-export interface LlmStreamToolError {
+interface LlmStreamToolError {
 	toolCallId: string;
 	toolName: string;
 	error: unknown;
 }
 
-export interface LlmStreamOptions {
+interface LlmStreamOptions {
 	model: LanguageModel;
 	system?: string;
 	messages: ModelMessage[];
@@ -383,7 +383,7 @@ export interface LlmStreamOptions {
 	onToolError?: (error: LlmStreamToolError) => void | Promise<void>;
 }
 
-export interface LlmStreamResult {
+interface LlmStreamResult {
 	text: string;
 	tokenUsage: TokenUsage | undefined;
 	modelUsed: string | undefined;

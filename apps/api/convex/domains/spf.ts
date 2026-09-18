@@ -7,7 +7,7 @@
  * DKIM signing belong to the RELAY provider, so SPF/DKIM authentication is set
  * up in that provider's dashboard against the From-domain — not through this
  * built-in-MTA record bundle. The operator-facing transport UX for this lands
- * in the Sending-transport settings surface (plan piece a4).
+ * in the Sending-transport settings surface.
  *
  * Three concerns live here, all pure (no Convex / no DNS I/O):
  *
@@ -53,7 +53,7 @@ export { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
 import { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
 import { parseIpAddress } from '@owlat/shared/ipAddress';
 
-export const SPF_QUALIFIERS = ['~all', '-all', '?all', '+all'] as const;
+const SPF_QUALIFIERS = ['~all', '-all', '?all', '+all'] as const;
 
 export type SpfQualifier = (typeof SPF_QUALIFIERS)[number];
 
@@ -78,7 +78,7 @@ export function resolveSpfQualifier(raw: string | undefined | null): SpfQualifie
 	return isSpfQualifier(trimmed) ? trimmed : DEFAULT_SPF_QUALIFIER;
 }
 
-export type SpfRecordParts = {
+type SpfRecordParts = {
 	/** `include:` host (e.g. an upstream relay's SPF macro). */
 	include?: string;
 	/** `ip4:` addresses to authorize directly (e.g. each IP pool address). */
@@ -131,7 +131,7 @@ export function buildSpfRecordValue(parts: SpfRecordParts): string {
  * 7208 §4.6.4's budget of ten, and `ptr`/`exists`/`redirect` are either
  * deprecated or capable of relocating the whole evaluation. Anything else in
  * the configured value is IGNORED, never rejected — this value is read on the
- * send path, where throwing would turn a typo into blocked mail (plan D2).
+ * send path, where throwing would turn a typo into blocked mail.
  */
 const RELAY_SPF_TERM_PATTERN =
 	/^(?:include:[A-Za-z0-9._-]+|a:[A-Za-z0-9._-]+|mx:[A-Za-z0-9._-]+|ip4:[0-9./]+|ip6:[0-9A-Fa-f:./]+)$/;
@@ -202,7 +202,7 @@ export function buildReturnPathSpfRecord(
  * A `mailFrom` DNS record entry for a return-path host — an absolute-hostname
  * MX (bounce-DSN routing) or TXT (SPF) record.
  */
-export type ReturnPathMailFromRecord = {
+type ReturnPathMailFromRecord = {
 	readonly type: 'MX' | 'TXT';
 	readonly hostname: string;
 	readonly value: string;

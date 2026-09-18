@@ -5,7 +5,7 @@
  *
  * `provision` mirrors `sesRelay.provision`: a domain whose PRIMARY provider is
  * our own MTA also gets registered at Mandrill when the deployment's fallback
- * configuration names Mandrill as its relay, so the migration arm (plan D8) has
+ * configuration names Mandrill as its relay, so the migration arm has
  * a verified identity to send under without the operator connecting the domain
  * twice.
  *

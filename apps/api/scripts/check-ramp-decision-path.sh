@@ -67,28 +67,38 @@ for file in "${decision_path[@]}" "$matrix"; do
 	fi
 done
 
+# NEVER `strip_comments ... | grep -q` HERE. `grep -q` exits on its first match
+# and closes the pipe; awk is still writing, takes SIGPIPE, and `set -o pipefail`
+# turns that into a failed pipeline — so the vacuity guard below reports "matches
+# nothing" on a file that plainly matches. It is a race, so it passes on a quiet
+# machine and fails on a loaded CI runner: that is what broke the v0.4.8 release
+# verify. Read the stripped source into a variable once and match from there.
+matrix_code=$(strip_comments "$matrix")
+
 # The vocabulary must fire on the table that legitimately names integrations,
 # or every rule below passes vacuously.
-if ! strip_comments "$matrix" | grep -Eiq "$vocabulary"; then
+if ! grep -Eiq "$vocabulary" <<<"$matrix_code"; then
 	echo "FAIL: the integration vocabulary matches nothing in $matrix — the check is vacuous" >&2
 	exit 1
 fi
 
 for file in "${decision_path[@]}"; do
-	hits=$(strip_comments "$file" | grep -Ein "$vocabulary" || true)
+	file_code=$(strip_comments "$file")
+	hits=$(grep -Ein "$vocabulary" <<<"$file_code" || true)
 	if [ -n "$hits" ]; then
 		echo "FAIL: $file names an integration on the decision path (read measurements, never accounts):" >&2
 		printf '%s\n' "$hits" >&2
 		status=1
 	fi
-	if strip_comments "$file" | grep -Eq 'RAMP_DEGRADATION_MATRIX|RAMP_DEGRADATION_BY_INTEGRATION'; then
+	if grep -Eq 'RAMP_DEGRADATION_MATRIX|RAMP_DEGRADATION_BY_INTEGRATION' <<<"$file_code"; then
 		echo "FAIL: $file reads the degradation matrix directly — only degradation.ts folds it" >&2
 		status=1
 	fi
 done
 
+inputs_code=$(strip_comments "$inputs")
 for fold in resolveRampDegradation degradedStreamConfig degradedCeilingCap usesTrailingBaseline usesUnsubscribeProxy; do
-	if ! strip_comments "$inputs" | grep -q "$fold("; then
+	if ! grep -q "$fold(" <<<"$inputs_code"; then
 		echo "FAIL: $inputs no longer calls $fold( — the decision path must take its constants through the fold" >&2
 		status=1
 	fi

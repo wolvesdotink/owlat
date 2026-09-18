@@ -54,7 +54,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('contact.imported'),
 	// Irreversible merge: the source contact is hard-deleted into the target.
 	action('contact.merged'),
-	// Sunset policy (deliverability plan P4-4). Every automatic transition the
+	// Sunset policy. Every automatic transition the
 	// sunset engine makes is audited, including the ones that only move a
 	// contact onto the re-engagement track — a controller that changes a
 	// recipient's fate silently is experienced as a bug.
@@ -148,13 +148,21 @@ export const AUDIT_ACTION_LITERALS = [
 	action('sending_domain.verification_failed'),
 	action('sending_domain.regenerated'),
 	action('sending_domain.dmarc_policy_changed'),
+	// Send-only mode: who receives mail for the domain moved between Owlat and
+	// the customer's existing provider. Its own literal rather than the generic
+	// verification edge, because the status drop to `pending` it causes is a
+	// deliberate operator change, not a DNS verification failure.
+	action('sending_domain.receiving_mode_changed'),
 	action('sending_domain.return_path_changed'),
 	action('sending_domain.dkim_rotated'),
 	action('sending_domain.deleted'),
 	// Deliverability seed mailbox — the placement probe's operator-visible
-	// hygiene trail (`analytics/seedPlacement.ts`). Advisory only (D2).
+	// hygiene trail (`analytics/seedPlacement.ts`). Advisory only.
 	action('seed_mailbox.rotation_reminder'),
 	action('seed_mailbox.rotation_acknowledged'),
+	// Retiring a seed: the operator disconnects the mailbox (its placement
+	// history stays, the stored password does not).
+	action('seed_mailbox.disconnected'),
 	// Yahoo Complaint Feedback Loop — the guided DKIM-domain enrollment
 	// (`domains/yahooCfl.ts`). The reset is the sharp one: it clears the
 	// submitted/enrolled dates and downgrades the yahoo cell's complaint
@@ -167,13 +175,13 @@ export const AUDIT_ACTION_LITERALS = [
 	// A SEND PROVIDER's own suppression list put the address here, not a person
 	// and not our own Send lifecycle: a Mandrill `reject` webhook while the
 	// reference arm is live, or the one-off carry-over of that list at migration
-	// time (Mandrill plan D9). Its own literal because `blocklist.added` carries
+	// time. Its own literal because `blocklist.added` carries
 	// an operator's user id and this one cannot — the actor is a provider, and an
 	// address suppressed here was never mailed by us at all, so nothing else in
 	// the trail explains why it stopped being mailable.
 	action('blocklist.provider_suppressed'),
 	// One aggregated row per suppression carry-over IMPORT that changed
-	// something (Mandrill plan D9, P4.1). The per-address rows above answer "why
+	// something. The per-address rows above answer "why
 	// is this address suppressed"; only this one answers "did an import just
 	// stop us mailing four thousand people at once, and from which provider's
 	// list". A re-run that changes nothing writes none of these, exactly like
@@ -190,7 +198,7 @@ export const AUDIT_ACTION_LITERALS = [
 	// cell's durable ramp state: the own-MTA share moved, or a gate breach imposed
 	// a fresh freeze and cooldown rung on a cell already sitting on the share
 	// floor. Ordinary no-ops are not here; they are audited in `mixDecisions`,
-	// which records EVERY evaluation. See the deliverability plan, decision D12.
+	// which records EVERY evaluation.
 	action('deliverability_ramp.decision_applied'),
 	// Deliverability ramp — ONE CELL THREW and the tick carried on with the rest.
 	// Its own literal rather than a detail on `decision_applied`: an evaluation
@@ -206,7 +214,7 @@ export const AUDIT_ACTION_LITERALS = [
 	// so a cell that fails on every hourly tick cannot grow the table by whatever a
 	// stack trace happened to carry.
 	action('deliverability_ramp.cell_evaluation_failed'),
-	// Deliverability ramp — an OPERATOR moved the ramp by hand (P3-6). Separate
+	// Deliverability ramp — an OPERATOR moved the ramp by hand. Separate
 	// literals from `decision_applied` on purpose: an audit trail that presented a
 	// person's pin as the controller's judgement would be actively misleading six
 	// weeks later, when the only question anyone has is why a cell stopped moving.
@@ -246,6 +254,9 @@ export const AUDIT_ACTION_LITERALS = [
 	action('platform_admin.waitlist_rejected'),
 	action('platform_admin.admin_added'),
 	action('platform_admin.admin_removed'),
+	// The one-shot roster bootstrap — the setup user's automatic grant and the
+	// org owner's self-claim both land here (`details.via` tells them apart).
+	action('platform_admin.bootstrap_granted'),
 	// Conversation thread lifecycle — fired by the Conversation thread
 	// module on inbound-driven reopen + human status/assignment changes +
 	// the draft-status projection. See ADR-0032.
@@ -297,7 +308,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('connected_app.secret_rotated'),
 ] as const;
 
-export type AuditActionLiteral = (typeof AUDIT_ACTION_LITERALS)[number];
+type AuditActionLiteral = (typeof AUDIT_ACTION_LITERALS)[number];
 
 /** Hosted operations safe to persist and display in plugin audit metadata. */
 export const HOSTED_PLUGIN_OPERATION_LITERALS = [
@@ -312,10 +323,10 @@ export const HOSTED_PLUGIN_OPERATION_LITERALS = [
 	'storage.get',
 	'storage.list',
 	'storage.set',
-	// The sending-domain identity half of a bundled transport (the seams plan's
-	// P3.2). Its own operation rather than `transport.send`: it is a provider call
-	// this deployment makes ABOUT a customer's domain, and recording it as a send
-	// would put identity registrations into the row that means messages we sent.
+	// The sending-domain identity half of a bundled transport. Its own operation
+	// rather than `transport.send`: it is a provider call this deployment makes
+	// ABOUT a customer's domain, and recording it as a send would put identity
+	// registrations into the row that means messages we sent.
 	'transport.domain_identity',
 	'transport.feedback',
 	'transport.send',
@@ -359,7 +370,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'connected_app',
 ] as const;
 
-export type AuditResourceLiteral = (typeof AUDIT_RESOURCE_LITERALS)[number];
+type AuditResourceLiteral = (typeof AUDIT_RESOURCE_LITERALS)[number];
 
 // ---------------------------------------------------------------------------
 // Convex validators — derived from the catalogs above. The variadic spread

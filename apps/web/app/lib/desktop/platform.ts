@@ -1,7 +1,7 @@
 /**
  * Which operating system the app is running on — spelled ONCE.
  *
- * It used to be spelled three times: `useDesktopContext` and
+ * NOT spelled three times. `useDesktopContext` and
  * `plugins/0.desktop-workspace.client.ts` both tested the DEPRECATED
  * `navigator.platform`, `pages/desktop/settings.vue` tested `navigator.userAgent`
  * with a third set of patterns, and `usePostboxComposerKeys` had a fourth for the

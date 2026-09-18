@@ -15,8 +15,15 @@ import type { OrganizationRole } from './useOrganization';
  */
 export function useOrganizationContext() {
 	const { isPending: authPending, activeOrganizationId, user } = useAuth();
-	const { organization, organizations, isLoadingMembers, currentMemberRole, setActive } =
-		useOrganization();
+	const {
+		organization,
+		organizations,
+		isLoadingMembers,
+		hasResolvedMembers,
+		activeOrganizationError,
+		currentMemberRole,
+		setActive,
+	} = useOrganization();
 
 	// Get instance settings from Convex (timezone, email theme, etc.)
 	const {
@@ -42,7 +49,18 @@ export function useOrganizationContext() {
 	const isLoading = computed(() => {
 		if (authPending.value) return true;
 		if (!activeOrganizationId.value) return false;
-		return isLoadingMembers.value;
+		// A failed active-organization request is a settled answer — no role is
+		// coming — so report loaded and let the caller act on what it has. Waiting
+		// on it instead would trade the bounce for a worse bug: every guard
+		// stalling its full timeout and every page that folds this into a loading
+		// flag spinning forever.
+		if (activeOrganizationError.value) return false;
+		// Not `isLoadingMembers`: that starts false and only turns true once the
+		// fetch begins, which waits on BetterAuth's separate organization request.
+		// Reading it directly reports "loaded" during the window where the role is
+		// simply not known yet — and a guard that asks "is this user an admin?"
+		// then gets `false` for an owner. Stay loading until the fetch has SETTLED.
+		return !hasResolvedMembers.value || isLoadingMembers.value;
 	});
 
 	const isSettingsLoading = computed(() => settingsLoading.value);

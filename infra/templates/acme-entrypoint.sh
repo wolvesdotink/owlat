@@ -17,11 +17,20 @@
 # Optional:
 #   ACME_STAGING=1       — use Let's Encrypt staging URL
 #   RENEW_INTERVAL_HOURS — default 24
+#   IMAP_RUNTIME_USER    — uid:gid that must be able to READ the published key
+#                          (default 1000:1000, the imap image's `node` user)
 # ──────────────────────────────────────────────────────────────────
 
 set -eu
 
 CERT_DIR="${TLS_CERT_DIR:-/opt/owlat/certs}"
+# lego runs as root, so a 0600 key it publishes lands as root:root — unreadable
+# by the imap container (uid 1000), which mounts mail-certs :ro and therefore
+# cannot repair it. That is a silent, permanent `EACCES … default.key` crash-loop
+# on every renewal, so every publish re-asserts ownership. Same contract as
+# docker-compose.yml's imap-cert-init; keep the default in step with
+# apps/imap/Dockerfile's build-time uid assertion.
+IMAP_RUNTIME_USER="${IMAP_RUNTIME_USER:-1000:1000}"
 LEGO_PATH="${LEGO_PATH:-/data/lego}"
 RENEW_INTERVAL_HOURS="${RENEW_INTERVAL_HOURS:-24}"
 
@@ -58,7 +67,12 @@ publish_cert() {
   # pick a specific cert by hostname.
   install -m 0644 "$cert" "$CERT_DIR/${ACME_DOMAIN}.crt"
   install -m 0600 "$key" "$CERT_DIR/${ACME_DOMAIN}.key"
-  echo "[acme] published $CERT_DIR/default.{crt,key}"
+  # Mode stays 0600 — only the OWNER changes, so the key is still readable by
+  # exactly one uid and never by group or world.
+  chown "$IMAP_RUNTIME_USER" \
+    "$CERT_DIR/default.crt" "$CERT_DIR/default.key" \
+    "$CERT_DIR/${ACME_DOMAIN}.crt" "$CERT_DIR/${ACME_DOMAIN}.key"
+  echo "[acme] published $CERT_DIR/default.{crt,key} owned by $IMAP_RUNTIME_USER"
 }
 
 issue_or_renew() {

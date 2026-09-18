@@ -6,19 +6,13 @@
  * (module)** dispatches per-provider work through `providerFor(kind)` in
  * `./index.ts`; provider variation lives entirely behind this seam — with the
  * RETURN-PATH branches the lifecycle still carries of its own as the stated
- * exception (`./index.ts`'s header says what they cost a new kind). The seams
- * plan's P0.4 cleared the identity ones: both relay-identity provisioning paths
- * now walk the registry through
- * {@link SendingDomainProviderModule.ensureRelayIdentity}.
+ * exception (`./index.ts`'s header says what they cost a new kind). The identity
+ * ones are cleared: both relay-identity provisioning paths now walk the registry
+ * through {@link SendingDomainProviderModule.ensureRelayIdentity}.
  *
  * THE PRIMARY CONTRACT ONLY. The smaller "can this RELAY kind prove a domain?"
  * surface a bundled plugin transport also answers is `./relayIdentityTypes.ts`;
  * that file's header says why the two are not one type.
- *
- * PLAN NUMBERS: every D-/P-number in this file names its plan, because more
- * than one plan's numbering reaches this seam — the Mandrill provider plan's
- * for the registry and the relay seams, the seams plan's for P0.3/P0.4, and
- * the per-domain return-path work (#408) for `returnPathHost`.
  *
  * Per ADR-0018:
  * - Each adapter owns its per-provider sibling identity table
@@ -33,6 +27,10 @@
  */
 
 import type { ReferenceAlignmentArm } from '@owlat/shared/deliverabilityAlignment';
+import type {
+	DomainReceivingMode,
+	ExternalReceivingProvider,
+} from '@owlat/shared/externalReceiving';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { DnsRecords } from '../domains';
@@ -54,7 +52,7 @@ export type SesIdentity = {
 
 /**
  * A Mandrill sending-domain identity, as `senders/add-domain` /
- * `senders/check-domain` last described it (Mandrill P3.1).
+ * `senders/check-domain` last described it.
  *
  * It carries STATE rather than secrets or per-domain tokens, which is the whole
  * difference from SES: Mandrill signs every account's mail with one shared,
@@ -96,11 +94,11 @@ export type MandrillIdentity = {
 export type RelayIdentityStatus = 'unverified' | 'pending_dns' | 'verified' | 'failed';
 
 /**
- * The REGISTRY of sending-domain provider kinds, keyed by kind (Mandrill D7). One line
- * per provider, mirroring `SEND_PROVIDERS` in `lib/sendProviders/index.ts`:
- * the kind union, the per-kind identity payload and the module registry's
- * completeness guard all derive from this single map, so adding a provider is
- * one entry here plus one entry in `SENDING_DOMAIN_PROVIDERS`.
+ * The REGISTRY of sending-domain provider kinds, keyed by kind. One line per provider,
+ * mirroring `SEND_PROVIDERS` in `lib/sendProviders/index.ts`: the kind union, the
+ * per-kind identity payload and the module registry's completeness guard all derive
+ * from this single map, so adding a provider is one entry here plus one entry in
+ * `SENDING_DOMAIN_PROVIDERS`.
  *
  * It replaced a hand-written `'mta' | 'ses'` union beside a
  * `K extends 'mta' ? … : K extends 'ses' ? … : never` conditional ladder —
@@ -140,15 +138,15 @@ export type ProviderCheckResult = {
  * therefore about WHO DECIDES the projection, not about a pill on a screen: a
  * developer adding provider #4 should implement it to keep the provider's own
  * verdict in the domain's record, and should not expect it to appear anywhere
- * until the domain-records UI grows a consumer (P1.2 territory).
+ * until the domain-records UI grows a consumer.
  *
  * The key is SES-named because the PERSISTED FIELD is (rows written since long
  * before this seam existed). That is schema vocabulary, not an identity check:
- * per D10 persisted shapes stay additive, so a second provider that wants a
- * status of its own adds its OWN optional key here and fills it from its OWN
- * adapter. What the seam removes is the `providerType === 'ses'` branch that
- * used to decide, in `domains/dnsVerification.ts`, which provider was allowed
- * to have a verdict worth recording.
+ * persisted shapes stay additive, so a second provider that wants a status of
+ * its own adds its OWN optional key here and fills it from its OWN adapter.
+ * What the seam removes is the `providerType === 'ses'` branch that used to
+ * decide, in `domains/dnsVerification.ts`, which provider was allowed to have
+ * a verdict worth recording.
  */
 export type ProviderVerificationStatusFields = {
 	/** SES's `verificationStatus`, spelled as the persisted field has always held it. */
@@ -169,20 +167,39 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * and translates to a `→ failed` lifecycle transition.
 	 *
 	 * `options.returnPathHost` is the domain's per-domain VERP return-path host
-	 * (the return-path work's D1/D2 — #408). When set, the MTA adapter reflects
-	 * it to the MTA and builds the
+	 * (#408). When set, the MTA adapter reflects it to the MTA and builds the
 	 * `mailFrom` SPF record on that host; when absent it falls back to the
 	 * deployment-global `MTA_RETURN_PATH_DOMAIN` env (historic behavior). SES has
 	 * no return-path concept and ignores it.
 	 *
-	 * `options.organizationId` is the owning tenant for the domain's DKIM key (H2):
+	 * `options.organizationId` is the owning tenant for the domain's DKIM key:
 	 * the MTA adapter binds the key to it so it is born owned and can never sign
 	 * for another org. The generic register action resolves it from the
 	 * deployment's singleton org. Providers with no per-domain key (SES) ignore it.
+	 *
+	 * `options.receiving` is the domain's inbound-mail arrangement, read off the
+	 * row by the register action. ABSENT MEANS `'owlat'` — the historic behaviour
+	 * — so a provider that ignores it generates exactly what it generated before
+	 * the send-only mode existed, and ignoring it is the correct default for a
+	 * new adapter.
+	 *
+	 * An adapter uses it for ONE thing: dropping records that describe INBOUND
+	 * delivery, which for an external-receiving domain terminates at Google or
+	 * Microsoft rather than at us (the MTA adapter's `_smtp._tls` is the only
+	 * such record today). It must NOT try to fold the receiver's SPF include into
+	 * its apex record — the register action does that for every provider at the
+	 * one seam every registration passes through, precisely so a new adapter
+	 * cannot forget and hand a Google Workspace customer a record that breaks
+	 * their SPF. DKIM, DMARC and MAIL FROM are untouched in both modes — all
+	 * three are purely about the mail WE send.
 	 */
 	registerDomain(
 		domain: string,
-		options?: { returnPathHost?: string; organizationId?: string }
+		options?: {
+			returnPathHost?: string;
+			organizationId?: string;
+			receiving?: { mode: DomainReceivingMode; provider?: ExternalReceivingProvider };
+		}
 	): Promise<{
 		dnsRecords: DnsRecords;
 		identity: ProviderIdentityFor<K>;
@@ -244,10 +261,10 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	// work, and an arm without a proof describes DNS the router may not use.
 
 	/**
-	 * Does this provider hold a fresh, complete proof that `domainName` may be
-	 * RELAYED through it right now? The read half of the deliverability
-	 * fallback (Mandrill D6), called by `lib/sendProviders/relayDomainVerification.ts`
-	 * once the configured relay kind has been resolved to its provider.
+	 * Does this provider hold a fresh, complete proof that `domainName` may be RELAYED
+	 * through it right now? The read half of the deliverability fallback, called by
+	 * `lib/sendProviders/relayDomainVerification.ts` once the configured relay kind
+	 * has been resolved to its provider.
 	 *
 	 * OPTIONAL, and absence is a real answer rather than a gap: a kind with no
 	 * implementation keeps the seam's honest "unverifiable" posture, which is
@@ -301,7 +318,7 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * `providerRoutes.provisionDeliverabilityRelayBatch` walks them and asks
 	 * this of the kind the route named.
 	 *
-	 * BOTH HALVES ASK THIS METHOD (the seams plan's P0.4). Domains verified after
+	 * BOTH HALVES ASK THIS METHOD. Domains verified after
 	 * the operator switched the fallback on get theirs from the lifecycle's
 	 * `provision_relay_identity_if_enabled` effect, which walks the same registry
 	 * with the same relay kinds — so the two paths together cover every domain
@@ -318,7 +335,7 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * own the "already have one?" check, because where that identity lives is
 	 * per-provider knowledge — the frozen `sendingDomainSesIdentities` sibling
 	 * for SES, the generic `sendingDomainRelayIdentities` row for every kind
-	 * after it (Mandrill D7).
+	 * after it.
 	 *
 	 * Takes the whole `domains` DOC, not an id: the caller is a paginated drain
 	 * that already holds the row (it filters on `providerType` a line earlier),

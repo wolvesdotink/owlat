@@ -1,7 +1,7 @@
 /**
  * THE RAMP'S OWN SIGNAL SOURCES — the five measurements gate evaluation folds,
  * declared once as data instead of being named module by module inside each
- * evaluator (seams plan D9).
+ * evaluator.
  *
  * WHAT MOVED HERE AND WHAT DID NOT. The gates themselves did not move: the
  * comparisons still live in `ramp/gates.ts`, `ramp/seedGate.ts` and
@@ -13,7 +13,7 @@
  * be remembered in both, and neither sequence said what an absent one meant.
  *
  * ORDER IS PART OF THE DECLARATION. `aggregateRampGates` names the FIRST result
- * at the winning rank, and the sources are folded in the plan's gate numbering
+ * at the winning rank, and the sources are folded in gate-number order
  * (1 hard bounce, 2 deferral, 3 complaint, 4 engagement ratio, 5 seed
  * placement), so the earliest, most fundamental problem is the one reported.
  * That order is `RAMP_GATE_SIGNAL_KEYS`' own — the KEYS come from the shared
@@ -28,7 +28,7 @@
  * direction, so a `RampGateId` nothing measures does not compile either.
  *
  * TWO ARMS, ONE LIST. Each source declares an evaluator per arm — the concurrent
- * two-armed one and the standalone trailing-baseline twin (plan D3). That is the
+ * two-armed one and the standalone trailing-baseline twin. That is the
  * one place the two implementations differ: WHICH second series a measurement
  * compares against, never which measurements exist or how their answers fold.
  * A source with no evaluator for an arm is unrepresentable, so the standalone
@@ -40,7 +40,7 @@
  * that correspondence — the ramp measures exactly the signals the routing
  * vocabulary declares — was until now nowhere written down. `gate` carries the
  * ramp's own id alongside it, because that is what the audit row and the
- * operator notification key off (plan D12).
+ * operator notification key off.
  */
 
 import { evaluateComplaintGate, evaluateDeferralGate, evaluateHardBounceGate } from '../ramp/gates';
@@ -67,7 +67,7 @@ import {
 	type SignalSourceKind,
 } from './types';
 
-/** Which evaluator arm is asking — the two implementations of plan D3. */
+/** Which evaluator arm is asking — the two gate implementations. */
 export type RampArm = RampGateEvaluator['kind'];
 
 /**
@@ -77,10 +77,10 @@ export type RampArm = RampGateEvaluator['kind'];
  * family in `./types` stops compiling here instead of forking the ramp's union
  * from the registry's.
  */
-export type RampMeasurementKind = Exclude<SignalSourceKind, 'advisory'>;
+type RampMeasurementKind = Exclude<SignalSourceKind, 'advisory'>;
 
 /** One arm's question about one window. */
-export interface RampGateSignalInput {
+interface RampGateSignalInput {
 	readonly arm: RampArm;
 	readonly input: RampGateEvaluationInput;
 }
@@ -106,15 +106,13 @@ interface RampGateSignalSpecBase<Gate extends RampGateId> {
  * A SOURCE THAT DOES NOT ANSWER IS A SOURCE THAT DECLARED `omit`, and the
  * compiler is what says so.
  *
- * `null` from an evaluator means THIS WINDOW MEASURED NOTHING: `collect()` hands
- * back the declared absence and `collectRampGateSignals` folds nothing at all.
- * For a source that declared `hold` that would be a silent contradiction — the
- * hold exists precisely so the aggregator has a result to weigh above `pass`
- * (plan D10), and a gate that vanished instead would let a cell's clean streak
- * grow on a window the gate never graded. So the spec is DISCRIMINATED on the
- * declared behaviour: only the `omit` arm may return `null`, and a `hold` source
- * whose evaluator learns to return `null` stops compiling here rather than
- * quietly disappearing from the fold.
+ * `null` from an evaluator means THIS WINDOW MEASURED NOTHING: `collect()` hands back the declared
+ * absence and `collectRampGateSignals` folds nothing at all. For a source that declared `hold` that
+ * would be a silent contradiction — the hold exists precisely so the aggregator has a result to
+ * weigh above `pass`, and a gate that vanished instead would let a cell's clean streak grow on a
+ * window the gate never graded. So the spec is DISCRIMINATED on the declared behaviour: only the
+ * `omit` arm may return `null`, and a `hold` source whose evaluator learns to return `null` stops
+ * compiling here rather than quietly disappearing from the fold.
  */
 type RampGateSignalSpec<Gate extends RampGateId = RampGateId> = RampGateSignalSpecBase<Gate> &
 	(
@@ -150,7 +148,7 @@ function rampGateSignalSource<Gate extends RampGateId>(
 /**
  * The three counter-driven gates hold rather than omit: they always answer, and
  * "no evidence this window" is that answer's `insufficient_data`, which the
- * aggregator weighs above `pass` so the ramp never advances on nothing (D10).
+ * aggregator weighs above `pass` so the ramp never advances on nothing.
  */
 const COUNTER_ABSENCE = (measurement: string): Extract<SignalAbsence, { behaviour: 'hold' }> => ({
 	behaviour: 'hold',
@@ -208,7 +206,7 @@ export const RAMP_GATE_SIGNALS = {
 	 * the input, so absent means "not measured this window" and contributes
 	 * NOTHING — deliberately not a hold. Holding here would freeze every cell that
 	 * has not yet accumulated its calibration sends, turning an absent weak signal
-	 * into a blocker, which is the one thing plan D2 forbids it from being.
+	 * into a blocker, which is the one thing it must never be.
 	 *
 	 * The standalone arm RE-GRADES the pre-computed result to the weak trailing
 	 * signal, so the concurrent ratio's high-confidence, increase-justifying
@@ -273,7 +271,7 @@ type AssertEveryRampGateIsFolded<_T extends never> = true;
 export type _EveryRampGateIsFolded = AssertEveryRampGateIsFolded<UnfoldedRampGate>;
 
 /**
- * The five measurements, in the plan's gate numbering. ORDER IS CONTRACT, and it
+ * The five measurements, in gate-number order. ORDER IS CONTRACT, and it
  * is `RAMP_GATE_SIGNAL_KEYS`' order (declared in `./types`) rather than a second
  * hand-written sequence: the aggregator names the FIRST result at the winning
  * rank, so re-ordering that array — and only that array — re-orders which breach

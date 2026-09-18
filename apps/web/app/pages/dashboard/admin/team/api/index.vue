@@ -259,10 +259,16 @@ const activeKeysCount = computed(() => {
 				</h1>
 				<p class="mt-1 text-text-secondary">{{ t('dashboard.admin.team.api.index.subtitle') }}</p>
 			</div>
-			<UiButton v-if="canManage" class="gap-2" @click="openCreateModal">
-				<Icon name="lucide:plus" class="w-4 h-4" />
-				{{ t('dashboard.admin.team.api.index.createKey') }}
-			</UiButton>
+			<!-- Same data-testid UiPageHeader gives its actions slot: this page
+			     hand-rolls its header, and the empty state below offers a button
+			     with the identical label, so the pair is only tellable apart by
+			     region. -->
+			<div data-testid="page-header-actions">
+				<UiButton v-if="canManage" class="gap-2" @click="openCreateModal">
+					<Icon name="lucide:plus" class="w-4 h-4" />
+					{{ t('dashboard.admin.team.api.index.createKey') }}
+				</UiButton>
+			</div>
 		</div>
 
 		<!-- Info Box -->

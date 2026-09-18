@@ -1,8 +1,5 @@
-import {
-	composeArtifactUrls,
-	parseSha256Manifest,
-	verifyComposeTemplate,
-} from '@owlat/shared/composeVerify';
+import { parseSha256Manifest, verifyComposeTemplate } from '@owlat/shared/composeVerify';
+import { composeArtifactUrls } from '@owlat/shared/releaseArtifacts';
 
 /**
  * Download the pinned compose template for `targetVersion` from GitHub Releases

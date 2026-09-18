@@ -1,6 +1,6 @@
 /**
  * THE OPERATOR'S HAND ON THE RAMP — pure, and applied AFTER the controller has
- * decided (plan D12, D15, P3-6).
+ * decided.
  *
  * WHY THIS IS NOT A RUNG. The controller's precedence ladder encodes what the
  * EVIDENCE permits; an operator pause or pin encodes what a HUMAN currently
@@ -119,7 +119,7 @@ export function applyRampCellControl(
 }
 
 /**
- * THE SAME HAND, ON THE SECOND DIAL (plan D3, P3-6).
+ * THE SAME HAND, ON THE SECOND DIAL.
  *
  * WHY IT EXISTS. `setCellPause` succeeds on any managed cell, but the share
  * override above only ever reaches the SHARE. On a pace-actuated cell — a

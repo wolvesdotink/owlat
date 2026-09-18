@@ -41,7 +41,7 @@ type Ctx = MutationCtx | QueryCtx;
  * The first two are reassurance ("nothing is capping this send"); the rest are
  * genuine measurement faults, where the honest UI is silence.
  */
-export type SendingReadinessUncappedReason = Extract<
+type SendingReadinessUncappedReason = Extract<
 	CapacityUnknownReason,
 	'warmup_overflow_absorbs' | 'not_own_mta' | 'dispatch_unknown' | 'no_projection'
 >;

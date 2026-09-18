@@ -32,7 +32,7 @@ import type { Id } from '../_generated/dataModel';
  * The durable reference this dispatch is bound to.
  *
  * `campaign` / `transactional` are countable Sends with a full lifecycle.
- * `seedProbe` is a deliverability shadow copy (D18): durable (its probe-ledger
+ * `seedProbe` is a deliverability shadow copy: durable (its probe-ledger
  * row), org-scoped and unique, but deliberately NOT a Send — no `emailSends`
  * row, no completion handler, no stat shard, no reputation event. It is
  * accepted here so the probe travels the IDENTICAL transport as the mail it
@@ -73,7 +73,7 @@ interface GovernedDispatchRequest {
  * than a private twin is what makes the worker's `returns` gate, this
  * function's return, and the completion callback's switch the same five cases.
  */
-export type GovernedDispatchResult = Exclude<SendWorkerOutcome, { kind: 'suppressed' }>;
+type GovernedDispatchResult = Exclude<SendWorkerOutcome, { kind: 'suppressed' }>;
 
 function currentRetryState(
 	retryState: WorkerRetryState | undefined,
@@ -218,7 +218,7 @@ export async function dispatchGovernedEmail(
 	}
 
 	const { providerKind, route, routingLease, relayReturnPathHost } = routing;
-	// A CAPABILITY, NOT A KIND (plan D2). Both facts below are declared by the
+	// A CAPABILITY, NOT A KIND. Both facts below are declared by the
 	// transport's catalog entry, so a new provider kind never edits this file:
 	//   · does its provider message id exist before the send (ours, not theirs)?
 	//   · does a successful dispatch mean CUSTODY rather than delivery?
@@ -235,7 +235,7 @@ export async function dispatchGovernedEmail(
 	// races the send response still be attributed to this Send.
 	//
 	// A seed probe has no Send row to bind a provider identity to — binding is
-	// the Send lifecycle's job, and a probe deliberately has no lifecycle (D18).
+	// the Send lifecycle's job, and a probe deliberately has no lifecycle.
 	if (providerMessageIdIsPreassigned && request.sendRef.kind !== 'seedProbe') {
 		const binding = await ctx.runMutation(internal.delivery.sendLifecycle.bindMtaProviderIdentity, {
 			send: request.sendRef,
@@ -329,7 +329,7 @@ export async function dispatchGovernedEmail(
 		// RE-ASKABLE, BY DECLARATION. A transport that takes custody under an
 		// idempotency key we minted answers the same question twice without
 		// mailing anyone twice, so the ambiguity is resolved by replaying the
-		// attempt rather than by guessing (plan D4).
+		// attempt rather than by guessing.
 		if (transportTakesCustody) {
 			return {
 				kind: 'acceptanceUnknown',
@@ -352,8 +352,9 @@ export async function dispatchGovernedEmail(
 		//
 		// NOT A DEFERRAL, and deliberately not routed through one. An ambiguous
 		// timeout is our own request outcome going missing, not a receiver holding
-		// the message: borrowing the deferral shape would re-enqueue the send (D4
-		// forbids it) and would put a non-observation into
+		// the message: borrowing the deferral shape would re-enqueue the send — a
+		// blind retry on an ambiguous timeout is exactly what we never do — and
+		// would put a non-observation into
 		// `transportOutcomes.deferred`, whose two writers already measure from
 		// different points on the delivery path (see the ruler-asymmetry note in
 		// `delivery/deferralOutcome.ts`). Gate 2's numerator stays untouched here.

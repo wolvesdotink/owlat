@@ -3,7 +3,7 @@ import { isSendProviderKind, type SendProviderKind } from '../lib/sendProviders/
 
 export const PROVIDER_FEEDBACK_STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1_000;
 
-export type ProviderFeedbackSetupStatus =
+type ProviderFeedbackSetupStatus =
 	| 'configured'
 	| 'missing_configuration'
 	| 'awaiting_event'

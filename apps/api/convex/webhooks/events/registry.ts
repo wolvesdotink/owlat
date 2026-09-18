@@ -35,8 +35,7 @@ export const WEBHOOK_EVENT_REGISTRY = {
 
 export type WebhookEventLiteral = keyof typeof WEBHOOK_EVENT_REGISTRY;
 
-export type WebhookEventModuleFor<L extends WebhookEventLiteral> =
-	(typeof WEBHOOK_EVENT_REGISTRY)[L];
+type WebhookEventModuleFor<L extends WebhookEventLiteral> = (typeof WEBHOOK_EVENT_REGISTRY)[L];
 
 export type WebhookEventInputFor<L extends WebhookEventLiteral> = Parameters<
 	WebhookEventModuleFor<L>['build']

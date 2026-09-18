@@ -4,7 +4,7 @@
  * Two packages act on the same three numbers and must never drift apart:
  *  - the PRODUCER, `apps/api/convex/analytics/engagementScore.ts`, which
  *    calibrates its 0-100 curve so realistic timelines actually populate all
- *    four bands (deliverability plan P0-2);
+ *    four bands;
  *  - the CONSUMER, `apps/mta/src/intelligence/engagementPriority.ts`, which
  *    maps a score onto a GroupMQ priority level.
  *

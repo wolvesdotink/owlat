@@ -16,7 +16,7 @@
  *   - `remove`           — schedules the **Organization deletion**
  *                         walker; owner-only.
  *   - `createInternal`   — idempotent bootstrap insert (called by
- *                         `seedAdmin.ts`).
+ *                         `seedAdminHttp.ts`).
  *
  * See docs/adr/0026-organization-settings-modules.md.
  */
@@ -57,17 +57,17 @@ export const update = authedMutation({
 		// MTA-STS publishing posture for inbound mail (RFC 8461). Defaults to
 		// `none` (nothing published) — step through `testing` before `enforce`.
 		mtaStsMode: v.optional(mtaStsModeValidator),
-		// Trusted ARC forwarders (Sealed Mail A5) — domains whose validated ARC seal
+		// Trusted ARC forwarders — domains whose validated ARC seal
 		// rescues an inbound DMARC fail. Unset keeps the seeded default list; an
 		// explicit `[]` turns the override off.
 		trustedArcForwarders: v.optional(v.array(v.string())),
-		// Sealed Mail (E3) org sealing policy (locked decision D2): `auto` / `ask` /
+		// Sealed Mail org sealing policy: `auto` / `ask` /
 		// `off`. Unset ⇒ `auto` at resolution time.
 		sealPolicy: v.optional(sealPolicyValidator),
-		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH (plan P3-2). True pins every ramp
+		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH. True pins every ramp
 		// cell at its current share: the hourly controller still evaluates and
-		// audits, but writes no share. It is the plan's named mitigation for
-		// controller complexity, so an owner/admin must be able to pull it from the
+		// audits, but writes no share. It is the named mitigation for controller
+		// complexity, so an owner/admin must be able to pull it from the
 		// product — not only from an internal mutation.
 		isRampControllerPaused: v.optional(v.boolean()),
 		// What the relay charges, in minor units per thousand messages, with its
@@ -238,7 +238,7 @@ export const createInternal = internalMutation({
  * unset, stamps it — creating the `instanceSettings` singleton (with the seed's
  * settings columns) when none exists yet. Returns `{ claimed }`.
  *
- * `seedAdmin.ts` calls this BEFORE creating any user. Because the check and the
+ * `seedAdminHttp.ts` calls this BEFORE creating any user. Because the check and the
  * write happen in one Convex transaction (OCC-serialized on the singleton), two
  * concurrent `/seed/admin` requests can no longer both pass a separate
  * check-then-write and both seed: exactly one wins the claim, the loser reads the
@@ -278,7 +278,7 @@ export const claimAdminSeedInternal = internalMutation({
 
 /**
  * Whether the durable admin-seed latch has been stamped. Read by
- * `seedAdmin.ts`'s one-shot gate alongside the "any user exists?" probe: the
+ * `seedAdminHttp.ts`'s one-shot gate alongside the "any user exists?" probe: the
  * probe re-arms if every user is deleted, this latch does not.
  */
 export const hasCompletedAdminSeedInternal = internalQuery({

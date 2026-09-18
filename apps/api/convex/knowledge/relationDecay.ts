@@ -29,7 +29,7 @@ import { internal } from '../_generated/api';
  * for a real connection to be reinforced (which upgrades its tag out of the
  * reaping set), short enough that stale guesses don't accumulate.
  */
-export const AMBIGUOUS_EDGE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AMBIGUOUS_EDGE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Edges scanned per reaping page — bounds the per-mutation transaction. */
 const REAP_PAGE = 200;

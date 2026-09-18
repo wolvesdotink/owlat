@@ -61,12 +61,12 @@ type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : fa
 const _assert: AssertEqual<keyof typeof ACTIVITY_MODULES, ContactActivityType> = true;
 void _assert;
 
-export type ActivityModuleMap = typeof ACTIVITY_MODULES;
+type ActivityModuleMap = typeof ACTIVITY_MODULES;
 
 /**
  * Activity literals that trigger the single post-insert contact patch: the
  * shipped `hasOpened`/`hasClicked` booleans plus the engagement-score
- * accumulator (deliverability plan P0-2). Every other literal skips the contact
+ * accumulator. Every other literal skips the contact
  * read entirely, exactly as before.
  *
  * DERIVED, never re-listed: the set comes straight from the scoring adapter's
@@ -133,10 +133,9 @@ export async function recordContactActivity<L extends ContactActivityType>(
 	// table. The `hasOpened`/`hasClicked` half is monotonic (open/click never
 	// un-happens), so it only ever sets true, and only when not already set.
 	//
-	// The same contact read also feeds the engagement score's INCREMENTAL update
-	// (deliverability plan P0-2): folding the new activity into the cached decayed
-	// accumulator is O(1) — no activity-timeline read on this path — and both
-	// denormalizations land in ONE patch.
+	// The same contact read also feeds the engagement score's INCREMENTAL update: folding the new
+	// activity into the cached decayed accumulator is O(1) — no activity-timeline read on this path —
+	// and both denormalizations land in ONE patch.
 	//
 	// WRITE COST, STATED PLAINLY. This used to be ~0 contact writes per open
 	// after the first (the flag was already set, so nothing was patched). It is

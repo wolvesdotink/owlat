@@ -26,7 +26,7 @@
  * breakpoint. `ephemeral` is Anthropic's short-lived (5-minute) cache tier —
  * the right fit for a prefix reused across a burst of inbound drafts.
  */
-export type CacheBreakpointProviderOptions = {
+type CacheBreakpointProviderOptions = {
 	anthropic: { cacheControl: { type: 'ephemeral' } };
 };
 

@@ -29,7 +29,7 @@ export interface BusyInterval {
 }
 
 /** An open meeting slot the owner could offer, epoch-ms half-open [start, end). */
-export interface OpenSlot {
+interface OpenSlot {
 	start: number;
 	end: number;
 }
@@ -249,7 +249,7 @@ export function formatOpenSlots(slots: OpenSlot[], timeZone: string): string[] {
 }
 
 /** Injectable seams so the unit test can drive the fetch without a network. */
-export interface AvailabilityDeps {
+interface AvailabilityDeps {
 	fetchImpl?: typeof fetch;
 	now?: number;
 	icsUrl?: string;

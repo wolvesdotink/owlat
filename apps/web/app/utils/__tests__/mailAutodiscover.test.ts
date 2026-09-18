@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
 	MAIL_PROVIDERS,
+	providerForImapHost,
 	autodiscover,
 	domainOfEmail,
 	presetForEmail,
@@ -245,6 +246,28 @@ describe('MAIL_PROVIDERS (import-wizard provider list)', () => {
 		expect(providerById('gmail')?.appPassword?.provider).toBe('Gmail');
 		expect(providerById('fastmail')?.appPassword?.provider).toBe('Fastmail');
 		expect(providerById('imap')?.appPassword).toBeNull();
+	});
+
+	it('offers Google sign-in for Gmail only, and keeps its app-password fallback', () => {
+		// The connect form reads this to decide whether to offer "Continue with
+		// Google" at all; every other provider must stay on the password path, and
+		// Gmail keeps its app-password guidance for instances with no OAuth client.
+		expect(providerById('gmail')?.oauth).toEqual({ provider: 'google' });
+		expect(providerById('gmail')?.appPassword?.provider).toBe('Gmail');
+		for (const p of MAIL_PROVIDERS) {
+			if (p.id === 'gmail') continue;
+			expect(p.oauth, p.id).toBeNull();
+		}
+	});
+
+	it('matches a connected account back to its provider by IMAP host', () => {
+		// How an EDIT/RECONNECT form knows a stored account is Gmail: the account
+		// row remembers servers, not which picker card created it.
+		expect(providerForImapHost('imap.gmail.com').id).toBe('gmail');
+		expect(providerForImapHost('IMAP.GMAIL.COM').id).toBe('gmail');
+		expect(providerForImapHost('imap.fastmail.com').id).toBe('fastmail');
+		expect(providerForImapHost('mail.acme.test').id).toBe('imap');
+		expect(providerForImapHost(null).id).toBe('imap');
 	});
 
 	it('returns undefined for an unknown provider id', () => {

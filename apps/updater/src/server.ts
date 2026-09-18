@@ -1,15 +1,19 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
+import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
 import {
 	applyEnvUpdates,
 	isRateLimited,
 	isValidIPv4,
+	parseReleaseVersionFromTemplate,
 	validateComposeTemplate,
 } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
 import { handleApplyProfiles } from './applyProfiles.js';
+import { handlePortChecks } from './portChecks.js';
 import { handleProfileState } from './profileState.js';
 
 const PORT = parseInt(process.env['PORT'] || '3200', 10);
@@ -20,6 +24,43 @@ const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
 /** Rewrite a `.env` file's content line-by-line (preserves comments + ordering). */
 function rewriteEnvLines(content: string, transform: (line: string) => string): string {
 	return content.split('\n').map(transform).join('\n');
+}
+
+/**
+ * Move `.env`'s `OWLAT_VERSION` pin to the release we are applying.
+ *
+ * `.env` is what compose interpolates, so this one line is the CONFIGURED
+ * version of the whole deployment: the web container reports it as the running
+ * version (Settings → System & Updates, and the `versionFrom` of the next
+ * update), `owlat doctor` and /health diff it against the running containers to
+ * decide whether anything still needs recreating, and the locally built
+ * sidecars take their image tag from it. Nothing else in the update path writes
+ * it — so while this was missing, a SUCCESSFUL update left the dashboard
+ * insisting the old version was still installed, with the same update still
+ * "available", and /health reporting permanent version drift.
+ *
+ * Called after the compose file is promoted and before `up -d`, so the
+ * recreated containers are the ones that pick the new value up. A single
+ * allowlisted key, appended when absent, through the same hardened rewriter the
+ * secret rotation uses.
+ */
+async function pinConfiguredVersion(
+	version: string
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+	const envFile = join(OWLAT_DIR, '.env');
+	try {
+		const content = await readFile(envFile, 'utf-8');
+		const rewrite = applyEnvUpdates(content, { OWLAT_VERSION: version }, ['OWLAT_VERSION'], {
+			appendMissing: true,
+		});
+		if (!rewrite.ok) {
+			return { ok: false, stdout: '', stderr: rewrite.reason };
+		}
+		await writeFile(envFile, rewrite.content, 'utf-8');
+		return { ok: true, stdout: `OWLAT_VERSION pinned to ${version}`, stderr: '' };
+	} catch (err) {
+		return { ok: false, stdout: '', stderr: `Cannot update .env: ${errorMessage(err)}` };
+	}
 }
 
 // ── Endpoint handlers ──
@@ -127,9 +168,19 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 				steps,
 			});
 		}
+
+		// Step 5: Move the configured version with the compose file it belongs
+		// to. Not fatal on failure: the promoted template pins every image by
+		// digest, so `up -d` still deploys the right bytes — the cost is a
+		// dashboard that misreports the installed version, which the recorded
+		// step makes visible instead of silent.
+		const version = parseReleaseVersionFromTemplate(composeTemplate);
+		if (version) {
+			steps.push({ step: 'pin-version', ...(await pinConfiguredVersion(version)) });
+		}
 	}
 
-	// Step 5: Apply — recreate changed containers now that the schema is live.
+	// Step 6: Apply — recreate changed containers now that the schema is live.
 	// Runs against the promoted docker-compose.yml (+ any override file and
 	// COMPOSE_PROFILES from .env, so profile-gated feature services update too).
 	const up = exec('docker compose up -d --remove-orphans', OWLAT_DIR);
@@ -154,10 +205,27 @@ function handleHealth(req: IncomingMessage, res: ServerResponse) {
 	// Get running container info
 	const { containers, raw } = composePsServices();
 
+	// `version` below is this container's baked-in OWLAT_VERSION: compose
+	// interpolated it when the updater container was CREATED, so it reports what
+	// is RUNNING. The CONFIGURED version lives in `.env` and is read here, per
+	// request, because the two diverge exactly when nobody recreated the
+	// containers — and without both values in the payload no caller can tell.
+	let configuredVersion: string | undefined;
+	try {
+		configuredVersion = parseConfiguredVersionFromEnv(
+			readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')
+		);
+	} catch {
+		// An unreadable .env is reported by the other endpoints; /health must
+		// still answer with the container facts it does have.
+	}
+
 	json(res, 200, {
 		status: 'ok',
 		timestamp: Date.now(),
 		version: process.env['OWLAT_VERSION'] || 'dev',
+		configuredVersion: configuredVersion ?? null,
+		versionDrift: configuredVersion ? hasVersionDrift(containers, configuredVersion) : null,
 		gitSha: process.env['OWLAT_GIT_SHA'] || 'unknown',
 		buildDate: process.env['OWLAT_BUILD_DATE'] || 'unknown',
 		containers: containers.length > 0 ? containers : raw,
@@ -390,6 +458,8 @@ export function buildRequestListener() {
 			await handleRotateEnv(req, res);
 		} else if (req.method === 'POST' && url.pathname === '/apply-profiles') {
 			await handleApplyProfiles(req, res);
+		} else if (req.method === 'POST' && url.pathname === '/port-checks') {
+			await handlePortChecks(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/profile-state') {
 			handleProfileState(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/health') {

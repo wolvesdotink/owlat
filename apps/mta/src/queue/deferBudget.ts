@@ -1,0 +1,103 @@
+/**
+ * How much queue a single message is allowed to mint.
+ *
+ * A defer never consumes a delivery attempt — the handler re-enqueues a
+ * successor with the computed delay and completes — so `maxAttempts` does not
+ * bound a retry ladder. The only bound is the max message age, which stops the
+ * ladder in TIME but says nothing about how many rungs it may take to get
+ * there. When something made the ladder advance far faster than its delays, a
+ * single "Owlat delivery test" minted six million queue entries and 3.9 GB of
+ * Redis before the kernel OOM-killed it.
+ *
+ * So bound the ladder in COUNT as well. The budget is keyed by messageId
+ * rather than by defer chain deliberately: a message can have several roots —
+ * every governed `/send` carries its own `workAttemptId`, which becomes the
+ * job id and seeds an independent chain — and a per-chain cap would let N
+ * roots mint N caps' worth between them. One counter per message sees all of
+ * them.
+ */
+
+import type Redis from 'ioredis';
+import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
+
+/**
+ * The defer interval the cap is SIZED for. A policy floor, not an observation:
+ * the shortest defer this MTA actually issues is 5s, flat and repeatable —
+ * `dispatch/phases/acquireSlot.ts` returns it every time the per-IP-per-domain
+ * window is full and keeps returning it for as long as the domain stays
+ * saturated. Measured against THAT floor the cap below is about eight hours of
+ * unbroken starvation, not four days.
+ *
+ * Sizing it off 5s instead would allow ~69,000 successors per message: a
+ * twelvefold weaker bound on precisely the failure this guard was written for.
+ * A minute is chosen because eight hours of one message losing every slot is
+ * not a retry pattern. The checked-in pacing profiles floor at 2-5 messages
+ * per minute (`deliverabilityPolicy.ts`), so a starved message gets its slot
+ * within ~30s; an operator who overrides a profile below roughly one per
+ * minute moves into the range where an honest ladder could reach the cap and
+ * soft-bounce before the max-age deadline. That is the trade this number
+ * encodes, and the reason to revisit it is a lower pacing floor, not a lower
+ * individual defer.
+ */
+const SUSTAINED_DEFER_INTERVAL_MS = 60_000;
+
+/**
+ * The most successors one message may mint: as many rungs as a one-per-minute
+ * ladder could take before the message expires anyway. Reaching it means the
+ * message averaged better than a rung a minute for its entire lifetime, which
+ * is a runaway, not a retry.
+ */
+export const MAX_DEFER_SUCCESSORS_PER_MESSAGE = Math.ceil(
+	GOVERNED_MTA_MAX_MESSAGE_AGE_MS / SUSTAINED_DEFER_INTERVAL_MS
+);
+
+export function deferBudgetKey(messageId: string): string {
+	return `mta:defer-budget:${messageId}`;
+}
+
+export interface DeferBudgetClaim {
+	/** False once the message has spent its budget: mint nothing further. */
+	granted: boolean;
+	/**
+	 * Successors this message has asked for, including this one, and the number
+	 * the runaway give-up reports to the operator. Stops one past the cap: see
+	 * `claimDeferSuccessor`.
+	 */
+	spent: number;
+}
+
+/**
+ * Count one successor against the message's budget.
+ *
+ * INCR and PEXPIRE go in one EVAL so the counter can never outlive its refresh
+ * — a crash between two commands would otherwise strand an immortal key, which
+ * is the class of bug this whole guard exists to prevent. EVAL sends the body,
+ * so unlike EVALSHA it cannot fail against a restarted server's empty script
+ * cache; a guard that breaks when Redis restarts would be no guard at all.
+ *
+ * Counting STOPS one past the cap, because `spent` is not just a decision — it
+ * is quoted in the terminal Convex callback the give-up emits, and that outbox
+ * row is protected: a replay rebuilds the payload and it is compared
+ * byte-for-byte against the stored one. An unbounded counter made every replay
+ * of an already-refused job produce a number one higher, so the rebuilt payload
+ * never matched, the attempt threw, and the job dead-lettered on a decision
+ * that had already been taken correctly. Clamping keeps the count in the
+ * operator's message — which is where it earns its keep — and makes it a
+ * function of durable state like every other field in that payload.
+ */
+export async function claimDeferSuccessor(
+	redis: Redis,
+	messageId: string
+): Promise<DeferBudgetClaim> {
+	const spent = (await redis.eval(
+		"local n = tonumber(redis.call('GET', KEYS[1])) or 0 " +
+			"if n <= tonumber(ARGV[2]) then n = redis.call('INCR', KEYS[1]) end " +
+			"redis.call('PEXPIRE', KEYS[1], ARGV[1]) return n",
+		1,
+		deferBudgetKey(messageId),
+		String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS),
+		String(MAX_DEFER_SUCCESSORS_PER_MESSAGE)
+	)) as number;
+
+	return { granted: spent <= MAX_DEFER_SUCCESSORS_PER_MESSAGE, spent };
+}

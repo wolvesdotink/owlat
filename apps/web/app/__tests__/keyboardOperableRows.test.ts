@@ -35,6 +35,8 @@ const rowStubs = {
 	UiBadge: { template: '<span><slot /></span>' },
 	DomainsDNSRecordPanel: true,
 	DomainsReceivingDnsSection: true,
+	DomainsExternalReceivingSection: true,
+	DomainsReceivingModeSwitch: true,
 	DomainsReturnPathEditor: true,
 	DomainsStreamSubdomainPlanPanel: true,
 	DomainsYahooCflPanel: true,

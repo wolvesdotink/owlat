@@ -54,7 +54,7 @@ async function seedTrashedMailbox(
 	const mailboxId = await seedMailbox(t, {
 		userId: seed.userId ?? 'user-A',
 		...(seed.scope ? { scope: seed.scope } : {}),
-		address: `${seed.userId ?? 'user-A'}-${seed.scope ?? 'personal'}@hinterland.camp`,
+		address: `${seed.userId ?? 'user-A'}-${seed.scope ?? 'personal'}@owlat.test`,
 	});
 	await seedFolder(t, mailboxId, 'inbox');
 	await seedFolder(t, mailboxId, 'trash');

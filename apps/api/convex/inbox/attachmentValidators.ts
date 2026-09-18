@@ -15,7 +15,7 @@ import { v } from 'convex/values';
 /** One proposed file, carrying enough to render the chip AND to hand straight to
  * the composer's `mail.drafts.addAttachment` (storageId + filename + type + size)
  * when the human taps it. */
-export const attachmentCandidateValidator = v.object({
+const attachmentCandidateValidator = v.object({
 	fileId: v.id('semanticFiles'),
 	storageId: v.id('_storage'),
 	filename: v.string(),

@@ -86,8 +86,8 @@ const baseProps = {
 describe('PostboxComposerEnvelope — From picker grouping', () => {
 	it('aliases-only renders flat options (no optgroups)', () => {
 		const availableIdentities: SendAsIdentity[] = [
-			identity({ address: 'team@hinterland.camp', kind: 'own', label: 'Team' }),
-			identity({ address: 'hello@hinterland.camp', kind: 'own', label: 'Team' }),
+			identity({ address: 'team@owlat.test', kind: 'own', label: 'Team' }),
+			identity({ address: 'hello@owlat.test', kind: 'own', label: 'Team' }),
 		];
 		const wrapper = mount(PostboxComposerEnvelope, {
 			...mountOpts,
@@ -99,16 +99,16 @@ describe('PostboxComposerEnvelope — From picker grouping', () => {
 		const options = wrapper.findAll('option');
 		expect(options).toHaveLength(2);
 		expect(options.map((o) => o.attributes('value'))).toEqual([
-			'team@hinterland.camp',
-			'hello@hinterland.camp',
+			'team@owlat.test',
+			'hello@owlat.test',
 		]);
 	});
 
 	it('team + personal renders optgroups labelled by mailbox, team group first', () => {
 		const availableIdentities: SendAsIdentity[] = [
-			identity({ address: 'team@hinterland.camp', kind: 'team', label: 'Support' }),
+			identity({ address: 'team@owlat.test', kind: 'team', label: 'Support' }),
 			identity({
-				address: 'b@hinterland.camp',
+				address: 'b@owlat.test',
 				mailboxId: mb('mb-personal'),
 				kind: 'personal',
 				label: 'Bo',
@@ -123,13 +123,13 @@ describe('PostboxComposerEnvelope — From picker grouping', () => {
 		// Team group first, then the personal mailbox — server order preserved.
 		expect(groups[0]!.attributes('label')).toBe('Support');
 		expect(groups[1]!.attributes('label')).toBe('Bo');
-		expect(groups[0]!.find('option').attributes('value')).toBe('team@hinterland.camp');
-		expect(groups[1]!.find('option').attributes('value')).toBe('b@hinterland.camp');
+		expect(groups[0]!.find('option').attributes('value')).toBe('team@owlat.test');
+		expect(groups[1]!.find('option').attributes('value')).toBe('b@owlat.test');
 	});
 
 	it('a single identity hides the picker entirely', () => {
 		const availableIdentities: SendAsIdentity[] = [
-			identity({ address: 'solo@hinterland.camp', mailboxId: mb('mb-solo'), label: 'Solo' }),
+			identity({ address: 'solo@owlat.test', mailboxId: mb('mb-solo'), label: 'Solo' }),
 		];
 		const wrapper = mount(PostboxComposerEnvelope, {
 			...mountOpts,
@@ -224,7 +224,7 @@ describe('PostboxComposerEnvelope — From picker authenticity (disable-with-rea
 
 	it('a single clean identity stays quiet with no picker', () => {
 		const availableIdentities: SendAsIdentity[] = [
-			identity({ address: 'solo@hinterland.camp', mailboxId: mb('mb-solo'), label: 'Solo' }),
+			identity({ address: 'solo@owlat.test', mailboxId: mb('mb-solo'), label: 'Solo' }),
 		];
 		const wrapper = mount(PostboxComposerEnvelope, {
 			...mountOpts,
@@ -237,12 +237,12 @@ describe('PostboxComposerEnvelope — From picker authenticity (disable-with-rea
 
 	it('stays quiet (no chip) when the selected identity is verified and aligned', () => {
 		const availableIdentities: SendAsIdentity[] = [
-			identity({ address: 'team@hinterland.camp' }),
-			identity({ address: 'hello@hinterland.camp' }),
+			identity({ address: 'team@owlat.test' }),
+			identity({ address: 'hello@owlat.test' }),
 		];
 		const wrapper = mount(PostboxComposerEnvelope, {
 			...mountOpts,
-			props: { ...baseProps, fromAddress: 'team@hinterland.camp', availableIdentities },
+			props: { ...baseProps, fromAddress: 'team@owlat.test', availableIdentities },
 		});
 		expect(wrapper.text()).not.toContain('Sender verified');
 		expect(wrapper.text()).not.toContain('Sender not aligned');

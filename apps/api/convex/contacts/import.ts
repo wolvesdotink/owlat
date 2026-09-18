@@ -103,7 +103,7 @@ const doiAttestValidator = v.object({
  * Maximum rows accepted in one `importBatch` call. Previously enforced only
  * on the web UI shell (`contacts/contacts.ts:importBatch`); now uniform.
  */
-export const IMPORT_BATCH_MAX_ROWS = 500;
+const IMPORT_BATCH_MAX_ROWS = 500;
 
 const ERROR_CAP = 50;
 

@@ -379,32 +379,20 @@ function reduceInboundAccept(
 	const { route, rcptTo, attachments, headers } = attempt;
 	const effects: BounceEffect[] = [];
 
-	// Build attachment metadata with deterministic redisKeys; emit a
-	// stage_attachment effect for every attachment whose content was parsed.
-	const messageIdForKey = parsed.messageId ?? 'unknown';
-	const attachmentMeta = attachments.map((att) => {
-		if (att.contentBase64) {
-			const redisKey = `mta:inbound-att:${messageIdForKey}:${att.index}`;
-			effects.push({
-				kind: 'stage_attachment',
-				redisKey,
-				contentBase64: att.contentBase64,
-				ttlSeconds: 3600,
-			});
-			return {
-				filename: att.filename,
-				contentType: att.contentType,
-				size: att.size,
-				redisKey,
-			};
-		}
-		return {
-			filename: att.filename,
-			contentType: att.contentType,
-			size: att.size,
-			redisKey: undefined as string | undefined,
-		};
-	});
+	// Attachment METADATA only. This used to also emit one `stage_attachment`
+	// effect per attachment, copying the whole base64 body into Redis under
+	// `mta:inbound-att:<messageId>:<index>` for an hour so the payload could
+	// carry a `redisKey` pointing at it. Nothing ever fetched one: there is no
+	// MTA route that serves an attachment by key and no backend caller that
+	// asks for one, so the bytes expired unread while making inbound mail the
+	// heaviest writer against a Redis that now refuses writes at `--maxmemory`
+	// (policy `noeviction`) — a single 10 MiB message could claim 2% of the
+	// default 512 MB cap for an hour on its own.
+	const attachmentMeta = attachments.map((att) => ({
+		filename: att.filename,
+		contentType: att.contentType,
+		size: att.size,
+	}));
 
 	const referencesString = Array.isArray(parsed.references)
 		? parsed.references.join(' ')

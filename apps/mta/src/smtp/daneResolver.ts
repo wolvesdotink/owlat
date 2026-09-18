@@ -5,7 +5,7 @@
  * (DNS-over-HTTPS, RFC 8484 JSON form) resolver and returns the parsed,
  * DNSSEC-authenticated records the sender matches the MX certificate against.
  *
- * DNSSEC IS THE TRUST ANCHOR (locked decision D6). DANE is only safe when the
+ * DNSSEC IS THE TRUST ANCHOR. DANE is only safe when the
  * TLSA lookup is DNSSEC-validated: an on-path attacker who can forge DNS can
  * otherwise strip the TLSA RRset and defeat DANE. We therefore trust the
  * configured resolver's AD (Authenticated Data) bit and REQUIRE it — an answer
@@ -41,8 +41,8 @@ const DNS_RCODE_NXDOMAIN = 3;
  *  - `records`: the resolver returned an authenticated (AD=1) NOERROR answer with
  *    ≥1 parseable TLSA record — DANE is in force for this MX.
  *  - `no-tlsa`: authenticated denial of existence (NXDOMAIN, or a NOERROR answer
- *    with no usable TLSA), or an unauthenticated (AD absent/false) answer that D6
- *    tells us to ignore. DANE does not apply; the caller falls back to its
+ *    with no usable TLSA), or an unauthenticated (AD absent/false) answer we
+ *    must ignore. DANE does not apply; the caller falls back to its
  *    non-DANE policy (opportunistic / MTA-STS) — the pre-DANE behaviour.
  *  - `lookup-failed`: the lookup could NOT be completed (SERVFAIL, timeout,
  *    transport error, non-2xx HTTP, oversize/garbled body). This is NOT a denial
@@ -111,9 +111,9 @@ async function queryTlsa(resolverUrl: string, host: string): Promise<QueryOutcom
 		return { status: 'lookup-failed', reason: `DNS RCODE ${rcode}` };
 	}
 
-	// D6: without an authenticated (AD) answer the RRset is untrusted; treat it as
+	// Without an authenticated (AD) answer the RRset is untrusted; treat it as
 	// "no TLSA" (fall through) — DANE must never be driven by unauthenticated DNS.
-	// This is a deliberate, card-sanctioned fall-through, not a downgrade: an
+	// This is a deliberate fall-through, not a downgrade: an
 	// attacker cannot use it to STRIP a published TLSA (that path returns records).
 	if (body.AD !== true) {
 		logger.debug({ host }, 'DANE TLSA answer not DNSSEC-authenticated (AD absent); ignoring');

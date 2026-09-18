@@ -1,5 +1,5 @@
 /**
- * Deliverability route-state lookup (the D1 resolution seam).
+ * Deliverability route-state lookup — the one resolution seam.
  *
  * One place that knows how a `(stream, destinationProvider)` ramp cell maps
  * onto `deliverabilityRouteStates` rows, so the stream widening cannot fork
@@ -8,7 +8,7 @@
  * A cell has TWO rows, not one, and they have DIFFERENT WRITERS:
  *
  *  - the per-stream row is the ramp controller's, carrying `ownShare` (absent
- *    until P3-2 writes one);
+ *    until the controller writes one);
  *  - the stream-less row is the MTA snapshot's, carrying the infrastructure
  *    verdict (`isFallbackActive`) and its `signals`, and it is also the LEGACY
  *    shape every row written before the migration has.
@@ -87,7 +87,7 @@ export async function loadStreamlessRouteState(
  * none) lands nowhere near the assignment. Build a new object instead.
  */
 export interface RouteStateCellRows {
-	/** The ramp controller's row: the cell's share. Absent until P3-2 writes one. */
+	/** The ramp controller's row: the cell's share. Absent until it writes one. */
 	readonly perStream: Doc<'deliverabilityRouteStates'> | null;
 	/** The MTA snapshot's (and legacy) row: the infrastructure verdict + signals. */
 	readonly streamless: Doc<'deliverabilityRouteStates'> | null;
@@ -122,7 +122,7 @@ export async function loadRouteStateCell(
 }
 
 /**
- * The ramp's view of one cell: D1's resolution expression, in ONE place.
+ * The ramp's view of one cell: the share resolution expression, in ONE place.
  *
  * `ownShare ?? (isFallbackActive ? 0 : 1)` (via `resolveOwnShare`) over
  * `perStream ?? streamless` — the share convention this module documents. The
@@ -163,7 +163,7 @@ export const EMPTY_ROUTE_STATE_CELL: RouteStateCellRows = Object.freeze({
  * Providers with no row are simply absent from the map — a reader defaults them
  * to {@link EMPTY_ROUTE_STATE_CELL} rather than to a fabricated row.
  *
- * OCC FOOTPRINT (D16). This is an INDEX RANGE over the whole organization, so a
+ * OCC FOOTPRINT. This is an INDEX RANGE over the whole organization, so a
  * caller inside a mutation — the campaign warming-cap gate runs in
  * `campaigns.scheduling.schedule` — puts EVERY
  * route-state row of the organization in that mutation's read set, where the MTA

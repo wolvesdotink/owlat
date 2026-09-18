@@ -15,9 +15,10 @@ import {
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
+import { bytesToBase64 } from '../../bytes';
 
 export const EMAILIT_SEND_URL = 'https://api.emailit.com/v2/emails';
-export const EMAILIT_SEND_TIMEOUT_MS = 30_000;
+const EMAILIT_SEND_TIMEOUT_MS = 30_000;
 const EMAILIT_TIMEOUT_MESSAGE = 'Emailit API call timed out';
 
 interface EmailitErrorBody {
@@ -96,7 +97,7 @@ export const emailitSendProvider: SendProviderModule<'emailit'> = {
 							? {
 									attachments: params.attachments.map((attachment) => ({
 										filename: attachment.filename,
-										content: attachment.content.toString('base64'),
+										content: bytesToBase64(attachment.content),
 										content_type: attachment.contentType ?? 'application/octet-stream',
 										encoding: 'base64',
 									})),

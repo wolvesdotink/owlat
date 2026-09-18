@@ -85,7 +85,7 @@ export const record = internalMutation({
 /** No reported usage: an unknown spend, or a request refused before billing. */
 const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
-export interface LlmUsageAttribution {
+interface LlmUsageAttribution {
 	readonly organizationId: string;
 	readonly pluginId: string;
 }

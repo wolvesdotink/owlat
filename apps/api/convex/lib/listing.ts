@@ -26,7 +26,7 @@ import { countWithPagination } from './pagination';
  */
 
 /** Equality filter values legal on a search `filterField` or an index `eq`. */
-export type FilterValue = string | number | boolean | undefined | null;
+type FilterValue = string | number | boolean | undefined | null;
 
 interface ListingSearch {
 	/** Name of the table's `searchIndex`. */
@@ -126,7 +126,7 @@ export interface ListingDescriptor<
 	facets?: Record<string, Facet<T>>;
 }
 
-export interface ListResourcesArgs {
+interface ListResourcesArgs {
 	search?: string;
 	filters?: Record<string, FilterValue>;
 	sort?: string;

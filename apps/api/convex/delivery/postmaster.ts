@@ -26,7 +26,7 @@ const RETENTION_MS = 90 * DAY_MS;
 export const POSTMASTER_CLEANUP_BATCH_SIZE = 128;
 const FETCHED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;
 
-export function parseGoogleStatsDate(date: string): number | null {
+function parseGoogleStatsDate(date: string): number | null {
 	if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
 	const parsed = Date.parse(`${date}T00:00:00.000Z`);
 	return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === date
@@ -339,7 +339,7 @@ export const getPostmasterStatus = authedQuery({
 					deliveryErrors: stats?.deliveryErrors ?? [],
 					checks: compliance?.checks ?? [],
 				};
-				// THROUGH THE REGISTERED SOURCE, not around it (plan D9). The value is
+				// THROUGH THE REGISTERED SOURCE, not around it. The value is
 				// unchanged either way — the source's absent branch is exactly the
 				// empty card list the derivation returns for a domain Google has said
 				// nothing about — but the cards now come from the one declared

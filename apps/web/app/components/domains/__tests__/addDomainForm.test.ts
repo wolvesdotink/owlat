@@ -21,6 +21,9 @@ Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 const stubs = {
 	Icon: { template: '<i />' },
 	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+	// The receiving-mode choice has its own suite (externalReceiving.test.ts);
+	// inert here so these assertions stay about the domain/subdomain compose.
+	DomainsReceivingModeChoice: true,
 };
 
 function mountForm() {
@@ -202,7 +205,14 @@ describe('AddDomainForm — submit', () => {
 		await subInput(w).setValue('mail');
 		await w.get('form').trigger('submit');
 		expect(w.emitted('submit')).toBeTruthy();
-		expect(w.emitted('submit')![0]).toEqual([{ domain: 'mail.example.com', returnPathHost: null }]);
+		expect(w.emitted('submit')![0]).toEqual([
+			{
+				domain: 'mail.example.com',
+				returnPathHost: null,
+				receivingMode: 'owlat',
+				externalReceivingProvider: null,
+			},
+		]);
 	});
 
 	it('emits the apex domain when no subdomain is set', async () => {
@@ -211,7 +221,14 @@ describe('AddDomainForm — submit', () => {
 		const apexButton = w.findAll('button').find((b) => b.text().includes('none'));
 		await apexButton!.trigger('click');
 		await w.get('form').trigger('submit');
-		expect(w.emitted('submit')![0]).toEqual([{ domain: 'example.com', returnPathHost: null }]);
+		expect(w.emitted('submit')![0]).toEqual([
+			{
+				domain: 'example.com',
+				returnPathHost: null,
+				receivingMode: 'owlat',
+				externalReceivingProvider: null,
+			},
+		]);
 	});
 
 	it('rejects an empty domain (required) without emitting', async () => {

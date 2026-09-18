@@ -16,8 +16,14 @@
  * sense.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { api, internal } from '../_generated/api';
+import {
+	dnsRecordValidator,
+	dnsRecordsValidator,
+	verificationResultValidator,
+	verificationResultsValidator,
+} from '../lib/convexValidators';
 import { authedAction } from '../lib/authedFunctions';
 import dns from 'node:dns/promises';
 import { logError } from '../lib/runtimeLog';
@@ -32,36 +38,22 @@ import {
 } from '@owlat/shared/dane';
 import { throwNotFound, throwInvalidState, throwInternal } from '../_utils/errors';
 import { txtRecordMatches } from './dnsMatch';
-import { checkReverseDns } from './reverseDns';
+import {
+	inspectExternalReceivingMx,
+	type ExternalReceivingMxCheck,
+} from '@owlat/shared/externalReceiving';
+import { checkReverseDns, normalizeHost } from './reverseDns';
 import type { ReverseDnsResult } from './reverseDns';
 
-type DnsRecord = {
-	type?: 'TXT' | 'CNAME' | 'MX' | 'TLSA';
-	host?: string;
-	hostname?: string;
-	value: string;
-	priority?: number;
-	usage?: number;
-	selector?: number;
-	matchingType?: number;
-};
-
-type VerificationResult = {
-	verified: boolean;
-	lastChecked: number;
-	error?: string;
-	foundValue?: string;
-};
-
-type VerificationResults = {
-	spf?: VerificationResult;
-	dkim?: VerificationResult[];
-	dmarc?: VerificationResult;
-	mailFrom?: VerificationResult[];
-	tlsRpt?: VerificationResult;
-	tlsa?: VerificationResult;
-	sesStatus?: string;
-};
+// The verifier's record/result shapes are the PERSISTED ones, derived from the
+// validators the lifecycle checks `recordVerification` against. Re-spelling them
+// here by hand put the shape one file away from the thing that rejects it: a
+// field added to the validator and not to the copy compiled clean, then failed
+// argument validation at run time, after the DNS lookups had already run.
+type DnsRecord = Infer<typeof dnsRecordValidator>;
+type DnsRecords = Infer<typeof dnsRecordsValidator>;
+type VerificationResult = Infer<typeof verificationResultValidator>;
+type VerificationResults = Infer<typeof verificationResultsValidator>;
 
 const LIFECYCLE_USER_VERIFIER = 'system:verifier';
 
@@ -168,10 +160,9 @@ async function verifyCnameRecord(
 	const now = Date.now();
 	try {
 		const records = await dns.resolveCname(hostname);
-		const normalizedExpected = expectedValue.toLowerCase().replace(/\.$/, '');
-		const matchingRecord = records.find(
-			(value) => value.toLowerCase().replace(/\.$/, '') === normalizedExpected
-		);
+		// One host-folding rule (trailing dot + case) for every comparison here.
+		const normalizedExpected = normalizeHost(expectedValue);
+		const matchingRecord = records.find((value) => normalizeHost(value) === normalizedExpected);
 		if (matchingRecord) {
 			return { verified: true, lastChecked: now, foundValue: matchingRecord };
 		}
@@ -194,10 +185,9 @@ export async function verifyMxRecord(
 	const now = Date.now();
 	try {
 		const records = await dns.resolveMx(hostname);
-		const normalizedExpected = expectedValue.toLowerCase().replace(/\.$/, '');
+		const normalizedExpected = normalizeHost(expectedValue);
 		const matchingRecord = records.find((mx) => {
-			const normalizedExchange = mx.exchange.toLowerCase().replace(/\.$/, '');
-			const exchangeMatch = normalizedExchange === normalizedExpected;
+			const exchangeMatch = normalizeHost(mx.exchange) === normalizedExpected;
 			if (expectedPriority !== undefined) {
 				return exchangeMatch && mx.priority === expectedPriority;
 			}
@@ -306,14 +296,7 @@ async function verifyTlsaRecord(hostname: string, record: DnsRecord): Promise<Ve
 
 export async function runDnsLookups(
 	domain: string,
-	dnsRecords: {
-		spf?: DnsRecord;
-		dkim?: DnsRecord[];
-		dmarc?: DnsRecord;
-		mailFrom?: DnsRecord[];
-		tlsRpt?: DnsRecord;
-		tlsa?: DnsRecord;
-	}
+	dnsRecords: DnsRecords
 ): Promise<VerificationResults> {
 	const results: VerificationResults = {};
 
@@ -445,15 +428,15 @@ export const verifyDomain = authedAction({
 		// and provider verdict; never borrow the primary domain's status or DNS
 		// proof.
 		//
-		// The gate is D3's sanctioned own-vs-not-own identity, read from the
-		// domain-provider registry — it used to be `providerType !== 'ses'`, which
-		// named the RELAY rather than the rule and so had to be re-read every time
-		// a second relay kind landed. Same rows either way: the only writers of an
-		// SES sibling with DNS records are the ordinary lifecycle (SES-primary
-		// domains, excluded by both) and the relay provisioning pair, which
-		// provisions own-MTA-primary domains and nothing else. Legacy rows that
-		// never recorded a `providerType` are INCLUDED, exactly as `!== 'ses'`
-		// included them — see `isOwnPrimarySendingDomain`, which owns that reading.
+		// The gate is the sanctioned own-vs-not-own identity, read from the
+		// domain-provider registry, not `providerType !== 'ses'`, which would name
+		// the RELAY rather than the rule and so have to be re-read every time a
+		// second relay kind lands. Same rows either way: the only writers of an SES
+		// sibling with DNS records are the ordinary lifecycle (SES-primary domains,
+		// excluded by both) and the relay provisioning pair, which provisions
+		// own-MTA-primary domains and nothing else. Legacy rows that never recorded
+		// a `providerType` are INCLUDED, exactly as `!== 'ses'` included them — see
+		// `isOwnPrimarySendingDomain`, which owns that reading.
 		const sesIdentity = await ctx.runQuery(internal.domains.queries.getSesIdentity, {
 			domainId: args.domainId,
 		});
@@ -483,13 +466,34 @@ export const verifyDomain = authedAction({
 // DNS hiccup degrades to "not confirmed" rather than breaking the setup UI.
 //
 // authz: admin gate lives in the `getInboundMailConfig` query it delegates to
-// (organization:manage) — parity with the rest of the domain-management surface,
-// since checking inbound DNS is an operator task.
+// (organization:manage) — checking inbound DNS is an operator task.
 export const checkReceivingReverseDns = authedAction({
 	args: {},
 	handler: async (ctx): Promise<ReverseDnsResult | null> => {
 		const { mailHost } = await ctx.runQuery(api.domains.domains.getInboundMailConfig, {});
 		if (!mailHost) return null;
 		return checkReverseDns(mailHost, { resolve4: dns.resolve4, reverse: dns.reverse });
+	},
+});
+
+// ─── External-receiving (send-only) MX preflight ────────────────────────────
+//
+// For a domain whose receiving stays with Google Workspace / Microsoft 365 the
+// apex MX is the one record the operator must NOT change, so the panel reads it
+// live: which provider answers for it, and — the loud case — whether it already
+// points at THIS deployment, meaning inbound mail has silently been taken away
+// from the provider the domain claims to use. Staying quiet about that is how
+// "mail just stopped arriving" starts. Classification lives in the shared
+// provider table so panel and backend agree on whose MX is whose, and the same
+// fail-soft rule as the preflight above applies: `inspectExternalReceivingMx`
+// swallows every lookup error into "no MX found" and NEVER throws.
+//
+// authz: same delegation as `checkReceivingReverseDns` — the admin gate
+// (organization:manage) lives in the `getInboundMailConfig` query it calls.
+export const checkExternalReceivingMx = authedAction({
+	args: { domain: v.string() },
+	handler: async (ctx, args): Promise<ExternalReceivingMxCheck> => {
+		const { mailHost } = await ctx.runQuery(api.domains.domains.getInboundMailConfig, {});
+		return inspectExternalReceivingMx(args.domain, mailHost, { resolveMx: dns.resolveMx });
 	},
 });

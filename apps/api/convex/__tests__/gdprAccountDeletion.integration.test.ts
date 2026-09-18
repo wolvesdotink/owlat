@@ -386,6 +386,147 @@ describe('memberErasure.eraseMemberData', () => {
 		});
 	});
 
+	it('erases the attachment index and frees a COPY-shared blob with its last row', async () => {
+		const t = newHarness();
+		const authUserId = 'auth-user-shared-blob';
+		const profileId = await seedProfile(t, authUserId, 'copier@example.com');
+
+		const requestId = await t.run((ctx) =>
+			ctx.db.insert('accountDeletionRequests', {
+				userProfileId: profileId,
+				email: 'copier@example.com',
+				requestedAt: Date.now(),
+				scheduledForDeletion: Date.now(),
+				cancellationToken: 'tok-shared-blob',
+				status: 'pending',
+				createdAt: Date.now(),
+			})
+		);
+
+		// A mailbox holding one message and the IMAP COPY of it in a second folder:
+		// two rows, ONE raw blob, and a `mailAttachments` row apiece carrying the
+		// correspondent's address and the filename they sent.
+		const { mailboxId, rawStorageId } = await t.run(async (ctx) => {
+			const now = Date.now();
+			const mailboxId = await ctx.db.insert('mailboxes', {
+				userId: authUserId,
+				organizationId: 'org-x',
+				address: 'copier@example.com',
+				domain: 'example.com',
+				status: 'active' as const,
+				usedBytes: 26,
+				uidValidity: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const folderIds: Id<'mailFolders'>[] = [];
+			for (const [name, role] of [
+				['INBOX', 'inbox'],
+				['Archive', 'archive'],
+			] as const) {
+				folderIds.push(
+					await ctx.db.insert('mailFolders', {
+						mailboxId,
+						name,
+						role,
+						uidValidity: now,
+						uidNext: 2,
+						highestModseq: 1,
+						totalCount: 1,
+						unseenCount: 0,
+						subscribed: true,
+						createdAt: now,
+						updatedAt: now,
+					})
+				);
+			}
+			const threadId = await ctx.db.insert('mailThreads', {
+				mailboxId,
+				normalizedSubject: 'contract',
+				participants: ['correspondent@example.com'],
+				messageCount: 2,
+				unreadCount: 0,
+				hasFlagged: false,
+				hasAttachments: true,
+				lastMessageAt: now,
+				firstMessageAt: now,
+				latestSnippet: 'contract',
+				latestFromAddress: 'correspondent@example.com',
+				latestSubject: 'contract',
+				folderRoles: ['inbox', 'archive'],
+				labelIds: [],
+				createdAt: now,
+				updatedAt: now,
+			});
+			const rawStorageId = await ctx.storage.store(new Blob(['raw eml bytes']));
+			const attachment = {
+				filename: 'contract.pdf',
+				contentType: 'application/pdf',
+				size: 1024,
+				partIndex: '2',
+			};
+			for (const folderId of folderIds) {
+				const messageId = await ctx.db.insert('mailMessages', {
+					mailboxId,
+					folderId,
+					uid: 1,
+					modseq: 1,
+					rfc822MessageId: '<contract@example.com>',
+					threadId,
+					fromAddress: 'correspondent@example.com',
+					toAddresses: ['copier@example.com'],
+					ccAddresses: [],
+					bccAddresses: [],
+					subject: 'contract',
+					normalizedSubject: 'contract',
+					snippet: 'contract',
+					rawStorageId,
+					rawSize: 13,
+					attachments: [attachment],
+					hasAttachments: true,
+					flagSeen: false,
+					flagFlagged: false,
+					flagAnswered: false,
+					flagDraft: false,
+					flagDeleted: false,
+					customFlags: [],
+					labelIds: [],
+					receivedAt: now,
+					internalDate: now,
+					createdAt: now,
+					updatedAt: now,
+				});
+				await ctx.db.insert('mailAttachments', {
+					mailboxId,
+					messageId,
+					folderId,
+					receivedAt: now,
+					fromAddress: 'correspondent@example.com',
+					...attachment,
+				});
+			}
+			return { mailboxId, rawStorageId };
+		});
+
+		await drainWalk(t, authUserId, requestId);
+
+		await t.run(async (ctx) => {
+			// A COMPLETED erasure must not leave the correspondent's address and
+			// the filenames they sent behind in `mailAttachments` — nothing walks
+			// those rows again once the mailbox they hang off is gone, so they stay
+			// searchable (`search_filenames`, `by_mailbox_and_from`) forever.
+			const attachments = await ctx.db
+				.query('mailAttachments')
+				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
+				.collect();
+			expect(attachments).toHaveLength(0);
+
+			// The blob both rows shared is freed exactly once — with the last row.
+			expect(await ctx.storage.get(rawStorageId)).toBeNull();
+			expect(await ctx.db.get(mailboxId)).toBeNull();
+		});
+	});
+
 	it('anonymizes more than one recipient-ledger page and reconciles each parent alert', async () => {
 		const t = newHarness();
 		const authUserId = 'auth-user-with-alerts';
@@ -459,6 +600,43 @@ describe('memberErasure.eraseMemberData', () => {
 			const request = await ctx.db.get(requestId);
 			expect(request?.status).toBe('completed');
 		});
+	});
+
+	it("revokes the departing member's platform-admin grant", async () => {
+		// The row is keyed by BetterAuth user id, not by org membership, so
+		// nothing else in the erasure walk touches it. Left behind it would keep
+		// satisfying `requirePlatformAdmin` for a departed identity — and it
+		// carries the email this erasure exists to remove.
+		const t = newHarness();
+		const authUserId = 'auth-user-admin';
+		const profileId = await seedProfile(t, authUserId);
+		const requestId = await t.run(async (ctx) => {
+			await ctx.db.insert('platformAdmins', {
+				authUserId,
+				email: 'me@example.com',
+				role: 'superadmin',
+				createdAt: Date.now(),
+			});
+			return await ctx.db.insert('accountDeletionRequests', {
+				userProfileId: profileId,
+				email: 'me@example.com',
+				requestedAt: Date.now(),
+				scheduledForDeletion: Date.now(),
+				cancellationToken: 'tok-admin',
+				status: 'pending',
+				createdAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.auth.memberErasure.eraseMemberData, {
+			authUserId,
+			requestId,
+			isAlertErasureDone: true,
+			isAlertReceiptErasureDone: true,
+		});
+
+		const left = await t.run(async (ctx) => ctx.db.query('platformAdmins').collect());
+		expect(left).toEqual([]);
 	});
 
 	it('purges staged export leases, artifacts, and blobs in bounded member-erasure hops', async () => {

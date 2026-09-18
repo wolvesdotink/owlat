@@ -21,6 +21,7 @@ import { createDkimRoutes } from './routes/dkim.js';
 import { createOutboundTlsRoutes } from './routes/outboundTls.js';
 import { createPoolRulesRoutes } from './routes/poolRules.js';
 import { createIpAuditRoutes } from './routes/ipAudit.js';
+import { createOutboundIdentityRoutes } from './routes/outboundIdentity.js';
 import { createInboundRoutes } from './routes/inboundRoutes.js';
 import { createMailboxRoutes } from './routes/mailboxes.js';
 import { createDeliveryLogRoutes } from './routes/deliveryLogs.js';
@@ -108,6 +109,9 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 	// Pre-flight sending-IP audit and delisting assistant (master-key protected)
 	app.route('/ip-audit', createIpAuditRoutes(redis, config));
 
+	// Outbound identity status + on-demand FCrDNS re-check (master-key protected)
+	app.route('/identity', createOutboundIdentityRoutes(redis, config));
+
 	// Inbound email routing (master-key protected internally)
 	app.route('/inbound/routes', createInboundRoutes(redis, config));
 
@@ -136,8 +140,8 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 	app.get('/', (c) =>
 		c.json({
 			service: 'owlat-mta',
-			version: '0.4.4', // x-release-version (kept in sync by scripts/release.ts)
-			docs: 'POST /send, GET /health, GET /metrics, /credentials, /org-limits, /suppression, /dkim, /outbound-tls, /pool-rules, /inbound/routes, /delivery-logs, /queue, /dlq, /isp-profiles, /ip-reputation, /scan',
+			version: '0.4.18', // x-release-version (kept in sync by scripts/release.ts)
+			docs: 'POST /send, GET /health, GET /metrics, /credentials, /org-limits, /suppression, /dkim, /outbound-tls, /pool-rules, /identity, /inbound/routes, /delivery-logs, /queue, /dlq, /isp-profiles, /ip-reputation, /scan',
 		})
 	);
 

@@ -18,7 +18,7 @@ export class AccountManager {
 
 	constructor(
 		private readonly convex: ConvexClient,
-		private readonly config: MailSyncConfig,
+		private readonly config: MailSyncConfig
 	) {}
 
 	async start(): Promise<void> {
@@ -40,7 +40,7 @@ export class AccountManager {
 		try {
 			accounts = (await this.convex.query(
 				fn.listConnectableAccounts as never,
-				{} as never,
+				{} as never
 			)) as ConnectableAccount[];
 		} catch (err) {
 			logger.warn({ err }, 'reconcile: listConnectableAccounts failed');
@@ -56,7 +56,9 @@ export class AccountManager {
 			logger.info({ accountId: account.accountId }, 'starting connection');
 			void conn
 				.start()
-				.catch((err) => logger.warn({ accountId: account.accountId, err }, 'connection start failed'));
+				.catch((err) =>
+					logger.warn({ accountId: account.accountId, err }, 'connection start failed')
+				);
 		}
 
 		for (const [id, conn] of this.connections) {

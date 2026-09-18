@@ -41,20 +41,20 @@ export function isEvaluationWindowElapsed(lastCountedAt: number | undefined, now
  * an unbounded ceiling: a controller that treated an unreadable projection as
  * "no limit" would ramp hardest exactly when it understood the least.
  *
- * A projected volume of ZERO is one of those unusable readings and HOLDS too
- * (plan P3-3): a deployment we measured no demand for is a deployment we cannot
- * size a ceiling for, and `headroom / 0` is the division the whole degenerate
- * rule exists to forbid. Neither an infinite ceiling nor a zero one — a hold.
+ * A projected volume of ZERO is one of those unusable readings and HOLDS too: a deployment we
+ * measured no demand for is a deployment we cannot size a ceiling for, and `headroom / 0` is the
+ * division the whole degenerate rule exists to forbid. Neither an infinite ceiling nor a zero one —
+ * a hold.
  */
 export function capacityCeiling(capacity: RampCapacityInput): number | null {
 	// NO WARMING READING AT ALL is not a spent cap: the cell is bounded by its
-	// phase ceiling alone (plan D2 — absence never constrains). It is a distinct
+	// phase ceiling alone (absence never constrains). It is a distinct
 	// SHAPE, not a pair of zeros, precisely so it cannot be confused with a cell
 	// whose cap is spent and whose volume is zero.
 	if (capacity.kind === 'unconstrained') return OWN_SHARE_CEILING;
 	// A KNOWN CAP OVER AN UNKNOWN DEMAND is the opposite case, and the one the
 	// projection reports for a brand-new cell, a paused week or the last sliver
-	// of a UTC day. There is no ceiling to compute, so the cell HOLDS (plan D10):
+	// of a UTC day. There is no ceiling to compute, so the cell HOLDS:
 	// never an unbounded ceiling, never a zero one, and never a division by a
 	// projection of zero — that division is refused in `projectCellVolume`, one
 	// module upstream, and this is where the refusal arrives.
@@ -72,14 +72,14 @@ export function capacityCeiling(capacity: RampCapacityInput): number | null {
 }
 
 /** The two PHASE bounds a tick applies, and the cause the cap would name. */
-export interface RampPhaseBounds {
+interface RampPhaseBounds {
 	readonly phaseCeiling: number;
 	readonly phaseCeilingCap: number;
 	readonly ceilingCapSource: RampIntegrationId | undefined;
 }
 
 /**
- * WHICH PHASE BOUNDS THIS TICK ACTUALLY APPLIES (plan D3).
+ * WHICH PHASE BOUNDS THIS TICK ACTUALLY APPLIES.
  *
  * The ladder bounds the SHARE dial — how much of a cell the own MTA carries
  * while the rest stays with a second sender — so it bounds only a cell that HAS
@@ -97,7 +97,7 @@ export interface RampPhaseBounds {
  * full share with that gate never consulted.
  *
  * NO CAUSE TO NAME when nothing binds: `ceilingCapSource` travels with the cap
- * it explains, so dropping the cap drops the name with it (plan D12).
+ * it explains, so dropping the cap drops the name with it.
  */
 export function phaseLadderBounds(
 	input: RampControllerInput,
@@ -118,7 +118,7 @@ export function phaseLadderBounds(
 }
 
 /** Which of the three ceilings bound the cell, and — for the cap — what caused it. */
-export interface RampCeilingBound {
+interface RampCeilingBound {
 	/** The effective ceiling: the LOWEST of the three, never above full share. */
 	readonly ceiling: number;
 	readonly reason: RampDecisionReason;
@@ -132,13 +132,13 @@ export interface RampCeilingBound {
 }
 
 /**
- * WHICH CEILING BINDS IS PART OF THE REASON (plan D12). Three of them can, and
+ * WHICH CEILING BINDS IS PART OF THE REASON. Three of them can, and
  * they have three different remedies: grow the warming schedule, promote the
  * phase, or reconnect the missing feed. Collapsing the last two into
  * `phase_ceiling` would tell an operator to promote a rung the controller is
  * itself capping — advice that cannot work until the feed comes back.
  *
- * THE SUBSTITUTION TABLE'S CAP IS A BOUND, NEVER A STORED RUNG (P3-8): an absent
+ * THE SUBSTITUTION TABLE'S CAP IS A BOUND, NEVER A STORED RUNG: an absent
  * SNDS feed caps the Microsoft cell one phase lower while it is missing and
  * stops capping it the tick the feed returns, without anyone re-promoting the
  * cell. Degenerate caps are ignored rather than honoured — a NaN cap must not

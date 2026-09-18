@@ -54,7 +54,16 @@ const slots = useSlots();
 		     viewport, and `shrink-0` on a nowrap row pushed the primary off the
 		     right edge. `shrink-0` only earns its keep from `sm:` up, where the
 		     row sits beside the title and must not squeeze it. -->
-		<div v-if="slots['actions']" class="flex flex-wrap items-center gap-2 sm:shrink-0">
+		<!-- data-testid: a page's primary CTA and its empty-state CTA carry the same
+		     label by design ("New Topic" in both places), so a bare
+		     getByRole('button', { name }) is ambiguous exactly while a list is
+		     empty. Tests scope to this region instead. Attribute only — nothing
+		     rendered changes. -->
+		<div
+			v-if="slots['actions']"
+			data-testid="page-header-actions"
+			class="flex flex-wrap items-center gap-2 sm:shrink-0"
+		>
 			<slot name="actions" />
 		</div>
 	</div>

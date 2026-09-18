@@ -95,7 +95,7 @@ export async function relayIdentityProvisioningIsSettled(
 }
 
 /** One observation, as the row records it. */
-export interface RelayIdentityObservationWrite {
+interface RelayIdentityObservationWrite {
 	readonly kind: string;
 	readonly domain: string;
 	readonly status: Doc<'sendingDomainRelayIdentities'>['status'];

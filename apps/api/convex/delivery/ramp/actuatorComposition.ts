@@ -1,6 +1,6 @@
 /**
  * THE COMPOSITION ORDER — one controller, two actuators, a FIXED order between
- * them (plan D3).
+ * them.
  *
  * When both actuators exist they do NOT compose commutatively:
  *
@@ -30,7 +30,8 @@
  * interlock; that rung is what makes it last a window.
  *
  * WHAT IS NOT INTERLOCKED, and why. RETREATS compose freely in both directions
- * and at the same time: the asymmetry in D9 is the whole point, and a rule that
+ * and at the same time: retreat is cheap and advance is expensive by design,
+ * and a rule that
  * made a share retreat delay a pace retreat would ration the one thing that must
  * never be rationed. A HOLD on either side constrains nothing.
  *
@@ -45,7 +46,7 @@
 import type { RampDecision } from './controllerTypes';
 import type { PaceDecision } from './paceTypes';
 
-export interface ActuatorCompositionInput {
+interface ActuatorCompositionInput {
 	/** The share decision, or `null` for a standalone deployment (s === 1). */
 	readonly share: RampDecision | null;
 	readonly pace: PaceDecision;
@@ -60,7 +61,7 @@ export interface ComposedActuators {
 	 * Whether the interlock held the pace increase back this window. Recorded
 	 * rather than inferred: `pace.reason` says `share_moved_first`, but a caller
 	 * writing an audit row should not have to compare a string to know that a
-	 * decision was overridden (plan D12).
+	 * decision was overridden.
 	 */
 	readonly isPaceDeferred: boolean;
 }

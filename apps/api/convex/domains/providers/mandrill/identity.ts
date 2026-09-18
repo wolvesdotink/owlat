@@ -37,8 +37,8 @@ export const MANDRILL_CHECK_INTERVAL_MS = {
  */
 export const MANDRILL_UNAVAILABLE_RETRY_MS = 15 * 60 * 1000;
 
-/** The `providerDetails` blob for a Mandrill identity (Mandrill plan D7, versioned). */
-export interface MandrillProviderDetails {
+/** The `providerDetails` blob for a Mandrill identity (versioned). */
+interface MandrillProviderDetails {
 	readonly kind: 'mandrill';
 	/** Mandrill's aggregate signing verdict. */
 	readonly isValidSigning: boolean;
@@ -65,7 +65,7 @@ export interface MandrillProviderDetails {
  *    perfect DNS but no ownership proof as verified would hand the relay a
  *    domain it is about to bounce.
  */
-export function isMandrillDomainVerified(state: MandrillDomainState): boolean {
+function isMandrillDomainVerified(state: MandrillDomainState): boolean {
 	return (
 		state.spf.isValid &&
 		state.dkim.isValid &&

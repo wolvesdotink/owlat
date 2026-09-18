@@ -13,7 +13,7 @@
 
 import { isDisallowedIpAddress } from './ipBlocklist';
 
-export type OutboundUrlCheck = { ok: true; url: URL } | { ok: false; error: string };
+type OutboundUrlCheck = { ok: true; url: URL } | { ok: false; error: string };
 
 /**
  * Validate a caller-supplied outbound URL.

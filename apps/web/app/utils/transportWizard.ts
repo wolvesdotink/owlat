@@ -1,31 +1,30 @@
 /**
- * "Connect your ESP" — the transport connection wizard's PURE core (P2-4).
+ * "Connect your ESP" — the transport connection wizard's PURE core.
  *
  * Four steps, in the only order that makes sense:
  *
  *  1. CREDENTIALS — entered through the SHIPPED transport editor path
  *     (`useSetupWizard`'s validators + `buildProviderEnv` + the sealed
- *     `/api/delivery/apply-transport` endpoint). No second credential model
- *     (D4), and no secret ever comes back out.
+ *     `/api/delivery/apply-transport` endpoint). No second credential model,
+ *     and no secret ever comes back out.
  *  2. LIVE SEND TEST — the SHIPPED `DeliveryTestSendCard` machinery, mounted
  *     inside the step rather than reimplemented beside it.
  *  3. ALIGNMENT — the SHIPPED dual-transport pre-flight
  *     (`@owlat/shared/deliverabilityAlignment`) run against LIVE DNS, which in
  *     turn runs the SHIPPED SPF coexistence detector including its RFC 7208
  *     10-lookup accounting. The two arms must be indistinguishable to the
- *     receiver in everything except the sending infrastructure (D11).
- *  4. RETURN-PATH PROBE — the recorded capability from P2-3. Informational by
+ *     receiver in everything except the sending infrastructure.
+ *  4. RETURN-PATH PROBE — the recorded capability. Informational by
  *     construction: an ESP that cannot carry our VERP return path lowers
  *     measurement confidence and NOTHING else.
  *
- * D2 — THE ADDITIVE-ONLY THIRD-PARTY RULE. This whole flow is an OFFER. Never
- * starting it, or abandoning it half way, leaves the deployment fully
- * functional in standalone mode: no warning, no error, no "setup incomplete"
- * state anywhere in the delivery UI. That is what {@link TRANSPORT_WIZARD_ENTRY}
- * and {@link skippingWizardImpact} exist to state in one place a test can hold
- * the UI to.
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE. This whole flow is an OFFER. Never
+ * starting it, or abandoning it half way, leaves the deployment fully functional
+ * in standalone mode: no warning, no error, no "setup incomplete" state anywhere
+ * in the delivery UI. That is what {@link TRANSPORT_WIZARD_ENTRY} and {@link
+ * skippingWizardImpact} exist to state in one place a test can hold the UI to.
  *
- * Pure (D15): no clock, no DNS, no Convex, no Vue. Every input is a parameter,
+ * Pure: no clock, no DNS, no Convex, no Vue. Every input is a parameter,
  * every transition returns a NEW state. The live-DNS gather is its sibling
  * `transportAlignmentProbe.ts`; the rendering is
  * `components/delivery/TransportConnectionWizard.vue`.
@@ -63,7 +62,7 @@ interface TransportWizardStep {
 	 * Whether a non-passing result stops the operator moving on. Only the first
 	 * three are: the return-path probe RECORDS a capability, and a relay that
 	 * cannot carry our return path is a supported configuration with coarser
-	 * bounce attribution (P2-3), not a failure to fix.
+	 * bounce attribution, not a failure to fix.
 	 */
 	readonly blocking: boolean;
 }
@@ -272,7 +271,7 @@ export function alignmentFindings(result: AlignmentPreflightResult): WizardFindi
  * A fifth verdict added to the evaluator fails to typecheck here, once.
  *
  * `single_arm` — no reference transport at all — is a PASS with plain copy, not
- * a warning (D2). It is reachable when an operator opens the wizard and walks to
+ * a warning. It is reachable when an operator opens the wizard and walks to
  * step 3 without connecting anything.
  */
 export const ALIGNMENT_VERDICT_PRESENTATION: Readonly<
@@ -308,7 +307,7 @@ export function alignmentVerdictSummary(result: AlignmentPreflightResult): strin
 
 /**
  * The return-path posture the wizard records, DERIVED from the query that
- * answers it rather than re-declared. A fourth posture added to P2-3's resolver
+ * answers it rather than re-declared. A fourth posture added to the resolver
  * then breaks {@link returnPathFinding}'s exhaustive switch at compile time,
  * which is the point — a hand-copied union would compile and silently render
  * nothing for it.
@@ -354,10 +353,10 @@ export function returnPathFinding(capability: ReturnPathCapabilityValue): Wizard
 /**
  * WHEN this step's answer arrives, said plainly.
  *
- * The posture is OBSERVED, not asked for: P2-3's probe settles it the first time
- * a real bounce comes back through the provider. A transport connected a minute
+ * The posture is OBSERVED, not asked for: the probe settles it the first time a
+ * real bounce comes back through the provider. A transport connected a minute
  * ago therefore reads "not known yet" here, every time, and pretending otherwise
- * would make the step look broken. Nothing waits on it (D2).
+ * would make the step look broken. Nothing waits on it.
  */
 export const RETURN_PATH_SETTLES_NOTE = 'shared.transportWizard.returnPath.settlesNote';
 
@@ -369,7 +368,7 @@ export const RETURN_PATH_SETTLES_NOTE = 'shared.transportWizard.returnPath.settl
  * The capability that comes back with it is `unknown`, but rendering the
  * settles-after-a-bounce copy for a deployment that has no provider at all would
  * describe a wait that will never end. Naming the actual situation is both
- * honest and, per D2, not a fault: standalone is a supported configuration.
+ * honest and not a fault: standalone is a supported configuration.
  */
 export const RETURN_PATH_NO_REFERENCE_NOTE = 'shared.transportWizard.returnPath.noReferenceNote';
 
@@ -380,7 +379,7 @@ export function returnPathStepStatus(capability: ReturnPathCapabilityValue): Wiz
 
 /**
  * The entry-point copy, in ONE place so the "offer, never a nag" rule is
- * testable rather than a convention (D2). `tone: 'offer'` is load-bearing: the
+ * testable rather than a convention. `tone: 'offer'` is load-bearing: the
  * card renders in the neutral surface style, never the warning one.
  */
 export const TRANSPORT_WIZARD_ENTRY = {
@@ -394,7 +393,7 @@ export const TRANSPORT_WIZARD_ENTRY = {
 
 /**
  * What NOT connecting a provider does to the deployment: nothing. This is the
- * D2 contract as a value, so `wizardOptional.test.ts` asserts against a single
+ * additive-only contract as a value, so `wizardOptional.test.ts` asserts against a single
  * source rather than against prose scattered through templates.
  */
 interface WizardSkipImpact {

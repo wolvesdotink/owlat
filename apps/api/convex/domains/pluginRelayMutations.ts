@@ -1,6 +1,6 @@
 /**
- * The transactional half of a bundled plugin's sending-domain identity (the
- * seams plan's P3.2): persist what a provider call found.
+ * The transactional half of a bundled plugin's sending-domain identity:
+ * persist what a provider call found.
  *
  * Split from `pluginRelay.ts` for the runtime reason every `*Mutations.ts`
  * sibling here is (`mandrillRelayMutations.ts` is the same pair): that file is an
@@ -28,6 +28,7 @@ import {
 	type PluginRelayObservation,
 } from './providers/plugin/state';
 import { internalMutation } from '../_generated/server';
+import { relayIdentityStatusValidator } from '../lib/literalValidators';
 
 const recordVerdictValidator = v.object({
 	isValid: v.boolean(),
@@ -36,12 +37,7 @@ const recordVerdictValidator = v.object({
 
 /** The host's reading of one provider observation, on its way to the row. */
 const observationValidator = v.object({
-	status: v.union(
-		v.literal('unverified'),
-		v.literal('pending_dns'),
-		v.literal('verified'),
-		v.literal('failed')
-	),
+	status: relayIdentityStatusValidator,
 	spf: recordVerdictValidator,
 	dkim: recordVerdictValidator,
 	dkimSelectors: v.array(v.string()),

@@ -9,7 +9,7 @@
  * non-secret client config is resolved lazily (once) from the instance-level
  * `SMTP_RELAY_*` env and cached across sends on the warm worker; each send
  * composes the message with `@owlat/mail-message` and delivers it with the
- * in-house `@owlat/smtp-client` (one connection per send, W3).
+ * in-house `@owlat/smtp-client`, one connection per send.
  *
  * Single-attempt `sendEmail`; the **Send dispatch (helper)** owns the retry
  * loop and consumes `retryDelays` + `categorizeError`. This module runs on the
@@ -147,7 +147,7 @@ function mentionsRateLimit(lowerMessage: string): boolean {
 }
 
 /** Per-send knobs of the relay adapter's INTERNAL entry point. */
-export interface RelaySendOptions {
+interface RelaySendOptions {
 	/**
 	 * The return-path host to stamp as the VERP envelope sender, or `undefined`
 	 * to keep the composer's (the shipped behaviour). The caller owns every
@@ -166,7 +166,7 @@ export interface RelaySendOptions {
 	readonly verpMessageId?: string;
 }
 
-export interface RelaySendOutcome {
+interface RelaySendOutcome {
 	readonly attempt: EmailSendAttempt;
 	/**
 	 * The RFC5321.MailFrom actually put on the wire. Returned rather than
@@ -183,7 +183,7 @@ export interface RelaySendOutcome {
  * {@link SendProviderModule} face of it; the return-path probe calls it
  * directly because it needs the envelope sender back.
  */
-export async function sendViaRelay(
+async function sendViaRelay(
 	transport: SendTransportRecord,
 	params: EmailSendParams,
 	options: RelaySendOptions
@@ -224,7 +224,10 @@ export async function sendViaRelay(
 				filename: a.filename,
 				contentType: a.contentType ?? 'application/octet-stream',
 				isInline: false,
-				data: a.content,
+				// `EmailAttachment.content` is runtime-neutral bytes (the isolate has no
+				// Buffer); this module is `'use node'`, so the composer's Buffer is
+				// available here at the boundary.
+				data: Buffer.from(a.content),
 			})),
 		});
 	} catch (error) {
@@ -241,7 +244,7 @@ export async function sendViaRelay(
 	// Stamp our VERP envelope sender where the relay is PROVEN to honour it, so
 	// a bounce the relay generates reaches our own bounce server and this arm
 	// produces bounce data comparable with the direct-MX arm. The composed
-	// bytes — From, DKIM, Message-ID, body — are identical either way (D11).
+	// bytes — From, DKIM, Message-ID, body — are identical either way.
 	const envelopeSender = resolveRelayEnvelopeSender({
 		composedEnvelopeFrom: composed.envelope.from,
 		messageId: options.verpMessageId ?? composed.messageId,
@@ -313,13 +316,13 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	retryDelays: sendProviderCatalogEntry('smtp').retryDelays,
 
 	/**
-	 * Relay arm (plan G-08): stamp OUR VERP envelope sender at the return-path
-	 * host the routing pass authorised — the SAME host the direct-MX arm stamps
-	 * for this From domain — so relayed bounces reach our own bounce server and
-	 * both arms present the same envelope-sender domain. Resolved by the routing
-	 * pass, not by a second query on the send path. No authorised host simply
-	 * keeps the composer's envelope sender: the send is unchanged and its cell is
-	 * graded degraded-measurement, never blocked (plan D2).
+	 * Relay arm: stamp OUR VERP envelope sender at the return-path host the
+	 * routing pass authorised — the SAME host the direct-MX arm stamps for this
+	 * From domain — so relayed bounces reach our own bounce server and both arms
+	 * present the same envelope-sender domain. Resolved by the routing pass, not
+	 * by a second query on the send path. No authorised host simply keeps the
+	 * composer's envelope sender: the send is unchanged and its cell is graded
+	 * degraded-measurement, never blocked.
 	 */
 	buildDispatchExtras(input: DispatchExtrasInput): SmtpExtras {
 		return input.relayReturnPathHost === undefined
@@ -340,7 +343,7 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	},
 
 	/**
-	 * The return-path probe's wire (plan D5). A relay speaks SMTP submission, so
+	 * The return-path probe's wire. A relay speaks SMTP submission, so
 	 * the whole RFC5321.MailFrom is ours to choose — which is the one thing a
 	 * probe requires, because the signed VERP token lives in the LOCAL PART and
 	 * the DSN can only be attributed if that exact address survives.
@@ -377,7 +380,7 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
  * `categorizeError` + the compose-failure path) so the whole module shares one
  * taxonomy.
  */
-export function categorizeSmtpError(message: string, smtpReplyCode?: number): EmailErrorCode {
+function categorizeSmtpError(message: string, smtpReplyCode?: number): EmailErrorCode {
 	if (smtpReplyCode !== undefined) {
 		const byCode = smtpReplyCodeToErrorCode(smtpReplyCode, message);
 		if (byCode !== undefined) return byCode;

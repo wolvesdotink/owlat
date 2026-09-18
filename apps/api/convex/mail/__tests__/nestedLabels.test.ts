@@ -187,8 +187,8 @@ describe('mail.labels.reorder', () => {
 
 	it('skips an id from another mailbox instead of failing the batch', async () => {
 		const t = convexTest(schema, modules);
-		const mine = await seedMailbox(t, { address: 'mine@hinterland.camp' });
-		const other = await seedMailbox(t, { address: 'other@hinterland.camp' });
+		const mine = await seedMailbox(t, { address: 'mine@owlat.test' });
+		const other = await seedMailbox(t, { address: 'other@owlat.test' });
 		const a = await t.mutation(api.mail.labels.create, { mailboxId: mine, name: 'a' });
 		const foreign = await t.mutation(api.mail.labels.create, { mailboxId: other, name: 'x' });
 

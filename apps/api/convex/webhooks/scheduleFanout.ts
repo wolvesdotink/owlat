@@ -12,10 +12,7 @@
  * pairs every literal with its required input shape.
  */
 
-import type {
-	GenericActionCtx,
-	GenericMutationCtx,
-} from 'convex/server';
+import type { GenericActionCtx, GenericMutationCtx } from 'convex/server';
 import type { DataModel, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import {
@@ -25,10 +22,7 @@ import {
 } from './events/registry';
 
 /** Subscribable literals only — `test` is excluded (per-target via DeliverSpec). */
-export type SubscribableWebhookEventLiteral = Exclude<
-	WebhookEventLiteral,
-	'test'
->;
+type SubscribableWebhookEventLiteral = Exclude<WebhookEventLiteral, 'test'>;
 
 /**
  * Spec for fanout-to-all-subscribed. Mapped type guarantees `input` matches
@@ -44,7 +38,7 @@ export type FanoutSpec = {
 /**
  * Spec for per-target delivery — accepts every literal, including `test`.
  */
-export type DeliverSpec = {
+type DeliverSpec = {
 	[L in WebhookEventLiteral]: {
 		literal: L;
 		input: WebhookEventInputFor<L>;
@@ -55,9 +49,7 @@ export type DeliverSpec = {
  * Helpers accept either a MutationCtx or an ActionCtx — both have the
  * scheduler the fanout actions need.
  */
-type ScheduleCtx =
-	| GenericMutationCtx<DataModel>
-	| GenericActionCtx<DataModel>;
+type ScheduleCtx = GenericMutationCtx<DataModel> | GenericActionCtx<DataModel>;
 
 /** Wire-compatible payload — matches the Convex `jsonPrimitiveRecord` validator. */
 type WirePayload = Record<string, string | number | boolean | null>;
@@ -68,10 +60,7 @@ function buildPayload(spec: FanoutSpec | DeliverSpec): WirePayload {
 }
 
 /** Schedule an event to fan out to every active subscribed webhook. */
-export async function scheduleFanout(
-	ctx: ScheduleCtx,
-	spec: FanoutSpec
-): Promise<void> {
+export async function scheduleFanout(ctx: ScheduleCtx, spec: FanoutSpec): Promise<void> {
 	const data = buildPayload(spec);
 	await ctx.scheduler.runAfter(0, internal.webhooks.fanout.fanoutEvent, {
 		event: spec.literal,

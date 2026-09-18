@@ -104,11 +104,11 @@ const alignmentSource = computed<ReadinessAlignmentSource | null>(() => {
 	return { facts: summary.alignment, fromDomains };
 });
 
-// The dual-transport ramp's alignment pre-flight (P3-5): non-secret DNS-facing
+// The dual-transport ramp's alignment pre-flight: non-secret DNS-facing
 // verdicts, one row per sending domain, member-readable like the rest of this
 // panel. A deployment with no reference transport has only `single_arm` rows (or
 // none at all), which the readiness fold treats as "nothing to say" — so no gate
-// appears and nothing reads as an unfinished setup (D2).
+// appears and nothing reads as an unfinished setup.
 const { data: dualArmRows } = useOrganizationQuery(
 	api.delivery.alignmentPreflight.getAlignmentReadiness
 );

@@ -10,11 +10,11 @@
  * neither re-exports the other's names.
  *
  * THE RULE THE WHOLE SCREEN OBEYS APPLIES HERE TOO: nothing in this module
- * divides. Every rate is DERIVED ON READ by the server's one summarizer (ADR-0042
- * / plan D5) and this module formats the number it was handed.
+ * divides. Every rate is DERIVED ON READ by the server's one summarizer
+ * (ADR-0042) and this module formats the number it was handed.
  *
  * STATES ARE THE FEATURE: `insufficient_data` is not a failure, and nothing that
- * is merely UNMEASURED is ever rendered in an error tone (plan D2).
+ * is merely UNMEASURED is ever rendered in an error tone.
  *
  * "THE CHECKS' WINDOW", NEVER "THIS WINDOW". Every number here is the
  * evaluator's, over the DECIDING span, under a card whose table covers the wider
@@ -44,10 +44,9 @@ export type GateStatus = DeliverabilityDashboardGate['status'];
  * How each verdict is presented — its TONE and its WORDS, decided together in
  * one table rather than in two switches over the same union.
  *
- * The pairing is the point: `insufficient_data` reads "Not enough data yet" and
- * is rendered NEUTRAL, because the measurement is thin and thin is not broken
- * (plan D10/D2). Splitting tone and label across two functions is how a status
- * ends up with alarming colour and calm words.
+ * The pairing is the point: `insufficient_data` reads "Not enough data yet" and is rendered
+ * NEUTRAL, because the measurement is thin and thin is not broken. Splitting tone and label across
+ * two functions is how a status ends up with alarming colour and calm words.
  */
 const GATE_STATUS_PRESENTATION = {
 	pass: { tone: 'ok', label: 'shared.deliverabilityMeasurement.gateStatus.pass' },
@@ -73,9 +72,9 @@ export function gateStatusLabel(status: GateStatus): LocalizedText {
  * Almost every verdict is denominated in SENDS, and the server's `ownSample`
  * docblock (`gateTypes.ts`) names the two that are not: `seed_placement` counts
  * SEED PROBES, and the `block_message_detected` halt counts CLASSIFIED SMTP
- * RESPONSES. Under D17 the placement gate is a tripwire whose numbers an
- * operator reads directly, and under D12 the same fields render into the audit
- * row and the admin notification — so the unit is decided once, here, rather
+ * RESPONSES. The placement gate is a tripwire whose numbers an operator reads
+ * directly, and the same fields render into the audit row and the admin
+ * notification — so the unit is decided once, here, rather
  * than assumed to be "sends" by each sentence.
  *
  * A PROBE IS NOT A MAILBOX. `seedShadowCopy.ts` writes one probe per connected
@@ -101,7 +100,7 @@ function unitKey(base: string, unit: 'probes' | 'sends'): string {
 
 /**
  * THE SEED GATE'S DECIDED SENTENCE — status words and PROBE COUNTS, and no
- * share of anything (plan D17).
+ * share of anything.
  *
  * SEEDS ARE A TRIPWIRE, NOT A GAUGE, and the two modules that produce the
  * reading enforce that on their own side: `seedPlacementGate.ts` keeps both
@@ -173,7 +172,7 @@ function seedPlacementExplanation(gate: DeliverabilityDashboardGate): LocalizedT
 			// past, and the standalone seed evaluator does not swap a baseline clause
 			// in for the comparative one — it drops the second clause entirely. Copy
 			// written ahead of a variant that does not exist is the speculative seam
-			// `trailingBaselineGates.ts` cites plan D20 against.
+			// `trailingBaselineGates.ts` warns against.
 			//
 			// The status WORD is part of this sentence, so there is one sentence per
 			// status rather than a status key slotted into a shared frame.
@@ -253,7 +252,7 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): LocalizedTex
 		}
 	}
 	// THE VERDICT THAT MAY NOT QUOTE A RATE AT ALL — decided BEFORE any rate is
-	// formatted, so the D17 sentence cannot pick one up by accident.
+	// formatted, so the tripwire sentence cannot pick one up by accident.
 	if (gate.gate === 'seed_placement') return seedPlacementExplanation(gate);
 	const own = measurement.ownRate === null ? null : formatPercentage(measurement.ownRate, 2);
 	const threshold = formatPercentage(measurement.thresholdRate, 2);

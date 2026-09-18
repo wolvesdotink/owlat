@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { clarificationSourceValidator } from '../lib/literalValidators';
 
 /**
  * Ask-eagerness + clarification-memory tables — the trust dial setting, its
@@ -33,7 +34,7 @@ export const askEagernessTables = {
 	// the asks we predicted valuable the ones that actually moved the draft?
 	// Never drives routing.
 	clarificationAskLog: defineTable({
-		source: v.union(v.literal('agent'), v.literal('reply_queue')),
+		source: clarificationSourceValidator,
 		slotTypes: v.array(v.string()), // the slot kinds asked about
 		questionCount: v.number(),
 		predictedValue: v.number(), // cheap predicted value of asking, [0, 1]
@@ -71,7 +72,7 @@ export const askEagernessTables = {
 		// The owner's confirmed answer, replayed to fill the slot silently.
 		answerValue: v.string(),
 		// Which surface captured the answer.
-		source: v.union(v.literal('agent'), v.literal('reply_queue')),
+		source: clarificationSourceValidator,
 		// How many times the owner has (re)affirmed this answer — gates promotion.
 		answerCount: v.number(),
 		// How many times it has silently filled a later slot — observability.

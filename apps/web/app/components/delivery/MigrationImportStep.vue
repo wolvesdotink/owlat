@@ -102,7 +102,7 @@ async function startMandrillSuppressions(): Promise<void> {
 	}
 	phase.value = 'suppressions';
 	// No credential field: the reject-list import reads MANDRILL_API_KEY from the
-	// deployment environment (plan D2), which is the key step 1 already checked.
+	// deployment environment, which is the key step 1 already checked.
 	const importId = await convex().mutation(api.integrationImports.walker.startIntegrationImport, {
 		config: { provider: 'mandrill' },
 		handleDuplicates: 'skip',
@@ -124,7 +124,7 @@ async function start(): Promise<void> {
 						provider: 'mailchimp',
 						apiKey: apiKey.value.trim(),
 						listId: listId.value.trim(),
-						// D9: the unsubscribes and cleaned addresses come across in the
+						// The unsubscribes and cleaned addresses come across in the
 						// same pass as the audience. A migration that carried contacts
 						// but not their opt-outs would re-mail people who left.
 						importSuppressions: true,

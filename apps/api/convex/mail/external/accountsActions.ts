@@ -19,14 +19,16 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import { internalAction, type ActionCtx } from '../../_generated/server';
+import { internalAction } from '../../_generated/server';
 import { authedAction } from '../../lib/authedFunctions';
 import { destinationProviderValidator } from '../../delivery/deliverabilityValidators';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { encryptSecret, decryptSecret } from '../../lib/credentialCrypto';
 import { getMailSyncConfig } from '../mtaClient';
-import { throwForbidden, throwInvalidInput } from '../../_utils/errors';
+import { throwInvalidInput } from '../../_utils/errors';
+import { assertExternalEnabled } from './externalFeature';
+import { refreshGoogleAccessToken } from './googleOAuthTokens';
 
 interface ProtocolTestResult {
 	ok: boolean;
@@ -38,7 +40,7 @@ interface ConnectionTestResult {
 }
 
 /** Plaintext credential bundle handed to the mail-sync worker. */
-interface WorkerCredentials {
+export interface WorkerCredentials {
 	imapHost: string;
 	imapPort: number;
 	isImapSecure: boolean;
@@ -49,7 +51,35 @@ interface WorkerCredentials {
 	smtpUsername: string;
 	imapPassword: string;
 	smtpPassword: string;
+	/**
+	 * SASL XOAUTH2 bearer tokens, present INSTEAD of the passwords on an `oauth2`
+	 * account (Google sign-in). Short-lived and minted per request from the stored
+	 * refresh token — they are never persisted, so the worker always receives a
+	 * live one and the two password fields are empty strings on that path.
+	 */
+	imapAccessToken?: string;
+	smtpAccessToken?: string;
 }
+
+/**
+ * What a worker credential fetch produced.
+ *
+ * `auth_revoked` is its own outcome rather than one more flavour of "no
+ * credentials": the account has ALREADY been marked `auth_error` here, with the
+ * message that tells the user to reconnect, and no amount of retrying will
+ * change the answer. The worker keys off that to stop its connect loop and leave
+ * the message alone, instead of overwriting it with a generic error and
+ * re-asking Google for a token it will never get every few seconds.
+ *
+ * `missing` covers a deleted row and an undecryptable envelope; `refresh_failed`
+ * a transient refusal from Google's token endpoint. Both are worth retrying.
+ */
+export type WorkerCredentialsResult =
+	| { kind: 'credentials'; credentials: WorkerCredentials }
+	| {
+			kind: 'unavailable';
+			reason: 'missing' | 'disconnected' | 'auth_revoked' | 'refresh_failed';
+	  };
 
 const credentialArgs = {
 	emailAddress: v.string(),
@@ -65,17 +95,6 @@ const credentialArgs = {
 	smtpUsername: v.optional(v.string()),
 	smtpPassword: v.optional(v.string()),
 };
-
-/** Actions can't read `ctx.db`; resolve flags via the internal mirror query. */
-async function assertExternalEnabled(ctx: ActionCtx): Promise<void> {
-	const flags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
-	if (!flags['mail.external']) {
-		throwForbidden(
-			'Feature "mail.external" is disabled on this Owlat instance. An admin can enable it from Settings → Features.',
-			{ feature: 'mail.external' }
-		);
-	}
-}
 
 function validateShape(args: { emailAddress: string; imapHost: string; smtpHost: string }): void {
 	if (!args.emailAddress.includes('@')) throwInvalidInput('Enter a valid email address.');
@@ -125,7 +144,12 @@ function toConnectFields(args: CredentialArgs) {
 		isSmtpSecure: args.isSmtpSecure,
 		imapUsername: args.username,
 		smtpUsername: args.smtpUsername,
+		// An app-password write is always a 'password' row, including when it
+		// REPAIRS an account that was previously connected with Google sign-in:
+		// `applyCredentialRotation` writes both fields, so the row's auth method
+		// and the contents of its envelope move together.
 		authMethod: 'password' as const,
+		oauthProvider: undefined,
 		...encodeEnvelope(args.password, args.smtpPassword),
 	};
 }
@@ -305,39 +329,106 @@ export const testConnection = authedAction({
 /**
  * Decrypt and return an account's IMAP+SMTP credentials for the mail-sync
  * worker. Internal action (decryption needs Node). Never exposed publicly and
- * never logs the plaintext. Returns null if the row is missing or undecryptable.
+ * never logs the plaintext.
+ *
+ * Always answers with a {@link WorkerCredentialsResult} discriminant rather than
+ * `credentials | null`, so the worker can tell a revoked Google grant (stop, the
+ * user must act) from a transient miss (back off and retry).
  */
 export const getCredentialsForWorker = internalAction({
 	args: { accountId: v.id('externalMailAccounts') },
-	handler: async (ctx, args): Promise<WorkerCredentials | null> => {
+	handler: async (ctx, args): Promise<WorkerCredentialsResult> => {
 		const row = await ctx.runQuery(internal.mail.external.accounts._getRowInternal, {
 			accountId: args.accountId,
 		});
-		if (!row) return null;
+		if (!row) return { kind: 'unavailable', reason: 'missing' };
+		// A disconnected account has had its sealed envelope dropped — the member
+		// asked us to forget the credential, and `mail/external/accountTeardown.ts`
+		// did. Nothing here can change that answer except the member reconnecting,
+		// so it is terminal: a worker still holding a connection through the
+		// teardown stops instead of retrying (and instead of writing a status that
+		// would put the row back into a connectable state with no credential).
+		//
+		// Read into locals so the rest of this handler has the envelope narrowed:
+		// the four fields are written together and dropped together, and every
+		// decrypt below needs all four present.
+		const { secretCiphertext, secretIv, secretAuthTag, secretEnvelopeVersion } = row;
+		if (
+			row.status === 'disconnected' ||
+			secretCiphertext === undefined ||
+			secretIv === undefined ||
+			secretAuthTag === undefined ||
+			secretEnvelopeVersion === undefined
+		) {
+			return { kind: 'unavailable', reason: 'disconnected' };
+		}
+		const envelope = {
+			ciphertext: secretCiphertext,
+			iv: secretIv,
+			authTag: secretAuthTag,
+			version: secretEnvelopeVersion,
+		};
+
+		// An OAuth account carries a refresh token where a password row carries
+		// passwords. Mint a short-lived access token from it and hand the worker
+		// that instead. A grant the user revoked comes back as `revoked` — the
+		// account is already `auth_error` by then — and is reported as such, so the
+		// worker stops rather than retrying something only the user can fix.
+		if (row.authMethod === 'oauth2') {
+			let refreshToken: string | undefined;
+			try {
+				refreshToken = (JSON.parse(decryptSecret(envelope)) as { oauthRefreshToken?: string })
+					.oauthRefreshToken;
+			} catch {
+				return { kind: 'unavailable', reason: 'missing' };
+			}
+			if (!refreshToken) return { kind: 'unavailable', reason: 'missing' };
+			const token = await refreshGoogleAccessToken(ctx, row._id, refreshToken, secretIv);
+			if (token.kind !== 'token') {
+				return {
+					kind: 'unavailable',
+					reason: token.kind === 'revoked' ? 'auth_revoked' : 'refresh_failed',
+				};
+			}
+			return {
+				kind: 'credentials',
+				credentials: {
+					imapHost: row.imapHost,
+					imapPort: row.imapPort,
+					isImapSecure: row.isImapSecure,
+					smtpHost: row.smtpHost,
+					smtpPort: row.smtpPort,
+					isSmtpSecure: row.isSmtpSecure,
+					imapUsername: row.imapUsername,
+					smtpUsername: row.smtpUsername ?? row.imapUsername,
+					imapPassword: '',
+					smtpPassword: '',
+					imapAccessToken: token.accessToken,
+					smtpAccessToken: token.accessToken,
+				},
+			};
+		}
+
 		let creds: { imapPassword: string; smtpPassword?: string };
 		try {
-			creds = JSON.parse(
-				decryptSecret({
-					ciphertext: row.secretCiphertext,
-					iv: row.secretIv,
-					authTag: row.secretAuthTag,
-					version: row.secretEnvelopeVersion,
-				})
-			);
+			creds = JSON.parse(decryptSecret(envelope));
 		} catch {
-			return null;
+			return { kind: 'unavailable', reason: 'missing' };
 		}
 		return {
-			imapHost: row.imapHost,
-			imapPort: row.imapPort,
-			isImapSecure: row.isImapSecure,
-			smtpHost: row.smtpHost,
-			smtpPort: row.smtpPort,
-			isSmtpSecure: row.isSmtpSecure,
-			imapUsername: row.imapUsername,
-			smtpUsername: row.smtpUsername ?? row.imapUsername,
-			imapPassword: creds.imapPassword,
-			smtpPassword: creds.smtpPassword ?? creds.imapPassword,
+			kind: 'credentials',
+			credentials: {
+				imapHost: row.imapHost,
+				imapPort: row.imapPort,
+				isImapSecure: row.isImapSecure,
+				smtpHost: row.smtpHost,
+				smtpPort: row.smtpPort,
+				isSmtpSecure: row.isSmtpSecure,
+				imapUsername: row.imapUsername,
+				smtpUsername: row.smtpUsername ?? row.imapUsername,
+				imapPassword: creds.imapPassword,
+				smtpPassword: creds.smtpPassword ?? creds.imapPassword,
+			},
 		};
 	},
 });

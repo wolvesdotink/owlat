@@ -21,7 +21,7 @@ export const cleanupCampaignAlertReceipts = internalMutation({
 });
 
 /**
- * Delete expired bundled-plugin replay claims (D6/P2.2).
+ * Delete expired bundled-plugin replay claims.
  *
  * The claim mutation already ages rows out in bounded batches on its own hot
  * path, and while deliveries keep arriving that sweep is what keeps the table at

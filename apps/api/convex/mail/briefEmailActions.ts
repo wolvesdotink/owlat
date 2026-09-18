@@ -37,7 +37,7 @@ const SNIPPET_LENGTH = 200;
  * to go and find the mail for is a worse version of opening the app, which is
  * the problem this feature exists to solve.
  */
-export function briefEmailBlocks(input: {
+function briefEmailBlocks(input: {
 	items: BriefEmailItem[];
 	bundledCounts: { newsletter: number; notification: number; receipt: number };
 	heading: string;

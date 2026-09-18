@@ -27,8 +27,9 @@ export type RampGateMatrixMode = 'reference_arm' | 'standalone';
 export const RAMP_GATE_MATRIX_ENV = 'OWLAT_RAMP_GATE_MATRIX_MODE';
 
 /**
- * "This process IS a matrix leg." Set by the `ramp-gate-matrix` job and by
- * nothing else — not by CI, not by the sharded `test-api` job, not by turbo.
+ * "This process IS a matrix leg." Set by `scripts/test-ramp.sh` (which the
+ * `ramp-gate-matrix` job runs) and by nothing else — not by CI, not by the
+ * sharded `test-api` job, not by turbo.
  *
  * It exists so {@link rampGateMatrixMode} can tell "the matrix ran and lost its
  * mode" from "something else ran this suite". `CI` cannot: every job in the
@@ -59,7 +60,7 @@ export function rampGateMatrixMode(): RampGateMatrixMode {
 			throw new Error(
 				`${RAMP_GATE_MATRIX_SENTINEL_ENV} is set but ${RAMP_GATE_MATRIX_ENV} is not — the ` +
 					'matrix must name its leg, never default to the equipped one. Check the ' +
-					'`ramp-gate-matrix` job in .github/workflows/test.yml.'
+					'`ramp-gate-matrix` job in .github/workflows/test.yml and scripts/test-ramp.sh.'
 			);
 		}
 		return 'reference_arm';

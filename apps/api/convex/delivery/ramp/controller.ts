@@ -1,5 +1,5 @@
 /**
- * THE AIMD RAMP CONTROLLER — the pure decision function (plan D9, D10, D15).
+ * THE AIMD RAMP CONTROLLER — the pure decision function.
  *
  * `nextShare` takes the cell, its stored mix state, the shipped hard-stop
  * signals, the gate aggregate and a capacity projection, and returns the share
@@ -21,7 +21,7 @@
  *  5a. no evaluation at all -> hold; the graduation clock stops
  *  5b. stale/skewed evidence -> hold; evidence has an expiry, both directions
  *   6. gate halt / fail     -> max(floor, s x 0.5), freeze COOLDOWN
- *   7. insufficient data    -> hold (plan D10: never up, and never DOWN either)
+ *   7. insufficient data    -> hold (never up, and never DOWN either)
  *   8. capacity ceiling     — computed FIRST of the clean-path rungs, so even a
  *                             graduated cell is bounded by the warming cap
  *   9. graduation           -> due, OR ALREADY PINNED: award/keep the pin, and
@@ -187,7 +187,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	// 1. An unusable clock cannot date a freeze, age evidence or measure a hold.
 	if (!isClockUsable) return { ...held, reason: 'clock_unusable' };
 
-	// 2-4. HARD STOPS, in the plan's order. They bypass the gates entirely and
+	// 2-4. HARD STOPS, in precedence order. They bypass the gates entirely and
 	//      each resets the clean streak AND REVOKES THE GRADUATION PIN: a cell in
 	//      one of these states has no clean history left to spend.
 	//
@@ -240,7 +240,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 		}
 		return {
 			...held,
-			// THE SHARED AIMD ARITHMETIC (D3) — `floor: 0`: a hard stop retreats PAST the floor.
+			// THE SHARED AIMD ARITHMETIC — `floor: 0`: a hard stop retreats PAST the floor.
 			share: aimdDecrease(fromShare, { floor: 0, decreaseFactor: RAMP_AIMD.decreaseFactor }),
 			reason: 'breaker',
 			cleanStreak: 0,
@@ -292,7 +292,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	if (storedFreeze.kind === 'active') return { ...held, reason: 'frozen' };
 	if (storedFreeze.kind === 'unreadable') return { ...held, reason: 'freeze_unreadable' };
 
-	// 5a. No evaluation at all is thin evidence, not a failure (plan D10). It holds
+	// 5a. No evaluation at all is thin evidence, not a failure. It holds
 	// the share and the streak — but it stops the GRADUATION clock, because
 	// graduation demands fourteen days of positive evidence and an unmeasured
 	// window is not evidence of health. Deferring a pin costs nothing; awarding
@@ -304,7 +304,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	//     otherwise flow straight through K_CLEAN into the additive-increase
 	//     branch and buy one step per elapsed window for ever. Holds in BOTH
 	//     directions, and stops the graduation clock, exactly like a missing one:
-	//     evidence we cannot date is not evidence (plan D10).
+	//     evidence we cannot date is not evidence.
 	if (!isEvidenceUsable(evaluation.evaluatedAt, now, config.thresholds)) {
 		return { ...held, reason: 'evidence_stale', greenSince: undefined };
 	}
@@ -313,7 +313,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	// 6. A breached gate: multiplicative decrease to the floor, then a cooldown.
 	if (evaluation.verdict === 'fail' || evaluation.verdict === 'halt') {
 		const failedGate = evaluation.failedGate;
-		// D17: a tripwire alone is suspect. Hold — the streak is already zero, so
+		// A TRIPWIRE ALONE IS SUSPECT. Hold — the streak is already zero, so
 		// holding still forbids an increase; it just does not halve on one signal.
 		//
 		// NO SECOND CORROBORATION SCAN HERE, deliberately. `aggregateRampGates`
@@ -351,7 +351,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 			...held,
 			share,
 			// The union guarantees a named gate on `fail`/`halt`, so this reason can
-			// never read `holding` for a halved share (plan D12: no silent retreat).
+			// never read `holding` for a halved share (no silent retreat).
 			reason: failedGate,
 			verdict: evaluation.verdict,
 			failedGate,
@@ -364,7 +364,7 @@ function decide(args: DecideArgs): RampDecisionDraft {
 		};
 	}
 
-	// 7. Thin data HOLDS (plan D10) — the streak is held, not reset. The
+	// 7. Thin data HOLDS — the streak is held, not reset. The
 	//    graduation clock stops, for the reason given above.
 	if (evaluation.verdict !== 'pass') {
 		return {
@@ -416,13 +416,13 @@ function decide(args: DecideArgs): RampDecisionDraft {
 	const capacityBound = capacityCeiling(capacity);
 	if (capacityBound === null) return { ...green, reason: 'capacity_unknown' };
 	// 8b. WHICH OF THE THREE CEILINGS BINDS — the capacity projection, the stored
-	//     phase rung, or the substitution table's cap (P3-8). The arithmetic and
+	//     phase rung, or the substitution table's cap. The arithmetic and
 	//     the remedy each one implies live in `controllerBounds`; this rung only
 	//     applies the answer, so the ladder stays a ladder.
 	const bound = resolveCeilingBound({ capacityBound, ...phase });
 	const { ceiling, cappedBy } = bound;
 
-	// GRADUATION (plan D9): s = 1.0 held 14 days, all gates green. The cell PINS
+	// GRADUATION: s = 1.0 held 14 days, all gates green. The cell PINS
 	// and the relay drops to priority_failover standby.
 	//
 	// The PIN SURVIVES A CAPACITY BOUND but does not override it: a graduated cell

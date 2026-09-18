@@ -14,7 +14,7 @@
  */
 
 import type { HttpRouter } from 'convex/server';
-import { handleCors, healthCheck } from './auth/apiAuth';
+import { handleCors, healthCheck } from './auth/apiAuthHttp';
 import {
 	createContact,
 	getContact,

@@ -4,21 +4,22 @@
  * The Independence screen quotes three numbers an operator will screenshot: the
  * share of mail their own server carries, the date they stop paying a relay, and
  * the money not spent so far this month. Every one of them is a projection off
- * the SAME daily series the server already derives (plan D5: derive on read,
- * never store), so the arithmetic lives in ONE place that the Convex query and
- * the web screen both import. A dashboard and a controller that disagree about a
- * number is the failure mode ADR-0042 was written about; a dashboard and its own
- * server disagreeing is the same bug one layer up.
+ * the SAME daily series the server already derives (derive on read, never
+ * store), so the arithmetic lives in ONE place that the Convex query and the web
+ * screen both import. A dashboard and a controller that disagree about a number
+ * is the failure mode ADR-0042 was written about; a dashboard and its own server
+ * disagreeing is the same bug one layer up.
  *
- * NOTHING HERE READS A CLOCK, A DATABASE OR AN ENVIRONMENT (plan D15). `now` is
+ * NOTHING HERE READS A CLOCK, A DATABASE OR AN ENVIRONMENT. `now` is
  * a parameter, the series is a parameter, and every degenerate input — an empty
  * series, a single point, a flat line, a retreating line, a NaN — has a named
  * answer rather than an exception.
  *
- * D2 LIVES HERE TOO. A deployment with no reference transport has no relay to
+ * THE ADDITIVE-ONLY RULE LIVES HERE TOO. A deployment with no reference
+ * transport has no relay to
  * become independent OF: the projection returns `already_independent` and the
  * spend figure is simply absent. Neither is an error, a warning or an incomplete
- * setup — the screen renames itself (plan D14) and carries on.
+ * setup — the screen renames itself and carries on.
  */
 
 import type { DeliverabilityStream } from './deliverabilityRouting';
@@ -182,7 +183,7 @@ function fitDailySlope(
  *
  * `hasReferenceTransport === false` short-circuits to `already_independent`
  * BEFORE any arithmetic: with no relay there is no spend to end and no date to
- * project, and that is the supported standalone configuration (plan D2), not a
+ * project, and that is the supported standalone configuration, not a
  * missing measurement.
  */
 export function projectIndependenceDate(input: {
@@ -248,7 +249,7 @@ export function ownSendsSince(points: readonly IndependenceDayPoint[], sinceDay:
 	return total;
 }
 
-// ============ THE PRESETS (plan D9) ============
+// ============ THE PRESETS ============
 
 export const RAMP_PRESET_KEYS = ['conservative', 'balanced', 'aggressive'] as const;
 export type RampPreset = (typeof RAMP_PRESET_KEYS)[number];
@@ -262,7 +263,7 @@ export type RampPreset = (typeof RAMP_PRESET_KEYS)[number];
  * running the same controller it ran yesterday, and the preset is a knob over
  * `RAMP_STREAM_CONFIGS` rather than a fork of it.
  *
- * The asymmetry is the plan's (D9): a preset may make the ADVANCE cheaper or
+ * The asymmetry is deliberate: a preset may make the ADVANCE cheaper or
  * dearer and may never touch the RETREAT. Multiplicative decrease, the floor,
  * the cooldown ladder and every hard stop are outside a preset's reach by
  * construction — there is no field here that could express them.
@@ -275,7 +276,7 @@ export interface RampPresetTuning {
 }
 
 const RAMP_PRESET_TUNING: Record<RampPreset, RampPresetTuning> = {
-	// `conservative` IS the plan's standalone substitution, not a coincidence
+	// `conservative` IS the standalone substitution, not a coincidence
 	// that happens to match it: step halved, K_CLEAN +2 (3 -> 5). Applying that
 	// substitution anywhere else as well would compound it to x0.25 / K_CLEAN 7.
 	conservative: { increaseStepScale: 0.5, extraCleanWindows: 2 },
@@ -286,13 +287,13 @@ const RAMP_PRESET_TUNING: Record<RampPreset, RampPresetTuning> = {
 /**
  * The preset a stream runs under when nobody has chosen one.
  *
- * STANDALONE DEFAULTS TO CONSERVATIVE, and the reason is D14 rather than
+ * STANDALONE DEFAULTS TO CONSERVATIVE, and the reason is honesty rather than
  * timidity: with no reference arm the engagement gate is a genuinely weak
  * signal, so the honest response to weaker evidence is to advance more slowly —
  * not to advance at the same pace and hope.
  *
- * THIS IS THE PLAN'S STANDALONE SUBSTITUTION, AND ITS ONLY APPLICATION. The
- * substitution the plan describes — K_CLEAN 3 -> 5, step halved with no
+ * THIS IS THE STANDALONE SUBSTITUTION, AND ITS ONLY APPLICATION. The
+ * substitution a standalone cell gets — K_CLEAN 3 -> 5, step halved with no
  * reference transport — is precisely `RAMP_PRESET_TUNING.conservative`, so it is
  * delivered here rather than a second time inside the gate table. The resulting
  * standalone constants are fixture-pinned (K_CLEAN 5; campaign and automation
@@ -364,12 +365,12 @@ export type RelayRemovalSafety =
 /**
  * Is it safe to disconnect the reference transport, and if not, when will it be?
  *
- * "Safe" means every cell has GRADUATED (plan D9: s = 1.0 held 14 days with all
- * gates green). Anything short of that is a cell whose traffic the relay is
- * still absorbing, and pulling the relay does not move that traffic to the own
- * server gently — it moves all of it at once, which is the exact failure the
- * ramp exists to avoid. The projection is the shared one, so the date the
- * removal dialog quotes is the date the Independence screen quotes.
+ * "Safe" means every cell has GRADUATED (s = 1.0 held 14 days with all gates
+ * green). Anything short of that is a cell whose traffic the relay is still
+ * absorbing, and pulling the relay does not move that traffic to the own server
+ * gently — it moves all of it at once, which is the exact failure the ramp
+ * exists to avoid. The projection is the shared one, so the date the removal
+ * dialog quotes is the date the Independence screen quotes.
  */
 export function assessRelayRemoval(input: {
 	readonly cells: readonly RelayRemovalCellState[];

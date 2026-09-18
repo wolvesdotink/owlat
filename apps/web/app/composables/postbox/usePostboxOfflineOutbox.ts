@@ -1,6 +1,5 @@
 /**
- * Offline outbox flow (adoption-gaps D8): queue sends composed offline, drain
- * them on reconnect.
+ * Offline outbox flow: queue sends composed offline, drain them on reconnect.
  *
  * Queue side — `usePostboxCompose.send()` calls {@link queueSend} when the
  * device is offline (or a send network-fails): the FULL compose payload goes
@@ -74,7 +73,7 @@ interface OutboxCounts {
 
 /** Module-scoped reactive per-namespace counts so every caller shares one truth. */
 let countsRef: Ref<Record<string, OutboxCounts>> | null = null;
-/** Single-flight drain locks, one per namespace (R4: no double-send on flaps). */
+/** Single-flight drain locks, one per namespace — no double-send on flaps. */
 const drainInFlight = new Map<string, Promise<void>>();
 
 /** Test-only: reset the shared module state between cases. */
@@ -164,7 +163,7 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 	async function queueSend(
 		payload: OfflineComposePayload,
 		/**
-		 * The sender's undo-send window (plan idea 8), when they have set one.
+		 * The sender's undo-send window, when they have set one.
 		 * Bounds the toast ONLY — the item stays un-queueable for as long as it is
 		 * queued either way. Deliberately NOT part of the payload: `sendOptions` is
 		 * replayed verbatim by the drain, which dispatches a drained item at once.
@@ -249,7 +248,7 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 				const row = await client.query(api.mail.drafts.get, { draftId });
 				// The nonce matched a draft that already left 'draft': the previous
 				// attempt's send went through and only the response was lost. Done —
-				// re-sending here would be the double-send R4 guards against.
+				// re-sending here would be the double-send the nonce guards against.
 				if (!row || row.state !== 'draft') return;
 				existingAttachmentIds = new Set(
 					(row.attachments ?? []).map((a: { storageId: string }) => a.storageId)

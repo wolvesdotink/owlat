@@ -33,14 +33,14 @@ export const VERSION_PRUNE_BATCH = 25;
 export type TemplateVersionTrigger = 'save' | 'publish' | 'send';
 
 /** The template fields a snapshot preserves. */
-export interface TemplateVersionSource {
+interface TemplateVersionSource {
 	name: string;
 	subject: string;
 	/** `EditorBlock[]` JSON — the same string as `emailTemplates.content`. */
 	content: string;
 }
 
-export interface TemplateVersionFingerprint {
+interface TemplateVersionFingerprint {
 	contentHash: string;
 	contentBytes: number;
 }
@@ -75,7 +75,7 @@ export function fingerprintSnapshot(source: TemplateVersionSource): TemplateVers
 	};
 }
 
-export interface TemplateVersionMarker {
+interface TemplateVersionMarker {
 	contentHash: string;
 	trigger: TemplateVersionTrigger;
 }

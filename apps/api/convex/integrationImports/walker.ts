@@ -59,8 +59,8 @@ export const integrationProviderConfigValidator = v.union(
 		provider: v.literal('mailchimp'),
 		apiKey: v.string(),
 		listId: v.string(),
-		// Opt-in suppression carry-over (plan D9). Absent = the pre-P4.1
-		// behavior: non-subscribed members are skipped and nothing is suppressed.
+		// Opt-in suppression carry-over. Absent: non-subscribed members are skipped
+		// and nothing is suppressed.
 		importSuppressions: v.optional(v.boolean()),
 	}),
 	v.object({
@@ -68,9 +68,9 @@ export const integrationProviderConfigValidator = v.union(
 		apiKey: v.string(),
 	}),
 	// No credential field: the Mandrill rejects import reads `MANDRILL_API_KEY`
-	// from the deployment environment (plan D2 — send-provider credentials are
-	// env-only, and a key pasted here would be a second credential model for an
-	// account that already has one). See `providers/mandrill/index.ts`.
+	// from the deployment environment (send-provider credentials are env-only,
+	// and a key pasted here would be a second credential model for an account
+	// that already has one). See `providers/mandrill/index.ts`.
 	v.object({
 		provider: v.literal('mandrill'),
 	})
@@ -81,8 +81,8 @@ type IntegrationImportConfig = Infer<typeof integrationProviderConfigValidator>;
 /**
  * Seal the provider's API key (when the provider has one) BEFORE the config
  * enters scheduled-function args, so the live third-party credential never sits
- * in the `_scheduled_functions` table in plaintext across the import's hops
- * (plan L9). Mandrill carries no key and passes through unchanged.
+ * in the `_scheduled_functions` table in plaintext across the import's hops.
+ * Mandrill carries no key and passes through unchanged.
  */
 async function sealConfigCredential(
 	config: IntegrationImportConfig
@@ -174,9 +174,9 @@ export const startIntegrationImport = authedMutation({
 		});
 
 		// Seal the provider credential so the scheduled-function args carry
-		// ciphertext, not a live API key, for the life of the run (plan L9).
-		// Validation above ran on the plaintext config, so sealing does not
-		// weaken any check.
+		// ciphertext, not a live API key, for the life of the run. Validation
+		// above ran on the plaintext config, so sealing does not weaken any
+		// check.
 		const scheduledConfig = await sealConfigCredential(args.config);
 
 		await ctx.scheduler.runAfter(0, internal.integrationImports.walker.processIntegrationPage, {
@@ -265,8 +265,8 @@ export const processIntegrationPage = internalAction({
 		const adapter = providerFor(args.config.provider);
 
 		// Unseal the provider credential in memory for this hop's outbound call
-		// only (plan L9). `args.config` stays sealed and is what re-schedules the
-		// next hop below, so the plaintext key never re-enters scheduled args.
+		// only. `args.config` stays sealed and is what re-schedules the next hop
+		// below, so the plaintext key never re-enters scheduled args.
 		const liveConfig = await openConfigCredential(args.config);
 
 		// Retry loop. `RetryableProviderError` → backoff + retry up to
@@ -336,7 +336,7 @@ export const processIntegrationPage = internalAction({
 			}
 		}
 
-		// Suppression carry-over (plan D9). A separate hop from `importBatch`
+		// Suppression carry-over. A separate hop from `importBatch`
 		// because it is a different kind of write to a different table with a
 		// different idempotency story — and because a contacts import that
 		// carries no suppressions must be able to fail without one, and the

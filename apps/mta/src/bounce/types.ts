@@ -111,7 +111,7 @@ export type SpfVerdict =
 /**
  * The ctx after `resolveRoute` enriches it for the inbound-accept branch.
  *
- * Only this branch needs `stageAttachments` to run; every other terminal
+ * Only this branch needs `attachmentMeta` to run; every other terminal
  * classification (FBL, DSN, mailbox, endpoint, hold, route_bounce,
  * unrecognized) short-circuits the pipeline before this phase. `rcptTo` is
  * narrowed to `string` here because `resolveRoute` short-circuits for
@@ -134,36 +134,35 @@ export interface PhaseDeps {
 }
 
 /**
- * Attachment metadata staged for the `inbound.received` Convex payload.
+ * Attachment metadata for the `inbound.received` Convex payload.
  *
- * The `redisKey` is generated deterministically by the reducer so the
- * staging effect and the notify payload can both reference it; the runner
- * is what actually `SETEX`-es the bytes.
+ * Metadata only, and deliberately so: the bytes are not copied into Redis or
+ * into the webhook. See `phases/attachmentMeta.ts` for why the Redis staging
+ * this once carried a `redisKey` for is gone.
  */
 export interface InboundAttachmentMeta {
 	readonly filename: string | undefined;
 	readonly contentType: string;
 	readonly size: number;
-	readonly redisKey: string | undefined;
 }
 
 /**
- * Per-attachment payload the reducer consumes when emitting `stage_attachment`
- * effects + the notify_convex event for inbound-accept.
+ * Per-attachment payload the reducer consumes when building the notify_convex
+ * event for inbound-accept.
  */
 export interface InboundAttachmentInput {
 	readonly index: number;
 	readonly filename: string | undefined;
 	readonly contentType: string;
 	readonly size: number;
-	readonly contentBase64: string | undefined;
 }
 
 /**
  * Per-attachment payload for the personal-mailbox `inbound.mailbox.received`
- * Convex payload. Mailbox attachments are not Redis-staged today —
- * Convex stores the full raw RFC822, so attachments can be re-extracted
- * downstream.
+ * Convex payload. Metadata only here too, but unlike the `inbound.received`
+ * route this one also ships the whole message as `rawBytesBase64`, so the bytes
+ * stay reachable: Convex keeps the raw `.eml` and the reader re-extracts parts
+ * from it by `partIndex`.
  */
 export interface MailboxAttachmentMeta {
 	readonly filename: string;

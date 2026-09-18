@@ -240,7 +240,7 @@ export function selectRouteFromFacts(
  * boundary turns into a bounded retry (capped by the routing attempt limit and
  * the four-day delivery deadline).
  */
-export type RoutingDeferralCode =
+type RoutingDeferralCode =
 	| 'GLOBAL_DELIVERY_CIRCUIT_OPEN'
 	| 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED'
 	| 'DELIVERABILITY_RELAY_UNAVAILABLE';
@@ -292,10 +292,10 @@ export async function resolveLastMileRoutePlanFromDb(
 	isMtaGoverned: boolean;
 	deferralCode?: RoutingDeferralCode;
 	/**
-	 * The return-path host a RELAY send may stamp as its VERP envelope sender
-	 * (plan G-08), or `undefined` to keep the composer's — the shipped
-	 * behaviour. Answered HERE, inside the routing query the send path already
-	 * runs, rather than in a second round trip from the dispatcher.
+	 * The return-path host a RELAY send may stamp as its VERP envelope sender,
+	 * or `undefined` to keep the composer's — the shipped behaviour. Answered
+	 * HERE, inside the routing query the send path already runs, rather than
+	 * in a second round trip from the dispatcher.
 	 */
 	relayReturnPathHost?: string | undefined;
 }> {

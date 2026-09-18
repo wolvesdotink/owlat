@@ -14,7 +14,7 @@ import { estimateKnownCostMicrousd } from '../lib/llm/pricing';
 import { resolveLanguageModelWithProvenance } from '../lib/llmProvider';
 import { PLUGIN_LLM_MAX_OUTPUT_TOKENS, validatePluginLlmRequest } from './llmRequest';
 
-export type PluginLlmErrorCode =
+type PluginLlmErrorCode =
 	| 'access_denied'
 	| 'accounting_unavailable'
 	| 'invalid_input'

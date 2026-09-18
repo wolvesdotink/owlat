@@ -60,7 +60,7 @@ const { data: stats, isLoading: statsLoading } = useConvexQuery(
 
 // The multi-day send plan's day-of-N state. `null` for a campaign with no walk
 // in flight, which renders nothing at all — absence of a plan is not a state
-// anyone has to explain (plan D2/D14).
+// anyone has to explain.
 const { data: sendPlan } = useConvexQuery(
 	api.campaigns.sendPlanQueries.getCampaignSendPlan,
 	() => ({
@@ -423,8 +423,7 @@ const loadPrevClicked = () => {
 								</template>
 							</p>
 							<!--
-								THE MULTI-DAY SEND PLAN, present from the moment the send starts
-								(plan D14, P3-7). Renders nothing for an ordinary same-day send.
+								THE MULTI-DAY SEND PLAN, present from the moment the send starts. Renders nothing for an ordinary same-day send.
 							-->
 							<CampaignSendPlanLine :progress="sendPlan" class="mt-1" />
 						</div>

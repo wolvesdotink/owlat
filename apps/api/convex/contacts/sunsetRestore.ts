@@ -1,5 +1,5 @@
 /**
- * The sunset OPERATOR paths — restore and exemption (deliverability plan P4-4).
+ * The sunset OPERATOR paths — restore and exemption.
  *
  * Split out of `sunsetEngine.ts` because they are a different job with a
  * different actor: the engine decides and writes on a cron with
@@ -14,7 +14,7 @@ import type { MutationCtx } from '../_generated/server';
 import { recordAuditLog } from '../lib/auditLog';
 import { normalizeEmail } from '../lib/inputGuards';
 
-export type SunsetRestoreResult = {
+type SunsetRestoreResult = {
 	/**
 	 * WHAT HAPPENED, not why. Named `outcome` rather than `reason` because
 	 * `sunsetPolicy.ts` owns `SunsetReason` — the engine's decision vocabulary —

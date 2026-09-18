@@ -3,6 +3,8 @@ import { v } from 'convex/values';
 import { dmarcPolicyValidator } from '../domains/dmarc';
 import {
 	dnsRecordsValidator,
+	externalReceivingProviderValidator,
+	receivingModeValidator,
 	verificationResultsValidator,
 	yahooCflStoredStateValidator,
 } from '../lib/convexValidators';
@@ -51,6 +53,25 @@ export const domainTables = {
 		// Cleared on a successful push or a fresh return-path edit. Written only by
 		// the **Sending domain lifecycle (module)**.
 		returnPathHostSyncError: v.optional(v.string()),
+		// Who accepts INBOUND mail for this domain. Absent ⇒ `'owlat'` — every
+		// pre-existing row keeps today's behaviour byte for byte (apex MX +
+		// MTA-STS guidance, a TLS-RPT record, an SPF record with our include
+		// only), so this ships with no backfill and no migration.
+		// `'external'` is the send-only mode: the customer's mail stays on Google
+		// Workspace / Microsoft 365, Owlat only SENDS for the domain, and the
+		// generated records change accordingly (provider SPF include folded in,
+		// no `_smtp._tls` — it solicits reports about inbound TLS, which for this
+		// domain terminates at the other provider). Absence is a supported
+		// configuration, never a "setup incomplete". Written only by the
+		// **Sending domain lifecycle (module)** (`create` / `setReceivingMode`).
+		receivingMode: v.optional(receivingModeValidator),
+		// Which provider keeps the MX when `receivingMode === 'external'`. Decides
+		// the SPF term folded into the apex record (`@owlat/shared/externalReceiving`
+		// — one table, shared with the UI). Absent behaves exactly like `'other'`:
+		// we have no include to add, so our record is published unchanged and the
+		// operator is told to merge it with theirs by hand. Meaningless — and
+		// cleared — while `receivingMode` is `'owlat'`.
+		externalReceivingProvider: v.optional(externalReceivingProviderValidator),
 		// DMARC enforcement policy reflected in the generated `_dmarc` record.
 		// Absent (legacy rows) and `'none'` both mean monitor-only; the
 		// customer raises it to `'quarantine'`/`'reject'` via the lifecycle's

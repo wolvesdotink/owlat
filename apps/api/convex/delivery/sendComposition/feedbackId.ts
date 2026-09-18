@@ -54,9 +54,9 @@ const EMPTY_FIELD = 'none';
  * `txn` for transactional + automation (1:1) sends — distinct streams get
  * distinct FBL aggregation buckets.
  */
-export type FeedbackStreamType = 'campaign' | 'txn';
+type FeedbackStreamType = 'campaign' | 'txn';
 
-export type BuildFeedbackIdInput = {
+type BuildFeedbackIdInput = {
 	streamType: FeedbackStreamType;
 	organizationId: string;
 	campaignId?: string;

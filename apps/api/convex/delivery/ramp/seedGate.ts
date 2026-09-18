@@ -17,13 +17,13 @@
  * IT DECIDES NOTHING OF ITS OWN. No threshold is declared here and no rate is
  * compared against one here: the pass/fail comes out of the roll-up's status.
  * A second home for the 90 % line would be a second answer to "did the seeds
- * reach the inbox", and D5's rule is that the controller and the dashboard must
- * never be able to disagree about a number. The rates in the MEASUREMENT shape
+ * reach the inbox", and the controller and the dashboard must never be able to
+ * disagree about a number. The rates in the MEASUREMENT shape
  * are RENDERED, never consulted, and they are counted with the shared module's
  * own `isSeedPlacementReached` predicate so even the displayed number cannot
  * disagree with the verdict beside it.
  *
- * SEEDS ARE A TRIPWIRE, NOT A GAUGE (plan D17), and this module does not decide
+ * SEEDS ARE A TRIPWIRE, NOT A GAUGE, and this module does not decide
  * that either: a `fail` from here is named by `CORROBORATION_REQUIRED_RAMP_GATES`
  * (gateConfig), which makes `aggregateRampGates` set `requiresCorroboration`,
  * which is what `controller.ts` and `paceActuator.ts` turn into an
@@ -31,16 +31,16 @@
  * since #504 it is the ONLY path: `analytics.seedPlacement.getGateVerdict`
  * restated the same corroboration rule over the PROVIDER roll-up — pooled across
  * streams, where a ramp evaluation is per cell — with no production caller, and
- * was deleted rather than left as a second route to one rule (D5).
+ * was deleted rather than left as a second route to one rule.
  *
  * ONE IMPLEMENTATION, NOT TWO. Standalone is the DEGENERATE CASE, exactly as
- * D1's boolean is a degenerate share: with no reference-arm probes the roll-up
- * reports `no_reference_arm` and the absolute clause is the whole gate (D3's
- * substitution). The standalone entry point below is the same function with the
+ * the standalone boolean is a degenerate share: with no reference-arm probes
+ * the roll-up reports `no_reference_arm` and the absolute clause is the whole
+ * gate. The standalone entry point below is the same function with the
  * reference sweep dropped at the boundary, so the degraded path cannot diverge
  * from the equipped one — there is nothing for it to diverge from.
  *
- * PURE (plan D15): `now` is a parameter, nothing reads a clock, a database or the
+ * PURE: `now` is a parameter, nothing reads a clock, a database or the
  * environment.
  */
 
@@ -124,7 +124,7 @@ function reachedShare(sweep: SeedPlacementObservation | null | undefined): numbe
 
 /**
  * Freshness is the RAMP's rule, not the roll-up's: every gate holds rather than
- * passing on a stale or future-dated window (plan D9/D10), and the roll-up has
+ * passing on a stale or future-dated window, and the roll-up has
  * no clock. Sample size stays the roll-up's — a sweep it graded
  * `insufficient_data` is thin by the one definition there is.
  */
@@ -141,7 +141,7 @@ function sweepFreshness(
 /**
  * Gate 5 — SEED PLACEMENT (OPTIONAL): the shared roll-up's status, restated.
  *
- * Absent seed data returns `insufficient_data`, NEVER `fail` (plan D2) — and
+ * Absent seed data returns `insufficient_data`, NEVER `fail` — and
  * because the gate is listed in `OPTIONAL_RAMP_GATES`, that `insufficient_data`
  * does not hold the ramp either: it only lowers measurement confidence. A
  * deployment with zero seed mailboxes is a supported configuration, not an

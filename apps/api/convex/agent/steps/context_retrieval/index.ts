@@ -40,7 +40,7 @@ function estimateTokens(text: string): number {
 	return Math.ceil(text.length / CONTEXT_BUDGET.charsPerToken);
 }
 
-export interface ContextRetrievalInput {
+interface ContextRetrievalInput {
 	inboundMessageId: Id<'inboundMessages'>;
 }
 
@@ -51,7 +51,7 @@ export interface ContextRetrievalInput {
  * exists so the future clarify step and the draft-quality gate have a
  * cheap "is the AI replying blind?" trigger.
  */
-export interface ContextCoverage {
+interface ContextCoverage {
 	contact: boolean;
 	thread: boolean;
 	knowledge: boolean;
@@ -73,7 +73,7 @@ export interface GroundingSource {
 	title: string;
 }
 
-export interface ContextRetrievalOutput {
+interface ContextRetrievalOutput {
 	context: string;
 	tier: 'normal' | 'compacted' | 'emergency';
 	estimatedTokens: number;

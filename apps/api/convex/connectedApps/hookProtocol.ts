@@ -79,13 +79,13 @@ export interface ConnectedAppHookRequest {
 }
 
 /** The accepted, validated result of a `draft` hook: a proposed reply body. */
-export interface DraftHookResult {
+interface DraftHookResult {
 	readonly hookKind: 'draft';
 	readonly draft: string;
 }
 
 /** The accepted, validated result of a `gate` hook: a restrict-only verdict. */
-export interface GateHookResult {
+interface GateHookResult {
 	readonly hookKind: 'gate';
 	readonly gate: RestrictOnlyGateResult;
 }
@@ -97,7 +97,7 @@ export interface ScoreHookResult {
 	readonly reason?: string;
 }
 
-export type ConnectedAppHookResult = DraftHookResult | GateHookResult | ScoreHookResult;
+type ConnectedAppHookResult = DraftHookResult | GateHookResult | ScoreHookResult;
 
 /** A plain (prototype-clean) JSON object with only own, enumerable data keys. */
 function isPlainJsonObject(value: JsonValue): value is JsonObject {

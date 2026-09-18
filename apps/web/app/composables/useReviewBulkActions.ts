@@ -1,10 +1,10 @@
 /**
- * Bulk approve / reject wiring for the Review Queue browse list (piece C2).
+ * Bulk approve / reject wiring for the Review Queue browse list.
  *
  * Runs the batch mutations (`inbox/bulkMutations.ts`) against the current
  * selection, keeps the optimistic row-hiding honest per id (only rows whose
  * outcome really removed them from the queue stay hidden), and arms ONE shared
- * countdown-undo toast for the batch's C1 undo window — its Undo pulls every
+ * countdown-undo toast for the batch's undo window — its Undo pulls every
  * still-held send back via `undoAutoSends`, reporting partial results ("2
  * approvals undone — 1 already sent") the same way the approve toast does.
  */

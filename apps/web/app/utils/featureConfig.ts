@@ -36,3 +36,21 @@ export function missingPluginEnvironmentVariables(
 	const missing = new Set(configStatus?.[definition.key] ?? []);
 	return (definition.requiredEnvVars ?? []).filter((variable) => missing.has(variable));
 }
+
+/**
+ * The variables to NAME in the enable-time "needs config" note for a BUILTIN
+ * flag (the plugin path blocks the enable instead; see above).
+ *
+ * When the backend config status is available this is exactly the subset the
+ * deployment is missing, so enabling a flag whose variables are all set shows
+ * no note at all. When it is not available — the query is still loading, or it
+ * errored — nothing can say which are missing, so the flag's whole declared
+ * list is named rather than staying silent about a requirement.
+ */
+export function enableTimeMissingEnvVars(
+	definition: FeatureFlagDefinition,
+	configStatus: Record<string, string[]> | undefined | null
+): string[] {
+	if (!configStatus) return [...(definition.requiredEnvVars ?? [])];
+	return missingPluginEnvironmentVariables(definition, configStatus);
+}

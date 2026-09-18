@@ -1,5 +1,5 @@
 /**
- * Bulk review-queue decisions (adoption-gaps piece C2, decision D6).
+ * Bulk review-queue decisions.
  *
  * Batch counterparts to the single-message mutations in `./mutations.ts`,
  * backing the review queue's multi-select: `approveDrafts` / `rejectDrafts`
@@ -9,7 +9,7 @@
  * (approve feedback records later, at send-fire time — see
  * `decisionFeedback.recordApprovalSignalsAtSend`), and every approve in a
  * batch shares one undo window
- * (`agentConfig.humanApproveUndoDelayMs`, piece C1) — cancelled per id through
+ * (`agentConfig.humanApproveUndoDelayMs`) — cancelled per id through
  * the companion `undoAutoSends`.
  *
  * A sibling of `mutations.ts` rather than more lines in it: that file already
@@ -35,7 +35,7 @@ import { recordAutonomyFeedback, resolveReplyCollisionHold } from './decisionFee
 const BULK_DECISION_LIMIT = 50;
 
 /** Per-id outcome of a bulk approve — `approved` queued the send; the other
- * arms are the honest partial-failure vocabulary (decision D6). */
+ * arms are the honest partial-failure vocabulary. */
 type ApproveOutcome =
 	| { inboundMessageId: Id<'inboundMessages'>; outcome: 'approved' }
 	| { inboundMessageId: Id<'inboundMessages'>; outcome: 'no_draft' }
@@ -54,10 +54,10 @@ function normalizeBatchIds(ids: Id<'inboundMessages'>[], label: string): Id<'inb
 }
 
 /**
- * Approve a batch of agent drafts for sending — per D6, one outcome per id
+ * Approve a batch of agent drafts for sending — one outcome per id
  * (`approved | no_draft | reply_in_progress | not_found`), never throwing on a
- * partial failure. All approved items share ONE undo window (the C1
- * human-approve window resolved once for the batch), returned as
+ * partial failure. All approved items share ONE undo window (the human-approve
+ * window resolved once for the batch), returned as
  * `undo.sendAt` exactly like the single `approveDraft`, so the shared
  * countdown toast can cancel any of them via `undoAutoSends` while it is open.
  *
@@ -72,7 +72,7 @@ export const approveDrafts = adminMutation({
 	handler: async (ctx, args, session) => {
 		const ids = normalizeBatchIds(args.inboundMessageIds, 'Bulk approve');
 
-		// One shared undo window for the whole batch (piece C1 semantics).
+		// One shared undo window for the whole batch.
 		const configs = await ctx.db.query('agentConfig').take(1);
 		const undoDelayMs = resolveHumanApproveUndoDelayMs(configs[0]?.humanApproveUndoDelayMs);
 		const approvedAt = Date.now();

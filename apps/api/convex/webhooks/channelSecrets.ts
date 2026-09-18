@@ -24,7 +24,7 @@ import { logError } from '../lib/runtimeLog';
 import { missingSecretResult } from './security';
 
 /** Which stored secret to resolve — see `channels/credentials.ts`. */
-export type ChannelSecretField = 'signature' | 'verifyToken';
+type ChannelSecretField = 'signature' | 'verifyToken';
 
 /**
  * Resolve a channel's inbound secret, preferring the credential stored on its

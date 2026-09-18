@@ -183,8 +183,42 @@ signed + notarized macOS builds (hardened runtime is on by default in Tauri 2,
 and `tauri-action` submits to the notary service and staples the ticket
 whenever these env vars are present). No config changes are needed.
 
-The updater endpoint is configured in `tauri.conf.json`
-(`plugins.updater.endpoints`); point it at where `latest.json` + bundles are served.
+### Where the app looks for updates
+
+The app asks the Owlat instance it is connected to. On boot (when "check for
+updates" is on), every six hours while it stays open, and on the manual "Check
+for Updates…" menu item, the webview probes the active workspace's
+`GET /api/desktop/update-policy`; on a 200 it points the updater at that
+instance's `/api/desktop/update/{{target}}/{{arch}}/{{current_version}}`, which
+serves the release that instance's policy allows (it can pin a version, pause
+updates, or defer a fresh release for a while).
+
+It falls back to the endpoint in `tauri.conf.json`
+(`plugins.updater.endpoints`, GitHub's `latest.json`) when there is no
+workspace yet, when the workspace URL is not https (`tauri dev` over
+`http://localhost:3000`), or when the instance predates the route and answers
+404. An instance that is merely unreachable means "skip this check", not "go
+around it".
+
+Because the endpoint has to be chosen at runtime and the JS `check()` cannot
+take one, the check lives in `src-tauri/src/updater.rs` (`updater_check`,
+`updater_install`, `updater_restart`) with `src/updater.ts` as the bridge.
+Bundles are still downloaded from GitHub and still verified against the
+minisign public key baked into the app, so an instance can choose among signed
+releases or withhold them all — it can never substitute one. The manifest is
+not signed, so the Rust side additionally refuses any bundle URL that is not a
+release asset of this repository under a tag carrying the version the manifest
+claims (`v<version>` or `desktop-v<version>`): an endpoint cannot label an old
+bundle as a newer version to roll a client back, and cannot send the download
+anywhere but GitHub.
+
+The download and the install are two steps. `updater_install` downloads and
+verifies in the background and keeps the bytes; `updater_restart` (the "Restart
+now" button or the notification action) installs them and relaunches. On
+Windows that last step hands over to the NSIS/MSI installer, which exits the
+app and relaunches it itself — the app never closes on a timer tick. Only the
+main window runs the updater; the compose window shares the process's one
+update slot and stays out of it.
 
 ## Webview CSP rationale
 

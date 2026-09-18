@@ -31,6 +31,9 @@ const stubs = {
 		template: '<div data-testid="dns-record" />',
 	},
 	DomainsReceivingDnsSection: { template: '<div />' },
+	// Send-only receiving surfaces — exercised by externalReceiving.test.ts.
+	DomainsExternalReceivingSection: true,
+	DomainsReceivingModeSwitch: true,
 	// Exercised by returnPathUi.test.ts; inert here (it calls a mutation on setup).
 	DomainsReturnPathEditor: { template: '<div />' },
 	DomainsStreamSubdomainPlanPanel: true,

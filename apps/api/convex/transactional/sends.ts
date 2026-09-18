@@ -1,23 +1,13 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOrThrow } from '../_utils/errors';
+import { sendStatusValidator } from '../lib/literalValidators';
 
 // Get all sends for a transactional email
 export const listByTransactionalEmail = authedQuery({
 	args: {
 		transactionalEmailId: v.id('transactionalEmails'),
-		status: v.optional(
-			v.union(
-				v.literal('queued'),
-				v.literal('sent'),
-				v.literal('failed'),
-				v.literal('delivered'),
-				v.literal('opened'),
-				v.literal('clicked'),
-				v.literal('bounced'),
-				v.literal('complained')
-			)
-		),
+		status: v.optional(sendStatusValidator),
 		limit: v.optional(v.number()),
 		offset: v.optional(v.number()),
 	},

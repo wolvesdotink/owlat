@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import {
@@ -43,50 +43,78 @@ describe('submissionSecurity', () => {
 			expect(await checkConnectionRateLimit(redis, '5.6.7.8', 3)).toBe(true);
 		});
 
-		it('undoes its increment when a post-incr step throws (no leaked slot)', async () => {
-			// The caller fails open on error and accepts the connection WITHOUT
-			// registering a slot release, so a partial Redis failure after the incr
-			// must not leave a dangling increment that leaks a slot until the TTL.
-			const realExpire = redis.expire.bind(redis);
-			let boom = true;
-			// Fail the first-increment `expire` exactly once (the partial-failure race).
-			(redis as unknown as { expire: RealRedis['expire'] }).expire = (async (...args) => {
-				if (boom) {
-					boom = false;
-					throw new Error('redis expire failed');
-				}
-				return realExpire(...(args as Parameters<RealRedis['expire']>));
+		it('has no second round trip left to fault after the increment lands', async () => {
+			// The old shape was INCR then EXPIRE. An EXPIRE that faulted left the
+			// counter with no expiry, and the compensating DECR left it sitting at
+			// zero rather than removing it — a permanent key for any IP that
+			// happened to connect during a Redis blip.
+			(redis as unknown as { expire: RealRedis['expire'] }).expire = (() => {
+				throw new Error('redis expire failed');
 			}) as RealRedis['expire'];
 
-			await expect(checkConnectionRateLimit(redis, '9.9.9.9', 1)).rejects.toThrow();
+			expect(await checkConnectionRateLimit(redis, '9.9.9.9', 5)).toBe(true);
 
-			// The increment was compensated: a fresh connection at max=1 is still
-			// allowed. Without the fix the counter would already sit at 1 and this
-			// would reject.
+			expect(await redis.ttl('mta:submission:conn:9.9.9.9')).toBeGreaterThan(0);
+		});
+
+		it('leaves nothing behind when the counter write faults', async () => {
+			// The caller fails open on error and accepts the connection WITHOUT
+			// registering a slot release, so a Redis failure must not leave a dangling
+			// increment that leaks a slot until the TTL. One script, so the increment
+			// either lands whole or not at all.
+			const broken = {
+				eval: vi.fn().mockRejectedValue(new Error('redis unreachable')),
+			} as unknown as RealRedis;
+
+			await expect(checkConnectionRateLimit(broken, '9.9.9.9', 1)).rejects.toThrow();
+
+			expect(await redis.exists('mta:submission:conn:9.9.9.9')).toBe(0);
+			// A fresh connection at max=1 is still allowed.
 			expect(await checkConnectionRateLimit(redis, '9.9.9.9', 1)).toBe(true);
 		});
 
-		it('rejects (never double-decrements or throws) when the reject-path decr faults', async () => {
-			// At/over the limit the reject branch decrements its own increment. If that
-			// decr faults, the call must still REJECT (returning false, never throwing —
-			// throwing would fail the caller open and admit the connection) and must not
-			// trigger a second compensating decr that under-counts live connections.
+		it('nets a rejected connection back without going below the live count', async () => {
 			await checkConnectionRateLimit(redis, '8.8.8.8', 1); // count -> 1 (allowed)
-			const realDecr = redis.decr.bind(redis);
-			let boom = true;
-			(redis as unknown as { decr: RealRedis['decr'] }).decr = (async (...args) => {
-				if (boom) {
-					boom = false;
-					throw new Error('redis decr failed');
-				}
-				return realDecr(...(args as Parameters<RealRedis['decr']>));
-			}) as RealRedis['decr'];
 
-			// count -> 2 > 1: reject path runs decr, which faults once.
-			await expect(checkConnectionRateLimit(redis, '8.8.8.8', 1)).resolves.toBe(false);
-			// The over-count self-heals but is never driven BELOW the live count: the
-			// counter is still >= 1, so the IP stays limited (no extra slot handed out).
-			expect(Number(await redis.get('mta:submission:conn:8.8.8.8'))).toBeGreaterThanOrEqual(1);
+			expect(await checkConnectionRateLimit(redis, '8.8.8.8', 1)).toBe(false);
+
+			// The refused connection undid its own increment inside the same script,
+			// so the counter still reflects exactly the one live connection.
+			expect(await redis.get('mta:submission:conn:8.8.8.8')).toBe('1');
+		});
+
+		/**
+		 * Both the connection counter and the AUTH-failure counter are named after
+		 * an unauthenticated peer's IP, and Redis runs `maxmemory-policy
+		 * noeviction` — an untimed one is a key that never goes away on an instance
+		 * that refuses writes at its cap. For the AUTH counter it is worse than
+		 * bloat: an untimed one locks that IP out of submission for good.
+		 */
+		it('never leaves a per-IP counter without an expiry', async () => {
+			await checkConnectionRateLimit(redis, '1.2.3.4', 5);
+			expect(await redis.ttl('mta:submission:conn:1.2.3.4')).toBeGreaterThan(0);
+
+			// A key that predates this — written by the old INCR/EXPIRE pair whose
+			// EXPIRE faulted — is healed by the next connection, not inherited.
+			await redis.set('mta:submission:conn:5.5.5.5', '3');
+			expect(await redis.ttl('mta:submission:conn:5.5.5.5')).toBe(-1);
+
+			await checkConnectionRateLimit(redis, '5.5.5.5', 10);
+
+			expect(await redis.ttl('mta:submission:conn:5.5.5.5')).toBeGreaterThan(0);
+		});
+
+		it('removes the counter rather than leaving an untimed one behind', async () => {
+			// `DECR` on a key whose window already expired RECREATES it at -1 with
+			// no expiry; split from the `DEL` that follows, a fault in between left
+			// that untimed key behind.
+			await releaseConnection(redis, '9.9.9.9');
+			expect(await redis.exists('mta:submission:conn:9.9.9.9')).toBe(0);
+
+			await checkConnectionRateLimit(redis, '7.7.7.7', 5);
+			await redis.del('mta:submission:conn:7.7.7.7');
+			await releaseConnection(redis, '7.7.7.7');
+			expect(await redis.exists('mta:submission:conn:7.7.7.7')).toBe(0);
 		});
 
 		it('does not collide with the bounce server connection counter', async () => {
@@ -130,6 +158,30 @@ describe('submissionSecurity', () => {
 			await recordAuthFailure(redis, '1.2.3.4');
 			const ttl = await redis.ttl('mta:submission:authfail:1.2.3.4');
 			expect(ttl).toBeGreaterThan(0);
+		});
+
+		it('counts and expires in the same step, so a fault records neither', async () => {
+			// Counting without expiring would lock that IP out of AUTH for good.
+			const broken = {
+				eval: vi.fn().mockRejectedValue(new Error('redis unreachable')),
+			} as unknown as RealRedis;
+
+			await expect(recordAuthFailure(broken, '4.4.4.4')).rejects.toThrow();
+
+			expect(await redis.exists('mta:submission:authfail:4.4.4.4')).toBe(0);
+		});
+
+		it('cannot count a failure it could not expire', async () => {
+			// Split across two round trips, an INCR that landed and an EXPIRE that
+			// faulted left an untimed counter — which BLOCKS AUTH, so that IP would
+			// be locked out of submission permanently.
+			(redis as unknown as { expire: RealRedis['expire'] }).expire = (() => {
+				throw new Error('redis expire failed');
+			}) as RealRedis['expire'];
+
+			expect(await recordAuthFailure(redis, '4.4.4.4')).toBe(1);
+
+			expect(await redis.ttl('mta:submission:authfail:4.4.4.4')).toBeGreaterThan(0);
 		});
 	});
 });

@@ -83,6 +83,12 @@ import { handleEmailJob } from '../handler.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
 import type { CtxWithIp } from '../../dispatch/types.js';
+import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
+import { deferBudgetKey, MAX_DEFER_SUCCESSORS_PER_MESSAGE } from '../deferBudget.js';
+import { MAX_GREYLIST_DELAY_MS } from '../../intelligence/smtpClassifier.js';
+
+const createConfig = (overrides: Partial<MtaConfig> = {}): MtaConfig =>
+	createOwlatHostConfig({ maxMessageAgeMs: 4 * 24 * 60 * 60 * 1000, ...overrides });
 
 function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {
@@ -180,48 +186,6 @@ function createQueueStub(): Pick<Queue<EmailJob>, 'add' | 'getJob'> & {
 	return {
 		add: vi.fn().mockResolvedValue({ id: 'requeued-1' }),
 		getJob: vi.fn().mockResolvedValue(null),
-	};
-}
-
-function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
-	return {
-		port: 3100,
-		bouncePort: 25,
-		redisUrl: 'redis://localhost:6379',
-		apiKey: 'test-key',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
-		convexSiteUrl: 'https://test.convex.site',
-		webhookSecret: 'secret',
-		ipPools: { transactional: ['10.0.0.1'], campaign: ['10.0.0.2'] },
-		dkimKeys: {},
-		workerConcurrency: 50,
-		serverId: 'test-server',
-		smtpPool: {
-			maxPerHost: 3,
-			idleTimeoutMs: 30000,
-			maxAgeMs: 300000,
-			maxMessagesPerConnection: 100,
-		},
-		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
-		submissionPort: 587,
-		submissionEnabled: false,
-		contentScreeningEnabled: true,
-		contentMaxSizeKb: 500,
-		deliveryLogMaxLen: 100000,
-		deliveryLogTtlHours: 72,
-		webhookDlqMaxSize: 10000,
-		smtpOutcomeJournalMaxSize: 10000,
-		bounceMaxConnectionsPerIp: 10,
-		bounceMaxClients: 200,
-		bounceTarpitEnabled: false,
-		bounceTarpitDelayMs: 5000,
-		inboundSpfEnabled: false,
-		rspamdRejectThreshold: 15,
-		smtpPoolGlobalMaxPerHost: 10,
-		maxMessageAgeMs: 4 * 24 * 60 * 60 * 1000, // 4 days
-		...overrides,
 	};
 }
 
@@ -1160,6 +1124,52 @@ describe('handleEmailJob', () => {
 		expectJitteredDelay(opts.delay as number, 300_000);
 	});
 
+	// ── The successor must always wake inside its own receipt's TTL ──
+	// Both halves of the strand that put 6.37M entries in `:delayed`: a delay a
+	// stranger dictated, and a wake scheduled past the point at which anything
+	// could still promote it.
+
+	it('bounds a hostile greylist interval instead of parking the job for ~694 days', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 450,
+			error: '450 4.7.1 Greylisted, try again in 999999 minutes',
+		});
+
+		await run(createJob());
+
+		expect(queue.add).toHaveBeenCalledTimes(1);
+		const delay = queue.add.mock.calls[0]![0].delay as number;
+		expectJitteredDelay(delay, MAX_GREYLIST_DELAY_MS);
+		// The bound that matters: the defer-handoff receipt is written with a
+		// GOVERNED_MTA_MAX_MESSAGE_AGE_MS TTL, so a wake beyond it can only
+		// dead-letter.
+		expect(delay).toBeLessThan(config.maxMessageAgeMs);
+	});
+
+	it('pulls a deadline-hugging defer back to the message expiry', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 450,
+			error: '450 4.7.1 Greylisted, try again in 55 minutes',
+		});
+
+		// Ten minutes of lifetime left, against a 55-minute rung: waking on the
+		// remote's schedule would find the receipt expired. Waking at the
+		// deadline earns a proper expired-bounce instead.
+		const remainingMs = 10 * 60_000;
+		await run(createJob({ firstEnqueuedAt: Date.now() - config.maxMessageAgeMs + remainingMs }));
+
+		expect(queue.add).toHaveBeenCalledTimes(1);
+		expect(queue.add.mock.calls[0]![0].delay as number).toBeLessThanOrEqual(remainingMs);
+	});
+
 	it('PR-04 (a): soft bounce re-enqueues at ~60000ms', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
 
@@ -1195,6 +1205,50 @@ describe('handleEmailJob', () => {
 		expectJitteredDelay(queue.add.mock.calls[0]![0].delay as number, capDeferDelayMs(Date.now()));
 	});
 
+	it('stops minting successors once a message has spent its defer budget', async () => {
+		// A defer costs no delivery attempt, so nothing in GroupMQ bounds a
+		// ladder that advances faster than the delays it asks for. Seed the
+		// message at its last honest rung and take the two after it.
+		const { checkCap } = await import('../../intelligence/warming.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
+		await redis.set(deferBudgetKey('msg-001'), String(MAX_DEFER_SUCCESSORS_PER_MESSAGE - 1));
+
+		await expect(run(createJob(), { id: 'last-rung' })).resolves.toBeUndefined();
+		expect(queue.add).toHaveBeenCalledTimes(1);
+
+		queue.add.mockClear();
+		await expect(run(createJob(), { id: 'one-rung-too-far' })).resolves.toBeUndefined();
+
+		// Dead-lettered loudly instead: no successor, one terminal bounce.
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: 'bounced',
+				messageId: 'msg-001',
+				bounceType: 'soft',
+				message: expect.stringContaining('deferred'),
+			}),
+			config,
+			redis
+		);
+	});
+
+	it('budgets every chain of a message together, not each chain separately', async () => {
+		// Each governed /send mints its own root job and its own defer chain for
+		// the same message, so a per-chain cap would multiply by the number of
+		// roots. A second root inherits the exhausted budget.
+		const { checkCap } = await import('../../intelligence/warming.js');
+		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
+		await redis.set(deferBudgetKey('msg-001'), String(MAX_DEFER_SUCCESSORS_PER_MESSAGE));
+
+		await expect(
+			run(createJob({ intakeReceiptId: 'work-attempt-2' }), { id: 'another-root' })
+		).resolves.toBeUndefined();
+
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
 	it('PR-04 (b): warming-capped 5x in a row stays retryable (re-enqueued, never dead-lettered)', async () => {
 		const { checkCap } = await import('../../intelligence/warming.js');
 		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
@@ -1209,6 +1263,40 @@ describe('handleEmailJob', () => {
 			).resolves.toBeUndefined();
 			expect(queue.add).toHaveBeenCalledTimes(1);
 		}
+	});
+
+	// The defer-handoff receipt used to be keyed by the SUCCESSOR job id, which
+	// is re-derived on every deferral, so each rung of a ladder minted a fresh
+	// key held for the full four-day message lifetime. A personal instance stuck
+	// in a 60s self-throttle loop accumulated 6.37M of them and OOM-killed Redis.
+	// Keyed by the chain instead, a ladder of any length occupies exactly one.
+	it('PR-04 (b): a long self-throttle ladder holds exactly ONE defer-handoff key', async () => {
+		const { checkCap } = await import('../../intelligence/warming.js');
+		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
+
+		let data = createJob();
+		let jobId = 'ladder-root';
+		let chainKey: string | undefined;
+
+		for (let rung = 0; rung < 25; rung++) {
+			queue.add.mockClear();
+			await expect(run(data, { id: jobId })).resolves.toBeUndefined();
+			expect(queue.add).toHaveBeenCalledTimes(1);
+
+			// The leak this guards: one key per rung, each pinned for four days.
+			const keys = await redis.keys('mta:defer-handoffs:*');
+			expect(keys).toHaveLength(1);
+			// ...and it is the same slot every rung, overwritten in place.
+			chainKey ??= keys[0];
+			expect(keys[0]).toBe(chainKey);
+
+			const enqueued = queue.add.mock.calls[0]![0] as { jobId: string; data: EmailJob };
+			data = enqueued.data;
+			jobId = enqueued.jobId;
+		}
+
+		expect(chainKey).toMatch(/^mta:defer-handoffs:chain-[0-9a-f]{64}$/);
+		expect(data.deferChainId).toBe(chainKey!.split(':').pop());
 	});
 
 	it('PR-04 (b): circuit breaker open re-enqueues with the cooldown delay, no throw', async () => {

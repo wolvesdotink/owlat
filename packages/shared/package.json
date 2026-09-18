@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/shared",
-	"version": "0.4.4",
+	"version": "0.4.18",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -80,6 +80,10 @@
 		"./setupEnv": {
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
+		},
+		"./containerHealth": {
+			"types": "./src/containerHealth.ts",
+			"import": "./src/containerHealth.ts"
 		},
 		"./convexRuntimeEnv": {
 			"types": "./src/convexRuntimeEnv.ts",
@@ -281,6 +285,18 @@
 			"types": "./src/spf.ts",
 			"import": "./src/spf.ts"
 		},
+		"./externalReceiving": {
+			"types": "./src/externalReceiving.ts",
+			"import": "./src/externalReceiving.ts"
+		},
+		"./semver": {
+			"types": "./src/semver.ts",
+			"import": "./src/semver.ts"
+		},
+		"./releaseArtifacts": {
+			"types": "./src/releaseArtifacts.ts",
+			"import": "./src/releaseArtifacts.ts"
+		},
 		"./composeVerify": {
 			"types": "./src/composeVerify.ts",
 			"import": "./src/composeVerify.ts"
@@ -288,6 +304,10 @@
 		"./composeOverride": {
 			"types": "./src/composeOverride.ts",
 			"import": "./src/composeOverride.ts"
+		},
+		"./networkPorts": {
+			"types": "./src/networkPorts.ts",
+			"import": "./src/networkPorts.ts"
 		},
 		"./dnsZone": {
 			"types": "./src/dnsZone.ts",

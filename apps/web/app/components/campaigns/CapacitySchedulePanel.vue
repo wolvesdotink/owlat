@@ -4,12 +4,12 @@
  *
  * When pre-flight decides a campaign provably cannot finish inside the MTA's
  * message-retention horizon it hands back the multi-day plan it would take.
- * Deliverability plan D14: a multi-day send is a normal, visible state for a
- * warming deployment — never an error, never a surprise. So this is an
- * informational panel in the neutral/accent palette, not the red error
- * treatment, and it names the one thing the operator can actually do today
- * (schedule the send for a later date, which is judged against the larger
- * warm-up capacity it will have then).
+ * A multi-day send is a normal, visible state for a warming deployment —
+ * never an error, never a surprise. So this is an informational panel in the
+ * neutral/accent palette, not the red error treatment, and it names the one
+ * thing the operator can actually do today (schedule the send for a later
+ * date, which is judged against the larger warm-up capacity it will have
+ * then).
  *
  * Deliberately says only what the plan knows: a truncated enumeration is never
  * quoted as a finish date, and an under-counted audience is quoted as a floor.

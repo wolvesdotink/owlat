@@ -40,7 +40,7 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	async registerDomain(domain, options) {
 		const ses = createSESIdentityManager();
 
-		// Per-domain custom MAIL FROM (X1): a `returnPathHost` set on the domain
+		// Per-domain custom MAIL FROM: a `returnPathHost` set on the domain
 		// overrides the default `mail.<domain>` subdomain. SES requires the MAIL
 		// FROM to be a subdomain of the sending identity, so a non-subdomain host
 		// is a hard error (rolls into the `→ failed` transition). Absent → the
@@ -149,7 +149,7 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 		return { sesStatus: check.verified ? 'Success' : 'Pending' };
 	},
 
-	// The relay-verification read seam (Mandrill plan D6). SES is the one shipped kind that
+	// The relay-verification read seam. SES is the one shipped kind that
 	// declares `domainVerification: 'api'`, so it is the one kind that can
 	// answer this; see `./relayVerification.ts` for the proof it requires.
 	relayDomainVerified: sesRelayDomainVerified,
@@ -170,8 +170,8 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	 * do inline — the same indexed read on the frozen
 	 * `sendingDomainSesIdentities` sibling, the same scheduled
 	 * `sesRelay.provision` — moved behind the contract so the drain can ask it
-	 * of whichever kind the route actually named (the seams plan's D2 —
-	 * capabilities, not identity).
+	 * of whichever kind the route actually named — a capability question, not an
+	 * identity one.
 	 *
 	 * THE EXISTENCE CHECK IS CONDITIONAL ON THE CALLER'S INTENT, not on this
 	 * adapter's taste — see {@link EnsureRelayIdentityOptions}. The drain asks

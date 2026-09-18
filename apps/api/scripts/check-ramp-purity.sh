@@ -67,7 +67,10 @@ for root in "${roots[@]}"; do
 		for rule in "${rules[@]}"; do
 			name=${rule%%|*}
 			pattern=${rule#*|}
-			if printf '%s\n' "$code" | grep -Eq "$pattern"; then
+			# Here-string, not a pipe: `grep -q` exits on the first match and a
+			# producer still writing dies of SIGPIPE, which pipefail turns into a
+			# silently skipped rule. See check-ramp-decision-path.sh.
+			if grep -Eq "$pattern" <<<"$code"; then
 				echo "FAIL: $file contains $name ($pattern) — the decision core is pure; inject it" >&2
 				status=1
 			fi

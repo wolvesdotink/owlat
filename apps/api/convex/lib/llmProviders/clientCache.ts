@@ -20,7 +20,7 @@ export type OpenAICompatibleClient = ReturnType<typeof createOpenAICompatible>;
  * the retained in-memory Map keys. Uses FNV-1a (fast, deterministic; not
  * cryptographic, and never used for auth — only to distinguish distinct keys).
  */
-export function keyFingerprint(apiKey: string | undefined): string {
+function keyFingerprint(apiKey: string | undefined): string {
 	if (!apiKey) return 'nokey';
 	let hash = 0x811c9dc5;
 	for (let i = 0; i < apiKey.length; i++) {

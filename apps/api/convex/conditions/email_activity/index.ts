@@ -12,7 +12,7 @@ import type { ConditionTypeModule, EmailActivityCondition } from '../types';
  * not just slow. Reading the boolean off the already-loaded contact row is O(1)
  * and complete.
  */
-export type EmailActivityLookup = Record<string, never>;
+type EmailActivityLookup = Record<string, never>;
 
 const VALID_FIELDS = new Set(['opened', 'clicked']);
 const VALID_OPERATORS = new Set(['is_true', 'is_false']);

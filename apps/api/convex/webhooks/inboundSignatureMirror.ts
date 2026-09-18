@@ -17,9 +17,10 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { isClearsigned } from '@owlat/shared/secureMessage';
 import { logError } from '../lib/runtimeLog';
+import { utf8ToBase64 } from '../lib/bytes';
 
 /** The two mirrored display fields `inbox.messages.receiveMessage` accepts. */
-export interface SignatureMirrorFields {
+interface SignatureMirrorFields {
 	isInboundSignatureValid: boolean;
 	inboundSignerFingerprint?: string;
 }
@@ -51,19 +52,4 @@ export async function clearsignedSignatureMirror(
 		logError('[Webhook Dispatcher] inbound signature verification failed', err);
 		return undefined;
 	}
-}
-
-/**
- * UTF-8 → base64 with Web APIs only — this module runs in the default Convex
- * isolate (no Node `Buffer`). Chunked so a large body never hits the
- * `String.fromCharCode(...spread)` argument limit.
- */
-function utf8ToBase64(text: string): string {
-	const bytes = new TextEncoder().encode(text);
-	let binary = '';
-	const CHUNK = 8192;
-	for (let i = 0; i < bytes.length; i += CHUNK) {
-		binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-	}
-	return btoa(binary);
 }

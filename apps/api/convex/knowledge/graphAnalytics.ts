@@ -37,6 +37,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isActiveOrgMember } from '../lib/sessionOrganization';
 import { clamp } from '../lib/graphAnalyticsCompute';
+import { batchGet } from '../_utils/batchLoader';
 
 /** Bounded BFS limits for the member subgraph viewer. */
 const SUBGRAPH_MAX_NODES = 60;
@@ -147,9 +148,11 @@ export const pageEntryConfidence = internalQuery({
 export const getEmbeddingsByIds = internalQuery({
 	args: { ids: v.array(v.id('knowledgeEntries')) },
 	handler: async (ctx, args): Promise<{ id: Id<'knowledgeEntries'>; embedding: number[] }[]> => {
+		// Independent ids: one deduplicated, parallel read.
+		const byId = await batchGet(ctx, args.ids);
 		const out: { id: Id<'knowledgeEntries'>; embedding: number[] }[] = [];
 		for (const id of args.ids) {
-			const e = await ctx.db.get(id);
+			const e = byId.get(id);
 			if (e && e.embedding.length > 0) out.push({ id, embedding: e.embedding });
 		}
 		return out;

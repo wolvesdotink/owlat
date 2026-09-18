@@ -88,7 +88,8 @@ bun run ox:fmt     # Format with Oxfmt
 Or run everything CI checks at once:
 
 ```bash
-bun run ci:verify
+bun run ci:verify   # scripts/ci-gate.sh verify: lint gates + typecheck + tests
+bun run test:ramp   # the ramp-gate matrix, both legs (see "CI checks")
 ```
 
 ### Dead-code gate
@@ -119,12 +120,37 @@ reported, which is the exact failure mode the gate exists to catch. If you add a
 new public subpath export to a package, add the corresponding barrel to that
 package's `entry` list.
 
-This gate is wired into both `ci:lint` and `ci:verify` (it runs after the turbo
-lint pass in each), so a PR that introduces a new orphan fails CI just like the
-other ratchets. Because the hosted GitHub Actions **Lint & Typecheck** job runs
-`bun run ci:lint`, the gate is enforced on every PR there — the same path that
-runs `apps/api/scripts/check-query-authz.sh` — not only when someone runs
-`ci:verify` locally.
+`ci:lint` and `ci:verify` both run `scripts/ci-gate.sh`, which runs this gate
+after the turbo lint pass, so a PR that introduces a new orphan fails CI just
+like the other ratchets. Because the hosted GitHub Actions **Lint & Typecheck**
+job runs `bun run ci:lint`, the gate is enforced on every PR there — the same
+path that runs `apps/api/scripts/check-query-authz.sh` — not only when someone
+runs `ci:verify` locally.
+
+### Writing a baseline ratchet
+
+Seven gates share one comparison. A check script owns a _generator_ — the walk
+that prints today's violation set, one entry per line — and hands the rest to
+`scripts/ratchet.sh`, which compares that set against the frozen baseline,
+strict in both directions, and prints the wording the check passes in as flags:
+
+```bash
+exec scripts/ratchet.sh \
+	--baseline scripts/<name>-baseline.txt \
+	--ok "no new <thing>" \
+	--new-header "FAIL: {n} new <thing>(s) not in {baseline}:" \
+	--new-advice "How to fix one." \
+	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (<thing> fixed):" \
+	"$@" \
+	-- bash "$self" --generate
+```
+
+Every such gate therefore accepts `--write-baseline` to reseed itself, ignores
+blank lines and `#` comments in a baseline, and never depends on the baseline
+file's own sort order. Duplicate entries are significant, so a generator that
+wants them collapsed sorts with `sort -u` itself. The runner's own tests are in
+`scripts/__tests__/ratchet.test.ts`; the unit tests for all the gate scripts
+run in one pass with `bun run lint:script-tests`.
 
 ## Pull Request Process
 
@@ -142,24 +168,86 @@ Use descriptive branch names with a prefix:
 
 Write clear, concise commit messages. Use imperative mood ("Add feature" not "Added feature"). A short summary on the first line is sufficient for most changes; add a body for complex ones.
 
-### CI Checks
+### CI checks
 
-Every PR runs these GitHub Actions:
+Pull requests against `main`, `integration/**` and `ux/**` run these
+workflows; pushes to `main` and `integration/**`, the nightly schedule and
+manual dispatch run the full set as a safety valve.
 
-- **test.yml** — a `detect` job asks Turborepo which workspaces a PR affects
-  (`scripts/ci-select-affected.sh`) and feeds a dynamic matrix, so only the
-  changed packages run `vitest` (with coverage); `apps/api` is sharded ×3 and
-  merged. Docker images build only when affected. Pushes, the nightly schedule
-  and manual dispatch run the full set as a safety valve. A **Test Summary** job
-  aggregates the result — point branch protection at it, since individual matrix
-  jobs are skipped when unaffected. Also includes a **Lint & Typecheck** job
-  (`bun run ci:lint` + `bun run ci:typecheck`).
-- **security.yml** — dependency audit (fails on High/Critical) + Semgrep SAST.
-- **desktop-ci.yml** — Rust build/test + TS-bridge typecheck and tests (only
-  when `apps/desktop/**` changes).
+- **test.yml** (`CI`)
+  - **Detect affected.** Asks Turborepo which workspaces the PR affects
+    (`scripts/ci-select-affected.sh`) and feeds the matrices below. Every
+    non-PR run selects everything.
+  - **Test (<package>).** `turbo run test:coverage` per affected workspace.
+  - **Test api (shard 1-3/3)** and **Test api (merge + coverage).**
+    `apps/api` sharded across three runners; the merge job enforces the
+    coverage threshold.
+  - **Ramp gates (reference_arm | standalone).** The ramp-controller gate
+    suite twice: once equipped, once as a deployment with zero third-party
+    accounts. Never affected-filtered. Locally: `bun run test:ramp` runs both
+    legs, `bun run test:ramp standalone` one.
+  - **Lint & Typecheck.** `bun run ci:lint` (`scripts/ci-gate.sh lint`: the
+    plugin codegen and Convex bundle smokes, `turbo lint`, then every
+    `lint:*` ratchet and repo gate in the order that script lists them) plus
+    `bun run ci:typecheck`.
+  - **Docker Build (<image>).** Builds each affected image listed in
+    `.github/docker-images.json`; images marked `runtimeSmoke` also get their
+    packaged Node entry imported once.
+  - **Test (packages/sdk-java).** Maven `verify`, when `packages/sdk-java`
+    changes.
+  - **Test Summary.** The single required status check; point branch
+    protection at it. Skipped matrix jobs count as passed; failures and
+    cancellations do not.
+- **security.yml** (`Security`). **Dependency audit** (`bun audit`; fails on
+  High/Critical through `scripts/check-security-audit.ts`), **SAST (Semgrep)**
+  and **Secret scan (gitleaks)** over the full history. Also nightly.
+- **desktop-ci.yml** (`Desktop CI`). **Rust build + tests** on Ubuntu, macOS
+  and Windows, including the TS-bridge lint, typecheck and tests. Only when
+  `apps/desktop/**`, `bun.lock` or `package.json` change.
+- **dependabot-lockfile.yml**. On Dependabot's own PRs, regenerates `bun.lock`
+  and pushes it back (needs `DEPENDABOT_LOCKFILE_PAT`, see below).
 
-All checks must pass before merging. To reproduce the lint/typecheck/test gate
-locally in one command, run `bun run ci:verify`.
+Out of band:
+
+- **e2e.yml** (`E2E`). Playwright against a test deployment; nightly, on
+  pushes to `main` that touch `apps/web/**`, `apps/api/**` or `packages/**`,
+  and on dispatch. Fails when the `CONVEX_TEST_*` secrets are unset rather than
+  reporting green. The job owns that deployment for the length of a run: it
+  wipes the data (`POST /dev/reset`) and pushes the commit's functions before
+  driving the browser, so nothing on it survives a run and two runs must never
+  overlap. The deployment therefore needs `OWLAT_DEV_MODE` enabled and its
+  `INSTANCE_SECRET` equal to `CONVEX_TEST_INSTANCE_SECRET`. The reset spares the
+  non-tenant tables (`convex/lib/tenantTables.ts` — `keyVault`, `warmingState`,
+  `providerHealth`, …), so a breaking schema change to one of those needs the
+  deployment's volume recreated by hand before the next run can push.
+- **release.yml**, **server-release.yml**, **desktop-release.yml**.
+  Tag-triggered. Each starts with the shared `_verify.yml` job, which runs
+  `bun run ci:verify` (`scripts/ci-gate.sh verify`: the lint gate plus
+  `turbo typecheck test`) on the exact tagged commit. See `docs/RELEASING.md`.
+
+All checks must pass before merging. To reproduce the PR gate locally, run
+`bun run ci:verify` and `bun run test:ramp`.
+
+Bun itself is installed by `.github/actions/setup-bun`, which reads the version
+from `packageManager` in the root `package.json`; bump it there only.
+
+### CI secrets
+
+Every secret the workflows reference, in one place. `GITHUB_TOKEN` is provided
+by Actions and is not listed.
+
+| Secret                                                                      | Used by                                                                                                                       | When unset                                                                        |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `CONVEX_TEST_URL`, `CONVEX_TEST_SITE_URL`                                   | e2e.yml, as `NUXT_PUBLIC_CONVEX_URL` / `NUXT_PUBLIC_CONVEX_SITE_URL` of a dedicated test deployment                           | the E2E job fails with an error naming the missing secret                         |
+| `CONVEX_TEST_ADMIN_KEY`                                                     | e2e.yml, to push the commit under test's functions to that deployment before the suite runs                                  | the E2E job fails with an error naming the missing secret                         |
+| `CONVEX_TEST_INSTANCE_SECRET`                                               | e2e.yml, to call `POST /dev/reset` on that deployment (needs `OWLAT_DEV_MODE` set on it)                                      | the E2E job fails with an error naming the missing secret                         |
+| `DEPENDABOT_LOCKFILE_PAT`                                                   | dependabot-lockfile.yml; a fine-grained PAT (Contents: read & write) stored as a **Dependabot** secret, not an Actions secret | the job warns and skips; Dependabot PRs then fail `bun install --frozen-lockfile` |
+| `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`           | _desktop-build.yml, updater bundle signing                                                                                    | unsigned artifacts with a `::warning::`                                           |
+| `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` | _desktop-build.yml, macOS code signing                                                                                        | unsigned artifacts                                                                |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`                               | _desktop-build.yml, macOS notarization                                                                                        | unsigned artifacts                                                                |
+| `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD`                       | _desktop-build.yml, Windows Authenticode                                                                                      | unsigned artifacts                                                                |
+
+Setup steps for the desktop signing secrets are in `apps/desktop/README.md`.
 
 ## Package Guidelines
 

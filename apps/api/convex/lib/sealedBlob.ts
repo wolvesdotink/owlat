@@ -66,7 +66,7 @@ export interface BlobGet {
 	get(storageId: Id<'_storage'>): Promise<Blob | null>;
 }
 /** Minimal storage surface for minting a signed URL (query/mutation/action ctx). */
-export interface BlobGetUrl {
+interface BlobGetUrl {
 	getUrl(storageId: Id<'_storage'>): Promise<string | null>;
 }
 
@@ -300,7 +300,7 @@ export async function resealStoredBlob(
 }
 
 /** The parsed, VERIFIED fields of a proxy request, or `null` if invalid/expired. */
-export interface VerifiedBlobRequest {
+interface VerifiedBlobRequest {
 	storageId: string;
 	contentType: string;
 }

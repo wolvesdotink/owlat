@@ -5,7 +5,7 @@
  * the real dependencies and the interval.
  */
 
-import { fn, type ConvexClient, type WorkerCredentials } from './convex.js';
+import { fetchWorkerCredentials, fn, type ConvexClient } from './convex.js';
 import { openSeedMailbox } from './seedMailbox.js';
 import {
 	runSeedProbeSweep,
@@ -31,13 +31,18 @@ function buildSeedProbeDeps(convex: ConvexClient): SeedProbeDeps {
 				{ now, cursor } as never
 			)) as SeedProbeWorkPage,
 		openMailbox: async (item) => {
-			const credentials = (await convex.action(
-				fn.getCredentialsForWorker as never,
-				{
-					accountId: item.accountId,
-				} as never
-			)) as WorkerCredentials;
-			return openSeedMailbox(credentials);
+			const fetched = await fetchWorkerCredentials(convex, item.accountId);
+			if (fetched.kind !== 'credentials') {
+				// Returning null is the "we never looked" signal the sweep already
+				// understands: the outstanding probes stay outstanding instead of
+				// being recorded MISSING because a seed's authorization lapsed.
+				logger.warn(
+					{ accountId: item.accountId, reason: fetched.reason },
+					'seed mailbox credentials unavailable; skipping this account'
+				);
+				return null;
+			}
+			return openSeedMailbox(fetched.credentials);
 		},
 		recordClassification: async (input) =>
 			(await convex.mutation(fn.recordSeedProbeClassification as never, input as never)) as Awaited<

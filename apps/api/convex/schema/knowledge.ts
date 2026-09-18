@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { semanticFileSourceTypeValidator } from '../lib/literalValidators';
 
 /**
  * The knowledge entry types, as a literal tuple. Single source of truth for both
@@ -47,7 +48,7 @@ export const POLICY_ENTRY_TYPES = ['policy', 'faq'] as const;
  * fresh extractions that don't set it, stay recallable until a human resolves
  * them). Only `fulfilled` / `cancelled` drop a commitment out of the open-recall.
  */
-export const COMMITMENT_STATUSES = ['open', 'fulfilled', 'cancelled'] as const;
+const COMMITMENT_STATUSES = ['open', 'fulfilled', 'cancelled'] as const;
 
 /**
  * Validator for `knowledgeEntries.commitmentStatus`, derived from
@@ -137,7 +138,7 @@ export const EDGE_PROVENANCES = ['deterministic', 'llm', 'manual'] as const;
 /**
  * Validator for `knowledgeRelations.provenance`, derived from `EDGE_PROVENANCES`.
  */
-export const edgeProvenanceValidator = v.union(...EDGE_PROVENANCES.map((p) => v.literal(p)));
+const edgeProvenanceValidator = v.union(...EDGE_PROVENANCES.map((p) => v.literal(p)));
 
 /**
  * Knowledge graph + semantic file tables — typed knowledge extracted from communications,
@@ -281,11 +282,7 @@ export const knowledgeTables = {
 		tags: v.optional(v.array(v.string())),
 		autoTags: v.optional(v.array(v.string())),
 		// Provenance
-		sourceType: v.union(
-			v.literal('upload'),
-			v.literal('email_attachment'),
-			v.literal('agent_generated')
-		),
+		sourceType: semanticFileSourceTypeValidator,
 		sourceMessageId: v.optional(v.string()),
 		uploadedBy: v.optional(v.string()),
 		// Provenance: why/where this version was shared. JSON-stringified

@@ -202,7 +202,15 @@ describe('check-token-redaction.sh ratchet', () => {
 		expect(runRatchet(root, staleBaseline)).toBe(1);
 	});
 
+	// Every case above greps a throwaway fixture tree; this one greps the whole
+	// real convex/ tree and takes seconds rather than milliseconds. The suite's
+	// 10s default is comfortable on an idle machine and not on a loaded one: it
+	// is what failed the v0.4.5 release gate, where ci:verify runs every
+	// workspace's suites on one 4-core runner (TURBO_CONCURRENCY=2) and this
+	// test timed out at 10s while the rest of the file passed. The scan is
+	// CPU-bound and has no upper bound it can be made to respect, so give it
+	// room instead of leaving the release gate to lose a coin flip.
 	it('passes the real convex tree against the frozen baseline', () => {
 		expect(runRatchet('convex', 'scripts/token-redaction-baseline.txt')).toBe(0);
-	});
+	}, 120_000);
 });

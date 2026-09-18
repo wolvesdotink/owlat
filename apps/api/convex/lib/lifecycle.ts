@@ -108,7 +108,7 @@ export type LifecycleRefusal<
 	readonly to: TTo;
 };
 
-export type ClassifyOptions = {
+type ClassifyOptions = {
 	/**
 	 * Force-legal escape hatch for an edge the module sanctions on grounds the
 	 * graph cannot express — e.g. the DOI machine relaxes
@@ -118,7 +118,7 @@ export type ClassifyOptions = {
 	readonly isSanctionedEdge?: boolean;
 };
 
-export type LifecycleOptions = {
+type LifecycleOptions = {
 	/**
 	 * Opt in to `terminal` refusals. OFF by default: only five of the eleven
 	 * lifecycle modules distinguish "refused because the from-state has no

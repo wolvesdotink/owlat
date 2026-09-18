@@ -50,6 +50,7 @@ import { assertFblDedupCutoverConfigured } from '../lib/fblDedupSetup';
 import { applyAssumeYes, applyConfigFile } from './setupNonInteractive';
 import { pickSendingProvider } from './setupSendingProvider';
 import { pickAIProvider, pickDecisionProvider } from './setupAiProvider';
+import { collectDomain } from './setupDomain';
 import {
 	validatePostHogHost,
 	validateGoogleSafeBrowsingKey,
@@ -358,18 +359,6 @@ async function collectAdmin(): Promise<{ email: string; name: string; password: 
 		return null;
 	}
 	return result as { email: string; name: string; password: string };
-}
-
-async function collectDomain(): Promise<EnvMap | null> {
-	const result = await group({
-		ehlo: () => text({ message: 'EHLO hostname', placeholder: 'mail.example.com' }),
-		bounceDomain: () =>
-			text({ message: 'Bounce / Return-Path domain', placeholder: 'bounces.example.com' }),
-	});
-	return {
-		EHLO_HOSTNAME: result.ehlo,
-		RETURN_PATH_DOMAIN: result.bounceDomain,
-	};
 }
 
 async function launchWebWizard(opts: RunOptions): Promise<number> {

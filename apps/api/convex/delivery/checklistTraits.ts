@@ -1,20 +1,10 @@
 import type { DeliverabilityCheckId } from '@owlat/shared';
 
-export type ChecklistProviderGuidance =
-	| 'vps_reverse_dns'
-	| 'vps_port_25'
-	| 'vps_ipv6'
-	| 'dns'
-	| null;
+type ChecklistProviderGuidance = 'vps_reverse_dns' | 'vps_port_25' | 'vps_ipv6' | 'dns' | null;
 
-export type ChecklistContextDependency =
-	| 'warming'
-	| 'mta_health'
-	| 'relay'
-	| 'tracking'
-	| 'postmaster';
+type ChecklistContextDependency = 'warming' | 'mta_health' | 'relay' | 'tracking' | 'postmaster';
 
-export type ChecklistItemTraits = {
+type ChecklistItemTraits = {
 	scope: 'deployment' | 'domain';
 	addressFamily: 'ipv4' | 'ipv6' | null;
 	providerGuidance: ChecklistProviderGuidance;

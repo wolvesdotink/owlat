@@ -1,7 +1,9 @@
 # UX plan — deferrals
 
-Work named in the plan (`docs/ux-plan/index.html`) that was consciously left
-undone, with the reason and what it would take. Idea numbers refer to that file.
+Work named in the UX plan that was consciously left undone, with the reason
+and what it would take. The plan itself (`index.html`, with its screenshots)
+landed in PR #588 and was removed from the tree after the work shipped; it is
+still readable in that PR's history. Idea numbers refer to that plan.
 
 ## 9 — recipient timezone is read from the CRM, not inferred from headers
 
@@ -32,7 +34,7 @@ where someone's mail client was last configured).
 
 ## 61 — `--color-brand` as text misses the AA floor
 
-`packages/ui/__tests__/tokenContrast.test.ts` holds the neutral text ladder and
+`scripts/check-token-contrast.ts` holds the neutral text ladder and
 the four status colours to 4.5:1 on every content surface. `--color-brand` is
 excluded, and it does not clear the floor: 3.83:1 on `--color-bg-base` in light
 mode, 4.06:1 in dark.

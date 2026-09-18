@@ -32,8 +32,8 @@ export interface BackendOperationOptions {
 	 * OFFER the caller can render as a normal UI state. The campaign capacity
 	 * gate is the motivating case: `exceeds_sending_capacity` hands back a
 	 * structured multi-day schedule, and a red toast is precisely the wrong
-	 * treatment for "sending over 4 days" (deliverability plan D14 — a multi-day
-	 * send is a normal, visible state, never an error and never a surprise).
+	 * treatment for "sending over 4 days" (a multi-day send is a normal, visible
+	 * state, never an error and never a surprise).
 	 *
 	 * Return `false` (or omit the option) and nothing changes.
 	 */

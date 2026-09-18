@@ -104,7 +104,7 @@ async function seedMailbox(
 			userId,
 			organizationId: orgId,
 			address,
-			domain: address.split('@')[1] ?? 'hinterland.camp',
+			domain: address.split('@')[1] ?? 'owlat.test',
 			status,
 			usedBytes: 0,
 			uidValidity: now,
@@ -114,7 +114,7 @@ async function seedMailbox(
 	});
 }
 
-async function seedVerifiedDomain(t: ReturnType<typeof convexTest>, domain = 'hinterland.camp') {
+async function seedVerifiedDomain(t: ReturnType<typeof convexTest>, domain = 'owlat.test') {
 	await t.run(async (ctx) => {
 		const now = Date.now();
 		await ctx.db.insert('domains', {
@@ -204,7 +204,7 @@ describe('mailboxRequest.request', () => {
 		setMemberSession('member-a');
 		const t = convexTest(schema, modules);
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
-		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'active');
+		await seedMailbox(t, 'member-a', 'member-a@owlat.test', 'active');
 
 		await expect(t.mutation(api.mail.mailboxRequest.request, {})).rejects.toThrow(
 			/already have a mailbox/i
@@ -215,7 +215,7 @@ describe('mailboxRequest.request', () => {
 		setMemberSession('member-a');
 		const t = convexTest(schema, modules);
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
-		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'suspended');
+		await seedMailbox(t, 'member-a', 'member-a@owlat.test', 'suspended');
 
 		const result = await t.mutation(api.mail.mailboxRequest.request, {});
 		expect(result.requested).toBe(true);
@@ -237,7 +237,7 @@ describe('mailboxRequest.freshStartStatus', () => {
 		setMemberSession('member-a');
 		const t = convexTest(schema, modules);
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
-		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'active');
+		await seedMailbox(t, 'member-a', 'member-a@owlat.test', 'active');
 
 		const status = await t.query(api.mail.mailboxRequest.freshStartStatus, {});
 		expect(status.hasMailbox).toBe(true);
@@ -248,7 +248,7 @@ describe('mailboxRequest.freshStartStatus', () => {
 		setMemberSession('member-a');
 		const t = convexTest(schema, modules);
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
-		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'suspended');
+		await seedMailbox(t, 'member-a', 'member-a@owlat.test', 'suspended');
 		await t.run(async (ctx) => {
 			const now = Date.now();
 			await ctx.db.insert('pendingMailboxes', {
@@ -256,8 +256,8 @@ describe('mailboxRequest.freshStartStatus', () => {
 				inviteeEmail: 'member-a@example.com',
 				organizationId: 'test-org',
 				localpart: 'member-a',
-				domain: 'hinterland.camp',
-				address: 'member-a@hinterland.camp',
+				domain: 'owlat.test',
+				address: 'member-a@owlat.test',
 				createdAt: now,
 				createdByUserId: 'admin-user',
 			});
@@ -272,9 +272,9 @@ describe('mailboxRequest.freshStartStatus', () => {
 
 		const status = await t.query(api.mail.mailboxRequest.freshStartStatus, {});
 		expect(status.hasMailbox).toBe(false);
-		expect(status.reservedAddress).toBe('member-a@hinterland.camp');
+		expect(status.reservedAddress).toBe('member-a@owlat.test');
 		expect(status.hasOpenRequest).toBe(true);
-		// No verified domain row for hinterland.camp → the reservation is awaiting
+		// No verified domain row for owlat.test → the reservation is awaiting
 		// verification (early-instance invite).
 		expect(status.reservationAwaitingDomain).toBe(true);
 	});
@@ -286,7 +286,7 @@ describe('mailboxRequest.freshStartStatus', () => {
 		await t.run(async (ctx) => {
 			const now = Date.now();
 			await ctx.db.insert('domains', {
-				domain: 'hinterland.camp',
+				domain: 'owlat.test',
 				status: 'verified',
 				dnsRecords: {},
 				createdAt: now,
@@ -297,15 +297,15 @@ describe('mailboxRequest.freshStartStatus', () => {
 				inviteeEmail: 'member-a@example.com',
 				organizationId: 'test-org',
 				localpart: 'member-a',
-				domain: 'hinterland.camp',
-				address: 'member-a@hinterland.camp',
+				domain: 'owlat.test',
+				address: 'member-a@owlat.test',
 				createdAt: now,
 				createdByUserId: 'admin-user',
 			});
 		});
 
 		const status = await t.query(api.mail.mailboxRequest.freshStartStatus, {});
-		expect(status.reservedAddress).toBe('member-a@hinterland.camp');
+		expect(status.reservedAddress).toBe('member-a@owlat.test');
 		expect(status.reservationAwaitingDomain).toBe(false);
 	});
 });
@@ -361,7 +361,7 @@ describe('mailboxRequest.provisionFromRequest', () => {
 		await seedUserProfile(t, 'member-a', 'member-a@example.com', 'Member A');
 		// The requester's login email is external (example.com); the hosted mailbox
 		// must be stood up on the deployment's VERIFIED sending domain, not there.
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		const created = await t.mutation(api.mail.mailboxRequest.request, {});
 
 		setAdminSession();
@@ -378,7 +378,7 @@ describe('mailboxRequest.provisionFromRequest', () => {
 				.withIndex('by_user', (q) => q.eq('userId', 'member-a'))
 				.collect();
 			expect(mailboxes).toHaveLength(1);
-			expect(mailboxes[0]?.address).toBe('member-a@hinterland.camp');
+			expect(mailboxes[0]?.address).toBe('member-a@owlat.test');
 			expect(mailboxes[0]?.status).toBe('active');
 			expect(mailboxes[0]?.kind ?? 'hosted').toBe('hosted');
 
@@ -411,7 +411,7 @@ describe('mailboxRequest.provisionFromRequest', () => {
 		setMemberSession('member-a');
 		const t = convexTest(schema, modules);
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		const created = await t.mutation(api.mail.mailboxRequest.request, {});
 
 		setAdminSession();
@@ -438,7 +438,7 @@ describe('mailboxRequest.provisionFromRequest', () => {
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
 		// An open request coexisting with a live mailbox (e.g. the requester claimed
 		// a reservation after asking): the provision must fulfil against it.
-		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'active');
+		await seedMailbox(t, 'member-a', 'member-a@owlat.test', 'active');
 		const requestId = await t.run(async (ctx) =>
 			ctx.db.insert('mailboxRequests', {
 				authUserId: 'member-a',
@@ -471,7 +471,7 @@ describe('mailboxRequest.provisionFromRequest', () => {
 		// The reserved domain must be verified — the claim gate refuses to stand up
 		// a hosted mailbox on an unverified domain (also proves the verified path is
 		// unchanged for the admin provision-from-request flow).
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		const created = await t.mutation(api.mail.mailboxRequest.request, {});
 		await t.run(async (ctx) => {
 			await ctx.db.insert('pendingMailboxes', {
@@ -479,8 +479,8 @@ describe('mailboxRequest.provisionFromRequest', () => {
 				inviteeEmail: 'member-a@example.com',
 				organizationId: 'test-org',
 				localpart: 'member-a',
-				domain: 'hinterland.camp',
-				address: 'member-a@hinterland.camp',
+				domain: 'owlat.test',
+				address: 'member-a@owlat.test',
 				createdAt: Date.now(),
 				createdByUserId: 'admin-user',
 			});
@@ -493,7 +493,7 @@ describe('mailboxRequest.provisionFromRequest', () => {
 
 		await t.run(async (ctx) => {
 			const mailbox = await ctx.db.get(result.mailboxId);
-			expect(mailbox?.address).toBe('member-a@hinterland.camp');
+			expect(mailbox?.address).toBe('member-a@owlat.test');
 			// The reservation was consumed, not orphaned.
 			const remaining = await ctx.db
 				.query('pendingMailboxes')
@@ -531,7 +531,7 @@ describe('mailboxRequest.provisionFromRequest', () => {
 		setMemberSession('member-a');
 		const t = convexTest(schema, modules);
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 
 		// A move-raised request: the mover's ACTIVE EXTERNAL mailbox stays live and a
 		// mailboxMoves row links to the request. Provisioning here would strand the
@@ -619,7 +619,7 @@ describe('mailboxRequest.provisionFromRequest', () => {
 		setMemberSession('member-a');
 		const t = convexTest(schema, modules);
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		await seedVerifiedDomain(t, 'owlat.test');
 		const created = await t.mutation(api.mail.mailboxRequest.request, {});
 
 		setAdminSession();
@@ -678,7 +678,7 @@ describe('userOnboarding.completeFreshStart', () => {
 		setMemberSession('member-a');
 		const t = convexTest(schema, modules);
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
-		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'suspended');
+		await seedMailbox(t, 'member-a', 'member-a@owlat.test', 'suspended');
 
 		await expect(
 			t.mutation(api.auth.userOnboarding.completeFreshStart, { userId: 'member-a' })
@@ -689,7 +689,7 @@ describe('userOnboarding.completeFreshStart', () => {
 		setMemberSession('member-a');
 		const t = convexTest(schema, modules);
 		await seedUserProfile(t, 'member-a', 'member-a@example.com');
-		await seedMailbox(t, 'member-a', 'member-a@hinterland.camp', 'active');
+		await seedMailbox(t, 'member-a', 'member-a@owlat.test', 'active');
 
 		await t.mutation(api.auth.userOnboarding.completeFreshStart, { userId: 'member-a' });
 

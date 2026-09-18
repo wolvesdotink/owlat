@@ -9,23 +9,21 @@ vi.mock('../../../monitoring/logger.js', () => ({
 
 import { smtpIntelPhase } from '../smtpIntel.js';
 import * as smtpResponse from '../../../intelligence/smtpResponse.js';
-import type { BasePhaseCtx, PhaseDeps } from '../../types.js';
-import type { EmailJob } from '../../../types.js';
+import type { PhaseDeps } from '../../types.js';
 import type { MtaConfig } from '../../../config.js';
+import { makeDispatchCtx, makeDestination } from '../../../__tests__/helpers/dispatchCtx.js';
+import { createOwlatJob } from '../../../__tests__/helpers/fixtures.js';
 
-function makeCtx(): BasePhaseCtx {
-	const job: EmailJob = {
-		messageId: 'msg-1',
-		to: 'user@gmail.com',
-		from: 'sender@owlat.com',
-		subject: 'Test',
-		html: '<p>Hello</p>',
-		ipPool: 'transactional',
-		organizationId: 'org-1',
-		dkimDomain: 'owlat.com',
-	};
-	return { job, domain: 'gmail.com', isp: 'gmail', fromDomain: 'owlat.com' };
-}
+const makeCtx = () =>
+	makeDispatchCtx({
+		job: createOwlatJob({ to: 'user@gmail.com' }),
+		domain: 'gmail.com',
+		destination: makeDestination({
+			recipientDomain: 'gmail.com',
+			providerKey: 'gmail',
+			throttleKey: 'gmail.com',
+		}),
+	});
 
 const deps: PhaseDeps = { redis: {} as never, config: {} as MtaConfig };
 

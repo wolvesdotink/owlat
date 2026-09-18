@@ -1,5 +1,5 @@
 /**
- * The AIMD controller's constants (ADR-0054 §4, plan D9).
+ * The AIMD controller's constants (ADR-0054 §4).
  *
  * THE ASYMMETRY IS THE WHOLE POINT: cheap to retreat, expensive to advance. An
  * increase costs three consecutive clean windows and moves a few percentage
@@ -28,7 +28,7 @@ import { DAY_MS, HOUR_MS } from '../../lib/constants';
  * THE COOLDOWN LADDER'S INPUTS, and nothing else.
  *
  * Narrowed from `RampMixState` deliberately: BOTH actuators climb the same
- * ladder (plan D3 — one controller, two actuators), and the pace actuator's
+ * ladder (one controller, two actuators), and the pace actuator's
  * stored state is not a mix state. Taking the two fields the rule actually
  * reads is what lets the ladder stay one function instead of two copies that
  * can drift apart. `RampMixState` and `PaceState` both satisfy it structurally.
@@ -45,7 +45,7 @@ export interface RampCooldownState {
 	readonly cooldownMs: number | undefined;
 }
 
-export interface RampAimdConfig {
+interface RampAimdConfig {
 	/** Multiplicative decrease applied the instant any gate breaches. */
 	readonly decreaseFactor: number;
 	/**
@@ -71,8 +71,7 @@ export interface RampAimdConfig {
 	 * while it runs, so the earliest breach after a 24h cooldown is 24h after its
 	 * START — never a repeat under a start-anchored window. Anchored there, the
 	 * production ladder cycled 6h/12h/24h/base for ever and `cooldownMaxMs` was
-	 * unreachable: the penalty stopped growing exactly where the plan says it
-	 * should double.
+	 * unreachable: the penalty stopped growing exactly where it should double.
 	 */
 	readonly cooldownRepeatWindowMs: number;
 	/** Freeze after the MTA circuit breaker opens for the cell. */
@@ -95,7 +94,7 @@ export interface RampAimdConfig {
 	 * constant, K_CLEAN = 3 would be satisfied by three overlapping reads of the
 	 * SAME day taken an hour apart, and a green cell could take ~20 additive steps
 	 * from 0.02 to its phase ceiling inside a single day — which is precisely the
-	 * "expensive to advance" half of D9's asymmetry deleted. A window counts only
+	 * "expensive to advance" half of the asymmetry deleted. A window counts only
 	 * once, and only a counted window extends the streak or permits an increase.
 	 *
 	 * It is ONE number for both the gate query and the streak spacing on purpose:
@@ -135,7 +134,7 @@ export const RAMP_MAX_FREEZE_MS: number = Math.max(
 );
 
 /**
- * The cooldown ladder (plan D9): 6h, DOUBLING when the breach repeats within 24h
+ * The cooldown ladder: 6h, DOUBLING when the breach repeats within 24h
  * of the previous freeze's EXPIRY, capped at 48h.
  *
  * THE ANCHOR IS THE EXPIRY, AND THAT IS THE WHOLE RULE. A ladder freeze lasts
@@ -143,7 +142,7 @@ export const RAMP_MAX_FREEZE_MS: number = Math.max(
  * runs, so the earliest breach that can follow a 24h cooldown is 24h after that
  * cooldown STARTED. Measured from the start, the 24h window was therefore
  * unreachable from the 24h rung: the ladder cycled 6h, 12h, 24h, base for ever
- * and no cell could be handed the 48h cap the plan tops it out at. Measured from
+ * and no cell could be handed the 48h cap the ladder tops out at. Measured from
  * the expiry it asks the question the constant is named for — has this cell run
  * clean for a day since we last let it go?
  *

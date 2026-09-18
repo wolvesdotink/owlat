@@ -20,8 +20,8 @@
  * Convex verifier, where a wrong registrable domain means the wrong DNS lookup
  * target and a domain that never verifies — the precise bug this work exists to
  * fix. A hand-trimmed suffix subset would silently corrupt any domain under an
- * omitted suffix, on the client *and* the server, and the card forbids environment
- * coupling so we cannot ship "full PSL on the server, trimmed on the client".
+ * omitted suffix, on the client *and* the server, and environment coupling is
+ * out, so we cannot ship "full PSL on the server, trimmed on the client".
  * `tldts` (~40 kB gzipped) carries the full compiled PSL, is pure and isomorphic
  * (no Node- or browser-only APIs), and is *already resolved in the lockfile* as a
  * transitive dependency of `mailauth` (which pins `tldts@7.0.30`), deduped to that
@@ -33,12 +33,12 @@
  * Full ICU-backed IDNA is verified present in browsers and in Node, which covers
  * the two runtimes this module is actually exercised in: the Nuxt client and the
  * Convex `"use node"` actions where DNS verification runs. Convex's default V8
- * runtime also exposes a `URL` global, but this piece did not verify its ICU/IDNA
- * coverage, so `asDnsName` is written to fail *closed* on any runtime lacking
- * IDNA: a Unicode input either throws inside `URL` (caught → `null`) or survives
- * un-encoded and is then rejected by the ASCII-only label check (→ `null`). It can
- * never emit a mis-normalized name, so the worst case is an IDN domain being
- * refused, never silently corrupted. No `node:punycode`, no browser-only APIs.
+ * runtime also exposes a `URL` global, but its ICU/IDNA coverage is unverified, so
+ * `asDnsName` is written to fail *closed* on any runtime lacking IDNA: a Unicode
+ * input either throws inside `URL` (caught → `null`) or survives un-encoded and is
+ * then rejected by the ASCII-only label check (→ `null`). It can never emit a
+ * mis-normalized name, so the worst case is an IDN domain being refused, never
+ * silently corrupted. No `node:punycode`, no browser-only APIs.
  */
 
 import { parse as parseTldts } from 'tldts';

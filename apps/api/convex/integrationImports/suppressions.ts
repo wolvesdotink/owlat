@@ -1,5 +1,5 @@
 /**
- * Suppression carry-over — the write half of a migration import (plan D9).
+ * Suppression carry-over — the write half of a migration import.
  *
  * A team arriving from Mailchimp/Mandrill brings years of accumulated recipient
  * truth with them: people who unsubscribed, addresses that hard-bounced, people
@@ -23,14 +23,24 @@
  *  - `delivery.unsubscribeQueries.processUnsubscribeByEmail` — the consent path,
  *    for the departures. Same entry point a relay's `unsub` webhook uses.
  *
- * IMPORTS ARE PERMANENT. `blockedEmails` has no expiry column, so a carried-over
- * suppression never lapses on its own. That is the conservative direction and it
- * is deliberate: Mandrill's blacklist entries DO expire (`expires_at`), and
- * honoring that here would mean quietly resuming mail to an address a provider
- * stopped mailing — the one mistake this import exists to prevent. An operator
- * who disagrees about a specific address removes it from the blocklist screen,
- * on the record. (The Mandrill adapter also asks for non-expired entries only,
- * so an ALREADY-expired entry is never carried over in the first place.)
+ * IMPORTS ARE PERMANENT IN `blockedEmails`, which is the record. It has no
+ * expiry column, so a carried-over suppression never lapses on its own. That is
+ * the conservative direction and it is deliberate: Mandrill's blacklist entries
+ * DO expire (`expires_at`), and honoring that here would mean quietly resuming
+ * mail to an address a provider stopped mailing — the one mistake this import
+ * exists to prevent. An operator who disagrees about a specific address removes
+ * it from the blocklist screen, on the record. (The Mandrill adapter also asks
+ * for non-expired entries only, so an ALREADY-expired entry is never carried
+ * over in the first place.)
+ *
+ * The MTA's BACKSTOP copy is a different story, and this module is not the place
+ * that decides it. `addFromEvent` mirrors one address at a time through
+ * `POST /suppression` — never the bulk endpoint, which is the only one that
+ * writes permanently whatever the reason — so a carried-over entry that maps to
+ * the MTA's `manual` reason expires there after seven days. Nothing is lost: the
+ * `blockedEmails` row still gates every send path Owlat checks. Reconciling the
+ * backstop against this table is a separate job, and it is the job that would
+ * give `POST /suppression/bulk` its first caller.
  */
 
 import { v } from 'convex/values';
