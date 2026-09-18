@@ -15,24 +15,38 @@
  *                             returned or logged.
  *            testConnection — decrypt the stored key and call the adapter's
  *                             `validateCredentials` (hosted) or probe the base
- *                             URL (local). Rate-limited. Returns `{ ok, error }`.
+ *                             URL (local); for the DECISION plane, ask the
+ *                             provider one real question. Rate-limited. Returns
+ *                             `{ ok, error }`.
+ *
+ * Three planes share the row, and the DECISION one is opt-in end to end: a save
+ * that names no decision kind leaves its nine columns exactly as they were, and
+ * `testConnection` / `listModels` take a `plane` argument that defaults to
+ * `language`, so every existing caller behaves as it did.
  */
 
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalAction } from './_generated/server';
-import type { Id } from './_generated/dataModel';
+import type { Doc, Id } from './_generated/dataModel';
 import { authedAction } from './lib/authedFunctions';
 import { decryptSecret, encryptSecret } from './lib/credentialCrypto';
 import { embeddingProviderFor, languageProviderFor } from './lib/llmProviders';
+import { decisionProviderFor } from './lib/decisionProviders';
+import { decisionEnvApiKey, decisionKindNeedsKey } from './lib/decisionProvider';
+import { listDecisionModels, testDecisionPlane } from './lib/decision/settingsActions';
 import { fetchGuarded } from './lib/ssrfGuard';
 import { validateOutboundUrl } from './lib/outboundUrlValidation';
 import { rateLimiter } from './rateLimiter';
 import { throwUnauthenticated } from './_utils/errors';
 import {
+	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
 } from './lib/aiProviderConfigValidators';
+
+/** Which plane a test / discovery call is about. Absent ⇒ `language`, as before. */
+const planeValidator = v.optional(v.union(v.literal('language'), v.literal('decision')));
 
 /** Non-secret masked preview of a key for the settings UI (e.g. `sk-…a1b2`). */
 function keyPreview(key: string): string {
@@ -50,6 +64,34 @@ function envelopeFor(key: string) {
 		version: e.version,
 		keyPreview: keyPreview(key),
 	};
+}
+
+/**
+ * Decrypt the LANGUAGE plane's stored key, or `undefined` when any of its four
+ * envelope columns is absent.
+ *
+ * The read side of the lockstep the persist mutation writes, spelled once here
+ * rather than inline at each call site (it was inlined twice). The decision
+ * plane's identical read lives beside its own settings actions in
+ * `lib/decision/settingsActions.ts`; the two are one prefix apart and deliberately
+ * not one parameterised helper, because a plane mix-up there is a key sent to
+ * the wrong vendor.
+ */
+function storedLanguageKey(row: Doc<'aiProviderConfig'>): string | undefined {
+	if (
+		row.secretCiphertext === undefined ||
+		row.secretIv === undefined ||
+		row.secretAuthTag === undefined ||
+		row.secretEnvelopeVersion === undefined
+	) {
+		return undefined;
+	}
+	return decryptSecret({
+		ciphertext: row.secretCiphertext,
+		iv: row.secretIv,
+		authTag: row.secretAuthTag,
+		version: row.secretEnvelopeVersion,
+	});
 }
 
 /**
@@ -73,6 +115,15 @@ export const saveConfig = authedAction({
 		embeddingModel: v.optional(v.string()),
 		/** Plaintext hosted-embedder key. Omit to keep the stored key unchanged. */
 		embeddingApiKey: v.optional(v.string()),
+		// The DECISION plane. OMITTING `decisionProviderKind` LEAVES IT UNTOUCHED —
+		// it is not a request to clear it, so a settings page that only edits the
+		// language card cannot switch a configured decision plane off.
+		decisionProviderKind: v.optional(decisionProviderKindValidator),
+		decisionModel: v.optional(v.string()),
+		decisionBaseUrl: v.optional(v.string()),
+		isDecisionFallbackEnabled: v.optional(v.boolean()),
+		/** Plaintext decision-provider key. Omit to keep the stored key unchanged. */
+		decisionApiKey: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'aiProviderConfig'>> => {
 		const adapter = languageProviderFor(args.languageProviderKind);
@@ -101,6 +152,19 @@ export const saveConfig = authedAction({
 			});
 		}
 
+		// The decision plane, when (and only when) this save names one. A newly
+		// entered key is validated before anything is persisted, exactly like the
+		// language one; a key the deployment already supplies through its own
+		// environment is not re-entered here and must not make the save fail.
+		const decisionKind = args.decisionProviderKind;
+		const decisionBaseUrl = args.decisionBaseUrl?.trim() || undefined;
+		if (decisionKind !== undefined && args.decisionApiKey) {
+			decisionProviderFor(decisionKind).validateCredentials({
+				apiKey: args.decisionApiKey,
+				baseUrl: decisionBaseUrl,
+			});
+		}
+
 		return await ctx.runMutation(internal.aiProviderConfig._persistConfig, {
 			languageProviderKind: args.languageProviderKind,
 			languageBaseUrl,
@@ -112,6 +176,15 @@ export const saveConfig = authedAction({
 			embeddingModel: args.embeddingModel?.trim() || undefined,
 			isEmbeddingLocal,
 			embeddingEnvelope: args.embeddingApiKey ? envelopeFor(args.embeddingApiKey) : undefined,
+			decisionProviderKind: decisionKind,
+			decisionModel: args.decisionModel?.trim() || undefined,
+			decisionBaseUrl,
+			isDecisionFallbackEnabled: args.isDecisionFallbackEnabled,
+			isDecisionKeyless:
+				decisionKind !== undefined ? !decisionKindNeedsKey(decisionKind) : undefined,
+			hasDecisionEnvKey:
+				decisionKind !== undefined ? decisionEnvApiKey(decisionKind) !== undefined : undefined,
+			decisionEnvelope: args.decisionApiKey ? envelopeFor(args.decisionApiKey) : undefined,
 		});
 	},
 });
@@ -127,8 +200,8 @@ export const saveConfig = authedAction({
 // the local-provider branch fires an outbound request at an admin-configured
 // base URL, so a member should not be able to trigger it.
 export const testConnection = authedAction({
-	args: {},
-	handler: async (ctx): Promise<{ ok: boolean; error?: string }> => {
+	args: { plane: planeValidator },
+	handler: async (ctx, args): Promise<{ ok: boolean; error?: string }> => {
 		// Admin floor — actions can't run requireOrgPermission directly, so
 		// assert through the internal query that inherits our identity.
 		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
@@ -147,6 +220,8 @@ export const testConnection = authedAction({
 
 		const row = await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {});
 		if (!row) return { ok: false, error: 'No AI provider is configured yet.' };
+
+		if (args.plane === 'decision') return await testDecisionPlane(ctx);
 
 		const adapter = languageProviderFor(row.languageProviderKind);
 		try {
@@ -171,18 +246,7 @@ export const testConnection = authedAction({
 				});
 				return { ok: true };
 			}
-			const apiKey =
-				row.secretCiphertext !== undefined &&
-				row.secretIv !== undefined &&
-				row.secretAuthTag !== undefined &&
-				row.secretEnvelopeVersion !== undefined
-					? decryptSecret({
-							ciphertext: row.secretCiphertext,
-							iv: row.secretIv,
-							authTag: row.secretAuthTag,
-							version: row.secretEnvelopeVersion,
-						})
-					: undefined;
+			const apiKey = storedLanguageKey(row);
 			adapter.validateCredentials({ apiKey, baseUrl: row.languageBaseUrl });
 			return { ok: true };
 		} catch (e) {
@@ -203,8 +267,8 @@ export const testConnection = authedAction({
 // .assertOrgAdmin — mirrors `testConnection` above (same admin-only caller,
 // same outbound request against the stored base URL).
 export const listModels = authedAction({
-	args: {},
-	handler: async (ctx): Promise<{ supported: boolean; models: string[]; error?: string }> => {
+	args: { plane: planeValidator },
+	handler: async (ctx, args): Promise<{ supported: boolean; models: string[]; error?: string }> => {
 		// Admin floor — see testConnection.
 		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
 
@@ -220,6 +284,8 @@ export const listModels = authedAction({
 		const row = await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {});
 		if (!row) return { supported: false, models: [] };
 
+		if (args.plane === 'decision') return await listDecisionModels(row);
+
 		const adapter = languageProviderFor(row.languageProviderKind);
 		// Bind the optional method to a local so its narrowing survives the awaits
 		// below (property narrowing on `adapter.listModels` would otherwise reset).
@@ -227,19 +293,7 @@ export const listModels = authedAction({
 		if (!discover) return { supported: false, models: [] };
 
 		try {
-			const apiKey =
-				!adapter.isLocal &&
-				row.secretCiphertext !== undefined &&
-				row.secretIv !== undefined &&
-				row.secretAuthTag !== undefined &&
-				row.secretEnvelopeVersion !== undefined
-					? decryptSecret({
-							ciphertext: row.secretCiphertext,
-							iv: row.secretIv,
-							authTag: row.secretAuthTag,
-							version: row.secretEnvelopeVersion,
-						})
-					: undefined;
+			const apiKey = adapter.isLocal ? undefined : storedLanguageKey(row);
 			const baseUrl = row.languageBaseUrl ?? adapter.defaultBaseUrl;
 			if (!baseUrl) {
 				return { supported: true, models: [], error: 'This provider has no base URL configured.' };

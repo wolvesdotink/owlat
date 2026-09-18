@@ -42,6 +42,7 @@ export type CoreFeatureFlagKey =
 	| 'ai'
 	| 'ai.agent'
 	| 'ai.autonomy'
+	| 'ai.decisionPlane'
 	| 'ai.knowledge'
 	| 'ai.knowledge.autoLink'
 	| 'ai.knowledge.graphRetrieval'
@@ -271,6 +272,7 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		cascadesOff: [
 			'ai.agent',
 			'ai.autonomy',
+			'ai.decisionPlane',
 			'ai.knowledge',
 			'ai.knowledge.autoLink',
 			'ai.knowledge.graphRetrieval',
@@ -298,6 +300,23 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 			'Let the agent send replies and take actions without human approval when confidence is high.',
 		default: false,
 		requires: ['ai', 'ai.agent'],
+	},
+	// The kill switch for the decision plane (docs/adr/0060). OFF is not a
+	// degraded mode: every decision falls back to the language model the
+	// operator already configured, which is byte-for-byte today's behaviour, so
+	// an operator can flip this off mid-incident and lose nothing but latency.
+	// It is NOT a member of the `ai` feature pack on purpose — one click on a
+	// pack must not start sending message content to a provider nobody chose
+	// yet. The credential is stored configuration (the AI-providers page), not
+	// an env var, so there is nothing to list in `requiredEnvVars`.
+	'ai.decisionPlane': {
+		key: 'ai.decisionPlane',
+		category: 'ai',
+		label: 'Decision plane',
+		description:
+			'Answer the yes/no, category and score judgements the AI features make with a dedicated decision provider instead of a text model. Off, every judgement stays on your configured language model.',
+		default: false,
+		requires: ['ai'],
 	},
 	'ai.knowledge': {
 		key: 'ai.knowledge',

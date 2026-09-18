@@ -168,6 +168,36 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 15,
 	},
 
+	// Decision-plane calls (the typed-decision provider). Instance-global, not
+	// per-sender: the plane is one upstream account with one shared quota, and a
+	// decision is spent on inbound mail (attacker-controlled volume) as well as
+	// on user-triggered surfaces. Sized off agentPipelineGlobal's 60 runs/min —
+	// a migrated pipeline run spends about two decision calls, so twice that,
+	// with room for the interactive callers on top. Over the cap the call is
+	// refused outright rather than queued: a decision that arrives a minute late
+	// is worth nothing to the step waiting on it.
+	decisionPlaneGlobal: {
+		kind: 'token bucket',
+		rate: 120,
+		period: MINUTE,
+		capacity: 240,
+	},
+
+	// The decision plane's FAILURE budget — the circuit breaker in
+	// decision/breaker.ts, not a limit anyone calls directly. Each failure on
+	// the decision plane charges one token; while the budget is gone the breaker
+	// reads `open` and the fallback hop onto the language model is refused. That
+	// hop costs 24 to 50 times a decision call, so the sustained rate here IS
+	// the cap on how much an upstream outage can cost us: 2 hops a minute, after
+	// an initial burst of 20 while a real incident is still being recognized.
+	// The refill doubles as the recovery curve — see decision/breaker.ts.
+	decisionPlaneFailure: {
+		kind: 'token bucket',
+		rate: 2,
+		period: MINUTE,
+		capacity: 20,
+	},
+
 	// Direct-to-storage upload URL minting (media library, chat attachments).
 	// The minted blob is inert until a gated mutation references it, but an
 	// unbounded mint loop still fills `_storage` with orphaned bytes the

@@ -7,6 +7,7 @@ import {
 } from '../lib/convexValidators';
 import { sealPolicyValidator } from '../mail/sealPolicy';
 import {
+	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
 } from '../lib/aiProviderConfigValidators';
@@ -337,6 +338,35 @@ export const instanceTables = {
 		embeddingSecretAuthTag: v.optional(v.string()),
 		embeddingSecretEnvelopeVersion: v.optional(v.number()),
 		embeddingKeyPreview: v.optional(v.string()),
+		// ── DECISION plane (the third plane; opt-in, and OPTIONAL IN EVERY COLUMN) ──
+		// An install that never chose a decision provider stores none of these, and
+		// `lib/decisionProvider.ts` then resolves DEFAULT_DECISION_KIND ('llm') —
+		// the language-backed adapter, i.e. exactly the behaviour it had before this
+		// plane existed. That is why nothing below is required and why no existing
+		// row needs a migration: an upgrade changes nothing until an operator opens
+		// the AI-provider page and enters their own key.
+		decisionProviderKind: v.optional(decisionProviderKindValidator),
+		// The single model id (this plane has no fast/capable tiers). Unset ⇒ the
+		// adapter's pinned default — never an alias, so a vendor cannot move the
+		// model underneath a threshold that decides whether we send mail.
+		decisionModel: v.optional(v.string()),
+		// API-origin override, for an operator fronting the vendor with a proxy.
+		// Unset ⇒ the adapter's own origin.
+		decisionBaseUrl: v.optional(v.string()),
+		// The operator's master switch for the one fallback hop onto the language
+		// plane when the decision plane fails. Unset ⇒ OFF: the hop re-routes onto
+		// a model that costs 24 to 50 times more, on a path fed by strangers
+		// sending us email, so it is never on by default.
+		isDecisionFallbackEnabled: v.optional(v.boolean()),
+		// Decision-provider API key envelope (absent for the language-backed
+		// adapter, which borrows the language plane's key). Written and cleared in
+		// lockstep with the preview below by `aiProviderConfig._persistConfig`.
+		decisionSecretCiphertext: v.optional(v.string()),
+		decisionSecretIv: v.optional(v.string()),
+		decisionSecretAuthTag: v.optional(v.string()),
+		decisionSecretEnvelopeVersion: v.optional(v.number()),
+		// Non-secret masked preview of the decision key for the UI.
+		decisionKeyPreview: v.optional(v.string()),
 		updatedAt: v.number(),
 	}),
 };
