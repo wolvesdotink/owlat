@@ -420,6 +420,24 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 		expect(cleared?.decisionKeyPreview).toBeUndefined();
 	});
 
+	it('never carries credentials across a provider change', async () => {
+		const t = newHarness();
+		await t.mutation(internal.aiProviderConfig._persistConfig, {
+			...BASE,
+			decisionProviderKind: 'typesafe',
+			decisionEnvelope: decisionEnvelope(),
+		});
+		// Simulate another keyed adapter using the existing validator's second
+		// kind. The persistence layer must bind secrets to identity, not keylessness.
+		await expect(
+			t.mutation(internal.aiProviderConfig._persistConfig, {
+				...BASE,
+				decisionProviderKind: 'llm',
+				isDecisionKeyless: false,
+			})
+		).rejects.toThrow(/requires an API key/);
+	});
+
 	it('keeps an unchanged key from disk rather than asking for it again', async () => {
 		const t = newHarness();
 		await t.mutation(internal.aiProviderConfig._persistConfig, {

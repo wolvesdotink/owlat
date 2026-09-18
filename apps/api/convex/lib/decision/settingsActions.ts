@@ -147,7 +147,7 @@ export async function testDecisionPlane(ctx: ActionCtx): Promise<{ ok: boolean; 
 			: {
 					ok: false,
 					error:
-						`The key works, but TypeSafe answered with '${decided.modelUsed}' rather than the ` +
+						`The key works, but ${decisionProviderFor(plane.kind).label} answered with '${decided.modelUsed}' rather than the ` +
 						'pinned model version. Answers from it are treated as uncalibrated and thresholds ' +
 						'stay inert until the calibration harness has been re-run.',
 				};
@@ -164,6 +164,7 @@ export async function testDecisionPlane(ctx: ActionCtx): Promise<{ ok: boolean; 
  * language sibling: a listing error is returned inline, never thrown.
  */
 export async function listDecisionModels(
+	ctx: ActionCtx,
 	row: Doc<'aiProviderConfig'>
 ): Promise<{ supported: boolean; models: string[]; error?: string }> {
 	const kind = row.decisionProviderKind;
@@ -183,7 +184,10 @@ export async function listDecisionModels(
 		}
 		const models = await discover({
 			...cfg,
-			fetchImpl: (input, init) => fetchGuarded(input, { ...init, protocols: ['https:'] }),
+			fetchImpl: async (input, init) => {
+				await ctx.runMutation(internal.decision.gate.assertDecisionAllowed, {});
+				return fetchGuarded(input, { ...init, protocols: ['https:'] });
+			},
 		});
 		return { supported: true, models };
 	} catch (e) {

@@ -174,6 +174,11 @@ function decodeProbabilities(
 			`Decision response: answer '${id}' has no probability for ${missing.map((key) => `'${key}'`).join(', ')}.`
 		);
 	}
+	// Accept rounding noise, but never threshold an invalid distribution.
+	const mass = Object.values(probabilities).reduce((sum, value) => sum + value, 0);
+	if (Math.abs(mass - 1) > 0.01) {
+		throw new DecisionWireError(`Decision response: answer '${id}' probabilities do not sum to 1.`);
+	}
 	return probabilities;
 }
 

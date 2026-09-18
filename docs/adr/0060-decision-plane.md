@@ -75,8 +75,21 @@ shape, minus tiers.
 registry, the two adapters (`typesafe`, `llm`) and the wire codec; `lib/decision/`
 holds the question DSL, the dispatch and the plane's pricing. The registry is a
 `const … as const` object behind the same mapped-type assignment the other two
-planes use, so a missing adapter method is a compile error and a third adapter is
-one file plus one registry line.
+planes use, so a missing adapter method is a compile error. Adding an adapter
+requires its implementation, kind registration, settings metadata, and a
+conformance fixture. The resolver and dispatch consume adapter metadata for
+credential requirements, the optional environment key, deadline, retry ownership,
+and default endpoint provenance. Keylessness does not imply language-backed
+inference. A new endpoint uses `custom` provenance until a trusted price catalog
+explicitly admits it, and stored keys are retained only for the same provider.
+The executable registry is Node-only; the kind tuple remains isolate-safe.
+
+A synthetic third-adapter test exercises resolution and dispatch without changing
+those paths. New adapters must implement the complete question contract and reject
+unsupported questions before network I/O; they must not coerce unsupported answers.
+The wire codec is specific to TypeSafe, not a protocol future providers must use.
+Network model discovery passes through the feature gate before each request,
+including when a future adapter replaces today's static model catalog.
 
 `lib/decisionProviders/types.ts` and `lib/decision/questions.ts` are **pure**, and
 that is load-bearing rather than tidy: `schema/instance.ts` imports the

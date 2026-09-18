@@ -1,10 +1,12 @@
+'use node';
+
 /**
  * Decision provider adapter (module) — registry + dispatch.
  *
  * Mirrors `lib/llmProviders/index.ts` (and through it `lib/sendProviders`,
  * ADR-0020). One plane, one registry: `decisionProviderFor(kind)`.
  *
- * Adding a provider is a one-adapter-file + one-registry-line change; the
+ * Adding a provider requires its adapter, kind registration and conformance coverage; the
  * compile-time mapped-type `satisfies` guard catches a missing or mismatched
  * method. No caller imports an adapter directly — the resolver in
  * `lib/decisionProvider.ts` looks the adapter up by kind and asks through it,
@@ -29,7 +31,6 @@ export {
 	DECISION_ENDPOINT_PROVENANCES,
 	DECISION_PROVIDER_KINDS,
 	DEFAULT_DECISION_KIND,
-	classifyStoredDecisionEndpoint,
 } from './types';
 
 // ─── Decision registry ─────────────────────────────────────────────────────

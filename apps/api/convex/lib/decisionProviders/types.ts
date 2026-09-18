@@ -25,8 +25,7 @@
  *
  * The registry (`./index.ts`) mirrors `lib/llmProviders/index.ts` and
  * `lib/sendProviders` (ADR-0020): a `Kind` literal union plus a mapped-type
- * `satisfies` guard, so adding a provider is one adapter file and one registry
- * line and callers stay dumb.
+ * `satisfies` guard, so each provider supplies an adapter and registers its kind; callers stay generic.
  *
  * This file is pure and isolate-safe: `schema/instance.ts` reaches the decision
  * kinds through the validators, so nothing in this chain may import
@@ -35,6 +34,7 @@
  * chain, not the callers.
  */
 
+import type { EnvKey } from '../env';
 import type { TokenUsage } from '../../agent/steps/types';
 import type { ProviderClientConfig } from '../llmProviders/types';
 import type { AnswersFor, QuestionSet } from '../decision/questions';
@@ -72,19 +72,6 @@ export const DEFAULT_DECISION_KIND = 'llm' satisfies DecisionProviderKind;
  */
 export const DECISION_ENDPOINT_PROVENANCES = ['typesafe-native', 'llm-backed', 'custom'] as const;
 export type DecisionEndpointProvenance = (typeof DECISION_ENDPOINT_PROVENANCES)[number];
-
-/** Classify the endpoint selected by a validated stored decision config. */
-export function classifyStoredDecisionEndpoint(
-	kind: DecisionProviderKind,
-	hasExplicitBaseUrl: boolean
-): DecisionEndpointProvenance {
-	switch (kind) {
-		case 'typesafe':
-			return hasExplicitBaseUrl ? 'custom' : 'typesafe-native';
-		case 'llm':
-			return 'llm-backed';
-	}
-}
 
 /**
  * A JSON value the state may be built from. The provider is TEXT ONLY — no
@@ -197,6 +184,14 @@ export interface DecisionProviderAdapter<K extends DecisionProviderKind = Decisi
 	readonly calibrated: boolean;
 	/** True for locally-hosted providers (keyless, base-URL driven). */
 	readonly isLocal: boolean;
+	/** Credential requirements are independent of whether inference is local. */
+	readonly requiresApiKey: boolean;
+	readonly apiKeyEnv?: EnvKey;
+	/** Each provider owns its latency budget and retry implementation. */
+	readonly defaultDeadlineMs: number;
+	/** Use custom until this endpoint has an explicitly trusted price catalog. */
+	readonly defaultEndpointProvenance: DecisionEndpointProvenance;
+	readonly handlesRetries: boolean;
 	/** Answer a question set. Rejects rather than coercing a disagreeing response. */
 	ask(cfg: ProviderClientConfig, req: DecisionRequest): Promise<DecisionResult>;
 	/** Throw a descriptive error when `cfg` can't produce a working client. */

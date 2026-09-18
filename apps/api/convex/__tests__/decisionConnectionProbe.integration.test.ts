@@ -23,7 +23,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api } from '../_generated/api';
-import { PINNED_DECISION_MODEL } from '../lib/decisionProviders/typesafe';
+import { typesafeDecisionAdapter, PINNED_DECISION_MODEL } from '../lib/decisionProviders/typesafe';
 import { __resetDecisionPlaneCacheForTests } from '../lib/decisionProvider';
 
 vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-value-for-aes-256-gcm-kdf');
@@ -206,4 +206,30 @@ describe("testConnection({ plane: 'decision' })", () => {
 		expect(res.error).toMatch(/jev-1\.14\.0/);
 		expect(res.error).toMatch(/uncalibrated/i);
 	});
+});
+
+describe('decision model discovery', () => {
+	it.each([false, true])(
+		'gates a future network discovery implementation (enabled=%s)',
+		async (enabled) => {
+			const t = await setup({ ai: true, 'ai.decisionPlane': enabled });
+			guard.fetchGuarded.mockResolvedValue(jsonResponse('{}'));
+			const discovery = vi
+				.spyOn(typesafeDecisionAdapter, 'listModels')
+				.mockImplementation(async (cfg) => {
+					await cfg.fetchImpl!('https://api.typesafe.ai/v1/models');
+					return ['test-model'];
+				});
+			try {
+				const result = await t.action(api.aiProviderConfigActions.listModels, {
+					plane: 'decision',
+				});
+				expect(guard.fetchGuarded).toHaveBeenCalledTimes(enabled ? 1 : 0);
+				if (enabled) expect(result.models).toEqual(['test-model']);
+				else expect(result.error).toMatch(/disabled/i);
+			} finally {
+				discovery.mockRestore();
+			}
+		}
+	);
 });

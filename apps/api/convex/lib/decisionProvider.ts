@@ -64,19 +64,14 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
-import {
-	DEFAULT_LANGUAGE_DECISION_DEADLINE_MS,
-	type ResolvedDecisionProvider,
-} from './decision/dispatch';
+import type { ResolvedDecisionProvider } from './decision/contract';
 import {
 	DECISION_PROVIDER_KINDS,
 	DEFAULT_DECISION_KIND,
-	classifyStoredDecisionEndpoint,
 	decisionProviderFor,
 	type DecisionEndpointProvenance,
 	type DecisionProviderKind,
 } from './decisionProviders';
-import { DEFAULT_DECISION_DEADLINE_MS } from './decisionProviders/typesafe';
 import { resolveLanguageModel } from './llmProvider';
 import type { ProviderClientConfig } from './llmProviders/types';
 
@@ -138,17 +133,11 @@ export interface ResolvedDecisionPlane {
  *
  * Not `adapter.isLocal`: the language-backed adapter is not local, it simply
  * answers through the LANGUAGE plane's already-resolved key, so there is
- * nothing for this plane to store or clear for it. Written as an exhaustive
- * switch so a third adapter is a compile error here rather than a silently
- * keyless provider.
+ * nothing for this plane to store or clear for it. Each adapter declares its own
+ * requirement, independently of local versus hosted inference.
  */
 export function decisionKindNeedsKey(kind: DecisionProviderKind): boolean {
-	switch (kind) {
-		case 'typesafe':
-			return true;
-		case 'llm':
-			return false;
-	}
+	return decisionProviderFor(kind).requiresApiKey;
 }
 
 /**
@@ -163,12 +152,8 @@ export function decisionKindNeedsKey(kind: DecisionProviderKind): boolean {
  * a key's variable to ask whether one exists.
  */
 export function decisionEnvApiKey(kind: DecisionProviderKind): string | undefined {
-	switch (kind) {
-		case 'typesafe':
-			return getOptional('TYPESAFE_API_KEY')?.trim() || undefined;
-		case 'llm':
-			return undefined;
-	}
+	const key = decisionProviderFor(kind).apiKeyEnv;
+	return key === undefined ? undefined : getOptional(key)?.trim() || undefined;
 }
 
 /**
@@ -185,7 +170,7 @@ function envDecisionKind(): DecisionProviderKind | undefined {
 
 /** The per-request budget for a kind: a chat model needs far more than the native endpoint. */
 function deadlineForKind(kind: DecisionProviderKind): number {
-	return kind === 'llm' ? DEFAULT_LANGUAGE_DECISION_DEADLINE_MS : DEFAULT_DECISION_DEADLINE_MS;
+	return decisionProviderFor(kind).defaultDeadlineMs;
 }
 
 /** A complete, decryptable AES-256-GCM envelope read off the decision columns. */
@@ -239,7 +224,7 @@ function languageBackedPlane(
 		kind: 'llm',
 		clientConfig: {},
 		modelId: adapter.defaultModel,
-		endpointProvenance: classifyStoredDecisionEndpoint('llm', false),
+		endpointProvenance: adapter.defaultEndpointProvenance,
 		calibrated: adapter.calibrated,
 		deadlineMs: deadlineForKind('llm'),
 		source,
@@ -308,12 +293,9 @@ function planeFor(input: {
 	updatedAt: number | undefined;
 }): ResolvedDecisionPlane {
 	const { kind, source, isFallbackEnabled, updatedAt } = input;
-	// A kind with no credential of its own has no endpoint and no model of its
-	// own either — all three belong to the LANGUAGE plane — so the `DECISION_*`
-	// endpoint overrides are not applied to it and it cannot fail a credential
-	// check. Today that is `llm`, and the switch in {@link decisionKindNeedsKey}
-	// is what makes adding a second such adapter a compile-time conversation.
-	if (!decisionKindNeedsKey(kind)) {
+	// Only the language-backed adapter delegates its model and endpoint to that plane.
+	// A future keyless decision engine must still resolve its own configuration.
+	if (kind === 'llm') {
 		return languageBackedPlane(source, isFallbackEnabled, { updatedAt });
 	}
 	const adapter = decisionProviderFor(kind);
@@ -332,7 +314,8 @@ function planeFor(input: {
 		kind,
 		clientConfig,
 		modelId: input.storedModel ?? decisionEnv('DECISION_MODEL') ?? adapter.defaultModel,
-		endpointProvenance: classifyStoredDecisionEndpoint(kind, clientConfig.baseUrl !== undefined),
+		endpointProvenance:
+			clientConfig.baseUrl !== undefined ? 'custom' : adapter.defaultEndpointProvenance,
 		calibrated: adapter.calibrated,
 		deadlineMs: deadlineForKind(kind),
 		source,

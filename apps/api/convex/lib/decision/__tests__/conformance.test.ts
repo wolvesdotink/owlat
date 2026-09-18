@@ -27,6 +27,11 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import {
+	DECISION_PROVIDER_KINDS,
+	type DecisionProviderKind,
+	type DecisionResult,
+} from '../../decisionProviders/types';
 import { registeredQuestionSets, isRegisteredQuestionSet } from '../catalog';
 import { choice, noul, score, type DecisionQuestion, type QuestionSet } from '../questions';
 import type { DecisionAnswer } from '../questions';
@@ -120,6 +125,19 @@ async function askLanguage(questions: QuestionSet) {
 	} as never);
 }
 
+// Exhaustive: registering a provider also requires a transport fixture here.
+const conformanceAdapters = {
+	typesafe: askNative,
+	llm: askLanguage,
+} satisfies Record<DecisionProviderKind, (questions: QuestionSet) => Promise<DecisionResult>>;
+
+async function askAll(questions: QuestionSet): Promise<DecisionResult[]> {
+	const answers: DecisionResult[] = [];
+	for (const kind of DECISION_PROVIDER_KINDS)
+		answers.push(await conformanceAdapters[kind](questions));
+	return answers;
+}
+
 /** The shape a caller may rely on, whichever adapter answered. */
 function contractOf(answer: DecisionAnswer) {
 	return {
@@ -169,23 +187,25 @@ describe('the catalog', () => {
 
 function conformanceSuite(questions: QuestionSet): void {
 	it('answers the same keys, kinds and probability spaces under both adapters', async () => {
-		const native = await askNative(questions);
-		const language = await askLanguage(questions);
+		const [native, ...others] = await askAll(questions);
+		if (!native) throw new Error('No decision adapters registered');
 
 		const ids = Object.keys(questions);
 		expect(Object.keys(native.answers)).toEqual(ids);
-		expect(Object.keys(language.answers)).toEqual(ids);
+		for (const language of others) {
+			expect(Object.keys(language.answers)).toEqual(ids);
 
-		for (const id of ids) {
-			const nativeAnswerFor = native.answers[id] as DecisionAnswer;
-			const languageAnswerFor = language.answers[id] as DecisionAnswer;
-			expect(contractOf(languageAnswerFor)).toEqual(contractOf(nativeAnswerFor));
-			expect(nativeAnswerFor.kind).toBe(questions[id]?.type);
+			for (const id of ids) {
+				const nativeAnswerFor = native.answers[id] as DecisionAnswer;
+				const languageAnswerFor = language.answers[id] as DecisionAnswer;
+				expect(contractOf(languageAnswerFor)).toEqual(contractOf(nativeAnswerFor));
+				expect(nativeAnswerFor.kind).toBe(questions[id]?.type);
+			}
 		}
 	});
 
 	it('answers inside the domain the question defined, under both adapters', async () => {
-		const answered = [await askNative(questions), await askLanguage(questions)];
+		const answered = await askAll(questions);
 
 		for (const result of answered) {
 			for (const [id, question] of Object.entries(questions)) {

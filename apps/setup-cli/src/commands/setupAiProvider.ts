@@ -165,13 +165,14 @@ export async function pickDecisionProvider(): Promise<DecisionProviderChoice | n
 
 	const apiKey = await password({ message: 'TypeSafe API key' });
 	if (isCancel(apiKey)) return null;
-	if (!(apiKey as string)) {
+	const trimmedKey = (apiKey as string).trim();
+	if (!trimmedKey) {
 		log.warn('No key entered — leaving every judgement on the language model.');
 		return skipped;
 	}
 
 	return {
-		env: { DECISION_PROVIDER: 'typesafe', TYPESAFE_API_KEY: apiKey as string },
+		env: { DECISION_PROVIDER: 'typesafe', TYPESAFE_API_KEY: trimmedKey },
 		isPlaneConfigured: true,
 	};
 }

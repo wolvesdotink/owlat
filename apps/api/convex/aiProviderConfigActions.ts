@@ -284,7 +284,7 @@ export const listModels = authedAction({
 		const row = await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {});
 		if (!row) return { supported: false, models: [] };
 
-		if (args.plane === 'decision') return await listDecisionModels(row);
+		if (args.plane === 'decision') return await listDecisionModels(ctx, row);
 
 		const adapter = languageProviderFor(row.languageProviderKind);
 		// Bind the optional method to a local so its narrowing survives the awaits

@@ -76,9 +76,9 @@ describe('pickDecisionProvider', () => {
 		});
 	});
 
-	it('reads a bare Enter on the key prompt as a skip', async () => {
+	it.each(['', '   ', '\t'])('reads an empty key %j as a skip', async (key) => {
 		selectMock.mockResolvedValueOnce('typesafe' as never);
-		passwordMock.mockResolvedValueOnce('' as never);
+		passwordMock.mockResolvedValueOnce(key as never);
 
 		const result = await pickDecisionProvider();
 

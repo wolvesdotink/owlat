@@ -54,7 +54,12 @@ const adapters = vi.hoisted(() => ({
 	llm: vi.fn(),
 }));
 vi.mock('../../decisionProviders', () => ({
-	decisionProviderFor: (kind: 'typesafe' | 'llm') => ({ kind, ask: adapters[kind] }),
+	decisionProviderFor: (kind: 'typesafe' | 'llm') => ({
+		kind,
+		ask: adapters[kind],
+		defaultDeadlineMs: kind === 'llm' ? 60_000 : 10_000,
+		handlesRetries: kind === 'llm',
+	}),
 }));
 
 const questions = {

@@ -263,7 +263,11 @@ function resolveDecisionColumns(
 		// working config with empty columns — see `resolveSecret`.
 		isKeyRequired: args.hasDecisionEnvKey !== true,
 		envelope: args.decisionEnvelope,
-		existing: storedEnvelopeOf(existing, 'decision'),
+		// Credentials belong to a provider, never to whichever provider is chosen next.
+		existing:
+			existing?.decisionProviderKind === args.decisionProviderKind
+				? storedEnvelopeOf(existing, 'decision')
+				: undefined,
 		label: 'decision',
 	});
 	return {

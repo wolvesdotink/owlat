@@ -94,6 +94,25 @@ describe('encodeQuestions()', () => {
 });
 
 describe('decodeAnswers()', () => {
+	it.each([0, 0.2, 0.9])('rejects invalid probability mass with each option at %s', (mass) => {
+		expect(() =>
+			decodeAnswers(questions, {
+				...answers,
+				category: { ...answers.category, probabilities: { person: mass, newsletter: mass } },
+			})
+		).toThrow(/sum to 1/);
+	});
+
+	it('accepts rounding noise without modifying reported probabilities', () => {
+		const probabilities = { person: 0.666, newsletter: 0.333 };
+		expect(
+			decodeAnswers(questions, {
+				...answers,
+				category: { ...answers.category, probabilities },
+			})['category']
+		).toMatchObject({ probabilities });
+	});
+
 	it.each([0, 1, 2])('maps vendor level %i and its probability key together', (level) => {
 		const probabilities = Object.fromEntries(
 			[0, 1, 2].map((i) => [String(i), i === level ? 1 : 0])

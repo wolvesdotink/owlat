@@ -67,9 +67,8 @@ import {
 } from '../ssrfGuard';
 import { validateOutboundUrl } from '../outboundUrlValidation';
 import type { ProviderClientConfig } from '../llmProviders/types';
-import { classifyStoredDecisionEndpoint } from './types';
 import type { DecisionProviderAdapter, DecisionRequest, DecisionResult } from './types';
-import { decodeResponse, encodeQuestions } from './wire';
+import { DecisionWireError, decodeResponse, encodeQuestions } from './wire';
 
 /** The vendor's own API origin. An operator only overrides this for a proxy. */
 export const TYPESAFE_DEFAULT_BASE_URL = 'https://api.typesafe.ai';
@@ -325,6 +324,11 @@ export const typesafeDecisionAdapter: DecisionProviderAdapter<'typesafe'> = {
 	defaultModel: PINNED_DECISION_MODEL,
 	calibrated: true,
 	isLocal: false,
+	requiresApiKey: true,
+	apiKeyEnv: 'TYPESAFE_API_KEY',
+	defaultDeadlineMs: DEFAULT_DECISION_DEADLINE_MS,
+	defaultEndpointProvenance: 'typesafe-native',
+	handlesRetries: false,
 
 	async ask(cfg: ProviderClientConfig, req: DecisionRequest): Promise<DecisionResult> {
 		const apiKey = requireApiKey(cfg);
@@ -362,6 +366,9 @@ export const typesafeDecisionAdapter: DecisionProviderAdapter<'typesafe'> = {
 		try {
 			body = await response.json();
 		} catch (error) {
+			if (isAbortLike(error) || req.abortSignal?.aborted) {
+				throw transportError(error, req, deadlineMs);
+			}
 			throw new TypeSafeDecisionError(
 				'TypeSafe answered with a body that is not JSON. Check that the base URL points at the ' +
 					'API rather than a gateway or a login page.',
@@ -372,12 +379,26 @@ export const typesafeDecisionAdapter: DecisionProviderAdapter<'typesafe'> = {
 		// Anything the codec refuses here is a disagreement between our question
 		// set and their answer — thrown as a `DecisionWireError`, never repaired
 		// and never retried.
-		const decoded = decodeResponse(req.questions, body);
+		const decoded = (() => {
+			try {
+				return decodeResponse(req.questions, body);
+			} catch (error) {
+				if (error instanceof DecisionWireError) {
+					throw new DecisionWireError(
+						redactKey(error.message, apiKey),
+						error.usage && error.modelUsed
+							? { usage: error.usage, modelUsed: redactKey(error.modelUsed, apiKey) }
+							: undefined
+					);
+				}
+				throw error;
+			}
+		})();
 		return {
 			answers: decoded.answers,
 			usage: decoded.usage,
 			modelUsed: decoded.modelUsed,
-			provenance: classifyStoredDecisionEndpoint('typesafe', cfg.baseUrl !== undefined),
+			provenance: cfg.baseUrl !== undefined ? 'custom' : 'typesafe-native',
 			// The answer is calibrated only if it came from the version the
 			// thresholds were measured against. A provider-side reroute onto another
 			// version is exactly what reading the model id back is for, and treating

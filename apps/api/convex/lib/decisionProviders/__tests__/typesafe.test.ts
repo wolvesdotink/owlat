@@ -581,3 +581,28 @@ describe('typesafeDecisionAdapter.listModels()', () => {
 		);
 	});
 });
+
+describe('response body failures', () => {
+	it('treats a timeout while reading the body as transient', async () => {
+		const response = new Response('{}');
+		vi.spyOn(response, 'json').mockRejectedValue(new DOMException('Timed out', 'TimeoutError'));
+		await expect(
+			typesafeDecisionAdapter.ask(
+				{ apiKey: API_KEY, fetchImpl: async () => response },
+				{ state: '', questions }
+			)
+		).rejects.toMatchObject({ retriable: true });
+	});
+
+	it('redacts a credential echoed in a malformed successful response', async () => {
+		const body = okBody({
+			answers: { ...answers, category: { ...answers.category, choice: API_KEY } },
+		});
+		const error = await typesafeDecisionAdapter
+			.ask({ apiKey: API_KEY, fetchImpl: async () => new Response(body) }, { state: '', questions })
+			.catch((error: unknown) => error);
+		expect(error).toBeInstanceOf(DecisionWireError);
+		expect((error as Error).message).not.toContain(API_KEY);
+		expect(error).toMatchObject({ usage: { promptTokens: 1200 } });
+	});
+});

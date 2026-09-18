@@ -63,6 +63,8 @@ import { DecisionWireError } from './wire';
 /** Same state, same questions, same answer — a decision is not a place for sampling. */
 const DECISION_TEMPERATURE = 0;
 
+export const DEFAULT_LANGUAGE_DECISION_DEADLINE_MS = 60_000;
+
 /** Score levels are numbered from one, matching the legend keys `wire.ts` decodes. */
 const FIRST_LEVEL = 1;
 
@@ -359,6 +361,10 @@ export const llmDecisionAdapter: DecisionProviderAdapter<'llm'> = {
 	defaultModel: '',
 	calibrated: false,
 	isLocal: false,
+	requiresApiKey: false,
+	defaultDeadlineMs: DEFAULT_LANGUAGE_DECISION_DEADLINE_MS,
+	defaultEndpointProvenance: 'llm-backed',
+	handlesRetries: true,
 	async ask(_cfg: ProviderClientConfig, req: DecisionRequest): Promise<DecisionResult> {
 		const model = requireLanguageModel(req);
 		const signal = requestSignal(req);

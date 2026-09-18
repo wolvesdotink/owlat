@@ -59,12 +59,8 @@
 import { randomUUID } from 'node:crypto';
 import type { LanguageModel } from 'ai';
 import { decisionProviderFor } from '../decisionProviders';
-import type {
-	DecisionProviderKind,
-	DecisionRequest,
-	DecisionResult,
-} from '../decisionProviders/types';
-import { DEFAULT_DECISION_DEADLINE_MS } from '../decisionProviders/typesafe';
+import type { DecisionRequest, DecisionResult } from '../decisionProviders/types';
+export { DEFAULT_LANGUAGE_DECISION_DEADLINE_MS } from '../decisionProviders/llm';
 import { DecisionWireError } from '../decisionProviders/wire';
 import { errorStatus, isRetriableLlmError } from '../llm/dispatch';
 import { MAX_LLM_ATTEMPTS } from '../llm/retryPolicy';
@@ -97,13 +93,6 @@ export type {
 export const DEFAULT_DECISION_ATTEMPTS = MAX_LLM_ATTEMPTS;
 
 /**
- * The language-backed adapter answers through `generateObject` on a chat model,
- * so it gets a chat model's budget: the native endpoint's ten seconds would fail
- * every call on the path that exists for installs with no decision key.
- */
-export const DEFAULT_LANGUAGE_DECISION_DEADLINE_MS = 60_000;
-
-/**
  * The backoff curve and the two bounds around a `Retry-After`: a small first step
  * (this plane is sold on sub-second answers), a cap before jitter, a spread so a
  * rate-limited fleet does not come back in lockstep, and the longest wait we will
@@ -123,15 +112,6 @@ export const MAX_HONOURED_RETRY_AFTER_MS = 20_000;
  * retriable either — this list is only about the hop.
  */
 export const NO_FALLBACK_STATUSES: readonly number[] = [401, 403, 422];
-
-/**
- * Adapters that run their own bounded retry. `runLlmObject` already retries
- * three times behind the language-backed one, so retrying it again here would
- * multiply both the attempt budget and the bill: retry belongs to the layer that
- * owns the socket, and for this kind that is the other dispatch.
- */
-const SELF_RETRYING_DECISION_KINDS: ReadonlySet<DecisionProviderKind> =
-	new Set<DecisionProviderKind>(['llm']);
 
 const NO_OP_RATE_LIMITER: DecisionRateLimiter = { reserve: () => {} };
 
@@ -238,8 +218,7 @@ function assertNotAborted(abortSignal: AbortSignal | undefined): void {
 }
 
 function deadlineFor(provider: ResolvedDecisionProvider, override: number | undefined): number {
-	const fallbackDefault =
-		provider.kind === 'llm' ? DEFAULT_LANGUAGE_DECISION_DEADLINE_MS : DEFAULT_DECISION_DEADLINE_MS;
+	const fallbackDefault = decisionProviderFor(provider.kind).defaultDeadlineMs;
 	return override ?? provider.deadlineMs ?? fallbackDefault;
 }
 
@@ -420,7 +399,7 @@ export async function runDecision<Q extends QuestionSet>(
 	};
 
 	const budget = Math.max(1, options.maxAttempts ?? DEFAULT_DECISION_ATTEMPTS);
-	const maxAttempts = SELF_RETRYING_DECISION_KINDS.has(provider.kind) ? 1 : budget;
+	const maxAttempts = decisionProviderFor(provider.kind).handlesRetries ? 1 : budget;
 
 	let attempts = 0;
 	let lastError: unknown;
