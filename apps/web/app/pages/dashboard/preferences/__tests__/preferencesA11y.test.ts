@@ -204,12 +204,16 @@ describe('preferences shell — accessibility', () => {
 	it('has no axe violations, landmarks and skip link included', async () => {
 		const violations = await auditA11y(PreferencesLayout, {
 			slots: { default: '<p>Page under the preferences shell</p>' },
-			global: { plugins: [createTestI18n()] },
+			global: {
+				plugins: [createTestI18n()],
+				stubs: { NuxtLayout: { template: '<div><slot /></div>' } },
+			},
 			// Fragment scope, not page scope: this shell NESTS inside `dashboard`,
 			// which is what owns `<main>`, the skip link and the document
 			// landmarks. Those are covered by the dashboard layout's own audit;
 			// what is this shell's own is its section nav and its `<h1>`.
 			prepare: (wrapper) => {
+				expect(typeof wrapper.vm.$.subTree.type).toBe('string');
 				expect(wrapper.findAll('nav a').length).toBeGreaterThan(3);
 			},
 		});
