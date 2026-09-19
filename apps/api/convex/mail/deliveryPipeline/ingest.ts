@@ -17,7 +17,11 @@ import { extractEmail } from '../../lib/emailAddress';
 import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { extractAttachments } from '@owlat/shared/mailMime';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
-import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
+import {
+	ATTACHMENT_COMPOSE_LIMITS,
+	MAX_AI_INGEST_ATTACHMENT_BYTES,
+	MAX_ATTACHMENT_BYTES,
+} from '@owlat/shared/attachments';
 import { logError } from '../../lib/runtimeLog';
 import { getMtaConfig } from '../mtaClient';
 import {
@@ -239,11 +243,18 @@ export async function prepareInboundMessage(
  * we never create a contact for every inbound sender. Thread-linking and
  * agent-output capture are intentionally out of scope here.
  *
- * The number of captured parts is capped at `ATTACHMENT_COMPOSE_LIMITS.maxCount`
- * per message. The inbound webhook is attacker-reachable (anyone can email a
- * provisioned mailbox) and each ingested file schedules a summarization +
- * embedding + knowledge-extraction LLM call, so without a cap a single crafted
- * .eml carrying many small attachment leaves would amplify per-message LLM cost.
+ * SHARED BY BOTH INBOUND ROUTES — the personal mailbox and the team inbox — so
+ * the two cannot enforce different attachment policy. The ceilings, in order:
+ *
+ *   · `disposition === 'inline'` and empty parts are not attachments;
+ *   · over `MAX_ATTACHMENT_BYTES` (25 MiB) is not stored at all;
+ *   · over `MAX_AI_INGEST_ATTACHMENT_BYTES` (10 MiB) is not INDEXED — it still
+ *     delivers, still lists, and is still downloadable out of the raw `.eml`;
+ *   · at most `ATTACHMENT_COMPOSE_LIMITS.maxCount` (10) parts per message.
+ *
+ * Then the whole batch is charged against the per-sender and global AI-ingest
+ * budget. Tripping it skips `semanticFiles.ingest` — nothing reaches a model —
+ * while the bytes, the row and the metadata all survive.
  */
 export async function captureAttachments(
 	ctx: {
@@ -255,7 +266,24 @@ export async function captureAttachments(
 	messageId: string,
 	fromRaw: string
 ): Promise<void> {
-	const parts = extractAttachments(rawBinary);
+	// Decide the whole batch up front: the budget is charged once for what will
+	// actually be ingested, so a message of inline logos costs nothing.
+	const eligible = extractAttachments(rawBinary)
+		.filter((part) => {
+			// Inline parts (embedded logos / signature images) aren't documents the
+			// user thinks of as "attachments".
+			if (part.disposition === 'inline') return false;
+			const size = part.bytes.byteLength;
+			if (size === 0 || size > MAX_ATTACHMENT_BYTES) return false;
+			// Over the AI ceiling the bytes still arrive, they are just not fed to
+			// a model. See MAX_AI_INGEST_ATTACHMENT_BYTES.
+			return size <= MAX_AI_INGEST_ATTACHMENT_BYTES;
+		})
+		// Bound the work per delivered message: each ingested part schedules LLM
+		// calls, and the inbound webhook is attacker-reachable, so a crafted .eml
+		// with many small leaves must not amplify cost.
+		.slice(0, ATTACHMENT_COMPOSE_LIMITS.maxCount);
+	if (eligible.length === 0) return;
 
 	// Scope captured files to the sender's EXISTING contact (find-only). A
 	// missing/unresolvable sender leaves the file org-general — we do not create
@@ -269,31 +297,40 @@ export async function captureAttachments(
 		if (contact) senderContactIds = [contact._id];
 	}
 
-	let captured = 0;
-	for (const part of parts) {
-		// Bound the work per delivered message: each ingested part schedules
-		// LLM calls (summarization + embedding + knowledge extraction), and the
-		// inbound webhook is attacker-reachable, so a crafted .eml with many
-		// small leaves must not amplify cost. Cap on captured (LLM-triggering)
-		// parts so inline/oversized skips don't consume the budget.
-		if (captured >= ATTACHMENT_COMPOSE_LIMITS.maxCount) break;
-		// Skip inline parts (embedded logos / signature images) — they aren't
-		// documents the user thinks of as "attachments".
-		if (part.disposition === 'inline') continue;
-		const size = part.bytes.byteLength;
-		if (size === 0 || size > MAX_ATTACHMENT_BYTES) continue;
+	// Prefer the resolved contact id: it survives a sender rewriting their
+	// display name, and it is the key the agent-pipeline gate already uses. The
+	// already-lowercased address is the fallback for a sender with no contact (or
+	// one erased under GDPR, which `getByEmailForTeam` reads as absent).
+	// `||`, not `??`: `extractEmail` returns `''` for a From header with nothing
+	// address-shaped in it, and an empty bucket key is not a key.
+	const senderKey = senderContactIds?.[0] ?? (senderEmail || 'unknown');
+	const { ok } = await ctx.runMutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
+		senderKey,
+		count: eligible.length,
+	});
+	if (!ok) {
+		// The bytes are NOT dropped: the message row, its attachment metadata and
+		// the sealed raw `.eml` all exist, so the reader's download still works.
+		// Only the indexing — and therefore the model spend — is skipped.
+		logError('[Attachment capture] AI ingest budget exhausted — bytes stored, indexing skipped', {
+			senderKey,
+			messageId,
+			count: eligible.length,
+		});
+		return;
+	}
 
+	for (const part of eligible) {
 		const storageId = await ctx.storage.store(new Blob([part.bytes], { type: part.contentType }));
 		// `ingest` runs the file-type policy and deletes the blob if rejected.
 		await ctx.runMutation(internal.semanticFiles.ingest, {
 			storageId,
 			filename: part.filename,
 			mimeType: part.contentType,
-			fileSize: size,
+			fileSize: part.bytes.byteLength,
 			sourceType: 'email_attachment',
 			sourceMessageId: messageId,
 			contactIds: senderContactIds,
 		});
-		captured++;
 	}
 }

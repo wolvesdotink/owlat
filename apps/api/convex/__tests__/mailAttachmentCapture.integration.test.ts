@@ -9,6 +9,8 @@
  */
 
 import { convexTest } from 'convex-test';
+import { getFunctionName, type FunctionReference } from 'convex/server';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
@@ -18,6 +20,17 @@ import type { Id } from '../_generated/dataModel';
 import { captureAttachments } from '../mail/deliveryPipeline/ingest';
 
 const modules = import.meta.glob('../**/*.*s');
+
+/**
+ * Attachment capture charges the per-sender/global AI-ingest budget before it
+ * ingests anything, and the limiter writes real component state, so the
+ * component has to be live or every capture reads as "budget unavailable".
+ */
+function setupTest() {
+	const t = convexTest(schema, modules);
+	rateLimiterTest.register(t);
+	return t;
+}
 
 async function seedInbox(t: ReturnType<typeof convexTest>): Promise<void> {
 	await t.run(async (ctx) => {
@@ -89,7 +102,7 @@ function buildRawEml(): string {
 
 describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 	it('persists a delivered attachment as an email_attachment semantic file', async () => {
-		const t = convexTest(schema, modules);
+		const t = setupTest();
 		await seedInbox(t);
 
 		const raw = buildRawEml();
@@ -127,7 +140,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 	});
 
 	it('captures nothing when the message has no real attachments', async () => {
-		const t = convexTest(schema, modules);
+		const t = setupTest();
 		await seedInbox(t);
 
 		const raw = [
@@ -163,7 +176,9 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 	// so a second `ctx.storage.store` inside one action throws "Write outside of
 	// transaction" (still the case in 0.0.55). The cap lives in captureAttachments,
 	// which takes its ctx as a parameter, so the many-leaf message is driven
-	// through it with a counting ctx rather than through the action.
+	// through it with a counting ctx rather than through the action. The AI-ingest
+	// budget charge still runs for real against the live limiter component — only
+	// the `semanticFiles.ingest` call is counted instead of executed.
 	it('caps captured attachments per message to bound LLM cost amplification', async () => {
 		const boundary = 'manyb0undary';
 		const leafCount = ATTACHMENT_COMPOSE_LIMITS.maxCount + 5;
@@ -195,6 +210,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 		parts.push(`--${boundary}--`, '');
 		const raw = parts.join('\r\n');
 
+		const t = setupTest();
 		const stored: string[] = [];
 		const ingested: unknown[] = [];
 		await captureAttachments(
@@ -207,7 +223,16 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 					},
 				},
 				runQuery: (async () => null) as unknown as ActionCtx['runQuery'],
-				runMutation: (async (_ref: unknown, args: unknown) => {
+				runMutation: (async (ref: unknown, args: unknown) => {
+					if (
+						getFunctionName(ref as FunctionReference<'mutation'>) ===
+						getFunctionName(internal.semanticFileBudget.consumeAttachmentIngestBudget)
+					) {
+						return await t.mutation(
+							internal.semanticFileBudget.consumeAttachmentIngestBudget,
+							args as { senderKey: string; count: number }
+						);
+					}
 					ingested.push(args);
 					return null;
 				}) as unknown as ActionCtx['runMutation'],
@@ -239,7 +264,7 @@ async function seedContact(t: ReturnType<typeof convexTest>, email: string): Pro
 
 describe('mail.delivery.ingestFromWebhook — sender contact linking', () => {
 	it('links a captured attachment to the sender contact when one exists', async () => {
-		const t = convexTest(schema, modules);
+		const t = setupTest();
 		await seedInbox(t);
 		const contactId = await seedContact(t, 'bob@example.com');
 
@@ -276,7 +301,7 @@ describe('mail.delivery.ingestFromWebhook — sender contact linking', () => {
 	});
 
 	it('leaves the captured attachment org-general when the sender is unknown', async () => {
-		const t = convexTest(schema, modules);
+		const t = setupTest();
 		await seedInbox(t);
 		// A DIFFERENT contact exists; the sender (bob@) must not resolve to it.
 		await seedContact(t, 'someone-else@example.com');

@@ -1023,6 +1023,7 @@ import type * as seedDemo_messages from '../seedDemo/messages.js';
 import type * as seedDemo_pipeline from '../seedDemo/pipeline.js';
 import type * as segments from '../segments.js';
 import type * as segments_listing from '../segments/listing.js';
+import type * as semanticFileBudget from '../semanticFileBudget.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
 import type * as semanticFiles from '../semanticFiles.js';
 import type * as shareLinkHttp from '../shareLinkHttp.js';
@@ -2135,6 +2136,7 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/pipeline': typeof seedDemo_pipeline;
 	segments: typeof segments;
 	'segments/listing': typeof segments_listing;
+	'semanticFileBudget': typeof semanticFileBudget;
 	semanticFileProcessing: typeof semanticFileProcessing;
 	semanticFiles: typeof semanticFiles;
 	shareLinkHttp: typeof shareLinkHttp;

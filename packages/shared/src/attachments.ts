@@ -20,6 +20,19 @@ export const ATTACHMENT_COMPOSE_LIMITS = {
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 /**
+ * Per-attachment ceiling for AI INGESTION — the summary, the embedding and the
+ * knowledge extraction that `semanticFiles.ingest` schedules.
+ *
+ * Deliberately below {@link MAX_ATTACHMENT_BYTES}: a file above this still
+ * delivers, still appears in the message's attachment list and is still
+ * downloadable out of the raw `.eml`. It is only not fed to a model. The ceiling
+ * exists because inbound mail is reachable by any sender, and the real cost per
+ * captured part is two LLM completions plus one embedding per extracted
+ * knowledge entry — a fan-out with no cap of its own.
+ */
+export const MAX_AI_INGEST_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+/**
  * Max size of a single file uploaded into the file library / media library, in
  * bytes — the ceiling shared by the upload modal copy, the client-side upload
  * guard, and the server-side `semanticFiles.create` / `mediaAssets.create`
