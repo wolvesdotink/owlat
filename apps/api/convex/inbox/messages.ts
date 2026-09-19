@@ -27,6 +27,7 @@ import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { isSuppressed } from '../lib/suppression';
 import { sealBodyAtWriteMaybe } from '../lib/messageBody';
+import { virusVerdictValidator } from '../lib/literalValidators';
 
 // Re-exported for existing importers of this module.
 export { extractEmail, normalizeSubject };
@@ -84,9 +85,7 @@ export const receiveMessage = internalMutation({
 		// `virusVerdict` ABSENT IS NOT `clean` — see the schema comment.
 		rawStorageId: v.optional(v.id('_storage')),
 		rawSize: v.optional(v.number()),
-		virusVerdict: v.optional(
-			v.union(v.literal('clean'), v.literal('infected'), v.literal('skipped'))
-		),
+		virusVerdict: v.optional(virusVerdictValidator),
 	},
 	handler: async (ctx, args) => {
 		const senderEmail = extractEmail(args.from);

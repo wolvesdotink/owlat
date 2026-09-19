@@ -31,6 +31,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { normalizeEmail } from '@owlat/shared';
+import { virusVerdictValidator } from '../lib/literalValidators';
 import { openPrivateKey } from './sealing';
 import { shouldRefetch } from './discovery';
 import {
@@ -236,9 +237,7 @@ export const decryptAndReceive = internalAction({
 		// be threaded here too or sealed mail silently loses it.
 		rawStorageId: v.optional(v.id('_storage')),
 		rawSize: v.optional(v.number()),
-		virusVerdict: v.optional(
-			v.union(v.literal('clean'), v.literal('infected'), v.literal('skipped'))
-		),
+		virusVerdict: v.optional(virusVerdictValidator),
 	},
 	returns: v.object({
 		inboundMessageId: v.id('inboundMessages'),

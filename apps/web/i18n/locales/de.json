@@ -3073,6 +3073,13 @@
 			"inboxFilterPills": {
 				"groupLabel": "Konversationen filtern"
 			},
+			"inboxMessageAttachments": {
+				"blocked": "Blockiert — in dieser Nachricht wurde Schadsoftware gefunden.",
+				"download": "{filename} herunterladen",
+				"downloadFailed": "Dieser Anhang konnte nicht heruntergeladen werden. Bitte erneut versuchen.",
+				"expired": "Nicht mehr gespeichert — die Dateien dieser Nachricht haben die Aufbewahrungsfrist überschritten.",
+				"heading": "Anhänge"
+			},
 			"inboxThreadPresence": {
 				"manyHere": "{count} Personen hier",
 				"moreHere": "{count} weitere hier",
@@ -4958,6 +4965,15 @@
 				"package": "Paket: {name}",
 				"requestedAccess": "Fordert Zugriff an: {capabilities}",
 				"requiredEnv": "Benötigt Umgebungsvariablen: {vars}"
+			},
+			"inboundRetentionCard": {
+				"adminOnly": "Nur Inhaber und Administratoren können das ändern.",
+				"dayOption": "{count} Tage",
+				"description": "Wie lange der Team-Posteingang die Originaldatei einer Nachricht samt Anhängen behält. Nachrichten, Absender und Details bleiben in jedem Fall erhalten; entfernt werden nur die gespeicherten Dateien.",
+				"label": "Dateien behalten für",
+				"savedToast": "Speicherdauer aktualisiert",
+				"title": "Speicherung eingehender Nachrichten",
+				"updateOperation": "Speicherdauer für Nachrichten ändern"
 			},
 			"migrationModeCard": {
 				"adminsOnly": "Nur Inhaber und Administratoren können dies ändern.",

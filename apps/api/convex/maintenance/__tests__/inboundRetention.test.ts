@@ -23,7 +23,7 @@ import {
 	DEFAULT_INBOUND_RAW_RETENTION_DAYS,
 	INBOUND_RAW_RETENTION_DAY_CHOICES,
 } from '@owlat/shared/inboundRetention';
-import { inboundRawRetentionDaysValidator } from '../../lib/convexValidators';
+import { inboundRawRetentionDaysValidator } from '../../lib/literalValidators';
 
 // The `../../**` glob omits the `maintenance/` dir it climbed through, so
 // merge a second glob rooted there and re-prefix its keys (see

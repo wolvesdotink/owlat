@@ -1,0 +1,59 @@
+/**
+ * Signed URL for a team-inbox message's raw `.eml`.
+ *
+ * The reader fetches it and extracts an attachment client-side, because the
+ * attachment bytes live in the raw MIME — the `inboundMessages` row carries
+ * metadata, not content. Same shape as the personal-mailbox pair in
+ * `mail/mailbox/messages.ts`: an internal QUERY does the authorization (queries
+ * can read the database) and a public ACTION mints the URL (minting needs
+ * action storage, because `sealedBlobUrl` may probe the blob's envelope when
+ * INSTANCE_SECRET is absent).
+ *
+ * The gate is the SHARED-INBOX one — a signed-in owner or admin, the same check
+ * `inbox/queries.getThread` makes. Deliberately not `loadReadableMessage`,
+ * which is a personal-mailbox OWNERSHIP predicate and would deny every
+ * team-inbox reader.
+ *
+ * No new HTTP route: `GET /sealed-blob` already serves the minted token, with
+ * `nosniff`, `no-store`, a sandbox CSP and `Content-Disposition: attachment`
+ * for `message/rfc822`.
+ */
+
+import { v } from 'convex/values';
+import { internalQuery } from '../_generated/server';
+import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
+import { publicAction } from '../lib/authedFunctions';
+import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { sealedBlobUrl } from '../lib/sealedBlob';
+
+// public: soft-auth — returns null for anonymous; the shared-inbox role gate is in-handler
+export const getInboundMessageRawStorageId = internalQuery({
+	args: { messageId: v.id('inboundMessages') },
+	handler: async (ctx, args): Promise<Id<'_storage'> | null> => {
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return null;
+		const row = await ctx.db.get(args.messageId);
+		// Absent once the retention sweep has released the bytes, and on any
+		// message that arrived through the legacy route without them.
+		return row?.rawStorageId ?? null;
+	},
+});
+
+// public: soft-auth — the internal source query returns null for anonymous and enforces the owner/admin gate
+export const getInboundMessageRawUrl = publicAction({
+	args: { messageId: v.id('inboundMessages') },
+	handler: async (ctx, args): Promise<string | null> => {
+		const storageId: Id<'_storage'> | null = await ctx.runQuery(
+			internal.inbox.rawMessage.getInboundMessageRawStorageId,
+			args
+		);
+		if (!storageId) return null;
+		// E8b: the raw `.eml` is sealed at rest, so it is served through the
+		// decrypt proxy rather than as a direct storage URL. Returns null — a real
+		// state the caller must handle, not an error — when there is a key but no
+		// CONVEX_SITE_URL to proxy through, and when a keyless instance meets a
+		// blob that is structurally sealed.
+		return await sealedBlobUrl(ctx.storage, storageId, 'message/rfc822');
+	},
+});

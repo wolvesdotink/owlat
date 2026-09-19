@@ -3073,6 +3073,13 @@
 			"inboxFilterPills": {
 				"groupLabel": "Filter threads"
 			},
+			"inboxMessageAttachments": {
+				"blocked": "Blocked — malware was found in this message.",
+				"download": "Download {filename}",
+				"downloadFailed": "That attachment could not be downloaded. Try again.",
+				"expired": "No longer stored — the files for this message passed the retention window.",
+				"heading": "Attachments"
+			},
 			"inboxThreadPresence": {
 				"manyHere": "{count} people here",
 				"moreHere": "{count} more here",
@@ -4958,6 +4965,15 @@
 				"package": "Package: {name}",
 				"requestedAccess": "Requests access: {capabilities}",
 				"requiredEnv": "Requires env: {vars}"
+			},
+			"inboundRetentionCard": {
+				"adminOnly": "Only owners and admins can change this.",
+				"dayOption": "{count} days",
+				"description": "How long the shared inbox keeps the original message file and its attachment contents. Messages, senders and details are kept either way; only the stored files are removed.",
+				"label": "Keep files for",
+				"savedToast": "Storage window updated",
+				"title": "Inbound mail storage",
+				"updateOperation": "Update mail storage window"
 			},
 			"migrationModeCard": {
 				"adminsOnly": "Only owners and admins can change this.",

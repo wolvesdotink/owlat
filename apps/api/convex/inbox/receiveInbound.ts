@@ -48,60 +48,64 @@ export interface InboundReceiveResult {
  */
 export async function receiveInboundMail(
 	ctx: ActionCtx,
-	m: InboundEmailMessage,
+	// Named `input` on purpose, the same way the inbound adapter registry names
+	// its receiver: `check-body-access.sh` treats a body-field read off any other
+	// receiver as a stored-row read, and this is the INGEST BOUNDARY — every
+	// field here came off the wire, never out of the database.
+	input: InboundEmailMessage,
 	extras: InboundReceiveExtras
 ): Promise<InboundReceiveResult> {
-	const attachmentMeta = m.attachments.length > 0 ? JSON.stringify(m.attachments) : undefined;
+	const attachmentMeta = input.attachments.length > 0 ? JSON.stringify(input.attachments) : undefined;
 
 	// Sealed Mail decrypt-on-ingest. When Sealed Mail is on and the body carries
 	// an armored PGP ciphertext, route through the Node decrypt action. Anything
 	// else — plaintext, flag off, or a ciphertext we cannot recover here — takes
 	// the unchanged path below.
-	const armoredCiphertext = m.textBody ? extractArmoredCiphertext(m.textBody) : null;
+	const armoredCiphertext = input.textBody ? extractArmoredCiphertext(input.textBody) : null;
 	if (armoredCiphertext && (await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
 		return await ctx.runAction(internal.e2ee.open.decryptAndReceive, {
 			armoredCiphertext,
-			recipientAddress: m.to,
-			from: m.from,
-			to: m.to,
-			subject: m.subject,
-			textBody: m.textBody,
-			htmlBody: m.htmlBody,
-			headers: JSON.stringify(m.headers),
-			messageId: m.messageId,
-			inReplyTo: m.inReplyTo,
-			references: m.references,
+			recipientAddress: input.to,
+			from: input.from,
+			to: input.to,
+			subject: input.subject,
+			textBody: input.textBody,
+			htmlBody: input.htmlBody,
+			headers: JSON.stringify(input.headers),
+			messageId: input.messageId,
+			inReplyTo: input.inReplyTo,
+			references: input.references,
 			attachmentMeta,
-			timestamp: m.timestamp,
-			spfResult: m.spfResult,
-			dkimResult: m.dkimResult,
-			dmarcResult: m.dmarcResult,
-			dmarcPolicy: m.dmarcPolicy,
+			timestamp: input.timestamp,
+			spfResult: input.spfResult,
+			dkimResult: input.dkimResult,
+			dmarcResult: input.dmarcResult,
+			dmarcPolicy: input.dmarcPolicy,
 			...extras,
 		});
 	}
 
 	return await ctx.runMutation(internal.inbox.messages.receiveMessage, {
-		from: m.from,
-		to: m.to,
-		subject: m.subject,
-		textBody: m.textBody,
-		htmlBody: m.htmlBody,
-		headers: JSON.stringify(m.headers),
-		messageId: m.messageId,
-		inReplyTo: m.inReplyTo,
-		references: m.references,
+		from: input.from,
+		to: input.to,
+		subject: input.subject,
+		textBody: input.textBody,
+		htmlBody: input.htmlBody,
+		headers: JSON.stringify(input.headers),
+		messageId: input.messageId,
+		inReplyTo: input.inReplyTo,
+		references: input.references,
 		attachmentMeta,
-		timestamp: m.timestamp,
+		timestamp: input.timestamp,
 		// RFC 8601 inbound auth verdicts, persisted so the reader can show an
 		// honest sender badge.
-		spfResult: m.spfResult,
-		dkimResult: m.dkimResult,
-		dmarcResult: m.dmarcResult,
-		dmarcPolicy: m.dmarcPolicy,
+		spfResult: input.spfResult,
+		dkimResult: input.dkimResult,
+		dmarcResult: input.dmarcResult,
+		dmarcPolicy: input.dmarcPolicy,
 		// AI-inbox mirror of the clearsigned-body signature verdict —
 		// see webhooks/inboundSignatureMirror.ts. Best-effort, never blocks.
-		...((await clearsignedSignatureMirror(ctx, m.textBody, m.from)) ?? {}),
+		...((await clearsignedSignatureMirror(ctx, input.textBody, input.from)) ?? {}),
 		...extras,
 	});
 }

@@ -24,7 +24,8 @@
 import { v } from 'convex/values';
 import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
 import { sealPolicyValidator } from '../mail/sealPolicy';
-import { inboundRawRetentionDaysValidator, mtaStsModeValidator } from '../lib/convexValidators';
+import { mtaStsModeValidator } from '../lib/convexValidators';
+import { inboundRawRetentionDaysValidator } from '../lib/literalValidators';
 import { internalMutation, internalQuery } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';

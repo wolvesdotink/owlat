@@ -20,7 +20,7 @@ import {
 	type ThreadFilter,
 } from './threadFilters';
 import { searchThreads } from './threadSearch';
-import { openConversationThreadPreview } from '../lib/messageBody';
+import { openConversationThreadPreview, openInboundMessageBody } from '../lib/messageBody';
 
 /**
  * Enrich a loaded page of threads for the team-inbox list DNA. Shared by the
@@ -246,7 +246,17 @@ export const getThread = publicQuery({
 
 		return {
 			thread: await openConversationThreadPreview(thread),
-			messages,
+			// `receiveMessage` seals the inline bodies at write (E8b), and this
+			// query used to hand the rows back verbatim — so on any instance with
+			// INSTANCE_SECRET set the thread view rendered the `atrest:1:…`
+			// envelope instead of the message. Opened from the already-loaded
+			// columns, so there is no extra round-trip.
+			messages: await Promise.all(
+				messages.map(async (message) => {
+					const body = await openInboundMessageBody(message);
+					return { ...message, textBody: body.text, htmlBody: body.html };
+				})
+			),
 			contact,
 		};
 	},

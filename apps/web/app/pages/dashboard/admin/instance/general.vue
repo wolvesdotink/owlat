@@ -430,6 +430,12 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 			<SettingsConnectedWorkspaces />
 		</div>
 
+		<!-- How long received mail keeps its files. Its own card because it saves
+		     on change rather than through this page's Save button. -->
+		<div class="mt-8">
+			<SettingsInboundRetentionCard />
+		</div>
+
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedDialog"

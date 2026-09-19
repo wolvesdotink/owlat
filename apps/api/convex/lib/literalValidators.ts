@@ -1,5 +1,5 @@
 /**
- * Closed string unions that a table definition shares with the functions that
+ * Closed unions that a table definition shares with the functions that
  * read and write it. One spelling per vocabulary, so a new member is a
  * one-place change and the stored shape and the argument shape cannot drift.
  * Composite validators (objects, records, catalog-derived unions) live in
@@ -59,6 +59,25 @@ export const virusVerdictValidator = v.union(
 	v.literal('clean'),
 	v.literal('infected'),
 	v.literal('skipped')
+);
+
+/**
+ * How long the shared inbox keeps a received message's FILES — the sealed raw
+ * `.eml` and the attachment blobs captured out of it. A CLOSED set, for the
+ * same reason `mailTrashAutoPurgeDaysValidator` is one: an arbitrary day count
+ * is a footgun. There is deliberately no `0`/"forever" member, because
+ * unbounded storage is the defect the horizon exists to close, and ABSENT
+ * means the shared 90-day default rather than "keep forever".
+ *
+ * Convex validators must be literal, so the set is spelled out here and
+ * asserted against `INBOUND_RAW_RETENTION_DAY_CHOICES` in
+ * `maintenance/__tests__/inboundRetention.test.ts`.
+ */
+export const inboundRawRetentionDaysValidator = v.union(
+	v.literal(30),
+	v.literal(90),
+	v.literal(180),
+	v.literal(365)
 );
 
 /** Lifecycle of a resumable mailbox job (import, semantic index, filter backfill). */

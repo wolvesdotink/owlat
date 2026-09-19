@@ -1,7 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
-	inboundRawRetentionDaysValidator,
 	jsonPrimitiveRecord,
 	mtaStsModeValidator,
 	updateStepResultValidator,
@@ -16,6 +15,7 @@ import {
 	desktopReleaseLineValidator,
 	desktopUpdateChannelValidator,
 	desktopUpdateModeValidator,
+	inboundRawRetentionDaysValidator,
 	successOrFailedValidator,
 } from '../lib/literalValidators';
 

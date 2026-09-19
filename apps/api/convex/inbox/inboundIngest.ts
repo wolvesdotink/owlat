@@ -18,7 +18,6 @@
 
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
-import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { base64ToBytes, bytesToBinaryString } from '../lib/bytes';
 import { storeSealedBlob } from '../lib/sealedBlob';

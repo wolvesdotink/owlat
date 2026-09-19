@@ -13,7 +13,11 @@ import { pendingClarificationValidator } from '../inbox/clarificationValidators'
 import { attachmentSuggestionsValidator } from '../inbox/attachmentValidators';
 import { agentStepKindValidator } from '../agent/steps/catalog';
 import { llmUsageTagFields } from '../lib/llmUsageTags';
-import { agentMetricTypeValidator, contextTierValidator } from '../lib/literalValidators';
+import {
+	agentMetricTypeValidator,
+	contextTierValidator,
+	virusVerdictValidator,
+} from '../lib/literalValidators';
 
 /**
  * Inbox / Agent pipeline tables — AI-assisted shared inbox.
@@ -22,6 +26,9 @@ import { agentMetricTypeValidator, contextTierValidator } from '../lib/literalVa
  * tracks per-step pipeline execution; knowledgeBackfillJobs gates the initial
  * history scan; agentMetrics + llmUsageEvents cover monitoring/spend;
  * coalesceBatches debounces bursts.
+ *
+ * The per-person collaboration signals (threadPresence, threadReads,
+ * inboxAssignmentNotices) live in `schema/inboxCollaboration.ts`.
  *
  * The autonomy / graduated-trust tables (agentConfig, agentCircuitBreakers,
  * autonomyRules, autonomyFeedback, autonomySuggestions, agentShadowDecisions,
@@ -146,9 +153,7 @@ export const inboxTables = {
 		// pipeline. ABSENT IS NOT `clean`: it means nothing was scanned — either
 		// there was nothing to scan or the scanner is not configured — and the two
 		// are indistinguishable, so no verdict is asserted.
-		virusVerdict: v.optional(
-			v.union(v.literal('clean'), v.literal('infected'), v.literal('skipped'))
-		),
+		virusVerdict: v.optional(virusVerdictValidator),
 		// Sweep marker for the raw-blob retention pass, set with `rawStorageId` and
 		// cleared with it. It exists because almost every row in this table
 		// predates raw storage and holds no blob: a time-only walk would re-scan
@@ -447,44 +452,6 @@ export const inboxTables = {
 			'createdAt',
 		]),
 
-	// Thread Presence - ephemeral "who is here" rows for the shared-inbox thread
-	// view. One row per (thread, user); `mode` is `viewing` while the thread is
-	// open and `replying` while a reply/review editor is focused. `heartbeatAt`
-	// is refreshed every ~20s by the client (inbox/presence.ts → heartbeat); a
-	// row is considered ACTIVE only while `heartbeatAt` is within
-	// PRESENCE_ACTIVE_WINDOW_MS (60s), and the `sweep expired presence` cron
-	// deletes rows past that window. Purely a read-side collaboration hint — it
-	// never gates a mutation and never records an audit-log entry.
-	threadPresence: defineTable({
-		threadId: v.id('conversationThreads'),
-		userId: v.string(), // BetterAuth user ID
-		mode: v.union(v.literal('viewing'), v.literal('replying')),
-		heartbeatAt: v.number(),
-	})
-		.index('by_thread', ['threadId'])
-		.index('by_user', ['userId'])
-		.index('by_heartbeat', ['heartbeatAt'])
-		// One row per (user, thread) — point-read the caller's own presence on
-		// heartbeat/leave via `.unique()` instead of scanning all their rows.
-		.index('by_user_thread', ['userId', 'threadId'])
-		// Range-scan a thread's ACTIVE rows (heartbeatAt within the window)
-		// directly on the index — no in-memory window predicate.
-		.index('by_thread_heartbeat', ['threadId', 'heartbeatAt']),
-
-	// Thread Reads - per-user "last seen" marker for shared-inbox threads, the
-	// unread counterpart to chat's `chatRoomMembers.lastReadAt`. One row per
-	// (user, thread), upserted to `lastSeenAt = now` whenever that user opens the
-	// thread. A thread is UNREAD for a user when its `lastMessageAt` is newer than
-	// that user's `lastSeenAt` (or they have no row yet). Purely a read-side badge
-	// — it never gates a mutation and records no audit-log entry.
-	threadReads: defineTable({
-		threadId: v.id('conversationThreads'),
-		userId: v.string(), // BetterAuth user ID
-		lastSeenAt: v.number(),
-	})
-		// Point-read (and upsert) the caller's own marker for one thread.
-		.index('by_user_thread', ['userId', 'threadId']),
-
 	// Coalesce Batches - one in-flight debounce window per thread. When rapid
 	// messages arrive on the same thread, the pending batch's scheduled job is
 	// cancelled and re-scheduled, so only the latest message triggers a single
@@ -500,25 +467,4 @@ export const inboxTables = {
 		// rows written before the field existed; readers fall back to createdAt.
 		firstReceivedAt: v.optional(v.number()),
 	}).index('by_thread', ['threadId']),
-
-	// Assignment Notices - one row per "a teammate assigned this thread to you"
-	// event. Written by `inbox.mutations.assignThread` when the new assignee is
-	// someone OTHER than the person doing the assigning (self-assign never
-	// notifies). The assignee's session subscribes via
-	// `inbox.queries.pendingAssignments`, which drives an in-app toast and a
-	// desktop notification; the client coalesces bursts and remembers which
-	// notices it has already surfaced, so this table is an append-only signal —
-	// never mutated, and old rows simply age out of the query window.
-	inboxAssignmentNotices: defineTable({
-		// Assignee (BetterAuth user id) — who the thread was handed to.
-		userId: v.string(),
-		threadId: v.id('conversationThreads'),
-		// Denormalized at write time so the notice renders without joining.
-		subject: v.string(),
-		// Display name (or email) of the teammate who did the assigning.
-		assignedByName: v.string(),
-		createdAt: v.number(),
-	})
-		// Newest-first window of notices for one assignee.
-		.index('by_user_and_created', ['userId', 'createdAt']),
 };

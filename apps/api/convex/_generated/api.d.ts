@@ -531,6 +531,7 @@ import type * as inbox_processingLifecycle_effects from '../inbox/processingLife
 import type * as inbox_processingLifecycle_reducers from '../inbox/processingLifecycle/reducers.js';
 import type * as inbox_processingLifecycle_types from '../inbox/processingLifecycle/types.js';
 import type * as inbox_queries from '../inbox/queries.js';
+import type * as inbox_rawMessage from '../inbox/rawMessage.js';
 import type * as inbox_reads from '../inbox/reads.js';
 import type * as inbox_receiveInbound from '../inbox/receiveInbound.js';
 import type * as inbox_snooze from '../inbox/snooze.js';
@@ -975,6 +976,7 @@ import type * as schema_draftStream from '../schema/draftStream.js';
 import type * as schema_e2ee from '../schema/e2ee.js';
 import type * as schema_forms from '../schema/forms.js';
 import type * as schema_inbox from '../schema/inbox.js';
+import type * as schema_inboxCollaboration from '../schema/inboxCollaboration.js';
 import type * as schema_instance from '../schema/instance.js';
 import type * as schema_integrations from '../schema/integrations.js';
 import type * as schema_knowledge from '../schema/knowledge.js';
@@ -1644,6 +1646,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/processingLifecycle/reducers': typeof inbox_processingLifecycle_reducers;
 	'inbox/processingLifecycle/types': typeof inbox_processingLifecycle_types;
 	'inbox/queries': typeof inbox_queries;
+	'inbox/rawMessage': typeof inbox_rawMessage;
 	'inbox/reads': typeof inbox_reads;
 	'inbox/receiveInbound': typeof inbox_receiveInbound;
 	'inbox/snooze': typeof inbox_snooze;
@@ -2088,6 +2091,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/e2ee': typeof schema_e2ee;
 	'schema/forms': typeof schema_forms;
 	'schema/inbox': typeof schema_inbox;
+	'schema/inboxCollaboration': typeof schema_inboxCollaboration;
 	'schema/instance': typeof schema_instance;
 	'schema/integrations': typeof schema_integrations;
 	'schema/knowledge': typeof schema_knowledge;
