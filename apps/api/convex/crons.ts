@@ -155,6 +155,22 @@ crons.interval(
 	internal.maintenance.retention.scrubFormSubmissionMeta,
 	{}
 );
+// Inbound mail FILES (see maintenance/retention.ts): the sealed raw `.eml` and
+// the attachment blobs captured out of it are released past the horizon set in
+// Settings (default 90 days). Bytes only — every row and all of its metadata
+// stays. Daily, because the horizon is measured in days, so a tick stays small.
+crons.interval(
+	'retention: inbound raw mail',
+	{ hours: 24 },
+	internal.maintenance.retention.sweepInboundRawBlobs,
+	{}
+);
+crons.interval(
+	'retention: inbound attachment blobs',
+	{ hours: 24 },
+	internal.maintenance.retention.sweepInboundAttachmentBlobs,
+	{}
+);
 crons.interval(
 	'retention: mail auth failures',
 	{ hours: 24 },

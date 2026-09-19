@@ -24,7 +24,7 @@
 import { v } from 'convex/values';
 import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
 import { sealPolicyValidator } from '../mail/sealPolicy';
-import { mtaStsModeValidator } from '../lib/convexValidators';
+import { inboundRawRetentionDaysValidator, mtaStsModeValidator } from '../lib/convexValidators';
 import { internalMutation, internalQuery } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
@@ -84,6 +84,12 @@ export const update = authedMutation({
 		// sealed-at-rest plaintext carve-out; turning it back off schedules the
 		// sweep that clears the excerpts already written (see below).
 		isBodySearchIndexingEnabled: v.optional(v.boolean()),
+		// How long the shared inbox keeps a received message's files — the sealed
+		// raw `.eml` and its captured attachment blobs. A closed set of day
+		// counts; unset resolves to 90. The validator IS the check: there is no
+		// arbitrary horizon to range-guard, and the field flows through the patch
+		// and audit-diff below unchanged.
+		inboundRawRetentionDays: v.optional(inboundRawRetentionDaysValidator),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),

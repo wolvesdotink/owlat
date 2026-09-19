@@ -271,7 +271,14 @@ export const knowledgeTables = {
 
 	// Semantic Files - files with embeddings, auto-tags, and version tracking
 	semanticFiles: defineTable({
-		storageId: v.id('_storage'),
+		// OPTIONAL because the retention sweep RELEASES BYTES WITHOUT DELETING THE
+		// ROW: past the configured horizon an `email_attachment` file's blob is
+		// deleted and this reference cleared, while `summary`, `extractedText`,
+		// `searchableText` and `embedding` survive so `[RELEVANT FILES]` retrieval
+		// keeps working. Absent ⇒ the bytes are gone; every reader treats that as
+		// a first-class state (no URL, no re-extraction, not offered as an
+		// attachment suggestion).
+		storageId: v.optional(v.id('_storage')),
 		filename: v.string(),
 		mimeType: v.string(),
 		fileSize: v.number(),
@@ -306,6 +313,12 @@ export const knowledgeTables = {
 		embeddingGeneratedAt: v.optional(v.number()),
 		// Full-text search
 		searchableText: v.optional(v.string()),
+		// When the retention sweep released this file's bytes. Set exactly once,
+		// by the sweep, together with clearing `storageId`. It is also the
+		// equality component of `by_attachment_retention`, which is what makes
+		// that sweep self-terminating: a released row falls out of the scanned
+		// range instead of being re-examined on every tick.
+		bytesReleasedAt: v.optional(v.number()),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -313,6 +326,7 @@ export const knowledgeTables = {
 		.index('by_created_at', ['createdAt'])
 		.index('by_thread', ['threadId'])
 		.index('by_previous_version', ['previousVersionId'])
+		.index('by_attachment_retention', ['sourceType', 'bytesReleasedAt', 'createdAt'])
 		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): as with knowledge entries,
 		// `searchableText` (full-text) and `embedding` (vector) stay PLAINTEXT-DERIVED
 		// so file search + semantic retrieval keep working — Convex indexes plaintext.

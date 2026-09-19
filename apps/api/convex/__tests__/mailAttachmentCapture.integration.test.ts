@@ -131,9 +131,13 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 		expect(file.sourceMessageId).toBe('<cap-1@example.com>');
 		expect(file.fileSize).toBeGreaterThan(0);
 
-		// The captured bytes round-trip through storage.
+		// The captured bytes round-trip through storage. A freshly captured file
+		// always has a blob — `storageId` is only absent once the retention sweep
+		// has released it.
+		const storageId = file.storageId;
+		expect(storageId).toBeDefined();
 		const text = await t.run(async (ctx) => {
-			const blob = await ctx.storage.get(file.storageId);
+			const blob = storageId ? await ctx.storage.get(storageId) : null;
 			return blob ? blob.text() : null;
 		});
 		expect(text).toContain('a real document');

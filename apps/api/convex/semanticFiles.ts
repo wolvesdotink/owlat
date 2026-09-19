@@ -42,7 +42,9 @@ async function hydrateFile(
 	ctx: StorageReader,
 	file: Doc<'semanticFiles'>
 ): Promise<Doc<'semanticFiles'> & { url: string | null }> {
-	return { ...file, url: await ctx.storage.getUrl(file.storageId) };
+	// A file whose bytes the retention sweep released has no URL. Readers
+	// already type `url` as nullable, so this is a state, not an error.
+	return { ...file, url: file.storageId ? await ctx.storage.getUrl(file.storageId) : null };
 }
 
 /** Hydrate a list of file rows with storage URLs, preserving order. */
@@ -578,8 +580,8 @@ export const remove = authedMutation({
 
 		// Tear down the junction rows before the parent file.
 		await syncFileContacts(ctx, args.fileId, undefined);
-		// Delete the stored file
-		await ctx.storage.delete(file.storageId);
+		// Delete the stored file, if the retention sweep has not already released it.
+		if (file.storageId) await ctx.storage.delete(file.storageId);
 		await ctx.db.delete(args.fileId);
 	},
 });

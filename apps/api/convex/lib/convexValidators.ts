@@ -23,6 +23,26 @@ export function literalUnion<const T extends readonly [string, ...string[]]>(val
 }
 
 export const mtaStsModeValidator = literalUnion(MTA_STS_MODES);
+/**
+ * How long the shared inbox keeps a received message's FILES — the sealed raw
+ * `.eml` and its captured attachment blobs. A CLOSED set, for the same reason
+ * `mailTrashAutoPurgeDaysValidator` is one: an arbitrary day count is a
+ * footgun, and there is deliberately no `0`/"forever" member, because
+ * unbounded storage is the defect the horizon exists to close.
+ *
+ * ABSENT means the shared default (90 days), not "keep forever".
+ *
+ * Convex validators must be literal, so the set is spelled out here and
+ * asserted against `INBOUND_RAW_RETENTION_DAY_CHOICES` in
+ * `maintenance/__tests__/inboundRetention.test.ts` — the same arrangement
+ * `mailShareLinkExpiryDaysValidator` uses.
+ */
+export const inboundRawRetentionDaysValidator = v.union(
+	v.literal(30),
+	v.literal(90),
+	v.literal(180),
+	v.literal(365)
+);
 export const yahooCflStoredStateValidator = literalUnion(YAHOO_CFL_STORED_STATES);
 /** Message type a provider route governs — `providerRoutes.messageType` and its readers. */
 export const messageTypeValidator = literalUnion(GOVERNED_MESSAGE_TYPES);

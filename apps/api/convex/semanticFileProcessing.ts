@@ -55,7 +55,10 @@ export const processFile = internalAction({
 			previousVersionId: file.previousVersionId,
 		});
 
-		// Get the file blob from storage
+		// Get the file blob from storage. A file whose bytes the retention sweep
+		// released has nothing left to extract — its summary, extracted text and
+		// embedding are already on the row and stay there.
+		if (!file.storageId) return;
 		const blob = await ctx.storage.get(file.storageId);
 		if (!blob) return;
 

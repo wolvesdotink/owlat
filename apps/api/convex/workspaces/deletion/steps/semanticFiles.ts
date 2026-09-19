@@ -9,7 +9,8 @@ export const semanticFilesStep = defineStep({
 	async deleteBatch(ctx) {
 		const rows = await ctx.db.query('semanticFiles').take(DEFAULT_BATCH_SIZE);
 		for (const row of rows) {
-			await ctx.storage.delete(row.storageId);
+			// A row whose bytes the retention sweep already released has no blob.
+			if (row.storageId) await ctx.storage.delete(row.storageId);
 			await ctx.db.delete(row._id);
 		}
 		return { deletedCount: rows.length, hasMore: rows.length === DEFAULT_BATCH_SIZE };
