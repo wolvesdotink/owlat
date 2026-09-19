@@ -102,7 +102,11 @@ const handleLeave = async () => {
 		class="flex h-[calc(100dvh-10.25rem-1px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] lg:h-[calc(100vh-4rem-3rem)]"
 	>
 		<!-- Sidebar: a column at md, an off-canvas drawer below it -->
-		<UiRailDrawer id="chat-rail" v-model:open="railOpen">
+		<UiRailDrawer
+			id="chat-rail"
+			v-model:open="railOpen"
+			:navigation-title="t('components.chat.chatSidebar.title')"
+		>
 			<ChatSidebar
 				class="flex-1 min-w-0"
 				:channels="channels"

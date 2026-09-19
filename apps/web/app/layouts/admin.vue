@@ -92,75 +92,73 @@ registerCommandPaletteProvider({
 </script>
 
 <template>
-	<NuxtLayout name="dashboard">
-		<div class="flex w-full items-start">
-			<!-- Persistent left rail: present on every admin page, scrolled by the
-			     PAGE rather than by itself. The tree is thirty-odd rows — taller than
-			     a laptop viewport — so the inner `max-h`/`overflow-y-auto` it used to
-			     carry ended it at Channels behind an invisible edge (no scrollbar, no
-			     fade): Team & access and Platform read as absent, and their pages had
-			     no active entry anywhere on screen. Pinning it instead (`sticky`)
-			     would hide exactly the same tail on any page long enough to scroll.
-			     Full height, no inner scroller: every entry is reachable. -->
-			<nav
-				class="hidden lg:block w-56 shrink-0 self-start py-8 pl-6"
-				:aria-label="t('shell.admin.navLabel')"
-			>
-				<!-- No standalone rail title: the first area's eyebrow already says
+	<div>
+		<NuxtLayout name="dashboard">
+			<div class="flex w-full items-start">
+				<!-- The desktop tree lives in the shell's scrollable navigation area,
+			     so all destinations remain reachable without a second sidebar. -->
+				<DashboardNavigationPortal :title="t('shell.admin.navLabel')">
+					<nav
+						class="hidden lg:block w-56 shrink-0 self-start py-8 pl-6"
+						:aria-label="t('shell.admin.navLabel')"
+					>
+						<!-- No standalone rail title: the first area's eyebrow already says
 				     Administration, and the crumb above the page says it again. -->
-				<div v-for="area in areas" :key="area.key" class="mb-4">
-					<p class="px-3 mb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
-						{{ t(area.titleKey) }}
-					</p>
-					<ul>
-						<li v-for="entry in area.entries" :key="entry.path">
-							<NuxtLink
-								:to="entry.path"
-								class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
-								:class="
-									route.path === entry.path
-										? 'bg-bg-surface font-medium text-text-primary'
-										: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
-								"
-								:aria-current="route.path === entry.path ? 'page' : undefined"
-							>
-								<Icon :name="entry.icon" class="size-4 shrink-0" />
-								<span class="truncate">{{ t(entry.titleKey) }}</span>
-							</NuxtLink>
-						</li>
-					</ul>
-				</div>
-			</nav>
+						<div v-for="area in areas" :key="area.key" class="mb-4">
+							<p class="px-3 mb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
+								{{ t(area.titleKey) }}
+							</p>
+							<ul>
+								<li v-for="entry in area.entries" :key="entry.path">
+									<NuxtLink
+										:to="entry.path"
+										class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
+										:class="
+											route.path === entry.path
+												? 'bg-bg-surface font-medium text-text-primary'
+												: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
+										"
+										:aria-current="route.path === entry.path ? 'page' : undefined"
+									>
+										<Icon :name="entry.icon" class="size-4 shrink-0" />
+										<span class="truncate">{{ t(entry.titleKey) }}</span>
+									</NuxtLink>
+								</li>
+							</ul>
+						</div>
+					</nav>
+				</DashboardNavigationPortal>
 
-			<div class="min-w-0 flex-1">
-				<!-- Same destinations, laid out for a narrow viewport. Both rails are in
+				<div class="min-w-0 flex-1">
+					<!-- Same destinations, laid out for a narrow viewport. Both rails are in
 				     the DOM at once (the swap is a media query, not a branch), so they
 				     need DISTINGUISHABLE landmark names — two `<nav>`s answering to
 				     "Administration sections" is a landmark list a screen-reader user
 				     cannot choose from. -->
-				<nav
-					v-if="compactEntries.length > 1"
-					class="lg:hidden flex gap-1.5 overflow-x-auto px-6 pt-6 pb-1"
-					:aria-label="t('shell.admin.navLabelCompact')"
-				>
-					<NuxtLink
-						v-for="entry in compactEntries"
-						:key="entry.path"
-						:to="entry.path"
-						class="shrink-0 rounded-full px-3 py-1 text-xs transition-colors duration-(--motion-fast)"
-						:class="
-							route.path === entry.path
-								? 'bg-bg-surface font-medium text-text-primary'
-								: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
-						"
-						:aria-current="route.path === entry.path ? 'page' : undefined"
+					<nav
+						v-if="compactEntries.length > 1"
+						class="lg:hidden flex gap-1.5 overflow-x-auto px-6 pt-6 pb-1"
+						:aria-label="t('shell.admin.navLabelCompact')"
 					>
-						{{ t(entry.titleKey) }}
-					</NuxtLink>
-				</nav>
+						<NuxtLink
+							v-for="entry in compactEntries"
+							:key="entry.path"
+							:to="entry.path"
+							class="shrink-0 rounded-full px-3 py-1 text-xs transition-colors duration-(--motion-fast)"
+							:class="
+								route.path === entry.path
+									? 'bg-bg-surface font-medium text-text-primary'
+									: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
+							"
+							:aria-current="route.path === entry.path ? 'page' : undefined"
+						>
+							{{ t(entry.titleKey) }}
+						</NuxtLink>
+					</nav>
 
-				<slot />
+					<slot />
+				</div>
 			</div>
-		</div>
-	</NuxtLayout>
+		</NuxtLayout>
+	</div>
 </template>

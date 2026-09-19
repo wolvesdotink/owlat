@@ -55,15 +55,15 @@ const displayText = computed(
 
 const triggerClasses = computed(() => {
 	const classes = [
-		'w-full flex items-center justify-between gap-2 text-left',
+		'ui-select-control w-full flex items-center justify-between gap-2 text-left',
 		'bg-surface-1 rounded-lg transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring',
 		'focus:outline-none focus:ring-1 focus:ring-brand',
 	];
 
 	if (props.size === 'sm') {
-		classes.push('px-3 py-2 text-sm');
+		classes.push('min-h-8 px-3 py-1.5 text-sm leading-5');
 	} else {
-		classes.push('px-4 py-3');
+		classes.push('min-h-9 px-3 py-2 text-sm leading-5');
 	}
 
 	if (props.error) {

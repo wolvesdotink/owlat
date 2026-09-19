@@ -39,11 +39,11 @@ const slots = useSlots();
 </script>
 
 <template>
-	<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+	<div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 		<div class="min-w-0">
 			<span v-if="eyebrow" class="lp-eyebrow mb-1.5">{{ eyebrow }}</span>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ title }}</h1>
-			<p v-if="description" class="mt-1 max-w-[540px] text-text-secondary">
+			<p v-if="description" class="mt-1 max-w-[540px] text-sm leading-relaxed text-text-secondary">
 				{{ description }}
 			</p>
 			<div v-if="slots['meta']" class="mt-3">
@@ -52,9 +52,12 @@ const slots = useSlots();
 		</div>
 		<!-- Wraps by default: at 375px three header actions are wider than the
 		     viewport, and `shrink-0` on a nowrap row pushed the primary off the
-		     right edge. `shrink-0` only earns its keep from `sm:` up, where the
-		     row sits beside the title and must not squeeze it. -->
-		<div v-if="slots['actions']" class="flex flex-wrap items-center gap-2 sm:shrink-0">
+		     right edge. At desktop widths the actions use at most half the row; at
+		     smaller widths they sit below the title instead of squeezing it. -->
+		<div
+			v-if="slots['actions']"
+			class="flex flex-wrap items-center gap-2 lg:max-w-[55%] lg:justify-end"
+		>
 			<slot name="actions" />
 		</div>
 	</div>

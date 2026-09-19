@@ -2,6 +2,7 @@
 import { logError } from '~/lib/runtimeLog';
 import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce';
 import type { NavigationSection } from '~/composables/useDashboardNavigation';
+import { useSectionNavigation } from '~/composables/useSectionNavigation';
 
 const { t } = useI18n();
 const { user, signOut, isPending } = useAuth();
@@ -23,7 +24,7 @@ useShortcutPreferences();
 // into a 64px icon strip there. Aliased so every reference below reads the
 // resolved value.
 const {
-	effectiveCollapsed: isCollapsed,
+	effectiveCollapsed: preferredCollapsed,
 	effectiveHidden,
 	isPeeking,
 	sectionStates,
@@ -39,12 +40,45 @@ const {
 	initFromStorage,
 } = useSidebarState();
 
-// Areas that bring their own navigation column (Postbox and its folder rail)
-// default this sidebar to its icon rail, so reading mail costs one full-width
-// nav column instead of two. The pin lives per area, so a user who wants both
-// columns keeps them and everyone else gets the width back. See
-// lib/sidebarFocusArea.ts.
-watch(() => route.path, setRoutePath, { immediate: true });
+// A section lends its existing navigation to this sidebar on desktop.
+const { activeSection, showAppNavigation } = useSectionNavigation();
+const isCollapsed = computed(() => (activeSection.value ? false : preferredCollapsed.value));
+const showSectionNavigation = computed(() => !!activeSection.value && !showAppNavigation.value);
+const sectionNavigationTarget = ref<HTMLElement | null>(null);
+provide('section-navigation-target', sectionNavigationTarget);
+
+async function switchNavigation() {
+	showAppNavigation.value = !showAppNavigation.value;
+	await nextTick();
+	const target = showAppNavigation.value ? '#app-navigation' : '#section-navigation';
+	document.querySelector<HTMLElement>(`${target} a, ${target} button`)?.focus();
+}
+
+watch(
+	() => route.path,
+	(path) => {
+		setRoutePath(path);
+		showAppNavigation.value = false;
+	},
+	{ immediate: true }
+);
+
+// Keep the current destination visible in long settings trees.
+async function revealCurrentSection() {
+	if (!showSectionNavigation.value) return;
+	await nextTick();
+	requestAnimationFrame(() => {
+		sectionNavigationTarget.value
+			?.querySelector('[aria-current="page"]')
+			?.scrollIntoView({ block: 'nearest' });
+	});
+}
+watch(
+	[() => route.path, () => activeSection.value?.id, showSectionNavigation],
+	revealCurrentSection
+);
+const removePageFinishHook = useNuxtApp().hooks.hook('page:finish', revealCurrentSection);
+onBeforeUnmount(() => removePageFinishHook?.());
 
 // Focus mode state for distraction-free editing
 const { isFocusMode } = useFocusMode();
@@ -527,7 +561,7 @@ const sidebarDesktopClass = computed(() => {
 					:class="{ 'justify-center w-full': isCollapsed }"
 				>
 					<div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
-						<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 text-brand" />
+						<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 dark:invert" />
 					</div>
 					<span v-if="!isCollapsed" class="text-lg font-semibold text-text-primary"> Owlat </span>
 					<UiBadge v-if="!isCollapsed" size="sm">{{ t('shell.dashboard.alphaBadge') }}</UiBadge>
@@ -549,7 +583,7 @@ const sidebarDesktopClass = computed(() => {
 			     rendered while both contexts survived the feature flags. Switching
 			     navigates to the target context's last-visited route. -->
 			<div
-				v-if="showToggle"
+				v-if="showToggle && !showSectionNavigation"
 				class="px-2 pt-3"
 				role="group"
 				:aria-label="t('shell.dashboard.sidebarContextGroup')"
@@ -583,13 +617,40 @@ const sidebarDesktopClass = computed(() => {
 			</div>
 
 			<!-- Navigation with collapsible sections -->
-			<nav class="flex-1 px-2 py-4 overflow-y-auto">
+			<div v-if="activeSection" class="px-3 pt-3 pb-2">
+				<button
+					type="button"
+					class="flex min-h-9 w-full items-center gap-2 rounded-lg px-2 text-sm text-text-secondary hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					@click="switchNavigation"
+				>
+					<Icon
+						:name="showSectionNavigation ? 'lucide:arrow-left' : 'lucide:arrow-right'"
+						class="size-4 shrink-0"
+					/>
+					<span class="truncate">{{
+						showSectionNavigation ? t('shell.dashboard.appNavigation') : activeSection.title
+					}}</span>
+				</button>
+			</div>
+			<div
+				id="section-navigation"
+				ref="sectionNavigationTarget"
+				v-show="showSectionNavigation"
+				class="section-navigation flex-1 min-h-0 overflow-y-auto"
+				:aria-label="activeSection?.title"
+			/>
+			<nav
+				id="app-navigation"
+				v-show="!showSectionNavigation"
+				class="flex-1 min-h-0 px-2 py-3 overflow-y-auto"
+				:aria-label="t('shell.dashboard.appNavigation')"
+			>
 				<!-- Dashboard link (always visible) -->
 				<div class="mb-2">
 					<NuxtLink
 						to="/dashboard"
 						:class="[
-							'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+							'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
 							route.path === '/dashboard'
 								? 'bg-(--surface-2-selected) text-text-primary'
 								: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
@@ -624,7 +685,7 @@ const sidebarDesktopClass = computed(() => {
 							v-if="section.href"
 							:to="section.href"
 							:class="[
-								'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+								'relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
 								isActiveRoute(section.href)
 									? 'bg-(--surface-2-selected) text-text-primary'
 									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
@@ -661,7 +722,7 @@ const sidebarDesktopClass = computed(() => {
 						<button
 							v-else
 							:class="[
-								'relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+								'relative w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
 								isSectionActive(section)
 									? 'text-text-primary'
 									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
@@ -754,10 +815,10 @@ const sidebarDesktopClass = computed(() => {
 			     pins the sidebar open instead of writing the global preference, so
 			     the icon-rail default there is reversible without changing what the
 			     sidebar does everywhere else. -->
-			<div class="hidden lg:flex px-2 py-2 border-t border-border-subtle">
+			<div v-if="!activeSection" class="hidden lg:flex px-2 py-1 border-t border-border-subtle">
 				<button
 					:class="[
-						'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors w-full',
+						'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full',
 						'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 						{ 'justify-center': isCollapsed },
 					]"
@@ -783,7 +844,7 @@ const sidebarDesktopClass = computed(() => {
 			<div class="px-2 py-2 border-t border-border-subtle">
 				<UiThemeToggle
 					:class="[
-						'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors w-full',
+						'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full',
 						'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 						{ 'justify-center': isCollapsed },
 					]"
@@ -793,10 +854,10 @@ const sidebarDesktopClass = computed(() => {
 			</div>
 
 			<!-- User Profile Dropdown -->
-			<div ref="userDropdownRef" class="relative px-2 py-4 border-t border-border-subtle">
+			<div ref="userDropdownRef" class="relative px-2 py-2 border-t border-border-subtle">
 				<button
 					:class="[
-						'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-bg-surface transition-colors',
+						'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-bg-surface transition-colors',
 						{ 'justify-center': isCollapsed },
 					]"
 					:title="isCollapsed ? user?.name || t('shell.dashboard.userFallback') : undefined"
@@ -814,7 +875,7 @@ const sidebarDesktopClass = computed(() => {
 					>
 						{{ userInitials }}
 					</div>
-					<span v-if="isPending" class="sr-only">{{ t("common.loading") }}</span>
+					<span v-if="isPending" class="sr-only">{{ t('common.loading') }}</span>
 
 					<!-- User info -->
 					<div v-if="!isCollapsed" class="flex-1 text-left min-w-0">
@@ -824,10 +885,10 @@ const sidebarDesktopClass = computed(() => {
 						</template>
 						<template v-else>
 							<p class="text-sm font-medium text-text-primary truncate">
-								{{ user?.name || t("shell.dashboard.userFallback") }}
+								{{ user?.name || t('shell.dashboard.userFallback') }}
 							</p>
 							<p class="text-xs text-text-tertiary truncate">
-								{{ user?.email || "" }}
+								{{ user?.email || '' }}
 							</p>
 						</template>
 					</div>
@@ -880,7 +941,8 @@ const sidebarDesktopClass = computed(() => {
 				v-if="!isFocusMode"
 				:is-desktop="isDesktop"
 				:navigation-open="isSidebarOpen"
-				@open-navigation="isSidebarOpen = true"
+				:navigation-hidden="effectiveHidden"
+				@open-navigation="effectiveHidden ? toggleHidden() : (isSidebarOpen = true)"
 				@open-search="openCommandPalette()"
 			/>
 
@@ -928,8 +990,38 @@ const sidebarDesktopClass = computed(() => {
 .has-desktop-chrome {
 	padding-top: var(--titlebar-h, 44px);
 }
-.has-desktop-chrome aside {
+.has-desktop-chrome > aside {
 	top: var(--titlebar-h, 44px);
 	height: calc(100% - var(--titlebar-h, 44px));
+}
+/* The teleported rail shares the shell's width and scroll container. */
+.section-navigation :deep(> nav) {
+	width: 100%;
+	padding: 0.75rem;
+}
+.section-navigation :deep(> div) {
+	width: 100%;
+}
+.section-navigation :deep(aside) {
+	width: 100%;
+	border-right: 0;
+}
+.section-navigation {
+	animation: section-enter var(--motion-moderate) ease-out;
+}
+@keyframes section-enter {
+	from {
+		opacity: 0;
+		transform: translateX(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.section-navigation {
+		animation: none;
+	}
 }
 </style>

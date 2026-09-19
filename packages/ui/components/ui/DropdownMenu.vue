@@ -77,6 +77,10 @@ const handleKeydown = (event: KeyboardEvent) => {
 	if (!isOpen.value) return;
 
 	if (event.key === 'Escape') {
+		// Closing a menu must not also run the page's Escape action (e.g. leave
+		// Browse in Mail, which unmounts its folder navigation).
+		event.preventDefault();
+		event.stopPropagation();
 		isOpen.value = false;
 		// Restore focus to trigger
 		const trigger = triggerRef.value?.querySelector('button, [tabindex]') as HTMLElement | null;

@@ -50,13 +50,13 @@ const hasIconRight = computed(() => !!useSlots()['iconRight']);
 
 const inputClasses = computed(() => {
 	const classes = [
-		'w-full bg-surface-1 shadow-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring',
+		'ui-input-control w-full bg-surface-1 shadow-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring',
 	];
 
 	if (props.size === 'sm') {
-		classes.push('px-3 py-2 text-sm');
+		classes.push('min-h-8 px-3 py-1.5 text-sm leading-5');
 	} else {
-		classes.push('px-4 py-3');
+		classes.push('min-h-9 px-3 py-2 text-sm leading-5');
 	}
 
 	if (props.error) {

@@ -85,10 +85,7 @@ const showClear = computed(() => isNoResults.value && !hasAction.value && hasCle
 </script>
 
 <template>
-	<div
-		class="flex flex-col items-center px-6 text-center"
-		:class="isNoResults ? 'py-12' : 'py-16'"
-	>
+	<div class="flex flex-col items-center px-6 text-center" :class="isNoResults ? 'py-10' : 'py-12'">
 		<p class="lp-eyebrow flex items-center justify-center gap-1.5">
 			<Icon v-if="icon" :name="icon" class="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
 			<span>{{ eyebrowText }}</span>
@@ -97,16 +94,16 @@ const showClear = computed(() => isNoResults.value && !hasAction.value && hasCle
 		<component
 			:is="headingTag"
 			class="mt-3 max-w-xl text-balance font-medium tracking-[-0.02em] text-text-primary"
-			:class="isNoResults ? 'text-lg' : 'text-2xl'"
+			:class="isNoResults ? 'text-lg' : 'text-xl'"
 		>
 			{{ title }}
 		</component>
 
-		<p v-if="description" class="mt-2 max-w-md text-md text-text-secondary">
+		<p v-if="description" class="mt-2 max-w-md text-sm leading-relaxed text-text-secondary">
 			{{ description }}
 		</p>
 
-		<div v-if="hasAction" class="mt-6">
+		<div v-if="hasAction" class="mt-5">
 			<slot name="action" />
 			<slot />
 		</div>
@@ -115,7 +112,7 @@ const showClear = computed(() => isNoResults.value && !hasAction.value && hasCle
 			v-else-if="showClear"
 			variant="secondary"
 			size="sm"
-			class="mt-6"
+			class="mt-5"
 			@click="emit('clear')"
 		>
 			{{ clearLabel ?? t('ui.emptyState.clear') }}
