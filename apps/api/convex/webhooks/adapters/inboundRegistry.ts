@@ -34,14 +34,20 @@ export interface InboundEmailMessage {
 	inReplyTo?: string;
 	references?: string;
 	/**
-	 * Metadata only. The MTA does not ship attachment bytes on this event and
-	 * does not stash them anywhere for a later fetch — a `redisKey` field used
-	 * to point at an hour-long Redis copy that no reader ever asked for.
+	 * Metadata only. The bytes ride the MTA payload's `rawBytesBase64` (the
+	 * whole raw message), which the inbound route seals into `_storage` and
+	 * re-extracts parts from; this array says which parts are in there.
+	 *
+	 * `partIndex` is the MIME walk position `extractAttachmentAt` addresses a
+	 * part by. Optional: a source that does not walk MIME (Resend) has none,
+	 * and mail received before the MTA started sending it has none either, so
+	 * a reader falls back to filename matching for those rows.
 	 */
 	attachments: Array<{
 		filename?: string;
 		contentType: string;
 		size: number;
+		partIndex?: string;
 	}>;
 	/** Timestamp from the webhook envelope (ms since epoch). */
 	timestamp: number;
@@ -100,6 +106,7 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 					filename?: string;
 					contentType: string;
 					size: number;
+					partIndex?: string;
 				}>;
 				spfResult?: string;
 				dkimResult?: string;
