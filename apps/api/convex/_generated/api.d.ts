@@ -520,6 +520,8 @@ import type * as inbox_clarificationSlots from '../inbox/clarificationSlots.js';
 import type * as inbox_clarificationValidators from '../inbox/clarificationValidators.js';
 import type * as inbox_decisionFeedback from '../inbox/decisionFeedback.js';
 import type * as inbox_draftRevisions from '../inbox/draftRevisions.js';
+import type * as inbox_inboundIngest from '../inbox/inboundIngest.js';
+import type * as inbox_inboundWebhookHttp from '../inbox/inboundWebhookHttp.js';
 import type * as inbox_messages from '../inbox/messages.js';
 import type * as inbox_mutations from '../inbox/mutations.js';
 import type * as inbox_presence from '../inbox/presence.js';
@@ -530,6 +532,7 @@ import type * as inbox_processingLifecycle_reducers from '../inbox/processingLif
 import type * as inbox_processingLifecycle_types from '../inbox/processingLifecycle/types.js';
 import type * as inbox_queries from '../inbox/queries.js';
 import type * as inbox_reads from '../inbox/reads.js';
+import type * as inbox_receiveInbound from '../inbox/receiveInbound.js';
 import type * as inbox_snooze from '../inbox/snooze.js';
 import type * as inbox_stepOutputs from '../inbox/stepOutputs.js';
 import type * as inbox_threadFilters from '../inbox/threadFilters.js';
@@ -1629,6 +1632,8 @@ declare const fullApi: ApiFromModules<{
 	'inbox/clarificationValidators': typeof inbox_clarificationValidators;
 	'inbox/decisionFeedback': typeof inbox_decisionFeedback;
 	'inbox/draftRevisions': typeof inbox_draftRevisions;
+	'inbox/inboundIngest': typeof inbox_inboundIngest;
+	'inbox/inboundWebhookHttp': typeof inbox_inboundWebhookHttp;
 	'inbox/messages': typeof inbox_messages;
 	'inbox/mutations': typeof inbox_mutations;
 	'inbox/presence': typeof inbox_presence;
@@ -1639,6 +1644,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/processingLifecycle/types': typeof inbox_processingLifecycle_types;
 	'inbox/queries': typeof inbox_queries;
 	'inbox/reads': typeof inbox_reads;
+	'inbox/receiveInbound': typeof inbox_receiveInbound;
 	'inbox/snooze': typeof inbox_snooze;
 	'inbox/stepOutputs': typeof inbox_stepOutputs;
 	'inbox/threadFilters': typeof inbox_threadFilters;

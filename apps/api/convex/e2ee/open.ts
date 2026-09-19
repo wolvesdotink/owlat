@@ -231,6 +231,14 @@ export const decryptAndReceive = internalAction({
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
 		dmarcPolicy: v.optional(v.string()),
+		// Passed straight through to `receiveMessage`. This is the SECOND writer
+		// of an `inboundMessages` row; anything the plaintext path stores has to
+		// be threaded here too or sealed mail silently loses it.
+		rawStorageId: v.optional(v.id('_storage')),
+		rawSize: v.optional(v.number()),
+		virusVerdict: v.optional(
+			v.union(v.literal('clean'), v.literal('infected'), v.literal('skipped'))
+		),
 	},
 	returns: v.object({
 		inboundMessageId: v.id('inboundMessages'),
@@ -298,6 +306,9 @@ export const decryptAndReceive = internalAction({
 			dkimResult: args.dkimResult,
 			dmarcResult: args.dmarcResult,
 			dmarcPolicy: args.dmarcPolicy,
+			rawStorageId: args.rawStorageId,
+			rawSize: args.rawSize,
+			virusVerdict: args.virusVerdict,
 			...sealedFlags,
 		});
 	},

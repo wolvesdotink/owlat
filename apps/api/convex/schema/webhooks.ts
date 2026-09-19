@@ -97,10 +97,12 @@ export const webhookTables = {
 		//      oversized insert threw into callers that never fail a webhook over
 		//      its audit trail, so the trail vanished for the biggest deliveries;
 		//   3. `{version, event, bodyChars, bodySha256, …}` — the bounded delivery
-		//      SUMMARY written by `mail/webhookHttp.ts` (`source: 'mta-mailbox'`),
-		//      whose body IS the message it describes, so retaining it verbatim
-		//      kept a second copy of every email for 90 days. A digest answers
-		//      "did these bytes arrive" better than a copy does anyway.
+		//      SUMMARY written by the two raw-carrying mail routes,
+		//      `mail/webhookHttp.ts` (`source: 'mta-mailbox'`) and
+		//      `inbox/inboundWebhookHttp.ts` (`source: 'mta-inbound'`), whose body
+		//      IS the message it describes, so retaining it verbatim kept a second
+		//      copy of every email for 90 days. A digest answers "did these bytes
+		//      arrive" better than a copy does anyway.
 		rawPayload: v.string(),
 		receivedAt: v.number(),
 	})

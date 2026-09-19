@@ -124,8 +124,37 @@ export const inboxTables = {
 		references: v.optional(v.string()),
 		// Raw headers (JSON string for audit)
 		headers: v.optional(v.string()),
-		// Attachment metadata (JSON array: [{filename, contentType, size}], content stored separately)
+		// Attachment metadata (JSON array of {filename, contentType, size, partIndex}).
+		// The BYTES are in the raw `.eml` at `rawStorageId` below — `partIndex` is
+		// how a reader addresses one part inside it. An unvalidated JSON string,
+		// unlike the structured `mailMessages.attachments`, so every reader parses
+		// it defensively.
 		attachmentMeta: v.optional(v.string()),
+		// The whole received message, sealed at rest (`lib/sealedBlob.ts`). The
+		// attachment bytes, the AV scan input and the reader's download all come
+		// out of this one blob rather than a second copy per part.
+		//
+		// OPTIONAL, unlike the REQUIRED `mailMessages.rawStorageId`/`rawSize`
+		// pair: every row written before this landed has none, and mail arriving
+		// through the legacy `/webhooks/mta` route (an older MTA binary, a DLQ
+		// replay) still has none. Absent means "no raw stored" — a first-class
+		// state every reader handles, not a backfill waiting to happen.
+		rawStorageId: v.optional(v.id('_storage')),
+		rawSize: v.optional(v.number()),
+		// Aggregate malware verdict over the message's attachment leaves, from the
+		// MTA's ClamAV endpoint. `infected` quarantines the row and skips the agent
+		// pipeline. ABSENT IS NOT `clean`: it means nothing was scanned — either
+		// there was nothing to scan or the scanner is not configured — and the two
+		// are indistinguishable, so no verdict is asserted.
+		virusVerdict: v.optional(
+			v.union(v.literal('clean'), v.literal('infected'), v.literal('skipped'))
+		),
+		// Sweep marker for the raw-blob retention pass, set with `rawStorageId` and
+		// cleared with it. It exists because almost every row in this table
+		// predates raw storage and holds no blob: a time-only walk would re-scan
+		// the entire history on every tick and never terminate, while an index
+		// keyed on the marker only ever contains rows that still hold bytes.
+		rawRetained: v.optional(v.literal(true)),
 		// RFC 8601 inbound authentication verdicts, computed by the MTA over the
 		// raw bytes at ingest (SPF on MAIL FROM, DKIM on the d= signature, DMARC
 		// binding the two to the From domain via alignment). The AI-inbox path
@@ -305,7 +334,11 @@ export const inboxTables = {
 		.index('by_processing_status', ['processingStatus'])
 		.index('by_received_at', ['receivedAt'])
 		.index('by_contact', ['contactId'])
-		.index('by_assigned_to_and_status', ['assignedTo', 'processingStatus']),
+		.index('by_assigned_to_and_status', ['assignedTo', 'processingStatus'])
+		// Drives the raw-blob retention sweep: the equality component keeps the
+		// scanned range to rows that still hold a blob, so the walk is bounded by
+		// what is left to release rather than by the size of the table.
+		.index('by_raw_retention', ['rawRetained', 'receivedAt']),
 
 	// Agent Actions - tracks individual pipeline step executions
 	agentActions: defineTable({

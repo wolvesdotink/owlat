@@ -19,6 +19,7 @@ import {
 } from './webhooks/providerFeedbackHttp';
 import { pluginFeedbackWebhook } from './webhooks/pluginFeedbackHttp';
 import { handleMailWebhook } from './mail/webhookHttp';
+import { handleInboundWebhook } from './inbox/inboundWebhookHttp';
 import { handleRawMessageUpload } from './mail/external/rawUploadHttp';
 import { serveSealedBlob } from './mail/sealedBlobHttp';
 import { serveAttachmentShare } from './mail/attachmentShareHttp';
@@ -208,6 +209,16 @@ http.route({
 	path: '/webhooks/mta-mailbox',
 	method: 'POST',
 	handler: handleMailWebhook,
+});
+
+// POST /webhooks/mta-inbound - team-inbox (AI shared inbox) delivery from MTA.
+// Standalone for the same reason its mailbox sibling above is: the payload
+// carries the whole message, and the shared webhook pipeline caps a body at
+// 5 MiB pre-auth (see inbox/inboundWebhookHttp.ts).
+http.route({
+	path: '/webhooks/mta-inbound',
+	method: 'POST',
+	handler: handleInboundWebhook,
 });
 
 // POST /mail-sync/raw-message - raw `.eml` upload from the mail-sync worker.

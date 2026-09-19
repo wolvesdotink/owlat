@@ -78,6 +78,15 @@ export const receiveMessage = internalMutation({
 		// existing caller (and plaintext mail) is byte-identical.
 		isInboundSignatureValid: v.optional(v.boolean()),
 		inboundSignerFingerprint: v.optional(v.string()),
+		// The sealed raw `.eml` this message was built from, when the route that
+		// received it carried the bytes. All three optional: mail arriving through
+		// the legacy `/webhooks/mta` route has no raw blob and asserts no verdict.
+		// `virusVerdict` ABSENT IS NOT `clean` — see the schema comment.
+		rawStorageId: v.optional(v.id('_storage')),
+		rawSize: v.optional(v.number()),
+		virusVerdict: v.optional(
+			v.union(v.literal('clean'), v.literal('infected'), v.literal('skipped'))
+		),
 	},
 	handler: async (ctx, args) => {
 		const senderEmail = extractEmail(args.from);
@@ -114,6 +123,11 @@ export const receiveMessage = internalMutation({
 		// both through the accessor plane.
 		const sealedTextBody = await sealBodyAtWriteMaybe(args.textBody);
 		const sealedHtmlBody = await sealBodyAtWriteMaybe(args.htmlBody);
+		// Confirmed malware quarantines the row instead of drafting on it — the
+		// team-inbox analogue of the personal-mailbox route's `infected → Spam`
+		// routing. The message is STORED either way: this path has a hard
+		// never-drop invariant, and an operator still needs to see what arrived.
+		const isInfected = args.virusVerdict === 'infected';
 		const inboundMessageId = await ctx.db.insert('inboundMessages', {
 			messageId: args.messageId,
 			from: args.from,
@@ -127,8 +141,14 @@ export const receiveMessage = internalMutation({
 			attachmentMeta: args.attachmentMeta,
 			threadId,
 			contactId,
-			processingStatus: 'received',
+			processingStatus: isInfected ? 'quarantined' : 'received',
 			receivedAt: args.timestamp,
+			rawStorageId: args.rawStorageId,
+			rawSize: args.rawSize,
+			virusVerdict: args.virusVerdict,
+			// Written here and cleared only by the retention sweep, so the marker
+			// and the blob it stands for have exactly one writer each.
+			rawRetained: args.rawStorageId ? (true as const) : undefined,
 			spfResult: args.spfResult,
 			dkimResult: args.dkimResult,
 			dmarcResult: args.dmarcResult,
@@ -152,7 +172,7 @@ export const receiveMessage = internalMutation({
 		// the action before anything is recorded.
 		const isReply = Boolean(args.inReplyTo || args.references);
 		const replyText = args.textBody ?? args.htmlBody;
-		if (isReply && replyText && (await isFeatureEnabled(ctx, 'ai.agent'))) {
+		if (isReply && replyText && !isInfected && (await isFeatureEnabled(ctx, 'ai.agent'))) {
 			try {
 				await ctx.scheduler.runAfter(0, internal.agent.outcomeFeedback.classifyReplyOutcome, {
 					replyMessageId: inboundMessageId,
@@ -247,7 +267,9 @@ export const receiveMessage = internalMutation({
 		// apply it here BEFORE spending any model budget. Store-but-skip, the same
 		// shape as the rate-limit cap below.
 		const suppressed =
-			isAutomatedMail(parseHeaders(args.headers)) || senderEmail === extractEmail(args.to);
+			isInfected ||
+			isAutomatedMail(parseHeaders(args.headers)) ||
+			senderEmail === extractEmail(args.to);
 
 		// ── 4. Schedule the agent pipeline (Agent walker starts at security_scan) ──
 		// When coalescing is enabled (agentConfig.coalesceWindowMs > 0), bursts
@@ -268,7 +290,13 @@ export const receiveMessage = internalMutation({
 			}
 		}
 
-		if (suppressed) {
+		if (isInfected) {
+			logInfo('[Inbound Email] malware found — mail stored quarantined, AI pipeline skipped', {
+				contactId,
+				threadId,
+				from: args.from,
+			});
+		} else if (suppressed) {
 			logInfo('[Inbound Email] automated/self-send mail stored without AI processing', {
 				contactId,
 				threadId,
