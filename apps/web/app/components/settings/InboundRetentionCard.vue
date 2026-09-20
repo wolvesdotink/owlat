@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import {
 	DEFAULT_INBOUND_RAW_RETENTION_DAYS,
 	INBOUND_RAW_RETENTION_DAY_CHOICES,
+	type InboundRawRetentionDays,
 } from '@owlat/shared/inboundRetention';
 
 /**
@@ -25,12 +26,10 @@ const { showToast } = useToast();
 
 const { data: settings, isLoading } = useConvexQuery(api.workspaces.settings.get, {});
 
-type RetentionDays = (typeof INBOUND_RAW_RETENTION_DAY_CHOICES)[number];
-
-const selected = computed<RetentionDays>(
+const selected = computed<InboundRawRetentionDays>(
 	() =>
-		(settings.value?.inboundRawRetentionDays as RetentionDays | undefined) ??
-		(DEFAULT_INBOUND_RAW_RETENTION_DAYS as RetentionDays)
+		(settings.value?.inboundRawRetentionDays as InboundRawRetentionDays | undefined) ??
+		(DEFAULT_INBOUND_RAW_RETENTION_DAYS as InboundRawRetentionDays)
 );
 
 const { run: updateSettings, isLoading: isSaving } = useBackendOperation(
@@ -40,7 +39,7 @@ const { run: updateSettings, isLoading: isSaving } = useBackendOperation(
 
 async function onSelect(event: Event) {
 	if (!canManageOrganization.value) return;
-	const next = Number((event.target as HTMLSelectElement).value) as RetentionDays;
+	const next = Number((event.target as HTMLSelectElement).value) as InboundRawRetentionDays;
 	if (next === selected.value) return;
 	const res = await updateSettings({ inboundRawRetentionDays: next });
 	if (!res.ok) return; // failure already toasted

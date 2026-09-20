@@ -148,9 +148,7 @@ export const sweepInboundRawBlobs = internalMutation({
 		const cutoff = await inboundRetentionCutoff(ctx, args.now ?? Date.now());
 		const stale = await ctx.db
 			.query('inboundMessages')
-			.withIndex('by_raw_retention', (q) =>
-				q.eq('rawRetained', true).lt('receivedAt', cutoff)
-			)
+			.withIndex('by_raw_retention', (q) => q.eq('rawRetained', true).lt('receivedAt', cutoff))
 			.take(BATCH);
 		for (const row of stale) {
 			if (row.rawStorageId) {

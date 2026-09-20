@@ -456,9 +456,7 @@ describe('reduce(inbound_accept)', () => {
 			expect(notify.event.organizationId).toBe('org-1');
 			// The whole message rides the payload — this is what makes attachment
 			// bytes reachable downstream at all.
-			expect(notify.event.inboundPayload?.rawBytesBase64).toBe(
-				ctx.rawBuffer.toString('base64')
-			);
+			expect(notify.event.inboundPayload?.rawBytesBase64).toBe(ctx.rawBuffer.toString('base64'));
 			// Metadata addresses each part by its MIME walk position, so a reader
 			// can pull the exact part rather than guessing from a shared filename.
 			expect(notify.event.inboundPayload?.attachments).toEqual([
@@ -470,7 +468,6 @@ describe('reduce(inbound_accept)', () => {
 			expect(notify.event.inboundPayload?.from).toBe('bob@isp.example');
 		}
 	});
-
 });
 
 describe('reduce(route_hold | route_bounce | unrecognized)', () => {

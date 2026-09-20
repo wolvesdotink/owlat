@@ -139,9 +139,7 @@ async function ingest(
 	});
 }
 
-const NOTES_META = [
-	{ filename: 'notes.txt', contentType: 'text/plain', size: 52, partIndex: '1' },
-];
+const NOTES_META = [{ filename: 'notes.txt', contentType: 'text/plain', size: 52, partIndex: '1' }];
 
 describe('inboundIngest — malware verdicts', () => {
 	it('quarantines a confirmed-infected message without dropping it or indexing it', async () => {
@@ -173,7 +171,12 @@ describe('inboundIngest — malware verdicts', () => {
 		configureMta();
 		stubScanner({ clean: true });
 
-		await ingest(t, 'clean-1@example.com', buildEmlWithAttachment('clean-1@example.com'), NOTES_META);
+		await ingest(
+			t,
+			'clean-1@example.com',
+			buildEmlWithAttachment('clean-1@example.com'),
+			NOTES_META
+		);
 
 		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
 		expect(rows).toHaveLength(1);

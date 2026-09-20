@@ -52,7 +52,12 @@ describe('InboxMessageAttachments', () => {
 		const wrapper = render({
 			attachments: [
 				attachment({ filename: 'notes.txt', size: 2048, partIndex: '1' }),
-				attachment({ filename: 'report.pdf', contentType: 'application/pdf', size: 5_242_880, partIndex: '2' }),
+				attachment({
+					filename: 'report.pdf',
+					contentType: 'application/pdf',
+					size: 5_242_880,
+					partIndex: '2',
+				}),
 			],
 		});
 

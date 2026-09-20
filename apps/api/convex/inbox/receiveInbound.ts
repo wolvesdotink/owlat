@@ -55,7 +55,8 @@ export async function receiveInboundMail(
 	input: InboundEmailMessage,
 	extras: InboundReceiveExtras
 ): Promise<InboundReceiveResult> {
-	const attachmentMeta = input.attachments.length > 0 ? JSON.stringify(input.attachments) : undefined;
+	const attachmentMeta =
+		input.attachments.length > 0 ? JSON.stringify(input.attachments) : undefined;
 
 	// Sealed Mail decrypt-on-ingest. When Sealed Mail is on and the body carries
 	// an armored PGP ciphertext, route through the Node decrypt action. Anything
