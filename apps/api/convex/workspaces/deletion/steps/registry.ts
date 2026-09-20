@@ -105,6 +105,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailAuthFailures',
 	'externalMailFolderSync',
 	'externalMailAccounts',
+	'externalMailOAuthStates',
 	'mailboxMigrations',
 	'mailArchiveImports',
 	'mailboxMoves',
@@ -182,7 +183,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'contactIdentities',
 	'contactRelationships',
 
-	// Per-topic sunset-policy overrides (P4-4) — configuration rows with no
+	// Per-topic sunset-policy overrides — configuration rows with no
 	// parent among the contact tables.
 	'sunsetPolicies',
 
@@ -410,6 +411,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailboxMoves: makeSweepStep('mailboxMoves'),
 	externalMailFolderSync: makeSweepStep('externalMailFolderSync'),
 	externalMailAccounts: makeSweepStep('externalMailAccounts'),
+	externalMailOAuthStates: makeSweepStep('externalMailOAuthStates'),
 	pendingMailboxes: makeSweepStep('pendingMailboxes'),
 	mailboxRequests: makeSweepStep('mailboxRequests'),
 	accessRequests: makeSweepStep('accessRequests'),

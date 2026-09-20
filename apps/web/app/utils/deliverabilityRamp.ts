@@ -1,8 +1,8 @@
 /**
- * THE RAMP SCREENS' PER-CELL VOCABULARY — presentation only (plan D2, D12, P3-6).
+ * THE RAMP SCREENS' PER-CELL VOCABULARY — presentation only.
  *
  * The deployment-level half — the independence headline, the money, the
- * projection — lives in `deliverabilityIndependenceCopy.ts` (plan D14). The cut
+ * projection — lives in `deliverabilityIndependenceCopy.ts`. The cut
  * follows the screens: this module speaks about a cell, that one about the
  * install.
  *
@@ -14,7 +14,7 @@
  * implementation here could disagree with the one that actually moved the share.
  *
  * NOTHING THAT IS MERELY UNMEASURED OR UNCONFIGURED IS EVER RENDERED IN A
- * WARNING TONE (plan D2). A cell nobody has sent through, a deployment with no
+ * WARNING TONE. A cell nobody has sent through, a deployment with no
  * relay, a projection with too little history: each gets a calm sentence and, in
  * every case, a concrete thing the operator could do if they want to — an
  * invitation, never a nag and never a "setup incomplete".
@@ -66,7 +66,7 @@ export interface RampCellStatus {
  *
  * `unmanaged` and `holding` are NEUTRAL, never warnings: a cell nobody has put
  * on the ramp and a cell waiting for evidence are both perfectly healthy states
- * of a working deployment (plan D2/D10). Enrolment is an OPT-IN, so `unmanaged`
+ * of a working deployment. Enrolment is an OPT-IN, so `unmanaged`
  * is a choice not yet made rather than a step not yet finished.
  */
 export function rampCellStatus(cell: RampCellControl): RampCellStatus {
@@ -141,7 +141,7 @@ const REASON_LABELS = {
 	building_confidence: 'shared.deliverabilityRamp.reason.buildingConfidence',
 	capacity_ceiling: 'shared.deliverabilityRamp.reason.capacityCeiling',
 	phase_ceiling: 'shared.deliverabilityRamp.reason.phaseCeiling',
-	// P3-8's cap: the substitution table lowers the phase ceiling a rung while an
+	// The substitution table's cap: it lowers the phase ceiling a rung while an
 	// integration is missing, which is a DIFFERENT fact from having reached the
 	// ceiling this cell was granted — the operator can act on one and not the other.
 	degradation_ceiling: 'shared.deliverabilityRamp.reason.degradationCeiling',
@@ -257,7 +257,7 @@ export function relayRemovalConsequenceCopy(facts: RelayRemovalFacts): RelayRemo
  * The type is read off the mutation so the arms cannot drift from the server's
  * union — which is ONE union across every ramp write, enrolment and promotion
  * included — and the sentences are calm and end in something the operator can
- * actually do (plan D2): a refusal is the system explaining a rule, not the UI
+ * actually do: a refusal is the system explaining a rule, not the UI
  * reporting a failure.
  */
 export type RampControlRefusal = NonNullable<
@@ -278,7 +278,7 @@ export function rampRefusalSentence(refusal: RampControlRefusal): LocalizedText 
 	return REFUSAL_SENTENCES[refusal];
 }
 
-// ============ PROMOTION EVIDENCE (D3) ============
+// ============ PROMOTION EVIDENCE ============
 
 /**
  * A condition the next phase rung is still waiting on.
@@ -319,7 +319,7 @@ export function rampPromotionConditionLabel(condition: RampPromotionCondition): 
 // ============ WHAT A WRITE ACTUALLY DID ============
 
 /**
- * Which setup path enrolment resolved the cell onto (plan D14), read off the
+ * Which setup path enrolment resolved the cell onto, read off the
  * mutation like every other vocabulary here. The fork is decided SERVER-SIDE and
  * never chosen by the operator, so the sentence below is the only place they
  * learn which of the two ramps they got.
@@ -404,7 +404,7 @@ export interface RampPresetOption {
 /**
  * The three presets, described in terms of the TRADE-OFF rather than in praise.
  * None is labelled "recommended": the honest statement is what each costs and
- * buys, and the deployment default is shown separately (plan D14).
+ * buys, and the deployment default is shown separately.
  */
 export const RAMP_PRESET_OPTIONS: readonly RampPresetOption[] = [
 	{

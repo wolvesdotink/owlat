@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Return-path (bounce) host editor for an expanded domain row (piece D3).
+ * Return-path (bounce) host editor for an expanded domain row.
  *
  * Extracted from RecordRow.vue: the row was already near the ~500-LOC cap, and
  * the editor is a self-contained widget (its own toggle, input, validation and
@@ -9,9 +9,9 @@
  *
  * Changing the return-path host re-verifies the domain (the backend drops it to
  * `pending` and regenerates the MAIL FROM SPF record), so the edit affordance
- * states that plainly before the user commits. Writes go through the D2 mutation
+ * states that plainly before the user commits. Writes go through
  * `api.domains.returnPath.setReturnPathHost`; the reflect-to-MTA step can fail
- * permanently and — only after D2's bounded retry budget is spent — leaves a
+ * permanently and — only after its bounded retry budget is spent — leaves a
  * terminal `returnPathHostSyncError` marker on the domain, which we surface as a
  * "couldn't update the bounce host — edit and retry" call to action.
  */
@@ -151,8 +151,8 @@ async function save() {
 					<code>CFBL-Address</code>
 				</template>
 			</I18nT>
-			<!-- Terminal marker: D2 sets `returnPathHostSyncError` only AFTER its
-			     bounded retry budget is exhausted, so this is a give-up the user must
+			<!-- Terminal marker: the backend sets `returnPathHostSyncError` only AFTER
+			     its bounded retry budget is exhausted, so this is a give-up the user must
 			     act on — not an in-progress retry. No spinner. -->
 			<p
 				v-if="syncError"

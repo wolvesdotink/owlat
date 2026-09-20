@@ -37,7 +37,7 @@ import { throwForbidden, throwInvalidInput } from '../_utils/errors';
  * is far above any real usage; it exists so the settings query can never turn
  * into an unbounded read.
  */
-export const IMAGE_ALLOWLIST_LIMIT = 500;
+const IMAGE_ALLOWLIST_LIMIT = 500;
 
 /**
  * Canonicalize the sender key. `mailMessages.fromAddress` is already stored

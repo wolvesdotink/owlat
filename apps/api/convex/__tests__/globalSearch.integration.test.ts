@@ -175,8 +175,8 @@ describe('globalSearch.search', () => {
 
 	it('surfaces mail from every mailbox the caller can read, newest first', async () => {
 		const t = convexTest(schema, modules);
-		const personal = await seedMailbox(t, { userId: 'admin-1', address: 'a@hinterland.camp' });
-		const team = await seedMailbox(t, { userId: 'admin-1', address: 'team@hinterland.camp' });
+		const personal = await seedMailbox(t, { userId: 'admin-1', address: 'a@owlat.test' });
+		const team = await seedMailbox(t, { userId: 'admin-1', address: 'team@owlat.test' });
 		await seedFolder(t, personal);
 		await seedFolder(t, team);
 		const older = await seedMessage(t, personal, {
@@ -206,8 +206,8 @@ describe('globalSearch.search', () => {
 
 	it('never surfaces another user’s mail, spam, or trash', async () => {
 		const t = convexTest(schema, modules);
-		const mine = await seedMailbox(t, { userId: 'admin-1', address: 'a@hinterland.camp' });
-		const theirs = await seedMailbox(t, { userId: 'someone-else', address: 'b@hinterland.camp' });
+		const mine = await seedMailbox(t, { userId: 'admin-1', address: 'a@owlat.test' });
+		const theirs = await seedMailbox(t, { userId: 'someone-else', address: 'b@owlat.test' });
 		await seedFolder(t, mine);
 		await seedFolder(t, mine, 'spam');
 		await seedFolder(t, mine, 'trash');

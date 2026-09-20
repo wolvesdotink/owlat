@@ -31,18 +31,18 @@ type RelayReadCtx = QueryCtx | MutationCtx;
 
 /**
  * THE RELAY DEFINITION ITSELF, over one transport kind: a relay is any named
- * transport that is not our own arm (D3 — "own MTA is special by definition;
+ * transport that is not our own arm ("own MTA is special by definition;
  * everything else is a relay discovered from config").
  *
  * The scan below is this predicate applied to the stored routes; this is it
  * applied to a kind a caller already holds — `delivery/lastMileRouting.ts` asks
- * it of the route the send plan resolved, to tell "the plan already swapped us
+ * it of the route the send plan resolved, to tell "routing already swapped us
  * onto the relay" from "we are still on the own arm and must go find one". That
  * site used to spell the question `route?.providerType !== 'ses'`, which was
- * the same set only while SES was the one saveable relay: since P0.2 it is not,
- * and an identically-configured Mandrill/SMTP/plugin relay took a different
- * code path (re-resolving a governed relay route it was already on) purely
- * because of its name.
+ * the same set only while SES was the one saveable relay. It no longer is, and
+ * an identically-configured Mandrill/SMTP/plugin relay took a different code
+ * path (re-resolving a governed relay route it was already on) purely because
+ * of its name.
  *
  * ABSENT IS NOT A RELAY. An unset `providerType` means the route named no
  * transport at all, which is the caller's cue to go resolve one — never a
@@ -91,7 +91,7 @@ export async function configuredRelayKinds(ctx: RelayReadCtx): Promise<string[]>
  *
  * A kind maps onto its DEFAULT transport id, which is the kind itself
  * (`defaultSendTransportId`); an id this deployment cannot resolve is resolved
- * by every caller to a degraded posture rather than an error (D2).
+ * by every caller to a degraded posture rather than an error.
  */
 export async function referenceRelayTransportId(ctx: RelayReadCtx): Promise<string | null> {
 	return referenceTransportIdOf(await configuredRelayKinds(ctx));
@@ -103,7 +103,7 @@ function referenceTransportIdOf(kinds: readonly string[]): string | null {
 }
 
 /** Both readings of the relay list — see {@link relayConfiguration}. */
-export interface RelayConfiguration {
+interface RelayConfiguration {
 	/** The single second arm, or null when there is not exactly one. */
 	readonly referenceTransportId: string | null;
 	/** Is there a second sender AT ALL — the question the ramp's doors ask. */

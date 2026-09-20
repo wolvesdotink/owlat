@@ -9,6 +9,7 @@
  * (mailbox re-activation, audit prefixes) that differ between personal and shared.
  */
 
+import { v } from 'convex/values';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DatabaseReader, MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -115,19 +116,53 @@ export function takeConnectableSeedAccounts(
 }
 
 /**
+ * The Convex argument validator for {@link ExternalConnectFields} plus the
+ * address — the shape `_connectInternal`, `_connectSharedInternal`,
+ * `_connectSeedInternal` and both rotation mutations declare. Declared beside the
+ * writers below so the validator and the TypeScript shape it validates into
+ * cannot drift.
+ */
+export const connectFieldsValidator = {
+	emailAddress: v.string(),
+	imapHost: v.string(),
+	imapPort: v.number(),
+	isImapSecure: v.boolean(),
+	smtpHost: v.string(),
+	smtpPort: v.number(),
+	isSmtpSecure: v.boolean(),
+	imapUsername: v.string(),
+	smtpUsername: v.optional(v.string()),
+	// Widened for Google sign-in: an 'oauth2' row's envelope holds a refresh
+	// token instead of passwords (see schema/mailAccounts.ts). App passwords are
+	// unchanged and remain supported for every provider, Gmail included.
+	authMethod: v.union(v.literal('password'), v.literal('oauth2')),
+	oauthProvider: v.optional(v.literal('google')),
+	secretCiphertext: v.string(),
+	secretIv: v.string(),
+	secretAuthTag: v.string(),
+	secretEnvelopeVersion: v.number(),
+};
+
+/**
  * The non-secret IMAP/SMTP settings + the encrypted-password envelope that every
  * external-account write persists — the single source of truth for the row's
  * credential shape, so adding a field (e.g. an `oauth` authMethod) is one edit
  * here instead of a shotgun across the insert + both rotation patches.
  */
-export type ExternalConnectFields = {
+type ExternalConnectFields = {
 	imapHost: string;
 	imapPort: number;
 	isImapSecure: boolean;
 	smtpHost: string;
 	smtpPort: number;
 	isSmtpSecure: boolean;
-	authMethod: 'password';
+	/**
+	 * 'password' — an app password in the envelope. 'oauth2' — a provider refresh
+	 * token in the envelope (Google sign-in). Both write through this one shape,
+	 * so a row can rotate from one to the other and back without a second path.
+	 */
+	authMethod: 'password' | 'oauth2';
+	oauthProvider?: 'google';
 	imapUsername: string;
 	smtpUsername?: string;
 	secretCiphertext: string;
@@ -175,6 +210,7 @@ export async function insertExternalAccountRow(
 		smtpPort: fields.smtpPort,
 		isSmtpSecure: fields.isSmtpSecure,
 		authMethod: fields.authMethod,
+		oauthProvider: fields.oauthProvider,
 		imapUsername: fields.imapUsername,
 		smtpUsername: fields.smtpUsername,
 		secretCiphertext: fields.secretCiphertext,
@@ -217,7 +253,13 @@ export async function applyCredentialRotation(
 		smtpHost: fields.smtpHost,
 		smtpPort: fields.smtpPort,
 		isSmtpSecure: fields.isSmtpSecure,
+		// Rotating an account between auth methods must move BOTH of these, or an
+		// app-password repair of an oauth2 row would leave it claiming XOAUTH2 with
+		// a password in the envelope (and vice versa) — the worker would then
+		// authenticate with the wrong mechanism forever. Writing `undefined` clears
+		// `oauthProvider` on the oauth2 → password direction.
 		authMethod: fields.authMethod,
+		oauthProvider: fields.oauthProvider,
 		imapUsername: fields.imapUsername,
 		smtpUsername: fields.smtpUsername,
 		secretCiphertext: fields.secretCiphertext,
@@ -229,4 +271,45 @@ export async function applyCredentialRotation(
 		lastError: undefined,
 		updatedAt: now,
 	});
+}
+
+/**
+ * Active = the worker/indexer still has work to do on this account's import.
+ * Declared here rather than in `mail/migration.ts` because the teardown paths
+ * below need it and that module imports `accounts.ts` (importing back would
+ * close a cycle).
+ */
+export function isActiveMigrationStatus(status: string): boolean {
+	return status === 'importing' || status === 'indexing';
+}
+
+/**
+ * Mark the account's in-flight import `cancelled`, if it has one. Returns
+ * whether anything was cancelled.
+ *
+ * The quiet half of `mail/migration.cancelMigrationForAccount`: the same state
+ * change, without the `mailAuditLog` entry. It is what the teardown paths
+ * (disconnect / purge / purgeShared) call, because they hide or delete the
+ * mailbox in the same transaction, and on a purge the migration row and the
+ * audit rows are deleted moments later anyway. A deliberate, user-visible cancel
+ * still goes through the audited helper.
+ *
+ * Teardown calls this BEFORE scheduling the purge cascade: `getBackfillWork`
+ * then reports inactive on the worker's very next poll, instead of leaving a
+ * mid-walk worker fetching into a draining mailbox until the last purge chunk
+ * finally deletes the row.
+ */
+export async function cancelActiveMigrationForAccount(
+	ctx: MutationCtx,
+	accountId: Id<'externalMailAccounts'>
+): Promise<boolean> {
+	const migration = await ctx.db
+		.query('mailboxMigrations')
+		.withIndex('by_account', (q) => q.eq('accountId', accountId))
+		.order('desc')
+		.first();
+	if (!migration || !isActiveMigrationStatus(migration.status)) return false;
+	const now = Date.now();
+	await ctx.db.patch(migration._id, { status: 'cancelled', completedAt: now, updatedAt: now });
+	return true;
 }

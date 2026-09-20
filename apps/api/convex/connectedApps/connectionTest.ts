@@ -43,7 +43,7 @@ import {
  *   - `blocked`     — the test was refused before any request (e.g. a revoked
  *                     app whose endpoint must not be probed).
  */
-export type ConnectedAppConnectionTestOutcome = 'ok' | 'error_status' | 'unreachable' | 'blocked';
+type ConnectedAppConnectionTestOutcome = 'ok' | 'error_status' | 'unreachable' | 'blocked';
 
 /** Structured, secret-free result surfaced to the registration UX. */
 export interface ConnectedAppConnectionTestResult {

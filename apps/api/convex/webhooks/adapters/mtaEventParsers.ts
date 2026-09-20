@@ -8,10 +8,10 @@
  * `MTA_WEBHOOK_EVENT_TYPES` without an entry here is a compile error, never a
  * silently 200-acked discard. Exactly one kind, `inbound.mailbox.received`,
  * is an explicit documented ignore — the MTA's notifier delivers it to
- * `POST /webhooks/mta-mailbox` (`mail/webhook.ts`), never to this surface.
+ * `POST /webhooks/mta-mailbox` (`mail/webhookHttp.ts`), never to this surface.
  */
 
-import { getInboundChannelAdapter } from '@owlat/channels';
+import { getInboundChannelAdapter } from './inboundRegistry';
 import { isRecord } from '@owlat/shared';
 import type {
 	MtaWebhookEventType,
@@ -214,14 +214,14 @@ export const MTA_EVENT_PARSERS = {
 	},
 	'inbound.received': (payload) => {
 		if (!payload.inboundPayload) return null;
-		// Delegate envelope normalization to @owlat/channels so the
+		// Delegate envelope normalization to the inbound registry so the
 		// MTA SMTP server and webhook share one parser.
 		const normalized = getInboundChannelAdapter('mta').parseInbound(payload);
 		return { kind: 'inbound.received', mail: normalized };
 	},
 	'inbound.mailbox.received': () => {
 		// EXPLICIT IGNORE, not a parser. Personal-mailbox inbound is served by
-		// `POST /webhooks/mta-mailbox` (`mail/webhook.ts`): the MTA's notifier
+		// `POST /webhooks/mta-mailbox` (`mail/webhookHttp.ts`): the MTA's notifier
 		// (`apps/mta/src/webhooks/convexNotifier.ts`) branches this kind to that
 		// route before it can ever reach `POST /webhooks/mta`. The entry exists so
 		// the table stays total over the wire union; an event of this kind landing

@@ -4,7 +4,7 @@ import {
 	type HostedContributionDefinition,
 } from './hostedContributionCatalog';
 
-export interface HostedAutonomyGateDefinition extends HostedContributionDefinition<'send:gate'> {
+interface HostedAutonomyGateDefinition extends HostedContributionDefinition<'send:gate'> {
 	readonly label: string;
 	readonly timeoutMs: number;
 	readonly requiredEnvVars: readonly string[];

@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/mail-sync",
-	"version": "0.4.4",
+	"version": "0.4.21",
 	"private": true,
 	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
@@ -11,8 +11,8 @@
 		"build": "tsc",
 		"start": "node dist/index.js",
 		"typecheck": "tsc --noEmit",
-		"lint": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src",
-		"lint:fix": "oxlint --config ../../oxlintrc.json --ignore-pattern '**/__tests__/**' src --fix",
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
 		"test": "vitest run --passWithNoTests",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage --passWithNoTests"

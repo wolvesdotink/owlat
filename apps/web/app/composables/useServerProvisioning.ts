@@ -39,6 +39,7 @@ import {
 	resolveServerIp,
 } from '~/lib/desktop/provisioningForm';
 import { installLocalSource } from '~/composables/serverProvisioningLocalSource';
+import { resolveInstallRelease } from '~/composables/serverProvisioningRelease';
 
 export type ProvisionStage =
 	| 'idle'
@@ -270,6 +271,15 @@ export function useServerProvisioning(injectedTransport?: ProvisionTransport) {
 			} else {
 				await runExecStep(sessionId, 'install-docker', installDockerCommand());
 			}
+
+			// resolve-release — the default install targets the newest published
+			// release; a pinned version, a branch or a local checkout skips this.
+			remote = await resolveInstallRelease({
+				steps,
+				remote,
+				runExecStep: (stepId, command, onLine) => runExecStep(sessionId, stepId, command, onLine),
+				t,
+			});
 
 			const source = installSource(remote);
 			if (source !== 'git' && remote.localSource) {

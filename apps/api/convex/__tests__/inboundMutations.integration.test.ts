@@ -1,5 +1,5 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
@@ -99,6 +99,17 @@ const testIdentity = {
 	issuer: 'https://test.issuer.com',
 	tokenIdentifier: 'https://test.issuer.com|test-user-123',
 };
+
+// Mutation-only tests leave scheduled actions pending. Keep those timers local
+// to each test so an earlier approval cannot enqueue during a later assertion.
+beforeEach(() => {
+	vi.useFakeTimers();
+});
+
+afterEach(() => {
+	vi.clearAllTimers();
+	vi.useRealTimers();
+});
 
 // ============ approveDraft ============
 
@@ -935,22 +946,18 @@ describe('agentPipeline.sendApprovedReply', () => {
 	// Approving a draft schedules sendApprovedReply via runAfter(0). It no longer
 	// dispatches inline: it enqueues a transactionalSends Send row on the
 	// workpool (stubbed here), and completeSend later drives the inbound message
-	// to sent/failed (covered in sendCompletion.integration.test.ts). Fake timers
-	// + finishAllScheduledFunctions is convex-test's way to drain the scheduled
-	// action queue.
+	// to sent/failed (covered in sendCompletion.integration.test.ts). Start the
+	// scheduled action, then await its completion without racing cold module
+	// imports against finishAllScheduledFunctions' bounded timer-pump loop.
 	async function approveAndDrain(
 		t: ReturnType<typeof convexTest>,
 		inboundMessageId: Id<'inboundMessages'>
 	) {
-		vi.useFakeTimers();
-		try {
-			await t
-				.withIdentity(testIdentity)
-				.mutation(api.inbox.mutations.approveDraft, { inboundMessageId });
-			await t.finishAllScheduledFunctions(vi.runAllTimers);
-		} finally {
-			vi.useRealTimers();
-		}
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.mutations.approveDraft, { inboundMessageId });
+		vi.runAllTimers();
+		await t.finishInProgressScheduledFunctions();
 	}
 
 	async function seedSettings(t: ReturnType<typeof convexTest>) {

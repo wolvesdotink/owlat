@@ -42,21 +42,17 @@ export interface TransportSummaryInput {
  * THE DELIVERY HUB'S NAME for a transport kind — the catalog's label, unless
  * this surface has always worded it differently.
  *
- * OVERRIDES, NOT A TABLE OF KINDS (the seams plan's D1/A3). It used to be an
- * exhaustive `Record<DeliveryProviderKind, string>`, which meant two things: a
- * sixth kind declared in the catalog was a COMPILE ERROR in a file outside its
- * bundle — precisely what "adding a provider touches nothing else" forbids —
- * and the two rows below were a second declaration of a name the catalog
- * already carries.
+ * OVERRIDES, NOT A TABLE OF KINDS. An exhaustive `Record<DeliveryProviderKind,
+ * string>` would mean two things: a sixth kind declared in the catalog would be
+ * a COMPILE ERROR in a file outside its bundle — precisely what "adding a
+ * provider touches nothing else" forbids — and the two rows below would be a
+ * second declaration of a name the catalog already carries.
  *
- * The two that remain are this surface's own wording, kept because P1.2 is a
- * rendering refactor and renaming a card on a live dashboard is a user-visible
- * change: the hub says "Owlat mail server" where the catalog says "Owlat MTA",
- * and it drops Mandrill's parenthetical. Whether to unify that copy is a
- * wording decision for the plan owner (recorded in
- * `scripts/provider-identity-allowlist.txt`), not something this piece decides
- * silently. `ses`, `resend` and `smtp` needed no row: they already agreed with
- * the catalog, and a new kind simply gets its label.
+ * The two rows are this surface's own wording, kept because renaming a card on a live dashboard is
+ * a user-visible change: the hub says "Owlat mail server" where the catalog says "Owlat MTA", and
+ * it drops Mandrill's parenthetical. Unifying that copy is a wording decision (recorded in
+ * `scripts/provider-identity-allowlist.txt`), not a silent rendering change. `ses`, `resend` and
+ * `smtp` needed no row: they already agreed with the catalog, and a new kind simply gets its label.
  */
 const TRANSPORT_LABEL_OVERRIDE: Partial<Record<DeliveryProviderKind, string>> = {
 	mta: 'shared.transportState.labels.mta',

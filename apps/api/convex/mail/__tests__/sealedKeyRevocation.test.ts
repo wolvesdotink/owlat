@@ -73,8 +73,8 @@ describe('Sealed Mail revocation on address deletion', () => {
 	it('deleting a mailbox stops publishing its E2EE key', async () => {
 		const t = convexTest(schema, modules);
 		await enableSealedMail(t);
-		const address = 'mailboxdel@hinterland.camp';
-		const mailboxId = await seedMailbox(t, { address, domain: 'hinterland.camp' });
+		const address = 'mailboxdel@owlat.test';
+		const mailboxId = await seedMailbox(t, { address, domain: 'owlat.test' });
 
 		// Mint + publish the address key, then confirm it is discoverable.
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
@@ -108,10 +108,10 @@ describe('Sealed Mail revocation on address deletion', () => {
 		// sealing mail to a dead inbox.
 		const t = convexTest(schema, modules);
 		await enableSealedMail(t);
-		const address = 'sharedpurge@hinterland.camp';
+		const address = 'sharedpurge@owlat.test';
 		const mailboxId = await seedMailbox(t, {
 			address,
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 			scope: 'shared',
 			kind: 'external',
 		});
@@ -170,10 +170,10 @@ describe('Sealed Mail revocation on address deletion', () => {
 	it('deleting an alias stops publishing its E2EE key', async () => {
 		const t = convexTest(schema, modules);
 		await enableSealedMail(t);
-		const alias = 'aliasdel@hinterland.camp';
+		const alias = 'aliasdel@owlat.test';
 		const mailboxId = await seedMailbox(t, {
-			address: 'owner@hinterland.camp',
-			domain: 'hinterland.camp',
+			address: 'owner@owlat.test',
+			domain: 'owlat.test',
 		});
 		const aliasId = await t.run((ctx) =>
 			ctx.db.insert('mailAliases', {
@@ -201,8 +201,8 @@ describe('Sealed Mail revocation on address deletion', () => {
 	it('keeps the vault key active while public discovery is withdrawn when Sealed Mail is off', async () => {
 		const t = convexTest(schema, modules);
 		// NOTE: sealedMail NOT enabled — deletion must not touch the key.
-		const address = 'flagoff@hinterland.camp';
-		const mailboxId = await seedMailbox(t, { address, domain: 'hinterland.camp' });
+		const address = 'flagoff@owlat.test';
+		const mailboxId = await seedMailbox(t, { address, domain: 'owlat.test' });
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
 
 		vi.useFakeTimers();
@@ -218,7 +218,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 		expect(await t.query(internal.e2ee.keys.getAddressKeyInternal, { address })).not.toBeNull();
 		expect(
 			await t.query(api.e2ee.keys.getKeyForWkd, {
-				domain: 'hinterland.camp',
+				domain: 'owlat.test',
 				wkdHash: wkdHashForAddress(address),
 			})
 		).toBeNull();

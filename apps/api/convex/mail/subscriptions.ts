@@ -37,7 +37,7 @@ import type { OneClickResult } from './unsubscribe';
 export const SUBSCRIPTION_SCAN_LIMIT = 300;
 
 /** Most senders one batch may act on. Keeps a single action bounded. */
-export const SUBSCRIPTION_BATCH_MAX = 25;
+const SUBSCRIPTION_BATCH_MAX = 25;
 
 /**
  * Gap between two senders' unsubscribe POSTs. Politeness, not throughput: a
@@ -45,7 +45,7 @@ export const SUBSCRIPTION_BATCH_MAX = 25;
  * which belong to the same ESP, and a burst from one IP is exactly what their
  * abuse heuristics are looking for.
  */
-export const SUBSCRIPTION_BATCH_DELAY_MS = 400;
+const SUBSCRIPTION_BATCH_DELAY_MS = 400;
 
 /** Messages from one sender archived per batch entry. */
 const ARCHIVE_LIMIT_PER_SENDER = 200;
@@ -59,7 +59,7 @@ const SELECTION_RESOLVE_MAX = 200;
  *   - `http`      → a web page the user has to finish by hand
  *   - `mailto`    → an unsubscribe email the composer can prefill
  */
-export type SubscriptionMethod = 'one-click' | 'http' | 'mailto';
+type SubscriptionMethod = 'one-click' | 'http' | 'mailto';
 
 /** Best-method-first ordering, so a group adopts the strongest it has seen. */
 const METHOD_RANK: Record<SubscriptionMethod, number> = { 'one-click': 3, http: 2, mailto: 1 };
@@ -73,7 +73,7 @@ export interface SubscriptionMessageInput {
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 }
 
-export interface SubscriptionSender {
+interface SubscriptionSender {
 	senderEmail: string;
 	senderName?: string;
 	/** Messages from this sender inside the scanned window. */
@@ -222,7 +222,7 @@ export const list = publicQuery({
  * older than the panel's inbox window, none of which the `list` snapshot knows
  * about.
  */
-export interface SubscriptionSelectionTarget {
+interface SubscriptionSelectionTarget {
 	senderEmail: string;
 	actionMessageId: Id<'mailMessages'>;
 }
@@ -250,8 +250,12 @@ export const sendersOfMessages = publicQuery({
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		const targets = new Map<string, { actionMessageId: Id<'mailMessages'>; receivedAt: number }>();
-		for (const messageId of args.messageIds.slice(0, SELECTION_RESOLVE_MAX)) {
-			const message = await ctx.db.get(messageId);
+		// Independent reads; the "newest wins" fold below still runs in selection
+		// order, so ties resolve exactly as they did one-at-a-time.
+		const messages = await Promise.all(
+			args.messageIds.slice(0, SELECTION_RESOLVE_MAX).map((id) => ctx.db.get(id))
+		);
+		for (const message of messages) {
 			if (!message || message.mailboxId !== args.mailboxId) continue;
 			if (subscriptionMethodOf(message.unsubscribe) !== 'one-click') continue;
 			const senderEmail = normalizeEmail(message.fromAddress);
@@ -333,7 +337,7 @@ export const archiveSenderInInbox = internalMutation({
  *                        sender's page or by mail (`httpUrl` / `mailtoUrl`)
  *   - `not_found`      → the sender has no list mail left in the window
  */
-export type SubscriptionBatchOutcome = {
+type SubscriptionBatchOutcome = {
 	senderEmail: string;
 	status: 'unsubscribed' | 'failed' | 'manual' | 'not_found';
 	archived: number;

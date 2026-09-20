@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Sticky bulk-actions bar for the Review Queue browse list (piece C2) —
+ * Sticky bulk-actions bar for the Review Queue browse list —
  * the review twin of PostboxQuickActionsBar: floats above the listbox while
  * one or more cards are selected, hidden otherwise. Presentational: the
  * browse list owns the selection Set and the batch mutations, and the server

@@ -4,12 +4,29 @@
  * `blockedEmails` is the CAN-SPAM / Gmail-Yahoo honor-suppression boundary: a
  * recipient on it (hard bounce / spam complaint / manual block) must never
  * receive mail. Three send paths gate on it — the transactional intake
- * (`transactional/dispatch.ts`), the non-campaign writer
- * (`delivery/enqueue.ts`), and audience resolution
- * (`campaigns/audienceResolution.ts`). Each KEEPS its own policy (return a
+ * (`transactional/dispatch.ts`) and the non-campaign intake
+ * (`delivery/nonCampaignIntake.ts`), both through the shared pre-row gate
+ * sequence in `delivery/sendIntakeGates.ts`; and audience resolution
+ * (`campaigns/audienceResolution.ts`, filtering in
+ * `campaigns/audienceCandidates.ts`). Each KEEPS its own policy (return a
  * rejection / throw / filter-out), but they MUST agree on the lookup and on the
  * normalization of the address key, or a suppressed recipient leaks through one
  * path while another blocks it.
+ *
+ * A FOURTH read does not come through here: `delivery/worker.ts` re-reads the
+ * blocklist through `blockedEmails.isBlockedInternal` immediately before
+ * dispatching a CAMPAIGN envelope, to catch an address blocked between audience
+ * resolution and the worker running. It normalizes through the same
+ * `findBlockedByEmail`, so it agrees with this module by construction.
+ *
+ * AND SEVERAL SEND PATHS DO NOT GATE AT ALL, which is worth knowing before
+ * trusting this list to be exhaustive: system mail (`systemMail.ts` — auth mail,
+ * double-opt-in confirmations, operator test sends), Postbox personal outbound
+ * (`mail/outbound/dispatch.ts`, `mail/deliveryHooks.ts`), member-only test
+ * previews (`delivery/enqueueTestSend.ts`, which says so) and the scheduled seed
+ * probe (`delivery/seedScheduledProbe.ts`). For those, the MTA's own Redis
+ * suppression list is the only thing standing between a suppressed address and
+ * a message.
  *
  * This module owns that shared lookup + normalization:
  *   - `isSuppressed` — the point read for a single address (the per-send gate).
@@ -155,7 +172,7 @@ export async function suppressEmail(
 }
 
 /** A suppression set that may be INCOMPLETE, plus the fact of it. */
-export interface BoundedSuppressionSet {
+interface BoundedSuppressionSet {
 	blockedEmails: ReadonlySet<string>;
 	/**
 	 * More than `limit` suppressed addresses exist, so the set is a SUBSET of the
@@ -179,7 +196,7 @@ export interface BoundedSuppressionSet {
  * MUTATION. `.collect()`ing the whole `blockedEmails` table there drops every
  * suppressed address into the mutation's OCC read set, so a concurrent
  * bounce/complaint write conflicts the mutation at COMMIT time — after any
- * fail-open `try/catch` has already returned (deliverability plan D16).
+ * fail-open `try/catch` has already returned.
  *
  * `limit` bounds the read; exceeding it is reported, never thrown.
  */

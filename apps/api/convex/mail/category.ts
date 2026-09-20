@@ -19,8 +19,9 @@
  * A per-sender user override (mailSenderCategoryOverrides) always wins and is
  * remembered for that sender — see `resolveCategory` and `recategorize`.
  *
- * Trigger: `enqueueCategoryCheck` on inbound webhook delivery (inbox only,
- * bounded to the affected thread), plus the hand-run
+ * Trigger: `enqueueCategoryCheck` on inbound webhook delivery and on forward
+ * external IMAP sync (inbox only, bounded to the affected thread; a historical
+ * import never enqueues), plus the hand-run
  * `migrations/0037_backfill_mail_categories:run` for recent existing threads.
  */
 
@@ -38,20 +39,15 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReply';
 import { requireMailboxAccess } from './permissions';
+import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
-export const MAIL_CATEGORIES = [
-	'person',
-	'newsletter',
-	'notification',
-	'receipt',
-	'other',
-] as const;
+const MAIL_CATEGORIES = ['person', 'newsletter', 'notification', 'receipt', 'other'] as const;
 export type MailCategory = (typeof MAIL_CATEGORIES)[number];
 
 /** Categories a user may pick in "Recategorize as…" (no ambiguity there). */
-export type MailCategorySource = 'heuristic' | 'llm' | 'user';
+type MailCategorySource = 'heuristic' | 'llm' | 'user';
 
 /** Subject keywords that mark transactional receipts / orders / invoices. */
 const RECEIPT_SUBJECT =
@@ -138,8 +134,9 @@ export function resolveCategory(opts: {
 
 /**
  * Schedule category classification for a thread. Called from the inbound
- * webhook delivery path for inbox deliveries only (bulk IMAP backfill must not
- * fan out background work), and from the one-shot `backfill` action.
+ * webhook delivery path and from forward external IMAP sync, for inbox
+ * deliveries only (a bulk IMAP history import must not fan out background
+ * work), and from the one-shot `backfill` action.
  */
 export async function enqueueCategoryCheck(
 	ctx: MutationCtx,
@@ -155,7 +152,7 @@ export async function enqueueCategoryCheck(
 // ─── Convex functions ────────────────────────────────────────────────────────
 
 /** How many newest thread messages the classify action considers. */
-export const CATEGORY_CONTEXT_MESSAGES = 4;
+const CATEGORY_CONTEXT_MESSAGES = 4;
 
 /**
  * Bounded thread context for the classify action: owner address, latest
@@ -266,14 +263,8 @@ export const applyCategory = internalMutation({
 	args: {
 		threadId: v.id('mailThreads'),
 		expectedLatestMessageId: v.optional(v.id('mailMessages')),
-		label: v.union(
-			v.literal('person'),
-			v.literal('newsletter'),
-			v.literal('notification'),
-			v.literal('receipt'),
-			v.literal('other')
-		),
-		source: v.union(v.literal('heuristic'), v.literal('llm'), v.literal('user')),
+		label: mailCategoryLabelValidator,
+		source: mailCategorySourceValidator,
 	},
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
@@ -303,13 +294,7 @@ export const applyCategory = internalMutation({
 export const recategorize = authedMutation({
 	args: {
 		threadId: v.id('mailThreads'),
-		label: v.union(
-			v.literal('person'),
-			v.literal('newsletter'),
-			v.literal('notification'),
-			v.literal('receipt'),
-			v.literal('other')
-		),
+		label: mailCategoryLabelValidator,
 	},
 	handler: async (ctx, args) => {
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');

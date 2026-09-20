@@ -83,7 +83,7 @@ async function seedUsers(t: TestConvex<typeof schema>, ...authUserIds: string[])
 		for (const authUserId of authUserIds) {
 			await ctx.db.insert('userProfiles', {
 				authUserId,
-				email: `${authUserId}@hinterland.camp`,
+				email: `${authUserId}@owlat.test`,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -96,6 +96,19 @@ async function enableExternal(t: TestConvex<typeof schema>): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('instanceSettings', {
 			featureFlags: { 'mail.external': true },
+			createdAt: Date.now(),
+		});
+	});
+}
+
+/** Seed the instance feature flags a case needs (superset of `enableExternal`). */
+async function enableFlags(
+	t: TestConvex<typeof schema>,
+	flags: Record<string, boolean>
+): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('instanceSettings', {
+			featureFlags: flags,
 			createdAt: Date.now(),
 		});
 	});
@@ -348,6 +361,283 @@ describe('a shared external account is invisible to the PERSONAL sending + migra
 	});
 });
 
+describe("shared migration — importing a team inbox's existing mail", () => {
+	/** Connect a team inbox as `admin-user`, optionally with a roster. */
+	async function connectInbox(
+		t: TestConvex<typeof schema>,
+		memberUserIds: string[] = []
+	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> {
+		setSession('admin-user', 'admin');
+		return await t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
+			...CREDS,
+			emailAddress: 'support@acme.test',
+			memberUserIds,
+		});
+	}
+
+	/** Every onboarding row in the instance — a shared import must write none. */
+	async function onboardingRows(t: TestConvex<typeof schema>) {
+		return await t.run((ctx) => ctx.db.query('userOnboarding').collect());
+	}
+
+	it('refuses a plain member; allows the mailbox owner and an org admin', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		await seedUsers(t, 'user-B');
+		const { mailboxId } = await connectInbox(t, ['user-B']);
+
+		// A rostered MEMBER is below the owner floor every team-inbox management
+		// surface uses — an import is management, not reading.
+		setSession('user-B', 'editor');
+		await expect(t.mutation(api.mail.migrationShared.startShared, { mailboxId })).rejects.toThrow(
+			/permission/i
+		);
+
+		// Promoted to mailbox owner (still a plain org editor) → allowed.
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('mailboxMembers')
+				.withIndex('by_mailbox_user', (q) =>
+					q.eq('mailboxId', mailboxId).eq('authUserId', 'user-B')
+				)
+				.unique();
+			await ctx.db.patch(row!._id, { role: 'owner' });
+		});
+		const started = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+		expect(started.status).toBe('importing');
+
+		// And the org admin reaches the same job (idempotent, not a second row).
+		setSession('admin-user', 'admin');
+		const again = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+		expect(again.migrationId).toBe(started.migrationId);
+	});
+
+	it('refuses a personal or hosted mailbox id', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		setSession('admin-user', 'admin');
+		const [hostedId, personalId] = await t.run(async (ctx) => {
+			const now = Date.now();
+			const base = {
+				userId: 'admin-user',
+				organizationId: 'org-1',
+				domain: 'acme.test',
+				status: 'active' as const,
+				usedBytes: 0,
+				uidValidity: now,
+				createdAt: now,
+				updatedAt: now,
+			};
+			return [
+				await ctx.db.insert('mailboxes', {
+					...base,
+					address: 'hosted@acme.test',
+					kind: 'hosted' as const,
+				}),
+				// kind='external' but scope personal (undefined) — a BYO mailbox.
+				await ctx.db.insert('mailboxes', {
+					...base,
+					address: 'me@acme.test',
+					kind: 'external' as const,
+				}),
+			];
+		});
+
+		for (const mailboxId of [hostedId, personalId]) {
+			await expect(t.mutation(api.mail.migrationShared.startShared, { mailboxId })).rejects.toThrow(
+				/not an external team inbox/i
+			);
+		}
+	});
+
+	it('is idempotent while a migration is importing or indexing', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const { mailboxId } = await connectInbox(t);
+
+		const first = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+		const second = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+		expect(second).toEqual({ migrationId: first.migrationId, status: 'importing' });
+
+		await t.run((ctx) => ctx.db.patch(first.migrationId, { status: 'indexing' }));
+		const third = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+		expect(third).toEqual({ migrationId: first.migrationId, status: 'indexing' });
+
+		const rows = await t.run((ctx) => ctx.db.query('mailboxMigrations').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]!.scope).toBe('shared');
+	});
+
+	it('resets the folder backfill cursors and leaves forward sync alone', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const { mailboxId, externalAccountId } = await connectInbox(t);
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId: externalAccountId,
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUidValidity: 1,
+			initialLastSeenUid: 100,
+		});
+		// A previous run left this folder fully walked.
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('externalMailFolderSync')
+				.withIndex('by_account', (q) => q.eq('accountId', externalAccountId))
+				.first();
+			await ctx.db.patch(row!._id, { backfillCursor: 0, backfillTotal: 40, backfillDone: 40 });
+		});
+
+		await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('externalMailFolderSync')
+				.withIndex('by_account', (q) => q.eq('accountId', externalAccountId))
+				.first();
+			expect(row!.backfillCursor).toBeUndefined();
+			expect(row!.backfillTotal).toBeUndefined();
+			expect(row!.backfillDone).toBeUndefined();
+			expect(row!.lastSeenUid).toBe(100); // forward sync of NEW mail untouched
+		});
+	});
+
+	it('never stamps an onboarding step — on start, import completion, or indexing', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const { mailboxId } = await connectInbox(t);
+
+		const { migrationId } = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+		expect(await onboardingRows(t)).toHaveLength(0);
+
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
+		expect(await onboardingRows(t)).toHaveLength(0);
+
+		// And the knowledge sweep's terminal transition stamps nothing either.
+		await t.run((ctx) => ctx.db.patch(migrationId, { status: 'indexing' }));
+		await t.mutation(internal.mail.migrationIndexing.finalizeMigration, {
+			migrationId,
+			status: 'completed',
+			indexingRanToCompletion: true,
+		});
+		expect(await onboardingRows(t)).toHaveLength(0);
+	});
+
+	it('leaves knowledge indexing OFF unless opted in with the ai.knowledge flag on', async () => {
+		// Default: no opt-in, flag on → still off.
+		const withFlag = convexTest(schema, modules);
+		await enableFlags(withFlag, {
+			'mail.external': true,
+			ai: true,
+			'ai.knowledge': true,
+			inbox: true,
+		});
+		const { mailboxId: flagged } = await connectInbox(withFlag);
+		const def = await withFlag.mutation(api.mail.migrationShared.startShared, {
+			mailboxId: flagged,
+		});
+		expect((await withFlag.run((ctx) => ctx.db.get(def.migrationId)))!.isAiIndexingEnabled).toBe(
+			false
+		);
+
+		// Opted in, flag OFF → still off (the opt-in can't switch the feature on).
+		const noFlag = convexTest(schema, modules);
+		await enableFlags(noFlag, { 'mail.external': true });
+		const { mailboxId: unflagged } = await connectInbox(noFlag);
+		const optedIn = await noFlag.mutation(api.mail.migrationShared.startShared, {
+			mailboxId: unflagged,
+			indexKnowledge: true,
+		});
+		expect((await noFlag.run((ctx) => ctx.db.get(optedIn.migrationId)))!.isAiIndexingEnabled).toBe(
+			false
+		);
+
+		// Opted in AND the flag on → on.
+		await withFlag.run((ctx) => ctx.db.patch(def.migrationId, { status: 'cancelled' }));
+		const both = await withFlag.mutation(api.mail.migrationShared.startShared, {
+			mailboxId: flagged,
+			indexKnowledge: true,
+		});
+		expect((await withFlag.run((ctx) => ctx.db.get(both.migrationId)))!.isAiIndexingEnabled).toBe(
+			true
+		);
+	});
+
+	it('getStatusShared returns the job for an owner and null for a non-member', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		await seedUsers(t, 'user-B');
+		const { mailboxId } = await connectInbox(t, ['user-B']);
+		expect(await t.query(api.mail.migrationShared.getStatusShared, { mailboxId })).toBeNull();
+
+		const { migrationId } = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+		const status = await t.query(api.mail.migrationShared.getStatusShared, { mailboxId });
+		expect(status).toMatchObject({ _id: migrationId, status: 'importing', importPercent: 0 });
+
+		// A rostered member is below the owner floor, an outsider has no access at
+		// all — both get the same null (the read never confirms the inbox exists).
+		setSession('user-B', 'editor');
+		expect(await t.query(api.mail.migrationShared.getStatusShared, { mailboxId })).toBeNull();
+		setSession('user-Z', 'editor');
+		expect(await t.query(api.mail.migrationShared.getStatusShared, { mailboxId })).toBeNull();
+	});
+
+	it('getStatusShared reports nothing at all when mail.external is off', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const { mailboxId } = await connectInbox(t);
+		await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+		expect(await t.query(api.mail.migrationShared.getStatusShared, { mailboxId })).not.toBeNull();
+
+		// Read-side degradation, not a throw: the admin page renders this card
+		// alongside others, and an instance without external mail has no team inbox
+		// to report on.
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, { featureFlags: { 'mail.external': false } });
+		});
+		expect(await t.query(api.mail.migrationShared.getStatusShared, { mailboxId })).toBeNull();
+	});
+
+	it('cancelShared stops an in-flight import and is a no-op afterwards', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const { mailboxId, externalAccountId } = await connectInbox(t);
+		const { migrationId } = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+
+		expect(await t.mutation(api.mail.migrationShared.cancelShared, { mailboxId })).toBe(true);
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('cancelled');
+			expect(m!.completedAt).toBeDefined();
+		});
+		// The worker's next poll goes idle.
+		const work = await t.query(internal.mail.migrationBackfill.getBackfillWork, {
+			accountId: externalAccountId,
+		});
+		expect(work.isActive).toBe(false);
+
+		expect(await t.mutation(api.mail.migrationShared.cancelShared, { mailboxId })).toBe(false);
+	});
+
+	it('refuses a member cancelling, and an outsider reaching either twin', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		await seedUsers(t, 'user-B');
+		const { mailboxId } = await connectInbox(t, ['user-B']);
+		await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+
+		setSession('user-B', 'editor');
+		await expect(t.mutation(api.mail.migrationShared.cancelShared, { mailboxId })).rejects.toThrow(
+			/permission/i
+		);
+		setSession('user-Z', 'editor');
+		await expect(t.mutation(api.mail.migrationShared.startShared, { mailboxId })).rejects.toThrow(
+			/permission/i
+		);
+	});
+});
+
 describe('shared external inbox credential rotation / repair', () => {
 	it('rotates the linked account credentials and resets it to pending', async () => {
 		const t = convexTest(schema, modules);
@@ -484,6 +774,42 @@ describe('purging a removed shared external inbox', () => {
 		});
 	});
 
+	it('cancels an in-flight import before the first purge chunk runs', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		setSession('admin-user', 'admin');
+		const { mailboxId, externalAccountId } = await t.mutation(
+			internal.mail.external.sharedInbox._connectSharedInternal,
+			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
+		);
+		const { migrationId } = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+
+		vi.useFakeTimers();
+		try {
+			// No `finishAllScheduledFunctions`: the point is the state the purge
+			// leaves BEFORE its cascade runs. A mid-walk worker polls in that window,
+			// and an `importing` row would keep it fetching into a draining mailbox.
+			await t.mutation(api.mail.external.sharedInbox.purgeShared, { mailboxId });
+
+			const cancelled = await t.run((ctx) => ctx.db.get(migrationId));
+			expect(cancelled!.status).toBe('cancelled');
+			expect(cancelled!.completedAt).toBeDefined();
+			const work = await t.query(internal.mail.migrationBackfill.getBackfillWork, {
+				accountId: externalAccountId,
+			});
+			expect(work.isActive).toBe(false);
+
+			// The cascade still runs to completion afterwards.
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(externalAccountId)).toBeNull();
+			expect(await ctx.db.get(migrationId)).toBeNull();
+		});
+	});
+
 	it('rejects a non-admin caller', async () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
@@ -516,7 +842,7 @@ describe('member erasure preserves a shared team inbox (org infrastructure)', ()
 			const now = Date.now();
 			return await ctx.db.insert('accountDeletionRequests', {
 				userProfileId: profile!._id,
-				email: 'admin-user@hinterland.camp',
+				email: 'admin-user@owlat.test',
 				requestedAt: now,
 				scheduledForDeletion: now,
 				cancellationToken: 'tok',

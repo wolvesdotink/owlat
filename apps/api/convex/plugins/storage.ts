@@ -29,7 +29,7 @@ export const PLUGIN_STORAGE_WRITE_CAPABILITY = 'plugin-storage:write' as PluginC
 
 type StorageAuthorization = (capability: PluginCapability) => Promise<void>;
 
-export type PluginStorageErrorCode =
+type PluginStorageErrorCode =
 	| 'access_denied'
 	| 'invalid_input'
 	| 'quota_exceeded'

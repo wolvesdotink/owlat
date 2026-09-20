@@ -23,7 +23,7 @@ withDefaults(
 		/**
 		 * Soft-hold: a teammate is actively replying to this thread, so the primary
 		 * action is HELD — disabled-styled but visible, with {@link heldReason} shown
-		 * beneath. Releases on its own when their presence drops (see UX piece b3b).
+		 * beneath. Releases on its own when their presence drops.
 		 */
 		held?: boolean;
 		/** Plain-language reason shown under the row while `held`. */

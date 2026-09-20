@@ -5,7 +5,7 @@
  */
 
 import type { Validator } from 'convex/values';
-import type { InboundEmailMessage } from '@owlat/channels';
+import type { InboundEmailMessage } from './adapters/inboundRegistry';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DeliveryDomain } from '@owlat/shared';
 import type {
@@ -17,7 +17,7 @@ import type { WorkerEnvelopeInput, WorkerRetryState } from '../delivery/workerEn
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
 
-/** Normalized inbound mail shape — canonical type from @owlat/channels. */
+/** Normalized inbound mail shape — canonical type from `adapters/inboundRegistry`. */
 export type NormalizedInboundMail = InboundEmailMessage;
 
 /** Provider-agnostic discriminator for non-email customer channels. */
@@ -93,7 +93,7 @@ export interface ProviderSuppression {
  * `channel.received` event. JSON-serialized into `unifiedMessages.content`
  * by the dispatcher.
  */
-export interface ChannelContent {
+interface ChannelContent {
 	text?: string;
 	html?: string;
 	subject?: string;
@@ -135,7 +135,7 @@ export type InboundEvent =
 	  }
 	| {
 			// Terminal, NON-bounce delivery failure. Emitted by the MTA for the
-			// post-DATA ambiguous drop (AMBIGUOUS_TIMEOUT, W8): the receiver MAY have
+			// post-DATA ambiguous drop (AMBIGUOUS_TIMEOUT): the receiver MAY have
 			// accepted the message, so it is terminal but carries NO bounce semantics
 			// — the dispatcher transitions the send row to `failed` WITHOUT recipient
 			// suppression or any reputation penalty.
@@ -150,11 +150,11 @@ export type InboundEvent =
 			 * The address the terminal failure names, when the provider reports one.
 			 *
 			 * Set by an adapter whose provider names the address it refused (the
-			 * Mandrill `reject`, plan D9/D10): mirroring that hit into
-			 * `blockedEmails` needs the address. Untrusted telemetry, exactly like
-			 * the `recipient` on `email.delivered` — it is acted on because the
-			 * SIGNED callback said so and the adapter minted a {@link suppression}
-			 * from it, never because the field was present.
+			 * Mandrill `reject`): mirroring that hit into `blockedEmails` needs
+			 * the address. Untrusted telemetry, exactly like the `recipient` on
+			 * `email.delivered` — it is acted on because the SIGNED callback said
+			 * so and the adapter minted a {@link suppression} from it, never
+			 * because the field was present.
 			 */
 			recipient?: string;
 			/**
@@ -177,7 +177,7 @@ export type InboundEvent =
 			suppression?: ProviderSuppression;
 	  }
 	| {
-			// Transient RELAY-side deferral (Mandrill `deferral`, plan D10). The
+			// Transient RELAY-side deferral (Mandrill `deferral`). The
 			// receiver 4xx'd AFTER the relay accepted the message for delivery, so
 			// the Send's own status is not in question — the relay keeps retrying —
 			// and the only thing this event moves is the (cell, arm) `deferred`
@@ -191,7 +191,7 @@ export type InboundEvent =
 	  }
 	| {
 			// The recipient left through the RELAY's own unsubscribe surface
-			// (Mandrill `unsub`, plan D10). It carries an ADDRESS and not a Send:
+			// (Mandrill `unsub`). It carries an ADDRESS and not a Send:
 			// the dispatcher joins it to a Contact and replays the ordinary public
 			// one-click unsubscribe, so relay-side and first-party departures reach
 			// the same membership delete, the same campaign counter and the same
@@ -391,7 +391,7 @@ export type InboundEvent =
 export type InboundEventKind = InboundEvent['kind'];
 
 /** The five optional Postmaster metrics that always travel together. */
-export interface PostmasterStatsMetrics {
+interface PostmasterStatsMetrics {
 	spfSuccessRatio?: number;
 	dkimSuccessRatio?: number;
 	dmarcSuccessRatio?: number;

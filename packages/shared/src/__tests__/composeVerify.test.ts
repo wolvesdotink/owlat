@@ -1,42 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
-import {
-	isValidTargetVersion,
-	composeArtifactUrls,
-	parseSha256Manifest,
-	verifyComposeTemplate,
-	RELEASE_DOWNLOAD_BASE,
-} from '../composeVerify';
+import { parseSha256Manifest, verifyComposeTemplate } from '../composeVerify';
 
 const VERSION = '1.2.3';
 const TEMPLATE = `services:\n  web:\n    image: ghcr.io/wolvesdotink/web:${VERSION}\n`;
 const DIGEST = createHash('sha256').update(TEMPLATE).digest('hex');
-
-describe('isValidTargetVersion', () => {
-	it('accepts plain and pre-release semver', () => {
-		expect(isValidTargetVersion('1.2.3')).toBe(true);
-		expect(isValidTargetVersion('0.2.1')).toBe(true);
-		expect(isValidTargetVersion('1.2.3-rc.1')).toBe(true);
-		expect(isValidTargetVersion('10.20.30-beta.2')).toBe(true);
-	});
-
-	it('rejects non-semver and injection attempts', () => {
-		expect(isValidTargetVersion('')).toBe(false);
-		expect(isValidTargetVersion('latest')).toBe(false);
-		expect(isValidTargetVersion('1.2')).toBe(false);
-		expect(isValidTargetVersion('1.2.3/../evil')).toBe(false);
-		expect(isValidTargetVersion('1.2.3 rm -rf')).toBe(false);
-		expect(isValidTargetVersion('v1.2.3')).toBe(false);
-	});
-});
-
-describe('composeArtifactUrls', () => {
-	it('builds the pinned compose + sha256 URLs from the canonical release base', () => {
-		const { composeUrl, sha256Url } = composeArtifactUrls(VERSION);
-		expect(composeUrl).toBe(`${RELEASE_DOWNLOAD_BASE}/v${VERSION}/docker-compose-${VERSION}.yml`);
-		expect(sha256Url).toBe(`${composeUrl}.sha256`);
-	});
-});
 
 describe('parseSha256Manifest', () => {
 	it('extracts the digest from a `sha256sum`-style manifest', () => {

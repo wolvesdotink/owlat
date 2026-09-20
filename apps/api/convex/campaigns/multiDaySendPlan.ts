@@ -1,6 +1,5 @@
 /**
- * THE MULTI-DAY SEND PLAN — the standalone answer to capacity overflow (plan
- * P3-7, D14).
+ * THE MULTI-DAY SEND PLAN — the standalone answer to capacity overflow.
  *
  * With a relay there is somewhere for the overflow to go. Without one there is
  * not, so a campaign larger than today's warming capacity is not an error and
@@ -9,11 +8,11 @@
  * recipients in ENGAGEMENT ORDER so each day's slice is the best remaining
  * audience — which is also the ideal warming behaviour.
  *
- * It CONSUMES P0-5's binding plan (`capacityPlan.ts`) rather than re-deriving
+ * It CONSUMES the binding capacity plan (`capacityPlan.ts`) rather than re-deriving
  * one: `buildCapacitySchedule` already owns "what can day k carry", the
- * trailing-rate extension and the `MAX_PLAN_DAYS` truncation, and a second
- * answer to those questions is a second answer the pre-flight and the walker can
- * disagree about.
+ * trailing-rate extension and the `MAX_PLAN_DAYS` truncation, and a second answer
+ * to those questions is a second answer the pre-flight and the walker can disagree
+ * about.
  *
  * THE BUDGET AND THE PLAN LENGTH ARE TWO DIFFERENT QUESTIONS, and only the
  * second one needs a denominator. "How many may go out today" is
@@ -24,10 +23,10 @@
  * cancel today's budget, because the campaigns whose count truncates are exactly
  * the large ones this feature exists for.
  *
- * PURE (plan D15): the clock, the capacity projection and the counters are all
+ * PURE: the clock, the capacity projection and the counters are all
  * parameters. The ctx-bound half is the walker in `campaigns/send.ts`.
  *
- * DEGENERATE INPUT NEVER BLOCKS A SEND (plan D2). No capacity projection, a
+ * DEGENERATE INPUT NEVER BLOCKS A SEND. No capacity projection, a
  * hostile day count, a clock that makes no sense — every one of them resolves to
  * "no day budget applies", which is the shipped single-day behaviour. A
  * measurement we could not take has never been grounds to withhold mail.
@@ -54,8 +53,8 @@ export interface SendPlanState {
 	 * Carried rather than re-derived from `planTotalDays >= MAX_PLAN_DAYS`,
 	 * because a plan that covers the audience EXACTLY on day `MAX_PLAN_DAYS` is
 	 * complete: the length alone cannot tell the two apart, and describing a
-	 * finished plan as "more than 60 days" is the D14 dishonesty this whole
-	 * module exists to avoid.
+	 * finished plan as "more than 60 days" is the dishonesty this whole module
+	 * exists to avoid.
 	 *
 	 * `undefined` READS AS NOT TRUNCATED — the reading every pre-migration row
 	 * gets, and every row this build has not hopped since. A checkpoint that
@@ -74,7 +73,7 @@ export interface SendPlanState {
 	/**
 	 * `plannedTotal` is a LOWER BOUND rather than the audience size — the bounded
 	 * count stopped at a ceiling or ran out of read budget. The plan is then AT
-	 * LEAST as long as it computes, and the copy says so (plan D14).
+	 * LEAST as long as it computes, and the copy says so.
 	 */
 	readonly isPlannedTotalLowerBound: boolean | undefined;
 }
@@ -93,7 +92,7 @@ export type RemainingRecipients =
 	| { readonly kind: 'atLeast'; readonly count: number }
 	| { readonly kind: 'exact'; readonly count: number };
 
-export interface SendPlanSliceInput {
+interface SendPlanSliceInput {
 	readonly state: SendPlanState;
 	/**
 	 * Recipients still to enqueue. UNKNOWN NEVER WAIVES THE DAY BUDGET: the
@@ -110,7 +109,7 @@ export interface SendPlanSliceInput {
 	readonly now: number;
 }
 
-export interface SendPlanSlice {
+interface SendPlanSlice {
 	/** The `YYYY-MM-DD` day this slice belongs to. */
 	readonly dayKey: string;
 	/** 0-based day index within the plan. */
@@ -211,16 +210,16 @@ export function planTodaysSlice(input: SendPlanSliceInput): SendPlanSlice {
 	//
 	// NO PROJECTION AT ALL (an empty array) is UNKNOWN capacity: it yields NO
 	// budget, and the walk proceeds exactly as the shipped single-day walker
-	// always has. A measurement we could not take never withholds mail (plan D2).
+	// always has. A measurement we could not take never withholds mail.
 	//
 	// A PROJECTED ZERO for today is the opposite — a real reading that today's cap
 	// is already spent — and it exhausts the day rather than waiving the budget.
 	// Collapsing the two would let a cap-spent deployment empty a 20 000-recipient
 	// campaign into a queue that expires it.
 	//
-	// THE PLAN'S LENGTH IS NOT PART OF THIS TEST. It used to be, and that is what
-	// let a truncated audience count — which yields the planner's "cannot be
-	// planned" sentinel — silently waive the budget on the largest campaigns.
+	// THE PLAN'S LENGTH IS NOT PART OF THIS TEST. Folding it in lets a truncated
+	// audience count — which yields the planner's "cannot be planned" sentinel —
+	// silently waive the budget on the largest campaigns.
 	const hasProjection = capacityByDay.length > 0;
 	const capacityToday = hasProjection ? sanitizeCount(capacityByDay[0]) : undefined;
 
@@ -309,12 +308,12 @@ function planLength(args: {
 }
 
 /** A recipient the walker can order. Only the score is read. */
-export interface EngagementOrdered {
+interface EngagementOrdered {
 	readonly engagementScore?: number | undefined;
 }
 
 /**
- * ENGAGEMENT ORDER — best remaining audience first (plan P0-2/P0-3).
+ * ENGAGEMENT ORDER — best remaining audience first.
  *
  * Each day's slice should be the best audience still unsent: it is what a
  * warming IP wants (engaged recipients open, and openers are what receivers

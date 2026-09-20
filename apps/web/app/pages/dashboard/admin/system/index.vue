@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { apiFetch } from '~/lib/csrfFetch';
+import { semverCompare } from '@owlat/shared/semver';
 import { formatDateTime } from '~/utils/formatters';
 
 const { t } = useI18n();
@@ -15,7 +17,9 @@ definePageMeta({
 // ── Current + latest version state ───────────────────────────────────────────
 
 const config = useRuntimeConfig();
-const currentVersion = computed(() => (config.public.owlatVersion as string) || 'dev');
+// String(): values reach runtime config through Nitro's env overlay, which
+// destr's them, so a numeric-looking version would arrive as a number.
+const currentVersion = computed(() => String(config.public.owlatVersion ?? '') || 'dev');
 
 // Cached latest-release info from Convex (read-only, reactive)
 const { data: latestRelease } = useConvexQuery(api.systemUpdates.getLatestRelease, () => ({}));
@@ -44,27 +48,8 @@ const updateAvailable = computed(() => {
 	const latest = latestRelease.value?.latestVersion;
 	const current = currentVersion.value;
 	if (!latest || current === 'dev' || current === 'unknown') return false;
-	return semverGreater(latest, current);
+	return semverCompare(latest, current) > 0;
 });
-
-function semverGreater(a: string, b: string): boolean {
-	const parse = (s: string) =>
-		s
-			.replace(/^v/, '')
-			.split('.')
-			.map((n) => parseInt(n, 10) || 0);
-	const aParts = parse(a);
-	const bParts = parse(b);
-	const am = aParts[0] ?? 0,
-		ai = aParts[1] ?? 0,
-		ap = aParts[2] ?? 0;
-	const bm = bParts[0] ?? 0,
-		bi = bParts[1] ?? 0,
-		bp = bParts[2] ?? 0;
-	if (am !== bm) return am > bm;
-	if (ai !== bi) return ai > bi;
-	return ap > bp;
-}
 
 // ── Update history ───────────────────────────────────────────────────────────
 
@@ -104,7 +89,7 @@ onMounted(fetchContainerHealth);
 
 type UpdateState = 'idle' | 'confirming' | 'running' | 'success' | 'failed';
 const updateState = ref<UpdateState>('idle');
-const updateSteps = ref<Array<{ step: string; stdout?: string; stderr?: string }> | null>(null);
+const updateSteps = ref<Array<{ step: string; ok?: boolean; stdout?: string; stderr?: string }> | null>(null);
 const updateError = ref<string>('');
 const pendingTargetVersion = ref<string>('');
 
@@ -121,8 +106,10 @@ async function confirmUpdate() {
 	updateSteps.value = null;
 
 	try {
-		const resp = await $fetch<{
-			steps?: Array<{ step: string; stdout?: string; stderr?: string }>;
+		const resp = await apiFetch<{
+			// `ok` is the sidecar's per-step verdict; the progress list needs it to
+			// tell a real failure from docker's progress output on stderr.
+			steps?: Array<{ step: string; ok?: boolean; stdout?: string; stderr?: string }>;
 		}>('/api/system/update', {
 			method: 'POST',
 			body: { targetVersion: pendingTargetVersion.value },
@@ -253,6 +240,12 @@ function formatDuration(start?: number, end?: number) {
 				</table>
 			</div>
 		</div>
+
+		<!-- Network ports: which ports this instance's features need, and whether
+		     the host's provider actually lets them through. Sits next to container
+		     health because it answers the same question one layer down — a service
+		     can be "running" and still be unreachable. -->
+		<SystemPortChecksCard />
 
 		<!-- LLM spend card (spend by feature + by provider + budget headroom) -->
 		<SystemLlmSpendCard />

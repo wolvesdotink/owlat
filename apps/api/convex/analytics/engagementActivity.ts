@@ -1,6 +1,6 @@
 /**
  * The adapter between the `contactActivities` catalog and the engagement
- * score's own vocabulary (deliverability plan P0-2).
+ * score's own vocabulary.
  *
  * It lives beside `engagementScore.ts` rather than inside it so the scoring
  * core stays a closed piece of arithmetic: the core knows six abstract activity
@@ -25,7 +25,7 @@ import type { EngagementActivity, EngagementActivityKind } from './engagementSco
  * score does not react to the literal at all (topic changes, property edits,
  * `created`, `email_sent` — a send is our action, not the contact's).
  */
-export type EngagementActivityMapping = EngagementActivityKind | 'bounce' | null;
+type EngagementActivityMapping = EngagementActivityKind | 'bounce' | null;
 
 /**
  * The mapping table. It is a total `Record` over the catalog union on purpose:

@@ -14,6 +14,7 @@ import type {
 	DeliveryStatus,
 	ChannelHealth,
 } from './types';
+import { utf8ToBase64 } from '../../lib/bytes';
 
 interface TwilioConfig {
 	accountSid: string;
@@ -39,7 +40,7 @@ export class SmsAdapter implements ChannelAdapter {
 
 	/** Basic-auth header value for the configured Twilio account. */
 	private authHeader(config: TwilioConfig): string {
-		const auth = Buffer.from(`${config.accountSid}:${config.authToken}`).toString('base64');
+		const auth = utf8ToBase64(`${config.accountSid}:${config.authToken}`);
 		return `Basic ${auth}`;
 	}
 

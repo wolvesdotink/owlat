@@ -1,11 +1,11 @@
 import { httpRouter } from 'convex/server';
 import { authComponent, createAuth } from './auth/auth';
 import { trackOpen, trackClick } from './delivery/trackingHttp';
-import { seedAdmin } from './seedAdmin';
-import { seedDemoHttp } from './seedDemo';
+import { seedAdmin } from './seedAdminHttp';
+import { seedDemoHttp } from './seedDemo/indexHttp';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';
 import { registerPublicApiRoutes } from './apiV1Http';
-import { resetHttp } from './devShortcuts/reset';
+import { resetHttp } from './devShortcuts/resetHttp';
 import {
 	handleOneClickUnsubscribe,
 	handleSeedProbeUnsubscribe,
@@ -18,12 +18,17 @@ import {
 	webhookUrlValidationProbe,
 } from './webhooks/providerFeedbackHttp';
 import { pluginFeedbackWebhook } from './webhooks/pluginFeedbackHttp';
-import { handleMailWebhook } from './mail/webhook';
+import { handleMailWebhook } from './mail/webhookHttp';
+import { handleRawMessageUpload } from './mail/external/rawUploadHttp';
 import { serveSealedBlob } from './mail/sealedBlobHttp';
 import { serveAttachmentShare } from './mail/attachmentShareHttp';
 import { handleVerifyCredential } from './mail/authHttp';
 import { handleTlsReportWebhook } from './domains/tlsReportsHttp';
-import { handleSmsWebhook, handleWhatsAppWebhook, handleGenericWebhook } from './webhooks/channels';
+import {
+	handleSmsWebhook,
+	handleWhatsAppWebhook,
+	handleGenericWebhook,
+} from './webhooks/channelsHttp';
 import { handleGithubWebhook } from './webhooks/githubHttp';
 import { verifyContactDoiToken, confirmContactDoi } from './topics/doiHttp';
 import { getCampaignArchive } from './campaigns/archiveHttp';
@@ -183,17 +188,15 @@ http.route({
 	handler: providerFeedbackWebhook('ses'),
 });
 
-// POST /webhooks/plugin/<pluginId> - feedback from a BUNDLED PLUGIN transport
-// (the seams plan's D6/P2.2). One route for every plugin-tier transport, keyed
-// by plugin id rather than by kind, dispatched through the generated webhook
-// registry behind the hosted-contribution authorization seam. A `pathPrefix`
-// because the addressable set is whatever `plugins.config.ts` bundles — but the
-// prefix itself is WRITTEN OUT, for the same reason every path above is: these
-// URLs get pasted into provider consoles we do not own, and a path assembled
-// from a variable is a path that can move without anyone editing this file.
-// `PLUGIN_FEEDBACK_PATH_PREFIX` in the handler is the parsing half of the same
-// string; `webhooks/__tests__/pluginFeedbackRouteRegistration.test.ts` drives
-// the real router with it, so the two cannot drift apart silently.
+// POST /webhooks/plugin/<pluginId> - feedback from a BUNDLED PLUGIN transport. One route for every
+// plugin-tier transport, keyed by plugin id rather than by kind, dispatched through the generated
+// webhook registry behind the hosted-contribution authorization seam. A `pathPrefix` because the
+// addressable set is whatever `plugins.config.ts` bundles — but the prefix itself is WRITTEN OUT,
+// for the same reason every path above is: these URLs get pasted into provider consoles we do not
+// own, and a path assembled from a variable is a path that can move without anyone editing this
+// file. `PLUGIN_FEEDBACK_PATH_PREFIX` in the handler is the parsing half of the same string;
+// `webhooks/__tests__/pluginFeedbackRouteRegistration.test.ts` drives the real router with it, so
+// the two cannot drift apart silently.
 http.route({
 	pathPrefix: '/webhooks/plugin/',
 	method: 'POST',
@@ -205,6 +208,16 @@ http.route({
 	path: '/webhooks/mta-mailbox',
 	method: 'POST',
 	handler: handleMailWebhook,
+});
+
+// POST /mail-sync/raw-message - raw `.eml` upload from the mail-sync worker.
+// An HTTP action, not a function argument: a function-call body is capped at
+// 16 MiB and base64 inflates by 4/3, which silently dropped every message over
+// ~12 MiB of source (see mail/external/rawUploadHttp.ts).
+http.route({
+	path: '/mail-sync/raw-message',
+	method: 'POST',
+	handler: handleRawMessageUpload,
 });
 
 // POST /webhooks/mta-verify-credential - app-password verification for MTA SMTP submission
@@ -232,7 +245,7 @@ http.route({
 });
 
 // GET /attachment-share/{token} - the PUBLIC expiring-token download for a file
-// the composer lifted out of a message (plan idea 10). No session and no
+// the composer lifted out of a message. No session and no
 // signature: the token in the path is the whole capability, and every gate
 // (revoked / expired / narrowed to the mailbox / bytes reclaimed) is decided
 // per request inside the handler.

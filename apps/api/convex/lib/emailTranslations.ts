@@ -16,7 +16,10 @@
  */
 
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
-import { mergeTranslationIntoItem, type TranslatableBlockContent } from '../emailTemplates/translationMerge';
+import {
+	mergeTranslationIntoItem,
+	type TranslatableBlockContent,
+} from '../emailTemplates/translationMerge';
 
 export type { TranslatableBlockContent };
 
@@ -57,7 +60,7 @@ export interface TranslatableEntity {
 }
 
 /** Describes which translatable fields an entity carries. */
-export interface TranslatableFields {
+interface TranslatableFields {
 	/** Whether the entity has a translatable `previewText` field. */
 	hasPreviewText: boolean;
 }
@@ -80,9 +83,9 @@ export function serializeTranslations(translations: Record<string, Translation>)
 // --- translatable-content extraction ---------------------------------------
 
 // Recursive helper to extract translatable content from any block-like item.
-export function extractFromItem(
+function extractFromItem(
 	item: { id: string; type: string; content: Record<string, unknown> },
-	translatableContent: Record<string, TranslatableBlockContent>,
+	translatableContent: Record<string, TranslatableBlockContent>
 ): void {
 	const content: TranslatableBlockContent = {};
 
@@ -118,7 +121,9 @@ export function extractFromItem(
 	}
 }
 
-export function extractTranslatableContent(blocksJson: string): Record<string, TranslatableBlockContent> {
+export function extractTranslatableContent(
+	blocksJson: string
+): Record<string, TranslatableBlockContent> {
 	try {
 		const blocks = JSON.parse(blocksJson) as Block[];
 		const translatableContent: Record<string, TranslatableBlockContent> = {};
@@ -137,7 +142,7 @@ export function extractTranslatableContent(blocksJson: string): Record<string, T
 // Takes the block structure/styling from main content and applies translated text.
 export function mergeTranslationWithContent(
 	contentJson: string,
-	translationBlocks: Record<string, TranslatableBlockContent>,
+	translationBlocks: Record<string, TranslatableBlockContent>
 ): string {
 	try {
 		const blocks = JSON.parse(contentJson) as Block[];
@@ -151,7 +156,7 @@ export function mergeTranslationWithContent(
 // --- resolve / add / remove ops ---------------------------------------------
 
 /** Fields to spread over an entity doc to present it in a resolved language. */
-export interface ResolvedTranslation {
+interface ResolvedTranslation {
 	resolvedLanguage: string;
 	subject: string;
 	previewText?: string;
@@ -163,7 +168,7 @@ function buildResolved(
 	subject: string,
 	previewText: string | undefined,
 	content: string,
-	fields: TranslatableFields,
+	fields: TranslatableFields
 ): ResolvedTranslation {
 	return {
 		resolvedLanguage,
@@ -181,14 +186,20 @@ function buildResolved(
 export function resolveForLanguage(
 	entity: TranslatableEntity,
 	requestedLanguage: string | undefined,
-	fields: TranslatableFields,
+	fields: TranslatableFields
 ): ResolvedTranslation {
 	const defaultLanguage = entity.defaultLanguage ?? DEFAULT_LANGUAGE;
 	const requested = requestedLanguage ?? defaultLanguage;
 
 	// Requesting the default language returns the main content unchanged.
 	if (requested === defaultLanguage) {
-		return buildResolved(defaultLanguage, entity.subject, entity.previewText, entity.content, fields);
+		return buildResolved(
+			defaultLanguage,
+			entity.subject,
+			entity.previewText,
+			entity.content,
+			fields
+		);
 	}
 
 	const translations = parseTranslations(entity.translations);
@@ -196,7 +207,13 @@ export function resolveForLanguage(
 	if (translation) {
 		// Merge translation text with the main content's styling.
 		const mergedContent = mergeTranslationWithContent(entity.content, translation.blocks);
-		return buildResolved(requested, translation.subject, translation.previewText, mergedContent, fields);
+		return buildResolved(
+			requested,
+			translation.subject,
+			translation.previewText,
+			mergedContent,
+			fields
+		);
 	}
 
 	// Fall back to the default language.
@@ -211,7 +228,7 @@ export function resolveForLanguage(
 export function addLanguage(
 	entity: TranslatableEntity,
 	language: string,
-	fields: TranslatableFields,
+	fields: TranslatableFields
 ): { translations: string; supportedLanguages: string[] } {
 	const translations = parseTranslations(entity.translations);
 
@@ -246,7 +263,7 @@ export function addLanguage(
  */
 export function removeLanguage(
 	entity: TranslatableEntity,
-	language: string,
+	language: string
 ): { translations: string; supportedLanguages: string[] } {
 	const defaultLanguage = entity.defaultLanguage ?? DEFAULT_LANGUAGE;
 
@@ -267,7 +284,7 @@ export function removeLanguage(
 	const { [language]: _removed, ...remainingTranslations } = translations;
 
 	const supportedLanguages = (entity.supportedLanguages ?? [defaultLanguage]).filter(
-		(lang) => lang !== language,
+		(lang) => lang !== language
 	);
 
 	return {

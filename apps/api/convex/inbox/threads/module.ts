@@ -39,7 +39,7 @@ import { sealBodyAtWrite } from '../../lib/messageBody';
 
 export type ConversationThreadStatus = 'open' | 'waiting' | 'resolved' | 'closed';
 
-export type ThreadDraftStatus = 'pending' | 'approved' | 'rejected' | 'sent';
+type ThreadDraftStatus = 'pending' | 'approved' | 'rejected' | 'sent';
 
 /** Who drove the write — coarse actor category for the audit trail. */
 export type ThreadWriteSource = 'inbound' | 'agent' | 'user';

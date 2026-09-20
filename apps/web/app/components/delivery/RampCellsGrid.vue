@@ -15,7 +15,7 @@
  *
  * NOTHING UNMEASURED IS ALARMING. A cell the ramp has not taken over and a cell
  * holding for evidence are both NEUTRAL — a working deployment spends most of
- * its life in exactly those states (plan D2/D10).
+ * its life in exactly those states.
  */
 import {
 	bindingConstraint,

@@ -2,6 +2,40 @@
  * Queue Inspection API Routes
  *
  * Master-key protected endpoints for inspecting GroupMQ queue state.
+ *
+ * WHY THIS FILE IS WRITTEN AGAINST THE QUEUE OBJECT AND NOT AGAINST REDIS
+ *
+ * Until now every handler here read raw Redis keys it had invented: a
+ * `:pending` LIST, an `:active` SET, `LLEN` on the `:completed`/`:failed`
+ * ZSETs, `GET` on the `:job:<id>` hash — under a `owlat-mta:` prefix that
+ * GroupMQ never writes to, because it namespaces its own keys `groupmq:<name>`.
+ * None of those structures exists. So `/stats` answered all zeros, `/pending`
+ * answered an empty list, `/jobs/:id` answered 404, and the delete paths
+ * answered "nothing removed" — on a queue that at one point held 6,037,170
+ * delayed entries. The endpoints were not wrong about the numbers; they were
+ * reading a queue that does not exist, and reporting its emptiness confidently.
+ *
+ * A route layer that restates the queue's internal schema can drift from it
+ * silently, and did, for the entire life of the file. So the schema is no
+ * longer restated: every read goes through GroupMQ's own public API on the
+ * `Queue` instance, which is the only thing that can be wrong at the same time
+ * as the queue itself. The exceptions are the reads GroupMQ has no API for, and
+ * they are not written here: `probeDelayedQueue` and `queue/inspect.ts` own
+ * them, both keyed off `QUEUE_KEY_NAMESPACE`, so the prefix has one owner.
+ *
+ * NO `/flush`. The old `POST /flush?orgId=` claimed to cancel an
+ * organization's pending mail. GroupMQ groups jobs by `{ipPool}:{domain}` —
+ * there is no organization dimension in the queue, and no bulk remove along the
+ * dimension a flush would need. (GroupMQ does have a bounded
+ * `clean(graceTimeMs, limit, status)`, but only over `completed | failed |
+ * delayed`; it cannot touch `waiting`, which is where an org's pending mail
+ * sits.) So the only possible implementation is "read every waiting job id,
+ * fetch every payload, delete the matches", which is unbounded work on exactly
+ * the runaway backlog an operator would reach for it during, and which destroys
+ * deliverable mail from a single unconfirmed HTTP call. It has never once
+ * removed a job, so nothing is lost by deleting it, and `DELETE /jobs/:jobId`
+ * covers the targeted case with the state checks below. Do not reintroduce it
+ * without a queue-side index and a dry-run.
  */
 
 import { Hono } from 'hono';
@@ -11,8 +45,98 @@ import type { EmailJob } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
+import { probeDelayedQueue } from '../queue/delayedOrphans.js';
+import { readDelayedRunAt, scanWaitingByDomain } from '../queue/inspect.js';
 
-const NAMESPACE = 'owlat-mta';
+/**
+ * Ceiling on `/pending?limit=`. This endpoint exists to let an operator eyeball
+ * the head of the queue, not to export it. The unfiltered listing is bounded
+ * more tightly than this anyway: GroupMQ's waiting scan reads at most 500 ids
+ * and, more sharply, only the first 100 groups — which is why `?domain=` does
+ * not go through it.
+ */
+export const PENDING_LIMIT_MAX = 200;
+/** `/pending?limit=` when the caller does not say. */
+export const PENDING_LIMIT_DEFAULT = 50;
+
+/** A queued job as `/pending` reports it. */
+interface QueuedJobSummary {
+	jobId: string;
+	/** GroupMQ group — `{ipPool}:{recipientDomain}`, the FIFO unit. */
+	groupId: string;
+	messageId: string | null;
+	to: string | null;
+	from: string | null;
+	organizationId: string | null;
+	ipPool: string | null;
+	/** When GroupMQ first accepted this job, ms since epoch. */
+	enqueuedAt: number;
+	attempts: number;
+	maxAttempts: number;
+}
+
+/**
+ * The payload fields an operator needs to identify a message, and no more.
+ *
+ * The body (`html`, `text`, `sealedMimeBase64`, attachment bytes) is
+ * deliberately not returned: this is a queue inspector, not a mail reader, and
+ * a listing endpoint that streams 50 customers' message bodies through an admin
+ * HTTP response is a disclosure with no operational use. Sizes are reported so
+ * "why is this job 12 MB" is still answerable.
+ */
+function summarizeJob(job: {
+	id: string;
+	groupId: string;
+	data: EmailJob;
+	timestamp: number;
+	attemptsMade: number;
+	opts: { attempts: number };
+}): QueuedJobSummary {
+	// GroupMQ hands back `null` data for a job whose hash lost its payload.
+	const data = job.data as EmailJob | null;
+	return {
+		jobId: job.id,
+		groupId: job.groupId,
+		messageId: data?.messageId ?? null,
+		to: data?.to ?? null,
+		from: data?.from ?? null,
+		organizationId: data?.organizationId ?? null,
+		ipPool: data?.ipPool ?? null,
+		enqueuedAt: job.timestamp,
+		attempts: job.attemptsMade,
+		maxAttempts: job.opts.attempts,
+	};
+}
+
+/** Encoded size of a string body part, in bytes rather than code units. */
+function utf8Bytes(value: string | undefined): number {
+	return value === undefined ? 0 : Buffer.byteLength(value, 'utf8');
+}
+
+/**
+ * Decoded size of a base64 payload, in bytes — what the message actually
+ * carries, rather than the ~1.33x larger transport encoding of it.
+ */
+function base64Bytes(value: string | undefined): number {
+	return value === undefined ? 0 : Buffer.byteLength(value, 'base64');
+}
+
+/** A query parameter read as a positive integer, or the fallback. */
+function positiveIntParam(raw: string | undefined, fallback: number, max: number): number {
+	const parsed = Number.parseInt(raw ?? '', 10);
+	if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+	return Math.min(parsed, max);
+}
+
+/**
+ * GroupMQ's `getJob` rejects rather than resolving null when the job hash is
+ * gone. Match its message exactly: anything else — a dropped Redis connection,
+ * a NOSCRIPT — must stay a 500 rather than be flattened into "no such job",
+ * which is the class of confident wrong answer this file is being repaired for.
+ */
+function isJobNotFound(err: unknown, jobId: string): boolean {
+	return err instanceof Error && err.message === `Job ${jobId} not found`;
+}
 
 export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: MtaConfig) {
 	const app = new Hono();
@@ -23,222 +147,301 @@ export function createQueueRoutes(queue: Queue<EmailJob>, redis: Redis, config: 
 	// GET /stats — queue depth by state
 	app.get('/stats', async (c) => {
 		try {
-			const stats = await getQueueStats(redis);
-			return c.json(stats);
+			const [counts, groups, delayProbe] = await Promise.all([
+				queue.getJobCounts(),
+				queue.getUniqueGroupsCount(),
+				probeDelayedQueue(redis),
+			]);
+
+			return c.json({
+				/**
+				 * Jobs held in a group, i.e. not yet taken by a worker. GroupMQ
+				 * keeps a delayed job in its group as well as in the delay set,
+				 * so in a healthy queue `delayed` is a SUBSET of this and the two
+				 * do not sum: `waiting - delayed` is what a worker could pick up
+				 * right now.
+				 *
+				 * The containment is an invariant of the HEALTHY state only. A
+				 * delay-set member whose group entry is gone — the 6,037,170-member
+				 * population from the Redis OOM incident — is delayed and not
+				 * waiting, so `delayed` can exceed `waiting` and the subtraction
+				 * goes negative. Read that as the diagnosis it is: a negative
+				 * `waiting - delayed` means the delay set is holding entries
+				 * nothing can drain, and `delayedQueue.status` below names it.
+				 */
+				waiting: counts.waiting,
+				/** Jobs reserved by a worker right now. */
+				active: counts.active,
+				/** Waiting jobs serving a delay before their next attempt. */
+				delayed: counts.delayed,
+				/**
+				 * Retained terminal jobs — bounded by the queue's `keepCompleted`
+				 * / `keepFailed`, so these are retention-window sizes and not
+				 * lifetime totals. Neither is `/delivery-logs`, which is itself
+				 * capped (`DELIVERY_LOG_MAX_LEN`, `DELIVERY_LOG_TTL_HOURS`): the
+				 * lifetime record of what was sent is in Convex, fed by the
+				 * delivery webhooks.
+				 */
+				completed: counts.completed,
+				failed: counts.failed,
+				/** Distinct `{ipPool}:{domain}` groups holding at least one job. */
+				groups,
+				/**
+				 * The same delay-set integrity verdict `/health` reports, minus
+				 * its `delayed` count — that number is already above, and one
+				 * payload carrying two independently-read copies of it is how
+				 * two sources start disagreeing.
+				 */
+				delayedQueue: {
+					status: delayProbe.status,
+					overdue: delayProbe.overdue,
+					sampled: delayProbe.sampled,
+					orphaned: delayProbe.orphaned,
+				},
+			});
 		} catch (err) {
 			logger.error({ err }, 'Failed to get queue stats');
 			return c.json({ error: 'Failed to get queue stats' }, 500);
 		}
 	});
 
-	// GET /pending — list pending jobs
+	// GET /pending — head of the queue
+	//
+	// "Pending" is every job held in a group and not yet taken by a worker,
+	// which includes jobs still serving a retry delay: GroupMQ's waiting scan
+	// reads the group ZSETs and cannot tell the two apart without a per-job
+	// lookup. No per-job `state` is claimed here for that reason — ask
+	// `/jobs/:jobId`, which resolves it properly.
+	//
+	// A bounded sample, not a page. GroupMQ scans a capped number of ids per
+	// call and orders them only best-effort, so an `offset` past that cap would
+	// return an empty array that reads exactly like "no more jobs" — the old
+	// endpoint's failure mode, re-earned. `offset` is therefore gone; `waiting`
+	// and `sampled` are returned so a caller can always tell how much of the
+	// queue it just saw.
+	//
+	// `?domain=` is NOT that sample filtered. "Why is mail to X not moving" is
+	// the query an operator runs during an incident, and answering it from the
+	// unfiltered scan means answering "nothing is queued for X" as soon as the
+	// queue holds more than 100 groups — see `queue/inspect.ts`. It is resolved
+	// against the groups that encode the domain instead, so both the listing and
+	// `waiting` are exact for that domain.
 	app.get('/pending', async (c) => {
-		const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10), 500);
-		const offset = parseInt(c.req.query('offset') ?? '0', 10);
-		const domainFilter = c.req.query('domain');
+		const limit = positiveIntParam(c.req.query('limit'), PENDING_LIMIT_DEFAULT, PENDING_LIMIT_MAX);
+		const domainFilter = c.req.query('domain')?.toLowerCase();
 
 		try {
-			const jobs = await getPendingJobs(redis, limit, offset, domainFilter);
-			return c.json({ jobs, limit, offset });
+			if (domainFilter) {
+				const scan = await scanWaitingByDomain(redis, domainFilter, limit);
+				const hydrated = await Promise.all(
+					scan.jobIds.map(async (jobId) => {
+						// A job settled between the scan and the read is not an
+						// error; it is simply no longer queued. `sampled` counts
+						// the ids, so the gap stays visible.
+						try {
+							return summarizeJob(await queue.getJob(jobId));
+						} catch {
+							return null;
+						}
+					})
+				);
+
+				return c.json({
+					jobs: hydrated.filter((job): job is QueuedJobSummary => job !== null),
+					limit,
+					/** Waiting job ids this call read, before hydration. */
+					sampled: scan.jobIds.length,
+					/** Waiting jobs FOR THIS DOMAIN — exact, not a sample. */
+					waiting: scan.waiting,
+					domain: domainFilter,
+				});
+			}
+
+			const [sample, waiting] = await Promise.all([
+				queue.getJobsByStatus(['waiting'], 0, limit - 1),
+				queue.getWaitingCount(),
+			]);
+
+			return c.json({
+				jobs: sample.map(summarizeJob),
+				limit,
+				/** Waiting jobs this scan could still read a payload for. */
+				sampled: sample.length,
+				/** Waiting jobs in the whole queue. */
+				waiting,
+				domain: null,
+			});
 		} catch (err) {
 			logger.error({ err }, 'Failed to list pending jobs');
 			return c.json({ error: 'Failed to list pending jobs' }, 500);
 		}
 	});
 
-	// GET /jobs/:jobId — full job details
+	// GET /jobs/:jobId — one job's state and attempt history
 	app.get('/jobs/:jobId', async (c) => {
 		const jobId = c.req.param('jobId');
 
 		try {
-			const job = await getJobDetails(redis, jobId);
-			if (!job) {
-				return c.json({ error: 'Job not found' }, 404);
-			}
-			return c.json(job);
+			// One ZSCORE alongside the job read: `Job.opts.delay` is `undefined`
+			// once the job is due, so the delay set's score is the only place the
+			// release time of an overdue job survives.
+			const [job, runAt] = await Promise.all([queue.getJob(jobId), readDelayedRunAt(redis, jobId)]);
+			const data = job.data as EmailJob | null;
+			const now = Date.now();
+
+			return c.json({
+				...summarizeJob(job),
+				/**
+				 * Resolved per job against the delay and processing sets, so
+				 * unlike the `/pending` listing this distinguishes a job a
+				 * worker could take now from one still serving a delay.
+				 */
+				state: job.status,
+				dkimDomain: data?.dkimDomain ?? null,
+				/** First enqueue of the whole defer chain, not of this attempt. */
+				firstEnqueuedAt: data?.firstEnqueuedAt ?? null,
+				/**
+				 * Body sizes only — see `summarizeJob` on why not the body.
+				 *
+				 * Every field is a BYTE count, UTF-8, and every field is named
+				 * for what it counts. The previous shape called itself `bytes`
+				 * and then reported `attachments` as a COUNT (three 4 MB PDFs
+				 * read as `3`), the text parts as UTF-16 code units, `sealedMime`
+				 * as base64 characters, and left `amp` — a whole extra body part
+				 * — out. It answered "why is this job 12 MB" by making a huge job
+				 * look tiny, which is the wrong direction to be wrong in.
+				 */
+				bytes: {
+					htmlBytes: utf8Bytes(data?.html),
+					textBytes: utf8Bytes(data?.text),
+					ampBytes: utf8Bytes(data?.amp),
+					/** Decoded size of the sealed MIME, not its base64 length. */
+					sealedMimeBytes: base64Bytes(data?.sealedMimeBase64),
+					attachmentCount: data?.attachments?.length ?? 0,
+					/** Decoded attachment payload, summed. */
+					attachmentBytes: (data?.attachments ?? []).reduce(
+						(total, attachment) => total + base64Bytes(attachment.contentBase64),
+						0
+					),
+				},
+				processedOn: job.processedOn ?? null,
+				finishedOn: job.finishedOn ?? null,
+				/** When the retry ladder releases this job, ms since epoch. */
+				runAt,
+				/**
+				 * Remaining wait, ms, for a job on the retry ladder — `0`, not
+				 * `null`, once it is due. `null` means "not on the ladder".
+				 */
+				delayMs: runAt === null ? null : Math.max(0, runAt - now),
+				/**
+				 * How long past its release time the job has been sitting, ms.
+				 * Anything much above zero means the promoter is behind or the
+				 * member is stranded (`/stats` → `delayedQueue`), which is the
+				 * state the old `delayMs` reported as "no delay set".
+				 */
+				overdueBy: runAt === null ? null : Math.max(0, now - runAt),
+				lastError: job.failedReason || null,
+			});
 		} catch (err) {
+			if (isJobNotFound(err, jobId)) return c.json({ error: 'Job not found' }, 404);
 			logger.error({ err, jobId }, 'Failed to get job details');
 			return c.json({ error: 'Failed to get job details' }, 500);
 		}
 	});
 
-	// DELETE /jobs/:jobId — cancel a specific job
+	// DELETE /jobs/:jobId — destroy one queued message
+	//
+	// This endpoint did nothing for its entire existence; it does something now,
+	// and what it does is delete mail that would otherwise have been delivered.
+	// Two guards make that survivable:
+	//
+	//  - A job a worker has already reserved is refused. GroupMQ's `remove`
+	//    happily tears an id out of `:processing`, but the SMTP conversation it
+	//    names is in flight in another process and will not stop. Removing it
+	//    does not cancel a delivery, it only destroys the bookkeeping that would
+	//    have recorded one — and, worse, strands the job id in the per-group
+	//    `:active` list that `reserve` gates on, wedging that recipient domain
+	//    forever. So the answer is 409 and "wait for it to settle", which for a
+	//    deferred job is one retry rung away. THE REFUSAL IS DECIDED INSIDE
+	//    `remove.lua` (see `patches/groupmq@1.1.0.patch`): a read here followed
+	//    by a remove there is a race an operator loses on exactly the
+	//    head-of-group job they reach for. The read below is a fast path and a
+	//    source of log identity, not the guard.
+	//  - Every removal is logged with the identity of what was destroyed, so
+	//    "where did that message go" has an answer that is not "nowhere".
+	//
+	// `removed: true` is not quite finality in one narrow case: a deferred
+	// successor whose handoff receipt is still `reserved` is re-enqueued by its
+	// predecessor if that predecessor runs again (`queue/deferHandoff.ts`,
+	// `resumeDeferredHandoff`), because the receipt is the record that the
+	// message still owes a delivery attempt. Delete the successor after the
+	// predecessor has settled, or expect it back once.
 	app.delete('/jobs/:jobId', async (c) => {
 		const jobId = c.req.param('jobId');
 
 		try {
-			const removed = await cancelJob(redis, jobId);
-			return c.json({ success: true, removed });
-		} catch (err) {
-			logger.error({ err, jobId }, 'Failed to cancel job');
-			return c.json({ error: 'Failed to cancel job' }, 500);
-		}
-	});
+			const job = await queue.getJob(jobId);
+			if (job.status === 'active') {
+				return c.json(
+					{
+						error: 'Job is being delivered and cannot be removed',
+						jobId,
+						state: job.status,
+					},
+					409
+				);
+			}
 
-	// POST /flush — cancel all pending jobs for an org
-	app.post('/flush', async (c) => {
-		const orgId = c.req.query('orgId');
-		if (!orgId) {
-			return c.json({ error: 'orgId query parameter required' }, 400);
-		}
+			const summary = summarizeJob(job);
+			const removed = await queue.remove(jobId);
+			if (!removed) {
+				// `remove` collapses three different things into `false`: the job
+				// was gone, the patched script refused it because a worker
+				// reserved it since the read above, or the call itself blew up —
+				// GroupMQ catches Redis errors in `remove` and returns `false`
+				// too. Answering 404 to all three would tell an operator a
+				// message does not exist while it is queued and about to be
+				// delivered, which is the class of confident wrong answer this
+				// file exists to stop. Re-read to find out which it was: a job
+				// that is gone throws `not found` into the catch below and 404s,
+				// and anything else means the job is still in the queue.
+				const survivor = await queue.getJob(jobId);
+				if (survivor.status === 'active') {
+					return c.json(
+						{
+							error: 'Job is being delivered and cannot be removed',
+							jobId,
+							state: survivor.status,
+						},
+						409
+					);
+				}
+				logger.error(
+					{ jobId, state: survivor.status },
+					'Queue reported no removal but the job is still queued'
+				);
+				return c.json({ error: 'Failed to remove job' }, 500);
+			}
 
-		try {
-			const count = await flushOrgJobs(redis, orgId);
-			return c.json({ success: true, flushed: count });
+			logger.warn(
+				{
+					jobId,
+					groupId: summary.groupId,
+					state: job.status,
+					messageId: summary.messageId,
+					organizationId: summary.organizationId,
+					attempts: summary.attempts,
+				},
+				'Queued message removed by operator request'
+			);
+
+			return c.json({ removed: true, jobId, state: job.status });
 		} catch (err) {
-			logger.error({ err, orgId }, 'Failed to flush org jobs');
-			return c.json({ error: 'Failed to flush org jobs' }, 500);
+			if (isJobNotFound(err, jobId)) return c.json({ error: 'Job not found' }, 404);
+			logger.error({ err, jobId }, 'Failed to remove job');
+			return c.json({ error: 'Failed to remove job' }, 500);
 		}
 	});
 
 	return app;
-}
-
-/**
- * Get queue statistics by scanning GroupMQ Redis structures
- */
-async function getQueueStats(redis: Redis): Promise<Record<string, number>> {
-	const stats: Record<string, number> = {
-		pending: 0,
-		active: 0,
-		completed: 0,
-		failed: 0,
-		delayed: 0,
-	};
-
-	// Count jobs in different states via GroupMQ key patterns
-	const pendingCount = await redis.llen(`${NAMESPACE}:pending`);
-	const activeCount = await redis.scard(`${NAMESPACE}:active`);
-	const completedCount = await redis.llen(`${NAMESPACE}:completed`);
-	const failedCount = await redis.llen(`${NAMESPACE}:failed`);
-	const delayedCount = await redis.zcard(`${NAMESPACE}:delayed`);
-
-	stats['pending'] = pendingCount;
-	stats['active'] = activeCount;
-	stats['completed'] = completedCount;
-	stats['failed'] = failedCount;
-	stats['delayed'] = delayedCount;
-
-	return stats;
-}
-
-/**
- * List pending jobs with optional domain filter
- */
-async function getPendingJobs(
-	redis: Redis,
-	limit: number,
-	offset: number,
-	domainFilter?: string
-): Promise<Array<{ jobId: string; data: EmailJob; createdAt?: string }>> {
-	const jobs: Array<{ jobId: string; data: EmailJob; createdAt?: string }> = [];
-
-	// Read pending job IDs
-	const jobIds = await redis.lrange(`${NAMESPACE}:pending`, offset, offset + limit * 2 - 1);
-
-	for (const jobId of jobIds) {
-		if (jobs.length >= limit) break;
-
-		const jobData = await redis.get(`${NAMESPACE}:job:${jobId}`);
-		if (!jobData) continue;
-
-		try {
-			const parsed = JSON.parse(jobData);
-			const data = parsed.data as EmailJob;
-
-			// Apply domain filter
-			if (domainFilter) {
-				const toDomain = data.to.split('@')[1]?.toLowerCase();
-				if (toDomain !== domainFilter.toLowerCase()) continue;
-			}
-
-			jobs.push({
-				jobId,
-				data,
-				createdAt: parsed.createdAt,
-			});
-		} catch {
-			// Skip malformed job data
-		}
-	}
-
-	return jobs;
-}
-
-/**
- * Get full job details including attempt history
- */
-async function getJobDetails(
-	redis: Redis,
-	jobId: string
-): Promise<Record<string, unknown> | null> {
-	const jobData = await redis.get(`${NAMESPACE}:job:${jobId}`);
-	if (!jobData) return null;
-
-	try {
-		const parsed = JSON.parse(jobData);
-
-		// Check job state
-		const isActive = await redis.sismember(`${NAMESPACE}:active`, jobId);
-		const isPending = await redis.lpos(`${NAMESPACE}:pending`, jobId);
-
-		let state = 'unknown';
-		if (isActive) state = 'active';
-		else if (isPending !== null) state = 'pending';
-
-		return {
-			jobId,
-			state,
-			data: parsed.data,
-			createdAt: parsed.createdAt,
-			attempts: parsed.attempts ?? 0,
-			lastError: parsed.lastError,
-			nextRetry: parsed.nextRetry,
-		};
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Cancel a specific pending job
- */
-async function cancelJob(redis: Redis, jobId: string): Promise<boolean> {
-	// Remove from pending list
-	const removed = await redis.lrem(`${NAMESPACE}:pending`, 1, jobId);
-	// Also remove from delayed set
-	await redis.zrem(`${NAMESPACE}:delayed`, jobId);
-	// Clean up job data
-	if (removed > 0) {
-		await redis.del(`${NAMESPACE}:job:${jobId}`);
-	}
-	return removed > 0;
-}
-
-/**
- * Flush all pending jobs for a specific organization
- */
-async function flushOrgJobs(redis: Redis, orgId: string): Promise<number> {
-	let count = 0;
-	const jobIds = await redis.lrange(`${NAMESPACE}:pending`, 0, -1);
-
-	for (const jobId of jobIds) {
-		const jobData = await redis.get(`${NAMESPACE}:job:${jobId}`);
-		if (!jobData) continue;
-
-		try {
-			const parsed = JSON.parse(jobData);
-			if (parsed.data?.organizationId === orgId) {
-				const removed = await redis.lrem(`${NAMESPACE}:pending`, 1, jobId);
-				if (removed > 0) {
-					await redis.del(`${NAMESPACE}:job:${jobId}`);
-					count++;
-				}
-			}
-		} catch {
-			// Skip malformed
-		}
-	}
-
-	return count;
 }

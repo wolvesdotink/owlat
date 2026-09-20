@@ -1,5 +1,5 @@
 /**
- * Ramp controller — THE MEASUREMENT SHAPES (plan D12).
+ * Ramp controller — THE MEASUREMENT SHAPES.
  *
  * A verdict is never a boolean: it carries the numbers that produced it, and the
  * audit row and the dashboard both render them. That makes the SHAPE of a
@@ -22,7 +22,7 @@
  * one-armed gate has no comparison, and a renderer must be able to tell "no
  * second arm by design" from "a second arm we could not measure".
  */
-export interface OneArmedMeasurementShape {
+interface OneArmedMeasurementShape {
 	readonly referenceRate: null;
 	readonly thresholdRate: number;
 	readonly toleranceValuePp: null;

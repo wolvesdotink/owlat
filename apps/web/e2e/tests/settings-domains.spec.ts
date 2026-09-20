@@ -23,7 +23,9 @@ test.describe('Settings — Sending Domains', () => {
 		await domainsPage.addDomain(domain);
 
 		// Verify the domain appears on the page
-		await expect(page.getByText(domain)).toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText(domain, { exact: true }).first()).toBeVisible({
+			timeout: 10_000,
+		});
 	});
 
 	test('empty domain shows validation error', async ({ page }) => {
@@ -45,12 +47,14 @@ test.describe('Settings — Sending Domains', () => {
 		await domainsPage.addDomain(domain);
 
 		// Verify it appeared
-		await expect(page.getByText(domain)).toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText(domain, { exact: true }).first()).toBeVisible({
+			timeout: 10_000,
+		});
 
 		// Delete the domain
 		await domainsPage.deleteDomain(domain);
 
 		// Verify it's gone
-		await expect(page.getByText(domain)).not.toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText(domain, { exact: true })).toHaveCount(0, { timeout: 10_000 });
 	});
 });

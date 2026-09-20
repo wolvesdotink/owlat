@@ -7,7 +7,7 @@
  * identical read is a replay to acknowledge without writing, and an older read
  * is a late-arriving duplicate that must not overwrite fresher data.
  */
-export type ObservationVerdict = 'stale' | 'replayed' | 'write';
+type ObservationVerdict = 'stale' | 'replayed' | 'write';
 
 /** What to do with an observation given what is already stored for its day. */
 export function observationVerdict(

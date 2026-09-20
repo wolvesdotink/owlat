@@ -19,7 +19,6 @@
  */
 
 import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
-import net from 'node:net';
 import Redis from 'ioredis-mock';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -27,6 +26,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { SmtpListener } from '@owlat/smtp-listener';
+import { Client } from '@owlat/smtp-listener/testClient';
 import { createBounceServer } from '../server.js';
 import type { MtaConfig } from '../../config.js';
 
@@ -82,59 +82,6 @@ afterEach(async () => {
 		if (l) await l.close();
 	}
 });
-
-/** A minimal raw-socket SMTP client for adversarial drive-by tests. */
-class Client {
-	private buf = '';
-	closed = false;
-	private constructor(readonly socket: net.Socket) {
-		socket.setEncoding('utf8');
-		socket.on('data', (d: string) => {
-			this.buf += d;
-		});
-		socket.on('close', () => {
-			this.closed = true;
-		});
-		socket.on('error', () => {
-			this.closed = true;
-		});
-	}
-
-	static connect(port: number): Promise<Client> {
-		return new Promise((resolve) => {
-			const socket = net.connect(port, '127.0.0.1', () => resolve(new Client(socket)));
-		});
-	}
-
-	write(s: string): void {
-		this.socket.write(s);
-	}
-
-	end(): void {
-		this.socket.end();
-	}
-
-	async waitFor(pred: (buf: string) => boolean, timeoutMs = 3000): Promise<void> {
-		const deadline = Date.now() + timeoutMs;
-		for (;;) {
-			if (pred(this.buf)) return;
-			if (Date.now() > deadline) throw new Error(`timed out; buffer so far:\n${this.buf}`);
-			await new Promise((r) => setTimeout(r, 10));
-		}
-	}
-
-	waitCode(code: number, timeoutMs = 3000): Promise<void> {
-		return this.waitFor((b) => new RegExp(`(^|\\n)${code}[ -]`, 'm').test(b), timeoutMs);
-	}
-
-	async waitClose(timeoutMs = 3000): Promise<void> {
-		const deadline = Date.now() + timeoutMs;
-		while (!this.closed) {
-			if (Date.now() > deadline) throw new Error('timed out waiting for close');
-			await new Promise((r) => setTimeout(r, 10));
-		}
-	}
-}
 
 /** Prove the listener still serves: greeting + EHLO advertising the real SIZE. */
 async function expectStillServes(port: number): Promise<void> {
@@ -206,7 +153,8 @@ describe('MX listener hostile input is bounded (production config)', () => {
 		const { port } = await start();
 		const c = await Client.connect(port);
 		await c.waitCode(220);
-		c.end();
+		c.socket.end(); // a graceful FIN is the subject here, not a teardown
+
 		await c.waitClose();
 		await expectStillServes(port);
 	});

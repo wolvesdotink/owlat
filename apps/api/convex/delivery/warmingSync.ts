@@ -6,6 +6,7 @@ import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import { normalizeDeliverabilityRoutingSnapshot } from '@owlat/shared/deliverabilityRouting';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
 import { ipReadinessFieldValidators } from './readinessValidators';
+import { logError, logWarn } from '../lib/runtimeLog';
 
 /**
  * Sync IP warming state from the MTA's /ip-reputation endpoint.
@@ -40,15 +41,20 @@ export const syncWarmingState = internalAction({
 			});
 
 			if (!response.ok) {
-				// eslint-disable-next-line no-console
-				console.error(`[WarmingSync] MTA returned ${response.status}: ${response.statusText}`);
+				logError('[WarmingSync] MTA rejected the IP reputation request', {
+					status: response.status,
+					statusText: response.statusText,
+					organizationId,
+				});
 				return;
 			}
 
 			const payload: unknown = await response.json();
 			const normalized = normalizeIpReputationPayload(payload);
 			if (!normalized) {
-				console.error('[WarmingSync] MTA returned an invalid IP reputation payload');
+				logError('[WarmingSync] MTA returned an invalid IP reputation payload', {
+					organizationId,
+				});
 				return;
 			}
 
@@ -80,15 +86,18 @@ export const syncWarmingState = internalAction({
 				payload !== null &&
 				'routing' in payload
 			) {
-				console.error('[WarmingSync] MTA returned stale or invalid deliverability routing signals');
+				logError('[WarmingSync] MTA returned stale or invalid deliverability routing signals', {
+					organizationId,
+					generatedAt: routing?.generatedAt,
+					now,
+				});
 			}
 
 			// Check if approaching capacity limit (for admin alerts)
 			if (normalized.phase === 'graduated' && normalized.totalDailyCap > 0) {
 				const usageRate = normalized.totalSentToday / normalized.totalDailyCap;
 				if (usageRate > 0.8) {
-					// eslint-disable-next-line no-console
-					console.warn(
+					logWarn(
 						`[WarmingSync] IP capacity alert: ${Math.round(usageRate * 100)}% of daily cap used ` +
 							`(${normalized.totalSentToday.toLocaleString()} / ${normalized.totalDailyCap.toLocaleString()}). ` +
 							`Consider adding more IPs.`
@@ -96,8 +105,9 @@ export const syncWarmingState = internalAction({
 				}
 			}
 		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.error('[WarmingSync] Failed to sync warming state:', error);
+			// Fail soft: the cron runs again next tick and the last good warming
+			// state stays in place rather than being clobbered with a guess.
+			logError('[WarmingSync] failed to sync warming state', { mtaUrl, error });
 		}
 	},
 });

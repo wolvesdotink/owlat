@@ -2111,6 +2111,11 @@
 				"addMailbox": "Add test mailbox",
 				"credentialsRotated": "Credentials rotated",
 				"detailsLabel": "Measurement details",
+				"disconnect": "Disconnect",
+				"disconnectAriaLabel": "Disconnect the test mailbox {address}",
+				"disconnectDialogDescription": "Owlat stops sending test copies to {address} and forgets its password. Everything it has measured so far is kept, and the slot it held frees up for another one.",
+				"disconnectDialogTitle": "Disconnect this test mailbox?",
+				"disconnectOperation": "Disconnect test mailbox",
 				"feedbackConnected": "connected",
 				"feedbackNotConnected": "not connected",
 				"feedsConfigured": "{count} feed configured | {count} feeds configured",
@@ -2123,7 +2128,8 @@
 				},
 				"summary": "{count} test mailboxes connected · Microsoft feedback {feedback}",
 				"testMailboxes": "Test mailboxes",
-				"title": "Measurement coverage"
+				"title": "Measurement coverage",
+				"toastDisconnected": "{address} disconnected."
 			},
 			"domainDnsGuidance": {
 				"heading": "DNS for {transport}"
@@ -2545,8 +2551,11 @@
 					"finish": "Finish",
 					"server": "Provision"
 				},
+				"jumpToLatest": "Jump to latest",
+				"logRegionLabel": "Server log output",
 				"progressLabel": "Server provisioning progress",
 				"serverLog": "Server log",
+				"trimmed": "{count} earlier line trimmed | {count} earlier lines trimmed",
 				"waitingForOutput": "Waiting for output…"
 			},
 			"workspaceMenu": {
@@ -2618,6 +2627,48 @@
 				"value": "Value",
 				"verified": "Verified"
 			},
+			"externalReceiving": {
+				"providers": {
+					"google": "Google Workspace",
+					"microsoft": "Microsoft 365",
+					"other": "your current provider",
+					"otherOption": "Another provider"
+				}
+			},
+			"externalReceivingSection": {
+				"heading": "Receiving (stays with your provider)",
+				"operation": "Check where this domain's mail is delivered",
+				"introHeadline": "Don't change your MX records.",
+				"intro": "{headline} Mail for {domain} keeps going to {provider} — Owlat only sends from this domain. Nothing on this page asks you to change where your incoming mail is delivered.",
+				"mx": {
+					"pointsHereHeadline": "Incoming mail is no longer reaching your provider.",
+					"pointsHere": "{headline} The MX record for {domain} resolves to this Owlat instance ({hosts}), so delivery no longer sits with {provider} — every message sent to this domain is arriving here instead. Restore your provider's MX records at your DNS host to get your mail back.",
+					"missing": "No MX record found for {domain}, so mail sent to this domain can't be delivered anywhere right now. Publish the MX records you get from {provider} at your DNS host. Owlat can still send from the domain either way.",
+					"confirmed": "Confirmed — mail for {domain} is still delivered to {provider} ({hosts}). Leave these records exactly as they are.",
+					"elsewhere": "Mail for {domain} is delivered to {hosts}. That is not this Owlat instance, so your incoming mail is unaffected — just check it is the host you expect.",
+					"providerMismatchHeadline": "That looks like {observed}, not {declared}.",
+					"providerMismatch": "{headline} This domain is set up for {declared}, so the SPF record above authorizes {declared} and Owlat. If mail now really lives at {observed}, change the provider below so the SPF record covers what you send from there too."
+				},
+				"bounces": {
+					"headline": "Bounces use a subdomain of their own.",
+					"body": "{headline} Delivery reports come back to {host}, which is a separate name — the MX record for {domain} itself is never touched."
+				},
+				"spf": {
+					"mergedHeadline": "SPF is already merged.",
+					"merged": "{headline} The SPF record above carries the authorization from {provider} and Owlat's in one single record. Publish it exactly as shown and don't add a second record starting with v=spf1 — two of them is a permanent error.",
+					"manualHeadline": "Merge the SPF record yourself.",
+					"manual": "{headline} Owlat doesn't know your provider's SPF entry, so the record above authorizes Owlat only. Fold it into the SPF record you already publish, so there is exactly one record starting with v=spf1 — publishing two is a permanent error that fails SPF for everything you send.",
+					"noneHeadline": "There is no SPF record yet.",
+					"none": "{headline} Owlat has not generated one for this domain, so there is nothing above to publish. Keep the SPF record you publish for {provider} as it is. Once setup finishes, come back and merge the generated record into it.",
+					"addIncludeHeadline": "Add your provider's SPF entry.",
+					"addInclude": "{headline} The record above authorizes Owlat but not {provider}. Add {include} to it before you publish, so one record starting with v=spf1 covers both. A second record starting with v=spf1 is a permanent error that fails SPF for everything you send."
+				},
+				"migrate": {
+					"headline": "Want to read this mail in Owlat?",
+					"body": "{headline} Connect the mailbox over IMAP. Delivery and the mail itself stay with {provider}; Owlat only syncs a copy so you can read and reply here.",
+					"link": "Connect a mailbox"
+				}
+			},
 			"receivingDnsSection": {
 				"firewall": {
 					"body": "{headline} other mail servers connect to {mailHost} on TCP port {portCode} to deliver mail, so open inbound TCP {port} on your firewall / security group. Many cloud providers block port {port} by default — confirm your host allows inbound SMTP.",
@@ -2644,6 +2695,39 @@
 				},
 				"reverseDnsOperation": "Check receiving reverse DNS"
 			},
+			"receivingModeChoice": {
+				"legend": "Who receives mail for this domain?",
+				"owlat": {
+					"label": "Owlat receives it",
+					"hint": "Owlat becomes the mail server for this domain. You publish an MX record and incoming mail arrives here."
+				},
+				"external": {
+					"label": "Keep my current provider",
+					"hint": "Owlat only sends. Whoever handles your mail today keeps every incoming message, and your MX records stay exactly as they are."
+				},
+				"providerLabel": "Who receives mail for it today?",
+				"reassurance": "Owlat will never ask you to change an MX record for this domain. Every record it generates is a sending record, and the SPF record is merged with your provider's so both stay authorized."
+			},
+			"receivingModeSwitch": {
+				"heading": "Receiving mode",
+				"operation": "Update receiving mode",
+				"current": {
+					"owlat": "Owlat receives mail for this domain.",
+					"external": "Receiving stays with {provider}."
+				},
+				"change": "Change",
+				"save": "Save receiving mode",
+				"consequence": "Saving regenerates this domain's SPF record and drops the domain back to pending, so you have to publish the updated record and verify again. Owlat never changes an MX record for you.",
+				"confirm": {
+					"title": "Change who receives this mail?",
+					"description": "{domain} goes back to pending and its SPF record is regenerated, so you have to publish the new record and verify again. Nothing changes at your DNS host until you do it yourself.",
+					"action": "Change receiving mode"
+				},
+				"toasts": {
+					"external": "Receiving stays with your provider. Publish the updated SPF record, then verify again.",
+					"owlat": "Owlat will receive mail for this domain. Publish the updated records, then verify again."
+				}
+			},
 			"recordRow": {
 				"autoRecheckTitle": "We recheck your DNS automatically every 30 seconds while this panel is open.",
 				"bouncesVia": "bounces via {host}",
@@ -2666,6 +2750,7 @@
 					"headline": "What this domain does."
 				},
 				"mailFromHeading": "MAIL FROM Domain",
+				"receivingVia": "receiving via {provider}",
 				"registering": "Registering...",
 				"registrationFailed": "Registration Failed",
 				"removeDomain": "Remove domain",
@@ -3647,6 +3732,15 @@
 				"connectSharedOperation": "Connect team inbox",
 				"emailPlaceholder": "you{'@'}example.com",
 				"failed": "failed",
+				"google": {
+					"continue": "Sign in with Google",
+					"desktopHint": "Finish signing in with Google in the browser window that just opened. This page updates by itself once the mailbox is connected.",
+					"explain": "Sign in with Google instead of creating an app password. Owlat receives only a revocable token for your mail, never your password.",
+					"or": "or",
+					"reconnect": "Reconnect with Google",
+					"reconnectExplain": "This mailbox is connected with Google sign-in. Reconnecting restores its access without an app password — or switch it to an app password below.",
+					"startOperation": "Start Google sign-in"
+				},
 				"imapHost": "IMAP host",
 				"imapHostPlaceholder": "imap.example.com",
 				"imapPort": "IMAP port",
@@ -4630,6 +4724,44 @@
 				"delete": "Delete folder",
 				"deleteAriaLabel": "Delete the folder {name}",
 				"empty": "No custom folders yet. Create one above."
+			},
+			"postboxConnectedAccountCard": {
+				"connectCta": "Connect a mailbox",
+				"delete": "Disconnect and delete",
+				"deleteConfirm": "Delete everything",
+				"deleteDialogDescription": "Every message, draft, folder and label brought over is erased here, along with the saved sign-in and any app passwords for this mailbox. Mail at your provider is untouched. This cannot be undone.",
+				"deleteDialogTitle": "Delete this mailbox and everything in it?",
+				"deleteOperation": "Delete mailbox and its mail",
+				"deleteRetained": "Delete the mail that was kept",
+				"deleteRetainedDialogDescription": "Every message, draft, folder and label brought over from this mailbox is erased, along with any app passwords for it. Mail at your provider is untouched. This cannot be undone.",
+				"deletingBody": "Deleting this mailbox and everything brought over from it. You can leave this page.",
+				"disconnect": "Disconnect",
+				"disconnectDialogDescription": "Owlat stops fetching mail and forgets how it signs in to this mailbox. The mailbox and the mail already brought over leave your inbox, and both come back if you connect the same address again.",
+				"disconnectDialogImporting": "The import still running will stop. Owlat forgets how it signs in to this mailbox; the mailbox and the mail brought over so far leave your inbox and come back if you connect the same address again.",
+				"disconnectDialogTitle": "Disconnect this mailbox?",
+				"disconnectOperation": "Disconnect mailbox",
+				"disconnectedOn": "Disconnected {when}",
+				"emptyBody": "No other mailbox is connected. Owlat can bring mail over from Gmail, Fastmail, Outlook or any other provider.",
+				"errorFallback": "Owlat can't reach this mailbox at the moment.",
+				"heading": "Connected mailbox",
+				"lastSynced": "Last checked for new mail {when}",
+				"loadError": "Owlat could not load your connected mailbox just now. Reload the page to try again.",
+				"loading": "Loading your connected mailbox",
+				"neverSynced": "No mail has come through yet",
+				"reauthorize": "Reconnect this mailbox",
+				"reconnect": "Connect it again",
+				"retainedBody": "Nothing is syncing and the saved sign-in is gone. The mail brought over before you disconnected is out of your inbox but not deleted: connect the same address again to bring it back, or delete it for good.",
+				"retainedRemovedBody": "An admin removed this mailbox from Owlat. The mail brought over from it is still stored here and nothing is syncing. Connecting the address again gives you a new, empty mailbox, so delete this one if you no longer want what it kept.",
+				"status": {
+					"authError": "Needs reconnecting",
+					"connected": "Syncing",
+					"error": "Connection problem",
+					"pending": "Connecting"
+				},
+				"toastCredentialsUpdated": "Password updated.",
+				"toastDeleting": "Deleting this mailbox and its mail.",
+				"toastDisconnected": "Mailbox disconnected.",
+				"updateCredentials": "Update password"
 			}
 		},
 		"preferences": {
@@ -4947,6 +5079,52 @@
 				"ofLimit": "of {amount}",
 				"spendBudget": "Spend budget",
 				"title": "LLM spend · last 7 days"
+			},
+			"portChecksCard": {
+				"title": "Network ports",
+				"intro": "Features here depend on ports your hosting provider can block without telling you — a blocked port looks like a broken feature, not like a firewall. These probes run from this server when you ask them to.",
+				"run": "Check ports",
+				"running": "Checking…",
+				"idle": "Nothing has been checked yet. Running this opens one connection per port to a well-known host (Google's mail servers for the mail ports, ghcr.io for image pulls) and closes it immediately — no mail is sent and no command is issued.",
+				"unreachable": "Port checks need the updater sidecar, and it did not answer. On an instance that runs the full compose stack, check that the `updater` service is up.",
+				"allOpen": "Every port this instance needs is open.",
+				"degraded": "{count} port this instance needs is closed. | {count} ports this instance needs are closed.",
+				"degradedHint": "A blocked port is almost always the hosting provider, not this server. Ask them to open it for this machine — many block outbound mail ports by default.",
+				"notNeeded": "not needed by your current setup",
+				"checkedAt": "Checked at {time}",
+				"unknownError": "The port check failed for an unknown reason.",
+				"groups": {
+					"inbound": "Inbound — services listening on this server",
+					"outbound": "Outbound — this server reaching the internet"
+				},
+				"groupHints": {
+					"inbound": "Checked from inside the stack, so this proves the service is listening. Whether the internet gets through depends on your provider firewall, which nothing on this machine can test.",
+					"outbound": "Checked end to end against a real host, so this is exactly the path the feature takes."
+				},
+				"status": {
+					"open": "open",
+					"listening": "listening",
+					"blocked": "blocked",
+					"refused": "nothing listening",
+					"error": "could not tell",
+					"skipped": "not running here",
+					"rejected": "rejected"
+				},
+				"needs": {
+					"inbound-https": "The app, the API, webhooks, tracking and click links, and the desktop app",
+					"inbound-http": "Renewing the TLS certificate over Let's Encrypt",
+					"inbound-smtp": "Receiving mail and delivery bounces on the built-in mail server",
+					"inbound-imaps": "Reading the built-in mailbox from Apple Mail, Outlook or a phone",
+					"outbound-smtp": "Delivering mail straight to recipient servers",
+					"outbound-submission": "Handing mail to an external SMTP relay",
+					"outbound-smtps": "Sending from a connected mailbox over implicit TLS",
+					"outbound-imaps": "Connecting an existing mailbox to a team inbox or the Postbox",
+					"outbound-https": "Updates, image pulls, and every provider and AI API",
+					"outbound-dns": "MX lookups for delivery, domain verification, and blocklist checks"
+				},
+				"unknown": "{count} port this instance needs could not be measured. | {count} ports this instance needs could not be measured.",
+				"unknownHint": "The probe reached neither a verdict nor a firewall — the service that would answer is not running here, or the name did not resolve. That is not the same as a closed port, so nothing is claimed either way.",
+				"declined": "The port check did not run. The updater is up; it declined this request."
 			},
 			"updateProgress": {
 				"heading": "Updating to v{version}",
@@ -5620,6 +5798,13 @@
 						"title": "Team & access"
 					}
 				},
+				"claimPlatform": {
+					"action": "Enable for my account",
+					"body": "Nobody on this instance holds platform admin, so system updates, backups, and the operator console are unreachable. As the owner of this workspace you can take that role now — you'll be able to grant it to other members afterwards.",
+					"operation": "Claim platform admin",
+					"success": "Operator tools enabled. System updates, backups, and the operator console are now available.",
+					"title": "Operator tools are not enabled yet"
+				},
 				"deliveryVerdict": "Delivery verdict",
 				"eyebrow": "Administration",
 				"learnMore": "Learn more →",
@@ -5762,6 +5947,68 @@
 				},
 				"aiProvider": {
 					"connectionWorks": "Connection works",
+					"decision": {
+						"apiKeyHelp": "Sent once over TLS, encrypted at rest, and never shown again. Leave it blank to keep the key already on file.",
+						"apiKeyLabel": "Decision API key",
+						"baseUrlDisclosure": "Advanced: custom API origin (proxy / gateway)",
+						"baseUrlHelp": "The origin only, like https://api.example.com. The endpoint path is appended for you, so a full endpoint URL here would be requested twice over.",
+						"baseUrlLabel": "API origin",
+						"consent": {
+							"acknowledge": "I have read what leaves this deployment, and I am enabling TypeSafe with a key of our own.",
+							"controller": "Who answers for it: in a self-hosted deployment you are the data controller and TypeSafe is your processor, not ours. Owlat brokers no keys and signs nothing on your behalf.",
+							"endpoint": "Where it goes: every decision request is sent to {host} over TLS, and to no other third party.",
+							"payload": "What leaves: the visible text of the item being judged — a message, a draft, an excerpt of a thread — and the questions asked about it. No attachments, no files, no images, no credentials.",
+							"privacyLink": "TypeSafe's privacy statement and contact",
+							"retention": "Region, retention and training: their documentation states none of the three, and the US-only claim comes from a launch post. Ask them in writing before you route regulated mail through this plane.",
+							"title": "Before you turn this on",
+							"vendor": "Who it is: TypeSafe, the company behind the Jev decision models. You bring your own key; it is encrypted at rest inside your deployment and never leaves it in readable form."
+						},
+						"degraded": {
+							"breakerOpen": "The plane has failed often enough to be cut off for the moment. Until it recovers, judgements run the way they did before it was configured.",
+							"keyMissing": "No key is stored for this provider. Unless this deployment supplies TYPESAFE_API_KEY in its environment, every judgement resolves to your language model instead.",
+							"languageBacked": "Your language model is answering these judgements. It returns a label without a calibrated probability, so a number that looks like confidence here is the model's own guess about itself.",
+							"testFailed": "The last key test came back with an error, so the stored configuration may not be able to run.",
+							"title": "This plane is degraded"
+						},
+						"description": "Configure a dedicated provider for yes/no, category and score judgements. Saving its settings does not enable requests: enable or pause the decision plane separately in Features.",
+						"enableDisclosure": "Configure a dedicated decision provider",
+						"fallback": {
+							"description": "When a decision call fails, one hop onto your language model can answer instead. It is decided per surface, because the same hop is a safety net on one path and an open tab on another.",
+							"never": "Never",
+							"title": "Fall back to the language model"
+						},
+						"getKey": "Get a key",
+						"health": {
+							"attempts": "Measured over {count} decision calls.",
+							"description": "What the plane did over the last {hours} hours, counted from the same ledger your spend ceiling reads.",
+							"fallback": "Answered by your language model instead",
+							"throttled": "Refused by the provider (rate limit or overload)",
+							"title": "Recent activity",
+							"uncalibrated": "Came back without a calibrated probability"
+						},
+						"modelHint": "Pinned to a version on purpose. You can name another one, and it is the id that gets sent — but answers from any version other than the pinned one are treated as uncalibrated, so every threshold goes inert until the calibration has been re-run.",
+						"modelLabel": "Decision model",
+						"offBody": "Your language model answers every yes/no, category and score judgement, exactly as it does today. Nothing is sent to a third-party decision provider.",
+						"offTitle": "No decision provider — nothing leaves your deployment",
+						"providerLabel": "Decision provider",
+						"saveFirstTest": "Save first, then test.",
+						"testConnection": "Test decision key",
+						"testOk": "The provider answered a test question — the key, the endpoint and the model version all work",
+						"thresholds": {
+							"active": "These apply to every judgement the plane answers.",
+							"description": "Each answer type is judged on its own scale, so there is no single confidence slider here. A yes/no answer carries no confidence field at all: its probability is the answer.",
+							"inert": "These are inert while the plane is degraded. Nothing reads a probability off it, so every surface keeps the deterministic answer it had before.",
+							"title": "Answer thresholds"
+						},
+						"title": "Decision provider",
+						"feature": {
+							"disabled": "Decision requests are off. After saving your provider, enable AI and Decision plane in Features to test it.",
+							"enabled": "Decision requests are enabled in Features. Tests use your saved provider settings.",
+							"loading": "Checking whether decision requests are enabled…",
+							"error": "Could not check the feature status. Testing is unavailable until the status is confirmed.",
+							"manage": "Manage in Features"
+						}
+					},
 					"embeddings": {
 						"apiKeyHelp": "Encrypted at rest, never shown again.",
 						"apiKeyLabel": "Embedding API key",
@@ -5864,6 +6111,74 @@
 					"subtitleDomainLink": "sending domain",
 					"subtitleTransportLink": "delivery provider",
 					"title": "Messaging channels"
+				},
+				"desktopUpdates": {
+					"auditLine": "Last changed by {who}, {date}.",
+					"auditLineUnknown": "Last changed {date}.",
+					"auditNever": "Nobody has changed this yet — the instance is running on the default.",
+					"channel": {
+						"label": "Channel",
+						"prerelease": "Include pre-releases",
+						"stable": "Stable"
+					},
+					"checkNow": "Check now",
+					"checkedToast": "Release list refreshed.",
+					"defer": {
+						"help": "A release is not offered until this long after GitHub published it. 0 to {max} hours.",
+						"invalid": "Enter a whole number of hours, 0 to {max}.",
+						"label": "Wait before offering a new release",
+						"suffix": "hours"
+					},
+					"empty": {
+						"description": "This instance has not asked GitHub what it has published. Check now to fill the list.",
+						"title": "No releases cached yet"
+					},
+					"intro": "What connected Owlat desktop apps are offered. Bundles are downloaded from GitHub and verified on the device.",
+					"lastCheckError": "Last check had an error: {error}",
+					"lines": {
+						"desktop": "desktop-only line",
+						"unified": "unified line"
+					},
+					"modes": {
+						"label": "Mode",
+						"latest": {
+							"description": "Offer the newest cached release on the channel below.",
+							"title": "Latest"
+						},
+						"paused": {
+							"description": "Offer nothing at all. Apps keep the version they have until you turn this back on.",
+							"title": "Paused"
+						},
+						"pinned": {
+							"description": "Hold the fleet on one known-good release. Apps already past it stay where they are.",
+							"title": "Pinned to…"
+						}
+					},
+					"newest": {
+						"checked": "checked {date}",
+						"label": "Newest release",
+						"neverChecked": "never checked",
+						"none": "Nothing cached yet",
+						"published": "published {date}"
+					},
+					"pageTitle": "Desktop app updates — Owlat",
+					"pin": {
+						"label": "Release to pin to",
+						"noneCached": "No cached release on this channel to pin to. Check now first.",
+						"placeholder": "Choose a cached release"
+					},
+					"readOnly": "You can read this policy but not change it. Ask an owner or an admin.",
+					"releases": {
+						"line": "Line",
+						"notes": "Release notes",
+						"prerelease": "pre-release",
+						"published": "Published",
+						"title": "Cached releases",
+						"version": "Version"
+					},
+					"save": "Save",
+					"savedToast": "Desktop update policy saved.",
+					"title": "Desktop app updates"
 				},
 				"emailTheme": {
 					"backgroundColor": "Background Color",
@@ -6139,6 +6454,10 @@
 							"description": "Messaging channels available across the instance.",
 							"title": "Channels"
 						},
+						"desktopUpdates": {
+							"description": "Choose which release connected desktop apps install, or hold them all.",
+							"title": "Desktop updates"
+						},
 						"emailTheme": {
 							"description": "Default visual styling for messages sent by this workspace.",
 							"title": "Email theme"
@@ -6410,6 +6729,7 @@
 					"admins": {
 						"add": "Add admin",
 						"added": "Added",
+						"allPromoted": "Every member already holds platform admin.",
 						"footnote": "Only superadmins can add or remove platform admins. You cannot remove yourself.",
 						"role": "Role",
 						"title": "Platform admins"
@@ -6847,6 +7167,47 @@
 						"action": "Create your first team inbox",
 						"description": "Create a shared address like {supportAddress} so your whole team can read and reply from one place. You choose who's a member; everyone else can't see it.",
 						"title": "No team inboxes yet"
+					},
+					"import": {
+						"action": "Import history",
+						"actionTitle": "Import the mail that was already in this inbox",
+						"cancel": "Stop the import",
+						"cancelDialog": {
+							"description": "Stop importing the existing mail for {address}? Everything imported so far is kept, and you can start again later.",
+							"thisInbox": "this inbox",
+							"title": "Stop this import?"
+						},
+						"cancelled": "Import stopped. The {imported} messages imported so far were kept.",
+						"completed": "Import finished — {imported} messages are now in this inbox.",
+						"completedIndexed": "{indexed} conversations were learned from.",
+						"completedSkipped": "{count} message couldn't be imported and is still on the server | {count} messages couldn't be imported and are still on the server",
+						"count": "{imported} of {total} messages imported",
+						"description": "Bring in the mail that was already in this inbox before you connected it. Everything found is added to the team inbox in Owlat; nothing is changed or removed at the provider.",
+						"discovering": "Looking through the inbox for what there is to import…",
+						"discoveringFolders": "Counting folders…",
+						"failed": "The import stopped before it finished.",
+						"failedKept": "The {imported} messages imported so far were kept.",
+						"idleNote": "A large archive can take a few hours. You can close this panel — the import keeps running, and imported conversations never land in the reply queue.",
+						"importing": "Bringing the existing mail in. This keeps running if you close the panel.",
+						"indexCount": "{indexed} of {imported} conversations learned",
+						"indexProgressLabel": "Learning progress",
+						"indexing": "Learning from the imported mail.",
+						"inline": {
+							"discovering": "History import starting…",
+							"failed": "The history import stopped before it finished.",
+							"importing": "History import in progress · {imported} of {total}",
+							"indexing": "Learning from the imported mail…"
+						},
+						"knowledgeDescription": "Builds the shared knowledge profile for each contact from this team's history. Off by default, because it reads the whole archive.",
+						"knowledgeLabel": "Also learn from the imported mail",
+						"progressLabel": "Import progress",
+						"reconnectFirst": "Reconnect this inbox before importing its history.",
+						"retry": "Try again",
+						"start": "Import existing mail",
+						"startAgain": "Start the import again",
+						"title": "Import existing mail",
+						"toastCancelled": "Import stopped",
+						"toastStarted": "Import started"
 					},
 					"intro": "Shared addresses your team reads and sends from together — like {supportAddress} or {salesAddress}.",
 					"loadError": "Could not load team inboxes. Please try again.",
@@ -8697,12 +9058,12 @@
 				"completedBody": "Your mail history is in Owlat.",
 				"completedBodyWithAi": "Your mail history is in Owlat and your AI assistant has learned from it.",
 				"completedTitle": "You're all moved in",
+				"completedPartialTitle": "Almost everything moved in",
+				"completedPartialBody": "Most of your mail history is in Owlat.",
+				"completedPartialBodyWithAi": "Most of your mail history is in Owlat, and your AI assistant has learned from it.",
+				"skippedTitle": "{count} message couldn't be imported | {count} messages couldn't be imported",
+				"skippedBody": "They're still on your mail server — nothing was deleted there. Importing again retries them.",
 				"connectProvider": "Connect {provider}",
-				"deleteMailboxAndData": "Delete mailbox & data",
-				"disconnect": "Disconnect",
-				"disconnectDialogDescription": "Syncing stops and it's hidden from your inbox. Synced messages are kept unless you delete them separately.",
-				"disconnectDialogTitle": "Disconnect this mailbox?",
-				"disconnectOperation": "Disconnect mailbox",
 				"discoveringFolders": "Looking at your folders…",
 				"discoveringProgressLabel": "Discovering mailbox",
 				"discoveringTitle": "Discovering your mailbox…",
@@ -8726,10 +9087,6 @@
 				"openInbox": "Open your inbox",
 				"pageTitle": "Import your mail — Owlat",
 				"providerPickTitle": "Where does your mail live now?",
-				"purgeConfirm": "Delete everything",
-				"purgeDialogDescription": "Every imported message, draft, folder and label is erased and cannot be recovered. Use this if you connected the wrong mailbox or want your imported mail genuinely removed.",
-				"purgeDialogTitle": "Delete mailbox and all synced data?",
-				"purgeOperation": "Delete mailbox and synced data",
 				"readyBody": "We'll import your entire mail history — Inbox, Sent, and all your archived mail.",
 				"readyBulletAiOff": "Enable the AI knowledge feature first to let the assistant learn from your mail.",
 				"readyBulletAiOn": "Your AI assistant learns from each conversation, scoped per contact.",
@@ -8757,13 +9114,9 @@
 				"subheading": "Bring your existing mailbox into Owlat — and let your AI assistant learn from it.",
 				"toastCancelled": "Migration cancelled. Imported mail was kept.",
 				"toastCredentialsUpdated": "Credentials updated.",
-				"toastDisconnected": "Mailbox disconnected.",
 				"toastImportStarted": "Importing your mail history now.",
-				"toastPurging": "Mailbox and all synced data are being deleted.",
 				"toastSignatureSaved": "Saved as your default signature.",
 				"tryAgain": "Try again",
-				"updateCredentials": "Update credentials",
-				"updateCredentialsTitle": "Update {email} credentials",
 				"useThisSignature": "Use this signature"
 			},
 			"replyQueue": {
@@ -8921,7 +9274,7 @@
 				"personalTitle": "Choose your email address",
 				"selectDomain": "Select domain",
 				"successBody": "Your mailbox is connected.",
-				"successExternalNote": "New mail sent to this address will start appearing here shortly. Mail already in the account isn't imported — only messages that arrive from now on.",
+				"successExternalNote": "New mail sent to this address will start appearing here shortly. Mail already in the account isn't imported yet — an admin can pull it in from Administration → Team & access → Team inboxes.",
 				"successHostedNote": "Make sure your domain sends incoming mail to this Owlat instance so messages start flowing.",
 				"successTeamBody": "Your team inbox is ready. Members can open it from their Postbox.",
 				"successTeamTitle": "Your team inbox is connected",
@@ -9218,6 +9571,12 @@
 				"intro": "Owlat can learn how you write from your sent mail so AI reply suggestions sound like you. This is advisory only — nothing is ever sent automatically.",
 				"noMailboxes": "No mailboxes yet. Add an account and send a few messages first.",
 				"pageTitle": "Writing voice — Owlat"
+			},
+			"externalAccount": {
+				"featureOffBody": "This Owlat instance has the feature switched off. An admin can turn it on from Settings, and then you can connect a mailbox here.",
+				"featureOffTitle": "Connected mailboxes are turned off",
+				"pageTitle": "Connected mailboxes — Owlat",
+				"subheading": "A mailbox somewhere else that Owlat keeps in step with this one."
 			}
 		},
 		"send": {
@@ -9707,11 +10066,28 @@
 				"title": "Unread badge"
 			},
 			"updates": {
+				"channel": {
+					"prerelease": "including pre-releases",
+					"stable": "stable"
+				},
 				"checkNow": "Check for updates now",
 				"checking": "Checking — you'll get a notification with the result.",
 				"description": "Check for new versions when the app starts.",
+				"downloading": "Downloading Owlat {version}.",
+				"failed": "The update check did not finish. Owlat will try again later.",
+				"lastChecked": "Last checked at {time}.",
+				"managedBy": "Managed by {host} — {policy}.",
+				"policy": {
+					"latest": "newest release, {channel}",
+					"paused": "updates paused by your admin",
+					"pinned": "pinned to {version}"
+				},
+				"ready": "Owlat {version} is downloaded and ready.",
+				"restartNow": "Restart now",
 				"title": "Updates",
-				"version": "Owlat {version}."
+				"unreachable": "Your Owlat instance could not be reached, so nothing was checked. Try again once you're back online.",
+				"version": "Owlat {version}.",
+				"viaGithub": "Updates come straight from GitHub releases."
 			},
 			"workspaces": {
 				"accent": "Accent",
@@ -9801,6 +10177,8 @@
 				"authentication": "Authentication",
 				"branch": "Branch",
 				"browse": "Browse…",
+				"devInstall": "Development install",
+				"devInstallHint": "Install a branch (or a local checkout) instead of the release. The stack is built from source on the server.",
 				"host": "Server address",
 				"hostPlaceholder": "203.0.113.5 or vps.example.com",
 				"installDir": "Install directory",
@@ -9812,7 +10190,10 @@
 				"port": "Port",
 				"sshPasswordPlaceholder": "SSH password",
 				"sshUser": "SSH user",
-				"useKeyFileInstead": "Use a key file instead"
+				"useKeyFileInstead": "Use a key file instead",
+				"version": "Version",
+				"versionHint": "The newest published server release, looked up when the install starts.",
+				"versionLatest": "Latest release"
 			},
 			"finishing": {
 				"body": "Owlat is installed at {url}, but the address can't be reached yet. Create the records below; once they resolve and TLS is issued, this turns into “Open workspace” automatically.",
@@ -9906,6 +10287,11 @@
 			"haveServer": "Already have a server?",
 			"heading": "Welcome to {brand}",
 			"pageTitle": "Welcome — Owlat",
+			"reconnect": {
+				"action": "Reconnect",
+				"heading": "Sign back in",
+				"tagline": "Your session for this server has ended. Reconnect to pick up where you left off."
+			},
 			"setup": {
 				"description": "Install Owlat on a fresh Linux server over SSH.",
 				"title": "Set up a new server"
@@ -10002,6 +10388,21 @@
 			"successBody": "You've successfully joined {organization}.",
 			"successTitle": "Welcome to the Team!",
 			"teamInboxAdded": "The team inbox {address} is in your sidebar."
+		}
+	},
+	"oauth": {
+		"google": {
+			"callback": {
+				"back": "Back to mail import",
+				"connecting": "Connecting your Google mailbox…",
+				"denied": "The sign-in was cancelled, so nothing was connected. You can start again whenever you like.",
+				"deniedTitle": "Google sign-in cancelled",
+				"failed": "The Google sign-in could not be completed. Please start again.",
+				"failedTitle": "Could not finish connecting",
+				"missingParams": "This link is incomplete. Start the Google sign-in again from the mail import page.",
+				"operation": "Finish Google sign-in",
+				"pageTitle": "Connecting Google"
+			}
 		}
 	},
 	"postbox": {
@@ -10212,6 +10613,8 @@
 				}
 			},
 			"resendKeyLabel": "Resend API key",
+			"reverseDnsBody": "Every sending IP above needs a PTR record pointing at its EHLO hostname. You set it where you rent the IP — your hosting provider's console — not in your DNS zone. Setup checks it before it completes, and no mail leaves the server until it matches.",
+			"reverseDnsHeading": "Reverse DNS (PTR) — set this before you finish",
 			"sesAccessKeyLabel": "Access key ID",
 			"sesRegionLabel": "Region",
 			"sesSecretKeyLabel": "Secret access key",
@@ -10360,6 +10763,42 @@
 		"aiProviders": {
 			"currentModel": "{model} (current)",
 			"customModel": "Custom model id…",
+			"decision": {
+				"fallback": {
+					"agent": {
+						"body": "On. Someone is waiting on the reply, so a judgement that cannot be answered should be answered by your language model rather than hold the draft.",
+						"label": "Agent pipeline"
+					},
+					"classifiers": {
+						"body": "Off, and not settable. Category and needs-reply run on every message that arrives, so one outage would re-route your whole inbound flow onto a model that costs twenty to fifty times more. They keep their deterministic answer and try again later.",
+						"label": "Background classifiers"
+					}
+				},
+				"keyFromEnvironment": "No key here yet. Saving still works if this deployment supplies TYPESAFE_API_KEY in its environment; otherwise the plane resolves to your language model.",
+				"providers": {
+					"llm": {
+						"hint": "No third party. The same questions go to your configured language model, which answers them without calibrated probabilities.",
+						"label": "Use the language model (no third party)"
+					},
+					"typesafe": {
+						"hint": "The Jev decision models. Paste a TypeSafe API key; it is encrypted at rest and only ever sent to their API.",
+						"label": "TypeSafe Jev (recommended)"
+					}
+				},
+				"thresholds": {
+					"choice": {
+						"body": "Judged by the confidence the provider returns alongside the chosen option, which describes how peaked the distribution across the options is.",
+						"label": "Category and score answers"
+					},
+					"noul": {
+						"body": "Judged by distance from 0.5, because a yes/no answer carries no confidence field. A 0.55 and a 0.95 are both a yes, and only one of them is worth acting on.",
+						"label": "Yes/no answers"
+					}
+				},
+				"validation": {
+					"consentRequired": "Read what leaves this deployment and tick the box before enabling a third-party decision provider."
+				}
+			},
 			"embedders": {
 				"google": {
 					"label": "Google (hosted)"
@@ -10615,6 +11054,7 @@
 				"controls": "Controls",
 				"deliverability": "Deliverability",
 				"deliveryProvider": "Delivery provider",
+				"desktopUpdates": "Desktop updates",
 				"emailTheme": "Email Theme",
 				"features": "Features",
 				"forms": "Forms",
@@ -11569,6 +12009,7 @@
 					"mtaIdentity": "Verify outbound IP identity",
 					"preflight": "Check prerequisites",
 					"pushImages": "Upload images to the server",
+					"resolveRelease": "Find the latest release",
 					"seedDemo": "Seed demo data",
 					"sshConnect": "Connect over SSH",
 					"systemCheck": "Check the server",
@@ -11580,7 +12021,7 @@
 			"provisioningForm": {
 				"dnsNotes": {
 					"dmarc": "DMARC — starter value; tighten after monitoring.",
-					"ptr": "Also set reverse DNS (PTR) for this IP at your host.",
+					"ptr": "Reverse DNS — set where you rent the IP (your hosting provider), not in your DNS zone. Sending stays blocked until it matches.",
 					"spf": "SPF — starter value; confirm in Settings → Domains."
 				},
 				"errors": {
@@ -11597,6 +12038,10 @@
 				"serverIpPlaceholder": "your server's public IP"
 			},
 			"updater": {
+				"unreachable": {
+					"body": "{host} could not be reached. Owlat will try again later.",
+					"title": "Update check skipped"
+				},
 				"upToDate": {
 					"body": "You have the latest version.",
 					"title": "Owlat is up to date"
@@ -11938,7 +12383,9 @@
 			},
 			"useMailMigration": {
 				"cancelOperation": "Cancel mailbox migration",
-				"startOperation": "Start mailbox migration"
+				"cancelSharedOperation": "Stop team inbox import",
+				"startOperation": "Start mailbox migration",
+				"startSharedOperation": "Start team inbox import"
 			},
 			"usePostboxAppPasswords": {
 				"generateOperation": "Generate app password",
@@ -12732,6 +13179,10 @@
 				"sealedMail": {
 					"keywords": "sealed mail, encryption, recovery kit, private key, end-to-end",
 					"title": "Sealed mail"
+				},
+				"connectedAccount": {
+					"keywords": "disconnect, remove, delete, unlink, connected mailbox, external account, gmail, outlook, fastmail",
+					"title": "Disconnect a connected mailbox"
 				}
 			}
 		},
@@ -13513,11 +13964,19 @@
 				"title": "While you were away"
 			}
 		},
+		"useDesktopUpdatePolicy": {
+			"checkOperation": "Check for desktop releases",
+			"saveOperation": "Save desktop update policy"
+		},
 		"useDesktopWorkspaces": {
 			"errors": {
-				"stateMismatch": "Unexpected sign-in response (state mismatch).",
+				"generic": "Could not connect to that server.",
+				"noSession": "That server accepted the sign-in but returned no session. Try signing in again.",
+				"stateMismatch": "That sign-in link has expired or was already used. Start the connection again.",
 				"unreachable": "Could not reach an owlat instance at {siteUrl}",
-				"unusableConfig": "That instance did not return a usable configuration."
+				"unusableConfig": "That instance did not return a usable configuration.",
+				"verifyFailed": "Sign-in could not be completed with {siteUrl} (error {status}). Try signing in again.",
+				"verifyRouteMissing": "{siteUrl} does not support desktop sign-in. Update the server to v0.4.14 or later, then reconnect."
 			}
 		},
 		"useEmailEditorBridge": {
@@ -13683,12 +14142,14 @@
 		},
 		"useServerProvisioning": {
 			"alreadyInstalled": "already installed",
+			"developmentInstall": "development install",
 			"didNotComplete": "Provisioning did not complete (exit {code}).",
 			"exitCode": "exit {code}",
 			"hostKeyAccepted": "accepted",
 			"knownHost": "known host",
 			"localBuildFailed": "Local image build failed (exit {code}). Is Docker running here?",
 			"localSetupImageFailed": "Local setup-image build failed (exit {code}).",
+			"releaseNotFound": "Could not find a published Owlat release. Check the server's network connection and try again.",
 			"stepFailed": "\"{step}\" failed (exit {code}).",
 			"unknownError": "Something went wrong.",
 			"uploadedLocalSource": "uploaded local working tree"
@@ -14211,6 +14672,10 @@
 					"autonomy": {
 						"description": "Let the agent send replies and take actions without human approval when confidence is high.",
 						"label": "Autonomous actions"
+					},
+					"decisionPlane": {
+						"description": "Answer the yes/no, category and score judgements the AI features make with a dedicated decision provider instead of a text model. Off, every judgement stays on your configured language model.",
+						"label": "Decision plane"
 					},
 					"description": "Master toggle for all AI-powered features. Requires an LLM provider.",
 					"knowledge": {

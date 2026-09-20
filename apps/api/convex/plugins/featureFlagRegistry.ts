@@ -5,7 +5,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { bundledPluginComposition } from './plugins.generated';
 
-export const PLUGIN_FEATURE_FLAG_DEFINITIONS =
+const PLUGIN_FEATURE_FLAG_DEFINITIONS =
 	getBundledPluginFeatureFlagDefinitions(bundledPluginComposition);
 
 export const FEATURE_FLAG_REGISTRY = createFeatureFlagRegistry(PLUGIN_FEATURE_FLAG_DEFINITIONS);

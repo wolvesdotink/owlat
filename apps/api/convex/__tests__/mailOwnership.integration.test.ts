@@ -120,7 +120,7 @@ async function seedMailbox(
 			userId: ownerUserId,
 			organizationId: 'org-1',
 			address,
-			domain: 'hinterland.camp',
+			domain: 'owlat.test',
 			status: 'active',
 			usedBytes: 0,
 			uidValidity: now,
@@ -184,7 +184,7 @@ async function seedMessage(
 			rfc822MessageId: `<${Math.random().toString(36).slice(2)}@example.com>`,
 			threadId,
 			fromAddress: 'sender@example.com',
-			toAddresses: ['a@hinterland.camp'],
+			toAddresses: ['a@owlat.test'],
 			ccAddresses: [],
 			bccAddresses: [],
 			subject: 'Hello',
@@ -221,7 +221,7 @@ const getFolder = (t: TestConvex<typeof schema>, folderId: Id<'mailFolders'>) =>
 describe('mail.drafts ownership', () => {
 	it('lets the mailbox owner create + read + update their own draft', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -242,7 +242,7 @@ describe('mail.drafts ownership', () => {
 
 	it('persists inReplyToMessageId for a SAME-mailbox reply', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId);
 
 		setUser('user-alice', 'editor');
@@ -259,8 +259,8 @@ describe('mail.drafts ownership', () => {
 		// NOT persist the linkage — otherwise the send-time flagAnswered effect
 		// would flip a flag in the other mailbox (cross-mailbox IDOR).
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
-		const b = await seedMailbox(t, 'user-bob', 'bob@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+		const b = await seedMailbox(t, 'user-bob', 'bob@owlat.test');
 		const { messageId: bobMessage } = await seedMessage(t, b.mailboxId, b.inboxId);
 
 		// Alice creates a reply in her OWN mailbox but points it at Bob's message.
@@ -275,7 +275,7 @@ describe('mail.drafts ownership', () => {
 
 	it('denies create on another user’s mailbox (editor, not owner)', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-bob', 'editor');
 		await expect(t.mutation(api.mail.drafts.create, { mailboxId: a.mailboxId })).rejects.toThrow();
@@ -283,7 +283,7 @@ describe('mail.drafts ownership', () => {
 
 	it('hides another user’s draft from get and refuses update', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -306,7 +306,7 @@ describe('mail.drafts ownership', () => {
 
 	it('listForMailbox returns the owner’s drafts but [] for a non-owner', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		await t.mutation(api.mail.drafts.create, { mailboxId: a.mailboxId });
@@ -324,7 +324,7 @@ describe('mail.drafts ownership', () => {
 
 	it('lets an org admin act on another user’s mailbox (owner/admin override)', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-carol', 'admin');
 		const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -343,7 +343,7 @@ describe('mail.drafts ownership', () => {
 describe('mail.drafts.send + cancelPendingSend ownership', () => {
 	it('owner can send (→ pending_send) and cancel within the undo window', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -375,7 +375,7 @@ describe('mail.drafts.send + cancelPendingSend ownership', () => {
 
 	it('a non-owner cannot send another user’s draft', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -392,7 +392,7 @@ describe('mail.drafts.send + cancelPendingSend ownership', () => {
 
 	it('cancelPendingSend with a valid token but wrong user is a no-op (ok:false)', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -458,8 +458,8 @@ describe('mail.drafts.send — honest firstSendDone gating', () => {
 			const mailboxId = await ctx.db.insert('mailboxes', {
 				userId: 'user-ext',
 				organizationId: 'org-1',
-				address: 'ext@hinterland.camp',
-				domain: 'hinterland.camp',
+				address: 'ext@owlat.test',
+				domain: 'owlat.test',
 				kind: 'external',
 				status: 'active',
 				usedBytes: 0,
@@ -478,7 +478,7 @@ describe('mail.drafts.send — honest firstSendDone gating', () => {
 				smtpPort: 465,
 				isSmtpSecure: true,
 				authMethod: 'password',
-				imapUsername: 'ext@hinterland.camp',
+				imapUsername: 'ext@owlat.test',
 				secretCiphertext: 'x',
 				secretIv: 'x',
 				secretAuthTag: 'x',
@@ -494,7 +494,7 @@ describe('mail.drafts.send — honest firstSendDone gating', () => {
 
 	it('does NOT stamp firstSendDone when a hosted mailbox has no MTA transport', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		// Hosted Postbox drafts dispatch exclusively via the MTA. Clear the
 		// suite's default MTA env (vitest.setup seeds MTA_API_URL/MTA_API_KEY) so
@@ -512,7 +512,7 @@ describe('mail.drafts.send — honest firstSendDone gating', () => {
 
 	it('does NOT stamp firstSendDone for a hosted mailbox on a resend-only instance (no MTA)', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		// A campaign/transactional provider (resend) is configured but there is no
 		// MTA — the Postbox draft is saved to Sent and never dispatched. Clear the
@@ -532,7 +532,7 @@ describe('mail.drafts.send — honest firstSendDone gating', () => {
 
 	it('stamps firstSendDone on a real send once the MTA is configured', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		// The MTA — the transport hosted Postbox drafts actually ship through — is
 		// reachable, so the send honestly completes the first-send step. Keyed on
@@ -583,7 +583,7 @@ describe('mail.drafts.send — honest firstSendDone gating', () => {
 describe('mail.drafts.cancelScheduledSend ownership', () => {
 	it('owner can unschedule a scheduled draft → back to editable draft', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -613,7 +613,7 @@ describe('mail.drafts.cancelScheduledSend ownership', () => {
 
 	it('unscheduling re-enables autosave: drafts.update succeeds afterwards', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -643,7 +643,7 @@ describe('mail.drafts.cancelScheduledSend ownership', () => {
 
 	it('a non-owner cannot unschedule another user’s scheduled draft', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -667,7 +667,7 @@ describe('mail.drafts.cancelScheduledSend ownership', () => {
 
 	it('cancelScheduledSend on a plain draft is a soft no-op (ok:false)', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const { draftId } = await t.mutation(api.mail.drafts.create, {
@@ -691,7 +691,7 @@ describe('mail.drafts.cancelScheduledSend ownership', () => {
 describe('mail.messageActions ownership', () => {
 	it('markRead on another user’s message is silently skipped (no mutation)', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: true,
 		});
@@ -710,7 +710,7 @@ describe('mail.messageActions ownership', () => {
 
 	it('archive routes another user’s message nowhere (target-folder owner gate)', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: true,
 		});
@@ -727,7 +727,7 @@ describe('mail.messageActions ownership', () => {
 
 	it('owner markRead decrements the folder unseenCount by exactly one', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: true,
 		});
@@ -753,7 +753,7 @@ describe('mail.messageActions ownership', () => {
 
 	it('owner setStar flips flagFlagged without touching unseenCount', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: true,
 		});
@@ -773,7 +773,7 @@ describe('mail.messageActions ownership', () => {
 
 	it('owner archive moves the message to the Archive folder and migrates the counter', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: true,
 		});
@@ -803,7 +803,7 @@ describe('mail.messageActions ownership', () => {
 describe('mail.snooze ownership + counter math', () => {
 	it('snoozing an unread message decrements unseenCount; unsnooze restores it', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: true,
 		});
@@ -823,7 +823,7 @@ describe('mail.snooze ownership + counter math', () => {
 
 	it('snoozing a READ message does not change unseenCount', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: false,
 		});
@@ -841,7 +841,7 @@ describe('mail.snooze ownership + counter math', () => {
 
 	it('a seen-flip on a SNOOZED unread message must NOT touch unseenCount', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const until = Date.now() + 60 * 60 * 1000;
 		// Snoozed + unread ⇒ already excluded from the count, so it starts at 0.
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
@@ -861,7 +861,7 @@ describe('mail.snooze ownership + counter math', () => {
 
 	it('a non-owner cannot snooze another user’s message', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: true,
 		});
@@ -877,7 +877,7 @@ describe('mail.snooze ownership + counter math', () => {
 
 	it('rejects a snooze time in the past', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: true,
 		});
@@ -899,7 +899,7 @@ describe('mail.snooze ownership + counter math', () => {
 describe('mail.folders ownership', () => {
 	it('owner can create a custom folder; non-owner is denied', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const folderId = await t.mutation(api.mail.folders.create, {
@@ -919,8 +919,8 @@ describe('mail.folders ownership', () => {
 
 	it('rejects a parent folder that belongs to a different mailbox', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
-		const b = await seedMailbox(t, 'user-bob', 'bob@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+		const b = await seedMailbox(t, 'user-bob', 'bob@owlat.test');
 
 		// Alice owns mailbox A. A parent in mailbox B (Bob's) is invalid even
 		// though Alice passes the mailbox-A ownership gate.
@@ -936,7 +936,7 @@ describe('mail.folders ownership', () => {
 
 	it('mailbox.listFolders returns [] for a non-owner', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const own = await t.query(api.mail.mailbox.queries.listFolders, { mailboxId: a.mailboxId });
@@ -957,7 +957,7 @@ describe('mail.folders ownership', () => {
 describe('mail.labels ownership', () => {
 	it('owner can create a label; non-owner is denied', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const labelId = await t.mutation(api.mail.labels.create, {
@@ -978,8 +978,8 @@ describe('mail.labels ownership', () => {
 
 	it('toggleOnMessage rejects a label from a different mailbox', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
-		const b = await seedMailbox(t, 'user-bob', 'bob@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+		const b = await seedMailbox(t, 'user-bob', 'bob@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: true,
 		});
@@ -1004,7 +1004,7 @@ describe('mail.labels ownership', () => {
 
 	it('owner can apply a same-mailbox label to their own message', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 		const { messageId } = await seedMessage(t, a.mailboxId, a.inboxId, {
 			unread: true,
 		});
@@ -1032,7 +1032,7 @@ describe('mail.labels ownership', () => {
 describe('mail.filters ownership', () => {
 	it('owner can create a filter; non-owner is denied', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const filterId = await t.mutation(api.mail.filters.create, {
@@ -1056,8 +1056,8 @@ describe('mail.filters ownership', () => {
 
 	it('rejects a moveToFolder action targeting a different mailbox’s folder', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
-		const b = await seedMailbox(t, 'user-bob', 'bob@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+		const b = await seedMailbox(t, 'user-bob', 'bob@owlat.test');
 
 		setUser('user-alice', 'editor');
 		await expect(
@@ -1073,7 +1073,7 @@ describe('mail.filters ownership', () => {
 
 	it('accepts a moveToFolder action targeting a same-mailbox folder', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		const filterId = await t.mutation(api.mail.filters.create, {
@@ -1093,7 +1093,7 @@ describe('mail.filters ownership', () => {
 describe('mail.mailbox.identity.setDisplayName ownership', () => {
 	it('owner can rename their own mailbox; non-owner is denied', async () => {
 		const t = convexTest(schema, modules);
-		const a = await seedMailbox(t, 'user-alice', 'alice@hinterland.camp');
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
 		setUser('user-alice', 'editor');
 		await t.mutation(api.mail.mailbox.identity.setDisplayName, {

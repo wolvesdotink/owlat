@@ -34,13 +34,14 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { batchGet } from '../_utils/batchLoader';
 
 /**
  * Membership role on a mailbox. `owner` is a superset of `member`. Derived
  * from the schema so the `'owner' | 'member'` union has a single source of
  * truth (`mailboxMembers.role`) and the two can never drift.
  */
-export type MailboxMemberRole = Doc<'mailboxMembers'>['role'];
+type MailboxMemberRole = Doc<'mailboxMembers'>['role'];
 
 /** Does `role` satisfy the required `minRole`? `owner` satisfies both. */
 function roleSatisfies(role: MailboxMemberRole, minRole: MailboxMemberRole): boolean {
@@ -130,7 +131,7 @@ export async function loadPersonalMailboxForUser(
 		: null;
 }
 
-export type MessageAccessOutcome =
+type MessageAccessOutcome =
 	| {
 			ok: true;
 			userId: string;
@@ -197,9 +198,16 @@ export async function loadAccessibleMailboxes(
 		.query('mailboxMembers')
 		.withIndex('by_user', (q) => q.eq('authUserId', userId))
 		.collect(); // bounded: shared mailboxes one user belongs to
+	// The membership rows point at independent mailboxes; `batchGet` dedupes
+	// them and reads the rest in parallel. Rows for a mailbox the caller already
+	// owns stay out of the read set, exactly as the `seen` skip below intends.
+	const memberMailboxes = await batchGet(
+		ctx,
+		memberships.filter((row) => !seen.has(row.mailboxId)).map((row) => row.mailboxId)
+	);
 	for (const row of memberships) {
 		if (seen.has(row.mailboxId)) continue;
-		const mailbox = await ctx.db.get(row.mailboxId);
+		const mailbox = memberMailboxes.get(row.mailboxId);
 		if (!mailbox) continue;
 		// Same reason as the owned side: `provisionMailbox` writes an implicit
 		// owner membership for every mailbox, including a seed's.

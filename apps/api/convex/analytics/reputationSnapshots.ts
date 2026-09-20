@@ -25,7 +25,7 @@ import { DAY_MS } from '../lib/constants';
 const SNAPSHOT_RETENTION_MS = 90 * DAY_MS;
 
 /** The persisted per-day metrics, derived from a rolling reputation summary. */
-export interface SnapshotMetrics {
+interface SnapshotMetrics {
 	deliveryRate: number;
 	bounceRate: number;
 	complaintRate: number;
@@ -85,7 +85,7 @@ export const writeDailySnapshot = internalMutation({
 });
 
 /** Chart-ready snapshot point (oldest → newest). */
-export interface DeliverySnapshotPoint extends SnapshotMetrics {
+interface DeliverySnapshotPoint extends SnapshotMetrics {
 	periodStart: number;
 }
 

@@ -1,5 +1,5 @@
 /**
- * Ramp controller — HOW MUCH A VERDICT IS WORTH (plan D14).
+ * Ramp controller — HOW MUCH A VERDICT IS WORTH.
  *
  * Four grades, declared once and shared by every gate implementation, so
  * "measurement confidence" means the same thing on the reference-arm evaluator,
@@ -19,12 +19,12 @@ import type { RampGateConfidence, RampGateGrade } from './gateTypes';
 /**
  * Bounces, 4xx text and complaint feedback are measured on OUR OWN WIRE — they
  * never depended on a third party and do not become less trustworthy when one is
- * absent (plan D2). Their `pass` is full evidence for an increase.
+ * absent. Their `pass` is full evidence for an increase.
  */
 export const DIRECT_MEASUREMENT: RampGateGrade = { confidence: 'high', mayJustifyIncrease: true };
 
 /**
- * Seeds are a TRIPWIRE, not a gauge (plan D17): 5-10 mailboxes is not a sample
+ * Seeds are a TRIPWIRE, not a gauge: 5-10 mailboxes is not a sample
  * anyone should quote a percentage from. Medium confidence — small sample, but a
  * DIRECT observation of the spam folder rather than a proxy for one — and it
  * still counts toward an increase, because a clean placement sweep is real, if
@@ -43,13 +43,13 @@ export const SEED_TRIPWIRE: RampGateGrade = {
 /**
  * A PROXY stands in for the thing we actually wanted to measure: one-click
  * unsubscribes where a complaint feedback loop would have told us about
- * complaints. Real evidence, honestly labelled as second-hand (plan D14), and it
+ * complaints. Real evidence, honestly labelled as second-hand, and it
  * still counts toward an increase.
  */
 export const PROXY_MEASUREMENT: RampGateGrade = { confidence: 'medium', mayJustifyIncrease: true };
 
 /**
- * THE ASYMMETRY, as a constant (plan D14). The standalone engagement check
+ * THE ASYMMETRY, as a constant. The standalone engagement check
  * compares this week against last month with subject, content, audience and
  * season all free to move, so it genuinely cannot tell a redesigned newsletter
  * from a placement loss. The response is not to pretend otherwise: it may cause a
@@ -71,7 +71,7 @@ const CONFIDENCE_RANK: Readonly<Record<RampGateConfidence, number>> = {
  * The measurement confidence of a SET of verdicts: the weakest one present. A
  * cell whose complaint signal is an unsubscribe proxy is a cell measured at
  * medium confidence, however high its bounce data is, and the UI must say so
- * (plan D14) rather than average the two into something reassuring.
+ * rather than average the two into something reassuring.
  */
 export function weakestConfidence(confidences: readonly RampGateConfidence[]): RampGateConfidence {
 	let weakest: RampGateConfidence = 'high';

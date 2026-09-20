@@ -1,7 +1,6 @@
 /**
  * THE FEEDBACK CHANNEL a send provider reports through — where its bounces and
- * complaints arrive, and what wiring that up asks of the OPERATOR (the seams
- * plan's D1/D5).
+ * complaints arrive, and what wiring that up asks of the OPERATOR.
  *
  * A sibling of `./sendProviderCredentialFields` and for the same reason: both
  * are UI-facing descriptor vocabulary that an entry in `./sendProviderCatalog`
@@ -33,8 +32,7 @@ export type SendProviderFeedbackSetupPanel = 'sns-topic' | 'signed-webhook';
 
 /**
  * WHERE a transport's feedback arrives, and what wiring it up asks of the
- * operator (the seams plan's D5 — the UI renders descriptors, it doesn't know
- * providers).
+ * operator (the UI renders descriptors, it doesn't know providers).
  *
  * `hasProviderFeedback` answers whether feedback exists AT ALL, which is what
  * measurement confidence grades on. It cannot answer what the delivery config
@@ -52,9 +50,8 @@ export interface SendProviderFeedbackChannel {
 	 * The path this provider posts events to, as registered in
 	 * `apps/api/convex/http.ts`. Declared rather than derived from the kind: the
 	 * route is a URL an operator has already pasted into a provider console, so
-	 * it can never be renamed silently by a kind rename (the seams plan's P2.1 —
-	 * "routes stay static per kind, URL stability for already-configured
-	 * webhooks").
+	 * it can never be renamed silently by a kind rename ("routes stay static per
+	 * kind, URL stability for already-configured webhooks").
 	 */
 	readonly webhookPath: string;
 	/**

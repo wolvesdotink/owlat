@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * ONE team inbox, as the admin roster page shows it: identity, badges, the row
- * of affordances, the member summary, and the two panels that open in place
- * (member management and external-credential repair).
+ * of affordances, the member summary, and the three panels that open in place
+ * (member management, history import, and external-credential repair).
  *
  * Everything here is about a SINGLE inbox. The page above owns what is true
  * ACROSS inboxes — which panel is open (only one at a time), the destructive
@@ -12,7 +12,8 @@
  */
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
-import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
+import { providerForImapHost } from '~/utils/mailAutodiscover';
+import { formatNumber } from '~/utils/formatters';
 
 type SharedInbox = FunctionReturnType<typeof api.mail.mailboxMembers.listShared>[number];
 
@@ -22,12 +23,15 @@ const props = defineProps<{
 	expanded: boolean;
 	/** The credential-repair panel is the one currently open on the page. */
 	reconnecting: boolean;
+	/** The history-import panel is the one currently open on the page. */
+	importing: boolean;
 	sealedMailEnabled: boolean;
 }>();
 
 const emit = defineEmits<{
 	toggleExpanded: [];
 	toggleReconnect: [];
+	toggleImport: [];
 	open: [];
 	rotateKey: [];
 	revokeKey: [];
@@ -68,6 +72,53 @@ const { data: reconnectAccount, isLoading: reconnectLoading } = useConvexQuery(
 const reconnectAccountForForm = computed(() =>
 	reconnectAccount.value?.configured ? reconnectAccount.value : null
 );
+// Match the provider to the inbox's real IMAP host, so a Gmail team inbox is
+// re-authorized the way it was connected — with Google sign-in where the
+// instance has an OAuth client, rather than an app-password field Google no
+// longer accepts.
+const reconnectProvider = computed(() =>
+	providerForImapHost(reconnectAccountForForm.value?.imapHost)
+);
+
+// A history import runs for hours on a large archive, and everyone on the
+// roster sees its effects (mail appearing, search filling in) — so the roster
+// row carries a one-line summary of an import in flight or one that failed,
+// rather than hiding that behind the panel only the starter opened.
+// `getStatusShared` soft-fails to null off a team inbox, so the line simply
+// never appears where there is nothing to report.
+const { data: importStatus } = useConvexQuery(api.mail.migrationShared.getStatusShared, () =>
+	props.inbox.kind === 'external' ? { mailboxId: props.inbox._id } : 'skip'
+);
+
+// The import panel is reachable on an ACTIVE external inbox only — every shared
+// migration entry point goes through `requireMailboxAccess`, which refuses a
+// suspended mailbox. The summary line above still reports an import that was
+// already running when the inbox was suspended.
+const canImport = computed(
+	() => props.inbox.kind === 'external' && props.inbox.status === 'active'
+);
+
+const importSummary = computed(() => {
+	const status = importStatus.value;
+	if (!status) return null;
+	if (status.status === 'importing') {
+		// Before the worker has counted the folders there is no total to show —
+		// a "0 of 0" line reads as a stalled import rather than a starting one.
+		return status.messagesTotal > 0
+			? t('dashboard.admin.team.inboxes.import.inline.importing', {
+					imported: formatNumber(status.messagesImported, locale.value),
+					total: formatNumber(status.messagesTotal, locale.value),
+				})
+			: t('dashboard.admin.team.inboxes.import.inline.discovering');
+	}
+	if (status.status === 'indexing') {
+		return t('dashboard.admin.team.inboxes.import.inline.indexing');
+	}
+	if (status.status === 'failed') {
+		return t('dashboard.admin.team.inboxes.import.inline.failed');
+	}
+	return null;
+});
 
 const owner = computed(() => {
 	const found = props.inbox.members.find((m) => m.role === 'owner');
@@ -89,8 +140,10 @@ const createdOn = computed(() =>
 <template>
 	<div class="card !p-0 overflow-hidden">
 		<div class="p-5">
-			<div class="flex items-start justify-between gap-4">
-				<div class="flex items-center gap-3 min-w-0">
+			<!-- The action group wraps under the name on narrow widths instead of
+			     squeezing the name/address block to nothing. -->
+			<div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+				<div class="flex items-center gap-3 min-w-0 flex-1 basis-64">
 					<UiIconBox icon="lucide:mails" size="md" variant="surface" rounded="lg" />
 					<div class="min-w-0">
 						<p class="font-semibold text-text-primary truncate">
@@ -101,7 +154,7 @@ const createdOn = computed(() =>
 						</p>
 					</div>
 				</div>
-				<div class="flex items-center gap-2 shrink-0">
+				<div class="flex flex-wrap items-center gap-2">
 					<span
 						v-if="inbox.status === 'suspended'"
 						class="text-xs px-2 py-0.5 rounded bg-warning/10 text-warning"
@@ -140,6 +193,23 @@ const createdOn = computed(() =>
 						<Icon name="lucide:arrow-right" class="w-4 h-4 mr-1.5" />
 						{{ t('dashboard.admin.team.inboxes.openInbox') }}
 					</UiButton>
+					<!-- Suspended inboxes are refused by `requireMailboxAccess`, so the
+					     panel would open on a card that can only report an error. -->
+					<UiButton
+						v-if="canImport"
+						variant="ghost"
+						size="sm"
+						data-testid="team-inbox-import-toggle"
+						:aria-expanded="importing"
+						:title="t('dashboard.admin.team.inboxes.import.actionTitle')"
+						@click="emit('toggleImport')"
+					>
+						<Icon
+							:name="importing ? 'lucide:chevron-up' : 'lucide:download'"
+							class="w-4 h-4 mr-1.5"
+						/>
+						{{ importing ? t('common.done') : t('dashboard.admin.team.inboxes.import.action') }}
+					</UiButton>
 					<UiButton
 						variant="secondary"
 						size="sm"
@@ -166,7 +236,7 @@ const createdOn = computed(() =>
 						:title="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
 						@click="emit('revokeKey')"
 					>
-						<Icon name="lucide:key-round-x" class="w-4 h-4" />
+						<Icon name="lucide:shield-off" class="w-4 h-4" />
 					</UiButton>
 					<UiButton
 						v-if="inbox.kind === 'external'"
@@ -232,6 +302,17 @@ const createdOn = computed(() =>
 				}}
 			</p>
 
+			<!-- History import, for everyone on the roster rather than just whoever
+			     started it: the archive filling in is a change they will notice. -->
+			<p
+				v-if="importSummary"
+				data-testid="team-inbox-import-summary"
+				class="mt-3 text-xs text-text-tertiary flex items-center gap-1.5"
+			>
+				<Icon name="lucide:download-cloud" class="w-3.5 h-3.5 shrink-0" />
+				{{ importSummary }}
+			</p>
+
 			<!-- Connection is broken but the inbox is suspended, so the in-place
 			     reconnect (which needs an active mailbox) isn't available yet. -->
 			<p v-if="reconnectBlocked" class="mt-3 text-xs text-text-tertiary flex items-start gap-1.5">
@@ -243,6 +324,11 @@ const createdOn = computed(() =>
 		<!-- Inline member management (same panel the Postbox settings page uses). -->
 		<div v-if="expanded" class="border-t border-border-subtle bg-bg-surface/40 p-5">
 			<PostboxTeamInboxMembersPanel :mailbox-id="inbox._id" />
+		</div>
+
+		<!-- Inline history import for this team inbox. -->
+		<div v-if="importing" class="border-t border-border-subtle bg-bg-surface/40 p-5">
+			<PostboxTeamInboxImportCard :mailbox-id="inbox._id" :address="inbox.address" />
 		</div>
 
 		<!-- Inline credential repair: rotate the shared external account's
@@ -263,11 +349,14 @@ const createdOn = computed(() =>
 			     getSharedExternalAccount subscription; show a pending state until it
 			     resolves so the panel isn't briefly empty and formless. -->
 			<div v-if="reconnectLoading && !reconnectAccountForForm" class="p-4 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 			</div>
 			<PostboxMailboxConnectForm
 				v-else-if="reconnectAccountForForm"
-				:provider="GENERIC_IMAP_PROVIDER"
+				:provider="reconnectProvider"
 				mode="update"
 				shared
 				:mailbox-id="inbox._id"

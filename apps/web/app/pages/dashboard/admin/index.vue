@@ -49,6 +49,29 @@ const { data: isPlatformAdmin } = useConvexQuery(
 	() => ({})
 );
 
+// One-time bootstrap: the roster is empty and the caller owns the org. Fresh
+// installs never see this — `/seed/admin` grants the setup user their row — but
+// an instance seeded before that shipped has nobody, and the alternative to a
+// button here is asking the owner to `convex run` inside the container.
+const { data: bootstrapStatus } = useConvexQuery(
+	api.platformAdmin.bootstrap.getBootstrapStatus,
+	() => ({})
+);
+const canClaimPlatformAdmin = computed(() => bootstrapStatus.value?.canClaim === true);
+
+const { showToast } = useToast();
+const { run: claimPlatformAdmin, isLoading: claiming } = useBackendOperation(
+	api.platformAdmin.bootstrap.claimInitialPlatformAdmin,
+	{ label: () => t('dashboard.admin.index.claimPlatform.operation') }
+);
+
+async function onClaimPlatformAdmin() {
+	const r = await claimPlatformAdmin({});
+	// Both queries above are live subscriptions, so the Platform group appears
+	// on its own the moment the row lands — nothing to refetch here.
+	if (r.ok) showToast(t('dashboard.admin.index.claimPlatform.success'));
+}
+
 const platformAreas = computed(() => [
 	{
 		title: t('dashboard.admin.index.platformAreas.operator.title'),
@@ -137,6 +160,34 @@ const platformAreas = computed(() => [
 						</div>
 					</UiCard>
 				</NuxtLink>
+			</div>
+		</section>
+
+		<!-- Nobody holds the roster yet and this is the owner: offer the claim -->
+		<section v-else-if="canClaimPlatformAdmin" class="mt-10">
+			<h2 class="mb-4 text-lg font-semibold text-text-primary">
+				{{ t('dashboard.admin.index.platform') }}
+			</h2>
+			<div class="card flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+				<div class="flex items-start gap-3">
+					<UiIconBox icon="lucide:shield-check" size="md" variant="brand" rounded="lg" />
+					<div>
+						<h3 class="font-semibold text-text-primary">
+							{{ t('dashboard.admin.index.claimPlatform.title') }}
+						</h3>
+						<p class="mt-1 max-w-2xl text-sm text-text-secondary">
+							{{ t('dashboard.admin.index.claimPlatform.body') }}
+						</p>
+					</div>
+				</div>
+				<UiButton
+					variant="primary"
+					:loading="claiming"
+					class="shrink-0"
+					@click="onClaimPlatformAdmin"
+				>
+					{{ t('dashboard.admin.index.claimPlatform.action') }}
+				</UiButton>
 			</div>
 		</section>
 

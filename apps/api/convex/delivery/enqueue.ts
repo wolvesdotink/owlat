@@ -39,7 +39,7 @@ import { abVariantValidator } from '../lib/convexValidators';
  * rather than hand-duplicating the shape, so adding a field here is one edit
  * and a drift is a type error rather than a silently dropped value.
  */
-export const campaignEnqueueEmailValidator = v.object({
+const campaignEnqueueEmailValidator = v.object({
 	emailSendId: v.id('emailSends'),
 	contactId: v.id('contacts'),
 	email: v.string(),
@@ -90,7 +90,7 @@ export const enqueueCampaignEmails = internalMutation({
 		abVariant: v.optional(abVariantValidator),
 	},
 	handler: async (ctx, args) => {
-		// The experiment record (plan D7): one assignment row per recipient,
+		// The experiment record: one assignment row per recipient,
 		// written BEFORE any dispatch and inside THIS transaction, so the record
 		// and the sends commit or roll back together. Never throws: an
 		// unresolvable org or route degrades to no row, never a failed send.
@@ -104,7 +104,7 @@ export const enqueueCampaignEmails = internalMutation({
 			organizationId: args.organizationId,
 			stream: 'campaign',
 			sendKind: 'campaign',
-			// THE anti-cohort salt (plan D7): without it a contact would sit in
+			// THE anti-cohort salt: without it a contact would sit in
 			// the same arm for every campaign forever and the two arms would be
 			// two fixed cohorts, so every ratio the ramp controller reads would
 			// compare cohort quality rather than transport quality.
@@ -193,7 +193,7 @@ export const enqueueCampaignEmails = internalMutation({
 		// from a scheduled call that could observe a different world. Idempotent
 		// per (org, campaign, variant), so the walker's page fan-out produces
 		// exactly one probe set per arm. With no seed mailboxes connected — the
-		// default — it is a no-op (D2).
+		// default — it is a no-op.
 		//
 		// The measurement may never take the send down with it. Running inline is
 		// the right shape, but it puts up to one workpool enqueue per seed into

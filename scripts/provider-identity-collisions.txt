@@ -63,3 +63,4 @@ apps/web/app/composables/useSetupEmailStepForm.ts:mta  # getActiveProfiles(…).
 # work is not this plan's.
 
 apps/web/app/components/contacts/IntegrationImportModal.vue:mandrill  # an import source, not a transport
+packages/shared/src/networkPorts.ts:mta  # profiles.has('mta') reads the compose profile that publishes inbound 25 — the transport question beside it asks the catalog (sendTransportEgress)

@@ -19,7 +19,7 @@ export type EnvKey =
 	| 'BETTER_AUTH_SECRET'
 	| 'INSTANCE_SECRET'
 	// The PREVIOUS INSTANCE_SECRET, set ONLY during a secret rotation window
-	// (Sealed Mail key lifecycle, E6). While set, the E2EE key box opens a sealed
+	// for the Sealed Mail key lifecycle. While set, the E2EE key box opens a sealed
 	// private key under the current secret and, on failure, falls back to this one
 	// — so the vault keeps reading correctly mid-migration while
 	// `e2ee/lifecycleNode.ts:reSealVault` re-seals every row under the new secret.
@@ -110,11 +110,11 @@ export type EnvKey =
 	// Unset ⇒ no `rua=` tag (Owlat does not provision a per-customer
 	// `dmarc@<domain>` mailbox, so reports would otherwise go unread).
 	| 'MTA_DMARC_RUA'
-	// BIMI (P4-7) — OPTIONAL IN EVERY SENSE. The domain wizard offers a BIMI
+	// BIMI — OPTIONAL IN EVERY SENSE. The domain wizard offers a BIMI
 	// record only once the domain's DMARC is at `p=quarantine` or stricter, and
 	// only once a logo is known; unset ⇒ the wizard states that BIMI exists and
 	// what a VMC is, and generates no record. Never a blocked send, never a
-	// blocked promotion, never an unresolvable warning (D2).
+	// blocked promotion, never an unresolvable warning.
 	// HTTPS URL of the SVG Tiny PS brand logo (the `l=` tag).
 	| 'MTA_BIMI_LOGO_URL'
 	// HTTPS URL of the Verified Mark Certificate PEM (the `a=` tag). Gmail and
@@ -203,6 +203,28 @@ export type EnvKey =
 	| 'LLM_COMPLEXITY_ROUTING'
 	| 'OPENAI_API_KEY'
 	| 'OPENROUTER_API_KEY'
+	// DECISION plane (the third AI plane — typed questions in, typed answers with
+	// their probabilities out). OPT-IN IN EVERY VARIABLE: an install that sets
+	// none of them resolves to the language-backed adapter, which is exactly its
+	// behaviour before the plane existed. Read only by lib/decisionProvider.ts.
+	// The TypeSafe (Jev) API key — the deployment-level equivalent of the stored
+	// per-org key, for a self-hoster who configures through the environment. A
+	// stored key wins when both are present. Unset ⇒ the plane has no credential
+	// and resolution degrades to the language plane.
+	| 'TYPESAFE_API_KEY'
+	// Which decision adapter answers: 'typesafe' or 'llm'. Consulted only when the
+	// stored row names no kind; an unrecognised value is ignored rather than
+	// thrown on, so a typo degrades to today's behaviour instead of taking the
+	// inbound path down.
+	| 'DECISION_PROVIDER'
+	// Decision model id override. Unset ⇒ the adapter's pinned version (never an
+	// alias — a model that moved underneath a calibrated threshold is the failure
+	// this pin exists to prevent).
+	| 'DECISION_MODEL'
+	// Decision API ORIGIN override, for an operator fronting the vendor with their
+	// own proxy. The endpoint path is appended by the adapter, so this is an origin
+	// and not a full URL. Unset ⇒ the adapter's own origin.
+	| 'DECISION_BASE_URL'
 	// Per-org dollar-spend budget for LLM calls (analytics/spendBudget.ts).
 	// Daily / monthly USD ceilings — unset or `0` ⇒ no limit for that period
 	// (the budget gate is a no-op). When a ceiling is hit the autonomous path
@@ -261,6 +283,15 @@ export type EnvKey =
 	| 'GENERIC_WEBHOOK_SECRET'
 	// Code-work / GitHub PR merge webhook
 	| 'GITHUB_WEBHOOK_SECRET'
+	// Google OAuth client for CONNECTING an external Gmail/Workspace mailbox with
+	// Google sign-in (authorization-code + PKCE) instead of an app password. The
+	// client's redirect URI must be `${SITE_URL}/oauth/google/callback`.
+	// Unset ⇒ Google sign-in is unavailable and the Gmail connect form offers the
+	// app-password path only; app passwords keep working either way.
+	| 'GOOGLE_OAUTH_CLIENT_ID'
+	// Client secret of the same Google OAuth client. Used only server-side, in the
+	// token exchange/refresh. Unset ⇒ same as above: no Google sign-in.
+	| 'GOOGLE_OAUTH_CLIENT_SECRET'
 	// Calendar / availability grounding for scheduling replies (mail/availability).
 	// Optional read-only ICS/CalDAV subscription URL for the owner's own calendar
 	// (a private iCal export). Fetched server-side, in-deployment, to derive

@@ -31,14 +31,21 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 	kind: 'mta',
 
 	async registerDomain(domain, options) {
-		// Per-domain VERP return-path host (D1/D2): a custom host set on the
-		// `domains` row overrides the deployment-global `MTA_RETURN_PATH_DOMAIN`.
-		// The custom host (when present) is reflected to the MTA so its VERP MAIL
+		// Per-domain VERP return-path host: a custom host set on the `domains`
+		// row overrides the deployment-global `MTA_RETURN_PATH_DOMAIN`. The
+		// custom host (when present) is reflected to the MTA so its VERP MAIL
 		// FROM for this domain becomes `bounce+…@<host>`; when absent we send no
 		// host and the MTA keeps its global (historic behavior).
 		const customReturnPathHost = options?.returnPathHost?.trim() || undefined;
 
-		// H2: bind the domain's DKIM key to its owning org so it is born owned and
+		// Send-only mode. Absent ⇒ `'owlat'`, which is the only value every row
+		// written before this feature can have — so the branch below is unreachable
+		// for them and their records are byte-identical to before. The ONE record
+		// this adapter owns in that mode is `_smtp._tls`; the apex SPF fold is the
+		// register action's, for every provider at once.
+		const externalReceiving = options?.receiving?.mode === 'external';
+
+		// Bind the domain's DKIM key to its owning org so it is born owned and
 		// can never be used to sign for another tenant. Absent ⇒ no org is sent
 		// (unchanged behaviour); the register action supplies the deployment's
 		// singleton org.
@@ -83,6 +90,11 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 			dnsRecords.spf = {
 				type: 'TXT',
 				host: '@',
+				// OUR sending hosts only, in both modes. Folding the external
+				// receiver's include into this record is the register action's job
+				// (`../registerAction.ts`) — it does it for EVERY provider, so the
+				// relay adapters that build their own apex record are covered by the
+				// same code path instead of each having to remember.
 				value: buildSpfRecordValue({ include: spfInclude, qualifier }),
 			};
 		} else {
@@ -99,7 +111,15 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 		// plus an `https://mta-sts.<domain>/.well-known/mta-sts.txt` policy file
 		// (RFC 8461) — that policy file lives on the operator's web host, not in
 		// DNS, so we document it rather than generate it here.
-		const tlsRptValue = buildTlsRptRecordValue(getOptional('MTA_TLSRPT_RUA'));
+		//
+		// Omitted entirely in send-only mode: the reports it solicits are about TLS
+		// on INBOUND delivery, and for an external-receiving domain that delivery
+		// terminates at Google/Microsoft. Publishing it would ask the world to
+		// report on a hop we neither run nor can fix, and pointing `rua=` at our
+		// address for someone else's MX is at best noise.
+		const tlsRptValue = externalReceiving
+			? undefined
+			: buildTlsRptRecordValue(getOptional('MTA_TLSRPT_RUA'));
 		if (tlsRptValue) {
 			dnsRecords.tlsRpt = {
 				type: 'TXT',
@@ -112,24 +132,24 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 		// so the host needs an SPF TXT authorizing the pool IPs (so the envelope
 		// passes SPF, RFC 7489 §3.1), plus — for a CUSTOM per-domain host — an MX so
 		// remote MTAs can DELIVER DSNs back to the MTA's inbound listener
-		// (EHLO_HOSTNAME). The host is the domain's per-domain override when set
-		// (D1/D2), else the global `MTA_RETURN_PATH_DOMAIN`. Emitted as `mailFrom`
-		// entries keyed by the absolute hostname (a sibling of the From-domain).
+		// (EHLO_HOSTNAME). The host is the domain's per-domain override when set,
+		// else the global `MTA_RETURN_PATH_DOMAIN`. Emitted as `mailFrom` entries
+		// keyed by the absolute hostname (a sibling of the From-domain).
 		//
 		// The MX is scoped to CUSTOM hosts on purpose: the global RETURN_PATH_DOMAIN
 		// MX is an operator-managed, separately-documented record that predates this
 		// bundle — emitting (and thus VERIFYING) it here would newly FAIL every
 		// existing verified MTA domain on its next regeneration for an MX it never
-		// had to publish. Custom per-domain hosts are new (D1/D2), so requiring
-		// their MX is not a regression. `mailHost` is passed only for a custom host.
+		// had to publish. Custom per-domain hosts are new, so requiring their MX is
+		// not a regression. `mailHost` is passed only for a custom host.
 		const returnPathHost = customReturnPathHost ?? getOptional('MTA_RETURN_PATH_DOMAIN')?.trim();
 		const poolIps = parsePoolIps(getOptional('MTA_IP_POOLS'));
 		const mailHost = customReturnPathHost ? getOptional('EHLO_HOSTNAME')?.trim() : undefined;
-		// Relay authorisation on the bounce host (plan G-08): the relay arm stamps
-		// the SAME `bounce+…@<host>` envelope sender, so unless the host's SPF
-		// authorises the relay too, measuring that arm would itself fail its SPF
-		// and degrade the reputation being measured. Unset ⇒ no terms, and the
-		// relay VERP stamp simply stays off.
+		// Relay authorisation on the bounce host: the relay arm stamps the SAME
+		// `bounce+…@<host>` envelope sender, so unless the host's SPF authorises
+		// the relay too, measuring that arm would itself fail its SPF and degrade
+		// the reputation being measured. Unset ⇒ no terms, and the relay VERP
+		// stamp simply stays off.
 		const relaySpfTerms = parseReturnPathRelaySpfTerms(getOptional('MTA_RETURN_PATH_RELAY_SPF'));
 		const mailFromRecords = buildReturnPathMailFromRecords(
 			returnPathHost,

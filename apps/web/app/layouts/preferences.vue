@@ -21,7 +21,7 @@ import {
 	settingsAnchorFromHash,
 	settingsEntryFor,
 	settingsSectionsFor,
-} from '~/lib/settingsRegistry';
+} from "~/lib/settingsRegistry";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -29,11 +29,11 @@ const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const { isDesktop } = useDesktopContext();
 
 const sections = computed(() =>
-	settingsSectionsFor({ isFeatureEnabled, isDesktop: isDesktop.value })
+	settingsSectionsFor({ isFeatureEnabled, isDesktop: isDesktop.value }),
 );
 
 const activeEntry = computed(() => settingsEntryFor(route.path));
-const heading = computed(() => (activeEntry.value ? t(activeEntry.value.titleKey) : ''));
+const heading = computed(() => (activeEntry.value ? t(activeEntry.value.titleKey) : ""));
 
 /**
  * Palette deep links arrive as `path#anchor`. Nuxt does not scroll to a hash
@@ -49,7 +49,7 @@ function revealAnchor(hash: string) {
 	void nextTick(() => {
 		const target = document.getElementById(anchor);
 		if (!target) return;
-		target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		target.scrollIntoView({ behavior: "smooth", block: "start" });
 		flashedAnchor.value = anchor;
 		window.setTimeout(() => {
 			if (flashedAnchor.value === anchor) flashedAnchor.value = null;
@@ -60,23 +60,24 @@ function revealAnchor(hash: string) {
 onMounted(() => revealAnchor(route.hash));
 watch(
 	() => route.fullPath,
-	() => revealAnchor(route.hash)
+	() => revealAnchor(route.hash),
 );
 </script>
 
 <template>
 	<div>
+		<!-- A native root keeps nested layout transitions from leaving the page blank. -->
 		<NuxtLayout name="dashboard">
 			<div class="p-6 lg:p-8">
 				<div class="mx-auto flex w-full max-w-5xl gap-8">
-					<!-- Persistent left nav. Sticky so a long page never strands you. -->
+					<!-- Section navigation lives in the dashboard sidebar on desktop. -->
 					<DashboardNavigationPortal :title="t('shell.preferences.navLabel')">
 						<nav
 							class="hidden lg:block w-56 shrink-0 self-start"
 							:aria-label="t('shell.preferences.navLabel')"
 						>
 							<p class="px-3 mb-3 text-xs font-medium uppercase tracking-wider text-text-tertiary">
-								{{ t('shell.preferences.title') }}
+								{{ t("shell.preferences.title") }}
 							</p>
 							<div v-for="section in sections" :key="section.key" class="mb-4">
 								<p

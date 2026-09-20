@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A decision plane for Owlat: adopting TypeSafe Jev</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+	--bg: #fafafa; --bg-2: #ffffff; --bg-3: #f4f4f4;
+	--fg: #171717; --fg-2: #525252; --fg-3: #666666;
+	--line: #ececec; --line-2: #d0d0d0;
+	--accent: #b86b4d; --accent-soft: #f5f1ee;
+	--ok: #5a7a50; --ok-soft: #f1f6f0;
+	--warn: #a8853a; --warn-soft: #faf5ea;
+	--err: #a85545; --err-soft: #faf0ee;
+	--mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+	--sans: 'Figtree', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	--serif: 'Instrument Serif', Georgia, serif;
+	--r: 14px;
+	--ring-1: 0 0 0 1px rgb(0 0 0 / 0.06);
+	--ring-3: 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 1px -0.5px rgb(0 0 0 / 0.06), 0 3px 3px -1.5px rgb(0 0 0 / 0.06);
+	--ring-5: 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 1px -0.5px rgb(0 0 0 / 0.06), 0 3px 3px -1.5px rgb(0 0 0 / 0.06), 0 6px 6px -3px rgb(0 0 0 / 0.06), 0 12px 12px -6px rgb(0 0 0 / 0.06);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15.5px; line-height: 1.62; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 32px 120px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { font-family: var(--mono); font-size: 12px; background: var(--bg-3); padding: 1px 6px; border-radius: 6px; white-space: nowrap; }
+kbd { font-family: var(--mono); font-size: 11px; background: var(--bg-2); box-shadow: var(--ring-1); border-radius: 6px; padding: 1px 6px; }
+pre { background: var(--bg-2); box-shadow: var(--ring-1); border-radius: 10px; padding: 16px 18px; overflow-x: auto; font-family: var(--mono); font-size: 12px; line-height: 1.62; color: var(--fg-2); max-width: 100%; }
+pre code { background: none; padding: 0; font-size: inherit; white-space: pre; }
+pre b { color: var(--fg); font-weight: 600; }
+pre i { color: var(--fg-3); font-style: normal; }
+
+header.hero { border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.hero-inner { max-width: 1120px; margin: 0 auto; padding: 72px 32px 56px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-3); font-weight: 500; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); line-height: 1.1; letter-spacing: -0.02em; margin: 14px 0 16px; font-weight: 450; max-width: 20ch; }
+h1 em, h2 em { font-family: var(--serif); font-style: italic; font-weight: 400; color: var(--accent); }
+.lede { font-size: 18px; color: var(--fg-2); max-width: 64ch; margin: 0; }
+.meta { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { font-family: var(--mono); font-size: 11.5px; padding: 5px 12px; border-radius: 100px; color: var(--fg-2); background: var(--bg); box-shadow: var(--ring-1); }
+nav.toc { margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+nav.toc a { display: block; background: var(--bg-2); border-radius: 12px; box-shadow: var(--ring-1); padding: 13px 16px; color: var(--fg); font-size: 14px; font-weight: 500; }
+nav.toc a:hover { box-shadow: var(--ring-3); text-decoration: none; }
+nav.toc a span { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--accent); margin-bottom: 3px; }
+
+section { padding-top: 84px; }
+.secnum { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 450; letter-spacing: -0.02em; line-height: 1.15; margin: 8px 0 12px; max-width: 32ch; }
+h3 { font-size: 17px; font-weight: 550; margin: 36px 0 8px; }
+h4 { font-size: 14px; font-weight: 600; margin: 24px 0 6px; }
+p { max-width: 74ch; color: var(--fg-2); }
+p.tight { margin-top: 4px; }
+ul, ol { max-width: 74ch; color: var(--fg-2); padding-left: 22px; }
+li { margin: 5px 0; }
+li::marker { color: var(--fg-3); }
+.note { font-size: 13.5px; color: var(--fg-3); max-width: 76ch; }
+b.k { color: var(--fg); font-weight: 550; }
+
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 22px 0; background: var(--bg-2); border-radius: var(--r); box-shadow: var(--ring-1); overflow: hidden; }
+th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-3); font-weight: 550; padding: 12px 16px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 10px 16px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--fg-2); }
+tr:last-child td { border-bottom: 0; }
+td b { color: var(--fg); font-weight: 550; }
+td code { white-space: normal; }
+.thead-row td { background: var(--bg-3); font-weight: 550; color: var(--fg); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.num { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
+
+.callout { background: var(--bg-2); border-radius: var(--r); box-shadow: var(--ring-1); padding: 18px 22px; margin: 24px 0; max-width: 80ch; }
+.callout .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.09em; font-weight: 600; color: var(--fg-3); display: block; margin-bottom: 6px; }
+.callout p { margin: 0; }
+.callout.warn { background: var(--warn-soft); }
+.callout.warn .lbl { color: var(--warn); }
+.callout.ok { background: var(--ok-soft); }
+.callout.ok .lbl { color: var(--ok); }
+.callout.err { background: var(--err-soft); }
+.callout.err .lbl { color: var(--err); }
+
+.pane-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 26px 0; align-items: stretch; }
+@media (max-width: 860px) { .pane-pair { grid-template-columns: 1fr; } }
+.pane { background: var(--bg-2); border-radius: var(--r); box-shadow: var(--ring-1); padding: 22px; }
+.pane-tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.09em; font-weight: 550; color: var(--fg-3); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.pane-tag.now::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--err); }
+.pane-tag.next::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.pane pre { box-shadow: none; background: var(--bg); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin: 24px 0; }
+.card { background: var(--bg-2); border-radius: var(--r); box-shadow: var(--ring-1); padding: 18px 20px; }
+.card h4 { margin: 0 0 6px; font-size: 14.5px; }
+.card p { font-size: 13.5px; margin: 0; }
+.card .tag { font-family: var(--mono); font-size: 10.5px; color: var(--accent); display: block; margin-bottom: 8px; }
+
+.phase { background: var(--bg-2); border-radius: var(--r); box-shadow: var(--ring-1); padding: 22px 24px; margin: 18px 0; }
+.phase-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.phase-head .pnum { font-family: var(--mono); font-size: 11.5px; color: #fff; background: var(--accent); border-radius: 100px; padding: 3px 11px; }
+.phase-head h3 { margin: 0; font-size: 17px; }
+.phase-head .size { font-family: var(--mono); font-size: 11.5px; color: var(--fg-3); margin-left: auto; }
+.phase ul { margin: 10px 0 0; }
+.phase .gate { margin-top: 14px; font-size: 13px; color: var(--fg-2); background: var(--bg); border-radius: 10px; padding: 11px 14px; }
+.phase .gate b { color: var(--fg); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500; padding: 2px 10px; border-radius: 100px; background: var(--bg-3); color: var(--fg-2); }
+.chip.ok { background: var(--ok-soft); color: var(--ok); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.err { background: var(--err-soft); color: var(--err); }
+.chip.brand { background: var(--accent-soft); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header class="hero">
+	<div class="hero-inner">
+		<span class="eyebrow">Owlat · AI platform · 2026-09-17 · rev 2</span>
+		<h1>A third plane: <em>decisions, typed and priced at nothing.</em></h1>
+		<p class="lede">TypeSafe shipped Jev, a model that does not write text. You hand it state and a set of typed questions, and it hands back choices, scores and probabilities in a fraction of a second, charging for input tokens only. Fourteen of our decision call sites are exactly that shape and we currently pay a text model to fake it. This plan adds a decision plane next to the language and embedding planes, makes Jev the default provider <i>within</i> that plane, and never sends a byte anywhere until an operator enters their own key.</p>
+		<div class="meta">
+			<span class="pill">40 dispatch calls across 25 files</span>
+			<span class="pill">14 are decisions, not writing</span>
+			<span class="pill">$21.16 → $0.44 per 1k messages</span>
+			<span class="pill">9 to 25 s → under 1 s</span>
+			<span class="pill">2 adapters, 1 registry</span>
+			<span class="pill">opt-in, bring your own key</span>
+		</div>
+		<nav class="toc">
+			<a href="#what"><span>00</span>What Jev actually is</a>
+			<a href="#why"><span>01</span>What it buys the product</a>
+			<a href="#inventory"><span>02</span>The decision inventory</a>
+			<a href="#plane"><span>03</span>The decision plane</a>
+			<a href="#exchange"><span>04</span>Staying exchangeable</a>
+			<a href="#default"><span>05</span>Opt-in, and what default means</a>
+			<a href="#sites"><span>06</span>Call-site migrations</a>
+			<a href="#new"><span>07</span>What becomes affordable</a>
+			<a href="#cost"><span>08</span>Cost and latency</a>
+			<a href="#risks"><span>09</span>Jagged edges and our rules</a>
+			<a href="#testing"><span>10</span>Testing and calibration</a>
+			<a href="#phases"><span>11</span>Phases and gates</a>
+			<a href="#open"><span>12</span>Decisions I need from you</a>
+		</nav>
+	</div>
+</header>
+
+<div class="wrap">
+
+<section id="what">
+	<span class="secnum">00</span>
+	<h2>What Jev actually is</h2>
+	<p>One endpoint, <code>POST https://api.typesafe.ai/v1/systemone</code>, bearer auth, one model id (<code>jev-1.13.0</code>, aliased by both <code>jev-latest</code> and <code>jev-preview</code>). You send a <b class="k">state</b> (string, object or array) and a map of named <b class="k">questions</b>. You get back one typed answer per question. There is no prose, no token stream and no schema to validate, because the answer space is the set of options you sent.</p>
+
+	<table>
+		<tr><th>Question type</th><th>You send</th><th>You get back</th><th>Use it for</th></tr>
+		<tr><td><b>Noul</b></td><td><code>instructions</code>, optional <code>criteria: {true, false}</code></td><td><code>noul</code>: a probability 0 to 1. <b>No confidence field.</b></td><td>Yes/no where the probability itself is the signal. Needs a reply? Contains an injection?</td></tr>
+		<tr><td><b>Choice</b></td><td><code>instructions</code>, <code>criteria</code>: a map of option to description (descriptions may be <code>null</code>)</td><td><code>choice</code>, <code>probabilities</code> over all options, <code>confidence</code></td><td>Unordered labels. Category, intent, relation type.</td></tr>
+		<tr><td><b>Score</b></td><td><code>instructions</code>, <code>criteria</code>: an ordered list of at least 2 level descriptions</td><td><code>score</code> (can land between levels), <code>legend</code>, <code>probabilities</code> keyed by level, <code>confidence</code></td><td>Ordered judgement. Urgency, frustration, passage relevance.</td></tr>
+	</table>
+
+	<div class="callout warn">
+		<span class="lbl">Two distinctions the rest of this plan depends on</span>
+		<p><b class="k">Probability is not confidence.</b> Choice and Score return a distribution plus a derived confidence (how peaked that distribution is). Noul returns a bare probability and no confidence. Any threshold we write has to name which one it reads, and Noul thresholds are distance from 0.5, not peakedness. <b class="k">Calibration is a group property.</b> TypeSafe's own wording: calibration is measured across groups of predictions and "does not guarantee that an individual answer is correct", and the right threshold "depends on your domain". So a calibrated probability is a better input to a gate than a self-reported one. It is not a correctness guarantee, and §11's P5 is written accordingly.</p>
+	</div>
+
+	<h3>What it costs and what it limits</h3>
+	<table>
+		<tr><th>Property</th><th>Value</th><th>Source</th><th>What it means here</th></tr>
+		<tr><td>Price</td><td class="num">$0.042 per 1M input tokens, output billed at $0</td><td>docs, models</td><td>Our fast-tier default <code>gpt-5.6-luna</code> is $1 in, $6 out (<code>lib/llm/pricing.ts:19</code>). Output tokens are returned and nonzero, they are simply not charged, so our price table needs an explicit <code>outputPerM: 0</code>.</td></tr>
+		<tr><td>Measured latency</td><td class="num">0.27 s for one batched 13-question call over ~54k characters</td><td>docs, parallel-questions cookbook</td><td>The same 13 as separate calls took 2.71 s. This is the only timing figure in their documentation and it is the one to plan against.</td></tr>
+		<tr><td>Claimed latency</td><td class="num">70 to 500 ms end to end</td><td>the launch post only</td><td>Not repeated anywhere in the API docs. Treated as marketing until P0 measures it.</td></tr>
+		<tr><td>Context</td><td class="num">64k tokens total, 32k for state plus the longest question</td><td>docs, jaggedness page</td><td>Questions are billed and counted too. Roughly 150k characters of English per their own conversion.</td></tr>
+		<tr><td>Rate limits</td><td class="num">1,200 req/min, 250k tokens/s, explicitly "dynamically adjusting" and changeable without notice</td><td>docs, models</td><td>Never hard-code it. Our own <code>agentPipelineGlobal</code> bucket is 60/min, so we are capped well below them anyway.</td></tr>
+		<tr><td>Region</td><td>US west coast, early access</td><td>the launch post only</td><td>Unconfirmed in the docs. Ask them directly. It is the operator's jurisdiction call either way, see §05.</td></tr>
+		<tr><td>Clients</td><td>HTTP, Python SDK, <code>@typesafe-ai/sdk</code> (Node 20+), plus <code>APIError</code> subclasses for timeout, connection, 400/401/403/404/422/429/5xx</td><td>docs, sdk</td><td>We write our own client. See §03.</td></tr>
+	</table>
+	<p class="note">Everything above was checked against <a href="https://docs.typesafe.ai/api">the HTTP reference</a>, <a href="https://docs.typesafe.ai/models">models</a>, <a href="https://docs.typesafe.ai/primitives">primitives</a>, <a href="https://docs.typesafe.ai/confidence">confidence</a>, <a href="https://docs.typesafe.ai/model-jaggedness/jev-1.13">the jaggedness page</a> and the cookbooks on 2026-09-17. Where a figure exists only in <a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev">the launch post</a>, the table says so.</p>
+</section>
+
+<section id="why">
+	<span class="secnum">01</span>
+	<h2>What it buys the product</h2>
+	<p>Not "we save money on tokens", although we do. Four things change that we have wanted and could not afford.</p>
+
+	<div class="cards">
+		<div class="card">
+			<span class="tag">01 · triage</span>
+			<h4>Mail lands triaged, not eventually triaged</h4>
+			<p>The agent pipeline spends roughly 9 to 25 seconds in fast-tier decisions before a human sees a verdict, because guard, classify and clarify each wait on their own round trip. Two batched decision calls do the same work in about a second. The Postbox Reply Queue and the Team Inbox stop showing a heuristic placeholder that gets overwritten a minute later.</p>
+		</div>
+		<div class="card">
+			<span class="tag">02 · autonomy</span>
+			<h4>A second real signal for auto-send</h4>
+			<p>Auto-send already gates on a real number: <code>resolveAutoApproveScore(input.draftQuality)</code> in <code>agent/steps/route/index.ts:142</code>, which is the draft self-check, not the classifier's self-report. That self-check is itself an LLM guessing about itself (<code>agent/shared/draftService.ts:111</code>). Replacing <i>that</i> with a calibrated probability improves the number the gate already reads, which is a much smaller and much safer change than the one I proposed in rev 1.</p>
+		</div>
+		<div class="card">
+			<span class="tag">03 · headroom</span>
+			<h4>The dollar ceiling stops binding</h4>
+			<p><code>analytics/spendBudget.ts</code> is an enforced daily and monthly USD ceiling. When it runs low, <code>mail/ai/gate.ts</code> cuts advisory features first to reserve the tail for drafting, and <code>spendBudgetGate</code> withholds auto-send. Decisions are what fills that ledger fastest and they are the cheapest thing to move. Moving them buys headroom for the drafting that actually needs a text model.</p>
+		</div>
+		<div class="card">
+			<span class="tag">04 · honesty</span>
+			<h4>Fewer silent degradations</h4>
+			<p>28 of 40 dispatch calls sit inside a <code>try</code>; 6 of those degrade to a computed heuristic baseline and 21 degrade to null or empty. Twelve sit in no <code>try</code> at all, including <code>classify/index.ts:80</code>. Most of those catches exist for malformed JSON and schema drift, which this model cannot produce.</p>
+		</div>
+	</div>
+
+	<div class="callout">
+		<span class="lbl">The honest counterweight</span>
+		<p>Jev cannot write. Every draft, reply variant, translation, summary and assistant turn stays on the language plane. This is an addition, not a replacement. It also puts a third party on the path of customer mail, which in a self-hosted product is the operator's decision to make and ours to document precisely. Nothing here ships enabled.</p>
+	</div>
+</section>
+
+<section id="inventory">
+	<span class="secnum">02</span>
+	<h2>The decision inventory</h2>
+	<p>The repo has <b class="k">40 LLM dispatch calls across 25 files</b>: 22 <code>runLlmObject</code>, 14 <code>runLlmText</code>, 2 <code>runLlmStream</code>, plus the tools and attempt-metadata variants. I read all of them. Fourteen are decisions wearing a text model's clothes. Five split into an extraction half that stays and a judgement half that moves. The rest write.</p>
+
+	<table>
+		<tr><th>Call site</th><th>What it asks today</th><th>Verdict</th></tr>
+		<tr class="thead-row"><td colspan="3">Decisions. These move.</td></tr>
+		<tr><td><code>agent/steps/classify/index.ts:80</code></td><td>category, priority, sentiment, intent, self-reported confidence</td><td><span class="chip ok">4 Choice</span> and the self-report is deleted</td></tr>
+		<tr><td><code>agent/steps/security_scan/index.ts:141</code></td><td>prompt-injection verdict over up to 4 windows of 8,000 chars</td><td><span class="chip ok">Noul per window, one call</span></td></tr>
+		<tr><td><code>mail/ai/categoryClassify.ts:93</code></td><td>person / newsletter / notification / receipt / other</td><td><span class="chip ok">1 Choice</span></td></tr>
+		<tr><td><code>mail/ai/needsReplyClassify.ts:160</code></td><td>needs a reply, urgency, is this scheduling</td><td><span class="chip ok">Noul + Score + Noul</span></td></tr>
+		<tr><td><code>agent/shared/draftService.ts:112</code></td><td>draft self-check, the score auto-send actually reads</td><td><span class="chip ok">Noul + Scores</span>, highest value of the set</td></tr>
+		<tr><td><code>mail/ai/coach.ts:147</code></td><td>tone and clarity check on an outgoing draft</td><td><span class="chip ok">Scores</span>, weights stay in our code</td></tr>
+		<tr><td><code>agent/outcomeFeedback.ts:88</code></td><td>sentiment of a reply received after an auto-send, acts only on negative</td><td><span class="chip ok">1 Noul</span> "is this recipient unhappy"</td></tr>
+		<tr><td><code>knowledge/edgeInference.ts:172</code></td><td>which relation holds between two known entities</td><td><span class="chip ok">Choice</span></td></tr>
+		<tr><td><code>mail/handlingRulesCompile.ts:146</code></td><td>compile a natural-language rule</td><td>compilation stays. <span class="chip ok">Choice second opinion</span> on the compiled category</td></tr>
+		<tr class="thead-row"><td colspan="3">Split. The judgement half moves, the writing half stays.</td></tr>
+		<tr><td><code>agent/steps/clarify/index.ts:284</code></td><td>extract reply slots, tag each answerable-from-context and decision-relevant</td><td><span class="chip warn">extraction stays</span> <span class="chip ok">2 Noul per slot move</span></td></tr>
+		<tr><td><code>agent/steps/clarify/index.ts:341</code></td><td>do the sampled candidate replies disagree on this slot</td><td><span class="chip ok">Noul per slot</span>, candidates stay capable-tier</td></tr>
+		<tr><td><code>mail/ai/needsReplyClassify.ts:281,322</code></td><td>the same slot and divergence pass for the Reply Queue</td><td>same split, shared module <code>inbox/clarificationSlots.ts</code></td></tr>
+		<tr><td><code>mail/ai/voiceProfileActions.ts:66</code></td><td>derive a writing-voice profile from sent mail</td><td><span class="chip ok">tone axes as Scores</span>, prose profile stays</td></tr>
+		<tr><td><code>knowledge/extraction.ts:172,253,357</code></td><td>entity and fact extraction</td><td>spans stay. Typing and dedup candidates become Choice</td></tr>
+		<tr class="thead-row"><td colspan="3">Not decisions. Untouched.</td></tr>
+		<tr><td><code>agent/steps/context_retrieval/quarantine.ts:118</code></td><td class="num" colspan="2">Structured <i>extraction</i> of facts and sender requests, rendered into the context block. Guard-tier, not a guard verdict. There is no boolean here. Rev 1 had this wrong.</td></tr>
+		<tr><td><code>semanticFileProcessing.ts:112</code></td><td class="num" colspan="2">Title, summary and tags. The summary is the call. Rev 1 had this wrong. Also: Jev is text-only, and this path receives PDFs and images.</td></tr>
+		<tr><td><code>agent/steps/draft</code>, <code>mail/replyOptions.ts:50</code>, <code>mail/ai/assist.ts</code>, <code>mail/ai/reviseDraft.ts</code>, <code>mail/ai/commitmentExtract.ts:69</code>, <code>mail/ai/draftOnArrival.ts:85</code>, <code>translate.ts:92</code>, <code>quickQuery.ts:177</code>, <code>assistant/runner.ts</code>, <code>assistant/tools.ts</code>, <code>visualizationAgentActions.ts</code>, <code>plugins/llm.ts:160</code></td><td colspan="2">Writing, streaming, tool calling, or structured output whose fields are generated text.</td></tr>
+	</table>
+
+	<p>The shape of the win is in the pipeline order. One inbound message currently makes up to seven sequential fast-tier calls, four of them over disjoint 8,000-character windows of the same body.</p>
+
+	<div class="pane-pair">
+		<div class="pane">
+			<div class="pane-tag now">Now · seven round trips</div>
+			<pre><code><i>security_scan</i>  guard ×4, disjoint windows  (~2.2k in, 60 out each)
+<i>classify</i>       1 runLlmObject             (~2.5k in, 120 out)
+<i>clarify</i>        slots                      (~3.0k in, 250 out)
+<i>clarify</i>        divergence                 (~2.0k in, 200 out)
+                 <b>≈ 16.3k in, 810 out, 9 to 25 s</b></code></pre>
+		</div>
+		<div class="pane">
+			<div class="pane-tag next">Proposed · two round trips</div>
+			<pre><code><i>guard</i>     1 call, the 4 windows as an array state
+          Noul injection + Noul smuggling per window
+<i>triage</i>    1 call, state = message + context
+          4 Choice, 2 Noul, 1 Score, + speculative
+                 <b>≈ 10.5k in, 9 to 25 s → about 1 s</b></code></pre>
+		</div>
+	</div>
+	<p class="note">The saving is mostly request count and latency, not input tokens: the four guard windows are disjoint, so consolidating them removes round trips rather than re-sent text. Input still falls about 36%, because classify, slots and divergence stop each re-sending the same message.</p>
+</section>
+
+<section id="plane">
+	<span class="secnum">03</span>
+	<h2>The decision plane</h2>
+	<p>We run two decoupled planes today: LANGUAGE (everything that writes) and EMBEDDING (retrieval, local by default so it resolves under any language choice). Both go through <code>lib/llmProvider.ts</code> and a registry of one-file adapters guarded by a mapped-type assignment (<code>llmProviders/index.ts:63</code>), the pattern documented in <code>decisions/8.007-pluggable-llm.md</code>. Jev fits neither. It is not an AI SDK <code>LanguageModel</code>, and wrapping it in <code>generateObject</code> would throw away the probabilities, which are the entire reason to use it.</p>
+	<p>So: a third plane, built like its neighbours. Note the two existing adapter shapes already differ (the embedding adapter has no <code>listModels</code>, no per-tier models and an extra dimension guard), so "like its neighbours" means a deliberate choice, made here: the decision adapter follows the <b class="k">language</b> shape, minus tiers, since there is one model.</p>
+
+	<h3>File plan</h3>
+	<p><code>lib/llmProvider.ts</code> is exactly 500 lines and <code>scripts/check-file-size.sh</code> caps new files at 500 with a frozen baseline. So the resolver does not grow a third plane inline. It gets a sibling.</p>
+	<pre><code>apps/api/convex/lib/
+  decisionProvider.ts          <i>resolve + cache the decision plane  (~180)</i>
+  decisionProviders/
+    types.ts                   <i>kinds, adapter interface, provenance (pure)  (~120)</i>
+    index.ts                   <i>registry + mapped-type guard  (~60)</i>
+    typesafe.ts                <i>Jev over fetchGuarded  (~200)</i>
+    llm.ts                     <i>questions rendered to zod + prompt  (~220)</i>
+    wire.ts                    <i>encode request / decode + map answers  (~160)</i>
+  decision/
+    questions.ts               <i>choice() / score() / noul(), answer types (pure)  (~140)</i>
+    dispatch.ts                <i>runDecision: retry, deadline, fallback, accounting  (~240)</i>
+    pricing.ts                 <i>list price + admission for the plane  (~90)</i></code></pre>
+	<p class="note">Purity matters for <code>types.ts</code> and <code>questions.ts</code> for a specific reason: <code>schema/instance.ts</code> imports the validators, which import the registry's kind tuple, so nothing in that chain may pull in <code>node:crypto</code> or <code>@ai-sdk/*</code>. Every call site that will use the plane is already <code>'use node'</code>, so isolate-safety is about the schema chain, not the callers.</p>
+
+	<h3>The question DSL</h3>
+	<pre><code><i>// lib/decision/questions.ts</i>
+export const noul = (instructions, criteria) =&gt; ({ type: 'noul', instructions, criteria })
+export const choice = (instructions, criteria) =&gt; ({ type: 'choice', instructions, criteria })
+export const score = (instructions, criteria) =&gt; ({ type: 'score', instructions, criteria })
+
+<i>// Answers mirror the set's keys. Noul returns a probability and NO confidence.</i>
+type NoulAnswer   = { kind: 'noul'; probability: number }
+type ChoiceAnswer = { kind: 'choice'; value: string; probabilities: Record&lt;string, number&gt;; confidence: number }
+type ScoreAnswer  = { kind: 'score'; value: number; levels: string[]; probabilities: Record&lt;string, number&gt;; confidence: number }</code></pre>
+	<p>Our answer shape is <b class="k">not</b> the wire shape. The wire returns <code>{ type, noul }</code> or <code>{ type, choice, probabilities, confidence }</code> or <code>{ type, score, legend, probabilities }</code>, with Score probabilities keyed by level and Choice descriptions allowed to be null. <code>wire.ts</code> owns that translation in one place, exactly as <code>normalizeUsage</code> owns the AI SDK's field-name history in <code>lib/llm/dispatch.ts</code>.</p>
+
+	<h3>The dispatch contract</h3>
+	<p>Rev 1 said "retry, fallback, usage" and left six behaviours undefined. They belong in ADR-0060 before a line of adapter code is written.</p>
+	<table>
+		<tr><th>Behaviour</th><th>Rule</th></tr>
+		<tr><td>Deadline</td><td>Every request carries <code>AbortSignal.timeout()</code>. <code>fetchGuarded</code> passes <code>init</code> through and adds no timeout of its own, and a plane selling sub-second answers must not inherit an unbounded socket.</td></tr>
+		<tr><td>Retry</td><td>Reuse <code>isRetriableLlmError</code> rather than forking it. 5xx (including 529) and 429 retry, 401/403/422 do not. Add jitter, which the language plane lacks, and honour <code>Retry-After</code>: one shared upstream bucket plus our synchronized ingest is exactly the shape that produces a retry storm.</td></tr>
+		<tr><td>Abort</td><td><code>runLlmObject</code> takes no <code>AbortSignal</code> today (<code>dispatch.ts:294</code>), so the llm-backed adapter cannot honour one. Widening <code>LlmObjectOptions</code> with an optional signal is a three-line prerequisite and belongs in the same PR.</td></tr>
+		<tr><td>Partial or foreign answers</td><td>A missing requested key, an extra key, or a Choice value outside <code>criteria</code> is a hard error, not a coerced answer. It means our question set and the model disagree, and silently repairing it would corrupt the calibration statistics that every later phase gates on.</td></tr>
+		<tr><td>Fallback</td><td>One hop to the <code>llm</code> adapter, never from 401/403/422 (those are our bug or our config, and falling back would hide them forever), and never without the circuit breaker below.</td></tr>
+		<tr><td>Accounting</td><td>Every call writes an <code>llmUsageEvents</code> row with a <code>plane</code> tag before the answer is used, so the enforced ceiling sees it.</td></tr>
+	</table>
+
+	<div class="callout err">
+		<span class="lbl">The fallback hop is a cost lever an outsider can pull</span>
+		<p>Default-on fallback means anything that breaks the decision plane (an expired key, a 429, a vendor outage) silently re-routes every inbound message onto a model that costs 24 to 50 times more, on the path that is fed by strangers sending us email. <code>analytics/spendBudget.ts</code> exists because of that exact threat: "an org (or a prompt-injected auto-reply loop) can run up unbounded spend". So the hop needs a circuit breaker modelled on the <code>llm_failure</code> breaker in <code>agentHealth.ts:488</code>, it is default-OFF for the high-volume background classifiers, and the plane gets its own share of the ceiling. Also: <code>MAX_EVENTS_SCANNED = 10_000</code> in <code>spendBudget.ts:200</code> is a bounded scan, and one extra row per message will push a busy day past it, which makes the ceiling under-report. That constant has to move with this work.</p>
+	</div>
+
+	<h3>Everything else it touches</h3>
+	<table>
+		<tr><th>Area</th><th>Files</th><th>Note</th></tr>
+		<tr><td>Stored config</td><td><code>schema/instance.ts</code>, <code>lib/aiProviderConfigValidators.ts</code>, <code>aiProviderConfig.ts</code>, <code>aiProviderConfigActions.ts</code></td><td><b>Five</b> envelope columns per plane, not four: the AES-GCM four plus <code>keyPreview</code>, written and cleared in lockstep. Plumbing sites: <code>envelopeFromColumns</code>, <code>buildStoredProviderConfig</code>, <code>storedEnvelopeOf</code>, the <code>getConfig</code> projection, <code>_persistConfig</code>, plus the inlined presence checks in <code>testConnection</code> and <code>listModels</code>.</td></tr>
+		<tr><td>Config cache</td><td><code>lib/llmProvider.ts:252</code></td><td>A 30 s TTL with no invalidation on save. A third plane makes a cache miss decrypt three envelopes over three Node round trips. Invalidate on write and resolve planes lazily, or the sub-second promise dies in our own code.</td></tr>
+		<tr><td>Env</td><td><code>lib/env.ts</code>, <code>packages/shared/src/convexRuntimeEnv.ts</code>, <code>apps/docs/content/{en,de}/3.developer/8.environment-variables.md</code></td><td>Three gates: the env lint, the key-sync check, and <code>check-env-docs.sh</code>, which requires both languages.</td></tr>
+		<tr><td>Pricing and admission</td><td><code>lib/llm/pricing.ts</code></td><td>Price rows with <code>outputPerM: 0</code> and a <code>jev-</code> catch-all so <code>jev-preview</code> is not billed at the $3/$12 default. Admission is separate and fail-closed: without a decision provenance in <code>ADMISSION_MODELS</code>, the plugin capability in P6 dies with <code>access_denied</code>.</td></tr>
+		<tr><td>Kill switch</td><td><code>packages/shared/src/featureFlags.ts</code>, a gate mutation beside <code>mail/ai/gate.ts</code></td><td>Actions cannot read flags (no <code>ctx.db</code>), which is why that gate mutation exists. The operator needs one click, not an env edit and a redeploy.</td></tr>
+		<tr><td>Rate limiting</td><td><code>rateLimiter.ts</code></td><td>A named <code>decisionPlaneGlobal</code> bucket beside the other 18, not an ad-hoc limiter in the dispatch.</td></tr>
+		<tr><td>Telemetry</td><td><code>analytics/llmUsage.ts</code>, <code>schema/inbox.ts</code>, <code>agentHealth.ts</code></td><td>A <code>plane</code> tag plus three counters: fallback rate, uncalibrated rate, 429/529 rate. Today provider attribution is inferred from the model-id string, and the <code>estimated</code> flag is computed and then discarded.</td></tr>
+		<tr><td>Run provenance</td><td><code>agent/steps/types.ts</code>, <code>agent/walker.ts</code>, <code>schema/inbox.ts</code></td><td><code>AgentStepResult</code> is a plain type; persisting a <code>decision</code> field means a new optional column and six walker plumbing sites. If it lands as JSON in a string, <code>CONVENTIONS.md</code> requires a sibling version field.</td></tr>
+		<tr><td>Audit</td><td>reuse <code>ai_provider_config.updated</code></td><td>A new action literal is an eight-file change including two locale catalogs and a group-spec prefix that silently drops the row if forgotten. Reusing the existing action is the cheapest correct answer.</td></tr>
+		<tr><td>App i18n</td><td><code>apps/web/i18n/locales/{en,de}.json</code>, <code>aiProviders.ts</code></td><td>Parity is test-enforced. The provider label is a message key resolved in the page, and the uncalibrated explanation needs real copy in both languages.</td></tr>
+		<tr><td>ADR</td><td><code>docs/adr/0060-decision-plane.md</code>, plus amendments to 0029 and 0051 and the pluggable-LLM docs page</td><td>Post-0050 header style. Records the dispatch contract above, not just the architecture. See the refresh below.</td></tr>
+	</table>
+
+	<h3>Refreshing the ADRs this work supersedes</h3>
+	<p>Three existing records become wrong, or merely stale, the moment this ships. Updating them is part of P1b, not a later tidy-up.</p>
+	<table>
+		<tr><th>ADR</th><th>State today</th><th>What changes</th></tr>
+		<tr><td><code>0029-llm-dispatch-module</code></td><td>Still <b>proposed</b>, although it shipped: <code>lib/llm/dispatch.ts</code> is the one dispatch seam every LLM call goes through.</td><td>Mark it accepted and shipped, then widen it. The decision is no longer "lift the SDK-shape seam out of the agent steps", it is "one dispatch module <i>per plane</i>, with the same retry, usage-normalisation and abort shape". Record what the decision plane taught us and fold in the fix this work makes: <code>runLlmObject</code> never took an <code>AbortSignal</code>, so half the seam was uncancellable.</td></tr>
+		<tr><td><code>0051-ordered-autonomy-gates</code></td><td>Accepted and correct.</td><td>An amendment note, in the style 0059 uses. The gates stay restrict-only. What is now written down is where a calibrated probability belongs instead: it feeds <code>resolveAutoApproveScore</code> and the tier comparison, and the gate registry gains only a block-only <code>uncalibrated_decision</code> member. That is exactly the mistake rev 1 of this plan made, so the record should stop the next person making it.</td></tr>
+		<tr><td><code>decisions/8.007-pluggable-llm</code> (docs)</td><td>Describes two planes.</td><td>Becomes three, in both languages, with the one-adapter-file rule restated once rather than a third time.</td></tr>
+	</table>
+	<p class="note">Found while checking: twelve ADRs are still marked <b>proposed</b> although they shipped (0015 through 0019, 0021 through 0023, 0029, 0030, 0032, 0033). Only 0029 is in this plan's path. The other eleven are a ten-minute sweep that wants its own small PR, not a rider on this one.</p>
+</section>
+
+<section id="exchange">
+	<span class="secnum">04</span>
+	<h2>Staying exchangeable</h2>
+	<p>Three separate promises, and they are also what make the default safe.</p>
+	<h3>1. Any adapter answers any question set</h3>
+	<p>The <code>llm</code> adapter renders a question set into a zod schema plus a deterministic prompt, calls <code>runLlmObject</code> on the existing language plane, and returns the same result shape. Choice becomes an enum, Score a bounded integer with the levels in the prompt, Noul a 0-to-1 number. Probabilities come back degenerate and the result is stamped <code>calibrated: false</code>. This is not a stub: it is the path every install without a key runs, it must reproduce today's labels, and it is why reverting is a dropdown.</p>
+	<h3>2. One conformance suite, both adapters</h3>
+	<p>Every question set is exported and registered in a catalog. One vitest suite runs the whole catalog through both adapters against recorded fixtures, asserting shape, key sets, value domains, and the fallback path. An unregistered question set fails the suite.</p>
+	<h3>3. A third adapter is one file</h3>
+	<p>One adapter file, one registry line, a validator union that widens itself, one settings option. The mapped-type guard makes a missing method a compile error.</p>
+	<div class="callout ok">
+		<span class="lbl">Design rule</span>
+		<p>No call site imports an adapter. Call sites import <code>runDecision</code> and their own question set. The single exception is the <code>calibrated</code> flag, which gates every threshold and must be read from the result rather than assumed.</p>
+	</div>
+</section>
+
+<section id="default">
+	<span class="secnum">05</span>
+	<h2>Opt-in, and what default means</h2>
+	<p>Owlat is self-hosted and ships infrastructure. We do not run a hosted platform, we do not broker third-party keys, and there are no plan tiers. Every operator brings their own key for every provider, and that is as true for a decision provider as it is for OpenAI today. Rev 1 of this plan had several passages that assumed otherwise. They are gone.</p>
+	<p>So "make Jev the default" resolves to four different defaults, and they are not the same question:</p>
+	<table>
+		<tr><th>Default at this level</th><th>Is Jev the default?</th></tr>
+		<tr><td><b>A fresh install going through setup</b></td><td><b>Yes.</b> The decision provider defaults to TypeSafe Jev in the wizard and in the settings UI. The operator supplies their own key, as they do for every other provider; skipping is one keystroke and leaves the language-backed adapter.</td></tr>
+		<tr><td><b>Which provider the decision plane uses once configured</b></td><td><b>Yes.</b> TypeSafe is the recommended adapter and the one we document first.</td></tr>
+		<tr><td><b>Which plane answers a decision once a key works</b></td><td><b>Yes.</b> All fourteen migrated call sites route through it and the language plane becomes the fallback.</td></tr>
+		<tr><td><b>What an install resolves to with no key</b></td><td><b>No, necessarily.</b> <code>DEFAULT_DECISION_KIND = &#39;llm&#39;</code>. A provider with no credential cannot answer, so resolution degrades to the language plane, which is exactly today&#39;s behaviour.</td></tr>
+		<tr><td><b>What happens to an existing install on upgrade</b></td><td><b>Nothing.</b> No migration, no banner, no preselected vendor in an existing config. It appears as an available option in the AI provider page and in the docs.</td></tr>
+	</table>
+
+	<div class="callout ok">
+		<span class="lbl">Two constants, deliberately different</span>
+		<p><code>SETUP_DEFAULT_DECISION_KIND = &#39;typesafe&#39;</code> is the wizard&#39;s pre-filled answer for a brand-new install. <code>DEFAULT_DECISION_KIND = &#39;llm&#39;</code> is what resolution falls back to when no key resolves. Giving them one name would collapse "what we recommend" into "what happens to an install that never opted in", and those must stay separable. We still never ship, broker or proxy a key.</p>
+	</div>
+
+	<p>The fresh-install wizard asks once, alongside the existing provider questions, with Jev pre-filled and skip as a first-class answer. Enabling it anywhere shows one consent screen that names the vendor, the endpoint host, exactly what content leaves the deployment, the region if they confirm one, and their retention and training position. An operator should be able to read that screen and answer their own DPO without opening a browser.</p>
+
+	<div class="callout warn">
+		<span class="lbl">Who is the controller here</span>
+		<p>In a self-hosted deployment the operator is the data controller and TypeSafe would be <i>their</i> processor, not ours. We cannot and should not sign anything on their behalf, and this repo has no privacy policy or subprocessor list to add a line to. The correct artefact is an operator-facing data-flow note in <code>3.developer/15.providers.md</code> (both languages): what leaves, to which host, under which key, with the vendor's own privacy contact. That is more useful than a legal paragraph we are not entitled to write.</p>
+	</div>
+
+	<h3>The settings surface</h3>
+	<p>A third card in <code>apps/web/app/pages/dashboard/admin/instance/ai-provider.vue</code>, same anatomy as the other two: provider select, key field with masked preview, model id, base URL, test button. Three controls are new.</p>
+	<ul>
+		<li><b class="k">Fall back to the language model.</b> Per-surface rather than global: on for the agent pipeline, off for the high-volume background classifiers, because that is where an outage turns into a bill.</li>
+		<li><b class="k">Thresholds.</b> Named per answer type, because Noul has no confidence. A Noul threshold is distance from 0.5; a Choice threshold is confidence.</li>
+		<li><b class="k">A visible degraded state.</b> When the resolved adapter is uncalibrated, or the breaker is open, or the key failed its last test, the card says so in words and the thresholds are inert. This is the visible payoff of the <code>calibrated</code> flag and it needs real copy in <code>en.json</code> and <code>de.json</code>, not a disabled attribute.</li>
+	</ul>
+</section>
+
+<section id="sites">
+	<span class="secnum">06</span>
+	<h2>Call-site migrations</h2>
+	<p>Each is separately shippable: add a question set, swap <code>runLlmObject</code> for <code>runDecision</code>, keep the surrounding fail-soft and the deterministic baselines. Ordered by value, not by ease.</p>
+
+	<h3>The draft self-check, first</h3>
+	<p>This is the one that matters and rev 1 buried it. <code>agent/steps/route/index.ts:142</code> computes <code>resolveAutoApproveScore(input.draftQuality)</code> and that score, not the classifier's confidence, is what tier 2 and tier 3 compare against a threshold. <code>draftQuality</code> comes from the self-check in <code>agent/shared/draftService.ts:112</code>, which is a text model rating its own draft. Replacing that number with a calibrated one improves the input the gate already reads, without touching the gate structure.</p>
+
+	<h3>classify</h3>
+	<p>Four Choices replace one <code>runLlmObject</code>, and the self-reported confidence field is deleted. Two invariants must survive verbatim and both are already load-bearing: the spam fork still archives, and a natural-language <code>categorize</code> rule may only restrict auto-send and may never relabel a safety-critical verdict.</p>
+	<div class="callout warn">
+		<span class="lbl">Found while auditing</span>
+		<p><code>classify/index.ts:80</code> has <b>no</b> <code>try/catch</code> around its model call. A provider failure today throws, the walker catches it, and the run goes to <code>failed</code>. So the claim that every call site fails soft is false for the flagship migration. Adding a decision provider without adding a fail-soft path here would widen an existing hole. Fix it in the same PR.</p>
+	</div>
+
+	<h3>security_scan</h3>
+	<p>The four disjoint windows become one call with an array state and a Noul per window. The deterministic regexes in <code>patterns.ts</code> stay, and so does the OR. Their jaggedness page states plainly that Jev does not treat state as hostile and that injected instructions can move answers. That is our threat model exactly, so it becomes the second opinion, never the only one.</p>
+	<p>Both thresholds get re-derived from measured calibration, not carried over by eye: <code>LLM_INJECTION_CONFIDENCE_THRESHOLD</code> (0.8, <code>index.ts:45</code>) and the differently-valued <code>INJECTION_CONFIDENCE_THRESHOLD</code> (0.7, <code>patterns.ts:14</code>) which also feeds the quarantine gate and <code>autoSendGates.ts:125</code>.</p>
+
+	<h3>Postbox category and needs-reply</h3>
+	<p>The two highest-volume background classifiers, both already shaped as "persist a deterministic baseline, refine with the model, fail soft". Category is one Choice. Needs-reply becomes a Noul plus an urgency Score plus a scheduling Noul in one call.</p>
+	<p><code>askSummary</code> is generated prose and stays. <code>dueHint</code> is an ISO date, and Jev reads dates as text rather than as ordered quantities, so the split is: Jev answers "does this state a concrete deadline" as a Noul, and only a yes buys a language-plane call to extract and normalise it. Cheaper than today and more correct, because we stop asking a text model to volunteer a date field on every thread.</p>
+
+	<h3>clarify, slots and divergence</h3>
+	<p>Slot extraction writes text, so it stays. What moves is the two judgements per slot (answerable from context, decision-relevant) and the divergence judgement over sampled candidates. Six candidate slots cost one call instead of one fat schema.</p>
+	<p>Rev 1 proposed deleting the <code>high_coverage_short_circuit</code> path now that the expensive stage is cheap. That was wrong twice: narrowing a persisted union needs a version bump under our own schema conventions, and it contradicts the promise that nothing is removed. Lower its threshold instead, measure, and leave the union alone.</p>
+
+	<h3>Autonomy, done the way the code is actually built</h3>
+	<p>The gate registry is restrict-only by design (ADR-0051, "ordered restrict-only autonomy gates"): each gate returns safe or unsafe, any throw fails closed, and plugins get no way to skip or replace. A three-way router that <i>unlocks</i> auto-send above a threshold cannot live there. Rev 1 put it there. Corrected placement:</p>
+	<ul>
+		<li>The calibrated probability feeds <code>resolveAutoApproveScore</code> and the tier comparisons in <code>route/index.ts:142,170,218</code>. That is where a score already decides.</li>
+		<li>A new restrict-only <code>uncalibrated_decision</code> gate joins <code>CORE_FINAL_AUTO_SEND_GATES</code>. It can only block: if the persisted verdict was answered by an uncalibrated adapter, or by a different provider than the one now configured, no auto-send.</li>
+		<li>The shadow scorecard records the probability alongside each would-have-sent decision, so graduation rests on a measured relationship rather than a raw match rate over ten samples.</li>
+	</ul>
+
+	<h3>The long tail</h3>
+	<table>
+		<tr><th>Site</th><th>Question set</th><th>Note</th></tr>
+		<tr><td><code>mail/ai/coach.ts</code></td><td>Scores for hostility, clarity, hedging</td><td>Atomic scores, weights in our code. Watch the Score calibration caveat in §09.</td></tr>
+		<tr><td><code>agent/outcomeFeedback.ts</code></td><td>One Noul: is this reply unhappy</td><td>It classifies the sentiment of a reply received after an auto-send and acts only on negative, so a Noul is a better fit than the enum it uses now.</td></tr>
+		<tr><td><code>knowledge/edgeInference.ts</code></td><td>Choice over the relation vocabulary</td><td>Confidence becomes real. Note it does not currently feed precedence ranking, so this is accuracy, not behaviour.</td></tr>
+		<tr><td><code>mail/ai/voiceProfileActions.ts</code></td><td>Tone axes as Scores</td><td>Turns a prose profile into numbers the draft prompt can use.</td></tr>
+		<tr><td><code>mail/handlingRulesCompile.ts</code></td><td>Choice second opinion on the compiled category</td><td>Also has no <code>try/catch</code> today. Same fix as classify.</td></tr>
+		<tr><td><code>knowledge/extraction.ts</code></td><td>Choice over candidate types</td><td>Spans stay. This is the pre-parsed-value pattern: our code finds candidates, Jev picks.</td></tr>
+	</table>
+</section>
+
+<section id="new">
+	<span class="secnum">07</span>
+	<h2>What becomes affordable</h2>
+	<p>Migrations pay for the plane; these are the reasons to build it. Rev 1 listed six. Two are cut and one is descoped, because their own cookbooks say so.</p>
+
+	<div class="cards">
+		<div class="card">
+			<span class="tag">assistant</span>
+			<h4>Guardrails on both directions</h4>
+			<p>The agent pipeline has a guard step. The chat assistant does not: <code>assistant/runner.ts</code> streams user text to a capable model with tools bound. One call per turn screens in and out. Their guardrails cookbook is one request per message, which is the shape we need and the budget we can afford.</p>
+		</div>
+		<div class="card">
+			<span class="tag">knowledge</span>
+			<h4>Citation checking on every answer</h4>
+			<p>Quick Query cites knowledge and files and nothing verifies the citation. Their cookbook does this with one <b>Choice</b> per claim against the source, not a Noul per citation. Cheap enough to run always instead of never.</p>
+		</div>
+		<div class="card">
+			<span class="tag">search · self-hosting</span>
+			<h4>Semantic find without an embedder</h4>
+			<p>The embedding plane is local by default and many installs never stand up the sidecar, so retrieval quietly degrades to lexical. Scoring candidate lines against a query gives those installs semantic search with no vectors. Worth a measured experiment, sized by the rate limit.</p>
+		</div>
+		<div class="card">
+			<span class="tag">plugins</span>
+			<h4>A decision capability for plugins</h4>
+			<p>The better fit for what plugin steps do: classify, gate, route. The budget maths also gets easier when output is free and the input bound is known before the call. The wire ripple is smaller than rev 1 claimed: only <code>packages/plugin-kit</code> carries the LLM contract; the SDKs are REST clients with no LLM references.</p>
+		</div>
+	</div>
+
+	<div class="callout">
+		<span class="lbl">Cut, with reasons</span>
+		<p><b class="k">Pre-send content screening in the MTA.</b> <code>apps/mta</code> is a separate Node service with no Convex context, no access to <code>aiProviderConfig</code> and no envelope decryption. Giving it a decision credential is a cross-service key-distribution design, which is its own plan, not a bullet in this one.</p>
+		<p class="tight"><b class="k">Search reranking, as scoped.</b> Their rerank cookbook is one request per query-candidate pair, so 30 candidates is 30 requests, not one, and it lifted top-1 from 5% to 18%, which leaves 82% wrong. At 30 requests a search we would cap the deployment at roughly 40 searches a minute against their published limit. It may still be worth doing on a shortlist of five. It is not the free win rev 1 described.</p>
+	</div>
+
+	<p class="note">The plugin capability is last for a structural reason: <code>scripts/check-hosted-seams.sh</code> fails CI unless a new capability ships a <code>plugins/&lt;x&gt;Authorization.ts</code> that calls <code>authorizeHostedContribution()</code>, and the codegen, orphan and public-type checks all run against it. It is also the point where the question DSL gets lifted into <code>packages/decision-kit</code>, because a second consumer will finally exist.</p>
+</section>
+
+<section id="cost">
+	<span class="secnum">08</span>
+	<h2>Cost and latency</h2>
+	<p>Modelled, not measured, and recomputed after review. P0 replaces every figure here with real numbers.</p>
+	<h4>Assumptions</h4>
+	<ul>
+		<li>Fast tier is <code>gpt-5.6-luna</code> at $1 per M input, $6 per M output (<code>lib/llm/pricing.ts:19</code>).</li>
+		<li>Jev at $0.042 per M input, output returned but billed at $0.</li>
+		<li>A message body of about 8,000 characters, roughly 2,000 tokens, plus retrieved context. Question text is billed too and adds a few hundred tokens per call.</li>
+		<li>Fan-out consolidates the four guard windows into one request and the classify plus clarify judgements into a second. The windows are disjoint, so this removes round trips, and the token saving comes from classify, slots and divergence no longer each re-sending the message.</li>
+	</ul>
+
+	<table>
+		<tr><th>Path</th><th>Today</th><th>With Jev</th><th>Change</th></tr>
+		<tr><td><b>Agent pipeline, decision calls per inbound message</b><br><span class="note">guard ×4, classify, slots, divergence</span></td><td class="num">7 calls · 16.3k in · 810 out · $0.02116</td><td class="num">2 calls · 10.5k in · $0.00044</td><td class="num">48× cheaper</td></tr>
+		<tr><td>Per 1,000 messages</td><td class="num">$21.16</td><td class="num">$0.44</td><td class="num">−$20.72</td></tr>
+		<tr><td>Decision latency in the pipeline</td><td class="num">9 to 25 s</td><td class="num">about 1 s, using their measured 0.27 s per batched call</td><td class="num">9× at the pessimistic end</td></tr>
+		<tr><td><b>Postbox background, per thread</b><br><span class="note">category + needs-reply refinement</span></td><td class="num">2 calls · 5.0k in · 220 out · $0.00632</td><td class="num">1 call · 3.2k in · $0.00013</td><td class="num">47× cheaper</td></tr>
+		<tr><td>Per 1,000 threads</td><td class="num">$6.32</td><td class="num">$0.13</td><td class="num">−$6.19</td></tr>
+		<tr><td><b>Stays on the language plane</b><br><span class="note">drafts, divergence candidates, summaries, assistant</span></td><td colspan="2" class="num">unchanged</td><td class="num">0</td></tr>
+	</table>
+
+	<p>A mailbox taking 5,000 inbound messages a month with the agent on spends about $107 on pipeline decisions and another $32 on Postbox refinement, so roughly <b class="k">$139 a month becomes about $3</b>. Drafting, the larger line, does not move. The point is not the saving on one mailbox. It is that decisions stop being the thing the enforced dollar ceiling spends itself on, so the ceiling protects drafting instead of rationing triage.</p>
+
+	<div class="callout warn">
+		<span class="lbl">Where this model is optimistic</span>
+		<p>Consolidating seven calls into two assumes the state fits the budget and that accuracy holds when one state answers a dozen questions. Their jaggedness page warns the opposite direction: accuracy falls as state grows with content unrelated to the decision. P0 tests one fat call against two or three focused ones and scores on agreement, not on price.</p>
+	</div>
+</section>
+
+<section id="risks">
+	<span class="secnum">09</span>
+	<h2>Jagged edges and our rules</h2>
+	<p>TypeSafe publishes a per-version page of known failure modes, which is a good sign about them and a useful checklist for us. All ten, each with the rule it produces.</p>
+
+	<table>
+		<tr><th>Their jagged edge</th><th>Where it bites us</th><th>Our rule</th></tr>
+		<tr><td><b>Not a calculator, does not count reliably</b></td><td>Amounts in invoices, sending limits, anything numeric</td><td>No arithmetic reaches it. Named buckets only. Every number we act on is computed in TypeScript.</td></tr>
+		<tr><td><b>Score levels are weak in numerical calibration</b></td><td>The urgency Score, the coach tone Scores, any composite we weight</td><td>Treat a Score as an ordered label, never as a magnitude. Do not interpolate between levels. Where a weighted composite matters, weight in our code and validate the weights against labels.</td></tr>
+		<tr><td><b>Reads dates as text</b></td><td><code>dueHint</code>, snooze, meeting proposals, follow-up timing</td><td>It may answer "is there a deadline". Extraction and all comparison stay in code or on the language plane.</td></tr>
+		<tr><td><b>Does not treat state as hostile</b></td><td>Every inbound email, which is the whole product</td><td>Regexes stay and stay ORed. Untrusted-data framing repeated in the instructions. No decision answer may widen auto-send, only restrict it.</td></tr>
+		<tr><td><b>Literal reading; double negatives and indirection are worse</b></td><td>Question wording across fourteen sites</td><td>One judgement per question, stated positively. Boundary cases go in option descriptions.</td></tr>
+		<tr><td><b>Contradictory instructions and criteria; inverted mappings perform worse</b></td><td>Every Noul with a <code>criteria</code> pair</td><td>Never map true to "no". Instructions and criteria must agree in direction. This is a review checklist item, not a convention.</td></tr>
+		<tr><td><b>Accuracy falls with large, irrelevant state</b></td><td>Long threads, quoted history, footers, HTML noise</td><td>A written redaction policy, see below. Fan-out sized by measurement.</td></tr>
+		<tr><td><b>Does not generate</b></td><td>Anyone reaching for it to save money on drafting</td><td>The adapter has no text method.</td></tr>
+		<tr><td><b>Text only: no images, audio or video</b></td><td><code>semanticFileProcessing.ts</code> receives PDFs and images</td><td>That path does not migrate. The plane rejects non-text input at the dispatch boundary rather than sending something meaningless.</td></tr>
+		<tr><td><b>Choice cardinality caps at 255</b></td><td>Folder routing, label suggestion, anything over a large vocabulary</td><td>Hierarchical classification, or a code-side shortlist first. Not a limit we hit today; a limit any future routing idea must respect.</td></tr>
+	</table>
+
+	<h3>The redaction policy, written down</h3>
+	<p>Rev 1 said "filter before sending", which is a sentence, not a design. The rule: strip quoted history and signatures, strip HTML to visible text with the same helper <code>security_scan</code> uses, drop attachments entirely (they are not text), cap state at a stated character budget with the head and tail kept, and honour a per-mailbox opt-out so a mailbox can be excluded from third-party decisions without disabling AI for the deployment. Accuracy and privacy want the same thing here, which is convenient.</p>
+
+	<h3>Vendor and operational risk</h3>
+	<ul>
+		<li><b class="k">Early access, no published SLA, region unconfirmed.</b> Mitigated by the breaker and by fail-soft paths, two of which we have to add first (<code>classify</code>, <code>handlingRulesCompile</code>). A chaos test that fails every decision call is part of P1, not a nice-to-have.</li>
+		<li><b class="k">Version pinning.</b> Pin <code>jev-1.13.0</code>. Both <code>jev-latest</code> and <code>jev-preview</code> point there today, and a silent model swap under a threshold that gates sending mail is the worst version of this idea. A bump re-runs the calibration harness before it ships.</li>
+		<li><b class="k">Rate limits are explicitly dynamic.</b> Never hard-code 1,200 rpm. The named bucket in <code>rateLimiter.ts</code> is our own ceiling, and <code>Retry-After</code> is authoritative when they push back.</li>
+		<li><b class="k">No idempotency.</b> Their API documents none. A retried POST double-writes usage and, worse, double-counts in the agreement statistics every later phase gates on. Dedupe on a client-side request id, the way <code>plugins/llmAccounting.ts</code> uses <code>reservationId</code>.</li>
+		<li><b class="k">Key handling.</b> Same AES-GCM envelope, decrypted only in the Node action, never returned by a query, request through the SSRF guard. Note <code>fetchGuarded</code> refuses redirects, so a 3xx from their host surfaces as a guard error and needs a clear message.</li>
+		<li><b class="k">Jurisdiction is the operator's call.</b> We document the host, the payload and the vendor's own privacy contact, and we ship the opt-out. We do not decide for them and we do not sign for them.</li>
+	</ul>
+</section>
+
+<section id="testing">
+	<span class="secnum">10</span>
+	<h2>Testing and calibration</h2>
+	<p>Swapping the model behind fourteen decisions is a behaviour change dressed as a refactor. The only honest way to ship it is to measure agreement before each flip.</p>
+
+	<h3>The replay harness, and its artefacts</h3>
+	<p><code>scripts/decision-replay.ts</code> (root <code>scripts/</code>, which is where hand-run tools live; everything in <code>apps/api/scripts/</code> is a CI <code>check-*</code> guard chained into lint). It runs a registered question set through both adapters over a fixture corpus and reports per-question agreement, the disagreement cases with their probabilities, and calibration as reliability buckets plus a Brier score.</p>
+	<p>The corpus and the labels are <b class="k">checked in</b>, anonymised, starting from the fixtures already in <code>agent/steps/*/__tests__</code>. If only the author can regenerate the evidence for a flip, it is not evidence. And since we have no fleet, "a week of shadow data" means one dogfood mailbox, which the phase gates should say out loud rather than imply a scale we do not have.</p>
+
+	<h3>Shadow, reused</h3>
+	<p><code>agent/shadowScorecard.ts</code> already runs a full decision without acting on it and reconciles against what the human did. Pointing it at a second provider gives us disagreement data from real mail with no risk.</p>
+
+	<h3>In CI</h3>
+	<ul>
+		<li><b class="k">No network.</b> The TypeSafe adapter runs against a mocked <code>fetch</code>: 401, 403, 404, 422, 429, 5xx, 529, timeout, connection failure, malformed body, missing key, extra key, out-of-domain Choice value.</li>
+		<li><b class="k">Conformance across adapters.</b> The whole question catalog through both, asserting shape, key sets and value domains.</li>
+		<li><b class="k">Chaos.</b> Every decision call fails; every touched call site still produces its documented outcome, including the two that need a fail-soft path added.</li>
+		<li><b class="k">The uncalibrated gate.</b> Auto-send stays blocked when the persisted verdict is uncalibrated or came from a different provider than the one now configured.</li>
+		<li><b class="k">Budget.</b> A test that a decision row lands in <code>llmUsageEvents</code> before the answer is used, and that the fallback hop respects the breaker.</li>
+		<li><b class="k">Live smoke</b> behind <code>TYPESAFE_API_KEY</code>, skipped by default, run before a version bump.</li>
+	</ul>
+	<p class="note">Gates this work has to clear, beyond vitest and <code>bun run ci:test</code>: <code>lint:env</code>, the convexRuntimeEnv key-sync check, <code>check-env-docs.sh</code> (both languages), <code>check-file-size.sh</code> (500 lines, frozen baseline), <code>lint:adr</code>, <code>lint:patterns</code>, the web and docs locale-parity suites, and for any new admin mutation <code>check-public-functions.sh</code>, <code>check-permissions.sh</code> and <code>check-session-threading.sh</code>. P6 additionally faces <code>check-hosted-seams.sh</code>. Never <code>bun test</code>.</p>
+</section>
+
+<section id="phases">
+	<span class="secnum">11</span>
+	<h2>Phases and gates</h2>
+	<p>Eight phases. P0 and P1 are the only ones that must happen in order. After that each call-site phase is independently shippable and independently revertible, because reverting is changing a dropdown.</p>
+
+	<div class="phase">
+		<div class="phase-head"><span class="pnum">P0</span><h3>Spike and evidence</h3><span class="size">2 to 3 days · no production code</span></div>
+		<ul>
+			<li>Get a key. Hand-build the classify and guard question sets and run them over a 200 to 400 message corpus.</li>
+			<li>Build the replay harness. Check in the corpus, the labels and the report.</li>
+			<li>Settle fan-out empirically: one fat call against two or three focused ones, scored on agreement.</li>
+			<li>Measure real latency and real output-token counts, and confirm the region and retention position in writing.</li>
+		</ul>
+		<div class="gate"><b>Gate:</b> a checked-in agreement and calibration report. If guard agreement is not at least as good as today's LLM verdict, P3 and P5 are cut and this becomes a cost-and-latency story only.</div>
+	</div>
+
+	<div class="phase">
+		<div class="phase-head"><span class="pnum">P1a</span><h3>The plane: DSL, adapters, dispatch</h3><span class="size">3 to 4 days · ~800 lines</span></div>
+		<ul>
+			<li>Question DSL, wire codec, registry, both adapters, <code>runDecision</code> with the full §03 contract.</li>
+			<li>Widen <code>LlmObjectOptions</code> with an abort signal so the fallback path is cancellable.</li>
+			<li>Conformance suite, wire mocks, chaos test.</li>
+		</ul>
+		<div class="gate"><b>Gate:</b> green <code>ci:test</code> and full <code>ci:lint</code>. No resolver, no config, no caller. Nothing in the product can reach it yet.</div>
+	</div>
+
+	<div class="phase">
+		<div class="phase-head"><span class="pnum">P1b</span><h3>Config, safety and surface</h3><span class="size">3 to 4 days · ~600 lines</span></div>
+		<ul>
+			<li>Resolver plus cache invalidation on save, schema columns and the five-column envelope, validators, env in three places with bilingual docs.</li>
+			<li>Feature flag and gate mutation, rate-limiter bucket, circuit breaker, <code>plane</code> tag on usage, spend-budget share and the <code>MAX_EVENTS_SCANNED</code> fix.</li>
+			<li>Settings card, degraded state, both locale catalogs, setup CLI prompt defaulting to Jev, consent screen, provider docs in both languages.</li>
+			<li>ADR-0060, plus the refresh of 0029 and 0051 and the pluggable-LLM docs page.</li>
+		</ul>
+		<div class="gate"><b>Gate:</b> an install that enters no key resolves exactly as before, proven by test. An install that enters one can run the conformance suite against the live API from the settings test button.</div>
+	</div>
+
+	<div class="phase">
+		<div class="phase-head"><span class="pnum">P2</span><h3>First cutovers: the draft self-check, classify, Postbox category</h3><span class="size">4 days</span></div>
+		<ul>
+			<li>Question sets for all three. Shadow beside the existing call for a week on the dogfood mailbox.</li>
+			<li>Add the missing fail-soft path in <code>classify</code>. Delete the self-reported confidence field.</li>
+			<li>Flip. Deterministic baselines and handling-rule invariants re-tested.</li>
+		</ul>
+		<div class="gate"><b>Gate:</b> agreement at or above the P0 threshold, and no movement in spam-fork or archive rates beyond noise.</div>
+	</div>
+
+	<div class="phase">
+		<div class="phase-head"><span class="pnum">P3</span><h3>The guard tier</h3><span class="size">3 days</span></div>
+		<ul>
+			<li><code>security_scan</code> from four calls to one. Regexes and the OR untouched.</li>
+			<li>Both injection thresholds re-derived from the measured curve.</li>
+		</ul>
+		<div class="gate"><b>Gate:</b> zero regression on the recorded injection corpus including past-8k cases, and the chaos test proving an outage degrades to the pattern-only verdict.</div>
+	</div>
+
+	<div class="phase">
+		<div class="phase-head"><span class="pnum">P4</span><h3>Clarify and needs-reply</h3><span class="size">4 to 5 days</span></div>
+		<ul>
+			<li>Slot judgements and divergence move. Extraction and candidate sampling stay.</li>
+			<li>The coverage short-circuit gets a lower threshold, not a deletion.</li>
+			<li>Deadline handling splits into a Noul plus a conditional extraction.</li>
+		</ul>
+		<div class="gate"><b>Gate:</b> the clarification question rate stays inside its current band. This step asks humans questions, so a regression is a UX regression, not a metric.</div>
+	</div>
+
+	<div class="phase">
+		<div class="phase-head"><span class="pnum">P5</span><h3>Calibrated autonomy</h3><span class="size">4 days · the product change</span></div>
+		<ul>
+			<li>The calibrated probability feeds <code>resolveAutoApproveScore</code> and the tier comparisons, where a score already decides.</li>
+			<li>A restrict-only <code>uncalibrated_decision</code> gate joins the frozen array. It can only block.</li>
+			<li>Thresholds in settings, named per answer type. Scorecard records probabilities.</li>
+		</ul>
+		<div class="gate"><b>Gate:</b> shadow data showing the probability-to-agreement relationship holds on our own mail, plus your explicit sign-off, since this changes when we send mail without a human.</div>
+	</div>
+
+	<div class="phase">
+		<div class="phase-head"><span class="pnum">P6</span><h3>Long tail and new capabilities</h3><span class="size">rolling</span></div>
+		<ul>
+			<li>The six remaining sites from §06, one small PR each.</li>
+			<li>Assistant guardrails, citation checking, then the measured experiments (semantic find, a five-candidate rerank).</li>
+			<li>Plugin decision capability, which lifts the DSL into <code>packages/decision-kit</code> and must satisfy the hosted-seam check.</li>
+		</ul>
+		<div class="gate"><b>Gate:</b> per item. Nothing here blocks anything else.</div>
+	</div>
+</section>
+
+<section id="open">
+	<span class="secnum">12</span>
+	<h2>Decisions I need from you</h2>
+	<ol>
+		<li><b class="k">Decided 2026-09-17.</b> Fresh installs default to Jev: the wizard pre-fills it and the operator enters their own key. Existing installs never change on upgrade, and an install with no key still resolves to the language plane. §05 records the two constants that keep those apart. Nothing further needed from you here.</li>
+		<li><b class="k">Region and retention, in writing, before P1b.</b> The US-only claim comes from the launch post, not the docs. We should ask them directly for the region list, the retention window and whether inputs train anything, because that paragraph is what an operator reads on the consent screen.</li>
+		<li><b class="k">Version policy.</b> Pin <code>jev-1.13.0</code>, with a manual bump and a calibration re-run each time. The alternative is a model changing underneath a threshold that decides whether we send mail unattended.</li>
+		<li><b class="k">Scope of the first cut.</b> P0 through P3 is the defensible minimum and delivers the cost and latency win. P5 is the one that changes product behaviour. One arc, or split with P5 waiting on a quarter of dogfood data?</li>
+		<li><b class="k">The fallback default.</b> I have it on for the agent pipeline and off for the background classifiers, because a vendor outage on the ingest path is a bill, not an incident. Confirm, or tell me to make it uniformly off and let the fail-soft baselines carry it.</li>
+	</ol>
+
+	<div class="callout">
+		<span class="lbl">If you only read one paragraph</span>
+		<p>Fourteen of our decision call sites ask a text model to pick a label and then guess how sure it is. Jev is built for exactly that, costs about 2% of what we pay for it, answers in a fraction of the time, and returns a probability that is calibrated across groups. Build it as a third plane with its own adapter registry, ship it switched off, let the operator bring their own key and see exactly what leaves their deployment, and let a checked-in replay report rather than a price list decide each cutover.</p>
+	</div>
+</section>
+
+</div>
+</body>
+</html>

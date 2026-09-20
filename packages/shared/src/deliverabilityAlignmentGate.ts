@@ -1,5 +1,5 @@
 /**
- * The dual-transport alignment GATE (P3-5) — the half of the pre-flight the ramp
+ * The dual-transport alignment GATE — the half of the pre-flight the ramp
  * controller actually calls.
  *
  * `deliverabilityAlignment.ts` decides whether two arms ARE aligned, from live
@@ -8,7 +8,7 @@
  * evaluator sits at the repo's 500-LOC cap and because these are two different
  * jobs: one reads DNS, the other reads a clock.
  *
- * Pure: the clock and the stored state are parameters (D15).
+ * Pure: the clock and the stored state are parameters.
  */
 
 import type { AlignmentVerdict } from './deliverabilityAlignment';
@@ -43,7 +43,7 @@ export interface AlignmentGateState {
 export type ReferenceArmPresence = 'none' | 'configured' | 'unknown';
 
 export interface AlignmentGateInput {
-	/** `none` ⇒ no reference transport; the gate opens regardless of state (D2). */
+	/** `none` ⇒ no reference transport; the gate opens regardless of state. */
 	referenceArm: ReferenceArmPresence;
 	state: AlignmentGateState | null;
 	now: number;

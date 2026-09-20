@@ -26,6 +26,7 @@ import {
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional, transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
+import { bytesToBase64, utf8ToBase64 } from '../../bytes';
 
 /**
  * Upper bound on a single SES send call. Once the request is on the wire, a
@@ -133,7 +134,7 @@ function buildRawMimeMessage(params: {
 	// raw newline regardless.
 	lines.push(`From: ${escapeHeader(params.from)}`);
 	lines.push(`To: ${escapeHeader(params.to)}`);
-	lines.push(`Subject: =?UTF-8?B?${Buffer.from(params.subject).toString('base64')}?=`);
+	lines.push(`Subject: =?UTF-8?B?${utf8ToBase64(params.subject)}?=`);
 	lines.push('MIME-Version: 1.0');
 	if (params.replyTo) {
 		lines.push(`Reply-To: ${escapeHeader(params.replyTo)}`);
@@ -144,7 +145,7 @@ function buildRawMimeMessage(params: {
 		}
 	}
 
-	const htmlBase64 = Buffer.from(params.html, 'utf-8').toString('base64');
+	const htmlBase64 = utf8ToBase64(params.html);
 
 	if (!hasAttachments) {
 		// Single-part body: no envelope needed, the HTML part headers live in
@@ -174,7 +175,7 @@ function buildRawMimeMessage(params: {
 		lines.push('Content-Transfer-Encoding: base64');
 		lines.push(`Content-Disposition: attachment; filename="${filename}"`);
 		lines.push('');
-		lines.push(att.content.toString('base64'));
+		lines.push(bytesToBase64(att.content));
 		lines.push('');
 	}
 

@@ -46,7 +46,7 @@ export type BounceTerminal =
  *
  * - `continue` carries the ctx for the next phase. Most phases pass it
  *   through unchanged (`Phase<X, X>`); only `resolveRoute` widens the ctx
- *   type (`+ route`) so that `stageAttachments` can read it.
+ *   type (`+ route`) so that `attachmentMeta` can read it.
  * - `dropSilently` / `bounceTo` short-circuit the pipeline (see
  *   `BounceTerminal`).
  */
@@ -97,7 +97,10 @@ export type Pipeline<TIn extends BasePhaseCtx, TOut extends BasePhaseCtx> = Gene
  * generic `Compose` helper.
  */
 export function compose<
-	const Phases extends readonly [Phase<BasePhaseCtx, BasePhaseCtx>, ...Array<Phase<BasePhaseCtx, BasePhaseCtx>>],
+	const Phases extends readonly [
+		Phase<BasePhaseCtx, BasePhaseCtx>,
+		...Array<Phase<BasePhaseCtx, BasePhaseCtx>>,
+	],
 >(...phases: Phases): ComposedPipeline<PhaseDeps, BasePhaseCtx, BounceTerminal, Phases> {
 	return composeGeneric<PhaseDeps, BasePhaseCtx, BounceTerminal, Phases>(...phases);
 }
@@ -109,7 +112,7 @@ export function compose<
 export function runPipeline<TIn extends BasePhaseCtx, TOut extends BasePhaseCtx>(
 	deps: PhaseDeps,
 	pipeline: Pipeline<TIn, TOut>,
-	ctx: TIn,
+	ctx: TIn
 ): Promise<PipelineResult<TOut>> {
 	return runPipelineGeneric(deps, pipeline, ctx);
 }

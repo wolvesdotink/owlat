@@ -21,8 +21,8 @@ import type { RelayDomainIdentityFacts } from './relayIdentityView';
  * provisioning halves do NOT agree on.
  *
  * They agree on everything else (which relays, which domains, schedule-never-
- * call), which is why they share one implementation since P0.4. They do not
- * agree on what "ensure" means when a sibling row already exists:
+ * call), which is why they share one implementation. They do not agree on
+ * what "ensure" means when a sibling row already exists:
  *
  *  - the CATCH-UP DRAIN (`providerRoutes.provisionDeliverabilityRelayBatch`)
  *    walks every verified domain on every page and must be cheap and
@@ -52,7 +52,7 @@ export type EnsureRelayIdentityOptions = {
  * The three relay seams, keyed by a `string` rather than by a member of
  * `SendingDomainProviderKind` (`./types.ts`).
  *
- * WHY IT EXISTS (the seams plan's P3.2). A bundled plugin transport can now
+ * WHY IT EXISTS. A bundled plugin transport can now
  * contribute a sending-domain identity, and its kind is `plugin.<id>.<local>` —
  * a value no static union can hold, since the set is decided by
  * `plugins.config.ts` at composition time. But that is only half the reason; the

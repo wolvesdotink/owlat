@@ -48,6 +48,6 @@ describe('loadConfig', () => {
 			stubRequired();
 			vi.stubEnv(missing, '');
 			expect(() => loadConfig()).toThrow(new RegExp(missing));
-		},
+		}
 	);
 });

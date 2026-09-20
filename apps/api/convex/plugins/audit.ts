@@ -6,9 +6,9 @@ import {
 import { recordAuditLog } from '../lib/auditLog';
 import type { HostedPluginActorScope } from './authorization';
 
-export type HostedPluginAuditOutcome = 'completed' | 'denied' | 'failed';
+type HostedPluginAuditOutcome = 'completed' | 'denied' | 'failed';
 export type HostedPluginOperation = HostedPluginOperationLiteral;
-export const HOSTED_PLUGIN_AUDIT_REASON_CODES = Object.freeze([
+const HOSTED_PLUGIN_AUDIT_REASON_CODES = Object.freeze([
 	'access_denied',
 	'access_or_budget_denied',
 	'agent_step_failed',

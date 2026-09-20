@@ -1,12 +1,15 @@
 /**
  * Shared Convex validators for the pluggable AI-providers config table.
  *
- * The language / embedding provider-kind unions are DERIVED from the adapter
- * registry's runtime kind tuples (`lib/llmProviders/types`) so the stored
- * `aiProviderConfig` shape and the registry stay a single source of truth —
- * adding a provider adapter widens both at once. Kept in this pure (no
- * `'use node'`) module so both `schema/instance.ts` and the config functions
- * (v8 + Node) can import it without pulling in `node:crypto` or the AI SDK.
+ * The language / embedding / decision provider-kind unions are DERIVED from the
+ * adapter registries' runtime kind tuples (`lib/llmProviders/types` and
+ * `lib/decisionProviders/types`) so the stored `aiProviderConfig` shape and the
+ * registries stay a single source of truth — adding a provider adapter widens
+ * both at once. Kept in this pure (no `'use node'`) module so both
+ * `schema/instance.ts` and the config functions (v8 + Node) can import it
+ * without pulling in `node:crypto` or the AI SDK. That is also why the decision
+ * kinds are imported from `decisionProviders/types` rather than from that
+ * registry's `index.ts`, which reaches its Node-only adapter files.
  */
 
 import { v, type Validator } from 'convex/values';
@@ -18,6 +21,7 @@ import {
 	type LanguageEndpointProvenance,
 	type LanguageProviderKind,
 } from './llmProviders/types';
+import { DECISION_PROVIDER_KINDS, type DecisionProviderKind } from './decisionProviders/types';
 
 /** Secret-free endpoint identity used by hard-budget admission accounting. */
 export const languageEndpointProvenanceValidator = v.union(
@@ -48,3 +52,15 @@ export type StoredEmbeddingProviderKind = EmbeddingProviderKind;
 export const embeddingProviderKindValidator = v.union(
 	...EMBEDDING_PROVIDER_KINDS.map((kind) => v.literal(kind))
 ) as unknown as Validator<StoredEmbeddingProviderKind>;
+
+/**
+ * Stored decision-provider kind — the THIRD plane (typed questions in, typed
+ * answers with their probabilities out). Every column of that plane is optional
+ * on the row, so an install that never chose one stores nothing here and
+ * resolves to `DEFAULT_DECISION_KIND` ('llm'), which is exactly its behaviour
+ * before the plane existed. Derived from the registry's kind tuple, like its two
+ * neighbours above.
+ */
+export const decisionProviderKindValidator = v.union(
+	...DECISION_PROVIDER_KINDS.map((kind) => v.literal(kind))
+) as unknown as Validator<DecisionProviderKind>;

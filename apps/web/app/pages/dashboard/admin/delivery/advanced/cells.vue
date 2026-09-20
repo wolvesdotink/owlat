@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * CELLS — the grid, and the evidence behind every verdict (plan D12, P3-6).
+ * CELLS — the grid, and the evidence behind every verdict.
  *
  * The grid answers the four questions an operator has about a cell: what share
  * it carries, what state it is in, what is holding it back, and what the
@@ -11,8 +11,8 @@
  * TWO READS, NOT ONE, AND DELIBERATELY SO. The ramp position comes from the
  * control query and the gate evidence from the shipped measurement dashboard;
  * merging them server-side would have made one screen's read the other's
- * dependency, and the measurement dashboard is the piece that must keep working
- * on its own.
+ * dependency, and the measurement dashboard is the screen that must keep
+ * working on its own.
  */
 import { api } from '@owlat/api';
 import { rampCellLabel, type RampCellControl } from '~/utils/deliverabilityRamp';
@@ -116,7 +116,7 @@ function select(cellKey: string): void {
 			</p>
 		</header>
 
-		<!-- Plan D8: with two reference relays there is no single second arm, so
+		<!-- With two reference relays there is no single second arm, so
 		     every share below holds. The reason belongs on the screen where the
 		     frozen share is watched, not only where relays are configured. -->
 		<DeliveryReferenceRelayNotice class="mb-6" />

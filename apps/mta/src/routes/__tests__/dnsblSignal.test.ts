@@ -41,14 +41,14 @@ vi.mock('../../smtp/connectionPool.js', () => ({
 
 import { createIpReputationRoutes } from '../ipReputation.js';
 import { initializePools, setIpPoolBlock } from '../../scaling/ipPool.js';
-import { createDnsblTestConfig } from '../../intelligence/__tests__/dnsblFixtures.js';
+import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
 import {
 	hasCriticalBlocklistSignal,
 	isAdvisoryDeliverabilitySignalSource,
 	type DeliverabilitySignal,
 } from '@owlat/shared/deliverabilityRouting';
 
-const config = createDnsblTestConfig();
+const config = createOwlatHostConfig();
 
 async function readSignals(redis: InstanceType<typeof Redis>): Promise<DeliverabilitySignal[]> {
 	const response = await createIpReputationRoutes(redis, config).request('/', {

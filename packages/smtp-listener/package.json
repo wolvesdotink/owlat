@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/smtp-listener",
-	"version": "0.4.4",
+	"version": "0.4.21",
 	"private": true,
 	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
@@ -13,6 +13,10 @@
 		".": {
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
+		},
+		"./testClient": {
+			"types": "./src/smtpTestClient.ts",
+			"import": "./src/smtpTestClient.ts"
 		}
 	},
 	"scripts": {

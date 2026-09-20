@@ -10,8 +10,13 @@
  * defaults the UI shows. Adding a provider is one entry here + one adapter file
  * there (per the 2026-07-10 pluggable-AI-providers plan, locked decision 4).
  *
- * Two decoupled planes (locked decision 1): a LANGUAGE plane (fully pluggable —
- * hosted or local) and an EMBEDDING plane (local by default, hosted override).
+ * Three decoupled planes: a LANGUAGE plane (fully pluggable — hosted or local),
+ * an EMBEDDING plane (local by default, hosted override), and a DECISION plane
+ * (opt-in; answers typed questions with calibrated probabilities instead of
+ * prose). The decision catalog mirrors `lib/decisionProviders/*` the same way
+ * the other two mirror their registries; the pure state helpers the decision
+ * card needs — what counts as degraded, when consent is owed, what a save may
+ * send — live next door in `utils/aiDecisionPlane.ts`.
  *
  * Everything here is pure and framework-free so it is unit-tested directly
  * (`__tests__/aiProviders.test.ts`) — no component mount needed.
@@ -39,6 +44,9 @@ export type LanguageProviderKind =
 
 /** Embedding provider kinds — mirrors `EMBEDDING_PROVIDER_KINDS` in the backend. */
 export type EmbeddingProviderKind = 'local' | 'openai' | 'google' | 'openaiCompatible';
+
+/** Decision provider kinds — mirrors `DECISION_PROVIDER_KINDS` in the backend. */
+export type DecisionProviderKind = 'typesafe' | 'llm';
 
 /**
  * A `{ value, label }` option for `UiSelect`. `label` is a message key (or a
@@ -88,6 +96,38 @@ export interface EmbeddingProviderMeta {
 	isLocal: boolean;
 	/** Native embedding width — shown so an admin sees the re-index implication. */
 	dimensions: number;
+	defaultModel: string;
+	curatedModels: readonly string[];
+}
+
+/**
+ * Presentational metadata for one decision provider.
+ *
+ * No tiers: this plane asks one model one kind of question, so there is a single
+ * `defaultModel` rather than a fast/capable pair (the backend adapter shape is
+ * the same deliberate choice). `calibrated` is the value the whole card hangs
+ * on — an adapter that answers without calibrated probabilities can still
+ * answer, it just may never have a threshold read off it.
+ */
+export interface DecisionProviderMeta {
+	kind: DecisionProviderKind;
+	/** Message key for the label shown in the decision-provider dropdown. */
+	label: string;
+	/** Message key for the one-line hint shown under the decision select. */
+	hint: string;
+	/** True when the operator has to supply a key of their own for this adapter. */
+	requiresKey: boolean;
+	/** True when the adapter returns probabilities calibrated across groups. */
+	calibrated: boolean;
+	/** True for the adapter we recommend — the only thing "recommended" means here. */
+	recommended?: boolean;
+	/** Where the operator gets / manages a key. Absent for the language-backed one. */
+	docsUrl?: string;
+	/** The vendor's own privacy statement and contact, for the consent block. */
+	privacyUrl?: string;
+	/** API ORIGIN, never a full endpoint — the adapter appends its own path. */
+	defaultBaseUrl?: string;
+	/** The pinned model id. Empty where the plane borrows the language plane's. */
 	defaultModel: string;
 	curatedModels: readonly string[];
 }
@@ -216,6 +256,48 @@ export const EMBEDDING_PROVIDERS: readonly EmbeddingProviderMeta[] = [
 	},
 ] as const;
 
+/**
+ * The decision provider catalog. Recommended adapter first, because that is the
+ * order we document them in — NOT because anything preselects it: an install
+ * that already has a config, or none at all, arrives here on `llm`, and the
+ * settings form only pre-fills `typesafe` for a brand-new config (the wizard's
+ * `SETUP_DEFAULT_DECISION_KIND`, deliberately not the resolver's
+ * `DEFAULT_DECISION_KIND`, which is and stays `llm`).
+ *
+ * `llm` is not a stub and not a downgrade path: it is what every install that
+ * never heard of this plane runs, rendering the same questions into a schema on
+ * the language plane. It simply cannot promise calibration, and the card says so
+ * in words rather than hiding the option.
+ */
+export const DECISION_PROVIDERS: readonly DecisionProviderMeta[] = [
+	{
+		kind: 'typesafe',
+		label: `${K}.decision.providers.typesafe.label`,
+		hint: `${K}.decision.providers.typesafe.hint`,
+		requiresKey: true,
+		calibrated: true,
+		recommended: true,
+		docsUrl: 'https://docs.typesafe.ai/api',
+		privacyUrl: 'https://typesafe.ai/privacy',
+		defaultBaseUrl: 'https://api.typesafe.ai',
+		defaultModel: 'jev-1.13.0',
+		// The pinned version first. The two aliases resolve there today and are
+		// free to move without notice, which is exactly why the default is pinned.
+		curatedModels: ['jev-1.13.0', 'jev-latest', 'jev-preview'],
+	},
+	{
+		kind: 'llm',
+		label: `${K}.decision.providers.llm.label`,
+		hint: `${K}.decision.providers.llm.hint`,
+		requiresKey: false,
+		calibrated: false,
+		defaultModel: '',
+		// The language plane already owns the model choice; offering a second one
+		// here would let the two disagree.
+		curatedModels: [],
+	},
+] as const;
+
 /** Look up language provider metadata by kind (`undefined` for an unknown kind). */
 export function languageProviderMeta(kind: string): LanguageProviderMeta | undefined {
 	return LANGUAGE_PROVIDERS.find((p) => p.kind === kind);
@@ -224,6 +306,21 @@ export function languageProviderMeta(kind: string): LanguageProviderMeta | undef
 /** Look up embedding provider metadata by kind (`undefined` for an unknown kind). */
 export function embeddingProviderMeta(kind: string): EmbeddingProviderMeta | undefined {
 	return EMBEDDING_PROVIDERS.find((p) => p.kind === kind);
+}
+
+/** Look up decision provider metadata by kind (`undefined` for an unknown kind). */
+export function decisionProviderMeta(kind: string): DecisionProviderMeta | undefined {
+	return DECISION_PROVIDERS.find((p) => p.kind === kind);
+}
+
+/**
+ * Decision provider `UiSelect` options, typed to the decision kind union. Each
+ * label is a message key — the renderer translates it. "Recommended" rides
+ * inside the label MESSAGE rather than being glued on here, so a translator can
+ * put the word where their language puts it.
+ */
+export function decisionProviderOptions(): { value: DecisionProviderKind; label: string }[] {
+	return DECISION_PROVIDERS.map((p) => ({ value: p.kind, label: p.label }));
 }
 
 /**

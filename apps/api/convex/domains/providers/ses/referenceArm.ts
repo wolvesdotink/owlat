@@ -6,10 +6,9 @@
  * this arm inline behind `relayKinds[0] === 'ses' && sesIdentity !== null`. That
  * test made "describable second arm" mean "is SES", so a deployment relaying
  * through anything else could never resolve an arm however well verified it was.
- * The pre-flight now asks the sending-domain provider registry (Mandrill plan
- * P3.1) and this
- * module is SES's registered answer; the LOGIC below is unchanged, so SES's
- * verdicts are byte-identical to the ones it produced before the move.
+ * The pre-flight now asks the sending-domain provider registry and this module
+ * is SES's registered answer; the LOGIC below is unchanged, so SES's verdicts
+ * are byte-identical to the ones it produced before the move.
  *
  * Its own file for the same reason `./relayVerification.ts` is: everything in
  * `./index.ts` is an SES API call made from a `'use node'` action, while this is
@@ -56,7 +55,7 @@ export async function sesReferenceArm(
 		dkimSelectors: identity.dkimTokens,
 		spfMechanisms: relaySpfMechanisms(identity.dnsRecords?.spf?.value),
 		// A verified custom MAIL FROM is what lets the relay carry our own return
-		// path; without it bounce attribution on that arm is coarser (P2-3).
+		// path; without it bounce attribution on that arm is coarser.
 		supportsCustomReturnPath: (identity.dnsRecords?.mailFrom?.length ?? 0) > 0,
 	};
 }

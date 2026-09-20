@@ -21,7 +21,7 @@ import type { SendTransportId, SendTransportRecord } from './transports';
 /**
  * The provider kinds, as a runtime list so both the `SendProviderKind` type and
  * the `isSendProviderKind` guard derive from one source. That source is the
- * send-provider catalog in `@owlat/shared` (the seams plan's D1): its entries
+ * send-provider catalog in `@owlat/shared`: its entries
  * are the declaration, `SEND_TRANSPORT_KINDS` is `entries.map(e => e.kind)`, and
  * the outbound DMARC-alignment guard reads the SAME derivation. Re-exported here
  * so a new provider kind can't be added on either side without the other seeing
@@ -75,8 +75,19 @@ export type MtaIpPool = (typeof MTA_IP_POOL_NAMES)[number];
 export interface EmailAttachment {
 	/** Filename for the attachment */
 	filename: string;
-	/** Binary content of the attachment */
-	content: Buffer;
+	/**
+	 * Binary content of the attachment.
+	 *
+	 * `Uint8Array`, not `Buffer` — the runtime-neutral type. Today's only
+	 * producer is `delivery/worker.ts::resolveAttachments`, which is `'use node'`
+	 * and hands over real `Buffer`s, but the ADAPTERS are not all Node: `ses/`
+	 * and `resend/` carry no `'use node'` directive, so they run in the V8
+	 * isolate where `Buffer` does not exist and `content.toString('base64')`
+	 * would yield a comma-joined list of decimal byte values. Encode through
+	 * `lib/bytes.ts::bytesToBase64`; a `'use node'` adapter that needs a real
+	 * `Buffer` for its own composer converts at its own boundary.
+	 */
+	content: Uint8Array;
 	/** MIME type (defaults to application/octet-stream) */
 	contentType?: string;
 }
@@ -115,7 +126,7 @@ export interface MtaExtras {
 	routingReentryToken?: string;
 	/**
 	 * Callback material whose canonical digest is authenticated by the token:
-	 * the wire's {@link MtaRoutingReentry} (D7) with `retryState` narrowed to
+	 * the wire's {@link MtaRoutingReentry} with `retryState` narrowed to
 	 * {@link DispatchReentryRetryState}. `reentryRetryState()` in
 	 * `delivery/governedDispatch.ts` drops the wire's optional `workAttemptId`
 	 * and `acceptanceReconciliation` so a successor mints its own work identity.
@@ -159,7 +170,7 @@ export interface EmailitExtras {
  * per-message, so a relay has almost no per-send knobs. The exception is the
  * envelope sender: where the relay honours a custom RFC5321.MailFrom we stamp
  * OUR VERP address so relayed bounces come back to our own bounce server and
- * both transport arms produce comparable bounce data (plan G-08).
+ * both transport arms produce comparable bounce data.
  */
 export interface SmtpExtras {
 	/**
@@ -169,16 +180,16 @@ export interface SmtpExtras {
 	 * once: this transport's `supportsCustomReturnPath` capability is
 	 * `supported`, the From domain has a return-path host (its own override, or
 	 * the deployment-global one — the SAME host the direct-MX arm stamps, so the
-	 * two arms present the same envelope-sender domain, D11), and that host's
+	 * two arms present the same envelope-sender domain), and that host's
 	 * published SPF authorises this transport. Absent ⇒ leave the envelope
 	 * sender exactly as the composer built it (the shipped behaviour) and treat
-	 * the cell's bounce data as degraded — never an error, never a blocker (D2).
+	 * the cell's bounce data as degraded — never an error, never a blocker.
 	 */
 	returnPathHost?: string;
 }
 
 /**
- * Mailchimp Transactional (Mandrill) per-send knobs (plan D3/D5).
+ * Mailchimp Transactional (Mandrill) per-send knobs.
  *
  * Only the two facts the ROUTE decides. The subaccount is deliberately NOT here:
  * it is instance-level configuration (`MANDRILL_SUBACCOUNT`), read inside the
@@ -202,7 +213,7 @@ export interface MandrillExtras {
 	 *
 	 * Present ONLY when the routing pass proved the transport honours a custom
 	 * return path — the catalog declares `supportsCustomReturnPath: 'probe'`, so
-	 * this is the probe verdict, not an assumption (D5). Absent ⇒ leave
+	 * this is the probe verdict, not an assumption. Absent ⇒ leave
 	 * Mandrill's own bounce domain in place and treat the cell's bounce data as
 	 * degraded; never an error, never a blocker.
 	 */
@@ -274,9 +285,9 @@ export interface DispatchExtrasInput {
 	readonly engagementScore?: number | undefined;
 	/**
 	 * The return-path host a relay send may stamp as its VERP envelope sender,
-	 * resolved by the routing pass (plan G-08). `undefined` unless the transport
-	 * is PROVEN to honour a custom return path AND the From domain's return-path
-	 * host authorises it — see `SmtpExtras.returnPathHost`.
+	 * resolved by the routing pass. `undefined` unless the transport is PROVEN
+	 * to honour a custom return path AND the From domain's return-path host
+	 * authorises it — see `SmtpExtras.returnPathHost`.
 	 */
 	readonly relayReturnPathHost?: string | undefined;
 }
@@ -319,7 +330,7 @@ export interface DispatchResult {
 	attempts: number;
 }
 
-// ─── Return-path probe wire (the capability half of plan D5) ───────────────
+// ─── Return-path probe wire (the capability half) ─────────────────────────
 
 /**
  * What the return-path probe needs a transport to put on the wire.

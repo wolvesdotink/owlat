@@ -167,7 +167,7 @@ function rowTrust(message: FlowItem['message']): TrustLabel {
 const composeBody = reactive<Record<string, string>>({});
 
 // Countdown-undo toast + true inverse for approvals inside their server-side
-// undo window (agentConfig.humanApproveUndoDelayMs, piece C1). The flow's
+// undo window (agentConfig.humanApproveUndoDelayMs). The flow's
 // Cmd/Ctrl+Z (and the chrome Undo button) run the inverse, which actually
 // un-sends: undoAutoSend cancels the held send and routes the draft back to
 // `draft_ready` — the flow then re-shows the card from its cache.

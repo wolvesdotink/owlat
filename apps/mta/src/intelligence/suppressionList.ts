@@ -7,19 +7,146 @@
  * Uses dual storage:
  * - Redis Set for O(1) lookup (mta:suppressed)
  * - Redis Hash per entry for metadata (mta:suppressed-meta:{email})
+ *
+ * Expiry is the sibling concern and lives in `suppressionExpiry.ts`: the
+ * due-date index, the batch sweep and the lazy compare-and-delete this file
+ * calls on the two read paths. Key names are shared through
+ * `suppressionKeys.ts` so neither file spells one out.
  */
 
 import type Redis from 'ioredis';
 import { normalizeEmail } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
+import { expireIfDue } from './suppressionExpiry.js';
+import {
+	SUPPRESSION_EXPIRY_ZSET,
+	SUPPRESSION_META_PREFIX,
+	SUPPRESSION_SET,
+} from './suppressionKeys.js';
 
-const SUPPRESSION_SET = 'mta:suppressed';
-const SUPPRESSION_META_PREFIX = 'mta:suppressed-meta:';
+// The sweep's own surface is re-exported here so this module's published
+// exports are byte-identical to what they were before the split and no
+// importer had to change.
+export {
+	SUPPRESSION_SWEEP_BATCH,
+	sweepExpiredSuppressions,
+	type SuppressionSweepResult,
+} from './suppressionExpiry.js';
 
-export type SuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
+export type SuppressionReason = 'hard_bounce' | 'soft_bounce' | 'complaint' | 'manual';
 
 /** Default TTL for soft-bounce suppressions (7 days) */
 const SOFT_BOUNCE_TTL_SECONDS = 7 * 86400;
+
+/**
+ * The reasons that are evidence about a mailbox rather than a policy choice
+ * about it, and therefore never expire.
+ */
+const PERMANENT_REASONS: ReadonlySet<SuppressionReason> = new Set([
+	'hard_bounce',
+	'complaint',
+	'manual',
+]);
+
+function assertPipelineSucceeded(
+	results: Array<[Error | null, unknown]> | null,
+	operation: string
+): void {
+	if (results === null) throw new Error(`${operation}: Redis pipeline returned no results`);
+	const failure = results.find(([error]) => error !== null)?.[0];
+	if (failure) throw new Error(`${operation}: ${failure.message}`, { cause: failure });
+}
+
+// A Convex repair must not take ownership of an independently created permanent
+// block (e.g. a Postbox hard bounce). Check and publish atomically in Redis.
+const WRITE_MIRROR_SCRIPT = `
+if (redis.call('GET', KEYS[1]) or '') ~= ARGV[4] then return 0 end
+redis.call('SET', KEYS[1], ARGV[2])
+if ARGV[3] ~= '' then redis.call('ZADD', KEYS[3], ARGV[3], ARGV[1])
+else redis.call('ZREM', KEYS[3], ARGV[1]) end
+redis.call('SADD', KEYS[2], ARGV[1])
+return 1
+`;
+
+async function queueSuppressionWrite(
+	redis: Redis,
+	pipeline: ReturnType<Redis['pipeline']>,
+	email: string,
+	meta: SuppressionMeta
+): Promise<void> {
+	if (meta.source === 'convex-reconcile' || meta.source === 'convex-blocklist') {
+		const key = `${SUPPRESSION_META_PREFIX}${email}`;
+		for (let attempt = 0; attempt < 5; attempt++) {
+			const raw = await redis.get(key);
+			if (raw) {
+				let previous: SuppressionMeta;
+				try {
+					previous = JSON.parse(raw);
+				} catch {
+					return;
+				}
+				if (
+					previous.source !== 'convex-blocklist' &&
+					previous.source !== 'convex-reconcile' &&
+					PERMANENT_REASONS.has(previous.reason)
+				)
+					return;
+			}
+			const written = await redis.eval(
+				WRITE_MIRROR_SCRIPT,
+				3,
+				key,
+				SUPPRESSION_SET,
+				SUPPRESSION_EXPIRY_ZSET,
+				email,
+				JSON.stringify(meta),
+				meta.expiresAt ?? '',
+				raw ?? ''
+			);
+			if (Number(written) === 1) return;
+		}
+		throw new Error('Suppression changed during every mirror attempt');
+	}
+	pipeline.set(`${SUPPRESSION_META_PREFIX}${email}`, JSON.stringify(meta));
+	if (meta.expiresAt) pipeline.zadd(SUPPRESSION_EXPIRY_ZSET, meta.expiresAt, email);
+	else pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, email);
+	pipeline.sadd(SUPPRESSION_SET, email);
+}
+
+/** Compare-and-delete prevents a reconciliation snapshot erasing a newer block. */
+export async function unsuppressMirror(
+	redis: Redis,
+	email: string,
+	source: string,
+	suppressedAt: number
+): Promise<boolean> {
+	if (source !== 'convex-blocklist' && source !== 'convex-reconcile') return false;
+	const normalized = normalizeEmail(email);
+	const raw = await redis.get(`${SUPPRESSION_META_PREFIX}${normalized}`);
+	if (!raw) return false;
+	let meta: SuppressionMeta;
+	try {
+		meta = JSON.parse(raw);
+	} catch {
+		return false;
+	}
+	if (meta.source !== source || meta.suppressedAt !== suppressedAt) return false;
+	const result = await redis.eval(
+		`
+if redis.call('GET', KEYS[1]) ~= ARGV[2] then return 0 end
+redis.call('DEL', KEYS[1])
+redis.call('ZREM', KEYS[3], ARGV[1])
+return redis.call('SREM', KEYS[2], ARGV[1])
+`,
+		3,
+		`${SUPPRESSION_META_PREFIX}${normalized}`,
+		SUPPRESSION_SET,
+		SUPPRESSION_EXPIRY_ZSET,
+		normalized,
+		raw
+	);
+	return Number(result) > 0;
+}
 
 export interface SuppressionMeta {
 	reason: SuppressionReason;
@@ -39,9 +166,11 @@ export async function isSuppressed(redis: Redis, email: string): Promise<boolean
 	// Check if metadata has an expiry
 	const meta = await getMetadata(redis, normalized);
 	if (meta?.expiresAt && Date.now() > meta.expiresAt) {
-		// Expired — auto-remove
-		await unsuppress(redis, email);
-		return false;
+		// Expired — hand the decision to Redis rather than acting on the read
+		// above. `expireIfDue` re-reads the metadata inside one script, so a hard
+		// bounce that landed while this round trip was in flight is seen and the
+		// entry is kept; it reports back whether the address is still suppressed.
+		return !(await expireIfDue(redis, normalized));
 	}
 
 	return true;
@@ -54,7 +183,7 @@ export async function suppress(
 	redis: Redis,
 	email: string,
 	reason: SuppressionReason,
-	options?: { source?: string; ttlSeconds?: number }
+	options?: { source?: string; ttlSeconds?: number; expiresAt?: number }
 ): Promise<void> {
 	const normalized = normalizeEmail(email);
 	const now = Date.now();
@@ -65,23 +194,41 @@ export async function suppress(
 		suppressedAt: now,
 	};
 
-	// Set TTL for soft bounces by default
-	const ttl = options?.ttlSeconds ?? (reason === 'hard_bounce' || reason === 'complaint' ? undefined : SOFT_BOUNCE_TTL_SECONDS);
+	// A TTL IS IGNORED FOR A PERMANENT REASON, rather than merely unused by
+	// today's callers. "A hard bounce or a complaint is never in the due index"
+	// is the whole safety argument for the sweep, and honouring an explicit
+	// `ttlSeconds` here is the one way to put one there. Nothing passes one
+	// today; this makes the claim a property of the code instead of a property
+	// of the call sites.
+	const ttl = PERMANENT_REASONS.has(reason)
+		? undefined
+		: (options?.ttlSeconds ?? SOFT_BOUNCE_TTL_SECONDS);
 	if (ttl) {
-		meta.expiresAt = now + ttl * 1000;
+		meta.expiresAt = options?.expiresAt ?? now + ttl * 1000;
+		if (meta.expiresAt <= now) return;
 	}
 
+	// METADATA BEFORE MEMBERSHIP, and the due date in between. `pipeline()` is
+	// not `multi()`: the commands are only batched on the wire, and another
+	// client — the sweep — can be served between any two of them. With membership
+	// written first, a sweep landing in the gap deletes the address off the OLD
+	// metadata and the `SET` below then resurrects that metadata with no
+	// membership behind it: not suppressed, plus an orphaned key. Writing the
+	// metadata first inverts that: whatever the sweep reads in the gap is already
+	// this write's answer, so it keeps the entry and the `SADD` is a no-op repeat.
 	const pipeline = redis.pipeline();
-	pipeline.sadd(SUPPRESSION_SET, normalized);
-	pipeline.set(`${SUPPRESSION_META_PREFIX}${normalized}`, JSON.stringify(meta));
+	await queueSuppressionWrite(redis, pipeline, normalized, meta);
 
-	// Set Redis TTL on metadata key for auto-cleanup (if applicable)
-	if (ttl) {
-		pipeline.expire(`${SUPPRESSION_META_PREFIX}${normalized}`, ttl);
-	}
-
-	await pipeline.exec();
-	logger.info({ email: normalized, reason, source: options?.source }, 'Address added to suppression list');
+	// `exec()` resolves with per-command errors instead of rejecting the promise.
+	// Inspect every result so `maxmemory noeviction` cannot turn a refused
+	// hard-bounce/complaint write into a false success. The throw reaches the
+	// delivery effect runner, while the durable Convex row is repaired by the
+	// daily reconciliation pass.
+	assertPipelineSucceeded(await pipeline.exec(), `suppress ${normalized}`);
+	logger.info(
+		{ email: normalized, reason, source: options?.source },
+		'Address added to suppression list'
+	);
 }
 
 /**
@@ -92,7 +239,9 @@ export async function unsuppress(redis: Redis, email: string): Promise<boolean> 
 	const pipeline = redis.pipeline();
 	pipeline.srem(SUPPRESSION_SET, normalized);
 	pipeline.del(`${SUPPRESSION_META_PREFIX}${normalized}`);
+	pipeline.zrem(SUPPRESSION_EXPIRY_ZSET, normalized);
 	const results = await pipeline.exec();
+	assertPipelineSucceeded(results, `unsuppress ${normalized}`);
 
 	const removed = (results?.[0]?.[1] as number) > 0;
 	if (removed) {
@@ -104,7 +253,10 @@ export async function unsuppress(redis: Redis, email: string): Promise<boolean> 
 /**
  * Check suppression status with full metadata
  */
-export async function getSuppressionStatus(redis: Redis, email: string): Promise<{
+export async function getSuppressionStatus(
+	redis: Redis,
+	email: string
+): Promise<{
 	suppressed: boolean;
 	reason?: SuppressionReason;
 	source?: string;
@@ -118,12 +270,25 @@ export async function getSuppressionStatus(redis: Redis, email: string): Promise
 	const meta = await getMetadata(redis, normalized);
 	if (!meta) return { suppressed: true };
 
-	// Check expiry
+	// Check expiry — same compare-and-delete as `isSuppressed`, so a report can
+	// no more destroy a concurrently written permanent entry than a send gate can.
 	if (meta.expiresAt && Date.now() > meta.expiresAt) {
-		await unsuppress(redis, email);
-		return { suppressed: false };
+		if (await expireIfDue(redis, normalized)) return { suppressed: false };
+		// Kept: something re-suppressed the address while we were deciding.
+		const fresh = await getMetadata(redis, normalized);
+		return fresh ? toStatus(fresh) : { suppressed: false };
 	}
 
+	return toStatus(meta);
+}
+
+function toStatus(meta: SuppressionMeta): {
+	suppressed: boolean;
+	reason?: SuppressionReason;
+	source?: string;
+	suppressedAt?: number;
+	expiresAt?: number;
+} {
 	return {
 		suppressed: true,
 		reason: meta.reason,
@@ -134,11 +299,17 @@ export async function getSuppressionStatus(redis: Redis, email: string): Promise
 }
 
 /**
- * Bulk suppress multiple addresses
+ * Bulk suppress multiple addresses.
+ *
+ * Every imported block is written with its reason's normal policy. Manual,
+ * hard-bounce and complaint entries are permanent; only `soft_bounce` expires.
+ *
+ * Convex reconciliation calls this endpoint to rebuild the Redis mirror from
+ * the durable blocklist after a transient MTA/Redis failure.
  */
 export async function suppressBulk(
 	redis: Redis,
-	entries: Array<{ email: string; reason: SuppressionReason; source?: string }>
+	entries: Array<{ email: string; reason: SuppressionReason; source?: string; expiresAt?: number }>
 ): Promise<{ suppressed: number }> {
 	let count = 0;
 
@@ -154,12 +325,19 @@ export async function suppressBulk(
 				source: entry.source,
 				suppressedAt: Date.now(),
 			};
+			if (!PERMANENT_REASONS.has(entry.reason)) {
+				meta.expiresAt = entry.expiresAt ?? meta.suppressedAt + SOFT_BOUNCE_TTL_SECONDS * 1000;
+				if (meta.expiresAt <= meta.suppressedAt) continue;
+			}
 
-			pipeline.sadd(SUPPRESSION_SET, normalized);
-			pipeline.set(`${SUPPRESSION_META_PREFIX}${normalized}`, JSON.stringify(meta));
+			// Metadata, then de-index, then membership — see `suppress`. It matters
+			// MORE here: a 100-entry batch is ~26 KB of commands, past Redis's 16 KB
+			// client read buffer, so this pipeline genuinely spans several reads and
+			// other clients really are served in the middle of it.
+			await queueSuppressionWrite(redis, pipeline, normalized, meta);
 		}
 
-		await pipeline.exec();
+		assertPipelineSucceeded(await pipeline.exec(), 'bulk suppress');
 		count += batch.length;
 	}
 
@@ -174,11 +352,11 @@ export async function exportSuppressionList(
 	redis: Redis,
 	options?: { reason?: SuppressionReason; cursor?: string; limit?: number }
 ): Promise<{
-	entries: Array<{ email: string } & SuppressionMeta>;
+	entries: Array<{ email: string; orphan?: true } & Partial<SuppressionMeta>>;
 	nextCursor?: string;
 }> {
 	const limit = options?.limit ?? 100;
-	const entries: Array<{ email: string } & SuppressionMeta> = [];
+	const entries: Array<{ email: string; orphan?: true } & Partial<SuppressionMeta>> = [];
 	let cursor = options?.cursor ?? '0';
 
 	// We need to scan more than `limit` since we may filter by reason
@@ -187,10 +365,13 @@ export async function exportSuppressionList(
 	const [nextCursor, members] = await redis.sscan(SUPPRESSION_SET, cursor, 'COUNT', scanCount);
 
 	for (const email of members) {
-		if (entries.length >= limit) break;
-
 		const meta = await getMetadata(redis, email);
-		if (!meta) continue;
+		if (!meta) {
+			// Metadata-less members are precisely the legacy expiry/torn-write
+			// orphans reconciliation must be able to enumerate and remove or repair.
+			if (!options?.reason) entries.push({ email, orphan: true });
+			continue;
+		}
 
 		// Filter by reason if specified
 		if (options?.reason && meta.reason !== options.reason) continue;
@@ -216,6 +397,7 @@ export async function getSuppressionStats(redis: Redis): Promise<{
 	// Sample to estimate distribution (full scan would be expensive)
 	const byReason: Record<string, number> = {
 		hard_bounce: 0,
+		soft_bounce: 0,
 		complaint: 0,
 		manual: 0,
 		unknown: 0,

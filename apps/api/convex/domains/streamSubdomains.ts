@@ -1,26 +1,24 @@
 /**
  * Per-STREAM sending subdomains — the layout the domain wizard proposes by
- * default (P4-7, plan gap G-14).
+ * default.
  *
  * WHY THIS EXISTS. Domain reputation is evaluated PER FQDN and does NOT
  * inherit from the registrable root, so a bad campaign on `example.com` drags
  * password resets down with it. Separating `news.` from `mail.` is industry
- * standard, and until this piece the wizard neither offered nor encouraged it.
- * The layout is therefore the DEFAULT PROPOSAL, not an expert toggle.
+ * standard, so the layout is the wizard's DEFAULT PROPOSAL, not an expert
+ * toggle.
  *
- * THE LAYOUT (the plan's table, verbatim):
- *   transactional        → mail.<root>      (transactional pool)
- *   marketing/campaigns  → news.<root>      (campaign pool)
- *   automation/lifecycle → news.<root>      (campaign pool — steady lifecycle
- *                                            volume is the best warming fuel)
- *   bounce/VERP          → bounces.<root>   (already the MTA's return-path host)
+ * THE LAYOUT: transactional → mail.<root> (transactional pool)
+ * marketing/campaigns → news.<root> (campaign pool) automation/lifecycle →
+ * news.<root> (campaign pool — steady lifecycle volume is the best warming fuel)
+ * bounce/VERP → bounces.<root> (already the MTA's return-path host)
  *
- * D11 — PER-STREAM IS CORRECT, PER-TRANSPORT IS FORBIDDEN. This is the piece
+ * PER-STREAM IS CORRECT, PER-TRANSPORT IS FORBIDDEN. This module is the one
  * most likely to violate it, so the violation is not expressible HERE: nothing
  * in this module takes a transport, a provider id or an arm as an input to the
  * From domain or the DKIM `d=`. {@link resolveCellSendingIdentity} takes an arm
- * ONLY to name that arm's DKIM SELECTOR — the one thing D11 explicitly allows
- * to differ.
+ * ONLY to name that arm's DKIM SELECTOR — the one thing that is allowed to
+ * differ.
  *
  * The two guards that CAN fail therefore live in `streamSubdomainRecords.ts`,
  * because both compare this layout against something outside it:
@@ -49,7 +47,7 @@ import {
 	type GovernedMessageType,
 } from '@owlat/shared';
 
-/** The stream axis of a ramp cell — the shipped governed message types (D6). */
+/** The stream axis of a ramp cell — the shipped governed message types. */
 export type SendingStream = GovernedMessageType;
 
 /** What a subdomain in the proposed layout is FOR. */
@@ -59,7 +57,7 @@ export type SendingSubdomainRole = 'transactional' | 'bulk' | 'bounce';
 export type SigningSubdomainRole = Exclude<SendingSubdomainRole, 'bounce'>;
 
 /** The label each role takes under the registrable root. */
-export const STREAM_SUBDOMAIN_LABELS = {
+const STREAM_SUBDOMAIN_LABELS = {
 	transactional: 'mail',
 	bulk: 'news',
 	bounce: 'bounces',
@@ -91,7 +89,7 @@ export const SIGNING_SUBDOMAIN_ROLES = [
 ] as const satisfies readonly SigningSubdomainRole[];
 
 /** The IP pool a role sends from. The bounce host does not send. */
-export const SUBDOMAIN_ROLE_POOLS = {
+const SUBDOMAIN_ROLE_POOLS = {
 	transactional: 'transactional',
 	bulk: 'campaign',
 } as const satisfies Record<Exclude<SendingSubdomainRole, 'bounce'>, GovernedIpPool>;
@@ -124,7 +122,7 @@ export const SUBDOMAIN_ADVICE_COPY: Record<SubdomainAdviceKey, string> = {
 };
 
 /** One subdomain in the proposal. */
-export interface SendingSubdomainPlan {
+interface SendingSubdomainPlan {
 	role: SendingSubdomainRole;
 	label: string;
 	/** Fully-qualified host, e.g. `news.example.com`. */
@@ -146,7 +144,7 @@ export type SigningSubdomainPlan = SendingSubdomainPlan & {
 };
 
 /** The return-path host: it signs nothing and warms nothing. */
-export type BounceSubdomainPlan = SendingSubdomainPlan & {
+type BounceSubdomainPlan = SendingSubdomainPlan & {
 	sends: false;
 	pool: null;
 };
@@ -157,7 +155,7 @@ export type BounceSubdomainPlan = SendingSubdomainPlan & {
  * that cannot be missing — and the per-role types make "the bounce host has no
  * selector" a fact of the type rather than a `null` every caller re-checks.
  */
-export interface SubdomainsByRole {
+interface SubdomainsByRole {
 	transactional: SigningSubdomainPlan;
 	bulk: SigningSubdomainPlan;
 	bounce: BounceSubdomainPlan;
@@ -207,7 +205,7 @@ export interface SubdomainLayoutInput {
 }
 
 /** Pool IPs, parsed once and read the same way by every consumer. */
-export interface NormalizedPoolIps {
+interface NormalizedPoolIps {
 	ip4: string[];
 	ip6: string[];
 	/** Distinct addresses across both families — what "one IP" actually means. */
@@ -244,13 +242,13 @@ export function normalizePoolIps(ips: readonly string[] | undefined): Normalized
 }
 
 /** A domain with no registrable zone renders an explanation, never a stack. */
-export type SubdomainLayoutResult =
+type SubdomainLayoutResult =
 	| { ok: true; proposal: SubdomainLayoutProposal }
 	| { ok: false; reason: 'invalid_domain' };
 
 /**
  * Build the proposed layout for a domain. This is what the wizard shows FIRST —
- * the plan's layout is the default, not an option behind a toggle.
+ * the proposed layout is the default, not an option behind a toggle.
  *
  * Returns a RESULT rather than throwing: `localhost`, an internal TLD or a typo
  * has no registrable zone, and the wizard must say so in place of the table
@@ -347,7 +345,7 @@ export function planStreamSubdomains(input: SubdomainLayoutInput): SubdomainLayo
 	};
 }
 
-// ============ D11: ONE SENDING IDENTITY PER CELL, WHICHEVER ARM CARRIES IT ====
+// ====== ONE SENDING IDENTITY PER CELL, WHICHEVER ARM CARRIES IT ======
 
 /** The two arms of a ramp cell. Only the DKIM SELECTOR may differ between them. */
 export type TransportArm = 'own' | 'reference';
@@ -359,12 +357,12 @@ export type TransportArm = 'own' | 'reference';
  * that subdomain (`sendingDomainMtaIdentities.dkimSelector`, which is also what
  * `delivery/alignmentPreflight.ts` reads); the reference arm's comes from the
  * ESP. `null` means "no selector exists yet" — the subdomain has not been added,
- * or the relay has not published one — which is a supported state (D2), not a
+ * or the relay has not published one — which is a supported state, not a
  * defect, and is why nothing here invents a name to fill the gap.
  */
 export type ArmDkimSelectors = Readonly<Partial<Record<TransportArm, string>>>;
 
-export interface CellSendingIdentity {
+interface CellSendingIdentity {
 	stream: SendingStream;
 	arm: TransportArm;
 	/** The From domain. Derived from the STREAM alone. */
@@ -374,7 +372,7 @@ export interface CellSendingIdentity {
 	/** The return-path host. Shared by every stream and both arms. */
 	returnPathDomain: DnsName;
 	/**
-	 * The ONE thing D11 allows to differ per arm: each transport signs with its
+	 * The ONE thing allowed to differ per arm: each transport signs with its
 	 * own key under the SAME `d=`, so `Received` headers and the selector are
 	 * the only observable difference between the arms. `null` when that arm has
 	 * no selector yet.
@@ -387,8 +385,8 @@ export interface CellSendingIdentity {
  *
  * `arm` reaches exactly one field — the selector. There is no code path by
  * which a transport can influence `fromDomain`, `dkimDomain` or
- * `returnPathDomain`, which is D11 enforced by construction rather than by
- * review.
+ * `returnPathDomain`, so the one-identity rule holds by construction rather
+ * than by review.
  */
 export function resolveCellSendingIdentity(input: {
 	layout: SubdomainLayoutProposal;
@@ -408,7 +406,7 @@ export function resolveCellSendingIdentity(input: {
 	};
 }
 
-// THE D11 GUARD lives in `streamSubdomainRecords.ts`
+// THE ONE-IDENTITY GUARD lives in `streamSubdomainRecords.ts`
 // (`findPerTransportSubdomainViolations`, `findUnpublishedSigningSelectors`)
 // because it must compare what a cell SIGNS with against what the wizard
 // PUBLISHES. A guard that only re-derived both arms from this module's own

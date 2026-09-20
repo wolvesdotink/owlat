@@ -7,6 +7,7 @@ import {
 	emailTemplateTypeValidator,
 	bounceTypeValidator,
 } from '../lib/convexValidators';
+import { sendStatusValidator } from '../lib/literalValidators';
 
 /**
  * Email template + send tables — media assets, marketing/transactional templates,
@@ -301,16 +302,7 @@ export const templateTables = {
 		// now pre-create in `queued` (symmetric with campaign sends) so the
 		// worker-completion path goes through the Send lifecycle for both
 		// kinds; `failed` rows persist once the worker errors.
-		status: v.union(
-			v.literal('queued'),
-			v.literal('sent'),
-			v.literal('failed'),
-			v.literal('delivered'),
-			v.literal('opened'),
-			v.literal('clicked'),
-			v.literal('bounced'),
-			v.literal('complained')
-		),
+		status: sendStatusValidator,
 		// Timestamps for status changes. `sentAt` is optional because rows
 		// start life in `queued` (ADR-0006); it is set when the worker
 		// transitions to `sent`.

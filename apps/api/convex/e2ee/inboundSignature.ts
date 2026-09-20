@@ -1,12 +1,12 @@
 /**
- * Inbound PGP-SIGNED (unencrypted) mail — the PURE record vocabulary of the F1
- * signature-verification plane (adoption-gaps plan 2026-08-16, decision D9).
+ * Inbound PGP-SIGNED (unencrypted) mail — the PURE record vocabulary of the
+ * signature-verification plane.
  *
  * This is the SIGNED-plaintext sibling of `e2ee/inboundSeal.ts`'s
  * `InboundEncryptionInfo`: a message that arrived as RFC 3156
  * `multipart/signed` or with an inline clearsigned body gets ONE honest record
  * of what we cryptographically checked at ingest. Deliberately NOT a third arm
- * on the sealed union (D9's rejected alternative) — the sealed arms carry
+ * on the sealed union — the sealed arms carry
  * fail-closed sealed-mail semantics with their own honesty tests, and a signed
  * plaintext message makes no encryption claim at all.
  *
@@ -24,7 +24,8 @@ import { v } from 'convex/values';
  *   - `'pinned'`   — a cached TRUSTED TOFU pin was used directly (also the
  *     source on a `key_changed` refusal: the pin drove the decision);
  *   - `'wkd'` / `'manifest'` — fresh discovery found + pinned the key (same
- *     ladder sealed mail uses; F1 skips the instance-manifest fetch, so
+ *     ladder sealed mail uses; signature verification skips the
+ *     instance-manifest fetch, so
  *     `'manifest'` only appears via a pin discovered by the sealed path);
  *   - `'not_found'` — no usable key anywhere ⇒ no verification was possible.
  */

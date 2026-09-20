@@ -7,7 +7,7 @@
  * the cell side by side, every gate's verdict with its numbers, how much the
  * measurement is worth, and the trend across the window.
  *
- * THE STATES ARE THE FEATURE (plan D2/D14), and the column and the invitation
+ * THE STATES ARE THE FEATURE, and the column and the invitation
  * are keyed to different facts — the column to what this cell MEASURED, the
  * invitation to what the deployment HAS, so a connected-but-idle relay gets the
  * one column without being offered a relay it already pays for:
@@ -21,7 +21,7 @@
  *   - zero volume             -> an empty, calm cell. Nothing is wrong.
  *
  * Nothing here divides: every rate comes off the server summary verbatim
- * (ADR-0042 / plan D5).
+ * (ADR-0042).
  *
  * TWO SPANS ON ONE CARD, both named. The table and the trend are the REPORTED
  * window — seven days, the span the page heading gives dates for — and the checks
@@ -82,7 +82,7 @@ const referenceColumnLabel = computed(() =>
  * `widthPercent` is geometry — a bar's length relative to the tallest day — and
  * is deliberately the only division on this screen. It is never shown as a
  * number and never compared against a threshold; every RATE here still comes
- * off the server summary verbatim (plan D5).
+ * off the server summary verbatim.
  */
 const trendPoints = computed(() => {
 	const points = props.cell.trend;
@@ -235,7 +235,7 @@ const hasQuietRelayHistory = computed(
 				</div>
 			</template>
 
-			<!-- D2/D14: absence lowers confidence and says what would raise it. Calm invitation, never a warning. -->
+			<!-- Absence lowers confidence and says what would raise it. Calm invitation, never a warning. -->
 			<div
 				v-if="cell.confidence.improvements.length > 0"
 				class="rounded-lg border border-border-subtle p-3"

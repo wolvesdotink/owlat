@@ -28,6 +28,8 @@ interface FakeOpts {
 	uploadError?: string;
 	// stdout emitted by the public-IP probe; undefined = no output (detection fails).
 	publicIpLine?: string;
+	// stdout emitted by the latest-release lookup; null = no output (lookup fails).
+	releaseLine?: string | null;
 }
 
 class FakeTransport implements ProvisionTransport {
@@ -62,6 +64,11 @@ class FakeTransport implements ProvisionTransport {
 			for (const l of this.opts.installerLines ?? []) out(l);
 			for (const l of this.opts.installerStderr ?? []) err(l);
 			return this.opts.installerExit ?? 0;
+		}
+		if (command.includes('api.github.com')) {
+			const line = this.opts.releaseLine === undefined ? 'release=0.4.6' : this.opts.releaseLine;
+			if (line !== null) out(line);
+			return 0;
 		}
 		if (command.includes('api.ipify.org')) {
 			if (this.opts.publicIpLine !== undefined) out(this.opts.publicIpLine);
@@ -301,6 +308,78 @@ describe('useServerProvisioning — provisioning', () => {
 		// connect steps stay done (session kept); server steps are reset to pending
 		expect(p.steps.find((s) => s.id === 'authenticate')?.state).toBe('ok');
 		expect(p.steps.find((s) => s.id === SetupStep.ComposeUp)?.state).toBe('pending');
+	});
+});
+
+describe('useServerProvisioning — release install', () => {
+	it('by default resolves the latest release, clones its tag and pins the version into the installer', async () => {
+		const t = new FakeTransport({
+			knownHostStatus: 'match',
+			dockerLine: 'docker=yes',
+			installerLines: happyInstallerLines({ siteUrl: 'http://x:3000' }),
+		});
+		const p = useServerProvisioning(t);
+		await p.connect(creds);
+		await p.provision(config);
+		expect(p.stage.value).toBe('done');
+
+		const resolve = p.steps.find((s) => s.id === 'resolve-release');
+		expect(resolve?.state).toBe('ok');
+		expect(resolve?.detail).toBe('v0.4.6');
+		expect(t.commands.some((c) => c.includes('api.github.com'))).toBe(true);
+		const fetch = t.commands.find((c) => c.includes('git clone'));
+		expect(fetch).toContain("--branch 'v0.4.6'");
+		expect(fetch).not.toContain("'main'");
+		const installer = t.commands.find((c) => c.includes('quickstart'));
+		expect(installer).toContain("--owlat-version '0.4.6'");
+		expect(installer).toContain("OWLAT_SETUP_IMAGE='ghcr.io/wolvesdotink/setup:0.4.6'");
+		expect(t.uploads).toEqual([]);
+	});
+
+	it('a pinned version skips the lookup and installs that release', async () => {
+		const t = new FakeTransport({
+			knownHostStatus: 'match',
+			dockerLine: 'docker=yes',
+			installerLines: happyInstallerLines({ siteUrl: 'http://x:3000' }),
+		});
+		const p = useServerProvisioning(t);
+		await p.connect({ ...creds, remote: { version: '0.4.4' } });
+		await p.provision(config);
+		expect(p.stage.value).toBe('done');
+		expect(t.commands.some((c) => c.includes('api.github.com'))).toBe(false);
+		expect(p.steps.find((s) => s.id === 'resolve-release')?.state).toBe('skipped');
+		expect(t.commands.find((c) => c.includes('git clone'))).toContain("--branch 'v0.4.4'");
+		expect(t.commands.find((c) => c.includes('quickstart'))).toContain("--owlat-version '0.4.4'");
+	});
+
+	it('a branch (development) install skips the lookup, clones the branch and leaves the version unpinned', async () => {
+		const t = new FakeTransport({
+			knownHostStatus: 'match',
+			dockerLine: 'docker=yes',
+			installerLines: happyInstallerLines({ siteUrl: 'http://x:3000' }),
+		});
+		const p = useServerProvisioning(t);
+		await p.connect({ ...creds, remote: { branch: 'main' } });
+		await p.provision(config);
+		expect(p.stage.value).toBe('done');
+		expect(t.commands.some((c) => c.includes('api.github.com'))).toBe(false);
+		expect(t.commands.find((c) => c.includes('git clone'))).toContain("--branch 'main'");
+		expect(t.commands.find((c) => c.includes('quickstart'))).not.toContain('--owlat-version');
+	});
+
+	it('fails instead of falling back to main when no release can be resolved', async () => {
+		const t = new FakeTransport({
+			knownHostStatus: 'match',
+			dockerLine: 'docker=yes',
+			releaseLine: null,
+		});
+		const p = useServerProvisioning(t);
+		await p.connect(creds);
+		await p.provision(config);
+		expect(p.stage.value).toBe('error');
+		expect(p.error.value).toBe(translate('shared.useServerProvisioning.releaseNotFound'));
+		expect(p.steps.find((s) => s.id === 'resolve-release')?.state).toBe('failed');
+		expect(t.commands.some((c) => c.includes('git clone'))).toBe(false);
 	});
 });
 

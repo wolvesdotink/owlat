@@ -1,7 +1,7 @@
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseUidSet } from '../../parser.js';
-import type { ImapCommandModule, SelectedState } from '../types.js';
+import type { ImapCommandModule } from '../types.js';
 import { asyncSession, syncSession } from '../helpers/session.js';
 import { requireAuth, requireSelect, requireWritableSelect } from '../helpers/auth.js';
 
@@ -13,6 +13,9 @@ export interface ExpungeArgs {
 interface ExpungeResult {
 	readonly sequenceNumbers: number[];
 	readonly modseq: number;
+	readonly done?: boolean;
+	readonly beforeUid?: number;
+	readonly nextSequenceNumber?: number;
 }
 
 /**
@@ -50,27 +53,36 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 
 		return asyncSession(async () => {
 			try {
-				const result = (await deps.convex.mutation(
-					fn.expungeFolder as never,
-					{
-						folderId: state.selected!.folderId,
-						uidSet,
-					} as never
-				)) as ExpungeResult;
+				let selected = state.selected!;
+				let beforeUid: number | undefined;
+				let nextSequenceNumber: number | undefined;
+				do {
+					const result = (await deps.convex.mutation(
+						fn.expungeFolder as never,
+						{
+							folderId: state.selected!.folderId,
+							uidSet,
+							beforeUid,
+							nextSequenceNumber,
+						} as never
+					)) as ExpungeResult;
+					// Each page has already committed. Publish it before requesting the
+					// next page so a later failure cannot hide permanent deletions.
+					for (const seq of [...result.sequenceNumbers].sort((a, b) => b - a)) {
+						send(`* ${seq} EXPUNGE`);
+					}
+					selected = {
+						...selected,
+						totalCount: Math.max(0, selected.totalCount - result.sequenceNumbers.length),
+						highestModseq: result.modseq,
+					};
+					deps.commit({ ...state, selected });
+					if (result.done !== false) break;
+					beforeUid = result.beforeUid;
+					nextSequenceNumber = result.nextSequenceNumber;
+				} while (beforeUid !== undefined && nextSequenceNumber !== undefined);
 
-				// IMAP wants EXPUNGE responses in DESCENDING sequence order so
-				// the client's local seq map stays valid across iterations.
-				for (const seq of [...result.sequenceNumbers].reverse()) {
-					send(`* ${seq} EXPUNGE`);
-				}
 				send(`${tag} OK ${label} completed`);
-
-				const updatedSelected: SelectedState = {
-					...state.selected!,
-					totalCount: Math.max(0, state.selected!.totalCount - result.sequenceNumbers.length),
-					highestModseq: result.modseq,
-				};
-				deps.commit({ ...state, selected: updatedSelected });
 			} catch (err) {
 				logger.error({ err }, 'EXPUNGE failed');
 				send(`${tag} BAD EXPUNGE failed`);

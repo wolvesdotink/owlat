@@ -1,5 +1,5 @@
 /**
- * Mailchimp Transactional (Mandrill) webhook adapter — plan D10.
+ * Mailchimp Transactional (Mandrill) webhook adapter.
  *
  * The feedback half of the reference arm: Mandrill is where a migrating team's
  * mail goes while the ramp controller walks traffic onto Owlat's own MTA, so
@@ -31,7 +31,7 @@
  *    the Send lifecycle's reducers are idempotent per transition, so an already
  *    applied event replays as `duplicate`/`terminal` rather than as a second
  *    suppression or a second counter bump.
- *  - **`open` and `click` are dropped** (D3, the Resend precedent). Owlat's own
+ *  - **`open` and `click` are dropped**, as they are for Resend. Owlat's own
  *    tracking pixel and link rewriter instrument BOTH arms identically; consuming
  *    Mandrill's counters for one of them would make the `engagement_ratio` ramp
  *    gate compare two different rulers.
@@ -223,7 +223,7 @@ const REJECT_SUPPRESSION_REASONS: Readonly<Record<string, ProviderSuppressionRea
  *
  * Exported because the reject reason reaches Owlat through TWO doors — a
  * `reject` event while the reference arm is live, and the one-off `rejects/list`
- * carry-over at migration time (P4.1) — and the two have to produce the same
+ * carry-over at migration time — and the two have to produce the same
  * code for the same reason, or one address reads as two different pieces of
  * evidence depending on which door it came through.
  */
@@ -268,9 +268,9 @@ function instantOf(item: MandrillEventItem): number {
 }
 
 /**
- * Map ONE Mandrill event onto the normalized union — the D10 table, in code.
+ * Map ONE Mandrill event onto the normalized union — the mapping table, in code.
  *
- * Returns null for everything Owlat does not act on: `open`/`click` (D3),
+ * Returns null for everything Owlat does not act on: `open`/`click`,
  * `sync` blacklist/whitelist notifications, inbound-routing events, unknown
  * future event names, and any item that names no message id (or, for `unsub`,
  * no address) — an event we cannot join is acknowledged, never guessed at.
@@ -283,7 +283,7 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 	switch (item.event) {
 		case 'send':
 			// Confirms Mandrill accepted the message. For a send whose acceptance
-			// was left UNKNOWN by an ambiguous API timeout (D4) this is the event
+			// was left UNKNOWN by an ambiguous API timeout this is the event
 			// that resolves it: `queued → sent` through the ordinary lifecycle edge,
 			// and a row already `sent` records a `duplicate` and changes nothing.
 			if (!providerMessageId) return null;
@@ -340,7 +340,7 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 			// and non-bounce, so it takes the `email.failed` edge: the send row
 			// leaves "sending" without a bounce's reputation penalty.
 			//
-			// D9: the recipient half of that same fact — Mandrill's blacklist holds
+			// The recipient half of that same fact — Mandrill's blacklist holds
 			// this address, which the own arm has to mirror or the two arms stop
 			// mailing the same population — is minted HERE, as a normalized
 			// `suppression`, because deciding what `reject_reason: 'custom'` means is
@@ -363,7 +363,7 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 				...(suppression ? { suppression } : {}),
 			};
 		}
-		// `open` / `click` (D3 — first-party tracking only), `sync`, inbound
+		// `open` / `click` (first-party tracking only), `sync`, inbound
 		// routing, and any event name Mandrill adds later: acknowledged, not acted
 		// on. Same posture as the Resend adapter's default branch.
 		default:

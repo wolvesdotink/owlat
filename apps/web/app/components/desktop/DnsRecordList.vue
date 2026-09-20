@@ -18,7 +18,7 @@ interface DnsRecord {
 	value: string;
 	/** True when `value` is a placeholder (no real address) — copy is disabled. */
 	placeholder?: boolean;
-	/** Optional inline note shown under the row. */
+	/** Optional inline note shown under the row — an i18n key, not copy. */
 	note?: string;
 }
 
@@ -72,7 +72,7 @@ const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 				v-if="r.note"
 				class="col-span-4 -mt-0.5 font-sans text-[11px] leading-snug text-text-tertiary"
 			>
-				{{ r.note }}
+				{{ t(r.note) }}
 			</p>
 		</template>
 	</div>

@@ -7,22 +7,18 @@
  * the active workspace) are cleanly re-seeded — see auth-client.ts / convex.client.ts.
  *
  * No-op outside the Tauri runtime.
+ *
+ * The shared workspace list + persistence bridges live in
+ * lib/desktop/workspaceState.ts, and the browser sign-in handshake in
+ * lib/desktop/workspaceConnect.ts; this file owns boot, switching, removal and
+ * the public composable.
  */
-import { createAuthClient } from 'better-auth/vue';
-import { convexClient, crossDomainClient } from '@convex-dev/better-auth/client/plugins';
-import { organizationClient } from 'better-auth/client/plugins';
 import { isDesktopRuntime, setActiveWorkspace } from '~/lib/desktop/activeWorkspace';
+import { configureKeychainStorage, clearKeychainStorage } from '~/lib/desktop/keychainStorage';
 import {
-	keychainStorage,
-	configureKeychainStorage,
-	clearKeychainStorage,
-	snapshotKeychain,
-} from '~/lib/desktop/keychainStorage';
-import {
-	type InstanceInfo,
 	type WorkspaceAccent,
-	type WorkspaceConfig,
 	type WorkspaceStoreShape,
+	type InstanceInfo,
 	pickAccentColor,
 	workspaceTokenRef,
 } from '~/lib/desktop/workspaceTypes';
@@ -33,55 +29,28 @@ import {
 	SWITCH_FLAG_TTL_MS,
 	writeSwitchFlag,
 } from '~/lib/desktop/workspaceSwitch';
+import {
+	activeId,
+	keychain,
+	makePersister,
+	persistStore,
+	store,
+	workspaces,
+	WorkspaceConnectionError,
+} from '~/lib/desktop/workspaceState';
+import {
+	addWorkspace,
+	clearConnectFailure,
+	completeConnection,
+	connectError,
+} from '~/lib/desktop/workspaceConnect';
 
-/**
- * A failure the connect UI shows the user. The functions that throw it run at
- * module scope (deep links, boot), where `useI18n` does not exist — so they
- * carry a message KEY plus its values, and `useDesktopWorkspaces()` translates
- * on the way out (see `localizeErrors`).
- */
-class WorkspaceConnectionError extends Error {
-	constructor(
-		readonly messageKey: string,
-		readonly params: Record<string, unknown> = {}
-	) {
-		super(messageKey);
-		this.name = 'WorkspaceConnectionError';
-	}
-}
+// Re-exported because the URL normalizer is part of this composable's public
+// contract (the connect form calls it through `addWorkspace`) even though it now
+// lives with the state it validates against.
+export { normalizeSiteUrl } from '~/lib/desktop/workspaceState';
 
-// ---- module-level reactive state (shared across all callers) ----
-const workspaces = ref<WorkspaceConfig[]>([]);
-const activeId = ref<string | null>(null);
 let loaded = false;
-
-// Pending "add workspace" handshakes, keyed by CSRF state nonce. Populated when
-// the system browser is opened; consumed when the owlat://auth deep link returns.
-const pending = new Map<string, { id: string; info: InstanceInfo }>();
-
-type KeychainBridge = typeof import('@owlat/desktop/src/keychain');
-type WorkspaceBridge = typeof import('@owlat/desktop/src/workspace');
-
-async function keychain(): Promise<KeychainBridge> {
-	return import('@owlat/desktop/src/keychain');
-}
-async function store(): Promise<WorkspaceBridge> {
-	return import('@owlat/desktop/src/workspace');
-}
-
-function makePersister() {
-	return (account: string, blob: string) => {
-		void keychain().then((k) => k.secretSet(account, blob));
-	};
-}
-
-async function persistStore(): Promise<void> {
-	const { saveWorkspaceStore } = await store();
-	await saveWorkspaceStore({
-		workspaces: workspaces.value,
-		activeWorkspaceId: activeId.value,
-	} satisfies WorkspaceStoreShape);
-}
 
 /** Stable id for the dev-only auto-seeded localhost workspace. Deterministic so
  * its keychain entry (`owlat-ws:local-dev`) survives a workspaces.json wipe and
@@ -213,123 +182,6 @@ export async function loadWorkspaces(options?: {
 	}
 }
 
-/** Normalize a user-typed instance URL into an origin (https unless localhost). */
-export function normalizeSiteUrl(input: string): string {
-	let raw = input.trim();
-	const hasScheme = /^https?:\/\//i.test(raw);
-	if (!hasScheme) raw = `https://${raw}`;
-	const url = new URL(raw);
-	const isLocal = /^(localhost|127\.0\.0\.1)/.test(url.hostname);
-	if (!isLocal) {
-		url.protocol = 'https:';
-	} else if (!hasScheme) {
-		// Schemeless localhost input ("localhost:3000") means a plain-http dev
-		// server — defaulting it to https would TLS-fail with an opaque
-		// "Load failed". An explicit https://localhost is left untouched.
-		url.protocol = 'http:';
-	}
-	return url.origin;
-}
-
-/**
- * Begin adding a workspace: discover the instance, then open the system browser
- * to its /desktop/connect page. Completion happens in `completeConnection` when
- * the `owlat://auth` deep link returns.
- */
-async function addWorkspace(siteUrlInput: string): Promise<void> {
-	const siteUrl = normalizeSiteUrl(siteUrlInput);
-
-	const res = await fetch(`${siteUrl}/api/instance-info`, { credentials: 'omit' });
-	if (!res.ok) {
-		throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.unreachable', {
-			siteUrl,
-		});
-	}
-	const info = (await res.json()) as InstanceInfo;
-	if (!info.convexUrl || !info.convexSiteUrl) {
-		throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.unusableConfig');
-	}
-
-	const id = crypto.randomUUID();
-	const state = crypto.randomUUID();
-	pending.set(state, { id, info });
-
-	const target = new URL('/desktop/connect', info.siteUrl || siteUrl);
-	target.searchParams.set('state', state);
-	target.searchParams.set('redirect', 'owlat://auth');
-
-	const { openExternal } = await import('@owlat/desktop/src/shell');
-	await openExternal(target.toString());
-}
-
-/**
- * Redeem the one-time token returned via the deep link, persist the session to
- * the new workspace's keychain entry, record the workspace, and reload into it.
- */
-export async function completeConnection(params: { ott: string; state: string }): Promise<void> {
-	const entry = pending.get(params.state);
-	if (!entry)
-		throw new WorkspaceConnectionError('shared.useDesktopWorkspaces.errors.stateMismatch');
-	pending.delete(params.state);
-
-	const { id, info } = entry;
-	const tokenRef = workspaceTokenRef(id);
-
-	// Point the (single, global) keychain cache at the new workspace's entry so
-	// the cross-domain client persists the redeemed session there.
-	configureKeychainStorage(tokenRef, null, makePersister());
-
-	// A throwaway client for the new instance: redeeming through it lets the
-	// cross-domain client capture the Set-Better-Auth-Cookie into keychainStorage.
-	const tempClient = createAuthClient({
-		baseURL: info.convexSiteUrl,
-		plugins: [
-			convexClient(),
-			organizationClient(),
-			crossDomainClient({ storage: keychainStorage }),
-		],
-	});
-
-	await (
-		tempClient as unknown as {
-			$fetch: (path: string, opts: Record<string, unknown>) => Promise<unknown>;
-		}
-	).$fetch('/cross-domain/one-time-token/verify', {
-		method: 'POST',
-		body: { token: params.ott },
-	});
-
-	const session = (await tempClient.getSession()) as { data?: { user?: { id?: string } } };
-	const userId = session?.data?.user?.id ?? '';
-
-	// Force-persist the session blob before reload (beat the debounced flush).
-	const { secretSet } = await keychain();
-	await secretSet(tokenRef, snapshotKeychain());
-
-	const now = Date.now();
-	const ws: WorkspaceConfig = {
-		id,
-		label: info.name,
-		siteUrl: info.siteUrl,
-		convexUrl: info.convexUrl,
-		convexSiteUrl: info.convexSiteUrl,
-		userId,
-		tokenRef,
-		addedAt: now,
-		lastActiveAt: now,
-		// Preserve a user-chosen accent when re-authing an already-connected
-		// workspace; only assign round-robin for a genuinely new one.
-		accentColor:
-			workspaces.value.find((w) => w.id === id)?.accentColor ??
-			pickAccentColor(workspaces.value.filter((w) => w.id !== id).length),
-	};
-	workspaces.value = [...workspaces.value.filter((w) => w.id !== id), ws];
-	activeId.value = id;
-	await persistStore();
-
-	window.location.assign('/dashboard');
-}
-
 async function switchTo(id: string, opts?: { destination?: string }): Promise<void> {
 	if (id === activeId.value) return;
 	const ws = workspaces.value.find((w) => w.id === id);
@@ -338,7 +190,7 @@ async function switchTo(id: string, opts?: { destination?: string }): Promise<vo
 	activeId.value = id;
 	await persistStore();
 
-	// Perceived-instant switch (piece d4): before the (unavoidable) reload,
+	// Perceived-instant switch: before the (unavoidable) reload,
 	// repaint the destination accent and drop a skeleton washed in it so the eye
 	// sees the target workspace's colour immediately. A sessionStorage flag hands
 	// the same skeleton to the fresh document (consumed by the boot plugin), which
@@ -456,6 +308,15 @@ export function useDesktopWorkspaces() {
 		workspaces: readonly(workspaces),
 		activeId: readonly(activeId),
 		active,
+		/**
+		 * The last handshake failure, translated — `null` when the last attempt
+		 * succeeded or none has run. Lets the connect UI explain a deep-link
+		 * return that failed after the user had already left for the browser.
+		 */
+		connectError: computed(() =>
+			connectError.value ? t(connectError.value.messageKey, connectError.value.params) : null
+		),
+		clearConnectFailure,
 		addWorkspace: (siteUrlInput: string) => localizeErrors(() => addWorkspace(siteUrlInput)),
 		completeConnection: (params: { ott: string; state: string }) =>
 			localizeErrors(() => completeConnection(params)),

@@ -13,7 +13,7 @@ import { checklistTraits } from './checklistTraits';
 export type VpsProvider = DeliverabilityVpsProvider;
 export type DnsProvider = DeliverabilityDnsProvider;
 
-export interface ProviderGuidance extends Omit<
+interface ProviderGuidance extends Omit<
 	DeliverabilityProviderGuidance,
 	'provider' | 'consoleHref'
 > {

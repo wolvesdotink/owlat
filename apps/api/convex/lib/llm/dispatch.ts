@@ -108,8 +108,14 @@ function captureProviderModelIdentity(model: LanguageModel): ProviderModelIdenti
 
 const LLM_BACKOFF_BASE_MS = 500;
 
-/** Best-effort HTTP status off an AI-SDK / fetch error shape. */
-function errorStatus(error: unknown): number | undefined {
+/**
+ * Best-effort HTTP status off an AI-SDK / fetch error shape. Exported because
+ * the DECISION plane's dispatch classifies the same three fields: one reader for
+ * one shape, so a fourth field learned here is learned there too (a copy that
+ * fell behind would quietly stop recognising the 401/403/422 that must never
+ * produce a fallback hop).
+ */
+export function errorStatus(error: unknown): number | undefined {
 	const e = error as {
 		statusCode?: number;
 		status?: number;
@@ -213,7 +219,7 @@ export async function runLlmText(opts: LlmTextOptions): Promise<LlmTextResult> {
 	return result;
 }
 
-export interface LlmTextAttemptResult {
+interface LlmTextAttemptResult {
 	readonly result: LlmTextResult;
 	readonly attempts: number;
 	/** Raw, validated provider echo for hard-budget settlement. */
@@ -254,7 +260,7 @@ export async function runLlmTextWithAttemptMetadata(
 	};
 }
 
-export type LlmTextWithToolsOptions = {
+type LlmTextWithToolsOptions = {
 	model: LanguageModel;
 	messages: ModelMessage[];
 	/** AI SDK tool set (built via `tool({...})`). The model may call these across
@@ -296,6 +302,13 @@ export interface LlmObjectOptions<S extends z.ZodTypeAny> {
 	schema: S;
 	prompt: string;
 	temperature?: number;
+	/**
+	 * Cancel the call (and the backoff between its retries) mid-flight. The
+	 * structured-output path was the one dispatch helper that could not honour a
+	 * caller's deadline, which made every structured call — including the
+	 * decision plane's language-backed adapter — uncancellable once dispatched.
+	 */
+	abortSignal?: AbortSignal;
 }
 
 export interface LlmObjectResult<S extends z.ZodTypeAny> {
@@ -307,13 +320,16 @@ export interface LlmObjectResult<S extends z.ZodTypeAny> {
 export async function runLlmObject<S extends z.ZodTypeAny>(
 	opts: LlmObjectOptions<S>
 ): Promise<LlmObjectResult<S>> {
-	const dispatched = await withLlmRetry(() =>
-		generateObject({
-			model: opts.model,
-			schema: opts.schema,
-			prompt: opts.prompt,
-			temperature: opts.temperature,
-		})
+	const dispatched = await withLlmRetry(
+		() =>
+			generateObject({
+				model: opts.model,
+				schema: opts.schema,
+				prompt: opts.prompt,
+				temperature: opts.temperature,
+				...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
+			}),
+		opts.abortSignal
 	);
 	const { object, usage } = dispatched.value;
 	return {
@@ -330,23 +346,23 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
  */
 export const DEFAULT_MAX_TOOL_STEPS = 8;
 
-export interface LlmStreamToolCall {
+interface LlmStreamToolCall {
 	toolCallId: string;
 	toolName: string;
 	input: unknown;
 }
-export interface LlmStreamToolResult {
+interface LlmStreamToolResult {
 	toolCallId: string;
 	toolName: string;
 	output: unknown;
 }
-export interface LlmStreamToolError {
+interface LlmStreamToolError {
 	toolCallId: string;
 	toolName: string;
 	error: unknown;
 }
 
-export interface LlmStreamOptions {
+interface LlmStreamOptions {
 	model: LanguageModel;
 	system?: string;
 	messages: ModelMessage[];
@@ -367,7 +383,7 @@ export interface LlmStreamOptions {
 	onToolError?: (error: LlmStreamToolError) => void | Promise<void>;
 }
 
-export interface LlmStreamResult {
+interface LlmStreamResult {
 	text: string;
 	tokenUsage: TokenUsage | undefined;
 	modelUsed: string | undefined;

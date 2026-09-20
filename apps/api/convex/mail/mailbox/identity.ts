@@ -30,6 +30,7 @@ import { requireMailboxAccess, loadReadableMailbox } from '../permissions';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { normalizeEmail, parseAddress } from '@owlat/shared';
 import { SYSTEM_FOLDER_NAMES, SYSTEM_FOLDER_ROLES, readSession } from './shared';
+import { stopExternalAccountSync } from '../external/accountTeardown';
 
 /**
  * The caller-visible personal mailbox for a member: their single `active`
@@ -163,8 +164,8 @@ export async function provisionMailbox(
 
 	// The implicit 'owner' membership — the access model's single source of
 	// truth (mail/permissions.ts). Every mailbox carries exactly this one row
-	// at provision time; shared mailboxes add further rows later. Mirrors the
-	// backfill in migrations/0034 so new and pre-existing mailboxes agree.
+	// at provision time; shared mailboxes add further rows later. (Mailboxes
+	// that predate the table were given theirs by a one-shot backfill.)
 	await ctx.db.insert('mailboxMembers', {
 		mailboxId,
 		authUserId: args.userId,
@@ -376,28 +377,21 @@ export const remove = authedMutation({
 		}
 		if (mailbox) {
 			// An external-backed mailbox (personal BYO or a shared team inbox) has a
-			// live sync account; mark it `disconnected` so `listConnectableAccounts`
-			// stops the mail-sync worker from syncing into a now-deleted mailbox. The
-			// account row is retained for audit + the hard cascade-delete path (`purge`
-			// for personal, `purgeShared` for a team inbox) — NOT for re-attach: a fresh
-			// connect always provisions a new mailbox + account (the dup-check only sees
-			// active rows), mirroring the soft `disconnect` mutation.
+			// live sync account. The shared teardown marks it `disconnected` (so
+			// `listConnectableAccounts` stops the mail-sync worker from syncing into a
+			// now-deleted mailbox), drops the stored password, cancels any running
+			// import, and records the same `external_account.disconnected` audit event
+			// the member-facing `disconnect` writes. The account row itself is kept for
+			// the audit trail and the hard cascade-delete path (`purge` for personal,
+			// `purgeShared` for a team inbox). Note that the OWNER of a personal
+			// mailbox removed this way can reconnect the same address and get this
+			// mailbox, and its retained mail, back (`_connectInternal` re-attaches a
+			// soft-deleted mailbox they own); an admin who means the mail to be gone
+			// wants the purge, not this.
 			if (mailbox.externalAccountId) {
 				const account = await ctx.db.get(mailbox.externalAccountId);
 				if (account && account.status !== 'disconnected') {
-					const disconnectedAt = Date.now();
-					await ctx.db.patch(mailbox.externalAccountId, {
-						status: 'disconnected',
-						updatedAt: disconnectedAt,
-					});
-					// Audit-trail parity with the soft `disconnect` mutation, which records
-					// the same event — deleting an external-backed mailbox disconnects its
-					// sync account, so the trail should show it.
-					await ctx.db.insert('mailAuditLog', {
-						mailboxId: args.mailboxId,
-						event: 'external_account.disconnected',
-						occurredAt: disconnectedAt,
-					});
+					await stopExternalAccountSync(ctx, account, { now: Date.now(), reason: 'admin' });
 				}
 			}
 			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.removeFromCache, {

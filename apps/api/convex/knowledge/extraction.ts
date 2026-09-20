@@ -21,7 +21,7 @@ import {
 	resolveEmbeddingModel,
 	assertEmbeddingDimension,
 } from '../lib/llmProvider';
-import { logInfo } from '../lib/runtimeLog';
+import { logError, logInfo } from '../lib/runtimeLog';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { ENTRY_TYPES } from '../schema/knowledge';
@@ -205,8 +205,12 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 				threadId: message.threadId ?? undefined,
 			});
 		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.error('[Knowledge Extraction] Failed:', error);
+			// Fail soft — extraction is best-effort enrichment, never the reason a
+			// message fails to process. Name the source so the gap is traceable.
+			logError('[knowledge.extractFromMessage] failed', {
+				inboundMessageId: args.inboundMessageId,
+				error,
+			});
 		}
 	},
 });
@@ -276,8 +280,7 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 				threadId: file.threadId ?? undefined,
 			});
 		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.error('[Knowledge File Extraction] Failed:', error);
+			logError('[knowledge.extractFromFile] failed', { fileId: args.fileId, error });
 		}
 	},
 });
@@ -388,8 +391,10 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 				contactIds: args.contactIds && args.contactIds.length > 0 ? args.contactIds : undefined,
 			});
 		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.error('[Knowledge Mail Extraction] Failed:', error);
+			logError('[knowledge.extractFromMailMessage] failed', {
+				mailMessageId: args.mailMessageId,
+				error,
+			});
 		}
 	},
 });

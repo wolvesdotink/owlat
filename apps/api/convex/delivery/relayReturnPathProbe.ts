@@ -1,9 +1,9 @@
 'use node';
 
 /**
- * Return-path capability PROBE — the network half of plan G-08's capability
- * detection. Kept apart from `relayReturnPath.ts` because a `'use node'` module
- * may hold only actions, and the persistence there is queries + mutations.
+ * Return-path capability PROBE — the network half of capability detection. Kept apart from
+ * `relayReturnPath.ts` because a `'use node'` module may hold only actions, and the persistence
+ * there is queries + mutations.
  *
  * What the probe does: send one real message THROUGH the relay, with our signed
  * VERP address as the envelope sender, to an address at our own bounce domain
@@ -21,9 +21,9 @@
  * the pure core (24h → 7d → 30d), and it is only ever run for transports whose
  * catalog declaration is `probe`.
  *
- * Plan D2: the probe is additive. A relay that is not configured, a deployment
- * with no return-path domain or VERP key, a probe that fails on the wire — all
- * simply leave the capability `unknown`, which reads as unsupported + degraded
+ * The probe is additive. A relay that is not configured, a deployment with no
+ * return-path domain or VERP key, a probe that fails on the wire — all simply
+ * leave the capability `unknown`, which reads as unsupported + degraded
  * measurement. Nothing throws, nothing is blocked.
  */
 
@@ -67,15 +67,14 @@ function isProbeableTransport(transport: SendTransportRecord): boolean {
  * probes it on a plain built-in-MTA install with no relay at all: the send
  * fails on the missing credentials and the transport is recorded `unsupported`
  * / `rejected_by_relay` — a permanently misleading operator-facing verdict
- * about a relay that does not exist. Absence is a supported configuration
- * (plan D2), so the probe simply does not run.
+ * about a relay that does not exist. Absence is a supported configuration, so the probe simply does not run.
  */
 function isConfiguredTransport(transport: SendTransportRecord): boolean {
 	return providerKindConfigured(transport.kind);
 }
 
 /**
- * THE PROBE RIDES THE PROBED TRANSPORT'S OWN WIRE (plan D5) — the invariant this
+ * THE PROBE RIDES THE PROBED TRANSPORT'S OWN WIRE — the invariant this
  * lookup exists to enforce.
  *
  * A verdict is written against ONE `transportId`, so the send that produced it
@@ -117,8 +116,8 @@ function isPreWireFailure(errorCode: EmailErrorCode | undefined): boolean {
 	return errorCode !== undefined && PRE_WIRE_ERROR_CODES.has(errorCode);
 }
 
-/** Why a probe run did nothing. All benign — see the D2 note above. */
-export type ReturnPathProbeSkipReason =
+/** Why a probe run did nothing. All benign — see the additive-only note above. */
+type ReturnPathProbeSkipReason =
 	| 'unresolvable_transport'
 	| 'not_probeable'
 	| 'not_configured'
@@ -132,7 +131,7 @@ export type ReturnPathProbeSkipReason =
 	 */
 	| 'no_envelope_control';
 
-export type ReturnPathProbeRunResult =
+type ReturnPathProbeRunResult =
 	| { readonly ran: false; readonly reason: ReturnPathProbeSkipReason }
 	| { readonly ran: true; readonly probeId: string; readonly accepted: boolean };
 

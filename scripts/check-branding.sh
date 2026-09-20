@@ -23,7 +23,7 @@ cd "$(dirname "$0")/.."
 forbidden='(github\.com[:/]owlat/owlat|api\.github\.com/repos/owlat/owlat|ghcr\.io/owlat/|"owlat/owlat"|github\.com/wolves(-labs)?/owlat)'
 
 # Files allowed to contain the pattern (negative-assertion guards + this script).
-allow_re='^(scripts/check-branding\.sh|apps/setup-cli/src/lib/__tests__/installerEntrypoints\.guards\.test\.ts|apps/docs/__tests__/selfHostingDocs\.test\.ts|packages/shared/src/__tests__/composeHardening\.test\.ts)$'
+allow_re='^(scripts/check-branding\.sh|apps/setup-cli/src/lib/__tests__/installerEntrypoints\.guards\.test\.ts)$'
 
 hits=""
 while IFS= read -r f; do

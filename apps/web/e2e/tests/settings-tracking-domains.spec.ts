@@ -20,7 +20,9 @@ test.describe('Settings — Tracking Domains', () => {
 		const domain = `track-${Date.now()}.example.com`;
 		await trackingPage.addDomain(domain);
 
-		await expect(page.getByText(domain)).toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText(domain, { exact: true }).first()).toBeVisible({
+			timeout: 10_000,
+		});
 	});
 
 	test('empty domain shows validation error', async () => {
@@ -37,7 +39,9 @@ test.describe('Settings — Tracking Domains', () => {
 	test('expanding a tracking domain reveals its CNAME record', async ({ page }) => {
 		const domain = `track-cname-${Date.now()}.example.com`;
 		await trackingPage.addDomain(domain);
-		await expect(page.getByText(domain)).toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText(domain, { exact: true }).first()).toBeVisible({
+			timeout: 10_000,
+		});
 
 		await trackingPage.expandDomain(domain);
 
@@ -45,7 +49,9 @@ test.describe('Settings — Tracking Domains', () => {
 		// (CONVEX_SITE_URL), not a hardcoded SaaS host — so assert the CNAME record
 		// is shown rather than a literal host value the deployment env decides.
 		const card = trackingPage.getDomainCard(domain);
-		await expect(card.getByText('CNAME')).toBeVisible({ timeout: 10_000 });
+		await expect(card.getByText('CNAME', { exact: true }).first()).toBeVisible({
+			timeout: 10_000,
+		});
 	});
 
 	test('verify gives feedback: row auto-expands to reveal the CNAME and a toast fires', async ({
@@ -58,7 +64,9 @@ test.describe('Settings — Tracking Domains', () => {
 		// `{ success: true }`, so the success UX must be reachable.
 		const domain = `track-verify-${Date.now()}.example.com`;
 		await trackingPage.addDomain(domain);
-		await expect(page.getByText(domain)).toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText(domain, { exact: true }).first()).toBeVisible({
+			timeout: 10_000,
+		});
 
 		await trackingPage.verifyDomain(domain);
 
@@ -66,20 +74,24 @@ test.describe('Settings — Tracking Domains', () => {
 
 		// The row auto-expands so the CNAME to set is in view while DNS propagates.
 		const card = trackingPage.getDomainCard(domain);
-		await expect(card.getByText('CNAME')).toBeVisible({ timeout: 10_000 });
+		await expect(card.getByText('CNAME', { exact: true }).first()).toBeVisible({
+			timeout: 10_000,
+		});
 	});
 
 	test('remove a tracking domain with confirmation', async ({ page }) => {
 		const domain = `track-delete-${Date.now()}.example.com`;
 		await trackingPage.addDomain(domain);
-		await expect(page.getByText(domain)).toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText(domain, { exact: true }).first()).toBeVisible({
+			timeout: 10_000,
+		});
 
 		// deleteDomain() awaits waitForModalClose(), so this implicitly
 		// asserts the confirm dialog closes on a successful remove (the backend now
 		// returns `{ success: true }`, making deleteModal.close() reachable).
 		await trackingPage.deleteDomain(domain);
 
-		await expect(page.getByText(domain)).not.toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText(domain, { exact: true })).toHaveCount(0, { timeout: 10_000 });
 		await trackingPage.expectToast(/Tracking domain removed/, 10_000);
 	});
 });

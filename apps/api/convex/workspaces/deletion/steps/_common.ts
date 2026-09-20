@@ -149,6 +149,7 @@ export type OrganizationDeletionTable =
 	| 'mailboxMoves'
 	| 'externalMailFolderSync'
 	| 'externalMailAccounts'
+	| 'externalMailOAuthStates'
 	| 'pendingMailboxes'
 	| 'mailboxRequests'
 	| 'accessRequests'
@@ -333,6 +334,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailboxMoves'),
 	v.literal('externalMailFolderSync'),
 	v.literal('externalMailAccounts'),
+	v.literal('externalMailOAuthStates'),
 	v.literal('pendingMailboxes'),
 	v.literal('mailboxRequests'),
 	v.literal('accessRequests'),
@@ -376,7 +378,7 @@ export const organizationDeletionTableValidator = v.union(
 
 export const DEFAULT_BATCH_SIZE = 100;
 
-export interface DeleteBatchOutcome {
+interface DeleteBatchOutcome {
 	deletedCount: number;
 	hasMore: boolean;
 }
@@ -386,10 +388,13 @@ export interface DeleteBatchOutcome {
  * owns one table — see the file under `steps/<table>.ts`.
  *
  * The walker calls `deleteBatch` and re-fires the same step until
- * `hasMore: false`. Per-row storage purges happen inside `deleteBatch`
- * before each `ctx.db.delete`; storage purging is internal to the
- * module (per-row, not per-batch), so it does not surface in the
- * walker-facing interface.
+ * `hasMore: false`. Per-row storage purges happen inside `deleteBatch`, still
+ * per-row rather than per-batch, so they do not surface in the walker-facing
+ * interface. They happen AFTER each `ctx.db.delete`, not before: a blob can be
+ * shared by several rows (IMAP COPY — see `deleteMessageRowAndBlobs` in
+ * `mail/messagePurge.ts`), and deleting the row first is what lets the step ask
+ * the index whether anything still references the blob without having to
+ * special-case the row it is in the middle of deleting.
  */
 export interface OrganizationDeletionStepModule<T extends OrganizationDeletionTable> {
 	readonly table: T;

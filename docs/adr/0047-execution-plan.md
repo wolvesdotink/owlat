@@ -4,6 +4,8 @@
 > Renumbered from `0007-execution-plan.md` to its own unique ADR number so the
 > `000X` prefix is unambiguous (one document per number).
 
+**Status:** historical — the phased delivery plan for ADR-0007, which is accepted and shipped. Kept as a record of how the work was split; not maintained.
+
 Phased migration for the MTA dispatch modules ADR. Each phase is one
 shippable PR. Behavior is unchanged at every phase boundary; the cutover
 to the new modules happens in phases 4 and 6 with byte-for-byte

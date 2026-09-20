@@ -77,7 +77,15 @@ export function domainSetupValuesForItem(
 		case 'domain.mta_sts': {
 			const mode = settings?.mtaStsMode ?? 'none';
 			const mailHost = getOptional('EHLO_HOSTNAME')?.trim();
-			if (mode !== 'none' && mailHost) {
+			// Never for a send-only domain. An MTA-STS policy tells every compatible
+			// sender that mail for this domain must go to OUR MX over validated TLS —
+			// but this domain's MX is Google's or Microsoft's, so in `enforce` mode
+			// publishing it blackholes the customer's inbound mail, and in `testing`
+			// mode it generates failure reports about a hop we do not run. The domain
+			// panel already suppresses the MTA guidance for these domains; the
+			// checklist is the second surface that hands out the same record, and it
+			// hands it out as a copy-paste value under a "publish this" heading.
+			if (mode !== 'none' && mailHost && domain.receivingMode !== 'external') {
 				records = [
 					{
 						type: 'TXT',

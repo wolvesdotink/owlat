@@ -5,6 +5,7 @@ import {
 	assistantToolCallValidator,
 	assistantMessageStatusValidator,
 } from '../lib/convexValidators';
+import { chatMemberRoleValidator, chatRoomVisibilityValidator } from '../lib/literalValidators';
 
 /**
  * Internal team chat tables — Slack-style channels + DMs for the single org
@@ -33,7 +34,7 @@ export const chatTables = {
 		description: v.optional(v.string()),
 		// Channels: 'public' (any org member can join) or 'private' (invite-only).
 		// DMs: always 'private'.
-		visibility: v.union(v.literal('public'), v.literal('private')),
+		visibility: chatRoomVisibilityValidator,
 		createdBy: v.string(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -61,7 +62,7 @@ export const chatTables = {
 		// Per-room role. 'admin' can rename / archive / manage membership /
 		// link or unlink the email thread. Org owners/admins additionally have
 		// `chat:manage`, which can override this on any room.
-		role: v.union(v.literal('admin'), v.literal('member')),
+		role: chatMemberRoleValidator,
 		joinedAt: v.number(),
 		// Used to compute unread counts. Updated whenever the user reads the
 		// room (scroll-to-bottom or explicit markRead).

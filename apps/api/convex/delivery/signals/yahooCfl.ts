@@ -1,21 +1,19 @@
 /**
- * Which complaint signal the `yahoo` cell's gate 3 actually runs on (D2 / P3-8).
+ * Which complaint signal the `yahoo` cell's gate 3 actually runs on.
  *
  * Split out of `packages/shared/src/yahooCfl.ts` because it is a different
  * concern with a different owner: that module is the enrollment STATE MACHINE,
- * this one is the gate-input SUBSTITUTION the ramp reads — and P3-8's
- * substitution table subsumes exactly this file, not the state machine.
+ * this one is the gate-input SUBSTITUTION the ramp reads.
  *
  * It lives HERE, under `delivery/signals/` — one of the three provider
- * reputation feeds registered in `./registry` (seams plan D9) — rather than in
- * `@owlat/shared`, for one reason: the threshold it substitutes for is gate 3's,
- * and gate 3's threshold has exactly one home —
- * `RAMP_GATE_THRESHOLDS.complaintMax` in `../ramp/gateConfig`.
- * `packages/shared` cannot import from `apps/api`, so a copy in shared would be
- * a SECOND declaration of that number, and D5 is explicit that the controller
- * and the dashboard must never be able to disagree about a number. Absolute trip
- * points are branded `RateFraction` for the same reason units are a type-level
- * concern throughout the ramp.
+ * reputation feeds registered in `./registry` — rather than in `@owlat/shared`,
+ * for one reason: the threshold it substitutes for is gate 3's, and gate 3's
+ * threshold has exactly one home — `RAMP_GATE_THRESHOLDS.complaintMax` in
+ * `../ramp/gateConfig`. `packages/shared` cannot import from `apps/api`, so a
+ * copy in shared would be a SECOND declaration of that number, and the
+ * controller and the dashboard must never be able to disagree about a number.
+ * Absolute trip points are branded `RateFraction` for the same reason units are
+ * a type-level concern throughout the ramp.
  *
  * ONE RULE PER SOURCE, and it is the rule the running gate applies. What this
  * module publishes as `trip` is the same comparison
@@ -26,7 +24,7 @@
  *
  * ONE complaint pipeline, three sources. Absence of an enrollment substitutes a
  * weaker source with an honest confidence caveat; it never blanks the gate out,
- * never blocks anything, and never surfaces an error (D2 / D14).
+ * never blocks anything, and never surfaces an error.
  */
 
 import type { YahooCflEnrollmentState } from '@owlat/shared/yahooCfl';
@@ -44,7 +42,7 @@ export const YAHOO_COMPLAINT_SIGNAL_SOURCES = [
 	'cfbl_address',
 	'unsubscribe_rate_proxy',
 ] as const;
-export type YahooComplaintSignalSource = (typeof YAHOO_COMPLAINT_SIGNAL_SOURCES)[number];
+type YahooComplaintSignalSource = (typeof YAHOO_COMPLAINT_SIGNAL_SOURCES)[number];
 
 /**
  * WHERE THE TRIP POINT COMES FROM — a union, because the three sources do not
@@ -85,11 +83,11 @@ export interface YahooComplaintSubstitution {
 	/**
 	 * THE ONE DEFINITION of the yahoo cell's gate-3 trip point.
 	 *
-	 * It is published rather than described because it is the contract P3-8
-	 * consumes when it subsumes this function, and because the gate that ACTUALLY
-	 * runs — `evaluateStandaloneComplaintGate` in `../ramp/trailingBaselineGates` —
-	 * applies exactly this rule. The dashboard states what the controller
-	 * enforces, or the two can disagree about a number (plan D5).
+	 * It is published rather than described because it is the contract the
+	 * substitution table consumes, and because the gate that ACTUALLY runs —
+	 * `evaluateStandaloneComplaintGate` in `../ramp/trailingBaselineGates` —
+	 * applies exactly this rule. The dashboard states what the controller enforces,
+	 * or the two can disagree about a number.
 	 *
 	 * `compareYahooComplaintRate` below is this field as code — consume it rather
 	 * than re-deriving the comparison.
@@ -131,8 +129,9 @@ export interface YahooComplaintSubstitution {
 	 */
 	caveat?: string;
 	/**
-	 * Always `false`. Encoded as a field rather than left implicit so the D2
-	 * invariant is asserted by a test rather than assumed by a reader.
+	 * Always `false`. Encoded as a field rather than left implicit so the
+	 * never-blocking invariant is asserted by a test rather than assumed by a
+	 * reader.
 	 */
 	isBlocking: false;
 }
@@ -141,14 +140,13 @@ export interface YahooComplaintSubstitution {
  * THREE-VALUED ON PURPOSE — "cannot tell" is not "fine".
  *
  * The running gate distinguishes `pass` from `own_rate_unmeasurable` from
- * `baseline_not_a_denominator`, because a hold has to NAME the thing to fix
- * (plan D12). A boolean comparator would fold the last two into the first, and
- * P3-8's substitution table — the consumer of this module — would read
- * "unmeasurable" as "healthy" and let a cell advance on a number nobody
+ * `baseline_not_a_denominator`, because a hold has to NAME the thing to fix. A boolean comparator
+ * would fold the last two into the first, and the substitution table — the consumer of this
+ * module — would read "unmeasurable" as "healthy" and let a cell advance on a number nobody
  * actually has.
  *
  * `not_comparable` maps to a HOLD, never to a breach and never to a pass: the
- * comparison could not be built, so absence still blocks nothing (plan D2/D10).
+ * comparison could not be built, so absence still blocks nothing.
  */
 export type YahooComplaintComparison = 'breach' | 'no_breach' | 'not_comparable';
 
@@ -158,7 +156,7 @@ export type YahooComplaintComparison = 'breach' | 'no_breach' | 'not_comparable'
  * The COMPARATOR that goes with `trip`. Published rather than left to each caller
  * for the reason a trip point without a comparator is only half a contract: two
  * of the three sources compare strictly and one compares inclusively, and until
- * that had an executable owner every consumer — P3-8's substitution table, the
+ * that had an executable owner every consumer — the substitution table, the
  * dashboard, the tests — re-derived the boundary and could disagree about it.
  *
  * A non-finite OBSERVED rate is `not_comparable` on BOTH trip kinds — the
@@ -203,9 +201,9 @@ export function compareYahooComplaintRate(
  * A `lapsed` enrollment is treated exactly like no enrollment — the point of the
  * derived lapse is that we can no longer trust the feed to be live.
  *
- * SCOPE NOTE (D3): P3-8 owns the ONE substitution table for every gate. When it
- * lands it SUBSUMES this function; the thresholds do NOT move with it, because
- * they already live in `../ramp/gateConfig` where the rest of the ramp reads them.
+ * SCOPE NOTE: the ONE substitution table for every gate subsumes this function.
+ * The thresholds do NOT move with it, because they already live in
+ * `../ramp/gateConfig` where the rest of the ramp reads them.
  */
 export function yahooComplaintSubstitution(input: {
 	enrollmentState: YahooCflEnrollmentState;
@@ -254,7 +252,7 @@ export function yahooComplaintSubstitution(input: {
 }
 
 /** What this cell's enrollment state and CFBL-Address presence are. */
-export interface YahooComplaintSignalInput {
+interface YahooComplaintSignalInput {
 	enrollmentState: YahooCflEnrollmentState;
 	hasCfblAddress: boolean;
 }
@@ -264,7 +262,7 @@ export interface YahooComplaintSignalInput {
  * `yahoo_cfl` is excluded because it is the feed itself, and a live Yahoo feed is
  * a PRESENT reading rather than a substitution for one.
  */
-export type YahooStandIn = Exclude<YahooComplaintSignalSource, 'yahoo_cfl'>;
+type YahooStandIn = Exclude<YahooComplaintSignalSource, 'yahoo_cfl'>;
 
 /**
  * This module's names for its stand-ins, in the ONE substitute vocabulary the
@@ -315,7 +313,7 @@ const NOTHING_CONFIGURED = yahooComplaintSubstitution({
 });
 
 /**
- * Yahoo's Complaint Feed as a signal source (plan D9).
+ * Yahoo's Complaint Feed as a signal source.
  *
  * PRESENT MEANS YAHOO'S OWN FEED, nothing weaker. The other two branches of
  * `yahooComplaintSubstitution` are exactly what this source's absence means: a

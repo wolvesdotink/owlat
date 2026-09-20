@@ -121,12 +121,16 @@ describe('DesktopDnsRecordList', () => {
 		expect(buttons[0]?.attributes('aria-label')).toBe(`Copy value for ${A_RECORD.name}`);
 	});
 
-	it('renders an optional note under its row', () => {
-		const w = mountList([
-			{ ...A_RECORD, note: 'Also set reverse DNS (PTR) for this IP at your host.' },
-		]);
+	it('renders an optional note under its row, translated from its key', () => {
+		// `note` is an i18n KEY, not copy (the wizard's rows are built in a pure
+		// module that cannot call `t`). Feeding a sentence here would pass either
+		// way — vue-i18n hands non-keys back unchanged — and let the key path
+		// itself ship to the panel, which is exactly what it once did.
+		const w = mountList([{ ...A_RECORD, note: 'shared.desktop.provisioningForm.dnsNotes.ptr' }]);
 		const note = w.get('p');
-		expect(note.text()).toContain('reverse DNS (PTR)');
+		expect(note.text()).toBe(
+			'Reverse DNS — set where you rent the IP (your hosting provider), not in your DNS zone. Sending stays blocked until it matches.'
+		);
 	});
 
 	it('omits the note element when a record has no note', () => {
@@ -153,5 +157,16 @@ describe('DesktopDnsRecordList', () => {
 		}
 		// The MTA install surfaces the SPF value verbatim for copying.
 		expect(records.some((r) => r.type === 'TXT' && r.value.startsWith('v=spf1'))).toBe(true);
+
+		// Every note the wizard attaches reaches the panel as a SENTENCE. The rows
+		// carry key paths, so a note rendered unresolved would read
+		// `shared.desktop.provisioningForm.dnsNotes.ptr` to the operator.
+		const notes = w.findAll('p').map((p) => p.text());
+		expect(notes).toHaveLength(records.filter((r) => r.note).length);
+		expect(notes.length).toBeGreaterThan(0);
+		for (const text of notes) expect(text).not.toMatch(/^[a-z][\w]*(?:\.[\w]+)+$/);
+		expect(notes).toContain(
+			'Reverse DNS — set where you rent the IP (your hosting provider), not in your DNS zone. Sending stays blocked until it matches.'
+		);
 	});
 });

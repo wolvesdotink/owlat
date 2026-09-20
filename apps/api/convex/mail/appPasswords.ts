@@ -23,6 +23,7 @@ import { requireMailboxAccess } from './permissions';
 import { resolveDeliverableMailbox } from './mailbox/identity';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { mailAppPasswordScopeValidator } from '../lib/convexValidators';
+import { bytesToHex } from '../lib/bytes';
 
 const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
@@ -41,12 +42,6 @@ function generateCleartextPassword(): string {
 		out += BASE32_ALPHABET[bytes[i]! % BASE32_ALPHABET.length];
 	}
 	return out;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-	return Array.from(bytes)
-		.map((b) => b.toString(16).padStart(2, '0'))
-		.join('');
 }
 
 function hexToBytes(hex: string): Uint8Array {

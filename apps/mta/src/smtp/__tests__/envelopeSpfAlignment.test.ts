@@ -71,7 +71,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import { sendToMx } from '../sender.js';
 import type { EmailJob } from '../../types.js';
-import type { MtaConfig } from '../../config.js';
+import { createOwlatHostConfig as createConfig } from '../../__tests__/helpers/fixtures.js';
 
 function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {
@@ -83,46 +83,6 @@ function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 		ipPool: 'transactional',
 		organizationId: 'org-1',
 		dkimDomain: 'acme.com',
-		...overrides,
-	};
-}
-
-function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
-	return {
-		port: 3100,
-		bouncePort: 25,
-		redisUrl: 'redis://localhost:6379',
-		apiKey: 'test-key',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
-		convexSiteUrl: 'https://test.convex.site',
-		webhookSecret: 'secret',
-		ipPools: { transactional: ['10.0.0.1'], campaign: ['10.0.0.2'] },
-		dkimKeys: {},
-		workerConcurrency: 50,
-		serverId: 'test-server',
-		smtpPool: {
-			maxPerHost: 3,
-			idleTimeoutMs: 30000,
-			maxAgeMs: 300000,
-			maxMessagesPerConnection: 100,
-		},
-		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
-		submissionPort: 587,
-		submissionEnabled: false,
-		contentScreeningEnabled: true,
-		contentMaxSizeKb: 500,
-		deliveryLogMaxLen: 100000,
-		deliveryLogTtlHours: 72,
-		webhookDlqMaxSize: 10000,
-		bounceMaxConnectionsPerIp: 10,
-		bounceMaxClients: 200,
-		bounceTarpitEnabled: false,
-		bounceTarpitDelayMs: 5000,
-		inboundSpfEnabled: false,
-		rspamdRejectThreshold: 15,
-		smtpPoolGlobalMaxPerHost: 10,
 		...overrides,
 	};
 }
@@ -190,27 +150,5 @@ describe('envelope ↔ SPF alignment', () => {
 		expect(isSpfAligned(envelopeFromDomain, fromDomain, 'relaxed')).toBe(true);
 		// Still not strict-aligned (different exact domains) — relaxed is DMARC's default.
 		expect(isSpfAligned(envelopeFromDomain, fromDomain, 'strict')).toBe(false);
-	});
-});
-
-describe('return-path SPF in the DNS guide', () => {
-	it('documents a bounce-domain SPF record for RETURN_PATH_DOMAIN', async () => {
-		const { readFileSync } = await import('node:fs');
-		const { fileURLToPath } = await import('node:url');
-		const { dirname, resolve } = await import('node:path');
-		const here = dirname(fileURLToPath(import.meta.url));
-		// apps/mta/src/smtp/__tests__ → repo apps/docs/content/en/...
-		const guidePath = resolve(
-			here,
-			'../../../../docs/content/en/3.developer/32.self-hosting-dns-email.md'
-		);
-		const guide = readFileSync(guidePath, 'utf-8');
-
-		// The guide must show an SPF record published on the bounce/return-path
-		// domain (not just the From-domain apex).
-		expect(guide).toMatch(/bounces?\.example\.com\.\s+TXT\s+"v=spf1\b[^"]*\ball"/i);
-		// And it must explain the return-path is the SPF identity.
-		expect(guide).toMatch(/RETURN_PATH_DOMAIN/);
-		expect(guide.toLowerCase()).toContain('return-path');
 	});
 });

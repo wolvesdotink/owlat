@@ -17,11 +17,14 @@ import {
 } from '../warmingProviderScripts.js';
 import { PROVIDER_WARMING_POLICY } from '../warmingProviderPolicy.js';
 import {
+	WARMING_DAILY_STATS_TTL_SECONDS,
 	warmingBulkDailyKey,
+	warmingDailyStatsKey,
 	warmingProviderDailyStatsKey,
 	warmingProviderPressureKey,
 	warmingProviderStateKey,
 } from '../warmingKeys.js';
+import { recordBounce, recordDeferral, recordSend } from '../warming.js';
 import type { DurableEffectIdentity } from '../../lib/effectCheckpoint.js';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
@@ -32,6 +35,11 @@ vi.mock('../../monitoring/logger.js', () => ({
 /**
  * Redis discipline for the per-provider dimension: every new key carries a TTL,
  * every write is one atomic script, and no key set grows with traffic.
+ *
+ * The whole-attempt version of this — every key ONE delivery attempt leaves in
+ * Redis, its TTL, and how many of them are per-attempt rather than shared —
+ * lives in `src/dispatch/__tests__/deliveryAttemptRedisBudget.test.ts`. Put a
+ * new per-message key's bound there; this file stays scoped to warming.
  */
 describe('per-provider warming Redis discipline', () => {
 	let redis: RealRedis;
@@ -256,5 +264,45 @@ describe('per-provider warming Redis discipline', () => {
 	it('expires the pressure counter so pressure is always a RECENT-history signal', () => {
 		expect(PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds).toBeGreaterThan(0);
 		expect(PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds).toBeLessThanOrEqual(24 * 60 * 60);
+	});
+});
+
+/**
+ * The per-IP dimension's daily counter, which is keyed by UTC day and so is
+ * bounded by its TTL and nothing else.
+ *
+ * `recordBounce` and `recordDeferral` shipped a non-idempotent fallback that
+ * did a bare `HINCRBY` and stopped, while their receipt-guarded twins always
+ * expired the hash. A day whose counter happened to be created by a bounce or
+ * a deferral therefore lived in Redis forever — one key per IP per day, on an
+ * instance that refuses writes at `--maxmemory`.
+ */
+describe('per-IP warming daily stats retention', () => {
+	let redis: RealRedis;
+	const ip = '10.0.0.21';
+	const utcDate = '2026-07-27';
+
+	beforeEach(async () => {
+		redis = new Redis() as unknown as RealRedis;
+		await redis.flushall();
+	});
+
+	it.each([
+		['bounce', () => recordBounce(redis, ip, undefined, utcDate)],
+		['deferral', () => recordDeferral(redis, ip, undefined, utcDate)],
+		['send', () => recordSend(redis, ip, undefined, undefined, utcDate)],
+	])('expires the daily hash when a %s creates it', async (_label, record) => {
+		await record();
+		expect(await redis.ttl(warmingDailyStatsKey(ip, utcDate))).toBe(
+			WARMING_DAILY_STATS_TTL_SECONDS
+		);
+	});
+
+	it('still counts what it records', async () => {
+		await recordBounce(redis, ip, undefined, utcDate);
+		await recordBounce(redis, ip, undefined, utcDate);
+		await recordDeferral(redis, ip, undefined, utcDate);
+		expect(await redis.hget(warmingDailyStatsKey(ip, utcDate), 'bounced')).toBe('2');
+		expect(await redis.hget(warmingDailyStatsKey(ip, utcDate), 'deferred')).toBe('1');
 	});
 });

@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/api",
-	"version": "0.4.4",
+	"version": "0.4.21",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -40,7 +40,8 @@
 		"typecheck": "tsc --noEmit -p convex/tsconfig.json",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"test:coverage": "vitest run --coverage"
+		"test:coverage": "vitest run --coverage",
+		"test:ramp": "bash scripts/test-ramp.sh"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "catalog:ai",
@@ -52,7 +53,6 @@
 		"@convex-dev/better-auth": "catalog:convex",
 		"@convex-dev/rate-limiter": "^0.3.2",
 		"@convex-dev/workpool": "^0.4.3",
-		"@owlat/channels": "workspace:*",
 		"@owlat/email-renderer": "workspace:*",
 		"@owlat/email-scanner": "workspace:*",
 		"@owlat/mail-canon": "workspace:*",
@@ -80,7 +80,7 @@
 		"@types/node": "catalog:",
 		"@types/sanitize-html": "^2.13.0",
 		"@vitest/coverage-v8": "catalog:",
-		"convex-test": "^0.0.55",
+		"convex-test": "^0.0.58",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}

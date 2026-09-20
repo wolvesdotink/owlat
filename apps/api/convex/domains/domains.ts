@@ -10,8 +10,12 @@ import {
 	throwInvalidState,
 } from '../_utils/errors';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOptional } from '../lib/env';
+import {
+	externalReceivingProviderValidator,
+	receivingModeValidator,
+} from '../lib/convexValidators';
 import { dmarcPolicyValidator } from './dmarc';
 import { LIFECYCLE_USER_PUBLIC_MUTATION } from './lifecycle';
 import {
@@ -68,7 +72,7 @@ export const listByOrganization = authedQuery({
  * not inbound MX delivery, so they are intentionally excluded — the Receiving
  * panel is about receiving mail, not sending it.
  */
-export const INBOUND_SMTP_PORT = 25;
+const INBOUND_SMTP_PORT = 25;
 
 // Query: Deployment-level inbound mail config for the Settings → Domains
 // "Receiving" panel. Returns the MTA's public EHLO/MX hostname (the target a
@@ -115,10 +119,17 @@ export const listVerified = authedQuery({
 // the register-completion transition then carries the full DKIM/DMARC bundle +
 // provider identity onto a domain whose return-path host is already stored,
 // avoiding the create→setReturnPathHost race that could drop the bundle.
+//
+// `receivingMode` / `externalReceivingProvider` are forwarded for the same
+// reason: `create` schedules the provider registration, so the mode must be on
+// the row before that runs or the first generated record bundle is wrong for
+// the domain. Both omitted ⇒ `'owlat'`, i.e. exactly the historic call.
 export const create = authedMutation({
 	args: {
 		domain: v.string(),
 		returnPathHost: v.optional(v.string()),
+		receivingMode: v.optional(receivingModeValidator),
+		externalReceivingProvider: v.optional(externalReceivingProviderValidator),
 	},
 	handler: async (ctx, args): Promise<Id<'domains'>> => {
 		await requireOrgPermission(
@@ -130,6 +141,10 @@ export const create = authedMutation({
 			domain: args.domain,
 			userId: LIFECYCLE_USER_PUBLIC_MUTATION,
 			...(args.returnPathHost !== undefined ? { returnPathHost: args.returnPathHost } : {}),
+			...(args.receivingMode !== undefined ? { receivingMode: args.receivingMode } : {}),
+			...(args.externalReceivingProvider !== undefined
+				? { externalReceivingProvider: args.externalReceivingProvider }
+				: {}),
 		});
 		if (!outcome.ok) {
 			if (outcome.reason === 'invalid_format') {
@@ -238,6 +253,52 @@ export const setDmarcPolicy = authedMutation({
 			if (outcome.reason === 'domain_not_found') throwNotFound('Domain');
 			if (outcome.reason === 'no_dmarc_record') {
 				throwInvalidState('This domain has no DMARC record yet. Finish registration first.');
+			}
+		}
+	},
+});
+
+// Mutation: Switch the domain between "Owlat receives mail for it" and "my
+// existing provider keeps receiving it" (send-only). Delegates to the
+// lifecycle's `setReceivingMode`, which rebuilds the apex SPF record, adds or
+// drops `_smtp._tls`, and drops the domain back to `pending` when a published
+// record actually moved — the operator has DNS to republish.
+//
+// `organization:manage`, the same gate as add / remove / setDmarcPolicy:
+// changing where a domain's mail is received can take every inbound message
+// away from the customer's real provider, which is as sharp as domain
+// management gets.
+export const setReceivingMode = authedMutation({
+	args: {
+		domainId: v.id('domains'),
+		mode: receivingModeValidator,
+		provider: v.optional(externalReceivingProviderValidator),
+	},
+	handler: async (ctx, args, session) => {
+		// The floor's session, not a second resolution of it — see CONVENTIONS.md
+		// ("The floor's session is threaded into the handler"). The neighbouring
+		// mutations here predate the ratchet and are baselined.
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can manage sending domains'
+		);
+		const outcome = await ctx.runMutation(internal.domains.lifecycle.setReceivingMode, {
+			domainId: args.domainId,
+			mode: args.mode,
+			provider: args.provider,
+			userId: LIFECYCLE_USER_PUBLIC_MUTATION,
+		});
+		if (!outcome.ok) {
+			if (outcome.reason === 'domain_not_found') throwNotFound('Domain');
+			// The lifecycle REFUSES the write mid-registration: the registration
+			// action read the row before this mutation ran, so a mode stored now
+			// would never reach the bundle it is generating. The panel hides the
+			// switch until registration settles, so this only closes the API hole —
+			// but it has to say something an operator can act on.
+			if (outcome.reason === 'registering') {
+				throwInvalidState(
+					'This domain is still being set up. Wait for setup to finish, then change who receives its mail.'
+				);
 			}
 		}
 	},

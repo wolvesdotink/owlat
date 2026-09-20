@@ -236,11 +236,17 @@ export function buildDnsRecords({ hosts, withMta, serverIp }: DnsRecordsInput): 
 	];
 	if (withMta) {
 		rows.push(
+			{ name: hosts.mail, type: 'A', value: target, placeholder },
+			// PTR is a full row, not a footnote on the A record: it is the one
+			// record the installer cannot create, it is set where the IP is rented
+			// rather than in the DNS zone, and the MTA refuses to send a single
+			// message until it forward-confirms to the EHLO name. `value` is the
+			// hostname (what the operator pastes into the provider's console), so
+			// it stays copyable even when the server IP is still a placeholder.
 			{
-				name: hosts.mail,
-				type: 'A',
-				value: target,
-				placeholder,
+				name: target,
+				type: 'PTR',
+				value: hosts.mail,
 				note: 'shared.desktop.provisioningForm.dnsNotes.ptr',
 			},
 			{ name: hosts.bounce, type: 'MX', value: hosts.mail },

@@ -12,6 +12,8 @@ import {
 import { pendingClarificationValidator } from '../inbox/clarificationValidators';
 import { attachmentSuggestionsValidator } from '../inbox/attachmentValidators';
 import { agentStepKindValidator } from '../agent/steps/catalog';
+import { llmUsageTagFields } from '../lib/llmUsageTags';
+import { agentMetricTypeValidator, contextTierValidator } from '../lib/literalValidators';
 
 /**
  * Inbox / Agent pipeline tables — AI-assisted shared inbox.
@@ -211,9 +213,7 @@ export const inboxTables = {
 		// classifier confidence. Absent when the self-check failed.
 		draftQuality: v.optional(draftQualityValidator),
 		// Context compaction tier used (for transparency in review queue)
-		contextTier: v.optional(
-			v.union(v.literal('normal'), v.literal('compacted'), v.literal('emergency'))
-		),
+		contextTier: v.optional(contextTierValidator),
 		// Retrieval coverage / grounding signal from context_retrieval —
 		// advisory only (see contextCoverageValidator).
 		contextCoverage: v.optional(contextCoverageValidator),
@@ -377,15 +377,7 @@ export const inboxTables = {
 
 	// Agent Metrics - rolling window metrics for monitoring
 	agentMetrics: defineTable({
-		metricType: v.union(
-			v.literal('queue_depth'),
-			v.literal('processing_latency'),
-			v.literal('classification_accuracy'),
-			v.literal('auto_approve_ratio'),
-			v.literal('rejection_rate'),
-			v.literal('llm_cost'),
-			v.literal('error_rate')
-		),
+		metricType: agentMetricTypeValidator,
 		value: v.number(),
 		windowStart: v.number(),
 		windowEnd: v.number(),
@@ -398,10 +390,10 @@ export const inboxTables = {
 		// filtering windowStart in memory after an equality-only index seek.
 		.index('by_metric_type_and_window_start', ['metricType', 'windowStart']),
 
-	// Per-call LLM usage + estimated cost for EVERY feature, not just the inbound
-	// agent (which also records to agentActions). Gives a deployment-wide AI-spend
-	// view, the data foundation for budget alerts. Windowed reads via the system
-	// by_creation_time index; retention prunes the tail.
+	// Per-call LLM usage + estimated cost for EVERY feature and every plane, not
+	// just the inbound agent (which also records to agentActions). Windowed reads
+	// via the system by_creation_time index; retention prunes the tail. The four
+	// optional tags — plane, plus the decision plane's — are lib/llmUsageTags.ts.
 	llmUsageEvents: defineTable({
 		feature: v.string(),
 		organizationId: v.optional(v.string()),
@@ -412,6 +404,7 @@ export const inboxTables = {
 		totalTokens: v.number(),
 		costUsd: v.number(),
 		createdAt: v.number(),
+		...llmUsageTagFields,
 	})
 		.index('by_feature', ['feature'])
 		.index('by_organization_id_and_created_at', ['organizationId', 'createdAt'])

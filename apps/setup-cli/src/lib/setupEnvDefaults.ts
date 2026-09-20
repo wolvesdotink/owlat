@@ -12,6 +12,15 @@ import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { applyFreshFblDedupDefaults } from './fblDedupSetup';
 
 /**
+ * The decision adapter a BRAND-NEW install's wizard pre-fills — "what we
+ * recommend", and nothing more. Deliberately not the backend's
+ * `DEFAULT_DECISION_KIND` ('llm'), which is what an install that never opted in
+ * RESOLVES to: one name for both would turn a recommendation into a migration.
+ * Nothing is written to `.env` unless the operator supplies a key of their own.
+ */
+export const SETUP_DEFAULT_DECISION_KIND = 'typesafe';
+
+/**
  * Fill in default deployment values for keys not already present (preserves an
  * operator's manual edits). Shared by the interactive wizard and the config
  * path so the two cannot diverge. CONVEX_SITE_URL points at the SITE proxy
@@ -73,6 +82,22 @@ export function applySetupDefaults(
 	// feature is on so a non-postbox install doesn't push a dangling URL.
 	if (flags?.['mail.external']) {
 		defaults['MAIL_SYNC_API_URL'] = 'http://mail-sync:3200';
+	}
+	// Decision plane (the third AI plane, ADR-0060). Resolution consults
+	// DECISION_PROVIDER only when the stored config names no adapter, and an
+	// unset value means the language-backed one — so a deployment carrying a
+	// TypeSafe key and nothing naming the adapter holds a credential it never
+	// uses, which reads as "the provider is broken" rather than "nothing was
+	// selected". A key present with no adapter named is therefore read as the
+	// one intent it can have.
+	//
+	// Nothing is defaulted WITHOUT a key: an install that never entered one
+	// writes neither variable and answers every judgement on its language model,
+	// exactly as it did before this plane existed. The `ai.decisionPlane` flag
+	// still has to be on, and an adapter stored on the AI-provider page still
+	// wins over both.
+	if (env['TYPESAFE_API_KEY']) {
+		defaults['DECISION_PROVIDER'] = 'typesafe';
 	}
 	for (const [key, value] of Object.entries(defaults)) {
 		if (env[key] === undefined || env[key] === '') env[key] = value;

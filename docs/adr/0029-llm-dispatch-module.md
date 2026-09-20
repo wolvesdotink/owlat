@@ -1,6 +1,9 @@
 # LLM dispatch module — lift the agent-internal SDK-shape seam to a shared one
 
-**Status:** proposed
+**Status:** accepted (shipped — `apps/api/convex/lib/llm/dispatch.ts`);
+**widened 2026-09-17** — the decision is no longer one dispatch module but one
+per plane (see [Amendment — one dispatch module per plane](#amendment--one-dispatch-module-per-plane-2026-09-17)
+at the end of this document). Everything below stands as the record of the lift.
 
 ## Context
 
@@ -410,3 +413,49 @@ ADR follow-up extends `lib/llm/dispatch.ts` with `runLlmEmbed`. The
 seam's folder placement (`lib/llm/` rather than a flat
 `lib/llmDispatch.ts`) leaves room for that extension; the lift
 itself does not pre-commit to it.
+
+## Amendment — one dispatch module per plane (2026-09-17)
+
+[ADR-0060](./0060-decision-plane.md) adds a third provider plane. Building its
+dispatch showed that what this ADR lifted is not *the* dispatch module but one
+dispatch module **per plane**: `lib/llm/dispatch.ts` for LANGUAGE,
+`lib/decision/dispatch.ts` for DECISION. Each owns its own retry curve, usage
+normalisation, abort handling and error taxonomy, because those numbers are
+plane-properties — a plane sold on sub-second answers cannot inherit a chat
+model's deadline, and a plane that can hop onto a model costing 24 to 50 times
+more needs statuses that must never hop. What does not differ is **imported, not
+copied** — the rule the repo adopted when it deleted the per-file helper copies
+(#604). `lib/decision/dispatch.ts` imports `errorStatus` and
+`isRetriableLlmError` from `lib/llm/dispatch.ts` and `MAX_LLM_ATTEMPTS` from
+`lib/llm/retryPolicy.ts`, and forks none of them.
+
+Three things building the second plane found in the first:
+
+1. **`runLlmObject` accepted no `AbortSignal`.** `runLlmText` and the streaming
+   path took one; the structured-output path did not, so every `generateObject`
+   call in the deployment was uncancellable once dispatched and a caller's
+   deadline stopped at the call. `LlmObjectOptions` now carries `abortSignal`,
+   passed through to `generateObject` and into `withLlmRetry` so it also cancels
+   the backoff between attempts. Fixed in this work, because the decision
+   plane's language-backed adapter is a `runLlmObject` caller with a deadline.
+
+2. **The language backoff has no jitter.** `withLlmRetry` sleeps exactly
+   `LLM_BACKOFF_BASE_MS * 2 ** attempt`, so everything that took a 429 together
+   retries together. `lib/decision/dispatch.ts:backoffDelayMs` spreads instead:
+   equal jitter (half the curve fixed, half random) for its own backoff, and an
+   upward-only spread on a vendor `Retry-After`. The reason is not specific to
+   the new plane — one shared upstream bucket plus our synchronized ingest is
+   the shape that turns one 429 into a retry storm, and ingest feeds both
+   planes. Recorded here as a known gap on the language side rather than
+   silently fixed: changing its curve changes the timing of every shipped LLM
+   caller and belongs in its own change.
+
+3. **`errorStatus` was file-private,** and a second plane that must refuse to
+   fall back after 401/403/422 needs exactly that read. It is now exported. One
+   reader for one shape: a fourth field learned about the SDK's error shape is
+   learned by both planes, where a copy would have quietly stopped recognising
+   the statuses that must not produce a hop.
+
+Unchanged by this amendment: `normalizeUsage` stays the one map for the AI SDK's
+usage shape, the language plane's callers and their recovery postures are
+untouched, and no plane gains an entry point in another plane's module.

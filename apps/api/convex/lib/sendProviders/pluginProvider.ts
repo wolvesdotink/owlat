@@ -30,9 +30,9 @@ import type { SendTransportRecord } from './transports';
  * else's wire — which is why the kit's `supportsCustomReturnPath` union has only
  * `no` in it, and why `catalog.ts` re-asserts that on the generated artifact.
  *
- * The two extras builders mirror the core adapter interface exactly (the seams
- * plan's P3.1): the governed boundary and the system-mail path ask every module
- * the same question and neither knows which tier answered.
+ * The two extras builders mirror the core adapter interface exactly: the
+ * governed boundary and the system-mail path ask every module the same question
+ * and neither knows which tier answered.
  */
 export interface HostedSendProviderModule extends ReturnPathProbeCapableModule {
 	readonly kind: PluginSendTransportKind;
@@ -57,7 +57,7 @@ export interface HostedSendProviderModule extends ReturnPathProbeCapableModule {
  * deployment-wide flag variables, and those are the plugin's, not this
  * transport's to be handed.
  */
-export interface HostedSendTransportConfigSpec {
+interface HostedSendTransportConfigSpec {
 	readonly instanceEnvVars: readonly string[];
 	readonly requiredEnvVars: readonly string[];
 }
@@ -88,7 +88,7 @@ export function createHostedSendProvider(
 		kind,
 		retryDelays: Object.freeze([...retryDelays]),
 		/**
-		 * THE RECORD IS READ NOW (the seams plan's P3.1). A hosted transport that
+		 * THE RECORD IS READ NOW. A hosted transport that
 		 * declared configuration of its own is sent through the instance the id
 		 * named: the host resolves that instance's variables — the base names for
 		 * the default instance, the `__<INSTANCEKEY>`-suffixed ones for a named one

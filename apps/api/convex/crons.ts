@@ -7,6 +7,13 @@ import { registerSeedPlacementCrons } from './analytics/cronRegistration';
 
 const crons = cronJobs();
 
+crons.interval(
+	'reconcile MTA suppressions',
+	{ hours: 24 },
+	internal.delivery.suppressionMirror.reconcile,
+	{}
+);
+
 // Process scheduled campaigns every minute
 // Catches campaigns whose scheduledAt has passed (backup for scheduler-based sends)
 crons.interval(
@@ -98,7 +105,7 @@ crons.interval(
 	{}
 );
 
-// Sweep expired bundled-plugin replay claims (D6/P2.2). The claim mutation ages
+// Sweep expired bundled-plugin replay claims. The claim mutation ages
 // its own table out on the hot path, but only while deliveries keep arriving:
 // disabling a plugin or a provider going quiet strands whatever the last sweep
 // left. Rows expire within the signature contract's tolerance (≤ 15 minutes), so
@@ -152,6 +159,15 @@ crons.interval(
 	'retention: mail auth failures',
 	{ hours: 24 },
 	internal.mail.authRateLimit.sweepOld,
+	{}
+);
+// Abandoned Google sign-in handshakes. `start` already deletes the caller's
+// prior row before inserting, so this only reclaims rows for users who walked
+// away and never came back; bounded per tick.
+crons.interval(
+	'retention: external mailbox oauth states',
+	{ hours: 24 },
+	internal.mail.external.googleOAuth._sweepExpiredInternal,
 	{}
 );
 crons.interval(
@@ -433,6 +449,19 @@ crons.interval(
 	'refresh recipient key discovery',
 	{ minutes: 30 },
 	internal.e2ee.discovery.refreshExpiringRecipientKeys,
+	{}
+);
+
+// Desktop release cache — list the repo's releases and pull in any new
+// desktop-bearing one's `latest.json` (desktop/updates.ts). Six hours keeps a
+// fresh self-host well inside GitHub's unauthenticated budget even alongside
+// the server's own hourly update check; the admin "Check now" button covers "a
+// release just went out". Fail-soft: a rate-limited or failed poll records the
+// error and leaves the cache serving what it already has.
+crons.interval(
+	'desktop-releases-refresh',
+	{ hours: 6 },
+	internal.desktop.updates.refreshReleases,
 	{}
 );
 

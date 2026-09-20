@@ -21,6 +21,7 @@ import { internalMutation } from '../_generated/server';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
+import { draftSurfaceValidator } from '../lib/literalValidators';
 
 /** Cap the persisted streaming text so a runaway model cannot bloat a row. */
 const DRAFT_STREAM_MAX_CHARS = 20000;
@@ -34,7 +35,7 @@ const DRAFT_STREAM_MAX_CHARS = 20000;
 // all-members: a member owns their own transient revise buffer (owner-scoped).
 export const createDraftStream = authedMutation({
 	args: {
-		surface: v.union(v.literal('compose'), v.literal('review')),
+		surface: draftSurfaceValidator,
 	},
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);

@@ -17,8 +17,8 @@
  *
  * Nests inside `dashboard` so Administration keeps the app rail, header and ⌘K.
  */
-import { api } from '@owlat/api';
-import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
+import { api } from "@owlat/api";
+import { bundledPluginComposition } from "~/plugins/plugin-composition.generated";
 import {
 	ADMIN_COMMAND_PROVIDER_ID,
 	ADMIN_COMMAND_PROVIDER_PRIORITY,
@@ -29,8 +29,8 @@ import {
 	reachableAdminEntries,
 	type AdminAreaKey,
 	type AdminEnvironment,
-} from '~/lib/adminSettingsRegistry';
-import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
+} from "~/lib/adminSettingsRegistry";
+import { routePrefixMatcher } from "~/lib/commandPaletteRegistry";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -41,7 +41,7 @@ const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 // three pages carry as `platform-admin` route middleware.
 const { data: isPlatformAdmin } = useConvexQuery(
 	api.platformAdmin.platformAdmin.isPlatformAdmin,
-	() => ({})
+	() => ({}),
 );
 
 const environment = computed<AdminEnvironment>(() => ({
@@ -66,7 +66,7 @@ const activeArea = computed<AdminAreaKey | null>(() => adminEntryFor(route.path)
  * navigation at that width.
  */
 const compactEntries = computed(() => {
-	const overview = areas.value.find((area) => area.key === 'overview')?.entries ?? [];
+	const overview = areas.value.find((area) => area.key === "overview")?.entries ?? [];
 	const current = areas.value.find((area) => area.key === activeArea.value)?.entries ?? [];
 	return [...overview.filter((entry) => !current.includes(entry)), ...current];
 });
@@ -86,13 +86,14 @@ registerCommandPaletteProvider({
 				areaTitleKey: (area) => `shell.admin.areas.${area}`,
 				onOpen: (entry) => void navigateTo(entry.path),
 			},
-			query
+			query,
 		),
 });
 </script>
 
 <template>
 	<div>
+		<!-- A native root keeps nested layout transitions from leaving the page blank. -->
 		<NuxtLayout name="dashboard">
 			<div class="flex w-full items-start">
 				<!-- The desktop tree lives in the shell's scrollable navigation area,

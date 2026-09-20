@@ -98,7 +98,7 @@ export function routeProvidersForWrite(
 
 /**
  * WHICH TRANSPORTS MAY BE THE DELIVERABILITY-FALLBACK RELAY — the browser's
- * copy of `lib/sendProviders/fallbackEligibility.ts` (plan D6).
+ * copy of `lib/sendProviders/fallbackEligibility.ts`.
  *
  * The rule is a CAPABILITY, not a name: any configured transport that is not
  * our own MTA. The MTA is the arm a fallback moves traffic away from, so routing

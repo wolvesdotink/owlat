@@ -41,7 +41,7 @@ export function deriveAuthenticatedRecipient(inboundFrom: string): string | unde
 	return parseAddress(inboundFrom)?.address;
 }
 
-export interface OutboundHtmlSanitizeResult {
+interface OutboundHtmlSanitizeResult {
 	html: string;
 	strippedRemoteImages: number;
 	neutralizedLinks: number;
@@ -117,7 +117,7 @@ function linkHost(url: string): string | undefined {
 	return host.toLowerCase();
 }
 
-export interface ReferenceMonitorInput {
+interface ReferenceMonitorInput {
 	/** Authenticated inbound `From` header ("Name <addr>" or bare addr). */
 	inboundFrom: string;
 	/** Recipient the send path resolved (must equal the derived authenticated one). */
@@ -130,7 +130,7 @@ export interface ReferenceMonitorInput {
 	allowedLinkHosts: readonly string[];
 }
 
-export type ReferenceMonitorResult =
+type ReferenceMonitorResult =
 	| {
 			ok: true;
 			html: string;

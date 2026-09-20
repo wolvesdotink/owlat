@@ -97,7 +97,7 @@ export const MAX_SECTION_NAME_LENGTH = 60;
  * filters that name "Deploys" and " Deploys " are the same section — which is
  * what a user typing the name twice means.
  */
-export function normalizeSectionName(name: string): string {
+function normalizeSectionName(name: string): string {
 	return name.replace(/\s+/g, ' ').trim().slice(0, MAX_SECTION_NAME_LENGTH);
 }
 
@@ -109,9 +109,9 @@ export function normalizeSectionName(name: string): string {
  * `pinToSection` with no usable name is rejected rather than silently filing
  * mail into a section nothing can name.
  */
-export function normalizeFilterActions<
-	T extends { type: string; sectionName?: string | undefined },
->(actions: T[]): T[] {
+function normalizeFilterActions<T extends { type: string; sectionName?: string | undefined }>(
+	actions: T[]
+): T[] {
 	return actions.map((action) => {
 		if (action.type !== 'pinToSection') return action;
 		const sectionName = normalizeSectionName(action.sectionName ?? '');
@@ -278,10 +278,10 @@ export const reorder = authedMutation({
  * check ("does this catch what I think it catches?"), not a search, so it reads
  * a fixed recent window and says so.
  */
-export const PREVIEW_SCAN_WINDOW = 300;
+const PREVIEW_SCAN_WINDOW = 300;
 
 /** Rows the preview hands back — enough to recognise a message, no body. */
-export interface FilterPreviewMatch {
+interface FilterPreviewMatch {
 	messageId: Id<'mailMessages'>;
 	fromAddress: string;
 	subject: string;

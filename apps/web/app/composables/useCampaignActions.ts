@@ -46,7 +46,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	/**
 	 * The multi-day schedule pre-flight handed back instead of starting the
 	 * campaign, or `null`. NOT an error state: capacity is a schedule, and the
-	 * caller renders it as one (deliverability plan D14).
+	 * caller renders it as one.
 	 */
 	const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useCapacityRefusal();
 

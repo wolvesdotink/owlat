@@ -56,6 +56,7 @@ const slots = useSlots();
 		     smaller widths they sit below the title instead of squeezing it. -->
 		<div
 			v-if="slots['actions']"
+			data-testid="page-header-actions"
 			class="flex flex-wrap items-center gap-2 lg:max-w-[55%] lg:justify-end"
 		>
 			<slot name="actions" />

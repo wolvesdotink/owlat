@@ -295,6 +295,7 @@ async function runSentEffects(
 	// patch_mailbox_bytes effect — the SENDING mailbox holds the sent copy.
 	await ctx.db.patch(sendingMailboxId, {
 		usedBytes: mailbox.usedBytes + context.rawSize,
+		usageRevision: (mailbox.usageRevision ?? 0) + 1,
 		updatedAt: now,
 	});
 

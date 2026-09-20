@@ -10,6 +10,7 @@ import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { chatQuery, chatMutation } from './_helpers';
 import { getOrThrow } from '../_utils/errors';
+import { batchGet } from '../_utils/batchLoader';
 
 /**
  * Resolve `@handle` strings into authUserIds. Handles match either the email
@@ -57,11 +58,24 @@ export const listMyUnreadMentions = chatQuery({
 			.order('desc')
 			.take(limit);
 
+		// A page of mentions points at independent messages, and usually at only
+		// a few distinct rooms — two batched reads instead of two per mention.
+		const [messages, rooms] = await Promise.all([
+			batchGet(
+				ctx,
+				mentions.map((mention) => mention.messageId)
+			),
+			batchGet(
+				ctx,
+				mentions.map((mention) => mention.roomId)
+			),
+		]);
+
 		const result = [];
 		for (const mention of mentions) {
-			const message = await ctx.db.get(mention.messageId);
+			const message = messages.get(mention.messageId);
 			if (!message || message.deletedAt) continue;
-			const room = await ctx.db.get(mention.roomId);
+			const room = rooms.get(mention.roomId);
 			if (!room) continue;
 			result.push({
 				_id: mention._id,

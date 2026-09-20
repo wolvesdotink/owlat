@@ -15,7 +15,7 @@
  * with the one that actually moved it. What this module adds is ORDER — which of
  * fifteen cells to speak about first — and nothing else.
  *
- * AND NOTHING UNCONFIGURED IS A WARNING (plan D2). A deployment with no cell on
+ * AND NOTHING UNCONFIGURED IS A WARNING. A deployment with no cell on
  * the ramp is a deployment that has not made an optional choice yet; it gets an
  * invitation with a calm sentence, never a "setup incomplete".
  */
@@ -414,7 +414,7 @@ export interface RampAdvancedScreen {
 /**
  * THE FOUR SCREENS BEHIND THIS CARD, each described by what it ANSWERS.
  *
- * The independence entry follows the D14 rename: with no relay connected there
+ * The independence entry follows that rename: with no relay connected there
  * is nothing to become independent OF, and that screen calls itself "Warm-up
  * autopilot" — a link that promised "Independence" would land the operator on a
  * heading they never asked for.

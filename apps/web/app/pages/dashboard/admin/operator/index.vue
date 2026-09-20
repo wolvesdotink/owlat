@@ -196,9 +196,16 @@ const addAdminModalOpen = ref(false);
 const addAdminUserId = ref('');
 const addAdminRole = ref<'admin' | 'superadmin'>('admin');
 
+// Anyone already on the roster is not a candidate — `addPlatformAdmin` refuses a
+// duplicate, so offering them here could only ever produce an error toast.
+const promotableUsers = computed(() => {
+	const existing = new Set((admins.value ?? []).map((a) => a.authUserId));
+	return (allUsers.value ?? []).filter((u) => !existing.has(u.authUserId));
+});
+
 const userOptions = computed(() => [
 	{ value: '', label: t('dashboard.admin.operator.index.addAdminModal.selectUser') },
-	...(allUsers.value ?? []).map((u) => ({
+	...promotableUsers.value.map((u) => ({
 		value: u.authUserId,
 		label: u.name
 			? t('dashboard.admin.operator.index.addAdminModal.userOption', {
@@ -208,6 +215,10 @@ const userOptions = computed(() => [
 			: u.email,
 	})),
 ]);
+
+// Every member already holds platform admin. Say so, rather than opening a
+// modal whose only control is an empty dropdown.
+const hasPromotableUsers = computed(() => promotableUsers.value.length > 0);
 
 const roleOptions = computed(() => [
 	{ value: 'admin', label: t('dashboard.admin.operator.index.roleOptions.admin') },
@@ -584,7 +595,9 @@ const anyMutationLoading = computed(
 									{{ o.defaultFromName || o.defaultFromEmail || '—' }}
 								</td>
 								<td class="py-2">
-									<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{ o.abuseStatus }}</UiBadge>
+									<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{
+										o.abuseStatus
+									}}</UiBadge>
 								</td>
 								<td class="py-2">
 									<UiBadge :variant="riskLevelVariant(o.riskLevel)">{{ o.riskLevel }}</UiBadge>
@@ -607,7 +620,12 @@ const anyMutationLoading = computed(
 					<UiButton
 						variant="secondary"
 						size="sm"
-						:disabled="anyMutationLoading"
+						:disabled="anyMutationLoading || !hasPromotableUsers"
+						:title="
+							hasPromotableUsers
+								? undefined
+								: t('dashboard.admin.operator.index.admins.allPromoted')
+						"
 						@click="openAddAdmin"
 					>
 						<template #iconLeft>

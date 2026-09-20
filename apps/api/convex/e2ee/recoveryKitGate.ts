@@ -1,12 +1,11 @@
 /**
- * The gate in front of a MEMBER's own recovery kit (plan idea 55).
+ * The gate in front of a MEMBER's own recovery kit.
  *
- * A recovery kit is the one sanctioned egress of a private key from the vault
- * (locked decision D7). Until now only an admin could ask for one, for any
- * address. Idea 55 puts the same download on the member's own preferences page,
- * which means the gate — not the crypto — is the security-sensitive part: a live
- * session on an unlocked laptop must not be enough to walk away with the key
- * that opens someone's sealed mail.
+ * A recovery kit is the one sanctioned egress of a private key from the vault. Until now only an
+ * admin could ask for one, for any address. Putting the same download on the member's own
+ * preferences page means the gate — not the crypto — is the security-sensitive part: a live
+ * session on an unlocked laptop must not be enough to walk away with the key that opens someone's
+ * sealed mail.
  *
  * So the export is guarded by four checks in a FIXED order, and that order is
  * the whole point of this module being separate, pure and injectable:
@@ -45,9 +44,7 @@ export type RecoveryKitDenial =
 	/** The address has no active sealing key to export. */
 	| 'no_key';
 
-export type RecoveryKitGateResult<Kit> =
-	| { ok: true; kit: Kit }
-	| { ok: false; reason: RecoveryKitDenial };
+type RecoveryKitGateResult<Kit> = { ok: true; kit: Kit } | { ok: false; reason: RecoveryKitDenial };
 
 /** Every effect the gate needs, injected so the ordering is testable without a database. */
 export interface RecoveryKitGateDeps<Kit> {

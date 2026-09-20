@@ -213,7 +213,7 @@ async function transitionToSent(
 			context: {
 				rawStorageId,
 				rawSize: RAW_SIZE,
-				rfc822MessageId: 'msg-1@hinterland.camp',
+				rfc822MessageId: 'msg-1@owlat.test',
 				references: [],
 				bodyHtml: '<p>hi</p>',
 				bodyText: 'hi',
@@ -228,14 +228,14 @@ describe('runSentEffects — sent-copy placement', () => {
 		const t = convexTest(schema, modules);
 		const team = await seedMailbox(t, {
 			userId: 'owner-user',
-			address: 'team@hinterland.camp',
+			address: 'team@owlat.test',
 			scope: 'shared',
 		});
 		const sentFolder = await seedSentFolder(t, team);
 		const teamThread = await seedThread(t, team);
 		const draftId = await seedPendingDraft(t, {
 			mailboxId: team,
-			fromAddress: 'team@hinterland.camp',
+			fromAddress: 'team@owlat.test',
 			threadId: teamThread,
 			sentByUserId: 'owner-user',
 		});
@@ -260,10 +260,10 @@ describe('runSentEffects — sent-copy placement', () => {
 		const t = convexTest(schema, modules);
 		const team = await seedMailbox(t, {
 			userId: 'owner-user',
-			address: 'team@hinterland.camp',
+			address: 'team@owlat.test',
 			scope: 'shared',
 		});
-		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@hinterland.camp' });
+		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@owlat.test' });
 		await addMember(t, team, 'user-B');
 		const teamSent = await seedSentFolder(t, team);
 		const personalSent = await seedSentFolder(t, personal);
@@ -272,7 +272,7 @@ describe('runSentEffects — sent-copy placement', () => {
 
 		const draftId = await seedPendingDraft(t, {
 			mailboxId: team, // the THREAD mailbox
-			fromAddress: 'b@hinterland.camp',
+			fromAddress: 'b@owlat.test',
 			threadId: teamThread,
 			sendAsMailboxId: personal, // routed through the personal mailbox
 			sentByUserId: 'user-B',
@@ -310,23 +310,23 @@ describe('runSentEffects — sent-copy placement', () => {
 describe('resolveSendAsIdentitiesForCtx — resolution matrix', () => {
 	it('personal inbox offers only its own identity (no send-as extras)', async () => {
 		const t = convexTest(schema, modules);
-		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@hinterland.camp' });
+		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@owlat.test' });
 		const result = await t.run(async (ctx) => {
 			const mb = await ctx.db.get(personal);
 			return resolveSendAsIdentitiesForCtx(ctx, mb!, 'user-A');
 		});
 		expect(result).toHaveLength(1);
-		expect(result[0]).toMatchObject({ address: 'a@hinterland.camp', kind: 'own' });
+		expect(result[0]).toMatchObject({ address: 'a@owlat.test', kind: 'own' });
 	});
 
 	it('shared inbox — member WITH a personal mailbox is offered team + personal', async () => {
 		const t = convexTest(schema, modules);
 		const shared = await seedMailbox(t, {
 			userId: 'owner-user',
-			address: 'team@hinterland.camp',
+			address: 'team@owlat.test',
 			scope: 'shared',
 		});
-		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@hinterland.camp' });
+		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@owlat.test' });
 		await addMember(t, shared, 'user-B');
 
 		const result = await t.run(async (ctx) => {
@@ -335,15 +335,15 @@ describe('resolveSendAsIdentitiesForCtx — resolution matrix', () => {
 		});
 		const team = result.find((r) => r.mailboxId === shared);
 		const own = result.find((r) => r.mailboxId === personal);
-		expect(team).toMatchObject({ address: 'team@hinterland.camp', kind: 'team' });
-		expect(own).toMatchObject({ address: 'b@hinterland.camp', kind: 'personal' });
+		expect(team).toMatchObject({ address: 'team@owlat.test', kind: 'team' });
+		expect(own).toMatchObject({ address: 'b@owlat.test', kind: 'personal' });
 	});
 
 	it('shared inbox — member WITHOUT a personal mailbox gets only the team identity', async () => {
 		const t = convexTest(schema, modules);
 		const shared = await seedMailbox(t, {
 			userId: 'owner-user',
-			address: 'team@hinterland.camp',
+			address: 'team@owlat.test',
 			scope: 'shared',
 		});
 		await addMember(t, shared, 'user-C');
@@ -366,11 +366,11 @@ describe('resolveSendAsIdentitiesForCtx — resolution matrix', () => {
 		const t = convexTest(schema, modules);
 		const shared = await seedMailbox(t, {
 			userId: 'owner-user',
-			address: 'team@hinterland.camp',
+			address: 'team@owlat.test',
 			scope: 'shared',
 		});
 		// admin-user owns a personal mailbox but is NOT a member of the shared inbox.
-		await seedMailbox(t, { userId: 'admin-user', address: 'admin@hinterland.camp' });
+		await seedMailbox(t, { userId: 'admin-user', address: 'admin@owlat.test' });
 
 		const result = await t.run(async (ctx) => {
 			const mb = await ctx.db.get(shared);
@@ -385,11 +385,11 @@ describe('resolveSendAsIdentitiesForCtx — resolution matrix', () => {
 		const t = convexTest(schema, modules);
 		const shared = await seedMailbox(t, {
 			userId: 'owner-user',
-			address: 'team@hinterland.camp',
+			address: 'team@owlat.test',
 			scope: 'shared',
 		});
 		// user-B owns another SHARED mailbox — not a personal identity, so excluded.
-		await seedMailbox(t, { userId: 'user-B', address: 'other@hinterland.camp', scope: 'shared' });
+		await seedMailbox(t, { userId: 'user-B', address: 'other@owlat.test', scope: 'shared' });
 		await addMember(t, shared, 'user-B');
 
 		const result = await t.run(async (ctx) => {
@@ -404,14 +404,14 @@ describe('isSanctionedSendAsForUser — dispatch-time re-check', () => {
 	it('allows the team identity (sending === thread) with an allowed From', async () => {
 		const t = convexTest(schema, modules);
 		const shared = await seedMailbox(t, {
-			address: 'team@hinterland.camp',
+			address: 'team@owlat.test',
 			scope: 'shared',
 		});
 		const ok = await t.run((ctx) =>
 			isSanctionedSendAsForUser(ctx, {
 				threadMailboxId: shared,
 				sendingMailboxId: shared,
-				fromAddress: 'team@hinterland.camp',
+				fromAddress: 'team@owlat.test',
 				userId: 'anyone',
 			})
 		);
@@ -420,7 +420,7 @@ describe('isSanctionedSendAsForUser — dispatch-time re-check', () => {
 
 	it('blocks a From that is not in the sending mailbox allow-set', async () => {
 		const t = convexTest(schema, modules);
-		const shared = await seedMailbox(t, { address: 'team@hinterland.camp', scope: 'shared' });
+		const shared = await seedMailbox(t, { address: 'team@owlat.test', scope: 'shared' });
 		const ok = await t.run((ctx) =>
 			isSanctionedSendAsForUser(ctx, {
 				threadMailboxId: shared,
@@ -434,14 +434,14 @@ describe('isSanctionedSendAsForUser — dispatch-time re-check', () => {
 
 	it('allows a member’s own personal identity used inside a shared thread', async () => {
 		const t = convexTest(schema, modules);
-		const shared = await seedMailbox(t, { address: 'team@hinterland.camp', scope: 'shared' });
-		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@hinterland.camp' });
+		const shared = await seedMailbox(t, { address: 'team@owlat.test', scope: 'shared' });
+		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@owlat.test' });
 		await addMember(t, shared, 'user-B');
 		const ok = await t.run((ctx) =>
 			isSanctionedSendAsForUser(ctx, {
 				threadMailboxId: shared,
 				sendingMailboxId: personal,
-				fromAddress: 'b@hinterland.camp',
+				fromAddress: 'b@owlat.test',
 				userId: 'user-B',
 			})
 		);
@@ -450,14 +450,14 @@ describe('isSanctionedSendAsForUser — dispatch-time re-check', () => {
 
 	it('blocks a cross-mailbox From the sender does NOT own', async () => {
 		const t = convexTest(schema, modules);
-		const shared = await seedMailbox(t, { address: 'team@hinterland.camp', scope: 'shared' });
-		const someoneElse = await seedMailbox(t, { userId: 'user-D', address: 'd@hinterland.camp' });
+		const shared = await seedMailbox(t, { address: 'team@owlat.test', scope: 'shared' });
+		const someoneElse = await seedMailbox(t, { userId: 'user-D', address: 'd@owlat.test' });
 		await addMember(t, shared, 'user-B');
 		const ok = await t.run((ctx) =>
 			isSanctionedSendAsForUser(ctx, {
 				threadMailboxId: shared,
 				sendingMailboxId: someoneElse,
-				fromAddress: 'd@hinterland.camp',
+				fromAddress: 'd@owlat.test',
 				userId: 'user-B',
 			})
 		);
@@ -466,14 +466,14 @@ describe('isSanctionedSendAsForUser — dispatch-time re-check', () => {
 
 	it('blocks send-as when the sender is not a member of the shared thread', async () => {
 		const t = convexTest(schema, modules);
-		const shared = await seedMailbox(t, { address: 'team@hinterland.camp', scope: 'shared' });
-		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@hinterland.camp' });
+		const shared = await seedMailbox(t, { address: 'team@owlat.test', scope: 'shared' });
+		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@owlat.test' });
 		// No membership row for user-B on the shared mailbox.
 		const ok = await t.run((ctx) =>
 			isSanctionedSendAsForUser(ctx, {
 				threadMailboxId: shared,
 				sendingMailboxId: personal,
-				fromAddress: 'b@hinterland.camp',
+				fromAddress: 'b@owlat.test',
 				userId: 'user-B',
 			})
 		);
@@ -487,19 +487,19 @@ describe('isSanctionedSendAsForUser — dispatch-time re-check', () => {
 		const t = convexTest(schema, modules);
 		const shared = await seedMailbox(t, {
 			userId: 'owner-user',
-			address: 'team@hinterland.camp',
+			address: 'team@owlat.test',
 			scope: 'shared',
 		});
 		const adminPersonal = await seedMailbox(t, {
 			userId: 'admin-user',
-			address: 'admin@hinterland.camp',
+			address: 'admin@owlat.test',
 		});
 		// admin-user has NO membership row on the shared mailbox.
 		const ok = await t.run((ctx) =>
 			isSanctionedSendAsForUser(ctx, {
 				threadMailboxId: shared,
 				sendingMailboxId: adminPersonal,
-				fromAddress: 'admin@hinterland.camp',
+				fromAddress: 'admin@owlat.test',
 				userId: 'admin-user',
 			})
 		);
@@ -508,13 +508,13 @@ describe('isSanctionedSendAsForUser — dispatch-time re-check', () => {
 
 	it('blocks send-as when the thread mailbox is personal (no team context)', async () => {
 		const t = convexTest(schema, modules);
-		const threadPersonal = await seedMailbox(t, { userId: 'user-A', address: 'a@hinterland.camp' });
-		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@hinterland.camp' });
+		const threadPersonal = await seedMailbox(t, { userId: 'user-A', address: 'a@owlat.test' });
+		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@owlat.test' });
 		const ok = await t.run((ctx) =>
 			isSanctionedSendAsForUser(ctx, {
 				threadMailboxId: threadPersonal,
 				sendingMailboxId: personal,
-				fromAddress: 'b@hinterland.camp',
+				fromAddress: 'b@owlat.test',
 				userId: 'user-B',
 			})
 		);
@@ -527,30 +527,30 @@ describe('drafts.setIdentity — records the sending mailbox', () => {
 		const t = convexTest(schema, modules);
 		const shared = await seedMailbox(t, {
 			userId: 'owner-user',
-			address: 'team@hinterland.camp',
+			address: 'team@owlat.test',
 			scope: 'shared',
 		});
-		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@hinterland.camp' });
+		const personal = await seedMailbox(t, { userId: 'user-B', address: 'b@owlat.test' });
 		await addMember(t, shared, 'user-B');
-		const draftId = await seedDraft(t, shared, 'team@hinterland.camp');
+		const draftId = await seedDraft(t, shared, 'team@owlat.test');
 
 		setSession('user-B', 'editor');
 		// Personal identity → sendAsMailboxId points at the personal mailbox.
 		await t.mutation(api.mail.drafts.setIdentity, {
 			draftId,
-			fromAddress: 'b@hinterland.camp',
+			fromAddress: 'b@owlat.test',
 		});
 		let draft = await t.run((ctx) => ctx.db.get(draftId));
-		expect(draft?.fromAddress).toBe('b@hinterland.camp');
+		expect(draft?.fromAddress).toBe('b@owlat.test');
 		expect(draft?.sendAsMailboxId).toBe(personal);
 
 		// Switching back to the team identity clears the send-as binding.
 		await t.mutation(api.mail.drafts.setIdentity, {
 			draftId,
-			fromAddress: 'team@hinterland.camp',
+			fromAddress: 'team@owlat.test',
 		});
 		draft = await t.run((ctx) => ctx.db.get(draftId));
-		expect(draft?.fromAddress).toBe('team@hinterland.camp');
+		expect(draft?.fromAddress).toBe('team@owlat.test');
 		expect(draft?.sendAsMailboxId).toBeUndefined();
 	});
 
@@ -558,19 +558,19 @@ describe('drafts.setIdentity — records the sending mailbox', () => {
 		const t = convexTest(schema, modules);
 		const shared = await seedMailbox(t, {
 			userId: 'owner-user',
-			address: 'team@hinterland.camp',
+			address: 'team@owlat.test',
 			scope: 'shared',
 		});
 		// A mailbox owned by someone else — never a sanctioned From for user-B.
-		await seedMailbox(t, { userId: 'user-D', address: 'd@hinterland.camp' });
+		await seedMailbox(t, { userId: 'user-D', address: 'd@owlat.test' });
 		await addMember(t, shared, 'user-B');
-		const draftId = await seedDraft(t, shared, 'team@hinterland.camp');
+		const draftId = await seedDraft(t, shared, 'team@owlat.test');
 
 		setSession('user-B', 'editor');
 		await expect(
 			t.mutation(api.mail.drafts.setIdentity, {
 				draftId,
-				fromAddress: 'd@hinterland.camp',
+				fromAddress: 'd@owlat.test',
 			})
 		).rejects.toThrow();
 	});
@@ -597,8 +597,8 @@ describe('listSendAsIdentities — authenticity annotation (composer From-picker
 
 	it('annotates each identity as verified + aligned for the built-in MTA on a verified domain', async () => {
 		const t = convexTest(schema, modules);
-		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@hinterland.camp' });
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@owlat.test' });
+		await seedVerifiedDomain(t, 'owlat.test');
 		setSession('user-A', 'editor');
 
 		const result = await t.query(api.mail.identities.listSendAsIdentities, {
@@ -606,7 +606,7 @@ describe('listSendAsIdentities — authenticity annotation (composer From-picker
 		});
 		expect(result).toHaveLength(1);
 		expect(result[0]).toMatchObject({
-			address: 'a@hinterland.camp',
+			address: 'a@owlat.test',
 			domainVerified: true,
 			alignment: 'aligned',
 			alignmentReason: null,
@@ -615,8 +615,8 @@ describe('listSendAsIdentities — authenticity annotation (composer From-picker
 
 	it('annotates an unverified domain as not verified (so the composer disables it)', async () => {
 		const t = convexTest(schema, modules);
-		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@hinterland.camp' });
-		// No verified `domains` row for hinterland.camp.
+		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@owlat.test' });
+		// No verified `domains` row for owlat.test.
 		setSession('user-A', 'editor');
 
 		const result = await t.query(api.mail.identities.listSendAsIdentities, {
@@ -630,8 +630,8 @@ describe('listSendAsIdentities — authenticity annotation (composer From-picker
 		process.env['OUTBOUND_DKIM_DOMAIN'] = 'sendgrid.net';
 		process.env['MTA_RETURN_PATH_DOMAIN'] = 'sendgrid.net';
 		const t = convexTest(schema, modules);
-		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@hinterland.camp' });
-		await seedVerifiedDomain(t, 'hinterland.camp');
+		const personal = await seedMailbox(t, { userId: 'user-A', address: 'a@owlat.test' });
+		await seedVerifiedDomain(t, 'owlat.test');
 		setSession('user-A', 'editor');
 
 		const result = await t.query(api.mail.identities.listSendAsIdentities, {

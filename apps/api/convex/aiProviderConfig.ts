@@ -15,8 +15,17 @@
  *
  * Crypto + the plaintext-key path live in the sibling `'use node'` file
  * `aiProviderConfigActions.ts` (saveConfig / testConnection). Env `LLM_*`
- * remains the deployment fallback; a present row wins (resolution is a later
- * plan piece — this piece is storage + surface only).
+ * remains the deployment fallback; a present row wins. Storage + surface only:
+ * resolution lives elsewhere.
+ *
+ * THREE planes share this row: LANGUAGE, EMBEDDING and — since the 2026-09-17
+ * decision-plane plan — DECISION. Each owns five secret columns (the AES-GCM
+ * four plus a masked preview) written and cleared in lockstep. The decision
+ * block is the only one that is optional end to end, because an install that
+ * never opted into it must keep resolving exactly as it did before the plane
+ * existed; a save that does not name a decision kind therefore CARRIES THOSE
+ * COLUMNS FORWARD rather than patching them to `undefined`, which would clear
+ * them.
  */
 
 import { v } from 'convex/values';
@@ -29,9 +38,13 @@ import { recordAuditLog } from './lib/auditLog';
 import { throwInvalidInput } from './_utils/errors';
 import { validateOutboundUrl } from './lib/outboundUrlValidation';
 import {
+	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
 } from './lib/aiProviderConfigValidators';
+// Type-only, and from the PURE types module rather than the registry index, so
+// this v8 file never reaches the Node-only adapter files behind it.
+import type { DecisionProviderKind } from './lib/decisionProviders/types';
 
 /** The org-singleton config row, or null. Single-org-per-deployment ⇒ `first()`. */
 async function getSingleton(ctx: QueryCtx | MutationCtx): Promise<Doc<'aiProviderConfig'> | null> {
@@ -65,6 +78,16 @@ export const getConfig = authedQuery({
 			embeddingModelVersion: row.embeddingModelVersion,
 			isEmbeddingKeySet: row.embeddingSecretCiphertext !== undefined,
 			embeddingKeyPreview: row.embeddingKeyPreview,
+			// The DECISION plane, same rule: the selection, a masked preview and a
+			// boolean. `decisionProviderKind` being absent is the ordinary state of
+			// every install that never opted in, and the settings card reads it as
+			// "not configured" rather than preselecting a vendor.
+			decisionProviderKind: row.decisionProviderKind,
+			decisionModel: row.decisionModel,
+			decisionBaseUrl: row.decisionBaseUrl,
+			isDecisionFallbackEnabled: row.isDecisionFallbackEnabled,
+			isDecisionKeySet: row.decisionSecretCiphertext !== undefined,
+			decisionKeyPreview: row.decisionKeyPreview,
 			updatedAt: row.updatedAt,
 		};
 	},
@@ -107,24 +130,35 @@ interface StoredEnvelope {
  */
 function storedEnvelopeOf(
 	row: Doc<'aiProviderConfig'> | null,
-	plane: 'language' | 'embedding'
+	plane: 'language' | 'embedding' | 'decision'
 ): StoredEnvelope | undefined {
 	if (!row) return undefined;
-	return plane === 'language'
-		? {
+	switch (plane) {
+		case 'language':
+			return {
 				ciphertext: row.secretCiphertext,
 				iv: row.secretIv,
 				authTag: row.secretAuthTag,
 				version: row.secretEnvelopeVersion,
 				keyPreview: row.keyPreview,
-			}
-		: {
+			};
+		case 'embedding':
+			return {
 				ciphertext: row.embeddingSecretCiphertext,
 				iv: row.embeddingSecretIv,
 				authTag: row.embeddingSecretAuthTag,
 				version: row.embeddingSecretEnvelopeVersion,
 				keyPreview: row.embeddingKeyPreview,
 			};
+		case 'decision':
+			return {
+				ciphertext: row.decisionSecretCiphertext,
+				iv: row.decisionSecretIv,
+				authTag: row.decisionSecretAuthTag,
+				version: row.decisionSecretEnvelopeVersion,
+				keyPreview: row.decisionKeyPreview,
+			};
+	}
 }
 
 /**
@@ -133,9 +167,17 @@ function storedEnvelopeOf(
  * the client, so an unchanged key is re-persisted from disk). A local, keyless
  * provider clears any stored key. A hosted provider with neither a new nor a
  * stored key is rejected — we never persist a hosted config that can't run.
+ *
+ * `isKeyRequired` is that last rule, made optional for the one case where it is
+ * wrong: a deployment that supplies the DECISION key through its environment
+ * has a working config with nothing in these columns, and rejecting the save
+ * would make the settings page unusable on exactly the installs that configured
+ * themselves the self-hosted way. It defaults to the strict behaviour, so the
+ * language and embedding planes are unchanged.
  */
 function resolveSecret(input: {
 	isLocal: boolean;
+	isKeyRequired?: boolean;
 	envelope?: Envelope;
 	existing?: StoredEnvelope;
 	label: string;
@@ -159,7 +201,86 @@ function resolveSecret(input: {
 			keyPreview: e.keyPreview,
 		};
 	}
+	if (input.isKeyRequired === false) return undefined;
 	throwInvalidInput(`The ${input.label} provider requires an API key.`);
+}
+
+/** The DECISION plane's nine columns, as written onto the row. */
+interface DecisionColumns {
+	decisionProviderKind?: DecisionProviderKind;
+	decisionModel?: string;
+	decisionBaseUrl?: string;
+	isDecisionFallbackEnabled?: boolean;
+	decisionSecretCiphertext?: string;
+	decisionSecretIv?: string;
+	decisionSecretAuthTag?: string;
+	decisionSecretEnvelopeVersion?: number;
+	decisionKeyPreview?: string;
+}
+
+/**
+ * The decision columns a save should write.
+ *
+ * TWO BRANCHES, and the first one is the important one. A save that names no
+ * decision kind — every caller written before this plane existed, and any
+ * settings save that only touches the language or embedding cards — carries the
+ * existing columns forward verbatim. `ctx.db.patch` treats `undefined` as a
+ * CLEAR, so omitting them would quietly switch a configured decision plane off
+ * and throw the key away with it.
+ *
+ * The second branch writes the plane, with the five secret columns resolved in
+ * lockstep by {@link resolveSecret}: a keyless adapter clears all five, a newly
+ * entered key replaces all five, and an unchanged one is re-persisted from disk.
+ */
+function resolveDecisionColumns(
+	args: {
+		decisionProviderKind?: DecisionProviderKind;
+		decisionModel?: string;
+		decisionBaseUrl?: string;
+		isDecisionFallbackEnabled?: boolean;
+		isDecisionKeyless?: boolean;
+		hasDecisionEnvKey?: boolean;
+		decisionEnvelope?: Envelope;
+	},
+	existing: Doc<'aiProviderConfig'> | null
+): DecisionColumns {
+	if (args.decisionProviderKind === undefined) {
+		return {
+			decisionProviderKind: existing?.decisionProviderKind,
+			decisionModel: existing?.decisionModel,
+			decisionBaseUrl: existing?.decisionBaseUrl,
+			isDecisionFallbackEnabled: existing?.isDecisionFallbackEnabled,
+			decisionSecretCiphertext: existing?.decisionSecretCiphertext,
+			decisionSecretIv: existing?.decisionSecretIv,
+			decisionSecretAuthTag: existing?.decisionSecretAuthTag,
+			decisionSecretEnvelopeVersion: existing?.decisionSecretEnvelopeVersion,
+			decisionKeyPreview: existing?.decisionKeyPreview,
+		};
+	}
+	const secret = resolveSecret({
+		isLocal: args.isDecisionKeyless === true,
+		// A key the deployment already supplies through TYPESAFE_API_KEY is a
+		// working config with empty columns — see `resolveSecret`.
+		isKeyRequired: args.hasDecisionEnvKey !== true,
+		envelope: args.decisionEnvelope,
+		// Credentials belong to a provider, never to whichever provider is chosen next.
+		existing:
+			existing?.decisionProviderKind === args.decisionProviderKind
+				? storedEnvelopeOf(existing, 'decision')
+				: undefined,
+		label: 'decision',
+	});
+	return {
+		decisionProviderKind: args.decisionProviderKind,
+		decisionModel: args.decisionModel,
+		decisionBaseUrl: args.decisionBaseUrl,
+		isDecisionFallbackEnabled: args.isDecisionFallbackEnabled,
+		decisionSecretCiphertext: secret?.ciphertext,
+		decisionSecretIv: secret?.iv,
+		decisionSecretAuthTag: secret?.authTag,
+		decisionSecretEnvelopeVersion: secret?.version,
+		decisionKeyPreview: secret?.keyPreview,
+	};
 }
 
 /**
@@ -181,6 +302,17 @@ export const _persistConfig = internalMutation({
 		embeddingModel: v.optional(v.string()),
 		isEmbeddingLocal: v.boolean(),
 		embeddingEnvelope: v.optional(envelopeValidator),
+		// The DECISION plane. Omitting `decisionProviderKind` leaves the plane
+		// untouched (see `resolveDecisionColumns`) — it is not a request to clear it.
+		decisionProviderKind: v.optional(decisionProviderKindValidator),
+		decisionModel: v.optional(v.string()),
+		decisionBaseUrl: v.optional(v.string()),
+		isDecisionFallbackEnabled: v.optional(v.boolean()),
+		/** The chosen adapter carries no key of its own ⇒ clear all five columns. */
+		isDecisionKeyless: v.optional(v.boolean()),
+		/** The deployment supplies the key through its environment ⇒ none required here. */
+		hasDecisionEnvKey: v.optional(v.boolean()),
+		decisionEnvelope: v.optional(envelopeValidator),
 	},
 	handler: async (ctx, args): Promise<Id<'aiProviderConfig'>> => {
 		const { userId } = await requireOrgPermission(ctx, 'organization:manage');
@@ -200,6 +332,16 @@ export const _persistConfig = internalMutation({
 			}
 		}
 
+		// Same gate for the DECISION base URL, and unconditionally `requirePublic`:
+		// this plane has no local keyless endpoint, so every configured origin is one
+		// a decrypted key will be sent to.
+		if (args.decisionBaseUrl !== undefined) {
+			const check = validateOutboundUrl(args.decisionBaseUrl, { requirePublic: true });
+			if (!check.ok) {
+				throwInvalidInput(`Decision provider base URL ${check.error}.`);
+			}
+		}
+
 		const existing = await getSingleton(ctx);
 
 		const language = resolveSecret({
@@ -214,6 +356,7 @@ export const _persistConfig = internalMutation({
 			existing: storedEnvelopeOf(existing, 'embedding'),
 			label: 'embedding',
 		});
+		const decision = resolveDecisionColumns(args, existing);
 
 		// Dimension guard: bump the version whenever the embedding model/provider
 		// changes so stale vectors are never silently mixed with new-model ones.
@@ -246,6 +389,7 @@ export const _persistConfig = internalMutation({
 			embeddingSecretAuthTag: embedding?.authTag,
 			embeddingSecretEnvelopeVersion: embedding?.version,
 			embeddingKeyPreview: embedding?.keyPreview,
+			...decision,
 			updatedAt: now,
 		};
 
@@ -272,6 +416,10 @@ export const _persistConfig = internalMutation({
 				embeddingModelVersion,
 				isLanguageKeySet: language !== undefined,
 				isEmbeddingKeySet: embedding !== undefined,
+				decisionProviderKind: decision.decisionProviderKind,
+				decisionModel: decision.decisionModel,
+				isDecisionFallbackEnabled: decision.isDecisionFallbackEnabled,
+				isDecisionKeySet: decision.decisionSecretCiphertext !== undefined,
 			}),
 		});
 

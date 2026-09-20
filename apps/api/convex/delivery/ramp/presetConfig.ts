@@ -1,6 +1,6 @@
 /**
  * THE PRESET, APPLIED — the one place a chosen aggressiveness turns into a
- * stream config (plan D9, P3-6).
+ * stream config.
  *
  * A SUBSTITUTION, NEVER A SECOND TABLE. `RAMP_STREAM_CONFIGS` remains the only
  * constant table in the ramp; a preset scales the additive step and adds clean
@@ -19,8 +19,8 @@
  * WHAT A PRESET CANNOT REACH, by the shape of `RampPresetTuning` rather than by
  * a rule someone has to remember: the multiplicative decrease, the share floor,
  * the cooldown ladder, the phase ceilings and every hard stop. There is no field
- * that could express any of them. Cheap to retreat, expensive to advance (plan
- * D9) is not negotiable by an operator preference.
+ * that could express any of them. Cheap to retreat, expensive to advance is not
+ * negotiable by an operator preference.
  */
 
 import { applyRampPreset, type RampPreset } from '@owlat/shared/deliverabilityIndependence';

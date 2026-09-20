@@ -9,6 +9,8 @@
  */
 interface Step {
 	step: string;
+	/** The sidecar's own verdict for this step: did its docker command exit 0? */
+	ok?: boolean;
 	stdout?: string;
 	stderr?: string;
 }
@@ -62,15 +64,33 @@ type StepStatus = 'pending' | 'running' | 'success' | 'failed';
 const stepStatus = ref<Record<string, StepStatus>>({});
 for (const s of stepOrder) stepStatus.value[s] = 'pending';
 
+/**
+ * Read one step's outcome out of the updater's report.
+ *
+ * `ok` is the sidecar's own verdict — whether that step's docker command exited
+ * zero — and it is the only trustworthy signal. This used to read non-empty
+ * `stderr` as failure, but docker writes pull/recreate PROGRESS to stderr on
+ * SUCCESS, so a perfectly healthy update painted "Pull new container images"
+ * and "Recreate containers" red and offered ` web Pulled` as the error.
+ *
+ * The old reading stays as the fallback for the steps that carry no `ok` (the
+ * sidecar's own compose-file writes) and for runs recorded before `ok` was
+ * kept: there, output on stderr really is the only evidence there is.
+ */
+function stepOutcome(entry: Step): StepStatus {
+	if (typeof entry.ok === 'boolean') return entry.ok ? 'success' : 'failed';
+	const stderr = entry.stderr ?? '';
+	const failed = stderr.length > 0 && !stderr.toLowerCase().includes('warning');
+	return failed ? 'failed' : 'success';
+}
+
 // Update stepStatus from the steps prop (returned by /api/system/update).
-// stderr presence means failure; otherwise success.
 watch(
 	() => props.steps,
 	(steps) => {
 		if (!steps) return;
 		for (const entry of steps) {
-			const failed = entry.stderr && entry.stderr.length > 0 && !entry.stderr.toLowerCase().includes('warning');
-			stepStatus.value[entry.step] = failed ? 'failed' : 'success';
+			stepStatus.value[entry.step] = stepOutcome(entry);
 		}
 	},
 	{ deep: true, immediate: true },

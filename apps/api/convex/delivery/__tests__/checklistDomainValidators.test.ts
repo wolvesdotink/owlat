@@ -841,4 +841,52 @@ describe('domain checklist validation', () => {
 		).resolves.toMatchObject({ status: 'fail' });
 		resolveCname.mockRestore();
 	});
+
+	it('passes MTA-STS without verifying anything for an external-receiving domain', async () => {
+		// Nothing generates the record for this domain, so verifying it could only
+		// report a pending/failed item for a record the operator has been told
+		// never to publish. `pass`, not `warn`: send-only is a supported
+		// configuration, not a deferred one.
+		const observation = await observeDomainCheck(
+			{
+				runQuery: async () => {
+					throw new Error('the MTA-STS policy must not be read for an external domain');
+				},
+			} as never,
+			'domain.mta_sts',
+			context({ receivingMode: 'external', externalReceivingProvider: 'google' }, {}),
+			true
+		);
+		expect(observation.status).toBe('pass');
+		expect(observation.diagnostic).toContain('external provider');
+	});
+
+	it('passes TLS-RPT for an external-receiving domain instead of warning it is missing', async () => {
+		// The mode's own correct behaviour is that no `_smtp._tls` record exists
+		// for this domain — the reports it solicits are about a delivery hop that
+		// terminates at Google. Falling through to the generic "no TLS-RPT record
+		// is configured" warn would complain at the operator forever for doing
+		// exactly the right thing.
+		const observation = await observeDomainCheck(
+			{} as never,
+			'domain.tls_rpt',
+			context({ receivingMode: 'external', externalReceivingProvider: 'google' }, {}),
+			true
+		);
+		expect(observation.status).toBe('pass');
+		expect(observation.diagnostic).toContain('external provider');
+	});
+
+	it('does not short-circuit TLS-RPT for an owlat-receiving domain', async () => {
+		// The pass above must be scoped to the send-only mode: a domain Owlat
+		// receives for genuinely should publish `_smtp._tls`, and silencing that
+		// would hide a real gap behind a mode it has nothing to do with. The proof
+		// is that an owlat row walks PAST the early return into the DNS bundle —
+		// which this harness does not load, so it rejects rather than returning the
+		// external verdict. Asserting the rejection keeps the test deterministic
+		// (no live resolver) while still pinning that the guard did not fire.
+		await expect(
+			observeDomainCheck({} as never, 'domain.tls_rpt', context({}, {}), true)
+		).rejects.toThrow('TLS-RPT DNS observation was not loaded');
+	});
 });

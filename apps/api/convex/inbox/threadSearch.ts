@@ -41,7 +41,7 @@ export const THREAD_SEARCH_SCAN_CAP = 64;
 /** Shortest query the search path will run — below this it returns nothing. */
 export const THREAD_SEARCH_MIN_QUERY = 2;
 
-export interface ThreadSearchOptions {
+interface ThreadSearchOptions {
 	/** Raw typed query. Trimmed here; blank means "no search". */
 	search: string;
 	/** The active pill, applied as a predicate rather than an index. */

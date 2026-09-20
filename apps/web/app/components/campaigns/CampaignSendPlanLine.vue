@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * "Sending over 4 days · day 1 of 4 · 5 000 of 20 000" (deliverability plan
- * D14, P3-7).
+ * "Sending over 4 days · day 1 of 4 · 5 000 of 20 000".
  *
  * A warming deployment with no relay to overflow to sends a large campaign over
  * several days. That is a NORMAL, VISIBLE state — not an error and not a

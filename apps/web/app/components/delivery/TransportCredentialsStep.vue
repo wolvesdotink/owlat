@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * Step 1 of the transport connection wizard: CREDENTIALS (P2-4).
+ * Step 1 of the transport connection wizard: CREDENTIALS.
  *
  * Split out of `TransportConnectionWizard.vue` at the repo's ~500-LOC cap, and
  * along the right seam: this component owns the credential DRAFT and nothing
  * else knows it exists. The wizard shell only learns whether the step settled.
  *
- * The path is the SHIPPED one (D4 — no second credential model): the relay
+ * The path is the SHIPPED one (no second credential model): the relay
  * credential draft, validators and live handshake `TransportEditor.vue` uses
  * (`useRelayCredentialDraft`), applied through the sealed
  * `/api/delivery/apply-transport` env patch. Values are WRITE-ONLY — never
@@ -188,7 +188,7 @@ async function applyCredentials() {
 		</p>
 
 		<!-- ONE form for every relay: the selected entry's `credentialFields`
-		     descriptors, rendered generically (plan D5).
+		     descriptors, rendered generically.
 
 		     WITHOUT the endpoint's implicit-TLS toggle, which this step has never
 		     offered: every preset it can choose declares STARTTLS, and giving a

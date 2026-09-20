@@ -9,7 +9,7 @@
  * include. SES mints per-domain DKIM tokens and a per-identity verification
  * token, so its records can only be remembered; Mandrill's can only be derived.
  *
- * Pure and dependency-light on purpose: the domain-setup UI (P3.2) renders the
+ * Pure and dependency-light on purpose: the domain-setup UI renders the
  * same records from the same helper rather than reading them back out of a row
  * that could disagree with what we actually told Mandrill.
  */
@@ -66,8 +66,8 @@ export function buildMandrillVerifyRecord(verifyTxtKey: string): {
  * Shaped exactly like the SES adapter's (SPF at the apex, DKIM, a monitor-only
  * DMARC for a brand-new domain) so the domain-setup UI renders one thing. No
  * `mailFrom` records: Mandrill mints its own bounce local part, so there is no
- * custom MAIL FROM subdomain to publish (plan D5, and the reason the send
- * adapter declines the return-path probe outright).
+ * custom MAIL FROM subdomain to publish (and the reason the send adapter
+ * declines the return-path probe outright).
  */
 export function buildMandrillDnsRecords(domain: string): DnsRecords {
 	return {

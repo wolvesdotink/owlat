@@ -34,10 +34,10 @@
 #     / admin-gated reads that return no bearer token). Like check-query-authz.sh
 #     this is a RATCHET, not a baseline-0 hard gate.
 #
-# The ratchet is strict in both directions: an unlisted read fails (a NEW query
-# returning a token-bearing table with no redaction), and a stale baseline entry
-# fails (the query was fixed/removed/annotated — delete its line so the count
-# only goes down).
+# scripts/ratchet.sh runs the comparison, strict in both directions: an unlisted
+# read fails (a NEW query returning a token-bearing table with no redaction),
+# and a stale baseline entry fails (the query was fixed/removed/annotated —
+# delete its line so the count only goes down).
 #
 # Scope note: the grep matches inline `.query('<table>')` scans inside a query
 # span — the enumeration path where these leaks happen (getRecent,
@@ -45,7 +45,22 @@
 # a shared helper is out of scope for this conservative gate; check-query-authz.sh
 # and code review remain the backstop for those.
 
+set -uo pipefail
+repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
+
+if [ "${1:-}" = "--generate" ]; then
+	generate_root="${2:-convex}"
+else
+	generate_root=""
+fi
+
+write_flag=""
+if [ "${1:-}" = "--write-baseline" ]; then
+	write_flag="--write-baseline"
+	shift
+fi
 
 # Optional overrides let the vitest self-test (checkTokenRedaction.ratchet.test.ts)
 # point the scan and the baseline at a throwaway fixture tree; production runs
@@ -62,64 +77,54 @@ baseline_file="${2:-scripts/token-redaction-baseline.txt}"
 # (`ok`). `block_optout` lets a `// token-safe:` note sit in the contiguous `//`
 # block directly above the export; it is reset by any non-comment, non-export
 # line so it can never leak onto an unrelated later definition.
-violations=$(find "$scan_root" -name "*.ts" \
-	-not -path "*/_generated/*" \
-	-not -path "*/__tests__/*" \
-	-exec awk '
-		BEGIN { in_fn = 0; reads = 0; ok = 0; name = ""; block_optout = 0 }
-		{
-			is_comment = ($0 ~ /^[[:space:]]*\/\//)
-			is_just    = ($0 ~ /\/\/[[:space:]]*token-safe:/)
-			is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|publicQuery)\(/)
-			is_read    = ($0 ~ /\.query\((\x27|")(contacts|shareLinks|apiKeys|webhooks)(\x27|")\)/)
-			is_redact  = ($0 ~ /(redactContactCapabilityFields|PublicContact|stripWebhookSecret)/)
-		}
-		is_comment && is_just { block_optout = 1 }
-		is_export {
-			in_fn = 1; name = $3; reads = 0
-			ok = block_optout
-			block_optout = 0
-		}
-		in_fn && is_read   { reads = 1 }
-		in_fn && is_redact { ok = 1 }
-		in_fn && is_just   { ok = 1 }
-		in_fn && /^\}\)/ {
-			if (reads && !ok) print FILENAME ":" name
-			in_fn = 0
-		}
-		(!is_comment && !is_export) { block_optout = 0 }
-	' {} \; 2>/dev/null | sort || true)
+generate() {
+	find "$1" -name "*.ts" \
+		-not -path "*/_generated/*" \
+		-not -path "*/__tests__/*" \
+		-exec awk '
+			BEGIN { in_fn = 0; reads = 0; ok = 0; name = ""; block_optout = 0 }
+			{
+				is_comment = ($0 ~ /^[[:space:]]*\/\//)
+				is_just    = ($0 ~ /\/\/[[:space:]]*token-safe:/)
+				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|publicQuery)\(/)
+				is_read    = ($0 ~ /\.query\((\x27|")(contacts|shareLinks|apiKeys|webhooks)(\x27|")\)/)
+				is_redact  = ($0 ~ /(redactContactCapabilityFields|PublicContact|stripWebhookSecret)/)
+			}
+			is_comment && is_just { block_optout = 1 }
+			is_export {
+				in_fn = 1; name = $3; reads = 0
+				ok = block_optout
+				block_optout = 0
+			}
+			in_fn && is_read   { reads = 1 }
+			in_fn && is_redact { ok = 1 }
+			in_fn && is_just   { ok = 1 }
+			in_fn && /^\}\)/ {
+				if (reads && !ok) print FILENAME ":" name
+				in_fn = 0
+			}
+			(!is_comment && !is_export) { block_optout = 0 }
+		' {} \; 2>/dev/null | sort || true
+}
 
-new=$(comm -23 <(printf '%s\n' "$violations" | grep . || true) <(sort "$baseline_file"))
-stale=$(comm -13 <(printf '%s\n' "$violations" | grep . || true) <(sort "$baseline_file"))
-
-fail=0
-if [ -n "$new" ]; then
-	count=$(printf '%s\n' "$new" | grep -c .)
-	echo "FAIL: $count new read(s) returning a token-bearing table with no redaction."
-	echo ""
-	echo "$new"
-	echo ""
-	echo "A public read that queries contacts / shareLinks / apiKeys / webhooks"
-	echo "serializes the row — including its bearer secret — straight to the client."
-	echo "  - run the rows through redactContactCapabilityFields / stripWebhookSecret"
-	echo "    (or add a new per-table redactor to the helper regex in this script), or"
-	echo "  - add a '// token-safe: <reason>' comment stating why no row-level"
-	echo "    redaction is needed (projects to a token-free shape / counts / ids /"
-	echo "    admin role gate)."
-	echo "Do NOT add new entries to $baseline_file — it is frozen debt."
-	fail=1
+if [ -n "$generate_root" ]; then
+	generate "$generate_root"
+	exit 0
 fi
-if [ -n "$stale" ]; then
-	count=$(printf '%s\n' "$stale" | grep -c .)
-	echo "FAIL: $count stale entr(y/ies) in $baseline_file (read fixed, removed, or annotated):"
-	echo ""
-	echo "$stale"
-	echo ""
-	echo "Delete these lines so the ratchet only moves down."
-	fail=1
-fi
-[ "$fail" -eq 1 ] && exit 1
 
-baseline_count=$(grep -c . "$baseline_file")
-echo "ok:   no new token-bearing read without redaction ($baseline_count baseline entries remain)"
+exec "$repo_root/scripts/ratchet.sh" \
+	--baseline "$baseline_file" \
+	--seed "bash apps/api/scripts/check-token-redaction.sh --write-baseline" \
+	--ok "no new token-bearing read without redaction" \
+	--new-header "FAIL: {n} new read(s) returning a token-bearing table with no redaction." \
+	--new-advice "A public read that queries contacts / shareLinks / apiKeys / webhooks
+serializes the row — including its bearer secret — straight to the client.
+  - run the rows through redactContactCapabilityFields / stripWebhookSecret
+    (or add a new per-table redactor to the helper regex in this script), or
+  - add a '// token-safe: <reason>' comment stating why no row-level
+    redaction is needed (projects to a token-free shape / counts / ids /
+    admin role gate).
+Do NOT add new entries to {baseline} — it is frozen debt." \
+	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (read fixed, removed, or annotated):" \
+	${write_flag:+--write-baseline} \
+	-- bash "$self" --generate "$scan_root"

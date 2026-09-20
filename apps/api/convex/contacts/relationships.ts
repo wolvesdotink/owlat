@@ -9,6 +9,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireContactsManage } from './guards';
 import { throwInvalidInput } from '../_utils/errors';
+import { batchGet } from '../_utils/batchLoader';
 
 // ============================================================
 // Queries
@@ -30,28 +31,28 @@ export const listByContact = authedQuery({
 			.withIndex('by_to', (q) => q.eq('toContactId', args.contactId))
 			.collect(); // bounded: one contact's incoming relationships
 
-		// Resolve contact details for display
-		const relationships = [];
+		// Resolve contact details for display. The related contacts are
+		// independent rows, so one batched read covers both directions instead of
+		// a round trip per relationship.
+		const relatedContacts = await batchGet(ctx, [
+			...outgoing.map((rel) => rel.toContactId),
+			...incoming.map((rel) => rel.fromContactId),
+		]);
 
-		for (const rel of outgoing) {
-			const relatedContact = await ctx.db.get(rel.toContactId);
-			relationships.push({
+		const relationships = [
+			...outgoing.map((rel) => ({
 				...rel,
 				direction: 'outgoing' as const,
-				relatedContact,
-			});
-		}
-
-		for (const rel of incoming) {
-			const relatedContact = await ctx.db.get(rel.fromContactId);
-			relationships.push({
+				relatedContact: relatedContacts.get(rel.toContactId) ?? null,
+			})),
+			...incoming.map((rel) => ({
 				...rel,
 				direction: 'incoming' as const,
-				relatedContact,
+				relatedContact: relatedContacts.get(rel.fromContactId) ?? null,
 				// Invert the relationship label for display
 				displayRelationship: invertRelationship(rel.relationship),
-			});
-		}
+			})),
+		];
 
 		return relationships;
 	},

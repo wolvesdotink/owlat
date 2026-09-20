@@ -8,7 +8,7 @@ import type { MutationCtx } from '../_generated/server';
  * surfaces (the pipeline sub-stages aren't separately interesting to the
  * operator).
  */
-export type InboxBucket =
+type InboxBucket =
 	| 'received'
 	| 'processing'
 	| 'draftReady'
@@ -81,7 +81,7 @@ async function loadSettings(ctx: MutationCtx) {
 export async function applyInboxStatsDelta(
 	ctx: MutationCtx,
 	from: InboxBucket | null,
-	to: InboxBucket | null,
+	to: InboxBucket | null
 ): Promise<void> {
 	if (from === to) return; // no-op self-transition
 	const settings = await loadSettings(ctx);
@@ -105,10 +105,7 @@ export async function applyInboxStatsDelta(
  * `getInboundStats` reads the result instead of collecting the whole
  * open-thread set per subscriber.
  */
-export async function applyOpenThreadDelta(
-	ctx: MutationCtx,
-	delta: 1 | -1,
-): Promise<void> {
+export async function applyOpenThreadDelta(ctx: MutationCtx, delta: 1 | -1): Promise<void> {
 	const settings = await loadSettings(ctx);
 	if (!settings) return;
 	const current = settings.openThreads ?? 0;

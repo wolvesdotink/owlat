@@ -48,8 +48,13 @@ async function loadSenderSignal(
 	};
 }
 
-/** Whether the mailbox owner enabled the HEY-style first-time-sender screener. */
-async function isScreenerEnabled(ctx: MutationCtx, userId: string): Promise<boolean> {
+/**
+ * Whether the mailbox owner enabled the HEY-style first-time-sender screener.
+ * No owner (a SHARED team inbox, which has no single user whose preference may
+ * speak for the team) ⇒ the screener is off and nobody is held out.
+ */
+async function isScreenerEnabled(ctx: MutationCtx, userId: string | undefined): Promise<boolean> {
+	if (userId === undefined) return false;
 	const settings = await ctx.db
 		.query('mailUserSettings')
 		.withIndex('by_user', (q) => q.eq('userId', userId))
@@ -62,6 +67,7 @@ async function isScreenerEnabled(ctx: MutationCtx, userId: string): Promise<bool
  * first-time-sender screener. Returns the result with `priorityScore` set, or
  * `null` when the screener held an unknown sender out of the queue. Generic in
  * the result shape so `needsReply.applyResult` keeps its exact validator type.
+ * `ownerUserId` is omitted for a shared mailbox, which bypasses the screener.
  */
 export async function scoreAndScreenResult<
 	T extends { messageId: Id<'mailMessages'>; urgency: PriorityUrgency },
@@ -69,7 +75,8 @@ export async function scoreAndScreenResult<
 	ctx: MutationCtx,
 	opts: {
 		mailboxId: Id<'mailboxes'>;
-		ownerUserId: string;
+		/** Owner whose screener preference applies; absent on a shared inbox. */
+		ownerUserId?: string;
 		message: Doc<'mailMessages'>;
 		resolved: T;
 	}

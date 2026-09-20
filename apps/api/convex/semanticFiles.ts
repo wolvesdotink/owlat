@@ -24,6 +24,8 @@ import {
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import type { Id, Doc } from './_generated/dataModel';
+import { semanticFileSourceTypeValidator } from './lib/literalValidators';
+import { batchGet } from './_utils/batchLoader';
 
 // ============================================================
 // Queries
@@ -100,12 +102,11 @@ export const getInternal = internalQuery({
 export const getByIds = internalQuery({
 	args: { ids: v.array(v.id('semanticFiles')) },
 	handler: async (ctx, args) => {
-		const out: Array<Doc<'semanticFiles'> & { url: string | null }> = [];
-		for (const id of args.ids) {
-			const file = await ctx.db.get(id);
-			if (file) out.push(await hydrateFile(ctx, file));
-		}
-		return out;
+		// The ids are independent, so read them in one batch and hydrate the
+		// survivors together, still in input order.
+		const byId = await batchGet(ctx, args.ids);
+		const files = args.ids.map((id) => byId.get(id)).filter((file) => file != null);
+		return await hydrateFiles(ctx, files);
 	},
 });
 
@@ -152,8 +153,9 @@ export const getProcessingContext = internalQuery({
 		}
 
 		const contactNames: string[] = [];
+		const contacts = await batchGet(ctx, args.contactIds ?? []);
 		for (const contactId of args.contactIds ?? []) {
-			const contact = await ctx.db.get(contactId);
+			const contact = contacts.get(contactId);
 			if (!contact) continue;
 			const name = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.email;
 			if (name) contactNames.push(name);
@@ -168,12 +170,6 @@ export const getProcessingContext = internalQuery({
 		return { threadSubject, contactNames, previousText };
 	},
 });
-
-const sourceTypeValidator = v.union(
-	v.literal('upload'),
-	v.literal('email_attachment'),
-	v.literal('agent_generated')
-);
 
 /**
  * Apply the `sourceType` provenance filter to a page of files and resolve a
@@ -199,7 +195,7 @@ async function applySourceFilter(
 export const list = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
-		sourceType: v.optional(sourceTypeValidator),
+		sourceType: v.optional(semanticFileSourceTypeValidator),
 	},
 	handler: async (ctx, args) => {
 		const results = await ctx.db
@@ -219,7 +215,7 @@ export const search = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
 		query: v.string(),
-		sourceType: v.optional(sourceTypeValidator),
+		sourceType: v.optional(semanticFileSourceTypeValidator),
 	},
 	handler: async (ctx, args) => {
 		const results = await ctx.db
@@ -277,12 +273,14 @@ export const listByContact = authedQuery({
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
 			.collect(); // bounded: junction rows for one contact (files per person)
 
-		const files: Array<Doc<'semanticFiles'> & { url: string | null }> = [];
-		for (const link of links) {
-			const file = await ctx.db.get(link.fileId);
-			if (!file) continue;
-			files.push(await hydrateFile(ctx, file));
-		}
+		const byId = await batchGet(
+			ctx,
+			links.map((link) => link.fileId)
+		);
+		const files = await hydrateFiles(
+			ctx,
+			links.map((link) => byId.get(link.fileId)).filter((file) => file != null)
+		);
 
 		// Newest first, then cap.
 		files.sort((a, b) => b.createdAt - a.createdAt);
@@ -305,11 +303,7 @@ export const create = authedMutation({
 		fileSize: v.number(),
 		title: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
-		sourceType: v.union(
-			v.literal('upload'),
-			v.literal('email_attachment'),
-			v.literal('agent_generated')
-		),
+		sourceType: semanticFileSourceTypeValidator,
 		sourceMessageId: v.optional(v.string()),
 		uploadContext: v.optional(v.string()),
 		contactIds: v.optional(v.array(v.id('contacts'))),

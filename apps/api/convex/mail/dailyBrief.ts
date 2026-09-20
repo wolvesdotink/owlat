@@ -30,7 +30,7 @@ import { urgencyFallbackScore } from './ai/priorityScore';
 
 // ─── Pure ranking + bundling (unit-tested, framework-free) ───────────────────
 
-export type BriefItemKind = 'needs_reply' | 'clarification' | 'followup' | 'commitment';
+type BriefItemKind = 'needs_reply' | 'clarification' | 'followup' | 'commitment';
 
 export interface BriefItem {
 	kind: BriefItemKind;
@@ -42,7 +42,7 @@ export interface BriefItem {
 }
 
 /** A lapsing promise/deadline is urgent — rank commitments at the high baseline. */
-export const COMMITMENT_PRIORITY = urgencyFallbackScore('high');
+const COMMITMENT_PRIORITY = urgencyFallbackScore('high');
 
 /**
  * Rank the "needs you" items: highest priority first, then the SOONER deadline
@@ -60,7 +60,7 @@ export function rankBriefItems(items: BriefItem[]): BriefItem[] {
 	});
 }
 
-export type BundledCategory = 'newsletter' | 'notification' | 'receipt';
+type BundledCategory = 'newsletter' | 'notification' | 'receipt';
 
 export interface BundledEntry {
 	threadId: Id<'mailThreads'>;

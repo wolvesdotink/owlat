@@ -71,7 +71,7 @@ export const environmentSendProviderReady = internalQuery({
 });
 
 /** The message types a `providerRoutes` row can target. */
-export type DeliveryMessageType = 'campaign' | 'transactional' | 'automation';
+type DeliveryMessageType = 'campaign' | 'transactional' | 'automation';
 
 /**
  * True iff this deployment can actually deliver mail. A `providerRoutes` row

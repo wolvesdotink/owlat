@@ -2111,6 +2111,11 @@
 				"addMailbox": "Testpostfach hinzufügen",
 				"credentialsRotated": "Zugangsdaten gewechselt",
 				"detailsLabel": "Messdetails",
+				"disconnect": "Trennen",
+				"disconnectAriaLabel": "Testpostfach {address} trennen",
+				"disconnectDialogDescription": "Owlat schickt keine Testkopien mehr an {address} und vergisst dessen Passwort. Alle bisherigen Messungen bleiben erhalten, und der belegte Platz wird für ein anderes Postfach frei.",
+				"disconnectDialogTitle": "Dieses Testpostfach trennen?",
+				"disconnectOperation": "Testpostfach trennen",
 				"feedbackConnected": "verbunden",
 				"feedbackNotConnected": "nicht verbunden",
 				"feedsConfigured": "{count} Feed konfiguriert | {count} Feeds konfiguriert",
@@ -2123,7 +2128,8 @@
 				},
 				"summary": "{count} Testpostfächer verbunden · Microsoft-Feedback {feedback}",
 				"testMailboxes": "Testpostfächer",
-				"title": "Messabdeckung"
+				"title": "Messabdeckung",
+				"toastDisconnected": "{address} getrennt."
 			},
 			"domainDnsGuidance": {
 				"heading": "DNS für {transport}"
@@ -2545,8 +2551,11 @@
 					"finish": "Abschließen",
 					"server": "Bereitstellen"
 				},
+				"jumpToLatest": "Zum Ende springen",
+				"logRegionLabel": "Ausgabe des Serverprotokolls",
 				"progressLabel": "Fortschritt der Server-Bereitstellung",
 				"serverLog": "Serverprotokoll",
+				"trimmed": "{count} frühere Zeile entfernt | {count} frühere Zeilen entfernt",
 				"waitingForOutput": "Warten auf Ausgabe…"
 			},
 			"workspaceMenu": {
@@ -2618,6 +2627,48 @@
 				"value": "Wert",
 				"verified": "Bestätigt"
 			},
+			"externalReceiving": {
+				"providers": {
+					"google": "Google Workspace",
+					"microsoft": "Microsoft 365",
+					"other": "Ihrem bisherigen Anbieter",
+					"otherOption": "Anderer Anbieter"
+				}
+			},
+			"externalReceivingSection": {
+				"heading": "Empfang (bleibt bei Ihrem Anbieter)",
+				"operation": "Prüfen, wohin die Mail dieser Domain zugestellt wird",
+				"introHeadline": "Ändern Sie Ihre MX-Einträge nicht.",
+				"intro": "{headline} Eingehende Mail für {domain} bleibt bei {provider} — Owlat versendet für diese Domain nur. Nichts auf dieser Seite verlangt, dass Sie etwas an der Zustellung Ihrer eingehenden Mail ändern.",
+				"mx": {
+					"pointsHereHeadline": "Eingehende Mail erreicht Ihren Anbieter nicht mehr.",
+					"pointsHere": "{headline} Der MX-Eintrag für {domain} zeigt auf diese Owlat-Instanz ({hosts}); die Zustellung liegt damit nicht mehr bei {provider} — jede an diese Domain gesendete Nachricht kommt stattdessen hier an. Stellen Sie bei Ihrem DNS-Anbieter die MX-Einträge Ihres Mailanbieters wieder her, damit Ihre Mail wieder ankommt.",
+					"missing": "Für {domain} wurde kein MX-Eintrag gefunden — an diese Domain gesendete Mail kann derzeit nirgendwo zugestellt werden. Veröffentlichen Sie bei Ihrem DNS-Anbieter die MX-Einträge, die Sie von {provider} bekommen. Versenden kann Owlat von der Domain in jedem Fall.",
+					"confirmed": "Bestätigt — Mail für {domain} wird weiterhin bei {provider} zugestellt ({hosts}). Lassen Sie diese Einträge genau so, wie sie sind.",
+					"elsewhere": "Mail für {domain} wird an {hosts} zugestellt. Das ist nicht diese Owlat-Instanz, Ihr Empfang ist also unberührt — prüfen Sie nur, ob es der erwartete Host ist.",
+					"providerMismatchHeadline": "Das sieht nach {observed} aus, nicht nach {declared}.",
+					"providerMismatch": "{headline} Diese Domain ist für {declared} eingerichtet, der SPF-Eintrag oben autorisiert also {declared} und Owlat. Liegt die Mail jetzt tatsächlich bei {observed}, stellen Sie den Anbieter unten um, damit der SPF-Eintrag auch das abdeckt, was Sie von dort versenden."
+				},
+				"bounces": {
+					"headline": "Bounces laufen über eine eigene Subdomain.",
+					"body": "{headline} Zustellberichte kommen an {host} zurück, einen eigenen Namen — der MX-Eintrag von {domain} selbst wird dabei nie angefasst."
+				},
+				"spf": {
+					"mergedHeadline": "SPF ist bereits zusammengeführt.",
+					"merged": "{headline} Der SPF-Eintrag oben trägt die Freigabe von {provider} und die von Owlat in einem einzigen Eintrag. Veröffentlichen Sie ihn genau so und legen Sie keinen zweiten Eintrag an, der mit v=spf1 beginnt — zwei davon sind ein dauerhafter Fehler.",
+					"manualHeadline": "Führen Sie den SPF-Eintrag selbst zusammen.",
+					"manual": "{headline} Owlat kennt den SPF-Eintrag Ihres Anbieters nicht, deshalb autorisiert der Eintrag oben nur Owlat. Fügen Sie ihn in den SPF-Eintrag ein, den Sie bereits veröffentlichen, sodass es genau einen Eintrag gibt, der mit v=spf1 beginnt — zwei davon sind ein dauerhafter Fehler, der SPF für alles bricht, was Sie versenden.",
+					"noneHeadline": "Es gibt noch keinen SPF-Eintrag.",
+					"none": "{headline} Owlat hat für diese Domain noch keinen erzeugt, oben steht also nichts zum Veröffentlichen. Lassen Sie den SPF-Eintrag, den Sie für {provider} veröffentlichen, unverändert. Wenn die Einrichtung fertig ist, führen Sie den erzeugten Eintrag darin zusammen.",
+					"addIncludeHeadline": "Ergänzen Sie den SPF-Eintrag Ihres Anbieters.",
+					"addInclude": "{headline} Der Eintrag oben autorisiert Owlat, aber nicht {provider}. Ergänzen Sie {include}, bevor Sie ihn veröffentlichen, damit ein Eintrag, der mit v=spf1 beginnt, beides abdeckt. Ein zweiter Eintrag mit v=spf1 ist ein dauerhafter Fehler, der SPF für alles bricht, was Sie versenden."
+				},
+				"migrate": {
+					"headline": "Diese Mail in Owlat lesen?",
+					"body": "{headline} Verbinden Sie das Postfach über IMAP. Die Zustellung und die Mail selbst bleiben bei {provider}; Owlat synchronisiert nur eine Kopie, damit Sie hier lesen und antworten können.",
+					"link": "Postfach verbinden"
+				}
+			},
 			"receivingDnsSection": {
 				"firewall": {
 					"body": "{headline} Andere Mailserver verbinden sich mit {mailHost} auf TCP-Port {portCode}, um Mail zuzustellen; geben Sie eingehendes TCP {port} in Ihrer Firewall / Sicherheitsgruppe frei. Viele Cloud-Anbieter sperren Port {port} standardmäßig — stellen Sie sicher, dass Ihr Hoster eingehendes SMTP erlaubt.",
@@ -2644,6 +2695,39 @@
 				},
 				"reverseDnsOperation": "Reverse-DNS für den Empfang prüfen"
 			},
+			"receivingModeChoice": {
+				"legend": "Wer empfängt die Mail für diese Domain?",
+				"owlat": {
+					"label": "Owlat empfängt sie",
+					"hint": "Owlat wird zum Mailserver für diese Domain. Sie veröffentlichen einen MX-Eintrag, und eingehende Mail landet hier."
+				},
+				"external": {
+					"label": "Mein bisheriger Anbieter behält den Empfang",
+					"hint": "Owlat versendet nur. Wer heute Ihre Mail bearbeitet, behält jede eingehende Nachricht, und Ihre MX-Einträge bleiben unverändert."
+				},
+				"providerLabel": "Wer empfängt sie heute?",
+				"reassurance": "Owlat wird Sie nie bitten, für diese Domain einen MX-Eintrag zu ändern. Jeder erzeugte Eintrag ist ein Sendeeintrag, und der SPF-Eintrag wird mit dem Ihres Anbieters zusammengeführt, sodass beide autorisiert bleiben."
+			},
+			"receivingModeSwitch": {
+				"heading": "Empfangsmodus",
+				"operation": "Empfangsmodus aktualisieren",
+				"current": {
+					"owlat": "Owlat empfängt die Mail für diese Domain.",
+					"external": "Der Empfang bleibt bei {provider}."
+				},
+				"change": "Ändern",
+				"save": "Empfangsmodus speichern",
+				"consequence": "Beim Speichern wird der SPF-Eintrag dieser Domain neu erzeugt und die Domain auf ausstehend zurückgesetzt; Sie müssen den aktualisierten Eintrag veröffentlichen und erneut verifizieren. Owlat ändert nie einen MX-Eintrag für Sie.",
+				"confirm": {
+					"title": "Empfänger dieser Mail ändern?",
+					"description": "{domain} wird wieder auf ausstehend gesetzt und der SPF-Eintrag neu erzeugt; Sie müssen den neuen Eintrag veröffentlichen und erneut verifizieren. Bei Ihrem DNS-Anbieter ändert sich nichts, bis Sie es selbst tun.",
+					"action": "Empfangsmodus ändern"
+				},
+				"toasts": {
+					"external": "Der Empfang bleibt bei Ihrem Anbieter. Veröffentlichen Sie den aktualisierten SPF-Eintrag und verifizieren Sie dann erneut.",
+					"owlat": "Owlat empfängt künftig die Mail für diese Domain. Veröffentlichen Sie die aktualisierten Einträge und verifizieren Sie dann erneut."
+				}
+			},
 			"recordRow": {
 				"autoRecheckTitle": "Wir prüfen Ihr DNS automatisch alle 30 Sekunden, solange dieses Panel geöffnet ist.",
 				"bouncesVia": "Bounces über {host}",
@@ -2666,6 +2750,7 @@
 					"headline": "Wozu diese Domain dient."
 				},
 				"mailFromHeading": "MAIL-FROM-Domain",
+				"receivingVia": "Empfang bei {provider}",
 				"registering": "Wird registriert…",
 				"registrationFailed": "Registrierung fehlgeschlagen",
 				"removeDomain": "Domain entfernen",
@@ -3647,6 +3732,15 @@
 				"connectSharedOperation": "Team-Postfach verbinden",
 				"emailPlaceholder": "sie{'@'}beispiel.de",
 				"failed": "fehlgeschlagen",
+				"google": {
+					"continue": "Mit Google anmelden",
+					"desktopHint": "Schließen Sie die Anmeldung bei Google im soeben geöffneten Browserfenster ab. Diese Seite aktualisiert sich von selbst, sobald das Postfach verbunden ist.",
+					"explain": "Melden Sie sich mit Google an, statt ein App-Passwort zu erstellen. Owlat erhält dabei nur ein widerrufbares Token für Ihre Mail, niemals Ihr Passwort.",
+					"or": "oder",
+					"reconnect": "Erneut mit Google verbinden",
+					"reconnectExplain": "Dieses Postfach ist per Google-Anmeldung verbunden. Ein erneutes Verbinden stellt seinen Zugriff ohne App-Passwort wieder her — alternativ wechseln Sie unten auf ein App-Passwort.",
+					"startOperation": "Google-Anmeldung starten"
+				},
 				"imapHost": "IMAP-Host",
 				"imapHostPlaceholder": "imap.beispiel.de",
 				"imapPort": "IMAP-Port",
@@ -4630,6 +4724,44 @@
 				"delete": "Ordner löschen",
 				"deleteAriaLabel": "Ordner {name} löschen",
 				"empty": "Noch keine eigenen Ordner. Erstellen Sie oben einen."
+			},
+			"postboxConnectedAccountCard": {
+				"connectCta": "Postfach verbinden",
+				"delete": "Trennen und löschen",
+				"deleteConfirm": "Alles löschen",
+				"deleteDialogDescription": "Jede übernommene Nachricht, jeder Entwurf, Ordner und jedes Label wird hier gelöscht, dazu die gespeicherten Anmeldedaten und alle App-Passwörter für dieses Postfach. Die Mails bei deinem Anbieter bleiben unangetastet. Das lässt sich nicht rückgängig machen.",
+				"deleteDialogTitle": "Dieses Postfach mit allen Inhalten löschen?",
+				"deleteOperation": "Postfach und Mails löschen",
+				"deleteRetained": "Aufbewahrte Mails löschen",
+				"deleteRetainedDialogDescription": "Jede aus diesem Postfach übernommene Nachricht, jeder Entwurf, Ordner und jedes Label wird gelöscht, dazu alle App-Passwörter dafür. Die Mails bei deinem Anbieter bleiben unangetastet. Das lässt sich nicht rückgängig machen.",
+				"deletingBody": "Dieses Postfach und alles daraus Übernommene werden gelöscht. Du kannst die Seite verlassen.",
+				"disconnect": "Trennen",
+				"disconnectDialogDescription": "Owlat holt keine Mails mehr ab und vergisst die Anmeldedaten für dieses Postfach. Das Postfach und die bereits übernommenen Mails verschwinden aus deinem Posteingang und sind beide wieder da, sobald du dieselbe Adresse erneut verbindest.",
+				"disconnectDialogImporting": "Der laufende Import wird abgebrochen. Owlat vergisst die Anmeldedaten für dieses Postfach; das Postfach und die bisher übernommenen Mails verschwinden aus deinem Posteingang und sind wieder da, sobald du dieselbe Adresse erneut verbindest.",
+				"disconnectDialogTitle": "Dieses Postfach trennen?",
+				"disconnectOperation": "Postfach trennen",
+				"disconnectedOn": "Getrennt am {when}",
+				"emptyBody": "Es ist kein weiteres Postfach verbunden. Owlat kann Mails von Gmail, Fastmail, Outlook oder jedem anderen Anbieter übernehmen.",
+				"errorFallback": "Owlat erreicht dieses Postfach gerade nicht.",
+				"heading": "Verbundenes Postfach",
+				"lastSynced": "Zuletzt auf neue Mails geprüft: {when}",
+				"loadError": "Owlat konnte dein verbundenes Postfach gerade nicht laden. Lade die Seite neu, um es erneut zu versuchen.",
+				"loading": "Verbundenes Postfach wird geladen",
+				"neverSynced": "Bisher sind keine Mails angekommen",
+				"reauthorize": "Postfach neu verbinden",
+				"reconnect": "Erneut verbinden",
+				"retainedBody": "Es wird nichts mehr abgeglichen und die gespeicherten Anmeldedaten sind gelöscht. Die vor dem Trennen übernommenen Mails sind aus deinem Posteingang verschwunden, aber nicht gelöscht: Verbinde dieselbe Adresse erneut, um sie zurückzuholen, oder lösche sie endgültig.",
+				"retainedRemovedBody": "Eine Administratorin hat dieses Postfach aus Owlat entfernt. Die daraus übernommenen Mails sind weiterhin hier gespeichert, und es wird nichts mehr abgeglichen. Wenn du die Adresse erneut verbindest, bekommst du ein neues, leeres Postfach — lösche dieses hier also, wenn du das Aufbewahrte nicht mehr brauchst.",
+				"status": {
+					"authError": "Muss neu verbunden werden",
+					"connected": "Wird abgeglichen",
+					"error": "Verbindungsproblem",
+					"pending": "Verbindung wird aufgebaut"
+				},
+				"toastCredentialsUpdated": "Passwort aktualisiert.",
+				"toastDeleting": "Postfach und Mails werden gelöscht.",
+				"toastDisconnected": "Postfach getrennt.",
+				"updateCredentials": "Passwort aktualisieren"
 			}
 		},
 		"preferences": {
@@ -4947,6 +5079,52 @@
 				"ofLimit": "von {amount}",
 				"spendBudget": "Ausgabenbudget",
 				"title": "LLM-Ausgaben · letzte 7 Tage"
+			},
+			"portChecksCard": {
+				"title": "Netzwerk-Ports",
+				"intro": "Funktionen hier hängen an Ports, die Ihr Hoster unangekündigt sperren kann — ein gesperrter Port sieht aus wie eine kaputte Funktion, nicht wie eine Firewall. Diese Prüfungen laufen auf Wunsch von diesem Server aus.",
+				"run": "Ports prüfen",
+				"running": "Prüfe…",
+				"idle": "Es wurde noch nichts geprüft. Der Test öffnet pro Port eine Verbindung zu einem bekannten Host (Googles Mailserver für die Mail-Ports, ghcr.io für Image-Downloads) und schließt sie sofort wieder — es wird keine Mail gesendet und kein Kommando abgesetzt.",
+				"unreachable": "Die Portprüfung braucht den Updater-Sidecar, und der hat nicht geantwortet. Prüfen Sie auf einer Instanz mit vollem Compose-Stack, ob der Dienst `updater` läuft.",
+				"allOpen": "Alle Ports, die diese Instanz braucht, sind offen.",
+				"degraded": "{count} benötigter Port ist gesperrt. | {count} benötigte Ports sind gesperrt.",
+				"degradedHint": "Ein gesperrter Port liegt fast immer am Hoster, nicht an diesem Server. Bitten Sie ihn, den Port für diese Maschine freizuschalten — viele sperren ausgehende Mail-Ports standardmäßig.",
+				"notNeeded": "für Ihre aktuelle Konfiguration nicht nötig",
+				"checkedAt": "Geprüft um {time}",
+				"unknownError": "Die Portprüfung ist aus unbekanntem Grund fehlgeschlagen.",
+				"groups": {
+					"inbound": "Eingehend — Dienste, die auf diesem Server lauschen",
+					"outbound": "Ausgehend — dieser Server erreicht das Internet"
+				},
+				"groupHints": {
+					"inbound": "Aus dem Stack heraus geprüft: Das belegt, dass der Dienst lauscht. Ob das Internet durchkommt, hängt an der Firewall Ihres Hosters, die von dieser Maschine aus niemand testen kann.",
+					"outbound": "Ende zu Ende gegen einen echten Host geprüft — genau der Weg, den die Funktion nimmt."
+				},
+				"status": {
+					"open": "offen",
+					"listening": "lauscht",
+					"blocked": "gesperrt",
+					"refused": "niemand lauscht",
+					"error": "nicht feststellbar",
+					"skipped": "hier nicht aktiv",
+					"rejected": "abgewiesen"
+				},
+				"needs": {
+					"inbound-https": "Die App, die API, Webhooks, Tracking- und Klick-Links sowie die Desktop-App",
+					"inbound-http": "Erneuerung des TLS-Zertifikats über Let's Encrypt",
+					"inbound-smtp": "Empfang von Mail und Bounces im eingebauten Mailserver",
+					"inbound-imaps": "Zugriff auf das eingebaute Postfach aus Apple Mail, Outlook oder vom Handy",
+					"outbound-smtp": "Direkte Zustellung an die Server der Empfänger",
+					"outbound-submission": "Übergabe an ein externes SMTP-Relay",
+					"outbound-smtps": "Versand aus einem verbundenen Postfach über implizites TLS",
+					"outbound-imaps": "Ein bestehendes Postfach mit einem Team-Postfach oder der Postbox verbinden",
+					"outbound-https": "Updates, Image-Downloads und alle Provider- und KI-APIs",
+					"outbound-dns": "MX-Abfragen für die Zustellung, Domain-Prüfung und Blocklist-Checks"
+				},
+				"unknown": "{count} benötigter Port konnte nicht gemessen werden. | {count} benötigte Ports konnten nicht gemessen werden.",
+				"unknownHint": "Die Prüfung kam weder zu einem Urteil noch an eine Firewall — der antwortende Dienst läuft hier nicht, oder der Name wurde nicht aufgelöst. Das ist etwas anderes als ein gesperrter Port, also wird in keine Richtung etwas behauptet.",
+				"declined": "Die Portprüfung lief nicht. Der Updater läuft; er hat diese Anfrage abgelehnt."
 			},
 			"updateProgress": {
 				"heading": "Update auf v{version} läuft",
@@ -5620,6 +5798,13 @@
 						"title": "Team & Zugriff"
 					}
 				},
+				"claimPlatform": {
+					"action": "Für mein Konto aktivieren",
+					"body": "Auf dieser Installation hat niemand die Rolle „Plattformadministrator“, daher sind Systemaktualisierungen, Backups und die Betriebskonsole nicht erreichbar. Als Inhaber dieses Workspace können Sie die Rolle jetzt übernehmen — danach können Sie sie auch anderen Mitgliedern erteilen.",
+					"operation": "Plattformadministrator übernehmen",
+					"success": "Betriebswerkzeuge aktiviert. Systemaktualisierungen, Backups und die Betriebskonsole stehen jetzt zur Verfügung.",
+					"title": "Betriebswerkzeuge sind noch nicht aktiviert"
+				},
 				"deliveryVerdict": "Zustellungsbewertung",
 				"eyebrow": "Administration",
 				"learnMore": "Mehr erfahren →",
@@ -5762,6 +5947,68 @@
 				},
 				"aiProvider": {
 					"connectionWorks": "Verbindung funktioniert",
+					"decision": {
+						"apiKeyHelp": "Einmalig über TLS übertragen, verschlüsselt gespeichert und nie wieder angezeigt. Leer lassen, um den hinterlegten Schlüssel zu behalten.",
+						"apiKeyLabel": "API-Schlüssel der Entscheidungsebene",
+						"baseUrlDisclosure": "Erweitert: eigener API-Origin (Proxy / Gateway)",
+						"baseUrlHelp": "Nur der Origin, etwa https://api.example.com. Den Endpunktpfad hängt der Adapter selbst an; eine vollständige Endpunkt-URL stünde hier also doppelt.",
+						"baseUrlLabel": "API-Origin",
+						"consent": {
+							"acknowledge": "Ich habe gelesen, was diese Installation verlässt, und aktiviere TypeSafe mit einem eigenen Schlüssel.",
+							"controller": "Wer dafür einsteht: In einer selbst gehosteten Installation sind Sie die verantwortliche Stelle und TypeSafe ist Ihr Auftragsverarbeiter, nicht unserer. Owlat vermittelt keine Schlüssel und unterschreibt nichts in Ihrem Namen.",
+							"endpoint": "Wohin es geht: Jede Entscheidungsanfrage geht über TLS an {host} und an keinen weiteren Dritten.",
+							"payload": "Was übertragen wird: der sichtbare Text des beurteilten Objekts — eine Nachricht, ein Entwurf, ein Auszug aus einem Verlauf — und die Fragen dazu. Keine Anhänge, keine Dateien, keine Bilder, keine Zugangsdaten.",
+							"privacyLink": "Datenschutzerklärung und Kontakt von TypeSafe",
+							"retention": "Region, Speicherdauer und Training: Die Dokumentation nennt keinen dieser drei Punkte, und die Angabe „nur USA“ stammt aus einem Blogbeitrag zum Start. Fragen Sie schriftlich nach, bevor Sie regulierte Post über diese Ebene leiten.",
+							"title": "Bevor Sie das einschalten",
+							"vendor": "Wer es ist: TypeSafe, das Unternehmen hinter den Jev-Entscheidungsmodellen. Sie bringen Ihren eigenen Schlüssel mit; er wird in Ihrer Installation verschlüsselt gespeichert und verlässt sie nie im Klartext."
+						},
+						"degraded": {
+							"breakerOpen": "Die Ebene ist so oft ausgefallen, dass sie vorerst abgeschaltet wurde. Bis sie sich erholt, laufen die Entscheidungen so wie vor ihrer Einrichtung.",
+							"keyMissing": "Für diesen Anbieter ist kein Schlüssel hinterlegt. Sofern die Installation nicht TYPESAFE_API_KEY in ihrer Umgebung bereitstellt, beantwortet stattdessen Ihr Sprachmodell jede Entscheidung.",
+							"languageBacked": "Ihr Sprachmodell beantwortet diese Entscheidungen. Es liefert ein Label ohne kalibrierte Wahrscheinlichkeit; eine Zahl, die hier nach Konfidenz aussieht, ist die Selbsteinschätzung des Modells.",
+							"testFailed": "Der letzte Schlüsseltest endete mit einem Fehler, die gespeicherte Konfiguration ist also möglicherweise nicht lauffähig.",
+							"title": "Diese Ebene ist eingeschränkt"
+						},
+						"description": "Konfigurieren Sie einen eigenen Anbieter für Ja/Nein-, Kategorie- und Bewertungsfragen. Das Speichern aktiviert keine Anfragen: Aktivieren oder pausieren Sie die Entscheidungsebene separat unter Funktionen.",
+						"enableDisclosure": "Eigenen Entscheidungsanbieter konfigurieren",
+						"fallback": {
+							"description": "Scheitert eine Entscheidungsanfrage, kann ersatzweise Ihr Sprachmodell antworten. Das wird pro Oberfläche entschieden, denn derselbe Sprung ist auf dem einen Weg ein Sicherheitsnetz und auf dem anderen eine offene Rechnung.",
+							"never": "Nie",
+							"title": "Auf das Sprachmodell zurückfallen"
+						},
+						"getKey": "Schlüssel anfordern",
+						"health": {
+							"attempts": "Gemessen über {count} Entscheidungsanfragen.",
+							"description": "Was die Ebene in den letzten {hours} Stunden getan hat, gezählt aus demselben Journal, aus dem auch Ihre Kostengrenze liest.",
+							"fallback": "Stattdessen von Ihrem Sprachmodell beantwortet",
+							"throttled": "Vom Anbieter abgelehnt (Ratenlimit oder Überlast)",
+							"title": "Letzte Aktivität",
+							"uncalibrated": "Kam ohne kalibrierte Wahrscheinlichkeit zurück"
+						},
+						"modelHint": "Bewusst auf eine Version festgelegt. Sie können eine andere angeben, und genau diese Kennung wird gesendet — Antworten aus einer anderen als der festgelegten Version gelten jedoch als unkalibriert, sodass alle Schwellenwerte ruhen, bis die Kalibrierung erneut gelaufen ist.",
+						"modelLabel": "Entscheidungsmodell",
+						"offBody": "Ihr Sprachmodell beantwortet jede Ja/Nein-, Kategorie- und Bewertungsentscheidung, genau wie bisher. An einen fremden Entscheidungsanbieter geht nichts.",
+						"offTitle": "Kein Entscheidungsanbieter — nichts verlässt Ihre Installation",
+						"providerLabel": "Entscheidungsanbieter",
+						"saveFirstTest": "Erst speichern, dann testen.",
+						"testConnection": "Entscheidungsschlüssel testen",
+						"testOk": "Der Anbieter hat eine Testfrage beantwortet — Schlüssel, Endpunkt und Modellversion funktionieren",
+						"thresholds": {
+							"active": "Sie gelten für jede Entscheidung, die diese Ebene beantwortet.",
+							"description": "Jede Antwortart wird auf ihrer eigenen Skala beurteilt; einen einzelnen Konfidenzregler gibt es hier deshalb nicht. Eine Ja/Nein-Antwort trägt überhaupt keine Konfidenz: Ihre Wahrscheinlichkeit ist die Antwort.",
+							"inert": "Solange die Ebene eingeschränkt ist, greifen sie nicht. Keine Oberfläche liest eine Wahrscheinlichkeit von ihr, jede behält ihre deterministische Antwort.",
+							"title": "Schwellenwerte je Antwortart"
+						},
+						"title": "Entscheidungsanbieter",
+						"feature": {
+							"disabled": "Entscheidungsanfragen sind deaktiviert. Speichern Sie den Anbieter und aktivieren Sie KI und Entscheidungsebene unter Funktionen, um ihn zu testen.",
+							"enabled": "Entscheidungsanfragen sind unter Funktionen aktiviert. Tests verwenden die gespeicherten Anbietereinstellungen.",
+							"loading": "Der Status der Entscheidungsanfragen wird geprüft…",
+							"error": "Der Funktionsstatus konnte nicht geprüft werden. Tests sind erst nach der Bestätigung des Status verfügbar.",
+							"manage": "Unter Funktionen verwalten"
+						}
+					},
 					"embeddings": {
 						"apiKeyHelp": "Verschlüsselt gespeichert, wird nie wieder angezeigt.",
 						"apiKeyLabel": "Embedding-API-Schlüssel",
@@ -5864,6 +6111,74 @@
 					"subtitleDomainLink": "Absenderdomain",
 					"subtitleTransportLink": "Zustellanbieter",
 					"title": "Nachrichtenkanäle"
+				},
+				"desktopUpdates": {
+					"auditLine": "Zuletzt geändert von {who}, {date}.",
+					"auditLineUnknown": "Zuletzt geändert am {date}.",
+					"auditNever": "Hier hat noch niemand etwas geändert — die Instanz läuft mit der Voreinstellung.",
+					"channel": {
+						"label": "Kanal",
+						"prerelease": "Vorabversionen einschließen",
+						"stable": "Stabil"
+					},
+					"checkNow": "Jetzt prüfen",
+					"checkedToast": "Versionsliste aktualisiert.",
+					"defer": {
+						"help": "Eine Version wird erst so lange nach ihrer Veröffentlichung auf GitHub angeboten. 0 bis {max} Stunden.",
+						"invalid": "Geben Sie eine ganze Stundenzahl von 0 bis {max} ein.",
+						"label": "Vor dem Anbieten einer neuen Version warten",
+						"suffix": "Stunden"
+					},
+					"empty": {
+						"description": "Diese Instanz hat GitHub noch nicht nach veröffentlichten Versionen gefragt. Prüfen Sie jetzt, um die Liste zu füllen.",
+						"title": "Noch keine Versionen zwischengespeichert"
+					},
+					"intro": "Was verbundene Owlat-Desktop-Apps angeboten bekommen. Die Pakete werden von GitHub geladen und auf dem Gerät geprüft.",
+					"lastCheckError": "Die letzte Prüfung hatte einen Fehler: {error}",
+					"lines": {
+						"desktop": "reine Desktop-Reihe",
+						"unified": "gemeinsame Reihe"
+					},
+					"modes": {
+						"label": "Modus",
+						"latest": {
+							"description": "Die neueste zwischengespeicherte Version aus dem Kanal unten anbieten.",
+							"title": "Neueste"
+						},
+						"paused": {
+							"description": "Gar nichts anbieten. Die Apps behalten ihre Version, bis Sie das wieder einschalten.",
+							"title": "Pausiert"
+						},
+						"pinned": {
+							"description": "Alle Geräte auf einer bewährten Version halten. Apps, die schon weiter sind, bleiben, wo sie sind.",
+							"title": "Festgelegt auf …"
+						}
+					},
+					"newest": {
+						"checked": "geprüft {date}",
+						"label": "Neueste Version",
+						"neverChecked": "nie geprüft",
+						"none": "Noch nichts zwischengespeichert",
+						"published": "veröffentlicht {date}"
+					},
+					"pageTitle": "Desktop-App-Updates — Owlat",
+					"pin": {
+						"label": "Version, auf die festgelegt wird",
+						"noneCached": "In diesem Kanal ist keine Version zwischengespeichert. Prüfen Sie zuerst.",
+						"placeholder": "Zwischengespeicherte Version wählen"
+					},
+					"readOnly": "Sie können diese Richtlinie sehen, aber nicht ändern. Wenden Sie sich an Ihre Administration.",
+					"releases": {
+						"line": "Reihe",
+						"notes": "Versionshinweise",
+						"prerelease": "Vorabversion",
+						"published": "Veröffentlicht",
+						"title": "Zwischengespeicherte Versionen",
+						"version": "Versionsnummer"
+					},
+					"save": "Speichern",
+					"savedToast": "Richtlinie für Desktop-Updates gespeichert.",
+					"title": "Desktop-App-Updates"
 				},
 				"emailTheme": {
 					"backgroundColor": "Hintergrundfarbe",
@@ -6139,6 +6454,10 @@
 							"description": "Nachrichtenkanäle, die in der gesamten Instanz verfügbar sind.",
 							"title": "Kanäle"
 						},
+						"desktopUpdates": {
+							"description": "Legen Sie fest, welche Version verbundene Desktop-Apps installieren — oder halten Sie alle zurück.",
+							"title": "Desktop-Updates"
+						},
 						"emailTheme": {
 							"description": "Standardgestaltung für Nachrichten, die dieser Workspace versendet.",
 							"title": "E-Mail-Design"
@@ -6410,6 +6729,7 @@
 					"admins": {
 						"add": "Admin hinzufügen",
 						"added": "Hinzugefügt",
+						"allPromoted": "Alle Mitglieder sind bereits Plattformadministratoren.",
 						"footnote": "Nur Superadmins können Plattform-Admins hinzufügen oder entfernen. Sie können sich nicht selbst entfernen.",
 						"role": "Rolle",
 						"title": "Plattform-Admins"
@@ -6847,6 +7167,47 @@
 						"action": "Erstellen Sie Ihr erstes Team-Postfach",
 						"description": "Legen Sie eine gemeinsame Adresse wie {supportAddress} an, damit Ihr ganzes Team an einem Ort lesen und antworten kann. Sie bestimmen, wer Mitglied ist; alle anderen sehen sie nicht.",
 						"title": "Noch keine Team-Postfächer"
+					},
+					"import": {
+						"action": "Verlauf importieren",
+						"actionTitle": "Die bereits in diesem Postfach vorhandene Mail importieren",
+						"cancel": "Import stoppen",
+						"cancelDialog": {
+							"description": "Den Import der vorhandenen Mail für {address} stoppen? Alles bisher Importierte bleibt erhalten, und Sie können später erneut starten.",
+							"thisInbox": "dieses Postfach",
+							"title": "Diesen Import stoppen?"
+						},
+						"cancelled": "Import gestoppt. Die bisher importierten {imported} Nachrichten wurden behalten.",
+						"completed": "Import abgeschlossen — {imported} Nachrichten liegen jetzt in diesem Postfach.",
+						"completedIndexed": "Aus {indexed} Unterhaltungen wurde gelernt.",
+						"completedSkipped": "{count} Nachricht konnte nicht importiert werden und liegt weiterhin auf dem Server | {count} Nachrichten konnten nicht importiert werden und liegen weiterhin auf dem Server",
+						"count": "{imported} von {total} Nachrichten importiert",
+						"description": "Holen Sie die Mail herein, die schon vor dem Verbinden in diesem Postfach lag. Alles Gefundene wird dem Team-Postfach in Owlat hinzugefügt; beim Anbieter wird nichts verändert oder gelöscht.",
+						"discovering": "Das Postfach wird durchgesehen, was es zu importieren gibt…",
+						"discoveringFolders": "Ordner werden gezählt…",
+						"failed": "Der Import wurde vor dem Ende abgebrochen.",
+						"failedKept": "Die bisher importierten {imported} Nachrichten wurden behalten.",
+						"idleNote": "Ein großes Archiv kann einige Stunden dauern. Sie können dieses Panel schließen — der Import läuft weiter, und importierte Unterhaltungen landen nie in der Antwort-Warteschlange.",
+						"importing": "Die vorhandene Mail wird hereingeholt. Das läuft weiter, wenn Sie das Panel schließen.",
+						"indexCount": "{indexed} von {imported} Unterhaltungen gelernt",
+						"indexProgressLabel": "Lernfortschritt",
+						"indexing": "Aus der importierten Mail wird gelernt.",
+						"inline": {
+							"discovering": "Verlaufsimport startet…",
+							"failed": "Der Verlaufsimport wurde vor dem Ende abgebrochen.",
+							"importing": "Verlaufsimport läuft · {imported} von {total}",
+							"indexing": "Aus der importierten Mail wird gelernt…"
+						},
+						"knowledgeDescription": "Erstellt aus dem Verlauf dieses Teams das gemeinsame Wissensprofil je Kontakt. Standardmäßig aus, weil dafür das gesamte Archiv gelesen wird.",
+						"knowledgeLabel": "Auch aus der importierten Mail lernen",
+						"progressLabel": "Import-Fortschritt",
+						"reconnectFirst": "Verbinden Sie dieses Postfach neu, bevor Sie seinen Verlauf importieren.",
+						"retry": "Erneut versuchen",
+						"start": "Vorhandene Mail importieren",
+						"startAgain": "Import erneut starten",
+						"title": "Vorhandene Mail importieren",
+						"toastCancelled": "Import gestoppt",
+						"toastStarted": "Import gestartet"
 					},
 					"intro": "Gemeinsame Adressen, die Ihr Team zusammen liest und von denen es sendet — etwa {supportAddress} oder {salesAddress}.",
 					"loadError": "Team-Postfächer konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
@@ -8697,12 +9058,12 @@
 				"completedBody": "Ihr E-Mail-Verlauf ist in Owlat.",
 				"completedBodyWithAi": "Ihr E-Mail-Verlauf ist in Owlat und Ihr KI-Assistent hat daraus gelernt.",
 				"completedTitle": "Sie sind vollständig umgezogen",
+				"completedPartialTitle": "Fast alles ist umgezogen",
+				"completedPartialBody": "Der größte Teil deiner Mail-Historie ist in Owlat.",
+				"completedPartialBodyWithAi": "Der größte Teil deiner Mail-Historie ist in Owlat, und deine KI-Assistenz hat daraus gelernt.",
+				"skippedTitle": "{count} Nachricht konnte nicht importiert werden | {count} Nachrichten konnten nicht importiert werden",
+				"skippedBody": "Sie liegen weiterhin auf deinem Mailserver — dort wurde nichts gelöscht. Ein erneuter Import versucht es noch einmal.",
 				"connectProvider": "{provider} verbinden",
-				"deleteMailboxAndData": "Postfach & Daten löschen",
-				"disconnect": "Trennen",
-				"disconnectDialogDescription": "Die Synchronisierung stoppt und das Postfach wird in Ihrem Posteingang ausgeblendet. Synchronisierte Nachrichten bleiben erhalten, sofern Sie sie nicht separat löschen.",
-				"disconnectDialogTitle": "Dieses Postfach trennen?",
-				"disconnectOperation": "Postfach trennen",
 				"discoveringFolders": "Ihre Ordner werden geprüft…",
 				"discoveringProgressLabel": "Postfach wird erkundet",
 				"discoveringTitle": "Ihr Postfach wird erkundet…",
@@ -8726,10 +9087,6 @@
 				"openInbox": "Posteingang öffnen",
 				"pageTitle": "E-Mails importieren — Owlat",
 				"providerPickTitle": "Wo liegen Ihre E-Mails derzeit?",
-				"purgeConfirm": "Alles löschen",
-				"purgeDialogDescription": "Jede importierte Nachricht, jeder Entwurf, jeder Ordner und jedes Label wird gelöscht und kann nicht wiederhergestellt werden. Verwenden Sie dies, wenn Sie das falsche Postfach verbunden haben oder Ihre importierten E-Mails wirklich entfernen möchten.",
-				"purgeDialogTitle": "Postfach und alle synchronisierten Daten löschen?",
-				"purgeOperation": "Postfach und synchronisierte Daten löschen",
 				"readyBody": "Wir importieren Ihren gesamten E-Mail-Verlauf — Posteingang, Gesendet und Ihr komplettes Archiv.",
 				"readyBulletAiOff": "Aktivieren Sie zuerst die KI-Wissensfunktion, damit der Assistent aus Ihren E-Mails lernen kann.",
 				"readyBulletAiOn": "Ihr KI-Assistent lernt aus jeder Konversation, jeweils pro Kontakt.",
@@ -8757,13 +9114,9 @@
 				"subheading": "Holen Sie Ihr bestehendes Postfach zu Owlat — und lassen Sie Ihren KI-Assistenten daraus lernen.",
 				"toastCancelled": "Migration abgebrochen. Importierte E-Mails wurden behalten.",
 				"toastCredentialsUpdated": "Zugangsdaten aktualisiert.",
-				"toastDisconnected": "Postfach getrennt.",
 				"toastImportStarted": "Ihr E-Mail-Verlauf wird jetzt importiert.",
-				"toastPurging": "Postfach und alle synchronisierten Daten werden gelöscht.",
 				"toastSignatureSaved": "Als Ihre Standardsignatur gespeichert.",
 				"tryAgain": "Erneut versuchen",
-				"updateCredentials": "Zugangsdaten aktualisieren",
-				"updateCredentialsTitle": "Zugangsdaten für {email} aktualisieren",
 				"useThisSignature": "Diese Signatur verwenden"
 			},
 			"replyQueue": {
@@ -8921,7 +9274,7 @@
 				"personalTitle": "Wählen Sie Ihre E-Mail-Adresse",
 				"selectDomain": "Domain auswählen",
 				"successBody": "Ihr Postfach ist verbunden.",
-				"successExternalNote": "Neue E-Mails an diese Adresse erscheinen in Kürze hier. Bereits im Konto vorhandene E-Mails werden nicht importiert — nur Nachrichten, die ab jetzt eintreffen.",
+				"successExternalNote": "Neue E-Mails an diese Adresse erscheinen in Kürze hier. Bereits im Konto vorhandene E-Mails sind noch nicht importiert — eine Administratorin oder ein Administrator kann sie unter Administration → Team & Zugriff → Team-Postfächer nachholen.",
 				"successHostedNote": "Stellen Sie sicher, dass Ihre Domain eingehende E-Mails an diese Owlat-Instanz sendet, damit Nachrichten ankommen.",
 				"successTeamBody": "Ihr Team-Postfach ist bereit. Mitglieder können es in ihrem Postbox öffnen.",
 				"successTeamTitle": "Ihr Team-Postfach ist verbunden",
@@ -9218,6 +9571,12 @@
 				"intro": "Owlat kann aus Ihren gesendeten Mails lernen, wie Sie schreiben, damit KI-Antwortvorschläge nach Ihnen klingen. Das ist nur beratend — es wird nie etwas automatisch gesendet.",
 				"noMailboxes": "Noch keine Postfächer. Fügen Sie ein Konto hinzu und senden Sie zuerst ein paar Nachrichten.",
 				"pageTitle": "Schreibstil — Owlat"
+			},
+			"externalAccount": {
+				"featureOffBody": "Auf dieser Owlat-Instanz ist die Funktion abgeschaltet. Eine Administratorin kann sie in den Einstellungen einschalten, danach kannst du hier ein Postfach verbinden.",
+				"featureOffTitle": "Verbundene Postfächer sind ausgeschaltet",
+				"pageTitle": "Verbundene Postfächer — Owlat",
+				"subheading": "Ein Postfach woanders, das Owlat mit diesem hier im Gleichschritt hält."
 			}
 		},
 		"send": {
@@ -9707,11 +10066,28 @@
 				"title": "Ungelesen-Zähler"
 			},
 			"updates": {
+				"channel": {
+					"prerelease": "inklusive Vorabversionen",
+					"stable": "stabil"
+				},
 				"checkNow": "Jetzt nach Updates suchen",
 				"checking": "Wird geprüft — Sie erhalten eine Benachrichtigung mit dem Ergebnis.",
 				"description": "Beim Start der App nach neuen Versionen suchen.",
+				"downloading": "Owlat {version} wird geladen.",
+				"failed": "Die Update-Prüfung wurde nicht abgeschlossen. Owlat versucht es später erneut.",
+				"lastChecked": "Zuletzt um {time} Uhr geprüft.",
+				"managedBy": "Verwaltet von {host} — {policy}.",
+				"policy": {
+					"latest": "neueste Version, {channel}",
+					"paused": "Updates von Ihrer Administration pausiert",
+					"pinned": "festgelegt auf {version}"
+				},
+				"ready": "Owlat {version} ist geladen und bereit.",
+				"restartNow": "Jetzt neu starten",
 				"title": "Updates",
-				"version": "Owlat {version}."
+				"unreachable": "Ihre Owlat-Instanz war nicht erreichbar, es wurde nichts geprüft. Versuchen Sie es erneut, sobald Sie wieder online sind.",
+				"version": "Owlat {version}.",
+				"viaGithub": "Updates kommen direkt von den GitHub-Releases."
 			},
 			"workspaces": {
 				"accent": "Akzent",
@@ -9801,6 +10177,8 @@
 				"authentication": "Authentifizierung",
 				"branch": "Branch",
 				"browse": "Durchsuchen…",
+				"devInstall": "Entwicklungsinstallation",
+				"devInstallHint": "Installiert einen Branch (oder einen lokalen Checkout) statt des Releases. Der Stack wird auf dem Server aus dem Quellcode gebaut.",
 				"host": "Serveradresse",
 				"hostPlaceholder": "203.0.113.5 oder vps.example.com",
 				"installDir": "Installationsverzeichnis",
@@ -9812,7 +10190,10 @@
 				"port": "Port",
 				"sshPasswordPlaceholder": "SSH-Passwort",
 				"sshUser": "SSH-Benutzer",
-				"useKeyFileInstead": "Stattdessen eine Schlüsseldatei verwenden"
+				"useKeyFileInstead": "Stattdessen eine Schlüsseldatei verwenden",
+				"version": "Version",
+				"versionHint": "Das neueste veröffentlichte Server-Release, wird beim Start der Installation ermittelt.",
+				"versionLatest": "Neuestes Release"
 			},
 			"finishing": {
 				"body": "Owlat ist unter {url} installiert, aber die Adresse ist noch nicht erreichbar. Legen Sie die untenstehenden Einträge an; sobald sie auflösen und TLS ausgestellt ist, wird hieraus automatisch „Workspace öffnen“.",
@@ -9906,6 +10287,11 @@
 			"haveServer": "Sie haben bereits einen Server?",
 			"heading": "Willkommen bei {brand}",
 			"pageTitle": "Willkommen — Owlat",
+			"reconnect": {
+				"action": "Erneut verbinden",
+				"heading": "Erneut anmelden",
+				"tagline": "Deine Sitzung für diesen Server ist beendet. Verbinde dich erneut, um weiterzumachen."
+			},
 			"setup": {
 				"description": "Installieren Sie Owlat per SSH auf einem frischen Linux-Server.",
 				"title": "Neuen Server einrichten"
@@ -10002,6 +10388,21 @@
 			"successBody": "Sie sind {organization} erfolgreich beigetreten.",
 			"successTitle": "Willkommen im Team!",
 			"teamInboxAdded": "Das Team-Postfach {address} finden Sie in Ihrer Seitenleiste."
+		}
+	},
+	"oauth": {
+		"google": {
+			"callback": {
+				"back": "Zurück zum Mail-Import",
+				"connecting": "Dein Google-Postfach wird verbunden …",
+				"denied": "Die Anmeldung wurde abgebrochen, es wurde nichts verbunden. Du kannst jederzeit neu starten.",
+				"deniedTitle": "Google-Anmeldung abgebrochen",
+				"failed": "Die Google-Anmeldung konnte nicht abgeschlossen werden. Bitte starte sie erneut.",
+				"failedTitle": "Verbindung nicht abgeschlossen",
+				"missingParams": "Dieser Link ist unvollständig. Starte die Google-Anmeldung erneut auf der Seite für den Mail-Import.",
+				"operation": "Google-Anmeldung abschließen",
+				"pageTitle": "Google wird verbunden"
+			}
 		}
 	},
 	"postbox": {
@@ -10212,6 +10613,8 @@
 				}
 			},
 			"resendKeyLabel": "Resend-API-Schlüssel",
+			"reverseDnsBody": "Jede Versand-IP oben braucht einen PTR-Eintrag auf ihren EHLO-Hostnamen. Er wird dort gesetzt, wo Sie die IP mieten — in der Konsole Ihres Hosters —, nicht in Ihrer DNS-Zone. Das Setup prüft das vor dem Abschluss, und bis es passt, verlässt keine E-Mail den Server.",
+			"reverseDnsHeading": "Reverse DNS (PTR) — vor dem Abschluss einrichten",
 			"sesAccessKeyLabel": "Access-Key-ID",
 			"sesRegionLabel": "Region",
 			"sesSecretKeyLabel": "Secret Access Key",
@@ -10360,6 +10763,42 @@
 		"aiProviders": {
 			"currentModel": "{model} (aktuell)",
 			"customModel": "Eigene Modell-ID…",
+			"decision": {
+				"fallback": {
+					"agent": {
+						"body": "An. Jemand wartet auf die Antwort; eine Entscheidung, die nicht beantwortet werden kann, sollte daher Ihr Sprachmodell beantworten, statt den Entwurf aufzuhalten.",
+						"label": "Agenten-Pipeline"
+					},
+					"classifiers": {
+						"body": "Aus, und nicht einstellbar. Kategorie und Antwortbedarf laufen für jede eingehende Nachricht; ein einziger Ausfall würde den gesamten Posteingang auf ein Modell umleiten, das zwanzig- bis fünfzigmal so viel kostet. Sie behalten ihre deterministische Antwort und versuchen es später erneut.",
+						"label": "Klassifikatoren im Hintergrund"
+					}
+				},
+				"keyFromEnvironment": "Hier ist noch kein Schlüssel hinterlegt. Das Speichern gelingt trotzdem, wenn die Installation TYPESAFE_API_KEY in ihrer Umgebung bereitstellt; andernfalls löst die Ebene auf Ihr Sprachmodell auf.",
+				"providers": {
+					"llm": {
+						"hint": "Kein Dritter. Dieselben Fragen gehen an Ihr konfiguriertes Sprachmodell, das sie ohne kalibrierte Wahrscheinlichkeiten beantwortet.",
+						"label": "Sprachmodell verwenden (kein Dritter)"
+					},
+					"typesafe": {
+						"hint": "Die Jev-Entscheidungsmodelle. Fügen Sie einen TypeSafe-API-Schlüssel ein; er wird verschlüsselt gespeichert und ausschließlich an deren API gesendet.",
+						"label": "TypeSafe Jev (empfohlen)"
+					}
+				},
+				"thresholds": {
+					"choice": {
+						"body": "Beurteilt anhand der Konfidenz, die der Anbieter zur gewählten Option mitliefert; sie beschreibt, wie ausgeprägt die Verteilung über die Optionen ist.",
+						"label": "Kategorie- und Bewertungsantworten"
+					},
+					"noul": {
+						"body": "Beurteilt anhand des Abstands zu 0,5, denn eine Ja/Nein-Antwort trägt kein Konfidenzfeld. 0,55 und 0,95 sind beide ein Ja, und nur eines davon taugt als Grundlage zum Handeln.",
+						"label": "Ja/Nein-Antworten"
+					}
+				},
+				"validation": {
+					"consentRequired": "Lesen Sie, was diese Installation verlässt, und setzen Sie den Haken, bevor Sie einen fremden Entscheidungsanbieter aktivieren."
+				}
+			},
 			"embedders": {
 				"google": {
 					"label": "Google (gehostet)"
@@ -10615,6 +11054,7 @@
 				"controls": "Steuerung",
 				"deliverability": "Zustellbarkeit",
 				"deliveryProvider": "Zustelldienst",
+				"desktopUpdates": "Desktop-Updates",
 				"emailTheme": "E-Mail-Design",
 				"features": "Funktionen",
 				"forms": "Formulare",
@@ -11569,6 +12009,7 @@
 					"mtaIdentity": "Identität der ausgehenden IP prüfen",
 					"preflight": "Voraussetzungen prüfen",
 					"pushImages": "Images auf den Server hochladen",
+					"resolveRelease": "Neuestes Release ermitteln",
 					"seedDemo": "Demodaten einspielen",
 					"sshConnect": "Über SSH verbinden",
 					"systemCheck": "Server prüfen",
@@ -11580,7 +12021,7 @@
 			"provisioningForm": {
 				"dnsNotes": {
 					"dmarc": "DMARC — Startwert; nach der Beobachtung verschärfen.",
-					"ptr": "Richten Sie für diese IP zusätzlich Reverse DNS (PTR) bei Ihrem Hoster ein.",
+					"ptr": "Reverse DNS — dort setzen, wo Sie die IP mieten (bei Ihrem Hoster), nicht in Ihrer DNS-Zone. Bis es passt, wird kein Versand zugelassen.",
 					"spf": "SPF — Startwert; bestätigen Sie ihn unter Einstellungen → Domains."
 				},
 				"errors": {
@@ -11597,6 +12038,10 @@
 				"serverIpPlaceholder": "die öffentliche IP Ihres Servers"
 			},
 			"updater": {
+				"unreachable": {
+					"body": "{host} war nicht erreichbar. Owlat versucht es später erneut.",
+					"title": "Update-Prüfung übersprungen"
+				},
 				"upToDate": {
 					"body": "Sie haben die neueste Version.",
 					"title": "Owlat ist aktuell"
@@ -11938,7 +12383,9 @@
 			},
 			"useMailMigration": {
 				"cancelOperation": "Postfachmigration abbrechen",
-				"startOperation": "Postfachmigration starten"
+				"cancelSharedOperation": "Import des Team-Postfachs stoppen",
+				"startOperation": "Postfachmigration starten",
+				"startSharedOperation": "Import des Team-Postfachs starten"
 			},
 			"usePostboxAppPasswords": {
 				"generateOperation": "App-Passwort erzeugen",
@@ -12732,6 +13179,10 @@
 				"sealedMail": {
 					"keywords": "versiegelte Post, Verschlüsselung, Wiederherstellungspaket, privater Schlüssel, Ende-zu-Ende",
 					"title": "Versiegelte Post"
+				},
+				"connectedAccount": {
+					"keywords": "trennen, entfernen, löschen, verbundenes Postfach, externes Konto, gmail, outlook, fastmail",
+					"title": "Verbundenes Postfach trennen"
 				}
 			}
 		},
@@ -13513,11 +13964,19 @@
 				"title": "Während Sie weg waren"
 			}
 		},
+		"useDesktopUpdatePolicy": {
+			"checkOperation": "Nach Desktop-Releases suchen",
+			"saveOperation": "Richtlinie für Desktop-Updates speichern"
+		},
 		"useDesktopWorkspaces": {
 			"errors": {
-				"stateMismatch": "Unerwartete Anmeldeantwort (State stimmt nicht überein).",
+				"generic": "Verbindung zu diesem Server nicht möglich.",
+				"noSession": "Der Server hat die Anmeldung akzeptiert, aber keine Sitzung zurückgegeben. Bitte erneut anmelden.",
+				"stateMismatch": "Dieser Anmeldelink ist abgelaufen oder wurde bereits verwendet. Starte die Verbindung erneut.",
 				"unreachable": "Unter {siteUrl} war keine Owlat-Instanz erreichbar",
-				"unusableConfig": "Diese Instanz hat keine verwendbare Konfiguration zurückgegeben."
+				"unusableConfig": "Diese Instanz hat keine verwendbare Konfiguration zurückgegeben.",
+				"verifyFailed": "Die Anmeldung bei {siteUrl} konnte nicht abgeschlossen werden (Fehler {status}). Bitte erneut anmelden.",
+				"verifyRouteMissing": "{siteUrl} unterstützt die Desktop-Anmeldung nicht. Aktualisiere den Server auf v0.4.14 oder neuer und verbinde dich erneut."
 			}
 		},
 		"useEmailEditorBridge": {
@@ -13683,12 +14142,14 @@
 		},
 		"useServerProvisioning": {
 			"alreadyInstalled": "bereits installiert",
+			"developmentInstall": "Entwicklungsinstallation",
 			"didNotComplete": "Die Einrichtung wurde nicht abgeschlossen (Exit {code}).",
 			"exitCode": "Exit {code}",
 			"hostKeyAccepted": "akzeptiert",
 			"knownHost": "bekannter Host",
 			"localBuildFailed": "Der lokale Image-Build ist fehlgeschlagen (Exit {code}). Läuft Docker auf diesem Rechner?",
 			"localSetupImageFailed": "Der lokale Setup-Image-Build ist fehlgeschlagen (Exit {code}).",
+			"releaseNotFound": "Es wurde kein veröffentlichtes Owlat-Release gefunden. Prüfen Sie die Netzwerkverbindung des Servers und versuchen Sie es erneut.",
 			"stepFailed": "„{step}“ fehlgeschlagen (Exit {code}).",
 			"unknownError": "Etwas ist schiefgelaufen.",
 			"uploadedLocalSource": "lokalen Arbeitsstand hochgeladen"
@@ -14211,6 +14672,10 @@
 					"autonomy": {
 						"description": "Der Agent versendet Antworten und führt Aktionen ohne menschliche Freigabe aus, wenn die Konfidenz hoch ist.",
 						"label": "Autonome Aktionen"
+					},
+					"decisionPlane": {
+						"description": "Ja/Nein-, Kategorie- und Bewertungsentscheidungen der KI-Funktionen von einem eigenen Entscheidungsanbieter statt von einem Textmodell beantworten lassen. Ausgeschaltet bleibt jede Entscheidung bei dem von Ihnen konfigurierten Sprachmodell.",
+						"label": "Entscheidungsebene"
 					},
 					"description": "Hauptschalter für alle KI-gestützten Funktionen. Benötigt einen LLM-Anbieter.",
 					"knowledge": {

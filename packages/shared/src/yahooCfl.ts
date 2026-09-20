@@ -5,7 +5,7 @@
  * only a bilateral enrollment the operator performs on Yahoo's sender site
  * against a domain we already sign with DKIM. So the whole integration is a
  * GUIDED FLOW plus a recorded state, and every decision it makes is a pure
- * function of (record, DKIM precondition, clock) — no I/O, no `Date.now()` (D15).
+ * function of (record, DKIM precondition, clock) — no I/O, no `Date.now()`.
  *
  * ARF PARSING IS NOT HERE. A Yahoo CFL report is an ordinary RFC 5965 ARF
  * message and routes through the SHIPPED processor
@@ -17,16 +17,16 @@
  * pure function of the last observed report and the clock, so the re-check needs
  * no cron and no write, and the wizard can never show a stale verdict.
  *
- * D2 (the additive-only third-party rule) is the invariant this module exists
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE is the invariant this module exists
  * to honour: being un-enrolled is a SUPPORTED CONFIGURATION. It lowers
  * measurement confidence and substitutes a tighter proxy threshold for the
  * complaint gate. It never throws, never blocks a send, never blocks a phase
  * promotion, and never produces an error state or a "setup incomplete" nag.
  *
  * WHICH complaint signal that substitution picks lives in
- * `apps/api/convex/delivery/signals/yahooCfl.ts` — a different concern
- * with a different owner (P3-8's substitution table subsumes that file, not this
- * state machine), and it lives next to the ramp because gate 3's threshold has
+ * `apps/api/convex/delivery/signals/yahooCfl.ts` — a different concern with a
+ * different owner (the substitution table subsumes that file, not this state
+ * machine), and it lives next to the ramp because gate 3's threshold has
  * exactly one home there.
  */
 
@@ -72,7 +72,7 @@ export const YAHOO_CFL_SUBMISSION_PATIENCE_MS = 14 * 24 * 60 * 60 * 1000;
 /**
  * How much `lastReportAt` must ADVANCE before a report is worth a write.
  *
- * D16 / ADR-0042: complaints arrive in bursts, and every report for a domain
+ * ADR-0042: complaints arrive in bursts, and every report for a domain
  * lands on the SAME enrollment row — patching it per complaint is exactly the
  * single-document OCC contention ADR-0042 was written about, and on the complaint
  * hot path a write conflict costs a complaint. The row exists only to prove
@@ -192,7 +192,7 @@ function unchanged(
  * The state machine. Pure: same inputs, same output, no clock read.
  *
  * A refused transition is NOT an error — it returns `changed: false` plus the
- * reason, so the caller renders guidance instead of throwing (D2).
+ * reason, so the caller renders guidance instead of throwing.
  */
 export function applyYahooCflEvent(
 	record: YahooCflEnrollmentRecord,
@@ -203,15 +203,15 @@ export function applyYahooCflEvent(
 	// absorb `Infinity` or a negative value and pin the row permanently `enrolled`
 	// (or permanently un-lapsable), which would hold the yahoo complaint gate on
 	// the looser direct threshold forever. Refuse it instead — refusing is not an
-	// error, it is a reason (D2).
+	// error, it is a reason.
 	if (!Number.isFinite(event.at) || event.at <= 0) return unchanged(record, 'invalid_timestamp');
 	switch (event.kind) {
 		case 'submit': {
 			// A LIVE enrollment has nothing to submit. A LAPSED one does: that is the
 			// whole point of the derived lapse, and re-submitting Yahoo's form is the
 			// documented remedy the fourth step names. So the refusal is keyed on the
-			// DERIVED state, not the stored one — `event.at` is the clock (D15: the
-			// clock is a parameter, never read here).
+			// DERIVED state, not the stored one — `event.at` is the clock (the clock
+			// is a parameter, never read here).
 			const derived = deriveYahooCflState(record, event.at).state;
 			// Checked BEFORE the precondition: a live enrollment on a domain that has
 			// since lost its DKIM readiness must not be told to "publish a DKIM record"
@@ -259,21 +259,20 @@ export function applyYahooCflEvent(
 			// the FBL address would otherwise MANUFACTURE an enrollment for a domain
 			// the operator never enrolled — and with it `confidence: 'high'` and the
 			// looser direct complaint threshold, silencing the yahoo cell's complaint
-			// gate with a signal that reads ~0 forever (the confident wrong signal
-			// D14 exists to forbid).
+			// gate with a signal that reads ~0 forever — a confident wrong signal is
+			// the one thing the measurement must never produce.
 			//
-			// A report may therefore CONFIRM and REFRESH an enrollment, never create
-			// one. `not_started` is refused — which is not an error, it is a reason
-			// (D2) — so no row is ever written by an internet-triggered path. The
-			// step-4 promise ("the first Yahoo complaint that arrives confirms it
-			// automatically") is attached to `awaiting_yahoo`, and keeps working.
+			// A report may therefore CONFIRM and REFRESH an enrollment, never create one. `not_started` is
+			// refused — which is not an error, it is a reason — so no row is ever written by an
+			// internet-triggered path. The step-4 promise ("the first Yahoo complaint that arrives confirms
+			// it automatically") is attached to `awaiting_yahoo`, and keeps working.
 			if (record.state === 'not_started') return unchanged(record, 'not_submitted');
 			// Keep the newest observation; an out-of-order replay must never rewind
 			// the clock. A report also silently un-lapses the derived state, because
 			// the derived state is a function of exactly this timestamp.
 			const lastReportAt = Math.max(record.lastReportAt ?? 0, event.at);
 			if (record.state === 'enrolled') {
-				// COALESCED (D16): an already-enrolled row is only patched once the
+				// COALESCED: an already-enrolled row is only patched once the
 				// liveness timestamp moves by a full coalesce window, so a burst of
 				// complaints for one domain is a single write instead of one per report.
 				if (lastReportAt - (record.lastReportAt ?? 0) < YAHOO_CFL_REPORT_COALESCE_MS) {

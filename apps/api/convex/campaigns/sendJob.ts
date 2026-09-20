@@ -162,7 +162,7 @@ export const advanceSendJob = internalMutation({
 });
 
 /**
- * Checkpoint the MULTI-DAY SEND PLAN's day state (deliverability plan P3-7).
+ * Checkpoint the MULTI-DAY SEND PLAN's day state.
  *
  * Separate from `advanceSendJob` on purpose: the cursor advance is the walk's
  * CORRECTNESS checkpoint — a crash between the enqueue and that patch re-runs

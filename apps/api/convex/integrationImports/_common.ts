@@ -22,12 +22,12 @@ export type IntegrationProviderKind = (typeof INTEGRATION_PROVIDER_KINDS)[number
 
 /**
  * `mandrill` carries NO credential field, and that is the decision, not an
- * omission. Mandrill is a SEND provider here, and plan D2 froze send-provider
- * credentials as env-only (`MANDRILL_API_KEY`): there is deliberately no
- * transports table, so a key pasted into an import form would be a second
- * credential model for the same account. The rejects importer therefore reads
- * the same env var the send adapter does and the run config carries only the
- * non-secret question — which is, for a whole-account blacklist, nothing at all.
+ * omission. Mandrill is a SEND provider here, and send-provider credentials are
+ * env-only (`MANDRILL_API_KEY`): there is deliberately no transports table, so a
+ * key pasted into an import form would be a second credential model for the same
+ * account. The rejects importer therefore reads the same env var the send
+ * adapter does and the run config carries only the non-secret question — which
+ * is, for a whole-account blacklist, nothing at all.
  *
  * Mailchimp keeps its pasted key: the Marketing API is a DIFFERENT system with a
  * different key, connected per-import and never used to send.
@@ -39,9 +39,8 @@ export type IntegrationProviderConfig =
 			listId: string;
 			/**
 			 * Opt-in: also carry over the audience's `unsubscribed` and `cleaned`
-			 * members as suppressions (plan D9). Absent/false = the pre-P4.1
-			 * behavior exactly — those members are skipped and nothing is written
-			 * to the blocklist.
+			 * members as suppressions. Absent/false — those members are skipped and
+			 * nothing is written to the blocklist.
 			 */
 			importSuppressions?: boolean;
 	  }
@@ -73,7 +72,7 @@ export class RetryableProviderError extends Error {
 	}
 }
 
-// ─── Suppression carry-over (plan D9) ───────────────────────────────────────
+// ─── Suppression carry-over ───────────────────────────────────────
 
 /**
  * One address a provider has already stopped mailing, on its way into Owlat's

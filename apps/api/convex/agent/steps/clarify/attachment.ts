@@ -31,7 +31,7 @@ type AttachmentClarifyCtx = Pick<ActionCtx, 'runAction' | 'runQuery'>;
  * question, with the candidate filenames as pick-one options. The label prefers a
  * human title over the raw filename. Pure + exported for tests.
  */
-export function buildAttachmentQuestion(
+function buildAttachmentQuestion(
 	candidates: AttachmentSuggestions['candidates']
 ): ClarificationQuestion {
 	const options: string[] = [];

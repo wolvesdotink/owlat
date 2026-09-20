@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 
 const { t } = useI18n();
@@ -48,6 +49,28 @@ const {
 	handleSave,
 	handleTest,
 	handleLoadModels,
+	// The DECISION plane — the opt-in third card. Every one of these is inert
+	// until an operator switches it on, and `decisionSaveArgs` sends nothing at
+	// all until then, so an install that never opted in saves what it always did.
+	decisionOptions,
+	decisionForm,
+	decisionEnabled,
+	decisionConsent,
+	decisionError,
+	decisionTestState,
+	decisionMeta,
+	decisionRequiresKey,
+	decisionModelOptions,
+	decisionEndpoint,
+	decisionKeyPreview,
+	storedDecisionKeySet,
+	decisionKeyHint,
+	decisionConsentOwed,
+	decisionDegradedReasons,
+	decisionThresholdsInert,
+	decisionFallbackSurfaces,
+	decisionThresholds,
+	handleDecisionTest,
 } = useAiProviderForm();
 
 // The registry hands option labels over as message keys (aiProviders.ts:
@@ -59,6 +82,37 @@ const providerOptions = computed(() =>
 const embeddingOptions = computed(() =>
 	embeddingOptionKeys.map((option) => ({ ...option, label: t(option.label) }))
 );
+
+// `validateDecisionConfig` answers in message keys, like its language sibling.
+const decisionErrorText = computed(() => (decisionError.value ? t(decisionError.value) : null));
+
+// What the decision plane actually did over the last day, read off the same
+// ledger rows the spend ceiling reads: how often the expensive fallback hop
+// fired, how often an answer came back uncalibrated (so every threshold
+// downstream went inert) and how often the provider pushed back. A plane that
+// has answered nothing reports zeroes and the card stays quiet about it.
+const { data: decisionCounters } = useOrganizationQuery(
+	api.analytics.llmUsage.getDecisionPlaneCounters,
+	() => ({ hoursBack: DECISION_HEALTH_HOURS })
+);
+const decisionHealth = computed(() =>
+	decisionCounters.value && decisionCounters.value.attempts > 0
+		? {
+				attempts: decisionCounters.value.attempts,
+				fallbackRate: decisionCounters.value.fallbackRate,
+				uncalibratedRate: decisionCounters.value.uncalibratedRate,
+				throttledRate: decisionCounters.value.throttledRate,
+			}
+		: null
+);
+// Both test buttons read the STORED row, so both wait for a clean, saved form.
+const canTest = computed(() => !isDirty.value && config.value?.configured === true);
+const decisionFeature = useFeatureFlag();
+const decisionFeatureState = computed(() => {
+	if (decisionFeature.error.value) return 'error';
+	if (decisionFeature.isLoading.value) return 'loading';
+	return decisionFeature.isEnabled('ai.decisionPlane') ? 'enabled' : 'disabled';
+});
 
 // Unsaved-changes guard: navigating away with an unsaved provider edit — a
 // pasted API key above all — prompts to save/discard instead of dropping it.
@@ -109,7 +163,7 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 					aria-busy="true"
 					:aria-label="t('dashboard.admin.instance.aiProvider.loading')"
 				>
-					<UiCard v-for="card in 2" :key="card">
+					<UiCard v-for="card in 3" :key="card">
 						<div class="space-y-4">
 							<UiSkeleton class="h-5 w-48" />
 							<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
@@ -313,6 +367,39 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 						</div>
 					</div>
 				</UiCard>
+
+				<SettingsAiDecisionCard
+					v-model:enabled="decisionEnabled"
+					v-model:kind="decisionForm.kind"
+					v-model:model-choice="decisionForm.modelChoice"
+					v-model:model-custom="decisionForm.modelCustom"
+					v-model:base-url="decisionForm.baseUrl"
+					v-model:api-key="decisionForm.apiKey"
+					v-model:fallback-enabled="decisionForm.isFallbackEnabled"
+					v-model:consent="decisionConsent"
+					:options="decisionOptions"
+					:meta="decisionMeta"
+					:requires-key="decisionRequiresKey"
+					:model-options="decisionModelOptions"
+					:endpoint-host="decisionEndpoint"
+					:stored-key-set="storedDecisionKeySet"
+					:key-preview="decisionKeyPreview"
+					:error="decisionErrorText"
+					:key-hint="decisionKeyHint"
+					:consent-owed="decisionConsentOwed"
+					:degraded-reasons="decisionDegradedReasons"
+					:thresholds-inert="decisionThresholdsInert"
+					:fallback-surfaces="decisionFallbackSurfaces"
+					:thresholds="decisionThresholds"
+					:test-state="decisionTestState"
+					:health="decisionHealth"
+					:health-hours="DECISION_HEALTH_HOURS"
+					:is-testing="isTesting"
+					:is-saving="isSaving"
+					:can-test="canTest"
+					:feature-state="decisionFeatureState"
+					@test="handleDecisionTest"
+				/>
 
 				<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 					<div class="flex items-center gap-3">

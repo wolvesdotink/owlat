@@ -4,7 +4,7 @@
  * the plumbing its two callers share.
  *
  * Two callers, two audiences:
- *   - `seedDemo/index.ts` — `POST /seed/demo`, DEV deployments only
+ *   - `seedDemo/indexHttp.ts` — `POST /seed/demo`, DEV deployments only
  *     (`OWLAT_DEV_MODE`), runs EVERY loader, including the dummy teammate
  *     sign-ins and their hosted mailboxes.
  *   - `sampleData/*` — the opt-in "explore with sample data" path a REAL
@@ -125,7 +125,7 @@ export const SEEDED_TABLES: TableNames[] = [
  * `devShortcuts/forceVerifyDomain` (which never tags a row the operator
  * created). Anything untagged is the operator's own data and is never touched.
  */
-export const REMOVABLE_SEED_TAGS: readonly string[] = ['demo', 'dev-forced'];
+const REMOVABLE_SEED_TAGS: readonly string[] = ['demo', 'dev-forced'];
 
 export interface SeedSummary {
 	inserted: Record<string, number>;

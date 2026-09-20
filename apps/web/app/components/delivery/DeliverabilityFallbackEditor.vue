@@ -19,7 +19,7 @@ const isEnabled = defineModel<boolean>("enabled", { required: true });
 const relay = defineModel<string>("relay", { required: true });
 const isWarmupOverflowEnabled = defineModel<boolean>("warmupOverflow", { required: true });
 // Every enabled non-MTA transport, not "the one called ses" — the same
-// capability question `lib/sendProviders/fallbackEligibility.ts` asks (plan D6).
+// capability question `lib/sendProviders/fallbackEligibility.ts` asks.
 const enabledRelays = computed(() => eligibleFallbackRelays(props.providers));
 
 watch(

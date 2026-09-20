@@ -6,6 +6,8 @@
  */
 
 import type Redis from 'ioredis';
+import type { Queue } from 'groupmq';
+import type { EmailJob } from '../types.js';
 import { isRedisHealthy } from '../redis.js';
 import { logger } from '../monitoring/logger.js';
 import { createHash } from 'crypto';
@@ -47,17 +49,20 @@ export interface DegradationState {
  * Check overall system health for the /send endpoint
  * Returns the degradation state which determines if new work can be accepted
  */
-export async function checkSystemHealth(redis: Redis): Promise<DegradationState> {
+export async function checkSystemHealth(
+	redis: Redis,
+	queue: Pick<Queue<EmailJob>, 'getWaitingCount'>
+): Promise<DegradationState> {
 	const redisOk = await isRedisHealthy();
 	let backpressure = false;
 	let allIpsBlocked = false;
 
 	if (redisOk) {
-		// Check queue depth for back-pressure
-		// GroupMQ stores pending jobs — we check an approximate depth
+		// GroupMQ's waiting structures are the queue source of truth. Delayed jobs
+		// are a subset while healthy, so adding them would double-count retries.
 		try {
-			const depth = await redis.get('mta:metrics:total-pending');
-			if (depth && parseInt(depth, 10) > BACKPRESSURE_QUEUE_THRESHOLD) {
+			const depth = await queue.getWaitingCount();
+			if (depth > BACKPRESSURE_QUEUE_THRESHOLD) {
 				backpressure = true;
 			}
 		} catch {

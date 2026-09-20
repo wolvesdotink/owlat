@@ -1,8 +1,8 @@
 /**
- * Reader signature-badge derivation for inbound PGP-SIGNED (unencrypted) mail
- * (F2, adoption-gaps plan 2026-08-16, decision D9). Turns the honest signature
- * verdict persisted at ingest (F1, `mailMessages.inboundSignatureInfo`) into
- * ONE badge state, and owns the badge PRECEDENCE rule:
+ * Reader signature-badge derivation for inbound PGP-SIGNED (unencrypted) mail.
+ * Turns the honest signature verdict persisted at ingest
+ * (`mailMessages.inboundSignatureInfo`) into ONE badge state, and owns the
+ * badge PRECEDENCE rule:
  *
  *   sealed record → signature record → structural class ("not verified")
  *
@@ -76,13 +76,13 @@ const KEY_SOURCE_LABELS: Record<Exclude<InboundSignatureKeySource, 'not_found'>,
 
 /**
  * Derive the reader's signature badge from the inbound verdict, honoring the
- * D9 precedence: a present SEALED record always wins, so this returns `null`
+ * precedence above: a present SEALED record always wins, so this returns `null`
  * whenever `sealed` is given (the sealed driver renders instead). Pure — no
  * side effects — so the honesty audit can enumerate every reachable string
  * against its condition.
  *
  * Returns `null` (→ the structural "not verified" fallback) when:
- *   - there is no signature record at all (plaintext / legacy / pre-F1 row);
+ *   - there is no signature record at all (plaintext / legacy / older row);
  *   - the verifier itself failed (`failure: 'verification_error'`) — we hold
  *     no verdict, so we assert neither "verified" nor "invalid";
  *   - the record is inconsistent (valid without a fingerprint) — the pin match

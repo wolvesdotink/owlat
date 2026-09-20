@@ -7,12 +7,9 @@
  * implementation. Every read here is an indexed point read: the seam runs
  * inside enqueue transactions.
  *
- * Mandrill plan D6/D7 (= the seams plan's P0.3; that plan's own D6/D7 are the
- * webhook registry and the mta-protocol package, so the numbers here are
- * qualified rather than left ambiguous): the answer comes from the
- * SENDING-DOMAIN PROVIDER REGISTRY, not from
- * an identity check. This module used to open with `relayProviderType !== 'ses'
- * → false` and then inline SES's proof, which made "verifiable" mean "is SES";
+ * The answer comes from the SENDING-DOMAIN PROVIDER REGISTRY, not from an
+ * identity check. This module used to open with `relayProviderType !== 'ses' →
+ * false` and then inline SES's proof, which made "verifiable" mean "is SES";
  * the proof now lives with the provider that owns it
  * (`domains/providers/<kind>/`) and this file only routes the question.
  */
@@ -31,10 +28,10 @@ import { relayIdentityProviderFor } from '../../domains/providers';
  * an unverifiable relay simply never gets handed the domain, and the routing gate
  * turns that into an actionable `DeliverabilityRouteError`.
  *
- * THE REGISTRY IS THE COMPOSED ONE (the seams plan's P3.2), so a bundled plugin
- * transport that contributed a `domainIdentity` answers here exactly as `ses` and
- * `mandrill` do — same call, same fail-closed default, no branch on tier. This
- * file has named no provider since P0.3 and it still names none.
+ * THE REGISTRY IS THE COMPOSED ONE, so a bundled plugin transport that
+ * contributed a `domainIdentity` answers here exactly as `ses` and `mandrill` do
+ * — same call, same fail-closed default, no branch on tier. This file names no
+ * provider.
  */
 export async function relayDomainVerified(
 	ctx: QueryCtx | MutationCtx,

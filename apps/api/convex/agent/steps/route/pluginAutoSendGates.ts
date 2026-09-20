@@ -20,7 +20,7 @@ import { AUTONOMY_GATE_CATALOG } from '../../../plugins/autonomyGateCatalog';
 import { BUNDLED_PLUGIN_AUTONOMY_GATE_MODULES } from '../../../plugins/autonomyGateModules.generated';
 import type { AutoSendGateDecision } from './autoSendGates';
 
-export interface HostedAutonomyGateInputLimits {
+interface HostedAutonomyGateInputLimits {
 	readonly fromCodePoints: number;
 	readonly toCodePoints: number;
 	readonly subjectCodePoints: number;

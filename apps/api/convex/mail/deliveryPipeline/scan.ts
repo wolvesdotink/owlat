@@ -38,12 +38,11 @@ import { scanAttachmentBytes } from '../mtaClient';
  */
 export async function scanInboundAttachments(
 	mta: { baseUrl: string; apiKey: string } | null,
-	rawBytes: Buffer
+	rawBinary: string
 ): Promise<'clean' | 'infected' | 'skipped' | undefined> {
 	if (!mta) return undefined; // scanner not configured → no verdict asserted
 
-	// The extractor wants a binary string (one char per byte) so binary parts survive.
-	const parts = extractAttachments(rawBytes.toString('latin1'));
+	const parts = extractAttachments(rawBinary);
 	// Only real (non-inline) attachment leaves carry a malware risk worth gating
 	// delivery on; inline images (logos/signatures) are skipped, matching the
 	// `captureAttachments` policy.
@@ -60,13 +59,12 @@ export async function scanInboundAttachments(
 		if (scanned >= ATTACHMENT_COMPOSE_LIMITS.maxCount) break;
 		scanned++;
 		const filename = part.filename || 'attachment';
-		const data = Buffer.from(part.bytes);
 		// Shared client owns the POST + fail-open (scanner-down / network error
 		// resolve to 'skipped' and are surfaced via warnScanSkipped). This
 		// path's POLICY: AGGREGATE the per-part verdicts — a single confirmed
 		// infection short-circuits to quarantine; any skip downgrades the
 		// aggregate to 'skipped'.
-		const verdict = await scanAttachmentBytes(mta, filename, data);
+		const verdict = await scanAttachmentBytes(mta, filename, part.bytes);
 		if (verdict.kind === 'infected') {
 			// Confirmed malware — short-circuit; the message goes to quarantine.
 			return 'infected';

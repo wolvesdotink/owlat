@@ -206,6 +206,18 @@ export {
 	spfRecordHasExactIpMechanism,
 } from './spf';
 export {
+	DOMAIN_RECEIVING_MODES,
+	EXTERNAL_RECEIVING_PROVIDER_IDS,
+	externalReceivingSpfInclude,
+	externalReceivingSpfMerged,
+	inspectExternalReceivingMx,
+	mergeExternalReceivingSpf,
+	type DomainReceivingMode,
+	type ExternalReceivingMxCheck,
+	type ExternalReceivingMxDeps,
+	type ExternalReceivingProvider,
+} from './externalReceiving';
+export {
 	GOVERNED_MESSAGE_TYPES,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,
 	ROUTING_LEASE_UNREADABLE_CODE,

@@ -105,7 +105,7 @@ export function providerFor(
  *
  * A module with no builder yields the empty extras the governed path always
  * sent. That is now the only reason a kind gets none: since plugin-tier parity
- * (the seams plan's P3.1) a hosted module may export the same builder, so this
+ * a hosted module may export the same builder, so this
  * boundary asks BOTH tiers the same question and the `?? {}` — not a tier test —
  * is what answers for a module that declines.
  *

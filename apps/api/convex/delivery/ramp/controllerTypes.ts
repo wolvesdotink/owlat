@@ -1,5 +1,5 @@
 /**
- * The AIMD ramp controller's vocabulary (plan D9, D12, D15).
+ * The AIMD ramp controller's vocabulary.
  *
  * Shared vocabulary: the types the pure decision function, the cron shell that
  * feeds it and the audit writer that records it all agree on, plus the two tiny
@@ -14,8 +14,8 @@ import type { RampGateEvaluation, RampGateId, RampVerdict } from './gateTypes';
 
 /**
  * Why the controller decided what it decided, as a stable machine-readable
- * code. A gate failure reports the GATE ID itself — the plan's `reason:
- * failedGate` — so an operator reading the audit row is told which measurement
+ * code. A gate failure reports the GATE ID itself — `reason: failedGate` — so
+ * an operator reading the audit row is told which measurement
  * broke rather than the useless fact that "a gate" broke.
  */
 export type RampControlReason =
@@ -40,7 +40,7 @@ export type RampControlReason =
 	| 'freeze_unreadable'
 	/** The stored share was not a share (negative, above 1, or non-finite). */
 	| 'share_unreadable'
-	/** Thin or absent evidence (plan D10): hold, in both directions. */
+	/** Thin or absent evidence: hold, in both directions. */
 	| 'holding'
 	/**
 	 * The gate aggregate is not a reading of the PRESENT: it was computed longer
@@ -49,7 +49,7 @@ export type RampControlReason =
 	 */
 	| 'evidence_stale'
 	/**
-	 * A tripwire gate failed alone (plan D17). Seeds are 5-10 mailboxes: a
+	 * A tripwire gate failed alone. Seeds are 5-10 mailboxes: a
 	 * collapse is actionable, but on its own it is SUSPECT, so the controller
 	 * waits for the deferral or bounce gate to corroborate before halving.
 	 */
@@ -75,7 +75,7 @@ export type RampControlReason =
 	 * Named apart from `phase_ceiling` because the two are indistinguishable to an
 	 * operator otherwise, and the remedies are opposite: `phase_ceiling` says
 	 * "promote the phase", while this one says "the Microsoft cell is a rung low
-	 * because SNDS is absent, and it lifts by itself when SNDS returns" (plan D12).
+	 * because SNDS is absent, and it lifts by itself when SNDS returns".
 	 */
 	| 'degradation_ceiling'
 	/** An additive increase. The only reason that ever raises a share. */
@@ -83,7 +83,7 @@ export type RampControlReason =
 	/** s = 1.0 held 14 days with every gate green: the cell PINS. */
 	| 'graduated'
 	/**
-	 * THE OPERATOR'S OWN REASONS (P3-6, D3), in the order below — each written by a
+	 * THE OPERATOR'S OWN REASONS, in the order below — each written by a
 	 * CONTROL MUTATION and never by a rung, which the controller has no way to
 	 * reach on its own. A pause suppresses an increase and NEVER a retreat, so
 	 * `operator_pause` appears only on a hold; `operator_pin` is a pinned share
@@ -124,13 +124,13 @@ export type RampDecisionDirection = 'increase' | 'decrease' | 'hold';
  * The controller's stored state for one cell, already read out of the route
  * state row. Every field is what was STORED, not what is valid: sanitising
  * degenerate values is the decision function's job, and doing it at the read
- * boundary instead would hide the hostile input the plan requires us to handle.
+ * boundary instead would hide the hostile input we have to handle.
  */
 export interface RampMixState {
 	/**
 	 * The STORED own share, verbatim and unsanitised — `-0.5`, `1.5` and `NaN`
 	 * all reach the decision function as themselves. Only an ABSENT stored share
-	 * is resolved by the caller (to `isFallbackActive ? 0 : 1`, plan D1), because
+	 * is resolved by the caller (to `isFallbackActive ? 0 : 1`), because
 	 * absence is the one case that has a defined answer.
 	 */
 	readonly share: number;
@@ -178,37 +178,36 @@ export interface RampHardStopSignals {
 /**
  * The capacity projection, taken as a NARROW INPUT rather than computed here.
  *
- * P3-3 owns the real per-(IP x mailbox provider) projection. Keeping it behind
- * this type means that piece can replace the projection wholesale without
- * touching the decision function, and means the decision function stays
- * testable against a projection that is deliberately hostile.
+ * The real per-(IP x mailbox provider) projection is owned elsewhere. Keeping it
+ * behind this type means the projection can be replaced wholesale without
+ * touching the decision function, and means the decision function stays testable
+ * against a projection that is deliberately hostile.
  *
- * "NO PROJECTION AT ALL" IS ITS OWN SHAPE, not a pair of zeros. Until P3-3
- * lands there is no per-cell warming projection to read, and the share is
- * bounded by its PHASE CEILING alone — but a projected reading of zero headroom
- * against zero volume is also a perfectly legitimate thing P3-3 can produce for
- * a cell whose cap is spent and whose projected volume is zero, and the two must
- * not be the same value. `kind` is the difference, in the type rather than
- * in a constant whose meaning depends on a short-circuit three modules away.
+ * "NO PROJECTION AT ALL" IS ITS OWN SHAPE, not a pair of zeros. With no per-cell warming projection
+ * to read the share is bounded by its PHASE CEILING alone — but a projected reading of zero
+ * headroom against zero volume is also a perfectly legitimate reading for a cell whose cap is spent
+ * and whose projected volume is zero, and the two must not be the same value. `kind` is the
+ * difference, in the type rather than in a constant whose meaning depends on a short-circuit three
+ * modules away.
  *
- * WHAT P3-3 ACTUALLY SUPPLIES, and how it answers the two hazards this comment
- * used to reject a stand-in for. The shipped warming sync reports headroom for
- * the CAMPAIGN POOL as a whole, not per (IP x mailbox provider), so a ceiling
- * that divided the pool's headroom by ONE cell's volume would hand the same
- * numerator to all fifteen cells and the sum of what they were allowed would
- * exceed the cap fifteenfold. The bound that actually holds comes straight out
- * of the constraint it has to satisfy — with a share `s_c` and a projected
- * demand `V_c` per cell, own-arm volume is `sum(s_c * V_c)`, so
- * `s_c <= headroom / sum(V_c)` for every cell is what keeps the total inside the
- * cap. The denominator is therefore the DEPLOYMENT'S projected demand, summed
- * over per-cell projections, and the resulting ceiling is legitimately the same
- * number for every cell. The second hazard — a remaining cap decaying toward
- * zero against a denominator that does not, sawtoothing healthy cells into the
- * relay every afternoon — is answered by comparing like with like: both sides
- * are what is LEFT OF TODAY (`remainingDemandToday`), and the last sliver of the
- * day holds rather than decides.
+ * WHAT THE PROJECTION ACTUALLY SUPPLIES, and how it answers the two hazards a
+ * stand-in would not. The shipped warming sync reports headroom for the CAMPAIGN
+ * POOL as a whole, not per (IP x mailbox provider), so a ceiling that divided
+ * the pool's headroom by ONE cell's volume would hand the same numerator to all
+ * fifteen cells and the sum of what they were allowed would exceed the cap
+ * fifteenfold. The bound that actually holds comes straight out of the
+ * constraint it has to satisfy — with a share `s_c` and a projected demand `V_c`
+ * per cell, own-arm volume is `sum(s_c * V_c)`, so `s_c <= headroom / sum(V_c)`
+ * for every cell is what keeps the total inside the cap. The denominator is
+ * therefore the DEPLOYMENT'S projected demand, summed over per-cell projections,
+ * and the resulting ceiling is legitimately the same number for every cell. The
+ * second hazard — a remaining cap decaying toward zero against a denominator
+ * that does not, sawtoothing healthy cells into the relay every afternoon — is
+ * answered by comparing like with like: both sides are what is LEFT OF TODAY
+ * (`remainingDemandToday`), and the last sliver of the day holds rather than
+ * decides.
  *
- * ABSENCE IS NOT A CONSTRAINT (plan D2): a missing warming reading is never
+ * ABSENCE IS NOT A CONSTRAINT: a missing warming reading is never
  * evidence of a full cap, so it stays `unconstrained`. An unusable DEMAND
  * reading is a different thing — it is a ceiling we cannot compute at all — and
  * it holds.
@@ -216,7 +215,7 @@ export interface RampHardStopSignals {
 /**
  * WHY a known cap could not be turned into a ceiling — a CLOSED union, never a
  * free string, so the audit snapshot cannot carry a reason no reader recognises
- * and a switch over it stays exhaustive (plan D12).
+ * and a switch over it stays exhaustive.
  *
  * The per-cell reasons come straight through from `projectCellVolume`, because
  * "this cell has never sent" and "this cell is paused" are different facts an
@@ -231,7 +230,7 @@ export type RampCapacityUnknownReason =
 	| CellVolumeUnknownReason;
 
 export type RampCapacityInput =
-	/** No warming reading at all; only the phase ceiling binds (plan D2). */
+	/** No warming reading at all; only the phase ceiling binds. */
 	| { readonly kind: 'unconstrained' }
 	/**
 	 * A warming cap is known but the demand it must be divided by is not (a
@@ -247,16 +246,16 @@ export type RampCapacityInput =
 			 * Sends the DEPLOYMENT is projected to make in the rest of today — the
 			 * denominator that keeps the sum of every cell's own-arm volume inside the
 			 * cap (see above). ZERO means "nothing to send", which is not a constraint;
-			 * P3-3's projection never produces it, because a zero projection is an
+			 * the projection never produces it, because a zero projection is an
 			 * `unknown` decided in `projectCellVolume` rather than a division here.
 			 */
 			readonly projectedVolume: number;
 			/**
-			 * THIS CELL'S own trailing evidence, carried for the audit snapshot (plan
-			 * D12) and read by NO rung. The numbers above are deployment-level by
-			 * derivation, so without this the row could not say which cell's demand
-			 * contributed what, nor that the own arm failed to carry the share it was
-			 * assigned (`deliveredShareShortfall`).
+			 * THIS CELL'S own trailing evidence, carried for the audit snapshot and
+			 * read by NO rung. The numbers above are deployment-level by derivation,
+			 * so without this the row could not say which cell's demand contributed
+			 * what, nor that the own arm failed to carry the share it was assigned
+			 * (`deliveredShareShortfall`).
 			 */
 			readonly cellEvidence?: {
 				readonly projectedCellVolume: number;
@@ -284,8 +283,8 @@ export interface RampControllerInput {
 	readonly evaluation: RampGateEvaluation | null;
 	readonly capacity: RampCapacityInput;
 	/**
-	 * THE DEGRADATION MATRIX'S CEILING CAP (plan D3, piece P3-8) — the highest
-	 * rung this cell may occupy while an integration is missing.
+	 * THE DEGRADATION MATRIX'S CEILING CAP — the highest rung this cell
+	 * may occupy while an integration is missing.
 	 *
 	 * REQUIRED, not optional. `degradedCeilingCap` is TOTAL: it answers for every
 	 * presence map and returns the top rung when nothing caps anything, so an
@@ -307,11 +306,11 @@ export interface RampControllerInput {
 	 * nothing caps this cell. Resolved by the substitution fold, never by the
 	 * decision path: the controller applies a number and REPORTS a name, and the
 	 * two must come from the same table read or the audit row would explain the
-	 * cap with an integration that did not cause it (plan D12).
+	 * cap with an integration that did not cause it.
 	 */
 	readonly ceilingCapSource: RampIntegrationId | undefined;
 	/**
-	 * DOES A PHASE CEILING APPLY TO THIS CELL AT ALL (plan D3)? A property of the
+	 * DOES A PHASE CEILING APPLY TO THIS CELL AT ALL? A property of the
 	 * TICK and never of the row — see `phaseLadderBounds` in `controllerBounds.ts`.
 	 */
 	readonly isPhaseLadderBinding: boolean;
@@ -320,10 +319,10 @@ export interface RampControllerInput {
 	 * the AUDIT ROW, not for the decision. The controller reads none of it; the
 	 * snapshot in `mixDecisions` does, so a decision whose reason is
 	 * `degradation_ceiling` can say exactly which feeds were missing when it was
-	 * taken and a replay can be reproduced from the row alone (plan D12).
+	 * taken and a replay can be reproduced from the row alone.
 	 */
 	readonly absentIntegrations: readonly RampIntegrationId[];
-	/** Plan P3-2's global kill switch. Honoured before every other rule. */
+	/** The global kill switch. Honoured before every other rule. */
 	readonly isKillSwitchEngaged: boolean;
 	readonly now: number;
 }
@@ -332,7 +331,7 @@ export interface RampControllerInput {
  * A FREEZE, WHOLE. The instant it ends, the rung that imposed it, and — only for
  * a gate breach — the cooldown-ladder position the next breach doubles from.
  */
-export interface RampDecisionFreeze {
+interface RampDecisionFreeze {
 	/** Absolute instant the cell is frozen until. */
 	readonly until: number;
 	/**
@@ -386,7 +385,7 @@ export interface RampDecision {
 	 *
 	 * Derived once, in the shell, rather than left to each caller to reconstruct by
 	 * comparing `decision.graduatedAt` against a row it would have to still be
-	 * holding: a pin transition is the piece's TERMINAL state change (the cell pins
+	 * holding: a pin transition is the ramp's TERMINAL state change (the cell pins
 	 * and the relay drops to `priority_failover` standby) and it happens while the
 	 * SHARE DOES NOT MOVE, so `direction` cannot see it.
 	 */
@@ -411,7 +410,7 @@ export interface RampDecision {
  * A graduation pin AWARDED to a cell that did not have one, or REVOKED from a
  * cell that did.
  */
-export type RampPinChange = 'awarded' | 'revoked';
+type RampPinChange = 'awarded' | 'revoked';
 
 /**
  * The pin transition between what the row stored and what this decision writes.
@@ -484,7 +483,7 @@ export function rampDecisionDirection(fromShare: number, share: number): RampDec
  * The audit emit and the admin notice MUST agree about this, so they share the
  * predicate rather than each spelling out the same condition.
  *
- * THE PIN TRANSITION IS THE THIRD ARM, and it is the piece's TERMINAL state
+ * THE PIN TRANSITION IS THE THIRD ARM, and it is the ramp's TERMINAL state
  * change: graduation returns `direction: 'hold'` (the pinned target IS the
  * current share) and imposes no freeze, yet it writes `graduatedAt` onto a row
  * that had none — the cell pins and the relay drops to `priority_failover`

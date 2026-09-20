@@ -1,5 +1,5 @@
 /**
- * Deliverability-fallback relay eligibility (plan D6).
+ * Deliverability-fallback relay eligibility.
  *
  * "May this kind be the relay we fall back TO?" — asked of the CATALOG rather
  * than of a hard-coded identity. The shipped gate was
@@ -40,8 +40,8 @@ import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
  * the owned MTA, and any kind `isConfigured` rejects.
  *
  * ELIGIBILITY IS NOT SUFFICIENCY. This answers "may this KIND relay at all",
- * never "may it relay THIS domain" — the per-domain proof gate (D7,
- * `relayDomainVerification.ts`) stands in front of every kind that gets past
+ * never "may it relay THIS domain" — the per-domain proof gate
+ * (`relayDomainVerification.ts`) stands in front of every kind that gets past
  * here. The two compose into one configuration worth knowing about: a kind
  * whose catalog entry declares `domainVerification: 'none'` (`resend`, a
  * bring-your-own `smtp` relay) is eligible and saveable, has no sending-domain
@@ -56,7 +56,7 @@ export function isFallbackRelayEligible(
 	isConfigured: (kind: SendProviderKind) => boolean
 ): boolean {
 	if (!isSendProviderKind(kind)) return false;
-	// D3's one sanctioned identity — own arm vs. everything else — read from its
+	// The one sanctioned identity — own arm vs. everything else — read from its
 	// SINGLE declaration rather than restated here. `OWN_ARM_TRANSPORT_KIND` is
 	// the same constant `adaptive_mix` splits its arms on, which is what keeps
 	// "the arm a fallback moves traffic away from" and "the arm the mix calls
@@ -105,7 +105,7 @@ export function routeCarriesEnabledRelay(
  * infrastructure for a relay, so a route with no enabled own-MTA arm has
  * nothing to fall back FROM.
  *
- * D3's one sanctioned identity — own arm vs. everything else — read from its
+ * The one sanctioned identity — own arm vs. everything else — read from its
  * SINGLE declaration. `OWN_ARM_TRANSPORT_KIND` is the same constant the
  * adaptive mix splits its arms on, which is what keeps this precondition and
  * that split from ever meaning two different transports.

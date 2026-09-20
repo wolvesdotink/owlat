@@ -11,7 +11,7 @@ import {
  * namespaced wire kind, its owner, and its subscription eligibility. It remains
  * data-only until a real host publish path is implemented.
  */
-export interface HostedWebhookEventDefinition extends HostedContributionDefinition<'webhooks:publish'> {
+interface HostedWebhookEventDefinition extends HostedContributionDefinition<'webhooks:publish'> {
 	readonly kind: PluginWebhookEventKind;
 	readonly description: string;
 	readonly subscribable: boolean;

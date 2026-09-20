@@ -1,5 +1,5 @@
 /**
- * THE CAPACITY READ (plan P3-3) — where the controller's ceiling gets its two
+ * THE CAPACITY READ — where the controller's ceiling gets its two
  * numbers.
  *
  * `rampControllerInputs.ts` builds one cell's decision input; this module builds
@@ -25,10 +25,10 @@
  * (`systemMail`, `mail/outbound`, `mail/deliveryHooks`) sends `ipPool:
  * 'transactional'`, and the MTA adapter's default is `'transactional'` too — so
  * a transactional cell is NOT bounded by this reading at all. Bounding it by a
- * cap that does not govern it would throttle the stream the plan (D6) wants to
- * ramp last and fastest, for no measured reason.
+ * cap that does not govern it would throttle the stream that should ramp last
+ * and fastest, for no measured reason.
  *
- * That also stops the plan's SAFETY = 0.8 double-counting itself. The 20% it
+ * That also stops SAFETY = 0.8 double-counting itself. The 20% it
  * holds back is explicitly the reserve for TRANSACTIONAL BURSTS against the
  * shared IPs; summing transactional demand into the denominator as well would
  * charge that traffic to the ramp twice.
@@ -44,14 +44,14 @@
  * plumbing a demand total through the cursor chain and keeping a second, staler
  * source of truth for it. The reading is also taken LAZILY — `capacityInputForCell`
  * takes a THUNK and resolves it only after the cell is known to be governed — so
- * a slice with no ramp-managed cell in it (the normal state during rollout, plan
- * D1), and a slice of transactional cells (which the stream-major cell order
+ * a slice with no ramp-managed cell in it (the normal state during rollout),
+ * and a slice of transactional cells (which the stream-major cell order
  * produces exactly), never ask for it at all.
  *
- * ABSENCE IS A SUPPORTED CONFIGURATION (plan D2). No warming state, a stale
- * sync, a graduated pool: every one of them answers `unconstrained` — the cell
- * is bounded by its phase ceiling and by its gates, exactly as before this piece
- * landed. A missing reading is never evidence of a full cap.
+ * ABSENCE IS A SUPPORTED CONFIGURATION. No warming state, a stale sync, a
+ * graduated pool: every one of them answers `unconstrained` — the cell is
+ * bounded by its phase ceiling and by its gates. A missing reading is never
+ * evidence of a full cap.
  */
 
 import {
@@ -89,7 +89,7 @@ export interface RampCapacityContext {
 	readonly projections: ReadonlyMap<DeliverabilityCellKey, CellVolumeProjection>;
 }
 
-/** The reading a deployment with no usable warming state gets (plan D2). */
+/** The reading a deployment with no usable warming state gets. */
 const UNCONSTRAINED_CAPACITY: RampCapacityInput = { kind: 'unconstrained' };
 
 /**
@@ -132,7 +132,7 @@ async function readCellVolumeDays(
 /**
  * THE REASON THE CELLS AGREE ON, or the generic one when they do not.
  *
- * D12 wants an operator told WHY, not merely that. "Every governed cell has
+ * AN OPERATOR HAS TO BE TOLD WHY, not merely that. "Every governed cell has
  * never sent" (`no_history`) and "every governed cell is paused"
  * (`no_volume`) are different situations with different responses, and both are
  * lost if the tick reports one hardcoded string. A mixed set has no single true
@@ -158,7 +158,7 @@ function sharedUnknownReason(
  *
  * The order of the two refusals matters. NO WARMING READING is checked first and
  * answers `unconstrained`, because a cell whose cap we cannot see is not a cell
- * whose cap is spent (plan D2). Only once a cap IS known does an unusable demand
+ * whose cap is spent. Only once a cap IS known does an unusable demand
  * projection become a HOLD: there is a real bound to apply and no denominator to
  * apply it with.
  */
@@ -199,7 +199,7 @@ export async function loadRampCapacityContext(
 	}
 
 	// NO GOVERNED CELL PROJECTED ANYTHING is its own answer, told apart from the
-	// end-of-day refusal below so the audit row can say which it was (plan D12).
+	// end-of-day refusal below so the audit row can say which it was.
 	// When every governed cell agrees on WHY — a brand-new deployment, a paused
 	// week — that reason is carried through verbatim rather than flattened.
 	if (!(projectedVolume > 0)) {
@@ -224,7 +224,7 @@ export async function loadRampCapacityContext(
 
 /**
  * The capacity input for ONE cell: the tick's shared bound, plus that cell's own
- * trailing evidence for the audit snapshot (plan D12). The evidence changes no
+ * trailing evidence for the audit snapshot. The evidence changes no
  * rung — `capacityCeiling` reads the two numbers and nothing else.
  */
 export async function capacityInputForCell(
@@ -235,7 +235,7 @@ export async function capacityInputForCell(
 	// A CELL THE CAMPAIGN POOL DOES NOT CARRY IS NOT BOUNDED BY ITS CAP. The
 	// transactional stream dispatches through the transactional pool, so this
 	// reading says nothing about it — and a reading that says nothing constrains
-	// nothing (plan D2). Its phase ceiling and its gates still bind.
+	// nothing. Its phase ceiling and its gates still bind.
 	//
 	// THE CONTEXT IS A THUNK so that this check happens BEFORE the reading is
 	// taken: `allDeliverabilityCells()` is stream-major, so a whole cursor slice
@@ -247,7 +247,7 @@ export async function capacityInputForCell(
 	const projection = projections.get(deliverabilityCellKey(cell));
 	// THE CELL'S OWN REASON BEATS THE TICK'S. When the deployment could not be
 	// projected, the audit row should say whether THIS cell is brand-new, paused
-	// or clock-broken rather than repeating the aggregate verdict (plan D12).
+	// or clock-broken rather than repeating the aggregate verdict.
 	if (base.kind === 'unknown') {
 		return projection?.kind === 'unknown' ? { kind: 'unknown', reason: projection.reason } : base;
 	}

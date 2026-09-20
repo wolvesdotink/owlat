@@ -1,6 +1,6 @@
 /**
  * Trust-on-first-use (TOFU) pinning — the pure decision core of recipient-key
- * discovery (Sealed Mail, plan 2026-07-11, locked decision D1 PGP/MIME).
+ * discovery (Sealed Mail, PGP/MIME).
  *
  * When we discover a recipient's OpenPGP key (via their instance manifest + WKD,
  * see `e2ee/discovery.ts`) we PIN its fingerprint the first time we see it. On
@@ -31,7 +31,7 @@ import { normalizeEmail } from '@owlat/shared';
  * rotation feed (`e2ee/lifecycle.ts` writes it, `e2ee/manifest.ts` serves it)
  * and verified by a peer against the fingerprint it already pinned.
  *
- * The rotated ADDRESS is deliberately NOT on the wire (L7): the manifest is a
+ * The rotated ADDRESS is deliberately NOT on the wire: the manifest is a
  * world-readable, unauthenticated document, so carrying `address` here turned
  * the rotation feed into a directory that enumerated every mailbox that had ever
  * rotated a key. The binding to an address is preserved by the SIGNATURE, whose
@@ -70,13 +70,13 @@ export function rotationStatementText(statement: {
 }
 
 /** Persisted trust state for a discovered recipient key. */
-export type PinState = 'pinned' | 'keyChanged';
+type PinState = 'pinned' | 'keyChanged';
 
 /** Which transition a pin evaluation took (for logging / UI copy / tests). */
-export type PinAction = 'firstUse' | 'unchanged' | 'signedRotation' | 'keyChanged' | 'reaccept';
+type PinAction = 'firstUse' | 'unchanged' | 'signedRotation' | 'keyChanged' | 'reaccept';
 
 /** Inputs to a pin evaluation. */
-export interface PinContext {
+interface PinContext {
 	/** The currently trusted (pinned) fingerprint, or `null` on first contact. */
 	pinnedFingerprint: string | null;
 	/** The fingerprint just observed via discovery. */
@@ -174,7 +174,7 @@ export function reacceptObservedKey(observedFingerprint: string): PinDecision {
 	return decide('reaccept', observedFingerprint, observedFingerprint, 'pinned', true);
 }
 
-// ─── Human verification (plan idea 54) ───────────────────────────────────────
+// ─── Human verification ──────────────────────────────────────────────────────
 //
 // TOFU says "this is the key we saw first". Verification says "a person compared
 // this fingerprint with its owner over some other channel and it matched". The
@@ -188,7 +188,7 @@ export function reacceptObservedKey(observedFingerprint: string): PinDecision {
 // unverified again, with no sweep, no migration and no way to forget.
 
 /** What a stored verification amounts to, given where the pin is NOW. */
-export type VerificationState =
+type VerificationState =
 	/** Never verified by anyone here. */
 	| 'unverified'
 	/** A human verified exactly the key we would seal to today. */

@@ -1,5 +1,5 @@
 /**
- * Contact engagement score — the PURE decision core (deliverability plan D15).
+ * Contact engagement score — the PURE decision core.
  *
  * A 0-100, recency-weighted measure of how engaged a contact is with our mail,
  * derived from the `contactActivities` timeline. Nothing in this module reads
@@ -11,7 +11,7 @@
  * bands in `apps/mta/src/intelligence/engagementPriority.ts` cut at 80/50/20 —
  * but Convex never set it (the shipped docs claim it is "supplied by Convex";
  * that claim was false). This module is the producer. The share controller's
- * stratified assignment (plan P2-5) derives a recipient's percentile within a
+ * stratified assignment derives a recipient's percentile within a
  * cell from the same score via the sibling `engagementPercentile.ts` — the
  * scoring logic is NOT duplicated there. The `contactActivities` catalog
  * adapter lives in the sibling `engagementActivity.ts`, so this file stays
@@ -61,10 +61,10 @@ import { DAY_MS } from '../lib/constants';
 export const ENGAGEMENT_HALF_LIFE_DAYS = 45;
 
 /** Half-life (days) of the new-contact prior, measured against tenure. */
-export const TENURE_PRIOR_HALF_LIFE_DAYS = 21;
+const TENURE_PRIOR_HALF_LIFE_DAYS = 21;
 
 /** Raw weight the prior contributes at tenure 0. */
-export const TENURE_PRIOR_WEIGHT = 4;
+const TENURE_PRIOR_WEIGHT = 4;
 
 /**
  * Raw weight per activity kind. Clicks weigh materially more than opens (an
@@ -77,13 +77,13 @@ export const ENGAGEMENT_WEIGHTS = {
 } as const;
 
 /** Raw weight a soft bounce contributes to the (separate) penalty accumulator. */
-export const SOFT_BOUNCE_WEIGHT = 1;
+const SOFT_BOUNCE_WEIGHT = 1;
 
 /** Multiplicative penalty applied as base^softBounceRaw. */
-export const SOFT_BOUNCE_PENALTY_BASE = 0.85;
+const SOFT_BOUNCE_PENALTY_BASE = 0.85;
 
 /** Saturation constant of the raw → 0-100 curve. See CALIBRATION above. */
-export const SATURATION_K = 9;
+const SATURATION_K = 9;
 
 export type { EngagementBand };
 
@@ -135,7 +135,7 @@ export type EngagementScoreState = {
 };
 
 /** One tally per activity kind. */
-export type EngagementActivityCounts = {
+type EngagementActivityCounts = {
 	openCount: number;
 	clickCount: number;
 	replyCount: number;

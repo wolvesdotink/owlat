@@ -341,6 +341,13 @@ export const listAllUsers = authedQuery({
 		// pagination at the UI layer.
 		let users = await ctx.db.query('userProfiles').order('desc').collect(); // bounded: org member roster (single-org deployment: tiny)
 
+		// Soft-deleted accounts are gone as far as the product is concerned (the
+		// daily cron hard-deletes them after the retention window). This list
+		// feeds the "promote a user to platform admin" picker, so offering a
+		// deleted account there would hand deployment-level power to an identity
+		// nobody can sign in as.
+		users = users.filter((u) => u.deletedAt === undefined);
+
 		if (args.search) {
 			const searchLower = args.search.toLowerCase();
 			users = users.filter(

@@ -43,7 +43,7 @@ function normalizeEmail(raw: string): string {
 }
 
 /** One recent conversation with this sender, as the panel renders it. */
-export interface SenderThreadRow {
+interface SenderThreadRow {
 	messageId: Id<'mailMessages'>;
 	threadId: string;
 	subject: string;
@@ -78,7 +78,7 @@ export interface SenderAuthSummary {
 	} | null;
 }
 
-export interface SenderProfile {
+interface SenderProfile {
 	email: string;
 	/** Display name from the newest message that carried one. */
 	displayName: string | null;

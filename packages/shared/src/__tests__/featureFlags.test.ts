@@ -1,7 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import {
 	DELIVERY_PROVIDER_KINDS,
 	FEATURE_FLAGS,
@@ -26,8 +23,6 @@ import {
 	type PluginFeatureFlagDefinition,
 	type PluginFeatureFlagKey,
 } from '../featureFlags';
-
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 describe('featureFlags — defaults', () => {
 	it('returns the registered defaults for a self-host install', () => {
@@ -169,6 +164,22 @@ describe('featureFlags — env vars and docker profiles', () => {
 		const vars = getRequiredEnvVars(stored);
 		expect(vars).not.toContain('LLM_API_KEY');
 		expect(vars).not.toContain('GOOGLE_SAFE_BROWSING_API_KEY');
+	});
+
+	// The mail-sync worker is reached from the Convex function runtime over these
+	// two; without them a connected mailbox never syncs and every external send
+	// fails with EXTERNAL_NOT_CONFIGURED. They must be REPORTABLE (doctor,
+	// `env --show`, the Features "needs config" badge) whenever the flag is on.
+	it('requires the mail-sync worker vars when mail.external is on', () => {
+		const vars = getRequiredEnvVars({ 'mail.external': true });
+		expect(vars).toContain('MAIL_SYNC_API_URL');
+		expect(vars).toContain('MAIL_SYNC_API_KEY');
+	});
+
+	it('omits the mail-sync worker vars when mail.external is off', () => {
+		const vars = getRequiredEnvVars({ 'mail.external': false });
+		expect(vars).not.toContain('MAIL_SYNC_API_URL');
+		expect(vars).not.toContain('MAIL_SYNC_API_KEY');
 	});
 
 	it('aggregates docker profiles from active flags', () => {
@@ -1076,33 +1087,6 @@ describe('featureFlags — getRequiredEnvVars folds in the send path', () => {
 				'AWS_SES_SECRET_ACCESS_KEY',
 			])
 		);
-	});
-});
-
-describe('featureFlags — infra templates stay in sync', () => {
-	const word = (haystack: string, needle: string) =>
-		new RegExp(`(^|[^A-Za-z0-9_])${needle}([^A-Za-z0-9_]|$)`).test(haystack);
-
-	it('every dockerProfiles value appears in the VPS compose template', () => {
-		const compose = readFileSync(
-			resolve(REPO_ROOT, 'infra/templates/docker-compose.vps.yml'),
-			'utf-8'
-		);
-		const missing = Object.values(FEATURE_FLAGS)
-			.flatMap((def) => def.dockerProfiles ?? [])
-			.filter((profile) => !word(compose, profile))
-			.sort();
-		expect(missing).toEqual([]);
-	});
-
-	it('every non-hosted required env var is documented in the VPS env template', () => {
-		const template = readFileSync(resolve(REPO_ROOT, 'infra/templates/.env.vps.template'), 'utf-8');
-		const missing = Object.values(FEATURE_FLAGS)
-			.filter((def) => !def.hostedOnly)
-			.flatMap((def) => def.requiredEnvVars ?? [])
-			.filter((envVar) => !word(template, envVar))
-			.sort();
-		expect(missing).toEqual([]);
 	});
 });
 

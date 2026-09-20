@@ -27,7 +27,7 @@ import { rampCellLabel, shareLabel, type RampCellControl } from '~/utils/deliver
 const props = defineProps<{
 	cell: RampCellControl;
 	/**
-	 * WHETHER A RELAY IS CONFIGURED AT ALL (plan D14) — `isRelayConfigured` off the
+	 * WHETHER A RELAY IS CONFIGURED AT ALL — `isRelayConfigured` off the
 	 * controls view. NOT `referenceTransportId !== null`, which names the SINGLE
 	 * second arm and is null on a two-relay deployment.
 	 *
@@ -208,7 +208,7 @@ function clampPercent(value: number): number {
 
 		<!--
 			NOT A WARNING, AND NOT A NAG. Most cells in most deployments have never been
-			ramp-managed, and that is a normal state of a working install (plan D2) —
+			ramp-managed, and that is a normal state of a working install —
 			but nothing puts a cell on the ramp on its own, so the invitation to do it
 			belongs here, next to the sentence that says the cell is not on it.
 		-->

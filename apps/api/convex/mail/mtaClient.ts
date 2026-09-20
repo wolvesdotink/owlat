@@ -67,7 +67,7 @@ interface AttachmentScanResponse {
  *     proceeds without a clean assertion.
  *   - `'clean'` — the file was scanned and came back clean.
  */
-export type AttachmentScanVerdict =
+type AttachmentScanVerdict =
 	| { kind: 'clean' }
 	| { kind: 'infected'; reason: string }
 	| { kind: 'skipped'; reason?: string };
@@ -91,7 +91,7 @@ export type AttachmentScanVerdict =
 export async function scanAttachmentBytes(
 	mta: MtaConfig | null,
 	filename: string,
-	data: Buffer
+	data: Uint8Array
 ): Promise<AttachmentScanVerdict> {
 	if (!mta) return { kind: 'skipped' }; // scanner not configured → fail-open, silent
 

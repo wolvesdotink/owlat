@@ -31,7 +31,7 @@
  * had affirmatively observed a clean SMTP conversation it never had.
  *
  * FAIL-SOFT, LIKE EVERY OTHER MEASUREMENT WRITE. A send with no assignment row —
- * a seed shadow copy (plan D18), a legacy send, a member preview — records
+ * a seed shadow copy, a legacy send, a member preview — records
  * NOTHING and returns a reason. Measurement degrades; delivery never does.
  *
  * NOT EXACTLY-ONCE, and it does not need to be. The MTA's outbox retries a
@@ -78,7 +78,7 @@ import {
  * documents instead of contending on one. Purely write-side: the summarizer sums
  * across all shards.
  */
-export const SMTP_RESPONSE_CATEGORY_SHARD_COUNT = 8;
+const SMTP_RESPONSE_CATEGORY_SHARD_COUNT = 8;
 
 /**
  * Buckets age out after 90 days — the `transportOutcomes` horizon, because the
@@ -106,7 +106,7 @@ const MAX_CATEGORY_KEYS = SMTP_FAILURE_CATEGORIES.size;
 
 // ============ READ SIDE ============
 
-export interface SmtpCategoryWindowQuery extends TransportOutcomeWindow {
+interface SmtpCategoryWindowQuery extends TransportOutcomeWindow {
 	readonly organizationId: string;
 	readonly cell: DeliverabilityCellKey;
 	readonly arm: TransportOutcomeArm;
@@ -272,7 +272,7 @@ async function ensureCategoryShardBucket(
 	return created;
 }
 
-export interface RecordSmtpResponseInput {
+interface RecordSmtpResponseInput {
 	readonly organizationId: string;
 	readonly cell: DeliverabilityCellKey;
 	readonly arm: TransportOutcomeArm;
@@ -328,7 +328,7 @@ export async function recordSmtpResponseForCell(
 }
 
 /** Why a classified response was not recorded — returned, never thrown. */
-export type RecordSmtpResponseResult =
+type RecordSmtpResponseResult =
 	| 'recorded'
 	| 'no_organization'
 	| 'send_not_found'
@@ -344,7 +344,7 @@ export type RecordSmtpResponseResult =
  * our own MTA produced the response would be a second answer, and it would be
  * wrong the day a relay starts reporting classified responses of its own.
  */
-export async function recordSmtpResponseForSend(
+async function recordSmtpResponseForSend(
 	ctx: MutationCtx,
 	input: {
 		readonly providerMessageId: string;

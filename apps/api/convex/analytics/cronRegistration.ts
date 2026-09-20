@@ -4,8 +4,8 @@
  * A domain sibling rather than more lines in the core `crons.ts` (which sits at
  * the ~500 LOC split guideline), following the same shape as
  * `plugins/cronRegistration.ts`: the registrations live next to the functions
- * they schedule and `crons.ts` calls one register function. Only THIS piece's
- * crons live here — every shipped registration stays exactly where it is.
+ * they schedule and `crons.ts` calls one register function. Only the analytics
+ * crons live here.
  */
 
 import type { cronJobs } from 'convex/server';
@@ -19,11 +19,11 @@ type Crons = ReturnType<typeof cronJobs>;
  * All three are pure housekeeping — none sends mail, touches a campaign, or can
  * fail a send. Two sweep the probe LEDGER; the third offers the operator the
  * rotation nudge. With no seed mailboxes connected every one of them is a
- * no-op (D2).
+ * no-op.
  */
 export function registerSeedPlacementCrons(crons: Crons): void {
 	// One row per shadow copy, retention-bounded at 90 days so the deliverability
-	// tripwire never grows without limit (D16).
+	// tripwire never grows without limit.
 	crons.interval(
 		'cleanup seed placement probes',
 		{ hours: 24 },

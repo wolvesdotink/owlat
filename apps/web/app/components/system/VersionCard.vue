@@ -5,9 +5,14 @@ const { t, locale } = useI18n();
 
 const config = useRuntimeConfig();
 
-const version = computed(() => (config.public.owlatVersion as string) || 'dev');
-const gitSha = computed(() => (config.public.owlatGitSha as string) || 'unknown');
-const buildDate = computed(() => (config.public.owlatBuildDate as string) || 'unknown');
+// String(), not a cast: these reach runtime config through Nitro's env overlay,
+// which runs every value through `destr`. A short git sha that happens to be all
+// digits ("12345678") therefore arrives as a NUMBER, and one shaped like an
+// exponent ("1e234567") as Infinity — either way `.slice()` below would throw and
+// take down this page, the one that hosts the updater.
+const version = computed(() => String(config.public.owlatVersion ?? '') || 'dev');
+const gitSha = computed(() => String(config.public.owlatGitSha ?? '') || 'unknown');
+const buildDate = computed(() => String(config.public.owlatBuildDate ?? '') || 'unknown');
 
 const formattedBuildDate = computed(() => {
 	const raw = buildDate.value;

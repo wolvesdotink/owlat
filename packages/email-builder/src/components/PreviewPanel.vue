@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { Loader2 } from '@lucide/vue';
-import { EmailPreviewer } from '@owlat/email-previewer';
+import EmailPreviewer from '../preview/components/EmailPreviewer.vue';
 import type {
 	PreviewEmailAnalysis,
 	PreviewHealthScore,
 	PreviewValidationIssue,
 	PreviewEmailDiff,
 	PreviewRenderOptions,
-} from '@owlat/email-previewer';
+} from '../preview/types';
 
 const props = defineProps<{
 	html: string;
@@ -38,7 +38,10 @@ const emit = defineEmits<{
 
 <template>
 	<div class="flex flex-col h-full bg-bg-deep">
-		<div v-if="props.isGenerating" class="flex items-center justify-center gap-2 flex-1 text-text-secondary text-sm">
+		<div
+			v-if="props.isGenerating"
+			class="flex items-center justify-center gap-2 flex-1 text-text-secondary text-sm"
+		>
 			<Loader2 class="w-[18px] h-[18px] animate-spin motion-reduce:animate-none" />
 			<span>Generating preview...</span>
 		</div>

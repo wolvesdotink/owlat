@@ -57,7 +57,7 @@ export function resolveEngagementMetric(
 	return overrides?.[provider] ?? ENGAGEMENT_METRIC_BY_PROVIDER[provider];
 }
 
-export interface EngagementGateThresholds {
+interface EngagementGateThresholds {
 	/**
 	 * Gate 4's ratio floor: `ownRate / referenceRate` must be at least this.
 	 *
@@ -72,7 +72,7 @@ export interface EngagementGateThresholds {
 	 * cell's own PRIOR 30-day engagement (a window that excludes the recent one —
 	 * see `EngagementGateInput.ownPriorBaseline`).
 	 *
-	 * Deliberately wide (plan D14). A redesigned newsletter that engages 20%
+	 * Deliberately wide. A redesigned newsletter that engages 20%
 	 * worse is indistinguishable from a 20% placement loss, so a floor that
 	 * fires on small moves would retreat the ramp for editorial reasons. 0.7
 	 * catches the LARGE, smooth decay that every concurrent gate passes, which
@@ -86,7 +86,7 @@ export interface EngagementGateThresholds {
 	 */
 	readonly baselineMinSample: number;
 	/**
-	 * THE STANDALONE SUBSTITUTION (plan D14): with no reference arm, the cell's
+	 * THE STANDALONE SUBSTITUTION: with no reference arm, the cell's
 	 * recent engagement is compared against its OWN 30-day EWMA-style trailing
 	 * window, and the floor is relaxed from 0.95 to 0.85.
 	 *

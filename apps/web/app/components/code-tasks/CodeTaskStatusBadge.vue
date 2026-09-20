@@ -1,58 +1,58 @@
 <script setup lang="ts">
+type CodeTaskStatus = 'queued' | 'running' | 'testing' | 'review' | 'merged' | 'failed';
+type CodeTaskStatusVariant = 'default' | 'success' | 'warning' | 'error' | 'neutral';
+
 const props = defineProps<{
-	status: 'queued' | 'running' | 'testing' | 'review' | 'merged' | 'failed';
+	status: CodeTaskStatus;
 }>();
 
 const { t } = useI18n();
 
-const statusConfig = computed((): { label: string; classes: string; pulse: boolean } => {
-	const configs: Record<string, { label: string; classes: string; pulse: boolean }> = {
-		queued: {
-			label: t('components.codeTasks.codeTaskStatusBadge.queued'),
-			classes: 'bg-bg-surface text-text-secondary border border-border-subtle',
-			pulse: false,
-		},
-		running: {
-			label: t('components.codeTasks.codeTaskStatusBadge.running'),
-			classes: 'bg-brand-subtle text-brand',
-			pulse: true,
-		},
-		testing: {
-			label: t('components.codeTasks.codeTaskStatusBadge.testing'),
-			classes: 'bg-warning-subtle text-warning',
-			pulse: false,
-		},
-		review: {
-			label: t('components.codeTasks.codeTaskStatusBadge.review'),
-			classes: 'bg-brand-subtle/60 text-brand',
-			pulse: false,
-		},
-		merged: {
-			label: t('components.codeTasks.codeTaskStatusBadge.merged'),
-			classes: 'bg-success-subtle text-success',
-			pulse: false,
-		},
-		failed: {
-			label: t('components.codeTasks.codeTaskStatusBadge.failed'),
-			classes: 'bg-error-subtle text-error',
-			pulse: false,
-		},
-	};
-	return configs[props.status] ?? configs['queued']!;
-});
+/** Variant per status; `pulse` marks the one state that is still moving. */
+const STATUS_CONFIG: Record<
+	CodeTaskStatus,
+	{ labelKey: string; variant: CodeTaskStatusVariant; pulse: boolean }
+> = {
+	queued: {
+		labelKey: 'components.codeTasks.codeTaskStatusBadge.queued',
+		variant: 'neutral',
+		pulse: false,
+	},
+	running: {
+		labelKey: 'components.codeTasks.codeTaskStatusBadge.running',
+		variant: 'default',
+		pulse: true,
+	},
+	testing: {
+		labelKey: 'components.codeTasks.codeTaskStatusBadge.testing',
+		variant: 'warning',
+		pulse: false,
+	},
+	review: {
+		labelKey: 'components.codeTasks.codeTaskStatusBadge.review',
+		variant: 'default',
+		pulse: false,
+	},
+	merged: {
+		labelKey: 'components.codeTasks.codeTaskStatusBadge.merged',
+		variant: 'success',
+		pulse: false,
+	},
+	failed: {
+		labelKey: 'components.codeTasks.codeTaskStatusBadge.failed',
+		variant: 'error',
+		pulse: false,
+	},
+};
+
+const config = computed(() => STATUS_CONFIG[props.status] ?? STATUS_CONFIG.queued);
 </script>
 
 <template>
-	<span
-		:class="[
-			'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full',
-			statusConfig.classes,
-		]"
-	>
-		<span
-			v-if="statusConfig.pulse"
-			class="w-1.5 h-1.5 rounded-full bg-current animate-pulse motion-reduce:animate-none"
-		/>
-		{{ statusConfig.label }}
-	</span>
+	<UiBadge :variant="config.variant" size="md" pill>
+		<template v-if="config.pulse" #icon>
+			<span class="w-1.5 h-1.5 rounded-full bg-current animate-pulse motion-reduce:animate-none" />
+		</template>
+		{{ t(config.labelKey) }}
+	</UiBadge>
 </template>

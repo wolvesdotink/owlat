@@ -5,11 +5,9 @@
  * projections from these primitives. The `scripts/check-body-access.sh`
  * ratchet fails the build on direct body reads outside this module family.
  *
- * Why one accessor matters for Sealed Mail: E8b later seals ALL bodies at rest.
- * When every body read funnels through this family, the "unseal on read" hook
- * stays centralized instead of spreading across ~30 call sites. This piece
- * (E8a) is the behaviour-neutral refactor that creates that choke point — it
- * changes no output; the proof is the existing api suite passing unmodified.
+ * Why one accessor matters for Sealed Mail: sealing ALL bodies at rest needs an
+ * "unseal on read" hook, and when every body read funnels through this family
+ * that hook stays centralized instead of spreading across ~30 call sites.
  *
  * The three shapes:
  *   1. inboundMessages — inline `textBody` / `htmlBody` string fields.
@@ -160,7 +158,7 @@ export async function sealMailInlineBodyPatch(
 }
 
 /** The `content` JSON blob of a `unifiedMessages` row (sealed as one string). */
-export interface UnifiedMessageContentField {
+interface UnifiedMessageContentField {
 	content: string;
 	contentVersion?: number;
 	contentStorageVersion?: number;
@@ -193,7 +191,7 @@ export async function sealConversationThreadPreviewPatch(row: {
 
 /** The body columns of a `mailDrafts` row. `bodyHtml` is required; the text and
  * block variants are optional. */
-export interface MailDraftBodyFields {
+interface MailDraftBodyFields {
 	bodyHtml: string;
 	bodyText?: string;
 	bodyBlocks?: string;
@@ -278,14 +276,14 @@ export async function openInboundMessageBody(
 /** The inline body fields on a `mailMessages` row (both optional). Large
  * bodies are NOT here — they live in the `*BodyStorageId` blobs; use
  * {@link readMailMessageText} when the full body is required. */
-export interface MailMessageInlineFields {
+interface MailMessageInlineFields {
 	textBodyInline?: string;
 	htmlBodyInline?: string;
 }
 
 /** Normalized inline body of a `mailMessages` row. Values are the row's inline
  * fields verbatim (the blob, if any, is not fetched). */
-export interface MailMessageInlineBody {
+interface MailMessageInlineBody {
 	text: string | undefined;
 	html: string | undefined;
 }
@@ -315,7 +313,7 @@ export interface BodyBlobStorageReader {
 }
 
 /** The text-body fields of a `mailMessages` row, inline or blob. */
-export interface MailMessageTextFields {
+interface MailMessageTextFields {
 	textBodyInline?: string;
 	textBodyStorageId?: Id<'_storage'>;
 }

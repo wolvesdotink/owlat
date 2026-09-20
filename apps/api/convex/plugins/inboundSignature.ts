@@ -10,7 +10,7 @@
  *   - signature mismatch     → 401
  *
  * {@link verifyPluginWebhookDelivery} is the form that gates a live endpoint —
- * the send transport feedback webhook (D6/P2.2). It dispatches on the declared
+ * the send transport feedback webhook. It dispatches on the declared
  * scheme over a vocabulary the HOST owns, and every arm ends at host code the
  * core providers are verified by:
  *
@@ -132,13 +132,13 @@ export async function compareSignature(
  * mattering, because the timestamp check below would reject the same request by
  * then anyway.
  */
-export interface ReplayBoundVerification {
+interface ReplayBoundVerification {
 	readonly ok: true;
 	readonly deliveryDigest: string;
 	readonly expiresAtMs: number;
 }
 
-export type ReplayBoundSignatureResult =
+type ReplayBoundSignatureResult =
 	| ReplayBoundVerification
 	| { readonly ok: false; readonly status: 401 | 503; readonly reason: string };
 

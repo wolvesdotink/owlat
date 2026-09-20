@@ -1,13 +1,13 @@
 /**
- * Flag → docker-profile drift tracking (plan D4: apply is explicit, never
- * automatic). Toggling a flag in the admin UI only persists it in Convex;
- * when the toggle changes the derived docker-profile set, the affected
- * background services keep their old state until an explicit Apply converges
- * `.env`'s COMPOSE_PROFILES, the compose override and the CLI flag mirror via
- * the updater sidecar. This composable accumulates that drift and drives the
+ * Flag → docker-profile drift tracking (apply is explicit, never automatic).
+ * Toggling a flag in the admin UI only persists it in Convex; when the toggle
+ * changes the derived docker-profile set, the affected background services
+ * keep their old state until an explicit Apply converges `.env`'s
+ * COMPOSE_PROFILES, the compose override and the CLI flag mirror via the
+ * updater sidecar. This composable accumulates that drift and drives the
  * persistent "Services out of sync — Apply & restart" banner.
  *
- * Two sources feed the banner (plan FU4):
+ * Two sources feed the banner:
  *   - the optimistic in-session accumulation from `trackFlagChange`, which is
  *     instant and needs no round trip, and
  *   - a one-shot server-side probe (`/api/system/profile-drift`) comparing the
@@ -16,6 +16,7 @@
  * They union: whichever notices first wins, and a successful Apply clears both.
  */
 import { ref } from 'vue';
+import { apiFetch } from '~/lib/csrfFetch';
 import {
 	getActiveProfiles,
 	type FeatureFlagRegistry,
@@ -122,7 +123,7 @@ export function useProfileSync() {
 		isApplying.value = true;
 		applyError.value = null;
 		try {
-			const resp = await $fetch<ApplyProfilesResponse>('/api/system/apply-profiles', {
+			const resp = await apiFetch<ApplyProfilesResponse>('/api/system/apply-profiles', {
 				method: 'POST',
 				body: { flags },
 				retry: 0,

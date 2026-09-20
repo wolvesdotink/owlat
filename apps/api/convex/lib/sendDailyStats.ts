@@ -63,7 +63,7 @@ export async function bumpSendDailyStat(ctx: MutationCtx, field: Field, at: numb
 	});
 }
 
-export interface DailyStatRow {
+interface DailyStatRow {
 	date: string;
 	sent: number;
 	delivered: number;

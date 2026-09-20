@@ -1,22 +1,22 @@
 /**
- * CROSSING THE 0.5 CEILING (plan D3's promotion rule) — the either/or as DATA.
+ * CROSSING THE 0.5 CEILING — the promotion rule's either/or as DATA.
  *
- * The plan states it as a sentence with an "either ... or" in the middle:
- * promotion past the 0.5 rung requires EITHER a Google Compliance Status pass
- * (Gmail) or an SNDS complaint band green (Microsoft) for the relevant cell
- * within the last 7 days, OR — standalone — ALL FOUR of a doubled dwell, a
- * recent passing seed probe, a 14-consecutive-day DNSBL-clean streak across
- * every pool IP, and a deferral rate under threshold in EVERY cell.
+ * The rule is a sentence with an "either ... or" in the middle: promotion
+ * past the 0.5 rung requires EITHER a Google Compliance Status pass (Gmail)
+ * or an SNDS complaint band green (Microsoft) for the relevant cell within
+ * the last 7 days, OR — standalone — ALL FOUR of a doubled dwell, a recent
+ * passing seed probe, a 14-consecutive-day DNSBL-clean streak across every
+ * pool IP, and a deferral rate under threshold in EVERY cell.
  *
  * IMPLEMENTED AS ROUTES, NOT AS BRANCHING. A route is a named list of
  * conditions; promotion is allowed when ANY route's conditions are all met. Two
- * `if`s in a row would encode the same rule and would be the exact shape this
- * piece exists to eliminate — a third promotion path (a future integration)
- * would then be a third `if` rather than a fourth row.
+ * `if`s in a row would encode the same rule and would be the exact shape the
+ * route table exists to eliminate — a third promotion path (a future
+ * integration) would then be a third `if` rather than a fourth row.
  *
- * PURE (plan D15): the clock, the evidence and the target rung are parameters.
+ * PURE: the clock, the evidence and the target rung are parameters.
  *
- * D2 STILL HOLDS. No route is reachable only with an external account: the
+ * NO EXTERNAL ACCOUNT IS LOAD-BEARING. No route is reachable only with one: the
  * standalone route exists precisely so a deployment with zero third-party
  * credentials can reach 1.0 — slower, on corroborated self-hosted evidence.
  */
@@ -25,8 +25,8 @@ import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting
 import { startOfDayUtc } from '../../lib/clock';
 import { DAY_MS } from '../../lib/constants';
 
-/** External evidence older than this is not evidence — the plan's 7 days. */
-export const PROMOTION_EVIDENCE_MAX_AGE_MS = 7 * DAY_MS;
+/** External evidence older than this is not evidence — seven days. */
+const PROMOTION_EVIDENCE_MAX_AGE_MS = 7 * DAY_MS;
 
 /** The plan's "14 CONSECUTIVE days across EVERY pool IP". */
 export const PROMOTION_DNSBL_CLEAN_DAYS = 14;
@@ -46,9 +46,9 @@ export const PROMOTION_BASE_DWELL_MS = 7 * DAY_MS;
  * "crossing the 0.5 ceiling": a target ABOVE 0.5 crosses it, promotion TO 0.5
  * does not. Below it the ordinary AIMD ladder governs and no route is consulted.
  */
-export const PROMOTION_EVIDENCE_REQUIRED_ABOVE = 0.5;
+const PROMOTION_EVIDENCE_REQUIRED_ABOVE = 0.5;
 
-export const PROMOTION_CONDITION_IDS = [
+const PROMOTION_CONDITION_IDS = [
 	'google_compliance_pass',
 	'snds_complaint_band_green',
 	'dwell_multiple_served',
@@ -64,11 +64,11 @@ export type PromotionConditionId = (typeof PROMOTION_CONDITION_IDS)[number];
  * condition is `unknown`, is reported by name, and never counts as met. A
  * boolean would fold the two together and promote a cell on evidence nobody has.
  */
-export type PromotionConditionState = 'met' | 'unmet' | 'unknown';
+type PromotionConditionState = 'met' | 'unmet' | 'unknown';
 
-export type PromotionConditions = Readonly<Record<PromotionConditionId, PromotionConditionState>>;
+type PromotionConditions = Readonly<Record<PromotionConditionId, PromotionConditionState>>;
 
-export interface PromotionRoute {
+interface PromotionRoute {
 	readonly id: 'google_compliance' | 'snds_band' | 'standalone_corroboration';
 	readonly label: string;
 	/** Providers this route can speak for; `'all'` for the standalone route. */
@@ -80,10 +80,10 @@ export interface PromotionRoute {
  * THE ROUTES. Any one of them, fully met, permits the promotion.
  *
  * The two external routes are single-condition and provider-scoped; the
- * standalone route is the plan's four conditions, all of which are measured on
+ * standalone route carries four conditions, all of which are measured on
  * our own infrastructure.
  */
-export const PROMOTION_ROUTES: readonly PromotionRoute[] = [
+const PROMOTION_ROUTES: readonly PromotionRoute[] = [
 	{
 		id: 'google_compliance',
 		label: 'Google Postmaster Compliance Status passing in the last 7 days',
@@ -136,7 +136,7 @@ export interface DnsblDayObservation {
  * treating it as a pass is how a paused controller promotes a cell nobody
  * watched.
  */
-export const PROMOTION_DNSBL_MAX_STALENESS_MS = DAY_MS;
+const PROMOTION_DNSBL_MAX_STALENESS_MS = DAY_MS;
 
 /**
  * Whether the observations reach up to `now`. False for an empty list — a window
@@ -249,7 +249,7 @@ export function derivePromotionConditions(
 	};
 }
 
-export interface PromotionRouteResult {
+interface PromotionRouteResult {
 	readonly route: PromotionRoute;
 	readonly satisfied: boolean;
 	/** Conditions that are not `met`, with the state that stopped them. */
@@ -259,7 +259,7 @@ export interface PromotionRouteResult {
 	}[];
 }
 
-export interface PhasePromotionDecision {
+interface PhasePromotionDecision {
 	readonly allowed: boolean;
 	/** Which route permitted it — `null` when none did or none was needed. */
 	readonly viaRoute: PromotionRoute['id'] | null;

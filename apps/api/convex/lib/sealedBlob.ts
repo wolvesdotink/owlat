@@ -41,6 +41,7 @@
  */
 
 import type { Id } from '../_generated/dataModel';
+import { bytesToBase64Url } from './bytes';
 import { getOptional } from './env';
 import {
 	hasAtRestBlobMagic,
@@ -66,7 +67,7 @@ export interface BlobGet {
 	get(storageId: Id<'_storage'>): Promise<Blob | null>;
 }
 /** Minimal storage surface for minting a signed URL (query/mutation/action ctx). */
-export interface BlobGetUrl {
+interface BlobGetUrl {
 	getUrl(storageId: Id<'_storage'>): Promise<string | null>;
 }
 
@@ -76,13 +77,6 @@ const SEALED_BLOB_PROBE_BYTES = 64;
 
 function canReadBlob(storage: BlobGetUrl): storage is BlobGetUrl & BlobGet {
 	return 'get' in storage && typeof storage.get === 'function';
-}
-
-/** base64url without padding — matches the tracking-HMAC encoding used elsewhere. */
-function bytesToBase64Url(bytes: Uint8Array): string {
-	let binary = '';
-	for (const b of bytes) binary += String.fromCharCode(b);
-	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 /** Constant-time string compare for the capability token. */
@@ -300,7 +294,7 @@ export async function resealStoredBlob(
 }
 
 /** The parsed, VERIFIED fields of a proxy request, or `null` if invalid/expired. */
-export interface VerifiedBlobRequest {
+interface VerifiedBlobRequest {
 	storageId: string;
 	contentType: string;
 }

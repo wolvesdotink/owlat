@@ -1,7 +1,7 @@
 /**
- * Ramp controller — IS THIS EVIDENCE USABLE AT ALL? (plan D10, D15).
+ * Ramp controller — IS THIS EVIDENCE USABLE AT ALL?.
  *
- * Extracted from `gates.ts` when the engagement-ratio gate (P1-5) became the
+ * Extracted from `gates.ts` when the engagement-ratio gate became the
  * second module that has to answer the question. `gates.ts` already said why
  * this belongs in exactly one place:
  *
@@ -107,7 +107,7 @@ export function armEvidence(
 }
 
 /**
- * A HOLD carries the gate's grade like every other verdict (plan D14): a hold is
+ * A HOLD carries the gate's grade like every other verdict: a hold is
  * a verdict, the UI renders it, and "we could not measure this" from a
  * high-confidence gate and from a proxy are different sentences to an operator.
  */
@@ -121,7 +121,7 @@ export function insufficient(
 }
 
 /** Which series a hold is about, and therefore which vocabulary it speaks. */
-export type HoldArm = 'own' | 'reference' | 'baseline';
+type HoldArm = 'own' | 'reference' | 'baseline';
 
 /** The hold reasons every arm has: its evidence was absent, thin, stale or poisoned. */
 interface ArmHoldReasons {
@@ -138,7 +138,7 @@ interface RelativeArmHoldReasons extends ArmHoldReasons {
 /**
  * THE ARM VOCABULARY, WRITTEN ONCE.
  *
- * THREE arms, not two. A hold reason exists to NAME THE THING TO FIX (plan D12),
+ * THREE arms, not two. A hold reason exists to NAME THE THING TO FIX,
  * and "reference" names a second transport an operator can go and look at. The
  * standalone substitutions' second series is the cell's OWN past, so reporting
  * `reference_evidence_stale` there would send that operator hunting for a relay
@@ -156,7 +156,7 @@ interface RelativeArmHoldReasons extends ArmHoldReasons {
  * is a real, decidable verdict rather than a hold. `notADenominatorReason` will
  * not accept it, and the table is why.
  */
-export const HOLD_REASONS_BY_ARM: {
+const HOLD_REASONS_BY_ARM: {
 	readonly own: ArmHoldReasons;
 	readonly reference: RelativeArmHoldReasons;
 	readonly baseline: RelativeArmHoldReasons;
@@ -207,7 +207,7 @@ export function evidenceReason(evidence: ArmEvidence, arm: HoldArm): RampGateHol
  * It exists as its own function so that no call site has to fabricate an
  * `ArmEvidence` value it never observed in order to borrow a reason. Passing
  * `'fresh'` into `evidenceReason` to reach `*_rate_unmeasurable` was exactly
- * that, and it told the operator the wrong thing to go and look at (plan D12).
+ * that, and it told the operator the wrong thing to go and look at.
  */
 export function notADenominatorReason(arm: 'reference' | 'baseline'): RampGateHoldReason {
 	return HOLD_REASONS_BY_ARM[arm].notADenominator;

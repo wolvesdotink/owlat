@@ -10,9 +10,9 @@ import {
 import { readExactFunctionModule } from './hostedModuleSnapshot';
 
 /**
- * Host view of a bundled send transport's SENDING-DOMAIN IDENTITY half (the
- * seams plan's D5, wired by P3.2) — the declaration side, plus the executable
- * provider-call half it is paired with.
+ * Host view of a bundled send transport's SENDING-DOMAIN IDENTITY half — the
+ * declaration side, plus the executable provider-call half it is paired
+ * with.
  *
  * Two things live here because they are one fact with two representations, and
  * the value of the pair is that they are checked against each other at module
@@ -22,7 +22,7 @@ import { readExactFunctionModule } from './hostedModuleSnapshot';
  * the deployment serves a request, exactly as `sendTransportWebhookCatalog.ts`
  * does for the feedback half and `lib/sendProviders/index.ts` for the send half.
  *
- * ISOLATE-SAFE ON PURPOSE, and it is the constraint that shaped the piece.
+ * ISOLATE-SAFE ON PURPOSE, and it is the constraint that shaped this module.
  * `domains/providers/index.ts` composes its relay-identity registry from this
  * file, and that registry is read by the ENQUEUE transaction (`may this From
  * domain be handed to the configured relay?`). Nothing here — and nothing in the
@@ -52,13 +52,13 @@ export interface HostedSendTransportDomainIdentityDefinition extends HostedContr
  * consumed rather than believed because a `satisfies` in a generated file said
  * so.
  */
-export interface HostedSendTransportDomainIdentityModule {
+interface HostedSendTransportDomainIdentityModule {
 	registerDomain(domain: string, config: unknown): Promise<unknown>;
 	checkDomain(domain: string, config: unknown): Promise<unknown>;
 }
 
 /** One resolved identity surface: what it is, and what to ask it with. */
-export interface HostedSendTransportDomainIdentity {
+interface HostedSendTransportDomainIdentity {
 	readonly definition: HostedSendTransportDomainIdentityDefinition;
 	readonly module: HostedSendTransportDomainIdentityModule;
 }

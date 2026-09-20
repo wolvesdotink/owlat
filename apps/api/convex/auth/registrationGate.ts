@@ -12,7 +12,7 @@ import type { ActionCtx } from '../_generated/server';
  * signup passes through (`databaseHooks.user.create.before`).
  *
  * The single org is bootstrapped by the `/seed/admin` HTTP action
- * (`seedAdmin.ts`), which writes through the RAW component adapter and so never
+ * (`seedAdminHttp.ts`), which writes through the RAW component adapter and so never
  * triggers this hook — the seeded owner is created regardless. Past that:
  *   - Zero users ⇒ this is the very first account (a signup-based bootstrap) ⇒
  *     allowed.

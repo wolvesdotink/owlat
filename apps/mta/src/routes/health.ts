@@ -5,6 +5,8 @@
 
 import type { Context } from 'hono';
 import type Redis from 'ioredis';
+import type { Queue } from 'groupmq';
+import type { EmailJob } from '../types.js';
 import { resolve as dnsResolve } from 'dns/promises';
 import { X509Certificate } from 'node:crypto';
 import type { MtaConfig } from '../config.js';
@@ -12,11 +14,13 @@ import { isRedisHealthy } from '../redis.js';
 import { getPoolStatus } from '../scaling/ipPool.js';
 import { getDnsblStatus } from '../intelligence/dnsbl.js';
 import { getWarmingState } from '../intelligence/warming.js';
-import { registry } from '../monitoring/collector.js';
+import { queueDepth, registry } from '../monitoring/collector.js';
 import { getSmtpReachability } from './smtpReachability.js';
 import { getFcrdnsReadiness } from '../scaling/fcrdns.js';
 import { getIpv6SpfReadiness } from '../scaling/ipv6SpfReadiness.js';
 import { getSourceAddressReadiness } from '../scaling/sourceAddressReadiness.js';
+import { probeDelayedQueue } from '../queue/delayedOrphans.js';
+import { logger } from '../monitoring/logger.js';
 
 const startTime = Date.now();
 const CERTIFICATE_EXPIRY_WARNING_MS = 14 * 24 * 60 * 60 * 1_000;
@@ -127,7 +131,7 @@ export async function recordWorkerHeartbeat(redis: Redis, serverId: string): Pro
 /**
  * Create the health endpoint handler
  */
-export function createHealthHandler(redis: Redis, config: MtaConfig) {
+export function createHealthHandler(redis: Redis, config: MtaConfig, queue: Queue<EmailJob>) {
 	return async (c: Context) => {
 		const redisOk = await isRedisHealthy();
 
@@ -179,6 +183,21 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 		const smtpProbe = await getSmtpReachability(sendingIps);
 		const smtpTls = inspectSmtpTlsCertificate(config.bounceServerTlsCert, config.ehloHostname);
 
+		// Delay-set integrity. Deliberately NOT folded into `degraded` below: a
+		// leak in the retry ladder is not a reason to tell an operator their
+		// delivery path is down, and the two failures want different answers.
+		// It is loud where it belongs — the MTA's own log, and `owlat doctor`.
+		const [queueProbe, waiting] = await Promise.all([
+			probeDelayedQueue(redis),
+			queue.getWaitingCount(),
+		]);
+		if (queueProbe.status === 'orphaned') {
+			logger.warn(
+				queueProbe,
+				'Delayed queue holds overdue jobs with no payload — these can never be delivered and nothing will reclaim them'
+			);
+		}
+
 		// Determine overall status
 		const identityNotReady = ipStatus.some(
 			(ip) =>
@@ -206,6 +225,7 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 			dns: dnsOk ? 'ok' : 'unreachable',
 			smtpOutbound: smtpProbe,
 			smtpTls,
+			queue: { ...queueProbe, waiting },
 		});
 	};
 }
@@ -263,8 +283,9 @@ async function checkDnsResolver(): Promise<boolean> {
 /**
  * Create the Prometheus metrics endpoint
  */
-export function createMetricsHandler() {
+export function createMetricsHandler(queue: Queue<EmailJob>) {
 	return async (c: Context) => {
+		queueDepth.set({ state: 'waiting' }, await queue.getWaitingCount());
 		const metrics = await registry.metrics();
 		return c.text(metrics, 200, {
 			'Content-Type': registry.contentType,

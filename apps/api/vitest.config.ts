@@ -1,30 +1,45 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
+const integrationTestPattern = 'convex/**/__tests__/**/*.integration.test.ts';
+
 export default defineConfig({
 	test: {
-		include: ['convex/**/__tests__/**/*.test.ts'],
-		exclude: ['convex/_generated/**'],
 		setupFiles: ['./vitest.setup.ts'],
-		environment: 'node',
-		environmentMatchGlobs: [['convex/**/__tests__/**/*.integration.test.ts', 'edge-runtime']],
 		server: { deps: { inline: ['convex-test'] } },
 		// Integration tests run the real HTTP-router graph through convex-test, which
 		// lazily transforms/imports the whole `convex/` tree on the first `t.fetch`
 		// in a worker. That one-time cold-start can exceed a tight timeout for
-		// whichever integration test lands first in a contended worker — a pure
-		// environmental flake, not a logic bug. Give the cold-start headroom, and
-		// retry: the re-run reuses the now-warm cache and passes in ms. Real failures
-		// still fail all attempts (retries are reported as flaky, not hidden).
-		//
-		// These were 20s/retry:2 back when `ci:verify` ran every package in parallel
-		// and oversubscribed the machine. Turborepo test caching now means only the
-		// affected packages execute, so contention is far lower and the headroom was
-		// tightened to 10s/retry:1. Watch CI for cold-start flakes and raise again if
-		// they reappear.
+		// whichever integration test lands first in a contended worker. Keep the
+		// tighter default for fast unit tests and give only the integration project
+		// enough headroom for that environmental cost.
 		testTimeout: 10000,
 		hookTimeout: 10000,
 		retry: 1,
+		projects: [
+			{
+				extends: true,
+				test: {
+					name: 'unit',
+					include: ['convex/**/__tests__/**/*.test.ts'],
+					exclude: ['convex/_generated/**', integrationTestPattern],
+					environment: 'node',
+					sequence: { groupOrder: 0 },
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: 'integration',
+					include: [integrationTestPattern],
+					exclude: ['convex/_generated/**'],
+					environment: 'edge-runtime',
+					testTimeout: 20000,
+					// Splitting by timeout must not create two competing worker pools.
+					sequence: { groupOrder: 1 },
+				},
+			},
+		],
 		// convex-test produces "Write outside of transaction" unhandled rejections
 		// when mutations call ctx.scheduler.runAfter() — this is a known limitation
 		dangerouslyIgnoreUnhandledErrors: true,

@@ -5,8 +5,9 @@ import { internalQuery } from './_generated/server';
 import { getBetterAuthSessionWithRole, getUserIdFromSession } from './lib/sessionOrganization';
 import { authedQuery } from './lib/authedFunctions';
 import { loadAccessibleMailboxes } from './mail/permissions';
+import { batchGet } from './_utils/batchLoader';
 
-export interface GlobalSearchResults {
+interface GlobalSearchResults {
 	contacts: Array<{ id: string; type: 'contact'; title: string; subtitle: string; url: string }>;
 	emails: Array<{ id: string; type: 'email'; title: string; subtitle: string; url: string }>;
 	campaigns: Array<{ id: string; type: 'campaign'; title: string; subtitle: string; url: string }>;
@@ -63,9 +64,16 @@ async function searchMail(
 		.sort((left, right) => right.receivedAt - left.receivedAt)
 		.slice(0, limit);
 
+	// One batched, deduplicated read for the folders behind the hits — a page of
+	// results usually spans a handful of folders, not one per row.
+	const folders = await batchGet(
+		ctx,
+		hits.map((message) => message.folderId)
+	);
+
 	const rows: GlobalSearchResults['mail'] = [];
 	for (const message of hits) {
-		const folder = await ctx.db.get(message.folderId);
+		const folder = folders.get(message.folderId) ?? null;
 		if (folder?.role && HIDDEN_MAIL_ROLES.has(folder.role)) continue;
 		// The Postbox route takes either a system-folder role or a custom folder id.
 		const folderParam = folder?.role ?? message.folderId;
@@ -89,7 +97,7 @@ async function searchMail(
  * (`searchInternal`). No auth inside — callers gate, which is exactly why the
  * mailbox set is an ARGUMENT: a caller that cannot name a user cannot get mail.
  */
-export async function runGlobalSearch(
+async function runGlobalSearch(
 	ctx: QueryCtx,
 	rawQuery: string,
 	rawLimit?: number,

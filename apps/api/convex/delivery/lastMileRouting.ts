@@ -33,7 +33,7 @@ interface LastMileInput {
 	sendId?: string;
 }
 
-export interface LastMileRoutingReady {
+interface LastMileRoutingReady {
 	kind: 'ready';
 	providerKind: SendProviderKind;
 	route: ResolvedRoute | null;
@@ -41,11 +41,11 @@ export interface LastMileRoutingReady {
 	routingLease?: string;
 	/**
 	 * The return-path host a relay send may stamp as its VERP envelope sender,
-	 * so a bounce the relay generates reaches our own bounce server (plan G-08).
-	 * Carried on the routing result because the routing query already resolved
-	 * it — the send path must not grow a second round trip per message.
-	 * `undefined` unless the transport is PROVEN to honour a custom return path
-	 * AND the From domain's return-path host authorises it.
+	 * so a bounce the relay generates reaches our own bounce server. Carried on
+	 * the routing result because the routing query already resolved it — the
+	 * send path must not grow a second round trip per message. `undefined`
+	 * unless the transport is PROVEN to honour a custom return path AND the From
+	 * domain's return-path host authorises it.
 	 */
 	relayReturnPathHost?: string | undefined;
 }
@@ -63,7 +63,7 @@ export interface LastMileRoutingDeferred {
 	 */
 	isPolicyHold?: boolean;
 	/**
-	 * WHOSE FACT THIS DEFERRAL IS — gate 2's numerator (plan D5, D10), and the
+	 * WHOSE FACT THIS DEFERRAL IS — gate 2's numerator, and the
 	 * reason this field is REQUIRED rather than defaulted: a new defer site that
 	 * forgot to answer would quietly pick a side.
 	 *
@@ -88,7 +88,7 @@ export interface LastMileRoutingDeferred {
 /** Poll at the deliverability signal's own freshness horizon while held. */
 const POLICY_HOLD_RETRY_MS = 10 * 60 * 1000;
 
-export type LastMileRoutingResult = LastMileRoutingReady | LastMileRoutingDeferred;
+type LastMileRoutingResult = LastMileRoutingReady | LastMileRoutingDeferred;
 
 /**
  * A reconciliation attempt exists because an earlier `POST /send` may already
@@ -252,15 +252,14 @@ export async function resolveLastMileRouting(
 	if (input.mtaReconciliation) {
 		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
 	}
-	// GO FIND A RELAY, unless the plan already put us on one. The second half of
+	// GO FIND A RELAY, unless the route already put us on one. The second half of
 	// this gate used to read `route?.providerType !== 'ses'`, which picked out the
-	// same routes only while SES was the one relay `setRoute` would save: since
-	// P0.2 it is not, so an identically-configured Mandrill / bring-your-own-SMTP
-	// / plugin relay fell through to re-resolving a governed relay route it was
-	// already on, with `forceRelayReason` — two relays, one configuration, two
-	// code paths, told apart by name. `isRelayTransportKind` is D3's relay
-	// definition (`delivery/relayConfiguration.ts`), which is the question this
-	// actually asks.
+	// same routes only while SES was the one relay `setRoute` would save. It is no
+	// longer, so an identically-configured Mandrill / bring-your-own-SMTP / plugin
+	// relay fell through to re-resolving a governed relay route it was already on,
+	// with `forceRelayReason` — two relays, one configuration, two code paths, told
+	// apart by name. `isRelayTransportKind` is the sanctioned relay definition
+	// (`delivery/relayConfiguration.ts`), which is the question this actually asks.
 	if (baseProviderKind === OWN_ARM_TRANSPORT_KIND && !isRelayTransportKind(route?.providerType)) {
 		const relayReason = decision.reason === 'warmup_overflow' ? 'warmup_overflow' : 'breaker_open';
 		const relay = await ctx.runQuery(internal.lib.sendProviders.route.resolveGovernedRelayRoute, {
@@ -305,7 +304,7 @@ export async function resolveLastMileRouting(
 	// The warm-up-overflow / breaker-open relay fallback resolved above carries
 	// most relay traffic during a ramp, so it is the LAST route that may drop the
 	// VERP envelope sender: without it those bounces land at the relay and the
-	// arm reads artificially clean (plan G-08).
+	// arm reads artificially clean.
 	return withReconciliationSafety(
 		{
 			kind: 'ready',

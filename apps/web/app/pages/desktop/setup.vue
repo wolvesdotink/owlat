@@ -86,7 +86,8 @@ const keyPath = ref('~/.ssh/id_ed25519');
 const privateKey = ref('');
 const passphrase = ref('');
 const installDir = ref('/opt/owlat');
-const branch = ref('main');
+// The default install targets the newest published server release, resolved
+// on the server when provisioning starts (the same lookup install.sh does).
 // Dev-only (`nuxt dev`, i.e. `tauri dev`): upload this machine's checkout
 // instead of cloning the published repo and build all images on the server
 // from that source. `import.meta.dev` is statically false in `generate:desktop`
@@ -97,7 +98,19 @@ const localSource = ref('');
 // small servers) or on the server (needs ~4 GB RAM for the web build).
 const imageMode = ref<'local' | 'server'>('local');
 const showAdvanced = ref(false);
+// The development install (a branch instead of the release, or the local
+// checkout) is a hidden option: revealed in dev builds, with `?dev` on the
+// route, or by Alt/Shift-clicking the advanced toggle.
+const devOptionsRevealed = ref(isDev || 'dev' in useRoute().query);
+const devInstallChosen = ref(false);
+const devInstall = computed(() => devOptionsRevealed.value && devInstallChosen.value);
+const branch = ref('main');
 const connectError = ref('');
+
+function toggleAdvanced(event: MouseEvent) {
+	if (event.altKey || event.shiftKey) devOptionsRevealed.value = true;
+	showAdvanced.value = !showAdvanced.value;
+}
 
 /** Host-key prompt copy + whether a CHANGED key needs the extra confirmation. */
 const hostKeyPrompt = computed<HostKeyPrompt | null>(() =>
@@ -166,9 +179,13 @@ async function onConnect() {
 		auth,
 		remote: {
 			installDir: installDir.value.trim() || '/opt/owlat',
-			branch: branch.value.trim() || 'main',
-			...(isDev && localSource.value.trim()
-				? { localSource: normalizeLocalPath(localSource.value), localImages: imageMode.value === 'local' }
+			...(devInstall.value
+				? {
+						branch: branch.value.trim() || 'main',
+						...(isDev && localSource.value.trim()
+							? { localSource: normalizeLocalPath(localSource.value), localImages: imageMode.value === 'local' }
+							: {}),
+					}
 				: {}),
 		},
 	});
@@ -564,7 +581,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							/>
 						</div>
 
-						<button type="button" class="text-xs text-text-secondary hover:text-text-primary" @click="showAdvanced = !showAdvanced">
+						<button type="button" class="text-xs text-text-secondary hover:text-text-primary" @click="toggleAdvanced">
 							{{ showAdvanced ? t('desktop.setup.hideAdvanced') : t('desktop.setup.showAdvanced') }}
 						</button>
 						<div v-if="showAdvanced" class="space-y-3">
@@ -573,12 +590,24 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<label :class="labelClass">{{ t('desktop.setup.fields.installDir') }}</label>
 									<input v-model="installDir" :class="inputClass" :disabled="busy" />
 								</div>
-								<div>
+								<div v-if="devInstall">
 									<label :class="labelClass">{{ t('desktop.setup.fields.branch') }}</label>
 									<input v-model="branch" :class="inputClass" :disabled="busy || !!localSource.trim()" />
 								</div>
+								<div v-else>
+									<label :class="labelClass">{{ t('desktop.setup.fields.version') }}</label>
+									<input :value="t('desktop.setup.fields.versionLatest')" :class="inputClass" readonly />
+									<p class="mt-1.5 text-xs text-text-secondary">{{ t('desktop.setup.fields.versionHint') }}</p>
+								</div>
 							</div>
-							<div v-if="isDev">
+							<label v-if="devOptionsRevealed" class="flex cursor-pointer items-start gap-2.5 text-sm">
+								<input v-model="devInstallChosen" type="checkbox" class="mt-0.5" :disabled="busy" />
+								<span>
+									{{ t('desktop.setup.fields.devInstall') }}
+									<span class="block text-xs text-text-secondary">{{ t('desktop.setup.fields.devInstallHint') }}</span>
+								</span>
+							</label>
+							<div v-if="isDev && devInstall">
 								<label :class="labelClass">{{ t('desktop.setup.fields.localSource') }}</label>
 								<input
 									v-model="localSource"

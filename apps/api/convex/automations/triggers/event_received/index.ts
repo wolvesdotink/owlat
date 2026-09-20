@@ -1,9 +1,6 @@
-import type {
-	EventReceivedFireInput,
-	TriggerModule,
-} from '../types';
+import type { EventReceivedFireInput, TriggerModule } from '../types';
 
-export interface EventReceivedConfig {
+interface EventReceivedConfig {
 	eventName: string;
 }
 
@@ -14,7 +11,12 @@ export const eventReceivedTrigger: TriggerModule<
 > = {
 	kind: 'event_received',
 	parseConfig(raw) {
-		if (raw && typeof raw === 'object' && 'eventName' in raw && typeof (raw as { eventName: unknown }).eventName === 'string') {
+		if (
+			raw &&
+			typeof raw === 'object' &&
+			'eventName' in raw &&
+			typeof (raw as { eventName: unknown }).eventName === 'string'
+		) {
 			return { eventName: (raw as { eventName: string }).eventName };
 		}
 		return null;

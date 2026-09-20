@@ -1,5 +1,5 @@
 /**
- * Gate 4 — THE ENGAGEMENT RATIO (plan D8, D10, D12, D14, D15).
+ * Gate 4 — THE ENGAGEMENT RATIO.
  *
  * THE ANCHOR GATE. Absolute open rate is worthless as a deliverability metric:
  * it moves with subject line, audience and season, and a cell that drops from
@@ -13,7 +13,7 @@
  * THREE things make this gate correct rather than merely plausible, and each of
  * them is a caveat that would silently invert the result if it were dropped:
  *
- * 1. CALIBRATION SLICE ONLY (plan D8). Assignment is STRATIFIED by default —
+ * 1. CALIBRATION SLICE ONLY. Assignment is STRATIFIED by default —
  *    the own arm gets the top engagement percentile first, because that is what
  *    warms an IP. Stratification is right for warming and fatal for comparison:
  *    it hands the own arm a systematically better audience, so the general
@@ -30,7 +30,7 @@
  *    CLICK rate instead. That substitution is a configuration table, not an
  *    `if` in the arithmetic.
  *
- * 3. THE MINIMUM SAMPLE IS ENFORCED, NOT ADVISORY (plan D10). Below the floor
+ * 3. THE MINIMUM SAMPLE IS ENFORCED, NOT ADVISORY. Below the floor
  *    the gate returns `insufficient_data` and the controller HOLDS: it never
  *    increases on thin data, and it never decreases on it either. A gate
  *    returning a verdict below its minimum sample is a defect.
@@ -54,9 +54,8 @@
  * differences are data (`RATIO_SPEC`, `FLOOR_SPEC`), exactly as `gates.ts` does
  * for the two ceiling gates.
  *
- * PURE (plan D15): `now` is a parameter, nothing reads a clock, a database or
- * the environment, and every verdict carries the numbers that produced it
- * (plan D12).
+ * PURE: `now` is a parameter, nothing reads a clock, a database or
+ * the environment, and every verdict carries the numbers that produced it.
  */
 
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
@@ -94,10 +93,10 @@ export interface EngagementGateInput {
 	/** Own-MTA arm outcomes for the concurrent window. */
 	readonly own: TransportOutcomeSummary;
 	/**
-	 * Reference (relay/ESP) arm outcomes for the SAME window, or `null` when no
-	 * reference transport is configured. `null` is a SUPPORTED CONFIGURATION
-	 * (plan D2): the ratio simply holds, nothing fails and nothing is blocked.
-	 * The standalone deployment's substitute lives in P1-7's evaluator.
+	 * Reference (relay/ESP) arm outcomes for the SAME window, or `null` when no reference transport is
+	 * configured. `null` is a SUPPORTED CONFIGURATION: the ratio simply holds, nothing fails and
+	 * nothing is blocked. The standalone deployment's substitute lives in the trailing-baseline
+	 * evaluator.
 	 */
 	readonly reference: TransportOutcomeSummary | null;
 	/**
@@ -180,9 +179,9 @@ export interface EngagementComparisonSpec {
 		| 'trailing_baseline_breached';
 	/**
 	 * The confidence this comparison is worth, and whether its `pass` may justify
-	 * an INCREASE (plan D14). Data, not an `if`: the concurrent ratio holds subject,
+	 * an INCREASE. Data, not an `if`: the concurrent ratio holds subject,
 	 * content and audience constant by construction and is worth acting on in both
-	 * directions, while the standalone trailing variant (P1-7) cannot tell a
+	 * directions, while the standalone trailing variant cannot tell a
 	 * redesigned newsletter from a placement loss and may therefore only ever cause
 	 * a DECREASE.
 	 */
@@ -228,8 +227,8 @@ const FLOOR_SPEC: EngagementComparisonSpec = {
  * ORDERING, and why:
  *   1. Recent window absent/thin/stale/unmeasurable -> hold. We know nothing.
  *   2. Second series absent/thin/stale/unmeasurable -> hold. There is no ratio
- *      without a denominator, and plan D2 forbids an absent external account
- *      from producing anything worse than lower confidence.
+ *      without a denominator, and an absent external account may never produce
+ *      anything worse than lower confidence.
  *   3. A second series at exactly zero -> hold, NOT pass. A zero denominator is
  *      a division by zero, and "0/0 looks fine" is precisely the bug that would
  *      let a dead cell ramp to 100%.
@@ -272,7 +271,7 @@ export function evaluateEngagementComparison(
 		referenceSample: reference?.sample ?? null,
 		// `minSample` always names the OWN arm's floor and `referenceMinSample`
 		// always names the second series' — on every path, hold and decided alike.
-		// On gate 4b the two differ by 3x, so a D12 audit row or a dashboard cell
+		// On gate 4b the two differ by 3x, so an audit row or a dashboard cell
 		// that reported only one of them would state something false about the
 		// other arm whichever one it picked.
 		minSample,

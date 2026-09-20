@@ -416,6 +416,44 @@ describe('XOAUTH2 access-token plumbing', () => {
 		});
 	});
 
+	describe('appendToSent (IMAP)', () => {
+		it('opens the Sent append with XOAUTH2 when an IMAP access token is present', async () => {
+			const oauthCreds: WorkerCredentials = {
+				...CREDS,
+				imapPassword: '',
+				imapAccessToken: 'ya29.IMAP',
+			};
+			sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
+			imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
+
+			await sendViaExternal(oauthCreds, {
+				from: 'me@example.com',
+				recipients: ['x@example.com'],
+				raw: RAW,
+			});
+
+			const options = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+			// No `pass` at all — an empty password beside a token is how an OAuth
+			// account arrives, and sending LOGIN with it would look like a wrong
+			// password rather than a token problem.
+			expect(options.auth).toEqual({ user: 'imap-user', accessToken: 'ya29.IMAP' });
+		});
+
+		it('opens the Sent append with the password when there is no token', async () => {
+			sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
+			imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
+
+			await sendViaExternal(CREDS, {
+				from: 'me@example.com',
+				recipients: ['x@example.com'],
+				raw: RAW,
+			});
+
+			const options = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+			expect(options.auth).toEqual({ user: 'imap-user', pass: 'imap-pass' });
+		});
+	});
+
 	describe('testConnection', () => {
 		const baseInput = {
 			imap: {
@@ -433,6 +471,16 @@ describe('XOAUTH2 access-token plumbing', () => {
 				password: 'smtp-pass',
 			},
 		};
+
+		it('probes IMAP with XOAUTH2 when the IMAP leg carries an access token', async () => {
+			await testConnection({
+				...baseInput,
+				imap: { ...baseInput.imap, password: '', accessToken: 'ya29.IMAP' },
+			});
+
+			const options = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+			expect(options.auth).toEqual({ user: 'imap-user', accessToken: 'ya29.IMAP' });
+		});
 
 		it('verifies with OAuth credentials when the SMTP probe carries an access token', async () => {
 			await testConnection({

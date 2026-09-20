@@ -104,7 +104,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		return approved;
 	};
 
-	// Inline "Save" (piece D1'): persist the working edit as a draft revision
+	// Inline "Save": persist the working edit as a draft revision
 	// WITHOUT approving — the message stays in `draft_ready`, the agent original
 	// is preserved as revision 0, and no autonomy feedback is recorded. Editing
 	// mode closes on success; the saved text becomes the visible working draft.

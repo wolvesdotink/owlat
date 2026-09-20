@@ -560,24 +560,35 @@ describe('SmtpConnectionPool — drain on closeAll (PR-73)', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('waits for in-flight sends to finish before tearing the pool down', async () => {
-		const pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
+		vi.useFakeTimers();
+		try {
+			const pool = new SmtpConnectionPool({
+				maxPerHost: 3,
+				idleTimeoutMs: 30000,
+				maxAgeMs: 300000,
+			});
 
-		const a = await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
-		expect(pool.size).toBe(1);
+			const a = await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
+			expect(pool.size).toBe(1);
 
-		let closed = false;
-		const closing = pool.closeAll(5000).then(() => {
-			closed = true;
-		});
+			let closed = false;
+			const closing = pool.closeAll(5000).then(() => {
+				closed = true;
+			});
 
-		await new Promise((r) => setTimeout(r, 250));
-		expect(closed).toBe(false);
+			await vi.advanceTimersByTimeAsync(250);
+			expect(closed).toBe(false);
 
-		pool.release(a.key);
-		await closing;
+			pool.release(a.key);
+			// The drain loop polls every 100 ms; give it one tick to observe the release.
+			await vi.advanceTimersByTimeAsync(100);
+			await closing;
 
-		expect(closed).toBe(true);
-		expect(pool.size).toBe(0);
+			expect(closed).toBe(true);
+			expect(pool.size).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('tears down immediately when nothing is in-flight', async () => {

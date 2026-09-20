@@ -9,11 +9,11 @@
  *
  * Two rules govern everything here:
  *
- *  - NEVER report zero for something we could not measure (plan D2/D10).
+ *  - NEVER report zero for something we could not measure.
  *    Missing state, stale state, no active campaign IPs, or an effectively
  *    unbounded (graduated) pool all answer `null` — "capacity unknown" — and
  *    every caller maps that onto "allow the send".
- *  - STATE THE BOUND HONESTLY (plan D14). The projection is the PUBLISHED BASE
+ *  - STATE THE BOUND HONESTLY. The projection is the PUBLISHED BASE
  *    SCHEDULE walked at ONE schedule day per calendar day, summed over the
  *    active campaign IPs. That is not an upper bound in general, and this file
  *    does not claim one. The error runs in BOTH directions, and each direction

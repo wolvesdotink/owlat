@@ -10,12 +10,12 @@ import type { ConditionKind } from './types';
  * executable modules.
  */
 
-export const CORE_CONDITION_KINDS = [
+const CORE_CONDITION_KINDS = [
 	'contact_property',
 	'email_activity',
 	'topic_membership',
 ] as const satisfies readonly ConditionKind[];
-export type CoreConditionKind = (typeof CORE_CONDITION_KINDS)[number];
+type CoreConditionKind = (typeof CORE_CONDITION_KINDS)[number];
 
 type GeneratedPluginConditionKind =
 	(typeof BUNDLED_PLUGIN_AUTOMATION_CONDITION_CATALOG)[number] extends infer Entry
@@ -24,7 +24,7 @@ type GeneratedPluginConditionKind =
 			: never
 		: never;
 
-export interface GeneratedPluginConditionCatalogEntry {
+interface GeneratedPluginConditionCatalogEntry {
 	readonly kind: string;
 	readonly pluginId: string;
 	readonly localId: string;

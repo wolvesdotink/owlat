@@ -3,7 +3,12 @@ import {
 	DURABLE_EFFECT_IDEMPOTENCY_TTL_MS,
 	type DurableEffectIdentity,
 } from '../lib/effectCheckpoint.js';
-import { warmingDailyStatsKey, warmingOutcomeReceiptKey, warmingStateKey } from './warmingKeys.js';
+import {
+	WARMING_DAILY_STATS_TTL_SECONDS,
+	warmingDailyStatsKey,
+	warmingOutcomeReceiptKey,
+	warmingStateKey,
+} from './warmingKeys.js';
 
 const RECORD_DAILY_OUTCOME_ONCE_LUA = `
 if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
@@ -34,7 +39,7 @@ export async function recordUnreservedWarmingSendOnce(
 		warmingStateKey(ip),
 		warmingDailyStatsKey(ip, utcDate),
 		warmingOutcomeReceiptKey(ip, identity),
-		'172800',
+		String(WARMING_DAILY_STATS_TTL_SECONDS),
 		String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS)
 	);
 }
@@ -52,7 +57,7 @@ export async function recordDailyWarmingOutcomeOnce(
 		warmingDailyStatsKey(ip, utcDate),
 		warmingOutcomeReceiptKey(ip, identity),
 		field,
-		'172800',
+		String(WARMING_DAILY_STATS_TTL_SECONDS),
 		String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS)
 	);
 }
