@@ -17,6 +17,7 @@ import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireAdminContext } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
 import { getOrThrow } from './_utils/errors';
+import { assertFeatureEnabled } from './lib/featureFlags';
 import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { getCachedContactCount } from './lib/contactCountHelpers';
 import { readDailyStats } from './lib/sendDailyStats';
@@ -72,6 +73,7 @@ export function isDatasetKey(value: string): value is DatasetKey {
 export const list = adminQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
+		await assertFeatureEnabled(ctx, 'ai.visualizations');
 		return await ctx.db
 			.query('visualizations')
 			.withIndex('by_created_at')
@@ -86,6 +88,7 @@ export const list = adminQuery({
 export const listPinned = adminQuery({
 	args: {},
 	handler: async (ctx) => {
+		await assertFeatureEnabled(ctx, 'ai.visualizations');
 		return await ctx.db
 			.query('visualizations')
 			.withIndex('by_pinned', (q) => q.eq('pinned', true))
@@ -111,6 +114,7 @@ export const createFromPrompt = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		const session = await requireAdminContext(ctx);
+		await assertFeatureEnabled(ctx, 'ai.visualizations');
 		// Bound the prompt — it feeds an LLM call, so an unbounded string is a
 		// (admin-only) cost/abuse vector.
 		validateStringLength(args.prompt, STRING_LIMITS.DESCRIPTION, 'Prompt');
@@ -152,6 +156,7 @@ export const regenerate = authedMutation({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
+		await assertFeatureEnabled(ctx, 'ai.visualizations');
 		const viz = await getOrThrow(ctx, args.id, 'Visualization');
 
 		// Only live-data visualizations carry a refreshable dataset key.
@@ -181,6 +186,7 @@ export const togglePin = authedMutation({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
+		await assertFeatureEnabled(ctx, 'ai.visualizations');
 		const viz = await getOrThrow(ctx, args.id, 'Visualization');
 
 		await ctx.db.patch(args.id, {
@@ -197,6 +203,7 @@ export const remove = authedMutation({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
 		await requireAdminContext(ctx);
+		await assertFeatureEnabled(ctx, 'ai.visualizations');
 		await ctx.db.delete(args.id);
 	},
 });
