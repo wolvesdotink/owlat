@@ -13,15 +13,19 @@
  *   · an INFECTED message yields null, whatever the caller's role;
  *   · a swept message (no `rawStorageId`) yields null rather than throwing;
  *   · an editor — a real signed-in member, not an anonymous caller — gets null;
- *   · an anonymous caller gets null.
+ *   · an anonymous caller gets null;
+ *   · a MISCONFIGURED instance — a key with nowhere to proxy through — answers
+ *     null AND says so in the log, because the client's only copy for a null
+ *     is "try again" and this one never comes true.
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import schema from '../../schema';
-import { internal } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import * as runtimeLog from '../../lib/runtimeLog';
 
 let mockSession: { userId: string; role: OrganizationRole } | null = {
 	userId: 'test-user',
@@ -123,5 +127,48 @@ describe('inbox.rawMessage.getInboundMessageRawStorageId', () => {
 		await expect(
 			t.query(internal.inbox.rawMessage.getInboundMessageRawStorageId, { messageId })
 		).resolves.toBeNull();
+	});
+});
+
+describe('inbox.rawMessage.getInboundMessageRawUrl', () => {
+	const SAVED_ENV = { ...process.env };
+
+	afterEach(() => {
+		process.env = { ...SAVED_ENV };
+		vi.restoreAllMocks();
+	});
+
+	it('logs when a configuration gap is what makes the URL unmintable', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t, { virusVerdict: 'clean' });
+		// A key to seal with and no site URL to serve the decrypt proxy from:
+		// every attachment download on every message fails, forever, and
+		// `sealedBlobUrl` returns its null without a word.
+		process.env['INSTANCE_SECRET'] = 'a'.repeat(64);
+		delete process.env['CONVEX_SITE_URL'];
+		const warn = vi.spyOn(runtimeLog, 'logWarn').mockImplementation(() => {});
+
+		await expect(
+			t.action(api.inbox.rawMessage.getInboundMessageRawUrl, { messageId })
+		).resolves.toBeNull();
+
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('could not mint a sealed-blob URL'),
+			expect.objectContaining({ messageId })
+		);
+	});
+
+	it('says nothing for the states the reader already explains', async () => {
+		const t = convexTest(schema, modules);
+		// Swept bytes: the thread view disables the control and names the reason,
+		// so this null is expected and a log line would be noise on every render.
+		const messageId = await seedMessage(t, { virusVerdict: 'clean', withBlob: false });
+		const warn = vi.spyOn(runtimeLog, 'logWarn').mockImplementation(() => {});
+
+		await expect(
+			t.action(api.inbox.rawMessage.getInboundMessageRawUrl, { messageId })
+		).resolves.toBeNull();
+
+		expect(warn).not.toHaveBeenCalled();
 	});
 });
