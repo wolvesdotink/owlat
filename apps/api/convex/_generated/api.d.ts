@@ -548,6 +548,7 @@ import type * as integrationImports_providers_mandrill_index from '../integratio
 import type * as integrationImports_providers_stripe_index from '../integrationImports/providers/stripe/index.js';
 import type * as integrationImports_suppressions from '../integrationImports/suppressions.js';
 import type * as integrationImports_walker from '../integrationImports/walker.js';
+import type * as knowledge_attachmentIngestBudget from '../knowledge/attachmentIngestBudget.js';
 import type * as knowledge_edgeBackfill from '../knowledge/edgeBackfill.js';
 import type * as knowledge_edgeInference from '../knowledge/edgeInference.js';
 import type * as knowledge_edges from '../knowledge/edges.js';
@@ -1025,7 +1026,6 @@ import type * as seedDemo_messages from '../seedDemo/messages.js';
 import type * as seedDemo_pipeline from '../seedDemo/pipeline.js';
 import type * as segments from '../segments.js';
 import type * as segments_listing from '../segments/listing.js';
-import type * as semanticFileBudget from '../semanticFileBudget.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
 import type * as semanticFiles from '../semanticFiles.js';
 import type * as shareLinkHttp from '../shareLinkHttp.js';
@@ -1059,6 +1059,7 @@ import type * as webhooks_adapters_mandrill from '../webhooks/adapters/mandrill.
 import type * as webhooks_adapters_meta from '../webhooks/adapters/meta.js';
 import type * as webhooks_adapters_mta from '../webhooks/adapters/mta.js';
 import type * as webhooks_adapters_mtaEventParsers from '../webhooks/adapters/mtaEventParsers.js';
+import type * as webhooks_adapters_mtaRawRoute from '../webhooks/adapters/mtaRawRoute.js';
 import type * as webhooks_adapters_resend from '../webhooks/adapters/resend.js';
 import type * as webhooks_adapters_ses from '../webhooks/adapters/ses.js';
 import type * as webhooks_adapters_twilio from '../webhooks/adapters/twilio.js';
@@ -1663,6 +1664,7 @@ declare const fullApi: ApiFromModules<{
 	'integrationImports/providers/stripe/index': typeof integrationImports_providers_stripe_index;
 	'integrationImports/suppressions': typeof integrationImports_suppressions;
 	'integrationImports/walker': typeof integrationImports_walker;
+	'knowledge/attachmentIngestBudget': typeof knowledge_attachmentIngestBudget;
 	'knowledge/edgeBackfill': typeof knowledge_edgeBackfill;
 	'knowledge/edgeInference': typeof knowledge_edgeInference;
 	'knowledge/edges': typeof knowledge_edges;
@@ -2140,7 +2142,6 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/pipeline': typeof seedDemo_pipeline;
 	segments: typeof segments;
 	'segments/listing': typeof segments_listing;
-	'semanticFileBudget': typeof semanticFileBudget;
 	semanticFileProcessing: typeof semanticFileProcessing;
 	semanticFiles: typeof semanticFiles;
 	shareLinkHttp: typeof shareLinkHttp;
@@ -2174,6 +2175,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/adapters/meta': typeof webhooks_adapters_meta;
 	'webhooks/adapters/mta': typeof webhooks_adapters_mta;
 	'webhooks/adapters/mtaEventParsers': typeof webhooks_adapters_mtaEventParsers;
+	'webhooks/adapters/mtaRawRoute': typeof webhooks_adapters_mtaRawRoute;
 	'webhooks/adapters/resend': typeof webhooks_adapters_resend;
 	'webhooks/adapters/ses': typeof webhooks_adapters_ses;
 	'webhooks/adapters/twilio': typeof webhooks_adapters_twilio;
