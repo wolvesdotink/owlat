@@ -2,30 +2,27 @@
  * Phase: prepare attachment + header metadata for an inbound-accept route.
  *
  * Reads the parsed mail's attachments and headers and emits an
- * `inbound_accept` BounceAttempt carrying, per attachment, only what the
- * `inbound.received` webhook payload reports: filename, content type and size.
+ * `inbound_accept` BounceAttempt carrying, per attachment, filename, content
+ * type, size and — the part that makes it addressable — `partIndex`.
  *
- * It deliberately does NOT carry the bytes. This phase used to base64 every
- * attachment so the reducer could fan out `stage_attachment` effects that
- * `SETEX`-ed them into Redis for an hour under `mta:inbound-att:<msgid>:<n>` —
- * and nothing, anywhere, ever read one back. That made inbound mail the
- * highest bytes-per-key writer in the product against a Redis now capped by
- * `--maxmemory` with `maxmemory-policy noeviction`, where reaching the cap
- * means Redis refuses writes and the MTA stops accepting mail.
+ * THE BYTES DO NOT TRAVEL THROUGH THIS PHASE, and that is deliberate. It used
+ * to base64 every attachment so the reducer could fan out `stage_attachment`
+ * effects that `SETEX`-ed them into Redis for an hour under
+ * `mta:inbound-att:<msgid>:<n>` — and nothing, anywhere, ever read one back.
+ * That made inbound mail the highest bytes-per-key writer in the product
+ * against a Redis capped by `--maxmemory` with `maxmemory-policy noeviction`,
+ * where reaching the cap means Redis refuses writes and the MTA stops
+ * accepting mail.
  *
- * Dropping it loses nothing that was reachable — no caller ever fetched one of
- * those copies. It does not make the bytes reachable either, and on THIS route
- * they never were: `InboundEmailPayload` (`../../types.ts`) has no raw field, and
- * Convex's `inboundMessages` stores only the `attachmentMeta` JSON. So the
- * team/AI-inbox route carries attachment METADATA ONLY — filename, content type
- * and size — and the bytes are not available downstream at all, before this
- * change or after it. That is a pre-existing product gap, not a design.
- *
- * The route that does carry the bytes is the personal-mailbox one: its
- * `inbound.mailbox.received` payload ships the whole message as `rawBytesBase64`,
- * Convex keeps it at `mailMessages.rawStorageId`, and the Postbox reader
- * re-extracts MIME parts from that raw `.eml` by `partIndex` (see
- * `MailboxAttachmentMeta`). Nothing equivalent exists here.
+ * The bytes reach Convex WHOLE instead, once: the reducer puts the entire
+ * received message on the `inbound.received` payload as `rawBytesBase64` (see
+ * `InboundEmailPayload` in `../../types.ts`), the team-inbox route
+ * `POST /webhooks/mta-inbound` stores it sealed at `inboundMessages.rawStorageId`,
+ * and the reader re-extracts one MIME part from that raw `.eml` by the
+ * `partIndex` this phase emits. So the metadata here is an INDEX into the raw
+ * message rather than a description of something unreachable — one copy of the
+ * bytes, addressed per part, exactly as the personal-mailbox route
+ * (`inbound.mailbox.received` → `mailMessages.rawStorageId`) has always worked.
  */
 
 import type { Phase } from '../pipeline.js';
