@@ -80,6 +80,7 @@
 		"lint:scripts": "oxlint --config oxlintrc.json scripts",
 		"lint:script-tests": "vitest run scripts/__tests__",
 		"lint:deadcode": "bash scripts/check-dead-code.sh && bash scripts/check-shared-production-exports.sh",
+		"lint:catalog": "bash scripts/check-catalog-usage.sh",
 		"lint:build-graph": "bun scripts/check-build-graph.ts",
 		"lint:convex-orphans": "bun scripts/check-convex-plugin-orphans.ts",
 		"lint:convex-globals": "bun scripts/check-convex-node-globals.ts",
