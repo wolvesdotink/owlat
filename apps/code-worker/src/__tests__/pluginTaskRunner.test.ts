@@ -138,6 +138,7 @@ describe('runPluginJob — sandbox wiring', () => {
 		const client = fakeClient();
 		await runPluginJob(task, {
 			client: client as never,
+			reap: vi.fn(),
 			spawnFn: spawnSpy,
 			prepareDir: () => {},
 			cleanupDir: () => {},
@@ -169,6 +170,7 @@ describe('runPluginJob — sandbox wiring', () => {
 
 		await runPluginJob(task, {
 			client: client as never,
+			reap: vi.fn(),
 			spawnFn: spawnSpy,
 			prepareDir: () => {},
 			cleanupDir: () => {},
@@ -188,19 +190,25 @@ describe('runPluginJob — sandbox wiring', () => {
 		const client = fakeClient();
 		await runPluginJob(
 			{ ...task, jobKind: 'plugin.lab.exfiltrate' },
-			{ client: client as never, spawnFn: spawnSpy, prepareDir: () => {}, cleanupDir: () => {} }
+			{
+				client: client as never,
+				reap: vi.fn(),
+				spawnFn: spawnSpy,
+				prepareDir: () => {},
+				cleanupDir: () => {},
+			}
 		);
 		expect(spawnSpy).not.toHaveBeenCalled();
 		const failCall = client.calls.find((c) => c.name === 'fail');
 		expect(failCall).toBeDefined();
 	});
 
-	it('reaps the whole process group and reports timeout when the budget is exceeded', async () => {
+	it('reaps sandbox processes and reports timeout when the budget is exceeded', async () => {
 		vi.useFakeTimers();
 		try {
 			const child = openChild(777);
 			const spawnSpy = vi.fn(() => child) as unknown as typeof spawn;
-			const kill = vi.fn(() => child.emit('close', null)); // emulate SIGKILL closing it
+			const reap = vi.fn(() => child.emit('close', null)); // emulate SIGKILL closing it
 			const client = fakeClient();
 
 			const done = runPluginJob(
@@ -211,14 +219,14 @@ describe('runPluginJob — sandbox wiring', () => {
 					prepareDir: () => {},
 					cleanupDir: () => {},
 					heartbeatIntervalMs: 10_000,
-					kill,
+					reap,
 				}
 			);
 			await vi.advanceTimersByTimeAsync(60);
 			await done;
 
-			// Whole group reaped via the NEGATIVE pid, then reported as a timeout.
-			expect(kill).toHaveBeenCalledWith(-777, 'SIGKILL');
+			// Sandbox processes are reaped before reporting the timeout.
+			expect(reap).toHaveBeenCalledOnce();
 			const failCall = client.calls.find((c) => c.name === 'fail');
 			expect((failCall!.args as { reasonCode?: string }).reasonCode).toBe('worker_timeout');
 		} finally {
@@ -226,12 +234,12 @@ describe('runPluginJob — sandbox wiring', () => {
 		}
 	});
 
-	it('kills the group and reports failure when the operator cancels mid-run (cannot be escaped)', async () => {
+	it('reaps sandbox processes and reports failure when the operator cancels mid-run (cannot be escaped)', async () => {
 		vi.useFakeTimers();
 		try {
 			const child = openChild(888);
 			const spawnSpy = vi.fn(() => child) as unknown as typeof spawn;
-			const kill = vi.fn(() => child.emit('close', null));
+			const reap = vi.fn(() => child.emit('close', null));
 			// The heartbeat mutation reports a cancel request on the first beat.
 			const client = fakeClient({ heartbeat: () => ({ alive: true, cancelRequested: true }) });
 
@@ -241,12 +249,12 @@ describe('runPluginJob — sandbox wiring', () => {
 				prepareDir: () => {},
 				cleanupDir: () => {},
 				heartbeatIntervalMs: 10,
-				kill,
+				reap,
 			});
 			await vi.advanceTimersByTimeAsync(15);
 			await done;
 
-			expect(kill).toHaveBeenCalledWith(-888, 'SIGKILL');
+			expect(reap).toHaveBeenCalledOnce();
 			// A cancelled job is reported as failed (the host records it cancelled and
 			// never retries it); it is NEVER reported as completed.
 			expect(client.calls.some((c) => c.name === 'fail')).toBe(true);
@@ -263,6 +271,7 @@ describe('runPluginJob — sandbox wiring', () => {
 			{ ...task, jobKind: 'plugin.lab.exfiltrate' },
 			{
 				client: client as never,
+				reap: vi.fn(),
 				spawnFn: (() => closingChild(0)) as never,
 				prepareDir: () => {},
 				cleanupDir,
@@ -272,6 +281,7 @@ describe('runPluginJob — sandbox wiring', () => {
 		// there; a resolved job must always clean up:
 		await runPluginJob(task, {
 			client: client as never,
+			reap: vi.fn(),
 			spawnFn: (() => closingChild(1)) as never,
 			prepareDir: () => {},
 			cleanupDir,
@@ -298,6 +308,7 @@ describe('runPluginJob — sandbox wiring', () => {
 
 		await runPluginJob(task, {
 			client: client as never,
+			reap: vi.fn(),
 			spawnFn: spawnSpy,
 			prepareDir: () => {},
 			cleanupDir: () => {},
@@ -424,6 +435,7 @@ describe('pollForPluginTask — the real host->worker wire boundary', () => {
 
 		await pollForPluginTask({
 			client: host as never,
+			reap: vi.fn(),
 			spawnFn: spawnSpy,
 			prepareDir: () => {},
 			cleanupDir: () => {},
@@ -444,6 +456,7 @@ describe('pollForPluginTask — the real host->worker wire boundary', () => {
 
 		await pollForPluginTask({
 			client: host as never,
+			reap: vi.fn(),
 			spawnFn: spawnSpy,
 			prepareDir: () => {},
 			cleanupDir: () => {},
