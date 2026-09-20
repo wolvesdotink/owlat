@@ -27,6 +27,9 @@ function makeCtx(overrides: Partial<BasePhaseCtx> = {}): BasePhaseCtx {
 		rcptTo: overrides.rcptTo ?? 'inbox@org.example',
 		spfResult: overrides.spfResult,
 		returnPath: overrides.returnPath,
+		// Spread last so a case can supply the DMARC/ARC verdicts the inbound
+		// payload carries without this helper listing every one of them.
+		...overrides,
 	};
 }
 
@@ -466,6 +469,39 @@ describe('reduce(inbound_accept)', () => {
 			]);
 			expect(notify.event.inboundPayload?.headers).toEqual({ from: 'bob@isp.example' });
 			expect(notify.event.inboundPayload?.from).toBe('bob@isp.example');
+		}
+	});
+
+	it('carries the verified ARC chain, which is what rescues a forwarded DMARC fail', () => {
+		const attempt: BounceAttempt = {
+			kind: 'inbound_accept',
+			route: makeRoute(),
+			rcptTo: 'inbox@org.example',
+			attachments: [],
+			headers: {},
+		};
+		// Forwarded mail: the forwarder's footer broke the author's DKIM, so
+		// DMARC fails for a message that is entirely legitimate. Without the
+		// triple the receiving side sees only the bare `fail` and refuses to file
+		// the attachments under the contact who actually sent them — the
+		// personal-mailbox payload has carried it since Sealed Mail A5.
+		const ctx = makeCtx({
+			dmarcResult: 'fail',
+			dmarcPolicy: 'none',
+			arcCv: 'pass',
+			arcSealerDomain: 'forwarder.example',
+			arcAttestsOriginalPass: true,
+		});
+
+		const { effects } = reduce(attempt, ctx);
+		const notify = effects.find((e) => e.kind === 'notify_convex');
+		if (notify?.kind === 'notify_convex') {
+			expect(notify.event.inboundPayload?.dmarcResult).toBe('fail');
+			expect(notify.event.inboundPayload?.arcCv).toBe('pass');
+			expect(notify.event.inboundPayload?.arcSealerDomain).toBe('forwarder.example');
+			expect(notify.event.inboundPayload?.arcAttestsOriginalPass).toBe(true);
+		} else {
+			throw new Error('expected a notify_convex effect');
 		}
 	});
 });

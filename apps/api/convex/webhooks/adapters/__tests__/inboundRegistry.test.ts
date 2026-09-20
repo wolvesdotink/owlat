@@ -82,6 +82,80 @@ describe('MtaInboundAdapter', () => {
 		expect(mail.dmarcPolicy).toBeUndefined();
 	});
 
+	it('carries the ARC triple, which is what rescues a forwarded DMARC fail', () => {
+		const mail = getInboundChannelAdapter('mta').parseInbound(
+			mtaEnvelope({
+				dmarcResult: 'fail',
+				arcCv: 'pass',
+				arcSealerDomain: 'forwarder.example',
+				arcAttestsOriginalPass: true,
+			})
+		);
+
+		expect(mail.arcCv).toBe('pass');
+		expect(mail.arcSealerDomain).toBe('forwarder.example');
+		expect(mail.arcAttestsOriginalPass).toBe(true);
+	});
+
+	it('drops an unexpected key on an attachment rather than 500ing the route', () => {
+		// `inboundEmailMessageValidator` spells each element as a CLOSED
+		// `v.object`, and Convex refuses an unknown field in one — so a single
+		// extra key threw inside the route's `ctx.runAction`, answered 500 and
+		// burned the MTA's six retries into the DLQ with nothing stored.
+		// `redisKey` is exactly what a pre-#659 MTA put on every element, and the
+		// upgraded binary replays its DLQ backlog at this route.
+		const mail = getInboundChannelAdapter('mta').parseInbound(
+			mtaEnvelope({
+				attachments: [
+					{
+						filename: 'a.txt',
+						contentType: 'text/plain',
+						size: 5,
+						partIndex: '1',
+						redisKey: 'mta:inbound-att:x:0',
+					},
+				],
+			})
+		);
+
+		expect(mail.attachments).toEqual([
+			{ filename: 'a.txt', contentType: 'text/plain', size: 5, partIndex: '1' },
+		]);
+	});
+
+	it('defaults a wrong-typed attachment field instead of losing the mail', () => {
+		const mail = getInboundChannelAdapter('mta').parseInbound(
+			mtaEnvelope({
+				attachments: [
+					{ filename: 7, contentType: 'text/plain', size: '12', partIndex: 3 },
+					{ contentType: 'application/pdf', size: 9, partIndex: '2' },
+					'not an object',
+					null,
+				],
+			})
+		);
+
+		// Metadata only — the BYTES are in the raw `.eml`. A wrong-typed name or
+		// index simply goes absent (every reader already falls back), a
+		// non-numeric size reads as 0, and a non-object element is not an
+		// attachment at all.
+		expect(mail.attachments).toEqual([
+			{ contentType: 'text/plain', size: 0 },
+			{ contentType: 'application/pdf', size: 9, partIndex: '2' },
+		]);
+	});
+
+	it('answers a missing or non-array attachment list with no attachments', () => {
+		expect(
+			getInboundChannelAdapter('mta').parseInbound(mtaEnvelope({ attachments: undefined }))
+				.attachments
+		).toEqual([]);
+		expect(
+			getInboundChannelAdapter('mta').parseInbound(mtaEnvelope({ attachments: { a: 1 } }))
+				.attachments
+		).toEqual([]);
+	});
+
 	it('synthesizes a message id from the envelope timestamp when one is missing', () => {
 		const mail = getInboundChannelAdapter('mta').parseInbound(
 			mtaEnvelope({ messageId: undefined }, 42)

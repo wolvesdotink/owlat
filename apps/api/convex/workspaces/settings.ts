@@ -186,6 +186,22 @@ export const update = authedMutation({
 	},
 });
 
+/**
+ * The operator's trusted ARC forwarders, for a caller that has to settle the
+ * DMARC rescue outside a mutation.
+ *
+ * `undefined` is NOT the empty list: `resolveDmarcRouting` reads it as "unset,
+ * use the seeded defaults", while an explicit `[]` disables the rescue. Both
+ * come back verbatim so that distinction survives the hop.
+ */
+export const getTrustedArcForwarders = internalQuery({
+	args: {},
+	handler: async (ctx): Promise<string[] | undefined> => {
+		const settings = await ctx.db.query('instanceSettings').first();
+		return settings?.trustedArcForwarders;
+	},
+});
+
 /** Read-side policy for the Node action that synchronizes the MTA Redis gate. */
 export const getInboundTlsPolicy = internalQuery({
 	args: {},

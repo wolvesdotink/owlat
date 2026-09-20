@@ -384,6 +384,9 @@ function reduceInboundAccept(
 		dmarcPolicy,
 		envelopeFromDomain,
 		dkimSigningDomain,
+		arcCv,
+		arcSealerDomain,
+		arcAttestsOriginalPass,
 	} = ctx;
 	const { route, rcptTo, attachments, headers } = attempt;
 	const effects: BounceEffect[] = [];
@@ -445,6 +448,16 @@ function reduceInboundAccept(
 				// pass that may have authenticated the attacker's own domain.
 				envelopeFromDomain,
 				dkimSigningDomain,
+				// The verified ARC chain (RFC 8617). A forwarder the operator
+				// trusts, sealing a valid chain that attests the ORIGINAL passed,
+				// is what rescues a DMARC fail on forwarded mail — and the
+				// receiving side cannot make that call without the triple. The
+				// personal-mailbox payload has always carried it; this route saw
+				// only the bare `fail` and refused to file such a message's
+				// attachments under the sender who really sent them.
+				arcCv,
+				arcSealerDomain,
+				arcAttestsOriginalPass,
 				attachments: attachmentMeta,
 			},
 			timestamp: Date.now(),

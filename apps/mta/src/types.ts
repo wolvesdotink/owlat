@@ -230,6 +230,13 @@ export interface InboundEmailPayload extends Pick<
 	// in hand.
 	| 'envelopeFromDomain'
 	| 'dkimSigningDomain'
+	// The ARC triple, for the same reason the personal-mailbox payload carries
+	// it: a trusted forwarder's valid seal RESCUES a DMARC fail (RFC 8617), and
+	// without these three the receiving side sees only the bare `fail` and
+	// refuses to file a forwarded message's attachments under its real sender.
+	| 'arcCv'
+	| 'arcSealerDomain'
+	| 'arcAttestsOriginalPass'
 > {
 	from: string;
 	to: string;

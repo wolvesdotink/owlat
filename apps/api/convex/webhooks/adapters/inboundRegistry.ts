@@ -80,6 +80,19 @@ export const inboundEmailMessageValidator = v.object({
 	 */
 	envelopeFromDomain: v.optional(v.string()),
 	dkimSigningDomain: v.optional(v.string()),
+	/**
+	 * VERIFIED ARC CHAIN (RFC 8617), the same triple `inbound.mailbox.received`
+	 * has always carried. A forwarder breaks the author's DKIM and DMARC fails
+	 * for mail that is perfectly legitimate; a chain sealed `cv=pass` by a
+	 * forwarder the operator TRUSTS, attesting the original passed, rescues it.
+	 * Without these the team inbox saw only the bare `fail` and refused to file
+	 * a forwarded message's attachments under the contact who actually sent it.
+	 * All optional — an older MTA omits them, and an absent chain rescues
+	 * nothing.
+	 */
+	arcCv: v.optional(v.string()),
+	arcSealerDomain: v.optional(v.string()),
+	arcAttestsOriginalPass: v.optional(v.boolean()),
 });
 
 export type InboundEmailMessage = Infer<typeof inboundEmailMessageValidator>;
@@ -124,6 +137,9 @@ export interface MtaInboundWirePayload {
 		dmarcPolicy?: string;
 		envelopeFromDomain?: string;
 		dkimSigningDomain?: string;
+		arcCv?: string;
+		arcSealerDomain?: string;
+		arcAttestsOriginalPass?: boolean;
 	};
 }
 
@@ -188,6 +204,55 @@ export function storableHeaders(raw: unknown, messageId: string): Record<string,
 }
 
 /**
+ * The wire's attachment list, reduced to the four fields the canonical shape
+ * declares.
+ *
+ * THE OTHER SENDER-INFLUENCED ARRAY ON THIS WIRE, and it needed the same
+ * treatment `storableHeaders` gives the header map. `inboundEmailMessageValidator`
+ * spells each element as a closed `v.object`, and Convex REJECTS an unknown
+ * field in one — so a single extra key anywhere in the list threw inside the
+ * route's `ctx.runAction`, answered 500, and burned the MTA's six retries into
+ * the DLQ with nothing stored. `redisKey` is exactly such a key: it is what a
+ * pre-#659 MTA put on every attachment element, and the upgraded binary replays
+ * its DLQ backlog at this route.
+ *
+ * So each element is PROJECTED rather than forwarded: the four known fields,
+ * type-checked, with anything else dropped. A non-object element is dropped
+ * whole; a `size` that is not a number becomes `0` (metadata, and a wrong
+ * number is better than losing the mail); a non-string `filename`/`partIndex`
+ * simply goes absent, which every reader already handles.
+ */
+export function storableAttachments(
+	raw: unknown,
+	messageId: string
+): InboundEmailMessage['attachments'] {
+	if (!Array.isArray(raw)) return [];
+	const out: InboundEmailMessage['attachments'] = [];
+	let dropped = 0;
+	for (const element of raw) {
+		if (!element || typeof element !== 'object' || Array.isArray(element)) {
+			dropped += 1;
+			continue;
+		}
+		const att = element as Record<string, unknown>;
+		out.push({
+			...(typeof att['filename'] === 'string' ? { filename: att['filename'] } : {}),
+			contentType:
+				typeof att['contentType'] === 'string' ? att['contentType'] : 'application/octet-stream',
+			size: typeof att['size'] === 'number' && Number.isFinite(att['size']) ? att['size'] : 0,
+			...(typeof att['partIndex'] === 'string' ? { partIndex: att['partIndex'] } : {}),
+		});
+	}
+	if (dropped > 0) {
+		logWarn('[Inbound adapter] dropped attachment entries that were not objects', {
+			messageId,
+			dropped,
+		});
+	}
+	return out;
+}
+
+/**
  * Source identifier — the registry key. Only sources with an adapter belong
  * here: a member without one is a lookup that compiles and then throws.
  */
@@ -235,12 +300,13 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 			messageId,
 			inReplyTo: input.inReplyTo,
 			references: input.references,
-			// Defaulted, not asserted. This shape is a cast over wire data, and on
-			// the team-inbox route a throw here would 500 a request the MTA reads
-			// as retryable — six attempts and then the DLQ, which is mail lost
-			// where nobody looks. A payload with no attachment list has no
-			// attachments.
-			attachments: Array.isArray(input.attachments) ? input.attachments : [],
+			// Sender-influenced elements, projected to the four fields the
+			// validator declares — see `storableAttachments`. Defaulted, not
+			// asserted: this shape is a cast over wire data, and on the
+			// team-inbox route a throw here would 500 a request the MTA reads as
+			// retryable — six attempts and then the DLQ, which is mail lost where
+			// nobody looks.
+			attachments: storableAttachments(input.attachments, messageId),
 			timestamp: env.timestamp,
 			spfResult: input.spfResult,
 			dkimResult: input.dkimResult,
@@ -248,6 +314,12 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 			dmarcPolicy: input.dmarcPolicy,
 			envelopeFromDomain: input.envelopeFromDomain,
 			dkimSigningDomain: input.dkimSigningDomain,
+			arcCv: input.arcCv,
+			arcSealerDomain: input.arcSealerDomain,
+			arcAttestsOriginalPass:
+				typeof input.arcAttestsOriginalPass === 'boolean'
+					? input.arcAttestsOriginalPass
+					: undefined,
 		};
 	}
 }
