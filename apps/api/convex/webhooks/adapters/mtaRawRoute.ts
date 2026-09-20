@@ -42,7 +42,7 @@ import { jsonResponse } from '../inboundHttp';
  * envelope identifiers. The message content stays only where retention and
  * erasure already govern it.
  */
-export const AUDIT_SUMMARY_VERSION = 1;
+const AUDIT_SUMMARY_VERSION = 1;
 
 /** Cap on any single caller-supplied string copied into an audit row. */
 const AUDIT_FIELD_MAX_CHARS = 256;
@@ -81,43 +81,6 @@ export function base64ByteLength(value: unknown): number | undefined {
 	if (typeof value !== 'string') return undefined;
 	const base64Chars = value.replace(/[\s=]+/g, '').length;
 	return Math.floor((base64Chars * 3) / 4);
-}
-
-/**
- * Convex caps a function's ARGUMENTS at 16 MiB. Budgeted below that so the
- * overhead these routes forward beside the strings — headers, the attachment
- * metadata, the envelope fields — cannot be what tips a message over.
- */
-const MAX_FORWARDED_ARG_BYTES = 15 * 1024 * 1024;
-
-/**
- * Do these caller-supplied strings fit in one `ctx.runAction` argument?
- *
- * The raw-carrying routes forward the base64 message AND the bodies the MTA
- * already parsed out of it, so a 10 MiB message (13.3 MiB base64) with a few
- * megabytes of HTML clears the cap between them. `runAction` THROWS there, the
- * route answers 500, and the MTA — which reads 5xx as retryable — burns its
- * attempts and dead-letters mail that was perfectly deliverable.
- *
- * Measured in UTF-8 BYTES, not characters: the cap is on bytes, and a body of
- * non-ASCII text costs up to three of them per UTF-16 code unit.
- */
-export function fitsForwardedArgBudget(values: Array<string | undefined>): boolean {
-	const strings = values.filter((value): value is string => typeof value === 'string');
-	// One UTF-16 code unit is at least one UTF-8 byte and at most three, so the
-	// character count decides both extremes without encoding anything. Only the
-	// band in between — where a body of non-ASCII text could be the difference —
-	// pays for an exact measurement.
-	const chars = strings.reduce((sum, value) => sum + value.length, 0);
-	if (chars > MAX_FORWARDED_ARG_BYTES) return false;
-	if (chars * 3 <= MAX_FORWARDED_ARG_BYTES) return true;
-	const encoder = new TextEncoder();
-	let bytes = 0;
-	for (const value of strings) {
-		bytes += encoder.encode(value).byteLength;
-		if (bytes > MAX_FORWARDED_ARG_BYTES) return false;
-	}
-	return true;
 }
 
 /**
