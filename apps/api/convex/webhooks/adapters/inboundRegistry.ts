@@ -21,6 +21,7 @@
  */
 
 import { v, type Infer } from 'convex/values';
+import { logWarn } from '../../lib/runtimeLog';
 
 /**
  * Canonical inbound email shape consumed by `internal.inbound.receiveMessage`.
@@ -118,6 +119,66 @@ export interface MtaInboundWirePayload {
 }
 
 /**
+ * Convex's own field-name rule, which a sender-chosen header name can break.
+ *
+ * `headers` crosses `ctx.runAction` as a record, and Convex serialises action
+ * arguments with `convexToJson`, whose `validateObjectField` THROWS for a key
+ * that starts with `$`, contains a byte outside printable ASCII, or runs past
+ * 1024 characters. `$x: y` is a perfectly legal RFC 5322 field name, and
+ * `@owlat/mail-message` lower-cases whatever it finds before the colon without
+ * a charset restriction — so one crafted header used to throw inside the
+ * route's try/catch, answer 500, and burn the MTA's six retries into the DLQ
+ * on a path whose whole invariant is that mail is never dropped. The legacy
+ * `/webhooks/mta` route never had this failure only because its dispatcher
+ * JSON-stringified the map in-process before any validator saw it.
+ *
+ * So the ingest boundary is where a header name has to survive the check —
+ * here, before the record is built, not four modules later where the only
+ * available answer is a 5xx.
+ */
+const MAX_HEADER_NAME_CHARS = 1024;
+
+function isStorableHeaderName(name: string): boolean {
+	if (name.length === 0 || name.length > MAX_HEADER_NAME_CHARS) return false;
+	if (name.startsWith('$')) return false;
+	for (let i = 0; i < name.length; i += 1) {
+		const code = name.charCodeAt(i);
+		if (code < 32 || code >= 127) return false;
+	}
+	return true;
+}
+
+/**
+ * The wire's header map, reduced to what can actually be stored.
+ *
+ * DROPS rather than renames: a renamed header is a header nobody looked for,
+ * and the values this map feeds (anti-loop detection, threading, the reader's
+ * header view) are all keyed by name. A dropped one is logged with its count so
+ * the omission is not silent. Non-string values go too — the map is a cast over
+ * wire JSON, and `v.record(v.string(), v.string())` rejects an array of
+ * `Received:` lines exactly as hard as it rejects a `$` key.
+ */
+export function storableHeaders(raw: unknown, messageId: string): Record<string, string> {
+	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+	const out: Record<string, string> = {};
+	let dropped = 0;
+	for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+		if (typeof value !== 'string' || !isStorableHeaderName(name)) {
+			dropped += 1;
+			continue;
+		}
+		out[name] = value;
+	}
+	if (dropped > 0) {
+		logWarn('[Inbound adapter] dropped header fields Convex cannot store', {
+			messageId,
+			dropped,
+		});
+	}
+	return out;
+}
+
+/**
  * Source identifier — the registry key. Only sources with an adapter belong
  * here: a member without one is a lookup that compiles and then throws.
  */
@@ -152,14 +213,17 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 		// off any other receiver as a stored-row read, and this file is the ingest
 		// boundary — everything it reads came off the wire, never out of the DB.
 		const input = env.inboundPayload;
+		const messageId = input.messageId ?? `unknown-${env.timestamp}`;
 		return {
 			from: input.from,
 			to: input.to,
 			subject: input.subject,
 			textBody: input.textBody,
 			htmlBody: input.htmlBody,
-			headers: input.headers,
-			messageId: input.messageId ?? `unknown-${env.timestamp}`,
+			// Sender-controlled keys, reduced to the ones Convex will carry —
+			// see `storableHeaders`.
+			headers: storableHeaders(input.headers, messageId),
+			messageId,
 			inReplyTo: input.inReplyTo,
 			references: input.references,
 			// Defaulted, not asserted. This shape is a cast over wire data, and on
