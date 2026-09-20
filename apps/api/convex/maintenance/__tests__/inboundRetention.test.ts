@@ -62,12 +62,17 @@ async function setHorizon(
 	});
 }
 
-/** Insert an inbound message holding a raw blob, received `ageDays` ago. */
+/**
+ * Insert an inbound message holding a raw blob, received `ageDays` ago —
+ * `extraMs` further back, for the cases that live one millisecond either side
+ * of the cutoff.
+ */
 async function seedInboundMessage(
 	t: ReturnType<typeof convexTest>,
 	messageId: string,
 	now: number,
-	ageDays: number
+	ageDays: number,
+	extraMs = 0
 ): Promise<Id<'inboundMessages'>> {
 	return await t.run(async (ctx) => {
 		const storageId = await ctx.storage.store(
@@ -81,7 +86,7 @@ async function seedInboundMessage(
 			textBody: 'the body stays',
 			attachmentMeta: '[{"filename":"notes.txt","contentType":"text/plain","size":9}]',
 			processingStatus: 'received',
-			receivedAt: now - ageDays * DAY_MS,
+			receivedAt: now - ageDays * DAY_MS - extraMs,
 			rawStorageId: storageId,
 			rawSize: 42,
 			isRawRetained: true,
@@ -97,7 +102,8 @@ async function seedSemanticFile(
 	now: number,
 	ageDays: number,
 	sourceType: 'email_attachment' | 'upload',
-	captureSource?: 'team_inbox' | 'mailbox'
+	captureSource?: 'team_inbox' | 'mailbox',
+	extraMs = 0
 ): Promise<Id<'semanticFiles'>> {
 	return await t.run(async (ctx) => {
 		const storageId = await ctx.storage.store(new Blob([`bytes of ${filename}`]));
@@ -112,8 +118,8 @@ async function seedSemanticFile(
 			extractedText: 'extracted text that outlives the bytes',
 			embedding: Array.from({ length: 1536 }, () => 0.1),
 			version: 1,
-			createdAt: now - ageDays * DAY_MS,
-			updatedAt: now - ageDays * DAY_MS,
+			createdAt: now - ageDays * DAY_MS - extraMs,
+			updatedAt: now - ageDays * DAY_MS - extraMs,
 		});
 	});
 }
@@ -152,6 +158,55 @@ describe('sweepInboundFiles — the raw `.eml` half', () => {
 		expect(freshRow!.rawStorageId).toBeDefined();
 		expect(freshRow!.isRawRetained).toBe(true);
 		expect(freshRow!.rawReleasedAt).toBeUndefined();
+	});
+
+	it('spares a row AT the cutoff and releases the one a millisecond older', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		const days = 30;
+		await setHorizon(t, days);
+		// `.lt(receivedAt, cutoff)`, on both walks. The suite's other cases sit
+		// days away from the horizon, so `.lt` drifting to `.lte` — or the two
+		// walks disagreeing with each other — changes nothing they can see.
+		const atCutoff = await seedInboundMessage(t, '<at@example.com>', now, days);
+		const justOlder = await seedInboundMessage(t, '<older@example.com>', now, days, 1);
+		const fileAtCutoff = await seedSemanticFile(
+			t,
+			'at.txt',
+			now,
+			days,
+			'email_attachment',
+			'team_inbox'
+		);
+		const fileJustOlder = await seedSemanticFile(
+			t,
+			'older.txt',
+			now,
+			days,
+			'email_attachment',
+			'team_inbox',
+			1
+		);
+
+		await t.mutation(internal.maintenance.retention.sweepInboundFiles, { now });
+
+		const rows = await t.run(async (ctx) => ({
+			at: await ctx.db.get(atCutoff),
+			older: await ctx.db.get(justOlder),
+			fileAt: await ctx.db.get(fileAtCutoff),
+			fileOlder: await ctx.db.get(fileJustOlder),
+		}));
+		// Exactly at the horizon is still INSIDE it: the message received
+		// `days` ago to the millisecond keeps its bytes until the next tick.
+		expect(rows.at!.rawStorageId).toBeDefined();
+		expect(rows.at!.rawReleasedAt).toBeUndefined();
+		expect(rows.older!.rawStorageId).toBeUndefined();
+		expect(rows.older!.rawReleasedAt).toBe(now);
+		// The attachment walk keeps the SAME edge as the raw walk.
+		expect(rows.fileAt!.storageId).toBeDefined();
+		expect(rows.fileAt!.bytesReleasedAt).toBeUndefined();
+		expect(rows.fileOlder!.storageId).toBeUndefined();
+		expect(rows.fileOlder!.bytesReleasedAt).toBe(now);
 	});
 
 	it('falls back to the shared default when nothing is configured', async () => {

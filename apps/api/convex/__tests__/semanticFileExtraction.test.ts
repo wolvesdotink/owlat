@@ -104,15 +104,47 @@ describe('truncateForLLM', () => {
 	});
 });
 
+/** A PDF with one line of real text in it, written by hand so the extractor
+ * has something to actually extract — `'some content'` under a `.pdf` name is
+ * not a PDF, and pinning the one format that is parsed rather than read needs
+ * a parseable file. */
+function minimalPdfBytes(): Uint8Array {
+	const objects = [
+		'1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+		'2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+		'3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R ' +
+			'/Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+		'4 0 obj\n<< /Length 52 >>\nstream\nBT /F1 24 Tf 20 100 Td (Owlat quarterly report) Tj ET\n' +
+			'endstream\nendobj\n',
+		'5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+	];
+	let file = '%PDF-1.4\n';
+	const offsets: number[] = [];
+	for (const object of objects) {
+		offsets.push(file.length);
+		file += object;
+	}
+	const xrefStart = file.length;
+	let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+	for (const offset of offsets) xref += `${String(offset).padStart(10, '0')} 00000 n \n`;
+	file +=
+		xref +
+		`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+	return new TextEncoder().encode(file);
+}
+
 /**
  * `hasTextExtraction` is what the capture path consults to decide whether an
  * ingested attachment yields content or only its own name — it cannot import
  * `semanticFileProcessing`, which is `'use node'`. So the two are pinned here,
  * against the REAL extractor, over the whole documented matrix: a new format
  * added on one side and not the other fails this.
+ *
+ * PDF is in the table with real PDF bytes, and its one honest gap — a PDF that
+ * parses to nothing — is pinned separately below.
  */
 describe('hasTextExtraction — the predicate the ingest path uses', () => {
-	const CASES: Array<{ mimeType: string; filename: string }> = [
+	const CASES: Array<{ mimeType: string; filename: string; bytes?: Uint8Array }> = [
 		{ mimeType: 'text/plain', filename: 'a.txt' },
 		{ mimeType: 'text/html', filename: 'a.html' },
 		{ mimeType: 'application/json', filename: 'a.json' },
@@ -130,18 +162,43 @@ describe('hasTextExtraction — the predicate the ingest path uses', () => {
 		{ mimeType: 'application/vnd.ms-excel', filename: 'a.xls' },
 		{ mimeType: 'image/png', filename: 'a.png' },
 		{ mimeType: 'application/zip', filename: 'a.zip' },
+		{ mimeType: 'application/pdf', filename: 'a.pdf', bytes: minimalPdfBytes() },
 	];
 
-	it.each(CASES)('agrees with the extractor for $filename', async ({ mimeType, filename }) => {
-		const extracted = await extractText(blob('some content', mimeType), mimeType, filename);
-		// The extractor's placeholder shape is `[Kind: filename]` and nothing
-		// else returns one, so it is the observable difference between "the
-		// assistant read this" and "the assistant knows its name".
-		const isPlaceholder =
-			extracted === `[Word document: ${filename}]` ||
-			extracted === `[Spreadsheet: ${filename}]` ||
-			extracted === `[Image: ${filename}]` ||
-			extracted === `[File: ${filename}]`;
-		expect(hasTextExtraction(mimeType, filename)).toBe(!isPlaceholder);
+	it.each(CASES)(
+		'agrees with the extractor for $filename',
+		async ({ mimeType, filename, bytes }) => {
+			const source = bytes
+				? new Blob([bytes as BlobPart], { type: mimeType })
+				: blob('some content', mimeType);
+			const extracted = await extractText(source, mimeType, filename);
+			// The extractor's placeholder shape is `[Kind: filename]` and nothing
+			// else returns one, so it is the observable difference between "the
+			// assistant read this" and "the assistant knows its name".
+			const isPlaceholder =
+				extracted === `[Word document: ${filename}]` ||
+				extracted === `[Spreadsheet: ${filename}]` ||
+				extracted === `[Image: ${filename}]` ||
+				extracted === `[PDF file: ${filename}]` ||
+				extracted === `[File: ${filename}]`;
+			expect(hasTextExtraction(mimeType, filename)).toBe(!isPlaceholder);
+		}
+	);
+
+	it('answers true for a PDF it cannot read, which is the one gap by name', async () => {
+		// A scanned-image or encrypted PDF parses to no text, and the extractor
+		// falls back to its placeholder — but `hasTextExtraction` only ever sees
+		// the name and the type, so the row reads `indexed` for a file the
+		// assistant knows only the name of. Deciding otherwise needs `unpdf`,
+		// which lives in the `'use node'` module the V8-side capture path cannot
+		// import. Written down here rather than left for someone to discover in
+		// a thread view.
+		const notReallyAPdf = new Blob(['%PDF-1.4 no page objects at all'], {
+			type: 'application/pdf',
+		});
+		const extracted = await extractText(notReallyAPdf, 'application/pdf', 'scan.pdf');
+
+		expect(extracted).toBe('[PDF file: scan.pdf]');
+		expect(hasTextExtraction('application/pdf', 'scan.pdf')).toBe(true);
 	});
 });

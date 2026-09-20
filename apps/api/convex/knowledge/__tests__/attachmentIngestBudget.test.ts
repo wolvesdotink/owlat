@@ -11,6 +11,9 @@
  *     a different sender is unaffected;
  *   · the global bucket is charged only when the per-sender charge passed, so
  *     one sender over their cap cannot also drain the instance's;
+ *   · a drained bucket COMES BACK at the configured rate — a `rate: 0` or a
+ *     mis-set period would otherwise pass every other case here while
+ *     permanently un-indexing a busy inbox after one flood;
  *   · when it trips, nothing is lost but the indexing: the message row, its
  *     attachment metadata and the sealed raw `.eml` all still exist, and no
  *     `semanticFiles` row is written.
@@ -53,6 +56,10 @@ const GLOBAL_CAPACITY = 400;
  * what keeps a malformed count from surfacing as a logged capture failure.
  */
 const BATCH = 10;
+
+/** The per-sender refill rate (tokens per hour), from rateLimiter.ts. */
+const PER_SENDER_RATE = 20;
+const HOUR_MS = 60 * 60 * 1000;
 
 const SAVED_ENV = { ...process.env };
 
@@ -100,6 +107,44 @@ describe('consumeAttachmentIngestBudget', () => {
 			}
 		);
 		expect(other.ok).toBe(true);
+	});
+
+	it('refills a drained sender bucket at the configured rate', async () => {
+		const t = setupTest();
+
+		for (let i = 0; i < PER_SENDER_CAPACITY; i++) {
+			await t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
+				senderKey: 'flooder@example.com',
+				count: 1,
+			});
+		}
+		await expect(
+			t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
+				senderKey: 'flooder@example.com',
+				count: 1,
+			})
+		).resolves.toEqual({ ok: false });
+
+		// Two tokens' worth of time at 20/h. A bucket that never comes back is
+		// indistinguishable from one that does in every other case here — and
+		// it would mean one crafted flood silently ends attachment indexing for
+		// that sender forever.
+		vi.advanceTimersByTime((HOUR_MS / PER_SENDER_RATE) * 2);
+
+		await expect(
+			t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
+				senderKey: 'flooder@example.com',
+				count: 1,
+			})
+		).resolves.toEqual({ ok: true });
+		// Refilled, not reset: two tokens is what two tokens' worth of time
+		// buys, so a full batch is still refused.
+		await expect(
+			t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
+				senderKey: 'flooder@example.com',
+				count: BATCH,
+			})
+		).resolves.toEqual({ ok: false });
 	});
 
 	it('does not charge the global bucket when the per-sender charge failed', async () => {

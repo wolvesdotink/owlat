@@ -22,6 +22,14 @@
  *
  * Mirrors the extractor's own order: `text/html` before the generic `text/*`,
  * then JSON, CSV (by type or extension) and PDF (by type or extension).
+ *
+ * PDF IS ANSWERED BY NAME, and it is the one type where that can be wrong: a
+ * scanned-image or encrypted PDF parses to no text and the extractor falls back
+ * to `[PDF file: scan.pdf]`, while this still says true — so the row reads
+ * `indexed` for a file the assistant only knows the name of. Deciding it
+ * honestly needs the BYTES through `unpdf`, which lives in the `'use node'`
+ * extractor this V8-side predicate exists precisely because it cannot import.
+ * `__tests__/semanticFileExtraction.test.ts` pins both halves of that.
  */
 export function hasTextExtraction(mimeType: string, filename: string): boolean {
 	const name = filename.toLowerCase();
