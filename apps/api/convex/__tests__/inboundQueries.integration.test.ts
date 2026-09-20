@@ -12,6 +12,8 @@ import {
 	enableFeatures,
 } from './factories';
 import { findOrCreateForEmail, transition } from '../inbox/threads/module';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
+import { isSealedAtRest } from '../lib/atRestBodies';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -456,6 +458,47 @@ describe('inboundQueries.getThread', () => {
 		expect(result!.messages).toHaveLength(2);
 		expect(result!.contact).toBeDefined();
 		expect(result!.contact!.email).toBe('sender@example.com');
+	});
+
+	it('opens E8b-sealed bodies instead of handing back the at-rest envelope', async () => {
+		// `receiveMessage` seals the inline bodies at write on any instance with
+		// INSTANCE_SECRET set, and this query used to return the rows verbatim —
+		// so the thread view rendered `atrest:1:…` where the message should be.
+		// Sealed at write here through the real writer, so the test fails if the
+		// unseal is removed AND if the seal ever stops happening.
+		vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');
+		try {
+			const t = convexTest(schema, modules);
+			let threadId!: Id<'conversationThreads'>;
+			await t.run(async (ctx) => {
+				const contactId = await ctx.db.insert('contacts', createTestContact());
+				threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
+				await ctx.db.insert(
+					'inboundMessages',
+					msgData({
+						threadId,
+						contactId,
+						subject: 'Sealed',
+						textBody: await sealBodyAtWriteMaybe('the plaintext body'),
+						htmlBody: await sealBodyAtWriteMaybe('<p>the plaintext body</p>'),
+					})
+				);
+			});
+
+			// The stored row really is sealed — otherwise the assertion below would
+			// pass on an unsealed row and prove nothing.
+			const stored = await t.run(async (ctx) => await ctx.db.query('inboundMessages').first());
+			expect(isSealedAtRest(stored!.textBody ?? '')).toBe(true);
+
+			const result = await t
+				.withIdentity(testIdentity)
+				.query(api.inbox.queries.getThread, { threadId });
+
+			expect(result!.messages[0]!.textBody).toBe('the plaintext body');
+			expect(result!.messages[0]!.htmlBody).toBe('<p>the plaintext body</p>');
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it('should return null for non-existent thread', async () => {
