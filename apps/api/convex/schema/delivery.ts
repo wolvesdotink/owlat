@@ -184,9 +184,7 @@ export const deliveryTables = {
 		),
 		flags: v.array(contentScanFlagValidator),
 		scannedAt: v.number(),
-	})
-		.index('by_level', ['level'])
-		.index('by_resource', ['resourceType', 'resourceId']),
+	}).index('by_resource', ['resourceType', 'resourceId']),
 
 	// URL Reputation Cache - cached verdicts from Google Safe Browsing API
 	urlReputationCache: defineTable({
