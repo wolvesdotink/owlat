@@ -42,6 +42,16 @@ const TOPICS = [
 	},
 ];
 
+const BLOCKS = [
+	{
+		_id: 'bl_1',
+		name: 'Footer with address',
+		description: 'Postal address and the unsubscribe line',
+		usageCount: 12,
+		updatedAt: Date.parse('2026-06-02T09:00:00Z'),
+	},
+];
+
 const AUTOMATIONS = [
 	{
 		_id: 'au_1',
@@ -114,8 +124,14 @@ const STUBS = {
 	ConditionsConditionEditor: true,
 };
 
-async function mountPage(loader: () => Promise<{ default: unknown }>) {
+// `stubNuxt` runs at mount time, so a per-page stub set in a `beforeEach` would
+// be clobbered by the defaults. Pass it here instead and it lands last.
+async function mountPage(
+	loader: () => Promise<{ default: unknown }>,
+	overrides: Record<string, unknown> = {}
+) {
 	stubNuxt();
+	for (const [name, value] of Object.entries(overrides)) vi.stubGlobal(name, value);
 	const Page = (await loader()).default;
 	return mount(Page as never, {
 		shallow: true,
@@ -211,6 +227,35 @@ describe('topics list', () => {
 		expect(wrapper.find('button[title="Delete topic"]').exists()).toBe(false);
 		expect(wrapper.text()).toContain('Only owners and admins can create or edit topics.');
 		expect(wrapper.text()).toContain('Product updates');
+		wrapper.unmount();
+	});
+});
+
+// Reusable blocks are `templates:manage`. This case exists because the grid
+// card's hover overlay and the card's dropdown are two controls for the SAME
+// `blocks.update` mutation, and the first shipped ungated while the second was
+// gated — a disagreement only a case that looks at both would catch.
+describe('blocks list', () => {
+	const blocksQuery = { useConvexQuery: () => queryResult(BLOCKS) };
+
+	it('offers quick settings, duplicate and delete to an admin', async () => {
+		role.value = 'admin';
+		const wrapper = await mountPage(() => import('../send/blocks/index.vue'), blocksQuery);
+
+		expect(wrapper.find('button[title="Quick Settings"]').exists()).toBe(true);
+		expect(wrapper.find('button[title="Edit Content"]').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('takes every write off an editor and keeps the library browsable', async () => {
+		role.value = 'editor';
+		const wrapper = await mountPage(() => import('../send/blocks/index.vue'), blocksQuery);
+
+		expect(wrapper.find('button[title="Quick Settings"]').exists()).toBe(false);
+		expect(wrapper.text()).toContain('Only owners and admins can create or delete blocks.');
+		// Opening a block to read it is not a write, so it stays.
+		expect(wrapper.find('button[title="Edit Content"]').exists()).toBe(true);
+		expect(wrapper.text()).toContain('Footer with address');
 		wrapper.unmount();
 	});
 });
