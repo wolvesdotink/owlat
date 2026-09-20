@@ -14,7 +14,8 @@ import {
  * because the thing an operator is choosing is storage against the ability to
  * open an attachment later. It also says plainly what is NOT affected: messages,
  * senders and details are kept whatever the window is, so shortening it never
- * loses a conversation.
+ * loses a conversation — and neither does it touch personal-mailbox (Postbox)
+ * mail, which keeps its own files permanently.
  *
  * There is deliberately no "keep forever": unbounded growth on a route any
  * sender can reach is the problem the window exists to solve.
@@ -27,19 +28,28 @@ const { showToast } = useToast();
 const { data: settings, isLoading } = useConvexQuery(api.workspaces.settings.get, {});
 
 const selected = computed<InboundRawRetentionDays>(
-	() =>
-		(settings.value?.inboundRawRetentionDays as InboundRawRetentionDays | undefined) ??
-		(DEFAULT_INBOUND_RAW_RETENTION_DAYS as InboundRawRetentionDays)
+	() => settings.value?.inboundRawRetentionDays ?? DEFAULT_INBOUND_RAW_RETENTION_DAYS
 );
 
-const { run: updateSettings, isLoading: isSaving } = useBackendOperation(
-	api.workspaces.settings.update,
-	{ label: () => t('components.settings.inboundRetentionCard.updateOperation') }
+const options = computed(() =>
+	INBOUND_RAW_RETENTION_DAY_CHOICES.map((days) => ({
+		value: days,
+		label: t('components.settings.inboundRetentionCard.dayOption', { count: days }),
+	}))
 );
 
-async function onSelect(event: Event) {
-	if (!canManageOrganization.value) return;
-	const next = Number((event.target as HTMLSelectElement).value) as InboundRawRetentionDays;
+const { run: updateSettings } = useBackendOperation(api.workspaces.settings.update, {
+	label: () => t('components.settings.inboundRetentionCard.updateOperation'),
+});
+
+/**
+ * `UiSelect` is generic over `string | number` and hands back the option's own
+ * value, so the number the Convex validator demands arrives as a number — a
+ * raw `<select>`'s `event.target.value` is always a string, and the closed
+ * 30/90/180/365 validator rejects `'30'`.
+ */
+async function onSelect(next: InboundRawRetentionDays | null) {
+	if (!canManageOrganization.value || next === null) return;
 	if (next === selected.value) return;
 	const res = await updateSettings({ inboundRawRetentionDays: next });
 	if (!res.ok) return; // failure already toasted
@@ -62,20 +72,16 @@ async function onSelect(event: Event) {
 				</p>
 			</div>
 			<UiSpinner v-if="isLoading" size="sm" />
-			<label v-else class="flex items-center gap-2 text-sm text-text-secondary">
-				<span>{{ t('components.settings.inboundRetentionCard.label') }}</span>
-				<select
-					class="rounded border border-border-subtle bg-bg-surface px-2 py-1 text-sm text-text-primary disabled:opacity-50"
-					:value="selected"
-					:disabled="!canManageOrganization || isSaving"
-					data-testid="inbound-retention-days"
-					@change="onSelect"
-				>
-					<option v-for="days in INBOUND_RAW_RETENTION_DAY_CHOICES" :key="days" :value="days">
-						{{ t('components.settings.inboundRetentionCard.dayOption', { count: days }) }}
-					</option>
-				</select>
-			</label>
+			<div v-else class="w-44 flex-shrink-0" data-testid="inbound-retention-days">
+				<UiSelect
+					:model-value="selected"
+					:options="options"
+					:label="t('components.settings.inboundRetentionCard.label')"
+					:disabled="!canManageOrganization"
+					size="sm"
+					@update:model-value="onSelect"
+				/>
+			</div>
 		</div>
 	</section>
 </template>
