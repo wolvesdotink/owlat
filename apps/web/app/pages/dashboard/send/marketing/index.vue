@@ -246,8 +246,9 @@ useClickOutsideSelector('[data-sort-dropdown]', () => {
 
 // Keyboard shortcuts setup
 onMounted(() => {
+	// 'n' to create — same permission the New template button carries.
 	registerNewShortcut(() => {
-		if (!isTemplateLibraryOpen.value && !isDeleteModalOpen.value) {
+		if (canManage.value && !isTemplateLibraryOpen.value && !isDeleteModalOpen.value) {
 			openCreateModal();
 		}
 	});

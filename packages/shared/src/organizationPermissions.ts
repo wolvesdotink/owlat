@@ -4,11 +4,12 @@
  *
  * This lived in `apps/api/convex/lib/sessionOrganization.ts` alone, which the
  * web app cannot import (Convex server types). The web app therefore
- * hand-mirrored the map in `usePermissions()` and drifted: it covered five of
- * the nineteen permissions, so editors were shown create/edit actions on
- * segments, topics, automations, templates, media, imports and share links that
- * the backend then refused with a forbidden toast. A permission added on one
- * side and forgotten on the other is exactly that class of bug, so the map is
+ * hand-mirrored the map in `usePermissions()` and drifted: it expressed seven
+ * of the nineteen permissions, and the seven admin-only content domains
+ * (templates, automations, topics, segments, media, imports, share links) were
+ * among the twelve it did not — so editors were shown create/edit actions the
+ * backend then refused with a forbidden toast. A permission added on one side
+ * and forgotten on the other is exactly that class of bug, so the map is
  * defined here once and consumed by both.
  *
  * Pure module: no Convex, no Nuxt, no I/O.

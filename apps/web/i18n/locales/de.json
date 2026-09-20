@@ -9635,7 +9635,7 @@
 					}
 				},
 				"index": {
-					"adminsOnly": "Nur Inhaber und Administratoren können Blöcke erstellen oder löschen.",
+					"adminsOnly": "Nur Inhaber und Administratoren können Bausteine erstellen oder löschen.",
 					"blockCount": "{count} Baustein | {count} Bausteine",
 					"blocksBadge": "{count} Bausteine",
 					"clearSearch": "Suche zurücksetzen",

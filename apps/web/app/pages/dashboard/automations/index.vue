@@ -15,9 +15,9 @@ definePageMeta({
 const { registerNewShortcut, registerEscapeHandler, unregisterShortcut } = useKeyboardShortcuts();
 
 onMounted(() => {
-	// 'n' to create new automation
+	// 'n' to create new automation — same permission the New button carries.
 	registerNewShortcut(() => {
-		if (!isDeleteModalOpen.value) {
+		if (canManage.value && !isDeleteModalOpen.value) {
 			router.push('/dashboard/automations/new');
 		}
 	});
@@ -221,6 +221,25 @@ const handleEdit = (automationId: Id<'automations'>) => {
 const handleViewDetails = (automationId: Id<'automations'>) => {
 	router.push(`/dashboard/automations/${automationId}`);
 };
+
+/**
+ * Where a row's NAME goes. A draft opens the builder, anything else its
+ * detail/analytics page — and a draft's detail page is deliberately withheld
+ * everywhere in this list (the row menu has no "View details" for one, because
+ * an automation that has never run has no analytics to show). So for a caller
+ * without `automations:manage` a draft's name leads nowhere, and says so by
+ * not looking clickable.
+ */
+const nameOpens = (status: 'draft' | 'active' | 'paused') =>
+	status === 'draft' ? canManage.value : true;
+
+const openFromName = (automation: {
+	_id: Id<'automations'>;
+	status: 'draft' | 'active' | 'paused';
+}) => {
+	if (automation.status !== 'draft') return handleViewDetails(automation._id);
+	if (canManage.value) handleEdit(automation._id);
+};
 </script>
 
 <template>
@@ -374,12 +393,11 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 									<td class="px-6 py-4">
 										<div class="min-w-0">
 											<span
-												class="text-text-primary font-medium hover:text-brand cursor-pointer transition-colors"
-												@click="
-													automation.status === 'draft' && canManage
-														? handleEdit(automation._id)
-														: handleViewDetails(automation._id)
-												"
+												:class="[
+													'text-text-primary font-medium transition-colors',
+													nameOpens(automation.status) ? 'hover:text-brand cursor-pointer' : '',
+												]"
+												@click="openFromName(automation)"
 											>
 												{{ automation.name }}
 											</span>
@@ -467,8 +485,8 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
 											<!-- More Actions Dropdown -->
-											<!-- An editor keeps only "View details", so for a draft (which has
-											     no detail page) the menu would be empty — hide the trigger. -->
+											<!-- An editor keeps only "View details", which this list withholds
+											     for a draft, so the menu would be empty — hide the trigger. -->
 											<div
 												v-if="canManage || automation.status !== 'draft'"
 												class="relative"

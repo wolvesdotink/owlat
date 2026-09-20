@@ -7,8 +7,9 @@ import { hasPermission, type Permission } from '@owlat/shared/organizationPermis
  * The role→permission table is NOT restated here: `can()` reads the same
  * `@owlat/shared/organizationPermissions` map that the Convex gates
  * (`requireOrgPermission`) enforce. This composable used to hand-mirror it and
- * covered only five of the nineteen permissions, which is how editors ended up
- * being offered create/edit buttons on segments, topics, automations and
+ * expressed only seven of the nineteen permissions; the seven admin-only
+ * content domains were among the twelve it left out, which is how editors ended
+ * up being offered create/edit buttons on segments, topics, automations and
  * templates that the backend then refused.
  *
  * Roles hierarchy:

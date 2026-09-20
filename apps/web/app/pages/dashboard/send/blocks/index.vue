@@ -377,6 +377,7 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 									<Icon name="lucide:file-edit" class="w-4 h-4" />
 								</button>
 								<button
+									v-if="canManage"
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
 									:title="t('dashboard.send.blocks.index.quickSettings')"
 									@click.stop="openEditModal(block)"

@@ -58,27 +58,37 @@ const stats = computed(() => [
 	},
 ]);
 
-// Quick actions
-const quickActions = computed(() => [
-	{
-		label: t('dashboard.audience.index.quickActions.addContact.label'),
-		href: '/dashboard/audience/contacts?action=add',
-		icon: 'lucide:user-plus',
-		description: t('dashboard.audience.index.quickActions.addContact.description'),
-	},
-	{
-		label: t('dashboard.audience.index.quickActions.createTopic.label'),
-		href: '/dashboard/audience/topics?action=create',
-		icon: 'lucide:list-plus',
-		description: t('dashboard.audience.index.quickActions.createTopic.description'),
-	},
-	{
-		label: t('dashboard.audience.index.quickActions.createSegment.label'),
-		href: '/dashboard/audience/segments?action=create',
-		icon: 'lucide:filter',
-		description: t('dashboard.audience.index.quickActions.createSegment.description'),
-	},
-]);
+// Quick actions. Each card is a create button that opens its destination's
+// create modal via `?action=...`, so it carries the same permission the modal's
+// submit does — otherwise the hub offers an editor three dead ends.
+const { can } = usePermissions();
+const canCreateTopics = computed(() => can('topics:manage'));
+
+const quickActions = computed(() =>
+	[
+		{
+			label: t('dashboard.audience.index.quickActions.addContact.label'),
+			href: '/dashboard/audience/contacts?action=add',
+			icon: 'lucide:user-plus',
+			description: t('dashboard.audience.index.quickActions.addContact.description'),
+			allowed: can('contacts:manage'),
+		},
+		{
+			label: t('dashboard.audience.index.quickActions.createTopic.label'),
+			href: '/dashboard/audience/topics?action=create',
+			icon: 'lucide:list-plus',
+			description: t('dashboard.audience.index.quickActions.createTopic.description'),
+			allowed: canCreateTopics.value,
+		},
+		{
+			label: t('dashboard.audience.index.quickActions.createSegment.label'),
+			href: '/dashboard/audience/segments?action=create',
+			icon: 'lucide:filter',
+			description: t('dashboard.audience.index.quickActions.createSegment.description'),
+			allowed: can('segments:manage'),
+		},
+	].filter((action) => action.allowed)
+);
 
 // Per-day buckets for the growth chart (the query now returns
 // `{ days, truncated }`; `truncated` is true only for very large 30-day intakes).
@@ -153,8 +163,9 @@ const totalNewSubscribers = computed(() => {
 			</div>
 		</div>
 
-		<!-- Quick Actions -->
-		<div class="mb-8">
+		<!-- Quick Actions. Every card is admin-only, so an editor gets none of
+		     them and the heading goes with them rather than titling an empty row. -->
+		<div v-if="quickActions.length > 0" class="mb-8">
 			<h2 class="text-lg font-semibold text-text-primary mb-4">
 				{{ t('dashboard.audience.index.quickActionsHeading') }}
 			</h2>
@@ -257,7 +268,11 @@ const totalNewSubscribers = computed(() => {
 							<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 								{{ t('dashboard.audience.index.topTopics.emptyBody') }}
 							</p>
-							<UiButton to="/dashboard/audience/topics?action=create" class="mt-6 gap-2">
+							<UiButton
+								v-if="canCreateTopics"
+								to="/dashboard/audience/topics?action=create"
+								class="mt-6 gap-2"
+							>
 								<Icon name="lucide:plus" class="w-4 h-4" />
 								{{ t('dashboard.audience.index.topTopics.createTopic') }}
 							</UiButton>

@@ -145,7 +145,10 @@ const saveSegmentEdits = async () => {
 // quick-action link (/dashboard/audience/segments?action=create).
 const route = useRoute();
 onMounted(() => {
-	if (route.query['action'] === 'create') {
+	// Same guard the contacts list puts on its own `?action=add` link: the hub
+	// card is a create button like any other, so a caller who cannot create must
+	// not land on a modal whose submit would 403.
+	if (canManage.value && route.query['action'] === 'create') {
 		openCreateModal();
 	}
 });
