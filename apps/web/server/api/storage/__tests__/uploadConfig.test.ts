@@ -14,7 +14,8 @@ describe('upload middleware configuration', () => {
 			security: { requestSizeLimiter: false, xssValidator: false },
 		});
 		// Other routes retain the application's normal request protection.
-		expect(config.security?.xssValidator).not.toBe(false);
-		expect(config.security?.requestSizeLimiter).not.toBe(false);
+		if (!config.security) throw new Error('Global request protections must remain enabled');
+		expect(config.security.xssValidator).not.toBe(false);
+		expect(config.security.requestSizeLimiter).not.toBe(false);
 	});
 });
