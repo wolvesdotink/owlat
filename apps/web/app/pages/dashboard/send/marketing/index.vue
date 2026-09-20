@@ -13,6 +13,12 @@ definePageMeta({
 
 // Get the current user's organization
 const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext();
+// Creating, duplicating and deleting a template all require `templates:manage`
+// (owner/admin) on the backend — `apps/api/convex/emailTemplates/emails.ts`.
+// Browsing and opening one stays open to every member; the writes do not.
+const { can, showGateFor } = usePermissions();
+const canManage = computed(() => can('templates:manage'));
+const showManageGate = computed(() => showGateFor('templates:manage'));
 const { isPending: authPending, isAuthenticated } = useAuth();
 const router = useRouter();
 
@@ -273,12 +279,15 @@ onUnmounted(() => {
 					{{ t('dashboard.send.marketing.index.subtitle') }}
 				</p>
 			</div>
-			<UiButton size="sm" @click="openCreateModal">
+			<UiButton v-if="canManage" size="sm" @click="openCreateModal">
 				<template #iconLeft>
 					<Icon name="lucide:plus" class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.send.marketing.index.newTemplate') }}
 			</UiButton>
+			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
+				{{ t('dashboard.send.marketing.index.adminsOnly') }}
+			</p>
 		</div>
 
 		<!-- Stats and Search -->
@@ -419,7 +428,7 @@ onUnmounted(() => {
 					:title="t('dashboard.send.marketing.index.empty.title')"
 					:description="t('dashboard.send.marketing.index.empty.description')"
 				>
-					<template #action>
+					<template v-if="canManage" #action>
 						<UiButton @click="openCreateModal">
 							<template #iconLeft>
 								<Icon name="lucide:plus" class="w-4 h-4" />
@@ -480,6 +489,7 @@ onUnmounted(() => {
 									<Icon name="lucide:pencil" class="w-4 h-4" />
 								</button>
 								<button
+									v-if="canManage"
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="handleDuplicate(template._id)"
 									:aria-label="t('common.copy')"
@@ -487,6 +497,7 @@ onUnmounted(() => {
 									<Icon name="lucide:copy" class="w-4 h-4" />
 								</button>
 								<button
+									v-if="canManage"
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-text-inverse transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="openDeleteModal(template._id, template.name)"
 									:aria-label="t('common.delete')"
@@ -514,11 +525,16 @@ onUnmounted(() => {
 									<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(template._id)">
 										{{ t('common.edit') }}
 									</UiDropdownMenuItem>
-									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(template._id)">
+									<UiDropdownMenuItem
+										v-if="canManage"
+										icon="lucide:copy"
+										@click="handleDuplicate(template._id)"
+									>
 										{{ t('common.duplicate') }}
 									</UiDropdownMenuItem>
-									<UiDropdownDivider />
+									<UiDropdownDivider v-if="canManage" />
 									<UiDropdownMenuItem
+										v-if="canManage"
 										icon="lucide:trash-2"
 										danger
 										@click="openDeleteModal(template._id, template.name)"
@@ -602,11 +618,16 @@ onUnmounted(() => {
 									<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(template._id)">
 										{{ t('common.edit') }}
 									</UiDropdownMenuItem>
-									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(template._id)">
+									<UiDropdownMenuItem
+										v-if="canManage"
+										icon="lucide:copy"
+										@click="handleDuplicate(template._id)"
+									>
 										{{ t('common.duplicate') }}
 									</UiDropdownMenuItem>
-									<UiDropdownDivider />
+									<UiDropdownDivider v-if="canManage" />
 									<UiDropdownMenuItem
+										v-if="canManage"
 										icon="lucide:trash-2"
 										danger
 										@click="openDeleteModal(template._id, template.name)"
@@ -684,6 +705,7 @@ onUnmounted(() => {
 												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
 											<button
+												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												@click="handleDuplicate(template._id)"
 												:aria-label="t('common.copy')"
@@ -691,6 +713,7 @@ onUnmounted(() => {
 												<Icon name="lucide:copy" class="w-4 h-4" />
 											</button>
 											<button
+												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												@click="openDeleteModal(template._id, template.name)"
 												:aria-label="t('common.delete')"

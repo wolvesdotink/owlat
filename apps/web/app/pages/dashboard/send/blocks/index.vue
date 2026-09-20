@@ -15,6 +15,12 @@ const router = useRouter();
 
 // Get the current user's organization
 const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext();
+// Reusable blocks are templates as far as authorization goes: create, update,
+// duplicate and remove all require `templates:manage` (owner/admin) —
+// `apps/api/convex/emailBlocks/blocks.ts`. The library stays browsable.
+const { can, showGateFor } = usePermissions();
+const canManage = computed(() => can('templates:manage'));
+const showManageGate = computed(() => showGateFor('templates:manage'));
 
 // Sort state
 type SortOption = 'recent' | 'mostUsed' | 'name';
@@ -240,12 +246,15 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 				</h1>
 				<p class="mt-1 text-text-secondary">{{ t('dashboard.send.blocks.index.subtitle') }}</p>
 			</div>
-			<UiButton size="sm" @click="openCreateModal">
+			<UiButton v-if="canManage" size="sm" @click="openCreateModal">
 				<template #iconLeft>
 					<Icon name="lucide:plus" class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.send.blocks.index.newBlock') }}
 			</UiButton>
+			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
+				{{ t('dashboard.send.blocks.index.adminsOnly') }}
+			</p>
 		</div>
 
 		<!-- Filters and Search -->
@@ -315,7 +324,7 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 					:title="t('dashboard.send.blocks.index.emptyTitle')"
 					:description="t('dashboard.send.blocks.index.emptyDescription')"
 				>
-					<template #action>
+					<template v-if="canManage" #action>
 						<UiButton @click="openCreateModal">
 							<template #iconLeft>
 								<Icon name="lucide:plus" class="w-4 h-4" />
@@ -375,6 +384,7 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 									<Icon name="lucide:settings" class="w-4 h-4" />
 								</button>
 								<button
+									v-if="canManage"
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
 									:title="t('common.duplicate')"
 									@click.stop="handleDuplicate(block._id)"
@@ -382,6 +392,7 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 									<Icon name="lucide:copy" class="w-4 h-4" />
 								</button>
 								<button
+									v-if="canManage"
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-text-inverse transition-colors"
 									:title="t('common.delete')"
 									@click.stop="openDeleteModal(block._id, block.name, block.usageCount)"
@@ -413,14 +424,23 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 									>
 										{{ t('dashboard.send.blocks.index.editContent') }}
 									</UiDropdownMenuItem>
-									<UiDropdownMenuItem icon="lucide:settings" @click="openEditModal(block)">
+									<UiDropdownMenuItem
+										v-if="canManage"
+										icon="lucide:settings"
+										@click="openEditModal(block)"
+									>
 										{{ t('common.settings') }}
 									</UiDropdownMenuItem>
-									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(block._id)">
+									<UiDropdownMenuItem
+										v-if="canManage"
+										icon="lucide:copy"
+										@click="handleDuplicate(block._id)"
+									>
 										{{ t('common.duplicate') }}
 									</UiDropdownMenuItem>
-									<UiDropdownDivider />
+									<UiDropdownDivider v-if="canManage" />
 									<UiDropdownMenuItem
+										v-if="canManage"
 										icon="lucide:trash-2"
 										danger
 										@click="openDeleteModal(block._id, block.name, block.usageCount)"

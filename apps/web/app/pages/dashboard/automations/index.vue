@@ -37,6 +37,13 @@ onUnmounted(() => {
 
 // Get the current user's organization
 const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext();
+// Every automation write — create, edit, duplicate, activate/pause, delete —
+// requires `automations:manage` (owner/admin) on the backend
+// (`apps/api/convex/automations/guards.ts`). The list stays readable for every
+// member; only the write actions come off for an editor.
+const { can, showGateFor } = usePermissions();
+const canManage = computed(() => can('automations:manage'));
+const showManageGate = computed(() => showGateFor('automations:manage'));
 const router = useRouter();
 
 // Status filter state
@@ -226,10 +233,13 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 				</h1>
 				<p class="mt-1 text-text-secondary">{{ t('dashboard.automations.index.subtitle') }}</p>
 			</div>
-			<UiButton size="sm" @click="handleNewAutomation">
+			<UiButton v-if="canManage" size="sm" @click="handleNewAutomation">
 				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 				{{ t('dashboard.automations.index.newAutomation') }}
 			</UiButton>
+			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
+				{{ t('dashboard.automations.index.adminsOnly') }}
+			</p>
 		</div>
 
 		<!-- Filters and Search -->
@@ -301,7 +311,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 					:title="t('dashboard.automations.index.empty.title')"
 					:description="t('dashboard.automations.index.empty.description')"
 				>
-					<template #action>
+					<template v-if="canManage" #action>
 						<UiButton @click="handleNewAutomation">
 							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 							{{ t('dashboard.automations.index.empty.action') }}
@@ -366,7 +376,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 											<span
 												class="text-text-primary font-medium hover:text-brand cursor-pointer transition-colors"
 												@click="
-													automation.status === 'draft'
+													automation.status === 'draft' && canManage
 														? handleEdit(automation._id)
 														: handleViewDetails(automation._id)
 												"
@@ -420,7 +430,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 										<div class="flex items-center justify-end gap-1" @click.stop>
 											<!-- Toggle Active/Paused -->
 											<button
-												v-if="automation.status !== 'draft'"
+												v-if="canManage && automation.status !== 'draft'"
 												:class="[
 													'p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 													automation.status === 'active'
@@ -449,6 +459,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 											</button>
 											<!-- Edit -->
 											<button
+												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												:title="t('common.edit')"
 												@click="handleEdit(automation._id)"
@@ -456,7 +467,13 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
 											<!-- More Actions Dropdown -->
-											<div class="relative" data-dropdown>
+											<!-- An editor keeps only "View details", so for a draft (which has
+											     no detail page) the menu would be empty — hide the trigger. -->
+											<div
+												v-if="canManage || automation.status !== 'draft'"
+												class="relative"
+												data-dropdown
+											>
 												<button
 													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 													@click="toggleDropdown(automation._id)"
@@ -485,6 +502,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 															{{ t('dashboard.automations.index.actions.viewDetails') }}
 														</button>
 														<button
+															v-if="canManage"
 															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
 															@click="handleEdit(automation._id)"
 														>
@@ -492,6 +510,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 															{{ t('common.edit') }}
 														</button>
 														<button
+															v-if="canManage"
 															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
 															@click="handleDuplicate(automation._id)"
 														>
@@ -499,7 +518,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 															{{ t('common.duplicate') }}
 														</button>
 														<button
-															v-if="automation.status !== 'draft'"
+															v-if="canManage && automation.status !== 'draft'"
 															:disabled="toggleingId === automation._id"
 															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 															@click="handleToggleStatus(automation)"
@@ -517,11 +536,11 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 															}}
 														</button>
 														<div
-															v-if="automation.status !== 'active'"
+															v-if="canManage && automation.status !== 'active'"
 															class="border-t border-border-subtle my-1"
 														/>
 														<button
-															v-if="automation.status !== 'active'"
+															v-if="canManage && automation.status !== 'active'"
 															class="w-full px-3 py-2 text-left text-sm text-error hover:bg-error/10 flex items-center gap-2 transition-colors"
 															@click="
 																openDeleteModal(automation._id, automation.name, automation.status)

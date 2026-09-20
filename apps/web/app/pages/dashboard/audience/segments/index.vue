@@ -10,6 +10,13 @@ definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 
 // ─── Organization & Data ───────────────────────────────────────────────
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
+// Creating, editing and deleting a segment all require `segments:manage`
+// (owner/admin) on the backend — `apps/api/convex/segments.ts`. The list itself
+// is readable by every member, so only the write actions come off for an
+// editor, with a line saying why rather than a silent absence.
+const { can, showGateFor } = usePermissions();
+const canManage = computed(() => can('segments:manage'));
+const showManageGate = computed(() => showGateFor('segments:manage'));
 const {
 	results: segments,
 	isLoading: segmentsLoading,
@@ -153,10 +160,13 @@ onMounted(() => {
 			class="mb-6"
 		>
 			<template #actions>
-				<UiButton @click="openCreateModal">
+				<UiButton v-if="canManage" @click="openCreateModal">
 					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 					{{ t('dashboard.audience.segments.index.newSegment') }}
 				</UiButton>
+				<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
+					{{ t('dashboard.audience.segments.index.adminsOnly') }}
+				</p>
 			</template>
 		</UiPageHeader>
 
@@ -197,7 +207,7 @@ onMounted(() => {
 					:title="t('dashboard.audience.segments.index.empty.title')"
 					:description="t('dashboard.audience.segments.index.empty.description')"
 				>
-					<template #action>
+					<template v-if="canManage" #action>
 						<UiButton @click="openCreateModal">
 							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 							{{ t('dashboard.audience.segments.index.newSegment') }}
@@ -247,6 +257,7 @@ onMounted(() => {
 								</span>
 							</NuxtLink>
 							<button
+								v-if="canManage"
 								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors"
 								:aria-label="t('dashboard.audience.segments.index.actions.edit')"
 								@click="openEditModal(segment)"
@@ -254,6 +265,7 @@ onMounted(() => {
 								<Icon name="lucide:pencil" class="w-4 h-4" />
 							</button>
 							<button
+								v-if="canManage"
 								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
 								:aria-label="t('dashboard.audience.segments.index.actions.delete')"
 								@click="openDeleteModal(segment)"
@@ -366,6 +378,7 @@ onMounted(() => {
 												<Icon name="lucide:users" class="w-4 h-4" />
 											</NuxtLink>
 											<button
+												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												:title="t('dashboard.audience.segments.index.actions.edit')"
 												@click="openEditModal(segment)"
@@ -373,6 +386,7 @@ onMounted(() => {
 												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
 											<button
+												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												:title="t('dashboard.audience.segments.index.actions.delete')"
 												@click="openDeleteModal(segment)"
@@ -581,7 +595,10 @@ onMounted(() => {
 							</p>
 							<p class="text-xl font-semibold text-text-primary">
 								<template v-if="countLoading">
-									<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none inline" />
+									<Icon
+										name="lucide:loader-2"
+										class="w-5 h-5 animate-spin motion-reduce:animate-none inline"
+									/>
 								</template>
 								<template v-else>
 									{{ matchingCount?.toLocaleString(locale) ?? 0 }}
