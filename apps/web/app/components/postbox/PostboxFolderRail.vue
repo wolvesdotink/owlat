@@ -106,6 +106,7 @@ const activeLabelId = computed(() =>
 // to host its own box with its own grammar and its own history; there is now one
 // search, and `/` reaches it here exactly as it reached the box before.
 const { open: openCommandPalette } = useCommandPalette();
+const { toggleHidden: toggleShellNavigation } = useSidebarState();
 
 function onGlobalKey(event: KeyboardEvent) {
 	// Cmd/Ctrl+Shift+D toggles the folder rail between full width and the icon
@@ -117,7 +118,8 @@ function onGlobalKey(event: KeyboardEvent) {
 		event.key.toLowerCase() === 'd'
 	) {
 		event.preventDefault();
-		toggleRail();
+		if (props.forceExpanded) toggleShellNavigation();
+		else toggleRail();
 		return;
 	}
 	// `postbox.search` through the registry, not a literal '/': the settings
@@ -268,8 +270,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			:folder-role="folderRole"
 		/>
 
-		<!-- Collapse toggle pinned to the rail bottom (also Cmd/Ctrl+Shift+D). -->
+		<!-- Standalone rails may collapse; a rail hosted by the shell stays readable. -->
 		<button
+			v-if="!forceExpanded"
 			type="button"
 			class="mt-auto flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
 			:class="railCollapsed ? 'w-9 h-9' : 'w-full gap-1.5 px-2.5 py-1.5 text-xs'"

@@ -172,11 +172,11 @@ describe('UiEmptyState — the landing ladder', () => {
 
 	it('gives the transient no-results state less air than a true empty', () => {
 		const empty = mountEmptyState({ title: 'Nothing yet' });
-		expect(empty.el.firstElementChild?.className).toContain('py-16');
+		expect(empty.el.firstElementChild?.className).toContain('py-12');
 		empty.unmount();
 
 		const filtered = mountEmptyState({ title: 'No matches', variant: 'no-results' });
-		expect(filtered.el.firstElementChild?.className).toContain('py-12');
+		expect(filtered.el.firstElementChild?.className).toContain('py-10');
 		filtered.unmount();
 	});
 });

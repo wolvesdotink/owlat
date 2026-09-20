@@ -22,10 +22,10 @@
  *    the action UNDOES the filter: wire `@clear` for the default "Clear
  *    filters" control, or pass your own through `#action`.
  */
-import { computed, getCurrentInstance, useSlots } from 'vue';
-import { useUiI18n } from '../../composables/useUiI18n';
+import { computed, getCurrentInstance, useSlots } from "vue";
+import { useUiI18n } from "../../composables/useUiI18n";
 
-type EmptyStateVariant = 'empty' | 'no-results';
+type EmptyStateVariant = "empty" | "no-results";
 
 interface Props {
 	/** The one line that says what is missing. Rendered as a real heading. */
@@ -47,7 +47,7 @@ const props = withDefaults(defineProps<Props>(), {
 	eyebrow: undefined,
 	description: undefined,
 	icon: undefined,
-	variant: 'empty',
+	variant: "empty",
 	headingLevel: 2,
 	clearLabel: undefined,
 });
@@ -63,15 +63,15 @@ const slots = useSlots();
 // Captured during setup for the same reason QueryBoundary does it:
 // `getCurrentInstance()` is null once the render function has run.
 const instance = getCurrentInstance();
-const hasClearListener = computed(() => !!instance?.vnode.props?.['onClear']);
+const hasClearListener = computed(() => !!instance?.vnode.props?.["onClear"]);
 
-const isNoResults = computed(() => props.variant === 'no-results');
+const isNoResults = computed(() => props.variant === "no-results");
 
-const headingTag = computed(() => `h${props.headingLevel}` as 'h2' | 'h3' | 'h4');
+const headingTag = computed(() => `h${props.headingLevel}` as "h2" | "h3" | "h4");
 
 const eyebrowText = computed(
 	() =>
-		props.eyebrow ?? t(isNoResults.value ? 'ui.emptyState.noResults' : 'ui.emptyState.nothingYet')
+		props.eyebrow ?? t(isNoResults.value ? "ui.emptyState.noResults" : "ui.emptyState.nothingYet"),
 );
 
 /**
@@ -79,13 +79,13 @@ const eyebrowText = computed(
  * the component's children, and the version this replaces rendered ONLY
  * `#action` — so those buttons silently did not exist.
  */
-const hasAction = computed(() => !!slots['action'] || !!slots['default']);
+const hasAction = computed(() => !!slots["action"] || !!slots["default"]);
 
 const showClear = computed(() => isNoResults.value && !hasAction.value && hasClearListener.value);
 </script>
 
 <template>
-	<div class="flex flex-col items-center px-6 text-center" :class="isNoResults ? 'py-12' : 'py-16'">
+	<div class="flex flex-col items-center px-6 text-center" :class="isNoResults ? 'py-10' : 'py-12'">
 		<p class="lp-eyebrow flex items-center justify-center gap-1.5">
 			<Icon v-if="icon" :name="icon" class="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
 			<span>{{ eyebrowText }}</span>
@@ -94,17 +94,17 @@ const showClear = computed(() => isNoResults.value && !hasAction.value && hasCle
 		<component
 			:is="headingTag"
 			class="mt-3 max-w-xl text-balance font-medium tracking-[-0.02em] text-text-primary"
-			:class="isNoResults ? 'text-lg' : 'text-2xl'"
+			:class="isNoResults ? 'text-lg' : 'text-xl'"
 		>
 			{{ title }}
 		</component>
 
-		<p v-if="description" class="mt-2 max-w-md text-md text-text-secondary">
+		<p v-if="description" class="mt-2 max-w-md text-sm leading-relaxed text-text-secondary">
 			{{ description }}
 		</p>
 
 		<!-- Pairs with page-header-actions: same label, different region. -->
-		<div v-if="hasAction" data-testid="empty-state-action" class="mt-6">
+		<div v-if="hasAction" data-testid="empty-state-action" class="mt-5">
 			<slot name="action" />
 			<slot />
 		</div>
@@ -113,10 +113,10 @@ const showClear = computed(() => isNoResults.value && !hasAction.value && hasCle
 			v-else-if="showClear"
 			variant="secondary"
 			size="sm"
-			class="mt-6"
+			class="mt-5"
 			@click="emit('clear')"
 		>
-			{{ clearLabel ?? t('ui.emptyState.clear') }}
+			{{ clearLabel ?? t("ui.emptyState.clear") }}
 		</UiButton>
 	</div>
 </template>

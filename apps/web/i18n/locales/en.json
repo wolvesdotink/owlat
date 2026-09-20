@@ -14979,7 +14979,10 @@
 			"userFallback": "User",
 			"navigatedTo": "Navigated to {page}",
 			"pinSidebar": "Pin sidebar open",
-			"unpinSidebar": "Unpin sidebar"
+			"unpinSidebar": "Unpin sidebar",
+			"appNavigation": "App navigation",
+			"mailNavigation": "Mail",
+			"assistantNavigation": "Assistant"
 		},
 		"error": {
 			"forbidden": "You don't have permission to access this page.",

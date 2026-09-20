@@ -238,13 +238,20 @@ async function handleDismiss() {
 		leave-from-class="opacity-100 translate-y-0"
 		leave-to-class="opacity-0 -translate-y-2"
 	>
-		<section v-if="model.visible" class="card mb-8" role="region" :aria-label="t('components.dashboard.gettingStarted.title')">
+		<section
+			v-if="model.visible"
+			class="card mb-8"
+			role="region"
+			:aria-label="t('components.dashboard.gettingStarted.title')"
+		>
 			<!-- Header -->
 			<div class="mb-6 flex items-start justify-between">
 				<div class="flex items-center gap-3">
 					<UiIconBox icon="lucide:list-checks" variant="surface" />
 					<div>
-						<h2 class="text-lg font-semibold text-text-primary">{{ t('components.dashboard.gettingStarted.title') }}</h2>
+						<h2 class="text-lg font-semibold text-text-primary">
+							{{ t('components.dashboard.gettingStarted.title') }}
+						</h2>
 						<p class="mt-0.5 text-sm text-text-secondary">
 							{{ t('components.dashboard.gettingStarted.subtitle') }}
 						</p>
@@ -263,7 +270,9 @@ async function handleDismiss() {
 			<!-- Progress -->
 			<div class="mb-6">
 				<div class="mb-2 flex items-center justify-between text-sm">
-					<span class="text-text-secondary">{{ t('components.dashboard.gettingStarted.progress') }}</span>
+					<span class="text-text-secondary">{{
+						t('components.dashboard.gettingStarted.progress')
+					}}</span>
 					<span class="font-medium text-text-primary">
 						{{
 							t('components.dashboard.gettingStarted.progressCount', {
@@ -293,7 +302,7 @@ async function handleDismiss() {
 						</p>
 					</div>
 
-					<div class="space-y-3">
+					<div class="grid gap-3 xl:grid-cols-2">
 						<!-- A blocked step is NOT a link: there is nothing for the member to do
 						     there yet, so it renders as a plain waiting row instead of a CTA
 						     into a dead end. -->
@@ -303,18 +312,20 @@ async function handleDismiss() {
 							:id="stepDomId(step.id)"
 							:key="step.id"
 							:to="step.blocked ? undefined : step.href"
-							class="group flex items-center gap-4 rounded-xl border p-4 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+							class="group flex items-center gap-3 rounded-xl border p-3 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 							:class="[
 								step.completed
 									? 'border-success/20 bg-success/5'
 									: step.blocked
 										? 'border-border-subtle bg-bg-surface/30'
 										: 'border-border-subtle bg-bg-surface/50 hover:border-brand hover:bg-bg-surface',
-								focusedStepId === step.id ? 'ring-2 ring-brand ring-offset-2 ring-offset-bg-base' : '',
+								focusedStepId === step.id
+									? 'ring-2 ring-brand ring-offset-2 ring-offset-bg-base'
+									: '',
 							]"
 						>
 							<div
-								class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full transition-colors"
+								class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors"
 								:class="[
 									step.completed
 										? 'bg-success text-text-inverse'
@@ -323,13 +334,13 @@ async function handleDismiss() {
 											: 'bg-bg-elevated text-text-secondary group-hover:bg-brand group-hover:text-text-inverse',
 								]"
 							>
-								<Icon v-if="step.completed" name="lucide:check" class="h-5 w-5" />
-								<Icon v-else :name="step.icon" class="h-5 w-5" />
+								<Icon v-if="step.completed" name="lucide:check" class="h-4 w-4" />
+								<Icon v-else :name="step.icon" class="h-4 w-4" />
 							</div>
 
 							<div class="min-w-0 flex-1">
 								<p
-									class="font-medium"
+									class="text-sm font-medium"
 									:class="step.completed ? 'text-text-secondary line-through' : 'text-text-primary'"
 								>
 									{{ localize(step.title) }}
@@ -366,7 +377,7 @@ async function handleDismiss() {
 								v-else
 								class="hidden flex-shrink-0 items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 sm:flex"
 							>
-								{{ localize(step.cta) }}
+								<span class="sr-only">{{ localize(step.cta) }}</span>
 								<Icon name="lucide:chevron-right" class="h-4 w-4" />
 							</span>
 						</component>

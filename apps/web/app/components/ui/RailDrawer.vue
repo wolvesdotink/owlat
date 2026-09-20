@@ -16,7 +16,7 @@
 // scrim that only exists while the drawer is open.
 defineOptions({ inheritAttrs: false });
 
-const props = defineProps<{ open: boolean }>();
+const props = defineProps<{ open: boolean; navigationTitle?: string }>();
 
 const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 
@@ -53,17 +53,19 @@ onUnmounted(() => {
 		<div v-if="open" class="fixed inset-0 bg-scrim/50 z-40 md:hidden" @click="close" />
 	</Transition>
 
-	<div
-		v-bind="$attrs"
-		class="fixed top-0 left-0 z-50 h-full w-72 flex-shrink-0 flex transition-transform pt-[env(safe-area-inset-top)] md:pt-0 md:static md:z-auto md:h-auto md:translate-x-0 md:transition-none"
-		:class="
-			open
-				? 'translate-x-0 duration-(--motion-moderate)'
-				: '-translate-x-full duration-(--motion-moderate-exit)'
-		"
-		:inert="isOffCanvas ? true : undefined"
-		@keydown.esc="close"
-	>
-		<slot />
-	</div>
+	<DashboardNavigationPortal :title="navigationTitle ?? ''">
+		<div
+			v-bind="$attrs"
+			class="fixed top-0 left-0 z-50 h-full w-72 flex-shrink-0 flex transition-transform pt-[env(safe-area-inset-top)] md:pt-0 md:static md:z-auto md:h-auto md:translate-x-0 md:transition-none"
+			:class="
+				open
+					? 'translate-x-0 duration-(--motion-moderate)'
+					: '-translate-x-full duration-(--motion-moderate-exit)'
+			"
+			:inert="isOffCanvas ? true : undefined"
+			@keydown.esc="close"
+		>
+			<slot />
+		</div>
+	</DashboardNavigationPortal>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ isDesktop: boolean; navigationOpen?: boolean }>();
+defineProps<{ isDesktop: boolean; navigationOpen?: boolean; navigationHidden?: boolean }>();
 const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
 
 const { t } = useI18n();
@@ -9,6 +9,15 @@ const { t } = useI18n();
 	<header
 		class="hidden lg:flex h-16 items-center justify-between px-6 border-b border-border-subtle bg-bg-elevated"
 	>
+		<button
+			v-if="navigationHidden"
+			type="button"
+			class="mr-3 flex size-8 items-center justify-center rounded-lg text-text-secondary hover:bg-bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+			:aria-label="t('components.dashboard.dashboardShellHeader.openNavigation')"
+			@click="emit('openNavigation')"
+		>
+			<Icon name="lucide:panel-left" class="size-4" />
+		</button>
 		<div class="flex-1 min-w-0 mr-4">
 			<Breadcrumbs />
 		</div>
@@ -34,7 +43,7 @@ const { t } = useI18n();
 
 				<NuxtLink to="/dashboard" class="ml-3 flex items-center gap-2">
 					<div class="w-8 h-8 rounded-lg flex items-center justify-center">
-						<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 text-brand" />
+						<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 dark:invert" />
 					</div>
 					<span class="text-lg font-semibold text-text-primary">Owlat</span>
 				</NuxtLink>

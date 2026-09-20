@@ -134,18 +134,29 @@ function sourceFiles(dir: string, acc: string[] = []): string[] {
 	return acc;
 }
 
+function messageKeys(source: string): string[] {
+	return [...source.matchAll(/(['"])(ui\.[a-zA-Z][\w.]*)\1/g)].map((match) => match[2]!);
+}
+
 const referencedKeys = new Set<string>();
 for (const file of [
 	...sourceFiles(join(layerRoot, 'components')),
 	...sourceFiles(join(layerRoot, 'composables')),
 	...sourceFiles(join(layerRoot, 'utils')),
 ]) {
-	for (const match of readFileSync(file, 'utf8').matchAll(/'(ui\.[a-zA-Z][\w.]*)'/g)) {
-		referencedKeys.add(match[1]!);
+	for (const key of messageKeys(readFileSync(file, 'utf8'))) {
+		referencedKeys.add(key);
 	}
 }
 
 describe('ui.* keys used by the layer', () => {
+	it('finds message keys in both JavaScript quote styles', () => {
+		expect(messageKeys(`t('ui.emptyState.clear'); t("ui.emptyState.noResults")`)).toEqual([
+			'ui.emptyState.clear',
+			'ui.emptyState.noResults',
+		]);
+	});
+
 	it('finds keys to check at all (guards the scanner itself)', () => {
 		expect(referencedKeys.size).toBeGreaterThan(10);
 	});

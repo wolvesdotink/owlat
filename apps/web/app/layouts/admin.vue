@@ -17,8 +17,8 @@
  *
  * Nests inside `dashboard` so Administration keeps the app rail, header and ⌘K.
  */
-import { api } from '@owlat/api';
-import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
+import { api } from "@owlat/api";
+import { bundledPluginComposition } from "~/plugins/plugin-composition.generated";
 import {
 	ADMIN_COMMAND_PROVIDER_ID,
 	ADMIN_COMMAND_PROVIDER_PRIORITY,
@@ -29,8 +29,8 @@ import {
 	reachableAdminEntries,
 	type AdminAreaKey,
 	type AdminEnvironment,
-} from '~/lib/adminSettingsRegistry';
-import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
+} from "~/lib/adminSettingsRegistry";
+import { routePrefixMatcher } from "~/lib/commandPaletteRegistry";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -41,7 +41,7 @@ const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 // three pages carry as `platform-admin` route middleware.
 const { data: isPlatformAdmin } = useConvexQuery(
 	api.platformAdmin.platformAdmin.isPlatformAdmin,
-	() => ({})
+	() => ({}),
 );
 
 const environment = computed<AdminEnvironment>(() => ({
@@ -66,7 +66,7 @@ const activeArea = computed<AdminAreaKey | null>(() => adminEntryFor(route.path)
  * navigation at that width.
  */
 const compactEntries = computed(() => {
-	const overview = areas.value.find((area) => area.key === 'overview')?.entries ?? [];
+	const overview = areas.value.find((area) => area.key === "overview")?.entries ?? [];
 	const current = areas.value.find((area) => area.key === activeArea.value)?.entries ?? [];
 	return [...overview.filter((entry) => !current.includes(entry)), ...current];
 });
@@ -86,55 +86,49 @@ registerCommandPaletteProvider({
 				areaTitleKey: (area) => `shell.admin.areas.${area}`,
 				onOpen: (entry) => void navigateTo(entry.path),
 			},
-			query
+			query,
 		),
 });
 </script>
 
 <template>
 	<div>
-		<!-- Nuxt's layout transition needs a native DOM root. Leaving NuxtLayout as
-		     the root lets an out-in transition remove this layout without mounting
-		     the next one, which strands client navigation on an empty #__nuxt. -->
+		<!-- A native root keeps nested layout transitions from leaving the page blank. -->
 		<NuxtLayout name="dashboard">
 			<div class="flex w-full items-start">
-				<!-- Persistent left rail: present on every admin page, scrolled by the
-			     PAGE rather than by itself. The tree is thirty-odd rows — taller than
-			     a laptop viewport — so the inner `max-h`/`overflow-y-auto` it used to
-			     carry ended it at Channels behind an invisible edge (no scrollbar, no
-			     fade): Team & access and Platform read as absent, and their pages had
-			     no active entry anywhere on screen. Pinning it instead (`sticky`)
-			     would hide exactly the same tail on any page long enough to scroll.
-			     Full height, no inner scroller: every entry is reachable. -->
-				<nav
-					class="hidden lg:block w-56 shrink-0 self-start py-8 pl-6"
-					:aria-label="t('shell.admin.navLabel')"
-				>
-					<!-- No standalone rail title: the first area's eyebrow already says
+				<!-- The desktop tree lives in the shell's scrollable navigation area,
+			     so all destinations remain reachable without a second sidebar. -->
+				<DashboardNavigationPortal :title="t('shell.admin.navLabel')">
+					<nav
+						class="hidden lg:block w-56 shrink-0 self-start py-8 pl-6"
+						:aria-label="t('shell.admin.navLabel')"
+					>
+						<!-- No standalone rail title: the first area's eyebrow already says
 				     Administration, and the crumb above the page says it again. -->
-					<div v-for="area in areas" :key="area.key" class="mb-4">
-						<p class="px-3 mb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
-							{{ t(area.titleKey) }}
-						</p>
-						<ul>
-							<li v-for="entry in area.entries" :key="entry.path">
-								<NuxtLink
-									:to="entry.path"
-									class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
-									:class="
-										route.path === entry.path
-											? 'bg-bg-surface font-medium text-text-primary'
-											: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
-									"
-									:aria-current="route.path === entry.path ? 'page' : undefined"
-								>
-									<Icon :name="entry.icon" class="size-4 shrink-0" />
-									<span class="truncate">{{ t(entry.titleKey) }}</span>
-								</NuxtLink>
-							</li>
-						</ul>
-					</div>
-				</nav>
+						<div v-for="area in areas" :key="area.key" class="mb-4">
+							<p class="px-3 mb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
+								{{ t(area.titleKey) }}
+							</p>
+							<ul>
+								<li v-for="entry in area.entries" :key="entry.path">
+									<NuxtLink
+										:to="entry.path"
+										class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
+										:class="
+											route.path === entry.path
+												? 'bg-bg-surface font-medium text-text-primary'
+												: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
+										"
+										:aria-current="route.path === entry.path ? 'page' : undefined"
+									>
+										<Icon :name="entry.icon" class="size-4 shrink-0" />
+										<span class="truncate">{{ t(entry.titleKey) }}</span>
+									</NuxtLink>
+								</li>
+							</ul>
+						</div>
+					</nav>
+				</DashboardNavigationPortal>
 
 				<div class="min-w-0 flex-1">
 					<!-- Same destinations, laid out for a narrow viewport. Both rails are in

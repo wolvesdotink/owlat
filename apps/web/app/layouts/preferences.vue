@@ -21,7 +21,7 @@ import {
 	settingsAnchorFromHash,
 	settingsEntryFor,
 	settingsSectionsFor,
-} from '~/lib/settingsRegistry';
+} from "~/lib/settingsRegistry";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -29,11 +29,11 @@ const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const { isDesktop } = useDesktopContext();
 
 const sections = computed(() =>
-	settingsSectionsFor({ isFeatureEnabled, isDesktop: isDesktop.value })
+	settingsSectionsFor({ isFeatureEnabled, isDesktop: isDesktop.value }),
 );
 
 const activeEntry = computed(() => settingsEntryFor(route.path));
-const heading = computed(() => (activeEntry.value ? t(activeEntry.value.titleKey) : ''));
+const heading = computed(() => (activeEntry.value ? t(activeEntry.value.titleKey) : ""));
 
 /**
  * Palette deep links arrive as `path#anchor`. Nuxt does not scroll to a hash
@@ -49,7 +49,7 @@ function revealAnchor(hash: string) {
 	void nextTick(() => {
 		const target = document.getElementById(anchor);
 		if (!target) return;
-		target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		target.scrollIntoView({ behavior: "smooth", block: "start" });
 		flashedAnchor.value = anchor;
 		window.setTimeout(() => {
 			if (flashedAnchor.value === anchor) flashedAnchor.value = null;
@@ -60,49 +60,51 @@ function revealAnchor(hash: string) {
 onMounted(() => revealAnchor(route.hash));
 watch(
 	() => route.fullPath,
-	() => revealAnchor(route.hash)
+	() => revealAnchor(route.hash),
 );
 </script>
 
 <template>
 	<div>
-		<!-- Keep a native root around the nested dashboard layout. Global layout
-		     transitions attach to this element; NuxtLayout itself is not a safe
-		     transition root and can leave #__nuxt empty after client navigation. -->
+		<!-- A native root keeps nested layout transitions from leaving the page blank. -->
 		<NuxtLayout name="dashboard">
 			<div class="p-6 lg:p-8">
 				<div class="mx-auto flex w-full max-w-5xl gap-8">
-					<!-- Persistent left nav. Sticky so a long page never strands you. -->
-					<nav
-						class="hidden lg:block w-56 shrink-0 self-start sticky top-6"
-						:aria-label="t('shell.preferences.navLabel')"
-					>
-						<p class="px-3 mb-3 text-xs font-medium uppercase tracking-wider text-text-tertiary">
-							{{ t('shell.preferences.title') }}
-						</p>
-						<div v-for="section in sections" :key="section.key" class="mb-4">
-							<p class="px-3 mb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
-								{{ t(section.titleKey) }}
+					<!-- Section navigation lives in the dashboard sidebar on desktop. -->
+					<DashboardNavigationPortal :title="t('shell.preferences.navLabel')">
+						<nav
+							class="hidden lg:block w-56 shrink-0 self-start"
+							:aria-label="t('shell.preferences.navLabel')"
+						>
+							<p class="px-3 mb-3 text-xs font-medium uppercase tracking-wider text-text-tertiary">
+								{{ t("shell.preferences.title") }}
 							</p>
-							<ul>
-								<li v-for="entry in section.entries" :key="entry.path">
-									<NuxtLink
-										:to="entry.path"
-										class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
-										:class="
-											route.path === entry.path
-												? 'bg-bg-surface font-medium text-text-primary'
-												: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
-										"
-										:aria-current="route.path === entry.path ? 'page' : undefined"
-									>
-										<Icon :name="entry.icon" class="size-4 shrink-0" />
-										<span class="truncate">{{ t(entry.titleKey) }}</span>
-									</NuxtLink>
-								</li>
-							</ul>
-						</div>
-					</nav>
+							<div v-for="section in sections" :key="section.key" class="mb-4">
+								<p
+									class="px-3 mb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary"
+								>
+									{{ t(section.titleKey) }}
+								</p>
+								<ul>
+									<li v-for="entry in section.entries" :key="entry.path">
+										<NuxtLink
+											:to="entry.path"
+											class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
+											:class="
+												route.path === entry.path
+													? 'bg-bg-surface font-medium text-text-primary'
+													: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
+											"
+											:aria-current="route.path === entry.path ? 'page' : undefined"
+										>
+											<Icon :name="entry.icon" class="size-4 shrink-0" />
+											<span class="truncate">{{ t(entry.titleKey) }}</span>
+										</NuxtLink>
+									</li>
+								</ul>
+							</div>
+						</nav>
+					</DashboardNavigationPortal>
 
 					<div class="min-w-0 flex-1">
 						<!-- Below lg the rail becomes a scrollable pill row, so switching

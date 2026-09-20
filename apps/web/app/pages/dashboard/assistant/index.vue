@@ -117,7 +117,11 @@ const cancelRename = () => {
 		class="flex h-[calc(100dvh-10.25rem-1px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] lg:h-[calc(100vh-4rem-3rem)]"
 	>
 		<!-- Conversation list: a column at md, an off-canvas drawer below it -->
-		<UiRailDrawer id="assistant-rail" v-model:open="railOpen">
+		<UiRailDrawer
+			id="assistant-rail"
+			v-model:open="railOpen"
+			:navigation-title="t('shell.dashboard.assistantNavigation')"
+		>
 			<aside class="flex flex-1 min-w-0 flex-col border-r border-border-subtle bg-bg-elevated">
 				<div class="p-3">
 					<UiButton full-width class="gap-2" @click="startConversation">
@@ -233,7 +237,9 @@ const cancelRename = () => {
 					>
 						<Icon name="lucide:sparkles" class="w-8 h-8" />
 					</div>
-					<h2 class="text-lg font-medium text-text-primary">{{ t('dashboard.assistant.index.welcomeTitle') }}</h2>
+					<h2 class="text-lg font-medium text-text-primary">
+						{{ t('dashboard.assistant.index.welcomeTitle') }}
+					</h2>
 					<p class="text-sm text-text-secondary mt-1 max-w-md">
 						{{ t('dashboard.assistant.index.welcomeBody') }}
 					</p>
@@ -263,7 +269,11 @@ const cancelRename = () => {
 			:open="!!pendingDelete"
 			variant="danger"
 			:title="t('dashboard.assistant.index.deleteDialog.title')"
-			:description="t('dashboard.assistant.index.deleteDialog.description', { title: pendingDelete?.title ?? '' })"
+			:description="
+				t('dashboard.assistant.index.deleteDialog.description', {
+					title: pendingDelete?.title ?? '',
+				})
+			"
 			:confirm-text="t('dashboard.assistant.index.deleteDialog.confirm')"
 			:is-loading="isDeleting"
 			@update:open="

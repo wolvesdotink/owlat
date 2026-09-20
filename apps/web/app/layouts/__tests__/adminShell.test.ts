@@ -68,6 +68,7 @@ function mountLayout(): VueWrapper {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
+				DashboardNavigationPortal: { template: '<div><slot /></div>' },
 				// The shell this one nests inside is audited on its own; here it is
 				// just the frame around the rail.
 				NuxtLayout: { template: '<div><slot /></div>' },

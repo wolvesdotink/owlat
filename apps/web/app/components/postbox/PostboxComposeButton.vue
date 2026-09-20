@@ -20,7 +20,7 @@ function handleClick(mailboxId: Id<'mailboxes'>) {
 		:aria-label="collapsed ? t('components.postbox.postboxComposeButton.compose') : undefined"
 		@click="handleClick(mailboxId)"
 	>
-		<Icon name="lucide:pen-line" class="w-4 h-4" :class="{ 'mr-1.5': !collapsed }" />
+		<Icon name="lucide:pen-line" class="w-4 h-4" />
 		<span v-if="!collapsed">{{ t('components.postbox.postboxComposeButton.compose') }}</span>
 	</UiButton>
 </template>

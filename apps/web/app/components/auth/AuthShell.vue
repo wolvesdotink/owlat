@@ -21,7 +21,7 @@ defineProps<{
 
 		<div class="relative w-full max-w-md">
 			<div class="lp-hero-in mb-8 text-center" style="--i: 0">
-				<img src="/owlat.svg" alt="" class="mx-auto mb-5 size-12" />
+				<img src="/owlat.svg" alt="" class="mx-auto mb-5 size-12 dark:invert" />
 				<h1 class="text-3xl font-medium tracking-[-0.02em] text-text-primary">
 					<slot name="title" />
 				</h1>

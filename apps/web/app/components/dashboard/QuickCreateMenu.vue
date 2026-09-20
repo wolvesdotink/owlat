@@ -56,10 +56,10 @@ onUnmounted(() => unregisterShortcut('global.compose'));
 </script>
 
 <template>
-	<div v-if="defaultAction" class="flex items-center gap-px" data-testid="quick-create">
+	<div v-if="defaultAction" class="flex items-center" data-testid="quick-create">
 		<UiButton
 			size="sm"
-			class="rounded-r-none pr-3"
+			class="rounded-r-none pr-3 relative focus-visible:z-10"
 			data-testid="quick-create-default"
 			@click="defaultAction.run()"
 		>
@@ -69,11 +69,11 @@ onUnmounted(() => unregisterShortcut('global.compose'));
 			{{ defaultAction.label }}
 		</UiButton>
 
-		<UiDropdownMenu v-model:open="isOpen" position="right">
+		<UiDropdownMenu v-model:open="isOpen" position="right" class="flex">
 			<template #trigger>
 				<UiButton
 					size="sm"
-					class="rounded-l-none px-2"
+					class="rounded-l-none w-8 px-0 border-l border-text-inverse/20 relative focus-visible:z-10"
 					aria-haspopup="menu"
 					:aria-expanded="isOpen"
 					:aria-label="t('components.dashboard.quickCreateMenu.more')"
