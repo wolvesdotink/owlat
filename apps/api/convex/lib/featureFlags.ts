@@ -67,3 +67,29 @@ export async function assertFeatureEnabled(
 		);
 	}
 }
+
+/**
+ * Throws a `forbidden` Operation error unless **at least one** of the given
+ * flags is enabled. The any-of counterpart to `assertFeatureEnabled`, for
+ * surfaces a user reaches through more than one independent capability — the
+ * Postbox UI, for instance, serves both hosted mailboxes (`postbox`) and
+ * connected external ones (`mail.external`), and `mail.external` deliberately
+ * does not depend on `postbox` (see the flag's comment in
+ * `@owlat/shared/featureFlags`). Asserting either flag alone would lock out
+ * half the instances that legitimately have the surface.
+ *
+ * Reads storage once for the whole set, so an any-of floor costs the same as a
+ * single-flag one.
+ */
+export async function assertAnyFeatureEnabled(
+	ctx: QueryCtx | MutationCtx,
+	flags: readonly [FeatureFlagKey, ...FeatureFlagKey[]]
+): Promise<void> {
+	const resolved = resolveStoredFeatureFlags(await getStoredFlags(ctx));
+	if (flags.some((flag) => resolved[flag] === true)) return;
+	const names = flags.map((flag) => `"${flag}"`).join(' or ');
+	throwForbidden(
+		`This area needs ${names} enabled on this Owlat instance. An admin can enable it from Settings → Features.`,
+		{ features: [...flags] }
+	);
+}
