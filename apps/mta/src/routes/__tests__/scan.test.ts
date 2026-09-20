@@ -94,6 +94,39 @@ describe('POST /scan/attachment', () => {
 		expect(scanMock).toHaveBeenCalled();
 	});
 
+	it('decodes a percent-encoded filename before judging the type', async () => {
+		// An HTTP header value is a ByteString, so a Cyrillic or CJK filename
+		// cannot ride raw — the caller percent-encodes it. Ordinary ASCII (and
+		// therefore every extension this gate judges) is untouched by that
+		// encoding, but the name the log and ClamAV see has to be the real one.
+		const res = await post(pdfBytes, {
+			'X-Filename': '%D1%80%D0%B0%D1%85%D1%83%D0%BD%D0%BE%D0%BA.pdf',
+		});
+		const json = await res.json();
+		expect(json).toEqual({ clean: true });
+		expect(scanMock).toHaveBeenCalled();
+	});
+
+	it('still blocks an executable whose encoded name decodes to one', async () => {
+		const res = await post(Buffer.from('MZ\x90\x00executable'), {
+			'X-Filename': 'invoice.pdf%00.exe',
+		});
+		const json = await res.json();
+		expect(json.clean).toBe(false);
+		expect(json.stage).toBe('file_type_validation');
+		expect(scanMock).not.toHaveBeenCalled();
+	});
+
+	it('takes a lone percent in a filename literally rather than refusing the scan', async () => {
+		// `100%.pdf` is a legal filename and a malformed escape sequence. Failing
+		// the request would send the caller down its fail-open path and leave the
+		// bytes unscanned — the outcome the encoding exists to prevent.
+		const res = await post(pdfBytes, { 'X-Filename': '100%.pdf' });
+		const json = await res.json();
+		expect(json).toEqual({ clean: true });
+		expect(scanMock).toHaveBeenCalled();
+	});
+
 	it('still blocks the same OLE2 bytes under an installer name', async () => {
 		const ole2 = Buffer.concat([
 			Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),

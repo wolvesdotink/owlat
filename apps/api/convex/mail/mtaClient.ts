@@ -65,6 +65,30 @@ interface AttachmentScanResponse {
 const FILE_TYPE_REFUSAL_STAGE = 'file_type_validation';
 
 /**
+ * The attachment's filename, as a value that can legally be an HTTP header.
+ *
+ * AN HTTP HEADER VALUE IS A ByteString: every code unit has to be ≤ U+00FF, and
+ * CR, LF and NUL are refused outright. A filename is SENDER-CHOSEN and arrives
+ * already RFC 2047-decoded (`@owlat/shared/mailMime`), so `рахунок.pdf`,
+ * `請求書.pdf` and a header-injection attempt all make a real `fetch` THROW
+ * before it opens a socket — and the catch below turns every throw into
+ * `'skipped'`. That is a scanner bypass one encoded-word away: attach
+ * `=?UTF-8?B?…?=.exe`, and the bytes are never scanned while the download stays
+ * live. (The suites could not see it because a `vi.fn` stub never validates a
+ * header value; `stubScanner` now builds a real `Headers` first.)
+ *
+ * Percent-encoded rather than stripped so the MTA still sees the real name: the
+ * encoding leaves every ASCII letter, digit and `.` alone, so the extension the
+ * file-type allowlist judges is untouched — `invoice.pdf.exe` goes over the
+ * wire verbatim — while nothing sender-chosen can throw or inject. The MTA
+ * decodes it (`apps/mta/src/routes/scan.ts`); an MTA too old to decode sees a
+ * mangled non-ASCII name and still judges the right extension.
+ */
+function encodeFilenameHeader(filename: string): string {
+	return encodeURIComponent(filename);
+}
+
+/**
  * Normalized verdict from {@link scanAttachmentBytes}. The three outbound /
  * inbound scan sites each interpret this per their own policy:
  *   - `'infected'` — confirmed malware. The reason is the scanner's virus name
@@ -117,7 +141,7 @@ export async function scanAttachmentBytes(
 			headers: {
 				Authorization: `Bearer ${mta.apiKey}`,
 				'Content-Type': 'application/octet-stream',
-				'X-Filename': filename,
+				'X-Filename': encodeFilenameHeader(filename),
 			},
 			body: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer,
 		});

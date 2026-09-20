@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { scanAttachmentBytes } from '../mail/mtaClient';
 import * as scannerHealth from '../lib/scannerHealth';
+import { readScanRequest } from '../mail/__tests__/scannerStub.testlib';
 
 const MTA = { baseUrl: 'https://mta.test', apiKey: 'secret' };
 const DATA = Buffer.from('attachment bytes');
@@ -34,13 +35,11 @@ function mockScan(response: ScanResponseBody | { httpStatus: number }): {
 } {
 	const calls: Array<{ url: string; filename?: string; auth?: string }> = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-		const headers = (init as RequestInit | undefined)?.headers as
-			| Record<string, string>
-			| undefined;
+		const request = readScanRequest(url, init as RequestInit | undefined);
 		calls.push({
-			url: String(url),
-			filename: headers?.['X-Filename'],
-			auth: headers?.['Authorization'],
+			url: request.url,
+			filename: request.filename,
+			auth: request.authorization ?? undefined,
 		});
 		if ('httpStatus' in response) {
 			return new Response('scanner down', { status: response.httpStatus });
