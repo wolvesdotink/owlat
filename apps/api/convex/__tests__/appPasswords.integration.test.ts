@@ -508,7 +508,7 @@ describe('appPasswords.verify', () => {
 // ─── touch (last-used recording) ─────────────────────────────────────────
 
 describe('appPasswords.touch', () => {
-	async function seedCredential(t: ReturnType<typeof setupTest>) {
+	async function seedCredential(t: Awaited<ReturnType<typeof setupTest>>) {
 		const { mailboxId } = await seedMailbox(t);
 		const appPasswordId = await t.run(async (ctx) =>
 			ctx.db.insert('mailAppPasswords', {
@@ -667,7 +667,7 @@ describe('appPasswords.revoke', () => {
 // ─── revokeAll (admin-gated) ─────────────────────────────────────────────
 
 describe('appPasswords.revokeAll', () => {
-	async function seedMany(t: ReturnType<typeof setupTest>) {
+	async function seedMany(t: Awaited<ReturnType<typeof setupTest>>) {
 		const { mailboxId } = await seedMailbox(t, { userId: 'user-other' });
 		const ids = await t.run(async (ctx) => {
 			const a = await ctx.db.insert('mailAppPasswords', {

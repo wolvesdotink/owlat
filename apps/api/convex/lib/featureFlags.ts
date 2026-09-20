@@ -63,7 +63,10 @@ export async function assertFeatureEnabled(
 	if (!enabled) {
 		throwForbidden(
 			`Feature "${flag}" is disabled on this Owlat instance. An admin can enable it from Settings → Features.`,
-			{ feature: flag }
+			// `features` is the key both helpers carry, so a client can read one
+			// field whether the floor was single-flag or any-of; `feature` stays for
+			// the callers that already read it.
+			{ feature: flag, features: [flag] }
 		);
 	}
 }

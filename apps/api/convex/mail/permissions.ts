@@ -167,6 +167,7 @@ type MessageAccessOutcome =
 			ok: false;
 			reason:
 				| 'no_session'
+				| 'feature_off'
 				| 'message_missing'
 				| 'mailbox_missing'
 				| 'mailbox_inactive'

@@ -24,7 +24,7 @@
  * that only connects existing mailboxes.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
@@ -66,12 +66,30 @@ describe('postboxMutation refuses when the instance has no personal mail', () =>
 
 	it.each(['postbox', 'mail.external'] as const)('passes the floor with %s alone', async (flag) => {
 		const t = convexTest(schema, modules);
+		// `featuresOff` matters: seedMailbox otherwise enables `mail.external`
+		// itself, and the `postbox` iteration would silently run with both flags
+		// on — proving nothing about either one alone.
+		const mailboxId = await seedMailbox(t, { featuresOff: true });
 		await enableFeatures(t, [flag]);
-		const mailboxId = await seedMailbox(t);
 
 		await expect(
 			t.mutation(api.mail.folders.create, { mailboxId, name: 'Receipts' })
 		).resolves.toBeDefined();
+	});
+
+	it('refuses with the ADR-0036 forbidden payload, naming both flags in data', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { featuresOff: true });
+
+		// The category is the contract the frontend dispatches on; a regex over the
+		// message would keep passing if the floor started throwing `internal`.
+		const payload = await t
+			.mutation(api.mail.folders.create, { mailboxId, name: 'Receipts' })
+			.then(() => undefined)
+			.catch((e: { data?: { category?: string; data?: { features?: string[] } } }) => e?.data);
+
+		expect(payload?.category).toBe('forbidden');
+		expect(payload?.data?.features).toEqual(['postbox', 'mail.external']);
 	});
 
 	it('refuses a draft write too — the gate is the builder, not one handler', async () => {
@@ -91,7 +109,7 @@ describe('the mailbox gate reports feature_off without throwing', () => {
 	 * same empty page gated or not.
 	 */
 	async function seedMailboxWithOneMessage(
-		t: ReturnType<typeof convexTest<typeof schema>>,
+		t: TestConvex<typeof schema>,
 		opts: { featuresOff?: boolean } = {}
 	): Promise<Id<'mailboxes'>> {
 		const mailboxId = await seedMailbox(t, { featuresOff: opts.featuresOff });

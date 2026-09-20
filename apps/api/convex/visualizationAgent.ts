@@ -17,7 +17,7 @@ import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireAdminContext } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
 import { getOrThrow } from './_utils/errors';
-import { assertFeatureEnabled } from './lib/featureFlags';
+import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
 import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { getCachedContactCount } from './lib/contactCountHelpers';
 import { readDailyStats } from './lib/sendDailyStats';
@@ -88,7 +88,13 @@ export const list = adminQuery({
 export const listPinned = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'ai.visualizations');
+		// Soft, unlike `list`: this one backs a dashboard-root card that renders on
+		// every load and is not behind a feature-gated route, so a throw here would
+		// be an error on the home screen of every instance that has AI dashboards
+		// off — which is the default. Returning nothing is the same enforcement
+		// (no visualization leaves the deployment) and the card shows its empty
+		// state, exactly as it does today when nothing is pinned.
+		if (!(await isFeatureEnabled(ctx, 'ai.visualizations'))) return [];
 		return await ctx.db
 			.query('visualizations')
 			.withIndex('by_pinned', (q) => q.eq('pinned', true))
