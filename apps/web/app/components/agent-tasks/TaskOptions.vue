@@ -139,7 +139,7 @@ defineExpose({ pickIndex });
 					{{ option }}
 					<span
 						v-if="remembered !== undefined && option === remembered"
-						class="ml-0.5 text-2xs uppercase tracking-wide opacity-70"
+						class="ml-1 rounded-full bg-bg-elevated/20 px-1.5 py-px text-2xs font-medium uppercase tracking-[0.08em] opacity-80"
 						data-testid="task-option-remembered"
 						>{{ t('components.agentTasks.taskOptions.rememberedTag') }}</span
 					>

@@ -2,7 +2,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
-import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import { categoryIcon } from '~/utils/agentCategories';
 import { localizedSummary } from '~/utils/clarificationLocale';
 import { formatDateTime } from '~/utils/formatters';
@@ -15,7 +14,7 @@ import { isEditableTarget } from '~/utils/postboxShortcuts';
  * not waiting for an answer, so nothing is drafted and nothing sits in the
  * review queue for it. Four tabs split it by the classifier's kind:
  *
- *   - Updates        a human keeping us informed — ranked by importance
+ *   - Updates        a human keeping us informed — grouped by importance
  *   - Promotions     adverts, cold pitches and newsletters
  *   - Notifications  automated system mail and receipts
  *   - Spam           what the classifier archived as spam (read-only; the
@@ -25,8 +24,9 @@ import { isEditableTarget } from '~/utils/postboxShortcuts';
  * agent for a draft after all (the classifier can be wrong; the overrule goes
  * through the normal review queue and can never auto-send).
  *
- * The one-sentence summary is read in the reader's own interface language —
- * the classifier writes one per shipped locale.
+ * The one-sentence summary is the point of a row, so it is the largest line;
+ * it is read in the reader's own interface language — the classifier writes
+ * one per shipped locale.
  */
 const { t, locale } = useI18n();
 
@@ -182,18 +182,39 @@ function summaryFor(item: UpdateItem): string | undefined {
 	return localizedSummary(item.message.classification?.summary, locale.value);
 }
 
-function importanceTone(item: UpdateItem): 'high' | 'normal' | 'low' {
+type Tone = 'high' | 'normal' | 'low';
+function importanceTone(item: UpdateItem): Tone {
 	const importance = item.message.classification?.importance ?? 0;
 	if (item.message.classification?.priority === 'urgent' || importance >= 0.7) return 'high';
 	if (importance >= 0.4) return 'normal';
 	return 'low';
 }
 
-const TONE_CLASS: Record<ReturnType<typeof importanceTone>, string> = {
-	high: 'text-warning bg-warning/10',
-	normal: 'text-brand bg-brand-subtle',
-	low: 'text-text-tertiary bg-bg-surface',
+/** Quiet status dot per importance — a tint, never a fill. */
+const DOT_CLASS: Record<Tone, string> = {
+	high: 'bg-warning',
+	normal: 'bg-brand',
+	low: 'bg-text-tertiary/50',
 };
+const TONE_ORDER: readonly Tone[] = ['high', 'normal', 'low'];
+
+/**
+ * The list grouped by importance in a fixed order, so the eye lands on what
+ * matters first and the keyboard walks the same order the groups render in.
+ * The spam view is one flat group (importance is meaningless there).
+ */
+const groups = computed<{ tone: Tone | null; rows: UpdateRow[] }[]>(() => {
+	if (isSpamView.value) return [{ tone: null, rows: visibleRows.value }];
+	return TONE_ORDER.map((tone) => ({
+		tone,
+		rows: visibleRows.value.filter((row) => importanceTone(row.item) === tone),
+	})).filter((group) => group.rows.length > 0);
+});
+
+/** Position of a row in the flat keyboard order, for the listbox focus ring. */
+function flatIndex(row: UpdateRow): number {
+	return visibleRows.value.findIndex((r) => r._id === row._id);
+}
 
 function categoryLabel(category: string | undefined): string {
 	const key = `dashboard.inbox.detail.categories.${category ?? 'other'}`;
@@ -205,42 +226,50 @@ function kindLabel(kind: string | undefined): string | undefined {
 	const key = `dashboard.inbox.updates.kinds.${kind}`;
 	return t(key) === key ? undefined : t(key);
 }
+
+const HINTS: ReadonlyArray<{ keys: string[]; label: string; spamToo: boolean }> = [
+	{ keys: ['j', 'k'], label: 'dashboard.inbox.updates.hintMove', spamToo: true },
+	{ keys: ['Enter'], label: 'dashboard.inbox.updates.hintOpen', spamToo: true },
+	{ keys: ['d'], label: 'dashboard.inbox.updates.dismiss', spamToo: false },
+	{ keys: ['r'], label: 'dashboard.inbox.updates.requestReply', spamToo: false },
+];
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
-		<div class="flex items-start justify-between gap-4 mb-6">
-			<div class="flex items-center gap-4">
+		<div class="mb-6 flex items-start justify-between gap-4">
+			<div class="flex items-start gap-4">
 				<NuxtLink
 					to="/dashboard/inbox"
-					class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
+					class="mt-2 inline-flex items-center gap-2 text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
 				>
-					<Icon name="lucide:arrow-left" class="w-4 h-4" />
+					<Icon name="lucide:arrow-left" class="h-4 w-4" />
 				</NuxtLink>
 				<div>
-					<h1
-						class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3"
-					>
-						<Icon name="lucide:newspaper" class="w-7 h-7 text-brand" />
+					<span class="lp-eyebrow">{{ t('shared.dashboardNavigation.sections.inbox') }}</span>
+					<h1 class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ t('dashboard.inbox.updates.title') }}
 					</h1>
-					<p class="text-text-secondary mt-1">
+					<p class="mt-1 max-w-[540px] text-text-secondary">
 						{{ t('dashboard.inbox.updates.subtitle') }}
 					</p>
 				</div>
 			</div>
-			<div class="hidden md:flex items-center gap-3 text-xs text-text-tertiary" aria-hidden="true">
-				<span
-					><kbd class="font-mono">j</kbd>/<kbd class="font-mono">k</kbd>
-					{{ t('dashboard.inbox.updates.hintMove') }}</span
-				>
-				<span><kbd class="font-mono">Enter</kbd> {{ t('dashboard.inbox.updates.hintOpen') }}</span>
-				<template v-if="!isSpamView">
-					<span><kbd class="font-mono">d</kbd> {{ t('dashboard.inbox.updates.dismiss') }}</span>
-					<span
-						><kbd class="font-mono">r</kbd> {{ t('dashboard.inbox.updates.requestReply') }}</span
-					>
+			<div
+				class="hidden items-center gap-3 rounded-full surface-1 px-3.5 py-1.5 text-2xs text-text-tertiary md:flex"
+				aria-hidden="true"
+			>
+				<template v-for="hint in HINTS" :key="hint.label">
+					<span v-if="hint.spamToo || !isSpamView" class="inline-flex items-center gap-1">
+						<kbd
+							v-for="key in hint.keys"
+							:key="key"
+							class="rounded-md bg-bg-elevated px-1 font-mono text-text-secondary"
+							>{{ key }}</kbd
+						>
+						{{ t(hint.label) }}
+					</span>
 				</template>
 			</div>
 		</div>
@@ -258,25 +287,29 @@ function kindLabel(kind: string | undefined): string | undefined {
 				role="tab"
 				:aria-selected="view === tab.key"
 				:data-testid="`updates-tab-${tab.key}`"
-				class="inline-flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 -mb-px transition-colors"
+				class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm transition-colors duration-(--motion-moderate) ease-spring"
 				:class="
 					view === tab.key
-						? 'border-brand text-text-primary font-medium'
+						? 'border-brand font-medium text-text-primary'
 						: 'border-transparent text-text-secondary hover:text-text-primary'
 				"
 				@click="setView(tab.key)"
 			>
-				<Icon :name="tab.icon" class="w-4 h-4" />
+				<Icon :name="tab.icon" class="h-4 w-4" />
 				{{ t(`dashboard.inbox.updates.tabs.${tab.key}`) }}
 				<span
 					v-if="counts && counts[tab.key] > 0"
-					class="ml-0.5 rounded-full bg-bg-surface px-1.5 text-xs text-text-tertiary"
+					class="ml-0.5 rounded-full surface-1 px-1.5 py-px text-2xs tabular-nums text-text-tertiary"
 					>{{ counts[tab.key] }}</span
 				>
 			</button>
 		</div>
 
-		<p v-if="isSpamView" class="mb-4 text-xs text-text-tertiary" data-testid="spam-note">
+		<p
+			v-if="isSpamView"
+			class="mb-4 max-w-[540px] text-caption text-text-tertiary"
+			data-testid="spam-note"
+		>
 			{{ t('dashboard.inbox.updates.spamNote') }}
 		</p>
 
@@ -301,110 +334,136 @@ function kindLabel(kind: string | undefined): string | undefined {
 				:aria-label="t('dashboard.inbox.updates.listAriaLabel')"
 				:aria-activedescendant="activeId"
 				tabindex="0"
-				class="space-y-3 outline-none"
+				class="space-y-8 outline-none"
 				@keydown="onListKeydown"
 			>
-				<TaskCardShell
-					v-for="(row, index) in visibleRows"
-					:id="rowDomId(row)"
-					:key="row._id"
-					as="li"
-					role="option"
-					:aria-selected="index === focusedIndex"
-					:focused="index === focusedIndex"
-					:spine="false"
-					data-testid="update-row"
-				>
-					<div class="flex items-start justify-between gap-4">
-						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-2 flex-wrap">
-								<span
-									v-if="!isSpamView"
-									class="text-xs px-2 py-0.5 rounded-full"
-									:class="TONE_CLASS[importanceTone(row.item)]"
-								>
-									{{ t(`dashboard.inbox.updates.importance.${importanceTone(row.item)}`) }}
-								</span>
-								<span
-									v-if="kindLabel(row.item.message.classification?.kind)"
-									class="text-xs px-2 py-0.5 rounded-full bg-bg-surface text-text-tertiary"
-								>
-									{{ kindLabel(row.item.message.classification?.kind) }}
-								</span>
-								<span
-									v-if="row.item.message.classification?.category"
-									class="inline-flex items-center gap-1 text-xs text-text-tertiary"
-								>
-									<Icon
-										:name="categoryIcon(row.item.message.classification.category)"
-										class="w-3 h-3"
-									/>
-									{{ categoryLabel(row.item.message.classification.category) }}
-								</span>
-								<span class="text-xs text-text-tertiary">
-									{{ formatDateTime(row.item.message.receivedAt) }}
-								</span>
-							</div>
-							<p class="mt-1.5 text-sm font-semibold text-text-primary truncate">
-								{{ row.item.message.subject || t('dashboard.inbox.updates.noSubject') }}
-							</p>
-							<p class="text-xs text-text-tertiary truncate">{{ senderLabel(row.item) }}</p>
-							<p
-								v-if="summaryFor(row.item)"
-								class="mt-2 text-sm text-text-secondary"
-								data-testid="update-summary"
-							>
-								{{ summaryFor(row.item) }}
-							</p>
-						</div>
-						<div v-if="isAdmin" class="flex items-center gap-1 shrink-0">
-							<UiButton
-								variant="ghost"
-								size="sm"
-								class="gap-1"
-								:disabled="actionInProgress === row._id"
-								@click.stop="openThread(row)"
-							>
-								<Icon name="lucide:external-link" class="w-3 h-3" />
-								{{ t('dashboard.inbox.updates.open') }}
-							</UiButton>
-							<template v-if="isSpamView">
-								<UiButton
-									variant="ghost"
-									size="sm"
-									class="gap-1 text-error hover:bg-error-subtle"
-									:disabled="actionInProgress === row._id"
-									@click.stop="pendingBlock = row"
-								>
-									<Icon name="lucide:ban" class="w-3 h-3" />
-									{{ t('dashboard.inbox.updates.blockSender') }}
-								</UiButton>
-							</template>
-							<template v-else>
-								<UiButton
-									variant="ghost"
-									size="sm"
-									class="gap-1"
-									:disabled="actionInProgress === row._id"
-									@click.stop="onRequestReply(row)"
-								>
-									<Icon name="lucide:reply" class="w-3 h-3" />
-									{{ t('dashboard.inbox.updates.requestReply') }}
-								</UiButton>
-								<UiButton
-									variant="secondary"
-									size="sm"
-									class="gap-1"
-									:disabled="actionInProgress === row._id"
-									@click.stop="onDismiss(row)"
-								>
-									<Icon name="lucide:check" class="w-3 h-3" />
-									{{ t('dashboard.inbox.updates.dismiss') }}
-								</UiButton>
-							</template>
-						</div>
+				<li v-for="group in groups" :key="group.tone ?? 'all'" role="presentation">
+					<div v-if="group.tone" class="mb-3 flex items-center gap-2">
+						<span
+							class="h-1.5 w-1.5 rounded-full"
+							:class="DOT_CLASS[group.tone]"
+							aria-hidden="true"
+						/>
+						<span class="lp-eyebrow">{{
+							t(`dashboard.inbox.updates.importance.${group.tone}`)
+						}}</span>
+						<span class="text-2xs tabular-nums text-text-tertiary">{{ group.rows.length }}</span>
 					</div>
-				</TaskCardShell>
+					<ul role="presentation" class="space-y-3">
+						<li
+							v-for="row in group.rows"
+							:id="rowDomId(row)"
+							:key="row._id"
+							role="option"
+							:aria-selected="flatIndex(row) === focusedIndex"
+							class="group lp-card p-4 outline-none"
+							:class="flatIndex(row) === focusedIndex ? 'ring-2 ring-brand/60' : ''"
+							data-testid="update-row"
+						>
+							<div class="flex items-start gap-3">
+								<UiAvatar
+									:name="senderLabel(row.item)"
+									:email="row.item.message.from"
+									size="md"
+									deterministic-color
+									class="mt-0.5 shrink-0"
+								/>
+								<div class="min-w-0 flex-1">
+									<div class="flex items-start justify-between gap-4">
+										<div class="min-w-0">
+											<p class="flex items-center gap-2 text-sm font-semibold text-text-primary">
+												<span
+													v-if="!isSpamView"
+													class="h-1.5 w-1.5 shrink-0 rounded-full"
+													:class="DOT_CLASS[importanceTone(row.item)]"
+													:title="
+														t(`dashboard.inbox.updates.importance.${importanceTone(row.item)}`)
+													"
+												/>
+												<span class="truncate">{{
+													row.item.message.subject || t('dashboard.inbox.updates.noSubject')
+												}}</span>
+											</p>
+											<p class="mt-0.5 truncate text-caption text-text-tertiary">
+												<span class="text-text-secondary">{{ senderLabel(row.item) }}</span>
+												<span class="mx-1 opacity-50">·</span>
+												{{ formatDateTime(row.item.message.receivedAt) }}
+												<template v-if="kindLabel(row.item.message.classification?.kind)">
+													<span class="mx-1 opacity-50">·</span>
+													{{ kindLabel(row.item.message.classification?.kind) }}
+												</template>
+												<template v-if="row.item.message.classification?.category">
+													<span class="mx-1 opacity-50">·</span>
+													<Icon
+														:name="categoryIcon(row.item.message.classification.category)"
+														class="inline-block h-3 w-3 align-[-2px]"
+													/>
+													{{ categoryLabel(row.item.message.classification.category) }}
+												</template>
+											</p>
+										</div>
+										<div
+											v-if="isAdmin"
+											class="flex shrink-0 items-center gap-1 opacity-70 transition-opacity duration-(--motion-fast) group-hover:opacity-100 group-focus-within:opacity-100"
+										>
+											<UiButton
+												variant="ghost"
+												size="sm"
+												class="gap-1"
+												:disabled="actionInProgress === row._id"
+												@click.stop="openThread(row)"
+											>
+												<Icon name="lucide:external-link" class="h-3 w-3" />
+												{{ t('dashboard.inbox.updates.open') }}
+											</UiButton>
+											<template v-if="isSpamView">
+												<UiButton
+													variant="ghost"
+													size="sm"
+													class="gap-1 text-error hover:bg-error-subtle"
+													:disabled="actionInProgress === row._id"
+													@click.stop="pendingBlock = row"
+												>
+													<Icon name="lucide:ban" class="h-3 w-3" />
+													{{ t('dashboard.inbox.updates.blockSender') }}
+												</UiButton>
+											</template>
+											<template v-else>
+												<UiButton
+													variant="ghost"
+													size="sm"
+													class="gap-1"
+													:disabled="actionInProgress === row._id"
+													@click.stop="onRequestReply(row)"
+												>
+													<Icon name="lucide:reply" class="h-3 w-3" />
+													{{ t('dashboard.inbox.updates.requestReply') }}
+												</UiButton>
+												<UiButton
+													variant="secondary"
+													size="sm"
+													class="gap-1"
+													:disabled="actionInProgress === row._id"
+													@click.stop="onDismiss(row)"
+												>
+													<Icon name="lucide:check" class="h-3 w-3" />
+													{{ t('dashboard.inbox.updates.dismiss') }}
+												</UiButton>
+											</template>
+										</div>
+									</div>
+									<p
+										v-if="summaryFor(row.item)"
+										class="mt-2 text-md leading-snug text-text-secondary"
+										data-testid="update-summary"
+									>
+										{{ summaryFor(row.item) }}
+									</p>
+								</div>
+							</div>
+						</li>
+					</ul>
+				</li>
 			</ul>
 		</UiQueryBoundary>
 
