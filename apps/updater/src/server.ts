@@ -12,6 +12,12 @@ import {
 	validateComposeTemplate,
 } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import {
+	composeCommand,
+	dockerApiPreflight,
+	scheduleUpdaterRecreateSafely,
+	servicesToRecreate,
+} from './rollout.js';
 import { handleApplyProfiles } from './applyProfiles.js';
 import { handlePortChecks } from './portChecks.js';
 import { handleProfileState } from './profileState.js';
@@ -87,13 +93,8 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 
 	const steps: { step: string; ok?: boolean; stdout: string; stderr: string }[] = [];
 
-	// Step 1: Validate and STAGE the new compose file if provided. The live
-	// docker-compose.yml is only replaced after pull + convex-deploy succeed —
-	// previously it was overwritten first, so a failed update left a
-	// half-applied breaking template behind that the next manual
-	// `docker compose up` would silently complete.
-	const STAGED_FILE = join(OWLAT_DIR, 'docker-compose.next.yml');
-	let composeFileForUpdate = COMPOSE_FILE;
+	// Step 1: Validate the new compose template if provided. First, and without
+	// touching Docker or the disk — a caller-supplied template is untrusted.
 	if (composeTemplate) {
 		const validation = validateComposeTemplate(composeTemplate);
 		if (!validation.valid) {
@@ -103,7 +104,30 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 				steps,
 			});
 		}
+	}
 
+	// Step 2: Prove the Docker API will let this rollout finish before anything
+	// is staged, pulled or deployed. The endpoints the socket proxy grants are
+	// the one precondition an update cannot recover from halfway through, and
+	// the failure it produced instead — a 403 surfacing as "convex-deploy
+	// failed" — pointed the operator at the schema deploy, not at the sidecar.
+	const preflight = dockerApiPreflight();
+	steps.push(preflight);
+	if (!preflight.ok) {
+		// Also in this sidecar's own log: a refusal the operator can only read
+		// by re-triggering the update is not much of an explanation.
+		console.error('[update] refused before staging:', preflight.stderr);
+		return json(res, 500, { error: preflight.stderr, steps });
+	}
+
+	// Step 3: STAGE the validated template. The live docker-compose.yml is only
+	// replaced after pull + convex-deploy succeed — previously it was
+	// overwritten first, so a failed update left a half-applied breaking
+	// template behind that the next manual `docker compose up` would silently
+	// complete.
+	const STAGED_FILE = join(OWLAT_DIR, 'docker-compose.next.yml');
+	let composeFileForUpdate = COMPOSE_FILE;
+	if (composeTemplate) {
 		try {
 			await writeFile(STAGED_FILE, composeTemplate, 'utf-8');
 			composeFileForUpdate = STAGED_FILE;
@@ -116,7 +140,10 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 			});
 		}
 	}
-	const composeCmd = `docker compose -f ${composeFileForUpdate}`;
+	// Every compose call names the project directory as the HOST sees it, so a
+	// relative bind in the template resolves to the real file and not to a path
+	// that only exists inside this container.
+	const composeCmd = composeCommand([composeFileForUpdate]);
 	const discardStaged = async () => {
 		if (!composeTemplate) return;
 		try {
@@ -126,7 +153,7 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		}
 	};
 
-	// Step 2: Pull latest images (against the staged template, so a pull
+	// Step 4: Pull latest images (against the staged template, so a pull
 	// failure leaves the running stack and its compose file untouched).
 	const pull = exec(`${composeCmd} pull`, OWLAT_DIR);
 	steps.push({ step: 'pull', ...pull });
@@ -136,7 +163,7 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 500, { error: 'Docker pull failed — update aborted, nothing changed', steps });
 	}
 
-	// Step 3 (P2.4 / S5): deploy Convex functions BEFORE restarting app
+	// Step 5 (P2.4 / S5): deploy Convex functions BEFORE restarting app
 	// containers. If the new schema is incompatible with the deploy, we
 	// bail out here — the running Web/MTA containers keep serving the old
 	// (still compatible) code rather than being restarted against a half-
@@ -155,7 +182,7 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		});
 	}
 
-	// Step 4: Promote the staged template now that pull + deploy succeeded.
+	// Step 6: Promote the staged template now that pull + deploy succeeded.
 	if (composeTemplate) {
 		try {
 			await writeFile(COMPOSE_FILE, composeTemplate, 'utf-8');
@@ -169,7 +196,7 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 			});
 		}
 
-		// Step 5: Move the configured version with the compose file it belongs
+		// Step 7: Move the configured version with the compose file it belongs
 		// to. Not fatal on failure: the promoted template pins every image by
 		// digest, so `up -d` still deploys the right bytes — the cost is a
 		// dashboard that misreports the installed version, which the recorded
@@ -180,15 +207,32 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		}
 	}
 
-	// Step 6: Apply — recreate changed containers now that the schema is live.
+	// Step 8: Apply — recreate changed containers now that the schema is live.
 	// Runs against the promoted docker-compose.yml (+ any override file and
-	// COMPOSE_PROFILES from .env, so profile-gated feature services update too).
-	const up = exec('docker compose up -d --remove-orphans', OWLAT_DIR);
+	// COMPOSE_PROFILES from .env, so profile-gated feature services update too),
+	// naming every service EXCEPT the two the rollout itself runs through: an
+	// unqualified `up` recreates the updater and the Docker socket proxy too,
+	// and stopping either one kills the compose command issuing the rollout.
+	const plan = servicesToRecreate();
+	if (plan.error) {
+		steps.push({ step: 'up', ok: false, stdout: '', stderr: plan.error });
+		return json(res, 500, { error: `docker compose up failed: ${plan.error}`, steps });
+	}
+
+	const up = exec(
+		`${composeCommand()} up -d --remove-orphans ${plan.services.join(' ')}`,
+		OWLAT_DIR
+	);
 	steps.push({ step: 'up', ...up });
 
 	if (!up.ok) {
 		return json(res, 500, { error: 'docker compose up failed', steps });
 	}
+
+	// Step 9: Hand this container's own replacement to a helper that outlives
+	// it, so the updater does not stay a release behind forever. Reported, never
+	// fatal — the release is already live on every other service.
+	steps.push(scheduleUpdaterRecreateSafely());
 
 	json(res, 200, { success: true, steps });
 }
@@ -432,14 +476,29 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	}
 
 	// Force-recreate to pick up new env vars. `up -d` alone doesn't
-	// rebuild containers whose env changed — we need --force-recreate.
-	const recreate = exec('docker compose up -d --force-recreate', OWLAT_DIR);
+	// rebuild containers whose env changed — we need --force-recreate. Naming
+	// the services excludes the updater and the socket proxy: a force-recreate
+	// of THOSE stops this very process (and its Docker transport) partway down
+	// the list, leaving the rest of the stack on the old secret.
+	const plan = servicesToRecreate();
+	if (plan.error) {
+		return json(res, 500, { error: 'Container recreate failed', stderr: plan.error });
+	}
+
+	const recreate = exec(
+		`${composeCommand()} up -d --force-recreate ${plan.services.join(' ')}`,
+		OWLAT_DIR
+	);
 
 	if (recreate.stderr && /error/i.test(recreate.stderr)) {
 		return json(res, 500, { error: 'Container recreate failed', stderr: recreate.stderr });
 	}
 
-	json(res, 200, { success: true, step: 'rotate-env' });
+	// The updater must come back on the rotated secret too — through a helper,
+	// for the same reason it is excluded above.
+	const selfUpdate = scheduleUpdaterRecreateSafely();
+
+	json(res, 200, { success: true, step: 'rotate-env', selfUpdate });
 }
 
 /**
