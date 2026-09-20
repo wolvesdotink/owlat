@@ -33,7 +33,9 @@ const MAGIC_SIGNATURES: MagicSignature[] = [
 	// Windows PE executable (.exe, .dll, .scr, .com)
 	{ bytes: [0x4D, 0x5A], type: 'exe', mime: 'application/x-msdownload', dangerous: true, description: 'Windows executable (PE)' },
 
-	// Windows MSI installer
+	// OLE2 compound document — the container of BOTH `.msi` installers and
+	// legacy Office documents (`.doc`/`.xls`/`.ppt`). Dangerous by default and
+	// reconciled with the filename in `detectFileType`; see OLE2_DOCUMENT_MIMES.
 	{ bytes: [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1], type: 'msi', mime: 'application/x-msi', dangerous: true, description: 'Microsoft Installer / OLE2 compound document' },
 
 	// ELF executable (Linux)
@@ -111,6 +113,40 @@ export interface MagicBytesResult {
 /** ISO 9660 volume descriptor identifier ("CD001"), located at offset 0x8001. */
 const ISO_9660_DESCRIPTOR = [0x43, 0x44, 0x30, 0x30, 0x31];
 
+/**
+ * The legacy Office formats that share the `.msi` installer's OLE2 magic, and
+ * what they actually are.
+ *
+ * ONE magic number, two very different files: `D0 CF 11 E0 A1 B1 1A E1` opens a
+ * Word 97 document exactly as it opens an installer, and the bytes cannot tell
+ * them apart. Flagging the container as dangerous therefore refused every
+ * `report.doc` and `q3.xls` a customer ever attached — types the policy
+ * allowlist explicitly permits — and on the inbound path that refusal was read
+ * as a malware finding. The extension is the only disambiguator there is, and
+ * it is a safe one: a renamed installer still has to carry an extension, and
+ * one that claims `.doc` is refused by the double-extension and allowlist
+ * checks it still has to pass.
+ */
+const OLE2_DOCUMENT_MIMES: Record<string, { mime: string; description: string }> = {
+	'.doc': { mime: 'application/msword', description: 'Word 97-2003 document' },
+	'.dot': { mime: 'application/msword', description: 'Word 97-2003 template' },
+	'.xls': { mime: 'application/vnd.ms-excel', description: 'Excel 97-2003 workbook' },
+	'.ppt': { mime: 'application/vnd.ms-powerpoint', description: 'PowerPoint 97-2003 presentation' },
+};
+
+/** The OLE2 signature's `type`, as spelled in MAGIC_SIGNATURES. */
+const OLE2_TYPE = 'msi';
+
+/** The legacy-Office reading of an OLE2 container, when the name claims one. */
+function ole2DocumentFor(filename: string | undefined): MagicBytesResult | null {
+	if (!filename) return null;
+	const lastDot = filename.lastIndexOf('.');
+	if (lastDot === -1) return null;
+	const known = OLE2_DOCUMENT_MIMES[filename.substring(lastDot).toLowerCase()];
+	if (!known) return null;
+	return { type: 'ole2-document', mime: known.mime, dangerous: false, description: known.description };
+}
+
 function matchesAt(bytes: Uint8Array, offset: number, pattern: number[]): boolean {
 	if (bytes.length < offset + pattern.length) return false;
 	for (let i = 0; i < pattern.length; i++) {
@@ -126,14 +162,22 @@ function matchesAt(bytes: Uint8Array, offset: number, pattern: number[]): boolea
  * @param isoProbe - Optional bytes at offset 0x8001 (the ISO 9660 descriptor
  *   location). Pass `file.subarray(0x8001, 0x8006)` to enable ISO detection;
  *   the ISO marker is too deep to live in `firstBytes`.
+ * @param filename - Optional filename, used ONLY to disambiguate the one
+ *   signature that is genuinely ambiguous: the OLE2 container shared by `.msi`
+ *   installers and legacy Office documents. Omit it and OLE2 stays dangerous.
  * @returns Detection result, or null if no known signature matches
  */
 export function detectFileType(
 	firstBytes: Uint8Array,
 	isoProbe?: Uint8Array,
+	filename?: string,
 ): MagicBytesResult | null {
 	for (const sig of MAGIC_SIGNATURES) {
 		if (matchesAt(firstBytes, sig.offset ?? 0, sig.bytes)) {
+			if (sig.type === OLE2_TYPE) {
+				const document = ole2DocumentFor(filename);
+				if (document) return document;
+			}
 			return {
 				type: sig.type,
 				mime: sig.mime,
@@ -162,7 +206,11 @@ export function detectFileType(
  * Quick boolean check for use in validation pipelines. Pass `isoProbe` (the
  * bytes at offset 0x8001) to also flag renamed ISO disk images.
  */
-export function isDangerousFileType(firstBytes: Uint8Array, isoProbe?: Uint8Array): boolean {
-	const result = detectFileType(firstBytes, isoProbe);
+export function isDangerousFileType(
+	firstBytes: Uint8Array,
+	isoProbe?: Uint8Array,
+	filename?: string,
+): boolean {
+	const result = detectFileType(firstBytes, isoProbe, filename);
 	return result?.dangerous ?? false;
 }

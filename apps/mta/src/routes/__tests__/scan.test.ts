@@ -77,6 +77,33 @@ describe('POST /scan/attachment', () => {
 		expect(scanMock).not.toHaveBeenCalled();
 	});
 
+	it('lets a legacy Word document through to ClamAV', async () => {
+		// `.doc` and `.xls` are OLE2 compound documents, which share their magic
+		// number with the `.msi` installer. The type gate used to answer every
+		// one of them `clean: false, stage: 'file_type_validation'` — and the
+		// inbound path read that as malware, quarantining a customer's contract.
+		const ole2 = Buffer.concat([
+			Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+			Buffer.from(' a Word 97 document'),
+		]);
+		const res = await post(ole2, { 'X-Filename': 'report.doc' });
+		const json = await res.json();
+		expect(json).toEqual({ clean: true });
+		expect(scanMock).toHaveBeenCalled();
+	});
+
+	it('still blocks the same OLE2 bytes under an installer name', async () => {
+		const ole2 = Buffer.concat([
+			Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+			Buffer.from(' an installer'),
+		]);
+		const res = await post(ole2, { 'X-Filename': 'setup.msi' });
+		const json = await res.json();
+		expect(json.clean).toBe(false);
+		expect(json.stage).toBe('file_type_validation');
+		expect(scanMock).not.toHaveBeenCalled();
+	});
+
 	it('reports malware found by ClamAV', async () => {
 		scanMock.mockResolvedValue({ clean: false, virus: 'Eicar-Signature' });
 		const res = await post(pdfBytes);

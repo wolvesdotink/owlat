@@ -95,6 +95,29 @@ describe('magic bytes detection', () => {
 			expect(result!.dangerous).toBe(true);
 		});
 
+		it('reads the same OLE2 bytes as a legacy Office document when the name says so', () => {
+			// One magic number, two very different files. Without the name, the
+			// container stays dangerous; with `.doc` / `.xls` / `.ppt` it is the
+			// document the policy allowlist already permits — every legacy Word
+			// attachment a customer sends used to come back "Microsoft Installer".
+			const bytes = new Uint8Array([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
+
+			for (const [filename, mime] of [
+				['report.doc', 'application/msword'],
+				['Q3.XLS', 'application/vnd.ms-excel'],
+				['deck.ppt', 'application/vnd.ms-powerpoint'],
+			] as const) {
+				const result = detectFileType(bytes, undefined, filename);
+				expect(result!.mime).toBe(mime);
+				expect(result!.dangerous).toBe(false);
+			}
+
+			// A name that does not claim one of those keeps the installer verdict.
+			const installer = detectFileType(bytes, undefined, 'setup.msi');
+			expect(installer!.dangerous).toBe(true);
+			expect(detectFileType(bytes, undefined, 'invoice.pdf.exe')!.dangerous).toBe(true);
+		});
+
 		it('detects RAR archive', () => {
 			const bytes = new Uint8Array([0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]);
 			const result = detectFileType(bytes);
