@@ -1,10 +1,44 @@
 import type { FunctionReference, FunctionArgs, FunctionReturnType } from 'convex/server';
+import { convexToJson } from 'convex/values';
 import type { Ref } from 'vue';
 
 export type ArgsOrFactory<Args> = Args | (() => Args | 'skip');
 
 function resolveArgs<Args>(args: ArgsOrFactory<Args>): Args | 'skip' {
 	return typeof args === 'function' ? (args as () => Args | 'skip')() : args;
+}
+
+/** JSON with object keys in a fixed order, so equal args always stringify equal. */
+function stableJson(value: unknown): string {
+	if (value === undefined) return 'undefined';
+	if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'undefined';
+	if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+	const entries = Object.entries(value as Record<string, unknown>)
+		.filter(([, v]) => v !== undefined)
+		.sort(([a], [b]) => (a < b ? -1 : 1));
+	return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(',')}}`;
+}
+
+/**
+ * Identity of a set of query args, for deciding whether to re-subscribe.
+ *
+ * Args factories return a fresh object literal on every evaluation, so comparing
+ * by reference (or watching `deep`, which skips the changed-check entirely) makes
+ * any unrelated re-evaluation — a Convex push handing a component a structurally
+ * identical prop, say — tear down and reopen the subscription, blanking `data`
+ * and flashing a spinner. Compare the VALUE instead. Convex args are
+ * JSON-compatible, so `convexToJson` normalises the exotic members (Int64,
+ * bytes) and a key-sorted stringify makes the rest order-insensitive; anything
+ * `convexToJson` rejects is not a valid query arg anyway, so fall back to the raw
+ * value rather than throwing out of a watcher.
+ */
+function argsIdentity(args: unknown): string {
+	if (args === 'skip') return 'skip';
+	try {
+		return stableJson(convexToJson(args as Parameters<typeof convexToJson>[0]));
+	} catch {
+		return stableJson(args);
+	}
 }
 
 /** Return type of useConvexQuery, preserving the query result type */
@@ -58,6 +92,7 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	};
 
 	const resolvedArgs = computed(() => resolveArgs(args));
+	const argsKey = computed(() => argsIdentity(resolvedArgs.value));
 
 	const subscribe = (opts?: { background?: boolean }) => {
 		// Clean up previous subscription and timeout. MUST null the handle after
@@ -129,8 +164,8 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 		}, timeoutMs);
 	};
 
-	// Watch for args changes
-	watch(resolvedArgs, () => subscribe(), { immediate: true, deep: true });
+	// Re-subscribe only when the args' VALUE changes — see `argsIdentity`.
+	watch(argsKey, () => subscribe(), { immediate: true });
 
 	// Force a fresh read with the current args, keeping prior data visible.
 	const refetch = () => subscribe({ background: true });
