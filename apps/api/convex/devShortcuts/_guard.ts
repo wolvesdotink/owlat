@@ -22,7 +22,6 @@
  */
 
 import { getBoolean } from '../lib/env';
-import { errorResponse } from '../lib/httpResponse';
 
 export function isDevDeployment(): boolean {
 	return getBoolean('OWLAT_DEV_MODE');
@@ -45,5 +44,19 @@ export function assertDevDeployment(): void {
  */
 export function devDeploymentResponseOrNull(): Response | null {
 	if (isDevDeployment()) return null;
-	return errorResponse('forbidden', 'Dev-only endpoint refused: OWLAT_DEV_MODE is not enabled');
+	// The shared `lib/httpResponse.ts:errorResponse` would be the natural call,
+	// but importing it here closes a cycle — `lib/cors.ts` imports
+	// `isDevDeployment` from this module and `httpResponse.ts` imports
+	// `publicCorsHeaders` from `cors.ts`. The envelope is two fields; the cycle
+	// would run through the one module that throws on an unconfigured
+	// deployment.
+	return new Response(
+		JSON.stringify({
+			error: {
+				category: 'forbidden',
+				message: 'Dev-only endpoint refused: OWLAT_DEV_MODE is not enabled',
+			},
+		}),
+		{ status: 403, headers: { 'Content-Type': 'application/json' } }
+	);
 }

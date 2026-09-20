@@ -130,6 +130,12 @@ numbers) ride in `data`/`message`, never as new categories. Casing settles to
 | `internal` | 500 | toast "something went wrong" | **yes** | INTERNAL_ERROR, EXTERNAL_SERVICE_ERROR, unknown |
 | `network` | — (client) | toast "check connection" + retry | **yes** (post-retry) | client fetch failure / Convex disconnect |
 
+One status in the HTTP serialization is not derived from the category:
+`lib/httpResponse.ts:methodNotAllowed` answers `405` with `invalid_input`. A
+wrong verb on an existing path is a transport fact, and `405` says it more
+precisely than `400` — but the body still carries a category, so no client has
+to special-case one response shape.
+
 ### Three adapters at the seam
 
 - **Thrown (in-app):** `ConvexError({ category, message, data })`. The seven
