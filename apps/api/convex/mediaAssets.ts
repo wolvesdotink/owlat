@@ -7,7 +7,7 @@ import type { Doc } from './_generated/dataModel';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { getOrThrow, throwInvalidState, throwInvalidInput, throwNotFound } from './_utils/errors';
 import { isChatAttachment, assertUnregisteredMediaStorage } from './chat/attachmentAccess';
-import { consumeUpload, deleteOwnedUpload } from './storage/uploads';
+import { consumeUpload, deleteOwnedUpload, storedFileSize } from './storage/uploads';
 import { logError } from './lib/runtimeLog';
 import {
 	isExtensionAllowed,
@@ -211,10 +211,11 @@ export const create = authedMutation({
 			throwInvalidInput(`MIME type not allowed: ${args.mimeType}`);
 		}
 
-		// Enforce the per-file size ceiling. `scanAssetBytes` later reconciles
-		// the real blob size against `fileSize` for quota purposes, but that only
-		// catches under-reporting — it imposes no maximum, so the cap lives here.
-		if (args.fileSize > MAX_LIBRARY_FILE_BYTES) {
+		// Admit and account using immutable storage metadata before scheduling
+		// any scanner work; the browser's byte count is only an untrusted hint.
+		const fileSize = await storedFileSize(ctx, args.storageId);
+		if (fileSize <= 0) throwInvalidInput('File size must be positive');
+		if (fileSize > MAX_LIBRARY_FILE_BYTES) {
 			throwInvalidInput(`File exceeds the ${MAX_LIBRARY_FILE_MB} MB upload limit`);
 		}
 
@@ -231,7 +232,7 @@ export const create = authedMutation({
 			storageId: args.storageId,
 			filename: args.filename,
 			mimeType: args.mimeType,
-			fileSize: args.fileSize,
+			fileSize,
 			width: args.width,
 			height: args.height,
 			url,

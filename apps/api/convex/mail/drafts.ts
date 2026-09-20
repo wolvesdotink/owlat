@@ -14,16 +14,17 @@
  */
 
 import { v } from 'convex/values';
-import { consumeUpload, deleteOwnedUpload } from '../storage/uploads';
+import { consumeUpload, deleteOwnedUpload, storedFileSize } from '../storage/uploads';
 import { internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import { authedMutation, authedQuery, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
+import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
-import { getOrThrow, throwForbidden } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { sealBodyAtWrite } from '../lib/messageBody';
 import { assertStateIs } from './draftLifecycle/reducers';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -269,6 +270,23 @@ export const addAttachment = authedMutation({
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
 		await consumeUpload(ctx, args.storageId, session, `mailDrafts:${args.draftId}`);
+		if (draft.attachments.length >= ATTACHMENT_COMPOSE_LIMITS.maxCount) {
+			throwInvalidInput('Too many attachments');
+		}
+		const size = await storedFileSize(ctx, args.storageId);
+		if (size <= 0 || size > MAX_ATTACHMENT_BYTES)
+			throwInvalidInput('Attachment size exceeds the allowed limit');
+		// Inline images are transmitted too. Re-read legacy attachment sizes so
+		// previously underreported rows cannot evade the total-byte limit.
+		const existingSizes = await Promise.all(
+			draft.attachments.map((attachment) => storedFileSize(ctx, attachment.storageId))
+		);
+		if (
+			existingSizes.reduce((total, bytes) => total + bytes, size) >
+			ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes
+		) {
+			throwInvalidInput('Attachments exceed the total size limit');
+		}
 
 		await ctx.db.patch(args.draftId, {
 			attachments: [
@@ -277,7 +295,7 @@ export const addAttachment = authedMutation({
 					storageId: args.storageId,
 					filename: args.filename,
 					contentType: args.contentType,
-					size: args.size,
+					size,
 					isInline: args.isInline ?? false,
 					contentId: args.contentId,
 				},

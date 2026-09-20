@@ -4,12 +4,15 @@ import schema from '../schema';
 import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api } from '../_generated/api';
 import { MAX_LIBRARY_FILE_BYTES } from '@owlat/shared/attachments';
+vi.mock('@owlat/shared/attachments', async () => ({
+	...(await vi.importActual('@owlat/shared/attachments')),
+	MAX_LIBRARY_FILE_BYTES: 32,
+}));
 
 /**
  * `semanticFiles.create` advertises a fixed per-file upload ceiling
  * (`MAX_LIBRARY_FILE_BYTES`, surfaced in the upload modal copy). The client
- * guards on it too, but a forged request must not get past the server, so the
- * mutation rejects an oversized `fileSize` before it ever inserts a row.
+ * guards on it too, but a forged request must not get past the server, so admission uses immutable system metadata rather than the claimed size.
  */
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -42,14 +45,16 @@ const testUser = { subject: 'admin-user', issuer: 'test', tokenIdentifier: 'test
 describe('semanticFiles.create — size ceiling', () => {
 	it('rejects a file larger than the upload limit and inserts no row', async () => {
 		const t = convexTest(schema, modules).withIdentity(testUser);
-		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['x'])));
+		const storageId = await t.run((ctx) =>
+			ctx.storage.store(new Blob([new Uint8Array(MAX_LIBRARY_FILE_BYTES + 1)]))
+		);
 
 		await expect(
 			t.mutation(api.semanticFiles.create, {
 				storageId,
 				filename: 'huge.pdf',
 				mimeType: 'application/pdf',
-				fileSize: MAX_LIBRARY_FILE_BYTES + 1,
+				fileSize: 1,
 				sourceType: 'upload',
 			})
 		).rejects.toThrow(/upload limit/);
@@ -60,7 +65,9 @@ describe('semanticFiles.create — size ceiling', () => {
 
 	it('accepts a file at exactly the limit', async () => {
 		const t = convexTest(schema, modules).withIdentity(testUser);
-		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['contract text'])));
+		const storageId = await t.run((ctx) =>
+			ctx.storage.store(new Blob([new Uint8Array(MAX_LIBRARY_FILE_BYTES)]))
+		);
 		await t.run((ctx) => recordUploadedBlob(ctx, storageId, 'admin-user'));
 
 		const fileId = await t.mutation(api.semanticFiles.create, {

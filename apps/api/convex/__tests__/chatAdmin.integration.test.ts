@@ -618,24 +618,21 @@ describe('chat.attachments.generateUploadUrl + registerAttachment', () => {
 		expect(asset?.tags).toContain('chat-attachment');
 	});
 
-	it('rejects a registration over the 25 MiB cap', async () => {
+	it('stores the actual byte count instead of a client overstatement', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['chat']);
-
 		const storageId = await storeChatUpload(
 			t,
 			new Blob(['x'], { type: 'application/octet-stream' })
 		);
-
 		setUser('user-alice', 'editor');
-		await expect(
-			t.mutation(api.chat.attachments.registerAttachment, {
-				storageId,
-				filename: 'huge.bin',
-				mimeType: 'application/octet-stream',
-				fileSize: 26 * 1024 * 1024,
-			})
-		).rejects.toThrow();
+		const assetId = await t.mutation(api.chat.attachments.registerAttachment, {
+			storageId,
+			filename: 'small.bin',
+			mimeType: 'application/octet-stream',
+			fileSize: 26 * 1024 * 1024,
+		});
+		expect((await t.run((ctx) => ctx.db.get(assetId)))?.fileSize).toBe(1);
 	});
 
 	it('rejects a registration with empty filename', async () => {

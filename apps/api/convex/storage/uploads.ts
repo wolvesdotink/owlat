@@ -1,11 +1,27 @@
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { getRequired } from '../lib/env';
-import { throwForbidden } from '../_utils/errors';
+import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 
 type UploadSession = { userId: string; activeOrganizationId: string };
 const UPLOAD_TTL_MS = 60 * 60 * 1000;
+
+/** Immutable storage metadata, never the byte count supplied by the browser. */
+export async function storedFileSize(ctx: MutationCtx, storageId: Id<'_storage'>): Promise<number> {
+	const metadata = await ctx.db.system.get(storageId);
+	if (!metadata) throwInvalidInput('Uploaded blob is missing or expired');
+	return metadata.size;
+}
+
+/** Dispatch preflight checks legacy draft bytes before materializing any blob. */
+export const fileSizes = internalQuery({
+	args: { storageIds: v.array(v.id('_storage')) },
+	handler: async (ctx, args): Promise<(number | null)[]> =>
+		Promise.all(
+			args.storageIds.map(async (storageId) => (await ctx.db.system.get(storageId))?.size ?? null)
+		),
+});
 
 /** Same browser POST contract as a native upload URL, with server-owned provenance. */
 export async function mintUploadUrl(ctx: MutationCtx, session: UploadSession): Promise<string> {

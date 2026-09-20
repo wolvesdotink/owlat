@@ -618,22 +618,16 @@ describe('mediaAssets.create', () => {
 		).rejects.toThrow(/Only owners and admins/);
 	});
 
-	// `create` enforces the advertised per-file size ceiling synchronously on the
-	// client-claimed `fileSize` (in addition to the async scanAssetBytes →
-	// reconcileAssetSize blob-size reconciliation that guards against
-	// under-reporting). An oversize create is rejected at the gate.
-	it('rejects a create whose client fileSize exceeds the upload limit', async () => {
+	it('stores the actual size even when the client overstates it', async () => {
 		const t = setupTest();
 		const storageId = await storeBlob(t);
-
-		await expect(
-			t.mutation(api.mediaAssets.create, {
-				storageId,
-				filename: 'logo.png',
-				mimeType: 'image/png',
-				fileSize: 999_000_000, // far over the 50 MB ceiling
-			})
-		).rejects.toThrow(/upload limit/);
+		const assetId = await t.mutation(api.mediaAssets.create, {
+			storageId,
+			filename: 'logo.png',
+			mimeType: 'image/png',
+			fileSize: 999_000_000,
+		});
+		expect((await t.run((ctx) => ctx.db.get(assetId)))?.fileSize).toBe(16);
 	});
 
 	it('accepts a create whose client fileSize is within the upload limit', async () => {

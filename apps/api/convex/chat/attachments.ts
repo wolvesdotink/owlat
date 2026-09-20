@@ -17,7 +17,7 @@ import { rateLimiter } from '../rateLimiter';
 import { chatQuery, chatMutation, assertCanReadRoom, getRoomOrThrow } from './_helpers';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { assertUnregisteredMediaStorage } from './attachmentAccess';
-import { consumeUpload, mintUploadUrl } from '../storage/uploads';
+import { consumeUpload, mintUploadUrl, storedFileSize } from '../storage/uploads';
 
 /**
  * Generate a one-use upload URL that the browser can POST a file to. The URL
@@ -52,8 +52,9 @@ export const registerAttachment = chatMutation({
 
 		if (!args.filename.trim()) throwInvalidInput('Filename cannot be empty');
 		if (!args.mimeType.trim()) throwInvalidInput('MIME type cannot be empty');
-		if (args.fileSize <= 0) throwInvalidInput('File size must be positive');
-		if (args.fileSize > MAX_ATTACHMENT_BYTES) {
+		const fileSize = await storedFileSize(ctx, args.storageId);
+		if (fileSize <= 0) throwInvalidInput('File size must be positive');
+		if (fileSize > MAX_ATTACHMENT_BYTES) {
 			throwInvalidInput(
 				`File exceeds ${Math.floor(MAX_ATTACHMENT_BYTES / 1024 / 1024)} MiB attachment limit`
 			);
@@ -68,7 +69,7 @@ export const registerAttachment = chatMutation({
 			storageId: args.storageId,
 			filename: args.filename.trim(),
 			mimeType: args.mimeType.trim(),
-			fileSize: args.fileSize,
+			fileSize,
 			width: args.width,
 			height: args.height,
 			url,

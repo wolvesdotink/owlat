@@ -8,7 +8,7 @@
  */
 
 import { v } from 'convex/values';
-import { consumeUpload, deleteOwnedUpload } from './storage/uploads';
+import { consumeUpload, deleteOwnedUpload, storedFileSize } from './storage/uploads';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import { internalQuery, internalMutation, type MutationCtx } from './_generated/server';
 import { internal } from './_generated/api';
@@ -339,11 +339,13 @@ export const create = authedMutation({
 		}
 		// Enforce the advertised per-file size ceiling. The client guards on this
 		// too, but a forged request must not get past the server.
-		if (args.fileSize > MAX_LIBRARY_FILE_BYTES) {
+		const fileSize = await storedFileSize(ctx, args.storageId);
+		if (fileSize <= 0) throwInvalidInput('File size must be positive');
+		if (fileSize > MAX_LIBRARY_FILE_BYTES) {
 			throwInvalidInput(`File exceeds the ${MAX_LIBRARY_FILE_MB} MB upload limit`);
 		}
 
-		const fileId = await insertSemanticFile(ctx, { ...args, uploadedBy: session.userId });
+		const fileId = await insertSemanticFile(ctx, { ...args, fileSize, uploadedBy: session.userId });
 		await consumeUpload(ctx, args.storageId, session, `semanticFiles:${fileId}`);
 		// Kick off async processing: text extraction, summary, auto-tags, embedding.
 		await ctx.scheduler.runAfter(0, internal.semanticFileProcessing.processFile, { fileId });
