@@ -212,6 +212,44 @@ function questionCopy(question: ThreadClarificationQuestion) {
 	return localizedQuestionCopy(question, locale.value);
 }
 
+/**
+ * The answer Owlat pre-picked from the person's earlier answer to the same
+ * question (answer-memory, source 'memory'), shown in the reader's locale so it
+ * matches the chip it highlights. The person stays in charge: it is only a
+ * pre-selection, and picking anything else replaces it.
+ */
+function rememberedAnswer(question: ThreadClarificationQuestion): string | undefined {
+	if (question.answer?.source !== 'memory') return undefined;
+	const index = question.options?.indexOf(question.answer.value) ?? -1;
+	return index >= 0 ? questionCopy(question).options[index] : question.answer.value;
+}
+
+// Seed the working answers with the remembered ones once per message, so the
+// "Answer and resume" button is live for a card whose questions memory already
+// answered and the person only has to confirm (or change) them.
+watch(
+	messages,
+	(list) => {
+		for (const message of list ?? []) {
+			if (message.processingStatus !== 'awaiting_clarification') continue;
+			for (const question of message.pendingClarification?.questions ?? []) {
+				const remembered = rememberedAnswer(question);
+				if (remembered === undefined) continue;
+				const answers = (clarificationAnswers[message._id] ??= {});
+				if (answers[question.id] === undefined) answers[question.id] = remembered;
+			}
+		}
+	},
+	{ immediate: true }
+);
+
+/** Questions answered from memory on a message that already has its draft. */
+function reusedAnswers(message: NonNullable<typeof messages.value>[number]) {
+	return (message.pendingClarification?.questions ?? []).filter(
+		(q) => q.answer?.source === 'memory'
+	);
+}
+
 function hasEveryClarificationAnswer(message: NonNullable<typeof messages.value>[number]) {
 	const answers = clarificationAnswers[message._id] ?? {};
 	return (
@@ -730,6 +768,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 										class="mt-1.5"
 										:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
 										:options="questionCopy(question).options"
+										:remembered="rememberedAnswer(question)"
 										:placeholder="t('dashboard.inbox.detail.answerPlaceholder')"
 										chip-test-id="thread-clarification-chip"
 										input-test-id="thread-clarification-input"
@@ -780,6 +819,30 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						<InboxAgentActionTimeline :inbound-message-id="message._id" />
 
 						<!-- Draft Response -->
+						<div
+							v-if="message.processingStatus === 'draft_ready' && reusedAnswers(message).length > 0"
+							class="mt-4 rounded-lg border border-border-subtle bg-bg-surface p-3"
+							data-testid="reused-answers"
+						>
+							<p class="text-xs font-medium text-text-primary">
+								{{ t('dashboard.inbox.detail.reusedAnswersTitle') }}
+							</p>
+							<ul class="mt-1 space-y-0.5 text-xs text-text-secondary">
+								<li v-for="question in reusedAnswers(message)" :key="question.id">
+									{{ questionCopy(question).text }}
+									<span class="text-text-primary">{{ question.answer?.value }}</span>
+								</li>
+							</ul>
+							<p class="mt-1 text-[11px] text-text-tertiary">
+								{{ t('dashboard.inbox.detail.reusedAnswersHint') }}
+								<NuxtLink
+									to="/dashboard/admin/instance/autonomy"
+									class="underline hover:text-text-primary"
+									>{{ t('dashboard.inbox.detail.reusedAnswersManage') }}</NuxtLink
+								>
+							</p>
+						</div>
+
 						<div
 							v-if="message.draftResponse && message.processingStatus === 'draft_ready'"
 							class="mt-4 border-t border-border-subtle pt-4"

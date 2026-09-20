@@ -24,6 +24,41 @@ import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow, throwInvalidState } from '../_utils/errors';
 import { isSharedInboxReader } from './access';
 import { openConversationThreadPreview } from '../lib/messageBody';
+import { BULK_KINDS } from '../agent/steps/draft/sanitize';
+
+/**
+ * The dashboard's tabs. `updates` is mail a human wrote that needs no reply;
+ * `promotions` and `notifications` are the bulk kinds the classifier files
+ * away; `spam` is what it archived as spam (read-only apart from blocking the
+ * sender — `archived` is terminal).
+ */
+export const UPDATE_VIEWS = ['updates', 'promotions', 'notifications', 'spam'] as const;
+export type UpdateView = (typeof UPDATE_VIEWS)[number];
+export const updateViewValidator = v.union(
+	v.literal('updates'),
+	v.literal('promotions'),
+	v.literal('notifications'),
+	v.literal('spam')
+);
+
+/** Archive reasons the Spam tab lists. */
+const SPAM_ARCHIVE_REASONS: ReadonlySet<string> = new Set(['spam', 'classifier_spam']);
+
+/**
+ * Which tab an informational message belongs to, from its classifier kind.
+ * Pure + exported for tests. Unknown / missing kind (rows from before the
+ * field existed) reads as a plain update so nothing is hidden.
+ */
+export function updateViewForKind(kind: string | undefined): Exclude<UpdateView, 'spam'> {
+	if (kind === 'advertising' || kind === 'newsletter') return 'promotions';
+	if (kind === 'notification' || kind === 'receipt') return 'notifications';
+	return 'updates';
+}
+
+/** True when the classifier's kind marks bulk mail (never expects a reply). */
+export function isBulkKind(kind: string | undefined): boolean {
+	return kind !== undefined && BULK_KINDS.has(kind);
+}
 
 /** Most informational rows the dashboard reads before ranking. */
 const MAX_UPDATES = 200;
@@ -65,6 +100,8 @@ function toUpdateRow(message: Doc<'inboundMessages'>) {
 		from: message.from,
 		subject: message.subject,
 		receivedAt: message.receivedAt,
+		processingStatus: message.processingStatus,
+		archiveReason: message.archiveReason,
 		classification: message.classification,
 	};
 }
@@ -76,17 +113,31 @@ function toUpdateRow(message: Doc<'inboundMessages'>) {
  */
 // public: soft-auth — admin-only shared inbox; returns empty for non-admins
 export const listUpdates = publicQuery({
-	args: { limit: v.optional(v.number()) },
+	args: { limit: v.optional(v.number()), view: v.optional(updateViewValidator) },
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!isSharedInboxReader(session)) return [];
 
 		const limit = Math.min(args.limit ?? 50, MAX_UPDATES);
-		const rows = await ctx.db
-			.query('inboundMessages')
-			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'informational'))
-			.order('desc')
-			.take(MAX_UPDATES);
+		const view: UpdateView = args.view ?? 'updates';
+		const rows =
+			view === 'spam'
+				? (
+						await ctx.db
+							.query('inboundMessages')
+							.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'archived'))
+							.order('desc')
+							.take(MAX_UPDATES)
+					).filter(
+						(m) => m.archiveReason !== undefined && SPAM_ARCHIVE_REASONS.has(m.archiveReason)
+					)
+				: (
+						await ctx.db
+							.query('inboundMessages')
+							.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'informational'))
+							.order('desc')
+							.take(MAX_UPDATES)
+					).filter((m) => updateViewForKind(m.classification?.kind) === view);
 
 		const ranked = rankUpdates(rows).slice(0, limit);
 		return Promise.all(
@@ -102,6 +153,42 @@ export const listUpdates = publicQuery({
 				};
 			})
 		);
+	},
+});
+
+/**
+ * Per-tab counts for the dashboard header. Bounded to the same newest window
+ * the list reads, so the badge and the list agree.
+ */
+// public: soft-auth — admin-only shared inbox; returns zeros for non-admins
+export const getUpdateCounts = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		const counts: Record<UpdateView, number> = {
+			updates: 0,
+			promotions: 0,
+			notifications: 0,
+			spam: 0,
+		};
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!isSharedInboxReader(session)) return counts;
+		const informational = await ctx.db
+			.query('inboundMessages')
+			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'informational'))
+			.order('desc')
+			.take(MAX_UPDATES);
+		for (const m of informational) counts[updateViewForKind(m.classification?.kind)] += 1;
+		const archived = await ctx.db
+			.query('inboundMessages')
+			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'archived'))
+			.order('desc')
+			.take(MAX_UPDATES);
+		for (const m of archived) {
+			if (m.archiveReason !== undefined && SPAM_ARCHIVE_REASONS.has(m.archiveReason)) {
+				counts.spam += 1;
+			}
+		}
+		return counts;
 	},
 });
 

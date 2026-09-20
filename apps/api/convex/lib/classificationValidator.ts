@@ -18,6 +18,11 @@ export const classificationValidator = v.object({
 	// what parks a message in `informational` instead of drafting. Absent on
 	// rows classified before the field existed (read as "needs a response").
 	needsResponse: v.optional(v.boolean()),
+	// What kind of mail this is, orthogonal to the topic `category`:
+	// personal | update | notification | receipt | newsletter | advertising.
+	// Bulk kinds (the last four) never need a reply and get their own tab on
+	// the Updates dashboard. Absent on rows classified before the field existed.
+	kind: v.optional(v.string()),
 	// ISO 639-1 code of the language the sender wrote in ("de", "pt-br"). The
 	// draft step writes the reply in this language. Absent when undetected.
 	language: v.optional(v.string()),

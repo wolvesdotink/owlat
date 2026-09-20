@@ -29,7 +29,7 @@ import type { AgentStepModule } from '../types';
 import { runLlmObject } from '../../../lib/llm/dispatch';
 import { APP_LOCALES, type AppLocale } from '../../../lib/convexValidators';
 import { SYSTEM_GUARD } from '../../../mail/ai/promptGuards';
-import { safeLanguage } from '../draft/sanitize';
+import { ALLOWED_KINDS, BULK_KINDS, safeEnum, safeLanguage } from '../draft/sanitize';
 
 /** Longest summary sentence persisted per locale. */
 const MAX_SUMMARY_CHARS = 240;
@@ -78,6 +78,11 @@ const classificationSchema = z.object({
 		.min(0)
 		.max(1)
 		.describe('How confident you are in this classification (0-1)'),
+	kind: z
+		.enum(['personal', 'update', 'notification', 'receipt', 'newsletter', 'advertising'])
+		.describe(
+			'The nature of the mail: personal (a human writing to us), update (a human FYI), notification (automated system mail), receipt (order/invoice/payment), newsletter (subscribed broadcast), advertising (unsolicited promotion or cold sales pitch)'
+		),
 	needsResponse: z
 		.boolean()
 		.describe(
@@ -124,6 +129,9 @@ export function buildClassifyPrompt(context: string, locales: readonly string[])
 		'- sentiment: the emotional tone (positive, neutral, negative)\n' +
 		'- intent: what the sender is trying to accomplish (question, complaint, request, information, escalation, acknowledgment)\n' +
 		'- confidence: how confident you are in this classification (0.0 to 1.0)\n' +
+		'- kind: the nature of the mail — personal (a human writing to us about something), update (a human keeping us informed), ' +
+		'notification (automated system mail), receipt (order, invoice, payment or booking confirmation), newsletter (a broadcast we subscribed to), ' +
+		'advertising (an unsolicited promotion, marketing blast or cold sales pitch)\n' +
 		'- needsResponse: true only if the sender expects a reply from the recipient. A status update, ' +
 		'notification, receipt, confirmation, thank-you or FYI is false even when it is important.\n' +
 		'- language: the ISO 639-1 code of the language the sender wrote the message in\n' +
@@ -158,10 +166,14 @@ export function resolveResponseDisposition(c: {
 	intent: string;
 	confidence: number;
 	needsResponse?: boolean | undefined;
+	kind?: string | undefined;
 }): 'reply' | 'informational' {
 	if (c.needsResponse !== false) return 'reply';
 	if (c.confidence < INFORMATIONAL_MIN_CONFIDENCE) return 'reply';
 	if (isSafetyCriticalClassification(c)) return 'reply';
+	// Bulk / automated mail (a receipt, a newsletter, an advert) needs no reply
+	// whatever intent label it got; a human's mail only when the intent agrees.
+	if (c.kind && BULK_KINDS.has(c.kind)) return 'informational';
 	if (!INFORMATIONAL_INTENTS.has(c.intent)) return 'reply';
 	return 'informational';
 }
@@ -219,6 +231,7 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 		// allowlists before they enter its system role.
 		let output: ClassifyOutput = {
 			...object,
+			kind: safeEnum(object.kind, ALLOWED_KINDS) as ClassifyOutput['kind'],
 			language: safeLanguage(object.language) ?? '',
 			importance: sanitizeImportance(object.importance),
 			summary: (sanitizeSummaries(object.summary) ?? {}) as ClassifyOutput['summary'],
@@ -318,6 +331,7 @@ export function toPersistedClassification(output: ClassifyOutput): {
 	intent: string;
 	confidence: number;
 	needsResponse?: boolean;
+	kind?: string;
 	language?: string;
 	importance?: number;
 	summary?: Record<string, string>;
@@ -330,6 +344,7 @@ export function toPersistedClassification(output: ClassifyOutput): {
 		intent: output.intent,
 		confidence: output.confidence,
 		...(typeof output.needsResponse === 'boolean' ? { needsResponse: output.needsResponse } : {}),
+		...(output.kind && output.kind !== ('unspecified' as string) ? { kind: output.kind } : {}),
 		...(output.language ? { language: output.language } : {}),
 		...(typeof output.importance === 'number' ? { importance: output.importance } : {}),
 		...(summary ? { summary } : {}),

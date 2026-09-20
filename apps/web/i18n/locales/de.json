@@ -320,7 +320,11 @@
 				"label": "Aufgabe wird geladen"
 			},
 			"taskOptions": {
+				"lead": "Klicken Sie auf einen Vorschlag, um ihn als Antwort zu übernehmen, oder schreiben Sie unten selbst.",
 				"orTypeAnswerPlaceholder": "Oder geben Sie eine Antwort ein…",
+				"readback": "Ihre Antwort: {answer}",
+				"readbackRemembered": "Ihre Antwort: {answer} (aus Ihrer früheren Antwort vorausgewählt — wählen Sie eine andere, um sie zu ändern)",
+				"rememberedTag": "letztes Mal",
 				"typeAnswerPlaceholder": "Geben Sie Ihre Antwort ein…"
 			}
 		},
@@ -447,8 +451,6 @@
 		"automations": {
 			"stepEditorPanel": {
 				"delete": "Schritt löschen",
-				"emptyBody": "Klicken Sie im Workflow auf einen Schritt, um dessen Einstellungen zu konfigurieren.",
-				"emptyTitle": "Schritt auswählen",
 				"save": "Änderungen speichern",
 				"title": "Schritteinstellungen"
 			},
@@ -8768,6 +8770,9 @@
 				"rejecting": "Wird abgelehnt …",
 				"retriedToast": "Nachricht erneut zur Verarbeitung eingereiht",
 				"retryProcessing": "Erneut verarbeiten",
+				"reusedAnswersHint": "Dieselbe Frage wurde schon einmal beantwortet, daher hat der Agent diese Antwort erneut angewendet. Bearbeiten Sie den Entwurf, wenn er anders lauten soll, oder",
+				"reusedAnswersManage": "prüfen Sie, was Owlat sich gemerkt hat.",
+				"reusedAnswersTitle": "Owlat hat für diesen Entwurf Ihre früheren Antworten wiederverwendet",
 				"sendingAutomatically": "Automatischer Versand in {seconds} s",
 				"sentiments": {
 					"negative": "negativ",
@@ -8917,9 +8922,33 @@
 				"pageTitle": "Prüfliste — Owlat"
 			},
 			"updates": {
+				"blockDialogConfirm": "Absender sperren",
+				"blockDialogDescription": "Künftige Nachrichten von {sender} werden stillschweigend verworfen.",
+				"blockDialogTitle": "Diesen Absender sperren?",
+				"blockOperation": "Absender sperren",
+				"blockSender": "Absender sperren",
+				"blockedToast": "Absender gesperrt",
 				"dismiss": "Erledigt",
 				"dismissOperation": "Neuigkeit verwerfen",
 				"dismissedToast": "Neuigkeit verworfen",
+				"empty": {
+					"updates": {
+						"title": "Sie sind auf dem Laufenden",
+						"body": "Nachrichten ohne Antwortbedarf landen hier, sortiert danach, wie wichtig sie für Sie sind."
+					},
+					"promotions": {
+						"title": "Keine Werbung",
+						"body": "Werbung, Kaltakquise und Newsletter, die der Agent abgelegt hat, erscheinen hier."
+					},
+					"notifications": {
+						"title": "Keine Benachrichtigungen",
+						"body": "Automatische Systemmails und Belege, die der Agent abgelegt hat, erscheinen hier."
+					},
+					"spam": {
+						"title": "Kein Spam erkannt",
+						"body": "Nachrichten, die der Agent als Spam archiviert hat, stehen hier, damit Sie sein Urteil prüfen und Absender sperren können."
+					}
+				},
 				"emptyBody": "Nachrichten ohne Antwortbedarf landen hier, sortiert danach, wie wichtig sie für Sie sind.",
 				"emptyTitle": "Sie sind auf dem Laufenden",
 				"errorMessage": "Die Neuigkeiten konnten nicht geladen werden. Versuchen Sie es gleich noch einmal.",
@@ -8931,6 +8960,14 @@
 					"low": "Niedrig",
 					"normal": "Gut zu wissen"
 				},
+				"kinds": {
+					"personal": "persönlich",
+					"update": "Info",
+					"notification": "Benachrichtigung",
+					"receipt": "Beleg",
+					"newsletter": "Newsletter",
+					"advertising": "Werbung"
+				},
 				"listAriaLabel": "Neuigkeiten ohne Antwortbedarf",
 				"loading": "Neuigkeiten werden geladen…",
 				"noSubject": "Kein Betreff",
@@ -8940,7 +8977,15 @@
 				"replyRequestedToast": "Der Agent entwirft eine Antwort. Sie erscheint in der Prüfliste.",
 				"requestReply": "Antwort entwerfen",
 				"requestReplyOperation": "Antwortentwurf anfordern",
+				"spamNote": "Vom Agenten als Spam archiviert. Öffnen Sie eine Nachricht zur Prüfung; das Sperren eines Absenders verwirft künftige Mails, bevor die Verarbeitung läuft.",
 				"subtitle": "Nachrichten, die laut Agent keine Antwort brauchen, die wichtigsten zuerst. Hier wartet nichts auf Sie.",
+				"tabs": {
+					"updates": "Neuigkeiten",
+					"promotions": "Werbung",
+					"notifications": "Benachrichtigungen",
+					"spam": "Spam"
+				},
+				"tabsAriaLabel": "Ansichten",
 				"title": "Neuigkeiten"
 			}
 		},
@@ -12598,7 +12643,9 @@
 					"notification": "Benachrichtigung",
 					"other": "Sonstiges",
 					"person": "Person",
-					"receipt": "Beleg"
+					"promotion": "Werbung",
+					"receipt": "Beleg",
+					"spam": "Spam"
 				},
 				"recategorizeThread": "Konversation neu einordnen",
 				"sections": {
@@ -12606,6 +12653,7 @@
 					"notification": "Benachrichtigungen",
 					"other": "Alles Übrige",
 					"person": "Personen",
+					"promotion": "Werbung",
 					"receipt": "Belege"
 				}
 			},
@@ -14430,6 +14478,7 @@
 		"postboxBundles": {
 			"newsletter": "Newsletter",
 			"notification": "Benachrichtigungen",
+			"promotion": "Werbung",
 			"receipt": "Belege"
 		},
 		"accountExportResources": {

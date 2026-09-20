@@ -39,6 +39,12 @@ or a request always takes the reply path whatever the boolean says. Missing a
 reply the sender was waiting for is the expensive failure; an unneeded draft
 costs a review-queue row.
 
+The same call also names the **kind** of mail, orthogonal to the topic
+category: `personal`, `update`, `notification`, `receipt`, `newsletter` or
+`advertising`. The four bulk kinds never expect a reply whatever intent label
+they got, so they are informational under the same safety rails; they are what
+splits the dashboard into tabs.
+
 ### 2. `informational` is a lifecycle state, not an archive reason
 
 The lifecycle (ADR-0010) gains a thirteenth state. `classifying →
@@ -59,10 +65,22 @@ spam. A state keeps them queryable on the existing status index, countable in
 `inbox/updates.ts` ranks the informational rows deterministically
 (`importance`, then priority, then recency) and the team-inbox page
 `/dashboard/inbox/updates` walks them keyboard-first, showing the summary in
-the reader's interface language. Dismiss and "draft a reply" are the two
-actions, both audited (`inbound.update_dismissed`, `inbound.reply_requested`).
-No model call sits between the classifier's verdict and the dashboard, so the
-page cannot fail-open into hiding something.
+the reader's interface language. Four tabs split the rows by kind: Updates (a
+human keeping us informed), Promotions (advertising, newsletters),
+Notifications (automated mail, receipts) and Spam. Dismiss and "draft a reply"
+are the two actions on the first three, both audited
+(`inbound.update_dismissed`, `inbound.reply_requested`). The Spam tab lists
+what the classifier archived as spam — the lifecycle now persists
+`archiveReason` on the message for that — and offers only "block sender",
+because `archived` is terminal. No model call sits between the classifier's
+verdict and the dashboard, so the page cannot fail-open into hiding something.
+
+The personal Postbox gets the matching split on its own category classifier:
+`promotion` (a sale or discount pitch from a sender the owner never wrote to)
+and `spam`. A `spam` label moves the thread's inbox messages to the Spam
+folder the moment it is applied; recategorizing a spam thread as anything else
+brings them back and the per-sender override stops the classifier from filing
+that sender as spam again. The owner stays in charge of both directions.
 
 ### 4. The reply is written in the sender's language
 
@@ -85,6 +103,15 @@ non-English interface locale. Translations ride on the question as
 answer-memory and quoted in `[CONFIRMED BY OWNER]`. The UI renders the entry
 for the current locale and maps a picked chip back to its canonical value on
 submit. The Postbox Reply Queue refinement takes the same helper.
+
+The suggestions are answers you click. The shared chip component says so in a
+lead-in line, marks the picked chip, and reads the answer back under the row,
+so a click visibly "takes". Answer-memory keeps the same scenario handled the
+same way: a question the person answered before arrives with that answer
+pre-picked and labelled "last time", and a card whose questions memory answered
+in full drafts without asking and shows which answers were reused above the
+draft. The person stays in charge — any other chip, or typed text, replaces the
+pre-pick and the correction becomes the new standing answer.
 
 ### 6. The person is told
 

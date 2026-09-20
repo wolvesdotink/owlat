@@ -244,6 +244,11 @@ export const inboxTables = {
 			v.literal('archived'), // Archived without reply (spam, etc.)
 			v.literal('failed') // Pipeline error
 		),
+		// Why the message was archived (the lifecycle's archive reason, e.g.
+		// `classifier_spam`, `update_dismissed`). Written on every `→ archived`
+		// transition so the Updates dashboard's Spam tab can list what the
+		// classifier caught. Absent on rows archived before the field existed.
+		archiveReason: v.optional(v.string()),
 		// Security filter results
 		securityFlags: v.optional(securityFlagsValidator),
 		// Agent classification result

@@ -320,7 +320,11 @@
 				"label": "Loading task"
 			},
 			"taskOptions": {
+				"lead": "Click a suggestion to use it as your answer, or type your own below.",
 				"orTypeAnswerPlaceholder": "Or type an answer…",
+				"readback": "Your answer: {answer}",
+				"readbackRemembered": "Your answer: {answer} (pre-picked from your earlier answer — pick another to change it)",
+				"rememberedTag": "last time",
 				"typeAnswerPlaceholder": "Type your answer…"
 			}
 		},
@@ -447,8 +451,6 @@
 		"automations": {
 			"stepEditorPanel": {
 				"delete": "Delete Step",
-				"emptyBody": "Click on a step in the workflow to configure its settings.",
-				"emptyTitle": "Select a Step",
 				"save": "Save Changes",
 				"title": "Step Settings"
 			},
@@ -8768,6 +8770,9 @@
 				"rejecting": "Rejecting...",
 				"retriedToast": "Message re-enqueued for processing",
 				"retryProcessing": "Retry processing",
+				"reusedAnswersHint": "The same question was answered before, so the agent applied that answer again. Edit the draft if it should read differently, or",
+				"reusedAnswersManage": "review what Owlat remembers.",
+				"reusedAnswersTitle": "Owlat reused your earlier answers for this draft",
 				"sendingAutomatically": "Sending automatically in {seconds}s",
 				"sentiments": {
 					"negative": "negative",
@@ -8917,9 +8922,33 @@
 				"pageTitle": "Review Queue — Owlat"
 			},
 			"updates": {
+				"blockDialogConfirm": "Block sender",
+				"blockDialogDescription": "Future mail from {sender} will be dropped silently.",
+				"blockDialogTitle": "Block this sender?",
+				"blockOperation": "Block sender",
+				"blockSender": "Block sender",
+				"blockedToast": "Sender blocked",
 				"dismiss": "Done",
 				"dismissOperation": "Dismiss update",
 				"dismissedToast": "Update dismissed",
+				"empty": {
+					"updates": {
+						"title": "You're caught up",
+						"body": "Mail that needs no reply lands here, ranked by how much you need to know about it."
+					},
+					"promotions": {
+						"title": "No promotions",
+						"body": "Adverts, cold pitches and newsletters the agent filed away show up here."
+					},
+					"notifications": {
+						"title": "No notifications",
+						"body": "Automated system mail and receipts the agent filed away show up here."
+					},
+					"spam": {
+						"title": "No spam caught",
+						"body": "Mail the agent archived as spam is listed here so you can check its judgement and block senders."
+					}
+				},
 				"emptyBody": "Mail that needs no reply lands here, ranked by how much you need to know about it.",
 				"emptyTitle": "You're caught up",
 				"errorMessage": "The updates could not be loaded. Try again in a moment.",
@@ -8931,6 +8960,14 @@
 					"low": "Low",
 					"normal": "Worth knowing"
 				},
+				"kinds": {
+					"personal": "personal",
+					"update": "update",
+					"notification": "notification",
+					"receipt": "receipt",
+					"newsletter": "newsletter",
+					"advertising": "advertising"
+				},
 				"listAriaLabel": "Updates that need no reply",
 				"loading": "Loading updates…",
 				"noSubject": "No subject",
@@ -8940,7 +8977,15 @@
 				"replyRequestedToast": "The agent is drafting a reply. It will show up in the review queue.",
 				"requestReply": "Draft a reply",
 				"requestReplyOperation": "Request a reply draft",
+				"spamNote": "Archived as spam by the agent. Open a message to check it; blocking a sender drops their future mail before the pipeline runs.",
 				"subtitle": "Mail the agent decided needs no reply, most important first. Nothing here is waiting on you.",
+				"tabs": {
+					"updates": "Updates",
+					"promotions": "Promotions",
+					"notifications": "Notifications",
+					"spam": "Spam"
+				},
+				"tabsAriaLabel": "Update views",
 				"title": "Updates"
 			}
 		},
@@ -12598,7 +12643,9 @@
 					"notification": "Notification",
 					"other": "Other",
 					"person": "Person",
-					"receipt": "Receipt"
+					"promotion": "Promotion",
+					"receipt": "Receipt",
+					"spam": "Spam"
 				},
 				"recategorizeThread": "Recategorize thread",
 				"sections": {
@@ -12606,6 +12653,7 @@
 					"notification": "Notifications",
 					"other": "Everything else",
 					"person": "People",
+					"promotion": "Promotions",
 					"receipt": "Receipts"
 				}
 			},
@@ -14430,6 +14478,7 @@
 		"postboxBundles": {
 			"newsletter": "Newsletters",
 			"notification": "Notifications",
+			"promotion": "Promotions",
 			"receipt": "Receipts"
 		},
 		"accountExportResources": {

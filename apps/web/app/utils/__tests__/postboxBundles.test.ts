@@ -153,8 +153,13 @@ describe('bundlePostboxFeed', () => {
 });
 
 describe('bundle registries', () => {
-	it('folds the three low-signal categories and never `person`', () => {
-		expect([...POSTBOX_BUNDLE_CATEGORIES]).toEqual(['newsletter', 'notification', 'receipt']);
+	it('folds the four low-signal categories and never `person`', () => {
+		expect([...POSTBOX_BUNDLE_CATEGORIES]).toEqual([
+			'newsletter',
+			'notification',
+			'receipt',
+			'promotion',
+		]);
 		expect(POSTBOX_BUNDLE_CATEGORIES as readonly string[]).not.toContain('person');
 	});
 

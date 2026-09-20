@@ -284,6 +284,7 @@ function reduceArchived(
 		);
 	}
 	if (input.securityFlags) patch['securityFlags'] = input.securityFlags;
+	patch['archiveReason'] = input.reason;
 	return { patch, effects };
 }
 

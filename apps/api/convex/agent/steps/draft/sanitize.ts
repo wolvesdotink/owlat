@@ -61,6 +61,25 @@ export const ALLOWED_PRIORITIES = new Set([
 	'unspecified',
 ]);
 
+/** The classifier's mail kinds (nature of the mail, orthogonal to the topic category). */
+export const ALLOWED_KINDS = new Set([
+	'personal',
+	'update',
+	'notification',
+	'receipt',
+	'newsletter',
+	'advertising',
+	'unspecified',
+]);
+
+/** Kinds that are bulk or automated by nature — they never expect a reply. */
+export const BULK_KINDS: ReadonlySet<string> = new Set([
+	'notification',
+	'receipt',
+	'newsletter',
+	'advertising',
+]);
+
 /** ISO 639-1 (optionally region-tagged) language code, lowercased; else undefined. */
 export function safeLanguage(value: unknown): string | undefined {
 	if (typeof value !== 'string') return undefined;

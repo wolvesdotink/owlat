@@ -25,6 +25,7 @@ function makeOutput(over: Partial<ClassifyOutput> = {}): ClassifyOutput {
 		sentiment: over.sentiment ?? 'neutral',
 		intent: over.intent ?? 'question',
 		confidence: over.confidence ?? 0.9,
+		kind: over.kind ?? 'personal',
 		needsResponse: over.needsResponse ?? true,
 		language: over.language ?? 'en',
 		importance: over.importance ?? 0.5,
@@ -106,6 +107,7 @@ describe('classifyStep.route', () => {
 			intent: 'information',
 			confidence: 0.9,
 			needsResponse: false,
+			kind: 'personal',
 			language: 'de',
 			importance: 0.5,
 			summary: { en: 'Asks about billing.', de: 'Fragt zur Abrechnung.' },
@@ -164,6 +166,22 @@ describe('resolveResponseDisposition', () => {
 		expect(resolveResponseDisposition({ ...informational, intent: 'escalation' })).toBe('reply');
 	});
 
+	it('files bulk kinds as informational whatever the intent label says', () => {
+		expect(
+			resolveResponseDisposition({ ...informational, intent: 'request', kind: 'advertising' })
+		).toBe('informational');
+		expect(
+			resolveResponseDisposition({ ...informational, intent: 'question', kind: 'receipt' })
+		).toBe('informational');
+		// ...but never past the safety rails or a "needs a response" verdict.
+		expect(
+			resolveResponseDisposition({ ...informational, kind: 'newsletter', needsResponse: true })
+		).toBe('reply');
+		expect(
+			resolveResponseDisposition({ ...informational, kind: 'advertising', priority: 'urgent' })
+		).toBe('reply');
+	});
+
 	it('treats a question or request as needing a reply even when flagged informational', () => {
 		expect(resolveResponseDisposition({ ...informational, intent: 'question' })).toBe('reply');
 		expect(resolveResponseDisposition({ ...informational, intent: 'request' })).toBe('reply');
@@ -213,6 +231,7 @@ describe('toPersistedClassification', () => {
 			intent: 'question',
 			confidence: 0.9,
 			needsResponse: true,
+			kind: 'personal',
 			importance: 0.5,
 		});
 	});

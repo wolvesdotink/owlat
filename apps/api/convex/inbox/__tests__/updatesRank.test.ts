@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rankUpdates, updateRankScore } from '../updates';
+import { isBulkKind, rankUpdates, updateRankScore, updateViewForKind } from '../updates';
 
 /**
  * Pure ranking contract for the Updates dashboard: the classifier's
@@ -62,5 +62,24 @@ describe('rankUpdates', () => {
 		];
 		rankUpdates(input);
 		expect(input.map((u) => u._id)).toEqual(['a', 'b']);
+	});
+});
+
+describe('updateViewForKind', () => {
+	it('files bulk kinds into their tabs and everything else into updates', () => {
+		expect(updateViewForKind('advertising')).toBe('promotions');
+		expect(updateViewForKind('newsletter')).toBe('promotions');
+		expect(updateViewForKind('notification')).toBe('notifications');
+		expect(updateViewForKind('receipt')).toBe('notifications');
+		expect(updateViewForKind('personal')).toBe('updates');
+		expect(updateViewForKind('update')).toBe('updates');
+		expect(updateViewForKind(undefined)).toBe('updates');
+	});
+
+	it('knows which kinds never expect a reply', () => {
+		expect(isBulkKind('advertising')).toBe(true);
+		expect(isBulkKind('receipt')).toBe(true);
+		expect(isBulkKind('personal')).toBe(false);
+		expect(isBulkKind(undefined)).toBe(false);
 	});
 });
