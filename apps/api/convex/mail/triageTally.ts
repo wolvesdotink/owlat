@@ -26,7 +26,8 @@
 
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { mailTriageVerbValidator, type MailTriageVerb } from '../lib/mailContentValidators';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
@@ -280,7 +281,7 @@ export const forMessage = publicQuery({
  * The gate is re-evaluated server-side from the stored tally: the client cannot
  * ask for a rule the evidence does not support.
  */
-export const acceptSuggestion = authedMutation({
+export const acceptSuggestion = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		senderAddress: v.string(),
@@ -329,7 +330,7 @@ export const acceptSuggestion = authedMutation({
 });
 
 /** Decline a suggestion. It never comes back for this sender+verb. */
-export const dismissSuggestion = authedMutation({
+export const dismissSuggestion = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		senderAddress: v.string(),
@@ -350,7 +351,7 @@ export const dismissSuggestion = authedMutation({
  * safe, so it removes the rule outright rather than disabling it — a disabled
  * rule the user never asked for is still clutter in their Filters list.
  */
-export const undoSuggestion = authedMutation({
+export const undoSuggestion = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		senderAddress: v.string(),

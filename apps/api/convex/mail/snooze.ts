@@ -12,14 +12,14 @@
 
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
-import { authedMutation } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
 
-export const snooze = authedMutation({
+export const snooze = postboxMutation({
 	args: {
 		messageId: v.id('mailMessages'),
 		until: v.number(),
@@ -56,7 +56,7 @@ export const snooze = authedMutation({
  */
 // authz: message → mailbox ownership via requireMessageAccess; org membership via
 // authedMutation.
-export const snoozeUntilReply = authedMutation({
+export const snoozeUntilReply = postboxMutation({
 	args: {
 		messageId: v.id('mailMessages'),
 		// Fallback cap — resurface by this time even if no reply arrives.
@@ -156,7 +156,7 @@ async function clearMessageSnooze(
  */
 // authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
-export const snoozeThread = authedMutation({
+export const snoozeThread = postboxMutation({
 	args: { threadId: v.id('mailThreads'), until: v.number() },
 	handler: async (ctx, args): Promise<{ ok: true; snoozed: number }> => {
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
@@ -204,7 +204,7 @@ export const snoozeThread = authedMutation({
  */
 // authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
-export const clearSnoozeReturned = authedMutation({
+export const clearSnoozeReturned = postboxMutation({
 	args: { threadId: v.id('mailThreads') },
 	handler: async (ctx, args) => {
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
@@ -234,7 +234,7 @@ const SNOOZE_BATCH_CAP = 500;
  */
 // authz: each message → mailbox ownership via requireMessageAccess; org
 // membership via authedMutation.
-export const snoozeMany = authedMutation({
+export const snoozeMany = postboxMutation({
 	args: {
 		messageIds: v.array(v.id('mailMessages')),
 		until: v.number(),
@@ -275,7 +275,7 @@ export const snoozeMany = authedMutation({
  */
 // authz: each message → mailbox ownership via requireMessageAccess; org
 // membership via authedMutation.
-export const unsnoozeMany = authedMutation({
+export const unsnoozeMany = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<{ woken: number }> => {
 		if (args.messageIds.length > SNOOZE_BATCH_CAP) {

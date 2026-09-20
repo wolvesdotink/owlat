@@ -54,7 +54,7 @@
 
 import { v } from 'convex/values';
 import { internalMutation } from '../../_generated/server';
-import { authedMutation, authedQuery } from '../../lib/authedFunctions';
+import { postboxQuery, postboxMutation } from '../_helpers';
 import { internal } from '../../_generated/api';
 import { requireAdminContext } from '../../lib/sessionOrganization';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
@@ -196,7 +196,7 @@ export const _connectSharedInternal = internalMutation({
  * envelope. Returns `{ configured: false }` for a caller without access or a
  * mailbox that isn't a shared external inbox (soft-fail, like getForCurrentUser).
  */
-export const getSharedExternalAccount = authedQuery({
+export const getSharedExternalAccount = postboxQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
 		// authz: resolveSharedExternalAccount → requireMailboxAccess(owner) + shared-external gate (soft: not configured).
@@ -262,7 +262,7 @@ export const _updateCredentialsSharedInternal = internalMutation({
  * mailbox in any status (a removed inbox is soft-deleted, which `requireMailboxAccess`
  * would refuse) — so it re-checks admin + shared-external scope by hand.
  */
-export const purgeShared = authedMutation({
+export const purgeShared = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
 		// authz: requireAdminContext (team inbox = org infrastructure) + shared-external scope gate.

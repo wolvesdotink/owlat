@@ -11,7 +11,8 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { normalizeEmail } from '@owlat/shared';
@@ -29,7 +30,7 @@ export const list = publicQuery({
 	},
 });
 
-export const create = authedMutation({
+export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		forwardTo: v.string(),
@@ -60,7 +61,7 @@ export const create = authedMutation({
 	},
 });
 
-export const update = authedMutation({
+export const update = postboxMutation({
 	args: {
 		id: v.id('mailForwarding'),
 		forwardTo: v.optional(v.string()),
@@ -79,7 +80,7 @@ export const update = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { id: v.id('mailForwarding') },
 	handler: async (ctx, args) => {
 		const row = await ctx.db.get(args.id);

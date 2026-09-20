@@ -8,7 +8,8 @@
 
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { normalizeEmail } from '@owlat/shared';
@@ -299,7 +300,7 @@ export const correspondentDomains = publicQuery({
 	},
 });
 
-export const upsert = authedMutation({
+export const upsert = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		email: v.string(),
@@ -340,7 +341,7 @@ export const upsert = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { contactId: v.id('mailContacts') },
 	handler: async (ctx, args) => {
 		const row = await ctx.db.get(args.contactId);
@@ -358,7 +359,7 @@ export const remove = authedMutation({
  * easy-to-correct override of the deterministic frecency baseline.
  */
 // authz: mailbox access via requireMailboxAccess; org membership via authedMutation.
-export const setVip = authedMutation({
+export const setVip = postboxMutation({
 	args: { mailboxId: v.id('mailboxes'), email: v.string(), isVip: v.boolean() },
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
@@ -397,7 +398,7 @@ export const setVip = authedMutation({
  * `screener` gating itself is toggled via mail/settings.update.
  */
 // authz: mailbox access via requireMailboxAccess; org membership via authedMutation.
-export const acceptSender = authedMutation({
+export const acceptSender = postboxMutation({
 	args: { mailboxId: v.id('mailboxes'), email: v.string() },
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);

@@ -16,7 +16,8 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
-import { authedMutation, authedQuery, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxQuery, postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
@@ -55,12 +56,12 @@ async function scheduleRecipientDiscovery(ctx: MutationCtx, addresses: string[])
  * "still being set up" state instead of an error.
  */
 // authz: draftQueries.canSendFromHandler enforces mailbox access.
-export const canSendFrom = authedQuery({
+export const canSendFrom = postboxQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: canSendFromHandler,
 });
 
-export const create = authedMutation({
+export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		inReplyToMessageId: v.optional(v.id('mailMessages')),
@@ -143,7 +144,7 @@ export const create = authedMutation({
 	},
 });
 
-export const update = authedMutation({
+export const update = postboxMutation({
 	args: {
 		draftId: v.id('mailDrafts'),
 		toAddresses: v.optional(v.array(v.string())),
@@ -223,7 +224,7 @@ export const update = authedMutation({
  * through. The allow-set is extended to sanctioned cross-mailbox identities,
  * never bypassed — everything else is still rejected.
  */
-export const setIdentity = authedMutation({
+export const setIdentity = postboxMutation({
 	args: {
 		draftId: v.id('mailDrafts'),
 		fromAddress: v.string(),
@@ -252,7 +253,7 @@ export const setIdentity = authedMutation({
 	},
 });
 
-export const addAttachment = authedMutation({
+export const addAttachment = postboxMutation({
 	args: {
 		draftId: v.id('mailDrafts'),
 		storageId: v.id('_storage'),
@@ -287,7 +288,7 @@ export const addAttachment = authedMutation({
 	},
 });
 
-export const removeAttachment = authedMutation({
+export const removeAttachment = postboxMutation({
 	args: { draftId: v.id('mailDrafts'), storageId: v.id('_storage') },
 	handler: async (ctx, args) => {
 		const draft = await ctx.db.get(args.draftId);
@@ -307,7 +308,7 @@ export const removeAttachment = authedMutation({
 	},
 });
 
-export const discard = authedMutation({
+export const discard = postboxMutation({
 	args: { draftId: v.id('mailDrafts') },
 	handler: async (ctx, args) => {
 		const draft = await ctx.db.get(args.draftId);
@@ -369,7 +370,7 @@ export const listForMailbox = publicQuery({
  * `mailDrafts.state` and `undoToken`. See ADR-0028.
  */
 // authz: draftSend.sendHandler enforces mailbox access.
-export const send = authedMutation({
+export const send = postboxMutation({
 	args: {
 		draftId: v.id('mailDrafts'),
 		undoSendDelayMs: v.optional(v.number()),
@@ -385,7 +386,7 @@ export const send = authedMutation({
  * draft lifecycle module's token-keyed entry point. See ADR-0028.
  */
 // authz: draftSend.cancelPendingSendHandler enforces mailbox access.
-export const cancelPendingSend = authedMutation({
+export const cancelPendingSend = postboxMutation({
 	args: { undoToken: v.string() },
 	handler: cancelPendingSendHandler,
 });
@@ -397,7 +398,7 @@ export const cancelPendingSend = authedMutation({
  * sole writer of `mailDrafts.state`. See ADR-0028.
  */
 // authz: draftSend.cancelScheduledSendHandler enforces mailbox access.
-export const cancelScheduledSend = authedMutation({
+export const cancelScheduledSend = postboxMutation({
 	args: { draftId: v.id('mailDrafts') },
 	handler: cancelScheduledSendHandler,
 });

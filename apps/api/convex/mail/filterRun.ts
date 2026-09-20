@@ -18,7 +18,8 @@
 
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
@@ -79,7 +80,7 @@ export const status = publicQuery({
  * A run already in flight is left alone rather than forked, so a double click
  * cannot produce two walks racing over one cursor.
  */
-export const start = authedMutation({
+export const start = postboxMutation({
 	args: { filterId: v.id('mailFilters') },
 	handler: async (ctx, args): Promise<{ started: boolean }> => {
 		const filter = await getOrThrow(ctx, args.filterId, 'Filter');
@@ -128,7 +129,7 @@ export const start = authedMutation({
  * actions are idempotent: a label already on a message, a flag already set, a
  * message already in the target folder are all no-ops).
  */
-export const cancel = authedMutation({
+export const cancel = postboxMutation({
 	args: { filterId: v.id('mailFilters') },
 	handler: async (ctx, args): Promise<void> => {
 		const filter = await getOrThrow(ctx, args.filterId, 'Filter');

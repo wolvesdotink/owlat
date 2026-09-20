@@ -35,6 +35,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { batchGet } from '../_utils/batchLoader';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { POSTBOX_FEATURE_FLAGS } from './_helpers';
 
 /**
  * Membership role on a mailbox. `owner` is a superset of `member`. Derived
@@ -52,14 +54,37 @@ export type MailboxAccessOutcome =
 	| { ok: true; userId: string; mailbox: Doc<'mailboxes'>; role: MailboxMemberRole }
 	| {
 			ok: false;
-			reason: 'no_session' | 'mailbox_missing' | 'mailbox_inactive' | 'forbidden';
+			reason: 'no_session' | 'feature_off' | 'mailbox_missing' | 'mailbox_inactive' | 'forbidden';
 	  };
+
+/**
+ * Does this instance have a personal-mail capability at all?
+ *
+ * The mailbox gate is the one predicate every mailbox-scoped read and write in
+ * `mail/**` funnels through, which makes it the cheapest place to make the
+ * Postbox feature flags real for the soft-failing reads. A `publicQuery` that
+ * returns an empty result for a mailbox the caller cannot see returns the same
+ * empty result when the instance has no personal mail — no new throw, no new
+ * error shape for the always-mounted callers (global search, the desktop
+ * unread peek) that live on routes with no feature meta.
+ *
+ * Any-of for the same reason `mail/_helpers.ts` is: hosted mailboxes and
+ * connected external ones are independent capabilities, and either one makes a
+ * mailbox legitimate.
+ */
+async function personalMailEnabled(ctx: QueryCtx): Promise<boolean> {
+	for (const flag of POSTBOX_FEATURE_FLAGS) {
+		if (await isFeatureEnabled(ctx, flag)) return true;
+	}
+	return false;
+}
 
 export async function requireMailboxAccess(
 	ctx: Parameters<typeof getBetterAuthSessionWithRole>[0],
 	mailboxId: Id<'mailboxes'>,
 	minRole: MailboxMemberRole = 'member'
 ): Promise<MailboxAccessOutcome> {
+	if (!(await personalMailEnabled(ctx as QueryCtx))) return { ok: false, reason: 'feature_off' };
 	const s = await getBetterAuthSessionWithRole(ctx);
 	if (!s || !s.role) return { ok: false, reason: 'no_session' };
 	const mailbox = await ctx.db.get(mailboxId);
@@ -183,6 +208,10 @@ export async function loadAccessibleMailboxes(
 	userId: string,
 	activeOrganizationId: string
 ): Promise<Array<Doc<'mailboxes'>>> {
+	// No personal-mail capability on this instance ⇒ no accessible mailbox, so
+	// every caller (global search, the unread peek, the mailbox switcher) shows
+	// its empty state instead of listing rows a disabled surface owns.
+	if (!(await personalMailEnabled(ctx))) return [];
 	const ownedRows = await ctx.db
 		.query('mailboxes')
 		.withIndex('by_user', (q) => q.eq('userId', userId))
