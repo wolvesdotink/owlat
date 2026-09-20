@@ -37,8 +37,9 @@ import { base64ToBytes, bytesToBinaryString, utf8Bytes } from '../../lib/bytes';
 import { buildSnippet } from './insert';
 import { buildSearchBody } from '../searchBody';
 import { scanInboundAttachments } from './scan';
-import type { InboundAttachmentPart } from './attachmentParts';
-import type { CaptureSource } from '../../lib/literalValidators';
+import type { InboundAttachmentPart, UnclearedLeaves } from './attachmentParts';
+import { emailDomain, isSpfAligned } from '@owlat/shared/spfAlignment';
+import type { CaptureSource, VirusVerdict } from '../../lib/literalValidators';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -86,7 +87,7 @@ export async function prepareInboundMessage(
 		subject: string;
 		textBody?: string;
 		htmlBody?: string;
-		virusVerdict?: 'clean' | 'infected' | 'skipped';
+		virusVerdict?: VirusVerdict;
 	}
 ) {
 	// Decode raw MIME and stash in Convex storage. `base64ToBytes` answers
@@ -248,18 +249,25 @@ export type AttachmentCaptureOutcome = {
 	indexed: number;
 	/**
 	 * Why a part that arrived was not indexed:
-	 *   · `unverified` — DMARC failed the `From:`, so nothing here is indexed
-	 *     at all (see the note on the function);
+	 *   · `unverified` — DMARC could not verify the `From:`, so nothing here is
+	 *     indexed at all (see the note on the function);
 	 *   · `budget` — the per-sender/global AI-ingest budget refused the batch;
+	 *   · `unscanned` — the malware scanner could not answer for at least one
+	 *     leaf (outage, timeout, its own fail-open skip);
 	 *   · `cap` — the message carries more attachment leaves than one message
 	 *     is processed for, so the rest were never opened;
 	 *   · `too_large` — over `MAX_AI_INGEST_ATTACHMENT_BYTES`;
 	 *   · `unsupported_type` — the file-type allowlist refused it.
 	 *
-	 * At most one is reported, in that order: the earlier a reason stops a
-	 * part, the more of the message it accounts for.
+	 * At most one is reported, in the order {@link decideSkipReason} applies.
 	 */
-	skippedReason?: 'unverified' | 'budget' | 'cap' | 'too_large' | 'unsupported_type';
+	skippedReason?:
+		| 'unverified'
+		| 'budget'
+		| 'unscanned'
+		| 'cap'
+		| 'too_large'
+		| 'unsupported_type';
 	/**
 	 * At least one INDEXED part is a type the extractor answers with its own
 	 * filename — Word, Excel, an image. The file reached the library, the
@@ -286,12 +294,13 @@ export type CaptureAttachmentsInput = {
 	 */
 	parts: InboundAttachmentPart[];
 	/**
-	 * How many attachment leaves of this message were NOT cleared — the scan's
-	 * `scannableCount` minus the parts above. Nothing is done with them; they
-	 * are only reported, so the reader can say the assistant has not read
-	 * everything here.
+	 * The leaves of this message that were NOT cleared, COUNTED PER CAUSE.
+	 * Nothing is done with them; they are only reported — but which sentence
+	 * the reader is shown depends on the cause, and one total for all of them
+	 * reported a ClamAV outage as "this message has more attachments than we
+	 * process", pointing the operator at the wrong thing entirely.
 	 */
-	withheldCount: number;
+	withheld: UnclearedLeaves;
 	/** The source Message-ID, recorded on every captured file as provenance. */
 	messageId: string;
 	/** The raw `From:` header, resolved to a contact for scoping. */
@@ -299,12 +308,102 @@ export type CaptureAttachmentsInput = {
 	/** Which inbound route is capturing; decides retention reach. */
 	captureSource: CaptureSource;
 	/**
-	 * The message's DMARC verdict as the MTA computed it. `'fail'` means
-	 * nothing here is indexed — see the note on the function. Absent on an
-	 * older MTA, which reads as "no verdict", not as a failure.
+	 * What the MTA established about the `From:` header. Decides whether
+	 * anything here is indexed at all — see {@link isFromVerified}.
 	 */
-	dmarcResult?: string;
+	auth: InboundFromAuth;
 };
+
+/**
+ * The inbound authentication verdicts, as the MTA computed them over the raw
+ * bytes, plus the two domains DMARC alignment is decided against.
+ *
+ * Every field is optional and an absent one means "not established" — never
+ * "passed". A message from an MTA too old to send any of them therefore
+ * arrives with an empty bag, which reads as "no verdict", not as a failure.
+ */
+export type InboundFromAuth = {
+	/** RFC 8601 DMARC keyword: `pass` | `fail` | `none` | `temperror` | `permerror`. */
+	dmarcResult?: string;
+	/** RFC 8601 SPF keyword for the envelope MAIL FROM. */
+	spfResult?: string;
+	/** RFC 8601 DKIM keyword for the strongest signature. */
+	dkimResult?: string;
+	/** Alignment input: the envelope MAIL FROM domain SPF authenticated. */
+	envelopeFromDomain?: string;
+	/** Alignment input: the `d=` domain of the passing DKIM signature. */
+	dkimSigningDomain?: string;
+};
+
+/**
+ * Is the `From:` on this message bound to a domain that authorized it, well
+ * enough to file its documents under the contact it claims to be?
+ *
+ * Only `pass` is a yes outright. `fail`, `temperror` and `permerror` are all
+ * no: a transient DNS failure at the MTA establishes exactly as much about the
+ * sender as a hard failure does, and the mitigation for "we could not check" is
+ * not "assume it checked out". Refusing only the `fail` LITERAL left
+ * `temperror` filing an attacker's PDF under the CEO's contact.
+ *
+ * `none` — the From domain publishes no DMARC record at all, which is the
+ * common case for small domains — falls back to the check DMARC itself would
+ * have made: an ALIGNED SPF or DKIM pass. Alignment is what makes it worth
+ * anything; an unaligned DKIM pass only says the attacker signed their own
+ * mail. `@owlat/shared/spfAlignment` owns the relaxed-alignment rule so this
+ * cannot fork from the MTA's and the sending-domain checker's.
+ *
+ * An EMPTY bag (an MTA too old to compute any of this) is verified: that is the
+ * pre-existing behaviour of every message received before the verdicts existed,
+ * and silently un-indexing a whole deployment's mail is not a policy change a
+ * capture helper makes on the way past.
+ */
+export function isFromVerified(from: string, auth: InboundFromAuth): boolean {
+	const dmarc = auth.dmarcResult?.toLowerCase().trim();
+	if (!dmarc) return true;
+	if (dmarc === 'pass') return true;
+	if (dmarc !== 'none') return false;
+	const fromDomain = emailDomain(extractEmail(from));
+	if (!fromDomain) return false;
+	const spfAligned =
+		auth.spfResult?.toLowerCase().trim() === 'pass' &&
+		!!auth.envelopeFromDomain &&
+		isSpfAligned(auth.envelopeFromDomain, fromDomain);
+	const dkimAligned =
+		auth.dkimResult?.toLowerCase().trim() === 'pass' &&
+		!!auth.dkimSigningDomain &&
+		isSpfAligned(auth.dkimSigningDomain, fromDomain);
+	return spfAligned || dkimAligned;
+}
+
+/** What stopped a part, as booleans with names, for {@link decideSkipReason}. */
+type SkipSignals = {
+	/** The scanner could not answer for at least one leaf. */
+	unscanned: boolean;
+	/** At least one leaf was never opened — the per-message count cap. */
+	capped: boolean;
+	/** At least one leaf is over `MAX_ATTACHMENT_BYTES` and was not stored. */
+	overStorageCap: boolean;
+	/** At least one leaf is over the AI ceiling — stored, not read. */
+	overAiCeiling: boolean;
+	/** At least one leaf is a type neither gate will index. */
+	refusedType: boolean;
+};
+
+/**
+ * The ONE reason the reader is shown, out of everything that stopped a part.
+ *
+ * An if-ladder with named booleans rather than a nested ternary: the order IS
+ * the policy — the earlier a reason stops a part, the more of the message it
+ * accounts for, and an unanswered scan outranks a cap because it is the one
+ * that sends an operator somewhere useful.
+ */
+function decideSkipReason(signals: SkipSignals): AttachmentCaptureOutcome['skippedReason'] {
+	if (signals.unscanned) return 'unscanned';
+	if (signals.capped) return 'cap';
+	if (signals.overStorageCap || signals.overAiCeiling) return 'too_large';
+	if (signals.refusedType) return 'unsupported_type';
+	return undefined;
+}
 
 /**
  * Ingest a delivered message's CLEARED attachment leaves into `semanticFiles`
@@ -335,10 +434,10 @@ export type CaptureAttachmentsInput = {
  * sender's document under the contact they claimed to be puts it in that
  * contact's retrieval scope; filing it org-general puts it in EVERY contact's,
  * because an org-general file matches every contact scope the retrieval seam
- * has. Neither is a mitigation, so a DMARC fail is not indexed at all. The
- * bytes still arrive, still list and still download — the row says
- * `skipped_unverified` so the reader can say why. Anything else (`pass`,
- * `none`, no verdict at all from an older MTA) is indexed and scoped as usual.
+ * has. Neither is a mitigation, so an unverifiable From is not indexed at all.
+ * The bytes still arrive, still list and still download — the row says
+ * `skipped_unverified` so the reader can say why. Which verdicts count as
+ * verified is {@link isFromVerified}.
  *
  * SHARED BY BOTH INBOUND ROUTES — the personal mailbox and the team inbox — so
  * the two cannot enforce different attachment policy. `captureSource` is how
@@ -347,6 +446,7 @@ export type CaptureAttachmentsInput = {
  * and never touches `'mailbox'` ones. The ceilings, in order:
  *
  *   · a leaf the scan did not clear never gets here at all;
+ *   · an inline leaf (an embedded logo) is downloadable but never indexed;
  *   · over `MAX_ATTACHMENT_BYTES` (25 MiB) is not stored at all;
  *   · over `MAX_AI_INGEST_ATTACHMENT_BYTES` is not INDEXED — it still delivers,
  *     still lists, and is still downloadable out of the raw `.eml`;
@@ -372,17 +472,30 @@ export async function captureAttachments(
 	// An unverifiable sender is refused before any of the size/type work: there
 	// is no scope this message's files could safely be filed under, so the
 	// answer is not "file them somewhere wider" but "do not file them".
-	if (input.dmarcResult === 'fail') {
-		logWarn('[Attachment capture] DMARC failed the From header — bytes stored, indexing skipped', {
-			messageId: input.messageId,
-			from: input.from,
-		});
+	if (!isFromVerified(input.from, input.auth)) {
+		logWarn(
+			'[Attachment capture] the From header could not be verified — bytes stored, indexing skipped',
+			{
+				messageId: input.messageId,
+				from: input.from,
+				dmarcResult: input.auth.dmarcResult,
+			}
+		);
 		return { indexed: 0, skippedReason: 'unverified' };
 	}
 
+	// INLINE LEAVES ARE SCANNED BUT NOT INDEXED. The scan covers everything the
+	// reader can download — a `Content-Disposition: inline` executable included
+	// — while a signature logo is not a document anyone meant to send, so it is
+	// dropped HERE, out of the cleared set, rather than by a second walk of the
+	// raw bytes that could disagree with the scanner about which leaf is which.
+	// Silent on purpose: an embedded logo nobody attached is not a file the
+	// reader is waiting for the assistant to read.
+	const indexable = input.parts.filter((part) => part.disposition !== 'inline');
+
 	// Decide the whole batch up front: the budget is charged once for what will
 	// actually be ingested, so a message of inline logos costs nothing.
-	const parts = input.parts.filter((part) => part.bytes.byteLength <= MAX_ATTACHMENT_BYTES);
+	const parts = indexable.filter((part) => part.bytes.byteLength <= MAX_ATTACHMENT_BYTES);
 
 	// Over the AI ceiling the bytes still arrive, they are just not fed to a
 	// model. See MAX_AI_INGEST_ATTACHMENT_BYTES.
@@ -400,14 +513,13 @@ export async function captureAttachments(
 	// calls, and the inbound webhook is attacker-reachable, so a crafted .eml
 	// with many small leaves must not amplify cost.
 	const eligible = ingestible.slice(0, ATTACHMENT_COMPOSE_LIMITS.maxCount);
-	const skippedReason: AttachmentCaptureOutcome['skippedReason'] | undefined =
-		input.withheldCount > 0 || eligible.length < ingestible.length
-			? 'cap'
-			: withinCeiling.length < parts.length || parts.length < input.parts.length
-				? 'too_large'
-				: ingestible.length < withinCeiling.length
-					? 'unsupported_type'
-					: undefined;
+	const skippedReason = decideSkipReason({
+		unscanned: input.withheld.unscanned > 0,
+		capped: input.withheld.capped > 0 || eligible.length < ingestible.length,
+		overStorageCap: parts.length < indexable.length,
+		overAiCeiling: withinCeiling.length < parts.length,
+		refusedType: ingestible.length < withinCeiling.length || input.withheld.refusedType > 0,
+	});
 	if (eligible.length === 0) return { indexed: 0, skippedReason };
 
 	// Scope captured files to the sender's EXISTING contact (find-only). An

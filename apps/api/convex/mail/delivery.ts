@@ -45,7 +45,7 @@ import { clearThreadFollowUp } from './followUps';
 import { resolveDeliverableMailbox } from './mailbox/identity';
 import { clearSnoozeUntilReplyForThread } from './snooze';
 import { captureAttachments, prepareInboundMessage } from './deliveryPipeline/ingest';
-import { inboundAttachmentCandidates } from './deliveryPipeline/attachmentParts';
+import { NOTHING_UNCLEARED } from './deliveryPipeline/attachmentParts';
 import { insertDeliveredMessage, stripBrackets } from './deliveryPipeline/insert';
 import {
 	resolveDmarcRouting,
@@ -180,10 +180,13 @@ export const ingestFromWebhook = internalAction({
 			const scanned =
 				prepared.scan.verdict !== undefined
 					? prepared.scan.cleanParts
-					: inboundAttachmentCandidates(prepared.rawBinary);
+					: prepared.scan.candidates;
 			await captureAttachments(ctx, {
 				parts: scanned,
-				withheldCount: Math.max(0, prepared.scan.scannableCount - scanned.length),
+				// Nothing is withheld on the unscanned branch — this route indexes
+				// the leaves itself — and on the scanned one the scan already
+				// counted what it could not clear, per cause.
+				withheld: prepared.scan.verdict !== undefined ? prepared.scan.uncleared : NOTHING_UNCLEARED,
 				messageId: args.messageId,
 				from: args.from,
 				// Postbox captures are OUT OF RANGE of the inbound retention sweep:
@@ -191,7 +194,13 @@ export const ingestFromWebhook = internalAction({
 				// horizon, so a shared-inbox window must never strip its file-library
 				// blobs. `captureSource` is what keeps the two apart.
 				captureSource: 'mailbox',
-				dmarcResult: args.dmarcResult,
+				auth: {
+					dmarcResult: args.dmarcResult,
+					spfResult: args.spfResult,
+					dkimResult: args.dkimResult,
+					envelopeFromDomain: args.envelopeFromDomain,
+					dkimSigningDomain: args.dkimSigningDomain,
+				},
 			});
 		} catch (err) {
 			logError('[Mail Webhook] attachment capture failed', err);

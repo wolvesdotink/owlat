@@ -375,7 +375,16 @@ function reduceInboundAccept(
 	attempt: Extract<BounceAttempt, { kind: 'inbound_accept' }>,
 	ctx: BasePhaseCtx
 ): OutcomeReduction {
-	const { parsed, rawBuffer, spfResult, dkimResult, dmarcResult, dmarcPolicy } = ctx;
+	const {
+		parsed,
+		rawBuffer,
+		spfResult,
+		dkimResult,
+		dmarcResult,
+		dmarcPolicy,
+		envelopeFromDomain,
+		dkimSigningDomain,
+	} = ctx;
 	const { route, rcptTo, attachments, headers } = attempt;
 	const effects: BounceEffect[] = [];
 
@@ -431,6 +440,11 @@ function reduceInboundAccept(
 				dkimResult,
 				dmarcResult,
 				dmarcPolicy,
+				// The domains SPF and DKIM authenticated, so the receiver can
+				// check alignment against the `From:` rather than trusting a bare
+				// pass that may have authenticated the attacker's own domain.
+				envelopeFromDomain,
+				dkimSigningDomain,
 				attachments: attachmentMeta,
 			},
 			timestamp: Date.now(),

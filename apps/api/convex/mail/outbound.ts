@@ -29,7 +29,7 @@ import { getMtaConfig } from './mtaClient';
 import type { TransitionOutcome as DraftTransitionOutcome } from './draftLifecycle/types';
 import type { DraftRow } from './rfc822';
 import {
-	ScannedMalwareError,
+	BlockedAttachmentError,
 	bufferDraftAttachments,
 	buildOutboundMime,
 	sealOutboundMessage,
@@ -75,7 +75,7 @@ export const dispatchDraft = internalAction({
 			draft.bodyHtml = buffered.inlinedHtml;
 			attachmentBuffers = buffered.attachments;
 		} catch (err) {
-			if (err instanceof ScannedMalwareError) {
+			if (err instanceof BlockedAttachmentError) {
 				logError(`[Outbound] Aborting draft ${args.draftId}: ${err.message}`);
 				await ctx.runMutation(internal.mail.draftLifecycle.transition, {
 					draftId: args.draftId,

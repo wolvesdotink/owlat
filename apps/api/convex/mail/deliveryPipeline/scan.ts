@@ -10,10 +10,16 @@
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { scanAttachmentBytes } from '../mtaClient';
 import type { VirusVerdict } from '../../lib/literalValidators';
-import { inboundAttachmentCandidates, type InboundAttachmentPart } from './attachmentParts';
+import {
+	inboundAttachmentCandidates,
+	NOTHING_UNCLEARED,
+	type InboundAttachmentPart,
+	type UnclearedLeaves,
+} from './attachmentParts';
 
 /**
- * What one inbound scan established — the verdict AND the parts it covers.
+ * What one inbound scan established — the verdict, the parts it covers, and
+ * what it could not cover.
  *
  * The verdict alone was not enough to keep a promise the pipeline makes
  * ("nothing unscanned reaches a model"): a caller holding only `'clean'` has to
@@ -33,23 +39,29 @@ export type InboundScanResult = {
 	 *   · `'clean'` — every attachment leaf was covered and came back clean.
 	 *   · `undefined` — nobody asserted anything: no leaves at all, or no
 	 *     scanner here and none upstream. "Nothing to scan" and "nothing
-	 *     scanned it" are told apart by `scannableCount`, not by the verdict,
+	 *     scanned it" are told apart by `candidates`, not by the verdict,
 	 *     because a row must never store `undefined` as `'clean'`.
 	 */
 	verdict?: VirusVerdict;
 	/**
-	 * The leaves that were scanned and came back CLEAN, in MIME order — the
+	 * The leaves that were scanned and came back CLEAN, in scan order — the
 	 * only bytes of this message that may be fed to a model. Empty on every
 	 * other outcome, including `'infected'`.
 	 */
 	cleanParts: InboundAttachmentPart[];
 	/**
-	 * How many real attachment leaves the message has at all. Zero says "there
-	 * was nothing to scan", which is a different sentence from "we did not scan
-	 * it" — a message whose only attachment is a signature logo must not be
-	 * reported to the reader as unscanned.
+	 * Every real attachment leaf the message has, whether or not this scan got
+	 * to it. An empty array says "there was nothing to scan", which is a
+	 * different sentence from "we did not scan it".
+	 *
+	 * Carried rather than counted so the one caller that indexes UNSCANNED
+	 * leaves by policy (the personal mailbox, on an instance with no scanner)
+	 * takes this list instead of walking a 10 MiB string a second time to
+	 * rebuild the list the walk above already produced.
 	 */
-	scannableCount: number;
+	candidates: InboundAttachmentPart[];
+	/** Per cause, how many leaves this scan did not clear. */
+	uncleared: UnclearedLeaves;
 };
 
 /**
@@ -85,34 +97,49 @@ export async function scanInboundAttachments(
 	 */
 	priorVerdict?: VirusVerdict
 ): Promise<InboundScanResult> {
-	// Walked even with no scanner configured, because `scannableCount` is what
+	// Walked even with no scanner configured, because the candidate list is what
 	// tells the reader "there was nothing to scan" apart from "nobody scanned
 	// it", and only the MIME says which. One walk, shared with capture through
 	// the parts this returns.
 	const candidates = inboundAttachmentCandidates(rawBinary);
-	const scannableCount = candidates.length;
+	// Nothing looked at this message. Every leaf it carries is therefore
+	// UNSCANNED — the count is not zero just because the reason is "there is no
+	// scanner here" rather than "the scanner timed out". A message with no
+	// leaves at all lands here too, and then the count is honestly zero.
 	const nothingCleared: InboundScanResult = {
 		verdict: priorVerdict,
 		cleanParts: [],
-		scannableCount,
+		candidates,
+		uncleared: { capped: 0, unscanned: candidates.length, refusedType: 0 },
 	};
 	// Confirmed malware, wherever the confirmation came from: nothing out of
-	// this message is cleared, and the caller quarantines it.
-	if (priorVerdict === 'infected') return { ...nothingCleared, verdict: 'infected' };
-	if (scannableCount === 0) return nothingCleared;
+	// this message is cleared, and the caller quarantines it. A quarantine is
+	// not a gap in what we looked at, so nothing counts as withheld.
+	if (priorVerdict === 'infected') {
+		return { verdict: 'infected', cleanParts: [], candidates, uncleared: NOTHING_UNCLEARED };
+	}
+	if (candidates.length === 0) return nothingCleared;
 	if (!mta) {
 		// No scanner of our own. An upstream `'clean'` is a verdict about the
 		// WHOLE message, so it clears every leaf; anything else asserts nothing
 		// and therefore clears nothing — "we have no scanner" and "this file is
 		// safe" are different claims and only one of them is ours to make.
 		return priorVerdict === 'clean'
-			? { verdict: 'clean', cleanParts: candidates, scannableCount }
+			? { verdict: 'clean', cleanParts: candidates, candidates, uncleared: NOTHING_UNCLEARED }
 			: nothingCleared;
 	}
 
 	const budget = ATTACHMENT_COMPOSE_LIMITS.maxCount;
 	const cleanParts: InboundAttachmentPart[] = [];
-	let anySkipped = false;
+	// WHY a leaf went uncleared, not just how many did. The cap and a scanner
+	// outage both leave a file unindexed, and the reader is told a different
+	// sentence for each — so the causes are counted apart here, at the only
+	// place that knows which one applied.
+	const uncleared: UnclearedLeaves = {
+		capped: Math.max(0, candidates.length - budget),
+		unscanned: 0,
+		refusedType: 0,
+	};
 	for (const part of candidates.slice(0, budget)) {
 		const filename = part.filename || 'attachment';
 		// Shared client owns the POST + fail-open (scanner-down / network error
@@ -125,10 +152,22 @@ export async function scanInboundAttachments(
 			// Confirmed malware — short-circuit; the message goes to quarantine
 			// and NOTHING out of it is cleared, not even the leaves already
 			// scanned: the message is the unit a reader quarantines.
-			return { verdict: 'infected', cleanParts: [], scannableCount };
+			return {
+				verdict: 'infected',
+				cleanParts: [],
+				candidates,
+				uncleared: NOTHING_UNCLEARED,
+			};
+		}
+		if (verdict.kind === 'refused') {
+			// The endpoint's file-type gate, not ClamAV: this file is not
+			// malware, it is a type the scanner will not pass through. It is
+			// not cleared — and it is not a quarantine either.
+			uncleared.refusedType += 1;
+			continue;
 		}
 		if (verdict.kind === 'skipped') {
-			anySkipped = true;
+			uncleared.unscanned += 1;
 			continue;
 		}
 		cleanParts.push(part);
@@ -136,9 +175,10 @@ export async function scanInboundAttachments(
 
 	// A cap that withheld a leaf is the same kind of gap as a scanner outage:
 	// the verdict does not cover the whole message, so it must not read as a
-	// clean bill of health for it.
-	if (anySkipped || cleanParts.length < scannableCount) {
-		return { verdict: 'skipped', cleanParts, scannableCount };
+	// clean bill of health for it. A file-type refusal is NOT such a gap — the
+	// scanner answered about that leaf — so it leaves the aggregate alone.
+	if (uncleared.unscanned > 0 || uncleared.capped > 0) {
+		return { verdict: 'skipped', cleanParts, candidates, uncleared };
 	}
-	return { verdict: 'clean', cleanParts, scannableCount };
+	return { verdict: 'clean', cleanParts, candidates, uncleared };
 }

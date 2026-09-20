@@ -40,14 +40,14 @@ type StagedRaw = {
 	rawStorageId: Id<'_storage'>;
 	rawSize: number;
 	/**
-	 * The scan — its verdict, the leaves it CLEARED and how many leaves the
-	 * message had at all.
+	 * The scan — its verdict, the leaves it CLEARED, every leaf the message
+	 * carries, and what it could not clear, per cause.
 	 *
 	 * A verdict of `undefined` means NOTHING WAS SCANNED, and "no scanner
-	 * configured" and "no attachment leaves" are told apart by
-	 * `scannableCount`, not by the verdict: storing `undefined` as `'clean'`
-	 * would be a claim we cannot make, and telling a reader their signature
-	 * logo went unscanned would be a warning about nothing.
+	 * configured" and "no attachment leaves" are told apart by `candidates`,
+	 * not by the verdict: storing `undefined` as `'clean'` would be a claim we
+	 * cannot make, and warning about a message that has no files at all is a
+	 * warning about nothing.
 	 */
 	scan: InboundScanResult;
 };
@@ -99,11 +99,16 @@ async function stageRawMessage(
 		scan = await scanInboundAttachments(getMtaConfig(), rawBinary);
 	} catch (err) {
 		logError('[Inbound Webhook] attachment scan failed — message stored unscanned', err);
-		// Nothing was cleared, so nothing can be indexed. `scannableCount` is
-		// unknowable once the walk itself threw, and 1 is the honest floor: this
-		// message HAS something we could not look at, which is what the reader
-		// is told.
-		scan = { verdict: 'skipped', cleanParts: [], scannableCount: 1 };
+		// Nothing was cleared, so nothing can be indexed. The candidate list is
+		// unknowable once the walk itself threw, so it stays empty and the gap is
+		// recorded as one UNSCANNED leaf — the honest floor: this message HAS
+		// something we could not look at, which is what the reader is told.
+		scan = {
+			verdict: 'skipped',
+			cleanParts: [],
+			candidates: [],
+			uncleared: { capped: 0, unscanned: 1, refusedType: 0 },
+		};
 	}
 
 	return { rawStorageId, rawSize: rawBytes.byteLength, scan };
@@ -190,36 +195,40 @@ export const ingestFromWebhook = internalAction({
 		// The message, its metadata and its downloadable `.eml` all still exist
 		// either way; the row records what happened so the reader can say it
 		// instead of rendering an unindexed file like an indexed one.
-		const { scannableCount, cleanParts } = staged.scan;
-		if (cleanParts.length === 0) {
-			// Only worth recording when there was something to scan. A message
-			// whose only "attachments" are inline signature logos has no scannable
-			// leaf at all, and telling its reader the files went unchecked is a
-			// warning about nothing — which is how a warning stops being read.
-			if (scannableCount > 0) {
-				await markIndexing(ctx, inboundMessageId, 'skipped_unscanned');
-			}
-			return { inboundMessageId, isDuplicate: false };
-		}
+		const { cleanParts, uncleared } = staged.scan;
 
 		// Attachment capture is best-effort by construction and runs AFTER the
-		// insert, so it cannot fail delivery. The file-type allowlist, the
-		// per-part size ceilings, the sender→contact scoping, the DMARC refusal
-		// and the AI-ingest budget all live inside `captureAttachments`, shared
-		// with the personal-mailbox route so the two cannot enforce different
-		// policy.
+		// insert, so it cannot fail delivery. It is called even when the scan
+		// cleared NOTHING — with an empty parts list it indexes nothing and
+		// simply reports why, which is how the one message that has no leaves at
+		// all stays silent while the one whose leaves nobody could look at says
+		// so. One decision, in one place, rather than a second marker ladder
+		// here that told a file-type refusal and a ClamAV outage apart wrong.
+		//
+		// The file-type allowlist, the per-part size ceilings, the sender→contact
+		// scoping, the unverifiable-From refusal and the AI-ingest budget all
+		// live inside `captureAttachments`, shared with the personal-mailbox
+		// route so the two cannot enforce different policy.
 		try {
 			const outcome = await captureAttachments(ctx, {
 				parts: cleanParts,
-				withheldCount: scannableCount - cleanParts.length,
+				withheld: uncleared,
 				messageId: args.mail.messageId,
 				from: args.mail.from,
 				// Only team-inbox captures are in range of the inbound retention
 				// sweep — the personal mailbox keeps its files permanently.
 				captureSource: 'team_inbox',
-				// A `From:` that DMARC failed is not evidence of who sent this, so
-				// none of its files are indexed at all.
-				dmarcResult: args.mail.dmarcResult,
+				// A `From:` DMARC could not verify is not evidence of who sent
+				// this, so none of its files are indexed at all. The MTA sends no
+				// alignment domains on this wire below its raw-route version; an
+				// absent one simply cannot align, which fails closed.
+				auth: {
+					dmarcResult: args.mail.dmarcResult,
+					spfResult: args.mail.spfResult,
+					dkimResult: args.mail.dkimResult,
+					envelopeFromDomain: args.mail.envelopeFromDomain,
+					dkimSigningDomain: args.mail.dkimSigningDomain,
+				},
 			});
 			await recordCaptureOutcome(ctx, inboundMessageId, outcome);
 		} catch (err) {
@@ -262,6 +271,7 @@ async function dropStagedBlob(
 const SKIP_MARKERS = {
 	unverified: 'skipped_unverified',
 	budget: 'skipped_budget',
+	unscanned: 'skipped_unscanned',
 	cap: 'skipped_cap',
 	too_large: 'skipped_too_large',
 	unsupported_type: 'skipped_unsupported',
@@ -282,16 +292,22 @@ async function recordCaptureOutcome(
 	inboundMessageId: Id<'inboundMessages'>,
 	outcome: AttachmentCaptureOutcome
 ): Promise<void> {
-	// A skip outranks the placeholder note: "the assistant has not read some of
-	// these" is the stronger sentence, and only one line is rendered.
-	const marker: AttachmentIndexing | undefined = outcome.skippedReason
-		? SKIP_MARKERS[outcome.skippedReason]
-		: outcome.indexed === 0
-			? undefined
-			: outcome.namesOnly
-				? 'indexed_placeholder'
-				: 'indexed';
+	const marker = pickIndexingMarker(outcome);
 	if (marker) await markIndexing(ctx, inboundMessageId, marker);
+}
+
+/**
+ * Which single line this outcome renders as, or none.
+ *
+ * A skip outranks the placeholder note: "the assistant has not read some of
+ * these" is the stronger sentence, and only one line is rendered. An if-ladder
+ * rather than a three-level ternary, because the ORDER is the policy and a
+ * reader should not have to re-associate `?:` to see it.
+ */
+function pickIndexingMarker(outcome: AttachmentCaptureOutcome): AttachmentIndexing | undefined {
+	if (outcome.skippedReason) return SKIP_MARKERS[outcome.skippedReason];
+	if (outcome.indexed === 0) return undefined;
+	return outcome.namesOnly ? 'indexed_placeholder' : 'indexed';
 }
 
 /** Record the capture outcome on the row; never fails the ingest. */

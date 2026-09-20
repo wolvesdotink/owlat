@@ -18,7 +18,10 @@ import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { captureAttachments } from '../mail/deliveryPipeline/ingest';
-import { inboundAttachmentCandidates } from '../mail/deliveryPipeline/attachmentParts';
+import {
+	inboundAttachmentCandidates,
+	NOTHING_UNCLEARED,
+} from '../mail/deliveryPipeline/attachmentParts';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -308,10 +311,11 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 				// MIME itself, so the test supplies the same set the scanner hands
 				// it in production.
 				parts: inboundAttachmentCandidates(raw),
-				withheldCount: 0,
+				withheld: NOTHING_UNCLEARED,
 				messageId: '<many-1@example.com>',
 				from: 'Bob <bob@example.com>',
 				captureSource: 'mailbox',
+				auth: {},
 			}
 		);
 

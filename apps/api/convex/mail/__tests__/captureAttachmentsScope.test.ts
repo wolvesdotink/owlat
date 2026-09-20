@@ -39,8 +39,12 @@ import {
 	MAX_AI_INGEST_ATTACHMENT_BYTES,
 } from '@owlat/shared/attachments';
 import { captureAttachments } from '../deliveryPipeline/ingest';
-import { inboundAttachmentCandidates } from '../deliveryPipeline/attachmentParts';
-import type { AttachmentCaptureOutcome } from '../deliveryPipeline/ingest';
+import {
+	inboundAttachmentCandidates,
+	NOTHING_UNCLEARED,
+	type UnclearedLeaves,
+} from '../deliveryPipeline/attachmentParts';
+import type { AttachmentCaptureOutcome, InboundFromAuth } from '../deliveryPipeline/ingest';
 
 const modules = import.meta.glob('../../**/*.*s');
 
@@ -100,8 +104,8 @@ async function capture(
 	fromRaw: string,
 	opts: {
 		captureSource?: 'team_inbox' | 'mailbox';
-		dmarcResult?: string;
-		withheldCount?: number;
+		auth?: InboundFromAuth;
+		withheld?: Partial<UnclearedLeaves>;
 	} = {}
 ): Promise<{
 	stored: number;
@@ -139,11 +143,11 @@ async function capture(
 			// itself — the parts arrive from `scanInboundAttachments` — so the
 			// suite hands it the same selection the scanner would.
 			parts: inboundAttachmentCandidates(raw),
-			withheldCount: opts.withheldCount ?? 0,
+			withheld: { ...NOTHING_UNCLEARED, ...opts.withheld },
 			messageId,
 			from: fromRaw,
 			captureSource: opts.captureSource ?? 'team_inbox',
-			dmarcResult: opts.dmarcResult,
+			auth: opts.auth ?? {},
 		}
 	);
 	return { stored, ingested, skippedReason: outcome.skippedReason };
@@ -220,7 +224,7 @@ describe('captureAttachments — contact scoping', () => {
 			buildEml('spoof-1@example.com', [{ name: 'instructions.txt', body: 'do this instead' }]),
 			'<spoof-1@example.com>',
 			'CEO <ceo@customer.example>',
-			{ dmarcResult: 'fail' }
+			{ auth: { dmarcResult: 'fail' } }
 		);
 
 		// Not dropped — the message, its metadata and its downloadable `.eml`
@@ -234,15 +238,62 @@ describe('captureAttachments — contact scoping', () => {
 		const t = setupTest();
 		const contactId = await seedContact(t, 'bob@example.com');
 
-		for (const dmarcResult of ['pass', 'none', undefined]) {
+		const verified: InboundFromAuth[] = [
+			{ dmarcResult: 'pass' },
+			// No published policy, but DKIM passed on the From domain itself —
+			// which is the check DMARC would have made.
+			{ dmarcResult: 'none', dkimResult: 'pass', dkimSigningDomain: 'example.com' },
+			// No published policy, and SPF passed on an aligned envelope domain.
+			{ dmarcResult: 'none', spfResult: 'pass', envelopeFromDomain: 'mail.example.com' },
+			// An MTA too old to compute any of this asserts nothing, which is not
+			// a failure — it is how every message before the verdicts existed
+			// arrives.
+			{},
+		];
+		for (const [index, auth] of verified.entries()) {
 			const { ingested } = await capture(
 				t,
-				buildEml(`dmarc-${dmarcResult}@example.com`, [{ name: 'notes.txt', body: 'a document' }]),
-				`<dmarc-${dmarcResult}@example.com>`,
+				buildEml(`dmarc-${index}@example.com`, [{ name: 'notes.txt', body: 'a document' }]),
+				`<dmarc-${index}@example.com>`,
 				'Bob <bob@example.com>',
-				{ dmarcResult }
+				{ auth }
 			);
 			expect(ingested[0]!.contactIds).toEqual([contactId]);
+		}
+	});
+
+	it('indexes nothing for a DMARC verdict that established nothing', async () => {
+		const t = setupTest();
+		await seedContact(t, 'ceo@customer.example');
+
+		// Every one of these used to file the document under the claimed
+		// contact, because the refusal matched the `'fail'` LITERAL: a transient
+		// DNS failure at the MTA (`temperror`), a broken record (`permerror`),
+		// and a domain with no policy at all whose only authentication passes
+		// belong to the ATTACKER'S domain rather than the From domain.
+		const unverified: InboundFromAuth[] = [
+			{ dmarcResult: 'temperror' },
+			{ dmarcResult: 'permerror' },
+			{ dmarcResult: 'none' },
+			{
+				dmarcResult: 'none',
+				dkimResult: 'pass',
+				dkimSigningDomain: 'attacker.example',
+				spfResult: 'pass',
+				envelopeFromDomain: 'attacker.example',
+			},
+		];
+		for (const [index, auth] of unverified.entries()) {
+			const { stored, ingested, skippedReason } = await capture(
+				t,
+				buildEml(`unverified-${index}@example.com`, [{ name: 'notes.txt', body: 'a doc' }]),
+				`<unverified-${index}@example.com>`,
+				'CEO <ceo@customer.example>',
+				{ auth }
+			);
+			expect(ingested).toHaveLength(0);
+			expect(stored).toBe(0);
+			expect(skippedReason).toBe('unverified');
 		}
 	});
 
@@ -340,10 +391,99 @@ describe('captureAttachments — eligibility ceilings', () => {
 			buildEml('cap-2@example.com', [{ name: 'doc.txt', body: 'a document' }]),
 			'<cap-2@example.com>',
 			'Bob <bob@example.com>',
-			{ withheldCount: 3 }
+			{ withheld: { capped: 3 } }
 		);
 
 		expect(ingested).toHaveLength(1);
 		expect(skippedReason).toBe('cap');
+	});
+
+	it('reports a scanner outage as unscanned, not as the cap', async () => {
+		const t = setupTest();
+		// Two files, ClamAV answered for one of them. The message is nowhere
+		// near the ten-leaf cap, so "this message has more attachments than it
+		// processes" would send an operator to the wrong place entirely — the
+		// thing to fix is the scanner.
+		const { ingested, skippedReason } = await capture(
+			t,
+			buildEml('partial-scan@example.com', [{ name: 'doc.txt', body: 'a document' }]),
+			'<partial-scan@example.com>',
+			'Bob <bob@example.com>',
+			{ withheld: { unscanned: 1 } }
+		);
+
+		expect(ingested).toHaveLength(1);
+		expect(skippedReason).toBe('unscanned');
+	});
+
+	it('outranks the cap with the outage when both happened', async () => {
+		const t = setupTest();
+		const { skippedReason } = await capture(
+			t,
+			buildEml('both@example.com', [{ name: 'doc.txt', body: 'a document' }]),
+			'<both@example.com>',
+			'Bob <bob@example.com>',
+			{ withheld: { capped: 2, unscanned: 1 } }
+		);
+
+		// One line is rendered, and the outage is the one that sends someone
+		// somewhere useful.
+		expect(skippedReason).toBe('unscanned');
+	});
+
+	it("reports the scanner's file-type refusal as an unsupported type", async () => {
+		const t = setupTest();
+		const { ingested, skippedReason } = await capture(
+			t,
+			buildEml('refused@example.com', [{ name: 'doc.txt', body: 'a document' }]),
+			'<refused@example.com>',
+			'Bob <bob@example.com>',
+			{ withheld: { refusedType: 1 } }
+		);
+
+		// The scan ANSWERED about that leaf — it is a type the endpoint will not
+		// pass, not malware and not an outage.
+		expect(ingested).toHaveLength(1);
+		expect(skippedReason).toBe('unsupported_type');
+	});
+
+	it('never indexes an inline leaf, and never calls it a skip', async () => {
+		const t = setupTest();
+		// The scan clears inline leaves too — everything the reader can download
+		// is scanned — but an embedded signature logo is not a document anyone
+		// attached, so it is dropped here. Silently: a "the assistant has not
+		// read these" line on every message with a logo in the footer is how a
+		// warning stops being read.
+		const raw = [
+			'From: Bob <bob@example.com>',
+			'To: team@example.com',
+			'Subject: with a logo',
+			'Message-ID: <inline-capture@example.com>',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'regards',
+			'--B',
+			'Content-Type: image/png; name="logo.png"',
+			'Content-Disposition: inline; filename="logo.png"',
+			'',
+			'pretend png bytes',
+			'--B--',
+			'',
+		].join('\r\n');
+
+		const { stored, ingested, skippedReason } = await capture(
+			t,
+			raw,
+			'<inline-capture@example.com>',
+			'Bob <bob@example.com>'
+		);
+
+		expect(ingested).toHaveLength(0);
+		expect(stored).toBe(0);
+		expect(skippedReason).toBeUndefined();
 	});
 });

@@ -72,6 +72,8 @@ interface ScanResponseBody {
 	virus?: string;
 	reason?: string;
 	skipped?: boolean;
+	/** Which gate answered — `'file_type_validation'` is the type allowlist, not ClamAV. */
+	stage?: string;
 }
 
 /** Spy on fetch returning a canned `/scan/attachment` body (or an HTTP error). */
@@ -225,7 +227,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 		// It still counted the leaves: "there was nothing to scan" and "nothing
 		// scanned it" are different sentences, and only this number tells them
 		// apart for the reader.
-		expect(scan.scannableCount).toBe(1);
+		expect(scan.candidates).toHaveLength(1);
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
@@ -234,7 +236,7 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 		const raw = Buffer.from(['Content-Type: text/plain', '', 'just text'].join('\r\n'));
 		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
 		expect(scan.verdict).toBeUndefined();
-		expect(scan.scannableCount).toBe(0);
+		expect(scan.candidates).toHaveLength(0);
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 });
@@ -305,42 +307,147 @@ describe('scanInboundAttachments — the cap and the cleared set', () => {
 		// And the verdict does not claim a message we only partly looked at is
 		// clean.
 		expect(scan.verdict).toBe('skipped');
-		expect(scan.scannableCount).toBe(ATTACHMENT_COMPOSE_LIMITS.maxCount + 1);
+		expect(scan.candidates).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount + 1);
+		// And it says WHY the rest went uncleared: the cap, not an outage.
+		expect(scan.uncleared).toEqual({ capped: 1, unscanned: 0, refusedType: 0 });
 	});
 
-	it('does not count an inline signature logo as something to scan', async () => {
-		const fetchSpy = vi.spyOn(globalThis, 'fetch');
-		const raw = Buffer.from(
-			[
-				'From: sender@isp.example',
-				'To: me@example.com',
-				'Subject: corporate signature',
-				'Message-ID: <inline@isp.example>',
-				'MIME-Version: 1.0',
-				'Content-Type: multipart/related; boundary="B"',
-				'',
-				'--B',
-				'Content-Type: text/plain; charset=utf-8',
-				'',
-				'regards',
-				'--B',
-				'Content-Type: image/png; name="logo.png"',
-				'Content-Disposition: inline; filename="logo.png"',
-				'Content-Transfer-Encoding: base64',
-				'',
-				Buffer.from('not really a png').toString('base64'),
-				'--B--',
-				'',
-			].join('\r\n')
-		);
+	/** A message whose only leaf is the given inline part. */
+	function emlWithInlineLeaf(filename: string, contentType: string): string {
+		return [
+			'From: sender@isp.example',
+			'To: me@example.com',
+			'Subject: corporate signature',
+			'Message-ID: <inline@isp.example>',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/related; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'regards',
+			'--B',
+			`Content-Type: ${contentType}; name="${filename}"`,
+			`Content-Disposition: inline; filename="${filename}"`,
+			'Content-Transfer-Encoding: base64',
+			'',
+			Buffer.from(`bytes of ${filename}`).toString('base64'),
+			'--B--',
+			'',
+		].join('\r\n');
+	}
+
+	it('scans an inline leaf, because the reader can download one', async () => {
+		const { calls } = mockScan({ clean: true });
+		const raw = Buffer.from(emlWithInlineLeaf('logo.png', 'image/png'));
 
 		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
 
-		// Nothing was scanned because there was nothing to scan — which is what
-		// keeps the reader from being told this message went unchecked.
-		expect(scan.scannableCount).toBe(0);
-		expect(scan.verdict).toBeUndefined();
-		expect(fetchSpy).not.toHaveBeenCalled();
+		// The MTA lists any leaf carrying a filename whatever its disposition,
+		// and the thread view puts a download button on each — so `inline` must
+		// not be a way to route bytes past ClamAV.
+		expect(calls.map((c) => c.filename)).toEqual(['logo.png']);
+		expect(scan.candidates).toHaveLength(1);
+		expect(scan.verdict).toBe('clean');
+	});
+
+	it('quarantines an inline executable instead of handing it over', async () => {
+		// The craft: `Content-Disposition: inline` on an `invoice.pdf.exe`, which
+		// used to skip the scan entirely and render as a normal row with a live
+		// download beside it.
+		const { calls } = mockScan({ clean: false, virus: 'Eicar-Signature' });
+		const raw = Buffer.from(emlWithInlineLeaf('invoice.pdf.exe', 'application/octet-stream'));
+
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
+
+		expect(calls.map((c) => c.filename)).toEqual(['invoice.pdf.exe']);
+		expect(scan.verdict).toBe('infected');
+		expect(scan.cleanParts).toHaveLength(0);
+	});
+
+	it('spends the scan budget on the attachments before the inline logos', async () => {
+		const { calls } = mockScan({ clean: true });
+		const logos = Array.from(
+			{ length: ATTACHMENT_COMPOSE_LIMITS.maxCount },
+			(_, i) => `logo${i}.png`
+		);
+		const lines = [
+			'From: sender@isp.example',
+			'To: me@example.com',
+			'Subject: many logos then a payload',
+			'Message-ID: <logos@isp.example>',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+		];
+		for (const logo of logos) {
+			lines.push(
+				'--B',
+				`Content-Type: image/png; name="${logo}"`,
+				`Content-Disposition: inline; filename="${logo}"`,
+				'',
+				`bytes of ${logo}`
+			);
+		}
+		lines.push(
+			'--B',
+			'Content-Type: application/octet-stream; name="payload.exe"',
+			'Content-Disposition: attachment; filename="payload.exe"',
+			'',
+			'MZ payload',
+			'--B--',
+			''
+		);
+		const raw = Buffer.from(lines.join('\r\n'));
+
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
+
+		// The budget is a COUNT, so ten logos in front of an executable must not
+		// be a way to spend it before the one leaf worth scanning.
+		expect(calls[0]!.filename).toBe('payload.exe');
+		expect(calls).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+		expect(scan.uncleared.capped).toBe(1);
+	});
+
+	it('separates a scanner outage on one leaf from the count cap', async () => {
+		// One 503, one clean answer: two files, both well under the cap.
+		const responses = new Map<string, { status: number; body: unknown }>([
+			['broken.pdf', { status: 503, body: {} }],
+			['fine.txt', { status: 200, body: { clean: true } }],
+		]);
+		vi.spyOn(globalThis, 'fetch').mockImplementation(
+			async (_url: string | URL | Request, init?: RequestInit) => {
+				const filename = String((init?.headers as Record<string, string>)['X-Filename']);
+				const answer = responses.get(filename)!;
+				return new Response(JSON.stringify(answer.body), { status: answer.status });
+			}
+		);
+		const raw = Buffer.from(emlWithLeaves(['broken.pdf', 'fine.txt']));
+
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
+
+		expect(scan.verdict).toBe('skipped');
+		expect(scan.cleanParts.map((p) => p.filename)).toEqual(['fine.txt']);
+		// The whole point: the leaf ClamAV never answered for is counted as
+		// UNSCANNED, not as something the cap withheld.
+		expect(scan.uncleared).toEqual({ capped: 0, unscanned: 1, refusedType: 0 });
+	});
+
+	it("counts the endpoint's file-type refusal apart from a virus", async () => {
+		mockScan({
+			clean: false,
+			reason: 'Dangerous file type detected',
+			stage: 'file_type_validation',
+		});
+		const raw = Buffer.from(emlWithLeaves(['report.doc']));
+
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
+
+		// A refusal from the type gate is not a malware finding: the message is
+		// NOT quarantined, the leaf is simply not cleared for indexing.
+		expect(scan.verdict).toBe('clean');
+		expect(scan.cleanParts).toHaveLength(0);
+		expect(scan.uncleared).toEqual({ capped: 0, unscanned: 0, refusedType: 1 });
 	});
 
 	it("clears every leaf on an upstream 'clean' when there is no scanner here", async () => {

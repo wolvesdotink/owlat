@@ -12491,6 +12491,7 @@
 				"shareDone": "{filename} is now a link in your message",
 				"shareInfected": "{filename} was blocked by the malware scan and was not shared",
 				"shareOperation": "sharing the attachment as a link",
+				"shareRefused": "{filename} is a file type that cannot be shared as a link",
 				"tooLarge": "{filename} is too large (max {max} MB).",
 				"tooManyFiles": "You can attach up to {count} files.",
 				"totalTooLarge": "Attachments exceed the {max} MB total limit.",

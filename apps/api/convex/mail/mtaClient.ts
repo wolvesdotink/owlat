@@ -51,7 +51,18 @@ interface AttachmentScanResponse {
 	virus?: string;
 	reason?: string;
 	skipped?: boolean;
+	/**
+	 * WHICH gate answered. The endpoint runs its file-type allowlist BEFORE
+	 * ClamAV and answers a refusal with the same `clean: false` shape a virus
+	 * gets, tagged `'file_type_validation'` (see `apps/mta/src/routes/scan.ts`).
+	 * Without reading it, a legacy `.doc` — an OLE2 container the type gate used
+	 * to call an installer — came back indistinguishable from a trojan.
+	 */
+	stage?: string;
 }
+
+/** The `stage` the MTA tags a refusal from its file-type allowlist with. */
+const FILE_TYPE_REFUSAL_STAGE = 'file_type_validation';
 
 /**
  * Normalized verdict from {@link scanAttachmentBytes}. The three outbound /
@@ -65,11 +76,16 @@ interface AttachmentScanResponse {
  *     `scannerHealth.warnScanSkipped` inside the client (except the
  *     not-configured case, which is silent by design). Fail-open: the caller
  *     proceeds without a clean assertion.
+ *   - `'refused'` — the endpoint's file-type allowlist would not pass this
+ *     file through, and ClamAV never ran. NOT a malware finding: the reason is
+ *     a policy sentence about the type, and a caller that renders it as
+ *     "malware was found" is lying about a customer's legacy Word document.
  *   - `'clean'` — the file was scanned and came back clean.
  */
-type AttachmentScanVerdict =
+export type AttachmentScanVerdict =
 	| { kind: 'clean' }
 	| { kind: 'infected'; reason: string }
+	| { kind: 'refused'; reason: string }
 	| { kind: 'skipped'; reason?: string };
 
 /**
@@ -115,6 +131,15 @@ export async function scanAttachmentBytes(
 
 		const result = (await res.json()) as AttachmentScanResponse;
 		if (!result.clean && !result.skipped) {
+			// The type gate, not the virus gate. Told apart HERE, once, because
+			// the difference decides whether a message is quarantined and its
+			// reader told malware was found in it.
+			if (result.stage === FILE_TYPE_REFUSAL_STAGE) {
+				return {
+					kind: 'refused',
+					reason: result.reason ?? 'file type not accepted',
+				};
+			}
 			return {
 				kind: 'infected',
 				reason: result.reason ?? result.virus ?? 'unknown threat',

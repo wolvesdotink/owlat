@@ -18,17 +18,46 @@ import { extractAttachments } from '@owlat/shared/mailMime';
 export type InboundAttachmentPart = ReturnType<typeof extractAttachments>[number];
 
 /**
- * Every leaf of a received message that is a real attachment, in MIME order.
+ * Why a leaf of a received message was NOT cleared for indexing. Counted per
+ * cause, because the causes send a reader to different places: "this message
+ * has more attachments than we process" and "the scanner could not look at one
+ * of these" are not the same sentence, and one number standing in for both
+ * reported a ClamAV outage as a message with too many files.
+ */
+export type UnclearedLeaves = {
+	/** Never opened at all — past the per-message scan count cap. */
+	capped: number;
+	/** The scanner could not answer: outage, timeout, or its own fail-open skip. */
+	unscanned: number;
+	/** The scanner refused the file type before ClamAV ever ran. */
+	refusedType: number;
+};
+
+/** No leaf was withheld, for any reason. */
+export const NOTHING_UNCLEARED: UnclearedLeaves = { capped: 0, unscanned: 0, refusedType: 0 };
+
+/**
+ * Every leaf of a received message that the reader will see listed, scan order
+ * first.
  *
- * Inline parts (embedded logos, signature images) are not documents a reader
- * thinks of as attachments and carry no delivery-gating risk worth a scan
- * round-trip; an empty part is not bytes at all. Everything else — including
- * types the file-type allowlist will refuse and parts over the AI ceiling — IS
- * a candidate, because the malware verdict is about the whole message and a
- * `.exe` is precisely the leaf worth scanning.
+ * THE SET IS THE ONE THE READER GETS, not a narrower one. This used to drop
+ * every `Content-Disposition: inline` leaf on the grounds that a signature logo
+ * is not a document — but the MTA lists any leaf carrying a filename whatever
+ * its disposition (`mail-message/parse/body.isAttachmentPart`), the thread view
+ * renders a download button for each, and so one header word (`inline` instead
+ * of `attachment` on an `invoice.pdf.exe`) bought a sender a live download of
+ * bytes ClamAV never saw. Everything the reader can download is scanned; what
+ * may be INDEXED is narrowed later, inside capture, out of this same set.
+ *
+ * ORDERED, because the scan budget is a COUNT: attachment-disposition leaves
+ * come first so a message of ten inline logos followed by an executable spends
+ * the budget on the executable. Empty parts are not bytes at all and carry no
+ * verdict worth a round-trip.
  */
 export function inboundAttachmentCandidates(rawBinary: string): InboundAttachmentPart[] {
-	return extractAttachments(rawBinary).filter(
-		(part) => part.disposition !== 'inline' && part.bytes.byteLength > 0
-	);
+	const leaves = extractAttachments(rawBinary).filter((part) => part.bytes.byteLength > 0);
+	return [
+		...leaves.filter((part) => part.disposition !== 'inline'),
+		...leaves.filter((part) => part.disposition === 'inline'),
+	];
 }

@@ -220,7 +220,16 @@ export interface MailboxInboundPayload extends InboundAuthVerdicts {
 /** Parsed inbound email content forwarded to Convex (AI-inbox `inbound.received`) */
 export interface InboundEmailPayload extends Pick<
 	InboundAuthVerdicts,
-	'spfResult' | 'dkimResult' | 'dmarcResult' | 'dmarcPolicy'
+	| 'spfResult'
+	| 'dkimResult'
+	| 'dmarcResult'
+	| 'dmarcPolicy'
+	// The alignment inputs ride along too: Convex decides whether a From with
+	// no published DMARC policy may still be scoped to the contact it claims,
+	// and that decision is only worth anything with the authenticated domains
+	// in hand.
+	| 'envelopeFromDomain'
+	| 'dkimSigningDomain'
 > {
 	from: string;
 	to: string;

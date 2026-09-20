@@ -164,6 +164,32 @@ function stubScanner(verdict: { clean: boolean; virus?: string }): { calls: () =
 	return { calls: () => calls };
 }
 
+/**
+ * Stub `/scan/attachment` with a per-filename answer, so one message can have a
+ * leaf the scanner cleared and a leaf it never answered for.
+ *
+ * A filename with no entry gets a clean verdict; an entry of `503` answers the
+ * HTTP error the shared client fails open on.
+ */
+function stubScannerPerFile(answers: Record<string, { clean: boolean; stage?: string } | 503>): {
+	scanned: () => string[];
+} {
+	const scanned: string[] = [];
+	globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = typeof input === 'string' ? input : input.toString();
+		if (!url.includes('/scan/attachment')) throw new Error(`unexpected fetch: ${url}`);
+		const filename = String((init?.headers as Record<string, string>)['X-Filename']);
+		scanned.push(filename);
+		const answer = answers[filename] ?? { clean: true };
+		if (answer === 503) return new Response('scanner down', { status: 503 });
+		return new Response(JSON.stringify(answer), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}) as unknown as typeof globalThis.fetch;
+	return { scanned: () => scanned };
+}
+
 /** A two-part message: a text body plus one .txt attachment leaf. */
 function buildEmlWithAttachment(messageId: string): string {
 	return [
@@ -718,16 +744,17 @@ describe('inboundIngest — the set that was scanned is the set that is indexed'
 });
 
 describe('inboundIngest — what the row says about files nobody read', () => {
-	it('does not claim an inline signature logo went unscanned', async () => {
+	it('scans an inline signature logo but never indexes it', async () => {
 		const t = setupTest();
 		configureMta();
-		const scanner = stubScanner({ clean: true });
+		const scanner = stubScannerPerFile({});
 
-		// Ordinary corporate mail: the MTA reports the logo in `attachments`
-		// (its parser carries inline parts there), but an inline part is not a
-		// document and is never scanned. Keying the warning off the reported
-		// count told every such reader their files had not been checked —
-		// a warning about nothing, which is how a warning stops being read.
+		// Ordinary corporate mail. The logo IS scanned — the MTA lists it in
+		// `attachments` and the thread view offers a download for it, so
+		// `inline` must not be a way past ClamAV — but it is not a document
+		// anyone attached, so nothing is indexed and nothing is claimed unread.
+		// A warning here would be a warning about nothing, which is how a
+		// warning stops being read.
 		const raw = [
 			'From: Bob <bob@example.com>',
 			'To: inbox@example.com',
@@ -757,9 +784,190 @@ describe('inboundIngest — what the row says about files nobody read', () => {
 
 		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
 		expect(rows).toHaveLength(1);
-		expect(scanner.calls()).toBe(0);
-		expect(rows[0]!.virusVerdict).toBeUndefined();
+		expect(scanner.scanned()).toEqual(['logo.png']);
+		expect(rows[0]!.virusVerdict).toBe('clean');
 		expect(rows[0]!.attachmentIndexing).toBeUndefined();
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
+	});
+
+	it('quarantines an INLINE executable instead of offering it for download', async () => {
+		const t = setupTest();
+		configureMta();
+		// The craft is one header word: `Content-Disposition: inline` on an
+		// `invoice.pdf.exe`. The leaf used to be dropped before the scan, so the
+		// message stored no verdict at all and the thread view rendered a normal
+		// row with a live download beside it — the same file with `attachment`
+		// would have been scanned and quarantined.
+		const scanner = stubScannerPerFile({
+			'invoice.pdf.exe': { clean: false },
+		});
+
+		await ingest(
+			t,
+			'inline-exe@example.com',
+			encode(
+				buildEmlWithLeaf('inline-exe@example.com', {
+					headers: [
+						'Content-Type: application/octet-stream; name="invoice.pdf.exe"',
+						'Content-Disposition: inline; filename="invoice.pdf.exe"',
+						'Content-Transfer-Encoding: base64',
+					],
+					body: Buffer.from('MZ this is an executable').toString('base64'),
+				})
+			),
+			[
+				{
+					filename: 'invoice.pdf.exe',
+					contentType: 'application/octet-stream',
+					size: 24,
+					partIndex: '1',
+				},
+			]
+		);
+
+		expect(scanner.scanned()).toEqual(['invoice.pdf.exe']);
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows[0]!.virusVerdict).toBe('infected');
+		expect(rows[0]!.processingStatus).toBe('quarantined');
+
+		// And the signed-URL source refuses it, so the download the reader hides
+		// is refused server-side too.
+		const storageId = await t.run(async (ctx) => {
+			const row = await ctx.db.get(rows[0]!._id);
+			return row!.rawStorageId;
+		});
+		expect(storageId).toBeTruthy();
+		await expect(
+			t.query(internal.inbox.rawMessage.getInboundMessageRawStorageId, {
+				messageId: rows[0]!._id,
+			})
+		).resolves.toBeNull();
+	});
+
+	it('marks an inline leaf the scanner could not answer for as unscanned', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScannerPerFile({ 'invoice.pdf.exe': 503 });
+
+		await ingest(
+			t,
+			'inline-skip@example.com',
+			encode(
+				buildEmlWithLeaf('inline-skip@example.com', {
+					headers: [
+						'Content-Type: application/octet-stream; name="invoice.pdf.exe"',
+						'Content-Disposition: inline; filename="invoice.pdf.exe"',
+						'Content-Transfer-Encoding: base64',
+					],
+					body: Buffer.from('MZ this is an executable').toString('base64'),
+				})
+			),
+			[
+				{
+					filename: 'invoice.pdf.exe',
+					contentType: 'application/octet-stream',
+					size: 24,
+					partIndex: '1',
+				},
+			]
+		);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows[0]!.virusVerdict).toBe('skipped');
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_unscanned');
+	});
+
+	it('says a leaf went UNSCANNED, not that the message outran the cap', async () => {
+		const t = setupTest();
+		configureMta();
+		// Two files, ClamAV answered for one of them. Reporting this as the cap
+		// ("this message has more attachments than it processes") on a
+		// two-attachment message sends an operator to a limit instead of to the
+		// scanner outage that is the thing to fix.
+		const { scanned } = stubScannerPerFile({ 'broken.pdf': 503 });
+
+		const lines = [
+			'From: Bob <bob@example.com>',
+			'To: inbox@example.com',
+			'Subject: two files',
+			'Message-ID: <partial-scan@example.com>',
+			'Content-Type: multipart/mixed; boundary="bb"',
+			'',
+			'--bb',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'See attached.',
+			'',
+			'--bb',
+			'Content-Type: application/pdf; name="broken.pdf"',
+			'Content-Disposition: attachment; filename="broken.pdf"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			Buffer.from('%PDF-1.4 pretend').toString('base64'),
+			'',
+			'--bb',
+			'Content-Type: text/plain; name="notes.txt"',
+			'Content-Disposition: attachment; filename="notes.txt"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			Buffer.from('a real document with enough words in it to summarise').toString('base64'),
+			'',
+			'--bb--',
+			'',
+		].join('\r\n');
+
+		await ingest(t, 'partial-scan@example.com', encode(lines), [
+			{ filename: 'broken.pdf', contentType: 'application/pdf', size: 16, partIndex: '1' },
+			{ filename: 'notes.txt', contentType: 'text/plain', size: 52, partIndex: '2' },
+		]);
+
+		expect(scanned()).toEqual(['broken.pdf', 'notes.txt']);
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		// Only the leaf the scanner cleared reached a model...
+		expect(files.map((f) => f.filename)).toEqual(['notes.txt']);
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		// ...and the line the reader gets names the outage.
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_unscanned');
+	});
+
+	it('does not call a file-type refusal from the scanner malware', async () => {
+		const t = setupTest();
+		configureMta();
+		// The MTA's `/scan/attachment` runs its file-type allowlist BEFORE
+		// ClamAV and refuses with the same `clean: false` envelope a virus gets,
+		// tagged `file_type_validation`. Read as malware, a customer's legacy
+		// Word document quarantined the message, suppressed the reply draft and
+		// told the operator malware had been found.
+		stubScannerPerFile({
+			'report.doc': { clean: false, stage: 'file_type_validation' },
+		});
+
+		await ingest(
+			t,
+			'legacy-doc@example.com',
+			encode(
+				buildEmlWithLeaf('legacy-doc@example.com', {
+					headers: [
+						'Content-Type: application/msword; name="report.doc"',
+						'Content-Disposition: attachment; filename="report.doc"',
+						'Content-Transfer-Encoding: base64',
+					],
+					body: Buffer.from('\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 an OLE2 document', 'latin1').toString(
+						'base64'
+					),
+				})
+			),
+			[{ filename: 'report.doc', contentType: 'application/msword', size: 30, partIndex: '1' }]
+		);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]!.virusVerdict).not.toBe('infected');
+		expect(rows[0]!.processingStatus).not.toBe('quarantined');
+		// Not read, but not malware either: the line says the type was not
+		// processed.
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_unsupported');
 	});
 
 	it('marks a Word document as name-only rather than indexed', async () => {

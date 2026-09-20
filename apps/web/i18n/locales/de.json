@@ -12491,6 +12491,7 @@
 				"shareDone": "{filename} liegt jetzt als Link in deiner Nachricht",
 				"shareInfected": "{filename} wurde vom Virenscanner blockiert und nicht geteilt",
 				"shareOperation": "Anhang als Link teilen",
+				"shareRefused": "{filename} ist ein Dateityp, der nicht als Link geteilt werden kann",
 				"tooLarge": "{filename} ist zu groß (max. {max} MB).",
 				"tooManyFiles": "Sie können bis zu {count} Dateien anhängen.",
 				"totalTooLarge": "Die Anhänge überschreiten das Gesamtlimit von {max} MB.",

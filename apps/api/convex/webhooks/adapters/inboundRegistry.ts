@@ -69,6 +69,17 @@ export const inboundEmailMessageValidator = v.object({
 	dkimResult: v.optional(v.string()),
 	dmarcResult: v.optional(v.string()),
 	dmarcPolicy: v.optional(v.string()),
+	/**
+	 * DMARC ALIGNMENT INPUTS — the domains SPF and DKIM actually authenticated.
+	 * Carried because a pass on its own says nothing about the `From:` a reader
+	 * sees: an attacker can DKIM-sign their own mail and still claim to be the
+	 * CEO. Attachment capture uses them to decide whether a `dmarcResult` of
+	 * `'none'` (a From domain with no published policy) may still be scoped to
+	 * the claimed contact. Absent on an older MTA — and an absent domain cannot
+	 * align, which fails closed.
+	 */
+	envelopeFromDomain: v.optional(v.string()),
+	dkimSigningDomain: v.optional(v.string()),
 });
 
 export type InboundEmailMessage = Infer<typeof inboundEmailMessageValidator>;
@@ -105,16 +116,14 @@ export interface MtaInboundWirePayload {
 		references?: string;
 		/** The whole received message, base64 RFC822. Absent on an older MTA. */
 		rawBytesBase64?: string;
-		attachments: Array<{
-			filename?: string;
-			contentType: string;
-			size: number;
-			partIndex?: string;
-		}>;
+		/** Exactly the element shape the validator above defines — not a fifth spelling of it. */
+		attachments: InboundEmailMessage['attachments'];
 		spfResult?: string;
 		dkimResult?: string;
 		dmarcResult?: string;
 		dmarcPolicy?: string;
+		envelopeFromDomain?: string;
+		dkimSigningDomain?: string;
 	};
 }
 
@@ -237,6 +246,8 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 			dkimResult: input.dkimResult,
 			dmarcResult: input.dmarcResult,
 			dmarcPolicy: input.dmarcPolicy,
+			envelopeFromDomain: input.envelopeFromDomain,
+			dkimSigningDomain: input.dkimSigningDomain,
 		};
 	}
 }
