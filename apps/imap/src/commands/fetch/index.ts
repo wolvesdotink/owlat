@@ -6,6 +6,7 @@ import type { ImapCommandModule } from '../types.js';
 import { asyncSession, syncSession } from '../helpers/session.js';
 import { requireAuth, requireSelect } from '../helpers/auth.js';
 import { buildSeqMap, resolveSet } from '../helpers/seqMap.js';
+import { loadEnvelopes, loadFolderUids } from '../helpers/folderPaging.js';
 import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
 import { type BodySectionRequest, formatBodySection, parseBodySectionItem } from './bodySection.js';
 
@@ -77,10 +78,7 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				// resolve the set against it. A non-UID set holds positions; a
 				// UID set holds UIDs. Either way `resolved` is ordered by true
 				// sequence number and carries the UID to fetch.
-				const folderUids = (await deps.convex.query(
-					fn.listFolderUids as never,
-					{ folderId: state.selected!.folderId } as never
-				)) as number[];
+				const folderUids = await loadFolderUids(deps.convex, state.selected!.folderId);
 				const seqMap = buildSeqMap(folderUids);
 				const resolved = resolveSet(seqMap, args.set, args.byUid);
 
@@ -89,18 +87,18 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 					return;
 				}
 
-				// One envelope query over the min..max UID span; index the rows
-				// by UID so each resolved {uid, seq} can be emitted in true
-				// sequence order even across gaps.
+				// Envelopes for the requested min..max UID window only, read in
+				// bounded pages (`FETCH 1:*` on a large folder would otherwise be
+				// one read of every document in it). Rows are indexed by UID so
+				// each resolved {uid, seq} is emitted in true sequence order even
+				// across gaps.
 				const uids = resolved.map((r) => r.uid);
-				const slice = (await deps.convex.query(
-					fn.fetchEnvelopes as never,
-					{
-						folderId: state.selected!.folderId,
-						uidLow: Math.min(...uids),
-						uidHigh: Math.max(...uids),
-					} as never
-				)) as FetchEnvelope[];
+				const slice = await loadEnvelopes(
+					deps.convex,
+					state.selected!.folderId,
+					Math.min(...uids),
+					Math.max(...uids)
+				);
 				const byUidMap = new Map<number, FetchEnvelope>();
 				for (const m of slice) byUidMap.set(m.uid, m);
 
