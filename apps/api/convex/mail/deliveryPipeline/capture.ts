@@ -258,6 +258,23 @@ export async function captureAttachments(
 	},
 	input: CaptureAttachmentsInput
 ): Promise<AttachmentCaptureOutcome> {
+	// INLINE LEAVES ARE SCANNED BUT NOT INDEXED. The scan covers everything the
+	// reader can download — a `Content-Disposition: inline` executable included
+	// — while a signature logo is not a document anyone meant to send, so it is
+	// dropped HERE, out of the cleared set, rather than by a second walk of the
+	// raw bytes that could disagree with the scanner about which leaf is which.
+	// Silent on purpose: an embedded logo nobody attached is not a file the
+	// reader is waiting for the assistant to read.
+	const indexable = input.parts.filter((part) => part.disposition !== 'inline');
+	const anyWithheld =
+		input.withheld.capped + input.withheld.unscanned + input.withheld.refusedType > 0;
+
+	// Nothing to index and nothing withheld — an ordinary message, or one whose
+	// only leaf is an embedded logo. There is no outcome to report, and
+	// reporting one anyway would log a line about every plain message that ever
+	// arrives from a domain with no DMARC record.
+	if (indexable.length === 0 && !anyWithheld) return { indexed: 0 };
+
 	// An unverifiable sender is refused before any of the size/type work: there
 	// is no scope this message's files could safely be filed under, so the
 	// answer is not "file them somewhere wider" but "do not file them".
@@ -272,15 +289,6 @@ export async function captureAttachments(
 		);
 		return { indexed: 0, skippedReason: 'unverified' };
 	}
-
-	// INLINE LEAVES ARE SCANNED BUT NOT INDEXED. The scan covers everything the
-	// reader can download — a `Content-Disposition: inline` executable included
-	// — while a signature logo is not a document anyone meant to send, so it is
-	// dropped HERE, out of the cleared set, rather than by a second walk of the
-	// raw bytes that could disagree with the scanner about which leaf is which.
-	// Silent on purpose: an embedded logo nobody attached is not a file the
-	// reader is waiting for the assistant to read.
-	const indexable = input.parts.filter((part) => part.disposition !== 'inline');
 
 	// Decide the whole batch up front: the budget is charged once for what will
 	// actually be ingested, so a message of inline logos costs nothing.

@@ -447,6 +447,36 @@ describe('captureAttachments — eligibility ceilings', () => {
 		expect(skippedReason).toBe('unsupported_type');
 	});
 
+	it('reports nothing at all for a message that carries no files', async () => {
+		const t = setupTest();
+		// Capture runs on every delivered message now, including the plain ones.
+		// A message with no leaves has no outcome to report — and reporting one
+		// would put an "unverified sender" line, and a log entry, on every plain
+		// message from every domain with no DMARC record.
+		const raw = [
+			'From: CEO <ceo@customer.example>',
+			'To: team@example.com',
+			'Subject: just a note',
+			'Message-ID: <plain@example.com>',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'no attachments here',
+			'',
+		].join('\r\n');
+
+		const { stored, ingested, skippedReason } = await capture(
+			t,
+			raw,
+			'<plain@example.com>',
+			'CEO <ceo@customer.example>',
+			{ auth: { dmarcResult: 'fail' } }
+		);
+
+		expect(ingested).toHaveLength(0);
+		expect(stored).toBe(0);
+		expect(skippedReason).toBeUndefined();
+	});
+
 	it('never indexes an inline leaf, and never calls it a skip', async () => {
 		const t = setupTest();
 		// The scan clears inline leaves too — everything the reader can download
