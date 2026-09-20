@@ -39,7 +39,23 @@ afterAll(() => server.close());
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
-	execSyncMock.mockReset().mockReturnValue('');
+	// /update now preflights the Docker API, reads the service list and
+	// inspects this container before it recreates anything, so a mock that
+	// answers '' to everything describes a broken host and never reaches the
+	// critical section this file is about.
+	execSyncMock.mockReset().mockImplementation((file: unknown, args: unknown) => {
+		const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
+		if (cmd.includes('config --services')) return 'web\nupdater\n';
+		if (cmd.startsWith('docker inspect')) {
+			return [
+				'ghcr.io/wolvesdotink/updater:0.5.0',
+				`/srv/owlat:${OWLAT_DIR}:rw `,
+				'owlat_default ',
+			].join('\n');
+		}
+		if (cmd.startsWith('docker run')) return 'helper-container-id\n';
+		return '';
+	});
 	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nCOMPOSE_PROFILES=\n');
 });
 
