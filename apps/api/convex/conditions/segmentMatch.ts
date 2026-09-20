@@ -182,6 +182,10 @@ export async function countLiveMatches(
  * `limit`, for ONE budgeted execution. Lenient: corrupt filters yield no
  * matches. Hitting `limit` ends the walk (`done`) — the caller has what it
  * asked for; running out of budget does not, and hands back a cursor.
+ *
+ * A `limit` also shrinks the chunk, because the predicate only runs when a
+ * chunk flushes: without it, asking for 5 Contacts would read a full chunk
+ * before the stop could take effect.
  */
 export async function matchLiveContacts(
 	ctx: { db: DatabaseReader },
@@ -199,7 +203,7 @@ export async function matchLiveContacts(
 	const contacts: Doc<'contacts'>[] = [];
 	const progress = await forEachLiveContactChunk(
 		ctx,
-		{ ...opts, ...scanCost(filters.conditions) },
+		{ ...opts, ...scanCost(filters.conditions), ...(limit !== undefined && { chunkSize: limit }) },
 		async (chunk) => {
 			const lookup = await preloadConditionsLookupForContacts(ctx, filters.conditions, chunk);
 			const matches = makeSegmentPredicate(filters, lookup);

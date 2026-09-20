@@ -56,6 +56,13 @@ export interface LiveScanOptions {
 	documentsPerContact: number;
 	/** Documents one chunk's lookup preload costs regardless of chunk size. */
 	documentsPerChunk: number;
+	/**
+	 * Contacts per chunk, capped at {@link LOOKUP_CHUNK_SIZE}. A visitor that can
+	 * stop early (a `limit`) should shrink this: the visitor only runs when a
+	 * chunk flushes, so the chunk size is also how far past its stopping point
+	 * the walk reads.
+	 */
+	chunkSize?: number;
 }
 
 /** The decoded checkpoint: a position in the `by_deleted_at` index. */
@@ -105,6 +112,7 @@ export async function forEachLiveContactChunk(
 	visitChunk: (chunk: Doc<'contacts'>[]) => Promise<boolean | void>
 ): Promise<LiveScanProgress> {
 	const budget = opts.documentBudget ?? LIVE_SCAN_DOCUMENT_BUDGET;
+	const chunkSize = Math.max(1, Math.min(opts.chunkSize ?? LOOKUP_CHUNK_SIZE, LOOKUP_CHUNK_SIZE));
 	const from = decodeCursor(opts.cursor);
 
 	const stream = ctx.db.query('contacts').withIndex('by_deleted_at', (q) => {
@@ -120,7 +128,7 @@ export async function forEachLiveContactChunk(
 	let chunk: Doc<'contacts'>[] = [];
 	let last: Doc<'contacts'> | null = null;
 	let stoppedEarly = false;
-	let exhausted = false;
+	let outOfBudget = false;
 
 	const flush = async (): Promise<boolean> => {
 		if (chunk.length === 0) return true;
@@ -140,7 +148,7 @@ export async function forEachLiveContactChunk(
 		// admitted: a budget too small for one Contact would otherwise checkpoint
 		// at the same position forever.
 		if (scanned > 0 && spent + chunkSetup + opts.documentsPerContact > budget) {
-			exhausted = true;
+			outOfBudget = true;
 			break;
 		}
 		spent += chunkSetup + opts.documentsPerContact;
@@ -148,7 +156,7 @@ export async function forEachLiveContactChunk(
 		last = contact;
 		chunk.push(contact);
 
-		if (chunk.length >= LOOKUP_CHUNK_SIZE && !(await flush())) {
+		if (chunk.length >= chunkSize && !(await flush())) {
 			stoppedEarly = true;
 			break;
 		}
@@ -156,7 +164,7 @@ export async function forEachLiveContactChunk(
 
 	if (!stoppedEarly && !(await flush())) stoppedEarly = true;
 
-	const done = stoppedEarly || !exhausted;
+	const done = stoppedEarly || !outOfBudget;
 	return {
 		scanned,
 		done,

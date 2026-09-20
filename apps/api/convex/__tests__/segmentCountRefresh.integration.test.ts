@@ -110,7 +110,7 @@ describe('refreshSingleSegmentCount', () => {
 		expect(segment?.cachedCountUpdatedAt).toBeTypeOf('number');
 	});
 
-	it('abandons the walk when the segment is edited mid-walk', async () => {
+	it('abandons the walk when the segment is re-filtered mid-walk', async () => {
 		const t = convexTest(schema, modules);
 		const segmentId = await t.run(async (ctx) => {
 			await seedContacts(ctx);
@@ -134,6 +134,24 @@ describe('refreshSingleSegmentCount', () => {
 
 		const segment = await t.run(async (ctx) => await ctx.db.get(segmentId));
 		expect(segment?.cachedCount).toBeUndefined();
+	});
+
+	it('keeps counting through a rename, which cannot change the count', async () => {
+		const t = convexTest(schema, modules);
+		const segmentId = await t.run(async (ctx) => {
+			await seedContacts(ctx);
+			return await insertSegment(ctx, 'acme', ACME_FILTERS);
+		});
+
+		await t.mutation(internal.segments.countRefresh.refreshSingleSegmentCount, { segmentId });
+		await t.run(async (ctx) => {
+			await ctx.db.patch(segmentId, { name: 'acme (renamed)', updatedAt: Date.now() + 1 });
+		});
+
+		await drain(t);
+
+		const segment = await t.run(async (ctx) => await ctx.db.get(segmentId));
+		expect(segment?.cachedCount).toBe(MATCHING);
 	});
 });
 
@@ -191,5 +209,35 @@ describe('refreshAllSegmentCounts (cron sweep)', () => {
 		);
 		expect(acme?.cachedCount).toBeUndefined();
 		expect(everyone?.cachedCount).toBe(MATCHING + NON_MATCHING);
+	});
+
+	it('leaves a segment created mid-sweep for the next sweep rather than half-counting it', async () => {
+		const t = convexTest(schema, modules);
+		const first = await t.run(async (ctx) => {
+			await seedContacts(ctx);
+			return await insertSegment(ctx, 'acme', ACME_FILTERS);
+		});
+
+		// One execution of the sweep: the walk is now mid-population.
+		await t.mutation(internal.segments.countRefresh.refreshAllSegmentCounts, {});
+
+		// A segment created now lands on the same page when the continuation
+		// re-reads it, but it has missed every contact behind the cursor. Counting
+		// it in this walk would write a real number that is simply too low.
+		const late = await t.run(
+			async (ctx) => await insertSegment(ctx, 'late', { logic: 'AND', conditions: [] })
+		);
+
+		await drain(t);
+
+		const [firstSegment, lateSegment] = await t.run(
+			async (ctx) =>
+				[await ctx.db.get(first), await ctx.db.get(late)] as [
+					Doc<'segments'> | null,
+					Doc<'segments'> | null,
+				]
+		);
+		expect(firstSegment?.cachedCount).toBe(MATCHING);
+		expect(lateSegment?.cachedCount).toBeUndefined();
 	});
 });

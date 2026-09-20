@@ -214,7 +214,11 @@ describe('live-Contact streaming across the page boundary (ADR-0033)', () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			await seedLargeTable(ctx);
-			expect((await countLiveMatches(ctx, acmeFilters)).matched).toBe(ACME);
+			const scan = await countLiveMatches(ctx, acmeFilters);
+			expect(scan.matched).toBe(ACME);
+			// This population fits the default budget; if it stopped short the
+			// assertion above would be a partial count, not a wrong one.
+			expect(scan.done).toBe(true);
 		});
 	});
 
@@ -223,6 +227,7 @@ describe('live-Contact streaming across the page boundary (ADR-0033)', () => {
 		await t.run(async (ctx) => {
 			await seedLargeTable(ctx);
 			const result = await matchLiveContacts(ctx, acmeFilters);
+			expect(result.done).toBe(true);
 			expect(result.contacts).toHaveLength(ACME);
 			expect(result.contacts.some((c) => c.email === 'gone@acme.com')).toBe(false);
 		});
@@ -263,6 +268,7 @@ describe('live-Contact streaming across the page boundary (ADR-0033)', () => {
 					},
 				},
 			]);
+			expect(counts.done).toBe(true);
 			expect(counts.counts.get('acme')).toBe(ACME);
 			expect(counts.counts.get('other')).toBe(OTHER);
 		});
@@ -600,6 +606,9 @@ describe('budgeted live-Contact walk (per-execution read limit)', () => {
 			// The caller got what it asked for: nothing to resume.
 			expect(stopped.done).toBe(true);
 			expect(stopped.cursor).toBeNull();
+			// And it stopped THERE: the limit shrinks the chunk, so the walk does
+			// not read (or resolve lookups for) a full chunk past its stop.
+			expect(stopped.scanned).toBe(5);
 
 			const exhausted = await matchLiveContacts(ctx, acmeFilters, { documentBudget: BUDGET });
 			expect(exhausted.done).toBe(false);
