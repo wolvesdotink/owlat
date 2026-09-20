@@ -130,4 +130,28 @@ describe('serveSealedBlob response headers (M1)', () => {
 		);
 		expect(res.status).toBe(403);
 	});
+
+	it('carries the CORS grant on a refusal, so the reader sees the 403 and not an opaque failure', async () => {
+		const t = convexTest(schema, modules);
+		const res = await t.fetch(
+			`${SEALED_BLOB_PATH}?id=bogus&ct=text/plain&exp=9999999999999&sig=nope`,
+			{ method: 'GET', headers: { Origin: APP_ORIGIN } }
+		);
+		expect(res.status).toBe(403);
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe(APP_ORIGIN);
+		expect(await res.json()).toEqual({
+			error: { category: 'forbidden', message: 'Forbidden' },
+		});
+	});
+
+	it('answers the OPTIONS preflight the GET route advertises', async () => {
+		const t = convexTest(schema, modules);
+		const res = await t.fetch(SEALED_BLOB_PATH, {
+			method: 'OPTIONS',
+			headers: { Origin: APP_ORIGIN },
+		});
+		expect(res.status).toBe(204);
+		expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS');
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe(APP_ORIGIN);
+	});
 });

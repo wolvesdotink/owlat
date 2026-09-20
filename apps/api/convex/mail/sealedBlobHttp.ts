@@ -9,6 +9,10 @@
  * The token was minted only after the caller was authorized at the query site,
  * so verification here is: signature valid under `INSTANCE_SECRET` + not expired.
  * A bad/expired/forged token is a flat 403 — no blob is read, nothing leaks.
+ *
+ * Every answer — refusal included — carries the same CORS grant as the success
+ * path: the web reader fetches this cross-origin, and an error without the
+ * headers reaches it as an opaque network failure it cannot report.
  */
 
 import { httpAction } from '../_generated/server';
@@ -37,6 +41,14 @@ function isInlineContentType(contentType: string): boolean {
 }
 
 export const serveSealedBlob = httpAction(async (ctx, request) => {
+	// The Postbox web reader fetches this cross-origin (the app origin → the
+	// `.convex.site` HTTP-actions host). Scope the grant to the app origin(s)
+	// rather than `*`; the capability token remains the access control, this just
+	// stops any other origin from reading the bytes through the victim's browser.
+	const cors = corsHeaders('GET, OPTIONS', request.headers.get('Origin'));
+	if (request.method === 'OPTIONS') {
+		return new Response(null, { status: 204, headers: cors });
+	}
 	const url = new URL(request.url);
 	const verified = await verifyBlobToken(
 		url.searchParams.get('id'),
@@ -45,11 +57,11 @@ export const serveSealedBlob = httpAction(async (ctx, request) => {
 		url.searchParams.get('sig')
 	);
 	if (!verified || !isValidConvexId(verified.storageId)) {
-		return errorResponse('forbidden', 'Forbidden');
+		return errorResponse('forbidden', 'Forbidden', undefined, cors);
 	}
 	try {
 		const bytes = await readSealedBlobBytes(ctx.storage, verified.storageId as Id<'_storage'>);
-		if (bytes === null) return errorResponse('not_found', 'Not found');
+		if (bytes === null) return errorResponse('not_found', 'Not found', undefined, cors);
 		// Copy into a fresh ArrayBuffer-backed view so the Response body type is
 		// unambiguous across runtimes.
 		const body = new Uint8Array(bytes);
@@ -68,18 +80,13 @@ export const serveSealedBlob = httpAction(async (ctx, request) => {
 				// script or navigate; a sandbox CSP neutralises an HTML/SVG type that
 				// slipped the allowlist.
 				'Content-Security-Policy': "default-src 'none'; sandbox",
-				// The Postbox web reader fetches this cross-origin (the app origin →
-				// the `.convex.site` HTTP-actions host). Scope the grant to the app
-				// origin(s) rather than `*`; the capability token remains the access
-				// control, this just stops any other origin from reading the bytes
-				// through the victim's browser.
-				...corsHeaders('GET, OPTIONS', request.headers.get('Origin')),
+				...cors,
 			},
 		});
 	} catch (err) {
 		// A sealed blob that fails to decrypt (tamper / key mismatch) must not leak
 		// ciphertext or 200 — surface a 500 and log for the operator.
 		logError(`[sealedBlob] failed to serve ${verified.storageId}: ${String(err)}`);
-		return errorResponse('internal', 'Internal Server Error');
+		return errorResponse('internal', 'Internal Server Error', undefined, cors);
 	}
 });
