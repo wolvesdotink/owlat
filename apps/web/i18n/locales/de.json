@@ -3077,14 +3077,17 @@
 				"blocked": "Blockiert — in dieser Nachricht wurde Schadsoftware gefunden.",
 				"download": "{filename} herunterladen",
 				"downloadFailed": "Dieser Anhang konnte nicht heruntergeladen werden. Bitte erneut versuchen.",
-				"neverStored": "Nicht mehr gespeichert — diese Nachricht traf ein, bevor ihre Dateien behalten wurden.",
-				"released": "Nicht mehr gespeichert — die Dateien dieser Nachricht haben die Aufbewahrungsfrist überschritten.",
-				"originalSize": "Die ursprüngliche Nachricht war {size} groß.",
-				"notScanned": "Nicht auf Schadsoftware geprüft — der Assistent hat diese Dateien nicht gelesen.",
+				"heading": "Anhänge",
+				"neverStored": "Die Dateien dieser Nachricht wurden nicht gespeichert.",
 				"notIndexed": "Der Assistent hat diese Dateien nicht gelesen — das Verarbeitungslimit war erreicht.",
+				"notIndexedCap": "Der Assistent hat nicht jede Datei hier gelesen — diese Nachricht hat mehr Anhänge, als verarbeitet werden.",
+				"notIndexedPlaceholder": "Der Assistent kennt die Namen einiger dieser Dateien, aber nicht deren Inhalt.",
 				"notIndexedTooLarge": "Der Assistent hat nicht jede Datei hier gelesen — einige sind größer als das Verarbeitungslimit.",
 				"notIndexedUnsupported": "Der Assistent hat nicht jede Datei hier gelesen — einige Dateitypen verarbeitet er nicht.",
-				"heading": "Anhänge"
+				"notIndexedUnverified": "Der Assistent hat diese Dateien nicht gelesen — der Absender dieser Nachricht konnte nicht verifiziert werden.",
+				"notScanned": "Nicht auf Schadsoftware geprüft — der Assistent hat diese Dateien nicht gelesen.",
+				"originalSize": "Die ursprüngliche Nachricht war {size} groß.",
+				"released": "Nicht mehr gespeichert — die Dateien dieser Nachricht haben die Aufbewahrungsfrist überschritten."
 			},
 			"inboxThreadPresence": {
 				"manyHere": "{count} Personen hier",

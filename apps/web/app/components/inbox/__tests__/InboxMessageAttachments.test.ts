@@ -10,11 +10,15 @@
  *     spins and disables — its siblings stay clickable
  *   - a message with confirmed malware renders the blocked line and offers NO
  *     download control at all
- *   - a message whose files the sweep RELEASED says the window passed; one that
- *     never carried them says so instead, because claiming a retention window
- *     expired on a message from last week is false
+ *   - a message whose files the sweep RELEASED says the window passed; one with
+ *     no stamp says only that the files were not stored, because "this message
+ *     predates the feature" is one of three ways to get here and the reader
+ *     cannot be told the wrong one
  *   - each reason the assistant did not read a file says WHICH, rather than
  *     rendering identically to an indexed one
+ *   - in the gone state the download control stays FOCUSABLE and carries
+ *     `aria-describedby` to the line that says why, rather than dropping out of
+ *     the tab order with the reason unattached
  *
  * The component takes the ROW, so this suite is also where the row-to-state
  * mapping is pinned: which column means gone, which means swept, which means
@@ -101,6 +105,8 @@ function render(row: Record<string, unknown> = message()) {
 
 const ROW = '[data-testid="message-attachment-row"]';
 const DOWNLOAD = '[data-testid="message-attachment-download"]';
+const GONE = '[data-testid="inbox-attachments-gone"]';
+const NOT_INDEXED = '[data-testid="inbox-attachments-not-indexed"]';
 
 describe('InboxMessageAttachments', () => {
 	it('renders one row per attachment with its name and formatted size', () => {
@@ -198,22 +204,54 @@ describe('InboxMessageAttachments', () => {
 	it('says the retention window passed only when the sweep actually released the bytes', () => {
 		const wrapper = render(message({ rawStorageId: undefined, rawReleasedAt: 1_700_000_000_000 }));
 
-		const line = wrapper.find('[data-testid="inbox-attachments-expired"]');
+		const line = wrapper.find(GONE);
 		expect(line.exists()).toBe(true);
 		expect(line.text()).toContain('retention window');
 		const button = wrapper.find(DOWNLOAD);
 		expect(button.exists()).toBe(true);
-		expect(button.attributes('disabled')).toBeDefined();
+		expect(button.attributes('aria-disabled')).toBe('true');
 		expect(wrapper.text()).toContain('notes.txt');
 	});
 
-	it('says the message predates stored files when there is no release stamp', () => {
+	it('says only that the files were not stored when there is no release stamp', () => {
 		const wrapper = render(message({ rawStorageId: undefined }));
 
-		const line = wrapper.find('[data-testid="inbox-attachments-expired"]');
+		// Three different paths produce a message with attachments and no
+		// `rawStorageId` TODAY: a payload over the action-argument budget, a raw
+		// that did not decode, and a message from before the route carried bytes.
+		// Naming the third sends an admin hunting for a feature-age explanation
+		// when the truth was a size ceiling.
+		const line = wrapper.find(GONE);
 		expect(line.exists()).toBe(true);
 		expect(line.text()).not.toContain('retention window');
-		expect(line.text()).toContain('before its files were kept');
+		expect(line.text()).not.toContain('arrived before');
+		expect(line.text()).toContain('were not stored');
+	});
+
+	it('keeps the gone download reachable and points it at the reason', async () => {
+		// `disabled` removes the control from the tab order, so a screen-reader
+		// user moving through the message meets rows that cannot be fetched and is
+		// never told why — the explanation is a paragraph they may have passed.
+		const wrapper = render(message({ rawStorageId: undefined, rawReleasedAt: 1 }));
+
+		const button = wrapper.find(DOWNLOAD);
+		expect(button.attributes('disabled')).toBeUndefined();
+		expect(button.attributes('aria-disabled')).toBe('true');
+		const describedBy = button.attributes('aria-describedby');
+		expect(describedBy).toBeTruthy();
+		expect(wrapper.find(`#${describedBy}`).text()).toContain('retention window');
+
+		// And advisory means advisory: the click is refused here, not by the
+		// browser.
+		await button.trigger('click');
+		expect(handleAttachmentDownload).not.toHaveBeenCalled();
+	});
+
+	it('marks the row busy while its bytes are being fetched', () => {
+		downloadingAttachment.value = `${MESSAGE_ID}:1`;
+		const wrapper = render(message({}, [attachment({ partIndex: '1' })]));
+
+		expect(wrapper.find(ROW).attributes('aria-busy')).toBe('true');
 	});
 
 	it('leaves a message that still holds its bytes alone', () => {
@@ -222,7 +260,7 @@ describe('InboxMessageAttachments', () => {
 		// test would mark every message as gone.
 		const wrapper = render(message({ rawStorageId: 'storage_9', rawReleasedAt: undefined }));
 
-		expect(wrapper.find('[data-testid="inbox-attachments-expired"]').exists()).toBe(false);
+		expect(wrapper.find(GONE).exists()).toBe(false);
 		expect(wrapper.find(DOWNLOAD).attributes('disabled')).toBeUndefined();
 	});
 
@@ -231,9 +269,7 @@ describe('InboxMessageAttachments', () => {
 			message({ rawStorageId: undefined, rawReleasedAt: 1, rawSize: 1_258_291 })
 		);
 
-		expect(wrapper.find('[data-testid="inbox-attachments-expired"]').text()).toContain(
-			formatCompactFileSize(1_258_291)
-		);
+		expect(wrapper.find(GONE).text()).toContain(formatCompactFileSize(1_258_291));
 	});
 
 	it('keeps the gone line and the size as separate sentences, not one glued string', () => {
@@ -243,7 +279,7 @@ describe('InboxMessageAttachments', () => {
 			message({ rawStorageId: undefined, rawReleasedAt: 1, rawSize: 1_258_291 })
 		);
 
-		const spans = wrapper.findAll('[data-testid="inbox-attachments-expired"] span');
+		const spans = wrapper.findAll(`${GONE} span`);
 		expect(spans).toHaveLength(2);
 		expect(spans[1]!.text()).toContain(formatCompactFileSize(1_258_291));
 	});
@@ -253,7 +289,7 @@ describe('InboxMessageAttachments', () => {
 			message({ virusVerdict: 'skipped', attachmentIndexing: 'skipped_unscanned' })
 		);
 
-		const line = wrapper.find('[data-testid="inbox-attachments-not-indexed"]');
+		const line = wrapper.find(NOT_INDEXED);
 		expect(line.exists()).toBe(true);
 		expect(line.text()).toContain('Not scanned');
 		// Still downloadable: the bytes are there, they were simply not read.
@@ -265,7 +301,7 @@ describe('InboxMessageAttachments', () => {
 			message({ virusVerdict: 'clean', attachmentIndexing: 'skipped_budget' })
 		);
 
-		const line = wrapper.find('[data-testid="inbox-attachments-not-indexed"]');
+		const line = wrapper.find(NOT_INDEXED);
 		expect(line.exists()).toBe(true);
 		expect(line.text()).toContain('processing limit');
 		// The budget refuses a BATCH — per-sender or global — so the line must not
@@ -278,7 +314,7 @@ describe('InboxMessageAttachments', () => {
 			message({ virusVerdict: 'clean', attachmentIndexing: 'skipped_too_large' })
 		);
 
-		const line = wrapper.find('[data-testid="inbox-attachments-not-indexed"]');
+		const line = wrapper.find(NOT_INDEXED);
 		expect(line.exists()).toBe(true);
 		expect(line.text()).toContain('larger than the processing limit');
 		// The bytes are here — only the reading was skipped.
@@ -290,18 +326,53 @@ describe('InboxMessageAttachments', () => {
 			message({ virusVerdict: 'clean', attachmentIndexing: 'skipped_unsupported' })
 		);
 
-		const line = wrapper.find('[data-testid="inbox-attachments-not-indexed"]');
+		const line = wrapper.find(NOT_INDEXED);
 		expect(line.exists()).toBe(true);
 		expect(line.text()).toContain('file types');
 		expect(wrapper.find(DOWNLOAD).attributes('disabled')).toBeUndefined();
+	});
+
+	it('says the message carries more files than the assistant processes', () => {
+		const wrapper = render(message({ virusVerdict: 'clean', attachmentIndexing: 'skipped_cap' }));
+
+		const line = wrapper.find(NOT_INDEXED);
+		expect(line.exists()).toBe(true);
+		expect(line.text()).toContain('more attachments than it processes');
+		// Every file is still listed and still downloadable — only some of them
+		// were read, which is exactly what a row marked `indexed` would hide.
+		expect(wrapper.find(DOWNLOAD).attributes('aria-disabled')).toBeUndefined();
+	});
+
+	it('says the sender could not be verified', () => {
+		const wrapper = render(
+			message({ virusVerdict: 'clean', attachmentIndexing: 'skipped_unverified' })
+		);
+
+		const line = wrapper.find(NOT_INDEXED);
+		expect(line.exists()).toBe(true);
+		expect(line.text()).toContain('could not be verified');
+	});
+
+	it('says the assistant knows only the names of some files', () => {
+		// A `.docx`, an `.xlsx`, a scanned image: ingested, summarised and
+		// embedded off a filename, because the extractor answers those types with
+		// `[Word document: contract.docx]` and nothing more.
+		const wrapper = render(
+			message({ virusVerdict: 'clean', attachmentIndexing: 'indexed_placeholder' })
+		);
+
+		const line = wrapper.find(NOT_INDEXED);
+		expect(line.exists()).toBe(true);
+		expect(line.text()).toContain('knows the names');
+		expect(wrapper.find(DOWNLOAD).attributes('aria-disabled')).toBeUndefined();
 	});
 
 	it('shows no notice line at all for a clean, indexed, still-stored message', () => {
 		const wrapper = render(message({ virusVerdict: 'clean', attachmentIndexing: 'indexed' }));
 
 		expect(wrapper.find('[data-testid="inbox-attachments-blocked"]').exists()).toBe(false);
-		expect(wrapper.find('[data-testid="inbox-attachments-expired"]').exists()).toBe(false);
-		expect(wrapper.find('[data-testid="inbox-attachments-not-indexed"]').exists()).toBe(false);
+		expect(wrapper.find(GONE).exists()).toBe(false);
+		expect(wrapper.find(NOT_INDEXED).exists()).toBe(false);
 		expect(wrapper.find(DOWNLOAD).attributes('disabled')).toBeUndefined();
 	});
 });

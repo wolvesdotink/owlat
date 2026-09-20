@@ -25,16 +25,19 @@ import { useMimePartDownload } from '~/composables/useMimePartDownload';
  *   · normal — the row downloads and the file was indexed;
  *   · BLOCKED — malware was found in this message, so there is no download
  *     control at all, not a disabled one;
- *   · GONE — the bytes are not stored. Either the retention sweep released
- *     them (`releasedAt` is set) or this message arrived before the route
- *     carried them. The copy says WHICH: telling someone a retention window
- *     expired on a message from last week is simply false;
- *   · NOT INDEXED — the file is here and downloadable, but the assistant never
- *     read it: no clean malware verdict, the AI-ingest budget was spent, the
- *     file is over the processing size limit, or its type is not one the
- *     assistant reads. Each says WHICH, because "not read" and "too big to
- *     read" send a reader to different places. Without this line the row looks
- *     identical to an indexed one while the agent will never surface it in
+ *   · GONE — the bytes are not stored. The copy says whether the retention
+ *     sweep RELEASED them (`rawReleasedAt` is set) or they simply were not
+ *     kept: telling someone a retention window expired on a message from last
+ *     week is false, and so is telling them a message that arrived today
+ *     predates the feature when the truth is that its payload was oversized;
+ *   · NOT INDEXED — the file is here and downloadable, but the assistant did
+ *     not read it, or read only its name: no clean malware verdict, an
+ *     unverifiable sender, the AI-ingest budget spent, more attachments than
+ *     one message is processed for, a file over the processing size limit, a
+ *     type the assistant does not read, or a type it can only name. Each says
+ *     WHICH, because "not read" and "too big to read" send a reader to
+ *     different places. Without this line the row looks identical to an
+ *     indexed one while the agent will never surface it in
  *     `[RELEVANT FILES]`.
  */
 
@@ -74,14 +77,26 @@ const { downloadingAttachment, handleAttachmentDownload } = useMimePartDownload(
 	failureKey: 'components.inbox.inboxMessageAttachments.downloadFailed',
 });
 
-/** No `rawStorageId` means the bytes are gone — swept, or never carried. */
-const isExpired = computed(() => !props.message.rawStorageId);
+/** No `rawStorageId` means the bytes are gone — swept, or never kept. */
+const isRawGone = computed(() => !props.message.rawStorageId);
 const isBlocked = computed(() => props.message.virusVerdict === 'infected');
 
-/** The i18n key for the "the assistant has not read these" line, if one applies. */
-const NOT_INDEXED_KEYS: Record<string, string> = {
+/**
+ * Every marker that is not a plain `indexed`, and the line it renders.
+ *
+ * TOTAL OVER THE UNION, not `Record<string, string>`: the marker comes from
+ * `attachmentIndexingValidator`, and an untyped table let a new member compile
+ * everywhere and then render as nothing — a row that looks exactly like a file
+ * the assistant read, which is the defect these lines exist to close.
+ */
+type NotIndexedMarker = Exclude<NonNullable<InboxMessageFiles['attachmentIndexing']>, 'indexed'>;
+
+const NOT_INDEXED_KEYS: Record<NotIndexedMarker, string> = {
+	indexed_placeholder: 'notIndexedPlaceholder',
 	skipped_unscanned: 'notScanned',
+	skipped_unverified: 'notIndexedUnverified',
 	skipped_budget: 'notIndexed',
+	skipped_cap: 'notIndexedCap',
 	skipped_too_large: 'notIndexedTooLarge',
 	skipped_unsupported: 'notIndexedUnsupported',
 };
@@ -104,7 +119,7 @@ const notice = computed<{ text: string[]; tone: 'warning' | 'muted'; testId: str
 				testId: 'inbox-attachments-blocked',
 			};
 		}
-		if (isExpired.value) {
+		if (isRawGone.value) {
 			// The sweep keeps `rawSize` when it releases the bytes, so the line can
 			// still say how big the message was — a fact, rather than an absence.
 			const base = props.message.rawReleasedAt
@@ -117,11 +132,10 @@ const notice = computed<{ text: string[]; tone: 'warning' | 'muted'; testId: str
 						}),
 					]
 				: [];
-			return { text: [base, ...size], tone: 'muted', testId: 'inbox-attachments-expired' };
+			return { text: [base, ...size], tone: 'muted', testId: 'inbox-attachments-gone' };
 		}
-		const notIndexedKey = props.message.attachmentIndexing
-			? NOT_INDEXED_KEYS[props.message.attachmentIndexing]
-			: undefined;
+		const marker = props.message.attachmentIndexing;
+		const notIndexedKey = marker && marker !== 'indexed' ? NOT_INDEXED_KEYS[marker] : undefined;
 		if (notIndexedKey) {
 			return {
 				text: [t(`components.inbox.inboxMessageAttachments.${notIndexedKey}`)],
@@ -148,7 +162,7 @@ function downloadLabel(filename: string): string {
 		:notice-tone="notice?.tone"
 		:notice-test-id="notice?.testId"
 		:is-download-hidden="isBlocked"
-		:is-download-disabled="isExpired"
+		:is-download-disabled="isRawGone"
 		:download-label="downloadLabel"
 		test-id="inbox-message-attachments"
 		@download="(att) => handleAttachmentDownload(message._id, att)"

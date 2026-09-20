@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useId } from 'vue';
 import { formatCompactFileSize } from '~/utils/formatters';
 import { isPreviewableFile } from '~/utils/postboxFileFacets';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
@@ -46,7 +47,14 @@ const props = defineProps<{
 	isPreviewEnabled?: boolean;
 	/** No download control at all — not a disabled one (confirmed malware). */
 	isDownloadHidden?: boolean;
-	/** The control stays, disabled, beside the line that says why. */
+	/**
+	 * The bytes are not fetchable, but the control STAYS and stays focusable:
+	 * `aria-disabled`, not `disabled`. A `disabled` button leaves the tab order,
+	 * so a screen-reader user moving through the message meets the rows and is
+	 * never told why none of them can be fetched — the notice explaining it is
+	 * a paragraph they may already have passed. Reachable + `aria-describedby`
+	 * is what makes the reason arrive with the control.
+	 */
 	isDownloadDisabled?: boolean;
 	/** `(filename) => label` for the download control's title + aria-label. */
 	downloadLabel: (filename: string) => string;
@@ -76,6 +84,22 @@ function isDownloading(att: AttachmentMeta): boolean {
 function rowKey(att: AttachmentMeta, index: number): string {
 	return att.partIndex ?? `${index}:${att.filename}`;
 }
+
+/**
+ * The notice's element id, so every download control can point at it with
+ * `aria-describedby`. `useId` rather than a module counter: two messages in one
+ * thread each render this list, and a duplicate id would describe the wrong
+ * one.
+ */
+const noticeId = useId();
+
+const hasNotice = computed(() => (props.notice?.length ?? 0) > 0);
+
+/** The disabled state is advisory (see `isDownloadDisabled`), so the click is refused here. */
+function onDownload(att: AttachmentMeta): void {
+	if (props.isDownloadDisabled === true || isDownloading(att)) return;
+	emit('download', att);
+}
 </script>
 
 <template>
@@ -85,7 +109,8 @@ function rowKey(att: AttachmentMeta, index: number): string {
 		</p>
 
 		<p
-			v-if="notice && notice.length > 0"
+			v-if="hasNotice"
+			:id="noticeId"
 			class="mb-2 text-xs"
 			:class="noticeTone === 'warning' ? 'text-warning' : 'text-text-tertiary'"
 			:data-testid="noticeTestId"
@@ -98,6 +123,7 @@ function rowKey(att: AttachmentMeta, index: number): string {
 				v-for="(att, i) in attachments"
 				:key="rowKey(att, i)"
 				class="flex items-center gap-2 px-3 py-2 rounded border border-border-subtle"
+				:aria-busy="isDownloading(att) ? 'true' : undefined"
 				data-testid="message-attachment-row"
 			>
 				<Icon name="lucide:paperclip" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
@@ -121,12 +147,14 @@ function rowKey(att: AttachmentMeta, index: number): string {
 				<button
 					v-if="!isDownloadHidden"
 					type="button"
-					class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50"
+					class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50 aria-disabled:opacity-50"
 					:title="downloadLabel(att.filename)"
 					:aria-label="downloadLabel(att.filename)"
-					:disabled="isDownloading(att) || isDownloadDisabled === true"
+					:aria-describedby="hasNotice ? noticeId : undefined"
+					:aria-disabled="isDownloadDisabled === true ? 'true' : undefined"
+					:disabled="isDownloading(att)"
 					data-testid="message-attachment-download"
-					@click="emit('download', att)"
+					@click="onDownload(att)"
 				>
 					<Icon
 						:name="isDownloading(att) ? 'lucide:loader-2' : 'lucide:download'"
