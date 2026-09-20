@@ -22,6 +22,7 @@
  */
 
 import { getBoolean } from '../lib/env';
+import { errorResponse } from '../lib/httpResponse';
 
 export function isDevDeployment(): boolean {
 	return getBoolean('OWLAT_DEV_MODE');
@@ -44,10 +45,5 @@ export function assertDevDeployment(): void {
  */
 export function devDeploymentResponseOrNull(): Response | null {
 	if (isDevDeployment()) return null;
-	return new Response(
-		JSON.stringify({
-			error: 'Dev-only endpoint refused: OWLAT_DEV_MODE is not enabled',
-		}),
-		{ status: 403, headers: { 'Content-Type': 'application/json' } }
-	);
+	return errorResponse('forbidden', 'Dev-only endpoint refused: OWLAT_DEV_MODE is not enabled');
 }

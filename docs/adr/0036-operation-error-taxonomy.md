@@ -144,6 +144,12 @@ numbers) ride in `data`/`message`, never as new categories. Casing settles to
   `.code` to the canonical `category` and surface `.data` (so
   `RateLimitError.retryAfter` reads from `data.retryAfter`).
 
+Inbound provider webhook responses are exempt from the HTTP envelope: their
+bodies are read by the provider, not by us, and a provider's retry/disable
+behaviour can be bound to the exact shape it was given — so the inbound
+handlers (`webhooks/*`, `mail/authHttp.ts`, `mail/webhookHttp.ts`,
+`inbox/inboundWebhookHttp.ts`) answer in whatever shape their sender expects.
+
 ### Two app-side modules (centralized policy)
 
 ```ts

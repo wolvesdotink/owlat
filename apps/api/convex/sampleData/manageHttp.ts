@@ -32,6 +32,7 @@ import { getOptional } from '../lib/env';
 import { safeCompare } from '../lib/safeCompare';
 import { logError } from '../lib/runtimeLog';
 import { SEEDED_TABLES } from '../seedDemo/pipeline';
+import { errorResponse, jsonResponse } from '../lib/httpResponse';
 
 /** Ids deleted per mutation. Keeps each delete transaction small and bounded. */
 const DELETE_BATCH = 100;
@@ -50,18 +51,11 @@ const MAX_PAGES = 4000;
 
 type ActionCtx = GenericActionCtx<DataModel>;
 
-function jsonResponse(body: unknown, status: number): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { 'Content-Type': 'application/json' },
-	});
-}
-
 function unauthorizedOrNull(request: Request): Response | null {
 	const secret = request.headers.get('X-Instance-Secret');
 	const expected = getOptional('INSTANCE_SECRET');
 	if (!expected || !secret || !safeCompare(secret, expected)) {
-		return jsonResponse({ error: 'Unauthorized' }, 401);
+		return errorResponse('unauthenticated', 'Unauthorized');
 	}
 	return null;
 }
@@ -110,11 +104,11 @@ const sampleDataInstallHttp = httpAction(async (ctx, request) => {
 	try {
 		const summary: { inserted: Record<string, number>; skipped: Record<string, number> } =
 			await ctx.runMutation(internal.sampleData.index.install, {});
-		return jsonResponse(summary, 200);
+		return jsonResponse(summary);
 	} catch (error) {
 		// Locked error envelope — log the real cause server-side, return a fixed message.
 		logError('[sampleData] operation failed:', error);
-		return jsonResponse({ error: 'Internal error' }, 500);
+		return errorResponse('internal', 'Internal error');
 	}
 });
 
@@ -137,11 +131,11 @@ const sampleDataRemoveHttp = httpAction(async (ctx, request) => {
 			}
 			if (removed > 0) deleted[table] = removed;
 		}
-		return jsonResponse({ deleted, truncated }, 200);
+		return jsonResponse({ deleted, truncated });
 	} catch (error) {
 		// Locked error envelope — log the real cause server-side, return a fixed message.
 		logError('[sampleData] operation failed:', error);
-		return jsonResponse({ error: 'Internal error' }, 500);
+		return errorResponse('internal', 'Internal error');
 	}
 });
 
@@ -152,11 +146,11 @@ const sampleDataStatusHttp = httpAction(async (ctx, request) => {
 	try {
 		const { counts: present, truncated } = await countTagged(ctx);
 		const total = Object.values(present).reduce((sum, n) => sum + n, 0);
-		return jsonResponse({ present, total, truncated }, 200);
+		return jsonResponse({ present, total, truncated });
 	} catch (error) {
 		// Locked error envelope — log the real cause server-side, return a fixed message.
 		logError('[sampleData] operation failed:', error);
-		return jsonResponse({ error: 'Internal error' }, 500);
+		return errorResponse('internal', 'Internal error');
 	}
 });
 
