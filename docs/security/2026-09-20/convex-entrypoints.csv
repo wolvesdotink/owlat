@@ -142,7 +142,7 @@ apps/api/convex/campaigns/testSend.ts,215,sendTestEmailFromTemplate,authedAction
 apps/api/convex/channels/outbound.ts,264,sendChannelMessage,authedAction,requireOrgPermission; assertOrgAdmin
 apps/api/convex/chat/attachments.ts,26,generateUploadUrl,chatMutation,requireOrgPermission
 apps/api/convex/chat/attachments.ts,40,registerAttachment,chatMutation,requireOrgPermission; assertUnregisteredMediaStorage
-apps/api/convex/chat/attachments.ts,98,getAttachmentDetails,chatQuery,assertCanReadRoom
+apps/api/convex/chat/attachments.ts,99,getAttachmentDetails,chatQuery,assertCanReadRoom
 apps/api/convex/chat/dms.ts,32,findOrCreateDm,chatMutation,requireOrgPermission; assertChatTargetsAreOrgMembers
 apps/api/convex/chat/dms.ts,99,listMyDms,chatQuery,
 apps/api/convex/chat/emailLink.ts,29,linkChannelToInboxThread,chatMutation,getMutationContext; assertCanAdministerRoom
@@ -472,19 +472,19 @@ apps/api/convex/mail/crossSurface.ts,158,postboxFor,publicQuery,requireMailboxAc
 apps/api/convex/mail/draftStreamStore.ts,36,createDraftStream,authedMutation,getMutationContext
 apps/api/convex/mail/draftStreamStore.ts,128,getDraftStream,authedQuery,
 apps/api/convex/mail/draftStreamStore.ts,146,deleteDraftStream,authedMutation,
-apps/api/convex/mail/drafts.ts,59,canSendFrom,authedQuery,
-apps/api/convex/mail/drafts.ts,64,create,authedMutation,requireMailboxAccess
-apps/api/convex/mail/drafts.ts,147,update,authedMutation,requireMailboxAccess; assertStateIs
-apps/api/convex/mail/drafts.ts,227,setIdentity,authedMutation,requireMailboxAccess; assertStateIs
-apps/api/convex/mail/drafts.ts,256,addAttachment,authedMutation,requireMailboxAccess; assertStateIs
-apps/api/convex/mail/drafts.ts,293,removeAttachment,authedMutation,requireMailboxAccess
-apps/api/convex/mail/drafts.ts,313,discard,authedMutation,requireMailboxAccess
-apps/api/convex/mail/drafts.ts,328,get,publicQuery,
-apps/api/convex/mail/drafts.ts,355,getComposerSealState,publicQuery,
-apps/api/convex/mail/drafts.ts,361,listForMailbox,publicQuery,
-apps/api/convex/mail/drafts.ts,375,send,authedMutation,
-apps/api/convex/mail/drafts.ts,391,cancelPendingSend,authedMutation,
-apps/api/convex/mail/drafts.ts,403,cancelScheduledSend,authedMutation,
+apps/api/convex/mail/drafts.ts,60,canSendFrom,authedQuery,
+apps/api/convex/mail/drafts.ts,65,create,authedMutation,requireMailboxAccess
+apps/api/convex/mail/drafts.ts,148,update,authedMutation,requireMailboxAccess; assertStateIs
+apps/api/convex/mail/drafts.ts,228,setIdentity,authedMutation,requireMailboxAccess; assertStateIs
+apps/api/convex/mail/drafts.ts,257,addAttachment,authedMutation,requireMailboxAccess; assertStateIs
+apps/api/convex/mail/drafts.ts,311,removeAttachment,authedMutation,requireMailboxAccess
+apps/api/convex/mail/drafts.ts,331,discard,authedMutation,requireMailboxAccess
+apps/api/convex/mail/drafts.ts,346,get,publicQuery,
+apps/api/convex/mail/drafts.ts,373,getComposerSealState,publicQuery,
+apps/api/convex/mail/drafts.ts,379,listForMailbox,publicQuery,
+apps/api/convex/mail/drafts.ts,393,send,authedMutation,
+apps/api/convex/mail/drafts.ts,409,cancelPendingSend,authedMutation,
+apps/api/convex/mail/drafts.ts,421,cancelScheduledSend,authedMutation,
 apps/api/convex/mail/external/accounts.ts,178,getForCurrentUser,publicQuery,assertFeatureEnabled; getBetterAuthSessionWithRole
 apps/api/convex/mail/external/accounts.ts,244,disconnect,authedMutation,assertFeatureEnabled; getBetterAuthSessionWithRole
 apps/api/convex/mail/external/accounts.ts,281,purge,authedMutation,assertFeatureEnabled; getBetterAuthSessionWithRole
@@ -657,8 +657,8 @@ apps/api/convex/mediaAssets.ts,98,getStats,authedQuery,
 apps/api/convex/mediaAssets.ts,128,countUsage,authedQuery,
 apps/api/convex/mediaAssets.ts,158,listTags,authedQuery,
 apps/api/convex/mediaAssets.ts,178,create,authedMutation,requireOrgPermission; assertUnregisteredMediaStorage; requires
-apps/api/convex/mediaAssets.ts,387,update,authedMutation,requireOrgPermission
-apps/api/convex/mediaAssets.ts,418,bulkDelete,authedMutation,requireOrgPermission
+apps/api/convex/mediaAssets.ts,388,update,authedMutation,requireOrgPermission
+apps/api/convex/mediaAssets.ts,419,bulkDelete,authedMutation,requireOrgPermission
 apps/api/convex/platformAdmin/bootstrap.ts,92,claimInitialPlatformAdmin,ownerMutation,
 apps/api/convex/platformAdmin/bootstrap.ts,137,getBootstrapStatus,authedQuery,
 apps/api/convex/platformAdmin/mutations.ts,32,setOrganizationStatus,authedMutation,requirePlatformAdmin
@@ -707,8 +707,8 @@ apps/api/convex/semanticFiles.ts,222,search,authedQuery,
 apps/api/convex/semanticFiles.ts,248,getVersionHistory,authedQuery,
 apps/api/convex/semanticFiles.ts,270,listByContact,authedQuery,
 apps/api/convex/semanticFiles.ts,306,create,authedMutation,requireAdminContext
-apps/api/convex/semanticFiles.ts,532,update,authedMutation,requireAdminContext
-apps/api/convex/semanticFiles.ts,584,remove,authedMutation,requireAdminContext
+apps/api/convex/semanticFiles.ts,534,update,authedMutation,requireAdminContext
+apps/api/convex/semanticFiles.ts,586,remove,authedMutation,requireAdminContext
 apps/api/convex/shareLinkHttp.ts,26,getShareLink,publicTokenEndpoint,
 apps/api/convex/shareLinks.ts,14,createShareLink,authedMutation,requireOrgPermission; required
 apps/api/convex/shareLinks.ts,84,revokeShareLink,authedMutation,requireOrgPermission
