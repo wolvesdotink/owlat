@@ -652,17 +652,26 @@ describe('inboundIngest — the set that was scanned is the set that is indexed'
 		expect(rows[0]!.rawStorageId).toBeTruthy();
 	});
 
-	it('indexes the first ten of an all-readable message and SAYS the rest were left', async () => {
+	it('marks a message whose leaves outran the cap, even where some were read', async () => {
 		const t = setupTest();
 		configureMta();
 		stubScanner({ clean: true });
 
-		const leafCount = ATTACHMENT_COMPOSE_LIMITS.maxCount + 2;
-		const leaves = Array.from({ length: leafCount }, (_, i) => `doc-${i}.txt`);
+		// One readable file first, then enough refused leaves to outrun the
+		// per-message cap. The scanner opens ten of the twelve, so two leaves are
+		// never looked at — and the row has to say so, or the reader is shown
+		// twelve rows that all look read.
+		//
+		// Shaped to stage ONE blob: convex-test mis-tracks transaction state
+		// across an action's sub-operations, so a second `ctx.storage.store`
+		// inside one action is unreliable (see captureAttachmentsScope.test.ts).
+		// The ten-readable-files case is driven through `captureAttachments`
+		// there, with a counting ctx.
+		const leaves = ['notes.txt', ...Array.from({ length: 11 }, (_, i) => `stub${i}.exe`)];
 		const lines = [
 			'From: Bob <bob@example.com>',
 			'To: inbox@example.com',
-			'Subject: twelve files',
+			'Subject: twelve leaves',
 			'Message-ID: <cap-e2e@example.com>',
 			'Content-Type: multipart/mixed; boundary="bb"',
 			'',
@@ -697,12 +706,13 @@ describe('inboundIngest — the set that was scanned is the set that is indexed'
 			}))
 		);
 
+		// The readable leaf was scanned and indexed...
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
-		expect(files).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+		expect(files.map((f) => f.filename)).toEqual(['notes.txt']);
+		// ...and the row still reports the cap, which outranks the type skip:
+		// "more files than it processes" is the bigger thing the reader is
+		// missing.
 		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
-		// Twelve rows are listed and downloadable; ten were read. Marked
-		// `indexed`, the reader would show all twelve as though the assistant
-		// had them.
 		expect(rows[0]!.attachmentIndexing).toBe('skipped_cap');
 	});
 });
