@@ -26,8 +26,7 @@ import type { Id } from '../_generated/dataModel';
 import { publicAction } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { isSharedInboxReader } from './access';
-import { sealedBlobUrl } from '../lib/sealedBlob';
-import { logWarn } from '../lib/runtimeLog';
+import { mintRawEmlUrl } from '../lib/sealedBlob';
 
 /**
  * The authorization half: a signed-in owner or admin, or nothing.
@@ -68,23 +67,11 @@ export const getInboundMessageRawUrl = publicAction({
 		// decrypt proxy rather than as a direct storage URL. Returns null — a real
 		// state the caller must handle, not an error — when there is a key but no
 		// CONVEX_SITE_URL to proxy through, and when a keyless instance meets a
-		// blob that is structurally sealed.
-		const url = await sealedBlobUrl(ctx.storage, storageId, 'message/rfc822');
-		if (!url) {
-			// The reader hides the control for the two states it can see (swept
-			// bytes, quarantine), so a null that reaches a user is one of the two
-			// CONFIGURATION states — and the client answers it with "could not be
-			// downloaded, try again", which will never come true. `sealedBlobUrl`
-			// returns its nulls silently, so without this line an instance holding
-			// INSTANCE_SECRET and no CONVEX_SITE_URL fails every attachment
-			// download on every message with nothing anywhere to find.
-			logWarn(
-				'[Inbox raw] could not mint a sealed-blob URL — check INSTANCE_SECRET/CONVEX_SITE_URL',
-				{
-					messageId: args.messageId,
-				}
-			);
-		}
-		return url;
+		// blob that is structurally sealed. Shared with the Postbox reader, which
+		// is how both of them log that state instead of one of them.
+		return await mintRawEmlUrl(ctx.storage, storageId, {
+			logTag: '[Inbox raw]',
+			messageId: args.messageId,
+		});
 	},
 });

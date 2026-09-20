@@ -43,6 +43,7 @@
 import type { Id } from '../_generated/dataModel';
 import { bytesToBase64Url } from './bytes';
 import { getOptional } from './env';
+import { logWarn } from './runtimeLog';
 import {
 	hasAtRestBlobMagic,
 	isSealedBytesAtRest,
@@ -52,6 +53,8 @@ import {
 
 /** Proxy route path (registered in `http.ts`). */
 export const SEALED_BLOB_PATH = '/sealed-blob';
+/** The content type a raw `.eml` is stored and served under. */
+const RFC822_CONTENT_TYPE = 'message/rfc822';
 /** How long a minted proxy URL stays valid. Matches the short-lived nature of a
  * Convex signed storage URL; long enough for a reader fetch or an MTA transmit. */
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -258,6 +261,33 @@ export async function sealedBlobUrl(
 		sig,
 	});
 	return `${siteUrl.replace(/\/$/, '')}${SEALED_BLOB_PATH}?${params.toString()}`;
+}
+
+/**
+ * The signed URL for one message's raw `.eml`, or `null` with the reason in
+ * the log.
+ *
+ * BOTH READERS CALL THIS. The team-inbox action and the Postbox action had the
+ * same three lines each, and when the "could not mint a URL" warn was added it
+ * landed on one of them — so on the exact configuration state that warn exists
+ * for (a key with no `CONVEX_SITE_URL`, or a sealed blob on an instance that
+ * lost its key) the Postbox download still failed with nothing anywhere to
+ * find. `sealedBlobUrl` returns its nulls silently by design; this is the
+ * wrapper that says so once, for the one content type both readers serve.
+ */
+export async function mintRawEmlUrl(
+	storage: BlobGetUrl,
+	storageId: Id<'_storage'>,
+	context: { logTag: string; messageId: string }
+): Promise<string | null> {
+	const url = await sealedBlobUrl(storage, storageId, RFC822_CONTENT_TYPE);
+	if (!url) {
+		logWarn(`${context.logTag} could not mint a sealed-blob URL for the raw message`, {
+			messageId: context.messageId,
+			hint: 'check INSTANCE_SECRET / CONVEX_SITE_URL',
+		});
+	}
+	return url;
 }
 
 /**
