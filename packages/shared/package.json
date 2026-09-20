@@ -317,6 +317,10 @@
 			"types": "./src/dnsZone.ts",
 			"import": "./src/dnsZone.ts"
 		},
+		"./logRedaction": {
+			"types": "./src/logRedaction.ts",
+			"import": "./src/logRedaction.ts"
+		},
 		"./utils/guards": {
 			"types": "./src/utils/guards.ts",
 			"import": "./src/utils/guards.ts"
