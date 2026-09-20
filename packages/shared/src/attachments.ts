@@ -31,14 +31,6 @@ export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 export const MAX_INBOUND_MESSAGE_BYTES = 10 * 1024 * 1024;
 
 /**
- * The largest single attachment a message at {@link MAX_INBOUND_MESSAGE_BYTES}
- * can actually carry. Attachment leaves travel base64 (4 wire bytes per 3 bytes
- * of content) and a message also carries headers, a body and the other parts'
- * overhead, so three quarters of the envelope is a generous upper bound.
- */
-export const MAX_DELIVERABLE_ATTACHMENT_BYTES = Math.floor((MAX_INBOUND_MESSAGE_BYTES * 3) / 4);
-
-/**
  * Per-attachment ceiling for AI INGESTION — the summary, the embedding and the
  * knowledge extraction that `semanticFiles.ingest` schedules.
  *
@@ -47,13 +39,16 @@ export const MAX_DELIVERABLE_ATTACHMENT_BYTES = Math.floor((MAX_INBOUND_MESSAGE_
  * downloadable out of the raw `.eml`. It is only not fed to a model, and the
  * message row records that it was not, so the reader can say so.
  *
- * The number is chosen to sit UNDER {@link MAX_DELIVERABLE_ATTACHMENT_BYTES} —
- * a ceiling above what the listener can deliver would be decoration, never a
- * gate (`__tests__/attachmentCeilings.test.ts` pins the relationship). Where it
- * sits inside that range is a cost judgement: extraction plus two completions
- * plus one embedding per knowledge entry is a fan-out with no cap of its own,
- * and a document worth summarising is rarely over a few megabytes, while a
- * multi-megabyte scan is mostly pixels the extractor cannot read anyway.
+ * The number is chosen to sit UNDER the largest part the wire can deliver: an
+ * attachment travels base64 (4 bytes sent per 3 bytes of content) inside a
+ * message {@link MAX_INBOUND_MESSAGE_BYTES} bounds, so nothing over about three
+ * quarters of that can ever arrive, and a ceiling above it would be decoration
+ * rather than a gate (`__tests__/attachmentCeilings.test.ts` pins the
+ * relationship). Where it sits inside that range is a cost judgement:
+ * extraction plus two completions plus one embedding per knowledge entry is a
+ * fan-out with no cap of its own, and a document worth summarising is rarely
+ * over a few megabytes, while a multi-megabyte scan is mostly pixels the
+ * extractor cannot read anyway.
  */
 export const MAX_AI_INGEST_ATTACHMENT_BYTES = 4 * 1024 * 1024;
 

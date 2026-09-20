@@ -8,7 +8,42 @@
 import type { FilePolicy, FileValidationResult } from '../types.js';
 import { detectFileType } from './magicBytes.js';
 import { detectDoubleExtension, isExecutableExtension } from './doubleExtension.js';
-import { DEFAULT_FILE_POLICY, isExtensionAllowed, isFileSizeAllowed } from './filePolicy.js';
+import {
+	DEFAULT_FILE_POLICY,
+	isExtensionAllowed,
+	isFileSizeAllowed,
+	isMimeTypeAllowed,
+} from './filePolicy.js';
+
+/**
+ * The WHOLE type verdict for one file: the double-extension trick, the
+ * executable check, the extension allowlist and the MIME allowlist, in one
+ * call.
+ *
+ * The four ran as a hand-copied conjunction at every gate (`semanticFiles`
+ * upload + ingest, `mediaAssets.create`), which is how the attachment-capture
+ * path came to charge an AI budget for parts a later gate was always going to
+ * reject. One predicate means the decision can also be made BEFORE the cost is
+ * incurred, by a caller that is not the one storing the file.
+ *
+ * Distinct from {@link validateFile}, which inspects BYTES (magic numbers, the
+ * ISO probe) and reports a reason. This one answers the name-and-type question
+ * alone, which is all a caller deciding whether to spend anything needs.
+ *
+ * Size is deliberately not part of it — `isFileSizeAllowed` answers a different
+ * question with a different remedy, and the callers report the two separately.
+ */
+export function isFileTypeAccepted(
+	filename: string,
+	mimeType: string,
+	policy: FilePolicy = DEFAULT_FILE_POLICY
+): boolean {
+	const doubleExt = detectDoubleExtension(filename);
+	if (doubleExt.detected && doubleExt.executableExtension) return false;
+	if (isExecutableExtension(filename)) return false;
+	if (!isExtensionAllowed(filename, policy)) return false;
+	return isMimeTypeAllowed(mimeType, policy);
+}
 
 /**
  * Validate a file attachment for security.
@@ -128,7 +163,6 @@ export { detectFileType, isDangerousFileType } from './magicBytes.js';
 export { detectDoubleExtension, isExecutableExtension } from './doubleExtension.js';
 export {
 	DEFAULT_FILE_POLICY,
-	isFileTypeAccepted,
 	isMimeTypeAllowed,
 	isExtensionAllowed,
 	isFileSizeAllowed,

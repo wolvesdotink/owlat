@@ -13,9 +13,16 @@ import {
 	ATTACHMENT_COMPOSE_LIMITS,
 	MAX_AI_INGEST_ATTACHMENT_BYTES,
 	MAX_ATTACHMENT_BYTES,
-	MAX_DELIVERABLE_ATTACHMENT_BYTES,
 	MAX_INBOUND_MESSAGE_BYTES,
 } from '../attachments';
+
+/**
+ * The largest single attachment a message at the listener cap can carry.
+ * Attachment leaves travel base64 — 4 wire bytes per 3 bytes of content — and
+ * the message also carries headers, a body and the other parts, so three
+ * quarters of the envelope is a generous upper bound.
+ */
+const MAX_DELIVERABLE_ATTACHMENT_BYTES = Math.floor((MAX_INBOUND_MESSAGE_BYTES * 3) / 4);
 
 describe('attachment ceilings', () => {
 	it('keeps the AI-ingest ceiling below the largest part the wire can deliver', () => {
@@ -24,10 +31,6 @@ describe('attachment ceilings', () => {
 		// refuse anything.
 		expect(MAX_AI_INGEST_ATTACHMENT_BYTES).toBeLessThan(MAX_DELIVERABLE_ATTACHMENT_BYTES);
 		expect(MAX_AI_INGEST_ATTACHMENT_BYTES).toBeLessThan(MAX_INBOUND_MESSAGE_BYTES);
-	});
-
-	it('derives the deliverable part size from the base64 cost of the envelope', () => {
-		expect(MAX_DELIVERABLE_ATTACHMENT_BYTES).toBe(Math.floor((MAX_INBOUND_MESSAGE_BYTES * 3) / 4));
 	});
 
 	it('keeps the stored-attachment cap above the AI-ingest one', () => {
