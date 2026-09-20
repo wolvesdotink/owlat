@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { parseInboundAttachmentMeta } from '~/utils/inboundAttachmentMeta';
-import { loadInboundRawEml } from '~/composables/loadInboundRawEml';
-import { useMimePartDownload } from '~/composables/useMimePartDownload';
 import { useOrganization } from '~/composables/useOrganization';
 import {
 	GENERIC_TEAMMATE_NAME,
@@ -398,17 +395,6 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 	}
 	router.push(`/dashboard/chat/${roomId}`);
 };
-
-// ── Attachments ─────────────────────────────────────────────────────────────
-//
-// The bytes are not on the message row: they are inside the raw `.eml` the
-// ingest route sealed into storage. So a download fetches that once (cached per
-// message) and extracts the named MIME part client-side — `useMimePartDownload`,
-// the same composable the Postbox reader uses, pointed at the inbound loader.
-const { downloadingAttachment, handleAttachmentDownload } = useMimePartDownload({
-	loadRaw: loadInboundRawEml,
-	failureKey: 'components.inbox.inboxMessageAttachments.downloadFailed',
-});
 </script>
 
 <template>
@@ -570,7 +556,11 @@ const { downloadingAttachment, handleAttachmentDownload } = useMimePartDownload(
 								</template>
 							</UiButton>
 						</template>
-						<UiDropdownMenuItem v-for="s in statusOptions" :key="s" @click="handleStatusChange(s)">
+						<UiDropdownMenuItem
+							v-for="s in statusOptions"
+							:key="s"
+							@click="handleStatusChange(s)"
+						>
 							<span class="flex-1 truncate">
 								{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
 							</span>
@@ -639,20 +629,11 @@ const { downloadingAttachment, handleAttachmentDownload } = useMimePartDownload(
 							{{ message.textBody || t('dashboard.inbox.detail.noTextContent') }}
 						</div>
 
-						<!-- Attachments. `attachmentMeta` is already on the wire —
-						     getThread returns the rows unprojected — so the list needs
-						     no extra query; only the download fetches anything. -->
-						<InboxMessageAttachments
-							:attachments="parseInboundAttachmentMeta(message.attachmentMeta)"
-							:message-id="message._id"
-							:downloading-key="downloadingAttachment"
-							:virus-verdict="message.virusVerdict"
-							:is-expired="!message.rawStorageId"
-							:released-at="message.rawReleasedAt"
-							:raw-size="message.rawSize"
-							:attachment-indexing="message.attachmentIndexing"
-							@download="(att) => handleAttachmentDownload(message._id, att)"
-						/>
+						<!-- Attachments. The row is already on the wire — getThread
+						     returns the messages unprojected — so the list needs no
+						     extra query; only a download fetches anything, and the
+						     component owns that. -->
+						<InboxMessageAttachments :message="message" />
 
 						<!-- Classification -->
 						<div v-if="message.classification" class="mt-4 p-3 bg-bg-surface rounded-lg">

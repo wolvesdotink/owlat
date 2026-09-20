@@ -1,4 +1,4 @@
-import type { MessageAttachmentMeta } from '~/components/mail/MessageAttachmentList.vue';
+import type { AttachmentMeta } from '~/utils/attachmentMeta';
 
 /**
  * Parse `inboundMessages.attachmentMeta`.
@@ -18,7 +18,7 @@ import type { MessageAttachmentMeta } from '~/components/mail/MessageAttachmentL
  * TEXT and used as an `<a download>` hint, where the browser flattens paths —
  * stripping it would silently rename people's files.
  */
-export function parseInboundAttachmentMeta(raw?: string): MessageAttachmentMeta[] {
+export function parseInboundAttachmentMeta(raw?: string): AttachmentMeta[] {
 	if (!raw) return [];
 	let parsed: unknown;
 	try {
@@ -27,7 +27,7 @@ export function parseInboundAttachmentMeta(raw?: string): MessageAttachmentMeta[
 		return [];
 	}
 	if (!Array.isArray(parsed)) return [];
-	return parsed.flatMap((entry): MessageAttachmentMeta[] => {
+	return parsed.flatMap((entry): AttachmentMeta[] => {
 		if (typeof entry !== 'object' || entry === null) return [];
 		const att = entry as Record<string, unknown>;
 		// `contentType` is the one field with no sane default — a row without it

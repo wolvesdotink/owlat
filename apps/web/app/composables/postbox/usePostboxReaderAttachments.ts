@@ -1,17 +1,7 @@
 import { loadRawEml } from '~/composables/postbox/loadRawEml';
 import { useMimePartDownload } from '~/composables/useMimePartDownload';
-
-/** One attachment row as the reader's message cards describe it. */
-export type ReaderAttachmentMeta = {
-	filename: string;
-	contentType: string;
-	size: number;
-	partIndex?: string;
-};
-
-function isPreviewable(contentType: string): boolean {
-	return contentType.startsWith('image/') || contentType === 'application/pdf';
-}
+import { isPreviewableFile, previewSliceFor } from '~/utils/postboxFileFacets';
+import type { AttachmentMeta } from '~/utils/attachmentMeta';
 
 /**
  * Attachment handling for the thread reader: the per-part download and the
@@ -31,27 +21,25 @@ export function usePostboxReaderAttachments() {
 	// display order plus the index of the one that was clicked. Null = closed.
 	const lightbox = ref<{
 		messageId: string;
-		attachments: ReaderAttachmentMeta[];
+		attachments: AttachmentMeta[];
 		index: number;
 	} | null>(null);
 
-	function openAttachmentPreview(
-		messageId: string,
-		att: ReaderAttachmentMeta,
-		all: ReaderAttachmentMeta[]
-	) {
-		const previewable = all.filter((a) => isPreviewable(a.contentType));
-		const index = previewable.indexOf(att);
-		if (index === -1) return;
-		lightbox.value = { messageId, attachments: previewable, index };
+	function openAttachmentPreview(messageId: string, att: AttachmentMeta, all: AttachmentMeta[]) {
+		// `previewSliceFor` is the file library's rule, and the only one: it
+		// normalises `image/PNG; name=x` where the hand-rolled copies here did
+		// not, so the same file gets an eye in every view or in none.
+		const slice = previewSliceFor(all, att);
+		if (!slice) return;
+		lightbox.value = { messageId, attachments: slice.attachments, index: slice.index };
 	}
 
-	function loadLightboxPart(att: ReaderAttachmentMeta): Promise<Blob | null> {
+	function loadLightboxPart(att: AttachmentMeta): Promise<Blob | null> {
 		const lb = lightbox.value;
 		return lb ? extractPartBlob(lb.messageId, att) : Promise.resolve(null);
 	}
 
-	function downloadLightboxAttachment(att: ReaderAttachmentMeta) {
+	function downloadLightboxAttachment(att: AttachmentMeta) {
 		const lb = lightbox.value;
 		if (lb) void handleAttachmentDownload(lb.messageId, att);
 	}

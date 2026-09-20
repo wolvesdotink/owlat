@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MessageAttachmentMeta } from '~/components/mail/MessageAttachmentList.vue';
+import type { AttachmentMeta } from '~/utils/attachmentMeta';
 
 /**
  * The attachment rows under one Postbox message: name, size, type, an eye for
@@ -13,10 +13,8 @@ import type { MessageAttachmentMeta } from '~/components/mail/MessageAttachmentL
  * object-URL lifetime) belongs to the reader, which already owns it for the
  * lightbox.
  */
-export type PostboxAttachmentMeta = MessageAttachmentMeta;
-
 defineProps<{
-	attachments: PostboxAttachmentMeta[];
+	attachments: AttachmentMeta[];
 	/** `${messageId}:${part}` of the attachment being fetched right now, if any. */
 	downloadingKey?: string | null;
 	/** This message's id — the first half of `downloadingKey`. */
@@ -24,8 +22,8 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-	(e: 'preview', att: PostboxAttachmentMeta, all: PostboxAttachmentMeta[]): void;
-	(e: 'download', att: PostboxAttachmentMeta): void;
+	(e: 'preview', att: AttachmentMeta, all: AttachmentMeta[]): void;
+	(e: 'download', att: AttachmentMeta): void;
 }>();
 
 const { t } = useI18n();
@@ -47,9 +45,7 @@ function previewLabel(filename: string): string {
 		:download-label="downloadLabel"
 		:preview-label="previewLabel"
 		is-preview-enabled
-		@preview="
-			(att: PostboxAttachmentMeta, all: PostboxAttachmentMeta[]) => emit('preview', att, all)
-		"
-		@download="(att: PostboxAttachmentMeta) => emit('download', att)"
+		@preview="(att: AttachmentMeta, all: AttachmentMeta[]) => emit('preview', att, all)"
+		@download="(att: AttachmentMeta) => emit('download', att)"
 	/>
 </template>

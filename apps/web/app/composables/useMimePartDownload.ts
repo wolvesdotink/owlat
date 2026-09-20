@@ -1,11 +1,5 @@
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
-
-/** The part fields the extractor needs to find and name one MIME leaf. */
-export type MimePartRef = {
-	filename: string;
-	contentType: string;
-	partIndex?: string;
-};
+import type { AttachmentMeta } from '~/utils/attachmentMeta';
 
 /**
  * Download one attachment out of a message's raw `.eml`, client-side.
@@ -33,7 +27,7 @@ export function useMimePartDownload(options: {
 	const downloadingAttachment = ref<string | null>(null);
 
 	/** Fetch the raw `.eml` and extract one part client-side as a Blob. */
-	async function extractPartBlob(messageId: string, att: MimePartRef): Promise<Blob | null> {
+	async function extractPartBlob(messageId: string, att: AttachmentMeta): Promise<Blob | null> {
 		const bin = await options.loadRaw(messageId);
 		if (!bin) return null;
 		const extracted = extractAttachmentAt(bin, att.partIndex ?? '0', att.filename);
@@ -44,7 +38,7 @@ export function useMimePartDownload(options: {
 	}
 
 	/** Extract the part, then trigger a browser download. */
-	async function handleAttachmentDownload(messageId: string, att: MimePartRef): Promise<void> {
+	async function handleAttachmentDownload(messageId: string, att: AttachmentMeta): Promise<void> {
 		const key = `${messageId}:${att.partIndex ?? att.filename}`;
 		downloadingAttachment.value = key;
 		try {

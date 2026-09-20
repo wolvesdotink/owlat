@@ -3081,7 +3081,9 @@
 				"released": "No longer stored — the files for this message passed the retention window.",
 				"originalSize": "Original message was {size}.",
 				"notScanned": "Not scanned for malware — the assistant has not read these files.",
-				"notIndexed": "The assistant has not read these files — the processing limit for this sender was reached.",
+				"notIndexed": "The assistant has not read these files — the processing limit was reached.",
+				"notIndexedTooLarge": "The assistant has not read every file here — some are larger than the processing limit.",
+				"notIndexedUnsupported": "The assistant has not read every file here — it does not process some of these file types.",
 				"heading": "Attachments"
 			},
 			"inboxThreadPresence": {

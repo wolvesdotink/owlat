@@ -3081,7 +3081,9 @@
 				"released": "Nicht mehr gespeichert — die Dateien dieser Nachricht haben die Aufbewahrungsfrist überschritten.",
 				"originalSize": "Die ursprüngliche Nachricht war {size} groß.",
 				"notScanned": "Nicht auf Schadsoftware geprüft — der Assistent hat diese Dateien nicht gelesen.",
-				"notIndexed": "Der Assistent hat diese Dateien nicht gelesen — das Verarbeitungslimit für diesen Absender war erreicht.",
+				"notIndexed": "Der Assistent hat diese Dateien nicht gelesen — das Verarbeitungslimit war erreicht.",
+				"notIndexedTooLarge": "Der Assistent hat nicht jede Datei hier gelesen — einige sind größer als das Verarbeitungslimit.",
+				"notIndexedUnsupported": "Der Assistent hat nicht jede Datei hier gelesen — einige Dateitypen verarbeitet er nicht.",
 				"heading": "Anhänge"
 			},
 			"inboxThreadPresence": {

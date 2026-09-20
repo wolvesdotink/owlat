@@ -1,33 +1,65 @@
 // @vitest-environment happy-dom
 /**
  * The team-inbox attachment list:
- *   - one row per attachment, each naming the file and its formatted size
- *   - clicking the download control emits `download` with that attachment
+ *   - one row per attachment parsed off the message's `attachmentMeta`, each
+ *     naming the file and its formatted size
+ *   - clicking the download control asks the download composable for THAT
+ *     message and THAT part
  *   - the control carries the file's name as its accessible name
- *   - only the row whose `${messageId}:${partIndex}` matches `downloadingKey`
+ *   - only the row whose `${messageId}:${partIndex}` matches the in-flight key
  *     spins and disables — its siblings stay clickable
  *   - a message with confirmed malware renders the blocked line and offers NO
  *     download control at all
  *   - a message whose files the sweep RELEASED says the window passed; one that
  *     never carried them says so instead, because claiming a retention window
  *     expired on a message from last week is false
- *   - an attachment the assistant never read says which reason applies, rather
- *     than rendering identically to an indexed one
+ *   - each reason the assistant did not read a file says WHICH, rather than
+ *     rendering identically to an indexed one
+ *
+ * The component takes the ROW, so this suite is also where the row-to-state
+ * mapping is pinned: which column means gone, which means swept, which means
+ * unread. It used to be spelled at the call site inside a 1000-line page, where
+ * nothing checked it.
  *
  * Mounts the real shared row component underneath, so the assertions are about
  * the markup the browser paints. <Icon> is a global auto-import, stubbed here.
  */
-import { beforeAll, describe, it, expect } from 'vitest';
+import { beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { ref } from 'vue';
 
-import InboxMessageAttachments from '../InboxMessageAttachments.vue';
-import type { InboxAttachmentMeta } from '../InboxMessageAttachments.vue';
-import MailMessageAttachmentList from '~/components/mail/MessageAttachmentList.vue';
+import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { formatCompactFileSize } from '~/utils/formatters';
 
+/**
+ * The download half, stubbed: fetching a raw `.eml` and extracting a MIME part
+ * is `useMimePartDownload`'s own suite. What matters here is that this
+ * component asks for the right message and the right part, and that the key it
+ * hands back drives the spinner.
+ */
+const downloadingAttachment = ref<string | null>(null);
+const handleAttachmentDownload = vi.fn();
+vi.mock('~/composables/useMimePartDownload', () => ({
+	useMimePartDownload: () => ({
+		downloadingAttachment,
+		extractPartBlob: vi.fn(),
+		handleAttachmentDownload,
+	}),
+}));
+vi.mock('~/composables/loadInboundRawEml', () => ({ loadInboundRawEml: vi.fn() }));
+
+const InboxMessageAttachments = (await import('../InboxMessageAttachments.vue')).default;
+const MailMessageAttachmentList = (await import('~/components/mail/MessageAttachmentList.vue'))
+	.default;
+
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+});
+
+beforeEach(() => {
+	downloadingAttachment.value = null;
+	handleAttachmentDownload.mockClear();
 });
 
 const mountOpts = {
@@ -40,7 +72,7 @@ const mountOpts = {
 
 const MESSAGE_ID = 'msg_1';
 
-function attachment(over: Partial<InboxAttachmentMeta> = {}): InboxAttachmentMeta {
+function attachment(over: Partial<AttachmentMeta> = {}): AttachmentMeta {
 	return {
 		filename: 'notes.txt',
 		contentType: 'text/plain',
@@ -50,11 +82,21 @@ function attachment(over: Partial<InboxAttachmentMeta> = {}): InboxAttachmentMet
 	};
 }
 
-function render(props: Record<string, unknown> = {}) {
-	return mount(InboxMessageAttachments, {
-		...mountOpts,
-		props: { attachments: [attachment()], messageId: MESSAGE_ID, ...props },
-	});
+/**
+ * One `inboundMessages` row as the thread query returns it — `attachmentMeta`
+ * is the JSON STRING the ingest route wrote, so the parser is exercised too.
+ */
+function message(over: Record<string, unknown> = {}, attachments = [attachment()]) {
+	return {
+		_id: MESSAGE_ID,
+		attachmentMeta: JSON.stringify(attachments),
+		rawStorageId: 'storage_1',
+		...over,
+	};
+}
+
+function render(row: Record<string, unknown> = message()) {
+	return mount(InboxMessageAttachments, { ...mountOpts, props: { message: row } });
 }
 
 const ROW = '[data-testid="message-attachment-row"]';
@@ -62,8 +104,8 @@ const DOWNLOAD = '[data-testid="message-attachment-download"]';
 
 describe('InboxMessageAttachments', () => {
 	it('renders one row per attachment with its name and formatted size', () => {
-		const wrapper = render({
-			attachments: [
+		const wrapper = render(
+			message({}, [
 				attachment({ filename: 'notes.txt', size: 2048, partIndex: '1' }),
 				attachment({
 					filename: 'report.pdf',
@@ -71,8 +113,8 @@ describe('InboxMessageAttachments', () => {
 					size: 5_242_880,
 					partIndex: '2',
 				}),
-			],
-		});
+			])
+		);
 
 		const rows = wrapper.findAll(ROW);
 		expect(rows).toHaveLength(2);
@@ -84,13 +126,19 @@ describe('InboxMessageAttachments', () => {
 	});
 
 	it('renders nothing at all when the message has no attachments', () => {
-		const wrapper = render({ attachments: [] });
+		const wrapper = render(message({ attachmentMeta: undefined }));
 		expect(wrapper.find('[data-testid="inbox-message-attachments"]').exists()).toBe(false);
 	});
 
-	it('emits download with the clicked attachment, and names the file in the control', async () => {
+	it('renders nothing rather than breaking when attachmentMeta is malformed', () => {
+		// Sender-controlled JSON: the thread view must survive it.
+		const wrapper = render(message({ attachmentMeta: '{not json' }));
+		expect(wrapper.find('[data-testid="inbox-message-attachments"]').exists()).toBe(false);
+	});
+
+	it('downloads the clicked part of this message, and names the file in the control', async () => {
 		const only = attachment({ filename: 'contract.pdf', partIndex: '3' });
-		const wrapper = render({ attachments: [only] });
+		const wrapper = render(message({}, [only]));
 
 		const button = wrapper.find(DOWNLOAD);
 		// The accessible name is the affordance: an icon-only control that lost it
@@ -98,17 +146,17 @@ describe('InboxMessageAttachments', () => {
 		expect(button.attributes('aria-label')).toContain('contract.pdf');
 		await button.trigger('click');
 
-		expect(wrapper.emitted('download')?.[0]).toEqual([only]);
+		expect(handleAttachmentDownload).toHaveBeenCalledWith(MESSAGE_ID, only);
 	});
 
 	it('spins and disables only the row that is being fetched', () => {
-		const wrapper = render({
-			attachments: [
+		downloadingAttachment.value = `${MESSAGE_ID}:1`;
+		const wrapper = render(
+			message({}, [
 				attachment({ filename: 'a.txt', partIndex: '1' }),
 				attachment({ filename: 'b.txt', partIndex: '2' }),
-			],
-			downloadingKey: `${MESSAGE_ID}:1`,
-		});
+			])
+		);
 
 		const buttons = wrapper.findAll(DOWNLOAD);
 		expect(buttons).toHaveLength(2);
@@ -118,22 +166,27 @@ describe('InboxMessageAttachments', () => {
 		expect(buttons[1]!.html()).toContain('lucide:download');
 	});
 
-	it('keys legacy rows without a partIndex apart, so only one of two same-named files spins', () => {
-		const wrapper = render({
-			attachments: [
+	it('renders two legacy same-named rows as two rows, both spinning together', () => {
+		// A row with no `partIndex` keys off its position AND its name, so two
+		// files called `scan.pdf` are two rows rather than one. Their DOWNLOAD key
+		// is the filename, which they share — so both spin while either is
+		// fetched. That is the accepted limit of legacy metadata; what the list
+		// must never do is collapse the rows.
+		downloadingAttachment.value = `${MESSAGE_ID}:scan.pdf`;
+		const wrapper = render(
+			message({}, [
 				attachment({ filename: 'scan.pdf', partIndex: undefined }),
 				attachment({ filename: 'scan.pdf', partIndex: undefined }),
-			],
-			// A legacy row's key falls back to its filename, so both WOULD match.
-			// What the list must not do is collapse the two rows into one.
-			downloadingKey: `${MESSAGE_ID}:scan.pdf`,
-		});
+			])
+		);
 
 		expect(wrapper.findAll(ROW)).toHaveLength(2);
+		const buttons = wrapper.findAll(DOWNLOAD);
+		expect(buttons.map((b) => b.attributes('disabled'))).toEqual(['', '']);
 	});
 
 	it('blocks download entirely when malware was found in the message', () => {
-		const wrapper = render({ virusVerdict: 'infected' });
+		const wrapper = render(message({ virusVerdict: 'infected' }));
 
 		expect(wrapper.find('[data-testid="inbox-attachments-blocked"]').exists()).toBe(true);
 		// Not a disabled button — no download control at all.
@@ -143,7 +196,7 @@ describe('InboxMessageAttachments', () => {
 	});
 
 	it('says the retention window passed only when the sweep actually released the bytes', () => {
-		const wrapper = render({ isExpired: true, releasedAt: 1_700_000_000_000 });
+		const wrapper = render(message({ rawStorageId: undefined, rawReleasedAt: 1_700_000_000_000 }));
 
 		const line = wrapper.find('[data-testid="inbox-attachments-expired"]');
 		expect(line.exists()).toBe(true);
@@ -155,7 +208,7 @@ describe('InboxMessageAttachments', () => {
 	});
 
 	it('says the message predates stored files when there is no release stamp', () => {
-		const wrapper = render({ isExpired: true });
+		const wrapper = render(message({ rawStorageId: undefined }));
 
 		const line = wrapper.find('[data-testid="inbox-attachments-expired"]');
 		expect(line.exists()).toBe(true);
@@ -163,16 +216,42 @@ describe('InboxMessageAttachments', () => {
 		expect(line.text()).toContain('before its files were kept');
 	});
 
+	it('leaves a message that still holds its bytes alone', () => {
+		// The other half of the mapping above: `rawStorageId` present is the ONLY
+		// thing that separates a live message from a swept one, and inverting that
+		// test would mark every message as gone.
+		const wrapper = render(message({ rawStorageId: 'storage_9', rawReleasedAt: undefined }));
+
+		expect(wrapper.find('[data-testid="inbox-attachments-expired"]').exists()).toBe(false);
+		expect(wrapper.find(DOWNLOAD).attributes('disabled')).toBeUndefined();
+	});
+
 	it('reports the original message size beside the gone line when it is known', () => {
-		const wrapper = render({ isExpired: true, releasedAt: 1, rawSize: 1_258_291 });
+		const wrapper = render(
+			message({ rawStorageId: undefined, rawReleasedAt: 1, rawSize: 1_258_291 })
+		);
 
 		expect(wrapper.find('[data-testid="inbox-attachments-expired"]').text()).toContain(
 			formatCompactFileSize(1_258_291)
 		);
 	});
 
+	it('keeps the gone line and the size as separate sentences, not one glued string', () => {
+		// Two translated sentences joined in code would bake English spacing and
+		// ordering into every locale.
+		const wrapper = render(
+			message({ rawStorageId: undefined, rawReleasedAt: 1, rawSize: 1_258_291 })
+		);
+
+		const spans = wrapper.findAll('[data-testid="inbox-attachments-expired"] span');
+		expect(spans).toHaveLength(2);
+		expect(spans[1]!.text()).toContain(formatCompactFileSize(1_258_291));
+	});
+
 	it('says the files were never scanned when no clean verdict was reached', () => {
-		const wrapper = render({ virusVerdict: 'skipped', attachmentIndexing: 'skipped_unscanned' });
+		const wrapper = render(
+			message({ virusVerdict: 'skipped', attachmentIndexing: 'skipped_unscanned' })
+		);
 
 		const line = wrapper.find('[data-testid="inbox-attachments-not-indexed"]');
 		expect(line.exists()).toBe(true);
@@ -182,15 +261,43 @@ describe('InboxMessageAttachments', () => {
 	});
 
 	it('says the processing limit was reached when the AI budget refused the batch', () => {
-		const wrapper = render({ virusVerdict: 'clean', attachmentIndexing: 'skipped_budget' });
+		const wrapper = render(
+			message({ virusVerdict: 'clean', attachmentIndexing: 'skipped_budget' })
+		);
 
 		const line = wrapper.find('[data-testid="inbox-attachments-not-indexed"]');
 		expect(line.exists()).toBe(true);
 		expect(line.text()).toContain('processing limit');
+		// The budget refuses a BATCH — per-sender or global — so the line must not
+		// blame the sender for an instance-wide limit.
+		expect(line.text()).not.toContain('sender');
+	});
+
+	it('says a file was too large for the assistant to read', () => {
+		const wrapper = render(
+			message({ virusVerdict: 'clean', attachmentIndexing: 'skipped_too_large' })
+		);
+
+		const line = wrapper.find('[data-testid="inbox-attachments-not-indexed"]');
+		expect(line.exists()).toBe(true);
+		expect(line.text()).toContain('larger than the processing limit');
+		// The bytes are here — only the reading was skipped.
+		expect(wrapper.find(DOWNLOAD).attributes('disabled')).toBeUndefined();
+	});
+
+	it('says a file type is not one the assistant processes', () => {
+		const wrapper = render(
+			message({ virusVerdict: 'clean', attachmentIndexing: 'skipped_unsupported' })
+		);
+
+		const line = wrapper.find('[data-testid="inbox-attachments-not-indexed"]');
+		expect(line.exists()).toBe(true);
+		expect(line.text()).toContain('file types');
+		expect(wrapper.find(DOWNLOAD).attributes('disabled')).toBeUndefined();
 	});
 
 	it('shows no notice line at all for a clean, indexed, still-stored message', () => {
-		const wrapper = render({ virusVerdict: 'clean', attachmentIndexing: 'indexed' });
+		const wrapper = render(message({ virusVerdict: 'clean', attachmentIndexing: 'indexed' }));
 
 		expect(wrapper.find('[data-testid="inbox-attachments-blocked"]').exists()).toBe(false);
 		expect(wrapper.find('[data-testid="inbox-attachments-expired"]').exists()).toBe(false);

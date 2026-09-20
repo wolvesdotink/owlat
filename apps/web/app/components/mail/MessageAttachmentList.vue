@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { formatCompactFileSize } from '~/utils/formatters';
+import { isPreviewableFile } from '~/utils/postboxFileFacets';
+import type { AttachmentMeta } from '~/utils/attachmentMeta';
 
 /**
  * The attachment rows under one received message: name, size, type, an
@@ -16,24 +18,28 @@ import { formatCompactFileSize } from '~/utils/formatters';
  * means fetching the message's raw `.eml`, and that — with its spinner, its
  * toast and its object-URL lifetime — belongs to the reader that owns the
  * state.
+ *
+ * The row shape is `~/utils/attachmentMeta`, not a type declared here: a
+ * `utils/` parser and two composables need it too, and a data shape owned by an
+ * SFC forces them to import a component to describe their own data.
  */
-export type MessageAttachmentMeta = {
-	filename: string;
-	contentType: string;
-	size: number;
-	partIndex?: string;
-};
 
 const props = defineProps<{
-	attachments: MessageAttachmentMeta[];
+	attachments: AttachmentMeta[];
 	/** This message's id — the first half of `downloadingKey`. */
 	messageId: string;
 	/** `${messageId}:${part}` of the attachment being fetched right now, if any. */
 	downloadingKey?: string | null;
 	/** Section heading above the rows; omitted renders no heading. */
 	heading?: string;
-	/** One line above the rows explaining a non-normal state. */
-	notice?: string | null;
+	/**
+	 * The line above the rows explaining a non-normal state, as whole
+	 * SENTENCES. A list rather than a string because two of them can apply at
+	 * once ("no longer stored" plus "the original was 1.2 MB"), and joining
+	 * translated sentences in code would bake one language's spacing and order
+	 * into every locale.
+	 */
+	notice?: string[] | null;
 	/** `warning` for malware, muted otherwise. */
 	noticeTone?: 'warning' | 'muted';
 	/** Image/PDF parts get an eye that opens the reader's Quick Look. */
@@ -53,15 +59,11 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-	(e: 'preview', att: MessageAttachmentMeta, all: MessageAttachmentMeta[]): void;
-	(e: 'download', att: MessageAttachmentMeta): void;
+	(e: 'preview', att: AttachmentMeta, all: AttachmentMeta[]): void;
+	(e: 'download', att: AttachmentMeta): void;
 }>();
 
-function isPreviewable(contentType: string): boolean {
-	return contentType.startsWith('image/') || contentType === 'application/pdf';
-}
-
-function isDownloading(att: MessageAttachmentMeta): boolean {
+function isDownloading(att: AttachmentMeta): boolean {
 	return props.downloadingKey === `${props.messageId}:${att.partIndex ?? att.filename}`;
 }
 
@@ -71,7 +73,7 @@ function isDownloading(att: MessageAttachmentMeta): boolean {
  * because two attachments called `scan.pdf` with no part index would otherwise
  * collide and both spin when one is fetched.
  */
-function rowKey(att: MessageAttachmentMeta, index: number): string {
+function rowKey(att: AttachmentMeta, index: number): string {
 	return att.partIndex ?? `${index}:${att.filename}`;
 }
 </script>
@@ -83,12 +85,12 @@ function rowKey(att: MessageAttachmentMeta, index: number): string {
 		</p>
 
 		<p
-			v-if="notice"
+			v-if="notice && notice.length > 0"
 			class="mb-2 text-xs"
 			:class="noticeTone === 'warning' ? 'text-warning' : 'text-text-tertiary'"
 			:data-testid="noticeTestId"
 		>
-			{{ notice }}
+			<span v-for="(sentence, s) in notice" :key="s" class="mr-1 last:mr-0">{{ sentence }}</span>
 		</p>
 
 		<ul class="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -106,7 +108,7 @@ function rowKey(att: MessageAttachmentMeta, index: number): string {
 					</p>
 				</div>
 				<button
-					v-if="isPreviewEnabled && previewLabel && isPreviewable(att.contentType)"
+					v-if="isPreviewEnabled && previewLabel && isPreviewableFile(att.contentType)"
 					type="button"
 					class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
 					:title="previewLabel(att.filename)"
