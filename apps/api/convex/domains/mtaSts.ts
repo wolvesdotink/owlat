@@ -34,6 +34,7 @@ import { getOptional } from '../lib/env';
 // or unset) or no inbound mail host (send-only install, `EHLO_HOSTNAME` unset),
 // so the route answers 404. When published, the caller serves `body` verbatim
 // and can surface `policyId` (the RFC 8461 TXT-record id) for DNS guidance.
+// authz: no gate by design — RFC 8461 requires this policy be world-readable.
 export const getMtaStsPolicy = publicQuery({
 	args: {},
 	handler: async (

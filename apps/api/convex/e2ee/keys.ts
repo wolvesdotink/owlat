@@ -341,6 +341,7 @@ export const getKeyDirectory = internalQuery({
  */
 export const getKeyForWkd = publicQuery({
 	// public: WKD serves public key material to the world by design (draft-koch).
+	// authz: no gate by design — a WKD fetch is anonymous and returns only public key bytes.
 	args: { domain: v.string(), wkdHash: v.string() },
 	returns: v.union(v.null(), v.object({ binaryBase64: v.string() })),
 	handler: async (ctx, args) => {

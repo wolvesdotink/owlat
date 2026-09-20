@@ -175,6 +175,7 @@ const accountStatusValidator = v.union(
  * NEVER returns the encrypted credential fields.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+// authz: self-scoped — reads only the session user's own external account.
 export const getForCurrentUser = publicQuery({
 	args: {},
 	handler: async (ctx) => {

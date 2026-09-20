@@ -29,6 +29,32 @@
 # baseline entry fails (the query was fixed/removed — delete its line so the
 # debt count only goes down).
 #
+# `publicQuery` / `publicAction` are covered too, and are the reason this gate
+# was nearly blind: they are the dominant shape for authenticated reads in
+# postbox/inbox/knowledge (90-odd exports), where the auth floor is deliberately
+# absent so the read can soft-fail — return empty/null for an anonymous or
+# non-member caller — instead of throwing. The decision then lives entirely in
+# the handler, which is exactly the thing that can be forgotten. The
+# `// public: <reason>` note check-public-functions.sh requires is NOT accepted
+# as the decision here: it says the endpoint is public on purpose, not who may
+# read the data, and taking it would make this gate a no-op for every one of
+# them.
+#
+# The soft-fail predicates below are recognized as gates alongside the throwing
+# ones, because each one answers "may this caller read this?" and its callers
+# return empty on `false`:
+#
+#   isActiveOrgMember      lib/sessionOrganization.ts — authenticated ACTIVE member
+#   isSharedInboxReader    inbox/access.ts — owner/admin, the shared-inbox reader rule
+#   loadReadableMailbox    mail/permissions.ts — requireMailboxAccess collapsed to a doc|null
+#   loadReadableMessage    mail/mailbox/messages.ts — the same, keyed by message id
+#   loadAccessibleMailboxes mail/permissions.ts — the caller's own + shared-member mailboxes
+#
+# A soft-auth read whose gate lives one hop away (an internal query run with the
+# inherited identity, or a handler extracted to another module) is invisible
+# here by construction, so it carries the `// authz: <where the gate lives>`
+# opt-out instead.
+#
 # NOTE: `chatQuery` / `assistantQuery` (chat/_helpers.ts,
 # assistant/conversations.ts) compose `authedQuery` with a `assertFeatureEnabled`
 # FEATURE-flag floor only — a feature flag is NOT an authorization decision — so
@@ -50,7 +76,7 @@ generate() {
 			{
 				is_comment = ($0 ~ /^[[:space:]]*\/\//)
 				is_optout  = ($0 ~ /\/\/[[:space:]]*(authz|all-members):/)
-				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|chatQuery|assistantQuery)\(/)
+				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|chatQuery|assistantQuery|publicQuery|publicAction)\(/)
 			}
 			is_comment && is_optout { block_optout = 1 }
 			is_export {
@@ -58,7 +84,7 @@ generate() {
 				gate = block_optout
 				block_optout = 0
 			}
-			in_fn && $0 ~ /(requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|requireCampaignSendersManage|requireMailboxAccess|requireMessageAccess|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin)/ { gate = 1 }
+			in_fn && $0 ~ /(requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|requireCampaignSendersManage|requireMailboxAccess|requireMessageAccess|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin|isActiveOrgMember|isSharedInboxReader|loadReadableMailbox|loadReadableMessage|loadAccessibleMailboxes)/ { gate = 1 }
 			in_fn && is_optout { gate = 1 }
 			in_fn && /^\}\)/ {
 				if (!gate) print FILENAME ":" name
