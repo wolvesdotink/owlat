@@ -27,6 +27,8 @@ import {
 import UiSelect from '@owlat/ui/components/ui/Select.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import InboundRetentionCard from '../InboundRetentionCard.vue';
+import UiCard from '@owlat/ui/components/ui/Card.vue';
+import { useSlots } from 'vue';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -55,6 +57,8 @@ function mountCard(
 		canManageOrganization: computed(() => opts.canManage !== false),
 	}));
 	vi.stubGlobal('useToast', () => ({ showToast: (m: string) => toasts.push(m) }));
+	// Nuxt auto-imports it; the real `UiCard` underneath asks for it.
+	vi.stubGlobal('useSlots', useSlots);
 	vi.stubGlobal('useBackendOperation', () => ({
 		run: async (args: Record<string, unknown>) => {
 			updates.push(args);
@@ -68,8 +72,8 @@ function mountCard(
 			plugins: [createTestI18n()],
 			// The REAL select, so what this suite proves about the emitted value is
 			// a property of the shipped control and not of a stub.
-			components: { UiSelect },
-			stubs: { Icon: true, UiSpinner: true },
+			components: { UiSelect, UiCard },
+			stubs: { Icon: true, UiSpinner: true, UiIconBox: true },
 		},
 	});
 	return { wrapper, updates, toasts };

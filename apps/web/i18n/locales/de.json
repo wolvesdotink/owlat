@@ -3076,10 +3076,10 @@
 			"inboxMessageAttachments": {
 				"blocked": "Blockiert — in dieser Nachricht wurde Schadsoftware gefunden.",
 				"download": "{filename} herunterladen",
-				"downloadFailed": "Dieser Anhang konnte nicht heruntergeladen werden. Bitte erneut versuchen.",
+				"downloadFailed": "Dieser Anhang konnte nicht heruntergeladen werden.",
 				"heading": "Anhänge",
 				"neverStored": "Die Dateien dieser Nachricht wurden nicht gespeichert.",
-				"notIndexed": "Der Assistent hat diese Dateien nicht gelesen — das Verarbeitungslimit war erreicht.",
+				"notIndexedBudget": "Der Assistent hat diese Dateien nicht gelesen — das Verarbeitungslimit war erreicht.",
 				"notIndexedCap": "Der Assistent hat nicht jede Datei hier gelesen — diese Nachricht hat mehr Anhänge, als verarbeitet werden.",
 				"notIndexedPlaceholder": "Der Assistent kennt die Namen einiger dieser Dateien, aber nicht deren Inhalt.",
 				"notIndexedTooLarge": "Der Assistent hat nicht jede Datei hier gelesen — einige sind größer als das Verarbeitungslimit.",
@@ -8558,6 +8558,7 @@
 				"aiSummary": "KI-Zusammenfassung",
 				"autoDetected": "Automatisch erkannt",
 				"backToFiles": "Zurück zu den Dateien",
+				"bytesReleased": "Der Inhalt dieser Datei hat die Aufbewahrungsfrist für eingehende Post überschritten und ist nicht mehr gespeichert. Zusammenfassung und extrahierter Text bleiben durchsuchbar.",
 				"cancelEditingTitle": "Titelbearbeitung abbrechen",
 				"created": "Erstellt",
 				"deleteDialog": {

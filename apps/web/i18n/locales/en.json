@@ -3076,10 +3076,10 @@
 			"inboxMessageAttachments": {
 				"blocked": "Blocked — malware was found in this message.",
 				"download": "Download {filename}",
-				"downloadFailed": "That attachment could not be downloaded. Try again.",
+				"downloadFailed": "That attachment could not be downloaded.",
 				"heading": "Attachments",
 				"neverStored": "The files for this message were not stored.",
-				"notIndexed": "The assistant has not read these files — the processing limit was reached.",
+				"notIndexedBudget": "The assistant has not read these files — the processing limit was reached.",
 				"notIndexedCap": "The assistant has not read every file here — this message has more attachments than it processes.",
 				"notIndexedPlaceholder": "The assistant knows the names of some of these files but not what is inside them.",
 				"notIndexedTooLarge": "The assistant has not read every file here — some are larger than the processing limit.",
@@ -8558,6 +8558,7 @@
 				"aiSummary": "AI Summary",
 				"autoDetected": "Auto-detected",
 				"backToFiles": "Back to Files",
+				"bytesReleased": "The contents of this file passed the inbound retention window and are no longer stored. Its summary and extracted text stay searchable.",
 				"cancelEditingTitle": "Cancel editing title",
 				"created": "Created",
 				"deleteDialog": {

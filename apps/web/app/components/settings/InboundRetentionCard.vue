@@ -58,19 +58,28 @@ async function onSelect(next: InboundRawRetentionDays | null) {
 </script>
 
 <template>
-	<section class="space-y-4 card p-5">
-		<div class="flex items-start justify-between gap-4">
-			<div class="min-w-0">
-				<h2 class="text-base font-semibold text-text-primary">
-					{{ t('components.settings.inboundRetentionCard.title') }}
-				</h2>
-				<p class="mt-1 text-sm text-text-secondary">
-					{{ t('components.settings.inboundRetentionCard.description') }}
-				</p>
-				<p v-if="!canManageOrganization" class="mt-2 text-xs text-text-tertiary">
-					{{ t('components.settings.inboundRetentionCard.adminOnly') }}
-				</p>
+	<!-- The UI layer's card primitive, like the neighbouring MigrationModeCard —
+	     a settings card is not the place to re-decide what a card looks like. -->
+	<UiCard>
+		<template #header>
+			<div class="flex items-center gap-3">
+				<UiIconBox icon="lucide:archive" size="sm" variant="surface" rounded="lg" />
+				<div class="min-w-0">
+					<h2 class="text-lg font-medium text-text-primary">
+						{{ t('components.settings.inboundRetentionCard.title') }}
+					</h2>
+					<p class="text-sm text-text-secondary">
+						{{ t('components.settings.inboundRetentionCard.description') }}
+					</p>
+				</div>
 			</div>
+		</template>
+
+		<div class="flex items-start justify-between gap-4">
+			<p v-if="!canManageOrganization" class="text-xs text-text-tertiary">
+				{{ t('components.settings.inboundRetentionCard.adminOnly') }}
+			</p>
+			<span v-else />
 			<UiSpinner v-if="isLoading" size="sm" />
 			<div v-else class="w-44 flex-shrink-0" data-testid="inbound-retention-days">
 				<UiSelect
@@ -83,5 +92,5 @@ async function onSelect(next: InboundRawRetentionDays | null) {
 				/>
 			</div>
 		</div>
-	</section>
+	</UiCard>
 </template>

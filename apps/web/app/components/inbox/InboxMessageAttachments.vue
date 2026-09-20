@@ -95,7 +95,7 @@ const NOT_INDEXED_KEYS: Record<NotIndexedMarker, string> = {
 	indexed_placeholder: 'notIndexedPlaceholder',
 	skipped_unscanned: 'notScanned',
 	skipped_unverified: 'notIndexedUnverified',
-	skipped_budget: 'notIndexed',
+	skipped_budget: 'notIndexedBudget',
 	skipped_cap: 'notIndexedCap',
 	skipped_too_large: 'notIndexedTooLarge',
 	skipped_unsupported: 'notIndexedUnsupported',

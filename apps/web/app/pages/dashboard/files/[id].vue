@@ -287,6 +287,19 @@ const sourceLabel = computed(() => {
 							/>
 						</h1>
 						<p class="text-sm text-text-secondary mt-0.5">{{ file.filename }}</p>
+						<!--
+							The retention sweep releases the BYTES of a team-inbox capture and
+							keeps the row, so `url` is null and the download control above simply
+							vanishes — the same "the affordance shows nothing at all" shape the
+							thread view now explains one screen over. Say it here too.
+						-->
+						<p
+							v-if="file.bytesReleasedAt"
+							class="text-sm text-text-tertiary mt-1"
+							data-testid="file-bytes-released"
+						>
+							{{ t('dashboard.files.detail.bytesReleased') }}
+						</p>
 					</div>
 				</div>
 

@@ -16,10 +16,14 @@
  *   - a thrown loader goes through `showOperationError`, so a dropped
  *     connection still reads as "check your connection"
  *   - the spinner key is the `messageId:partIndex` pair the row matches on
+ *   - the line that failure renders, in the REAL catalog, promises nothing a
+ *     retry cannot deliver
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import { useMimePartDownload } from '../useMimePartDownload';
+import en from '~~/i18n/locales/en.json';
+import de from '~~/i18n/locales/de.json';
 
 const FAILURE_KEY = 'components.inbox.inboxMessageAttachments.downloadFailed';
 
@@ -101,6 +105,21 @@ describe('useMimePartDownload', () => {
 		expect(clicks).toEqual([]);
 		expect(toasts).toEqual([[FAILURE_KEY, 'error']]);
 		expect(downloadingAttachment.value).toBeNull();
+	});
+
+	it('does not promise a retry for a failure a retry cannot fix', () => {
+		// The client refuses the click for swept bytes and hides the control for
+		// quarantine, so almost everything that reaches this toast is a
+		// CONFIGURATION state — INSTANCE_SECRET with no CONVEX_SITE_URL, a sealed
+		// blob on an instance that lost its key, a part the metadata mis-addresses.
+		// "Try again" is a promise none of those will ever keep. Asserted on the
+		// real catalog, because the suite above only ever sees the key.
+		const line = en.components.inbox.inboxMessageAttachments.downloadFailed;
+		expect(line).toBe('That attachment could not be downloaded.');
+		expect(line.toLowerCase()).not.toContain('try again');
+		expect(de.components.inbox.inboxMessageAttachments.downloadFailed.toLowerCase()).not.toContain(
+			'erneut versuchen'
+		);
 	});
 
 	it('toasts an error when the message holds no such part at all', async () => {
