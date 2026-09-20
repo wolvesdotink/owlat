@@ -117,6 +117,18 @@ export default defineEventHandler(async (event) => {
 	}
 
 	if (!updaterOk) {
+		// The browser only ever shows the status line (`[POST] "…": 502`), so
+		// without this the reason — which the sidecar states precisely, down to
+		// the host command that fixes it — exists nowhere an operator can read.
+		// `docker logs owlat-web-1` is where they look next.
+		console.error(
+			'[system/update] update failed:',
+			updaterResult.error || 'no error reported',
+			(updaterResult.steps ?? [])
+				.filter((step) => step.ok === false)
+				.map((step) => `${step.step}: ${step.stderr}`)
+				.join(' | ')
+		);
 		throw createError({
 			statusCode: 502,
 			message: updaterResult.error || 'Update failed',

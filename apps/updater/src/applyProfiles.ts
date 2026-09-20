@@ -17,6 +17,7 @@ import {
 import { errorMessage } from '@owlat/shared';
 import { applyEnvUpdates, isRateLimited, validateFlagSnapshot } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import { composeCommand, servicesToRecreate } from './rollout.js';
 
 export async function handleApplyProfiles(req: IncomingMessage, res: ServerResponse) {
 	if (!requireAuth(req, res)) return;
@@ -100,7 +101,18 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 	}
 
 	// Step 4: apply — compose reads COMPOSE_PROFILES from the .env just written.
-	const up = exec('docker compose up -d --remove-orphans', OWLAT_DIR);
+	// Named services, so a profile change can never recreate the updater or the
+	// socket proxy out from under the command applying it.
+	const plan = servicesToRecreate();
+	if (plan.error) {
+		steps.push({ step: 'up', ok: false, stdout: '', stderr: plan.error });
+		return json(res, 500, { error: `docker compose up failed: ${plan.error}`, profiles, steps });
+	}
+
+	const up = exec(
+		`${composeCommand()} up -d --remove-orphans ${plan.services.join(' ')}`,
+		OWLAT_DIR
+	);
 	steps.push({ step: 'up', ...up });
 	if (!up.ok) {
 		return json(res, 500, { error: 'docker compose up failed', profiles, steps });
