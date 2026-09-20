@@ -21,6 +21,10 @@ const topicId = useRouteId<'topics'>();
 
 // Get the current user's organization (organizationLoading used for loading state)
 const { isLoading: organizationLoading } = useOrganizationContext();
+// Removing a contact from a topic requires `topics:manage` (owner/admin) —
+// `apps/api/convex/topics/topics.ts`. Reading the membership does not.
+const { can } = usePermissions();
+const canManage = computed(() => can('topics:manage'));
 
 // Fetch topic details
 const { data: topic, isLoading: topicLoading } = useConvexQuery(api.topics.topics.get, () => ({
@@ -437,7 +441,9 @@ const viewContact = (contactId: Id<'contacts'>) => {
 								class="flex-1 min-w-0 text-left py-1"
 								@click="viewContact(contact._id)"
 							>
-								<span class="block text-text-primary font-medium truncate">{{ contact.email }}</span>
+								<span class="block text-text-primary font-medium truncate">{{
+									contact.email
+								}}</span>
 								<span
 									v-if="contact.firstName || contact.lastName"
 									class="block text-sm text-text-secondary truncate"
@@ -449,6 +455,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 								</span>
 							</button>
 							<button
+								v-if="canManage"
 								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
 								:aria-label="t('dashboard.audience.topics.detail.index.removeFromTopic')"
 								@click="openRemoveModal(contact)"
@@ -543,6 +550,7 @@ const viewContact = (contactId: Id<'contacts'>) => {
 									<td class="px-6 py-4">
 										<div class="flex items-center justify-end gap-1">
 											<button
+												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
 												:title="t('dashboard.audience.topics.detail.index.removeFromTopic')"
 												@click.stop="openRemoveModal(contact)"
