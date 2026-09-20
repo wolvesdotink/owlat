@@ -61,24 +61,10 @@ export const ALLOWED_PRIORITIES = new Set([
 	'unspecified',
 ]);
 
-/** The classifier's mail kinds (nature of the mail, orthogonal to the topic category). */
-export const ALLOWED_KINDS = new Set([
-	'personal',
-	'update',
-	'notification',
-	'receipt',
-	'newsletter',
-	'advertising',
-	'unspecified',
-]);
-
-/** Kinds that are bulk or automated by nature — they never expect a reply. */
-export const BULK_KINDS: ReadonlySet<string> = new Set([
-	'notification',
-	'receipt',
-	'newsletter',
-	'advertising',
-]);
+// The mail-kind vocabulary lives with the validator that persists it
+// (lib/classificationValidator.ts) so the isolate side reads it without
+// importing an agent step; re-exported here beside its sibling allowlists.
+export { ALLOWED_KINDS, BULK_KINDS } from '../../../lib/classificationValidator';
 
 /** ISO 639-1 (optionally region-tagged) language code, lowercased; else undefined. */
 export function safeLanguage(value: unknown): string | undefined {
@@ -87,7 +73,7 @@ export function safeLanguage(value: unknown): string | undefined {
 	return /^[a-z]{2,3}(-[a-z]{2,4})?$/.test(lc) ? lc : undefined;
 }
 
-export function safeEnum(value: unknown, allowed: Set<string>): string {
+export function safeEnum(value: unknown, allowed: ReadonlySet<string>): string {
 	if (typeof value !== 'string') return 'unspecified';
 	const lc = value.trim().toLowerCase();
 	return allowed.has(lc) ? lc : 'unspecified';

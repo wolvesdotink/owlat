@@ -8,6 +8,33 @@
 
 import { v } from 'convex/values';
 
+/**
+ * The classifier's mail KINDS — the nature of a message, orthogonal to its
+ * topic `category`. They live here beside the validator that persists them so
+ * both runtimes can read them: the `classify` step allowlists the model's
+ * answer against {@link ALLOWED_KINDS}, and the isolate-side Updates dashboard
+ * splits its tabs on {@link BULK_KINDS}.
+ */
+export const MAIL_KINDS = [
+	'personal',
+	'update',
+	'notification',
+	'receipt',
+	'newsletter',
+	'advertising',
+] as const;
+
+/** {@link MAIL_KINDS} plus the sanitizer's fallback. */
+export const ALLOWED_KINDS: ReadonlySet<string> = new Set([...MAIL_KINDS, 'unspecified']);
+
+/** Kinds that are bulk or automated by nature — they never expect a reply. */
+export const BULK_KINDS: ReadonlySet<string> = new Set([
+	'notification',
+	'receipt',
+	'newsletter',
+	'advertising',
+]);
+
 export const classificationValidator = v.object({
 	category: v.string(),
 	priority: v.string(),

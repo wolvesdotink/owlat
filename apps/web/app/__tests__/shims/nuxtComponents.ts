@@ -16,6 +16,10 @@ export const NuxtLink = defineComponent({
 	props: { to: { type: [String, Object], default: undefined } },
 	setup(props, { slots, attrs }) {
 		return () =>
-			h('a', { ...attrs, href: typeof props.to === 'string' ? props.to : undefined }, slots.default?.());
+			h(
+				'a',
+				{ ...attrs, href: typeof props.to === 'string' ? props.to : undefined },
+				slots.default?.()
+			);
 	},
 });

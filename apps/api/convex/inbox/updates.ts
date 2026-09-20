@@ -24,7 +24,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow, throwInvalidState } from '../_utils/errors';
 import { isSharedInboxReader } from './access';
 import { openConversationThreadPreview } from '../lib/messageBody';
-import { BULK_KINDS } from '../agent/steps/draft/sanitize';
+import { BULK_KINDS } from '../lib/classificationValidator';
 
 /**
  * The dashboard's tabs. `updates` is mail a human wrote that needs no reply;

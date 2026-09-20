@@ -1,3 +1,5 @@
+'use node';
+
 /**
  * Clarification-question localization — the reader is always asked in their
  * own language.
@@ -12,9 +14,15 @@
  * falls back to the canonical text.
  *
  * Shared by both clarification surfaces (the inbound agent `clarify` step and
- * the Postbox Reply Queue refinement). Pure prompt/shape helpers here; the
- * one model call is wrapped so ANY failure returns the questions untouched —
- * a missing translation is a cosmetic gap, never a blocked reply.
+ * the Postbox Reply Queue refinement), both of which are `'use node'`. This
+ * module is too: it reaches the model through `lib/llm/dispatch.ts`, which
+ * runs in the Node runtime, and a V8-isolate entry may not bundle that (the
+ * function-graph smoke enforces it). The slot taxonomy it sits beside
+ * (`clarificationSlots.ts`) stays isolate-safe because it only builds strings.
+ *
+ * The prompt/shape helpers are pure and exported for tests; the one model call
+ * is wrapped so ANY failure returns the questions untouched — a missing
+ * translation is a cosmetic gap, never a blocked reply.
  */
 
 import { z } from 'zod';
