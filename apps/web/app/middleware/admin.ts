@@ -6,12 +6,17 @@
 export default defineNuxtRouteMiddleware(async () => {
 	if (import.meta.server) return;
 
+	// Every composable is built in the SYNCHRONOUS prologue: a route guard runs
+	// under `runWithContext`, whose effect scope stops being active at the first
+	// `await`, and composables that subscribe to something would then have
+	// nothing to register their teardown on.
 	const { isAuthenticated, waitUntilReady } = useAuth();
+	const { isLoading } = useOrganizationContext();
+	const { isAdmin } = usePermissions();
+
 	await waitUntilReady();
 	if (!isAuthenticated.value) return navigateTo('/auth/login');
 
-	const { isLoading } = useOrganizationContext();
 	await waitForLoaded(isLoading);
-	const { isAdmin } = usePermissions();
 	if (!isAdmin.value) return navigateTo('/dashboard', { replace: true });
 });

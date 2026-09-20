@@ -1,4 +1,5 @@
 import type { BetterFetchError } from '@better-fetch/fetch';
+import { effectScope } from 'vue';
 import { authClient, type AuthSessionData } from '~/lib/auth-client';
 import { resetConvexAuthTokenCache } from '~/lib/convex-auth';
 import { requiresTwoFactor } from '~/utils/accountTwoFactor';
@@ -70,9 +71,41 @@ function matchesExpectedSession(session: SessionData, options: RefreshSessionOpt
 	return true;
 }
 
+/**
+ * The better-auth session store, subscribed ONCE for the app's lifetime.
+ *
+ * `authClient.useSession()` opens a nanostore subscription and only releases it
+ * through `onScopeDispose` — i.e. only when an effect scope is active. `useAuth`
+ * is called from route middleware, where after the first `await` there is none,
+ * so every navigation to a guarded route added a listener that was never
+ * released. The session is a single piece of global state, so one subscriber is
+ * the right shape anyway; a DETACHED scope owns it so no caller's teardown can
+ * cut everyone else off. Mirrors `useFeatureFlag`.
+ */
+// Wrapped rather than `ReturnType<typeof authClient.useSession>`: better-auth
+// declares that hook with a server (Promise) and a client (Ref) result, and only
+// a real call expression picks the right one.
+function createSessionStore() {
+	return authClient.useSession();
+}
+
+type SessionStore = ReturnType<typeof createSessionStore>;
+
+let sharedSession: SessionStore | null = null;
+
+function sessionStore(): SessionStore {
+	if (!sharedSession) {
+		const scope = effectScope(true);
+		scope.run(() => {
+			sharedSession = createSessionStore();
+		});
+	}
+	return sharedSession as SessionStore;
+}
+
 export function useAuth() {
 	const t = authTranslator();
-	const sessionState = authClient.useSession();
+	const sessionState = sessionStore();
 
 	const sessionData = computed<SessionData>(() => sessionState.value.data ?? null);
 

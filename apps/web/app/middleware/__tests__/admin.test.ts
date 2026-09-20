@@ -10,6 +10,7 @@
  * the guard runs outside a component `setup()`, so that crash fails this file.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { api } from '@owlat/api';
 import { getCurrentInstance } from 'vue';
 import type { RouteLocationNormalized } from 'vue-router';
 import {
@@ -146,6 +147,23 @@ describe('admin middleware', () => {
 			options: { replace: true },
 		});
 		consoleError.mockRestore();
+	});
+
+	it('does not open another Convex subscription per navigation', async () => {
+		// The guard calls `useOrganizationContext()` inside `runWithContext`, whose
+		// effect scope is gone once the guard has awaited — so nothing would ever
+		// unsubscribe. With 99 guarded pages that is one leaked workspace-settings
+		// subscription per navigation. The query is a module singleton now, so the
+		// count must not grow.
+		signIn({ role: 'admin' });
+		const { middleware, convex } = await load();
+
+		await middleware(to, to);
+		const afterFirst = convex!.subscriptionCount(api.workspaces.settings.get);
+		expect(afterFirst).toBe(1);
+
+		await middleware(to, to);
+		expect(convex!.subscriptionCount(api.workspaces.settings.get)).toBe(afterFirst);
 	});
 
 	it('sends a signed-out visitor to sign in without loading the organization', async () => {

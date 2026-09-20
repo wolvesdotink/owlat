@@ -1,4 +1,5 @@
 import { api } from '@owlat/api';
+import { effectScope } from 'vue';
 import {
 	useActiveOrganization,
 	useListOrganizations,
@@ -146,13 +147,41 @@ export function organizationTranslator(): (key: string) => string {
  * Uses shared state (useState) so all callers share the same data and
  * only one set of HTTP requests is made per organization switch.
  */
+/**
+ * The BetterAuth organization stores, subscribed ONCE for the app's lifetime.
+ *
+ * They are nanostore-backed and release their listener only through
+ * `onScopeDispose`, so a call made where no effect scope is active — route
+ * middleware after its first `await`, which is how the `auth` and `admin` guards
+ * reach this composable — subscribed forever. One listener per navigation over
+ * ~99 guarded pages. Both stores are app-wide singletons upstream, so a single
+ * subscriber is also the correct shape; a DETACHED scope owns it so no caller's
+ * teardown can freeze the refs for everyone else. The scope is module state, so
+ * HMR still rebuilds it along with the module — which is what an earlier attempt
+ * at plain caching got wrong.
+ */
+let organizationStores: {
+	activeOrganization: ReturnType<typeof useActiveOrganization>;
+	organizationsList: ReturnType<typeof useListOrganizations>;
+} | null = null;
+
+function betterAuthOrganizationStores() {
+	if (!organizationStores) {
+		const scope = effectScope(true);
+		scope.run(() => {
+			organizationStores = {
+				activeOrganization: useActiveOrganization(),
+				organizationsList: useListOrganizations(),
+			};
+		});
+	}
+	return organizationStores as NonNullable<typeof organizationStores>;
+}
+
 export function useOrganization() {
 	const t = organizationTranslator();
-	// BetterAuth hooks — called fresh each time; they return the same internal
-	// reactive state so multiple calls are cheap. Caching at module level broke
-	// reactivity across HMR and could prevent isPending from resolving.
-	const activeOrgRef = useActiveOrganization();
-	const orgsListRef = useListOrganizations();
+	const { activeOrganization: activeOrgRef, organizationsList: orgsListRef } =
+		betterAuthOrganizationStores();
 
 	// Shared reactive state via useState — all instances share the same refs
 	const members = useState<OrganizationMember[]>('org-members', () => []);

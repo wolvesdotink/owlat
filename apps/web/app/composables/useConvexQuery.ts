@@ -1,5 +1,11 @@
-import type { FunctionReference, FunctionArgs, FunctionReturnType } from 'convex/server';
+import {
+	getFunctionName,
+	type FunctionReference,
+	type FunctionArgs,
+	type FunctionReturnType,
+} from 'convex/server';
 import { convexToJson } from 'convex/values';
+import { logWarn } from '~/lib/runtimeLog';
 import type { Ref } from 'vue';
 
 export type ArgsOrFactory<Args> = Args | (() => Args | 'skip');
@@ -178,6 +184,22 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 				unsubscribe();
 			}
 		});
+	} else if (import.meta.dev) {
+		// No scope means nothing will ever call the unsubscribe: the socket
+		// subscription outlives whatever created it. The usual cause is a call
+		// made after an `await` in route middleware, where Nuxt's `runWithContext`
+		// scope is no longer active — one leaked subscription per navigation, on a
+		// guard that runs on nearly every page. Shared state like this belongs in a
+		// module singleton owned by a detached `effectScope`; see `useFeatureFlag`.
+		let name: string;
+		try {
+			name = getFunctionName(query);
+		} catch {
+			name = String(query);
+		}
+		logWarn(
+			`[useConvexQuery] ${name} was created outside an effect scope — its subscription will never be released.`
+		);
 	}
 
 	return { data, error, isLoading, isRefetching, refetch };

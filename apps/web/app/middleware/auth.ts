@@ -24,7 +24,13 @@ export default defineNuxtRouteMiddleware(async (to) => {
 		return;
 	}
 
+	// Built in the SYNCHRONOUS prologue, before any `await`: the guard runs under
+	// `runWithContext`, whose effect scope is no longer active once this function
+	// suspends, so a composable constructed later has nothing to register a
+	// teardown on.
 	const { isAuthenticated, user, activeOrganizationId, waitUntilReady } = useAuth();
+	const { isLoading: organizationLoading, organization, setActive } = useOrganizationContext();
+
 	await waitUntilReady();
 
 	// If not authenticated and trying to access protected route
@@ -58,8 +64,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
 			// The page will handle loading states
 			return;
 		}
-
-		const { isLoading: organizationLoading, organization, setActive } = useOrganizationContext();
 
 		// Wait for organization data to load
 		await waitForLoaded(organizationLoading);
