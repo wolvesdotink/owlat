@@ -3643,10 +3643,10 @@ draft-status).
 **Inbox processing status**:
 The current state of an inbound message in `inboundMessages.processingStatus`:
 `received | security_check | quarantined | classifying | drafting |
-draft_ready | awaiting_clarification | approved | sent | rejected | archived |
-failed`. Twelve states
-covering the joined agent-pipeline progression and the human draft-review
-hand-off. Companion fields written atomically with the status: `errorMessage`
+draft_ready | awaiting_clarification | informational | approved | sent |
+rejected | archived | failed`. Thirteen states
+covering the joined agent-pipeline progression, the needs-no-reply parking
+state (ADR-0061) and the human draft-review hand-off. Companion fields written atomically with the status: `errorMessage`
 (on `failed`), `processedAt` (on terminals), `securityFlags` (on
 `quarantined` / `archived`), `classification` (when `classify` completes),
 `draftResponse` / `draftSubject` / `confidenceScore` (when `draft` completes),
@@ -3659,6 +3659,9 @@ hand-off. Companion fields written atomically with the status: `errorMessage`
 - `classifying → drafting`
 - `classifying → draft_ready` (no draft generation is needed)
 - `classifying → awaiting_clarification`
+- `classifying → informational` (the sender expects no reply; Updates dashboard)
+- `informational → drafting` (a reader overrules the classifier and asks for a draft)
+- `informational → archived` (a reader dismisses the update)
 - `awaiting_clarification → drafting`
 - `awaiting_clarification → archived` (owner dismisses the message)
 - `drafting → draft_ready`

@@ -39,11 +39,20 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReply';
 import { requireMailboxAccess } from './permissions';
+import { moveMessagesToFolder } from './messageActions';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
-const MAIL_CATEGORIES = ['person', 'newsletter', 'notification', 'receipt', 'other'] as const;
+const MAIL_CATEGORIES = [
+	'person',
+	'newsletter',
+	'notification',
+	'receipt',
+	'promotion',
+	'spam',
+	'other',
+] as const;
 export type MailCategory = (typeof MAIL_CATEGORIES)[number];
 
 /** Categories a user may pick in "Recategorize as…" (no ambiguity there). */
@@ -52,6 +61,14 @@ type MailCategorySource = 'heuristic' | 'llm' | 'user';
 /** Subject keywords that mark transactional receipts / orders / invoices. */
 const RECEIPT_SUBJECT =
 	/\b(receipt|invoice|order\s*(confirmation|#|no\.?|number)?|your\s+order|order\s+shipped|payment\s+(received|confirmation)|purchase|billed|your\s+bill|subscription\s+renew(ed|al)|charged|paid)\b/i;
+
+/**
+ * Subject phrases that mark a promotion: a sale, a discount, a limited offer.
+ * Checked AFTER the newsletter signal (a subscribed newsletter announcing a
+ * sale is still the newsletter the owner asked for) and BEFORE receipts.
+ */
+const PROMOTION_SUBJECT =
+	/(\b\d{1,2}\s?%\s?(off|rabatt|discount)|\b(sale|flash\s+sale|limited[-\s]time|last\s+chance|exclusive\s+offer|special\s+offer|coupon|promo\s*code|voucher|black\s+friday|cyber\s+monday|free\s+trial|upgrade\s+now|don'?t\s+miss|angebot|gutschein|aktion)\b)/i;
 
 /** Local-parts of automated/system senders that emit notifications. */
 const NOTIFICATION_LOCAL_PART =
@@ -87,6 +104,10 @@ export function classifyMailCategory(input: MailCategoryInput): MailCategory | n
 	if (input.hasListUnsubscribe || isBulkPrecedence(input.precedence)) {
 		return 'newsletter';
 	}
+
+	// Promotion: sale / discount / offer phrasing from a sender the owner has
+	// never written to. A known correspondent announcing a sale is a person.
+	if (!input.isKnownCorrespondent && PROMOTION_SUBJECT.test(input.subject)) return 'promotion';
 
 	// Receipt: transactional keywords in the subject. Checked before
 	// notification because order confirmations routinely come from no-reply@.
@@ -277,12 +298,50 @@ export const applyCategory = internalMutation({
 		) {
 			return; // stale — a newer ingest re-enqueued its own check
 		}
+		const previous = thread.category?.label;
 		await ctx.db.patch(args.threadId, {
 			category: { label: args.label, source: args.source, classifiedAt: Date.now() },
 			updatedAt: Date.now(),
 		});
+		// Spam goes to the Spam folder the moment the classifier says so; the
+		// thread keeps its label, so "Not spam" (recategorize) can bring it back.
+		if (args.label === 'spam' && previous !== 'spam') {
+			await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
+		}
 	},
 });
+
+/**
+ * Move every message of `thread` that sits in the `fromRole` system folder
+ * into the `toRole` one. Best-effort: a mailbox without the target folder, or
+ * a thread with nothing in the source folder, is a no-op. Reuses the one
+ * bookkeeping helper every folder move goes through.
+ */
+async function moveThreadBetweenRoles(
+	ctx: MutationCtx,
+	thread: Doc<'mailThreads'>,
+	fromRole: 'inbox' | 'spam',
+	toRole: 'inbox' | 'spam'
+): Promise<void> {
+	const source = await ctx.db
+		.query('mailFolders')
+		.withIndex('by_mailbox_and_role', (q) =>
+			q.eq('mailboxId', thread.mailboxId).eq('role', fromRole)
+		)
+		.first();
+	const target = await ctx.db
+		.query('mailFolders')
+		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', thread.mailboxId).eq('role', toRole))
+		.first();
+	if (!source || !target) return;
+	const messages = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
+		.collect(); // bounded: one thread's messages
+	const messageIds = messages.filter((m) => m.folderId === source._id).map((m) => m._id);
+	if (messageIds.length === 0) return;
+	await moveMessagesToFolder(ctx, { messageIds, targetFolderId: target._id });
+}
 
 /**
  * User "Recategorize as…" — writes a per-sender override that always wins and
@@ -328,10 +387,20 @@ export const recategorize = authedMutation({
 			}
 		}
 
+		const previous = thread.category?.label;
 		await ctx.db.patch(args.threadId, {
 			category: { label: args.label, source: 'user', classifiedAt: now },
 			updatedAt: now,
 		});
+		// The owner is in charge: marking spam files it away, and "Not spam" —
+		// any other label on a thread the classifier filed as spam — brings the
+		// messages back to the inbox. The per-sender override above makes sure
+		// the classifier never files that sender as spam again.
+		if (args.label === 'spam' && previous !== 'spam') {
+			await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
+		} else if (args.label !== 'spam' && previous === 'spam') {
+			await moveThreadBetweenRoles(ctx, thread, 'spam', 'inbox');
+		}
 	},
 });
 

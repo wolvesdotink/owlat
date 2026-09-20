@@ -42,6 +42,7 @@ import {
 	shouldSampleDraftDelta,
 } from '../../inbox/askEagerness';
 import { SYSTEM_GUARD } from './promptGuards';
+import { localizeQuestions } from '../../inbox/clarificationLocalize';
 
 const refinementSchema = z.object({
 	needsReply: z.boolean(),
@@ -252,6 +253,7 @@ interface ClarificationFlag {
 		text: string;
 		attribution: string;
 		options?: string[];
+		translations?: { locale: string; text: string; options?: string[] }[];
 	}[];
 	askedAt: number;
 }
@@ -343,10 +345,25 @@ export async function refineClarification(
 
 		// Deterministic safety filter: drop credential/OTP solicitations, attribute
 		// each survivor to the sender ("Owlat will never ask for your password").
-		const questions = sanitizeClarificationQuestions(raw, opts.fromAddress);
-		if (questions.length === 0) return undefined;
+		const sanitized = sanitizeClarificationQuestions(raw, opts.fromAddress);
+		if (sanitized.length === 0) return undefined;
 
-		return { isNeeded: true, questions, askedAt: Date.now() };
+		// Ask the owner in their own language: translate the surviving questions
+		// into every other interface locale. Fail-soft to the English copy.
+		const localized = await localizeQuestions(
+			await resolveLanguageModel(ctx, 'summarize'),
+			sanitized
+		);
+		if (localized.tokenUsage) {
+			await recordLlmSpend(
+				ctx,
+				'postbox_clarify_localize',
+				localized.tokenUsage,
+				localized.modelUsed
+			);
+		}
+
+		return { isNeeded: true, questions: localized.questions, askedAt: Date.now() };
 	} catch {
 		return undefined;
 	}

@@ -399,6 +399,7 @@ export const getInboundStats = publicQuery({
 			sent: counters.sent,
 			quarantined: counters.quarantined,
 			failed: counters.failed,
+			informational: counters.informational ?? 0,
 			openThreads: settings?.openThreads ?? 0,
 		};
 	},
@@ -460,7 +461,9 @@ export const pendingAssignments = publicQuery({
 
 		return rows.map((r) => ({
 			id: r._id,
+			kind: r.kind ?? ('assignment' as const),
 			threadId: r.threadId,
+			inboundMessageId: r.inboundMessageId,
 			subject: r.subject,
 			assignedByName: r.assignedByName,
 			createdAt: r.createdAt,
