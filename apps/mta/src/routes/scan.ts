@@ -12,7 +12,8 @@
  *   POST /scan/attachment
  *   Authorization: Bearer <MTA_API_KEY>
  *   Content-Type: application/octet-stream
- *   X-Filename: invoice.pdf   (percent-encoded; see decodeFilenameHeader)
+ *   X-Filename: invoice.pdf   (percent-encoded and bounded to ~1 KiB by the
+ *                              caller; see decodeFilenameHeader)
  *
  * Response:
  *   200: { clean: true }
@@ -46,6 +47,12 @@ const MAX_ATTACHMENT_SIZE = MAX_ATTACHMENT_BYTES;
  * scan: a lone `%` in a filename is legal, and answering 400 for it would send
  * the caller down its fail-open path and leave the bytes unscanned — the exact
  * outcome the encoding exists to prevent.
+ *
+ * The caller also BOUNDS the value, because this server runs on Node's default
+ * 16 KiB header limit and answers 431 above it — before this route is reached —
+ * and a filename is sender-chosen and arrives unbounded. A truncated stem is
+ * only ever a shorter log line here; the extension `validateFile` judges is the
+ * part the caller keeps.
  */
 function decodeFilenameHeader(raw: string): string {
 	try {

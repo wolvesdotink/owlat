@@ -28,14 +28,37 @@ export type ScanStubRequest = {
 };
 
 /**
+ * The longest `X-Filename` value a stub will answer, in header characters.
+ *
+ * `new Headers()` validates CHARACTERS but not SIZE, so a stub alone cannot see
+ * the other half of the sender-chosen-filename problem: the MTA serves
+ * `/scan/attachment` through `@hono/node-server` on Node's default
+ * `--max-http-header-size` of 16 KiB and answers 431 — before the route runs —
+ * for anything past it, which the client reads as a fail-open skip and the
+ * message goes unscanned. A real `http.createServer` was probed to confirm the
+ * 431; this constant is how the suite keeps seeing it.
+ *
+ * Well under the real 16 KiB, because that limit covers the WHOLE header block
+ * and `mtaClient` bounds this one value at 1 KiB anyway.
+ */
+export const MAX_STUB_FILENAME_HEADER_CHARS = 8 * 1024;
+
+/**
  * Read a stubbed `/scan/attachment` call the way the runtime and the MTA would.
  *
- * THROWS for a header value `fetch` would have thrown on, which is the point.
+ * THROWS for a header value `fetch` would have thrown on — and for one the
+ * MTA's HTTP server would have answered 431 to — which is the point.
  */
 export function readScanRequest(url: RequestInfo | URL, init?: RequestInit): ScanStubRequest {
 	// Validates every name and value exactly as the platform's own `fetch` does.
 	const headers = new Headers(init?.headers as HeadersInit | undefined);
 	const filenameHeader = headers.get('X-Filename') ?? '';
+	if (filenameHeader.length > MAX_STUB_FILENAME_HEADER_CHARS) {
+		throw new Error(
+			`X-Filename is ${filenameHeader.length} chars — the MTA's server answers 431 above ` +
+				`${MAX_STUB_FILENAME_HEADER_CHARS}, and the client reads that as an unscanned file`
+		);
+	}
 	let filename: string;
 	try {
 		filename = decodeURIComponent(filenameHeader);

@@ -65,6 +65,45 @@ interface AttachmentScanResponse {
 const FILE_TYPE_REFUSAL_STAGE = 'file_type_validation';
 
 /**
+ * Longest `X-Filename` value this client will ever send, in header characters.
+ *
+ * A filename is SENDER-CHOSEN and `@owlat/shared/mailMime` surfaces it
+ * unbounded: chained RFC 2047 encoded words and RFC 2231 continuations both
+ * decode to one long string, and a folded plain-ASCII parameter unfolds
+ * verbatim. Percent-encoding a 2,000-character Cyrillic name produces ~13 KB of
+ * header, and the MTA serves `/scan/attachment` through `@hono/node-server` on
+ * Node's default `--max-http-header-size` of 16 KiB: the server answers 431
+ * before the route runs, the client reads `!res.ok` as a fail-open skip, and
+ * the file is never scanned while its download stays live. On the personal
+ * mailbox it is worse — a single-leaf message then has nobody having answered,
+ * so the no-scanner fallback hands the UNSCANNED bytes to the model.
+ *
+ * So the bound is on THIS side, where the sentence "this is not a filename any
+ * more" can be said once for every scan site. 1 KiB leaves Node's whole header
+ * block an order of magnitude of room, and the MTA only uses the name for
+ * `validateFile` and its log line.
+ */
+const MAX_FILENAME_HEADER_CHARS = 1024;
+
+/** How much of that budget the EXTENSION may take — the part the gate judges. */
+const MAX_EXTENSION_HEADER_CHARS = 64;
+
+/**
+ * Percent-encode as much of `value` as fits in `budget` header characters,
+ * cutting between code points so the MTA's `decodeURIComponent` never meets
+ * half an escape.
+ */
+function encodeWithinBudget(value: string, budget: number): string {
+	let out = '';
+	for (const char of value) {
+		const piece = encodeURIComponent(char);
+		if (out.length + piece.length > budget) break;
+		out += piece;
+	}
+	return out;
+}
+
+/**
  * The attachment's filename, as a value that can legally be an HTTP header.
  *
  * AN HTTP HEADER VALUE IS A ByteString: every code unit has to be ≤ U+00FF, and
@@ -83,9 +122,20 @@ const FILE_TYPE_REFUSAL_STAGE = 'file_type_validation';
  * wire verbatim — while nothing sender-chosen can throw or inject. The MTA
  * decodes it (`apps/mta/src/routes/scan.ts`); an MTA too old to decode sees a
  * mangled non-ASCII name and still judges the right extension.
+ *
+ * BOUNDED, and the EXTENSION is what survives. The stem is truncated to
+ * whatever is left of {@link MAX_FILENAME_HEADER_CHARS} after the extension,
+ * because the extension is the half the file-type allowlist judges — an
+ * `invoice.pdf.exe` under a 17,000-character stem still arrives as an `.exe`.
+ * Truncation can never turn one extension into another: the split is on the
+ * LAST dot, and only what precedes it is cut.
  */
 function encodeFilenameHeader(filename: string): string {
-	return encodeURIComponent(filename);
+	const dot = filename.lastIndexOf('.');
+	const extension =
+		dot > 0 ? encodeWithinBudget(filename.slice(dot), MAX_EXTENSION_HEADER_CHARS) : '';
+	const stem = dot > 0 ? filename.slice(0, dot) : filename;
+	return encodeWithinBudget(stem, MAX_FILENAME_HEADER_CHARS - extension.length) + extension;
 }
 
 /**

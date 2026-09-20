@@ -24,7 +24,12 @@
  *     indexed one;
  *   · a leaf the scan never opened is never ingested — ten `.exe` stubs ahead
  *     of a `.txt` used to spend the scanner's budget on the stubs and leave
- *     capture a free slot for the one file nobody had scanned;
+ *     capture a free slot for the one file nobody had scanned — and a message
+ *     whose eleventh leaf is an INLINE executable is never called clean;
+ *   · a filename too long to be an HTTP header (a chain of encoded words, or
+ *     17,000 plain ASCII characters) still reaches the scanner, because the
+ *     server the scan endpoint runs on answers 431 and the client reads that
+ *     as a file it may as well not have scanned;
  *   · a message whose only attachment is an INLINE signature logo is not
  *     reported as unscanned: there was nothing to scan;
  *   · a `.docx` is marked as name-only, because the extractor answers it with
@@ -1240,35 +1245,92 @@ describe('inboundIngest — filenames the sender chose', () => {
 		expect(rows[0]!.virusVerdict).toBe('clean');
 	});
 
-	it('cannot be made to inject a header through the filename', async () => {
+	it('scans a file whose name is two thousand characters of encoded words', async () => {
 		const t = setupTest();
 		configureMta();
 		const scanner = stubScannerPerFile({});
 
-		// A CRLF in a header value is refused by the platform outright, which
-		// means the scan silently failed open on exactly the leaf a sender was
-		// trying to smuggle. Encoded, it is inert and the leaf gets scanned.
+		// `mailMime` decodes a CHAIN of RFC 2047 words into one string with no
+		// bound at all: 300 of them come out as 2,104 characters, which
+		// percent-encode to ~12.6 KB of header. The MTA serves the scan endpoint
+		// on Node's default 16 KiB header limit and answers 431 before the route
+		// runs, the client reads that as a fail-open skip — and one long name on
+		// any file was therefore a scanner bypass with the download still live.
+		const longName = '=?UTF-8?B?0YDQsNGF0YPQvdC+0Lo=?='.repeat(300);
 		await ingest(
 			t,
-			'crlf-1@example.com',
+			'longname-1@example.com',
 			encode(
-				buildEmlWithLeaf('crlf-1@example.com', {
+				buildEmlWithLeaf('longname-1@example.com', {
 					headers: [
-						'Content-Type: text/plain; name="a.txt"',
-						'Content-Disposition: attachment; filename="a.txt\r\nX-Injected: 1"',
+						`Content-Type: application/pdf; name="${longName}.pdf"`,
+						`Content-Disposition: attachment; filename="${longName}.pdf"`,
 						'Content-Transfer-Encoding: base64',
 					],
-					body: Buffer.from('a document with enough words in it to summarise').toString('base64'),
+					body: Buffer.from('%PDF-1.4 a real enough invoice with words in it').toString('base64'),
 				})
 			),
-			[{ filename: 'a.txt', contentType: 'text/plain', size: 46, partIndex: '1' }]
+			[
+				{
+					filename: `${'рахунок'.repeat(300)}.pdf`,
+					contentType: 'application/pdf',
+					size: 46,
+					partIndex: '1',
+				},
+			]
+		);
+
+		// The scanner was REACHED, with a header small enough to arrive...
+		expect(scanner.headerValues()).toHaveLength(1);
+		expect(scanner.headerValues()[0]!.length).toBeLessThanOrEqual(1024);
+		// ...and the extension — the half the MTA's file-type gate judges — is
+		// what survived the truncation.
+		expect(scanner.scanned()[0]).toMatch(/\.pdf$/);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows[0]!.virusVerdict).toBe('clean');
+		expect(rows[0]!.attachmentIndexing).toBe('indexed');
+	});
+
+	it('scans a file whose name is seventeen thousand plain ASCII characters', async () => {
+		const t = setupTest();
+		configureMta();
+		const scanner = stubScannerPerFile({});
+
+		// No encoding needed for the same bypass: a folded plain-ASCII parameter
+		// unfolds verbatim, and ASCII percent-encodes to itself, so the header is
+		// as long as the sender made it.
+		const longName = 'a'.repeat(17000);
+		await ingest(
+			t,
+			'longname-2@example.com',
+			encode(
+				buildEmlWithLeaf('longname-2@example.com', {
+					headers: [
+						`Content-Type: application/pdf; name="${longName}.pdf"`,
+						`Content-Disposition: attachment; filename="${longName}.pdf"`,
+						'Content-Transfer-Encoding: base64',
+					],
+					body: Buffer.from('%PDF-1.4 a real enough invoice with words in it').toString('base64'),
+				})
+			),
+			[
+				{
+					filename: `${longName}.pdf`,
+					contentType: 'application/pdf',
+					size: 46,
+					partIndex: '1',
+				},
+			]
 		);
 
 		expect(scanner.headerValues()).toHaveLength(1);
-		expect(scanner.headerValues()[0]).not.toContain('\r');
-		expect(scanner.headerValues()[0]).not.toContain('\n');
+		expect(scanner.headerValues()[0]!.length).toBeLessThanOrEqual(1024);
+		expect(scanner.scanned()[0]).toMatch(/^a+\.pdf$/);
+
 		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
 		expect(rows[0]!.virusVerdict).toBe('clean');
+		expect(rows[0]!.attachmentIndexing).toBe('indexed');
 	});
 });
 
