@@ -23,6 +23,8 @@ export interface ReplyQueueClarificationQuestion {
 	attribution: string;
 	/** Suggested scoped answers rendered as one-tap chips (multiple choice). */
 	options?: string[];
+	/** Per-locale renderings of text + options (see utils/clarificationLocale). */
+	translations?: { locale: string; text: string; options?: string[] }[];
 	/** The owner's answer — present once answered. */
 	answer?: { value: string; at: number };
 }

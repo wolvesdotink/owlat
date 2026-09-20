@@ -69,7 +69,8 @@ export const detectionSourceValidator = v.union(v.literal('heuristic'), v.litera
  * crash or a silent fall back to English on a channel nobody is watching.
  * Keep in step with `apps/web/i18n/formats.ts` → `FORMAT_LOCALES`.
  */
-export const appLocaleValidator = v.union(v.literal('en'), v.literal('de'));
+// Interface locales live in ./appLocales.ts (file-size ratchet); re-exported here.
+export { APP_LOCALES, appLocaleValidator, type AppLocale } from './appLocales';
 
 export const unifiedMessageChannelValidator = v.union(
 	v.literal('email'),
@@ -403,13 +404,8 @@ export const securityFlagsValidator = v.object({
 });
 
 // Agent classification output (inboundMessages.classification)
-export const classificationValidator = v.object({
-	category: v.string(),
-	priority: v.string(),
-	sentiment: v.string(),
-	intent: v.string(),
-	confidence: v.number(),
-});
+// Moved to ./classificationValidator.ts (file-size ratchet); re-exported here.
+export { classificationValidator } from './classificationValidator';
 
 // Retrieval coverage / grounding signal (inboundMessages.contextCoverage).
 // Emitted by the `context_retrieval` Agent step — a CHEAP, ADVISORY summary of

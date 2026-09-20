@@ -8733,6 +8733,7 @@
 				},
 				"changeStatusAria": "Status der Konversation ändern",
 				"channelLinkFailedToast": "Kanal erstellt, aber die Verknüpfung ist fehlgeschlagen",
+				"clarificationHint": "Wählen Sie einen Antwortvorschlag oder schreiben Sie selbst. Die Antwort wird in der Sprache des Absenders verfasst.",
 				"clarificationSavedToast": "Antworten gespeichert — Entwurf wird fortgesetzt",
 				"confidenceChip": "{percent} % Konfidenz",
 				"contact": "Kontakt",
@@ -8914,6 +8915,33 @@
 			},
 			"review": {
 				"pageTitle": "Prüfliste — Owlat"
+			},
+			"updates": {
+				"dismiss": "Erledigt",
+				"dismissOperation": "Neuigkeit verwerfen",
+				"dismissedToast": "Neuigkeit verworfen",
+				"emptyBody": "Nachrichten ohne Antwortbedarf landen hier, sortiert danach, wie wichtig sie für Sie sind.",
+				"emptyTitle": "Sie sind auf dem Laufenden",
+				"errorMessage": "Die Neuigkeiten konnten nicht geladen werden. Versuchen Sie es gleich noch einmal.",
+				"errorTitle": "Neuigkeiten konnten nicht geladen werden",
+				"hintMove": "bewegen",
+				"hintOpen": "öffnen",
+				"importance": {
+					"high": "Wichtig",
+					"low": "Niedrig",
+					"normal": "Gut zu wissen"
+				},
+				"listAriaLabel": "Neuigkeiten ohne Antwortbedarf",
+				"loading": "Neuigkeiten werden geladen…",
+				"noSubject": "Kein Betreff",
+				"open": "Öffnen",
+				"openReviewQueue": "Prüfliste öffnen",
+				"pageTitle": "Neuigkeiten — Owlat",
+				"replyRequestedToast": "Der Agent entwirft eine Antwort. Sie erscheint in der Prüfliste.",
+				"requestReply": "Antwort entwerfen",
+				"requestReplyOperation": "Antwortentwurf anfordern",
+				"subtitle": "Nachrichten, die laut Agent keine Antwort brauchen, die wichtigsten zuerst. Hier wartet nichts auf Sie.",
+				"title": "Neuigkeiten"
 			}
 		},
 		"index": {
@@ -11428,7 +11456,8 @@
 					"allThreads": "Alle Konversationen",
 					"codeTasks": "Code-Aufgaben",
 					"quarantine": "Quarantäne",
-					"reviewQueue": "Prüf-Warteschlange"
+					"reviewQueue": "Prüf-Warteschlange",
+					"updates": "Neuigkeiten"
 				},
 				"knowledge": {
 					"explorer": "Explorer",
@@ -12151,6 +12180,17 @@
 		},
 		"inbox": {
 			"assignmentNoticeRules": {
+				"clarification": {
+					"notificationBody": {
+						"noSubject": "Kein Betreff · der Agent hat eine Frage an Sie",
+						"withSubject": "{subject} · der Agent hat eine Frage an Sie"
+					},
+					"notificationTitle": "Ihre Eingabe wird gebraucht",
+					"toast": {
+						"noSubject": "Der Agent braucht Ihre Eingabe für eine Antwort — Kein Betreff",
+						"withSubject": "Der Agent braucht Ihre Eingabe für eine Antwort — {subject}"
+					}
+				},
 				"notification": {
 					"body": {
 						"noSubject": "Kein Betreff · von {assignedByName}",
@@ -14202,12 +14242,16 @@
 			"assignThread": "Konversation zuweisen",
 			"processingStatus": {
 				"approved": "Freigegeben",
+				"archived": "Archiviert",
+				"awaitingClarification": "Wartet auf Ihre Eingabe",
 				"classified": "Klassifiziert",
 				"draftReady": "Entwurf bereit",
 				"failed": "Fehlgeschlagen",
+				"informational": "Keine Antwort nötig",
 				"processing": "In Verarbeitung",
 				"quarantined": "In Quarantäne",
 				"received": "Empfangen",
+				"rejected": "Abgelehnt",
 				"sent": "Gesendet"
 			},
 			"rejectDraft": "Entwurf ablehnen",

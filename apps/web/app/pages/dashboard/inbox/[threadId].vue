@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
+import TaskOptions from '~/components/agent-tasks/TaskOptions.vue';
+import { canonicalOption, localizedQuestionCopy } from '~/utils/clarificationLocale';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
@@ -9,7 +12,7 @@ import {
 	sendHoldReason,
 } from '~/utils/replyCollision';
 
-const { t, te } = useI18n();
+const { t, te, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.inbox.detail.pageTitle') });
 
@@ -199,6 +202,16 @@ function setClarificationAnswer(messageId: string, questionId: string, value: st
 	answers[questionId] = value;
 }
 
+// The question in the reader's own language (canonical English when no
+// translation landed); chip picks are mapped back to the canonical option on
+// submit so the persisted answer matches what answer-memory expects.
+type ThreadClarificationQuestion = NonNullable<
+	NonNullable<typeof messages.value>[number]['pendingClarification']
+>['questions'][number];
+function questionCopy(question: ThreadClarificationQuestion) {
+	return localizedQuestionCopy(question, locale.value);
+}
+
 function hasEveryClarificationAnswer(message: NonNullable<typeof messages.value>[number]) {
 	const answers = clarificationAnswers[message._id] ?? {};
 	return (
@@ -215,7 +228,7 @@ async function submitClarification(message: NonNullable<typeof messages.value>[n
 		inboundMessageId: message._id,
 		answers: questions.map((question) => ({
 			questionId: question.id,
-			value: values[question.id]?.trim() ?? '',
+			value: canonicalOption(question, locale.value, values[question.id]?.trim() ?? ''),
 		})),
 	});
 	if (result.ok) showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
@@ -556,11 +569,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								</template>
 							</UiButton>
 						</template>
-						<UiDropdownMenuItem
-							v-for="s in statusOptions"
-							:key="s"
-							@click="handleStatusChange(s)"
-						>
+						<UiDropdownMenuItem v-for="s in statusOptions" :key="s" @click="handleStatusChange(s)">
 							<span class="flex-1 truncate">
 								{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
 							</span>
@@ -707,19 +716,29 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 									{{ t('dashboard.inbox.detail.agentNeedsInput') }}
 								</p>
 							</div>
-							<div class="space-y-3">
-								<UiInput
+							<p class="mb-3 text-xs text-text-tertiary">
+								{{ t('dashboard.inbox.detail.clarificationHint') }}
+							</p>
+							<div class="space-y-4">
+								<div
 									v-for="question in message.pendingClarification.questions"
 									:key="question.id"
-									:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
-									:label="question.text"
-									:placeholder="
-										question.options?.join(' / ') || t('dashboard.inbox.detail.answerPlaceholder')
-									"
-									@update:model-value="
-										setClarificationAnswer(message._id, question.id, String($event))
-									"
-								/>
+									data-testid="thread-clarification-question"
+								>
+									<TaskAsk :ask="questionCopy(question).text" />
+									<TaskOptions
+										class="mt-1.5"
+										:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
+										:options="questionCopy(question).options"
+										:placeholder="t('dashboard.inbox.detail.answerPlaceholder')"
+										chip-test-id="thread-clarification-chip"
+										input-test-id="thread-clarification-input"
+										@update:model-value="
+											(value: string) => setClarificationAnswer(message._id, question.id, value)
+										"
+										@submit="hasEveryClarificationAnswer(message) && submitClarification(message)"
+									/>
+								</div>
 								<UiButton
 									size="sm"
 									:loading="isAnsweringClarification"

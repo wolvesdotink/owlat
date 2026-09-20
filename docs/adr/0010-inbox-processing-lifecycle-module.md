@@ -1,13 +1,13 @@
-# Inbox processing lifecycle module — single writer of the 12-state inbound pipeline + review machine
+# Inbox processing lifecycle module — single writer of the 13-state inbound pipeline + review machine
 
 **Status:** accepted
 
 ## Context
 
-`inboundMessages.processingStatus` is a 12-state column
+`inboundMessages.processingStatus` is a 13-state column
 (`received | security_check | quarantined | classifying | drafting |
-draft_ready | awaiting_clarification | approved | sent | rejected | archived |
-failed`)
+draft_ready | awaiting_clarification | informational | approved | sent |
+rejected | archived | failed`; `informational` was added by ADR-0061)
 tracking each inbound message through the agent pipeline and then the
 human draft-review queue. The state machine has **nine writers** across
 two driver populations (agent pipeline + cron + human review), and the

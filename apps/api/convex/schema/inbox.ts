@@ -237,6 +237,7 @@ export const inboxTables = {
 			v.literal('drafting'), // Agent draft generation in progress
 			v.literal('draft_ready'), // Draft ready for human review
 			v.literal('awaiting_clarification'), // Parked awaiting an owner answer before drafting
+			v.literal('informational'), // Needs no reply — surfaced on the Updates dashboard
 			v.literal('approved'), // Draft approved by human or auto-approved
 			v.literal('sent'), // Reply sent
 			v.literal('rejected'), // Draft rejected by human

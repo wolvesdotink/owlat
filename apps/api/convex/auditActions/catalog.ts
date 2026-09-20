@@ -279,6 +279,8 @@ export const AUDIT_ACTION_LITERALS = [
 	action('inbound.reply_sent'),
 	action('inbound.auto_send_cancelled'),
 	action('inbound.clarification_answered'),
+	action('inbound.update_dismissed'),
+	action('inbound.reply_requested'),
 	action('inbound.sender_blocked'),
 	action('agent.config_updated'),
 	action('agent.backfill_started'),

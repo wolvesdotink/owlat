@@ -61,6 +61,14 @@ export const inboxCollaborationTables = {
 	// notices it has already surfaced, so this table is an append-only signal —
 	// never mutated, and old rows simply age out of the query window.
 	inboxAssignmentNotices: defineTable({
+		// What the notice is about. `assignment` (absent = assignment, the
+		// original meaning) is a teammate handing over a thread; `clarification`
+		// is the agent parking a reply because it needs a fact from this person
+		// (inbox/processingLifecycle/effects.ts `notify_clarification`). The
+		// client picks its copy by kind.
+		kind: v.optional(v.union(v.literal('assignment'), v.literal('clarification'))),
+		// The parked message, for `clarification` notices only.
+		inboundMessageId: v.optional(v.id('inboundMessages')),
 		// Assignee (BetterAuth user id) — who the thread was handed to.
 		userId: v.string(),
 		threadId: v.id('conversationThreads'),

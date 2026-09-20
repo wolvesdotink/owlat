@@ -13,9 +13,18 @@
  * isolation (mirrors lib/desktop/notificationRules.ts).
  */
 
+export type AssignmentNoticeKind = 'assignment' | 'clarification';
+
 export interface AssignmentNotice {
 	/** Notice row id — the de-dup key. */
 	id: string;
+	/**
+	 * `assignment` (a teammate handed over a thread; the default) or
+	 * `clarification` (the agent parked a reply because it needs a fact from
+	 * this person). Clarifications are never coalesced: each one is a question
+	 * someone is waiting on, so each one gets its own line.
+	 */
+	kind?: AssignmentNoticeKind;
 	threadId: string;
 	subject: string;
 	assignedByName: string;
@@ -59,6 +68,11 @@ export function planAssignmentNotices(
 	};
 
 	for (const n of fresh) {
+		if (n.kind === 'clarification') {
+			flush();
+			plans.push({ kind: 'single', notice: n });
+			continue;
+		}
 		const prev = run[run.length - 1];
 		if (prev && n.createdAt - prev.createdAt > windowMs) flush();
 		run.push(n);
@@ -92,8 +106,14 @@ function noticeKey(notice: AssignmentNotice, base: string): string {
 	return notice.subject ? `${base}.withSubject` : `${base}.noSubject`;
 }
 
-/** In-app toast copy for a single assignment. */
+/** In-app toast copy for a single assignment (or a clarification ask). */
 export function assignmentToastMessage(notice: AssignmentNotice): AssignmentMessage {
+	if (notice.kind === 'clarification') {
+		return {
+			key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.clarification.toast'),
+			params: noticeParams(notice),
+		};
+	}
 	return {
 		key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.toast.single'),
 		params: noticeParams(notice),
@@ -105,11 +125,20 @@ export function assignmentGroupToastMessage(count: number): AssignmentMessage {
 	return { key: 'shared.inbox.assignmentNoticeRules.toast.group', params: { count } };
 }
 
-/** Desktop notification title + body for a single assignment. */
+/** Desktop notification title + body for a single assignment (or a clarification ask). */
 export function assignmentNotificationParts(notice: AssignmentNotice): {
 	title: AssignmentMessage;
 	body: AssignmentMessage;
 } {
+	if (notice.kind === 'clarification') {
+		return {
+			title: { key: 'shared.inbox.assignmentNoticeRules.clarification.notificationTitle' },
+			body: {
+				key: noticeKey(notice, 'shared.inbox.assignmentNoticeRules.clarification.notificationBody'),
+				params: noticeParams(notice),
+			},
+		};
+	}
 	return {
 		title: { key: 'shared.inbox.assignmentNoticeRules.notification.singleTitle' },
 		body: {

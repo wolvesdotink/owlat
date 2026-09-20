@@ -8733,6 +8733,7 @@
 				},
 				"changeStatusAria": "Change thread status",
 				"channelLinkFailedToast": "Channel created, but linking failed",
+				"clarificationHint": "Pick a suggested answer or type your own. The reply will be written in the sender's language.",
 				"clarificationSavedToast": "Answers saved — drafting resumed",
 				"confidenceChip": "{percent}% confidence",
 				"contact": "Contact",
@@ -8914,6 +8915,33 @@
 			},
 			"review": {
 				"pageTitle": "Review Queue — Owlat"
+			},
+			"updates": {
+				"dismiss": "Done",
+				"dismissOperation": "Dismiss update",
+				"dismissedToast": "Update dismissed",
+				"emptyBody": "Mail that needs no reply lands here, ranked by how much you need to know about it.",
+				"emptyTitle": "You're caught up",
+				"errorMessage": "The updates could not be loaded. Try again in a moment.",
+				"errorTitle": "Couldn't load updates",
+				"hintMove": "move",
+				"hintOpen": "open",
+				"importance": {
+					"high": "Important",
+					"low": "Low",
+					"normal": "Worth knowing"
+				},
+				"listAriaLabel": "Updates that need no reply",
+				"loading": "Loading updates…",
+				"noSubject": "No subject",
+				"open": "Open",
+				"openReviewQueue": "Open review queue",
+				"pageTitle": "Updates — Owlat",
+				"replyRequestedToast": "The agent is drafting a reply. It will show up in the review queue.",
+				"requestReply": "Draft a reply",
+				"requestReplyOperation": "Request a reply draft",
+				"subtitle": "Mail the agent decided needs no reply, most important first. Nothing here is waiting on you.",
+				"title": "Updates"
 			}
 		},
 		"index": {
@@ -11428,7 +11456,8 @@
 					"allThreads": "All Threads",
 					"codeTasks": "Code Tasks",
 					"quarantine": "Quarantine",
-					"reviewQueue": "Review Queue"
+					"reviewQueue": "Review Queue",
+					"updates": "Updates"
 				},
 				"knowledge": {
 					"explorer": "Explorer",
@@ -12151,6 +12180,17 @@
 		},
 		"inbox": {
 			"assignmentNoticeRules": {
+				"clarification": {
+					"notificationBody": {
+						"noSubject": "No subject · the agent has a question for you",
+						"withSubject": "{subject} · the agent has a question for you"
+					},
+					"notificationTitle": "Your input is needed",
+					"toast": {
+						"noSubject": "The agent needs your input to reply — No subject",
+						"withSubject": "The agent needs your input to reply — {subject}"
+					}
+				},
 				"notification": {
 					"body": {
 						"noSubject": "No subject · from {assignedByName}",
@@ -14202,12 +14242,16 @@
 			"assignThread": "Assign thread",
 			"processingStatus": {
 				"approved": "Approved",
+				"archived": "Archived",
+				"awaitingClarification": "Waiting for your input",
 				"classified": "Classified",
 				"draftReady": "Draft Ready",
 				"failed": "Failed",
+				"informational": "No reply needed",
 				"processing": "Processing",
 				"quarantined": "Quarantined",
 				"received": "Received",
+				"rejected": "Rejected",
 				"sent": "Sent"
 			},
 			"rejectDraft": "Reject draft",
