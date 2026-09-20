@@ -40,14 +40,34 @@ function isInlineContentType(contentType: string): boolean {
 	return base.startsWith('image/') || base === 'application/pdf';
 }
 
+/**
+ * The cross-origin grant for this route, or `null` when the deployment has
+ * published no allow-list.
+ *
+ * The Postbox web reader fetches this cross-origin (the app origin → the
+ * `.convex.site` HTTP-actions host), so the grant is scoped to the app
+ * origin(s) rather than `*`; the capability token remains the access control,
+ * this just stops any other origin from reading the bytes through the victim's
+ * browser.
+ *
+ * `corsHeaders` THROWS when ALLOWED_ORIGINS, SITE_URL and ADMIN_SITE_URL are
+ * all unset. That is a misconfiguration, but it must not decide whether the
+ * route answers at all: a same-origin reader and the IMAP bridge do not need
+ * the header, and a 500 in place of a 403 tells the operator nothing. So a
+ * missing allow-list degrades to "no CORS headers", not "no response".
+ */
+function blobCorsHeaders(request: Request): Record<string, string> | null {
+	try {
+		return corsHeaders('GET, OPTIONS', request.headers.get('Origin'));
+	} catch {
+		return null;
+	}
+}
+
 export const serveSealedBlob = httpAction(async (ctx, request) => {
-	// The Postbox web reader fetches this cross-origin (the app origin → the
-	// `.convex.site` HTTP-actions host). Scope the grant to the app origin(s)
-	// rather than `*`; the capability token remains the access control, this just
-	// stops any other origin from reading the bytes through the victim's browser.
-	const cors = corsHeaders('GET, OPTIONS', request.headers.get('Origin'));
+	const cors = blobCorsHeaders(request);
 	if (request.method === 'OPTIONS') {
-		return new Response(null, { status: 204, headers: cors });
+		return new Response(null, { status: 204, headers: cors ?? {} });
 	}
 	const url = new URL(request.url);
 	const verified = await verifyBlobToken(
@@ -80,7 +100,7 @@ export const serveSealedBlob = httpAction(async (ctx, request) => {
 				// script or navigate; a sandbox CSP neutralises an HTML/SVG type that
 				// slipped the allowlist.
 				'Content-Security-Policy': "default-src 'none'; sandbox",
-				...cors,
+				...(cors ?? {}),
 			},
 		});
 	} catch (err) {

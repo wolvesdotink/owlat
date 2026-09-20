@@ -144,6 +144,31 @@ describe('serveSealedBlob response headers (M1)', () => {
 		});
 	});
 
+	it('still answers on a deployment that has published no allow-list', async () => {
+		// `lib/cors.ts:corsHeaders` fails closed when ALLOWED_ORIGINS, SITE_URL and
+		// ADMIN_SITE_URL are all unset. That misconfiguration must cost the CORS
+		// header, not the response: a 500 in place of a 403 tells nobody anything.
+		// All three, because `allowedOrigins()` falls back SITE_URL → ADMIN_SITE_URL
+		// (and `vitest.setup.ts` supplies a default SITE_URL for every suite).
+		for (const key of ['ALLOWED_ORIGINS', 'SITE_URL', 'ADMIN_SITE_URL']) {
+			delete process.env[key];
+		}
+		const t = convexTest(schema, modules);
+
+		const refusal = await t.fetch(
+			`${SEALED_BLOB_PATH}?id=bogus&ct=text/plain&exp=9999999999999&sig=nope`,
+			{ method: 'GET', headers: { Origin: APP_ORIGIN } }
+		);
+		expect(refusal.status).toBe(403);
+		expect(refusal.headers.get('Access-Control-Allow-Origin')).toBeNull();
+
+		const preflight = await t.fetch(SEALED_BLOB_PATH, { method: 'OPTIONS' });
+		expect(preflight.status).toBe(204);
+
+		const served = await serve(t, BYTES, 'application/pdf');
+		expect(served.status).toBe(200);
+	});
+
 	it('answers the OPTIONS preflight the GET route advertises', async () => {
 		const t = convexTest(schema, modules);
 		const res = await t.fetch(SEALED_BLOB_PATH, {

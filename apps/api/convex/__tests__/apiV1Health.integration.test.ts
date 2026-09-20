@@ -1,5 +1,5 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import schema from '../schema';
 
 /**
@@ -33,33 +33,52 @@ const modules = Object.fromEntries(
 	)
 );
 
-const SAVED_ENV = { ...process.env };
-beforeEach(() => {
-	delete process.env['ALLOWED_ORIGINS'];
-	delete process.env['SITE_URL'];
-	delete process.env['ADMIN_SITE_URL'];
-	delete process.env['OWLAT_DEV_MODE'];
-});
+const CORS_ENV_KEYS = ['ALLOWED_ORIGINS', 'SITE_URL', 'ADMIN_SITE_URL', 'OWLAT_DEV_MODE'];
+const SAVED_ENV: Record<string, string | undefined> = {};
+
+/**
+ * Unset everything `lib/cors.ts:allowedOrigins()` consults — the state that
+ * makes the credentialed helper throw. Scoped to the one test that needs it:
+ * `vitest.setup.ts` supplies a default `SITE_URL` for every suite precisely
+ * because unsetting it deployment-wide also trips BetterAuth's context init.
+ */
+function unconfigureCors(): void {
+	for (const key of CORS_ENV_KEYS) {
+		SAVED_ENV[key] = process.env[key];
+		delete process.env[key];
+	}
+}
+
 afterEach(() => {
-	process.env = { ...SAVED_ENV };
+	for (const key of CORS_ENV_KEYS) {
+		if (SAVED_ENV[key] === undefined) delete process.env[key];
+		else process.env[key] = SAVED_ENV[key];
+	}
 });
 
 describe('GET /api/v1/health', () => {
-	it('answers 200 on a deployment with no CORS configuration at all', async () => {
-		const t = convexTest(schema, modules);
-		const res = await t.fetch('/api/v1/health', { method: 'GET' });
-		expect(res.status).toBe(200);
-		expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
-		// The credentialed posture must not leak onto a probe response.
-		expect(res.headers.get('Access-Control-Allow-Credentials')).toBeNull();
-	});
-
 	it('returns the documented { data } envelope', async () => {
 		const t = convexTest(schema, modules);
 		const res = await t.fetch('/api/v1/health', { method: 'GET' });
 		const body = (await res.json()) as { data?: { status?: string; timestamp?: string } };
 		expect(body.data?.status).toBe('ok');
 		expect(typeof body.data?.timestamp).toBe('string');
+	});
+
+	/**
+	 * Last on purpose: BetterAuth's context init also requires `SITE_URL`, and it
+	 * is built once per process on the first routed fetch. Running the configured
+	 * cases first lets it initialize, so unsetting the variable here exercises the
+	 * CORS path without leaving an unrelated unhandled rejection in the run.
+	 */
+	it('answers 200 on a deployment with no CORS configuration at all', async () => {
+		unconfigureCors();
+		const t = convexTest(schema, modules);
+		const res = await t.fetch('/api/v1/health', { method: 'GET' });
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		// The credentialed posture must not leak onto a probe response.
+		expect(res.headers.get('Access-Control-Allow-Credentials')).toBeNull();
 	});
 
 	it('answers its own OPTIONS preflight like every other v1 path', async () => {
