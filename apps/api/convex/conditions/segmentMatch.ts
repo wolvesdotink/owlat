@@ -16,6 +16,8 @@
  *   - Lenient async conveniences for the preview / count / cron paths, which
  *     bake in the soft-delete-excluding live-Contact scan and treat corrupt filters as a zero
  *     match: `countLiveMatches`, `matchLiveContacts`, `countLiveMatchesForSegments`.
+ *     Each covers ONE budgeted slice of the population and reports where it
+ *     stopped; their callers reschedule themselves until the walk is done.
  *
  * The send path (Audience resolution) does NOT use the conveniences — it builds
  * the predicate from the pure core so it can interleave eligibility filtering
@@ -28,9 +30,16 @@ import {
 	parseCondition,
 	preloadConditionsLookup,
 	preloadConditionsLookupForContacts,
+	conditionsLookupReadsPerContact,
+	conditionsLookupReadsPerBatch,
 	evaluateOne,
 	type Condition,
 } from './index';
+import {
+	forEachLiveContactChunk,
+	type LiveScanOptions,
+	type LiveScanProgress,
+} from './liveContactScan';
 
 /**
  * Stored segment-filter shape (`segments.filters`, `campaigns.audience`'s
@@ -73,7 +82,7 @@ export function parseSegmentFilters(input: string | SegmentFilters): ParsedSegme
  */
 export function makeSegmentPredicate(
 	filters: ParsedSegmentFilters,
-	lookup: ConditionsLookup,
+	lookup: ConditionsLookup
 ): (contact: Doc<'contacts'>) => boolean {
 	const { logic, conditions } = filters;
 	if (conditions.length === 0) return () => true;
@@ -100,7 +109,7 @@ export async function evaluateAgainstContact(
 	ctx: { db: DatabaseReader },
 	conditions: Condition[],
 	logic: 'AND' | 'OR',
-	contact: Doc<'contacts'>,
+	contact: Doc<'contacts'>
 ): Promise<boolean> {
 	if (conditions.length === 0) return true;
 	// Bounded resolution for the single contact — point reads, not a whole-column
@@ -110,91 +119,112 @@ export async function evaluateAgainstContact(
 }
 
 /**
- * Stream the live (not soft-deleted) Contacts — the canonical segment
- * population — via async iteration (no `.paginate()`), calling `visit` once per
- * Contact. Iterating the `by_deleted_at` index pinned to `deletedAt === undefined`
- * means soft-deleted rows never enter the stream, and reads are incremental
- * under the per-execution read limit. `visit` returns `false` to stop early
- * (the `matchLiveContacts` limit). Replaces the old `liveContacts()` full-table
- * scan (ADR-0033).
+ * The per-execution slice of a live-Contact walk. Every convenience below
+ * returns one: its own partial result plus the {@link LiveScanProgress} the
+ * caller needs to resume. None of them counts the whole population in one go —
+ * see `liveContactScan.ts` for why streaming is not the same as bounded.
  */
-async function forEachLiveContact(
-	ctx: { db: DatabaseReader },
-	visit: (contact: Doc<'contacts'>) => boolean | void,
-): Promise<void> {
-	// Async-iterate (no `.paginate()`): Convex allows only one `.paginate()` per
-	// function execution, and these count/match helpers scan the whole live
-	// population in a single query. Streaming reads incrementally under the same
-	// per-execution read limit the old page-loop was already bounded by; `visit`
-	// returns false to stop early (the `matchLiveContacts` limit).
-	for await (const contact of ctx.db
-		.query('contacts')
-		.withIndex('by_deleted_at', (q) => q.eq('deletedAt', undefined))) {
-		if (visit(contact) === false) return;
-	}
+export type SegmentCountScan = LiveScanProgress & { matched: number };
+export type SegmentMatchScan = LiveScanProgress & { contacts: Doc<'contacts'>[] };
+export type SegmentsCountScan = LiveScanProgress & { counts: Map<string, number> };
+
+/**
+ * Documents one Contact and one lookup preload cost for `conditions`. The
+ * chunked walk resolves its lookup per chunk (point reads over just those
+ * Contacts) rather than front-loading whole columns, so the read cost scales
+ * with the budget instead of with the size of whatever topic or property a
+ * condition happens to name.
+ */
+function scanCost(conditions: Condition[]): {
+	documentsPerContact: number;
+	documentsPerChunk: number;
+} {
+	return {
+		documentsPerContact: 1 + conditionsLookupReadsPerContact(conditions),
+		documentsPerChunk: conditionsLookupReadsPerBatch(conditions),
+	};
 }
 
 /**
- * Count live Contacts matching a stored filter set. Lenient: corrupt filters
- * count as zero (preview / count posture). One preload, one scan.
+ * Count live Contacts matching a stored filter set, for ONE budgeted execution.
+ * Lenient: corrupt filters count as zero (preview / count posture). The caller
+ * sums `matched` across executions, resuming from `cursor` until `done`.
  */
 export async function countLiveMatches(
 	ctx: { db: DatabaseReader },
 	input: string | SegmentFilters,
-): Promise<number> {
+	opts?: Pick<LiveScanOptions, 'cursor' | 'documentBudget'>
+): Promise<SegmentCountScan> {
 	let filters: ParsedSegmentFilters;
 	try {
 		filters = parseSegmentFilters(input);
 	} catch {
-		return 0;
+		return { matched: 0, scanned: 0, done: true, cursor: null };
 	}
 
-	const lookup = await preloadConditionsLookup(ctx, filters.conditions);
-	const matches = makeSegmentPredicate(filters, lookup);
-	let count = 0;
-	await forEachLiveContact(ctx, (contact) => {
-		if (matches(contact)) count++;
-	});
-	return count;
+	let matched = 0;
+	const progress = await forEachLiveContactChunk(
+		ctx,
+		{ ...opts, ...scanCost(filters.conditions) },
+		async (chunk) => {
+			const lookup = await preloadConditionsLookupForContacts(ctx, filters.conditions, chunk);
+			const matches = makeSegmentPredicate(filters, lookup);
+			for (const contact of chunk) {
+				if (matches(contact)) matched++;
+			}
+		}
+	);
+	return { matched, ...progress };
 }
 
 /**
  * Return live Contacts matching a stored filter set, optionally capped at
- * `limit`. Lenient: corrupt filters yield no matches. One preload, one scan.
+ * `limit`, for ONE budgeted execution. Lenient: corrupt filters yield no
+ * matches. Hitting `limit` ends the walk (`done`) — the caller has what it
+ * asked for; running out of budget does not, and hands back a cursor.
  */
 export async function matchLiveContacts(
 	ctx: { db: DatabaseReader },
 	input: string | SegmentFilters,
-	opts?: { limit?: number },
-): Promise<Doc<'contacts'>[]> {
+	opts?: Pick<LiveScanOptions, 'cursor' | 'documentBudget'> & { limit?: number }
+): Promise<SegmentMatchScan> {
 	const limit = opts?.limit;
 	let filters: ParsedSegmentFilters;
 	try {
 		filters = parseSegmentFilters(input);
 	} catch {
-		return [];
+		return { contacts: [], scanned: 0, done: true, cursor: null };
 	}
 
-	const lookup = await preloadConditionsLookup(ctx, filters.conditions);
-	const matches = makeSegmentPredicate(filters, lookup);
-	const out: Doc<'contacts'>[] = [];
-	await forEachLiveContact(ctx, (contact) => {
-		if (!matches(contact)) return;
-		out.push(contact);
-		if (limit !== undefined && out.length >= limit) return false; // stop the stream
-	});
-	return out;
+	const contacts: Doc<'contacts'>[] = [];
+	const progress = await forEachLiveContactChunk(
+		ctx,
+		{ ...opts, ...scanCost(filters.conditions) },
+		async (chunk) => {
+			const lookup = await preloadConditionsLookupForContacts(ctx, filters.conditions, chunk);
+			const matches = makeSegmentPredicate(filters, lookup);
+			for (const contact of chunk) {
+				if (!matches(contact)) continue;
+				contacts.push(contact);
+				if (limit !== undefined && contacts.length >= limit) return false; // stop the walk
+			}
+		}
+	);
+	return { contacts, ...progress };
 }
 
 /**
- * Count live matches for many segments in one pass — groups every segment's
- * conditions into a single preloaded lookup and reuses one Contact scan.
- * Lenient per segment: a segment whose filters fail to parse counts as zero.
+ * Count live matches for many segments in ONE budgeted execution — every
+ * segment's predicate is evaluated against each visited Contact, so a batch of
+ * segments shares one walk and one lookup preload per chunk instead of one walk
+ * each. Lenient per segment: a segment whose filters fail to parse counts as
+ * zero. The caller sums each segment's count across executions.
  */
 export async function countLiveMatchesForSegments(
 	ctx: { db: DatabaseReader },
 	segments: Array<{ segmentId: string; filters: string | SegmentFilters }>,
-): Promise<Map<string, number>> {
+	opts?: Pick<LiveScanOptions, 'cursor' | 'documentBudget'>
+): Promise<SegmentsCountScan> {
 	const results = new Map<string, number>();
 
 	const parsed: { segmentId: string; filters: ParsedSegmentFilters }[] = [];
@@ -205,30 +235,30 @@ export async function countLiveMatchesForSegments(
 			results.set(seg.segmentId, 0);
 		}
 	}
-	if (parsed.length === 0) return results;
+	if (parsed.length === 0) return { counts: results, scanned: 0, done: true, cursor: null };
 
 	const allConditions: Condition[] = parsed.flatMap((p) => p.filters.conditions);
-	const lookup =
-		allConditions.length > 0
-			? await preloadConditionsLookup(ctx, allConditions)
-			: ({} as ConditionsLookup);
+	const counts = parsed.map(({ segmentId, filters }) => ({ segmentId, filters, count: 0 }));
 
-	// One shared live-Contact stream; every segment's predicate is evaluated
-	// against each Contact as it arrives, so the table is scanned exactly once.
-	const counts = parsed.map(({ segmentId, filters }) => ({
-		segmentId,
-		matches: makeSegmentPredicate(filters, lookup),
-		count: 0,
-	}));
-	await forEachLiveContact(ctx, (contact) => {
-		for (const entry of counts) {
-			if (entry.matches(contact)) entry.count++;
+	const progress = await forEachLiveContactChunk(
+		ctx,
+		{ ...opts, ...scanCost(allConditions) },
+		async (chunk) => {
+			// One preload covers every segment's conditions for this chunk, so the
+			// shared walk stays one lookup wide rather than one per segment.
+			const lookup = await preloadConditionsLookupForContacts(ctx, allConditions, chunk);
+			for (const entry of counts) {
+				const matches = makeSegmentPredicate(entry.filters, lookup);
+				for (const contact of chunk) {
+					if (matches(contact)) entry.count++;
+				}
+			}
 		}
-	});
+	);
 	for (const { segmentId, count } of counts) {
 		results.set(segmentId, count);
 	}
-	return results;
+	return { counts: results, ...progress };
 }
 
 /** One page of {@link countMatchingContactsPage}. */
@@ -263,7 +293,7 @@ export async function listMatchingContactsPage(
 	ctx: { db: DatabaseReader },
 	input: string | SegmentFilters,
 	cursor: string | null,
-	pageSize: number,
+	pageSize: number
 ): Promise<SegmentMemberPage> {
 	let filters: ParsedSegmentFilters;
 	try {
@@ -300,7 +330,7 @@ export async function countMatchingContactsPage(
 	ctx: { db: DatabaseReader },
 	input: string | SegmentFilters,
 	cursor: string | null,
-	pageSize: number,
+	pageSize: number
 ): Promise<SegmentCountPage> {
 	let filters: ParsedSegmentFilters;
 	try {
@@ -338,7 +368,7 @@ export async function countMatchingContactsPage(
 export async function evaluateCondition(
 	ctx: { db: DatabaseReader },
 	conditionRaw: unknown,
-	contact: Doc<'contacts'>,
+	contact: Doc<'contacts'>
 ): Promise<boolean> {
 	let filters: ParsedSegmentFilters;
 	try {
@@ -354,12 +384,15 @@ export async function evaluateCondition(
  * Count contacts matching a set of segment filters, with an `eligible` field
  * that mirrors `total` (DOI never gates a segment — see the Audience resolution
  * module for the campaign-send eligibility gap). The `{ total, eligible }`
- * adapter over {@link countLiveMatches} the segment-count caller expects.
+ * adapter over {@link countLiveMatches} the segment-count caller expects; it
+ * inherits the same per-execution budget, so `total` is this execution's
+ * partial until `done`.
  */
 export async function evaluateSegmentCount(
 	ctx: { db: DatabaseReader },
 	filtersInput: string | SegmentFilters,
-): Promise<{ total: number; eligible: number }> {
-	const total = await countLiveMatches(ctx, filtersInput);
-	return { total, eligible: total };
+	opts?: Pick<LiveScanOptions, 'cursor' | 'documentBudget'>
+): Promise<LiveScanProgress & { total: number; eligible: number }> {
+	const { matched, ...progress } = await countLiveMatches(ctx, filtersInput, opts);
+	return { total: matched, eligible: matched, ...progress };
 }

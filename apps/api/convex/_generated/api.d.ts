@@ -1030,6 +1030,7 @@ import type * as seedDemo_loaders_webhooks from '../seedDemo/loaders/webhooks.js
 import type * as seedDemo_messages from '../seedDemo/messages.js';
 import type * as seedDemo_pipeline from '../seedDemo/pipeline.js';
 import type * as segments from '../segments.js';
+import type * as segments_countRefresh from '../segments/countRefresh.js';
 import type * as segments_listing from '../segments/listing.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
 import type * as semanticFiles from '../semanticFiles.js';
@@ -2152,6 +2153,7 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/messages': typeof seedDemo_messages;
 	'seedDemo/pipeline': typeof seedDemo_pipeline;
 	segments: typeof segments;
+	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
 	semanticFileProcessing: typeof semanticFileProcessing;
 	semanticFiles: typeof semanticFiles;
