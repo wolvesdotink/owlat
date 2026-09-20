@@ -21,13 +21,6 @@
  */
 export type OrganizationRole = 'owner' | 'admin' | 'editor';
 
-/** Every role, most privileged first. */
-export const ORGANIZATION_ROLES: readonly OrganizationRole[] = ['owner', 'admin', 'editor'];
-
-export function isOrganizationRole(value: unknown): value is OrganizationRole {
-	return typeof value === 'string' && (ORGANIZATION_ROLES as readonly string[]).includes(value);
-}
-
 export type Permission =
 	// Marketing send pipeline
 	| 'campaigns:send'
@@ -68,10 +61,11 @@ const isEditorOrAbove = (role: OrganizationRole) =>
 	role === 'owner' || role === 'admin' || role === 'editor';
 
 /**
- * The role→permission map. Exported so a test can assert the table is total
- * over the `Permission` union; callers should go through `hasPermission`.
+ * The role→permission map. `Record<Permission, …>` makes tsc reject a
+ * permission added to the union without a rule here; `hasPermission` is the
+ * only way callers should read it.
  */
-export const PERMISSION_MAP: Record<Permission, (role: OrganizationRole) => boolean> = {
+const PERMISSION_MAP: Record<Permission, (role: OrganizationRole) => boolean> = {
 	'campaigns:send': isEditorOrAbove,
 	'campaigns:manage': isEditorOrAbove,
 	'campaigns:schedule': isEditorOrAbove,
@@ -92,9 +86,6 @@ export const PERMISSION_MAP: Record<Permission, (role: OrganizationRole) => bool
 	'chat:participate': () => true,
 	'chat:manage': isAdmin,
 };
-
-/** Every permission name, for exhaustive iteration in tests and tooling. */
-export const PERMISSIONS = Object.keys(PERMISSION_MAP) as Permission[];
 
 /**
  * Whether a role carries a permission.
