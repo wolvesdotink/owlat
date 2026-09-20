@@ -129,7 +129,12 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 			messageId: input.messageId ?? `unknown-${env.timestamp}`,
 			inReplyTo: input.inReplyTo,
 			references: input.references,
-			attachments: input.attachments,
+			// Defaulted, not asserted. This shape is a cast over wire data, and on
+			// the team-inbox route a throw here would 500 a request the MTA reads
+			// as retryable — six attempts and then the DLQ, which is mail lost
+			// where nobody looks. A payload with no attachment list has no
+			// attachments.
+			attachments: Array.isArray(input.attachments) ? input.attachments : [],
 			timestamp: env.timestamp,
 			spfResult: input.spfResult,
 			dkimResult: input.dkimResult,
