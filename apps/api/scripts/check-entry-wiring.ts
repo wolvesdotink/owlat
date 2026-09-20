@@ -123,9 +123,13 @@ function wrapperBuilders(): string[] {
 	const exported = [
 		...convexSource(AUTHED_FUNCTIONS).matchAll(/export const ([A-Za-z_$][\w$]*)\s*=/g),
 	].flatMap((match) => (match[1] === undefined ? [] : [match[1]]));
+	// `featureGated` (single flag) and `featureGatedAny` (any-of) both return a
+	// builder of the wrapped builder's own type, so a module-local
+	// `const chatQuery = featureGated(...)` / `const postboxQuery =
+	// featureGatedAny(...)` is a door like any other.
 	const gated = [...CONVEX_SOURCES.values()].flatMap((source) =>
-		[...source.matchAll(/\bconst ([A-Za-z_$][\w$]*)\s*=\s*featureGated\(/g)].flatMap((match) =>
-			match[1] === undefined ? [] : [match[1]]
+		[...source.matchAll(/\bconst ([A-Za-z_$][\w$]*)\s*=\s*featureGated(?:Any)?\(/g)].flatMap(
+			(match) => (match[1] === undefined ? [] : [match[1]])
 		)
 	);
 	return [...exported, ...gated];
@@ -169,6 +173,8 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'internalQuery',
 	'mutation',
 	'ownerMutation',
+	'postboxMutation',
+	'postboxQuery',
 	'providerFeedbackWebhook',
 	'publicAction',
 	'publicMutation',
@@ -186,6 +192,7 @@ const NOT_ENTRY_BUILDERS: Readonly<Record<string, string>> = {
 	createFeatureFlagRegistry: 'builds the plugin feature-flag lookup map',
 	defineStep: 'declares one workspace-deletion step — data the deletion walker reads',
 	featureGated: 'RETURNS a builder; its products are collected as builders above',
+	featureGatedAny: 'RETURNS a builder (any-of flag floor); same as featureGated',
 	gateIds: 'projects a gate list to its ids',
 	getBundledPluginFeatureFlagDefinitions: 'reads the generated flag definitions',
 	literalUnion: 'builds a Convex validator from a literal tuple',
