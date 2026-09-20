@@ -9,7 +9,7 @@ const { execSyncMock, rateLimitedMock } = vi.hoisted(() => ({
 	execSyncMock: vi.fn(),
 	rateLimitedMock: vi.fn(() => false),
 }));
-vi.mock('node:child_process', () => ({ execSync: execSyncMock }));
+vi.mock('node:child_process', () => ({ execFileSync: execSyncMock }));
 vi.mock('../security.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../security.js')>();
 	return { ...actual, isRateLimited: rateLimitedMock };

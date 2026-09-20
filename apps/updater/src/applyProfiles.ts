@@ -108,7 +108,7 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 	}
 
 	// Step 4: apply — compose reads COMPOSE_PROFILES from the .env just written.
-	const up = exec('docker compose up -d --remove-orphans', OWLAT_DIR);
+	const up = exec('docker', ['compose', 'up', '-d', '--remove-orphans'], OWLAT_DIR);
 	steps.push({ step: 'up', ...up });
 	if (!up.ok) {
 		return json(res, 500, { error: 'docker compose up failed', profiles, steps });

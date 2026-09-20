@@ -4,11 +4,20 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const { execSyncMock, rateLimitedMock } = vi.hoisted(() => ({
-	execSyncMock: vi.fn(),
+const { execFileSyncMock, rateLimitedMock } = vi.hoisted(() => ({
+	execFileSyncMock: vi.fn(),
 	rateLimitedMock: vi.fn(() => false),
 }));
-vi.mock('node:child_process', () => ({ execSync: execSyncMock }));
+vi.mock('node:child_process', () => ({ execFileSync: execFileSyncMock }));
+/**
+ * The argv of each child process, rendered as one line for assertions. `exec`
+ * runs execFileSync — there is no shell command string to inspect, so the
+ * arguments are joined here rather than in production code.
+ */
+function commandLines(): string[] {
+	return execFileSyncMock.mock.calls.map((c) => [c[0], ...(c[1] as string[])].join(' '));
+}
+
 vi.mock('../security.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../security.js')>();
 	return { ...actual, isRateLimited: rateLimitedMock };
@@ -36,7 +45,7 @@ afterAll(() => server.close());
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
-	execSyncMock.mockReset().mockReturnValue('');
+	execFileSyncMock.mockReset().mockReturnValue('');
 	writeFileSync(
 		join(OWLAT_DIR, '.env'),
 		'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n'
@@ -76,7 +85,7 @@ describe('POST /update', () => {
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { success: boolean };
 		expect(json.success).toBe(true);
-		const cmds = execSyncMock.mock.calls.map((c) => String(c[0]));
+		const cmds = commandLines();
 		expect(cmds[0]).toMatch(/^docker compose -f .*docker-compose\.yml pull$/);
 		expect(cmds[1]).toMatch(/--profile deploy run --rm convex-deploy$/);
 		expect(cmds[2]).toBe('docker compose up -d --remove-orphans');
@@ -87,7 +96,7 @@ describe('POST /update', () => {
 			composeTemplate: 'services:\n  evil:\n    image: attacker.example/pwn:latest\n',
 		});
 		expect(res.status).toBe(400);
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects a compose template mounting a dangerous host path', async () => {
@@ -96,7 +105,7 @@ describe('POST /update', () => {
 				'services:\n  web:\n    image: ghcr.io/wolvesdotink/web:1.0.0\n    volumes:\n      - /etc/shadow:/x\n',
 		});
 		expect(res.status).toBe(400);
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('stages the template, promotes it only after pull + deploy succeed', async () => {
@@ -114,7 +123,7 @@ describe('POST /update', () => {
 			'up',
 		]);
 		// pull/deploy ran against the STAGED file, not the live one
-		const cmds = execSyncMock.mock.calls.map((c) => String(c[0]));
+		const cmds = commandLines();
 		expect(cmds[0]).toContain('docker-compose.next.yml');
 		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(template);
 		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
@@ -139,7 +148,8 @@ describe('POST /update', () => {
 		].join('\n');
 
 		const envAtUp: string[] = [];
-		execSyncMock.mockImplementation((cmd: string) => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			const cmd = [file, ...args].join(' ');
 			if (String(cmd).includes('up -d')) {
 				envAtUp.push(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8'));
 			}
@@ -196,7 +206,8 @@ describe('POST /update', () => {
 
 	it('leaves the live compose file untouched when the pull fails', async () => {
 		writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {} # original\n');
-		execSyncMock.mockImplementation((cmd: string) => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			const cmd = [file, ...args].join(' ');
 			if (String(cmd).includes('pull')) {
 				const err = new Error('boom') as Error & { stdout: string; stderr: string };
 				err.stdout = '';
@@ -217,7 +228,8 @@ describe('POST /update', () => {
 	});
 
 	it('stops before docker compose up when convex-deploy fails', async () => {
-		execSyncMock.mockImplementation((cmd: string) => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			const cmd = [file, ...args].join(' ');
 			if (String(cmd).includes('convex-deploy')) {
 				const err = new Error('boom') as Error & { stdout: string; stderr: string };
 				err.stdout = '';
@@ -228,7 +240,7 @@ describe('POST /update', () => {
 		});
 		const res = await post('/update');
 		expect(res.status).toBe(500);
-		const cmds = execSyncMock.mock.calls.map((c) => c[0]);
+		const cmds = commandLines();
 		expect(cmds).not.toContain('docker compose up -d --remove-orphans');
 	});
 
@@ -248,7 +260,7 @@ describe('POST /configure-ip', () => {
 	it('rejects a shell-metacharacter payload via strict validation', async () => {
 		const res = await post('/configure-ip', { ip: '1.1.1.1; rm -rf /', action: 'add' });
 		expect(res.status).toBe(400);
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('adds the IP to IP_POOLS_CAMPAIGN and restarts the MTA', async () => {
@@ -256,9 +268,23 @@ describe('POST /configure-ip', () => {
 		expect(res.status).toBe(200);
 		const env = readFileSync(join(OWLAT_DIR, '.env'), 'utf-8');
 		expect(env).toContain('IP_POOLS_CAMPAIGN=1.1.1.1,2.2.2.2');
-		const cmds = execSyncMock.mock.calls.map((c) => c[0]);
+		const cmds = commandLines();
 		expect(cmds).toContain('ip addr add 2.2.2.2/32 dev eth0');
 		expect(cmds).toContain('docker compose restart mta');
+	});
+
+	/**
+	 * The IP is validated before it gets here, so the old `exec(\`ip addr add
+	 * ${ip}/32 …\`)` was not exploitable — but it went through a shell, so the
+	 * next value interpolated into it would have been. Pin the argv shape: the
+	 * address is ONE argument, never a fragment of a command line.
+	 */
+	it('passes the address as its own argv entry, with no shell', async () => {
+		await post('/configure-ip', { ip: '2.2.2.2', action: 'add' });
+		expect(execFileSyncMock.mock.calls[0]?.slice(0, 2)).toEqual([
+			'ip',
+			['addr', 'add', '2.2.2.2/32', 'dev', 'eth0'],
+		]);
 	});
 
 	it('removes the IP from IP_POOLS_CAMPAIGN', async () => {
@@ -298,7 +324,7 @@ describe('POST /rotate-env', () => {
 		const env = readFileSync(join(OWLAT_DIR, '.env'), 'utf-8');
 		expect(env).toContain(`INSTANCE_SECRET=${valid.instanceSecret}`);
 		expect(env).toContain('FOO=bar'); // untouched lines preserved
-		const cmds = execSyncMock.mock.calls.map((c) => c[0]);
+		const cmds = commandLines();
 		expect(cmds).toContain('docker compose up -d --force-recreate');
 	});
 });
@@ -310,7 +336,7 @@ describe('GET /health', () => {
 	});
 
 	it('reports parsed container rows with image tags', async () => {
-		execSyncMock.mockReturnValue(
+		execFileSyncMock.mockReturnValue(
 			'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:1.2.3","Health":"healthy"}\n'
 		);
 		const res = await fetch(`${base}/health`, { headers: AUTH });
@@ -339,7 +365,7 @@ describe('GET /health', () => {
 		it('reports drift when .env was advanced but containers were never recreated', async () => {
 			// The observed production case: .env says 0.4.13, every container 0.4.12.
 			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\nFOO=bar\n');
-			execSyncMock.mockReturnValue(
+			execFileSyncMock.mockReturnValue(
 				['web', 'mta', 'imap']
 					.map(
 						(name) =>
@@ -354,7 +380,7 @@ describe('GET /health', () => {
 
 		it('reports no drift when every container runs the configured version', async () => {
 			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\n');
-			execSyncMock.mockReturnValue(
+			execFileSyncMock.mockReturnValue(
 				'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}\n'
 			);
 			const json = await health();
@@ -364,7 +390,7 @@ describe('GET /health', () => {
 
 		it('ignores third-party images pinned to their own versions', async () => {
 			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\n');
-			execSyncMock.mockReturnValue(
+			execFileSyncMock.mockReturnValue(
 				[
 					'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}',
 					'{"Service":"redis","State":"running","Status":"Up","Image":"redis:7.4-alpine","Health":"healthy"}',
@@ -376,7 +402,7 @@ describe('GET /health', () => {
 
 		it('answers null — never a false verdict — when .env carries no OWLAT_VERSION', async () => {
 			writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n');
-			execSyncMock.mockReturnValue(
+			execFileSyncMock.mockReturnValue(
 				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n'
 			);
 			const json = await health();
@@ -386,7 +412,7 @@ describe('GET /health', () => {
 
 		it('still reports container facts when .env cannot be read', async () => {
 			rmSync(join(OWLAT_DIR, '.env'));
-			execSyncMock.mockReturnValue(
+			execFileSyncMock.mockReturnValue(
 				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n'
 			);
 			const res = await fetch(`${base}/health`, { headers: AUTH });

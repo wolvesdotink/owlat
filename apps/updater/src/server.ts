@@ -117,7 +117,8 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 			});
 		}
 	}
-	const composeCmd = `docker compose -f ${composeFileForUpdate}`;
+	// argv, not a command line: `exec` runs execFileSync with no shell.
+	const composeArgs = ['compose', '-f', composeFileForUpdate];
 	const discardStaged = async () => {
 		if (!composeTemplate) return;
 		try {
@@ -129,7 +130,7 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 
 	// Step 2: Pull latest images (against the staged template, so a pull
 	// failure leaves the running stack and its compose file untouched).
-	const pull = exec(`${composeCmd} pull`, OWLAT_DIR);
+	const pull = exec('docker', [...composeArgs, 'pull'], OWLAT_DIR);
 	steps.push({ step: 'pull', ...pull });
 
 	if (!pull.ok) {
@@ -145,7 +146,11 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	//
 	// This requires the existing convex container to still be running at
 	// its previous version, so the one-shot deployer can reach it.
-	const deploy = exec(`${composeCmd} --profile deploy run --rm convex-deploy`, OWLAT_DIR);
+	const deploy = exec(
+		'docker',
+		[...composeArgs, '--profile', 'deploy', 'run', '--rm', 'convex-deploy'],
+		OWLAT_DIR
+	);
 	steps.push({ step: 'convex-deploy', ...deploy });
 
 	if (!deploy.ok) {
@@ -184,7 +189,7 @@ async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// Step 6: Apply — recreate changed containers now that the schema is live.
 	// Runs against the promoted docker-compose.yml (+ any override file and
 	// COMPOSE_PROFILES from .env, so profile-gated feature services update too).
-	const up = exec('docker compose up -d --remove-orphans', OWLAT_DIR);
+	const up = exec('docker', ['compose', 'up', '-d', '--remove-orphans'], OWLAT_DIR);
 	steps.push({ step: 'up', ...up });
 
 	if (!up.ok) {
@@ -269,7 +274,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 	if (action === 'add') {
 		// Step 1: Attach IP to network interface
-		const addIp = exec(`ip addr add ${ip}/32 dev eth0`, '/');
+		const addIp = exec('ip', ['addr', 'add', `${ip}/32`, 'dev', 'eth0'], '/');
 		steps.push({ step: 'ip-addr-add', ...addIp });
 
 		// Step 2: Write persistent network config (survives reboots)
@@ -304,12 +309,12 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 		}
 
 		// Step 4: Restart MTA to pick up new IP pool
-		const restart = exec('docker compose restart mta', OWLAT_DIR);
+		const restart = exec('docker', ['compose', 'restart', 'mta'], OWLAT_DIR);
 		steps.push({ step: 'restart-mta', ...restart });
 	} else {
 		// Remove action
 		// Step 1: Remove IP from network interface
-		const delIp = exec(`ip addr del ${ip}/32 dev eth0`, '/');
+		const delIp = exec('ip', ['addr', 'del', `${ip}/32`, 'dev', 'eth0'], '/');
 		steps.push({ step: 'ip-addr-del', ...delIp });
 
 		// Step 2: Remove persistent config
@@ -342,7 +347,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 		}
 
 		// Step 4: Restart MTA
-		const restart = exec('docker compose restart mta', OWLAT_DIR);
+		const restart = exec('docker', ['compose', 'restart', 'mta'], OWLAT_DIR);
 		steps.push({ step: 'restart-mta', ...restart });
 	}
 
@@ -434,7 +439,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 
 	// Force-recreate to pick up new env vars. `up -d` alone doesn't
 	// rebuild containers whose env changed — we need --force-recreate.
-	const recreate = exec('docker compose up -d --force-recreate', OWLAT_DIR);
+	const recreate = exec('docker', ['compose', 'up', '-d', '--force-recreate'], OWLAT_DIR);
 
 	if (recreate.stderr && /error/i.test(recreate.stderr)) {
 		return json(res, 500, { error: 'Container recreate failed', stderr: recreate.stderr });
