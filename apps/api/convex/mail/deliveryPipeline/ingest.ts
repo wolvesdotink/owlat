@@ -22,7 +22,7 @@ import {
 	MAX_AI_INGEST_ATTACHMENT_BYTES,
 	MAX_ATTACHMENT_BYTES,
 } from '@owlat/shared/attachments';
-import { logError } from '../../lib/runtimeLog';
+import { logError, logWarn } from '../../lib/runtimeLog';
 import { getMtaConfig } from '../mtaClient';
 import {
 	isSealedPgpMime,
@@ -229,6 +229,21 @@ export async function prepareInboundMessage(
 }
 
 /**
+ * What one `captureAttachments` call did, so the caller can say it.
+ *
+ * A capture that indexed nothing is not the same as one that indexed
+ * everything, and before this the difference was a log line: the attachment
+ * still listed and still downloaded, but the agent never saw it and no reader
+ * could tell. `skippedReason` is what the thread view renders.
+ */
+export type AttachmentCaptureOutcome = {
+	/** How many parts reached `semanticFiles.ingest` (and therefore a model). */
+	indexed: number;
+	/** Why nothing was indexed, when parts were eligible and none were. */
+	skippedReason?: 'budget';
+};
+
+/**
  * Pull attachment leaves out of a delivered message's raw MIME and ingest each
  * into `semanticFiles` (source `email_attachment`). Inline parts (logos,
  * signatures) and oversized parts are skipped; the file-type allowlist is
@@ -243,8 +258,20 @@ export async function prepareInboundMessage(
  * we never create a contact for every inbound sender. Thread-linking and
  * agent-output capture are intentionally out of scope here.
  *
+ * SCOPING IS NOT DONE ON AN UNAUTHENTICATED `From:`. A `From:` header is free
+ * text: anyone can send as `ceo@customer.example`. DMARC is the check that
+ * binds it to a domain that authorized the message, so a message whose DMARC
+ * verdict is a FAIL is captured ORG-GENERAL — the bytes still arrive, they are
+ * just not filed under the contact the sender claimed to be, and the agent
+ * drafting a reply to the real contact does not retrieve them as that contact's
+ * document. Anything else (`pass`, `none`, no verdict at all from an older MTA)
+ * scopes as before.
+ *
  * SHARED BY BOTH INBOUND ROUTES — the personal mailbox and the team inbox — so
- * the two cannot enforce different attachment policy. The ceilings, in order:
+ * the two cannot enforce different attachment policy. `captureSource` is how
+ * the row remembers which one it came from, and the ONLY thing that separates
+ * them afterwards: the inbound retention sweep releases `'team_inbox'` blobs
+ * and never touches `'mailbox'` ones. The ceilings, in order:
  *
  *   · `disposition === 'inline'` and empty parts are not attachments;
  *   · over `MAX_ATTACHMENT_BYTES` (25 MiB) is not stored at all;
@@ -254,7 +281,8 @@ export async function prepareInboundMessage(
  *
  * Then the whole batch is charged against the per-sender and global AI-ingest
  * budget. Tripping it skips `semanticFiles.ingest` — nothing reaches a model —
- * while the bytes, the row and the metadata all survive.
+ * while the bytes, the row and the metadata all survive, and the outcome comes
+ * back so the caller can record it.
  */
 export async function captureAttachments(
 	ctx: {
@@ -264,8 +292,18 @@ export async function captureAttachments(
 	},
 	rawBinary: string,
 	messageId: string,
-	fromRaw: string
-): Promise<void> {
+	fromRaw: string,
+	opts: {
+		/** Which inbound route is capturing; decides retention reach. */
+		captureSource: 'team_inbox' | 'mailbox';
+		/**
+		 * The message's DMARC verdict as the MTA computed it. `'fail'` suppresses
+		 * contact scoping — see the note above. Absent on an older MTA, which
+		 * reads as "no verdict", not as a failure.
+		 */
+		dmarcResult?: string;
+	}
+): Promise<AttachmentCaptureOutcome> {
 	// Decide the whole batch up front: the budget is charged once for what will
 	// actually be ingested, so a message of inline logos costs nothing.
 	const eligible = extractAttachments(rawBinary)
@@ -283,14 +321,15 @@ export async function captureAttachments(
 		// calls, and the inbound webhook is attacker-reachable, so a crafted .eml
 		// with many small leaves must not amplify cost.
 		.slice(0, ATTACHMENT_COMPOSE_LIMITS.maxCount);
-	if (eligible.length === 0) return;
+	if (eligible.length === 0) return { indexed: 0 };
 
 	// Scope captured files to the sender's EXISTING contact (find-only). A
-	// missing/unresolvable sender leaves the file org-general — we do not create
-	// a contact for every inbound message. Resolved once per message, not per part.
+	// missing/unresolvable sender — or one whose `From:` DMARC did not hold up —
+	// leaves the file org-general. Resolved once per message, not per part.
 	const senderEmail = extractEmail(fromRaw);
+	const isSenderSpoofable = opts.dmarcResult === 'fail';
 	let senderContactIds: Id<'contacts'>[] | undefined;
-	if (senderEmail) {
+	if (senderEmail && !isSenderSpoofable) {
 		const contact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
 			email: senderEmail,
 		});
@@ -304,33 +343,42 @@ export async function captureAttachments(
 	// `||`, not `??`: `extractEmail` returns `''` for a From header with nothing
 	// address-shaped in it, and an empty bucket key is not a key.
 	const senderKey = senderContactIds?.[0] ?? (senderEmail || 'unknown');
-	const { ok } = await ctx.runMutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
-		senderKey,
-		count: eligible.length,
-	});
+	const { ok } = await ctx.runMutation(
+		internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+		{
+			senderKey,
+			count: eligible.length,
+		}
+	);
 	if (!ok) {
 		// The bytes are NOT dropped: the message row, its attachment metadata and
 		// the sealed raw `.eml` all exist, so the reader's download still works.
-		// Only the indexing — and therefore the model spend — is skipped.
-		logError('[Attachment capture] AI ingest budget exhausted — bytes stored, indexing skipped', {
+		// Only the indexing — and therefore the model spend — is skipped. A WARN,
+		// not an error: this is the budget doing its job, on a route where a busy
+		// inbox will trip it routinely.
+		logWarn('[Attachment capture] AI ingest budget exhausted — bytes stored, indexing skipped', {
 			senderKey,
 			messageId,
 			count: eligible.length,
 		});
-		return;
+		return { indexed: 0, skippedReason: 'budget' };
 	}
 
+	let indexed = 0;
 	for (const part of eligible) {
 		const storageId = await ctx.storage.store(new Blob([part.bytes], { type: part.contentType }));
 		// `ingest` runs the file-type policy and deletes the blob if rejected.
-		await ctx.runMutation(internal.semanticFiles.ingest, {
+		const fileId = await ctx.runMutation(internal.semanticFiles.ingest, {
 			storageId,
 			filename: part.filename,
 			mimeType: part.contentType,
 			fileSize: part.bytes.byteLength,
 			sourceType: 'email_attachment',
+			captureSource: opts.captureSource,
 			sourceMessageId: messageId,
 			contactIds: senderContactIds,
 		});
+		if (fileId) indexed++;
 	}
+	return { indexed };
 }

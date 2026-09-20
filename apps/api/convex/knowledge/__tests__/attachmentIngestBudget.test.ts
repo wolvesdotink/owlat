@@ -19,10 +19,22 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import schema from '../schema';
-import { internal } from '../_generated/api';
+import schema from '../../schema';
+import { internal } from '../../_generated/api';
 
-const modules = import.meta.glob('../**/*.*s');
+// Vite canonicalizes glob keys for files in this same subtree: a sibling at
+// convex/knowledge/X is keyed as '../X' rather than '../../knowledge/X', and
+// convex-test computes its lookup prefix from '../../_generated/...'. Merge a
+// second glob rooted here and re-prefix its keys (see
+// inbox/__tests__/inboundIngest.test.ts for the same arrangement).
+const rootGlob = import.meta.glob('../../**/*.*s');
+const knowledgeGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+		path.replace(/^\.\.\//, '../../knowledge/'),
+		mod,
+	])
+);
+const modules = { ...rootGlob, ...knowledgeGlob };
 
 function setupTest() {
 	const t = convexTest(schema, modules);
@@ -60,24 +72,33 @@ describe('consumeAttachmentIngestBudget', () => {
 
 		// Drain the per-sender bucket exactly, one file at a time.
 		for (let i = 0; i < PER_SENDER_CAPACITY; i++) {
-			const res = await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
-				senderKey: 'flooder@example.com',
-				count: 1,
-			});
+			const res = await t.mutation(
+				internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+				{
+					senderKey: 'flooder@example.com',
+					count: 1,
+				}
+			);
 			expect(res.ok).toBe(true);
 		}
 
-		const overCap = await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
-			senderKey: 'flooder@example.com',
-			count: 1,
-		});
+		const overCap = await t.mutation(
+			internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+			{
+				senderKey: 'flooder@example.com',
+				count: 1,
+			}
+		);
 		expect(overCap.ok).toBe(false);
 
 		// Per-SENDER, not per-instance: the next sender still gets their budget.
-		const other = await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
-			senderKey: 'someone-else@example.com',
-			count: 1,
-		});
+		const other = await t.mutation(
+			internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+			{
+				senderKey: 'someone-else@example.com',
+				count: 1,
+			}
+		);
 		expect(other.ok).toBe(true);
 	});
 
@@ -86,23 +107,26 @@ describe('consumeAttachmentIngestBudget', () => {
 
 		// Drain one sender's bucket, then keep asking. Every further attempt from
 		// that sender is refused BEFORE the global bucket is touched.
-		await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
+		await t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
 			senderKey: 'flooder@example.com',
 			count: BATCH,
 		});
 		const perSenderCalls = PER_SENDER_CAPACITY / BATCH;
 		for (let i = 1; i < perSenderCalls; i++) {
-			await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
+			await t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
 				senderKey: 'flooder@example.com',
 				count: BATCH,
 			});
 		}
 		const refusedCalls = 12;
 		for (let i = 0; i < refusedCalls; i++) {
-			const res = await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
-				senderKey: 'flooder@example.com',
-				count: BATCH,
-			});
+			const res = await t.mutation(
+				internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+				{
+					senderKey: 'flooder@example.com',
+					count: BATCH,
+				}
+			);
 			expect(res.ok).toBe(false);
 		}
 
@@ -112,112 +136,145 @@ describe('consumeAttachmentIngestBudget', () => {
 		const alreadySpent = PER_SENDER_CAPACITY;
 		const remaining = GLOBAL_CAPACITY - alreadySpent;
 		for (let i = 0; i < remaining / BATCH; i++) {
-			const res = await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
-				// A fresh sender each time, so only the global bucket can refuse.
-				senderKey: `sender-${i}@example.com`,
-				count: BATCH,
-			});
+			const res = await t.mutation(
+				internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+				{
+					// A fresh sender each time, so only the global bucket can refuse.
+					senderKey: `sender-${i}@example.com`,
+					count: BATCH,
+				}
+			);
 			expect(res.ok).toBe(true);
 		}
 
 		// The global bucket is empty now — a sender with a full per-sender bucket
 		// is refused by the global one.
-		const overGlobal = await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
-			senderKey: 'fresh@example.com',
-			count: BATCH,
-		});
+		const overGlobal = await t.mutation(
+			internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+			{
+				senderKey: 'fresh@example.com',
+				count: BATCH,
+			}
+		);
 		expect(overGlobal.ok).toBe(false);
 	});
 
 	it('charges nothing for a message with no eligible attachments', async () => {
 		const t = setupTest();
 
-		const res = await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
-			senderKey: 'bob@example.com',
-			count: 0,
-		});
+		const res = await t.mutation(
+			internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+			{
+				senderKey: 'bob@example.com',
+				count: 0,
+			}
+		);
 		expect(res.ok).toBe(true);
 
 		// The bucket was untouched, so its full capacity is still spendable.
 		for (let i = 0; i < PER_SENDER_CAPACITY / BATCH; i++) {
-			const spend = await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
-				senderKey: 'bob@example.com',
-				count: BATCH,
-			});
+			const spend = await t.mutation(
+				internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+				{
+					senderKey: 'bob@example.com',
+					count: BATCH,
+				}
+			);
 			expect(spend.ok).toBe(true);
 		}
 	});
 });
 
 describe('inbox.inboundIngest.ingestFromWebhook — over the budget', () => {
-	it('still stores the message, its metadata and the raw .eml, and indexes nothing', async () => {
+	it('stores the message, its metadata and the raw .eml, indexes nothing, and SAYS so', async () => {
 		const t = setupTest();
-		// No MTA configured ⇒ no scan is attempted and no verdict is asserted.
-		delete process.env['MTA_INTERNAL_URL'];
-		delete process.env['MTA_API_URL'];
-		delete process.env['MTA_API_KEY'];
+		// A CLEAN verdict is what makes capture run at all, so the scanner has to
+		// be configured and answering here — otherwise the budget would never be
+		// consulted and this test would pass without proving anything.
+		process.env['MTA_INTERNAL_URL'] = 'https://mta.test.local';
+		process.env['MTA_API_KEY'] = 'mta-test-key';
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(JSON.stringify({ clean: true }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+		) as unknown as typeof globalThis.fetch;
 
-		// Drain the GLOBAL bucket before the message arrives. `receiveMessage`
-		// upserts the sender contact and capture keys on that contact id, which
-		// this test cannot know in advance — the global bucket refuses whatever
-		// per-sender key it ends up using.
-		for (let i = 0; i < GLOBAL_CAPACITY / BATCH; i++) {
-			const res = await t.mutation(internal.semanticFileBudget.consumeAttachmentIngestBudget, {
-				senderKey: `drain-${i}@example.com`,
-				count: BATCH,
+		try {
+			// Drain the GLOBAL bucket before the message arrives. `receiveMessage`
+			// upserts the sender contact and capture keys on that contact id, which
+			// this test cannot know in advance — the global bucket refuses whatever
+			// per-sender key it ends up using.
+			for (let i = 0; i < GLOBAL_CAPACITY / BATCH; i++) {
+				const res = await t.mutation(
+					internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+					{ senderKey: `drain-${i}@example.com`, count: BATCH }
+				);
+				expect(res.ok).toBe(true);
+			}
+
+			const raw = [
+				'From: Flooder <flooder@example.com>',
+				'To: inbox@example.com',
+				'Subject: budget',
+				'Message-ID: <budget-1@example.com>',
+				'Content-Type: multipart/mixed; boundary="bb"',
+				'',
+				'--bb',
+				'Content-Type: text/plain; charset=utf-8',
+				'',
+				'Body.',
+				'',
+				'--bb',
+				'Content-Type: text/plain; name="notes.txt"',
+				'Content-Disposition: attachment; filename="notes.txt"',
+				'Content-Transfer-Encoding: base64',
+				'',
+				Buffer.from('a real document that would be summarised').toString('base64'),
+				'',
+				'--bb--',
+				'',
+			].join('\r\n');
+
+			await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
+				mail: {
+					from: 'Flooder <flooder@example.com>',
+					to: 'inbox@example.com',
+					subject: 'budget',
+					textBody: 'Body.',
+					headers: {},
+					messageId: '<budget-1@example.com>',
+					attachments: [
+						{ filename: 'notes.txt', contentType: 'text/plain', size: 39, partIndex: '1' },
+					],
+					timestamp: Date.now(),
+				},
+				rawBytesBase64: Buffer.from(raw, 'latin1').toString('base64'),
 			});
-			expect(res.ok).toBe(true);
+
+			const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+			expect(rows).toHaveLength(1);
+			const row = rows[0]!;
+			// The bytes survive: the message is stored, described and downloadable.
+			expect(row.virusVerdict).toBe('clean');
+			expect(row.rawStorageId).toBeTruthy();
+			expect(row.rawSize).toBeGreaterThan(0);
+			expect(row.attachmentMeta).toContain('notes.txt');
+
+			// Only the model spend was skipped.
+			const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+			expect(files).toHaveLength(0);
+
+			// AND THE ROW SAYS SO. Without this marker the attachment lists and
+			// downloads exactly like an indexed one while the agent never saw it,
+			// and the only trace is a server log nobody reading the thread reaches.
+			expect(row.attachmentIndexing).toBe('skipped_budget');
+		} finally {
+			globalThis.fetch = originalFetch;
+			delete process.env['MTA_INTERNAL_URL'];
+			delete process.env['MTA_API_KEY'];
 		}
-
-		const raw = [
-			'From: Flooder <flooder@example.com>',
-			'To: inbox@example.com',
-			'Subject: budget',
-			'Message-ID: <budget-1@example.com>',
-			'Content-Type: multipart/mixed; boundary="bb"',
-			'',
-			'--bb',
-			'Content-Type: text/plain; charset=utf-8',
-			'',
-			'Body.',
-			'',
-			'--bb',
-			'Content-Type: text/plain; name="notes.txt"',
-			'Content-Disposition: attachment; filename="notes.txt"',
-			'Content-Transfer-Encoding: base64',
-			'',
-			Buffer.from('a real document that would be summarised').toString('base64'),
-			'',
-			'--bb--',
-			'',
-		].join('\r\n');
-
-		await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
-			mail: {
-				from: 'Flooder <flooder@example.com>',
-				to: 'inbox@example.com',
-				subject: 'budget',
-				textBody: 'Body.',
-				headers: {},
-				messageId: '<budget-1@example.com>',
-				attachments: [
-					{ filename: 'notes.txt', contentType: 'text/plain', size: 39, partIndex: '1' },
-				],
-				timestamp: Date.now(),
-			},
-			rawBytesBase64: Buffer.from(raw, 'latin1').toString('base64'),
-		});
-
-		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
-		expect(rows).toHaveLength(1);
-		const row = rows[0]!;
-		// The bytes survive: the message is stored, described and downloadable.
-		expect(row.rawStorageId).toBeTruthy();
-		expect(row.rawSize).toBeGreaterThan(0);
-		expect(row.attachmentMeta).toContain('notes.txt');
-
-		// Only the model spend was skipped.
-		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
-		expect(files).toHaveLength(0);
 	});
 });

@@ -313,6 +313,15 @@ export const knowledgeTables = {
 		embeddingGeneratedAt: v.optional(v.number()),
 		// Full-text search
 		searchableText: v.optional(v.string()),
+		// WHICH inbound route captured this file, set only by `captureAttachments`
+		// (an upload or an agent-generated file leaves it absent). `sourceType`
+		// alone cannot answer this: BOTH inbound routes write
+		// `sourceType: 'email_attachment'`, so a retention horizon configured for
+		// the shared inbox would otherwise also strip the file-library blobs of
+		// personal-mailbox (Postbox) mail, which has its own permanent raw storage
+		// and no horizon at all. The inbound retention sweep scans
+		// `captureSource === 'team_inbox'` and nothing else.
+		captureSource: v.optional(v.union(v.literal('team_inbox'), v.literal('mailbox'))),
 		// When the retention sweep released this file's bytes. Set exactly once,
 		// by the sweep, together with clearing `storageId`. It is also the
 		// equality component of `by_attachment_retention`, which is what makes
@@ -326,7 +335,7 @@ export const knowledgeTables = {
 		.index('by_created_at', ['createdAt'])
 		.index('by_thread', ['threadId'])
 		.index('by_previous_version', ['previousVersionId'])
-		.index('by_attachment_retention', ['sourceType', 'bytesReleasedAt', 'createdAt'])
+		.index('by_attachment_retention', ['captureSource', 'bytesReleasedAt', 'createdAt'])
 		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): as with knowledge entries,
 		// `searchableText` (full-text) and `embedding` (vector) stay PLAINTEXT-DERIVED
 		// so file search + semantic retrieval keep working — Convex indexes plaintext.

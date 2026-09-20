@@ -8,6 +8,11 @@
  *     written org-general and the message is still captured — an unknown sender
  *     is never a reason to drop anything;
  *   · an unparseable From header lands org-general too;
+ *   · a `From:` whose DMARC verdict is a FAIL is NOT scoped to the contact it
+ *     claims to be — a forged header must not file an attacker's document under
+ *     a real customer's `[RELEVANT FILES]` scope;
+ *   · the capturing route is recorded on the row, because that is the only
+ *     thing keeping the shared-inbox retention sweep off Postbox captures;
  *   · a part over `MAX_AI_INGEST_ATTACHMENT_BYTES` is not indexed while a
  *     sibling under it in the same .eml is;
  *   · the `ATTACHMENT_COMPOSE_LIMITS.maxCount` cap still holds.
@@ -42,7 +47,12 @@ function setupTest() {
 	return t;
 }
 
-type IngestArgs = { filename: string; fileSize: number; contactIds?: Id<'contacts'>[] };
+type IngestArgs = {
+	filename: string;
+	fileSize: number;
+	contactIds?: Id<'contacts'>[];
+	captureSource?: 'team_inbox' | 'mailbox';
+};
 
 /** Build a multipart/mixed message whose leaves are the given text bodies. */
 function buildEml(messageId: string, leaves: Array<{ name: string; body: string }>): string {
@@ -84,11 +94,12 @@ async function capture(
 	t: ReturnType<typeof setupTest>,
 	raw: string,
 	messageId: string,
-	fromRaw: string
-): Promise<{ stored: number; ingested: IngestArgs[] }> {
+	fromRaw: string,
+	opts: { captureSource?: 'team_inbox' | 'mailbox'; dmarcResult?: string } = {}
+): Promise<{ stored: number; ingested: IngestArgs[]; skippedReason?: 'budget' }> {
 	let stored = 0;
 	const ingested: IngestArgs[] = [];
-	await captureAttachments(
+	const outcome = await captureAttachments(
 		{
 			storage: {
 				store: async () => `storage-${stored++}` as Id<'_storage'>,
@@ -114,9 +125,10 @@ async function capture(
 		},
 		raw,
 		messageId,
-		fromRaw
+		fromRaw,
+		{ captureSource: opts.captureSource ?? 'team_inbox', dmarcResult: opts.dmarcResult }
 	);
-	return { stored, ingested };
+	return { stored, ingested, skippedReason: outcome.skippedReason };
 }
 
 async function seedContact(
@@ -171,6 +183,46 @@ describe('captureAttachments — contact scoping', () => {
 		expect(ingested[0]!.contactIds).toBeUndefined();
 	});
 
+	it('does NOT scope to the claimed contact when DMARC failed the From header', async () => {
+		const t = setupTest();
+		// The contact is real; the message claiming to be from them is not. A
+		// `From:` header is free text, and DMARC is the check that binds it to a
+		// domain that authorized the send. Scoping on a failed one files an
+		// attacker's PDF under the real customer's retrieval scope, where the
+		// agent drafting a reply to that customer would pick it up.
+		const contactId = await seedContact(t, 'ceo@customer.example');
+
+		const { ingested } = await capture(
+			t,
+			buildEml('spoof-1@example.com', [{ name: 'instructions.txt', body: 'do this instead' }]),
+			'<spoof-1@example.com>',
+			'CEO <ceo@customer.example>',
+			{ dmarcResult: 'fail' }
+		);
+
+		// Captured — an unauthenticated sender is not a reason to drop mail — but
+		// org-general, not under the contact it claimed to be.
+		expect(ingested).toHaveLength(1);
+		expect(ingested[0]!.contactIds).toBeUndefined();
+		expect(ingested[0]!.contactIds).not.toEqual([contactId]);
+	});
+
+	it('still scopes when DMARC passed, or when the MTA asserted no verdict', async () => {
+		const t = setupTest();
+		const contactId = await seedContact(t, 'bob@example.com');
+
+		for (const dmarcResult of ['pass', 'none', undefined]) {
+			const { ingested } = await capture(
+				t,
+				buildEml(`dmarc-${dmarcResult}@example.com`, [{ name: 'notes.txt', body: 'a document' }]),
+				`<dmarc-${dmarcResult}@example.com>`,
+				'Bob <bob@example.com>',
+				{ dmarcResult }
+			);
+			expect(ingested[0]!.contactIds).toEqual([contactId]);
+		}
+	});
+
 	it('falls back to org-general when the From header has no address in it', async () => {
 		const t = setupTest();
 
@@ -205,6 +257,30 @@ describe('captureAttachments — eligibility ceilings', () => {
 		// The big part is not dropped from the message — it is only not indexed.
 		// Its bytes stay in the raw .eml the reader downloads from.
 		expect(ingested[0]!.fileSize).toBeLessThanOrEqual(MAX_AI_INGEST_ATTACHMENT_BYTES);
+	});
+
+	it('records which route captured the file, so the sweep can tell them apart', async () => {
+		const t = setupTest();
+
+		const team = await capture(
+			t,
+			buildEml('src-1@example.com', [{ name: 'a.txt', body: 'a document' }]),
+			'<src-1@example.com>',
+			'Bob <bob@example.com>',
+			{ captureSource: 'team_inbox' }
+		);
+		const mailbox = await capture(
+			t,
+			buildEml('src-2@example.com', [{ name: 'b.txt', body: 'a document' }]),
+			'<src-2@example.com>',
+			'Bob <bob@example.com>',
+			{ captureSource: 'mailbox' }
+		);
+
+		// Both write `sourceType: 'email_attachment'`; only this distinguishes
+		// them, and the inbound retention sweep scans `team_inbox` alone.
+		expect(team.ingested[0]!.captureSource).toBe('team_inbox');
+		expect(mailbox.ingested[0]!.captureSource).toBe('mailbox');
 	});
 
 	it('captures at most the per-message part cap', async () => {

@@ -230,10 +230,10 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 				runMutation: (async (ref: unknown, args: unknown) => {
 					if (
 						getFunctionName(ref as FunctionReference<'mutation'>) ===
-						getFunctionName(internal.semanticFileBudget.consumeAttachmentIngestBudget)
+						getFunctionName(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget)
 					) {
 						return await t.mutation(
-							internal.semanticFileBudget.consumeAttachmentIngestBudget,
+							internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
 							args as { senderKey: string; count: number }
 						);
 					}
@@ -243,7 +243,8 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 			},
 			raw,
 			'<many-1@example.com>',
-			'Bob <bob@example.com>'
+			'Bob <bob@example.com>',
+			{ captureSource: 'mailbox' }
 		);
 
 		expect(stored).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);

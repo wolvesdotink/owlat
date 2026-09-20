@@ -363,6 +363,10 @@ export const ingest = internalMutation({
 		mimeType: v.string(),
 		fileSize: v.number(),
 		sourceType: v.union(v.literal('email_attachment'), v.literal('agent_generated')),
+		// Which inbound route captured this attachment. Only the team-inbox
+		// captures are in range of the inbound retention sweep — see the schema
+		// comment on `captureSource`.
+		captureSource: v.optional(v.union(v.literal('team_inbox'), v.literal('mailbox'))),
 		sourceMessageId: v.optional(v.string()),
 		uploadContext: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
@@ -411,6 +415,7 @@ async function insertSemanticFile(
 		title?: string;
 		tags?: string[];
 		sourceType: 'upload' | 'email_attachment' | 'agent_generated';
+		captureSource?: 'team_inbox' | 'mailbox';
 		sourceMessageId?: string;
 		uploadContext?: string;
 		uploadedBy?: string;
@@ -434,6 +439,7 @@ async function insertSemanticFile(
 		title: args.title,
 		tags: args.tags,
 		sourceType: args.sourceType,
+		captureSource: args.captureSource,
 		sourceMessageId: args.sourceMessageId,
 		uploadContext: args.uploadContext,
 		uploadedBy: args.uploadedBy,
