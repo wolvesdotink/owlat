@@ -768,6 +768,7 @@ import type * as mail_crossSurface from '../mail/crossSurface.js';
 import type * as mail_dailyBrief from '../mail/dailyBrief.js';
 import type * as mail_delivery from '../mail/delivery.js';
 import type * as mail_deliveryPipeline_attachmentParts from '../mail/deliveryPipeline/attachmentParts.js';
+import type * as mail_deliveryPipeline_capture from '../mail/deliveryPipeline/capture.js';
 import type * as mail_deliveryPipeline_ingest from '../mail/deliveryPipeline/ingest.js';
 import type * as mail_deliveryPipeline_insert from '../mail/deliveryPipeline/insert.js';
 import type * as mail_deliveryPipeline_routing from '../mail/deliveryPipeline/routing.js';
@@ -1888,6 +1889,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/dailyBrief': typeof mail_dailyBrief;
 	'mail/delivery': typeof mail_delivery;
 	'mail/deliveryPipeline/attachmentParts': typeof mail_deliveryPipeline_attachmentParts;
+	'mail/deliveryPipeline/capture': typeof mail_deliveryPipeline_capture;
 	'mail/deliveryPipeline/ingest': typeof mail_deliveryPipeline_ingest;
 	'mail/deliveryPipeline/insert': typeof mail_deliveryPipeline_insert;
 	'mail/deliveryPipeline/routing': typeof mail_deliveryPipeline_routing;

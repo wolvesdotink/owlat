@@ -44,7 +44,8 @@ import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
 import { resolveDeliverableMailbox } from './mailbox/identity';
 import { clearSnoozeUntilReplyForThread } from './snooze';
-import { captureAttachments, prepareInboundMessage } from './deliveryPipeline/ingest';
+import { prepareInboundMessage } from './deliveryPipeline/ingest';
+import { captureAttachments } from './deliveryPipeline/capture';
 import { NOTHING_UNCLEARED } from './deliveryPipeline/attachmentParts';
 import { insertDeliveredMessage, stripBrackets } from './deliveryPipeline/insert';
 import {
@@ -178,9 +179,7 @@ export const ingestFromWebhook = internalAction({
 			// on the way past. The team-inbox route, which is attacker-reachable
 			// by design, has no such branch: there, unscanned is never indexed.
 			const scanned =
-				prepared.scan.verdict !== undefined
-					? prepared.scan.cleanParts
-					: prepared.scan.candidates;
+				prepared.scan.verdict !== undefined ? prepared.scan.cleanParts : prepared.scan.candidates;
 			await captureAttachments(ctx, {
 				parts: scanned,
 				// Nothing is withheld on the unscanned branch — this route indexes

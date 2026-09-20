@@ -178,7 +178,8 @@ function stubScannerPerFile(answers: Record<string, { clean: boolean; stage?: st
 	globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = typeof input === 'string' ? input : input.toString();
 		if (!url.includes('/scan/attachment')) throw new Error(`unexpected fetch: ${url}`);
-		const filename = String((init?.headers as Record<string, string>)['X-Filename']);
+		const headers = (init?.headers ?? {}) as Record<string, string>;
+		const filename = String(headers['X-Filename']);
 		scanned.push(filename);
 		const answer = answers[filename] ?? { clean: true };
 		if (answer === 503) return new Response('scanner down', { status: 503 });

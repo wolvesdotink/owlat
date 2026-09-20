@@ -19,6 +19,7 @@ import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import type { SenderHeuristics } from '../senderHeuristics';
 import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
+import type { VirusVerdict } from '../../lib/literalValidators';
 
 function extractName(field: string): string | undefined {
 	const match = field.match(/^([^<]+?)\s*<[^>]+>$/);
@@ -103,7 +104,7 @@ export async function insertDeliveredMessage(
 		labelIds?: Id<'mailLabels'>[];
 		spamScore?: number;
 		spamVerdict?: 'ham' | 'spam' | 'quarantine';
-		virusVerdict?: 'clean' | 'infected' | 'skipped';
+		virusVerdict?: VirusVerdict;
 		spfResult?: string;
 		dkimResult?: string;
 		dmarcResult?: string;

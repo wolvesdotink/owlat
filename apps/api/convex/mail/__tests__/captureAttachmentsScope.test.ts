@@ -38,13 +38,13 @@ import {
 	ATTACHMENT_COMPOSE_LIMITS,
 	MAX_AI_INGEST_ATTACHMENT_BYTES,
 } from '@owlat/shared/attachments';
-import { captureAttachments } from '../deliveryPipeline/ingest';
+import { captureAttachments } from '../deliveryPipeline/capture';
 import {
 	inboundAttachmentCandidates,
 	NOTHING_UNCLEARED,
 	type UnclearedLeaves,
 } from '../deliveryPipeline/attachmentParts';
-import type { AttachmentCaptureOutcome, InboundFromAuth } from '../deliveryPipeline/ingest';
+import type { AttachmentCaptureOutcome, InboundFromAuth } from '../deliveryPipeline/capture';
 
 const modules = import.meta.glob('../../**/*.*s');
 

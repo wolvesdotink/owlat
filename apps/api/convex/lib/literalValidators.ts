@@ -64,12 +64,17 @@ export const virusVerdictValidator = v.union(
 );
 
 /**
- * The one spelling of the verdict union. Re-spelled inline in three modules
+ * The one spelling of the STORED verdict. Re-spelled inline in three modules
  * before this existed, which is how a fourth member would have reached one of
- * them and not the others. Every API-side producer and consumer imports THIS;
- * the Vue reader, which cannot import from `convex/`, types its prop off
- * `Doc<'inboundMessages'>['virusVerdict']` from the generated data model, so it
- * is the same union there too.
+ * them and not the others. Every API-side producer and consumer of the stored
+ * value imports THIS; the Vue reader, which cannot import from `convex/`, types
+ * its prop off `Doc<'inboundMessages'>['virusVerdict']` from the generated data
+ * model, so it is the same union there too.
+ *
+ * `mail/webhookHttp.ts` keeps its own spelling on purpose: that interface is a
+ * cast over WIRE JSON the MTA sent, not a value this codebase produced, and
+ * tying it to the stored union would read as a guarantee about a payload
+ * nobody here wrote.
  */
 export type VirusVerdict = Infer<typeof virusVerdictValidator>;
 

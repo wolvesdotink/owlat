@@ -417,7 +417,8 @@ describe('scanInboundAttachments — the cap and the cleared set', () => {
 		]);
 		vi.spyOn(globalThis, 'fetch').mockImplementation(
 			async (_url: string | URL | Request, init?: RequestInit) => {
-				const filename = String((init?.headers as Record<string, string>)['X-Filename']);
+				const headers = (init?.headers ?? {}) as Record<string, string>;
+				const filename = String(headers['X-Filename']);
 				const answer = responses.get(filename)!;
 				return new Response(JSON.stringify(answer.body), { status: answer.status });
 			}

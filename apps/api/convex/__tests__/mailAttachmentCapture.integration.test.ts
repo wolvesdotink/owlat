@@ -17,7 +17,7 @@ import { internal } from '../_generated/api';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { captureAttachments } from '../mail/deliveryPipeline/ingest';
+import { captureAttachments } from '../mail/deliveryPipeline/capture';
 import {
 	inboundAttachmentCandidates,
 	NOTHING_UNCLEARED,
