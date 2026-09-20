@@ -180,6 +180,11 @@ function betterAuthOrganizationStores() {
 
 export function useOrganization() {
 	const t = organizationTranslator();
+	// Built here, not inside the async bodies below. Those run after an `await`,
+	// where there is no effect scope and no component instance — so a `useAuth()`
+	// there would leak whatever it subscribes to and silently take the
+	// no-instance branch of its translator.
+	const { user: sessionUser, refetch: refetchSession } = useAuth();
 	const { activeOrganization: activeOrgRef, organizationsList: orgsListRef } =
 		betterAuthOrganizationStores();
 
@@ -325,9 +330,8 @@ export function useOrganization() {
 					})) as OrganizationMember[];
 
 					// Find current user's role
-					const { user } = useAuth();
-					if (user.value?.id) {
-						const currentMember = members.value.find((m) => m.userId === user.value?.id);
+					if (sessionUser.value?.id) {
+						const currentMember = members.value.find((m) => m.userId === sessionUser.value?.id);
 						currentMemberRole.value = currentMember?.role ?? null;
 					}
 				}
@@ -508,13 +512,12 @@ export function useOrganization() {
 			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
 		}
 
-		const { user } = useAuth();
 		// `planOwnershipTransfer` is module scope, so it throws the message KEY;
 		// resolve it here, where `t` exists, so the team page toasts the sentence
 		// rather than a key path.
 		let steps: Array<{ memberId: string; role: OrganizationRole }>;
 		try {
-			steps = planOwnershipTransfer(members.value, user.value?.id, newOwnerMemberId);
+			steps = planOwnershipTransfer(members.value, sessionUser.value?.id, newOwnerMemberId);
 		} catch (error) {
 			if (error instanceof Error) throw new Error(t(error.message));
 			throw error;
@@ -634,8 +637,7 @@ export function useOrganization() {
 			);
 		}
 
-		const { refetch } = useAuth();
-		await refetch({
+		await refetchSession({
 			force: true,
 			expected: 'authenticated',
 			activeOrganizationId: orgId,
