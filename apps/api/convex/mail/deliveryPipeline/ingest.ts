@@ -285,12 +285,8 @@ export type CaptureAttachmentsInput = {
 	 * The attachment leaves this message may index — `InboundScanResult.cleanParts`,
 	 * i.e. exactly the parts the malware scan opened and cleared.
 	 *
-	 * TAKEN, NOT DERIVED. Capture used to re-walk the raw MIME and re-select,
-	 * and its selection was not the scanner's: a message of ten `.exe` stubs
-	 * followed by a `.txt` spent the scanner's ten-part budget on the stubs and
-	 * still had a capture slot left for the `.txt` nobody had scanned. Handing
-	 * the cleared parts in is what makes "nothing unscanned reaches a model"
-	 * true by construction rather than by two filters agreeing.
+	 * TAKEN, NOT DERIVED; `deliveryPipeline/attachmentParts.ts` has the whole
+	 * account of why there is only one selection.
 	 */
 	parts: InboundAttachmentPart[];
 	/**

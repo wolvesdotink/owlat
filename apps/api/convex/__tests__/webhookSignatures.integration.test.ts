@@ -417,6 +417,36 @@ describe('handleMailWebhook (/webhooks/mta-mailbox)', () => {
 		expect(await countPayloads(t)).toBe(0);
 	});
 
+	it('does not let unsigned traffic spend the bucket the real MTA shares', async () => {
+		const t = setupTest();
+		// `webhookIngestion` holds 100 tokens, and without
+		// RATE_LIMIT_TRUSTED_PROXY every caller keys as the same 'unknown' IP —
+		// so charging before the signature check let anyone 429 the MTA's next
+		// signed delivery, which it retries six times and then dead-letters.
+		for (let i = 0; i < 120; i++) {
+			const res = await t.fetch(MAILBOX_PATH, {
+				method: 'POST',
+				body: mailBody(),
+				headers: { 'Content-Type': 'application/json' },
+			});
+			expect(res.status).toBe(401);
+		}
+
+		const body = mailBody();
+		const ts = nowSeconds();
+		const sig = await hmacSha256Hex('mta-test-secret', `${ts}.${body}`);
+		const res = await t.fetch(MAILBOX_PATH, {
+			method: 'POST',
+			body,
+			headers: {
+				'Content-Type': 'application/json',
+				'x-mta-signature': sig,
+				'x-mta-timestamp': String(ts),
+			},
+		});
+		expect(res.status).not.toBe(429);
+	});
+
 	it('rejects (401) when the signature is wrong (and stores no payload)', async () => {
 		const t = setupTest();
 		const body = mailBody();

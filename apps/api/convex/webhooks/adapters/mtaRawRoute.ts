@@ -142,8 +142,10 @@ export async function storeRawRouteAudit(
 
 /**
  * Everything that has to be true before a raw-route body is worth parsing:
- * method, per-source rate limit, a configured secret, both signature headers,
- * a readable body, and a valid HMAC inside the staleness window.
+ * method, both signature headers, the per-source rate limit, a configured
+ * secret, a readable body, and a valid HMAC inside the staleness window — in
+ * that order, so the checks that cost nothing run before the ones that spend
+ * a shared bucket or read an unbounded body.
  *
  * Returns the verified body, or the exact `Response` to answer with. The body
  * read is UNBOUNDED, which is the whole reason these routes exist outside the
@@ -156,6 +158,20 @@ export async function readVerifiedMtaBody(
 ): Promise<{ ok: true; bodyText: string } | { ok: false; response: Response }> {
 	if (request.method !== 'POST') {
 		return { ok: false, response: jsonResponse(405, { error: 'Method not allowed' }) };
+	}
+
+	// THE FREE CHECK FIRST. Both signature headers are a string comparison
+	// against no state at all, while the bucket below is shared with the real
+	// MTA: without RATE_LIMIT_TRUSTED_PROXY every caller keys as 'unknown', so
+	// header-less spam used to drain the bucket and 429 the next SIGNED
+	// delivery — which the MTA reads as retryable, six attempts and then the
+	// DLQ. Nothing here reads the body or touches the database, so an
+	// unsigned request now costs one header lookup.
+	const signature = request.headers.get('x-mta-signature');
+	const mtaTimestamp = request.headers.get('x-mta-timestamp');
+	if (!signature || !mtaTimestamp) {
+		logError(`${opts.logTag} Missing X-MTA-Signature or X-MTA-Timestamp`);
+		return { ok: false, response: jsonResponse(401, { error: 'Missing signature headers' }) };
 	}
 
 	// Per-source rate-limit key (`<route>:<ip>`) so a flood on one raw route
@@ -177,13 +193,6 @@ export async function readVerifiedMtaBody(
 	if (!secret) {
 		logError(`${opts.logTag} MTA_WEBHOOK_SECRET is not configured`);
 		return { ok: false, response: jsonResponse(503, { error: 'Webhook endpoint not configured' }) };
-	}
-
-	const signature = request.headers.get('x-mta-signature');
-	const mtaTimestamp = request.headers.get('x-mta-timestamp');
-	if (!signature || !mtaTimestamp) {
-		logError(`${opts.logTag} Missing X-MTA-Signature or X-MTA-Timestamp`);
-		return { ok: false, response: jsonResponse(401, { error: 'Missing signature headers' }) };
 	}
 
 	let bodyText: string;

@@ -16,11 +16,18 @@
  * (~13.3 MiB once base64'd) arrives intact — exactly as it already does on the
  * personal-mailbox route this file is modelled on (`mail/webhookHttp.ts`).
  *
- * The one remaining ceiling is Convex's own: a function's ARGUMENTS are capped
- * at 16 MiB, and this handler forwards the base64 raw plus the parsed bodies
- * the MTA also sent. Near the listener limit those can add up past the cap, so
- * the forward is budgeted — see `MAX_FORWARDED_ARG_BYTES` below — and the mail
- * is delivered without its raw bytes rather than 500'd into the DLQ.
+ * TWO ceilings remain, and neither is this route's to raise:
+ *   · Convex's 16 MiB ARGUMENT cap, which the forward is budgeted against —
+ *     see `fitsForwardedArgBudget` below for the whole reasoning;
+ *   · Convex's 1 MiB DOCUMENT cap. `inbox.messages.receiveMessage` inlines
+ *     `textBody`/`htmlBody` on the row, so a message whose parsed body is over
+ *     that — a 1.5 MiB HTML newsletter, well under the listener's own limit —
+ *     throws on insert, answers 500 and is dead-lettered. The mailbox route
+ *     splits its bodies into a sealed blob over 64 KiB
+ *     (`deliveryPipeline/ingest.splitBodyForStorage`); the team inbox does not
+ *     yet, and doing it means a stored-body column plus a reader that fetches
+ *     it. Out of scope here, written down so the next reader does not assume
+ *     the argument budget above covers it.
  *
  * Everything the two routes share — the per-source rate limit, the
  * `verifyMtaHeaders` HMAC, the unbounded body read and the bounded audit row —
@@ -139,13 +146,8 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 	// the wire, never out of the database.
 	const input = getInboundChannelAdapter('mta').parseInbound(payload);
 
-	// THE BODIES WIN OVER THE BYTES. A message near the listener cap whose
-	// parsed text/HTML is also large can push the forwarded argument past
-	// Convex's 16 MiB limit, and `runAction` would throw — a 500 the MTA retries
-	// six times and then dead-letters. Dropping the raw instead delivers exactly
-	// what the pre-raw route always delivered: the message, its bodies and its
-	// metadata, with no downloadable `.eml` and no attachment capture. Losing an
-	// attachment on an outsized message beats losing the message.
+	// THE BODIES WIN OVER THE BYTES — see `fitsForwardedArgBudget` for why the
+	// raw is what gets dropped when the two together will not fit.
 	const rawBytesBase64 = fitsForwardedArgBudget([
 		payload.inboundPayload.rawBytesBase64,
 		input.textBody,

@@ -22,10 +22,9 @@ import {
  * what it could not cover.
  *
  * The verdict alone was not enough to keep a promise the pipeline makes
- * ("nothing unscanned reaches a model"): a caller holding only `'clean'` has to
- * re-derive which leaves that verdict was about, and a re-derivation that
- * filters differently is exactly how unscanned bytes reached the summariser.
- * `cleanParts` IS the set, so capture consumes it instead of re-deriving it.
+ * ("nothing unscanned reaches a model"): `cleanParts` IS the set capture may
+ * index, so nothing downstream re-derives it. See
+ * `deliveryPipeline/attachmentParts.ts` for what that re-derivation cost.
  */
 export type InboundScanResult = {
 	/**
