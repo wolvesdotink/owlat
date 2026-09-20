@@ -229,6 +229,9 @@ export const instanceTables = {
 				failed: v.number(),
 				rejected: v.number(),
 				archived: v.number(),
+				// Parked as needs-no-reply (the Updates dashboard). Optional: rows
+				// written before the bucket existed have no field and read as 0.
+				informational: v.optional(v.number()),
 				total: v.number(),
 			})
 		),

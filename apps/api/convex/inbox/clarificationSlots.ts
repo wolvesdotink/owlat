@@ -97,6 +97,8 @@ export function buildSlotPrompt(context: string): string {
 		'- answerableFromContext: true if the context ALREADY answers it\n' +
 		'- decisionRelevant: true if the answer materially changes the reply\n' +
 		'- options: up to 4 short suggested answers when the slot is multiple-choice, else an empty list\n\n' +
+		'Write every question and option in English, whatever language the email ' +
+		'is in; they are translated for the reader separately.\n\n' +
 		'Return an empty list when the email needs no information the recipient ' +
 		'must supply (e.g. a simple acknowledgement).\n\n' +
 		`<untrusted_email_content>\n${context}\n</untrusted_email_content>`
@@ -147,7 +149,7 @@ export function buildDivergencePrompt(slots: ReplySlot[], drafts: string[]): str
  * model's judgment.
  */
 const CREDENTIAL_SOLICITATION =
-	/\b(password|passphrase|passcode|pin\b|otp\b|one[-\s]?time\s*(code|password|pin)|2fa|mfa|verification\s*code|security\s*code|auth(?:entication)?\s*code|social\s*security|ssn\b|credit\s*card|card\s*number|cvv|cvc|routing\s*number|account\s*number|api[-\s]?key|secret\s*key|private\s*key|seed\s*phrase|recovery\s*(phrase|code))\b/i;
+	/\b(password|passwort|kennwort|mot de passe|contraseña|passphrase|passcode|pin\b|otp\b|one[-\s]?time\s*(code|password|pin)|2fa|mfa|verification\s*code|security\s*code|auth(?:entication)?\s*code|social\s*security|ssn\b|credit\s*card|card\s*number|cvv|cvc|routing\s*number|account\s*number|api[-\s]?key|secret\s*key|private\s*key|seed\s*phrase|recovery\s*(phrase|code))\b/i;
 
 /** True when a question is fishing for a secret the owner must never disclose. */
 export function isCredentialSolicitation(text: string): boolean {

@@ -387,12 +387,17 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      # S15 / Phase 4.4: least-privilege — only the ops the updater actually
-      # invokes. `docker compose pull`/`up -d` uses CONTAINERS + IMAGES;
-      # `docker compose ps --format json` uses CONTAINERS. We do NOT need
+      # S15 / Phase 4.4: least-privilege — only the ops the update path
+      # actually invokes: CONTAINERS (`compose ps` + recreating services),
+      # IMAGES (`compose pull`), NETWORKS and VOLUMES (`compose up`/`run`
+      # resolve the project's networks and named volumes before they touch a
+      # container), INFO and POST. NETWORKS/VOLUMES were 0 until 0.5.1, which
+      # 403'd every in-app update at the convex-deploy step. We do NOT need
       # SERVICES/TASKS (those are Swarm-only resources, unused here).
       CONTAINERS: 1
       IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
       INFO: 1
       POST: 1
       # Block everything dangerous
@@ -401,7 +406,6 @@ services:
       CONFIGS: 0
       DISTRIBUTION: 0
       EXEC: 0
-      NETWORKS: 0
       NODES: 0
       PLUGINS: 0
       SECRETS: 0
@@ -409,7 +413,6 @@ services:
       SWARM: 0
       SYSTEM: 0
       TASKS: 0
-      VOLUMES: 0
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped

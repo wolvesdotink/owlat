@@ -27,6 +27,7 @@ import {
 	ALLOWED_PRIORITIES,
 	ALLOWED_SENTIMENTS,
 	safeEnum,
+	safeLanguage,
 } from './sanitize';
 import {
 	buildConfirmedContext,
@@ -58,6 +59,9 @@ export type DraftInput = {
 		sentiment: string;
 		intent: string;
 		confidence: number;
+		// ISO 639-1 code the classifier detected; the reply is written in it.
+		// Optional for back-compat with rows classified before the field existed.
+		language?: string;
 	};
 	// TRUSTED facts the mailbox owner confirmed via the clarification loop
 	// (`inbox.answerClarification`). Rendered as a `[CONFIRMED BY OWNER]` block
@@ -121,6 +125,10 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		const safeIntent = safeEnum(input.classification.intent, ALLOWED_INTENTS);
 		const safeSentiment = safeEnum(input.classification.sentiment, ALLOWED_SENTIMENTS);
 		const safePriority = safeEnum(input.classification.priority, ALLOWED_PRIORITIES);
+		// The reply language is the sender's. Allowlisted like the enums above —
+		// it lands in the system role, so a free string from the classifier
+		// (steerable by the mail) must not reach it unchecked.
+		const replyLanguage = safeLanguage(input.classification.language);
 
 		const toneInstruction = agentConfig?.toneDescription
 			? `\n\nTone guidance: ${agentConfig.toneDescription}`
@@ -201,6 +209,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 				tools: { recallKnowledge },
 				maxSteps: MAX_RECALL_CALLS + 2,
 				spendLabels: { selfCheck: 'agent_draft_selfcheck', options: 'agent_draft_options' },
+				replyLanguage,
 				strategyScope: {
 					...(message?.contactId ? { contactId: message.contactId } : {}),
 					classification: safeCategory,

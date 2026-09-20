@@ -113,6 +113,12 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				gate: adminOnly,
 			},
 			{
+				name: 'shared.dashboardNavigation.items.inbox.updates',
+				href: '/dashboard/inbox/updates',
+				icon: 'lucide:newspaper',
+				gate: adminOnly,
+			},
+			{
 				name: 'shared.dashboardNavigation.items.inbox.codeTasks',
 				href: '/dashboard/inbox/code-tasks',
 				icon: 'lucide:code',
