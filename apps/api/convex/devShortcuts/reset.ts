@@ -35,7 +35,7 @@ import { components } from '../_generated/api';
 import { TENANT_TABLES } from '../lib/tenantTables';
 import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
-import { logError } from '../lib/runtimeLog';
+import { deleteBlobQuietly } from '../lib/storageBlobs';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 
 interface ResetCounts {
@@ -89,7 +89,11 @@ export const runReset = internalMutation({
 					continue;
 				}
 				for (const storageId of ownedBlobs(table, row)) {
-					await deleteBlobQuietly(ctx, storageId);
+					// "Already gone" is the ordinary case here (a released blob whose
+					// row still names it, a half-finished earlier reset), and a reset
+					// that throws part-way leaves the instance in the state it exists
+					// to clear.
+					await deleteBlobQuietly(ctx.storage, storageId, '[dev reset]', { table });
 				}
 				await ctx.db.delete(row._id);
 				counts.tenantRows++;
@@ -217,21 +221,6 @@ function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>)
 			return ((row as Doc<'transactionalSends'>).attachmentStorageIds ?? []) as Id<'_storage'>[];
 		default:
 			return [];
-	}
-}
-
-/**
- * Delete a blob without letting one storage failure abort the wipe.
- *
- * "Already gone" is the ordinary case (a released blob whose row still names
- * it, a half-finished earlier reset), and a reset that throws part-way leaves
- * the instance in exactly the state it exists to clear.
- */
-async function deleteBlobQuietly(ctx: MutationCtx, storageId: Id<'_storage'>): Promise<void> {
-	try {
-		await ctx.storage.delete(storageId);
-	} catch (err) {
-		logError('[dev reset] blob delete failed', { storageId, err });
 	}
 }
 

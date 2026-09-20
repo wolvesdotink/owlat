@@ -26,7 +26,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { AUDIT_LOG_RETENTION_MS, DAY_MS } from '../lib/constants';
-import { logError } from '../lib/runtimeLog';
+import { deleteBlobQuietly } from '../lib/storageBlobs';
 import { DEFAULT_INBOUND_RAW_RETENTION_DAYS } from '@owlat/shared/inboundRetention';
 
 const BATCH = 200;
@@ -157,10 +157,15 @@ async function releaseRawBlobs(ctx: MutationCtx, now: number, cutoff: number): P
 		.query('inboundMessages')
 		.withIndex('by_raw_retention', (q) => q.eq('isRawRetained', true).lt('receivedAt', cutoff))
 		.take(BATCH);
-	return await releaseBlobs(ctx, stale, 'inbound raw', (row) => ({
-		storageId: row.rawStorageId,
-		patch: { rawStorageId: undefined, isRawRetained: undefined, rawReleasedAt: now },
-	}));
+	return await releaseBlobs(ctx, stale, 'inbound raw', {
+		blob: (row) => row.rawStorageId,
+		stamp: (row) =>
+			ctx.db.patch(row._id, {
+				rawStorageId: undefined,
+				isRawRetained: undefined,
+				rawReleasedAt: now,
+			}),
+	});
 }
 
 /**
@@ -177,23 +182,28 @@ async function releaseBlobs<Row extends { _id: Id<'inboundMessages'> | Id<'seman
 	ctx: MutationCtx,
 	rows: Row[],
 	what: string,
-	plan: (row: Row) => { storageId?: Id<'_storage'>; patch: Record<string, unknown> }
+	release: {
+		/** The blob this row owns, if it still has one. */
+		blob: (row: Row) => Id<'_storage'> | undefined;
+		/**
+		 * Stamp the row out of the index range. The CALLER patches, rather than
+		 * handing back a bag of fields for this loop to apply: a patch typed
+		 * `Record<string, unknown>` made a misspelled column (`rawReleasdAt`)
+		 * compile, and `ctx.db.patch` at the call site — where the row's table is
+		 * concrete — is checked against the schema again.
+		 */
+		stamp: (row: Row) => Promise<void>;
+	}
 ): Promise<number> {
 	for (const row of rows) {
-		const { storageId, patch } = plan(row);
+		const storageId = release.blob(row);
+		// A blob that would not delete is logged and the row is stamped ANYWAY,
+		// or it stays in the scanned range and the sweep retries it on every tick
+		// for ever.
 		if (storageId) {
-			try {
-				await ctx.storage.delete(storageId);
-			} catch (err) {
-				// Usually "already gone" (a prior partial sweep, a manual purge), but
-				// a transient storage failure lands here too and would otherwise
-				// orphan the blob forever with no trace. The patch still has to run
-				// either way, or the row stays in the scanned range and the sweep
-				// retries it on every tick for ever.
-				logError(`[retention] ${what} blob delete failed`, { rowId: row._id, err });
-			}
+			await deleteBlobQuietly(ctx.storage, storageId, `[retention] ${what}`, { rowId: row._id });
 		}
-		await ctx.db.patch(row._id, patch);
+		await release.stamp(row);
 	}
 	return rows.length;
 }
@@ -224,10 +234,10 @@ async function releaseAttachmentBlobs(
 		)
 		.take(BATCH);
 	// The row, its summary, its extracted text and its embedding all stay.
-	return await releaseBlobs(ctx, stale, 'inbound attachment', (row) => ({
-		storageId: row.storageId,
-		patch: { storageId: undefined, bytesReleasedAt: now },
-	}));
+	return await releaseBlobs(ctx, stale, 'inbound attachment', {
+		blob: (row) => row.storageId,
+		stamp: (row) => ctx.db.patch(row._id, { storageId: undefined, bytesReleasedAt: now }),
+	});
 }
 
 /**

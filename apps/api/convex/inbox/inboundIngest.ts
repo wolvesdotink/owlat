@@ -36,6 +36,7 @@ import { resolveDmarcRouting } from '../mail/deliveryPipeline/routing';
 import { inboundEmailMessageValidator } from '../webhooks/adapters/inboundRegistry';
 import type { AttachmentIndexing } from '../lib/literalValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
+import { deleteBlobQuietly } from '../lib/storageBlobs';
 import { receiveInboundMail } from './receiveInbound';
 
 /** A staged raw message: sealed into storage, decoded, and scanned. */
@@ -282,7 +283,9 @@ export const ingestFromWebhook = internalAction({
  * Never throws: every caller is on a path where the mail is already handled,
  * and turning a leaked blob into a 500 would make the MTA retry a delivery that
  * is complete. A failure is logged instead, because otherwise it is invisible —
- * the retention sweep walks rows, and no row points here.
+ * the retention sweep walks rows, and no row points here. The try/log policy
+ * itself is `lib/storageBlobs`, shared with the erasure cascade, the retention
+ * sweep and the dev reset.
  */
 async function dropStagedBlob(
 	ctx: ActionCtx,
@@ -290,11 +293,7 @@ async function dropStagedBlob(
 	messageId: string
 ): Promise<void> {
 	if (!rawStorageId) return;
-	try {
-		await ctx.storage.delete(rawStorageId);
-	} catch (err) {
-		logWarn('[Inbound Webhook] could not drop the staged raw blob', { messageId, err });
-	}
+	await deleteBlobQuietly(ctx.storage, rawStorageId, '[Inbound Webhook] staged raw', { messageId });
 }
 
 /**

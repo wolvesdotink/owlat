@@ -383,6 +383,53 @@ describe('Organization deletion step modules — storage purge', () => {
 		});
 	});
 
+	it('deletes the rows even when a blob was already purged out of band', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			// A row whose blob is gone underneath it: a manual purge, or a walk
+			// that died after the delete and before the row. A bare
+			// `ctx.storage.delete` threw on it, the batch was never deleted, and
+			// the walker retried the same rows on every hop for ever.
+			const rawSid = await ctx.storage.store(new Blob(['raw inbound']));
+			await ctx.db.insert('inboundMessages', {
+				messageId: '<orphan-1@example.com>',
+				from: 'bob@example.com',
+				to: 'inbox@example.com',
+				subject: 'blob already gone',
+				receivedAt: Date.now(),
+				processingStatus: 'received',
+				rawStorageId: rawSid,
+				rawSize: 11,
+				isRawRetained: true,
+			});
+			const fileSid = await ctx.storage.store(new Blob(['file bytes']));
+			await ctx.db.insert('semanticFiles', {
+				filename: 'gone.pdf',
+				mimeType: 'application/pdf',
+				fileSize: 10,
+				sourceType: 'email_attachment',
+				storageId: fileSid,
+				version: 1,
+				embedding: new Array(1536).fill(0),
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.storage.delete(rawSid);
+			await ctx.storage.delete(fileSid);
+		});
+
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
+			table: 'inboundMessages',
+		});
+		await t.mutation(internal.workspaces.deletion.walker.runStep, { table: 'semanticFiles' });
+		await drainAndCancel(t);
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('inboundMessages').collect()).toHaveLength(0);
+			expect(await ctx.db.query('semanticFiles').collect()).toHaveLength(0);
+		});
+	});
+
 	it('mailMessages step purges raw + text + html storage refs', async () => {
 		const t = convexTest(schema, modules);
 		let rawSid: Id<'_storage'>;

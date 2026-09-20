@@ -1,7 +1,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { decrementContactCount } from './contactCountHelpers';
-import { logError } from './runtimeLog';
+import { deleteBlobQuietly } from './storageBlobs';
 import { deleteIdentitiesForContact } from '../contacts/resolution';
 import {
 	repointContactJunction,
@@ -9,22 +9,6 @@ import {
 	KNOWLEDGE_ENTRY_JUNCTION,
 	SEMANTIC_FILE_JUNCTION,
 } from './contactJunctions';
-
-/**
- * Delete a stored blob without letting a storage failure abort the erasure.
- *
- * Usually "already gone" (a prior partial run, a manual purge), but a transient
- * storage failure lands here too — and a GDPR cascade that throws half-way
- * leaves the contact partly erased, which is worse than one orphan blob that
- * gets logged. Same policy as the retention sweep's delete.
- */
-async function deleteBlobQuietly(ctx: MutationCtx, storageId: Id<'_storage'>): Promise<void> {
-	try {
-		await ctx.storage.delete(storageId);
-	} catch (err) {
-		logError('[contacts] erasure blob delete failed', { storageId, err });
-	}
-}
 
 /**
  * Delete the `semanticFiles` rows that exist ONLY because this contact sent
@@ -56,7 +40,11 @@ async function deleteSoleContactInboundFiles(
 		if (!file.captureSource || othersRemain) continue;
 		await ctx.db.delete(link._id);
 		// Released by the inbound retention sweep already ⇒ no blob left.
-		if (file.storageId) await deleteBlobQuietly(ctx, file.storageId);
+		if (file.storageId) {
+			await deleteBlobQuietly(ctx.storage, file.storageId, '[contacts] erasure', {
+				fileId: file._id,
+			});
+		}
 		await ctx.db.delete(file._id);
 	}
 }
@@ -414,7 +402,9 @@ export async function permanentlyDeleteContactWithRelations(
 			// just emptied. A "permanent" erasure that keeps the bytes is not
 			// one. Guarded — an older row and a swept row both have none.
 			if ('rawStorageId' in row && row.rawStorageId) {
-				await deleteBlobQuietly(ctx, row.rawStorageId);
+				await deleteBlobQuietly(ctx.storage, row.rawStorageId, '[contacts] erasure', {
+					rowId: row._id,
+				});
 			}
 			await ctx.db.delete(row._id);
 		}

@@ -712,6 +712,7 @@ import type * as lib_sendingLimits from '../lib/sendingLimits.js';
 import type * as lib_sessionOrganization from '../lib/sessionOrganization.js';
 import type * as lib_ssrfGuard from '../lib/ssrfGuard.js';
 import type * as lib_statShards from '../lib/statShards.js';
+import type * as lib_storageBlobs from '../lib/storageBlobs.js';
 import type * as lib_suppression from '../lib/suppression.js';
 import type * as lib_systemEmailCopy from '../lib/systemEmailCopy.js';
 import type * as lib_systemEmails from '../lib/systemEmails.js';
@@ -1833,6 +1834,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sessionOrganization': typeof lib_sessionOrganization;
 	'lib/ssrfGuard': typeof lib_ssrfGuard;
 	'lib/statShards': typeof lib_statShards;
+	'lib/storageBlobs': typeof lib_storageBlobs;
 	'lib/suppression': typeof lib_suppression;
 	'lib/systemEmailCopy': typeof lib_systemEmailCopy;
 	'lib/systemEmails': typeof lib_systemEmails;
