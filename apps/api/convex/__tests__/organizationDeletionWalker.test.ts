@@ -339,6 +339,50 @@ describe('Organization deletion step modules — storage purge', () => {
 		});
 	});
 
+	it('inboundMessages step purges the sealed raw .eml with its row', async () => {
+		const t = convexTest(schema, modules);
+		let rawSid: Id<'_storage'>;
+		await t.run(async (ctx) => {
+			rawSid = await ctx.storage.store(new Blob(['raw inbound'], { type: 'message/rfc822' }));
+			await ctx.db.insert('inboundMessages', {
+				messageId: '<wipe-1@example.com>',
+				from: 'bob@example.com',
+				to: 'inbox@example.com',
+				subject: 'has an attachment',
+				receivedAt: Date.now(),
+				processingStatus: 'received',
+				rawStorageId: rawSid,
+				rawSize: 11,
+				isRawRetained: true,
+			});
+			// A message the retention sweep already released, and one that arrived
+			// through the legacy route: neither has bytes, and the step must not
+			// trip over the absence.
+			await ctx.db.insert('inboundMessages', {
+				messageId: '<wipe-2@example.com>',
+				from: 'bob@example.com',
+				to: 'inbox@example.com',
+				subject: 'no bytes',
+				receivedAt: Date.now(),
+				processingStatus: 'received',
+			});
+		});
+
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
+			table: 'inboundMessages',
+		});
+		await drainAndCancel(t);
+
+		await t.run(async (ctx) => {
+			// The rows went with the generic sweep before this step existed — and
+			// the sealed `.eml`, which holds the whole message including every
+			// attachment, stayed in storage forever. Nothing could reclaim it
+			// either: the inbound retention sweep finds blobs by walking rows.
+			expect(await ctx.storage.getUrl(rawSid)).toBeNull();
+			expect(await ctx.db.query('inboundMessages').collect()).toHaveLength(0);
+		});
+	});
+
 	it('mailMessages step purges raw + text + html storage refs', async () => {
 		const t = convexTest(schema, modules);
 		let rawSid: Id<'_storage'>;
