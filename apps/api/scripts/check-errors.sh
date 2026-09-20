@@ -19,10 +19,11 @@
 #      lib/authedFunctions.ts, so keying on them alone matched zero functions
 #      and this check silently passed on everything. The bare names stay in the
 #      list only so the gate still fires if that ban is ever relaxed.
-#      `httpAction` / `publicTokenEndpoint` are out of scope: the HTTP surface
-#      serializes failures through lib/httpResponse.ts, which has its own
-#      category seam, and a bare throw there becomes a 500 rather than an
-#      uncategorized client error.
+#      `httpAction`, `publicTokenEndpoint` and `createAuthenticatedHandler`
+#      (auth/apiHandlers.ts, the nine API-key HTTP exports) are out of scope: the
+#      HTTP surface serializes failures through lib/httpResponse.ts, which has
+#      its own category seam, and a bare throw there becomes a 500 rather than
+#      an uncategorized client error.
 #
 # Category-literal validity is enforced by the compiler: every error category
 # usage is typed `OperationErrorCategory` (throwers, errorResponse, the SDK

@@ -50,6 +50,20 @@
 #   loadReadableMessage    mail/mailbox/messages.ts — the same, keyed by message id
 #   loadAccessibleMailboxes mail/permissions.ts — the caller's own + shared-member mailboxes
 #
+# Two of those are weaker than they look, and a REVIEWER still has to check the
+# call site — the token only proves the handler asked the question:
+#
+#   loadAccessibleMailboxes (mail/permissions.ts:181) is a SCOPING helper, not
+#   an authorization check. It takes `userId` / `organizationId` as plain
+#   arguments and lists that user's mailboxes; it counts as a decision only
+#   when both come from the caller's resolved session. Fed from `args`, it
+#   would enumerate someone else's inbox and still satisfy this grep.
+#
+#   isSharedInboxReader (inbox/access.ts) type-guards a session OBJECT handed
+#   to it, so it is only as good as where that object came from — the same
+#   caveat, weaker, because every current caller resolves it via
+#   getBetterAuthSessionWithRole one line above.
+#
 # A soft-auth read whose gate lives one hop away (an internal query run with the
 # inherited identity, or a handler extracted to another module) is invisible
 # here by construction, so it carries the `// authz: <where the gate lives>`
