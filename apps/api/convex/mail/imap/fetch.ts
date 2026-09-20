@@ -19,16 +19,22 @@ import { internalAction, internalQuery } from '../../_generated/server';
 import { sealedBlobUrl } from '../../lib/sealedBlob';
 
 /**
- * Rows per page. UID-ordered pages are resumed by `uid` (unique within a
- * folder), so the page size is purely a read-budget knob: small enough that a
- * page of full documents stays far below the per-execution limits, large enough
- * that a typical `FETCH 1:*` is a handful of round trips rather than hundreds.
+ * Rows per page.
+ *
+ * `.take()` reads whole documents whatever the handler projects, so both page
+ * sizes are set by the per-execution budget (16,384 documents / 8 MiB), not by
+ * the size of the answer. The envelope reads return most of the row, so they
+ * stay small; the UID listing returns two numbers per row and is the walk a
+ * client pays for on EVERY command, so it takes a larger page — 100k-message
+ * folders are the case this exists for, and 500 round trips per FETCH is its
+ * own kind of broken.
  */
-const DEFAULT_PAGE_SIZE = 200;
-const MAX_PAGE_SIZE = 500;
+const DEFAULT_ENVELOPE_PAGE_SIZE = 200;
+const DEFAULT_UID_PAGE_SIZE = 1_000;
+const MAX_PAGE_SIZE = 1_000;
 
-function pageSize(requested: number | undefined): number {
-	if (requested === undefined) return DEFAULT_PAGE_SIZE;
+function pageSize(requested: number | undefined, fallback: number): number {
+	if (requested === undefined || !Number.isFinite(requested)) return fallback;
 	return Math.max(1, Math.min(Math.floor(requested), MAX_PAGE_SIZE));
 }
 
@@ -36,6 +42,10 @@ function pageSize(requested: number | undefined): number {
  * `nextUid` for a UID-ordered page: the UID to resume from when the page came
  * back full, `null` once the window is exhausted. A short page can only mean
  * the index range ran out, because the range scan is ordered.
+ *
+ * Resuming at `last.uid + 1` against a `gte` bound assumes UIDs are integers,
+ * which is what `uidNext` allocates (RFC 3501 §2.3.1.1). A fractional uid would
+ * be skipped rather than re-read.
  */
 function nextUid(rows: ReadonlyArray<{ uid: number }>, limit: number): number | null {
 	if (rows.length < limit) return null;
@@ -87,7 +97,7 @@ export const fetchEnvelopes = internalQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const limit = pageSize(args.limit);
+		const limit = pageSize(args.limit, DEFAULT_ENVELOPE_PAGE_SIZE);
 		const rows = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_folder_and_uid', (q) =>
@@ -100,16 +110,20 @@ export const fetchEnvelopes = internalQuery({
 });
 
 /**
- * One page of the rows whose `modseq` advanced past `modseqSince`, for
- * CONDSTORE `CHANGEDSINCE` and the IDLE poll (RFC 7162). Served off
- * `by_folder_and_modseq` — the alternative, reading a UID window and dropping
- * the unchanged rows in JS, reads the whole folder to answer "what changed in
- * the last five seconds", which is exactly the question an index answers.
+ * One page of the rows whose `modseq` advanced past `modseqSince` — today the
+ * IDLE poll's read, and the read a `FETCH … (CHANGEDSINCE n)` modifier will use
+ * when that lands (RFC 7162; only `UNCHANGEDSINCE` on STORE is implemented so
+ * far). Served off `by_folder_and_modseq` — the alternative, reading a UID
+ * window and dropping the unchanged rows in JS, reads the whole folder to
+ * answer "what changed in the last five seconds", which is exactly the question
+ * an index answers.
  *
- * Paged with Convex cursors rather than a `> lastSeenModseq` watermark: today's
- * write paths hand every touched row its own incremented modseq, but nothing in
- * the schema enforces that, and a watermark resume silently drops rows sharing
- * the boundary value. A cursor is exact whatever the modseq allocation does.
+ * Paged with Convex cursors rather than a `> lastSeenModseq` watermark because
+ * the range is mutated while it is walked — that is what IDLE is polling for.
+ * A cursor stays anchored where the previous page stopped; a watermark re-reads
+ * from a value the folder has since moved past. modseq only ever increases, so
+ * a row re-stamped mid-walk moves forward in the index: the cursor may hand it
+ * back twice (harmless — the same flags, pushed again) but never skips it.
  */
 export const fetchChangedEnvelopes = internalQuery({
 	args: {
@@ -146,7 +160,7 @@ export const listFolderUidsPage = internalQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const limit = pageSize(args.limit);
+		const limit = pageSize(args.limit, DEFAULT_UID_PAGE_SIZE);
 		const after = args.afterUid;
 		const rows = await ctx.db
 			.query('mailMessages')
@@ -203,7 +217,7 @@ export const resolveMessageIdsByUid = internalQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const limit = pageSize(args.limit);
+		const limit = pageSize(args.limit, DEFAULT_ENVELOPE_PAGE_SIZE);
 		const rows = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_folder_and_uid', (q) =>

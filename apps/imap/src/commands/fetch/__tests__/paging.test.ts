@@ -166,6 +166,64 @@ describe('FETCH over a folder deeper than one page', () => {
 	});
 });
 
+describe('a walk that never terminates fails the command', () => {
+	it('FETCH answers BAD rather than a prefix of the mailbox under a tagged OK', async () => {
+		// A backend that always reports "there is more" (a contract change, a
+		// folder growing faster than it is read). Truncating here would tell the
+		// client its mailbox ends where the guard fired.
+		const convex = {
+			query: vi.fn(async (ref: string, params: Record<string, unknown>) => {
+				if (ref.endsWith(':listFolderUidsPage')) {
+					const after = (params.afterUid as number | undefined) ?? 1;
+					return { uids: [after, after + 1, after + 2], nextUid: after + 3 };
+				}
+				return null;
+			}),
+			mutation: vi.fn(),
+			action: vi.fn(),
+		};
+		const lines: string[] = [];
+		const args: FetchArgs = { set: '1:*', itemsToken: '(UID)', byUid: false };
+		const session = fetchModule.start({
+			deps: { convex } as unknown as CommandDeps,
+			state: selectedState(3),
+			args,
+			tag: 'a004',
+			verb: 'FETCH' as ImapVerb,
+			send: (line: string) => lines.push(line as string),
+		} as StartArgs<FetchArgs>);
+		await session.completion;
+
+		expect(lines).toEqual(['a004 BAD FETCH failed']);
+	});
+
+	it('a resume point that does not advance fails immediately, not after 500 round trips', async () => {
+		const convex = {
+			query: vi.fn(async (ref: string) => {
+				if (ref.endsWith(':listFolderUidsPage')) return { uids: [1, 2, 3], nextUid: 1 };
+				return null;
+			}),
+			mutation: vi.fn(),
+			action: vi.fn(),
+		};
+		const lines: string[] = [];
+		const args: FetchArgs = { set: '1:*', itemsToken: '(UID)', byUid: false };
+		const session = fetchModule.start({
+			deps: { convex } as unknown as CommandDeps,
+			state: selectedState(3),
+			args,
+			tag: 'a005',
+			verb: 'FETCH' as ImapVerb,
+			send: (line: string) => lines.push(line as string),
+		} as StartArgs<FetchArgs>);
+		await session.completion;
+
+		expect(lines).toEqual(['a005 BAD FETCH failed']);
+		// Two reads: the first page, then the one whose resume point repeated it.
+		expect(convex.query).toHaveBeenCalledTimes(2);
+	});
+});
+
 describe('CHANGEDSINCE reads go through the modseq index', () => {
 	it('loadChangedEnvelopes follows the pagination cursor to the end', async () => {
 		const pages = [
@@ -184,8 +242,24 @@ describe('CHANGEDSINCE reads go through the modseq index', () => {
 		const rows = await loadChangedEnvelopes(convex as never, 'f1', 7, 2);
 
 		expect(rows.map((r) => r.uid)).toEqual([1, 2, 3]);
+		expect(seen).toHaveLength(2);
 		expect(seen[0]).toMatchObject({ modseqSince: 7 });
 		expect(seen[1]!.paginationOpts).toMatchObject({ cursor: 'c1' });
+	});
+
+	it('hands the changed rows back in UID order, not the index\u2019s write order', async () => {
+		const convex = {
+			query: vi.fn(async () => ({
+				// `by_folder_and_modseq` yields write order; UID 9 was flagged last.
+				page: [envelope(4), envelope(9), envelope(1)],
+				isDone: true,
+				continueCursor: null,
+			})),
+		};
+
+		const rows = await loadChangedEnvelopes(convex as never, 'f1', 0);
+
+		expect(rows.map((r) => r.uid)).toEqual([1, 4, 9]);
 	});
 
 	it('the IDLE poll asks what changed, never a UID window it filters afterwards', async () => {

@@ -102,9 +102,17 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				const byUidMap = new Map<number, FetchEnvelope>();
 				for (const m of slice) byUidMap.set(m.uid, m);
 
+				let dropped = 0;
 				for (const { uid, seq } of resolved) {
 					const m = byUidMap.get(uid);
-					if (!m) continue;
+					if (!m) {
+						// The UID list and the envelope pages are separate reads, so a
+						// concurrent EXPUNGE can retire a message between them. Dropping
+						// it is right (it no longer exists), but silently dropping it is
+						// how a paging bug would look too — say so in the log.
+						dropped += 1;
+						continue;
+					}
 					const fields: string[] = [];
 
 					// Implicit \Seen must be applied before the FLAGS field is
@@ -155,6 +163,9 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 					send(`* ${seq} FETCH (${fields.join(' ')})`);
 				}
 
+				if (dropped > 0) {
+					logger.warn({ dropped, label }, 'FETCH: resolved UIDs missing from envelope pages');
+				}
 				send(`${tag} OK ${label} completed`);
 			} catch (err) {
 				logger.error({ err }, 'FETCH failed');
