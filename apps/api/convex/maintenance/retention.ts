@@ -23,6 +23,7 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { AUDIT_LOG_RETENTION_MS, DAY_MS } from '../lib/constants';
 import { logError } from '../lib/runtimeLog';
@@ -156,25 +157,45 @@ async function releaseRawBlobs(ctx: MutationCtx, now: number, cutoff: number): P
 		.query('inboundMessages')
 		.withIndex('by_raw_retention', (q) => q.eq('isRawRetained', true).lt('receivedAt', cutoff))
 		.take(BATCH);
-	for (const row of stale) {
-		if (row.rawStorageId) {
+	return await releaseBlobs(ctx, stale, 'inbound raw', (row) => ({
+		storageId: row.rawStorageId,
+		patch: { rawStorageId: undefined, isRawRetained: undefined, rawReleasedAt: now },
+	}));
+}
+
+/**
+ * The release itself, for either walk: drop the blob, then take the row out of
+ * the index range.
+ *
+ * ONE LOOP, because the two walks only ever differed in their column names and
+ * a noun in a log line — and the delete-failure policy they share (log it, and
+ * patch the row ANYWAY) is exactly the kind of decision that gets changed in
+ * one copy. The caller supplies its own index query and, per row, which blob to
+ * release and what to stamp instead.
+ */
+async function releaseBlobs<Row extends { _id: Id<'inboundMessages'> | Id<'semanticFiles'> }>(
+	ctx: MutationCtx,
+	rows: Row[],
+	what: string,
+	plan: (row: Row) => { storageId?: Id<'_storage'>; patch: Record<string, unknown> }
+): Promise<number> {
+	for (const row of rows) {
+		const { storageId, patch } = plan(row);
+		if (storageId) {
 			try {
-				await ctx.storage.delete(row.rawStorageId);
+				await ctx.storage.delete(storageId);
 			} catch (err) {
 				// Usually "already gone" (a prior partial sweep, a manual purge), but
 				// a transient storage failure lands here too and would otherwise
-				// orphan the blob forever with no trace. The patch below still has to
-				// run either way, or the row stays in the scanned range.
-				logError('[retention] inbound raw blob delete failed', { rowId: row._id, err });
+				// orphan the blob forever with no trace. The patch still has to run
+				// either way, or the row stays in the scanned range and the sweep
+				// retries it on every tick for ever.
+				logError(`[retention] ${what} blob delete failed`, { rowId: row._id, err });
 			}
 		}
-		await ctx.db.patch(row._id, {
-			rawStorageId: undefined,
-			isRawRetained: undefined,
-			rawReleasedAt: now,
-		});
+		await ctx.db.patch(row._id, patch);
 	}
-	return stale.length;
+	return rows.length;
 }
 
 /**
@@ -202,25 +223,19 @@ async function releaseAttachmentBlobs(
 			q.eq('captureSource', 'team_inbox').eq('bytesReleasedAt', undefined).lt('createdAt', cutoff)
 		)
 		.take(BATCH);
-	for (const row of stale) {
-		if (row.storageId) {
-			try {
-				await ctx.storage.delete(row.storageId);
-			} catch (err) {
-				logError('[retention] inbound attachment blob delete failed', { rowId: row._id, err });
-			}
-		}
-		// The row, its summary, its extracted text and its embedding all stay.
-		await ctx.db.patch(row._id, { storageId: undefined, bytesReleasedAt: now });
-	}
-	return stale.length;
+	// The row, its summary, its extracted text and its embedding all stay.
+	return await releaseBlobs(ctx, stale, 'inbound attachment', (row) => ({
+		storageId: row.storageId,
+		patch: { storageId: undefined, bytesReleasedAt: now },
+	}));
 }
 
 /**
  * ONE sweep for one horizon. The raw `.eml` and the attachments pulled out of
  * it are the same decision measured from the same setting, so they are the same
- * mutation and the same cron entry — two of each meant a change to horizon
- * semantics had to be made in four places and be right in all of them.
+ * mutation, the same cron entry and — through {@link releaseBlobs} — the same
+ * release loop; two of each meant a change to horizon semantics had to be made
+ * in four places and be right in all of them.
  *
  * Self-rescheduling while EITHER walk filled its batch, so a backlog drains
  * without one side starving the other.

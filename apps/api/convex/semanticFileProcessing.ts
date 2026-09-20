@@ -35,6 +35,7 @@ import { buildFileSearchableText } from './lib/fileSearchText';
 import { reciprocalRankFusion } from './lib/rrf';
 import { injectionRisk } from './knowledge/extraction';
 import { detectInjection } from './agent/steps/security_scan/patterns';
+import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
 
 /**
  * Process a newly uploaded file: extract text, generate summary,
@@ -377,34 +378,34 @@ export const semanticSearch = internalAction({
 // Text Extraction Helpers
 // ============================================================
 
-// Exported for unit tests — pure, no ctx. Encodes which formats yield real
-// extracted text (text/json/html/csv/pdf) vs a filename-only placeholder
-// (docx/xlsx/images/unknown).
+/**
+ * Turn a stored file into the text everything downstream reads.
+ *
+ * WHAT EACH FORMAT YIELDS IS NOT DECIDED HERE — `lib/fileExtraction` owns the
+ * one classification, and the V8-side capture path consults the same table to
+ * mark a name-only file as such instead of rendering it like a PDF the
+ * assistant read cover to cover. This module is `'use node'` and that one is
+ * not, which is a one-way restriction: a Node module may import a V8-safe one
+ * (this file already imports `lib/constants`, `lib/fileSearchText` and
+ * `lib/rrf`), so there is no second branch list to keep in step.
+ *
+ * Exported for unit tests — pure, no ctx.
+ */
 export async function extractText(blob: Blob, mimeType: string, filename: string): Promise<string> {
-	// HTML — strip tags. MUST precede the generic `text/*` branch below:
-	// `text/html` starts with `text/`, so checking text/* first would return the
-	// raw markup (incl. <script>/<style> bodies) straight into the LLM /
-	// knowledge-graph ingestion path.
-	if (mimeType === 'text/html') {
-		const html = await blob.text();
-		return stripHtmlTags(html);
-	}
+	const format = classifyExtraction(mimeType, filename);
 
-	// Plain text files
-	if (mimeType.startsWith('text/') || mimeType === 'application/json') {
-		return await blob.text();
-	}
+	// HTML — strip tags, including `<script>`/`<style>` BODIES, so nothing
+	// smuggled in markup reaches the LLM / knowledge-graph ingestion path.
+	if (format === 'html') return stripHtmlTags(await blob.text());
 
-	// CSV
-	if (mimeType === 'text/csv' || filename.endsWith('.csv')) {
-		return await blob.text();
-	}
+	// Plain text, JSON and CSV are their own bytes.
+	if (format === 'text' || format === 'csv') return await blob.text();
 
 	// PDF — pure-JS extraction via unpdf (serverless-friendly, no native deps).
-	// Falls back to the placeholder stub on any failure so corrupt or
-	// extraction-failed PDFs still flow through the pipeline.
-	if (mimeType === 'application/pdf' || filename.endsWith('.pdf')) {
-		const placeholder = `[PDF file: ${filename}]`;
+	// Falls back to the placeholder on any failure, so corrupt, encrypted or
+	// scanned-image PDFs still flow through the pipeline.
+	if (format === 'pdf') {
+		const placeholder = extractionPlaceholder(format, filename);
 		try {
 			const buffer = await blob.arrayBuffer();
 			const pdf = await getDocumentProxy(new Uint8Array(buffer));
@@ -420,36 +421,10 @@ export async function extractText(blob: Blob, mimeType: string, filename: string
 		}
 	}
 
-	// For remaining binary formats (DOCX, XLSX, etc.), we'd need external
-	// libraries or a processing service. For now, return a placeholder and
-	// rely on filename/title.
-	//
-	// These branches are the COMPLEMENT of `lib/fileExtraction.hasTextExtraction`,
-	// which the V8-side capture path consults to mark such a file as name-only
-	// instead of indexed (this module is `'use node'`, so it cannot be imported
-	// there). `__tests__/semanticFileExtraction.test.ts` runs the real extractor
-	// over both sides, so adding a format to one and not the other fails.
-
-	if (
-		mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-		mimeType === 'application/msword'
-	) {
-		return `[Word document: ${filename}]`;
-	}
-
-	if (
-		mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-		mimeType === 'application/vnd.ms-excel'
-	) {
-		return `[Spreadsheet: ${filename}]`;
-	}
-
-	// Images — no text extraction (could use OCR in future)
-	if (mimeType.startsWith('image/')) {
-		return `[Image: ${filename}]`;
-	}
-
-	return `[File: ${filename}]`;
+	// DOCX, XLSX, images and everything unrecognised: reading them would need
+	// external libraries or a processing service, so the file is ingested under
+	// its own name and nothing else.
+	return extractionPlaceholder(format, filename);
 }
 
 // Exported for unit tests. Drops <script>/<style> bodies before tags so file

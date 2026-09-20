@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { extractText, stripHtmlTags, truncateForLLM, scrubTags } from '../semanticFileProcessing';
-import { hasTextExtraction } from '../lib/fileExtraction';
+import {
+	classifyExtraction,
+	extractionPlaceholder,
+	hasTextExtraction,
+	type ExtractionFormat,
+} from '../lib/fileExtraction';
 
 /**
  * Unit coverage for the semantic-file text-extraction dispatch — the documented
@@ -134,54 +139,63 @@ function minimalPdfBytes(): Uint8Array {
 }
 
 /**
- * `hasTextExtraction` is what the capture path consults to decide whether an
- * ingested attachment yields content or only its own name — it cannot import
- * `semanticFileProcessing`, which is `'use node'`. So the two are pinned here,
- * against the REAL extractor, over the whole documented matrix: a new format
- * added on one side and not the other fails this.
+ * The ONE classification both sides of the extraction seam dispatch on.
  *
- * PDF is in the table with real PDF bytes, and its one honest gap — a PDF that
- * parses to nothing — is pinned separately below.
+ * `lib/fileExtraction` used to be a second, hand-kept copy of the extractor's
+ * branch list, and this block's job was to pin the two against each other so a
+ * format added to one and not the other failed. The copy is gone — the
+ * `'use node'` extractor imports the V8-safe table — so what is worth testing
+ * is the table itself: the format each (type, name) pair lands on, and the fact
+ * that the real extractor's output follows it.
  */
-describe('hasTextExtraction — the predicate the ingest path uses', () => {
-	const CASES: Array<{ mimeType: string; filename: string; bytes?: Uint8Array }> = [
-		{ mimeType: 'text/plain', filename: 'a.txt' },
-		{ mimeType: 'text/html', filename: 'a.html' },
-		{ mimeType: 'application/json', filename: 'a.json' },
-		{ mimeType: 'text/csv', filename: 'a.csv' },
-		{ mimeType: 'application/octet-stream', filename: 'a.csv' },
+describe('classifyExtraction — the one table both callers dispatch on', () => {
+	const CASES: Array<{
+		mimeType: string;
+		filename: string;
+		format: ExtractionFormat;
+		bytes?: Uint8Array;
+	}> = [
+		{ mimeType: 'text/plain', filename: 'a.txt', format: 'text' },
+		{ mimeType: 'text/html', filename: 'a.html', format: 'html' },
+		{ mimeType: 'application/json', filename: 'a.json', format: 'text' },
+		{ mimeType: 'text/csv', filename: 'a.csv', format: 'csv' },
+		{ mimeType: 'application/octet-stream', filename: 'a.csv', format: 'csv' },
 		{
 			mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 			filename: 'a.docx',
+			format: 'word',
 		},
-		{ mimeType: 'application/msword', filename: 'a.doc' },
+		{ mimeType: 'application/msword', filename: 'a.doc', format: 'word' },
 		{
 			mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 			filename: 'a.xlsx',
+			format: 'spreadsheet',
 		},
-		{ mimeType: 'application/vnd.ms-excel', filename: 'a.xls' },
-		{ mimeType: 'image/png', filename: 'a.png' },
-		{ mimeType: 'application/zip', filename: 'a.zip' },
-		{ mimeType: 'application/pdf', filename: 'a.pdf', bytes: minimalPdfBytes() },
+		{ mimeType: 'application/vnd.ms-excel', filename: 'a.xls', format: 'spreadsheet' },
+		{ mimeType: 'image/png', filename: 'a.png', format: 'image' },
+		{ mimeType: 'application/zip', filename: 'a.zip', format: 'file' },
+		{ mimeType: 'application/pdf', filename: 'a.pdf', format: 'pdf', bytes: minimalPdfBytes() },
 	];
 
+	it.each(CASES)('puts $filename in the $format branch', ({ mimeType, filename, format }) => {
+		expect(classifyExtraction(mimeType, filename)).toBe(format);
+		// The capture path's predicate is a projection of the same table: the
+		// four formats that read bytes, and nothing else.
+		const readsBytes = format === 'text' || format === 'html' || format === 'csv';
+		expect(hasTextExtraction(mimeType, filename)).toBe(readsBytes || format === 'pdf');
+	});
+
 	it.each(CASES)(
-		'agrees with the extractor for $filename',
-		async ({ mimeType, filename, bytes }) => {
+		'the real extractor follows that branch for $filename',
+		async ({ mimeType, filename, format, bytes }) => {
 			const source = bytes
 				? new Blob([bytes as BlobPart], { type: mimeType })
 				: blob('some content', mimeType);
 			const extracted = await extractText(source, mimeType, filename);
-			// The extractor's placeholder shape is `[Kind: filename]` and nothing
-			// else returns one, so it is the observable difference between "the
-			// assistant read this" and "the assistant knows its name".
-			const isPlaceholder =
-				extracted === `[Word document: ${filename}]` ||
-				extracted === `[Spreadsheet: ${filename}]` ||
-				extracted === `[Image: ${filename}]` ||
-				extracted === `[PDF file: ${filename}]` ||
-				extracted === `[File: ${filename}]`;
-			expect(hasTextExtraction(mimeType, filename)).toBe(!isPlaceholder);
+			// A placeholder is the observable difference between "the assistant
+			// read this" and "the assistant knows its name".
+			const isPlaceholder = extracted === extractionPlaceholder(format, filename);
+			expect(isPlaceholder).toBe(!hasTextExtraction(mimeType, filename));
 		}
 	);
 
@@ -190,9 +204,8 @@ describe('hasTextExtraction — the predicate the ingest path uses', () => {
 		// falls back to its placeholder — but `hasTextExtraction` only ever sees
 		// the name and the type, so the row reads `indexed` for a file the
 		// assistant knows only the name of. Deciding otherwise needs `unpdf`,
-		// which lives in the `'use node'` module the V8-side capture path cannot
-		// import. Written down here rather than left for someone to discover in
-		// a thread view.
+		// which only the `'use node'` extractor can run. Written down here rather
+		// than left for someone to discover in a thread view.
 		const notReallyAPdf = new Blob(['%PDF-1.4 no page objects at all'], {
 			type: 'application/pdf',
 		});
