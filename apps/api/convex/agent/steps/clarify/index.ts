@@ -51,6 +51,8 @@ import { runLlmObject, runLlmText } from '../../../lib/llm/dispatch';
 import type { Id } from '../../../_generated/dataModel';
 import type { Infer } from 'convex/values';
 import { clarificationQuestionValidator } from '../../../inbox/clarificationValidators';
+import type { classificationValidator } from '../../../lib/convexValidators';
+import { localizeQuestions } from '../../../inbox/clarificationLocalize';
 import {
 	DIVERGENCE_SAMPLES,
 	MIN_SAMPLES_FOR_JUDGMENT,
@@ -70,6 +72,7 @@ import {
 	type EagernessPolicy,
 } from '../../../inbox/askEagerness';
 import { detectAttachmentClarification } from './attachment';
+import { boundedOptions } from './options';
 import type { AgentStepModule, TokenUsage } from '../types';
 
 // The slot taxonomy + untrusted-data prompt module is SHARED with the personal
@@ -88,13 +91,9 @@ export type ClarificationQuestion = Infer<typeof clarificationQuestionValidator>
 export type ClarifyInput = {
 	inboundMessageId: Id<'inboundMessages'>;
 	context: string;
-	classification: {
-		category: string;
-		priority: string;
-		sentiment: string;
-		intent: string;
-		confidence: number;
-	};
+	/** The persisted classification (language + response signals included) —
+	 * threaded through untouched to the draft step. */
+	classification: Infer<typeof classificationValidator>;
 };
 
 export type ClarifyOutput = {
@@ -185,10 +184,12 @@ export function selectQuestions(
 		// Confident eagerness only surfaces genuinely high-stakes slots
 		// (money / commitment / date / legal-tone); routine acks are dropped.
 		if (policy.highStakesOnly && !isHighStakesSlot(slot.slotType)) continue;
+		const options = boundedOptions(slot.options);
 		questions.push({
 			id: `clarify_${i}`,
 			slotType: slot.slotType,
 			text: slot.question,
+			...(options ? { options } : {}),
 		});
 		if (questions.length >= cap) break;
 	}
@@ -378,7 +379,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			const fillByQuestion = new Map(fills.map((f) => [f.questionId, f.value] as const));
 			const filledAt = Date.now();
 			const memoryAnswers: ClarificationQuestion[] = [];
-			const questions: ClarificationQuestion[] = [];
+			let questions: ClarificationQuestion[] = [];
 			for (const q of candidateQuestions) {
 				const value = fillByQuestion.get(q.id);
 				if (value !== undefined) {
@@ -389,6 +390,15 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				} else {
 					questions.push(q);
 				}
+			}
+
+			// The person is asked in their own language: translate the questions
+			// we ACTUALLY ask (never the memory-filled ones) into every other
+			// interface locale. One cheap call; fail-soft to the English copy.
+			if (questions.length > 0) {
+				const localized = await localizeQuestions(model, questions);
+				questions = localized.questions;
+				tokenUsage = addUsage(tokenUsage, localized.tokenUsage);
 			}
 
 			// Instrument only the questions we ACTUALLY ask (memory-filled ones are

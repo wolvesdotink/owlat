@@ -1,4 +1,5 @@
 <script lang="ts">
+import { NuxtLink } from '#components';
 import type { Id } from '@owlat/api/dataModel';
 import type { SenderAuthMessage } from '~/utils/senderAuth';
 
@@ -305,7 +306,7 @@ function onCapturedClick(event: MouseEvent) {
 				<!-- Revealed behind the row while it follows the finger sideways. -->
 				<PostboxSwipeTrack v-if="gestures.track.value" :track="gestures.track.value" />
 				<component
-					:is="selectable ? 'div' : (resolveComponent('NuxtLink') as 'div')"
+					:is="selectable ? 'div' : NuxtLink"
 					:id="rowId"
 					role="option"
 					:tabindex="selectable ? -1 : undefined"

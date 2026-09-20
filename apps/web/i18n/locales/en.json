@@ -320,7 +320,11 @@
 				"label": "Loading task"
 			},
 			"taskOptions": {
+				"lead": "Click a suggestion to use it as your answer, or type your own below.",
 				"orTypeAnswerPlaceholder": "Or type an answer…",
+				"readback": "Your answer: {answer}",
+				"readbackRemembered": "Your answer: {answer} (pre-picked from your earlier answer — pick another to change it)",
+				"rememberedTag": "last time",
 				"typeAnswerPlaceholder": "Type your answer…"
 			}
 		},
@@ -447,8 +451,6 @@
 		"automations": {
 			"stepEditorPanel": {
 				"delete": "Delete Step",
-				"emptyBody": "Click on a step in the workflow to configure its settings.",
-				"emptyTitle": "Select a Step",
 				"save": "Save Changes",
 				"title": "Step Settings"
 			},
@@ -8710,10 +8712,12 @@
 			"detail": {
 				"agentDraft": "Agent Draft",
 				"agentNeedsInput": "The agent needs your input",
+				"agentNeedsInputEyebrow": "Waiting on you",
 				"aiClassification": "AI Classification",
 				"answerAndResume": "Answer and resume draft",
 				"answerClarificationOperation": "Answer clarification",
 				"answerPlaceholder": "Type your answer",
+				"answerRemaining": "Answer {count} more to resume | Answer {count} more to resume",
 				"approveAndSend": "Approve & Send",
 				"assign": "Assign",
 				"assignThreadAria": "Assign thread",
@@ -8733,6 +8737,8 @@
 				},
 				"changeStatusAria": "Change thread status",
 				"channelLinkFailedToast": "Channel created, but linking failed",
+				"clarificationLead": "Answer below and the agent finishes the draft with your answers as confirmed facts.",
+				"clarificationProgress": "{answered} of {total} answered",
 				"clarificationSavedToast": "Answers saved — drafting resumed",
 				"confidenceChip": "{percent}% confidence",
 				"contact": "Contact",
@@ -8760,13 +8766,19 @@
 				},
 				"priorityChip": "{priority} priority",
 				"processingFailed": "Processing failed",
+				"questionCounter": "Question {index} of {total}",
 				"reject": "Reject",
 				"rejectDraft": "Reject Draft",
 				"rejectModalBody": "Optionally provide a reason. This feedback helps improve future drafts.",
 				"rejectReasonPlaceholder": "Reason for rejection (optional)",
 				"rejecting": "Rejecting...",
+				"replyLanguageNote": "The reply will be written in {language}.",
 				"retriedToast": "Message re-enqueued for processing",
 				"retryProcessing": "Retry processing",
+				"reusedAnswersEyebrow": "From memory",
+				"reusedAnswersHint": "The same question was answered before, so the agent applied that answer again. Edit the draft if it should read differently, or",
+				"reusedAnswersManage": "review what Owlat remembers.",
+				"reusedAnswersTitle": "Owlat reused your earlier answers for this draft",
 				"sendingAutomatically": "Sending automatically in {seconds}s",
 				"sentiments": {
 					"negative": "negative",
@@ -8914,6 +8926,73 @@
 			},
 			"review": {
 				"pageTitle": "Review Queue — Owlat"
+			},
+			"updates": {
+				"blockDialogConfirm": "Block sender",
+				"blockDialogDescription": "Future mail from {sender} will be dropped silently.",
+				"blockDialogTitle": "Block this sender?",
+				"blockOperation": "Block sender",
+				"blockSender": "Block sender",
+				"blockedToast": "Sender blocked",
+				"dismiss": "Done",
+				"dismissOperation": "Dismiss update",
+				"dismissedToast": "Update dismissed",
+				"empty": {
+					"updates": {
+						"title": "You're caught up",
+						"body": "Mail that needs no reply lands here, ranked by how much you need to know about it."
+					},
+					"promotions": {
+						"title": "No promotions",
+						"body": "Adverts, cold pitches and newsletters the agent filed away show up here."
+					},
+					"notifications": {
+						"title": "No notifications",
+						"body": "Automated system mail and receipts the agent filed away show up here."
+					},
+					"spam": {
+						"title": "No spam caught",
+						"body": "Mail the agent archived as spam is listed here so you can check its judgement and block senders."
+					}
+				},
+				"emptyBody": "Mail that needs no reply lands here, ranked by how much you need to know about it.",
+				"emptyTitle": "You're caught up",
+				"errorMessage": "The updates could not be loaded. Try again in a moment.",
+				"errorTitle": "Couldn't load updates",
+				"hintMove": "move",
+				"hintOpen": "open",
+				"importance": {
+					"high": "Important",
+					"low": "Low",
+					"normal": "Worth knowing"
+				},
+				"kinds": {
+					"personal": "personal",
+					"update": "update",
+					"notification": "notification",
+					"receipt": "receipt",
+					"newsletter": "newsletter",
+					"advertising": "advertising"
+				},
+				"listAriaLabel": "Updates that need no reply",
+				"loading": "Loading updates…",
+				"noSubject": "No subject",
+				"open": "Open",
+				"openReviewQueue": "Open review queue",
+				"pageTitle": "Updates — Owlat",
+				"replyRequestedToast": "The agent is drafting a reply. It will show up in the review queue.",
+				"requestReply": "Draft a reply",
+				"requestReplyOperation": "Request a reply draft",
+				"spamNote": "Archived as spam by the agent. Open a message to check it; blocking a sender drops their future mail before the pipeline runs.",
+				"subtitle": "Mail the agent decided needs no reply, most important first. Nothing here is waiting on you.",
+				"tabs": {
+					"updates": "Updates",
+					"promotions": "Promotions",
+					"notifications": "Notifications",
+					"spam": "Spam"
+				},
+				"tabsAriaLabel": "Update views",
+				"title": "Updates"
 			}
 		},
 		"index": {
@@ -11428,7 +11507,8 @@
 					"allThreads": "All Threads",
 					"codeTasks": "Code Tasks",
 					"quarantine": "Quarantine",
-					"reviewQueue": "Review Queue"
+					"reviewQueue": "Review Queue",
+					"updates": "Updates"
 				},
 				"knowledge": {
 					"explorer": "Explorer",
@@ -12151,6 +12231,17 @@
 		},
 		"inbox": {
 			"assignmentNoticeRules": {
+				"clarification": {
+					"notificationBody": {
+						"noSubject": "No subject · the agent has a question for you",
+						"withSubject": "{subject} · the agent has a question for you"
+					},
+					"notificationTitle": "Your input is needed",
+					"toast": {
+						"noSubject": "The agent needs your input to reply — No subject",
+						"withSubject": "The agent needs your input to reply — {subject}"
+					}
+				},
 				"notification": {
 					"body": {
 						"noSubject": "No subject · from {assignedByName}",
@@ -12558,7 +12649,9 @@
 					"notification": "Notification",
 					"other": "Other",
 					"person": "Person",
-					"receipt": "Receipt"
+					"promotion": "Promotion",
+					"receipt": "Receipt",
+					"spam": "Spam"
 				},
 				"recategorizeThread": "Recategorize thread",
 				"sections": {
@@ -12566,6 +12659,7 @@
 					"notification": "Notifications",
 					"other": "Everything else",
 					"person": "People",
+					"promotion": "Promotions",
 					"receipt": "Receipts"
 				}
 			},
@@ -14202,12 +14296,16 @@
 			"assignThread": "Assign thread",
 			"processingStatus": {
 				"approved": "Approved",
+				"archived": "Archived",
+				"awaitingClarification": "Waiting for your input",
 				"classified": "Classified",
 				"draftReady": "Draft Ready",
 				"failed": "Failed",
+				"informational": "No reply needed",
 				"processing": "Processing",
 				"quarantined": "Quarantined",
 				"received": "Received",
+				"rejected": "Rejected",
 				"sent": "Sent"
 			},
 			"rejectDraft": "Reject draft",
@@ -14386,6 +14484,7 @@
 		"postboxBundles": {
 			"newsletter": "Newsletters",
 			"notification": "Notifications",
+			"promotion": "Promotions",
 			"receipt": "Receipts"
 		},
 		"accountExportResources": {

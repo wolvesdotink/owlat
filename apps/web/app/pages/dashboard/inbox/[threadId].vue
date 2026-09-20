@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
+import TaskOptions from '~/components/agent-tasks/TaskOptions.vue';
+import { canonicalOption, localizedQuestionCopy } from '~/utils/clarificationLocale';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
@@ -9,7 +12,7 @@ import {
 	sendHoldReason,
 } from '~/utils/replyCollision';
 
-const { t, te } = useI18n();
+const { t, te, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.inbox.detail.pageTitle') });
 
@@ -199,6 +202,71 @@ function setClarificationAnswer(messageId: string, questionId: string, value: st
 	answers[questionId] = value;
 }
 
+// The question in the reader's own language (canonical English when no
+// translation landed); chip picks are mapped back to the canonical option on
+// submit so the persisted answer matches what answer-memory expects.
+type ThreadClarificationQuestion = NonNullable<
+	NonNullable<typeof messages.value>[number]['pendingClarification']
+>['questions'][number];
+function questionCopy(question: ThreadClarificationQuestion) {
+	return localizedQuestionCopy(question, locale.value);
+}
+
+/**
+ * The answer Owlat pre-picked from the person's earlier answer to the same
+ * question (answer-memory, source 'memory'), shown in the reader's locale so it
+ * matches the chip it highlights. The person stays in charge: it is only a
+ * pre-selection, and picking anything else replaces it.
+ */
+function rememberedAnswer(question: ThreadClarificationQuestion): string | undefined {
+	if (question.answer?.source !== 'memory') return undefined;
+	const index = question.options?.indexOf(question.answer.value) ?? -1;
+	return index >= 0 ? questionCopy(question).options[index] : question.answer.value;
+}
+
+// Seed the working answers with the remembered ones once per message, so the
+// "Answer and resume" button is live for a card whose questions memory already
+// answered and the person only has to confirm (or change) them.
+watch(
+	messages,
+	(list) => {
+		for (const message of list ?? []) {
+			if (message.processingStatus !== 'awaiting_clarification') continue;
+			for (const question of message.pendingClarification?.questions ?? []) {
+				const remembered = rememberedAnswer(question);
+				if (remembered === undefined) continue;
+				const answers = (clarificationAnswers[message._id] ??= {});
+				if (answers[question.id] === undefined) answers[question.id] = remembered;
+			}
+		}
+	},
+	{ immediate: true }
+);
+
+/** How many of a parked message's questions currently carry an answer. */
+function answeredCount(message: NonNullable<typeof messages.value>[number]): number {
+	const answers = clarificationAnswers[message._id] ?? {};
+	return (message.pendingClarification?.questions ?? []).filter((q) => answers[q.id]?.trim())
+		.length;
+}
+
+/** The sender's language as a readable name in the reader's locale ("German"). */
+function replyLanguageName(code: string | undefined): string | undefined {
+	if (!code) return undefined;
+	try {
+		return new Intl.DisplayNames([locale.value], { type: 'language' }).of(code) ?? code;
+	} catch {
+		return code;
+	}
+}
+
+/** Questions answered from memory on a message that already has its draft. */
+function reusedAnswers(message: NonNullable<typeof messages.value>[number]) {
+	return (message.pendingClarification?.questions ?? []).filter(
+		(q) => q.answer?.source === 'memory'
+	);
+}
+
 function hasEveryClarificationAnswer(message: NonNullable<typeof messages.value>[number]) {
 	const answers = clarificationAnswers[message._id] ?? {};
 	return (
@@ -215,7 +283,7 @@ async function submitClarification(message: NonNullable<typeof messages.value>[n
 		inboundMessageId: message._id,
 		answers: questions.map((question) => ({
 			questionId: question.id,
-			value: values[question.id]?.trim() ?? '',
+			value: canonicalOption(question, locale.value, values[question.id]?.trim() ?? ''),
 		})),
 	});
 	if (result.ok) showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
@@ -556,11 +624,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								</template>
 							</UiButton>
 						</template>
-						<UiDropdownMenuItem
-							v-for="s in statusOptions"
-							:key="s"
-							@click="handleStatusChange(s)"
-						>
+						<UiDropdownMenuItem v-for="s in statusOptions" :key="s" @click="handleStatusChange(s)">
 							<span class="flex-1 truncate">
 								{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
 							</span>
@@ -699,35 +763,98 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								message.processingStatus === 'awaiting_clarification' &&
 								message.pendingClarification
 							"
-							class="mt-4 rounded-lg border border-warning/30 bg-warning/5 p-4"
+							class="mt-4 surface-2 rounded-(--radius-card) border-l-2 border-l-brand/60 p-5"
+							data-testid="thread-clarification"
 						>
-							<div class="mb-3 flex items-center gap-2">
-								<Icon name="lucide:message-circle-question" class="h-4 w-4 text-warning" />
-								<p class="text-sm font-medium text-text-primary">
-									{{ t('dashboard.inbox.detail.agentNeedsInput') }}
-								</p>
-							</div>
-							<div class="space-y-3">
-								<UiInput
-									v-for="question in message.pendingClarification.questions"
-									:key="question.id"
-									:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
-									:label="question.text"
-									:placeholder="
-										question.options?.join(' / ') || t('dashboard.inbox.detail.answerPlaceholder')
-									"
-									@update:model-value="
-										setClarificationAnswer(message._id, question.id, String($event))
-									"
-								/>
-								<UiButton
-									size="sm"
-									:loading="isAnsweringClarification"
-									:disabled="!hasEveryClarificationAnswer(message)"
-									@click="submitClarification(message)"
+							<div class="flex items-start justify-between gap-4">
+								<div>
+									<span class="lp-eyebrow">{{
+										t('dashboard.inbox.detail.agentNeedsInputEyebrow')
+									}}</span>
+									<p class="mt-1 text-md font-semibold text-text-primary">
+										{{ t('dashboard.inbox.detail.agentNeedsInput') }}
+									</p>
+									<p class="mt-1 text-sm text-text-secondary max-w-[540px]">
+										{{ t('dashboard.inbox.detail.clarificationLead') }}
+										<template v-if="replyLanguageName(message.classification?.language)">
+											{{
+												t('dashboard.inbox.detail.replyLanguageNote', {
+													language: replyLanguageName(message.classification?.language),
+												})
+											}}
+										</template>
+									</p>
+								</div>
+								<span
+									class="shrink-0 inline-flex items-center gap-1.5 rounded-full surface-1 px-2.5 py-1 text-2xs font-medium text-text-secondary"
+									data-testid="thread-clarification-progress"
 								>
-									{{ t('dashboard.inbox.detail.answerAndResume') }}
-								</UiButton>
+									<Icon name="lucide:message-circle-question" class="h-3 w-3 text-brand" />
+									{{
+										t('dashboard.inbox.detail.clarificationProgress', {
+											answered: answeredCount(message),
+											total: message.pendingClarification.questions.length,
+										})
+									}}
+								</span>
+							</div>
+							<div class="mt-5 space-y-5">
+								<div
+									v-for="(question, questionIndex) in message.pendingClarification.questions"
+									:key="question.id"
+									data-testid="thread-clarification-question"
+									class="border-t border-border-subtle pt-4"
+								>
+									<p class="lp-eyebrow mb-1.5">
+										{{
+											t('dashboard.inbox.detail.questionCounter', {
+												index: questionIndex + 1,
+												total: message.pendingClarification.questions.length,
+											})
+										}}
+									</p>
+									<TaskAsk :ask="questionCopy(question).text" />
+									<TaskOptions
+										class="mt-1.5"
+										:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
+										:options="questionCopy(question).options"
+										:remembered="rememberedAnswer(question)"
+										:placeholder="t('dashboard.inbox.detail.answerPlaceholder')"
+										chip-test-id="thread-clarification-chip"
+										input-test-id="thread-clarification-input"
+										@update:model-value="
+											(value: string) => setClarificationAnswer(message._id, question.id, value)
+										"
+										@submit="hasEveryClarificationAnswer(message) && submitClarification(message)"
+									/>
+								</div>
+								<div class="flex items-center gap-3 pt-1">
+									<UiButton
+										size="sm"
+										:loading="isAnsweringClarification"
+										:disabled="!hasEveryClarificationAnswer(message)"
+										@click="submitClarification(message)"
+									>
+										<Icon name="lucide:sparkles" class="w-3.5 h-3.5" />
+										{{ t('dashboard.inbox.detail.answerAndResume') }}
+									</UiButton>
+									<p
+										v-if="!hasEveryClarificationAnswer(message)"
+										class="text-xs text-text-tertiary"
+										data-testid="thread-clarification-remaining"
+									>
+										{{
+											t(
+												'dashboard.inbox.detail.answerRemaining',
+												{
+													count:
+														message.pendingClarification.questions.length - answeredCount(message),
+												},
+												message.pendingClarification.questions.length - answeredCount(message)
+											)
+										}}
+									</p>
+								</div>
 							</div>
 						</div>
 
@@ -761,6 +888,39 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						<InboxAgentActionTimeline :inbound-message-id="message._id" />
 
 						<!-- Draft Response -->
+						<div
+							v-if="message.processingStatus === 'draft_ready' && reusedAnswers(message).length > 0"
+							class="mt-4 surface-1 rounded-(--radius-card) p-4"
+							data-testid="reused-answers"
+						>
+							<span class="lp-eyebrow">{{ t('dashboard.inbox.detail.reusedAnswersEyebrow') }}</span>
+							<p class="mt-1 text-sm font-medium text-text-primary">
+								{{ t('dashboard.inbox.detail.reusedAnswersTitle') }}
+							</p>
+							<ul class="mt-2 space-y-1.5 text-sm">
+								<li
+									v-for="question in reusedAnswers(message)"
+									:key="question.id"
+									class="flex items-baseline gap-2"
+								>
+									<Icon
+										name="lucide:history"
+										class="w-3.5 h-3.5 shrink-0 translate-y-0.5 text-text-tertiary"
+									/>
+									<span class="text-text-secondary">{{ questionCopy(question).text }}</span>
+									<span class="font-medium text-text-primary">{{ question.answer?.value }}</span>
+								</li>
+							</ul>
+							<p class="mt-2 text-xs text-text-tertiary">
+								{{ t('dashboard.inbox.detail.reusedAnswersHint') }}
+								<NuxtLink
+									to="/dashboard/admin/instance/autonomy"
+									class="underline hover:text-text-primary"
+									>{{ t('dashboard.inbox.detail.reusedAnswersManage') }}</NuxtLink
+								>
+							</p>
+						</div>
+
 						<div
 							v-if="message.draftResponse && message.processingStatus === 'draft_ready'"
 							class="mt-4 border-t border-border-subtle pt-4"

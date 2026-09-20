@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NuxtLink } from '#components';
 import { api } from '@owlat/api';
 import { buildGettingStarted, type InstanceFlagId } from '~/utils/gettingStarted';
 import {
@@ -307,7 +308,7 @@ async function handleDismiss() {
 						     there yet, so it renders as a plain waiting row instead of a CTA
 						     into a dead end. -->
 						<component
-							:is="step.blocked ? 'div' : (resolveComponent('NuxtLink') as 'div')"
+							:is="step.blocked ? 'div' : NuxtLink"
 							v-for="step in section.steps"
 							:id="stepDomId(step.id)"
 							:key="step.id"
