@@ -629,10 +629,8 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							{{ message.textBody || t('dashboard.inbox.detail.noTextContent') }}
 						</div>
 
-						<!-- Attachments. The row is already on the wire — getThread
-						     returns the messages unprojected — so the list needs no
-						     extra query; only a download fetches anything, and the
-						     component owns that. -->
+						<!-- Attachments. getThread returns the row unprojected, so the
+						     list needs no extra query; the component owns the download. -->
 						<InboxMessageAttachments :message="message" />
 
 						<!-- Classification -->
