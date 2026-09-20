@@ -1,6 +1,6 @@
 import { loadRawEml } from '~/composables/postbox/loadRawEml';
 import { useMimePartDownload } from '~/composables/useMimePartDownload';
-import { isPreviewableFile, previewSliceFor } from '~/utils/postboxFileFacets';
+import { previewSliceFor } from '~/utils/postboxFileFacets';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
 
 /**

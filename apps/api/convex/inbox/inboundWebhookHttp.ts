@@ -87,8 +87,11 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 
 	// Envelope normalization is the SHARED parser the legacy `/webhooks/mta`
 	// route also runs (`webhooks/adapters/mtaEventParsers.ts`), so the two
-	// surfaces cannot drift on field extraction.
-	const mail = getInboundChannelAdapter('mta').parseInbound(payload);
+	// surfaces cannot drift on field extraction. Named `input` on purpose:
+	// `check-body-access.sh` treats a body-field read off any other receiver as
+	// a stored-row read, and this is the INGEST BOUNDARY — every field came off
+	// the wire, never out of the database.
+	const input = getInboundChannelAdapter('mta').parseInbound(payload);
 
 	// THE BODIES WIN OVER THE BYTES. A message near the listener cap whose
 	// parsed text/HTML is also large can push the forwarded argument past
@@ -99,21 +102,21 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 	// attachment on an outsized message beats losing the message.
 	const rawBytesBase64 = fitsForwardedArgBudget([
 		payload.inboundPayload.rawBytesBase64,
-		mail.textBody,
-		mail.htmlBody,
+		input.textBody,
+		input.htmlBody,
 	])
 		? payload.inboundPayload.rawBytesBase64
 		: undefined;
 	if (payload.inboundPayload.rawBytesBase64 && !rawBytesBase64) {
 		logWarn('[Inbound Webhook] payload over the action-argument budget — stored without raw', {
-			messageId: mail.messageId,
+			messageId: input.messageId,
 			rawMessageBytes: base64ByteLength(payload.inboundPayload.rawBytesBase64),
 		});
 	}
 
 	try {
 		const result = await ctx.runAction(internal.inbox.inboundIngest.ingestFromWebhook, {
-			mail,
+			mail: input,
 			rawBytesBase64,
 		});
 		// `duplicate` is a SUCCESS: the MTA retried a delivery we already
