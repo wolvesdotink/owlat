@@ -22,6 +22,7 @@ import {
 	MAX_AI_INGEST_ATTACHMENT_BYTES,
 	MAX_ATTACHMENT_BYTES,
 } from '@owlat/shared/attachments';
+import { isFileTypeAccepted } from '@owlat/email-scanner';
 import { logError, logWarn } from '../../lib/runtimeLog';
 import { getMtaConfig } from '../mtaClient';
 import {
@@ -235,23 +236,52 @@ export async function prepareInboundMessage(
  * everything, and before this the difference was a log line: the attachment
  * still listed and still downloaded, but the agent never saw it and no reader
  * could tell. `skippedReason` is what the thread view renders.
+ *
+ * It is reported even when OTHER parts of the same message WERE indexed —
+ * "some of these the assistant has not read" is the true sentence, and there is
+ * no per-part marker on the row to say which.
  */
 export type AttachmentCaptureOutcome = {
 	/** How many parts reached `semanticFiles.ingest` (and therefore a model). */
 	indexed: number;
-	/** Why nothing was indexed, when parts were eligible and none were. */
-	skippedReason?: 'budget';
+	/**
+	 * Why a part that arrived was not indexed:
+	 *   · `budget` — the per-sender/global AI-ingest budget refused the batch;
+	 *   · `too_large` — over `MAX_AI_INGEST_ATTACHMENT_BYTES`;
+	 *   · `unsupported_type` — the file-type allowlist refused it.
+	 */
+	skippedReason?: 'budget' | 'too_large' | 'unsupported_type';
+};
+
+/** One `captureAttachments` argument bag — see the doc comment on the function. */
+export type CaptureAttachmentsInput = {
+	/** The whole received message as a byte-preserving binary string. */
+	rawBinary: string;
+	/** The source Message-ID, recorded on every captured file as provenance. */
+	messageId: string;
+	/** The raw `From:` header, resolved to a contact for scoping. */
+	from: string;
+	/** Which inbound route is capturing; decides retention reach. */
+	captureSource: 'team_inbox' | 'mailbox';
+	/**
+	 * The message's DMARC verdict as the MTA computed it. `'fail'` suppresses
+	 * contact scoping — see the note above. Absent on an older MTA, which reads
+	 * as "no verdict", not as a failure.
+	 */
+	dmarcResult?: string;
 };
 
 /**
  * Pull attachment leaves out of a delivered message's raw MIME and ingest each
  * into `semanticFiles` (source `email_attachment`). Inline parts (logos,
- * signatures) and oversized parts are skipped; the file-type allowlist is
- * enforced inside `semanticFiles.ingest`, which also drops the staged blob when
- * a part is rejected. Each file carries the source Message-ID as provenance.
+ * signatures), oversized parts and types the allowlist refuses are skipped —
+ * and the skip comes BACK to the caller, because a file nobody read that looks
+ * exactly like one that was read is the defect this returns an outcome for.
+ * Each file carries the source Message-ID as provenance.
  *
- * Captured files are scoped to the sender contact: `fromRaw` (the inbound From
- * header) is resolved to an EXISTING contact by email. When a contact matches,
+ * Captured files are scoped to the sender contact: `input.from` (the inbound
+ * From header) is resolved to an EXISTING contact by email. When a contact
+ * matches,
  * the file is linked to it (`contactIds`), so it surfaces under that contact's
  * Files tab and is scoped to that contact in retrieval. Resolution is
  * find-only — an unknown sender leaves the file org-general (no contact link),
@@ -275,8 +305,10 @@ export type AttachmentCaptureOutcome = {
  *
  *   · `disposition === 'inline'` and empty parts are not attachments;
  *   · over `MAX_ATTACHMENT_BYTES` (25 MiB) is not stored at all;
- *   · over `MAX_AI_INGEST_ATTACHMENT_BYTES` (10 MiB) is not INDEXED — it still
- *     delivers, still lists, and is still downloadable out of the raw `.eml`;
+ *   · over `MAX_AI_INGEST_ATTACHMENT_BYTES` is not INDEXED — it still delivers,
+ *     still lists, and is still downloadable out of the raw `.eml`;
+ *   · a type the file-type allowlist refuses is not indexed either, and is
+ *     refused HERE, before a blob is staged and before the budget is charged;
  *   · at most `ATTACHMENT_COMPOSE_LIMITS.maxCount` (10) parts per message.
  *
  * Then the whole batch is charged against the per-sender and global AI-ingest
@@ -290,45 +322,53 @@ export async function captureAttachments(
 		runMutation: ActionCtx['runMutation'];
 		runQuery: ActionCtx['runQuery'];
 	},
-	rawBinary: string,
-	messageId: string,
-	fromRaw: string,
-	opts: {
-		/** Which inbound route is capturing; decides retention reach. */
-		captureSource: 'team_inbox' | 'mailbox';
-		/**
-		 * The message's DMARC verdict as the MTA computed it. `'fail'` suppresses
-		 * contact scoping — see the note above. Absent on an older MTA, which
-		 * reads as "no verdict", not as a failure.
-		 */
-		dmarcResult?: string;
-	}
+	input: CaptureAttachmentsInput
 ): Promise<AttachmentCaptureOutcome> {
 	// Decide the whole batch up front: the budget is charged once for what will
 	// actually be ingested, so a message of inline logos costs nothing.
-	const eligible = extractAttachments(rawBinary)
-		.filter((part) => {
-			// Inline parts (embedded logos / signature images) aren't documents the
-			// user thinks of as "attachments".
-			if (part.disposition === 'inline') return false;
-			const size = part.bytes.byteLength;
-			if (size === 0 || size > MAX_ATTACHMENT_BYTES) return false;
-			// Over the AI ceiling the bytes still arrive, they are just not fed to
-			// a model. See MAX_AI_INGEST_ATTACHMENT_BYTES.
-			return size <= MAX_AI_INGEST_ATTACHMENT_BYTES;
-		})
-		// Bound the work per delivered message: each ingested part schedules LLM
-		// calls, and the inbound webhook is attacker-reachable, so a crafted .eml
-		// with many small leaves must not amplify cost.
-		.slice(0, ATTACHMENT_COMPOSE_LIMITS.maxCount);
-	if (eligible.length === 0) return { indexed: 0 };
+	const parts = extractAttachments(input.rawBinary).filter((part) => {
+		// Inline parts (embedded logos / signature images) aren't documents the
+		// user thinks of as "attachments".
+		if (part.disposition === 'inline') return false;
+		const size = part.bytes.byteLength;
+		return size > 0 && size <= MAX_ATTACHMENT_BYTES;
+	});
+
+	// Over the AI ceiling the bytes still arrive, they are just not fed to a
+	// model. See MAX_AI_INGEST_ATTACHMENT_BYTES.
+	const withinCeiling = parts.filter(
+		(part) => part.bytes.byteLength <= MAX_AI_INGEST_ATTACHMENT_BYTES
+	);
+	// The file-type allowlist decided HERE rather than only inside
+	// `semanticFiles.ingest`: that gate runs after the blob is staged and after
+	// the AI budget is charged, so ten `.exe` leaves used to cost a sender — and
+	// the instance — ten tokens each while scheduling no model work at all.
+	const ingestible = withinCeiling.filter((part) =>
+		isFileTypeAccepted(part.filename, part.contentType)
+	);
+	const skippedReason: AttachmentCaptureOutcome['skippedReason'] | undefined =
+		withinCeiling.length < parts.length
+			? 'too_large'
+			: ingestible.length < withinCeiling.length
+				? 'unsupported_type'
+				: undefined;
+
+	// Bound the work per delivered message: each ingested part schedules LLM
+	// calls, and the inbound webhook is attacker-reachable, so a crafted .eml
+	// with many small leaves must not amplify cost.
+	const eligible = ingestible.slice(0, ATTACHMENT_COMPOSE_LIMITS.maxCount);
+	if (eligible.length === 0) return { indexed: 0, skippedReason };
 
 	// Scope captured files to the sender's EXISTING contact (find-only). A
 	// missing/unresolvable sender — or one whose `From:` DMARC did not hold up —
 	// leaves the file org-general. Resolved once per message, not per part.
-	const senderEmail = extractEmail(fromRaw);
-	const isSenderSpoofable = opts.dmarcResult === 'fail';
+	const senderEmail = extractEmail(input.from);
+	const isSenderSpoofable = input.dmarcResult === 'fail';
 	let senderContactIds: Id<'contacts'>[] | undefined;
+	// Resolved HERE rather than taken from the caller even where the caller has
+	// just upserted the contact: `getByEmailForTeam` is the lookup that ignores
+	// GDPR gravestones, and an id handed in from outside would file an
+	// attachment under an erased contact.
 	if (senderEmail && !isSenderSpoofable) {
 		const contact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
 			email: senderEmail,
@@ -358,7 +398,7 @@ export async function captureAttachments(
 		// inbox will trip it routinely.
 		logWarn('[Attachment capture] AI ingest budget exhausted — bytes stored, indexing skipped', {
 			senderKey,
-			messageId,
+			messageId: input.messageId,
 			count: eligible.length,
 		});
 		return { indexed: 0, skippedReason: 'budget' };
@@ -367,18 +407,24 @@ export async function captureAttachments(
 	let indexed = 0;
 	for (const part of eligible) {
 		const storageId = await ctx.storage.store(new Blob([part.bytes], { type: part.contentType }));
-		// `ingest` runs the file-type policy and deletes the blob if rejected.
+		// `ingest` re-runs the same file-type policy as the filter above and
+		// deletes the blob if it disagrees.
 		const fileId = await ctx.runMutation(internal.semanticFiles.ingest, {
 			storageId,
 			filename: part.filename,
 			mimeType: part.contentType,
 			fileSize: part.bytes.byteLength,
 			sourceType: 'email_attachment',
-			captureSource: opts.captureSource,
-			sourceMessageId: messageId,
+			captureSource: input.captureSource,
+			sourceMessageId: input.messageId,
 			contactIds: senderContactIds,
 		});
 		if (fileId) indexed++;
 	}
-	return { indexed };
+	// A part the pre-filter accepted and `ingest` still refused is a policy
+	// disagreement, not a silent success: report it as the type skip it is.
+	if (indexed < eligible.length && !skippedReason) {
+		return { indexed, skippedReason: 'unsupported_type' };
+	}
+	return { indexed, skippedReason };
 }

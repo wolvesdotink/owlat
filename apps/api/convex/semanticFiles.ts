@@ -18,6 +18,7 @@ import {
 	isExtensionAllowed,
 	isMimeTypeAllowed,
 	isExecutableExtension,
+	isFileTypeAccepted,
 	detectDoubleExtension,
 	DEFAULT_FILE_POLICY,
 } from '@owlat/email-scanner';
@@ -376,13 +377,10 @@ export const ingest = internalMutation({
 	handler: async (ctx, args): Promise<Id<'semanticFiles'> | null> => {
 		// Same allowlist the user-upload `create` mutation enforces — never store
 		// an executable/disallowed type just because it arrived over the wire.
-		const doubleExt = detectDoubleExtension(args.filename);
-		if (
-			(doubleExt.detected && doubleExt.executableExtension) ||
-			isExecutableExtension(args.filename) ||
-			!isExtensionAllowed(args.filename, DEFAULT_FILE_POLICY) ||
-			!isMimeTypeAllowed(args.mimeType, DEFAULT_FILE_POLICY)
-		) {
+		// `isFileTypeAccepted` is the one spelling of that conjunction, so a
+		// caller can ask the same question BEFORE it spends anything staging the
+		// blob (`captureAttachments` does).
+		if (!isFileTypeAccepted(args.filename, args.mimeType, DEFAULT_FILE_POLICY)) {
 			// Drop the staged blob so a rejected attachment doesn't leak storage.
 			await ctx.storage.delete(args.storageId);
 			return null;

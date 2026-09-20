@@ -31,7 +31,7 @@ import { internal } from '../_generated/api';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { normalizeEmail } from '@owlat/shared';
 import { virusVerdictValidator } from '../lib/literalValidators';
-import type { InboundReceiveResult } from '../inbox/receiveInbound';
+import { inboundReceiveResultValidator, type InboundReceiveResult } from '../inbox/receiveInbound';
 import { openPrivateKey } from './sealing';
 import { shouldRefetch } from './discovery';
 import {
@@ -239,14 +239,9 @@ export const decryptAndReceive = internalAction({
 		rawSize: v.optional(v.number()),
 		virusVerdict: v.optional(virusVerdictValidator),
 	},
-	returns: v.object({
-		inboundMessageId: v.id('inboundMessages'),
-		// Optional because `receiveMessage` short-circuits a duplicate Message-ID
-		// without resolving either — see InboundReceiveResult.
-		threadId: v.optional(v.id('conversationThreads')),
-		contactId: v.optional(v.id('contacts')),
-		isDuplicate: v.boolean(),
-	}),
+	// The same union `receiveMessage` returns — this action is the sealed-mail
+	// writer of that shape, and it forwards the mutation's result verbatim.
+	returns: inboundReceiveResultValidator,
 	handler: async (ctx, args): Promise<InboundReceiveResult> => {
 		const outcome = await openWithVault(
 			ctx,

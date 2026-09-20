@@ -22,16 +22,27 @@ import { buildMessagePreview } from '../lib/textPreview';
 import { applyInboxStatsDelta } from '../lib/inboxStats';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { recordInboundMirror } from '../unifiedMessages';
-import { logError, logInfo } from '../lib/runtimeLog';
+import { logError, logInfo, logWarn } from '../lib/runtimeLog';
 import { rateLimiter } from '../rateLimiter';
 import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { isSuppressed } from '../lib/suppression';
 import { sealBodyAtWriteMaybe } from '../lib/messageBody';
 import { attachmentIndexingValidator, virusVerdictValidator } from '../lib/literalValidators';
+import { inboundReceiveResultValidator, type InboundReceiveResult } from './receiveInbound';
 
 // Re-exported for existing importers of this module.
 export { extractEmail, normalizeSubject };
+
+/**
+ * How many rows sharing one `Message-ID` the idempotency check will look at.
+ *
+ * Bounded because the header is sender-controlled: a sender that reuses one
+ * value forever must not turn every delivery into an unbounded scan. Well above
+ * any real collision count — mail that reuses a Message-ID reuses it a handful
+ * of times, not thousands.
+ */
+const DUPLICATE_SCAN_LIMIT = 16;
 
 /**
  * Receive an inbound email from the MTA webhook.
@@ -88,7 +99,11 @@ export const receiveMessage = internalMutation({
 		rawSize: v.optional(v.number()),
 		virusVerdict: v.optional(virusVerdictValidator),
 	},
-	handler: async (ctx, args) => {
+	// One spelling of the result, shared with the sealed-mail writer in
+	// `e2ee/open.decryptAndReceive`: a stored message always has a thread and a
+	// contact, a duplicate hands back whatever the existing row holds.
+	returns: inboundReceiveResultValidator,
+	handler: async (ctx, args): Promise<InboundReceiveResult> => {
 		// ── 0. Idempotency ──
 		// The MTA aborts its webhook fetch after 10 s and retries with backoff,
 		// but aborting the client does NOT stop the Convex action it started: a
@@ -102,14 +117,29 @@ export const receiveMessage = internalMutation({
 		//
 		// Guarded on a non-empty Message-ID: mail with no `Message-ID:` header at
 		// all would otherwise all collapse onto one row.
+		//
+		// MATCHED ON THE ENVELOPE TOO, not on the header alone. `Message-ID:` is
+		// free text the sender chose, and some clients and ticketing systems
+		// reuse one across genuinely different mail; a header-only match would
+		// answer 200 and store nothing, which on a route with a never-drop
+		// invariant is the worst possible outcome — the MTA logs a delivery and
+		// nobody ever sees the message. A retry of the SAME delivery always
+		// repeats the same `from` and `to`, so idempotency is unaffected.
 		if (args.messageId) {
-			const existing = await ctx.db
+			const sameId = await ctx.db
 				.query('inboundMessages')
 				.withIndex('by_message_id', (q) => q.eq('messageId', args.messageId))
-				.first();
+				.take(DUPLICATE_SCAN_LIMIT);
+			const existing = sameId.find((row) => row.from === args.from && row.to === args.to);
 			if (existing) {
-				logInfo('[Inbound Email] duplicate Message-ID — re-acknowledged, nothing stored', {
+				// WARN, not info: this is mail that arrived and was deliberately not
+				// stored. `from`/`subject` are here so an operator answering "we sent
+				// it and you never got it" can find the decision in the log.
+				logWarn('[Inbound Email] duplicate delivery — re-acknowledged, nothing stored', {
 					messageId: args.messageId,
+					from: args.from,
+					to: args.to,
+					subject: args.subject,
 				});
 				return {
 					inboundMessageId: existing._id,
@@ -371,14 +401,17 @@ export const receiveMessage = internalMutation({
  * this one only saves the work.
  */
 export const findIdByMessageId = internalQuery({
-	args: { messageId: v.string() },
+	args: { messageId: v.string(), from: v.string(), to: v.string() },
 	returns: v.union(v.id('inboundMessages'), v.null()),
 	handler: async (ctx, args): Promise<Id<'inboundMessages'> | null> => {
 		if (!args.messageId) return null;
-		const existing = await ctx.db
+		const sameId = await ctx.db
 			.query('inboundMessages')
 			.withIndex('by_message_id', (q) => q.eq('messageId', args.messageId))
-			.first();
+			.take(DUPLICATE_SCAN_LIMIT);
+		// Same envelope test as the transactional check, so the cheap pre-check
+		// can never skip work for a message the authoritative one would store.
+		const existing = sameId.find((row) => row.from === args.from && row.to === args.to);
 		return existing?._id ?? null;
 	},
 });

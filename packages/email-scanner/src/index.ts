@@ -82,6 +82,7 @@ export {
 	detectDoubleExtension,
 	isExecutableExtension,
 	DEFAULT_FILE_POLICY,
+	isFileTypeAccepted,
 	isMimeTypeAllowed,
 	isExtensionAllowed,
 	isFileSizeAllowed,

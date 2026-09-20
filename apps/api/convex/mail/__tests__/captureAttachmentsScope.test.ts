@@ -38,6 +38,7 @@ import {
 	MAX_AI_INGEST_ATTACHMENT_BYTES,
 } from '@owlat/shared/attachments';
 import { captureAttachments } from '../deliveryPipeline/ingest';
+import type { AttachmentCaptureOutcome } from '../deliveryPipeline/ingest';
 
 const modules = import.meta.glob('../../**/*.*s');
 
@@ -96,7 +97,11 @@ async function capture(
 	messageId: string,
 	fromRaw: string,
 	opts: { captureSource?: 'team_inbox' | 'mailbox'; dmarcResult?: string } = {}
-): Promise<{ stored: number; ingested: IngestArgs[]; skippedReason?: 'budget' }> {
+): Promise<{
+	stored: number;
+	ingested: IngestArgs[];
+	skippedReason?: AttachmentCaptureOutcome['skippedReason'];
+}> {
 	let stored = 0;
 	const ingested: IngestArgs[] = [];
 	const outcome = await captureAttachments(
@@ -123,10 +128,13 @@ async function capture(
 				);
 			}) as unknown as ActionCtx['runMutation'],
 		},
-		raw,
-		messageId,
-		fromRaw,
-		{ captureSource: opts.captureSource ?? 'team_inbox', dmarcResult: opts.dmarcResult }
+		{
+			rawBinary: raw,
+			messageId,
+			from: fromRaw,
+			captureSource: opts.captureSource ?? 'team_inbox',
+			dmarcResult: opts.dmarcResult,
+		}
 	);
 	return { stored, ingested, skippedReason: outcome.skippedReason };
 }

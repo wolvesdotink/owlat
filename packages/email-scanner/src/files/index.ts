@@ -128,6 +128,7 @@ export { detectFileType, isDangerousFileType } from './magicBytes.js';
 export { detectDoubleExtension, isExecutableExtension } from './doubleExtension.js';
 export {
 	DEFAULT_FILE_POLICY,
+	isFileTypeAccepted,
 	isMimeTypeAllowed,
 	isExtensionAllowed,
 	isFileSizeAllowed,

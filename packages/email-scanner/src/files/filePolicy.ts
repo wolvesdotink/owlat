@@ -7,6 +7,7 @@
 
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import type { FilePolicy } from '../types.js';
+import { detectDoubleExtension, isExecutableExtension } from './doubleExtension.js';
 
 /**
  * Default file policy — permissive enough for legitimate email attachments,
@@ -136,6 +137,32 @@ export function isExtensionAllowed(filename: string, policy: FilePolicy = DEFAUL
 export function isFileSizeAllowed(size: number, policy: FilePolicy = DEFAULT_FILE_POLICY): boolean {
 	if (!policy.maxFileSize) return true;
 	return size <= policy.maxFileSize;
+}
+
+/**
+ * The WHOLE type verdict for one file: the double-extension trick, the
+ * executable check, the extension allowlist and the MIME allowlist, in one
+ * call.
+ *
+ * The four ran as a hand-copied conjunction at every gate (`semanticFiles`
+ * upload + ingest, `mediaAssets.create`), which is how the attachment-capture
+ * path came to charge an AI budget for parts a later gate was always going to
+ * reject. One predicate means the decision can also be made BEFORE the cost is
+ * incurred, by a caller that is not the one storing the file.
+ *
+ * Size is deliberately not part of it — `isFileSizeAllowed` answers a different
+ * question with a different remedy, and the callers report the two separately.
+ */
+export function isFileTypeAccepted(
+	filename: string,
+	mimeType: string,
+	policy: FilePolicy = DEFAULT_FILE_POLICY
+): boolean {
+	const doubleExt = detectDoubleExtension(filename);
+	if (doubleExt.detected && doubleExt.executableExtension) return false;
+	if (isExecutableExtension(filename)) return false;
+	if (!isExtensionAllowed(filename, policy)) return false;
+	return isMimeTypeAllowed(mimeType, policy);
 }
 
 /**

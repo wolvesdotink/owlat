@@ -121,10 +121,12 @@ describe('inbound.receiveMessage', () => {
 			timestamp: Date.now(),
 		});
 
-		expect(result.threadId).toBeDefined();
+		// A STORED message, so the result's stored branch: `threadId` is typed as
+		// present, not as "maybe". Only the duplicate branch has neither.
+		if (result.isDuplicate) throw new Error('expected a stored message, got a duplicate');
 
 		await t.run(async (ctx) => {
-			const thread = await ctx.db.get(result.threadId!);
+			const thread = await ctx.db.get(result.threadId);
 			expect(thread).toBeDefined();
 			expect(thread!.subject).toBe('Brand New Topic');
 			expect(thread!.status).toBe('open');
@@ -157,10 +159,11 @@ describe('inbound.receiveMessage', () => {
 			timestamp: Date.now(),
 		});
 
+		if (reply.isDuplicate) throw new Error('expected a stored message, got a duplicate');
 		expect(reply.threadId).toBe(first.threadId);
 
 		await t.run(async (ctx) => {
-			const thread = await ctx.db.get(reply.threadId!);
+			const thread = await ctx.db.get(reply.threadId);
 			expect(thread!.messageCount).toBe(2);
 		});
 	});
@@ -278,9 +281,11 @@ describe('inbound.receiveMessage', () => {
 			timestamp: Date.now(),
 		});
 
+		if (first.isDuplicate) throw new Error('expected a stored message, got a duplicate');
+
 		// Manually close the thread
 		await t.run(async (ctx) => {
-			await ctx.db.patch(first.threadId!, { status: 'resolved' });
+			await ctx.db.patch(first.threadId, { status: 'resolved' });
 		});
 
 		// New message should reopen
@@ -294,8 +299,10 @@ describe('inbound.receiveMessage', () => {
 			timestamp: Date.now(),
 		});
 
+		if (reply.isDuplicate) throw new Error('expected a stored message, got a duplicate');
+
 		await t.run(async (ctx) => {
-			const thread = await ctx.db.get(reply.threadId!);
+			const thread = await ctx.db.get(reply.threadId);
 			expect(thread!.status).toBe('open');
 		});
 	});

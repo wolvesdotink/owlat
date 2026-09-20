@@ -29,6 +29,7 @@ import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { emailDomain } from '@owlat/shared/spfAlignment';
+import { MAX_INBOUND_MESSAGE_BYTES } from '@owlat/shared/attachments';
 import { checkConnectionRateLimit, releaseConnection } from './inboundSecurity.js';
 import { createSlotTracker } from '../lib/connectionSlots.js';
 import { checkSpf, evaluateDmarc, dnsDmarcLookup, verifyDkim } from '@owlat/mail-auth';
@@ -46,8 +47,15 @@ import { recordDeliverabilityProbeIfPresent } from './deliverabilityProbe.js';
 import { buildOnRcptTo } from './recipientGate.js';
 export { buildOnRcptTo } from './recipientGate.js';
 
-/** Hard cap for buffered inbound MIME (advertised via EHLO SIZE AND wire-enforced by the listener). */
-const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
+/**
+ * Hard cap for buffered inbound MIME (advertised via EHLO SIZE AND
+ * wire-enforced by the listener).
+ *
+ * Shared with the backend rather than spelled here: the API's per-attachment
+ * AI-ingest ceiling is only a real gate while it stays under what this listener
+ * can deliver, and a local copy is how the two drift apart.
+ */
+const MAX_INBOUND_BYTES = MAX_INBOUND_MESSAGE_BYTES;
 
 /**
  * Per-transaction session state carried through the listener. The SPF verdict

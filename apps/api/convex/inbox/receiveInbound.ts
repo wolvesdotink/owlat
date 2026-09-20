@@ -15,9 +15,11 @@
  * rather than in two handlers that would drift.
  */
 
+import { v, type Infer } from 'convex/values';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type { VirusVerdict } from '../lib/literalValidators';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { clearsignedSignatureMirror } from '../webhooks/inboundSignatureMirror';
 import type { InboundEmailMessage } from '../webhooks/adapters/inboundRegistry';
@@ -32,25 +34,47 @@ import type { InboundEmailMessage } from '../webhooks/adapters/inboundRegistry';
 export interface InboundReceiveExtras {
 	rawStorageId?: Id<'_storage'>;
 	rawSize?: number;
-	virusVerdict?: 'clean' | 'infected' | 'skipped';
+	virusVerdict?: VirusVerdict;
 }
 
-export interface InboundReceiveResult {
-	inboundMessageId: Id<'inboundMessages'>;
-	/**
-	 * Absent on a DUPLICATE: the returned row is one an earlier delivery already
-	 * threaded, and re-resolving its thread/contact is exactly the work the
-	 * idempotency check exists to skip.
-	 */
-	threadId?: Id<'conversationThreads'>;
-	contactId?: Id<'contacts'>;
-	/**
-	 * This Message-ID was already stored, so NOTHING was written. The caller
-	 * drops whatever it staged and answers 200 — an MTA retry must not become a
-	 * second row, a second blob and a second charge against the AI budget.
-	 */
-	isDuplicate: boolean;
-}
+/**
+ * What one receive did — a DISCRIMINATED UNION on `isDuplicate`, not a bag of
+ * optional fields.
+ *
+ * A message this delivery stored always has a thread and a contact:
+ * `receiveMessage` resolves both before it inserts. Only the duplicate branch
+ * hands back whatever the EXISTING row holds, which for an old row may be
+ * nothing. Spelling that as two shapes is what lets a caller on the stored
+ * branch read `threadId` without a non-null assertion, while still forcing the
+ * duplicate branch to be handled.
+ *
+ * Declared as a validator so `e2ee/open.decryptAndReceive` — the second
+ * producer of this shape — is checked against the same spelling at runtime
+ * rather than agreeing with it by hand.
+ */
+export const inboundReceiveResultValidator = v.union(
+	v.object({
+		inboundMessageId: v.id('inboundMessages'),
+		/**
+		 * This Message-ID was already stored, so NOTHING was written. The caller
+		 * drops whatever it staged and answers 200 — an MTA retry must not become
+		 * a second row, a second blob and a second charge against the AI budget.
+		 * The thread and contact are the stored row's, which a row written before
+		 * threading existed may not have.
+		 */
+		isDuplicate: v.literal(true),
+		threadId: v.optional(v.id('conversationThreads')),
+		contactId: v.optional(v.id('contacts')),
+	}),
+	v.object({
+		inboundMessageId: v.id('inboundMessages'),
+		isDuplicate: v.literal(false),
+		threadId: v.id('conversationThreads'),
+		contactId: v.id('contacts'),
+	})
+);
+
+export type InboundReceiveResult = Infer<typeof inboundReceiveResultValidator>;
 
 /**
  * Persist one normalized inbound message, routing a sealed body through the

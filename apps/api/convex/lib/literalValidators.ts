@@ -65,25 +65,37 @@ export const virusVerdictValidator = v.union(
 /**
  * The one spelling of the verdict union. Re-spelled inline in three modules
  * before this existed, which is how a fourth member would have reached one of
- * them and not the others. `packages/shared/src/attachments.ts` carries the
- * matching type for the Vue reader, which cannot import from `convex/`.
+ * them and not the others. Every API-side producer and consumer imports THIS;
+ * the Vue reader, which cannot import from `convex/`, types its prop off
+ * `Doc<'inboundMessages'>['virusVerdict']` from the generated data model, so it
+ * is the same union there too.
  */
 export type VirusVerdict = Infer<typeof virusVerdictValidator>;
 
 /**
  * What attachment capture did with a received message's files.
  *
- * Absent means "no eligible attachments, or this message predates the marker".
- * The two skips are the states a reader has to be told about, because in both
- * the file still lists and still downloads while the assistant never read it:
+ * Absent means "no attachment leaves at all, or this message predates the
+ * marker". Every OTHER outcome is spelled, because the silent ones are the
+ * defect: a file that still lists and still downloads, next to nothing that
+ * says the assistant never opened it, reads exactly like one that was indexed.
+ *   · `indexed` — every captured part reached `semanticFiles.ingest`;
  *   · `skipped_budget` — the per-sender/global AI-ingest budget was exhausted;
  *   · `skipped_unscanned` — no CLEAN malware verdict, so nothing was fed to a
- *     model (see `inbox/inboundIngest.ts`).
+ *     model (see `inbox/inboundIngest.ts`);
+ *   · `skipped_too_large` — a part was over `MAX_AI_INGEST_ATTACHMENT_BYTES`;
+ *   · `skipped_unsupported` — the file-type allowlist refused a part.
+ *
+ * The last two are set whenever a part was skipped for that reason, even if
+ * OTHER parts of the same message were indexed: "some of these you have not
+ * read" is the honest line, and `indexed` next to an unread file is not.
  */
 export const attachmentIndexingValidator = v.union(
 	v.literal('indexed'),
 	v.literal('skipped_budget'),
-	v.literal('skipped_unscanned')
+	v.literal('skipped_unscanned'),
+	v.literal('skipped_too_large'),
+	v.literal('skipped_unsupported')
 );
 
 export type AttachmentIndexing = Infer<typeof attachmentIndexingValidator>;

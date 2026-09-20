@@ -20,19 +20,27 @@
  * `convex/channels/adapters/`.
  */
 
+import { v, type Infer } from 'convex/values';
+
 /**
  * Canonical inbound email shape consumed by `internal.inbound.receiveMessage`.
+ *
+ * DECLARED ONCE, AS A CONVEX VALIDATOR. The shape has to exist both as a TS
+ * type (the adapters build it) and as an argument validator (the ingest action
+ * receives it over `ctx.runAction`), and while those were two hand-kept
+ * spellings, adding a field meant editing both and nothing failed if you only
+ * edited one. `Infer` makes the type a projection of the validator.
  */
-export interface InboundEmailMessage {
-	from: string;
-	to: string;
-	subject: string;
-	textBody?: string;
-	htmlBody?: string;
-	headers: Record<string, string>;
-	messageId: string;
-	inReplyTo?: string;
-	references?: string;
+export const inboundEmailMessageValidator = v.object({
+	from: v.string(),
+	to: v.string(),
+	subject: v.string(),
+	textBody: v.optional(v.string()),
+	htmlBody: v.optional(v.string()),
+	headers: v.record(v.string(), v.string()),
+	messageId: v.string(),
+	inReplyTo: v.optional(v.string()),
+	references: v.optional(v.string()),
 	/**
 	 * Metadata only. The bytes ride the MTA payload's `rawBytesBase64` (the
 	 * whole raw message), which the inbound route seals into `_storage` and
@@ -43,21 +51,70 @@ export interface InboundEmailMessage {
 	 * and mail received before the MTA started sending it has none either, so
 	 * a reader falls back to filename matching for those rows.
 	 */
-	attachments: Array<{
-		filename?: string;
-		contentType: string;
-		size: number;
-		partIndex?: string;
-	}>;
+	attachments: v.array(
+		v.object({
+			filename: v.optional(v.string()),
+			contentType: v.string(),
+			size: v.number(),
+			partIndex: v.optional(v.string()),
+		})
+	),
 	/** Timestamp from the webhook envelope (ms since epoch). */
-	timestamp: number;
+	timestamp: v.number(),
 	// RFC 8601 inbound auth verdicts, computed by the MTA at ingest and carried
 	// through to `inboundMessages`. All optional: an older MTA (or a disabled
 	// check) omits the field, which must render as "unknown" — never "pass".
-	spfResult?: string;
-	dkimResult?: string;
-	dmarcResult?: string;
-	dmarcPolicy?: string;
+	spfResult: v.optional(v.string()),
+	dkimResult: v.optional(v.string()),
+	dmarcResult: v.optional(v.string()),
+	dmarcPolicy: v.optional(v.string()),
+});
+
+export type InboundEmailMessage = Infer<typeof inboundEmailMessageValidator>;
+
+/**
+ * The MTA's `inbound.received` envelope as it arrives on the wire.
+ *
+ * Exported because the route handler (`inbox/inboundWebhookHttp.ts`) needs the
+ * same shape this adapter casts to: it audits the envelope identifiers and
+ * forwards `rawBytesBase64`, which is the one field that never becomes part of
+ * `InboundEmailMessage` (the bytes are sealed into storage, not carried on the
+ * row). Re-declaring it there was how `partIndex` came to be spelled in four
+ * places for one wire change.
+ *
+ * A CAST OVER WIRE DATA, not a promise: every field is what the sender sent,
+ * which is why `parseInbound` defaults rather than asserts.
+ */
+export interface MtaInboundWirePayload {
+	event?: string;
+	messageId?: string;
+	organizationId?: string;
+	message?: string;
+	timestamp: number;
+	inboundPayload: {
+		from: string;
+		to: string;
+		subject: string;
+		textBody?: string;
+		htmlBody?: string;
+		headers: Record<string, string>;
+		date?: string;
+		messageId?: string;
+		inReplyTo?: string;
+		references?: string;
+		/** The whole received message, base64 RFC822. Absent on an older MTA. */
+		rawBytesBase64?: string;
+		attachments: Array<{
+			filename?: string;
+			contentType: string;
+			size: number;
+			partIndex?: string;
+		}>;
+		spfResult?: string;
+		dkimResult?: string;
+		dmarcResult?: string;
+		dmarcPolicy?: string;
+	};
 }
 
 /**
@@ -90,31 +147,7 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 	source: InboundSource = 'mta';
 
 	parseInbound(raw: unknown): InboundEmailMessage {
-		const env = raw as {
-			inboundPayload: {
-				from: string;
-				to: string;
-				subject: string;
-				textBody?: string;
-				htmlBody?: string;
-				headers: Record<string, string>;
-				date?: string;
-				messageId?: string;
-				inReplyTo?: string;
-				references?: string;
-				attachments: Array<{
-					filename?: string;
-					contentType: string;
-					size: number;
-					partIndex?: string;
-				}>;
-				spfResult?: string;
-				dkimResult?: string;
-				dmarcResult?: string;
-				dmarcPolicy?: string;
-			};
-			timestamp: number;
-		};
+		const env = raw as MtaInboundWirePayload;
 		// Named `input` on purpose: check-body-access.sh treats a body-field read
 		// off any other receiver as a stored-row read, and this file is the ingest
 		// boundary — everything it reads came off the wire, never out of the DB.

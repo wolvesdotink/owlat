@@ -12,9 +12,15 @@
  * a 413 as a retryable HTTP failure, so the message would burn six delivery
  * attempts and land in the Redis DLQ where nobody is looking. A standalone
  * `httpAction` never runs the pipeline, so neither of its two byte checks
- * exists on this route and the 10 MiB the inbound listener accepts (~13.3 MiB
- * once base64'd) arrives intact — exactly as it already does on the
+ * exists on this route and a message at the 10 MiB the inbound listener accepts
+ * (~13.3 MiB once base64'd) arrives intact — exactly as it already does on the
  * personal-mailbox route this file is modelled on (`mail/webhookHttp.ts`).
+ *
+ * The one remaining ceiling is Convex's own: a function's ARGUMENTS are capped
+ * at 16 MiB, and this handler forwards the base64 raw plus the parsed bodies
+ * the MTA also sent. Near the listener limit those can add up past the cap, so
+ * the forward is budgeted — see `MAX_FORWARDED_ARG_BYTES` below — and the mail
+ * is delivered without its raw bytes rather than 500'd into the DLQ.
  *
  * Everything the two routes share — the per-source rate limit, the
  * `verifyMtaHeaders` HMAC, the unbounded body read and the bounded audit row —
@@ -23,46 +29,19 @@
 
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { logError } from '../lib/runtimeLog';
+import { logError, logWarn } from '../lib/runtimeLog';
 import { jsonResponse } from '../webhooks/inboundHttp';
 import {
 	base64ByteLength,
 	clampAuditField,
+	fitsForwardedArgBudget,
 	readVerifiedMtaBody,
 	storeRawRouteAudit,
 } from '../webhooks/adapters/mtaRawRoute';
-import { getInboundChannelAdapter } from '../webhooks/adapters/inboundRegistry';
-
-interface InboundWebhookPayload {
-	event: 'inbound.received';
-	messageId?: string;
-	organizationId?: string;
-	message?: string;
-	timestamp: number;
-	inboundPayload: {
-		from: string;
-		to: string;
-		subject: string;
-		textBody?: string;
-		htmlBody?: string;
-		headers: Record<string, string>;
-		date?: string;
-		messageId?: string;
-		inReplyTo?: string;
-		references?: string;
-		rawBytesBase64?: string;
-		attachments: Array<{
-			filename?: string;
-			contentType: string;
-			size: number;
-			partIndex?: string;
-		}>;
-		spfResult?: string;
-		dkimResult?: string;
-		dmarcResult?: string;
-		dmarcPolicy?: string;
-	};
-}
+import {
+	getInboundChannelAdapter,
+	type MtaInboundWirePayload,
+} from '../webhooks/adapters/inboundRegistry';
 
 export const handleInboundWebhook = httpAction(async (ctx, request) => {
 	const verified = await readVerifiedMtaBody(ctx, request, {
@@ -72,9 +51,9 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 	if (!verified.ok) return verified.response;
 	const { bodyText } = verified;
 
-	let payload: InboundWebhookPayload | null = null;
+	let payload: MtaInboundWirePayload | null = null;
 	try {
-		payload = JSON.parse(bodyText) as InboundWebhookPayload;
+		payload = JSON.parse(bodyText) as MtaInboundWirePayload;
 	} catch {
 		payload = null;
 	}
@@ -111,10 +90,31 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 	// surfaces cannot drift on field extraction.
 	const mail = getInboundChannelAdapter('mta').parseInbound(payload);
 
+	// THE BODIES WIN OVER THE BYTES. A message near the listener cap whose
+	// parsed text/HTML is also large can push the forwarded argument past
+	// Convex's 16 MiB limit, and `runAction` would throw — a 500 the MTA retries
+	// six times and then dead-letters. Dropping the raw instead delivers exactly
+	// what the pre-raw route always delivered: the message, its bodies and its
+	// metadata, with no downloadable `.eml` and no attachment capture. Losing an
+	// attachment on an outsized message beats losing the message.
+	const rawBytesBase64 = fitsForwardedArgBudget([
+		payload.inboundPayload.rawBytesBase64,
+		mail.textBody,
+		mail.htmlBody,
+	])
+		? payload.inboundPayload.rawBytesBase64
+		: undefined;
+	if (payload.inboundPayload.rawBytesBase64 && !rawBytesBase64) {
+		logWarn('[Inbound Webhook] payload over the action-argument budget — stored without raw', {
+			messageId: mail.messageId,
+			rawMessageBytes: base64ByteLength(payload.inboundPayload.rawBytesBase64),
+		});
+	}
+
 	try {
 		const result = await ctx.runAction(internal.inbox.inboundIngest.ingestFromWebhook, {
 			mail,
-			rawBytesBase64: payload.inboundPayload.rawBytesBase64,
+			rawBytesBase64,
 		});
 		// `duplicate` is a SUCCESS: the MTA retried a delivery we already
 		// completed (a slow scan tripped its 10 s fetch timeout, say). Answering

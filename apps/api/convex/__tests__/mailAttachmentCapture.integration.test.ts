@@ -241,10 +241,12 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 					return null;
 				}) as unknown as ActionCtx['runMutation'],
 			},
-			raw,
-			'<many-1@example.com>',
-			'Bob <bob@example.com>',
-			{ captureSource: 'mailbox' }
+			{
+				rawBinary: raw,
+				messageId: '<many-1@example.com>',
+				from: 'Bob <bob@example.com>',
+				captureSource: 'mailbox',
+			}
 		);
 
 		expect(stored).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);

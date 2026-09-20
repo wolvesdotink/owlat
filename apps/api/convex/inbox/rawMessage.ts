@@ -25,6 +25,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { publicAction } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { isSharedInboxReader } from './access';
 import { sealedBlobUrl } from '../lib/sealedBlob';
 
 /**
@@ -38,7 +39,7 @@ export const getInboundMessageRawStorageId = internalQuery({
 	args: { messageId: v.id('inboundMessages') },
 	handler: async (ctx, args): Promise<Id<'_storage'> | null> => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return null;
+		if (!isSharedInboxReader(session)) return null;
 		const row = await ctx.db.get(args.messageId);
 		if (!row) return null;
 		// CONFIRMED MALWARE IS NOT DOWNLOADABLE. The reader hides the control on a

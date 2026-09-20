@@ -24,7 +24,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { AUDIT_LOG_RETENTION_MS } from '../lib/constants';
+import { AUDIT_LOG_RETENTION_MS, DAY_MS } from '../lib/constants';
 import { logError } from '../lib/runtimeLog';
 import { DEFAULT_INBOUND_RAW_RETENTION_DAYS } from '@owlat/shared/inboundRetention';
 
@@ -120,12 +120,13 @@ export const scrubFormSubmissionMeta = internalMutation({
 // row still carries its summary, extracted text and embedding, so
 // `[RELEVANT FILES]` retrieval is unaffected. What is gone is the download.
 
-/** ms in a day, for turning the configured horizon into a cutoff. */
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /**
  * The configured horizon as a cutoff timestamp. Unset ⇒
  * `DEFAULT_INBOUND_RAW_RETENTION_DAYS`.
+ *
+ * Read ONCE per sweep and passed to both walks: reading it twice meant an admin
+ * who changed the setting between the two reads got one tick where the raw
+ * `.eml` and the attachments pulled out of it aged on different horizons.
  */
 async function inboundRetentionCutoff(ctx: Pick<MutationCtx, 'db'>, now: number): Promise<number> {
 	const settings = await ctx.db.query('instanceSettings').first();
@@ -150,8 +151,7 @@ async function inboundRetentionCutoff(ctx: Pick<MutationCtx, 'db'>, now: number)
  * Returns how many rows it released, so the caller can decide whether another
  * pass is due.
  */
-async function releaseRawBlobs(ctx: MutationCtx, now: number): Promise<number> {
-	const cutoff = await inboundRetentionCutoff(ctx, now);
+async function releaseRawBlobs(ctx: MutationCtx, now: number, cutoff: number): Promise<number> {
 	const stale = await ctx.db
 		.query('inboundMessages')
 		.withIndex('by_raw_retention', (q) => q.eq('isRawRetained', true).lt('receivedAt', cutoff))
@@ -191,8 +191,11 @@ async function releaseRawBlobs(ctx: MutationCtx, now: number): Promise<number> {
  * row no longer matches the index range, so a second pass releases nothing
  * further.
  */
-async function releaseAttachmentBlobs(ctx: MutationCtx, now: number): Promise<number> {
-	const cutoff = await inboundRetentionCutoff(ctx, now);
+async function releaseAttachmentBlobs(
+	ctx: MutationCtx,
+	now: number,
+	cutoff: number
+): Promise<number> {
 	const stale = await ctx.db
 		.query('semanticFiles')
 		.withIndex('by_attachment_retention', (q) =>
@@ -227,8 +230,10 @@ export const sweepInboundFiles = internalMutation({
 	args: { now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const now = args.now ?? Date.now();
-		const releasedRaw = await releaseRawBlobs(ctx, now);
-		const releasedAttachments = await releaseAttachmentBlobs(ctx, now);
+		// ONE horizon for one sweep, read once — see `inboundRetentionCutoff`.
+		const cutoff = await inboundRetentionCutoff(ctx, now);
+		const releasedRaw = await releaseRawBlobs(ctx, now, cutoff);
+		const releasedAttachments = await releaseAttachmentBlobs(ctx, now, cutoff);
 		if (releasedRaw === BATCH || releasedAttachments === BATCH) {
 			await ctx.scheduler.runAfter(0, internal.maintenance.retention.sweepInboundFiles, args);
 		}

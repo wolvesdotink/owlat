@@ -161,7 +161,10 @@ export const ingestFromWebhook = internalAction({
 		// pull them here while the raw MIME is still in hand. Best-effort: a
 		// failed capture never fails delivery (the message is already stored).
 		try {
-			await captureAttachments(ctx, prepared.rawBinary, args.messageId, args.from, {
+			await captureAttachments(ctx, {
+				rawBinary: prepared.rawBinary,
+				messageId: args.messageId,
+				from: args.from,
 				// Postbox captures are OUT OF RANGE of the inbound retention sweep:
 				// the personal mailbox keeps its raw `.eml` permanently and has no
 				// horizon, so a shared-inbox window must never strip its file-library

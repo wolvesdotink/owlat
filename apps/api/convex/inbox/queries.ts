@@ -10,6 +10,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { isSharedInboxReader } from './access';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { PRESENCE_ACTIVE_WINDOW_MS } from './presence';
 import { compareNeedsAttention, compareOldestWaiting } from './threadSort';
@@ -106,7 +107,7 @@ export const listThreads = publicQuery({
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'inbox');
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) {
+		if (!isSharedInboxReader(session)) {
 			return { threads: [], nextCursor: null };
 		}
 
@@ -181,7 +182,7 @@ export const getThreadFilterCounts = publicQuery({
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'inbox');
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return null;
+		if (!isSharedInboxReader(session)) return null;
 
 		const now = Date.now();
 		const userId = session.userId;
@@ -226,7 +227,7 @@ export const getThread = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return null;
+		if (!isSharedInboxReader(session)) return null;
 
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) return null;
@@ -272,7 +273,7 @@ export const getReviewQueue = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const limit = args.limit ?? 50;
 
@@ -310,7 +311,7 @@ export const getQuarantined = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const limit = args.limit ?? 50;
 
@@ -340,7 +341,7 @@ export const getFailed = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const limit = args.limit ?? 50;
 
@@ -373,7 +374,7 @@ export const getInboundStats = publicQuery({
 	args: {},
 	handler: async (ctx) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return null;
+		if (!isSharedInboxReader(session)) return null;
 
 		const settings = await ctx.db.query('instanceSettings').first();
 		const counters = settings?.inboxStats ?? {
@@ -413,7 +414,7 @@ export const getMessageActions = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const actions = await ctx.db
 			.query('agentActions')
@@ -443,7 +444,7 @@ export const pendingAssignments = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const window = args.sinceMs ?? 5 * 60 * 1000;
 		const cutoff = Date.now() - window;
