@@ -11,15 +11,44 @@
 import { convexTest } from 'convex-test';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { captureAttachments } from '../mail/deliveryPipeline/ingest';
+import { inboundAttachmentCandidates } from '../mail/deliveryPipeline/attachmentParts';
 
 const modules = import.meta.glob('../**/*.*s');
+
+/**
+ * ClamAV, answering clean.
+ *
+ * The delivery path only indexes what the malware scan CLEARED, and the test
+ * environment ships a configured MTA (`vitest.setup.ts`), so without a stub
+ * every leaf comes back `'skipped'` — the scanner unreachable — and capture
+ * correctly refuses the lot. Stubbing it is what puts these cases on the branch
+ * a real delivery takes.
+ */
+let originalFetch: typeof globalThis.fetch;
+
+beforeEach(() => {
+	originalFetch = globalThis.fetch;
+	globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+		const url = typeof input === 'string' ? input : input.toString();
+		if (!url.includes('/scan/attachment')) throw new Error(`unexpected fetch: ${url}`);
+		return new Response(JSON.stringify({ clean: true }), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}) as unknown as typeof globalThis.fetch;
+});
+
+afterEach(() => {
+	globalThis.fetch = originalFetch;
+	vi.restoreAllMocks();
+});
 
 /**
  * Attachment capture charges the per-sender/global AI-ingest budget before it
@@ -143,6 +172,39 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 		expect(text).toContain('a real document');
 	});
 
+	it('captures nothing out of a message the scanner called infected', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(JSON.stringify({ clean: false, virus: 'Eicar-Test-Signature' }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+		) as unknown as typeof globalThis.fetch;
+
+		await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: 'd-infected',
+			rawBytesBase64: Buffer.from(buildRawEml(), 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'with attachment',
+			textBody: 'See the attached notes.',
+			messageId: '<cap-infected@example.com>',
+			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
+		});
+
+		// The message is delivered (to Spam) and its `.eml` is kept for an
+		// operator — but nothing out of it reaches summarise, embed or the
+		// knowledge graph. This route used to capture from it regardless: the
+		// verdict routed the MESSAGE and nothing gated the FILES.
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
+	});
+
 	it('captures nothing when the message has no real attachments', async () => {
 		const t = setupTest();
 		await seedInbox(t);
@@ -242,7 +304,11 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 				}) as unknown as ActionCtx['runMutation'],
 			},
 			{
-				rawBinary: raw,
+				// The leaves a scan would have cleared — capture never walks the
+				// MIME itself, so the test supplies the same set the scanner hands
+				// it in production.
+				parts: inboundAttachmentCandidates(raw),
+				withheldCount: 0,
 				messageId: '<many-1@example.com>',
 				from: 'Bob <bob@example.com>',
 				captureSource: 'mailbox',

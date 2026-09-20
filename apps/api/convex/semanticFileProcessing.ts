@@ -423,6 +423,12 @@ export async function extractText(blob: Blob, mimeType: string, filename: string
 	// For remaining binary formats (DOCX, XLSX, etc.), we'd need external
 	// libraries or a processing service. For now, return a placeholder and
 	// rely on filename/title.
+	//
+	// These branches are the COMPLEMENT of `lib/fileExtraction.hasTextExtraction`,
+	// which the V8-side capture path consults to mark such a file as name-only
+	// instead of indexed (this module is `'use node'`, so it cannot be imported
+	// there). `__tests__/semanticFileExtraction.test.ts` runs the real extractor
+	// over both sides, so adding a format to one and not the other fails.
 
 	if (
 		mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||

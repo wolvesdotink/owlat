@@ -27,10 +27,11 @@ import { base64ToBytes, bytesToBinaryString } from '../lib/bytes';
 import { storeSealedBlob } from '../lib/sealedBlob';
 import { getMtaConfig } from '../mail/mtaClient';
 import { scanInboundAttachments } from '../mail/deliveryPipeline/scan';
+import type { InboundScanResult } from '../mail/deliveryPipeline/scan';
 import { captureAttachments } from '../mail/deliveryPipeline/ingest';
 import type { AttachmentCaptureOutcome } from '../mail/deliveryPipeline/ingest';
 import { inboundEmailMessageValidator } from '../webhooks/adapters/inboundRegistry';
-import type { AttachmentIndexing, VirusVerdict } from '../lib/literalValidators';
+import type { AttachmentIndexing } from '../lib/literalValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
 import { receiveInboundMail } from './receiveInbound';
 
@@ -38,15 +39,17 @@ import { receiveInboundMail } from './receiveInbound';
 type StagedRaw = {
 	rawStorageId: Id<'_storage'>;
 	rawSize: number;
-	/** The byte-preserving binary-string projection the MIME walker needs. */
-	rawBinary: string;
 	/**
-	 * `undefined` means NOTHING WAS SCANNED — either the scanner is not
-	 * configured or there are no attachment leaves — and the two are
-	 * indistinguishable, so no verdict is asserted. Storing `undefined` as
-	 * `'clean'` would be a claim we cannot make.
+	 * The scan — its verdict, the leaves it CLEARED and how many leaves the
+	 * message had at all.
+	 *
+	 * A verdict of `undefined` means NOTHING WAS SCANNED, and "no scanner
+	 * configured" and "no attachment leaves" are told apart by
+	 * `scannableCount`, not by the verdict: storing `undefined` as `'clean'`
+	 * would be a claim we cannot make, and telling a reader their signature
+	 * logo went unscanned would be a warning about nothing.
 	 */
-	virusVerdict?: VirusVerdict;
+	scan: InboundScanResult;
 };
 
 /**
@@ -91,15 +94,19 @@ async function stageRawMessage(
 	// which means six retries and then the DLQ. An unscannable message is
 	// treated as unscanned: it is stored, listed and downloadable, and nothing
 	// in it is ever fed to a model.
-	let virusVerdict: VirusVerdict | undefined;
+	let scan: InboundScanResult;
 	try {
-		virusVerdict = await scanInboundAttachments(getMtaConfig(), rawBinary);
+		scan = await scanInboundAttachments(getMtaConfig(), rawBinary);
 	} catch (err) {
 		logError('[Inbound Webhook] attachment scan failed — message stored unscanned', err);
-		virusVerdict = 'skipped';
+		// Nothing was cleared, so nothing can be indexed. `scannableCount` is
+		// unknowable once the walk itself threw, and 1 is the honest floor: this
+		// message HAS something we could not look at, which is what the reader
+		// is told.
+		scan = { verdict: 'skipped', cleanParts: [], scannableCount: 1 };
 	}
 
-	return { rawStorageId, rawSize: rawBytes.byteLength, rawBinary, virusVerdict };
+	return { rawStorageId, rawSize: rawBytes.byteLength, scan };
 }
 
 export const ingestFromWebhook = internalAction({
@@ -141,7 +148,7 @@ export const ingestFromWebhook = internalAction({
 			received = await receiveInboundMail(ctx, args.mail, {
 				rawStorageId: staged?.rawStorageId,
 				rawSize: staged?.rawSize,
-				virusVerdict: staged?.virusVerdict,
+				virusVerdict: staged?.scan.verdict,
 			});
 		} catch (err) {
 			// The blob was sealed before the row was written, so a mutation that
@@ -169,24 +176,27 @@ export const ingestFromWebhook = internalAction({
 		// skipped the agent pipeline. The sealed blob deliberately STAYS, so an
 		// operator can still investigate what was sent — the message is never
 		// dropped, it is only stopped from being acted on.
-		if (!staged || staged.virusVerdict === 'infected') {
+		if (!staged || staged.scan.verdict === 'infected') {
 			return { inboundMessageId, isDuplicate: false };
 		}
 
-		// NOTHING UNSCANNED REACHES A MODEL. Capture runs on a `'clean'` verdict
-		// and on nothing else. `'skipped'` means the scanner was configured and
-		// unreachable; `undefined` means it is not configured at all (or there was
-		// no attachment leaf to scan, in which case there is nothing to capture
-		// anyway). Feeding either to summarise + embed + knowledge extraction
-		// would hand attacker-supplied bytes to the model on a route any sender
-		// can reach. The message, its metadata and its downloadable `.eml` all
-		// still exist — and the row says why nothing was indexed, so the reader
-		// can say it too instead of rendering an unindexed file like an indexed
-		// one.
-		if (staged.virusVerdict !== 'clean') {
-			// Only worth recording when there was something to index: a plain
-			// message with no attachment leaves is not "unscanned", it is empty.
-			if (args.mail.attachments.length > 0) {
+		// NOTHING UNSCANNED REACHES A MODEL, and the mechanism is the SET rather
+		// than the verdict: `scan.cleanParts` is exactly the leaves the scanner
+		// opened and cleared, and it is the only thing capture is given. A
+		// scanner that is unreachable, not configured, or out of per-message
+		// budget clears nothing, so nothing is indexed — without a second filter
+		// anywhere that could disagree with the first about which leaf is which.
+		//
+		// The message, its metadata and its downloadable `.eml` all still exist
+		// either way; the row records what happened so the reader can say it
+		// instead of rendering an unindexed file like an indexed one.
+		const { scannableCount, cleanParts } = staged.scan;
+		if (cleanParts.length === 0) {
+			// Only worth recording when there was something to scan. A message
+			// whose only "attachments" are inline signature logos has no scannable
+			// leaf at all, and telling its reader the files went unchecked is a
+			// warning about nothing — which is how a warning stops being read.
+			if (scannableCount > 0) {
 				await markIndexing(ctx, inboundMessageId, 'skipped_unscanned');
 			}
 			return { inboundMessageId, isDuplicate: false };
@@ -194,19 +204,21 @@ export const ingestFromWebhook = internalAction({
 
 		// Attachment capture is best-effort by construction and runs AFTER the
 		// insert, so it cannot fail delivery. The file-type allowlist, the
-		// per-part size ceilings, the 10-part cap, the sender→contact scoping and
-		// the AI-ingest budget all live inside `captureAttachments`, shared with
-		// the personal-mailbox route so the two cannot enforce different policy.
+		// per-part size ceilings, the sender→contact scoping, the DMARC refusal
+		// and the AI-ingest budget all live inside `captureAttachments`, shared
+		// with the personal-mailbox route so the two cannot enforce different
+		// policy.
 		try {
 			const outcome = await captureAttachments(ctx, {
-				rawBinary: staged.rawBinary,
+				parts: cleanParts,
+				withheldCount: scannableCount - cleanParts.length,
 				messageId: args.mail.messageId,
 				from: args.mail.from,
 				// Only team-inbox captures are in range of the inbound retention
 				// sweep — the personal mailbox keeps its files permanently.
 				captureSource: 'team_inbox',
 				// A `From:` that DMARC failed is not evidence of who sent this, so
-				// the files are not filed under the contact it claimed to be.
+				// none of its files are indexed at all.
 				dmarcResult: args.mail.dmarcResult,
 			});
 			await recordCaptureOutcome(ctx, inboundMessageId, outcome);
@@ -240,6 +252,25 @@ async function dropStagedBlob(
 }
 
 /**
+ * The marker each skip reason renders as.
+ *
+ * A TOTAL table, not a ternary chain: `satisfies` makes a new
+ * `AttachmentCaptureOutcome['skippedReason']` member a compile error here
+ * instead of a row that silently renders as though the assistant had read the
+ * file — the exact defect these markers exist to close.
+ */
+const SKIP_MARKERS = {
+	unverified: 'skipped_unverified',
+	budget: 'skipped_budget',
+	cap: 'skipped_cap',
+	too_large: 'skipped_too_large',
+	unsupported_type: 'skipped_unsupported',
+} as const satisfies Record<
+	NonNullable<AttachmentCaptureOutcome['skippedReason']>,
+	AttachmentIndexing
+>;
+
+/**
  * Turn what capture did into the marker the thread view reads.
  *
  * EVERY outcome is recorded, not just the budget one: a part refused for its
@@ -251,16 +282,15 @@ async function recordCaptureOutcome(
 	inboundMessageId: Id<'inboundMessages'>,
 	outcome: AttachmentCaptureOutcome
 ): Promise<void> {
-	const marker: AttachmentIndexing | undefined =
-		outcome.skippedReason === 'budget'
-			? 'skipped_budget'
-			: outcome.skippedReason === 'too_large'
-				? 'skipped_too_large'
-				: outcome.skippedReason === 'unsupported_type'
-					? 'skipped_unsupported'
-					: outcome.indexed > 0
-						? 'indexed'
-						: undefined;
+	// A skip outranks the placeholder note: "the assistant has not read some of
+	// these" is the stronger sentence, and only one line is rendered.
+	const marker: AttachmentIndexing | undefined = outcome.skippedReason
+		? SKIP_MARKERS[outcome.skippedReason]
+		: outcome.indexed === 0
+			? undefined
+			: outcome.namesOnly
+				? 'indexed_placeholder'
+				: 'indexed';
 	if (marker) await markIndexing(ctx, inboundMessageId, marker);
 }
 
@@ -278,8 +308,8 @@ async function markIndexing(
 	} catch (err) {
 		// The mail is already stored. A marker that could not be written is a
 		// reader losing one line of context, not a delivery to retry — and the
-		// contract this function advertises to its five call sites is that it
-		// never fails the ingest, which only a catch here makes true.
+		// contract this function advertises to its callers is that it never
+		// fails the ingest, which only a catch here makes true.
 		logError('[Inbound Webhook] could not record attachment indexing', err);
 	}
 }

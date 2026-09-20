@@ -45,6 +45,7 @@ import { clearThreadFollowUp } from './followUps';
 import { resolveDeliverableMailbox } from './mailbox/identity';
 import { clearSnoozeUntilReplyForThread } from './snooze';
 import { captureAttachments, prepareInboundMessage } from './deliveryPipeline/ingest';
+import { inboundAttachmentCandidates } from './deliveryPipeline/attachmentParts';
 import { insertDeliveredMessage, stripBrackets } from './deliveryPipeline/insert';
 import {
 	resolveDmarcRouting,
@@ -161,8 +162,28 @@ export const ingestFromWebhook = internalAction({
 		// pull them here while the raw MIME is still in hand. Best-effort: a
 		// failed capture never fails delivery (the message is already stored).
 		try {
+			// WHICH LEAVES MAY BE INDEXED, decided here rather than re-derived
+			// inside capture — that second derivation is how a leaf the scanner
+			// never opened used to reach a model.
+			//
+			// When anybody scanned this message — ClamAV here, or the MTA before
+			// it forwarded — the answer is exactly what came back CLEAN, so an
+			// infected message (which this route used to capture from anyway) and
+			// a partly-scanned one index nothing.
+			//
+			// When NOBODY scanned it, the personal mailbox keeps its long-standing
+			// behaviour and indexes the message's own attachment leaves. This is
+			// the owner's own mail, and quietly switching the file library off on
+			// every deployment without a scanner is not a change this route makes
+			// on the way past. The team-inbox route, which is attacker-reachable
+			// by design, has no such branch: there, unscanned is never indexed.
+			const scanned =
+				prepared.scan.verdict !== undefined
+					? prepared.scan.cleanParts
+					: inboundAttachmentCandidates(prepared.rawBinary);
 			await captureAttachments(ctx, {
-				rawBinary: prepared.rawBinary,
+				parts: scanned,
+				withheldCount: Math.max(0, prepared.scan.scannableCount - scanned.length),
 				messageId: args.messageId,
 				from: args.from,
 				// Postbox captures are OUT OF RANGE of the inbound retention sweep:

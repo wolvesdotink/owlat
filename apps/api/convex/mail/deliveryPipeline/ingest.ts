@@ -15,7 +15,6 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { extractEmail } from '../../lib/emailAddress';
 import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
-import { extractAttachments } from '@owlat/shared/mailMime';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 import {
 	ATTACHMENT_COMPOSE_LIMITS,
@@ -23,6 +22,7 @@ import {
 	MAX_ATTACHMENT_BYTES,
 } from '@owlat/shared/attachments';
 import { isFileTypeAccepted } from '@owlat/email-scanner';
+import { hasTextExtraction } from '../../lib/fileExtraction';
 import { logError, logWarn } from '../../lib/runtimeLog';
 import { getMtaConfig } from '../mtaClient';
 import {
@@ -37,6 +37,8 @@ import { base64ToBytes, bytesToBinaryString, utf8Bytes } from '../../lib/bytes';
 import { buildSnippet } from './insert';
 import { buildSearchBody } from '../searchBody';
 import { scanInboundAttachments } from './scan';
+import type { InboundAttachmentPart } from './attachmentParts';
+import type { CaptureSource } from '../../lib/literalValidators';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -202,16 +204,16 @@ export async function prepareInboundMessage(
 	// to its `/scan/attachment` endpoint. A confirmed-infected verdict routes
 	// the message to Spam/quarantine in `deliverToMailbox`; a scanner outage
 	// fails open with a `'skipped'` verdict (the message still delivers, and
-	// the skip is surfaced via `scannerHealth.warnScanSkipped`). Any verdict
-	// the MTA pipeline already set on `args` is preserved (infected wins).
-	const inboundVerdict = await scanInboundAttachments(getMtaConfig(), rawBinary);
-	const virusVerdict: 'clean' | 'infected' | 'skipped' | undefined =
-		args.virusVerdict === 'infected' || inboundVerdict === 'infected'
-			? 'infected'
-			: (inboundVerdict ?? args.virusVerdict);
+	// the skip is surfaced via `scannerHealth.warnScanSkipped`). The verdict the
+	// MTA pipeline already set on `args` is merged in there (infected wins).
+	const scan = await scanInboundAttachments(getMtaConfig(), rawBinary, args.virusVerdict);
 
 	return {
 		rawBinary,
+		// The scan's cleared leaves travel WITH the verdict: capture takes the
+		// parts, never a second walk of the same bytes, so the set that was
+		// scanned and the set that reaches a model are one set by construction.
+		scan,
 		rawSize,
 		rawStorageId,
 		antiLoopHeaders,
@@ -223,7 +225,7 @@ export async function prepareInboundMessage(
 		html: htmlBody,
 		snippet,
 		searchBody,
-		virusVerdict,
+		virusVerdict: scan.verdict,
 		inboundEncryptionInfo,
 		inboundSignatureInfo,
 	};
@@ -246,56 +248,97 @@ export type AttachmentCaptureOutcome = {
 	indexed: number;
 	/**
 	 * Why a part that arrived was not indexed:
+	 *   · `unverified` — DMARC failed the `From:`, so nothing here is indexed
+	 *     at all (see the note on the function);
 	 *   · `budget` — the per-sender/global AI-ingest budget refused the batch;
+	 *   · `cap` — the message carries more attachment leaves than one message
+	 *     is processed for, so the rest were never opened;
 	 *   · `too_large` — over `MAX_AI_INGEST_ATTACHMENT_BYTES`;
 	 *   · `unsupported_type` — the file-type allowlist refused it.
+	 *
+	 * At most one is reported, in that order: the earlier a reason stops a
+	 * part, the more of the message it accounts for.
 	 */
-	skippedReason?: 'budget' | 'too_large' | 'unsupported_type';
+	skippedReason?: 'unverified' | 'budget' | 'cap' | 'too_large' | 'unsupported_type';
+	/**
+	 * At least one INDEXED part is a type the extractor answers with its own
+	 * filename — Word, Excel, an image. The file reached the library, the
+	 * summary and the embedding; what none of them saw is its contents. Not a
+	 * skip (the row is there, and its name is searchable), but not the same
+	 * thing as a PDF whose text the assistant actually has, which is what the
+	 * reader would otherwise be shown.
+	 */
+	namesOnly?: boolean;
 };
 
 /** One `captureAttachments` argument bag — see the doc comment on the function. */
 export type CaptureAttachmentsInput = {
-	/** The whole received message as a byte-preserving binary string. */
-	rawBinary: string;
+	/**
+	 * The attachment leaves this message may index — `InboundScanResult.cleanParts`,
+	 * i.e. exactly the parts the malware scan opened and cleared.
+	 *
+	 * TAKEN, NOT DERIVED. Capture used to re-walk the raw MIME and re-select,
+	 * and its selection was not the scanner's: a message of ten `.exe` stubs
+	 * followed by a `.txt` spent the scanner's ten-part budget on the stubs and
+	 * still had a capture slot left for the `.txt` nobody had scanned. Handing
+	 * the cleared parts in is what makes "nothing unscanned reaches a model"
+	 * true by construction rather than by two filters agreeing.
+	 */
+	parts: InboundAttachmentPart[];
+	/**
+	 * How many attachment leaves of this message were NOT cleared — the scan's
+	 * `scannableCount` minus the parts above. Nothing is done with them; they
+	 * are only reported, so the reader can say the assistant has not read
+	 * everything here.
+	 */
+	withheldCount: number;
 	/** The source Message-ID, recorded on every captured file as provenance. */
 	messageId: string;
 	/** The raw `From:` header, resolved to a contact for scoping. */
 	from: string;
 	/** Which inbound route is capturing; decides retention reach. */
-	captureSource: 'team_inbox' | 'mailbox';
+	captureSource: CaptureSource;
 	/**
-	 * The message's DMARC verdict as the MTA computed it. `'fail'` suppresses
-	 * contact scoping — see the note above. Absent on an older MTA, which reads
-	 * as "no verdict", not as a failure.
+	 * The message's DMARC verdict as the MTA computed it. `'fail'` means
+	 * nothing here is indexed — see the note on the function. Absent on an
+	 * older MTA, which reads as "no verdict", not as a failure.
 	 */
 	dmarcResult?: string;
 };
 
 /**
- * Pull attachment leaves out of a delivered message's raw MIME and ingest each
- * into `semanticFiles` (source `email_attachment`). Inline parts (logos,
- * signatures), oversized parts and types the allowlist refuses are skipped —
- * and the skip comes BACK to the caller, because a file nobody read that looks
- * exactly like one that was read is the defect this returns an outcome for.
- * Each file carries the source Message-ID as provenance.
+ * Ingest a delivered message's CLEARED attachment leaves into `semanticFiles`
+ * (source `email_attachment`). Oversized parts and types the allowlist refuses
+ * are skipped — and the skip comes BACK to the caller, because a file nobody
+ * read that looks exactly like one that was read is the defect this returns an
+ * outcome for. Each file carries the source Message-ID as provenance.
+ *
+ * WHAT IT MAY TOUCH IS GIVEN, NOT FOUND. `input.parts` is the malware scan's
+ * cleared set; this function never walks the raw MIME itself. That is the whole
+ * mechanism behind "nothing unscanned reaches a model": there is no second
+ * selection to disagree with the first.
  *
  * Captured files are scoped to the sender contact: `input.from` (the inbound
  * From header) is resolved to an EXISTING contact by email. When a contact
- * matches,
- * the file is linked to it (`contactIds`), so it surfaces under that contact's
- * Files tab and is scoped to that contact in retrieval. Resolution is
- * find-only — an unknown sender leaves the file org-general (no contact link),
- * we never create a contact for every inbound sender. Thread-linking and
- * agent-output capture are intentionally out of scope here.
+ * matches, the file is linked to it (`contactIds`), so it surfaces under that
+ * contact's Files tab and is scoped to that contact in retrieval. The lookup
+ * here is find-only, and an unresolvable sender leaves the file ORG-GENERAL —
+ * but note that on the team-inbox route `receiveMessage` has already upserted a
+ * contact for the sender before this runs, so scoping there is effectively
+ * always to the sender's own contact; org-general is the mailbox-route case and
+ * the GDPR-erased-contact case. Thread-linking and agent-output capture are
+ * intentionally out of scope here.
  *
- * SCOPING IS NOT DONE ON AN UNAUTHENTICATED `From:`. A `From:` header is free
- * text: anyone can send as `ceo@customer.example`. DMARC is the check that
- * binds it to a domain that authorized the message, so a message whose DMARC
- * verdict is a FAIL is captured ORG-GENERAL — the bytes still arrive, they are
- * just not filed under the contact the sender claimed to be, and the agent
- * drafting a reply to the real contact does not retrieve them as that contact's
- * document. Anything else (`pass`, `none`, no verdict at all from an older MTA)
- * scopes as before.
+ * NOTHING IS INDEXED FOR A `From:` DMARC COULD NOT VERIFY. A `From:` header is
+ * free text: anyone can send as `ceo@customer.example`, and DMARC is the check
+ * that binds it to a domain that authorized the message. Filing a spoofed
+ * sender's document under the contact they claimed to be puts it in that
+ * contact's retrieval scope; filing it org-general puts it in EVERY contact's,
+ * because an org-general file matches every contact scope the retrieval seam
+ * has. Neither is a mitigation, so a DMARC fail is not indexed at all. The
+ * bytes still arrive, still list and still download — the row says
+ * `skipped_unverified` so the reader can say why. Anything else (`pass`,
+ * `none`, no verdict at all from an older MTA) is indexed and scoped as usual.
  *
  * SHARED BY BOTH INBOUND ROUTES — the personal mailbox and the team inbox — so
  * the two cannot enforce different attachment policy. `captureSource` is how
@@ -303,13 +346,15 @@ export type CaptureAttachmentsInput = {
  * them afterwards: the inbound retention sweep releases `'team_inbox'` blobs
  * and never touches `'mailbox'` ones. The ceilings, in order:
  *
- *   · `disposition === 'inline'` and empty parts are not attachments;
+ *   · a leaf the scan did not clear never gets here at all;
  *   · over `MAX_ATTACHMENT_BYTES` (25 MiB) is not stored at all;
  *   · over `MAX_AI_INGEST_ATTACHMENT_BYTES` is not INDEXED — it still delivers,
  *     still lists, and is still downloadable out of the raw `.eml`;
  *   · a type the file-type allowlist refuses is not indexed either, and is
  *     refused HERE, before a blob is staged and before the budget is charged;
- *   · at most `ATTACHMENT_COMPOSE_LIMITS.maxCount` (10) parts per message.
+ *   · at most `ATTACHMENT_COMPOSE_LIMITS.maxCount` (10) parts per message —
+ *     the same bound the scan applies, re-applied here so the LLM cost stays
+ *     bounded whatever a future caller hands in.
  *
  * Then the whole batch is charged against the per-sender and global AI-ingest
  * budget. Tripping it skips `semanticFiles.ingest` — nothing reaches a model —
@@ -324,15 +369,20 @@ export async function captureAttachments(
 	},
 	input: CaptureAttachmentsInput
 ): Promise<AttachmentCaptureOutcome> {
+	// An unverifiable sender is refused before any of the size/type work: there
+	// is no scope this message's files could safely be filed under, so the
+	// answer is not "file them somewhere wider" but "do not file them".
+	if (input.dmarcResult === 'fail') {
+		logWarn('[Attachment capture] DMARC failed the From header — bytes stored, indexing skipped', {
+			messageId: input.messageId,
+			from: input.from,
+		});
+		return { indexed: 0, skippedReason: 'unverified' };
+	}
+
 	// Decide the whole batch up front: the budget is charged once for what will
 	// actually be ingested, so a message of inline logos costs nothing.
-	const parts = extractAttachments(input.rawBinary).filter((part) => {
-		// Inline parts (embedded logos / signature images) aren't documents the
-		// user thinks of as "attachments".
-		if (part.disposition === 'inline') return false;
-		const size = part.bytes.byteLength;
-		return size > 0 && size <= MAX_ATTACHMENT_BYTES;
-	});
+	const parts = input.parts.filter((part) => part.bytes.byteLength <= MAX_ATTACHMENT_BYTES);
 
 	// Over the AI ceiling the bytes still arrive, they are just not fed to a
 	// model. See MAX_AI_INGEST_ATTACHMENT_BYTES.
@@ -346,30 +396,30 @@ export async function captureAttachments(
 	const ingestible = withinCeiling.filter((part) =>
 		isFileTypeAccepted(part.filename, part.contentType)
 	);
-	const skippedReason: AttachmentCaptureOutcome['skippedReason'] | undefined =
-		withinCeiling.length < parts.length
-			? 'too_large'
-			: ingestible.length < withinCeiling.length
-				? 'unsupported_type'
-				: undefined;
-
 	// Bound the work per delivered message: each ingested part schedules LLM
 	// calls, and the inbound webhook is attacker-reachable, so a crafted .eml
 	// with many small leaves must not amplify cost.
 	const eligible = ingestible.slice(0, ATTACHMENT_COMPOSE_LIMITS.maxCount);
+	const skippedReason: AttachmentCaptureOutcome['skippedReason'] | undefined =
+		input.withheldCount > 0 || eligible.length < ingestible.length
+			? 'cap'
+			: withinCeiling.length < parts.length || parts.length < input.parts.length
+				? 'too_large'
+				: ingestible.length < withinCeiling.length
+					? 'unsupported_type'
+					: undefined;
 	if (eligible.length === 0) return { indexed: 0, skippedReason };
 
-	// Scope captured files to the sender's EXISTING contact (find-only). A
-	// missing/unresolvable sender — or one whose `From:` DMARC did not hold up —
-	// leaves the file org-general. Resolved once per message, not per part.
+	// Scope captured files to the sender's EXISTING contact (find-only). An
+	// unresolvable sender leaves the file org-general. Resolved once per
+	// message, not per part.
 	const senderEmail = extractEmail(input.from);
-	const isSenderSpoofable = input.dmarcResult === 'fail';
 	let senderContactIds: Id<'contacts'>[] | undefined;
 	// Resolved HERE rather than taken from the caller even where the caller has
 	// just upserted the contact: `getByEmailForTeam` is the lookup that ignores
 	// GDPR gravestones, and an id handed in from outside would file an
 	// attachment under an erased contact.
-	if (senderEmail && !isSenderSpoofable) {
+	if (senderEmail) {
 		const contact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
 			email: senderEmail,
 		});
@@ -405,6 +455,7 @@ export async function captureAttachments(
 	}
 
 	let indexed = 0;
+	let namesOnly = false;
 	for (const part of eligible) {
 		const storageId = await ctx.storage.store(new Blob([part.bytes], { type: part.contentType }));
 		// `ingest` re-runs the same file-type policy as the filter above and
@@ -419,12 +470,17 @@ export async function captureAttachments(
 			sourceMessageId: input.messageId,
 			contactIds: senderContactIds,
 		});
-		if (fileId) indexed++;
+		if (!fileId) continue;
+		indexed++;
+		// Ingested, and the extractor will answer it with `[Word document: …]`.
+		// Recorded so the reader is not shown a row that looks exactly like a
+		// PDF the assistant read cover to cover.
+		if (!hasTextExtraction(part.contentType, part.filename)) namesOnly = true;
 	}
 	// A part the pre-filter accepted and `ingest` still refused is a policy
 	// disagreement, not a silent success: report it as the type skip it is.
 	if (indexed < eligible.length && !skippedReason) {
-		return { indexed, skippedReason: 'unsupported_type' };
+		return { indexed, skippedReason: 'unsupported_type', namesOnly };
 	}
-	return { indexed, skippedReason };
+	return { indexed, skippedReason, namesOnly };
 }

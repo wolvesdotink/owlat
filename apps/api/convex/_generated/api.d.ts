@@ -603,6 +603,7 @@ import type * as lib_emailProviders_sesIdentity from '../lib/emailProviders/sesI
 import type * as lib_emailTranslations from '../lib/emailTranslations.js';
 import type * as lib_env from '../lib/env.js';
 import type * as lib_featureFlags from '../lib/featureFlags.js';
+import type * as lib_fileExtraction from '../lib/fileExtraction.js';
 import type * as lib_fileSearchText from '../lib/fileSearchText.js';
 import type * as lib_graphAnalyticsCompute from '../lib/graphAnalyticsCompute.js';
 import type * as lib_graphRank from '../lib/graphRank.js';
@@ -766,6 +767,7 @@ import type * as mail_contacts from '../mail/contacts.js';
 import type * as mail_crossSurface from '../mail/crossSurface.js';
 import type * as mail_dailyBrief from '../mail/dailyBrief.js';
 import type * as mail_delivery from '../mail/delivery.js';
+import type * as mail_deliveryPipeline_attachmentParts from '../mail/deliveryPipeline/attachmentParts.js';
 import type * as mail_deliveryPipeline_ingest from '../mail/deliveryPipeline/ingest.js';
 import type * as mail_deliveryPipeline_insert from '../mail/deliveryPipeline/insert.js';
 import type * as mail_deliveryPipeline_routing from '../mail/deliveryPipeline/routing.js';
@@ -1721,6 +1723,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/emailTranslations': typeof lib_emailTranslations;
 	'lib/env': typeof lib_env;
 	'lib/featureFlags': typeof lib_featureFlags;
+	'lib/fileExtraction': typeof lib_fileExtraction;
 	'lib/fileSearchText': typeof lib_fileSearchText;
 	'lib/graphAnalyticsCompute': typeof lib_graphAnalyticsCompute;
 	'lib/graphRank': typeof lib_graphRank;
@@ -1884,6 +1887,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/crossSurface': typeof mail_crossSurface;
 	'mail/dailyBrief': typeof mail_dailyBrief;
 	'mail/delivery': typeof mail_delivery;
+	'mail/deliveryPipeline/attachmentParts': typeof mail_deliveryPipeline_attachmentParts;
 	'mail/deliveryPipeline/ingest': typeof mail_deliveryPipeline_ingest;
 	'mail/deliveryPipeline/insert': typeof mail_deliveryPipeline_insert;
 	'mail/deliveryPipeline/routing': typeof mail_deliveryPipeline_routing;

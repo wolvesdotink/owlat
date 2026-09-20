@@ -22,6 +22,18 @@
  *     executable under a safe-looking name, an unnamed leaf — is stored and
  *     listed but MARKED, so the thread view never renders an unread file as an
  *     indexed one;
+ *   · a leaf the scan never opened is never ingested — ten `.exe` stubs ahead
+ *     of a `.txt` used to spend the scanner's budget on the stubs and leave
+ *     capture a free slot for the one file nobody had scanned;
+ *   · a message whose only attachment is an INLINE signature logo is not
+ *     reported as unscanned: there was nothing to scan;
+ *   · a `.docx` is marked as name-only, because the extractor answers it with
+ *     its own filename and a row that says `indexed` would claim otherwise;
+ *   · a header name Convex cannot store (`$`-prefixed, non-ASCII) is dropped
+ *     and the message is STORED — it used to 500 the route and dead-letter
+ *     perfectly deliverable mail;
+ *   · the staged blob is dropped on both exits that do not end in a row
+ *     referencing it: the lost-race duplicate and a throwing `receiveMessage`;
  *   · degenerate MIME (a multipart with no closing delimiter, a base64 leaf of
  *     pure garbage, a zero-byte leaf) stores one row and throws nothing: a
  *     throw here is a 500 the MTA retries six times and then dead-letters.
@@ -33,9 +45,66 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { MAX_AI_INGEST_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
+import {
+	ATTACHMENT_COMPOSE_LIMITS,
+	MAX_AI_INGEST_ATTACHMENT_BYTES,
+} from '@owlat/shared/attachments';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
+import { getInboundChannelAdapter } from '../../webhooks/adapters/inboundRegistry';
+
+/**
+ * The two blob-drop branches are reachable only from OUTSIDE the action.
+ *
+ * `dropStagedBlob` runs when the cheap pre-check misses a row the
+ * transactional check then finds, and when `receiveMessage` throws — and the
+ * pre-check and the transactional check are deliberately the same query
+ * (`findStoredDuplicate`), so no input makes them disagree. The only honest way
+ * to drive the race is to make the pre-check answer `null` on demand, which is
+ * what these hooks do: the real module, with `findIdByMessageId` and
+ * `receiveMessage` wrapped.
+ */
+const hooks = vi.hoisted(() => ({ blindPreCheck: false, failReceive: false }));
+
+/**
+ * The real `inbox/messages` module with two seams.
+ *
+ * A registered Convex function is an object convex-test invokes through
+ * `_handler`, so wrapping one means cloning it and swapping that field — the
+ * validators, the `isMutation` flag and the return validator all stay the
+ * originals, and with the hooks off both functions ARE the originals.
+ */
+function withHandler<T extends { _handler: (...args: never[]) => unknown }>(
+	fn: T,
+	handler: (...args: never[]) => unknown
+): T {
+	return { ...fn, _handler: handler } as T;
+}
+
+vi.mock('../messages', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../messages')>();
+	const findIdByMessageId = actual.findIdByMessageId as unknown as {
+		_handler: (...args: never[]) => unknown;
+	};
+	const receiveMessage = actual.receiveMessage as unknown as {
+		_handler: (...args: never[]) => unknown;
+	};
+	return {
+		...actual,
+		// The action's cheap idempotency pre-check, blinded on demand so the
+		// transactional check inside `receiveMessage` is the only thing left to
+		// catch a redelivery — which is the race the blob drop exists for.
+		findIdByMessageId: withHandler(findIdByMessageId, async (...args: never[]) =>
+			hooks.blindPreCheck ? null : await findIdByMessageId._handler(...args)
+		),
+		// A mutation that throws AFTER the blob was sealed: a transient db error,
+		// a scheduler failure. The bytes must not survive it.
+		receiveMessage: withHandler(receiveMessage, async (...args: never[]) => {
+			if (hooks.failReceive) throw new Error('receiveMessage exploded');
+			return await receiveMessage._handler(...args);
+		}),
+	};
+});
 
 // See receiveMessageAuth.test.ts: the `../../**` glob omits the `inbox/` dir it
 // climbed through, so merge a second glob rooted at `inbox/` and re-prefix its keys.
@@ -59,6 +128,8 @@ let originalFetch: typeof globalThis.fetch;
 
 beforeEach(() => {
 	originalFetch = globalThis.fetch;
+	hooks.blindPreCheck = false;
+	hooks.failReceive = false;
 });
 
 afterEach(() => {
@@ -454,7 +525,7 @@ describe('inboundIngest — idempotency', () => {
 		]);
 	});
 
-	it('drops the blob it staged when the transactional check finds the row first', async () => {
+	it('drops the blob it staged when it loses the race to a concurrent delivery', async () => {
 		const t = setupTest();
 		configureMta();
 		stubScanner({ clean: true });
@@ -463,26 +534,339 @@ describe('inboundIngest — idempotency', () => {
 		await ingest(t, 'race-1@example.com', raw, NOTES_META);
 		const storedAfterFirst = await t.run((ctx) => ctx.db.system.query('_storage').collect());
 
-		// Losing the race means the action's cheap pre-check ran before the first
-		// attempt inserted, so only the transactional half can catch it. Drive
-		// `receiveMessage` directly — that IS the transactional half — and assert
-		// it refuses rather than inserting a second row.
-		const dup = await t.mutation(internal.inbox.messages.receiveMessage, {
-			from: 'Bob <bob@example.com>',
-			to: 'inbox@example.com',
-			subject: 'subject',
-			textBody: 'body',
-			headers: '{}',
-			messageId: '<race-1@example.com>',
-			timestamp: Date.now(),
-		});
-		expect(dup.isDuplicate).toBe(true);
+		// Losing the race means the cheap pre-check ran BEFORE the first attempt
+		// inserted, so only the transactional check inside `receiveMessage` can
+		// catch the duplicate — by which point this attempt has already sealed a
+		// 10 MiB blob no row will ever reference. Blinding the pre-check is what
+		// puts the action on that branch; the two checks are otherwise the same
+		// query and no input makes them disagree.
+		hooks.blindPreCheck = true;
+		const second = await ingest(t, 'race-1@example.com', raw, NOTES_META);
+		expect(second.isDuplicate).toBe(true);
 
 		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
 		expect(rows).toHaveLength(1);
-		// No second sealed `.eml` was added by the refused write.
+		// THE ASSERTION THAT BITES: the second attempt sealed a blob and then
+		// dropped it. Without the drop this is one higher, and the orphan is
+		// unreachable forever — the retention sweep walks rows, and no row
+		// points at it.
 		const storedNow = await t.run((ctx) => ctx.db.system.query('_storage').collect());
 		expect(storedNow).toHaveLength(storedAfterFirst.length);
+	});
+
+	it('drops the blob it staged when the receive mutation throws, and rethrows', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+		const before = await t.run((ctx) => ctx.db.system.query('_storage').collect());
+
+		// A transient db error, a scheduler failure: anything that throws after
+		// the blob is sealed and before a row references it.
+		hooks.failReceive = true;
+		await expect(
+			ingest(
+				t,
+				'boom-1@example.com',
+				encode(buildEmlWithAttachment('boom-1@example.com')),
+				NOTES_META
+			)
+		).rejects.toThrow('receiveMessage exploded');
+
+		// Nothing was stored, so nothing may be left behind — and the throw is
+		// re-raised so the MTA retries into a clean slate rather than being told
+		// the delivery succeeded.
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(0);
+		const after = await t.run((ctx) => ctx.db.system.query('_storage').collect());
+		expect(after).toHaveLength(before.length);
+	});
+});
+
+describe('inboundIngest — the set that was scanned is the set that is indexed', () => {
+	it("never indexes a leaf the scanner's cap left unopened", async () => {
+		const t = setupTest();
+		configureMta();
+		const scanner = stubScanner({ clean: true });
+
+		// The craft: fill the scanner's per-message budget with leaves the
+		// file-type allowlist will refuse, then append one it accepts. The
+		// scanner opens the first ten in MIME order — the stubs — and capture
+		// used to drop the stubs BEFORE counting, so it still had a slot for
+		// `payload.txt`: a file that went to summarise, embed and knowledge
+		// extraction without ever being scanned.
+		const stubs = Array.from(
+			{ length: ATTACHMENT_COMPOSE_LIMITS.maxCount },
+			(_, i) => `stub${i}.exe`
+		);
+		const leaves = [...stubs, 'payload.txt'];
+		const lines = [
+			'From: Bob <bob@example.com>',
+			'To: inbox@example.com',
+			'Subject: crafted',
+			'Message-ID: <craft-1@example.com>',
+			'Content-Type: multipart/mixed; boundary="bb"',
+			'',
+			'--bb',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'See attached.',
+			'',
+		];
+		for (const name of leaves) {
+			lines.push(
+				'--bb',
+				`Content-Type: text/plain; name="${name}"`,
+				`Content-Disposition: attachment; filename="${name}"`,
+				'Content-Transfer-Encoding: base64',
+				'',
+				Buffer.from(`a document called ${name} with words in it`).toString('base64'),
+				''
+			);
+		}
+		lines.push('--bb--', '');
+
+		await ingest(
+			t,
+			'craft-1@example.com',
+			encode(lines.join('\r\n')),
+			leaves.map((filename, i) => ({
+				filename,
+				contentType: 'text/plain',
+				size: 40,
+				partIndex: String(i + 1),
+			}))
+		);
+
+		// Exactly the cap was scanned, and it was the stubs.
+		expect(scanner.calls()).toBe(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		// NOTHING was indexed: the ten scanned leaves are a refused type, and the
+		// one leaf of an accepted type was never scanned.
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files.map((f) => f.filename)).not.toContain('payload.txt');
+		expect(files).toHaveLength(0);
+		// And the verdict does not call a message we only partly opened clean.
+		expect(rows[0]!.virusVerdict).toBe('skipped');
+		expect(rows[0]!.rawStorageId).toBeTruthy();
+	});
+
+	it('indexes the first ten of an all-readable message and SAYS the rest were left', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		const leafCount = ATTACHMENT_COMPOSE_LIMITS.maxCount + 2;
+		const leaves = Array.from({ length: leafCount }, (_, i) => `doc-${i}.txt`);
+		const lines = [
+			'From: Bob <bob@example.com>',
+			'To: inbox@example.com',
+			'Subject: twelve files',
+			'Message-ID: <cap-e2e@example.com>',
+			'Content-Type: multipart/mixed; boundary="bb"',
+			'',
+			'--bb',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'See attached.',
+			'',
+		];
+		for (const name of leaves) {
+			lines.push(
+				'--bb',
+				`Content-Type: text/plain; name="${name}"`,
+				`Content-Disposition: attachment; filename="${name}"`,
+				'Content-Transfer-Encoding: base64',
+				'',
+				Buffer.from(`a document called ${name} with words in it`).toString('base64'),
+				''
+			);
+		}
+		lines.push('--bb--', '');
+
+		await ingest(
+			t,
+			'cap-e2e@example.com',
+			encode(lines.join('\r\n')),
+			leaves.map((filename, i) => ({
+				filename,
+				contentType: 'text/plain',
+				size: 40,
+				partIndex: String(i + 1),
+			}))
+		);
+
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		// Twelve rows are listed and downloadable; ten were read. Marked
+		// `indexed`, the reader would show all twelve as though the assistant
+		// had them.
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_cap');
+	});
+});
+
+describe('inboundIngest — what the row says about files nobody read', () => {
+	it('does not claim an inline signature logo went unscanned', async () => {
+		const t = setupTest();
+		configureMta();
+		const scanner = stubScanner({ clean: true });
+
+		// Ordinary corporate mail: the MTA reports the logo in `attachments`
+		// (its parser carries inline parts there), but an inline part is not a
+		// document and is never scanned. Keying the warning off the reported
+		// count told every such reader their files had not been checked —
+		// a warning about nothing, which is how a warning stops being read.
+		const raw = [
+			'From: Bob <bob@example.com>',
+			'To: inbox@example.com',
+			'Subject: regards',
+			'Message-ID: <sig-1@example.com>',
+			'Content-Type: multipart/related; boundary="bb"',
+			'',
+			'--bb',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Best regards',
+			'',
+			'--bb',
+			'Content-Type: image/png; name="logo.png"',
+			'Content-Disposition: inline; filename="logo.png"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			Buffer.from('not really a png').toString('base64'),
+			'',
+			'--bb--',
+			'',
+		].join('\r\n');
+
+		await ingest(t, 'sig-1@example.com', encode(raw), [
+			{ filename: 'logo.png', contentType: 'image/png', size: 16, partIndex: '1' },
+		]);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		expect(scanner.calls()).toBe(0);
+		expect(rows[0]!.virusVerdict).toBeUndefined();
+		expect(rows[0]!.attachmentIndexing).toBeUndefined();
+	});
+
+	it('marks a Word document as name-only rather than indexed', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		// `.docx` passes the allowlist and reaches `semanticFiles.ingest`, but the
+		// extractor answers it with `[Word document: contract.docx]` — so the
+		// summary, the embedding and `[RELEVANT FILES]` all work from a filename.
+		// `indexed` would tell the reader the assistant has the contract.
+		await ingest(
+			t,
+			'docx-1@example.com',
+			encode(
+				buildEmlWithLeaf('docx-1@example.com', {
+					headers: [
+						'Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document; name="contract.docx"',
+						'Content-Disposition: attachment; filename="contract.docx"',
+						'Content-Transfer-Encoding: base64',
+					],
+					body: Buffer.from('PK a zip container, really').toString('base64'),
+				})
+			),
+			[
+				{
+					filename: 'contract.docx',
+					contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+					size: 26,
+					partIndex: '1',
+				},
+			]
+		);
+
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(1);
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows[0]!.attachmentIndexing).toBe('indexed_placeholder');
+	});
+
+	it('indexes nothing at all when DMARC failed the sender', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		// There is no safe scope for a document from a sender nobody can verify:
+		// under the claimed contact it joins that customer's retrieval, and
+		// ORG-GENERAL — which is what this used to do — joins EVERY contact's.
+		await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
+			mail: {
+				from: 'CEO <ceo@customer.example>',
+				to: 'inbox@example.com',
+				subject: 'urgent wire instructions',
+				textBody: 'body',
+				headers: {},
+				messageId: '<spoof-e2e@example.com>',
+				attachments: NOTES_META,
+				timestamp: Date.now(),
+				dmarcResult: 'fail',
+			},
+			rawBytesBase64: encode(buildEmlWithAttachment('spoof-e2e@example.com')),
+		});
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		// Never dropped: the message, its metadata and its `.eml` all survive.
+		expect(rows[0]!.rawStorageId).toBeTruthy();
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_unverified');
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
+	});
+});
+
+describe('inboundIngest — header names a sender chose', () => {
+	it('stores a message carrying header names Convex cannot hold', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		// `$x: y` is a valid RFC 5322 field name, and Convex reserves a leading
+		// `$` in an object key — so forwarding the parsed map threw inside the
+		// route's try/catch, answered 500, and the MTA read that as retryable:
+		// six attempts and then the Redis DLQ, where nobody is looking. On a path
+		// whose whole invariant is that mail is never dropped.
+		await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
+			mail: getInboundChannelAdapter('mta').parseInbound({
+				event: 'inbound.received',
+				timestamp: Date.now(),
+				inboundPayload: {
+					from: 'Bob <bob@example.com>',
+					to: 'inbox@example.com',
+					subject: 'crafted headers',
+					textBody: 'body',
+					headers: {
+						'x-ordinary': 'kept',
+						$weird: 'reserved prefix',
+						'x-Ünicode': 'non-ascii name',
+						'x-control\u0001': 'control character',
+						['x-'.padEnd(2000, 'a')]: 'over the field-name length cap',
+						'x-not-a-string': 42 as unknown as string,
+					},
+					messageId: '<headers-1@example.com>',
+					attachments: [],
+				},
+			}),
+			rawBytesBase64: encode(buildPlainEml('headers-1@example.com')),
+		});
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		// THE ROW EXISTS. That is the whole assertion: the message arrived.
+		expect(rows).toHaveLength(1);
+		const stored = JSON.parse(rows[0]!.headers ?? '{}') as Record<string, string>;
+		// The storable header survived; the ones Convex would have thrown on did
+		// not, and their loss is a logged drop rather than a dead-lettered
+		// message.
+		expect(stored['x-ordinary']).toBe('kept');
+		expect(Object.keys(stored)).toEqual(['x-ordinary']);
 	});
 });
 

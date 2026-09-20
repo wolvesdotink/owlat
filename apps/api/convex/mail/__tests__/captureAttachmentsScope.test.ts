@@ -8,14 +8,15 @@
  *     written org-general and the message is still captured — an unknown sender
  *     is never a reason to drop anything;
  *   · an unparseable From header lands org-general too;
- *   · a `From:` whose DMARC verdict is a FAIL is NOT scoped to the contact it
- *     claims to be — a forged header must not file an attacker's document under
- *     a real customer's `[RELEVANT FILES]` scope;
+ *   · a `From:` whose DMARC verdict is a FAIL is not indexed AT ALL — neither
+ *     under the contact it claims to be nor org-general, which is the widest
+ *     scope the retrieval seam has rather than the safe one;
  *   · the capturing route is recorded on the row, because that is the only
  *     thing keeping the shared-inbox retention sweep off Postbox captures;
  *   · a part over `MAX_AI_INGEST_ATTACHMENT_BYTES` is not indexed while a
  *     sibling under it in the same .eml is;
- *   · the `ATTACHMENT_COMPOSE_LIMITS.maxCount` cap still holds.
+ *   · the `ATTACHMENT_COMPOSE_LIMITS.maxCount` cap still holds, and a message
+ *     past it comes back marked rather than silently truncated.
  *
  * The last two drive `captureAttachments` with a ctx whose `storage.store` and
  * `semanticFiles.ingest` are counted rather than executed: convex-test
@@ -38,6 +39,7 @@ import {
 	MAX_AI_INGEST_ATTACHMENT_BYTES,
 } from '@owlat/shared/attachments';
 import { captureAttachments } from '../deliveryPipeline/ingest';
+import { inboundAttachmentCandidates } from '../deliveryPipeline/attachmentParts';
 import type { AttachmentCaptureOutcome } from '../deliveryPipeline/ingest';
 
 const modules = import.meta.glob('../../**/*.*s');
@@ -96,7 +98,11 @@ async function capture(
 	raw: string,
 	messageId: string,
 	fromRaw: string,
-	opts: { captureSource?: 'team_inbox' | 'mailbox'; dmarcResult?: string } = {}
+	opts: {
+		captureSource?: 'team_inbox' | 'mailbox';
+		dmarcResult?: string;
+		withheldCount?: number;
+	} = {}
 ): Promise<{
 	stored: number;
 	ingested: IngestArgs[];
@@ -129,7 +135,11 @@ async function capture(
 			}) as unknown as ActionCtx['runMutation'],
 		},
 		{
-			rawBinary: raw,
+			// What a scan would have CLEARED. Capture no longer walks the MIME
+			// itself — the parts arrive from `scanInboundAttachments` — so the
+			// suite hands it the same selection the scanner would.
+			parts: inboundAttachmentCandidates(raw),
+			withheldCount: opts.withheldCount ?? 0,
 			messageId,
 			from: fromRaw,
 			captureSource: opts.captureSource ?? 'team_inbox',
@@ -191,16 +201,21 @@ describe('captureAttachments — contact scoping', () => {
 		expect(ingested[0]!.contactIds).toBeUndefined();
 	});
 
-	it('does NOT scope to the claimed contact when DMARC failed the From header', async () => {
+	it('indexes NOTHING when DMARC failed the From header', async () => {
 		const t = setupTest();
 		// The contact is real; the message claiming to be from them is not. A
 		// `From:` header is free text, and DMARC is the check that binds it to a
-		// domain that authorized the send. Scoping on a failed one files an
-		// attacker's PDF under the real customer's retrieval scope, where the
-		// agent drafting a reply to that customer would pick it up.
-		const contactId = await seedContact(t, 'ceo@customer.example');
+		// domain that authorized the send.
+		//
+		// There is no safe scope for this file. Under the claimed contact it
+		// joins that customer's retrieval, where the agent drafting their reply
+		// picks it up; ORG-GENERAL is worse, not better — an org-general file
+		// matches EVERY contact scope the retrieval seam has, so filing it there
+		// hands a spoofed sender's document to every conversation in the
+		// instance. So it is not indexed at all.
+		await seedContact(t, 'ceo@customer.example');
 
-		const { ingested } = await capture(
+		const { stored, ingested, skippedReason } = await capture(
 			t,
 			buildEml('spoof-1@example.com', [{ name: 'instructions.txt', body: 'do this instead' }]),
 			'<spoof-1@example.com>',
@@ -208,11 +223,11 @@ describe('captureAttachments — contact scoping', () => {
 			{ dmarcResult: 'fail' }
 		);
 
-		// Captured — an unauthenticated sender is not a reason to drop mail — but
-		// org-general, not under the contact it claimed to be.
-		expect(ingested).toHaveLength(1);
-		expect(ingested[0]!.contactIds).toBeUndefined();
-		expect(ingested[0]!.contactIds).not.toEqual([contactId]);
+		// Not dropped — the message, its metadata and its downloadable `.eml`
+		// all still exist — but no blob was staged and nothing reached a model.
+		expect(ingested).toHaveLength(0);
+		expect(stored).toBe(0);
+		expect(skippedReason).toBe('unverified');
 	});
 
 	it('still scopes when DMARC passed, or when the MTA asserted no verdict', async () => {
@@ -291,7 +306,7 @@ describe('captureAttachments — eligibility ceilings', () => {
 		expect(mailbox.ingested[0]!.captureSource).toBe('mailbox');
 	});
 
-	it('captures at most the per-message part cap', async () => {
+	it('captures at most the per-message part cap, and SAYS the rest were left', async () => {
 		const t = setupTest();
 		const leafCount = ATTACHMENT_COMPOSE_LIMITS.maxCount + 2;
 		const leaves = Array.from({ length: leafCount }, (_, i) => ({
@@ -299,7 +314,7 @@ describe('captureAttachments — eligibility ceilings', () => {
 			body: `document number ${i}`,
 		}));
 
-		const { stored, ingested } = await capture(
+		const { stored, ingested, skippedReason } = await capture(
 			t,
 			buildEml('cap-1@example.com', leaves),
 			'<cap-1@example.com>',
@@ -308,5 +323,27 @@ describe('captureAttachments — eligibility ceilings', () => {
 
 		expect(stored).toBe(ATTACHMENT_COMPOSE_LIMITS.maxCount);
 		expect(ingested).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+		// The two files past the cap are stored, listed and downloadable and the
+		// assistant has never seen them. Without this the row reads `indexed`
+		// and the reader is shown twelve rows that all look read.
+		expect(skippedReason).toBe('cap');
+	});
+
+	it('reports the cap when the SCAN is what withheld the rest', async () => {
+		const t = setupTest();
+		// The scanner opens at most `maxCount` leaves and hands over only what it
+		// cleared; anything past that never reaches capture at all. Capture still
+		// has to report it, because the reader's line is about the message, not
+		// about which component stopped looking.
+		const { ingested, skippedReason } = await capture(
+			t,
+			buildEml('cap-2@example.com', [{ name: 'doc.txt', body: 'a document' }]),
+			'<cap-2@example.com>',
+			'Bob <bob@example.com>',
+			{ withheldCount: 3 }
+		);
+
+		expect(ingested).toHaveLength(1);
+		expect(skippedReason).toBe('cap');
 	});
 });

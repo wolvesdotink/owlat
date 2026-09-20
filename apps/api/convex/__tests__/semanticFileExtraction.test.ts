@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractText, stripHtmlTags, truncateForLLM, scrubTags } from '../semanticFileProcessing';
+import { hasTextExtraction } from '../lib/fileExtraction';
 
 /**
  * Unit coverage for the semantic-file text-extraction dispatch — the documented
@@ -100,5 +101,47 @@ describe('truncateForLLM', () => {
 		const out = truncateForLLM('abcdefghij', 5);
 		expect(out.startsWith('abcde')).toBe(true);
 		expect(out).toContain('[Content truncated...]');
+	});
+});
+
+/**
+ * `hasTextExtraction` is what the capture path consults to decide whether an
+ * ingested attachment yields content or only its own name — it cannot import
+ * `semanticFileProcessing`, which is `'use node'`. So the two are pinned here,
+ * against the REAL extractor, over the whole documented matrix: a new format
+ * added on one side and not the other fails this.
+ */
+describe('hasTextExtraction — the predicate the ingest path uses', () => {
+	const CASES: Array<{ mimeType: string; filename: string }> = [
+		{ mimeType: 'text/plain', filename: 'a.txt' },
+		{ mimeType: 'text/html', filename: 'a.html' },
+		{ mimeType: 'application/json', filename: 'a.json' },
+		{ mimeType: 'text/csv', filename: 'a.csv' },
+		{ mimeType: 'application/octet-stream', filename: 'a.csv' },
+		{
+			mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+			filename: 'a.docx',
+		},
+		{ mimeType: 'application/msword', filename: 'a.doc' },
+		{
+			mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+			filename: 'a.xlsx',
+		},
+		{ mimeType: 'application/vnd.ms-excel', filename: 'a.xls' },
+		{ mimeType: 'image/png', filename: 'a.png' },
+		{ mimeType: 'application/zip', filename: 'a.zip' },
+	];
+
+	it.each(CASES)('agrees with the extractor for $filename', async ({ mimeType, filename }) => {
+		const extracted = await extractText(blob('some content', mimeType), mimeType, filename);
+		// The extractor's placeholder shape is `[Kind: filename]` and nothing
+		// else returns one, so it is the observable difference between "the
+		// assistant read this" and "the assistant knows its name".
+		const isPlaceholder =
+			extracted === `[Word document: ${filename}]` ||
+			extracted === `[Spreadsheet: ${filename}]` ||
+			extracted === `[Image: ${filename}]` ||
+			extracted === `[File: ${filename}]`;
+		expect(hasTextExtraction(mimeType, filename)).toBe(!isPlaceholder);
 	});
 });

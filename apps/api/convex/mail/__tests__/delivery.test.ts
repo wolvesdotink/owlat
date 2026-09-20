@@ -30,6 +30,7 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { scanInboundAttachments } from '../deliveryPipeline/scan';
+import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import * as scannerHealth from '../../lib/scannerHealth';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
@@ -121,9 +122,12 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: EICAR,
 			})
 		);
-		const verdict = await scanInboundAttachments(MTA, raw.toString('latin1'));
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
 
-		expect(verdict).toBe('infected');
+		expect(scan.verdict).toBe('infected');
+		// Nothing out of a quarantined message is cleared, so capture — which is
+		// only ever given `cleanParts` — has nothing to feed a model.
+		expect(scan.cleanParts).toHaveLength(0);
 		// The inbound scan was actually invoked against the MTA endpoint.
 		expect(calls).toHaveLength(1);
 		expect(calls[0]!.url).toBe('https://mta.test/scan/attachment');
@@ -144,9 +148,10 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: 'pretend pdf',
 			})
 		);
-		const verdict = await scanInboundAttachments(MTA, raw.toString('latin1'));
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
 
-		expect(verdict).toBe('skipped');
+		expect(scan.verdict).toBe('skipped');
+		expect(scan.cleanParts).toHaveLength(0);
 		expect(warnSpy).toHaveBeenCalledTimes(1);
 		expect(warnSpy).toHaveBeenCalledWith('report.pdf', 'scanner returned HTTP 503');
 	});
@@ -162,9 +167,10 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: 'hi',
 			})
 		);
-		const verdict = await scanInboundAttachments(MTA, raw.toString('latin1'));
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
 
-		expect(verdict).toBe('skipped');
+		expect(scan.verdict).toBe('skipped');
+		expect(scan.cleanParts).toHaveLength(0);
 		expect(warnSpy).toHaveBeenCalledTimes(1);
 	});
 
@@ -179,9 +185,10 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: 'hi',
 			})
 		);
-		const verdict = await scanInboundAttachments(MTA, raw.toString('latin1'));
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
 
-		expect(verdict).toBe('skipped');
+		expect(scan.verdict).toBe('skipped');
+		expect(scan.cleanParts).toHaveLength(0);
 		expect(warnSpy).toHaveBeenCalledWith('doc.txt', 'ClamAV unavailable');
 	});
 
@@ -194,7 +201,12 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: 'hi',
 			})
 		);
-		expect(await scanInboundAttachments(MTA, raw.toString('latin1'))).toBe('clean');
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
+		expect(scan.verdict).toBe('clean');
+		// The cleared leaf comes BACK: it is what capture is allowed to ingest,
+		// and handing it over is what stops a second selection from picking a
+		// different file than the one that was scanned.
+		expect(scan.cleanParts.map((p) => p.filename)).toEqual(['doc.txt']);
 		expect(calls).toHaveLength(1);
 	});
 
@@ -207,14 +219,151 @@ describe('scanInboundAttachments (pure verdict aggregation)', () => {
 				body: 'hi',
 			})
 		);
-		expect(await scanInboundAttachments(null, raw.toString('latin1'))).toBeUndefined();
+		const scan = await scanInboundAttachments(null, raw.toString('latin1'));
+		expect(scan.verdict).toBeUndefined();
+		expect(scan.cleanParts).toHaveLength(0);
+		// It still counted the leaves: "there was nothing to scan" and "nothing
+		// scanned it" are different sentences, and only this number tells them
+		// apart for the reader.
+		expect(scan.scannableCount).toBe(1);
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
 	it('returns undefined when there are no attachments to scan', async () => {
 		const fetchSpy = vi.spyOn(globalThis, 'fetch');
 		const raw = Buffer.from(['Content-Type: text/plain', '', 'just text'].join('\r\n'));
-		expect(await scanInboundAttachments(MTA, raw.toString('latin1'))).toBeUndefined();
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
+		expect(scan.verdict).toBeUndefined();
+		expect(scan.scannableCount).toBe(0);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * The set the scanner cleared IS the set capture may ingest.
+ *
+ * The bug this pins: the scanner opened the first ten attachment leaves in MIME
+ * order, while capture dropped the rejected types FIRST and then took ten of
+ * what survived. Ten `.exe` stubs followed by one `payload.txt` therefore spent
+ * the scanner's whole budget on the stubs, came back `'clean'`, and left capture
+ * a free slot for the one leaf nobody had scanned — which then went to
+ * summarise, embed and knowledge extraction. Craftable by any sender, on a
+ * route any sender can reach.
+ */
+describe('scanInboundAttachments — the cap and the cleared set', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	/** A message whose attachment leaves are exactly the given filenames. */
+	function emlWithLeaves(filenames: string[]): string {
+		const lines = [
+			'From: sender@isp.example',
+			'To: me@example.com',
+			'Subject: many leaves',
+			'Message-ID: <many@isp.example>',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'see attached',
+		];
+		for (const filename of filenames) {
+			lines.push(
+				'--B',
+				`Content-Type: application/octet-stream; name="${filename}"`,
+				`Content-Disposition: attachment; filename="${filename}"`,
+				'Content-Transfer-Encoding: base64',
+				'',
+				Buffer.from(`bytes of ${filename}`, 'utf-8').toString('base64')
+			);
+		}
+		lines.push('--B--', '');
+		return lines.join('\r\n');
+	}
+
+	it('never clears a leaf the cap left unopened', async () => {
+		const { calls } = mockScan({ clean: true });
+		const stubs = Array.from(
+			{ length: ATTACHMENT_COMPOSE_LIMITS.maxCount },
+			(_, i) => `stub${i}.exe`
+		);
+		const raw = Buffer.from(emlWithLeaves([...stubs, 'payload.txt']));
+
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
+
+		// Exactly the cap was opened, and in MIME order — the stubs.
+		expect(calls).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+		expect(calls.map((c) => c.filename)).toEqual(stubs);
+		// The leaf past the cap is NOT in the cleared set. Capture is given this
+		// array and nothing else, so it cannot reach `payload.txt` however its
+		// own type and size filters happen to order things.
+		expect(scan.cleanParts.map((p) => p.filename)).toEqual(stubs);
+		expect(scan.cleanParts.map((p) => p.filename)).not.toContain('payload.txt');
+		// And the verdict does not claim a message we only partly looked at is
+		// clean.
+		expect(scan.verdict).toBe('skipped');
+		expect(scan.scannableCount).toBe(ATTACHMENT_COMPOSE_LIMITS.maxCount + 1);
+	});
+
+	it('does not count an inline signature logo as something to scan', async () => {
+		const fetchSpy = vi.spyOn(globalThis, 'fetch');
+		const raw = Buffer.from(
+			[
+				'From: sender@isp.example',
+				'To: me@example.com',
+				'Subject: corporate signature',
+				'Message-ID: <inline@isp.example>',
+				'MIME-Version: 1.0',
+				'Content-Type: multipart/related; boundary="B"',
+				'',
+				'--B',
+				'Content-Type: text/plain; charset=utf-8',
+				'',
+				'regards',
+				'--B',
+				'Content-Type: image/png; name="logo.png"',
+				'Content-Disposition: inline; filename="logo.png"',
+				'Content-Transfer-Encoding: base64',
+				'',
+				Buffer.from('not really a png').toString('base64'),
+				'--B--',
+				'',
+			].join('\r\n')
+		);
+
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
+
+		// Nothing was scanned because there was nothing to scan — which is what
+		// keeps the reader from being told this message went unchecked.
+		expect(scan.scannableCount).toBe(0);
+		expect(scan.verdict).toBeUndefined();
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("clears every leaf on an upstream 'clean' when there is no scanner here", async () => {
+		const fetchSpy = vi.spyOn(globalThis, 'fetch');
+		const raw = Buffer.from(emlWithLeaves(['a.txt', 'b.txt']));
+
+		// The MTA scanned before it forwarded; its verdict is about the whole
+		// message, so every leaf is covered by it.
+		const scan = await scanInboundAttachments(null, raw.toString('latin1'), 'clean');
+
+		expect(scan.verdict).toBe('clean');
+		expect(scan.cleanParts.map((p) => p.filename)).toEqual(['a.txt', 'b.txt']);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('clears nothing on an upstream infected verdict', async () => {
+		const fetchSpy = vi.spyOn(globalThis, 'fetch');
+		const raw = Buffer.from(emlWithLeaves(['a.txt']));
+
+		const scan = await scanInboundAttachments(null, raw.toString('latin1'), 'infected');
+
+		expect(scan.verdict).toBe('infected');
+		expect(scan.cleanParts).toHaveLength(0);
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 });

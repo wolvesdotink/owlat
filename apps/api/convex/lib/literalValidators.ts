@@ -8,6 +8,7 @@
 
 import { v } from 'convex/values';
 import type { Infer } from 'convex/values';
+import { INBOUND_RAW_RETENTION_DAY_CHOICES } from '@owlat/shared/inboundRetention';
 
 /** Outcome of a one-shot run (backup, system update). */
 export const successOrFailedValidator = v.union(v.literal('success'), v.literal('failed'));
@@ -79,26 +80,48 @@ export type VirusVerdict = Infer<typeof virusVerdictValidator>;
  * marker". Every OTHER outcome is spelled, because the silent ones are the
  * defect: a file that still lists and still downloads, next to nothing that
  * says the assistant never opened it, reads exactly like one that was indexed.
- *   · `indexed` — every captured part reached `semanticFiles.ingest`;
+ *   · `indexed` — every captured part reached `semanticFiles.ingest` AND the
+ *     extractor pulled real text out of it;
+ *   · `indexed_placeholder` — a part was ingested, but its type yields only its
+ *     own filename (Word, Excel, images), so the assistant knows the file
+ *     exists and nothing about what is inside it;
+ *   · `skipped_unverified` — DMARC failed the `From:`, so nothing from this
+ *     message was indexed under any scope;
  *   · `skipped_budget` — the per-sender/global AI-ingest budget was exhausted;
- *   · `skipped_unscanned` — no CLEAN malware verdict, so nothing was fed to a
- *     model (see `inbox/inboundIngest.ts`);
+ *   · `skipped_cap` — the message carries more attachment leaves than one
+ *     message is scanned and processed for, so the rest were never opened;
+ *   · `skipped_unscanned` — the malware scan cleared nothing, so nothing was
+ *     fed to a model (see `inbox/inboundIngest.ts`);
  *   · `skipped_too_large` — a part was over `MAX_AI_INGEST_ATTACHMENT_BYTES`;
  *   · `skipped_unsupported` — the file-type allowlist refused a part.
  *
- * The last two are set whenever a part was skipped for that reason, even if
- * OTHER parts of the same message were indexed: "some of these you have not
- * read" is the honest line, and `indexed` next to an unread file is not.
+ * The size, type, cap and placeholder members are set whenever ONE part was
+ * that way, even if OTHER parts of the same message were fully indexed: "some
+ * of these you have not read" is the honest line, and `indexed` next to an
+ * unread file is not.
  */
 export const attachmentIndexingValidator = v.union(
 	v.literal('indexed'),
+	v.literal('indexed_placeholder'),
+	v.literal('skipped_unverified'),
 	v.literal('skipped_budget'),
+	v.literal('skipped_cap'),
 	v.literal('skipped_unscanned'),
 	v.literal('skipped_too_large'),
 	v.literal('skipped_unsupported')
 );
 
 export type AttachmentIndexing = Infer<typeof attachmentIndexingValidator>;
+
+/**
+ * Which inbound route captured a `semanticFiles` row — the ONLY thing that
+ * separates a team-inbox capture from a personal-mailbox one afterwards, and
+ * therefore the only thing keeping the shared-inbox retention sweep off
+ * Postbox's permanently-kept files.
+ */
+export const captureSourceValidator = v.union(v.literal('team_inbox'), v.literal('mailbox'));
+
+export type CaptureSource = Infer<typeof captureSourceValidator>;
 
 /**
  * How long the shared inbox keeps a received message's FILES — the sealed raw
@@ -108,15 +131,13 @@ export type AttachmentIndexing = Infer<typeof attachmentIndexingValidator>;
  * unbounded storage is the defect the horizon exists to close, and ABSENT
  * means `DEFAULT_INBOUND_RAW_RETENTION_DAYS` rather than "keep forever".
  *
- * Convex validators must be literal, so the set is spelled out here and
- * asserted against `INBOUND_RAW_RETENTION_DAY_CHOICES` in
- * `maintenance/__tests__/inboundRetention.test.ts`.
+ * DERIVED from the shared choice list the settings picker renders, the way the
+ * automation catalogs derive theirs (`automations/triggers/catalog.ts`), so the
+ * stored set and the offered set cannot drift apart and no test has to stand
+ * guard over a duplicate.
  */
 export const inboundRawRetentionDaysValidator = v.union(
-	v.literal(30),
-	v.literal(90),
-	v.literal(180),
-	v.literal(365)
+	...INBOUND_RAW_RETENTION_DAY_CHOICES.map((days) => v.literal(days))
 );
 
 /** Lifecycle of a resumable mailbox job (import, semantic index, filter backfill). */
