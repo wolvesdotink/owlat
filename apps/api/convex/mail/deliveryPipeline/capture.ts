@@ -1,6 +1,6 @@
 /**
- * Personal-mail delivery pipeline — semantic capture of a received message's
- * attachment leaves.
+ * Inbound delivery pipeline (personal mailbox AND team inbox) — semantic
+ * capture of a received message's attachment leaves.
  *
  * The step AFTER delivery: the row is already stored, the malware scan has
  * already decided which leaves are cleared, and this is what carries those
@@ -55,12 +55,23 @@ export type AttachmentCaptureOutcome = {
 	 *     leaf (outage, timeout, its own fail-open skip);
 	 *   · `cap` — the message carries more attachment leaves than one message
 	 *     is processed for, so the rest were never opened;
+	 *   · `refused_type` — the MALWARE SCANNER refused the type before ClamAV
+	 *     ran, so those bytes were never compared to a signature at all. Told
+	 *     apart from `unsupported_type` because it is a different sentence to
+	 *     a reader looking at a live download button;
 	 *   · `too_large` — over `MAX_AI_INGEST_ATTACHMENT_BYTES`;
 	 *   · `unsupported_type` — the file-type allowlist refused it.
 	 *
 	 * At most one is reported, in the order {@link decideSkipReason} applies.
 	 */
-	skippedReason?: 'unverified' | 'budget' | 'unscanned' | 'cap' | 'too_large' | 'unsupported_type';
+	skippedReason?:
+		| 'unverified'
+		| 'budget'
+		| 'unscanned'
+		| 'cap'
+		| 'refused_type'
+		| 'too_large'
+		| 'unsupported_type';
 	/**
 	 * At least one INDEXED part is a type the extractor answers with its own
 	 * filename — Word, Excel, an image. The file reached the library, the
@@ -122,6 +133,18 @@ export type InboundFromAuth = {
 	envelopeFromDomain?: string;
 	/** Alignment input: the `d=` domain of the passing DKIM signature. */
 	dkimSigningDomain?: string;
+	/**
+	 * The SETTLED DMARC verdict where it differs from the raw one:
+	 * `'arc'` when `deliveryPipeline/routing.resolveDmarcRouting` rescued a
+	 * `fail` because a TRUSTED forwarder sealed a valid ARC chain attesting the
+	 * original passed (RFC 8617).
+	 *
+	 * Taken rather than recomputed: the rescue is decided once, against the
+	 * operator's editable allow-list, and a capture gate that re-derived it
+	 * would be a second opinion on the question the router already answered.
+	 * Absent means "no rescue applied", which is every ordinary message.
+	 */
+	dmarcOverride?: string;
 };
 
 /**
@@ -141,12 +164,22 @@ export type InboundFromAuth = {
  * mail. `@owlat/shared/spfAlignment` owns the relaxed-alignment rule so this
  * cannot fork from the MTA's and the sending-domain checker's.
  *
+ * An ARC RESCUE IS A PASS. A mailing list or a forwarder (an old Google
+ * Workspace mailbox forwarding on) breaks the author's DKIM and makes DMARC
+ * fail for mail that is entirely legitimate; when a forwarder the operator
+ * trusts sealed a valid chain attesting the original passed, the router already
+ * honoured that and put the message in the Inbox. Refusing the same message's
+ * attachments here would be the router and the capture gate giving two answers
+ * to one question — and the visible half of it is a forwarded invoice the
+ * assistant silently never reads.
+ *
  * An EMPTY bag (an MTA too old to compute any of this) is verified: that is the
  * pre-existing behaviour of every message received before the verdicts existed,
  * and silently un-indexing a whole deployment's mail is not a policy change a
  * capture helper makes on the way past.
  */
 export function isFromVerified(from: string, auth: InboundFromAuth): boolean {
+	if (auth.dmarcOverride === 'arc') return true;
 	const dmarc = auth.dmarcResult?.toLowerCase().trim();
 	if (!dmarc) return true;
 	if (dmarc === 'pass') return true;
@@ -174,6 +207,8 @@ type SkipSignals = {
 	overStorageCap: boolean;
 	/** At least one leaf is over the AI ceiling — stored, not read. */
 	overAiCeiling: boolean;
+	/** The MALWARE SCANNER refused at least one leaf's type before ClamAV ran. */
+	scannerRefusedType: boolean;
 	/** At least one leaf is a type neither gate will index. */
 	refusedType: boolean;
 };
@@ -189,6 +224,11 @@ type SkipSignals = {
 function decideSkipReason(signals: SkipSignals): AttachmentCaptureOutcome['skippedReason'] {
 	if (signals.unscanned) return 'unscanned';
 	if (signals.capped) return 'cap';
+	// Above the size and allowlist reasons because it is the only one that is
+	// also a SAFETY sentence: the reader has a live download button for bytes
+	// no malware scanner ever looked at, and "we do not process this type" does
+	// not say that.
+	if (signals.scannerRefusedType) return 'refused_type';
 	if (signals.overStorageCap || signals.overAiCeiling) return 'too_large';
 	if (signals.refusedType) return 'unsupported_type';
 	return undefined;
@@ -315,7 +355,8 @@ export async function captureAttachments(
 		capped: input.withheld.capped > 0 || eligible.length < ingestible.length,
 		overStorageCap: parts.length < indexable.length,
 		overAiCeiling: withinCeiling.length < parts.length,
-		refusedType: ingestible.length < withinCeiling.length || input.withheld.refusedType > 0,
+		scannerRefusedType: input.withheld.refusedType > 0,
+		refusedType: ingestible.length < withinCeiling.length,
 	});
 	if (eligible.length === 0) return { indexed: 0, skippedReason };
 

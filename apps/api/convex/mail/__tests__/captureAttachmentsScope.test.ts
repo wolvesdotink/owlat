@@ -431,7 +431,7 @@ describe('captureAttachments — eligibility ceilings', () => {
 		expect(skippedReason).toBe('unscanned');
 	});
 
-	it("reports the scanner's file-type refusal as an unsupported type", async () => {
+	it("tells the scanner's refusal apart from a type we merely do not summarise", async () => {
 		const t = setupTest();
 		const { ingested, skippedReason } = await capture(
 			t,
@@ -442,9 +442,11 @@ describe('captureAttachments — eligibility ceilings', () => {
 		);
 
 		// The scan ANSWERED about that leaf — it is a type the endpoint will not
-		// pass, not malware and not an outage.
+		// pass, not malware and not an outage. But it is also a leaf whose bytes
+		// no malware scanner ever looked at, behind a live download button, and
+		// that is a different sentence from "we do not extract text from this".
 		expect(ingested).toHaveLength(1);
-		expect(skippedReason).toBe('unsupported_type');
+		expect(skippedReason).toBe('refused_type');
 	});
 
 	it('reports nothing at all for a message that carries no files', async () => {

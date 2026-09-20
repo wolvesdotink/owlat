@@ -28,11 +28,16 @@ const modules = import.meta.glob('../**/*.*s');
 /**
  * ClamAV, answering clean.
  *
- * The delivery path only indexes what the malware scan CLEARED, and the test
+ * The delivery path indexes what the malware scan CLEARED, and the test
  * environment ships a configured MTA (`vitest.setup.ts`), so without a stub
- * every leaf comes back `'skipped'` — the scanner unreachable — and capture
- * correctly refuses the lot. Stubbing it is what puts these cases on the branch
- * a real delivery takes.
+ * every leaf comes back `'skipped'` — the scanner unreachable. Stubbing it is
+ * what puts these cases on the branch a real delivery takes.
+ *
+ * What the mailbox route does when NOBODY answered is its own case below
+ * ("keeps indexing on a deployment with no ClamAV sidecar"): the personal
+ * mailbox falls back to the message's own leaves, because it is the owner's own
+ * mail and switching the file library off on every no-ClamAV deployment is not
+ * a change this route makes on the way past.
  */
 let originalFetch: typeof globalThis.fetch;
 
@@ -204,6 +209,107 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 		// operator — but nothing out of it reaches summarise, embed or the
 		// knowledge graph. This route used to capture from it regardless: the
 		// verdict routed the MESSAGE and nothing gated the FILES.
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
+	});
+
+	it('keeps indexing on a deployment with no ClamAV sidecar', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		// `/scan/attachment` FAILS OPEN. The `clamav` compose profile is optional
+		// (`scan.attachments`), and with it absent every leaf answers exactly
+		// this: a defined verdict, cleared nothing. Reading "was anything
+		// scanned?" off the verdict therefore turned the personal mailbox's file
+		// library off on every such deployment, silently, with nothing in the UI
+		// or the log to say why.
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(JSON.stringify({ clean: true, skipped: true, reason: 'ClamAV unavailable' }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+		) as unknown as typeof globalThis.fetch;
+
+		await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: 'd-no-clamav',
+			rawBytesBase64: Buffer.from(buildRawEml(), 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'with attachment',
+			textBody: 'See the attached notes.',
+			messageId: '<cap-no-clamav@example.com>',
+			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
+		});
+
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files.map((f) => f.filename)).toEqual(['notes.txt']);
+	});
+
+	it('captures a DMARC fail a trusted ARC forwarder rescued', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		// Forwarded mail: the forwarder's footer broke the author's DKIM, so
+		// DMARC evaluates `fail` — and the trusted forwarder's valid seal
+		// attests the ORIGINAL passed. `resolveDmarcRouting` honours that and
+		// puts the message in the Inbox; the capture gate has to honour the same
+		// verdict, or the router and the gate give two answers to one question
+		// and a forwarded invoice is silently never read.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				trustedArcForwarders: ['forwarder.example'],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: 'd-arc',
+			rawBytesBase64: Buffer.from(buildRawEml(), 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'with attachment',
+			textBody: 'See the attached notes.',
+			messageId: '<cap-arc@example.com>',
+			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
+			dmarcResult: 'fail',
+			dmarcPolicy: 'none',
+			arcCv: 'pass',
+			arcSealerDomain: 'forwarder.example',
+			arcAttestsOriginalPass: true,
+		});
+
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files.map((f) => f.filename)).toEqual(['notes.txt']);
+	});
+
+	it('captures nothing from a DMARC fail NO forwarder vouched for', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+
+		await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: 'd-unrescued',
+			rawBytesBase64: Buffer.from(buildRawEml(), 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'with attachment',
+			textBody: 'See the attached notes.',
+			messageId: '<cap-unrescued@example.com>',
+			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
+			dmarcResult: 'fail',
+			dmarcPolicy: 'none',
+		});
+
+		// The rescue is what makes the difference, not the mere presence of a
+		// `fail`: a spoofed sender still files nothing anywhere.
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
 		expect(files).toHaveLength(0);
 	});

@@ -46,7 +46,7 @@ import { resolveDeliverableMailbox } from './mailbox/identity';
 import { clearSnoozeUntilReplyForThread } from './snooze';
 import { prepareInboundMessage } from './deliveryPipeline/ingest';
 import { captureAttachments } from './deliveryPipeline/capture';
-import { NOTHING_UNCLEARED } from './deliveryPipeline/attachmentParts';
+import { mailboxIndexableParts } from './deliveryPipeline/scan';
 import { insertDeliveredMessage, stripBrackets } from './deliveryPipeline/insert';
 import {
 	resolveDmarcRouting,
@@ -105,9 +105,8 @@ export const ingestFromWebhook = internalAction({
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const prepared = await prepareInboundMessage(ctx, args);
 
-		const result: { messageId: Id<'mailMessages'> } | { skipped: true } = await ctx.runMutation(
-			internal.mail.delivery.deliverToMailbox,
-			{
+		const result: { messageId: Id<'mailMessages'>; dmarcOverride?: string } | { skipped: true } =
+			await ctx.runMutation(internal.mail.delivery.deliverToMailbox, {
 				rawStorageId: prepared.rawStorageId,
 				rawSize: prepared.rawSize,
 				antiLoopHeaders: prepared.antiLoopHeaders,
@@ -145,8 +144,7 @@ export const ingestFromWebhook = internalAction({
 				dkimSigningDomain: args.dkimSigningDomain,
 				inboundEncryptionInfo: prepared.inboundEncryptionInfo,
 				inboundSignatureInfo: prepared.inboundSignatureInfo,
-			}
-		);
+			});
 
 		// If delivery was skipped (no mailbox / quota / dup), drop the staged blobs.
 		if ('skipped' in result) {
@@ -163,29 +161,19 @@ export const ingestFromWebhook = internalAction({
 		// pull them here while the raw MIME is still in hand. Best-effort: a
 		// failed capture never fails delivery (the message is already stored).
 		try {
-			// WHICH LEAVES MAY BE INDEXED, decided here rather than re-derived
-			// inside capture — that second derivation is how a leaf the scanner
-			// never opened used to reach a model.
-			//
-			// When anybody scanned this message — ClamAV here, or the MTA before
-			// it forwarded — the answer is exactly what came back CLEAN, so an
-			// infected message (which this route used to capture from anyway) and
-			// a partly-scanned one index nothing.
-			//
-			// When NOBODY scanned it, the personal mailbox keeps its long-standing
-			// behaviour and indexes the message's own attachment leaves. This is
-			// the owner's own mail, and quietly switching the file library off on
-			// every deployment without a scanner is not a change this route makes
-			// on the way past. The team-inbox route, which is attacker-reachable
-			// by design, has no such branch: there, unscanned is never indexed.
-			const scanned =
-				prepared.scan.verdict !== undefined ? prepared.scan.cleanParts : prepared.scan.candidates;
+			// WHICH LEAVES MAY BE INDEXED and WHAT WAS WITHHELD, as one pair from
+			// one place — `mailboxIndexableParts` owns the whole policy, including
+			// the "nobody scanned it" branch this route keeps and the team inbox
+			// does not. Two ternaries here testing the same condition could
+			// disagree, and the condition they tested (`verdict !== undefined`)
+			// was the wrong question: `/scan/attachment` fails open, so on a
+			// deployment running without the optional `clamav` sidecar the verdict
+			// is a perfectly defined `'skipped'` with nothing cleared, and this
+			// route quietly stopped capturing anything at all.
+			const { parts, withheld } = mailboxIndexableParts(prepared.scan);
 			await captureAttachments(ctx, {
-				parts: scanned,
-				// Nothing is withheld on the unscanned branch — this route indexes
-				// the leaves itself — and on the scanned one the scan already
-				// counted what it could not clear, per cause.
-				withheld: prepared.scan.verdict !== undefined ? prepared.scan.uncleared : NOTHING_UNCLEARED,
+				parts,
+				withheld,
 				messageId: args.messageId,
 				from: args.from,
 				// Postbox captures are OUT OF RANGE of the inbound retention sweep:
@@ -199,6 +187,14 @@ export const ingestFromWebhook = internalAction({
 					dkimResult: args.dkimResult,
 					envelopeFromDomain: args.envelopeFromDomain,
 					dkimSigningDomain: args.dkimSigningDomain,
+					// The SETTLED DMARC verdict, not the raw one. A trusted ARC
+					// forwarder's valid seal rescues a `fail` for routing
+					// (`resolveDmarcRouting`, applied inside the mutation above),
+					// and a rescue the reader's inbox honours but the capture gate
+					// refuses is two different answers to one question: forwarded
+					// mail from an old Google Workspace account would land in the
+					// inbox with its attachments silently unindexed.
+					dmarcOverride: 'dmarcOverride' in result ? result.dmarcOverride : undefined,
 				},
 			});
 		} catch (err) {
@@ -266,7 +262,10 @@ export const deliverToMailbox = internalMutation({
 		// SIGNED-but-not-encrypted message. Data only — never affects routing.
 		inboundSignatureInfo: v.optional(inboundSignatureInfoValidator),
 	},
-	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ messageId: Id<'mailMessages'>; dmarcOverride?: string } | { skipped: true }> => {
 		const recipient = extractEmail(args.recipientAddress);
 		const fromAddress = extractEmail(args.from);
 		const rfc822MessageId = stripBrackets(args.messageId) ?? args.messageId;
@@ -476,6 +475,9 @@ export const deliverToMailbox = internalMutation({
 			filterForwardTo: filterOutcome.filterForwardTo,
 		});
 
-		return { messageId };
+		// `dmarcOverride` travels back so the capture step in the ingest action
+		// gates on the SAME settled verdict this mutation routed on, rather than
+		// re-deciding the ARC rescue against a second read of the allow-list.
+		return { messageId, dmarcOverride };
 	},
 });

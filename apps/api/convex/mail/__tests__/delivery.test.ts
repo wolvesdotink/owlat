@@ -37,6 +37,7 @@ import { internal } from '../../_generated/api';
 import type { DatabaseWriter } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModulesWithoutNodeActions';
+import { readScanRequest } from './scannerStub.testlib';
 
 // The standard EICAR anti-malware test signature (a real virus scanner reports
 // it as malware; it is otherwise inert).
@@ -82,14 +83,11 @@ function mockScan(response: ScanResponseBody | { httpStatus: number }): {
 } {
 	const calls: Array<{ url: string; filename?: string; body: Buffer }> = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-		const headers = (init as RequestInit | undefined)?.headers as
-			| Record<string, string>
-			| undefined;
-		const rawBody = (init as RequestInit | undefined)?.body;
+		const request = readScanRequest(url, init as RequestInit | undefined);
 		calls.push({
-			url: String(url),
-			filename: headers?.['X-Filename'],
-			body: rawBody ? Buffer.from(rawBody as ArrayBuffer) : Buffer.alloc(0),
+			url: request.url,
+			filename: request.filename,
+			body: Buffer.from(request.body),
 		});
 		if ('httpStatus' in response) {
 			return new Response('scanner down', { status: response.httpStatus });
@@ -406,7 +404,51 @@ describe('scanInboundAttachments — the cap and the cleared set', () => {
 		// be a way to spend it before the one leaf worth scanning.
 		expect(calls[0]!.filename).toBe('payload.exe');
 		expect(calls).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
-		expect(scan.uncleared.capped).toBe(1);
+		// The ONE leaf the cap withheld is an inline logo, and an inline leaf is
+		// never indexed anyway — so nothing a reader would call an attachment
+		// went unprocessed and the cap counts zero. Counting it stamped a fully
+		// indexed message "this message has more attachments than it processes".
+		expect(scan.uncleared.capped).toBe(0);
+	});
+
+	it('counts only the DOCUMENTS the cap withheld, not the signature icons', async () => {
+		mockScan({ clean: true });
+		// Six attached documents and five inline signature logos: eleven leaves,
+		// a budget of ten. The withheld leaf is the fifth icon.
+		const lines = [
+			'From: Bob <bob@example.com>',
+			'Subject: quarterly pack',
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+		];
+		for (let i = 0; i < 6; i += 1) {
+			lines.push(
+				'--B',
+				`Content-Type: text/plain; name="doc${i}.txt"`,
+				`Content-Disposition: attachment; filename="doc${i}.txt"`,
+				'',
+				`document ${i}`
+			);
+		}
+		for (let i = 0; i < 5; i += 1) {
+			lines.push(
+				'--B',
+				`Content-Type: image/png; name="icon${i}.png"`,
+				`Content-Disposition: inline; filename="icon${i}.png"`,
+				'',
+				`bytes ${i}`
+			);
+		}
+		lines.push('--B--', '');
+		const raw = Buffer.from(lines.join('\r\n'));
+
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
+
+		// Every document was scanned and cleared, so the verdict is clean and
+		// the reader is told nothing about files that were not processed.
+		expect(scan.cleanParts.filter((p) => p.disposition !== 'inline')).toHaveLength(6);
+		expect(scan.uncleared).toEqual({ capped: 0, unscanned: 0, refusedType: 0 });
+		expect(scan.verdict).toBe('clean');
 	});
 
 	it('separates a scanner outage on one leaf from the count cap', async () => {
@@ -416,9 +458,8 @@ describe('scanInboundAttachments — the cap and the cleared set', () => {
 			['fine.txt', { status: 200, body: { clean: true } }],
 		]);
 		vi.spyOn(globalThis, 'fetch').mockImplementation(
-			async (_url: string | URL | Request, init?: RequestInit) => {
-				const headers = (init?.headers ?? {}) as Record<string, string>;
-				const filename = String(headers['X-Filename']);
+			async (url: string | URL | Request, init?: RequestInit) => {
+				const { filename } = readScanRequest(url, init);
 				const answer = responses.get(filename)!;
 				return new Response(JSON.stringify(answer.body), { status: answer.status });
 			}
@@ -446,9 +487,16 @@ describe('scanInboundAttachments — the cap and the cleared set', () => {
 
 		// A refusal from the type gate is not a malware finding: the message is
 		// NOT quarantined, the leaf is simply not cleared for indexing.
-		expect(scan.verdict).toBe('clean');
 		expect(scan.cleanParts).toHaveLength(0);
 		expect(scan.uncleared).toEqual({ capped: 0, unscanned: 0, refusedType: 1 });
+		// And it is NOT a clean bill of health either. `validateFile` runs BEFORE
+		// ClamAV, so those bytes were never compared to a signature — while the
+		// reader still has a live download button for them. Storing 'clean' was
+		// asserting a verdict no scanner ever produced.
+		expect(scan.verdict).toBe('skipped');
+		// The endpoint did ANSWER about that leaf, which is what keeps the
+		// personal mailbox off its "nobody scanned this" branch.
+		expect(scan.scannerAnswered).toBe(true);
 	});
 
 	it("clears every leaf on an upstream 'clean' when there is no scanner here", async () => {

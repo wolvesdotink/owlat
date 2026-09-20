@@ -1,5 +1,5 @@
 /**
- * Personal-mail delivery pipeline — inbound malware scan.
+ * Inbound delivery pipeline (personal mailbox AND team inbox) — malware scan.
  *
  * Named `deliveryPipeline/` rather than `delivery/` so it never reads as a
  * sibling of the top-level `convex/delivery/` domain (the provider-agnostic
@@ -32,9 +32,12 @@ export type InboundScanResult = {
 	 *   · `'infected'` — at least one part was confirmed malware. The caller
 	 *     routes the message to Spam/quarantine.
 	 *   · `'skipped'` — something was NOT established: the scanner was
-	 *     unreachable for at least one part, or the per-message cap left a leaf
-	 *     unopened. Fail-open: the message still delivers, and the skip is
-	 *     surfaced via `lib/scannerHealth.warnScanSkipped`.
+	 *     unreachable for at least one part, the per-message cap left a leaf
+	 *     unopened, or the endpoint's file-type gate refused a leaf before
+	 *     ClamAV ever ran. Fail-open: the message still delivers. An outage is
+	 *     surfaced to the operator via `lib/scannerHealth.warnScanSkipped`; a
+	 *     refusal and the cap are not outages and warn nothing — the reader is
+	 *     told about those on the row, via the capture marker.
 	 *   · `'clean'` — every attachment leaf was covered and came back clean.
 	 *   · `undefined` — nobody asserted anything: no leaves at all, or no
 	 *     scanner here and none upstream. "Nothing to scan" and "nothing
@@ -61,6 +64,22 @@ export type InboundScanResult = {
 	candidates: InboundAttachmentPart[];
 	/** Per cause, how many leaves this scan did not clear. */
 	uncleared: UnclearedLeaves;
+	/**
+	 * Did a scanner ANSWER about any leaf of this message — clean, infected or
+	 * type-refused — as opposed to nobody having looked at it?
+	 *
+	 * NOT the same question as `verdict !== undefined`, and the difference is a
+	 * whole deployment. `/scan/attachment` fails OPEN: on an instance whose MTA
+	 * runs without the optional `clamav` sidecar every leaf answers
+	 * `{clean: true, skipped: true}`, so the aggregate is `'skipped'` and
+	 * `cleanParts` is empty even though the verdict is very much defined. A
+	 * caller that read "was anything scanned?" off the verdict therefore turned
+	 * the personal mailbox's file library off on every no-ClamAV deployment.
+	 *
+	 * `false` means: no scanner configured here and none upstream, or every
+	 * leaf came back a fail-open skip. See {@link mailboxIndexableParts}.
+	 */
+	scannerAnswered: boolean;
 };
 
 /**
@@ -109,13 +128,20 @@ export async function scanInboundAttachments(
 		verdict: priorVerdict,
 		cleanParts: [],
 		candidates,
-		uncleared: { capped: 0, unscanned: candidates.length, refusedType: 0 },
+		uncleared: { ...NOTHING_UNCLEARED, unscanned: candidates.length },
+		scannerAnswered: false,
 	};
 	// Confirmed malware, wherever the confirmation came from: nothing out of
 	// this message is cleared, and the caller quarantines it. A quarantine is
 	// not a gap in what we looked at, so nothing counts as withheld.
 	if (priorVerdict === 'infected') {
-		return { verdict: 'infected', cleanParts: [], candidates, uncleared: NOTHING_UNCLEARED };
+		return {
+			verdict: 'infected',
+			cleanParts: [],
+			candidates,
+			uncleared: NOTHING_UNCLEARED,
+			scannerAnswered: true,
+		};
 	}
 	if (candidates.length === 0) return nothingCleared;
 	if (!mta) {
@@ -124,20 +150,33 @@ export async function scanInboundAttachments(
 		// and therefore clears nothing — "we have no scanner" and "this file is
 		// safe" are different claims and only one of them is ours to make.
 		return priorVerdict === 'clean'
-			? { verdict: 'clean', cleanParts: candidates, candidates, uncleared: NOTHING_UNCLEARED }
+			? {
+					verdict: 'clean',
+					cleanParts: candidates,
+					candidates,
+					uncleared: NOTHING_UNCLEARED,
+					scannerAnswered: true,
+				}
 			: nothingCleared;
 	}
 
 	const budget = ATTACHMENT_COMPOSE_LIMITS.maxCount;
 	const cleanParts: InboundAttachmentPart[] = [];
+	let scannerAnswered = false;
 	// WHY a leaf went uncleared, not just how many did. The cap and a scanner
 	// outage both leave a file unindexed, and the reader is told a different
 	// sentence for each — so the causes are counted apart here, at the only
 	// place that knows which one applied.
+	//
+	// ONLY DOCUMENTS COUNT AS CAPPED. Inline leaves are ordered last precisely
+	// so the budget is spent on documents first, and they are never indexed
+	// anyway (see `capture.ts`) — so an ordinary corporate signature of five
+	// logo icons behind six attached `.txt` files used to stamp a fully indexed
+	// message "this message has more attachments than it processes", a sentence
+	// that was false about every file the sender actually attached.
 	const uncleared: UnclearedLeaves = {
-		capped: Math.max(0, candidates.length - budget),
-		unscanned: 0,
-		refusedType: 0,
+		...NOTHING_UNCLEARED,
+		capped: candidates.slice(budget).filter((part) => part.disposition !== 'inline').length,
 	};
 	for (const part of candidates.slice(0, budget)) {
 		const filename = part.filename || 'attachment';
@@ -156,12 +195,16 @@ export async function scanInboundAttachments(
 				cleanParts: [],
 				candidates,
 				uncleared: NOTHING_UNCLEARED,
+				scannerAnswered: true,
 			};
 		}
 		if (verdict.kind === 'refused') {
 			// The endpoint's file-type gate, not ClamAV: this file is not
 			// malware, it is a type the scanner will not pass through. It is
-			// not cleared — and it is not a quarantine either.
+			// not cleared — and it is not a quarantine either. The endpoint
+			// DID answer about this leaf, so it counts as a scan having
+			// happened even though no bytes were compared to a signature.
+			scannerAnswered = true;
 			uncleared.refusedType += 1;
 			continue;
 		}
@@ -169,15 +212,52 @@ export async function scanInboundAttachments(
 			uncleared.unscanned += 1;
 			continue;
 		}
+		scannerAnswered = true;
 		cleanParts.push(part);
 	}
 
 	// A cap that withheld a leaf is the same kind of gap as a scanner outage:
 	// the verdict does not cover the whole message, so it must not read as a
-	// clean bill of health for it. A file-type refusal is NOT such a gap — the
-	// scanner answered about that leaf — so it leaves the aggregate alone.
-	if (uncleared.unscanned > 0 || uncleared.capped > 0) {
-		return { verdict: 'skipped', cleanParts, candidates, uncleared };
+	// clean bill of health for it.
+	//
+	// A FILE-TYPE REFUSAL IS ONE OF THOSE GAPS TOO. The MTA runs `validateFile`
+	// BEFORE ClamAV, so `invoice.pdf.exe` comes back `refused` with its bytes
+	// never compared to a signature — and the reader can still download it. A
+	// row that stored `'clean'` for such a message was asserting a verdict no
+	// scanner ever produced for the one leaf in it that most needed one.
+	if (uncleared.unscanned > 0 || uncleared.capped > 0 || uncleared.refusedType > 0) {
+		return { verdict: 'skipped', cleanParts, candidates, uncleared, scannerAnswered };
 	}
-	return { verdict: 'clean', cleanParts, candidates, uncleared };
+	return { verdict: 'clean', cleanParts, candidates, uncleared, scannerAnswered };
+}
+
+/**
+ * What the PERSONAL MAILBOX may index out of a scan, and what it must report
+ * as withheld — the pair, decided in one place.
+ *
+ * The two answers must always agree: indexing the message's own leaves while
+ * reporting the scan's uncleared counts would tell a reader files were withheld
+ * that were in fact indexed. They were two independent ternaries at the call
+ * site, testing the same thing and only agreeing by inspection.
+ *
+ * THE POLICY. When a scanner answered about this message, the mailbox indexes
+ * exactly what came back clean — an infected message and a partly-scanned one
+ * index nothing and something respectively, and the counts say why. When NOBODY
+ * answered, the mailbox keeps its long-standing behaviour and indexes the
+ * message's own attachment leaves: this is the owner's own mail, and switching
+ * the file library off on every deployment that runs without the optional
+ * `clamav` sidecar is not a change this route makes on the way past. Nothing is
+ * withheld on that branch, because the route indexed the lot.
+ *
+ * The TEAM INBOX has no such branch — it is attacker-reachable by design, so
+ * unscanned is never indexed there — which is why this is a mailbox helper and
+ * not a field on the result.
+ */
+export function mailboxIndexableParts(scan: InboundScanResult): {
+	parts: InboundAttachmentPart[];
+	withheld: UnclearedLeaves;
+} {
+	return scan.scannerAnswered
+		? { parts: scan.cleanParts, withheld: scan.uncleared }
+		: { parts: scan.candidates, withheld: NOTHING_UNCLEARED };
 }
