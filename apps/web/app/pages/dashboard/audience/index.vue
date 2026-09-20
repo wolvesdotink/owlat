@@ -63,6 +63,7 @@ const stats = computed(() => [
 // submit does — otherwise the hub offers an editor three dead ends.
 const { can } = usePermissions();
 const canCreateTopics = computed(() => can('topics:manage'));
+const canAddContacts = computed(() => can('contacts:manage'));
 
 const quickActions = computed(() =>
 	[
@@ -71,7 +72,7 @@ const quickActions = computed(() =>
 			href: '/dashboard/audience/contacts?action=add',
 			icon: 'lucide:user-plus',
 			description: t('dashboard.audience.index.quickActions.addContact.description'),
-			allowed: can('contacts:manage'),
+			allowed: canAddContacts.value,
 		},
 		{
 			label: t('dashboard.audience.index.quickActions.createTopic.label'),
@@ -118,7 +119,7 @@ const totalNewSubscribers = computed(() => {
 			class="mb-8"
 		>
 			<template #actions>
-				<UiButton to="/dashboard/audience/contacts?action=add" class="gap-2">
+				<UiButton v-if="canAddContacts" to="/dashboard/audience/contacts?action=add" class="gap-2">
 					<Icon name="lucide:plus" class="w-4 h-4" />
 					{{ t('dashboard.audience.index.addContact') }}
 				</UiButton>
@@ -355,7 +356,11 @@ const totalNewSubscribers = computed(() => {
 							<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 								{{ t('dashboard.audience.index.recentContacts.emptyBody') }}
 							</p>
-							<UiButton to="/dashboard/audience/contacts?action=add" class="mt-6 gap-2">
+							<UiButton
+								v-if="canAddContacts"
+								to="/dashboard/audience/contacts?action=add"
+								class="mt-6 gap-2"
+							>
 								<Icon name="lucide:plus" class="w-4 h-4" />
 								{{ t('dashboard.audience.index.addContact') }}
 							</UiButton>
