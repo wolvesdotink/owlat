@@ -3,9 +3,7 @@ import {
 	LOG_REDACT_PATHS,
 	logRedactCensor,
 	redactEmailAddress,
-	redactEmailAddresses,
 	redactSubject,
-	redactionDigest,
 } from '../logRedaction';
 
 describe('redactEmailAddress', () => {
@@ -56,19 +54,10 @@ describe('redactEmailAddress', () => {
 	});
 });
 
-describe('redactEmailAddresses', () => {
-	it('preserves order and length', () => {
-		const out = redactEmailAddresses(['a@example.com', 'b@example.com', 'a@example.com']);
-		expect(out).toHaveLength(3);
-		expect(out[0]).toBe(out[2]);
-		expect(out[0]).not.toBe(out[1]);
-	});
-});
-
 describe('redactSubject', () => {
 	it('keeps only the length and a digest', () => {
 		const redacted = redactSubject('Re: invoice 4012 overdue');
-		expect(redacted).toBe(`[subject len=24 ${redactionDigest('Re: invoice 4012 overdue')}]`);
+		expect(redacted).toMatch(/^\[subject len=24 [0-9a-f]{12}\]$/);
 		expect(redacted).not.toContain('invoice');
 	});
 
@@ -86,13 +75,12 @@ describe('redactSubject', () => {
 	});
 });
 
-describe('redactionDigest', () => {
-	it('is 12 lowercase hex chars', () => {
-		expect(redactionDigest('anything')).toMatch(/^[0-9a-f]{12}$/);
-	});
-
-	it('spreads single-character changes across the token', () => {
-		expect(redactionDigest('aaaaaaaa')).not.toBe(redactionDigest('aaaaaaab'));
+describe('the digest behind both redactors', () => {
+	it('spreads a single-character change across the token', () => {
+		expect(redactSubject('aaaaaaaa')).not.toBe(redactSubject('aaaaaaab'));
+		expect(redactEmailAddress('aaaaaaaa@example.com')).not.toBe(
+			redactEmailAddress('aaaaaaab@example.com')
+		);
 	});
 });
 

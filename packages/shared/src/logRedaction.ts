@@ -50,8 +50,8 @@ function fnv1a64Hex(input: string): string {
 /** Digest width in hex chars. 12 → 48 bits, ~2e7 addresses before a 50% collision. */
 const DIGEST_HEX = 12;
 
-/** Stable token for an arbitrary string. Exported for callers with their own shapes. */
-export function redactionDigest(value: string): string {
+/** Stable token for an arbitrary string. */
+function redactionDigest(value: string): string {
 	return fnv1a64Hex(value).slice(0, DIGEST_HEX);
 }
 
@@ -73,11 +73,6 @@ export function redactEmailAddress(address: string): string {
 	const digest = redactionDigest(normalized);
 	if (at <= 0 || at === normalized.length - 1) return `redacted-${digest}`;
 	return `redacted-${digest}@${normalized.slice(at + 1)}`;
-}
-
-/** Redact each address in a list, preserving order and length. */
-export function redactEmailAddresses(addresses: readonly string[]): string[] {
-	return addresses.map(redactEmailAddress);
 }
 
 /**
