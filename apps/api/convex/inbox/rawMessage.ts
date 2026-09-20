@@ -27,16 +27,29 @@ import { publicAction } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { sealedBlobUrl } from '../lib/sealedBlob';
 
-// public: soft-auth — returns null for anonymous; the shared-inbox role gate is in-handler
+/**
+ * The authorization half: a signed-in owner or admin, or nothing.
+ *
+ * `internalQuery`, so there is no public surface to opt out of and no
+ * opt-out marker belongs here — that note goes on the ACTION below, which is
+ * the callable one.
+ */
 export const getInboundMessageRawStorageId = internalQuery({
 	args: { messageId: v.id('inboundMessages') },
 	handler: async (ctx, args): Promise<Id<'_storage'> | null> => {
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return null;
 		const row = await ctx.db.get(args.messageId);
+		if (!row) return null;
+		// CONFIRMED MALWARE IS NOT DOWNLOADABLE. The reader hides the control on a
+		// quarantined message, but the action is callable directly, so the refusal
+		// has to be here as well or the client-side hide is the whole gate. The
+		// sealed blob still exists — an operator investigating what was sent reads
+		// it out of storage, not through a browser-facing signed URL.
+		if (row.virusVerdict === 'infected') return null;
 		// Absent once the retention sweep has released the bytes, and on any
 		// message that arrived through the legacy route without them.
-		return row?.rawStorageId ?? null;
+		return row.rawStorageId ?? null;
 	},
 });
 
