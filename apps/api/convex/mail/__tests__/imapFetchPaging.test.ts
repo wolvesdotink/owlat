@@ -141,16 +141,20 @@ describe('CHANGEDSINCE reads the modseq index, not the folder', () => {
 		const { folderId } = await seedFolderWithMessages(t, 12, (uid) => 10 + uid);
 
 		const seen: number[] = [];
-		let cursor: string | null = null;
+		// Annotated, not inferred: assigning `cursor` from the query result while
+		// the same variable is part of the query's argument object makes
+		// inference circular, and the result would silently widen to `any` —
+		// taking every assertion below with it (TS7022).
+		const opts: { numItems: number; cursor: string | null } = { numItems: 3, cursor: null };
 		for (let guard = 0; guard < 10; guard += 1) {
 			const page = await t.query(internal.mail.imap.fetch.fetchChangedEnvelopes, {
 				folderId,
 				modseqSince: 14,
-				paginationOpts: { numItems: 3, cursor },
+				paginationOpts: opts,
 			});
 			seen.push(...page.page.map((r) => r.uid));
 			if (page.isDone) break;
-			cursor = page.continueCursor;
+			opts.cursor = page.continueCursor;
 		}
 
 		// modseq is 10 + uid, so "changed since 14" is UIDs 5..12.
