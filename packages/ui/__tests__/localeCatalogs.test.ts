@@ -1,9 +1,9 @@
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { createI18n } from 'vue-i18n';
-import de from '../i18n/locales/de.json';
-import en from '../i18n/locales/en.json';
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { createI18n } from "vue-i18n";
+import de from "../i18n/locales/de.json";
+import en from "../i18n/locales/en.json";
 
 /**
  * Guards for the LAYER message catalogs (packages/ui/i18n/locales), modelled on
@@ -24,11 +24,11 @@ import en from '../i18n/locales/en.json';
 
 type Catalog = { [key: string]: string | Catalog };
 
-function flatten(catalog: Catalog, prefix = ''): Map<string, string> {
+function flatten(catalog: Catalog, prefix = ""): Map<string, string> {
 	const flat = new Map<string, string>();
 	for (const [key, value] of Object.entries(catalog)) {
 		const path = prefix ? `${prefix}.${key}` : key;
-		if (typeof value === 'string') {
+		if (typeof value === "string") {
 			flat.set(path, value);
 		} else {
 			for (const [nested, message] of flatten(value, path)) flat.set(nested, message);
@@ -46,19 +46,19 @@ const sources = { en: en as Catalog, de: de as Catalog };
 const catalogs = { en: flatten(sources.en), de: flatten(sources.de) };
 const localeCodes = Object.keys(catalogs) as (keyof typeof catalogs)[];
 
-describe('UI layer message catalogs', () => {
-	it.each(localeCodes)('%s namespaces every message under ui.*', (code) => {
-		const stray = [...catalogs[code].keys()].filter((key) => !key.startsWith('ui.'));
+describe("UI layer message catalogs", () => {
+	it.each(localeCodes)("%s namespaces every message under ui.*", (code) => {
+		const stray = [...catalogs[code].keys()].filter((key) => !key.startsWith("ui."));
 		expect(stray).toEqual([]);
 	});
 
-	it.each(localeCodes.filter((code) => code !== 'en'))('%s covers every en key', (code) => {
+	it.each(localeCodes.filter((code) => code !== "en"))("%s covers every en key", (code) => {
 		const missing = [...catalogs.en.keys()].filter((key) => !catalogs[code].has(key));
 		const extra = [...catalogs[code].keys()].filter((key) => !catalogs.en.has(key));
 		expect({ missing, extra }).toEqual({ missing: [], extra: [] });
 	});
 
-	it.each(localeCodes.filter((code) => code !== 'en'))('%s keeps every placeholder', (code) => {
+	it.each(localeCodes.filter((code) => code !== "en"))("%s keeps every placeholder", (code) => {
 		const drifted = [...catalogs.en].filter(([key, message]) => {
 			const translated = catalogs[code].get(key);
 			return translated != null && placeholders(translated).join() !== placeholders(message).join();
@@ -66,18 +66,18 @@ describe('UI layer message catalogs', () => {
 		expect(drifted.map(([key]) => key)).toEqual([]);
 	});
 
-	it.each(localeCodes)('%s carries no markup and no unescaped @', (code) => {
+	it.each(localeCodes)("%s carries no markup and no unescaped @", (code) => {
 		const offenders = [...catalogs[code]]
 			.filter(([, message]) => /[<>]/.test(message) || /(?<!\{')@/.test(message))
 			.map(([key]) => key);
 		expect(offenders).toEqual([]);
 	});
 
-	it.each(localeCodes)('%s translates every message away from English', (code) => {
-		if (code === 'en') return;
+	it.each(localeCodes)("%s translates every message away from English", (code) => {
+		if (code === "en") return;
 		// Identical strings are almost always a forgotten translation. Anything
 		// that legitimately reads the same in both languages goes on this list.
-		const intentionallyIdentical = new Set(['ui.alert.info']);
+		const intentionallyIdentical = new Set(["ui.alert.info"]);
 		const untranslated = [...catalogs[code]]
 			.filter(([key, message]) => catalogs.en.get(key) === message)
 			.map(([key]) => key)
@@ -88,7 +88,7 @@ describe('UI layer message catalogs', () => {
 	// The catalogs are compiled by @nuxtjs/i18n at build time, so a message the
 	// compiler chokes on is a failed deploy — and one it accepts but that leaks a
 	// `{placeholder}` is a visible defect in every app that extends this layer.
-	it.each(localeCodes)('%s compiles and interpolates every message', (code) => {
+	it.each(localeCodes)("%s compiles and interpolates every message", (code) => {
 		// Both catalogs are passed (the augmented overloads require every declared
 		// locale), but `locale: code` with `fallbackLocale: code` means only the
 		// catalog under test can ever answer.
@@ -100,7 +100,7 @@ describe('UI layer message catalogs', () => {
 		});
 		const broken: string[] = [];
 		for (const [key, message] of catalogs[code]) {
-			const params = Object.fromEntries(placeholders(message).map((name) => [name, 'X']));
+			const params = Object.fromEntries(placeholders(message).map((name) => [name, "X"]));
 			let rendered: string;
 			try {
 				rendered = i18n.global.t(key, params);
@@ -122,42 +122,53 @@ describe('UI layer message catalogs', () => {
  * no unit test would otherwise reach — a missing message renders its key path
  * to a user, and a dead message is translation work nobody reads.
  */
-const layerRoot = join(__dirname, '..');
+const layerRoot = join(__dirname, "..");
 
 function sourceFiles(dir: string, acc: string[] = []): string[] {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+		if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
 		const path = join(dir, entry.name);
 		if (entry.isDirectory()) sourceFiles(path, acc);
-		else if (/\.(vue|ts)$/.test(entry.name) && !path.includes('__tests__')) acc.push(path);
+		else if (/\.(vue|ts)$/.test(entry.name) && !path.includes("__tests__")) acc.push(path);
 	}
 	return acc;
 }
 
+function messageKeys(source: string): string[] {
+	return [...source.matchAll(/(['"])(ui\.[a-zA-Z][\w.]*)\1/g)].map((match) => match[2]!);
+}
+
 const referencedKeys = new Set<string>();
 for (const file of [
-	...sourceFiles(join(layerRoot, 'components')),
-	...sourceFiles(join(layerRoot, 'composables')),
-	...sourceFiles(join(layerRoot, 'utils')),
+	...sourceFiles(join(layerRoot, "components")),
+	...sourceFiles(join(layerRoot, "composables")),
+	...sourceFiles(join(layerRoot, "utils")),
 ]) {
-	for (const match of readFileSync(file, 'utf8').matchAll(/'(ui\.[a-zA-Z][\w.]*)'/g)) {
-		referencedKeys.add(match[1]!);
+	for (const key of messageKeys(readFileSync(file, "utf8"))) {
+		referencedKeys.add(key);
 	}
 }
 
-describe('ui.* keys used by the layer', () => {
-	it('finds keys to check at all (guards the scanner itself)', () => {
+describe("ui.* keys used by the layer", () => {
+	it("finds message keys in both JavaScript quote styles", () => {
+		expect(messageKeys(`t('ui.emptyState.clear'); t("ui.emptyState.noResults")`)).toEqual([
+			"ui.emptyState.clear",
+			"ui.emptyState.noResults",
+		]);
+	});
+
+	it("finds keys to check at all (guards the scanner itself)", () => {
 		expect(referencedKeys.size).toBeGreaterThan(10);
 	});
 
-	it('every key a component asks for exists in every catalog', () => {
+	it("every key a component asks for exists in every catalog", () => {
 		const missing = [...referencedKeys].flatMap((key) =>
-			localeCodes.filter((code) => !catalogs[code].has(key)).map((code) => `${code}: ${key}`)
+			localeCodes.filter((code) => !catalogs[code].has(key)).map((code) => `${code}: ${key}`),
 		);
 		expect(missing.sort()).toEqual([]);
 	});
 
-	it('every catalog message is referenced by the layer', () => {
+	it("every catalog message is referenced by the layer", () => {
 		const unused = [...catalogs.en.keys()].filter((key) => !referencedKeys.has(key));
 		expect(unused).toEqual([]);
 	});
