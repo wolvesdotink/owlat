@@ -3077,7 +3077,11 @@
 				"blocked": "Blocked — malware was found in this message.",
 				"download": "Download {filename}",
 				"downloadFailed": "That attachment could not be downloaded. Try again.",
-				"expired": "No longer stored — the files for this message passed the retention window.",
+				"neverStored": "No longer stored — this message arrived before its files were kept.",
+				"released": "No longer stored — the files for this message passed the retention window.",
+				"originalSize": "Original message was {size}.",
+				"notScanned": "Not scanned for malware — the assistant has not read these files.",
+				"notIndexed": "The assistant has not read these files — the processing limit for this sender was reached.",
 				"heading": "Attachments"
 			},
 			"inboxThreadPresence": {
@@ -4969,7 +4973,7 @@
 			"inboundRetentionCard": {
 				"adminOnly": "Only owners and admins can change this.",
 				"dayOption": "{count} days",
-				"description": "How long the shared inbox keeps the original message file and its attachment contents. Messages, senders and details are kept either way; only the stored files are removed.",
+				"description": "How long the shared inbox keeps the original message file and its attachment contents. Messages, senders and details are kept either way; only the stored files are removed. Personal mailboxes are not affected.",
 				"label": "Keep files for",
 				"savedToast": "Storage window updated",
 				"title": "Inbound mail storage",

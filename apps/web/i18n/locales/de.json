@@ -3077,7 +3077,11 @@
 				"blocked": "Blockiert — in dieser Nachricht wurde Schadsoftware gefunden.",
 				"download": "{filename} herunterladen",
 				"downloadFailed": "Dieser Anhang konnte nicht heruntergeladen werden. Bitte erneut versuchen.",
-				"expired": "Nicht mehr gespeichert — die Dateien dieser Nachricht haben die Aufbewahrungsfrist überschritten.",
+				"neverStored": "Nicht mehr gespeichert — diese Nachricht traf ein, bevor ihre Dateien behalten wurden.",
+				"released": "Nicht mehr gespeichert — die Dateien dieser Nachricht haben die Aufbewahrungsfrist überschritten.",
+				"originalSize": "Die ursprüngliche Nachricht war {size} groß.",
+				"notScanned": "Nicht auf Schadsoftware geprüft — der Assistent hat diese Dateien nicht gelesen.",
+				"notIndexed": "Der Assistent hat diese Dateien nicht gelesen — das Verarbeitungslimit für diesen Absender war erreicht.",
 				"heading": "Anhänge"
 			},
 			"inboxThreadPresence": {
@@ -4969,7 +4973,7 @@
 			"inboundRetentionCard": {
 				"adminOnly": "Nur Inhaber und Administratoren können das ändern.",
 				"dayOption": "{count} Tage",
-				"description": "Wie lange der Team-Posteingang die Originaldatei einer Nachricht samt Anhängen behält. Nachrichten, Absender und Details bleiben in jedem Fall erhalten; entfernt werden nur die gespeicherten Dateien.",
+				"description": "Wie lange der Team-Posteingang die Originaldatei einer Nachricht samt Anhängen behält. Nachrichten, Absender und Details bleiben in jedem Fall erhalten; entfernt werden nur die gespeicherten Dateien. Persönliche Postfächer sind nicht betroffen.",
 				"label": "Dateien behalten für",
 				"savedToast": "Speicherdauer aktualisiert",
 				"title": "Speicherung eingehender Nachrichten",

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { extractAttachmentAt } from '@owlat/shared/mailMime';
-import type { InboxAttachmentMeta } from '~/components/inbox/InboxMessageAttachments.vue';
+import { parseInboundAttachmentMeta } from '~/utils/inboundAttachmentMeta';
+import { loadInboundRawEml } from '~/composables/loadInboundRawEml';
+import { useMimePartDownload } from '~/composables/useMimePartDownload';
 import { useOrganization } from '~/composables/useOrganization';
 import {
 	GENERIC_TEAMMATE_NAME,
@@ -402,83 +403,12 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 //
 // The bytes are not on the message row: they are inside the raw `.eml` the
 // ingest route sealed into storage. So a download fetches that once (cached per
-// message) and extracts the named MIME part client-side — the same shape the
-// Postbox reader uses.
-
-/**
- * `inboundMessages.attachmentMeta` is an unvalidated JSON STRING, unlike the
- * structured `mailMessages.attachments`, and it is written from data that came
- * off the wire. Parse it as untrusted: a malformed blob renders as no
- * attachments rather than breaking the thread.
- */
-function parseAttachmentMeta(raw?: string): InboxAttachmentMeta[] {
-	if (!raw) return [];
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		return [];
-	}
-	if (!Array.isArray(parsed)) return [];
-	return parsed.flatMap((entry): InboxAttachmentMeta[] => {
-		if (typeof entry !== 'object' || entry === null) return [];
-		const att = entry as Record<string, unknown>;
-		if (typeof att['contentType'] !== 'string') return [];
-		return [
-			{
-				filename: typeof att['filename'] === 'string' ? att['filename'] : 'attachment',
-				contentType: att['contentType'],
-				size: typeof att['size'] === 'number' ? att['size'] : 0,
-				...(typeof att['partIndex'] === 'string' ? { partIndex: att['partIndex'] } : {}),
-			},
-		];
-	});
-}
-
-/** `messageId:part` of the attachment being fetched, so its row can spin. */
-const downloadingAttachment = ref<string | null>(null);
-
-/** Fetch the raw .eml and extract one part client-side as a Blob. */
-async function extractInboundAttachmentBlob(
-	messageId: string,
-	att: InboxAttachmentMeta
-): Promise<Blob | null> {
-	const bin = await loadInboundRawEml(messageId);
-	if (!bin) return null;
-	const extracted = extractAttachmentAt(bin, att.partIndex ?? '0', att.filename);
-	if (!extracted) return null;
-	return new Blob([extracted.bytes as BlobPart], {
-		type: extracted.contentType || att.contentType,
-	});
-}
-
-async function handleInboundAttachmentDownload(messageId: string, att: InboxAttachmentMeta) {
-	const key = `${messageId}:${att.partIndex ?? att.filename}`;
-	downloadingAttachment.value = key;
-	try {
-		const blob = await extractInboundAttachmentBlob(messageId, att);
-		// A null blob is a real failure, not a quiet nothing: the raw message did
-		// not load (released bytes, no proxy origin, lost key) or the part is not
-		// where the metadata said it was. Both used to read as a spinner that
-		// stopped and a file that never arrived.
-		if (!blob) {
-			showToast(t('components.inbox.inboxMessageAttachments.downloadFailed'), 'error');
-			return;
-		}
-		const objectUrl = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = objectUrl;
-		a.download = att.filename;
-		document.body.appendChild(a);
-		a.click();
-		a.remove();
-		setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
-	} catch {
-		showToast(t('components.inbox.inboxMessageAttachments.downloadFailed'), 'error');
-	} finally {
-		downloadingAttachment.value = null;
-	}
-}
+// message) and extracts the named MIME part client-side — `useMimePartDownload`,
+// the same composable the Postbox reader uses, pointed at the inbound loader.
+const { downloadingAttachment, handleAttachmentDownload } = useMimePartDownload({
+	loadRaw: loadInboundRawEml,
+	failureKey: 'components.inbox.inboxMessageAttachments.downloadFailed',
+});
 </script>
 
 <template>
@@ -640,11 +570,7 @@ async function handleInboundAttachmentDownload(messageId: string, att: InboxAtta
 								</template>
 							</UiButton>
 						</template>
-						<UiDropdownMenuItem
-							v-for="s in statusOptions"
-							:key="s"
-							@click="handleStatusChange(s)"
-						>
+						<UiDropdownMenuItem v-for="s in statusOptions" :key="s" @click="handleStatusChange(s)">
 							<span class="flex-1 truncate">
 								{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
 							</span>
@@ -717,12 +643,15 @@ async function handleInboundAttachmentDownload(messageId: string, att: InboxAtta
 						     getThread returns the rows unprojected — so the list needs
 						     no extra query; only the download fetches anything. -->
 						<InboxMessageAttachments
-							:attachments="parseAttachmentMeta(message.attachmentMeta)"
+							:attachments="parseInboundAttachmentMeta(message.attachmentMeta)"
 							:message-id="message._id"
 							:downloading-key="downloadingAttachment"
 							:virus-verdict="message.virusVerdict"
 							:is-expired="!message.rawStorageId"
-							@download="(att) => handleInboundAttachmentDownload(message._id, att)"
+							:released-at="message.rawReleasedAt"
+							:raw-size="message.rawSize"
+							:attachment-indexing="message.attachmentIndexing"
+							@download="(att) => handleAttachmentDownload(message._id, att)"
 						/>
 
 						<!-- Classification -->
