@@ -7,6 +7,7 @@
  */
 
 import { v } from 'convex/values';
+import type { Infer } from 'convex/values';
 
 /** Outcome of a one-shot run (backup, system update). */
 export const successOrFailedValidator = v.union(v.literal('success'), v.literal('failed'));
@@ -62,12 +63,38 @@ export const virusVerdictValidator = v.union(
 );
 
 /**
+ * The one spelling of the verdict union. Re-spelled inline in three modules
+ * before this existed, which is how a fourth member would have reached one of
+ * them and not the others. `packages/shared/src/attachments.ts` carries the
+ * matching type for the Vue reader, which cannot import from `convex/`.
+ */
+export type VirusVerdict = Infer<typeof virusVerdictValidator>;
+
+/**
+ * What attachment capture did with a received message's files.
+ *
+ * Absent means "no eligible attachments, or this message predates the marker".
+ * The two skips are the states a reader has to be told about, because in both
+ * the file still lists and still downloads while the assistant never read it:
+ *   · `skipped_budget` — the per-sender/global AI-ingest budget was exhausted;
+ *   · `skipped_unscanned` — no CLEAN malware verdict, so nothing was fed to a
+ *     model (see `inbox/inboundIngest.ts`).
+ */
+export const attachmentIndexingValidator = v.union(
+	v.literal('indexed'),
+	v.literal('skipped_budget'),
+	v.literal('skipped_unscanned')
+);
+
+export type AttachmentIndexing = Infer<typeof attachmentIndexingValidator>;
+
+/**
  * How long the shared inbox keeps a received message's FILES — the sealed raw
  * `.eml` and the attachment blobs captured out of it. A CLOSED set, for the
  * same reason `mailTrashAutoPurgeDaysValidator` is one: an arbitrary day count
  * is a footgun. There is deliberately no `0`/"forever" member, because
  * unbounded storage is the defect the horizon exists to close, and ABSENT
- * means the shared 90-day default rather than "keep forever".
+ * means `DEFAULT_INBOUND_RAW_RETENTION_DAYS` rather than "keep forever".
  *
  * Convex validators must be literal, so the set is spelled out here and
  * asserted against `INBOUND_RAW_RETENTION_DAY_CHOICES` in

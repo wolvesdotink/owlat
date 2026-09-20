@@ -28,10 +28,10 @@ import { v, type Infer } from 'convex/values';
 import * as openpgp from 'openpgp';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { normalizeEmail } from '@owlat/shared';
 import { virusVerdictValidator } from '../lib/literalValidators';
+import type { InboundReceiveResult } from '../inbox/receiveInbound';
 import { openPrivateKey } from './sealing';
 import { shouldRefetch } from './discovery';
 import {
@@ -241,17 +241,13 @@ export const decryptAndReceive = internalAction({
 	},
 	returns: v.object({
 		inboundMessageId: v.id('inboundMessages'),
-		threadId: v.id('conversationThreads'),
-		contactId: v.id('contacts'),
+		// Optional because `receiveMessage` short-circuits a duplicate Message-ID
+		// without resolving either — see InboundReceiveResult.
+		threadId: v.optional(v.id('conversationThreads')),
+		contactId: v.optional(v.id('contacts')),
+		isDuplicate: v.boolean(),
 	}),
-	handler: async (
-		ctx,
-		args
-	): Promise<{
-		inboundMessageId: Id<'inboundMessages'>;
-		threadId: Id<'conversationThreads'>;
-		contactId: Id<'contacts'>;
-	}> => {
+	handler: async (ctx, args): Promise<InboundReceiveResult> => {
 		const outcome = await openWithVault(
 			ctx,
 			args.armoredCiphertext,

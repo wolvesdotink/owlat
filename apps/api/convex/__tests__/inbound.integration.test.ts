@@ -124,7 +124,7 @@ describe('inbound.receiveMessage', () => {
 		expect(result.threadId).toBeDefined();
 
 		await t.run(async (ctx) => {
-			const thread = await ctx.db.get(result.threadId);
+			const thread = await ctx.db.get(result.threadId!);
 			expect(thread).toBeDefined();
 			expect(thread!.subject).toBe('Brand New Topic');
 			expect(thread!.status).toBe('open');
@@ -160,7 +160,7 @@ describe('inbound.receiveMessage', () => {
 		expect(reply.threadId).toBe(first.threadId);
 
 		await t.run(async (ctx) => {
-			const thread = await ctx.db.get(reply.threadId);
+			const thread = await ctx.db.get(reply.threadId!);
 			expect(thread!.messageCount).toBe(2);
 		});
 	});
@@ -295,7 +295,7 @@ describe('inbound.receiveMessage', () => {
 		});
 
 		await t.run(async (ctx) => {
-			const thread = await ctx.db.get(reply.threadId);
+			const thread = await ctx.db.get(reply.threadId!);
 			expect(thread!.status).toBe('open');
 		});
 	});

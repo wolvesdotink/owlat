@@ -15,6 +15,7 @@ import { agentStepKindValidator } from '../agent/steps/catalog';
 import { llmUsageTagFields } from '../lib/llmUsageTags';
 import {
 	agentMetricTypeValidator,
+	attachmentIndexingValidator,
 	contextTierValidator,
 	virusVerdictValidator,
 } from '../lib/literalValidators';
@@ -147,6 +148,10 @@ export const inboxTables = {
 		// replay) still has none. Absent means "no raw stored" — a first-class
 		// state every reader handles, not a backfill waiting to happen.
 		rawStorageId: v.optional(v.id('_storage')),
+		// Size of that blob, in bytes. KEPT past the sweep on purpose: once the
+		// bytes are released it is the only thing left that says how big the
+		// original message was, and the reader shows it beside the "no longer
+		// stored" line so the entry is a fact rather than an absence.
 		rawSize: v.optional(v.number()),
 		// Aggregate malware verdict over the message's attachment leaves, from the
 		// MTA's ClamAV endpoint. `infected` quarantines the row and skips the agent
@@ -159,7 +164,18 @@ export const inboxTables = {
 		// predates raw storage and holds no blob: a time-only walk would re-scan
 		// the entire history on every tick and never terminate, while an index
 		// keyed on the marker only ever contains rows that still hold bytes.
-		rawRetained: v.optional(v.literal(true)),
+		isRawRetained: v.optional(v.literal(true)),
+		// When the retention sweep released this message's raw blob. It is what
+		// separates "the window passed" from "the bytes were never carried" —
+		// every row older than the raw-carrying route has no `rawStorageId`
+		// either, and telling a user that a 90-day window expired on a message
+		// from last week is simply false. Set exactly once, by the sweep.
+		rawReleasedAt: v.optional(v.number()),
+		// What attachment capture did with this message's files — see
+		// `lib/literalValidators.ts:attachmentIndexingValidator`. Absent on a
+		// message with no eligible attachments and on every row that predates the
+		// marker. Patched after the insert, because capture runs after it.
+		attachmentIndexing: v.optional(attachmentIndexingValidator),
 		// RFC 8601 inbound authentication verdicts, computed by the MTA over the
 		// raw bytes at ingest (SPF on MAIL FROM, DKIM on the d= signature, DMARC
 		// binding the two to the From domain via alignment). The AI-inbox path
@@ -343,7 +359,7 @@ export const inboxTables = {
 		// Drives the raw-blob retention sweep: the equality component keeps the
 		// scanned range to rows that still hold a blob, so the walk is bounded by
 		// what is left to release rather than by the size of the table.
-		.index('by_raw_retention', ['rawRetained', 'receivedAt']),
+		.index('by_raw_retention', ['isRawRetained', 'receivedAt']),
 
 	// Agent Actions - tracks individual pipeline step executions
 	agentActions: defineTable({

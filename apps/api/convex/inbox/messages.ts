@@ -12,7 +12,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation, internalQuery } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { createContact } from '../contacts/creation';
 import { recordContactActivity } from '../contactActivities/writer';
@@ -27,7 +28,7 @@ import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { isSuppressed } from '../lib/suppression';
 import { sealBodyAtWriteMaybe } from '../lib/messageBody';
-import { virusVerdictValidator } from '../lib/literalValidators';
+import { attachmentIndexingValidator, virusVerdictValidator } from '../lib/literalValidators';
 
 // Re-exported for existing importers of this module.
 export { extractEmail, normalizeSubject };
@@ -88,6 +89,37 @@ export const receiveMessage = internalMutation({
 		virusVerdict: v.optional(virusVerdictValidator),
 	},
 	handler: async (ctx, args) => {
+		// ── 0. Idempotency ──
+		// The MTA aborts its webhook fetch after 10 s and retries with backoff,
+		// but aborting the client does NOT stop the Convex action it started: a
+		// message whose malware scan and attachment capture run long is delivered
+		// again while the first attempt is still in flight. Without this check
+		// each retry inserted another row, bumped the thread's messageCount again,
+		// left another sealed `.eml` blob behind and charged the attachment budget
+		// a second time. The check lives HERE, in the mutation, because this is
+		// the only place it and the insert are one transaction — an action-level
+		// pre-check cannot see a row that has not been written yet.
+		//
+		// Guarded on a non-empty Message-ID: mail with no `Message-ID:` header at
+		// all would otherwise all collapse onto one row.
+		if (args.messageId) {
+			const existing = await ctx.db
+				.query('inboundMessages')
+				.withIndex('by_message_id', (q) => q.eq('messageId', args.messageId))
+				.first();
+			if (existing) {
+				logInfo('[Inbound Email] duplicate Message-ID — re-acknowledged, nothing stored', {
+					messageId: args.messageId,
+				});
+				return {
+					inboundMessageId: existing._id,
+					threadId: existing.threadId,
+					contactId: existing.contactId,
+					isDuplicate: true,
+				};
+			}
+		}
+
 		const senderEmail = extractEmail(args.from);
 		const normalizedSubj = normalizeSubject(args.subject);
 		const now = Date.now();
@@ -147,7 +179,7 @@ export const receiveMessage = internalMutation({
 			virusVerdict: args.virusVerdict,
 			// Written here and cleared only by the retention sweep, so the marker
 			// and the blob it stands for have exactly one writer each.
-			rawRetained: args.rawStorageId ? (true as const) : undefined,
+			isRawRetained: args.rawStorageId ? (true as const) : undefined,
 			spfResult: args.spfResult,
 			dkimResult: args.dkimResult,
 			dmarcResult: args.dmarcResult,
@@ -254,7 +286,7 @@ export const receiveMessage = internalMutation({
 				threadId,
 				from: args.from,
 			});
-			return { inboundMessageId, threadId, contactId };
+			return { inboundMessageId, threadId, contactId, isDuplicate: false };
 		}
 
 		// ── Mail-loop / auto-responder suppression ──
@@ -327,7 +359,50 @@ export const receiveMessage = internalMutation({
 			}
 		}
 
-		return { inboundMessageId, threadId, contactId };
+		return { inboundMessageId, threadId, contactId, isDuplicate: false };
+	},
+});
+
+/**
+ * Has this Message-ID already landed? The cheap half of the idempotency check
+ * above, so the ingest action can bail before it seals a blob and spends up to
+ * ten ClamAV round-trips re-scanning a message it already stored. The
+ * authoritative check is still the transactional one inside `receiveMessage`;
+ * this one only saves the work.
+ */
+export const findIdByMessageId = internalQuery({
+	args: { messageId: v.string() },
+	returns: v.union(v.id('inboundMessages'), v.null()),
+	handler: async (ctx, args): Promise<Id<'inboundMessages'> | null> => {
+		if (!args.messageId) return null;
+		const existing = await ctx.db
+			.query('inboundMessages')
+			.withIndex('by_message_id', (q) => q.eq('messageId', args.messageId))
+			.first();
+		return existing?._id ?? null;
+	},
+});
+
+/**
+ * Record what attachment capture actually did with this message's files.
+ *
+ * Capture runs AFTER the row is inserted (delivery is never blocked by
+ * enrichment), so the outcome has to be patched back. Without it a skipped
+ * capture was invisible: the attachment listed and downloaded exactly like an
+ * indexed one while the agent had never seen it, and the only trace was a
+ * server log line nobody reading the thread can reach.
+ */
+export const setAttachmentIndexing = internalMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+		attachmentIndexing: attachmentIndexingValidator,
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.inboundMessageId, {
+			attachmentIndexing: args.attachmentIndexing,
+		});
+		return null;
 	},
 });
 

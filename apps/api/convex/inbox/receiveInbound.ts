@@ -37,8 +37,19 @@ export interface InboundReceiveExtras {
 
 export interface InboundReceiveResult {
 	inboundMessageId: Id<'inboundMessages'>;
-	threadId: Id<'conversationThreads'>;
-	contactId: Id<'contacts'>;
+	/**
+	 * Absent on a DUPLICATE: the returned row is one an earlier delivery already
+	 * threaded, and re-resolving its thread/contact is exactly the work the
+	 * idempotency check exists to skip.
+	 */
+	threadId?: Id<'conversationThreads'>;
+	contactId?: Id<'contacts'>;
+	/**
+	 * This Message-ID was already stored, so NOTHING was written. The caller
+	 * drops whatever it staged and answers 200 — an MTA retry must not become a
+	 * second row, a second blob and a second charge against the AI budget.
+	 */
+	isDuplicate: boolean;
 }
 
 /**
