@@ -17,7 +17,14 @@
  *     asserts no verdict and records no indexing marker;
  *   · an undecodable `rawBytesBase64` stores NO raw blob rather than sealing a
  *     zero-byte one the reader would then offer as a download;
- *   · a redelivered Message-ID is re-acknowledged, not duplicated.
+ *   · a redelivered Message-ID is re-acknowledged, not duplicated;
+ *   · a part the AI-ingest policy refuses — over the size ceiling, an
+ *     executable under a safe-looking name, an unnamed leaf — is stored and
+ *     listed but MARKED, so the thread view never renders an unread file as an
+ *     indexed one;
+ *   · degenerate MIME (a multipart with no closing delimiter, a base64 leaf of
+ *     pure garbage, a zero-byte leaf) stores one row and throws nothing: a
+ *     throw here is a 500 the MTA retries six times and then dead-letters.
  *
  * Every case asserts the message row exists. This path has a hard never-drop
  * invariant: there is no SMTP 5xx to fall back on once DATA was accepted.
@@ -26,6 +33,7 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
+import { MAX_AI_INGEST_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 
@@ -151,6 +159,31 @@ function encode(raw: string): string {
 }
 
 const NOTES_META = [{ filename: 'notes.txt', contentType: 'text/plain', size: 52, partIndex: '1' }];
+
+/** A message whose single attachment leaf is whatever the caller describes. */
+function buildEmlWithLeaf(messageId: string, leaf: { headers: string[]; body: string }): string {
+	return [
+		'From: Bob <bob@example.com>',
+		'To: inbox@example.com',
+		'Subject: crafted',
+		`Message-ID: <${messageId}>`,
+		'Content-Type: multipart/mixed; boundary="bb"',
+		'',
+		'--bb',
+		'Content-Type: text/plain; charset=utf-8',
+		'',
+		'See attached.',
+		'',
+		'--bb',
+		...leaf.headers,
+		'',
+		// A truly EMPTY leaf has no body line at all — an empty string here would
+		// still be a line, and a CRLF is a byte.
+		...(leaf.body === '' ? [] : [leaf.body, '']),
+		'--bb--',
+		'',
+	].join('\r\n');
+}
 
 describe('inboundIngest — malware verdicts', () => {
 	it('quarantines a confirmed-infected message without dropping it or indexing it', async () => {
@@ -382,6 +415,45 @@ describe('inboundIngest — idempotency', () => {
 		expect(threads[0]!.messageCount).toBe(1);
 	});
 
+	it("stores a different sender's message that reuses the same Message-ID", async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		await ingest(
+			t,
+			'shared-id@example.com',
+			encode(buildEmlWithAttachment('shared-id@example.com')),
+			NOTES_META
+		);
+
+		// `Message-ID:` is free text the sender chose, and clients and ticketing
+		// systems do reuse one across genuinely different mail. Matching on the
+		// header alone answered 200 and stored nothing — a delivery the MTA logs
+		// as successful that nobody ever sees, on a path whose whole invariant is
+		// that mail is never dropped.
+		const second = await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
+			mail: {
+				from: 'Carol <carol@other.example>',
+				to: 'inbox@example.com',
+				subject: 'a different message entirely',
+				textBody: 'body',
+				headers: {},
+				messageId: '<shared-id@example.com>',
+				attachments: [],
+				timestamp: Date.now(),
+			},
+		});
+		expect(second.isDuplicate).toBe(false);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(2);
+		expect(rows.map((r) => r.from).sort()).toEqual([
+			'Bob <bob@example.com>',
+			'Carol <carol@other.example>',
+		]);
+	});
+
 	it('drops the blob it staged when the transactional check finds the row first', async () => {
 		const t = setupTest();
 		configureMta();
@@ -411,5 +483,178 @@ describe('inboundIngest — idempotency', () => {
 		// No second sealed `.eml` was added by the refused write.
 		const storedNow = await t.run((ctx) => ctx.db.system.query('_storage').collect());
 		expect(storedNow).toHaveLength(storedAfterFirst.length);
+	});
+});
+
+describe('inboundIngest — parts the assistant will not read', () => {
+	it('marks a part over the AI-ingest ceiling instead of leaving the row silent', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		// One leaf just over the per-attachment ceiling. It is a real, deliverable
+		// size (the listener accepts messages up to MAX_INBOUND_MESSAGE_BYTES), so
+		// this is a state a sender can actually reach.
+		const oversized = Buffer.from('x'.repeat(MAX_AI_INGEST_ATTACHMENT_BYTES + 1)).toString(
+			'base64'
+		);
+		await ingest(
+			t,
+			'toobig-1@example.com',
+			encode(
+				buildEmlWithLeaf('toobig-1@example.com', {
+					headers: [
+						'Content-Type: application/pdf; name="huge.pdf"',
+						'Content-Disposition: attachment; filename="huge.pdf"',
+						'Content-Transfer-Encoding: base64',
+					],
+					body: oversized,
+				})
+			),
+			[
+				{
+					filename: 'huge.pdf',
+					contentType: 'application/pdf',
+					size: MAX_AI_INGEST_ATTACHMENT_BYTES + 1,
+					partIndex: '1',
+				},
+			]
+		);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		// The bytes arrived, were scanned and are downloadable...
+		expect(rows[0]!.virusVerdict).toBe('clean');
+		expect(rows[0]!.rawStorageId).toBeTruthy();
+		// ...but nothing was indexed, and the row SAYS SO. Without the marker the
+		// thread view renders this exactly like a file the assistant read.
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_too_large');
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
+	});
+
+	it('keeps an executable out of the file library even under a document name', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		// The double-extension trick, plus a null byte before the real one — the
+		// two shapes a filename allowlist has to survive.
+		await ingest(
+			t,
+			'exe-1@example.com',
+			encode(
+				buildEmlWithLeaf('exe-1@example.com', {
+					headers: [
+						'Content-Type: application/pdf; name="invoice.pdf\u0000.exe"',
+						'Content-Disposition: attachment; filename="invoice.pdf.exe"',
+						'Content-Transfer-Encoding: base64',
+					],
+					body: Buffer.from('MZ not really a document').toString('base64'),
+				})
+			),
+			[{ filename: 'invoice.pdf.exe', contentType: 'application/pdf', size: 24, partIndex: '1' }]
+		);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		// Never dropped: an operator can still see what was sent and download it.
+		expect(rows[0]!.rawStorageId).toBeTruthy();
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_unsupported');
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
+	});
+
+	it('does not index a leaf with no filename at all', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		// `extractAttachments` names an anonymous leaf "attachment", which has no
+		// extension — and the allowlist blocks by default rather than guessing.
+		await ingest(
+			t,
+			'noname-1@example.com',
+			encode(
+				buildEmlWithLeaf('noname-1@example.com', {
+					headers: ['Content-Type: application/pdf', 'Content-Disposition: attachment'],
+					body: 'some bytes',
+				})
+			),
+			[{ filename: '', contentType: 'application/pdf', size: 10, partIndex: '1' }]
+		);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_unsupported');
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
+	});
+});
+
+describe('inboundIngest — degenerate MIME', () => {
+	it('stores a message whose multipart has no closing delimiter', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		const truncated = [
+			'From: Bob <bob@example.com>',
+			'To: inbox@example.com',
+			'Subject: truncated',
+			'Message-ID: <trunc-1@example.com>',
+			'Content-Type: multipart/mixed; boundary="bb"',
+			'',
+			'--bb',
+			'Content-Type: text/plain; name="notes.txt"',
+			'Content-Disposition: attachment; filename="notes.txt"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			'!!!! not base64 at all ????',
+			// No `--bb--`: the message ends mid-part.
+		].join('\r\n');
+
+		// The MIME walker runs on attacker-supplied bytes BEFORE the row is
+		// written. A throw here would 500 a delivery the MTA already accepted over
+		// SMTP — six retries, then the DLQ, where nobody looks.
+		await expect(
+			ingest(t, 'trunc-1@example.com', encode(truncated), [
+				{ filename: 'notes.txt', contentType: 'text/plain', size: 10, partIndex: '0' },
+			])
+		).resolves.toEqual({ inboundMessageId: expect.anything(), isDuplicate: false });
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]!.rawStorageId).toBeTruthy();
+	});
+
+	it('asserts no verdict and indexes nothing for a zero-byte attachment leaf', async () => {
+		const t = setupTest();
+		configureMta();
+		const scanner = stubScanner({ clean: true });
+
+		await ingest(
+			t,
+			'empty-1@example.com',
+			encode(
+				buildEmlWithLeaf('empty-1@example.com', {
+					headers: [
+						'Content-Type: text/plain; name="empty.txt"',
+						'Content-Disposition: attachment; filename="empty.txt"',
+					],
+					body: '',
+				})
+			),
+			[{ filename: 'empty.txt', contentType: 'text/plain', size: 0, partIndex: '1' }]
+		);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		// An empty leaf is not an attachment: nothing to scan, nothing to index,
+		// and no verdict to assert about bytes that are not there.
+		expect(scanner.calls()).toBe(0);
+		expect(rows[0]!.virusVerdict).toBeUndefined();
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
 	});
 });
