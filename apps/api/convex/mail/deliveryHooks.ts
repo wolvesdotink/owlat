@@ -15,6 +15,7 @@ import type { MtaSendRequest } from '@owlat/mta-protocol/send';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
+import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { getMtaConfig } from './mtaClient';
 
@@ -234,7 +235,9 @@ export const runPostDelivery = internalAction({
 				seen.add(lower);
 				try {
 					await forwardToTarget(mta, args, target);
-					logInfo(`[Forwarding] ${args.mailboxAddress} → ${target}`);
+					logInfo(
+						`[Forwarding] ${redactEmailAddress(args.mailboxAddress)} → ${redactEmailAddress(target)}`
+					);
 				} catch (err) {
 					logError('[Forwarding] failed:', err);
 				}
@@ -330,7 +333,9 @@ export const runPostDelivery = internalAction({
 				mailboxId: args.mailboxId,
 				senderEmail: fromLower,
 			});
-			logInfo(`[Vacation] auto-replied ${args.mailboxAddress} → ${fromLower}`);
+			logInfo(
+				`[Vacation] auto-replied ${redactEmailAddress(args.mailboxAddress)} → ${redactEmailAddress(fromLower)}`
+			);
 		} catch (err) {
 			logError('[Vacation] auto-reply failed:', err);
 		}

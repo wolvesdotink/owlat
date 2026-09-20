@@ -24,6 +24,7 @@ import { applyInboxStatsDelta } from '../lib/inboxStats';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { recordInboundMirror } from '../unifiedMessages';
 import { logError, logInfo, logWarn } from '../lib/runtimeLog';
+import { redactEmailAddress, redactSubject } from '@owlat/shared/logRedaction';
 import { rateLimiter } from '../rateLimiter';
 import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { isAutomatedMail } from '../lib/inboundClassification';
@@ -137,13 +138,14 @@ export const receiveMessage = internalMutation({
 		const duplicate = await findStoredDuplicate(ctx.db, args);
 		if (duplicate) {
 			// WARN, not info: this is mail that arrived and was deliberately not
-			// stored. `from`/`subject` are here so an operator answering "we sent
-			// it and you never got it" can find the decision in the log.
+			// stored. The envelope is here so an operator answering "we sent it and
+			// you never got it" can find the decision in the log — redacted, because
+			// the answer only needs the lines to line up, not the plaintext.
 			logWarn('[Inbound Email] duplicate delivery — re-acknowledged, nothing stored', {
 				messageId: args.messageId,
-				from: args.from,
-				to: args.to,
-				subject: args.subject,
+				from: redactEmailAddress(args.from),
+				to: redactEmailAddress(args.to),
+				subject: redactSubject(args.subject),
 			});
 			return {
 				inboundMessageId: duplicate._id,
@@ -318,7 +320,7 @@ export const receiveMessage = internalMutation({
 			logInfo('[Inbound Email] blocklisted sender mail stored and archived without AI processing', {
 				contactId,
 				threadId,
-				from: args.from,
+				from: redactEmailAddress(args.from),
 			});
 			return { inboundMessageId, threadId, contactId, isDuplicate: false };
 		}
@@ -359,13 +361,13 @@ export const receiveMessage = internalMutation({
 			logInfo('[Inbound Email] malware found — mail stored quarantined, AI pipeline skipped', {
 				contactId,
 				threadId,
-				from: args.from,
+				from: redactEmailAddress(args.from),
 			});
 		} else if (suppressed) {
 			logInfo('[Inbound Email] automated/self-send mail stored without AI processing', {
 				contactId,
 				threadId,
-				from: args.from,
+				from: redactEmailAddress(args.from),
 			});
 		} else if (!deferred) {
 			// Cost cap: each pipeline run spends multiple LLM calls (guard +

@@ -11,6 +11,7 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
+import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { getMtaConfig } from './mtaClient';
 import { isDevDeployment } from '../devShortcuts/_guard';
 
@@ -58,7 +59,7 @@ export const pushMailboxToCache = internalAction({
 				logError(`[Mailbox cache] Push failed (${res.status}): ${body}`);
 				return;
 			}
-			logInfo(`[Mailbox cache] Pushed ${mailbox.address}`);
+			logInfo(`[Mailbox cache] Pushed ${redactEmailAddress(mailbox.address)}`);
 		} catch (err) {
 			logError('[Mailbox cache] Push error:', err);
 		}
@@ -105,7 +106,7 @@ export const removeFromCache = internalAction({
 				method: 'DELETE',
 				headers: { Authorization: `Bearer ${config.apiKey}` },
 			});
-			logInfo(`[Mailbox cache] Removed ${args.address}`);
+			logInfo(`[Mailbox cache] Removed ${redactEmailAddress(args.address)}`);
 		} catch (err) {
 			logError('[Mailbox cache] Removal error:', err);
 		}

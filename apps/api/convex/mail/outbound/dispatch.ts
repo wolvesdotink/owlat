@@ -20,6 +20,7 @@ import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { logError } from '../../lib/runtimeLog';
+import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { sealedBlobUrl } from '../../lib/sealedBlob';
 import { getMailSyncConfig } from '../mtaClient';
 import { stripHtml, type DraftRow } from '../rfc822';
@@ -249,7 +250,9 @@ export async function dispatchViaMta(
 			});
 			if (!res.ok) {
 				const body = await res.text().catch(() => '');
-				logError(`[Outbound] MTA /send failed for ${to}: ${res.status} ${body}`);
+				logError(
+					`[Outbound] MTA /send failed for ${redactEmailAddress(to)}: ${res.status} ${body}`
+				);
 				// Per-recipient synchronous bounce — record it now rather
 				// than waiting forever in `queued`. Per ADR-0012.
 				await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
@@ -263,7 +266,7 @@ export async function dispatchViaMta(
 				});
 			}
 		} catch (err) {
-			logError(`[Outbound] MTA /send error for ${to}:`, err);
+			logError(`[Outbound] MTA /send error for ${redactEmailAddress(to)}:`, err);
 			// Per-recipient pre-MTA error (network failure, DNS, etc.).
 			// Recipient resolves to `failed` instead of staying `queued`.
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {

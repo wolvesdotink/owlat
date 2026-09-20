@@ -24,6 +24,7 @@ import { v, type Validator } from 'convex/values';
 import { internalAction, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
+import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { getMtaConfig } from '../mail/mtaClient';
 import { bounceTypeValidator } from '../lib/convexValidators';
 
@@ -148,10 +149,14 @@ export const mirror = internalAction({
 				}),
 			});
 			if (!res.ok) {
-				logError(`[suppressionMirror] MTA /suppression returned ${res.status} for ${args.email}`);
+				logError(
+					`[suppressionMirror] MTA /suppression returned ${res.status} for ${redactEmailAddress(args.email)}`
+				);
 				return;
 			}
-			logInfo(`[suppressionMirror] mirrored ${args.email} (${mtaReason}) to MTA`);
+			logInfo(
+				`[suppressionMirror] mirrored ${redactEmailAddress(args.email)} (${mtaReason}) to MTA`
+			);
 		} catch (err) {
 			logError('[suppressionMirror] failed to mirror to MTA:', err);
 		}
@@ -170,10 +175,12 @@ export const unmirror = internalAction({
 				headers: { Authorization: `Bearer ${mta.apiKey}` },
 			});
 			if (!res.ok) {
-				logError(`[suppressionMirror] MTA unmirror returned ${res.status} for ${email}`);
+				logError(
+					`[suppressionMirror] MTA unmirror returned ${res.status} for ${redactEmailAddress(email)}`
+				);
 				return;
 			}
-			logInfo(`[suppressionMirror] removed ${email} from MTA`);
+			logInfo(`[suppressionMirror] removed ${redactEmailAddress(email)} from MTA`);
 		} catch (error) {
 			logError('[suppressionMirror] failed to remove MTA mirror:', error);
 		}
