@@ -93,35 +93,15 @@ export async function receiveInboundMail(
 	const attachmentMeta =
 		input.attachments.length > 0 ? JSON.stringify(input.attachments) : undefined;
 
-	// Sealed Mail decrypt-on-ingest. When Sealed Mail is on and the body carries
-	// an armored PGP ciphertext, route through the Node decrypt action. Anything
-	// else — plaintext, flag off, or a ciphertext we cannot recover here — takes
-	// the unchanged path below.
-	const armoredCiphertext = input.textBody ? extractArmoredCiphertext(input.textBody) : null;
-	if (armoredCiphertext && (await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
-		return await ctx.runAction(internal.e2ee.open.decryptAndReceive, {
-			armoredCiphertext,
-			recipientAddress: input.to,
-			from: input.from,
-			to: input.to,
-			subject: input.subject,
-			textBody: input.textBody,
-			htmlBody: input.htmlBody,
-			headers: JSON.stringify(input.headers),
-			messageId: input.messageId,
-			inReplyTo: input.inReplyTo,
-			references: input.references,
-			attachmentMeta,
-			timestamp: input.timestamp,
-			spfResult: input.spfResult,
-			dkimResult: input.dkimResult,
-			dmarcResult: input.dmarcResult,
-			dmarcPolicy: input.dmarcPolicy,
-			...extras,
-		});
-	}
-
-	return await ctx.runMutation(internal.inbox.messages.receiveMessage, {
+	/**
+	 * THE ROW, ONCE. Every field either path persists is spelled here and
+	 * spread into both calls, so the sealed branch cannot quietly carry fewer
+	 * columns than the plaintext one — which is the failure `e2ee/open.ts` used
+	 * to warn about in a comment instead of preventing. Each branch adds only
+	 * what is genuinely its own: the ciphertext and the recipient address on
+	 * the sealed side, the clearsigned signature mirror on the plaintext one.
+	 */
+	const persisted = {
 		from: input.from,
 		to: input.to,
 		subject: input.subject,
@@ -139,9 +119,26 @@ export async function receiveInboundMail(
 		dkimResult: input.dkimResult,
 		dmarcResult: input.dmarcResult,
 		dmarcPolicy: input.dmarcPolicy,
+		...extras,
+	};
+
+	// Sealed Mail decrypt-on-ingest. When Sealed Mail is on and the body carries
+	// an armored PGP ciphertext, route through the Node decrypt action. Anything
+	// else — plaintext, flag off, or a ciphertext we cannot recover here — takes
+	// the unchanged path below.
+	const armoredCiphertext = input.textBody ? extractArmoredCiphertext(input.textBody) : null;
+	if (armoredCiphertext && (await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
+		return await ctx.runAction(internal.e2ee.open.decryptAndReceive, {
+			...persisted,
+			armoredCiphertext,
+			recipientAddress: input.to,
+		});
+	}
+
+	return await ctx.runMutation(internal.inbox.messages.receiveMessage, {
+		...persisted,
 		// AI-inbox mirror of the clearsigned-body signature verdict —
 		// see webhooks/inboundSignatureMirror.ts. Best-effort, never blocks.
 		...((await clearsignedSignatureMirror(ctx, input.textBody, input.from)) ?? {}),
-		...extras,
 	});
 }

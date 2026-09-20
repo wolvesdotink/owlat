@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { semanticFileSourceTypeValidator } from '../lib/literalValidators';
+import { captureSourceValidator, semanticFileSourceTypeValidator } from '../lib/literalValidators';
 
 /**
  * The knowledge entry types, as a literal tuple. Single source of truth for both
@@ -321,7 +321,7 @@ export const knowledgeTables = {
 		// personal-mailbox (Postbox) mail, which has its own permanent raw storage
 		// and no horizon at all. The inbound retention sweep scans
 		// `captureSource === 'team_inbox'` and nothing else.
-		captureSource: v.optional(v.union(v.literal('team_inbox'), v.literal('mailbox'))),
+		captureSource: v.optional(captureSourceValidator),
 		// When the retention sweep released this file's bytes. Set exactly once,
 		// by the sweep, together with clearing `storageId`. It is also the
 		// equality component of `by_attachment_retention`, which is what makes

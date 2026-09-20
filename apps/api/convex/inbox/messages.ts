@@ -13,7 +13,8 @@
 
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
+import type { QueryCtx } from '../_generated/server';
+import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { createContact } from '../contacts/creation';
 import { recordContactActivity } from '../contactActivities/writer';
@@ -43,6 +44,41 @@ export { extractEmail, normalizeSubject };
  * of times, not thousands.
  */
 const DUPLICATE_SCAN_LIMIT = 16;
+
+/**
+ * The stored row this delivery would duplicate, or `null`.
+ *
+ * ONE envelope test, called by both the transactional check inside
+ * `receiveMessage` and the cheap pre-check `findIdByMessageId` the ingest
+ * action runs first. They were two copies of the same query and the same
+ * `.find`, kept in agreement by a comment — so the next person to tighten the
+ * match (normalised addresses, say) would have tightened one of them and left
+ * the pre-check skipping work the mutation would have stored.
+ *
+ * MATCHED ON THE ENVELOPE, not on the header alone. `Message-ID:` is free text
+ * the sender chose, and some clients and ticketing systems reuse one across
+ * genuinely different mail; a header-only match answers 200 and stores nothing,
+ * which on a route with a never-drop invariant is the worst possible outcome.
+ * A retry of the SAME delivery always repeats the same `from` and `to`, so
+ * idempotency is unaffected.
+ *
+ * Bounded by `DUPLICATE_SCAN_LIMIT` because the header is sender-controlled: a
+ * sender that reuses one value forever must not turn every delivery into an
+ * unbounded scan.
+ */
+async function findStoredDuplicate(
+	db: QueryCtx['db'],
+	envelope: { messageId: string; from: string; to: string }
+): Promise<Doc<'inboundMessages'> | null> {
+	// Mail with no `Message-ID:` header at all would otherwise all collapse
+	// onto one row.
+	if (!envelope.messageId) return null;
+	const sameId = await db
+		.query('inboundMessages')
+		.withIndex('by_message_id', (q) => q.eq('messageId', envelope.messageId))
+		.take(DUPLICATE_SCAN_LIMIT);
+	return sameId.find((row) => row.from === envelope.from && row.to === envelope.to) ?? null;
+}
 
 /**
  * Receive an inbound email from the MTA webhook.
@@ -115,39 +151,26 @@ export const receiveMessage = internalMutation({
 		// the only place it and the insert are one transaction — an action-level
 		// pre-check cannot see a row that has not been written yet.
 		//
-		// Guarded on a non-empty Message-ID: mail with no `Message-ID:` header at
-		// all would otherwise all collapse onto one row.
-		//
-		// MATCHED ON THE ENVELOPE TOO, not on the header alone. `Message-ID:` is
-		// free text the sender chose, and some clients and ticketing systems
-		// reuse one across genuinely different mail; a header-only match would
-		// answer 200 and store nothing, which on a route with a never-drop
-		// invariant is the worst possible outcome — the MTA logs a delivery and
-		// nobody ever sees the message. A retry of the SAME delivery always
-		// repeats the same `from` and `to`, so idempotency is unaffected.
-		if (args.messageId) {
-			const sameId = await ctx.db
-				.query('inboundMessages')
-				.withIndex('by_message_id', (q) => q.eq('messageId', args.messageId))
-				.take(DUPLICATE_SCAN_LIMIT);
-			const existing = sameId.find((row) => row.from === args.from && row.to === args.to);
-			if (existing) {
-				// WARN, not info: this is mail that arrived and was deliberately not
-				// stored. `from`/`subject` are here so an operator answering "we sent
-				// it and you never got it" can find the decision in the log.
-				logWarn('[Inbound Email] duplicate delivery — re-acknowledged, nothing stored', {
-					messageId: args.messageId,
-					from: args.from,
-					to: args.to,
-					subject: args.subject,
-				});
-				return {
-					inboundMessageId: existing._id,
-					threadId: existing.threadId,
-					contactId: existing.contactId,
-					isDuplicate: true,
-				};
-			}
+		// The envelope test itself is `findStoredDuplicate`, shared with the
+		// action's cheap pre-check so the two can never disagree about what
+		// counts as the same delivery.
+		const duplicate = await findStoredDuplicate(ctx.db, args);
+		if (duplicate) {
+			// WARN, not info: this is mail that arrived and was deliberately not
+			// stored. `from`/`subject` are here so an operator answering "we sent
+			// it and you never got it" can find the decision in the log.
+			logWarn('[Inbound Email] duplicate delivery — re-acknowledged, nothing stored', {
+				messageId: args.messageId,
+				from: args.from,
+				to: args.to,
+				subject: args.subject,
+			});
+			return {
+				inboundMessageId: duplicate._id,
+				threadId: duplicate.threadId,
+				contactId: duplicate.contactId,
+				isDuplicate: true,
+			};
 		}
 
 		const senderEmail = extractEmail(args.from);
@@ -404,15 +427,7 @@ export const findIdByMessageId = internalQuery({
 	args: { messageId: v.string(), from: v.string(), to: v.string() },
 	returns: v.union(v.id('inboundMessages'), v.null()),
 	handler: async (ctx, args): Promise<Id<'inboundMessages'> | null> => {
-		if (!args.messageId) return null;
-		const sameId = await ctx.db
-			.query('inboundMessages')
-			.withIndex('by_message_id', (q) => q.eq('messageId', args.messageId))
-			.take(DUPLICATE_SCAN_LIMIT);
-		// Same envelope test as the transactional check, so the cheap pre-check
-		// can never skip work for a message the authoritative one would store.
-		const existing = sameId.find((row) => row.from === args.from && row.to === args.to);
-		return existing?._id ?? null;
+		return (await findStoredDuplicate(ctx.db, args))?._id ?? null;
 	},
 });
 

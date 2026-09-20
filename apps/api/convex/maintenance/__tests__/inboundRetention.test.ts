@@ -25,7 +25,6 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import {
 	DEFAULT_INBOUND_RAW_RETENTION_DAYS,
-	INBOUND_RAW_RETENTION_DAY_CHOICES,
 	type InboundRawRetentionDays,
 } from '@owlat/shared/inboundRetention';
 import { inboundRawRetentionDaysValidator } from '../../lib/literalValidators';
@@ -299,16 +298,12 @@ describe('sweepInboundFiles — the attachment half', () => {
 });
 
 describe('the retention horizon choices', () => {
-	it('offers exactly the day counts the validator accepts', () => {
-		// Convex validators must be literal, so the set is spelled out in
-		// convexValidators.ts. This is what keeps it in step with the shared
-		// constant the admin form renders from.
+	it('has a default an admin can actually choose', () => {
+		// The validator is DERIVED from `INBOUND_RAW_RETENTION_DAY_CHOICES`, so
+		// the two cannot disagree and nothing here needs to check that they do.
+		// What derivation does not give you is this: a default outside the
+		// offered set is a setting nobody can put back once they change it.
 		const literals = inboundRawRetentionDaysValidator.members.map((m) => m.value);
-		expect([...literals].sort((a, b) => a - b)).toEqual(
-			[...INBOUND_RAW_RETENTION_DAY_CHOICES].sort((a, b) => a - b)
-		);
-		// And the default is one of them — an unreachable default is a setting
-		// nobody can put back.
 		expect(literals).toContain(DEFAULT_INBOUND_RAW_RETENTION_DAYS);
 	});
 });

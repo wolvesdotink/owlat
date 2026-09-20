@@ -25,7 +25,11 @@ import {
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import type { Id, Doc } from './_generated/dataModel';
-import { semanticFileSourceTypeValidator } from './lib/literalValidators';
+import {
+	captureSourceValidator,
+	semanticFileSourceTypeValidator,
+	type CaptureSource,
+} from './lib/literalValidators';
 import { batchGet } from './_utils/batchLoader';
 
 // ============================================================
@@ -367,7 +371,7 @@ export const ingest = internalMutation({
 		// Which inbound route captured this attachment. Only the team-inbox
 		// captures are in range of the inbound retention sweep — see the schema
 		// comment on `captureSource`.
-		captureSource: v.optional(v.union(v.literal('team_inbox'), v.literal('mailbox'))),
+		captureSource: v.optional(captureSourceValidator),
 		sourceMessageId: v.optional(v.string()),
 		uploadContext: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
@@ -413,7 +417,7 @@ async function insertSemanticFile(
 		title?: string;
 		tags?: string[];
 		sourceType: 'upload' | 'email_attachment' | 'agent_generated';
-		captureSource?: 'team_inbox' | 'mailbox';
+		captureSource?: CaptureSource;
 		sourceMessageId?: string;
 		uploadContext?: string;
 		uploadedBy?: string;

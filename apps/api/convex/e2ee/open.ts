@@ -233,8 +233,9 @@ export const decryptAndReceive = internalAction({
 		dmarcResult: v.optional(v.string()),
 		dmarcPolicy: v.optional(v.string()),
 		// Passed straight through to `receiveMessage`. This is the SECOND writer
-		// of an `inboundMessages` row; anything the plaintext path stores has to
-		// be threaded here too or sealed mail silently loses it.
+		// of an `inboundMessages` row, and both writers are called with one
+		// spread of the same `persisted` bag (`inbox/receiveInbound.ts`), so a
+		// new stored column reaches this path or fails to compile.
 		rawStorageId: v.optional(v.id('_storage')),
 		rawSize: v.optional(v.number()),
 		virusVerdict: v.optional(virusVerdictValidator),

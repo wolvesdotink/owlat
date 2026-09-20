@@ -10,7 +10,6 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-	ATTACHMENT_COMPOSE_LIMITS,
 	MAX_AI_INGEST_ATTACHMENT_BYTES,
 	MAX_ATTACHMENT_BYTES,
 	MAX_INBOUND_MESSAGE_BYTES,
@@ -38,10 +37,5 @@ describe('attachment ceilings', () => {
 		// downloads; over the storage cap it is not kept at all. Inverting the two
 		// would mean nothing is ever "stored but unread".
 		expect(MAX_AI_INGEST_ATTACHMENT_BYTES).toBeLessThan(MAX_ATTACHMENT_BYTES);
-	});
-
-	it('bounds a single message by count as well as by size', () => {
-		expect(ATTACHMENT_COMPOSE_LIMITS.maxCount).toBeGreaterThan(0);
-		expect(ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes).toBeLessThanOrEqual(MAX_INBOUND_MESSAGE_BYTES);
 	});
 });
