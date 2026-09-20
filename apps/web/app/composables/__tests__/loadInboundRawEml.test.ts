@@ -11,6 +11,8 @@
  *     proxy origin, or when the bytes were swept — resolves to null instead of
  *     throwing, because the caller renders it as a visible failure
  *   - a rejected fetch evicts the cache entry, so a retry actually retries
+ *   - a NON-OK response is not cached as the message: the proxy's error body
+ *     would otherwise be decoded as the `.eml` and re-served to every retry
  *   - and the round trip the whole feature rests on: `extractAttachmentAt` over
  *     the decoded text returns the named part's bytes
  */
@@ -26,6 +28,7 @@ const RAW_URL_FN = getFunctionName(api.inbox.rawMessage.getInboundMessageRawUrl)
 let actionCalls: string[];
 let urlFor: (messageId: string) => string | null;
 let fetchBody: (url: string) => Promise<ArrayBuffer>;
+let fetchStatus: number;
 let originalFetch: typeof globalThis.fetch;
 
 /** A two-part message whose second leaf carries a byte outside ASCII. */
@@ -70,9 +73,14 @@ beforeEach(() => {
 			return Promise.resolve(urlFor(args.messageId));
 		},
 	}));
+	fetchStatus = 200;
 	globalThis.fetch = (async (input: RequestInfo | URL) => {
 		const url = typeof input === 'string' ? input : input.toString();
-		return { arrayBuffer: async () => await fetchBody(url) } as Response;
+		return {
+			ok: fetchStatus >= 200 && fetchStatus < 300,
+			status: fetchStatus,
+			arrayBuffer: async () => await fetchBody(url),
+		} as Response;
 	}) as typeof globalThis.fetch;
 });
 
@@ -118,6 +126,22 @@ describe('loadInboundRawEml', () => {
 		fetchBody = async () => latin1Buffer(RAW_EML);
 		await expect(loadInboundRawEml('msg_retry')).resolves.toBe(RAW_EML);
 		// A cached rejection would have made this a second failure, not a retry.
+		expect(actionCalls).toHaveLength(2);
+	});
+
+	it('does not cache a 403 from the blob proxy as the message', async () => {
+		// The proxy answers with a BODY on an error, so without a status check
+		// the error page IS the `.eml`: extraction returns null, the reader is
+		// told the download failed, and the resolved promise stays in the cache
+		// — so the retry reads the same page rather than re-fetching.
+		fetchStatus = 403;
+		fetchBody = async () => latin1Buffer('<html>forbidden</html>');
+
+		await expect(loadInboundRawEml('msg_403')).rejects.toThrow('403');
+
+		fetchStatus = 200;
+		fetchBody = async () => latin1Buffer(RAW_EML);
+		await expect(loadInboundRawEml('msg_403')).resolves.toBe(RAW_EML);
 		expect(actionCalls).toHaveLength(2);
 	});
 

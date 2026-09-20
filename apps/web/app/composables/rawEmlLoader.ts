@@ -31,7 +31,14 @@ export function createRawEmlLoader(
 	async function fetchRaw(messageId: string): Promise<string | null> {
 		const url = await mint(messageId);
 		if (!url) return null;
-		const buf = await (await fetch(url)).arrayBuffer();
+		const res = await fetch(url);
+		// A 4xx/5xx from the blob proxy has a BODY, and decoding it as the `.eml`
+		// cached an error page as the message: every extraction off it returns
+		// null, the reader is told the file could not be downloaded, and every
+		// retry reads the same cached page until three other messages evict it.
+		// Thrown instead, so the rejection is what the cache drops.
+		if (!res.ok) throw new Error(`raw .eml fetch failed: ${res.status}`);
+		const buf = await res.arrayBuffer();
 		return new TextDecoder('latin1').decode(new Uint8Array(buf));
 	}
 
