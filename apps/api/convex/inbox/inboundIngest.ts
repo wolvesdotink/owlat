@@ -32,7 +32,7 @@ import {
 	type AttachmentCaptureOutcome,
 } from '../mail/deliveryPipeline/capture';
 import { NOTHING_UNCLEARED } from '../mail/deliveryPipeline/attachmentParts';
-import { resolveDmarcRouting } from '../mail/deliveryPipeline/routing';
+import { resolveDmarcRouting, type DmarcOverride } from '../mail/deliveryPipeline/routing';
 import { inboundEmailMessageValidator } from '../webhooks/adapters/inboundRegistry';
 import type { AttachmentIndexing } from '../lib/literalValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
@@ -211,7 +211,7 @@ export const ingestFromWebhook = internalAction({
 		// who really sent it. One spelling of the rescue: `resolveDmarcRouting`,
 		// against the operator's own allow-list. Never fatal — a settings read
 		// that fails leaves the message on its raw verdict rather than losing it.
-		let dmarcOverride: string | undefined;
+		let dmarcOverride: DmarcOverride | undefined;
 		try {
 			const trustedForwarders: string[] | null = await ctx.runQuery(
 				internal.workspaces.settings.getTrustedArcForwarders,

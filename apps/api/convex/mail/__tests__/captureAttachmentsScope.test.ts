@@ -38,10 +38,11 @@ import {
 	ATTACHMENT_COMPOSE_LIMITS,
 	MAX_AI_INGEST_ATTACHMENT_BYTES,
 } from '@owlat/shared/attachments';
-import { captureAttachments } from '../deliveryPipeline/capture';
+import { captureAttachments, selectIngestible } from '../deliveryPipeline/capture';
 import {
 	inboundAttachmentCandidates,
 	NOTHING_UNCLEARED,
+	type InboundAttachmentPart,
 	type UnclearedLeaves,
 } from '../deliveryPipeline/attachmentParts';
 import type { AttachmentCaptureOutcome, InboundFromAuth } from '../deliveryPipeline/capture';
@@ -517,5 +518,86 @@ describe('captureAttachments — eligibility ceilings', () => {
 		expect(ingested).toHaveLength(0);
 		expect(stored).toBe(0);
 		expect(skippedReason).toBeUndefined();
+	});
+});
+
+/**
+ * The SELECTION half, without a Convex ctx at all.
+ *
+ * `selectIngestible` is pure — five filters over a list and the one sentence
+ * the reader is told about what they dropped — so the ceilings can be pinned
+ * directly, rather than only through an action with a counting ctx and a live
+ * rate limiter.
+ */
+describe('selectIngestible', () => {
+	function part(over: Partial<InboundAttachmentPart> = {}): InboundAttachmentPart {
+		return {
+			filename: 'notes.txt',
+			contentType: 'text/plain',
+			disposition: 'attachment',
+			bytes: new Uint8Array(16),
+			...over,
+		};
+	}
+
+	it('drops an inline leaf silently — it is not a skip anyone is waiting on', () => {
+		const { eligible, skippedReason } = selectIngestible(
+			[part({ filename: 'logo.png', contentType: 'image/png', disposition: 'inline' })],
+			NOTHING_UNCLEARED
+		);
+
+		expect(eligible).toHaveLength(0);
+		expect(skippedReason).toBeUndefined();
+	});
+
+	it('keeps a part under the AI ceiling and reports the one over it', () => {
+		const { eligible, skippedReason } = selectIngestible(
+			[
+				part({ filename: 'small.txt' }),
+				part({
+					filename: 'huge.txt',
+					bytes: new Uint8Array(MAX_AI_INGEST_ATTACHMENT_BYTES + 1),
+				}),
+			],
+			NOTHING_UNCLEARED
+		);
+
+		expect(eligible.map((p) => p.filename)).toEqual(['small.txt']);
+		expect(skippedReason).toBe('too_large');
+	});
+
+	it('bounds the batch at the per-message cap and says the rest were left', () => {
+		const parts = Array.from({ length: ATTACHMENT_COMPOSE_LIMITS.maxCount + 3 }, (_, i) =>
+			part({ filename: `doc${i}.txt` })
+		);
+
+		const { eligible, skippedReason } = selectIngestible(parts, NOTHING_UNCLEARED);
+
+		expect(eligible).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+		expect(skippedReason).toBe('cap');
+	});
+
+	it('lets a scanner outage outrank the cap, because it sends someone somewhere', () => {
+		const parts = Array.from({ length: ATTACHMENT_COMPOSE_LIMITS.maxCount + 1 }, (_, i) =>
+			part({ filename: `doc${i}.txt` })
+		);
+
+		const { skippedReason } = selectIngestible(parts, { ...NOTHING_UNCLEARED, unscanned: 1 });
+
+		expect(skippedReason).toBe('unscanned');
+	});
+
+	it('tells a type the scanner refused apart from one we merely do not read', () => {
+		const refusedByScanner = selectIngestible([part()], {
+			...NOTHING_UNCLEARED,
+			refusedType: 1,
+		});
+		const refusedByUs = selectIngestible(
+			[part({ filename: 'setup.exe', contentType: 'application/octet-stream' })],
+			NOTHING_UNCLEARED
+		);
+
+		expect(refusedByScanner.skippedReason).toBe('refused_type');
+		expect(refusedByUs.skippedReason).toBe('unsupported_type');
 	});
 });

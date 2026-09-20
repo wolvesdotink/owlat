@@ -30,6 +30,7 @@ import { hasTextExtraction } from '../../lib/fileExtraction';
 import { logWarn } from '../../lib/runtimeLog';
 import type { InboundAttachmentPart, UnclearedLeaves } from './attachmentParts';
 import type { CaptureSource } from '../../lib/literalValidators';
+import type { DmarcOverride } from './routing';
 
 /**
  * What one `captureAttachments` call did, so the caller can say it.
@@ -145,7 +146,7 @@ export type InboundFromAuth = {
 	 * would be a second opinion on the question the router already answered.
 	 * Absent means "no rescue applied", which is every ordinary message.
 	 */
-	dmarcOverride?: string;
+	dmarcOverride?: DmarcOverride;
 };
 
 /**
@@ -236,6 +237,62 @@ function decideSkipReason(signals: SkipSignals): AttachmentCaptureOutcome['skipp
 }
 
 /**
+ * WHICH of a message's cleared leaves may be fed to a model, and the one
+ * sentence the reader is told about everything left out.
+ *
+ * PURE, and separated from {@link captureAttachments} because it is the half
+ * with all the policy in it and none of the I/O: five successive filters over a
+ * list, then one reason picked out of what each of them dropped. The rest of
+ * capture is verify → select → scope → budget → ingest, and only the select
+ * step needs a unit test rather than a Convex ctx.
+ *
+ * The ceilings, in the order they apply:
+ *   · an inline leaf (an embedded logo) is downloadable but never indexed —
+ *     dropped HERE, out of the scanner's cleared set, rather than by a second
+ *     walk of the raw bytes that could disagree with the scanner about which
+ *     leaf is which. Silent on purpose: a logo nobody attached is not a file
+ *     the reader is waiting for the assistant to read;
+ *   · over `MAX_ATTACHMENT_BYTES` (25 MiB) is not stored at all;
+ *   · over `MAX_AI_INGEST_ATTACHMENT_BYTES` is not INDEXED — it still delivers,
+ *     still lists, and is still downloadable out of the raw `.eml`;
+ *   · a type the file-type allowlist refuses is not indexed either, and is
+ *     refused BEFORE a blob is staged and before the budget is charged: ten
+ *     `.exe` leaves used to cost a sender ten tokens each while scheduling no
+ *     model work at all;
+ *   · at most `ATTACHMENT_COMPOSE_LIMITS.maxCount` (10) parts per message — the
+ *     same bound the scan applies, re-applied here so the LLM cost stays
+ *     bounded whatever a future caller hands in.
+ */
+export function selectIngestible(
+	parts: InboundAttachmentPart[],
+	withheld: UnclearedLeaves
+): {
+	eligible: InboundAttachmentPart[];
+	skippedReason?: AttachmentCaptureOutcome['skippedReason'];
+} {
+	const indexable = parts.filter((part) => part.disposition !== 'inline');
+	const storable = indexable.filter((part) => part.bytes.byteLength <= MAX_ATTACHMENT_BYTES);
+	const withinCeiling = storable.filter(
+		(part) => part.bytes.byteLength <= MAX_AI_INGEST_ATTACHMENT_BYTES
+	);
+	const ingestible = withinCeiling.filter((part) =>
+		isFileTypeAccepted(part.filename, part.contentType)
+	);
+	const eligible = ingestible.slice(0, ATTACHMENT_COMPOSE_LIMITS.maxCount);
+	return {
+		eligible,
+		skippedReason: decideSkipReason({
+			unscanned: withheld.unscanned > 0,
+			capped: withheld.capped > 0 || eligible.length < ingestible.length,
+			overStorageCap: storable.length < indexable.length,
+			overAiCeiling: withinCeiling.length < storable.length,
+			scannerRefusedType: withheld.refusedType > 0,
+			refusedType: ingestible.length < withinCeiling.length,
+		}),
+	};
+}
+
+/**
  * Ingest a delivered message's CLEARED attachment leaves into `semanticFiles`
  * (source `email_attachment`). Oversized parts and types the allowlist refuses
  * are skipped — and the skip comes BACK to the caller, because a file nobody
@@ -273,18 +330,8 @@ function decideSkipReason(signals: SkipSignals): AttachmentCaptureOutcome['skipp
  * the two cannot enforce different attachment policy. `captureSource` is how
  * the row remembers which one it came from, and the ONLY thing that separates
  * them afterwards: the inbound retention sweep releases `'team_inbox'` blobs
- * and never touches `'mailbox'` ones. The ceilings, in order:
- *
- *   · a leaf the scan did not clear never gets here at all;
- *   · an inline leaf (an embedded logo) is downloadable but never indexed;
- *   · over `MAX_ATTACHMENT_BYTES` (25 MiB) is not stored at all;
- *   · over `MAX_AI_INGEST_ATTACHMENT_BYTES` is not INDEXED — it still delivers,
- *     still lists, and is still downloadable out of the raw `.eml`;
- *   · a type the file-type allowlist refuses is not indexed either, and is
- *     refused HERE, before a blob is staged and before the budget is charged;
- *   · at most `ATTACHMENT_COMPOSE_LIMITS.maxCount` (10) parts per message —
- *     the same bound the scan applies, re-applied here so the LLM cost stays
- *     bounded whatever a future caller hands in.
+ * and never touches `'mailbox'` ones. A leaf the scan did not clear never gets
+ * here at all; every other ceiling is {@link selectIngestible}.
  *
  * Then the whole batch is charged against the per-sender and global AI-ingest
  * budget. Tripping it skips `semanticFiles.ingest` — nothing reaches a model —
@@ -299,14 +346,6 @@ export async function captureAttachments(
 	},
 	input: CaptureAttachmentsInput
 ): Promise<AttachmentCaptureOutcome> {
-	// INLINE LEAVES ARE SCANNED BUT NOT INDEXED. The scan covers everything the
-	// reader can download — a `Content-Disposition: inline` executable included
-	// — while a signature logo is not a document anyone meant to send, so it is
-	// dropped HERE, out of the cleared set, rather than by a second walk of the
-	// raw bytes that could disagree with the scanner about which leaf is which.
-	// Silent on purpose: an embedded logo nobody attached is not a file the
-	// reader is waiting for the assistant to read.
-	const indexable = input.parts.filter((part) => part.disposition !== 'inline');
 	const anyWithheld =
 		input.withheld.capped + input.withheld.unscanned + input.withheld.refusedType > 0;
 
@@ -314,7 +353,8 @@ export async function captureAttachments(
 	// only leaf is an embedded logo. There is no outcome to report, and
 	// reporting one anyway would log a line about every plain message that ever
 	// arrives from a domain with no DMARC record.
-	if (indexable.length === 0 && !anyWithheld) return { indexed: 0 };
+	const { eligible, skippedReason } = selectIngestible(input.parts, input.withheld);
+	if (eligible.length === 0 && !skippedReason && !anyWithheld) return { indexed: 0 };
 
 	// An unverifiable sender is refused before any of the size/type work: there
 	// is no scope this message's files could safely be filed under, so the
@@ -331,34 +371,6 @@ export async function captureAttachments(
 		return { indexed: 0, skippedReason: 'unverified' };
 	}
 
-	// Decide the whole batch up front: the budget is charged once for what will
-	// actually be ingested, so a message of inline logos costs nothing.
-	const parts = indexable.filter((part) => part.bytes.byteLength <= MAX_ATTACHMENT_BYTES);
-
-	// Over the AI ceiling the bytes still arrive, they are just not fed to a
-	// model. See MAX_AI_INGEST_ATTACHMENT_BYTES.
-	const withinCeiling = parts.filter(
-		(part) => part.bytes.byteLength <= MAX_AI_INGEST_ATTACHMENT_BYTES
-	);
-	// The file-type allowlist decided HERE rather than only inside
-	// `semanticFiles.ingest`: that gate runs after the blob is staged and after
-	// the AI budget is charged, so ten `.exe` leaves used to cost a sender — and
-	// the instance — ten tokens each while scheduling no model work at all.
-	const ingestible = withinCeiling.filter((part) =>
-		isFileTypeAccepted(part.filename, part.contentType)
-	);
-	// Bound the work per delivered message: each ingested part schedules LLM
-	// calls, and the inbound webhook is attacker-reachable, so a crafted .eml
-	// with many small leaves must not amplify cost.
-	const eligible = ingestible.slice(0, ATTACHMENT_COMPOSE_LIMITS.maxCount);
-	const skippedReason = decideSkipReason({
-		unscanned: input.withheld.unscanned > 0,
-		capped: input.withheld.capped > 0 || eligible.length < ingestible.length,
-		overStorageCap: parts.length < indexable.length,
-		overAiCeiling: withinCeiling.length < parts.length,
-		scannerRefusedType: input.withheld.refusedType > 0,
-		refusedType: ingestible.length < withinCeiling.length,
-	});
 	if (eligible.length === 0) return { indexed: 0, skippedReason };
 
 	// Scope captured files to the sender's EXISTING contact (find-only). An

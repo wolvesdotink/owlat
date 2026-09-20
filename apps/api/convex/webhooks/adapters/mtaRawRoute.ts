@@ -26,6 +26,20 @@ import { verifyMtaHeaders } from './mta';
 import { jsonResponse } from '../inboundHttp';
 
 /**
+ * Which of the two raw routes is calling — the audit row's `source` and the
+ * rate-limit key both take it, and a third route means adding it here once.
+ */
+export type RawRouteSource = 'mta-mailbox' | 'mta-inbound';
+
+/**
+ * A verified body, or the exact `Response` to answer with instead.
+ *
+ * Named because `readVerifiedMtaBody` and the inner read-and-verify it wraps
+ * are the same answer twice, and the union was spelled out at both.
+ */
+export type VerifiedMtaBody = { ok: true; bodyText: string } | { ok: false; response: Response };
+
+/**
  * AUDIT, NOT A SECOND COPY OF THE MAIL.
  *
  * These routes' bodies carry `rawBytesBase64` — the entire message. Retaining
@@ -110,7 +124,7 @@ function auditEventLabel(payload: { event?: unknown } | null): string {
 export async function storeRawRouteAudit(
 	ctx: ActionCtx,
 	opts: {
-		source: 'mta-mailbox' | 'mta-inbound';
+		source: RawRouteSource;
 		logTag: string;
 		bodyText: string;
 		payload: { event?: unknown } | null;
@@ -195,8 +209,8 @@ function declaresBodyUnder(request: Request, limit: number): boolean {
 export async function readVerifiedMtaBody(
 	ctx: ActionCtx,
 	request: Request,
-	opts: { logTag: string; rateLimitKeyPrefix: 'mta-mailbox' | 'mta-inbound' }
-): Promise<{ ok: true; bodyText: string } | { ok: false; response: Response }> {
+	opts: { logTag: string; rateLimitKeyPrefix: RawRouteSource }
+): Promise<VerifiedMtaBody> {
 	if (request.method !== 'POST') {
 		return { ok: false, response: jsonResponse(405, { error: 'Method not allowed' }) };
 	}
@@ -220,9 +234,7 @@ export async function readVerifiedMtaBody(
 	 * the 5-minute staleness window — shared with the main MTA webhook
 	 * (`./mta.ts`) so the three inbound paths can never drift on the scheme.
 	 */
-	const readAndVerify = async (): Promise<
-		{ ok: true; bodyText: string } | { ok: false; response: Response }
-	> => {
+	const readAndVerify = async (): Promise<VerifiedMtaBody> => {
 		let bodyText: string;
 		try {
 			bodyText = await request.text();

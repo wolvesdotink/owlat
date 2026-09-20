@@ -50,6 +50,7 @@ import { mailboxIndexableParts } from './deliveryPipeline/scan';
 import { insertDeliveredMessage, stripBrackets } from './deliveryPipeline/insert';
 import {
 	resolveDmarcRouting,
+	type DmarcOverride,
 	resolveFilterOutcome,
 	resolveSpamVerdict,
 } from './deliveryPipeline/routing';
@@ -105,46 +106,47 @@ export const ingestFromWebhook = internalAction({
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const prepared = await prepareInboundMessage(ctx, args);
 
-		const result: { messageId: Id<'mailMessages'>; dmarcOverride?: string } | { skipped: true } =
-			await ctx.runMutation(internal.mail.delivery.deliverToMailbox, {
-				rawStorageId: prepared.rawStorageId,
-				rawSize: prepared.rawSize,
-				antiLoopHeaders: prepared.antiLoopHeaders,
-				unsubscribe: prepared.unsubscribe,
-				recipientAddress: args.recipientAddress,
-				from: args.from,
-				to: args.to,
-				cc: args.cc,
-				bcc: args.bcc,
-				replyTo: args.replyTo,
-				returnPath: args.returnPath,
-				subject: prepared.subject,
-				textBodyInline: prepared.text.inline,
-				textBodyStorageId: prepared.text.storageId,
-				htmlBodyInline: prepared.html.inline,
-				htmlBodyStorageId: prepared.html.storageId,
-				snippet: prepared.snippet,
-				searchBody: prepared.searchBody,
-				messageId: args.messageId,
-				inReplyTo: args.inReplyTo,
-				references: args.references,
-				receivedAt: args.date ?? Date.now(),
-				attachments: args.attachments,
-				spamScore: args.spamScore,
-				spamVerdict: args.spamVerdict,
-				virusVerdict: prepared.virusVerdict,
-				spfResult: args.spfResult,
-				dkimResult: args.dkimResult,
-				dmarcResult: args.dmarcResult,
-				dmarcPolicy: args.dmarcPolicy,
-				arcCv: args.arcCv,
-				arcSealerDomain: args.arcSealerDomain,
-				arcAttestsOriginalPass: args.arcAttestsOriginalPass,
-				envelopeFromDomain: args.envelopeFromDomain,
-				dkimSigningDomain: args.dkimSigningDomain,
-				inboundEncryptionInfo: prepared.inboundEncryptionInfo,
-				inboundSignatureInfo: prepared.inboundSignatureInfo,
-			});
+		const result:
+			| { messageId: Id<'mailMessages'>; dmarcOverride?: DmarcOverride }
+			| { skipped: true } = await ctx.runMutation(internal.mail.delivery.deliverToMailbox, {
+			rawStorageId: prepared.rawStorageId,
+			rawSize: prepared.rawSize,
+			antiLoopHeaders: prepared.antiLoopHeaders,
+			unsubscribe: prepared.unsubscribe,
+			recipientAddress: args.recipientAddress,
+			from: args.from,
+			to: args.to,
+			cc: args.cc,
+			bcc: args.bcc,
+			replyTo: args.replyTo,
+			returnPath: args.returnPath,
+			subject: prepared.subject,
+			textBodyInline: prepared.text.inline,
+			textBodyStorageId: prepared.text.storageId,
+			htmlBodyInline: prepared.html.inline,
+			htmlBodyStorageId: prepared.html.storageId,
+			snippet: prepared.snippet,
+			searchBody: prepared.searchBody,
+			messageId: args.messageId,
+			inReplyTo: args.inReplyTo,
+			references: args.references,
+			receivedAt: args.date ?? Date.now(),
+			attachments: args.attachments,
+			spamScore: args.spamScore,
+			spamVerdict: args.spamVerdict,
+			virusVerdict: prepared.virusVerdict,
+			spfResult: args.spfResult,
+			dkimResult: args.dkimResult,
+			dmarcResult: args.dmarcResult,
+			dmarcPolicy: args.dmarcPolicy,
+			arcCv: args.arcCv,
+			arcSealerDomain: args.arcSealerDomain,
+			arcAttestsOriginalPass: args.arcAttestsOriginalPass,
+			envelopeFromDomain: args.envelopeFromDomain,
+			dkimSigningDomain: args.dkimSigningDomain,
+			inboundEncryptionInfo: prepared.inboundEncryptionInfo,
+			inboundSignatureInfo: prepared.inboundSignatureInfo,
+		});
 
 		// If delivery was skipped (no mailbox / quota / dup), drop the staged blobs.
 		if ('skipped' in result) {
@@ -265,7 +267,9 @@ export const deliverToMailbox = internalMutation({
 	handler: async (
 		ctx,
 		args
-	): Promise<{ messageId: Id<'mailMessages'>; dmarcOverride?: string } | { skipped: true }> => {
+	): Promise<
+		{ messageId: Id<'mailMessages'>; dmarcOverride?: DmarcOverride } | { skipped: true }
+	> => {
 		const recipient = extractEmail(args.recipientAddress);
 		const fromAddress = extractEmail(args.from);
 		const rfc822MessageId = stripBrackets(args.messageId) ?? args.messageId;
