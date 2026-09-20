@@ -17,6 +17,9 @@ COPY patches/ patches/
 COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
 RUN bun install --frozen-lockfile --filter @owlat/setup-cli
 
+# The app tsconfig and every copied package tsconfig `extends` this file; without
+# it tsc aborts with TS5083 and bun build silently drops the compiler options.
+COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY apps/setup-cli apps/setup-cli
 RUN cd apps/setup-cli && bun run build

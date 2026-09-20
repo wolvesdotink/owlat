@@ -18,6 +18,11 @@
 # one's package.json is matched by a pattern on every Dockerfile's COPY line —
 # and, so that an image cannot quietly opt itself out, that every Dockerfile
 # installing from the frozen lockfile carries such a line at all.
+#
+# The same closure argument applies to the shared TypeScript config: a build
+# context that copies a tsconfig.json which `extends` the repo base, but not the
+# base itself, gives tsc a TS5083 and gives `bun build` a silently empty set of
+# compiler options. That is checked here too.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -84,6 +89,22 @@ join_continuations() {
 
 failures=0
 checked=0
+
+# Every checked-in tsconfig.json that extends the repo base, as a set. One grep
+# over the tree beats re-reading a config for each COPY token that names it.
+declare -A extends_base=()
+while IFS= read -r config; do
+	extends_base["$config"]=1
+done < <(git ls-files '*tsconfig.json' \
+	| xargs -r grep -lE '"extends"[[:space:]]*:[[:space:]]*"[^"]*tsconfig\.base\.json"')
+
+# Images that already copy the base, so the closure check can skip them.
+declare -A copies_base_by_file=()
+while IFS= read -r image; do
+	copies_base_by_file["$image"]=1
+done < <(git ls-files '*Dockerfile' '*.Dockerfile' \
+	| xargs -r grep -lE '^[[:space:]]*COPY[[:space:]].*tsconfig\.base\.json')
+
 has_patched_dependencies=$(
 	node -e '
 const patched = require("./package.json").patchedDependencies;
@@ -92,6 +113,28 @@ process.stdout.write(patched && Object.keys(patched).length > 0 ? "1" : "0");
 ) || exit 1
 while IFS= read -r dockerfile; do
 	joined=$(join_continuations "$dockerfile")
+
+	# tsconfig closure: any tsconfig.json entering the build context — copied
+	# directly or swept in with its directory — drags in whatever it `extends`.
+	# Pure bash string work against the precomputed set: this runs once per COPY
+	# token in every image, and a subprocess here costs seconds across the repo.
+	if [ -z "${copies_base_by_file[$dockerfile]:-}" ]; then
+		while IFS= read -r instruction; do
+			[[ $instruction =~ ^[[:space:]]*COPY[[:space:]] ]] || continue
+			read -ra tokens <<<"${instruction#*COPY }"
+			# The last token is the destination; flags are not sources either.
+			for ((i = 0; i < ${#tokens[@]} - 1; i++)); do
+				token="${tokens[i]}"
+				[[ $token == --* ]] && continue
+				candidate="${token%/}"
+				[[ ${candidate##*/} == tsconfig.json ]] || candidate="$candidate/tsconfig.json"
+				[ -n "${extends_base[$candidate]:-}" ] || continue
+				echo "FAIL: $dockerfile copies $candidate, which extends tsconfig.base.json, without copying tsconfig.base.json"
+				failures=$((failures + 1))
+			done
+		done <<<"$joined"
+	fi
+
 	if [ "$has_patched_dependencies" = "1" ]; then
 		stage_has_patches=""
 		while IFS= read -r instruction; do
@@ -182,7 +225,11 @@ if [ "$failures" -gt 0 ]; then
 	echo "Each image's 'COPY --parents … package.json' line must cover every"
 	echo "workspace in the root package.json 'workspaces' globs, or bun's"
 	echo "frozen-lockfile check refuses the partial workspace shape."
+	echo ""
+	echo "An image whose context holds a tsconfig.json that extends the repo base"
+	echo "must also COPY tsconfig.base.json: tsc fails with TS5083 without it, and"
+	echo "bun build compiles with none of the options the config was meant to set."
 	exit 1
 fi
 
-echo "ok:   all $checked Dockerfiles copy every one of the ${#manifests[@]} workspace manifests and required dependency patches"
+echo "ok:   all $checked Dockerfiles copy every one of the ${#manifests[@]} workspace manifests and required dependency patches, and every context that needs tsconfig.base.json copies it"

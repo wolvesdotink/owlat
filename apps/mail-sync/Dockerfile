@@ -20,6 +20,9 @@ RUN bun install --frozen-lockfile --filter @owlat/mail-sync
 # (transitive workspace dep) for DKIM canonicalization, so both must be present
 # or tsc fails to resolve the module. @owlat/shared carries the seed-placement
 # wire contract (`@owlat/shared/seedPlacement`) the probe walker imports.
+# The app tsconfig and every copied package tsconfig `extends` this file; without
+# it tsc aborts with TS5083 and bun build silently drops the compiler options.
+COPY tsconfig.base.json ./
 COPY apps/mail-sync/tsconfig.json apps/mail-sync/
 COPY apps/mail-sync/src/ apps/mail-sync/src/
 COPY packages/smtp-client/ packages/smtp-client/

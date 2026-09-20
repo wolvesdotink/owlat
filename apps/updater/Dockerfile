@@ -15,6 +15,9 @@ COPY patches/ patches/
 COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
 RUN bun install --frozen-lockfile --filter @owlat/updater
 
+# The app tsconfig and every copied package tsconfig `extends` this file; without
+# it tsc aborts with TS5083 and bun build silently drops the compiler options.
+COPY tsconfig.base.json ./
 COPY apps/updater/tsconfig.json apps/updater/
 COPY apps/updater/src apps/updater/src
 # @owlat/shared ships raw TS through its package exports; `bun build` bundles

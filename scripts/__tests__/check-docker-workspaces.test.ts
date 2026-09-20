@@ -9,10 +9,11 @@
  * on disk: the REAL script file, copied into a synthetic root whose Dockerfiles
  * and workspaces are written per case.
  *
- * The cases pin the two ways an image could otherwise fall out of the guard's
+ * The cases pin the ways an image could otherwise fall out of the guard's
  * sight: a purely cosmetic backslash re-wrap of the COPY instruction, an image
- * that installs from the frozen lockfile without copying any manifest, and a
- * frozen-install stage that omits the root dependency patches.
+ * that installs from the frozen lockfile without copying any manifest, a
+ * frozen-install stage that omits the root dependency patches, and a context
+ * that pulls in a tsconfig.json without the base config it extends.
  */
 
 import { execFile } from 'node:child_process';
@@ -22,6 +23,8 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+
+import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -223,11 +226,100 @@ describe('docker workspace-manifest guard', () => {
 		expect(result.code).toBe(1);
 	});
 
-	it('holds for the images checked into this repository', async () => {
-		const { stdout } = await run('bash', [GUARD], { cwd: REPOSITORY_ROOT });
+	it('fails an image that copies a tsconfig extending the base without the base', async () => {
+		const result = await runGuard({
+			...WORKSPACES,
+			'tsconfig.base.json': '{"compilerOptions":{"strict":true}}',
+			'apps/web/tsconfig.json': '{"extends":"../../tsconfig.base.json"}',
+			'apps/web/Dockerfile': [
+				'FROM oven/bun:1 AS build',
+				`COPY --parents ${ALL_GLOBS} ./`,
+				'RUN bun install --frozen-lockfile',
+				'COPY apps/web/tsconfig.json apps/web/',
+				'RUN cd apps/web && bun run build',
+				'',
+			].join('\n'),
+		});
 
-		expect(stdout).toMatch(
-			/^ok: {3}all \d+ Dockerfiles copy every one of the \d+ workspace manifests/
+		expect(result.output).toContain(
+			'FAIL: apps/web/Dockerfile copies apps/web/tsconfig.json, which extends tsconfig.base.json'
 		);
+		expect(result.code).toBe(1);
 	});
+
+	it('accepts the same image once it copies the base config', async () => {
+		const result = await runGuard({
+			...WORKSPACES,
+			'tsconfig.base.json': '{"compilerOptions":{"strict":true}}',
+			'apps/web/tsconfig.json': '{"extends":"../../tsconfig.base.json"}',
+			'apps/web/Dockerfile': [
+				'FROM oven/bun:1 AS build',
+				`COPY --parents ${ALL_GLOBS} ./`,
+				'RUN bun install --frozen-lockfile',
+				'COPY tsconfig.base.json ./',
+				'COPY apps/web/tsconfig.json apps/web/',
+				'RUN cd apps/web && bun run build',
+				'',
+			].join('\n'),
+		});
+
+		expect(result.code).toBe(0);
+	});
+
+	// The config need not be named on a COPY line of its own: sweeping in the
+	// directory that holds it is how apps/setup-cli's image acquires one.
+	it('sees a tsconfig swept in with its directory', async () => {
+		const result = await runGuard({
+			...WORKSPACES,
+			'tsconfig.base.json': '{"compilerOptions":{"strict":true}}',
+			'packages/shared/tsconfig.json': '{"extends":"../../tsconfig.base.json"}',
+			'apps/web/Dockerfile': [
+				'FROM oven/bun:1 AS build',
+				`COPY --parents ${ALL_GLOBS} ./`,
+				'RUN bun install --frozen-lockfile',
+				'COPY packages/shared packages/shared',
+				'RUN cd packages/shared && bun run build',
+				'',
+			].join('\n'),
+		});
+
+		expect(result.output).toContain(
+			'FAIL: apps/web/Dockerfile copies packages/shared/tsconfig.json, which extends tsconfig.base.json'
+		);
+		expect(result.code).toBe(1);
+	});
+
+	it('leaves a standalone tsconfig alone', async () => {
+		const result = await runGuard({
+			...WORKSPACES,
+			'apps/web/tsconfig.json': '{"compilerOptions":{"strict":true}}',
+			'apps/web/Dockerfile': [
+				'FROM oven/bun:1 AS build',
+				`COPY --parents ${ALL_GLOBS} ./`,
+				'RUN bun install --frozen-lockfile',
+				'COPY apps/web/tsconfig.json apps/web/',
+				'',
+			].join('\n'),
+		});
+
+		expect(result.code).toBe(0);
+	});
+
+	// The only case that runs the guard over the WHOLE repository: 11 images
+	// against 33 manifests, a few thousand pattern comparisons. It costs ~4s
+	// alone and more when the other nineteen files in scripts/__tests__ are
+	// running beside it, which is exactly the fixed-subprocess-cost shape
+	// PARALLEL_GATE_TIMEOUT_MS exists for. The synthetic cases above stay on
+	// vitest's default, so a genuine hang in the guard still fails fast.
+	it(
+		'holds for the images checked into this repository',
+		async () => {
+			const { stdout } = await run('bash', [GUARD], { cwd: REPOSITORY_ROOT });
+
+			expect(stdout).toMatch(
+				/^ok: {3}all \d+ Dockerfiles copy every one of the \d+ workspace manifests/
+			);
+		},
+		PARALLEL_GATE_TIMEOUT_MS
+	);
 });

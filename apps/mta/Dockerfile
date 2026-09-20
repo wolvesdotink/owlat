@@ -18,6 +18,9 @@ COPY --parents apps/*/package.json packages/*/package.json examples/*/package.js
 RUN bun install --frozen-lockfile --filter @owlat/mta
 
 # Copy MTA source + workspace packages it imports (TypeScript source)
+# The app tsconfig and every copied package tsconfig `extends` this file; without
+# it tsc aborts with TS5083 and bun build silently drops the compiler options.
+COPY tsconfig.base.json ./
 COPY apps/mta/tsconfig.json apps/mta/
 COPY apps/mta/src/ apps/mta/src/
 COPY packages/email-scanner/ packages/email-scanner/
