@@ -99,8 +99,13 @@ function sessionStore(): SessionStore {
 		scope.run(() => {
 			sharedSession = createSessionStore();
 		});
+		// `run` is a no-op on a stopped scope, and a fresh detached one is never
+		// stopped — but say so rather than asserting a null away.
+		if (!sharedSession) {
+			throw new Error('useAuth: could not build the better-auth session store');
+		}
 	}
-	return sharedSession as SessionStore;
+	return sharedSession;
 }
 
 export function useAuth() {

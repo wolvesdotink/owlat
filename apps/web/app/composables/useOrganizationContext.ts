@@ -13,7 +13,7 @@ let settingsQuery: SettingsQuery = null;
  * `useOrganizationContext` is reached from the `auth` and `admin` route guards,
  * which call it after an `await` — there is no effect scope there, so
  * `useConvexQuery` had nothing to register a teardown on and every navigation to
- * one of the ~99 guarded pages opened another subscription that was never
+ * one of the 117 guarded pages opened another subscription that was never
  * closed. The settings are a single workspace-wide document, so one subscription
  * is also the correct shape. Own it in a DETACHED scope, as `useFeatureFlag`
  * does, so the first caller's component scope cannot dispose it out from under
@@ -35,7 +35,12 @@ function workspaceSettingsQuery(): NonNullable<SettingsQuery> {
 			});
 		});
 	}
-	return settingsQuery as NonNullable<SettingsQuery>;
+	// `run` is a no-op on a stopped scope, and a fresh detached one is never
+	// stopped — but say so rather than asserting a null away.
+	if (!settingsQuery) {
+		throw new Error('useOrganizationContext: could not build the workspace-settings query');
+	}
+	return settingsQuery;
 }
 
 /**

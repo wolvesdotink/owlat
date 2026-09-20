@@ -306,6 +306,26 @@ describe('useConvexQuery', () => {
 			expect(mockClient.onUpdate).toHaveBeenCalledTimes(1);
 		});
 
+		it('falls back to re-subscribing when the args will not serialise', async () => {
+			// Not valid Convex args, so the client is about to reject them anyway —
+			// but the comparison runs inside a watcher, where throwing would take
+			// the caller down. Degrade to the old behaviour (re-subscribe on every
+			// evaluation) instead.
+			const tick = ref(0);
+			useConvexQuery(fakeQuery, () => {
+				const cyclic: Record<string, unknown> = { tick: tick.value };
+				cyclic['self'] = cyclic;
+				return cyclic;
+			});
+
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(1);
+
+			tick.value = 1;
+			await nextTick();
+
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+		});
+
 		it('unsubscribes old subscription before subscribing new on args change', async () => {
 			const teamId = ref('123');
 			useConvexQuery(fakeQuery, () => ({ teamId: teamId.value }));

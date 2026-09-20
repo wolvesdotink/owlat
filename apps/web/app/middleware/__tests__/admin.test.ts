@@ -21,6 +21,8 @@ import {
 	route,
 	session,
 	signIn,
+	useActiveOrganization,
+	useListOrganizations,
 	type Redirect,
 } from './harness';
 
@@ -152,7 +154,7 @@ describe('admin middleware', () => {
 	it('does not open another Convex subscription per navigation', async () => {
 		// The guard calls `useOrganizationContext()` inside `runWithContext`, whose
 		// effect scope is gone once the guard has awaited — so nothing would ever
-		// unsubscribe. With 99 guarded pages that is one leaked workspace-settings
+		// unsubscribe. With 117 guarded pages that is one leaked workspace-settings
 		// subscription per navigation. The query is a module singleton now, so the
 		// count must not grow.
 		signIn({ role: 'admin' });
@@ -174,6 +176,13 @@ describe('admin middleware', () => {
 			options: undefined,
 		});
 		expect(listMembers).not.toHaveBeenCalled();
+		// Constructing the organization stores IS the request: better-auth fetches
+		// the full organization and the organization list as soon as the hooks are
+		// built. A signed-out visitor would collect 401s from both on the way to
+		// the login redirect, so the guard must not build them before it has
+		// decided.
+		expect(useActiveOrganization).not.toHaveBeenCalled();
+		expect(useListOrganizations).not.toHaveBeenCalled();
 	});
 
 	it('holds a pending session until it settles, then decides on the outcome', async () => {

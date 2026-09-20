@@ -154,7 +154,7 @@ export function organizationTranslator(): (key: string) => string {
  * `onScopeDispose`, so a call made where no effect scope is active — route
  * middleware after its first `await`, which is how the `auth` and `admin` guards
  * reach this composable — subscribed forever. One listener per navigation over
- * ~99 guarded pages. Both stores are app-wide singletons upstream, so a single
+ * 117 guarded pages. Both stores are app-wide singletons upstream, so a single
  * subscriber is also the correct shape; a DETACHED scope owns it so no caller's
  * teardown can freeze the refs for everyone else. The scope is module state, so
  * HMR still rebuilds it along with the module — which is what an earlier attempt
@@ -165,7 +165,7 @@ let organizationStores: {
 	organizationsList: ReturnType<typeof useListOrganizations>;
 } | null = null;
 
-function betterAuthOrganizationStores() {
+function betterAuthOrganizationStores(): NonNullable<typeof organizationStores> {
 	if (!organizationStores) {
 		const scope = effectScope(true);
 		scope.run(() => {
@@ -174,8 +174,13 @@ function betterAuthOrganizationStores() {
 				organizationsList: useListOrganizations(),
 			};
 		});
+		// `run` is a no-op on a stopped scope, and a fresh detached one is never
+		// stopped — but say so rather than asserting a null away.
+		if (!organizationStores) {
+			throw new Error('useOrganization: could not build the better-auth organization stores');
+		}
 	}
-	return organizationStores as NonNullable<typeof organizationStores>;
+	return organizationStores;
 }
 
 export function useOrganization() {
@@ -695,30 +700,37 @@ export function useOrganization() {
 
 	// Single watch — only the first instance sets it up to avoid duplicate fetchMembers.
 	// Uses module-level flag (not useState) so it resets on HMR, allowing the watch to be re-created.
+	//
+	// It belongs to a DETACHED scope, not to whichever caller happened to be
+	// first: registered on a component's scope, that component unmounting would
+	// stop the app's ONLY members watcher and no later organization switch would
+	// refetch the member list (and therefore the role) for anybody.
 	if (!watchSetUp) {
 		watchSetUp = true;
-		watch(
-			organizationId,
-			async (newId) => {
-				if (newId) {
-					try {
-						await fetchMembers();
-					} catch {
-						// Fetch failed silently
+		effectScope(true).run(() => {
+			watch(
+				organizationId,
+				async (newId) => {
+					if (newId) {
+						try {
+							await fetchMembers();
+						} catch {
+							// Fetch failed silently
+						}
+					} else {
+						members.value = [];
+						invitations.value = [];
+						currentMemberRole.value = null;
+						// Re-arm: the next organization's role is unknown again. Leaving
+						// this true let a sign-out-then-sign-in in the same tab reuse the
+						// previous session's "resolved", which puts the admin-deep-link
+						// bounce straight back.
+						hasResolvedMembers.value = false;
 					}
-				} else {
-					members.value = [];
-					invitations.value = [];
-					currentMemberRole.value = null;
-					// Re-arm: the next organization's role is unknown again. Leaving
-					// this true let a sign-out-then-sign-in in the same tab reuse the
-					// previous session's "resolved", which puts the admin-deep-link
-					// bounce straight back.
-					hasResolvedMembers.value = false;
-				}
-			},
-			{ immediate: true }
-		);
+				},
+				{ immediate: true }
+			);
+		});
 	}
 
 	return {

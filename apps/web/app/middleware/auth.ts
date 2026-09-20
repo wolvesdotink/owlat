@@ -24,13 +24,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 		return;
 	}
 
-	// Built in the SYNCHRONOUS prologue, before any `await`: the guard runs under
-	// `runWithContext`, whose effect scope is no longer active once this function
-	// suspends, so a composable constructed later has nothing to register a
-	// teardown on.
 	const { isAuthenticated, user, activeOrganizationId, waitUntilReady } = useAuth();
-	const { isLoading: organizationLoading, organization, setActive } = useOrganizationContext();
-
 	await waitUntilReady();
 
 	// If not authenticated and trying to access protected route
@@ -64,6 +58,13 @@ export default defineNuxtRouteMiddleware(async (to) => {
 			// The page will handle loading states
 			return;
 		}
+
+		// Built only once the visitor is known to be signed in and to have a user
+		// id: it opens better-auth's organization requests, which a signed-out
+		// visitor would only answer with 401s on the way to the login redirect.
+		// Its subscriptions are app-lifetime singletons, so building it here —
+		// after an `await`, where the guard's effect scope is gone — leaks nothing.
+		const { isLoading: organizationLoading, organization, setActive } = useOrganizationContext();
 
 		// Wait for organization data to load
 		await waitForLoaded(organizationLoading);

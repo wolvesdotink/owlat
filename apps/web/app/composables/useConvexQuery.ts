@@ -14,7 +14,11 @@ function resolveArgs<Args>(args: ArgsOrFactory<Args>): Args | 'skip' {
 	return typeof args === 'function' ? (args as () => Args | 'skip')() : args;
 }
 
-/** JSON with object keys in a fixed order, so equal args always stringify equal. */
+/**
+ * JSON with object keys in a fixed order. `convexToJson` already sorts keys and
+ * drops `undefined` fields, so the sorting here is for the fallback path below,
+ * where the args never went through it.
+ */
 function stableJson(value: unknown): string {
 	if (value === undefined) return 'undefined';
 	if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'undefined';
@@ -26,24 +30,39 @@ function stableJson(value: unknown): string {
 }
 
 /**
+ * Counter behind the last-resort identity below. Module scope so two queries
+ * cannot collide on the same token.
+ */
+let unserialisableArgsCounter = 0;
+
+/**
  * Identity of a set of query args, for deciding whether to re-subscribe.
  *
  * Args factories return a fresh object literal on every evaluation, so comparing
  * by reference (or watching `deep`, which skips the changed-check entirely) makes
  * any unrelated re-evaluation — a Convex push handing a component a structurally
  * identical prop, say — tear down and reopen the subscription, blanking `data`
- * and flashing a spinner. Compare the VALUE instead. Convex args are
- * JSON-compatible, so `convexToJson` normalises the exotic members (Int64,
- * bytes) and a key-sorted stringify makes the rest order-insensitive; anything
- * `convexToJson` rejects is not a valid query arg anyway, so fall back to the raw
- * value rather than throwing out of a watcher.
+ * and flashing a spinner. Compare the VALUE instead: Convex args are
+ * JSON-compatible, and `convexToJson` normalises the exotic members (Int64,
+ * bytes) into that shape.
+ *
+ * Anything `convexToJson` rejects is not a valid query arg, so the Convex client
+ * is about to throw on it anyway — but this runs inside a watcher, where a throw
+ * would take the caller down instead. Try the raw value, and if even that will
+ * not stringify (a bigint, a cycle), answer with a token that is unique per
+ * evaluation: the query then re-subscribes on every change, which is exactly the
+ * behaviour this composable had before.
  */
 function argsIdentity(args: unknown): string {
 	if (args === 'skip') return 'skip';
 	try {
 		return stableJson(convexToJson(args as Parameters<typeof convexToJson>[0]));
 	} catch {
-		return stableJson(args);
+		try {
+			return stableJson(args);
+		} catch {
+			return `unserialisable:${(unserialisableArgsCounter += 1)}`;
+		}
 	}
 }
 

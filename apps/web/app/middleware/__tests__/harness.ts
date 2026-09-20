@@ -93,6 +93,25 @@ export const session: SessionState = freshSession();
 export const USER: FakeUser = { id: 'user-1', email: 'member@example.com', name: 'Member' };
 export const ORGANIZATION: FakeOrganization = { id: 'org-1', name: 'Acme', slug: 'acme' };
 
+/**
+ * The better-auth organization stores, as vi.fn so a suite can assert they were
+ * never CONSTRUCTED — each construction is a real `/organization/...` request in
+ * the browser, which a signed-out visitor would only answer with a 401.
+ */
+export const useActiveOrganization = vi.fn(() =>
+	computed(() => ({
+		data: session.activeOrganizationError.value
+			? null
+			: (session.organizations.value.find((o) => o.id === session.activeOrganizationId.value) ??
+				null),
+		error: session.activeOrganizationError.value,
+		isPending: false,
+	}))
+);
+export const useListOrganizations = vi.fn(() =>
+	computed(() => ({ data: session.organizations.value }))
+);
+
 export const listMembers = vi.fn(async () => ({ data: { members: session.members.value } }));
 export const listInvitations = vi.fn(async () => ({ data: [] as unknown[] }));
 export const listOrganizations = vi.fn(async () => ({ data: session.organizations.value }));
@@ -115,6 +134,8 @@ export function resetSession(): void {
 	listInvitations.mockClear();
 	listOrganizations.mockClear();
 	setActiveOrganization.mockClear();
+	useActiveOrganization.mockClear();
+	useListOrganizations.mockClear();
 }
 
 /** A signed-in member; `role` is the member's better-auth role in {@link ORGANIZATION}. */
@@ -154,16 +175,8 @@ export function authClientMock() {
 		authClient,
 		useSession: authClient.useSession,
 		getSession: authClient.getSession,
-		useActiveOrganization: () =>
-			computed(() => ({
-				data: session.activeOrganizationError.value
-					? null
-					: (session.organizations.value.find((o) => o.id === session.activeOrganizationId.value) ??
-						null),
-				error: session.activeOrganizationError.value,
-				isPending: false,
-			})),
-		useListOrganizations: () => computed(() => ({ data: session.organizations.value })),
+		useActiveOrganization,
+		useListOrganizations,
 		listOrganizations,
 		listMembers,
 		listInvitations,
