@@ -20,7 +20,12 @@ const modules = import.meta.glob('../**/*.*s');
 const ACME_FILTERS = {
 	logic: 'AND' as const,
 	conditions: [
-		{ kind: 'contact_property' as const, field: 'email', operator: 'contains', value: 'acme' },
+		{
+			kind: 'contact_property' as const,
+			field: 'email',
+			operator: 'contains' as const,
+			value: 'acme',
+		},
 	],
 };
 
@@ -30,7 +35,7 @@ const NEVER_MATCHING_FILTERS = {
 		{
 			kind: 'contact_property' as const,
 			field: 'email',
-			operator: 'contains',
+			operator: 'contains' as const,
 			value: 'nobody-has-this',
 		},
 	],

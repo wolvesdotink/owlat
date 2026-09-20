@@ -13,7 +13,6 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
 import { countLiveMatchesForSegments, evaluateSegmentCount } from '../conditions';
 import { toPaginationCursor } from '../lib/paginationCursor';
 
@@ -155,7 +154,7 @@ export const refreshSingleSegmentCount = internalMutation({
 
 		if (!scan.done) {
 			await ctx.scheduler.runAfter(0, internal.segments.countRefresh.refreshSingleSegmentCount, {
-				segmentId: args.segmentId as Id<'segments'>,
+				segmentId: args.segmentId,
 				cursor: scan.cursor ?? undefined,
 				partial: total,
 				startedUpdatedAt,

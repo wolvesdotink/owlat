@@ -182,6 +182,7 @@ import type * as codeWorkTasks from '../codeWorkTasks.js';
 import type * as conditions_contact_property_index from '../conditions/contact_property/index.js';
 import type * as conditions_email_activity_index from '../conditions/email_activity/index.js';
 import type * as conditions_index from '../conditions/index.js';
+import type * as conditions_liveContactScan from '../conditions/liveContactScan.js';
 import type * as conditions_segmentMatch from '../conditions/segmentMatch.js';
 import type * as conditions_topic_membership_index from '../conditions/topic_membership/index.js';
 import type * as conditions_types from '../conditions/types.js';
@@ -1305,6 +1306,7 @@ declare const fullApi: ApiFromModules<{
 	'conditions/contact_property/index': typeof conditions_contact_property_index;
 	'conditions/email_activity/index': typeof conditions_email_activity_index;
 	'conditions/index': typeof conditions_index;
+	'conditions/liveContactScan': typeof conditions_liveContactScan;
 	'conditions/segmentMatch': typeof conditions_segmentMatch;
 	'conditions/topic_membership/index': typeof conditions_topic_membership_index;
 	'conditions/types': typeof conditions_types;
