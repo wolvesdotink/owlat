@@ -108,7 +108,7 @@ function stripComments(input: string): { stripped: string; comments: string[] } 
  * `"Name" <email@host>` / `Name <email@host>`; returns `null` when no
  * `local@domain` can be extracted. Address is lowercased; a surrounding pair
  * of quotes is stripped from the display name (RFC 2047 decoding happens in
- * {@link toEmailAddress}).
+ * {@link parseMailboxAddress}).
  *
  * RFC 5322 CFWS comments (`(...)`) are removed before address extraction so a
  * leading/trailing comment cannot be mistaken for the address itself (mailparser
@@ -124,6 +124,16 @@ function stripComments(input: string): { stripped: string; comments: string[] } 
  * valid input (verified against the differential mailparser oracle).
  */
 function parseMailbox(input: string): RawMailbox | null {
+	// The same defensive bound {@link parseAddressList} applies, repeated here
+	// because a mailbox is also parsed WITHOUT going through the list scan:
+	// `parseMailboxAddress` is the entry point `@owlat/shared`'s single-address
+	// parser adapts, and it is handed raw `From:` values straight off the wire.
+	// Truncating keeps `stripComments` and the bare-address scan below bounded
+	// no matter which door the input came through. Tokens arriving from
+	// `parseAddressList` are already under the cap, so this is a no-op for them.
+	if (input.length > MAX_ADDRESS_HEADER_LENGTH) {
+		input = input.slice(0, MAX_ADDRESS_HEADER_LENGTH);
+	}
 	const { stripped, comments } = stripComments(input);
 	const trimmed = stripped.trim();
 	if (!trimmed) return null;
@@ -168,7 +178,18 @@ export interface AddressObject {
 
 const NAME_NEEDS_QUOTING = /[()<>[\]:;@\\",.]/;
 
-function toEmailAddress(raw: string): EmailAddress | null {
+/**
+ * Parse ONE mailbox token — no list splitting, no group syntax — into an
+ * {@link EmailAddress}, or `null` when no `local@domain` can be extracted.
+ * The display name is decoded through RFC 2047 and is `''` when absent.
+ *
+ * Exported because a single-address field (an API's `from`, an inbound
+ * recipient, a `From:` header the caller already knows holds one mailbox) must
+ * NOT be run through the list scan: an unquoted comma in a display phrase
+ * (`Smith, John <j@x>`) is a list separator there and would truncate the name.
+ * `@owlat/shared`'s `parseAddress` is the adapter over this.
+ */
+export function parseMailboxAddress(raw: string): EmailAddress | null {
 	const parsed = parseMailbox(raw);
 	if (!parsed) return null;
 	return {
@@ -203,7 +224,7 @@ export function parseAddressList(input: string): EmailAddress[] {
 			buf = '';
 			return;
 		}
-		const addr = toEmailAddress(buf);
+		const addr = parseMailboxAddress(buf);
 		if (addr) target.push(addr);
 		buf = '';
 	};
