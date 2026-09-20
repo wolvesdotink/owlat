@@ -69,7 +69,9 @@ describe('POST /scan/attachment', () => {
 
 	it('blocks a disallowed file type before ClamAV runs', async () => {
 		// MZ header = Windows executable
-		const res = await post(Buffer.from('MZ\x90\x00executable'), { 'X-Filename': 'invoice.pdf.exe' });
+		const res = await post(Buffer.from('MZ\x90\x00executable'), {
+			'X-Filename': 'invoice.pdf.exe',
+		});
 		expect(res.status).toBe(200);
 		const json = await res.json();
 		expect(json.clean).toBe(false);
