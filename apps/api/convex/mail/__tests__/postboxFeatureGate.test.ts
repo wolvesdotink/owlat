@@ -28,8 +28,9 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
 import { enableFeatures } from '../../__tests__/factories';
-import { modules, seedMailbox } from './helpers.testlib';
+import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 
 // The feature floor runs after the auth floor, so the session has to pass for
 // the flag decision to be the one under test.
@@ -84,27 +85,44 @@ describe('postboxMutation refuses when the instance has no personal mail', () =>
 });
 
 describe('the mailbox gate reports feature_off without throwing', () => {
+	/**
+	 * One mailbox holding one inbox message. The read under test is only a real
+	 * probe of the gate when the mailbox HAS mail: an empty mailbox returns the
+	 * same empty page gated or not.
+	 */
+	async function seedMailboxWithOneMessage(
+		t: ReturnType<typeof convexTest<typeof schema>>,
+		opts: { featuresOff?: boolean } = {}
+	): Promise<Id<'mailboxes'>> {
+		const mailboxId = await seedMailbox(t, { featuresOff: opts.featuresOff });
+		await seedFolder(t, mailboxId, 'inbox');
+		await seedMessage(t, mailboxId, { subject: 'quarterly review' });
+		return mailboxId;
+	}
+
 	it('soft-fails a mailbox read to its empty shape when neither flag is on', async () => {
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedMailbox(t, { featuresOff: true });
+		const mailboxId = await seedMailboxWithOneMessage(t, { featuresOff: true });
 
+		// The mailbox holds a message the caller owns; it stays invisible because
+		// the instance has no personal-mail capability — and the read returns the
+		// empty page rather than throwing, which is what keeps the always-mounted
+		// subscribers (global search, the desktop unread peek) quiet.
 		const page = await t.query(api.mail.mailbox.queries.listMessages, { mailboxId });
 		expect(page.messages).toEqual([]);
 		expect(page.hasMore).toBe(false);
 	});
 
-	it('still reaches the mailbox once either flag is on', async () => {
-		const t = convexTest(schema, modules);
-		await enableFeatures(t, ['mail.external']);
-		const mailboxId = await seedMailbox(t);
+	it.each(['postbox', 'mail.external'] as const)(
+		'returns the mailbox contents once %s is on',
+		async (flag) => {
+			const t = convexTest(schema, modules);
+			const mailboxId = await seedMailboxWithOneMessage(t, { featuresOff: true });
+			await enableFeatures(t, [flag]);
 
-		// Same empty page, but now because the mailbox has no mail — the
-		// distinction that matters is that the gate no longer short-circuits, which
-		// the folder listing shows.
-		await expect(
-			t.mutation(api.mail.folders.create, { mailboxId, name: 'Later' })
-		).resolves.toBeDefined();
-		const page = await t.query(api.mail.mailbox.queries.listMessages, { mailboxId });
-		expect(page.messages).toEqual([]);
-	});
+			const page = await t.query(api.mail.mailbox.queries.listMessages, { mailboxId });
+			expect(page.messages).toHaveLength(1);
+			expect(page.messages[0]!.subject).toBe('quarterly review');
+		}
+	);
 });

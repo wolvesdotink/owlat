@@ -143,6 +143,18 @@ beforeEach(() => {
 describe('visualizationAgent — ai.visualizations feature floor', () => {
 	it('refuses the list when the flag is off', async () => {
 		const t = convexTest(schema, modules);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('visualizations', {
+				title: 'Sends per day',
+				description: 'sends per day',
+				html: '<div></div>',
+				pinned: false,
+				createdBy: sessionMock.userId,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
 		await expect(t.query(api.visualizationAgent.list, {})).rejects.toThrow(/ai\.visualizations/);
 	});
 
@@ -159,10 +171,26 @@ describe('visualizationAgent — ai.visualizations feature floor', () => {
 		expect(runLlmTextMock).not.toHaveBeenCalled();
 	});
 
-	it('lets an admin through once the flag is enabled', async () => {
+	it('returns the stored visualizations once the flag is enabled', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.visualizations']);
-		await expect(t.query(api.visualizationAgent.list, {})).resolves.toEqual([]);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('visualizations', {
+				title: 'Sends per day',
+				description: 'sends per day',
+				html: '<div></div>',
+				pinned: false,
+				createdBy: sessionMock.userId,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		// The row exists in both cases; only the flag decides whether the read can
+		// see it, so the pair distinguishes the gate from an empty instance.
+		const list = await t.query(api.visualizationAgent.list, {});
+		expect(list).toHaveLength(1);
 	});
 });
 
