@@ -1,3 +1,4 @@
+import { readBodyText } from './lib/readBody';
 import { httpAction } from './_generated/server';
 import { components } from './_generated/api';
 import { internal } from './_generated/api';
@@ -64,7 +65,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		isMigrationMode?: boolean;
 	};
 	try {
-		body = (await request.json()) as {
+		body = JSON.parse(await readBodyText(request, 100_000)) as {
 			email: string;
 			name: string;
 			passwordHash: string;

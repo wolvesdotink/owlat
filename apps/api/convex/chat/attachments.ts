@@ -1,10 +1,10 @@
 /**
  * Chat attachment upload flow.
  *
- * Reuses the global `mediaAssets` table so attachments are first-class media
- * (browsable in the media library, scoped per-instance). The upload sequence:
- *   1. Frontend calls `generateUploadUrl` to get a signed Convex storage URL.
- *   2. Frontend PUTs the file blob to that URL.
+ * Reuses `mediaAssets` storage records, with a reserved tag that excludes them
+ * from the shared media library. Downloads require room access. Upload sequence:
+ *   1. Frontend calls `generateUploadUrl` to get a one-use upload capability.
+ *   2. Frontend POSTs the file blob to that URL.
  *   3. Frontend calls `registerAttachment` with the resulting storageId; we
  *      insert a `mediaAssets` row and return its id, which the frontend
  *      includes in `chat.messages.sendMessage` as part of `attachmentIds`.
@@ -12,19 +12,24 @@
 
 import { v } from 'convex/values';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
-import { throwInvalidInput } from '../_utils/errors';
+import { throwInvalidInput, throwRateLimited } from '../_utils/errors';
+import { rateLimiter } from '../rateLimiter';
 import { chatQuery, chatMutation, assertCanReadRoom, getRoomOrThrow } from './_helpers';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
+import { assertUnregisteredMediaStorage } from './attachmentAccess';
+import { consumeUpload, mintUploadUrl } from '../storage/uploads';
 
 /**
- * Generate a signed upload URL that the browser can PUT a file to. The URL
+ * Generate a one-use upload URL that the browser can POST a file to. The URL
  * is short-lived (~1 hour, controlled by Convex storage policy).
  */
 export const generateUploadUrl = chatMutation({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx, _args, session) => {
 		await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
-		return await ctx.storage.generateUploadUrl();
+		const limit = await rateLimiter.limit(ctx, 'storageUpload', { key: session.userId });
+		if (!limit.ok) throwRateLimited('Too many uploads — try again in a moment.', limit.retryAfter);
+		return await mintUploadUrl(ctx, session);
 	},
 });
 
@@ -42,7 +47,8 @@ export const registerAttachment = chatMutation({
 		height: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
+		const session = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
+		const { userId } = session;
 
 		if (!args.filename.trim()) throwInvalidInput('Filename cannot be empty');
 		if (!args.mimeType.trim()) throwInvalidInput('MIME type cannot be empty');
@@ -53,6 +59,7 @@ export const registerAttachment = chatMutation({
 			);
 		}
 
+		await assertUnregisteredMediaStorage(ctx, args.storageId);
 		const url = await ctx.storage.getUrl(args.storageId);
 		if (!url) throwInvalidInput('Uploaded blob is missing or expired');
 
@@ -71,6 +78,7 @@ export const registerAttachment = chatMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await consumeUpload(ctx, args.storageId, session, `mediaAssets:${assetId}`);
 		return assetId;
 	},
 });

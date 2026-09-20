@@ -32,6 +32,7 @@
  * See docs/adr/0030-public-token-endpoint-module.md.
  */
 
+import { readBodyBytes } from './readBody';
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getClientIp, rateLimitedResponse, type PublicRateLimitType } from '../publicRateLimit';
@@ -221,18 +222,17 @@ export async function parseBody(request: Request, mode: BodyParser): Promise<unk
 		return undefined;
 	}
 
-	const contentLength = request.headers.get('Content-Length');
-	if (contentLength && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
-		throw new Error('Request body too large');
-	}
+	const bytes = await readBodyBytes(request, MAX_BODY_BYTES);
+	const bounded = new Request(request.url, {
+		method: request.method,
+		headers: request.headers,
+		body: bytes,
+	});
 
 	const contentType = request.headers.get('Content-Type') || '';
 
 	if (mode === 'json') {
-		const text = await request.text();
-		if (text.length > MAX_BODY_BYTES) {
-			throw new Error('Request body too large');
-		}
+		const text = await bounded.text();
 		if (text.length === 0) {
 			return undefined;
 		}
@@ -245,10 +245,7 @@ export async function parseBody(request: Request, mode: BodyParser): Promise<unk
 
 	// mode === 'formData' — accepts JSON, urlencoded, or multipart.
 	if (contentType.includes('application/json')) {
-		const text = await request.text();
-		if (text.length > MAX_BODY_BYTES) {
-			throw new Error('Request body too large');
-		}
+		const text = await bounded.text();
 		if (text.length === 0) {
 			return {};
 		}
@@ -259,10 +256,7 @@ export async function parseBody(request: Request, mode: BodyParser): Promise<unk
 		}
 	}
 	if (contentType.includes('application/x-www-form-urlencoded')) {
-		const text = await request.text();
-		if (text.length > MAX_BODY_BYTES) {
-			throw new Error('Request body too large');
-		}
+		const text = await bounded.text();
 		const params = new URLSearchParams(text);
 		const data: Record<string, string> = {};
 		params.forEach((value, key) => {
@@ -273,30 +267,15 @@ export async function parseBody(request: Request, mode: BodyParser): Promise<unk
 	if (contentType.includes('multipart/form-data')) {
 		let formData: FormData;
 		try {
-			formData = await request.formData();
+			formData = await bounded.formData();
 		} catch {
 			throw new Error('Invalid form data');
 		}
-		// Enforce the body cap on the multipart path too. The Content-Length
-		// pre-check above is not sufficient — a chunked (unset Content-Length)
-		// multipart body slips past it, so bound the decoded parts here. String
-		// parts count their character length; file/blob parts count their byte
-		// size. Any part pushing the running total over the cap rejects the
-		// request before it is handed to a handler.
 		const data: Record<string, string> = {};
-		let totalBytes = 0;
 		for (const [key, value] of formData.entries()) {
-			totalBytes += key.length;
-			if (typeof value === 'string') {
-				totalBytes += value.length;
-				data[key] = value;
-			} else {
-				totalBytes += (value as { size: number }).size;
-			}
-			if (totalBytes > MAX_BODY_BYTES) {
-				throw new Error('Request body too large');
-			}
+			if (typeof value === 'string') data[key] = value;
 		}
+
 		return data;
 	}
 	throw new Error('Unsupported content type. Use JSON or form-urlencoded.');

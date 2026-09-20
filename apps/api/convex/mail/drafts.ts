@@ -14,6 +14,7 @@
  */
 
 import { v } from 'convex/values';
+import { consumeUpload, deleteOwnedUpload } from '../storage/uploads';
 import { internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import { authedMutation, authedQuery, publicQuery } from '../lib/authedFunctions';
@@ -262,10 +263,12 @@ export const addAttachment = authedMutation({
 		isInline: v.optional(v.boolean()),
 		contentId: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
+		assertStateIs(draft, 'draft');
+		await consumeUpload(ctx, args.storageId, session, `mailDrafts:${args.draftId}`);
 
 		await ctx.db.patch(args.draftId, {
 			attachments: [
@@ -301,7 +304,7 @@ export const removeAttachment = authedMutation({
 			lastEditedAt: Date.now(),
 		});
 		if (toDelete) {
-			await ctx.storage.delete(toDelete.storageId);
+			await deleteOwnedUpload(ctx, toDelete.storageId, `mailDrafts:${args.draftId}`);
 		}
 		return { ok: true };
 	},
@@ -315,7 +318,7 @@ export const discard = authedMutation({
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return;
 		for (const att of draft.attachments) {
-			await ctx.storage.delete(att.storageId);
+			await deleteOwnedUpload(ctx, att.storageId, `mailDrafts:${args.draftId}`);
 		}
 		await ctx.db.delete(args.draftId);
 	},

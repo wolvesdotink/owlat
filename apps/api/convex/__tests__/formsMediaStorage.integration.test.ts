@@ -26,6 +26,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
+import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestTopic, createTestContact } from './factories';
@@ -44,12 +45,14 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
+			activeOrganizationId: 'test-org',
 		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.user.id),
 		getMutationContext: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
+			activeOrganizationId: 'test-org',
 		})),
 		requireOrgPermission: vi
 			.fn()
@@ -63,7 +66,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 					),
 					message
 				);
-				return { userId: sessionMock.user.id, role: sessionMock.user.role };
+				return {
+					userId: sessionMock.user.id,
+					role: sessionMock.user.role,
+					activeOrganizationId: 'test-org',
+				};
 			}),
 		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
 			subject: sessionMock.user.id,
@@ -76,7 +83,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 			if (sessionMock.user.role === 'editor') {
 				throw new Error('Only owners and admins can perform this action');
 			}
-			return { userId: sessionMock.user.id, role: sessionMock.user.role };
+			return {
+				userId: sessionMock.user.id,
+				role: sessionMock.user.role,
+				activeOrganizationId: 'test-org',
+			};
 		}),
 	};
 });
@@ -493,9 +504,13 @@ describe('submitForm (POST /forms/{formId})', () => {
 
 /** Store a small blob and return its `_storage` id so create() can resolve a URL. */
 async function storeBlob(t: TestConvex<typeof schema>, bytes = 16): Promise<Id<'_storage'>> {
-	return await t.run(async (ctx) =>
-		ctx.storage.store(new Blob([new Uint8Array(bytes).fill(1)], { type: 'image/png' }))
-	);
+	return await t.run(async (ctx) => {
+		const storageId = await ctx.storage.store(
+			new Blob([new Uint8Array(bytes).fill(1)], { type: 'image/png' })
+		);
+		await recordUploadedBlob(ctx, storageId, sessionMock.user.id, 'test-org');
+		return storageId;
+	});
 }
 
 describe('mediaAssets.create', () => {
@@ -720,4 +735,32 @@ describe('storage.getUrl', () => {
 
 		await expect(t.query(api.storage.getUrl, { storageId })).rejects.toThrow(/File/);
 	});
+});
+
+it('deleting a legacy media alias cannot delete another resource blob', async () => {
+	const t = setupTest();
+	const { assetId, storageId } = await t.run(async (ctx) => {
+		const storageId = await ctx.storage.store(new Blob(['another resource']));
+		const assetId = await ctx.db.insert('mediaAssets', {
+			storageId,
+			filename: 'legacy.png',
+			mimeType: 'image/png',
+			fileSize: 16,
+			url: 'https://owlat.example/file',
+			uploadedBy: 'test-user',
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		});
+		await ctx.db.insert('storageUploads', {
+			storageId,
+			userId: 'other-user',
+			organizationId: 'test-org',
+			status: 'bound',
+			resourceKey: 'mailDrafts:foreign',
+		});
+		return { assetId, storageId };
+	});
+	await t.mutation(api.mediaAssets.bulkDelete, { assetIds: [assetId] });
+	expect(await t.run((ctx) => ctx.db.get(assetId))).toBeNull();
+	expect(await t.run(async (ctx) => (await ctx.storage.get(storageId)) !== null)).toBe(true);
 });

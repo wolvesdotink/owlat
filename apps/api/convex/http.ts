@@ -1,4 +1,5 @@
 import { httpRouter } from 'convex/server';
+import { beginUpload, finishUpload, abortUpload } from './storage/uploadsHttp';
 import { authComponent, createAuth } from './auth/auth';
 import { trackOpen, trackClick } from './delivery/trackingHttp';
 import { seedAdmin } from './seedAdminHttp';
@@ -36,6 +37,10 @@ import { getCampaignArchive } from './campaigns/archiveHttp';
 import { getShareLink } from './shareLinkHttp';
 
 const http = httpRouter();
+
+http.route({ path: '/storage/upload/begin', method: 'POST', handler: beginUpload });
+http.route({ path: '/storage/upload/finish', method: 'POST', handler: finishUpload });
+http.route({ path: '/storage/upload/abort', method: 'POST', handler: abortUpload });
 
 // Email tracking routes
 // Open tracking pixel: GET /t/o/{emailSendId}

@@ -5,7 +5,9 @@ import { v } from 'convex/values';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import type { Doc } from './_generated/dataModel';
 import { requireOrgPermission } from './lib/sessionOrganization';
-import { getOrThrow, throwInvalidState, throwInvalidInput } from './_utils/errors';
+import { getOrThrow, throwInvalidState, throwInvalidInput, throwNotFound } from './_utils/errors';
+import { isChatAttachment, assertUnregisteredMediaStorage } from './chat/attachmentAccess';
+import { consumeUpload, deleteOwnedUpload } from './storage/uploads';
 import { logError } from './lib/runtimeLog';
 import {
 	isExtensionAllowed,
@@ -52,7 +54,8 @@ export const list = authedQuery({
 	},
 	handler: async (ctx, args) => {
 		const applyPostFilters = (results: PaginationResult<Doc<'mediaAssets'>>) => {
-			let page = results.page;
+			// Chat files share the table, but their room owns the read boundary.
+			let page = results.page.filter((asset) => !isChatAttachment(asset));
 			if (args.tag) {
 				page = page.filter((a) => a.tags?.includes(args.tag!));
 			}
@@ -96,8 +99,13 @@ export const getStats = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		const assets = await ctx.db.query('mediaAssets').take(MEDIA_SCAN_LIMIT);
-		const totalBytes = assets.reduce((sum, a) => sum + a.fileSize, 0);
-		return { totalCount: assets.length, totalBytes, truncated: assets.length >= MEDIA_SCAN_LIMIT };
+		const sharedAssets = assets.filter((asset) => !isChatAttachment(asset));
+		const totalBytes = sharedAssets.reduce((sum, a) => sum + a.fileSize, 0);
+		return {
+			totalCount: sharedAssets.length,
+			totalBytes,
+			truncated: assets.length >= MEDIA_SCAN_LIMIT,
+		};
 	},
 });
 
@@ -121,7 +129,7 @@ export const countUsage = authedQuery({
 	args: { assetId: v.id('mediaAssets') },
 	handler: async (ctx, args) => {
 		const asset = await ctx.db.get(args.assetId);
-		if (!asset) return { count: 0 };
+		if (!asset || isChatAttachment(asset)) return { count: 0 };
 		const needle = asset.storageId;
 
 		const [templates, transactional, blocks] = await Promise.all([
@@ -153,6 +161,7 @@ export const listTags = authedQuery({
 		const assets = await ctx.db.query('mediaAssets').take(MEDIA_SCAN_LIMIT);
 		const tagSet = new Set<string>();
 		for (const asset of assets) {
+			if (isChatAttachment(asset)) continue;
 			if (asset.tags) {
 				for (const tag of asset.tags) {
 					tagSet.add(tag);
@@ -209,6 +218,7 @@ export const create = authedMutation({
 			throwInvalidInput(`File exceeds the ${MAX_LIBRARY_FILE_MB} MB upload limit`);
 		}
 
+		await assertUnregisteredMediaStorage(ctx, args.storageId);
 		const url = await ctx.storage.getUrl(args.storageId);
 		if (!url) {
 			throwInvalidState('Failed to resolve storage URL');
@@ -232,6 +242,7 @@ export const create = authedMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await consumeUpload(ctx, args.storageId, session, `mediaAssets:${assetId}`);
 
 		// The above checks only trust the CLIENT-SUPPLIED filename/MIME. Verify
 		// the ACTUAL stored bytes asynchronously: reading a blob requires an
@@ -334,7 +345,7 @@ export const reconcileAssetSize = internalMutation({
 		if (grossUnderReport) {
 			await ctx.db.delete(args.assetId);
 			try {
-				await ctx.storage.delete(args.storageId);
+				await deleteOwnedUpload(ctx, args.storageId, `mediaAssets:${args.assetId}`);
 			} catch {
 				// Blob may already be gone — best effort.
 			}
@@ -362,7 +373,7 @@ export const quarantineAsset = internalMutation({
 		const asset = await ctx.db.get(args.assetId);
 		if (asset) await ctx.db.delete(args.assetId);
 		try {
-			await ctx.storage.delete(args.storageId);
+			await deleteOwnedUpload(ctx, args.storageId, `mediaAssets:${args.assetId}`);
 		} catch {
 			// Blob may already be gone — best effort.
 		}
@@ -386,6 +397,7 @@ export const update = authedMutation({
 			'Only owners and admins can update media assets'
 		);
 		const asset = await getOrThrow(ctx, args.assetId, 'Media asset');
+		if (isChatAttachment(asset)) throwNotFound('Media asset');
 
 		const newAlt = args.alt !== undefined ? args.alt : asset.alt;
 		const newTags = args.tags !== undefined ? args.tags : asset.tags;
@@ -415,7 +427,8 @@ export const bulkDelete = authedMutation({
 		for (const assetId of args.assetIds) {
 			const asset = await ctx.db.get(assetId);
 			if (!asset) continue;
-			await ctx.storage.delete(asset.storageId);
+			if (isChatAttachment(asset)) throwNotFound('Media asset');
+			await deleteOwnedUpload(ctx, asset.storageId, `mediaAssets:${assetId}`);
 			await ctx.db.delete(assetId);
 		}
 	},

@@ -83,6 +83,13 @@ async function seedDraftWithAttachment(
 			lastEditedAt: now,
 			createdAt: now,
 		});
+		await ctx.db.insert('storageUploads', {
+			storageId,
+			userId: sessionMocks.userId,
+			organizationId: 'org-1',
+			status: 'bound',
+			resourceKey: `mailDrafts:${draftId}`,
+		});
 		return { draftId, storageId };
 	});
 }
@@ -496,4 +503,40 @@ describe('the stored lifetime preference', () => {
 		const literals = mailShareLinkExpiryDaysValidator.members.map((m) => m.value);
 		expect(literals.sort()).toEqual([...ATTACHMENT_SHARE_EXPIRY_DAY_CHOICES].sort());
 	});
+});
+
+it('revoking an inherited attachment never deletes another resource blob', async () => {
+	const t = convexTest(schema, modules);
+	const mailboxId = await seedMailbox(t);
+	const { draftId, storageId } = await seedDraftWithAttachment(t, mailboxId);
+	await t.run(async (ctx) => {
+		const receipt = await ctx.db
+			.query('storageUploads')
+			.withIndex('by_storage', (q) => q.eq('storageId', storageId))
+			.unique();
+		await ctx.db.patch(receipt!._id, { resourceKey: 'mediaAssets:other-resource' });
+	});
+	const { shareId } = await createShare(t, draftId, storageId);
+	await t.mutation(api.mail.attachmentShares.revoke, { shareId });
+	expect(await blobExists(t, storageId)).toBe(true);
+	expect((await shareRow(t, shareId))?.storageId).toBeUndefined();
+});
+
+it('moves deletion authority from the draft to its share', async () => {
+	const t = convexTest(schema, modules);
+	const mailboxId = await seedMailbox(t);
+	const { draftId, storageId } = await seedDraftWithAttachment(t, mailboxId);
+	const { shareId } = await createShare(t, draftId, storageId);
+	const resource = await t.run(
+		async (ctx) =>
+			(
+				await ctx.db
+					.query('storageUploads')
+					.withIndex('by_storage', (q) => q.eq('storageId', storageId))
+					.unique()
+			)?.resourceKey
+	);
+	expect(resource).toBe(`mailAttachmentShares:${shareId}`);
+	await t.mutation(api.mail.attachmentShares.revoke, { shareId });
+	expect(await blobExists(t, storageId)).toBe(false);
 });

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { storeSealedBlob } from '../lib/sealedBlob';
 import { sessionMock, resetSessionMock } from './gdprSessionMock';
@@ -481,4 +481,33 @@ describe('accountManagement.exportUserData — admin-only metadata gating', () =
 		expect(JSON.stringify(res)).not.toContain('customer@example.com');
 		expect(JSON.stringify(res)).not.toContain('blocked-customer@example.com');
 	});
+});
+
+it('does not export private chat bytes through caller-controlled template media IDs', async () => {
+	const t = newHarness();
+	sessionMock.role = 'owner';
+	await seedProfile(t, 'auth-user-1');
+	const organizationId = await seedOrg(t);
+	await seedMember(t, organizationId, 'auth-user-1', 'owner');
+	const assetId = await t.run(async (ctx) => {
+		const storageId = await ctx.storage.store(new Blob(['private chat document']));
+		return ctx.db.insert('mediaAssets', {
+			storageId,
+			filename: 'private.txt',
+			mimeType: 'text/plain',
+			fileSize: 21,
+			url: (await ctx.storage.getUrl(storageId))!,
+			uploadedBy: 'another-user',
+			tags: ['chat-attachment'],
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		});
+	});
+	expect(
+		await t.query(internal.auth.accountExportQueries.listAuthorizedTemplateMedia, {
+			userId: 'auth-user-1',
+			organizationId,
+			mediaAssetIds: [assetId],
+		})
+	).toEqual([]);
 });
