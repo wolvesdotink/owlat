@@ -128,9 +128,9 @@ crons.interval(
 );
 
 // PII retention sweeps (see maintenance/retention.ts): audit trails age out
-// after 30 days, form-submission IP/UA after 90; auth-failure rows after
-// their TTL (the mailAuthFailures schema always claimed this cron — now it
-// actually exists).
+// after 30 days, form-submission IP/UA after 90, agent-health rollup points
+// after 7; auth-failure rows after their TTL (the mailAuthFailures schema
+// always claimed this cron — now it actually exists).
 crons.interval(
 	'retention: audit logs',
 	{ hours: 24 },
@@ -147,6 +147,12 @@ crons.interval(
 	'retention: plugin llm accounting',
 	{ hours: 24 },
 	internal.maintenance.retention.sweepPluginLlmAccounting,
+	{}
+);
+crons.interval(
+	'retention: agent metrics',
+	{ hours: 24 },
+	internal.maintenance.retention.sweepAgentMetrics,
 	{}
 );
 crons.interval(
@@ -336,7 +342,9 @@ crons.interval(
 );
 
 // Agent metrics rollup every 5 minutes
-// Computes queue depth, latency, error rates, evaluates circuit breakers
+// Computes queue depth, latency, error rates, evaluates circuit breakers.
+// Writes the whole window in one transaction; ageing those rows out is the
+// 'retention: agent metrics' entry above, not this one.
 crons.interval('agent metrics rollup', { minutes: 5 }, internal.agentHealth.rollupMetrics);
 
 // Reset autonomy daily action counts every 24 hours
