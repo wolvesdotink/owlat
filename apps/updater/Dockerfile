@@ -21,6 +21,14 @@ COPY apps/updater/src apps/updater/src
 # the imported modules (featureFlags + composeOverride) into dist/index.js so
 # the runtime image still needs no node_modules.
 COPY packages/shared/src packages/shared/src
+# `errorMessage` comes from the @owlat/shared BARREL, and the barrel re-exports
+# ./address, which parses through @owlat/mail-message. Bundling therefore has to
+# resolve mail-message's source too — the manifest copied above is not enough.
+COPY packages/mail-message/src packages/mail-message/src
+# …which in turn declares @owlat/mail-canon. Copy the whole declared closure,
+# not just what today's tree-shake happens to keep, so an added import through
+# mail-message cannot break this image.
+COPY packages/mail-canon/src packages/mail-canon/src
 RUN cd apps/updater && bun run build
 
 FROM node:26-alpine

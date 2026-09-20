@@ -18,6 +18,10 @@ COPY --parents apps/*/package.json packages/*/package.json examples/*/package.js
 RUN bun install --frozen-lockfile --filter @owlat/setup-cli
 
 COPY packages/shared packages/shared
+# The barrel import of @owlat/shared re-exports ./address, which parses through
+# @owlat/mail-message, so its source must be present for the bundle to resolve.
+COPY packages/mail-message packages/mail-message
+COPY packages/mail-canon packages/mail-canon
 COPY apps/setup-cli apps/setup-cli
 RUN cd apps/setup-cli && bun run build
 

@@ -31,6 +31,13 @@ COPY --from=deps /app/node_modules ../../node_modules
 COPY apps/docs/ ./
 COPY tsconfig.base.json ../../tsconfig.base.json
 COPY packages/shared/ ../../packages/shared/
+# @owlat/shared's barrel re-exports ./address, which parses through
+# @owlat/mail-message (→ @owlat/mail-canon). The docs bundle reaches only the
+# leaf subpath ./deliverabilityProviderGuidance today, but the workspace edge is
+# declared, so the source closure travels with it rather than depending on which
+# subpath a component happens to import.
+COPY packages/mail-message/ ../../packages/mail-message/
+COPY packages/mail-canon/ ../../packages/mail-canon/
 COPY packages/ui/ ../../packages/ui/
 
 # Generate packages/ui/.nuxt/tsconfig.json (excluded from Docker context by
