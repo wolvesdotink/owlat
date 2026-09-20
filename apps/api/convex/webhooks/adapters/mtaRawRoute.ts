@@ -141,11 +141,52 @@ export async function storeRawRouteAudit(
 }
 
 /**
+ * Bodies at or under this declared size are HMAC-verified BEFORE the shared
+ * rate-limit bucket is charged.
+ *
+ * WHY A BOUND AT ALL. Verifying first is what keeps unsigned traffic from
+ * spending the bucket — but verifying means READING the body, and on a route
+ * that accepts a 13 MiB base64 message that read is the cost an unauthenticated
+ * caller must not be able to impose at will. So the free verification is
+ * offered only to a caller whose own `Content-Length` says the body is small;
+ * anything bigger pays the bucket first, exactly as before. A caller that lies
+ * about its length is reading a body no bigger than the route already accepts
+ * from a signed one, and it pays the bucket on the very next request.
+ *
+ * 256 KiB comfortably covers every signature probe, every health check and
+ * every hand-rolled junk POST — the traffic this exists to keep off the bucket.
+ */
+const FREE_VERIFY_BYTES = 256 * 1024;
+
+/**
+ * Does this request's own `Content-Length` declare a body at or under `limit`?
+ *
+ * Strict about the header itself: absent (a chunked body declares nothing),
+ * empty, negative or not a number all answer `false`, because the free body
+ * read below is offered on the strength of that number alone.
+ */
+function declaresBodyUnder(request: Request, limit: number): boolean {
+	const raw = request.headers.get('content-length');
+	if (raw === null || raw.trim() === '') return false;
+	const declared = Number(raw);
+	return Number.isFinite(declared) && declared >= 0 && declared <= limit;
+}
+
+/**
  * Everything that has to be true before a raw-route body is worth parsing:
- * method, both signature headers, the per-source rate limit, a configured
- * secret, a readable body, and a valid HMAC inside the staleness window — in
- * that order, so the checks that cost nothing run before the ones that spend
- * a shared bucket or read an unbounded body.
+ * method, both signature headers, a configured secret, a readable body, a valid
+ * HMAC inside the staleness window, and the per-source rate limit — ordered so
+ * the checks that cost nothing run before the ones that spend a shared bucket
+ * or read an unbounded body.
+ *
+ * WHERE THE BUCKET SITS IS THE POINT. Without `RATE_LIMIT_TRUSTED_PROXY` every
+ * caller keys as `unknown`, so the bucket is ONE bucket shared with the real
+ * MTA — and anything an unauthenticated caller can charge to it 429s the next
+ * genuine delivery, which the MTA reads as retryable: six attempts, then the
+ * DLQ. Refusing a request without both signature headers costs one header
+ * lookup and charges nothing; refusing a SMALL request whose signature does not
+ * verify costs one read and one HMAC and also charges nothing. Only a body too
+ * big to verify for free, and every verified request, reaches the bucket.
  *
  * Returns the verified body, or the exact `Response` to answer with. The body
  * read is UNBOUNDED, which is the whole reason these routes exist outside the
@@ -160,19 +201,51 @@ export async function readVerifiedMtaBody(
 		return { ok: false, response: jsonResponse(405, { error: 'Method not allowed' }) };
 	}
 
-	// THE FREE CHECK FIRST. Both signature headers are a string comparison
-	// against no state at all, while the bucket below is shared with the real
-	// MTA: without RATE_LIMIT_TRUSTED_PROXY every caller keys as 'unknown', so
-	// header-less spam used to drain the bucket and 429 the next SIGNED
-	// delivery — which the MTA reads as retryable, six attempts and then the
-	// DLQ. Nothing here reads the body or touches the database, so an
-	// unsigned request now costs one header lookup.
+	// Both signature headers are a string comparison against no state at all.
 	const signature = request.headers.get('x-mta-signature');
 	const mtaTimestamp = request.headers.get('x-mta-timestamp');
 	if (!signature || !mtaTimestamp) {
 		logError(`${opts.logTag} Missing X-MTA-Signature or X-MTA-Timestamp`);
 		return { ok: false, response: jsonResponse(401, { error: 'Missing signature headers' }) };
 	}
+
+	const secret = getOptional('MTA_WEBHOOK_SECRET');
+	if (!secret) {
+		logError(`${opts.logTag} MTA_WEBHOOK_SECRET is not configured`);
+		return { ok: false, response: jsonResponse(503, { error: 'Webhook endpoint not configured' }) };
+	}
+
+	/**
+	 * Read the body and check the HMAC-SHA256 over `${timestamp}.${body}` plus
+	 * the 5-minute staleness window — shared with the main MTA webhook
+	 * (`./mta.ts`) so the three inbound paths can never drift on the scheme.
+	 */
+	const readAndVerify = async (): Promise<
+		{ ok: true; bodyText: string } | { ok: false; response: Response }
+	> => {
+		let bodyText: string;
+		try {
+			bodyText = await request.text();
+		} catch {
+			return { ok: false, response: jsonResponse(400, { error: 'Failed to read request body' }) };
+		}
+		if (!(await verifyMtaHeaders(bodyText, signature, mtaTimestamp, secret))) {
+			logError(`${opts.logTag} Invalid signature or stale timestamp`);
+			return { ok: false, response: jsonResponse(401, { error: 'Invalid signature' }) };
+		}
+		return { ok: true, bodyText };
+	};
+
+	// A caller whose own Content-Length says the body is small is verified for
+	// free, so junk that merely CARRIES the two headers cannot spend the bucket
+	// either. The headers being present was never evidence of anything.
+	//
+	// NO LENGTH IS NOT A SMALL LENGTH. A chunked request declares none, and
+	// `Number(null)` is 0 — which would have handed any caller who simply omits
+	// the header an unbounded free read, a bigger hole than the one this closes.
+	// Absent, empty or unparseable: pay the bucket first.
+	const verified = declaresBodyUnder(request, FREE_VERIFY_BYTES) ? await readAndVerify() : null;
+	if (verified && !verified.ok) return verified;
 
 	// Per-source rate-limit key (`<route>:<ip>`) so a flood on one raw route
 	// cannot drain the shared 'webhookIngestion' bucket and 429 the provider
@@ -189,26 +262,5 @@ export async function readVerifiedMtaBody(
 		return { ok: false, response: rateLimitedResponse(retryAfter) };
 	}
 
-	const secret = getOptional('MTA_WEBHOOK_SECRET');
-	if (!secret) {
-		logError(`${opts.logTag} MTA_WEBHOOK_SECRET is not configured`);
-		return { ok: false, response: jsonResponse(503, { error: 'Webhook endpoint not configured' }) };
-	}
-
-	let bodyText: string;
-	try {
-		bodyText = await request.text();
-	} catch {
-		return { ok: false, response: jsonResponse(400, { error: 'Failed to read request body' }) };
-	}
-
-	// HMAC-SHA256 over `${timestamp}.${body}` + the 5-minute timestamp-staleness
-	// check, shared with the main MTA webhook (`./mta.ts`) so the three inbound
-	// paths can never drift on the signature scheme.
-	if (!(await verifyMtaHeaders(bodyText, signature, mtaTimestamp, secret))) {
-		logError(`${opts.logTag} Invalid signature or stale timestamp`);
-		return { ok: false, response: jsonResponse(401, { error: 'Invalid signature' }) };
-	}
-
-	return { ok: true, bodyText };
+	return verified ?? (await readAndVerify());
 }

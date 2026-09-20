@@ -608,6 +608,33 @@ describe('handleInboundWebhook (/webhooks/mta-inbound)', () => {
 		expect(await countPayloads(t)).toBe(0);
 	});
 
+	it("does not let junk that merely carries the headers spend the MTA's bucket", async () => {
+		const t = setupTest();
+		// `webhookIngestion` holds 100 tokens and, without
+		// RATE_LIMIT_TRUSTED_PROXY, every caller keys as the same 'unknown' IP.
+		// Refusing header-LESS requests for free was only half of it: setting
+		// `X-MTA-Signature: whatever` costs an attacker nothing and used to
+		// charge the bucket, so 120 such posts 429 the next genuine delivery —
+		// which the MTA retries six times and then dead-letters.
+		const junk = inboundBody();
+		for (let i = 0; i < 120; i++) {
+			const res = await post(t, INBOUND_PATH, junk, {
+				'x-mta-signature': 'not-a-signature',
+				'x-mta-timestamp': String(nowSeconds()),
+				// The small DECLARED length is what buys the free verification.
+				// A caller that declares none pays the bucket first, because
+				// "no length" must never read as "a short body".
+				'content-length': String(Buffer.byteLength(junk)),
+			});
+			expect(res.status).toBe(401);
+		}
+
+		const body = inboundBody();
+		const res = await post(t, INBOUND_PATH, body, await signedHeaders(body));
+		expect(res.status).not.toBe(429);
+		expect(res.status).toBe(200);
+	});
+
 	it('rejects (401) when the timestamp is stale (>300s)', async () => {
 		const t = setupTest();
 		const body = inboundBody();
@@ -685,6 +712,55 @@ describe('handleInboundWebhook (/webhooks/mta-inbound)', () => {
 		// The same signed bytes on the shared pipeline route: 413.
 		const rejected = await post(t, PIPELINE_PATH, body, headers);
 		expect(rejected.status).toBe(413);
+	});
+
+	// ─── THE ARGUMENT BUDGET ─────────────────────────────────────────────────
+	//
+	// Convex caps a function's ARGUMENTS at 16 MiB, and this route forwards the
+	// base64 message AND the bodies the MTA already parsed out of it. Past the
+	// budget the raw is what gets dropped — because `runAction` THROWS there,
+	// the route answers 500, and the MTA burns six attempts on mail that was
+	// perfectly deliverable. Only the pure predicate was covered, so replacing
+	// the handler's `rawBytesBase64` with `payload.inboundPayload.rawBytesBase64`
+	// passed every test in the repo while dead-lettering the message in
+	// production.
+	it('delivers a message over the argument budget WITHOUT its raw bytes', async () => {
+		const t = setupTest();
+		// Just past MAX_FORWARDED_ARG_BYTES (15 MiB) once the base64 message and
+		// the parsed text body are added together — all ASCII, so characters are
+		// bytes and the predicate's cheap bound decides it.
+		const rawEml = [
+			'From: sender@example.com',
+			'To: inbox@example.com',
+			'Subject: over budget',
+			'Message-ID: <inbound-budget-1@example.com>',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'y'.repeat(12 * 1024 * 1024),
+			'',
+		].join('\r\n');
+		const rawBytesBase64 = Buffer.from(rawEml, 'latin1').toString('base64');
+		const textBody = 'z'.repeat(2 * 1024 * 1024);
+		expect(rawBytesBase64.length + textBody.length).toBeGreaterThan(15 * 1024 * 1024);
+
+		const body = inboundBody(
+			{},
+			{ messageId: '<inbound-budget-1@example.com>', rawBytesBase64, textBody }
+		);
+		const res = await post(t, INBOUND_PATH, body, await signedHeaders(body));
+
+		// 200, not 500: the mail is delivered rather than dead-lettered.
+		expect(res.status).toBe(200);
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]!.messageId).toBe('<inbound-budget-1@example.com>');
+		// THE BODIES WIN OVER THE BYTES. The row is stored with no raw blob —
+		// exactly what the pre-raw route always delivered — so it has no
+		// attachments and asserts no malware verdict.
+		expect(rows[0]!.rawStorageId).toBeUndefined();
+		expect(rows[0]!.rawSize).toBeUndefined();
+		expect(rows[0]!.virusVerdict).toBeUndefined();
+		expect(rows[0]!.textBody).toHaveLength(textBody.length);
 	});
 
 	it('audit-stores a digest of the body, never the message itself', async () => {
