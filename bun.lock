@@ -549,6 +549,7 @@
       "version": "0.5.0",
       "devDependencies": {
         "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
         "tsup": "^8.5.1",
         "typescript": "catalog:",
         "vitest": "catalog:",
