@@ -110,6 +110,7 @@ async function stageRawMessage(
 			verdict: 'skipped',
 			cleanParts: [],
 			candidates: [],
+			typeRefusedParts: [],
 			uncleared: { ...NOTHING_UNCLEARED, unscanned: 1 },
 			scannerAnswered: false,
 		};

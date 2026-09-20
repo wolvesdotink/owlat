@@ -777,6 +777,88 @@ describe('inboundIngest — the set that was scanned is the set that is indexed'
 		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
 		expect(rows[0]!.attachmentIndexing).toBe('skipped_cap');
 	});
+
+	it('never calls a message clean when the cap left an INLINE executable unopened', async () => {
+		const t = setupTest();
+		configureMta();
+		const scanner = stubScannerPerFile({});
+
+		// The bypass: inline leaves sort last so the budget is spent on the
+		// documents first — which means a message of ten ordinary leaves plus an
+		// eleventh INLINE `invoice.pdf.exe` never reaches the executable at all.
+		// The MTA lists any leaf carrying a filename whatever its disposition, so
+		// the reader gets a download button for it; a row that said `clean` and
+		// `indexed` there was vouching for bytes ClamAV never opened.
+		//
+		// The ten are `.exe` stubs so capture stages no blobs (see the case
+		// above on convex-test's storage tracking); what is under test is the
+		// VERDICT and the marker, not what got indexed.
+		const stubs = Array.from(
+			{ length: ATTACHMENT_COMPOSE_LIMITS.maxCount },
+			(_, i) => `stub${i}.exe`
+		);
+		const lines = [
+			'From: Bob <bob@example.com>',
+			'To: inbox@example.com',
+			'Subject: eleven leaves',
+			'Message-ID: <inline-cap@example.com>',
+			'Content-Type: multipart/mixed; boundary="bb"',
+			'',
+			'--bb',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'See attached.',
+			'',
+		];
+		for (const name of stubs) {
+			lines.push(
+				'--bb',
+				`Content-Type: text/plain; name="${name}"`,
+				`Content-Disposition: attachment; filename="${name}"`,
+				'Content-Transfer-Encoding: base64',
+				'',
+				Buffer.from(`a document called ${name} with words in it`).toString('base64'),
+				''
+			);
+		}
+		lines.push(
+			'--bb',
+			'Content-Type: application/octet-stream; name="invoice.pdf.exe"',
+			'Content-Disposition: inline; filename="invoice.pdf.exe"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			Buffer.from('MZ\u0000\u0000 an executable nobody scanned').toString('base64'),
+			'',
+			'--bb--',
+			''
+		);
+
+		await ingest(
+			t,
+			'inline-cap@example.com',
+			encode(lines.join('\r\n')),
+			[...stubs, 'invoice.pdf.exe'].map((filename, i) => ({
+				filename,
+				contentType: 'application/octet-stream',
+				size: 40,
+				partIndex: String(i + 1),
+			}))
+		);
+
+		// The scanner was never asked about the leaf that most needed it.
+		expect(scanner.scanned()).not.toContain('invoice.pdf.exe');
+		expect(scanner.scanned()).toHaveLength(ATTACHMENT_COMPOSE_LIMITS.maxCount);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		// The two claims a reader reads off the row, both of which were false.
+		expect(rows[0]!.virusVerdict).not.toBe('clean');
+		expect(rows[0]!.virusVerdict).toBe('skipped');
+		expect(rows[0]!.attachmentIndexing).not.toBe('indexed');
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_unscanned');
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
+	});
 });
 
 describe('inboundIngest — what the row says about files nobody read', () => {

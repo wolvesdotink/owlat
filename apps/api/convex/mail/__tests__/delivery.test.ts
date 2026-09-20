@@ -409,6 +409,10 @@ describe('scanInboundAttachments — the cap and the cleared set', () => {
 		// went unprocessed and the cap counts zero. Counting it stamped a fully
 		// indexed message "this message has more attachments than it processes".
 		expect(scan.uncleared.capped).toBe(0);
+		// It is still a leaf nobody scanned, and the reader can download it, so
+		// the message does not get a clean bill of health for it either.
+		expect(scan.uncleared.unscanned).toBe(1);
+		expect(scan.verdict).toBe('skipped');
 	});
 
 	it('counts only the DOCUMENTS the cap withheld, not the signature icons', async () => {
@@ -444,11 +448,62 @@ describe('scanInboundAttachments — the cap and the cleared set', () => {
 
 		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
 
-		// Every document was scanned and cleared, so the verdict is clean and
-		// the reader is told nothing about files that were not processed.
+		// Every document was scanned and cleared, so the reader is never told
+		// this message "has more attachments than one message is processed for"
+		// — that sentence is about documents, and none of them went unopened.
 		expect(scan.cleanParts.filter((p) => p.disposition !== 'inline')).toHaveLength(6);
-		expect(scan.uncleared).toEqual({ capped: 0, unscanned: 0, refusedType: 0 });
-		expect(scan.verdict).toBe('clean');
+		expect(scan.uncleared.capped).toBe(0);
+		// The fifth icon IS a leaf the cap never opened, and the MTA lists any
+		// leaf with a filename — so it is downloadable, it is unscanned, and it
+		// is counted as such. Anything else stores 'clean' about bytes ClamAV
+		// never saw.
+		expect(scan.uncleared).toEqual({ capped: 0, unscanned: 1, refusedType: 0 });
+		expect(scan.verdict).toBe('skipped');
+	});
+
+	it('never clears an INLINE executable the cap left unopened', async () => {
+		// The bypass this pair of rules exists to close: ten ordinary documents
+		// spend the whole budget, and the eleventh leaf — inline, so it sorts
+		// last — is an executable. It is listed and downloadable like any other
+		// leaf, and the scanner is never asked about it.
+		const { calls } = mockScan({ clean: true });
+		const lines = [
+			'From: sender@isp.example',
+			'To: me@example.com',
+			'Subject: eleven leaves',
+			'Message-ID: <inline-exe@isp.example>',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+		];
+		for (let i = 0; i < ATTACHMENT_COMPOSE_LIMITS.maxCount; i += 1) {
+			lines.push(
+				'--B',
+				`Content-Type: text/plain; name="doc${i}.txt"`,
+				`Content-Disposition: attachment; filename="doc${i}.txt"`,
+				'',
+				`document ${i}`
+			);
+		}
+		lines.push(
+			'--B',
+			'Content-Type: application/octet-stream; name="invoice.pdf.exe"',
+			'Content-Disposition: inline; filename="invoice.pdf.exe"',
+			'',
+			'MZ payload',
+			'--B--',
+			''
+		);
+		const raw = Buffer.from(lines.join('\r\n'));
+
+		const scan = await scanInboundAttachments(MTA, raw.toString('latin1'));
+
+		expect(calls.map((c) => c.filename)).not.toContain('invoice.pdf.exe');
+		// NOT 'clean': the verdict would otherwise cover a leaf no scanner ever
+		// opened, under a live download button and no notice at all.
+		expect(scan.verdict).toBe('skipped');
+		expect(scan.uncleared.unscanned).toBe(1);
+		expect(scan.cleanParts.map((p) => p.filename)).not.toContain('invoice.pdf.exe');
 	});
 
 	it('separates a scanner outage on one leaf from the count cap', async () => {
@@ -494,9 +549,12 @@ describe('scanInboundAttachments — the cap and the cleared set', () => {
 		// reader still has a live download button for them. Storing 'clean' was
 		// asserting a verdict no scanner ever produced.
 		expect(scan.verdict).toBe('skipped');
-		// The endpoint did ANSWER about that leaf, which is what keeps the
-		// personal mailbox off its "nobody scanned this" branch.
-		expect(scan.scannerAnswered).toBe(true);
+		// And the type gate is NOT the malware scanner answering. It runs before
+		// ClamAV and answers on a deployment that has none, so counting it here
+		// let one refused leaf claim the whole message had been scanned — and
+		// switched the mailbox's no-scanner fallback off for every other leaf.
+		expect(scan.scannerAnswered).toBe(false);
+		expect(scan.typeRefusedParts.map((p) => p.filename)).toEqual(['report.doc']);
 	});
 
 	it("clears every leaf on an upstream 'clean' when there is no scanner here", async () => {

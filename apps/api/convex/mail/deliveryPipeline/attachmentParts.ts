@@ -25,9 +25,20 @@ export type InboundAttachmentPart = ReturnType<typeof extractAttachments>[number
  * reported a ClamAV outage as a message with too many files.
  */
 export type UnclearedLeaves = {
-	/** Never opened at all — past the per-message scan count cap. */
+	/**
+	 * A DOCUMENT never opened at all — past the per-message scan count cap.
+	 * Documents only, because this is what the reader is told as "more
+	 * attachments than one message is processed for", and an embedded signature
+	 * logo is not an attachment anyone sent. An INLINE leaf the same cap left
+	 * unopened is counted under `unscanned`, which is the true sentence about
+	 * it and still keeps the message off a `'clean'` verdict.
+	 */
 	capped: number;
-	/** The scanner could not answer: outage, timeout, or its own fail-open skip. */
+	/**
+	 * Nobody looked at these bytes: a scanner outage, a timeout, its own
+	 * fail-open skip — or an inline leaf the per-message count cap never
+	 * reached.
+	 */
 	unscanned: number;
 	/** The scanner refused the file type before ClamAV ever ran. */
 	refusedType: number;
@@ -46,8 +57,10 @@ export const NOTHING_UNCLEARED: UnclearedLeaves = { capped: 0, unscanned: 0, ref
  * its disposition (`mail-message/parse/body.isAttachmentPart`), the thread view
  * renders a download button for each, and so one header word (`inline` instead
  * of `attachment` on an `invoice.pdf.exe`) bought a sender a live download of
- * bytes ClamAV never saw. Everything the reader can download is scanned; what
- * may be INDEXED is narrowed later, inside capture, out of this same set.
+ * bytes ClamAV never saw. Everything the reader can download is scanned — or,
+ * where the per-message count cap ran out first, the verdict says so and the
+ * row carries the line that says so. What may be INDEXED is narrowed later,
+ * inside capture, out of this same set.
  *
  * ORDERED, because the scan budget is a COUNT: attachment-disposition leaves
  * come first so a message of ten inline logos followed by an executable spends

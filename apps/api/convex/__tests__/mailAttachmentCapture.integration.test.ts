@@ -22,6 +22,7 @@ import {
 	inboundAttachmentCandidates,
 	NOTHING_UNCLEARED,
 } from '../mail/deliveryPipeline/attachmentParts';
+import { readScanRequest } from '../mail/__tests__/scannerStub.testlib';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -137,6 +138,24 @@ function buildRawEml(): string {
 	].join('\r\n');
 }
 
+/** The same message, with an installer the MTA's type gate refuses beside it. */
+function buildRawEmlWithInstaller(): string {
+	const boundary = 'b0undary';
+	return buildRawEml().replace(
+		`--${boundary}--`,
+		[
+			`--${boundary}`,
+			'Content-Type: application/octet-stream; name="setup.msi"',
+			'Content-Disposition: attachment; filename="setup.msi"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			Buffer.from('installer').toString('base64'),
+			'',
+			`--${boundary}--`,
+		].join('\r\n')
+	);
+}
+
 describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 	it('persists a delivered attachment as an email_attachment semantic file', async () => {
 		const t = setupTest();
@@ -244,6 +263,47 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
 		});
 
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files.map((f) => f.filename)).toEqual(['notes.txt']);
+	});
+
+	it('keeps indexing the readable leaf when a type refusal rides along', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		// Same no-ClamAV deployment, plus one leaf the MTA's file-type gate
+		// refuses. That gate runs BEFORE ClamAV and answers even with no sidecar,
+		// so counting it as "a scanner answered" took the whole message off the
+		// fallback branch: `notes.txt` — indexed when sent alone, on this very
+		// deployment — silently was not, for no reason a reader could see.
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const { filename } = readScanRequest(input, init);
+			const body = filename.endsWith('.msi')
+				? { clean: false, reason: 'Dangerous file type detected', stage: 'file_type_validation' }
+				: { clean: true, skipped: true, reason: 'ClamAV unavailable' };
+			return new Response(JSON.stringify(body), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}) as unknown as typeof globalThis.fetch;
+
+		await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: 'd-refused-beside',
+			rawBytesBase64: Buffer.from(buildRawEmlWithInstaller(), 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'with attachment',
+			textBody: 'See the attached notes.',
+			messageId: '<cap-refused-beside@example.com>',
+			attachments: [
+				{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' },
+				{ filename: 'setup.msi', contentType: 'application/octet-stream', size: 9, partIndex: '1' },
+			],
+		});
+
+		// The document is in the library; the installer nobody scanned is not.
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
 		expect(files.map((f) => f.filename)).toEqual(['notes.txt']);
 	});

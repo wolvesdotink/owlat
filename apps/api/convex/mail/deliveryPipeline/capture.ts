@@ -51,8 +51,9 @@ export type AttachmentCaptureOutcome = {
 	 *   · `unverified` — DMARC could not verify the `From:`, so nothing here is
 	 *     indexed at all (see the note on the function);
 	 *   · `budget` — the per-sender/global AI-ingest budget refused the batch;
-	 *   · `unscanned` — the malware scanner could not answer for at least one
-	 *     leaf (outage, timeout, its own fail-open skip);
+	 *   · `unscanned` — nobody looked at at least one leaf: a scanner outage, a
+	 *     timeout, its own fail-open skip, or an inline leaf the per-message
+	 *     count cap never reached;
 	 *   · `cap` — the message carries more attachment leaves than one message
 	 *     is processed for, so the rest were never opened;
 	 *   · `refused_type` — the MALWARE SCANNER refused the type before ClamAV
@@ -199,7 +200,7 @@ export function isFromVerified(from: string, auth: InboundFromAuth): boolean {
 
 /** What stopped a part, as booleans with names, for {@link decideSkipReason}. */
 type SkipSignals = {
-	/** The scanner could not answer for at least one leaf. */
+	/** Nobody looked at at least one leaf — see `UnclearedLeaves.unscanned`. */
 	unscanned: boolean;
 	/** At least one leaf was never opened — the per-message count cap. */
 	capped: boolean;
