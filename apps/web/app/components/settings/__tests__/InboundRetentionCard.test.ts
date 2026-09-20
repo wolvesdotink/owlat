@@ -112,6 +112,18 @@ describe('InboundRetentionCard', () => {
 		expect(options(wrapper).map((o) => o.value)).toEqual([...INBOUND_RAW_RETENTION_DAY_CHOICES]);
 	});
 
+	it('says that reading attachments needs scanning switched on, not just storage', async () => {
+		// Retention decides how long files are KEPT; attachment scanning decides
+		// whether the assistant ever reads them. An operator who set a 365-day
+		// window and still sees "not scanned for malware" on every message has no
+		// other place to find that out.
+		const { wrapper } = mountCard();
+
+		const note = wrapper.find('[data-testid="inbound-retention-scan-note"]');
+		expect(note.exists()).toBe(true);
+		expect(note.text()).toContain('attachment scanning');
+	});
+
 	it('shows the stored horizon as selected', () => {
 		const { wrapper } = mountCard({ stored: 180 });
 

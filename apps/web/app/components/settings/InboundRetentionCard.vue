@@ -19,6 +19,13 @@ import {
  *
  * There is deliberately no "keep forever": unbounded growth on a route any
  * sender can reach is the problem the window exists to solve.
+ *
+ * RETENTION IS NOT THE SAME SWITCH AS READING. Whether the assistant reads an
+ * attachment at all depends on attachment scanning being enabled on the MTA
+ * (`scan.attachments` / the `clamav` compose profile) — without it nothing
+ * inbound is indexed, however long the window is. The card says so, because an
+ * operator who set a 365-day window and still sees "not scanned for malware" on
+ * every message has no other way to find out why.
  */
 
 const { t } = useI18n();
@@ -46,7 +53,7 @@ const { run: updateSettings } = useBackendOperation(api.workspaces.settings.upda
  * `UiSelect` is generic over `string | number` and hands back the option's own
  * value, so the number the Convex validator demands arrives as a number — a
  * raw `<select>`'s `event.target.value` is always a string, and the closed
- * 30/90/180/365 validator rejects `'30'`.
+ * day-count validator rejects a string.
  */
 async function onSelect(next: InboundRawRetentionDays | null) {
 	if (!canManageOrganization.value || next === null) return;
@@ -92,5 +99,12 @@ async function onSelect(next: InboundRawRetentionDays | null) {
 				/>
 			</div>
 		</div>
+
+		<!-- The other half of the feature, and the one an operator cannot infer
+		     from this card: retention decides how long files are KEPT, attachment
+		     scanning decides whether the assistant ever reads them. -->
+		<p class="mt-4 text-xs text-text-tertiary" data-testid="inbound-retention-scan-note">
+			{{ t('components.settings.inboundRetentionCard.scanNote') }}
+		</p>
 	</UiCard>
 </template>
