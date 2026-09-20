@@ -29,8 +29,12 @@ import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { isSuppressed } from '../lib/suppression';
 import { sealBodyAtWriteMaybe } from '../lib/messageBody';
-import { attachmentIndexingValidator, virusVerdictValidator } from '../lib/literalValidators';
-import { inboundReceiveResultValidator, type InboundReceiveResult } from './receiveInbound';
+import { attachmentIndexingValidator } from '../lib/literalValidators';
+import {
+	inboundMessageArgs,
+	inboundReceiveResultValidator,
+	type InboundReceiveResult,
+} from './receiveInbound';
 
 // Re-exported for existing importers of this module.
 export { extractEmail, normalizeSubject };
@@ -62,9 +66,7 @@ const DUPLICATE_SCAN_LIMIT = 16;
  * A retry of the SAME delivery always repeats the same `from` and `to`, so
  * idempotency is unaffected.
  *
- * Bounded by `DUPLICATE_SCAN_LIMIT` because the header is sender-controlled: a
- * sender that reuses one value forever must not turn every delivery into an
- * unbounded scan.
+ * Bounded by `DUPLICATE_SCAN_LIMIT` — see there for why.
  */
 async function findStoredDuplicate(
 	db: QueryCtx['db'],
@@ -91,24 +93,9 @@ async function findStoredDuplicate(
  */
 export const receiveMessage = internalMutation({
 	args: {
-		from: v.string(),
-		to: v.string(),
-		subject: v.string(),
-		textBody: v.optional(v.string()),
-		htmlBody: v.optional(v.string()),
-		headers: v.optional(v.string()),
-		messageId: v.string(),
-		inReplyTo: v.optional(v.string()),
-		references: v.optional(v.string()),
-		attachmentMeta: v.optional(v.string()),
-		timestamp: v.number(),
-		// RFC 8601 inbound auth verdicts, forwarded by the MTA. All optional so an
-		// older MTA (or a disabled check) stores them absent — absent renders as
-		// "unknown" downstream, NEVER as "pass".
-		spfResult: v.optional(v.string()),
-		dkimResult: v.optional(v.string()),
-		dmarcResult: v.optional(v.string()),
-		dmarcPolicy: v.optional(v.string()),
+		// Everything that came off the wire — one spelling, shared with the
+		// sealed-mail writer in `e2ee/open.decryptAndReceive`.
+		...inboundMessageArgs,
 		// Sealed Mail (E4, D3): mirrored unsealing flags from the decrypt-on-ingest
 		// action on the AI-inbox path. `textBody`/`htmlBody` above are ALREADY the
 		// decrypted plaintext when `sealed` is set (the action opened the message
@@ -127,13 +114,6 @@ export const receiveMessage = internalMutation({
 		// existing caller (and plaintext mail) is byte-identical.
 		isInboundSignatureValid: v.optional(v.boolean()),
 		inboundSignerFingerprint: v.optional(v.string()),
-		// The sealed raw `.eml` this message was built from, when the route that
-		// received it carried the bytes. All three optional: mail arriving through
-		// the legacy `/webhooks/mta` route has no raw blob and asserts no verdict.
-		// `virusVerdict` ABSENT IS NOT `clean` — see the schema comment.
-		rawStorageId: v.optional(v.id('_storage')),
-		rawSize: v.optional(v.number()),
-		virusVerdict: v.optional(virusVerdictValidator),
 	},
 	// One spelling of the result, shared with the sealed-mail writer in
 	// `e2ee/open.decryptAndReceive`: a stored message always has a thread and a

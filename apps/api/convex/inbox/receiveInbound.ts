@@ -19,7 +19,7 @@ import { v, type Infer } from 'convex/values';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import type { VirusVerdict } from '../lib/literalValidators';
+import { virusVerdictValidator, type VirusVerdict } from '../lib/literalValidators';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { clearsignedSignatureMirror } from '../webhooks/inboundSignatureMirror';
 import type { InboundEmailMessage } from '../webhooks/adapters/inboundRegistry';
@@ -36,6 +36,47 @@ export interface InboundReceiveExtras {
 	rawSize?: number;
 	virusVerdict?: VirusVerdict;
 }
+
+/**
+ * Every field of an `inboundMessages` row that comes off the wire, AS A CONVEX
+ * ARGUMENT SHAPE.
+ *
+ * Spread into the `args:` of both writers — `inbox.messages.receiveMessage` and
+ * `e2ee.open.decryptAndReceive` — because the two used to spell the same twenty
+ * fields each, and this PR alone added three columns to both by hand. Each
+ * writer still declares what is genuinely its own: the sealed-mail flags on the
+ * mutation, the ciphertext and recipient address on the action.
+ *
+ * `virusVerdict` is deliberately three-valued plus absent: absent means NOTHING
+ * WAS SCANNED (no attachments, or no scanner configured) and must never be
+ * stored as `'clean'`.
+ */
+export const inboundMessageArgs = {
+	from: v.string(),
+	to: v.string(),
+	subject: v.string(),
+	textBody: v.optional(v.string()),
+	htmlBody: v.optional(v.string()),
+	headers: v.optional(v.string()),
+	messageId: v.string(),
+	inReplyTo: v.optional(v.string()),
+	references: v.optional(v.string()),
+	attachmentMeta: v.optional(v.string()),
+	timestamp: v.number(),
+	// RFC 8601 inbound auth verdicts, forwarded by the MTA. All optional so an
+	// older MTA (or a disabled check) stores them absent — absent renders as
+	// "unknown" downstream, NEVER as "pass".
+	spfResult: v.optional(v.string()),
+	dkimResult: v.optional(v.string()),
+	dmarcResult: v.optional(v.string()),
+	dmarcPolicy: v.optional(v.string()),
+	// The sealed raw `.eml` this message was built from, when the route that
+	// received it carried the bytes. All three optional: mail arriving through
+	// the legacy `/webhooks/mta` route has no raw blob and asserts no verdict.
+	rawStorageId: v.optional(v.id('_storage')),
+	rawSize: v.optional(v.number()),
+	virusVerdict: v.optional(virusVerdictValidator),
+} as const;
 
 /**
  * What one receive did — a DISCRIMINATED UNION on `isDuplicate`, not a bag of
