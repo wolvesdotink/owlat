@@ -309,6 +309,10 @@
 			"types": "./src/composeOverride.ts",
 			"import": "./src/composeOverride.ts"
 		},
+		"./nodeShutdown": {
+			"types": "./src/nodeShutdown.ts",
+			"import": "./src/nodeShutdown.ts"
+		},
 		"./networkPorts": {
 			"types": "./src/networkPorts.ts",
 			"import": "./src/networkPorts.ts"

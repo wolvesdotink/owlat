@@ -13,6 +13,7 @@ import {
 } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
 import { handleApplyProfiles } from './applyProfiles.js';
+import { critical } from './lifecycle.js';
 import { handlePortChecks } from './portChecks.js';
 import { handleProfileState } from './profileState.js';
 
@@ -450,14 +451,18 @@ export function buildRequestListener() {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		const url = new URL(req.url || '/', `http://localhost:${PORT}`);
 
+		// The four state-changing endpoints run as critical sections: each writes
+		// host files and only then reconciles the running containers, so a
+		// SIGTERM landing between those two halves is what leaves the host's
+		// configuration and its running state describing different deployments.
 		if (req.method === 'POST' && url.pathname === '/update') {
-			await handleUpdate(req, res);
+			await critical(() => handleUpdate(req, res));
 		} else if (req.method === 'POST' && url.pathname === '/configure-ip') {
-			await handleConfigureIp(req, res);
+			await critical(() => handleConfigureIp(req, res));
 		} else if (req.method === 'POST' && url.pathname === '/rotate-env') {
-			await handleRotateEnv(req, res);
+			await critical(() => handleRotateEnv(req, res));
 		} else if (req.method === 'POST' && url.pathname === '/apply-profiles') {
-			await handleApplyProfiles(req, res);
+			await critical(() => handleApplyProfiles(req, res));
 		} else if (req.method === 'POST' && url.pathname === '/port-checks') {
 			await handlePortChecks(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/profile-state') {
