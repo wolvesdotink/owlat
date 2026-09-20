@@ -13,6 +13,10 @@
  *   - a missing `size` renders as 0, not NaN
  *   - `partIndex` is passed through when present and OMITTED when absent, so
  *     the reader's `?? '0'` fallback is the one that decides
+ *   - the STORED VERSION decides the shape, not the presence of a field: a
+ *     version-0 row (the column absent, written before the raw `.eml` existed)
+ *     yields no `partIndex` even if the string carries one, because there are
+ *     no bytes for it to address
  *   - two files sharing a name keep their distinct part indexes
  *   - a path-shaped filename survives verbatim: it is rendered as text and used
  *     as a download hint, and rewriting it would silently rename the file
@@ -38,14 +42,15 @@ describe('parseInboundAttachmentMeta', () => {
 			{ filename: 'ok.txt', contentType: 'text/plain', size: 10, partIndex: '1' },
 		]);
 
-		expect(parseInboundAttachmentMeta(raw)).toEqual([
+		expect(parseInboundAttachmentMeta(raw, 1)).toEqual([
 			{ filename: 'ok.txt', contentType: 'text/plain', size: 10, partIndex: '1' },
 		]);
 	});
 
 	it('names an unnamed part instead of leaving the download hint undefined', () => {
 		const [att] = parseInboundAttachmentMeta(
-			JSON.stringify([{ contentType: 'application/pdf', partIndex: '2' }])
+			JSON.stringify([{ contentType: 'application/pdf', partIndex: '2' }]),
+			1
 		);
 
 		expect(att?.filename).toBe('attachment');
@@ -54,7 +59,8 @@ describe('parseInboundAttachmentMeta', () => {
 
 	it('omits partIndex when the wire did not carry one, rather than inventing one', () => {
 		const [att] = parseInboundAttachmentMeta(
-			JSON.stringify([{ filename: 'legacy.txt', contentType: 'text/plain', size: 1 }])
+			JSON.stringify([{ filename: 'legacy.txt', contentType: 'text/plain', size: 1 }]),
+			1
 		);
 
 		expect(att).not.toHaveProperty('partIndex');
@@ -62,7 +68,8 @@ describe('parseInboundAttachmentMeta', () => {
 
 	it('ignores non-string partIndex and non-number size', () => {
 		const [att] = parseInboundAttachmentMeta(
-			JSON.stringify([{ filename: 'x', contentType: 'text/plain', size: '10', partIndex: 3 }])
+			JSON.stringify([{ filename: 'x', contentType: 'text/plain', size: '10', partIndex: 3 }]),
+			1
 		);
 
 		expect(att).toEqual({ filename: 'x', contentType: 'text/plain', size: 0 });
@@ -73,17 +80,38 @@ describe('parseInboundAttachmentMeta', () => {
 			JSON.stringify([
 				{ filename: 'scan.pdf', contentType: 'application/pdf', size: 1, partIndex: '1' },
 				{ filename: 'scan.pdf', contentType: 'application/pdf', size: 2, partIndex: '2' },
-			])
+			]),
+			1
 		);
 
 		expect(parsed.map((a) => a.partIndex)).toEqual(['1', '2']);
+	});
+
+	it('reads no partIndex out of a version-0 row, whatever the string says', () => {
+		// Version 0 is every row written before the raw `.eml` was stored: there
+		// are no bytes for a part index to point into, so a `partIndex` in the
+		// string is not an address, and a download built on it would 404. The
+		// VERSION is what says so — guessing from the field's presence is what
+		// the stored version exists to replace.
+		const raw = JSON.stringify([
+			{ filename: 'old.pdf', contentType: 'application/pdf', size: 3, partIndex: '1' },
+		]);
+
+		expect(parseInboundAttachmentMeta(raw, 0)).toEqual([
+			{ filename: 'old.pdf', contentType: 'application/pdf', size: 3 },
+		]);
+		// The column absent IS version 0.
+		expect(parseInboundAttachmentMeta(raw)).toEqual([
+			{ filename: 'old.pdf', contentType: 'application/pdf', size: 3 },
+		]);
 	});
 
 	it('passes a path-shaped filename through unchanged', () => {
 		const [att] = parseInboundAttachmentMeta(
 			JSON.stringify([
 				{ filename: '../../etc/passwd', contentType: 'text/plain', size: 1, partIndex: '1' },
-			])
+			]),
+			1
 		);
 
 		expect(att?.filename).toBe('../../etc/passwd');

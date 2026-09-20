@@ -51,6 +51,7 @@ export type InboxMessageFiles = Pick<
 	Doc<'inboundMessages'>,
 	| '_id'
 	| 'attachmentMeta'
+	| 'attachmentMetaVersion'
 	| 'virusVerdict'
 	| 'rawStorageId'
 	| 'rawReleasedAt'
@@ -65,8 +66,12 @@ const props = defineProps<{
 const { t } = useI18n();
 
 // `attachmentMeta` is an unvalidated JSON string written from wire data — the
-// parser is where it becomes props, and it drops anything malformed.
-const attachments = computed(() => parseInboundAttachmentMeta(props.message.attachmentMeta));
+// parser is where it becomes props, and it drops anything malformed. The
+// version beside it says which of the two stored shapes the string is in; a
+// version-0 row predates the sealed `.eml` and has nothing to download.
+const attachments = computed(() =>
+	parseInboundAttachmentMeta(props.message.attachmentMeta, props.message.attachmentMetaVersion)
+);
 
 /**
  * The bytes are not on the message row: they are inside the raw `.eml` the

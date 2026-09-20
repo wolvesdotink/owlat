@@ -13,21 +13,29 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
  * tested directly: this is the boundary where a sender-controlled string
  * becomes props, and "renders nothing weird" is a claim worth pinning.
  *
- * TWO STORED SHAPES, both parsed here without consulting
- * `inboundMessages.attachmentMetaVersion`: version 0 (the column absent) is
- * `{filename, contentType, size}` from before the raw `.eml` was stored, and
- * version 1 adds `partIndex`, the address of one part inside that blob. Field
- * checks alone tell them apart, because a version-0 row has no bytes for a
- * `partIndex` to point into — a row with no downloadable part renders without
- * a download. The column exists for the NEXT shape, which will not be additive.
+ * TWO STORED SHAPES, told apart by `inboundMessages.attachmentMetaVersion`,
+ * which the caller passes in:
+ *   · 0 (the column absent) — `{filename, contentType, size}`, written before
+ *     the raw `.eml` was stored. There were no bytes for a `partIndex` to
+ *     address, so one is not read even if something put it there: a version-0
+ *     row renders without a download, which is the honest state for it;
+ *   · 1 — the same fields plus `partIndex`, the address of one part inside the
+ *     sealed blob.
+ *
+ * The VERSION decides, not the presence of a field. Guessing the shape from
+ * whether `partIndex` happens to be there is what a stored version exists to
+ * replace (CONVENTIONS.md, "Schema evolution"), and it makes the next
+ * non-additive change a branch here rather than a new guess.
  *
  * Note what is NOT sanitised here: `filename` is passed through verbatim
  * (including `../` and control-ish characters). It is only ever rendered as
  * TEXT and used as an `<a download>` hint, where the browser flattens paths —
  * stripping it would silently rename people's files.
  */
-export function parseInboundAttachmentMeta(raw?: string): AttachmentMeta[] {
+export function parseInboundAttachmentMeta(raw?: string, version?: number): AttachmentMeta[] {
 	if (!raw) return [];
+	// Absent is version 0 — the rows written before the column existed.
+	const addressable = (version ?? 0) >= 1;
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
@@ -46,7 +54,9 @@ export function parseInboundAttachmentMeta(raw?: string): AttachmentMeta[] {
 				filename: typeof att['filename'] === 'string' ? att['filename'] : 'attachment',
 				contentType: att['contentType'],
 				size: typeof att['size'] === 'number' ? att['size'] : 0,
-				...(typeof att['partIndex'] === 'string' ? { partIndex: att['partIndex'] } : {}),
+				...(addressable && typeof att['partIndex'] === 'string'
+					? { partIndex: att['partIndex'] }
+					: {}),
 			},
 		];
 	});

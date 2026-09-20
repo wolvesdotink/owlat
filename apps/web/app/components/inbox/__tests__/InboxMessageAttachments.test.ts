@@ -94,6 +94,10 @@ function message(over: Record<string, unknown> = {}, attachments = [attachment()
 	return {
 		_id: MESSAGE_ID,
 		attachmentMeta: JSON.stringify(attachments),
+		// The shape the string is in. Version 1 is the raw-carrying route's: its
+		// `partIndex` addresses a part inside the sealed `.eml`. A version-0 row
+		// has no bytes at all — its own case below.
+		attachmentMetaVersion: 1,
 		rawStorageId: 'storage_1',
 		...over,
 	};

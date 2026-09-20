@@ -12,7 +12,8 @@
  * route's per-IP bucket is one shared bucket on any deployment without
  * `RATE_LIMIT_TRUSTED_PROXY` set.
  *
- * A MUTATION because the limiter writes its component's state; `ingest.ts`
+ * A MUTATION because the limiter writes its component's state;
+ * `mail/deliveryPipeline/capture.ts` — the one caller, on both inbound routes —
  * reaches it through `ctx.runMutation` from its action.
  */
 
