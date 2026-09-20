@@ -343,6 +343,36 @@ describe('InboxMessageAttachments', () => {
 		expect(wrapper.find(DOWNLOAD).attributes('aria-disabled')).toBeUndefined();
 	});
 
+	it('warns that a refused file type was never scanned for malware either', () => {
+		// The MTA's `/scan/attachment` runs its file-type gate BEFORE ClamAV, so
+		// `invoice.pdf.exe` comes back refused with its bytes never compared to a
+		// signature — while the row still offers a download. "We do not process
+		// this type" is not the sentence a reader about to open it needs.
+		const wrapper = render(
+			message({ virusVerdict: 'skipped', attachmentIndexing: 'skipped_refused_type' })
+		);
+
+		const line = wrapper.find(NOT_INDEXED);
+		expect(line.exists()).toBe(true);
+		expect(line.text()).toContain('never scanned for malware');
+		expect(line.text()).toContain('trust the sender');
+		expect(wrapper.find(DOWNLOAD).attributes('disabled')).toBeUndefined();
+	});
+
+	it('says the files could not be processed when capture itself failed', () => {
+		// Capture can throw after the row exists. An unmarked row renders exactly
+		// like a message the assistant read cover to cover, which is the one
+		// silent exit these markers exist to close.
+		const wrapper = render(
+			message({ virusVerdict: 'clean', attachmentIndexing: 'skipped_failed' })
+		);
+
+		const line = wrapper.find(NOT_INDEXED);
+		expect(line.exists()).toBe(true);
+		expect(line.text()).toContain('could not process');
+		expect(wrapper.find(DOWNLOAD).attributes('disabled')).toBeUndefined();
+	});
+
 	it('says the sender could not be verified', () => {
 		const wrapper = render(
 			message({ virusVerdict: 'clean', attachmentIndexing: 'skipped_unverified' })

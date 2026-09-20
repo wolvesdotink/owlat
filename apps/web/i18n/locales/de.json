@@ -3081,7 +3081,9 @@
 				"neverStored": "Die Dateien dieser Nachricht wurden nicht gespeichert.",
 				"notIndexedBudget": "Der Assistent hat diese Dateien nicht gelesen — das Verarbeitungslimit war erreicht.",
 				"notIndexedCap": "Der Assistent hat nicht jede Datei hier gelesen — diese Nachricht hat mehr Anhänge, als verarbeitet werden.",
+				"notIndexedFailed": "Der Assistent konnte die Dateien dieser Nachricht nicht verarbeiten.",
 				"notIndexedPlaceholder": "Der Assistent kennt die Namen einiger dieser Dateien, aber nicht deren Inhalt.",
+				"notIndexedRefusedType": "Der Assistent hat nicht jede Datei hier gelesen — einige dieser Dateitypen werden nie auf Schadsoftware geprüft. Öffnen Sie sie nur, wenn Sie dem Absender vertrauen.",
 				"notIndexedTooLarge": "Der Assistent hat nicht jede Datei hier gelesen — einige sind größer als das Verarbeitungslimit.",
 				"notIndexedUnsupported": "Der Assistent hat nicht jede Datei hier gelesen — einige Dateitypen verarbeitet er nicht.",
 				"notIndexedUnverified": "Der Assistent hat diese Dateien nicht gelesen — der Absender dieser Nachricht konnte nicht verifiziert werden.",
@@ -4981,6 +4983,7 @@
 				"description": "Wie lange der Team-Posteingang die Originaldatei einer Nachricht samt Anhängen behält. Nachrichten, Absender und Details bleiben in jedem Fall erhalten; entfernt werden nur die gespeicherten Dateien. Persönliche Postfächer sind nicht betroffen.",
 				"label": "Dateien behalten für",
 				"savedToast": "Speicherdauer aktualisiert",
+				"scanNote": "Der Assistent liest Anhänge nur, wenn die Anhangsprüfung auf dem Mailserver aktiviert ist. Ohne sie werden Dateien weiterhin gespeichert und können heruntergeladen werden, aber nie verarbeitet.",
 				"title": "Speicherung eingehender Nachrichten",
 				"updateOperation": "Speicherdauer für Nachrichten ändern"
 			},

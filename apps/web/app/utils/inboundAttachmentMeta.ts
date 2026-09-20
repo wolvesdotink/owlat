@@ -13,6 +13,14 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
  * tested directly: this is the boundary where a sender-controlled string
  * becomes props, and "renders nothing weird" is a claim worth pinning.
  *
+ * TWO STORED SHAPES, both parsed here without consulting
+ * `inboundMessages.attachmentMetaVersion`: version 0 (the column absent) is
+ * `{filename, contentType, size}` from before the raw `.eml` was stored, and
+ * version 1 adds `partIndex`, the address of one part inside that blob. Field
+ * checks alone tell them apart, because a version-0 row has no bytes for a
+ * `partIndex` to point into — a row with no downloadable part renders without
+ * a download. The column exists for the NEXT shape, which will not be additive.
+ *
  * Note what is NOT sanitised here: `filename` is passed through verbatim
  * (including `../` and control-ish characters). It is only ever rendered as
  * TEXT and used as an `<a download>` hint, where the browser flattens paths —

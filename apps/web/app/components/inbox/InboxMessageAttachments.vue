@@ -33,8 +33,9 @@ import { useMimePartDownload } from '~/composables/useMimePartDownload';
  *   · NOT INDEXED — the file is here and downloadable, but the assistant did
  *     not read it, or read only its name: no clean malware verdict, an
  *     unverifiable sender, the AI-ingest budget spent, more attachments than
- *     one message is processed for, a file over the processing size limit, a
- *     type the assistant does not read, or a type it can only name. Each says
+ *     one message is processed for, a type the malware scanner refuses to open
+ *     at all, a file over the processing size limit, a type the assistant does
+ *     not read, a type it can only name, or a capture that failed. Each says
  *     WHICH, because "not read" and "too big to read" send a reader to
  *     different places. Without this line the row looks identical to an
  *     indexed one while the agent will never surface it in
@@ -97,8 +98,10 @@ const NOT_INDEXED_KEYS: Record<NotIndexedMarker, string> = {
 	skipped_unverified: 'notIndexedUnverified',
 	skipped_budget: 'notIndexedBudget',
 	skipped_cap: 'notIndexedCap',
+	skipped_refused_type: 'notIndexedRefusedType',
 	skipped_too_large: 'notIndexedTooLarge',
 	skipped_unsupported: 'notIndexedUnsupported',
+	skipped_failed: 'notIndexedFailed',
 };
 
 /**

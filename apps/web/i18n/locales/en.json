@@ -3081,7 +3081,9 @@
 				"neverStored": "The files for this message were not stored.",
 				"notIndexedBudget": "The assistant has not read these files — the processing limit was reached.",
 				"notIndexedCap": "The assistant has not read every file here — this message has more attachments than it processes.",
+				"notIndexedFailed": "The assistant could not process this message's files.",
 				"notIndexedPlaceholder": "The assistant knows the names of some of these files but not what is inside them.",
+				"notIndexedRefusedType": "The assistant has not read every file here — some of these file types are never scanned for malware. Open them only if you trust the sender.",
 				"notIndexedTooLarge": "The assistant has not read every file here — some are larger than the processing limit.",
 				"notIndexedUnsupported": "The assistant has not read every file here — it does not process some of these file types.",
 				"notIndexedUnverified": "The assistant has not read these files — this message's sender could not be verified.",
@@ -4981,6 +4983,7 @@
 				"description": "How long the shared inbox keeps the original message file and its attachment contents. Messages, senders and details are kept either way; only the stored files are removed. Personal mailboxes are not affected.",
 				"label": "Keep files for",
 				"savedToast": "Storage window updated",
+				"scanNote": "The assistant only reads attachments when attachment scanning is enabled on the mail server. Without it, files are still stored and downloadable, but never processed.",
 				"title": "Inbound mail storage",
 				"updateOperation": "Update mail storage window"
 			},

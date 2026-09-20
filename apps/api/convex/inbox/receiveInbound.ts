@@ -19,6 +19,7 @@ import { v, type Infer } from 'convex/values';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { CURRENT_ATTACHMENT_META_VERSION } from '../lib/constants';
 import { virusVerdictValidator, type VirusVerdict } from '../lib/literalValidators';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { clearsignedSignatureMirror } from '../webhooks/inboundSignatureMirror';
@@ -46,10 +47,6 @@ export interface InboundReceiveExtras {
  * fields each, and this PR alone added three columns to both by hand. Each
  * writer still declares what is genuinely its own: the sealed-mail flags on the
  * mutation, the ciphertext and recipient address on the action.
- *
- * `virusVerdict` is deliberately three-valued plus absent: absent means NOTHING
- * WAS SCANNED (no attachments, or no scanner configured) and must never be
- * stored as `'clean'`.
  */
 export const inboundMessageArgs = {
 	from: v.string(),
@@ -62,6 +59,7 @@ export const inboundMessageArgs = {
 	inReplyTo: v.optional(v.string()),
 	references: v.optional(v.string()),
 	attachmentMeta: v.optional(v.string()),
+	attachmentMetaVersion: v.optional(v.number()),
 	timestamp: v.number(),
 	// RFC 8601 inbound auth verdicts, forwarded by the MTA. All optional so an
 	// older MTA (or a disabled check) stores them absent — absent renders as
@@ -153,6 +151,9 @@ export async function receiveInboundMail(
 		inReplyTo: input.inReplyTo,
 		references: input.references,
 		attachmentMeta,
+		// The blob's shape, stamped beside it rather than inferred from it — see
+		// `CURRENT_ATTACHMENT_META_VERSION`. Absent when there is no blob.
+		attachmentMetaVersion: attachmentMeta ? CURRENT_ATTACHMENT_META_VERSION : undefined,
 		timestamp: input.timestamp,
 		// RFC 8601 inbound auth verdicts, persisted so the reader can show an
 		// honest sender badge.

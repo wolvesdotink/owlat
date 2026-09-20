@@ -132,12 +132,22 @@ export const inboxTables = {
 		references: v.optional(v.string()),
 		// Raw headers (JSON string for audit)
 		headers: v.optional(v.string()),
-		// Attachment metadata (JSON array of {filename, contentType, size, partIndex}).
-		// The BYTES are in the raw `.eml` at `rawStorageId` below — `partIndex` is
-		// how a reader addresses one part inside it. An unvalidated JSON string,
-		// unlike the structured `mailMessages.attachments`, so every reader parses
-		// it defensively.
+		// Attachment metadata, as a JSON array, in one of TWO shapes discriminated
+		// by `attachmentMetaVersion` beside it:
+		//   0 (the column absent) — `{filename, contentType, size}`, everything
+		//     written before the raw-carrying route existed. The bytes were not
+		//     stored, so there was nothing for a reader to address;
+		//   1 — `{filename?, contentType, size, partIndex?}`. The BYTES are in the
+		//     sealed raw `.eml` at `rawStorageId` below, and `partIndex` is how a
+		//     reader addresses one part inside it.
+		// An unvalidated JSON string, unlike the structured
+		// `mailMessages.attachments`, so every reader parses it defensively.
 		attachmentMeta: v.optional(v.string()),
+		// The shape of the blob above — CONVENTIONS.md "Schema evolution" requires
+		// a JSON `v.string()` column to carry one, so the next change to that
+		// shape is a version bump rather than a reader guessing from whether a
+		// field happens to be present.
+		attachmentMetaVersion: v.optional(v.number()),
 		// The whole received message, sealed at rest (`lib/sealedBlob.ts`). The
 		// attachment bytes, the AV scan input and the reader's download all come
 		// out of this one blob rather than a second copy per part.

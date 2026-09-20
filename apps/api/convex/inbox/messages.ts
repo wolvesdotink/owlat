@@ -203,6 +203,7 @@ export const receiveMessage = internalMutation({
 			references: args.references,
 			headers: args.headers,
 			attachmentMeta: args.attachmentMeta,
+			attachmentMetaVersion: args.attachmentMetaVersion,
 			threadId,
 			contactId,
 			processingStatus: isInfected ? 'quarantined' : 'received',

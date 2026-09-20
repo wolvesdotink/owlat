@@ -97,8 +97,16 @@ export type VirusVerdict = Infer<typeof virusVerdictValidator>;
  *     message is scanned and processed for, so the rest were never opened;
  *   · `skipped_unscanned` — the malware scan cleared nothing, so nothing was
  *     fed to a model (see `inbox/inboundIngest.ts`);
+ *   · `skipped_refused_type` — the MALWARE SCANNER refused a part's type
+ *     before ClamAV ran, so those bytes were never compared to a signature.
+ *     Separate from `skipped_unsupported` because a reader with a live
+ *     download button needs to be told that, not that we do not summarise it;
  *   · `skipped_too_large` — a part was over `MAX_AI_INGEST_ATTACHMENT_BYTES`;
- *   · `skipped_unsupported` — the file-type allowlist refused a part.
+ *   · `skipped_unsupported` — the file-type allowlist refused a part;
+ *   · `skipped_failed` — capture itself threw after the row was written (a
+ *     storage or mutation failure part-way through). The bytes are here, the
+ *     assistant has not read them, and without this member that outcome was
+ *     the one silent exit left on the path these markers exist to light up.
  *
  * The size, type, cap and placeholder members are set whenever ONE part was
  * that way, even if OTHER parts of the same message were fully indexed: "some
@@ -112,8 +120,10 @@ export const attachmentIndexingValidator = v.union(
 	v.literal('skipped_budget'),
 	v.literal('skipped_cap'),
 	v.literal('skipped_unscanned'),
+	v.literal('skipped_refused_type'),
 	v.literal('skipped_too_large'),
-	v.literal('skipped_unsupported')
+	v.literal('skipped_unsupported'),
+	v.literal('skipped_failed')
 );
 
 export type AttachmentIndexing = Infer<typeof attachmentIndexingValidator>;

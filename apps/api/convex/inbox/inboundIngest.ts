@@ -26,10 +26,13 @@ import type { Id } from '../_generated/dataModel';
 import { base64ToBytes, bytesToBinaryString } from '../lib/bytes';
 import { storeSealedBlob } from '../lib/sealedBlob';
 import { getMtaConfig } from '../mail/mtaClient';
-import { scanInboundAttachments } from '../mail/deliveryPipeline/scan';
-import type { InboundScanResult } from '../mail/deliveryPipeline/scan';
-import { captureAttachments } from '../mail/deliveryPipeline/capture';
-import type { AttachmentCaptureOutcome } from '../mail/deliveryPipeline/capture';
+import { scanInboundAttachments, type InboundScanResult } from '../mail/deliveryPipeline/scan';
+import {
+	captureAttachments,
+	type AttachmentCaptureOutcome,
+} from '../mail/deliveryPipeline/capture';
+import { NOTHING_UNCLEARED } from '../mail/deliveryPipeline/attachmentParts';
+import { resolveDmarcRouting } from '../mail/deliveryPipeline/routing';
 import { inboundEmailMessageValidator } from '../webhooks/adapters/inboundRegistry';
 import type { AttachmentIndexing } from '../lib/literalValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
@@ -107,7 +110,8 @@ async function stageRawMessage(
 			verdict: 'skipped',
 			cleanParts: [],
 			candidates: [],
-			uncleared: { capped: 0, unscanned: 1, refusedType: 0 },
+			uncleared: { ...NOTHING_UNCLEARED, unscanned: 1 },
+			scannerAnswered: false,
 		};
 	}
 
@@ -197,6 +201,31 @@ export const ingestFromWebhook = internalAction({
 		// instead of rendering an unindexed file like an indexed one.
 		const { cleanParts, uncleared } = staged.scan;
 
+		// THE SETTLED DMARC VERDICT, not the raw one. A trusted forwarder's valid
+		// ARC seal rescues a `fail` for mail that only failed because forwarding
+		// broke the author's DKIM (RFC 8617) — the personal-mailbox route has
+		// honoured that for routing since Sealed Mail A5, and the same rule
+		// decides here whether a forwarded invoice may be filed under the contact
+		// who really sent it. One spelling of the rescue: `resolveDmarcRouting`,
+		// against the operator's own allow-list. Never fatal — a settings read
+		// that fails leaves the message on its raw verdict rather than losing it.
+		let dmarcOverride: string | undefined;
+		try {
+			const trustedForwarders: string[] | null = await ctx.runQuery(
+				internal.workspaces.settings.getTrustedArcForwarders,
+				{}
+			);
+			// `null` over the wire is the `undefined` the query returned — and
+			// `undefined` is NOT `[]` here: unset means the seeded defaults,
+			// while an explicit empty list disables the rescue.
+			dmarcOverride = resolveDmarcRouting(args.mail, trustedForwarders ?? undefined).dmarcOverride;
+		} catch (err) {
+			logWarn('[Inbound Webhook] could not read the trusted ARC forwarders', {
+				messageId: args.mail.messageId,
+				err,
+			});
+		}
+
 		// Attachment capture is best-effort by construction and runs AFTER the
 		// insert, so it cannot fail delivery. It is called even when the scan
 		// cleared NOTHING — with an empty parts list it indexes nothing and
@@ -228,11 +257,18 @@ export const ingestFromWebhook = internalAction({
 					dkimResult: args.mail.dkimResult,
 					envelopeFromDomain: args.mail.envelopeFromDomain,
 					dkimSigningDomain: args.mail.dkimSigningDomain,
+					dmarcOverride,
 				},
 			});
 			await recordCaptureOutcome(ctx, inboundMessageId, outcome);
 		} catch (err) {
 			logError('[Inbound Webhook] attachment capture failed', err);
+			// THE LAST SILENT EXIT. Capture can throw after the row exists — the
+			// contact lookup, the budget mutation, or `storage.store` failing with
+			// three of five parts already ingested — and an unmarked row renders
+			// exactly like one the assistant read cover to cover. `markIndexing`
+			// never throws, so saying so here cannot cost the delivery.
+			await markIndexing(ctx, inboundMessageId, 'skipped_failed');
 		}
 
 		return { inboundMessageId, isDuplicate: false };
@@ -273,6 +309,7 @@ const SKIP_MARKERS = {
 	budget: 'skipped_budget',
 	unscanned: 'skipped_unscanned',
 	cap: 'skipped_cap',
+	refused_type: 'skipped_refused_type',
 	too_large: 'skipped_too_large',
 	unsupported_type: 'skipped_unsupported',
 } as const satisfies Record<

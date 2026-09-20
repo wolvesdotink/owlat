@@ -52,6 +52,7 @@ import {
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { getInboundChannelAdapter } from '../../webhooks/adapters/inboundRegistry';
+import { readScanRequest } from '../../mail/__tests__/scannerStub.testlib';
 
 /**
  * The two blob-drop branches are reachable only from OUTSIDE the action.
@@ -64,7 +65,11 @@ import { getInboundChannelAdapter } from '../../webhooks/adapters/inboundRegistr
  * what these hooks do: the real module, with `findIdByMessageId` and
  * `receiveMessage` wrapped.
  */
-const hooks = vi.hoisted(() => ({ blindPreCheck: false, failReceive: false }));
+const hooks = vi.hoisted(() => ({
+	blindPreCheck: false,
+	failReceive: false,
+	failContactLookup: false,
+}));
 
 /**
  * The real `inbox/messages` module with two seams.
@@ -106,6 +111,28 @@ vi.mock('../messages', async (importOriginal) => {
 	};
 });
 
+/**
+ * The contact lookup capture runs BEFORE it stores anything — the one call that
+ * can throw after the row exists without any crafted input reaching it.
+ *
+ * Capture is best-effort by construction, so its failure is caught and logged.
+ * What the reader gets out of that catch is the point: without a marker the row
+ * renders exactly like a message the assistant read cover to cover.
+ */
+vi.mock('../../contacts/contacts', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../contacts/contacts')>();
+	const getByEmailForTeam = actual.getByEmailForTeam as unknown as {
+		_handler: (...args: never[]) => unknown;
+	};
+	return {
+		...actual,
+		getByEmailForTeam: withHandler(getByEmailForTeam, async (...args: never[]) => {
+			if (hooks.failContactLookup) throw new Error('contact lookup exploded');
+			return await getByEmailForTeam._handler(...args);
+		}),
+	};
+});
+
 // See receiveMessageAuth.test.ts: the `../../**` glob omits the `inbox/` dir it
 // climbed through, so merge a second glob rooted at `inbox/` and re-prefix its keys.
 const rootGlob = import.meta.glob('../../**/*.*s');
@@ -130,6 +157,7 @@ beforeEach(() => {
 	originalFetch = globalThis.fetch;
 	hooks.blindPreCheck = false;
 	hooks.failReceive = false;
+	hooks.failContactLookup = false;
 });
 
 afterEach(() => {
@@ -149,11 +177,17 @@ function unconfigureMta(): void {
 	delete process.env['MTA_API_KEY'];
 }
 
-/** Stub `/scan/attachment` with a fixed verdict and record the calls. */
+/**
+ * Stub `/scan/attachment` with a fixed verdict and record the calls.
+ *
+ * Goes through `readScanRequest`, which builds a REAL `Headers` — so a request
+ * the platform's own `fetch` would have refused (a filename with a character
+ * above U+00FF, a NUL, a CRLF) throws here too instead of being answered.
+ */
 function stubScanner(verdict: { clean: boolean; virus?: string }): { calls: () => number } {
 	let calls = 0;
-	globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
-		const url = typeof input === 'string' ? input : input.toString();
+	globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const { url } = readScanRequest(input, init);
 		if (!url.includes('/scan/attachment')) throw new Error(`unexpected fetch: ${url}`);
 		calls++;
 		return new Response(JSON.stringify(verdict), {
@@ -173,14 +207,15 @@ function stubScanner(verdict: { clean: boolean; virus?: string }): { calls: () =
  */
 function stubScannerPerFile(answers: Record<string, { clean: boolean; stage?: string } | 503>): {
 	scanned: () => string[];
+	headerValues: () => string[];
 } {
 	const scanned: string[] = [];
+	const headerValues: string[] = [];
 	globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = typeof input === 'string' ? input : input.toString();
+		const { url, filename, filenameHeader } = readScanRequest(input, init);
 		if (!url.includes('/scan/attachment')) throw new Error(`unexpected fetch: ${url}`);
-		const headers = (init?.headers ?? {}) as Record<string, string>;
-		const filename = String(headers['X-Filename']);
 		scanned.push(filename);
+		headerValues.push(filenameHeader);
 		const answer = answers[filename] ?? { clean: true };
 		if (answer === 503) return new Response('scanner down', { status: 503 });
 		return new Response(JSON.stringify(answer), {
@@ -188,7 +223,7 @@ function stubScannerPerFile(answers: Record<string, { clean: boolean; stage?: st
 			headers: { 'Content-Type': 'application/json' },
 		});
 	}) as unknown as typeof globalThis.fetch;
-	return { scanned: () => scanned };
+	return { scanned: () => scanned, headerValues: () => headerValues };
 }
 
 /** A two-part message: a text body plus one .txt attachment leaf. */
@@ -966,9 +1001,13 @@ describe('inboundIngest — what the row says about files nobody read', () => {
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.virusVerdict).not.toBe('infected');
 		expect(rows[0]!.processingStatus).not.toBe('quarantined');
-		// Not read, but not malware either: the line says the type was not
-		// processed.
-		expect(rows[0]!.attachmentIndexing).toBe('skipped_unsupported');
+		// Not read, and not malware either: the line says the type is one the
+		// scanner refuses to open at all, which is what a reader with a working
+		// download button needs to know.
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_refused_type');
+		// And the row does NOT claim a clean bill of health for a message whose
+		// one leaf was never compared to a signature.
+		expect(rows[0]!.virusVerdict).toBe('skipped');
 	});
 
 	it('marks a Word document as name-only rather than indexed', async () => {
@@ -1042,6 +1081,228 @@ describe('inboundIngest — what the row says about files nobody read', () => {
 	});
 });
 
+describe('inboundIngest — filenames the sender chose', () => {
+	it('scans and indexes a file whose name is an RFC 2047 encoded word', async () => {
+		const t = setupTest();
+		configureMta();
+		const scanner = stubScannerPerFile({});
+
+		// `=?UTF-8?B?…?=` is how every mail client in the world sends a Cyrillic
+		// or CJK filename, and `mailMime` decodes it to real Unicode before the
+		// scan client ever sees it. An HTTP header value is a ByteString, so the
+		// raw name makes a real `fetch` THROW — and the client's catch reports
+		// that as 'skipped'. An ordinary Ukrainian invoice was therefore never
+		// scanned, never indexed, still downloadable, and the reader was told
+		// "Not scanned for malware". One encoded word on an executable bought a
+		// sender the same bypass the inline-disposition trick used to.
+		await ingest(
+			t,
+			'cyrillic-1@example.com',
+			encode(
+				buildEmlWithLeaf('cyrillic-1@example.com', {
+					headers: [
+						'Content-Type: application/pdf; name="=?UTF-8?B?0YDQsNGF0YPQvdC+0Lo=?=.pdf"',
+						'Content-Disposition: attachment; filename="=?UTF-8?B?0YDQsNGF0YPQvdC+0Lo=?=.pdf"',
+						'Content-Transfer-Encoding: base64',
+					],
+					body: Buffer.from('%PDF-1.4 a real enough invoice with words in it').toString('base64'),
+				})
+			),
+			[
+				{
+					filename: 'рахунок.pdf',
+					contentType: 'application/pdf',
+					size: 46,
+					partIndex: '1',
+				},
+			]
+		);
+
+		// The scanner was reached, with a header value that is legal on the wire
+		// and decodes back to the real name at the MTA.
+		expect(scanner.headerValues()).toEqual(['%D1%80%D0%B0%D1%85%D1%83%D0%BD%D0%BE%D0%BA.pdf']);
+		expect(scanner.scanned()).toEqual(['рахунок.pdf']);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows[0]!.virusVerdict).toBe('clean');
+		expect(rows[0]!.attachmentIndexing).toBe('indexed');
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files.map((f) => f.filename)).toEqual(['рахунок.pdf']);
+	});
+
+	it('scans a CJK filename rather than failing open on it', async () => {
+		const t = setupTest();
+		configureMta();
+		const scanner = stubScannerPerFile({});
+
+		await ingest(
+			t,
+			'cjk-1@example.com',
+			encode(
+				buildEmlWithLeaf('cjk-1@example.com', {
+					headers: [
+						'Content-Type: application/pdf; name="=?UTF-8?B?6KuL5rGC5pu4?=.pdf"',
+						'Content-Disposition: attachment; filename="=?UTF-8?B?6KuL5rGC5pu4?=.pdf"',
+						'Content-Transfer-Encoding: base64',
+					],
+					body: Buffer.from('%PDF-1.4 an invoice with enough words to summarise').toString(
+						'base64'
+					),
+				})
+			),
+			[{ filename: '請求書.pdf', contentType: 'application/pdf', size: 49, partIndex: '1' }]
+		);
+
+		expect(scanner.scanned()).toEqual(['請求書.pdf']);
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows[0]!.virusVerdict).toBe('clean');
+	});
+
+	it('cannot be made to inject a header through the filename', async () => {
+		const t = setupTest();
+		configureMta();
+		const scanner = stubScannerPerFile({});
+
+		// A CRLF in a header value is refused by the platform outright, which
+		// means the scan silently failed open on exactly the leaf a sender was
+		// trying to smuggle. Encoded, it is inert and the leaf gets scanned.
+		await ingest(
+			t,
+			'crlf-1@example.com',
+			encode(
+				buildEmlWithLeaf('crlf-1@example.com', {
+					headers: [
+						'Content-Type: text/plain; name="a.txt"',
+						'Content-Disposition: attachment; filename="a.txt\r\nX-Injected: 1"',
+						'Content-Transfer-Encoding: base64',
+					],
+					body: Buffer.from('a document with enough words in it to summarise').toString('base64'),
+				})
+			),
+			[{ filename: 'a.txt', contentType: 'text/plain', size: 46, partIndex: '1' }]
+		);
+
+		expect(scanner.headerValues()).toHaveLength(1);
+		expect(scanner.headerValues()[0]).not.toContain('\r');
+		expect(scanner.headerValues()[0]).not.toContain('\n');
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows[0]!.virusVerdict).toBe('clean');
+	});
+});
+
+describe('inboundIngest — a capture that could not finish', () => {
+	it('says so on the row instead of leaving it looking fully indexed', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+		// Capture can throw after the row exists — the contact lookup, the budget
+		// mutation, `storage.store` failing with three of five parts already in.
+		// It is caught, because a failed capture must never fail a delivery; what
+		// the reader gets out of that catch is what this pins.
+		hooks.failContactLookup = true;
+
+		await ingest(
+			t,
+			'capture-throw@example.com',
+			encode(buildEmlWithAttachment('capture-throw@example.com')),
+			NOTES_META
+		);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows).toHaveLength(1);
+		// The mail is stored and downloadable...
+		expect(rows[0]!.rawStorageId).toBeTruthy();
+		// ...and the row does NOT read as a file the assistant has read.
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_failed');
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
+	});
+});
+
+describe('inboundIngest — the ARC rescue on forwarded mail', () => {
+	/** The same ingest, with the auth verdicts a forwarded message carries. */
+	async function ingestForwarded(
+		t: ReturnType<typeof setupTest>,
+		messageId: string,
+		auth: {
+			dmarcResult?: string;
+			arcCv?: string;
+			arcSealerDomain?: string;
+			arcAttestsOriginalPass?: boolean;
+		}
+	): Promise<void> {
+		await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
+			mail: {
+				from: 'Bob <bob@example.com>',
+				to: 'inbox@example.com',
+				subject: 'forwarded',
+				textBody: 'body',
+				headers: {},
+				messageId: `<${messageId}>`,
+				attachments: NOTES_META,
+				timestamp: Date.now(),
+				dmarcPolicy: 'none',
+				...auth,
+			},
+			rawBytesBase64: encode(buildEmlWithAttachment(messageId)),
+		});
+	}
+
+	it('indexes a DMARC fail a trusted forwarder sealed', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				trustedArcForwarders: ['forwarder.example'],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await ingestForwarded(t, 'arc-rescued@example.com', {
+			dmarcResult: 'fail',
+			arcCv: 'pass',
+			arcSealerDomain: 'forwarder.example',
+			arcAttestsOriginalPass: true,
+		});
+
+		// Forwarding broke the author's DKIM; the forwarder the operator trusts
+		// vouched that the original passed. The router honours that — so must
+		// the gate that decides whose contact this invoice is filed under.
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows[0]!.attachmentIndexing).toBe('indexed');
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(1);
+	});
+
+	it('indexes nothing when the sealer is not on the allow-list', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				trustedArcForwarders: ['someone-else.example'],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await ingestForwarded(t, 'arc-untrusted@example.com', {
+			dmarcResult: 'fail',
+			arcCv: 'pass',
+			arcSealerDomain: 'forwarder.example',
+			arcAttestsOriginalPass: true,
+		});
+
+		// Anyone can seal a chain. Trust is the operator's list, not the seal.
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_unverified');
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(0);
+	});
+});
+
 describe('inboundIngest — header names a sender chose', () => {
 	it('stores a message carrying header names Convex cannot hold', async () => {
 		const t = setupTest();
@@ -1086,6 +1347,51 @@ describe('inboundIngest — header names a sender chose', () => {
 		// message.
 		expect(stored['x-ordinary']).toBe('kept');
 		expect(Object.keys(stored)).toEqual(['x-ordinary']);
+	});
+
+	it('stores a message whose attachment list carries a key the wire never declared', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		// THE OTHER SENDER-INFLUENCED ARRAY. Each element is a closed `v.object`
+		// in the canonical validator, so Convex refuses an unknown field in one —
+		// and `redisKey` is exactly what a pre-#659 MTA put on every attachment.
+		// The upgraded binary replays its DLQ backlog at this route, so every one
+		// of those events used to 500, retry six times and dead-letter again.
+		await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
+			mail: getInboundChannelAdapter('mta').parseInbound({
+				event: 'inbound.received',
+				timestamp: Date.now(),
+				inboundPayload: {
+					from: 'Bob <bob@example.com>',
+					to: 'inbox@example.com',
+					subject: 'legacy attachment metadata',
+					textBody: 'body',
+					headers: {},
+					messageId: '<legacy-att-1@example.com>',
+					attachments: [
+						{
+							filename: 'notes.txt',
+							contentType: 'text/plain',
+							size: 52,
+							partIndex: 1 as unknown as string,
+							redisKey: 'mta:inbound-att:legacy-att-1:0',
+						},
+					] as never,
+				},
+			}),
+			rawBytesBase64: encode(buildEmlWithAttachment('legacy-att-1@example.com')),
+		});
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		// THE ROW EXISTS, which is the whole assertion.
+		expect(rows).toHaveLength(1);
+		const meta = JSON.parse(rows[0]!.attachmentMeta ?? '[]') as Array<Record<string, unknown>>;
+		// The four declared fields, projected; the extra key and the
+		// wrong-typed `partIndex` are gone rather than fatal.
+		expect(meta).toEqual([{ filename: 'notes.txt', contentType: 'text/plain', size: 52 }]);
+		expect(rows[0]!.attachmentMetaVersion).toBe(1);
 	});
 });
 
@@ -1142,15 +1448,20 @@ describe('inboundIngest — parts the assistant will not read', () => {
 		stubScanner({ clean: true });
 
 		// The double-extension trick, plus a null byte before the real one — the
-		// two shapes a filename allowlist has to survive.
+		// two shapes a filename allowlist has to survive. The NUL sits in the
+		// CONTENT-DISPOSITION filename, which is the parameter `mailMime.walk`
+		// takes first and therefore the one the allowlist, the scanner header and
+		// the stored name all see; in the `name=` parameter it was never read by
+		// anything and the case proved nothing.
+		const scanner = stubScannerPerFile({});
 		await ingest(
 			t,
 			'exe-1@example.com',
 			encode(
 				buildEmlWithLeaf('exe-1@example.com', {
 					headers: [
-						'Content-Type: application/pdf; name="invoice.pdf\u0000.exe"',
-						'Content-Disposition: attachment; filename="invoice.pdf.exe"',
+						'Content-Type: application/pdf; name="invoice.pdf.exe"',
+						'Content-Disposition: attachment; filename="invoice.pdf\u0000.exe"',
 						'Content-Transfer-Encoding: base64',
 					],
 					body: Buffer.from('MZ not really a document').toString('base64'),
@@ -1158,6 +1469,13 @@ describe('inboundIngest — parts the assistant will not read', () => {
 			),
 			[{ filename: 'invoice.pdf.exe', contentType: 'application/pdf', size: 24, partIndex: '1' }]
 		);
+
+		// A NUL is not a legal HTTP header value, so the leaf reached the scanner
+		// only because the client percent-encodes the name. Raw, `fetch` throws
+		// and the client's catch reports 'skipped' — an unscanned executable
+		// behind a working download button.
+		expect(scanner.headerValues()).toEqual(['invoice.pdf%00.exe']);
+		expect(scanner.scanned()).toEqual(['invoice.pdf\u0000.exe']);
 
 		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
 		expect(rows).toHaveLength(1);
