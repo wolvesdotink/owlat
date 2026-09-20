@@ -118,6 +118,29 @@ if grep -qE 'image: *tecnativa/docker-socket-proxy:' <<<"$socket_proxy" \
 	ok "$root runs docker-socket-proxy with a read-only socket on docker-proxy only"
 else bad "$root docker-socket-proxy must mount the socket :ro and attach to docker-proxy only"; fi
 
+# The proxy is the updater's ONLY route to Docker, so its allowlist is the
+# feature list of in-app updates. `compose up` and `compose run` resolve the
+# project's networks and named volumes before they touch a container: with
+# NETWORKS/VOLUMES at 0 the daemon 403s and every update dies at convex-deploy.
+for compose in "$root" "$vps"; do
+	proxy_env=$(service_block "$compose" docker-socket-proxy)
+	missing_grant=
+	for group in CONTAINERS IMAGES NETWORKS VOLUMES POST; do
+		grep -qE "^ {6}$group: 1$" <<<"$proxy_env" || missing_grant="$missing_grant $group"
+	done
+	if [ -z "$missing_grant" ]; then
+		ok "$compose: docker-socket-proxy grants every endpoint group the update path uses"
+	else bad "$compose: docker-socket-proxy must set$missing_grant to 1 — \`docker compose up\`/\`run\` 403s without them"; fi
+
+	granted_danger=
+	for group in BUILD COMMIT CONFIGS DISTRIBUTION EXEC NODES PLUGINS SECRETS SERVICES SWARM SYSTEM TASKS; do
+		grep -qE "^ {6}$group: 0$" <<<"$proxy_env" || granted_danger="$granted_danger $group"
+	done
+	if [ -z "$granted_danger" ]; then
+		ok "$compose: docker-socket-proxy still blocks every endpoint group outside that set"
+	else bad "$compose: docker-socket-proxy must keep$granted_danger at 0"; fi
+done
+
 updater=$(service_block "$root" updater)
 if grep -qE 'DOCKER_HOST: *tcp://docker-socket-proxy:2375' <<<"$updater" \
 	&& grep -Pzq '\n {4}depends_on:\n {6}- docker-socket-proxy\n' <<<"$updater" \
