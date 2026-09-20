@@ -18,5 +18,12 @@ export const INBOUND_RAW_RETENTION_DAY_CHOICES = [30, 90, 180, 365] as const;
 
 export type InboundRawRetentionDays = (typeof INBOUND_RAW_RETENTION_DAY_CHOICES)[number];
 
-/** Applied when `instanceSettings.inboundRawRetentionDays` is unset. */
-export const DEFAULT_INBOUND_RAW_RETENTION_DAYS = 90;
+/**
+ * Applied when `instanceSettings.inboundRawRetentionDays` is unset.
+ *
+ * Typed as `InboundRawRetentionDays`, not as its own literal: a default outside
+ * the offered set is a value the admin form cannot show and the Convex
+ * validator would reject, and that has to be a compile error rather than a
+ * runtime surprise on the first save.
+ */
+export const DEFAULT_INBOUND_RAW_RETENTION_DAYS: InboundRawRetentionDays = 90;

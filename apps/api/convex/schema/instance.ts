@@ -91,9 +91,9 @@ export const instanceTables = {
 		isBodySearchIndexingEnabled: v.optional(v.boolean()),
 		// How long the shared inbox keeps a received message's FILES: the sealed
 		// raw `.eml` on `inboundMessages` and the attachment blobs captured out of
-		// it into `semanticFiles`. Unset ⇒ `DEFAULT_INBOUND_RAW_RETENTION_DAYS`
-		// (90). Past the horizon the daily sweeps in `maintenance/retention.ts`
-		// release the BYTES ONLY — the message row, its sender, subject, bodies,
+		// it into `semanticFiles`. Unset ⇒ `DEFAULT_INBOUND_RAW_RETENTION_DAYS`.
+		// Past the horizon the daily sweep in `maintenance/retention.ts`
+		// releases the BYTES ONLY — the message row, its sender, subject, bodies,
 		// attachment metadata and verdicts are all retained, and a released
 		// `semanticFiles` row keeps its summary, extracted text and embedding so
 		// retrieval still works. Admin-gated write via `workspaces/settings.update`.

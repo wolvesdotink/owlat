@@ -1,16 +1,20 @@
 /**
- * Inbound-mail file retention — the two sweeps that release BYTES and keep ROWS.
+ * Inbound-mail file retention — one sweep that releases BYTES and keeps ROWS.
  *
  * Proven here:
  *   · the horizon is the one an admin CONFIGURED, not a constant: a 30-day
  *     setting releases a 45-day-old message and spares a 15-day-old one;
- *   · with nothing configured the shared 90-day default applies;
+ *   · with nothing configured `DEFAULT_INBOUND_RAW_RETENTION_DAYS` applies;
  *   · a released message keeps everything that is not the blob — messageId,
- *     subject, bodies, attachment metadata and its malware verdict;
+ *     subject, bodies, attachment metadata, its malware verdict and its SIZE —
+ *     and is STAMPED with `rawReleasedAt`, which is the only thing separating
+ *     "the window passed" from "the bytes were never carried";
  *   · a released attachment keeps its summary, extracted text and embedding, so
  *     `[RELEVANT FILES]` retrieval survives the sweep;
- *   · a file from a different source of the same age is untouched;
- *   · the sweeps are bounded per tick and resume, and a second pass over the
+ *   · an uploaded file of the same age is untouched — and so is a PERSONAL
+ *     MAILBOX capture, which shares `sourceType: 'email_attachment'` with the
+ *     team inbox and has no horizon of its own;
+ *   · the sweep is bounded per tick and resumes, and a second pass over the
  *     same data releases nothing further.
  */
 
@@ -22,6 +26,7 @@ import type { Id } from '../../_generated/dataModel';
 import {
 	DEFAULT_INBOUND_RAW_RETENTION_DAYS,
 	INBOUND_RAW_RETENTION_DAY_CHOICES,
+	type InboundRawRetentionDays,
 } from '@owlat/shared/inboundRetention';
 import { inboundRawRetentionDaysValidator } from '../../lib/literalValidators';
 
@@ -45,10 +50,13 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-async function setHorizon(t: ReturnType<typeof convexTest>, days: number): Promise<void> {
+async function setHorizon(
+	t: ReturnType<typeof convexTest>,
+	days: InboundRawRetentionDays
+): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('instanceSettings', {
-			inboundRawRetentionDays: days as 30 | 90 | 180 | 365,
+			inboundRawRetentionDays: days,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
 		});
@@ -77,7 +85,7 @@ async function seedInboundMessage(
 			receivedAt: now - ageDays * DAY_MS,
 			rawStorageId: storageId,
 			rawSize: 42,
-			rawRetained: true,
+			isRawRetained: true,
 			virusVerdict: 'clean',
 		});
 	});
@@ -89,7 +97,8 @@ async function seedSemanticFile(
 	filename: string,
 	now: number,
 	ageDays: number,
-	sourceType: 'email_attachment' | 'upload'
+	sourceType: 'email_attachment' | 'upload',
+	captureSource?: 'team_inbox' | 'mailbox'
 ): Promise<Id<'semanticFiles'>> {
 	return await t.run(async (ctx) => {
 		const storageId = await ctx.storage.store(new Blob([`bytes of ${filename}`]));
@@ -99,6 +108,7 @@ async function seedSemanticFile(
 			mimeType: 'text/plain',
 			fileSize: 12,
 			sourceType,
+			captureSource,
 			summary: 'a summary that outlives the bytes',
 			extractedText: 'extracted text that outlives the bytes',
 			embedding: Array.from({ length: 1536 }, () => 0.1),
@@ -109,7 +119,7 @@ async function seedSemanticFile(
 	});
 }
 
-describe('sweepInboundRawBlobs', () => {
+describe('sweepInboundFiles — the raw `.eml` half', () => {
 	it('honours the configured horizon rather than a constant', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
@@ -118,13 +128,18 @@ describe('sweepInboundRawBlobs', () => {
 		const fresh = await seedInboundMessage(t, '<fresh@example.com>', now, 15);
 		const staleBlob = await t.run(async (ctx) => (await ctx.db.get(stale))!.rawStorageId!);
 
-		await t.mutation(internal.maintenance.retention.sweepInboundRawBlobs, { now });
+		await t.mutation(internal.maintenance.retention.sweepInboundFiles, { now });
 
 		const staleRow = await t.run(async (ctx) => await ctx.db.get(stale));
 		// The BLOB is gone.
 		expect(staleRow!.rawStorageId).toBeUndefined();
-		expect(staleRow!.rawSize).toBeUndefined();
-		expect(staleRow!.rawRetained).toBeUndefined();
+		expect(staleRow!.isRawRetained).toBeUndefined();
+		// STAMPED, not erased: without this the reader cannot tell a swept
+		// message from one that predates raw storage, and tells both that a
+		// retention window expired.
+		expect(staleRow!.rawReleasedAt).toBe(now);
+		// And the size survives, so the reader can still say how big it was.
+		expect(staleRow!.rawSize).toBe(42);
 		expect(await t.run(async (ctx) => await ctx.storage.get(staleBlob))).toBeNull();
 		// Everything that is not the blob stays.
 		expect(staleRow!.messageId).toBe('<stale@example.com>');
@@ -136,17 +151,19 @@ describe('sweepInboundRawBlobs', () => {
 		// Inside the horizon: untouched.
 		const freshRow = await t.run(async (ctx) => await ctx.db.get(fresh));
 		expect(freshRow!.rawStorageId).toBeDefined();
-		expect(freshRow!.rawRetained).toBe(true);
+		expect(freshRow!.isRawRetained).toBe(true);
+		expect(freshRow!.rawReleasedAt).toBeUndefined();
 	});
 
 	it('falls back to the shared default when nothing is configured', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
-		expect(DEFAULT_INBOUND_RAW_RETENTION_DAYS).toBe(90);
-		const inside = await seedInboundMessage(t, '<inside@example.com>', now, 45);
-		const outside = await seedInboundMessage(t, '<outside@example.com>', now, 120);
+		const insideAge = DEFAULT_INBOUND_RAW_RETENTION_DAYS - 1;
+		const outsideAge = DEFAULT_INBOUND_RAW_RETENTION_DAYS + 1;
+		const inside = await seedInboundMessage(t, '<inside@example.com>', now, insideAge);
+		const outside = await seedInboundMessage(t, '<outside@example.com>', now, outsideAge);
 
-		await t.mutation(internal.maintenance.retention.sweepInboundRawBlobs, { now });
+		await t.mutation(internal.maintenance.retention.sweepInboundFiles, { now });
 
 		// Read whole rows back: a bare `undefined` returned across the `t.run`
 		// boundary serializes to `null`, which would make the assertion about the
@@ -172,10 +189,10 @@ describe('sweepInboundRawBlobs', () => {
 		}
 		const fresh = await seedInboundMessage(t, '<fresh@example.com>', now, 5);
 
-		await t.mutation(internal.maintenance.retention.sweepInboundRawBlobs, { now });
+		await t.mutation(internal.maintenance.retention.sweepInboundFiles, { now });
 		// One tick cannot have finished: the batch came back full.
 		const afterFirst = await t.run(async (ctx) =>
-			(await ctx.db.query('inboundMessages').collect()).filter((r) => r.rawRetained === true)
+			(await ctx.db.query('inboundMessages').collect()).filter((r) => r.isRawRetained === true)
 		);
 		expect(afterFirst).toHaveLength(BATCH + 2 - BATCH);
 
@@ -183,7 +200,7 @@ describe('sweepInboundRawBlobs', () => {
 		vi.useRealTimers();
 
 		const retained = await t.run(async (ctx) =>
-			(await ctx.db.query('inboundMessages').collect()).filter((r) => r.rawRetained === true)
+			(await ctx.db.query('inboundMessages').collect()).filter((r) => r.isRawRetained === true)
 		);
 		// Only the row inside the horizon still holds bytes.
 		expect(retained).toHaveLength(1);
@@ -191,15 +208,15 @@ describe('sweepInboundRawBlobs', () => {
 	});
 });
 
-describe('sweepInboundAttachmentBlobs', () => {
+describe('sweepInboundFiles — the attachment half', () => {
 	it('releases an aged email attachment while keeping what retrieval needs', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
 		await setHorizon(t, 30);
-		const stale = await seedSemanticFile(t, 'stale.txt', now, 45, 'email_attachment');
+		const stale = await seedSemanticFile(t, 'stale.txt', now, 45, 'email_attachment', 'team_inbox');
 		const staleBlob = await t.run(async (ctx) => (await ctx.db.get(stale))!.storageId!);
 
-		await t.mutation(internal.maintenance.retention.sweepInboundAttachmentBlobs, { now });
+		await t.mutation(internal.maintenance.retention.sweepInboundFiles, { now });
 
 		const row = await t.run(async (ctx) => await ctx.db.get(stale));
 		expect(row!.storageId).toBeUndefined();
@@ -217,7 +234,7 @@ describe('sweepInboundAttachmentBlobs', () => {
 		await setHorizon(t, 30);
 		const upload = await seedSemanticFile(t, 'upload.txt', now, 45, 'upload');
 
-		await t.mutation(internal.maintenance.retention.sweepInboundAttachmentBlobs, { now });
+		await t.mutation(internal.maintenance.retention.sweepInboundFiles, { now });
 
 		const row = await t.run(async (ctx) => await ctx.db.get(upload));
 		// A file a user uploaded is theirs; this sweep is about mail we received.
@@ -225,18 +242,55 @@ describe('sweepInboundAttachmentBlobs', () => {
 		expect(row!.bytesReleasedAt).toBeUndefined();
 	});
 
+	it('leaves a PERSONAL-MAILBOX capture of the same age alone', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		await setHorizon(t, 30);
+		// Both routes write `sourceType: 'email_attachment'` — `captureAttachments`
+		// is shared — so `sourceType` alone cannot tell them apart. A horizon an
+		// admin set for the SHARED INBOX must not strip the file-library blobs of
+		// Postbox mail, which keeps its own raw `.eml` permanently and has no
+		// horizon at all.
+		const postbox = await seedSemanticFile(
+			t,
+			'postbox.pdf',
+			now,
+			45,
+			'email_attachment',
+			'mailbox'
+		);
+		const teamInbox = await seedSemanticFile(
+			t,
+			'inbox.pdf',
+			now,
+			45,
+			'email_attachment',
+			'team_inbox'
+		);
+
+		await t.mutation(internal.maintenance.retention.sweepInboundFiles, { now });
+
+		const postboxRow = await t.run(async (ctx) => await ctx.db.get(postbox));
+		expect(postboxRow!.storageId).toBeDefined();
+		expect(postboxRow!.bytesReleasedAt).toBeUndefined();
+		// The team-inbox sibling of the same age WAS released, so this is a
+		// scoping assertion rather than a sweep that did nothing.
+		const inboxRow = await t.run(async (ctx) => await ctx.db.get(teamInbox));
+		expect(inboxRow!.storageId).toBeUndefined();
+	});
+
 	it('releases nothing further on a second pass over the same data', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
 		await setHorizon(t, 30);
-		const stale = await seedSemanticFile(t, 'stale.txt', now, 45, 'email_attachment');
+		const stale = await seedSemanticFile(t, 'stale.txt', now, 45, 'email_attachment', 'team_inbox');
 
-		await t.mutation(internal.maintenance.retention.sweepInboundAttachmentBlobs, { now });
+		await t.mutation(internal.maintenance.retention.sweepInboundFiles, { now });
 		const firstPass = (await t.run(async (ctx) => await ctx.db.get(stale)))!.bytesReleasedAt;
 
 		// A second run a day later must not re-stamp the row: an already-released
 		// row falls out of the index range, which is what terminates the walk.
-		await t.mutation(internal.maintenance.retention.sweepInboundAttachmentBlobs, {
+		await t.mutation(internal.maintenance.retention.sweepInboundFiles, {
 			now: now + DAY_MS,
 		});
 		const secondPass = (await t.run(async (ctx) => await ctx.db.get(stale)))!.bytesReleasedAt;

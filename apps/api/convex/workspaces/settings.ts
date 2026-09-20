@@ -87,7 +87,8 @@ export const update = authedMutation({
 		isBodySearchIndexingEnabled: v.optional(v.boolean()),
 		// How long the shared inbox keeps a received message's files — the sealed
 		// raw `.eml` and its captured attachment blobs. A closed set of day
-		// counts; unset resolves to 90. The validator IS the check: there is no
+		// counts; unset resolves to `DEFAULT_INBOUND_RAW_RETENTION_DAYS`. The
+		// validator IS the check: there is no
 		// arbitrary horizon to range-guard, and the field flows through the patch
 		// and audit-diff below unchanged.
 		inboundRawRetentionDays: v.optional(inboundRawRetentionDaysValidator),

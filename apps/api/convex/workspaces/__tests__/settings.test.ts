@@ -586,3 +586,65 @@ describe('organizations.settings.claimAdminSeedInternal', () => {
 		});
 	});
 });
+
+// ============================================================
+// inboundRawRetentionDays — the admin-configurable horizon, end to end
+// ============================================================
+
+describe('organizations.settings.update — inbound file retention horizon', () => {
+	/**
+	 * The card, the public mutation and the sweep are three surfaces sharing one
+	 * closed 30/90/180/365 set, and every other test of this feature seeds
+	 * `instanceSettings` directly. This one drives the real admin write and then
+	 * the real sweep, so a horizon an admin actually saved is the one that acts.
+	 */
+	it('persists an admin-saved horizon and the sweep then measures by it', async () => {
+		const t = convexTest(schema, modules);
+		mockRole = 'admin';
+		const now = Date.now();
+		const DAY_MS = 24 * 60 * 60 * 1000;
+
+		await t.mutation(api.workspaces.settings.update, { inboundRawRetentionDays: 30 });
+
+		const stored = await t.run(async (ctx) => await ctx.db.query('instanceSettings').first());
+		expect(stored?.inboundRawRetentionDays).toBe(30);
+
+		// A 45-day-old message: outside 30 days, well inside the 90-day default,
+		// so the assertion below fails if the sweep ignored what was saved.
+		const messageId = await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(
+				new Blob(['raw bytes'], { type: 'message/rfc822' })
+			);
+			return await ctx.db.insert('inboundMessages', {
+				messageId: '<horizon@example.com>',
+				from: 'bob@example.com',
+				to: 'inbox@example.com',
+				subject: 'aged',
+				processingStatus: 'received',
+				receivedAt: now - 45 * DAY_MS,
+				rawStorageId: storageId,
+				rawSize: 9,
+				isRawRetained: true,
+			});
+		});
+
+		await t.mutation(internal.maintenance.retention.sweepInboundFiles, { now });
+
+		const row = await t.run(async (ctx) => await ctx.db.get(messageId));
+		expect(row!.rawStorageId).toBeUndefined();
+		expect(row!.rawReleasedAt).toBe(now);
+	});
+
+	it('refuses a horizon outside the closed set', async () => {
+		const t = convexTest(schema, modules);
+		mockRole = 'admin';
+
+		await expect(
+			t.mutation(api.workspaces.settings.update, {
+				// The web card can only ever send a member of the set; this is the
+				// backstop for anything else that reaches the public mutation.
+				inboundRawRetentionDays: 45 as 30,
+			})
+		).rejects.toThrow();
+	});
+});
