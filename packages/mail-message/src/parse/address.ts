@@ -104,6 +104,32 @@ function stripComments(input: string): { stripped: string; comments: string[] } 
 }
 
 /**
+ * Drop the list separators (`,` / `;`) an address token can carry off a
+ * malformed header, returning `null` when nothing shaped like `local@domain`
+ * survives.
+ *
+ * The bare-address scan's character class (`[^\s<>]`) admits the separators
+ * themselves, so `parseMailbox('a@x.com, b@y.com')` used to answer
+ * `a@x.com,` — a single field parsed WITHOUT the list scan (an API `from`, an
+ * inbound recipient) is exactly where that happens, and `,a@x.com` is the
+ * mirror case when no space follows the separator. A trailing `;` arrives the
+ * same way from a group terminator the list scan did not consume.
+ *
+ * Leaving one attached is worse than dropping the token: a separator is never
+ * part of an address, but it survives `normalizeEmail` intact and so reaches
+ * suppression lists, blocklists and routing lookups as an address that
+ * silently matches the same mailbox written cleanly.
+ */
+function stripAddressSeparators(address: string): string | null {
+	const stripped = address.replace(/^[,;]+/, '').replace(/[,;]+$/, '');
+	const at = stripped.indexOf('@');
+	// Both a local part and a domain must survive; a token that was separators
+	// on one side of the `@` was never an address.
+	if (at <= 0 || at === stripped.length - 1) return null;
+	return stripped;
+}
+
+/**
  * Parse one mailbox token. Accepts `email@host`, `<email@host>`, or
  * `"Name" <email@host>` / `Name <email@host>`; returns `null` when no
  * `local@domain` can be extracted. Address is lowercased; a surrounding pair
@@ -157,15 +183,16 @@ function parseMailbox(input: string): RawMailbox | null {
 						.slice(0, openLt)
 						.trim()
 						.replace(/^"(.*)"$/, '$1') || commentName;
-				const address = content.toLowerCase();
-				if (!address.includes('@')) return null;
+				const address = stripAddressSeparators(content.toLowerCase());
+				if (address === null) return null;
 				return { name: rawName || undefined, address };
 			}
 		}
 	}
 	const bareMatch = trimmed.match(/([^\s<>]+@[^\s<>]+)/);
 	if (!bareMatch || bareMatch[1] === undefined) return null;
-	return { name: commentName, address: bareMatch[1].toLowerCase() };
+	const bare = stripAddressSeparators(bareMatch[1].toLowerCase());
+	return bare === null ? null : { name: commentName, address: bare };
 }
 
 /** The parsed contents of one address header. */

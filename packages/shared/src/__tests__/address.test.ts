@@ -171,7 +171,6 @@ const AGREE = [
 	'   ',
 	'\t\r\n ',
 	'Bad <invalid>',
-	'a@x.com, b@y.com',
 	'"Smith, John" <john@x.com>, jane@y.com',
 	'Alice <a@x.com>, b@y.com, "Bob" <c@z.com>',
 	// A single field whose display phrase carries an unquoted comma: `parseAddress`
@@ -180,8 +179,10 @@ const AGREE = [
 	'Smith, John <j@x.com>',
 	// Quoted local parts holding the two characters that drive the scanners.
 	'"weird@local"@example.com',
-	'"a,b"@example.com, c@d.com',
 	'"Doe, John" <"j,d"@x.com>',
+	// An INNER separator is left alone: `a@x.com,,b@y.com` is a malformed single
+	// field and guessing which half was meant would be worse than passing it on.
+	'a@x.com,,b@y.com',
 	// Angle-bracket nesting and unbalanced brackets.
 	'A <<a@x.com>>',
 	'<<a@x.com>',
@@ -190,7 +191,6 @@ const AGREE = [
 	'<a@x.com>',
 	'< a@x.com >',
 	' \t me@hl.camp \t ',
-	'a@x.com,,b@y.com',
 	',',
 	';',
 ];
@@ -258,6 +258,56 @@ describe('parser swap — deliberate divergences', () => {
 
 	it('decodes an RFC 2047 encoded-word display name', () => {
 		expect(parseAddress('=?utf-8?B?w6k=?= <e@x.com>')).toEqual({ name: 'é', address: 'e@x.com' });
+	});
+
+	/**
+	 * The bare-address scan's character class (`[^\s<>]`) admits `,` and `;`, so
+	 * a single field parsed without the list scan kept the separator glued to the
+	 * address. That is not cosmetic: the trailing comma survives `normalizeEmail`
+	 * and reaches suppression lists, blocklists and routing lookups as an address
+	 * that silently matches nothing.
+	 */
+	it('strips a trailing separator the bare scan used to keep', () => {
+		expect(legacyParseAddress('a@x.com, b@y.com')).toEqual({ address: 'a@x.com,' });
+		expect(parseAddress('a@x.com, b@y.com')).toEqual({ address: 'a@x.com' });
+		expect(parseAddress('a@x.com,')).toEqual({ address: 'a@x.com' });
+		expect(parseAddress('a@x.com;')).toEqual({ address: 'a@x.com' });
+	});
+
+	it('strips a trailing separator from a quoted local part too', () => {
+		expect(legacyParseAddress('"a,b"@example.com, c@d.com')).toEqual({
+			address: '"a,b"@example.com,',
+		});
+		expect(parseAddress('"a,b"@example.com, c@d.com')).toEqual({
+			address: '"a,b"@example.com',
+		});
+	});
+
+	it('strips a LEADING separator, with or without a following space', () => {
+		// Without the space the scan swallowed the separator into the local part
+		// (`,a@x.com`); with it, the old scan already skipped past.
+		expect(legacyParseAddress(',a@x.com')).toEqual({ address: ',a@x.com' });
+		expect(parseAddress(',a@x.com')).toEqual({ address: 'a@x.com' });
+		expect(parseAddress(';a@x.com')).toEqual({ address: 'a@x.com' });
+		expect(parseAddress(', a@x.com')).toEqual({ address: 'a@x.com' });
+		expect(parseAddress(',a@x.com,')).toEqual({ address: 'a@x.com' });
+	});
+
+	it('applies the same rule inside angle brackets, so the two forms agree', () => {
+		expect(parseAddress('<a@x.com,>')).toEqual({ address: 'a@x.com' });
+		expect(parseAddress('Name <a@x.com;>')).toEqual({ name: 'Name', address: 'a@x.com' });
+	});
+
+	it('rejects a token that was separators on either side of the @', () => {
+		// Stripping must not manufacture an address out of punctuation.
+		for (const garbage of [',@,', ',@x.com', 'a@,', '@x.com', 'a@', ',,,', ' , ; ']) {
+			expect(parseAddress(garbage)).toBeNull();
+			expect(parseAddressList(garbage)).toEqual([]);
+		}
+	});
+
+	it('leaves an INNER separator alone (a malformed single field, not a list)', () => {
+		expect(parseAddress('a@x.com,,b@y.com')).toEqual({ address: 'a@x.com,,b@y.com' });
 	});
 });
 
