@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+	LOG_REDACT_PATHS,
+	logRedactCensor,
 	redactEmailAddress,
 	redactEmailAddresses,
 	redactSubject,
@@ -91,5 +93,58 @@ describe('redactionDigest', () => {
 
 	it('spreads single-character changes across the token', () => {
 		expect(redactionDigest('aaaaaaaa')).not.toBe(redactionDigest('aaaaaaab'));
+	});
+});
+
+describe('LOG_REDACT_PATHS', () => {
+	it('lists each key at the top level and one level down', () => {
+		expect(LOG_REDACT_PATHS).toContain('rcptTo');
+		expect(LOG_REDACT_PATHS).toContain('*.rcptTo');
+		expect(LOG_REDACT_PATHS).toContain('subject');
+		expect(LOG_REDACT_PATHS).toContain('*.subject');
+	});
+
+	it('has no duplicates, which pino rejects', () => {
+		expect(new Set(LOG_REDACT_PATHS).size).toBe(LOG_REDACT_PATHS.length);
+	});
+});
+
+describe('logRedactCensor', () => {
+	it('redacts a string that looks like an address', () => {
+		expect(logRedactCensor('marcel@example.com', ['rcptTo'])).toBe(
+			redactEmailAddress('marcel@example.com')
+		);
+	});
+
+	it('leaves a non-address value under an address-shaped key readable', () => {
+		// The MTA writes `{ to: 'deferred' }` state labels through the same key.
+		expect(logRedactCensor('deferred', ['to'])).toBe('deferred');
+	});
+
+	it('always redacts a subject, which has no shape to test for', () => {
+		expect(logRedactCensor('hello', ['subject'])).toBe(redactSubject('hello'));
+	});
+
+	it('maps over a recipient list', () => {
+		expect(logRedactCensor(['a@example.com', 'b@example.com'], ['to'])).toEqual([
+			redactEmailAddress('a@example.com'),
+			redactEmailAddress('b@example.com'),
+		]);
+	});
+
+	it('censors an object outright — under these keys it is a parsed address', () => {
+		expect(logRedactCensor({ address: 'a@example.com' }, ['from'])).toBe('[redacted]');
+		expect(logRedactCensor(42, ['sender'])).toBe('[redacted]');
+	});
+
+	it('passes null and undefined through so absence stays legible', () => {
+		expect(logRedactCensor(null, ['from'])).toBeNull();
+		expect(logRedactCensor(undefined, ['from'])).toBeUndefined();
+	});
+
+	it('reads the last path segment, so a nested key is treated the same', () => {
+		expect(logRedactCensor('marcel@example.com', ['job', 'to'])).toBe(
+			redactEmailAddress('marcel@example.com')
+		);
 	});
 });

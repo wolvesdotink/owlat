@@ -92,3 +92,59 @@ export function redactEmailAddresses(addresses: readonly string[]): string[] {
 export function redactSubject(subject: string): string {
 	return `[subject len=${subject.length} ${redactionDigest(subject)}]`;
 }
+
+/**
+ * Keys whose value is a correspondent address or a subject, wherever a
+ * structured logger puts one. Each is listed at the top level and one level
+ * down (`*.from`), which is where the sidecars' pino calls actually place them
+ * (`logger.info({ err, rcptTo }, '…')`, `logger.warn({ job: { to } }, '…')`).
+ * Deeper nesting is not covered — pino paths are static, and a guessed ladder of
+ * wildcards would be a false promise; the gate and code review cover the rest.
+ */
+const REDACTED_LOG_KEYS = [
+	'from',
+	'to',
+	'rcptTo',
+	'mailFrom',
+	'subject',
+	'email',
+	'recipient',
+	'address',
+	'sender',
+] as const;
+
+/** `redact.paths` for a pino logger: the keys above, at depth 0 and depth 1. */
+export const LOG_REDACT_PATHS: string[] = [
+	...REDACTED_LOG_KEYS,
+	...REDACTED_LOG_KEYS.map((key) => `*.${key}`),
+];
+
+/**
+ * `redact.censor` for a pino logger.
+ *
+ * A key from the list above does not guarantee the value is an address: the MTA
+ * writes `{ to: 'deferred' }` state labels and `{ address: host }` through the
+ * same names. So the rule is by value, not by key — a string containing `@` is
+ * treated as an address, everything else under a non-subject key is left
+ * readable. `subject` is unconditional: a subject is prose and has no shape to
+ * test for.
+ *
+ * A non-string, non-array value under one of these keys is censored outright.
+ * That is the conservative branch — an object sitting under `from` is far more
+ * likely to be a parsed address than a config struct — and it is why the key
+ * list stays narrow.
+ */
+export function logRedactCensor(value: unknown, path: readonly string[]): unknown {
+	const key = path[path.length - 1];
+	if (key === 'subject') {
+		return typeof value === 'string' ? redactSubject(value) : '[redacted]';
+	}
+	if (typeof value === 'string') {
+		return value.includes('@') ? redactEmailAddress(value) : value;
+	}
+	if (Array.isArray(value)) {
+		return value.map((entry) => logRedactCensor(entry, path));
+	}
+	if (value === undefined || value === null) return value;
+	return '[redacted]';
+}
