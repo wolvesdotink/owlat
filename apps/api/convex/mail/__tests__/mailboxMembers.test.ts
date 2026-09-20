@@ -13,6 +13,7 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
 import { modules, seedMailbox } from './helpers.testlib';
+import { enableFeatures } from '../../__tests__/factories';
 
 // One mutable hoisted session drives both the wrapper floors
 // (`getMutationContext` / `requireOrgMember`) and the in-handler mailbox gate
@@ -157,6 +158,7 @@ async function seedSharedExternal(t: TestConvex<typeof schema>): Promise<Id<'mai
 describe('createShared — hosted team inbox', () => {
 	it('provisions a shared mailbox with the creator as owner and the initial members', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		await seedVerifiedDomain(t);
 		await seedUsers(t, 'user-B', 'user-C');
@@ -180,6 +182,7 @@ describe('createShared — hosted team inbox', () => {
 
 	it('rejects a non-admin creator with a permission error', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('editor-user', 'editor');
 		await expect(
 			t.mutation(api.mail.mailboxMembers.createShared, {
@@ -191,6 +194,7 @@ describe('createShared — hosted team inbox', () => {
 
 	it('rejects an address on an unverified domain', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		await expect(
 			t.mutation(api.mail.mailboxMembers.createShared, {
@@ -202,6 +206,7 @@ describe('createShared — hosted team inbox', () => {
 
 	it('rejects an initial member who is not an org member', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		await seedVerifiedDomain(t);
 		await expect(
@@ -214,6 +219,7 @@ describe('createShared — hosted team inbox', () => {
 
 	it('rejects a duplicate address', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		await seedVerifiedDomain(t);
 		await seedMailbox(t, { address: 'taken@owlat.test' });
@@ -229,6 +235,7 @@ describe('createShared — hosted team inbox', () => {
 describe('listShared — org-wide admin overview', () => {
 	it('lists every live team inbox with roster and pending invites; personal and deleted mailboxes are excluded', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		await seedVerifiedDomain(t);
 		await seedUsers(t, 'user-B', 'admin-user');
@@ -285,6 +292,7 @@ describe('listShared — org-wide admin overview', () => {
 
 	it('rejects a non-admin caller (admin floor, not per-mailbox membership)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('editor-user', 'editor');
 		await expect(t.query(api.mail.mailboxMembers.listShared, {})).rejects.toThrow(/permission/i);
 	});
@@ -293,6 +301,7 @@ describe('listShared — org-wide admin overview', () => {
 describe('members roster', () => {
 	it('lists members for a member and hides the roster from a non-member', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		await seedVerifiedDomain(t);
 		await seedUsers(t, 'user-B');
@@ -316,6 +325,7 @@ describe('members roster', () => {
 describe('addMember / removeMember', () => {
 	it('adds a member (idempotently) and grants them access', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		const id = await seedSharedExternal(t);
 		await seedUsers(t, 'user-B');
@@ -336,6 +346,7 @@ describe('addMember / removeMember', () => {
 
 	it('a plain member cannot manage the roster (owner floor)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		const id = await seedSharedExternal(t);
 		await seedUsers(t, 'user-B');
@@ -349,6 +360,7 @@ describe('addMember / removeMember', () => {
 
 	it('removing a member revokes access immediately — their reactive queries return nothing', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		await seedVerifiedDomain(t);
 		await seedUsers(t, 'user-B');
@@ -376,6 +388,7 @@ describe('addMember / removeMember', () => {
 
 	it("refuses to remove the mailbox's canonical owner (transfer ownership first)", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		const id = await seedSharedExternal(t);
 		await expect(
@@ -390,6 +403,7 @@ describe('addMember / removeMember', () => {
 describe('transferOwnership', () => {
 	it('promotes the new owner, updates the canonical userId, and demotes the old owner', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin-user', 'admin');
 		await seedVerifiedDomain(t);
 		await seedUsers(t, 'user-B');

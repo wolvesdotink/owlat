@@ -13,6 +13,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -189,6 +190,7 @@ async function seed(t: ReturnType<typeof convexTest>) {
 describe('postbox snooze hide-from-inbox', () => {
 	it('hides still-snoozed messages from the inbox and shows them in the Snoozed view', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		const future = Date.now() + 60 * 60 * 1000;
 		await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'visible' });
@@ -214,6 +216,7 @@ describe('postbox snooze hide-from-inbox', () => {
 
 	it('wakeup cron clears snoozedUntil so the message re-floats into the inbox', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		const past = Date.now() - 1000;
 		await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'due', snoozedUntil: past });
@@ -237,6 +240,7 @@ describe('postbox snooze hide-from-inbox', () => {
 		// bare lte(now) filled take(100) with never-snoozed rows and woke nothing
 		// in any mailbox with >~100 messages.
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		for (let i = 0; i < 150; i++) {
 			await seedMessage(t, { mailboxId, folderId: inboxId, subject: `plain-${i}` });
@@ -256,6 +260,7 @@ describe('postbox snooze hide-from-inbox', () => {
 
 	it('snooze decrements and wake re-increments the folder unread count', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		const msgId = await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'x' });
 		await t.run(async (ctx) => {
@@ -278,6 +283,7 @@ describe('postbox snooze hide-from-inbox', () => {
 
 	it('moving a snoozed unread message does not corrupt either folder count', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		let archiveId!: Id<'mailFolders'>;
 		await t.run(async (ctx) => {
@@ -318,6 +324,7 @@ describe('postbox snooze hide-from-inbox', () => {
 
 	it('newestUnreadInbox returns the newest unread, not-snoozed message', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		// older unread, a snoozed newer one, and the newest unread
 		await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'older' });
@@ -340,6 +347,7 @@ describe('postbox snooze hide-from-inbox', () => {
 
 	it('newestUnreadInbox returns an empty window when nothing is unread', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		const id = await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'read' });
 		await t.run(async (ctx) => {
@@ -353,6 +361,7 @@ describe('postbox snooze hide-from-inbox', () => {
 
 	it('purging the newest thread message re-derives latestMessageId to the next', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		const now = Date.now();
 		let threadId!: Id<'mailThreads'>;
@@ -401,6 +410,7 @@ describe('postbox snooze hide-from-inbox', () => {
 
 	it('re-snoozing an already-snoozed message does not double-decrement the count', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		const m1 = await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'a' });
 		await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'b' });
@@ -418,6 +428,7 @@ describe('postbox snooze hide-from-inbox', () => {
 
 	it('reports hasMore when a folder has more than one page', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		for (let i = 0; i < 3; i++) {
 			await seedMessage(t, { mailboxId, folderId: inboxId, subject: `m${i}` });

@@ -13,6 +13,7 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
 import { modules, seedMailbox, seedFolder, seedMessage } from './helpers.testlib';
+import { enableFeatures } from '../../__tests__/factories';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -110,6 +111,7 @@ async function remainingSubjects(
 describe('trash auto-purge sweep', () => {
 	it('deletes only what has been in the bin longer than the horizon', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedTrashedMailbox(t);
 		await setHorizon(t, 'user-A', 30);
 		await seedTrashed(t, mailboxId, 'old', Date.now() - 40 * DAY);
@@ -122,6 +124,7 @@ describe('trash auto-purge sweep', () => {
 
 	it('keeps mail whose time in the bin was never recorded', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedTrashedMailbox(t);
 		await setHorizon(t, 'user-A', 7);
 		// Trashed long before `trashedAt` existed: old by arrival, undateable by
@@ -135,6 +138,7 @@ describe('trash auto-purge sweep', () => {
 
 	it('does nothing for a user who never chose a horizon', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedTrashedMailbox(t);
 		await seedTrashed(t, mailboxId, 'ancient', Date.now() - 1000 * DAY);
 
@@ -145,6 +149,7 @@ describe('trash auto-purge sweep', () => {
 
 	it('treats an explicit Never the same as no setting at all', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedTrashedMailbox(t);
 		await setHorizon(t, 'user-A', 0);
 		await seedTrashed(t, mailboxId, 'ancient', Date.now() - 1000 * DAY);
@@ -156,6 +161,7 @@ describe('trash auto-purge sweep', () => {
 
 	it('never empties a shared team inbox on one member preference', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const personal = await seedTrashedMailbox(t);
 		const shared = await seedTrashedMailbox(t, { scope: 'shared' });
 		await setHorizon(t, 'user-A', 7);
@@ -170,6 +176,7 @@ describe('trash auto-purge sweep', () => {
 
 	it('frees the folder counters and the mailbox bytes it deletes', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedTrashedMailbox(t);
 		await setHorizon(t, 'user-A', 7);
 		await seedTrashed(t, mailboxId, 'old', Date.now() - 30 * DAY);
@@ -199,6 +206,7 @@ describe('trash auto-purge sweep', () => {
 describe('trashedAt stamping', () => {
 	it('records entry into the bin on trash and clears it on the way out', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedTrashedMailbox(t);
 		await seedFolder(t, mailboxId, 'archive');
 		const messageId = await seedMessage(t, mailboxId, { subject: 'triage me' });
@@ -219,6 +227,7 @@ describe('trashedAt stamping', () => {
 describe('mail settings', () => {
 	it('round-trips the horizon and leaves it absent until it is set', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		expect(await t.query(api.mail.settings.get, {})).toBeNull();
 
 		await t.mutation(api.mail.settings.update, { trashAutoPurgeDays: 30 });

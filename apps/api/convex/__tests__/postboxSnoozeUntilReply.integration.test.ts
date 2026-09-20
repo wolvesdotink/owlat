@@ -16,6 +16,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { clearSnoozeUntilReplyForThread } from '../mail/snooze';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -140,6 +141,7 @@ async function seedMessage(
 describe('snooze until they reply', () => {
 	it('hides the message and drops it from the unread count', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		const { messageId } = await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'q' });
 
@@ -154,6 +156,7 @@ describe('snooze until they reply', () => {
 
 	it('clears the watch on an inbound reply and re-floats the message', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		const { messageId, threadId } = await seedMessage(t, {
 			mailboxId,
@@ -177,6 +180,7 @@ describe('snooze until they reply', () => {
 
 	it('resurfaces exactly once at the cap when no reply arrives', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, inboxId } = await seed(t);
 		const { messageId } = await seedMessage(t, { mailboxId, folderId: inboxId, subject: 'q' });
 

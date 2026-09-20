@@ -363,10 +363,16 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 			vi.useRealTimers();
 		}
 
-		// Today's behaviour: the plain needs-reply row, no pre-generated draft.
-		const queue = await t.query(api.mail.needsReply.listQueue, { mailboxId });
-		expect(queue.items).toHaveLength(1);
-		expect(queue.items[0]!.draftSlot).toBeUndefined();
+		// Today's behaviour: the plain needs-reply flag on the thread, no
+		// pre-generated draft. Read it off the thread rather than through
+		// `needsReply.listQueue`: with neither mail flag on, the mailbox gate
+		// reports `feature_off` and every Postbox read soft-fails to empty, which
+		// is the point of this instance shape and not what this case is asserting.
+		await t.run(async (ctx) => {
+			const thread = (await ctx.db.get(threadId))!;
+			expect(thread.needsReply).toBeDefined();
+			expect(thread.needsReply!.draftSlot).toBeUndefined();
+		});
 		expect(llm.runLlmText).not.toHaveBeenCalled();
 	});
 

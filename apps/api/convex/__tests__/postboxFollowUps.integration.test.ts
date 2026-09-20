@@ -15,6 +15,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -33,11 +34,12 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -88,7 +90,7 @@ async function seed(t: ReturnType<typeof convexTest>): Promise<Seeded> {
 async function seedSentMessage(
 	t: ReturnType<typeof convexTest>,
 	seeded: Seeded,
-	opts: { subject: string; to?: string },
+	opts: { subject: string; to?: string }
 ): Promise<{ messageId: Id<'mailMessages'>; threadId: Id<'mailThreads'> }> {
 	let messageId!: Id<'mailMessages'>;
 	let threadId!: Id<'mailThreads'>;
@@ -153,7 +155,7 @@ async function seedSentMessage(
 /** Deliver an inbound reply into the mailbox via the real delivery mutation. */
 async function deliverInboundReply(
 	t: ReturnType<typeof convexTest>,
-	opts: { subject: string; rfcMessageId: string; inReplyTo?: string },
+	opts: { subject: string; rfcMessageId: string; inReplyTo?: string }
 ) {
 	const rawStorageId = await t.run((ctx) => ctx.storage.store(new Blob(['raw'])));
 	return t.mutation(internal.mail.delivery.deliverToMailbox, {
@@ -177,6 +179,7 @@ async function deliverInboundReply(
 describe('postbox follow-up reminders', () => {
 	it('arm() stores the watch on the thread with the sweep key', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { messageId, threadId } = await seedSentMessage(t, seeded, { subject: 'proposal' });
 		const remindAt = Date.now() + 60 * 60 * 1000;
@@ -195,6 +198,7 @@ describe('postbox follow-up reminders', () => {
 
 	it('an inbound reply before the deadline clears the watch silently', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { messageId, threadId } = await seedSentMessage(t, seeded, { subject: 'proposal' });
 		await t.mutation(api.mail.followUps.arm, {
@@ -221,6 +225,7 @@ describe('postbox follow-up reminders', () => {
 
 	it('sweep past the deadline resurfaces the thread (inbox, unread, flagged) exactly once', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { messageId, threadId } = await seedSentMessage(t, seeded, { subject: 'proposal' });
 		await t.mutation(api.mail.followUps.arm, {
@@ -276,6 +281,7 @@ describe('postbox follow-up reminders', () => {
 
 	it('cancel() clears an armed watch, and dismisses a due one from the queue', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { messageId, threadId } = await seedSentMessage(t, seeded, { subject: 'proposal' });
 		await t.mutation(api.mail.followUps.arm, {
@@ -314,6 +320,7 @@ describe('postbox follow-up reminders', () => {
 
 	it('arm() rejects a non-outbound (received) message', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		// Seed an inbound message in the inbox (no outbound marker).
 		let messageId!: Id<'mailMessages'>;

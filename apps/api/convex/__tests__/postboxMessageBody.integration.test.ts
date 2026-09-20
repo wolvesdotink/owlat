@@ -12,6 +12,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { storeSealedBlob } from '../lib/sealedBlob';
+import { enableFeatures } from './factories';
 
 const INSTANCE_SECRET = 'postbox-message-body-test-instance-secret';
 
@@ -141,6 +142,7 @@ async function insertMessage(
 describe('mail.mailbox.messages.getMessageBody', () => {
 	it('returns the inline body for small messages', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
 		const id = await insertMessage(t, mailboxId, folderId, {
 			htmlBodyInline: '<p>small</p>',
@@ -152,6 +154,7 @@ describe('mail.mailbox.messages.getMessageBody', () => {
 
 	it('returns a signed URL for storage-backed large bodies', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
 		let storageId!: Id<'_storage'>;
 		await t.run(async (ctx) => {
@@ -165,6 +168,7 @@ describe('mail.mailbox.messages.getMessageBody', () => {
 
 	it('fails closed for a sealed blob after key loss while preserving legacy plaintext', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
 		vi.stubEnv('INSTANCE_SECRET', INSTANCE_SECRET);
 		const sealedStorageId = await t.run((ctx) =>
@@ -206,6 +210,7 @@ describe('mail.mailbox.messages.getMessageBody', () => {
 describe('mail.mailbox.messages.getMessage (deep-link fallback)', () => {
 	it('returns the full message by id for the owner', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
 		const id = await insertMessage(t, mailboxId, folderId, { htmlBodyInline: '<p>hi</p>' });
 		const msg = await t.query(api.mail.mailbox.messages.getMessage, { messageId: id });

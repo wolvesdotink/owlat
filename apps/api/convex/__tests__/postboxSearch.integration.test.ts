@@ -13,6 +13,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -121,6 +122,7 @@ async function seed(t: ReturnType<typeof convexTest>) {
 describe('mail.mailbox.search.search', () => {
 	it('matches free text combined with a partial from-token', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seed(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -134,6 +136,7 @@ describe('mail.mailbox.search.search', () => {
 
 	it('matches a partial from-token with no free text', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seed(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -145,6 +148,7 @@ describe('mail.mailbox.search.search', () => {
 
 	it('excludes a non-matching from-token', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seed(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -156,6 +160,7 @@ describe('mail.mailbox.search.search', () => {
 
 	it('requires a quoted phrase to appear verbatim, not as loose tokens', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seed(t);
 
 		// The seeded row's snippet is "meeting notes about the launch": both words
@@ -178,6 +183,7 @@ describe('mail.mailbox.search.search', () => {
 
 	it('matches a phrase across the subject as well as the snippet', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seed(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -189,6 +195,7 @@ describe('mail.mailbox.search.search', () => {
 
 	it('requires EVERY phrase when more than one is quoted', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seed(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -200,6 +207,7 @@ describe('mail.mailbox.search.search', () => {
 
 	it('paginates: the cursor continues where the first page stopped', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seed(t);
 		// Seed two more matches so the first page (limit 1) can't hold them all.
 		await t.run(async (ctx) => {
@@ -269,6 +277,7 @@ describe('mail.mailbox.search.search', () => {
 
 	it('a post-filter that zeroes a page never skips or repeats later matches', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seed(t);
 		// Two bob messages newer than the seeded sara one, plus a second sara
 		// message between them: at limit 2 the FIRST page is entirely
@@ -475,6 +484,7 @@ async function seedGrammar(t: ReturnType<typeof convexTest>) {
 describe('mail.mailbox.search.search — filter-grammar parity', () => {
 	it('filters on cc: and bcc:', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedGrammar(t);
 		const cc = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -492,6 +502,7 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 
 	it('bounds on larger:/smaller: against the raw size', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedGrammar(t);
 		const big = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -509,6 +520,7 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 
 	it('matches filename: against the stored attachment metadata', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedGrammar(t);
 		const hit = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -528,6 +540,7 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 		// The parser lowercases every operand, so `label:billing` has to reach a
 		// label the user named "Billing" or the operator is unusable.
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedGrammar(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -539,6 +552,7 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 
 	it('excludes on a negated operator without emptying the result set', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedGrammar(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -552,6 +566,7 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 		// An unresolvable exclusion excludes nothing; reading it as "match none"
 		// would blank the results for a typo.
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedGrammar(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -563,6 +578,7 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 
 	it('returns nothing when the only clause names a missing label', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedGrammar(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -574,6 +590,7 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 
 	it('unions the sides of a single-level OR', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedGrammar(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -588,6 +605,7 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 		// A disjunction gives up the search index, so the clause text has to be
 		// re-checked in the post-filter or every alternative would match.
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedGrammar(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
@@ -602,6 +620,7 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 
 	it('drops a dead OR side instead of letting it widen the union', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedGrammar(t);
 		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,

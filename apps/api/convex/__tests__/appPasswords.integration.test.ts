@@ -29,6 +29,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
+import { enableFeatures } from './factories';
 
 // Mutable session the mock resolves to. Tests flip role / userId / org to
 // exercise owner-vs-admin-vs-editor and ownership boundaries.
@@ -102,8 +103,9 @@ const modules = Object.fromEntries(
 	)
 );
 
-function setupTest() {
+async function setupTest() {
 	const t = convexTest(schema, modules);
+	await enableFeatures(t, ['mail.external']);
 	rateLimiterTest.register(t);
 	return t;
 }
@@ -119,7 +121,7 @@ const setSession = (
 
 // Seed a mailbox; returns its id (and the owning userId for convenience).
 async function seedMailbox(
-	t: ReturnType<typeof setupTest>,
+	t: Awaited<ReturnType<typeof setupTest>>,
 	overrides: {
 		userId?: string;
 		address?: string;
@@ -155,7 +157,7 @@ beforeEach(() => {
 
 describe('appPasswords.generate', () => {
 	it('returns the cleartext once and persists only a hash + prefix (no cleartext)', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId } = await seedMailbox(t);
 
 		const result = await t.mutation(api.mail.appPasswords.generate, {
@@ -183,7 +185,7 @@ describe('appPasswords.generate', () => {
 	});
 
 	it('associates the new credential with the mailbox and owning user', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId, userId } = await seedMailbox(t);
 
 		const result = await t.mutation(api.mail.appPasswords.generate, {
@@ -201,7 +203,7 @@ describe('appPasswords.generate', () => {
 	});
 
 	it('defaults scopes to both imap and smtp when omitted', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId } = await seedMailbox(t);
 
 		const result = await t.mutation(api.mail.appPasswords.generate, {
@@ -216,7 +218,7 @@ describe('appPasswords.generate', () => {
 	});
 
 	it('honors an explicit single scope', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId } = await seedMailbox(t);
 
 		const result = await t.mutation(api.mail.appPasswords.generate, {
@@ -232,7 +234,7 @@ describe('appPasswords.generate', () => {
 	});
 
 	it('trims the label and rejects a blank one', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId } = await seedMailbox(t);
 
 		const trimmed = await t.mutation(api.mail.appPasswords.generate, {
@@ -253,7 +255,7 @@ describe('appPasswords.generate', () => {
 	});
 
 	it('forbids generating for a mailbox the caller does not own (editor, not their mailbox)', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		// Mailbox owned by someone else.
 		const { mailboxId } = await seedMailbox(t, { userId: 'user-other' });
 		// Caller is an editor (not owner/admin) and not the mailbox owner.
@@ -268,7 +270,7 @@ describe('appPasswords.generate', () => {
 	});
 
 	it('allows an admin to generate for another user’s mailbox (acts org-wide)', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId } = await seedMailbox(t, { userId: 'user-other' });
 		setSession('user-admin', 'admin');
 
@@ -285,7 +287,7 @@ describe('appPasswords.generate', () => {
 	});
 
 	it('rejects generation against a non-active mailbox', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId } = await seedMailbox(t, { status: 'suspended' });
 
 		await expect(
@@ -302,7 +304,7 @@ describe('appPasswords.generate', () => {
 describe('appPasswords.verify', () => {
 	// Generate a credential and hand back the cleartext + ids.
 	async function provision(
-		t: ReturnType<typeof setupTest>,
+		t: Awaited<ReturnType<typeof setupTest>>,
 		opts: { scopes?: ('imap' | 'smtp')[]; address?: string } = {}
 	) {
 		const address = opts.address ?? 'mailbox@example.com';
@@ -323,7 +325,7 @@ describe('appPasswords.verify', () => {
 	}
 
 	it('resolves the bound mailbox/owner/org for a correct imap credential', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const f = await provision(t);
 
 		const res = await t.action(internal.mail.appPasswords.verify, {
@@ -340,7 +342,7 @@ describe('appPasswords.verify', () => {
 	});
 
 	it('resolves correctly for the smtp scope as well', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const f = await provision(t);
 
 		const res = await t.action(internal.mail.appPasswords.verify, {
@@ -353,7 +355,7 @@ describe('appPasswords.verify', () => {
 	});
 
 	it('matches the address case-insensitively', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const f = await provision(t, { address: 'mailbox@example.com' });
 
 		const res = await t.action(internal.mail.appPasswords.verify, {
@@ -366,7 +368,7 @@ describe('appPasswords.verify', () => {
 	});
 
 	it('returns null for a wrong password', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const f = await provision(t);
 
 		const res = await t.action(internal.mail.appPasswords.verify, {
@@ -380,7 +382,7 @@ describe('appPasswords.verify', () => {
 	});
 
 	it('returns null for a totally unknown password (no prefix match)', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const f = await provision(t);
 
 		const res = await t.action(internal.mail.appPasswords.verify, {
@@ -392,7 +394,7 @@ describe('appPasswords.verify', () => {
 	});
 
 	it('returns null for an unknown address', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const f = await provision(t);
 
 		const res = await t.action(internal.mail.appPasswords.verify, {
@@ -404,7 +406,7 @@ describe('appPasswords.verify', () => {
 	});
 
 	it('returns null when the credential lacks the requested scope', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		// IMAP-only credential.
 		const f = await provision(t, { scopes: ['imap'] });
 
@@ -425,7 +427,7 @@ describe('appPasswords.verify', () => {
 	});
 
 	it('returns null for a revoked credential', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const f = await provision(t);
 
 		// Owner revokes it.
@@ -440,7 +442,7 @@ describe('appPasswords.verify', () => {
 	});
 
 	it('returns null when the mailbox is not active', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const f = await provision(t);
 
 		await t.run(async (ctx) => {
@@ -456,7 +458,7 @@ describe('appPasswords.verify', () => {
 	});
 
 	it('returns null (looks like a failure) when the per-address throttle trips', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const f = await provision(t);
 
 		// Pile up enough recent failures to cross the per-address window limit
@@ -482,7 +484,7 @@ describe('appPasswords.verify', () => {
 	});
 
 	it('records an auth-failure row on a wrong-password attempt', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const f = await provision(t);
 
 		const before = await t.run(
@@ -523,7 +525,7 @@ describe('appPasswords.touch', () => {
 	}
 
 	it('records lastUsedAt/IP/UA and list surfaces the user agent', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId, appPasswordId } = await seedCredential(t);
 
 		await t.mutation(internal.mail.appPasswords.touch, {
@@ -547,7 +549,7 @@ describe('appPasswords.touch', () => {
 	});
 
 	it('leaves lastUsedUa undefined when no user agent is supplied', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { appPasswordId } = await seedCredential(t);
 
 		await t.mutation(internal.mail.appPasswords.touch, {
@@ -563,7 +565,7 @@ describe('appPasswords.touch', () => {
 	});
 
 	it('is a no-op for a revoked credential', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { appPasswordId } = await seedCredential(t);
 		await t.run(async (ctx) => {
 			await ctx.db.patch(appPasswordId, { revokedAt: Date.now() });
@@ -586,7 +588,10 @@ describe('appPasswords.touch', () => {
 // ─── revoke ──────────────────────────────────────────────────────────────
 
 describe('appPasswords.revoke', () => {
-	async function seedCredential(t: ReturnType<typeof setupTest>, mailboxOwner = 'user-owner') {
+	async function seedCredential(
+		t: Awaited<ReturnType<typeof setupTest>>,
+		mailboxOwner = 'user-owner'
+	) {
 		const { mailboxId } = await seedMailbox(t, { userId: mailboxOwner });
 		const appPasswordId = await t.run(async (ctx) =>
 			ctx.db.insert('mailAppPasswords', {
@@ -603,7 +608,7 @@ describe('appPasswords.revoke', () => {
 	}
 
 	it('lets the mailbox owner revoke (sets revokedAt)', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { appPasswordId } = await seedCredential(t, 'user-owner');
 		// Caller IS the mailbox's own user (role editor, but matches userId).
 		setSession('user-owner', 'editor');
@@ -617,7 +622,7 @@ describe('appPasswords.revoke', () => {
 	});
 
 	it('lets an org admin revoke a credential on another user’s mailbox', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { appPasswordId } = await seedCredential(t, 'user-other');
 		setSession('user-admin', 'admin');
 
@@ -630,7 +635,7 @@ describe('appPasswords.revoke', () => {
 	});
 
 	it('forbids a non-owner editor from revoking someone else’s credential', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { appPasswordId } = await seedCredential(t, 'user-other');
 		// Editor who is neither owner/admin nor the mailbox owner.
 		setSession('user-editor', 'editor');
@@ -646,7 +651,7 @@ describe('appPasswords.revoke', () => {
 	});
 
 	it('is a no-op for an unknown credential id', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { appPasswordId } = await seedCredential(t, 'user-owner');
 		// Delete it so the id is dangling, then revoke — must not throw.
 		await t.run(async (ctx) => {
@@ -700,7 +705,7 @@ describe('appPasswords.revokeAll', () => {
 	}
 
 	it('revokes every active credential for the mailbox when an admin calls it', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId, ids } = await seedMany(t);
 		setSession('user-admin', 'admin');
 
@@ -718,7 +723,7 @@ describe('appPasswords.revokeAll', () => {
 	});
 
 	it('lets an owner call revokeAll', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId, ids } = await seedMany(t);
 		setSession('user-owner', 'owner');
 
@@ -730,7 +735,7 @@ describe('appPasswords.revokeAll', () => {
 	});
 
 	it('forbids an editor from calling revokeAll', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId, ids } = await seedMany(t);
 		setSession('user-editor', 'editor');
 
@@ -744,7 +749,7 @@ describe('appPasswords.revokeAll', () => {
 	});
 
 	it('forbids revokeAll against a mailbox in ANOTHER organization (cross-org mailboxId)', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		// Mailbox + its credentials live in org-2.
 		const { mailboxId } = await seedMailbox(t, {
 			userId: 'user-other',
@@ -775,7 +780,7 @@ describe('appPasswords.revokeAll', () => {
 	});
 
 	it('throws not-found when revokeAll targets a mailbox id that no longer exists', async () => {
-		const t = setupTest();
+		const t = await setupTest();
 		const { mailboxId } = await seedMailbox(t, { userId: 'user-other' });
 		await t.run(async (ctx) => {
 			await ctx.db.delete(mailboxId);

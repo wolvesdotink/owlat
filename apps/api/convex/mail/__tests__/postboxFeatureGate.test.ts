@@ -51,7 +51,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 describe('postboxMutation refuses when the instance has no personal mail', () => {
 	it('names both flags when neither is enabled', async () => {
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedMailbox(t);
+		const mailboxId = await seedMailbox(t, { featuresOff: true });
 
 		await expect(
 			t.mutation(api.mail.folders.create, { mailboxId, name: 'Receipts' })
@@ -75,7 +75,7 @@ describe('postboxMutation refuses when the instance has no personal mail', () =>
 
 	it('refuses a draft write too — the gate is the builder, not one handler', async () => {
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedMailbox(t);
+		const mailboxId = await seedMailbox(t, { featuresOff: true });
 
 		await expect(t.mutation(api.mail.drafts.create, { mailboxId })).rejects.toThrow(
 			/"postbox".*"mail\.external"/
@@ -86,7 +86,7 @@ describe('postboxMutation refuses when the instance has no personal mail', () =>
 describe('the mailbox gate reports feature_off without throwing', () => {
 	it('soft-fails a mailbox read to its empty shape when neither flag is on', async () => {
 		const t = convexTest(schema, modules);
-		const mailboxId = await seedMailbox(t);
+		const mailboxId = await seedMailbox(t, { featuresOff: true });
 
 		const page = await t.query(api.mail.mailbox.queries.listMessages, { mailboxId });
 		expect(page.messages).toEqual([]);

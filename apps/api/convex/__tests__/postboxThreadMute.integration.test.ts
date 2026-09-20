@@ -22,6 +22,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'test-user',
@@ -195,6 +196,7 @@ async function deliverInbound(
 describe('conversation mute', () => {
 	it('mute stamps the marker and archives the inbox mail already on the thread', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'loud thread',
@@ -218,6 +220,7 @@ describe('conversation mute', () => {
 
 	it('new inbound mail on a muted thread lands in Archive, not the Inbox', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'loud thread',
@@ -248,6 +251,7 @@ describe('conversation mute', () => {
 
 	it('unmuting lets the next delivery reach the inbox again (and keeps the archived mail filed)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'loud thread',
@@ -274,6 +278,7 @@ describe('conversation mute', () => {
 
 	it('a muted thread never appears in the Reply Queue', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'needs an answer',
@@ -304,6 +309,7 @@ describe('conversation mute', () => {
 
 	it('a thread muted AFTER it was flagged still drops out of the Reply Queue on the next read', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'needs an answer',
@@ -329,6 +335,7 @@ describe('conversation mute', () => {
 
 	it('newestUnreadInbox flags a muted thread so the desktop notifier can stay silent', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId } = await seedThread(t, seeded, {
 			subject: 'loud thread',
@@ -347,6 +354,7 @@ describe('conversation mute', () => {
 
 	it('the list-row projection carries mutedAt for the row chip', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId } = await seedThread(t, seeded, {
 			subject: 'loud thread',
@@ -362,6 +370,7 @@ describe('conversation mute', () => {
 
 	it('refuses to mute a thread in a mailbox the caller has no membership on', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'loud thread',
@@ -386,6 +395,7 @@ describe('conversation mute', () => {
 
 	it("setMutedForMessage mutes and unmutes the message's thread", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'loud thread',
@@ -410,6 +420,7 @@ describe('conversation mute', () => {
 describe('per-thread reply alert', () => {
 	it('arming stamps the marker and the unread peek reports it', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'watch this one',
@@ -433,6 +444,7 @@ describe('per-thread reply alert', () => {
 
 	it('disarming drops the marker again', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'watch this one',
@@ -451,6 +463,7 @@ describe('per-thread reply alert', () => {
 
 	it('alert and mute are mutually exclusive in both directions', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'watch this one',
@@ -477,6 +490,7 @@ describe('per-thread reply alert', () => {
 
 	it('refuses a message in a mailbox the caller has no membership on', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { threadId, messageId } = await seedThread(t, seeded, {
 			subject: 'watch this one',
