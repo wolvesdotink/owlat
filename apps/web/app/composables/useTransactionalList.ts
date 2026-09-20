@@ -320,12 +320,12 @@ export function useTransactionalList() {
 	// deployment's HTTP-actions host — `api.owlat.app` is the hosted instance and
 	// belongs to nobody else.
 	const runtimeConfig = useRuntimeConfig();
+	// Only `convexSiteUrl`: `/api/v1/*` is an `http.route` handler, which Convex
+	// serves on the SITE proxy. `convexUrl` is the cloud/sync origin, where a
+	// POST to this path silently 404s — a snippet built from it fails in the one
+	// way the reader cannot diagnose, which is what the placeholder is for.
 	const transactionalEndpoint = computed(() => {
-		const base = (
-			runtimeConfig.public.convexSiteUrl ||
-			runtimeConfig.public.convexUrl ||
-			''
-		).replace(/\/+$/, '');
+		const base = (runtimeConfig.public.convexSiteUrl || '').replace(/\/+$/, '');
 		return `${base || SNIPPET_HOST_PLACEHOLDER}/api/v1/transactional`;
 	});
 

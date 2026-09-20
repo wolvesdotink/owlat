@@ -14,12 +14,13 @@ import { useTransactionalList } from '../useTransactionalList';
 const i18n = createTestI18n();
 
 let siteUrl: string;
+let cloudUrl: string;
 
 function stubEnvironment() {
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useRouter', () => ({ push: vi.fn() }));
 	vi.stubGlobal('useRuntimeConfig', () => ({
-		public: { convexSiteUrl: siteUrl, convexUrl: '' },
+		public: { convexSiteUrl: siteUrl, convexUrl: cloudUrl },
 	}));
 	vi.stubGlobal('useCopyToClipboard', () => ({
 		copy: vi.fn().mockResolvedValue(true),
@@ -50,6 +51,7 @@ function snippetsFor(slug: string): string[] {
 
 beforeEach(() => {
 	siteUrl = 'https://mail.acme.test';
+	cloudUrl = 'https://mail-cloud.acme.test';
 	stubEnvironment();
 });
 
@@ -69,10 +71,24 @@ describe('transactional code snippets', () => {
 
 	it('falls back to an obvious placeholder when nothing is configured', () => {
 		siteUrl = '';
+		cloudUrl = '';
 		stubEnvironment();
 		for (const snippet of snippetsFor('welcome')) {
 			expect(snippet).toContain('https://<your-owlat-host>/api/v1/transactional');
 		}
+	});
+
+	/**
+	 * The cloud/sync origin is NOT a usable fallback: `/api/v1/*` lives on the
+	 * site proxy and a POST to the sync host silently 404s. A placeholder the
+	 * reader must replace beats a host that fails inexplicably.
+	 */
+	it('does not fall back to the Convex sync origin', () => {
+		siteUrl = '';
+		stubEnvironment();
+		const snippet = snippetsFor('welcome')[0]!;
+		expect(snippet).not.toContain('mail-cloud.acme.test');
+		expect(snippet).toContain('https://<your-owlat-host>/api/v1/transactional');
 	});
 
 	it('still carries the selected email slug', () => {
