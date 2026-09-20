@@ -73,13 +73,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.userId),
 		requireAdminContext: vi.fn().mockImplementation(requireAdmin),
 		requireOrgPermission: vi.fn().mockImplementation(requireMember),
-		requireAuthenticatedIdentity: vi
-			.fn()
-			.mockResolvedValue({
-				subject: sessionMock.userId,
-				issuer: 'test',
-				tokenIdentifier: 'test|user',
-			}),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: sessionMock.userId,
+			issuer: 'test',
+			tokenIdentifier: 'test|user',
+		}),
 	};
 });
 
