@@ -333,6 +333,13 @@ async function resolveAttachments(
 					`Attachment "${att.filename}" blocked by malware scan: ${scanVerdict.reason}`
 				);
 			}
+			// The endpoint's own type gate refused it. Reachable only if its
+			// allowlist is stricter than the `validateFile` call above, and it is
+			// not malware — so it aborts the send with the type reason, not with
+			// a malware sentence.
+			if (scanVerdict.kind === 'refused') {
+				throw new Error(`Attachment "${att.filename}" blocked: ${scanVerdict.reason}`);
+			}
 
 			return {
 				filename: att.filename,

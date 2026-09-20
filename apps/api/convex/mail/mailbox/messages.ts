@@ -11,7 +11,7 @@
 
 import { v } from 'convex/values';
 import { openMailMessageInlineBody } from '../../lib/messageBody';
-import { sealedBlobUrl } from '../../lib/sealedBlob';
+import { mintRawEmlUrl, sealedBlobUrl } from '../../lib/sealedBlob';
 import { internalQuery, type QueryCtx } from '../../_generated/server';
 import { publicAction, publicQuery } from '../../lib/authedFunctions';
 import type { Id, Doc } from '../../_generated/dataModel';
@@ -384,7 +384,11 @@ export const getMessageRawUrl = publicAction({
 		if (!storageId) return null;
 		// E8b: the raw `.eml` is sealed at rest; serve it through the decrypt proxy
 		// so the reader's client-side attachment extraction / "download original"
-		// receives the plaintext RFC822 bytes.
-		return await sealedBlobUrl(ctx.storage, storageId, 'message/rfc822');
+		// receives the plaintext RFC822 bytes. Shared with the team-inbox reader
+		// so the two cannot answer the same configuration state differently.
+		return await mintRawEmlUrl(ctx.storage, storageId, {
+			logTag: '[Postbox raw]',
+			messageId: args.messageId,
+		});
 	},
 });

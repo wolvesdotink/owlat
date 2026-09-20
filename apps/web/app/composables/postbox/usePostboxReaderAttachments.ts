@@ -1,104 +1,45 @@
-import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { loadRawEml } from '~/composables/postbox/loadRawEml';
-
-/** One attachment row as the reader's message cards describe it. */
-export type ReaderAttachmentMeta = {
-	filename: string;
-	contentType: string;
-	size: number;
-	partIndex?: string;
-};
-
-type AttachmentPart = Pick<ReaderAttachmentMeta, 'filename' | 'contentType' | 'partIndex'>;
-
-function isPreviewable(contentType: string): boolean {
-	return contentType.startsWith('image/') || contentType === 'application/pdf';
-}
+import { useMimePartDownload } from '~/composables/useMimePartDownload';
+import { previewSliceFor } from '~/utils/postboxFileFacets';
+import type { AttachmentMeta } from '~/utils/attachmentMeta';
 
 /**
- * Attachment handling for the thread reader: the per-part download (the raw
- * .eml is fetched and the part extracted client-side) and the Quick Look
- * overlay for image/PDF parts. Extracted from PostboxThreadReader.vue;
- * behaviour is unchanged.
+ * Attachment handling for the thread reader: the per-part download and the
+ * Quick Look overlay for image/PDF parts.
+ *
+ * The download half — fetch the raw `.eml`, extract the part, hand the browser
+ * a Blob, toast what failed — is `useMimePartDownload`, shared with the
+ * team-inbox reader. What stays here is the lightbox, which only Postbox has.
  */
 export function usePostboxReaderAttachments() {
-	const { t } = useI18n();
-	const { showToast } = useToast();
-	const { showOperationError } = useOperationErrorToast();
-
-	/** `messageId:partIndex` of the part being extracted, so its row can spin. */
-	const downloadingAttachment = ref<string | null>(null);
-
-	/** Fetch the raw .eml and extract one part client-side as a Blob. */
-	async function extractAttachmentBlob(
-		messageId: string,
-		att: AttachmentPart
-	): Promise<Blob | null> {
-		const bin = await loadRawEml(messageId);
-		if (!bin) return null;
-		const extracted = extractAttachmentAt(bin, att.partIndex ?? '0', att.filename);
-		if (!extracted) return null;
-		return new Blob([extracted.bytes as BlobPart], {
-			type: extracted.contentType || att.contentType,
-		});
-	}
-
-	/** Extract the part, then trigger a browser download. */
-	async function handleAttachmentDownload(messageId: string, att: AttachmentPart) {
-		const key = `${messageId}:${att.partIndex ?? att.filename}`;
-		downloadingAttachment.value = key;
-		try {
-			const blob = await extractAttachmentBlob(messageId, att);
-			// A null blob is a failure too: the raw message did not load, or the part
-			// is not where the metadata said it was. Both used to end as a spinner
-			// that stopped and a file that never arrived.
-			if (!blob) {
-				showToast(t('components.postbox.postboxThreadReader.attachmentDownloadFailed'), 'error');
-				return;
-			}
-			const objectUrl = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = objectUrl;
-			a.download = att.filename;
-			document.body.appendChild(a);
-			a.click();
-			a.remove();
-			setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
-		} catch (err) {
-			// A dropped connection reads as "Check your connection"; anything else
-			// gets the attachment-specific line. Either way the reader hears about it
-			// — the row stays available to try again.
-			showOperationError(err, 'components.postbox.postboxThreadReader.attachmentDownloadFailed');
-		} finally {
-			downloadingAttachment.value = null;
-		}
-	}
+	const { downloadingAttachment, extractPartBlob, handleAttachmentDownload } = useMimePartDownload({
+		loadRaw: loadRawEml,
+		failureKey: 'components.postbox.postboxThreadReader.attachmentDownloadFailed',
+	});
 
 	// Quick Look overlay state: the clicked message's PREVIEWABLE attachments in
 	// display order plus the index of the one that was clicked. Null = closed.
 	const lightbox = ref<{
 		messageId: string;
-		attachments: ReaderAttachmentMeta[];
+		attachments: AttachmentMeta[];
 		index: number;
 	} | null>(null);
 
-	function openAttachmentPreview(
-		messageId: string,
-		att: ReaderAttachmentMeta,
-		all: ReaderAttachmentMeta[]
-	) {
-		const previewable = all.filter((a) => isPreviewable(a.contentType));
-		const index = previewable.indexOf(att);
-		if (index === -1) return;
-		lightbox.value = { messageId, attachments: previewable, index };
+	function openAttachmentPreview(messageId: string, att: AttachmentMeta, all: AttachmentMeta[]) {
+		// `previewSliceFor` is the file library's rule, and the only one: it
+		// normalises `image/PNG; name=x` where the hand-rolled copies here did
+		// not, so the same file gets an eye in every view or in none.
+		const slice = previewSliceFor(all, att);
+		if (!slice) return;
+		lightbox.value = { messageId, attachments: slice.attachments, index: slice.index };
 	}
 
-	function loadLightboxPart(att: ReaderAttachmentMeta): Promise<Blob | null> {
+	function loadLightboxPart(att: AttachmentMeta): Promise<Blob | null> {
 		const lb = lightbox.value;
-		return lb ? extractAttachmentBlob(lb.messageId, att) : Promise.resolve(null);
+		return lb ? extractPartBlob(lb.messageId, att) : Promise.resolve(null);
 	}
 
-	function downloadLightboxAttachment(att: ReaderAttachmentMeta) {
+	function downloadLightboxAttachment(att: AttachmentMeta) {
 		const lb = lightbox.value;
 		if (lb) void handleAttachmentDownload(lb.messageId, att);
 	}

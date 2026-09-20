@@ -11,7 +11,7 @@
  * Order of operations:
  *   1. Wipe all tenant tables (contacts/automations/templates/campaigns/…),
  *      freeing the storage blobs the row-bearing ones own — `mailMessages`
- *      through `deleteMessageRowAndBlobs`, `accountExportArtifacts` directly.
+ *      through `deleteMessageRowAndBlobs`, the rest via `ownedBlobs`.
  *   2. Wipe BetterAuth tables (session/invitation/member/organization/account/
  *      user). `session` and `invitation` matter as much as `user`: a surviving
  *      session row keeps authenticating a cookie whose user this reset deletes,
@@ -35,7 +35,8 @@ import { components } from '../_generated/api';
 import { TENANT_TABLES } from '../lib/tenantTables';
 import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
-import type { Doc } from '../_generated/dataModel';
+import { deleteBlobQuietly } from '../lib/storageBlobs';
+import type { Doc, Id, TableNames } from '../_generated/dataModel';
 
 interface ResetCounts {
 	users: number;
@@ -74,7 +75,7 @@ export const runReset = internalMutation({
 			tenantRows: 0,
 		};
 
-		// 1. Wipe all tenant tables.
+		// 1. Wipe all tenant tables, freeing the blobs the row-bearing ones own.
 		for (const table of TENANT_TABLES) {
 			const rows = await ctx.db.query(table).collect(); // bounded: dev-only full wipe of each tenant table
 			for (const row of rows) {
@@ -87,8 +88,12 @@ export const runReset = internalMutation({
 					counts.tenantRows++;
 					continue;
 				}
-				if (table === 'accountExportArtifacts') {
-					await ctx.storage.delete((row as Doc<'accountExportArtifacts'>).storageId);
+				for (const storageId of ownedBlobs(table, row)) {
+					// "Already gone" is the ordinary case here (a released blob whose
+					// row still names it, a half-finished earlier reset), and a reset
+					// that throws part-way leaves the instance in the state it exists
+					// to clear.
+					await deleteBlobQuietly(ctx.storage, storageId, '[dev reset]', { table });
 				}
 				await ctx.db.delete(row._id);
 				counts.tenantRows++;
@@ -169,6 +174,55 @@ export const runReset = internalMutation({
 		return counts;
 	},
 });
+
+/**
+ * The storage blobs a tenant row OWNS, per table — everything a row-only delete
+ * would strand.
+ *
+ * THE SAME LIST AS `workspaces/deletion/steps/`, which gives each of these
+ * tables its own storage-aware step for exactly this reason; this wipe walks
+ * `TENANT_TABLES` generically, so the knowledge has to live somewhere and this
+ * is where. `accountExportArtifacts` was the only entry the generic path ever
+ * handled, so every other table here orphaned its bytes on every reset — and
+ * `inboundMessages` now holds the WHOLE received message, sealed, plus the
+ * attachments captured out of it in `semanticFiles`. Nothing reclaims those
+ * afterwards: the inbound retention sweep finds blobs by walking the rows this
+ * loop just deleted.
+ *
+ * A blob a retention sweep already released is absent, so every optional field
+ * is guarded. `mailMessages` is NOT here: it owns three blobs and a helper of
+ * its own (`deleteMessageRowAndBlobs`) that deletes the row too.
+ */
+function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>): Id<'_storage'>[] {
+	switch (table) {
+		case 'accountExportArtifacts':
+			return [(row as Doc<'accountExportArtifacts'>).storageId];
+		case 'mediaAssets':
+			return [(row as Doc<'mediaAssets'>).storageId];
+		case 'inboundMessages': {
+			const raw = (row as Doc<'inboundMessages'>).rawStorageId;
+			return raw ? [raw] : [];
+		}
+		case 'semanticFiles': {
+			const stored = (row as Doc<'semanticFiles'>).storageId;
+			return stored ? [stored] : [];
+		}
+		case 'mailAttachmentShares': {
+			const stored = (row as Doc<'mailAttachmentShares'>).storageId;
+			return stored ? [stored] : [];
+		}
+		case 'mailArchiveImports': {
+			const stored = (row as Doc<'mailArchiveImports'>).storageId;
+			return stored ? [stored] : [];
+		}
+		case 'mailDrafts':
+			return (row as Doc<'mailDrafts'>).attachments.map((att) => att.storageId);
+		case 'transactionalSends':
+			return ((row as Doc<'transactionalSends'>).attachmentStorageIds ?? []) as Id<'_storage'>[];
+		default:
+			return [];
+	}
+}
 
 /**
  * Drain a BetterAuth model by re-querying from cursor=null after each batch

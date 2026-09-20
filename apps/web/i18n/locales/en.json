@@ -3073,6 +3073,24 @@
 			"inboxFilterPills": {
 				"groupLabel": "Filter threads"
 			},
+			"inboxMessageAttachments": {
+				"blocked": "Blocked — malware was found in this message.",
+				"download": "Download {filename}",
+				"downloadFailed": "That attachment could not be downloaded.",
+				"heading": "Attachments",
+				"neverStored": "The files for this message were not stored.",
+				"notIndexedBudget": "The assistant has not read these files — the processing limit was reached.",
+				"notIndexedCap": "The assistant has not read every file here — this message has more attachments than it processes.",
+				"notIndexedFailed": "The assistant could not process this message's files.",
+				"notIndexedPlaceholder": "The assistant knows the names of some of these files but not what is inside them.",
+				"notIndexedRefusedType": "The assistant has not read every file here — some of these file types are never scanned for malware. Open them only if you trust the sender.",
+				"notIndexedTooLarge": "The assistant has not read every file here — some are larger than the processing limit.",
+				"notIndexedUnsupported": "The assistant has not read every file here — it does not process some of these file types.",
+				"notIndexedUnverified": "The assistant has not read these files — this message's sender could not be verified.",
+				"notScanned": "Not scanned for malware — the assistant has not read these files.",
+				"originalSize": "Original message was {size}.",
+				"released": "No longer stored — the files for this message passed the retention window."
+			},
 			"inboxThreadPresence": {
 				"manyHere": "{count} people here",
 				"moreHere": "{count} more here",
@@ -4958,6 +4976,16 @@
 				"package": "Package: {name}",
 				"requestedAccess": "Requests access: {capabilities}",
 				"requiredEnv": "Requires env: {vars}"
+			},
+			"inboundRetentionCard": {
+				"adminOnly": "Only owners and admins can change this.",
+				"dayOption": "{count} days",
+				"description": "How long the shared inbox keeps the original message file and its attachment contents. Messages, senders and details are kept either way; only the stored files are removed. Personal mailboxes are not affected.",
+				"label": "Keep files for",
+				"savedToast": "Storage window updated",
+				"scanNote": "The assistant only reads attachments when attachment scanning is enabled on the mail server. Without it, files are still stored and downloadable, but never processed.",
+				"title": "Inbound mail storage",
+				"updateOperation": "Update mail storage window"
 			},
 			"migrationModeCard": {
 				"adminsOnly": "Only owners and admins can change this.",
@@ -8533,6 +8561,7 @@
 				"aiSummary": "AI Summary",
 				"autoDetected": "Auto-detected",
 				"backToFiles": "Back to Files",
+				"bytesReleased": "The contents of this file passed the inbound retention window and are no longer stored. Its summary and extracted text stay searchable.",
 				"cancelEditingTitle": "Cancel editing title",
 				"created": "Created",
 				"deleteDialog": {
@@ -12466,6 +12495,7 @@
 				"shareDone": "{filename} is now a link in your message",
 				"shareInfected": "{filename} was blocked by the malware scan and was not shared",
 				"shareOperation": "sharing the attachment as a link",
+				"shareRefused": "{filename} is a file type that cannot be shared as a link",
 				"tooLarge": "{filename} is too large (max {max} MB).",
 				"tooManyFiles": "You can attach up to {count} files.",
 				"totalTooLarge": "Attachments exceed the {max} MB total limit.",

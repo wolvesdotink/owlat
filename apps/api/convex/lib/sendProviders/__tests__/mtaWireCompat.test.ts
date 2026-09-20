@@ -390,6 +390,25 @@ describe('MTA -> Convex webhook event bytes', () => {
 		}
 	);
 
+	it('carries the raw message and each part index through the inbound normalizer', () => {
+		// The team-inbox route's whole capability is that the bytes arrive, and
+		// that each attachment names the MIME position a reader can extract it
+		// from. Both are read off the frozen fixture through the SHIPPED adapter,
+		// so a normalizer that quietly stopped carrying either fails here.
+		const parsed = mtaAdapter.parseEvent(WEBHOOK_EVENT_BYTES['inbound.received']);
+		expect(parsed).toMatchObject({ kind: 'inbound.received' });
+		const mail = (parsed as { mail: { attachments: Array<{ partIndex?: string }> } }).mail;
+		expect(mail.attachments[0]?.partIndex).toBe('0');
+
+		// The raw bytes are on the envelope rather than the normalized message —
+		// `inbox/inboundWebhookHttp.ts` reads them straight off `inboundPayload`
+		// and hands them to the ingest action, so this is where they must survive.
+		const envelope = JSON.parse(WEBHOOK_EVENT_BYTES['inbound.received']) as {
+			inboundPayload: { rawBytesBase64?: string };
+		};
+		expect(envelope.inboundPayload.rawBytesBase64).toBeTruthy();
+	});
+
 	it('carries the FBL provenance a complaint names off the merged field set', () => {
 		// `reportedDomain`/`sourceIsp` live on the `complained` variant alone. The
 		// merged declaration must not have quietly made them universal-and-absent.

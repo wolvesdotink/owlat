@@ -86,6 +86,24 @@ describe('notifyConvex', () => {
 		expect(headers['X-MTA-Timestamp']).toMatch(/^\d+$/);
 	});
 
+	it.each([
+		['inbound.received', '/webhooks/mta-inbound'],
+		['inbound.mailbox.received', '/webhooks/mta-mailbox'],
+		['bounced', '/webhooks/mta'],
+	] as const)('delivers a %s event to %s, still signed', async (eventType, path) => {
+		globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+		await notifyConvex(createEvent({ event: eventType }), createConfig());
+
+		const [url, options] = vi.mocked(globalThis.fetch).mock.calls[0] as [string, RequestInit];
+		// Both inbound-MAIL kinds carry the whole message, so both take a
+		// standalone route outside the shared pipeline's 5 MiB body cap.
+		expect(url).toBe(`https://test.convex.site${path}`);
+		const headers = options.headers as Record<string, string>;
+		expect(headers['X-MTA-Signature']).toMatch(/^[0-9a-f]+$/);
+		expect(headers['X-MTA-Timestamp']).toMatch(/^\d+$/);
+	});
+
 	it('stores in DLQ after all retries fail with Redis available', async () => {
 		globalThis.fetch = vi.fn().mockResolvedValue({
 			ok: false,

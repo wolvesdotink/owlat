@@ -20,8 +20,7 @@
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
-import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
-import { clearsignedSignatureMirror } from './inboundSignatureMirror';
+import { receiveInboundMail } from '../inbox/receiveInbound';
 import { isAllowedSnsHost } from './adapters/ses';
 import { isPostboxMessageId, isReturnPathProbeMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
@@ -250,60 +249,12 @@ const DISPATCH: DispatchTable = {
 		});
 	},
 	'inbound.received': async (ctx, e) => {
-		const m = e.mail;
-		const attachmentMeta = m.attachments.length > 0 ? JSON.stringify(m.attachments) : undefined;
-
-		// Sealed Mail decrypt-on-ingest for the AI-inbox path. When Sealed
-		// Mail is on and the body carries an armored PGP ciphertext, route through the
-		// Node decrypt action so the PLAINTEXT reaches `receiveMessage` (and thus the
-		// agent pipeline + the unified-timeline mirror). Anything else — plaintext,
-		// flag off, or a ciphertext we cannot recover here — takes the unchanged path.
-		const armoredCiphertext = m.textBody ? extractArmoredCiphertext(m.textBody) : null;
-		if (armoredCiphertext && (await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
-			await ctx.runAction(internal.e2ee.open.decryptAndReceive, {
-				armoredCiphertext,
-				recipientAddress: m.to,
-				from: m.from,
-				to: m.to,
-				subject: m.subject,
-				textBody: m.textBody,
-				htmlBody: m.htmlBody,
-				headers: JSON.stringify(m.headers),
-				messageId: m.messageId,
-				inReplyTo: m.inReplyTo,
-				references: m.references,
-				attachmentMeta,
-				timestamp: m.timestamp,
-				spfResult: m.spfResult,
-				dkimResult: m.dkimResult,
-				dmarcResult: m.dmarcResult,
-				dmarcPolicy: m.dmarcPolicy,
-			});
-			return;
-		}
-
-		await ctx.runMutation(internal.inbox.messages.receiveMessage, {
-			from: m.from,
-			to: m.to,
-			subject: m.subject,
-			textBody: m.textBody,
-			htmlBody: m.htmlBody,
-			headers: JSON.stringify(m.headers),
-			messageId: m.messageId,
-			inReplyTo: m.inReplyTo,
-			references: m.references,
-			attachmentMeta,
-			timestamp: m.timestamp,
-			// RFC 8601 inbound auth verdicts. Previously dropped on this AI-inbox
-			// path; now persisted so the reader can show an honest sender badge.
-			spfResult: m.spfResult,
-			dkimResult: m.dkimResult,
-			dmarcResult: m.dmarcResult,
-			dmarcPolicy: m.dmarcPolicy,
-			// AI-inbox mirror of the clearsigned-body signature verdict —
-			// see webhooks/inboundSignatureMirror.ts. Best-effort, never blocks.
-			...((await clearsignedSignatureMirror(ctx, m.textBody, m.from)) ?? {}),
-		});
+		// The legacy route: same persistence, no raw bytes. Kept working (rather
+		// than turned into an explicit ignore) so DLQ events queued before the
+		// route split — and an MTA binary that predates it — still deliver. The
+		// only observable difference is the absent `.eml`, which the reader
+		// renders as "no longer stored" rather than a broken download.
+		await receiveInboundMail(ctx, e.mail, {});
 	},
 	'channel.received': async (ctx, e) => {
 		await ctx.runMutation(internal.webhooks.channels.processInboundChannel, {

@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { scanAttachmentBytes } from '../mail/mtaClient';
 import * as scannerHealth from '../lib/scannerHealth';
+import { readScanRequest } from '../mail/__tests__/scannerStub.testlib';
 
 const MTA = { baseUrl: 'https://mta.test', apiKey: 'secret' };
 const DATA = Buffer.from('attachment bytes');
@@ -34,13 +35,11 @@ function mockScan(response: ScanResponseBody | { httpStatus: number }): {
 } {
 	const calls: Array<{ url: string; filename?: string; auth?: string }> = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-		const headers = (init as RequestInit | undefined)?.headers as
-			| Record<string, string>
-			| undefined;
+		const request = readScanRequest(url, init as RequestInit | undefined);
 		calls.push({
-			url: String(url),
-			filename: headers?.['X-Filename'],
-			auth: headers?.['Authorization'],
+			url: request.url,
+			filename: request.filename,
+			auth: request.authorization ?? undefined,
 		});
 		if ('httpStatus' in response) {
 			return new Response('scanner down', { status: response.httpStatus });
@@ -122,5 +121,40 @@ describe('scanAttachmentBytes', () => {
 
 		expect(verdict).toEqual({ kind: 'skipped', reason: 'ECONNREFUSED' });
 		expect(warnSpy).toHaveBeenCalled();
+	});
+
+	it('sends a CRLF in a filename as something a header can hold', async () => {
+		// A raw CR or LF in a header value makes `fetch` THROW before it opens a
+		// socket, and the catch above turns every throw into a fail-open skip —
+		// so a name a sender crafted to look like header injection was really a
+		// way to have the bytes never scanned. This is the level the claim can
+		// be made at: the name goes into the client verbatim, and `Headers`
+		// inside `readScanRequest` refuses it unless the client encoded it.
+		const { calls } = mockScan({ clean: true });
+
+		const verdict = await scanAttachmentBytes(MTA, 'a.pdf\r\nX-Injected: 1', DATA);
+
+		expect(verdict).toEqual({ kind: 'clean' });
+		expect(calls).toHaveLength(1);
+		// Decoded at the MTA it is the sender's name again — inert, because it
+		// only ever travelled as one header VALUE.
+		expect(calls[0]?.filename).toBe('a.pdf\r\nX-Injected: 1');
+	});
+
+	it('bounds a filename the sender made too long for an HTTP header', async () => {
+		// `mailMime` surfaces a decoded filename unbounded. Unbounded
+		// percent-encoding put ~13 KB in one header value, and the MTA's own
+		// server answers 431 past Node's 16 KiB limit — a fail-open skip on any
+		// file, chosen by the sender. `readScanRequest` refuses an oversized
+		// value for the same reason, so an unbounded encoding fails here too.
+		const { calls } = mockScan({ clean: true });
+
+		const verdict = await scanAttachmentBytes(MTA, `${'рахунок'.repeat(300)}.pdf`, DATA);
+
+		expect(verdict).toEqual({ kind: 'clean' });
+		// Truncated in the STEM: the extension the file-type gate judges is
+		// exactly what a truncation must never eat.
+		expect(calls[0]?.filename?.endsWith('.pdf')).toBe(true);
+		expect(calls[0]?.filename!.length).toBeLessThan(300 * 7);
 	});
 });

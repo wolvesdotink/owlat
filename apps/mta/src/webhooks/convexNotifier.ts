@@ -61,14 +61,34 @@ const POSTMASTER_ACKNOWLEDGEMENT_KIND = {
 type PostmasterAcknowledgementKind =
 	(typeof POSTMASTER_ACKNOWLEDGEMENT_KIND)[keyof typeof POSTMASTER_ACKNOWLEDGEMENT_KIND];
 
+/**
+ * Which Convex route an event is delivered to.
+ *
+ * Both inbound-MAIL kinds carry the whole message as `rawBytesBase64`, so both
+ * go to a standalone `httpAction` rather than the shared webhook pipeline: that
+ * pipeline enforces a 5 MiB pre-auth body cap and 413s anything above it, which
+ * the retry/DLQ machinery below would then burn six attempts on before parking
+ * the message unseen. Everything else — bounces, complaints, reputation,
+ * postmaster — is small and takes the shared route.
+ */
+function webhookPathFor(eventType: MtaWebhookEvent['event']): string {
+	switch (eventType) {
+		case 'inbound.mailbox.received':
+			return '/webhooks/mta-mailbox';
+		case 'inbound.received':
+			return '/webhooks/mta-inbound';
+		default:
+			return '/webhooks/mta';
+	}
+}
+
 async function deliverWithRetries<T>(
 	event: MtaWebhookEvent,
 	config: MtaConfig,
 	options: NotifyConvexOptions,
 	decodeSuccessfulResponse: SuccessfulResponseDecoder<T>
 ): Promise<WebhookDeliveryResult<T>> {
-	const path =
-		event.event === 'inbound.mailbox.received' ? '/webhooks/mta-mailbox' : '/webhooks/mta';
+	const path = webhookPathFor(event.event);
 	const url = `${config.convexSiteUrl}${path}`;
 	let deliveryFailure: WebhookDeliveryFailure = { category: 'unknown' };
 

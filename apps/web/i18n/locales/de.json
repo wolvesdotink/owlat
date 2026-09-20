@@ -3073,6 +3073,24 @@
 			"inboxFilterPills": {
 				"groupLabel": "Konversationen filtern"
 			},
+			"inboxMessageAttachments": {
+				"blocked": "Blockiert — in dieser Nachricht wurde Schadsoftware gefunden.",
+				"download": "{filename} herunterladen",
+				"downloadFailed": "Dieser Anhang konnte nicht heruntergeladen werden.",
+				"heading": "Anhänge",
+				"neverStored": "Die Dateien dieser Nachricht wurden nicht gespeichert.",
+				"notIndexedBudget": "Der Assistent hat diese Dateien nicht gelesen — das Verarbeitungslimit war erreicht.",
+				"notIndexedCap": "Der Assistent hat nicht jede Datei hier gelesen — diese Nachricht hat mehr Anhänge, als verarbeitet werden.",
+				"notIndexedFailed": "Der Assistent konnte die Dateien dieser Nachricht nicht verarbeiten.",
+				"notIndexedPlaceholder": "Der Assistent kennt die Namen einiger dieser Dateien, aber nicht deren Inhalt.",
+				"notIndexedRefusedType": "Der Assistent hat nicht jede Datei hier gelesen — einige dieser Dateitypen werden nie auf Schadsoftware geprüft. Öffnen Sie sie nur, wenn Sie dem Absender vertrauen.",
+				"notIndexedTooLarge": "Der Assistent hat nicht jede Datei hier gelesen — einige sind größer als das Verarbeitungslimit.",
+				"notIndexedUnsupported": "Der Assistent hat nicht jede Datei hier gelesen — einige Dateitypen verarbeitet er nicht.",
+				"notIndexedUnverified": "Der Assistent hat diese Dateien nicht gelesen — der Absender dieser Nachricht konnte nicht verifiziert werden.",
+				"notScanned": "Nicht auf Schadsoftware geprüft — der Assistent hat diese Dateien nicht gelesen.",
+				"originalSize": "Die ursprüngliche Nachricht war {size} groß.",
+				"released": "Nicht mehr gespeichert — die Dateien dieser Nachricht haben die Aufbewahrungsfrist überschritten."
+			},
 			"inboxThreadPresence": {
 				"manyHere": "{count} Personen hier",
 				"moreHere": "{count} weitere hier",
@@ -4958,6 +4976,16 @@
 				"package": "Paket: {name}",
 				"requestedAccess": "Fordert Zugriff an: {capabilities}",
 				"requiredEnv": "Benötigt Umgebungsvariablen: {vars}"
+			},
+			"inboundRetentionCard": {
+				"adminOnly": "Nur Inhaber und Administratoren können das ändern.",
+				"dayOption": "{count} Tage",
+				"description": "Wie lange der Team-Posteingang die Originaldatei einer Nachricht samt Anhängen behält. Nachrichten, Absender und Details bleiben in jedem Fall erhalten; entfernt werden nur die gespeicherten Dateien. Persönliche Postfächer sind nicht betroffen.",
+				"label": "Dateien behalten für",
+				"savedToast": "Speicherdauer aktualisiert",
+				"scanNote": "Der Assistent liest Anhänge nur, wenn die Anhangsprüfung auf dem Mailserver aktiviert ist. Ohne sie werden Dateien weiterhin gespeichert und können heruntergeladen werden, aber nie verarbeitet.",
+				"title": "Speicherung eingehender Nachrichten",
+				"updateOperation": "Speicherdauer für Nachrichten ändern"
 			},
 			"migrationModeCard": {
 				"adminsOnly": "Nur Inhaber und Administratoren können dies ändern.",
@@ -8533,6 +8561,7 @@
 				"aiSummary": "KI-Zusammenfassung",
 				"autoDetected": "Automatisch erkannt",
 				"backToFiles": "Zurück zu den Dateien",
+				"bytesReleased": "Der Inhalt dieser Datei hat die Aufbewahrungsfrist für eingehende Post überschritten und ist nicht mehr gespeichert. Zusammenfassung und extrahierter Text bleiben durchsuchbar.",
 				"cancelEditingTitle": "Titelbearbeitung abbrechen",
 				"created": "Erstellt",
 				"deleteDialog": {
@@ -12466,6 +12495,7 @@
 				"shareDone": "{filename} liegt jetzt als Link in deiner Nachricht",
 				"shareInfected": "{filename} wurde vom Virenscanner blockiert und nicht geteilt",
 				"shareOperation": "Anhang als Link teilen",
+				"shareRefused": "{filename} ist ein Dateityp, der nicht als Link geteilt werden kann",
 				"tooLarge": "{filename} ist zu groß (max. {max} MB).",
 				"tooManyFiles": "Sie können bis zu {count} Dateien anhängen.",
 				"totalTooLarge": "Die Anhänge überschreiten das Gesamtlimit von {max} MB.",

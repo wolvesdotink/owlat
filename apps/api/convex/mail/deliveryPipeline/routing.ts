@@ -95,6 +95,18 @@ export function resolveFilterOutcome(
 }
 
 /**
+ * The settled DMARC verdict where it differs from the raw one.
+ *
+ * ONE member, and that is the point: the only thing that overrides a raw DMARC
+ * verdict on this path is a trusted forwarder's valid ARC seal. Spelled as a
+ * type rather than `string` because five sites carry this value between the
+ * router, both delivery routes and the capture gate, and the gate decides on
+ * `=== 'arc'` — with `string` a typo at any one of them compiles and silently
+ * stops rescuing forwarded mail.
+ */
+export type DmarcOverride = 'arc';
+
+/**
  * Settle the inbound DMARC verdict, including the ARC rescue.
  *
  * ARC rescue (RFC 8617, Sealed Mail A5): a mailing-list / forwarder that broke
@@ -127,7 +139,7 @@ export function resolveDmarcRouting(
 		arcAttestsOriginalPass?: boolean;
 	},
 	trustedForwarders: string[] | undefined
-): { dmarcOverride?: string; arcSealer?: string; isDmarcQuarantine: boolean } {
+): { dmarcOverride?: DmarcOverride; arcSealer?: string; isDmarcQuarantine: boolean } {
 	const forwarders = trustedForwarders ?? DEFAULT_TRUSTED_ARC_FORWARDERS;
 	const isArcRescued =
 		auth.dmarcResult === 'fail' &&

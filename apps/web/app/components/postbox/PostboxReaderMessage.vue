@@ -27,7 +27,7 @@ import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
 import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
-import type { PostboxAttachmentMeta } from './PostboxMessageAttachments.vue';
+import type { AttachmentMeta } from '~/utils/attachmentMeta';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -77,8 +77,8 @@ const emit = defineEmits<{
 	(e: 'block-sender'): void;
 	(e: 'create-filter'): void;
 	(e: 'print'): void;
-	(e: 'preview-attachment', att: PostboxAttachmentMeta, all: PostboxAttachmentMeta[]): void;
-	(e: 'download-attachment', att: PostboxAttachmentMeta): void;
+	(e: 'preview-attachment', att: AttachmentMeta, all: AttachmentMeta[]): void;
+	(e: 'download-attachment', att: AttachmentMeta): void;
 	(e: 'trackers', detection: TrackerDetection): void;
 	(e: 'trust-sender', address: string): void;
 	(e: 'untrust-sender', address: string): void;

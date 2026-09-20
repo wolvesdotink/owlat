@@ -3,9 +3,9 @@
  *
  * Everything the `mail/delivery.ts::ingestFromWebhook` action does BEFORE it
  * hands the message to the `deliverToMailbox` mutation: raw MIME staging,
- * decrypt-on-ingest, inbound signature verification, body inline/blob split,
- * the aggregate malware verdict — plus the post-delivery attachment capture
- * into the semantic file library.
+ * decrypt-on-ingest, inbound signature verification, body inline/blob split
+ * and the aggregate malware verdict. What happens to the cleared attachment
+ * leaves AFTER delivery is `./capture.ts`.
  *
  * Action-only: every function here needs `ctx.storage` and/or `ctx.runAction`.
  */
@@ -13,12 +13,10 @@
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { extractEmail } from '../../lib/emailAddress';
 import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
-import { extractAttachments } from '@owlat/shared/mailMime';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
-import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { logError } from '../../lib/runtimeLog';
+import type { VirusVerdict } from '../../lib/literalValidators';
 import { getMtaConfig } from '../mtaClient';
 import {
 	isSealedPgpMime,
@@ -79,7 +77,7 @@ export async function prepareInboundMessage(
 		subject: string;
 		textBody?: string;
 		htmlBody?: string;
-		virusVerdict?: 'clean' | 'infected' | 'skipped';
+		virusVerdict?: VirusVerdict;
 	}
 ) {
 	// Decode raw MIME and stash in Convex storage. `base64ToBytes` answers
@@ -197,16 +195,16 @@ export async function prepareInboundMessage(
 	// to its `/scan/attachment` endpoint. A confirmed-infected verdict routes
 	// the message to Spam/quarantine in `deliverToMailbox`; a scanner outage
 	// fails open with a `'skipped'` verdict (the message still delivers, and
-	// the skip is surfaced via `scannerHealth.warnScanSkipped`). Any verdict
-	// the MTA pipeline already set on `args` is preserved (infected wins).
-	const inboundVerdict = await scanInboundAttachments(getMtaConfig(), rawBinary);
-	const virusVerdict: 'clean' | 'infected' | 'skipped' | undefined =
-		args.virusVerdict === 'infected' || inboundVerdict === 'infected'
-			? 'infected'
-			: (inboundVerdict ?? args.virusVerdict);
+	// the skip is surfaced via `scannerHealth.warnScanSkipped`). The verdict the
+	// MTA pipeline already set on `args` is merged in there (infected wins).
+	const scan = await scanInboundAttachments(getMtaConfig(), rawBinary, args.virusVerdict);
 
 	return {
 		rawBinary,
+		// The scan's cleared leaves travel WITH the verdict: capture takes the
+		// parts, never a second walk of the same bytes, so the set that was
+		// scanned and the set that reaches a model are one set by construction.
+		scan,
 		rawSize,
 		rawStorageId,
 		antiLoopHeaders,
@@ -218,82 +216,8 @@ export async function prepareInboundMessage(
 		html: htmlBody,
 		snippet,
 		searchBody,
-		virusVerdict,
+		virusVerdict: scan.verdict,
 		inboundEncryptionInfo,
 		inboundSignatureInfo,
 	};
-}
-
-/**
- * Pull attachment leaves out of a delivered message's raw MIME and ingest each
- * into `semanticFiles` (source `email_attachment`). Inline parts (logos,
- * signatures) and oversized parts are skipped; the file-type allowlist is
- * enforced inside `semanticFiles.ingest`, which also drops the staged blob when
- * a part is rejected. Each file carries the source Message-ID as provenance.
- *
- * Captured files are scoped to the sender contact: `fromRaw` (the inbound From
- * header) is resolved to an EXISTING contact by email. When a contact matches,
- * the file is linked to it (`contactIds`), so it surfaces under that contact's
- * Files tab and is scoped to that contact in retrieval. Resolution is
- * find-only — an unknown sender leaves the file org-general (no contact link),
- * we never create a contact for every inbound sender. Thread-linking and
- * agent-output capture are intentionally out of scope here.
- *
- * The number of captured parts is capped at `ATTACHMENT_COMPOSE_LIMITS.maxCount`
- * per message. The inbound webhook is attacker-reachable (anyone can email a
- * provisioned mailbox) and each ingested file schedules a summarization +
- * embedding + knowledge-extraction LLM call, so without a cap a single crafted
- * .eml carrying many small attachment leaves would amplify per-message LLM cost.
- */
-export async function captureAttachments(
-	ctx: {
-		storage: { store: (blob: Blob) => Promise<Id<'_storage'>> };
-		runMutation: ActionCtx['runMutation'];
-		runQuery: ActionCtx['runQuery'];
-	},
-	rawBinary: string,
-	messageId: string,
-	fromRaw: string
-): Promise<void> {
-	const parts = extractAttachments(rawBinary);
-
-	// Scope captured files to the sender's EXISTING contact (find-only). A
-	// missing/unresolvable sender leaves the file org-general — we do not create
-	// a contact for every inbound message. Resolved once per message, not per part.
-	const senderEmail = extractEmail(fromRaw);
-	let senderContactIds: Id<'contacts'>[] | undefined;
-	if (senderEmail) {
-		const contact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
-			email: senderEmail,
-		});
-		if (contact) senderContactIds = [contact._id];
-	}
-
-	let captured = 0;
-	for (const part of parts) {
-		// Bound the work per delivered message: each ingested part schedules
-		// LLM calls (summarization + embedding + knowledge extraction), and the
-		// inbound webhook is attacker-reachable, so a crafted .eml with many
-		// small leaves must not amplify cost. Cap on captured (LLM-triggering)
-		// parts so inline/oversized skips don't consume the budget.
-		if (captured >= ATTACHMENT_COMPOSE_LIMITS.maxCount) break;
-		// Skip inline parts (embedded logos / signature images) — they aren't
-		// documents the user thinks of as "attachments".
-		if (part.disposition === 'inline') continue;
-		const size = part.bytes.byteLength;
-		if (size === 0 || size > MAX_ATTACHMENT_BYTES) continue;
-
-		const storageId = await ctx.storage.store(new Blob([part.bytes], { type: part.contentType }));
-		// `ingest` runs the file-type policy and deletes the blob if rejected.
-		await ctx.runMutation(internal.semanticFiles.ingest, {
-			storageId,
-			filename: part.filename,
-			mimeType: part.contentType,
-			fileSize: size,
-			sourceType: 'email_attachment',
-			sourceMessageId: messageId,
-			contactIds: senderContactIds,
-		});
-		captured++;
-	}
 }

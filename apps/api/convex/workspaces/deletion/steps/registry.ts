@@ -14,7 +14,7 @@ import type { OrganizationDeletionStepModule, OrganizationDeletionTable } from '
 
 // Distinct steps with per-row side effects the generic sweep can't express:
 // storage-blob purges (mediaAssets / semanticFiles / mailMessages /
-// mailDrafts / transactionalSends) and delegated cascades (contacts →
+// inboundMessages / mailDrafts / transactionalSends) and delegated cascades (contacts →
 // permanentlyDeleteContactWithRelations, domains → sendingDomainLifecycle.remove).
 // Every other table is a pure `take + delete` sweep, expressed inline below via
 // makeSweepStep — no per-table file needed.
@@ -22,6 +22,7 @@ import { mediaAssetsStep } from './mediaAssets';
 import { accountExportArtifactsStep } from './accountExportArtifacts';
 import { semanticFilesStep } from './semanticFiles';
 import { mailMessagesStep } from './mailMessages';
+import { inboundMessagesStep } from './inboundMessages';
 import { mailDraftsStep } from './mailDrafts';
 import { mailAttachmentSharesStep } from './mailAttachmentShares';
 import { mailArchiveImportsStep } from './mailArchiveImports';
@@ -299,7 +300,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	emailSends: makeSweepStep('emailSends'),
 	agentActions: makeSweepStep('agentActions'),
 	contentScanResults: makeSweepStep('contentScanResults'),
-	inboundMessages: makeSweepStep('inboundMessages'),
+	inboundMessages: inboundMessagesStep,
 	conversationThreads: makeSweepStep('conversationThreads'),
 	mailAliases: makeSweepStep('mailAliases'),
 	mailFolders: makeSweepStep('mailFolders'),

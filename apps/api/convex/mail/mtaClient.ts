@@ -51,6 +51,91 @@ interface AttachmentScanResponse {
 	virus?: string;
 	reason?: string;
 	skipped?: boolean;
+	/**
+	 * WHICH gate answered. The endpoint runs its file-type allowlist BEFORE
+	 * ClamAV and answers a refusal with the same `clean: false` shape a virus
+	 * gets, tagged `'file_type_validation'` (see `apps/mta/src/routes/scan.ts`).
+	 * Without reading it, a legacy `.doc` — an OLE2 container the type gate used
+	 * to call an installer — came back indistinguishable from a trojan.
+	 */
+	stage?: string;
+}
+
+/** The `stage` the MTA tags a refusal from its file-type allowlist with. */
+const FILE_TYPE_REFUSAL_STAGE = 'file_type_validation';
+
+/**
+ * Longest `X-Filename` value this client will ever send, in header characters.
+ *
+ * A filename is SENDER-CHOSEN and `@owlat/shared/mailMime` surfaces it
+ * unbounded: chained RFC 2047 encoded words and RFC 2231 continuations both
+ * decode to one long string, and a folded plain-ASCII parameter unfolds
+ * verbatim. Percent-encoding a 2,000-character Cyrillic name produces ~13 KB of
+ * header, and the MTA serves `/scan/attachment` through `@hono/node-server` on
+ * Node's default `--max-http-header-size` of 16 KiB: the server answers 431
+ * before the route runs, the client reads `!res.ok` as a fail-open skip, and
+ * the file is never scanned while its download stays live. On the personal
+ * mailbox it is worse — a single-leaf message then has nobody having answered,
+ * so the no-scanner fallback hands the UNSCANNED bytes to the model.
+ *
+ * So the bound is on THIS side, where the sentence "this is not a filename any
+ * more" can be said once for every scan site. 1 KiB leaves Node's whole header
+ * block an order of magnitude of room, and the MTA only uses the name for
+ * `validateFile` and its log line.
+ */
+const MAX_FILENAME_HEADER_CHARS = 1024;
+
+/** How much of that budget the EXTENSION may take — the part the gate judges. */
+const MAX_EXTENSION_HEADER_CHARS = 64;
+
+/**
+ * Percent-encode as much of `value` as fits in `budget` header characters,
+ * cutting between code points so the MTA's `decodeURIComponent` never meets
+ * half an escape.
+ */
+function encodeWithinBudget(value: string, budget: number): string {
+	let out = '';
+	for (const char of value) {
+		const piece = encodeURIComponent(char);
+		if (out.length + piece.length > budget) break;
+		out += piece;
+	}
+	return out;
+}
+
+/**
+ * The attachment's filename, as a value that can legally be an HTTP header.
+ *
+ * AN HTTP HEADER VALUE IS A ByteString: every code unit has to be ≤ U+00FF, and
+ * CR, LF and NUL are refused outright. A filename is SENDER-CHOSEN and arrives
+ * already RFC 2047-decoded (`@owlat/shared/mailMime`), so `рахунок.pdf`,
+ * `請求書.pdf` and a header-injection attempt all make a real `fetch` THROW
+ * before it opens a socket — and the catch below turns every throw into
+ * `'skipped'`. That is a scanner bypass one encoded-word away: attach
+ * `=?UTF-8?B?…?=.exe`, and the bytes are never scanned while the download stays
+ * live. (The suites could not see it because a `vi.fn` stub never validates a
+ * header value; `stubScanner` now builds a real `Headers` first.)
+ *
+ * Percent-encoded rather than stripped so the MTA still sees the real name: the
+ * encoding leaves every ASCII letter, digit and `.` alone, so the extension the
+ * file-type allowlist judges is untouched — `invoice.pdf.exe` goes over the
+ * wire verbatim — while nothing sender-chosen can throw or inject. The MTA
+ * decodes it (`apps/mta/src/routes/scan.ts`); an MTA too old to decode sees a
+ * mangled non-ASCII name and still judges the right extension.
+ *
+ * BOUNDED, and the EXTENSION is what survives. The stem is truncated to
+ * whatever is left of {@link MAX_FILENAME_HEADER_CHARS} after the extension,
+ * because the extension is the half the file-type allowlist judges — an
+ * `invoice.pdf.exe` under a 17,000-character stem still arrives as an `.exe`.
+ * Truncation can never turn one extension into another: the split is on the
+ * LAST dot, and only what precedes it is cut.
+ */
+function encodeFilenameHeader(filename: string): string {
+	const dot = filename.lastIndexOf('.');
+	const extension =
+		dot > 0 ? encodeWithinBudget(filename.slice(dot), MAX_EXTENSION_HEADER_CHARS) : '';
+	const stem = dot > 0 ? filename.slice(0, dot) : filename;
+	return encodeWithinBudget(stem, MAX_FILENAME_HEADER_CHARS - extension.length) + extension;
 }
 
 /**
@@ -65,11 +150,16 @@ interface AttachmentScanResponse {
  *     `scannerHealth.warnScanSkipped` inside the client (except the
  *     not-configured case, which is silent by design). Fail-open: the caller
  *     proceeds without a clean assertion.
+ *   - `'refused'` — the endpoint's file-type allowlist would not pass this
+ *     file through, and ClamAV never ran. NOT a malware finding: the reason is
+ *     a policy sentence about the type, and a caller that renders it as
+ *     "malware was found" is lying about a customer's legacy Word document.
  *   - `'clean'` — the file was scanned and came back clean.
  */
-type AttachmentScanVerdict =
+export type AttachmentScanVerdict =
 	| { kind: 'clean' }
 	| { kind: 'infected'; reason: string }
+	| { kind: 'refused'; reason: string }
 	| { kind: 'skipped'; reason?: string };
 
 /**
@@ -101,7 +191,7 @@ export async function scanAttachmentBytes(
 			headers: {
 				Authorization: `Bearer ${mta.apiKey}`,
 				'Content-Type': 'application/octet-stream',
-				'X-Filename': filename,
+				'X-Filename': encodeFilenameHeader(filename),
 			},
 			body: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer,
 		});
@@ -115,6 +205,15 @@ export async function scanAttachmentBytes(
 
 		const result = (await res.json()) as AttachmentScanResponse;
 		if (!result.clean && !result.skipped) {
+			// The type gate, not the virus gate. Told apart HERE, once, because
+			// the difference decides whether a message is quarantined and its
+			// reader told malware was found in it.
+			if (result.stage === FILE_TYPE_REFUSAL_STAGE) {
+				return {
+					kind: 'refused',
+					reason: result.reason ?? 'file type not accepted',
+				};
+			}
 			return {
 				kind: 'infected',
 				reason: result.reason ?? result.virus ?? 'unknown threat',

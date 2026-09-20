@@ -129,3 +129,16 @@ export const HOUR_MS = 60 * 60 * 1000;
  * must never disagree about where a day starts.
  */
 export const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * The shape `inboundMessages.attachmentMeta` is written in today.
+ *
+ * `1` is `{filename?, contentType, size, partIndex?}`. Version `0` — the column
+ * absent — is the filename-only shape every row written before the raw-carrying
+ * route carries, where there were no stored bytes for a `partIndex` to address.
+ * Stamped by the one writer (`inbox/receiveInbound.ts`) and READ by the one
+ * reader (`apps/web/app/utils/inboundAttachmentMeta.ts`), which ignores
+ * `partIndex` below version 1 — so neither side infers the shape from whether a
+ * field happens to be present.
+ */
+export const CURRENT_ATTACHMENT_META_VERSION = 1;

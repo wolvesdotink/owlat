@@ -25,6 +25,10 @@
 			"types": "./src/registry/index.ts",
 			"import": "./src/registry/index.ts"
 		},
+		"./inboundRetention": {
+			"types": "./src/inboundRetention.ts",
+			"import": "./src/inboundRetention.ts"
+		},
 		"./featureFlags": {
 			"types": "./src/featureFlags.ts",
 			"import": "./src/featureFlags.ts"

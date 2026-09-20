@@ -28,9 +28,13 @@ import { v, type Infer } from 'convex/values';
 import * as openpgp from 'openpgp';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { normalizeEmail } from '@owlat/shared';
+import {
+	inboundMessageArgs,
+	inboundReceiveResultValidator,
+	type InboundReceiveResult,
+} from '../inbox/receiveInbound';
 import { openPrivateKey } from './sealing';
 import { shouldRefetch } from './discovery';
 import {
@@ -214,37 +218,19 @@ export const openInboundForMailbox = internalAction({
  */
 export const decryptAndReceive = internalAction({
 	args: {
+		// Everything that came off the wire, in the one spelling
+		// `receiveMessage` also uses. This is the SECOND writer of an
+		// `inboundMessages` row, and both are called with one spread of the same
+		// `persisted` bag (`inbox/receiveInbound.ts`), so a new stored column
+		// reaches this path or fails to compile.
+		...inboundMessageArgs,
 		armoredCiphertext: v.string(),
 		recipientAddress: v.string(),
-		from: v.string(),
-		to: v.string(),
-		subject: v.string(),
-		textBody: v.optional(v.string()),
-		htmlBody: v.optional(v.string()),
-		headers: v.optional(v.string()),
-		messageId: v.string(),
-		inReplyTo: v.optional(v.string()),
-		references: v.optional(v.string()),
-		attachmentMeta: v.optional(v.string()),
-		timestamp: v.number(),
-		spfResult: v.optional(v.string()),
-		dkimResult: v.optional(v.string()),
-		dmarcResult: v.optional(v.string()),
-		dmarcPolicy: v.optional(v.string()),
 	},
-	returns: v.object({
-		inboundMessageId: v.id('inboundMessages'),
-		threadId: v.id('conversationThreads'),
-		contactId: v.id('contacts'),
-	}),
-	handler: async (
-		ctx,
-		args
-	): Promise<{
-		inboundMessageId: Id<'inboundMessages'>;
-		threadId: Id<'conversationThreads'>;
-		contactId: Id<'contacts'>;
-	}> => {
+	// The same union `receiveMessage` returns — this action is the sealed-mail
+	// writer of that shape, and it forwards the mutation's result verbatim.
+	returns: inboundReceiveResultValidator,
+	handler: async (ctx, args): Promise<InboundReceiveResult> => {
 		const outcome = await openWithVault(
 			ctx,
 			args.armoredCiphertext,
@@ -282,22 +268,17 @@ export const decryptAndReceive = internalAction({
 			};
 		}
 
+		// Forwarded by DIFFERENCE, not field by field: whatever this action was
+		// given minus the two fields that are its own is exactly what the
+		// mutation takes, so a column added to `inboundMessageArgs` arrives here
+		// without an edit. Only the three values decryption may have replaced
+		// are named.
+		const { armoredCiphertext: _ciphertext, recipientAddress: _recipient, ...persisted } = args;
 		return await ctx.runMutation(internal.inbox.messages.receiveMessage, {
-			from: args.from,
-			to: args.to,
+			...persisted,
 			subject,
 			textBody,
 			htmlBody,
-			headers: args.headers,
-			messageId: args.messageId,
-			inReplyTo: args.inReplyTo,
-			references: args.references,
-			attachmentMeta: args.attachmentMeta,
-			timestamp: args.timestamp,
-			spfResult: args.spfResult,
-			dkimResult: args.dkimResult,
-			dmarcResult: args.dmarcResult,
-			dmarcPolicy: args.dmarcPolicy,
 			...sealedFlags,
 		});
 	},

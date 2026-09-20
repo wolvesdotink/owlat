@@ -286,12 +286,15 @@ export function usePostboxComposeAttachments(opts: {
 		if (!outcome.ok) return false;
 		const share = outcome.result;
 		if (!share.ok) {
-			showToast(
-				t('shared.postbox.usePostboxComposeAttachments.shareInfected', {
-					filename: share.filename,
-				}),
-				'error'
-			);
+			// Two different refusals, two different sentences: the scanner found
+			// malware, or the file-type gate will not pass this type through.
+			// Telling someone their spreadsheet is infected because a policy
+			// refused its type is the kind of false alarm that stops being read.
+			const key =
+				share.reason === 'refused'
+					? 'shared.postbox.usePostboxComposeAttachments.shareRefused'
+					: 'shared.postbox.usePostboxComposeAttachments.shareInfected';
+			showToast(t(key, { filename: share.filename }), 'error');
 			return false;
 		}
 

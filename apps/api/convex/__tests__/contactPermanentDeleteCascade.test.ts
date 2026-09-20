@@ -18,9 +18,12 @@ describe('permanentlyDeleteContactWithRelations', () => {
 		const t = convexTest(schema, modules);
 
 		const ids = await t.run(async (ctx) => {
-			const contactId = await ctx.db.insert('contacts', createTestContact({
-				email: 'cascade-victim@example.com',
-			}));
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'cascade-victim@example.com',
+				})
+			);
 
 			// Owned children (required/owned FK) — expected DELETED.
 			const topicId = await ctx.db.insert('topics', { name: 'T', createdAt: Date.now() });
@@ -218,9 +221,7 @@ describe('permanentlyDeleteContactWithRelations', () => {
 			for (const table of tablesWithContactFk) {
 				const dangling = await ctx.db
 					.query(table)
-					.withIndex('by_contact', (q) =>
-						q.eq('contactId', ids.contactId as Id<'contacts'>),
-					)
+					.withIndex('by_contact', (q) => q.eq('contactId', ids.contactId as Id<'contacts'>))
 					.collect();
 				expect(dangling, `dangling FK rows in ${table}`).toHaveLength(0);
 			}
@@ -233,7 +234,10 @@ describe('permanentlyDeleteContactWithRelations — knowledge erasure', () => {
 		const t = convexTest(schema, modules);
 		const ids = await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact({}));
-			const otherId = await ctx.db.insert('contacts', createTestContact({ email: 'other@example.com' }));
+			const otherId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'other@example.com' })
+			);
 
 			// Entry scoped SOLELY to the contact (must be deleted, with relations).
 			const entryBase = {
@@ -317,6 +321,134 @@ describe('permanentlyDeleteContactWithRelations — knowledge erasure', () => {
 				.withIndex('by_contact', (q) => q.eq('contactId', ids.contactId))
 				.collect();
 			expect(junctions).toHaveLength(0);
+			const fileJunctions = await ctx.db
+				.query('semanticFileContacts')
+				.withIndex('by_contact', (q) => q.eq('contactId', ids.contactId))
+				.collect();
+			expect(fileJunctions).toHaveLength(0);
+		});
+	});
+});
+
+describe('permanentlyDeleteContactWithRelations — the bytes, not just the rows', () => {
+	it('purges the sealed .eml and the attachments captured out of it', async () => {
+		const t = convexTest(schema, modules);
+		const ids = await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact({}));
+			const otherId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'other@example.com' })
+			);
+
+			// The whole received message — bodies, headers, every attachment —
+			// sealed into storage by the team-inbox route.
+			const rawStorageId = await ctx.storage.store(new Blob(['the whole raw message']));
+			const inboundId = await ctx.db.insert('inboundMessages', {
+				messageId: '<erase-me@example.com>',
+				from: 'victim@example.com',
+				to: 'inbox@example.com',
+				subject: 'my own words',
+				contactId,
+				processingStatus: 'received' as const,
+				receivedAt: Date.now(),
+				rawStorageId,
+				rawSize: 21,
+				isRawRetained: true as const,
+			} as never);
+
+			// An attachment captured off that message, scoped to nobody else.
+			const captureStorageId = await ctx.storage.store(new Blob(['their invoice']));
+			const capturedId = await ctx.db.insert('semanticFiles', {
+				storageId: captureStorageId,
+				filename: 'invoice.pdf',
+				mimeType: 'application/pdf',
+				fileSize: 13,
+				sourceType: 'email_attachment',
+				captureSource: 'team_inbox' as const,
+				sourceMessageId: '<erase-me@example.com>',
+				version: 1,
+				embedding: [0.1, 0.2],
+				contactIds: [contactId],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			} as never);
+			await ctx.db.insert('semanticFileContacts', { fileId: capturedId, contactId });
+
+			// A capture another contact is ALSO scoped to: still somebody else's.
+			const sharedStorageId = await ctx.storage.store(new Blob(['shared thread file']));
+			const sharedId = await ctx.db.insert('semanticFiles', {
+				storageId: sharedStorageId,
+				filename: 'spec.pdf',
+				mimeType: 'application/pdf',
+				fileSize: 18,
+				sourceType: 'email_attachment',
+				captureSource: 'team_inbox' as const,
+				version: 1,
+				embedding: [0.1, 0.2],
+				contactIds: [contactId, otherId],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			} as never);
+			await ctx.db.insert('semanticFileContacts', { fileId: sharedId, contactId });
+			await ctx.db.insert('semanticFileContacts', { fileId: sharedId, contactId: otherId });
+
+			// An org-uploaded document: unlink only, as it always has been.
+			const uploadStorageId = await ctx.storage.store(new Blob(['org handbook']));
+			const uploadId = await ctx.db.insert('semanticFiles', {
+				storageId: uploadStorageId,
+				filename: 'handbook.pdf',
+				mimeType: 'application/pdf',
+				fileSize: 12,
+				sourceType: 'upload',
+				version: 1,
+				embedding: [0.1, 0.2],
+				contactIds: [contactId],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			} as never);
+			await ctx.db.insert('semanticFileContacts', { fileId: uploadId, contactId });
+
+			return {
+				contactId,
+				otherId,
+				inboundId,
+				rawStorageId,
+				captureStorageId,
+				capturedId,
+				sharedId,
+				sharedStorageId,
+				uploadId,
+				uploadStorageId,
+			};
+		});
+
+		await t.run(async (ctx) => {
+			await permanentlyDeleteContactWithRelations(ctx, ids.contactId);
+		});
+
+		await t.run(async (ctx) => {
+			// The row went, and so did the bytes. Deleting the row alone left the
+			// erased person's whole message in `_storage` with nothing pointing at
+			// it — and nothing that ever would: the retention sweep finds blobs by
+			// walking `inboundMessages`, and the walk is what the cascade emptied.
+			expect(await ctx.db.get(ids.inboundId)).toBeNull();
+			expect(await ctx.storage.get(ids.rawStorageId)).toBeNull();
+
+			// The attachment they sent, scoped to nobody else: gone, bytes and all.
+			expect(await ctx.db.get(ids.capturedId)).toBeNull();
+			expect(await ctx.storage.get(ids.captureStorageId)).toBeNull();
+
+			// A capture another contact shares keeps its bytes and loses the link.
+			const shared = await ctx.db.get(ids.sharedId);
+			expect(shared?.contactIds).toEqual([ids.otherId]);
+			expect(await ctx.storage.get(ids.sharedStorageId)).not.toBeNull();
+
+			// An org-uploaded document is the organization's, not the contact's.
+			const upload = await ctx.db.get(ids.uploadId);
+			expect(upload).not.toBeNull();
+			expect(upload?.contactIds).toEqual([]);
+			expect(await ctx.storage.get(ids.uploadStorageId)).not.toBeNull();
+
 			const fileJunctions = await ctx.db
 				.query('semanticFileContacts')
 				.withIndex('by_contact', (q) => q.eq('contactId', ids.contactId))

@@ -12,7 +12,8 @@
  *   POST /scan/attachment
  *   Authorization: Bearer <MTA_API_KEY>
  *   Content-Type: application/octet-stream
- *   X-Filename: invoice.pdf
+ *   X-Filename: invoice.pdf   (percent-encoded and bounded to ~1 KiB by the
+ *                              caller; see decodeFilenameHeader)
  *
  * Response:
  *   200: { clean: true }
@@ -32,6 +33,34 @@ import { logger } from '../monitoring/logger.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 
 const MAX_ATTACHMENT_SIZE = MAX_ATTACHMENT_BYTES;
+
+/**
+ * Undo the client's percent-encoding of `X-Filename`.
+ *
+ * An HTTP header value is a ByteString, so a sender-chosen filename with a
+ * Cyrillic or CJK character — or a CRLF — cannot be sent raw: the caller
+ * (`apps/api/convex/mail/mtaClient.ts`) percent-encodes it, which leaves
+ * ordinary ASCII names (and every extension the allowlist below judges)
+ * byte-for-byte identical.
+ *
+ * Falls back to the raw value on a malformed sequence rather than refusing the
+ * scan: a lone `%` in a filename is legal, and answering 400 for it would send
+ * the caller down its fail-open path and leave the bytes unscanned — the exact
+ * outcome the encoding exists to prevent.
+ *
+ * The caller also BOUNDS the value, because this server runs on Node's default
+ * 16 KiB header limit and answers 431 above it — before this route is reached —
+ * and a filename is sender-chosen and arrives unbounded. A truncated stem is
+ * only ever a shorter log line here; the extension `validateFile` judges is the
+ * part the caller keeps.
+ */
+function decodeFilenameHeader(raw: string): string {
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		return raw;
+	}
+}
 
 export function createScanRoutes(config: MtaConfig): Hono {
 	const app = new Hono();
@@ -69,10 +98,11 @@ export function createScanRoutes(config: MtaConfig): Hono {
 
 	// POST /scan/attachment
 	app.post('/attachment', async (c) => {
-		const filename = c.req.header('X-Filename');
-		if (!filename) {
+		const filenameHeader = c.req.header('X-Filename');
+		if (!filenameHeader) {
 			return c.json({ error: 'Missing X-Filename header' }, 400);
 		}
+		const filename = decodeFilenameHeader(filenameHeader);
 
 		// Read the binary body
 		const body = await c.req.arrayBuffer();
@@ -82,9 +112,12 @@ export function createScanRoutes(config: MtaConfig): Hono {
 		}
 
 		if (body.byteLength > MAX_ATTACHMENT_SIZE) {
-			return c.json({
-				error: `Attachment too large (${Math.round(body.byteLength / 1024 / 1024)}MB > ${Math.round(MAX_ATTACHMENT_SIZE / 1024 / 1024)}MB limit)`,
-			}, 413);
+			return c.json(
+				{
+					error: `Attachment too large (${Math.round(body.byteLength / 1024 / 1024)}MB > ${Math.round(MAX_ATTACHMENT_SIZE / 1024 / 1024)}MB limit)`,
+				},
+				413
+			);
 		}
 
 		const buffer = Buffer.from(body);
@@ -115,10 +148,7 @@ export function createScanRoutes(config: MtaConfig): Hono {
 		const scanResult = await clam.scan(buffer);
 
 		if (scanResult.skipped) {
-			logger.warn(
-				{ filename, error: scanResult.error },
-				'ClamAV scan skipped — failing open'
-			);
+			logger.warn({ filename, error: scanResult.error }, 'ClamAV scan skipped — failing open');
 
 			return c.json({
 				clean: true,
@@ -128,10 +158,7 @@ export function createScanRoutes(config: MtaConfig): Hono {
 		}
 
 		if (!scanResult.clean) {
-			logger.warn(
-				{ filename, virus: scanResult.virus },
-				'Malware detected in attachment'
-			);
+			logger.warn({ filename, virus: scanResult.virus }, 'Malware detected in attachment');
 
 			return c.json({
 				clean: false,

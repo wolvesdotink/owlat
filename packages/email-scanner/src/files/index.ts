@@ -8,7 +8,44 @@
 import type { FilePolicy, FileValidationResult } from '../types.js';
 import { detectFileType } from './magicBytes.js';
 import { detectDoubleExtension, isExecutableExtension } from './doubleExtension.js';
-import { DEFAULT_FILE_POLICY, isExtensionAllowed, isFileSizeAllowed } from './filePolicy.js';
+import {
+	DEFAULT_FILE_POLICY,
+	isExtensionAllowed,
+	isFileSizeAllowed,
+	isMimeTypeAllowed,
+} from './filePolicy.js';
+
+/**
+ * The WHOLE type verdict for one file: the double-extension trick, the
+ * executable check, the extension allowlist and the MIME allowlist, in one
+ * call.
+ *
+ * Its callers are `semanticFiles.ingest` and the inbound `captureAttachments`
+ * pre-filter, which is how the attachment-capture path came to charge an AI
+ * budget for parts a later gate was always going to reject: one predicate means
+ * the decision can be made BEFORE the cost is incurred, by a caller that is not
+ * the one storing the file. The upload mutations (`semanticFiles.create`,
+ * `mediaAssets.create`) keep the conjunction spelled out, because each reason
+ * raises its own message at the user — this one answers yes or no.
+ *
+ * Distinct from {@link validateFile}, which inspects BYTES (magic numbers, the
+ * ISO probe) and reports a reason. This one answers the name-and-type question
+ * alone, which is all a caller deciding whether to spend anything needs.
+ *
+ * Size is deliberately not part of it — `isFileSizeAllowed` answers a different
+ * question with a different remedy, and the callers report the two separately.
+ */
+export function isFileTypeAccepted(
+	filename: string,
+	mimeType: string,
+	policy: FilePolicy = DEFAULT_FILE_POLICY
+): boolean {
+	const doubleExt = detectDoubleExtension(filename);
+	if (doubleExt.detected && doubleExt.executableExtension) return false;
+	if (isExecutableExtension(filename)) return false;
+	if (!isExtensionAllowed(filename, policy)) return false;
+	return isMimeTypeAllowed(mimeType, policy);
+}
 
 /**
  * Validate a file attachment for security.
@@ -45,9 +82,11 @@ export function validateFile(
 		};
 	}
 
-	// Check 2: Magic bytes detection (if bytes provided)
+	// Check 2: Magic bytes detection (if bytes provided). The filename goes in
+	// because one signature is genuinely ambiguous — the OLE2 container is both
+	// an installer and a Word 97 document — and only the name tells them apart.
 	if (firstBytes && firstBytes.length >= 2) {
-		const magicResult = detectFileType(firstBytes, isoProbe);
+		const magicResult = detectFileType(firstBytes, isoProbe, filename);
 
 		if (magicResult?.dangerous) {
 			return {
@@ -114,7 +153,7 @@ export function validateFile(
 	}
 
 	// All checks passed
-	const magicResult = firstBytes ? detectFileType(firstBytes, isoProbe) : null;
+	const magicResult = firstBytes ? detectFileType(firstBytes, isoProbe, filename) : null;
 	return {
 		allowed: true,
 		detectedType: magicResult?.mime ?? 'unknown',

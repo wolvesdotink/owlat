@@ -26,6 +26,7 @@ import type { DatabaseWriter } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import * as scannerHealth from '../lib/scannerHealth';
 import * as runtimeLog from '../lib/runtimeLog';
+import { readScanRequest } from '../mail/__tests__/scannerStub.testlib';
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
@@ -33,22 +34,17 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('agentSecurity') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const MTA = { baseUrl: 'https://mta.test', apiKey: 'secret' };
 
 // The standard EICAR anti-malware test signature.
-const EICAR =
-	'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+const EICAR = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
 
 /** Build a multipart/mixed .eml carrying a base64 attachment. */
-function emlWithAttachment(opts: {
-	messageId: string;
-	filename: string;
-	body: string;
-}): string {
+function emlWithAttachment(opts: { messageId: string; filename: string; body: string }): string {
 	return [
 		'From: sender@isp.example',
 		'To: me@example.com',
@@ -85,10 +81,8 @@ function mockScan(response: ScanResponseBody | { httpStatus: number }): {
 } {
 	const calls: Array<{ url: string; filename?: string }> = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-		const headers = (init as RequestInit | undefined)?.headers as
-			| Record<string, string>
-			| undefined;
-		calls.push({ url: String(url), filename: headers?.['X-Filename'] });
+		const request = readScanRequest(url, init as RequestInit | undefined);
+		calls.push({ url: request.url, filename: request.filename });
 		if ('httpStatus' in response) {
 			return new Response('scanner down', { status: response.httpStatus });
 		}
@@ -119,7 +113,7 @@ async function insertFolder(
 	ctx: { db: DatabaseWriter },
 	mailboxId: Id<'mailboxes'>,
 	name: string,
-	role: 'inbox' | 'spam',
+	role: 'inbox' | 'spam'
 ): Promise<Id<'mailFolders'>> {
 	const now = Date.now();
 	return ctx.db.insert('mailFolders', {
@@ -174,7 +168,7 @@ describe('ingestFromWebhook — inbound EICAR scan + Spam routing (PR-39)', () =
 	function ingest(
 		t: ReturnType<typeof convexTest>,
 		raw: string,
-		messageId: string,
+		messageId: string
 	): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> {
 		return t.action(internal.mail.delivery.ingestFromWebhook, {
 			deliveryId: 'd1',

@@ -220,7 +220,23 @@ export interface MailboxInboundPayload extends InboundAuthVerdicts {
 /** Parsed inbound email content forwarded to Convex (AI-inbox `inbound.received`) */
 export interface InboundEmailPayload extends Pick<
 	InboundAuthVerdicts,
-	'spfResult' | 'dkimResult' | 'dmarcResult' | 'dmarcPolicy'
+	| 'spfResult'
+	| 'dkimResult'
+	| 'dmarcResult'
+	| 'dmarcPolicy'
+	// The alignment inputs ride along too: Convex decides whether a From with
+	// no published DMARC policy may still be scoped to the contact it claims,
+	// and that decision is only worth anything with the authenticated domains
+	// in hand.
+	| 'envelopeFromDomain'
+	| 'dkimSigningDomain'
+	// The ARC triple, for the same reason the personal-mailbox payload carries
+	// it: a trusted forwarder's valid seal RESCUES a DMARC fail (RFC 8617), and
+	// without these three the receiving side sees only the bare `fail` and
+	// refuses to file a forwarded message's attachments under its real sender.
+	| 'arcCv'
+	| 'arcSealerDomain'
+	| 'arcAttestsOriginalPass'
 > {
 	from: string;
 	to: string;
@@ -232,13 +248,26 @@ export interface InboundEmailPayload extends Pick<
 	messageId?: string;
 	inReplyTo?: string;
 	references?: string;
-	// Metadata only — attachment content is NOT included in the webhook payload,
-	// and is not staged anywhere else either. An earlier `redisKey` here pointed
-	// at an hour-long Redis copy of the bytes that no caller ever fetched.
+	/**
+	 * The whole message as base64 RFC822 — the same field the personal-mailbox
+	 * payload has always carried. Convex seals it into `_storage`, scans it for
+	 * malware and re-extracts MIME parts from it, which is how attachment BYTES
+	 * become reachable on this route at all.
+	 *
+	 * Optional because it is additive on a live wire: an MTA that predates it
+	 * (or a DLQ event queued before the deploy) simply omits it, and the
+	 * receiving side stores the message with no raw blob rather than failing.
+	 */
+	rawBytesBase64?: string;
+	// Metadata only — the bytes ride `rawBytesBase64` above, not this array.
+	// `partIndex` is the MIME walk position `@owlat/shared/mailMime`'s
+	// `extractAttachmentAt` addresses a part by; without it a reader can only
+	// match on filename, which is ambiguous for two identically-named parts.
 	attachments: Array<{
 		filename?: string;
 		contentType: string;
 		size: number;
+		partIndex: string;
 	}>;
 }
 

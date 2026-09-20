@@ -375,23 +375,37 @@ function reduceInboundAccept(
 	attempt: Extract<BounceAttempt, { kind: 'inbound_accept' }>,
 	ctx: BasePhaseCtx
 ): OutcomeReduction {
-	const { parsed, spfResult, dkimResult, dmarcResult, dmarcPolicy } = ctx;
+	const {
+		parsed,
+		rawBuffer,
+		spfResult,
+		dkimResult,
+		dmarcResult,
+		dmarcPolicy,
+		envelopeFromDomain,
+		dkimSigningDomain,
+		arcCv,
+		arcSealerDomain,
+		arcAttestsOriginalPass,
+	} = ctx;
 	const { route, rcptTo, attachments, headers } = attempt;
 	const effects: BounceEffect[] = [];
 
-	// Attachment METADATA only. This used to also emit one `stage_attachment`
-	// effect per attachment, copying the whole base64 body into Redis under
-	// `mta:inbound-att:<messageId>:<index>` for an hour so the payload could
-	// carry a `redisKey` pointing at it. Nothing ever fetched one: there is no
-	// MTA route that serves an attachment by key and no backend caller that
-	// asks for one, so the bytes expired unread while making inbound mail the
-	// heaviest writer against a Redis that now refuses writes at `--maxmemory`
-	// (policy `noeviction`) — a single 10 MiB message could claim 2% of the
-	// default 512 MB cap for an hour on its own.
+	// Attachment METADATA — the bytes ride `rawBytesBase64` below, as whole raw
+	// MIME, exactly as the personal-mailbox route has always sent them. This
+	// used to emit one `stage_attachment` effect per attachment instead,
+	// copying each base64 body into Redis for an hour under
+	// `mta:inbound-att:<messageId>:<index>` so the payload could carry a
+	// `redisKey` pointing at it — and nothing ever fetched one.
+	//
+	// `partIndex` is the MIME walk position, the same `String(index)` semantics
+	// `resolveRoute`/`extractAttachmentAt` speak, so a reader can address the
+	// exact part rather than guessing from a filename two parts may share.
 	const attachmentMeta = attachments.map((att) => ({
 		filename: att.filename,
 		contentType: att.contentType,
 		size: att.size,
+		partIndex: String(att.index),
 	}));
 
 	const referencesString = Array.isArray(parsed.references)
@@ -416,6 +430,10 @@ function reduceInboundAccept(
 				messageId: parsed.messageId ?? undefined,
 				inReplyTo: parsed.inReplyTo?.replace(/[<>]/g, '') ?? undefined,
 				references: referencesString,
+				// The whole message, so Convex can seal the raw `.eml`, run the
+				// inbound malware scan over it and re-extract attachment parts.
+				// Mirrors the personal-mailbox payload's field of the same name.
+				rawBytesBase64: rawBuffer.toString('base64'),
 				// RFC 8601 inbound auth verdicts (SPF/DKIM/DMARC + published policy),
 				// computed in `onData` and threaded through the ctx. The AI-inbox
 				// path used to DROP these before persisting; now they ride to
@@ -425,6 +443,21 @@ function reduceInboundAccept(
 				dkimResult,
 				dmarcResult,
 				dmarcPolicy,
+				// The domains SPF and DKIM authenticated, so the receiver can
+				// check alignment against the `From:` rather than trusting a bare
+				// pass that may have authenticated the attacker's own domain.
+				envelopeFromDomain,
+				dkimSigningDomain,
+				// The verified ARC chain (RFC 8617). A forwarder the operator
+				// trusts, sealing a valid chain that attests the ORIGINAL passed,
+				// is what rescues a DMARC fail on forwarded mail — and the
+				// receiving side cannot make that call without the triple. The
+				// personal-mailbox payload has always carried it; this route saw
+				// only the bare `fail` and refused to file such a message's
+				// attachments under the sender who really sent them.
+				arcCv,
+				arcSealerDomain,
+				arcAttestsOriginalPass,
 				attachments: attachmentMeta,
 			},
 			timestamp: Date.now(),

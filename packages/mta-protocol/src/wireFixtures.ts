@@ -410,7 +410,11 @@ export const WEBHOOK_EVENT_BYTES: Record<MtaWebhookEventType, string> = {
 			textBody: 'hi',
 			headers: { Date: 'Mon, 16 Jun 2025 15:06:40 +0000' },
 			messageId: '<inbound-fixture-1@example.com>',
-			attachments: [],
+			// The whole message as base64 RFC822. Pinned here because it is what
+			// makes attachment bytes reachable on this route: Convex seals it,
+			// scans it, and re-extracts the part named by `partIndex` below.
+			rawBytesBase64: 'RnJvbTogc2VuZGVyQGV4YW1wbGUuY29tDQoNCmhpDQo=',
+			attachments: [{ filename: 'a.txt', contentType: 'text/plain', size: 2, partIndex: '0' }],
 		},
 		timestamp: WIRE_FIXTURE_NOW,
 	} satisfies ValidatedMtaWebhookEvent),

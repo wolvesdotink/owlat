@@ -1,0 +1,325 @@
+/**
+ * The AI-spend budget for inbound attachment ingestion.
+ *
+ * Inbound mail is reachable by any sender, and every captured attachment
+ * schedules a summarize completion, an embedding, and — for real extracted
+ * text — an extract completion plus one embedding per knowledge entry. The
+ * budget is what bounds that.
+ *
+ * Proven here:
+ *   · the per-sender bucket actually runs out, and running out is per SENDER —
+ *     a different sender is unaffected;
+ *   · the global bucket is charged only when the per-sender charge passed, so
+ *     one sender over their cap cannot also drain the instance's;
+ *   · a drained bucket COMES BACK at the configured rate — a `rate: 0` or a
+ *     mis-set period would otherwise pass every other case here while
+ *     permanently un-indexing a busy inbox after one flood;
+ *   · when it trips, nothing is lost but the indexing: the message row, its
+ *     attachment metadata and the sealed raw `.eml` all still exist, and no
+ *     `semanticFiles` row is written.
+ */
+
+import { convexTest } from 'convex-test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
+import schema from '../../schema';
+import { internal } from '../../_generated/api';
+
+// Vite canonicalizes glob keys for files in this same subtree: a sibling at
+// convex/knowledge/X is keyed as '../X' rather than '../../knowledge/X', and
+// convex-test computes its lookup prefix from '../../_generated/...'. Merge a
+// second glob rooted here and re-prefix its keys (see
+// inbox/__tests__/inboundIngest.test.ts for the same arrangement).
+const rootGlob = import.meta.glob('../../**/*.*s');
+const knowledgeGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+		path.replace(/^\.\.\//, '../../knowledge/'),
+		mod,
+	])
+);
+const modules = { ...rootGlob, ...knowledgeGlob };
+
+function setupTest() {
+	const t = convexTest(schema, modules);
+	rateLimiterTest.register(t);
+	return t;
+}
+
+/** The per-sender bucket's burst capacity, from rateLimiter.ts. */
+const PER_SENDER_CAPACITY = 40;
+/** The global bucket's burst capacity, from rateLimiter.ts. */
+const GLOBAL_CAPACITY = 400;
+/**
+ * Files per charge. The real caller batches at the per-message part cap, and
+ * `consumeAttachmentIngestBudget` clamps to it — the limiter THROWS rather than
+ * refusing when a single charge exceeds a bucket's capacity, so the clamp is
+ * what keeps a malformed count from surfacing as a logged capture failure.
+ */
+const BATCH = 10;
+
+/** The per-sender refill rate (tokens per hour), from rateLimiter.ts. */
+const PER_SENDER_RATE = 20;
+const HOUR_MS = 60 * 60 * 1000;
+
+const SAVED_ENV = { ...process.env };
+
+beforeEach(() => {
+	// Fake time so the token buckets cannot quietly refill mid-test.
+	vi.useFakeTimers();
+});
+
+afterEach(() => {
+	vi.useRealTimers();
+	process.env = { ...SAVED_ENV };
+});
+
+describe('consumeAttachmentIngestBudget', () => {
+	it('runs out for one sender and leaves a different sender unaffected', async () => {
+		const t = setupTest();
+
+		// Drain the per-sender bucket exactly, one file at a time.
+		for (let i = 0; i < PER_SENDER_CAPACITY; i++) {
+			const res = await t.mutation(
+				internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+				{
+					senderKey: 'flooder@example.com',
+					count: 1,
+				}
+			);
+			expect(res.ok).toBe(true);
+		}
+
+		const overCap = await t.mutation(
+			internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+			{
+				senderKey: 'flooder@example.com',
+				count: 1,
+			}
+		);
+		expect(overCap.ok).toBe(false);
+
+		// Per-SENDER, not per-instance: the next sender still gets their budget.
+		const other = await t.mutation(
+			internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+			{
+				senderKey: 'someone-else@example.com',
+				count: 1,
+			}
+		);
+		expect(other.ok).toBe(true);
+	});
+
+	it('refills a drained sender bucket at the configured rate', async () => {
+		const t = setupTest();
+
+		for (let i = 0; i < PER_SENDER_CAPACITY; i++) {
+			await t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
+				senderKey: 'flooder@example.com',
+				count: 1,
+			});
+		}
+		await expect(
+			t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
+				senderKey: 'flooder@example.com',
+				count: 1,
+			})
+		).resolves.toEqual({ ok: false });
+
+		// Two tokens' worth of time at 20/h. A bucket that never comes back is
+		// indistinguishable from one that does in every other case here — and
+		// it would mean one crafted flood silently ends attachment indexing for
+		// that sender forever.
+		vi.advanceTimersByTime((HOUR_MS / PER_SENDER_RATE) * 2);
+
+		await expect(
+			t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
+				senderKey: 'flooder@example.com',
+				count: 1,
+			})
+		).resolves.toEqual({ ok: true });
+		// Refilled, not reset: two tokens is what two tokens' worth of time
+		// buys, so a full batch is still refused.
+		await expect(
+			t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
+				senderKey: 'flooder@example.com',
+				count: BATCH,
+			})
+		).resolves.toEqual({ ok: false });
+	});
+
+	it('does not charge the global bucket when the per-sender charge failed', async () => {
+		const t = setupTest();
+
+		// Drain one sender's bucket, then keep asking. Every further attempt from
+		// that sender is refused BEFORE the global bucket is touched.
+		await t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
+			senderKey: 'flooder@example.com',
+			count: BATCH,
+		});
+		const perSenderCalls = PER_SENDER_CAPACITY / BATCH;
+		for (let i = 1; i < perSenderCalls; i++) {
+			await t.mutation(internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget, {
+				senderKey: 'flooder@example.com',
+				count: BATCH,
+			});
+		}
+		const refusedCalls = 12;
+		for (let i = 0; i < refusedCalls; i++) {
+			const res = await t.mutation(
+				internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+				{
+					senderKey: 'flooder@example.com',
+					count: BATCH,
+				}
+			);
+			expect(res.ok).toBe(false);
+		}
+
+		// If those refusals had reached the global bucket they would have taken
+		// `refusedCalls * BATCH` tokens out of it. Draining the global bucket to
+		// exactly its remaining capacity proves they did not.
+		const alreadySpent = PER_SENDER_CAPACITY;
+		const remaining = GLOBAL_CAPACITY - alreadySpent;
+		for (let i = 0; i < remaining / BATCH; i++) {
+			const res = await t.mutation(
+				internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+				{
+					// A fresh sender each time, so only the global bucket can refuse.
+					senderKey: `sender-${i}@example.com`,
+					count: BATCH,
+				}
+			);
+			expect(res.ok).toBe(true);
+		}
+
+		// The global bucket is empty now — a sender with a full per-sender bucket
+		// is refused by the global one.
+		const overGlobal = await t.mutation(
+			internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+			{
+				senderKey: 'fresh@example.com',
+				count: BATCH,
+			}
+		);
+		expect(overGlobal.ok).toBe(false);
+	});
+
+	it('charges nothing for a message with no eligible attachments', async () => {
+		const t = setupTest();
+
+		const res = await t.mutation(
+			internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+			{
+				senderKey: 'bob@example.com',
+				count: 0,
+			}
+		);
+		expect(res.ok).toBe(true);
+
+		// The bucket was untouched, so its full capacity is still spendable.
+		for (let i = 0; i < PER_SENDER_CAPACITY / BATCH; i++) {
+			const spend = await t.mutation(
+				internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+				{
+					senderKey: 'bob@example.com',
+					count: BATCH,
+				}
+			);
+			expect(spend.ok).toBe(true);
+		}
+	});
+});
+
+describe('inbox.inboundIngest.ingestFromWebhook — over the budget', () => {
+	it('stores the message, its metadata and the raw .eml, indexes nothing, and SAYS so', async () => {
+		const t = setupTest();
+		// A CLEAN verdict is what makes capture run at all, so the scanner has to
+		// be configured and answering here — otherwise the budget would never be
+		// consulted and this test would pass without proving anything.
+		process.env['MTA_INTERNAL_URL'] = 'https://mta.test.local';
+		process.env['MTA_API_KEY'] = 'mta-test-key';
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(JSON.stringify({ clean: true }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+		) as unknown as typeof globalThis.fetch;
+
+		try {
+			// Drain the GLOBAL bucket before the message arrives. `receiveMessage`
+			// upserts the sender contact and capture keys on that contact id, which
+			// this test cannot know in advance — the global bucket refuses whatever
+			// per-sender key it ends up using.
+			for (let i = 0; i < GLOBAL_CAPACITY / BATCH; i++) {
+				const res = await t.mutation(
+					internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+					{ senderKey: `drain-${i}@example.com`, count: BATCH }
+				);
+				expect(res.ok).toBe(true);
+			}
+
+			const raw = [
+				'From: Flooder <flooder@example.com>',
+				'To: inbox@example.com',
+				'Subject: budget',
+				'Message-ID: <budget-1@example.com>',
+				'Content-Type: multipart/mixed; boundary="bb"',
+				'',
+				'--bb',
+				'Content-Type: text/plain; charset=utf-8',
+				'',
+				'Body.',
+				'',
+				'--bb',
+				'Content-Type: text/plain; name="notes.txt"',
+				'Content-Disposition: attachment; filename="notes.txt"',
+				'Content-Transfer-Encoding: base64',
+				'',
+				Buffer.from('a real document that would be summarised').toString('base64'),
+				'',
+				'--bb--',
+				'',
+			].join('\r\n');
+
+			await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
+				mail: {
+					from: 'Flooder <flooder@example.com>',
+					to: 'inbox@example.com',
+					subject: 'budget',
+					textBody: 'Body.',
+					headers: {},
+					messageId: '<budget-1@example.com>',
+					attachments: [
+						{ filename: 'notes.txt', contentType: 'text/plain', size: 39, partIndex: '1' },
+					],
+					timestamp: Date.now(),
+				},
+				rawBytesBase64: Buffer.from(raw, 'latin1').toString('base64'),
+			});
+
+			const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+			expect(rows).toHaveLength(1);
+			const row = rows[0]!;
+			// The bytes survive: the message is stored, described and downloadable.
+			expect(row.virusVerdict).toBe('clean');
+			expect(row.rawStorageId).toBeTruthy();
+			expect(row.rawSize).toBeGreaterThan(0);
+			expect(row.attachmentMeta).toContain('notes.txt');
+
+			// Only the model spend was skipped.
+			const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+			expect(files).toHaveLength(0);
+
+			// AND THE ROW SAYS SO. Without this marker the attachment lists and
+			// downloads exactly like an indexed one while the agent never saw it,
+			// and the only trace is a server log nobody reading the thread reaches.
+			expect(row.attachmentIndexing).toBe('skipped_budget');
+		} finally {
+			globalThis.fetch = originalFetch;
+			delete process.env['MTA_INTERNAL_URL'];
+			delete process.env['MTA_API_KEY'];
+		}
+	});
+});

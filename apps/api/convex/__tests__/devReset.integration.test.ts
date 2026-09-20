@@ -244,4 +244,58 @@ describe('dev reset — onboarding notice tables', () => {
 			}
 		});
 	});
+
+	it("frees the team inbox's sealed .eml and the attachments captured out of it", async () => {
+		// `mailMessages` was special-cased; every other storage-bearing tenant
+		// table fell through the generic row-delete. The team-inbox row now holds
+		// the WHOLE received message sealed in `rawStorageId`, and each captured
+		// attachment its own blob — and nothing reclaims either afterwards,
+		// because the inbound retention sweep finds blobs by walking the rows
+		// this wipe just deleted. `workspaces/deletion/steps/` gives both tables
+		// a storage-aware step for exactly this reason.
+		const t = newBetterAuthHarness();
+		const blobs = await t.run(async (ctx) => {
+			const now = Date.now();
+			const rawStorageId = await ctx.storage.store(new Blob(['sealed raw eml']));
+			await ctx.db.insert('inboundMessages', {
+				messageId: '<reset-raw@example.com>',
+				from: 'sender@example.com',
+				to: 'inbox@example.com',
+				subject: 'with an attachment',
+				textBody: 'see attached',
+				rawStorageId,
+				rawSize: 14,
+				isRawRetained: true,
+				processingStatus: 'received' as const,
+				receivedAt: now,
+			} as never);
+
+			const attachmentStorageId = await ctx.storage.store(new Blob(['invoice bytes']));
+			await ctx.db.insert('semanticFiles', {
+				storageId: attachmentStorageId,
+				filename: 'invoice.pdf',
+				mimeType: 'application/pdf',
+				fileSize: 13,
+				sourceType: 'email_attachment',
+				captureSource: 'team_inbox' as const,
+				sourceMessageId: '<reset-raw@example.com>',
+				version: 1,
+				embedding: [0.1, 0.2],
+				createdAt: now,
+				updatedAt: now,
+			} as never);
+
+			return [rawStorageId, attachmentStorageId];
+		});
+
+		await t.mutation(internal.devShortcuts.reset.runReset, {});
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('inboundMessages').collect()).toEqual([]);
+			expect(await ctx.db.query('semanticFiles').collect()).toEqual([]);
+			for (const storageId of blobs) {
+				expect(await ctx.storage.get(storageId)).toBeNull();
+			}
+		});
+	});
 });

@@ -1,6 +1,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { decrementContactCount } from './contactCountHelpers';
+import { deleteBlobQuietly } from './storageBlobs';
 import { deleteIdentitiesForContact } from '../contacts/resolution';
 import {
 	repointContactJunction,
@@ -8,6 +9,45 @@ import {
 	KNOWLEDGE_ENTRY_JUNCTION,
 	SEMANTIC_FILE_JUNCTION,
 } from './contactJunctions';
+
+/**
+ * Delete the `semanticFiles` rows that exist ONLY because this contact sent
+ * mail — bytes, junction row and all.
+ *
+ * Scoped by `captureSource`: an inbound capture is a file that arrived on a
+ * message, not a document the organization uploaded, so "unlink and keep"
+ * would leave the erased person's own attachment in the library — and, with no
+ * contact left on it, ORG-GENERAL, which matches every contact scope the
+ * retrieval seam has. A file another contact is also scoped to is left alone:
+ * it is still somebody else's, and erasing one participant is not a reason to
+ * take it from the rest.
+ */
+async function deleteSoleContactInboundFiles(
+	ctx: MutationCtx,
+	contactId: Id<'contacts'>
+): Promise<void> {
+	const links = await ctx.db
+		.query('semanticFileContacts')
+		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+		.collect(); // bounded: one contact's file links (cascade)
+	for (const link of links) {
+		const file = await ctx.db.get(link.fileId);
+		if (!file) {
+			await ctx.db.delete(link._id);
+			continue;
+		}
+		const othersRemain = (file.contactIds ?? []).some((c) => c !== contactId);
+		if (!file.captureSource || othersRemain) continue;
+		await ctx.db.delete(link._id);
+		// Released by the inbound retention sweep already ⇒ no blob left.
+		if (file.storageId) {
+			await deleteBlobQuietly(ctx.storage, file.storageId, '[contacts] erasure', {
+				fileId: file._id,
+			});
+		}
+		await ctx.db.delete(file._id);
+	}
+}
 
 /**
  * The single source of truth for every table that carries a `contactId` FK back
@@ -354,6 +394,18 @@ export async function permanentlyDeleteContactWithRelations(
 			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 			.collect(); // bounded: one contact's unified messages (cascade)
 		for (const row of rows) {
+			// A team-inbox row carries the WHOLE received message — bodies,
+			// headers, every attachment — as a sealed `.eml` in `_storage`.
+			// Deleting the row alone left the erased person's own words in
+			// storage with nothing referencing them: the retention sweep finds
+			// blobs by walking `inboundMessages`, and the walk is what this loop
+			// just emptied. A "permanent" erasure that keeps the bytes is not
+			// one. Guarded — an older row and a swept row both have none.
+			if ('rawStorageId' in row && row.rawStorageId) {
+				await deleteBlobQuietly(ctx.storage, row.rawStorageId, '[contacts] erasure', {
+					rowId: row._id,
+				});
+			}
 			await ctx.db.delete(row._id);
 		}
 	}
@@ -395,8 +447,17 @@ export async function permanentlyDeleteContactWithRelations(
 		}
 	}
 
-	// Semantic files are org-uploaded documents — unlink, don't delete (the
-	// junction + mirror-array invariant is owned by `detachContactJunction`).
+	// Semantic files split two ways. An INBOUND CAPTURE scoped to nobody but
+	// this contact is a file the person themselves attached to their own mail —
+	// their data, in the same sense the message body above is, and captured
+	// automatically from a route anyone can reach. It is deleted, bytes and
+	// all. Everything else — an org-uploaded document, or a capture another
+	// contact is also scoped to — keeps the "unlink, don't delete" rule the
+	// erasure has always applied to documents the organization owns. The
+	// original rule was written before inbound captures existed.
+	await deleteSoleContactInboundFiles(ctx, contactId);
+	// Whatever is left: unlink only (the junction + mirror-array invariant is
+	// owned by `detachContactJunction`).
 	await detachContactJunction(ctx, SEMANTIC_FILE_JUNCTION, contactId);
 
 	// Finally, delete the contact row itself.

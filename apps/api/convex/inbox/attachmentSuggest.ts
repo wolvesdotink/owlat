@@ -64,7 +64,15 @@ export async function computeAttachmentSuggestions(
 		});
 		if (files.length === 0) return null;
 
-		const candidates: PersistedCandidate[] = files.map((file) => ({
+		// A file whose bytes the retention sweep released still matches the search
+		// — its summary and embedding survive — but there is nothing left to
+		// attach. Never offer to send bytes that no longer exist.
+		const attachable = files.filter(
+			(file): file is typeof file & { storageId: Id<'_storage'> } => file.storageId !== undefined
+		);
+		if (attachable.length === 0) return null;
+
+		const candidates: PersistedCandidate[] = attachable.map((file) => ({
 			fileId: file._id,
 			storageId: file.storageId,
 			filename: file.filename,

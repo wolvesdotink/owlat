@@ -1,4 +1,4 @@
-import { RateLimiter, SECOND, MINUTE } from '@convex-dev/rate-limiter';
+import { RateLimiter, SECOND, MINUTE, HOUR } from '@convex-dev/rate-limiter';
 import { components } from './_generated/api';
 
 /**
@@ -101,6 +101,34 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		rate: 60,
 		period: MINUTE,
 		capacity: 120,
+	},
+
+	// Inbound ATTACHMENT ingestion into the semantic file library. Units are
+	// FILES, not messages: the per-message 10-part cap bounds one message, not a
+	// sender sending a hundred of them at a route any sender can reach.
+	//
+	// The cost is not one model call. Per captured attachment it is one
+	// summarize completion (semanticFileProcessing.ts) plus one embedding, and
+	// when the extracted text is real rather than a `[Word document: …]`
+	// placeholder, one further extract completion plus ONE EMBEDDING PER
+	// EXTRACTED KNOWLEDGE ENTRY — a fan-out with no cap of its own
+	// (knowledge/extraction.ts).
+	//
+	// Tripping either bucket skips indexing only: the message, its metadata and
+	// the sealed raw `.eml` are all still stored, and the attachment stays
+	// downloadable. The global bucket is charged as well as the per-sender one
+	// because a spoofed From: mints a fresh per-sender bucket for free.
+	attachmentIngestPerSender: {
+		kind: 'token bucket',
+		rate: 20,
+		period: HOUR,
+		capacity: 40,
+	},
+	attachmentIngestGlobal: {
+		kind: 'token bucket',
+		rate: 200,
+		period: HOUR,
+		capacity: 400,
 	},
 
 	// User-triggered Postbox AI (thread summarize / suggested replies). Each

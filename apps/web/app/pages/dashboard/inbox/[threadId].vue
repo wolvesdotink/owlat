@@ -629,6 +629,10 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							{{ message.textBody || t('dashboard.inbox.detail.noTextContent') }}
 						</div>
 
+						<!-- Attachments. getThread returns the row unprojected, so the
+						     list needs no extra query; the component owns the download. -->
+						<InboxMessageAttachments :message="message" />
+
 						<!-- Classification -->
 						<div v-if="message.classification" class="mt-4 p-3 bg-bg-surface rounded-lg">
 							<p class="text-xs text-text-tertiary mb-2 font-medium uppercase tracking-wider">

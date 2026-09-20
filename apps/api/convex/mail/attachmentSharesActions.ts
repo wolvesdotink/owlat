@@ -46,7 +46,7 @@ type ShareDraftAttachmentResult =
 			/** Which scan outcome allowed it, so the UI can stay honest. */
 			scanVerdict: 'clean' | 'skipped';
 	  }
-	| { ok: false; reason: 'infected'; filename: string; detail: string };
+	| { ok: false; reason: 'infected' | 'refused'; filename: string; detail: string };
 
 /**
  * Turn one committed draft attachment into a share link.
@@ -83,14 +83,17 @@ export const shareDraftAttachment = authedAction({
 		if (!blob) throwInvalidState('The attachment file is no longer stored');
 		const bytes = Buffer.from(await blob.arrayBuffer());
 
-		// Same client, same fail-open contract as the outbound send: only a
-		// CONFIRMED verdict gates; 'skipped' proceeds and is already surfaced to
-		// the operator by `scannerHealth.warnScanSkipped` inside the client.
+		// Same client, same fail-open contract as the outbound send: a CONFIRMED
+		// verdict and a file-type refusal each refuse the share; 'skipped'
+		// proceeds and is already surfaced to the operator by
+		// `scannerHealth.warnScanSkipped` inside the client. The two refusals are
+		// reported APART, because a share link the composer refused for its type
+		// is not a file anyone should be told contains malware.
 		const verdict = await scanAttachmentBytes(getMtaConfig(), prep.filename, bytes);
-		if (verdict.kind === 'infected') {
+		if (verdict.kind === 'infected' || verdict.kind === 'refused') {
 			return {
 				ok: false,
-				reason: 'infected',
+				reason: verdict.kind,
 				filename: prep.filename,
 				detail: verdict.reason,
 			};

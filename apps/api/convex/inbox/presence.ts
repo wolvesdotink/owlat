@@ -27,6 +27,7 @@ import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { adminMutation, publicQuery } from '../lib/authedFunctions';
 import { getMutationContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { isSharedInboxReader } from './access';
 import { getOrThrow } from '../_utils/errors';
 
 /**
@@ -109,7 +110,7 @@ export const list = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const cutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
 		// Range-scan only the ACTIVE rows for this thread (heartbeat within the

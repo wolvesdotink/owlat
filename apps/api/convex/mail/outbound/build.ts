@@ -30,31 +30,40 @@ interface DraftAttachmentBuffer {
 }
 
 /**
- * ClamAV scan via MTA `/scan/attachment` endpoint. Throws
- * `ScannedMalwareError` on confirmed malware, returns silently otherwise.
- * Fail-open on scanner outage (the campaign mail path does the same).
+ * One attachment the `/scan/attachment` gate would not let out, and WHY.
+ *
+ * Both reasons abort the dispatch, and the draft returns to `draft` with
+ * `scan_blocked` either way — but the message says which gate answered, because
+ * "we found malware in this" and "we do not send this file type" send the
+ * sender to different places. Named for the outcome rather than for malware:
+ * the type gate refuses perfectly clean files.
  *
  * Postbox dispatch was previously the only outbound path that bypassed
  * the scanner entirely. This wires it in to match emailWorker.ts.
  */
-export class ScannedMalwareError extends Error {
+export class BlockedAttachmentError extends Error {
 	constructor(
 		public readonly filename: string,
-		public readonly reason: string
+		public readonly reason: string,
+		public readonly kind: 'infected' | 'refused'
 	) {
-		super(`Attachment "${filename}" blocked by malware scan: ${reason}`);
-		this.name = 'ScannedMalwareError';
+		super(
+			kind === 'infected'
+				? `Attachment "${filename}" blocked by malware scan: ${reason}`
+				: `Attachment "${filename}" blocked by file-type policy: ${reason}`
+		);
+		this.name = 'BlockedAttachmentError';
 	}
 }
 
 async function scanAttachment(filename: string, data: Buffer): Promise<void> {
 	// Shared client owns the POST + fail-open (not-configured / scanner-down /
 	// network error all resolve to 'skipped' and are surfaced via
-	// warnScanSkipped). This path's POLICY: a confirmed-infected verdict throws
-	// ScannedMalwareError so dispatch aborts; everything else proceeds.
+	// warnScanSkipped). This path's POLICY: a confirmed-infected verdict and a
+	// file-type refusal both throw so dispatch aborts; everything else proceeds.
 	const verdict = await scanAttachmentBytes(getMtaConfig(), filename, data);
-	if (verdict.kind === 'infected') {
-		throw new ScannedMalwareError(filename, verdict.reason);
+	if (verdict.kind === 'infected' || verdict.kind === 'refused') {
+		throw new BlockedAttachmentError(filename, verdict.reason, verdict.kind);
 	}
 }
 
@@ -69,7 +78,7 @@ async function scanAttachment(filename: string, data: Buffer): Promise<void> {
  * user deleted from the body is pruned rather than shipped.
  *
  * Every non-inline part is scanned through MTA's ClamAV endpoint before it is
- * allowed to ship; a confirmed verdict throws {@link ScannedMalwareError} so
+ * allowed to ship; a confirmed verdict throws {@link BlockedAttachmentError} so
  * the caller can abort the dispatch and revert the draft.
  */
 export async function bufferDraftAttachments(
@@ -88,7 +97,7 @@ export async function bufferDraftAttachments(
 		if (!blob) continue;
 		const buf = Buffer.from(await blob.arrayBuffer());
 
-		// Throws ScannedMalwareError on positive verdict. Anything else
+		// Throws BlockedAttachmentError on a positive verdict. Anything else
 		// (scanner missing, network blip, parse error) returns silently.
 		await scanAttachment(att.filename, buf);
 

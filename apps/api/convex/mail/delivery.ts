@@ -44,10 +44,13 @@ import { enqueueCategoryCheck } from './category';
 import { clearThreadFollowUp } from './followUps';
 import { resolveDeliverableMailbox } from './mailbox/identity';
 import { clearSnoozeUntilReplyForThread } from './snooze';
-import { captureAttachments, prepareInboundMessage } from './deliveryPipeline/ingest';
+import { prepareInboundMessage } from './deliveryPipeline/ingest';
+import { captureAttachments } from './deliveryPipeline/capture';
+import { mailboxIndexableParts } from './deliveryPipeline/scan';
 import { insertDeliveredMessage, stripBrackets } from './deliveryPipeline/insert';
 import {
 	resolveDmarcRouting,
+	type DmarcOverride,
 	resolveFilterOutcome,
 	resolveSpamVerdict,
 } from './deliveryPipeline/routing';
@@ -103,48 +106,47 @@ export const ingestFromWebhook = internalAction({
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const prepared = await prepareInboundMessage(ctx, args);
 
-		const result: { messageId: Id<'mailMessages'> } | { skipped: true } = await ctx.runMutation(
-			internal.mail.delivery.deliverToMailbox,
-			{
-				rawStorageId: prepared.rawStorageId,
-				rawSize: prepared.rawSize,
-				antiLoopHeaders: prepared.antiLoopHeaders,
-				unsubscribe: prepared.unsubscribe,
-				recipientAddress: args.recipientAddress,
-				from: args.from,
-				to: args.to,
-				cc: args.cc,
-				bcc: args.bcc,
-				replyTo: args.replyTo,
-				returnPath: args.returnPath,
-				subject: prepared.subject,
-				textBodyInline: prepared.text.inline,
-				textBodyStorageId: prepared.text.storageId,
-				htmlBodyInline: prepared.html.inline,
-				htmlBodyStorageId: prepared.html.storageId,
-				snippet: prepared.snippet,
-				searchBody: prepared.searchBody,
-				messageId: args.messageId,
-				inReplyTo: args.inReplyTo,
-				references: args.references,
-				receivedAt: args.date ?? Date.now(),
-				attachments: args.attachments,
-				spamScore: args.spamScore,
-				spamVerdict: args.spamVerdict,
-				virusVerdict: prepared.virusVerdict,
-				spfResult: args.spfResult,
-				dkimResult: args.dkimResult,
-				dmarcResult: args.dmarcResult,
-				dmarcPolicy: args.dmarcPolicy,
-				arcCv: args.arcCv,
-				arcSealerDomain: args.arcSealerDomain,
-				arcAttestsOriginalPass: args.arcAttestsOriginalPass,
-				envelopeFromDomain: args.envelopeFromDomain,
-				dkimSigningDomain: args.dkimSigningDomain,
-				inboundEncryptionInfo: prepared.inboundEncryptionInfo,
-				inboundSignatureInfo: prepared.inboundSignatureInfo,
-			}
-		);
+		const result:
+			| { messageId: Id<'mailMessages'>; dmarcOverride?: DmarcOverride }
+			| { skipped: true } = await ctx.runMutation(internal.mail.delivery.deliverToMailbox, {
+			rawStorageId: prepared.rawStorageId,
+			rawSize: prepared.rawSize,
+			antiLoopHeaders: prepared.antiLoopHeaders,
+			unsubscribe: prepared.unsubscribe,
+			recipientAddress: args.recipientAddress,
+			from: args.from,
+			to: args.to,
+			cc: args.cc,
+			bcc: args.bcc,
+			replyTo: args.replyTo,
+			returnPath: args.returnPath,
+			subject: prepared.subject,
+			textBodyInline: prepared.text.inline,
+			textBodyStorageId: prepared.text.storageId,
+			htmlBodyInline: prepared.html.inline,
+			htmlBodyStorageId: prepared.html.storageId,
+			snippet: prepared.snippet,
+			searchBody: prepared.searchBody,
+			messageId: args.messageId,
+			inReplyTo: args.inReplyTo,
+			references: args.references,
+			receivedAt: args.date ?? Date.now(),
+			attachments: args.attachments,
+			spamScore: args.spamScore,
+			spamVerdict: args.spamVerdict,
+			virusVerdict: prepared.virusVerdict,
+			spfResult: args.spfResult,
+			dkimResult: args.dkimResult,
+			dmarcResult: args.dmarcResult,
+			dmarcPolicy: args.dmarcPolicy,
+			arcCv: args.arcCv,
+			arcSealerDomain: args.arcSealerDomain,
+			arcAttestsOriginalPass: args.arcAttestsOriginalPass,
+			envelopeFromDomain: args.envelopeFromDomain,
+			dkimSigningDomain: args.dkimSigningDomain,
+			inboundEncryptionInfo: prepared.inboundEncryptionInfo,
+			inboundSignatureInfo: prepared.inboundSignatureInfo,
+		});
 
 		// If delivery was skipped (no mailbox / quota / dup), drop the staged blobs.
 		if ('skipped' in result) {
@@ -161,7 +163,42 @@ export const ingestFromWebhook = internalAction({
 		// pull them here while the raw MIME is still in hand. Best-effort: a
 		// failed capture never fails delivery (the message is already stored).
 		try {
-			await captureAttachments(ctx, prepared.rawBinary, args.messageId, args.from);
+			// WHICH LEAVES MAY BE INDEXED and WHAT WAS WITHHELD, as one pair from
+			// one place — `mailboxIndexableParts` owns the whole policy, including
+			// the "nobody scanned it" branch this route keeps and the team inbox
+			// does not. Two ternaries here testing the same condition could
+			// disagree, and the condition they tested (`verdict !== undefined`)
+			// was the wrong question: `/scan/attachment` fails open, so on a
+			// deployment running without the optional `clamav` sidecar the verdict
+			// is a perfectly defined `'skipped'` with nothing cleared, and this
+			// route quietly stopped capturing anything at all.
+			const { parts, withheld } = mailboxIndexableParts(prepared.scan);
+			await captureAttachments(ctx, {
+				parts,
+				withheld,
+				messageId: args.messageId,
+				from: args.from,
+				// Postbox captures are OUT OF RANGE of the inbound retention sweep:
+				// the personal mailbox keeps its raw `.eml` permanently and has no
+				// horizon, so a shared-inbox window must never strip its file-library
+				// blobs. `captureSource` is what keeps the two apart.
+				captureSource: 'mailbox',
+				auth: {
+					dmarcResult: args.dmarcResult,
+					spfResult: args.spfResult,
+					dkimResult: args.dkimResult,
+					envelopeFromDomain: args.envelopeFromDomain,
+					dkimSigningDomain: args.dkimSigningDomain,
+					// The SETTLED DMARC verdict, not the raw one. A trusted ARC
+					// forwarder's valid seal rescues a `fail` for routing
+					// (`resolveDmarcRouting`, applied inside the mutation above),
+					// and a rescue the reader's inbox honours but the capture gate
+					// refuses is two different answers to one question: forwarded
+					// mail from an old Google Workspace account would land in the
+					// inbox with its attachments silently unindexed.
+					dmarcOverride: 'dmarcOverride' in result ? result.dmarcOverride : undefined,
+				},
+			});
 		} catch (err) {
 			logError('[Mail Webhook] attachment capture failed', err);
 		}
@@ -227,7 +264,12 @@ export const deliverToMailbox = internalMutation({
 		// SIGNED-but-not-encrypted message. Data only — never affects routing.
 		inboundSignatureInfo: v.optional(inboundSignatureInfoValidator),
 	},
-	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<
+		{ messageId: Id<'mailMessages'>; dmarcOverride?: DmarcOverride } | { skipped: true }
+	> => {
 		const recipient = extractEmail(args.recipientAddress);
 		const fromAddress = extractEmail(args.from);
 		const rfc822MessageId = stripBrackets(args.messageId) ?? args.messageId;
@@ -437,6 +479,9 @@ export const deliverToMailbox = internalMutation({
 			filterForwardTo: filterOutcome.filterForwardTo,
 		});
 
-		return { messageId };
+		// `dmarcOverride` travels back so the capture step in the ingest action
+		// gates on the SAME settled verdict this mutation routed on, rather than
+		// re-deciding the ARC rescue against a second read of the allow-list.
+		return { messageId, dmarcOverride };
 	},
 });

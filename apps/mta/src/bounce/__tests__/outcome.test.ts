@@ -27,6 +27,9 @@ function makeCtx(overrides: Partial<BasePhaseCtx> = {}): BasePhaseCtx {
 		rcptTo: overrides.rcptTo ?? 'inbox@org.example',
 		spfResult: overrides.spfResult,
 		returnPath: overrides.returnPath,
+		// Spread last so a case can supply the DMARC/ARC verdicts the inbound
+		// payload carries without this helper listing every one of them.
+		...overrides,
 	};
 }
 
@@ -423,7 +426,7 @@ describe('reduce(endpoint_forward)', () => {
 });
 
 describe('reduce(inbound_accept)', () => {
-	it('emits a single notify_convex carrying attachment metadata and no bytes', () => {
+	it('emits a single notify_convex carrying the raw message plus addressable part metadata', () => {
 		const route = makeRoute();
 		const attempt: BounceAttempt = {
 			kind: 'inbound_accept',
@@ -436,33 +439,69 @@ describe('reduce(inbound_accept)', () => {
 			],
 			headers: { from: 'bob@isp.example' },
 		};
-		const { effects } = reduce(
-			attempt,
-			makeCtx({
-				parsed: makeParsed({
-					from: {
-						text: 'Bob Example <bob@isp.example>',
-						value: [{ address: 'bob@isp.example', name: 'Bob Example' }],
-						html: '',
-					},
-				}),
-			})
-		);
-		// One effect, whatever the attachment count: inbound accept no longer
-		// copies attachment bodies into Redis, so there is nothing to stage.
+		const ctx = makeCtx({
+			parsed: makeParsed({
+				from: {
+					text: 'Bob Example <bob@isp.example>',
+					value: [{ address: 'bob@isp.example', name: 'Bob Example' }],
+					html: '',
+				},
+			}),
+		});
+		const { effects } = reduce(attempt, ctx);
+		// One effect, whatever the attachment count: the bytes ride the payload
+		// as whole raw MIME, so there is nothing to stage per attachment.
 		expect(effects.map((e) => e.kind)).toEqual(['notify_convex']);
 
 		const notify = effects.find((e) => e.kind === 'notify_convex');
 		if (notify?.kind === 'notify_convex') {
 			expect(notify.event.event).toBe('inbound.received');
 			expect(notify.event.organizationId).toBe('org-1');
+			// The whole message rides the payload — this is what makes attachment
+			// bytes reachable downstream at all.
+			expect(notify.event.inboundPayload?.rawBytesBase64).toBe(ctx.rawBuffer.toString('base64'));
+			// Metadata addresses each part by its MIME walk position, so a reader
+			// can pull the exact part rather than guessing from a shared filename.
 			expect(notify.event.inboundPayload?.attachments).toEqual([
-				{ filename: 'a.pdf', contentType: 'application/pdf', size: 10 },
-				{ filename: 'b.txt', contentType: 'text/plain', size: 5 },
-				{ filename: 'c.png', contentType: 'image/png', size: 20 },
+				{ filename: 'a.pdf', contentType: 'application/pdf', size: 10, partIndex: '0' },
+				{ filename: 'b.txt', contentType: 'text/plain', size: 5, partIndex: '1' },
+				{ filename: 'c.png', contentType: 'image/png', size: 20, partIndex: '2' },
 			]);
 			expect(notify.event.inboundPayload?.headers).toEqual({ from: 'bob@isp.example' });
 			expect(notify.event.inboundPayload?.from).toBe('bob@isp.example');
+		}
+	});
+
+	it('carries the verified ARC chain, which is what rescues a forwarded DMARC fail', () => {
+		const attempt: BounceAttempt = {
+			kind: 'inbound_accept',
+			route: makeRoute(),
+			rcptTo: 'inbox@org.example',
+			attachments: [],
+			headers: {},
+		};
+		// Forwarded mail: the forwarder's footer broke the author's DKIM, so
+		// DMARC fails for a message that is entirely legitimate. Without the
+		// triple the receiving side sees only the bare `fail` and refuses to file
+		// the attachments under the contact who actually sent them — the
+		// personal-mailbox payload has carried it since Sealed Mail A5.
+		const ctx = makeCtx({
+			dmarcResult: 'fail',
+			dmarcPolicy: 'none',
+			arcCv: 'pass',
+			arcSealerDomain: 'forwarder.example',
+			arcAttestsOriginalPass: true,
+		});
+
+		const { effects } = reduce(attempt, ctx);
+		const notify = effects.find((e) => e.kind === 'notify_convex');
+		if (notify?.kind === 'notify_convex') {
+			expect(notify.event.inboundPayload?.dmarcResult).toBe('fail');
+			expect(notify.event.inboundPayload?.arcCv).toBe('pass');
+			expect(notify.event.inboundPayload?.arcSealerDomain).toBe('forwarder.example');
+			expect(notify.event.inboundPayload?.arcAttestsOriginalPass).toBe(true);
+		} else {
+			throw new Error('expected a notify_convex effect');
 		}
 	});
 });

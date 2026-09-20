@@ -15,6 +15,7 @@ import {
 	desktopReleaseLineValidator,
 	desktopUpdateChannelValidator,
 	desktopUpdateModeValidator,
+	inboundRawRetentionDaysValidator,
 	successOrFailedValidator,
 } from '../lib/literalValidators';
 
@@ -88,6 +89,15 @@ export const instanceTables = {
 		// back to false schedules a sweep that clears every excerpt already
 		// written. Admin-gated write via `workspaces/settings.update`.
 		isBodySearchIndexingEnabled: v.optional(v.boolean()),
+		// How long the shared inbox keeps a received message's FILES: the sealed
+		// raw `.eml` on `inboundMessages` and the attachment blobs captured out of
+		// it into `semanticFiles`. Unset ⇒ `DEFAULT_INBOUND_RAW_RETENTION_DAYS`.
+		// Past the horizon the daily sweep in `maintenance/retention.ts`
+		// releases the BYTES ONLY — the message row, its sender, subject, bodies,
+		// attachment metadata and verdicts are all retained, and a released
+		// `semanticFiles` row keeps its summary, extracted text and embedding so
+		// retrieval still works. Admin-gated write via `workspaces/settings.update`.
+		inboundRawRetentionDays: v.optional(inboundRawRetentionDaysValidator),
 		// Trusted ARC forwarders: domains whose validated ARC seal
 		// (RFC 8617) we honour to RESCUE a DMARC fail on inbound forwarded mail —
 		// a mailing-list / forwarding message that broke DKIM but whose sealer

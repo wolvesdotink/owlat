@@ -182,3 +182,75 @@ describe('e2ee.open.decryptAndReceive — mirror + agent consume decrypted text 
 		expect(inbound.signerInstance).toBeUndefined();
 	});
 });
+
+describe('e2ee.open.decryptAndReceive — the raw-bytes fields the second writer threads', () => {
+	beforeEach(() => {
+		vi.stubEnv('INSTANCE_SECRET', INSTANCE_SECRET);
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	/**
+	 * `decryptAndReceive` is the SECOND writer of an `inboundMessages` row, and
+	 * anything the plaintext path stores has to be threaded through it as well.
+	 * Nothing proved that. A refactor that dropped one of these from the args or
+	 * from the `...extras` spread would land every SEALED inbound message with no
+	 * raw blob — every attachment rendering as "no longer stored" on a message
+	 * that arrived a minute ago — and an infected sealed message would NOT be
+	 * quarantined, because `virusVerdict` would never reach `receiveMessage`.
+	 * Every existing test would stay green.
+	 */
+	it('carries rawStorageId, rawSize and an infected verdict through to the row', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address: RECIPIENT });
+		const sender = await generateTestKeypair(SENDER);
+		await seedPinnedSender(t, {
+			address: SENDER,
+			domain: 'sender.test',
+			pinnedPublicKeyArmored: sender.publicKeyArmored,
+		});
+
+		const sealed = await sealMime(testInnerMessage('<mirror-e4-0003@sender.test>'), {
+			recipientPublicKeysArmored: [await recipientVaultPublicKey(t, RECIPIENT)],
+			signingKeyArmored: sender.privateKeyArmored,
+		});
+
+		const rawStorageId = await t.run(
+			async (ctx) =>
+				await ctx.storage.store(new Blob(['sealed raw bytes'], { type: 'message/rfc822' }))
+		);
+
+		await t.action(internal.e2ee.open.decryptAndReceive, {
+			armoredCiphertext: sealed.armoredCiphertext,
+			recipientAddress: RECIPIENT,
+			from: SENDER,
+			to: RECIPIENT,
+			subject: '...',
+			textBody: sealed.armoredCiphertext,
+			messageId: '<mirror-e4-0003@sender.test>',
+			timestamp: Date.now(),
+			rawStorageId,
+			rawSize: 16,
+			virusVerdict: 'infected',
+		});
+
+		const row = await t.run(async (ctx: { db: DatabaseWriter }) => {
+			const found = await ctx.db.query('inboundMessages').first();
+			if (!found) throw new Error('no inboundMessages row');
+			return found;
+		});
+
+		expect(row.rawStorageId).toBe(rawStorageId);
+		expect(row.rawSize).toBe(16);
+		// The retention marker is derived from `rawStorageId` inside
+		// `receiveMessage`, so it proves the id actually arrived there.
+		expect(row.isRawRetained).toBe(true);
+		// And the verdict reached the quarantine decision, not just the column.
+		expect(row.virusVerdict).toBe('infected');
+		expect(row.processingStatus).toBe('quarantined');
+		const actions = await t.run((ctx) => ctx.db.query('agentActions').collect());
+		expect(actions).toHaveLength(0);
+	});
+});

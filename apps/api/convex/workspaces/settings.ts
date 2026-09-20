@@ -25,6 +25,7 @@ import { v } from 'convex/values';
 import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/shared/arcTrust';
 import { sealPolicyValidator } from '../mail/sealPolicy';
 import { mtaStsModeValidator } from '../lib/convexValidators';
+import { inboundRawRetentionDaysValidator } from '../lib/literalValidators';
 import { internalMutation, internalQuery } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
@@ -84,6 +85,13 @@ export const update = authedMutation({
 		// sealed-at-rest plaintext carve-out; turning it back off schedules the
 		// sweep that clears the excerpts already written (see below).
 		isBodySearchIndexingEnabled: v.optional(v.boolean()),
+		// How long the shared inbox keeps a received message's files — the sealed
+		// raw `.eml` and its captured attachment blobs. A closed set of day
+		// counts; unset resolves to `DEFAULT_INBOUND_RAW_RETENTION_DAYS`. The
+		// validator IS the check: there is no
+		// arbitrary horizon to range-guard, and the field flows through the patch
+		// and audit-diff below unchanged.
+		inboundRawRetentionDays: v.optional(inboundRawRetentionDaysValidator),
 		emailTheme: v.optional(
 			v.object({
 				primaryColor: v.string(),
@@ -175,6 +183,22 @@ export const update = authedMutation({
 			});
 		}
 		return settingsId;
+	},
+});
+
+/**
+ * The operator's trusted ARC forwarders, for a caller that has to settle the
+ * DMARC rescue outside a mutation.
+ *
+ * `undefined` is NOT the empty list: `resolveDmarcRouting` reads it as "unset,
+ * use the seeded defaults", while an explicit `[]` disables the rescue. Both
+ * come back verbatim so that distinction survives the hop.
+ */
+export const getTrustedArcForwarders = internalQuery({
+	args: {},
+	handler: async (ctx): Promise<string[] | undefined> => {
+		const settings = await ctx.db.query('instanceSettings').first();
+		return settings?.trustedArcForwarders;
 	},
 });
 
