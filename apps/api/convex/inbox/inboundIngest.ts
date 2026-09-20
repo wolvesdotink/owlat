@@ -61,8 +61,7 @@ type StagedRaw = {
  * nothing usable to seal.
  *
  * Its own step so the handler below reads as pre-check → stage → persist →
- * capture, rather than as four `let`s filled in one branch and consumed in
- * five.
+ * capture.
  */
 async function stageRawMessage(
 	ctx: ActionCtx,

@@ -10,13 +10,11 @@
  * exactly like a PDF whose contents the assistant actually has. The capture
  * path has to know which of the two happened before it writes a marker.
  *
- * This module used to be a SECOND hand-kept copy of the extractor's branch
- * list, justified by "that module is `'use node'`, so the ingest path cannot
- * import it" — which is backwards: the dependency only fails one way, and
- * `semanticFileProcessing.ts` already imports `lib/constants`,
- * `lib/fileSearchText`, `lib/rrf` and `lib/contactScope`. So the classification
- * lives HERE, once, and the `'use node'` extractor dispatches on it rather than
- * re-deriving it from the same two strings.
+ * ONE classification, consumed by both the V8 capture path and the `'use node'`
+ * extractor, which dispatches on it rather than re-deriving it from the same
+ * two strings. It lives in `lib/` because the dependency only fails one way: a
+ * V8 module cannot import a `'use node'` one, while the extractor imports from
+ * `lib/` freely.
  */
 
 /**

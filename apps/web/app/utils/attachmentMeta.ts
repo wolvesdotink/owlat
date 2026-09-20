@@ -1,13 +1,13 @@
 /**
  * One attachment row, as both readers describe one.
  *
- * A PLAIN MODULE owns it rather than the component that renders it: the type
- * travelled from a `.vue` file into two composables and a `utils/` parser, and
- * a utility module depending on a component for a data shape is the wrong
- * direction — it makes the parser unusable anywhere the component is not.
- * There were five names for it (`MessageAttachmentMeta`, `InboxAttachmentMeta`,
- * `PostboxAttachmentMeta`, `ReaderAttachmentMeta`, `MimePartRef`); this is the
- * one, and `partIndex` semantics now change in a single declaration.
+ * THE one attachment row type, for both readers: the Postbox reader, the team
+ * inbox, their shared list component, the download composable and the `utils/`
+ * parser all name this, so `partIndex` semantics change in one declaration.
+ *
+ * A PLAIN MODULE owns it rather than the component that renders it — a utility
+ * module depending on a component for a data shape is unusable anywhere that
+ * component is not.
  *
  * The bytes are NOT here. Both readers store metadata on the message row and
  * keep the content in the sealed raw MIME, so a download means fetching the

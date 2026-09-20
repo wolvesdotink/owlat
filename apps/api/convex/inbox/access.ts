@@ -1,13 +1,14 @@
 /**
  * Who may read the shared inbox.
  *
- * The rule is "a signed-in owner or admin", and it was spelled as the same
- * inline role comparison in eleven places across `inbox/` — every thread query,
- * the presence list, and the raw-message signed URL. CONVENTIONS asks for a
- * named `<scope>:<verb>` permission instead, because an inline role compare
- * obscures the capability being checked; there is no `inbox:*` scope in
- * `lib/sessionOrganization.ts` today, so this gives the eleven sites one name
- * in the meantime and one place to change when the scope arrives.
+ * THE shared-inbox reader gate: a signed-in owner or admin. Every thread
+ * query, the presence list and the raw-message signed URL ask it here, so the
+ * rule changes in one place.
+ *
+ * CONVENTIONS asks for a named `<scope>:<verb>` permission rather than an
+ * inline role compare, because a role compare obscures the capability being
+ * checked. There is no `inbox:*` scope in `lib/sessionOrganization.ts` yet;
+ * this is the one name to change when it arrives.
  *
  * Not a gate of its own: each caller still decides what refusal looks like on
  * its surface (an empty list, `null`, a throw). This only answers the question.

@@ -5,16 +5,15 @@
  * `POST /webhooks/mta-inbound` (`inbox/inboundWebhookHttp.ts`) both stand
  * outside `webhooks/pipeline.ts` for the same reason — the pipeline caps a
  * request body at `MAX_WEBHOOK_BODY_BYTES` before authenticating it, and these
- * two carry whole messages — and therefore both had to re-implement the
- * pipeline's preamble. They did, character for character: the per-source rate
- * limit, the secret lookup, the header check, the body read, the shared HMAC +
- * staleness verification, and a bounded digest-not-a-copy audit row.
+ * two carry whole messages — so the pipeline's preamble lives HERE instead: the
+ * per-source rate limit, the secret lookup, the header check, the body read,
+ * the shared HMAC + staleness verification, and a bounded digest-not-a-copy
+ * audit row.
  *
- * That duplication is what this module ends. The next audit-shape bump, header
- * rename or staleness change lands once; neither route can silently keep the
- * old one. What stays in each route file is what genuinely differs: its payload
- * interface, its event check, the envelope fields it summarises, and the action
- * it dispatches into.
+ * The next audit-shape bump, header rename or staleness change therefore lands
+ * once, and neither route can silently keep the old one. What stays in each
+ * route file is what genuinely differs: its payload interface, its event check,
+ * the envelope fields it summarises, and the action it dispatches into.
  */
 
 import type { ActionCtx } from '../../_generated/server';
