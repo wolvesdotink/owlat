@@ -21,7 +21,7 @@
 		"typescript": "catalog:",
 		"vitest": "catalog:",
 		"vue-tsc": "catalog:",
-		"happy-dom": "^20.0.11",
+		"happy-dom": "catalog:",
 		"vue": "catalog:vue"
 	}
 }
