@@ -334,7 +334,6 @@ const knownSymbolDrift = {
 	},
 	'3.developer/31.self-hosting-config.md': { enOnly: ['NUXT_PUBLIC_DEPLOYMENT_MODE'], deOnly: [] },
 	'3.developer/38.dnsbl-delisting.md': { enOnly: [], deOnly: ['POST /ip-audit/run'] },
-	'3.developer/5.authentication.md': { enOnly: ['REQUIRE_EMAIL_VERIFICATION'], deOnly: [] },
 	'3.developer/8.environment-variables.md': {
 		enOnly: [
 			'CODE_WORKER_CONVEX_KEY',
