@@ -17,7 +17,8 @@ type InboxBucket =
 	| 'quarantined'
 	| 'failed'
 	| 'rejected'
-	| 'archived';
+	| 'archived'
+	| 'informational';
 
 /**
  * Map a raw `inboundMessages.processingStatus` value to its dashboard
@@ -48,6 +49,8 @@ export function bucketForStatus(status: string): InboxBucket | null {
 			return 'rejected';
 		case 'archived':
 			return 'archived';
+		case 'informational':
+			return 'informational';
 		default:
 			return null;
 	}
@@ -63,6 +66,7 @@ const EMPTY_STATS = {
 	failed: 0,
 	rejected: 0,
 	archived: 0,
+	informational: 0,
 	total: 0,
 } as const;
 

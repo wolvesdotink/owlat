@@ -34,6 +34,15 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		handler: healthCheck,
 	});
 
+	// The probe answers its own preflight: `handleCors` resolves the
+	// credentialed allow-list and would fail closed on an unconfigured
+	// deployment, which is the case the probe exists to report on.
+	http.route({
+		path: '/api/v1/health',
+		method: 'OPTIONS',
+		handler: healthCheck,
+	});
+
 	// CORS preflight handlers for API routes
 	// Contacts API
 	http.route({

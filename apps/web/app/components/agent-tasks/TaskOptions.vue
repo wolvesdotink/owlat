@@ -8,6 +8,16 @@
  *   - tapping the selected chip again deselects it (toggle).
  * The effective answer (`modelValue`) is always exactly one of the two.
  *
+ * The affordance is spelled out: a lead-in line says the chips are answers you
+ * click, the picked chip carries a check mark, and a confirmation line under
+ * the row reads back the answer that will be submitted, so nobody is left
+ * wondering whether a click "took".
+ *
+ * `remembered` marks the chip Owlat pre-picked from the person's own earlier
+ * answer to the same question (answer-memory). It is still just a selection:
+ * any other chip, or typing, replaces it. The parent seeds `modelValue` with
+ * that value; this component only labels it.
+ *
  * Chips are numbered so the shared card keyboard (1–9 picks a chip) has a
  * visible affordance; the parent card resolves the key and calls the exposed
  * `pickIndex`. Enter inside the free text emits `submit`.
@@ -20,6 +30,8 @@ const props = withDefaults(
 		modelValue?: string;
 		placeholder?: string;
 		disabled?: boolean;
+		/** The option (or free-text value) pre-picked from the person's earlier answer. */
+		remembered?: string;
 		/** data-testid overrides so refactored consumers keep their contract. */
 		chipTestId?: string;
 		inputTestId?: string;
@@ -29,6 +41,7 @@ const props = withDefaults(
 		modelValue: '',
 		placeholder: undefined,
 		disabled: false,
+		remembered: undefined,
 		chipTestId: 'task-option-chip',
 		inputTestId: 'task-option-input',
 	}
@@ -80,33 +93,59 @@ function onTextInput(event: Event) {
 	emit('update:modelValue', text.value);
 }
 
+/** The answer that will be submitted, for the read-back line. */
+const effectiveAnswer = computed(() => selectedChip.value ?? text.value.trim());
+const isRememberedAnswer = computed(
+	() => props.remembered !== undefined && effectiveAnswer.value === props.remembered
+);
+
 defineExpose({ pickIndex });
 </script>
 
 <template>
 	<div data-testid="task-options">
-		<div v-if="options.length > 0" class="flex flex-wrap gap-1.5">
-			<button
-				v-for="(option, i) in options"
-				:key="option"
-				type="button"
-				:data-testid="chipTestId"
-				:aria-pressed="selectedChip === option"
-				:disabled="disabled"
-				class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border transition-colors duration-(--motion-fast) disabled:opacity-50"
-				:class="
-					selectedChip === option
-						? 'bg-text-primary text-text-inverse border-text-primary'
-						: 'border-border-subtle text-text-secondary hover:bg-bg-elevated'
-				"
-				@click.stop="pick(option)"
-			>
-				<kbd v-if="i < 9" class="font-mono text-2xs leading-none opacity-60" aria-hidden="true">{{
-					i + 1
-				}}</kbd>
-				{{ option }}
-			</button>
-		</div>
+		<template v-if="options.length > 0">
+			<p class="text-[11px] text-text-tertiary mb-1" data-testid="task-options-lead">
+				{{ t('components.agentTasks.taskOptions.lead') }}
+			</p>
+			<div class="flex flex-wrap gap-1.5" role="group">
+				<button
+					v-for="(option, i) in options"
+					:key="option"
+					type="button"
+					:data-testid="chipTestId"
+					:aria-pressed="selectedChip === option"
+					:disabled="disabled"
+					class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border cursor-pointer transition-colors duration-(--motion-fast) disabled:opacity-50"
+					:class="
+						selectedChip === option
+							? 'bg-text-primary text-text-inverse border-text-primary'
+							: 'border-border-subtle text-text-secondary hover:bg-bg-elevated hover:border-text-tertiary'
+					"
+					@click.stop="pick(option)"
+				>
+					<Icon
+						v-if="selectedChip === option"
+						name="lucide:check"
+						class="w-3 h-3"
+						aria-hidden="true"
+					/>
+					<kbd
+						v-else-if="i < 9"
+						class="font-mono text-2xs leading-none opacity-60"
+						aria-hidden="true"
+						>{{ i + 1 }}</kbd
+					>
+					{{ option }}
+					<span
+						v-if="remembered !== undefined && option === remembered"
+						class="ml-1 rounded-full bg-bg-elevated/20 px-1.5 py-px text-2xs font-medium uppercase tracking-[0.08em] opacity-80"
+						data-testid="task-option-remembered"
+						>{{ t('components.agentTasks.taskOptions.rememberedTag') }}</span
+					>
+				</button>
+			</div>
+		</template>
 		<input
 			:value="text"
 			type="text"
@@ -124,5 +163,21 @@ defineExpose({ pickIndex });
 			@keydown.enter.stop.prevent="emit('submit')"
 			@click.stop
 		/>
+		<p
+			v-if="effectiveAnswer.length > 0"
+			class="mt-1 text-[11px] text-text-secondary"
+			data-testid="task-options-readback"
+		>
+			<Icon
+				name="lucide:check-circle-2"
+				class="w-3 h-3 inline-block align-[-2px] mr-0.5 text-success"
+				aria-hidden="true"
+			/>
+			{{
+				isRememberedAnswer
+					? t('components.agentTasks.taskOptions.readbackRemembered', { answer: effectiveAnswer })
+					: t('components.agentTasks.taskOptions.readback', { answer: effectiveAnswer })
+			}}
+		</p>
 	</div>
 </template>

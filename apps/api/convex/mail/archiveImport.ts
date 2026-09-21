@@ -35,6 +35,7 @@ import { mailMessageAttachmentValidator } from '../lib/mailContentValidators';
 import { resolveLabelPath } from './labelsTree';
 import { completedOrFailedValidator } from '../lib/convexValidators';
 import { archiveFormatValidator } from '../lib/literalValidators';
+import { consumeUpload, deleteOwnedUpload } from '../storage/uploads';
 import { folderRoleValidator } from './mailbox/shared';
 
 /**
@@ -122,7 +123,8 @@ export const start = postboxMutation({
 	},
 	handler: async (
 		ctx,
-		args
+		args,
+		session
 	): Promise<
 		| { ok: true; importId: Id<'mailArchiveImports'> }
 		| { ok: false; reason: 'empty' | 'too_large' | 'already_running' | 'mailbox_inactive' }
@@ -132,11 +134,14 @@ export const start = postboxMutation({
 		// not a refusal to render, and its bytes are not ours to delete on the
 		// word of a caller who has no access to the target.
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		// Refusal cleanup also needs ownership: never delete a caller-supplied id.
+		const pendingResource = `mailArchiveImports:pending:${args.storageId}`;
+		const receiptId = await consumeUpload(ctx, args.storageId, session, pendingResource);
 
 		const refuse = async (
 			reason: 'empty' | 'too_large' | 'already_running' | 'mailbox_inactive'
 		) => {
-			await ctx.storage.delete(args.storageId).catch(() => undefined);
+			await deleteOwnedUpload(ctx, args.storageId, pendingResource);
 			return { ok: false as const, reason };
 		};
 		if (owned.mailbox.status !== 'active') return await refuse('mailbox_inactive');
@@ -166,6 +171,7 @@ export const start = postboxMutation({
 			startedAt: now,
 			updatedAt: now,
 		});
+		await ctx.db.patch(receiptId, { resourceKey: `mailArchiveImports:${importId}` });
 		await ctx.db.insert('mailAuditLog', {
 			mailboxId: args.mailboxId,
 			event: 'archive_import.started',
@@ -210,7 +216,7 @@ async function finalizeJob(
 	const now = Date.now();
 	if (job.storageId) {
 		// The imported messages are the artifact; the upload is scratch space.
-		await ctx.storage.delete(job.storageId).catch(() => undefined);
+		await deleteOwnedUpload(ctx, job.storageId, `mailArchiveImports:${job._id}`);
 	}
 	await ctx.db.patch(job._id, {
 		status,

@@ -41,6 +41,7 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
 // public: soft-auth — returns null for anonymous; the row is self-scoped to
 // the session user, so nothing leaks.
+// authz: self-scoped — the settings row is keyed by the session user id.
 export const get = publicQuery({
 	args: {},
 	handler: async (ctx) => {

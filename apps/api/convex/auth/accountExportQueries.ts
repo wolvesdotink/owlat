@@ -11,6 +11,7 @@ import type { OrganizationRole } from '../lib/sessionOrganization';
 import { loadPersonalMailboxForUser } from '../mail/permissions';
 import { throwNotFound } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
+import { isChatAttachment } from '../chat/attachmentAccess';
 
 const organizationExportTableValidator = v.union(
 	...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map((resource) => v.literal(resource))
@@ -171,7 +172,8 @@ export const listAuthorizedTemplateMedia = internalQuery({
 		const assets: Array<{ mediaAssetId: string; storageId: string }> = [];
 		for (const assetId of assetIds) {
 			const asset = byId.get(assetId);
-			if (asset) assets.push({ mediaAssetId: asset._id, storageId: asset.storageId });
+			if (asset && !isChatAttachment(asset))
+				assets.push({ mediaAssetId: asset._id, storageId: asset.storageId });
 		}
 		return assets;
 	},

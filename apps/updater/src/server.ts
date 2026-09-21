@@ -6,9 +6,10 @@ import { errorMessage } from '@owlat/shared';
 import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
 import { applyEnvUpdates, isRateLimited, isValidIPv4 } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
-import { composeCommand, scheduleUpdaterRecreateSafely, servicesToRecreate } from './rollout.js';
+import { composeArgv, scheduleUpdaterRecreateSafely, servicesToRecreate } from './rollout.js';
 import { handleUpdate } from './update.js';
 import { handleApplyProfiles } from './applyProfiles.js';
+import { critical } from './lifecycle.js';
 import { handlePortChecks } from './portChecks.js';
 import { handleProfileState } from './profileState.js';
 
@@ -98,7 +99,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 	if (action === 'add') {
 		// Step 1: Attach IP to network interface
-		const addIp = exec(`ip addr add ${ip}/32 dev eth0`, '/');
+		const addIp = exec('ip', ['addr', 'add', `${ip}/32`, 'dev', 'eth0'], '/');
 		steps.push({ step: 'ip-addr-add', ...addIp });
 
 		// Step 2: Write persistent network config (survives reboots)
@@ -133,12 +134,12 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 		}
 
 		// Step 4: Restart MTA to pick up new IP pool
-		const restart = exec('docker compose restart mta', OWLAT_DIR);
+		const restart = exec('docker', ['compose', 'restart', 'mta'], OWLAT_DIR);
 		steps.push({ step: 'restart-mta', ...restart });
 	} else {
 		// Remove action
 		// Step 1: Remove IP from network interface
-		const delIp = exec(`ip addr del ${ip}/32 dev eth0`, '/');
+		const delIp = exec('ip', ['addr', 'del', `${ip}/32`, 'dev', 'eth0'], '/');
 		steps.push({ step: 'ip-addr-del', ...delIp });
 
 		// Step 2: Remove persistent config
@@ -171,7 +172,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 		}
 
 		// Step 4: Restart MTA
-		const restart = exec('docker compose restart mta', OWLAT_DIR);
+		const restart = exec('docker', ['compose', 'restart', 'mta'], OWLAT_DIR);
 		steps.push({ step: 'restart-mta', ...restart });
 	}
 
@@ -272,7 +273,8 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	}
 
 	const recreate = exec(
-		`${composeCommand()} up -d --force-recreate ${plan.services.join(' ')}`,
+		'docker',
+		[...composeArgv(), 'up', '-d', '--force-recreate', ...plan.services],
 		OWLAT_DIR
 	);
 
@@ -295,14 +297,18 @@ export function buildRequestListener() {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		const url = new URL(req.url || '/', `http://localhost:${PORT}`);
 
+		// The four state-changing endpoints run as critical sections: each writes
+		// host files and only then reconciles the running containers, so a
+		// SIGTERM landing between those two halves is what leaves the host's
+		// configuration and its running state describing different deployments.
 		if (req.method === 'POST' && url.pathname === '/update') {
-			await handleUpdate(req, res);
+			await critical(() => handleUpdate(req, res));
 		} else if (req.method === 'POST' && url.pathname === '/configure-ip') {
-			await handleConfigureIp(req, res);
+			await critical(() => handleConfigureIp(req, res));
 		} else if (req.method === 'POST' && url.pathname === '/rotate-env') {
-			await handleRotateEnv(req, res);
+			await critical(() => handleRotateEnv(req, res));
 		} else if (req.method === 'POST' && url.pathname === '/apply-profiles') {
-			await handleApplyProfiles(req, res);
+			await critical(() => handleApplyProfiles(req, res));
 		} else if (req.method === 'POST' && url.pathname === '/port-checks') {
 			await handlePortChecks(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/profile-state') {

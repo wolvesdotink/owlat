@@ -339,6 +339,7 @@ export const getKeyDirectory = internalQuery({
  * `domain` (the request host) + the local-part `wkdHash`. Returns the base64
  * of the `application/octet-stream` body; the Nuxt route decodes and serves it.
  */
+// authz: no gate by design — a WKD fetch is anonymous and returns only public key bytes.
 export const getKeyForWkd = publicQuery({
 	// public: WKD serves public key material to the world by design (draft-koch).
 	args: { domain: v.string(), wkdHash: v.string() },

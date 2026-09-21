@@ -5,6 +5,58 @@ import { log } from './log.js';
 
 const POLL_INTERVAL_MS = Number(process.env['POLL_INTERVAL_MS'] ?? 10_000);
 
+// Route both crash channels through the worker's own log stream. Node ≥15 ends
+// the process on either one already, so what changes is that the event explaining
+// the restart appears in the same log the rest of the run wrote, instead of as a
+// raw stderr trace beside it. Ending is still the right outcome: the queue-side
+// reclaim at the next boot is what repairs a worker's in-flight task state.
+//
+// This block duplicates `@owlat/shared/nodeShutdown` because the worker's image
+// compiles a FILTERED workspace install (`bun install --filter @owlat/code-worker
+// …`) and ships the tsc output, so taking the dependency on means changing which
+// packages that image installs and builds — not just a manifest line.
+process.on('uncaughtException', (err) => {
+	log(`Uncaught exception — exiting: ${err instanceof Error ? err.stack : String(err)}`);
+	process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+	log(`Unhandled rejection — exiting: ${reason instanceof Error ? reason.stack : String(reason)}`);
+	process.exit(1);
+});
+
+// Signal handling for the poll loop. There is no listener to close: the worker
+// pulls work, so "stop accepting" means "do not start another iteration". A
+// task already running keeps running — cutting it in half would strand its
+// branch and its Convex row, and the row is reclaimed at the next boot anyway.
+// Docker's grace period therefore still bounds a long task, but the common case
+// (a signal during the idle sleep, which is where the worker spends nearly all
+// of its time) now exits cleanly and immediately.
+let stopping = false;
+let interruptSleep: (() => void) | undefined;
+
+function requestStop(signal: NodeJS.Signals): void {
+	if (stopping) return;
+	stopping = true;
+	log(`${signal} received — finishing the current poll iteration, then exiting`);
+	interruptSleep?.();
+}
+
+process.on('SIGTERM', () => requestStop('SIGTERM'));
+process.on('SIGINT', () => requestStop('SIGINT'));
+
+/** Idle between polls, cut short by a shutdown signal. */
+function sleepUntilNextPoll(): Promise<void> {
+	return new Promise<void>((resolve) => {
+		const timer = setTimeout(resolve, POLL_INTERVAL_MS);
+		interruptSleep = () => {
+			clearTimeout(timer);
+			resolve();
+		};
+	}).finally(() => {
+		interruptSleep = undefined;
+	});
+}
+
 async function pollForTasks(): Promise<void> {
 	const client = getConvexClient();
 
@@ -87,11 +139,18 @@ async function main(): Promise<void> {
 
 	// Poll loop — one worker drains BOTH queues (code-work tasks and the
 	// generalized Tier-3 plugin-task queue) through the shared sandbox seam.
-	while (true) {
+	while (!stopping) {
 		await pollForTasks();
+		if (stopping) break;
 		await pollForPluginTasks();
-		await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+		if (stopping) break;
+		await sleepUntilNextPoll();
 	}
+
+	// Exit explicitly: the Convex client keeps its websocket open, so returning
+	// from main() alone would leave the process alive past the signal.
+	log('Poll loop stopped — exiting');
+	process.exit(0);
 }
 
 main().catch((error) => {

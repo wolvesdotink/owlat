@@ -110,3 +110,27 @@ describe('TaskOptions', () => {
 		expect(wrapper.emitted('update:modelValue')!.at(-1)).toEqual(['No']);
 	});
 });
+
+describe('TaskOptions affordance', () => {
+	it('explains that a chip is a clickable answer and reads the pick back', async () => {
+		const wrapper = mountOptions();
+		expect(wrapper.find('[data-testid="task-options-lead"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="task-options-readback"]').exists()).toBe(false);
+		await wrapper.findAll(chipSel)[1]!.trigger('click');
+		const readback = wrapper.find('[data-testid="task-options-readback"]');
+		expect(readback.exists()).toBe(true);
+		expect(readback.text()).toContain('No');
+		expect(wrapper.findAll(chipSel)[1]!.attributes('aria-pressed')).toBe('true');
+	});
+
+	it('labels the remembered chip and says so in the read-back until the person picks otherwise', async () => {
+		const wrapper = mountOptions({ modelValue: 'Yes', remembered: 'Yes' });
+		expect(wrapper.find('[data-testid="task-option-remembered"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="task-options-readback"]').text()).toMatch(/earlier answer/);
+		await wrapper.findAll(chipSel)[1]!.trigger('click');
+		expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['No']);
+		expect(wrapper.find('[data-testid="task-options-readback"]').text()).not.toMatch(
+			/earlier answer/
+		);
+	});
+});

@@ -28,7 +28,8 @@ export async function readStreamBytes(
 			if (!value) continue;
 			totalBytes += value.byteLength;
 			if (totalBytes > maxBytes) {
-				await reader.cancel().catch(() => undefined);
+				// Do not wait for an untrusted producer to acknowledge cancellation.
+				void reader.cancel().catch(() => undefined);
 				throw new StreamByteLimitExceeded(`response exceeds ${maxBytes} bytes`);
 			}
 			chunks.push(value);

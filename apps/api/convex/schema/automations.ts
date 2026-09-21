@@ -45,8 +45,7 @@ export const automationTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_status', ['status'])
-		.index('by_status_trigger', ['status', 'triggerType'])
-		.index('by_trigger_type', ['triggerType']),
+		.index('by_status_trigger', ['status', 'triggerType']),
 
 	// Automation Steps - workflow steps within an automation
 	automationSteps: defineTable({
@@ -103,9 +102,7 @@ export const automationTables = {
 		.index('by_automation', ['automationId'])
 		.index('by_contact', ['contactId'])
 		.index('by_automation_and_contact', ['automationId', 'contactId'])
-		.index('by_automation_contact_status', ['automationId', 'contactId', 'status'])
-		.index('by_automation_and_status', ['automationId', 'status'])
-		.index('by_status_and_next_step', ['status', 'nextStepAt']),
+		.index('by_automation_and_status', ['automationId', 'status']),
 
 	// Automation Step Runs - tracks individual step execution within automation runs
 	automationStepRuns: defineTable({
@@ -134,7 +131,6 @@ export const automationTables = {
 		retryCount: v.optional(v.number()),
 	})
 		.index('by_automation_run', ['automationRunId'])
-		.index('by_automation_run_and_step', ['automationRunId', 'stepIndex'])
 		.index('by_status', ['status'])
 		.index('by_status_and_delay_until', ['status', 'delayUntil']),
 

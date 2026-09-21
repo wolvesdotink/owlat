@@ -16,7 +16,7 @@ import { internalMutation, internalQuery } from './_generated/server';
 import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireAdminContext } from './lib/sessionOrganization';
 import { internal } from './_generated/api';
-import { getOrThrow } from './_utils/errors';
+import { getOrThrow, throwInvalidState } from './_utils/errors';
 import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
 import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { getCachedContactCount } from './lib/contactCountHelpers';
@@ -169,7 +169,9 @@ export const regenerate = authedMutation({
 		const dataset =
 			viz.dataQuery !== undefined && isDatasetKey(viz.dataQuery) ? viz.dataQuery : undefined;
 		if (dataset === undefined) {
-			throw new Error('This visualization uses illustrative sample data and cannot be refreshed.');
+			throwInvalidState(
+				'This visualization uses illustrative sample data and cannot be refreshed.'
+			);
 		}
 
 		await ctx.db.patch(args.id, {

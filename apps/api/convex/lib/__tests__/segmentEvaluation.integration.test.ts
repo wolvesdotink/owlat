@@ -716,7 +716,7 @@ describe('evaluateSegmentCount', () => {
 				JSON.stringify({ logic: 'AND', conditions: [] })
 			);
 
-			expect(result).toEqual({ total: 3, eligible: 3 });
+			expect(result).toMatchObject({ total: 3, eligible: 3, done: true });
 		});
 	});
 
@@ -746,7 +746,7 @@ describe('evaluateSegmentCount', () => {
 			);
 
 			// Only the live contact counts — the soft-deleted one is filtered.
-			expect(result).toEqual({ total: 1, eligible: 1 });
+			expect(result).toMatchObject({ total: 1, eligible: 1, done: true });
 		});
 	});
 
@@ -763,7 +763,7 @@ describe('evaluateSegmentCount', () => {
 			});
 
 			const result = await evaluateSegmentCount(ctx, 'invalid json{{{');
-			expect(result).toEqual({ total: 0, eligible: 0 });
+			expect(result).toMatchObject({ total: 0, eligible: 0, done: true });
 		});
 	});
 
@@ -815,7 +815,7 @@ describe('evaluateSegmentCount', () => {
 			};
 
 			const result = await evaluateSegmentCount(ctx, JSON.stringify(filters));
-			expect(result).toEqual({ total: 2, eligible: 2 });
+			expect(result).toMatchObject({ total: 2, eligible: 2, done: true });
 		});
 	});
 
@@ -867,7 +867,7 @@ describe('evaluateSegmentCount', () => {
 			};
 
 			const result = await evaluateSegmentCount(ctx, JSON.stringify(filters));
-			expect(result).toEqual({ total: 2, eligible: 2 });
+			expect(result).toMatchObject({ total: 2, eligible: 2, done: true });
 		});
 	});
 
@@ -932,7 +932,7 @@ describe('evaluateSegmentCount', () => {
 			};
 
 			const result = await evaluateSegmentCount(ctx, JSON.stringify(filters));
-			expect(result).toEqual({ total: 0, eligible: 0 });
+			expect(result).toMatchObject({ total: 0, eligible: 0, done: true });
 		});
 	});
 
@@ -968,7 +968,7 @@ describe('evaluateSegmentCount', () => {
 			};
 
 			const result = await evaluateSegmentCount(ctx, JSON.stringify(filters));
-			expect(result).toEqual({ total: 1, eligible: 1 });
+			expect(result).toMatchObject({ total: 1, eligible: 1, done: true });
 		});
 	});
 
@@ -1014,7 +1014,7 @@ describe('evaluateSegmentCount', () => {
 			};
 
 			const result = await evaluateSegmentCount(ctx, JSON.stringify(filters));
-			expect(result).toEqual({ total: 1, eligible: 1 });
+			expect(result).toMatchObject({ total: 1, eligible: 1, done: true });
 		});
 	});
 
@@ -1043,7 +1043,7 @@ describe('evaluateSegmentCount', () => {
 			};
 
 			const result = await evaluateSegmentCount(ctx, JSON.stringify(filters));
-			expect(result).toEqual({ total: 0, eligible: 0 });
+			expect(result).toMatchObject({ total: 0, eligible: 0, done: true });
 		});
 	});
 });

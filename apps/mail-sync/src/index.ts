@@ -12,6 +12,7 @@ import { AccountManager } from './accountManager.js';
 import { startServer } from './server.js';
 import { startSeedProbeSweeper } from './seedProbeRunner.js';
 import { logger } from './logger.js';
+import { installCrashHandlers } from '@owlat/shared/nodeShutdown';
 import { pathToFileURL } from 'node:url';
 
 export async function main(): Promise<void> {
@@ -39,6 +40,10 @@ export async function main(): Promise<void> {
 
 const entryPath = process.argv[1];
 if (entryPath && import.meta.url === pathToFileURL(entryPath).href) {
+	// Crash channels first, so a failure inside main()'s own startup is reported
+	// through this logger and ends the process, rather than printing a bare trace
+	// (uncaughtException) or, for a rejection, being swallowed entirely.
+	installCrashHandlers({ log: (message, detail) => logger.fatal({ err: detail }, message) });
 	void main().catch((err) => {
 		logger.error({ err }, 'fatal startup error');
 		process.exit(1);

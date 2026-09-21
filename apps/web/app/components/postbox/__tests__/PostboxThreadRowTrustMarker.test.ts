@@ -138,3 +138,15 @@ describe('PostboxThreadRow sender-trust marker', () => {
 		expect(w.find('li').classes()).not.toContain('pbx-row-danger');
 	});
 });
+
+describe('PostboxThreadRow link', () => {
+	// The row used to resolve NuxtLink at render time, which a Nuxt app cannot
+	// do: it rendered a bare `<nuxtlink>` with no href and a click went nowhere.
+	// The test mocks that helper away, so this pins the explicit import instead.
+	it('renders the row as a real anchor to the message so a click opens it', () => {
+		const wrapper = mountRow({ _id: 'mm_1' as never });
+		const link = wrapper.find('.pbx-row-link');
+		expect(link.element.tagName).toBe('A');
+		expect(link.attributes('href')).toBe('/dashboard/postbox/inbox/mm_1');
+	});
+});

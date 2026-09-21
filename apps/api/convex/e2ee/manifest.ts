@@ -150,6 +150,7 @@ function rotationFeedUrl(): string {
  * only when either changes. This keeps the bytes stable for HTTP caching /
  * verifier comparison and avoids doing anonymous per-request OpenPGP signing.
  */
+// authz: no gate by design — the signed instance manifest is world-readable (TOFU discovery).
 export const getSignedManifest = publicAction({
 	// public: the instance manifest is a world-readable, signed descriptor (TOFU discovery).
 	args: {},

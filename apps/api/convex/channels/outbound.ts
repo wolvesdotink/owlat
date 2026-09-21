@@ -31,6 +31,7 @@ import { internalAction } from '../_generated/server';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
+import { throwInvalidInput } from '../_utils/errors';
 import { outboundChannelValidator } from '../lib/convexValidators';
 import { encryptSecret } from '../lib/credentialCrypto';
 import { decryptChannelCreds } from './credentials';
@@ -277,7 +278,7 @@ export const sendChannelMessage = authedAction({
 		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
 
 		const text = args.text.trim();
-		if (!text) throw new Error('Message cannot be empty');
+		if (!text) throwInvalidInput('Message cannot be empty');
 
 		// Validate the send + resolve the thread (throws on a misconfiguration).
 		const threadId = await ctx.runMutation(internal.unifiedMessages.resolveOutboundThread, {

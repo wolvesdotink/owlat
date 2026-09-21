@@ -29,8 +29,48 @@
 # baseline entry fails (the query was fixed/removed — delete its line so the
 # debt count only goes down).
 #
+# `publicQuery` / `publicAction` are covered too, and are the reason this gate
+# was nearly blind: they are the dominant shape for authenticated reads in
+# postbox/inbox/knowledge (90-odd exports), where the auth floor is deliberately
+# absent so the read can soft-fail — return empty/null for an anonymous or
+# non-member caller — instead of throwing. The decision then lives entirely in
+# the handler, which is exactly the thing that can be forgotten. The
+# `// public: <reason>` note check-public-functions.sh requires is NOT accepted
+# as the decision here: it says the endpoint is public on purpose, not who may
+# read the data, and taking it would make this gate a no-op for every one of
+# them.
+#
+# The soft-fail predicates below are recognized as gates alongside the throwing
+# ones, because each one answers "may this caller read this?" and its callers
+# return empty on `false`:
+#
+#   isActiveOrgMember      lib/sessionOrganization.ts — authenticated ACTIVE member
+#   isSharedInboxReader    inbox/access.ts — owner/admin, the shared-inbox reader rule
+#   loadReadableMailbox    mail/permissions.ts — requireMailboxAccess collapsed to a doc|null
+#   loadReadableMessage    mail/mailbox/messages.ts — the same, keyed by message id
+#   loadAccessibleMailboxes mail/permissions.ts — the caller's own + shared-member mailboxes
+#
+# Two of those are weaker than they look, and a REVIEWER still has to check the
+# call site — the token only proves the handler asked the question:
+#
+#   loadAccessibleMailboxes (mail/permissions.ts:181) is a SCOPING helper, not
+#   an authorization check. It takes `userId` / `organizationId` as plain
+#   arguments and lists that user's mailboxes; it counts as a decision only
+#   when both come from the caller's resolved session. Fed from `args`, it
+#   would enumerate someone else's inbox and still satisfy this grep.
+#
+#   isSharedInboxReader (inbox/access.ts) type-guards a session OBJECT handed
+#   to it, so it is only as good as where that object came from — the same
+#   caveat, weaker, because every current caller resolves it via
+#   getBetterAuthSessionWithRole one line above.
+#
+# A soft-auth read whose gate lives one hop away (an internal query run with the
+# inherited identity, or a handler extracted to another module) is invisible
+# here by construction, so it carries the `// authz: <where the gate lives>`
+# opt-out instead.
+#
 # NOTE: `chatQuery` / `assistantQuery` / `postboxQuery` (chat/_helpers.ts,
-# assistant/conversations.ts, mail/_helpers.ts) compose `authedQuery` with a
+# assistant/conversations.ts, mail/_helpers.ts) compose `authedQuery` with a `assertFeatureEnabled`
 # FEATURE-flag floor only — a feature flag is NOT an authorization decision — so
 # they are matched by the is_export regex below and remain SUBJECT to this
 # ratchet exactly like a bare `authedQuery`. The pre-existing chat reads keep
@@ -50,7 +90,7 @@ generate() {
 			{
 				is_comment = ($0 ~ /^[[:space:]]*\/\//)
 				is_optout  = ($0 ~ /\/\/[[:space:]]*(authz|all-members):/)
-				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|chatQuery|assistantQuery|postboxQuery)\(/)
+				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|chatQuery|assistantQuery|postboxQuery|publicQuery|publicAction)\(/)
 			}
 			is_comment && is_optout { block_optout = 1 }
 			is_export {
@@ -58,7 +98,7 @@ generate() {
 				gate = block_optout
 				block_optout = 0
 			}
-			in_fn && $0 ~ /(requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|requireCampaignSendersManage|requireMailboxAccess|requireMessageAccess|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin)/ { gate = 1 }
+			in_fn && $0 ~ /(requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|requireCampaignSendersManage|requireMailboxAccess|requireMessageAccess|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin|isActiveOrgMember|isSharedInboxReader|loadReadableMailbox|loadReadableMessage|loadAccessibleMailboxes)/ { gate = 1 }
 			in_fn && is_optout { gate = 1 }
 			in_fn && /^\}\)/ {
 				if (!gate) print FILENAME ":" name

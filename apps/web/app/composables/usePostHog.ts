@@ -1,4 +1,15 @@
 import type posthog from 'posthog-js';
+import type { ShallowRef } from 'vue';
+
+/**
+ * The box `plugins/posthog.client.ts` provides as `$posthog`.
+ *
+ * It holds the client only while `analytics.posthog` is on: the plugin fills it
+ * once the flag resolves true and empties it when the flag flips off, so a
+ * reactive reader re-runs on both edges and every method below falls back to a
+ * no-op in between.
+ */
+export type PostHogHandle = ShallowRef<typeof posthog | null>;
 
 /**
  * Composable for PostHog analytics.
@@ -8,7 +19,7 @@ export function usePostHog() {
 	const nuxtApp = useNuxtApp();
 
 	function getInstance(): typeof posthog | null {
-		return (nuxtApp.$posthog as typeof posthog | null) ?? null;
+		return (nuxtApp.$posthog as PostHogHandle | null)?.value ?? null;
 	}
 
 	function capture(event: string, properties?: Record<string, unknown>) {

@@ -25,14 +25,7 @@ function mockCtx(): ActionCtx {
 }
 
 function fakeRequest(headers: Record<string, string>, body: string): Request {
-	const lower: Record<string, string> = {};
-	for (const [k, v] of Object.entries(headers)) lower[k.toLowerCase()] = v;
-	return {
-		method: 'POST',
-		url: 'https://deploy.convex.site/webhooks/test',
-		headers: { get: (name: string) => lower[name.toLowerCase()] ?? null },
-		text: async () => body,
-	} as unknown as Request;
+	return new Request('https://deploy.convex.site/webhooks/test', { method: 'POST', headers, body });
 }
 
 function makeAdapter(): InboundAdapter {

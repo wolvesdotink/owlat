@@ -58,7 +58,8 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 	// Email verification is opt-in per deployment so enabling it can never lock
 	// out an existing install whose current users signed up before verification
 	// existed (they'd have no verified flag). Unset ⇒ off (current behavior); when
-	// on it gates signup AND invitation acceptance on a followed verification link.
+	// on it also gates sign-in. Invitation acceptance always requires verification
+	// independently: existing members can enumerate pending invitation IDs.
 	const requireEmailVerification = getBoolean('REQUIRE_EMAIL_VERIFICATION');
 	return {
 		// Cast required: BetterAuth component bundles its own copy of Convex types
@@ -168,11 +169,9 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			},
 		},
 		emailVerification: {
-			// Send a verification link on signup when REQUIRE_EMAIL_VERIFICATION is
-			// on, so a fresh account must confirm ownership of the address before it
-			// is usable (H3: the stored profile email is bound to this verified
-			// identity). Off by default to avoid locking out pre-existing accounts.
-			sendOnSignUp: requireEmailVerification,
+			// New invitees must prove inbox ownership before joining, even when
+			// legacy members can still sign in without a verified-email flag.
+			sendOnSignUp: true,
 			// Final hop of the change-email flow. BetterAuth invokes this with
 			// `user.email` already set to the NEW address, so the verification
 			// link is delivered to the address being claimed. Following it is
@@ -323,13 +322,10 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				// Custom access control with 'editor' role instead of 'member'
 				ac,
 				roles: { owner, admin, editor },
-				// H3: when email verification is enabled, an invitee must confirm the
-				// invited address before the membership is accepted — so the email a
-				// claim path later trusts (pendingInboxMembership / pendingMailbox) is
-				// a verified identity, not an unconfirmed client-supplied value.
-				// Guarded off by default (see requireEmailVerification) so existing
-				// installs are not locked out.
-				requireEmailVerificationOnInvitation: requireEmailVerification,
+				// Invitation IDs are visible to organization members; possession is
+				// not proof of owning the invited email. Keep this independent of
+				// legacy sign-in policy so an editor cannot claim an admin invitation.
+				requireEmailVerificationOnInvitation: true,
 				// Single-org-per-instance: the one org is bootstrapped by the
 				// /seed/admin HTTP action (apps/api/convex/seedAdminHttp.ts) which
 				// writes through the BetterAuth adapter directly. The public
