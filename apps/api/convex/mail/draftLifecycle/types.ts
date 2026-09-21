@@ -154,6 +154,7 @@ export type Effect =
 	| AuditLogEffect
 	| {
 			kind: 'delete_attachment_storage';
+			draftId: Id<'mailDrafts'>;
 			storageIds: ReadonlyArray<Id<'_storage'>>;
 	  }
 	| {

@@ -335,6 +335,7 @@ type ReadableMessageBody = {
 } | null;
 
 // public: soft-auth — internal source query returns null for anonymous and enforces mailbox access
+// authz: gate lives in internal.mail.mailbox.messages.getReadableMessageBodySource (loadReadableMessage).
 export const getMessageBody = publicAction({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args): Promise<ReadableMessageBody> => {
@@ -374,6 +375,7 @@ export const getReadableMessageRawStorageId = internalQuery({
 });
 
 // public: soft-auth — internal source query returns null for anonymous and enforces mailbox access
+// authz: gate lives in internal.mail.mailbox.messages.getReadableMessageRawStorageId (loadReadableMessage).
 export const getMessageRawUrl = publicAction({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args): Promise<string | null> => {

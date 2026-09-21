@@ -66,6 +66,14 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
  */
 type SnippetLanguage = 'curl' | 'javascript' | 'python';
 
+/**
+ * Stand-in host for the copy-paste snippets when the deployment has published
+ * no site URL. Deliberately un-runnable rather than plausible: a self-hoster
+ * who pastes this gets an immediate DNS failure they can fix, instead of a
+ * request to somebody else's server.
+ */
+const SNIPPET_HOST_PLACEHOLDER = 'https://<your-owlat-host>';
+
 export function useTransactionalList() {
 	const { t } = useI18n();
 	const router = useRouter();
@@ -308,13 +316,27 @@ export function useTransactionalList() {
 		resetCopiedSnippet();
 	};
 
+	// The snippets are meant to be pasted and run, so they have to name THIS
+	// deployment's HTTP-actions host — `api.owlat.app` is the hosted instance and
+	// belongs to nobody else.
+	const runtimeConfig = useRuntimeConfig();
+	// Only `convexSiteUrl`: `/api/v1/*` is an `http.route` handler, which Convex
+	// serves on the SITE proxy. `convexUrl` is the cloud/sync origin, where a
+	// POST to this path silently 404s — a snippet built from it fails in the one
+	// way the reader cannot diagnose, which is what the placeholder is for.
+	const transactionalEndpoint = computed(() => {
+		const base = (runtimeConfig.public.convexSiteUrl || '').replace(/\/+$/, '');
+		return `${base || SNIPPET_HOST_PLACEHOLDER}/api/v1/transactional`;
+	});
+
 	const getCodeSnippet = (language: 'curl' | 'javascript' | 'python'): string => {
 		if (!selectedEmailForCode.value) return '';
 		const slug = selectedEmailForCode.value.slug;
+		const endpoint = transactionalEndpoint.value;
 
 		switch (language) {
 			case 'curl':
-				return `curl -X POST https://api.owlat.app/api/v1/transactional \\
+				return `curl -X POST ${endpoint} \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -326,7 +348,7 @@ export function useTransactionalList() {
     }
   }'`;
 			case 'javascript':
-				return `const response = await fetch('https://api.owlat.app/api/v1/transactional', {
+				return `const response = await fetch('${endpoint}', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
@@ -347,7 +369,7 @@ const result = await response.json();`;
 				return `import requests
 
 response = requests.post(
-    'https://api.owlat.app/api/v1/transactional',
+    '${endpoint}',
     headers={
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',

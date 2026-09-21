@@ -68,13 +68,13 @@ const PROXY_REMEDIATION =
  */
 export function dockerApiPreflight(): RolloutStep {
 	const probes = [
-		{ endpoint: '/networks', cmd: 'docker network ls --format {{.Name}}' },
-		{ endpoint: '/volumes', cmd: 'docker volume ls --format {{.Name}}' },
+		{ endpoint: '/networks', args: ['network', 'ls', '--format', '{{.Name}}'] },
+		{ endpoint: '/volumes', args: ['volume', 'ls', '--format', '{{.Name}}'] },
 	];
 
 	const denied: string[] = [];
 	for (const probe of probes) {
-		const result = exec(probe.cmd, OWLAT_DIR);
+		const result = exec('docker', probe.args, OWLAT_DIR);
 		if (!result.ok) denied.push(`${probe.endpoint}: ${oneLine(result.stderr) || 'command failed'}`);
 	}
 
@@ -134,6 +134,33 @@ function defaultComposeFiles(): string[] {
  * a character this refuses to interpolate. That is the behaviour this had
  * before, relative binds and all.
  */
+/**
+ * The same invocation as `composeCommand`, as an argv for `exec`.
+ *
+ * This is the form every caller in this process wants: `exec` runs
+ * execFileSync with no shell, so a path holding a space is one argument rather
+ * than two, and nothing here has to be quoted. `composeCommand` survives for
+ * the single case that genuinely needs a command LINE — the `sh -c` payload
+ * handed to the helper container below, which is interpreted by that
+ * container's shell and not by this one.
+ */
+export function composeArgv(files: string[] = []): string[] {
+	const hostDir = hostInstallDir();
+	const envFile = join(OWLAT_DIR, '.env');
+	if (!hostDir || hostDir === OWLAT_DIR) {
+		return ['compose', ...files.flatMap((file) => ['-f', file])];
+	}
+
+	const chosen = files.length > 0 ? files : defaultComposeFiles();
+	return [
+		'compose',
+		'--project-directory',
+		hostDir,
+		...(existsSync(envFile) ? ['--env-file', envFile] : []),
+		...chosen.flatMap((file) => ['-f', file]),
+	];
+}
+
 export function composeCommand(files: string[] = []): string {
 	const hostDir = hostInstallDir();
 	const envFile = join(OWLAT_DIR, '.env');
@@ -161,7 +188,7 @@ export function composeCommand(files: string[] = []): string {
  * that a plain `up` would have left alone.
  */
 export function servicesToRecreate(): { services: string[]; error?: string } {
-	const listed = exec(`${composeCommand()} config --services`, OWLAT_DIR);
+	const listed = exec('docker', [...composeArgv(), 'config', '--services'], OWLAT_DIR);
 	if (!listed.ok) {
 		return { services: [], error: `cannot read the service list: ${oneLine(listed.stderr)}` };
 	}
@@ -199,7 +226,7 @@ interface SelfContainer {
 function inspectSelf(): SelfContainer | null {
 	const format =
 		'{{.Config.Image}}{{"\\n"}}{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}:{{.Destination}}:{{if .RW}}rw{{else}}ro{{end}} {{end}}{{end}}{{"\\n"}}{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}';
-	const result = exec(`docker inspect ${hostname()} --format '${format}'`, OWLAT_DIR);
+	const result = exec('docker', ['inspect', hostname(), '--format', format], OWLAT_DIR);
 	if (!result.ok) return null;
 
 	const [image = '', mounts = '', networks = ''] = result.stdout.split('\n');
@@ -251,18 +278,26 @@ function scheduleUpdaterRecreate(delaySeconds = 10): RolloutStep {
 
 	const [firstNetwork, ...restNetworks] = self.networks;
 	const args = [
-		'docker run -d --rm',
-		'--label ink.wolves.owlat.role=self-update-helper',
-		firstNetwork ? `--network ${firstNetwork}` : '',
-		dockerHost ? `-e DOCKER_HOST=${dockerHost}` : '',
-		...self.binds.map((bind) => `-v ${bind}`),
-		`-w ${OWLAT_DIR}`,
-		'--entrypoint sh',
+		'run',
+		'-d',
+		'--rm',
+		'--label',
+		'ink.wolves.owlat.role=self-update-helper',
+		...(firstNetwork ? ['--network', firstNetwork] : []),
+		...(dockerHost ? ['-e', `DOCKER_HOST=${dockerHost}`] : []),
+		...self.binds.flatMap((bind) => ['-v', bind]),
+		'-w',
+		OWLAT_DIR,
+		'--entrypoint',
+		'sh',
 		self.image,
-		`-c 'sleep ${Math.max(1, Math.trunc(delaySeconds))}; ${composeCommand()} up -d --no-deps updater'`,
-	].filter(Boolean);
+		'-c',
+		// Interpreted by the HELPER container's shell, so this one stays a
+		// command line — hence `composeCommand` rather than `composeArgv`.
+		`sleep ${Math.max(1, Math.trunc(delaySeconds))}; ${composeCommand()} up -d --no-deps updater`,
+	];
 
-	const started = exec(args.join(' '), OWLAT_DIR);
+	const started = exec('docker', args, OWLAT_DIR);
 	if (!started.ok) {
 		return {
 			step,
@@ -280,7 +315,7 @@ function scheduleUpdaterRecreate(delaySeconds = 10): RolloutStep {
 	const helperId = started.stdout.trim().split('\n').pop()?.trim() ?? '';
 	const connectErrors: string[] = [];
 	for (const network of restNetworks) {
-		const connected = exec(`docker network connect ${network} ${helperId}`, OWLAT_DIR);
+		const connected = exec('docker', ['network', 'connect', network, helperId], OWLAT_DIR);
 		if (!connected.ok) connectErrors.push(`${network}: ${oneLine(connected.stderr)}`);
 	}
 

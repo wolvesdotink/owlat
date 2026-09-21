@@ -523,43 +523,56 @@ describe('draftLifecycle.transition — to: sent', () => {
 		});
 	});
 
-	it('STORAGE-LEAK REGRESSION: deletes the draft attachment blobs on send-success', async () => {
-		const t = convexTest(schema, modules);
-		const { mailboxId } = await seedMailboxAndSent(t);
-		const attBlob = await storeBlob(t);
-		const draftId = await seedDraft(t, mailboxId, {
-			state: 'pending_send',
-			undoToken: 'tok-3',
-			attachments: [
-				{
-					storageId: attBlob,
-					filename: 'photo.jpg',
-					contentType: 'image/jpeg',
-					size: 3,
-					isInline: false,
+	it.each(['owned', 'foreign', 'legacy'] as const)(
+		'send-success deletes only owned draft attachments: %s',
+		async (ownership) => {
+			const t = convexTest(schema, modules);
+			const { mailboxId } = await seedMailboxAndSent(t);
+			const attBlob = await storeBlob(t);
+			const draftId = await seedDraft(t, mailboxId, {
+				state: 'pending_send',
+				undoToken: 'tok-3',
+				attachments: [
+					{
+						storageId: attBlob,
+						filename: 'photo.jpg',
+						contentType: 'image/jpeg',
+						size: 3,
+						isInline: false,
+					},
+				],
+			});
+			if (ownership !== 'legacy') {
+				await t.run((ctx) =>
+					ctx.db.insert('storageUploads', {
+						storageId: attBlob,
+						userId: 'user-1',
+						organizationId: 'org-1',
+						status: 'bound',
+						resourceKey: ownership === 'owned' ? `mailDrafts:${draftId}` : 'mediaAssets:foreign',
+					})
+				);
+			}
+			const rawStorageId = await storeBlob(t);
+
+			const outcome = await t.mutation(internal.mail.draftLifecycle.transition, {
+				draftId,
+				input: {
+					to: 'sent',
+					at: Date.now(),
+					context: makeSentContext(rawStorageId),
 				},
-			],
-		});
-		const rawStorageId = await storeBlob(t);
+			});
+			expect(outcome.ok).toBe(true);
 
-		const outcome = await t.mutation(internal.mail.draftLifecycle.transition, {
-			draftId,
-			input: {
-				to: 'sent',
-				at: Date.now(),
-				context: makeSentContext(rawStorageId),
-			},
-		});
-		expect(outcome.ok).toBe(true);
-
-		// The blob should be gone from storage after the cascade ran. This
-		// is the regression test for drift bug #1 in ADR-0028: the old
-		// `deleteAfterSend` only deleted the row, leaking blobs.
-		await t.run(async (ctx) => {
-			const blob = await ctx.storage.get(attBlob);
-			expect(blob).toBeNull();
-		});
-	});
+			// Sending must clean up newly owned uploads without letting a legacy
+			// or inherited attachment reference authorize deletion of foreign bytes.
+			await t.run(async (ctx) => {
+				const blob = await ctx.storage.get(attBlob);
+				expect(blob === null).toBe(ownership === 'owned');
+			});
+		}
+	);
 
 	it('refuses with from_revoked when fromAddress is no longer in allowed set', async () => {
 		const t = convexTest(schema, modules);

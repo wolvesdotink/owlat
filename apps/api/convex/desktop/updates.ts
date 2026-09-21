@@ -299,6 +299,7 @@ export const checkNow = authedAction({
 // public: the desktop updater fetches this from Rust with no session to present,
 // and the answer — which signed GitHub release this instance offers — is already
 // public on GitHub. Read-only, no identity, no writes.
+// authz: no gate by design — the Rust updater has no session and the answer is already public on GitHub.
 export const manifestForClient = publicQuery({
 	args: {
 		// `target` and `arch` are what Tauri substitutes into the endpoint URL.
@@ -331,6 +332,7 @@ export const manifestForClient = publicQuery({
 // public: the capability probe the desktop app hits before pointing its updater
 // at this instance. Same class of data as `/api/instance-info` — the policy an
 // operator set and the newest release already published on GitHub.
+// authz: no gate by design — the updater capability probe answers before any session exists.
 export const getPolicySummary = publicQuery({
 	args: {},
 	handler: async (ctx) => {

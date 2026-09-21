@@ -30,6 +30,7 @@ import { transactionalSendsStep } from './transactionalSends';
 import { contactsStep } from './contacts';
 import { domainsStep } from './domains';
 import { makeSweepStep } from './sweep';
+import { storageUploadsStep } from './storageUploads';
 
 /**
  * Ordered cascade: children before parents, storage-bearing tables
@@ -44,6 +45,7 @@ import { makeSweepStep } from './sweep';
  * soft-mark-sends loop is a no-op index lookup, no waste.
  */
 export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletionTable[]] = [
+	'storageUploads',
 	'accountExportArtifactLeases',
 	'accountExportArtifacts',
 	'accountExportSessions',
@@ -285,6 +287,7 @@ export type _StepsCoverEveryTable = AssertStepsExhaustive<TableMissingFromSteps>
  * the union.
  */
 export const ORGANIZATION_DELETION_STEPS = {
+	storageUploads: storageUploadsStep,
 	accountExportArtifactLeases: makeSweepStep('accountExportArtifactLeases'),
 	accountExportArtifacts: accountExportArtifactsStep,
 	accountExportSessions: makeSweepStep('accountExportSessions'),

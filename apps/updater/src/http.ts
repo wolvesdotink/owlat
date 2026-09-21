@@ -5,7 +5,7 @@
  * control flow (CONVENTIONS.md ~500 LOC rule).
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { errorMessage } from '@owlat/shared';
 import { parseComposePs, type ComposeService } from '@owlat/shared/containerHealth';
 import { safeCompare } from './security.js';
@@ -46,9 +46,27 @@ export function requireAuth(req: IncomingMessage, res: ServerResponse): boolean 
 	return true;
 }
 
-export function exec(cmd: string, cwd: string): { ok: boolean; stdout: string; stderr: string } {
+/**
+ * Run a command with an explicit argv, NEVER a shell.
+ *
+ * `execFileSync`, not `execSync`: two call sites build their command out of
+ * runtime values (the floating IP from a /configure-ip body, the compose file
+ * being staged by /update). Both are validated before they get here, so nothing
+ * was exploitable — but the signature was the problem, because a string command
+ * is an invitation for the next value to be interpolated into a shell. With an
+ * argv array there is no shell to inject into, whatever the value contains.
+ *
+ * No call site needed a pipe, a redirect, `&&` or a glob; the one place that
+ * looked shell-shaped (`docker compose -f <file> …`) is just two more argv
+ * entries.
+ */
+export function exec(
+	file: string,
+	args: string[],
+	cwd: string
+): { ok: boolean; stdout: string; stderr: string } {
 	try {
-		const stdout = execSync(cmd, {
+		const stdout = execFileSync(file, args, {
 			cwd,
 			timeout: 300_000, // 5 minutes
 			encoding: 'utf-8',
@@ -56,7 +74,7 @@ export function exec(cmd: string, cwd: string): { ok: boolean; stdout: string; s
 		});
 		return { ok: true, stdout: stdout || '', stderr: '' };
 	} catch (err) {
-		// Failure = non-zero exit (execSync throws), NOT a grep of stderr:
+		// Failure = non-zero exit (execFileSync throws), NOT a grep of stderr:
 		// docker writes progress to stderr on success, and real failures
 		// ('Error response from daemon') broke the old case-sensitive match.
 		const e = err as { stdout?: string | Buffer | null; stderr?: string | Buffer | null };
@@ -75,7 +93,7 @@ export function exec(cmd: string, cwd: string): { ok: boolean; stdout: string; s
  * allowed registry works.
  */
 export function composePsServices(): { containers: ComposeService[]; raw: string } {
-	const result = exec('docker compose ps --format json', OWLAT_DIR);
+	const result = exec('docker', ['compose', 'ps', '--format', 'json'], OWLAT_DIR);
 
 	// Parsing lives in @owlat/shared so the updater and `owlat doctor` can never
 	// disagree about what the fleet looks like. It also handles both output

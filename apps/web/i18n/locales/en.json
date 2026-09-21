@@ -7766,6 +7766,7 @@
 						"edit": "Edit segment",
 						"viewContacts": "View contacts"
 					},
+					"adminsOnly": "Only owners and admins can create or edit segments.",
 					"clearSearch": "Clear search",
 					"count": "{count} segment | {count} segments",
 					"deleteDialog": {
@@ -8006,6 +8007,7 @@
 						"delete": "Delete topic",
 						"edit": "Edit topic"
 					},
+					"adminsOnly": "Only owners and admins can create or edit topics.",
 					"clearSearch": "Clear search",
 					"count": "{count} topic | {count} topics",
 					"createModal": {
@@ -8178,6 +8180,7 @@
 					"pause": "Pause",
 					"viewDetails": "View Details"
 				},
+				"adminsOnly": "Only owners and admins can create or edit automations.",
 				"clearSearch": "Clear search",
 				"deleteDialog": {
 					"activeWarning": "Active automations must be paused before deletion.",
@@ -9711,6 +9714,7 @@
 					}
 				},
 				"index": {
+					"adminsOnly": "Only owners and admins can create or delete blocks.",
 					"blockCount": "{count} block | {count} blocks",
 					"blocksBadge": "{count} blocks",
 					"clearSearch": "Clear search",
@@ -9887,6 +9891,7 @@
 			},
 			"marketing": {
 				"index": {
+					"adminsOnly": "Only owners and admins can create or delete templates.",
 					"clearSearch": "Clear search",
 					"columns": {
 						"subject": "Subject",
@@ -10050,6 +10055,7 @@
 					}
 				},
 				"index": {
+					"adminsOnly": "Only owners and admins can create or delete transactional emails.",
 					"apiUsage": {
 						"copied": "Copied!",
 						"note": "{label} Replace {placeholder} with your actual API key. You can create API keys in {settings}.",

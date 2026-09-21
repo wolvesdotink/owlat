@@ -1,37 +1,50 @@
 import { describe, it, expect, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { killProcessGroup, removeWorkspace, pruneStaleWorkspaces } from '../taskRunner.js';
+import { reapSandboxProcesses, removeWorkspace, pruneStaleWorkspaces } from '../taskRunner.js';
 
-/**
- * The code-worker executes UNTRUSTED, inbound-email-driven code. Two invariants
- * from the hardening pass are exercised here without spawning real processes:
- *  - a timeout must reap the WHOLE process group (negative pid), not just the
- *    direct child, or a detached vitest worker pool survives the timeout;
- *  - the per-task clone must never leak — it is removed after each task and any
- *    stragglers are pruned on startup.
- */
-describe('killProcessGroup', () => {
-	it('signals the negative pid so the whole process group is reaped', () => {
-		const kill = vi.fn();
-		killProcessGroup(4321, kill);
-		expect(kill).toHaveBeenCalledTimes(1);
-		expect(kill).toHaveBeenCalledWith(-4321, 'SIGKILL');
+describe('sandbox cleanup helper', () => {
+	it('uses the sandbox uid and a credential-free environment to reap all its processes', async () => {
+		const child = new EventEmitter();
+		const spawn = vi.fn(() => child);
+		const done = reapSandboxProcesses(spawn as never);
+		child.emit('exit', 0);
+		await done;
+		const [command, args, options] = spawn.mock.calls[0]!;
+		expect(command).toBe(process.execPath);
+		expect(args).toEqual(['-e', expect.stringContaining("process.kill(-1, 'SIGKILL')")]);
+		expect(options).toMatchObject({ uid: 10001, gid: 10001, env: {}, cwd: '/' });
 	});
 
-	it.each([undefined, 0, -1])('is a no-op for a missing/invalid pid: %s', (pid) => {
-		const kill = vi.fn();
-		killProcessGroup(pid as number | undefined, kill);
-		expect(kill).not.toHaveBeenCalled();
-	});
-
-	it('swallows errors when the group has already exited (ESRCH)', () => {
-		const kill = vi.fn(() => {
-			throw Object.assign(new Error('no such process'), { code: 'ESRCH' });
+	it('stops the worker if sandbox cleanup fails instead of continuing with survivors', async () => {
+		const spawn = vi.fn(() => {
+			throw new Error('helper failed');
 		});
-		expect(() => killProcessGroup(999999, kill)).not.toThrow();
-		expect(kill).toHaveBeenCalledWith(-999999, 'SIGKILL');
+		const fatal = vi.fn(() => {
+			throw new Error('worker stopped');
+		});
+		await expect(reapSandboxProcesses(spawn as never, fatal)).rejects.toThrow('worker stopped');
+		expect(fatal).toHaveBeenCalledWith(1);
+	});
+
+	it('stops the worker if hostile code prevents the helper from exiting', async () => {
+		vi.useFakeTimers();
+		try {
+			const spawn = vi.fn(() => new EventEmitter());
+			const fatal = vi.fn(() => {
+				throw new Error('worker stopped');
+			});
+			const done = expect(reapSandboxProcesses(spawn as never, fatal)).rejects.toThrow(
+				'worker stopped'
+			);
+			await vi.advanceTimersByTimeAsync(5_000);
+			await done;
+			expect(fatal).toHaveBeenCalledWith(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 

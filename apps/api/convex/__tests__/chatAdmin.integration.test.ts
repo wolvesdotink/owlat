@@ -18,7 +18,9 @@
 
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
+import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api } from '../_generated/api';
 import { enableFeatures } from './factories';
 
@@ -38,25 +40,35 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
+			activeOrganizationId: 'test-org',
 		})),
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') = actual as typeof import('../lib/sessionOrganization');
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../lib/sessionOrganization') =
+					actual as typeof import('../lib/sessionOrganization');
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
-				return { userId: sessionMock.user.id, role: sessionMock.user.role };
-			},
-		),
+				return {
+					userId: sessionMock.user.id,
+					role: sessionMock.user.role,
+					activeOrganizationId: 'test-org',
+				};
+			}),
 		requireAdminContext: vi.fn().mockImplementation(async () => {
 			if (sessionMock.user.role === 'editor') {
 				throw new Error('forbidden');
 			}
-			return { userId: sessionMock.user.id, role: sessionMock.user.role };
+			return {
+				userId: sessionMock.user.id,
+				role: sessionMock.user.role,
+				activeOrganizationId: 'test-org',
+			};
 		}),
 	};
 });
@@ -79,8 +91,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'editor') => {
@@ -112,7 +124,7 @@ const addMemberRow = async (
 	t: TestConvex<typeof schema>,
 	roomId: string,
 	memberId: string,
-	role: 'admin' | 'member' = 'member',
+	role: 'admin' | 'member' = 'member'
 ) => {
 	await t.run(async (ctx) => {
 		const now = Date.now();
@@ -126,7 +138,16 @@ const addMemberRow = async (
 	});
 };
 
+async function storeChatUpload(t: TestConvex<typeof schema>, blob: Blob) {
+	return t.run(async (ctx) => {
+		const storageId = await ctx.storage.store(blob);
+		await recordUploadedBlob(ctx, storageId, sessionMock.user.id, 'test-org');
+		return storageId;
+	});
+}
+
 beforeEach(() => {
+	vi.stubEnv('SITE_URL', 'https://owlat.example');
 	setUser('user-alice', 'owner');
 });
 
@@ -153,10 +174,8 @@ describe('chat.members.setMemberRole', () => {
 		const bob = await t.run(async (ctx) =>
 			ctx.db
 				.query('chatRoomMembers')
-				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-bob'),
-				)
-				.first(),
+				.withIndex('by_room_and_member', (q) => q.eq('roomId', roomId!).eq('memberId', 'user-bob'))
+				.first()
 		);
 		expect(bob?.role).toBe('admin');
 	});
@@ -179,16 +198,14 @@ describe('chat.members.setMemberRole', () => {
 				roomId: roomId!,
 				memberId: 'user-bob',
 				role: 'admin',
-			}),
+			})
 		).rejects.toThrow();
 
 		const bob = await t.run(async (ctx) =>
 			ctx.db
 				.query('chatRoomMembers')
-				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-bob'),
-				)
-				.first(),
+				.withIndex('by_room_and_member', (q) => q.eq('roomId', roomId!).eq('memberId', 'user-bob'))
+				.first()
 		);
 		expect(bob?.role).toBe('member');
 	});
@@ -217,9 +234,9 @@ describe('chat.members.setMemberRole', () => {
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-carol'),
+					q.eq('roomId', roomId!).eq('memberId', 'user-carol')
 				)
-				.first(),
+				.first()
 		);
 		expect(carol?.role).toBe('admin');
 	});
@@ -241,16 +258,16 @@ describe('chat.members.setMemberRole', () => {
 				roomId: roomId!,
 				memberId: 'user-alice',
 				role: 'member',
-			}),
+			})
 		).rejects.toThrow();
 
 		const alice = await t.run(async (ctx) =>
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-alice'),
+					q.eq('roomId', roomId!).eq('memberId', 'user-alice')
 				)
-				.first(),
+				.first()
 		);
 		expect(alice?.role).toBe('admin');
 	});
@@ -270,7 +287,7 @@ describe('chat.members.setMemberRole', () => {
 				roomId: roomId!,
 				memberId: 'user-nobody',
 				role: 'admin',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -291,7 +308,7 @@ describe('chat.members.setMemberRole', () => {
 				roomId: dmId!,
 				memberId: 'user-bob',
 				role: 'admin',
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
@@ -316,10 +333,8 @@ describe('chat.members.removeMember', () => {
 		const bob = await t.run(async (ctx) =>
 			ctx.db
 				.query('chatRoomMembers')
-				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-bob'),
-				)
-				.first(),
+				.withIndex('by_room_and_member', (q) => q.eq('roomId', roomId!).eq('memberId', 'user-bob'))
+				.first()
 		);
 		expect(bob).toBeNull();
 	});
@@ -342,16 +357,16 @@ describe('chat.members.removeMember', () => {
 			t.mutation(api.chat.members.removeMember, {
 				roomId: roomId!,
 				memberId: 'user-carol',
-			}),
+			})
 		).rejects.toThrow();
 
 		const carol = await t.run(async (ctx) =>
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-carol'),
+					q.eq('roomId', roomId!).eq('memberId', 'user-carol')
 				)
-				.first(),
+				.first()
 		);
 		expect(carol).not.toBeNull();
 	});
@@ -373,16 +388,16 @@ describe('chat.members.removeMember', () => {
 			t.mutation(api.chat.members.removeMember, {
 				roomId: roomId!,
 				memberId: 'user-alice',
-			}),
+			})
 		).rejects.toThrow();
 
 		const alice = await t.run(async (ctx) =>
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-alice'),
+					q.eq('roomId', roomId!).eq('memberId', 'user-alice')
 				)
-				.first(),
+				.first()
 		);
 		expect(alice?.role).toBe('admin');
 	});
@@ -408,9 +423,9 @@ describe('chat.members.removeMember', () => {
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-alice'),
+					q.eq('roomId', roomId!).eq('memberId', 'user-alice')
 				)
-				.first(),
+				.first()
 		);
 		expect(alice).toBeNull();
 	});
@@ -431,7 +446,7 @@ describe('chat.members.removeMember', () => {
 			t.mutation(api.chat.members.removeMember, {
 				roomId: roomId!,
 				memberId: 'user-nobody',
-			}),
+			})
 		).resolves.toBeNull();
 	});
 
@@ -450,7 +465,7 @@ describe('chat.members.removeMember', () => {
 			t.mutation(api.chat.members.removeMember, {
 				roomId: dmId!,
 				memberId: 'user-bob',
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
@@ -473,10 +488,8 @@ describe('chat.members.leaveRoom', () => {
 		const bob = await t.run(async (ctx) =>
 			ctx.db
 				.query('chatRoomMembers')
-				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-bob'),
-				)
-				.first(),
+				.withIndex('by_room_and_member', (q) => q.eq('roomId', roomId!).eq('memberId', 'user-bob'))
+				.first()
 		);
 		expect(bob).toBeNull();
 	});
@@ -494,17 +507,15 @@ describe('chat.members.leaveRoom', () => {
 		await addMemberRow(t, roomId!, 'user-bob', 'member');
 
 		setUser('user-alice', 'editor');
-		await expect(
-			t.mutation(api.chat.members.leaveRoom, { roomId: roomId! }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.chat.members.leaveRoom, { roomId: roomId! })).rejects.toThrow();
 
 		const alice = await t.run(async (ctx) =>
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-alice'),
+					q.eq('roomId', roomId!).eq('memberId', 'user-alice')
 				)
-				.first(),
+				.first()
 		);
 		expect(alice?.role).toBe('admin');
 	});
@@ -527,9 +538,9 @@ describe('chat.members.leaveRoom', () => {
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-alice'),
+					q.eq('roomId', roomId!).eq('memberId', 'user-alice')
 				)
-				.first(),
+				.first()
 		);
 		expect(alice).toBeNull();
 	});
@@ -552,9 +563,9 @@ describe('chat.members.leaveRoom', () => {
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-alice'),
+					q.eq('roomId', roomId!).eq('memberId', 'user-alice')
 				)
-				.first(),
+				.first()
 		);
 		expect(alice).toBeNull();
 	});
@@ -569,15 +580,14 @@ describe('chat.members.leaveRoom', () => {
 			otherMemberIds: ['user-bob'],
 		});
 
-		await expect(
-			t.mutation(api.chat.members.leaveRoom, { roomId: dmId! }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.chat.members.leaveRoom, { roomId: dmId! })).rejects.toThrow();
 	});
 });
 
 describe('chat.attachments.generateUploadUrl + registerAttachment', () => {
 	it('lets a chat participant generate an upload URL', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['chat']);
 
 		setUser('user-alice', 'editor');
@@ -591,9 +601,7 @@ describe('chat.attachments.generateUploadUrl + registerAttachment', () => {
 		await enableFeatures(t, ['chat']);
 
 		// Store a blob so storage.getUrl resolves.
-		const storageId = await t.run(async (ctx) =>
-			ctx.storage.store(new Blob(['hello'], { type: 'text/plain' })),
-		);
+		const storageId = await storeChatUpload(t, new Blob(['hello'], { type: 'text/plain' }));
 
 		setUser('user-alice', 'editor');
 		const assetId = await t.mutation(api.chat.attachments.registerAttachment, {
@@ -610,32 +618,28 @@ describe('chat.attachments.generateUploadUrl + registerAttachment', () => {
 		expect(asset?.tags).toContain('chat-attachment');
 	});
 
-	it('rejects a registration over the 25 MiB cap', async () => {
+	it('stores the actual byte count instead of a client overstatement', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['chat']);
-
-		const storageId = await t.run(async (ctx) =>
-			ctx.storage.store(new Blob(['x'], { type: 'application/octet-stream' })),
+		const storageId = await storeChatUpload(
+			t,
+			new Blob(['x'], { type: 'application/octet-stream' })
 		);
-
 		setUser('user-alice', 'editor');
-		await expect(
-			t.mutation(api.chat.attachments.registerAttachment, {
-				storageId,
-				filename: 'huge.bin',
-				mimeType: 'application/octet-stream',
-				fileSize: 26 * 1024 * 1024,
-			}),
-		).rejects.toThrow();
+		const assetId = await t.mutation(api.chat.attachments.registerAttachment, {
+			storageId,
+			filename: 'small.bin',
+			mimeType: 'application/octet-stream',
+			fileSize: 26 * 1024 * 1024,
+		});
+		expect((await t.run((ctx) => ctx.db.get(assetId)))?.fileSize).toBe(1);
 	});
 
 	it('rejects a registration with empty filename', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['chat']);
 
-		const storageId = await t.run(async (ctx) =>
-			ctx.storage.store(new Blob(['x'], { type: 'text/plain' })),
-		);
+		const storageId = await storeChatUpload(t, new Blob(['x'], { type: 'text/plain' }));
 
 		setUser('user-alice', 'editor');
 		await expect(
@@ -644,7 +648,7 @@ describe('chat.attachments.generateUploadUrl + registerAttachment', () => {
 				filename: '   ',
 				mimeType: 'text/plain',
 				fileSize: 1,
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
@@ -656,9 +660,7 @@ describe('chat.attachments.getAttachmentDetails (IDOR room gate)', () => {
 
 		// Store + register an attachment, then post a message referencing it in a
 		// private channel as Alice.
-		const storageId = await t.run(async (ctx) =>
-			ctx.storage.store(new Blob(['secret'], { type: 'text/plain' })),
-		);
+		const storageId = await storeChatUpload(t, new Blob(['secret'], { type: 'text/plain' }));
 
 		setUser('user-alice', 'editor');
 		const assetId = await t.mutation(api.chat.attachments.registerAttachment, {
@@ -679,13 +681,13 @@ describe('chat.attachments.getAttachmentDetails (IDOR room gate)', () => {
 				text: 'see attached',
 				attachmentIds: [assetId],
 				createdAt: Date.now(),
-			}),
+			})
 		);
 
 		// Eve is not a member of the private room → denied.
 		setUser('user-eve', 'editor');
 		await expect(
-			t.query(api.chat.attachments.getAttachmentDetails, { messageId }),
+			t.query(api.chat.attachments.getAttachmentDetails, { messageId })
 		).rejects.toThrow();
 	});
 
@@ -693,9 +695,7 @@ describe('chat.attachments.getAttachmentDetails (IDOR room gate)', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['chat']);
 
-		const storageId = await t.run(async (ctx) =>
-			ctx.storage.store(new Blob(['shared'], { type: 'text/plain' })),
-		);
+		const storageId = await storeChatUpload(t, new Blob(['shared'], { type: 'text/plain' }));
 
 		setUser('user-alice', 'editor');
 		const assetId = await t.mutation(api.chat.attachments.registerAttachment, {
@@ -717,7 +717,7 @@ describe('chat.attachments.getAttachmentDetails (IDOR room gate)', () => {
 				text: 'see attached',
 				attachmentIds: [assetId],
 				createdAt: Date.now(),
-			}),
+			})
 		);
 
 		// Bob is a member → allowed, gets the asset details back.
@@ -734,9 +734,7 @@ describe('chat.attachments.getAttachmentDetails (IDOR room gate)', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['chat']);
 
-		const storageId = await t.run(async (ctx) =>
-			ctx.storage.store(new Blob(['pub'], { type: 'text/plain' })),
-		);
+		const storageId = await storeChatUpload(t, new Blob(['pub'], { type: 'text/plain' }));
 
 		setUser('user-alice', 'editor');
 		const assetId = await t.mutation(api.chat.attachments.registerAttachment, {
@@ -757,7 +755,7 @@ describe('chat.attachments.getAttachmentDetails (IDOR room gate)', () => {
 				text: 'public attachment',
 				attachmentIds: [assetId],
 				createdAt: Date.now(),
-			}),
+			})
 		);
 
 		// Carol is not a member, but a public channel is readable by any member.
@@ -807,7 +805,7 @@ describe('chat membership-write validation', () => {
 		await expect(
 			t.mutation(api.chat.dms.findOrCreateDm, {
 				otherMemberIds: ['ghost-user'],
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -820,7 +818,7 @@ describe('chat membership-write validation', () => {
 		const tooMany = Array.from({ length: 51 }, (_, i) => `bulk-${i}`);
 		setUser('user-alice', 'editor');
 		await expect(
-			t.mutation(api.chat.dms.findOrCreateDm, { otherMemberIds: tooMany }),
+			t.mutation(api.chat.dms.findOrCreateDm, { otherMemberIds: tooMany })
 		).rejects.toThrow();
 	});
 
@@ -838,7 +836,7 @@ describe('chat membership-write validation', () => {
 			t.mutation(api.chat.members.addMember, {
 				roomId: roomId!,
 				memberId: 'ghost-user',
-			}),
+			})
 		).rejects.toThrow();
 
 		// No phantom membership row was created.
@@ -846,9 +844,9 @@ describe('chat membership-write validation', () => {
 			ctx.db
 				.query('chatRoomMembers')
 				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'ghost-user'),
+					q.eq('roomId', roomId!).eq('memberId', 'ghost-user')
 				)
-				.first(),
+				.first()
 		);
 		expect(ghost).toBeNull();
 	});
@@ -872,10 +870,8 @@ describe('chat membership-write validation', () => {
 		const bob = await t.run(async (ctx) =>
 			ctx.db
 				.query('chatRoomMembers')
-				.withIndex('by_room_and_member', (q) =>
-					q.eq('roomId', roomId!).eq('memberId', 'user-bob'),
-				)
-				.first(),
+				.withIndex('by_room_and_member', (q) => q.eq('roomId', roomId!).eq('memberId', 'user-bob'))
+				.first()
 		);
 		expect(bob?.role).toBe('member');
 	});
@@ -890,7 +886,7 @@ describe('chat membership-write validation', () => {
 				name: 'product',
 				visibility: 'private',
 				initialMemberIds: ['ghost-user'],
-			}),
+			})
 		).rejects.toThrow();
 
 		// Nothing was created.
@@ -898,9 +894,9 @@ describe('chat membership-write validation', () => {
 			ctx.db
 				.query('chatRooms')
 				.withIndex('by_kind_and_normalized_name', (q) =>
-					q.eq('kind', 'channel').eq('normalizedName', 'product'),
+					q.eq('kind', 'channel').eq('normalizedName', 'product')
 				)
-				.first(),
+				.first()
 		);
 		expect(channel).toBeNull();
 	});
@@ -916,7 +912,7 @@ describe('chat membership-write validation', () => {
 				name: 'product',
 				visibility: 'private',
 				initialMemberIds: tooMany,
-			}),
+			})
 		).rejects.toThrow();
 	});
 });

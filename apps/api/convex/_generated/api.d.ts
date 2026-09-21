@@ -1,3 +1,8 @@
+import type * as chat_attachmentAccess from '../chat/attachmentAccess.js';
+import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
+import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
+import type * as storage_uploads from '../storage/uploads.js';
+import type * as schema_storage from '../schema/storage.js';
 /* eslint-disable */
 /**
  * Generated `api` utility.
@@ -185,6 +190,7 @@ import type * as codeWorkTasks from '../codeWorkTasks.js';
 import type * as conditions_contact_property_index from '../conditions/contact_property/index.js';
 import type * as conditions_email_activity_index from '../conditions/email_activity/index.js';
 import type * as conditions_index from '../conditions/index.js';
+import type * as conditions_liveContactScan from '../conditions/liveContactScan.js';
 import type * as conditions_segmentMatch from '../conditions/segmentMatch.js';
 import type * as conditions_topic_membership_index from '../conditions/topic_membership/index.js';
 import type * as conditions_types from '../conditions/types.js';
@@ -566,6 +572,7 @@ import type * as knowledge_graphTraversal from '../knowledge/graphTraversal.js';
 import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
+import type * as lib_readBody from '../lib/readBody.js';
 import type * as lib_aiProviderConfigValidators from '../lib/aiProviderConfigValidators.js';
 import type * as lib_appLocales from '../lib/appLocales.js';
 import type * as lib_atRestBodies from '../lib/atRestBodies.js';
@@ -893,6 +900,7 @@ import type * as migrations_0040_backfill_credential_allowed_domains from '../mi
 import type * as migrations_0041_forget_disconnected_credentials from '../migrations/0041_forget_disconnected_credentials.js';
 import type * as migrations_0042_recompute_mailbox_used_bytes from '../migrations/0042_recompute_mailbox_used_bytes.js';
 import type * as migrations_0043_detect_missing_mail_blobs from '../migrations/0043_detect_missing_mail_blobs.js';
+import type * as migrations_0044_private_chat_media from '../migrations/0044_private_chat_media.js';
 import type * as platformAdmin_bootstrap from '../platformAdmin/bootstrap.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
@@ -1037,6 +1045,7 @@ import type * as seedDemo_loaders_webhooks from '../seedDemo/loaders/webhooks.js
 import type * as seedDemo_messages from '../seedDemo/messages.js';
 import type * as seedDemo_pipeline from '../seedDemo/pipeline.js';
 import type * as segments from '../segments.js';
+import type * as segments_countRefresh from '../segments/countRefresh.js';
 import type * as segments_listing from '../segments/listing.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
 import type * as semanticFiles from '../semanticFiles.js';
@@ -1137,6 +1146,11 @@ import type * as workspaces_settings from '../workspaces/settings.js';
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
 declare const fullApi: ApiFromModules<{
+	'chat/attachmentAccess': typeof chat_attachmentAccess;
+	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
+	'storage/uploadsHttp': typeof storage_uploadsHttp;
+	'storage/uploads': typeof storage_uploads;
+	'schema/storage': typeof schema_storage;
 	'__tests__/factories': typeof __tests___factories;
 	'__tests__/helpers/permissionGateMock': typeof __tests___helpers_permissionGateMock;
 	'_utils/batchLoader': typeof _utils_batchLoader;
@@ -1314,6 +1328,7 @@ declare const fullApi: ApiFromModules<{
 	'conditions/contact_property/index': typeof conditions_contact_property_index;
 	'conditions/email_activity/index': typeof conditions_email_activity_index;
 	'conditions/index': typeof conditions_index;
+	'conditions/liveContactScan': typeof conditions_liveContactScan;
 	'conditions/segmentMatch': typeof conditions_segmentMatch;
 	'conditions/topic_membership/index': typeof conditions_topic_membership_index;
 	'conditions/types': typeof conditions_types;
@@ -1695,6 +1710,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/maintenance': typeof knowledge_maintenance;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
+	'lib/readBody': typeof lib_readBody;
 	'lib/aiProviderConfigValidators': typeof lib_aiProviderConfigValidators;
 	'lib/appLocales': typeof lib_appLocales;
 	'lib/atRestBodies': typeof lib_atRestBodies;
@@ -2022,6 +2038,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0041_forget_disconnected_credentials': typeof migrations_0041_forget_disconnected_credentials;
 	'migrations/0042_recompute_mailbox_used_bytes': typeof migrations_0042_recompute_mailbox_used_bytes;
 	'migrations/0043_detect_missing_mail_blobs': typeof migrations_0043_detect_missing_mail_blobs;
+	'migrations/0044_private_chat_media': typeof migrations_0044_private_chat_media;
 	'platformAdmin/bootstrap': typeof platformAdmin_bootstrap;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;
@@ -2166,6 +2183,7 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/messages': typeof seedDemo_messages;
 	'seedDemo/pipeline': typeof seedDemo_pipeline;
 	segments: typeof segments;
+	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
 	semanticFileProcessing: typeof semanticFileProcessing;
 	semanticFiles: typeof semanticFiles;

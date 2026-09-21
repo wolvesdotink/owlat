@@ -7,6 +7,7 @@
  * (`auth/apiKeyAuth.ts`), caps the body, runs the handler, and normalizes the
  * rate-limit/CORS headers on the way out.
  */
+import { BodyTooLargeError, readBodyBytes } from '../lib/readBody';
 import { httpAction } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { corsHeaders as sharedCorsHeaders } from '../lib/cors';
@@ -42,32 +43,24 @@ export async function enforceBodyCap(
 	if (BODYLESS_METHODS.has(request.method.toUpperCase())) {
 		return { ok: true, request };
 	}
-	// Cheap pre-check on the declared length (honest clients / oversized uploads).
-	const contentLength = request.headers.get('Content-Length');
-	if (contentLength && Number.parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+	let raw: ArrayBuffer;
+	try {
+		raw = await readBodyBytes(request, MAX_BODY_BYTES);
+	} catch (error) {
+		if (!(error instanceof BodyTooLargeError)) throw error;
 		return {
 			ok: false,
 			response: errorResponse('invalid_input', 'Request body too large', { requestOrigin }),
 		};
 	}
-	// Buffer so a chunked body with no Content-Length can't stream past the cap.
-	const raw = await request.arrayBuffer();
-	if (raw.byteLength > MAX_BODY_BYTES) {
-		return {
-			ok: false,
-			response: errorResponse('invalid_input', 'Request body too large', { requestOrigin }),
-		};
-	}
+
 	return {
 		ok: true,
-		request:
-			raw.byteLength === 0
-				? request
-				: new Request(request.url, {
-						method: request.method,
-						headers: request.headers,
-						body: raw,
-					}),
+		request: new Request(request.url, {
+			method: request.method,
+			headers: request.headers,
+			body: raw,
+		}),
 	};
 }
 

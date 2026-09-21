@@ -1,3 +1,4 @@
+import { BodyTooLargeError, readBodyText } from '../lib/readBody';
 /**
  * BUNDLED-PLUGIN FEEDBACK WEBHOOK — one route for every plugin transport that
  * reports its own outcomes.
@@ -92,19 +93,6 @@ export const PLUGIN_FEEDBACK_PATH_PREFIX = '/webhooks/plugin/';
 const MAX_BODY_BYTES = PLUGIN_WEBHOOK_MAX_BODY_BYTES;
 
 /**
- * Whether the read body exceeds the cap.
- *
- * The cheap test first: a UTF-8 encoding is never SHORTER than the string's
- * UTF-16 length, so a string longer than the cap is over it without encoding
- * anything. Only a string that could still fit is encoded, which bounds the
- * measurement's own cost.
- */
-function exceedsBodyCap(rawBody: string): boolean {
-	if (rawBody.length > MAX_BODY_BYTES) return true;
-	return new TextEncoder().encode(rawBody).byteLength > MAX_BODY_BYTES;
-}
-
-/**
  * The plugin id in `/webhooks/plugin/<pluginId>`, or `null`.
  *
  * Convex matches a `pathPrefix` route on the prefix alone, so anything deeper
@@ -167,12 +155,11 @@ export const pluginFeedbackWebhook = httpAction(async (ctx, request) => {
 	}
 	let rawBody: string;
 	try {
-		rawBody = await request.text();
-	} catch {
+		rawBody = await readBodyText(request, MAX_BODY_BYTES);
+	} catch (error) {
+		if (error instanceof BodyTooLargeError)
+			return jsonResponse(413, { error: 'Payload too large' });
 		return jsonResponse(400, { error: 'Failed to read request body' });
-	}
-	if (exceedsBodyCap(rawBody)) {
-		return jsonResponse(413, { error: 'Payload too large' });
 	}
 
 	return deliver(ctx, request, pluginId, webhook, rawBody);
