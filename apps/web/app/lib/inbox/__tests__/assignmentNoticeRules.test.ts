@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	assignmentGroupToastMessage,
+	assignmentNotificationParts,
 	assignmentToastMessage,
 	planAssignmentNotices,
 	ASSIGNMENT_COALESCE_WINDOW_MS,
@@ -85,5 +86,35 @@ describe('assignment copy', () => {
 
 	it('counts conversations in the grouped toast', () => {
 		expect(render(assignmentGroupToastMessage(4))).toBe('4 conversations assigned to you');
+	});
+});
+
+describe('clarification notices', () => {
+	it('never coalesces a clarification into an assignment burst', () => {
+		const notices = [
+			notice({ id: 'a', createdAt: 1_000 }),
+			notice({ id: 'q', kind: 'clarification', createdAt: 2_000 }),
+			notice({ id: 'b', createdAt: 3_000 }),
+		];
+		const plans = planAssignmentNotices(notices, new Set());
+		expect(plans.map((p) => p.kind)).toEqual(['single', 'single', 'single']);
+		expect(plans[1]).toMatchObject({ kind: 'single', notice: { id: 'q' } });
+	});
+
+	it('speaks the clarification line, naming the subject', () => {
+		const n = notice({ id: 'q', kind: 'clarification', subject: 'Renewal quote' });
+		expect(render(assignmentToastMessage(n))).toBe(
+			'The agent needs your input to reply — Renewal quote'
+		);
+		const parts = assignmentNotificationParts(n);
+		expect(render(parts.title)).toBe('Your input is needed');
+		expect(render(parts.body)).toBe('Renewal quote · the agent has a question for you');
+	});
+
+	it('keeps the assignment wording for assignment notices', () => {
+		const n = notice({ id: 'a', kind: 'assignment' });
+		expect(render(assignmentToastMessage(n))).toBe(
+			'Assigned to you — Where is my order? · from Ada'
+		);
 	});
 });

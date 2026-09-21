@@ -9,15 +9,32 @@
  * message is left untouched).
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { promises as dns } from 'dns';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { postOneClickUnsubscribe, ONE_CLICK_TIMEOUT_MS } from '../unsubscribe';
 
 describe('postOneClickUnsubscribe', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('blocks private DNS answers on the production transport before fetch', async () => {
+		const lookup = vi
+			.spyOn(dns, 'lookup')
+			.mockResolvedValue([{ address: '127.0.0.1', family: 4 }] as never);
+		const fetchSpy = vi.spyOn(globalThis, 'fetch');
+		await expect(
+			postOneClickUnsubscribe('https://newsletter.example/unsubscribe')
+		).resolves.toEqual({ ok: false, error: 'unsafe_url' });
+		expect(lookup).toHaveBeenCalledWith('newsletter.example', { all: true, verbatim: true });
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
 	it('POSTs the RFC 8058 form body and reports success on 2xx', async () => {
 		const fetchSpy = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
 		const result = await postOneClickUnsubscribe(
 			'https://news.example.com/unsub?u=abc',
-			fetchSpy as unknown as typeof fetch,
+			fetchSpy as unknown as typeof fetch
 		);
 		expect(result).toEqual({ ok: true });
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -36,7 +53,7 @@ describe('postOneClickUnsubscribe', () => {
 		const fetchSpy = vi.fn();
 		const result = await postOneClickUnsubscribe(
 			'http://news.example.com/unsub',
-			fetchSpy as unknown as typeof fetch,
+			fetchSpy as unknown as typeof fetch
 		);
 		expect(result).toEqual({ ok: false, error: 'unsafe_url' });
 		expect(fetchSpy).not.toHaveBeenCalled();
@@ -61,7 +78,7 @@ describe('postOneClickUnsubscribe', () => {
 		const fetchSpy = vi.fn().mockResolvedValue(new Response('nope', { status: 503 }));
 		const result = await postOneClickUnsubscribe(
 			'https://news.example.com/unsub',
-			fetchSpy as unknown as typeof fetch,
+			fetchSpy as unknown as typeof fetch
 		);
 		expect(result).toEqual({ ok: false, error: 'http_503' });
 	});
@@ -70,7 +87,7 @@ describe('postOneClickUnsubscribe', () => {
 		const fetchSpy = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
 		const result = await postOneClickUnsubscribe(
 			'https://news.example.com/unsub',
-			fetchSpy as unknown as typeof fetch,
+			fetchSpy as unknown as typeof fetch
 		);
 		expect(result).toEqual({ ok: false, error: 'network' });
 	});

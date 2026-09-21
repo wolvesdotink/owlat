@@ -3643,10 +3643,10 @@ draft-status).
 **Inbox processing status**:
 The current state of an inbound message in `inboundMessages.processingStatus`:
 `received | security_check | quarantined | classifying | drafting |
-draft_ready | awaiting_clarification | approved | sent | rejected | archived |
-failed`. Twelve states
-covering the joined agent-pipeline progression and the human draft-review
-hand-off. Companion fields written atomically with the status: `errorMessage`
+draft_ready | awaiting_clarification | informational | approved | sent |
+rejected | archived | failed`. Thirteen states
+covering the joined agent-pipeline progression, the needs-no-reply parking
+state (ADR-0061) and the human draft-review hand-off. Companion fields written atomically with the status: `errorMessage`
 (on `failed`), `processedAt` (on terminals), `securityFlags` (on
 `quarantined` / `archived`), `classification` (when `classify` completes),
 `draftResponse` / `draftSubject` / `confidenceScore` (when `draft` completes),
@@ -3659,6 +3659,9 @@ hand-off. Companion fields written atomically with the status: `errorMessage`
 - `classifying → drafting`
 - `classifying → draft_ready` (no draft generation is needed)
 - `classifying → awaiting_clarification`
+- `classifying → informational` (the sender expects no reply; Updates dashboard)
+- `informational → drafting` (a reader overrules the classifier and asks for a draft)
+- `informational → archived` (a reader dismisses the update)
 - `awaiting_clarification → drafting`
 - `awaiting_clarification → archived` (owner dismisses the message)
 - `drafting → draft_ready`
@@ -5037,9 +5040,15 @@ the layer above per-**Condition** evaluation. Two layers:
 - **Lenient async conveniences** for the preview / count / cron paths,
   which bake in the live-**Contact** scan (`notSoftDeleted`) and treat a
   corrupt filter as a zero match: `countLiveMatches`, `matchLiveContacts`
-  (optional `limit`), and `countLiveMatchesForSegments` (one preloaded
-  lookup + one Contact scan shared across many Segments — the cron's
-  batch path).
+  (optional `limit`), and `countLiveMatchesForSegments` (one Contact walk
+  and one per-chunk lookup shared across many Segments — the cron's batch
+  path). Each covers ONE budgeted slice of the population
+  (`conditions/liveContactScan.ts`: a document budget plus a
+  `by_deleted_at` checkpoint) and returns `{ scanned, done, cursor }`
+  alongside its partial result, because Convex's per-execution read limit
+  applies however the rows are fetched — streaming them is not the same as
+  bounding them. Callers accumulate across self-rescheduled executions
+  (`segments/countRefresh.ts`).
 - `evaluateAgainstContact(ctx, conditions, logic, contact)` — the
   single-Contact case, used by the automation `condition` step.
 

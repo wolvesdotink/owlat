@@ -55,6 +55,7 @@ export const getInboundMessageRawStorageId = internalQuery({
 });
 
 // public: soft-auth — the internal source query returns null for anonymous and enforces the owner/admin gate
+// authz: gate lives in internal.inbox.rawMessage.getInboundMessageRawStorageId (owner/admin, inherited identity).
 export const getInboundMessageRawUrl = publicAction({
 	args: { messageId: v.id('inboundMessages') },
 	handler: async (ctx, args): Promise<string | null> => {

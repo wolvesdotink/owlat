@@ -14,11 +14,11 @@ import { applyEnvUpdates, validateFlagSnapshot } from '../security.js';
  * per-service health report.
  */
 
-const { execSyncMock, rateLimitedMock } = vi.hoisted(() => ({
-	execSyncMock: vi.fn(),
+const { execFileSyncMock, rateLimitedMock } = vi.hoisted(() => ({
+	execFileSyncMock: vi.fn(),
 	rateLimitedMock: vi.fn((_endpoint: string) => false),
 }));
-vi.mock('node:child_process', () => ({ execSync: execSyncMock }));
+vi.mock('node:child_process', () => ({ execFileSync: execFileSyncMock }));
 vi.mock('../security.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../security.js')>();
 	return { ...actual, isRateLimited: rateLimitedMock };
@@ -51,11 +51,38 @@ const INITIAL_ENV = '# managed by owlat\nEMAIL_PROVIDER=resend\nCOMPOSE_PROFILES
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
-	execSyncMock.mockReset().mockReturnValue('');
+	execFileSyncMock.mockReset().mockImplementation(dockerFixture);
 	writeFileSync(ENV_FILE, INITIAL_ENV);
 });
 
 const AUTH = { 'x-instance-secret': 'test-instance-secret-0123456789' };
+
+/**
+ * `up` now names the services it recreates, so it can leave out the updater and
+ * the socket proxy — the two containers the command is running through. That
+ * list comes from compose itself, which a mock returning '' does not provide.
+ */
+function dockerFixture(file: unknown, args: unknown): string {
+	const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
+	if (cmd.includes('config --services')) {
+		return 'web\nconvex\nmail-sync\nupdater\ndocker-socket-proxy\n';
+	}
+	// Compose is told where the project lives on the HOST, which the updater
+	// reads back off its own bind mount (see rollout.ts).
+	if (cmd.startsWith('docker inspect')) {
+		return [
+			'ghcr.io/wolvesdotink/updater:0.5.0',
+			`/srv/owlat:${OWLAT_DIR}:rw `,
+			'owlat_default ',
+		].join('\n');
+	}
+	return '';
+}
+
+// The override this endpoint just wrote is part of the stack, so `up` has to
+// name it too — an unqualified compose would have loaded it from the project
+// directory, which is now the HOST's path.
+const COMPOSE = `docker compose --project-directory /srv/owlat --env-file ${join(OWLAT_DIR, '.env')} -f ${join(OWLAT_DIR, 'docker-compose.yml')} -f ${join(OWLAT_DIR, 'docker-compose.override.yml')}`;
 
 function post(body?: unknown, headers: Record<string, string> = AUTH) {
 	return fetch(`${base}/apply-profiles`, {
@@ -74,7 +101,7 @@ describe('auth + rate limit', () => {
 	it('rejects a missing instance secret with 401', async () => {
 		const res = await post({ flags: {} }, {});
 		expect(res.status).toBe(401);
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects a wrong instance secret with 401', async () => {
@@ -105,7 +132,7 @@ describe('flag snapshot validation', () => {
 			const res = await post({ flags });
 			expect(res.status).toBe(400);
 		}
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects a non-boolean flag value', async () => {
@@ -122,7 +149,7 @@ describe('flag snapshot validation', () => {
 		expect(body.error).toContain('not.a.flag');
 		// Nothing was applied.
 		expect(readFileSync(ENV_FILE, 'utf-8')).toBe(INITIAL_ENV);
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('accepts plugin-shaped keys and mirrors them (profiles unaffected)', async () => {
@@ -208,17 +235,25 @@ describe('override regeneration + flag mirror', () => {
 
 describe('compose invocation + per-service health', () => {
 	it('runs `docker compose up -d --remove-orphans` in OWLAT_DIR, then reports compose ps', async () => {
-		execSyncMock.mockImplementation((cmd: string) =>
-			cmd.includes('ps')
+		execFileSyncMock.mockImplementation((file: string, args: string[]) =>
+			[file, ...args].join(' ').includes('ps --format json')
 				? '{"Service":"mail-sync","State":"running","Status":"Up 5 seconds","Image":"ghcr.io/wolvesdotink/mail-sync:0.4.3","Health":"healthy"}\n'
-				: ''
+				: dockerFixture(file, args)
 		);
 		const res = await post({ flags: { 'mail.external': true } });
 		expect(res.status).toBe(200);
 
-		const calls = execSyncMock.mock.calls.map((c) => [String(c[0]), (c[1] as { cwd: string }).cwd]);
-		expect(calls).toEqual([
-			['docker compose up -d --remove-orphans', OWLAT_DIR],
+		// `exec` runs execFileSync, so a call is (file, argv, options); joining
+		// the two back together keeps these expectations readable as commands.
+		const calls = execFileSyncMock.mock.calls.map((c) => [
+			[String(c[0]), ...(c[1] as string[])].join(' '),
+			(c[2] as { cwd: string }).cwd,
+		]);
+		expect(calls.filter(([cmd]) => !String(cmd).startsWith('docker inspect'))).toEqual([
+			[`${COMPOSE} config --services`, OWLAT_DIR],
+			// Every service compose would start for the active profiles, minus
+			// the updater issuing this command and the proxy carrying it.
+			[`${COMPOSE} up -d --remove-orphans web convex mail-sync`, OWLAT_DIR],
 			['docker compose ps --format json', OWLAT_DIR],
 		]);
 
@@ -243,8 +278,8 @@ describe('compose invocation + per-service health', () => {
 	});
 
 	it('fails with 500 (files already converged) when compose up fails', async () => {
-		execSyncMock.mockImplementation((cmd: string) => {
-			if (cmd.includes('up')) throw Object.assign(new Error('boom'), { stderr: 'daemon down' });
+		execFileSyncMock.mockImplementation((_file: string, args: string[]) => {
+			if (args.includes('up')) throw Object.assign(new Error('boom'), { stderr: 'daemon down' });
 			return '';
 		});
 		const res = await post({ flags: {} });

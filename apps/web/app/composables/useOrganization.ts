@@ -1,5 +1,6 @@
 import { api } from '@owlat/api';
 import { effectScope, type EffectScope } from 'vue';
+import type { OrganizationRole } from '@owlat/shared/organizationPermissions';
 import {
 	useActiveOrganization,
 	useListOrganizations,
@@ -20,7 +21,10 @@ export interface PendingMailboxInput {
 	displayName?: string;
 }
 
-export type OrganizationRole = 'owner' | 'admin' | 'editor';
+// Defined in `@owlat/shared/organizationPermissions` alongside the permission
+// map the Convex gates enforce, so the role vocabulary cannot drift between the
+// two sides. Re-exported because the web app imports it from here.
+export type { OrganizationRole };
 
 /**
  * Plan the two role changes that make up an ownership transfer.

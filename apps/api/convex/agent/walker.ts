@@ -125,6 +125,17 @@ function assembleTransition(
 				draftSubject: routeT.draftSubject,
 				confidenceScore: routeT.confidenceScore,
 			};
+		case 'informational':
+			return {
+				to: 'informational' as const,
+				at,
+				completedActionId: actionId,
+				output,
+				durationMs,
+				modelUsed: result.modelUsed,
+				tokenUsage: result.tokenUsage,
+				classification: routeT.classification,
+			};
 		case 'quarantined':
 			return {
 				to: 'quarantined' as const,

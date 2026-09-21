@@ -25,7 +25,12 @@
  */
 
 /** Categories that fold. `person` and anything unlabeled never do. */
-export const POSTBOX_BUNDLE_CATEGORIES = ['newsletter', 'notification', 'receipt'] as const;
+export const POSTBOX_BUNDLE_CATEGORIES = [
+	'newsletter',
+	'notification',
+	'receipt',
+	'promotion',
+] as const;
 
 export type PostboxBundleCategory = (typeof POSTBOX_BUNDLE_CATEGORIES)[number];
 
@@ -41,6 +46,7 @@ export const POSTBOX_BUNDLE_META: Record<PostboxBundleCategory, { label: string;
 	newsletter: { label: 'shared.postboxBundles.newsletter', icon: 'lucide:newspaper' },
 	notification: { label: 'shared.postboxBundles.notification', icon: 'lucide:bell' },
 	receipt: { label: 'shared.postboxBundles.receipt', icon: 'lucide:receipt' },
+	promotion: { label: 'shared.postboxBundles.promotion', icon: 'lucide:megaphone' },
 };
 
 function isBundleCategory(value: string | undefined): value is PostboxBundleCategory {

@@ -1,0 +1,182 @@
+source,line,method,path_or_local_mount,handler,protection_to_review
+apps/api/convex/apiV1Http.ts,31,GET,/api/v1/health,healthCheck,public liveness
+apps/api/convex/apiV1Http.ts,39,OPTIONS,/api/v1/contacts,handleCors,public preflight; no protected data
+apps/api/convex/apiV1Http.ts,45,OPTIONS,/api/v1/contacts/*,handleCors,public preflight; no protected data
+apps/api/convex/apiV1Http.ts,52,OPTIONS,/api/v1/events,handleCors,public preflight; no protected data
+apps/api/convex/apiV1Http.ts,59,OPTIONS,/api/v1/transactional,handleCors,public preflight; no protected data
+apps/api/convex/apiV1Http.ts,66,OPTIONS,/api/v1/topics/*,handleCors,public preflight; no protected data
+apps/api/convex/apiV1Http.ts,75,GET,/api/v1/contacts,listContacts,"createAuthenticatedHandler: hashed API key, expiry/revocation, scopes, rate limit"
+apps/api/convex/apiV1Http.ts,82,POST,/api/v1/contacts,createContact,"createAuthenticatedHandler: hashed API key, expiry/revocation, scopes, rate limit"
+apps/api/convex/apiV1Http.ts,89,GET,/api/v1/contacts/*,getContact,"createAuthenticatedHandler: hashed API key, expiry/revocation, scopes, rate limit"
+apps/api/convex/apiV1Http.ts,96,PUT,/api/v1/contacts/*,updateContact,"createAuthenticatedHandler: hashed API key, expiry/revocation, scopes, rate limit"
+apps/api/convex/apiV1Http.ts,103,DELETE,/api/v1/contacts/*,deleteContact,"createAuthenticatedHandler: hashed API key, expiry/revocation, scopes, rate limit"
+apps/api/convex/apiV1Http.ts,112,POST,/api/v1/events,sendEvent,"createAuthenticatedHandler: hashed API key, expiry/revocation, scopes, rate limit"
+apps/api/convex/apiV1Http.ts,121,POST,/api/v1/transactional,sendTransactional,"createAuthenticatedHandler: hashed API key, expiry/revocation, scopes, rate limit"
+apps/api/convex/apiV1Http.ts,130,POST,/api/v1/topics/*,addContactToTopic,"createAuthenticatedHandler: hashed API key, expiry/revocation, scopes, rate limit"
+apps/api/convex/apiV1Http.ts,137,DELETE,/api/v1/topics/*,removeContactFromTopic,"createAuthenticatedHandler: hashed API key, expiry/revocation, scopes, rate limit"
+apps/api/convex/http.ts,41,POST,/storage/upload/begin,beginUpload,INSTANCE_SECRET service bearer; single-use capability claim / server-attested completion
+apps/api/convex/http.ts,42,POST,/storage/upload/finish,finishUpload,INSTANCE_SECRET service bearer; single-use capability claim / server-attested completion
+apps/api/convex/http.ts,43,POST,/storage/upload/abort,abortUpload,INSTANCE_SECRET service bearer; single-use capability claim / server-attested completion
+apps/api/convex/http.ts,47,GET,/t/o/*,trackOpen,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,54,GET,/t/c/*,trackClick,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,63,POST,/unsub/*,handleOneClickUnsubscribe,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,72,POST,/unsub/probe/*,handleSeedProbeUnsubscribe,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,79,GET,/unsub/verify/*,verifyUnsubscribeToken,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,86,OPTIONS,/unsub/verify/*,verifyUnsubscribeToken,public preflight; no protected data
+apps/api/convex/http.ts,95,GET,/prefs/verify/*,verifyPreferenceToken,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,102,OPTIONS,/prefs/verify/*,verifyPreferenceToken,public preflight; no protected data
+apps/api/convex/http.ts,109,POST,/prefs/update/*,updatePreferences,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,116,OPTIONS,/prefs/update/*,updatePreferences,public preflight; no protected data
+apps/api/convex/http.ts,132,OPTIONS,/forms/*,handleFormCors,public preflight; no protected data
+apps/api/convex/http.ts,139,POST,/forms/*,submitForm,"intentional public submission; form state, origin policy, rate limits"
+apps/api/convex/http.ts,154,POST,/webhooks/resend,providerFeedbackWebhook('resend'),provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,161,POST,/webhooks/emailit,providerFeedbackWebhook('emailit'),provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,169,POST,/webhooks/mandrill,providerFeedbackWebhook('mandrill'),provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,177,GET,/webhooks/mandrill,webhookUrlValidationProbe,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,184,POST,/webhooks/mta,providerFeedbackWebhook('mta'),provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,191,POST,/webhooks/ses,providerFeedbackWebhook('ses'),provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,206,POST,/webhooks/plugin/*,pluginFeedbackWebhook,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,213,POST,/webhooks/mta-mailbox,handleMailWebhook,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,223,POST,/webhooks/mta-inbound,handleInboundWebhook,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,233,POST,/mail-sync/raw-message,handleRawMessageUpload,worker shared secret and scoped ownership lookup
+apps/api/convex/http.ts,240,POST,/webhooks/mta-verify-credential,handleVerifyCredential,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,248,POST,/webhooks/mta-tls-report,handleTlsReportWebhook,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,257,GET,/sealed-blob,serveSealedBlob,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,268,GET,/attachment-share/*,serveAttachmentShare,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,277,POST,/webhooks/sms,handleSmsWebhook,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,284,POST,/webhooks/whatsapp,handleWhatsAppWebhook,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,291,GET,/webhooks/whatsapp,handleWhatsAppWebhook,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,298,POST,/webhooks/channel,handleGenericWebhook,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,305,POST,/webhooks/github,handleGithubWebhook,provider signature/shared secret; verification challenges are public (see handler)
+apps/api/convex/http.ts,314,GET,/confirm/doi/verify,verifyContactDoiToken,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,321,OPTIONS,/confirm/doi/verify,verifyContactDoiToken,public preflight; no protected data
+apps/api/convex/http.ts,328,POST,/confirm/doi,confirmContactDoi,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,335,OPTIONS,/confirm/doi,confirmContactDoi,public preflight; no protected data
+apps/api/convex/http.ts,344,GET,/archive/*,getCampaignArchive,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,351,OPTIONS,/archive/*,getCampaignArchive,public preflight; no protected data
+apps/api/convex/http.ts,360,GET,/share/*,getShareLink,public capability or public content; token verification/resource state in handler
+apps/api/convex/http.ts,367,OPTIONS,/share/*,getShareLink,public preflight; no protected data
+apps/api/convex/http.ts,376,POST,/seed/admin,seedAdmin,instance/dev secret and setup state; see handler
+apps/api/convex/http.ts,383,POST,/seed/demo,seedDemoHttp,instance/dev secret and setup state; see handler
+apps/api/convex/http.ts,392,POST,/dev/reset,resetHttp,instance/dev secret and setup state; see handler
+apps/api/convex/sampleData/manageHttp.ts,169,POST,/sample-data/install,sampleDataInstallHttp,instance/dev secret and setup state; see handler
+apps/api/convex/sampleData/manageHttp.ts,170,POST,/sample-data/remove,sampleDataRemoveHttp,instance/dev secret and setup state; see handler
+apps/api/convex/sampleData/manageHttp.ts,171,POST,/sample-data/status,sampleDataStatusHttp,instance/dev secret and setup state; see handler
+apps/mail-sync/src/server.ts,68,GET,/health,inline or factory; see source,public liveness
+apps/mail-sync/src/server.ts,70,POST,/test,inline or factory; see source,API key middleware
+apps/mail-sync/src/server.ts,78,POST,/send,inline or factory; see source,API key middleware
+apps/mta/src/routes/credentials.ts,18,POST,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/credentials.ts,46,GET,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/credentials.ts,63,PATCH,/:apiKey,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/credentials.ts,85,DELETE,/:apiKey,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/deliveryLogs.ts,26,GET,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/deliveryLogs.ts,46,GET,/stats,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/deliveryLogs.ts,60,GET,/:messageId,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dkim.ts,50,POST,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dkim.ts,71,GET,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dkim.ts,77,DELETE,/:domain,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dkim.ts,105,POST,/:domain/register,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dkim.ts,198,POST,/:domain/rotate,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dkim.ts,233,POST,/:domain/rotation,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dkim.ts,261,POST,/:domain/rotation/activate,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dkim.ts,275,DELETE,/:domain/rotation,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dlq.ts,23,GET,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dlq.ts,37,GET,/stats,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dlq.ts,52,POST,/:dlqId/retry,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dlq.ts,90,POST,/retry-all,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/dlq.ts,129,DELETE,/:dlqId,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/inboundRoutes.ts,21,POST,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/inboundRoutes.ts,54,GET,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/inboundRoutes.ts,60,DELETE,/:domain/:address,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/ipAudit.ts,113,GET,/provider-note/:provider,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/ipAudit.ts,117,GET,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/ipAudit.ts,125,POST,/run,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/ipAudit.ts,131,GET,/:ip,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/ipReputation.ts,159,GET,/:ip,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/ipReputation.ts,227,GET,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/ispProfiles.ts,73,GET,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/ispProfiles.ts,79,GET,/:provider,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/ispProfiles.ts,90,PUT,/:provider,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/ispProfiles.ts,114,DELETE,/:provider,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/mailboxes.ts,40,POST,/cache/:address,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/mailboxes.ts,66,POST,/inbound-tls-policy,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/mailboxes.ts,76,DELETE,/cache/:address,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/mailboxes.ts,84,GET,/cache,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/orgLimits.ts,24,POST,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/orgLimits.ts,51,GET,/:orgId,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/orgLimits.ts,63,GET,/:orgId/usage,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/outboundIdentity.ts,29,GET,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/outboundIdentity.ts,31,POST,/recheck,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/outboundTls.ts,27,GET,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/outboundTls.ts,33,POST,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/outboundTls.ts,48,DELETE,/:domain,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/poolRules.ts,21,POST,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/poolRules.ts,53,GET,/:orgId/all,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/poolRules.ts,60,GET,/:orgId,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/poolRules.ts,75,DELETE,/:orgId,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/queue.ts,148,GET,/stats,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/queue.ts,229,GET,/pending,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/queue.ts,281,GET,/jobs/:jobId,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/queue.ts,379,DELETE,/jobs/:jobId,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/scan.ts,100,POST,/attachment,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/scan.ts,175,GET,/health,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/suppression.ts,26,POST,/,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/suppression.ts,61,POST,/bulk,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/suppression.ts,102,GET,/export,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/suppression.ts,121,GET,/stats,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/suppression.ts,132,DELETE,/:email,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/routes/suppression.ts,156,GET,/check/:email,inline or factory; see source,masterKeyAuth middleware; local path under mount in server.ts
+apps/mta/src/server.ts,83,POST,/send,inline or factory; see source,send auth middleware; privileged handlers additionally require master key
+apps/mta/src/server.ts,84,POST,/send/postbox,inline or factory; see source,send auth middleware; privileged handlers additionally require master key
+apps/mta/src/server.ts,85,POST,/send/system,inline or factory; see source,send auth middleware; privileged handlers additionally require master key
+apps/mta/src/server.ts,86,POST,/send/decision,inline or factory; see source,send auth middleware; privileged handlers additionally require master key
+apps/mta/src/server.ts,87,GET,/send/receipt/:workAttemptId,inline or factory; see source,send auth middleware; privileged handlers additionally require master key
+apps/mta/src/server.ts,88,GET,/health,inline or factory; see source,public operational metadata; internal-network boundary
+apps/mta/src/server.ts,89,GET,/metrics,inline or factory; see source,public operational metadata; internal-network boundary
+apps/mta/src/server.ts,92,ROUTE,/credentials,inline or factory; see source,mount
+apps/mta/src/server.ts,95,ROUTE,/org-limits,inline or factory; see source,mount
+apps/mta/src/server.ts,98,ROUTE,/suppression,inline or factory; see source,mount
+apps/mta/src/server.ts,101,ROUTE,/dkim,inline or factory; see source,mount
+apps/mta/src/server.ts,104,ROUTE,/outbound-tls,inline or factory; see source,mount
+apps/mta/src/server.ts,107,ROUTE,/pool-rules,inline or factory; see source,mount
+apps/mta/src/server.ts,110,ROUTE,/ip-audit,inline or factory; see source,mount
+apps/mta/src/server.ts,113,ROUTE,/identity,inline or factory; see source,mount
+apps/mta/src/server.ts,116,ROUTE,/inbound/routes,inline or factory; see source,mount
+apps/mta/src/server.ts,119,ROUTE,/mailboxes,inline or factory; see source,mount
+apps/mta/src/server.ts,122,ROUTE,/delivery-logs,inline or factory; see source,mount
+apps/mta/src/server.ts,125,ROUTE,/queue,inline or factory; see source,mount
+apps/mta/src/server.ts,128,ROUTE,/dlq,inline or factory; see source,mount
+apps/mta/src/server.ts,131,ROUTE,/isp-profiles,inline or factory; see source,mount
+apps/mta/src/server.ts,134,ROUTE,/ip-reputation,inline or factory; see source,mount
+apps/mta/src/server.ts,137,ROUTE,/scan,inline or factory; see source,mount
+apps/mta/src/server.ts,140,GET,/,inline or factory; see source,public operational metadata; internal-network boundary
+apps/web/server/api/auth/[...].ts,1,ALL,/api/auth/[...],Nuxt file route,BetterAuth endpoint-specific authentication/origin checks
+apps/web/server/api/delivery/apply-transport.post.ts,1,POST,/api/delivery/apply-transport,Nuxt file route,requireOrgAdmin
+apps/web/server/api/delivery/validate-transport.post.ts,1,POST,/api/delivery/validate-transport,Nuxt file route,requireOrgAdmin
+apps/web/server/api/desktop/update-policy.get.ts,1,GET,/api/desktop/update-policy,Nuxt file route,intentional public discovery/update/policy metadata; inspect query/helper
+apps/web/server/api/desktop/update/[target]/[arch]/[current].get.ts,1,GET,/api/desktop/update/[target]/[arch]/[current],Nuxt file route,intentional public discovery/update/policy metadata; inspect query/helper
+apps/web/server/api/instance-info.get.ts,1,GET,/api/instance-info,Nuxt file route,intentional public discovery/update/policy metadata; inspect query/helper
+apps/web/server/api/internal/configure-ip.post.ts,1,POST,/api/internal/configure-ip,Nuxt file route,requireInstanceSecret
+apps/web/server/api/internal/health.get.ts,1,GET,/api/internal/health,Nuxt file route,requireInstanceSecret
+apps/web/server/api/internal/updater-health.get.ts,1,GET,/api/internal/updater-health,Nuxt file route,requirePlatformAdmin
+apps/web/server/api/self-update.post.ts,1,POST,/api/self-update,Nuxt file route,requireInstanceSecret
+apps/web/server/api/setup/apply.post.ts,1,POST,/api/setup/apply,Nuxt file route,requireSetupToken
+apps/web/server/api/setup/validate-provider.post.ts,1,POST,/api/setup/validate-provider,Nuxt file route,requireSetupToken
+apps/web/server/api/storage/upload.post.ts,1,POST,/api/storage/upload,Nuxt file route,one-use capability; server-authenticated receipt; bounded streaming; no cookie authentication
+apps/web/server/api/system/apply-profiles.post.ts,1,POST,/api/system/apply-profiles,Nuxt file route,requirePlatformAdmin
+apps/web/server/api/system/port-checks.post.ts,1,POST,/api/system/port-checks,Nuxt file route,requirePlatformAdmin
+apps/web/server/api/system/profile-drift.get.ts,1,GET,/api/system/profile-drift,Nuxt file route,requirePlatformAdmin
+apps/web/server/api/system/update.post.ts,1,POST,/api/system/update,Nuxt file route,requirePlatformAdmin
+apps/web/server/routes/.well-known/mta-sts.txt.get.ts,1,GET,/.well-known/mta-sts.txt,Nuxt file route,intentional public discovery/update/policy metadata; inspect query/helper
+apps/web/server/routes/.well-known/openpgpkey/hu/[hash].get.ts,1,GET,/.well-known/openpgpkey/hu/[hash],Nuxt file route,intentional public discovery/update/policy metadata; inspect query/helper
+apps/web/server/routes/.well-known/openpgpkey/policy.get.ts,1,GET,/.well-known/openpgpkey/policy,Nuxt file route,intentional public discovery/update/policy metadata; inspect query/helper
+apps/web/server/routes/.well-known/owlat.json.get.ts,1,GET,/.well-known/owlat.json,Nuxt file route,intentional public discovery/update/policy metadata; inspect query/helper
+apps/updater/src/server.ts,298,POST,/update,conditional dispatch,requireAuth: instance secret; body/rate limits
+apps/updater/src/server.ts,300,POST,/configure-ip,conditional dispatch,requireAuth: instance secret; body/rate limits
+apps/updater/src/server.ts,302,POST,/rotate-env,conditional dispatch,requireAuth: instance secret; body/rate limits
+apps/updater/src/server.ts,304,POST,/apply-profiles,conditional dispatch,requireAuth: instance secret; body/rate limits
+apps/updater/src/server.ts,306,POST,/port-checks,conditional dispatch,requireAuth: instance secret; body/rate limits
+apps/updater/src/server.ts,308,GET,/profile-state,conditional dispatch,requireAuth: instance secret; body/rate limits
+apps/updater/src/server.ts,310,GET,/health,conditional dispatch,requireAuth: instance secret; body/rate limits
+apps/api/convex/http.ts,1,MOUNT,/api/auth/*,BetterAuth registerRoutes,"plugin endpoint-specific session, organization role, origin, invite verification"
+apps/convex-fn-proxy/src/index.ts,1,PROXY,/api/query; /api/mutation; /api/action,worker function proxy,shared secret + exact public-function allowlist; /api/function blocked

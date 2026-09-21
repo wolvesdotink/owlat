@@ -1,6 +1,7 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
+import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 
@@ -31,6 +32,7 @@ async function uploadFile(
 	args: { filename: string; title?: string; tags?: string[] }
 ): Promise<Id<'semanticFiles'>> {
 	const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['body'])));
+	await t.run((ctx) => recordUploadedBlob(ctx, storageId, 'test-user'));
 	return t.mutation(api.semanticFiles.create, {
 		storageId,
 		filename: args.filename,

@@ -21,12 +21,7 @@ import { storeModule, type StoreArgs } from '../../store/index.js';
 import { selectModule } from '../../select/index.js';
 import { uidModule } from '../../uid/index.js';
 import type { FetchEnvelope } from '../format.js';
-import type {
-	CommandDeps,
-	ConnectionState,
-	ImapVerb,
-	StartArgs,
-} from '../../types.js';
+import type { CommandDeps, ConnectionState, ImapVerb, StartArgs } from '../../types.js';
 
 /** UID → sequence number for the fixture mailbox (5,9,14 → 1,2,3). */
 const FOLDER_UIDS = [5, 9, 14];
@@ -64,35 +59,47 @@ interface ConvexCalls {
 function makeConvex(calls: ConvexCalls) {
 	return {
 		query: vi.fn(async (ref: string, params: { uidLow?: number; uidHigh?: number }) => {
-			if (ref.endsWith(':listFolderUids')) return [...FOLDER_UIDS];
+			// Every folder read is paged: the backend answers with one page plus
+			// the UID to resume from, and `nextUid: null` means "that was all".
+			if (ref.endsWith(':listFolderUidsPage')) {
+				return { uids: [...FOLDER_UIDS], nextUid: null };
+			}
 			if (ref.endsWith(':fetchEnvelopes')) {
-				return ENVELOPES.filter(
-					(m) => m.uid >= (params.uidLow ?? 0) && m.uid <= (params.uidHigh ?? Infinity),
-				);
+				return {
+					rows: ENVELOPES.filter(
+						(m) => m.uid >= (params.uidLow ?? 0) && m.uid <= (params.uidHigh ?? Infinity)
+					),
+					nextUid: null,
+				};
 			}
 			if (ref.endsWith(':resolveMessageIdsByUid')) {
-				return ENVELOPES.filter(
-					(m) => m.uid >= (params.uidLow ?? 0) && m.uid <= (params.uidHigh ?? Infinity),
-				).map((m) => ({ _id: m._id, uid: m.uid }));
+				return {
+					rows: ENVELOPES.filter(
+						(m) => m.uid >= (params.uidLow ?? 0) && m.uid <= (params.uidHigh ?? Infinity)
+					).map((m) => ({ _id: m._id, uid: m.uid, modseq: m.modseq })),
+					nextUid: null,
+				};
 			}
 			return null;
 		}),
-		mutation: vi.fn(async (ref: string, params: { messageIds: string[]; flags: string[]; mode: string }) => {
-			if (ref.endsWith(':storeFlags')) {
-				calls.storeFlags.push({
-					messageIds: params.messageIds,
-					flags: params.flags,
-					mode: params.mode,
-				});
-				const updated = ENVELOPES.filter((m) => params.messageIds.includes(m._id)).map((m) => ({
-					uid: m.uid,
-					modseq: m.modseq + 1,
-					flags: ['\\Seen'],
-				}));
-				return { updated, unchanged: [] };
+		mutation: vi.fn(
+			async (ref: string, params: { messageIds: string[]; flags: string[]; mode: string }) => {
+				if (ref.endsWith(':storeFlags')) {
+					calls.storeFlags.push({
+						messageIds: params.messageIds,
+						flags: params.flags,
+						mode: params.mode,
+					});
+					const updated = ENVELOPES.filter((m) => params.messageIds.includes(m._id)).map((m) => ({
+						uid: m.uid,
+						modseq: m.modseq + 1,
+						flags: ['\\Seen'],
+					}));
+					return { updated, unchanged: [] };
+				}
+				return { updated: [], unchanged: [] };
 			}
-			return { updated: [], unchanged: [] };
-		}),
+		),
 	};
 }
 
@@ -140,7 +147,7 @@ async function runFetch(set: string, items: string, byUid: boolean): Promise<str
 async function runStore(
 	set: string,
 	op: string,
-	flags: string,
+	flags: string
 ): Promise<{ lines: string[]; calls: ConvexCalls; convex: ReturnType<typeof makeConvex> }> {
 	const lines: string[] = [];
 	const calls: ConvexCalls = { storeFlags: [] };
@@ -176,7 +183,7 @@ describe('PR-58 true sequence numbers', () => {
 		expect(fetchLine).toContain('* 3 FETCH (UID 14');
 	});
 
-	it('STORE 1:3 resolves all UIDs with a single resolveMessageIdsByUid range query', async () => {
+	it('STORE 1:3 resolves all UIDs with a single resolveMessageIdsByUid page', async () => {
 		const { calls, convex } = await runStore('1:3', '+FLAGS', '(\\Seen)');
 		// All three messages (UIDs 5,9,14) were flagged.
 		expect(calls.storeFlags).toHaveLength(1);
@@ -185,7 +192,7 @@ describe('PR-58 true sequence numbers', () => {
 		// the FETCH-parity fix (PR-58 r1). The min..max span (5..14) is queried
 		// once.
 		const resolveCalls = convex.query.mock.calls.filter(([ref]) =>
-			ref.endsWith(':resolveMessageIdsByUid'),
+			ref.endsWith(':resolveMessageIdsByUid')
 		);
 		expect(resolveCalls).toHaveLength(1);
 		expect(resolveCalls[0]![1]).toMatchObject({ uidLow: 5, uidHigh: 14 });

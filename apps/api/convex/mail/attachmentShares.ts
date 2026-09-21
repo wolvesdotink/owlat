@@ -13,10 +13,9 @@
  * This module owns the rows: the owner's management list, immediate revoke,
  * scope narrowing, and the two internal mutations the action drives.
  *
- * REVOKE MEANS THE BYTES ARE GONE. A revoke that only flipped a flag would be a
- * promise resting on this code never regressing. It deletes the blob and clears
- * `storageId`, so after it runs there is nothing left to serve even if every
- * check above the storage read were removed. The ROW survives the grace window
+ * Revoke deletes blobs owned by this share and always clears `storageId`.
+ * Legacy references have no upload receipt proving exclusive ownership, so
+ * revoking those links must leave the underlying bytes intact. The ROW survives the grace window
  * so the list can still tell the owner what happened to a link a recipient is
  * asking about; the retention sweep deletes the record afterwards.
  *
@@ -27,6 +26,7 @@
  */
 
 import { v } from 'convex/values';
+import { deleteOwnedUpload, transferOwnedUpload } from '../storage/uploads';
 import {
 	attachmentShareExpiryAt,
 	attachmentShareState,
@@ -91,11 +91,10 @@ function projectShare(row: Doc<'mailAttachmentShares'>, now: number, siteUrl: st
 }
 
 /**
- * Release a share's bytes. Convex storage deletes are permanent and the row is
- * the only thing that still knows the id, so this is the single place both
- * revoke and the expiry sweep (`attachmentShareRetention.ts`) go through — and
- * it clears `storageId` in the same patch, because a row pointing at a deleted
- * blob is a lie the serving route would have to re-derive.
+ * Release a share's reference, deleting bytes only with matching ownership.
+ * Both revoke and the expiry sweep (`attachmentShareRetention.ts`) go through
+ * this helper. Clearing `storageId` also stops legacy shares from serving blobs
+ * whose deletion authority cannot safely be inferred from the reference.
  *
  * Tolerant of a blob that is already gone (a retried sweep, a storage delete
  * that raced): the goal is "these bytes are not reachable", and a throw there
@@ -108,7 +107,7 @@ export async function releaseShareBytes(
 ): Promise<void> {
 	if (row.storageId) {
 		try {
-			await ctx.storage.delete(row.storageId);
+			await deleteOwnedUpload(ctx, row.storageId, `mailAttachmentShares:${row._id}`);
 		} catch (err) {
 			logError(`[attachmentShares] failed to delete blob for ${row._id}: ${String(err)}`);
 		}
@@ -316,6 +315,12 @@ export const createShare = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await transferOwnedUpload(
+			ctx,
+			args.storageId,
+			`mailDrafts:${args.draftId}`,
+			`mailAttachmentShares:${shareId}`
+		);
 		return {
 			shareId,
 			token: args.token,

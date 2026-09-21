@@ -10,7 +10,8 @@
  * (single-message reads), `mailbox/search.ts`.
  */
 
-import { v } from 'convex/values';
+import { mailCategoryLabelValidator } from '../../lib/literalValidators';
+import { v, type Infer } from 'convex/values';
 import type { QueryCtx } from '../../_generated/server';
 import { publicQuery } from '../../lib/authedFunctions';
 import { mailSortOrderValidator } from '../../lib/mailSettingsValidators';
@@ -399,7 +400,7 @@ export const newestUnreadInbox = publicQuery({
 				fromName?: string;
 				fromAddress: string;
 				subject: string;
-				category?: 'person' | 'newsletter' | 'notification' | 'receipt' | 'other';
+				category?: Infer<typeof mailCategoryLabelValidator>;
 				/** Muted conversation (mail/mute.ts) — never fires a desktop toast. */
 				muted?: boolean;
 				/**
@@ -446,7 +447,7 @@ export const newestUnreadInbox = publicQuery({
 			const threadState = new Map<
 				Id<'mailThreads'>,
 				{
-					category?: 'person' | 'newsletter' | 'notification' | 'receipt' | 'other';
+					category?: Infer<typeof mailCategoryLabelValidator>;
 					muted: boolean;
 					alerted: boolean;
 				}

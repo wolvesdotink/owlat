@@ -35,6 +35,11 @@ export default defineConfig({
 			// server routes under test.
 			{ find: '~~', replacement: resolve(__dirname, '.') },
 			{ find: '~', replacement: resolve(__dirname, 'app') },
+			// Nuxt's virtual component module — see app/__tests__/shims/nuxtComponents.ts.
+			{
+				find: '#components',
+				replacement: resolve(__dirname, 'app/__tests__/shims/nuxtComponents.ts'),
+			},
 			{
 				// Subpath exports are a mix of `src/<name>.ts` and `src/<name>/index.ts`
 				// (e.g. `@owlat/shared/registry`), so the replacement stops at the

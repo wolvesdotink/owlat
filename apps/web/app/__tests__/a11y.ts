@@ -50,6 +50,7 @@ import {
 	useTemplateRef,
 	type Component,
 } from 'vue';
+import { hasPermission, type Permission } from '@owlat/shared/organizationPermissions';
 import { IconStub, NuxtLinkStub } from './nuxtComponents';
 import { tolerateUnresolvedComponents } from './vueWarnings';
 import { paginatedResult, queryResult } from './queryStubs';
@@ -280,6 +281,11 @@ function defaultStubs(): Record<string, unknown> {
 			canManageSettings: ref(true),
 			canDeleteOrganization: ref(true),
 			showAdminGate: ref(false),
+			// The owner this harness signs in as carries every permission. Read
+			// that off the shared map rather than restating it, so a permission
+			// added later cannot make the audit disagree with the app.
+			can: (permission: Permission) => hasPermission('owner', permission),
+			showGateFor: () => false,
 		}),
 		useToast: () => ({
 			toasts: ref([]),

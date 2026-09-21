@@ -66,6 +66,20 @@ describe('sample data — authentication', () => {
 		const res = await post(t, '/seed/demo', SECRET);
 		expect(res.status).toBe(403);
 	});
+
+	it('refuses in the shared error envelope, not a bare { error: string }', async () => {
+		const t = convexTest(schema, modules);
+
+		const unauthorized = await post(t, '/sample-data/install', null);
+		expect(await unauthorized.json()).toEqual({
+			error: { category: 'unauthenticated', message: 'Unauthorized' },
+		});
+
+		const devOnly = await post(t, '/seed/demo', SECRET);
+		expect(((await devOnly.json()) as { error: { category: string } }).error.category).toBe(
+			'forbidden'
+		);
+	});
 });
 
 describe('sample data — install', () => {

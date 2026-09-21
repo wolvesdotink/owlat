@@ -189,7 +189,13 @@ describe('UIDPLUS — COPYUID carries the folder uidValidity (RFC 4315)', () => 
 		const convex = mockConvex();
 		convex.query
 			.mockResolvedValueOnce([{ _id: 'tf', name: 'Archive', role: 'archive' }]) // resolveFolderByName
-			.mockResolvedValueOnce([{ _id: 'm1' }, { _id: 'm2' }]); // resolveMessageIdsByUid
+			.mockResolvedValueOnce({
+				rows: [
+					{ _id: 'm1', uid: 3, modseq: 7 },
+					{ _id: 'm2', uid: 4, modseq: 7 },
+				],
+				nextUid: null,
+			}); // resolveMessageIdsByUid
 		convex.mutation.mockResolvedValue({
 			uidValidity: 9999,
 			pairs: [
@@ -254,8 +260,8 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 	it('passes UNCHANGEDSINCE through to storeFlags as unchangedSinceModseq', async () => {
 		const convex = mockConvex();
 		convex.query
-			.mockResolvedValueOnce([1]) // listFolderUids
-			.mockResolvedValueOnce([{ _id: 'm1', uid: 1 }]); // resolveMessageIdsByUid
+			.mockResolvedValueOnce({ uids: [1], nextUid: null }) // listFolderUidsPage
+			.mockResolvedValueOnce({ rows: [{ _id: 'm1', uid: 1, modseq: 7 }], nextUid: null }); // resolveMessageIdsByUid
 		convex.mutation.mockResolvedValue({
 			updated: [{ uid: 1, modseq: 8, flags: ['\\Seen'] }],
 			unchanged: [],
@@ -277,11 +283,14 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 	it('reports [MODIFIED <uids>] for messages the UNCHANGEDSINCE guard skipped', async () => {
 		const convex = mockConvex();
 		convex.query
-			.mockResolvedValueOnce([1, 2]) // listFolderUids
-			.mockResolvedValueOnce([
-				{ _id: 'm1', uid: 1 },
-				{ _id: 'm2', uid: 2 },
-			]); // resolveMessageIdsByUid
+			.mockResolvedValueOnce({ uids: [1, 2], nextUid: null }) // listFolderUidsPage
+			.mockResolvedValueOnce({
+				rows: [
+					{ _id: 'm1', uid: 1, modseq: 7 },
+					{ _id: 'm2', uid: 2, modseq: 7 },
+				],
+				nextUid: null,
+			}); // resolveMessageIdsByUid
 		convex.mutation.mockResolvedValue({
 			updated: [{ uid: 1, modseq: 9, flags: ['\\Flagged'] }],
 			unchanged: [{ uid: 2 }],
@@ -308,8 +317,8 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 
 		// First store → modseq 8.
 		convex.query
-			.mockResolvedValueOnce([1]) // listFolderUids
-			.mockResolvedValueOnce([{ _id: 'm1', uid: 1 }]); // resolveMessageIdsByUid
+			.mockResolvedValueOnce({ uids: [1], nextUid: null }) // listFolderUidsPage
+			.mockResolvedValueOnce({ rows: [{ _id: 'm1', uid: 1, modseq: 7 }], nextUid: null }); // resolveMessageIdsByUid
 		convex.mutation.mockResolvedValueOnce({
 			updated: [{ uid: 1, modseq: 8, flags: ['\\Seen'] }],
 			unchanged: [],
@@ -321,8 +330,8 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 
 		// Second store → modseq 9 (strictly greater).
 		convex.query
-			.mockResolvedValueOnce([1]) // listFolderUids
-			.mockResolvedValueOnce([{ _id: 'm1', uid: 1 }]); // resolveMessageIdsByUid
+			.mockResolvedValueOnce({ uids: [1], nextUid: null }) // listFolderUidsPage
+			.mockResolvedValueOnce({ rows: [{ _id: 'm1', uid: 1, modseq: 7 }], nextUid: null }); // resolveMessageIdsByUid
 		convex.mutation.mockResolvedValueOnce({
 			updated: [{ uid: 1, modseq: 9, flags: ['\\Seen', '\\Flagged'] }],
 			unchanged: [],
@@ -338,8 +347,8 @@ describe('CONDSTORE — UNCHANGEDSINCE skip + [MODIFIED] + monotonic modseq (RFC
 	it('omits the per-row FETCH on .SILENT but still answers OK', async () => {
 		const convex = mockConvex();
 		convex.query
-			.mockResolvedValueOnce([1]) // listFolderUids
-			.mockResolvedValueOnce([{ _id: 'm1', uid: 1 }]); // resolveMessageIdsByUid
+			.mockResolvedValueOnce({ uids: [1], nextUid: null }) // listFolderUidsPage
+			.mockResolvedValueOnce({ rows: [{ _id: 'm1', uid: 1, modseq: 7 }], nextUid: null }); // resolveMessageIdsByUid
 		convex.mutation.mockResolvedValue({
 			updated: [{ uid: 1, modseq: 8, flags: ['\\Seen'] }],
 			unchanged: [],

@@ -18,7 +18,7 @@
 import { intro, outro, log, confirm, isCancel } from '@clack/prompts';
 import { progressSpinner } from '../lib/progress';
 import pc from 'picocolors';
-import { loadBackendContext, postJson } from '../lib/backend';
+import { backendErrorMessage, loadBackendContext, postJson } from '../lib/backend';
 import { resolveLocalHost } from '../lib/localHost';
 
 import type { CliOptions as RunOptions } from '../lib/cliOptions';
@@ -49,7 +49,6 @@ interface SampleDataResponse {
 	 * re-running the command continues from where the cap stopped.
 	 */
 	truncated?: boolean;
-	error?: string;
 }
 
 /** Message for a scan the backend could not finish. Shared by remove + status. */
@@ -167,7 +166,7 @@ async function call(
 		return 1;
 	}
 	if (response.status !== 200) {
-		s.stop(pc.red(`Failed: ${response.body?.error ?? `HTTP ${response.status}`}`));
+		s.stop(pc.red(`Failed: ${backendErrorMessage(response.body, `HTTP ${response.status}`)}`));
 		if (response.status === 404) {
 			log.error(
 				'The backend has no /sample-data routes — deploy the current functions (`owlat quickstart`) and retry.'
