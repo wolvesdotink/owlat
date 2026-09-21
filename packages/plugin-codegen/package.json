@@ -27,7 +27,7 @@
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"convex": "catalog:convex",
-		"convex-test": "^0.0.58",
+		"convex-test": "^0.0.59",
 		"esbuild": "0.28.2",
 		"vitest": "catalog:"
 	}
