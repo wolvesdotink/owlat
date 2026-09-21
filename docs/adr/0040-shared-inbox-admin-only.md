@@ -33,7 +33,9 @@ support queue.
 
 The shared inbox is **owner/admin-only**.
 
-- All seven mutations move to the `adminMutation` wrapper (ADR-0039), which
+- Every mutation in `inbox/mutations.ts` moves to the `adminMutation` wrapper
+  (ADR-0039) — the seven above, and the nine there today (`undoAutoSend` and
+  `retryFailedMessage` were added on the same floor afterwards) — which
   enforces `requireAdminContext` (`organization:manage`). Handlers that need the
   actor id for audit/lifecycle read it from `getMutationContext(ctx).userId`
   (identical to the previous `identity.subject`).
@@ -59,6 +61,10 @@ The shared inbox is **owner/admin-only**.
 
 - Editors lose all shared-inbox read and write access; owners/admins are
   unaffected.
+- The two per-user thread signals written from the thread page —
+  `inbox/presence.ts:heartbeat`/`leave` and `inbox/reads.ts:markThreadSeen` —
+  sit on the same floor. They write only the caller's own row, but a member-level
+  floor would still let any member create rows against any thread id.
 - `unifiedMessages.sendChatMessage` (which posts on a `conversationThreads`
   thread) is gated the same way (`requireOrgPermission(ctx, 'organization:manage')`),
   for consistency with the inbox it writes into.

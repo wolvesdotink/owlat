@@ -25,6 +25,7 @@ import type { TableNames } from '../_generated/dataModel';
  * can never drift again.
  */
 export const TENANT_TABLES = [
+	'storageUploads',
 	// Short-lived export capabilities must be revoked with the single tenant.
 	'accountExportArtifactLeases',
 	'accountExportArtifacts',

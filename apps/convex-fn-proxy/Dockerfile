@@ -49,6 +49,12 @@ ENV OWLAT_VERSION=${OWLAT_VERSION} \
     OWLAT_GIT_SHA=${OWLAT_GIT_SHA} \
     OWLAT_BUILD_DATE=${OWLAT_BUILD_DATE}
 
+# Unprivileged: the proxy opens one socket on 3220 (well above 1024), reads a
+# bundle it never writes to, and holds no capability worth keeping root for.
+# `node` is uid 1000 in node:*-alpine, the same user the imap/mail-sync/mta
+# images already run as.
+USER node
+
 EXPOSE 3220
 
 CMD ["node", "dist/index.js"]

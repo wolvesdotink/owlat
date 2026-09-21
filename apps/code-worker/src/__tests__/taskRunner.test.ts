@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import {
 	buildCloneArgs,
 	buildPullArgs,
@@ -167,34 +168,46 @@ describe('git credentials never persist into the untrusted workspace', () => {
 	const TOKEN_URL = 'https://x-access-token:ghp_secret@github.com/o/r.git';
 
 	it('parseRepoUrl strips the credential from the URL and carries it out-of-band', () => {
-		const { cleanUrl, authArgs } = parseRepoUrl(TOKEN_URL);
+		const { cleanUrl, authEnv } = parseRepoUrl(TOKEN_URL);
 		// The clone URL — which is what lands in workDir/.git/config — has no token.
 		expect(cleanUrl).toBe('https://github.com/o/r.git');
 		expect(cleanUrl).not.toContain('ghp_secret');
 		expect(cleanUrl).not.toContain('x-access-token');
-		// The credential travels via an http.extraheader arg, not the URL or config.
-		expect(authArgs[0]).toBe('-c');
-		expect(authArgs[1]).toMatch(/^http\.extraheader=Authorization: Basic /);
-		const basic = authArgs[1]!.replace('http.extraheader=Authorization: Basic ', '');
+		// Credentials are never visible in argv, including encoded form.
+		expect(authEnv['GIT_CONFIG_KEY_0']).toBe('http.extraheader');
+		const header = authEnv['GIT_CONFIG_VALUE_0']!;
+		const basic = header.replace('Authorization: Basic ', '');
 		expect(Buffer.from(basic, 'base64').toString('utf-8')).toBe('x-access-token:ghp_secret');
+		for (const argv of [
+			buildCloneArgs(cleanUrl, 'main', '/workspace/task-1'),
+			buildPullArgs('/workspace/task-1', 'main'),
+			buildPushArgs('/workspace/task-1', 'feature'),
+		]) {
+			expect(argv.join(' ')).not.toContain('ghp_secret');
+			expect(argv.join(' ')).not.toContain(basic);
+			expect(argv.join(' ')).not.toContain('Authorization');
+		}
 	});
 
-	it('the clone argv persists a tokenless origin (nothing for the agent to read off disk)', () => {
-		const { cleanUrl, authArgs } = parseRepoUrl(TOKEN_URL);
-		const argv = buildCloneArgs(cleanUrl, 'main', '/workspace/task-1', authArgs);
-		// The positional repo URL (written to .git/config) carries no secret…
-		expect(argv).toContain('https://github.com/o/r.git');
-		expect(argv).not.toContain(TOKEN_URL);
-		// …and the auth header is a leading `-c` global option, not part of the URL.
-		expect(argv[0]).toBe('-c');
-		const urlElement = argv.find((a) => a.startsWith('https://'));
-		expect(urlElement).not.toContain('ghp_secret');
+	it('rejects malformed credential URLs instead of forwarding them to Git', () => {
+		expect(() => parseRepoUrl('https://user:%ZZ@github.com/o/r.git')).toThrow(
+			'Invalid Git repository URL'
+		);
+	});
+
+	it('supplies the authentication header through Git runtime configuration', () => {
+		const { authEnv } = parseRepoUrl(TOKEN_URL);
+		const header = execFileSync('git', ['config', '--get', 'http.extraheader'], {
+			env: { ...process.env, ...authEnv },
+			encoding: 'utf8',
+		});
+		expect(header.trim()).toBe(authEnv['GIT_CONFIG_VALUE_0']);
 	});
 
 	it('a tokenless repo URL passes through unchanged with no auth args', () => {
 		expect(parseRepoUrl('https://github.com/o/r.git')).toEqual({
 			cleanUrl: 'https://github.com/o/r.git',
-			authArgs: [],
+			authEnv: {},
 		});
 	});
 });
@@ -204,6 +217,9 @@ describe('child process environments', () => {
 		PATH: '/usr/bin',
 		HOME: '/root',
 		GITHUB_TOKEN: 'ghp_secret',
+		GIT_CONFIG_COUNT: '1',
+		GIT_CONFIG_KEY_0: 'http.extraheader',
+		GIT_CONFIG_VALUE_0: 'Authorization: Basic dummy',
 		CONVEX_URL: 'http://convex:3210',
 		CONVEX_INTERNAL_KEY: 'internal-secret',
 		LLM_BASE_URL: 'https://llm.example.com',
@@ -226,11 +242,14 @@ describe('child process environments', () => {
 		expect(env).toEqual({ PATH: '/usr/bin', HOME: '/workspace/task1', CI: 'true' });
 	});
 
-	it.each(['GITHUB_TOKEN', 'CONVEX_INTERNAL_KEY', 'CONVEX_URL', 'GIT_REPO_URL'])(
-		'%s never reaches a child that executes task code',
-		(key) => {
-			expect(buildAgentEnv('/w', parentEnv)).not.toHaveProperty(key);
-			expect(buildTestEnv('/w', parentEnv)).not.toHaveProperty(key);
-		},
-	);
+	it.each([
+		'GITHUB_TOKEN',
+		'CONVEX_INTERNAL_KEY',
+		'CONVEX_URL',
+		'GIT_REPO_URL',
+		'GIT_CONFIG_VALUE_0',
+	])('%s never reaches a child that executes task code', (key) => {
+		expect(buildAgentEnv('/w', parentEnv)).not.toHaveProperty(key);
+		expect(buildTestEnv('/w', parentEnv)).not.toHaveProperty(key);
+	});
 });

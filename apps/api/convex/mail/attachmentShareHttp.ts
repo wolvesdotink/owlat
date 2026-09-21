@@ -37,6 +37,7 @@ import type { Id } from '../_generated/dataModel';
 import { ATTACHMENT_SHARE_PATH, isAttachmentShareToken } from '@owlat/shared/attachmentShares';
 import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
 import { logError } from '../lib/runtimeLog';
+import { errorResponse } from '../lib/httpResponse';
 
 /**
  * Filename for the `Content-Disposition` header. Quotes, backslashes and
@@ -50,12 +51,23 @@ function dispositionFilename(filename: string): string {
 	return cleaned.length > 0 ? cleaned.slice(0, 200) : 'attachment';
 }
 
-/** Uniform refusal. One shape for every reason, so none of them is a signal. */
+/**
+ * A shared link's bytes are private to whoever holds the URL and the link can
+ * be revoked at any moment; that holds for the refusals too, so nothing in
+ * between may keep a copy of either.
+ */
+const NO_STORE: Record<string, string> = { 'Cache-Control': 'no-store' };
+
+/**
+ * Uniform refusal. One shape for every reason, so none of them is a signal —
+ * including the message, which never names which gate closed.
+ *
+ * In the shared `{ error: { category, message } }` envelope (ADR-0036), the
+ * shape the public-endpoint reference promises for token endpoints; the sibling
+ * `mail/sealedBlobHttp.ts` answers the same way.
+ */
 function notFound(): Response {
-	return new Response('Not found', {
-		status: 404,
-		headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
-	});
+	return errorResponse('not_found', 'Not found', undefined, NO_STORE);
 }
 
 export const serveAttachmentShare = httpAction(async (ctx, request) => {
@@ -103,9 +115,6 @@ export const serveAttachmentShare = httpAction(async (ctx, request) => {
 		});
 	} catch (err) {
 		logError(`[attachmentShare] failed to serve ${share.storageId}: ${String(err)}`);
-		return new Response('Internal Server Error', {
-			status: 500,
-			headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
-		});
+		return errorResponse('internal', 'Internal Server Error', undefined, NO_STORE);
 	}
 });

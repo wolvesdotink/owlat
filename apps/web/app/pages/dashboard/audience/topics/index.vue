@@ -13,6 +13,13 @@ definePageMeta({
 
 // Get the current user's organization
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
+// Creating, editing and deleting a topic all require `topics:manage`
+// (owner/admin) on the backend — `apps/api/convex/topics/topics.ts`. The list
+// itself is readable by every member, so only the write actions come off for an
+// editor, with a line saying why rather than a silent absence.
+const { can, showGateFor } = usePermissions();
+const canManage = computed(() => can('topics:manage'));
+const showManageGate = computed(() => showGateFor('topics:manage'));
 
 // Fetch topics with cursor-based pagination (uses session-based organization
 // context). The list sorts/filters client-side, so — like Segments — eagerly
@@ -267,7 +274,10 @@ const viewTopicContacts = (topicId: Id<'topics'>) => {
 // quick-action link (/dashboard/audience/topics?action=create).
 const route = useRoute();
 onMounted(() => {
-	if (route.query['action'] === 'create') {
+	// Same guard the contacts list puts on its own `?action=add` link: the hub
+	// card is a create button like any other, so a caller who cannot create must
+	// not land on a modal whose submit would 403.
+	if (canManage.value && route.query['action'] === 'create') {
 		openCreateModal();
 	}
 });
@@ -282,10 +292,13 @@ onMounted(() => {
 			class="mb-6"
 		>
 			<template #actions>
-				<UiButton @click="openCreateModal">
+				<UiButton v-if="canManage" @click="openCreateModal">
 					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 					{{ t('dashboard.audience.topics.index.newTopic') }}
 				</UiButton>
+				<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
+					{{ t('dashboard.audience.topics.index.adminsOnly') }}
+				</p>
 			</template>
 		</UiPageHeader>
 
@@ -326,7 +339,7 @@ onMounted(() => {
 					:title="t('dashboard.audience.topics.index.empty.title')"
 					:description="t('dashboard.audience.topics.index.empty.description')"
 				>
-					<template #action>
+					<template v-if="canManage" #action>
 						<UiButton @click="openCreateModal">
 							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 							{{ t('dashboard.audience.topics.index.newTopic') }}
@@ -377,6 +390,7 @@ onMounted(() => {
 								</span>
 							</button>
 							<button
+								v-if="canManage"
 								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 								:aria-label="t('dashboard.audience.topics.index.actions.edit')"
 								@click="openEditModal(topic)"
@@ -384,6 +398,7 @@ onMounted(() => {
 								<Icon name="lucide:pencil" class="w-4 h-4" />
 							</button>
 							<button
+								v-if="canManage"
 								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
 								:aria-label="t('dashboard.audience.topics.index.actions.delete')"
 								@click="openDeleteModal(topic)"
@@ -477,6 +492,7 @@ onMounted(() => {
 									<td class="px-6 py-4">
 										<div class="flex items-center justify-end gap-1">
 											<button
+												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 												:title="t('dashboard.audience.topics.index.actions.edit')"
 												@click.stop="openEditModal(topic)"
@@ -484,6 +500,7 @@ onMounted(() => {
 												<Icon name="lucide:pencil" class="w-4 h-4" />
 											</button>
 											<button
+												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
 												:title="t('dashboard.audience.topics.index.actions.delete')"
 												@click.stop="openDeleteModal(topic)"

@@ -14,11 +14,11 @@ import { applyEnvUpdates, validateFlagSnapshot } from '../security.js';
  * per-service health report.
  */
 
-const { execSyncMock, rateLimitedMock } = vi.hoisted(() => ({
-	execSyncMock: vi.fn(),
+const { execFileSyncMock, rateLimitedMock } = vi.hoisted(() => ({
+	execFileSyncMock: vi.fn(),
 	rateLimitedMock: vi.fn((_endpoint: string) => false),
 }));
-vi.mock('node:child_process', () => ({ execSync: execSyncMock }));
+vi.mock('node:child_process', () => ({ execFileSync: execFileSyncMock }));
 vi.mock('../security.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../security.js')>();
 	return { ...actual, isRateLimited: rateLimitedMock };
@@ -51,7 +51,7 @@ const INITIAL_ENV = '# managed by owlat\nEMAIL_PROVIDER=resend\nCOMPOSE_PROFILES
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
-	execSyncMock.mockReset().mockImplementation(dockerFixture);
+	execFileSyncMock.mockReset().mockImplementation(dockerFixture);
 	writeFileSync(ENV_FILE, INITIAL_ENV);
 });
 
@@ -62,8 +62,8 @@ const AUTH = { 'x-instance-secret': 'test-instance-secret-0123456789' };
  * the socket proxy — the two containers the command is running through. That
  * list comes from compose itself, which a mock returning '' does not provide.
  */
-function dockerFixture(command: unknown): string {
-	const cmd = String(command);
+function dockerFixture(file: unknown, args: unknown): string {
+	const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
 	if (cmd.includes('config --services')) {
 		return 'web\nconvex\nmail-sync\nupdater\ndocker-socket-proxy\n';
 	}
@@ -101,7 +101,7 @@ describe('auth + rate limit', () => {
 	it('rejects a missing instance secret with 401', async () => {
 		const res = await post({ flags: {} }, {});
 		expect(res.status).toBe(401);
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects a wrong instance secret with 401', async () => {
@@ -132,7 +132,7 @@ describe('flag snapshot validation', () => {
 			const res = await post({ flags });
 			expect(res.status).toBe(400);
 		}
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects a non-boolean flag value', async () => {
@@ -149,7 +149,7 @@ describe('flag snapshot validation', () => {
 		expect(body.error).toContain('not.a.flag');
 		// Nothing was applied.
 		expect(readFileSync(ENV_FILE, 'utf-8')).toBe(INITIAL_ENV);
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('accepts plugin-shaped keys and mirrors them (profiles unaffected)', async () => {
@@ -235,15 +235,20 @@ describe('override regeneration + flag mirror', () => {
 
 describe('compose invocation + per-service health', () => {
 	it('runs `docker compose up -d --remove-orphans` in OWLAT_DIR, then reports compose ps', async () => {
-		execSyncMock.mockImplementation((cmd: unknown) =>
-			String(cmd).includes('ps --format json')
+		execFileSyncMock.mockImplementation((file: string, args: string[]) =>
+			[file, ...args].join(' ').includes('ps --format json')
 				? '{"Service":"mail-sync","State":"running","Status":"Up 5 seconds","Image":"ghcr.io/wolvesdotink/mail-sync:0.4.3","Health":"healthy"}\n'
-				: dockerFixture(cmd)
+				: dockerFixture(file, args)
 		);
 		const res = await post({ flags: { 'mail.external': true } });
 		expect(res.status).toBe(200);
 
-		const calls = execSyncMock.mock.calls.map((c) => [String(c[0]), (c[1] as { cwd: string }).cwd]);
+		// `exec` runs execFileSync, so a call is (file, argv, options); joining
+		// the two back together keeps these expectations readable as commands.
+		const calls = execFileSyncMock.mock.calls.map((c) => [
+			[String(c[0]), ...(c[1] as string[])].join(' '),
+			(c[2] as { cwd: string }).cwd,
+		]);
 		expect(calls.filter(([cmd]) => !String(cmd).startsWith('docker inspect'))).toEqual([
 			[`${COMPOSE} config --services`, OWLAT_DIR],
 			// Every service compose would start for the active profiles, minus
@@ -273,8 +278,8 @@ describe('compose invocation + per-service health', () => {
 	});
 
 	it('fails with 500 (files already converged) when compose up fails', async () => {
-		execSyncMock.mockImplementation((cmd: string) => {
-			if (cmd.includes('up')) throw Object.assign(new Error('boom'), { stderr: 'daemon down' });
+		execFileSyncMock.mockImplementation((_file: string, args: string[]) => {
+			if (args.includes('up')) throw Object.assign(new Error('boom'), { stderr: 'daemon down' });
 			return '';
 		});
 		const res = await post({ flags: {} });

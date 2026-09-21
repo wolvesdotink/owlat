@@ -18,10 +18,7 @@ import { recordContactActivity } from '../../contactActivities/writer';
 const modules = import.meta.glob('../../**/*.*s');
 
 /** Insert a minimal live contact and return the loaded Doc. */
-async function insertContact(
-	ctx: MutationCtx,
-	overrides: Record<string, unknown> = {},
-) {
+async function insertContact(ctx: MutationCtx, overrides: Record<string, unknown> = {}) {
 	const id = await ctx.db.insert('contacts', {
 		email: 'a@example.com',
 		source: 'api',
@@ -88,9 +85,7 @@ describe('makeSegmentPredicate (pure matcher)', () => {
 
 describe('parseSegmentFilters throws on corrupt filters (callers decide)', () => {
 	it('throws on an unknown condition kind', () => {
-		expect(() =>
-			parseSegmentFilters({ logic: 'AND', conditions: [{ kind: 'bogus' }] }),
-		).toThrow();
+		expect(() => parseSegmentFilters({ logic: 'AND', conditions: [{ kind: 'bogus' }] })).toThrow();
 	});
 
 	it('throws on invalid JSON string', () => {
@@ -112,8 +107,9 @@ describe('matchLiveContacts (segment preview)', () => {
 				],
 			});
 
-			expect(result).toHaveLength(1);
-			expect(result[0]!.email).toBe('live@acme.com');
+			expect(result.contacts).toHaveLength(1);
+			expect(result.contacts[0]!.email).toBe('live@acme.com');
+			expect(result.done).toBe(true);
 		});
 	});
 
@@ -130,10 +126,13 @@ describe('matchLiveContacts (segment preview)', () => {
 						{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' },
 					],
 				},
-				{ limit: 2 },
+				{ limit: 2 }
 			);
 
-			expect(result).toHaveLength(2);
+			expect(result.contacts).toHaveLength(2);
+			// Hitting the limit ends the walk: the caller has what it asked for.
+			expect(result.done).toBe(true);
+			expect(result.cursor).toBeNull();
 		});
 	});
 
@@ -145,7 +144,7 @@ describe('matchLiveContacts (segment preview)', () => {
 			await insertContact(ctx, { email: 'gone@x.com', deletedAt: Date.now() });
 
 			const result = await matchLiveContacts(ctx, { logic: 'AND', conditions: [] }, { limit: 10 });
-			expect(result).toHaveLength(2);
+			expect(result.contacts).toHaveLength(2);
 		});
 	});
 
@@ -154,7 +153,8 @@ describe('matchLiveContacts (segment preview)', () => {
 		await t.run(async (ctx) => {
 			await insertContact(ctx);
 			const result = await matchLiveContacts(ctx, 'not json {{{');
-			expect(result).toEqual([]);
+			expect(result.contacts).toEqual([]);
+			expect(result.done).toBe(true);
 		});
 	});
 });
@@ -164,7 +164,7 @@ describe('countLiveMatches', () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			await insertContact(ctx);
-			expect(await countLiveMatches(ctx, 'not json {{{')).toBe(0);
+			expect((await countLiveMatches(ctx, 'not json {{{')).matched).toBe(0);
 		});
 	});
 
@@ -181,7 +181,8 @@ describe('countLiveMatches', () => {
 					{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' },
 				],
 			});
-			expect(n).toBe(1);
+			expect(n.matched).toBe(1);
+			expect(n.done).toBe(true);
 		});
 	});
 });
@@ -195,9 +196,7 @@ describe('live-Contact streaming across the page boundary (ADR-0033)', () => {
 	const OTHER = 50; // non-matching, live
 	const acmeFilters = {
 		logic: 'AND' as const,
-		conditions: [
-			{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' },
-		],
+		conditions: [{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' }],
 	};
 
 	async function seedLargeTable(ctx: MutationCtx) {
@@ -215,7 +214,11 @@ describe('live-Contact streaming across the page boundary (ADR-0033)', () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			await seedLargeTable(ctx);
-			expect(await countLiveMatches(ctx, acmeFilters)).toBe(ACME);
+			const scan = await countLiveMatches(ctx, acmeFilters);
+			expect(scan.matched).toBe(ACME);
+			// This population fits the default budget; if it stopped short the
+			// assertion above would be a partial count, not a wrong one.
+			expect(scan.done).toBe(true);
 		});
 	});
 
@@ -224,8 +227,9 @@ describe('live-Contact streaming across the page boundary (ADR-0033)', () => {
 		await t.run(async (ctx) => {
 			await seedLargeTable(ctx);
 			const result = await matchLiveContacts(ctx, acmeFilters);
-			expect(result).toHaveLength(ACME);
-			expect(result.some((c) => c.email === 'gone@acme.com')).toBe(false);
+			expect(result.done).toBe(true);
+			expect(result.contacts).toHaveLength(ACME);
+			expect(result.contacts.some((c) => c.email === 'gone@acme.com')).toBe(false);
 		});
 	});
 
@@ -234,7 +238,7 @@ describe('live-Contact streaming across the page boundary (ADR-0033)', () => {
 		await t.run(async (ctx) => {
 			await seedLargeTable(ctx);
 			const result = await matchLiveContacts(ctx, acmeFilters, { limit: 700 });
-			expect(result).toHaveLength(700);
+			expect(result.contacts).toHaveLength(700);
 		});
 	});
 
@@ -242,7 +246,9 @@ describe('live-Contact streaming across the page boundary (ADR-0033)', () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			await seedLargeTable(ctx);
-			expect(await countLiveMatches(ctx, { logic: 'AND', conditions: [] })).toBe(ACME + OTHER);
+			expect((await countLiveMatches(ctx, { logic: 'AND', conditions: [] })).matched).toBe(
+				ACME + OTHER
+			);
 		});
 	});
 
@@ -262,8 +268,9 @@ describe('live-Contact streaming across the page boundary (ADR-0033)', () => {
 					},
 				},
 			]);
-			expect(counts.get('acme')).toBe(ACME);
-			expect(counts.get('other')).toBe(OTHER);
+			expect(counts.done).toBe(true);
+			expect(counts.counts.get('acme')).toBe(ACME);
+			expect(counts.counts.get('other')).toBe(OTHER);
 		});
 	});
 });
@@ -287,7 +294,7 @@ describe('email_activity condition (denormalized contact flags)', () => {
 			const parsedTrue = parseSegmentFilters(openedTrue);
 			const matchesTrue = makeSegmentPredicate(
 				parsedTrue,
-				await preloadConditionsLookup(ctx, parsedTrue.conditions),
+				await preloadConditionsLookup(ctx, parsedTrue.conditions)
 			);
 			expect(matchesTrue(opened)).toBe(true);
 			expect(matchesTrue(never)).toBe(false);
@@ -295,7 +302,7 @@ describe('email_activity condition (denormalized contact flags)', () => {
 			const parsedFalse = parseSegmentFilters(openedFalse);
 			const matchesFalse = makeSegmentPredicate(
 				parsedFalse,
-				await preloadConditionsLookup(ctx, parsedFalse.conditions),
+				await preloadConditionsLookup(ctx, parsedFalse.conditions)
 			);
 			expect(matchesFalse(opened)).toBe(false);
 			expect(matchesFalse(never)).toBe(true);
@@ -327,7 +334,7 @@ describe('email_activity condition (denormalized contact flags)', () => {
 			const parsed = parseSegmentFilters(openedTrue);
 			const matches = makeSegmentPredicate(
 				parsed,
-				await preloadConditionsLookup(ctx, parsed.conditions),
+				await preloadConditionsLookup(ctx, parsed.conditions)
 			);
 			expect(matches((await ctx.db.get(c._id))!)).toBe(true);
 		});
@@ -343,10 +350,12 @@ describe('evaluateAgainstContact (single-contact case)', () => {
 				ctx,
 				parseSegmentFilters({
 					logic: 'AND',
-					conditions: [{ kind: 'contact_property', field: 'source', operator: 'equals', value: 'import' }],
+					conditions: [
+						{ kind: 'contact_property', field: 'source', operator: 'equals', value: 'import' },
+					],
 				}).conditions,
 				'AND',
-				contact,
+				contact
 			);
 			expect(result).toBe(true);
 		});
@@ -410,9 +419,7 @@ describe('evaluateAgainstContact (single-contact case)', () => {
 describe('countMatchingContactsPage (cursor-checkpointed audience walk)', () => {
 	const acmeFilters = {
 		logic: 'AND' as const,
-		conditions: [
-			{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' },
-		],
+		conditions: [{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' }],
 	};
 
 	it('sums matches across pages via the walker, excluding soft-deleted', async () => {
@@ -430,7 +437,9 @@ describe('countMatchingContactsPage (cursor-checkpointed audience walk)', () => 
 		let total = 0;
 		let scanned = 0;
 		for (;;) {
-			const page = await t.run(async (ctx) => countMatchingContactsPage(ctx, acmeFilters, cursor, 4));
+			const page = await t.run(async (ctx) =>
+				countMatchingContactsPage(ctx, acmeFilters, cursor, 4)
+			);
 			total += page.matched;
 			scanned += page.scanned;
 			if (page.isDone || page.continueCursor === null) break;
@@ -444,7 +453,12 @@ describe('countMatchingContactsPage (cursor-checkpointed audience walk)', () => 
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 5; i++) await insertContact(ctx, { email: `u${i}@x.com` });
-			const page = await countMatchingContactsPage(ctx, { logic: 'AND', conditions: [] }, null, 100);
+			const page = await countMatchingContactsPage(
+				ctx,
+				{ logic: 'AND', conditions: [] },
+				null,
+				100
+			);
 			expect(page.matched).toBe(5);
 			expect(page.isDone).toBe(true);
 		});
@@ -454,9 +468,7 @@ describe('countMatchingContactsPage (cursor-checkpointed audience walk)', () => 
 describe('listMatchingContactsPage (cursor-checkpointed membership walk)', () => {
 	const acmeFilters = {
 		logic: 'AND' as const,
-		conditions: [
-			{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' },
-		],
+		conditions: [{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' }],
 	};
 
 	it('returns the matching members across pages, excluding soft-deleted', async () => {
@@ -473,7 +485,9 @@ describe('listMatchingContactsPage (cursor-checkpointed membership walk)', () =>
 		let cursor: string | null = null;
 		const emails: string[] = [];
 		for (;;) {
-			const page = await t.run(async (ctx) => listMatchingContactsPage(ctx, acmeFilters, cursor, 4));
+			const page = await t.run(async (ctx) =>
+				listMatchingContactsPage(ctx, acmeFilters, cursor, 4)
+			);
 			for (const m of page.members) emails.push(m.email!);
 			if (page.isDone) break;
 			cursor = page.continueCursor;
@@ -500,6 +514,149 @@ describe('listMatchingContactsPage (cursor-checkpointed membership walk)', () =>
 			const page = await listMatchingContactsPage(ctx, 'not json {{{', null, 100);
 			expect(page.members).toEqual([]);
 			expect(page.isDone).toBe(true);
+		});
+	});
+});
+
+describe('budgeted live-Contact walk (per-execution read limit)', () => {
+	// Smaller than the population below, so the walk cannot finish in one
+	// execution — the case the whole checkpoint exists for. Documents, not
+	// contacts: these filters read nothing beyond the contact row, so the two
+	// numbers coincide here.
+	const BUDGET = 100;
+	const POPULATION = 340;
+	const NON_MATCHING = 25;
+	const acmeFilters = {
+		logic: 'AND' as const,
+		conditions: [{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'acme' }],
+	};
+
+	async function seed(ctx: MutationCtx) {
+		for (let i = 0; i < POPULATION; i++) {
+			await insertContact(ctx, { email: `p${i}@acme.com` });
+		}
+		for (let i = 0; i < NON_MATCHING; i++) {
+			await insertContact(ctx, { email: `n${i}@other.com` });
+		}
+	}
+
+	it('counts a population larger than the budget across several executions', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await seed(ctx);
+
+			let cursor: string | null = null;
+			let total = 0;
+			let executions = 0;
+			for (;;) {
+				const scan = await countLiveMatches(ctx, acmeFilters, {
+					cursor,
+					documentBudget: BUDGET,
+				});
+				total += scan.matched;
+				executions++;
+				expect(scan.scanned).toBeLessThanOrEqual(BUDGET);
+				if (scan.done) {
+					expect(scan.cursor).toBeNull();
+					break;
+				}
+				expect(scan.cursor).not.toBeNull();
+				cursor = scan.cursor;
+				expect(executions).toBeLessThan(POPULATION); // no infinite reschedule
+			}
+
+			expect(total).toBe(POPULATION);
+			expect(executions).toBeGreaterThan(1);
+		});
+	});
+
+	it('visits every live contact exactly once across the resumed executions', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await seed(ctx);
+
+			let cursor: string | null = null;
+			const seen: string[] = [];
+			for (;;) {
+				const scan = await matchLiveContacts(
+					ctx,
+					{ logic: 'AND', conditions: [] },
+					{ cursor, documentBudget: BUDGET }
+				);
+				for (const contact of scan.contacts) seen.push(contact._id);
+				if (scan.done) break;
+				cursor = scan.cursor;
+			}
+
+			expect(seen).toHaveLength(POPULATION + NON_MATCHING);
+			expect(new Set(seen).size).toBe(seen.length); // no row counted twice
+		});
+	});
+
+	it('keeps the limit stop separate from the budget stop', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await seed(ctx);
+
+			const stopped = await matchLiveContacts(ctx, acmeFilters, {
+				limit: 5,
+				documentBudget: BUDGET,
+			});
+			expect(stopped.contacts).toHaveLength(5);
+			// The caller got what it asked for: nothing to resume.
+			expect(stopped.done).toBe(true);
+			expect(stopped.cursor).toBeNull();
+			// And it stopped THERE: the limit shrinks the chunk, so the walk does
+			// not read (or resolve lookups for) a full chunk past its stop.
+			expect(stopped.scanned).toBe(5);
+
+			const exhausted = await matchLiveContacts(ctx, acmeFilters, { documentBudget: BUDGET });
+			expect(exhausted.done).toBe(false);
+			expect(exhausted.cursor).not.toBeNull();
+		});
+	});
+
+	it('keeps per-segment tallies aligned when the shared walk spans executions', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await seed(ctx);
+
+			const totals = new Map<string, number>([
+				['acme', 0],
+				['other', 0],
+			]);
+			let cursor: string | null = null;
+			for (;;) {
+				const scan = await countLiveMatchesForSegments(
+					ctx,
+					[
+						{ segmentId: 'acme', filters: acmeFilters },
+						{
+							segmentId: 'other',
+							filters: {
+								logic: 'AND',
+								conditions: [
+									{
+										kind: 'contact_property',
+										field: 'email',
+										operator: 'contains',
+										value: 'other',
+									},
+								],
+							},
+						},
+					],
+					{ cursor, documentBudget: BUDGET }
+				);
+				for (const [segmentId, count] of scan.counts) {
+					totals.set(segmentId, (totals.get(segmentId) ?? 0) + count);
+				}
+				if (scan.done) break;
+				cursor = scan.cursor;
+			}
+
+			expect(totals.get('acme')).toBe(POPULATION);
+			expect(totals.get('other')).toBe(NON_MATCHING);
 		});
 	});
 });

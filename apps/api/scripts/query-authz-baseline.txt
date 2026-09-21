@@ -70,7 +70,6 @@ convex/emailTemplates/organization.ts:countByTypeByOrganization
 convex/emailTemplates/organization.ts:getRecentByOrganization
 convex/forms/endpoints.ts:getSubmissions
 convex/forms/endpoints.ts:listByTeam
-convex/globalSearch.ts:search
 convex/integrationImports/walker.ts:getImportProgress
 convex/mediaAssets.ts:getStats
 convex/mediaAssets.ts:list
