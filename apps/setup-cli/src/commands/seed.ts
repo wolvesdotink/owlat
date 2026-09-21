@@ -9,7 +9,7 @@
 import { intro, outro, log } from '@clack/prompts';
 import { progressSpinner } from '../lib/progress';
 import pc from 'picocolors';
-import { loadBackendContext, postJson } from '../lib/backend';
+import { backendErrorMessage, loadBackendContext, postJson } from '../lib/backend';
 
 import type { CliOptions as RunOptions } from '../lib/cliOptions';
 
@@ -17,7 +17,6 @@ interface SeedSummary {
 	inserted?: Record<string, number>;
 	skipped?: Record<string, number>;
 	deleted?: Record<string, number>;
-	error?: string;
 }
 
 export async function runSeed(opts: RunOptions, baseUrlOverride?: string): Promise<number> {
@@ -44,7 +43,7 @@ export async function runSeed(opts: RunOptions, baseUrlOverride?: string): Promi
 	}
 
 	if (response.status !== 200) {
-		s.stop(pc.red(`Failed: ${response.body?.error ?? `HTTP ${response.status}`}`));
+		s.stop(pc.red(`Failed: ${backendErrorMessage(response.body, `HTTP ${response.status}`)}`));
 		return 1;
 	}
 

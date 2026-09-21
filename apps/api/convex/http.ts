@@ -260,6 +260,13 @@ http.route({
 	handler: serveSealedBlob,
 });
 
+// CORS preflight for the sealed-blob proxy
+http.route({
+	path: '/sealed-blob',
+	method: 'OPTIONS',
+	handler: serveSealedBlob,
+});
+
 // GET /attachment-share/{token} - the PUBLIC expiring-token download for a file
 // the composer lifted out of a message. No session and no
 // signature: the token in the path is the whole capability, and every gate

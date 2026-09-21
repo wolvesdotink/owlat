@@ -24,14 +24,12 @@ describe('publicCorsHeaders', () => {
 	});
 
 	it('passes through the requested methods', () => {
-		expect(publicCorsHeaders('GET, OPTIONS')['Access-Control-Allow-Methods']).toBe(
-			'GET, OPTIONS',
-		);
+		expect(publicCorsHeaders('GET, OPTIONS')['Access-Control-Allow-Methods']).toBe('GET, OPTIONS');
 		expect(publicCorsHeaders('POST, OPTIONS')['Access-Control-Allow-Methods']).toBe(
-			'POST, OPTIONS',
+			'POST, OPTIONS'
 		);
 		expect(publicCorsHeaders('GET, POST, OPTIONS')['Access-Control-Allow-Methods']).toBe(
-			'GET, POST, OPTIONS',
+			'GET, POST, OPTIONS'
 		);
 	});
 });
@@ -107,7 +105,7 @@ describe('errorResponse', () => {
 describe('errorResponseFromThrow', () => {
 	it('honors a ConvexError carrying an Operation error (category + status)', async () => {
 		const response = errorResponseFromThrow(
-			new ConvexError({ category: 'not_found', message: 'Contact not found' }),
+			new ConvexError({ category: 'not_found', message: 'Contact not found' })
 		);
 		expect(response.status).toBe(404);
 		const body = await response.json();
@@ -120,7 +118,7 @@ describe('errorResponseFromThrow', () => {
 				category: 'invalid_state',
 				message: 'Published',
 				data: { action: 'unpublish' },
-			}),
+			})
 		);
 		expect(response.status).toBe(422);
 		const body = await response.json();
@@ -137,11 +135,13 @@ describe('errorResponseFromThrow', () => {
 });
 
 describe('methodNotAllowed', () => {
-	it('returns 405 with an uncategorized error envelope', async () => {
+	it('returns 405 — the transport status, not the one the category maps to', async () => {
 		const response = methodNotAllowed();
 		expect(response.status).toBe(405);
 		const body = await response.json();
 		expect(body.error.message).toBe('Method not allowed');
-		expect('category' in body.error).toBe(false);
+		// Every envelope carries a category, so a client reading error.category
+		// never has to special-case this one response.
+		expect(body.error.category).toBe('invalid_input');
 	});
 });
