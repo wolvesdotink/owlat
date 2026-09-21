@@ -138,7 +138,7 @@ class ImapSeedMailboxSession implements SeedMailboxSession {
 					uid: true,
 				}
 			);
-			const source = message === false ? undefined : message.source;
+			const source = message ? message.source : undefined;
 			if (!source) return [];
 			return extractProbeLinkTargets(source.toString('utf8'));
 		} finally {
