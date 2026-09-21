@@ -19,7 +19,8 @@ import { v } from 'convex/values';
 import { openMailMessageInlineBody } from '../../lib/messageBody';
 import { internalQuery, internalMutation } from '../../_generated/server';
 import type { QueryCtx, MutationCtx } from '../../_generated/server';
-import { authedMutation, publicQuery } from '../../lib/authedFunctions';
+import { publicQuery } from '../../lib/authedFunctions';
+import { postboxMutation } from '../_helpers';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { isFeatureEnabled } from '../../lib/featureFlags';
@@ -323,7 +324,7 @@ const MAX_STANDING_INSTRUCTION_CHARS = 200;
  * exclamation marks", "sign as Dr."). These are explicit rules, merged ABOVE the
  * derived voice at draft time. Trimmed, de-duplicated, empties dropped, bounded.
  */
-export const setStandingInstructions = authedMutation({
+export const setStandingInstructions = postboxMutation({
 	args: { mailboxId: v.id('mailboxes'), instructions: v.array(v.string()) },
 	// authz: access enforced via requireMailboxAccess.
 	handler: async (ctx, args) => {
@@ -363,7 +364,7 @@ export const setStandingInstructions = authedMutation({
  * Revoke one learned voice-level adjustment by kind ("stop applying this rule").
  * Drops it entirely so it neither injects nor keeps its observation count.
  */
-export const removeDerivedAdjustment = authedMutation({
+export const removeDerivedAdjustment = postboxMutation({
 	args: { mailboxId: v.id('mailboxes'), kind: v.string() },
 	// authz: access enforced via requireMailboxAccess.
 	handler: async (ctx, args) => {
@@ -381,7 +382,7 @@ export const removeDerivedAdjustment = authedMutation({
 });
 
 /** Toggle "Personalize AI drafts" for a mailbox (creates the row on first use). */
-export const setEnabled = authedMutation({
+export const setEnabled = postboxMutation({
 	args: { mailboxId: v.id('mailboxes'), enabled: v.boolean() },
 	// authz: access enforced via requireMailboxAccess.
 	handler: async (ctx, args) => {
@@ -410,7 +411,7 @@ export const setEnabled = authedMutation({
  * the row refreshing and schedules the background action; the profile updates
  * out of band so the call returns immediately.
  */
-export const requestRefresh = authedMutation({
+export const requestRefresh = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	// authz: access enforced via requireMailboxAccess.
 	handler: async (ctx, args) => {

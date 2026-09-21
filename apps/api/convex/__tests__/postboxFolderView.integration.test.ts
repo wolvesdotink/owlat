@@ -10,6 +10,7 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import type { DatabaseWriter } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -137,6 +138,7 @@ async function insertMessage(
 describe('mail.mailbox.queries.listMessages — custom folder by id', () => {
 	it('returns only the messages in the addressed custom folder', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		let mailboxId!: Id<'mailboxes'>;
 		let customFolderId!: Id<'mailFolders'>;
 		await t.run(async (ctx) => {
@@ -157,6 +159,7 @@ describe('mail.mailbox.queries.listMessages — custom folder by id', () => {
 
 	it('returns empty for a folder that belongs to a different mailbox', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		let mineMailboxId!: Id<'mailboxes'>;
 		let otherFolderId!: Id<'mailFolders'>;
 		await t.run(async (ctx) => {
@@ -178,6 +181,7 @@ describe('mail.mailbox.queries.listMessages — sort order', () => {
 	/** Three inbox messages an hour apart, oldest ("first") inserted last. */
 	async function seedInbox() {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		let mailboxId!: Id<'mailboxes'>;
 		await t.run(async (ctx) => {
 			mailboxId = await insertMailbox(ctx, 'test-user');
@@ -232,6 +236,7 @@ describe('mail.mailbox.queries.listMessages — sort order', () => {
 
 	it('applies the same direction to a custom folder addressed by id', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		let mailboxId!: Id<'mailboxes'>;
 		let customFolderId!: Id<'mailFolders'>;
 		await t.run(async (ctx) => {

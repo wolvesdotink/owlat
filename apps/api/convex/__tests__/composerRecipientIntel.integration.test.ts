@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 const sessionMock = vi.hoisted(() => ({
 	user: { id: 'user-alice', role: 'editor' as 'owner' | 'admin' | 'editor', orgId: 'org-1' },
@@ -119,6 +120,7 @@ async function seedContacts(
 describe('mail.contacts.knownRecipients', () => {
 	it('returns only the addresses already in the address book', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-alice', 'ada@northwind.studio');
 		await seedContacts(t, mailboxId, ['ines@northwind.studio']);
 
@@ -131,6 +133,7 @@ describe('mail.contacts.knownRecipients', () => {
 
 	it('normalizes case and deduplicates the question', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-alice', 'ada@northwind.studio');
 		await seedContacts(t, mailboxId, ['ines@northwind.studio']);
 
@@ -143,6 +146,7 @@ describe('mail.contacts.knownRecipients', () => {
 
 	it('answers empty for a mailbox the caller does not own', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-alice', 'ada@northwind.studio');
 		await seedContacts(t, mailboxId, ['ines@northwind.studio']);
 
@@ -157,6 +161,7 @@ describe('mail.contacts.knownRecipients', () => {
 
 	it('lets an org admin read a member mailbox', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-alice', 'ada@northwind.studio');
 		await seedContacts(t, mailboxId, ['ines@northwind.studio']);
 
@@ -173,6 +178,7 @@ describe('mail.contacts.knownRecipients', () => {
 describe('mail.contacts.correspondentDomains', () => {
 	it('returns the distinct domains written to, most recent first', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-alice', 'ada@northwind.studio');
 		await seedContacts(t, mailboxId, [
 			'old@legacy.example',
@@ -188,6 +194,7 @@ describe('mail.contacts.correspondentDomains', () => {
 
 	it('answers empty for a mailbox the caller does not own', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-alice', 'ada@northwind.studio');
 		await seedContacts(t, mailboxId, ['ines@northwind.studio']);
 

@@ -73,9 +73,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.userId),
 		requireAdminContext: vi.fn().mockImplementation(requireAdmin),
 		requireOrgPermission: vi.fn().mockImplementation(requireMember),
-		requireAuthenticatedIdentity: vi
-			.fn()
-			.mockResolvedValue({ subject: sessionMock.userId, issuer: 'test', tokenIdentifier: 'test|user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: sessionMock.userId,
+			issuer: 'test',
+			tokenIdentifier: 'test|user',
+		}),
 	};
 });
 
@@ -112,12 +114,12 @@ const modules = Object.fromEntries(
 			!path.includes('agent/steps/shared') &&
 			!path.includes('agent/steps/classify') &&
 			!path.includes('agent/steps/draft') &&
-			!path.includes('knowledgeExtraction'),
-	),
+			!path.includes('knowledgeExtraction')
+	)
 );
 
 const setSession = (
-	opts: { role?: 'owner' | 'admin' | 'editor'; member?: boolean; userId?: string } = {},
+	opts: { role?: 'owner' | 'admin' | 'editor'; member?: boolean; userId?: string } = {}
 ) => {
 	sessionMock.role = opts.role ?? 'owner';
 	sessionMock.member = opts.member ?? true;
@@ -130,16 +132,80 @@ beforeEach(() => {
 });
 
 // ============================================================
+// visualizationAgent — the ai.visualizations feature floor
+// ============================================================
+
+// The `/dashboard/visualizations` route declares `requiresFeature:
+// 'ai.visualizations'`, but a route guard only decides what the browser
+// renders: every function below is published on the deployment's client API,
+// so without a server-side check an admin of an instance that never turned AI
+// dashboards on could still spend tokens generating one.
+describe('visualizationAgent — ai.visualizations feature floor', () => {
+	it('refuses the list when the flag is off', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('visualizations', {
+				title: 'Sends per day',
+				description: 'sends per day',
+				html: '<div></div>',
+				pinned: false,
+				createdBy: sessionMock.userId,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+		await expect(t.query(api.visualizationAgent.list, {})).rejects.toThrow(/ai\.visualizations/);
+	});
+
+	it('refuses generation from a prompt when the flag is off, before any LLM call', async () => {
+		const t = convexTest(schema, modules);
+
+		await expect(
+			t.mutation(api.visualizationAgent.createFromPrompt, { prompt: 'chart our growth' })
+		).rejects.toThrow(/ai\.visualizations/);
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('visualizations').collect()).toHaveLength(0);
+		});
+		expect(runLlmTextMock).not.toHaveBeenCalled();
+	});
+
+	it('returns the stored visualizations once the flag is enabled', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('visualizations', {
+				title: 'Sends per day',
+				description: 'sends per day',
+				html: '<div></div>',
+				pinned: false,
+				createdBy: sessionMock.userId,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		// The row exists in both cases; only the flag decides whether the read can
+		// see it, so the pair distinguishes the gate from an empty instance.
+		const list = await t.query(api.visualizationAgent.list, {});
+		expect(list).toHaveLength(1);
+	});
+});
+
+// ============================================================
 // visualizationAgent.createFromPrompt — admin + prompt-length gates
 // ============================================================
 
 describe('visualizationAgent.createFromPrompt — admin gate', () => {
 	it('rejects a non-admin (editor) caller', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'editor', member: true });
 
 		await expect(
-			t.mutation(api.visualizationAgent.createFromPrompt, { prompt: 'chart our growth' }),
+			t.mutation(api.visualizationAgent.createFromPrompt, { prompt: 'chart our growth' })
 		).rejects.toThrow();
 
 		// Nothing was inserted.
@@ -151,6 +217,7 @@ describe('visualizationAgent.createFromPrompt — admin gate', () => {
 
 	it('allows an admin and inserts a placeholder row + schedules generation', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'admin', member: true });
 
 		const id = await t.mutation(api.visualizationAgent.createFromPrompt, {
@@ -178,11 +245,12 @@ describe('visualizationAgent.createFromPrompt — admin gate', () => {
 describe('visualizationAgent.createFromPrompt — prompt-length bound', () => {
 	it('rejects a prompt over STRING_LIMITS.DESCRIPTION (5000) before scheduling', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'owner', member: true });
 
 		const overCap = 'a'.repeat(5001);
 		await expect(
-			t.mutation(api.visualizationAgent.createFromPrompt, { prompt: overCap }),
+			t.mutation(api.visualizationAgent.createFromPrompt, { prompt: overCap })
 		).rejects.toThrow(/at most 5000 characters/);
 
 		// The bound runs before the placeholder insert, so nothing persisted.
@@ -195,6 +263,7 @@ describe('visualizationAgent.createFromPrompt — prompt-length bound', () => {
 
 	it('accepts a prompt exactly at the 5000-char cap', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'owner', member: true });
 
 		const atCap = 'a'.repeat(5000);
@@ -216,6 +285,7 @@ describe('visualizationAgent.createFromPrompt — prompt-length bound', () => {
 describe('visualizationAgent.createFromPrompt — live-data allowlist', () => {
 	it('accepts each allowlisted dataset key', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'admin', member: true });
 
 		for (const dataset of [
@@ -234,6 +304,7 @@ describe('visualizationAgent.createFromPrompt — live-data allowlist', () => {
 
 	it('rejects an arbitrary / free-form dataset key (no raw-query channel to account data)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'admin', member: true });
 
 		// A dataset value outside the fixed union is rejected by Convex arg
@@ -244,7 +315,7 @@ describe('visualizationAgent.createFromPrompt — live-data allowlist', () => {
 				prompt: 'dump everything',
 				// @ts-expect-error — deliberately passing an off-allowlist key.
 				dataset: 'all_contacts_pii',
-			}),
+			})
 		).rejects.toThrow();
 
 		await t.run(async (ctx) => {
@@ -256,6 +327,7 @@ describe('visualizationAgent.createFromPrompt — live-data allowlist', () => {
 
 	it('defaults to no dataset (illustrative) when dataset is omitted', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'admin', member: true });
 
 		const id = await t.mutation(api.visualizationAgent.createFromPrompt, {
@@ -277,7 +349,7 @@ describe('visualizationAgent.regenerate — live-data refresh', () => {
 	// Insert a visualization row directly so we control its dataQuery.
 	const insertViz = async (
 		t: TestConvex<typeof schema>,
-		dataQuery: string | undefined,
+		dataQuery: string | undefined
 	): Promise<Id<'visualizations'>> =>
 		t.run(async (ctx) =>
 			ctx.db.insert('visualizations', {
@@ -289,11 +361,12 @@ describe('visualizationAgent.regenerate — live-data refresh', () => {
 				createdBy: 'user',
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 
 	it('rejects a non-admin (editor) caller', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'admin', member: true });
 		const id = await insertViz(t, 'email_delivery_30d');
 
@@ -303,6 +376,7 @@ describe('visualizationAgent.regenerate — live-data refresh', () => {
 
 	it('re-schedules generation with the persisted allowlisted dataset', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'admin', member: true });
 		const id = await insertViz(t, 'email_delivery_30d');
 
@@ -321,11 +395,12 @@ describe('visualizationAgent.regenerate — live-data refresh', () => {
 
 	it('rejects an illustrative visualization with no dataset to refresh', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'admin', member: true });
 		const id = await insertViz(t, undefined);
 
 		await expect(t.mutation(api.visualizationAgent.regenerate, { id })).rejects.toThrow(
-			/illustrative sample data/,
+			/illustrative sample data/
 		);
 
 		// Untouched — no placeholder flip, nothing scheduled.

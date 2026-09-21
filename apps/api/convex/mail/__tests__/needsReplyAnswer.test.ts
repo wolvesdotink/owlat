@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
+import { enableFeatures } from '../../__tests__/factories';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -181,6 +182,7 @@ beforeEach(() => {
 describe('mail.needsReplyClarify.answerClarification', () => {
 	it('persists the answer, stamps answeredAt, and schedules draftWithAnswers', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const threadId = await seedThreadWithClarification(t, 'user-A');
 
 		const res = await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
@@ -203,6 +205,7 @@ describe('mail.needsReplyClarify.answerClarification', () => {
 
 	it('rejects a payload whose questionIds match no open question', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const threadId = await seedThreadWithClarification(t, 'user-A');
 
 		await expect(
@@ -225,6 +228,7 @@ describe('mail.needsReplyClarify.answerClarification', () => {
 
 	it("rejects a non-owner's answer", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const threadId = await seedThreadWithClarification(t, 'user-A');
 		sessionMocks.userId = 'user-B';
 		await expect(

@@ -10,7 +10,8 @@ import { v } from 'convex/values';
 import { openMailMessageInlineBody } from '../lib/messageBody';
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 
@@ -147,7 +148,7 @@ export const getDefault = publicQuery({
 	},
 });
 
-export const create = authedMutation({
+export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		name: v.string(),
@@ -185,7 +186,7 @@ export const create = authedMutation({
 	},
 });
 
-export const update = authedMutation({
+export const update = postboxMutation({
 	args: {
 		signatureId: v.id('mailSignatures'),
 		name: v.optional(v.string()),
@@ -217,7 +218,7 @@ export const update = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { signatureId: v.id('mailSignatures') },
 	handler: async (ctx, args) => {
 		const sig = await ctx.db.get(args.signatureId);

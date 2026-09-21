@@ -108,8 +108,10 @@ export default defineNuxtRouteMiddleware((to) => {
 	// chat, postbox, ai.*). Bouncing here would redirect users AWAY from features
 	// they actually have enabled. Only gate once flags are confirmed loaded; the
 	// nav already hides disabled links and feature data is empty when off, so a
-	// page rendering briefly during load is harmless (flags are product gating,
-	// not an access-control boundary — the backend enforces real access).
+	// page rendering briefly during load is harmless: a flag is product gating,
+	// not an access-control boundary, and the gated function families (chat, the
+	// assistant, Postbox, AI dashboards) re-check their own flag server-side, so
+	// an early render cannot act on a feature this instance has switched off.
 	if (isLoading.value) return;
 
 	// AND group — every listed flag must be enabled.

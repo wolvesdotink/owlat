@@ -13,7 +13,8 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import {
 	getOrThrow,
@@ -68,7 +69,7 @@ export const list = publicQuery({
 	},
 });
 
-export const create = authedMutation({
+export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		name: v.string(),
@@ -108,7 +109,7 @@ export const create = authedMutation({
 	},
 });
 
-export const update = authedMutation({
+export const update = postboxMutation({
 	args: {
 		savedSearchId: v.id('mailSavedSearches'),
 		name: v.optional(v.string()),
@@ -149,7 +150,7 @@ export const update = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { savedSearchId: v.id('mailSavedSearches') },
 	handler: async (ctx, args) => {
 		const saved = await ctx.db.get(args.savedSearchId);

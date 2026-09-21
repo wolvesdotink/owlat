@@ -29,7 +29,7 @@ import { v } from 'convex/values';
 import { api } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { authedMutation } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess } from './permissions';
@@ -133,7 +133,7 @@ async function applyUnmute(ctx: MutationCtx, thread: Doc<'mailThreads'>): Promis
  */
 // authz: message → thread → mailbox access via requireMailboxAccess; org
 // membership via authedMutation.
-export const setMutedForMessage = authedMutation({
+export const setMutedForMessage = postboxMutation({
 	args: { messageId: v.id('mailMessages'), muted: v.boolean() },
 	handler: async (ctx, args): Promise<{ ok: true; threadId: Id<'mailThreads'> }> => {
 		const message = await getOrThrow(ctx, args.messageId, 'Message');

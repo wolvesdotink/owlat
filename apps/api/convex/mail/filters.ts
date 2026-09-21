@@ -16,7 +16,8 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
@@ -120,7 +121,7 @@ function normalizeFilterActions<T extends { type: string; sectionName?: string |
 	});
 }
 
-export const create = authedMutation({
+export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		name: v.string(),
@@ -188,7 +189,7 @@ export const create = authedMutation({
 	},
 });
 
-export const update = authedMutation({
+export const update = postboxMutation({
 	args: {
 		filterId: v.id('mailFilters'),
 		name: v.optional(v.string()),
@@ -220,7 +221,7 @@ export const update = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { filterId: v.id('mailFilters') },
 	handler: async (ctx, args) => {
 		const filter = await ctx.db.get(args.filterId);
@@ -251,7 +252,7 @@ const PRIORITY_STEP = 100;
  * order it wants and gets 100, 200, 300…; ids from another mailbox are skipped
  * rather than fatal, so a stale list cannot sink the whole reorder.
  */
-export const reorder = authedMutation({
+export const reorder = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		/** Filter ids, first to run to last. */

@@ -28,7 +28,8 @@
 
 import { v } from 'convex/values';
 import { normalizeEmail } from '@owlat/shared';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 
@@ -81,7 +82,7 @@ export const list = publicQuery({
  * the original grant rather than stacking duplicate rows.
  */
 // authz: mailbox access via requireMailboxAccess; org membership via authedMutation.
-export const allow = authedMutation({
+export const allow = postboxMutation({
 	args: { mailboxId: v.id('mailboxes'), senderEmail: v.string() },
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
@@ -110,7 +111,7 @@ export const allow = authedMutation({
  * granted, so a double-click can't fail.
  */
 // authz: mailbox access via requireMailboxAccess; org membership via authedMutation.
-export const revoke = authedMutation({
+export const revoke = postboxMutation({
 	args: { mailboxId: v.id('mailboxes'), senderEmail: v.string() },
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);

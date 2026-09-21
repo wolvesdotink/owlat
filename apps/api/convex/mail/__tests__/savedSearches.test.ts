@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
+import { enableFeatures } from '../../__tests__/factories';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -95,6 +96,7 @@ beforeEach(() => {
 describe('mail.savedSearches CRUD', () => {
 	it('creates, lists, updates and removes a saved search', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 
 		const id = await t.mutation(api.mail.savedSearches.create, {
@@ -127,6 +129,7 @@ describe('mail.savedSearches CRUD', () => {
 
 	it('appends each new entry after the last, and lists in that order', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 		for (const name of ['first', 'second', 'third']) {
 			await t.mutation(api.mail.savedSearches.create, { mailboxId, name, rawQuery: name });
@@ -138,6 +141,7 @@ describe('mail.savedSearches CRUD', () => {
 
 	it('reorders on an explicit order patch', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 		const first = await t.mutation(api.mail.savedSearches.create, {
 			mailboxId,
@@ -156,6 +160,7 @@ describe('mail.savedSearches CRUD', () => {
 
 	it('rejects an empty name or an empty query', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 		await expect(
 			t.mutation(api.mail.savedSearches.create, { mailboxId, name: '   ', rawQuery: 'a' })
@@ -167,6 +172,7 @@ describe('mail.savedSearches CRUD', () => {
 
 	it('rejects a duplicate name regardless of casing', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 		await t.mutation(api.mail.savedSearches.create, {
 			mailboxId,
@@ -184,6 +190,7 @@ describe('mail.savedSearches CRUD', () => {
 
 	it('rejects an over-long name or query', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 		await expect(
 			t.mutation(api.mail.savedSearches.create, {
@@ -205,6 +212,7 @@ describe('mail.savedSearches CRUD', () => {
 describe('mail.savedSearches ownership', () => {
 	it("does not list another user's saved searches", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mineId = await seedMailbox(t, 'user-A');
 		await t.mutation(api.mail.savedSearches.create, {
 			mailboxId: mineId,
@@ -218,6 +226,7 @@ describe('mail.savedSearches ownership', () => {
 
 	it('refuses to create in a mailbox the caller cannot reach', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mineId = await seedMailbox(t, 'user-A');
 		sessionMocks.userId = 'user-B';
 		await expect(
@@ -231,6 +240,7 @@ describe('mail.savedSearches ownership', () => {
 
 	it("refuses to update or remove another user's saved search", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mineId = await seedMailbox(t, 'user-A');
 		const id = await t.mutation(api.mail.savedSearches.create, {
 			mailboxId: mineId,

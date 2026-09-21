@@ -24,7 +24,8 @@ import { v } from 'convex/values';
 import { routeGmailLabels, parseGmailLabelsHeader } from '@owlat/shared/gmailTakeout';
 import { MAX_ARCHIVE_IMPORT_BYTES } from '@owlat/shared/mboxArchive';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden } from '../_utils/errors';
@@ -112,7 +113,7 @@ export const getStatus = publicQuery({
  * exists to avoid. The wizard renders `reason` as its own message.
  */
 // authz: self — requireMailboxAccess gates the target mailbox before anything is inserted
-export const start = authedMutation({
+export const start = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		storageId: v.id('_storage'),
@@ -188,7 +189,7 @@ export const start = authedMutation({
  * runner pass sees the non-importing status and exits at its batch boundary.
  */
 // authz: self — the job is resolved through its mailbox, which requireMailboxAccess gates
-export const cancel = authedMutation({
+export const cancel = postboxMutation({
 	args: { importId: v.id('mailArchiveImports') },
 	handler: async (ctx, args): Promise<boolean> => {
 		const job = await ctx.db.get(args.importId);

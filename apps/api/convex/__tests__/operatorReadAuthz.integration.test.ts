@@ -41,7 +41,7 @@ function throwForbidden(): never {
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization',
+		'../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole });
 	return {
@@ -96,8 +96,8 @@ const modules = Object.fromEntries(
 			!path.includes('agent/steps/classify') &&
 			!path.includes('agent/steps/draft') &&
 			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing'),
-	),
+			!path.includes('semanticFileProcessing')
+	)
 );
 
 const identity = {
@@ -115,6 +115,7 @@ beforeEach(() => {
 describe('operator read authz — autonomy.listRules', () => {
 	it('rejects a non-admin member (editor) with forbidden', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await enableFeatures(t, ['ai.autonomy']);
 		mockRole = 'editor';
 		const category = await t
@@ -127,6 +128,7 @@ describe('operator read authz — autonomy.listRules', () => {
 
 	it('allows an admin', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await enableFeatures(t, ['ai.autonomy']);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('autonomyRules', createTestAutonomyRule({ category: 'support' }));
@@ -142,6 +144,7 @@ describe('operator read authz — autonomy.listRules', () => {
 describe('operator read authz — agentHealth.getCostByStep', () => {
 	it('rejects a non-admin member (editor) with forbidden', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		mockRole = 'editor';
 		const category = await t
 			.withIdentity(identity)
@@ -153,10 +156,11 @@ describe('operator read authz — agentHealth.getCostByStep', () => {
 
 	it('allows an admin', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.run(async (ctx) => {
 			const messageId = await ctx.db.insert(
 				'inboundMessages',
-				createTestInboundMessage({ threadId: undefined, contactId: undefined }),
+				createTestInboundMessage({ threadId: undefined, contactId: undefined })
 			);
 			await ctx.db.insert(
 				'agentActions',
@@ -166,7 +170,7 @@ describe('operator read authz — agentHealth.getCostByStep', () => {
 					status: 'completed',
 					modelUsed: 'gpt-4o-mini',
 					tokenUsage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-				}),
+				})
 			);
 		});
 		mockRole = 'admin';
@@ -181,6 +185,7 @@ describe('operator read authz — agentHealth.getCostByStep', () => {
 describe('operator read authz — visualizationAgent.list', () => {
 	it('rejects a non-admin member (editor) with forbidden', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		mockRole = 'editor';
 		const category = await t
 			.withIdentity(identity)
@@ -192,6 +197,9 @@ describe('operator read authz — visualizationAgent.list', () => {
 
 	it('allows an admin', async () => {
 		const t = convexTest(schema, modules);
+		// The read is admin-gated AND behind its feature flag; this case is about
+		// the role, so the flag has to be on for the role decision to be reached.
+		await enableFeatures(t, ['ai.visualizations']);
 		const now = Date.now();
 		await t.run(async (ctx) => {
 			await ctx.db.insert('visualizations', {

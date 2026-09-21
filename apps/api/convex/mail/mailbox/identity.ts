@@ -16,7 +16,8 @@
 
 import { v } from 'convex/values';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
-import { authedMutation, publicQuery } from '../../lib/authedFunctions';
+import { publicQuery } from '../../lib/authedFunctions';
+import { postboxMutation } from '../_helpers';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
@@ -259,7 +260,7 @@ export async function createProvisionedMailbox(
 	});
 }
 
-export const create = authedMutation({
+export const create = postboxMutation({
 	args: {
 		userId: v.string(),
 		address: v.string(),
@@ -349,7 +350,7 @@ export const getById = internalQuery({
 	handler: async (ctx, args) => ctx.db.get(args.mailboxId),
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
 		const session = await requireAdminContext(ctx);
@@ -419,7 +420,7 @@ export const remove = authedMutation({
  * only the human-facing `displayName` can change. An empty/blank value clears
  * it back to "(no display name)".
  */
-export const setDisplayName = authedMutation({
+export const setDisplayName = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		displayName: v.string(),

@@ -15,7 +15,8 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
@@ -84,7 +85,7 @@ export const get = publicQuery({
 	},
 });
 
-export const update = authedMutation({
+export const update = postboxMutation({
 	// All fields optional so callers can patch a single preference (e.g. only the
 	// writing-suggestions toggle) without clobbering the others.
 	args: {

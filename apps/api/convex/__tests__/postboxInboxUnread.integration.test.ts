@@ -8,6 +8,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -34,6 +35,7 @@ const modules = Object.fromEntries(
 describe('mail.mailbox.queries.newestUnreadInbox', () => {
 	it("sums the caller's own inbox unseenCount and ignores other users' mail", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.run(async (ctx) => {
 			const now = Date.now();
 			const mine = await ctx.db.insert('mailboxes', {

@@ -25,7 +25,8 @@
 import { v, type Infer } from 'convex/values';
 import { openMailMessageInlineBody } from '../lib/messageBody';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
@@ -449,7 +450,7 @@ export const listQueue = publicQuery({
 /** Manual clear for the UI ("mark as done" on the Reply Queue). */
 // authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
-export const clear = authedMutation({
+export const clear = postboxMutation({
 	args: { threadId: v.id('mailThreads') },
 	handler: async (ctx, args) => {
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');

@@ -69,8 +69,8 @@
 # here by construction, so it carries the `// authz: <where the gate lives>`
 # opt-out instead.
 #
-# NOTE: `chatQuery` / `assistantQuery` (chat/_helpers.ts,
-# assistant/conversations.ts) compose `authedQuery` with a `assertFeatureEnabled`
+# NOTE: `chatQuery` / `assistantQuery` / `postboxQuery` (chat/_helpers.ts,
+# assistant/conversations.ts, mail/_helpers.ts) compose `authedQuery` with a `assertFeatureEnabled`
 # FEATURE-flag floor only — a feature flag is NOT an authorization decision — so
 # they are matched by the is_export regex below and remain SUBJECT to this
 # ratchet exactly like a bare `authedQuery`. The pre-existing chat reads keep
@@ -90,7 +90,7 @@ generate() {
 			{
 				is_comment = ($0 ~ /^[[:space:]]*\/\//)
 				is_optout  = ($0 ~ /\/\/[[:space:]]*(authz|all-members):/)
-				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|chatQuery|assistantQuery|publicQuery|publicAction)\(/)
+				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|chatQuery|assistantQuery|postboxQuery|publicQuery|publicAction)\(/)
 			}
 			is_comment && is_optout { block_optout = 1 }
 			is_export {

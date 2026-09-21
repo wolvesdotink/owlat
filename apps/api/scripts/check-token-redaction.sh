@@ -70,6 +70,8 @@ baseline_file="${2:-scripts/token-redaction-baseline.txt}"
 
 # awk walks each file (NR resets per file via find -exec ... {} \;). It tracks
 # the span of each `export const X = authedQuery(`/`publicQuery(` definition —
+# including the feature-gated `postboxQuery` compositions, which serialize to the
+# browser exactly like the `authedQuery` they wrap —
 # from the export line to the dedented `})` that closes it (top-level defs sit at
 # column 0; everything inside the handler is indented, so the only column-0 `})`
 # is the definition's own close). A span is flagged when it reads a token-bearing
@@ -86,7 +88,7 @@ generate() {
 			{
 				is_comment = ($0 ~ /^[[:space:]]*\/\//)
 				is_just    = ($0 ~ /\/\/[[:space:]]*token-safe:/)
-				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|publicQuery)\(/)
+				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|publicQuery|postboxQuery)\(/)
 				is_read    = ($0 ~ /\.query\((\x27|")(contacts|shareLinks|apiKeys|webhooks)(\x27|")\)/)
 				is_redact  = ($0 ~ /(redactContactCapabilityFields|PublicContact|stripWebhookSecret)/)
 			}

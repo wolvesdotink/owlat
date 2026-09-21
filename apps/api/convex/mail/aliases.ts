@@ -9,7 +9,8 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import { requireMailboxAccess } from './permissions';
 import {
@@ -34,7 +35,7 @@ export const list = publicQuery({
 	},
 });
 
-export const create = authedMutation({
+export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		alias: v.string(),
@@ -97,7 +98,7 @@ export const create = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { aliasId: v.id('mailAliases') },
 	handler: async (ctx, args) => {
 		const row = await ctx.db.get(args.aliasId);

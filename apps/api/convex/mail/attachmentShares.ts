@@ -37,7 +37,8 @@ import {
 	type AttachmentShareState,
 } from '@owlat/shared/attachmentShares';
 import { internalMutation, internalQuery } from '../_generated/server';
-import { authedMutation, authedQuery, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxQuery, postboxMutation } from './_helpers';
 import {
 	mailAttachmentShareScanValidator,
 	mailAttachmentShareScopeValidator,
@@ -167,7 +168,7 @@ export const list = publicQuery({
  * query round-trips and a double-click must not surface a failure.
  */
 // authz: requireOwnShare — mailbox access AND authorship of this link.
-export const revoke = authedMutation({
+export const revoke = postboxMutation({
 	args: { shareId: v.id('mailAttachmentShares') },
 	handler: async (ctx, args) => {
 		const row = await requireOwnShare(ctx, args.shareId);
@@ -186,7 +187,7 @@ export const revoke = authedMutation({
  * link that resolves to nothing, which is a worse answer than refusing.
  */
 // authz: requireOwnShare — mailbox access AND authorship of this link.
-export const setScope = authedMutation({
+export const setScope = postboxMutation({
 	args: {
 		shareId: v.id('mailAttachmentShares'),
 		scope: mailAttachmentShareScopeValidator,
@@ -220,7 +221,7 @@ export const setScope = authedMutation({
  * thing to do from a screen that still shows the row.
  */
 // authz: requireOwnShare — mailbox access AND authorship of this link.
-export const downloadUrl = authedQuery({
+export const downloadUrl = postboxQuery({
 	args: { shareId: v.id('mailAttachmentShares') },
 	handler: async (ctx, args): Promise<string | null> => {
 		const row = await requireOwnShare(ctx, args.shareId);

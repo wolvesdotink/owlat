@@ -8,7 +8,7 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import type { Id, Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { requireMailboxAccess } from './permissions';
@@ -70,7 +70,7 @@ async function applyFlagDelta(
 
 // ── Public mutations ──────────────────────────────────────────────
 
-export const setFlags = authedMutation({
+export const setFlags = postboxMutation({
 	args: {
 		messageIds: v.array(v.id('mailMessages')),
 		seen: v.optional(v.boolean()),
@@ -99,7 +99,7 @@ export const setFlags = authedMutation({
 	},
 });
 
-export const markThreadRead = authedMutation({
+export const markThreadRead = postboxMutation({
 	args: { threadId: v.id('mailThreads'), seen: v.boolean() },
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
@@ -216,7 +216,7 @@ export async function moveMessagesToFolder(
 }
 
 /** Move messages to a destination folder. Allocates new UID per message. */
-export const move = authedMutation({
+export const move = postboxMutation({
 	args: {
 		messageIds: v.array(v.id('mailMessages')),
 		targetFolderId: v.id('mailFolders'),
@@ -232,7 +232,7 @@ export const move = authedMutation({
 /** Archive: move to the Archive system folder. */
 // authz: access enforced by mail.messageActions.move (requireMailboxAccess per
 // message); this is a thin folder-routing wrapper.
-export const archive = authedMutation({
+export const archive = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<MoveResult | undefined> => {
 		const firstId = args.messageIds[0];
@@ -262,7 +262,7 @@ export const archive = authedMutation({
 /** Soft-delete: move to Trash. */
 // authz: access enforced by mail.messageActions.move (requireMailboxAccess per
 // message); this is a thin folder-routing wrapper.
-export const trash = authedMutation({
+export const trash = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<MoveResult | undefined> => {
 		const firstId = args.messageIds[0];
@@ -287,7 +287,7 @@ export const trash = authedMutation({
 
 /** Permanently delete from storage (invoked manually from the Trash folder via
  * the bulk-actions bar's "Delete forever"). Frees the raw .eml blob too. */
-export const purge = authedMutation({
+export const purge = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<{ ok: true }> => {
 		const touchedThreads = new Set<Id<'mailThreads'>>();
@@ -307,7 +307,7 @@ export const purge = authedMutation({
 
 /** Mark a single message read/unread (convenience wrapper). */
 // authz: access enforced by mail.messageActions.setFlags (requireMailboxAccess).
-export const markRead = authedMutation({
+export const markRead = postboxMutation({
 	args: { messageId: v.id('mailMessages'), seen: v.boolean() },
 	handler: async (ctx, args): Promise<void> => {
 		await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.setFlags, {
@@ -319,7 +319,7 @@ export const markRead = authedMutation({
 
 /** Star/unstar a single message. */
 // authz: access enforced by mail.messageActions.setFlags (requireMailboxAccess).
-export const setStar = authedMutation({
+export const setStar = postboxMutation({
 	args: { messageId: v.id('mailMessages'), starred: v.boolean() },
 	handler: async (ctx, args): Promise<void> => {
 		await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.setFlags, {
@@ -362,7 +362,7 @@ async function moveToRoleWithVerdict(
 
 /** Report as spam: move to Spam and record the verdict. */
 // authz: moveToRoleWithVerdict enforces ownership (requireMailboxAccess per message).
-export const reportSpam = authedMutation({
+export const reportSpam = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<MoveResult> => {
 		const result = await moveToRoleWithVerdict(ctx, args.messageIds, 'spam', 'spam');
@@ -373,7 +373,7 @@ export const reportSpam = authedMutation({
 
 /** Not spam: rescue to the Inbox and clear the spam verdict. */
 // authz: moveToRoleWithVerdict enforces ownership (requireMailboxAccess per message).
-export const notSpam = authedMutation({
+export const notSpam = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<MoveResult> => {
 		return await moveToRoleWithVerdict(ctx, args.messageIds, 'inbox', 'ham');
@@ -385,7 +385,7 @@ export const notSpam = authedMutation({
  * this address to Spam (or deletes it if there's no Spam folder), and move the
  * current message to Spam.
  */
-export const blockSender = authedMutation({
+export const blockSender = postboxMutation({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args): Promise<void> => {
 		const message = await ctx.db.get(args.messageId);

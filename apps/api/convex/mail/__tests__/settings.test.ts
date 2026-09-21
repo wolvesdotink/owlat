@@ -10,6 +10,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
+import { enableFeatures } from '../../__tests__/factories';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -71,11 +72,13 @@ beforeEach(() => {
 describe('mail.settings get/update', () => {
 	it('returns null before the user ever saved a preference', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		expect(await t.query(api.mail.settings.get, {})).toBeNull();
 	});
 
 	it('round-trips: update inserts a row that get returns', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, { autoAdvance: 'previous' });
 		expect(await t.query(api.mail.settings.get, {})).toEqual({
 			autoAdvance: 'previous',
@@ -84,6 +87,7 @@ describe('mail.settings get/update', () => {
 
 	it('updates in place: a second update patches the same row', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, { autoAdvance: 'previous' });
 		await t.mutation(api.mail.settings.update, { autoAdvance: 'back-to-list' });
 		expect(await t.query(api.mail.settings.get, {})).toEqual({
@@ -96,6 +100,7 @@ describe('mail.settings get/update', () => {
 
 	it('round-trips the inbox view mode without clobbering other preferences', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, { autoAdvance: 'previous' });
 		await t.mutation(api.mail.settings.update, { viewMode: 'categories' });
 		expect(await t.query(api.mail.settings.get, {})).toEqual({
@@ -106,6 +111,7 @@ describe('mail.settings get/update', () => {
 
 	it('round-trips the inbox landing mode without clobbering other preferences', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, { viewMode: 'categories' });
 		await t.mutation(api.mail.settings.update, { inboxMode: 'browse' });
 		expect(await t.query(api.mail.settings.get, {})).toEqual({
@@ -117,6 +123,7 @@ describe('mail.settings get/update', () => {
 
 	it('rejects an inbox landing mode outside the union', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await expect(
 			t.mutation(api.mail.settings.update, {
 				inboxMode: 'zen' as unknown as 'today',
@@ -126,6 +133,7 @@ describe('mail.settings get/update', () => {
 
 	it('round-trips the list sort order without clobbering other preferences', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, { viewMode: 'categories' });
 		await t.mutation(api.mail.settings.update, { sortOrder: 'oldest' });
 		expect(await t.query(api.mail.settings.get, {})).toEqual({
@@ -137,6 +145,7 @@ describe('mail.settings get/update', () => {
 
 	it('rejects a sort order outside the union', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await expect(
 			t.mutation(api.mail.settings.update, {
 				sortOrder: 'largest' as unknown as 'newest',
@@ -146,6 +155,7 @@ describe('mail.settings get/update', () => {
 
 	it('rejects a view mode outside the union', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await expect(
 			t.mutation(api.mail.settings.update, {
 				viewMode: 'stacked' as unknown as 'flat',
@@ -155,6 +165,7 @@ describe('mail.settings get/update', () => {
 
 	it('rejects values outside the mode union', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await expect(
 			t.mutation(api.mail.settings.update, {
 				autoAdvance: 'sideways' as unknown as 'next',
@@ -164,6 +175,7 @@ describe('mail.settings get/update', () => {
 
 	it('round-trips the quiet-hours window and mask without clobbering other preferences', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, { notifyAbout: 'people-important' });
 		await t.mutation(api.mail.settings.update, {
 			quietHours: { enabled: true, startMinute: 1320, endMinute: 420, days: [1, 2, 3, 4, 5] },
@@ -179,6 +191,7 @@ describe('mail.settings get/update', () => {
 		// `enabled` is a stored field precisely so switching off is not "forget it":
 		// the patch-shaped mutation has no way to express clearing a field.
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, {
 			quietHours: { enabled: true, startMinute: 1320, endMinute: 420, days: [5] },
 		});
@@ -196,6 +209,7 @@ describe('mail.settings get/update', () => {
 
 	it('rejects a quiet-hours object missing a field', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await expect(
 			t.mutation(api.mail.settings.update, {
 				quietHours: { enabled: true, startMinute: 1320 } as unknown as {
@@ -210,6 +224,7 @@ describe('mail.settings get/update', () => {
 
 	it('round-trips the hide-preview toggle', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, { isHidePreviewOn: true });
 		expect(await t.query(api.mail.settings.get, {})).toEqual({
 			autoAdvance: 'next',
@@ -219,6 +234,7 @@ describe('mail.settings get/update', () => {
 
 	it('round-trips the keyboard preset and per-shortcut remaps', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, { shortcutPreset: 'gmail' });
 		await t.mutation(api.mail.settings.update, {
 			shortcutOverrides: [{ id: 'postbox.archive', keys: ['y'] }],
@@ -232,6 +248,7 @@ describe('mail.settings get/update', () => {
 
 	it('rejects a keyboard preset outside the union', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await expect(
 			t.mutation(api.mail.settings.update, {
 				shortcutPreset: 'vim' as unknown as 'gmail',
@@ -241,6 +258,7 @@ describe('mail.settings get/update', () => {
 
 	it('stores an empty remap list, which is how the user clears every change', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, {
 			shortcutOverrides: [{ id: 'postbox.archive', keys: ['y'] }],
 		});
@@ -253,6 +271,7 @@ describe('mail.settings get/update', () => {
 
 	it("is scoped per user: one user's preference is invisible to another", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		await t.mutation(api.mail.settings.update, { autoAdvance: 'previous' });
 
 		sessionMocks.userId = 'user-B';

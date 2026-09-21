@@ -7,6 +7,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -26,22 +27,23 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -92,6 +94,7 @@ async function seedDraft(
 describe('mailDrafts.setIdentity', () => {
 	it('accepts the canonical mailbox address', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'alice@example.com');
 		const draftId = await seedDraft(t, mailboxId, 'alice@example.com');
 
@@ -108,6 +111,7 @@ describe('mailDrafts.setIdentity', () => {
 
 	it('accepts an active alias', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'alice@example.com');
 		await t.run(async (ctx) => {
 			await ctx.db.insert('mailAliases', {
@@ -132,6 +136,7 @@ describe('mailDrafts.setIdentity', () => {
 
 	it('rejects a foreign address', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'alice@example.com');
 		const draftId = await seedDraft(t, mailboxId, 'alice@example.com');
 
@@ -145,6 +150,7 @@ describe('mailDrafts.setIdentity', () => {
 
 	it('rejects when the draft is already in pending_send', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'alice@example.com');
 		const draftId = await seedDraft(t, mailboxId, 'alice@example.com');
 		await t.run(async (ctx) => {
@@ -167,6 +173,7 @@ describe('mailDrafts.setIdentity', () => {
 describe('mailAuthRateLimit', () => {
 	it('throttles after 5 failures per address within the window', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 
 		for (let i = 0; i < 5; i++) {
 			await t.mutation(internal.mail.authRateLimit.recordFailure, {
@@ -184,6 +191,7 @@ describe('mailAuthRateLimit', () => {
 
 	it('does not throttle below the per-address threshold', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 
 		for (let i = 0; i < 4; i++) {
 			await t.mutation(internal.mail.authRateLimit.recordFailure, {
@@ -201,6 +209,7 @@ describe('mailAuthRateLimit', () => {
 
 	it('throttles per-IP independent of the address', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		// 50 distinct addresses, same IP
 		for (let i = 0; i < 50; i++) {
 			await t.mutation(internal.mail.authRateLimit.recordFailure, {
@@ -218,6 +227,7 @@ describe('mailAuthRateLimit', () => {
 
 	it('lowercases the address so case differences share a bucket', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		for (let i = 0; i < 5; i++) {
 			await t.mutation(internal.mail.authRateLimit.recordFailure, {
 				address: 'Alice@Example.com',
@@ -233,6 +243,7 @@ describe('mailAuthRateLimit', () => {
 
 	it('sweepOld clears entries beyond the TTL', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const longAgo = Date.now() - 25 * 60 * 60 * 1000;
 		await t.run(async (ctx) => {
 			await ctx.db.insert('mailAuthFailures', {
@@ -250,6 +261,7 @@ describe('mailAuthRateLimit', () => {
 describe('mailSignatures sanitization on save', () => {
 	it('strips <script> from a saved signature', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'alice@example.com');
 
 		const sigId = await t.mutation(api.mail.signatures.create, {
@@ -268,6 +280,7 @@ describe('mailSignatures sanitization on save', () => {
 
 	it('strips <style> exfil from a saved signature', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'alice@example.com');
 
 		const sigId = await t.mutation(api.mail.signatures.create, {
@@ -285,6 +298,7 @@ describe('mailSignatures sanitization on save', () => {
 
 	it('preserves whitelisted markup', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'alice@example.com');
 
 		const sigId = await t.mutation(api.mail.signatures.create, {

@@ -9,6 +9,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -119,6 +120,7 @@ async function seedThread(t: ReturnType<typeof convexTest>, folderRoles: string[
 describe('mail.mailbox.queries.listThreads', () => {
 	it('returns inbox threads, hiding non-inbox ones', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId } = await seedThread(t, ['inbox']);
 		const res = await t.query(api.mail.mailbox.queries.listThreads, {
 			mailboxId,
@@ -134,6 +136,7 @@ describe('mail.mailbox.queries.listThreads', () => {
 
 	it('hides a thread whose latest message is snoozed', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, messageId } = await seedThread(t, ['inbox']);
 		await t.run(async (ctx) => {
 			await ctx.db.patch(messageId, { snoozedUntil: Date.now() + 60 * 60 * 1000 });

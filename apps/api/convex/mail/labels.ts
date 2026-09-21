@@ -7,7 +7,8 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -44,7 +45,7 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
  * `parentId` roots the path under an existing label; passing both means
  * "`Clients/Acme` under Work".
  */
-export const create = authedMutation({
+export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		name: v.string(),
@@ -103,7 +104,7 @@ export const create = authedMutation({
 	},
 });
 
-export const update = authedMutation({
+export const update = postboxMutation({
 	args: {
 		labelId: v.id('mailLabels'),
 		name: v.optional(v.string()),
@@ -170,7 +171,7 @@ export const update = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { labelId: v.id('mailLabels') },
 	handler: async (ctx, args) => {
 		const label = await ctx.db.get(args.labelId);
@@ -217,7 +218,7 @@ export const remove = authedMutation({
  * another mailbox are skipped rather than fatal — a stale rail can't sink the
  * whole reorder.
  */
-export const reorder = authedMutation({
+export const reorder = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		/** Sibling ids, first to last, all sharing one parent. */
@@ -354,7 +355,7 @@ export const list = publicQuery({
 });
 
 /** Add or remove a label on a single message. */
-export const toggleOnMessage = authedMutation({
+export const toggleOnMessage = postboxMutation({
 	args: {
 		messageId: v.id('mailMessages'),
 		labelId: v.id('mailLabels'),
@@ -395,7 +396,7 @@ const LABEL_BATCH_CAP = 500;
  * uses, so a stale row in a selection can't sink the whole action. The count of
  * messages actually changed comes back for the caller's toast.
  */
-export const setOnMessages = authedMutation({
+export const setOnMessages = postboxMutation({
 	args: {
 		messageIds: v.array(v.id('mailMessages')),
 		labelId: v.id('mailLabels'),
@@ -431,7 +432,7 @@ export const setOnMessages = authedMutation({
 });
 
 /** Apply a label to every message in a thread. */
-export const toggleOnThread = authedMutation({
+export const toggleOnThread = postboxMutation({
 	args: {
 		threadId: v.id('mailThreads'),
 		labelId: v.id('mailLabels'),

@@ -23,7 +23,7 @@
 
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
-import { authedMutation } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
@@ -91,7 +91,7 @@ export async function clearThreadFollowUp(
  */
 // authz: message → mailbox ownership via requireMessageAccess; org membership via
 // authedMutation.
-export const arm = authedMutation({
+export const arm = postboxMutation({
 	args: {
 		messageId: v.id('mailMessages'),
 		remindAt: v.number(),
@@ -122,7 +122,7 @@ export const arm = authedMutation({
 /** Cancel an armed (or dismiss a due) follow-up watch. */
 // authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
-export const cancel = authedMutation({
+export const cancel = postboxMutation({
 	args: { threadId: v.id('mailThreads') },
 	handler: async (ctx, args) => {
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');

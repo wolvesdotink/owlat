@@ -28,7 +28,8 @@
 
 import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
-import { adminQuery, authedMutation, authedQuery } from '../lib/authedFunctions';
+import { adminQuery } from '../lib/authedFunctions';
+import { postboxQuery, postboxMutation } from './_helpers';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
@@ -128,7 +129,7 @@ async function assertVerifiedDomain(ctx: MutationCtx, domain: string): Promise<v
  * its first `owner` membership (inserted by `provisionMailbox`); each id in
  * `memberUserIds` (deduped, creator excluded) is added as a `member`.
  */
-export const createShared = authedMutation({
+export const createShared = postboxMutation({
 	args: {
 		address: v.string(),
 		displayName: v.optional(v.string()),
@@ -246,7 +247,7 @@ export const listShared = adminQuery({
  * caller without access — including a member who was just removed, so the UI
  * clears the roster reactively rather than flashing a permission error.
  */
-export const members = authedQuery({
+export const members = postboxQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
 		const access = await requireMailboxAccess(ctx, args.mailboxId);
@@ -279,7 +280,7 @@ export const members = authedQuery({
  * they have no access. Watched by the UI and the tests to prove that a removed
  * member loses access the instant their row is deleted.
  */
-export const myRole = authedQuery({
+export const myRole = postboxQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
 		// The effective role is derived once, at the choke point
@@ -307,7 +308,7 @@ async function requireSharedOwnerAccess(
 }
 
 /** Add an org member to a shared inbox. No-op if they are already a member. */
-export const addMember = authedMutation({
+export const addMember = postboxMutation({
 	args: { mailboxId: v.id('mailboxes'), authUserId: v.string() },
 	handler: async (ctx, args) => {
 		// authz: requireSharedOwnerAccess → requireMailboxAccess(owner) + shared-scope gate.
@@ -340,7 +341,7 @@ export const addMember = authedMutation({
  * lock-step with `mailboxes.userId`, so the only `owner` row is always the
  * canonical owner rejected here — hence no separate last-owner branch.
  */
-export const removeMember = authedMutation({
+export const removeMember = postboxMutation({
 	args: { mailboxId: v.id('mailboxes'), authUserId: v.string() },
 	handler: async (ctx, args) => {
 		// authz: requireSharedOwnerAccess → requireMailboxAccess(owner) + shared-scope gate.
@@ -366,7 +367,7 @@ export const removeMember = authedMutation({
  * canonical `userId`; the previous owner is demoted to a plain member (retaining
  * access). Both changes are reactive and take effect immediately.
  */
-export const transferOwnership = authedMutation({
+export const transferOwnership = postboxMutation({
 	args: { mailboxId: v.id('mailboxes'), authUserId: v.string() },
 	handler: async (ctx, args) => {
 		// authz: requireSharedOwnerAccess → requireMailboxAccess(owner) + shared-scope gate.
