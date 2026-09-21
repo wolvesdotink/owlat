@@ -29,6 +29,13 @@ import {
 	type BackfillFetchedMessage,
 	type BackfillFolderDeps,
 } from './backfill.js';
+import {
+	canStartBackfill,
+	forMigration,
+	initialBackfillRetryState,
+	nextBackfillRetryState,
+	type BackfillRetryState,
+} from './backfillRetry.js';
 import { logger } from './logger.js';
 
 interface Cursor {
@@ -39,15 +46,6 @@ interface Cursor {
 
 const INITIAL_BACKOFF_MS = 5000;
 const MAX_BACKOFF_MS = 5 * 60 * 1000;
-
-// How many *consecutive* backfill runs may throw before we give up and surface
-// the wizard's 'failed → Try again' step. Transient drops self-heal: the poll
-// loop re-invokes maybeRunBackfill() each pass and resumes from the persisted
-// descending cursor, so a one-off network blip clears within a pass or two. Only
-// a deterministically re-throwing import (oversized-mailbox crash, the worker
-// can't reach the server, …) keeps failing across passes — that's the genuinely
-// stuck case the user otherwise sits on 'importing' forever.
-const MAX_BACKFILL_FAILURES = 5;
 
 /**
  * Terminal "the credentials are wrong" — as opposed to a transient drop worth
@@ -87,11 +85,13 @@ export class AccountConnection {
 	private cursors = new Map<string, Cursor>();
 	private polling = false;
 	private backfillRunning = false;
-	// Consecutive throwing backfill runs for the *current* importing migration.
-	// Reset on a clean run (or a different migration) so only a sustained,
-	// deterministic failure escalates to markImportFailed.
-	private backfillFailures = 0;
-	private backfillFailureMigrationId: string | null = null;
+	// Retry pacing + the strike count for the *current* importing migration
+	// (backfillRetry.ts owns the policy). Held across runs, reset when a
+	// different migration becomes the active one.
+	private backfillRetry: BackfillRetryState = initialBackfillRetryState();
+	// Batches this run has persisted — the difference between an import that is
+	// advancing and one that is stuck. Read once the run ends.
+	private backfillBatchesThisRun = 0;
 
 	constructor(
 		private readonly account: ConnectableAccount,
@@ -482,13 +482,18 @@ export class AccountConnection {
 		}
 		if (!work.isActive || !work.migrationId) return;
 		const migrationId = work.migrationId;
-		// A fresh migration (or a different one) starts the failure streak over.
-		if (this.backfillFailureMigrationId !== migrationId) {
-			this.backfillFailureMigrationId = migrationId;
-			this.backfillFailures = 0;
-		}
+		// A fresh migration (or a different one) starts the streak AND the
+		// cooldown over — the user pressed 'Try again' and expects it to start.
+		// Rebased before the cooldown check for exactly that reason.
+		this.backfillRetry = forMigration(this.backfillRetry, migrationId);
+		// Pace the retries. Both the periodic poll and every reconnect land here,
+		// and the reconnect path has no delay of its own, so without this a
+		// provider that drops us repeatedly burns the whole strike budget in
+		// seconds and fails an import that was minutes from finishing.
+		if (!canStartBackfill(this.backfillRetry, Date.now())) return;
 
 		this.backfillRunning = true;
+		this.backfillBatchesThisRun = 0;
 		logger.info({ accountId: this.account.accountId }, 'starting historical backfill');
 		try {
 			for (const folder of this.folders) {
@@ -507,7 +512,12 @@ export class AccountConnection {
 			}
 			if (!this.stopped) {
 				// A clean pass clears the streak (covers transient blips that healed).
-				this.backfillFailures = 0;
+				const decision = nextBackfillRetryState(
+					this.backfillRetry,
+					{ kind: 'success' },
+					Date.now()
+				);
+				this.backfillRetry = decision.state;
 				await this.convex.mutation(
 					fn.completeBackfillImport as never,
 					{
@@ -521,15 +531,29 @@ export class AccountConnection {
 			if (this.stopped) {
 				logger.warn({ accountId: this.account.accountId, err }, 'backfill aborted');
 			} else {
-				this.backfillFailures += 1;
+				const madeProgress = this.backfillBatchesThisRun > 0;
+				const decision = nextBackfillRetryState(
+					this.backfillRetry,
+					{ kind: 'failure', error: err, madeProgress },
+					Date.now()
+				);
+				this.backfillRetry = decision.state;
 				logger.warn(
-					{ accountId: this.account.accountId, err, failures: this.backfillFailures },
+					{
+						accountId: this.account.accountId,
+						err,
+						strikes: decision.state.strikes,
+						batches: this.backfillBatchesThisRun,
+						retryInMs: Math.max(0, decision.state.retryNotBefore - Date.now()),
+					},
 					'backfill failed'
 				);
-				// Transient drops self-heal on the next poll pass; only a sustained,
-				// deterministic failure surfaces the wizard's 'failed → Try again'.
-				if (this.backfillFailures >= MAX_BACKFILL_FAILURES) {
-					const message = err instanceof Error ? err.message : String(err);
+				// Only a run that stored nothing accrues a strike, and the retries
+				// are paced, so this is reached after a sustained failure rather
+				// than after a handful of reconnects.
+				if (decision.shouldMarkFailed) {
+					const message =
+						decision.failureMessage ?? (err instanceof Error ? err.message : String(err));
 					try {
 						await this.convex.mutation(
 							fn.markImportFailed as never,
@@ -694,6 +718,11 @@ export class AccountConnection {
 						failedDelta,
 					} as never
 				)) as { stillImporting: boolean };
+				// Counted only once the write landed: every persisted batch is
+				// forward motion — the cursor dropped, so the next run resumes
+				// further along. That is what separates an import that is
+				// converging from one that is stuck (backfillRetry.ts).
+				this.backfillBatchesThisRun += 1;
 				return res.stillImporting;
 			},
 			isStopped: () => this.stopped,
