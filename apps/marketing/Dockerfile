@@ -40,10 +40,18 @@ RUN cd ../../packages/ui && npx nuxi prepare
 RUN npx nuxt generate
 
 # ── Stage 3: Runtime ──
-FROM nginx:alpine AS runtime
+# nginx-unprivileged, not nginx: this stage serves a directory of static files
+# and needs no capability whatsoever, but stock nginx runs its master as root
+# (to bind 80 and to drop to `nginx` for the workers). The unprivileged variant
+# ships the same nginx already configured to run wholly as uid 101 and to listen
+# on 8080 — a port above 1024 is the reason it can. It starts as root only long
+# enough to write the site config and copy the build output in.
+FROM nginxinc/nginx-unprivileged:alpine AS runtime
+
+USER root
 
 RUN printf 'server {\n\
-    listen 80;\n\
+    listen 8080;\n\
     root /usr/share/nginx/html;\n\
     index index.html;\n\
 \n\
@@ -62,6 +70,8 @@ RUN printf 'server {\n\
 
 COPY --from=build /app/apps/marketing/.output/public /usr/share/nginx/html
 
-EXPOSE 80
+USER 101
+
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]
