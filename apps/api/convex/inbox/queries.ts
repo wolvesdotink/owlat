@@ -21,7 +21,11 @@ import {
 	type ThreadFilter,
 } from './threadFilters';
 import { searchThreads } from './threadSearch';
-import { openConversationThreadPreview, openInboundMessageBody } from '../lib/messageBody';
+import {
+	openConversationThreadPreview,
+	openInboundMessageRow,
+	openInboundMessageRows,
+} from '../lib/messageBody';
 
 /**
  * Enrich a loaded page of threads for the team-inbox list DNA. Shared by the
@@ -251,13 +255,9 @@ export const getThread = publicQuery({
 			// query used to hand the rows back verbatim — so on any instance with
 			// INSTANCE_SECRET set the thread view rendered the `atrest:1:…`
 			// envelope instead of the message. Opened from the already-loaded
-			// columns, so there is no extra round-trip.
-			messages: await Promise.all(
-				messages.map(async (message) => {
-					const body = await openInboundMessageBody(message);
-					return { ...message, textBody: body.text, htmlBody: body.html };
-				})
-			),
+			// columns, so there is no extra round-trip; the accessor rewrites only
+			// the columns the row HAS, so an absent body stays absent.
+			messages: await openInboundMessageRows(messages),
 			contact,
 		};
 	},
@@ -290,7 +290,7 @@ export const getReviewQueue = publicQuery({
 				const thread = msg.threadId ? await ctx.db.get(msg.threadId) : null;
 				const contact = msg.contactId ? await ctx.db.get(msg.contactId) : null;
 				return {
-					message: msg,
+					message: await openInboundMessageRow(msg),
 					thread: thread ? await openConversationThreadPreview(thread) : null,
 					contact,
 				};
@@ -321,7 +321,7 @@ export const getQuarantined = publicQuery({
 			.order('desc')
 			.take(limit);
 
-		return quarantined;
+		return openInboundMessageRows(quarantined);
 	},
 });
 
@@ -351,7 +351,7 @@ export const getFailed = publicQuery({
 			.order('desc')
 			.take(limit);
 
-		return failed;
+		return openInboundMessageRows(failed);
 	},
 });
 

@@ -10,7 +10,11 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../../lib/messageBody';
+import {
+	openMailMessageInlineBody,
+	openMailMessageRow,
+	openMailMessageRows,
+} from '../../lib/messageBody';
 import { mintRawEmlUrl, sealedBlobUrl } from '../../lib/sealedBlob';
 import { internalQuery, type QueryCtx } from '../../_generated/server';
 import { publicAction, publicQuery } from '../../lib/authedFunctions';
@@ -45,7 +49,10 @@ async function loadReadableMessage(
 export const getMessage = publicQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
-		return loadReadableMessage(ctx, args.messageId);
+		const message = await loadReadableMessage(ctx, args.messageId);
+		// E8b: the row's inline bodies are sealed at rest; the reader renders them
+		// straight off the row, so they leave this boundary as plaintext.
+		return message === null ? null : openMailMessageRow(message);
 	},
 });
 
@@ -71,7 +78,7 @@ export const listThreadMessages = publicQuery({
 		const thread = await ctx.db.get(seed.threadId);
 		return {
 			thread,
-			messages: siblings,
+			messages: await openMailMessageRows(siblings),
 			labels: Array.from(labelMap.values()),
 		};
 	},

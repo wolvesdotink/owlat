@@ -271,6 +271,36 @@ export async function openInboundMessageBody(
 	};
 }
 
+/**
+ * Open the inline bodies of a WHOLE `inboundMessages` row, for a read that
+ * hands the row itself to a client — the team-inbox thread view, the review
+ * queue, the quarantine and failed lists all render `message.textBody`
+ * straight off the row they were given. Same rule as
+ * {@link openMailMessageRow}: sealing is an at-rest property, so a row leaving
+ * the access-checked read boundary carries plaintext.
+ *
+ * Only keys the row actually HAS are rewritten, so an absent body column never
+ * starts travelling as a present `undefined`.
+ */
+export async function openInboundMessageRow<T extends InboundMessageBodyFields>(
+	row: T
+): Promise<T> {
+	if (row.textBody == null && row.htmlBody == null) return row;
+	const { text, html } = await openInboundMessageBody(row);
+	return {
+		...row,
+		...(row.textBody != null ? { textBody: text } : {}),
+		...(row.htmlBody != null ? { htmlBody: html } : {}),
+	};
+}
+
+/** {@link openInboundMessageRow} over a page of rows, preserving order. */
+export async function openInboundMessageRows<T extends InboundMessageBodyFields>(
+	rows: T[]
+): Promise<T[]> {
+	return Promise.all(rows.map((row) => openInboundMessageRow(row)));
+}
+
 // ── Shape 2: mailMessages inline snippet + storage blob ──────────────────────
 
 /** The inline body fields on a `mailMessages` row (both optional). Large
@@ -305,6 +335,41 @@ export async function openMailMessageInlineBody(
 	row: MailMessageInlineFields
 ): Promise<MailMessageInlineBody> {
 	return { text: await openMaybe(row.textBodyInline), html: await openMaybe(row.htmlBodyInline) };
+}
+
+/**
+ * Open the inline bodies of a WHOLE `mailMessages` row, for a read that hands
+ * the row itself to a client.
+ *
+ * The list views, the search results, the split-inbox sections and the by-id
+ * reads all return `Doc<'mailMessages'>` rows verbatim, and the reader renders
+ * `htmlBodyInline` / `textBodyInline` straight off the row it was given. Those
+ * handlers never NAME a body field, so they slipped past both the E8a accessor
+ * migration and the `check-body-access.sh` ratchet (which matches field reads)
+ * — and once E8b sealed the columns they shipped `atrest:1:…` envelopes to the
+ * UI, which rendered them as the message body. Sealing is an AT-REST property:
+ * a row leaving the access-checked read boundary carries plaintext, exactly as
+ * it did before E8b.
+ *
+ * Only keys the row actually HAS are rewritten, so an absent inline column
+ * never starts travelling as a present `undefined` (the reader distinguishes
+ * the two: an absent inline body is what triggers the lazy blob fetch).
+ */
+export async function openMailMessageRow<T extends MailMessageInlineFields>(row: T): Promise<T> {
+	if (row.textBodyInline === undefined && row.htmlBodyInline === undefined) return row;
+	const { text, html } = await openMailMessageInlineBody(row);
+	return {
+		...row,
+		...(row.textBodyInline !== undefined ? { textBodyInline: text } : {}),
+		...(row.htmlBodyInline !== undefined ? { htmlBodyInline: html } : {}),
+	};
+}
+
+/** {@link openMailMessageRow} over a page of rows, preserving order. */
+export async function openMailMessageRows<T extends MailMessageInlineFields>(
+	rows: T[]
+): Promise<T[]> {
+	return Promise.all(rows.map((row) => openMailMessageRow(row)));
 }
 
 /** Minimal storage reader — `ctx.storage` from an action or mutation. */

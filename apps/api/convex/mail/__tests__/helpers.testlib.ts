@@ -148,6 +148,9 @@ export type MessageSeed = {
 	rfc822MessageId?: string;
 	/** Inline plain-text body — what the deep-search backfill (idea 32) reads. */
 	textBodyInline?: string;
+	/** Inline HTML body — stored exactly as given (seal it yourself to seed a
+	 *  sealed-at-rest row). */
+	htmlBodyInline?: string;
 	/** Pre-populated deep-search excerpt (idea 32), as a completed backfill leaves it. */
 	searchBody?: string;
 	/** Attachment metadata as it sits on the row (NOT the junction index). */
@@ -218,6 +221,7 @@ export async function seedMessage(
 			normalizedSubject: subject,
 			snippet,
 			...(seed.textBodyInline ? { textBodyInline: seed.textBodyInline } : {}),
+			...(seed.htmlBodyInline ? { htmlBodyInline: seed.htmlBodyInline } : {}),
 			...(seed.searchBody ? { searchBody: seed.searchBody } : {}),
 			rawStorageId,
 			rawSize: 3,

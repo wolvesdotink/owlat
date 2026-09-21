@@ -50,6 +50,7 @@
 import { v } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import { publicQuery } from '../lib/authedFunctions';
+import { openMailMessageRows } from '../lib/messageBody';
 import type { Doc, Id } from '../_generated/dataModel';
 import { loadReadableMailbox } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
@@ -238,7 +239,9 @@ async function readSection(
 	const unreadRows = unread.filter((m) => !isMessageSnoozed(m, now));
 	return {
 		name,
-		messages,
+		// E8b: a section row is rendered by the same reader as a flat-list row, so
+		// its inline bodies leave this boundary unsealed.
+		messages: await openMailMessageRows(messages),
 		hasMore,
 		unreadCount: Math.min(unreadRows.length, UNREAD_COUNT_CAP),
 		isUnreadCapped: unreadRows.length > UNREAD_COUNT_CAP,
@@ -306,5 +309,11 @@ async function readRemainder(
 		unreadCount += 1;
 	}
 
-	return { name: null, messages, hasMore, unreadCount, isUnreadCapped };
+	return {
+		name: null,
+		messages: await openMailMessageRows(messages),
+		hasMore,
+		unreadCount,
+		isUnreadCapped,
+	};
 }

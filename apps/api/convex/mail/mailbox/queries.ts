@@ -18,6 +18,7 @@ import { mailSortOrderValidator } from '../../lib/mailSettingsValidators';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { loadReadableMailbox, loadAccessibleMailboxes } from '../permissions';
 import { isMessageSnoozed } from '../../lib/mailSnooze';
+import { openMailMessageRow } from '../../lib/messageBody';
 import { isThreadMuted } from '../../lib/mailMute';
 import { readSession, type FolderRole } from './shared';
 import { batchGet } from '../../_utils/batchLoader';
@@ -71,7 +72,10 @@ async function attachThreadState(
 				? { snoozeReturnedAt: thread.snoozeReturnedAt }
 				: {}),
 		};
-		out.push({ ...m, ...state });
+		// E8b: the row's inline bodies are SEALED at rest and the reader renders
+		// them straight off the list row, so they are unsealed here — the one
+		// place every row in these views passes through on its way out.
+		out.push({ ...(await openMailMessageRow(m)), ...state });
 	}
 	return out;
 }
