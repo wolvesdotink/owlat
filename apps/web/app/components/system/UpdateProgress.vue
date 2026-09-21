@@ -42,9 +42,16 @@ const emit = defineEmits<{
 	failed: [error: string];
 }>();
 
-// Canonical step list in execution order. Mapped to icons; updater sidecar
-// returns these keys verbatim in its /update response.
-const stepOrder = ['write-compose', 'pull', 'up', 'convex-deploy'];
+// Canonical step list in the updater's EXECUTION order (apps/updater/src/update.ts
+// handleUpdate): pull first, then the Convex deploy against the still-running old
+// stack, then the compose template is promoted, and only then are containers
+// recreated. The list used to be written in the order a reader might expect
+// rather than the order that runs, which put the running marker on the wrong row.
+// The sidecar's own bookkeeping steps — the Docker API preflight, the staged
+// template, the version pin, its self-replacement — are not shown; they are
+// instant and say nothing a reader of this list needs. They still count as a
+// report: a failure in one of them stops the running marker like any other.
+const stepOrder = ['pull', 'convex-deploy', 'write-compose', 'up'];
 const stepLabelKeys: Record<string, string> = {
 	'write-compose': 'components.system.updateProgress.steps.writeCompose',
 	'pull': 'components.system.updateProgress.steps.pull',
@@ -61,8 +68,6 @@ function stepLabel(step: string): string {
 
 // Current step status (pending / running / success / failed)
 type StepStatus = 'pending' | 'running' | 'success' | 'failed';
-const stepStatus = ref<Record<string, StepStatus>>({});
-for (const s of stepOrder) stepStatus.value[s] = 'pending';
 
 /**
  * Read one step's outcome out of the updater's report.
@@ -84,34 +89,76 @@ function stepOutcome(entry: Step): StepStatus {
 	return failed ? 'failed' : 'success';
 }
 
-// Update stepStatus from the steps prop (returned by /api/system/update).
-watch(
-	() => props.steps,
-	(steps) => {
-		if (!steps) return;
-		for (const entry of steps) {
-			stepStatus.value[entry.step] = stepOutcome(entry);
-		}
-	},
-	{ deep: true, immediate: true },
-);
-
 // Poll updater health until target version appears
 const polling = ref(true);
-const elapsed = ref(0);
+// Wall-clock start, not a tally of ticks: a backgrounded tab throttles timers,
+// and the elapsed figure has to stay the real one when the operator comes back.
+const startedAt = Date.now();
+const elapsedMs = ref(0);
+const TICK_INTERVAL_MS = 1_000;
 const POLL_INTERVAL_MS = 5_000;
 const TIMEOUT_MS = 5 * 60 * 1000;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let tickTimer: ReturnType<typeof setInterval> | null = null;
+
+// What the updater has already reported on (every step it returns, displayed or
+// not). The /update response arrives in one piece when the whole run is over, so
+// this map is empty for the minutes the update actually takes.
+const reportedStatuses = computed<Record<string, StepStatus>>(() => {
+	const reported: Record<string, StepStatus> = {};
+	for (const entry of props.steps ?? []) reported[entry.step] = stepOutcome(entry);
+	return reported;
+});
+
+/**
+ * Status per displayed step. Since the updater reports nothing until it is
+ * finished, the first step it has not reported on is the one in flight — that is
+ * the row that gets the spinner, so the card shows work happening instead of
+ * four inert circles for the length of the update.
+ *
+ * Nothing spins once a step has failed (the updater aborts the run there) or
+ * once polling has stopped (completed, or timed out).
+ */
+const stepStatuses = computed<Record<string, StepStatus>>(() => {
+	const reported = reportedStatuses.value;
+	const aborted = Object.values(reported).includes('failed');
+	let inFlightTaken = aborted || !polling.value;
+
+	const statuses: Record<string, StepStatus> = {};
+	for (const step of stepOrder) {
+		const status = reported[step];
+		if (status) {
+			statuses[step] = status;
+		} else if (inFlightTaken) {
+			statuses[step] = 'pending';
+		} else {
+			statuses[step] = 'running';
+			inFlightTaken = true;
+		}
+	}
+	return statuses;
+});
+
+function stopPolling() {
+	polling.value = false;
+	if (pollTimer) clearInterval(pollTimer);
+	if (tickTimer) clearInterval(tickTimer);
+	pollTimer = null;
+	tickTimer = null;
+}
+
+function tick() {
+	if (!polling.value) return;
+
+	elapsedMs.value = Date.now() - startedAt;
+	if (elapsedMs.value >= TIMEOUT_MS) {
+		stopPolling();
+		emit('failed', t('components.system.updateProgress.timedOut'));
+	}
+}
 
 async function pollHealth() {
 	if (!polling.value) return;
-
-	elapsed.value += POLL_INTERVAL_MS;
-	if (elapsed.value >= TIMEOUT_MS) {
-		polling.value = false;
-		emit('failed', t('components.system.updateProgress.timedOut'));
-		return;
-	}
 
 	try {
 		const resp = await $fetch<UpdaterHealth>('/api/internal/updater-health', {
@@ -124,7 +171,7 @@ async function pollHealth() {
 		const containers = Array.isArray(resp.containers) ? resp.containers : [];
 		const web = containers.find((c) => c.service === 'web');
 		if (web && web.imageTag === props.targetVersion && web.state?.includes('running')) {
-			polling.value = false;
+			stopPolling();
 			emit('complete', resp);
 		}
 	} catch {
@@ -133,15 +180,15 @@ async function pollHealth() {
 }
 
 onMounted(() => {
+	// Two cadences on purpose: the clock reads as a clock (1 s), while the health
+	// probe stays at 5 s so a stack mid-restart is not hammered.
+	tickTimer = setInterval(tick, TICK_INTERVAL_MS);
 	pollTimer = setInterval(pollHealth, POLL_INTERVAL_MS);
 	// Fire one immediately
 	void pollHealth();
 });
 
-onBeforeUnmount(() => {
-	if (pollTimer) clearInterval(pollTimer);
-	polling.value = false;
-});
+onBeforeUnmount(stopPolling);
 
 // UI helpers
 function iconForStatus(s: StepStatus): string {
@@ -171,7 +218,7 @@ function colorForStatus(s: StepStatus): string {
 }
 
 const totalElapsedDisplay = computed(() => {
-	const sec = Math.floor(elapsed.value / 1000);
+	const sec = Math.floor(elapsedMs.value / 1000);
 	const mm = Math.floor(sec / 60).toString().padStart(2, '0');
 	const ss = (sec % 60).toString().padStart(2, '0');
 	return `${mm}:${ss}`;
@@ -194,17 +241,21 @@ const totalElapsedDisplay = computed(() => {
 				class="flex items-start gap-3"
 			>
 				<Icon
-					:name="iconForStatus(stepStatus[step] ?? 'pending')"
+					:name="iconForStatus(stepStatuses[step] ?? 'pending')"
 					class="w-5 h-5 shrink-0 mt-0.5"
-					:class="colorForStatus(stepStatus[step] ?? 'pending')"
+					:class="colorForStatus(stepStatuses[step] ?? 'pending')"
+					aria-hidden="true"
 				/>
 				<div class="flex-1 min-w-0">
-					<p class="text-[0.875rem] text-text-primary">
+					<p
+						class="text-[0.875rem] text-text-primary"
+						:class="stepStatuses[step] === 'running' ? 'font-medium' : ''"
+					>
 						<span class="text-text-tertiary mr-2">{{ idx + 1 }}.</span>
 						{{ stepLabel(step) }}
 					</p>
 					<p
-						v-if="stepStatus[step] === 'failed'"
+						v-if="stepStatuses[step] === 'failed'"
 						class="text-[0.75rem] text-error mt-1"
 					>
 						{{ props.steps?.find((s) => s.step === step)?.stderr ?? t('components.system.updateProgress.stepFailed') }}
@@ -213,11 +264,17 @@ const totalElapsedDisplay = computed(() => {
 			</li>
 		</ol>
 
-		<p
+		<div
 			v-if="polling"
-			class="mt-4 pt-4 border-t border-border-subtle text-[0.75rem] text-text-tertiary"
+			class="mt-4 pt-4 border-t border-border-subtle flex items-start gap-2 text-[0.75rem] text-text-tertiary"
+			role="status"
 		>
-			{{ t('components.system.updateProgress.restartNotice') }}
-		</p>
+			<Icon
+				name="lucide:loader-2"
+				class="w-3.5 h-3.5 shrink-0 mt-px animate-spin motion-reduce:animate-none"
+				aria-hidden="true"
+			/>
+			<span>{{ t('components.system.updateProgress.restartNotice') }}</span>
+		</div>
 	</div>
 </template>
