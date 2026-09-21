@@ -1,6 +1,13 @@
 {
 	"$schema": "https://v2-9-14.turborepo.dev/schema.json",
 	"globalEnv": ["NUXT_*", "CONVEX_*", "OWLAT_*", "POSTHOG_*"],
+	// Root files that tasks read but that live outside every package directory,
+	// so they are in no task's default input set. Without them a change to the
+	// shared tsconfig or lint config replays stale cache entries — including the
+	// remote cache shared with CI. Only configs an actual turbo task reads belong
+	// here: oxfmtrc.json, knip.jsonc and plugins.config.ts are consumed by root
+	// `lint:*` scripts and the uncached `//#plugins:check`, never by a cached task.
+	"globalDependencies": ["tsconfig.base.json", "oxlintrc.json", "vitest.timeouts.ts"],
 	"tasks": {
 		"//#plugins:check": {
 			"cache": false

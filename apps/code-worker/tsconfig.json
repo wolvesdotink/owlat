@@ -1,26 +1,13 @@
 {
+	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
-		"target": "ES2022",
-		"module": "ES2022",
-		"moduleResolution": "bundler",
 		"outDir": "dist",
+		// The base turns sourceMap on; this app ships dist/ straight into its
+		// runtime image, so keeping it off keeps the image contents unchanged.
+		"sourceMap": false,
 		"rootDir": "src",
-		"strict": true,
-		"noUncheckedIndexedAccess": true,
-		"useUnknownInCatchVariables": true,
-		"noPropertyAccessFromIndexSignature": true,
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"types": [
-			"node"
-		]
+		"types": ["node"]
 	},
-	"include": [
-		"src"
-	],
-	"exclude": [
-		"node_modules",
-		"dist",
-		"src/**/__tests__"
-	]
+	"include": ["src"],
+	"exclude": ["node_modules", "dist", "src/**/__tests__"]
 }

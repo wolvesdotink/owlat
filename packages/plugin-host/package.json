@@ -5,6 +5,7 @@
 	"description": "Runtime-neutral enforcement kernel for statically composed Owlat plugins",
 	"license": "Apache-2.0",
 	"type": "module",
+	"sideEffects": false,
 	"main": "./src/index.ts",
 	"module": "./src/index.ts",
 	"types": "./src/index.ts",
