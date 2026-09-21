@@ -1,6 +1,7 @@
 import { APIError } from 'better-auth/api';
 import { components } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
+import { getBoolean } from '../lib/env';
 
 /**
  * Server-side registration gate (H3).
@@ -14,8 +15,8 @@ import type { ActionCtx } from '../_generated/server';
  * The single org is bootstrapped by the `/seed/admin` HTTP action
  * (`seedAdminHttp.ts`), which writes through the RAW component adapter and so never
  * triggers this hook — the seeded owner is created regardless. Past that:
- *   - Zero users ⇒ this is the very first account (a signup-based bootstrap) ⇒
- *     allowed.
+ *   - Zero users ⇒ public signup is permitted only in explicit development mode.
+ *     Production bootstrap must use the authenticated seed endpoint.
  *   - Any user exists ⇒ registration is invite-only: a signup is permitted only
  *     when a non-expired PENDING invitation exists for that exact (normalized)
  *     email.
@@ -23,11 +24,8 @@ import type { ActionCtx } from '../_generated/server';
  * Fails CLOSED: a missing/unshaped email is rejected, and any signup without a
  * live invitation on a bootstrapped instance is refused.
  *
- * NOTE: this closes the "anyone can self-register an account" hole, but does NOT
- * by itself stop an attacker who self-registers with a LEAKED invitee's email
- * (a matching pending invitation exists) — only email verification
- * (REQUIRE_EMAIL_VERIFICATION) proves inbox ownership and closes that. See the
- * `requireEmailVerification` wiring in `auth.ts`.
+ * Matching an invitation permits account creation, not organization access.
+ * Invitation acceptance separately requires verified inbox ownership in auth.ts.
  */
 export async function assertRegistrationAllowed(
 	ctx: ActionCtx,
@@ -38,14 +36,19 @@ export async function assertRegistrationAllowed(
 		throw new APIError('BAD_REQUEST', { message: 'A valid email is required to register.' });
 	}
 
-	// Is the instance bootstrapped? If no user exists yet, allow the first account
-	// (a signup-based bootstrap); the seed path bypasses this hook entirely.
+	// Public signup must not create the first production user: even an unverified
+	// account would make the one-shot seed endpoint refuse trusted setup.
 	const anyUser = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
 		model: 'user',
 		where: [],
 		paginationOpts: { cursor: null, numItems: 1 },
 	})) as { page?: unknown[] } | null;
-	if (!anyUser?.page?.length) return;
+	if (!anyUser?.page?.length) {
+		if (getBoolean('OWLAT_DEV_MODE')) return;
+		throw new APIError('FORBIDDEN', {
+			message: 'An administrator must complete instance setup before registration.',
+		});
+	}
 
 	// Invite-only past bootstrap: require a non-expired pending invitation for the
 	// exact email. BetterAuth stores invitation emails lowercased.
