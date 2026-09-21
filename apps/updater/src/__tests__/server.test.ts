@@ -80,6 +80,19 @@ function dockerFailing(match: (cmd: string) => boolean, stderr: string) {
 	};
 }
 
+/** `docker compose ps --format json` rows, in the NDJSON shape Compose emits. */
+function composePs(rows: Array<{ Service: string; State: string }>): string {
+	return rows
+		.map((row) => JSON.stringify({ Image: 'ghcr.io/wolvesdotink/x:1.0.0', Health: '', ...row }))
+		.join('\n');
+}
+
+const RUNNING = [
+	{ Service: 'web', State: 'running' },
+	{ Service: 'convex', State: 'running' },
+	{ Service: 'mta', State: 'running' },
+];
+
 /**
  * The argv of each child process, rendered as one line for assertions. `exec`
  * runs execFileSync — there is no shell command string to inspect, so the
@@ -389,6 +402,99 @@ describe('POST /update', () => {
 		expect(composeCommands()).toContain('docker compose up -d --remove-orphans web convex mta');
 	});
 
+	/**
+	 * `up` is the only step of a rollout with nothing left to roll back to, and
+	 * the only one that can leave the instance dark: compose recreate stops the
+	 * old container before starting the new one, so a command that dies in the
+	 * middle leaves the whole plan stopped. A pre-0.5.1 updater did exactly that
+	 * to itself on every release and answered with a bare "docker compose up
+	 * failed" — the operator's next signal was a site that no longer loaded.
+	 */
+	it('restarts the stack when the recreate fails, and says the instance is serving', async () => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			const cmd = [file, ...args].join(' ');
+			if (cmd.includes(' up -d --remove-orphans')) {
+				const err = new Error('boom') as Error & { stdout: string; stderr: string };
+				err.stdout = '';
+				err.stderr = 'error during connect: EOF';
+				throw err;
+			}
+			if (cmd.includes(' ps --format json')) return composePs(RUNNING);
+			return dockerFixture(file, args);
+		});
+
+		const res = await post('/update');
+		expect(res.status).toBe(500);
+		const json = (await res.json()) as {
+			error: string;
+			steps: Array<{ step: string; ok?: boolean; stdout: string }>;
+		};
+
+		const recovery = json.steps.at(-1);
+		expect(recovery).toMatchObject({ step: 'up-recovery', ok: true });
+		expect(recovery?.stdout).toContain('serving again');
+		expect(json.error).toContain('serving again');
+
+		// Recovery is deliberately SMALLER than the command that just failed:
+		// the same services, and none of the extra teardown.
+		const retry = composeCommands().findLast((cmd) => cmd.includes(' up -d'));
+		expect(retry).toBe(`${COMPOSE} up -d web convex mta`);
+		expect(retry).not.toContain('--remove-orphans');
+		expect(retry).not.toContain('--force-recreate');
+	});
+
+	it('names the services still down, and the host command that starts them', async () => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			const cmd = [file, ...args].join(' ');
+			if (cmd.includes(' up -d')) {
+				const err = new Error('boom') as Error & { stdout: string; stderr: string };
+				err.stdout = '';
+				err.stderr = 'error during connect: EOF';
+				throw err;
+			}
+			if (cmd.includes(' ps --format json')) {
+				return composePs([
+					{ Service: 'web', State: 'exited' },
+					{ Service: 'convex', State: 'running' },
+					{ Service: 'mta', State: 'exited' },
+				]);
+			}
+			return dockerFixture(file, args);
+		});
+
+		const res = await post('/update');
+		expect(res.status).toBe(500);
+		const json = (await res.json()) as {
+			error: string;
+			steps: Array<{ step: string; ok?: boolean; stderr: string }>;
+		};
+
+		const recovery = json.steps.at(-1);
+		expect(recovery).toMatchObject({ step: 'up-recovery', ok: false });
+		expect(recovery?.stderr).toContain('still not running: web, mta');
+		expect(recovery?.stderr).toContain('docker compose up -d');
+		expect(json.error).toContain('not fully running');
+	});
+
+	/**
+	 * When the Docker API is what broke, `compose ps` returns nothing — which is
+	 * not the same fact as "every service is stopped" and must not be reported
+	 * as one.
+	 */
+	it('reports an unreadable container list as unknown, not as a dead stack', async () => {
+		execFileSyncMock.mockImplementation(
+			dockerFailing((cmd) => cmd.includes(' up -d'), 'error during connect: EOF')
+		);
+
+		const res = await post('/update');
+		expect(res.status).toBe(500);
+		const json = (await res.json()) as { steps: Array<{ step: string; stderr: string }> };
+		const recovery = json.steps.at(-1);
+		expect(recovery?.step).toBe('up-recovery');
+		expect(recovery?.stderr).toContain('could not be read back');
+		expect(recovery?.stderr).not.toContain('still not running');
+	});
+
 	it('rate-limits update requests', async () => {
 		rateLimitedMock.mockReturnValue(true);
 		const res = await post('/update');
@@ -467,6 +573,36 @@ describe('POST /rotate-env', () => {
 		// process partway down the list, leaving the rest on the old secret.
 		expect(composeCommands()).toContain(`${COMPOSE} up -d --force-recreate web convex mta`);
 		expect(commandLines().some((c) => c.startsWith('docker run'))).toBe(true);
+	});
+
+	/**
+	 * This used to decide the recreate's fate by grepping its stderr for
+	 * "error" — the exact test `exec` was rewritten to make unnecessary. The
+	 * failure that matters most here does not contain the word: the Docker API
+	 * answers "Cannot connect to the Docker daemon at tcp://docker-socket-proxy".
+	 * So a rotation that recreated NOTHING answered 200, and every container
+	 * kept serving on the old secret while `.env` said otherwise.
+	 */
+	it('fails a recreate that exits non-zero, even when stderr never says "error"', async () => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			const cmd = [file, ...args].join(' ');
+			if (cmd.includes(' up -d --force-recreate')) {
+				const err = new Error('boom') as Error & { stdout: string; stderr: string };
+				err.stdout = '';
+				err.stderr = 'Cannot connect to the Docker daemon at tcp://docker-socket-proxy:2375.';
+				throw err;
+			}
+			if (cmd.includes(' ps --format json')) return composePs(RUNNING);
+			return dockerFixture(file, args);
+		});
+
+		const res = await post('/rotate-env', valid);
+		expect(res.status).toBe(500);
+		const json = (await res.json()) as { error: string; recovery: { step: string; ok?: boolean } };
+		expect(json.recovery).toMatchObject({ step: 'up-recovery', ok: true });
+		expect(json.error).toContain('serving again');
+		// …and the updater is NOT handed its own replacement on a failed rotation.
+		expect(commandLines().some((c) => c.startsWith('docker run'))).toBe(false);
 	});
 });
 

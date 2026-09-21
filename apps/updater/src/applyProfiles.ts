@@ -17,7 +17,7 @@ import {
 import { errorMessage } from '@owlat/shared';
 import { applyEnvUpdates, isRateLimited, validateFlagSnapshot } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
-import { composeArgv, servicesToRecreate } from './rollout.js';
+import { composeArgv, recoverStackAfterFailedUp, servicesToRecreate } from './rollout.js';
 
 export async function handleApplyProfiles(req: IncomingMessage, res: ServerResponse) {
 	if (!requireAuth(req, res)) return;
@@ -124,7 +124,20 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 	);
 	steps.push({ step: 'up', ...up });
 	if (!up.ok) {
-		return json(res, 500, { error: 'docker compose up failed', profiles, steps });
+		// A profile toggle recreates running services, so a recreate that dies
+		// halfway leaves them stopped — the same dark instance a failed release
+		// rollout produces, for a change the operator thought was a checkbox.
+		const recovery = recoverStackAfterFailedUp(plan.services);
+		steps.push(recovery);
+		console.error('[apply-profiles] `up` failed:', up.stderr);
+		return json(res, 500, {
+			error: recovery.ok
+				? 'docker compose up failed — the stack was restarted and is serving again, ' +
+					'but the profile change may be only partly applied.'
+				: `docker compose up failed and the stack is not fully running. ${recovery.stderr}`,
+			profiles,
+			steps,
+		});
 	}
 
 	// Report per-service state so the caller can render health for each service.

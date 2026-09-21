@@ -6,7 +6,12 @@ import { errorMessage } from '@owlat/shared';
 import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
 import { applyEnvUpdates, isRateLimited, isValidIPv4 } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
-import { composeArgv, scheduleUpdaterRecreateSafely, servicesToRecreate } from './rollout.js';
+import {
+	composeArgv,
+	recoverStackAfterFailedUp,
+	scheduleUpdaterRecreateSafely,
+	servicesToRecreate,
+} from './rollout.js';
 import { handleUpdate } from './update.js';
 import { handleApplyProfiles } from './applyProfiles.js';
 import { critical } from './lifecycle.js';
@@ -278,8 +283,25 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 		OWLAT_DIR
 	);
 
-	if (recreate.stderr && /error/i.test(recreate.stderr)) {
-		return json(res, 500, { error: 'Container recreate failed', stderr: recreate.stderr });
+	// `.ok` (a non-zero exit), never a grep of stderr — the mistake `exec` was
+	// rewritten to make impossible, and still made here. Compose writes its
+	// progress to stderr on SUCCESS, and the failure that matters most on this
+	// path ("Cannot connect to the Docker daemon at tcp://docker-socket-proxy")
+	// contains no "error" at all: a rotation that recreated nothing reported
+	// success, with every container still holding the old secret.
+	if (!recreate.ok) {
+		// The containers hold the OLD secret and may be stopped; .env already
+		// holds the new one. Start them back up before answering.
+		const recovery = recoverStackAfterFailedUp(plan.services);
+		console.error('[rotate-env] recreate failed:', recreate.stderr);
+		return json(res, 500, {
+			error: recovery.ok
+				? 'Container recreate failed — the stack was restarted and is serving again, ' +
+					'but the rotated secret may not have reached every container.'
+				: `Container recreate failed and the stack is not fully running. ${recovery.stderr}`,
+			stderr: recreate.stderr,
+			recovery,
+		});
 	}
 
 	// The updater must come back on the rotated secret too — through a helper,
