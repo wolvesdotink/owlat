@@ -1,4 +1,5 @@
 import { cronJobs } from 'convex/server';
+import { registerRetentionCrons } from './maintenance/cronRegistration';
 import { internal } from './_generated/api';
 import { registerDeliveryCrons } from './delivery/cronRegistration';
 import { registerBundledPluginCrons } from './plugins/cronRegistration';
@@ -134,52 +135,8 @@ crons.interval(
 	{}
 );
 
-// PII retention sweeps (see maintenance/retention.ts): audit trails age out
-// after 30 days, form-submission IP/UA after 90, agent-health rollup points
-// after 7; auth-failure rows after their TTL (the mailAuthFailures schema
-// always claimed this cron — now it actually exists).
-crons.interval(
-	'retention: audit logs',
-	{ hours: 24 },
-	internal.maintenance.retention.sweepAuditLogs,
-	{}
-);
-crons.interval(
-	'retention: mail audit log',
-	{ hours: 24 },
-	internal.maintenance.retention.sweepMailAuditLog,
-	{}
-);
-crons.interval(
-	'retention: plugin llm accounting',
-	{ hours: 24 },
-	internal.maintenance.retention.sweepPluginLlmAccounting,
-	{}
-);
-crons.interval(
-	'retention: agent metrics',
-	{ hours: 24 },
-	internal.maintenance.retention.sweepAgentMetrics,
-	{}
-);
-crons.interval(
-	'retention: form submission metadata',
-	{ hours: 24 },
-	internal.maintenance.retention.scrubFormSubmissionMeta,
-	{}
-);
-// Inbound mail FILES (see maintenance/retention.ts): the sealed raw `.eml` and
-// the team-inbox attachment blobs captured out of it are released past the
-// horizon set in Settings (`DEFAULT_INBOUND_RAW_RETENTION_DAYS` when unset).
-// Bytes only — every row and all of its metadata stays. ONE entry for one
-// horizon: the two walks are the same decision from the same setting. Daily,
-// because the horizon is measured in days, so a tick stays small.
-crons.interval(
-	'retention: inbound mail files',
-	{ hours: 24 },
-	internal.maintenance.retention.sweepInboundFiles,
-	{}
-);
+// Retention schedules live beside their maintenance functions.
+registerRetentionCrons(crons);
 crons.interval(
 	'retention: mail auth failures',
 	{ hours: 24 },
@@ -351,7 +308,7 @@ crons.interval(
 // Agent metrics rollup every 5 minutes
 // Computes queue depth, latency, error rates, evaluates circuit breakers.
 // Writes the whole window in one transaction; ageing those rows out is the
-// 'retention: agent metrics' entry above, not this one.
+// retention registration in maintenance/cronRegistration.ts.
 crons.interval('agent metrics rollup', { minutes: 5 }, internal.agentHealth.rollupMetrics);
 
 // Reset autonomy daily action counts every 24 hours
