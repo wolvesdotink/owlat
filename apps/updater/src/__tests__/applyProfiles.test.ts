@@ -277,15 +277,63 @@ describe('compose invocation + per-service health', () => {
 		]);
 	});
 
-	it('fails with 500 (files already converged) when compose up fails', async () => {
-		execFileSyncMock.mockImplementation((_file: string, args: string[]) => {
-			if (args.includes('up')) throw Object.assign(new Error('boom'), { stderr: 'daemon down' });
-			return '';
+	/**
+	 * A profile toggle recreates running services, so a recreate that dies
+	 * halfway leaves them stopped — a dark instance produced by what the
+	 * operator experienced as ticking a checkbox. The answer has to say so, and
+	 * has to have tried to start them back up.
+	 */
+	it('fails with 500 (files already converged) when compose up fails, after restarting the stack', async () => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			const cmd = [file, ...args].join(' ');
+			// Only the recreate fails; the smaller recovery `up` that follows works.
+			if (cmd.includes(' up -d --remove-orphans')) {
+				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'daemon down' });
+			}
+			if (cmd.includes(' ps --format json')) {
+				return ['web', 'convex', 'mail-sync']
+					.map((service) => JSON.stringify({ Service: service, State: 'running', Image: '' }))
+					.join('\n');
+			}
+			return dockerFixture(file, args);
 		});
+
 		const res = await post({ flags: {} });
 		expect(res.status).toBe(500);
 		// The declarative state was still written — a manual `docker compose up` completes it.
 		expect(envProfiles()).toBe('clamav');
+
+		const body = (await res.json()) as {
+			error: string;
+			steps: Array<{ step: string; ok?: boolean }>;
+		};
+		expect(body.steps.at(-1)).toMatchObject({ step: 'up-recovery', ok: true });
+		expect(body.error).toContain('serving again');
+	});
+
+	it('names the services still down when the stack cannot be restarted', async () => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			const cmd = [file, ...args].join(' ');
+			if (cmd.includes(' up -d')) {
+				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'daemon down' });
+			}
+			if (cmd.includes(' ps --format json')) {
+				return JSON.stringify({ Service: 'convex', State: 'running', Image: '' });
+			}
+			return dockerFixture(file, args);
+		});
+
+		const res = await post({ flags: {} });
+		expect(res.status).toBe(500);
+		const body = (await res.json()) as {
+			error: string;
+			steps: Array<{ step: string; ok?: boolean; stderr: string }>;
+		};
+		const recovery = body.steps.at(-1);
+		expect(recovery).toMatchObject({ step: 'up-recovery', ok: false });
+		expect(recovery?.stderr).toContain('still not running: web, mail-sync');
+		expect(recovery?.stderr).toContain('docker compose up -d');
+		expect(body.error).toContain('not fully running');
 	});
 });
 

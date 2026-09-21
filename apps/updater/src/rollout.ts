@@ -13,6 +13,7 @@ import { hostname } from 'node:os';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
+import { parseComposePs } from '@owlat/shared/containerHealth';
 import { exec, OWLAT_DIR } from './http.js';
 
 interface RolloutStep {
@@ -57,6 +58,103 @@ const PROXY_REMEDIATION =
 	'and VOLUMES=0, which 403s `docker compose up` and `docker compose run`. ' +
 	'On the host: pull the new docker-compose.yml, then ' +
 	'`docker compose up -d docker-socket-proxy` (or run `owlat upgrade`), and retry.';
+
+const STACK_DOWN_REMEDIATION =
+	'On the host, in the install directory: `docker compose up -d` (or ' +
+	'`owlat start`) restarts every service on the release that was just promoted.';
+
+/**
+ * The named services compose does not currently report as `running`.
+ *
+ * `up` exiting non-zero says the command failed, not what it left behind: a
+ * truncated recreate can have started half the stack and stopped the other
+ * half. Distinguishes "these are down" from "Docker would not tell us", which
+ * are very different things to put in front of an operator.
+ */
+function notRunning(services: string[]): { names: string[]; readable: boolean } {
+	// Not `composePsServices()`: that one runs a bare `docker compose ps`, whose
+	// project name comes from the basename of the path THIS container sees. Here
+	// the answer decides what an operator is told about their dark instance, so
+	// it goes through the same project-directory-aware invocation as the `up` it
+	// is reporting on.
+	const listed = exec('docker', [...composeArgv(), 'ps', '--format', 'json'], OWLAT_DIR);
+	if (!listed.stdout.trim()) return { names: [], readable: false };
+	const running = new Set(
+		parseComposePs(listed.stdout)
+			.filter((container) => container.state === 'running')
+			.map((container) => container.service)
+	);
+	return { names: services.filter((name) => !running.has(name)), readable: true };
+}
+
+/**
+ * Start whatever a failed `up` left stopped.
+ *
+ * `up` is the one step of a rollout with nothing to roll back to — by the time
+ * it runs, the images are pulled, the schema is deployed and the compose file
+ * is promoted — and it is also the only step that can take the instance
+ * offline. Compose recreate is "create new → stop old → start new", so a
+ * command that dies in the middle leaves old containers stopped and new ones
+ * created-but-never-started: every service in the plan is down, and until now
+ * the operator got a bare "docker compose up failed" for it and a dark
+ * instance. (That is not hypothetical — it is what a pre-0.5.1 updater did to
+ * itself on every release, by recreating the socket proxy it speaks Docker
+ * through.)
+ *
+ * So recovery is FORWARD, and deliberately smaller than the command that just
+ * failed: the same services, no `--remove-orphans`, no `--force-recreate`.
+ * Finishing a half-applied recreate is exactly what a second `up -d` does; a
+ * stack that just proved it cannot take one set of changes is no place to try
+ * a larger one. When even that does not restore the fleet — the transport
+ * itself is gone, say — the step carries the host-side command that will.
+ */
+function recoverStack(services: string[]): RolloutStep {
+	const step = 'up-recovery';
+	const retry = exec('docker', [...composeArgv(), 'up', '-d', ...services], OWLAT_DIR);
+	const stopped = notRunning(services);
+
+	if (retry.ok && stopped.readable && stopped.names.length === 0) {
+		return {
+			step,
+			ok: true,
+			stdout:
+				'A second `up` started every service the failed one left stopped — the ' +
+				'instance is serving again, on the release that was already promoted.',
+			stderr: '',
+		};
+	}
+
+	const diagnosis = !stopped.readable
+		? 'the container list could not be read back, so the state of the stack is unknown'
+		: `still not running: ${stopped.names.join(', ')}`;
+
+	return {
+		step,
+		ok: false,
+		stdout: retry.stdout,
+		stderr: `${oneLine(retry.stderr) || 'the retry failed'} — ${diagnosis}. ${STACK_DOWN_REMEDIATION}`,
+	};
+}
+
+/**
+ * Never let the recovery itself be the reason the caller hears nothing.
+ *
+ * No catch-all wraps the update handler, so a throw from here would hang a
+ * request that is already reporting a possibly-dark instance — losing the one
+ * message that carries the host command to bring it back.
+ */
+export function recoverStackAfterFailedUp(services: string[]): RolloutStep {
+	try {
+		return recoverStack(services);
+	} catch (err) {
+		return {
+			step: 'up-recovery',
+			ok: false,
+			stdout: '',
+			stderr: `${errorMessage(err)} — ${STACK_DOWN_REMEDIATION}`,
+		};
+	}
+}
 
 /**
  * Refuse to start a rollout the Docker API cannot finish.

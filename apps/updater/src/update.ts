@@ -4,8 +4,13 @@
  * The order is the whole design: validate the caller's template, prove the
  * Docker API can finish the job, stage the template, pull, deploy the Convex
  * functions against the still-running old backend, and only then promote the
- * file and recreate the containers. Every one of those steps can fail leaving
- * the running stack exactly as it was.
+ * file and recreate the containers. Every one of those steps up to the promote
+ * can fail leaving the running stack exactly as it was.
+ *
+ * The recreate is the exception, and the only step that can leave the instance
+ * dark: there is no old state left to keep by then. It gets the other half of
+ * the guarantee instead — when it fails, the stack is started back up and the
+ * caller is told, in as many words, whether the instance is serving.
  *
  * Split out of server.ts, which also owns /health, /configure-ip and
  * /rotate-env (CONVENTIONS.md ~500 LOC rule). The rollout's own plumbing — the
@@ -26,6 +31,7 @@ import { exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
 import {
 	composeArgv,
 	dockerApiPreflight,
+	recoverStackAfterFailedUp,
 	scheduleUpdaterRecreateSafely,
 	servicesToRecreate,
 } from './rollout.js';
@@ -229,7 +235,29 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	steps.push({ step: 'up', ...up });
 
 	if (!up.ok) {
-		return json(res, 500, { error: 'docker compose up failed', steps });
+		// The one failure in this handler that the running stack does NOT survive:
+		// every earlier step is ordered so that failing it changes nothing, but by
+		// the time `up` runs the release is pulled, deployed and promoted, and a
+		// recreate that dies halfway leaves its services stopped. So there is
+		// nothing to roll back to — recovery is to finish starting them.
+		const recovery = recoverStackAfterFailedUp(plan.services);
+		steps.push(recovery);
+		// In this sidecar's own log too. An operator whose instance just went dark
+		// reads `docker logs owlat-updater-1` long before they think to re-trigger
+		// the update to see a step list — and until now it said nothing at all.
+		console.error('[update] `up` failed:', up.stderr);
+		console.error(
+			`[update] recovery ${recovery.ok ? 'succeeded' : 'failed'}:`,
+			recovery.ok ? recovery.stdout : recovery.stderr
+		);
+
+		return json(res, 500, {
+			error: recovery.ok
+				? 'docker compose up failed — the stack was restarted and is serving again, ' +
+					'but the release may be only partly applied. Re-run the update.'
+				: `docker compose up failed and the stack is not fully running. ${recovery.stderr}`,
+			steps,
+		});
 	}
 
 	// Step 9: Hand this container's own replacement to a helper that outlives
