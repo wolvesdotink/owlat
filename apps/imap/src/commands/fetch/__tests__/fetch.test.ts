@@ -76,8 +76,10 @@ function run(
 			// Seven messages exist; the fixture message sits at sequence 7
 			// (UID 7), so the harness's `set: '7'` resolves to it whether the
 			// command is UID-based or not.
-			if (ref.endsWith(':listFolderUids')) return [1, 2, 3, 4, 5, 6, 7];
-			if (ref.endsWith(':fetchEnvelopes')) return [msg];
+			if (ref.endsWith(':listFolderUidsPage')) {
+				return { uids: [1, 2, 3, 4, 5, 6, 7], nextUid: null };
+			}
+			if (ref.endsWith(':fetchEnvelopes')) return { rows: [msg], nextUid: null };
 			if (ref.endsWith(':fetchRawStorageId')) return { storageId: 's1', rawSize: raw.byteLength };
 			return null;
 		}),
