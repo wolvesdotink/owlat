@@ -134,7 +134,7 @@ function isAnyEmailBlockRegistryFrozen(): boolean {
  * These are the finalizers for the two block halves; the host calls this after
  * composition so no registry can be mutated once the app is running.
  */
-export function finalizeEmailBlockRegistries(): void {
+function finalizeEmailBlockRegistries(): void {
 	// Renderer half.
 	finalizeRendererModuleRegistry();
 	finalizeRendererCustomRegistry();

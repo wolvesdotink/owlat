@@ -29,7 +29,7 @@ const emit = defineEmits<{
 
 const replies = ref<string[]>([]);
 
-const suggestOp = useBackendOperation(api.mail.ai.suggestReplies, {
+const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
 	label: () => t('components.postbox.postboxSchedulingChip.draftOperation'),
 	type: 'action',
 });
@@ -41,7 +41,7 @@ async function draft() {
 		focus: 'scheduling',
 		proposedTimes: props.proposedTimes,
 	});
-	if (res) replies.value = res.replies;
+	if (res.ok) replies.value = res.result.replies;
 }
 </script>
 
@@ -59,7 +59,7 @@ async function draft() {
 					<Icon
 						:name="suggestOp.isLoading.value ? 'lucide:loader-2' : 'lucide:calendar-clock'"
 						class="w-3.5 h-3.5"
-						:class="{ 'animate-spin': suggestOp.isLoading.value }"
+						:class="{ 'animate-spin motion-reduce:animate-none': suggestOp.isLoading.value }"
 					/>
 				</template>
 				{{ t('components.postbox.postboxSchedulingChip.prompt') }}

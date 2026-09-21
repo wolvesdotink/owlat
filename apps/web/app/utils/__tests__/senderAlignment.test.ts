@@ -13,7 +13,11 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { senderAuthDisplay } from '../senderAlignment';
+import {
+	alignmentSendWarning,
+	selectedSenderIdentity,
+	senderAuthDisplay,
+} from '../senderAlignment';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /**
@@ -59,5 +63,53 @@ describe('senderAuthDisplay — block decision (honesty gate)', () => {
 		const reason = 'This transport signs and bounces mail as “sendgrid.net”.';
 		const display = senderAuthDisplay({ verified: true, alignment: 'misaligned', reason });
 		expect(t(display.detail!)).toBe(reason);
+	});
+});
+
+describe('selectedSenderIdentity', () => {
+	const identities = [
+		{ address: 'ada@northwind.studio', domainVerified: true, alignment: 'aligned' as const },
+		{ address: 'billing@northwind.studio', domainVerified: false, alignment: 'aligned' as const },
+	];
+
+	it('finds the chosen From', () => {
+		expect(selectedSenderIdentity(identities, 'billing@northwind.studio')?.domainVerified).toBe(
+			false
+		);
+	});
+
+	it('falls back to the first identity, which is what the picker displays', () => {
+		expect(selectedSenderIdentity(identities, '')?.address).toBe('ada@northwind.studio');
+	});
+
+	it('is null when there is nothing to send as, or the From is unknown', () => {
+		expect(selectedSenderIdentity([], 'ada@northwind.studio')).toBeNull();
+		expect(selectedSenderIdentity(identities, 'gone@elsewhere.test')).toBeNull();
+	});
+});
+
+describe('alignmentSendWarning — the pre-send gate (idea 3)', () => {
+	it('warns about the two DEFINITE failures', () => {
+		expect(t(alignmentSendWarning({ verified: false, alignment: 'aligned' })!.label)).toBe(
+			'Domain not verified'
+		);
+		expect(t(alignmentSendWarning({ verified: true, alignment: 'misaligned' })!.label)).toBe(
+			'Sender not aligned'
+		);
+	});
+
+	it('stays silent on a clean identity and on an unverified alignment', () => {
+		expect(alignmentSendWarning({ verified: true, alignment: 'aligned' })).toBeNull();
+		expect(alignmentSendWarning({ verified: true, alignment: 'unknown' })).toBeNull();
+	});
+
+	it('is silent when there is no identity to judge', () => {
+		expect(alignmentSendWarning(null)).toBeNull();
+	});
+
+	it('carries the transport reason into the warning', () => {
+		const reason = 'This transport signs and bounces mail as “sendgrid.net”.';
+		const warning = alignmentSendWarning({ verified: true, alignment: 'misaligned', reason });
+		expect(t(warning!.detail!)).toBe(reason);
 	});
 });

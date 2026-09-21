@@ -71,6 +71,87 @@ describe('isDisallowedIpAddress', () => {
 		expect(isDisallowedIpAddress('::ffff:127.0.0.1')).toBe(true);
 		expect(isDisallowedIpAddress('2606:4700:4700::1111')).toBe(false); // public
 	});
+
+	it('flags hex-form IPv4-mapped IPv6 (the dotted-quad bypass)', () => {
+		// ::ffff:7f00:1 is 127.0.0.1 written as hextets — the hex suffix used to
+		// fall through the mapped-IPv4 branch unclassified.
+		expect(isDisallowedIpAddress('::ffff:7f00:1')).toBe(true);
+		expect(isDisallowedIpAddress('::ffff:a00:1')).toBe(true); // 10.0.0.1
+		expect(isDisallowedIpAddress('::ffff:c0a8:101')).toBe(true); // 192.168.1.1
+		expect(isDisallowedIpAddress('::ffff:A9FE:FEFE')).toBe(true); // 169.254.254.254
+		// Public addresses in hex-mapped form stay allowed.
+		expect(isDisallowedIpAddress('::ffff:808:808')).toBe(false); // 8.8.8.8
+		// Malformed hex suffixes fail closed rather than classify as public.
+		expect(isDisallowedIpAddress('::ffff:zzzz:1')).toBe(true);
+	});
+
+	it('flags IPv4-mapped IPv6 written uncompressed or partially compressed', () => {
+		// The same 127.0.0.1 the `::ffff:` prefix rule caught, respelled. A textual
+		// prefix match sees none of these, so each one used to fall through as
+		// "public"; classification now runs on the expanded hextets.
+		expect(isDisallowedIpAddress('0:0:0:0:0:ffff:7f00:1')).toBe(true);
+		expect(isDisallowedIpAddress('0:0:0:0:0:ffff:127.0.0.1')).toBe(true);
+		expect(isDisallowedIpAddress('0::ffff:7f00:1')).toBe(true);
+		expect(isDisallowedIpAddress('0:0:0:0:0:ffff:a9fe:a9fe')).toBe(true); // 169.254.169.254
+		// Public addresses in those same spellings stay allowed — the fix is not a
+		// blanket IPv6 deny.
+		expect(isDisallowedIpAddress('0:0:0:0:0:ffff:808:808')).toBe(false); // 8.8.8.8
+		expect(isDisallowedIpAddress('0:0:0:0:0:ffff:8.8.8.8')).toBe(false);
+		expect(isDisallowedIpAddress('0::ffff:8.8.8.8')).toBe(false);
+	});
+
+	it('flags IPv4-compatible and IPv4-translated IPv6 embeddings', () => {
+		// ::a.b.c.d is the deprecated IPv4-compatible form and ::ffff:0:a.b.c.d the
+		// RFC 2765 IPv4-translated one; both still reach the embedded IPv4 on a
+		// host that speaks them.
+		expect(isDisallowedIpAddress('::7f00:1')).toBe(true); // 127.0.0.1
+		expect(isDisallowedIpAddress('::127.0.0.1')).toBe(true);
+		expect(isDisallowedIpAddress('::a9fe:a9fe')).toBe(true); // 169.254.169.254
+		expect(isDisallowedIpAddress('::ffff:0:7f00:1')).toBe(true);
+		expect(isDisallowedIpAddress('::ffff:0:127.0.0.1')).toBe(true);
+		expect(isDisallowedIpAddress('64:ff9b::7f00:1')).toBe(true); // RFC 6052 NAT64
+		// Public counterexamples in each form.
+		expect(isDisallowedIpAddress('::808:808')).toBe(false); // 8.8.8.8
+		expect(isDisallowedIpAddress('::8.8.8.8')).toBe(false);
+		expect(isDisallowedIpAddress('::ffff:0:808:808')).toBe(false);
+		expect(isDisallowedIpAddress('64:ff9b::8.8.8.8')).toBe(false);
+	});
+
+	it('classifies bracketed literals, since URL.hostname keeps the brackets', () => {
+		// `new URL('http://[::1]/').hostname` is '[::1]', and the webhook-host check
+		// passes that hostname straight in with no isIP() in front of it — without
+		// stripping the brackets it looks like a DNS name and is allowed.
+		expect(isDisallowedIpAddress('[::1]')).toBe(true);
+		expect(isDisallowedIpAddress('[::ffff:7f00:1]')).toBe(true);
+		expect(isDisallowedIpAddress('[fe80::1]')).toBe(true);
+		expect(isDisallowedIpAddress('[2606:4700:4700::1111]')).toBe(false); // public
+	});
+
+	it('fails closed on anything colon-bearing it cannot parse', () => {
+		expect(isDisallowedIpAddress('1:2:3:4:5:6:7:8:9')).toBe(true); // too many groups
+		expect(isDisallowedIpAddress('1::2::3')).toBe(true); // two zero runs
+		expect(isDisallowedIpAddress('::ffff:999.1.1.1')).toBe(true); // octet > 255
+		expect(isDisallowedIpAddress('::ffff:1.2.3.4.5')).toBe(true); // five octets
+		expect(isDisallowedIpAddress('fe80::1%eth0')).toBe(true); // zone id
+		// A colon can't appear in a DNS name, so hostnames are still not our
+		// business — 'fd'/'ff' prefixed names are not addresses.
+		expect(isDisallowedIpAddress('example.com')).toBe(false);
+		expect(isDisallowedIpAddress('fdcdn.example.com')).toBe(false);
+	});
+
+	it('holds the fe80::/10 and fc00::/7 range edges exactly', () => {
+		// The old fe8/fe9/fea/feb string prefixes approximated fe80::/10; the
+		// hextet range must not widen (fec0:: is global) or narrow (febf:: is not).
+		expect(isDisallowedIpAddress('fe7f:ffff::1')).toBe(false);
+		expect(isDisallowedIpAddress('fe80::')).toBe(true);
+		expect(isDisallowedIpAddress('febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff')).toBe(true);
+		expect(isDisallowedIpAddress('fec0::1')).toBe(false);
+		expect(isDisallowedIpAddress('fbff::1')).toBe(false);
+		expect(isDisallowedIpAddress('fc00::')).toBe(true);
+		expect(isDisallowedIpAddress('fdff:ffff::1')).toBe(true);
+		expect(isDisallowedIpAddress('fe00::1')).toBe(false);
+		expect(isDisallowedIpAddress('ff02::1')).toBe(true); // multicast
+	});
 });
 
 describe('fetchGuarded typed refusals', () => {

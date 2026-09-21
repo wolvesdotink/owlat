@@ -287,7 +287,10 @@ const extractBlockRows = (blocks: Block[], rows: TranslatableRow[], prefix = '')
 				blockId: block.id,
 				fieldType: 'buttonText',
 				sourceText: block.content.text,
-				label: t('components.translation.manager.buttonBlock', { prefix, text: block.content.text }),
+				label: t('components.translation.manager.buttonBlock', {
+					prefix,
+					text: block.content.text,
+				}),
 			});
 		} else if (block.type === 'image' && block.content.alt) {
 			imageBlockIndex++;
@@ -385,7 +388,7 @@ const updateTranslationValue = async (row: TranslatableRow, language: string, va
 
 		// Persist to database
 		const saved = await saveTranslation(language);
-		if (saved === undefined) return;
+		if (!saved.ok) return;
 		await regenerateRenderedLanguage(language);
 		hasChanges.value = false;
 	} finally {
@@ -393,11 +396,11 @@ const updateTranslationValue = async (row: TranslatableRow, language: string, va
 	}
 };
 
-// Save translation to backend. Returns `undefined` when the save failed (the
+// Save translation to backend. Resolves `ok: false` when the save failed (the
 // operation module has already surfaced the categorized error).
 const saveTranslation = async (language: string) => {
 	const translation = translations.value[language];
-	if (!translation) return;
+	if (!translation) return { ok: false } as const;
 
 	if (props.emailType === 'marketing') {
 		return await updateMarketingTranslation({
@@ -430,9 +433,11 @@ const addLanguage = async (langCode: string) => {
 						id: props.emailId as Id<'transactionalEmails'>,
 						language: langCode,
 					});
-		if (added === undefined) return;
+		if (!added.ok) return;
 		await regenerateRenderedLanguage(langCode);
-		showToast(t('components.translation.manager.languageAdded', { language: languageLabel(langCode) }));
+		showToast(
+			t('components.translation.manager.languageAdded', { language: languageLabel(langCode) })
+		);
 	} finally {
 		isSaving.value = false;
 	}
@@ -461,10 +466,12 @@ const confirmRemoveLanguage = async () => {
 						id: props.emailId as Id<'transactionalEmails'>,
 						language: langCode,
 					});
-		if (removed === undefined) return;
+		if (!removed.ok) return;
 		delete htmlTranslations.value[langCode];
 		await persistHtmlTranslations();
-		showToast(t('components.translation.manager.languageRemoved', { language: languageLabel(langCode) }));
+		showToast(
+			t('components.translation.manager.languageRemoved', { language: languageLabel(langCode) })
+		);
 	} finally {
 		isSaving.value = false;
 		languageToRemove.value = null;
@@ -551,7 +558,11 @@ const isCellSaving = (rowId: string, language: string) => {
 				<div class="flex items-center gap-2">
 					<Icon name="lucide:globe" class="w-5 h-5 text-text-tertiary" />
 					<span class="text-text-primary font-medium">
-						{{ t('components.translation.manager.heading', { name: email?.name || t('components.translation.manager.emailFallbackName') }) }}
+						{{
+							t('components.translation.manager.heading', {
+								name: email?.name || t('components.translation.manager.emailFallbackName'),
+							})
+						}}
 					</span>
 				</div>
 			</div>
@@ -568,7 +579,9 @@ const isCellSaving = (rowId: string, language: string) => {
 		<div v-if="isLoading" class="flex-1 flex items-center justify-center">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
-				<p class="text-text-secondary text-sm">{{ t('components.translation.manager.loadingEmail') }}</p>
+				<p class="text-text-secondary text-sm">
+					{{ t('components.translation.manager.loadingEmail') }}
+				</p>
 			</div>
 		</div>
 
@@ -576,8 +589,12 @@ const isCellSaving = (rowId: string, language: string) => {
 		<div v-else-if="!email" class="flex-1 flex items-center justify-center">
 			<div class="text-center">
 				<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
-				<h2 class="text-xl font-semibold text-text-primary mb-2">{{ t('components.translation.manager.notFoundTitle') }}</h2>
-				<p class="text-text-secondary mb-6">{{ t('components.translation.manager.notFoundDescription') }}</p>
+				<h2 class="text-xl font-semibold text-text-primary mb-2">
+					{{ t('components.translation.manager.notFoundTitle') }}
+				</h2>
+				<p class="text-text-secondary mb-6">
+					{{ t('components.translation.manager.notFoundDescription') }}
+				</p>
 				<UiButton @click="handleBack">{{ t('components.translation.manager.goBack') }}</UiButton>
 			</div>
 		</div>
@@ -591,7 +608,9 @@ const isCellSaving = (rowId: string, language: string) => {
 					class="text-center py-16 border border-dashed border-border-subtle rounded-xl"
 				>
 					<Icon name="lucide:globe" class="w-10 h-10 text-text-tertiary mx-auto mb-4" />
-					<h3 class="text-lg font-medium text-text-primary mb-2">{{ t('components.translation.manager.emptyTitle') }}</h3>
+					<h3 class="text-lg font-medium text-text-primary mb-2">
+						{{ t('components.translation.manager.emptyTitle') }}
+					</h3>
 					<p class="text-text-secondary">
 						{{ t('components.translation.manager.emptyDescription') }}
 					</p>
@@ -735,7 +754,9 @@ const isCellSaving = (rowId: string, language: string) => {
 					<div class="flex gap-3">
 						<Icon name="lucide:globe" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 						<div class="text-sm">
-							<p class="text-text-primary font-medium mb-1">{{ t('components.translation.manager.infoTitle') }}</p>
+							<p class="text-text-primary font-medium mb-1">
+								{{ t('components.translation.manager.infoTitle') }}
+							</p>
 							<p class="text-text-secondary">
 								{{ t('components.translation.manager.infoBody') }}
 							</p>
@@ -749,7 +770,9 @@ const isCellSaving = (rowId: string, language: string) => {
 				:title="t('components.translation.manager.removeConfirmTitle')"
 				:description="
 					languageToRemove
-						? t('components.translation.manager.removeConfirmDescription', { language: languageLabel(languageToRemove) })
+						? t('components.translation.manager.removeConfirmDescription', {
+								language: languageLabel(languageToRemove),
+							})
 						: t('components.translation.manager.removeConfirmFallback')
 				"
 				:confirm-text="t('components.translation.manager.removeConfirmAction')"

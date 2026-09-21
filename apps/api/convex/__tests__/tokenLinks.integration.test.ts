@@ -22,6 +22,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestContact, createTestTopic } from './factories';
+import { newBetterAuthHarness } from './testModules';
 import type { StoredAudience } from '../campaigns/audience';
 import type { CampaignRecipient } from '../campaigns/audienceCandidates';
 
@@ -913,14 +914,41 @@ describe('seedAdmin (POST /seed/admin)', () => {
 		expect(res.status).toBe(400);
 	});
 
+	it('rate-limits the endpoint per IP (429) before the secret check (L5)', async () => {
+		const t = setupTest();
+		// The adminSeed limiter is a 5/min fixed window; getClientIp collapses to
+		// the shared 'unknown' bucket (no trusted proxy), so the 6th call in the
+		// window trips regardless of the (wrong/absent) secret. This runs BEFORE
+		// secret verification, so an attacker can't hammer the secret at line rate.
+		let sawRateLimited = false;
+		for (let i = 0; i < 6; i++) {
+			const res = await t.fetch('/seed/admin', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Instance-Secret': 'wrong-secret',
+				},
+				body: BODY,
+			});
+			if (res.status === 429) {
+				sawRateLimited = true;
+				break;
+			}
+			// Every non-limited call is rejected by the secret gate, never seeded.
+			expect(res.status).toBe(401);
+		}
+		expect(sawRateLimited).toBe(true);
+	});
+
 	// HARNESS LIMITATION (not a product bug): the success path calls
 	// `components.betterAuth.adapter.{findMany,create}`, and the betterAuth
 	// component is not registered in convex-test (only the rateLimiter is).
 	// `t.registerComponent` would need the betterAuth component's module map,
 	// which isn't wired into the test harness. The auth-gate (401/400) cases
 	// above cover the security-relevant surface of this endpoint.
-	it.skip('seeds once with the correct secret, then refuses a second call (one-shot)', async () => {
-		const t = setupTest();
+	it('seeds once with the correct secret, then refuses a second call (one-shot)', async () => {
+		const t = newBetterAuthHarness(modules);
+		rateLimiterTest.register(t);
 		const first = await t.fetch('/seed/admin', {
 			method: 'POST',
 			headers: {

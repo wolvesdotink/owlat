@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { logError } from "~/lib/runtimeLog";
-import type { NavigationSection } from "~/composables/useDashboardNavigation";
+import { logError } from '~/lib/runtimeLog';
+import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce';
+import type { NavigationSection } from '~/composables/useDashboardNavigation';
+import { useSectionNavigation } from '~/composables/useSectionNavigation';
 
 const { t } = useI18n();
 const { user, signOut, isPending } = useAuth();
@@ -11,12 +13,24 @@ const router = useRouter();
 // Initialize keyboard shortcuts
 const { registerNavigationShortcuts } = useKeyboardShortcuts();
 
-// Sidebar state management
+// Feed this user's keyboard map (preset + their own remaps) into the shortcut
+// registry, so every surface below dispatches and documents the same chords.
+useShortcutPreferences();
+
+// Sidebar state management. `effectiveCollapsed` — not the raw persisted
+// `isCollapsed` — is what this shell renders against, exactly as it renders
+// against `effectiveHidden`: below the desktop breakpoint the aside is the
+// mobile drawer, and a collapse preference saved on a laptop must not turn it
+// into a 64px icon strip there. Aliased so every reference below reads the
+// resolved value.
 const {
-	isCollapsed,
+	effectiveCollapsed: preferredCollapsed,
 	effectiveHidden,
 	isPeeking,
 	sectionStates,
+	focusArea,
+	isFocusPinned,
+	setRoutePath,
 	toggleCollapsed,
 	toggleHidden,
 	toggleSection,
@@ -25,6 +39,46 @@ const {
 	setDesktopViewport,
 	initFromStorage,
 } = useSidebarState();
+
+// A section lends its existing navigation to this sidebar on desktop.
+const { activeSection, showAppNavigation } = useSectionNavigation();
+const isCollapsed = computed(() => (activeSection.value ? false : preferredCollapsed.value));
+const showSectionNavigation = computed(() => !!activeSection.value && !showAppNavigation.value);
+const sectionNavigationTarget = ref<HTMLElement | null>(null);
+provide('section-navigation-target', sectionNavigationTarget);
+
+async function switchNavigation() {
+	showAppNavigation.value = !showAppNavigation.value;
+	await nextTick();
+	const target = showAppNavigation.value ? '#app-navigation' : '#section-navigation';
+	document.querySelector<HTMLElement>(`${target} a, ${target} button`)?.focus();
+}
+
+watch(
+	() => route.path,
+	(path) => {
+		setRoutePath(path);
+		showAppNavigation.value = false;
+	},
+	{ immediate: true }
+);
+
+// Keep the current destination visible in long settings trees.
+async function revealCurrentSection() {
+	if (!showSectionNavigation.value) return;
+	await nextTick();
+	requestAnimationFrame(() => {
+		sectionNavigationTarget.value
+			?.querySelector('[aria-current="page"]')
+			?.scrollIntoView({ block: 'nearest' });
+	});
+}
+watch(
+	[() => route.path, () => activeSection.value?.id, showSectionNavigation],
+	revealCurrentSection
+);
+const removePageFinishHook = useNuxtApp().hooks.hook('page:finish', revealCurrentSection);
+onBeforeUnmount(() => removePageFinishHook?.());
 
 // Focus mode state for distraction-free editing
 const { isFocusMode } = useFocusMode();
@@ -46,9 +100,9 @@ const ENABLE_VIBRANCY = true;
 onMounted(async () => {
 	if (!ENABLE_VIBRANCY || !isDesktop.value || !(isMac.value || isWindows.value)) return;
 	try {
-		const { applyVibrancy } = await import("@owlat/desktop/src/window");
-		await applyVibrancy(isWindows.value ? "mica" : "sidebar");
-		document.documentElement.classList.add("vibrancy-on");
+		const { applyVibrancy } = await import('@owlat/desktop/src/window');
+		await applyVibrancy(isWindows.value ? 'mica' : 'sidebar');
+		document.documentElement.classList.add('vibrancy-on');
 	} catch {
 		// Unsupported (e.g. Windows 10) or Tauri unavailable — solid theme stays.
 	}
@@ -58,6 +112,39 @@ onMounted(() => {
 	registerNavigationShortcuts();
 	initFromStorage();
 });
+
+// ── Route changes, said out loud ──────────────────────────────────────────
+// A client-side navigation is INVISIBLE to assistive technology. The browser
+// announces a real page load; a router that swaps the DOM under <main> announces
+// nothing, and keyboard focus is left standing on the rail link that was just
+// activated — several dozen tab stops away from the page it loaded. Two lines
+// of repair, both standard: say the new page's name into the app's live region,
+// and move focus into <main> (whose `tabindex="-1"` has been sitting below,
+// unfocused by anything, since it was added for the skip link).
+//
+// `route.path`, not `fullPath`: a query change is a filter or a sort, not a new
+// page, and re-announcing the same page name on every keystroke of a search box
+// is worse than saying nothing.
+const { announce } = useAnnounce();
+const { breadcrumbs } = useBreadcrumbs();
+
+watch(
+	() => route.path,
+	async () => {
+		// The new page has to be rendered before its trail is right and before
+		// asking where focus ended up.
+		await nextTick();
+		const label = announcedPageLabel(breadcrumbs.value);
+		// Trail labels are message keys from the route registries and plain text
+		// when a page supplied one dynamically; `t` passes the latter through.
+		if (label) announce(t('shell.dashboard.navigatedTo', { page: t(label) }));
+		if (shouldMoveFocusToMain(document.activeElement)) {
+			// `preventScroll`: the router has already restored the scroll position,
+			// and focusing a full-height <main> would undo it.
+			document.getElementById('main-content')?.focus({ preventScroll: true });
+		}
+	}
+);
 
 // Native macOS traffic lights follow the sidebar (desktop + macOS only). They
 // stay visible whenever the rail — or its transient peek overlay — is on screen,
@@ -88,9 +175,9 @@ onMounted(() => {
 		if (isFullscreen) return;
 		try {
 			const { setTrafficLightsVisible, trafficLightsVisibleFor } =
-				await import("@owlat/desktop/src/window");
+				await import('@owlat/desktop/src/window');
 			await setTrafficLightsVisible(
-				trafficLightsVisibleFor(effectiveHidden.value, isPeeking.value),
+				trafficLightsVisibleFor(effectiveHidden.value, isPeeking.value)
 			);
 		} catch {
 			// Tauri unavailable — native buttons stay as-is.
@@ -102,7 +189,7 @@ onMounted(() => {
 	void (async () => {
 		try {
 			const { setTrafficLightsVisible, watchFullscreen } =
-				await import("@owlat/desktop/src/window");
+				await import('@owlat/desktop/src/window');
 			unlistenFullscreen = await watchFullscreen((fullscreen) => {
 				isFullscreen = fullscreen;
 				if (fullscreen) {
@@ -122,7 +209,7 @@ onMounted(() => {
 	onUnmounted(async () => {
 		unlistenFullscreen?.();
 		try {
-			const { setTrafficLightsVisible } = await import("@owlat/desktop/src/window");
+			const { setTrafficLightsVisible } = await import('@owlat/desktop/src/window');
 			await setTrafficLightsVisible(true);
 		} catch {
 			// Tauri unavailable — nothing to restore.
@@ -134,24 +221,24 @@ onMounted(() => {
 // the hidden/peek behavior stays desktop-only (mobile keeps its off-canvas
 // drawer). Mirrors Tailwind's `lg` = 1024px.
 onMounted(() => {
-	const mql = window.matchMedia("(min-width: 1024px)");
+	const mql = window.matchMedia('(min-width: 1024px)');
 	const sync = () => setDesktopViewport(mql.matches);
 	sync();
-	mql.addEventListener("change", sync);
-	onUnmounted(() => mql.removeEventListener("change", sync));
+	mql.addEventListener('change', sync);
+	onUnmounted(() => mql.removeEventListener('change', sync));
 });
 
 // Cmd/Ctrl-\ toggles the sidebar's hidden mode (desktop only; the composable
 // guards the breakpoint). Registered alongside the other global shortcuts.
 onMounted(() => {
 	const handleToggleHidden = (e: KeyboardEvent) => {
-		if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+		if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
 			e.preventDefault();
 			toggleHidden();
 		}
 	};
-	document.addEventListener("keydown", handleToggleHidden);
-	onUnmounted(() => document.removeEventListener("keydown", handleToggleHidden));
+	document.addEventListener('keydown', handleToggleHidden);
+	onUnmounted(() => document.removeEventListener('keydown', handleToggleHidden));
 });
 
 // Peek overlay: open on left-edge hover, close 300ms after the pointer leaves
@@ -188,7 +275,7 @@ const onPeekFocusOut = (e: FocusEvent) => {
 };
 // Esc closes the peek without un-hiding the sidebar.
 const onPeekKeydown = (e: KeyboardEvent) => {
-	if (e.key === "Escape" && isPeeking.value) {
+	if (e.key === 'Escape' && isPeeking.value) {
 		e.stopPropagation();
 		closePeek();
 	}
@@ -212,32 +299,32 @@ const { showToggle, activeContext, sidebarSections, firstSharedKey, switchContex
 // Frozen at setup, so `label` holds a MESSAGE KEY the template resolves rather
 // than a sentence captured in whatever locale was active at mount.
 const sidebarContexts = [
-	{ key: "inbox", label: "shell.dashboard.contexts.inbox", icon: "lucide:inbox" },
-	{ key: "marketing", label: "shell.dashboard.contexts.marketing", icon: "lucide:megaphone" },
+	{ key: 'inbox', label: 'shell.dashboard.contexts.inbox', icon: 'lucide:inbox' },
+	{ key: 'marketing', label: 'shell.dashboard.contexts.marketing', icon: 'lucide:megaphone' },
 ] as const;
 
 // Check if a route is active (exact or prefix match)
 const isActiveRoute = (href: string) => {
 	// For overview/index pages, use exact match
-	if (href === "/dashboard/audience" || href === "/dashboard/admin") {
+	if (href === '/dashboard/audience' || href === '/dashboard/admin') {
 		return route.path === href;
 	}
-	if (href === "/dashboard/send") {
+	if (href === '/dashboard/send') {
 		// "Templates & blocks" owns the Send overview + template/blocks/media
 		// surfaces, but NOT the transactional subtree (its own "Transactional" item).
 		return (
 			route.path === href ||
-			(route.path.startsWith(href + "/") && !route.path.startsWith("/dashboard/send/transactional"))
+			(route.path.startsWith(href + '/') && !route.path.startsWith('/dashboard/send/transactional'))
 		);
 	}
-	if (href === "/dashboard/admin/delivery") {
+	if (href === '/dashboard/admin/delivery') {
 		return route.path === href;
 	}
-	if (href === "/dashboard/knowledge") {
+	if (href === '/dashboard/knowledge') {
 		// Knowledge list + entry detail pages, but not the Graph subpage (its own item).
 		return (
 			route.path === href ||
-			(route.path.startsWith(href + "/") && !route.path.startsWith("/dashboard/knowledge/graph"))
+			(route.path.startsWith(href + '/') && !route.path.startsWith('/dashboard/knowledge/graph'))
 		);
 	}
 	return route.path.startsWith(href);
@@ -251,16 +338,16 @@ const isSectionActive = (section: NavigationSection) => {
 // Get the overview route for a section
 const getSectionOverviewRoute = (sectionKey: string) => {
 	const routes: Record<string, string> = {
-		inbox: "/dashboard/inbox",
-		chat: "/dashboard/chat",
-		assistant: "/dashboard/assistant",
-		send: "/dashboard/send",
-		knowledge: "/dashboard/knowledge",
-		audience: "/dashboard/audience",
-		administration: "/dashboard/admin",
-		preferences: "/dashboard/preferences",
+		inbox: '/dashboard/inbox',
+		chat: '/dashboard/chat',
+		assistant: '/dashboard/assistant',
+		send: '/dashboard/send',
+		knowledge: '/dashboard/knowledge',
+		audience: '/dashboard/audience',
+		administration: '/dashboard/admin',
+		preferences: '/dashboard/preferences',
 	};
-	return routes[sectionKey] || "/dashboard";
+	return routes[sectionKey] || '/dashboard';
 };
 
 // Handle section header click - navigate when collapsed, toggle when expanded
@@ -277,7 +364,7 @@ const handleSignOut = async () => {
 	try {
 		await signOut();
 	} catch (e) {
-		logError("Sign out failed:", e);
+		logError('Sign out failed:', e);
 	}
 };
 
@@ -286,7 +373,7 @@ watch(
 	() => route.path,
 	() => {
 		isSidebarOpen.value = false;
-	},
+	}
 );
 
 // Focus mode forces the rail off-screen; close any open peek so it can't be
@@ -304,20 +391,20 @@ const handleClickOutside = (event: MouseEvent) => {
 };
 
 onMounted(() => {
-	document.addEventListener("click", handleClickOutside);
+	document.addEventListener('click', handleClickOutside);
 });
 
 onUnmounted(() => {
-	document.removeEventListener("click", handleClickOutside);
+	document.removeEventListener('click', handleClickOutside);
 });
 
 // Get user initials for avatar
 const userInitials = computed(() => {
-	if (!user.value?.name) return "?";
+	if (!user.value?.name) return '?';
 	return user.value.name
-		.split(" ")
+		.split(' ')
 		.map((n) => n[0])
-		.join("")
+		.join('')
 		.toUpperCase()
 		.slice(0, 2);
 });
@@ -326,9 +413,6 @@ const userInitials = computed(() => {
 // favour of the titlebar pill; the mobile button opens the palette through the
 // shared control so the event name lives in one place.
 const { open: openCommandPalette } = useCommandPalette();
-
-// Quick Query panel state
-const isQuickQueryOpen = ref(false);
 
 // Initialize desktop notifications (no-op in browser)
 useDesktopNotifications();
@@ -339,7 +423,7 @@ useSendReadyNotice();
 
 /** The Chat badge's tooltip — one unread mention reads differently from many. */
 const mentionsTitle = (count: number) =>
-	t(count === 1 ? "shell.dashboard.chatMentions.one" : "shell.dashboard.chatMentions.other", {
+	t(count === 1 ? 'shell.dashboard.chatMentions.one' : 'shell.dashboard.chatMentions.other', {
 		count,
 	});
 
@@ -348,7 +432,7 @@ const mentionsTitle = (count: number) =>
 // flag server-side; we also gate the subscription here to keep the network
 // quiet when chat is disabled).
 const chatMentionCount = computed(() => 0);
-const chatMentions = isFeatureEnabled("chat") ? useChatMentions() : null;
+const chatMentions = isFeatureEnabled('chat') ? useChatMentions() : null;
 const liveChatMentionCount = computed(() => chatMentions?.count.value ?? chatMentionCount.value);
 
 // Live delivery-health roll-up for the Administration section's status dot. Stays
@@ -360,43 +444,34 @@ const {
 	dotClass: deliveryHealthDotClass,
 } = useDeliveryHealth();
 
-// Register Quick Query keyboard shortcut (Cmd+Shift+K / Ctrl+Shift+K).
-// Quick Query searches the knowledge graph, so it is gated on `ai.knowledge`
-// just like the panel mount below — the shortcut must do nothing when knowledge
-// is disabled (the backend mutation also asserts the flag).
-onMounted(() => {
-	const handleQuickQuery = (e: KeyboardEvent) => {
-		if (!isFeatureEnabled("ai.knowledge")) return;
-		// With Shift held the key value is uppercase — compare case-insensitively.
-		if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "k") {
-			e.preventDefault();
-			isQuickQueryOpen.value = !isQuickQueryOpen.value;
-		}
-	};
-	document.addEventListener("keydown", handleQuickQuery);
-	// The command palette surfaces Quick Query as its "Ask knowledge…" action,
-	// which dispatches this event so the two share one open path.
-	const handleOpenKnowledgeQuery = () => {
-		if (!isFeatureEnabled("ai.knowledge")) return;
-		isQuickQueryOpen.value = true;
-	};
-	window.addEventListener("owlat:open-knowledge-query", handleOpenKnowledgeQuery);
-	onUnmounted(() => {
-		document.removeEventListener("keydown", handleQuickQuery);
-		window.removeEventListener("owlat:open-knowledge-query", handleOpenKnowledgeQuery);
-	});
+// Quick Query used to be a second modal with its own Cmd/Ctrl+Shift+K handler
+// and its own open event. Both now live in `AppCommandPalette`, which opens
+// pre-switched to its Ask scope behind the same `ai.knowledge` gate — one
+// overlay, one shortcut owner, and knowledge answers next to object results.
+
+// The collapse control's one label. In a focus area it reads as a pin, because
+// that is what it writes; elsewhere it stays the collapse/expand it always was.
+const sidebarToggleLabel = computed(() => {
+	if (focusArea.value) {
+		return isFocusPinned.value
+			? t('shell.dashboard.unpinSidebar')
+			: t('shell.dashboard.pinSidebar');
+	}
+	return isCollapsed.value
+		? t('shell.dashboard.expandSidebar')
+		: t('shell.dashboard.collapseSidebar');
 });
 
 // Computed sidebar width class — a hidden sidebar peeks at its last width.
 const sidebarWidthClass = computed(() => {
-	return isCollapsed.value ? "w-16" : "w-64";
+	return isCollapsed.value ? 'w-16' : 'w-64';
 });
 
 // Content padding reserves the rail's gutter. When hidden the content goes
 // full-bleed (no reflow when the peek floats over it).
 const mainPaddingClass = computed(() => {
-	if (effectiveHidden.value) return "";
-	return isCollapsed.value ? "lg:pl-16" : "lg:pl-64";
+	if (effectiveHidden.value) return '';
+	return isCollapsed.value ? 'lg:pl-16' : 'lg:pl-64';
 });
 
 // Desktop transform for the aside. When hidden it slides off-screen; the peek
@@ -405,11 +480,11 @@ const mainPaddingClass = computed(() => {
 // handled by the global floor in base.css (durations collapse to ~0).
 const sidebarDesktopClass = computed(() => {
 	if (!effectiveHidden.value) {
-		return "lg:translate-x-0 duration-(--motion-moderate)";
+		return 'lg:translate-x-0 duration-(--motion-moderate)';
 	}
 	return isPeeking.value
-		? "lg:translate-x-0 shadow-(--shadow-6) duration-(--motion-slow) ease-(--ease-spring-bounce)"
-		: "lg:-translate-x-full duration-(--motion-slow-exit) ease-(--ease-exit)";
+		? 'lg:translate-x-0 shadow-(--shadow-6) duration-(--motion-slow) ease-(--ease-spring-bounce)'
+		: 'lg:-translate-x-full duration-(--motion-slow-exit) ease-(--ease-exit)';
 });
 </script>
 
@@ -420,7 +495,7 @@ const sidebarDesktopClass = computed(() => {
 			href="#main-content"
 			class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-(--z-overlay) focus:px-4 focus:py-2 focus:bg-bg-elevated focus:border focus:border-brand focus:rounded-lg focus:text-text-primary"
 		>
-			{{ t("shell.dashboard.skipToContent") }}
+			{{ t('shell.dashboard.skipToContent') }}
 		</a>
 
 		<!-- Native window titlebar (desktop only; no-op on web). `show-search`:
@@ -486,10 +561,10 @@ const sidebarDesktopClass = computed(() => {
 					:class="{ 'justify-center w-full': isCollapsed }"
 				>
 					<div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
-						<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 text-brand" />
+						<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 dark:invert" />
 					</div>
 					<span v-if="!isCollapsed" class="text-lg font-semibold text-text-primary"> Owlat </span>
-					<UiBadge v-if="!isCollapsed" size="sm">{{ t("shell.dashboard.alphaBadge") }}</UiBadge>
+					<UiBadge v-if="!isCollapsed" size="sm">{{ t('shell.dashboard.alphaBadge') }}</UiBadge>
 				</NuxtLink>
 
 				<!-- Mobile close button -->
@@ -508,7 +583,7 @@ const sidebarDesktopClass = computed(() => {
 			     rendered while both contexts survived the feature flags. Switching
 			     navigates to the target context's last-visited route. -->
 			<div
-				v-if="showToggle"
+				v-if="showToggle && !showSectionNavigation"
 				class="px-2 pt-3"
 				role="group"
 				:aria-label="t('shell.dashboard.sidebarContextGroup')"
@@ -523,8 +598,8 @@ const sidebarDesktopClass = computed(() => {
 							'flex items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors',
 							isCollapsed ? 'p-2' : 'flex-1 px-2 py-1.5',
 							activeContext === context.key
-								? 'bg-brand-subtle text-brand'
-								: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+								? 'bg-(--surface-2-selected) text-text-primary'
+								: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 						]"
 						:title="isCollapsed ? t(context.label) : undefined"
 						@click="switchContext(context.key)"
@@ -533,7 +608,7 @@ const sidebarDesktopClass = computed(() => {
 							:name="context.icon"
 							:class="[
 								isCollapsed ? 'w-5 h-5' : 'w-3.5 h-3.5',
-								activeContext === context.key ? 'text-brand' : 'text-text-tertiary',
+								activeContext === context.key ? 'text-text-primary' : 'text-text-tertiary',
 							]"
 						/>
 						<span v-if="!isCollapsed">{{ t(context.label) }}</span>
@@ -542,16 +617,43 @@ const sidebarDesktopClass = computed(() => {
 			</div>
 
 			<!-- Navigation with collapsible sections -->
-			<nav class="flex-1 px-2 py-4 overflow-y-auto">
+			<div v-if="activeSection" class="px-3 pt-3 pb-2">
+				<button
+					type="button"
+					class="flex min-h-9 w-full items-center gap-2 rounded-lg px-2 text-sm text-text-secondary hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					@click="switchNavigation"
+				>
+					<Icon
+						:name="showSectionNavigation ? 'lucide:arrow-left' : 'lucide:arrow-right'"
+						class="size-4 shrink-0"
+					/>
+					<span class="truncate">{{
+						showSectionNavigation ? t('shell.dashboard.appNavigation') : activeSection.title
+					}}</span>
+				</button>
+			</div>
+			<div
+				id="section-navigation"
+				ref="sectionNavigationTarget"
+				v-show="showSectionNavigation"
+				class="section-navigation flex-1 min-h-0 overflow-y-auto"
+				:aria-label="activeSection?.title"
+			/>
+			<nav
+				id="app-navigation"
+				v-show="!showSectionNavigation"
+				class="flex-1 min-h-0 px-2 py-3 overflow-y-auto"
+				:aria-label="t('shell.dashboard.appNavigation')"
+			>
 				<!-- Dashboard link (always visible) -->
 				<div class="mb-2">
 					<NuxtLink
 						to="/dashboard"
 						:class="[
-							'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+							'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
 							route.path === '/dashboard'
-								? 'bg-brand-subtle text-brand'
-								: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+								? 'bg-(--surface-2-selected) text-text-primary'
+								: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 							{ 'justify-center': isCollapsed },
 						]"
 						:title="isCollapsed ? t('shell.dashboard.dashboardTooltip') : undefined"
@@ -563,7 +665,7 @@ const sidebarDesktopClass = computed(() => {
 								route.path === '/dashboard' ? 'text-brand' : 'text-text-tertiary',
 							]"
 						/>
-						<span v-if="!isCollapsed">{{ t("shell.dashboard.home") }}</span>
+						<span v-if="!isCollapsed">{{ t('shell.dashboard.home') }}</span>
 					</NuxtLink>
 				</div>
 
@@ -583,10 +685,10 @@ const sidebarDesktopClass = computed(() => {
 							v-if="section.href"
 							:to="section.href"
 							:class="[
-								'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+								'relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
 								isActiveRoute(section.href)
-									? 'bg-brand-subtle text-brand'
-									: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+									? 'bg-(--surface-2-selected) text-text-primary'
+									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 								{ 'justify-center': isCollapsed },
 							]"
 							:title="isCollapsed ? t(section.name) : undefined"
@@ -605,14 +707,14 @@ const sidebarDesktopClass = computed(() => {
 								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
 								:title="mentionsTitle(liveChatMentionCount)"
 							>
-								{{ liveChatMentionCount > 99 ? "99+" : liveChatMentionCount }}
+								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
 							</span>
 							<span
 								v-if="section.key === 'chat' && liveChatMentionCount > 0 && isCollapsed"
 								class="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-error text-text-inverse text-2xs leading-4 font-semibold text-center ring-2 ring-bg-elevated"
 								:title="mentionsTitle(liveChatMentionCount)"
 							>
-								{{ liveChatMentionCount > 99 ? "99+" : liveChatMentionCount }}
+								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
 							</span>
 						</NuxtLink>
 
@@ -620,10 +722,10 @@ const sidebarDesktopClass = computed(() => {
 						<button
 							v-else
 							:class="[
-								'relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+								'relative w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
 								isSectionActive(section)
-									? 'text-brand'
-									: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+									? 'text-text-primary'
+									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 								{ 'justify-center': isCollapsed },
 							]"
 							:title="isCollapsed ? t(section.name) : undefined"
@@ -633,7 +735,7 @@ const sidebarDesktopClass = computed(() => {
 								:name="section.icon"
 								:class="[
 									'w-5 h-5 flex-shrink-0',
-									isSectionActive(section) ? 'text-brand' : 'text-text-tertiary',
+									isSectionActive(section) ? 'text-text-primary' : 'text-text-tertiary',
 								]"
 							/>
 							<span v-if="!isCollapsed" class="flex-1 text-left">{{ t(section.name) }}</span>
@@ -642,7 +744,7 @@ const sidebarDesktopClass = computed(() => {
 								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
 								:title="mentionsTitle(liveChatMentionCount)"
 							>
-								{{ liveChatMentionCount > 99 ? "99+" : liveChatMentionCount }}
+								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
 							</span>
 							<!-- Delivery health dot: worst-of reputation / domains / provider.
 							     Hidden while healthy. Expanded → inline; collapsed → corner overlay. -->
@@ -689,8 +791,8 @@ const sidebarDesktopClass = computed(() => {
 										:class="[
 											'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
 											isActiveRoute(item.href)
-												? 'bg-brand-subtle text-brand font-medium'
-												: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
+												? 'bg-(--surface-2-selected) text-text-primary font-medium'
+												: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 										]"
 									>
 										<Icon
@@ -709,26 +811,32 @@ const sidebarDesktopClass = computed(() => {
 				</div>
 			</nav>
 
-			<!-- Collapse toggle button -->
-			<div class="hidden lg:flex px-2 py-2 border-t border-border-subtle">
+			<!-- Collapse toggle button. Inside a focus area (Postbox) the same control
+			     pins the sidebar open instead of writing the global preference, so
+			     the icon-rail default there is reversible without changing what the
+			     sidebar does everywhere else. -->
+			<div v-if="!activeSection" class="hidden lg:flex px-2 py-1 border-t border-border-subtle">
 				<button
 					:class="[
-						'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors w-full',
+						'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full',
 						'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 						{ 'justify-center': isCollapsed },
 					]"
-					:title="
-						isCollapsed ? t('shell.dashboard.expandSidebar') : t('shell.dashboard.collapseSidebar')
-					"
+					:title="sidebarToggleLabel"
+					:aria-pressed="focusArea ? isFocusPinned : undefined"
 					@click="toggleCollapsed"
 				>
 					<Icon
 						v-if="!isCollapsed"
-						name="lucide:panel-left-close"
+						:name="focusArea ? 'lucide:pin-off' : 'lucide:panel-left-close'"
 						class="w-5 h-5 text-text-tertiary"
 					/>
-					<Icon v-else name="lucide:panel-left" class="w-5 h-5 text-text-tertiary" />
-					<span v-if="!isCollapsed">{{ t("shell.dashboard.collapse") }}</span>
+					<Icon
+						v-else
+						:name="focusArea ? 'lucide:pin' : 'lucide:panel-left'"
+						class="w-5 h-5 text-text-tertiary"
+					/>
+					<span v-if="!isCollapsed">{{ sidebarToggleLabel }}</span>
 				</button>
 			</div>
 
@@ -736,42 +844,53 @@ const sidebarDesktopClass = computed(() => {
 			<div class="px-2 py-2 border-t border-border-subtle">
 				<UiThemeToggle
 					:class="[
-						'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors w-full',
+						'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full',
 						'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
 						{ 'justify-center': isCollapsed },
 					]"
 				>
-					<span v-if="!isCollapsed">{{ t("shell.dashboard.theme") }}</span>
+					<span v-if="!isCollapsed">{{ t('shell.dashboard.theme') }}</span>
 				</UiThemeToggle>
 			</div>
 
 			<!-- User Profile Dropdown -->
-			<div ref="userDropdownRef" class="relative px-2 py-4 border-t border-border-subtle">
+			<div ref="userDropdownRef" class="relative px-2 py-2 border-t border-border-subtle">
 				<button
 					:class="[
-						'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-bg-surface transition-colors',
+						'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-bg-surface transition-colors',
 						{ 'justify-center': isCollapsed },
 					]"
 					:title="isCollapsed ? user?.name || t('shell.dashboard.userFallback') : undefined"
+					:aria-busy="isPending ? 'true' : undefined"
 					@click="isUserDropdownOpen = !isUserDropdownOpen"
 				>
-					<!-- Avatar -->
+					<!-- Avatar. While the session resolves this is a skeleton at the
+					     row's exact geometry, not a "..." glyph, so nothing reflows
+					     when the name lands. UiSkeleton is aria-hidden, hence the
+					     sr-only label below that keeps the trigger named. -->
+					<UiSkeleton v-if="isPending" circle class="w-8 h-8 flex-shrink-0" />
 					<div
-						class="w-8 h-8 rounded-full bg-brand-subtle flex items-center justify-center text-sm font-medium text-brand flex-shrink-0"
+						v-else
+						class="w-8 h-8 rounded-full bg-bg-surface flex items-center justify-center text-sm font-medium text-text-secondary flex-shrink-0"
 					>
-						{{ isPending ? "..." : userInitials }}
+						{{ userInitials }}
 					</div>
+					<span v-if="isPending" class="sr-only">{{ t('common.loading') }}</span>
 
 					<!-- User info -->
 					<div v-if="!isCollapsed" class="flex-1 text-left min-w-0">
-						<p class="text-sm font-medium text-text-primary truncate">
-							{{
-								isPending ? t("common.loading") : user?.name || t("shell.dashboard.userFallback")
-							}}
-						</p>
-						<p class="text-xs text-text-tertiary truncate">
-							{{ isPending ? "" : user?.email || "" }}
-						</p>
+						<template v-if="isPending">
+							<UiSkeleton class="h-3.5 w-24" />
+							<UiSkeleton class="h-3 w-32 mt-2.5" />
+						</template>
+						<template v-else>
+							<p class="text-sm font-medium text-text-primary truncate">
+								{{ user?.name || t('shell.dashboard.userFallback') }}
+							</p>
+							<p class="text-xs text-text-tertiary truncate">
+								{{ user?.email || '' }}
+							</p>
+						</template>
 					</div>
 
 					<!-- Chevron -->
@@ -806,7 +925,7 @@ const sidebarDesktopClass = computed(() => {
 							@click="handleSignOut"
 						>
 							<Icon name="lucide:log-out" class="w-4 h-4" />
-							<span v-if="!isCollapsed">{{ t("shell.dashboard.signOut") }}</span>
+							<span v-if="!isCollapsed">{{ t('shell.dashboard.signOut') }}</span>
 						</button>
 					</div>
 				</Transition>
@@ -821,36 +940,41 @@ const sidebarDesktopClass = computed(() => {
 			<DashboardShellHeader
 				v-if="!isFocusMode"
 				:is-desktop="isDesktop"
-				@open-navigation="isSidebarOpen = true"
+				:navigation-open="isSidebarOpen"
+				:navigation-hidden="effectiveHidden"
+				@open-navigation="effectiveHidden ? toggleHidden() : (isSidebarOpen = true)"
 				@open-search="openCommandPalette()"
 			/>
 
-			<!-- Page content -->
+			<!-- Page content. The floor is "fill what the chrome leaves", and below
+			     lg the chrome is taller than the 4rem bar: the mobile header also
+			     carries the 2.25rem breadcrumb strip and its hairline. Counting only
+			     the bar left every phone page ~37px taller than the viewport — a
+			     screenful of nothing to scroll past at the bottom of every screen. -->
 			<main
 				id="main-content"
 				tabindex="-1"
 				:class="
 					isFocusMode
 						? 'min-h-[calc(100dvh-var(--titlebar-h,0px))]'
-						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
+						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-2.25rem-1px)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
 				"
 			>
 				<slot />
 			</main>
 		</div>
 
-		<!-- Quick Query panel (knowledge search — gated on ai.knowledge) -->
-		<QueryQuickQueryPanel
-			v-if="isFeatureEnabled('ai.knowledge')"
-			:is-open="isQuickQueryOpen"
-			@close="isQuickQueryOpen = false"
-		/>
-
-		<!-- App-wide command palette (Cmd/Ctrl-K) — works on every dashboard page -->
+		<!-- App-wide command palette (Cmd/Ctrl-K), route-scoped: mail search on
+		     Postbox, knowledge Ask on Cmd/Ctrl+Shift+K, objects everywhere else -->
 		<AppCommandPalette />
 
 		<!-- Keyboard shortcuts help modal -->
 		<KeyboardShortcutsHelp />
+
+		<!-- The app's one pair of live regions. Mounted last and never unmounted:
+		     a region has to be in the document before the text lands in it, so
+		     anything shorter-lived than the shell cannot host one. -->
+		<AppLiveRegion />
 	</div>
 </template>
 
@@ -866,8 +990,38 @@ const sidebarDesktopClass = computed(() => {
 .has-desktop-chrome {
 	padding-top: var(--titlebar-h, 44px);
 }
-.has-desktop-chrome aside {
+.has-desktop-chrome > aside {
 	top: var(--titlebar-h, 44px);
 	height: calc(100% - var(--titlebar-h, 44px));
+}
+/* The teleported rail shares the shell's width and scroll container. */
+.section-navigation :deep(> nav) {
+	width: 100%;
+	padding: 0.75rem;
+}
+.section-navigation :deep(> div) {
+	width: 100%;
+}
+.section-navigation :deep(aside) {
+	width: 100%;
+	border-right: 0;
+}
+.section-navigation {
+	animation: section-enter var(--motion-moderate) ease-out;
+}
+@keyframes section-enter {
+	from {
+		opacity: 0;
+		transform: translateX(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.section-navigation {
+		animation: none;
+	}
 }
 </style>

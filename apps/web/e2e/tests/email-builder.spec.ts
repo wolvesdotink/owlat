@@ -12,7 +12,11 @@ test.describe('Email Builder', () => {
 		await page.goto('/dashboard/send/marketing');
 
 		// Verify page loaded with correct heading
-		await expect(page.getByText('Marketing Templates')).toBeVisible({ timeout: 15_000 });
+		// By role: the string also appears in the breadcrumb, so getByText matched
+		// two nodes.
+		await expect(page.getByRole('heading', { level: 1, name: 'Marketing Templates' })).toBeVisible({
+			timeout: 15_000,
+		});
 
 		// Verify "New Marketing Template" button is visible
 		await expect(page.getByRole('button', { name: /New Marketing Template/i })).toBeVisible();
@@ -26,13 +30,20 @@ test.describe('Email Builder', () => {
 		await expect(editor.saveButton).toBeVisible({ timeout: 10_000 });
 	});
 
-	test('editor shows text input area for new content', async ({ page }) => {
+	test('adding a text block gives an editable area', async ({ page }) => {
 		await editor.gotoNewTemplate();
 		await editor.waitForEditorReady();
 
-		// The editor should have a content-editable area (TipTap / ProseMirror)
-		const editorContent = page.locator('.ProseMirror, [contenteditable="true"]');
-		await expect(editorContent.first()).toBeVisible({ timeout: 10_000 });
+		// A blank template starts with an EMPTY document, so there is nothing
+		// contenteditable on screen yet — the old version of this test asserted
+		// one existed and simply waited out its timeout. The canvas offers to add
+		// the first block; take it, and then the editable area is the thing worth
+		// asserting.
+		await page.getByRole('button', { name: /add a text block/i }).click();
+
+		await expect(page.locator('[contenteditable="true"]').first()).toBeVisible({
+			timeout: 10_000,
+		});
 	});
 
 	test('save template updates save button state', async ({ page }) => {

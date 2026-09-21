@@ -8,7 +8,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.preferences.addAccount.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
@@ -86,7 +86,7 @@ const selectedAddress = computed(() =>
 		: ''
 );
 
-const createMailbox = useBackendOperation(api.mail.mailbox.create, {
+const createMailbox = useBackendOperation(api.mail.mailbox.identity.create, {
 	label: () => t('dashboard.preferences.addAccount.createMailboxOperation'),
 	inlineTarget: error,
 });
@@ -101,9 +101,9 @@ async function handleSubmit() {
 		return;
 	}
 	provisioning.value = true;
-	let id: Id<'mailboxes'> | undefined;
+	let created: BackendOperationResult<Id<'mailboxes'>>;
 	if (isTeam.value) {
-		id = await createTeamInbox.run({
+		created = await createTeamInbox.run({
 			address: selectedAddress.value,
 			displayName: displayName.value || undefined,
 			memberUserIds: selectedMemberIds.value,
@@ -114,15 +114,15 @@ async function handleSubmit() {
 			error.value = t('dashboard.preferences.addAccount.errorNotSignedIn');
 			return;
 		}
-		id = await createMailbox.run({
+		created = await createMailbox.run({
 			userId: user.value.id,
 			address: selectedAddress.value,
 			displayName: displayName.value || undefined,
 		});
 	}
 	provisioning.value = false;
-	if (id === undefined) return;
-	createdMailboxId.value = id;
+	if (!created.ok) return;
+	createdMailboxId.value = created.result;
 	step.value = 4;
 }
 
@@ -136,15 +136,9 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
-		<PreferencesBackLink />
-
-		<h1 class="text-2xl font-medium tracking-[-0.02em]">
-			{{ t('dashboard.preferences.addAccount.heading') }}
-		</h1>
-
+	<div>
 		<!-- Step 1: choose address -->
-		<section v-if="step === 1" class="card mt-6 p-6">
+		<section v-if="step === 1" class="card p-6">
 			<!-- Personal vs team inbox. Only admins can create a shared team inbox. -->
 			<div v-if="isAdmin" class="flex gap-1 p-1 mb-5 rounded-md bg-bg-surface w-fit">
 				<button
@@ -260,7 +254,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 			<UiQueryBoundary v-else :loading="domainsLoading && !domainsData" :error="domainsError">
 				<template #loading>
 					<div class="flex items-center gap-2 text-text-secondary text-sm py-4">
-						<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+						<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 						{{ t('dashboard.preferences.addAccount.checkingDomains') }}
 					</div>
 				</template>
@@ -348,7 +342,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 						:disabled="!selectedAddress || provisioning"
 						@click="handleSubmit"
 					>
-						<Icon v-if="provisioning" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin" />
+						<Icon v-if="provisioning" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none" />
 						{{
 							provisioning
 								? t('dashboard.preferences.addAccount.creating')

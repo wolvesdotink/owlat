@@ -11,38 +11,12 @@ vi.mock('../../../monitoring/logger.js', () => ({
 
 import { circuitBreakerPhase } from '../circuitBreaker.js';
 import * as circuitBreaker from '../../../intelligence/circuitBreaker.js';
-import type { BasePhaseCtx, PhaseDeps } from '../../types.js';
-import type { EmailJob } from '../../../types.js';
+import type { PhaseDeps } from '../../types.js';
 import type { MtaConfig } from '../../../config.js';
+import { makeDispatchCtx } from '../../../__tests__/helpers/dispatchCtx.js';
+import { createOwlatJob } from '../../../__tests__/helpers/fixtures.js';
 
-function makeCtx(): BasePhaseCtx {
-	const job: EmailJob = {
-		messageId: 'msg-1',
-		to: 'user@example.com',
-		from: 'sender@owlat.com',
-		subject: 'Test',
-		html: '<p>Hello</p>',
-		ipPool: 'transactional',
-		organizationId: 'org-42',
-		dkimDomain: 'owlat.com',
-	};
-	return {
-		job,
-		domain: 'example.com',
-		destination: {
-			recipientDomain: 'example.com',
-			providerKey: 'other',
-			throttleKey: 'example.com',
-			mx: {
-				status: 'deliverable',
-				source: 'mx',
-				hosts: [{ exchange: 'mx.example.com', priority: 0 }],
-			},
-			daneDiscoveryAuthenticated: true,
-		},
-		fromDomain: 'owlat.com',
-	};
-}
+const makeCtx = () => makeDispatchCtx({ job: createOwlatJob({ organizationId: 'org-42' }) });
 
 const deps: PhaseDeps = { redis: {} as never, config: {} as MtaConfig };
 

@@ -2,6 +2,7 @@ import { usePostboxListKeyboard } from '~/composables/postbox/usePostboxListKeyb
 import { resolveAgentTaskShortcut } from '~/utils/agentTaskShortcuts';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { resolveReviewSelectShortcut, resolveReviewShortcut } from '~/utils/reviewShortcuts';
+import { pushShortcutScope } from '~/utils/shortcutScope';
 
 /**
  * Keyboard-first navigation for the agent Review Queue, built by REUSING the
@@ -40,11 +41,11 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 	/** 1–9 — pick the matching option chip on the focused card (optional). */
 	onPickOption?: (row: T, index: number) => void;
 	/**
-	 * Multi-select model (piece C2, optional). When provided, the selection
-	 * vocabulary is resolved BEFORE the single-card keys — so Space/`x` toggle
-	 * the focused card (`x` no longer rejects; `#` still does), Shift+J/K select
-	 * the focused + next/previous card while moving focus, and `*` selects all
-	 * visible. Surfaces without a selection model (the focus flow) are untouched.
+	 * Multi-select model (optional). When provided, the selection vocabulary is
+	 * resolved BEFORE the single-card keys — so Space/`x` toggle the focused card
+	 * (`x` no longer rejects; `#` still does), Shift+J/K select the focused +
+	 * next/previous card while moving focus, and `*` selects all visible.
+	 * Surfaces without a selection model (the focus flow) are untouched.
 	 */
 	selection?: {
 		toggle: (row: T) => void;
@@ -60,6 +61,9 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 		items: opts.items,
 		resetKey: opts.resetKey,
 		rowDomId: opts.rowDomId,
+		// Movement resolves against the `review` half of the catalog, so a
+		// Postbox remap of j/k does not silently move this queue too.
+		scope: 'review',
 		onActivate: opts.onOpen,
 		onAction: (key, row) => {
 			// The shared agent-task-card vocabulary first: digits pick a chip.
@@ -133,6 +137,18 @@ export function useReviewQueueKeyboard<T extends { _id: string }>(opts: {
 		if (handleSelectionKey(event)) return;
 		listKeydown(event);
 	}
+
+	// Claim the `review` scope of the shortcut registry while the queue is
+	// mounted, so its keys shadow the app-wide map (`s` is Skip here, not Save)
+	// and the cheat sheet documents this surface rather than the one underneath.
+	let releaseScope: (() => void) | null = null;
+	onMounted(() => {
+		releaseScope = pushShortcutScope('review');
+	});
+	onBeforeUnmount(() => {
+		releaseScope?.();
+		releaseScope = null;
+	});
 
 	return { focusedIndex, activeId, onKeydown };
 }

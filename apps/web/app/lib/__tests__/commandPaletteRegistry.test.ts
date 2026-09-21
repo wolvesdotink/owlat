@@ -133,7 +133,7 @@ describe('collectProviderGroups', () => {
 				provider({ id: 'a', build: () => [group('ga', 0, [item('a1')])] }),
 				provider({ id: 'b', build: () => [group('gb', 0, [item('b1')])] }),
 			],
-			{ query: '' }
+			{ query: '', mode: 'all' }
 		);
 		expect(groups.map((g) => g.key)).toEqual(['ga', 'gb']);
 	});
@@ -144,7 +144,7 @@ describe('collectProviderGroups', () => {
 				provider({ id: 'a', build: () => [group('dup', 0, [item('a1', 'first')])] }),
 				provider({ id: 'b', build: () => [group('dup', 0, [item('b1', 'second')])] }),
 			],
-			{ query: '' }
+			{ query: '', mode: 'all' }
 		);
 		expect(groups).toHaveLength(1);
 		expect(groups[0]?.items.map((i) => i.label)).toEqual(['first']);
@@ -156,7 +156,7 @@ describe('collectProviderGroups', () => {
 				provider({ id: 'a', build: () => [group('ga', 0, [item('shared'), item('a-only')])] }),
 				provider({ id: 'b', build: () => [group('gb', 1, [item('shared'), item('b-only')])] }),
 			],
-			{ query: '' }
+			{ query: '', mode: 'all' }
 		);
 		expect(groups[0]?.items.map((i) => i.id)).toEqual(['shared', 'a-only']);
 		expect(groups[1]?.items.map((i) => i.id)).toEqual(['b-only']);
@@ -165,7 +165,7 @@ describe('collectProviderGroups', () => {
 	it('passes empty groups through unchanged (mergeGroups drops them later)', () => {
 		const groups = collectProviderGroups(
 			[provider({ id: 'a', build: () => [group('empty', 0, [])] })],
-			{ query: '' }
+			{ query: '', mode: 'all' }
 		);
 		expect(groups).toEqual([group('empty', 0, [])]);
 	});
@@ -177,7 +177,7 @@ describe('collectProviderGroups', () => {
 				provider({ id: 'a', build: ({ query }) => (seen.push(query), []) }),
 				provider({ id: 'b', build: ({ query }) => (seen.push(query), []) }),
 			],
-			{ query: 'acme' }
+			{ query: 'acme', mode: 'all' }
 		);
 		expect(seen).toEqual(['acme', 'acme']);
 	});
@@ -204,13 +204,16 @@ describe('resolvePaletteGroups', () => {
 		];
 		// Flag off, wrong route → only the core provider survives.
 		expect(
-			resolvePaletteGroups(core, external, gate([], '/dashboard'), { query: '' }).map((g) => g.key)
+			resolvePaletteGroups(core, external, gate([], '/dashboard'), { query: '', mode: 'all' }).map(
+				(g) => g.key
+			)
 		).toEqual(['nav']);
 		// Flag on → the plugin joins, after core.
 		expect(
-			resolvePaletteGroups(core, external, gate(['campaigns'], '/dashboard'), { query: '' }).map(
-				(g) => g.key
-			)
+			resolvePaletteGroups(core, external, gate(['campaigns'], '/dashboard'), {
+				query: '',
+				mode: 'all',
+			}).map((g) => g.key)
 		).toEqual(['nav', 'plugin']);
 	});
 
@@ -228,7 +231,7 @@ describe('resolvePaletteGroups', () => {
 				group('plugin', 1, [item('plugin:new', 'Legit addition')]),
 			],
 		});
-		const groups = resolvePaletteGroups([core], [hostile], gate(), { query: '' });
+		const groups = resolvePaletteGroups([core], [hostile], gate(), { query: '', mode: 'all' });
 		const navGroup = groups.find((g) => g.key === 'navigation');
 		// Core's navigation group survives untouched; the hostile duplicate key/id
 		// is dropped; only the genuinely-new plugin group is added.

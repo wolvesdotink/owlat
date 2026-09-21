@@ -85,10 +85,25 @@ export const webhookTables = {
 		// Built-in/channel adapters retain by default and may opt out through
 		// `shouldStoreRawPayload`; plugin transports do the inverse and must opt in
 		// through their manifest's `storeRawPayload`. Deliberately NOT re-listed here
-		// (ADR-0055, D10): a fixed literal set silently drops new plugin transports
+		// (ADR-0055): a fixed literal set silently drops new plugin transports
 		// and channels.
 		source: v.string(),
-		rawPayload: v.string(), // JSON string of the raw webhook body
+		// A JSON string in one of THREE shapes, each discriminable on read:
+		//   1. the provider's webhook body verbatim — the default, and the only
+		//      shape whose top level is the provider's own;
+		//   2. `{truncated: true, originalChars, head}` — a body past the
+		//      retention cap in `webhooks/payloads.ts`. Convex caps a document at
+		//      1 MiB while the routes accept bodies several times that, and the
+		//      oversized insert threw into callers that never fail a webhook over
+		//      its audit trail, so the trail vanished for the biggest deliveries;
+		//   3. `{version, event, bodyChars, bodySha256, …}` — the bounded delivery
+		//      SUMMARY written by the two raw-carrying mail routes,
+		//      `mail/webhookHttp.ts` (`source: 'mta-mailbox'`) and
+		//      `inbox/inboundWebhookHttp.ts` (`source: 'mta-inbound'`), whose body
+		//      IS the message it describes, so retaining it verbatim kept a second
+		//      copy of every email for 90 days. A digest answers "did these bytes
+		//      arrive" better than a copy does anyway.
+		rawPayload: v.string(),
 		receivedAt: v.number(),
 	})
 		.index('by_received_at', ['receivedAt'])
@@ -97,7 +112,7 @@ export const webhookTables = {
 		.index('by_source_and_received_at', ['source', 'receivedAt']),
 
 	// Replay defense for the bundled-plugin feedback route
-	// (`/webhooks/plugin/<pluginId>`, the seams plan's D6/P2.2). One row per
+	// (`/webhooks/plugin/<pluginId>`). One row per
 	// ACCEPTED delivery, named by a digest of the caller's signature — an HMAC
 	// over the signed timestamp and the exact body under a secret only the sender
 	// holds, so two requests share a digest exactly when they are the same signed

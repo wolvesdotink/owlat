@@ -25,6 +25,7 @@ import {
 import IndependencePage from '../advanced/independence.vue';
 import IndependenceTrendChart from '~/components/delivery/IndependenceTrendChart.vue';
 import RampConfirmDialog from '~/components/delivery/RampConfirmDialog.vue';
+import ErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import {
 	DAY_MS,
@@ -33,7 +34,8 @@ import {
 	risingSeries,
 } from '~/components/delivery/__tests__/rampFixtures';
 import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { i18nStubs } from '~/__tests__/i18n';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 describe('independence arithmetic', () => {
 	it('sums the window rather than averaging per-day shares', () => {
@@ -157,24 +159,13 @@ beforeEach(() => {
 	vi.stubGlobal('useOrganizationQuery', () => ({ data, isLoading, error, refetch: vi.fn() }));
 });
 
-const passthroughCard = { template: '<div><slot /></div>' };
-
 function mountPage() {
-	return mount(IndependencePage, {
-		global: {
-			stubs: {
-				UiIconBox: true,
-				Icon: true,
-				UiSpinner: true,
-				UiEmptyState: true,
-				UiCard: passthroughCard,
-			},
-			components: {
-				UiQueryBoundary: QueryBoundary,
-				DeliveryIndependenceTrendChart: IndependenceTrendChart,
-				DeliveryRampConfirmDialog: RampConfirmDialog,
-			},
-			plugins: [createTestI18n()],
+	return mountDashboardPage(IndependencePage, {
+		components: {
+			UiQueryBoundary: QueryBoundary,
+			UiErrorAlert: ErrorAlert,
+			DeliveryIndependenceTrendChart: IndependenceTrendChart,
+			DeliveryRampConfirmDialog: RampConfirmDialog,
 		},
 	});
 }

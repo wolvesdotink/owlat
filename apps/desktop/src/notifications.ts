@@ -6,6 +6,52 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
+
+/**
+ * OS notification permission as the app reasons about it.
+ *
+ *   - `granted`   — toasts will be shown.
+ *   - `prompt`    — never asked; the OS will ask on the next request.
+ *   - `denied`    — the user said no. Nothing the app can do from code: the
+ *                   only way back is the OS settings pane, which is why the
+ *                   settings panel offers a link to it.
+ *   - `unavailable` — no Tauri bridge (we are in the browser), or the plugin
+ *                   call threw. Never treated as a hard block: the send path
+ *                   still tries, exactly as it did before this check existed.
+ */
+export type DesktopNotificationPermission = 'granted' | 'denied' | 'prompt' | 'unavailable';
+
+/**
+ * Read the current permission WITHOUT prompting. `isPermissionGranted()`
+ * returns a bare boolean, so a false is either "not asked yet" or "refused" —
+ * indistinguishable here. We report `prompt`, the recoverable reading, and only
+ * {@link requestNotificationPermission} can turn a false into a definite
+ * `denied` (the OS answers the request itself).
+ */
+export async function checkNotificationPermission(): Promise<DesktopNotificationPermission> {
+	try {
+		return (await isPermissionGranted()) ? 'granted' : 'prompt';
+	} catch {
+		return 'unavailable';
+	}
+}
+
+/**
+ * Ask the OS for notification permission, prompting the user if it has not been
+ * decided yet. Idempotent: an already-granted or already-refused permission
+ * returns immediately without a second prompt.
+ */
+export async function requestNotificationPermission(): Promise<DesktopNotificationPermission> {
+	try {
+		if (await isPermissionGranted()) return 'granted';
+		const result = await requestPermission();
+		if (result === 'granted') return 'granted';
+		return result === 'denied' ? 'denied' : 'prompt';
+	} catch {
+		return 'unavailable';
+	}
+}
 
 /**
  * Send a native OS notification via the Tauri backend.

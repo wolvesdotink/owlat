@@ -6,6 +6,7 @@ import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { startOfDayUtc } from '../lib/clock';
 import { UNSUBSCRIBE_HONOR_WINDOW_MS } from '@owlat/shared/deliverabilityPolicy';
+import { DAY_MS, HOUR_MS } from '../lib/constants';
 
 export {
 	GMAIL_BULK_SENDER_THRESHOLD,
@@ -13,22 +14,20 @@ export {
 	UNSUBSCRIBE_HONOR_WINDOW_MS,
 } from '@owlat/shared/deliverabilityPolicy';
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 const GMAIL_WINDOW_MS = DAY_MS;
 const TELEMETRY_RETENTION_MS = 48 * HOUR_MS;
 export const GMAIL_ACCEPTED_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
-export const GMAIL_ACCEPTED_AT_MAX_AGE_MS = TELEMETRY_RETENTION_MS;
+const GMAIL_ACCEPTED_AT_MAX_AGE_MS = TELEMETRY_RETENTION_MS;
 const UNSUBSCRIBE_RETENTION_MS = 30 * DAY_MS;
 export const COMPLIANCE_CLEANUP_BATCH_SIZE = 128;
 export const GMAIL_DASHBOARD_DOMAIN_LIMIT = 100;
-export const GMAIL_VOLUME_SHARDS = 8;
-export const GMAIL_ROLLUP_REFRESH_DELAY_MS = 60 * 1000;
+const GMAIL_VOLUME_SHARDS = 8;
+const GMAIL_ROLLUP_REFRESH_DELAY_MS = 60 * 1000;
 const GMAIL_ROLLUP_JOB_STALE_MS = 10 * 60 * 1000;
 const GMAIL_MAX_BUCKETS_PER_WINDOW = (GMAIL_WINDOW_MS / HOUR_MS + 1) * GMAIL_VOLUME_SHARDS;
 
 /** Inclusive histogram upper bounds; the last bucket catches all larger values. */
-export const UNSUBSCRIBE_LATENCY_BOUNDS_MS = [
+const UNSUBSCRIBE_LATENCY_BOUNDS_MS = [
 	100,
 	250,
 	500,
@@ -247,12 +246,12 @@ export const recordUnsubscribeLatency = internalMutation({
 	},
 });
 
-export interface GmailPrimaryDomainVolume {
+interface GmailPrimaryDomainVolume {
 	primaryDomain: string;
 	delivered24h: number;
 }
 
-export interface GmailVolumeReadResult {
+interface GmailVolumeReadResult {
 	domains: GmailPrimaryDomainVolume[];
 	isDomainListTruncated: boolean;
 	domainLimit: number;
@@ -351,11 +350,11 @@ export const cleanupComplianceTelemetry = internalMutation({
 				...expiredLegacyReceipts,
 				...futureReceipts,
 				...futureLegacyReceipts,
-			].map((row) => [String(row._id), row] as const)
+			].map((row) => [row._id, row] as const)
 		);
 		for (const row of receiptRows.values()) await ctx.db.delete(row._id);
 		const bucketRows = new Map(
-			[...expiredBuckets, ...futureGmailBuckets].map((row) => [String(row._id), row] as const)
+			[...expiredBuckets, ...futureGmailBuckets].map((row) => [row._id, row] as const)
 		);
 		for (const row of bucketRows.values()) await ctx.db.delete(row._id);
 

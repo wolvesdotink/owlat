@@ -32,7 +32,7 @@ export const test: WebhookEventModule<'test', Input, Data> = {
 	build(input) {
 		return {
 			message: STATIC_TEST_MESSAGE,
-			webhookId: String(input.webhookId),
+			webhookId: input.webhookId,
 			webhookName: input.webhookName,
 		};
 	},

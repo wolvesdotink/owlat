@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import {
-	DEFAULT_TRUSTED_ARC_FORWARDERS,
-	isValidForwarderDomain,
-	normalizeDomain,
-} from '@owlat/shared/arcTrust';
+import { DEFAULT_TRUSTED_ARC_FORWARDERS, isValidForwarderDomain } from '@owlat/shared/arcTrust';
+import { normalizeDomain } from '@owlat/shared';
 
 /**
  * Trusted forwarders editor (Delivery → provider config), Sealed Mail A5.
@@ -82,7 +79,7 @@ function resetToDefaults() {
 async function save() {
 	if (!canManageOrganization.value || !dirty.value) return;
 	const res = await updateSettings({ trustedArcForwarders: [...draft.value] });
-	if (res === undefined) return; // failure already toasted
+	if (!res.ok) return; // failure already toasted
 	showToast(
 		draft.value.length === 0
 			? t('components.delivery.trustedForwardersCard.clearedToast')
@@ -132,9 +129,7 @@ async function save() {
 							v-if="canManageOrganization"
 							type="button"
 							class="text-text-tertiary hover:text-error focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand rounded"
-							:aria-label="
-								t('components.delivery.trustedForwardersCard.removeDomain', { domain })
-							"
+							:aria-label="t('components.delivery.trustedForwardersCard.removeDomain', { domain })"
 							@click="removeDomain(domain)"
 						>
 							<Icon name="lucide:x" class="w-3.5 h-3.5" />

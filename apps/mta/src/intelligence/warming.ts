@@ -34,6 +34,7 @@ import {
 import {
 	MS_PER_UTC_DAY,
 	utcDateKey,
+	WARMING_DAILY_STATS_TTL_SECONDS,
 	warmingDailyStatsKey,
 	warmingReservationReceiptKey,
 	warmingReservationsKey,
@@ -91,7 +92,7 @@ export async function reserveWarmingSlot(
 	};
 }
 
-export async function isWarmingReservationValid(
+async function isWarmingReservationValid(
 	redis: Redis,
 	reservation: WarmingReservation,
 	now = Date.now()
@@ -224,7 +225,7 @@ export async function recordSend(
 
 	await redis.hincrby(hashKey, 'sentToday', 1);
 	await redis.hincrby(statsKey, 'sent', 1);
-	await redis.expire(statsKey, 172800); // 48h
+	await redis.expire(statsKey, WARMING_DAILY_STATS_TTL_SECONDS);
 }
 
 /**
@@ -241,7 +242,7 @@ export async function recordBounce(
 		await recordDailyWarmingOutcomeOnce(redis, ip, utcDate, 'bounced', idempotencyIdentity);
 		return;
 	}
-	await redis.hincrby(warmingDailyStatsKey(ip, utcDate), 'bounced', 1);
+	await recordDailyWarmingOutcome(redis, ip, utcDate, 'bounced');
 }
 
 /**
@@ -258,7 +259,29 @@ export async function recordDeferral(
 		await recordDailyWarmingOutcomeOnce(redis, ip, utcDate, 'deferred', idempotencyIdentity);
 		return;
 	}
-	await redis.hincrby(warmingDailyStatsKey(ip, utcDate), 'deferred', 1);
+	await recordDailyWarmingOutcome(redis, ip, utcDate, 'deferred');
+}
+
+/**
+ * The non-idempotent daily-outcome write, in one place.
+ *
+ * Both callers used to `HINCRBY` and stop there. The daily stats hash is keyed
+ * by UTC day, so a day whose first write came through one of them was created
+ * with no expiry and stayed in Redis forever — one key per IP per day, on a
+ * Redis that refuses writes at `--maxmemory`. The idempotent twins in
+ * `warmingOutcomeStore` always expired it; these did not.
+ */
+async function recordDailyWarmingOutcome(
+	redis: Redis,
+	ip: string,
+	utcDate: string,
+	field: 'bounced' | 'deferred'
+): Promise<void> {
+	const statsKey = warmingDailyStatsKey(ip, utcDate);
+	const pipeline = redis.pipeline();
+	pipeline.hincrby(statsKey, field, 1);
+	pipeline.expire(statsKey, WARMING_DAILY_STATS_TTL_SECONDS);
+	await pipeline.exec();
 }
 
 /**

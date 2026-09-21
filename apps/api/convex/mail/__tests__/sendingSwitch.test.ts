@@ -107,7 +107,7 @@ async function seedVerifiedDomain(t: Ctx, domain: string): Promise<void> {
 
 /** Connect user-A's external mailbox and return its mailbox id. */
 async function connectMailbox(t: Ctx): Promise<Id<'mailboxes'>> {
-	await t.mutation(internal.mail.externalAccounts._connectInternal, CREDS);
+	await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
 	return await t.run(async (ctx) => {
 		const account = await ctx.db
 			.query('externalMailAccounts')

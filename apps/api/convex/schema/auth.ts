@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { jsonPrimitiveRecord } from '../lib/convexValidators';
+import { appLocaleValidator, jsonPrimitiveRecord } from '../lib/convexValidators';
 import { auditActionValidator, auditResourceValidator } from '../auditActions/catalog';
 
 /**
@@ -21,6 +21,16 @@ export const authTables = {
 		email: v.string(),
 		name: v.optional(v.string()),
 		image: v.optional(v.string()),
+		// The interface language this person last chose, as a FALLBACK — the
+		// `owlat-locale` cookie stays the fast path in the browser and is what
+		// actually decides the render. This is for the two places the cookie
+		// cannot reach: a fresh device before its first visit, and a system
+		// email, which is composed by the backend with no request behind it.
+		//
+		// ABSENT MEANS ENGLISH, which is exactly what every account got before
+		// this field existed — nobody's mail changes language until they touch
+		// the picker.
+		locale: v.optional(appLocaleValidator),
 		// Soft-delete fields: when set, the user is considered deleted. Daily cron
 		// hard-deletes after the 30-day retention window (see auth/accountDeletion).
 		deletedAt: v.optional(v.number()),

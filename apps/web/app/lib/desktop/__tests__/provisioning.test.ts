@@ -22,6 +22,12 @@ import {
 	setupConfigPath,
 	DEFAULT_REMOTE,
 	LOCAL_SETUP_IMAGE,
+	installRef,
+	isReleaseVersion,
+	releaseSetupImage,
+	needsReleaseResolution,
+	resolveLatestReleaseCommand,
+	parseResolvedRelease,
 } from '../provisioning';
 import {
 	assessPassword,
@@ -36,9 +42,8 @@ import {
 	stderrTail,
 	SERVER_IP_PLACEHOLDER,
 	MIN_ADMIN_PASSWORD_LENGTH,
-	type ProvisioningMessage,
 } from '../provisioningForm';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * Step titles, strength labels, validation errors and DNS notes are catalog keys
@@ -47,8 +52,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * the words the operator reads.
  */
 const { t } = createTestI18n().global;
-const render = (message: ProvisioningMessage): string =>
-	typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
+const render = localizedWith(t);
 
 describe('timeline', () => {
 	it('starts every step pending and includes all server steps', () => {
@@ -167,6 +171,80 @@ describe('remote commands', () => {
 		expect(cmd).toContain("git clone --depth 1 --branch 'main'");
 		expect(cmd).toContain("'/opt/owlat'");
 		expect(cmd).toContain('https://github.com/wolvesdotink/owlat.git');
+	});
+
+	it('fetch fast-forwards an existing clone from FETCH_HEAD so a tag ref works too', () => {
+		const cmd = fetchOwlatCommand(remote);
+		expect(cmd).toContain("git fetch --depth 1 origin 'main' && git reset --hard FETCH_HEAD");
+		expect(cmd).not.toContain('origin/main');
+	});
+
+	it('release install checks out the v<version> tag', () => {
+		const release = { ...remote, version: '0.4.4' };
+		expect(installRef(release)).toBe('v0.4.4');
+		expect(installRef(remote)).toBe('main');
+		const cmd = fetchOwlatCommand(release);
+		expect(cmd).toContain("git clone --depth 1 --branch 'v0.4.4'");
+		expect(cmd).toContain("git fetch --depth 1 origin 'v0.4.4' && git reset --hard FETCH_HEAD");
+		expect(cmd).not.toContain("'main'");
+	});
+
+	it('release install pins the setup image and threads the version to quickstart as a flag', () => {
+		const cmd = installerCommand({ ...remote, version: '0.4.4' });
+		expect(cmd).toContain("OWLAT_SETUP_IMAGE='ghcr.io/wolvesdotink/setup:0.4.4'");
+		expect(cmd).toContain(
+			"quickstart --terminal --owlat-version '0.4.4' --config '/opt/owlat/.owlat-setup.json'"
+		);
+		// The version must reach quickstart as a flag only: an OWLAT_VERSION env
+		// var would override the .env pin in compose interpolation.
+		expect(cmd).not.toContain('OWLAT_VERSION=');
+		expect(cmd).not.toContain('OWLAT_BUILD_LOCAL');
+		expect(cmd).not.toContain('OWLAT_LOCAL_IMAGES');
+		expect(releaseSetupImage('0.4.4')).toBe('ghcr.io/wolvesdotink/setup:0.4.4');
+	});
+
+	it('branch install (no version) leaves the version unpinned', () => {
+		const cmd = installerCommand(remote);
+		expect(cmd).not.toContain('--owlat-version');
+		expect(cmd).not.toContain('OWLAT_SETUP_IMAGE');
+	});
+
+	it('the default remote resolves the latest release; a version, branch or local checkout does not', () => {
+		expect(needsReleaseResolution(DEFAULT_REMOTE)).toBe(true);
+		expect(needsReleaseResolution({ ...DEFAULT_REMOTE, version: '0.4.6' })).toBe(false);
+		expect(needsReleaseResolution({ ...DEFAULT_REMOTE, branch: 'main' })).toBe(false);
+		expect(needsReleaseResolution({ ...DEFAULT_REMOTE, localSource: '/x' })).toBe(false);
+		expect(() => installRef(DEFAULT_REMOTE)).toThrow(/not resolved/);
+	});
+
+	it('resolve-release asks the GitHub releases API of the clone repo for the newest stable vX.Y.Z tag', () => {
+		const cmd = resolveLatestReleaseCommand(DEFAULT_REMOTE);
+		expect(cmd).toContain('https://api.github.com/repos/wolvesdotink/owlat/releases?per_page=30');
+		expect(cmd).toContain('curl -fsSL --max-time 10');
+		expect(cmd).toContain('head -1');
+		expect(cmd).toContain('release=');
+		expect(
+			resolveLatestReleaseCommand({ ...DEFAULT_REMOTE, repo: 'git@github.com:acme/fork.git' })
+		).toContain('repos/acme/fork/releases');
+	});
+
+	it('parses the resolved release line and rejects anything else', () => {
+		expect(parseResolvedRelease('release=0.4.6')).toBe('0.4.6');
+		expect(parseResolvedRelease('release=0.4.6\n')).toBe('0.4.6');
+		expect(parseResolvedRelease('release=')).toBeNull();
+		expect(parseResolvedRelease('release=dev')).toBeNull();
+		expect(parseResolvedRelease('curl: (6) Could not resolve host')).toBeNull();
+		expect(parseResolvedRelease('')).toBeNull();
+	});
+
+	it('only a semver names a release', () => {
+		expect(isReleaseVersion('0.4.4')).toBe(true);
+		expect(isReleaseVersion('1.0.0-rc.1')).toBe(true);
+		expect(isReleaseVersion('dev')).toBe(false);
+		expect(isReleaseVersion('unknown')).toBe(false);
+		expect(isReleaseVersion('')).toBe(false);
+		expect(isReleaseVersion(undefined)).toBe(false);
+		expect(isReleaseVersion('v0.4.4')).toBe(false);
 	});
 
 	it('fetch script is valid shell — no line starts with a dangling operator', () => {
@@ -450,8 +528,15 @@ describe('server-IP resolution + DNS records', () => {
 		expect(rows.some((r) => r.type === 'TXT' && r.value.startsWith('v=DMARC1'))).toBe(true);
 		expect(rows.some((r) => r.name === `_dmarc.${hosts.bounce}`)).toBe(true);
 		expect(rows.some((r) => r.type === 'MX' && r.value === hosts.mail)).toBe(true);
-		// PTR guidance rides along the mail A record as a note, not a fake record.
-		expect(t(rows.find((r) => r.name === hosts.mail && r.type === 'A')?.note ?? '')).toMatch(/PTR/);
+	});
+
+	it('gives reverse DNS its own row, keyed by IP and pointing at the mail host', () => {
+		const rows = buildDnsRecords({ hosts, withMta: true, serverIp: '203.0.113.5' });
+		const ptr = rows.find((r) => r.type === 'PTR');
+		expect(ptr).toMatchObject({ name: '203.0.113.5', value: hosts.mail });
+		// The hostname is real even before the IP is known, so it stays copyable.
+		expect(ptr?.placeholder).toBeUndefined();
+		expect(t(ptr?.note ?? '')).toMatch(/hosting provider/);
 	});
 
 	it('omits the mail records entirely for a non-MTA provider', () => {

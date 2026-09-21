@@ -29,6 +29,7 @@ import { adminQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { extractEmail } from '../lib/emailAddress';
 import { draftSimilarity } from './shadowSimilarity';
+import { reviewActionValidator } from '../lib/convexValidators';
 
 /**
  * A shadowed auto-approve counts as "matched" only when the human approved the
@@ -42,7 +43,7 @@ export const MATCH_SIMILARITY_THRESHOLD = 0.95;
 export const GRADUATION_MIN_SAMPLE = 10;
 
 /** Minimum matched / would-have-sent rate for a graduation offer. */
-export const GRADUATION_MATCH_RATE = 0.9;
+const GRADUATION_MATCH_RATE = 0.9;
 
 // ============================================================
 // Shadow-mode gate
@@ -149,7 +150,7 @@ export const recordShadowDecision = internalMutation({
 export const reconcileShadowDecision = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
-		action: v.union(v.literal('approved'), v.literal('rejected'), v.literal('edited')),
+		action: reviewActionValidator,
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
@@ -193,13 +194,13 @@ export const reconcileShadowDecision = internalMutation({
 /** Update the running per-(category, sender) scorecard for one reconciled observation. */
 async function bumpScorecard(
 	ctx: MutationCtx,
-	args: { category: string; sender: string; wouldHaveSent: boolean; matched: boolean },
+	args: { category: string; sender: string; wouldHaveSent: boolean; matched: boolean }
 ): Promise<void> {
 	const now = Date.now();
 	const existing = await ctx.db
 		.query('agentShadowScorecard')
 		.withIndex('by_category_sender', (q) =>
-			q.eq('category', args.category).eq('sender', args.sender),
+			q.eq('category', args.category).eq('sender', args.sender)
 		)
 		.first();
 
@@ -227,7 +228,7 @@ async function bumpScorecard(
 // Reading the scorecard (graduation offers for the autonomy UI)
 // ============================================================
 
-export type ShadowScorecardSlice = {
+type ShadowScorecardSlice = {
 	category: string;
 	sender: string;
 	samples: number;
@@ -242,7 +243,7 @@ export type ShadowScorecardSlice = {
  * Derive a slice's match rate + whether it clears the graduation thresholds.
  * Shared so the read query and any future consumer agree on the bar.
  */
-export function summarizeSlice(row: Doc<'agentShadowScorecard'>): ShadowScorecardSlice {
+function summarizeSlice(row: Doc<'agentShadowScorecard'>): ShadowScorecardSlice {
 	const matchRate = row.wouldHaveSent > 0 ? row.matched / row.wouldHaveSent : 0;
 	const offerGraduation =
 		row.wouldHaveSent >= GRADUATION_MIN_SAMPLE && matchRate >= GRADUATION_MATCH_RATE;

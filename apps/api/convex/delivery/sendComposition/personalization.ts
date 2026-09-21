@@ -20,7 +20,7 @@ import { escapeHtml } from '@owlat/shared/html';
  *               reach a transport that would split it into a `Bcc:`/`To:` line.
  *  - `plain`  — no escaping (non-header, non-HTML plain text).
  */
-export type EscapePolicy = 'plain' | 'html' | 'header';
+type EscapePolicy = 'plain' | 'html' | 'header';
 
 /**
  * Apply the escape policy to a single substituted value.
@@ -63,24 +63,4 @@ export function personalize(
 		}
 		return fallback ? applyEscape(fallback, options.escape) : '';
 	});
-}
-
-/**
- * Plain (no-escape) personalization. Compat surface used by the bridging
- * re-exports in `lib/emailHelpers.ts` and `automations/steps/shared/personalize.ts`
- * during the deepening migration. New call sites should call `personalize`
- * directly with an explicit `escape` argument.
- */
-export function replaceVariablesPlain(content: string, variables: Record<string, unknown>): string {
-	return personalize(content, variables, { escape: 'plain' });
-}
-
-/**
- * HTML-escaping personalization. Compat surface used by the bridging
- * re-export in `emailWorker.ts` during the deepening migration. New call
- * sites should call `personalize` directly with an explicit `escape`
- * argument.
- */
-export function replaceVariablesHtml(content: string, variables: Record<string, unknown>): string {
-	return personalize(content, variables, { escape: 'html' });
 }

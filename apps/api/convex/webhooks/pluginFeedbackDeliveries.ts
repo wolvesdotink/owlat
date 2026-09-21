@@ -1,5 +1,5 @@
 /**
- * The replay half of the bundled-plugin feedback route (D6/P2.2): remembering
+ * The replay half of the bundled-plugin feedback route: remembering
  * which signed deliveries have already been accepted.
  *
  * Signature verification proves that whoever sent a request holds the shared

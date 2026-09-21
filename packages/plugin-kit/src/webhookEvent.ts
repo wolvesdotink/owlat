@@ -3,8 +3,6 @@ import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 /** Capability the host assigns to every plugin that publishes webhook events. */
 export const PLUGIN_WEBHOOK_EVENT_CAPABILITY = 'webhooks:publish' as const;
 
-export type PluginWebhookEventCapability = typeof PLUGIN_WEBHOOK_EVENT_CAPABILITY;
-
 /**
  * Namespaced wire literal for a plugin-published webhook event. Core events
  * keep their flat literals (`email.sent`, `contact.created`, …); every plugin

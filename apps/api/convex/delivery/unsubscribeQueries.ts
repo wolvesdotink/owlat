@@ -106,8 +106,8 @@ async function applyPublicUnsubscribe(
 }
 
 /**
- * Address-keyed entry point for a RELAY-reported unsubscribe (Mandrill `unsub`,
- * plan D10).
+ * Address-keyed entry point for a RELAY-reported unsubscribe (Mandrill
+ * `unsub`).
  *
  * A relay's unsubscribe surface knows an email address and nothing else — there
  * is no contact id and no send on the wire — so the join has to happen here. It

@@ -7,8 +7,6 @@ export {
 	type OperationError,
 	OPERATION_ERROR_CATEGORIES,
 	categoryToHttpStatus,
-	isOperationErrorCategory,
-	isOperationError,
 	extractOperationError,
 } from './operationError';
 export {
@@ -30,6 +28,7 @@ export {
 	trySplitZone,
 	zoneRelativeHost,
 } from './dnsZone';
+export { boundedEditDistance, LOOKALIKE_MAX_EDITS } from './editDistance';
 export { normalizeReturnPathHost, isValidReturnPathHost } from './returnPathHost';
 export { SES_RELAY_PROOF_MAX_AGE_MS, MANDRILL_RELAY_PROOF_MAX_AGE_MS } from './deliveryProof';
 export {
@@ -113,7 +112,6 @@ export {
 	FCRDNS_FAILURE_REASONS,
 	FCRDNS_VERDICTS,
 	DEFAULT_GENERIC_PTR_SUFFIXES,
-	normalizeDnsName,
 	isFqdn,
 	isGenericPtrHostname,
 	verifyFcrdnsIdentity,
@@ -121,7 +119,6 @@ export {
 	fcrdnsReasonMessage,
 } from './fcrdns';
 export {
-	IP_ADDRESS_FAMILIES,
 	type IpAddressFamily,
 	type ParsedIpAddress,
 	parseIpAddress,
@@ -180,7 +177,6 @@ export {
 	TLS_RPT_MAX_CONTACT_INFO_LENGTH,
 	TLS_RPT_MAX_POLICY_DOMAIN_LENGTH,
 	TLS_RPT_MAX_FAILURE_TYPE_LENGTH,
-	TLS_RPT_FAILURE_EXPLANATIONS,
 	gunzipTlsReport,
 	parseTlsReport,
 	decodeTlsReport,
@@ -200,7 +196,6 @@ export {
 	isMtaStsMode,
 	mtaStsPolicyId,
 	buildMtaStsTxtValue,
-	parseMtaStsTxtId,
 	buildMtaStsPolicy,
 	verifyMtaStsPublication,
 } from './mtaStsPolicy';
@@ -211,6 +206,18 @@ export {
 	spfRecordHasExactIpMechanism,
 } from './spf';
 export {
+	DOMAIN_RECEIVING_MODES,
+	EXTERNAL_RECEIVING_PROVIDER_IDS,
+	externalReceivingSpfInclude,
+	externalReceivingSpfMerged,
+	inspectExternalReceivingMx,
+	mergeExternalReceivingSpf,
+	type DomainReceivingMode,
+	type ExternalReceivingMxCheck,
+	type ExternalReceivingMxDeps,
+	type ExternalReceivingProvider,
+} from './externalReceiving';
+export {
 	GOVERNED_MESSAGE_TYPES,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,
 	ROUTING_LEASE_UNREADABLE_CODE,
@@ -218,18 +225,23 @@ export {
 	type GovernedIpPool,
 	type GovernedMessageType,
 	type GovernedRoutingContext,
-	DELIVERY_DOMAINS,
 	type DeliveryDomain,
 	isDeliveryDomain,
 	isGovernedMessageType,
 } from './routingDispatch';
 export {
 	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
-	MAX_GOVERNED_ROUTING_ATTEMPTS,
-	ROUTING_REENTRY_CLOCK_SKEW_MS,
 	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
 	ROUTING_REENTRY_TOKEN_TTL_MS,
-	ROUTING_WORK_ATTEMPT_ID_MAX_LENGTH,
+	admitGovernedRetry,
+	governedDeliveryDeadlineAt,
+	nextGovernedAttempt,
+	type GovernedAttemptVerdict,
+	type GovernedDeadlineVerdict,
+	type GovernedRetryAdmission,
+	type GovernedRetryBudgetOptions,
+	type GovernedRetryBudgetState,
+	type GovernedRetryBudgetVerdict,
 } from './routingReentry';
 export type { ValidationIssue } from './validation';
 export {

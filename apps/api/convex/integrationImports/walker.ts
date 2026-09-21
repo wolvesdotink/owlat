@@ -23,7 +23,7 @@
  * Per ADR-0027.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalAction, internalMutation, internalQuery } from '../_generated/server';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -41,7 +41,9 @@ import {
 	type SuppressionImportCounts,
 } from './_common';
 import { recordImportSummary } from './suppressions';
+import { sealImportCredential, openImportCredential } from './credentialSeal';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+import { duplicateHandlingValidator, completedOrFailedValidator } from '../lib/convexValidators';
 
 const MAX_RETRIES = 2;
 
@@ -57,8 +59,8 @@ export const integrationProviderConfigValidator = v.union(
 		provider: v.literal('mailchimp'),
 		apiKey: v.string(),
 		listId: v.string(),
-		// Opt-in suppression carry-over (plan D9). Absent = the pre-P4.1
-		// behavior: non-subscribed members are skipped and nothing is suppressed.
+		// Opt-in suppression carry-over. Absent: non-subscribed members are skipped
+		// and nothing is suppressed.
 		importSuppressions: v.optional(v.boolean()),
 	}),
 	v.object({
@@ -66,13 +68,44 @@ export const integrationProviderConfigValidator = v.union(
 		apiKey: v.string(),
 	}),
 	// No credential field: the Mandrill rejects import reads `MANDRILL_API_KEY`
-	// from the deployment environment (plan D2 — send-provider credentials are
-	// env-only, and a key pasted here would be a second credential model for an
-	// account that already has one). See `providers/mandrill/index.ts`.
+	// from the deployment environment (send-provider credentials are env-only,
+	// and a key pasted here would be a second credential model for an account
+	// that already has one). See `providers/mandrill/index.ts`.
 	v.object({
 		provider: v.literal('mandrill'),
 	})
 );
+
+type IntegrationImportConfig = Infer<typeof integrationProviderConfigValidator>;
+
+/**
+ * Seal the provider's API key (when the provider has one) BEFORE the config
+ * enters scheduled-function args, so the live third-party credential never sits
+ * in the `_scheduled_functions` table in plaintext across the import's hops.
+ * Mandrill carries no key and passes through unchanged.
+ */
+async function sealConfigCredential(
+	config: IntegrationImportConfig
+): Promise<IntegrationImportConfig> {
+	if ('apiKey' in config) {
+		return { ...config, apiKey: await sealImportCredential(config.apiKey) };
+	}
+	return config;
+}
+
+/**
+ * Reverse of {@link sealConfigCredential}: unseal the API key in memory for the
+ * one outbound HTTP call. The scheduled args stay sealed — the next hop is
+ * re-scheduled with the still-sealed config.
+ */
+async function openConfigCredential(
+	config: IntegrationImportConfig
+): Promise<IntegrationImportConfig> {
+	if ('apiKey' in config) {
+		return { ...config, apiKey: await openImportCredential(config.apiKey) };
+	}
+	return config;
+}
 
 /**
  * Per-provider Settings toggle. The flag must actually gate the import, not
@@ -98,7 +131,7 @@ const PROVIDER_FEATURE_FLAGS = {
 export const startIntegrationImport = authedMutation({
 	args: {
 		config: integrationProviderConfigValidator,
-		handleDuplicates: v.union(v.literal('skip'), v.literal('update')),
+		handleDuplicates: duplicateHandlingValidator,
 		topicId: v.optional(v.id('topics')),
 	},
 	handler: async (ctx, args) => {
@@ -140,9 +173,15 @@ export const startIntegrationImport = authedMutation({
 			startedAt: Date.now(),
 		});
 
+		// Seal the provider credential so the scheduled-function args carry
+		// ciphertext, not a live API key, for the life of the run. Validation
+		// above ran on the plaintext config, so sealing does not weaken any
+		// check.
+		const scheduledConfig = await sealConfigCredential(args.config);
+
 		await ctx.scheduler.runAfter(0, internal.integrationImports.walker.processIntegrationPage, {
 			importId,
-			config: args.config,
+			config: scheduledConfig,
 			cursor: '',
 		});
 
@@ -225,13 +264,18 @@ export const processIntegrationPage = internalAction({
 
 		const adapter = providerFor(args.config.provider);
 
+		// Unseal the provider credential in memory for this hop's outbound call
+		// only. `args.config` stays sealed and is what re-schedules the next hop
+		// below, so the plaintext key never re-enters scheduled args.
+		const liveConfig = await openConfigCredential(args.config);
+
 		// Retry loop. `RetryableProviderError` → backoff + retry up to
 		// MAX_RETRIES. Any other thrown `Error` → fail the import.
 		let result: FetchPageResult | null = null;
 		for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
 			try {
 				result = await adapter.fetchPage({
-					config: args.config,
+					config: liveConfig,
 					cursor: args.cursor,
 				});
 				break;
@@ -292,7 +336,7 @@ export const processIntegrationPage = internalAction({
 			}
 		}
 
-		// Suppression carry-over (plan D9). A separate hop from `importBatch`
+		// Suppression carry-over. A separate hop from `importBatch`
 		// because it is a different kind of write to a different table with a
 		// different idempotency story — and because a contacts import that
 		// carries no suppressions must be able to fail without one, and the
@@ -400,7 +444,7 @@ export const updateImportProgress = internalMutation({
 export const completeImport = internalMutation({
 	args: {
 		importId: v.id('integrationImports'),
-		status: v.union(v.literal('completed'), v.literal('failed')),
+		status: completedOrFailedValidator,
 		errorMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {

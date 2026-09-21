@@ -9,20 +9,20 @@ const props = defineProps<{
 	address: string;
 }>();
 
-const { data, isLoading } = useConvexQuery(api.mail.voiceProfile.get, () => ({
+const { data, isLoading } = useConvexQuery(api.mail.ai.voiceProfile.get, () => ({
 	mailboxId: props.mailboxId,
 }));
 
-const setEnabled = useBackendOperation(api.mail.voiceProfile.setEnabled, {
+const setEnabled = useBackendOperation(api.mail.ai.voiceProfile.setEnabled, {
 	label: () => t('components.postbox.postboxVoiceProfileCard.updateOperation'),
 });
-const refreshNow = useBackendOperation(api.mail.voiceProfile.requestRefresh, {
+const refreshNow = useBackendOperation(api.mail.ai.voiceProfile.requestRefresh, {
 	label: () => t('components.postbox.postboxVoiceProfileCard.refreshOperation'),
 });
-const saveInstructions = useBackendOperation(api.mail.voiceProfile.setStandingInstructions, {
+const saveInstructions = useBackendOperation(api.mail.ai.voiceProfile.setStandingInstructions, {
 	label: () => t('components.postbox.postboxVoiceProfileCard.saveInstructionsOperation'),
 });
-const removeAdjustment = useBackendOperation(api.mail.voiceProfile.removeDerivedAdjustment, {
+const removeAdjustment = useBackendOperation(api.mail.ai.voiceProfile.removeDerivedAdjustment, {
 	label: () => t('components.postbox.postboxVoiceProfileCard.removeAdjustmentOperation'),
 });
 const instructionDraft = ref('');
@@ -88,7 +88,7 @@ async function onRemoveAdjustment(kind: string) {
 		</header>
 
 		<div v-if="isLoading" class="p-6 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 		</div>
 
 		<div v-else class="px-5 py-4 space-y-3">
@@ -121,7 +121,7 @@ async function onRemoveAdjustment(kind: string) {
 				</div>
 
 				<div v-if="isRefreshing" class="flex items-center gap-2 text-sm text-text-secondary">
-					<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					{{ t('components.postbox.postboxVoiceProfileCard.learning') }}
 				</div>
 

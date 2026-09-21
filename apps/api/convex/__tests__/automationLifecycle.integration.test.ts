@@ -2,8 +2,17 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, afterEach } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import { createTestAutomation, createTestAutomationStep, createTestContact } from './factories';
-import { LEGAL_EDGES, AUTOMATION_FAILURE_BREAKER_THRESHOLD, type AutomationStatus } from '../automations/lifecycle';
+import {
+	createTestAutomation,
+	createTestAutomationStep,
+	createTestContact,
+	flushScheduled,
+} from './factories';
+import {
+	AUTOMATION_LIFECYCLE,
+	AUTOMATION_FAILURE_BREAKER_THRESHOLD,
+	type AutomationStatus,
+} from '../automations/lifecycle';
 import type { Id } from '../_generated/dataModel';
 
 const modules = import.meta.glob('../**/*.*s');
@@ -11,7 +20,7 @@ const modules = import.meta.glob('../**/*.*s');
 // Lifecycle effects schedule `internal.lib.posthog.capture` — let the
 // scheduled functions drain between tests.
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 // ============================================================================
@@ -23,7 +32,7 @@ const ALL_STATUSES: AutomationStatus[] = ['draft', 'active', 'paused'];
 describe('Automation lifecycle — edge legality matrix', () => {
 	for (const from of ALL_STATUSES) {
 		for (const to of ALL_STATUSES) {
-			const isLegal = LEGAL_EDGES[from].has(to);
+			const isLegal = AUTOMATION_LIFECYCLE.isLegalEdge(from, to);
 			const isSelfLoop = from === to;
 
 			it(`${from} → ${to} ${isSelfLoop ? '(self-loop, recorded)' : isLegal ? '(legal, transitioned)' : '(illegal_edge)'}`, async () => {
@@ -37,7 +46,7 @@ describe('Automation lifecycle — edge legality matrix', () => {
 							triggerType: 'contact_created',
 							activatedAt: from !== 'draft' ? Date.now() - 10_000 : undefined,
 							pausedAt: from === 'paused' ? Date.now() - 5_000 : undefined,
-						}),
+						})
 					);
 					if (to === 'active' && !isSelfLoop) {
 						// Activate edge requires ≥1 step.
@@ -48,7 +57,7 @@ describe('Automation lifecycle — edge legality matrix', () => {
 								stepIndex: 0,
 								stepType: 'delay',
 								config: { duration: 1, unit: 'hours' },
-							}),
+							})
 						);
 					}
 				});
@@ -94,7 +103,7 @@ describe('Automation lifecycle — patch shapes', () => {
 				createTestAutomation({
 					status: 'draft',
 					triggerType: 'contact_created',
-				}),
+				})
 			);
 			await ctx.db.insert(
 				'automationSteps',
@@ -103,7 +112,7 @@ describe('Automation lifecycle — patch shapes', () => {
 					stepIndex: 0,
 					stepType: 'delay',
 					config: { duration: 1, unit: 'hours' },
-				}),
+				})
 			);
 		});
 
@@ -135,7 +144,7 @@ describe('Automation lifecycle — patch shapes', () => {
 					triggerType: 'contact_created',
 					activatedAt: originalActivatedAt,
 					pausedAt: Date.now() - 50_000,
-				}),
+				})
 			);
 			await ctx.db.insert(
 				'automationSteps',
@@ -144,7 +153,7 @@ describe('Automation lifecycle — patch shapes', () => {
 					stepIndex: 0,
 					stepType: 'delay',
 					config: { duration: 1, unit: 'hours' },
-				}),
+				})
 			);
 		});
 
@@ -176,7 +185,7 @@ describe('Automation lifecycle — patch shapes', () => {
 					status: 'active',
 					triggerType: 'contact_created',
 					activatedAt: originalActivatedAt,
-				}),
+				})
 			);
 		});
 
@@ -207,7 +216,7 @@ describe('Automation lifecycle — patch shapes', () => {
 					triggerType: 'contact_created',
 					activatedAt: Date.now() - 100_000,
 					pausedAt: Date.now() - 50_000,
-				}),
+				})
 			);
 		});
 
@@ -243,7 +252,7 @@ describe('Automation lifecycle — → active preconditions', () => {
 				createTestAutomation({
 					status: 'draft',
 					triggerType: 'contact_created',
-				}),
+				})
 			);
 		});
 
@@ -269,7 +278,7 @@ describe('Automation lifecycle — → active preconditions', () => {
 					triggerType: 'contact_created',
 					activatedAt: Date.now() - 1000,
 					pausedAt: Date.now() - 500,
-				}),
+				})
 			);
 		});
 
@@ -284,11 +293,7 @@ describe('Automation lifecycle — → active preconditions', () => {
 		expect(outcome.reason).toBe('no_steps');
 	});
 
-	for (const triggerType of [
-		'contact_updated',
-		'event_received',
-		'topic_subscribed',
-	] as const) {
+	for (const triggerType of ['contact_updated', 'event_received', 'topic_subscribed'] as const) {
 		it(`returns invalid_trigger_config for ${triggerType} without config (draft → active)`, async () => {
 			const t = convexTest(schema, modules);
 			let automationId: Id<'automations'>;
@@ -299,7 +304,7 @@ describe('Automation lifecycle — → active preconditions', () => {
 						status: 'draft',
 						triggerType,
 						triggerConfig: undefined,
-					}),
+					})
 				);
 				await ctx.db.insert(
 					'automationSteps',
@@ -308,7 +313,7 @@ describe('Automation lifecycle — → active preconditions', () => {
 						stepIndex: 0,
 						stepType: 'delay',
 						config: { duration: 1, unit: 'hours' },
-					}),
+					})
 				);
 			});
 
@@ -335,7 +340,7 @@ describe('Automation lifecycle — → active preconditions', () => {
 						triggerConfig: undefined,
 						activatedAt: Date.now() - 1000,
 						pausedAt: Date.now() - 500,
-					}),
+					})
 				);
 				await ctx.db.insert(
 					'automationSteps',
@@ -344,7 +349,7 @@ describe('Automation lifecycle — → active preconditions', () => {
 						stepIndex: 0,
 						stepType: 'delay',
 						config: { duration: 1, unit: 'hours' },
-					}),
+					})
 				);
 			});
 
@@ -369,7 +374,7 @@ describe('Automation lifecycle — → active preconditions', () => {
 				createTestAutomation({
 					status: 'draft',
 					triggerType: 'contact_created',
-				}),
+				})
 			);
 			await ctx.db.insert(
 				'automationSteps',
@@ -378,7 +383,7 @@ describe('Automation lifecycle — → active preconditions', () => {
 					stepIndex: 0,
 					stepType: 'delay',
 					config: { duration: 1, unit: 'hours' },
-				}),
+				})
 			);
 		});
 
@@ -407,7 +412,7 @@ describe('Automation lifecycle — effects', () => {
 					triggerType: 'contact_created',
 					activatedAt: status !== 'draft' ? Date.now() - 1000 : undefined,
 					pausedAt: status === 'paused' ? Date.now() - 500 : undefined,
-				}),
+				})
 			);
 			await ctx.db.insert(
 				'automationSteps',
@@ -416,7 +421,7 @@ describe('Automation lifecycle — effects', () => {
 					stepIndex: 0,
 					stepType: 'delay',
 					config: { duration: 1, unit: 'hours' },
-				}),
+				})
 			);
 		});
 		return automationId!;
@@ -542,10 +547,7 @@ describe('Automation lifecycle — not found', () => {
 		const t = convexTest(schema, modules);
 		let automationId: Id<'automations'>;
 		await t.run(async (ctx) => {
-			automationId = await ctx.db.insert(
-				'automations',
-				createTestAutomation({ status: 'draft' }),
-			);
+			automationId = await ctx.db.insert('automations', createTestAutomation({ status: 'draft' }));
 			await ctx.db.delete(automationId);
 		});
 
@@ -566,19 +568,27 @@ describe('Automation lifecycle — not found', () => {
 // ============================================================================
 
 describe('Automation lifecycle — circuit breaker', () => {
-	async function makeActiveAutomation(t: ReturnType<typeof convexTest>): Promise<Id<'automations'>> {
+	async function makeActiveAutomation(
+		t: ReturnType<typeof convexTest>
+	): Promise<Id<'automations'>> {
 		return await t.run(async (ctx) => {
-			const id = await ctx.db.insert('automations', createTestAutomation({
-				status: 'active',
-				triggerType: 'contact_created',
-				activatedAt: Date.now() - 10_000,
-			}));
-			await ctx.db.insert('automationSteps', createTestAutomationStep({
-				automationId: id,
-				stepIndex: 0,
-				stepType: 'delay',
-				config: { duration: 1, unit: 'hours' },
-			}));
+			const id = await ctx.db.insert(
+				'automations',
+				createTestAutomation({
+					status: 'active',
+					triggerType: 'contact_created',
+					activatedAt: Date.now() - 10_000,
+				})
+			);
+			await ctx.db.insert(
+				'automationSteps',
+				createTestAutomationStep({
+					automationId: id,
+					stepIndex: 0,
+					stepType: 'delay',
+					config: { duration: 1, unit: 'hours' },
+				})
+			);
 			return id;
 		});
 	}
@@ -628,7 +638,9 @@ describe('Automation lifecycle — circuit breaker', () => {
 				triggeredBy: 'contact_created',
 			});
 		});
-		await t.mutation(internal.automations.stepExecutorQueries.completeAutomationRun, { automationRunId: runId });
+		await t.mutation(internal.automations.stepExecutorQueries.completeAutomationRun, {
+			automationRunId: runId,
+		});
 		await t.run(async (ctx) => {
 			const a = await ctx.db.get(id);
 			expect(a!.consecutiveRunFailures).toBe(0);

@@ -5,7 +5,7 @@
  *
  * The per-provider DATA this used to declare beside that rule — the SMTP relay
  * presets and the env-key allowlist — is now derived from the send-provider
- * catalog (`./sendProviderCatalog`, the seams plan's D1). What stays here is the
+ * catalog (`./sendProviderCatalog`). What stays here is the
  * POLICY: the allowlist's two ends, the From-identity exception, and
  * {@link planTransportEnvChange}.
  */
@@ -17,9 +17,9 @@ import {
 
 /**
  * The SMTP relay presets moved to `./sendProviderCredentialFields` when the
- * catalog became the single declaration (the seams plan's P1.1: "SMTP presets
- * become catalog-attached data") — they are the data of ONE field descriptor,
- * the `smtp` entry's `host-port` endpoint, and nothing else ever needed them
+ * catalog became the single declaration ("SMTP presets become
+ * catalog-attached data") — they are the data of ONE field descriptor, the
+ * `smtp` entry's `host-port` endpoint, and nothing else ever needed them
  * apart from it.
  *
  * Re-exported here because the web setup wizard
@@ -45,7 +45,7 @@ export {
  *    never inject an unrelated env var such as `INSTANCE_SECRET`) and as the set
  *    of keys to clear in the Convex deployment when they are dropped.
  *
- * DERIVED, per the seams plan's D1: the per-provider middle is every env
+ * DERIVED, never restated: the per-provider middle is every env
  * variable the catalog's `credentialFields` declare, in catalog × field order.
  * The three keys around them are this list's own — `EMAIL_PROVIDER` names which
  * kind is active (it belongs to no kind) and the two From-identity keys are the

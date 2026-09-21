@@ -9,6 +9,17 @@
  */
 
 import { Hono, type Context } from 'hono';
+import { createHash, timingSafeEqual } from 'node:crypto';
+
+/**
+ * Constant-time bearer comparison. Both sides are hashed first so
+ * timingSafeEqual's equal-length requirement holds without leaking the key
+ * length (same pattern as the MTA's auth/timingSafe.ts).
+ */
+function bearerTokenMatches(presented: string, expected: string): boolean {
+	const digest = (value: string) => createHash('sha256').update(value).digest();
+	return timingSafeEqual(digest(presented), digest(expected));
+}
 
 /** http(s) only, and the origin must be one of the configured Convex origins. */
 export function isAllowedEmlUrl(raw: string, allowedOrigins: string[]): boolean {
@@ -23,8 +34,8 @@ export function isAllowedEmlUrl(raw: string, allowedOrigins: string[]): boolean 
 }
 import { serve, type ServerType } from '@hono/node-server';
 import { isSmtpError } from '@owlat/smtp-client';
-import type { ConvexClient, WorkerCredentials } from './convex.js';
-import { fn } from './convex.js';
+import type { ConvexClient } from './convex.js';
+import { fetchWorkerCredentials } from './convex.js';
 import type { MailSyncConfig } from './config.js';
 import { sendViaExternal, testConnection } from './send.js';
 import type { ProtocolCreds, RecipientResult } from './send.js';
@@ -46,7 +57,7 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 
 	const auth = async (c: Context, next: () => Promise<void>) => {
 		const token = c.req.header('Authorization')?.replace('Bearer ', '');
-		if (!token || token !== config.apiKey) {
+		if (!token || !bearerTokenMatches(token, config.apiKey)) {
 			return c.json({ error: 'Unauthorized' }, 401);
 		}
 		await next();
@@ -75,13 +86,22 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 			return c.json({ error: 'externalAccountId, from, recipients, rawEmlUrl required' }, 400);
 		}
 
-		const creds = (await convex.action(
-			fn.getCredentialsForWorker as never,
-			{
-				accountId: body.externalAccountId,
-			} as never
-		)) as WorkerCredentials | null;
-		if (!creds) return c.json({ error: 'account credentials unavailable' }, 404);
+		const credentialsResult = await fetchWorkerCredentials(convex, body.externalAccountId);
+		if (credentialsResult.kind !== 'credentials') {
+			// A revoked authorization is reported in the words the user has to act
+			// on: this message is what the outbound dispatcher records as the send's
+			// failure reason, and "credentials unavailable" would tell them nothing.
+			return c.json(
+				{
+					error:
+						credentialsResult.reason === 'auth_revoked'
+							? 'account authorization was revoked; reconnect the mailbox'
+							: 'account credentials unavailable',
+				},
+				404
+			);
+		}
+		const creds = credentialsResult.credentials;
 
 		// SSRF guard: the only legitimate rawEmlUrl is a Convex storage URL.
 		// Without this, anyone holding the internal API key could turn the

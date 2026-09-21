@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { unifiedMessageChannelValidator } from '../lib/convexValidators';
+import { unifiedMessageChannelValidator, messageDirectionValidator } from '../lib/convexValidators';
+import { healthStatusValidator } from '../lib/literalValidators';
 
 /**
  * Multi-channel messaging tables — unified inbox for all channels + per-channel config.
@@ -12,7 +13,7 @@ export const messagingTables = {
 	unifiedMessages: defineTable({
 		threadId: v.id('conversationThreads'),
 		channel: unifiedMessageChannelValidator,
-		direction: v.union(v.literal('inbound'), v.literal('outbound')),
+		direction: messageDirectionValidator,
 		// Sender/recipient
 		contactId: v.optional(v.id('contacts')),
 		memberId: v.optional(v.string()), // Internal sender (BetterAuth user ID)
@@ -73,9 +74,7 @@ export const messagingTables = {
 		// alongside the envelope it describes.
 		configuredFields: v.optional(v.array(v.string())),
 		// Health monitoring
-		healthStatus: v.optional(
-			v.union(v.literal('healthy'), v.literal('degraded'), v.literal('down'))
-		),
+		healthStatus: v.optional(healthStatusValidator),
 		lastHealthCheckAt: v.optional(v.number()),
 		lastSuccessfulSend: v.optional(v.number()),
 		lastError: v.optional(v.string()),

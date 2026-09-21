@@ -99,14 +99,17 @@
 	--color-border-default: #2e2e2e;
 	--color-border-strong: #3d3d3d;
 
-	--color-success: #7a9b6e;
+	/* WCAG AA as TEXT on every content surface, bg-surface (#252525) included —
+	   that last step is where error and info fell short (4.09:1 / 4.47:1). See
+	   __tests__/tokenContrast.test.ts. */
+	--color-success: #7a9b6e; /* 4.92:1 on bg-surface */
 	--color-success-subtle: #16211a;
-	--color-warning: #c9a55a;
+	--color-warning: #c9a55a; /* 6.58:1 on bg-surface */
 	--color-warning-subtle: #221c12;
-	--color-error: #c46b5a;
+	--color-error: #cb7767; /* 4.65:1 on bg-surface (was 4.09:1) */
 	--color-error-subtle: #241614;
 	--color-error-strong: #dd6450; /* solid danger fills — see tokens.css */
-	--color-info: #6b8fa8;
+	--color-info: #7093ad; /* 4.72:1 on bg-surface (was 4.47:1) */
 	--color-info-subtle: #121b22;
 
 	--shadow-sm: var(--shadow-2);

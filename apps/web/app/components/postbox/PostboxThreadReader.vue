@@ -77,11 +77,15 @@ export type PostboxReaderMessage = {
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { extractEmailAddress } from '~/utils/emailAddress';
-import { deriveSenderAuth, type SenderAuthInput, type SenderAuthState } from '~/utils/senderAuth';
-import { formatCompactRelativeTime, formatDateTime } from '~/utils/formatters';
+import { deriveReplyRisk, senderRiskInputOf, type ReplyRisk } from '~/utils/senderAuth';
+import { formatCompactRelativeTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
+import {
+	POSTBOX_MARK_READ_DWELL_MS,
+	markReadOnOpen,
+	showsManualMarkRead,
+} from '~/utils/postboxMarkReadPolicy';
 import { shouldShowSchedulingChip } from '~/utils/postboxSchedulingChip';
 import {
 	classifySecureMessage,
@@ -89,6 +93,7 @@ import {
 	type SecureMessageClass,
 } from '@owlat/shared/secureMessage';
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
+import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -170,16 +175,28 @@ function calendarAttachment(msg: {
 	);
 }
 
+// Plan idea 45: the sender profile slide-over. One instance for the whole
+// reader — a thread with twenty collapsed messages must not mount (and
+// subscribe) twenty panels, so the opened sender travels in state instead.
+const senderProfile = ref<{ fromAddress: string; fromName: string | null } | null>(null);
+function openSenderProfile(msg: { fromAddress: string; fromName?: string | null }) {
+	senderProfile.value = { fromAddress: msg.fromAddress, fromName: msg.fromName ?? null };
+}
+
 const messageId = computed(() => props.message._id as Id<'mailMessages'>);
-const { data: threadData, isLoading } = useConvexQuery(api.mail.mailbox.listThreadMessages, () => ({
-	messageId: messageId.value,
-}));
+const { data: threadData, isLoading } = useConvexQuery(
+	api.mail.mailbox.messages.listThreadMessages,
+	() => ({
+		messageId: messageId.value,
+	})
+);
 
 const allMessages = computed(() => threadData.value?.messages ?? [props.message]);
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
 
 // The one reader AI strip (PostboxAiStrip) mounts whenever AI is on and the
-// thread has a latest message; it hosts the summary gist, Ask, and Draft reply.
+// thread has a latest message; it hosts the summary gist and Ask (Draft reply
+// lives in the inline reply bar, next to the box it seeds).
 // `warrantsSummary` decides whether it eagerly generates a summary: long thread
 // (>= 5 messages OR a lot of body text) AND the per-user auto-summary toggle
 // (default ON). When false and nothing is cached, the strip collapses to zero
@@ -188,7 +205,8 @@ const { autoSummarize } = usePostboxSettings();
 const warrantsSummary = computed(
 	() => autoSummarize.value && isLongThreadForSummary(allMessages.value)
 );
-const showAiStrip = computed(() => isFeatureEnabled('ai') && !!latestMessage.value);
+const aiEnabled = computed(() => isFeatureEnabled('ai'));
+const showAiStrip = computed(() => aiEnabled.value && !!latestMessage.value);
 
 // Follow-up ("remind me if no reply") chip: armable only while the thread
 // ends on our own sent message — an inbound reply on top means they already
@@ -204,6 +222,13 @@ const readerThread = computed(
 						dueAt?: number;
 						waitingOn?: string;
 					};
+					// Muted conversation, its opt-in twin (alert me when they reply)
+					// and the transient back-from-snooze marker — all checkable states
+					// in the thread ⋯ menu (mail/mute.ts, mail/threadAlerts.ts,
+					// mail/snooze.ts).
+					mutedAt?: number;
+					notifyOnReplyAt?: number;
+					snoozeReturnedAt?: number;
 			  }
 			| null
 			| undefined
@@ -214,6 +239,24 @@ const latestOutboundId = computed(() => {
 		| undefined;
 	return last && last.outbound !== undefined ? last._id : undefined;
 });
+// Per-recipient delivery evidence for the messages WE sent in this thread (plan
+// idea 1). One subscription for the whole conversation rather than one per
+// message; an inbound-only thread gets an empty array and renders no strip.
+const { data: outboundDelivery } = useConvexQuery(
+	api.mail.mailbox.messages.listThreadOutboundDelivery,
+	() => ({ messageId: messageId.value })
+);
+const deliveryByMessage = computed(() => {
+	const map = new Map<string, OutboundDelivery>();
+	for (const row of outboundDelivery.value ?? []) {
+		map.set(row.messageId, { state: row.state, recipients: row.recipients });
+	}
+	return map;
+});
+function deliveryFor(msg: { _id: string }): OutboundDelivery | null {
+	return deliveryByMessage.value.get(msg._id) ?? null;
+}
+
 const labelMap = computed(() => {
 	const map = new Map<string, { _id: string; name: string; color?: string }>();
 	for (const l of threadData.value?.labels ?? []) map.set(l._id, l);
@@ -254,40 +297,121 @@ const dismissedScheduling = ref(new Set<string>());
 function dismissScheduling(messageId: string) {
 	dismissedScheduling.value = new Set(dismissedScheduling.value).add(messageId);
 }
-function showSchedulingChip(msg: {
+/**
+ * The proposed times to offer under `msg`, or null when this message gets no
+ * scheduling chip at all (no intent, wrong message, dismissed, AI off, or a real
+ * .ics invite is attached — PostboxInviteCard owns that case).
+ */
+function schedulingTimesFor(msg: {
 	_id: string;
 	attachments: Array<{ filename: string; contentType: string; partIndex?: string }>;
-}): boolean {
+}): string[] | null {
 	const intent = schedulingIntent.value;
-	return shouldShowSchedulingChip({
+	const show = shouldShowSchedulingChip({
 		aiEnabled: isFeatureEnabled('ai'),
 		meetingIntent: intent ? { isScheduling: true, proposedTimes: intent.proposedTimes } : null,
 		triggerMessageId: intent?.messageId,
 		message: msg,
 		dismissed: dismissedScheduling.value,
 	});
+	return show ? (intent?.proposedTimes ?? []) : null;
 }
 
-// Mark-as-read on open (Gmail conversation-view semantics): the first time an
-// unread thread is opened, clear its unread flags. Guarded so the reactive
-// re-fetch that follows (flagSeen flips → query re-runs) doesn't re-fire.
+// Per-user reader preferences: auto-advance after triaging the open message
+// away (archive / trash / snooze / spam — active only in the folder view, the
+// search preview stays put), the primary reply mode, and when an opened
+// conversation is marked read. Read here rather than beside their consumers
+// because the mark-read watcher below runs immediately.
+const { autoAdvance, replyDefault, markReadPolicy } = usePostboxSettings();
+
+// Mark-as-read on open (Gmail conversation-view semantics), under the user's
+// markReadPolicy: 'immediate' clears the unread flags on render (the behaviour
+// the reader always had, and what an unset preference resolves to),
+// 'after-dwell' waits POSTBOX_MARK_READ_DWELL_MS of visible dwell and cancels
+// if the reader is navigated away or torn down first, and 'manual' never fires
+// — the thread ⋯ menu offers an explicit item instead.
+//
+// Guarded per thread so the reactive re-fetch that follows (flagSeen flips →
+// query re-runs) doesn't re-fire, and so a dwell timer is armed at most once.
 const markThreadReadOp = useBackendOperation(api.mail.messageActions.markThreadRead, {
 	label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
 });
 const markedThreads = new Set<string>();
+let dwellTimer: ReturnType<typeof setTimeout> | undefined;
+
+function cancelDwell() {
+	if (dwellTimer !== undefined) {
+		clearTimeout(dwellTimer);
+		dwellTimer = undefined;
+	}
+}
+
+function runMarkThreadRead(threadId: string) {
+	void markThreadReadOp.run({ threadId: threadId as Id<'mailThreads'>, seen: true });
+}
+
+/** True while the open thread still has an unread message (drives the button). */
+const threadHasUnread = computed(() => (threadData.value?.messages ?? []).some((m) => !m.flagSeen));
+const showsManualMarkReadButton = computed(() =>
+	showsManualMarkRead(markReadPolicy.value, threadHasUnread.value)
+);
+
+/** The thread menu's explicit "Mark read" item (markReadPolicy 'manual'). */
+function markOpenThreadRead() {
+	const threadId = threadData.value?.thread?._id;
+	if (!threadId) return;
+	markedThreads.add(threadId);
+	runMarkThreadRead(threadId);
+}
+
 watch(
 	() => threadData.value,
 	(data) => {
 		const thread = data?.thread;
 		if (!thread) return;
 		if (markedThreads.has(thread._id)) return;
-		const hasUnread = (data?.messages ?? []).some((m) => !m.flagSeen);
-		if (!hasUnread) return;
+		if (!(data?.messages ?? []).some((m) => !m.flagSeen)) return;
+		const mode = markReadOnOpen(markReadPolicy.value);
+		if (mode === 'never') return;
 		markedThreads.add(thread._id);
-		void markThreadReadOp.run({
-			threadId: thread._id as Id<'mailThreads'>,
-			seen: true,
-		});
+		if (mode === 'now') {
+			runMarkThreadRead(thread._id);
+			return;
+		}
+		// 'after-dwell': a j/k skim past a row or a mis-click never burns the
+		// unread flag, because leaving the reader clears the timer.
+		cancelDwell();
+		const threadId = thread._id;
+		dwellTimer = setTimeout(() => {
+			dwellTimer = undefined;
+			runMarkThreadRead(threadId);
+		}, POSTBOX_MARK_READ_DWELL_MS);
+	},
+	{ immediate: true }
+);
+// Navigating to another conversation (or unmounting) cancels a pending dwell,
+// and re-arms for the newly opened thread through the watcher above.
+watch(
+	() => props.message._id,
+	() => cancelDwell()
+);
+onBeforeUnmount(cancelDwell);
+
+// Back-from-snooze marker (mail/snooze.ts): a one-shot recognition cue, so
+// opening the thread is what dismisses it. Fired once per thread per mount;
+// the mutation is idempotent server-side.
+const clearSnoozeReturnedOp = useBackendOperation(api.mail.snooze.clearSnoozeReturned, {
+	label: () => t('components.postbox.postboxThreadReader.clearSnoozeReturnedOperation'),
+});
+const clearedSnoozeReturned = new Set<string>();
+watch(
+	() => threadData.value?.thread,
+	(thread) => {
+		const t2 = thread as { _id: string; snoozeReturnedAt?: number } | null | undefined;
+		if (!t2?.snoozeReturnedAt) return;
+		if (clearedSnoozeReturned.has(t2._id)) return;
+		clearedSnoozeReturned.add(t2._id);
+		void clearSnoozeReturnedOp.run({ threadId: t2._id as Id<'mailThreads'> });
 	},
 	{ immediate: true }
 );
@@ -347,65 +471,12 @@ function toggleExpanded(id: string) {
 	expanded.value = next;
 }
 
-// --- Single-key shortcuts while reading (same vocabulary as the list; see
-// utils/postboxShortcuts.ts). Registered on window, inert while focus is in
-// an input/contenteditable, and deferring to the list's own listbox handler
-// and to open dialogs so a key is never handled twice.
 const mailboxIdRef = computed(() => props.message.mailboxId as Id<'mailboxes'>);
-const readerBulk = usePostboxBulkActions(mailboxIdRef);
-const { labels: readerLabels, setOnMessage: setLabelOnMessage } = usePostboxLabels(mailboxIdRef);
-const { folders: readerFolders } = usePostboxFolders(mailboxIdRef);
-const readerMovableFolders = computed(() =>
-	readerFolders.value.filter((f) => f.role !== 'sent' && f.role !== 'drafts')
-);
 
-const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
-	label: () => t('common.archive'),
-});
-const trashOp = useBackendOperation(api.mail.messageActions.trash, {
-	label: () => t('components.postbox.postboxThreadReader.moveToTrashOperation'),
-});
-const setStarOp = useBackendOperation(api.mail.messageActions.setStar, {
-	label: () => t('components.postbox.postboxThreadReader.star'),
-});
-const markReadOp = useBackendOperation(api.mail.messageActions.markRead, {
-	label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
-});
-const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
-	label: () => t('components.postbox.postboxThreadReader.snoozeOperation'),
-});
-const snoozeUntilReplyOp = useBackendOperation(api.mail.snooze.snoozeUntilReply, {
-	label: () => t('components.postbox.postboxThreadReader.snoozeUntilReplyOperation'),
-});
-const moveOp = useBackendOperation(api.mail.messageActions.move, {
-	label: () => t('components.postbox.postboxThreadReader.moveOperation'),
-});
-
-// Successful triage registers its inverse for the "Undo — Cmd+Z" toast
-// (the move-family mutations return each message's source folder).
-const triageUndo = usePostboxTriageUndo();
-function registerTriageUndo(
-	label: string,
-	result:
-		| { moved: Array<{ messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }> }
-		| null
-		| undefined,
-	before?: () => Promise<unknown>
-) {
-	if (!result || result.moved.length === 0) return;
-	triageUndo.registerMoveBack({
-		label,
-		moved: result.moved,
-		runMove: (a) => moveOp.run(a),
-		...(before ? { before } : {}),
-	});
-}
-
-// Auto-advance after triaging the open message away (archive / trash /
-// snooze / spam): open the adjacent conversation in list order per the
-// user's preference, falling back to the list at the ends. Active only in
-// the folder view (advance props present); the search preview stays put.
-const { autoAdvance, replyDefault } = usePostboxSettings();
+// Per-sender remote-image allowlist. One subscription for the whole thread —
+// every message body asks this the same question, and a per-body query would
+// open one subscription per rendered message.
+const imageAllowlist = usePostboxImageAllowlist(mailboxIdRef);
 
 // Reply / reply-all / forward composer concerns (popup openers, the pinned
 // inline reply box, and the list→reader r/a/f hand-off).
@@ -414,6 +485,7 @@ const {
 	openPrimaryReply,
 	openReplyWithBody,
 	openForward,
+	openResend,
 	hasOtherRecipients,
 	inlineSpec,
 	inlineReplyEl,
@@ -466,45 +538,51 @@ const threadCounterpart = computed(() => {
 	return '';
 });
 
-function senderAuthInput(msg: PostboxReaderMessage): SenderAuthInput {
-	return {
-		fromDomain: extractEmailAddress(msg.fromAddress).split('@')[1],
-		spfResult: msg.spfResult,
-		dkimResult: msg.dkimResult,
-		dmarcResult: msg.dmarcResult,
-		dmarcPolicy: msg.dmarcPolicy,
-		envelopeFromDomain: msg.envelopeFromDomain,
-		dkimSigningDomain: msg.dkimSigningDomain,
-		dmarcOverride: msg.dmarcOverride,
-		arcSealer: msg.arcSealer,
-	};
+// The correspondent's PUBLIC sealing-key status, read once per thread (E5). The
+// key-change BANNER stays here — it is an alarm — while the key panel travels
+// into that sender's trust chip popover, and `keyChanged` turns the same chip
+// amber so the rotation is never only one popover deep.
+const {
+	status: correspondentKey,
+	wasVerified: correspondentKeyWasVerified,
+	keyChanged: correspondentKeyChanged,
+	refetch: refetchCorrespondentKey,
+} = usePostboxCorrespondentKey(() => (sealedMailEnabled.value ? threadCounterpart.value : ''));
+/** The seal status belongs to the ONE sender it describes, not to every message. */
+function sealStatusFor(msg: { fromAddress: string }) {
+	const from = extractEmailAddress(msg.fromAddress).toLowerCase();
+	return from && from === threadCounterpart.value ? correspondentKey.value : null;
 }
 
-function senderAuthState(msg: PostboxReaderMessage): SenderAuthState | null {
-	if (!authBadgesEnabled.value) return null;
-	return deriveSenderAuth(senderAuthInput(msg))?.state ?? null;
-}
-
-function senderAuthSummary(msg: PostboxReaderMessage): string {
-	// `summary` is a message key owned by utils/senderAuth (registry convention).
-	const summary = deriveSenderAuth(senderAuthInput(msg))?.summary;
-	return summary
-		? t(summary)
-		: t('components.postbox.postboxThreadReader.senderCouldNotBeVerified');
-}
-
-// Reply guard: intercept reply / reply-all on a message that FAILED sender
-// authentication with a one-time-per-thread confirm. Non-failed senders (and a
-// flag-off state) pass straight through — DMARC→Spam routing is untouched.
+// Reply guard: intercept reply / reply-all with a one-time-per-thread confirm on
+// the sender shapes a reply walks into (UX plan idea 56) — a DMARC failure, a
+// pass belonging to another domain, a look-alike of a known contact's domain, or
+// a Reply-To that redirects elsewhere. Everything else (and a flag-off state)
+// passes straight through; DMARC→Spam routing is untouched.
 const replyGuardEl = ref<{
-	guard: (threadId: string, state: SenderAuthState | null, action: () => void) => void;
+	guard: (
+		threadId: string,
+		risk: ReplyRisk | null,
+		destination: string,
+		action: () => void
+	) => void;
 } | null>(null);
+
+/** The reply risk for `msg`, or null when the badge flag is off. */
+function replyRisk(msg: PostboxReaderMessage): ReplyRisk | null {
+	if (!authBadgesEnabled.value) return null;
+	return deriveReplyRisk(senderRiskInputOf(msg));
+}
 
 /**
  * Run `action` behind the reply guard for `msg`: a one-time-per-thread confirm
- * when `msg` failed sender authentication, else straight through. Shared by
- * every reply/reply-all entry point (per-message buttons, keyboard, inline box,
- * list hand-off) so none of them can bypass the interstitial.
+ * when the sender is in one of the flagged shapes, else straight through. Shared
+ * by every reply/reply-all entry point (per-message buttons, keyboard, inline
+ * box, list hand-off) so none of them can bypass the interstitial.
+ *
+ * The destination it names is the From address, because that is what a reply is
+ * actually addressed to here (`buildReplySpec` prefills `To: [fromAddress]`) —
+ * naming the Reply-To instead would describe a send this client does not make.
  */
 function runGuarded(msg: PostboxReaderMessage | undefined, action: () => void) {
 	if (!msg) {
@@ -512,7 +590,7 @@ function runGuarded(msg: PostboxReaderMessage | undefined, action: () => void) {
 		return;
 	}
 	const threadId = msg.threadId ?? msg._id;
-	replyGuardEl.value?.guard(threadId, senderAuthState(msg), action);
+	replyGuardEl.value?.guard(threadId, replyRisk(msg), extractEmailAddress(msg.fromAddress), action);
 }
 
 function guardedOpen(msg: PostboxReaderMessage, open: (m: PostboxReaderMessage) => void) {
@@ -532,285 +610,95 @@ function guardLatestReply(run: () => void) {
 	runGuarded(latestMessage.value, run);
 }
 
-async function runAndAdvance(run: () => Promise<unknown>) {
-	// Capture the target before the mutation — the live list drops the
-	// triaged row once the server confirms, shifting the indices.
-	const target = props.folderRole
-		? pickAdjacentMessageId(props.advanceIds ?? [], props.message._id, autoAdvance.value)
-		: null;
-	const result = await run();
-	// Stay put only on THROWN errors — useBackendOperation's catch path maps
-	// those to `undefined`. Anything the server returns (incl. a handler
-	// `return undefined`, which Convex serializes to `null` on the client —
-	// e.g. archive/trash's row-already-gone soft-fail, or snooze's void
-	// success) still advances; that's fine because the row is gone either way.
-	if (result === undefined) return;
-	// Overlay host: swap the reader in place (or close it at the list's ends)
-	// instead of leaving the Today surface for the three-pane route.
-	if (props.advanceInPlace) {
-		emit('advance', target);
-		return;
-	}
-	if (!props.folderRole) return;
-	void navigateTo(
-		target
-			? `/dashboard/postbox/${props.folderRole}/${target}`
-			: `/dashboard/postbox/${props.folderRole}`
-	);
-}
-
-// Live flags of the open message (the prop can be a stale list row).
-const openMessageFlags = computed(() => {
-	const live = allMessages.value.find((m) => m._id === props.message._id) as
-		| { flagSeen?: boolean; flagFlagged?: boolean }
-		| undefined;
-	return {
-		seen: live?.flagSeen ?? props.message.flagSeen ?? true,
-		flagged: live?.flagFlagged ?? false,
-	};
+// Thread-level triage of the OPEN message (archive / trash / star / snooze /
+// mute / label / move / spam / block), the auto-advance that follows it and
+// the pickers it opens. Reply / reply-all / forward route back through the
+// composer layer above so they stay behind the sender-auth reply guard.
+const {
+	labels: readerLabels,
+	movableFolders: readerMovableFolders,
+	snoozeDialogOpen,
+	labelDialogOpen,
+	moveDialogOpen,
+	snoozeHintText,
+	isMessageStarred,
+	toggleMessageStar,
+	toggleOpenThreadMute,
+	toggleOpenThreadAlert,
+	snoozeOpenMessage,
+	snoozeOpenMessageUntilReply,
+	applyLabelToOpenMessage,
+	moveOpenMessageTo,
+	reportSpamMessage,
+	blockSenderOf,
+	runReaderAction,
+} = usePostboxReaderActions({
+	getMessage: () => props.message,
+	messageId,
+	mailboxId: mailboxIdRef,
+	allMessages,
+	readerThread,
+	autoAdvance,
+	advance: {
+		ids: () => props.advanceIds,
+		folderRole: () => props.folderRole,
+		inPlace: () => props.advanceInPlace,
+		emit: (target) => emit('advance', target),
+	},
+	compose: {
+		reply: guardedExpandReply,
+		replyAll: guardedExpandReplyAll,
+		forward: () => {
+			void expandInline('forward');
+		},
+	},
 });
 
-const snoozeDialogOpen = ref(false);
-const labelDialogOpen = ref(false);
-const moveDialogOpen = ref(false);
+// ⌘K, while a conversation is open, offers the two verbs this reader leads with
+// (the mailbox provider only carries what the overflow menu hides). Runs the
+// actions directly, so it acts on THIS conversation.
+usePostboxThreadCommandSurface({
+	subject: () => props.message.subject,
+	onArchive: () => runReaderAction('archive'),
+	onReply: () => runReaderAction('reply'),
+});
 
-function snoozeOpenMessage(until: number) {
-	void runAndAdvance(() => snoozeOp.run({ messageId: messageId.value, until }));
-}
-function snoozeOpenMessageUntilReply(capUntil: number) {
-	void runAndAdvance(() => snoozeUntilReplyOp.run({ messageId: messageId.value, capUntil }));
-}
-// Subject + snippet feed the deterministic wake-time suggestion in the dialog.
-const snoozeHintText = computed(() =>
-	[props.message.subject, props.message.snippet].filter(Boolean).join(' ')
-);
-async function applyLabelToOpenMessage(labelId: Id<'mailLabels'>) {
-	labelDialogOpen.value = false;
-	await setLabelOnMessage(messageId.value, labelId, true);
-}
-async function moveOpenMessageTo(targetFolderId: Id<'mailFolders'>) {
-	moveDialogOpen.value = false;
-	const result = await moveOp.run({ messageIds: [messageId.value], targetFolderId });
-	registerTriageUndo(t('components.postbox.postboxThreadReader.undoMoved'), result);
-}
+// Single-key shortcuts while reading and the Cmd-K palette bridge, both
+// dispatching into runReaderAction (see utils/postboxShortcuts.ts).
+usePostboxReaderShortcuts({
+	runAction: runReaderAction,
+	applyLabel: (labelId) => {
+		void applyLabelToOpenMessage(labelId);
+	},
+});
+
+// Attachment download plus the Quick Look overlay for image/PDF parts.
+const {
+	downloadingAttachment,
+	lightbox,
+	handleAttachmentDownload,
+	openAttachmentPreview,
+	loadLightboxPart,
+	downloadLightboxAttachment,
+} = usePostboxReaderAttachments();
 
 /**
- * Run a thread-level action against the OPEN message. Shared by the keyboard
- * shortcuts, the palette-command bridge, and the reader toolbar so a demoted
- * action stays reachable from every entry point (keyboard, Cmd-K, overflow).
+ * Open the filter builder pre-filled from this message.
+ *
+ * The moment someone thinks "I want a rule for this" is while looking at the
+ * mail, not while staring at an empty rule form in Preferences — so the sender
+ * and the normalized subject travel along as query params (a shareable deep
+ * link that survives a reload) and the builder seeds its conditions from them.
  */
-function runReaderAction(action: string) {
-	switch (action) {
-		case 'archive':
-			void runAndAdvance(async () => {
-				const result = await archiveOp.run({ messageIds: [messageId.value] });
-				registerTriageUndo(t('components.postbox.postboxThreadReader.undoArchived'), result);
-				return result;
-			});
-			break;
-		case 'trash':
-			void runAndAdvance(async () => {
-				const result = await trashOp.run({ messageIds: [messageId.value] });
-				registerTriageUndo(t('components.postbox.postboxThreadReader.undoTrashed'), result);
-				return result;
-			});
-			break;
-		case 'star':
-			void setStarOp.run({ messageId: messageId.value, starred: !openMessageFlags.value.flagged });
-			break;
-		case 'toggleRead':
-			void markReadOp.run({ messageId: messageId.value, seen: !openMessageFlags.value.seen });
-			break;
-		case 'markUnread':
-			void markReadOp.run({ messageId: messageId.value, seen: false });
-			break;
-		case 'toggleSelect':
-			readerBulk.toggle(messageId.value);
-			break;
-		case 'reply':
-			guardedExpandReply();
-			break;
-		case 'replyAll':
-			guardedExpandReplyAll();
-			break;
-		case 'forward':
-			void expandInline('forward');
-			break;
-		case 'snooze':
-			snoozeDialogOpen.value = true;
-			break;
-		case 'label':
-			labelDialogOpen.value = true;
-			break;
-		case 'move':
-			moveDialogOpen.value = true;
-			break;
-		case 'reportSpam':
-			reportSpamMessage(props.message._id);
-			break;
-		case 'blockSender':
-			blockSenderOf(props.message._id);
-			break;
-		case 'print':
-			if (typeof window !== 'undefined') window.print();
-			break;
-	}
-}
-
-function onReaderShortcut(event: KeyboardEvent) {
-	// Alt matters too: on Windows the browser-menu accelerators (Alt+E, Alt+F)
-	// deliver plain keydowns with altKey — never treat those as triage keys.
-	if (event.metaKey || event.ctrlKey || event.altKey) return;
-	if (isEditableTarget(event.target)) return;
-	const el = event.target as HTMLElement | null;
-	// The focused thread list and any open dialog own their keys.
-	if (el?.closest?.('[role="listbox"], [role="dialog"]')) return;
-	const action = resolvePostboxShortcut(event.key);
-	// '?' is handled by the window-level PostboxShortcutHelp listener.
-	if (!action || action === 'help') return;
-	event.preventDefault();
-	runReaderAction(action);
-}
-
-// Bridge for the Cmd-K palette: commands demoted into overflow menus (reply-all,
-// forward, report spam, block sender, print, …) dispatch this event so they
-// stay discoverable and runnable without a visible button.
-function onPaletteCommand(event: Event) {
-	const action = (event as CustomEvent<{ action?: string }>).detail?.action;
-	if (action) runReaderAction(action);
-}
-
-onMounted(() => {
-	window.addEventListener('keydown', onReaderShortcut);
-	window.addEventListener('owlat:postbox-reader-action', onPaletteCommand);
-});
-onBeforeUnmount(() => {
-	window.removeEventListener('keydown', onReaderShortcut);
-	window.removeEventListener('owlat:postbox-reader-action', onPaletteCommand);
-});
-
-const reportSpamOp = useBackendOperation(api.mail.messageActions.reportSpam, {
-	label: () => t('components.postbox.postboxThreadReader.reportSpam'),
-});
-const notSpamOp = useBackendOperation(api.mail.messageActions.notSpam, {
-	label: () => t('components.postbox.postboxThreadReader.notSpamOperation'),
-});
-const blockSenderOp = useBackendOperation(api.mail.messageActions.blockSender, {
-	label: () => t('components.postbox.postboxThreadReader.blockSender'),
-});
-
-function reportSpamMessage(msgId: string) {
-	const messageIds = [msgId as Id<'mailMessages'>];
-	const run = async () => {
-		const result = await reportSpamOp.run({ messageIds });
-		// Undo = notSpam (clears the verdict, parks in Inbox) + move back to
-		// the true source folder when it wasn't the Inbox.
-		registerTriageUndo(t('components.postbox.postboxThreadReader.undoSpam'), result, () =>
-			notSpamOp.run({ messageIds })
-		);
-		return result;
-	};
-	// Only the OPEN message's spam report ejects the reader; reporting an
-	// older message inside the thread keeps the conversation open.
-	if (msgId === props.message._id) void runAndAdvance(run);
-	else void run();
-}
-
-function blockSenderOf(msgId: string) {
-	void blockSenderOp.run({ messageId: msgId as Id<'mailMessages'> });
-}
-
-/** Live starred state of a specific message in the thread. */
-function isMessageStarred(msg: { _id: string; flagFlagged?: boolean }): boolean {
-	const live = allMessages.value.find((m) => m._id === msg._id) as
-		| { flagFlagged?: boolean }
-		| undefined;
-	return live?.flagFlagged ?? msg.flagFlagged ?? false;
-}
-
-/** Toggle the star on a specific message (per-row affordance). */
-function toggleMessageStar(msg: { _id: string; flagFlagged?: boolean }) {
-	void setStarOp.run({
-		messageId: msg._id as Id<'mailMessages'>,
-		starred: !isMessageStarred(msg),
-	});
-}
-
-const downloadingAttachment = ref<string | null>(null);
-
-type AttachmentMeta = {
-	filename: string;
-	contentType: string;
-	size: number;
-	partIndex?: string;
-};
-
-function isPreviewable(contentType: string): boolean {
-	return contentType.startsWith('image/') || contentType === 'application/pdf';
-}
-
-/** Fetch the raw .eml and extract one part client-side as a Blob. */
-async function extractAttachmentBlob(
-	messageId: string,
-	att: { filename: string; contentType: string; partIndex?: string }
-): Promise<Blob | null> {
-	const bin = await loadRawEml(messageId);
-	if (!bin) return null;
-	const extracted = extractAttachmentAt(bin, att.partIndex ?? '0', att.filename);
-	if (!extracted) return null;
-	return new Blob([extracted.bytes as BlobPart], {
-		type: extracted.contentType || att.contentType,
-	});
-}
-
-/** Extract the part, then trigger a browser download. */
-async function handleAttachmentDownload(
-	messageId: string,
-	att: { filename: string; contentType: string; partIndex?: string }
-) {
-	const key = `${messageId}:${att.partIndex ?? att.filename}`;
-	downloadingAttachment.value = key;
-	try {
-		const blob = await extractAttachmentBlob(messageId, att);
-		if (!blob) return;
-		const objectUrl = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = objectUrl;
-		a.download = att.filename;
-		document.body.appendChild(a);
-		a.click();
-		a.remove();
-		setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
-	} catch {
-		// Network/extraction failure — silently no-op (the row stays available).
-	} finally {
-		downloadingAttachment.value = null;
-	}
-}
-
-// Quick Look overlay state: the clicked message's PREVIEWABLE attachments in
-// display order plus the index of the one that was clicked. Null = closed.
-const lightbox = ref<{
-	messageId: string;
-	attachments: AttachmentMeta[];
-	index: number;
-} | null>(null);
-
-function openAttachmentPreview(messageId: string, att: AttachmentMeta, all: AttachmentMeta[]) {
-	const previewable = all.filter((a) => isPreviewable(a.contentType));
-	const index = previewable.indexOf(att);
-	if (index === -1) return;
-	lightbox.value = { messageId, attachments: previewable, index };
-}
-
-function loadLightboxPart(att: AttachmentMeta): Promise<Blob | null> {
-	const lb = lightbox.value;
-	return lb ? extractAttachmentBlob(lb.messageId, att) : Promise.resolve(null);
-}
-
-function downloadLightboxAttachment(att: AttachmentMeta) {
-	const lb = lightbox.value;
-	if (lb) void handleAttachmentDownload(lb.messageId, att);
+function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
+	const query: Record<string, string> = {};
+	if (msg.fromAddress) query['filterFrom'] = msg.fromAddress;
+	// Strip the Re:/Fwd: run: a rule keyed on "Re: Invoice 4471" would miss the
+	// original and every future thread on the same subject.
+	const subject = (msg.subject ?? '').replace(/^((re|fwd|fw|aw|wg)\s*:\s*)+/i, '').trim();
+	if (subject) query['filterSubject'] = subject;
+	if (Object.keys(query).length === 0) return;
+	void navigateTo({ path: '/dashboard/preferences/filters', query });
 }
 </script>
 
@@ -824,15 +712,30 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 			:latest-outbound-id="latestOutboundId"
 			:label-ids="threadLabels"
 			:labels="labelMap"
+			:show-mark-read="showsManualMarkReadButton"
+			:marking-read="markThreadReadOp.isLoading.value"
+			@toggle-mute="toggleOpenThreadMute"
+			@toggle-alert="toggleOpenThreadAlert"
+			@mark-read="markOpenThreadRead"
 		/>
 
-		<!-- Sealed Mail (E5): thread-level trust surfaces for the correspondent —
-		     the Signal-style key-change banner (explicit re-pin) + the contact key
-		     panel. Flag-gated; renders nothing without a key on file. -->
-		<PostboxThreadSealSurfaces
-			v-if="sealedMailEnabled && threadCounterpart"
-			:correspondent="threadCounterpart"
+		<!-- The same conversation, seen from the other surface (idea 31). Renders
+		     only when this message ALSO exists in the Team Inbox and the viewer is
+		     permitted on both sides; read-only, and it merges nothing. -->
+		<PostboxCrossSurfaceStrip :message-id="messageId" class="mb-3" />
+
+		<!-- Sealed Mail (E5): the Signal-style key-change banner (explicit re-pin).
+		     An alarm, so it stays at thread level; the contact key PANEL moved into
+		     the correspondent's trust chip. Flag-gated; renders nothing without an
+		     unsigned rotation on file. -->
+		<PostboxKeyChangeBanner
+			v-if="correspondentKeyChanged"
+			:address="threadCounterpart"
+			:old-fingerprint="correspondentKey?.pinnedFingerprint"
+			:new-fingerprint="correspondentKey?.observedFingerprint"
+			:was-verified="correspondentKeyWasVerified"
 			class="mb-3"
+			@accepted="refetchCorrespondentKey()"
 		/>
 
 		<!-- Layout-matching skeleton while the thread loads (header is already
@@ -840,368 +743,63 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		<PostboxReaderSkeleton v-if="isLoading" />
 
 		<div v-else class="space-y-2">
-			<!-- The reader's ONE AI home: a single quiet strip with the summary gist
-			     plus Ask + Draft reply. Renders nothing when there's no summary and
-			     the thread is too short to warrant one (fail-soft, same thresholds). -->
+			<!-- The reader's ONE AI home, one line: the summary gist plus an Ask
+			     link (Draft reply lives in the reply bar). Renders nothing when
+			     there's no summary and the thread is too short to warrant one
+			     (fail-soft, same thresholds). -->
 			<PostboxAiStrip
 				v-if="showAiStrip && latestMessage"
 				:key="latestMessage._id"
 				:message-id="latestMessage._id"
 				:warrants-summary="warrantsSummary"
-				@use-reply="(t) => latestMessage && openReplyWithBody(latestMessage, t)"
 			/>
 
-			<template v-for="msg in allMessages" :key="msg._id">
-				<!-- Collapsed message header -->
-				<button
-					v-if="!expanded.has(msg._id)"
-					type="button"
-					class="w-full flex items-center gap-3 px-3 py-2 rounded border border-border-subtle bg-bg-surface text-left hover:bg-bg-elevated"
-					@click="toggleExpanded(msg._id)"
-				>
-					<UiAvatar
-						:name="msg.fromName"
-						:email="msg.fromAddress"
-						deterministic-color
-						size="md"
-						class="flex-shrink-0"
-						aria-hidden="true"
-					/>
-					<div class="flex-1 min-w-0">
-						<p class="text-sm truncate">
-							<span class="font-medium text-text-primary">{{
-								msg.fromName || msg.fromAddress
-							}}</span>
-							<template v-if="msg.snippet">
-								<span class="text-text-tertiary mx-1.5">·</span>
-								<span class="text-text-tertiary">{{ msg.snippet }}</span>
-							</template>
-						</p>
-					</div>
-					<span
-						class="text-xs text-text-tertiary tabular-nums whitespace-nowrap flex-shrink-0"
-						:title="formatDateTime(msg.receivedAt)"
-					>
-						{{ relativeReceivedAt(msg.receivedAt) }}
-					</span>
-				</button>
-
-				<!-- Expanded message -->
-				<section v-else class="group border border-border-subtle rounded bg-bg-surface px-4 py-3">
-					<header class="flex items-start gap-3">
-						<UiAvatar
-							:name="msg.fromName"
-							:email="msg.fromAddress"
-							deterministic-color
-							size="lg"
-							class="flex-shrink-0"
-							aria-hidden="true"
-						/>
-						<div class="flex-1 min-w-0">
-							<div class="flex items-baseline justify-between gap-3">
-								<div>
-									<span class="font-medium text-text-primary">
-										{{ msg.fromName || msg.fromAddress }}
-									</span>
-									<span v-if="msg.fromName" class="text-text-tertiary text-sm">
-										&lt;{{ msg.fromAddress }}&gt;
-									</span>
-								</div>
-								<div class="flex items-center gap-2 flex-shrink-0">
-									<PostboxSenderControls
-										v-if="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
-										:mailbox-id="message.mailboxId"
-										:from-address="msg.fromAddress"
-									/>
-									<PostboxTrackerBadge
-										v-if="trackerDetection(msg)"
-										:detection="trackerDetection(msg)!"
-									/>
-									<button
-										v-if="appIsDark"
-										type="button"
-										class="text-text-tertiary hover:text-text-primary"
-										:title="
-											isForcedLight(msg._id)
-												? t('components.postbox.postboxThreadReader.renderDark')
-												: t('components.postbox.postboxThreadReader.renderLight')
-										"
-										:aria-label="
-											isForcedLight(msg._id)
-												? t('components.postbox.postboxThreadReader.renderDark')
-												: t('components.postbox.postboxThreadReader.renderLight')
-										"
-										:aria-pressed="isForcedLight(msg._id)"
-										@click="toggleForcedLight(msg._id)"
-									>
-										<Icon
-											:name="isForcedLight(msg._id) ? 'lucide:moon' : 'lucide:sun'"
-											class="w-3.5 h-3.5"
-										/>
-									</button>
-									<button
-										type="button"
-										class="text-xs text-text-tertiary tabular-nums whitespace-nowrap hover:text-text-primary"
-										:title="formatDateTime(msg.receivedAt)"
-										@click="toggleExpanded(msg._id)"
-									>
-										{{ relativeReceivedAt(msg.receivedAt) }}
-									</button>
-								</div>
-							</div>
-							<p class="text-text-secondary text-xs mt-0.5">
-								{{
-									t('components.postbox.postboxThreadReader.toLine', {
-										recipients: msg.toAddresses.join(', '),
-									})
-								}}
-								<span v-if="msg.ccAddresses.length > 0">
-									{{
-										t('components.postbox.postboxThreadReader.ccLine', {
-											recipients: msg.ccAddresses.join(', '),
-										})
-									}}
-								</span>
-							</p>
-							<PostboxUnsubscribeChip
-								v-if="msg.unsubscribe"
-								class="mt-1.5"
-								:message-id="msg._id"
-								:mailbox-id="message.mailboxId"
-								:unsubscribe="msg.unsubscribe"
-							/>
-							<PostboxAuthBadge
-								:enabled="authBadgesEnabled"
-								:auth="senderAuthInput(msg)"
-								:heuristics="msg.senderHeuristics"
-								:ostr-enabled="ostrEnabled"
-								:ostr-tier="msg.ostrTier"
-							/>
-						</div>
-					</header>
-
-					<PostboxSchedulingChip
-						v-if="showSchedulingChip(msg)"
-						:message-id="msg._id"
-						:proposed-times="schedulingIntent?.proposedTimes ?? []"
-						@use-reply="(t) => openReplyWithBody(msg, t)"
-						@dismiss="dismissScheduling(msg._id)"
-					/>
-
-					<!-- The ad-hoc DMARC-fail line moved into PostboxAuthBadge (in the
-					     sender header) behind `senderAuthBadges`. When the flag is off
-					     the legacy banner still surfaces a DMARC failure so behavior is
-					     unchanged; the spam line always shows. -->
-					<div
-						v-if="msg.spamVerdict === 'spam' || (!authBadgesEnabled && msg.dmarcResult === 'fail')"
-						class="my-3 px-3 py-2 rounded bg-warning/10 text-warning text-xs flex items-center gap-2"
-					>
-						<Icon name="lucide:shield-alert" class="w-4 h-4" />
-						<span v-if="msg.spamVerdict === 'spam'">{{
-							t('components.postbox.postboxThreadReader.markedAsSpam')
-						}}</span>
-						<span v-else>{{ senderAuthSummary(msg) }}</span>
-					</div>
-
-					<PostboxSecurityBadge
-						v-if="
-							secureClass(msg) !== 'none' ||
-							(sealedMailEnabled && msg.inboundEncryptionInfo) ||
-							msg.inboundSignatureInfo
-						"
-						:klass="secureClass(msg)"
-						:message="msg"
-						:sealed="sealedMailEnabled ? msg.inboundEncryptionInfo : undefined"
-						:signature="msg.inboundSignatureInfo"
-					/>
-					<PostboxMessageBody
-						v-if="!hideRawBody(msg)"
-						:message="msg"
-						:force-light="isForcedLight(msg._id)"
-						@trackers="onTrackersDetected(msg._id, $event)"
-					/>
-
-					<PostboxInviteCard
-						v-if="calendarAttachment(msg)"
-						:message-id="msg._id"
-						:mailbox-id="message.mailboxId"
-						:own-email="ownEmail"
-					/>
-
-					<section v-if="msg.attachments?.length > 0" class="mt-3">
-						<ul class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-							<li
-								v-for="(att, i) in msg.attachments"
-								:key="i"
-								class="flex items-center gap-2 px-3 py-2 rounded border border-border-subtle"
-							>
-								<Icon name="lucide:paperclip" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
-								<div class="min-w-0 flex-1">
-									<p class="truncate text-sm">{{ att.filename }}</p>
-									<p class="text-xs text-text-tertiary">
-										{{ formatCompactFileSize(att.size) }} · {{ att.contentType }}
-									</p>
-								</div>
-								<button
-									v-if="isPreviewable(att.contentType)"
-									type="button"
-									class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
-									:title="
-										t('components.postbox.postboxThreadReader.previewAttachment', {
-											filename: att.filename,
-										})
-									"
-									:aria-label="
-										t('components.postbox.postboxThreadReader.previewAttachment', {
-											filename: att.filename,
-										})
-									"
-									@click="openAttachmentPreview(msg._id, att, msg.attachments)"
-								>
-									<Icon name="lucide:eye" class="w-4 h-4" />
-								</button>
-								<button
-									type="button"
-									class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50"
-									:title="
-										t('components.postbox.postboxThreadReader.downloadAttachment', {
-											filename: att.filename,
-										})
-									"
-									:aria-label="
-										t('components.postbox.postboxThreadReader.downloadAttachment', {
-											filename: att.filename,
-										})
-									"
-									:disabled="
-										downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`
-									"
-									@click="handleAttachmentDownload(msg._id, att)"
-								>
-									<Icon
-										:name="
-											downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`
-												? 'lucide:loader-2'
-												: 'lucide:download'
-										"
-										class="w-4 h-4"
-										:class="{
-											'animate-spin':
-												downloadingAttachment === `${msg._id}:${att.partIndex ?? att.filename}`,
-										}"
-									/>
-								</button>
-							</li>
-						</ul>
-					</section>
-
-					<!-- Progressive disclosure: star + reply stay visible; reply-all
-					     and forward reveal on row hover (pointer); the full set is
-					     always reachable — keyboard/touch — inside the ⋯ overflow. -->
-					<div class="mt-4 flex items-center gap-2">
-						<UiButton
-							variant="ghost"
-							type="button"
-							:class="isMessageStarred(msg) ? 'text-warning' : 'text-text-tertiary'"
-							:title="
-								isMessageStarred(msg)
-									? t('components.postbox.postboxThreadReader.unstar')
-									: t('components.postbox.postboxThreadReader.star')
-							"
-							:aria-label="
-								isMessageStarred(msg)
-									? t('components.postbox.postboxThreadReader.unstar')
-									: t('components.postbox.postboxThreadReader.star')
-							"
-							:aria-pressed="isMessageStarred(msg)"
-							@click="toggleMessageStar(msg)"
-						>
-							<Icon
-								name="lucide:star"
-								class="w-4 h-4"
-								:class="{ 'fill-current': isMessageStarred(msg) }"
-							/>
-						</UiButton>
-						<UiButton variant="ghost" type="button" @click="guardedReply(msg)">
-							<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
-							{{ t('components.postbox.postboxThreadReader.reply') }}
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							v-if="hasOtherRecipients(msg)"
-							type="button"
-							class="hidden group-hover:inline-flex"
-							@click="guardedReplyAll(msg)"
-						>
-							<Icon name="lucide:reply-all" class="w-4 h-4 mr-1.5" />
-							{{ t('components.postbox.postboxThreadReader.replyAll') }}
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							type="button"
-							class="hidden group-hover:inline-flex"
-							@click="openForward(msg)"
-						>
-							<Icon name="lucide:forward" class="w-4 h-4 mr-1.5" />
-							{{ t('components.postbox.postboxThreadReader.forward') }}
-						</UiButton>
-						<span class="flex-1" />
-						<PostboxOverflowMenu :label="t('components.postbox.postboxThreadReader.moreActions')">
-							<template #default="{ close }">
-								<button
-									v-if="hasOtherRecipients(msg)"
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										guardedReplyAll(msg);
-										close();
-									"
-								>
-									<Icon name="lucide:reply-all" class="w-4 h-4 text-text-tertiary" />
-									{{ t('components.postbox.postboxThreadReader.replyAll') }}
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										openForward(msg);
-										close();
-									"
-								>
-									<Icon name="lucide:forward" class="w-4 h-4 text-text-tertiary" />
-									{{ t('components.postbox.postboxThreadReader.forward') }}
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										reportSpamMessage(msg._id);
-										close();
-									"
-								>
-									<Icon name="lucide:shield-alert" class="w-4 h-4 text-text-tertiary" />
-									{{ t('components.postbox.postboxThreadReader.reportSpam') }}
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-									@click="
-										blockSenderOf(msg._id);
-										close();
-									"
-								>
-									<Icon name="lucide:ban" class="w-4 h-4 text-text-tertiary" />
-									{{ t('components.postbox.postboxThreadReader.blockSender') }}
-								</button>
-							</template>
-						</PostboxOverflowMenu>
-					</div>
-				</section>
-			</template>
+			<PostboxReaderMessage
+				v-for="msg in allMessages"
+				:key="msg._id"
+				:message="msg"
+				:mailbox-id="message.mailboxId"
+				:expanded="expanded.has(msg._id)"
+				:relative-time="relativeReceivedAt(msg.receivedAt)"
+				:starred="isMessageStarred(msg)"
+				:show-reply-all="hasOtherRecipients(msg)"
+				:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
+				:auth-enabled="authBadgesEnabled"
+				:ostr-enabled="ostrEnabled"
+				:sealed-enabled="sealedMailEnabled"
+				:secure-class="secureClass(msg)"
+				:hide-body="hideRawBody(msg)"
+				:tracker="trackerDetection(msg)"
+				:delivery="deliveryFor(msg)"
+				:scheduling-times="schedulingTimesFor(msg)"
+				:show-render-toggle="appIsDark"
+				:forced-light="isForcedLight(msg._id)"
+				:images-allowed="imageAllowlist.isAllowed(msg.fromAddress)"
+				:own-email="ownEmail"
+				:has-invite="!!calendarAttachment(msg)"
+				:seal-status="sealStatusFor(msg)"
+				:downloading-attachment="downloadingAttachment"
+				@toggle-expanded="toggleExpanded(msg._id)"
+				@open-sender-profile="openSenderProfile(msg)"
+				@toggle-forced-light="toggleForcedLight(msg._id)"
+				@toggle-star="toggleMessageStar(msg)"
+				@reply="guardedReply(msg)"
+				@reply-all="guardedReplyAll(msg)"
+				@forward="openForward(msg)"
+				@report-spam="reportSpamMessage(msg._id)"
+				@block-sender="blockSenderOf(msg._id)"
+				@create-filter="createFilterFrom(msg)"
+				@print="runReaderAction('print')"
+				@preview-attachment="(att, all) => openAttachmentPreview(msg._id, att, all)"
+				@download-attachment="(att) => handleAttachmentDownload(msg._id, att)"
+				@trackers="onTrackersDetected(msg._id, $event)"
+				@trust-sender="imageAllowlist.allow($event)"
+				@untrust-sender="imageAllowlist.revoke($event)"
+				@resend="(addresses) => openResend(msg, addresses)"
+				@use-reply="(text) => openReplyWithBody(msg, text)"
+				@dismiss-scheduling="dismissScheduling(msg._id)"
+				@seal-refetch="refetchCorrespondentKey()"
+			/>
 
 			<!-- Inline reply box pinned under the conversation (r / a / f or the
 			     affordance expand it; it collapses back after send/discard). -->
@@ -1211,6 +809,9 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				:sender-label="inlineSenderLabel"
 				:show-reply-all="hasOtherRecipients(latestMessage)"
 				:spec="inlineSpec"
+				:ai-enabled="aiEnabled"
+				:draft-message-id="latestMessage._id"
+				@use-reply="(text) => latestMessage && openReplyWithBody(latestMessage, text)"
 				@expand="
 					(kind) =>
 						kind === 'reply'
@@ -1221,6 +822,13 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 				"
 				@collapse="collapseInline"
 			/>
+
+			<!-- "You archive everything from this sender. Always archive it?"
+			     (idea 27). Foot of the reader, under the conversation: it is an
+			     observation about the SENDER, not about this message. Strictly an
+			     offer — it renders nothing until a sender's tally earns one, and
+			     nothing is ever applied without the explicit click. -->
+			<PostboxTriageSuggestion v-if="latestMessage" :message-id="latestMessage._id" />
 		</div>
 
 		<!-- One-time-per-thread confirm before replying to a message that failed
@@ -1231,6 +839,7 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 		<PostboxSnoozeDialog
 			:open="snoozeDialogOpen"
 			:hint-text="snoozeHintText"
+			scoped
 			@update:open="snoozeDialogOpen = $event"
 			@confirm="snoozeOpenMessage"
 			@confirm-until-reply="snoozeOpenMessageUntilReply"
@@ -1246,6 +855,16 @@ function downloadLightboxAttachment(att: AttachmentMeta) {
 			:folders="readerMovableFolders"
 			@update:open="moveDialogOpen = $event"
 			@pick="moveOpenMessageTo"
+		/>
+
+		<!-- Plan idea 45: one slide-over for whichever sender line was clicked. -->
+		<PostboxSenderProfile
+			v-if="senderProfile"
+			:open="true"
+			:mailbox-id="message.mailboxId"
+			:from-address="senderProfile.fromAddress"
+			:from-name="senderProfile.fromName"
+			@update:open="(open: boolean) => !open && (senderProfile = null)"
 		/>
 
 		<!-- Quick Look overlay for image/PDF attachments (Teleports to body). -->

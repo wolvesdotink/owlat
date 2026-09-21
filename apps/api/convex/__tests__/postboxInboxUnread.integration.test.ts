@@ -1,5 +1,5 @@
 /**
- * Coverage for mail.mailbox.newestUnreadInbox — the value behind the desktop
+ * Coverage for mail.mailbox.queries.newestUnreadInbox — the value behind the desktop
  * dock/taskbar badge. Sums the caller's own inbox `unseenCount` and is scoped
  * to the caller's mailboxes.
  */
@@ -31,7 +31,7 @@ const modules = Object.fromEntries(
 	)
 );
 
-describe('mail.mailbox.newestUnreadInbox', () => {
+describe('mail.mailbox.queries.newestUnreadInbox', () => {
 	it("sums the caller's own inbox unseenCount and ignores other users' mail", async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
@@ -87,7 +87,7 @@ describe('mail.mailbox.newestUnreadInbox', () => {
 			});
 		});
 
-		const unread = await t.query(api.mail.mailbox.newestUnreadInbox, {});
+		const unread = await t.query(api.mail.mailbox.queries.newestUnreadInbox, {});
 		expect(unread.total).toBe(3);
 	});
 });

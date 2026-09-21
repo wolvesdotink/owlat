@@ -1,5 +1,5 @@
 /**
- * THE READ HALF OF THE PHASE-PROMOTION RULE (plan D3, D15).
+ * THE READ HALF OF THE PHASE-PROMOTION RULE.
  *
  * `delivery/ramp/phasePromotion.ts` owns the rule — the routes, the conditions
  * and the arithmetic — and is pure. This module loads the instants it judges.
@@ -9,7 +9,7 @@
  *
  * PROMOTION IS A RARE, DELIBERATE ACT, which is what makes the deferral read
  * below affordable: it walks every cell (fifteen bounded index reads) because
- * the plan's standalone route asks for "deferral rate under threshold in EVERY
+ * the standalone route asks for "deferral rate under threshold in EVERY
  * cell, not just this one", and a cheaper approximation would answer a different
  * question.
  */
@@ -21,7 +21,7 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { isSeedPlacementReached } from '@owlat/shared/seedPlacement';
 import type { Doc } from '../_generated/dataModel';
-import { MS_PER_DAY } from '../lib/constants';
+import { DAY_MS } from '../lib/constants';
 import { startOfDayUtc } from '../lib/clock';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import {
@@ -36,10 +36,10 @@ import { RAMP_GATE_THRESHOLDS } from './ramp/gateConfig';
 import { PROMOTION_BASE_DWELL_MS, type RampPromotionEvidence } from './ramp/phasePromotion';
 import type { RampDegradation } from './ramp/degradation';
 
-/** How far back the evidence readers look. One week, the plan's window. */
-const EVIDENCE_WINDOW_MS = 7 * MS_PER_DAY;
+/** How far back the evidence readers look. One week. */
+const EVIDENCE_WINDOW_MS = 7 * DAY_MS;
 /** DNSBL day coverage the streak condition needs. Two weeks, plus slack. */
-const DNSBL_WINDOW_MS = 21 * MS_PER_DAY;
+const DNSBL_WINDOW_MS = 21 * DAY_MS;
 /** Bounded scans — a promotion must never be able to read an unbounded table. */
 const SCAN_LIMIT = 64;
 const DECISION_SCAN_LIMIT = 600;
@@ -97,7 +97,7 @@ async function domainCompliancePassAt(
  * promotion must never read an unbounded table, and the only bounded answer that
  * does not invent a verdict is the one that fails CLOSED.
  *
- * Absence is still never a block (plan D2): `null` here costs the `google_
+ * Absence is still never a block: `null` here costs the `google_
  * compliance` route, and the standalone route is unaffected.
  */
 async function latestGoogleCompliancePassAt(
@@ -160,7 +160,7 @@ async function latestSndsGreenBandAt(ctx: RampReadCtx, since: number): Promise<n
  * through the promotion door instead.
  *
  * An absent reading is `null`, which reports `unknown` and never PERMANENTLY
- * blocks a promotion (plan D2) — so narrowing here costs a cell nothing but the
+ * blocks a promotion — so narrowing here costs a cell nothing but the
  * borrowed claim.
  */
 async function latestSeedProbePassAt(
@@ -220,7 +220,7 @@ function snapshotPoolBlocklisted(snapshot: string | undefined): boolean | null {
  *
  * READ FROM THE RECORDED SIGNAL, NEVER FROM THE WINNING REASON. `mixDecisions`
  * records every evaluation including the no-ops, each with a snapshot of every
- * gate's inputs (plan D12) — and `dnsbl` is only ever the WINNING reason at its
+ * gate's inputs — and `dnsbl` is only ever the WINNING reason at its
  * own rung. The kill switch, a suspended org, an active freeze and the circuit
  * breaker all outrank it, and those are exactly the states a real listing
  * produces: the 24h freeze that FOLLOWS a critical listing is reason `frozen`,
@@ -267,8 +267,8 @@ async function dnsblDays(
  *
  * The null is the point. `deferred` is only partly instrumented (see
  * `delivery/deferralOutcome.ts`), and a cell whose counter has no writer folds
- * to a rate of `0` — under every ceiling, `met`, and the plan's "deferral rate
- * under threshold in EVERY cell" condition satisfied by a measurement nobody
+ * to a rate of `0` — under every ceiling, `met`, and the "deferral rate under
+ * threshold in EVERY cell" condition satisfied by a measurement nobody
  * took, on the rung that costs the most to get wrong.
  *
  * TWO SPANS, ONE READ, and that is the whole shape of this function. The RATE is
@@ -335,7 +335,7 @@ async function worstCellDeferralRate(
  * Load everything the promotion rule judges for one cell.
  *
  * `requiredDwellMs` carries the substitution table's dwell multiplier (absent
- * Postmaster or SNDS doubles it), so the plan's "DWELL TIME x2" and the
+ * Postmaster or SNDS doubles it), so that "DWELL TIME x2" and the
  * standalone route's own doubling compose in the pure rule rather than being
  * multiplied together at two different call sites.
  */
@@ -352,7 +352,7 @@ export async function loadRampPromotionEvidence(
 	const { organizationId, cell, perStream, degradation, now } = args;
 	const since = now - EVIDENCE_WINDOW_MS;
 	// THE DWELL ANCHOR, WITH A FALLBACK — because an absent reading must never
-	// PERMANENTLY block a promotion (plan D2).
+	// PERMANENTLY block a promotion.
 	//
 	// `phaseCeilingSince` is stamped only by the writes that SET a rung (enrolment,
 	// a promotion, a downward phase reset), so a row that arrived at a rung any

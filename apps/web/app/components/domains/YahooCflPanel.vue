@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Yahoo Complaint Feedback Loop — the guided enrollment panel (piece P4-6).
+ * Yahoo Complaint Feedback Loop — the guided enrollment panel.
  *
  * Yahoo's CFL is DKIM-DOMAIN based: there is no API and no credential, only a
  * bilateral enrollment the operator performs on Yahoo's sender site. So this is
@@ -8,13 +8,13 @@
  * what to do and how to tell it worked, plus the two controls that record what
  * the operator did (`Submit` / `Confirm`) and one that starts over.
  *
- * D2 (additive-only third-party rule) drives the whole visual grammar: a domain
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE drives the whole visual grammar: a domain
  * that never enrolls is `not_started`, which is a SUPPORTED CONFIGURATION. It
- * renders as a calm unstarted option — no warning badge, no error, no
- * "setup incomplete" nag — and the panel states which complaint signal the yahoo
- * cell is running on instead, with the confidence caveat spelled out (D14: an
- * honest weak signal beats a confident wrong one). `lapsed` is a prompt to
- * re-check at Yahoo, styled like every other to-do, never like a failure.
+ * renders as a calm unstarted option — no warning badge, no error, no "setup
+ * incomplete" nag — and the panel states which complaint signal the yahoo cell
+ * is running on instead, with the confidence caveat spelled out (an honest weak
+ * signal beats a confident wrong one). `lapsed` is a prompt to re-check at
+ * Yahoo, styled like every other to-do, never like a failure.
  *
  * Every decision shown here is DERIVED by the backend's pure core
  * (`@owlat/shared/yahooCfl`): this component renders `getGuide` and never
@@ -270,7 +270,7 @@ async function reset() {
 			{{ t('components.domains.yahooCflPanel.silence', { count: silentDays }, silentDays ?? 0) }}
 		</p>
 
-		<!-- D14: say the quiet part. Which signal the yahoo cell actually runs on,
+		<!-- Say the quiet part. Which signal the yahoo cell actually runs on,
 		     and how confident it is. A caveat, never a warning and never a nag. -->
 		<p class="mt-3 text-xs text-text-tertiary" data-testid="yahoocfl-confidence">
 			{{ guide.complaintSignal.confidenceNote }}

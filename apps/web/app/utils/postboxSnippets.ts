@@ -1,12 +1,11 @@
 /**
  * Pure helpers for the composer's snippet ("/" canned response) picker.
  *
- * Kept framework-free so the trigger/ranking/placeholder logic is unit-testable
- * without a DOM: the editor component owns the Selection/Range plumbing and
- * calls into these.
+ * Kept framework-free so the trigger/ranking logic is unit-testable without a
+ * DOM: the editor component owns the Selection/Range plumbing and calls into
+ * these. Variable resolution moved to `postboxSnippetVariables.ts` when
+ * snippets grew a typed variable set (plan idea 13).
  */
-
-import { escapeHtml } from '@owlat/shared/html';
 
 export interface SnippetTrigger {
 	/** Text typed after the "/" (the live filter query). */
@@ -70,23 +69,4 @@ export function rankSnippets<T extends RankableSnippet>(snippets: T[], query: st
 export function firstNameOf(displayName: string | null | undefined): string | undefined {
 	const first = (displayName ?? '').trim().split(/\s+/)[0];
 	return first || undefined;
-}
-
-/**
- * Resolve `{{token}}` placeholders in a snippet body against known values.
- *
- * A token with a non-empty value is replaced by that value (HTML-escaped — the
- * value is untrusted recipient data). A token with no value inserts a visible
- * `[token]` marker the user can fill in by hand, so an unknown recipient never
- * produces an empty or broken greeting.
- */
-export function resolveSnippetPlaceholders(
-	html: string,
-	values: Record<string, string | null | undefined>
-): string {
-	return html.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, token: string) => {
-		const value = values[token];
-		if (value && value.trim()) return escapeHtml(value.trim());
-		return `[${token}]`;
-	});
 }

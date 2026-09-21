@@ -23,7 +23,6 @@ import SetupModePage from '../mode.vue';
 import SetupFeaturesPage from '../features.vue';
 import SetupAdminPage from '../admin.vue';
 import SetupEmailPage from '../email.vue';
-import SetupTeamPage from '../team.vue';
 import SetupReviewPage from '../review.vue';
 
 beforeEach(() => {
@@ -33,21 +32,6 @@ beforeEach(() => {
 		useSetupWizard,
 		useWizard,
 		useRoute: () => ({ path: '/setup', fullPath: '/setup', query: {}, params: {}, meta: {} }),
-		// The team step only renders for a signed-in user who has no organization
-		// yet; with one, it redirects to the dashboard and renders nothing.
-		useOrganizationContext: () => ({
-			organization: ref(null),
-			organizationId: ref(null),
-			organizations: ref([]),
-			settings: ref(null),
-			role: ref(null),
-			user: ref({ id: 'user1', name: 'Ada Lovelace', email: 'ada@example.com' }),
-			isLoading: ref(false),
-			isSettingsLoading: ref(false),
-			error: ref(null),
-			setActive: () => {},
-			hasActiveOrganization: ref(false),
-		}),
 	});
 });
 
@@ -67,14 +51,12 @@ const pages = [
 		indicator: true,
 	},
 	{ name: 'admin account', component: SetupAdminPage, loaded: 'Admin account', indicator: true },
-	{
-		name: 'team invites',
-		component: SetupTeamPage,
-		loaded: 'Invitation required',
-		indicator: false,
-	},
 	{ name: 'review', component: SetupReviewPage, loaded: 'Review & launch', indicator: true },
 ] as const;
+
+// The access-request screen used to be audited here as a "team invites step".
+// It is not a step and no longer lives under /setup — it is audited on its own
+// route in `app/pages/__tests__/accessRequestA11y.test.ts`.
 
 /** A step label that reached the screen as its message key instead of its word. */
 const RAW_STEP_KEY = /shared\.useSetupWizard\./;

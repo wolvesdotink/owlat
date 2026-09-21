@@ -70,7 +70,6 @@ onMounted(async () => {
 			error.value = t('recipient.share.errors.revoked');
 		}
 	} catch (err) {
-		// eslint-disable-next-line no-console
 		console.error('[SharePage] Failed to fetch preview:', err);
 		error.value = t('recipient.share.errors.loadFailed');
 	} finally {

@@ -18,12 +18,19 @@ import {
 	isExtensionAllowed,
 	isMimeTypeAllowed,
 	isExecutableExtension,
+	isFileTypeAccepted,
 	detectDoubleExtension,
 	DEFAULT_FILE_POLICY,
 } from '@owlat/email-scanner';
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import type { Id, Doc } from './_generated/dataModel';
+import {
+	captureSourceValidator,
+	semanticFileSourceTypeValidator,
+	type CaptureSource,
+} from './lib/literalValidators';
+import { batchGet } from './_utils/batchLoader';
 
 // ============================================================
 // Queries
@@ -40,7 +47,9 @@ async function hydrateFile(
 	ctx: StorageReader,
 	file: Doc<'semanticFiles'>
 ): Promise<Doc<'semanticFiles'> & { url: string | null }> {
-	return { ...file, url: await ctx.storage.getUrl(file.storageId) };
+	// A file whose bytes the retention sweep released has no URL. Readers
+	// already type `url` as nullable, so this is a state, not an error.
+	return { ...file, url: file.storageId ? await ctx.storage.getUrl(file.storageId) : null };
 }
 
 /** Hydrate a list of file rows with storage URLs, preserving order. */
@@ -100,12 +109,11 @@ export const getInternal = internalQuery({
 export const getByIds = internalQuery({
 	args: { ids: v.array(v.id('semanticFiles')) },
 	handler: async (ctx, args) => {
-		const out: Array<Doc<'semanticFiles'> & { url: string | null }> = [];
-		for (const id of args.ids) {
-			const file = await ctx.db.get(id);
-			if (file) out.push(await hydrateFile(ctx, file));
-		}
-		return out;
+		// The ids are independent, so read them in one batch and hydrate the
+		// survivors together, still in input order.
+		const byId = await batchGet(ctx, args.ids);
+		const files = args.ids.map((id) => byId.get(id)).filter((file) => file != null);
+		return await hydrateFiles(ctx, files);
 	},
 });
 
@@ -152,8 +160,9 @@ export const getProcessingContext = internalQuery({
 		}
 
 		const contactNames: string[] = [];
+		const contacts = await batchGet(ctx, args.contactIds ?? []);
 		for (const contactId of args.contactIds ?? []) {
-			const contact = await ctx.db.get(contactId);
+			const contact = contacts.get(contactId);
 			if (!contact) continue;
 			const name = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.email;
 			if (name) contactNames.push(name);
@@ -168,12 +177,6 @@ export const getProcessingContext = internalQuery({
 		return { threadSubject, contactNames, previousText };
 	},
 });
-
-const sourceTypeValidator = v.union(
-	v.literal('upload'),
-	v.literal('email_attachment'),
-	v.literal('agent_generated')
-);
 
 /**
  * Apply the `sourceType` provenance filter to a page of files and resolve a
@@ -199,7 +202,7 @@ async function applySourceFilter(
 export const list = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
-		sourceType: v.optional(sourceTypeValidator),
+		sourceType: v.optional(semanticFileSourceTypeValidator),
 	},
 	handler: async (ctx, args) => {
 		const results = await ctx.db
@@ -219,7 +222,7 @@ export const search = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
 		query: v.string(),
-		sourceType: v.optional(sourceTypeValidator),
+		sourceType: v.optional(semanticFileSourceTypeValidator),
 	},
 	handler: async (ctx, args) => {
 		const results = await ctx.db
@@ -277,12 +280,14 @@ export const listByContact = authedQuery({
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
 			.collect(); // bounded: junction rows for one contact (files per person)
 
-		const files: Array<Doc<'semanticFiles'> & { url: string | null }> = [];
-		for (const link of links) {
-			const file = await ctx.db.get(link.fileId);
-			if (!file) continue;
-			files.push(await hydrateFile(ctx, file));
-		}
+		const byId = await batchGet(
+			ctx,
+			links.map((link) => link.fileId)
+		);
+		const files = await hydrateFiles(
+			ctx,
+			links.map((link) => byId.get(link.fileId)).filter((file) => file != null)
+		);
 
 		// Newest first, then cap.
 		files.sort((a, b) => b.createdAt - a.createdAt);
@@ -305,11 +310,7 @@ export const create = authedMutation({
 		fileSize: v.number(),
 		title: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
-		sourceType: v.union(
-			v.literal('upload'),
-			v.literal('email_attachment'),
-			v.literal('agent_generated')
-		),
+		sourceType: semanticFileSourceTypeValidator,
 		sourceMessageId: v.optional(v.string()),
 		uploadContext: v.optional(v.string()),
 		contactIds: v.optional(v.array(v.id('contacts'))),
@@ -367,6 +368,10 @@ export const ingest = internalMutation({
 		mimeType: v.string(),
 		fileSize: v.number(),
 		sourceType: v.union(v.literal('email_attachment'), v.literal('agent_generated')),
+		// Which inbound route captured this attachment. Only the team-inbox
+		// captures are in range of the inbound retention sweep — see the schema
+		// comment on `captureSource`.
+		captureSource: v.optional(captureSourceValidator),
 		sourceMessageId: v.optional(v.string()),
 		uploadContext: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
@@ -376,13 +381,10 @@ export const ingest = internalMutation({
 	handler: async (ctx, args): Promise<Id<'semanticFiles'> | null> => {
 		// Same allowlist the user-upload `create` mutation enforces — never store
 		// an executable/disallowed type just because it arrived over the wire.
-		const doubleExt = detectDoubleExtension(args.filename);
-		if (
-			(doubleExt.detected && doubleExt.executableExtension) ||
-			isExecutableExtension(args.filename) ||
-			!isExtensionAllowed(args.filename, DEFAULT_FILE_POLICY) ||
-			!isMimeTypeAllowed(args.mimeType, DEFAULT_FILE_POLICY)
-		) {
+		// `isFileTypeAccepted` is the one spelling of that conjunction, so a
+		// caller can ask the same question BEFORE it spends anything staging the
+		// blob (`captureAttachments` does).
+		if (!isFileTypeAccepted(args.filename, args.mimeType, DEFAULT_FILE_POLICY)) {
 			// Drop the staged blob so a rejected attachment doesn't leak storage.
 			await ctx.storage.delete(args.storageId);
 			return null;
@@ -415,6 +417,7 @@ async function insertSemanticFile(
 		title?: string;
 		tags?: string[];
 		sourceType: 'upload' | 'email_attachment' | 'agent_generated';
+		captureSource?: CaptureSource;
 		sourceMessageId?: string;
 		uploadContext?: string;
 		uploadedBy?: string;
@@ -438,6 +441,7 @@ async function insertSemanticFile(
 		title: args.title,
 		tags: args.tags,
 		sourceType: args.sourceType,
+		captureSource: args.captureSource,
 		sourceMessageId: args.sourceMessageId,
 		uploadContext: args.uploadContext,
 		uploadedBy: args.uploadedBy,
@@ -584,8 +588,8 @@ export const remove = authedMutation({
 
 		// Tear down the junction rows before the parent file.
 		await syncFileContacts(ctx, args.fileId, undefined);
-		// Delete the stored file
-		await ctx.storage.delete(file.storageId);
+		// Delete the stored file, if the retention sweep has not already released it.
+		if (file.storageId) await ctx.storage.delete(file.storageId);
 		await ctx.db.delete(args.fileId);
 	},
 });

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * INDEPENDENCE — the screen people screenshot (plan D2, D14, P3-6).
+ * INDEPENDENCE — the screen people screenshot.
  *
  * One percentage of mail now sent from your own server, the trend behind it, the
  * projected date you stop paying, and the spend that replaces. Every number is
@@ -8,12 +8,12 @@
  * figure an operator puts in front of their boss is the figure the controller is
  * acting on.
  *
- * WITH NO RELAY IT IS A DIFFERENT FEATURE, NOT A DEGRADED ONE (plan D14). The
+ * WITH NO RELAY IT IS A DIFFERENT FEATURE, NOT A DEGRADED ONE. The
  * headline becomes "Warm-up autopilot", the number becomes today's capacity, and
  * the independence projection is `already_independent` — because there is
  * nothing to become independent OF. Nothing on this screen is a warning, an
  * error, or a "setup incomplete" nag in that configuration; a fresh install with
- * only an MTA renders every field here (plan D2).
+ * only an MTA renders every field here.
  *
  * DISCONNECTING THE RELAY BELOW GRADUATION IS THE ONE DANGEROUS ROUTE OFF THIS
  * PAGE, and it names its consequence: which cells are still leaning on the
@@ -47,7 +47,7 @@ function localized(value: LocalizedText): string {
 	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 }
 
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const {
 	data: summary,
@@ -75,7 +75,7 @@ const isStandalone = computed(() => !isRelayConfigured.value);
 const headline = computed(() => localized(independenceHeadline(isRelayConfigured.value)));
 // THE TAB TITLE FOLLOWS THE H1. A static "Sending independence" would leave a
 // standalone deployment reading "Warm-up autopilot" on the page and something
-// else in its browser tab — the D14 rename half-applied.
+// else in its browser tab — the rename half-applied.
 useHead({
 	title: () =>
 		t('dashboard.admin.delivery.advanced.independence.pageTitle', { headline: headline.value }),
@@ -176,8 +176,8 @@ function confirmRelayRemoval(): void {
 					aria-live="polite"
 					:aria-label="t('dashboard.admin.delivery.advanced.independence.loading')"
 				>
-					<div class="h-32 animate-pulse rounded-xl bg-bg-surface" />
-					<div class="h-44 animate-pulse rounded-xl bg-bg-surface" />
+					<div class="h-32 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
+					<div class="h-44 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
 				</div>
 			</template>
 

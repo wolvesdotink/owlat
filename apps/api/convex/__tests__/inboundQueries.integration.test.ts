@@ -12,6 +12,8 @@ import {
 	enableFeatures,
 } from './factories';
 import { findOrCreateForEmail, transition } from '../inbox/threads/module';
+import { sealBodyAtWriteMaybe } from '../lib/messageBody';
+import { isSealedAtRest } from '../lib/atRestBodies';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -240,6 +242,77 @@ describe('inboundQueries.listThreads', () => {
 		expect(needs.threads[0]!.subject).toBe('DraftReady');
 	});
 
+	it('filters and orders by how long the customer has waited on US', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+		const now = Date.now();
+		const DAY = 24 * 60 * 60 * 1000;
+
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			// Three days of silence from us — the row the pill exists for.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'Neglected',
+					status: 'open',
+					lastMessageAt: now - 3 * DAY,
+				})
+			);
+			// An hour old: waiting on us, but nowhere near the escalation.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'Fresh',
+					status: 'open',
+					lastMessageAt: now - 60 * 60 * 1000,
+				})
+			);
+			// Ancient, but the ball is in the CUSTOMER's court.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'TheirMove',
+					status: 'waiting',
+					lastMessageAt: now - 9 * DAY,
+				})
+			);
+			// Ancient, but deliberately parked until next week.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'Snoozed',
+					status: 'open',
+					lastMessageAt: now - 9 * DAY,
+					snoozedUntil: now + DAY,
+				})
+			);
+		});
+
+		const overdue = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { filter: 'waiting-24h' });
+		expect(overdue.threads.map((row) => row.subject)).toEqual(['Neglected']);
+
+		// The oldest-waiting sort leads with the longest wait and sinks the rows
+		// that are not waiting on us at all.
+		const oldest = await t
+			.withIdentity(testIdentity)
+			.query(api.inbox.queries.listThreads, { sort: 'oldest-waiting' });
+		expect(oldest.threads[0]!.subject).toBe('Neglected');
+		expect(oldest.threads[1]!.subject).toBe('Fresh');
+		expect(
+			oldest.threads
+				.slice(2)
+				.map((row) => row.subject)
+				.sort()
+		).toEqual(['Snoozed', 'TheirMove']);
+	});
+
 	it('should respect the limit parameter', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['inbox']);
@@ -315,6 +388,11 @@ describe('inboundQueries.getThreadFilterCounts', () => {
 				'conversationThreads',
 				threadData({ contactId, status: 'open', snoozedUntil: now + 60_000 })
 			);
+			// Open and untouched for three days — the only Waiting > 24h row.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open', lastMessageAt: now - 3 * 24 * 60 * 60 * 1000 })
+			);
 		});
 
 		const counts = await t
@@ -322,13 +400,15 @@ describe('inboundQueries.getThreadFilterCounts', () => {
 			.query(api.inbox.queries.getThreadFilterCounts, {});
 
 		// open excludes the snoozed row; mine = the one assigned to me;
-		// unassigned = open/waiting with no owner (the plain open + the waiting);
-		// waiting/resolved/snoozed each = 1.
+		// unassigned = open/waiting with no owner (the plain open + the waiting +
+		// the neglected one); waiting/resolved/snoozed each = 1; waitingOver24h
+		// counts only the three-day-old open row.
 		expect(counts).toMatchObject({
-			open: 2,
+			open: 3,
 			mine: 1,
-			unassigned: 2,
+			unassigned: 3,
 			waiting: 1,
+			waitingOver24h: 1,
 			resolved: 1,
 			snoozed: 1,
 			cap: 100,
@@ -378,6 +458,47 @@ describe('inboundQueries.getThread', () => {
 		expect(result!.messages).toHaveLength(2);
 		expect(result!.contact).toBeDefined();
 		expect(result!.contact!.email).toBe('sender@example.com');
+	});
+
+	it('opens E8b-sealed bodies instead of handing back the at-rest envelope', async () => {
+		// `receiveMessage` seals the inline bodies at write on any instance with
+		// INSTANCE_SECRET set, and this query used to return the rows verbatim —
+		// so the thread view rendered `atrest:1:…` where the message should be.
+		// Sealed at write here through the real writer, so the test fails if the
+		// unseal is removed AND if the seal ever stops happening.
+		vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');
+		try {
+			const t = convexTest(schema, modules);
+			let threadId!: Id<'conversationThreads'>;
+			await t.run(async (ctx) => {
+				const contactId = await ctx.db.insert('contacts', createTestContact());
+				threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
+				await ctx.db.insert(
+					'inboundMessages',
+					msgData({
+						threadId,
+						contactId,
+						subject: 'Sealed',
+						textBody: await sealBodyAtWriteMaybe('the plaintext body'),
+						htmlBody: await sealBodyAtWriteMaybe('<p>the plaintext body</p>'),
+					})
+				);
+			});
+
+			// The stored row really is sealed — otherwise the assertion below would
+			// pass on an unsealed row and prove nothing.
+			const stored = await t.run(async (ctx) => await ctx.db.query('inboundMessages').first());
+			expect(isSealedAtRest(stored!.textBody ?? '')).toBe(true);
+
+			const result = await t
+				.withIdentity(testIdentity)
+				.query(api.inbox.queries.getThread, { threadId });
+
+			expect(result!.messages[0]!.textBody).toBe('the plaintext body');
+			expect(result!.messages[0]!.htmlBody).toBe('<p>the plaintext body</p>');
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it('should return null for non-existent thread', async () => {

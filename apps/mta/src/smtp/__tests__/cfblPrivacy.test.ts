@@ -82,21 +82,18 @@ import { dkimTestOptions } from '../../__tests__/helpers/dkimTestKey.js';
 import * as dkimStore from '../dkimStore.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
 
 const SIGNING_KEY = 'cfbl-privacy-test-key';
 const RECIPIENT = 'alice.example@remote.test';
 const ORGANIZATION_ID = 'org_secret_acme';
 
-function createConfig(): MtaConfig {
-	return {
+const createConfig = (): MtaConfig =>
+	createOwlatHostConfig({
 		apiKey: 'test-master-key',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
 		outboundTlsMode: 'opportunistic',
 		daneMode: 'off',
-	} as unknown as MtaConfig;
-}
+	});
 
 function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {

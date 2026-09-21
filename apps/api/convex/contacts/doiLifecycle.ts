@@ -29,7 +29,9 @@ import {
 } from '../contactActivities/writer';
 import type { ContactActivityType } from '../contactActivities/catalog';
 import { recordAuditLog } from '../lib/auditLog';
+import { defineLifecycle, refuse, type LifecycleReason } from '../lib/lifecycle';
 import { logWarn } from '../lib/runtimeLog';
+import { batchGet } from '../_utils/batchLoader';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -69,12 +71,9 @@ export type TransitionOutcome =
 	  }
 	| {
 			ok: false;
-			reason:
-				| 'contact_not_found'
-				| 'token_not_found'
-				| 'token_expired'
-				| 'illegal_edge'
-				| 'terminal';
+			// `illegal_edge` / `terminal` come from the generic lifecycle core;
+			// the token and contact reasons are this module's own.
+			reason: LifecycleReason<'contact_not_found' | 'token_not_found' | 'token_expired'>;
 			from?: DoiStatus;
 			to?: DoiStatus;
 	  };
@@ -106,12 +105,23 @@ const transitionInputValidator = v.union(
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
+//
+// The graph and the dispatcher preamble that reads it live in the generic
+// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers and effects below
+// stay here. `confirmed` is terminal and this machine publishes the distinct
+// `terminal` refusal, so `reportsTerminalRefusals` is on. The one edge the
+// graph cannot express — ADR-0019's admin-attest relaxation of
+// `not_required → confirmed` — rides the per-call `isSanctionedEdge` opt-out
+// in `dispatch` rather than being declared here.
 
-const LEGAL_EDGES: Record<DoiStatus, ReadonlySet<DoiStatus>> = {
-	not_required: new Set<DoiStatus>(['pending']),
-	pending: new Set<DoiStatus>(['confirmed']),
-	confirmed: new Set<DoiStatus>(),
-};
+const DOI_LIFECYCLE = defineLifecycle<DoiStatus>(
+	{
+		not_required: ['pending'],
+		pending: ['confirmed'],
+		confirmed: [],
+	},
+	{ reportsTerminalRefusals: true }
+);
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
@@ -267,7 +277,7 @@ function reduceConfirmed(
 				kind: 'contact_activity',
 				literal: 'topic_confirmed',
 				contactId: contact._id,
-				metadata: { topicId: String(topic.id), topicName: topic.name },
+				metadata: { topicId: topic.id, topicName: topic.name },
 				occurredAt: args.at,
 			});
 		}
@@ -391,8 +401,13 @@ async function loadDoiRequiredMemberships(
 		.collect(); // bounded: one contact's topic memberships
 	const topics: Array<DoiRequiredTopic> = [];
 	const clearMembershipIds: Array<Id<'contactTopics'>> = [];
+	// The topic rows are independent of each other and of the loop below.
+	const topicsById = await batchGet(
+		ctx,
+		memberships.map((m) => m.topicId)
+	);
 	for (const m of memberships) {
-		const topic = await ctx.db.get(m.topicId);
+		const topic = topicsById.get(m.topicId);
 		// Include topic-DOI memberships AND form-forced-DOI memberships (the
 		// latter flagged at subscribe time on a non-DOI topic).
 		const deferredByForm = m.pendingDoiConfirmation === true;
@@ -412,8 +427,6 @@ async function dispatch(
 	input: TransitionInput
 ): Promise<TransitionOutcome> {
 	const from = (contact.doiStatus ?? 'not_required') as DoiStatus;
-	const isLegalEdge = LEGAL_EDGES[from].has(input.to);
-	const isSelfLoop = from === input.to;
 
 	// Admin-attest path relaxes the `not_required → confirmed` edge that the
 	// token-keyed path refuses. Other DOI transitions ignore this branch.
@@ -423,11 +436,10 @@ async function dispatch(
 		input.source === 'admin_attest' &&
 		from === 'not_required';
 
-	if (!isLegalEdge && !isSelfLoop && !isAdminAttestEdge) {
-		if (LEGAL_EDGES[from].size === 0) {
-			return { ok: false, reason: 'terminal', from, to: input.to };
-		}
-		return { ok: false, reason: 'illegal_edge', from, to: input.to };
+	const verdict = DOI_LIFECYCLE.classify(from, input.to, { isSanctionedEdge: isAdminAttestEdge });
+
+	if (verdict.kind === 'refused') {
+		return refuse(verdict);
 	}
 
 	let result: ReducerResult;

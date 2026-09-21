@@ -1,6 +1,6 @@
 /**
  * Conversation-grouped list (one row per thread) for the inbox view, backed by
- * mail.mailbox.listThreads. Mirrors usePostboxThreads' growable-limit paging.
+ * mail.mailbox.queries.listThreads. Mirrors usePostboxThreads' growable-limit paging.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -13,7 +13,7 @@ export function usePostboxThreadGroups(args: {
 	const { limit, loadMore, atMax } = useGrowableLimit(args.folderRole);
 
 	const { data, isLoading, isRefetching } = useConvexQuery(
-		api.mail.mailbox.listThreads,
+		api.mail.mailbox.queries.listThreads,
 		() =>
 			args.enabled.value && args.mailboxId.value
 				? {

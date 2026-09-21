@@ -1,16 +1,3 @@
-export const buildInlineStyleFromPairs = (pairs: [string, string | undefined][]): string => {
-	return pairs
-		.filter(([, value]) => value !== undefined && value !== '')
-		.map(([key, value]) => `${key}:${value}`)
-		.join(';');
-};
-
-export const buildInlineStyle = (styles: Record<string, string | number | undefined>): string => {
-	// Numbers interpolate to the same string the old inline `.map` produced;
-	// the cast just satisfies the pair helper's string-valued signature.
-	return buildInlineStyleFromPairs(Object.entries(styles) as [string, string | undefined][]);
-};
-
 /**
  * Build the `background-image` + position/size + `background-repeat:no-repeat`
  * CSS shorthand emitted by blocks that paint a background image (hero,

@@ -13,6 +13,12 @@
  *       no audit has been recorded.
  *   4. docker-compose.override.yml exists and matches the stored flags.
  *   5. Containers are running (best-effort: `docker compose ps` parse).
+ *   5b. CONTAINERS: no container is crash-looping or failing its healthcheck —
+ *       being LISTED by `docker compose ps` is not the same as being up.
+ *   5c. VERSION: every Owlat container actually runs the configured
+ *       OWLAT_VERSION. Compose pins images to `${OWLAT_VERSION:-dev}`, so
+ *       advancing `.env` without recreating the containers leaves the version
+ *       the product REPORTS diverged from the one it RUNS.
  *
  * Reports findings as a checklist; non-zero exit on any failure.
  */
@@ -30,6 +36,11 @@ import {
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
 import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
+import {
+	evaluateContainerStates,
+	evaluateVersionDrift,
+	parseComposePs,
+} from '@owlat/shared/containerHealth';
 import { readEnv, type EnvMap } from '../lib/env';
 import {
 	fcrdnsReasonMessage,
@@ -37,6 +48,7 @@ import {
 	type FcrdnsFailureReason,
 } from '@owlat/shared/fcrdns';
 import { installerProviderNote } from '@owlat/shared/ipAuditProviders';
+import { isRecord } from '@owlat/shared';
 
 interface DoctorOptions {
 	owlatDir: string;
@@ -135,8 +147,30 @@ export function evaluateSendPath(flags: FeatureFlagState, env: EnvMap): SendPath
 	}));
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
+/**
+ * The retry ladder's one unowned structure.
+ *
+ * A GroupMQ `:delayed` member whose job hash is gone can never be delivered and
+ * is removed by nothing, so it accrues silently until Redis runs out of memory.
+ * ADDITIVE-ONLY: an MTA that predates the probe reports no `queue` block, and
+ * that must read as "nothing to say", never as a failure.
+ */
+export function evaluateMtaQueueHealth(value: unknown): MtaHealthFinding[] {
+	if (!isRecord(value)) return [];
+	const queue = isRecord(value['queue']) ? value['queue'] : null;
+	if (!queue || typeof queue['status'] !== 'string') return [];
+	if (queue['status'] !== 'orphaned') return [];
+	const orphaned = typeof queue['orphaned'] === 'number' ? queue['orphaned'] : 0;
+	const sampled = typeof queue['sampled'] === 'number' ? queue['sampled'] : 0;
+	const overdue = typeof queue['overdue'] === 'number' ? queue['overdue'] : 0;
+	return [
+		{
+			ok: false,
+			message:
+				`MTA retry queue is leaking — ${orphaned} of ${sampled} sampled overdue jobs have no message left to send, ` +
+				`out of ${overdue} overdue. These grow until Redis runs out of memory; capture \`owlat logs mta\` and report this.`,
+		},
+	];
 }
 
 /** Pure interpretation of the MTA health body, separated for unit tests. */
@@ -159,6 +193,7 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 		},
 	];
 	findings.push(...evaluateMtaIdentityHealth(value));
+	findings.push(...evaluateMtaQueueHealth(value));
 
 	if (smtp['ips'].length === 0) {
 		findings.push({ ok: false, message: 'MTA has no sending IPs to probe' });
@@ -275,8 +310,56 @@ export async function probeMtaHealth(
 	}
 }
 
-/** Setup-time identity-only probe; worker traffic is not required yet. */
-export async function probeMtaIdentityHealth(baseUrl: string): Promise<MtaHealthFinding[]> {
+/**
+ * Force a live re-observation of every sending identity, and read the result.
+ *
+ * `/health` answers with the verdict the MTA's last sweep STORED — at boot, then
+ * hourly. That is the wrong source for the one question setup asks: the operator
+ * has just fixed a PTR record and wants to know whether it took. Nothing would
+ * re-observe it in time — `docker compose up -d` leaves an unchanged container
+ * running, so there is not even a boot sweep — and the install would fail again
+ * on DNS that is already correct. `POST /identity/recheck` re-resolves now.
+ *
+ * Returns null (rather than findings) when the endpoint is unavailable — no key,
+ * an older MTA image without the route, a timeout — so the caller falls back to
+ * `/health` and an install never fails because a re-check was not possible.
+ */
+export async function refreshMtaIdentity(
+	baseUrl: string,
+	apiKey: string | undefined
+): Promise<MtaHealthFinding[] | null> {
+	if (!apiKey) return null;
+	const url = `${baseUrl.replace(/\/+$/, '')}/identity/recheck`;
+	const ctrl = new AbortController();
+	// DNS, not HTTP, sets the floor here: each identity may wait out a 5s
+	// resolver budget, so allow more than the 3s the read-only probes use.
+	const timer = setTimeout(() => ctrl.abort(), 30_000);
+	try {
+		const resp = await fetch(url, {
+			method: 'POST',
+			signal: ctrl.signal,
+			headers: { Authorization: `Bearer ${apiKey}` },
+		});
+		if (!resp.ok) return null;
+		return evaluateMtaIdentityHealth(await resp.json());
+	} catch {
+		return null;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/**
+ * Setup-time identity-only probe; worker traffic is not required yet. Prefers a
+ * forced re-check so a PTR fixed minutes ago is seen, and falls back to the
+ * stored `/health` verdict when that is not available.
+ */
+export async function probeMtaIdentityHealth(
+	baseUrl: string,
+	apiKey?: string
+): Promise<MtaHealthFinding[]> {
+	const refreshed = await refreshMtaIdentity(baseUrl, apiKey);
+	if (refreshed) return refreshed;
 	try {
 		return evaluateMtaIdentityHealth(await fetchMtaHealth(baseUrl));
 	} catch (err) {
@@ -326,6 +409,10 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
 		isOwnSendProviderKind(env['EMAIL_PROVIDER']) &&
 		env['MTA_API_URL']
 	) {
+		// `owlat doctor` is what the docs tell an operator to run after changing
+		// reverse DNS, so re-observe before reporting: the stored verdict can be up
+		// to an hour old and would answer about the PTR they just replaced.
+		await refreshMtaIdentity(env['MTA_API_URL'], env['MTA_API_KEY']);
 		for (const finding of await probeMtaHealth(env['MTA_API_URL'], env)) {
 			check(finding.ok, `SEND PATH: ${finding.message}`);
 		}
@@ -347,9 +434,23 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
 			stderr: 'pipe',
 		});
 		const output = await new Response(proc.stdout).text();
-		const lines = output.trim().split('\n').filter(Boolean);
-		const running = lines.length;
-		check(running > 0, `${running} compose service(s) running`);
+		const services = parseComposePs(output);
+		check(services.length > 0, `${services.length} compose service(s) running`);
+
+		// Being LISTED is not being up. `docker compose ps` reports a container
+		// that has been crash-looping for hours exactly like a healthy one, so
+		// counting services green-lit an install with a dead service in it.
+		for (const finding of evaluateContainerStates(services)) {
+			check(finding.ok, `CONTAINERS: ${finding.message}`);
+		}
+
+		// VERSION DRIFT — the configured version (.env, which every version
+		// surface in the product reports) against the tag each container was
+		// actually created from. Advancing .env without recreating the
+		// containers leaves the product claiming a version it is not running.
+		for (const finding of evaluateVersionDrift(services, env['OWLAT_VERSION'] ?? '')) {
+			check(finding.ok, `VERSION: ${finding.message}`);
+		}
 	} catch {
 		check(false, 'docker compose not callable from this shell');
 	}

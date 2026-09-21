@@ -4,24 +4,58 @@ import { makeFunctionReference } from 'convex/server';
 
 let client: ConvexHttpClient | null = null;
 
+/**
+ * Resolve the Convex key the worker authenticates with.
+ *
+ * LEAST-PRIVILEGE SEAM (security review M4): this container runs UNTRUSTED,
+ * inbound-email-driven code, yet it must reach the backend to poll/claim/complete
+ * `codeWorkTasks`. Ideally it would present a key scoped to ONLY those functions
+ * rather than the full deployment admin key. Convex self-hosted does not (today)
+ * mint per-function scoped keys, so the scoped-key path is a documented DEFERRAL,
+ * not a silent gap. The seam is here so an operator who has a narrower key can
+ * supply it via `CODE_WORKER_CONVEX_KEY` WITHOUT a code change. The concrete
+ * narrower key shipped for this is the `apps/convex-fn-proxy` sidecar: it holds
+ * the real admin key, forwards ONLY the thirteen allowlisted `codeWorkTasks:*` /
+ * `plugins/workerTasks:*` calls this module makes, and validates+strips the
+ * token the worker presents. In that composed deployment `CONVEX_URL` points at
+ * the proxy and `CODE_WORKER_CONVEX_KEY` is the proxy token — the token is what
+ * `setAdminAuth` sends as `Authorization: Convex <token>`, which the proxy
+ * checks and replaces with the admin key. It falls back to `CONVEX_ADMIN_KEY` so
+ * existing (non-proxied) installs keep working unchanged — the safe default.
+ * When the scoped key / proxy token is set, the admin key never has to enter
+ * this container's environment at all.
+ */
+function resolveConvexKey(): string | undefined {
+	// Prefer an explicitly scoped key; fall back to the deployment admin key.
+	// Compose files set `CODE_WORKER_CONVEX_KEY: ${CODE_WORKER_CONVEX_KEY:-}`, so
+	// an install that never defines the scoped key gets an EMPTY STRING (not
+	// undefined) in the container env. `'' ?? adminKey` keeps the empty string, so
+	// treat empty/whitespace as unset to actually fall back to the admin key.
+	const scoped = process.env['CODE_WORKER_CONVEX_KEY']?.trim();
+	return scoped || process.env['CONVEX_ADMIN_KEY']?.trim() || undefined;
+}
+
 export function getConvexClient(): ConvexHttpClient {
 	if (!client) {
 		const url = process.env['CONVEX_URL'];
-		const adminKey = process.env['CONVEX_ADMIN_KEY'];
+		const convexKey = resolveConvexKey();
 		if (!url) {
 			throw new Error('CONVEX_URL environment variable is required');
 		}
 		// The worker polls `getNextQueued` (an internalQuery) and drives the
 		// `internalMutation`s below. Internal functions are not reachable from an
 		// anonymous HTTP client, so — exactly like apps/imap and apps/mail-sync —
-		// the worker authenticates with the deployment admin key.
-		if (!adminKey) {
-			throw new Error('CONVEX_ADMIN_KEY environment variable is required');
+		// the worker authenticates with a deployment key (a scoped
+		// CODE_WORKER_CONVEX_KEY when provided, else CONVEX_ADMIN_KEY).
+		if (!convexKey) {
+			throw new Error(
+				'CODE_WORKER_CONVEX_KEY or CONVEX_ADMIN_KEY environment variable is required'
+			);
 		}
 		client = new ConvexHttpClient(url);
 		// `setAdminAuth` is a real runtime method on ConvexHttpClient but is omitted
 		// from the published public type — cast to reach it (apps/imap/mail-sync do the same).
-		(client as unknown as { setAdminAuth(key: string): void }).setAdminAuth(adminKey);
+		(client as unknown as { setAdminAuth(key: string): void }).setAdminAuth(convexKey);
 	}
 	return client;
 }

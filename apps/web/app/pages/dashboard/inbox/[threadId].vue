@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
+import TaskOptions from '~/components/agent-tasks/TaskOptions.vue';
+import { canonicalOption, localizedQuestionCopy } from '~/utils/clarificationLocale';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
@@ -9,7 +12,7 @@ import {
 	sendHoldReason,
 } from '~/utils/replyCollision';
 
-const { t, te } = useI18n();
+const { t, te, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.inbox.detail.pageTitle') });
 
@@ -199,6 +202,71 @@ function setClarificationAnswer(messageId: string, questionId: string, value: st
 	answers[questionId] = value;
 }
 
+// The question in the reader's own language (canonical English when no
+// translation landed); chip picks are mapped back to the canonical option on
+// submit so the persisted answer matches what answer-memory expects.
+type ThreadClarificationQuestion = NonNullable<
+	NonNullable<typeof messages.value>[number]['pendingClarification']
+>['questions'][number];
+function questionCopy(question: ThreadClarificationQuestion) {
+	return localizedQuestionCopy(question, locale.value);
+}
+
+/**
+ * The answer Owlat pre-picked from the person's earlier answer to the same
+ * question (answer-memory, source 'memory'), shown in the reader's locale so it
+ * matches the chip it highlights. The person stays in charge: it is only a
+ * pre-selection, and picking anything else replaces it.
+ */
+function rememberedAnswer(question: ThreadClarificationQuestion): string | undefined {
+	if (question.answer?.source !== 'memory') return undefined;
+	const index = question.options?.indexOf(question.answer.value) ?? -1;
+	return index >= 0 ? questionCopy(question).options[index] : question.answer.value;
+}
+
+// Seed the working answers with the remembered ones once per message, so the
+// "Answer and resume" button is live for a card whose questions memory already
+// answered and the person only has to confirm (or change) them.
+watch(
+	messages,
+	(list) => {
+		for (const message of list ?? []) {
+			if (message.processingStatus !== 'awaiting_clarification') continue;
+			for (const question of message.pendingClarification?.questions ?? []) {
+				const remembered = rememberedAnswer(question);
+				if (remembered === undefined) continue;
+				const answers = (clarificationAnswers[message._id] ??= {});
+				if (answers[question.id] === undefined) answers[question.id] = remembered;
+			}
+		}
+	},
+	{ immediate: true }
+);
+
+/** How many of a parked message's questions currently carry an answer. */
+function answeredCount(message: NonNullable<typeof messages.value>[number]): number {
+	const answers = clarificationAnswers[message._id] ?? {};
+	return (message.pendingClarification?.questions ?? []).filter((q) => answers[q.id]?.trim())
+		.length;
+}
+
+/** The sender's language as a readable name in the reader's locale ("German"). */
+function replyLanguageName(code: string | undefined): string | undefined {
+	if (!code) return undefined;
+	try {
+		return new Intl.DisplayNames([locale.value], { type: 'language' }).of(code) ?? code;
+	} catch {
+		return code;
+	}
+}
+
+/** Questions answered from memory on a message that already has its draft. */
+function reusedAnswers(message: NonNullable<typeof messages.value>[number]) {
+	return (message.pendingClarification?.questions ?? []).filter(
+		(q) => q.answer?.source === 'memory'
+	);
+}
+
 function hasEveryClarificationAnswer(message: NonNullable<typeof messages.value>[number]) {
 	const answers = clarificationAnswers[message._id] ?? {};
 	return (
@@ -215,16 +283,17 @@ async function submitClarification(message: NonNullable<typeof messages.value>[n
 		inboundMessageId: message._id,
 		answers: questions.map((question) => ({
 			questionId: question.id,
-			value: values[question.id]?.trim() ?? '',
+			value: canonicalOption(question, locale.value, values[question.id]?.trim() ?? ''),
 		})),
 	});
-	if (result) showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
+	if (result.ok) showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
 }
 
 async function cancelAutoSend(messageId: Id<'inboundMessages'>) {
 	if (!isAdmin.value) return;
 	const result = await undoAutoSend({ inboundMessageId: messageId });
-	if (result?.cancelled) showToast(t('dashboard.inbox.detail.autoSendCancelledToast'));
+	if (result.ok && result.result.cancelled)
+		showToast(t('dashboard.inbox.detail.autoSendCancelledToast'));
 }
 
 const remainingAutoSendSeconds = (sendAt: number) =>
@@ -233,13 +302,13 @@ const remainingAutoSendSeconds = (sendAt: number) =>
 // Use the shared global toast. The underlying actions go through
 // useBackendOperation, which already toasts any categorized failure — so we
 // only emit the success toast here, and only when the operation truly
-// succeeded (run resolves to `undefined` on failure, never throws).
+// succeeded (run resolves to `ok: false` on failure, never throws).
 const { showToast } = useToast();
 
 const onSnoozeConfirm = async (timestamp: number) => {
 	showSnoozeDialog.value = false;
 	const result = await handleSnooze(timestamp);
-	if (result !== undefined) showToast(t('dashboard.inbox.detail.snoozedToast'));
+	if (result.ok) showToast(t('dashboard.inbox.detail.snoozedToast'));
 };
 // "Until they reply" maps to a capped snooze: an inbound reply already
 // resurfaces a snoozed thread (the thread module's inbound_activity reducer
@@ -247,11 +316,11 @@ const onSnoozeConfirm = async (timestamp: number) => {
 const onSnoozeUntilReply = async (capTimestamp: number) => {
 	showSnoozeDialog.value = false;
 	const result = await handleSnooze(capTimestamp);
-	if (result !== undefined) showToast(t('dashboard.inbox.detail.snoozedUntilReplyToast'));
+	if (result.ok) showToast(t('dashboard.inbox.detail.snoozedUntilReplyToast'));
 };
 const onUnsnooze = async () => {
 	const result = await handleUnsnooze();
-	if (result !== undefined) showToast(t('dashboard.inbox.detail.unsnoozedToast'));
+	if (result.ok) showToast(t('dashboard.inbox.detail.unsnoozedToast'));
 };
 
 const onApprove = async (messageId: Id<'inboundMessages'>) => {
@@ -259,11 +328,11 @@ const onApprove = async (messageId: Id<'inboundMessages'>) => {
 	isApproving.value = true;
 	try {
 		const result = await handleApprove(messageId);
-		if (result === undefined) return;
+		if (!result.ok) return;
 		// Server refused because a teammate just replied — toast, don't claim success.
-		if (isReplyCollision(result)) {
+		if (isReplyCollision(result.result)) {
 			showToast(
-				collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+				collisionText(replyCollisionToast(result.result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
 				'error'
 			);
 			return;
@@ -285,7 +354,7 @@ const onReject = async () => {
 	isRejecting.value = true;
 	try {
 		const result = await handleReject(actionMessageId.value, rejectReason.value || undefined);
-		if (result !== undefined) {
+		if (result.ok) {
 			showRejectModal.value = false;
 			showToast(t('dashboard.inbox.detail.draftRejectedToast'));
 		}
@@ -298,7 +367,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 	isRetrying.value = true;
 	try {
 		const result = await handleRetry(messageId);
-		if (result !== undefined) showToast(t('dashboard.inbox.detail.retriedToast'));
+		if (result.ok) showToast(t('dashboard.inbox.detail.retriedToast'));
 	} finally {
 		isRetrying.value = false;
 	}
@@ -309,11 +378,11 @@ const onSaveEdit = async (messageId: Id<'inboundMessages'>) => {
 	isSavingEdit.value = true;
 	try {
 		const result = await saveEditedDraft(messageId);
-		if (result === undefined) return;
+		if (!result.ok) return;
 		// Server refused because a teammate just replied — toast, don't claim success.
-		if (isReplyCollision(result)) {
+		if (isReplyCollision(result.result)) {
 			showToast(
-				collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+				collisionText(replyCollisionToast(result.result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
 				'error'
 			);
 			return;
@@ -324,14 +393,14 @@ const onSaveEdit = async (messageId: Id<'inboundMessages'>) => {
 	}
 };
 
-// Inline Save (piece D1'): persist the edit as a draft revision WITHOUT
+// Inline Save: persist the edit as a draft revision WITHOUT
 // approving. The message stays in the review queue ("Saved · edited by you");
 // no collision hold applies because nothing is sent.
 const onSaveOnly = async (messageId: Id<'inboundMessages'>) => {
 	isSavingEdit.value = true;
 	try {
 		const result = await saveDraftOnly(messageId);
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.inbox.detail.toasts.draftSavedNotApproved'));
 	} finally {
 		isSavingEdit.value = false;
@@ -350,6 +419,23 @@ const agentOriginalDraft = (message: NonNullable<typeof messages.value>[number])
 // (legacy closed threads still read "Resolved" via the shared status chip).
 const statusOptions = ['open', 'waiting', 'resolved'] as const;
 
+/**
+ * The status picker is a pill menu, not a native `<select>`: it sits at the end
+ * of a row of pill controls (Discuss / Assign / Snooze) and an input-styled
+ * rectangle with a native chevron broke that rhythm — and skipped the shared
+ * control treatment (press feedback, tiered motion) its neighbours all get.
+ */
+const statusMenuOpen = ref(false);
+// The assignee popover takes `open` as a controlled prop (same as the list
+// row's picker); unbound, its trigger toggled a value nothing read back.
+const assignMenuOpen = ref(false);
+const detailsAssignMenuOpen = ref(false);
+const currentStatus = computed<(typeof statusOptions)[number]>(() => {
+	const status = thread.value?.status;
+	// Legacy `closed` (and anything unexpected) reads as Resolved.
+	return status === 'open' || status === 'waiting' ? status : 'resolved';
+});
+
 // Chat integration: surface existing chat channels that already discuss this
 // thread, and offer to spin up a new one. Only active when the chat flag is
 // enabled — the query throws FEATURE_DISABLED otherwise.
@@ -367,11 +453,11 @@ const router = useRouter();
 const { linkChannelToInboxThread } = useChatActions();
 const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 	// Channel was just created — link it to this inbox thread, then jump.
-	// run() toasts its own failure and returns undefined; only navigate into the
-	// channel when the link actually persisted.
+	// run() toasts its own failure and resolves `ok: false`; only navigate into
+	// the channel when the link actually persisted.
 	const result = await linkChannelToInboxThread(roomId, threadId.value);
 	showNewChannel.value = false;
-	if (result === undefined) {
+	if (!result.ok) {
 		showToast(t('dashboard.inbox.detail.channelLinkFailedToast'), 'error');
 		return;
 	}
@@ -464,8 +550,11 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							{{ t('dashboard.inbox.detail.discussInChannel') }}
 						</UiButton>
 					</div>
-					<!-- Assignee picker — avatar popover (Me / members / Unassign). -->
+					<!-- Assignee picker — avatar popover (Me / members / Unassign).
+					     `open` is a controlled prop: without the binding the popover
+					     can never open (the row's picker models it the same way). -->
 					<InboxAssignPopover
+						v-model:open="assignMenuOpen"
 						:members="assignMembers"
 						:current-user-id="user?.id ?? null"
 						:assigned-to="thread.assignedTo ?? null"
@@ -518,20 +607,34 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						<Icon name="lucide:alarm-clock" class="w-4 h-4" />
 						{{ t('dashboard.inbox.detail.snooze') }}
 					</UiButton>
-					<select
-						:value="thread.status === 'closed' ? 'resolved' : thread.status"
-						class="input w-auto text-sm"
-						:aria-label="t('dashboard.inbox.detail.changeStatusAria')"
-						@change="
-							handleStatusChange(
-								($event.target as HTMLSelectElement).value as 'open' | 'waiting' | 'resolved'
-							)
-						"
-					>
-						<option v-for="s in statusOptions" :key="s" :value="s">
-							{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
-						</option>
-					</select>
+					<!-- Status picker — the same pill trigger + menu the assignee
+					     control two places to the left uses. -->
+					<UiDropdownMenu v-model:open="statusMenuOpen" position="right">
+						<template #trigger>
+							<UiButton
+								variant="secondary"
+								size="sm"
+								type="button"
+								class="gap-1.5"
+								:aria-label="t('dashboard.inbox.detail.changeStatusAria')"
+							>
+								{{ t(`dashboard.inbox.detail.statuses.${currentStatus}`) }}
+								<template #iconRight>
+									<Icon name="lucide:chevron-down" class="w-4 h-4 text-text-tertiary" />
+								</template>
+							</UiButton>
+						</template>
+						<UiDropdownMenuItem v-for="s in statusOptions" :key="s" @click="handleStatusChange(s)">
+							<span class="flex-1 truncate">
+								{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
+							</span>
+							<Icon
+								v-if="s === currentStatus"
+								name="lucide:check"
+								class="w-4 h-4 text-brand shrink-0"
+							/>
+						</UiDropdownMenuItem>
+					</UiDropdownMenu>
 				</div>
 			</div>
 
@@ -572,6 +675,12 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							</span>
 						</div>
 
+						<!-- The mirror of the Postbox reader's strip (idea 31): this
+						     message also sits in someone's personal mailbox, and it may
+						     already have been answered there. Read-only; renders nothing
+						     unless the viewer is permitted on both surfaces. -->
+						<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
+
 						<!-- Subject -->
 						<p v-if="message.subject" class="text-text-primary font-medium mb-2">
 							{{ message.subject }}
@@ -583,6 +692,10 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						>
 							{{ message.textBody || t('dashboard.inbox.detail.noTextContent') }}
 						</div>
+
+						<!-- Attachments. getThread returns the row unprojected, so the
+						     list needs no extra query; the component owns the download. -->
+						<InboxMessageAttachments :message="message" />
 
 						<!-- Classification -->
 						<div v-if="message.classification" class="mt-4 p-3 bg-bg-surface rounded-lg">
@@ -650,35 +763,98 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								message.processingStatus === 'awaiting_clarification' &&
 								message.pendingClarification
 							"
-							class="mt-4 rounded-lg border border-warning/30 bg-warning/5 p-4"
+							class="mt-4 surface-2 rounded-(--radius-card) border-l-2 border-l-brand/60 p-5"
+							data-testid="thread-clarification"
 						>
-							<div class="mb-3 flex items-center gap-2">
-								<Icon name="lucide:message-circle-question" class="h-4 w-4 text-warning" />
-								<p class="text-sm font-medium text-text-primary">
-									{{ t('dashboard.inbox.detail.agentNeedsInput') }}
-								</p>
-							</div>
-							<div class="space-y-3">
-								<UiInput
-									v-for="question in message.pendingClarification.questions"
-									:key="question.id"
-									:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
-									:label="question.text"
-									:placeholder="
-										question.options?.join(' / ') || t('dashboard.inbox.detail.answerPlaceholder')
-									"
-									@update:model-value="
-										setClarificationAnswer(message._id, question.id, String($event))
-									"
-								/>
-								<UiButton
-									size="sm"
-									:loading="isAnsweringClarification"
-									:disabled="!hasEveryClarificationAnswer(message)"
-									@click="submitClarification(message)"
+							<div class="flex items-start justify-between gap-4">
+								<div>
+									<span class="lp-eyebrow">{{
+										t('dashboard.inbox.detail.agentNeedsInputEyebrow')
+									}}</span>
+									<p class="mt-1 text-md font-semibold text-text-primary">
+										{{ t('dashboard.inbox.detail.agentNeedsInput') }}
+									</p>
+									<p class="mt-1 text-sm text-text-secondary max-w-[540px]">
+										{{ t('dashboard.inbox.detail.clarificationLead') }}
+										<template v-if="replyLanguageName(message.classification?.language)">
+											{{
+												t('dashboard.inbox.detail.replyLanguageNote', {
+													language: replyLanguageName(message.classification?.language),
+												})
+											}}
+										</template>
+									</p>
+								</div>
+								<span
+									class="shrink-0 inline-flex items-center gap-1.5 rounded-full surface-1 px-2.5 py-1 text-2xs font-medium text-text-secondary"
+									data-testid="thread-clarification-progress"
 								>
-									{{ t('dashboard.inbox.detail.answerAndResume') }}
-								</UiButton>
+									<Icon name="lucide:message-circle-question" class="h-3 w-3 text-brand" />
+									{{
+										t('dashboard.inbox.detail.clarificationProgress', {
+											answered: answeredCount(message),
+											total: message.pendingClarification.questions.length,
+										})
+									}}
+								</span>
+							</div>
+							<div class="mt-5 space-y-5">
+								<div
+									v-for="(question, questionIndex) in message.pendingClarification.questions"
+									:key="question.id"
+									data-testid="thread-clarification-question"
+									class="border-t border-border-subtle pt-4"
+								>
+									<p class="lp-eyebrow mb-1.5">
+										{{
+											t('dashboard.inbox.detail.questionCounter', {
+												index: questionIndex + 1,
+												total: message.pendingClarification.questions.length,
+											})
+										}}
+									</p>
+									<TaskAsk :ask="questionCopy(question).text" />
+									<TaskOptions
+										class="mt-1.5"
+										:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
+										:options="questionCopy(question).options"
+										:remembered="rememberedAnswer(question)"
+										:placeholder="t('dashboard.inbox.detail.answerPlaceholder')"
+										chip-test-id="thread-clarification-chip"
+										input-test-id="thread-clarification-input"
+										@update:model-value="
+											(value: string) => setClarificationAnswer(message._id, question.id, value)
+										"
+										@submit="hasEveryClarificationAnswer(message) && submitClarification(message)"
+									/>
+								</div>
+								<div class="flex items-center gap-3 pt-1">
+									<UiButton
+										size="sm"
+										:loading="isAnsweringClarification"
+										:disabled="!hasEveryClarificationAnswer(message)"
+										@click="submitClarification(message)"
+									>
+										<Icon name="lucide:sparkles" class="w-3.5 h-3.5" />
+										{{ t('dashboard.inbox.detail.answerAndResume') }}
+									</UiButton>
+									<p
+										v-if="!hasEveryClarificationAnswer(message)"
+										class="text-xs text-text-tertiary"
+										data-testid="thread-clarification-remaining"
+									>
+										{{
+											t(
+												'dashboard.inbox.detail.answerRemaining',
+												{
+													count:
+														message.pendingClarification.questions.length - answeredCount(message),
+												},
+												message.pendingClarification.questions.length - answeredCount(message)
+											)
+										}}
+									</p>
+								</div>
 							</div>
 						</div>
 
@@ -712,6 +888,39 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						<InboxAgentActionTimeline :inbound-message-id="message._id" />
 
 						<!-- Draft Response -->
+						<div
+							v-if="message.processingStatus === 'draft_ready' && reusedAnswers(message).length > 0"
+							class="mt-4 surface-1 rounded-(--radius-card) p-4"
+							data-testid="reused-answers"
+						>
+							<span class="lp-eyebrow">{{ t('dashboard.inbox.detail.reusedAnswersEyebrow') }}</span>
+							<p class="mt-1 text-sm font-medium text-text-primary">
+								{{ t('dashboard.inbox.detail.reusedAnswersTitle') }}
+							</p>
+							<ul class="mt-2 space-y-1.5 text-sm">
+								<li
+									v-for="question in reusedAnswers(message)"
+									:key="question.id"
+									class="flex items-baseline gap-2"
+								>
+									<Icon
+										name="lucide:history"
+										class="w-3.5 h-3.5 shrink-0 translate-y-0.5 text-text-tertiary"
+									/>
+									<span class="text-text-secondary">{{ questionCopy(question).text }}</span>
+									<span class="font-medium text-text-primary">{{ question.answer?.value }}</span>
+								</li>
+							</ul>
+							<p class="mt-2 text-xs text-text-tertiary">
+								{{ t('dashboard.inbox.detail.reusedAnswersHint') }}
+								<NuxtLink
+									to="/dashboard/admin/instance/autonomy"
+									class="underline hover:text-text-primary"
+									>{{ t('dashboard.inbox.detail.reusedAnswersManage') }}</NuxtLink
+								>
+							</p>
+						</div>
+
 						<div
 							v-if="message.draftResponse && message.processingStatus === 'draft_ready'"
 							class="mt-4 border-t border-border-subtle pt-4"
@@ -807,9 +1016,11 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					</div>
 
 					<!-- Empty messages -->
-					<div v-if="messages.length === 0" class="card text-center py-8">
-						<p class="text-text-tertiary">{{ t('dashboard.inbox.detail.noMessages') }}</p>
-					</div>
+					<UiEmptyState
+						v-if="messages.length === 0"
+						icon="lucide:mail"
+						:title="t('dashboard.inbox.detail.noMessages')"
+					/>
 				</div>
 
 				<!-- Sidebar -->
@@ -861,40 +1072,26 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								<p class="text-xs text-text-tertiary">{{ t('dashboard.inbox.detail.messages') }}</p>
 								<p class="text-text-primary">{{ thread.messageCount ?? 0 }}</p>
 							</div>
+							<!-- Assignment READS here and is CHANGED in the header (and on row
+							     hover in the list). A second assign popover here would render
+							     the same verb twice on one screen; the details card is a list
+							     of facts about the thread, and this is one of them. -->
 							<div>
 								<p class="text-xs text-text-tertiary mb-1">
 									{{ t('dashboard.inbox.detail.assignedTo') }}
 								</p>
-								<InboxAssignPopover
-									:members="assignMembers"
-									:current-user-id="user?.id ?? null"
-									:assigned-to="thread.assignedTo ?? null"
-									position="left"
-									@assign="onAssign"
-								>
-									<template #trigger>
-										<button
-											type="button"
-											class="w-full flex items-center gap-2 text-sm border border-border-subtle rounded-lg px-2 py-1.5 bg-bg-surface text-text-primary hover:bg-(--surface-1-hover) transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											:aria-label="t('dashboard.inbox.detail.assignToTeammateAria')"
-										>
-											<UiAvatar
-												v-if="thread.assignedTo"
-												:name="assignedMemberName ?? undefined"
-												deterministic-color
-												size="sm"
-											/>
-											<Icon v-else name="lucide:user-plus" class="w-4 h-4 text-text-tertiary" />
-											<span class="flex-1 truncate text-left">
-												{{ assignedMemberName ?? t('dashboard.inbox.detail.unassigned') }}
-											</span>
-											<Icon
-												name="lucide:chevron-down"
-												class="w-3.5 h-3.5 text-text-tertiary shrink-0"
-											/>
-										</button>
-									</template>
-								</InboxAssignPopover>
+								<div class="flex items-center gap-2 text-sm text-text-primary">
+									<UiAvatar
+										v-if="thread.assignedTo"
+										:name="assignedMemberName ?? undefined"
+										deterministic-color
+										size="sm"
+									/>
+									<Icon v-else name="lucide:user-round" class="w-4 h-4 text-text-tertiary" />
+									<span class="truncate">
+										{{ assignedMemberName ?? t('dashboard.inbox.detail.unassigned') }}
+									</span>
+								</div>
 							</div>
 							<div v-if="thread.lastMessageAt">
 								<p class="text-xs text-text-tertiary">

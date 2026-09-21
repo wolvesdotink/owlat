@@ -36,7 +36,7 @@ export const TENANT_TABLES = [
 	'contactActivities',
 	'contactIdentities',
 	'contactRelationships',
-	// Per-topic sunset-policy overrides (P4-4). Configuration, not contact data,
+	// Per-topic sunset-policy overrides. Configuration, not contact data,
 	// but it is tenant-owned and must not survive an org wipe.
 	'sunsetPolicies',
 	'emailSends',
@@ -85,7 +85,7 @@ export const TENANT_TABLES = [
 	'sendingDomainMtaIdentities',
 	'yahooCflEnrollments',
 	'sendingDomainSesIdentities',
-	// The generic per-provider relay identity (D7) that succeeds the two
+	// The generic per-provider relay identity that succeeds the two
 	// frozen siblings above. Org-scoped sending-domain state — a wipe must not
 	// leave the org's relay verification records behind.
 	'sendingDomainRelayIdentities',
@@ -119,10 +119,10 @@ export const TENANT_TABLES = [
 	// same experiment record one classification further in. Tenant sending
 	// history: a wipe must not leave it behind.
 	'smtpResponseCategories',
-	// Every ramp-controller decision, including no-ops (plan D12). Tenant
+	// Every ramp-controller decision, including no-ops. Tenant
 	// sending history: a wipe must not leave the org's ramp audit trail behind.
 	'mixDecisions',
-	// The per-stream ramp aggressiveness preset an operator chose (plan D9).
+	// The per-stream ramp aggressiveness preset an operator chose.
 	// Per-organization business configuration — a wipe must not leave it behind.
 	'rampStreamPresets',
 	// Derived from sendingReputation (tenant data), so a tenant wipe must delete the org's delivery history too.
@@ -168,6 +168,16 @@ export const TENANT_TABLES = [
 	'agentShadowScorecard',
 
 	// ── Personal mail (Postbox) — children first, mailbox last ──
+	// The attachment index and its backfill job are derived from `mailMessages`,
+	// but they carry this org's filenames and senders verbatim, so they wipe with
+	// the mail they mirror rather than being treated as a regenerable cache.
+	'mailAttachments',
+	'mailAttachmentBackfillJobs',
+	// The deep-body-search backfill job (idea 32). Same reasoning as the
+	// attachment job above: it is derived bookkeeping over `mailMessages`, but it
+	// names this org's mailboxes, so it wipes with the mail it walked. (The
+	// excerpt itself is a COLUMN on `mailMessages` and needs no entry here.)
+	'mailBodySearchBackfillJobs',
 	'mailMessages',
 	'mailThreads',
 	'mailDrafts',
@@ -176,8 +186,10 @@ export const TENANT_TABLES = [
 	'mailContactStyleOverrides',
 	'mailFolders',
 	'mailFilters',
+	'mailFilterRunJobs',
 	'mailSignatures',
 	'mailSnippets',
+	'mailSavedSearches',
 	'mailUserSettings',
 	'mailAliases',
 	'mailForwarding',
@@ -186,15 +198,27 @@ export const TENANT_TABLES = [
 	'mailAppPasswords',
 	'mailContacts',
 	'mailSenderCategoryOverrides',
+	'mailSenderImageAllowlist',
+	// Attachment share links (idea 10). Each row is one of this org's files —
+	// filename, size and the token that opens it — so it wipes with the mail it
+	// was lifted out of. Deleting the row is also the only thing that stops the
+	// link resolving, which makes leaving it behind unthinkable.
+	'mailAttachmentShares',
+	'mailTriageTallies',
 	'mailCommitments',
 	'mailDailyBriefs',
 	'mailBriefCards',
 	'mailAuditLog',
 	'mailAuthFailures',
 	'mailboxMigrations',
+	'mailArchiveImports',
 	'mailboxMoves',
 	'externalMailFolderSync',
 	'externalMailAccounts',
+	// In-flight Google sign-in handshakes for connecting an external mailbox.
+	// User- and org-attributed, short-lived, and meaningless once the org is gone
+	// — wiped with it like the account rows the finished handshake would write.
+	'externalMailOAuthStates',
 	// Seed-mailbox placement probe ledger (deliverability gate 5). One row per
 	// shadow copy this org's sends dropped into its own seed mailboxes —
 	// org-scoped observation data, wiped with the org.
@@ -300,6 +324,9 @@ export const NON_TENANT_TABLES = [
 	'aiProviderConfig',
 	// Instance infrastructure / regenerable caches — not org business data.
 	'systemUpdates',
+	// Cache of the desktop releases GitHub has published, refetched by a cron —
+	// public release metadata and manifests, regenerable in one poll.
+	'desktopReleases',
 	'backupState',
 	'urlReputationCache',
 	'providerRoutes',
@@ -336,13 +363,13 @@ export const NON_TENANT_TABLES = [
 	// this org's contact business data, so it is out of the tenant wipe like
 	// `keyVault` and the other caches.
 	'recipientKeys',
-	// Sealed Mail published key-rotation statements (E6). Signed old->new
+	// Sealed Mail published key-rotation statements. Signed old->new
 	// fingerprint bindings we serve in the manifest rotation feed. Public material
 	// only, regenerable from the vault's rotation history — instance crypto
 	// infrastructure, not this org's contact business data, so it is out of the
 	// tenant wipe like `keyVault` / `recipientKeys`.
 	'keyRotations',
-	// Replay claims for the bundled-plugin feedback route (D6/P2.2). One row per
+	// Replay claims for the bundled-plugin feedback route. One row per
 	// accepted delivery, holding a HASH of the caller's signature and nothing
 	// else: no address, no message id, no payload. It is wire-protocol
 	// bookkeeping about requests the deployment received, it self-expires within

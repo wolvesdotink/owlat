@@ -31,7 +31,7 @@ export function usePostboxAppPasswords(mailboxId: Ref<Id<'mailboxes'> | null>) {
 			mailboxId: mailboxId.value,
 			label,
 			scopes,
-		}) as Promise<{ id: Id<'mailAppPasswords'>; cleartext: string }>;
+		});
 	}
 
 	async function revoke(appPasswordId: Id<'mailAppPasswords'>) {

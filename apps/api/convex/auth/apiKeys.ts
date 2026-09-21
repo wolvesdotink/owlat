@@ -4,7 +4,7 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { API_SCOPES, unknownScopes, tier2OnlyScopes } from './apiScopes';
-import { hashApiKey } from './apiAuth';
+import { hashApiKey } from './apiKeyAuth';
 import { randomToken } from '../lib/randomToken';
 import { parsePluginId } from '@owlat/plugin-kit';
 import { allowedPluginBoundScopes, loadPluginBoundKeyContext } from '../plugins/apiKeyBinding';
@@ -34,7 +34,14 @@ export const listByTeam = authedQuery({
 		}
 
 		// Sort by creation date descending (newest first)
-		return keys.sort((a, b) => b.createdAt - a.createdAt);
+		keys.sort((a, b) => b.createdAt - a.createdAt);
+
+		// Project OUT the stored `keyHash`. It is the SHA-256 verifier the auth
+		// path hashes an incoming key against; a management list has no use for it,
+		// and returning it hands an admin-scoped reader an offline brute-force
+		// target. `keyPrefix` (the display prefix) stays so the UI can identify a
+		// key. Mirrors the connected-apps list stripping its sealed hook secret.
+		return keys.map(({ keyHash: _keyHash, ...rest }) => rest);
 	},
 });
 

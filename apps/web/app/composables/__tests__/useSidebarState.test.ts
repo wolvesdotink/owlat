@@ -73,6 +73,20 @@ describe('useSidebarState', () => {
 			expect(s.sidebarMode.value).toBe('visible');
 		});
 
+		it('a persisted collapsed value does not apply on a mobile viewport', () => {
+			// Collapse is a desktop space tradeoff. Ungated it followed the user
+			// onto their phone, where the same preference renders the *drawer* as a
+			// 64px icon strip with no labels — and the toggle that would widen it
+			// again is desktop-only.
+			const s = useSidebarState();
+			s.setCollapsed(true);
+			expect(s.effectiveCollapsed.value).toBe(true);
+			s.setDesktopViewport(false);
+			expect(s.isCollapsed.value).toBe(true);
+			expect(s.effectiveCollapsed.value).toBe(false);
+			expect(s.sidebarMode.value).toBe('visible');
+		});
+
 		it('a persisted hidden value does not apply on a mobile viewport', () => {
 			const s = useSidebarState();
 			s.setHidden(true);

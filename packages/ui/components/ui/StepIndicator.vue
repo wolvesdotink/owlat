@@ -37,11 +37,18 @@ function handleStepClick(stepId: Step['id']): void {
 <template>
 	<nav :aria-label="t('ui.stepIndicator.label')">
 		<ol class="flex items-center justify-between">
+			<!-- `flex-auto` (1 1 auto), NOT `flex-1` (1 1 0%). With a zero basis every
+			     li gets the same total width, so the connector — the only flexible
+			     child — is left with whatever the label did not eat, and a long label
+			     ("Features", "Account") crushes its connector to a 6px hyphen beside
+			     40px lines. An `auto` basis measures the label first and then splits
+			     the *leftover* row equally, so every connector comes out the same
+			     length. The last li carries no connector and must not grow. -->
 			<li
 				v-for="(step, index) in steps"
 				:key="step.id"
 				class="flex items-center"
-				:class="index < steps.length - 1 ? 'flex-1' : ''"
+				:class="index < steps.length - 1 ? 'flex-auto' : 'shrink-0'"
 			>
 				<component
 					:is="stepIsClickable(step.id) ? 'button' : 'div'"
@@ -57,14 +64,17 @@ function handleStepClick(stepId: Step['id']): void {
 					"
 					@click="handleStepClick(step.id)"
 				>
-					<!-- Step Circle -->
+					<!-- Step Circle. Monochrome, like `.btn-primary`: a rail of solid
+					     terracotta discs is the "brand used as a large fill" smell, and a
+					     wizard shows several of them at once. The whole indicator spends
+					     its single accent on ONE thing — the current step's ring. -->
 					<div
 						:class="[
 							'flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-colors',
 							getStepStatus(step.id) === 'completed'
-								? 'bg-brand text-text-inverse'
+								? 'bg-text-primary text-text-inverse'
 								: getStepStatus(step.id) === 'current'
-									? 'bg-brand/20 text-brand border-2 border-brand'
+									? 'bg-bg-surface text-text-primary ring-1 ring-brand'
 									: 'bg-bg-surface text-text-tertiary border border-border-subtle',
 						]"
 					>
@@ -80,7 +90,7 @@ function handleStepClick(stepId: Step['id']): void {
 						:class="[
 							'ml-3 text-sm font-medium',
 							getStepStatus(step.id) === 'completed'
-								? 'text-brand'
+								? 'text-text-secondary'
 								: getStepStatus(step.id) === 'current'
 									? 'text-text-primary'
 									: 'text-text-tertiary',
@@ -94,7 +104,7 @@ function handleStepClick(stepId: Step['id']): void {
 					v-if="index < steps.length - 1"
 					:class="[
 						'flex-1 h-0.5 mx-4',
-						isConnectorHighlighted(index) ? 'bg-brand/30' : 'bg-border-subtle',
+						isConnectorHighlighted(index) ? 'bg-text-primary/30' : 'bg-border-subtle',
 					]"
 				/>
 			</li>

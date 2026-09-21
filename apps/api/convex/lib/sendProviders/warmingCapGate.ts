@@ -1,29 +1,28 @@
 /**
  * Campaign warming-cap gate (read seam).
  *
- * One question, asked by the P0-5 binding capacity pre-flight: does the own
- * MTA's per-IP warming cap actually BIND this deployment's campaign traffic?
- * It reads route state, so it lives beside `route.ts` rather than in the gate
- * — and it is its own module because answering it means combining the shipped
+ * One question, asked by the binding capacity pre-flight: does the own MTA's
+ * per-IP warming cap actually BIND this deployment's campaign traffic? It
+ * reads route state, so it lives beside `route.ts` rather than in the gate —
+ * and it is its own module because answering it means combining the shipped
  * route resolution with the relay-identity proof, which is a distinct concern
  * from resolving where a single message goes.
  *
- * WHAT THIS SEAM CANNOT DO, said out loud (D14). The stream's own-arm FLOOR is
- * zero as soon as ONE cell carries nothing on the own MTA — a stored share of 0,
- * or (see {@link campaignStreamShare}) a fresh actionable signal that the
- * dispatch path relays or defers the whole cell on — and a zero floor can never
- * refuse anything, because a lower bound of zero on own-arm volume exceeds no
- * capacity.
- * In a ramping deployment at least one such cell is ordinary, so P0-5's REFUSAL
- * is unenforceable here most of the time: a campaign whose recipients all sit in
+ * WHAT THIS SEAM CANNOT DO, said out loud. The stream's own-arm FLOOR is zero as
+ * soon as ONE cell carries nothing on the own MTA — a stored share of 0, or (see
+ * {@link campaignStreamShare}) a fresh actionable signal that the dispatch path
+ * relays or defers the whole cell on — and a zero floor can never refuse
+ * anything, because a lower bound of zero on own-arm volume exceeds no capacity.
+ * In a ramping deployment at least one such cell is ordinary, so the REFUSAL is
+ * unenforceable here most of the time: a campaign whose recipients all sit in
  * un-degraded cells is answered "capacity unknown, allowed", and its tail can
  * still expire at `maxMessageAgeMs`. The PEAK keeps the approval side honest
  * there — a campaign that fits at the peak is measured, not merely waved through
  * — but nothing recovers the refusal short of counting the audience BY CELL,
  * i.e. the denormalized audience counter the `COUNT_CEILING` follow-up names,
  * extended to a per-cell histogram. Until then this gate binds a warming
- * deployment whose cells are all un-degraded, which is the configuration P0-5
- * was written for.
+ * deployment whose cells are all un-degraded, which is the configuration this
+ * gate was written for.
  *
  * AND WHAT IT ANSWERS ABOUT A CAMPAIGN IT DOES NOT ACTUATE. The share carried
  * back here scales the PRE-FLIGHT's VERDICT only — never the schedule the
@@ -87,9 +86,8 @@ async function resolveCampaignBase(
  * Why the own-MTA warming cap does NOT bind this deployment's campaign
  * traffic. A verdict, not a footnote: it is what the "capacity unknown" arm of
  * the pre-flight assessment renders as its measurement-confidence reason
- * (plan D12 — every decision carries a recorded reason; D14 — say the quiet
- * part), and the three cases are materially different things to tell an
- * operator.
+ * (every decision carries a recorded reason — say the quiet part), and the
+ * three cases are materially different things to tell an operator.
  */
 export type WarmingCapNotBindingReason =
 	/**
@@ -107,7 +105,7 @@ export type WarmingCapNotBindingReason =
 	/**
 	 * Nothing is known about where campaigns dispatch: no enabled+ready route
 	 * entry AND no resolvable base route. This is genuinely MISSING DATA — the
-	 * send is allowed (D10: never act on thin data), but unlike the other two
+	 * send is allowed (never act on thin data), but unlike the other two
 	 * this one is worth surfacing as low measurement confidence rather than as
 	 * reassurance.
 	 */
@@ -194,20 +192,19 @@ const WHOLE_AUDIENCE_SHARE: OwnArmShareBounds = Object.freeze({
  * A cell with no rows resolves to `OWN_SHARE_CEILING`: the un-migrated default,
  * where the own MTA carries the whole cell.
  *
- * THE STORED SHARE IS NOT THE WHOLE FLOOR. `resolveOwnShare` reads
- * `perStream ?? streamless`, so a controller row carrying 0.9 answers 0.9 even
- * while the MTA snapshot's row for the same cell carries a fresh `dnsbl_listed`
- * or `breaker_open` verdict — and the dispatch path does NOT split that cell 90
- * / 10. `cellRoute` feeds those signals to `resolveRoute` as `activeReasons`,
- * and one active reason overrides the strategy outright (routing.ts): with the
+ * THE STORED SHARE IS NOT THE WHOLE FLOOR. `resolveOwnShare` reads `perStream
+ * ?? streamless`, so a controller row carrying 0.9 answers 0.9 even while the
+ * MTA snapshot's row for the same cell carries a fresh `dnsbl_listed` or
+ * `breaker_open` verdict — and the dispatch path does NOT split that cell 90 /
+ * 10. `cellRoute` feeds those signals to `resolveRoute` as `activeReasons`, and
+ * one active reason overrides the strategy outright (routing.ts): with the
  * escape hatch enabled the whole cell relays, and where the relay proof is
  * missing it defers instead. Neither outcome is own-MTA volume, so the cell's
  * guaranteed lower bound is ZERO, and reading 0.9 would over-count own-arm
- * volume in the direction that REFUSES — the false blocker D2 forbids. The
- * reasons are therefore recomputed per cell from the rows already scanned, and
- * only while the escape hatch is on: with it off the reason is inert
- * (`resolveRoute` returns the strategy's selection) and the stored share is the
- * whole answer.
+ * volume in the direction that REFUSES — a false blocker. The reasons are
+ * therefore recomputed per cell from the rows already scanned, and only while
+ * the escape hatch is on: with it off the reason is inert (`resolveRoute`
+ * returns the strategy's selection) and the stored share is the whole answer.
  *
  * THE POOL-WIDE BREAKER IS NOT A HATCH DECISION. A fresh `breaker_open` on the
  * `'all'` row DEFERS the whole stream rather than relaying it, and it does so
@@ -227,7 +224,7 @@ const WHOLE_AUDIENCE_SHARE: OwnArmShareBounds = Object.freeze({
  * extreme.
  *
  * READS A WHOLE-ORGANIZATION RANGE, inside a send mutation: the OCC footprint
- * that buys is stated on `loadStreamRouteStateCells` (D16). A gate judging an
+ * that buys is stated on `loadStreamRouteStateCells`. A gate judging an
  * AUDIENCE has no single cell to point-read, so the range is what the question
  * costs. The pool-wide `'all'` row is one extra point read on top.
  */
@@ -251,7 +248,7 @@ async function campaignStreamShare(
 		// reading this module exists to remove — and it would be indistinguishable
 		// from an unconfigured deployment. It propagates instead, and the
 		// pre-flight's fail-open records it as `measurement_failed`: capacity
-		// unmeasured, send allowed, and said out loud (D12).
+		// unmeasured, send allowed, and said out loud.
 		if (extractOperationError(error)?.category !== 'forbidden') throw error;
 		return null;
 	}
@@ -294,7 +291,7 @@ function adaptiveMixDispatch(
 	// reference transport, so no campaign byte meets the cap.
 	if (!enabledKinds.includes(OWN_ARM_TRANSPORT_KIND)) return { why: 'not_own_mta' };
 	// ONE ARM CONFIGURED IS NOT A MIX. With no reference transport enabled+ready
-	// the strategy's additive-only rule (D2) sends the whole cell on the own MTA
+	// the strategy's additive-only rule sends the whole cell on the own MTA
 	// however low the stored share is, so the cap binds against ALL of it.
 	if (enabledKinds.every((kind) => kind === OWN_ARM_TRANSPORT_KIND)) {
 		return { ownArmShare: WHOLE_AUDIENCE_SHARE };
@@ -386,7 +383,7 @@ async function campaignDispatchSurface(
 
 	// The deterministic tail, and the env fallback for the two strategies above.
 	// With no base route either, nothing is known about where campaigns dispatch:
-	// hold and allow (D10).
+	// hold and allow.
 	if (!input.baseRoute) return { why: 'dispatch_unknown' };
 	if (input.baseRoute.providerType !== OWN_ARM_TRANSPORT_KIND) return { why: 'not_own_mta' };
 	return { ownArmShare: WHOLE_AUDIENCE_SHARE };
@@ -395,14 +392,14 @@ async function campaignDispatchSurface(
 /**
  * Does the own-MTA warming cap actually BIND campaign traffic?
  *
- * The P0-5 pre-flight capacity gate exists for ONE shipped configuration: a
- * warming deployment sending campaigns through its own MTA with NO relay to
- * overflow to, where exceeding the per-IP warming cap defers the tail until it
- * expires at `maxMessageAgeMs`. In every other configuration the cap cannot
- * strand a campaign, and a gate that refused anyway would be a false blocker on
- * traffic that ships fine today (plan D2 — never block on a measurement that
- * does not apply). Answering `{ binds: false }` therefore means "not subject to
- * the cap, or unknown → allow", and `why` says WHICH — the three cases are not
+ * The pre-flight capacity gate exists for ONE shipped configuration: a warming
+ * deployment sending campaigns through its own MTA with NO relay to overflow
+ * to, where exceeding the per-IP warming cap defers the tail until it expires
+ * at `maxMessageAgeMs`. In every other configuration the cap cannot strand a
+ * campaign, and a gate that refused anyway would be a false blocker on traffic
+ * that ships fine today (never block on a measurement that does not apply).
+ * Answering `{ binds: false }` therefore means "not subject to the cap, or
+ * unknown → allow", and `why` says WHICH — the three cases are not
  * interchangeable and the caller has to be able to tell them apart.
  *
  * Two shipped configurations answer `binds: false`:
@@ -426,7 +423,7 @@ async function campaignDispatchSurface(
  * binds ALL of it" stopped being the same statement once a cell's traffic could
  * be SPLIT between the arms. The caller measures the warming projection against
  * `share x audience`: quoting a 95%-relayed campaign a multi-day plan computed
- * over its whole audience would be exactly the false blocker D2 forbids. It
+ * over its whole audience would be exactly the false blocker to avoid. It
  * carries BOTH bounds of that share and the two license different sentences —
  * refuse on the floor, approve on the peak, report the gap as unmeasured — for
  * the reason `campaignStreamShare` states: the composition of the audience

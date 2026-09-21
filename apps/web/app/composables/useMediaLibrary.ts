@@ -121,7 +121,7 @@ export function useMediaLibrary() {
 						width: dimensions?.width,
 						height: dimensions?.height,
 					});
-					if (created === undefined) throw new Error('Failed to save media asset');
+					if (!created.ok) throw new Error('Failed to save media asset');
 				})
 			);
 			const failed = results.filter((r) => r.status === 'rejected').length;
@@ -136,7 +136,7 @@ export function useMediaLibrary() {
 	// Delete
 	const deleteAssets = async (ids: Id<'mediaAssets'>[]) => {
 		const result = await bulkDeleteAssets({ assetIds: ids });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		clearSelection();
 	};
 

@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { generateKeyPairSync } from 'crypto';
-import { canonicalizeBodyRelaxed } from '../../canon.js';
+import { canonicalizeBodyRelaxed } from '@owlat/mail-canon';
 import { verifyDkim, type DkimDnsResolver } from '../verify.js';
 import { mintSignature } from './helpers/mint.js';
 

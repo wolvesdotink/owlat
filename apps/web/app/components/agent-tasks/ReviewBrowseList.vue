@@ -14,9 +14,9 @@ import type { ReviewRow } from '~/utils/reviewRow';
 /**
  * The Review Queue's keyboard-first browse view: a listbox of shared agent task
  * cards (trust chips, revise box, draft options, coach panel — each card's
- * anatomy lives in ReviewBrowseCard) with multi-select bulk approve/reject
- * (piece C2). Split out of review.vue so the page just switches between this
- * and the Focus card-stack flow (ReviewFocusFlow). Emits `focus` when the
+ * anatomy lives in ReviewBrowseCard) with multi-select bulk approve/reject.
+ * Split out of review.vue so the page just switches between this and the Focus
+ * card-stack flow (ReviewFocusFlow). Emits `focus` when the
  * reviewer opens the focused one-task-at-a-time flow instead.
  */
 const emit = defineEmits<{ (e: 'focus'): void }>();
@@ -111,7 +111,7 @@ const rows = computed<ReviewRow[]>(() =>
 // subscription confirms it; a failed action restores the row (usePostboxOptimisticHide).
 const { visible: visibleRows, hide: hideRow, unhide: unhideRow } = usePostboxOptimisticHide(rows);
 
-// Multi-select + bulk approve/reject (piece C2): a selection Set in the
+// Multi-select + bulk approve/reject: a selection Set in the
 // Postbox bulk idiom, the sticky action bar above the listbox, and batch
 // mutations whose per-id outcomes drive one shared partial-result undo toast.
 const bulk = useReviewBulkSelect(visibleRows);
@@ -134,15 +134,15 @@ function handledReplyCollision(result: unknown): boolean {
 }
 
 // Countdown-undo toast for approvals inside their server-side undo window
-// (agentConfig.humanApproveUndoDelayMs, piece C1). Armed with this list's true
+// (agentConfig.humanApproveUndoDelayMs). Armed with this list's true
 // inverse: undoAutoSend routes the draft back to `draft_ready` and the row is
 // unhidden immediately rather than waiting on the live subscription round-trip.
 const { arm: armApproveUndo } = useReviewApproveUndo();
 
 async function undoApproveAndRestore(messageId: Id<'inboundMessages'>) {
 	const result = await undoApprove(messageId);
-	if (result === undefined) return; // categorized failure — already toasted
-	if (result.cancelled) {
+	if (!result.ok) return; // categorized failure — already toasted
+	if (result.result.cancelled) {
 		unhideRow(messageId);
 		showToast(t('shared.reviewBulkSummary.undoneOne'));
 	} else {
@@ -167,19 +167,19 @@ function handledAlreadyHandled(result: unknown): boolean {
 // instead of the plain confirmation.
 async function runOptimistic(
 	messageId: Id<'inboundMessages'>,
-	send: () => Promise<unknown>,
+	send: () => Promise<BackendOperationResult<unknown>>,
 	successMsg = t('components.agentTasks.reviewBrowseList.toasts.draftApproved')
 ) {
 	actionInProgress.value = messageId;
 	hideRow(messageId);
 	try {
 		const result = await send();
-		if (result === undefined || handledReplyCollision(result)) {
+		if (!result.ok || handledReplyCollision(result.result)) {
 			unhideRow(messageId);
 			return;
 		}
-		if (handledAlreadyHandled(result)) return;
-		const undo = approveUndoWindow(result);
+		if (handledAlreadyHandled(result.result)) return;
+		const undo = approveUndoWindow(result.result);
 		if (undo) {
 			armApproveUndo({
 				inboundMessageId: messageId,
@@ -221,7 +221,7 @@ const onRejectClick = (messageId: Id<'inboundMessages'>) =>
 
 // Keyboard-first triage: j/k move, Enter opens the thread, a approves (through
 // the SAME undo-guarded send the button calls), e edits, # rejects — plus the
-// C2 selection layer (Space/x select, Shift+J/K extend, * select-all-visible).
+// selection layer (Space/x select, Shift+J/K extend, * select-all-visible).
 // Built by reusing the Postbox house composables; keys stay inert while the
 // inline compose input/textarea is focused.
 function openThread(row: ReviewRow) {
@@ -277,7 +277,7 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 	try {
 		const result = await composeAndSend(messageId, body, composeSubject[messageId]);
 		// no-op, collision, or the same lost race the approve path reports
-		if (result === undefined || handledReplyCollision(result) || handledAlreadyHandled(result))
+		if (!result.ok || handledReplyCollision(result.result) || handledAlreadyHandled(result.result))
 			return;
 		delete composeBody[messageId];
 		delete composeSubject[messageId];
@@ -302,25 +302,16 @@ const onComposeSend = async (messageId: Id<'inboundMessages'>) => {
 			</div>
 		</div>
 
-		<!-- Empty State -->
-		<div
+		<!-- Empty State — the shared eyebrow → heading → lead ladder, the same one
+		     Quarantine and Failed mount. The title is a real heading, so a
+		     caught-up Review Queue (a page whose whole content is this state) is
+		     not a screen with no heading at all. -->
+		<UiEmptyState
 			v-else-if="visibleRows.length === 0"
-			class="flex flex-col items-center justify-center py-16 text-center"
-		>
-			<UiIconBox
-				icon="lucide:check-circle"
-				size="xl"
-				variant="success"
-				rounded="full"
-				class="mb-4"
-			/>
-			<p class="text-text-secondary font-medium">
-				{{ t('components.agentTasks.reviewBrowseList.empty.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1">
-				{{ t('components.agentTasks.reviewBrowseList.empty.body') }}
-			</p>
-		</div>
+			icon="lucide:check-circle"
+			:title="t('components.agentTasks.reviewBrowseList.empty.title')"
+			:description="t('components.agentTasks.reviewBrowseList.empty.body')"
+		/>
 
 		<template v-else>
 			<!-- Sticky bulk bar: appears with the first selected card. -->

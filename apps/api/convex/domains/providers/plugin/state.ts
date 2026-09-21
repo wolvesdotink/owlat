@@ -1,6 +1,6 @@
 /**
  * From "what a bundled plugin said" to "what the identity row holds" — the pure
- * half of the plugin sending-domain provider (the seams plan's P3.2).
+ * half of the plugin sending-domain provider.
  *
  * Its own file for the same reason `../mandrill/identity.ts` is: every rule here
  * is a JUDGEMENT that must be pinned by a test rather than exercised through a
@@ -20,15 +20,15 @@ import {
 	PLUGIN_DOMAIN_IDENTITY_MAX_DNS_FACTS,
 	PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH,
 } from '@owlat/plugin-kit';
-import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
+import { isRecord, MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import { parseStoredProviderDetails } from '../relayIdentityProviderDetails';
 import type { RelayIdentityStatus } from '../types';
 
 /**
  * How long an observation still licenses handing a From domain to this relay.
  *
- * A HOST CONSTANT, not a manifest field, and that is the piece's one
- * non-negotiable declaration. This bound is what limits the blast radius of an
+ * A HOST CONSTANT, not a manifest field, and that is not negotiable by a
+ * plugin. This bound is what limits the blast radius of an
  * identity revoked, suspended or deleted at the provider while our row survives:
  * nothing in the stored state distinguishes "still fine" from "removed an hour
  * ago", so the only thing that ever retires a stale proof is its age. A
@@ -89,7 +89,7 @@ export const PLUGIN_UNAVAILABLE_RETRY_MS = 15 * 60 * 1000;
 export const PLUGIN_DENIED_RETRY_MS = PLUGIN_CHECK_INTERVAL_MS.failed;
 
 /** One record verdict, as the host keeps it. */
-export type PluginRecordVerdict = {
+type PluginRecordVerdict = {
 	readonly isValid: boolean;
 	readonly error?: string;
 };
@@ -112,7 +112,7 @@ export type PluginRelayCallOutcome =
 	| { readonly outcome: 'auth_failed'; readonly error: string }
 	| { readonly outcome: 'unavailable'; readonly error: string };
 
-/** The `providerDetails` blob for a plugin identity (D7, versioned). */
+/** The `providerDetails` blob for a plugin identity, versioned. */
 export interface PluginRelayProviderDetails {
 	readonly kind: 'plugin';
 	/** The DNS the alignment pre-flight resolves for this domain's second arm. */
@@ -300,8 +300,4 @@ function boundedText(input: unknown): string | undefined {
 	const trimmed = input.trim();
 	if (trimmed.length === 0) return undefined;
 	return trimmed.slice(0, PLUGIN_DOMAIN_IDENTITY_MAX_ERROR_LENGTH);
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

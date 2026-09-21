@@ -228,7 +228,7 @@ onBeforeUnmount(() => {
 				</button>
 
 				<div v-if="isLoading" class="flex flex-col items-center gap-2 text-white/70">
-					<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin" />
+					<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none" />
 					<p class="text-sm">{{ t('components.postbox.postboxAttachmentLightbox.loading') }}</p>
 				</div>
 				<p v-else-if="loadFailed || !objectUrl" class="text-sm text-white/70">

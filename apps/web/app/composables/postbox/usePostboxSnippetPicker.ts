@@ -18,16 +18,24 @@
  * filter-as-you-type, arrow keys + Enter/Tab to insert, Esc to dismiss (the
  * literal "/" is never removed until a snippet is chosen). Insertion routes
  * through `document.execCommand` so native undo + the @input autosave both see
- * it. `{{firstName}}` placeholders resolve from the draft's first recipient;
- * unknown values insert as visible `[firstName]` tokens.
+ * it.
+ *
+ * Typed variables (plan idea 13) resolve at insertion from the recipient, the
+ * sender identity and the date. A snippet carrying `prompt` variables PAUSES
+ * here — the trigger token is consumed, the caret position remembered, and the
+ * body is inserted once the dialog hands back the answers. Anything still
+ * unresolved stays a literal `{{token}}`, which is what the composer's
+ * preflight flags beside Send.
  */
 
 import { ref, computed, nextTick, type Ref } from 'vue';
+import { detectSnippetTrigger, rankSnippets } from '~/utils/postboxSnippets';
 import {
-	detectSnippetTrigger,
-	rankSnippets,
-	resolveSnippetPlaceholders,
-} from '~/utils/postboxSnippets';
+	promptedSnippetVariables,
+	resolveSnippetBody,
+	type SnippetVariable,
+	type SnippetVariableContext,
+} from '~/utils/postboxSnippetVariables';
 
 /** A canned response offered by the composer's "/" slash-trigger. */
 export interface EditorSnippet {
@@ -35,6 +43,14 @@ export interface EditorSnippet {
 	name: string;
 	shortcut: string;
 	bodyHtml: string;
+	/** Typed variable declarations (plan idea 13); absent = implicit tokens only. */
+	variables?: SnippetVariable[];
+}
+
+/** A snippet held open waiting for its prompt-on-insert answers. */
+export interface SnippetPromptRequest {
+	snippet: EditorSnippet;
+	fields: SnippetVariable[];
 }
 
 export interface SnippetPickerOptions {
@@ -43,10 +59,11 @@ export interface SnippetPickerOptions {
 	/** Canned responses; empty/undefined disables the picker entirely. */
 	snippets: () => EditorSnippet[] | undefined;
 	/**
-	 * First name of the draft's first To recipient, used to resolve
-	 * `{{firstName}}` placeholders on insert. Unknown -> visible `[firstName]`.
+	 * Everything a variable can resolve from at insert time: recipient facts,
+	 * the sender's identity, today's date. An absent value leaves its token
+	 * standing for the preflight to flag.
 	 */
-	firstName: () => string | null | undefined;
+	variableContext: () => SnippetVariableContext;
 	/** Re-emit the editor's HTML after an insert mutates the DOM. */
 	emitContent: () => void;
 }
@@ -59,6 +76,8 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 	// The trigger token last dismissed with Esc — suppresses immediate reopening
 	// while the caret still sits in the same "/token" run.
 	const dismissed = ref<string | null>(null);
+	// A chosen snippet waiting on its prompt-on-insert answers.
+	const prompt = ref<SnippetPromptRequest | null>(null);
 
 	const items = computed(() => rankSnippets(opts.snippets() ?? [], query.value));
 
@@ -141,7 +160,36 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		index.value = (index.value - 1 + max) % max;
 	}
 
-	/** Replace the "/token" with the snippet HTML through the edit pipeline. */
+	/** Write resolved HTML at the caret through the edit pipeline. */
+	function writeHtml(html: string) {
+		const ok = document.execCommand('insertHTML', false, html);
+		if (ok) return;
+		const sel = window.getSelection();
+		if (sel && sel.rangeCount > 0) {
+			const range = sel.getRangeAt(0);
+			range.deleteContents();
+			const frag = range.createContextualFragment(html);
+			range.insertNode(frag);
+			range.collapse(false);
+		}
+	}
+
+	function resolveAndWrite(snippet: EditorSnippet, answers: Record<string, string>) {
+		const { html } = resolveSnippetBody(snippet.bodyHtml, {
+			declared: snippet.variables ?? [],
+			context: opts.variableContext(),
+			answers,
+		});
+		writeHtml(html);
+		opts.emitContent();
+	}
+
+	/**
+	 * Replace the "/token" with the snippet body. A snippet with prompt-on-insert
+	 * variables consumes the trigger and parks itself in `prompt` instead: the
+	 * "/" is already gone, so the caret is where the body belongs, and the dialog
+	 * completes the insert with `submitPrompt`.
+	 */
 	function insert(snippet: EditorSnippet) {
 		const el = opts.editorRef.value;
 		if (!el) return;
@@ -152,21 +200,32 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		el.focus();
 		const tokenLen = trigger ? 1 + trigger.query.length : 0;
 		for (let i = 0; i < tokenLen; i++) document.execCommand('delete', false);
-		const resolved = resolveSnippetPlaceholders(snippet.bodyHtml, {
-			firstName: opts.firstName() ?? undefined,
-		});
-		const ok = document.execCommand('insertHTML', false, resolved);
-		if (!ok) {
-			const sel = window.getSelection();
-			if (sel && sel.rangeCount > 0) {
-				const range = sel.getRangeAt(0);
-				range.deleteContents();
-				const frag = range.createContextualFragment(resolved);
-				range.insertNode(frag);
-				range.collapse(false);
-			}
+
+		const fields = promptedSnippetVariables(snippet.bodyHtml, snippet.variables ?? []);
+		if (fields.length > 0) {
+			prompt.value = { snippet, fields };
+			return;
 		}
-		opts.emitContent();
+		resolveAndWrite(snippet, {});
+	}
+
+	/** The dialog answered: finish the parked insert at the remembered caret. */
+	function submitPrompt(answers: Record<string, string>) {
+		const parked = prompt.value;
+		prompt.value = null;
+		if (!parked) return;
+		opts.editorRef.value?.focus();
+		resolveAndWrite(parked.snippet, answers);
+	}
+
+	/**
+	 * The dialog was cancelled. The body is NOT inserted — a half-filled canned
+	 * response the sender backed out of is worse than none — but the consumed
+	 * "/token" stays consumed, because re-typing it is trivial and re-inserting
+	 * text into a contenteditable the user has since clicked away from is not.
+	 */
+	function cancelPrompt() {
+		prompt.value = null;
 	}
 
 	/**
@@ -216,10 +275,16 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		items,
 		index,
 		style,
+		prompt,
 		update,
 		insert,
+		submitPrompt,
+		cancelPrompt,
 		close,
 		handleKeydown,
 		onSelectionChange,
 	};
 }
+
+/** The controller's public surface, as the editor and its overlays see it. */
+export type SnippetPickerApi = ReturnType<typeof usePostboxSnippetPicker>;

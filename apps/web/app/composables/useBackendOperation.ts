@@ -32,12 +32,65 @@ export interface BackendOperationOptions {
 	 * OFFER the caller can render as a normal UI state. The campaign capacity
 	 * gate is the motivating case: `exceeds_sending_capacity` hands back a
 	 * structured multi-day schedule, and a red toast is precisely the wrong
-	 * treatment for "sending over 4 days" (deliverability plan D14 — a multi-day
-	 * send is a normal, visible state, never an error and never a surprise).
+	 * treatment for "sending over 4 days" (a multi-day send is a normal, visible
+	 * state, never an error and never a surprise).
 	 *
 	 * Return `false` (or omit the option) and nothing changes.
 	 */
 	onError?: (error: OperationError) => boolean;
+	/**
+	 * Announce a completed run into the app's live region (`useAnnounce`), so a
+	 * screen-reader user is told the write landed. ON by default: the majority
+	 * of this app's saves repaint nothing louder than a button label, and the
+	 * failure path is already spoken by the toast.
+	 *
+	 * Set `false` for an operation that runs on a timer, per keystroke, or once
+	 * per row of a bulk action — announcing those is not information, it is
+	 * noise that talks over whatever the person was actually reading.
+	 */
+	announce?: boolean;
+}
+
+/**
+ * The outcome of one `run`: either the operation completed and carries its
+ * `result`, or it did not.
+ *
+ * An envelope rather than `T | undefined` because a great many Convex
+ * mutations legitimately return `undefined` (or `null`, or `false`) on
+ * success — with a bare sentinel those are indistinguishable from "the
+ * operation failed and has already been surfaced", and a caller guarding on
+ * `=== undefined` silently treats a fine write as a failure. `ok` is the only
+ * thing a caller ever has to test: the failure arm carries nothing, because
+ * the treatment (toast / inline / redirect / telemetry, or an `onError`
+ * claim) has already been applied by the time `run` resolves — ADR-0036's
+ * whole point is that deciding what a failure LOOKS like is not the caller's
+ * job.
+ */
+export type BackendOperationResult<T> = { ok: true; result: T } | { ok: false };
+
+/**
+ * The success payload of a `run` — the `T` inside a
+ * {@link BackendOperationResult}, given (a promise of) the envelope.
+ *
+ * For the handful of callers that park a verdict in a `ref` and type it off the
+ * operation rather than re-declaring the backend's shape:
+ * `ref<BackendOperationValue<ReturnType<typeof run>>>()`.
+ */
+export type BackendOperationValue<R> =
+	Awaited<R> extends BackendOperationResult<infer T> ? T : never;
+
+/**
+ * One live operation, as its caller holds it.
+ *
+ * Named so a composable can accept an operation its OWNER created — the
+ * composer's autosave drives the same `drafts.create`/`drafts.update` pair the
+ * rest of the composer does, and re-creating them there would mean two toast
+ * labels and two loading flags for one write.
+ */
+export interface BackendOperation<M extends FunctionReference<'mutation' | 'action'>> {
+	run: (args: FunctionArgs<M>) => Promise<BackendOperationResult<FunctionReturnType<M>>>;
+	isLoading: Readonly<Ref<boolean>>;
+	inlineError: Readonly<Ref<string | null>>;
 }
 
 /**
@@ -54,17 +107,30 @@ export interface BackendOperationOptions {
  * module — they don't go through the Convex client, so the error vocabulary
  * and telemetry policy here don't apply to them.
  */
+/**
+ * The message catalog, resolved where one exists.
+ *
+ * `useOrganization()` builds its mutation runners through this composable at
+ * setup, and `useOrganization()` is reached from the `admin` route guard —
+ * outside any component `setup()`, where `useI18n()` THROWS and would 500 every
+ * admin-gated page. A guard never runs an operation, so outside a component the
+ * copy degrades to its key instead of taking the app down. Mirrors `useAuth.ts`
+ * and `useOrganization.ts`.
+ */
+function operationTranslator(): (key: string, values?: Record<string, unknown>) => string {
+	if (!getCurrentInstance()) return (key: string) => key;
+	const { t } = useI18n();
+	return (key: string, values?: Record<string, unknown>) => (values ? t(key, values) : t(key));
+}
+
 export function useBackendOperation<M extends FunctionReference<'mutation' | 'action'>>(
 	operation: M,
 	opts: BackendOperationOptions
-): {
-	run: (args: FunctionArgs<M>) => Promise<FunctionReturnType<M> | undefined>;
-	isLoading: Readonly<Ref<boolean>>;
-	inlineError: Readonly<Ref<string | null>>;
-} {
+): BackendOperation<M> {
 	const client = useConvex();
-	const { t } = useI18n();
+	const t = operationTranslator();
 	const { showToast } = useToast();
+	const { announce } = useAnnounce();
 	const posthog = usePostHog();
 
 	const isLoading = ref(false);
@@ -109,12 +175,14 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		}
 	}
 
-	const run = async (args: FunctionArgs<M>): Promise<FunctionReturnType<M> | undefined> => {
+	const run = async (
+		args: FunctionArgs<M>
+	): Promise<BackendOperationResult<FunctionReturnType<M>>> => {
 		inlineError.value = null;
 
 		if (!client) {
 			showToast(t('shared.useBackendOperation.genericError'), 'error');
-			return undefined;
+			return { ok: false };
 		}
 
 		isLoading.value = true;
@@ -123,10 +191,19 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 				opts.type === 'action'
 					? await client.action(operation as FunctionReference<'action'>, args)
 					: await client.mutation(operation as FunctionReference<'mutation'>, args);
-			return result as FunctionReturnType<M>;
+			// The one place every successful write in the app passes through, which
+			// is why the announcement lives here rather than at several hundred
+			// call sites that would each have to remember it. The label is the same
+			// one telemetry reports — a getter on a localized surface, so a locale
+			// change is reflected at announcement time, not at setup time.
+			if (opts.announce !== false) {
+				const label = typeof opts.label === 'function' ? opts.label() : opts.label;
+				announce(t('shared.useBackendOperation.announceDone', { label }));
+			}
+			return { ok: true, result: result as FunctionReturnType<M> };
 		} catch (e) {
 			applyTreatment(e);
-			return undefined;
+			return { ok: false };
 		} finally {
 			isLoading.value = false;
 		}

@@ -73,8 +73,8 @@ onMounted(() => {
 	});
 });
 onUnmounted(() => {
-	unregisterShortcut('n');
-	unregisterShortcut('escape');
+	unregisterShortcut('global.newItem');
+	unregisterShortcut('global.close');
 });
 
 // The active pill drives a SERVER-SIDE status filter for the browse pills so the
@@ -140,6 +140,18 @@ const visibleRows = computed(() =>
 	selectedPill.value === 'attention' ? attentionRows.value : browseRows.value
 );
 
+// ⌘K on this page offers what this page does — new campaign, and the report or
+// editor of any campaign currently listed. Registered for the page's lifetime;
+// the composable owns the palette wiring.
+useCampaignCommandSurface({
+	rows: () =>
+		visibleRows.value.map((row) => ({
+			id: row.campaign._id,
+			name: row.campaign.name,
+			opensReport: row.campaign.status === 'sent' || row.campaign.status === 'sending',
+		})),
+});
+
 // Surface the right loading / error signal for whichever data source the active
 // pill reads from.
 const activeError = computed(() =>
@@ -189,7 +201,7 @@ function runAttentionAction(row: DecoratedRow) {
 	const id = row.campaign._id;
 	switch (row.reason) {
 		case 'ab_decision':
-			// A/B results are folded into the campaign report (piece c3b).
+			// A/B results are folded into the campaign report.
 			router.push(`/dashboard/campaigns/${id}/report`);
 			break;
 		case 'needs_review':
@@ -219,9 +231,9 @@ const { run: deleteCampaign } = useBackendOperation(api.campaigns.campaigns.remo
 
 async function handleDuplicate(id: Id<'campaigns'>) {
 	const newId = await duplicateCampaign({ campaignId: id });
-	if (newId === undefined) return;
+	if (!newId.ok) return;
 	showToast(t('dashboard.campaigns.index.toasts.duplicated'));
-	router.push(`/dashboard/campaigns/${newId}/edit`);
+	router.push(`/dashboard/campaigns/${newId.result}/edit`);
 }
 
 const isDeleteModalOpen = ref(false);
@@ -241,7 +253,7 @@ async function handleDelete() {
 	isDeleting.value = true;
 	try {
 		const result = await deleteCampaign({ campaignId: campaignToDelete.value.id });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('dashboard.campaigns.index.toasts.deleted'));
 		closeDeleteModal();
 	} finally {
@@ -256,20 +268,18 @@ const showEmptyState = computed(
 
 <template>
 	<div class="p-6 lg:p-8">
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.campaigns.index.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">
-					{{ t('dashboard.campaigns.index.subtitle') }}
-				</p>
-			</div>
-			<UiButton @click="handleNewCampaign">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-				{{ t('dashboard.campaigns.index.newCampaign') }}
-			</UiButton>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.campaigns.index.title')"
+			:description="t('dashboard.campaigns.index.subtitle')"
+			class="mb-6"
+		>
+			<template #actions>
+				<UiButton @click="handleNewCampaign">
+					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+					{{ t('dashboard.campaigns.index.newCampaign') }}
+				</UiButton>
+			</template>
+		</UiPageHeader>
 
 		<div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
 			<div class="flex items-center gap-1 p-1 bg-bg-surface rounded-lg overflow-x-auto">
@@ -318,23 +328,21 @@ const showEmptyState = computed(
 			class="my-8"
 		/>
 
+		<!-- The shared empty state, not a hand-rolled one: this sits one click
+		     from contacts/topics/segments, which all read eyebrow → title → lead.
+		     The filled success disc was the loudest thing on an otherwise empty
+		     screen, and the glyph belongs in the eyebrow, unfilled. -->
 		<UiCard
 			v-else-if="showEmptyState && selectedPill === 'attention' && !debouncedSearch"
-			class="flex flex-col items-center justify-center py-16 text-center px-6"
+			padding="none"
+			overflow="hidden"
 		>
-			<UiIconBox
+			<UiEmptyState
 				icon="lucide:check-circle"
-				size="xl"
-				variant="success"
-				rounded="full"
-				class="mb-4"
+				:eyebrow="t('dashboard.campaigns.index.attentionEmpty.eyebrow')"
+				:title="t('dashboard.campaigns.index.attentionEmpty.title')"
+				:description="t('dashboard.campaigns.index.attentionEmpty.description')"
 			/>
-			<p class="text-text-primary font-semibold">
-				{{ t('dashboard.campaigns.index.attentionEmpty.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.campaigns.index.attentionEmpty.description') }}
-			</p>
 		</UiCard>
 
 		<UiCard v-else-if="showEmptyState && debouncedSearch" padding="none" overflow="hidden">

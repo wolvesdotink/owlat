@@ -1,22 +1,22 @@
 <script setup lang="ts">
 /**
- * "Connect an email provider" — the guided four-step transport wizard (P2-4).
+ * "Connect an email provider" — the guided four-step transport wizard.
  *
- * An OFFER, never a to-do item (plan D2). It renders collapsed as a plain
+ * An OFFER, never a to-do item. It renders collapsed as a plain
  * surface card; nothing about it is a warning, an error or a "setup incomplete"
  * badge, and abandoning it half way leaves the deployment exactly as it was.
  *
  * Everything it does is the SHIPPED path:
  *   1. credentials → `TransportCredentialsStep.vue`, which drives the sealed
- *      `/api/delivery/apply-transport` env patch (no second credential model,
- *      D4). The shell learns only WHETHER the step settled — a secret never
+ *      `/api/delivery/apply-transport` env patch (no second credential
+ *      model). The shell learns only WHETHER the step settled — a secret never
  *      reaches this component at all.
  *   2. live send test → the shipped `DeliveryTestSendCard`, mounted here rather
  *      than reimplemented, advancing the step from its `result` event.
  *   3. alignment → the shipped dual-transport pre-flight run against live DNS,
  *      which runs the shipped SPF-coexistence detector (RFC 7208 10-lookup
  *      accounting included). Every failure names the exact DNS change to make.
- *   4. return path → P2-3's recorded capability. Informational, never blocking.
+ *   4. return path → the recorded capability. Informational, never blocking.
  *
  * The DECISION logic is pure and lives in `~/utils/transportWizard`; the DNS
  * gather is `~/utils/transportAlignmentProbe`. This file is the shell: the step
@@ -77,10 +77,10 @@ const props = defineProps<{
 	 * The REFERENCE transport step 4 describes, from
 	 * `delivery.relayReturnPath.getReturnPathReadiness`. `undefined` is the read
 	 * in flight; `null` is the resolved answer "there is no single second arm",
-	 * which is a supported configuration, not a fault (D2).
+	 * which is a supported configuration, not a fault.
 	 */
 	returnPathTransportId?: string | null;
-	/** P2-3's recorded posture for the reference transport; undefined while loading. */
+	/** The recorded posture for the reference transport; undefined while loading. */
 	returnPathCapability?: ReturnPathCapabilityValue | null;
 	/** Whether a test send is possible at all (a transport is configured). */
 	canSend?: boolean;
@@ -233,7 +233,17 @@ watch(
 						<p class="text-sm text-text-secondary">{{ t(TRANSPORT_WIZARD_ENTRY.body) }}</p>
 					</div>
 				</div>
-				<UiButton v-if="!isOpen" ref="entryActionRef" variant="secondary" size="sm" @click="open">
+				<!-- `shrink-0 whitespace-nowrap`: the title + body block beside it is
+				     long enough to squeeze this pill until "Connect a provider" wrapped
+				     to three lines and the full radius rounded it into a blob. -->
+				<UiButton
+					v-if="!isOpen"
+					ref="entryActionRef"
+					variant="secondary"
+					size="sm"
+					class="shrink-0 whitespace-nowrap"
+					@click="open"
+				>
 					{{ t(TRANSPORT_WIZARD_ENTRY.actionLabel) }}
 				</UiButton>
 			</div>

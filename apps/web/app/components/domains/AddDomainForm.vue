@@ -19,10 +19,16 @@
  *
  * An "Advanced" disclosure (collapsed by default) adds an optional custom
  * return-path (bounce) subdomain. It composes to a sibling host of the sending
- * name; the value rides the submit payload so the page can set it (via the D2
- * mutation) right after registration, which is when the new domain id exists.
+ * name; the value rides the submit payload so the page can set it right after
+ * registration, which is when the new domain id exists.
  * The return path is a sending-only concern, so the whole disclosure is gated on
  * `context === 'sending'` — the tracking context (no return path) suppresses it.
+ *
+ * The form also asks WHO RECEIVES mail for the domain: the answer changes what
+ * `create` generates (merged apex SPF, no TLS-RPT), and the default guidance —
+ * an apex MX pointing here — would otherwise take every incoming message away
+ * from a Google Workspace / Microsoft 365 tenant. The choice lives in
+ * `DomainsReceivingModeChoice`, which the per-domain mode switch reuses verbatim.
  */
 import {
 	useAddDomainForm,
@@ -64,8 +70,8 @@ const emit = defineEmits<{
 	/**
 	 * The composed domain to register, plus an optional custom return-path
 	 * (bounce) host. The page registers the domain first (create returns the new
-	 * id) and then sets the return-path host via the D2 mutation, which needs
-	 * that id — so both travel together and the page orchestrates.
+	 * id) and then sets the return-path host, which needs that id — so both
+	 * travel together and the page orchestrates.
 	 */
 	submit: [payload: AddDomainSubmitPayload];
 	cancel: [];
@@ -79,6 +85,8 @@ const {
 	nsUnresolved,
 	advancedOpen,
 	returnPathSub,
+	receivingMode,
+	externalProvider,
 	normalizedSub,
 	normalizedReturnPathSub,
 	isApex,
@@ -272,7 +280,7 @@ const {
 				</template>
 			</p>
 
-			<!-- Per-STREAM subdomains (G-14). Domain reputation is evaluated per name
+			<!-- Per-STREAM subdomains. Domain reputation is evaluated per name
 			     and does NOT inherit from the root, so one name per kind of mail is
 			     what keeps a bad campaign away from password resets. Said here, in
 			     the wizard, rather than in the docs — and stated as the recommended
@@ -284,11 +292,7 @@ const {
 			>
 				<p class="flex items-start gap-2 text-xs text-text-secondary">
 					<Icon name="lucide:info" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
-					<I18nT
-						keypath="components.domains.addDomainForm.streamNote"
-						tag="span"
-						scope="global"
-					>
+					<I18nT keypath="components.domains.addDomainForm.streamNote" tag="span" scope="global">
 						<template #transactionalName>
 							<strong class="text-text-primary">mail.</strong>
 						</template>
@@ -317,6 +321,16 @@ const {
 					</I18nT>
 				</p>
 			</div>
+
+			<!-- Who receives mail for this domain. Sending-only (a tracking host has
+			     no inbound mail), asked BEFORE the records exist because the generated
+			     apex SPF and TLS-RPT both depend on the answer. -->
+			<DomainsReceivingModeChoice
+				v-if="context === 'sending'"
+				v-model:mode="receivingMode"
+				v-model:provider="externalProvider"
+				:disabled="loading"
+			/>
 
 			<!-- Advanced: optional custom return-path (bounce) host. Collapsed by
 			     default so the common two-field path stays simple. Sending-only — the
@@ -425,7 +439,10 @@ const {
 						<strong class="text-text-primary">{{ registrableZone ?? combinedDomain }}</strong>
 					</template>
 					<template #migrateLink>
-						<NuxtLink to="/dashboard/postbox/migrate" class="text-brand hover:underline font-medium">
+						<NuxtLink
+							to="/dashboard/postbox/migrate"
+							class="text-brand hover:underline font-medium"
+						>
 							{{ t('components.domains.addDomainForm.freemailMigrateLink') }}
 						</NuxtLink>
 					</template>
@@ -457,7 +474,11 @@ const {
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="submit" class="gap-2" :disabled="loading || isFreemail">
-				<Icon v-if="loading" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+				<Icon
+					v-if="loading"
+					name="lucide:loader-2"
+					class="w-4 h-4 animate-spin motion-reduce:animate-none"
+				/>
 				<Icon v-else name="lucide:plus" class="w-4 h-4" />
 				{{ loading ? t('components.domains.addDomainForm.adding') : submitLabelText }}
 			</UiButton>

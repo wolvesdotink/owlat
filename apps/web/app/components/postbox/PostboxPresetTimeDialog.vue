@@ -78,6 +78,9 @@ function pickCustom() {
 			}
 		"
 	>
+		<!-- Optional chrome above the presets (PostboxSnoozeDialog puts its
+		     thread/message scope toggle here). Renders nothing when unused. -->
+		<slot name="beforePresets" />
 		<ul class="space-y-1 mb-4">
 			<li v-for="preset in presets" :key="preset.label">
 				<button

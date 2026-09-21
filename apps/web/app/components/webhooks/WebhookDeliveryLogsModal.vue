@@ -210,7 +210,7 @@ const emit = defineEmits<{
 				:disabled="isRegenerating"
 				@click="emit('regenerate')"
 			>
-				<Icon v-if="isRegenerating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+				<Icon v-if="isRegenerating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				{{
 					isRegenerating
 						? t('components.webhooks.webhookDeliveryLogsModal.regenerate.submitting')
@@ -265,7 +265,7 @@ const emit = defineEmits<{
 				:disabled="isDeleting"
 				@click="emit('confirmDelete')"
 			>
-				<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+				<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				{{
 					isDeleting
 						? t('components.webhooks.webhookDeliveryLogsModal.delete.submitting')

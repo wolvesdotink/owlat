@@ -145,7 +145,7 @@ export function isEvidenceUsable(
  * re-charges its retreat (an unattributable freeze is not its own), and the
  * freeze rung HOLDS without pretending it knows when the hold ends.
  */
-export type RampFreezeReading =
+type RampFreezeReading =
 	| { readonly kind: 'none' }
 	| { readonly kind: 'unreadable' }
 	| {

@@ -35,17 +35,18 @@ import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
 import { routeCarriesOwnArm } from './fallbackEligibility';
 import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
 import type { SendProviderKind } from './types';
+import { messageTypeValidator } from '../convexValidators';
 import {
 	candidateSendProviderKinds,
-	messageTypeValidator,
 	readySendProviderKinds,
 	type MessageType,
 } from './routeInputs';
 
-// `MessageType` and `messageTypeValidator` live in `routeInputs.ts` — the module
-// that holds what BOTH resolvers read — and are re-exported here for existing
-// importers, so the health-free cell seam never needs an import edge to this
-// module.
+// `MessageType` lives in `routeInputs.ts` — the module that holds what BOTH
+// resolvers read — and `messageTypeValidator` in `lib/convexValidators.ts`
+// (the schema derives from the same one). Both are re-exported here for
+// existing importers, so the health-free cell seam never needs an import edge
+// to this module.
 export { messageTypeValidator, type MessageType };
 
 // `SendRouteAddressContext` lives next to the identity it extends, in
@@ -81,7 +82,7 @@ function probeableCandidateKind(
  * than the selected route — the campaign warming-cap gate needs the row and
  * the readiness set too — load this once and select from it, instead of
  * re-reading `providerRoutes` and re-running `isSendProviderReady`, which would
- * double the OCC read set they carry inside `schedule` / `sendNow`.
+ * double the OCC read set they carry inside `schedule`.
  */
 export type SendRouteFacts = {
 	routeConfig: Doc<'providerRoutes'> | null;
@@ -239,7 +240,7 @@ export function selectRouteFromFacts(
  * boundary turns into a bounded retry (capped by the routing attempt limit and
  * the four-day delivery deadline).
  */
-export type RoutingDeferralCode =
+type RoutingDeferralCode =
 	| 'GLOBAL_DELIVERY_CIRCUIT_OPEN'
 	| 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED'
 	| 'DELIVERABILITY_RELAY_UNAVAILABLE';
@@ -291,10 +292,10 @@ export async function resolveLastMileRoutePlanFromDb(
 	isMtaGoverned: boolean;
 	deferralCode?: RoutingDeferralCode;
 	/**
-	 * The return-path host a RELAY send may stamp as its VERP envelope sender
-	 * (plan G-08), or `undefined` to keep the composer's — the shipped
-	 * behaviour. Answered HERE, inside the routing query the send path already
-	 * runs, rather than in a second round trip from the dispatcher.
+	 * The return-path host a RELAY send may stamp as its VERP envelope sender,
+	 * or `undefined` to keep the composer's — the shipped behaviour. Answered
+	 * HERE, inside the routing query the send path already runs, rather than
+	 * in a second round trip from the dispatcher.
 	 */
 	relayReturnPathHost?: string | undefined;
 }> {

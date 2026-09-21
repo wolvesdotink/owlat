@@ -103,7 +103,6 @@ describe('cells drill-down', () => {
 				requiresCorroboration: cell.requiresCorroboration,
 				decisionWindowLabel: 'the last 24 hours',
 			},
-			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.findAll('li').length).toBe(cell.gates.length);
 		wrapper.unmount();
@@ -118,7 +117,6 @@ describe('cells drill-down', () => {
 				requiresCorroboration: false,
 				decisionWindowLabel: 'the last 24 hours',
 			},
-			global: { plugins: [createTestI18n()] },
 		});
 		expect(wrapper.text()).toContain('124');
 		expect(wrapper.text()).toContain('400');

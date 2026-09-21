@@ -7,8 +7,8 @@ import type { Id } from '../_generated/dataModel';
 import type { OrganizationRole } from '../lib/sessionOrganization';
 
 /**
- * Role-enforcement integration tests for the campaign-edit + send mutations
- * (updateBasics, updateAudience, updateContent, duplicate, sendNow).
+ * Role-enforcement integration tests for the campaign-edit mutations
+ * (updateBasics, updateAudience, updateContent, duplicate).
  *
  * These mutations are gated by
  * `requirePermission(hasPermission(session.role, 'campaigns:manage' | 'campaigns:send'), ...)`.
@@ -181,21 +181,5 @@ describe('campaigns.duplicate — role enforcement', () => {
 		const newId = await t.mutation(api.campaigns.campaigns.duplicate, { campaignId });
 		expect(newId).toBeTruthy();
 		expect(newId).not.toBe(campaignId);
-	});
-});
-
-describe('campaigns.sendNow — role enforcement', () => {
-	// Editors hold `campaigns:send`, so the permission gate no longer rejects
-	// them. A bare draft (no template) still fails the downstream
-	// `validateReadyToSend` pre-flight — asserting that SPECIFIC message
-	// positively proves the editor cleared the role gate and reached pre-flight.
-	it('accepts an editor on the role gate; a bare draft fails downstream pre-flight', async () => {
-		const t = convexTest(schema, modules);
-		const campaignId = await seedCampaign(t);
-
-		mockRole = 'editor';
-		await expect(t.mutation(api.campaigns.campaigns.sendNow, { campaignId })).rejects.toThrow(
-			/must have an email template/i
-		);
 	});
 });

@@ -20,7 +20,7 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { readAddressPublicKey } from '../../__tests__/helpers/e2eeKeys';
 import { evaluatePin } from '../pinning';
-import { verifyRotationStatement } from '../discovery';
+import { verifyRotationStatement } from '../discoveryVerify';
 import { verifyManifest, type ManifestPayload } from '../manifest';
 import { openSealed } from '../open';
 import { openPrivateKey } from '../sealing';
@@ -191,7 +191,6 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 		const ok = await verifyRotationStatement(
 			oldPublicKeyArmored,
 			{
-				address,
 				oldFingerprint: statementRow!.oldFingerprint,
 				newFingerprint: statementRow!.newFingerprint,
 				signature: statementRow!.signature,
@@ -201,6 +200,22 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 			rotated.newFingerprint!
 		);
 		expect(ok).toBe(true);
+
+		// L7: the SIGNATURE (not a plaintext address field) binds the statement to
+		// its address. A statement replayed for a DIFFERENT address must not verify,
+		// even with the correct fingerprints — the reconstructed signed text differs.
+		const wrongAddress = await verifyRotationStatement(
+			oldPublicKeyArmored,
+			{
+				oldFingerprint: statementRow!.oldFingerprint,
+				newFingerprint: statementRow!.newFingerprint,
+				signature: statementRow!.signature,
+			},
+			'someone-else@sealed.example.com',
+			minted.fingerprint,
+			rotated.newFingerprint!
+		);
+		expect(wrongAddress).toBe(false);
 
 		// A peer pinned to the OLD key, given a valid rotation signature, upgrades
 		// SILENTLY to the new key (the E2 pinning state machine).
@@ -217,7 +232,6 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 		const bad = await verifyRotationStatement(
 			oldPublicKeyArmored,
 			{
-				address,
 				oldFingerprint: statementRow!.oldFingerprint,
 				newFingerprint: statementRow!.newFingerprint,
 				signature: statementRow!.signature.replace(/[A-Za-z]/, 'x'),
@@ -249,6 +263,11 @@ describe('e2ee/lifecycle rotation + revocation', () => {
 		expect(after!.keyDirectoryDigest).not.toBe(before!.keyDirectoryDigest);
 		expect(after!.keyRotations).toHaveLength(1);
 		expect(after!.keyRotations![0]?.newFingerprint).toBe(rotated.newFingerprint);
+		// L7: the anonymous manifest must NOT enumerate the rotated mailbox — the
+		// served statement carries fingerprints + signature only, never the address.
+		expect(
+			(after!.keyRotations![0] as unknown as Record<string, unknown>)['address']
+		).toBeUndefined();
 
 		// The re-signed manifest payload still verifies against the instance key.
 		const payload: ManifestPayload = {

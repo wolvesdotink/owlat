@@ -147,7 +147,17 @@ function cannotSealDetail(reason: SealSkipReason): string {
  * it renders as `checking` rather than as nothing, because an absent lock reads
  * as "nothing to say about sealing" — which is a claim of its own.
  */
-export function deriveComposerLock(state: SealState | null): ComposerLockResult {
+export function deriveComposerLock(
+	state: SealState | null,
+	/**
+	 * Whether EVERY recipient's key has been verified by a human here (plan idea
+	 * 54). It only ever changes the `willSeal` wording — verification is a
+	 * statement about who holds the key, not about whether the message seals —
+	 * and it must be unanimous, because a lock that said "verified" over a mixed
+	 * list would be read as covering all of it.
+	 */
+	allVerified = false
+): ComposerLockResult {
 	if (!state) {
 		return {
 			kind: 'checking',
@@ -162,10 +172,14 @@ export function deriveComposerLock(state: SealState | null): ComposerLockResult 
 		case 'willSeal':
 			return {
 				kind: 'willSeal',
-				summary: 'shared.sealComposer.willSeal.summary',
-				detail: 'shared.sealComposer.willSeal.detail',
+				summary: allVerified
+					? 'shared.sealComposer.willSeal.summaryVerified'
+					: 'shared.sealComposer.willSeal.summary',
+				detail: allVerified
+					? 'shared.sealComposer.willSeal.detailVerified'
+					: 'shared.sealComposer.willSeal.detail',
 				tone: 'ok',
-				icon: 'lucide:lock',
+				icon: allVerified ? 'lucide:shield-check' : 'lucide:lock',
 				allowSendUnsealed: false,
 			};
 		case 'keyChanged':

@@ -3,7 +3,7 @@
  * and the only placement signal that needs no third-party account at all.
  *
  * The operator connects a handful of free consumer mailboxes through the
- * SHIPPED external-account flow (`mail/externalAccounts.ts`,
+ * SHIPPED external-account flow (`mail/external/accounts.ts`,
  * `externalMailAccounts`) tagged `purpose: 'seed'`; every send drops a shadow
  * copy into each of them (`delivery/seedShadowCopy.ts`); the shipped IMAP
  * client walks the mailbox, finds the `X-Owlat-Seed-Probe` header and reports
@@ -11,13 +11,13 @@
  * the probe ledger and the per-provider roll-up read out of it.
  *
  * Every decision lives in the pure core (`@owlat/shared/seedPlacement`): this
- * file loads, calls, and writes (D15).
+ * file loads, calls, and writes.
  *
- * D17 — TRIPWIRE, NOT A GAUGE. Nothing here returns a placement percentage.
- * The roll-up is a STATUS per mailbox provider, and a provider-wide collapse
- * is SUSPECT until the deferral or bounce gate corroborates it.
+ * TRIPWIRE, NOT A GAUGE. Nothing here returns a placement percentage. The
+ * roll-up is a STATUS per mailbox provider, and a provider-wide collapse is
+ * SUSPECT until the deferral or bounce gate corroborates it.
  *
- * D2 — ADDITIVE-ONLY. Zero seed mailboxes is a supported configuration: the
+ * ADDITIVE-ONLY. Zero seed mailboxes is a supported configuration: the
  * sweeps index comes back empty, gate 5 answers `insufficient_data`, the
  * controller HOLDS, and nothing errors, warns, or nags.
  *
@@ -27,24 +27,24 @@
  *
  * GATE 5'S VERDICT IS NOT HERE, AND THERE IS NO SECOND ROUTE TO IT.
  * `delivery/ramp/seedGate.ts` decides it, over the per-cell sweeps
- * `analytics/seedPlacementSweeps.ts` reduces from these same rows, and D17's
+ * `analytics/seedPlacementSweeps.ts` reduces from these same rows, and the
  * corroboration rule rides from there through `CORROBORATION_REQUIRED_RAMP_GATES`
  * (gateConfig) into the controller's `awaiting_corroboration` hold. That is the
  * path the controller runs on every tick, and now the only one: this module used
  * to export a `getGateVerdict` query restating the same rule over the PROVIDER
  * roll-up — pooled across streams, where the ramp is per cell — with no
  * production caller. It was deleted rather than kept as a second answer to one
- * question (issue #504, design rule D5).
+ * question (issue #504).
  *
  * The seed ACCOUNTS themselves — the projection and the rotation nudge — are the
  * domain sibling `analytics/seedAccounts.ts`, and the two ledger sweeps are
  * `analytics/seedProbeLedger.ts`. It does NOT own the CELL DASHBOARD that
- * renders the status or the confidence line beside it — P3-6 (Independence &
- * Cells UI) and P3-8 (confidence surfacing) own that and consume
- * `summarizeSeedPlacementWindow`. TWO PRODUCERS write this ledger, one
- * per shape of stream: `delivery/seedShadowCopy.ts` shadows a real campaign
- * send, and P4-7's `delivery/seedScheduledProbe.ts` mails the `transactional`
- * and `automation` streams on a cron. Same row, same classification path.
+ * renders the status or the confidence line beside it — the Independence & Cells
+ * UI and the confidence surfacing own that and consume
+ * `summarizeSeedPlacementWindow`. TWO PRODUCERS write this ledger, one per shape
+ * of stream: `delivery/seedShadowCopy.ts` shadows a real campaign send, and
+ * `delivery/seedScheduledProbe.ts` mails the `transactional` and `automation`
+ * streams on a cron. Same row, same classification path.
  *
  * SECURITY. Seed credentials are the SAME sealed envelope every other external
  * account uses; this module never reads, returns, or logs them. Seed mailbox
@@ -73,6 +73,7 @@ import {
 	seedProbeEvidence,
 	type SeedPlacementSweepIndex,
 } from './seedPlacementSweeps';
+import { transportArmValidator } from '../lib/convexValidators';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -81,7 +82,7 @@ export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 // the ledger's cost profile can be read without walking the file.
 
 /**
- * Hard page bound — the ledger is never `.collect()`ed (D16).
+ * Hard page bound — the ledger is never `.collect()`ed.
  *
  * IT NOW BOUNDS A GATE VERDICT, not just a screen. Since gate 5 reads its
  * per-cell sweeps off this same page, this number is also the largest sample any
@@ -93,7 +94,7 @@ export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  * TRUNCATION IS SAFE IN THIS DIRECTION, which is why the bound stays where it
  * is: the read is newest-first, so what is dropped is the OLDEST evidence, and a
  * cell left with too thin a sweep gets `insufficient_data` — a HOLD, and on an
- * optional gate a hold that costs the ramp nothing (D2/D10). The failure mode of
+ * optional gate a hold that costs the ramp nothing. The failure mode of
  * raising it is a slower read; the failure mode of a tripwire deciding off
  * stale rows is a verdict about a week that is over.
  *
@@ -104,7 +105,7 @@ export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  *   - the ramp controller cron, LAZILY and once per tick — a thunk memoized by
  *     `rampControllerCron.ts` and resolved by `rampControllerInputs.ts` only when
  *     a cell in the slice actually consumes gate 5, so a slice with no
- *     ramp-managed cell in it (the normal state during rollout, plan D1) pays
+ *     ramp-managed cell in it (the normal state during rollout) pays
  *     nothing;
  *   - `delivery/deliverabilityDashboard.ts`, EAGERLY, ONCE PER SCREEN LOAD. The
  *     read is unconditional there: it happens whether or not any cell has
@@ -292,7 +293,7 @@ export const recordSeedProbeDispatch = internalMutation({
 	args: {
 		organizationId: v.string(),
 		probeRef: v.id('seedPlacementProbes'),
-		transportArm: v.union(v.literal('own'), v.literal('reference')),
+		transportArm: transportArmValidator,
 		now: v.number(),
 	},
 	handler: async (ctx, args) => {
@@ -343,17 +344,17 @@ export const recordSeedProbeUnsubscribe = internalMutation({
 
 // ============ THE PROVIDER ROLL-UP ============
 
-export interface SeedPlacementSummary {
+interface SeedPlacementSummary {
 	rollups: SeedProviderRollup[];
 	/** Seed mailboxes currently connected — the honesty denominator for the UI. */
 	seedAccountCount: number;
 	/** Seeds the operator should rotate. Advisory only. */
 	rotationRemindersDue: number;
 	windowStart: number;
-	/** Which placement adapter produced {@link rollups} (P4-7). */
+	/** Which placement adapter produced {@link rollups}. */
 	placementSource: PlacementSourceKind;
 	/**
-	 * How much this reading is worth (D14). Placement evidence is NEVER high
+	 * How much this reading is worth. Placement evidence is NEVER high
 	 * confidence whoever gathered it; the one grade it can carry is the gate's
 	 * own `SEED_GATE_CONFIDENCE`, imported rather than restated so the screen
 	 * and the controller cannot hold two opinions of one reading. `none` means
@@ -364,7 +365,7 @@ export interface SeedPlacementSummary {
 	/**
 	 * The ONE advisory the reading may carry, for rendering next to the
 	 * confidence label. A hint, never an error, never a "setup incomplete" nag
-	 * and never a reason to withhold a screen or a send (D2).
+	 * and never a reason to withhold a screen or a send.
 	 */
 	placementImprovement: PlacementImprovementHint;
 }
@@ -401,7 +402,7 @@ async function readSeedProbeWindow(
  * evidence rule, narrower answer.
  *
  * A cell absent from the index has no classified probes: gate 5 holds, and
- * because it is optional the hold costs the ramp nothing (plan D2).
+ * because it is optional the hold costs the ramp nothing.
  */
 export async function summarizeSeedPlacementSweeps(
 	db: DatabaseReader,
@@ -441,11 +442,11 @@ export async function summarizeSeedPlacementWindow(
 
 	const accounts = await loadSeedAccounts(db, organizationId, now);
 	// Gate 5 reads its evidence through the placement ADAPTER rather than the
-	// roll-up directly (P4-7). With no commercial placement key — the default and
+	// roll-up directly. With no commercial placement key — the default and
 	// expected configuration — this resolves to the self-hosted seed adapter and
 	// the reading is byte-identical to the shipped one; a deployment that later
-	// adds a panel feeds the SAME gate through the SAME interface (D2: the key is
-	// an upgrade, its absence changes nothing).
+	// adds a panel feeds the SAME gate through the SAME interface (the key is an
+	// upgrade, its absence changes nothing).
 	const placement = resolvePlacementAdapter({
 		seedMailboxCount: accounts.length,
 		commercialApiConfigured: false,
@@ -456,7 +457,7 @@ export async function summarizeSeedPlacementWindow(
 		rotationRemindersDue: accounts.filter((a) => a.rotationReminderDue).length,
 		windowStart,
 		// The resolution's own verdict, carried through rather than recomputed:
-		// this IS D14's "measurement confidence — add seed mailboxes" hint, and
+		// this IS the "measurement confidence — add seed mailboxes" hint, and
 		// it is the resolution that decides both the grade and the hint, not the
 		// screen.
 		placementSource: placement.kind,

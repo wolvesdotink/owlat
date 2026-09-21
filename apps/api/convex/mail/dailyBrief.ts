@@ -6,7 +6,7 @@
  * the owner's own promises are invisible. This cron assembles all of it, once a
  * day per active mailbox, into a persisted `mailDailyBriefs` snapshot:
  *
- *   - a RANKED "needs you" list (mail/priorityScore.ts ordering) of pending
+ *   - a RANKED "needs you" list (mail/ai/priorityScore.ts ordering) of pending
  *     replies + clarification questions + due follow-ups + open commitments /
  *     deadlines, and
  *   - an AUDITABLE bundle of low-signal mail (newsletters / receipts /
@@ -14,8 +14,9 @@
  *     hides something important is a trust-killer, so the exact bundled threads
  *     are always inspectable.
  *
- * Persisted snapshots remain available to internal reporting. Never sends or
- * modifies mail; an email delivery of the brief is a separate opt-in. Deterministic — the ranking
+ * Persisted snapshots remain available to internal reporting. This cron never
+ * sends or modifies mail; the opt-in EMAIL delivery of a persisted brief lives
+ * in mail/briefEmail.ts and reads these snapshots. Deterministic — the ranking
  * reads scores already persisted by the Reply Queue classifier, so the cron
  * itself makes no LLM call and can't fail-open into hiding a real task.
  */
@@ -25,11 +26,11 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { isMessageSnoozed } from '../lib/mailSnooze';
-import { urgencyFallbackScore } from './priorityScore';
+import { urgencyFallbackScore } from './ai/priorityScore';
 
 // ─── Pure ranking + bundling (unit-tested, framework-free) ───────────────────
 
-export type BriefItemKind = 'needs_reply' | 'clarification' | 'followup' | 'commitment';
+type BriefItemKind = 'needs_reply' | 'clarification' | 'followup' | 'commitment';
 
 export interface BriefItem {
 	kind: BriefItemKind;
@@ -41,7 +42,7 @@ export interface BriefItem {
 }
 
 /** A lapsing promise/deadline is urgent — rank commitments at the high baseline. */
-export const COMMITMENT_PRIORITY = urgencyFallbackScore('high');
+const COMMITMENT_PRIORITY = urgencyFallbackScore('high');
 
 /**
  * Rank the "needs you" items: highest priority first, then the SOONER deadline
@@ -59,7 +60,7 @@ export function rankBriefItems(items: BriefItem[]): BriefItem[] {
 	});
 }
 
-export type BundledCategory = 'newsletter' | 'notification' | 'receipt';
+type BundledCategory = 'newsletter' | 'notification' | 'receipt';
 
 export interface BundledEntry {
 	threadId: Id<'mailThreads'>;
@@ -156,6 +157,13 @@ async function buildBriefForMailbox(ctx: MutationCtx, mailboxId: Id<'mailboxes'>
 	const bundledEntries: BundledEntry[] = [];
 
 	for (const thread of threads) {
+		// ANTI-LOOP (idea 29): a brief this deployment mailed to the owner is
+		// ordinary inbox mail from a known correspondent. Without this skip it
+		// becomes an item in tomorrow's brief, which is mailed, which becomes an
+		// item in the day after's — a digest of the digest, compounding daily.
+		// mail/briefEmail.ts stamps the marker at delivery.
+		if (thread.isSelfDeliveredBrief) continue;
+
 		// Pending reply / clarification.
 		const nr = thread.needsReply;
 		if (nr) {

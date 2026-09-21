@@ -32,7 +32,7 @@ onMounted(async () => {
 		userId: '', // Empty string - will use token-based lookup
 		cancellationToken: token.value,
 	});
-	if (result === undefined) {
+	if (!result.ok) {
 		// The operation module populated `errorMessage` (inlineTarget) with the
 		// categorized failure; reflect the failure in the page state machine.
 		status.value = 'error';
@@ -92,9 +92,7 @@ onMounted(async () => {
 					{{ t('cancelDeletion.errorHint') }}
 				</p>
 				<div class="flex gap-3 justify-center">
-					<UiButton variant="secondary" to="/auth/login">{{
-						t('cancelDeletion.signIn')
-					}}</UiButton>
+					<UiButton variant="secondary" to="/auth/login">{{ t('cancelDeletion.signIn') }}</UiButton>
 					<UiButton variant="ghost" to="/">{{ t('cancelDeletion.goHome') }}</UiButton>
 				</div>
 			</div>

@@ -37,7 +37,11 @@
 export type MtaStsMode = 'none' | 'testing' | 'enforce';
 
 /** The valid {@link MtaStsMode} values, in strictness order (stepper order). */
-export const MTA_STS_MODES: readonly MtaStsMode[] = ['none', 'testing', 'enforce'] as const;
+export const MTA_STS_MODES = [
+	'none',
+	'testing',
+	'enforce',
+] as const satisfies readonly MtaStsMode[];
 
 /** The published (non-`none`) MTA-STS modes — the ones that emit a policy body. */
 export type MtaStsPublishedMode = 'testing' | 'enforce';
@@ -133,7 +137,7 @@ export function buildMtaStsTxtValue(policyId: string): string {
  * key/value list); returns `null` when the record isn't a valid STSv1 record or
  * carries no id.
  */
-export function parseMtaStsTxtId(txtValue: string): string | null {
+function parseMtaStsTxtId(txtValue: string): string | null {
 	const parts = txtValue.split(';').map((part) => part.trim());
 	if (!parts.some((part) => part.toLowerCase() === 'v=stsv1')) return null;
 	for (const part of parts) {

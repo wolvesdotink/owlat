@@ -18,16 +18,7 @@
  * Non-interactive: --assume-yes + --mode + --email/--password/--no-seed for CI.
  */
 
-import {
-	intro,
-	outro,
-	select,
-	isCancel,
-	log,
-	confirm,
-	text,
-	password as passwordPrompt,
-} from '@clack/prompts';
+import { intro, outro, select, isCancel, log, confirm, text } from '@clack/prompts';
 import pc from 'picocolors';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -49,13 +40,20 @@ import { parseSetupConfig, type SetupConfig } from '../lib/setupConfig';
 import { buildCaddyfile } from '../lib/caddyfile';
 import { isValidEmail } from '../lib/validators';
 import { runSetup } from './setup';
-import { bootstrap } from './bootstrap-org';
+import { bootstrap, resolveAdminPassword } from './bootstrap-org';
 import { runSeed } from './seed';
 import { installSampleData } from './sampleData';
 import type { CliOptions } from '../lib/cliOptions';
 import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioningCheckpoint';
 import { resolveLocalHost } from '../lib/localHost';
 import { probeMtaIdentityHealth } from './doctor';
+import { applyOutboundIpDefaults, detectPrimaryIpv4 } from '../lib/outboundIp';
+import {
+	announceReverseDns,
+	plannedOutboundIdentities,
+	reverseDnsInstructions,
+	checkReverseDns,
+} from '../lib/reverseDns';
 
 export type Mode = 'populated' | 'blank' | 'custom';
 
@@ -236,6 +234,37 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		);
 	}
 
+	// Direct delivery needs a real source address. docker-compose.yml defaults
+	// IP_POOLS_* to 127.0.0.1, whose PTR can never match EHLO_HOSTNAME, so the
+	// MTA's identity gate below would always fail. Default both pools to the
+	// box's primary IPv4 unless the operator already chose one.
+	if (composeProfilesUnion.includes('mta')) {
+		const envForPools = await readEnv(envPath);
+		const detected = detectPrimaryIpv4();
+		if (applyOutboundIpDefaults(envForPools, detected)) {
+			await writeEnv(envPath, envForPools);
+			reporter.log(`Sending pools default to this server's address ${detected}`);
+		} else if (!detected && !envForPools['IP_POOLS_TRANSACTIONAL']) {
+			reporter.log(
+				'Could not detect a routable IPv4 for the sending pools; set IP_POOLS_TRANSACTIONAL and IP_POOLS_CAMPAIGN in .env',
+				'stderr'
+			);
+		}
+		// Reverse DNS is the one record the installer cannot create on the
+		// operator's behalf, and the MTA identity gate further down refuses to let
+		// the stack finish without it. Ask for it HERE — before anything comes up —
+		// so a missing PTR is a five-minute detour through the provider console
+		// instead of an install that dies on `FCrDNS blocked for <ip>` having never
+		// mentioned the record existed.
+		await announceReverseDns(plannedOutboundIdentities(envForPools), envForPools, {
+			// A config-file, --assume-yes or machine-driven run has nobody at the
+			// keyboard to go set the record; it gets the same instructions, without
+			// the re-check prompt (which would hang a non-TTY install forever).
+			interactive: !opts.assumeYes && !config && !reporter.isJson,
+			emit: (line, stream) => reporter.log(line, stream),
+		});
+	}
+
 	const knownAdminEmail = shouldBootstrap
 		? (config?.admin.email ?? flags.email ?? (opts.assumeYes ? 'dev@example.com' : undefined))
 		: undefined;
@@ -289,14 +318,26 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	if (composeProfilesUnion.includes('mta')) {
 		const localMtaUrl = `http://${resolveLocalHost(process.env)}:${envAfterCompose['MTA_HTTP_PORT'] ?? '3100'}`;
 		reporter.step(SetupStep.MtaIdentity, 'Verifying outbound IP identity');
+		// The MTA finishes its boot-time identity, source-address and DNSBL
+		// sweeps before it opens the listener, and each sweep may wait on DNS
+		// and a bounded Convex alert. Allow for all of that before giving up.
 		try {
-			await waitForUrl({ url: `${localMtaUrl}/health`, timeoutMs: 30_000 });
+			await waitForUrl({ url: `${localMtaUrl}/health`, timeoutMs: 120_000 });
 		} catch (err) {
-			reporter.fail(`MTA health endpoint did not become ready: ${(err as Error).message}`);
+			reporter.fail(
+				`MTA health endpoint did not become ready: ${(err as Error).message}. Inspect it with \`docker compose logs mta\`.`
+			);
 			reporter.done(false);
 			return 1;
 		}
-		const identityFindings = await probeMtaIdentityHealth(localMtaUrl);
+		// Pass the master key so the probe can force a live re-check rather than
+		// read the boot sweep's stored verdict: an operator who fixed their PTR
+		// after the first attempt re-runs quickstart, and `docker compose up -d`
+		// does not restart an unchanged MTA container to re-observe it.
+		const identityFindings = await probeMtaIdentityHealth(
+			localMtaUrl,
+			envAfterCompose['MTA_API_KEY']
+		);
 		for (const finding of identityFindings) {
 			reporter.log(
 				`${finding.ok ? '✓' : '✗'} ${finding.message}`,
@@ -307,6 +348,29 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		}
 		const failedIdentity = identityFindings.find((finding) => !finding.ok);
 		if (failedIdentity) {
+			// Spell the fix out again rather than leaving the operator with one
+			// `FCrDNS blocked` line: the record lives at the hosting provider, and
+			// the run that just stopped resumes from its checkpoint once it is live.
+			const lines = reverseDnsInstructions(
+				await checkReverseDns(plannedOutboundIdentities(envAfterCompose), envAfterCompose)
+			);
+			if (lines.length === 0) {
+				// This process resolves the records correctly, yet the MTA — which was
+				// just asked to re-observe — still refuses. What differs is the
+				// resolver: its cache is holding the previous answer, and a PTR TTL
+				// runs to a day. Restarting the container is what clears it.
+				lines.push(
+					'Reverse DNS resolves correctly from the installer, but the MTA still reports the old verdict — its DNS resolver is holding the previous answer.',
+					'Run `docker compose restart mta`, then re-run this install.'
+				);
+			}
+			for (const line of lines) {
+				log.warn(line);
+				reporter.log(line, 'stderr');
+			}
+			log.info(
+				`Re-run ${pc.cyan('owlat quickstart')} once the PTR record resolves — provisioning resumes where it stopped.`
+			);
 			reporter.fail(failedIdentity.message);
 			reporter.done(false);
 			return 1;
@@ -354,7 +418,8 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		envPath,
 		reporter,
 		opts.buildLocal ?? false,
-		checkpoint
+		checkpoint,
+		composeProfilesUnion
 	);
 	if (deployCode !== 0) {
 		reporter.done(false);
@@ -403,7 +468,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			const password =
 				config?.admin.password ??
 				flags.password ??
-				(opts.assumeYes ? 'devpassword12345' : await promptPassword());
+				(await resolveAdminPassword(Boolean(opts.assumeYes)));
 			if (!password) {
 				reporter.fail('No admin password provided');
 				reporter.done(false);
@@ -496,10 +561,14 @@ export function dnsInstructions(config: SetupConfig): string[] {
 	// our own MTA needs an EHLO A record and a bounce-domain MX pointed here.
 	if (isOwnSendProviderKind(config.sending?.provider) && config.domain) {
 		lines.push(
-			`  ${config.domain.ehloHostname.padEnd(pad)}A    <server IP>  (+ matching PTR via your host)`,
+			`  ${config.domain.ehloHostname.padEnd(pad)}A    <server IP>`,
 			...(config.domain.bounceDomain
 				? [`  ${config.domain.bounceDomain.padEnd(pad)}MX   ${config.domain.ehloHostname}`]
-				: [])
+				: []),
+			// PTR is not a zone record — it is set wherever the IP is rented, and no
+			// mail leaves the box until it matches. It earns its own line.
+			"Reverse DNS (PTR), set in your VPS provider's console, not your DNS zone:",
+			`  <server IP>${' '.repeat(Math.max(1, pad - 11))}PTR  ${config.domain.ehloHostname}`
 		);
 	}
 	lines.push(
@@ -527,7 +596,8 @@ async function deployBackend(
 	envPath: string,
 	reporter: Reporter,
 	buildLocal: boolean,
-	checkpoint: ProvisioningCheckpoint
+	checkpoint: ProvisioningCheckpoint,
+	composeProfiles: string[]
 ): Promise<number> {
 	const s = progressSpinner();
 
@@ -541,6 +611,7 @@ async function deployBackend(
 			env = { ...env, CONVEX_ADMIN_KEY: key };
 			await writeEnv(envPath, env);
 			s.stop(pc.green('Admin key generated and saved to .env'));
+			await reapplyEnvToRunningStack(owlatDir, composeProfiles);
 			reporter.ok();
 		} catch (e) {
 			s.stop(pc.red(`Could not generate admin key: ${(e as Error).message}`));
@@ -714,6 +785,49 @@ async function dockerComposeUp(
 	return 0;
 }
 
+/**
+ * Re-apply `.env` to the already-running stack after the Convex admin key lands.
+ *
+ * The stack's first `docker compose up` necessarily happens BEFORE the admin key
+ * exists: only an already-running backend can mint it (`generateConvexAdminKey`),
+ * and `ensureSecrets` deliberately refuses to fabricate one. Docker bakes a
+ * container's environment at CREATE time, so every service that consumes the key
+ * — imap, mail-sync, convex-fn-proxy — was created holding an EMPTY one. Each of
+ * those throws `CONVEX_ADMIN_KEY is required` on boot and, under
+ * `restart: unless-stopped`, crash-loops on it forever. Nothing else in the run
+ * touches them again (the remaining compose calls are one-shot
+ * `run --rm convex-deploy`), so without this step a fresh install with Postbox or
+ * external mail enabled ships a permanently broken container. A live instance
+ * burnt 11h that way before anyone noticed.
+ *
+ * A second plain `up -d` is the whole fix, and `--force-recreate` is deliberately
+ * NOT used: compose compares each service's config hash against its running
+ * container and recreates only those whose resolved environment actually changed.
+ * That is exactly the key consumers. `convex` — which we just waited to become
+ * healthy — keeps its hash and is left alone.
+ *
+ * Non-fatal: the key is already persisted, so a failure here is fully recoverable
+ * with `owlat start`, and aborting mid-deploy would be worse than reporting it.
+ */
+async function reapplyEnvToRunningStack(cwd: string, profiles: string[]): Promise<void> {
+	const s = progressSpinner();
+	s.start('Applying the admin key to containers created before it existed');
+	const env = profiles.length
+		? { ...process.env, COMPOSE_PROFILES: profiles.join(',') }
+		: undefined;
+	const code = await spawnExitCode('docker', ['compose', 'up', '-d'], { cwd, env });
+	if (code !== 0) {
+		s.stop(
+			pc.yellow(
+				`Could not re-apply .env to the running stack (exit ${code}). Services that need ` +
+					'the admin key (imap, mail-sync) may crash-loop until you run `owlat start`.'
+			)
+		);
+		return;
+	}
+	s.stop(pc.green('Admin key applied to the running stack'));
+}
+
 function spawnExitCode(
 	cmd: string,
 	args: string[],
@@ -772,17 +886,6 @@ async function promptEmail(): Promise<string | undefined> {
 
 async function promptText(message: string): Promise<string | undefined> {
 	const result = await text({ message });
-	if (isCancel(result)) return undefined;
-	return result;
-}
-
-async function promptPassword(): Promise<string | undefined> {
-	const result = await passwordPrompt({
-		message: 'Admin password (min 12 chars)',
-		validate: (v) =>
-			(v ?? '').length < 12 ? 'Password must be at least 12 characters' : undefined,
-		mask: '•',
-	});
 	if (isCancel(result)) return undefined;
 	return result;
 }

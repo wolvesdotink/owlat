@@ -19,8 +19,9 @@
  * behind both useBackendOperation (compose side) and useConvex (drain side).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, nextTick } from 'vue';
+import { effectScope, ref, nextTick } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
+import { queryResult } from '~/__tests__/queryStubs';
 
 // The composables under test are stood up OUTSIDE a component setup here, so
 // the `useI18n` auto-import resolves straight to a catalog-backed composer —
@@ -44,6 +45,10 @@ vi.mock('@owlat/api', () => ({
 			},
 			identities: { listSendAsIdentities: 'identities.listSendAs' },
 			signatures: { list: 'signatures.list' },
+			// usePostboxCompose reads the undo-send window through
+			// usePostboxSettings (plan idea 8); unanswered here, so it resolves to
+			// the 30s default and puts no `undoSendDelayMs` on the wire.
+			settings: { get: 'settings.get', update: 'settings.update' },
 		},
 	},
 }));
@@ -252,25 +257,26 @@ beforeEach(async () => {
 
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('useToast', () => ({
 		showToast: (msg: string) => {
 			toasts.push(msg);
 		},
 	}));
-	vi.stubGlobal('useConvexQuery', () => ({ data: ref([]) }));
+	vi.stubGlobal('useConvexQuery', () => queryResult([]));
 	vi.stubGlobal('useConvex', () => ({
 		mutation: (op: string, args: Record<string, unknown>) => backend.call(op, args),
 		query: (op: string, args: Record<string, unknown>) => backend.call(op, args),
 	}));
-	// Mirrors the real module's contract: run() resolves the backend result,
-	// or normalizes a throw, offers it to onError (claimed → silent), and
-	// returns undefined.
+	// Mirrors the real module's contract: run() resolves an `ok: true` envelope
+	// around the backend result, or normalizes a throw, offers it to onError
+	// (claimed → silent), and resolves `ok: false`.
 	vi.stubGlobal(
 		'useBackendOperation',
 		(op: string, opts?: { onError?: (e: { category: string; message: string }) => boolean }) => ({
 			run: async (args: Record<string, unknown>) => {
 				try {
-					return await backend.call(op, args);
+					return { ok: true, result: await backend.call(op, args) };
 				} catch (e) {
 					const err = e as Error & { category?: string };
 					const normalized = {
@@ -278,7 +284,7 @@ beforeEach(async () => {
 						message: err.message,
 					};
 					if (opts?.onError?.(normalized) !== true) toasts.push(normalized.message);
-					return undefined;
+					return { ok: false };
 				}
 			},
 			isLoading: ref(false),
@@ -301,7 +307,7 @@ function goOnline() {
 
 async function makeComposer(fields?: { subject?: string; to?: string[]; body?: string }) {
 	const { usePostboxCompose } = await import('../usePostboxCompose');
-	const composer = usePostboxCompose({ mailboxId: 'mbx-1' as never });
+	const composer = effectScope().run(() => usePostboxCompose({ mailboxId: 'mbx-1' as never }))!;
 	composer.toAddresses.value = fields?.to ?? ['rcpt@example.com'];
 	composer.subject.value = fields?.subject ?? 'Hello';
 	composer.bodyHtml.value = fields?.body ?? '<p>Body</p>';
@@ -396,10 +402,12 @@ describe('offline undo', () => {
 
 		// Attachment refs only exist once committed to a server draft, so the
 		// realistic shape is a draft that went offline before its send.
-		const composer = usePostboxCompose({
-			mailboxId: 'mbx-1' as never,
-			draftId: 'draft-7' as never,
-		});
+		const composer = effectScope().run(() =>
+			usePostboxCompose({
+				mailboxId: 'mbx-1' as never,
+				draftId: 'draft-7' as never,
+			})
+		)!;
 		composer.toAddresses.value = ['rcpt@example.com'];
 		composer.subject.value = 'With the invoice';
 		composer.attachments.value = [attachment];
@@ -411,13 +419,15 @@ describe('offline undo', () => {
 		const item = await outbox.undoQueuedSend(undoToken);
 
 		// Exactly the seed PostboxUndoSendToast hands stack.open().
-		const reopened = usePostboxCompose({
-			mailboxId: 'mbx-1' as never,
-			draftId: item!.payload.draftId as never,
-			prefillTo: item!.payload.toAddresses,
-			prefillSubject: item!.payload.subject,
-			prefillAttachments: item!.payload.attachments,
-		});
+		const reopened = effectScope().run(() =>
+			usePostboxCompose({
+				mailboxId: 'mbx-1' as never,
+				draftId: item!.payload.draftId as never,
+				prefillTo: item!.payload.toAddresses,
+				prefillSubject: item!.payload.subject,
+				prefillAttachments: item!.payload.attachments,
+			})
+		)!;
 		expect(reopened.attachments.value).toEqual([attachment]);
 
 		// The round trip is lossless: re-queuing keeps the files attached, so

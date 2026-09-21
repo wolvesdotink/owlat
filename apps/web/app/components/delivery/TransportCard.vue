@@ -67,7 +67,7 @@ const infrastructureChecks = computed(() => {
 	<UiCard padding="none" overflow="hidden">
 		<!-- Loading -->
 		<div v-if="isLoading" class="p-6 flex items-center gap-3 text-text-tertiary">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin" />
+			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none" />
 			<span class="text-sm">{{ t('components.delivery.transportCard.loading') }}</span>
 		</div>
 

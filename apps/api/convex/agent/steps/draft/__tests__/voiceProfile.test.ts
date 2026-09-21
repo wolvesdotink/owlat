@@ -2,7 +2,7 @@
  * `draftStep.execute` voice-profile personalization.
  *
  * The autonomous draft step injects the recipient's learned writing-voice
- * guidance (mail/voiceProfile.getGuidanceForRecipient) into its system prompt
+ * guidance (mail/ai/voiceProfile.getGuidanceForRecipient) into its system prompt
  * when a profile resolves, and degrades to exactly today's generic org tone
  * when it does not — including when the accessor throws. The LLM dispatch seam
  * and the provider selector are mocked so we can assert the assembled system
@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getFunctionName } from 'convex/server';
+import { makeStepCtx } from '../../__tests__/stepCtx';
 import type { Id } from '../../../../_generated/dataModel';
 
 // Capture the messages passed to the model + return a fixed draft body.
@@ -54,23 +54,14 @@ function makeCtx(opts: {
 	message: { to?: string; subject?: string } | null;
 	guidance: GuidanceResult;
 }) {
-	return {
-		runQuery: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getAgentConfig')) return null;
-			if (name.includes('getMessage')) return opts.message;
-			throw new Error(`unexpected runQuery: ${name}`);
+	return makeStepCtx<Parameters<typeof draftStep.execute>[0]>({
+		queries: { getAgentConfig: null, getMessage: opts.message },
+		mutations: {
+			getGuidanceForRecipient: () =>
+				typeof opts.guidance === 'function' ? opts.guidance() : opts.guidance,
+			recordDraftOutput: null,
 		},
-		runMutation: async (ref: unknown) => {
-			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-			if (name.includes('getGuidanceForRecipient')) {
-				if (typeof opts.guidance === 'function') return opts.guidance();
-				return opts.guidance;
-			}
-			if (name.includes('recordDraftOutput')) return null;
-			throw new Error(`unexpected runMutation: ${name}`);
-		},
-	} as unknown as Parameters<typeof draftStep.execute>[0];
+	});
 }
 
 /** The system prompt string handed to the model on the last call. */

@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/shared",
-	"version": "0.4.4",
+	"version": "0.5.0",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -13,17 +13,21 @@
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
 		},
-		"./utils": {
-			"types": "./src/utils/index.ts",
-			"import": "./src/utils/index.ts"
-		},
 		"./types": {
 			"types": "./src/types/index.ts",
 			"import": "./src/types/index.ts"
 		},
+		"./templateVariables": {
+			"types": "./src/templateVariables.ts",
+			"import": "./src/templateVariables.ts"
+		},
 		"./registry": {
 			"types": "./src/registry/index.ts",
 			"import": "./src/registry/index.ts"
+		},
+		"./inboundRetention": {
+			"types": "./src/inboundRetention.ts",
+			"import": "./src/inboundRetention.ts"
 		},
 		"./featureFlags": {
 			"types": "./src/featureFlags.ts",
@@ -73,10 +77,6 @@
 			"types": "./src/dane.ts",
 			"import": "./src/dane.ts"
 		},
-		"./tlsReport": {
-			"types": "./src/tlsReport.ts",
-			"import": "./src/tlsReport.ts"
-		},
 		"./mtaStsPolicy": {
 			"types": "./src/mtaStsPolicy.ts",
 			"import": "./src/mtaStsPolicy.ts"
@@ -84,6 +84,10 @@
 		"./setupEnv": {
 			"types": "./src/setupEnv.ts",
 			"import": "./src/setupEnv.ts"
+		},
+		"./containerHealth": {
+			"types": "./src/containerHealth.ts",
+			"import": "./src/containerHealth.ts"
 		},
 		"./convexRuntimeEnv": {
 			"types": "./src/convexRuntimeEnv.ts",
@@ -145,6 +149,18 @@
 			"types": "./src/postboxLinkTransparency.ts",
 			"import": "./src/postboxLinkTransparency.ts"
 		},
+		"./retentionHorizons": {
+			"types": "./src/retentionHorizons.ts",
+			"import": "./src/retentionHorizons.ts"
+		},
+		"./mboxArchive": {
+			"types": "./src/mboxArchive.ts",
+			"import": "./src/mboxArchive.ts"
+		},
+		"./gmailTakeout": {
+			"types": "./src/gmailTakeout.ts",
+			"import": "./src/gmailTakeout.ts"
+		},
 		"./mailMime": {
 			"types": "./src/mailMime.ts",
 			"import": "./src/mailMime.ts"
@@ -168,6 +184,10 @@
 		"./attachments": {
 			"types": "./src/attachments.ts",
 			"import": "./src/attachments.ts"
+		},
+		"./attachmentShares": {
+			"types": "./src/attachmentShares.ts",
+			"import": "./src/attachmentShares.ts"
 		},
 		"./bounceClassification": {
 			"types": "./src/bounceClassification.ts",
@@ -241,14 +261,6 @@
 			"types": "./src/deliverabilityAlignment.ts",
 			"import": "./src/deliverabilityAlignment.ts"
 		},
-		"./deliverabilityAlignmentGate": {
-			"types": "./src/deliverabilityAlignmentGate.ts",
-			"import": "./src/deliverabilityAlignmentGate.ts"
-		},
-		"./spfCoexistence": {
-			"types": "./src/spfCoexistence.ts",
-			"import": "./src/spfCoexistence.ts"
-		},
 		"./yahooCfl": {
 			"types": "./src/yahooCfl.ts",
 			"import": "./src/yahooCfl.ts"
@@ -277,6 +289,18 @@
 			"types": "./src/spf.ts",
 			"import": "./src/spf.ts"
 		},
+		"./externalReceiving": {
+			"types": "./src/externalReceiving.ts",
+			"import": "./src/externalReceiving.ts"
+		},
+		"./semver": {
+			"types": "./src/semver.ts",
+			"import": "./src/semver.ts"
+		},
+		"./releaseArtifacts": {
+			"types": "./src/releaseArtifacts.ts",
+			"import": "./src/releaseArtifacts.ts"
+		},
 		"./composeVerify": {
 			"types": "./src/composeVerify.ts",
 			"import": "./src/composeVerify.ts"
@@ -285,9 +309,17 @@
 			"types": "./src/composeOverride.ts",
 			"import": "./src/composeOverride.ts"
 		},
+		"./networkPorts": {
+			"types": "./src/networkPorts.ts",
+			"import": "./src/networkPorts.ts"
+		},
 		"./dnsZone": {
 			"types": "./src/dnsZone.ts",
 			"import": "./src/dnsZone.ts"
+		},
+		"./utils/guards": {
+			"types": "./src/utils/guards.ts",
+			"import": "./src/utils/guards.ts"
 		}
 	},
 	"scripts": {

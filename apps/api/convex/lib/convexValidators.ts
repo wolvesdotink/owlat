@@ -1,6 +1,77 @@
-import { v, type Infer } from 'convex/values';
+import { v, type Infer, type VLiteral, type VUnion } from 'convex/values';
+import { DELIVERABILITY_CHECKLIST_STATUSES, GOVERNED_MESSAGE_TYPES } from '@owlat/shared';
+import {
+	DOMAIN_RECEIVING_MODES,
+	EXTERNAL_RECEIVING_PROVIDER_IDS,
+} from '@owlat/shared/externalReceiving';
+import { MTA_STS_MODES } from '@owlat/shared/mtaStsPolicy';
+import { YAHOO_CFL_STORED_STATES } from '@owlat/shared/yahooCfl';
+
+/**
+ * A closed string union derived from an `as const` array, so a vocabulary owned
+ * by `@owlat/shared` is never re-spelled here. The inferred type is
+ * `T[number]`, the same closed union a hand-written `v.union(v.literal(...))`
+ * gives, and `.members` stays available for parity tests. The cast is needed
+ * because destructuring a generic tuple widens the rest to `string[]`.
+ */
+export function literalUnion<const T extends readonly [string, ...string[]]>(values: T) {
+	const [first, ...rest] = values;
+	return v.union(v.literal(first), ...rest.map((value) => v.literal(value))) as VUnion<
+		T[number],
+		VLiteral<T[number]>[]
+	>;
+}
+
+export const mtaStsModeValidator = literalUnion(MTA_STS_MODES);
+export const yahooCflStoredStateValidator = literalUnion(YAHOO_CFL_STORED_STATES);
+/** Message type a provider route governs — `providerRoutes.messageType` and its readers. */
+export const messageTypeValidator = literalUnion(GOVERNED_MESSAGE_TYPES);
+export const deliverabilityStatusValidator = literalUnion(DELIVERABILITY_CHECKLIST_STATUSES);
+/** Who accepts INBOUND mail for a sending domain, and which provider keeps its
+ * MX when that is not us (`domains.receivingMode` /
+ * `domains.externalReceivingProvider`, plus every arg that writes them). Absent
+ * ⇒ `'owlat'`: the default lives in absence, not in a backfill. */
+export const receivingModeValidator = literalUnion(DOMAIN_RECEIVING_MODES);
+export const externalReceivingProviderValidator = literalUnion(EXTERNAL_RECEIVING_PROVIDER_IDS);
+
+// Two-to-three literal unions that several tables and function args share.
+export const completedOrFailedValidator = v.union(v.literal('completed'), v.literal('failed'));
+export const abVariantValidator = v.union(v.literal('A'), v.literal('B'));
+export const bounceTypeValidator = v.union(v.literal('hard'), v.literal('soft'));
+/** SPF / DKIM / DMARC result on an inbound probe; `unknown` is "not evaluated". */
+export const authResultValidator = v.union(
+	v.literal('pass'),
+	v.literal('fail'),
+	v.literal('unknown')
+);
+export const transportArmValidator = v.union(v.literal('own'), v.literal('reference'));
+export const mailAppPasswordScopeValidator = v.union(v.literal('imap'), v.literal('smtp'));
+export const reviewActionValidator = v.union(
+	v.literal('approved'),
+	v.literal('rejected'),
+	v.literal('edited')
+);
+export const widgetSizeValidator = v.union(
+	v.literal('small'),
+	v.literal('medium'),
+	v.literal('large')
+);
+export const duplicateHandlingValidator = v.union(v.literal('skip'), v.literal('update'));
+export const messageDirectionValidator = v.union(v.literal('inbound'), v.literal('outbound'));
+export const detectionSourceValidator = v.union(v.literal('heuristic'), v.literal('llm'));
 
 // Unified-message channel union shared by stored rows and function arguments.
+/**
+ * The interface languages this product ships (`nuxt.config` → `i18n.locales`).
+ *
+ * A closed union rather than `v.string()`: this value is read back to pick the
+ * catalog a system EMAIL renders in, and an unrecognised code there is either a
+ * crash or a silent fall back to English on a channel nobody is watching.
+ * Keep in step with `apps/web/i18n/formats.ts` → `FORMAT_LOCALES`.
+ */
+// Interface locales live in ./appLocales.ts (file-size ratchet); re-exported here.
+export { APP_LOCALES, appLocaleValidator, type AppLocale } from './appLocales';
+
 export const unifiedMessageChannelValidator = v.union(
 	v.literal('email'),
 	v.literal('sms'),
@@ -35,6 +106,10 @@ export const jsonPrimitiveRecord = v.record(v.string(), jsonPrimitiveValue);
 export const updateStepResultValidator = v.array(
 	v.object({
 		step: v.string(),
+		// The sidecar's per-step verdict. Object validators reject unknown fields,
+		// so while this was unlisted every recordUpdateFinish call failed argument
+		// validation; optional because the compose-file steps report without one.
+		ok: v.optional(v.boolean()),
 		stdout: v.string(),
 		stderr: v.string(),
 	})
@@ -62,10 +137,7 @@ export const activityMetadataValidator = v.object({
 });
 
 // Data variables schema definition (transactionalEmails)
-export const dataVariablesSchemaValidator = v.record(
-	v.string(),
-	v.union(v.literal('string'), v.literal('number'), v.literal('boolean'), v.literal('date'))
-);
+export const dataVariablesSchemaValidator = v.record(v.string(), fieldTypeValidator);
 
 // ─── Webhook payload contract (FROZEN) ─────────────────────────────────────
 // Per-event payload shapes are documented in apps/api/convex/docs/webhook-payloads.md.
@@ -77,6 +149,7 @@ export const dataVariablesSchemaValidator = v.record(
 // `lib/validators` consumers keep working.
 
 import { webhookEventValidator } from '../webhooks/events';
+import { fieldTypeValidator } from './literalValidators';
 export { webhookEventValidator };
 
 // Container the row stores. `data` is the inner event payload — kept as
@@ -125,7 +198,7 @@ const topicMembershipConditionValidator = v.object({
 	operator: v.union(v.literal('equals'), v.literal('not_equals')),
 });
 
-export const filterConditionValidator = v.union(
+const filterConditionValidator = v.union(
 	contactPropertyConditionValidator,
 	emailActivityConditionValidator,
 	topicMembershipConditionValidator
@@ -266,93 +339,21 @@ export const spamVerdictValidator = v.union(
 	v.literal('quarantine')
 );
 
-// Postbox reader auto-advance preference (mailUserSettings.autoAdvance and
-// mail/settings update args) — single source so schema and args can't drift.
-export const mailAutoAdvanceValidator = v.union(
-	v.literal('next'),
-	v.literal('previous'),
-	v.literal('back-to-list')
-);
-
-// Postbox default reply behavior (mailUserSettings.replyDefault and mail/settings
-// update args) — whether the primary reply affordance / `r` opens a plain Reply
-// or a Reply-all. Single source so schema and args can't drift.
-export const mailReplyDefaultValidator = v.union(v.literal('reply'), v.literal('reply-all'));
-
-// Postbox list/reader density (mailUserSettings.density and mail/settings update
-// args) — 'comfortable' (the roomy default) vs 'compact' (tighter rows +
-// single-line subject/snippet). Single source so schema and args can't drift.
-export const mailDensityValidator = v.union(v.literal('comfortable'), v.literal('compact'));
-
-// Postbox inbox list view mode (mailUserSettings.viewMode and mail/settings
-// update args) — 'flat' (single message list, the default), 'conversations'
-// (thread-grouped rows), or 'categories' (People / Newsletters / Notifications
-// / Receipts sections). Inbox-only; other folders always render flat. Single
-// source so schema and args can't drift.
-export const mailViewModeValidator = v.union(
-	v.literal('flat'),
-	v.literal('conversations'),
-	v.literal('categories')
-);
-
-// Postbox inbox landing mode (mailUserSettings.inboxMode and mail/settings
-// update args) — 'today' (the focused single-column landing view; the default)
-// vs 'browse' (the full three-pane folder UI). Inbox-only; persisted as the
-// user's last-used mode. Single source so schema and args can't drift.
-export const mailInboxModeValidator = v.union(v.literal('today'), v.literal('browse'));
-
-// Postbox desktop-notification scope (mailUserSettings.notifyAbout and
-// mail/settings update args). 'everything' fires a toast for every new inbox
-// message; 'people-important' only for smart-category `person` mail (and any
-// message whose category is absent — fail-open so nothing is silently dropped
-// before the classifier has run); 'nothing' suppresses toasts entirely. Single
-// source so schema and args can't drift.
-export const mailNotifyAboutValidator = v.union(
-	v.literal('everything'),
-	v.literal('people-important'),
-	v.literal('nothing')
-);
-
 // Email template kind (emailTemplates.type and its CRUD args)
 export const emailTemplateTypeValidator = v.union(
 	v.literal('marketing'),
 	v.literal('transactional')
 );
 
-// Attachment metadata embedded in raw .eml (mailMessages.attachments)
-export const mailMessageAttachmentValidator = v.object({
-	filename: v.string(),
-	contentType: v.string(),
-	size: v.number(),
-	contentId: v.optional(v.string()),
-	partIndex: v.string(),
-});
-
-// Sealed-Mail validators (sealPolicyValidator / sealSkipReasonValidator /
-// mailEncryptionInfoValidator) live in `../mail/sealPolicy.ts` for the ~500 LOC ratchet.
-
-// Parsed List-Unsubscribe / List-Unsubscribe-Post target (mailMessages.unsubscribe).
-// Parsed ONCE at ingest from the raw header block (see @owlat/shared/listUnsubscribe)
-// so the reader can render the Unsubscribe chip without re-opening the raw .eml.
-export const mailUnsubscribeValidator = v.object({
-	httpUrl: v.optional(v.string()),
-	mailtoUrl: v.optional(v.string()),
-	oneClick: v.boolean(),
-});
-
-// Compose-draft attachment referencing Convex storage (mailDrafts.attachments)
-export const mailDraftAttachmentValidator = v.object({
-	storageId: v.id('_storage'),
-	filename: v.string(),
-	contentType: v.string(),
-	size: v.number(),
-	isInline: v.boolean(),
-	contentId: v.optional(v.string()),
-});
+// Mail CONTENT validators (attachment metadata, List-Unsubscribe, triage verbs,
+// snippet variables, draft attachments, share-link scope/scan) live in the
+// sibling lib/mailContentValidators.ts, alongside the mail SETTINGS validators
+// in lib/mailSettingsValidators.ts, to keep this shared module under the
+// ~500 LOC file-size ratchet.
 
 // Edit-learning flywheel validators (`editDeltaKindValidator`,
 // `editAdjustmentValidator`) live in the feature-local sibling
-// mail/editLearningValidators.ts to keep this shared module under the
+// mail/ai/editLearningValidators.ts to keep this shared module under the
 // file-size cap.
 
 // LLM call accounting (agentActions.tokenUsage and similar)
@@ -403,13 +404,8 @@ export const securityFlagsValidator = v.object({
 });
 
 // Agent classification output (inboundMessages.classification)
-export const classificationValidator = v.object({
-	category: v.string(),
-	priority: v.string(),
-	sentiment: v.string(),
-	intent: v.string(),
-	confidence: v.number(),
-});
+// Moved to ./classificationValidator.ts (file-size ratchet); re-exported here.
+export { classificationValidator } from './classificationValidator';
 
 // Retrieval coverage / grounding signal (inboundMessages.contextCoverage).
 // Emitted by the `context_retrieval` Agent step — a CHEAP, ADVISORY summary of

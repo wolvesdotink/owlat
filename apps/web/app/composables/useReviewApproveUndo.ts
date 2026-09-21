@@ -2,7 +2,7 @@
  * Countdown-undo toast state for review-queue approvals.
  *
  * A human Approve is now held server-side for `agentConfig.humanApproveUndoDelayMs`
- * (piece C1 / decision D5) with the same cancellable `pendingAutoSend` marker as
+ * with the same cancellable `pendingAutoSend` marker as
  * autonomous sends. This singleton (mirroring usePostboxUndoSend) lets any review
  * surface arm the shared "Approved — Undo (14s)" toast after a successful approve;
  * ReviewApproveUndoToast reads the state, renders the live countdown, and runs the
@@ -13,7 +13,7 @@
 interface ReviewApproveUndoState {
 	visible: boolean;
 	/** The message whose approve is still inside its undo window. For a BULK
-	 * approve (piece C2) this is the first approved id — the armed handler
+	 * approve this is the first approved id — the armed handler
 	 * carries the full batch. */
 	inboundMessageId: string | null;
 	/** When the held send fires (ms epoch) — drives the countdown. */

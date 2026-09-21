@@ -7,8 +7,9 @@
  * Under prefers-reduced-motion the number simply updates — plain text, no
  * animation.
  */
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { parseCssDurationMs, useNumberTicker } from '../../composables/useNumberTicker';
+import { useReducedMotion } from '../../composables/useReducedMotion';
 
 const props = withDefaults(
 	defineProps<{
@@ -21,24 +22,17 @@ const props = withDefaults(
 
 const el = ref<HTMLElement | null>(null);
 const durationMs = ref(160);
-const reducedMotion = ref(false);
+// Set up at SETUP, not in `onMounted`: the old inline `matchMedia` wiring
+// registered its `onBeforeUnmount` from inside a mount hook, so the listener
+// outlived the component whenever the hook's guard did not run.
+const reducedMotion = useReducedMotion();
 
 onMounted(() => {
-	if (el.value) {
-		durationMs.value = parseCssDurationMs(
-			getComputedStyle(el.value).getPropertyValue('--motion-moderate'),
-			durationMs.value
-		);
-	}
-	if (typeof matchMedia === 'function') {
-		const query = matchMedia('(prefers-reduced-motion: reduce)');
-		reducedMotion.value = query.matches;
-		const onChange = (event: MediaQueryListEvent) => {
-			reducedMotion.value = event.matches;
-		};
-		query.addEventListener('change', onChange);
-		onBeforeUnmount(() => query.removeEventListener('change', onChange));
-	}
+	if (!el.value) return;
+	durationMs.value = parseCssDurationMs(
+		getComputedStyle(el.value).getPropertyValue('--motion-moderate'),
+		durationMs.value
+	);
 });
 
 const { display } = useNumberTicker(() => props.value, {

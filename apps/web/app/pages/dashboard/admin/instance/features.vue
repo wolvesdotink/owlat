@@ -16,7 +16,11 @@ import {
 	type FeatureFlagState,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
-import { flagsNeedingConfig, missingPluginEnvironmentVariables } from '~/utils/featureConfig';
+import {
+	enableTimeMissingEnvVars,
+	flagsNeedingConfig,
+	missingPluginEnvironmentVariables,
+} from '~/utils/featureConfig';
 import { hasInboundFeature, INBOUND_FEATURE_FLAGS } from '~/utils/inboundDns';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 import FeatureFlagMetadata from '~/components/settings/FeatureFlagMetadata.vue';
@@ -37,7 +41,7 @@ const { t } = useI18n();
 const { flagLabel, flagKeyLabel, flagDescription, packLabel, packDescription } = useFeatureCopy();
 
 useHead({ title: () => t('dashboard.admin.instance.features.pageTitle') });
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const {
 	data: liveFlags,
@@ -145,7 +149,16 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 		return;
 	}
 	if (value && (def.requiredEnvVars?.length ?? 0) > 0) {
-		missingEnv.value = { flag, vars: [...(def.requiredEnvVars ?? [])] };
+		// Name only what the deployment is actually missing — `mail.external`
+		// declares its worker variables, and an instance that already has them set
+		// should not be told to go set them. The status query is the only evidence
+		// available here (the browser cannot read `.env`); when it has not answered,
+		// `enableTimeMissingEnvVars` falls back to the full declared list.
+		const vars = enableTimeMissingEnvVars(
+			def,
+			configStatusError.value ? null : flagsConfigStatus.value
+		);
+		if (vars.length > 0) missingEnv.value = { flag, vars };
 	}
 
 	// Sending flags declare no requiredEnvVars (the provider is env+capability,
@@ -225,8 +238,8 @@ async function commitToggle(
 	});
 	pendingCascade.value = null;
 	pendingPluginApproval.value = null;
-	if (res === undefined) return; // failure already toasted by the operation module
-	trackFlagChange(before, res.flags, featureFlagRegistry);
+	if (!res.ok) return; // failure already toasted by the operation module
+	trackFlagChange(before, res.result.flags, featureFlagRegistry);
 	const definition = featureFlagRegistry[flag];
 	const label = definition ? flagLabel(definition) : flag;
 	showToast(
@@ -234,10 +247,10 @@ async function commitToggle(
 			? t('dashboard.admin.instance.features.toasts.flagEnabled', { label })
 			: t('dashboard.admin.instance.features.toasts.flagDisabled', { label })
 	);
-	if (res.cascaded.length > 0) {
+	if (res.result.cascaded.length > 0) {
 		showToast(
 			t('dashboard.admin.instance.features.toasts.alsoDisabled', {
-				flags: res.cascaded.join(', '),
+				flags: res.result.cascaded.join(', '),
 			})
 		);
 	}
@@ -281,18 +294,18 @@ async function togglePack(packKey: FeaturePackKey) {
 	const nextValue = current !== 'on'; // off/partial → on; on → off
 	const before = stored.value;
 	const res = await setFeaturePack({ pack: packKey, value: nextValue });
-	if (res === undefined) return; // failure already toasted
-	trackFlagChange(before, res.flags, featureFlagRegistry);
+	if (!res.ok) return; // failure already toasted
+	trackFlagChange(before, res.result.flags, featureFlagRegistry);
 	const label = packLabel(packKey);
 	showToast(
 		nextValue
 			? t('dashboard.admin.instance.features.toasts.packEnabled', { label })
 			: t('dashboard.admin.instance.features.toasts.packDisabled', { label })
 	);
-	if (res.cascaded.length > 0) {
+	if (res.result.cascaded.length > 0) {
 		showToast(
 			t('dashboard.admin.instance.features.toasts.alsoAffected', {
-				flags: res.cascaded.join(', '),
+				flags: res.result.cascaded.join(', '),
 			})
 		);
 	}

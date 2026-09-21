@@ -8,6 +8,13 @@ import { registerOstrCrons } from './ostr/cronRegistration';
 
 const crons = cronJobs();
 
+crons.interval(
+	'reconcile MTA suppressions',
+	{ hours: 24 },
+	internal.delivery.suppressionMirror.reconcile,
+	{}
+);
+
 // Process scheduled campaigns every minute
 // Catches campaigns whose scheduledAt has passed (backup for scheduler-based sends)
 crons.interval(
@@ -99,7 +106,7 @@ crons.interval(
 	{}
 );
 
-// Sweep expired bundled-plugin replay claims (D6/P2.2). The claim mutation ages
+// Sweep expired bundled-plugin replay claims. The claim mutation ages
 // its own table out on the hot path, but only while deliveries keep arriving:
 // disabling a plugin or a provider going quiet strands whatever the last sweep
 // left. Rows expire within the signature contract's tolerance (≤ 15 minutes), so
@@ -149,10 +156,31 @@ crons.interval(
 	internal.maintenance.retention.scrubFormSubmissionMeta,
 	{}
 );
+// Inbound mail FILES (see maintenance/retention.ts): the sealed raw `.eml` and
+// the team-inbox attachment blobs captured out of it are released past the
+// horizon set in Settings (`DEFAULT_INBOUND_RAW_RETENTION_DAYS` when unset).
+// Bytes only — every row and all of its metadata stays. ONE entry for one
+// horizon: the two walks are the same decision from the same setting. Daily,
+// because the horizon is measured in days, so a tick stays small.
+crons.interval(
+	'retention: inbound mail files',
+	{ hours: 24 },
+	internal.maintenance.retention.sweepInboundFiles,
+	{}
+);
 crons.interval(
 	'retention: mail auth failures',
 	{ hours: 24 },
 	internal.mail.authRateLimit.sweepOld,
+	{}
+);
+// Abandoned Google sign-in handshakes. `start` already deletes the caller's
+// prior row before inserting, so this only reclaims rows for users who walked
+// away and never came back; bounded per tick.
+crons.interval(
+	'retention: external mailbox oauth states',
+	{ hours: 24 },
+	internal.mail.external.googleOAuth._sweepExpiredInternal,
 	{}
 );
 crons.interval(
@@ -360,6 +388,30 @@ crons.interval(
 	{}
 );
 
+// Postbox trash auto-purge — delete mail that has sat in the bin past the
+// owner's chosen horizon (mailUserSettings.trashAutoPurgeDays). Opt-in: a user
+// who never set a horizon keeps every trashed message forever, exactly as
+// before. Hourly is fine for a horizon measured in days, and it keeps each tick
+// small.
+crons.interval(
+	'postbox trash auto-purge',
+	{ hours: 1 },
+	internal.mail.trashRetention.sweepExpiredTrash,
+	{}
+);
+
+// Attachment share links (idea 10): release the bytes of every lapsed link, and
+// delete the record once it has sat byte-less through the grace window. The
+// serving route already refuses an expired token, so this is what turns
+// "expires in 14 days" into the file actually ceasing to exist. Hourly matches
+// the trash sweep — the horizon is measured in days, so a tick stays small.
+crons.interval(
+	'postbox attachment share expiry',
+	{ hours: 1 },
+	internal.mail.attachmentShareRetention.sweepExpiredShares,
+	{}
+);
+
 // Postbox Reply Queue reconcile — re-schedule needs-reply classification for
 // threads whose ingest-time scheduled check was lost (deploy restart etc.).
 crons.interval(
@@ -374,6 +426,26 @@ crons.interval(
 // + open commitments, plus the auditable low-signal bundle. Reads persisted
 // signals only (no LLM spend); in-app surface via getLatestBrief.
 crons.interval('build daily briefs', { hours: 24 }, internal.mail.dailyBrief.buildDailyBriefs, {});
+
+// Daily-brief EMAIL delivery (mail/briefEmailActions.ts, idea 29) — the opt-in
+// `mailDailyBriefs` documented but never had. Ticks every 15 minutes and mails
+// the newest persisted brief to each opted-in owner's own mailbox when their
+// LOCAL clock passes the time they chose; the delivery stamp makes it
+// at-most-once per local day, so a double tick or a retry cannot mail twice.
+// Builds nothing — it reads the snapshot the build cron already persisted.
+crons.interval(
+	'deliver daily brief emails',
+	{ minutes: 15 },
+	internal.mail.briefEmailActions.deliverDueBriefs,
+	{}
+);
+
+// Triage-tally retention (mail/triageTally.ts, idea 27). The per-sender counters
+// behind "you archive everything from X, always archive it?" are a rolling
+// picture of RECENT habits, so rows nothing has touched inside the retention
+// window are dropped. One bounded batch per tick; rows behind an accepted
+// suggestion are kept, because they anchor its undo.
+crons.interval('prune triage tallies', { hours: 24 }, internal.mail.triageTally.pruneTallies, {});
 
 // Commitment sweep — bidirectional deadline/promise tracking (mail/commitments.ts).
 // Schedules cheap-tier LLM extraction for recent sent promises (bounded fan-out)
@@ -390,6 +462,19 @@ crons.interval(
 	'refresh recipient key discovery',
 	{ minutes: 30 },
 	internal.e2ee.discovery.refreshExpiringRecipientKeys,
+	{}
+);
+
+// Desktop release cache — list the repo's releases and pull in any new
+// desktop-bearing one's `latest.json` (desktop/updates.ts). Six hours keeps a
+// fresh self-host well inside GitHub's unauthenticated budget even alongside
+// the server's own hourly update check; the admin "Check now" button covers "a
+// release just went out". Fail-soft: a rate-limited or failed poll records the
+// error and leaves the cache serving what it already has.
+crons.interval(
+	'desktop-releases-refresh',
+	{ hours: 6 },
+	internal.desktop.updates.refreshReleases,
 	{}
 );
 

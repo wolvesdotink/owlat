@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createI18n } from 'vue-i18n';
 import de from '~~/i18n/locales/de.json';
 import en from '~~/i18n/locales/en.json';
+import { INTENTIONALLY_IDENTICAL_KEYS } from './localeIdenticalByDesign';
 
 /**
  * Guards for the UI message catalogs (apps/web/i18n/locales).
@@ -62,6 +63,43 @@ describe('UI message catalogs', () => {
 			.filter(([, message]) => /[<>]/.test(message) || /(?<!\{')@/.test(message))
 			.map(([key]) => key);
 		expect(offenders).toEqual([]);
+	});
+
+	/**
+	 * A `de` message that is character-for-character its English source is almost
+	 * always a key someone added to both files and translated in neither: the
+	 * catalog-parity check above passes, the compile check passes, and the German
+	 * page just says the English thing. The failure this catches is real — the
+	 * whole `imprint.*` block sat here as untranslated GERMAN in `en.json`, so the
+	 * English imprint page rendered "Angaben gemäß § 5 TMG".
+	 *
+	 * Ported from `packages/ui/__tests__/localeCatalogs.test.ts`, which has held
+	 * the layer catalogs to this for a while; this app's catalog is 9,000 keys, so
+	 * the legitimately-identical set is a list rather than a handful. Everything on
+	 * it is a proper noun (Mailchimp, Twilio, OpenAI), a term German borrows
+	 * wholesale (Spam, Marketing, Chat, Port), an IANA timezone or language name,
+	 * or a placeholder that is the same in both.
+	 */
+	const INTENTIONALLY_IDENTICAL = new Set(INTENTIONALLY_IDENTICAL_KEYS);
+
+	it('translates every message away from English', () => {
+		const untranslated = [...catalogs.en]
+			.filter(([key, message]) => catalogs.de.get(key) === message)
+			.map(([key]) => key)
+			.filter((key) => !INTENTIONALLY_IDENTICAL.has(key));
+		expect(untranslated).toEqual([]);
+	});
+
+	/**
+	 * The allowlist is a guard only while it is exact. An entry that outlives the
+	 * key it excused — because the message was translated, renamed or deleted —
+	 * silently re-opens the hole for whatever takes that key path next.
+	 */
+	it('carries no stale entry in the identical-by-design list', () => {
+		const stale = [...INTENTIONALLY_IDENTICAL].filter(
+			(key) => catalogs.en.get(key) !== catalogs.de.get(key)
+		);
+		expect(stale).toEqual([]);
 	});
 
 	// The catalogs are compiled by @nuxtjs/i18n at build time, so a message the

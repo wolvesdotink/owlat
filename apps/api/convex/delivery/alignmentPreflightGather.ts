@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * Dual-transport alignment pre-flight — live-DNS gather half (P3-5).
+ * Dual-transport alignment pre-flight — live-DNS gather half.
  *
  * Separate from `alignmentPreflight.ts` because it needs `node:dns` and must be
  * a `'use node'` module, where Convex forbids queries and mutations. The DNS
@@ -28,11 +28,11 @@ import {
 	ALIGNMENT_SWEEP_PAGE_SIZE,
 	dkimRecordName,
 	evaluateAlignmentPreflight,
-	normalizeDomain,
 	type AlignmentArm,
 	type AlignmentDnsFacts,
 	type DnsTxtObservation,
 } from '@owlat/shared/deliverabilityAlignment';
+import { normalizeDomain } from '@owlat/shared';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logWarn } from '../lib/runtimeLog';

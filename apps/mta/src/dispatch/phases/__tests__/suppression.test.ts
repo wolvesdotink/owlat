@@ -7,23 +7,9 @@ vi.mock('../../../intelligence/suppressionList.js', () => ({
 import { suppressionPhase } from '../suppression.js';
 import { mainPipeline } from '../index.js';
 import * as suppressionList from '../../../intelligence/suppressionList.js';
-import type { BasePhaseCtx, PhaseDeps } from '../../types.js';
-import type { EmailJob } from '../../../types.js';
+import type { PhaseDeps } from '../../types.js';
 import type { MtaConfig } from '../../../config.js';
-
-function makeCtx(): BasePhaseCtx {
-	const job: EmailJob = {
-		messageId: 'msg-1',
-		to: 'user@example.com',
-		from: 'sender@owlat.com',
-		subject: 'Test',
-		html: '<p>Hello</p>',
-		ipPool: 'transactional',
-		organizationId: 'org-1',
-		dkimDomain: 'owlat.com',
-	};
-	return { job, domain: 'example.com', isp: 'other', fromDomain: 'owlat.com' };
-}
+import { makeDispatchCtx } from '../../../__tests__/helpers/dispatchCtx.js';
 
 const deps: PhaseDeps = { redis: {} as never, config: {} as MtaConfig };
 
@@ -32,13 +18,13 @@ beforeEach(() => vi.clearAllMocks());
 describe('suppressionPhase', () => {
 	it('continues when the recipient is not suppressed', async () => {
 		vi.mocked(suppressionList.isSuppressed).mockResolvedValueOnce(false);
-		const out = await suppressionPhase.run(deps, makeCtx());
+		const out = await suppressionPhase.run(deps, makeDispatchCtx());
 		expect(out.kind).toBe('continue');
 	});
 
 	it('drops with status=suppressed when the recipient is on the list', async () => {
 		vi.mocked(suppressionList.isSuppressed).mockResolvedValueOnce(true);
-		const out = await suppressionPhase.run(deps, makeCtx());
+		const out = await suppressionPhase.run(deps, makeDispatchCtx());
 		expect(out).toEqual({
 			kind: 'drop',
 			status: 'suppressed',
@@ -48,8 +34,11 @@ describe('suppressionPhase', () => {
 
 	it('queries the helper with the recipient address', async () => {
 		vi.mocked(suppressionList.isSuppressed).mockResolvedValueOnce(false);
-		await suppressionPhase.run(deps, makeCtx());
-		expect(suppressionList.isSuppressed).toHaveBeenCalledWith(expect.anything(), 'user@example.com');
+		await suppressionPhase.run(deps, makeDispatchCtx());
+		expect(suppressionList.isSuppressed).toHaveBeenCalledWith(
+			expect.anything(),
+			'user@example.com'
+		);
 	});
 });
 

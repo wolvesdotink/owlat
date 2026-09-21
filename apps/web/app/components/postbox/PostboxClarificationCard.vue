@@ -8,6 +8,7 @@ import { resolveAgentTaskShortcut } from '~/utils/agentTaskShortcuts';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
 import { clarificationCardState } from '~/utils/postboxReplyQueue';
+import { canonicalOption, localizedQuestionCopy } from '~/utils/clarificationLocale';
 
 /**
  * "Needs your input" Reply Queue card — the Postbox-native clarification loop,
@@ -40,9 +41,19 @@ const emit = defineEmits<{
 	(e: 'defer'): void;
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const clarification = computed(() => props.item.clarification);
+// The question in the owner's own language (canonical English when no
+// translation landed). Chip values are mapped back to the canonical option on
+// submit so the persisted answer matches what answer-memory expects.
+const copyFor = (
+	q: ReplyQueueItem['clarification'] extends infer C
+		? C extends { questions: (infer Q)[] }
+			? Q
+			: never
+		: never
+) => localizedQuestionCopy(q, locale.value);
 const state = computed(() => clarificationCardState(clarification.value));
 const questions = computed(() => clarification.value?.questions ?? []);
 
@@ -57,7 +68,10 @@ function submit() {
 	if (!canSubmit.value) return;
 	const answers = questions.value
 		.filter((q) => (values[q.id] ?? '').trim().length > 0)
-		.map((q) => ({ questionId: q.id, value: values[q.id]!.trim() }));
+		.map((q) => ({
+			questionId: q.id,
+			value: canonicalOption(q, locale.value, values[q.id]!.trim()),
+		}));
 	if (answers.length > 0) emit('answer', answers);
 }
 
@@ -134,12 +148,12 @@ function onCardKeydown(event: KeyboardEvent) {
 				class="mt-2"
 				data-testid="clarification-question"
 			>
-				<TaskAsk :ask="q.text" :why="q.attribution" />
+				<TaskAsk :ask="copyFor(q).text" :why="q.attribution" />
 				<TaskOptions
 					:ref="(el) => (optionRefs[qi] = el as InstanceType<typeof TaskOptions>)"
 					v-model="values[q.id]"
 					class="mt-1.5"
-					:options="q.options ?? []"
+					:options="copyFor(q).options"
 					chip-test-id="clarification-chip"
 					input-test-id="clarification-input"
 					@submit="submit"
@@ -170,7 +184,7 @@ function onCardKeydown(event: KeyboardEvent) {
 			persist) never strands the card. Dismiss stays for actually clearing. -->
 		<div v-else-if="state === 'drafting'" class="mt-2" data-testid="clarification-drafting">
 			<div class="flex items-center gap-2 text-sm text-text-secondary">
-				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 				{{ t('components.postbox.postboxClarificationCard.drafting') }}
 			</div>
 			<div class="flex items-center gap-2 mt-2">

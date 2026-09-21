@@ -81,7 +81,7 @@ export const listForOwnedMailbox = publicQuery({
 // personal identities offered is provably identical to the set sanctioned at
 // send — no pick can be accepted by the composer and then revoked after Send.
 
-export type SendAsIdentityKind = 'team' | 'own' | 'personal';
+type SendAsIdentityKind = 'team' | 'own' | 'personal';
 
 /**
  * Explicit access to a SHARED thread mailbox for send-as purposes: the mailbox's
@@ -126,7 +126,7 @@ export interface SendAsIdentity {
  *    in a DMARC-aligned way (`aligned` / `misaligned` / `unknown`).
  *  - `alignmentReason`— plain-language guidance when not cleanly aligned.
  */
-export interface AnnotatedSendAsIdentity extends SendAsIdentity {
+interface AnnotatedSendAsIdentity extends SendAsIdentity {
 	domainVerified: boolean;
 	alignment: OutboundAlignmentState;
 	alignmentReason: string | null;

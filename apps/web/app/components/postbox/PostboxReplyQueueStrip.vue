@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { usePostboxReplyQueueBanner } from '~/composables/postbox/usePostboxBanners';
 
 // Reply Queue inbox "waiting on your reply" strip. Inbox-only, non-empty queue
 // only, and dismissible for the session (in-memory state, resets on reload).
-// (The folder rail's own badge subscribes separately/deduped.) Extracted from
-// PostboxLayout.vue to keep the layout under the file-size cap.
+// (The folder rail's own badge subscribes separately/deduped, which is why this
+// is the strip that yields first in the list pane's one banner slot — its count
+// never leaves the screen.) Extracted from PostboxLayout.vue to keep the layout
+// under the file-size cap; the visibility predicate is shared with the slot.
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	folderRole: string;
@@ -12,9 +15,10 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const { count } = usePostboxReplyQueue(computed(() => props.mailboxId));
-const dismissed = useState('postbox:reply-queue-strip-dismissed', () => false);
-const visible = computed(() => props.folderRole === 'inbox' && count.value > 0 && !dismissed.value);
+const { count, dismissed, visible } = usePostboxReplyQueueBanner(
+	computed(() => props.mailboxId),
+	computed(() => props.folderRole)
+);
 </script>
 
 <template>

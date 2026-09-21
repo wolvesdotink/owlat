@@ -22,19 +22,15 @@ import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import {
 	createAuthenticatedHandler,
-	jsonResponse,
-	errorResponse,
 	requireScope,
 	type AuthenticatedContext,
-} from '../auth/apiAuth';
+} from '../auth/apiHandlers';
+import { jsonResponse, errorResponse } from '../auth/apiResponses';
 import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
+import { validateOutboundUrl } from '../lib/outboundUrlValidation';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
-import type {
-	AttachmentRef,
-	DispatchOutcome,
-	DispatchRejectionReason,
-} from './dispatch';
+import type { AttachmentRef, DispatchOutcome, DispatchRejectionReason } from './dispatch';
 
 // ============================================================
 // HTTP request / response types
@@ -113,7 +109,7 @@ function validateRequestShape(body: SendTransactionalBody): Response | null {
 	if (body.language && !/^[a-z]{2}(-[A-Za-z]{2,3})?$/i.test(body.language)) {
 		return errorResponse(
 			'invalid_input',
-			"language must be a valid language code (e.g., 'en', 'de', 'fr', 'en-US')",
+			"language must be a valid language code (e.g., 'en', 'de', 'fr', 'en-US')"
 		);
 	}
 
@@ -122,10 +118,7 @@ function validateRequestShape(body: SendTransactionalBody): Response | null {
 			return errorResponse('invalid_input', 'attachments must be an array');
 		}
 		if (body.attachments.length > MAX_ATTACHMENTS) {
-			return errorResponse(
-				'invalid_input',
-				`Maximum ${MAX_ATTACHMENTS} attachments allowed`,
-			);
+			return errorResponse('invalid_input', `Maximum ${MAX_ATTACHMENTS} attachments allowed`);
 		}
 	}
 
@@ -151,7 +144,7 @@ type AttachmentUploadResult =
  */
 async function uploadAttachments(
 	ctx: ActionContext,
-	attachments: AttachmentInput[] | undefined,
+	attachments: AttachmentInput[] | undefined
 ): Promise<AttachmentUploadResult> {
 	if (!attachments || attachments.length === 0) {
 		return { ok: true, refs: undefined };
@@ -168,7 +161,7 @@ async function uploadAttachments(
 				ok: false,
 				response: errorResponse(
 					'invalid_input',
-					`attachments[${i}].filename is required and must be a string`,
+					`attachments[${i}].filename is required and must be a string`
 				),
 			};
 		}
@@ -177,7 +170,7 @@ async function uploadAttachments(
 				ok: false,
 				response: errorResponse(
 					'invalid_input',
-					`attachments[${i}].filename must not contain path separators`,
+					`attachments[${i}].filename must not contain path separators`
 				),
 			};
 		}
@@ -189,19 +182,27 @@ async function uploadAttachments(
 				ok: false,
 				response: errorResponse(
 					'invalid_input',
-					`attachments[${i}] must have exactly one of "content" (base64) or "url"`,
+					`attachments[${i}] must have exactly one of "content" (base64) or "url"`
 				),
 			};
 		}
 
 		if (hasUrl) {
-			if (typeof att.url !== 'string' || !att.url.startsWith('https://')) {
+			// This URL is fetched server-side later, so a `startsWith('https://')`
+			// check is not enough: parse it and reject non-https, embedded
+			// credentials, and hosts that are literal private/internal addresses
+			// (SSRF). DNS-time range enforcement is applied again at the fetch site.
+			if (typeof att.url !== 'string') {
 				return {
 					ok: false,
-					response: errorResponse(
-						'invalid_input',
-						`attachments[${i}].url must be an HTTPS URL`,
-					),
+					response: errorResponse('invalid_input', `attachments[${i}].url must be an HTTPS URL`),
+				};
+			}
+			const urlCheck = validateOutboundUrl(att.url, { requirePublic: true });
+			if (!urlCheck.ok) {
+				return {
+					ok: false,
+					response: errorResponse('invalid_input', `attachments[${i}].url ${urlCheck.error}`),
 				};
 			}
 			refs.push({
@@ -218,7 +219,7 @@ async function uploadAttachments(
 				ok: false,
 				response: errorResponse(
 					'invalid_input',
-					`attachments[${i}].content must be a base64-encoded string`,
+					`attachments[${i}].content must be a base64-encoded string`
 				),
 			};
 		}
@@ -229,10 +230,7 @@ async function uploadAttachments(
 		} catch {
 			return {
 				ok: false,
-				response: errorResponse(
-					'invalid_input',
-					`attachments[${i}].content is not valid base64`,
-				),
+				response: errorResponse('invalid_input', `attachments[${i}].content is not valid base64`),
 			};
 		}
 
@@ -242,7 +240,7 @@ async function uploadAttachments(
 				ok: false,
 				response: errorResponse(
 					'invalid_input',
-					`Total attachment size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`,
+					`Total attachment size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`
 				),
 			};
 		}
@@ -280,8 +278,7 @@ const REJECTION_RESPONSE_MAP: Record<
 > = {
 	abuse_blocked: {
 		category: 'forbidden',
-		defaultMessage:
-			'Your account has been suspended. Please contact support for assistance.',
+		defaultMessage: 'Your account has been suspended. Please contact support for assistance.',
 	},
 	no_delivery_provider: {
 		// 422: the instance isn't in a state that can send transactional email
@@ -305,8 +302,7 @@ const REJECTION_RESPONSE_MAP: Record<
 	},
 	template_no_content: {
 		category: 'invalid_state',
-		defaultMessage:
-			'Transactional email has no HTML content. Please save and publish it first.',
+		defaultMessage: 'Transactional email has no HTML content. Please save and publish it first.',
 	},
 	domain_unverified: {
 		category: 'invalid_state',
@@ -326,11 +322,7 @@ const REJECTION_RESPONSE_MAP: Record<
  * POST /api/v1/transactional — send a transactional email.
  */
 export const sendTransactional = createAuthenticatedHandler(
-	async (
-		ctx: ActionContext,
-		request: Request,
-		auth: AuthenticatedContext,
-	): Promise<Response> => {
+	async (ctx: ActionContext, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'transactional:send', request.headers.get('Origin'));
 		if (denied) return denied;
 		// Parse body.
@@ -367,7 +359,7 @@ export const sendTransactional = createAuthenticatedHandler(
 				dataVariables: body.dataVariables,
 				language: body.language,
 				attachmentRefs: uploadResult.refs,
-			},
+			}
 		)) as DispatchOutcome;
 
 		if (!outcome.ok) {
@@ -387,5 +379,5 @@ export const sendTransactional = createAuthenticatedHandler(
 			language: outcome.language,
 		};
 		return jsonResponse({ data: response }, 202);
-	},
+	}
 );

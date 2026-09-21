@@ -3,7 +3,13 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 import { useOrganization } from '~/composables/useOrganization';
-import { INBOX_FILTER_META, type InboxFilter } from '~/utils/inboxFilters';
+import {
+	DEFAULT_INBOX_FILTER,
+	INBOX_FILTER_META,
+	INBOX_SORT_META,
+	nextInboxSort,
+	type InboxFilter,
+} from '~/utils/inboxFilters';
 
 const { t, te } = useI18n();
 
@@ -13,6 +19,23 @@ definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
 	requiresFeature: 'inbox',
+});
+
+// ── Access gate ──
+// The backend returns empty lists to non-admins by design; without this check
+// that reads as "the queue is clear" when it actually means "no access". Once
+// the role has resolved to a non-admin member, render the honest explainer
+// (with exits) instead of a fake-zero inbox.
+const { isAdmin, showAdminGate, role } = usePermissions();
+
+// The role name is interpolated into user-facing copy, so it goes through the
+// catalog rather than shipping the raw wire value into a translated sentence.
+// An unknown role falls back to its own identifier over an inaccurate "member".
+const displayRole = computed(() => {
+	const current = role.value;
+	if (!current) return t('common.roles.member');
+	const key = `common.roles.${current}`;
+	return te(key) ? t(key) : current;
 });
 
 const {
@@ -26,11 +49,10 @@ const {
 	hasMoreThreads,
 	stats,
 	loadMoreThreads,
-} = useInbox();
+} = useInbox(computed(() => isAdmin.value));
 
 // ── Row triage mutations (shared with the thread detail view) ──
 const { user } = useAuth();
-const { isAdmin } = usePermissions();
 const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
 	label: () => t('dashboard.inbox.index.assignThreadOperation'),
 });
@@ -48,26 +70,28 @@ type TeamThread = InboxThreadRowThread & { _id: Id<'conversationThreads'> };
 
 // Filters whose rows require an open/waiting, not-snoozed thread — resolving or
 // snoozing a row removes it from these, so those actions hide optimistically.
-const ACTIVE_WORK_FILTERS = new Set<InboxFilter>(['open', 'mine', 'unassigned', 'waiting']);
+const ACTIVE_WORK_FILTERS = new Set<InboxFilter>([
+	'open',
+	'mine',
+	'unassigned',
+	'waiting',
+	'waiting-24h',
+]);
 
 // Optimistic hide + one-slot undo toast (Cmd/Ctrl+Z), reusing the Postbox house
 // composables. The list renders `visibleThreads`; a failed mutation restores the
 // row and a successful one is undoable for ~8s.
-const {
-	visible: visibleThreads,
-	run: runTriage,
-	onWindowKeydown: onTriageUndoKeydown,
-} = useInboxTriage(threads as Ref<TeamThread[]>);
+const { visible: visibleThreads, run: runTriage } = useInboxTriage(
+	threads as Ref<TeamThread[]>
+);
 
 // Org members for the row hover assignee picker (Me / members / Unassign).
 const { members, fetchMembers } = useOrganization();
+// Cmd/Ctrl+Z undoes the last triage while focus is outside any text field —
+// usePostboxTriageUndo binds that listener app-wide while its stack is
+// non-empty, so this page only has to register the actions.
 onMounted(() => {
 	void fetchMembers();
-	// Cmd/Ctrl+Z undoes the last triage while focus is outside any text field.
-	window.addEventListener('keydown', onTriageUndoKeydown);
-});
-onBeforeUnmount(() => {
-	window.removeEventListener('keydown', onTriageUndoKeydown);
 });
 const assignMembers = computed(() =>
 	members.value.map((m) => ({
@@ -162,12 +186,32 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>
 	},
 });
 
+// One ticking clock for the whole list: the waiting chips age in place without
+// a reload, and a minute of drift is invisible on a chip that reads in hours.
+// Deriving it per row would be one interval per visible thread.
+const now = ref(Date.now());
+let waitingClock: number | undefined;
+onMounted(() => {
+	waitingClock = window.setInterval(() => {
+		now.value = Date.now();
+	}, 60_000);
+});
+onUnmounted(() => {
+	if (waitingClock !== undefined) window.clearInterval(waitingClock);
+});
+
 // Empty-state copy per active pill. The shared filter registry keeps its plain
 // English fallback, so an unknown filter still reads as a sentence.
 const emptyMessage = computed(() => {
 	const key = `dashboard.inbox.index.empty.${filter.value}`;
-	return te(key) ? t(key) : INBOX_FILTER_META[filter.value].empty;
+	// The registry holds a KEY, not a sentence — resolve it rather than
+	// rendering `shared.inboxFilters.…` at a person.
+	return te(key) ? t(key) : t(INBOX_FILTER_META[filter.value].empty);
 });
+
+// A non-default pill hides rows that exist, which is a no-results state — the
+// empty state says so and offers the way back rather than a dead end.
+const isFiltered = computed(() => filter.value !== DEFAULT_INBOX_FILTER);
 </script>
 
 <template>
@@ -195,87 +239,110 @@ const emptyMessage = computed(() => {
 			</div>
 		</div>
 
-		<!-- Filter pills (live counts) + needs-attention sort chip -->
-		<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-			<InboxFilterPills v-model="filter" :counts="filterCounts" />
-
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
-				:title="
-					sort === 'needs-attention'
-						? t('dashboard.inbox.index.sortToggleToNewest')
-						: t('dashboard.inbox.index.sortToggleToNeedsAttention')
-				"
-				@click="toggleSort"
-			>
-				<Icon
-					:name="sort === 'needs-attention' ? 'lucide:sparkles' : 'lucide:arrow-down-wide-narrow'"
-					class="w-3.5 h-3.5"
-				/>
-				<span>
-					{{
-						sort === 'needs-attention'
-							? t('dashboard.inbox.index.sortedByNeedsAttention')
-							: t('dashboard.inbox.index.sortedNewestFirst')
-					}}
-				</span>
-			</button>
+		<!-- Access explainer: a non-admin on this route sees WHY it's empty and
+		     where to go instead — never a fake "no conversations" zero. -->
+		<div v-if="showAdminGate" class="flex flex-col items-center justify-center py-20 text-center">
+			<UiIconBox icon="lucide:lock" size="xl" variant="warning" rounded="full" class="mb-4" />
+			<h2 class="text-lg font-medium text-text-primary">
+				{{ t('dashboard.inbox.index.accessTitle') }}
+			</h2>
+			<p class="text-text-secondary mt-1.5 max-w-md">
+				{{ t('dashboard.inbox.index.accessBody', { role: displayRole }) }}
+			</p>
+			<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+				<UiButton to="/dashboard/postbox/inbox" class="gap-2">
+					<Icon name="lucide:inbox" class="w-4 h-4" />
+					{{ t('dashboard.inbox.index.openMyPostbox') }}
+				</UiButton>
+			</div>
+			<p class="text-xs text-text-tertiary mt-4">
+				{{ t('dashboard.inbox.index.accessHint') }}
+			</p>
 		</div>
 
-		<!-- Loading — Postbox list skeleton geometry -->
-		<UiQueryBoundary
-			:loading="threadsLoading && threads.length === 0"
-			:error="threadsError"
-			:error-title="t('dashboard.inbox.index.errorTitle')"
-		>
-			<template #loading>
-				<PostboxThreadListSkeleton :rows="8" />
-			</template>
+		<template v-else>
+			<!-- Filter pills (live counts) + needs-attention sort chip -->
+			<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+				<InboxFilterPills v-model="filter" :counts="filterCounts" />
 
-			<!-- Empty state — copy per active pill -->
-			<div
-				v-if="visibleThreads.length === 0"
-				class="flex flex-col items-center justify-center py-16 text-center"
-			>
-				<UiIconBox icon="lucide:inbox" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">{{ emptyMessage }}</p>
-			</div>
-
-			<!-- Thread List — Postbox row DNA: single column, weight-based unread,
-		     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
-			<div v-else>
-				<ul
-					role="listbox"
-					tabindex="0"
-					:aria-label="t('dashboard.inbox.index.listAriaLabel')"
-					:aria-activedescendant="activeId"
-					class="divide-y divide-border-subtle rounded-lg border border-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
-					@keydown="onKeydown"
+				<!-- The sort chip states the CURRENT order and cycles to the next
+				     one; with three orders a toggle would have had to hide one. -->
+				<button
+					type="button"
+					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
+					:title="
+						t('dashboard.inbox.index.sortSwitchTo', {
+							sort: t(INBOX_SORT_META[nextInboxSort(sort)].label),
+						})
+					"
+					@click="toggleSort"
 				>
-					<InboxThreadRow
-						v-for="(thread, index) in visibleThreads"
-						:key="thread._id"
-						:thread="thread"
-						:focused="index === focusedIndex"
-						:format-compact-relative-time="formatCompactRelativeTime"
-						:members="assignMembers"
-						:current-user-id="user?.id ?? null"
-						:can-manage="isAdmin"
-						@assign="assignTo(thread, $event)"
-						@resolve="resolveThread(thread)"
-						@snooze="openSnooze(thread)"
-					/>
-				</ul>
-
-				<!-- Load More -->
-				<div v-if="hasMoreThreads" class="pt-4 text-center">
-					<UiButton variant="secondary" size="sm" @click="loadMoreThreads">
-						{{ t('dashboard.inbox.index.loadMore') }}
-					</UiButton>
-				</div>
+					<Icon :name="INBOX_SORT_META[sort].icon" class="w-3.5 h-3.5" />
+					<span>
+						{{ t('dashboard.inbox.index.sortedBy', { sort: t(INBOX_SORT_META[sort].label) }) }}
+					</span>
+				</button>
 			</div>
-		</UiQueryBoundary>
+
+			<!-- Loading — Postbox list skeleton geometry -->
+			<UiQueryBoundary
+				:loading="threadsLoading && threads.length === 0"
+				:error="threadsError"
+				:empty="visibleThreads.length === 0"
+				:error-title="t('dashboard.inbox.index.errorTitle')"
+			>
+				<template #loading>
+					<PostboxThreadListSkeleton :rows="8" />
+				</template>
+
+				<!-- Empty state — copy per active pill. A non-default pill is a
+				     no-results state, not an empty queue, so it reads quieter and
+				     offers the way back to the full list. -->
+				<template #empty>
+					<UiEmptyState
+						icon="lucide:inbox"
+						:title="emptyMessage"
+						:variant="isFiltered ? 'no-results' : 'empty'"
+						@clear="filter = DEFAULT_INBOX_FILTER"
+					/>
+				</template>
+
+				<!-- Thread List — Postbox row DNA: single column, weight-based unread,
+			     one status chip, hover-reveal triage. Keyboard: j/k/Enter + i. -->
+				<div>
+					<ul
+						role="listbox"
+						tabindex="0"
+						:aria-label="t('dashboard.inbox.index.listAriaLabel')"
+						:aria-activedescendant="activeId"
+						class="divide-y divide-border-subtle focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+						@keydown="onKeydown"
+					>
+						<InboxThreadRow
+							v-for="(thread, index) in visibleThreads"
+							:key="thread._id"
+							:thread="thread"
+							:focused="index === focusedIndex"
+							:format-compact-relative-time="formatCompactRelativeTime"
+							:members="assignMembers"
+							:current-user-id="user?.id ?? null"
+							:can-manage="isAdmin"
+							:now="now"
+							@assign="assignTo(thread, $event)"
+							@resolve="resolveThread(thread)"
+							@snooze="openSnooze(thread)"
+						/>
+					</ul>
+
+					<!-- Load More -->
+					<div v-if="hasMoreThreads" class="pt-4 text-center">
+						<UiButton variant="secondary" size="sm" @click="loadMoreThreads">
+							{{ t('dashboard.inbox.index.loadMore') }}
+						</UiButton>
+					</div>
+				</div>
+			</UiQueryBoundary>
+		</template>
 
 		<PostboxSnoozeDialog
 			v-if="isAdmin"

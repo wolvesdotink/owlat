@@ -1,15 +1,30 @@
 /**
- * Suppression enforcement for agent approved-replies (PR-08, test 3).
+ * The agent approved-reply's per-reason mapping of the Non-campaign send
+ * intake's typed outcome (PR-08 test 3, rewritten for PIECE C2).
  *
  * `agent.agentPipeline.sendApprovedReply` dispatches an approved draft through
- * the shared `delivery/enqueue.enqueueNonCampaignSend` chokepoint. With the
- * suppression gate in place, an inbound message whose from-address is on the
- * blocklist must NOT produce an `agent_reply` Send row, and the inbound message
- * must move to a non-sent terminal state (`failed`) rather than `sent`.
+ * `delivery/nonCampaignIntake.intake`. Pre-C2 the intake THREW its refusals and
+ * this action caught them into `fail(err.message)` — flattening a suppressed
+ * recipient, an expected and permanent per-recipient state, into the same
+ * `failed` transition as a real fault (and leaving the message eligible for the
+ * failed-action retry cron to re-drive forever). It now switches on
+ * `outcome.reason` through a total record:
  *
- * Positive control: a non-blocked from-address enqueues an `agent_reply` row
- * and leaves the message in `approved` (the Send completion module — excluded
- * here — would later drive it to `sent`).
+ *   - `recipient_blocked` → `archived` with reason `sender_blocked`. The same
+ *     edge, the same reason and the same `'transactional'` suppression scope
+ *     `inbox/messages.ts` uses when blocklisted mail ARRIVES — the identical
+ *     verdict about the identical address, observed at reply time. `archived`
+ *     is TERMINAL, so nothing retries it; this is the agent-side reading of how
+ *     the automation step completes-without-sending for the same reason.
+ *   - `no_delivery_provider` / `abuse_blocked` → `failed`. These are about the
+ *     DEPLOYMENT: the draft is still good and should send once an operator
+ *     fixes the configuration or the suspension lifts, so the message keeps
+ *     surfacing as a fault and stays re-drivable.
+ *
+ * In every rejection case NO `agent_reply` Send row is produced. Positive
+ * control: a non-blocked from-address enqueues one and leaves the message in
+ * `approved` (the Send completion module — excluded here — would later drive it
+ * to `sent`).
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -45,7 +60,7 @@ const agentGlob = Object.fromEntries(
 	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
 		path.replace(/^\.\.\//, '../../agent/'),
 		mod,
-	]),
+	])
 );
 const allModules = { ...rootGlob, ...agentGlob };
 const modules = Object.fromEntries(
@@ -64,8 +79,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const suppressed: Error[] = [];
@@ -90,6 +105,7 @@ afterEach(() => {
 async function seedApprovedMessage(
 	t: TestConvex<typeof schema>,
 	fromEmail: string,
+	settingsOverrides: Record<string, unknown> = {}
 ): Promise<Id<'inboundMessages'>> {
 	return await t.run(async (ctx) => {
 		await ctx.db.insert(
@@ -97,12 +113,10 @@ async function seedApprovedMessage(
 			createTestInstanceSettings({
 				defaultFromEmail: 'support@acme.test',
 				defaultFromName: 'Acme Support',
-			}),
+				...settingsOverrides,
+			})
 		);
-		const contactId = await ctx.db.insert(
-			'contacts',
-			createTestContact({ email: fromEmail }),
-		);
+		const contactId = await ctx.db.insert('contacts', createTestContact({ email: fromEmail }));
 		// threadId/contactId are optional on inboundMessages; the agent email
 		// branch only reads `message.from` and the optional `message.contactId`.
 		// Seed a real contactId and omit the thread to avoid coupling the test to
@@ -118,18 +132,18 @@ async function seedApprovedMessage(
 				draftSubject: 'Re: Need help',
 				threadId: undefined,
 				contactId,
-			}),
+			})
 		);
 	});
 }
 
-describe('agent.sendApprovedReply — suppression enforcement', () => {
-	it('does not enqueue an agent_reply row and moves the message to failed when the from-address is blocked', async () => {
+describe('agent.sendApprovedReply — intake rejection mapping', () => {
+	it('recipient_blocked → archives the message as sender_blocked and enqueues no row', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'blockedEmails',
-				createTestBlockedEmail({ email: 'blocked@customer.test', reason: 'complained' }),
+				createTestBlockedEmail({ email: 'blocked@customer.test', reason: 'complained' })
 			);
 		});
 		const inboundMessageId = await seedApprovedMessage(t, 'blocked@customer.test');
@@ -139,18 +153,55 @@ describe('agent.sendApprovedReply — suppression enforcement', () => {
 		});
 
 		// No agent_reply Send row was produced for the suppressed recipient.
-		const rows = await t.run(async (ctx) =>
-			ctx.db.query('transactionalSends').collect(),
-		);
+		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
 		expect(rows).toHaveLength(0);
 
-		// The inbound message reached a non-sent terminal state.
+		// A blocklisted recipient is a policy verdict, not a fault: the message
+		// reaches the ARCHIVED terminal state, not `failed` — so the failed-action
+		// retry cron can never re-drive a send that will never be allowed.
 		const message = await t.run(async (ctx) => ctx.db.get(inboundMessageId));
-		expect(message?.processingStatus).toBe('failed');
+		expect(message?.processingStatus).toBe('archived');
 		expect(message?.processingStatus).not.toBe('sent');
+		expect(message?.processingStatus).not.toBe('failed');
 	});
 
-	it('enqueues an agent_reply row for a non-blocked from-address (positive control)', async () => {
+	it('no_delivery_provider → fails the message (a deployment fault, still re-drivable)', async () => {
+		const t = convexTest(schema, modules);
+		const inboundMessageId = await seedApprovedMessage(t, 'ok@customer.test');
+		vi.stubEnv('EMAIL_PROVIDER', '');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('MTA_API_KEY', '');
+		try {
+			await t.action(internal.agent.agentPipeline.sendApprovedReply, { inboundMessageId });
+		} finally {
+			vi.unstubAllEnvs();
+		}
+
+		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
+		expect(rows).toHaveLength(0);
+
+		const message = await t.run(async (ctx) => ctx.db.get(inboundMessageId));
+		expect(message?.processingStatus).toBe('failed');
+		expect(message?.errorMessage).toMatch(/EMAIL_PROVIDER/);
+	});
+
+	it('abuse_blocked → fails the message when the instance is suspended', async () => {
+		const t = convexTest(schema, modules);
+		const inboundMessageId = await seedApprovedMessage(t, 'ok@customer.test', {
+			abuseStatus: 'suspended',
+		});
+
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, { inboundMessageId });
+
+		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
+		expect(rows).toHaveLength(0);
+
+		const message = await t.run(async (ctx) => ctx.db.get(inboundMessageId));
+		expect(message?.processingStatus).toBe('failed');
+		expect(message?.errorMessage).toMatch(/suspended/i);
+	});
+
+	it('ok → enqueues an agent_reply row for a non-blocked from-address (positive control)', async () => {
 		const t = convexTest(schema, modules);
 		const inboundMessageId = await seedApprovedMessage(t, 'ok@customer.test');
 
@@ -158,9 +209,7 @@ describe('agent.sendApprovedReply — suppression enforcement', () => {
 			inboundMessageId,
 		});
 
-		const rows = await t.run(async (ctx) =>
-			ctx.db.query('transactionalSends').collect(),
-		);
+		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.kind).toBe('agent_reply');
 		expect(rows[0]?.email).toBe('ok@customer.test');

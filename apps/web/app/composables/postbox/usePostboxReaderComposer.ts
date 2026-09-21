@@ -132,6 +132,21 @@ export function usePostboxReaderComposer(opts: {
 		stack.open(await buildComposeSpec('forward', msg ?? getMessage()));
 	}
 
+	/**
+	 * Open a composer that resends `source` to `addresses` only — the delivery
+	 * strip's "resend to the failed recipient" action (plan idea 1).
+	 *
+	 * Body resolution goes through the same `resolveBodyFields` every other
+	 * composer path uses, so a message whose body lives in blob storage resends
+	 * its real content rather than an empty one. A call with no addresses is a
+	 * no-op: an empty To field is not a composer anyone asked for.
+	 */
+	async function openResend(source: ReplyForwardSource, addresses: string[]) {
+		if (addresses.length === 0) return;
+		const target = await resolveBodyFields(source);
+		stack.open(buildResendSpec(getMessage().mailboxId as Id<'mailboxes'>, target, addresses));
+	}
+
 	// --- Inline reply box pinned under the conversation (Spark-style). Expands
 	// via the collapsed affordance or the r/a/f keys; the popup path above stays
 	// for the per-message Reply/Forward buttons inside the thread. Both share
@@ -225,6 +240,7 @@ export function usePostboxReaderComposer(opts: {
 		openPrimaryReply,
 		openReplyWithBody,
 		openForward,
+		openResend,
 		hasOtherRecipients,
 		inlineSpec,
 		inlineReplyEl,

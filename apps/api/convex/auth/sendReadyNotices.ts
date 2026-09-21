@@ -2,7 +2,7 @@ import { internalMutation, type MutationCtx, type QueryCtx } from '../_generated
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { mailboxHasSendTransport } from '../mail/draftQueries';
-import { getActiveMailboxForUser } from '../mail/mailbox';
+import { getActiveMailboxForUser } from '../mail/mailbox/identity';
 import { getMailSyncConfig, getMtaConfig } from '../mail/mtaClient';
 
 /**
@@ -35,7 +35,7 @@ import { getMailSyncConfig, getMtaConfig } from '../mail/mtaClient';
  */
 
 /** How a fresh readiness sample relates to the previously recorded one. */
-export type ReadinessEdge = 'baseline' | 'unchanged' | 'became_ready' | 'became_unready';
+type ReadinessEdge = 'baseline' | 'unchanged' | 'became_ready' | 'became_unready';
 
 /**
  * Classify a readiness sample against the last recorded one. `previous === null`

@@ -67,7 +67,7 @@ async function askAdmin() {
 	// run() resolves undefined on failure (error already toasted); only confirm
 	// when the request actually landed, so no false "we've let your admins know".
 	const res = await requestMailbox({});
-	if (res) requested.value = true;
+	if (res.ok) requested.value = true;
 }
 
 const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) || requested.value);
@@ -77,7 +77,7 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 	<div v-if="state === 'loading'" class="flex-1 flex items-center justify-center p-12">
 		<Icon
 			name="lucide:loader-2"
-			class="w-6 h-6 animate-spin text-text-tertiary"
+			class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"
 			:aria-label="t('postbox.mailboxGuard.loading')"
 		/>
 	</div>

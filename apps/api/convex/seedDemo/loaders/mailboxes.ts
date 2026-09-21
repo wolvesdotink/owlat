@@ -4,7 +4,7 @@
  * teammate lands on the "No mailbox yet" empty state until an admin manually
  * provisions one — the Postbox should work out of the box in dev.
  *
- * Provisions through `provisionMailbox` (mail/mailbox.ts) — the exact body
+ * Provisions through `provisionMailbox` (mail/mailbox/identity.ts) — the exact body
  * behind the admin create path — so system folders and the implicit owner
  * membership can never drift from production provisioning. The scheduled MTA
  * cache push fail-softs in dev (MTA_API_URL unset → pushMailboxToCache logs
@@ -18,7 +18,7 @@
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { components } from '../../_generated/api';
-import { provisionMailbox } from '../../mail/mailbox';
+import { provisionMailbox } from '../../mail/mailbox/identity';
 import type { LoadResult, Loader } from './types';
 
 interface MailboxFixture {
@@ -43,7 +43,7 @@ async function authUserIdByEmail(ctx: MutationCtx, email: string): Promise<strin
 		paginationOpts: { cursor: null, numItems: 1 },
 	} as unknown as AdapterArgs)) as { page?: Array<{ _id: string }> } | null;
 	const user = result?.page?.[0];
-	return user ? String(user._id) : null;
+	return user ? user._id : null;
 }
 
 async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult> {

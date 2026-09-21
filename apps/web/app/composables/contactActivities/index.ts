@@ -11,10 +11,7 @@ import { propertyUpdatedEditorModule } from './property_updated';
 import { createdEditorModule } from './created';
 import { inboundReceivedEditorModule } from './inbound_received';
 import { inboundRepliedEditorModule } from './inbound_replied';
-import type {
-	ContactActivityEditorModuleMap,
-	ContactActivityType,
-} from './types';
+import type { ContactActivityEditorModuleMap } from './types';
 
 export const ACTIVITY_EDITOR_MODULES: ContactActivityEditorModuleMap = {
 	email_sent: emailSentEditorModule,
@@ -31,12 +28,6 @@ export const ACTIVITY_EDITOR_MODULES: ContactActivityEditorModuleMap = {
 	inbound_received: inboundReceivedEditorModule,
 	inbound_replied: inboundRepliedEditorModule,
 };
-
-export function contactActivityEditorModuleFor<L extends ContactActivityType>(
-	literal: L,
-): ContactActivityEditorModuleMap[L] {
-	return ACTIVITY_EDITOR_MODULES[literal];
-}
 
 export type {
 	ContactActivityType,

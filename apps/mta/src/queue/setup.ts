@@ -12,8 +12,7 @@ import { handleEmailJob } from './handler.js';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { recordWorkerHeartbeat, WORKER_HEARTBEAT_INTERVAL_MS } from '../routes/health.js';
-
-export const QUEUE_NAMESPACE = 'owlat-mta';
+import { QUEUE_NAMESPACE } from './namespace.js';
 
 /**
  * Create the email queue

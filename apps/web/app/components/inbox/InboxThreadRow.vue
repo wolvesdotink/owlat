@@ -40,6 +40,8 @@ export interface InboxThreadRowThread {
  * snooze / open). The list owns the v-for, keyboard navigation, and every
  * mutation; this row maps DOM events to semantic emits.
  */
+import { INBOX_WAITING_TIER_CLASS, inboxWaitingChip } from '~/utils/inboxWaiting';
+
 const props = withDefaults(
 	defineProps<{
 		thread: InboxThreadRowThread;
@@ -53,6 +55,11 @@ const props = withDefaults(
 		currentUserId?: string | null;
 		/** Admin-only triage controls; editors retain the readable thread row. */
 		canManage?: boolean;
+		/**
+		 * The list's shared clock, in ms. Absent = no waiting chip: a row that
+		 * cannot know the time must not guess at an age.
+		 */
+		now?: number;
 	}>(),
 	{ canManage: true }
 );
@@ -66,6 +73,16 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+// Waiting time — the one number a shared inbox exists to manage. Derived from
+// the thread's newest INBOUND activity (utils/inboxWaiting explains why
+// `lastMessageAt` is exactly that), so a thread we already answered, resolved
+// or deliberately snoozed shows no chip at all. `now` is injected rather than
+// read inside the derivation so the row is unit-testable and so the whole list
+// re-derives on ONE ticking clock, not one per row.
+const waiting = computed(() =>
+	props.now === undefined ? null : inboxWaitingChip(props.thread, props.now)
+);
 
 const rowMembers = computed(() => props.members ?? []);
 
@@ -146,6 +163,17 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 						>
 							<Icon name="lucide:message-circle" class="w-3 h-3" />
 							{{ channelLabel }}
+						</span>
+						<!-- Aging chip: how long this customer has been waiting on us,
+						     escalating fresh → attention → overdue. Colour is never the
+						     only signal — the duration is spelled out beside it. -->
+						<span
+							v-if="waiting"
+							class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums"
+							:class="INBOX_WAITING_TIER_CLASS[waiting.tier]"
+						>
+							<Icon name="lucide:timer" class="w-3 h-3" />
+							{{ t(waiting.label.key, waiting.label.params) }}
 						</span>
 					</div>
 

@@ -34,13 +34,14 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { batchGet } from '../_utils/batchLoader';
 
 /**
  * Membership role on a mailbox. `owner` is a superset of `member`. Derived
  * from the schema so the `'owner' | 'member'` union has a single source of
  * truth (`mailboxMembers.role`) and the two can never drift.
  */
-export type MailboxMemberRole = Doc<'mailboxMembers'>['role'];
+type MailboxMemberRole = Doc<'mailboxMembers'>['role'];
 
 /** Does `role` satisfy the required `minRole`? `owner` satisfies both. */
 function roleSatisfies(role: MailboxMemberRole, minRole: MailboxMemberRole): boolean {
@@ -64,6 +65,16 @@ export async function requireMailboxAccess(
 	const mailbox = await ctx.db.get(mailboxId);
 	if (!mailbox) return { ok: false, reason: 'mailbox_missing' };
 	if (mailbox.status !== 'active') return { ok: false, reason: 'mailbox_inactive' };
+	// Org scoping is enforced ahead of EVERY access branch — owner/admin, the
+	// mailbox's own user, and explicit members alike — so a caller-supplied
+	// mailbox id belonging to another organization can never be reached, whatever
+	// the caller's role. In single-org-per-deployment this holds trivially; it is
+	// the fail-closed defense-in-depth against a stale/mis-seeded row or a mailbox
+	// that lives in a different org, and it keeps the owner/admin branch from
+	// short-circuiting the check the membership branch already relied on.
+	if (mailbox.organizationId !== s.activeOrganizationId) {
+		return { ok: false, reason: 'forbidden' };
+	}
 	// Org owner/admin act on behalf of any user in the org, and the mailbox's
 	// own user always has owner-level access — both bypass the membership read.
 	// Their effective role on the mailbox is `owner` (the single source of truth
@@ -74,14 +85,6 @@ export async function requireMailboxAccess(
 	// Everyone else needs an explicit membership row meeting `minRole`. This is
 	// the only path that reaches a shared mailbox; personal mailboxes never
 	// carry non-owner members, so their behaviour is unchanged.
-	//
-	// Defense-in-depth: a membership row may only grant access inside the
-	// caller's active organization, so a stale or mis-seeded row can never
-	// reach a mailbox in another org. The owner/admin/self branch above is
-	// unaffected, keeping personal-mailbox behaviour bit-for-bit.
-	if (mailbox.organizationId !== s.activeOrganizationId) {
-		return { ok: false, reason: 'forbidden' };
-	}
 	const membership = await ctx.db
 		.query('mailboxMembers')
 		.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailboxId).eq('authUserId', s.userId))
@@ -128,7 +131,7 @@ export async function loadPersonalMailboxForUser(
 		: null;
 }
 
-export type MessageAccessOutcome =
+type MessageAccessOutcome =
 	| {
 			ok: true;
 			userId: string;
@@ -195,9 +198,16 @@ export async function loadAccessibleMailboxes(
 		.query('mailboxMembers')
 		.withIndex('by_user', (q) => q.eq('authUserId', userId))
 		.collect(); // bounded: shared mailboxes one user belongs to
+	// The membership rows point at independent mailboxes; `batchGet` dedupes
+	// them and reads the rest in parallel. Rows for a mailbox the caller already
+	// owns stay out of the read set, exactly as the `seen` skip below intends.
+	const memberMailboxes = await batchGet(
+		ctx,
+		memberships.filter((row) => !seen.has(row.mailboxId)).map((row) => row.mailboxId)
+	);
 	for (const row of memberships) {
 		if (seen.has(row.mailboxId)) continue;
-		const mailbox = await ctx.db.get(row.mailboxId);
+		const mailbox = memberMailboxes.get(row.mailboxId);
 		if (!mailbox) continue;
 		// Same reason as the owned side: `provisionMailbox` writes an implicit
 		// owner membership for every mailbox, including a seed's.

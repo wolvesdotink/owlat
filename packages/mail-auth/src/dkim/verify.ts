@@ -30,7 +30,7 @@
  */
 
 import { resolveTxt } from 'dns/promises';
-import type { Canonicalization } from '../canon.js';
+import type { Canonicalization } from '@owlat/mail-canon';
 import type { DkimVerdict } from '../dmarc.js';
 import type { DkimSignatureEvidence } from './evidence.js';
 import { splitMessage } from './message.js';

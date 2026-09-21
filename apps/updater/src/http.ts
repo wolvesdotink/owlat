@@ -6,7 +6,9 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { execSync } from 'node:child_process';
-import { errorMessage, safeCompare } from './security.js';
+import { errorMessage } from '@owlat/shared';
+import { parseComposePs, type ComposeService } from '@owlat/shared/containerHealth';
+import { safeCompare } from './security.js';
 
 const INSTANCE_SECRET = process.env['INSTANCE_SECRET'];
 export const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
@@ -69,35 +71,15 @@ export function exec(cmd: string, cwd: string): { ok: boolean; stdout: string; s
 /**
  * Run `docker compose ps` and parse per-service rows (shared by /health and
  * /apply-profiles). Extracts each service's version from its image tag —
- * e.g. "ghcr.io/wolvesdotink/web:0.2.1" → "0.2.1". Org-agnostic: splits on
- * ":" and takes the tag, so any allowed registry works.
+ * e.g. "ghcr.io/wolvesdotink/web:0.2.1" → "0.2.1". Org-agnostic, so any
+ * allowed registry works.
  */
-export function composePsServices(): { containers: Array<Record<string, unknown>>; raw: string } {
+export function composePsServices(): { containers: ComposeService[]; raw: string } {
 	const result = exec('docker compose ps --format json', OWLAT_DIR);
 
-	let containers: Array<Record<string, unknown>> = [];
-	try {
-		// `docker compose ps --format json` emits one JSON object per line (not an array)
-		containers = result.stdout
-			.split('\n')
-			.map((line) => line.trim())
-			.filter((line) => line.length > 0)
-			.map((line) => {
-				const row = JSON.parse(line) as Record<string, unknown>;
-				const image = typeof row['Image'] === 'string' ? row['Image'] : '';
-				const tag = image.split(':').pop() || '';
-				return {
-					service: row['Service'],
-					state: row['State'],
-					status: row['Status'],
-					image,
-					imageTag: tag,
-					health: row['Health'],
-				};
-			});
-	} catch {
-		// Fall back to raw stdout if parsing fails
-	}
-
-	return { containers, raw: result.stdout };
+	// Parsing lives in @owlat/shared so the updater and `owlat doctor` can never
+	// disagree about what the fleet looks like. It also handles both output
+	// shapes Compose has shipped (NDJSON and a single JSON array), and splits
+	// the image tag without mistaking a registry port for one.
+	return { containers: parseComposePs(result.stdout), raw: result.stdout };
 }

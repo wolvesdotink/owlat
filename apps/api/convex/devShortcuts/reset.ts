@@ -9,33 +9,44 @@
  * `TENANT_TABLES` from `lib/tenantTables.ts` (also used by account deletion).
  *
  * Order of operations:
- *   1. Wipe all tenant tables (contacts/automations/templates/campaigns/…)
- *   2. Wipe BetterAuth tables (user/account/organization/member)
- *   3. Wipe Owlat-local auth tables (userProfiles/instanceSettings/
+ *   1. Wipe all tenant tables (contacts/automations/templates/campaigns/…),
+ *      freeing the storage blobs the row-bearing ones own — `mailMessages`
+ *      through `deleteMessageRowAndBlobs`, the rest via `ownedBlobs`.
+ *   2. Wipe BetterAuth tables (session/invitation/member/organization/account/
+ *      user). `session` and `invitation` matter as much as `user`: a surviving
+ *      session row keeps authenticating a cookie whose user this reset deletes,
+ *      and a surviving pending invitation lets that address self-register into
+ *      an organization that no longer exists (see auth/registrationGate.ts).
+ *      Note the reset cannot close the ~5 minute window of BetterAuth's session
+ *      cookie cache (auth.ts `cookieCache.maxAge`), during which a pre-reset
+ *      cookie still authenticates with no session row at all.
+ *   3. Wipe Owlat-local auth tables (userProfiles/platformAdmins/instanceSettings/
  *      onboardingProgress/userOnboarding/sendReadyNotices/sendPathReadiness)
  *
- * Protected by:
- *   - X-Instance-Secret header (timing-safe compare)
- *   - `assertDevDeployment()` — refuses unless `OWLAT_DEV_MODE` is enabled
+ * Driven by the `POST /dev/reset` route in `devShortcuts/resetHttp.ts`, which
+ * owns the X-Instance-Secret and dev-deployment guards.
  *
  * Idempotent: a second call against a blank instance returns zeros for every
  * counter.
  */
 
-import { httpAction, internalMutation, type MutationCtx } from '../_generated/server';
-import { components, internal } from '../_generated/api';
-import { getOptional } from '../lib/env';
-import { safeCompare } from '../lib/safeCompare';
-import { devDeploymentResponseOrNull } from './_guard';
+import { internalMutation, type MutationCtx } from '../_generated/server';
+import { components } from '../_generated/api';
 import { TENANT_TABLES } from '../lib/tenantTables';
-import type { Doc } from '../_generated/dataModel';
+import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';
+import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
+import { deleteBlobQuietly } from '../lib/storageBlobs';
+import type { Doc, Id, TableNames } from '../_generated/dataModel';
 
 interface ResetCounts {
 	users: number;
+	sessions: number;
+	invitations: number;
 	accounts: number;
 	organizations: number;
 	members: number;
 	userProfiles: number;
+	platformAdmins: number;
 	instanceSettings: number;
 	onboardingProgress: number;
 	userOnboarding: number;
@@ -49,10 +60,13 @@ export const runReset = internalMutation({
 	handler: async (ctx): Promise<ResetCounts> => {
 		const counts: ResetCounts = {
 			users: 0,
+			sessions: 0,
+			invitations: 0,
 			accounts: 0,
 			organizations: 0,
 			members: 0,
 			userProfiles: 0,
+			platformAdmins: 0,
 			instanceSettings: 0,
 			onboardingProgress: 0,
 			userOnboarding: 0,
@@ -61,12 +75,25 @@ export const runReset = internalMutation({
 			tenantRows: 0,
 		};
 
-		// 1. Wipe all tenant tables.
+		// 1. Wipe all tenant tables, freeing the blobs the row-bearing ones own.
 		for (const table of TENANT_TABLES) {
 			const rows = await ctx.db.query(table).collect(); // bounded: dev-only full wipe of each tenant table
 			for (const row of rows) {
-				if (table === 'accountExportArtifacts') {
-					await ctx.storage.delete((row as Doc<'accountExportArtifacts'>).storageId);
+				if (table === 'mailMessages') {
+					// A `mailMessages` row owns up to three storage blobs, and the
+					// generic wipe freed none of them — every reset orphaned the whole
+					// instance's mail in storage, which nothing ever collects. Route it
+					// through the one helper that destroys these rows.
+					await deleteMessageRowAndBlobs(ctx, row as Doc<'mailMessages'>);
+					counts.tenantRows++;
+					continue;
+				}
+				for (const storageId of ownedBlobs(table, row)) {
+					// "Already gone" is the ordinary case here (a released blob whose
+					// row still names it, a half-finished earlier reset), and a reset
+					// that throws part-way leaves the instance in the state it exists
+					// to clear.
+					await deleteBlobQuietly(ctx.storage, storageId, '[dev reset]', { table });
 				}
 				await ctx.db.delete(row._id);
 				counts.tenantRows++;
@@ -75,6 +102,16 @@ export const runReset = internalMutation({
 
 		// 2. Wipe BetterAuth tables via the component adapter. Order matters:
 		// dependants (member) before parents (user/organization).
+		// `session` first: a surviving session row keeps authenticating a cookie
+		// whose USER this reset is about to delete. The app then renders its shell
+		// for a ghost account and every query comes back empty — which reads as
+		// "the page is broken", not "you are signed out", and cost a full
+		// debugging session to track down.
+		counts.sessions = await wipeBetterAuthModel(ctx, 'session');
+		// Pending invitations outlive their organization otherwise, and
+		// `registrationGate` reads them to allow a post-bootstrap signup — so a
+		// stale invite lets that address register into a deleted org.
+		counts.invitations = await wipeBetterAuthModel(ctx, 'invitation');
 		counts.members = await wipeBetterAuthModel(ctx, 'member');
 		counts.organizations = await wipeBetterAuthModel(ctx, 'organization');
 		counts.accounts = await wipeBetterAuthModel(ctx, 'account');
@@ -85,6 +122,17 @@ export const runReset = internalMutation({
 		for (const p of profiles) {
 			await ctx.db.delete(p._id);
 			counts.userProfiles++;
+		}
+
+		// Platform-admin grants are keyed by BetterAuth user id, and step 2 just
+		// deleted every user. A surviving row would keep granting the deployment
+		// surface to a ghost id, and — because both bootstrap paths refuse once
+		// the roster is non-empty — would also stop the NEXT seed from handing
+		// the fresh setup user their own grant. A blank instance means blank.
+		const platformAdmins = await ctx.db.query('platformAdmins').collect(); // bounded: dev-only; operator roster (low tens at most)
+		for (const a of platformAdmins) {
+			await ctx.db.delete(a._id);
+			counts.platformAdmins++;
 		}
 
 		const settings = await ctx.db.query('instanceSettings').collect(); // bounded: dev-only; singleton instance-settings row
@@ -128,6 +176,55 @@ export const runReset = internalMutation({
 });
 
 /**
+ * The storage blobs a tenant row OWNS, per table — everything a row-only delete
+ * would strand.
+ *
+ * THE SAME LIST AS `workspaces/deletion/steps/`, which gives each of these
+ * tables its own storage-aware step for exactly this reason; this wipe walks
+ * `TENANT_TABLES` generically, so the knowledge has to live somewhere and this
+ * is where. `accountExportArtifacts` was the only entry the generic path ever
+ * handled, so every other table here orphaned its bytes on every reset — and
+ * `inboundMessages` now holds the WHOLE received message, sealed, plus the
+ * attachments captured out of it in `semanticFiles`. Nothing reclaims those
+ * afterwards: the inbound retention sweep finds blobs by walking the rows this
+ * loop just deleted.
+ *
+ * A blob a retention sweep already released is absent, so every optional field
+ * is guarded. `mailMessages` is NOT here: it owns three blobs and a helper of
+ * its own (`deleteMessageRowAndBlobs`) that deletes the row too.
+ */
+function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>): Id<'_storage'>[] {
+	switch (table) {
+		case 'accountExportArtifacts':
+			return [(row as Doc<'accountExportArtifacts'>).storageId];
+		case 'mediaAssets':
+			return [(row as Doc<'mediaAssets'>).storageId];
+		case 'inboundMessages': {
+			const raw = (row as Doc<'inboundMessages'>).rawStorageId;
+			return raw ? [raw] : [];
+		}
+		case 'semanticFiles': {
+			const stored = (row as Doc<'semanticFiles'>).storageId;
+			return stored ? [stored] : [];
+		}
+		case 'mailAttachmentShares': {
+			const stored = (row as Doc<'mailAttachmentShares'>).storageId;
+			return stored ? [stored] : [];
+		}
+		case 'mailArchiveImports': {
+			const stored = (row as Doc<'mailArchiveImports'>).storageId;
+			return stored ? [stored] : [];
+		}
+		case 'mailDrafts':
+			return (row as Doc<'mailDrafts'>).attachments.map((att) => att.storageId);
+		case 'transactionalSends':
+			return ((row as Doc<'transactionalSends'>).attachmentStorageIds ?? []) as Id<'_storage'>[];
+		default:
+			return [];
+	}
+}
+
+/**
  * Drain a BetterAuth model by re-querying from cursor=null after each batch
  * delete. Re-querying (instead of following `continueCursor`) avoids the
  * cursor-anchor-deleted pathology when we delete the page we just fetched.
@@ -138,55 +235,35 @@ export const runReset = internalMutation({
  */
 async function wipeBetterAuthModel(
 	ctx: MutationCtx,
-	model: 'user' | 'account' | 'organization' | 'member'
+	model: 'user' | 'session' | 'account' | 'organization' | 'member' | 'invitation'
 ): Promise<number> {
 	let total = 0;
 	const MAX_ITERATIONS = 200;
 	for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
 		const result: { page: Array<{ _id: string }>; isDone: boolean; continueCursor: string } =
-			await ctx.runQuery(components.betterAuth.adapter.findMany, {
-				model,
-				where: [],
-				paginationOpts: { cursor: null, numItems: 100 },
-			} as unknown as Parameters<typeof ctx.runQuery>[1]);
+			await ctx.runQuery(
+				components.betterAuth.adapter.findMany,
+				betterAuthAdapterArgs({
+					model,
+					where: [],
+					paginationOpts: { cursor: null, numItems: 100 },
+				})
+			);
 		const rows = result?.page ?? [];
 		if (rows.length === 0) break;
 		for (const row of rows) {
-			await ctx.runMutation(components.betterAuth.adapter.deleteOne, {
-				input: {
-					model,
-					where: [{ field: '_id', value: row._id }],
-				},
-			} as unknown as Parameters<typeof ctx.runMutation>[1]);
+			await ctx.runMutation(
+				components.betterAuth.adapter.deleteOne,
+				betterAuthAdapterArgs({
+					input: {
+						model,
+						where: [{ field: '_id', value: row._id }],
+					},
+				})
+			);
 			total++;
 		}
 		// Loop continues: re-query with cursor=null picks up whatever's left.
 	}
 	return total;
-}
-
-export const resetHttp = httpAction(async (ctx, request) => {
-	const devResp = devDeploymentResponseOrNull();
-	if (devResp) return devResp;
-
-	const secret = request.headers.get('X-Instance-Secret');
-	const expected = getOptional('INSTANCE_SECRET');
-	if (!expected || !secret || !safeCompare(secret, expected)) {
-		return jsonResponse({ error: 'Unauthorized' }, 401);
-	}
-
-	try {
-		const counts = await ctx.runMutation(internal.devShortcuts.reset.runReset, {});
-		return jsonResponse({ deleted: counts }, 200);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Internal error';
-		return jsonResponse({ error: message }, 500);
-	}
-});
-
-function jsonResponse(body: unknown, status: number): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { 'Content-Type': 'application/json' },
-	});
 }

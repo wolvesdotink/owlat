@@ -30,7 +30,10 @@ function mountCard(props: {
 			isLoading: props.isLoading ?? false,
 			error: props.error,
 		},
-		global: { plugins: [createTestI18n()] },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { UiIconBox: true, UiCard: { template: '<div><slot /></div>' } },
+		},
 	});
 }
 

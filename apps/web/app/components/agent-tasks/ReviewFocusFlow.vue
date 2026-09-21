@@ -167,7 +167,7 @@ function rowTrust(message: FlowItem['message']): TrustLabel {
 const composeBody = reactive<Record<string, string>>({});
 
 // Countdown-undo toast + true inverse for approvals inside their server-side
-// undo window (agentConfig.humanApproveUndoDelayMs, piece C1). The flow's
+// undo window (agentConfig.humanApproveUndoDelayMs). The flow's
 // Cmd/Ctrl+Z (and the chrome Undo button) run the inverse, which actually
 // un-sends: undoAutoSend cancels the held send and routes the draft back to
 // `draft_ready` — the flow then re-shows the card from its cache.
@@ -181,10 +181,10 @@ async function undoApproveInverse(messageId: Id<'inboundMessages'>) {
 	// The flow undo owns this reversal now — drop a stale toast for the same card.
 	if (approveUndoState.value.inboundMessageId === messageId) dismissApproveUndo();
 	const result = await undoApprove(messageId);
-	if (result === undefined) return; // categorized failure — already toasted
-	if (result.cancelled) {
+	if (!result.ok) return; // categorized failure — already toasted
+	if (result.result.cancelled) {
 		showToast(t('shared.reviewBulkSummary.undoneOne'));
-	} else if (result.reason === 'already_sent') {
+	} else if (result.result.reason === 'already_sent') {
 		showToast(t('shared.reviewBulkSummary.tooLateOne'), 'warning');
 	}
 	// 'no_pending_send': the toast's Undo already cancelled it (this inverse ran
@@ -214,17 +214,17 @@ async function approve(row: FlowItem) {
 			options && options.length > 1
 				? await approveOption(row.message._id, options[0]!, row.message.draftResponse)
 				: await onApprove(row.message._id);
-		if (result === undefined) return;
+		if (!result.ok) return;
 		// Server refused because a teammate just replied — toast, don't advance.
-		if (isReplyCollision(result)) {
+		if (isReplyCollision(result.result)) {
 			showToast(
-				collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+				collisionText(replyCollisionToast(result.result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
 				'error'
 			);
 			return;
 		}
-		if (handledAlreadyHandled(result, row)) return;
-		const undo = approveUndoWindow(result);
+		if (handledAlreadyHandled(result.result, row)) return;
+		const undo = approveUndoWindow(result.result);
 		if (undo) {
 			// The toast's Undo targets THIS card's completion (flow.undoById, which
 			// runs the registered inverse below and rewinds position/tally with it)
@@ -254,7 +254,7 @@ async function reject(row: FlowItem) {
 	busy.value = true;
 	try {
 		const result = await onReject(row.message._id);
-		if (result === undefined) return;
+		if (!result.ok) return;
 		flow.complete(row.id, { outcome: 'rejected' });
 	} finally {
 		busy.value = false;
@@ -267,16 +267,16 @@ async function sendReply(row: FlowItem) {
 	busy.value = true;
 	try {
 		const result = await composeAndSend(row.message._id, body);
-		if (result === undefined) return;
+		if (!result.ok) return;
 		// Server refused because a teammate just replied — toast, don't advance.
-		if (isReplyCollision(result)) {
+		if (isReplyCollision(result.result)) {
 			showToast(
-				collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+				collisionText(replyCollisionToast(result.result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
 				'error'
 			);
 			return;
 		}
-		if (handledAlreadyHandled(result, row)) return;
+		if (handledAlreadyHandled(result.result, row)) return;
 		delete composeBody[row.message._id];
 		showToast(t('components.agentTasks.reviewFocusFlow.toasts.replySent'));
 		flow.complete(row.id, { outcome: 'sent' });

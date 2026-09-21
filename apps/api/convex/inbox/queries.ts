@@ -7,94 +7,81 @@
 
 import { v } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
 import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { isSharedInboxReader } from './access';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { PRESENCE_ACTIVE_WINDOW_MS } from './presence';
-import { compareNeedsAttention } from './threadSort';
-import { openConversationThreadPreview } from '../lib/messageBody';
+import { compareNeedsAttention, compareOldestWaiting } from './threadSort';
+import {
+	FILTER_COUNT_CAP,
+	buildThreadQuery,
+	threadFilterValidator,
+	type ThreadFilter,
+} from './threadFilters';
+import { searchThreads } from './threadSearch';
+import { openConversationThreadPreview, openInboundMessageBody } from '../lib/messageBody';
 
 /**
- * Team Inbox filter pills. Each value is one focused slice of the shared inbox:
- *   - open        active conversations, snoozed ones hidden until they wake
- *   - mine        assigned to me and still active (open/waiting)
- *   - unassigned  nobody owns it yet and still active (open/waiting)
- *   - waiting     waiting on the customer's reply
- *   - snoozed     currently snoozed (returns automatically later)
- *   - resolved    marked resolved
- * Absent = every thread (used by the chat "link an inbox thread" picker).
+ * Enrich a loaded page of threads for the team-inbox list DNA. Shared by the
+ * browse path and the text-search path so a searched row renders identically to
+ * a browsed one:
+ *  - `unread`: activity newer than THIS user's last-seen marker (the per-user
+ *    unread badge; mirrors chat's lastReadAt). Bounded: one point-read per row
+ *    on `threadReads.by_user_thread`.
+ *  - `assignee`: the assigned member's display name/email/image so the row can
+ *    render a deterministic-colour avatar without the client joining to the
+ *    member directory. Cached per call so repeat assignees cost one read.
+ *  - `assigneePresent`: does the assignee have this thread open right now
+ *    (the pulsing presence ring)? One point-read, and only for assigned rows.
  */
-const threadFilterValidator = v.union(
-	v.literal('open'),
-	v.literal('mine'),
-	v.literal('unassigned'),
-	v.literal('waiting'),
-	v.literal('snoozed'),
-	v.literal('resolved')
-);
-
-/** How many rows a filter-count pill will read before rendering "99+". */
-const FILTER_COUNT_CAP = 100;
-
-type ThreadFilter = 'open' | 'mine' | 'unassigned' | 'waiting' | 'snoozed' | 'resolved';
-
-/**
- * Build the index-driven query for one filter pill. Every branch is indexed so
- * a filter change simply selects a different index — pagination and counts both
- * page cleanly without any O(all-threads) scan. Shared by `listThreads` and
- * `getThreadFilterCounts` so a pill's count and its list always agree.
- *
- * `undefined` filter = every thread (the chat link-thread picker), ordered by
- * recency.
- */
-function buildThreadQuery(
+async function enrichThreadRows(
 	ctx: QueryCtx,
-	filter: ThreadFilter | undefined,
-	userId: string,
-	now: number
+	rows: ReadonlyArray<Doc<'conversationThreads'>>,
+	viewerId: string
 ) {
-	const base = ctx.db.query('conversationThreads');
-	switch (filter) {
-		case 'open':
-			// Active conversations; a snoozed thread stays hidden until it wakes.
-			return base
-				.withIndex('by_status_and_last_message_at', (idx) => idx.eq('status', 'open'))
-				.filter((f) =>
-					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
-				);
-		case 'waiting':
-			// Waiting on the customer — also parks snoozed rows under Snoozed only.
-			return base
-				.withIndex('by_status_and_last_message_at', (idx) => idx.eq('status', 'waiting'))
-				.filter((f) =>
-					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
-				);
-		case 'resolved':
-			return base.withIndex('by_status_and_last_message_at', (idx) => idx.eq('status', 'resolved'));
-		case 'mine':
-			// Assigned to me, still active (open/waiting), not currently snoozed.
-			return base
-				.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', userId))
-				.filter((f) =>
-					f.and(
-						f.or(f.eq(f.field('status'), 'open'), f.eq(f.field('status'), 'waiting')),
-						f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+	const assigneeCache = new Map<string, { name?: string; email: string; image?: string } | null>();
+	const resolveAssignee = async (userId: string) => {
+		if (assigneeCache.has(userId)) return assigneeCache.get(userId)!;
+		const profile = await ctx.db
+			.query('userProfiles')
+			.withIndex('by_auth_user_id', (idx) => idx.eq('authUserId', userId))
+			.first();
+		const resolved = profile
+			? { name: profile.name, email: profile.email, image: profile.image }
+			: null;
+		assigneeCache.set(userId, resolved);
+		return resolved;
+	};
+
+	const presenceCutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
+	return Promise.all(
+		rows.map(async (thread) => {
+			const read = await ctx.db
+				.query('threadReads')
+				.withIndex('by_user_thread', (idx) => idx.eq('userId', viewerId).eq('threadId', thread._id))
+				.unique();
+			const unread = thread.lastMessageAt > (read?.lastSeenAt ?? 0);
+			const assignee = thread.assignedTo ? await resolveAssignee(thread.assignedTo) : null;
+			let assigneePresent = false;
+			if (thread.assignedTo) {
+				const presence = await ctx.db
+					.query('threadPresence')
+					.withIndex('by_user_thread', (idx) =>
+						idx.eq('userId', thread.assignedTo!).eq('threadId', thread._id)
 					)
-				);
-		case 'unassigned':
-			return base
-				.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', undefined))
-				.filter((f) =>
-					f.and(
-						f.or(f.eq(f.field('status'), 'open'), f.eq(f.field('status'), 'waiting')),
-						f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
-					)
-				);
-		case 'snoozed':
-			return base.withIndex('by_snoozed_until', (idx) => idx.gt('snoozedUntil', now));
-		default:
-			return base.withIndex('by_last_message_at');
-	}
+					.unique();
+				assigneePresent = !!presence && presence.heartbeatAt > presenceCutoff;
+			}
+			return {
+				...(await openConversationThreadPreview(thread)),
+				unread,
+				assignee,
+				assigneePresent,
+			};
+		})
+	);
 }
 
 /**
@@ -105,21 +92,44 @@ export const listThreads = publicQuery({
 	args: {
 		filter: v.optional(threadFilterValidator),
 		// Ordering. `needs-attention` (the default view) floats drafts-ready then
-		// unassigned-unread then oldest-open to the top; `newest` is plain recency.
-		sort: v.optional(v.union(v.literal('needs-attention'), v.literal('newest'))),
+		// unassigned-unread then oldest-open to the top; `oldest-waiting` puts
+		// the longest-waiting customer first; `newest` is plain recency.
+		sort: v.optional(
+			v.union(v.literal('needs-attention'), v.literal('oldest-waiting'), v.literal('newest'))
+		),
+		// Free-text query over the subject and the participant address. Present =
+		// the search path: a bounded, relevance-sourced TOP-N narrowed by the same
+		// pill, single-page (see ./threadSearch). Blank behaves as absent.
+		search: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'inbox');
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) {
+		if (!isSharedInboxReader(session)) {
 			return { threads: [], nextCursor: null };
 		}
 
 		const limit = args.limit ?? 20;
 		const now = Date.now();
 		const sort = args.sort ?? 'newest';
+
+		// ── Search path. Relevance cannot share a cursor across two indexes, so
+		// this answers in one page and reports no continuation.
+		if (args.search?.trim()) {
+			const hits = await searchThreads(ctx, {
+				search: args.search,
+				filter: args.filter,
+				userId: session.userId,
+				now,
+				limit,
+			});
+			return {
+				threads: await enrichThreadRows(ctx, hits, session.userId),
+				nextCursor: null,
+			};
+		}
 
 		// Each filter selects an index that already encodes the slice, so paging
 		// stays complete (a filtered-out row shrinks the page but the keyset
@@ -128,80 +138,29 @@ export const listThreads = publicQuery({
 		//   - needs-attention → oldest activity first (asc) so the longest-waiting
 		//                        thread leads; the page is then re-floated by the
 		//                        shared needs-attention comparator.
+		//   - oldest-waiting  → the same ascending walk (oldest inbound activity is
+		//                        the longest wait), re-floated by the waiting rule.
 		//   - newest          → most-recent activity first (desc).
 		const built = buildThreadQuery(ctx, args.filter, session.userId, now);
 		const order: 'asc' | 'desc' =
-			args.filter === 'snoozed' || sort === 'needs-attention' ? 'asc' : 'desc';
+			args.filter === 'snoozed' || sort === 'needs-attention' || sort === 'oldest-waiting'
+				? 'asc'
+				: 'desc';
 		const q = built.order(order);
 
 		const result = await q.paginate({ cursor: args.cursor ?? null, numItems: limit });
 
-		// Enrich each row for the team-inbox list DNA:
-		//  - `unread`: activity newer than THIS user's last-seen marker (the
-		//    per-user unread badge; mirrors chat's lastReadAt). Bounded: one
-		//    point-read per row on `threadReads.by_user_thread`.
-		//  - `assignee`: the assigned member's display name/email/image so the row
-		//    can render a deterministic-colour avatar without the client joining
-		//    to the member directory. Cached per handler so repeat assignees cost
-		//    one read.
-		const viewerId = session.userId;
-		const assigneeCache = new Map<
-			string,
-			{ name?: string; email: string; image?: string } | null
-		>();
-		const resolveAssignee = async (userId: string) => {
-			if (assigneeCache.has(userId)) return assigneeCache.get(userId)!;
-			const profile = await ctx.db
-				.query('userProfiles')
-				.withIndex('by_auth_user_id', (idx) => idx.eq('authUserId', userId))
-				.first();
-			const resolved = profile
-				? { name: profile.name, email: profile.email, image: profile.image }
-				: null;
-			assigneeCache.set(userId, resolved);
-			return resolved;
-		};
-
-		const presenceCutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
-		const threads = await Promise.all(
-			result.page.map(async (thread) => {
-				const read = await ctx.db
-					.query('threadReads')
-					.withIndex('by_user_thread', (idx) =>
-						idx.eq('userId', viewerId).eq('threadId', thread._id)
-					)
-					.unique();
-				const unread = thread.lastMessageAt > (read?.lastSeenAt ?? 0);
-				const assignee = thread.assignedTo ? await resolveAssignee(thread.assignedTo) : null;
-				// Does the assignee currently have this thread open? Drives the
-				// pulsing presence ring on their row avatar (b3a DNA). Bounded: a
-				// single point-read on `by_user_thread` (one row per user+thread,
-				// exactly as the presence heartbeat upserts it), and ONLY for
-				// assigned threads (unassigned rows skip it entirely).
-				let assigneePresent = false;
-				if (thread.assignedTo) {
-					const presence = await ctx.db
-						.query('threadPresence')
-						.withIndex('by_user_thread', (idx) =>
-							idx.eq('userId', thread.assignedTo!).eq('threadId', thread._id)
-						)
-						.unique();
-					assigneePresent = !!presence && presence.heartbeatAt > presenceCutoff;
-				}
-				return {
-					...(await openConversationThreadPreview(thread)),
-					unread,
-					assignee,
-					assigneePresent,
-				};
-			})
-		);
+		const threads = await enrichThreadRows(ctx, result.page, session.userId);
 
 		// Re-float the fetched page by the needs-attention rule (drafts-ready →
 		// unassigned-unread → oldest). The index already delivered rows oldest
 		// activity first, so this only lifts the drafts/unread tiers within the
 		// loaded window; pagination stays index-driven.
 		if (sort === 'needs-attention') threads.sort(compareNeedsAttention);
+		// Same shape for the waiting order: the index already walked oldest
+		// activity first, so this only sinks the rows that are not waiting on us
+		// (reachable through the unfiltered and assignment-indexed slices).
+		else if (sort === 'oldest-waiting') threads.sort((a, b) => compareOldestWaiting(a, b, now));
 
 		return {
 			threads,
@@ -223,7 +182,7 @@ export const getThreadFilterCounts = publicQuery({
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'inbox');
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return null;
+		if (!isSharedInboxReader(session)) return null;
 
 		const now = Date.now();
 		const userId = session.userId;
@@ -232,16 +191,29 @@ export const getThreadFilterCounts = publicQuery({
 			return rows.length;
 		};
 
-		const [open, mine, unassigned, waiting, snoozed, resolved] = await Promise.all([
+		// The escalation pill is `waitingOver24h` on the wire: a Convex object field
+		// is an identifier and the filter slug carries a hyphen. The web registry
+		// (utils/inboxFilters) is where the two names are tied together.
+		const [open, mine, unassigned, waiting, waitingOver24h, snoozed, resolved] = await Promise.all([
 			countFilter('open'),
 			countFilter('mine'),
 			countFilter('unassigned'),
 			countFilter('waiting'),
+			countFilter('waiting-24h'),
 			countFilter('snoozed'),
 			countFilter('resolved'),
 		]);
 
-		return { open, mine, unassigned, waiting, snoozed, resolved, cap: FILTER_COUNT_CAP };
+		return {
+			open,
+			mine,
+			unassigned,
+			waiting,
+			waitingOver24h,
+			snoozed,
+			resolved,
+			cap: FILTER_COUNT_CAP,
+		};
 	},
 });
 
@@ -255,7 +227,7 @@ export const getThread = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return null;
+		if (!isSharedInboxReader(session)) return null;
 
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) return null;
@@ -275,7 +247,17 @@ export const getThread = publicQuery({
 
 		return {
 			thread: await openConversationThreadPreview(thread),
-			messages,
+			// `receiveMessage` seals the inline bodies at write (E8b), and this
+			// query used to hand the rows back verbatim — so on any instance with
+			// INSTANCE_SECRET set the thread view rendered the `atrest:1:…`
+			// envelope instead of the message. Opened from the already-loaded
+			// columns, so there is no extra round-trip.
+			messages: await Promise.all(
+				messages.map(async (message) => {
+					const body = await openInboundMessageBody(message);
+					return { ...message, textBody: body.text, htmlBody: body.html };
+				})
+			),
 			contact,
 		};
 	},
@@ -291,7 +273,7 @@ export const getReviewQueue = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const limit = args.limit ?? 50;
 
@@ -329,7 +311,7 @@ export const getQuarantined = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const limit = args.limit ?? 50;
 
@@ -359,7 +341,7 @@ export const getFailed = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const limit = args.limit ?? 50;
 
@@ -392,7 +374,7 @@ export const getInboundStats = publicQuery({
 	args: {},
 	handler: async (ctx) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return null;
+		if (!isSharedInboxReader(session)) return null;
 
 		const settings = await ctx.db.query('instanceSettings').first();
 		const counters = settings?.inboxStats ?? {
@@ -417,6 +399,7 @@ export const getInboundStats = publicQuery({
 			sent: counters.sent,
 			quarantined: counters.quarantined,
 			failed: counters.failed,
+			informational: counters.informational ?? 0,
 			openThreads: settings?.openThreads ?? 0,
 		};
 	},
@@ -432,7 +415,7 @@ export const getMessageActions = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const actions = await ctx.db
 			.query('agentActions')
@@ -462,7 +445,7 @@ export const pendingAssignments = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
+		if (!isSharedInboxReader(session)) return [];
 
 		const window = args.sinceMs ?? 5 * 60 * 1000;
 		const cutoff = Date.now() - window;
@@ -478,7 +461,9 @@ export const pendingAssignments = publicQuery({
 
 		return rows.map((r) => ({
 			id: r._id,
+			kind: r.kind ?? ('assignment' as const),
 			threadId: r.threadId,
+			inboundMessageId: r.inboundMessageId,
 			subject: r.subject,
 			assignedByName: r.assignedByName,
 			createdAt: r.createdAt,

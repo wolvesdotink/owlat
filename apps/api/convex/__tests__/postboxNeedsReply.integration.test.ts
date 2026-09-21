@@ -234,7 +234,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			modelUsed: 'test-model',
 		});
 
-		await t.action(internal.mail.needsReplyClassify.classifyThread, { threadId });
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
 
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toMatchObject({
@@ -264,7 +264,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			modelUsed: 'test-model',
 		});
 
-		await t.action(internal.mail.needsReplyClassify.classifyThread, { threadId });
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
 
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toBeUndefined();
@@ -282,7 +282,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 
 		runLlmObjectMock.mockRejectedValue(new Error('llm boom'));
 
-		await t.action(internal.mail.needsReplyClassify.classifyThread, { threadId });
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
 
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toMatchObject({
@@ -304,7 +304,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			needsReplyPendingAt: Date.now(),
 		});
 
-		await t.action(internal.mail.needsReplyClassify.classifyThread, { threadId });
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
 
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toMatchObject({ messageId, source: 'heuristic' });
@@ -322,7 +322,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		});
 		await setNeedsReply(t, threadId, messageId); // stale flag from before
 
-		await t.action(internal.mail.needsReplyClassify.classifyThread, { threadId });
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
 
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toBeUndefined();
@@ -341,7 +341,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			needsReplyPendingAt: Date.now(),
 		});
 
-		await t.action(internal.mail.needsReplyClassify.classifyThread, { threadId });
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
 
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toBeUndefined();

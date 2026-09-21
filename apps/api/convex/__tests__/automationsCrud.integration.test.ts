@@ -436,7 +436,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 			config: { duration: 3, unit: 'days' },
 		});
 		const updated = await t.run(async (ctx) => ctx.db.get(stepId));
-		expect((updated?.config as { duration: number }).duration).toBe(3);
+		expect((updated!.config as { duration: number }).duration).toBe(3);
 
 		// Flip the automation to active; the same edit is now refused.
 		await t.run(async (ctx) => ctx.db.patch(draftId, { status: 'active' }));
@@ -447,7 +447,7 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 			})
 		).rejects.toThrow();
 		const unchanged = await t.run(async (ctx) => ctx.db.get(stepId));
-		expect((unchanged?.config as { duration: number }).duration).toBe(3);
+		expect((unchanged!.config as { duration: number }).duration).toBe(3);
 	});
 
 	it('reorderSteps: allowed on a draft, rejected on an active automation', async () => {
@@ -476,6 +476,33 @@ describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 				stepOrder: [s0, s1],
 			})
 		).rejects.toThrow();
+	});
+
+	it('reorderSteps: rejects a step id belonging to another automation and patches nothing', async () => {
+		const t = await freshT();
+		setUser('user-alice', 'admin');
+
+		const targetDraft = await seedAutomation(t, { status: 'draft' });
+		const own = await seedStep(t, targetDraft, { stepIndex: 0 });
+
+		// A step on a DIFFERENT (draft) automation the caller must not be able to
+		// renumber via `targetDraft`'s reorder.
+		const otherDraft = await seedAutomation(t, { status: 'draft' });
+		const foreign = await seedStep(t, otherDraft, { stepIndex: 0 });
+
+		await expect(
+			t.mutation(api.automations.steps.reorderSteps, {
+				automationId: targetDraft,
+				stepOrder: [own, foreign],
+			})
+		).rejects.toThrow(/belong to this automation/);
+
+		// The foreign step's stepIndex is untouched — the mutation threw before any
+		// patch, so a cross-automation renumber never lands.
+		const foreignAfter = await t.run(async (ctx) => ctx.db.get(foreign));
+		expect(foreignAfter?.stepIndex).toBe(0);
+		const ownAfter = await t.run(async (ctx) => ctx.db.get(own));
+		expect(ownAfter?.stepIndex).toBe(0);
 	});
 
 	it('removeStep: allowed on a draft (reindexes), rejected on an active automation', async () => {

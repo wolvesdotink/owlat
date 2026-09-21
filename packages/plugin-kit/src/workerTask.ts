@@ -14,8 +14,6 @@ import { isPluginId, type PluginId } from './pluginId';
  */
 export const PLUGIN_WORKER_CAPABILITY = 'worker:enqueue' as const;
 
-export type PluginWorkerCapability = typeof PLUGIN_WORKER_CAPABILITY;
-
 /**
  * Retry ceiling a future host adapter must clamp every enqueue to. A job runs at least once and at
  * most this many times across worker attempts (crash-reclaim included), so a

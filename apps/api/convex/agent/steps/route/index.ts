@@ -51,7 +51,7 @@ import { runHostedAutoSendGates } from './pluginAutoSendGates';
  * the self-check failed — {@link resolveAutoApproveScore} then treats quality as
  * unknown/LOW so the message is never auto-approved on an unknown draft.
  */
-export type RouteDraftQuality = {
+type RouteDraftQuality = {
 	score: number;
 	complete: boolean;
 	grounded: boolean;

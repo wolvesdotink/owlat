@@ -33,7 +33,7 @@ function searchHit(id: string): SearchResult {
 	return { id, type: 'contact', title: id, subtitle: '', url: `/x/${id}` };
 }
 
-const EMPTY_RESULTS: SearchResults = { contacts: [], emails: [], campaigns: [] };
+const EMPTY_RESULTS: SearchResults = { contacts: [], emails: [], campaigns: [], mail: [] };
 
 /** Deps with sensible non-empty defaults; each test overrides what it needs. */
 function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePaletteProviderDeps {
@@ -42,9 +42,22 @@ function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePalette
 		verbItems: () => [paletteItem('verb:new-contact')],
 		contextItems: () => [paletteItem('context:inbox')],
 		navItems: () => [paletteItem('nav:/dashboard/inbox')],
+		settingsItems: () => [
+			{
+				...paletteItem('setting:overview:appearance'),
+				label: 'Appearance',
+				keywords: ['dark mode'],
+			},
+		],
 		searchResults: () => EMPTY_RESULTS,
 		onRecentTerm: () => {},
 		buildResultItems: (results) => results.map((r) => paletteItem(`search:${r.id}`)),
+		buildMailItems: (results) => results.map((r) => paletteItem(`mail:${r.id}`)),
+		buildSearchMailItem: (term) => paletteItem(`mail:search-for:${term}`),
+		isMailScope: () => false,
+		mailSuggestionItems: () => [paletteItem('mail-suggest:operator:from:')],
+		mailHitItems: () => [paletteItem('mail-hit:message1')],
+		inboxThreadItems: () => [paletteItem('inbox-thread:thread1')],
 		...overrides,
 	};
 }
@@ -53,7 +66,7 @@ function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePalette
 function build(id: string, query: string, overrides: Partial<CorePaletteProviderDeps> = {}) {
 	const provider = buildCorePaletteProviders(makeDeps(overrides)).find((p) => p.id === id);
 	if (!provider) throw new Error(`no core provider ${id}`);
-	return provider.build({ query });
+	return provider.build({ query, mode: 'all' });
 }
 
 function groupByKey(groups: PaletteGroup[], key: string): PaletteGroup | undefined {
@@ -61,23 +74,38 @@ function groupByKey(groups: PaletteGroup[], key: string): PaletteGroup | undefin
 }
 
 describe('buildCorePaletteProviders — provider set', () => {
-	it('is exactly the five core providers, in priority order, at fixed priorities', () => {
+	it('is exactly the ten core providers, in priority order, at fixed priorities', () => {
 		const providers = buildCorePaletteProviders(makeDeps());
 		expect(providers.map((p) => p.id)).toEqual([
 			'core:recent',
+			'core:mail-suggest',
+			'core:mail-hits',
+			'core:inbox-threads',
 			'core:verbs',
 			'core:context',
+			'core:settings',
 			'core:search',
+			'core:mail',
 			'core:navigation',
 		]);
-		expect(providers.map((p) => p.priority)).toEqual([10, 20, 30, 40, 50]);
+		expect(providers.map((p) => p.priority)).toEqual([10, 12, 13, 15, 20, 30, 35, 40, 45, 50]);
 	});
 
-	it('declares no flag or route gate on any core provider (core is always consulted)', () => {
-		for (const provider of buildCorePaletteProviders(makeDeps())) {
-			expect(provider.flag).toBeUndefined();
-			expect(provider.matchRoute).toBeUndefined();
-		}
+	it('gates ONLY the Team Inbox threads, and gates them on both the flag and the route', () => {
+		const gated = new Map(
+			buildCorePaletteProviders(makeDeps())
+				.filter((provider) => provider.flag || provider.matchRoute)
+				.map((provider) => [provider.id, provider])
+		);
+		expect([...gated.keys()]).toEqual(['core:inbox-threads']);
+
+		const threads = gated.get('core:inbox-threads')!;
+		expect(threads.flag).toBe('inbox');
+		// Segment-aware, so a sibling route that merely shares the prefix is out.
+		expect(threads.matchRoute!('/dashboard/inbox')).toBe(true);
+		expect(threads.matchRoute!('/dashboard/inbox/j57abc')).toBe(true);
+		expect(threads.matchRoute!('/dashboard/inbox-archive')).toBe(false);
+		expect(threads.matchRoute!('/dashboard/postbox/inbox')).toBe(false);
 	});
 });
 
@@ -119,9 +147,41 @@ describe('core:verbs and core:context', () => {
 	});
 });
 
+describe('core:settings', () => {
+	it('stays out of the idle palette (destinations first, switches on demand)', () => {
+		expect(build('core:settings', '')).toEqual([]);
+		expect(build('core:settings', '   ')).toEqual([]);
+	});
+
+	it('contributes a capped Settings group under the Go-to groups', () => {
+		const settings = groupByKey(build('core:settings', 'appearance'), 'settings');
+		expect(settings?.order).toBe(30);
+		expect(settings?.cap).toBe(6);
+		expect(settings?.mode).toBe('commands');
+		expect(t(settings?.heading ?? '')).toBe('Settings');
+		expect(settings?.items.map((item) => item.id)).toEqual(['setting:overview:appearance']);
+	});
+
+	// The whole point of the keywords column: the switch is called "Appearance",
+	// nobody types that.
+	it('matches a control on its synonyms, not just on its name', () => {
+		const settings = groupByKey(build('core:settings', 'dark'), 'settings');
+		expect(settings?.items.map((item) => item.id)).toEqual(['setting:overview:appearance']);
+	});
+
+	it('drops a control that matches neither name nor synonym', () => {
+		expect(groupByKey(build('core:settings', 'zzzz'), 'settings')?.items).toEqual([]);
+	});
+});
+
 describe('core:search', () => {
 	it('is silent below the query threshold and until results resolve', () => {
-		const results: SearchResults = { contacts: [searchHit('c1')], emails: [], campaigns: [] };
+		const results: SearchResults = {
+			contacts: [searchHit('c1')],
+			emails: [],
+			campaigns: [],
+			mail: [],
+		};
 		expect(build('core:search', 'a', { searchResults: () => results })).toEqual([]);
 		expect(build('core:search', 'acme', { searchResults: () => undefined })).toEqual([]);
 	});
@@ -131,6 +191,7 @@ describe('core:search', () => {
 			contacts: [searchHit('c1')],
 			campaigns: [searchHit('m1')],
 			emails: [searchHit('e1')],
+			mail: [],
 		};
 		const groups = build('core:search', 'acme', { searchResults: () => results });
 		expect(groups.map((g) => [g.key, g.order, g.cap, g.items.map((i) => i.id)])).toEqual([
@@ -141,6 +202,63 @@ describe('core:search', () => {
 	});
 });
 
+describe('core:mail', () => {
+	const withMail = (mail: SearchResult[]) => ({
+		searchResults: () => ({ ...EMPTY_RESULTS, mail }),
+	});
+
+	it('is silent below the query threshold', () => {
+		expect(build('core:mail', 'a', withMail([searchHit('m1')]))).toEqual([]);
+	});
+
+	it('emits the mail hits at order 18, cap 5, above the search-mail row at 19', () => {
+		const groups = build('core:mail', 'invoice', withMail([searchHit('m1')]));
+		expect(groups.map((g) => [g.key, g.order, g.cap, g.items.map((i) => i.id)])).toEqual([
+			['mail', 18, 5, ['mail:m1']],
+			['mail-search', 19, undefined, ['mail:search-for:invoice']],
+		]);
+		expect(t(groups[0]?.heading ?? '')).toBe('Mail');
+	});
+
+	/**
+	 * The search-mail row used to reuse `groups.goTo`, which translates to the very
+	 * string `core:navigation` renders — so any query matching both drew "GO TO"
+	 * twice, four rows apart, and read as a rendering bug rather than two sections.
+	 */
+	it('heads the search-mail row with something other than navigation’s "Go to"', () => {
+		const mailSearch = build('core:mail', 'invoice', withMail([]))[0];
+		const navigation = build('core:navigation', '')[0];
+
+		expect(t(mailSearch?.heading ?? '')).not.toBe(t(navigation?.heading ?? ''));
+		expect(t(mailSearch?.heading ?? '')).toBe('Search');
+	});
+
+	it('still offers the search-mail row while hits are missing or unresolved', () => {
+		expect(build('core:mail', 'invoice', withMail([])).map((g) => g.key)).toEqual(['mail-search']);
+		expect(
+			build('core:mail', 'invoice', { searchResults: () => undefined }).map((g) => g.key)
+		).toEqual(['mail-search']);
+	});
+});
+
+describe('group modes', () => {
+	it('tags the command-ish groups so a `>` search finds them', () => {
+		const modeOf = (id: string, key: string) => groupByKey(build(id, ''), key)?.mode;
+		expect(modeOf('core:verbs', 'verbs')).toBe('commands');
+		expect(modeOf('core:context', 'context')).toBe('commands');
+		expect(modeOf('core:navigation', 'navigation')).toBe('commands');
+	});
+
+	it('tags contacts as people and leaves the rest out of narrowed modes', () => {
+		const search = build('core:search', 'acme', {
+			searchResults: () => ({ ...EMPTY_RESULTS, contacts: [searchHit('c1')] }),
+		});
+		expect(groupByKey(search, 'contacts')?.mode).toBe('people');
+		expect(groupByKey(search, 'campaigns')?.mode).toBeUndefined();
+		expect(groupByKey(build('core:recent', ''), 'recent')?.mode).toBeUndefined();
+	});
+});
+
 describe('core:navigation', () => {
 	it('contributes the navigation group at order 40, cap 8', () => {
 		const nav = groupByKey(build('core:navigation', ''), 'navigation');
@@ -148,5 +266,55 @@ describe('core:navigation', () => {
 		expect(nav?.cap).toBe(8);
 		expect(t(nav?.heading ?? '')).toBe('Go to');
 		expect(nav?.items.map((i) => i.id)).toEqual(['nav:/dashboard/inbox']);
+	});
+});
+
+describe('core:mail-suggest / core:mail-hits — the Mail scope', () => {
+	it('contributes nothing outside Mail scope', () => {
+		expect(build('core:mail-suggest', 'invoice')).toEqual([]);
+		expect(build('core:mail-hits', 'invoice')).toEqual([]);
+	});
+
+	it('offers the grammar completions above the hits', () => {
+		const suggest = groupByKey(
+			build('core:mail-suggest', 'fr', { isMailScope: () => true }),
+			'mail-suggest'
+		);
+		const hits = groupByKey(
+			build('core:mail-hits', 'invoice', { isMailScope: () => true }),
+			'mail-hits'
+		);
+		expect(suggest?.order).toBe(1);
+		expect(hits?.order).toBe(2);
+		expect(suggest?.items.map((i) => i.id)).toEqual(['mail-suggest:operator:from:']);
+		expect(hits?.items.map((i) => i.id)).toEqual(['mail-hit:message1']);
+		expect(t(hits?.heading ?? '')).toBe('Mail');
+	});
+
+	it('holds the hits back until the query is worth a search', () => {
+		// The completions still fire on one character — that is the whole point of
+		// discovering `from:` by typing `f` — but the search index does not.
+		expect(build('core:mail-suggest', 'f', { isMailScope: () => true })).toHaveLength(1);
+		expect(build('core:mail-hits', 'f', { isMailScope: () => true })).toEqual([]);
+	});
+});
+
+describe('core:inbox-threads — the Team Inbox corpus', () => {
+	it('holds back until the query is worth a search', () => {
+		expect(build('core:inbox-threads', '')).toEqual([]);
+		expect(build('core:inbox-threads', ' a ')).toEqual([]);
+	});
+
+	it('contributes one capped group of threads, ranked with the other object hits', () => {
+		const group = groupByKey(build('core:inbox-threads', 'invoice'), 'inbox-threads');
+		expect(group?.order).toBe(3);
+		expect(group?.cap).toBe(5);
+		expect(group?.items.map((item) => item.id)).toEqual(['inbox-thread:thread1']);
+		expect(t(group?.heading ?? '')).toBe('Team Inbox');
+	});
+
+	it('answers the unprefixed palette, not a `>`/`@`/`#` mode', () => {
+		const group = groupByKey(build('core:inbox-threads', 'invoice'), 'inbox-threads');
+		expect(group?.mode).toBeUndefined();
 	});
 });

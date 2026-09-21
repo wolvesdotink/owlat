@@ -28,7 +28,10 @@ export async function readEnvFile(path: string): Promise<EnvMap> {
 		if (eq === -1) continue;
 		const key = trimmed.slice(0, eq).trim();
 		let value = trimmed.slice(eq + 1).trim();
-		if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+		if (
+			(value.startsWith('"') && value.endsWith('"')) ||
+			(value.startsWith("'") && value.endsWith("'"))
+		) {
 			value = value.slice(1, -1);
 		}
 		map[key] = value;
@@ -43,6 +46,16 @@ export async function writeEnvFile(path: string, map: EnvMap): Promise<void> {
 		'',
 	];
 	for (const [key, value] of Object.entries(map)) {
+		// Fail closed on control characters. `readEnvFile` is line-oriented and only
+		// escapes the double-quote on write, so a newline / carriage-return in a value
+		// would be emitted as a physical line break and reconstructed by the next read
+		// as a SEPARATE, attacker-controlled env line (e.g. an injected INSTANCE_SECRET).
+		// A NUL is equally illegitimate in a `.env`. Reject rather than silently mangle.
+		if (/[\r\n\0]/.test(value)) {
+			throw new Error(
+				`Refusing to write env key ${key}: value contains a newline, carriage return, or NUL.`
+			);
+		}
 		// Quote values containing whitespace, =, or shell metacharacters.
 		const needsQuotes = /[\s="'`$\\]/.test(value);
 		lines.push(needsQuotes ? `${key}="${value.replace(/"/g, '\\"')}"` : `${key}=${value}`);

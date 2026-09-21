@@ -31,6 +31,7 @@ import RampDecisionTimeline from '~/components/delivery/RampDecisionTimeline.vue
 import RampDecreaseNotices from '~/components/delivery/RampDecreaseNotices.vue';
 import RampPresetPicker from '~/components/delivery/RampPresetPicker.vue';
 import MeasurementGateList from '~/components/delivery/MeasurementGateList.vue';
+import ErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import {
 	adminNotice,
@@ -83,9 +84,11 @@ const globalOptions = {
 		UiSpinner: true,
 		UiEmptyState: true,
 		UiCard: passthroughCard,
+		DeliveryReferenceRelayNotice: true,
 	},
 	components: {
 		UiQueryBoundary: QueryBoundary,
+		UiErrorAlert: ErrorAlert,
 		DeliveryIndependenceTrendChart: IndependenceTrendChart,
 		DeliveryRampCellsGrid: RampCellsGrid,
 		DeliveryRampCellControls: RampCellControls,

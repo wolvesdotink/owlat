@@ -27,23 +27,23 @@ export function usePostboxFolderActions(mailboxId: Ref<Id<'mailboxes'> | null>) 
 	async function create(name: string): Promise<boolean> {
 		if (!mailboxId.value || !name.trim()) return false;
 		const result = await createMutation({ mailboxId: mailboxId.value, name: name.trim() });
-		return result !== undefined;
+		return result.ok;
 	}
 
 	async function rename(folderId: Id<'mailFolders'>, name: string): Promise<boolean> {
 		if (!name.trim()) return false;
 		const result = await renameMutation({ folderId, name: name.trim() });
-		return result !== undefined;
+		return result.ok;
 	}
 
 	async function remove(folderId: Id<'mailFolders'>): Promise<boolean> {
 		const result = await removeMutation({ folderId });
-		return result !== undefined;
+		return result.ok;
 	}
 
 	async function unsubscribe(folderId: Id<'mailFolders'>): Promise<boolean> {
 		const result = await subscribeMutation({ folderId, subscribed: false });
-		return result !== undefined;
+		return result.ok;
 	}
 
 	return { create, rename, remove, unsubscribe };

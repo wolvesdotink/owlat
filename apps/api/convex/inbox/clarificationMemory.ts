@@ -6,7 +6,7 @@
  *
  * Three roles:
  *   - CAPTURE (`captureStandingAnswers`): both answer surfaces — the inbound agent
- *     (`inbox/clarification.ts`) and the Reply Queue (`mail/needsReplyClarify.ts`)
+ *     (`inbox/clarification.ts`) and the Reply Queue (`mail/ai/needsReplyClarify.ts`)
  *     — call this after the owner answers, promoting each answer to a standing
  *     fact scoped to the message's contact.
  *   - FILL (`resolveFills`): before asking, both clarification surfaces look up a
@@ -39,7 +39,7 @@ import type { MutationCtx } from '../_generated/server';
 import { normalizeQuestionKey, matchStandingAnswers } from './clarificationMemoryMatch';
 
 const MAX_ANSWER_CHARS = 2000;
-const MAX_QUESTION_CHARS = 500;
+const MAX_REMEMBERED_QUESTION_CHARS = 500;
 
 /**
  * Resolve the contact SCOPE for a capture/fill call: an explicit `contactId`
@@ -130,7 +130,7 @@ interface StandingFillResult {
 
 /** One captured answer: the slot kind, the question the owner answered, and the
  * value they supplied. */
-export interface CaptureAnswer {
+interface CaptureAnswer {
 	slotType: string;
 	questionText: string;
 	value: string;
@@ -140,7 +140,7 @@ export interface CaptureAnswer {
  * Capture the owner's answers as standing facts. A plain helper (NOT a mutation)
  * so it is called directly from within the two answer MUTATIONS — the inbound
  * agent (`inbox/clarification.ts`) and the Reply Queue
- * (`mail/needsReplyClarify.ts`) — which cannot `runMutation`. Upserts one row per
+ * (`mail/ai/needsReplyClarify.ts`) — which cannot `runMutation`. Upserts one row per
  * answer at the message's contact scope: an existing row for the same (contact,
  * slot, normalized question) is refreshed to the latest value (a correction
  * wins) and its `answerCount` is bumped; otherwise a new row is inserted.
@@ -167,7 +167,7 @@ export async function captureStandingAnswers(
 	for (const answer of args.answers) {
 		const value = answer.value.trim().slice(0, MAX_ANSWER_CHARS);
 		if (value.length === 0) continue;
-		const questionText = answer.questionText.trim().slice(0, MAX_QUESTION_CHARS);
+		const questionText = answer.questionText.trim().slice(0, MAX_REMEMBERED_QUESTION_CHARS);
 		if (questionText.length === 0) continue;
 		const questionKey = normalizeQuestionKey(answer.slotType, questionText);
 
@@ -210,7 +210,7 @@ export async function captureStandingAnswers(
 }
 
 /** A learned standing answer as shown on the settings surface. */
-export interface ClarificationMemoryItem {
+interface ClarificationMemoryItem {
 	id: Id<'clarificationMemory'>;
 	contactId?: Id<'contacts'>;
 	contactName?: string;

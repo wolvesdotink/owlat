@@ -31,8 +31,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-	unregisterShortcut('n');
-	unregisterShortcut('escape');
+	unregisterShortcut('global.newItem');
+	unregisterShortcut('global.close');
 });
 
 // Get the current user's organization
@@ -43,20 +43,10 @@ const router = useRouter();
 type AutomationStatus = 'all' | 'draft' | 'active' | 'paused';
 const selectedStatus = ref<AutomationStatus>('all');
 
-// Search state
-const searchQuery = ref('');
-const debouncedSearch = ref('');
-let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-
-// Debounce search input
-watch(searchQuery, (value) => {
-	if (searchTimeout) {
-		clearTimeout(searchTimeout);
-	}
-	searchTimeout = setTimeout(() => {
-		debouncedSearch.value = value;
-	}, 300);
-});
+// List FILTER — narrows the loaded page in place. It is not the search box (that
+// is the one ⌘K overlay), which is why it says "Filter…" and wears a filter
+// icon. Debouncing is the shared `useDebouncedSearch`, not a private timeout.
+const { searchQuery, debouncedSearch, clear: clearFilter } = useDebouncedSearch();
 
 // Status filter options
 const statusFilters = computed<{ value: AutomationStatus; label: string }[]>(() => [
@@ -150,10 +140,10 @@ const handleToggleStatus = async (automation: {
 	toggleingId.value = automation._id;
 	try {
 		if (automation.status === 'active') {
-			if ((await pauseAutomation({ automationId: automation._id })) === undefined) return;
+			if (!(await pauseAutomation({ automationId: automation._id })).ok) return;
 			showNotification(t('dashboard.automations.index.toasts.paused', { name: automation.name }));
 		} else {
-			if ((await resumeAutomation({ automationId: automation._id })) === undefined) return;
+			if (!(await resumeAutomation({ automationId: automation._id })).ok) return;
 			showNotification(
 				t('dashboard.automations.index.toasts.activated', { name: automation.name })
 			);
@@ -167,7 +157,7 @@ const handleToggleStatus = async (automation: {
 // Handle duplicate
 const handleDuplicate = async (automationId: Id<'automations'>) => {
 	const result = await duplicateAutomation({ automationId });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showNotification(t('dashboard.automations.index.toasts.duplicated'));
 	openDropdownId.value = null;
 };
@@ -202,7 +192,7 @@ const handleDelete = async () => {
 	isDeleting.value = true;
 	try {
 		const result = await deleteAutomation({ automationId: automationToDelete.value.id });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('dashboard.automations.index.toasts.deleted'));
 		closeDeleteModal();
 	} finally {
@@ -266,16 +256,16 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 
 			<div class="flex-1" />
 
-			<!-- Search -->
+			<!-- Filter (not search — see the composable comment above) -->
 			<UiInput
 				v-model="searchQuery"
 				type="text"
-				:placeholder="t('dashboard.automations.index.searchPlaceholder')"
+				:placeholder="t('common.filterPlaceholder')"
 				size="sm"
 				class="w-64"
 			>
 				<template #iconLeft>
-					<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary" />
+					<Icon name="lucide:list-filter" class="w-4 h-4 text-text-tertiary" />
 				</template>
 			</UiInput>
 		</div>
@@ -333,13 +323,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 					"
 				>
 					<template #action>
-						<UiButton
-							variant="secondary"
-							@click="
-								searchQuery = '';
-								debouncedSearch = '';
-							"
-						>
+						<UiButton variant="secondary" @click="clearFilter">
 							{{ t('dashboard.automations.index.clearSearch') }}
 						</UiButton>
 					</template>
@@ -454,7 +438,7 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 												<Icon
 													v-if="toggleingId === automation._id"
 													name="lucide:loader-2"
-													class="w-4 h-4 animate-spin"
+													class="w-4 h-4 animate-spin motion-reduce:animate-none"
 												/>
 												<Icon
 													v-else-if="automation.status === 'active'"
@@ -610,7 +594,11 @@ const handleViewDetails = (automationId: Id<'automations'>) => {
 					:disabled="isDeleting || automationToDelete?.status === 'active'"
 					@click="handleDelete"
 				>
-					<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon
+						v-if="isDeleting"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
 					{{
 						isDeleting
 							? t('dashboard.automations.index.deleting')

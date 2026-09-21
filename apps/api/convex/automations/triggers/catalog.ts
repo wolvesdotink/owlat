@@ -24,7 +24,7 @@ type GeneratedPluginTriggerKind =
 			: never
 		: never;
 
-export interface GeneratedPluginTriggerCatalogEntry {
+interface GeneratedPluginTriggerCatalogEntry {
 	readonly kind: string;
 	readonly pluginId: string;
 	readonly localId: string;

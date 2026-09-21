@@ -34,7 +34,7 @@ const ATTENTION_CANDIDATE_STATUSES = [
 // payload (archiveHtmlContent, the frozen `audience` snapshot, abTestConfig),
 // so a large cancelled backlog carrying archived HTML can't push the result
 // toward Convex's function-result cap.
-export type AttentionCandidate = Pick<
+type AttentionCandidate = Pick<
 	Doc<'campaigns'>,
 	| '_id'
 	| 'name'

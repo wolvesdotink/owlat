@@ -92,7 +92,7 @@ export function useSegmentForm() {
 				const seq = ++countSeq;
 				const result = await estimateAudience({ filters: filtersArg });
 				if (seq === countSeq && isSegmentModalOpen.value) {
-					matchingCount.value = result ?? null;
+					matchingCount.value = result.ok ? result.result : null;
 				}
 			}, 400);
 		},
@@ -195,7 +195,7 @@ export function useSegmentForm() {
 				filters: segmentForm.filters,
 			});
 			isSaving.value = false;
-			if (result === undefined) return;
+			if (!result.ok) return;
 			showToast(t('shared.useSegmentForm.updated', { name: segmentForm.name.trim() }));
 		} else {
 			const result = await createSegment({
@@ -204,7 +204,7 @@ export function useSegmentForm() {
 				filters: segmentForm.filters,
 			});
 			isSaving.value = false;
-			if (result === undefined) return;
+			if (!result.ok) return;
 			showToast(t('shared.useSegmentForm.created', { name: segmentForm.name.trim() }));
 		}
 
@@ -240,7 +240,7 @@ export function useSegmentForm() {
 
 		const result = await deleteSegment({ id: deleteTarget.value.id });
 		isDeleting.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showToast(t('shared.useSegmentForm.deleted', { name: deleteTarget.value.name }));
 		closeDeleteModal();
 	};

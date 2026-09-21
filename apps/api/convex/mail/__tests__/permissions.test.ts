@@ -91,7 +91,7 @@ describe('requireMailboxAccess', () => {
 		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		if (!result.ok) throw new Error('expected ok');
 		expect(result.userId).toBe('user-A');
-		expect(result.mailbox.address).toBe('a@hinterland.camp');
+		expect(result.mailbox.address).toBe('a@owlat.test');
 		expect(result.mailbox._id).toBe(id);
 	});
 
@@ -112,6 +112,34 @@ describe('requireMailboxAccess', () => {
 		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
 		if (!result.ok) throw new Error('expected ok');
 		expect(result.userId).toBe('user-B');
+	});
+
+	it('returns forbidden when an owner targets a mailbox in ANOTHER org', async () => {
+		// Org scoping is checked ahead of the owner/admin ok branch, so a
+		// cross-org mailbox id can never be reached even by an org owner.
+		setSession('user-B', 'owner', 'org-1');
+		const t = convexTest(schema, modules);
+		const id = await seedMailbox(t, { userId: 'user-A', organizationId: 'org-2' });
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
+		expect(result).toEqual({ ok: false, reason: 'forbidden' });
+	});
+
+	it('returns forbidden when an admin targets a mailbox in ANOTHER org', async () => {
+		setSession('user-B', 'admin', 'org-1');
+		const t = convexTest(schema, modules);
+		const id = await seedMailbox(t, { userId: 'user-A', organizationId: 'org-2' });
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
+		expect(result).toEqual({ ok: false, reason: 'forbidden' });
+	});
+
+	it('returns forbidden when the mailbox’s OWN user is scoped to another org', async () => {
+		// Even the self branch (mailbox.userId === session.userId) is gated on org,
+		// so a mailbox that somehow lives in a different org fails closed.
+		setSession('user-A', 'editor', 'org-1');
+		const t = convexTest(schema, modules);
+		const id = await seedMailbox(t, { userId: 'user-A', organizationId: 'org-2' });
+		const result = await t.run((ctx) => requireMailboxAccess(ctx, id));
+		expect(result).toEqual({ ok: false, reason: 'forbidden' });
 	});
 });
 
@@ -187,12 +215,12 @@ describe('mailbox read handlers route through loadReadableMailbox', () => {
 		const id = await seedMailbox(t, { userId: 'user-A' });
 
 		setSession('user-A', 'editor');
-		const owned = await t.query(api.mail.mailbox.get, { mailboxId: id });
+		const owned = await t.query(api.mail.mailbox.identity.get, { mailboxId: id });
 		expect(owned?._id).toBe(id);
 
 		// A different non-privileged user must not be able to read it by id.
 		setSession('user-B', 'editor');
-		const foreign = await t.query(api.mail.mailbox.get, { mailboxId: id });
+		const foreign = await t.query(api.mail.mailbox.identity.get, { mailboxId: id });
 		expect(foreign).toBeNull();
 	});
 
@@ -200,7 +228,7 @@ describe('mailbox read handlers route through loadReadableMailbox', () => {
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A', status: 'deleted' });
 		setSession('user-A', 'editor');
-		const result = await t.query(api.mail.mailbox.get, { mailboxId: id });
+		const result = await t.query(api.mail.mailbox.identity.get, { mailboxId: id });
 		expect(result).toBeNull();
 	});
 
@@ -208,16 +236,43 @@ describe('mailbox read handlers route through loadReadableMailbox', () => {
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A' });
 		setSession('user-B', 'editor');
-		const result = await t.query(api.mail.mailbox.listMessages, { mailboxId: id });
-		expect(result).toEqual({ messages: [], hasMore: false });
+		const result = await t.query(api.mail.mailbox.queries.listMessages, { mailboxId: id });
+		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
+	});
+
+	it('mailbox.listByLabel returns the empty sentinel to a non-owner', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seedMailbox(t, { userId: 'user-A' });
+		const labelId = await t.run(async (ctx) =>
+			ctx.db.insert('mailLabels', { mailboxId: id, name: 'work', createdAt: Date.now() })
+		);
+		setSession('user-B', 'editor');
+		const result = await t.query(api.mail.mailbox.queries.listByLabel, { mailboxId: id, labelId });
+		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
+	});
+
+	it("mailbox.listByLabel ignores another mailbox's label id", async () => {
+		const t = convexTest(schema, modules);
+		const ownId = await seedMailbox(t, { userId: 'user-A' });
+		const foreignId = await seedMailbox(t, { userId: 'user-B' });
+		const foreignLabelId = await t.run(async (ctx) =>
+			ctx.db.insert('mailLabels', { mailboxId: foreignId, name: 'foreign', createdAt: Date.now() })
+		);
+		setSession('user-A', 'editor');
+		const result = await t.query(api.mail.mailbox.queries.listByLabel, {
+			mailboxId: ownId,
+			labelId: foreignLabelId,
+		});
+		// A label id from another mailbox must never serve (or leak) rows.
+		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
 	});
 
 	it('mailbox.listMessages returns the empty sentinel on a suspended mailbox to its owner', async () => {
 		const t = convexTest(schema, modules);
 		const id = await seedMailbox(t, { userId: 'user-A', status: 'suspended' });
 		setSession('user-A', 'editor');
-		const result = await t.query(api.mail.mailbox.listMessages, { mailboxId: id });
-		expect(result).toEqual({ messages: [], hasMore: false });
+		const result = await t.query(api.mail.mailbox.queries.listMessages, { mailboxId: id });
+		expect(result).toEqual({ messages: [], hasMore: false, nextCursor: null });
 	});
 
 	it('mailbox.listFolders lists folders for the owner but is empty for a non-owner', async () => {
@@ -226,12 +281,12 @@ describe('mailbox read handlers route through loadReadableMailbox', () => {
 		await seedInboxFolder(t, id);
 
 		setSession('user-A', 'editor');
-		const owned = await t.query(api.mail.mailbox.listFolders, { mailboxId: id });
+		const owned = await t.query(api.mail.mailbox.queries.listFolders, { mailboxId: id });
 		expect(owned).toHaveLength(1);
 		expect(owned[0]?.role).toBe('inbox');
 
 		setSession('user-B', 'editor');
-		const foreign = await t.query(api.mail.mailbox.listFolders, { mailboxId: id });
+		const foreign = await t.query(api.mail.mailbox.queries.listFolders, { mailboxId: id });
 		expect(foreign).toEqual([]);
 	});
 
@@ -240,7 +295,7 @@ describe('mailbox read handlers route through loadReadableMailbox', () => {
 		const id = await seedMailbox(t, { userId: 'user-A', status: 'deleted' });
 		await seedInboxFolder(t, id);
 		setSession('user-A', 'editor');
-		const result = await t.query(api.mail.mailbox.listFolders, { mailboxId: id });
+		const result = await t.query(api.mail.mailbox.queries.listFolders, { mailboxId: id });
 		expect(result).toEqual([]);
 	});
 });

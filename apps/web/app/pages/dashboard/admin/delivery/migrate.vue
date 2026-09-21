@@ -51,7 +51,7 @@ function localized(value: LocalizedText): string {
 useHead({ title: () => t('dashboard.admin.delivery.migrate.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -115,13 +115,6 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 <template>
 	<div class="p-6 lg:p-8">
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/admin/delivery"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.delivery.backToSetup') }}
-			</NuxtLink>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.delivery.migrate.title') }}
 			</h1>

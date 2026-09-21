@@ -4,11 +4,11 @@ import {
 	parseSetupConfig,
 	SetupConfigError,
 	resolveSetupFlags,
-	buildEnvPatchFromConfig,
 	buildSetupFromConfig,
-	applySetupDefaults,
 	type SetupConfig,
 } from '../setupConfig';
+import { buildEnvPatchFromConfig } from '../setupConfig';
+import { applySetupDefaults } from '../setupEnvDefaults';
 import { assertFblDedupCutoverConfigured } from '../fblDedupSetup';
 
 /** A minimal valid config; tests clone + mutate it. The default flags enable
@@ -301,6 +301,9 @@ describe('buildSetupFromConfig', () => {
 		expect(out.env['SMTP_OUTCOME_JOURNAL_MAX_SIZE']).toBe('10000');
 		expect(out.env['FBL_DEDUP_PROTOCOL']).toBe('owned-v2');
 		expect(out.env['FBL_DEDUP_CUTOVER_ACK']).toBe('fresh-install');
+		// New self-host installs default email verification ON (the built-in MTA is
+		// present to deliver the link).
+		expect(out.env['REQUIRE_EMAIL_VERIFICATION']).toBe('true');
 		expect(out.admin).toEqual(cfg.admin);
 		expect(out.seedDemo).toBe(false);
 		expect(out.hosted).toBe(false);
@@ -329,6 +332,9 @@ describe('buildSetupFromConfig', () => {
 		expect(out.env['CUSTOM_KEY']).toBe('keep-me');
 		expect(out.env['BETTER_AUTH_SECRET']).toBe('preexisting'); // ensureSecrets preserves
 		expect(out.env['FBL_DEDUP_CUTOVER_ACK']).toBe('quiesced-v1-intake');
+		// Existing install (non-empty existingEnv): email verification is NEVER
+		// force-enabled by an upgrade, so pre-existing unverified users keep signing in.
+		expect(out.env['REQUIRE_EMAIL_VERIFICATION']).toBeUndefined();
 	});
 
 	it('refuses to infer an owned-v2 cutover for an existing environment', () => {
@@ -503,6 +509,26 @@ describe('applySetupDefaults', () => {
 		applySetupDefaults(env, 'selfhost', undefined, true);
 		expect(env['FBL_DEDUP_PROTOCOL']).toBe('owned-v2');
 		expect(env['FBL_DEDUP_CUTOVER_ACK']).toBe('fresh-install');
+	});
+
+	it('defaults email verification ON only for a NEW (fresh) install', () => {
+		const env: Record<string, string> = {};
+		applySetupDefaults(env, 'selfhost', undefined, true);
+		expect(env['REQUIRE_EMAIL_VERIFICATION']).toBe('true');
+	});
+
+	it('never turns email verification on when re-running setup on an existing install', () => {
+		const env: Record<string, string> = {};
+		applySetupDefaults(env, 'selfhost', undefined, false);
+		// Left unset so an existing install with unverified legacy users is not
+		// locked out — the auth gate defaults OFF when the flag is absent.
+		expect(env['REQUIRE_EMAIL_VERIFICATION']).toBeUndefined();
+	});
+
+	it('never overrides an operator-supplied REQUIRE_EMAIL_VERIFICATION on a fresh install', () => {
+		const env: Record<string, string> = { REQUIRE_EMAIL_VERIFICATION: 'false' };
+		applySetupDefaults(env, 'selfhost', undefined, true);
+		expect(env['REQUIRE_EMAIL_VERIFICATION']).toBe('false');
 	});
 
 	it('accepts only explicit fresh or quiesced cutover state for an existing install', () => {

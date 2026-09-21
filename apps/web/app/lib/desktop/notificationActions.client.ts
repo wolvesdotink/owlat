@@ -17,7 +17,7 @@ import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ConvexClient } from 'convex/browser';
 import type { FunctionReturnType } from 'convex/server';
 
-type NotifMessage = FunctionReturnType<typeof api.mail.mailbox.getMessage>;
+type NotifMessage = FunctionReturnType<typeof api.mail.mailbox.messages.getMessage>;
 
 export interface NotificationActionPayload {
 	action?: unknown;
@@ -101,7 +101,7 @@ export async function replyFromNotification(
 	// so an unreadable original never triggers a second doomed round trip.
 	let message: NotifMessage = null;
 	try {
-		message = await convex.query(api.mail.mailbox.getMessage, { messageId: id });
+		message = await convex.query(api.mail.mailbox.messages.getMessage, { messageId: id });
 	} catch (e) {
 		console.warn('[desktop] notification reply: could not read original', e);
 	}

@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/plugin-codegen",
-	"version": "0.4.4",
+	"version": "0.5.0",
 	"private": true,
 	"description": "Validated build-time composition for bundled Owlat plugins",
 	"license": "Apache-2.0",
@@ -19,6 +19,7 @@
 	"dependencies": {
 		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*",
+		"@owlat/shared": "workspace:*",
 		"@vue/compiler-sfc": "^3.5.33",
 		"typescript": "catalog:"
 	},
@@ -26,8 +27,8 @@
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"convex": "catalog:convex",
-		"convex-test": "^0.0.55",
-		"esbuild": "0.28.1",
+		"convex-test": "^0.0.58",
+		"esbuild": "0.28.2",
 		"vitest": "catalog:"
 	}
 }

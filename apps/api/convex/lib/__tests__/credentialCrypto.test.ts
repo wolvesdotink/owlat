@@ -57,6 +57,22 @@ describe('credentialCrypto', () => {
 		vi.stubEnv('INSTANCE_SECRET', 'a-completely-different-secret');
 		expect(() => decryptSecret(env)).toThrow();
 	});
+
+	it('refuses to seal under a too-short INSTANCE_SECRET (entropy floor)', () => {
+		vi.stubEnv('INSTANCE_SECRET', 'short'); // 5 bytes < 16-byte floor
+		expect(() => encryptSecret('secret')).toThrow(/at least 16 bytes/);
+	});
+
+	it('refuses to open under a too-short INSTANCE_SECRET (entropy floor)', () => {
+		const env = encryptSecret('secret'); // sealed under the strong beforeEach secret
+		vi.stubEnv('INSTANCE_SECRET', 'x'.repeat(15)); // 15 bytes < 16-byte floor
+		expect(() => decryptSecret(env)).toThrow(/at least 16 bytes/);
+	});
+
+	it('accepts an INSTANCE_SECRET exactly at the 16-byte floor', () => {
+		vi.stubEnv('INSTANCE_SECRET', 'x'.repeat(16));
+		expect(decryptSecret(encryptSecret('ok'))).toBe('ok');
+	});
 });
 
 describe('createSecretBox', () => {

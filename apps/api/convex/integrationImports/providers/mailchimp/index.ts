@@ -19,6 +19,7 @@ import {
 	type SuppressionRow,
 } from '../../_common';
 import type { ImportRow } from '../../../contacts/import';
+import { utf8ToBase64 } from '../../../lib/bytes';
 
 const PAGE_SIZE = 100;
 
@@ -38,8 +39,8 @@ interface MailchimpListResponse {
 }
 
 /**
- * What one non-subscribed audience member means for Owlat's suppression state
- * (plan D9), or `null` when it means nothing.
+ * What one non-subscribed audience member means for Owlat's suppression state, or `null` when it
+ * means nothing.
  *
  * NO SECOND FETCH IS NEEDED, and that is the whole shape of this feature on the
  * Mailchimp side. `GET /lists/{id}/members` is not status-filtered here: every
@@ -118,7 +119,7 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 			response = await fetch(url, {
 				method: 'GET',
 				headers: {
-					Authorization: `Basic ${Buffer.from(`anystring:${config.apiKey}`).toString('base64')}`,
+					Authorization: `Basic ${utf8ToBase64(`anystring:${config.apiKey}`)}`,
 					'Content-Type': 'application/json',
 				},
 			});
@@ -166,7 +167,7 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 			const properties: Record<string, string | number | boolean | null> = {};
 			for (const [key, value] of Object.entries(mergeFields)) {
 				if (key === 'FNAME' || key === 'LNAME') continue;
-				if (value === undefined || value === null || value === '') continue;
+				if (value == null || value === '') continue;
 				properties[key] = value;
 			}
 			rows.push({

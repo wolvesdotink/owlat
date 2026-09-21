@@ -6,13 +6,13 @@
  * lets the operator PUBLISH their own policy so senders delivering TO this
  * deployment are told to require verified TLS.
  *
- * This module holds the two READ queries (V8 runtime): the public policy
- * content the Nuxt route serves and the admin DNS-record guidance. The LIVE
- * verification action lives in the sibling `domains/mtaStsVerify.ts` because it
- * needs `node:dns` + `fetch` and must therefore be a `'use node'` module (Convex
+ * This module holds the two READ queries (V8 runtime): the public policy content
+ * the Nuxt route serves and the admin DNS-record guidance. The LIVE verification
+ * action lives in the sibling `domains/mtaStsVerify.ts` because it needs
+ * `node:dns` + `fetch` and must therefore be a `'use node'` module (Convex
  * forbids queries/mutations in a Node runtime module) — the two files together
- * are the MTA-STS backend surface the reviewer asked to split out of
- * `domains/domains.ts` + `domains/dnsVerification.ts`.
+ * are the MTA-STS backend surface, split out of `domains/domains.ts` +
+ * `domains/dnsVerification.ts`.
  */
 
 import {

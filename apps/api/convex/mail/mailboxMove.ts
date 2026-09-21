@@ -1,6 +1,6 @@
 /**
  * "Move my mailbox here" — the staged full move of a connected external mailbox
- * onto an Owlat-hosted mailbox on the SAME address (piece c5).
+ * onto an Owlat-hosted mailbox on the SAME address.
  *
  * A migration (mail/migration.ts) is a one-time HISTORICAL import that leaves
  * the external account live and syncing. A *move* goes the rest of the way: it
@@ -37,7 +37,8 @@ import { internal } from '../_generated/api';
 import { authedMutation, adminMutation, publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
-import { provisionMailbox } from './mailbox';
+import { provisionMailbox } from './mailbox/identity';
+import { stopExternalAccountSync } from './external/accountTeardown';
 import { getOptional } from '../lib/env';
 import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import {
@@ -311,10 +312,12 @@ export const archive = authedMutation({
 		const account = await ctx.db.get(move.accountId);
 		if (account && account.status !== 'disconnected') {
 			// Stop the mail-sync worker: it only picks up pending/connected/error
-			// accounts, so flipping to 'disconnected' halts sync. The mailbox row is
-			// left 'active' (unlike the hard disconnect path) so the archived history
-			// stays readable — a read-only archive, not a deleted mailbox.
-			await ctx.db.patch(account._id, { status: 'disconnected', updatedAt: now });
+			// accounts, so flipping to 'disconnected' halts sync, and the stored
+			// password goes with it — mail arrives at the hosted mailbox now, so
+			// keeping a credential for the old provider buys nothing. The mailbox row
+			// is left 'active' (unlike the hard disconnect path) so the archived
+			// history stays readable — a read-only archive, not a deleted mailbox.
+			await stopExternalAccountSync(ctx, account, { now, reason: 'move' });
 			await ctx.db.insert('mailAuditLog', {
 				mailboxId: move.sourceMailboxId,
 				event: 'mailbox_move.archived',

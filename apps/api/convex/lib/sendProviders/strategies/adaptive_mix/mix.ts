@@ -1,5 +1,5 @@
 /**
- * The mix decision — PURE (plan D15).
+ * The mix decision — PURE.
  *
  * Given a cell's share and one recipient's identity, decide which arm the
  * recipient belongs to and whether it belongs to the randomized calibration
@@ -8,7 +8,7 @@
  * identity at all fails CLOSED to the reference arm rather than reaching for a
  * draw — so every branch is reproducible from a fixture.
  *
- * THE ANTI-COHORT PROPERTY (D7) is the reason this file exists. Salting the
+ * THE ANTI-COHORT PROPERTY is the reason this file exists. Salting the
  * hash with `contactId` alone would put a contact in the same arm for every
  * campaign forever: the two arms would then be two fixed COHORTS, and every
  * ratio the controller reads would be a comparison of cohort quality rather
@@ -19,7 +19,7 @@
  * population every time the controller moves the share, so a share change is a
  * fresh draw and not a re-labelling of the previous one.
  *
- * THE STRATIFICATION / CALIBRATION SPLIT (D8) is the second reason. Stratified
+ * THE STRATIFICATION / CALIBRATION SPLIT is the second reason. Stratified
  * assignment — send the own MTA the most engaged recipients first — is the
  * right WARMING policy and a terrible MEASUREMENT policy: it makes the own arm
  * systematically higher-quality than the reference arm, so any engagement ratio
@@ -58,7 +58,7 @@ export const CALIBRATION_SLICE_AT_OR_ABOVE_HALF = 0.05;
 export const DEFAULT_MIX_VERSION = 0;
 
 /**
- * How the arm was chosen. Recorded for the audit trail (D12): a controller
+ * How the arm was chosen. Recorded for the audit trail: a controller
  * decision nobody can explain is experienced as a bug, and the same is true of
  * an assignment.
  */
@@ -77,7 +77,7 @@ export type MixAssignmentBasis =
 	| 'unidentified';
 
 /**
- * The cell's controller state. `ownShare` is the resolved D1 expression
+ * The cell's controller state. `ownShare` is the resolved share expression
  * (`ownShare ?? (isFallbackActive ? 0 : 1)`) — this module never reads a route
  * state row itself.
  */
@@ -89,7 +89,7 @@ export interface MixCellState {
 export interface MixRecipientIdentity {
 	/** The stable per-recipient salt. Absent for a send with no contact row. */
 	readonly contactId?: string | undefined;
-	/** THE anti-cohort salt (D7). */
+	/** THE anti-cohort salt. */
 	readonly campaignId?: string | undefined;
 	/**
 	 * Engagement percentile in `[0,1)`, 1 = most engaged, as produced by
@@ -137,8 +137,8 @@ export interface MixAssignment {
 	readonly bucket: number | null;
 	/**
 	 * Why this decision came out the way it did. DIAGNOSTIC ONLY: it is not
-	 * persisted on the assignment row, because the audit trail D12 asks for is
-	 * owned by P3's `mixDecisions` table, which records the CONTROLLER's
+	 * persisted on the assignment row, because the audit trail the ramp owes an
+	 * operator lives in the `mixDecisions` table, which records the CONTROLLER's
 	 * per-cell evaluation (from/to share, verdict, failed gate, gate inputs) —
 	 * the decision a human can act on. A per-recipient copy of a branch label
 	 * would be a second, far larger audit trail of a decision nobody reviews
@@ -172,17 +172,17 @@ export type MixContext =
 	| { readonly kind: 'assigned'; readonly arm: MixArm };
 
 /**
- * Calibration slice size for a cell (D8): 10% below `s = 0.5`, 5% at or above
+ * Calibration slice size for a cell: 10% below `s = 0.5`, 5% at or above
  * it, 0% once the cell graduates.
  *
  * GRADUATION NEEDS NO PARAMETER HERE. A graduated cell is by definition one
- * pinned at `s = 1` (D9), which is the degenerate case below: both arms of the
+ * pinned at `s = 1`, which is the degenerate case below: both arms of the
  * split are the same arm, so a "randomized" slice would carry no comparison at
  * all — marking rows `isCalibration` there would feed the engagement-ratio gate
  * a one-armed sample. `s = 0` is the mirror image. A separate `isGraduated`
  * knob would have been a second, unwired way to say what the share already
- * says; if P3 ever needs to zero the slice at a share below the ceiling, it can
- * add the parameter then.
+ * says; if the controller ever needs to zero the slice at a share below the
+ * ceiling, it can add the parameter then.
  */
 export function calibrationSliceFor(ownShare: number): number {
 	const share = clampOwnShare(ownShare);
@@ -225,13 +225,13 @@ type MixHashConsumer =
 	| 'rank';
 
 /**
- * THE ANTI-COHORT SALT (D7), resolved.
+ * THE ANTI-COHORT SALT, resolved.
  *
  * A campaign passes its campaign id. A send with NO campaign — the whole
  * `automation` and `transactional` streams — passes its send id as the fallback
  * key, and THAT is the salt: a constant salt segment there would pin a contact
  * to one arm for the entire life of a mix version, which is precisely the two
- * fixed cohorts D7 exists to prevent, and `automation` is a first-class
+ * fixed cohorts the salt exists to prevent, and `automation` is a first-class
  * high-volume stream. With the send id in the salt the arm is re-drawn per
  * MESSAGE and stays stable within one message, which is exactly the property
  * the assignment row records.
@@ -362,7 +362,7 @@ export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 	const sliceThreshold = Math.round(calibrationSliceFor(ownShare) * MIX_BUCKET_SPACE);
 	// Its own hash namespace, and — critically — no engagement rank anywhere in
 	// the key. Slice membership must be independent of engagement, or the gate
-	// that reads it is measuring cohort quality again (D8).
+	// that reads it is measuring cohort quality again.
 	//
 	// An identity-less recipient never reaches here: it has nothing stable to
 	// join a randomized comparison on, so it fails closed to the reference arm

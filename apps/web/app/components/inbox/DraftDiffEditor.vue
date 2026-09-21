@@ -26,9 +26,9 @@ const props = withDefaults(
 		applyLabel?: string;
 		/**
 		 * Soft-hold: a teammate is actively replying to this thread, so Apply
-		 * (save & approve) is HELD — disabled-styled but visible, with
-		 * {@link heldReason} shown beneath. Discard stays enabled. Releases on its
-		 * own when their presence drops (UX piece b3b).
+		 * (save & approve) is HELD — disabled-styled but visible, with {@link
+		 * heldReason} shown beneath. Discard stays enabled. Releases on its own
+		 * when their presence drops.
 		 */
 		held?: boolean;
 		/** Plain-language reason shown under the row while `held`. */
@@ -60,7 +60,7 @@ const emit = defineEmits<{
 	(e: 'update:modelValue', value: string): void;
 	(e: 'apply'): void;
 	/**
-	 * Save WITHOUT approving (piece D1'): persist the edit as a draft revision
+	 * Save WITHOUT approving: persist the edit as a draft revision
 	 * and stay in `draft_ready`. Rendered only when {@link showSave} is set, so
 	 * surfaces without a save path keep the two-button layout.
 	 */

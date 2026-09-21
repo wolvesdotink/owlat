@@ -1,5 +1,5 @@
 /**
- * Unit tests for the whole-draft revise prompt assembly (mail/reviseDraft via
+ * Unit tests for the whole-draft revise prompt assembly (mail/ai/reviseDraft via
  * the pure exported {@link buildRevisePrompt}). The user's freeform instruction
  * is a TRUSTED directive; the current draft is the user's OWN text; the quoted
  * thread is UNTRUSTED data framed behind SYSTEM_GUARD. These exercise the pure
@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildRevisePrompt } from '../reviseDraft';
+import { buildRevisePrompt } from '../ai/reviseDraft';
 
 describe('buildRevisePrompt', () => {
 	it('layers the user instruction as a trusted directive over the untrusted thread', () => {

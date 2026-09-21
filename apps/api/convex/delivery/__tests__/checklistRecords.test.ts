@@ -104,4 +104,21 @@ describe('Deliverability Center setup values', () => {
 			'per-ip.example.test'
 		);
 	});
+
+	it('generates no MTA-STS record for a domain whose mail is received elsewhere', () => {
+		// An MTA-STS policy names OUR MX and tells every compatible sender to use
+		// it. This domain's MX is Google's, so in `enforce` mode publishing the
+		// record blackholes the customer's inbound mail. The checklist hands these
+		// values out as copy-paste DNS under a "publish this" heading, so an
+		// external-receiving domain must get nothing here at all.
+		vi.stubEnv('EHLO_HOSTNAME', 'canonical.example.test');
+		const domain = {
+			domain: 'example.test',
+			dnsRecords: {},
+			receivingMode: 'external',
+			externalReceivingProvider: 'google',
+		} as unknown as Doc<'domains'>;
+		const settings = { mtaStsMode: 'enforce' } as unknown as Doc<'instanceSettings'>;
+		expect(domainSetupValuesForItem('domain.mta_sts', domain, [], settings)).toEqual([]);
+	});
 });

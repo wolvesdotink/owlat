@@ -12,6 +12,10 @@ const stubs = {
 	Icon: { template: '<i />' },
 	NuxtLink: { template: '<a><slot /></a>' },
 	UiCard: { template: '<div><slot /></div>' },
+	UiEmptyState: {
+		props: ['title', 'description'],
+		template: '<div>{{ title }} {{ description }}</div>',
+	},
 	UiIconBox: { template: '<i />' },
 };
 

@@ -141,7 +141,10 @@ async function handleFileUpload(files: FileList | File[]) {
 			const contentType = file.type || 'application/octet-stream';
 			const registered = await registerUploadedMediaReference(
 				{
-					createMediaAsset: (metadata) => createMediaAsset(metadata),
+					createMediaAsset: async (metadata) => {
+						const created = await createMediaAsset(metadata);
+						return created.ok ? created.result : undefined;
+					},
 					getUrl: (registeredStorageId) =>
 						requireConvex().query(api.storage.getUrl, { storageId: registeredStorageId }),
 				},
@@ -297,7 +300,7 @@ function handleFileInput(event: Event) {
 				:class="attachments.length > 0 ? 'pb-3 pt-1' : 'py-5'"
 				@click="fileInputRef?.click()"
 			>
-				<Icon v-if="isUploading" name="lucide:loader-2" class="w-4 h-4 text-brand animate-spin" />
+				<Icon v-if="isUploading" name="lucide:loader-2" class="w-4 h-4 text-brand animate-spin motion-reduce:animate-none" />
 				<template v-else>
 					<Icon name="lucide:paperclip" class="w-4 h-4 text-text-tertiary" />
 					<span class="text-sm text-text-secondary">

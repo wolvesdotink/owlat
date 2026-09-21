@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
 	VERP_KEY_MIN_BYTES,
-	VERP_MAC_B64URL_LEN,
 	VERP_WINDOW_MS,
 	VERP_WINDOW_TOLERANCE,
 	buildVerpAddress,
@@ -34,10 +33,10 @@ describe('token grammar', () => {
 		expect(match?.[3]).toBe(DOMAIN);
 	});
 
-	it('carries a MAC of exactly VERP_MAC_B64URL_LEN characters', () => {
+	it('carries a 14-character (84-bit) base64url MAC', () => {
 		const address = buildVerpAddress(ID, DOMAIN, KEY, NOW);
 		const mac = /\+([A-Za-z0-9_-]+)@/.exec(address.slice('bounce+'.length))?.[1];
-		expect(mac).toHaveLength(VERP_MAC_B64URL_LEN);
+		expect(mac).toHaveLength(14);
 	});
 
 	it('never emits a character that would need quoting in an SMTP local part', () => {

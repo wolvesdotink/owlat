@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth';
-import { organization, oneTimeToken } from 'better-auth/plugins';
+import { organization, oneTimeToken, twoFactor } from 'better-auth/plugins';
 import { createAccessControl } from 'better-auth/plugins/access';
-import { getOptional, getRequired } from '../lib/env';
+import { getOptional, getRequired, getBoolean } from '../lib/env';
 import {
 	defaultStatements,
 	adminAc,
@@ -28,6 +28,9 @@ import {
 	generateChangeEmailVerificationHtml,
 	generateNewEmailVerificationHtml,
 } from '../lib/systemEmails';
+import { resolveBetterAuthIpAddressConfig } from './ipAddress';
+import { resolveTrustedOrigins } from './trustedOrigins';
+import { assertRegistrationAllowed } from './registrationGate';
 
 // Custom access control to use 'editor' instead of 'member'
 // This matches the legacy team role system
@@ -52,10 +55,28 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 	// the action ctx so the four hooks below stay unchanged.
 	const sendViaMta = (params: { to: string; from: string; subject: string; html: string }) =>
 		ctx.runAction(internal.systemMail.sendSystemEmail, params);
+	// Email verification is opt-in per deployment so enabling it can never lock
+	// out an existing install whose current users signed up before verification
+	// existed (they'd have no verified flag). Unset ⇒ off (current behavior); when
+	// on it gates signup AND invitation acceptance on a followed verification link.
+	const requireEmailVerification = getBoolean('REQUIRE_EMAIL_VERIFICATION');
 	return {
 		// Cast required: BetterAuth component bundles its own copy of Convex types
 		// which are structurally identical but nominally different (bun duplicate resolution)
 		database: authComponent.adapter(ctx as Parameters<typeof authComponent.adapter>[0]),
+		// H3: enforce invite-only registration on the server. Fires for every email
+		// signup routed through the BetterAuth instance (the seed path uses the raw
+		// component adapter and is intentionally not gated). See
+		// `assertRegistrationAllowed` in `auth/registrationGate.ts`.
+		databaseHooks: {
+			user: {
+				create: {
+					before: async (user: { email?: string }) => {
+						await assertRegistrationAllowed(ctx, user.email);
+					},
+				},
+			},
+		},
 		// Fail closed: an unset secret makes BetterAuth fall back to a built-in,
 		// publicly-known default, which would let anyone forge session cookies.
 		// Real deploys always set it (quickstart generates it); this throws loudly
@@ -73,6 +94,10 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			enabled: true,
 			minPasswordLength: 10,
 			maxPasswordLength: 128,
+			// When enabled (REQUIRE_EMAIL_VERIFICATION), an unverified account cannot
+			// sign in — BetterAuth sends a verification link instead. Guarded so
+			// existing installs default to the prior behavior.
+			requireEmailVerification,
 			sendResetPassword: async ({
 				user,
 				token,
@@ -143,6 +168,11 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			},
 		},
 		emailVerification: {
+			// Send a verification link on signup when REQUIRE_EMAIL_VERIFICATION is
+			// on, so a fresh account must confirm ownership of the address before it
+			// is usable (H3: the stored profile email is bound to this verified
+			// identity). Off by default to avoid locking out pre-existing accounts.
+			sendOnSignUp: requireEmailVerification,
 			// Final hop of the change-email flow. BetterAuth invokes this with
 			// `user.email` already set to the NEW address, so the verification
 			// link is delivered to the address being claimed. Following it is
@@ -173,35 +203,68 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 		session: {
 			expiresIn: 60 * 60 * 24 * 3, // 3 days
 			updateAge: 60 * 60 * 12, // Update session every 12 hours
+			// Freshness OFF, deliberately.
+			//
+			// BetterAuth's `freshAge` (default 24h, measured from session
+			// CREATION and never refreshed by updateAge) gates exactly three
+			// endpoints. Two are unreachable on this instance: `/delete-user` is
+			// 404 because `user.deleteUser` is not enabled — account deletion runs
+			// through convex/auth/accountManagement.ts instead — and
+			// `/unlink-account` has nothing to unlink with no social providers
+			// configured. The third is `/list-sessions`, which the sign-in and
+			// security page is built on.
+			//
+			// So the default would buy no protection here and would instead make
+			// that page fail with SESSION_NOT_FRESH for two of every three days of
+			// a session's life. A security page that usually cannot load is worse
+			// than one with no freshness gate: it teaches people to ignore it.
+			// Revoking is unaffected either way — the revoke endpoints use the
+			// authoritative-session middleware, which has no freshness component.
+			//
+			// Re-enabling `user.deleteUser` means revisiting this.
+			freshAge: 0,
 			cookieCache: {
 				enabled: true,
 				maxAge: 5 * 60, // 5 minutes
 			},
 		},
 		rateLimit: {
-			// BetterAuth's built-in limiter keys on the client IP (first entry of
-			// X-Forwarded-For). Production deployments get that header from the
-			// fronting proxy (Caddy, and the web app's /api/auth proxy extends the
-			// chain). Traffic that reaches a DEV deployment directly (the desktop
-			// app in `tauri dev`, curl against :3211) carries no such header, so
-			// the limiter would skip every request and log a WARN each time —
-			// disable it where OWLAT_DEV_MODE is set, keep the default elsewhere.
+			// BetterAuth's built-in login/reset limiter keys on the resolved client
+			// IP (see `advanced.ipAddress` below — right-anchored, spoof-resistant).
+			// Production deployments get the client IP from the fronting proxy
+			// (Caddy, and the web app's /api/auth proxy extends the chain). Traffic
+			// that reaches a DEV deployment directly (the desktop app in `tauri dev`,
+			// curl against :3211) carries no such header, so the limiter would skip
+			// every request and log a WARN each time — disable it where OWLAT_DEV_MODE
+			// is set, keep the default elsewhere.
 			enabled: !isDevDeployment(),
 		},
-		trustedOrigins: (() => {
-			const adminSiteUrl = getOptional('ADMIN_SITE_URL');
-			return [
-				getOptional('SITE_URL') || 'http://localhost:3000',
-				adminSiteUrl ?? 'http://localhost:3001',
-				// Desktop app (Tauri) origins. The packaged webview serves the
-				// bundled SPA from these origins and talks to this instance
-				// cross-origin via the cross-domain plugin (header-based session,
-				// no cookies). See apps/web/app/lib/auth-client.ts (desktop branch).
-				'tauri://localhost',
-				'https://tauri.localhost',
-			];
-		})(),
+		advanced: {
+			// M12: resolve the limiter's client IP from the RIGHT-anchored trusted
+			// proxy entry (aligned with publicRateLimit.getClientIp) instead of
+			// BetterAuth's default leftmost/spoofable X-Forwarded-For.
+			ipAddress: resolveBetterAuthIpAddressConfig(),
+		},
+		// Deferred to request time (a function, not an eager array): in production
+		// this REQUIRES SITE_URL rather than silently trusting the loopback
+		// fallback, and evaluating it at import time — the component schema-analysis
+		// path, where env vars are unavailable — would throw and fail every push.
+		trustedOrigins: () => resolveTrustedOrigins(),
 		plugins: [
+			// One-time token: the /desktop/connect browser page mints a short-lived
+			// token (bound to the just-authenticated session) that it hands back to
+			// the desktop app via the `owlat://auth?ott=` deep link.
+			//
+			// ORDER MATTERS: this plugin and `crossDomain` both export an endpoint
+			// under the key `verifyOneTimeToken`, and BetterAuth merges plugin
+			// endpoints by key, so whichever plugin comes later wins. With
+			// `oneTimeToken` last, its `/one-time-token/verify` route replaced the
+			// cross-domain `/cross-domain/one-time-token/verify` route the desktop
+			// app redeems its token against, and every "connect an existing
+			// server" handshake ended in a 404. Keep `oneTimeToken` FIRST so the
+			// cross-domain verify survives; the generate endpoint has a unique key
+			// and is kept either way. Pinned by crossDomainVerifyRoute.test.ts.
+			oneTimeToken(),
 			// Cross-domain plugin: enables cookieless, cross-origin auth for the
 			// Tauri desktop app. It rewrites the `Better-Auth-Cookie` request
 			// header into a real cookie before session resolution and moves
@@ -210,10 +273,25 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			// Must precede `convex` so its before-hook resolves the session that
 			// `/convex/token` then mints a JWT from.
 			crossDomain({ siteUrl: getOptional('SITE_URL') || 'http://localhost:3000' }),
-			// One-time token: the /desktop/connect browser page mints a short-lived
-			// token (bound to the just-authenticated session) that it hands back to
-			// the desktop app via the `owlat://auth?ott=` deep link.
-			oneTimeToken(),
+			// TOTP two-factor. Enrolment is entirely opt-in and lives on
+			// /dashboard/preferences/security: nothing about sign-in changes for an
+			// account that never enables it, and the plugin only intercepts
+			// `/sign-in/email` once `user.twoFactorEnabled` is true (the response
+			// then carries `twoFactorRedirect` instead of a session, and the web
+			// login page prompts for the code).
+			//
+			// Only the TOTP and backup-code factors are wired. `otpOptions` is
+			// deliberately left unconfigured: an emailed OTP would travel over the
+			// very mailbox the second factor exists to protect. Without a
+			// `sendOTP`, `/two-factor/send-otp` fails closed with
+			// OTP_NOT_CONFIGURED, so the factor cannot be reached at all.
+			//
+			// The plugin's schema additions (`twoFactor.failedVerificationCount`,
+			// `twoFactor.lockedUntil`, `user.twoFactorEnabled`) are mirrored into
+			// convex/betterAuth/schema.ts — Convex rejects writes of undeclared
+			// fields, so the account-lockout counter would otherwise throw on the
+			// first wrong code. authSchemaParity.test.ts holds that mirror exact.
+			twoFactor({ issuer: 'Owlat' }),
 			// Convex plugin provides /convex/token and /convex/jwks endpoints
 			// Required for Convex client authentication via JWT
 			convex({
@@ -227,14 +305,33 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 							activeOrganizationId: session['activeOrganizationId'] ?? null,
 						};
 					},
+					// REVOCATION WINDOW (accepted): the payload carries
+					// `activeOrganizationId`, so lib/sessionOrganization's claims path
+					// serves calls from the token WITHOUT re-reading the BetterAuth
+					// session row. A server-side revocation (logout-everywhere,
+					// password reset) therefore leaves an already-minted JWT valid for
+					// up to the plugin's 15-minute TTL. This is deliberate: role and
+					// membership are still re-derived per call from the live `member`
+					// row (getBetterAuthSessionWithRole), so demotion fails closed
+					// immediately — only full session revocation has the bounded
+					// window. Revisit only if that window becomes a real requirement;
+					// checking the session row per call would add a DB read to every
+					// authed function the dashboard live-subscribes.
 				},
 			}),
 			organization({
 				// Custom access control with 'editor' role instead of 'member'
 				ac,
 				roles: { owner, admin, editor },
+				// H3: when email verification is enabled, an invitee must confirm the
+				// invited address before the membership is accepted — so the email a
+				// claim path later trusts (pendingInboxMembership / pendingMailbox) is
+				// a verified identity, not an unconfirmed client-supplied value.
+				// Guarded off by default (see requireEmailVerification) so existing
+				// installs are not locked out.
+				requireEmailVerificationOnInvitation: requireEmailVerification,
 				// Single-org-per-instance: the one org is bootstrapped by the
-				// /seed/admin HTTP action (apps/api/convex/seedAdmin.ts) which
+				// /seed/admin HTTP action (apps/api/convex/seedAdminHttp.ts) which
 				// writes through the BetterAuth adapter directly. The public
 				// `auth/organization/create` endpoint stays disabled so users
 				// cannot create additional orgs and silently merge data with

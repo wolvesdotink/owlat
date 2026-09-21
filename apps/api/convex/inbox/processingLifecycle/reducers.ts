@@ -1,8 +1,9 @@
 /**
  * Inbox processing lifecycle — pure state-graph + per-state reducers.
  *
- * The side-effect-free half of the lifecycle: the `LEGAL_EDGES` graph, the
- * terminal-state set, and the per-state reducers that map
+ * The side-effect-free half of the lifecycle: the `PROCESSING_LIFECYCLE` edge
+ * graph (declared through the generic lifecycle core, which derives the
+ * terminal states from it) and the per-state reducers that map
  * `(message, input) → { patch, effects }`. It touches neither `ctx.db` nor
  * `ctx.scheduler` — the effect runner in `./effects.ts` is the only place that
  * does. The typed contract (status/action literals, `TransitionInput` union +
@@ -14,6 +15,7 @@
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
+import { defineLifecycle } from '../../lib/lifecycle';
 import type {
 	Effect,
 	InputFor,
@@ -31,45 +33,52 @@ import type {
 // and `plan` action type were dropped pre-prod with ADR-0014 — they were
 // vestigial (the classifier never transitioned to `planning`; the drafter
 // wrote a `plan` row whose payload was JSON literal construction).
+//
+// The graph itself lives in the generic lifecycle core (`lib/lifecycle.ts`,
+// ADR-0058); the reducers below and the effect runner in `./effects.ts` stay
+// where they are. `sent`, `rejected` and `archived` declare no outgoing edges,
+// which is what makes them terminal — there is no second hand-maintained
+// terminal set to drift from the graph — and this machine publishes the
+// distinct `terminal` refusal, so `reportsTerminalRefusals` is on.
 
-export const LEGAL_EDGES: Record<ProcessingStatus, ReadonlySet<ProcessingStatus>> = {
-	// `archived` here documents coalescing supersession (agent/coalescing.ts
-	// archives superseded `received` messages with reason 'coalesced'). The
-	// `* → archived` star-source branch in dispatch() already permits it; this
-	// entry keeps the declared contract in sync with runtime behavior.
-	received: new Set<ProcessingStatus>(['security_check', 'archived']),
-	security_check: new Set<ProcessingStatus>(['classifying', 'quarantined', 'archived']),
-	quarantined: new Set<ProcessingStatus>(['received', 'archived']),
-	classifying: new Set<ProcessingStatus>([
-		'drafting',
-		'draft_ready',
-		'awaiting_clarification',
-		'archived',
-	]),
-	// The clarification loop: parked awaiting an owner answer. Resumes into
-	// `drafting` two ways — the owner answers (`answerClarification`), or the
-	// abandoned-question fallback cron gives up after the window and drafts a
-	// flagged best-guess. `archived` is the dismiss edge (permitted uniformly by
-	// the `* → archived` star-source in dispatch; declared here to keep the
-	// contract in sync).
-	awaiting_clarification: new Set<ProcessingStatus>(['drafting', 'archived']),
-	drafting: new Set<ProcessingStatus>(['draft_ready', 'approved']),
-	draft_ready: new Set<ProcessingStatus>(['approved', 'rejected', 'archived']),
-	// `draft_ready` is the fail-soft degrade for a cancelled delayed auto-send
-	// (cancelAutoSend): aborting the in-flight send routes the reply back to the
-	// human review queue rather than silently dropping it.
-	approved: new Set<ProcessingStatus>(['sent', 'draft_ready']),
-	sent: new Set<ProcessingStatus>(),
-	rejected: new Set<ProcessingStatus>(),
-	archived: new Set<ProcessingStatus>(),
-	failed: new Set<ProcessingStatus>(['received']),
-};
-
-export const TERMINAL: ReadonlySet<ProcessingStatus> = new Set(['sent', 'rejected', 'archived']);
+export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
+	{
+		// `archived` here documents coalescing supersession (agent/coalescing.ts
+		// archives superseded `received` messages with reason 'coalesced'). The
+		// `* → archived` star-source branch in dispatch() already permits it; this
+		// entry keeps the declared contract in sync with runtime behavior.
+		received: ['security_check', 'archived'],
+		security_check: ['classifying', 'quarantined', 'archived'],
+		quarantined: ['received', 'archived'],
+		classifying: ['drafting', 'draft_ready', 'awaiting_clarification', 'informational', 'archived'],
+		// Needs no reply: parked for the Updates dashboard. A reader can dismiss
+		// it (`archived`, reason 'update_dismissed') or overrule the classifier
+		// and ask for a draft after all (`drafting`, via walker.resumeDraft).
+		informational: ['drafting', 'archived'],
+		// The clarification loop: parked awaiting an owner answer. Resumes into
+		// `drafting` two ways — the owner answers (`answerClarification`), or the
+		// abandoned-question fallback cron gives up after the window and drafts a
+		// flagged best-guess. `archived` is the dismiss edge (permitted uniformly by
+		// the `* → archived` star-source in dispatch; declared here to keep the
+		// contract in sync).
+		awaiting_clarification: ['drafting', 'archived'],
+		drafting: ['draft_ready', 'approved'],
+		draft_ready: ['approved', 'rejected', 'archived'],
+		// `draft_ready` is the fail-soft degrade for a cancelled delayed auto-send
+		// (cancelAutoSend): aborting the in-flight send routes the reply back to the
+		// human review queue rather than silently dropping it.
+		approved: ['sent', 'draft_ready'],
+		sent: [],
+		rejected: [],
+		archived: [],
+		failed: ['received'],
+	},
+	{ reportsTerminalRefusals: true }
+);
 
 // `to: 'failed'` can come from any non-terminal source; checked separately.
 export function canFail(from: ProcessingStatus): boolean {
-	return !TERMINAL.has(from);
+	return !PROCESSING_LIFECYCLE.isTerminal(from);
 }
 
 // ─── Reducer ────────────────────────────────────────────────────────────────
@@ -140,8 +149,12 @@ function reduceDrafting(
 	}
 	// Classification has completed (classifying → drafting) — mine the inbound
 	// message for organizational knowledge (the "self-building" graph). Fires
-	// exactly once per message; the drafting → draft_ready edge does NOT re-fire.
-	effects.push({ kind: 'schedule_knowledge_extraction', inboundMessageId: message._id });
+	// exactly once per message; the drafting → draft_ready edge does NOT re-fire,
+	// and neither does a reader's `informational → drafting` overrule (the
+	// informational edge already extracted).
+	if (message.processingStatus !== 'informational') {
+		effects.push({ kind: 'schedule_knowledge_extraction', inboundMessageId: message._id });
+	}
 	// Feature requests flow to engineering as code-work tasks (the "customer
 	// request in → PR out" loop). Gated on inbox.codeTasks inside the scheduled
 	// mutation.
@@ -191,7 +204,7 @@ function reduceDraftReady(
 }
 
 function reduceAwaitingClarification(
-	_message: Doc<'inboundMessages'>,
+	message: Doc<'inboundMessages'>,
 	input: InputFor<'awaiting_clarification'>
 ): TransitionParts {
 	const patch: Record<string, unknown> = {};
@@ -214,6 +227,35 @@ function reduceAwaitingClarification(
 		patch['classification'] = input.classification;
 		patch['confidenceScore'] = input.classification.confidence;
 	}
+	// The agent is now waiting on a person. Tell that person (assignee, else
+	// every shared-inbox reader) instead of relying on them to notice the row
+	// in the review queue.
+	effects.push({ kind: 'notify_clarification', inboundMessageId: message._id });
+	return { patch, effects };
+}
+
+function reduceInformational(
+	message: Doc<'inboundMessages'>,
+	input: InputFor<'informational'>
+): TransitionParts {
+	const patch: Record<string, unknown> = {};
+	const effects: Effect[] = [];
+	if (input.completedActionId) {
+		effects.push(
+			completeAction(input.completedActionId, input.output, {
+				durationMs: input.durationMs,
+				modelUsed: input.modelUsed,
+				tokenUsage: input.tokenUsage,
+			})
+		);
+	}
+	if (input.classification) {
+		patch['classification'] = input.classification;
+		patch['confidenceScore'] = input.classification.confidence;
+	}
+	// An update we never reply to is still knowledge (a supplier's new terms, a
+	// customer's org change). Mine it exactly like the drafting edge does.
+	effects.push({ kind: 'schedule_knowledge_extraction', inboundMessageId: message._id });
 	return { patch, effects };
 }
 
@@ -242,6 +284,7 @@ function reduceArchived(
 		);
 	}
 	if (input.securityFlags) patch['securityFlags'] = input.securityFlags;
+	patch['archiveReason'] = input.reason;
 	return { patch, effects };
 }
 
@@ -345,6 +388,8 @@ function buildTransition(message: Doc<'inboundMessages'>, input: TransitionInput
 			return reduceDraftReady(message, input);
 		case 'awaiting_clarification':
 			return reduceAwaitingClarification(message, input);
+		case 'informational':
+			return reduceInformational(message, input);
 		case 'quarantined':
 			return reduceQuarantined(message, input);
 		case 'archived':
@@ -363,6 +408,7 @@ function buildTransition(message: Doc<'inboundMessages'>, input: TransitionInput
 }
 
 const PROCESSED_AT_STATES: ReadonlySet<ProcessingStatus> = new Set([
+	'informational',
 	'approved',
 	'sent',
 	'rejected',

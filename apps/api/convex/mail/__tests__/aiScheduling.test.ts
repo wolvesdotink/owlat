@@ -1,11 +1,11 @@
 /**
  * Unit tests for the scheduling-focused reply framing
- * (mail/aiScheduling.buildSchedulingInstruction): it asks for accept + alternative
+ * (mail/ai/scheduling.buildSchedulingInstruction): it asks for accept + alternative
  * options, references the sender's proposed times VERBATIM as untrusted data,
  * and bounds the list. Pure helper — no network.
  */
 import { describe, it, expect } from 'vitest';
-import { buildSchedulingInstruction } from '../aiScheduling';
+import { buildSchedulingInstruction } from '../ai/scheduling';
 
 describe('buildSchedulingInstruction', () => {
 	it('asks for accept and alternative framings', () => {

@@ -1,7 +1,7 @@
 import type { FunctionReference, FunctionArgs, FunctionReturnType } from 'convex/server';
 import type { Ref } from 'vue';
 
-type ArgsOrFactory<Args> = Args | (() => Args | 'skip');
+export type ArgsOrFactory<Args> = Args | (() => Args | 'skip');
 
 function resolveArgs<Args>(args: ArgsOrFactory<Args>): Args | 'skip' {
 	return typeof args === 'function' ? (args as () => Args | 'skip')() : args;

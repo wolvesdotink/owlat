@@ -1,75 +1,61 @@
 import type { Page, Locator } from '@playwright/test';
+import { BasePage } from './BasePage';
 
-export class SegmentsPage {
-	readonly page: Page;
+export class SegmentsPage extends BasePage {
 	readonly newSegmentButton: Locator;
 	readonly searchInput: Locator;
-	readonly tableRows: Locator;
 
 	constructor(page: Page) {
-		this.page = page;
-		this.newSegmentButton = page.getByRole('button', { name: 'New Segment' });
+		super(page);
+		this.newSegmentButton = this.headerAction('New Segment');
 		this.searchInput = page.getByPlaceholder('Search segments...');
-		this.tableRows = page.locator('tbody tr');
 	}
 
 	async goto() {
 		await this.page.goto('/dashboard/audience/segments');
-		// Wait for page to load
-		await this.page.waitForSelector('h1', { timeout: 15_000 });
+		await this.expectOnPage('Segments');
 	}
 
 	async createSegment(data: { name: string; description?: string }) {
 		await this.newSegmentButton.click();
 
-		// The segment modal is a custom Teleport modal with role="dialog"
-		const modal = this.page.locator('[role="dialog"]');
-		await modal.waitFor();
+		const modal = await this.waitForModal();
 
 		await modal.locator('#segment-name').fill(data.name);
 		if (data.description) {
 			await modal.locator('#segment-description').fill(data.description);
 		}
 
-		// Add a condition (defaults to "List Membership" type)
+		// A segment needs a COMPLETE condition, not just a row: leaving the
+		// property unset keeps the form invalid ("Condition 1: Please select a
+		// property") and the modal silently refuses to close — which this spec
+		// used to sit and time out on, reported as "the modal never closed".
 		await modal.getByRole('button', { name: /Add Condition/i }).click();
 
-		// Change condition type to "Contact Property" via the select dropdown
-		const conditionTypeSelect = modal.locator('select.input').first();
-		await conditionTypeSelect.selectOption('contact_property');
+		// Drive the kind explicitly. It defaults to "Topic Membership", whose
+		// second select lists TOPICS — so which control sits at which index
+		// depends on the instance's data. Contact Property needs nothing seeded.
+		await modal.getByRole('combobox').first().selectOption({ label: 'Contact Property' });
+		await modal.getByRole('combobox').nth(1).selectOption({ label: 'Email' });
+		await modal.getByPlaceholder('Enter value...').fill('e2e@example.com');
 
-		// Click "Create Segment"
 		await modal.getByRole('button', { name: /Create Segment/i }).click();
-
-		// Wait for modal to close
-		await modal.waitFor({ state: 'hidden', timeout: 10_000 });
+		await this.waitForModalClose();
 	}
 
 	async editSegment(segmentName: string) {
-		const row = this.tableRows.filter({ hasText: segmentName });
-		// Edit button has title="Edit segment"
-		await row.locator('button[title="Edit segment"]').click();
-
-		const modal = this.page.locator('[role="dialog"]');
-		await modal.waitFor();
-		return modal;
+		await this.getTableRow(segmentName).getByRole('button', { name: 'Edit segment' }).click();
+		return this.waitForModal();
 	}
 
 	async deleteSegment(segmentName: string) {
-		const row = this.tableRows.filter({ hasText: segmentName });
-		// Delete button has title="Delete segment"
-		await row.locator('button[title="Delete segment"]').click();
-
-		// Confirm deletion in the UiModal confirmation dialog
-		const confirmModal = this.page.locator('[role="dialog"]');
-		await confirmModal.waitFor();
-		await confirmModal.getByRole('button', { name: /Delete Segment/i }).click();
-
-		// Wait for modal to close
-		await confirmModal.waitFor({ state: 'hidden', timeout: 10_000 });
+		await this.getTableRow(segmentName).getByRole('button', { name: 'Delete segment' }).click();
+		await this.waitForModal();
+		await this.clickModalButton(/Delete Segment/i);
+		await this.waitForModalClose();
 	}
 
-	async getSegmentRow(segmentName: string) {
-		return this.tableRows.filter({ hasText: segmentName });
+	getSegmentRow(segmentName: string): Locator {
+		return this.getTableRow(segmentName);
 	}
 }

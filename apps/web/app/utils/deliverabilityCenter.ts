@@ -181,16 +181,6 @@ export function itemKey(scope: DeliverabilityScope, id: DeliverabilityChecklistI
 	return scope.kind === 'deployment' ? `deployment:${id}` : `domain:${scope.domainId}:${id}`;
 }
 
-export function domainChoices(
-	groups: readonly DeliverabilityChecklistGroup[]
-): Array<{ id: Id<'domains'>; domain: string }> {
-	const choices = new Map<Id<'domains'>, string>();
-	for (const item of groups.flatMap((group) => group.items)) {
-		if (item.scope.kind === 'domain') choices.set(item.scope.domainId, item.scope.domain);
-	}
-	return [...choices].map(([id, domain]) => ({ id, domain }));
-}
-
 export function findDeliverabilityItem(
 	groups: readonly DeliverabilityChecklistGroup[],
 	alert: Pick<DeliverabilityRegressionAlert, 'itemId' | 'domainId'>

@@ -221,6 +221,15 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 		if (typeof value !== 'string') {
 			throw createError({ statusCode: 400, message: `Env value for ${key} must be a string.` });
 		}
+		// The allowlist gates which KEYS may be written, but an allowlisted value
+		// (e.g. DEFAULT_FROM_NAME) carrying a newline would inject arbitrary extra
+		// `.env` lines through the line-oriented writer. Reject control chars here.
+		if (/[\r\n\0]/.test(value)) {
+			throw createError({
+				statusCode: 400,
+				message: `Env value for ${key} must not contain control characters (newline, carriage return, or NUL).`,
+			});
+		}
 	}
 
 	// A named provider must be a real delivery kind. `none`/receive-only simply

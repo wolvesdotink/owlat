@@ -2,12 +2,12 @@
 
 /**
  * Outbound sealing — turn a built RFC 5322 message into a signed + encrypted
- * PGP/MIME message with PROTECTED HEADERS (Sealed Mail plan 2026-07-11, locked
- * decisions D1 + D4).
+ * PGP/MIME message with PROTECTED HEADERS.
  *
- * D1: OpenPGP (RFC 9580 profile) via `openpgp.js` — sign with the sender's
- * address key, encrypt to every recipient's pinned key.
- * D4: protected headers ON. The ENTIRE original message (its real `Subject` and
+ * OpenPGP (RFC 9580 profile) via `openpgp.js` — sign with the sender's address
+ * key, encrypt to every recipient's pinned key.
+ *
+ * PROTECTED HEADERS ARE ON. The ENTIRE original message (its real `Subject` and
  * all other headers included) is what gets encrypted, so the real subject travels
  * INSIDE the ciphertext; the OUTER message carries the literal placeholder
  * `Subject: ...` (three dots) and only the routing headers a relay actually needs
@@ -24,11 +24,11 @@
 import { randomBytes } from 'node:crypto';
 import * as openpgp from 'openpgp';
 
-/** The literal outer subject for a sealed message (locked decision D4). */
+/** The literal outer subject for a sealed message. */
 export const OUTER_SUBJECT_PLACEHOLDER = '...';
 
-export interface SealMimeOptions {
-	/** Armored PUBLIC keys of every recipient (D2 — all-or-nothing; verified upstream). */
+interface SealMimeOptions {
+	/** Armored PUBLIC keys of every recipient (all-or-nothing; verified upstream). */
 	recipientPublicKeysArmored: string[];
 	/** Armored PRIVATE key of the sender address (already opened from the vault). */
 	signingKeyArmored: string;

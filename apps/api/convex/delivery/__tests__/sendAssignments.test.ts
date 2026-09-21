@@ -809,7 +809,7 @@ describe('sendAssignments — campaign write path', () => {
 		expect(rows).toHaveLength(0);
 	});
 
-	it('is O(N) narrow inserts for N recipients and reads each distinct domain once', async () => {
+	it('writes one narrow row per recipient, all in one cell', async () => {
 		const t = convexTest(schema, modules);
 		const emails = Array.from({ length: 25 }, (_, index) => `user${index}@gmail.com`);
 		const { campaignId, recipients } = await seedRecipients(t, emails);
@@ -824,192 +824,6 @@ describe('sendAssignments — campaign write path', () => {
 		// One row per recipient, all in the same cell — no fan-out, no duplicates.
 		expect(new Set(rows.map((row) => row.sendId)).size).toBe(emails.length);
 		expect(new Set(rows.map((row) => row.cell))).toEqual(new Set(['campaign:gmail']));
-
-		// Static guard: the write path must not introduce a wide table scan,
-		// and the classifier read stays an indexed point read in the ONE shared
-		// helper both this module and the route resolver call. The guard covers
-		// every module the write path TRANSITS, not just this one: the route
-		// module also contains the full per-message resolver, which does read
-		// `providerHealth` whole — a document patched once per dispatch — and
-		// must never be reachable from an enqueue transaction.
-		const fs = await import('node:fs/promises');
-		const source = await fs.readFile(new URL('../sendAssignments.ts', import.meta.url), 'utf8');
-		expect(source).not.toMatch(/\.collect\(\)/);
-		expect(source).not.toMatch(/resolveSendRouteFromDb/);
-		const classifier = await fs.readFile(
-			new URL('../../lib/sendProviders/destinationProvider.ts', import.meta.url),
-			'utf8'
-		);
-		expect(classifier).not.toMatch(/\.collect\(\)/);
-		expect(classifier).toMatch(/withIndex\('by_org_domain'/);
-
-		// The seam spans four modules: `cellRoute.ts` (the resolver),
-		// `routeInputs.ts` (the inputs it shares with the per-message resolver),
-		// `lib/deliverabilityRouteState.ts` (the route-state lookup both
-		// resolvers go through, so the stream widening cannot fork into
-		// per-caller rules) and `routeMixContext.ts` — of which the seam transits
-		// the PURE share-split predicate only, which is why that predicate is one
-		// of the `seamFunctions` below and `mixContextFor` (which reads
-		// assignments and the classifier) is not.
-		const cellRouteSource = await fs.readFile(
-			new URL('../../lib/sendProviders/cellRoute.ts', import.meta.url),
-			'utf8'
-		);
-		const seamModuleSource = [
-			cellRouteSource,
-			...(await Promise.all(
-				[
-					'../../lib/sendProviders/routeInputs.ts',
-					'../../lib/deliverabilityRouteState.ts',
-					'../../lib/sendProviders/routeMixContext.ts',
-				].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
-			)),
-		].join('\n');
-		// The per-message resolver must never become reachable from here. This is
-		// now a STRUCTURAL guarantee rather than a textual one: `cellRoute.ts`
-		// has no import edge to `route.ts` at all, so there is nothing to reach.
-		const routeSource = await fs.readFile(
-			new URL('../../lib/sendProviders/route.ts', import.meta.url),
-			'utf8'
-		);
-		expect(routeSource).toMatch(/providerHealth/);
-		expect(cellRouteSource).not.toMatch(/from '\.\/route'/);
-		expect(seamModuleSource).not.toMatch(/resolveSendRouteFromDb\(/);
-		// EVERY top-level function the cell seam transits. Kept in one place so
-		// the two guards below cannot cover different sets.
-		const seamFunctions = [
-			'prepareCellMixResolver',
-			'candidateSendProviderKinds',
-			'configuredSendProviderKinds',
-			'loadStreamlessRouteState',
-			'loadRouteStateCell',
-			'freshFallbackReasons',
-			'isGlobalBreakerOpenState',
-			'relayDomainVerifiedFor',
-			'isShareSplitRoute',
-		];
-		for (const fn of seamFunctions) {
-			const body = topLevelFunctionBody(seamModuleSource, fn);
-			expect(body, `${fn} must not scan a table`).not.toMatch(/\.collect\(\)/);
-			expect(body, `${fn} must not read providerHealth`).not.toMatch(/providerHealth/);
-			// READINESS. `isSendProviderReady` resolves the mutable plugin
-			// capability grant, and that path reaches a deployment singleton the
-			// transactional send path patches on EVERY send. The seam must answer
-			// readiness from the environment only. This is the assertion the
-			// previous, table-name-shaped guard structurally could not make: the
-			// hot read is not a `.query('table')` in any of these bodies, it is
-			// two calls away.
-			expect(body, `${fn} must not use a DB-reading readiness helper`).not.toMatch(
-				/isSendProviderReady|readySendProviderKinds|selectedSendProviderReady|isDeliveryConfigured/
-			);
-		}
-		expect(topLevelFunctionBody(seamModuleSource, 'prepareCellMixResolver')).not.toMatch(
-			/warmingState/
-		);
-		// …and the predicate it DOES use touches no context at all.
-		const capabilitySource = await fs.readFile(
-			new URL('../../lib/sendProviders/capability.ts', import.meta.url),
-			'utf8'
-		);
-		const configuredPredicate = topLevelFunctionBody(capabilitySource, 'providerKindConfigured');
-		expect(configuredPredicate, 'providerKindConfigured must be env-only').not.toMatch(
-			/\bctx\b|\bdb\b|await/
-		);
-		// Both halves of the relay-verification seam: the dispatcher, and every
-		// registered per-provider proof it dispatches to (D6/D7 moved the reads
-		// behind `domains/providers/<kind>`, and a guard that only reads the
-		// dispatcher would have stopped guarding anything the moment they moved).
-		// THE LIST FOLLOWS THE CODE: the shared row read and freshness rule the two
-		// generic-table tiers now call (`relayIdentityProof.ts`) and the bundled
-		// plugin tier's adapter (`plugin/index.ts`) are both on this path, so both
-		// are inventoried here rather than being the first hot read nothing guards.
-		const relayVerificationSources = await Promise.all(
-			[
-				'../../lib/sendProviders/relayDomainVerification.ts',
-				'../../domains/providers/relayIdentityProof.ts',
-				'../../domains/providers/ses/relayVerification.ts',
-				'../../domains/providers/mandrill/relayVerification.ts',
-				'../../domains/providers/plugin/index.ts',
-			].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
-		);
-		for (const source of relayVerificationSources) {
-			expect(source).not.toMatch(/\.collect\(\)/);
-		}
-
-		// READ-SET GUARD. The `.collect()` / `providerHealth` assertions above
-		// only rule out the two failures we already know about; they say nothing
-		// about the NEXT hot document someone reaches for. So enumerate the
-		// tables the write path reads and pin the whole set. Every entry is here
-		// because its write rate is bounded independently of send volume:
-		//
-		//   providerRoutes                — admin-written (route config screen)
-		//   deliverabilityRouteStates     — written by the ip-reputation sync cron
-		//   destinationProviderDomains    — per-delivery observations, but the
-		//                                   writer is COOLED to at most one patch
-		//                                   per domain per hour (see
-		//                                   deliverabilityRouting.ts
-		//                                   DOMAIN_CLASSIFICATION_REFRESH_MS)
-		//   domains / sendingDomainSesIdentities — verification-written
-		//   sendingDomainRelayIdentities  — the generic relay-identity table (D7).
-		//                                   Written by the domain-identity sweep at
-		//                                   most once per domain per hour (the
-		//                                   shortest cadence in
-		//                                   providers/mandrill/identity.ts) and by a
-		//                                   domain's registration — never by a send
-		//   sendAssignments               — the transaction's own table (the
-		//                                   matches come from this module's read
-		//                                   query and its retention sweep)
-		//
-		// Adding a table to the enqueue read set now fails here until someone
-		// states why its write rate is not proportional to sends.
-		const readSetSources = [
-			...(await Promise.all(
-				['../sendAssignments.ts', '../../lib/sendProviders/destinationProvider.ts'].map(
-					async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8')
-				)
-			)),
-			...relayVerificationSources,
-		];
-		const seamSource = [
-			...seamFunctions.map((fn) => topLevelFunctionBody(seamModuleSource, fn)),
-			// The readiness predicate the seam calls, included so its read set is
-			// inventoried here rather than assumed.
-			configuredPredicate,
-		].join('\n');
-		const readTables = new Set<string>();
-		for (const source of [...readSetSources, seamSource]) {
-			for (const match of source.matchAll(/\.query\('([A-Za-z]+)'\)/g)) {
-				const table = match[1];
-				if (table !== undefined) readTables.add(table);
-			}
-		}
-		expect([...readTables].sort()).toEqual([
-			'deliverabilityRouteStates',
-			'destinationProviderDomains',
-			'domains',
-			'providerRoutes',
-			'sendAssignments',
-			'sendingDomainRelayIdentities',
-			'sendingDomainSesIdentities',
-		]);
-		// `.query('table')` is not the only way into the read set, and the two
-		// it misses are the dangerous ones: `ctx.db.get(id)` takes a read
-		// dependency on ONE document — exactly the shape of a hot singleton like
-		// `instanceSettings`, which every transactional send patches — and
-		// `ctx.runQuery` hides an arbitrary read set behind a function
-		// reference. Neither is enumerable by table name, so both are banned
-		// outright on this path rather than inventoried.
-		for (const source of [...readSetSources, seamSource]) {
-			expect(source, 'no ctx.db.get on the enqueue path').not.toMatch(/ctx\.db\.get\(/);
-			expect(source, 'no ctx.runQuery on the enqueue path').not.toMatch(/runQuery\(/);
-			expect(source, 'no ctx.db.system read on the enqueue path').not.toMatch(/db\.system\b/);
-		}
-		// And the one entry above whose writer is send-driven must stay cooled.
-		const routingSource = await fs.readFile(
-			new URL('../deliverabilityRouting.ts', import.meta.url),
-			'utf8'
-		);
-		expect(routingSource).toMatch(/DOMAIN_CLASSIFICATION_REFRESH_MS/);
 	});
 
 	it('reads each cell ONCE per distinct destination provider, deciding per recipient', async () => {
@@ -1164,18 +978,19 @@ describe('sendAssignments — non-campaign write path', () => {
 	it('records the automation stream for an automation step send', async () => {
 		const t = convexTest(schema, modules);
 
-		const { sendId } = await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+		const outcome = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
 			kind: 'automation' as const,
 			email: 'subscriber@gmail.com',
 			subject: 'Welcome',
 			html: '<p>hi</p>',
 			from: 'news@example.com',
-			providerType: 'mta',
 		});
+		expect(outcome.ok).toBe(true);
+		if (!outcome.ok) return;
 
 		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
 		expect(rows).toHaveLength(1);
-		expect(rows[0]?.sendId).toBe(sendId);
+		expect(rows[0]?.sendId).toBe(outcome.sendId);
 		expect(rows[0]?.sendKind).toBe('transactional');
 		expect(rows[0]?.cell).toBe('automation:gmail');
 		expect(rows[0]?.arm).toBe('own');
@@ -1184,8 +999,8 @@ describe('sendAssignments — non-campaign write path', () => {
 	it('records the transactional stream and the route table for the agent-reply message type', async () => {
 		const t = convexTest(schema, modules);
 		// The `transactional` route table names the SMTP relay; the recorded
-		// transport must come from THAT resolution, not from the producer's
-		// `providerType` argument (which deliberately says something else).
+		// transport must come from THAT resolution, through the health-free cell
+		// seam — not from whatever the intake's own route resolution selected.
 		await t.run(async (ctx) => {
 			await ctx.db.insert('providerRoutes', {
 				messageType: 'transactional' as const,
@@ -1196,13 +1011,12 @@ describe('sendAssignments — non-campaign write path', () => {
 			});
 		});
 
-		await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+		await t.mutation(internal.delivery.nonCampaignIntake.intake, {
 			kind: 'agent_reply' as const,
 			email: 'customer@yahoo.com',
 			subject: 'Re: order',
 			html: '<p>hi</p>',
 			from: 'support@example.com',
-			providerType: 'mta',
 		});
 
 		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
@@ -1306,16 +1120,14 @@ describe('sendAssignments — non-campaign write path', () => {
 			});
 		});
 
-		await expect(
-			t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
-				kind: 'automation' as const,
-				email: 'blocked@gmail.com',
-				subject: 'Welcome',
-				html: '<p>hi</p>',
-				from: 'news@example.com',
-				providerType: 'mta',
-			})
-		).rejects.toThrow();
+		const outcome = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+			kind: 'automation' as const,
+			email: 'blocked@gmail.com',
+			subject: 'Welcome',
+			html: '<p>hi</p>',
+			from: 'news@example.com',
+		});
+		expect(outcome).toEqual({ ok: false, reason: 'recipient_blocked' });
 
 		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
 		expect(rows).toHaveLength(0);

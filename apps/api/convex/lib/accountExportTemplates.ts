@@ -1,5 +1,5 @@
 import type { Doc, Id } from '../_generated/dataModel';
-import { accountExportBytesToBase64 } from './accountExportEncoding';
+import { bytesToBase64 } from './bytes';
 import type { BodyBlobStorageReader } from './messageBody';
 import { readSealedBlobBytesForExport } from './sealedBlob';
 
@@ -10,11 +10,11 @@ type StoredContent = {
 	availability: Availability;
 };
 
-export const ACCOUNT_EXPORT_TEMPLATE_ASSET_MAX_BYTES = 8 * 1024 * 1024;
+const ACCOUNT_EXPORT_TEMPLATE_ASSET_MAX_BYTES = 8 * 1024 * 1024;
 export const ACCOUNT_EXPORT_TEMPLATE_MEDIA_MAX_BYTES = 16 * 1024 * 1024;
 class TemplateMediaLimitError extends Error {}
 
-export type AccountExportMediaAsset = {
+type AccountExportMediaAsset = {
 	mediaAssetId: string;
 	storageId: string;
 };
@@ -67,7 +67,7 @@ async function storedContent(
 	}
 	context.decodedMediaBytes += opened.content.byteLength;
 	return {
-		contentBase64: accountExportBytesToBase64(opened.content),
+		contentBase64: bytesToBase64(opened.content),
 		contentEncoding: 'base64',
 		availability: opened.availability,
 	};

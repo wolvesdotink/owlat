@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { languageSelectOptions } from '~/data/languageOptions';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 
 const { t } = useI18n();
 
@@ -226,7 +226,7 @@ const handleAddSubmit = async () => {
 		source: 'form',
 	});
 	addModal.isSubmitting.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(
 		t('dashboard.audience.contacts.index.toasts.created', { email: addModal.form.email.trim() })
 	);
@@ -247,9 +247,9 @@ const handleCsvImport = async () => {
 					| Array<{ email: string; topicIds: Id<'topics'>[] }>
 					| undefined,
 			});
-			return (
-				result ?? { imported: 0, updated: 0, skipped: 0, failed: 0, errors: [], addedToList: 0 }
-			);
+			return result.ok
+				? result.result
+				: { imported: 0, updated: 0, skipped: 0, failed: 0, errors: [], addedToList: 0 };
 		},
 		// CSV is an operator import source: the backend drops property values for
 		// keys that are not already registered. Register any mapped custom-column
@@ -324,24 +324,20 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-	unregisterShortcut('n');
-	unregisterShortcut('escape');
+	unregisterShortcut('global.newItem');
+	unregisterShortcut('global.close');
 });
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.audience.contacts.index.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">
-					{{ t('dashboard.audience.contacts.index.subtitle') }}
-				</p>
-			</div>
-			<div v-if="canManageContacts" class="flex gap-2">
+		<UiPageHeader
+			:title="t('dashboard.audience.contacts.index.title')"
+			:description="t('dashboard.audience.contacts.index.subtitle')"
+			class="mb-6"
+		>
+			<template v-if="canManageContacts" #actions>
 				<UiButton variant="secondary" @click="isExportModalOpen = true">
 					<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
 					{{ t('dashboard.audience.contacts.index.export') }}
@@ -411,8 +407,8 @@ onUnmounted(() => {
 					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 					{{ t('dashboard.audience.contacts.index.addContact') }}
 				</UiButton>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 
 		<!-- Search Bar and Bulk Actions -->
 		<div class="flex items-center gap-4 mb-6">
@@ -451,7 +447,7 @@ onUnmounted(() => {
 						<Icon
 							v-if="bulkOps.isLoadingAllMatching.value"
 							name="lucide:loader-2"
-							class="w-3 h-3 animate-spin inline mr-1"
+							class="w-3 h-3 animate-spin motion-reduce:animate-none inline mr-1"
 						/>
 						{{ t('dashboard.audience.contacts.index.selectAllMatching', { count: totalCount }) }}
 					</button>
@@ -620,7 +616,10 @@ onUnmounted(() => {
 					v-if="bulkOps.isBulkOperationInProgress.value"
 					class="flex items-center gap-3 px-3 py-2 rounded-lg bg-bg-surface"
 				>
-					<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin text-brand" />
+					<Icon
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none text-brand"
+					/>
 					<span class="text-sm text-text-secondary">
 						<template v-if="bulkOps.bulkOperationType.value === 'add'">{{
 							t('dashboard.audience.contacts.index.bulk.progress.add')

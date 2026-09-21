@@ -1,87 +1,43 @@
 import type { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 
-/**
- * Page object for the API Keys settings page.
- *
- * Note: The API Keys page uses custom Teleport modals instead of UiModal,
- * so they do NOT have role="dialog". We use a custom overlay locator
- * for these modals.
- */
 export class SettingsApiKeysPage extends BasePage {
 	readonly createKeyButton: Locator;
 
 	constructor(page: Page) {
 		super(page);
-		this.createKeyButton = page.getByRole('button', { name: 'Create API Key' });
+		// Scoped to the header: this page renders the SAME label in its empty
+		// state too, so unscoped it is ambiguous the moment the list query
+		// resolves. It passed serially only because the assertion polled before
+		// the list loaded — one button in the DOM, instant pass — and failed under
+		// two workers. Green while the page was still loading is not green.
+		this.createKeyButton = this.headerAction('Create API Key');
 	}
 
 	async goto() {
 		await this.page.goto('/dashboard/admin/team/api');
-		await this.waitForHeading();
-	}
-
-	/**
-	 * Get the currently visible overlay modal (Teleport-based, no role="dialog").
-	 * These modals render as fixed overlays in the body.
-	 */
-	private get overlayModal(): Locator {
-		return this.page.locator('.fixed.inset-0.z-50');
-	}
-
-	/** Wait for a Teleport overlay modal to appear */
-	private async waitForOverlayModal(timeout = 10_000) {
-		await this.overlayModal.waitFor({ timeout });
-		return this.overlayModal;
-	}
-
-	/** Wait for a Teleport overlay modal to close */
-	private async waitForOverlayModalClose(timeout = 10_000) {
-		await this.overlayModal.waitFor({ state: 'hidden', timeout });
+		await this.expectOnPage('API Keys');
 	}
 
 	async createApiKey(name: string) {
 		await this.createKeyButton.click();
-		const modal = await this.waitForOverlayModal();
-
-		// Fill the name input
-		await modal.locator('#key-name').fill(name);
-
-		// Submit the form - button says "Create Key"
-		await modal.getByRole('button', { name: /Create Key/ }).click();
-
-		// The create modal closes and the "created key" modal opens
-		// Wait for the key display modal with the API key
-		await this.page.getByText('API Key Created').waitFor({ timeout: 10_000 });
-	}
-
-	/** Get the displayed API key text after creation */
-	async getCreatedKeyText(): Promise<string> {
-		const modal = this.overlayModal;
-		const keyCode = modal.locator('code').last();
-		return (await keyCode.textContent()) ?? '';
+		await this.waitForModal();
+		await this.modal.locator('#key-name').fill(name);
+		// A key now needs at least one scope ("keys are scoped to least
+		// privilege") — filling only the name leaves the form invalid and the
+		// modal simply never advances, which is what this spec used to sit and
+		// time out on.
+		await this.modal.getByRole('checkbox').first().check();
+		await this.clickModalButton(/Create Key/);
+		// The create modal gives way to the one-time "API Key Created" display.
+		// By heading, inside the dialog: the same words also appear in the success
+		// toast, so a bare getByText matches two nodes.
+		await this.modal.getByRole('heading', { name: 'API Key Created' }).waitFor({ timeout: 10_000 });
 	}
 
 	/** Close the "API Key Created" display modal by clicking Done */
 	async closeCreatedKeyModal() {
-		const modal = this.overlayModal;
-		await modal.getByRole('button', { name: 'Done' }).click();
-		await this.waitForOverlayModalClose();
-	}
-
-	async revokeApiKey(keyName: string) {
-		const row = this.getTableRow(keyName);
-		await row.locator('button[title="Revoke Key"]').click();
-		const modal = await this.waitForOverlayModal();
-		await modal.getByRole('button', { name: /Revoke Key/ }).click();
-		await this.waitForOverlayModalClose();
-	}
-
-	async deleteApiKey(keyName: string) {
-		const row = this.getTableRow(keyName);
-		await row.locator('button[title="Delete Key"]').click();
-		const modal = await this.waitForOverlayModal();
-		await modal.getByRole('button', { name: /Delete Key/ }).click();
-		await this.waitForOverlayModalClose();
+		await this.clickModalButton('Done');
+		await this.waitForModalClose();
 	}
 }

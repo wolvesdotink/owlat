@@ -1,8 +1,8 @@
 /** DNS MX resolution with a Redis-backed, typed delivery outcome. */
 
 import { resolveMx as dnsResolveMx } from 'node:dns/promises';
-import { domainToASCII } from 'node:url';
 import type Redis from 'ioredis';
+import { errorMessage, normalizeDomain } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
 
 const MX_CACHE_TTL_SECONDS = 3600;
@@ -26,11 +26,6 @@ export interface DnsMxRecord {
 }
 
 export type MxDnsLookup = (domain: string) => Promise<DnsMxRecord[]>;
-
-function normalizeDomain(value: string): string {
-	const normalized = value.trim().toLowerCase().replace(/\.$/, '');
-	return domainToASCII(normalized) || normalized;
-}
 
 function normalizeExchange(value: string): string {
 	return value.trim().toLowerCase().replace(/\.$/, '');
@@ -80,10 +75,6 @@ function parseCachedResolution(
 function errorCode(error: unknown): string | undefined {
 	if (typeof error !== 'object' || error === null || !('code' in error)) return undefined;
 	return typeof error.code === 'string' ? error.code.toUpperCase() : undefined;
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 function implicitResolution(domain: string): MxResolution {

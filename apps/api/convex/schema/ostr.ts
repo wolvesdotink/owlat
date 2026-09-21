@@ -1,5 +1,5 @@
 /**
- * Open Sender Trust Registry — OBSERVER-side state (plan §7, ADR-0058).
+ * Open Sender Trust Registry — OBSERVER-side state (plan §7, ADR-0062).
  *
  * The consumer half of OSTR needs no storage at all: a tier rides in on the
  * webhook and lands in `mailMessages.ostrTier`. The observer half is the

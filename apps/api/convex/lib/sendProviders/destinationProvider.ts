@@ -1,14 +1,13 @@
 /**
  * The ONE read of the shipped MX-learned destination-provider classifier.
  *
- * `destinationProviderDomains` holds observations learned from real MX
- * lookups; each row expires. The classification rule is: an unexpired learned
+ * `destinationProviderDomains` holds observations learned from real MX lookups;
+ * each row expires. The classification rule is: an unexpired learned
  * observation wins, otherwise the conservative static fallback in
- * `@owlat/shared/deliverabilityRouting`. That rule was written out twice —
- * once in the route resolver's deliverability input and once in the send
- * assignment writer — which is exactly the drift plan decision D6 forbids
- * ("adopt the shipped classifier, do not re-implement it"). Both now call
- * this.
+ * `@owlat/shared/deliverabilityRouting`. That rule was written out twice — once
+ * in the route resolver's deliverability input and once in the send assignment
+ * writer — exactly the drift the rule "adopt the shipped classifier, do not
+ * re-implement it" forbids. Both now call this.
  *
  * Domains are normalized (trimmed + lowercased) before the point read, because
  * observations are stored lowercase. This is DEFENCE IN DEPTH, not a fix for a

@@ -5,7 +5,12 @@ import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { rollupCampaignStatsRow } from '../campaigns/statShards';
 import schema from '../schema';
-import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
+import {
+	createTestCampaign,
+	createTestContact,
+	createTestEmailSend,
+	flushScheduled,
+} from './factories';
 
 const modules = import.meta.glob('../**/*.*s');
 const SOFT_BOUNCE_THRESHOLD = 5;
@@ -19,7 +24,7 @@ async function readCampaignWithStats(ctx: MutationCtx, campaignId: Id<'campaigns
 afterEach(async () => {
 	// Lifecycle feedback schedules webhook, reputation, and MTA-mirror work.
 	// Let convex-test drain those jobs before replacing its global state.
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 describe('send lifecycle soft-to-hard bounce reclassification', () => {

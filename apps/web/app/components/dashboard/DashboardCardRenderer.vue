@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { dashboardWidgetRegistry } from '~/composables/widgets/dashboardWidgets';
 import { resolveWidget } from '~/composables/widgets/registry';
+import { dashboardCardSpan } from '~/utils/dashboardGrid';
 
 interface DashboardCardProps {
 	card: {
@@ -25,23 +26,20 @@ const resolution = computed(() =>
 	resolveWidget(dashboardWidgetRegistry, props.card.type, isEnabled)
 );
 
-const sizeClasses = computed(() => {
-	switch (props.card.size) {
-		case 'large':
-			return 'col-span-1 sm:col-span-2 lg:col-span-4';
-		case 'medium':
-			return 'col-span-1 sm:col-span-2';
-		case 'small':
-		default:
-			return 'col-span-1';
-	}
-});
+// Shared with the first-load placeholder grid so the two lay out identically.
+const sizeClasses = computed(() => dashboardCardSpan(props.card.size));
 </script>
 
 <template>
-	<div v-if="resolution.status !== 'disabled'" :class="sizeClasses">
-		<WidgetHost v-if="resolution.status === 'ok'" :module="resolution.module" />
-		<UiCard v-else>
+	<!--
+		`h-full` runs the whole way down (cell → widget boundary → card shell) so
+		every card in a grid row shares a bottom edge. The grid stretches the cell
+		already; without the chain the `UiCard` inside only grows to its content and
+		a row of sparse cards renders ragged.
+	-->
+	<div v-if="resolution.status !== 'disabled'" :class="[sizeClasses, 'h-full']">
+		<WidgetHost v-if="resolution.status === 'ok'" class="h-full" :module="resolution.module" />
+		<UiCard v-else class="h-full">
 			<div class="flex items-center gap-2 text-text-tertiary">
 				<Icon name="lucide:alert-circle" class="w-4 h-4" />
 				<span class="text-sm">{{

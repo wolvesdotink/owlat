@@ -92,6 +92,7 @@ import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
 import { counterTotal } from '../../__tests__/helpers/counters.js';
 import { dkimTestOptions, dkimTestResolver } from '../../__tests__/helpers/dkimTestKey.js';
+import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
 
 const SIGNING_KEY = 'cfbl-header-test-key';
 const GLOBAL_RETURN_PATH = 'bounces.owlat.com';
@@ -102,16 +103,12 @@ const ALIGNED_RETURN_PATH = 'bounce.acme.com';
 /** RFC 5322 §2.1.1 hard cap on a physical header line, excluding CRLF. */
 const MAX_HEADER_LINE_OCTETS = 998;
 
-function createConfig(): MtaConfig {
-	return {
+const createConfig = (): MtaConfig =>
+	createOwlatHostConfig({
 		apiKey: 'test-master-key',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: GLOBAL_RETURN_PATH,
 		outboundTlsMode: 'opportunistic',
 		daneMode: 'off',
-	} as unknown as MtaConfig;
-}
+	});
 
 function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {

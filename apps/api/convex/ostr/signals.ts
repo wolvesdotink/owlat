@@ -1,7 +1,7 @@
 /**
  * OSTR inbound signal — the wire contract for what the MTA stamps on a delivery.
  *
- * The Open Sender Trust Registry (plan §12.2, ADR-0058) is consulted on the MTA
+ * The Open Sender Trust Registry (plan §12.2, ADR-0062) is consulted on the MTA
  * side by `@owlat/ostr-client`; Convex only ever sees the RESULT of that lookup,
  * riding along on the `inbound.mailbox.received` webhook. This module is the one
  * place that shape is stated, so the four places that touch it — the webhook

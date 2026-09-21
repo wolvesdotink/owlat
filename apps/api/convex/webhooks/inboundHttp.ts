@@ -44,7 +44,7 @@ export class InboundBatchDispatchError extends Error {
 }
 
 /** What a batch left behind: its last dispatched event and that event's result. */
-export interface InboundBatchOutcome {
+interface InboundBatchOutcome {
 	/** `undefined` only for an empty batch. */
 	readonly event: InboundEvent | undefined;
 	readonly result: unknown;

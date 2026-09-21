@@ -3,7 +3,6 @@ import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { transactionalEmailPool } from './workpool';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
-import { NO_DELIVERY_PROVIDER_ERROR } from './enqueue';
 
 /**
  * The member-only TEST PREVIEW send, split out of `delivery/enqueue.ts` (which
@@ -35,8 +34,16 @@ export const enqueueTestSend = internalMutation({
 		html: v.string(),
 	},
 	handler: async (ctx, args) => {
+		// A preview has ONE caller (`campaigns/testSend.ts`), reached from an
+		// authed member action that surfaces a throw to the operator directly, so
+		// it keeps the throw rather than adopting the intake outcome union: there
+		// is no second call site to keep in agreement, and nothing here ever
+		// string-matched the message (which is why the shared magic-string
+		// constant this used to import could be deleted outright).
 		if (!(await selectedSendProviderReady(ctx, undefined))) {
-			throw new Error(NO_DELIVERY_PROVIDER_ERROR);
+			throw new Error(
+				'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) before sending a test preview.'
+			);
 		}
 		const queuedAt = Date.now();
 		const sendId = await ctx.db.insert('transactionalSends', {

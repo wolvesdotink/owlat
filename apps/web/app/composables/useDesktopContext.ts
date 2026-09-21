@@ -6,26 +6,34 @@
  * which we don't enable — the app imports `@tauri-apps/api` directly). Same
  * check as `lib/desktop/activeWorkspace.ts`.
  * This composable gates all desktop-specific UI and behavior behind that check.
+ *
+ * Platform detection is NOT spelled here: it comes from
+ * `lib/desktop/platform.ts`, the one module that reads it, so the titlebar
+ * chrome, the OS notification deep link, the "default mail app" instructions and
+ * the ⌘-vs-Ctrl hint can never disagree about which OS this is.
  */
+import { readDesktopPlatform, type DesktopPlatform } from '~/lib/desktop/platform';
+
 export function useDesktopContext() {
 	const isDesktop = computed(
-		() => typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
+		() =>
+			typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
 	);
 
-	const isMac = computed(
-		() => isDesktop.value && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform)
-	);
+	/**
+	 * The operating system, REGARDLESS of runtime — a browser on a Mac still
+	 * wants ⌘ in its shortcut hints. Use `isMac`/`isWindows`/`isLinux` for the
+	 * desktop-app-only chrome.
+	 */
+	const platform = computed<DesktopPlatform>(() => readDesktopPlatform());
 
-	const isWindows = computed(
-		() => isDesktop.value && typeof navigator !== 'undefined' && /Win/.test(navigator.platform)
-	);
-
-	const isLinux = computed(
-		() => isDesktop.value && !isMac.value && !isWindows.value
-	);
+	const isMac = computed(() => isDesktop.value && platform.value === 'mac');
+	const isWindows = computed(() => isDesktop.value && platform.value === 'windows');
+	const isLinux = computed(() => isDesktop.value && platform.value === 'linux');
 
 	return {
 		isDesktop,
+		platform,
 		isMac,
 		isWindows,
 		isLinux,

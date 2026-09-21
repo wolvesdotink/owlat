@@ -1,12 +1,9 @@
-import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
+import type { PluginLocalId } from './namespacedKind';
 import type { JsonValue } from './json';
 import type { PluginStaticModuleExport } from './sendTransport';
 
 /** Capability assigned by the host to every bundled agent-pipeline step. */
 export const PLUGIN_AGENT_STEP_CAPABILITY = 'agent:step' as const;
-
-export type PluginAgentStepCapability = typeof PLUGIN_AGENT_STEP_CAPABILITY;
-export type PluginAgentStepKind = PluginNamespacedKind;
 
 /** Finite, host-recognized lifecycle requests a step may make after it runs. */
 export type PluginAgentLifecycleEdge =

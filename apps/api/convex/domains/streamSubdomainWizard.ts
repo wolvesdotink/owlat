@@ -1,5 +1,5 @@
 /**
- * THE WIZARD SURFACE for the per-stream subdomain layout (P4-7, gap G-14).
+ * THE WIZARD SURFACE for the per-stream subdomain layout.
  *
  * `streamSubdomains.ts` decides the layout, `streamSubdomainRecords.ts` renders
  * every record in one pass and `bimi.ts` decides the BIMI offer — all pure. This
@@ -12,7 +12,7 @@
  * tell the operator which names to create and what to publish on each. The
  * domain rows themselves are still created through the shipped Add-Domain flow,
  * one per sending subdomain — this screen is what tells them that is the layout
- * to create in the first place, which is exactly the gap G-14 names.
+ * to create in the first place.
  *
  * IT NEVER INVENTS A RECORD VALUE. The proposed hosts are ordinary sending
  * domains, so the ones that already exist are LOOKED UP and their shipped
@@ -24,7 +24,7 @@
  * that has not been added yet has no selector and no key, and the table says so
  * instead of filling the gap with a name nothing signs with.
  *
- * D2 — NOTHING HERE IS LOAD-BEARING ON A THIRD PARTY. No relay, no ESP, no
+ * NOTHING HERE IS LOAD-BEARING ON A THIRD PARTY. No relay, no ESP, no
  * commercial anything: with zero external credentials the table renders in full
  * and the reference-arm DKIM row simply is not part of it. An unusable domain
  * (no registrable zone) renders an explanation in place of the table rather
@@ -65,13 +65,13 @@ import {
 } from './streamSubdomains';
 
 /** One line of wizard advice, resolved to its copy so the UI owns no wording. */
-export interface StreamSubdomainAdvice {
+interface StreamSubdomainAdvice {
 	key: SubdomainAdviceKey;
 	text: string;
 }
 
 /** One proposed sending name, flattened for the table. */
-export interface StreamSubdomainProposalRow {
+interface StreamSubdomainProposalRow {
 	/** The layout's own union, kept on the wire so the UI's labels are TOTAL. */
 	role: SendingSubdomainRole;
 	host: string;
@@ -108,7 +108,7 @@ interface StreamSubdomainRecordRowBase {
  * re-narrow by hand, and widening `purpose`/`type` to `string` would turn every
  * label map into a partial one with a `??` fallback that can never fire.
  */
-export type StreamSubdomainRecordRow =
+type StreamSubdomainRecordRow =
 	| (StreamSubdomainRecordRowBase & { purpose: 'spf'; type: 'TXT'; value: string })
 	| (StreamSubdomainRecordRowBase & { purpose: 'dmarc'; type: 'TXT'; value: string })
 	| (StreamSubdomainRecordRowBase & {
@@ -125,7 +125,7 @@ export type StreamSubdomainRecordRow =
 			priority: number;
 	  });
 
-export type StreamSubdomainWizardResult =
+type StreamSubdomainWizardResult =
 	| { ok: false; reason: 'unknown_domain' | 'invalid_domain' }
 	| {
 			ok: true;
@@ -144,7 +144,7 @@ export type StreamSubdomainWizardResult =
  * A reference transport is connected iff some NON-MTA send transport this
  * deployment can ACTUALLY DISPATCH THROUGH is ready.
  *
- * D4 — the plugin/transport catalog is the single source of truth for "which
+ * THE PLUGIN/TRANSPORT CATALOG is the single source of truth for "which
  * transports exist here". The return-path relay SPF env var is not: it
  * authorises a relay on the BOUNCE HOST and says nothing about whether a
  * transport is registered, so inferring one from the other gets both directions
@@ -156,7 +156,7 @@ export type StreamSubdomainWizardResult =
  * DKIM row for a transport that cannot dispatch. `isSendProviderReady` is the
  * shipped check both the route resolver and the worker use.
  *
- * Absence stays entirely non-blocking (D2): it removes one DKIM row from the
+ * Absence stays entirely non-blocking: it removes one DKIM row from the
  * table and changes nothing else.
  */
 async function referenceTransportConfigured(ctx: QueryCtx): Promise<boolean> {

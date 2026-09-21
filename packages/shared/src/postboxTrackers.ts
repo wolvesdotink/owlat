@@ -33,7 +33,7 @@ export interface TrackerDetection {
 	trackerHosts: readonly string[];
 }
 
-export const EMPTY_TRACKER_DETECTION: TrackerDetection = Object.freeze({
+const EMPTY_TRACKER_DETECTION: TrackerDetection = Object.freeze({
 	pixelCount: 0,
 	trackerHosts: Object.freeze([]),
 });

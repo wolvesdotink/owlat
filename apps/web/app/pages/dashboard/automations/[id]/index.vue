@@ -2,13 +2,11 @@
 import { api } from '@owlat/api';
 import type { Doc } from '@owlat/api/dataModel';
 import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
+import { formatNumber } from '~/utils/formatters';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.automations.detail.index.pageTitle') });
-
-const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
-const formatNumber = (value: number) => numberFormat.value.format(value);
 
 /**
  * Registry-owned copy (step modules, status/trigger badges) carries message
@@ -437,7 +435,7 @@ const handleEdit = () => {
 										{{ t('dashboard.automations.detail.index.funnel.pending', { count: step.stats.pending }) }}
 									</span>
 									<span v-if="step.stats.executing > 0" class="flex items-center gap-1">
-										<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin" />
+										<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin motion-reduce:animate-none" />
 										{{ t('dashboard.automations.detail.index.funnel.executing', { count: step.stats.executing }) }}
 									</span>
 									<span v-if="step.stats.failed > 0" class="flex items-center gap-1 text-error">
@@ -484,7 +482,7 @@ const handleEdit = () => {
 
 				<!-- Loading -->
 				<div v-if="runsLoading && !runs" class="p-8 flex justify-center">
-					<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin" />
+					<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none" />
 				</div>
 
 				<!-- Empty state -->
@@ -528,7 +526,7 @@ const handleEdit = () => {
 											:name="getRunStatusBadge(run.status).icon"
 											:class="[
 												'w-3 h-3',
-												getRunStatusBadge(run.status).animated ? 'animate-spin' : '',
+												getRunStatusBadge(run.status).animated ? 'animate-spin motion-reduce:animate-none' : '',
 											]"
 										/>
 										{{ getRunStatusBadge(run.status).label }}

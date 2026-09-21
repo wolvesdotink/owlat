@@ -1,20 +1,7 @@
-import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
+import type { PluginLocalId } from './namespacedKind';
 
 /** Capability the host assigns to every plugin that contributes navigation items. */
 export const PLUGIN_NAV_ITEM_CAPABILITY = 'ui:navigation' as const;
-
-export type PluginNavItemCapability = typeof PLUGIN_NAV_ITEM_CAPABILITY;
-
-/**
- * Plugin-scoped identity for a plugin-contributed navigation destination,
- * `plugin.<pluginId>.<localId>`. This is the stable handle for flags,
- * telemetry and settings surfaces — it is NOT what the sidebar registry
- * deduplicates on. Registry dedup is by destination href
- * (`derivePluginNavigation` sets each entry's id to its href), which is what
- * prevents a plugin from shadowing a core destination: two entries at the same
- * href collapse first-registered-wins, and core is always registered first.
- */
-export type PluginNavItemKind = PluginNamespacedKind;
 
 /**
  * Data-only descriptor for one sidebar navigation destination a plugin adds.

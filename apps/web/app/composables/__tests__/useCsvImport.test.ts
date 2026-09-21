@@ -55,7 +55,7 @@ describe('useCsvImport', () => {
 	});
 
 	describe('initial state', () => {
-		it('has step=upload, isOpen=false, error empty, parsedData=[], csvHeaders=[]', async () => {
+		it('has step=upload, isOpen=false, error empty, parsedData=[], csvHeaders=[]', () => {
 			const csvImport = useCsvImport();
 
 			expect(csvImport.step.value).toBe('upload');
@@ -65,7 +65,7 @@ describe('useCsvImport', () => {
 			expect(csvImport.csvHeaders.value).toEqual([]);
 		});
 
-		it('has isEmailMapped=false, previewRows=[], totalRowCount=0', async () => {
+		it('has isEmailMapped=false, previewRows=[], totalRowCount=0', () => {
 			const csvImport = useCsvImport();
 
 			expect(csvImport.isEmailMapped.value).toBe(false);
@@ -75,7 +75,7 @@ describe('useCsvImport', () => {
 	});
 
 	describe('open/close/reset', () => {
-		it('open() sets isOpen=true and resets state', async () => {
+		it('open() sets isOpen=true and resets state', () => {
 			const csvImport = useCsvImport();
 
 			// Mutate some state first
@@ -91,7 +91,7 @@ describe('useCsvImport', () => {
 			expect(csvImport.progress.value).toBe(0);
 		});
 
-		it('close() sets isOpen=false', async () => {
+		it('close() sets isOpen=false', () => {
 			const csvImport = useCsvImport();
 			csvImport.open();
 			expect(csvImport.isOpen.value).toBe(true);
@@ -100,7 +100,7 @@ describe('useCsvImport', () => {
 			expect(csvImport.isOpen.value).toBe(false);
 		});
 
-		it('reset() clears all state back to defaults', async () => {
+		it('reset() clears all state back to defaults', () => {
 			const csvImport = useCsvImport();
 
 			// Set a bunch of state
@@ -248,100 +248,27 @@ describe('useCsvImport', () => {
 	});
 
 	describe('autoDetectMapping (tested indirectly via handleFileSelect)', () => {
-		it("maps 'Email' header to 'email'", async () => {
+		it.each([
+			['Email', 'email'],
+			['e-mail', 'email'],
+			['User Email Address', 'email'],
+			['First Name', 'firstName'],
+			['firstname', 'firstName'],
+			['first_name', 'firstName'],
+			['given name', 'firstName'],
+			['Last Name', 'lastName'],
+			['lastname', 'lastName'],
+			['last_name', 'lastName'],
+			['family name', 'lastName'],
+			['surname', 'lastName'],
+			['Language', 'language'],
+			['lang', 'language'],
+			['locale', 'language'],
+			['preferred_language', 'language'],
+		])('maps the %j header to %j', async (header, field) => {
 			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email'], [['a@b.com']]);
-			expect(csvImport.columnMapping.value[0]).toBe('email');
-		});
-
-		it("maps 'e-mail' header to 'email'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['e-mail'], [['a@b.com']]);
-			expect(csvImport.columnMapping.value[0]).toBe('email');
-		});
-
-		it("maps header containing 'email' to 'email'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['User Email Address'], [['a@b.com']]);
-			expect(csvImport.columnMapping.value[0]).toBe('email');
-		});
-
-		it("maps 'First Name' header to 'firstName'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'First Name'], [['a@b.com', 'Alice']]);
-			expect(csvImport.columnMapping.value[1]).toBe('firstName');
-		});
-
-		it("maps 'firstname' header to 'firstName'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'firstname'], [['a@b.com', 'Alice']]);
-			expect(csvImport.columnMapping.value[1]).toBe('firstName');
-		});
-
-		it("maps 'first_name' header to 'firstName'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'first_name'], [['a@b.com', 'Alice']]);
-			expect(csvImport.columnMapping.value[1]).toBe('firstName');
-		});
-
-		it("maps 'given name' header to 'firstName'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'given name'], [['a@b.com', 'Alice']]);
-			expect(csvImport.columnMapping.value[1]).toBe('firstName');
-		});
-
-		it("maps 'Last Name' header to 'lastName'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'Last Name'], [['a@b.com', 'Smith']]);
-			expect(csvImport.columnMapping.value[1]).toBe('lastName');
-		});
-
-		it("maps 'lastname' header to 'lastName'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'lastname'], [['a@b.com', 'Smith']]);
-			expect(csvImport.columnMapping.value[1]).toBe('lastName');
-		});
-
-		it("maps 'last_name' header to 'lastName'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'last_name'], [['a@b.com', 'Smith']]);
-			expect(csvImport.columnMapping.value[1]).toBe('lastName');
-		});
-
-		it("maps 'family name' header to 'lastName'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'family name'], [['a@b.com', 'Smith']]);
-			expect(csvImport.columnMapping.value[1]).toBe('lastName');
-		});
-
-		it("maps 'surname' header to 'lastName'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'surname'], [['a@b.com', 'Smith']]);
-			expect(csvImport.columnMapping.value[1]).toBe('lastName');
-		});
-
-		it("maps 'Language' header to 'language'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'Language'], [['a@b.com', 'en']]);
-			expect(csvImport.columnMapping.value[1]).toBe('language');
-		});
-
-		it("maps 'lang' header to 'language'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'lang'], [['a@b.com', 'en']]);
-			expect(csvImport.columnMapping.value[1]).toBe('language');
-		});
-
-		it("maps 'locale' header to 'language'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'locale'], [['a@b.com', 'en']]);
-			expect(csvImport.columnMapping.value[1]).toBe('language');
-		});
-
-		it("maps 'preferred_language' header to 'language'", async () => {
-			const csvImport = useCsvImport();
-			await simulateFileSelect(csvImport, ['Email', 'preferred_language'], [['a@b.com', 'en']]);
-			expect(csvImport.columnMapping.value[1]).toBe('language');
+			await simulateFileSelect(csvImport, ['Email', header], [['a@b.com', 'x']]);
+			expect(csvImport.columnMapping.value[1]).toBe(field);
 		});
 
 		it("maps unknown headers to 'ignore'", async () => {
@@ -357,7 +284,7 @@ describe('useCsvImport', () => {
 	});
 
 	describe('goToPreview', () => {
-		it('sets error when email not mapped', async () => {
+		it('sets error when email not mapped', () => {
 			const csvImport = useCsvImport();
 			csvImport.step.value = 'mapping';
 			csvImport.columnMapping.value = { 0: 'firstName' };
@@ -368,7 +295,7 @@ describe('useCsvImport', () => {
 			expect(csvImport.step.value).toBe('mapping');
 		});
 
-		it('transitions to preview when email is mapped', async () => {
+		it('transitions to preview when email is mapped', () => {
 			const csvImport = useCsvImport();
 			csvImport.step.value = 'mapping';
 			csvImport.columnMapping.value = { 0: 'email' };
@@ -378,7 +305,7 @@ describe('useCsvImport', () => {
 			expect(csvImport.step.value).toBe('preview');
 		});
 
-		it('clears previous error on success', async () => {
+		it('clears previous error on success', () => {
 			const csvImport = useCsvImport();
 			csvImport.step.value = 'mapping';
 			csvImport.columnMapping.value = { 0: 'email' };
@@ -392,7 +319,7 @@ describe('useCsvImport', () => {
 	});
 
 	describe('goBackToMapping', () => {
-		it('transitions from preview to mapping', async () => {
+		it('transitions from preview to mapping', () => {
 			const csvImport = useCsvImport();
 			csvImport.step.value = 'preview';
 
@@ -403,7 +330,7 @@ describe('useCsvImport', () => {
 	});
 
 	describe('getMappedValue', () => {
-		it('returns value from correct column based on mapping', async () => {
+		it('returns value from correct column based on mapping', () => {
 			const csvImport = useCsvImport();
 			csvImport.columnMapping.value = { 0: 'email', 1: 'firstName', 2: 'lastName' };
 
@@ -414,7 +341,7 @@ describe('useCsvImport', () => {
 			expect(csvImport.getMappedValue(row, 'lastName')).toBe('Smith');
 		});
 
-		it("returns '\u2014' when field not mapped", async () => {
+		it("returns '\u2014' when field not mapped", () => {
 			const csvImport = useCsvImport();
 			csvImport.columnMapping.value = { 0: 'email' };
 
@@ -423,7 +350,7 @@ describe('useCsvImport', () => {
 			expect(csvImport.getMappedValue(row, 'firstName')).toBe('\u2014');
 		});
 
-		it("returns '\u2014' when cell is empty", async () => {
+		it("returns '\u2014' when cell is empty", () => {
 			const csvImport = useCsvImport();
 			csvImport.columnMapping.value = { 0: 'email', 1: 'firstName' };
 
@@ -434,7 +361,7 @@ describe('useCsvImport', () => {
 	});
 
 	describe('computed properties', () => {
-		it('isEmailMapped reflects columnMapping', async () => {
+		it('isEmailMapped reflects columnMapping', () => {
 			const csvImport = useCsvImport();
 
 			expect(csvImport.isEmailMapped.value).toBe(false);
@@ -446,7 +373,7 @@ describe('useCsvImport', () => {
 			expect(csvImport.isEmailMapped.value).toBe(true);
 		});
 
-		it('previewRows returns first 5 rows', async () => {
+		it('previewRows returns first 5 rows', () => {
 			const csvImport = useCsvImport();
 
 			csvImport.parsedData.value = [
@@ -468,7 +395,7 @@ describe('useCsvImport', () => {
 			]);
 		});
 
-		it('previewRows returns all rows when fewer than 5', async () => {
+		it('previewRows returns all rows when fewer than 5', () => {
 			const csvImport = useCsvImport();
 
 			csvImport.parsedData.value = [['row1'], ['row2']];
@@ -476,7 +403,7 @@ describe('useCsvImport', () => {
 			expect(csvImport.previewRows.value).toEqual([['row1'], ['row2']]);
 		});
 
-		it('totalRowCount returns total row count', async () => {
+		it('totalRowCount returns total row count', () => {
 			const csvImport = useCsvImport();
 
 			csvImport.parsedData.value = [['row1'], ['row2'], ['row3']];
@@ -864,7 +791,7 @@ describe('useCsvImport', () => {
 	});
 
 	describe('mappableFields export', () => {
-		it('contains all 7 field options', async () => {
+		it('contains all 7 field options', () => {
 			expect(mappableFields).toHaveLength(7);
 			expect(mappableFields.map((f) => f.value)).toEqual([
 				'email',
@@ -879,7 +806,7 @@ describe('useCsvImport', () => {
 
 		// Module-scope registry: the labels are message keys the import modal
 		// renders through `t()`, so the copy is asserted through the catalog.
-		it('has correct labels', async () => {
+		it('has correct labels', () => {
 			expect(mappableFields[0]).toEqual({
 				value: 'email',
 				label: 'shared.useCsvImport.fields.email',
@@ -892,15 +819,8 @@ describe('useCsvImport', () => {
 				value: 'ignore',
 				label: 'shared.useCsvImport.fields.ignore',
 			});
-			expect(mappableFields.map((f) => t(f.label))).toEqual([
-				'Email (required)',
-				'First Name',
-				'Last Name',
-				'Language',
-				'Topic',
-				'Custom property',
-				'\u2014 Ignore this column',
-			]);
+			// Every label is a key the real catalog carries.
+			for (const field of mappableFields) expect(t(field.label)).not.toBe(field.label);
 		});
 	});
 

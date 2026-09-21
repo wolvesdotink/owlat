@@ -18,6 +18,7 @@ import { transportOutcomeTables } from './schema/transportOutcomes';
 import { deliveryTables } from './schema/delivery';
 import { seedPlacementTables } from './schema/seedPlacement';
 import { inboxTables } from './schema/inbox';
+import { inboxCollaborationTables } from './schema/inboxCollaboration';
 import { autonomyTables } from './schema/autonomy';
 import { askEagernessTables } from './schema/askEagerness';
 import { knowledgeTables } from './schema/knowledge';
@@ -56,6 +57,7 @@ export default defineSchema({
 	...smtpResponseCategoryTables,
 	...transportOutcomeTables,
 	...inboxTables,
+	...inboxCollaborationTables,
 	...autonomyTables,
 	...askEagernessTables,
 	...knowledgeTables,

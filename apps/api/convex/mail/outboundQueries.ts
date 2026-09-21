@@ -17,6 +17,7 @@ import { internalQuery, type QueryCtx } from '../_generated/server';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 import { sealPolicyValidator, type RecipientKeyState, type SealInputs } from './sealPolicy';
+import { isKeyVerified } from '../e2ee/pinning';
 
 export const getMessage = internalQuery({
 	args: { messageId: v.id('mailMessages') },
@@ -54,6 +55,9 @@ export async function loadRecipientKeyStates(
 		recipients.push({
 			address,
 			outcome: row.outcome,
+			// Display only (plan idea 54) — a human here compared this fingerprint
+			// with its owner. Never consulted by the seal decision itself.
+			verified: isKeyVerified(row),
 			...(row.outcome === 'trusted' && row.pinnedPublicKeyArmored
 				? { pinnedPublicKeyArmored: row.pinnedPublicKeyArmored }
 				: {}),
@@ -131,6 +135,9 @@ export const getOutboundSealInputs = internalQuery({
 					v.literal('missing')
 				),
 				pinnedPublicKeyArmored: v.optional(v.string()),
+				// Human verification (plan idea 54) — display only; the dispatch seal
+				// decision never reads it.
+				verified: v.optional(v.boolean()),
 			})
 		),
 	}),

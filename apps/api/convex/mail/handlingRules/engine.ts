@@ -19,7 +19,7 @@
  *     NEVER widen a `false` auto-send decision into a `true` one.
  */
 
-export type HandlingRuleActionType =
+type HandlingRuleActionType =
 	| 'draft_with_stance'
 	| 'categorize'
 	| 'auto_archive'
@@ -27,7 +27,7 @@ export type HandlingRuleActionType =
 	| 'never_auto_send';
 
 /** Structured, deterministic matcher compiled from the rule prose. */
-export interface HandlingRuleMatcher {
+interface HandlingRuleMatcher {
 	/** Case-insensitive substrings matched against the sender address/name. */
 	senders?: string[];
 	/** Case-insensitive substrings matched against the subject. */
@@ -38,7 +38,7 @@ export interface HandlingRuleMatcher {
 	categories?: string[];
 }
 
-export interface HandlingRuleAction {
+interface HandlingRuleAction {
 	type: HandlingRuleActionType;
 	/** For `draft_with_stance` — e.g. "a polite decline". */
 	stance?: string;

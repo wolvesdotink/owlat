@@ -55,6 +55,11 @@ export const PROVISION_TIMELINE: readonly TimelineSpec[] = [
 		title: 'shared.desktop.provisioning.timeline.installDocker',
 		group: 'connect',
 	},
+	{
+		id: 'resolve-release',
+		title: 'shared.desktop.provisioning.timeline.resolveRelease',
+		group: 'connect',
+	},
 	{ id: 'fetch-owlat', title: 'shared.desktop.provisioning.timeline.fetchOwlat', group: 'connect' },
 	{
 		id: 'upload-config',

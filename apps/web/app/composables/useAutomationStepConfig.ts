@@ -96,7 +96,7 @@ export function useAutomationStepConfig(
 				stepId: selectedStepId.value,
 				config: currentConfig.value.config as never,
 			});
-			if (result === undefined) return;
+			if (!result.ok) return;
 			// The step is now persisted; adopt it as the clean baseline so the
 			// dirty guard clears without waiting for the automation query to reload.
 			persistedConfigJson.value = JSON.stringify(currentConfig.value.config);

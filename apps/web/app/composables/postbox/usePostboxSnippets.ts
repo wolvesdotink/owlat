@@ -4,6 +4,7 @@
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { SnippetVariable } from '~/utils/postboxSnippetVariables';
 
 export function usePostboxSnippets(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
@@ -22,19 +23,25 @@ export function usePostboxSnippets(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		label: () => t('shared.postbox.usePostboxSnippets.deleteSnippet'),
 	});
 
-	async function create(name: string, shortcut: string, bodyHtml: string) {
+	async function create(
+		name: string,
+		shortcut: string,
+		bodyHtml: string,
+		variables?: SnippetVariable[]
+	) {
 		if (!mailboxId.value) throw new Error('No mailbox');
 		return createMutation.run({
 			mailboxId: mailboxId.value,
 			name,
 			shortcut,
 			bodyHtml,
+			variables,
 		});
 	}
 
 	async function update(
 		snippetId: Id<'mailSnippets'>,
-		patch: { name?: string; shortcut?: string; bodyHtml?: string }
+		patch: { name?: string; shortcut?: string; bodyHtml?: string; variables?: SnippetVariable[] }
 	) {
 		await updateMutation.run({ snippetId, ...patch });
 	}

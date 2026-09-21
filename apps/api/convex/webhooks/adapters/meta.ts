@@ -4,6 +4,11 @@
  * prefix), and parses the deeply-nested `entry/changes/value/messages`
  * envelope into a `channel.received` event with `channel: 'whatsapp'`.
  *
+ * Meta signs only the body (no timestamp), so freshness cannot be checked here;
+ * replay of its at-least-once deliveries is deduped downstream on the message id
+ * (`wamid`, mapped to `externalMessageId`) in
+ * `webhooks/channels.ts:processInboundChannel`.
+ *
  * Meta's webhook subscriptions are activated by a *GET verification
  * challenge* that doesn't belong on the inbound-event pipeline (the
  * pipeline is POST-only). `handleMetaChallenge` is exported as a sibling

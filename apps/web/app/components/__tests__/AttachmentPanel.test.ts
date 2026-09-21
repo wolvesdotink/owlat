@@ -30,8 +30,8 @@ function mountPanel() {
 }
 
 beforeEach(() => {
-	generateUploadUrl.mockReset().mockResolvedValue('https://upload.example');
-	createMediaAsset.mockReset().mockResolvedValue('media-asset-uploaded');
+	generateUploadUrl.mockReset().mockResolvedValue({ ok: true, result: 'https://upload.example' });
+	createMediaAsset.mockReset().mockResolvedValue({ ok: true, result: 'media-asset-uploaded' });
 	getStorageUrl.mockReset().mockResolvedValue('https://files.example/uploaded');
 	uploadFileToStorage.mockReset().mockResolvedValue({
 		ok: true,

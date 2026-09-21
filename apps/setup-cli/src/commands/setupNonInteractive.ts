@@ -19,6 +19,7 @@ import pc from 'picocolors';
 import { readFile } from 'node:fs/promises';
 import { readEnv, writeEnv, type EnvMap } from '../lib/env';
 import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
+import { generateSecret } from '@owlat/shared/setupSecrets';
 import { writeComposeOverride } from '../lib/override';
 import { saveFlagState } from '../lib/flagState';
 import { createReporter, SetupStep } from '../lib/progress';
@@ -156,10 +157,11 @@ export async function applyAssumeYes({
  *                       selectable unattended)
  *   • AI              → only when fully specified in the env (the default pack
  *                       leaves AI off, so a provider is never required)
- *   • admin           → `OWLAT_ADMIN_{EMAIL,NAME,PASSWORD}` or the same dev
- *                       defaults `owlat quickstart --assume-yes` uses (the admin
- *                       is display-only in the wizard; the real account is
- *                       created later by `bootstrap-org`)
+ *   • admin           → `OWLAT_ADMIN_{EMAIL,NAME,PASSWORD}` or the dev
+ *                       email/name defaults plus a RANDOMLY GENERATED password
+ *                       (the historical hardcoded default is public knowledge,
+ *                       so it must never be silently provisioned; bootstrap-org
+ *                       additionally refuses placeholder passwords outright)
  *
  * Pure and prompt-free: it calls no clack function, so it structurally cannot
  * block a non-TTY. Exported for the regression test. `process.env` takes
@@ -186,7 +188,7 @@ export function buildAssumeYesConfig(existingEnv: EnvMap): SetupConfig {
 		admin: {
 			email: read('OWLAT_ADMIN_EMAIL') ?? 'dev@example.com',
 			name: read('OWLAT_ADMIN_NAME') ?? 'Dev Admin',
-			password: read('OWLAT_ADMIN_PASSWORD') ?? 'devpassword12345',
+			password: read('OWLAT_ADMIN_PASSWORD') ?? generateSecret(24),
 		},
 	};
 

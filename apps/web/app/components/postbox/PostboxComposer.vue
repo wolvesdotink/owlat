@@ -5,7 +5,6 @@ import type { ComposerAttachment } from '~/composables/postbox/usePostboxCompose
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
-import { mentionsAttachment } from '~/utils/attachmentMention';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -48,6 +47,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const { showOperationError } = useOperationErrorToast();
 
 const {
 	draftId: activeDraftId,
@@ -70,12 +70,15 @@ const {
 	thumbUrlFor,
 	addFiles,
 	removeAttachment,
+	shareAsLink,
+	isSharing,
 	cancelUpload,
 	retryUpload,
 	addInlineImage,
 	removeInlineImage,
 	isSaving,
 	lastSavedAt,
+	draftMirror,
 	isUploading,
 	canSend,
 	isScheduled,
@@ -115,23 +118,39 @@ const seal = usePostboxComposerSealLock(() => activeDraftId.value ?? undefined, 
 	onConfirm: (opts) => void handleSend(opts),
 });
 
+// Plan idea 11: which chips may show a key glyph, and what removing a named
+// blocker does. Both live in a sibling composable so this file stays focused.
+const { chipSealStates, removeSealBlocker } = usePostboxComposerSealChips(seal, {
+	toAddresses,
+	ccAddresses,
+	bccAddresses,
+});
+
 // Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
 // on selection); the footer "Aa" affordance flips back to the classic persistent
 // toolbar and persists the choice per user.
 const { persistentToolbar, toggleToolbar } = usePostboxToolbarPreference();
 
 // Canned responses ("/" slash-trigger); inert when the mailbox has no snippets.
-const { editorSnippets, snippetFirstName } = usePostboxComposerSnippets(
+// The third argument is what a snippet's sender-identity variables resolve to.
+const { editorSnippets, snippetVariableContext } = usePostboxComposerSnippets(
 	() => props.mailboxId ?? null,
-	() => toAddresses.value[0]
+	() => toAddresses.value[0],
+	() => ({
+		name: availableIdentities.value.find((i) => i.address === fromAddress.value)?.label,
+		email: fromAddress.value,
+	})
 );
 
 async function onFromChange(address: string) {
 	try {
 		await setIdentity(address);
 	} catch (err) {
-		// eslint-disable-next-line no-console
-		console.error('[Postbox] setIdentity failed', err);
+		// The mutation itself is an Operation and toasts its own refusals; what
+		// lands here is the step before it (the draft row could not be created).
+		// Logging alone left the From field silently snapped back to the old
+		// address with no explanation.
+		showOperationError(err);
 	}
 }
 
@@ -196,6 +215,22 @@ const {
 	onConfirm: (opts) => void handleSend(opts),
 });
 
+// The deterministic confidence layer (plan ideas 3, 4, 5, 6, 15). Same
+// blockSend + onConfirm replay contract as the seal and stale-reply guards; no
+// model involved, so all of it works with the `ai` flag off.
+const guards = usePostboxComposerGuards(
+	{
+		mailboxId: () => props.mailboxId,
+		identities: () => availableIdentities.value,
+		fromAddress: () => fromAddress.value,
+		subject: () => subject.value,
+		bodyHtml: () => bodyHtml.value,
+		recipients: () => [...toAddresses.value, ...ccAddresses.value, ...bccAddresses.value],
+		attachmentCount: () => attachments.value.length,
+	},
+	{ onConfirm: (opts) => void handleSend(opts) }
+);
+
 type SendOptions = { scheduledSendAt?: number; allowUnsealed?: boolean };
 
 async function handleSend(opts?: SendOptions) {
@@ -211,30 +246,27 @@ async function handleSend(opts?: SendOptions) {
 	// Sealed Mail (E5): an unsealable draft stops here until the sender decides
 	// (proceed or cancel) — nothing goes out in plaintext by omission.
 	if (await seal.blockSend(opts)) return;
-	// Catch the classic "I said 'attached' but forgot to attach" mistake.
-	if (
-		attachments.value.length === 0 &&
-		mentionsAttachment(subject.value, bodyHtml.value) &&
-		!window.confirm(t('components.postbox.postboxComposer.attachmentMentionConfirm'))
-	) {
-		return;
-	}
+	// A send that will fail DMARC, a message missing the attachment it promises,
+	// a recipient never written to before — each asked once, each replaying it.
+	if (guards.blockSend(opts)) return;
 	// A teammate replied to this shared-inbox thread after this reply opened —
 	// pause for confirmation before sending a duplicate (asked once).
 	if (blockStaleSend(opts)) return;
 	sending.value = true;
 	try {
 		// `send()` throws on a backend reject (no_recipients, from_revoked,
-		// illegal_edge, scan-block, …). The underlying operation module has
-		// already surfaced the categorized error as a toast, so we only need to
-		// stay put: do NOT emit `sent` (which would arm undo + navigate away) on
+		// illegal_edge, scan-block, …). Those arrive as a SurfacedOperationError,
+		// because the operation module has already toasted them; here we only need
+		// to stay put: do NOT emit `sent` (which would arm undo + navigate away) on
 		// failure. A real `{ undoToken, sendAt }` reaching here means it sent.
 		const result = await send(opts);
 		emit('sent', result.undoToken, result.sendAt);
 	} catch (err) {
-		// Error already toasted by useBackendOperation; log for telemetry context.
-		// eslint-disable-next-line no-console
-		console.error('[Postbox] send failed', err);
+		// Anything NOT already surfaced (the draft row could not be created, a
+		// throw from the flush before it) gets a toast of its own — this used to
+		// be a console line, so a send could fail with the composer just sitting
+		// there looking idle.
+		showOperationError(err);
 	} finally {
 		sending.value = false;
 	}
@@ -263,23 +295,6 @@ const { promoting, basicEditor, focusBody, handlePromote } = usePostboxComposerI
 	emitPromote: (payload) => emit('promote', payload),
 });
 defineExpose({ focusBody });
-
-const unscheduling = ref(false);
-async function handleUnschedule() {
-	if (unscheduling.value) return;
-	unscheduling.value = true;
-	try {
-		// Reverts the row to 'draft' — re-enables autosave + editing. Errors are
-		// already toasted by useBackendOperation.
-		await cancelSchedule();
-	} finally {
-		unscheduling.value = false;
-	}
-}
-
-const scheduledLabel = computed(() =>
-	scheduledSendAt.value ? formatDateTime(scheduledSendAt.value) : ''
-);
 
 const lastSavedLabel = computed(() => {
 	if (isSaving.value) return t('common.saving');
@@ -346,6 +361,8 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:from-address="fromAddress"
 			:available-identities="availableIdentities"
 			:reply-all-recipients="replyAllRecipients"
+			:guards="guards"
+			:seal-states="chipSealStates"
 			@from-change="onFromChange"
 			@apply-reply-all="onApplyReplyAll"
 		/>
@@ -357,28 +374,27 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:enabled="seal.enabled"
 			:seal-state="seal.state"
 			:pending="seal.pending"
+			:blocking-recipients="seal.blockingRecipients"
+			:all-verified="seal.allVerified"
 			@request-unsealed="seal.requestUnsealed()"
+			@remove-recipient="removeSealBlocker"
 		/>
 
-		<div
-			v-if="isScheduled"
-			class="flex items-center justify-between gap-3 px-3 py-2 border-b border-border-subtle bg-bg-surface text-sm"
-		>
-			<span class="inline-flex items-center gap-1.5 text-text-secondary">
-				<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
-				{{ t('components.postbox.postboxComposer.scheduledFor', { datetime: scheduledLabel }) }}
-			</span>
-			<UiButton
-				variant="ghost"
-				type="button"
-				class="text-xs"
-				:disabled="unscheduling"
-				@click="handleUnschedule"
-			>
-				<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin" />
-				{{ t('components.postbox.postboxComposer.unschedule') }}
-			</UiButton>
-		</div>
+		<!-- Plan idea 7: keystrokes the server row never received, after a crash.
+		     Above the editor, because it offers to replace what is in it. -->
+		<PostboxDraftRestoreBar
+			:entry="draftMirror.restorable"
+			@restore="draftMirror.restore"
+			@dismiss="draftMirror.dismiss"
+		/>
+
+		<!-- A scheduled draft is read-only until it is taken back; the banner owns
+		     both the "goes out at" line and the unschedule control. -->
+		<PostboxComposerScheduledBanner
+			:is-scheduled="isScheduled"
+			:scheduled-send-at="scheduledSendAt"
+			:cancel-schedule="cancelSchedule"
+		/>
 
 		<div class="flex-1 overflow-hidden">
 			<PostboxBasicEditor
@@ -396,7 +412,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				:embed-image="addInlineImage"
 				:on-remove-embedded-image="removeInlineImage"
 				:snippets="editorSnippets"
-				:snippet-first-name="snippetFirstName"
+				:snippet-variable-context="snippetVariableContext"
 			/>
 			<EmailBuilder
 				v-else
@@ -419,7 +435,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:uploads="uploads"
 			:meter="attachmentSizeMeter"
 			:thumb-url-for="thumbUrlFor"
+			:is-sharing="isSharing"
 			@remove="removeAttachment"
+			@share="shareAsLink"
 			@cancel="cancelUpload"
 			@retry="retryUpload"
 		/>
@@ -445,7 +463,11 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:signatures="signatures"
 			:active-signature-id="activeSignatureId"
 			:composer-mode="composerMode"
+			:subject="subject"
+			:body-html="bodyHtml"
+			:body-blocks="bodyBlocks"
 			:persistent-toolbar="persistentToolbar"
+			:preflight="guards.preflight"
 			:last-saved-label="lastSavedLabel"
 			@send="handleSend()"
 			@schedule="scheduleOpen = true"
@@ -454,25 +476,22 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@toggle-toolbar="toggleToolbar"
 			@switch-mode="switchMode"
 		/>
-		<PostboxScheduleDialog
-			:open="scheduleOpen"
-			@update:open="scheduleOpen = $event"
-			@confirm="(ts) => handleSend({ scheduledSendAt: ts })"
-		/>
-		<!-- Sealed Mail (E5): the decision behind every unsealed send; confirming
-		     replays the parked send (scheduled time included) as an explicit act. -->
-		<PostboxComposerSealConfirmDialog
-			:open="seal.confirmOpen"
+		<!-- Every dialog that PARKS a send until the sender answers: the schedule
+		     picker, the unsealed-send decision, the stale-reply warning. Grouped
+		     in one component because they share the contract — each confirm
+		     replays the very send it interrupted, options and all. -->
+		<PostboxComposerDialogs
+			v-model:schedule-open="scheduleOpen"
+			v-model:stale-open="staleConfirmOpen"
+			:mailbox-id="mailboxId"
+			:recipients="[...toAddresses, ...ccAddresses, ...bccAddresses]"
+			:seal-confirm-open="seal.confirmOpen"
 			:seal-state="seal.state"
-			@update:open="seal.setConfirmOpen"
-			@confirm="seal.confirmUnsealed"
-		/>
-		<!-- Team-inbox collision safety: a teammate replied to this thread after
-		     this reply was opened. Confirm before sending a duplicate. -->
-		<PostboxStaleReplyDialog
-			v-model:open="staleConfirmOpen"
-			:reply-by-name="staleReplyByName"
-			@confirm="confirmStaleSend"
+			:stale-reply-by-name="staleReplyByName"
+			@schedule="(ts: number) => handleSend({ scheduledSendAt: ts })"
+			@update:seal-confirm-open="seal.setConfirmOpen"
+			@confirm-unsealed="seal.confirmUnsealed"
+			@confirm-stale="confirmStaleSend"
 		/>
 	</div>
 </template>

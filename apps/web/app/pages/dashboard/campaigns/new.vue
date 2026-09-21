@@ -12,6 +12,7 @@ definePageMeta({
 	middleware: 'auth',
 });
 
+const route = useRoute();
 const router = useRouter();
 useOrganizationContext();
 const { isPending: authPending, isAuthenticated } = useAuth();
@@ -35,11 +36,23 @@ const steps = [
 
 const displaySteps = computed(() => steps.map((step) => ({ ...step, label: t(step.label) })));
 
-const { currentStep, getStepStatus, isConnectorHighlighted, goToStep, goToNext, goToPrevious } =
-	useWizard(steps);
+// Campaign state. The draft id rides in the URL alongside the step, so a
+// refresh, a Back or a shared link reopens the same half-built campaign
+// instead of stranding the row the wizard already created.
+const initialCampaignId = route.query['id'];
+const campaignId = ref<Id<'campaigns'> | null>(
+	typeof initialCampaignId === 'string' && initialCampaignId
+		? (initialCampaignId as Id<'campaigns'>)
+		: null
+);
 
-// Campaign state
-const campaignId = ref<Id<'campaigns'> | null>(null);
+const rememberCampaign = async (id: Id<'campaigns'> | null) => {
+	campaignId.value = id;
+	const query = { ...route.query };
+	if (id) query['id'] = id;
+	else delete query['id'];
+	await router.replace({ query });
+};
 
 type SetupStepExpose = {
 	form?: {
@@ -73,9 +86,23 @@ const contentStepRef = ref<ContentStepExpose | null>(null);
 // step navigation (typed values and the A/B expander persist). A deactivated
 // step's template ref is still nulled, so the review summary falls back to the
 // canonical campaign persisted on each step's Next.
-const { data: campaignDetails } = useConvexQuery(api.campaigns.campaigns.getWithRelations, () =>
-	campaignId.value ? { campaignId: campaignId.value } : 'skip'
+//
+// The step now lives in the URL, but that fallback chain STAYS: SetupStep does
+// not rehydrate its own form fields from the persisted campaign (only the
+// sender preselect and the A/B expander read it back), so dropping KeepAlive
+// would blank the name and reply-to on the way back from Content. Hydrating
+// SetupStep from `campaignDetails` is the prerequisite, not this page.
+const { data: campaignDetails, error: campaignError } = useConvexQuery(
+	api.campaigns.campaigns.getWithRelations,
+	() => (campaignId.value ? { campaignId: campaignId.value } : 'skip')
 );
+
+// An `?id=` that does not resolve (deleted draft, hand-edited link, another
+// org's campaign) leaves the wizard pointing at nothing: drop it and let the
+// step validation below fall back to Setup.
+watch(campaignError, (error) => {
+	if (error) void rememberCampaign(null);
+});
 const { data: recipientCount } = useConvexQuery(
 	api.campaigns.audienceResolution.countRecipients,
 	() => (campaignDetails.value?.audience ? { audience: campaignDetails.value.audience } : 'skip')
@@ -92,9 +119,28 @@ const { results: emailTemplates } = usePaginatedQuery(
 	{ initialNumItems: 100 }
 );
 
+// A step is reachable once the one before it has been persisted: Setup ends by
+// creating the campaign row, Content ends by attaching the email. That is what a
+// pasted or stale `?step=` is measured against.
+const isStepComplete = (step: Step) => {
+	if (step === 'setup') return campaignId.value !== null;
+	if (step === 'content') return Boolean(campaignDetails.value?.emailTemplateId);
+	return false;
+};
+
+// …but only once the draft behind `?id=` has actually arrived. Judging a link
+// against a query that has not resolved yet would rewrite `?step=review` to
+// Setup in the first frame after a refresh.
+const isWizardReady = () =>
+	campaignId.value === null || campaignDetails.value !== undefined || campaignError.value !== null;
+
+const { currentStep, getStepStatus, isConnectorHighlighted, goToStep, goToNext, goToPrevious } =
+	useWizard(steps, { syncQuery: true, isStepComplete, isReady: isWizardReady });
+
 // Handle step submissions
-const handleSetupSubmit = (newCampaignId: Id<'campaigns'>) => {
-	campaignId.value = newCampaignId;
+const handleSetupSubmit = async (newCampaignId: Id<'campaigns'>) => {
+	// Awaited so the id is in the query before the step push copies it forward.
+	await rememberCampaign(newCampaignId);
 	goToNext();
 };
 
@@ -110,8 +156,40 @@ const handleEditStep = (step: string) => {
 	goToStep(step as Step);
 };
 
+// Leaving mid-wizard drops whatever the current step has not persisted yet, so
+// it asks first — the same guard the editors use, armed the moment there is
+// something to lose and disarmed the moment the campaign goes out.
+const {
+	showDialog: showLeaveDialog,
+	confirmDiscard,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges();
+
+const isCampaignSent = ref(false);
+
+const hasSetupInput = computed(() => {
+	const form = setupStepRef.value?.form;
+	if (!form) return false;
+	return Boolean(
+		form.campaignName?.trim() ||
+			form.fromName?.trim() ||
+			form.fromEmail?.trim() ||
+			form.replyTo?.trim()
+	);
+});
+
+const hasWizardProgress = computed(
+	() => !isCampaignSent.value && (campaignId.value !== null || hasSetupInput.value)
+);
+
+watch(hasWizardProgress, (value) => setHasChanges(value), { immediate: true });
+
 const handleComplete = () => {
-	// Campaign sent/scheduled successfully, will redirect via ReviewStep
+	// Campaign sent/scheduled successfully, will redirect via ReviewStep — the
+	// wizard has nothing left to protect.
+	isCampaignSent.value = true;
+	setHasChanges(false);
 };
 
 // Computed data for review step. Step refs win when their step is still mounted
@@ -229,5 +307,15 @@ const reviewData = computed(() => {
 				/>
 			</KeepAlive>
 		</div>
+
+		<UiConfirmationDialog
+			:open="showLeaveDialog"
+			:title="t('dashboard.campaigns.new.leaveDialog.title')"
+			:description="t('dashboard.campaigns.new.leaveDialog.description')"
+			:confirm-text="t('dashboard.campaigns.new.leaveDialog.confirm')"
+			:cancel-text="t('dashboard.campaigns.new.leaveDialog.cancel')"
+			@update:open="cancelNavigation"
+			@confirm="confirmDiscard"
+		/>
 	</div>
 </template>

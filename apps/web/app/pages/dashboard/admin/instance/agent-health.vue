@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 	// Mirror the nav gate: only reachable when ai.agent is enabled.
 	requiresFeature: 'ai.agent',
@@ -92,15 +92,6 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 
 <template>
 	<div class="p-6 lg:p-8">
-		<!-- Back Navigation -->
-		<NuxtLink
-			to="/dashboard/admin"
-			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
-		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			{{ t('dashboard.admin.instance.agentHealth.backToSettings') }}
-		</NuxtLink>
-
 		<!-- Header -->
 		<div class="flex items-center gap-4 mb-8">
 			<UiIconBox icon="lucide:activity" size="xl" variant="brand" rounded="full" />

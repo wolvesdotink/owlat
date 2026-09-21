@@ -23,7 +23,7 @@ import {
 	seedProviderOf,
 	takeConnectableSeedAccounts,
 	takeLiveSeedAccounts,
-} from '../mail/externalAccountShared';
+} from '../mail/external/accountShared';
 import { recordAuditLog } from '../lib/auditLog';
 
 /**
@@ -31,7 +31,7 @@ import { recordAuditLog } from '../lib/auditLog';
  * IV, no auth tag, no username, no host — a seed account's credentials never
  * leave the sealed envelope the mail-sync worker already owns.
  */
-export interface SeedAccountView {
+interface SeedAccountView {
 	accountId: Id<'externalMailAccounts'>;
 	provider: DestinationProviderKey;
 	address: string;
@@ -74,7 +74,7 @@ export async function loadSeedAccounts(
 	now: number,
 	reach: 'live' | 'connectable' = 'live'
 ): Promise<SeedAccountView[]> {
-	// NOT a silent truncation: `mail/externalAccountsSeed.ts` refuses the
+	// NOT a silent truncation: `mail/external/accountsSeed.ts` refuses the
 	// (limit+1)th LIVE seed at CONNECT time and this read selects through the
 	// same index, so the page can only ever be short of the cap. A seed the
 	// operator connected is always measured.
@@ -104,7 +104,7 @@ export async function loadSeedAccounts(
  * operator owns, and telling them to "add seed mailboxes" when they have some
  * that need reconnecting is the wrong sentence.
  *
- * Absence is a SUPPORTED CONFIGURATION (plan D2): `false` lowers measurement
+ * Absence is a SUPPORTED CONFIGURATION: `false` lowers measurement
  * confidence and offers an improvement, and does nothing else.
  */
 export async function hasSeedAccounts(
@@ -132,7 +132,7 @@ export async function hasSeedAccounts(
  * So, in order: the artifact goes through `recordAuditLog` into `auditLogs`,
  * which `auditLogs.list` surfaces org-scoped to admins — a query the product
  * really exposes. Due-ness runs off `seedRotationAcknowledgedAt`, which ONLY an
- * operator writes (`mail/externalAccountsSeed.acknowledgeSeedRotation`);
+ * operator writes (`mail/external/accountsSeed.acknowledgeSeedRotation`);
  * `seedRotationRemindedAt` survives purely as this function's de-duplication
  * stamp, so a repeated sweep cannot write one audit row per tick and cannot
  * silence the nudge either. And the caller is `analytics/seedRotationSweep.ts`,
@@ -143,7 +143,7 @@ export async function hasSeedAccounts(
  * in the same deployment; there is no worker on the other side of the boundary
  * any more, so an org argument to re-check would be an argument nobody supplies.
  *
- * D2: advisory only. It never blocks a send, a promotion, or a screen, and it
+ * ADVISORY ONLY. It never blocks a send, a promotion, or a screen, and it
  * is not a "setup incomplete" nag — a seed that is never rotated keeps being
  * measured, it just measures less well.
  */

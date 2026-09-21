@@ -1,5 +1,5 @@
 /**
- * Graceful shutdown plugin (P5.3 / S Phase 5).
+ * Graceful shutdown plugin.
  *
  * Docker Compose sends SIGTERM, waits `stop_grace_period` (45s in our
  * templates), then SIGKILLs. Nuxt/Nitro's default handler closes the HTTP
@@ -33,24 +33,23 @@ export default defineNitroPlugin(() => {
 		if (shuttingDown) return;
 		shuttingDown = true;
 
-		// eslint-disable-next-line no-console
+		// oxlint-disable-next-line no-console
 		console.log(
 			JSON.stringify({
 				event: 'web_shutdown_signal',
 				signal,
 				timestamp: new Date().toISOString(),
-			}),
+			})
 		);
 
 		// Hard-exit if cleanup hangs — Docker will SIGKILL us at 45s anyway.
 		const watchdog = setTimeout(() => {
-			// eslint-disable-next-line no-console
 			console.error(
 				JSON.stringify({
 					event: 'web_shutdown_forced',
 					deadlineMs: HARD_EXIT_MS,
 					timestamp: new Date().toISOString(),
-				}),
+				})
 			);
 			process.exit(1);
 		}, HARD_EXIT_MS);

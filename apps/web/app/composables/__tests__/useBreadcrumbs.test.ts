@@ -175,6 +175,69 @@ describe('useBreadcrumbs', () => {
 		});
 	});
 
+	/**
+	 * The slug fallback printed the raw `mailMessages` id as the last crumb
+	 * ("Mm_…") whenever it was short enough to survive the >20-char filter — a
+	 * document id shown to a reader as a page name.
+	 */
+	describe('postbox message trail', () => {
+		it('names the message instead of printing its document id', () => {
+			expect(labelsFor('/dashboard/postbox/inbox/Mm_abc123')).toEqual(['Mail', 'Inbox', 'Message']);
+		});
+
+		it('carries no id-looking crumb', () => {
+			const id = 'Mm_k97e2h4qz1';
+			expect(labelsFor(`/dashboard/postbox/archive/${id}`)).not.toContain(id);
+		});
+
+		it('links the folder crumb back to the folder it was opened from', () => {
+			expect(trailFor('/dashboard/postbox/sent/Mm_abc123')[1]).toEqual({
+				label: 'components.postbox.postboxLayout.folderRoles.sent',
+				href: '/dashboard/postbox/sent',
+			});
+		});
+
+		it('skips the folder crumb for a custom folder (its param is a raw id)', () => {
+			expect(labelsFor('/dashboard/postbox/j57customfolder/Mm_abc123')).toEqual([
+				'Mail',
+				'Message',
+			]);
+		});
+
+		it('reads a label list as a label, not as a message and not as its id', () => {
+			expect(labelsFor('/dashboard/postbox/label/lbl_abc123')).toEqual(['Mail', 'Label']);
+		});
+	});
+
+	/**
+	 * The folder LIST route had no entry at all, so the slug fallback answered it:
+	 * the trail read "Dashboard > Postbox > Inbox" — a redundant root crumb beside
+	 * the home icon and an untranslated URL slug — while the message opened from
+	 * that very list read "Mail > Inbox > Message".
+	 */
+	describe('postbox folder-list trail', () => {
+		it('names the section the way the sidebar does', () => {
+			expect(labelsFor('/dashboard/postbox/inbox')).toEqual(['Mail', 'Inbox']);
+		});
+
+		it('agrees with the message trail it opens into', () => {
+			const list = labelsFor('/dashboard/postbox/sent');
+			const message = labelsFor('/dashboard/postbox/sent/Mm_abc123');
+			expect(message.slice(0, list.length)).toEqual(list);
+		});
+
+		it('leaves the section’s non-folder pages to their own trails', async () => {
+			// Contacts/Files/Search are one-segment routes too; reading them as
+			// folders would swap their page crumb for a bare, wrong "Mail".
+			const { patternConfigs } = await import('~/lib/breadcrumbPatterns');
+			const matches = (path: string) => patternConfigs.some((c) => c.pattern.test(path));
+			expect(matches('/dashboard/postbox/inbox')).toBe(true);
+			for (const page of ['contacts', 'files', 'search', 'reply-queue', 'subscriptions']) {
+				expect(matches(`/dashboard/postbox/${page}`)).toBe(false);
+			}
+		});
+	});
+
 	it('dynamic overrides still win over the route table', () => {
 		path.value = '/dashboard/admin/instance/general';
 		setDynamicBreadcrumbs([{ label: 'Custom' }]);

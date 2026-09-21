@@ -15,7 +15,7 @@
  *      `shouldExtractOutboundCommitment`, pure + unit-tested) bounds the LLM
  *      fan-out — bulk/automated senders and mass recipients are skipped before
  *      any spend.
- *   2. The cheap-tier LLM refinement (mail/commitmentExtract.ts, 'use node')
+ *   2. The cheap-tier LLM refinement (mail/ai/commitmentExtract.ts, 'use node')
  *      extracts the structured commitment behind the same aiGate as the rest of
  *      Postbox AI. Any gate/model failure just leaves no commitment row.
  *   3. The reminder sweep (`sweep` below) surfaces an OPEN commitment before its
@@ -32,10 +32,9 @@ import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isBulkOrNoReplySender } from './needsReply';
 import { armThreadFollowUp, followUpWaitingOn } from './followUps';
+import { messageDirectionValidator, detectionSourceValidator } from '../lib/convexValidators';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
-
-export type CommitmentDirection = 'inbound' | 'outbound';
 
 /** Cap on the persisted commitment description. */
 const MAX_DESCRIPTION_CHARS = 200;
@@ -143,12 +142,12 @@ export const applyCommitment = internalMutation({
 		mailboxId: v.id('mailboxes'),
 		threadId: v.id('mailThreads'),
 		messageId: v.id('mailMessages'),
-		direction: v.union(v.literal('inbound'), v.literal('outbound')),
+		direction: messageDirectionValidator,
 		description: v.string(),
 		counterparty: v.optional(v.string()),
 		dueAt: v.optional(v.number()),
 		dueHintRaw: v.optional(v.string()),
-		source: v.union(v.literal('heuristic'), v.literal('llm')),
+		source: detectionSourceValidator,
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
@@ -195,7 +194,7 @@ export const applyCommitment = internalMutation({
 /** Active mailboxes scanned per sweep tick. */
 const MAILBOX_SCAN_LIMIT = 50;
 /** Surface an open commitment this long before its deadline (pre-lapse). */
-export const REMIND_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const REMIND_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 /** Open commitments inspected per mailbox per tick. */
 const COMMITMENT_SCAN_LIMIT = 50;
 /** Global cap on extractions scheduled per sweep tick. */
@@ -261,7 +260,7 @@ export const sweep = internalMutation({
 					.withIndex('by_message', (q) => q.eq('messageId', msg._id).eq('direction', 'outbound'))
 					.first();
 				if (already) continue;
-				await ctx.scheduler.runAfter(0, internal.mail.commitmentExtract.extractCommitment, {
+				await ctx.scheduler.runAfter(0, internal.mail.ai.commitmentExtract.extractCommitment, {
 					messageId: msg._id,
 					direction: 'outbound',
 				});

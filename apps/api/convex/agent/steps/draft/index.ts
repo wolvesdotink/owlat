@@ -27,6 +27,7 @@ import {
 	ALLOWED_PRIORITIES,
 	ALLOWED_SENTIMENTS,
 	safeEnum,
+	safeLanguage,
 } from './sanitize';
 import {
 	buildConfirmedContext,
@@ -58,6 +59,9 @@ export type DraftInput = {
 		sentiment: string;
 		intent: string;
 		confidence: number;
+		// ISO 639-1 code the classifier detected; the reply is written in it.
+		// Optional for back-compat with rows classified before the field existed.
+		language?: string;
 	};
 	// TRUSTED facts the mailbox owner confirmed via the clarification loop
 	// (`inbox.answerClarification`). Rendered as a `[CONFIRMED BY OWNER]` block
@@ -67,7 +71,7 @@ export type DraftInput = {
 	confirmedContext?: string;
 };
 
-export type DraftOutput = {
+type DraftOutput = {
 	draftResponse: string;
 	draftSubject: string;
 	confidenceScore: number;
@@ -99,13 +103,13 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 
 		// Personalize to the recipient's learned writing voice when a Postbox
 		// mailbox for this inbound recipient has opted in and has a derived
-		// profile. Mirrors mail/ai.ts suggestReplies. OPTIONAL + FAIL-SOFT: no
+		// profile. Mirrors mail/ai/assist.ts suggestReplies. OPTIONAL + FAIL-SOFT: no
 		// recipient / no matching mailbox / personalization off / no profile /
 		// accessor throws all collapse to exactly today's generic org tone.
 		let voiceGuidance: string | null = null;
 		if (message?.to) {
 			try {
-				const res = await ctx.runMutation(internal.mail.voiceProfile.getGuidanceForRecipient, {
+				const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForRecipient, {
 					recipient: message.to,
 				});
 				voiceGuidance = res.guidance;
@@ -121,6 +125,10 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		const safeIntent = safeEnum(input.classification.intent, ALLOWED_INTENTS);
 		const safeSentiment = safeEnum(input.classification.sentiment, ALLOWED_SENTIMENTS);
 		const safePriority = safeEnum(input.classification.priority, ALLOWED_PRIORITIES);
+		// The reply language is the sender's. Allowlisted like the enums above —
+		// it lands in the system role, so a free string from the classifier
+		// (steerable by the mail) must not reach it unchecked.
+		const replyLanguage = safeLanguage(input.classification.language);
 
 		const toneInstruction = agentConfig?.toneDescription
 			? `\n\nTone guidance: ${agentConfig.toneDescription}`
@@ -168,7 +176,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// THE shared draft pipeline (agent/shared/draftService.ts): context
 		// injection re-scan → primary generation (with the recall tool) → draft
 		// self-check → gated multi-option review drafts. Personal Postbox
-		// (mail/draftOnArrival.ts) runs the exact same service so both surfaces
+		// (mail/ai/draftOnArrival.ts) runs the exact same service so both surfaces
 		// produce identical output for the same inbound message.
 		const { draftBody, draftQuality, draftOptions, tokenUsage, modelUsed } = await runSharedDraft(
 			ctx,
@@ -201,6 +209,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 				tools: { recallKnowledge },
 				maxSteps: MAX_RECALL_CALLS + 2,
 				spendLabels: { selfCheck: 'agent_draft_selfcheck', options: 'agent_draft_options' },
+				replyLanguage,
 				strategyScope: {
 					...(message?.contactId ? { contactId: message.contactId } : {}),
 					classification: safeCategory,

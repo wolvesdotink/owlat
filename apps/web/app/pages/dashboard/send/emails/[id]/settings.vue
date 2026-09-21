@@ -189,7 +189,7 @@ const handleSave = async (): Promise<boolean> => {
 				return false;
 			case 'language-promoted':
 				if (form.type !== persistedType.value) {
-					if (!(await changeTemplateType({ templateId: templateId.value, type: form.type }))) {
+					if (!(await changeTemplateType({ templateId: templateId.value, type: form.type })).ok) {
 						return false;
 					}
 					persistedType.value = form.type;
@@ -203,7 +203,7 @@ const handleSave = async (): Promise<boolean> => {
 				return true;
 			case 'saved':
 				if (form.type !== persistedType.value) {
-					if (!(await changeTemplateType({ templateId: templateId.value, type: form.type }))) {
+					if (!(await changeTemplateType({ templateId: templateId.value, type: form.type })).ok) {
 						return false;
 					}
 					persistedType.value = form.type;

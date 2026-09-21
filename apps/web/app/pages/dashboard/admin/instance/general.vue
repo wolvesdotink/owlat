@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { instanceTimezoneSelectOptions } from '~/data/instanceTimezoneOptions';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
 
 const { t } = useI18n();
@@ -11,7 +11,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.instance.general.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -186,7 +186,7 @@ const handleSave = async (): Promise<boolean> => {
 		defaultFromName: form.defaultFromName.trim() || undefined,
 		defaultFromEmail: form.defaultFromEmail.trim() || undefined,
 	});
-	if (settingsResult === undefined) {
+	if (!settingsResult.ok) {
 		isSaving.value = false;
 		return false;
 	}
@@ -194,10 +194,7 @@ const handleSave = async (): Promise<boolean> => {
 	// Archive default is a feature flag, not an instanceSettings column
 	const archiveFlag = flags.value['campaigns.archive'] === true;
 	if (form.archiveEnabled !== archiveFlag) {
-		if (
-			(await setFeatureFlag({ flag: 'campaigns.archive', value: form.archiveEnabled })) ===
-			undefined
-		) {
+		if (!(await setFeatureFlag({ flag: 'campaigns.archive', value: form.archiveEnabled })).ok) {
 			isSaving.value = false;
 			return false;
 		}
@@ -275,22 +272,11 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 			<!-- Settings Content -->
 			<div v-else class="space-y-8">
-				<!-- General Settings Section -->
+				<!-- General settings. No card header: the page h1 immediately above
+				     already says "General" with its own subtitle, and a second
+				     "General / Team settings and defaults" ~100px below it was the same
+				     word twice. Straight into the fields, like Features and Webhooks. -->
 				<UiCard padding="none" overflow="hidden">
-					<template #header>
-						<div class="flex items-center gap-3">
-							<UiIconBox icon="lucide:building-2" size="sm" variant="surface" rounded="lg" />
-							<div>
-								<h2 class="text-lg font-semibold text-text-primary">
-									{{ t('dashboard.admin.instance.general.cardTitle') }}
-								</h2>
-								<p class="text-sm text-text-secondary">
-									{{ t('dashboard.admin.instance.general.cardSubtitle') }}
-								</p>
-							</div>
-						</div>
-					</template>
-
 					<form class="p-6" @submit.prevent="handleSave">
 						<div class="grid gap-6 max-w-2xl">
 							<!-- Team Name -->
@@ -442,6 +428,12 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 				</p>
 			</div>
 			<SettingsConnectedWorkspaces />
+		</div>
+
+		<!-- How long received mail keeps its files. Its own card because it saves
+		     on change rather than through this page's Save button. -->
+		<div class="mt-8">
+			<SettingsInboundRetentionCard />
 		</div>
 
 		<!-- Unsaved Changes Dialog -->

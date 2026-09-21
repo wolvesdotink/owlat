@@ -133,7 +133,7 @@ async function seedMailMessageBlobs(
 /**
  * Seed an IMAP-COPY'd PAIR: two `mailMessages` rows that SHARE one raw `.eml`
  * blob AND one text body blob AND one html body blob — exactly what
- * `mail/imap.ts` copyMessages produces (the copy row spreads the original's
+ * `mail/imap/move.ts` copyMessages produces (the copy row spreads the original's
  * `rawStorageId`/`textBodyStorageId`/`htmlBodyStorageId`). Returns the two row
  * ids and the three shared plaintext blob ids so the test can assert both rows
  * survive the reseal and the old plaintext blobs are gone.
@@ -455,6 +455,46 @@ describe('E8b migration — interrupt/resume (b)', () => {
 		// Idempotent: a re-run over the fully-sealed pair seals nothing.
 		const rerun = await t.action(migration.sealMailMessagesBlobsPage, { cursor: null });
 		expect(rerun.sealed).toBe(0);
+	});
+
+	it('the per-message reseal (IMAP APPEND path) seals one row and its shared siblings', async () => {
+		const t = convexTest(schema, allModules);
+		// Same COPY'd pair, but driven by the action IMAP APPEND schedules per
+		// message rather than by the back-fill walker: resealing row A alone must
+		// still repoint row B before the shared plaintext blobs are dropped.
+		const { rowA, rowB, rawId, textId, htmlId } = await seedCopiedPair(t);
+
+		await t.action(internal.mail.blobReseal.resealMessageBlobs, { id: rowA });
+
+		await t.run(async (ctx) => {
+			expect(await ctx.storage.get(rawId)).toBeNull();
+			expect(await ctx.storage.get(textId)).toBeNull();
+			expect(await ctx.storage.get(htmlId)).toBeNull();
+			const a = await ctx.db.get(rowA);
+			const b = await ctx.db.get(rowB);
+			expect(a!.rawStorageId).toBe(b!.rawStorageId);
+			expect(a!.textBodyStorageId).toBe(b!.textBodyStorageId);
+			expect(a!.htmlBodyStorageId).toBe(b!.htmlBodyStorageId);
+			for (const id of [rowA, rowB]) {
+				const m = await ctx.db.get(id);
+				for (const blobId of [m!.rawStorageId, m!.textBodyStorageId, m!.htmlBodyStorageId]) {
+					const bytes = await readSealedBlobBytes(ctx.storage, blobId!);
+					expect(new TextDecoder().decode(bytes!)).toContain(CANARY);
+				}
+			}
+		});
+
+		// A retry (double-scheduling) over the sealed row changes nothing.
+		const sealedIds = await t.run(async (ctx) => {
+			const a = await ctx.db.get(rowA);
+			return [a!.rawStorageId, a!.textBodyStorageId, a!.htmlBodyStorageId];
+		});
+		await t.action(internal.mail.blobReseal.resealMessageBlobs, { id: rowA });
+		await t.run(async (ctx) => {
+			const a = await ctx.db.get(rowA);
+			expect([a!.rawStorageId, a!.textBodyStorageId, a!.htmlBodyStorageId]).toEqual(sealedIds);
+			for (const blobId of sealedIds) expect(await ctx.storage.get(blobId!)).not.toBeNull();
+		});
 	});
 });
 

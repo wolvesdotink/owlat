@@ -47,7 +47,7 @@ const globalOptions = {
 		Icon: true,
 		UiSpinner: true,
 		UiCard: { template: '<div><slot /></div>' },
-		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+		UiEmptyState: true,
 	},
 	components: { UiQueryBoundary: QueryBoundary, UiErrorAlert: ErrorAlert },
 	plugins: [createTestI18n()],

@@ -125,7 +125,7 @@ function openForYou(): void {
 			type="button"
 			class="tb-search absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2"
 			:aria-label="t('common.search')"
-			@click="openSearch"
+			@click="() => openSearch()"
 		>
 			<Icon name="lucide:search" class="w-3.5 h-3.5 shrink-0" />
 			<span class="hidden min-[560px]:inline text-[13px] leading-none truncate">

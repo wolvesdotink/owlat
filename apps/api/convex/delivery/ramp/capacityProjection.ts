@@ -1,5 +1,5 @@
 /**
- * THE PREDICTIVE HALF OF CAPACITY HANDLING (plan P3-3).
+ * THE PREDICTIVE HALF OF CAPACITY HANDLING.
  *
  * The REACTIVE half already ships: when a send would exceed the warming cap the
  * route resolver hands that recipient to the relay with
@@ -29,13 +29,13 @@
  * Above all, a projected volume of ZERO never reaches a division: it is the
  * `no_volume` unknown, decided here, once.
  *
- * PURE (plan D15): `now` is a parameter. Nothing here reads a clock, a database
+ * PURE: `now` is a parameter. Nothing here reads a clock, a database
  * or the environment; `startOfDayUtc` is dependency-free day arithmetic over its
  * argument (`lib/clock.ts`).
  */
 
 import { startOfDayUtc } from '../../lib/clock';
-import { MS_PER_DAY } from '../../lib/constants';
+import { DAY_MS } from '../../lib/constants';
 
 /** How many COMPLETE UTC days the projection looks back over. */
 export const CAPACITY_TRAILING_DAYS = 7;
@@ -67,7 +67,7 @@ export interface CellVolumeDay {
 }
 
 /**
- * Why a projection could not be made. Every one of these HOLDS (plan D10): the
+ * Why a projection could not be made. Every one of these HOLDS: the
  * controller neither increases nor decreases on data it does not have.
  */
 export type CellVolumeUnknownReason =
@@ -150,7 +150,7 @@ export function projectCellVolume(
 ): CellVolumeProjection {
 	if (!Number.isFinite(now)) return { kind: 'unknown', reason: 'clock_unusable' };
 	const today = startOfDayUtc(now);
-	const windowStart = today - CAPACITY_TRAILING_DAYS * MS_PER_DAY;
+	const windowStart = today - CAPACITY_TRAILING_DAYS * DAY_MS;
 
 	const byDay = new Map<number, { total: number; own: number }>();
 	for (const day of days) {
@@ -219,7 +219,7 @@ export function remainingDemandToday(dailyVolume: number, now: number): number |
 	if (!Number.isFinite(dailyVolume) || dailyVolume <= 0) return null;
 	if (!Number.isFinite(now)) return null;
 	const elapsed = now - startOfDayUtc(now);
-	const remainingFraction = 1 - elapsed / MS_PER_DAY;
+	const remainingFraction = 1 - elapsed / DAY_MS;
 	// `elapsed` is never negative for a finite `now`, so `remainingFraction` is
 	// never above 1 and there is nothing to clamp on that side.
 	if (!(remainingFraction >= CAPACITY_MIN_DAY_FRACTION_REMAINING)) return null;
@@ -235,7 +235,7 @@ export function remainingDemandToday(dailyVolume: number, now: number): number |
  * lands in the `reference` arm: the cell's trailing `own` volume falls while its
  * `total` does not, and this ratio is how far the delivered mix fell short. It
  * is EVIDENCE, not a decision — it is carried into the `mixDecisions` audit
- * snapshot (plan D12) so an operator can see that the own arm did not carry what
+ * snapshot so an operator can see that the own arm did not carry what
  * it was assigned, and no rung reads it.
  *
  * IT IS A LAGGING INDICATOR, AND THE NAME SAYS SO. The two sides are measured

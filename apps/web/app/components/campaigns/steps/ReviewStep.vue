@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
+import { needsSendConfirmation, SEND_UNDO_WINDOW_MS } from '~/lib/campaignSend';
 
 type SendOption = 'now' | 'later';
 
@@ -57,6 +58,22 @@ const useRecipientTimezone = ref(false);
 // Test email modal
 const isTestEmailModalOpen = ref(false);
 
+// Send confirmation, scaled to blast radius: a small list sends on one click,
+// a real audience has to be confirmed by name and by number first.
+const isSendConfirmOpen = ref(false);
+const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
+const audienceCountLabel = computed(() => numberFormat.value.format(props.data.audienceCount ?? 0));
+const undoWindowSeconds = Math.round(SEND_UNDO_WINDOW_MS / 1000);
+
+/** The 60s undo window only covers an immediate send; a date is its own undo. */
+const requiresSendConfirmation = computed(
+	() => sendOption.value === 'now' && needsSendConfirmation(props.data.audienceCount)
+);
+
+// The undo window the send is held for, armed here and counted down by the
+// toast on the report page this step navigates to.
+const { arm: armUndoSend } = useCampaignUndoSend();
+
 /**
  * Pre-flight refused the send and handed back the multi-day schedule it would
  * take instead. Capacity is a SCHEDULE, not a failure (deliverability plan
@@ -65,11 +82,9 @@ const isTestEmailModalOpen = ref(false);
  */
 const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useCapacityRefusal();
 
-// Mutations
-const { run: sendCampaignNow } = useBackendOperation(api.campaigns.campaigns.sendNow, {
-	label: () => t('components.campaigns.steps.reviewStep.sendNowOperation'),
-	onError: claimCapacityRefusal,
-});
+// Mutations. There is deliberately no `sendNow` here: "send now" schedules the
+// campaign one undo window out instead, so the send is a real, cancellable
+// scheduled campaign rather than a fire-and-forget the operator cannot recall.
 const { run: scheduleCampaign } = useBackendOperation(api.campaigns.scheduling.schedule, {
 	label: () => t('components.campaigns.steps.reviewStep.scheduleOperation'),
 	onError: claimCapacityRefusal,
@@ -165,23 +180,32 @@ const validate = (): boolean => {
 	return true;
 };
 
-// Handle campaign send
-const handleSendCampaign = async () => {
-	if (sendBlockedReason.value) {
-		setError(sendBlockedReason.value);
-		return;
-	}
-
-	if (!validate()) return;
-
+/**
+ * The send itself, past every gate. Both options end the same way: on the
+ * campaign's report, which is the thing the operator actually wants to look at
+ * once the scary button is pressed.
+ */
+const submitSend = async () => {
 	dismissCapacitySchedule();
 	setLoading(true);
 	try {
-		let toastMessage: string;
-
 		if (sendOption.value === 'now') {
-			if ((await sendCampaignNow({ campaignId: props.data.campaignId })) === undefined) return;
-			toastMessage = t('components.campaigns.steps.reviewStep.toast.sending');
+			// Held one undo window out rather than sent, so the toast on the report
+			// has something real to cancel. Timezone staggering is meaningless for
+			// an immediate send, so it is explicitly off.
+			const sendAt = Date.now() + SEND_UNDO_WINDOW_MS;
+			const result = await scheduleCampaign({
+				campaignId: props.data.campaignId,
+				scheduledAt: sendAt,
+				useRecipientTimezone: false,
+			});
+			if (!result.ok) return;
+
+			armUndoSend({
+				campaignId: props.data.campaignId,
+				campaignName: props.data.campaignName,
+				sendAt,
+			});
 		} else {
 			const scheduledDateTime = new Date(`${scheduledDate.value}T${scheduledTime.value}`);
 			const scheduledHour = scheduledDateTime.getHours();
@@ -194,25 +218,45 @@ const handleSendCampaign = async () => {
 				scheduledHour: useRecipientTimezone.value ? scheduledHour : undefined,
 				scheduledMinute: useRecipientTimezone.value ? scheduledMinute : undefined,
 			});
-			if (result === undefined) return;
+			if (!result.ok) return;
 
-			toastMessage = useRecipientTimezone.value
-				? t('components.campaigns.steps.reviewStep.toast.scheduledPerTimezone', {
-						time: scheduledTime.value,
-					})
-				: t('components.campaigns.steps.reviewStep.toast.scheduled');
+			showToast(
+				useRecipientTimezone.value
+					? t('components.campaigns.steps.reviewStep.toast.scheduledPerTimezone', {
+							time: scheduledTime.value,
+						})
+					: t('components.campaigns.steps.reviewStep.toast.scheduled')
+			);
 		}
 
-		showToast(toastMessage);
-
-		setTimeout(() => {
-			router.push('/dashboard/campaigns');
-		}, 1500);
-
+		// Before navigating: the wizard clears its unsaved-changes flag on this.
 		emit('complete');
+		router.push(`/dashboard/campaigns/${props.data.campaignId}/report`);
 	} finally {
 		setLoading(false);
 	}
+};
+
+// Handle campaign send
+const handleSendCampaign = async () => {
+	if (sendBlockedReason.value) {
+		setError(sendBlockedReason.value);
+		return;
+	}
+
+	if (!validate()) return;
+
+	if (requiresSendConfirmation.value) {
+		isSendConfirmOpen.value = true;
+		return;
+	}
+
+	await submitSend();
+};
+
+const handleConfirmSend = async () => {
+	isSendConfirmOpen.value = false;
+	await submitSend();
 };
 
 /** How the winner is picked, and — for an automatic pick — by when. */
@@ -369,7 +413,7 @@ const variantBTemplateName = computed(() => {
 				<!-- A/B Test Summary -->
 				<div
 					v-if="data.abTestEnabled"
-					class="flex items-start justify-between p-4 bg-bg-surface border border-brand/30 rounded-lg"
+					class="flex items-start justify-between p-4 bg-bg-surface border border-border-default rounded-lg"
 				>
 					<div class="flex items-start gap-3">
 						<UiIconBox icon="lucide:split" size="sm" rounded="lg" />
@@ -430,6 +474,27 @@ const variantBTemplateName = computed(() => {
 			</div>
 		</div>
 
+		<!--
+			Test Email Section — ABOVE the send controls, because sending a test is
+			the step before the real send, not a footnote after it.
+		-->
+		<div class="card p-6">
+			<div class="flex items-center justify-between">
+				<div>
+					<h3 class="text-lg font-semibold text-text-primary">
+						{{ t('components.campaigns.steps.reviewStep.testEmailTitle') }}
+					</h3>
+					<p class="text-sm text-text-secondary mt-1">
+						{{ t('components.campaigns.steps.reviewStep.testEmailDescription') }}
+					</p>
+				</div>
+				<UiButton variant="secondary" @click="isTestEmailModalOpen = true">
+					<template #iconLeft><Icon name="lucide:send-horizonal" class="w-4 h-4" /></template>
+					{{ t('components.campaigns.steps.reviewStep.sendTest') }}
+				</UiButton>
+			</div>
+		</div>
+
 		<!-- Send Options Card -->
 		<div class="card p-6">
 			<h3 class="text-lg font-semibold text-text-primary mb-4">
@@ -457,7 +522,7 @@ const variantBTemplateName = computed(() => {
 					:class="[
 						'flex items-start gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
 						sendOption === 'now'
-							? 'border-brand bg-brand/5'
+							? 'border-text-primary bg-bg-surface'
 							: 'border-border-subtle hover:border-border-default',
 					]"
 				>
@@ -466,12 +531,14 @@ const variantBTemplateName = computed(() => {
 						type="radio"
 						name="sendOption"
 						value="now"
-						class="mt-1 w-4 h-4 text-brand focus:ring-brand border-border-subtle bg-bg-surface"
+						class="mt-1 w-4 h-4 text-text-primary focus:ring-brand border-border-subtle bg-bg-surface"
 					/>
 					<div class="flex-1">
 						<div class="flex items-center gap-2">
-							<Icon name="lucide:send" class="w-5 h-5 text-brand" />
-							<span class="font-medium text-text-primary">{{ t('components.campaigns.steps.reviewStep.sendNow') }}</span>
+							<Icon name="lucide:send" class="w-5 h-5 text-text-tertiary" />
+							<span class="font-medium text-text-primary">{{
+								t('components.campaigns.steps.reviewStep.sendNow')
+							}}</span>
 						</div>
 						<p class="text-sm text-text-secondary mt-1">
 							{{ t('components.campaigns.steps.reviewStep.sendNowDescription') }}
@@ -484,7 +551,7 @@ const variantBTemplateName = computed(() => {
 					:class="[
 						'flex items-start gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
 						sendOption === 'later'
-							? 'border-brand bg-brand/5'
+							? 'border-text-primary bg-bg-surface'
 							: 'border-border-subtle hover:border-border-default',
 					]"
 				>
@@ -493,11 +560,11 @@ const variantBTemplateName = computed(() => {
 						type="radio"
 						name="sendOption"
 						value="later"
-						class="mt-1 w-4 h-4 text-brand focus:ring-brand border-border-subtle bg-bg-surface"
+						class="mt-1 w-4 h-4 text-text-primary focus:ring-brand border-border-subtle bg-bg-surface"
 					/>
 					<div class="flex-1">
 						<div class="flex items-center gap-2">
-							<Icon name="lucide:clock" class="w-5 h-5 text-brand" />
+							<Icon name="lucide:clock" class="w-5 h-5 text-text-tertiary" />
 							<span class="font-medium text-text-primary">{{
 								t('components.campaigns.steps.reviewStep.scheduleLater')
 							}}</span>
@@ -544,11 +611,11 @@ const variantBTemplateName = computed(() => {
 									<input
 										v-model="useRecipientTimezone"
 										type="checkbox"
-										class="mt-0.5 w-4 h-4 text-brand focus:ring-brand border-border-subtle bg-bg-surface rounded"
+										class="mt-0.5 w-4 h-4 text-text-primary focus:ring-brand border-border-subtle bg-bg-surface rounded"
 									/>
 									<div class="flex-1">
 										<div class="flex items-center gap-2">
-											<Icon name="lucide:globe" class="w-4 h-4 text-brand" />
+											<Icon name="lucide:globe" class="w-4 h-4 text-text-tertiary" />
 											<span class="font-medium text-text-primary text-sm">{{
 												t('components.campaigns.steps.reviewStep.recipientTimezone')
 											}}</span>
@@ -556,7 +623,9 @@ const variantBTemplateName = computed(() => {
 										<p class="text-xs text-text-secondary mt-1">
 											{{
 												t('components.campaigns.steps.reviewStep.recipientTimezoneHint', {
-													time: scheduledTime || t('components.campaigns.steps.reviewStep.scheduledTimeFallback'),
+													time:
+														scheduledTime ||
+														t('components.campaigns.steps.reviewStep.scheduledTimeFallback'),
 												})
 											}}
 										</p>
@@ -570,16 +639,28 @@ const variantBTemplateName = computed(() => {
 								class="p-3 bg-bg-elevated shadow-surface-1 rounded-lg"
 							>
 								<template v-if="useRecipientTimezone">
-									<p class="text-sm text-text-secondary">{{ t('components.campaigns.steps.reviewStep.previewHeadingAt') }}</p>
+									<p class="text-sm text-text-secondary">
+										{{ t('components.campaigns.steps.reviewStep.previewHeadingAt') }}
+									</p>
 									<p class="font-medium text-text-primary mt-1">
-										{{ t('components.campaigns.steps.reviewStep.previewPerTimezone', { time: scheduledTime }) }}
+										{{
+											t('components.campaigns.steps.reviewStep.previewPerTimezone', {
+												time: scheduledTime,
+											})
+										}}
 									</p>
 									<p class="text-xs text-text-tertiary mt-2">
-										{{ t('components.campaigns.steps.reviewStep.previewExample', { time: scheduledTime }) }}
+										{{
+											t('components.campaigns.steps.reviewStep.previewExample', {
+												time: scheduledTime,
+											})
+										}}
 									</p>
 								</template>
 								<template v-else>
-									<p class="text-sm text-text-secondary">{{ t('components.campaigns.steps.reviewStep.previewHeading') }}</p>
+									<p class="text-sm text-text-secondary">
+										{{ t('components.campaigns.steps.reviewStep.previewHeading') }}
+									</p>
 									<p class="font-medium text-text-primary mt-1">
 										{{ formatScheduleDate(scheduledDate, scheduledTime) }}
 									</p>
@@ -588,24 +669,6 @@ const variantBTemplateName = computed(() => {
 						</div>
 					</div>
 				</label>
-			</div>
-		</div>
-
-		<!-- Test Email Section -->
-		<div class="card p-6">
-			<div class="flex items-center justify-between">
-				<div>
-					<h3 class="text-lg font-semibold text-text-primary">
-						{{ t('components.campaigns.steps.reviewStep.testEmailTitle') }}
-					</h3>
-					<p class="text-sm text-text-secondary mt-1">
-						{{ t('components.campaigns.steps.reviewStep.testEmailDescription') }}
-					</p>
-				</div>
-				<UiButton variant="secondary" @click="isTestEmailModalOpen = true">
-					<template #iconLeft><Icon name="lucide:send-horizonal" class="w-4 h-4" /></template>
-					{{ t('components.campaigns.steps.reviewStep.sendTest') }}
-				</UiButton>
 			</div>
 		</div>
 
@@ -636,6 +699,31 @@ const variantBTemplateName = computed(() => {
 				}}
 			</UiButton>
 		</div>
+
+		<!--
+			Send confirmation — only for an audience big enough to earn the
+			interruption. It names the campaign and the number, because "are you
+			sure?" without them is a click-through, not a decision.
+		-->
+		<UiConfirmationDialog
+			v-model:open="isSendConfirmOpen"
+			variant="warning"
+			:title="
+				t('components.campaigns.steps.reviewStep.sendConfirm.title', {
+					count: audienceCountLabel,
+				})
+			"
+			:description="
+				t('components.campaigns.steps.reviewStep.sendConfirm.description', {
+					name: data.campaignName,
+					seconds: undoWindowSeconds,
+				})
+			"
+			:confirm-text="t('components.campaigns.steps.reviewStep.sendConfirm.confirm')"
+			:cancel-text="t('components.campaigns.steps.reviewStep.sendConfirm.cancel')"
+			:is-loading="isLoading"
+			@confirm="handleConfirmSend"
+		/>
 
 		<!-- Test Email Modal -->
 		<CampaignsTestEmailModal

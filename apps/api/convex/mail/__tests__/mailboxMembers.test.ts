@@ -105,7 +105,7 @@ async function seedUsers(t: TestConvex<typeof schema>, ...authUserIds: string[])
 		for (const authUserId of authUserIds) {
 			await ctx.db.insert('userProfiles', {
 				authUserId,
-				email: `${authUserId}@hinterland.camp`,
+				email: `${authUserId}@owlat.test`,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -120,7 +120,7 @@ async function seedUsers(t: TestConvex<typeof schema>, ...authUserIds: string[])
  */
 async function seedVerifiedDomain(
 	t: TestConvex<typeof schema>,
-	domain = 'hinterland.camp'
+	domain = 'owlat.test'
 ): Promise<void> {
 	await t.run(async (ctx) => {
 		const now = Date.now();
@@ -140,7 +140,7 @@ async function seedSharedExternal(t: TestConvex<typeof schema>): Promise<Id<'mai
 		userId: 'admin-user',
 		scope: 'shared',
 		kind: 'external',
-		address: 'team-ext@hinterland.camp',
+		address: 'team-ext@owlat.test',
 	});
 	await t.run(async (ctx) => {
 		await ctx.db.insert('mailboxMembers', {
@@ -161,14 +161,14 @@ describe('createShared — hosted team inbox', () => {
 		await seedVerifiedDomain(t);
 		await seedUsers(t, 'user-B', 'user-C');
 		const id = await t.mutation(api.mail.mailboxMembers.createShared, {
-			address: 'Sales <sales@hinterland.camp>',
+			address: 'Sales <sales@owlat.test>',
 			displayName: 'Sales',
 			memberUserIds: ['user-B', 'user-C', 'user-B'], // dup is deduped
 		});
 
 		const mailbox = await t.run((ctx) => ctx.db.get(id));
 		expect(mailbox?.scope).toBe('shared');
-		expect(mailbox?.address).toBe('sales@hinterland.camp');
+		expect(mailbox?.address).toBe('sales@owlat.test');
 		expect(mailbox?.userId).toBe('admin-user');
 
 		const map = await roles(t, id);
@@ -183,7 +183,7 @@ describe('createShared — hosted team inbox', () => {
 		setSession('editor-user', 'editor');
 		await expect(
 			t.mutation(api.mail.mailboxMembers.createShared, {
-				address: 'sales@hinterland.camp',
+				address: 'sales@owlat.test',
 				memberUserIds: [],
 			})
 		).rejects.toThrow(/owners and admins/i);
@@ -206,7 +206,7 @@ describe('createShared — hosted team inbox', () => {
 		await seedVerifiedDomain(t);
 		await expect(
 			t.mutation(api.mail.mailboxMembers.createShared, {
-				address: 'sales@hinterland.camp',
+				address: 'sales@owlat.test',
 				memberUserIds: ['ghost-user'],
 			})
 		).rejects.toThrow(/not a member/i);
@@ -216,10 +216,10 @@ describe('createShared — hosted team inbox', () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');
 		await seedVerifiedDomain(t);
-		await seedMailbox(t, { address: 'taken@hinterland.camp' });
+		await seedMailbox(t, { address: 'taken@owlat.test' });
 		await expect(
 			t.mutation(api.mail.mailboxMembers.createShared, {
-				address: 'taken@hinterland.camp',
+				address: 'taken@owlat.test',
 				memberUserIds: [],
 			})
 		).rejects.toThrow('already exists');
@@ -235,7 +235,7 @@ describe('listShared — org-wide admin overview', () => {
 
 		// A hosted team inbox the admin created, with one extra member…
 		const hostedId = await t.mutation(api.mail.mailboxMembers.createShared, {
-			address: 'support@hinterland.camp',
+			address: 'support@owlat.test',
 			displayName: 'Support',
 			memberUserIds: ['user-B'],
 		});
@@ -243,9 +243,9 @@ describe('listShared — org-wide admin overview', () => {
 		const externalId = await seedSharedExternal(t);
 		// …plus noise the overview must NOT show: a personal mailbox and a
 		// deleted team inbox.
-		await seedMailbox(t, { address: 'personal@hinterland.camp' });
+		await seedMailbox(t, { address: 'personal@owlat.test' });
 		await seedMailbox(t, {
-			address: 'gone@hinterland.camp',
+			address: 'gone@owlat.test',
 			scope: 'shared',
 			status: 'deleted',
 		});
@@ -255,7 +255,7 @@ describe('listShared — org-wide admin overview', () => {
 				organizationId: 'org-1',
 				inviteeEmail: 'newhire@example.com',
 				mailboxId: hostedId,
-				mailboxAddress: 'support@hinterland.camp',
+				mailboxAddress: 'support@owlat.test',
 				invitedByUserId: 'admin-user',
 				createdAt: Date.now(),
 			});
@@ -272,7 +272,7 @@ describe('listShared — org-wide admin overview', () => {
 		expect(hosted.members[0]).toMatchObject({
 			authUserId: 'admin-user',
 			role: 'owner',
-			email: 'admin-user@hinterland.camp',
+			email: 'admin-user@owlat.test',
 		});
 		expect(hosted.members.map((m) => m.authUserId)).toContain('user-B');
 		expect(hosted.pendingInvites).toEqual(['newhire@example.com']);
@@ -297,7 +297,7 @@ describe('members roster', () => {
 		await seedVerifiedDomain(t);
 		await seedUsers(t, 'user-B');
 		const id = await t.mutation(api.mail.mailboxMembers.createShared, {
-			address: 'support@hinterland.camp',
+			address: 'support@owlat.test',
 			memberUserIds: ['user-B'],
 		});
 
@@ -331,7 +331,7 @@ describe('addMember / removeMember', () => {
 		// The new member now has access to the (external) shared mailbox.
 		setSession('user-B', 'editor');
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId: id })).toBe('member');
-		expect(await t.query(api.mail.mailbox.get, { mailboxId: id })).not.toBeNull();
+		expect(await t.query(api.mail.mailbox.identity.get, { mailboxId: id })).not.toBeNull();
 	});
 
 	it('a plain member cannot manage the roster (owner floor)', async () => {
@@ -353,7 +353,7 @@ describe('addMember / removeMember', () => {
 		await seedVerifiedDomain(t);
 		await seedUsers(t, 'user-B');
 		const id = await t.mutation(api.mail.mailboxMembers.createShared, {
-			address: 'ops@hinterland.camp',
+			address: 'ops@owlat.test',
 			memberUserIds: ['user-B'],
 		});
 
@@ -369,8 +369,8 @@ describe('addMember / removeMember', () => {
 		setSession('user-B', 'editor');
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId: id })).toBeNull();
 		expect(await t.query(api.mail.mailboxMembers.members, { mailboxId: id })).toEqual([]);
-		expect(await t.query(api.mail.mailbox.get, { mailboxId: id })).toBeNull();
-		const list = await t.query(api.mail.mailbox.list, {});
+		expect(await t.query(api.mail.mailbox.identity.get, { mailboxId: id })).toBeNull();
+		const list = await t.query(api.mail.mailbox.identity.list, {});
 		expect(list.map((m) => m._id)).not.toContain(id);
 	});
 
@@ -394,7 +394,7 @@ describe('transferOwnership', () => {
 		await seedVerifiedDomain(t);
 		await seedUsers(t, 'user-B');
 		const id = await t.mutation(api.mail.mailboxMembers.createShared, {
-			address: 'billing@hinterland.camp',
+			address: 'billing@owlat.test',
 			memberUserIds: ['user-B'],
 		});
 

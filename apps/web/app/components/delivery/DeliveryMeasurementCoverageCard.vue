@@ -5,10 +5,32 @@ import { GENERIC_IMAP_PROVIDER, providerById, type MailProvider } from '~/utils/
 
 const { t } = useI18n();
 const { data: status } = useOrganizationQuery(api.delivery.observabilityStatus.get);
+const { showToast } = useToast();
 const acknowledgeRotation = useBackendOperation(
-	api.mail.externalAccountsSeed.acknowledgeSeedRotation,
+	api.mail.external.accountsSeed.acknowledgeSeedRotation,
 	{ label: () => t('components.delivery.deliveryMeasurementCoverageCard.acknowledgeOperation') }
 );
+// Retiring a seed. The connect cap ("disconnect one before connecting another")
+// pointed at an action the product did not have, so the row that measures
+// nothing any more could never be cleared out of the way.
+const disconnectSeedOp = useBackendOperation(api.mail.external.accountsSeed.disconnectSeed, {
+	label: () => t('components.delivery.deliveryMeasurementCoverageCard.disconnectOperation'),
+});
+type SeedAccount = NonNullable<typeof status.value>['seedMailboxes']['accounts'][number];
+const seedToDisconnect = ref<SeedAccount | null>(null);
+async function confirmDisconnectSeed() {
+	const target = seedToDisconnect.value;
+	if (!target) return;
+	const result = await disconnectSeedOp.run({ accountId: target.accountId });
+	seedToDisconnect.value = null;
+	if (!result.ok) return;
+	showToast(
+		t('components.delivery.deliveryMeasurementCoverageCard.toastDisconnected', {
+			address: target.address,
+		})
+	);
+}
+
 const detailsOpen = ref(false);
 const showConnect = ref(false);
 const selectedProvider = ref<DestinationProviderKey | null>(null);
@@ -121,15 +143,31 @@ function finishConnect() {
 							<p class="truncate text-sm font-medium text-text-primary">{{ account.address }}</p>
 							<p class="text-xs capitalize text-text-tertiary">{{ account.provider }}</p>
 						</div>
-						<UiButton
-							v-if="account.rotationReminderDue"
-							size="sm"
-							variant="secondary"
-							:loading="acknowledgeRotation.isLoading.value"
-							@click="acknowledgeRotation.run({ accountId: account.accountId })"
-						>
-							{{ t('components.delivery.deliveryMeasurementCoverageCard.credentialsRotated') }}
-						</UiButton>
+						<div class="flex items-center gap-2 shrink-0">
+							<UiButton
+								v-if="account.rotationReminderDue"
+								size="sm"
+								variant="secondary"
+								:loading="acknowledgeRotation.isLoading.value"
+								@click="acknowledgeRotation.run({ accountId: account.accountId })"
+							>
+								{{ t('components.delivery.deliveryMeasurementCoverageCard.credentialsRotated') }}
+							</UiButton>
+							<UiButton
+								size="sm"
+								variant="ghost"
+								class="text-error"
+								data-testid="seed-disconnect"
+								:aria-label="
+									t('components.delivery.deliveryMeasurementCoverageCard.disconnectAriaLabel', {
+										address: account.address,
+									})
+								"
+								@click="seedToDisconnect = account"
+							>
+								{{ t('components.delivery.deliveryMeasurementCoverageCard.disconnect') }}
+							</UiButton>
+						</div>
 					</div>
 				</div>
 				<div v-if="showConnect" class="mt-4 rounded-lg border border-border-subtle p-4">
@@ -154,5 +192,21 @@ function finishConnect() {
 				</div>
 			</div>
 		</UiDisclosure>
+
+		<UiConfirmationDialog
+			:open="seedToDisconnect !== null"
+			:title="t('components.delivery.deliveryMeasurementCoverageCard.disconnectDialogTitle')"
+			:description="
+				t('components.delivery.deliveryMeasurementCoverageCard.disconnectDialogDescription', {
+					address: seedToDisconnect?.address ?? '',
+				})
+			"
+			:confirm-text="t('components.delivery.deliveryMeasurementCoverageCard.disconnect')"
+			variant="warning"
+			:is-loading="disconnectSeedOp.isLoading.value"
+			@confirm="confirmDisconnectSeed"
+			@cancel="seedToDisconnect = null"
+			@update:open="seedToDisconnect = $event ? seedToDisconnect : null"
+		/>
 	</UiCard>
 </template>

@@ -48,8 +48,8 @@ const handleCreate = async () => {
 			emailTemplateId: props.emailTemplateId,
 			transactionalEmailId: props.transactionalEmailId,
 		});
-		if (result?.url) {
-			await copyToClipboard(result.url);
+		if (result.ok && result.result.url) {
+			await copyToClipboard(result.result.url);
 			showToast(t('components.shareLinksPopover.createdToast'), 'success');
 		}
 	} finally {
@@ -59,7 +59,7 @@ const handleCreate = async () => {
 
 const handleRevoke = async (shareLinkId: Id<'shareLinks'>) => {
 	const result = await revokeShareLink({ shareLinkId });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('components.shareLinksPopover.revokedToast'), 'success');
 };
 
@@ -152,7 +152,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 							@click="handleCreate"
 						>
 							<template #iconLeft>
-								<Icon v-if="isCreating" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon v-if="isCreating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 								<Icon v-else name="lucide:plus" class="w-4 h-4" />
 							</template>
 							{{

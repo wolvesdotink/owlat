@@ -91,7 +91,7 @@ export interface ReadinessInput {
 	/** One plain-language line on WHY the transport is misaligned (per-transport guidance). */
 	alignmentReason?: string | null;
 	/**
-	 * The dual-transport ramp's alignment pre-flight (P3-5), or `undefined` when
+	 * The dual-transport ramp's alignment pre-flight, or `undefined` when
 	 * there is nothing to say — no reference transport, no verdict yet, or every
 	 * domain reporting `single_arm`. Undefined renders NO gate at all: running on
 	 * the own MTA alone is a supported configuration, never an unfinished setup.

@@ -80,6 +80,14 @@ describe('visibleChecklistSteps — step visibility adapts to the mode', () => {
 		expect(aiStep?.href).toBe('/dashboard/admin/instance/ai-provider');
 	});
 
+	it('keeps the mailbox step inside the mail context, not in Preferences', () => {
+		// It used to eject the member to `/dashboard/preferences/add-account` — a
+		// settings leaf under a different layout — on the first step of onboarding.
+		const mailboxStep = CHECKLIST_STEPS.find((s) => s.id === 'mailboxReady');
+		expect(mailboxStep?.href).toBe('/dashboard/postbox/migrate');
+		expect(mailboxStep?.href.startsWith('/dashboard/postbox/')).toBe(true);
+	});
+
 	it('only the migration-only steps differ between the two modes', () => {
 		const migrationOnly = CHECKLIST_STEPS.filter((s) => s.migrationOnly).map((s) => s.id);
 		expect(migrationOnly).toEqual(['importDone', 'knowledgeIndexed', 'sendingSwitched']);

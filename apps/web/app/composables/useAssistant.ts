@@ -53,16 +53,19 @@ export function useAssistant() {
 	};
 
 	const newConversation = async (): Promise<Id<'aiConversations'> | undefined> => {
-		const id = await createRun({});
-		if (id) activeId.value = id;
-		return id ?? undefined;
+		const created = await createRun({});
+		if (!created.ok) return undefined;
+		activeId.value = created.result;
+		return created.result;
 	};
 
 	const send = async (text: string) => {
 		let id = activeId.value;
 		if (!id) {
-			id = (await createRun({})) ?? null;
-			if (id) activeId.value = id;
+			const created = await createRun({});
+			if (!created.ok) return;
+			id = created.result;
+			activeId.value = id;
 		}
 		if (!id) return;
 		await sendRun({ conversationId: id, text });

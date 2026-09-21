@@ -9,7 +9,7 @@ export type GovernedIpPool = 'campaign' | 'transactional';
  * Authenticated delivery provenance. Member previews use the real transport
  * but must never mutate production recipient/reputation/compliance state.
  */
-export const DELIVERY_DOMAINS = ['production', 'member_test'] as const;
+const DELIVERY_DOMAINS = ['production', 'member_test'] as const;
 export type DeliveryDomain = (typeof DELIVERY_DOMAINS)[number];
 
 /**

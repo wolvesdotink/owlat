@@ -5,11 +5,12 @@
  *
  * CACHE (v1, READ-ONLY, best-effort) — persists just enough to make a cold
  * start instant and to keep already-read mail readable without a connection:
- *   - the newest ~200 inbox thread rows (the exact projection the list renders),
- *   - the sanitized bodies of the ~50 most-recently-READ messages.
+ *   - the newest ~500 inbox thread rows (the exact projection the list renders),
+ *   - the sanitized bodies of the ~200 most-recently-READ messages.
  * Everything is namespaced by the active mailboxId (see the key helpers) so one
- * account's cache is never served to another on a shared device. (Folder-list
- * caching is a follow-up — see the PR body.)
+ * account's cache is never served to another on a shared device. The folder
+ * list is cached alongside these, in `postboxOfflineFolderStore.ts` (same DB,
+ * same driver, its own module for the file-size ratchet).
  *
  * OUTBOX (v2) — queued sends composed while offline, stored payload-complete
  * (a fully-offline composition has no server draft row to point at). Unlike
@@ -32,10 +33,25 @@
  *     with an in-memory (or quota-throwing) driver and needs no real IndexedDB.
  */
 
-/** Newest inbox rows retained for instant cold start. */
-export const OFFLINE_THREADS_CAP = 200;
-/** Most-recently-read sanitized bodies retained for offline reading. */
-export const OFFLINE_BODIES_CAP = 50;
+/**
+ * Newest inbox rows retained for instant cold start. A row is a small
+ * projection (~0.5 KB), so a full folder window costs a few hundred KB —
+ * cheap enough that the cap exists to bound the list, not the storage.
+ */
+export const OFFLINE_THREADS_CAP = 500;
+/**
+ * Most-recently-read sanitized bodies retained for offline reading. Raised
+ * with the service worker (plan idea 49): a cold offline start that renders
+ * the shell is only worth something if there is a week of reading behind it.
+ */
+export const OFFLINE_BODIES_CAP = 200;
+/**
+ * Bodies larger than this are not cached at all. A single enormous newsletter
+ * could otherwise exhaust the origin's quota, and a quota rejection disables
+ * cache writes for the whole session — losing 200 small bodies to keep one
+ * huge one is a bad trade, so the outlier is skipped instead.
+ */
+export const OFFLINE_BODY_MAX_BYTES = 512 * 1024;
 
 const DB_NAME = 'owlat-postbox-offline';
 const STORE_NAME = 'kv';
@@ -50,10 +66,26 @@ export const DB_VERSION = 2;
 // The namespace is the mailboxId; callers thread it through from the signed-in
 // mailbox. Without a namespace nothing is read or written.
 const threadsKey = (ns: string, folderRole: string) => `threads:${ns}:${folderRole}`;
+/** Key for when a folder's rows were last persisted (dated offline banner). */
+type OfflineThreadsMeta = { savedAt: number };
+const threadsMetaKey = (ns: string, folderRole: string) => `threads-meta:${ns}:${folderRole}`;
 const bodyKey = (ns: string, messageId: string) => `body:${ns}:${messageId}`;
 const bodyIndexKey = (ns: string) => `body-index:${ns}`;
 const outboxPrefix = (ns: string) => `outbox:${ns}:`;
 const outboxKey = (ns: string, id: string) => `${outboxPrefix(ns)}${id}`;
+
+import {
+	OUTBOX_CLAIM_TTL_MS,
+	isOutboxClaimLive,
+	type OfflineComposeAttachmentRef,
+	type OfflineComposePayload,
+	type OfflineOutboxItem,
+} from './postboxOfflineOutboxItem';
+
+// Split into postboxOfflineOutboxItem.ts for the file-size ratchet; these
+// re-exports keep every existing import path stable.
+export { OUTBOX_CLAIM_TTL_MS, isOutboxClaimLive };
+export type { OfflineComposeAttachmentRef, OfflineComposePayload, OfflineOutboxItem };
 
 /** Minimal async key/value contract the store is built on. */
 export interface OfflineKvDriver {
@@ -70,73 +102,6 @@ export interface OfflineBodyEntry {
 	srcdoc: string;
 	/** When it was cached (ms) — used only for debugging/introspection. */
 	cachedAt: number;
-}
-
-/** An attachment already committed server-side, referenced by storage id. */
-export interface OfflineComposeAttachmentRef {
-	storageId: string;
-	filename: string;
-	contentType: string;
-	size: number;
-}
-
-/**
- * The FULL compose payload of a queued offline send — everything needed to
- * replay `drafts.create → update → send` on reconnect. Payload-complete by
- * design: a fully-offline composition has no server draft row, so a bare
- * `draftId` reference would be unreplayable. Ids are plain strings (this is a
- * pure data layer; the drain path casts back to Convex ids).
- */
-export interface OfflineComposePayload {
-	mailboxId: string;
-	/** The server draft row, when one existed before the device went offline. */
-	draftId?: string;
-	inReplyToMessageId?: string;
-	toAddresses: string[];
-	ccAddresses: string[];
-	bccAddresses: string[];
-	subject: string;
-	bodyHtml: string;
-	/** Serialized EditorBlock[] — present only in 'full' composer mode. */
-	bodyBlocks?: string;
-	composerMode: 'simple' | 'full';
-	fromAddress?: string;
-	followUpRemindAt?: number | null;
-	/** Refs to already-uploaded attachments; offline-added files cannot queue. */
-	attachments: OfflineComposeAttachmentRef[];
-	sendOptions?: {
-		undoSendDelayMs?: number;
-		scheduledSendAt?: number;
-		allowUnsealed?: boolean;
-	};
-}
-
-/** One queued send in the `outbox:{ns}` key family. */
-export interface OfflineOutboxItem {
-	id: string;
-	payload: OfflineComposePayload;
-	queuedAt: number;
-	attempts: number;
-	lastError?: string;
-	/**
-	 * When the drain took ownership of this item for a send attempt (see
-	 * {@link PostboxOfflineStore.claimOutbox}). While the claim is live the item
-	 * is on its way to the wire and must not be un-queued;
-	 * {@link PostboxOfflineStore.markOutboxAttempt} clears it again on failure.
-	 */
-	claimedAt?: number;
-}
-
-/**
- * How long a claim stamp is honoured. A tab killed mid-send would otherwise
- * leave its item claimed forever — undrainable AND un-undoable — so an old
- * stamp expires. Comfortably longer than a create → update → send round trip.
- */
-export const OUTBOX_CLAIM_TTL_MS = 60_000;
-
-/** True while `item` is claimed by a send attempt that has not yet expired. */
-export function isOutboxClaimLive(item: OfflineOutboxItem, now: number = Date.now()): boolean {
-	return item.claimedAt !== undefined && now - item.claimedAt < OUTBOX_CLAIM_TTL_MS;
 }
 
 /**
@@ -263,20 +228,33 @@ export class PostboxOfflineStore {
 	 * start never reads these rows.
 	 */
 	async saveThreads<T>(ns: string, folderRole: string, rows: readonly T[]): Promise<void> {
-		await this.safeSet(threadsKey(ns, folderRole), rows.slice(0, OFFLINE_THREADS_CAP));
+		// Freshness stamps only after the rows land — a failed write leaves the
+		// previous meta (and its older savedAt) standing.
+		const ok = await this.safeSet(threadsKey(ns, folderRole), rows.slice(0, OFFLINE_THREADS_CAP));
+		if (ok) await this.safeSet(threadsMetaKey(ns, folderRole), { savedAt: Date.now() });
 	}
 
 	async loadThreads<T>(ns: string, folderRole: string): Promise<T[]> {
 		return this.safeGet<T[]>(threadsKey(ns, folderRole), []);
 	}
 
+	/** When {@link loadThreads}' rows were last persisted; null if never. */
+	loadThreadsMeta(ns: string, folderRole: string): Promise<OfflineThreadsMeta | null> {
+		return this.safeGet<OfflineThreadsMeta | null>(threadsMetaKey(ns, folderRole), null);
+	}
+
 	/**
 	 * Cache one message's post-sanitize body under `ns` (the active mailboxId),
 	 * LRU-capped per-namespace at {@link OFFLINE_BODIES_CAP}. Re-reading a message
 	 * moves it to the most-recent end; overflow evicts the least-recently-read
-	 * body (and its index entry).
+	 * body (and its index entry). Bodies over {@link OFFLINE_BODY_MAX_BYTES} are
+	 * skipped outright — see that constant.
 	 */
 	async saveBody(ns: string, messageId: string, srcdoc: string): Promise<void> {
+		// Measured in code units, which is a floor on the stored size (IndexedDB
+		// keeps strings as UTF-16, so the real cost is about double) — the safe
+		// direction for a quota guard, and it costs no encoding pass.
+		if (srcdoc.length > OFFLINE_BODY_MAX_BYTES) return;
 		const entry: OfflineBodyEntry = { srcdoc, cachedAt: Date.now() };
 		if (!(await this.safeSet(bodyKey(ns, messageId), entry))) return;
 
@@ -429,7 +407,7 @@ export function upgradeOfflineDb(
  * Real IndexedDB-backed driver. Returns `null` when IndexedDB is unavailable
  * (SSR, privacy mode, or an old engine) so callers can no-op cleanly.
  */
-export function createIndexedDbDriver(
+function createIndexedDbDriver(
 	dbName: string = DB_NAME,
 	storeName: string = STORE_NAME
 ): OfflineKvDriver | null {
@@ -474,6 +452,13 @@ export function createIndexedDbDriver(
 }
 
 let singleton: PostboxOfflineStore | null = null;
+let sharedDriver: OfflineKvDriver | null = null;
+
+/** The one driver this session; shared with `postboxDraftMirrorStore.ts`. */
+export function getOfflineKvDriver(): OfflineKvDriver {
+	sharedDriver ??= createIndexedDbDriver() ?? createNoopDriver();
+	return sharedDriver;
+}
 
 /**
  * The shared Postbox offline store for this session, backed by real IndexedDB.
@@ -482,8 +467,7 @@ let singleton: PostboxOfflineStore | null = null;
  */
 export function getPostboxOfflineStore(): PostboxOfflineStore {
 	if (singleton) return singleton;
-	const driver = createIndexedDbDriver() ?? createNoopDriver();
-	singleton = new PostboxOfflineStore(driver);
+	singleton = new PostboxOfflineStore(getOfflineKvDriver());
 	return singleton;
 }
 

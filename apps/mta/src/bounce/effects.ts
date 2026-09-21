@@ -38,6 +38,15 @@ import {
 } from '../lib/effectCheckpoint.js';
 import { createHash } from 'crypto';
 
+/**
+ * How long the daily FBL counter lives.
+ *
+ * Named because the TTL is the only thing bounding this key space: it is keyed
+ * by UTC day, so one that never expires is a permanent key per day. The
+ * receipt-guarded path always set it; the fallback below did not.
+ */
+const FBL_STATS_TTL_SECONDS = 48 * 60 * 60;
+
 const RECORD_FBL_STAT_ONCE_LUA = `
 if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
 redis.call('HINCRBY', KEYS[1], 'total', 1)
@@ -110,12 +119,6 @@ export type BounceEffect =
 			event: MtaWebhookEvent;
 	  }
 	| {
-			kind: 'stage_attachment';
-			redisKey: string;
-			contentBase64: string;
-			ttlSeconds: number;
-	  }
-	| {
 			kind: 'mailbox_quota_bump';
 			address: string;
 			deltaBytes: number;
@@ -130,7 +133,7 @@ export type BounceEffect =
 	  };
 
 /** Signals the one inbound failure for which SMTP must request a retry. */
-export class DurableFeedbackPersistenceError extends TransientFeedbackProcessingError {
+class DurableFeedbackPersistenceError extends TransientFeedbackProcessingError {
 	constructor(cause: unknown) {
 		super('Attributed feedback could not be persisted durably', cause);
 		this.name = 'DurableFeedbackPersistenceError';
@@ -262,23 +265,22 @@ function applyOne(
 					2,
 					fblStatsKey(today),
 					fblStatsReceiptKey(today, downstreamIdentity),
-					'172800',
+					String(FBL_STATS_TTL_SECONDS),
 					String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS)
 				);
 			}
-			return deps.redis.hincrby(fblStatsKey(today), 'total', 1).catch(() => {
-				// Non-critical — daily stats counter; missing increments are tolerable.
-			});
-		}
-		case 'stage_attachment':
-			if (downstreamIdentity) {
-				return deps.redis.setex(effect.redisKey, effect.ttlSeconds, effect.contentBase64);
-			}
+			// The EXPIRE rides along with the increment: without it, a day whose
+			// counter was first created here kept a key in Redis forever.
 			return deps.redis
-				.setex(effect.redisKey, effect.ttlSeconds, effect.contentBase64)
-				.catch((err: unknown) => {
-					logger.warn({ err, redisKey: effect.redisKey }, 'Failed to stage attachment in Redis');
+				.pipeline()
+				.hincrby(fblStatsKey(today), 'total', 1)
+				.expire(fblStatsKey(today), FBL_STATS_TTL_SECONDS)
+				.exec()
+				.then(() => undefined)
+				.catch(() => {
+					// Non-critical — daily stats counter; missing increments are tolerable.
 				});
+		}
 		case 'forward_to_endpoint':
 			return downstreamIdentity
 				? forwardToEndpoint(

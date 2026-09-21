@@ -134,3 +134,37 @@ export function resolveOperationCopy(
 ): string {
 	return 'text' in copy ? copy.text : translate(copy.key);
 }
+
+/**
+ * Marks a throw whose failure an Operation module has ALREADY surfaced.
+ *
+ * `useBackendOperation.run` never throws — it applies the treatment and hands
+ * back `{ ok: false }`. A caller that wants its own control flow (the composer's
+ * `send`, which must not arm undo or navigate on a failed send) re-throws to get
+ * it, and the outer `catch` cannot otherwise tell that failure apart from one
+ * nothing has shown the user yet. Without the distinction the choice is a
+ * duplicated toast or a silent one; this makes it neither.
+ */
+export class SurfacedOperationError extends Error {
+	override readonly name = 'SurfacedOperationError';
+}
+
+/** Whether {@link showOperationError}-style handling should stay quiet. */
+export function isSurfacedOperationError(e: unknown): boolean {
+	return e instanceof SurfacedOperationError;
+}
+
+/**
+ * The copy for a throw a caller caught itself, with an optional surface-specific
+ * override for the case where the generic line ("Something went wrong") is all
+ * the policy can say.
+ *
+ * The override only replaces the GENERIC copy: a categorized backend refusal
+ * ("This mailbox no longer exists") and a transport failure ("Check your
+ * connection") both say more than any per-call-site sentence could.
+ */
+export function operationToastCopy(e: unknown, fallbackKey?: string): OperationCopy {
+	const copy = operationCopy(normalizeToOperationError(e));
+	if (fallbackKey && 'key' in copy && copy.key === GENERIC_COPY_KEY) return { key: fallbackKey };
+	return copy;
+}

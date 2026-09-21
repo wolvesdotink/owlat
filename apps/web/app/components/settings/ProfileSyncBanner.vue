@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Persistent "Services out of sync — Apply & restart" banner (plan D4).
+ * Persistent "Services out of sync — Apply & restart" banner.
  * Rendered wherever a toggle can change the derived docker-profile set (the
  * admin features page, the migration-mode card). Names the affected services,
  * offers an Apply button with per-service results, and falls back to the host

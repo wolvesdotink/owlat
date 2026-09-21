@@ -1,4 +1,4 @@
-import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
+import type { PluginLocalId } from './namespacedKind';
 import type { JsonObject, JsonValue } from './json';
 import type { PluginStaticModuleExport } from './sendTransport';
 
@@ -16,11 +16,6 @@ export type PluginAutomationStepCapability = typeof PLUGIN_AUTOMATION_STEP_CAPAB
 export type PluginAutomationConditionCapability = typeof PLUGIN_AUTOMATION_CONDITION_CAPABILITY;
 
 /** Local contribution identity; the host namespaces it with the owning plugin id. */
-
-/** Collision-safe kinds persisted on automation rows, steps, and segment filters. */
-export type PluginAutomationTriggerKind = PluginNamespacedKind;
-export type PluginAutomationStepKind = PluginNamespacedKind;
-export type PluginAutomationConditionKind = PluginNamespacedKind;
 
 /**
  * Editor metadata connected to the automation builder palette. The host copies

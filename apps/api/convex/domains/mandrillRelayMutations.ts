@@ -126,14 +126,13 @@ async function scheduleRefresh(
  * the due set through `by_next_check_due` means a deployment whose identities
  * are all fresh pays one index range read per tick and schedules nothing.
  *
- * THE DISPATCH IS THE TABLE'S OWN, not a chain of kind literals (the seams
- * plan's P3.2). The due index is deliberately kind-agnostic — it is a
- * deployment-wide work queue — and Mandrill was simply the first kind to use it.
- * When the second kind wanted the same sweep, the question "whose row is this?"
- * became a registry lookup: every kind that keeps rows here registers the arm
- * that re-asks its provider (`scheduleRelayIdentityRefresh`), so a bundled plugin
- * transport is on this sweep the day it composes and a third kind adds no line
- * here at all.
+ * THE DISPATCH IS THE TABLE'S OWN, not a chain of kind literals. The due index is
+ * deliberately kind-agnostic — it is a deployment-wide work queue — and Mandrill
+ * was simply the first kind to use it. When the second kind wanted the same
+ * sweep, the question "whose row is this?" became a registry lookup: every kind
+ * that keeps rows here registers the arm that re-asks its provider
+ * (`scheduleRelayIdentityRefresh`), so a bundled plugin transport is on this
+ * sweep the day it composes and a third kind adds no line here at all.
  *
  * EVERY ROW THE TICK TOUCHES LEAVES THE DUE SET, whether or not there was
  * anything to schedule for it — see {@link ORPHANED_ROW_RETRY_MS}.
@@ -143,7 +142,7 @@ async function scheduleRefresh(
  * stays because the module path IS the Convex function path — moving it renames
  * a cron'd scheduled function and strands the paginating continuation any
  * in-flight sweep is holding, which is a real (if small) operational cost for a
- * rename. A later piece that touches the cron registration anyway is the cheap
+ * rename. Any change that touches the cron registration anyway is the cheap
  * moment for it.
  */
 export const scheduleDueChecks = internalMutation({

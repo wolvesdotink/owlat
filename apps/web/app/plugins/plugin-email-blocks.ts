@@ -15,9 +15,7 @@ import { areEmailBlockRegistriesFrozen, composeHostedEmailBlocks } from '@owlat/
  * HMR re-eval or a repeated SSR import does not compose a second time against
  * already-frozen registries.
  */
-export const composedEmailBlocks = areEmailBlockRegistriesFrozen()
-	? []
-	: composeHostedEmailBlocks([]);
+const composedEmailBlocks = areEmailBlockRegistriesFrozen() ? [] : composeHostedEmailBlocks([]);
 
 export default defineNuxtPlugin({
 	name: 'owlat:email-block-registries',

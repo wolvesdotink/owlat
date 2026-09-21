@@ -12,7 +12,7 @@ import type { CoreFeatureFlagKey } from '@owlat/shared/featureFlags';
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.instance.index.pageTitle') });
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const { flags, isEnabled } = useFeatureFlag();
 const { data: pluginSettingsOverview } = useConvexQuery(
@@ -55,7 +55,7 @@ function chooseMode(key: OperatingModeKey) {
 async function applyMode() {
 	if (!selectedMode.value || !desiredFlags.value) return;
 	const result = await setAllFlags({ flags: desiredFlags.value });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(
 		t('dashboard.admin.instance.index.modeChangedToast', {
 			mode: t(OPERATING_MODES[selectedMode.value].label),
@@ -101,6 +101,12 @@ const groups = computed(() => [
 		description: t('dashboard.admin.instance.index.groups.channels.description'),
 		href: '/dashboard/admin/instance/channels',
 		icon: 'lucide:radio',
+	},
+	{
+		title: t('dashboard.admin.instance.index.groups.desktopUpdates.title'),
+		description: t('dashboard.admin.instance.index.groups.desktopUpdates.description'),
+		href: '/dashboard/admin/instance/desktop-updates',
+		icon: 'lucide:monitor-down',
 	},
 	{
 		title: t('dashboard.admin.instance.index.groups.aiProvider.title'),
@@ -163,10 +169,7 @@ const groups = computed(() => [
 <template>
 	<div class="p-6 lg:p-8 max-w-6xl">
 		<header class="mb-8">
-			<NuxtLink to="/dashboard/admin" class="text-sm text-brand hover:underline">
-				← {{ t('dashboard.admin.instance.index.backToAdministration') }}
-			</NuxtLink>
-			<h1 class="mt-3 text-3xl font-semibold text-text-primary">
+			<h1 class="text-3xl font-semibold text-text-primary">
 				{{ t('dashboard.admin.instance.index.title') }}
 			</h1>
 			<p class="mt-2 text-text-secondary">

@@ -8,7 +8,7 @@
  *      the owner in To (not only Cc), is not from a no-reply/bulk sender
  *      (List-Unsubscribe / Precedence: bulk / no-reply local-parts), and the
  *      owner has not sent a later message in the thread.
- *   2. Cheap-tier LLM refinement (mail/needsReplyClassify.ts, 'use node')
+ *   2. Cheap-tier LLM refinement (mail/ai/needsReplyClassify.ts, 'use node')
  *      that classifies candidates: needsReply, urgency, askSummary, dueHint.
  *      Fail-soft: any LLM/gate failure leaves the deterministic candidate
  *      flag with urgency `normal` and no askSummary.
@@ -18,8 +18,8 @@
  * re-schedules threads whose scheduled classification was lost.
  *
  * Clearing: any outbound send in the thread (draftLifecycle sent-effects),
- * archiving/trashing its messages (messageActions.move), or the manual
- * `clear` mutation for the UI.
+ * archiving/trashing its messages (messageActions.move), muting it (mail/mute.ts
+ * — a muted thread is skipped by the queue read too), or the manual `clear`.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -30,9 +30,10 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
+import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
-import { urgencyFallbackScore } from './priorityScore';
-import { scoreAndScreenResult } from './needsReplyScoring';
+import { urgencyFallbackScore } from './ai/priorityScore';
+import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { isFeatureEnabled } from '../lib/featureFlags';
 
 // ─── Deterministic heuristic (pure) ─────────────────────────────────────────
@@ -55,7 +56,7 @@ export interface NeedsReplyMessageInput {
 	receivedAt: number;
 }
 
-export type NeedsReplyEvaluation =
+type NeedsReplyEvaluation =
 	| { candidate: true; latestInboundIndex: number }
 	| {
 			candidate: false;
@@ -141,10 +142,10 @@ export function isCalendarAttachment(att: { filename: string; contentType: strin
 export const NEEDS_REPLY_CONTEXT_MESSAGES = 6;
 
 /**
- * Mark the thread pending and schedule the classify action. Called from the
- * inbound webhook delivery path (deliverToMailbox) for inbox deliveries only —
- * external IMAP backfill ingests old mail in bulk and must not fan out LLM
- * work; the reconcile cron stays bounded the same way.
+ * Mark the thread pending and schedule the classify action. Called for inbox
+ * deliveries only, from hosted delivery (deliverToMailbox) and forward IMAP
+ * sync (mail/external/delivery.ts, `origin: 'sync'`): a bulk history import
+ * must never fan out LLM work, and the reconcile cron stays bounded likewise.
  */
 export async function enqueueNeedsReplyCheck(
 	ctx: MutationCtx,
@@ -155,7 +156,7 @@ export async function enqueueNeedsReplyCheck(
 		needsReplyPendingAt: Date.now(),
 		updatedAt: Date.now(),
 	});
-	await ctx.scheduler.runAfter(0, internal.mail.needsReplyClassify.classifyThread, {
+	await ctx.scheduler.runAfter(0, internal.mail.ai.needsReplyClassify.classifyThread, {
 		threadId,
 		precedence: opts.precedence,
 	});
@@ -269,17 +270,14 @@ const needsReplyResultValidator = v.union(
 );
 
 /**
- * Persist a classification result and clear the pending marker. Guarded
- * against staleness: if a newer message arrived while classification was in
- * flight (thread.latestMessageId moved), the result is dropped — the newer
- * ingest already re-enqueued a check.
- *
- * When a result is being set, this is also the single place the unified
- * priority score is computed (from the address book, server-side) and the
- * HEY-style screener gate is applied — an unknown first-time sender is held
+ * Persist a classification result and clear the pending marker. Stale-guarded:
+ * if a newer message arrived while classification was in flight
+ * (thread.latestMessageId moved) the result is dropped — that ingest already
+ * re-enqueued a check. When a result is set this is also the single place the
+ * unified priority score is computed (server-side, from the address book) and
+ * the HEY-style screener gate is applied: an unknown first-time sender is held
  * OUT of the queue (result forced to null) when the owner enabled the screener.
- * Fail-soft: a missing message/mailbox row falls back to persisting the result
- * without a score rather than dropping the signal.
+ * Fail-soft: a missing message/mailbox row persists the result without a score.
  */
 export const applyResult = internalMutation({
 	args: {
@@ -305,11 +303,13 @@ export const applyResult = internalMutation({
 			const mailbox = await ctx.db.get(thread.mailboxId);
 			if (message && mailbox) {
 				// Single write point for the unified priority score + the HEY-style
-				// screener gate (mail/needsReplyScoring.ts). Fail-soft: a missing
+				// screener gate (mail/ai/needsReplyScoring.ts). Fail-soft: a missing
 				// message/mailbox row skips scoring and persists the raw result.
 				resolved = await scoreAndScreenResult(ctx, {
 					mailboxId: thread.mailboxId,
-					ownerUserId: mailbox.userId,
+					// A shared team inbox has no single owner: `mailbox.userId` is only the
+					// connecting admin, so omit it and the screener stays off for the team.
+					ownerUserId: mailbox.scope === 'shared' ? undefined : mailbox.userId,
 					message,
 					resolved,
 				});
@@ -327,7 +327,7 @@ export const applyResult = internalMutation({
 		// draft service. Flag-gated + fully async (own action) + fail-soft: it
 		// never blocks classification and degrades to no slot when AI is off.
 		if (resolved !== null && (await isFeatureEnabled(ctx, 'postbox.aiDraft'))) {
-			await ctx.scheduler.runAfter(0, internal.mail.draftOnArrival.generateForThread, {
+			await ctx.scheduler.runAfter(0, internal.mail.ai.draftOnArrival.generateForThread, {
 				threadId: args.threadId,
 			});
 		}
@@ -368,7 +368,8 @@ export const listQueue = publicQuery({
 		const items = [];
 		for (const thread of threads) {
 			const flag = thread.needsReply;
-			if (!flag) continue;
+			// Muted (mail/mute.ts) = the owner opted out of the conversation.
+			if (!flag || isThreadMuted(thread)) continue;
 			const message = await ctx.db.get(flag.messageId);
 			if (!message) continue;
 			// Snoozed = deliberately deferred; it re-enters the queue on wakeup.
@@ -414,7 +415,7 @@ export const listQueue = publicQuery({
 			.take(QUEUE_LIMIT);
 		for (const thread of dueFollowUps) {
 			const flag = thread.followUp;
-			if (!flag || flag.dueAt === undefined) continue;
+			if (!flag || flag.dueAt === undefined || isThreadMuted(thread)) continue;
 			const message = await ctx.db.get(flag.messageId);
 			if (!message) continue;
 			if (isMessageSnoozed(message, now)) continue;
@@ -462,7 +463,7 @@ export const clear = authedMutation({
  * Pending markers older than this are considered lost and re-scheduled.
  *
  * The Postbox clarification loop (answerClarification, getClarificationContext,
- * persistClarificationDraft) lives in the sibling `mail/needsReplyClarify.ts`
+ * persistClarificationDraft) lives in the sibling `mail/ai/needsReplyClarify.ts`
  * to keep this file under the domain-file size gate.
  */
 const SWEEP_MIN_AGE_MS = 5 * 60 * 1000;
@@ -489,7 +490,7 @@ export const sweepPending = internalMutation({
 			.take(SWEEP_BATCH);
 		for (const thread of stale) {
 			await ctx.db.patch(thread._id, { needsReplyPendingAt: Date.now() });
-			await ctx.scheduler.runAfter(0, internal.mail.needsReplyClassify.classifyThread, {
+			await ctx.scheduler.runAfter(0, internal.mail.ai.needsReplyClassify.classifyThread, {
 				threadId: thread._id,
 			});
 		}

@@ -9,7 +9,7 @@
  */
 
 import { createHash, verify as cryptoVerify, type KeyObject } from 'crypto';
-import { canonicalizeBody, parseCanonicalization, type Canonicalization } from '../canon.js';
+import { canonicalizeBody, parseCanonicalization, type Canonicalization } from '@owlat/mail-canon';
 import type { DkimVerdict } from '../dmarc.js';
 import {
 	createEvidenceCollector,

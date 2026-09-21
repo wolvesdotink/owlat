@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * WHAT THE CONTROLLER PULLED BACK, AND WHY (plan D12).
+ * WHAT THE CONTROLLER PULLED BACK, AND WHY.
  *
  * EVERY DECREASE with a named cause carries an admin notice naming the gate that
  * broke and what to do about it. A controller that silently retreats will be

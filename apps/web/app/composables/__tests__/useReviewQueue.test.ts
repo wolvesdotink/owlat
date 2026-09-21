@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 import { useReviewQueue } from '../useReviewQueue';
+import { queryResult } from '~/__tests__/queryStubs';
 
 // The queue is stood up outside a component here, so `useI18n` is stubbed with
 // the real catalog's `t` — the operation labels stay the English an admin reads.
@@ -25,9 +25,9 @@ describe('useReviewQueue', () => {
 	beforeEach(() => {
 		runs = [];
 		vi.stubGlobal('useI18n', () => ({ t }));
-		vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined), isLoading: ref(false) }));
+		vi.stubGlobal('useConvexQuery', () => queryResult(undefined));
 		vi.stubGlobal('useBackendOperation', () => {
-			const run = vi.fn().mockResolvedValue({ success: true });
+			const run = vi.fn().mockResolvedValue({ ok: true, result: { success: true } });
 			runs.push(run);
 			return { run };
 		});
@@ -72,7 +72,7 @@ describe('useReviewQueue', () => {
 			});
 			// Then approved/sent.
 			expect(approveRun()).toHaveBeenCalledWith({ inboundMessageId: messageId });
-			expect(result).toEqual({ success: true });
+			expect(result).toEqual({ ok: true, result: { success: true } });
 		});
 
 		it('omits an empty subject', async () => {
@@ -88,31 +88,34 @@ describe('useReviewQueue', () => {
 		it('refuses to send an empty body (never touches the backend)', async () => {
 			const { composeAndSend } = useReviewQueue();
 			const result = await composeAndSend(messageId, '   ');
-			expect(result).toBeUndefined();
+			expect(result).toEqual({ ok: false });
 			expect(editRun()).not.toHaveBeenCalled();
 			expect(approveRun()).not.toHaveBeenCalled();
 		});
 
 		// Piece FU3: the surfaces branch on the approve mutation's soft errors, so
 		// the queue must hand them back verbatim rather than flattening them into
-		// the "sent" shape (or into the `undefined` a categorized failure returns).
+		// the "sent" shape (or into the failure arm a categorized fault returns).
 		it('hands the lost-race soft error back to the caller unchanged', async () => {
 			const { composeAndSend } = useReviewQueue();
-			approveRun().mockResolvedValueOnce({ success: false, reason: 'not_found' });
+			approveRun().mockResolvedValueOnce({
+				ok: true,
+				result: { success: false, reason: 'not_found' },
+			});
 
 			const result = await composeAndSend(messageId, 'A reply');
 
-			expect(result).toEqual({ success: false, reason: 'not_found' });
+			expect(result).toEqual({ ok: true, result: { success: false, reason: 'not_found' } });
 		});
 
 		it('does not approve when the edit fails (avoids the empty-draft error)', async () => {
 			const { composeAndSend } = useReviewQueue();
-			// useBackendOperation.run resolves to undefined on a categorized failure.
-			editRun().mockResolvedValueOnce(undefined);
+			// useBackendOperation.run resolves `ok: false` on a categorized failure.
+			editRun().mockResolvedValueOnce({ ok: false });
 
 			const result = await composeAndSend(messageId, 'A reply');
 
-			expect(result).toBeUndefined();
+			expect(result).toEqual({ ok: false });
 			expect(approveRun()).not.toHaveBeenCalled();
 		});
 	});
@@ -127,7 +130,7 @@ describe('useReviewQueue', () => {
 			// No edit — the default draft is already persisted.
 			expect(editRun()).not.toHaveBeenCalled();
 			expect(approveRun()).toHaveBeenCalledWith({ inboundMessageId: messageId });
-			expect(result).toEqual({ success: true });
+			expect(result).toEqual({ ok: true, result: { success: true } });
 		});
 
 		it('persists a DIFFERENT picked option via editDraft then approves', async () => {
@@ -140,21 +143,21 @@ describe('useReviewQueue', () => {
 				draftResponse: 'A more cautious reply.',
 			});
 			expect(approveRun()).toHaveBeenCalledWith({ inboundMessageId: messageId });
-			expect(result).toEqual({ success: true });
+			expect(result).toEqual({ ok: true, result: { success: true } });
 		});
 
 		it('does not approve when persisting the picked option fails', async () => {
 			const { approveOption } = useReviewQueue();
-			editRun().mockResolvedValueOnce(undefined);
+			editRun().mockResolvedValueOnce({ ok: false });
 			const result = await approveOption(messageId, 'A different reply.', primary);
-			expect(result).toBeUndefined();
+			expect(result).toEqual({ ok: false });
 			expect(approveRun()).not.toHaveBeenCalled();
 		});
 
 		it('refuses an empty pick (never touches the backend)', async () => {
 			const { approveOption } = useReviewQueue();
 			const result = await approveOption(messageId, '   ', primary);
-			expect(result).toBeUndefined();
+			expect(result).toEqual({ ok: false });
 			expect(editRun()).not.toHaveBeenCalled();
 			expect(approveRun()).not.toHaveBeenCalled();
 		});
@@ -170,7 +173,7 @@ describe('useReviewQueue', () => {
 				{ message: { _id: 'c' } },
 				{ message: { _id: 'd', draftSavedAt: 200 } },
 			];
-			vi.stubGlobal('useConvexQuery', () => ({ data: ref(items), isLoading: ref(false) }));
+			vi.stubGlobal('useConvexQuery', () => queryResult(items));
 
 			const { reviewItems } = useReviewQueue();
 
@@ -179,7 +182,7 @@ describe('useReviewQueue', () => {
 
 		it('leaves a queue with no saved drafts in the server order', () => {
 			const items = [{ message: { _id: 'a' } }, { message: { _id: 'b' } }];
-			vi.stubGlobal('useConvexQuery', () => ({ data: ref(items), isLoading: ref(false) }));
+			vi.stubGlobal('useConvexQuery', () => queryResult(items));
 
 			const { reviewItems } = useReviewQueue();
 

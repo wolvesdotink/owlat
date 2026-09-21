@@ -3,7 +3,7 @@ import { paginationOptsValidator } from 'convex/server';
 import type { Doc } from './_generated/dataModel';
 import { type MutationCtx, type QueryCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
 import { messageTypeValidator } from './lib/sendProviders/route';
 import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
 import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/catalog';
@@ -33,7 +33,7 @@ import { internalMutation } from './_generated/server';
  *
  * Each organization can configure which email provider — any
  * `SendTransportKind` the catalog declares, core or plugin; the kinds are not
- * re-listed here (ADR-0055, D10) — to use for each message type (campaign,
+ * re-listed here (ADR-0055) — to use for each message type (campaign,
  * transactional, automation).
  */
 
@@ -122,10 +122,19 @@ const deliverabilityFallbackValidator = v.object({
 
 /**
  * List all provider routes for the current organization.
+ *
+ * Admin-gated (`organization:manage`): a route row exposes the transport
+ * topology — per-provider weights and the `ipPool` override — which is
+ * operational configuration, not member-readable state. Held to the same
+ * permission the route setters/removers (`setRoute` / `removeRoute`) require.
  */
 export const listRoutes = authedQuery({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx, _args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can view provider routing'
+		);
 		return await ctx.db.query('providerRoutes').collect(); // bounded: configured provider routes (few)
 	},
 });
@@ -193,14 +202,14 @@ function relayKindLabel(kind: string): string {
  * Every relay identity this deployment holds for its owned sending domains —
  * one row per (domain, relay kind), for WHICHEVER KINDS THE REGISTRY PROVES.
  *
- * IT USED TO BE `listDeliverabilityRelayDomains`, AND IT USED TO BE SES. That
- * query point-read the frozen `sendingDomainSesIdentities` sibling and shaped its
- * result around SES's bundle (dkim tokens, MAIL FROM, `spfProofState`), which
- * made one vendor's storage the shape of the surface: Mandrill's identities were
- * reported by a second, `providerKind === 'mandrill'` query under a second Vue
- * panel, and the bundled plugin relay tier — which writes the same generic table
- * Mandrill does — wrote rows that NO surface could render. A deployment relaying
- * through a plugin transport was told, forever, that provisioning was queued.
+ * NOT SES-SHAPED, AND NOT ONE QUERY PER VENDOR. A query that point-reads the
+ * frozen `sendingDomainSesIdentities` sibling and shapes its result around SES's
+ * bundle (dkim tokens, MAIL FROM, `spfProofState`) makes one vendor's storage the
+ * shape of the surface: Mandrill's identities then need a second, `providerKind
+ * === 'mandrill'` query under a second Vue panel, and the bundled plugin relay
+ * tier — which writes the same generic table Mandrill does — writes rows NO
+ * surface can render, so a deployment relaying through a plugin transport is
+ * told, forever, that provisioning is queued.
  *
  * SO THE ANSWERING KINDS COME FROM THE REGISTRY (`relayIdentityProviders()`),
  * not from this file. Each kind describes its own domain through
@@ -278,7 +287,7 @@ export const listRelayDomainIdentities = authedQuery({
  * Cursor drain used when fallback is enabled; future domains use lifecycle
  * provisioning.
  *
- * WHICH relay is a PARAMETER, not a literal (plan D2). This mutation used to
+ * WHICH relay is a PARAMETER, not a literal. This mutation used to
  * name `sendingDomainSesIdentities` and `domains.sesRelay.provision` directly,
  * which was correct only for as long as SES was the one relay a route could
  * name. Since the fallback gate became a capability question, `resend`, `smtp`
@@ -408,7 +417,7 @@ export const setRoute = authedMutation({
 		}
 		const fallback = args.deliverabilityFallback;
 		if (fallback?.isEnabled) {
-			// THE SAME QUESTION ROUTING ASKS (D6). `resolveRoute` gates the relay on
+			// THE SAME QUESTION ROUTING ASKS. `resolveRoute` gates the relay on
 			// `isFallbackRelayEligible`; this gate used to be
 			// `relayProviderType !== 'ses'`, a list of one. Two different rules for
 			// one decision is how a route becomes unsaveable through the mutation

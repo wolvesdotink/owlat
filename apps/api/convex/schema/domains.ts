@@ -1,7 +1,13 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { dmarcPolicyValidator } from '../domains/dmarc';
-import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
+import {
+	dnsRecordsValidator,
+	externalReceivingProviderValidator,
+	receivingModeValidator,
+	verificationResultsValidator,
+	yahooCflStoredStateValidator,
+} from '../lib/convexValidators';
 
 /**
  * Domain tables — sending domains + per-provider identities + tracking domains.
@@ -47,6 +53,25 @@ export const domainTables = {
 		// Cleared on a successful push or a fresh return-path edit. Written only by
 		// the **Sending domain lifecycle (module)**.
 		returnPathHostSyncError: v.optional(v.string()),
+		// Who accepts INBOUND mail for this domain. Absent ⇒ `'owlat'` — every
+		// pre-existing row keeps today's behaviour byte for byte (apex MX +
+		// MTA-STS guidance, a TLS-RPT record, an SPF record with our include
+		// only), so this ships with no backfill and no migration.
+		// `'external'` is the send-only mode: the customer's mail stays on Google
+		// Workspace / Microsoft 365, Owlat only SENDS for the domain, and the
+		// generated records change accordingly (provider SPF include folded in,
+		// no `_smtp._tls` — it solicits reports about inbound TLS, which for this
+		// domain terminates at the other provider). Absence is a supported
+		// configuration, never a "setup incomplete". Written only by the
+		// **Sending domain lifecycle (module)** (`create` / `setReceivingMode`).
+		receivingMode: v.optional(receivingModeValidator),
+		// Which provider keeps the MX when `receivingMode === 'external'`. Decides
+		// the SPF term folded into the apex record (`@owlat/shared/externalReceiving`
+		// — one table, shared with the UI). Absent behaves exactly like `'other'`:
+		// we have no include to add, so our record is published unchanged and the
+		// operator is told to merge it with theirs by hand. Meaningless — and
+		// cleared — while `receivingMode` is `'owlat'`.
+		externalReceivingProvider: v.optional(externalReceivingProviderValidator),
 		// DMARC enforcement policy reflected in the generated `_dmarc` record.
 		// Absent (legacy rows) and `'none'` both mean monitor-only; the
 		// customer raises it to `'quarantine'`/`'reject'` via the lifecycle's
@@ -151,7 +176,7 @@ export const domainTables = {
 		// Only the three PERSISTED states. `lapsed` is DERIVED on read from
 		// `lastReportAt` + the clock (ADR-0042's derive-on-read rule), so no cron
 		// and no write are needed to keep it current and it can never go stale.
-		state: v.union(v.literal('not_started'), v.literal('awaiting_yahoo'), v.literal('enrolled')),
+		state: yahooCflStoredStateValidator,
 		// The DKIM domain as submitted to Yahoo (snapshot of the domain name).
 		dkimDomain: v.optional(v.string()),
 		submittedAt: v.optional(v.number()),

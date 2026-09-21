@@ -40,6 +40,11 @@ import {
 	type PostboxRenderEntry,
 } from '~/utils/postboxRenderCache';
 import { consumeResolvedPostboxMessageBody } from '~/composables/postbox/postboxBodyResolver';
+import {
+	postboxSenderKey,
+	postboxSenderTrustLabel,
+	resolvePostboxImageBanner,
+} from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
 	message: {
@@ -51,14 +56,30 @@ const props = defineProps<{
 		textBodyInline?: string;
 		htmlBodyStorageId?: string;
 		textBodyStorageId?: string;
+		/** From header — keys the per-sender remote-image allowlist. */
+		fromAddress?: string;
 	};
 	/** Per-message escape hatch: force light rendering even in dark mode. */
 	forceLight?: boolean;
+	/**
+	 * This message's sender is on the mailbox's remote-image allowlist, so the
+	 * body renders its images without asking. Passed in rather than queried here
+	 * so the component stays mountable without a Convex client — the reader owns
+	 * the single per-mailbox subscription.
+	 *
+	 * It only unblocks IMAGES. Tracking pixels stay stripped for a trusted
+	 * sender exactly as they do for an untrusted one.
+	 */
+	senderImagesAllowed?: boolean;
 }>();
 
 const emit = defineEmits<{
 	/** Fires with the current tracker detection so the reader header can badge it. */
 	trackers: [detection: TrackerDetection];
+	/** "Always for this sender" — the reader persists the grant. */
+	trustSender: [fromAddress: string];
+	/** Revoke, from the auto-loaded banner. */
+	untrustSender: [fromAddress: string];
 }>();
 
 const { t } = useI18n();
@@ -92,12 +113,37 @@ const appScheme = computed<PostboxRenderScheme>(() =>
 	isDark.value && !props.forceLight ? 'dark' : 'light'
 );
 
+// Per-message consent to load remote images. Starts false; an allowlisted
+// sender flips it before first paint (see the watcher below), which is the
+// whole point of the allowlist — no click, no flash of the blocked banner.
 const showImages = ref(false);
 // Escalation past "Show images": also load probable tracking pixels, which
-// otherwise stay stripped even after images are shown.
+// otherwise stay stripped even after images are shown. Deliberately NOT
+// implied by the allowlist and deliberately never persisted.
 const loadEverything = ref(false);
 const showQuoted = ref(false);
 const iframeRef = ref<HTMLIFrameElement | null>(null);
+
+// Apply (and un-apply) the sender grant. Watching rather than initialising
+// once matters twice over: the allowlist query resolves after first render,
+// and the reader reuses this component across messages, so a revoke in
+// settings — or moving to an untrusted sender — must take the images back.
+watch(
+	[() => props.senderImagesAllowed, () => props.message._id],
+	([allowed]) => {
+		if (allowed) showImages.value = true;
+		else {
+			showImages.value = false;
+			loadEverything.value = false;
+		}
+	},
+	{ immediate: true }
+);
+
+/** Canonical sender key, or null when the From header holds no address. */
+const senderKey = computed(() => postboxSenderKey(props.message.fromAddress));
+/** What the "Always for…" button names (the sender's domain). */
+const senderTrustLabel = computed(() => postboxSenderTrustLabel(props.message.fromAddress));
 
 // Bodies over the inline threshold are stored as blobs, not on the row. When
 // no inline body is present but a storage id is, fetch the body lazily so
@@ -298,14 +344,46 @@ watch(
 // a paper card on the dark app background — even when the app is dark).
 const renderScheme = computed(() => render.value.renderScheme);
 const trackerDetection = computed<TrackerDetection>(() => render.value.detection);
-const hasTrackers = computed(() => trackerDetection.value.pixelCount > 0);
 
 watch(trackerDetection, (detection) => emit('trackers', detection), { immediate: true });
 
-const hasBlockedImages = computed(
-	() => !showImages.value && /<img\s/i.test(effectiveHtml.value ?? '')
+const hasRemoteImages = computed(() => /<img\s/i.test(effectiveHtml.value ?? ''));
+
+// Exactly one banner sits above the body; which one is a pure function of the
+// render's facts (utils/postboxImageAllowlist), so the four-way choice is
+// unit-tested without mounting this component.
+const imageBanner = computed(() =>
+	resolvePostboxImageBanner({
+		hasRemoteImages: hasRemoteImages.value,
+		showImages: showImages.value,
+		loadEverything: loadEverything.value,
+		isSenderAllowed: !!props.senderImagesAllowed,
+		hasSenderKey: senderKey.value !== null,
+		trackerCount: trackerDetection.value.pixelCount,
+	})
 );
+
+/** Flattened for the template: narrowing a discriminated union across
+ *  sibling v-else-if branches is more fragile than reading a plain kind. */
+const imageBannerKind = computed(() => imageBanner.value.kind);
+const canTrustSender = computed(() => senderKey.value !== null);
+
 const hasQuotedContent = computed(() => quotedSplit.value.hasQuote);
+
+function trustSender() {
+	const from = props.message.fromAddress;
+	if (!from) return;
+	// Show the images immediately — the grant is a save, not a request, and the
+	// reader should not wait on a round trip to honour a click it already has.
+	showImages.value = true;
+	emit('trustSender', from);
+}
+
+function untrustSender() {
+	const from = props.message.fromAddress;
+	if (!from) return;
+	emit('untrustSender', from);
+}
 
 // Pre-size the iframe from the last measured height for this exact render so
 // re-opening a thread doesn't flash the 200px min-height and jump to full size.
@@ -350,56 +428,16 @@ watch([showQuoted, showImages, loadEverything], () => {
 		<PostboxReaderSkeleton :with-header="false" />
 	</div>
 	<div v-else class="mt-4">
-		<div
-			v-if="hasBlockedImages"
-			class="mb-2 px-3 py-2 rounded bg-bg-surface text-xs flex items-center justify-between"
-		>
-			<span class="text-text-secondary">
-				<template v-if="hasTrackers">
-					{{
-						t(
-							'components.postbox.postboxMessageBody.imagesBlockedTrackers',
-							{ count: trackerDetection.pixelCount },
-							trackerDetection.pixelCount
-						)
-					}}
-				</template>
-				<template v-else>
-					{{ t('components.postbox.postboxMessageBody.imagesBlocked') }}
-				</template>
-			</span>
-			<button
-				type="button"
-				class="text-brand font-medium hover:underline"
-				@click="showImages = true"
-			>
-				{{ t('components.postbox.postboxMessageBody.showImages') }}
-			</button>
-		</div>
-		<!-- After "Show images", probable tracking pixels stay stripped until
-		     the user explicitly escalates to loading everything. -->
-		<div
-			v-else-if="showImages && hasTrackers && !loadEverything"
-			class="mb-2 px-3 py-2 rounded bg-bg-surface text-xs flex items-center justify-between"
-		>
-			<span class="text-text-secondary inline-flex items-center gap-1.5">
-				<Icon name="lucide:shield" class="w-3.5 h-3.5 flex-shrink-0" />
-				{{
-					t(
-						'components.postbox.postboxMessageBody.trackersKeptBlocked',
-						{ count: trackerDetection.pixelCount },
-						trackerDetection.pixelCount
-					)
-				}}
-			</span>
-			<button
-				type="button"
-				class="text-text-tertiary font-medium hover:underline"
-				@click="loadEverything = true"
-			>
-				{{ t('components.postbox.postboxMessageBody.loadEverything') }}
-			</button>
-		</div>
+		<PostboxImageBanner
+			:kind="imageBannerKind"
+			:tracker-count="trackerDetection.pixelCount"
+			:can-trust-sender="canTrustSender"
+			:sender-label="senderTrustLabel"
+			@show-once="showImages = true"
+			@load-everything="loadEverything = true"
+			@trust-sender="trustSender()"
+			@untrust-sender="untrustSender()"
+		/>
 		<!-- palette-ok: the wrapper background matches the IFRAME's scheme, not
 		     the app's, so dark-rendered mail never flashes a white full-bleed;
 		     "designed" mail keeps its own colors as a light paper card on the dark

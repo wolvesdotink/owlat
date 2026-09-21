@@ -35,9 +35,9 @@ export const DMARC_POLICIES = ['none', 'quarantine', 'reject'] as const;
 export type DmarcPolicy = (typeof DMARC_POLICIES)[number];
 
 /** DMARC alignment modes (RFC 7489 §6.3): `r` relaxed, `s` strict. */
-export const DMARC_ALIGNMENTS = ['r', 's'] as const;
+const DMARC_ALIGNMENTS = ['r', 's'] as const;
 
-export type DmarcAlignment = (typeof DMARC_ALIGNMENTS)[number];
+type DmarcAlignment = (typeof DMARC_ALIGNMENTS)[number];
 
 /** New domains start in monitor-only mode. */
 export const DEFAULT_DMARC_POLICY: DmarcPolicy = 'none';
@@ -45,10 +45,8 @@ export const DEFAULT_DMARC_POLICY: DmarcPolicy = 'none';
 export const dmarcPolicyValidator = v.union(
 	v.literal('none'),
 	v.literal('quarantine'),
-	v.literal('reject'),
+	v.literal('reject')
 );
-
-export const dmarcAlignmentValidator = v.union(v.literal('r'), v.literal('s'));
 
 export function isDmarcPolicy(value: string | undefined | null): value is DmarcPolicy {
 	return value === 'none' || value === 'quarantine' || value === 'reject';
@@ -64,7 +62,7 @@ export function isDmarcAlignment(value: string | undefined | null): value is Dma
  * when set (so a monitor-only domain still renders the minimal
  * `v=DMARC1; p=none`).
  */
-export interface DmarcRecordOptions {
+interface DmarcRecordOptions {
 	/** Headline policy — the `p=` tag. */
 	policy: DmarcPolicy;
 	/** Subdomain policy — the `sp=` tag. Omitted ⇒ DMARC's default `sp=p`. */
@@ -106,9 +104,7 @@ export function buildDmarcRecordValue(domain: string, options: DmarcRecordOption
 
 	if (options.pct !== undefined) {
 		if (!Number.isInteger(options.pct) || options.pct < 0 || options.pct > 100) {
-			throw new Error(
-				`DMARC pct must be an integer between 0 and 100, got ${options.pct}`,
-			);
+			throw new Error(`DMARC pct must be an integer between 0 and 100, got ${options.pct}`);
 		}
 		parts.push(`pct=${options.pct}`);
 	}

@@ -64,7 +64,7 @@ export function isSeedProbeId(value: string): boolean {
  * D17 sizes a seed set at 5-10 per provider, and EVERY send drops a full
  * shadow copy into EVERY seed — the cost of a seed is linear in send volume,
  * so an unbounded set is a self-inflicted volume problem, not a better
- * measurement. The limit is enforced at CONNECT time (`mail/externalAccountsSeed
+ * measurement. The limit is enforced at CONNECT time (`mail/external/accountsSeed
  * .ts`) rather than by silently truncating the read page: dropping seeds
  * without a word would make the roll-up quietly ignore mailboxes the operator
  * believes are being measured.
@@ -130,7 +130,6 @@ import type { SeedPlacement } from './seedPlacementFolders';
 // The roll-up (the measurement) owns a sibling file and is re-exported here so
 // `@owlat/shared/seedPlacement` stays the one import surface.
 export {
-	SEED_COLLAPSE_THRESHOLD,
 	SEED_GATE_CONFIDENCE,
 	SEED_MIN_OBSERVATIONS,
 	SEED_REACHED_THRESHOLD,

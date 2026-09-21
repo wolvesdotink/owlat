@@ -9,7 +9,7 @@
  * Driven from the boot plugin (a path that definitely runs in the webview),
  * handling both the cold-start URL and links delivered while already running.
  */
-import { completeConnection } from '~/composables/useDesktopWorkspaces';
+import { completeConnection, recordConnectFailure } from '~/lib/desktop/workspaceConnect';
 import { parseMailto } from '~/lib/desktop/mailto';
 
 const NAV_ROUTE_MAP: Record<string, string> = {
@@ -60,7 +60,11 @@ export async function handleDeepLink(url: string): Promise<void> {
 			try {
 				await completeConnection({ ott, state });
 			} catch (e) {
+				// The user is watching the app, not the console: park the reason
+				// where the connect screen can show it. Without this a failed
+				// handshake is indistinguishable from nothing having happened.
 				console.error('[desktop] workspace connection failed:', e);
+				recordConnectFailure(e);
 			}
 		}
 		return;
@@ -77,7 +81,16 @@ export async function handleDeepLink(url: string): Promise<void> {
 	if (afterScheme) window.location.assign(`/dashboard/${afterScheme}`);
 }
 
-/** Register deep-link handling: process the launch URL, then subscribe to live ones. */
+/**
+ * Register deep-link handling: process the launch URL, then subscribe to live ones.
+ *
+ * The launch-URL pass is what makes a COLD-START sign-in work: if the app was
+ * not running, macOS launches it to deliver `owlat://auth`, so the handshake is
+ * completed by a process that never ran `addWorkspace`. It resolves the `state`
+ * nonce out of durable storage (see lib/desktop/pendingConnections.ts) rather
+ * than process memory for exactly that reason. Called from the boot plugin AFTER
+ * `loadWorkspaces`, so the workspace list it mutates is already hydrated.
+ */
 export async function setupDeepLinks(): Promise<void> {
 	try {
 		const { getInitialDeepLinks, onDeepLink } = await import('@owlat/desktop/src/deeplink');

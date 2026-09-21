@@ -1,6 +1,5 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
-import type { Doc } from '../_generated/dataModel';
 import { batchGet } from '../_utils/batchLoader';
 import {
 	contactActivityTypeValidator,
@@ -85,10 +84,10 @@ export const getRecent = authedQuery({
 
 		// Batch-load all contacts at once
 		const contactIds = recentActivities.map((a) => a.contactId);
-		const contactsMap = await batchGet<Doc<'contacts'>>(ctx, contactIds);
+		const contactsMap = await batchGet(ctx, contactIds);
 
 		const activitiesWithContacts = recentActivities.map((activity) => {
-			const contact = contactsMap.get(String(activity.contactId));
+			const contact = contactsMap.get(activity.contactId);
 			return {
 				...activity,
 				// Don't surface a soft-deleted (GDPR-erased) contact's PII

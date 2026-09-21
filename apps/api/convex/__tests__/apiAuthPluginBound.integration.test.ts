@@ -128,6 +128,10 @@ async function seedOneContact(t: ReturnType<typeof convexTest>) {
 const SAVED_ENV = { ...process.env };
 beforeEach(() => {
 	delete process.env['SITE_URL'];
+	// Local integration deployment: opt into dev mode so cors.allowedOrigins() and
+	// auth.resolveTrustedOrigins() use the loopback defaults instead of the
+	// production fail-closed throw (which now requires SITE_URL/ALLOWED_ORIGINS).
+	process.env['OWLAT_DEV_MODE'] = 'true';
 });
 afterEach(() => {
 	process.env = { ...SAVED_ENV };

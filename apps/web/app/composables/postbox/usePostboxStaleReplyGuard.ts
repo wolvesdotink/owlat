@@ -25,7 +25,7 @@ export function usePostboxStaleReplyGuard(
 ) {
 	const messageId = computed(() => toValue(inReplyToMessageId));
 
-	const { data } = useConvexQuery(api.mail.mailbox.latestReplyState, () =>
+	const { data } = useConvexQuery(api.mail.mailbox.messages.latestReplyState, () =>
 		messageId.value ? { messageId: messageId.value } : 'skip'
 	);
 

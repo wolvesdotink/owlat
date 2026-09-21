@@ -3,7 +3,8 @@
  * Mocks Vue auto-imports that Nuxt provides globally
  */
 import { vi } from 'vitest';
-import { config } from '@vue/test-utils';
+import { installVueWarnGuard } from './vueWarnings';
+import { registerNuxtComponents } from './nuxtComponents';
 import {
 	ref,
 	computed,
@@ -27,35 +28,10 @@ import {
 	getCurrentScope,
 	onScopeDispose,
 	useId,
-	defineComponent,
-	h,
 } from 'vue';
 
-config.global.components.UiButton = defineComponent({
-	inheritAttrs: false,
-	props: {
-		to: String,
-		href: String,
-		disabled: Boolean,
-		loading: Boolean,
-		type: { type: String, default: 'button' },
-	},
-	emits: ['click'],
-	setup(props, { attrs, emit, slots }) {
-		return () =>
-			h(
-				props.to || props.href ? 'a' : 'button',
-				{
-					...attrs,
-					href: props.to ?? props.href,
-					type: props.to || props.href ? undefined : props.type,
-					disabled: props.disabled || props.loading ? true : undefined,
-					onClick: (event: MouseEvent) => emit('click', event),
-				},
-				slots.default?.()
-			);
-	},
-});
+registerNuxtComponents();
+installVueWarnGuard();
 
 // Make Vue reactivity primitives available globally (Nuxt auto-imports these)
 vi.stubGlobal('ref', ref);

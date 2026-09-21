@@ -1,5 +1,5 @@
 /**
- * Multi-select state for the Review Queue browse list (piece C2), following
+ * Multi-select state for the Review Queue browse list, following
  * the `usePostboxBulkActions` idiom: a `useState`-bucketed Set of selected row
  * ids, pruned as rows leave the visible list (approved elsewhere, live
  * updates), driving the sticky bulk action bar.

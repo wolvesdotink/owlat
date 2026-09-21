@@ -13,9 +13,11 @@
  * which dead-letters a warming-capped or greylisted message after ~5 defers.
  * Instead, this handler re-enqueues the job itself with the *computed* delay
  * (greylist 300s, rate-limit 900s, warming-cap, breaker-cooldown, …) and
- * returns normally, so a defer never burns a delivery attempt. The only
- * give-up is the max-message-age cap (RFC 5321 §4.5.4.1), measured from the
- * first enqueue so it survives re-queues.
+ * returns normally, so a defer never burns a delivery attempt. Two things stop
+ * a ladder: the max-message-age cap (RFC 5321 §4.5.4.1), measured from the
+ * first enqueue so it survives re-queues, and the per-message successor budget
+ * (`deferBudget.ts`) that catches a ladder advancing faster than the delays it
+ * asked for — the age cap alone bounds a ladder in time but not in count.
  *
  * See `docs/adr/0007-mta-dispatch-modules.md` and CONTEXT.md's MTA
  * dispatch section.
@@ -30,6 +32,7 @@ import { extractDomain, buildGroupKey } from './groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
 import { recordWorkerHeartbeat } from '../routes/health.js';
 import { logger } from '../monitoring/logger.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
 import { runPipeline } from '../dispatch/pipeline.js';
 import { mainPipeline } from '../dispatch/phases/index.js';
 import type { DispatchOutcome } from '../dispatch/outcome.js';
@@ -44,7 +47,7 @@ import {
 	promoteDeferredHandoff,
 	resumeDeferredHandoff,
 } from './deferHandoff.js';
-import { messageAgeMs, withJitter, type DeferKind } from './deferPolicy.js';
+import { boundedDeferDelayMs, messageAgeMs, withJitter, type DeferKind } from './deferPolicy.js';
 import {
 	runSmtpSecondaryEffect,
 	markSmtpEffectsApplied,
@@ -53,7 +56,8 @@ import {
 import { resumeJournaledSmtpAttempt, runJournaledSmtpAttempt } from './journaledSmtpAttempt.js';
 import { releaseRoutingReservations } from './routingReservations.js';
 import { handoffRoutingReentry, resumeRoutingReentryHandoff } from './routingReentryHandoff.js';
-import { emitExpiredBounce, handleDrop } from './nonDeliveryOutcomes.js';
+import { emitExpiredBounce, emitRunawayDeferBounce, handleDrop } from './nonDeliveryOutcomes.js';
+import { claimDeferSuccessor } from './deferBudget.js';
 
 /**
  * Process a single email job through the Dispatch pipeline + Dispatch
@@ -86,10 +90,14 @@ export async function handleEmailJob(
 			return;
 		}
 	}
-	await promoteDeferredHandoff(redis, data);
+	// Resume before promote. Once this job has durably handed off, its chain slot
+	// holds the SUCCESSOR's receipt rather than its own, so a redelivery has to
+	// take the resume exit first — reading for its own receipt there would find
+	// an advanced chain and mistake it for a missing one.
 	if (await resumeDeferredHandoff(redis, queue, job.id, data)) {
 		return;
 	}
+	await promoteDeferredHandoff(redis, data);
 	// Ownership may already have moved back to Convex routing on an earlier run
 	// of this job. Re-entering dispatch here would send a message the successor
 	// is also sending. Only a governed job can own a re-entry receipt.
@@ -108,7 +116,7 @@ export async function handleEmailJob(
 		'Processing email job'
 	);
 
-	recordWorkerHeartbeat(redis, config.serverId).catch(() => {});
+	void fireAndForget(recordWorkerHeartbeat(redis, config.serverId), logger, 'worker_heartbeat');
 
 	const baseCtx: BasePhaseCtx = {
 		job: data,
@@ -300,7 +308,19 @@ async function disposeDefer(
 		return;
 	}
 
-	const delay = withJitter(delayMs);
+	// The age cap bounds the ladder in time but not in count, and a defer costs
+	// no delivery attempt, so nothing else stops a ladder that advances faster
+	// than the delays it asks for. Count the rung before minting it.
+	const budget = await claimDeferSuccessor(deps.redis, data.messageId);
+	if (!budget.granted) {
+		await emitRunawayDeferBounce(job, deps, domain, providerKey, budget.spent, reason);
+		return;
+	}
+
+	// Bound AFTER jitter: jitter can add 15%, which is exactly the margin that
+	// would otherwise push a deadline-hugging rung past the receipt's TTL.
+	const requestedDelay = withJitter(delayMs);
+	const delay = boundedDeferDelayMs(requestedDelay, deps.config.maxMessageAgeMs - ageMs);
 	const requeued: EmailJob = { ...data, firstEnqueuedAt: data.firstEnqueuedAt ?? job.timestamp };
 
 	await handoffDeferredJob(
@@ -313,7 +333,18 @@ async function disposeDefer(
 	);
 
 	logger.info(
-		{ messageId: data.messageId, to: data.to, domain, kind, delay, reason },
+		{
+			messageId: data.messageId,
+			to: data.to,
+			domain,
+			kind,
+			delay,
+			// Present ONLY when the bound actually moved the wait — because the
+			// message would have expired first, or because the requested delay
+			// was not a readable interval at all.
+			...(requestedDelay === delay ? {} : { requestedDelay }),
+			reason,
+		},
 		`Deferred (${kind}) — re-enqueued in ${delay}ms (no attempt consumed)`
 	);
 }
@@ -346,6 +377,9 @@ function logOutcome(outcome: DispatchOutcome, job: EmailJob, ctx: AttemptCtx): v
 					smtpCode: outcome.smtpCode,
 					category: outcome.classification.category,
 					suggestedDelay: outcome.classification.suggestedDelayMs,
+					// Carries the clamp note when the receiver dictated a retry
+					// interval we refused to honour in full.
+					annotation: outcome.classification.annotation,
 				},
 				`Deferred (${outcome.classification.category}) — will retry`
 			);

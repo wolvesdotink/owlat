@@ -31,7 +31,7 @@ const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 export function renderBlock(
 	block: EditorBlock,
 	theme: Required<EmailTheme>,
-	debounceMs: number = 100,
+	debounceMs: number = 100
 ): Promise<string> {
 	return new Promise((resolve) => {
 		// Clear any pending timer for this block
@@ -66,45 +66,15 @@ export function getCachedHtml(blockId: string): string {
 }
 
 /**
- * Clear cache for a block (e.g. on delete).
- */
-export function clearBlockCache(blockId: string): void {
-	htmlCache.delete(blockId);
-	const timer = debounceTimers.get(blockId);
-	if (timer) {
-		clearTimeout(timer);
-		debounceTimers.delete(blockId);
-	}
-}
-
-/**
- * Clear all caches.
- */
-export function clearAllBlockCaches(): void {
-	htmlCache.clear();
-	for (const timer of debounceTimers.values()) {
-		clearTimeout(timer);
-	}
-	debounceTimers.clear();
-}
-
-/**
  * Composable that provides reactive block rendering for a single block.
  */
-export function useBlockRenderer(
-	block: Ref<EditorBlock>,
-	options: BlockRendererOptions,
-) {
+export function useBlockRenderer(block: Ref<EditorBlock>, options: BlockRendererOptions) {
 	const html = ref(getCachedHtml(block.value.id));
 	const isRendering = ref(false);
 
 	async function render() {
 		isRendering.value = true;
-		html.value = await renderBlock(
-			block.value,
-			options.theme.value,
-			options.debounceMs ?? 100,
-		);
+		html.value = await renderBlock(block.value, options.theme.value, options.debounceMs ?? 100);
 		isRendering.value = false;
 	}
 
@@ -112,14 +82,14 @@ export function useBlockRenderer(
 	watch(
 		() => block.value.content,
 		() => render(),
-		{ immediate: true, deep: true },
+		{ immediate: true, deep: true }
 	);
 
 	// Re-render when theme changes
 	watch(
 		() => options.theme.value,
 		() => render(),
-		{ deep: true },
+		{ deep: true }
 	);
 
 	return {

@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
+import { redactContactCapabilityFields } from './listing';
 
 // Query to export all contacts (for CSV export, HTTP API)
 export const listForExportByOrganization = authedQuery({
@@ -35,7 +36,10 @@ export const listForExportByOrganization = authedQuery({
 		// string, keeping the order stable across runs.
 		contacts.sort((a, b) => (a.email ?? '').localeCompare(b.email ?? ''));
 
-		return contacts;
+		// Capability fields (doiConfirmationToken / doiTokenExpiresAt) authorize
+		// consent transitions and must never ride an export — same contract as
+		// the GDPR export query and the listing engine's redact hook.
+		return contacts.map(redactContactCapabilityFields);
 	},
 });
 
@@ -51,23 +55,30 @@ export const getPropertyValuesForContacts = authedQuery({
 
 		const result: Record<string, Record<string, string>> = {};
 
-		for (const contactId of args.contactIds) {
-			const contact = await ctx.db.get(contactId);
-			// Skip missing or soft-deleted (GDPR-erased) contacts — their
-			// property values must not re-surface in an export.
-			if (!contact || contact.deletedAt !== undefined) {
-				continue;
-			}
+		// Every contact is independent, so the export reads them in parallel
+		// rather than one contact-then-values round trip at a time.
+		const perContact = await Promise.all(
+			args.contactIds.map(async (contactId) => {
+				const contact = await ctx.db.get(contactId);
+				// Skip missing or soft-deleted (GDPR-erased) contacts — their
+				// property values must not re-surface in an export.
+				if (!contact || contact.deletedAt !== undefined) return null;
 
-			const values = await ctx.db
-				.query('contactPropertyValues')
-				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-				.collect(); // bounded: one contact's property values
+				const values = await ctx.db
+					.query('contactPropertyValues')
+					.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+					.collect(); // bounded: one contact's property values
+				return { contactId, values };
+			})
+		);
 
-			result[contactId] = {};
-			for (const value of values) {
-				result[contactId][value.propertyId] = value.value;
+		for (const entry of perContact) {
+			if (!entry) continue;
+			const values: Record<string, string> = {};
+			for (const value of entry.values) {
+				values[value.propertyId] = value.value;
 			}
+			result[entry.contactId] = values;
 		}
 
 		return result;

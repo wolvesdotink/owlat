@@ -36,6 +36,15 @@ vi.mock('../lib/sessionOrganization', async () => {
 			if (!s) throw new Error('Not authenticated');
 			return { userId: s.userId, role: s.role };
 		}),
+		// The shared team-inbox connect is admin-gated; the real helper would read a
+		// live BetterAuth session, so mirror the mocked one.
+		requireAdminContext: vi.fn().mockImplementation(async () => {
+			const s = await sessionMocks.getBetterAuthSessionWithRole();
+			if (!s || (s.role !== 'owner' && s.role !== 'admin')) {
+				throw new Error('Only owners and admins can perform this action');
+			}
+			return { userId: s.userId, role: s.role, activeOrganizationId: s.activeOrganizationId };
+		}),
 	};
 });
 
@@ -57,8 +66,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledge/extraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const CREDS = {
@@ -89,10 +98,7 @@ function setSession(userId: string, role: 'owner' | 'admin' | 'editor' | null, o
 	});
 }
 
-async function enableFlags(
-	t: ReturnType<typeof convexTest>,
-	flags: Record<string, boolean>,
-) {
+async function enableFlags(t: ReturnType<typeof convexTest>, flags: Record<string, boolean>) {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('instanceSettings', {
 			featureFlags: flags,
@@ -102,15 +108,33 @@ async function enableFlags(
 }
 
 /** Connect an account for `user-A` and return its id. */
-async function connect(
-	t: ReturnType<typeof convexTest>,
-): Promise<Id<'externalMailAccounts'>> {
+async function connect(t: ReturnType<typeof convexTest>): Promise<Id<'externalMailAccounts'>> {
 	setSession('user-A', 'owner');
 	const { externalAccountId } = await t.mutation(
-		internal.mail.externalAccounts._connectInternal,
-		CREDS,
+		internal.mail.external.accounts._connectInternal,
+		CREDS
 	);
 	return externalAccountId;
+}
+
+/** Connect a SHARED team inbox (admin-gated) and return its ids. */
+async function connectTeamInbox(t: ReturnType<typeof convexTest>): Promise<{
+	mailboxId: Id<'mailboxes'>;
+	accountId: Id<'externalMailAccounts'>;
+}> {
+	setSession('admin-user', 'admin');
+	const { mailboxId, externalAccountId } = await t.mutation(
+		internal.mail.external.sharedInbox._connectSharedInternal,
+		{ ...CREDS, emailAddress: 'support@team.example.com', memberUserIds: [] }
+	);
+	return { mailboxId, accountId: externalAccountId };
+}
+
+/** Names of the jobs currently on the scheduler. */
+async function scheduledNames(t: ReturnType<typeof convexTest>): Promise<string[]> {
+	return await t.run(async (ctx) =>
+		(await ctx.db.system.query('_scheduled_functions').collect()).map((job) => job.name)
+	);
 }
 
 // =====================================================================
@@ -176,12 +200,14 @@ describe('mail.migration.start', () => {
 		await enableFlags(t, { 'mail.external': true });
 		const accountId = await connect(t);
 		// Stored credentials went stale — the worker self-stops on this account.
-		await t.mutation(internal.mail.externalAccounts.setSyncStatus, {
+		await t.mutation(internal.mail.external.accounts.setSyncStatus, {
 			accountId,
 			status: 'auth_error',
 			lastError: 'Invalid credentials',
 		});
-		await expect(t.mutation(api.mail.migration.start, {})).rejects.toThrow(/re-enter your credentials/i);
+		await expect(t.mutation(api.mail.migration.start, {})).rejects.toThrow(
+			/re-enter its credentials/i
+		);
 		await t.run(async (ctx) => {
 			const all = await ctx.db.query('mailboxMigrations').collect();
 			expect(all).toHaveLength(0); // no wedged 'importing' row created
@@ -194,7 +220,7 @@ describe('mail.migration.start', () => {
 		const accountId = await connect(t);
 
 		// A leftover folder cursor from a previous (completed) run.
-		await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 			accountId,
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -224,6 +250,85 @@ describe('mail.migration.start', () => {
 });
 
 // =====================================================================
+// forward-sync retry ledger
+// =====================================================================
+
+describe('external mail forward-sync retry ledger', () => {
+	it('keeps a skipped UID retryable, then records it as terminal on the third miss', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const accountId = await connect(t);
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUidValidity: 7,
+			initialLastSeenUid: 41,
+		});
+
+		for (const attempts of [1, 2]) {
+			await expect(
+				t.mutation(internal.mail.external.delivery.recordForwardIngestFailure, {
+					accountId,
+					remoteName: 'INBOX',
+					remoteUidValidity: 7,
+					uid: 42,
+				})
+			).resolves.toEqual({ retry: true, attempts });
+		}
+		await expect(
+			t.mutation(internal.mail.external.delivery.recordForwardIngestFailure, {
+				accountId,
+				remoteName: 'INBOX',
+				remoteUidValidity: 7,
+				uid: 42,
+			})
+		).resolves.toEqual({ retry: false, attempts: 3 });
+
+		const [state] = await t.query(internal.mail.external.delivery.getSyncState, { accountId });
+		expect(state).toMatchObject({
+			lastSeenUid: 42,
+			forwardIngestFailures: [],
+			forwardIngestFailureCount: 1,
+		});
+	});
+
+	it('drops stale retry UIDs when UIDVALIDITY rotates', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const accountId = await connect(t);
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUidValidity: 7,
+			initialLastSeenUid: 41,
+		});
+		await t.mutation(internal.mail.external.delivery.recordForwardIngestFailure, {
+			accountId,
+			remoteName: 'INBOX',
+			remoteUidValidity: 7,
+			uid: 42,
+		});
+
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUidValidity: 8,
+			initialLastSeenUid: 3,
+		});
+
+		const [state] = await t.query(internal.mail.external.delivery.getSyncState, { accountId });
+		expect(state).toMatchObject({
+			remoteUidValidity: 8,
+			lastSeenUid: 3,
+			forwardIngestFailures: [],
+		});
+	});
+});
+
+// =====================================================================
 // worker backfill surface
 // =====================================================================
 
@@ -232,7 +337,7 @@ describe('mail.migration — worker backfill surface', () => {
 		const t = convexTest(schema, modules);
 		await enableFlags(t, { 'mail.external': true });
 		const accountId = await connect(t);
-		await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 			accountId,
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -245,7 +350,7 @@ describe('mail.migration — worker backfill surface', () => {
 
 	it('getBackfillWork reports active while a migration is importing', async () => {
 		const { t, accountId } = await setup();
-		const work = await t.query(internal.mail.migration.getBackfillWork, { accountId });
+		const work = await t.query(internal.mail.migrationBackfill.getBackfillWork, { accountId });
 		expect(work.isActive).toBe(true);
 	});
 
@@ -253,14 +358,14 @@ describe('mail.migration — worker backfill surface', () => {
 		const t = convexTest(schema, modules);
 		await enableFlags(t, { 'mail.external': true });
 		const accountId = await connect(t);
-		const work = await t.query(internal.mail.migration.getBackfillWork, { accountId });
+		const work = await t.query(internal.mail.migrationBackfill.getBackfillWork, { accountId });
 		expect(work.isActive).toBe(false);
 	});
 
 	it('initFolderBackfill snapshots the ceiling + count and bumps messagesTotal once', async () => {
 		const { t, accountId, migrationId } = await setup();
 		// Sparse UIDs: 80 actual messages spread across a UID space topping at 100.
-		const r1 = await t.mutation(internal.mail.migration.initFolderBackfill, {
+		const r1 = await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId,
 			remoteName: 'INBOX',
@@ -270,7 +375,7 @@ describe('mail.migration — worker backfill surface', () => {
 		expect(r1).toEqual({ startCursor: 100 });
 
 		// Idempotent resume — same cursor, no double-count.
-		const r2 = await t.mutation(internal.mail.migration.initFolderBackfill, {
+		const r2 = await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId,
 			remoteName: 'INBOX',
@@ -307,7 +412,7 @@ describe('mail.migration — worker backfill surface', () => {
 			});
 		});
 
-		const res = await t.mutation(internal.mail.migration.initFolderBackfill, {
+		const res = await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId,
 			remoteName: 'INBOX',
@@ -324,19 +429,20 @@ describe('mail.migration — worker backfill surface', () => {
 
 	it('recordBackfillProgress drops the cursor and advances counters', async () => {
 		const { t, accountId, migrationId } = await setup();
-		await t.mutation(internal.mail.migration.initFolderBackfill, {
+		await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId,
 			remoteName: 'INBOX',
 			ceilingUid: 100,
 			messageCount: 80,
 		});
-		const res = await t.mutation(internal.mail.migration.recordBackfillProgress, {
+		const res = await t.mutation(internal.mail.migrationBackfill.recordBackfillProgress, {
 			accountId,
 			migrationId,
 			remoteName: 'INBOX',
 			newCursor: 50,
 			importedDelta: 50,
+			failedDelta: 0,
 		});
 		expect(res).toEqual({ stillImporting: true });
 
@@ -354,7 +460,7 @@ describe('mail.migration — worker backfill surface', () => {
 
 	it('recordBackfillProgress reports stillImporting=false once cancelled (stops the worker)', async () => {
 		const { t, accountId, migrationId } = await setup();
-		await t.mutation(internal.mail.migration.initFolderBackfill, {
+		await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId,
 			remoteName: 'INBOX',
@@ -364,12 +470,13 @@ describe('mail.migration — worker backfill surface', () => {
 		// User cancels mid-import.
 		await t.mutation(api.mail.migration.cancel, {});
 
-		const res = await t.mutation(internal.mail.migration.recordBackfillProgress, {
+		const res = await t.mutation(internal.mail.migrationBackfill.recordBackfillProgress, {
 			accountId,
 			migrationId,
 			remoteName: 'INBOX',
 			newCursor: 50,
 			importedDelta: 50,
+			failedDelta: 0,
 		});
 		expect(res).toEqual({ stillImporting: false });
 
@@ -383,7 +490,7 @@ describe('mail.migration — worker backfill surface', () => {
 
 	it("a superseded migration's in-flight batch doesn't corrupt the restarted one", async () => {
 		const { t, accountId, migrationId: first } = await setup();
-		await t.mutation(internal.mail.migration.initFolderBackfill, {
+		await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId: first,
 			remoteName: 'INBOX',
@@ -396,12 +503,13 @@ describe('mail.migration — worker backfill surface', () => {
 		const { migrationId: second } = await t.mutation(api.mail.migration.start, {});
 
 		// A batch still in flight from #1's run lands now, keyed to #1.
-		const res = await t.mutation(internal.mail.migration.recordBackfillProgress, {
+		const res = await t.mutation(internal.mail.migrationBackfill.recordBackfillProgress, {
 			accountId,
 			migrationId: first,
 			remoteName: 'INBOX',
 			newCursor: 50,
 			importedDelta: 50,
+			failedDelta: 0,
 		});
 		expect(res).toEqual({ stillImporting: false }); // worker stops #1's walk
 
@@ -417,7 +525,7 @@ describe('mail.migration — worker backfill surface', () => {
 		});
 
 		// #2 then initialises cleanly from the ceiling.
-		const init2 = await t.mutation(internal.mail.migration.initFolderBackfill, {
+		const init2 = await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId: second,
 			remoteName: 'INBOX',
@@ -435,14 +543,14 @@ describe('mail.migration — worker backfill surface', () => {
 		const t = convexTest(schema, modules);
 		await enableFlags(t, { 'mail.external': true });
 		const accountId = await connect(t);
-		await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 			accountId,
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
 			remoteUidValidity: 1,
 			initialLastSeenUid: 0,
 		});
-		await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 			accountId,
 			folderRole: 'sent',
 			remoteName: '[Gmail]/Sent Mail',
@@ -451,14 +559,14 @@ describe('mail.migration — worker backfill surface', () => {
 		});
 		const { migrationId } = await t.mutation(api.mail.migration.start, {});
 
-		await t.mutation(internal.mail.migration.initFolderBackfill, {
+		await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId,
 			remoteName: 'INBOX',
 			ceilingUid: 100,
 			messageCount: 80,
 		});
-		await t.mutation(internal.mail.migration.initFolderBackfill, {
+		await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId,
 			remoteName: '[Gmail]/Sent Mail',
@@ -471,7 +579,7 @@ describe('mail.migration — worker backfill surface', () => {
 		});
 
 		// Re-initialising one folder (resume) must not re-add its count.
-		await t.mutation(internal.mail.migration.initFolderBackfill, {
+		await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId,
 			remoteName: 'INBOX',
@@ -486,7 +594,7 @@ describe('mail.migration — worker backfill surface', () => {
 
 	it('initFolderBackfill handles an empty folder (count 0) without wedging', async () => {
 		const { t, accountId, migrationId } = await setup();
-		const res = await t.mutation(internal.mail.migration.initFolderBackfill, {
+		const res = await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 			accountId,
 			migrationId,
 			remoteName: 'INBOX',
@@ -502,12 +610,13 @@ describe('mail.migration — worker backfill surface', () => {
 
 	it('recordBackfillProgress reports stillImporting:false for an unmapped folder', async () => {
 		const { t, accountId, migrationId } = await setup();
-		const res = await t.mutation(internal.mail.migration.recordBackfillProgress, {
+		const res = await t.mutation(internal.mail.migrationBackfill.recordBackfillProgress, {
 			accountId,
 			migrationId,
 			remoteName: 'No Such Folder',
 			newCursor: 10,
 			importedDelta: 5,
+			failedDelta: 0,
 		});
 		expect(res).toEqual({ stillImporting: false });
 		await t.run(async (ctx) => {
@@ -518,7 +627,7 @@ describe('mail.migration — worker backfill surface', () => {
 
 	it('markImportFailed flips an importing migration to failed with the error', async () => {
 		const { t, migrationId } = await setup();
-		await t.mutation(internal.mail.migration.markImportFailed, {
+		await t.mutation(internal.mail.migrationBackfill.markImportFailed, {
 			migrationId,
 			errorMessage: 'IMAP server dropped the connection',
 		});
@@ -537,7 +646,7 @@ describe('mail.migration — worker backfill surface', () => {
 
 	it('markImportFailed truncates an oversized error message', async () => {
 		const { t, migrationId } = await setup();
-		await t.mutation(internal.mail.migration.markImportFailed, {
+		await t.mutation(internal.mail.migrationBackfill.markImportFailed, {
 			migrationId,
 			errorMessage: 'x'.repeat(1000),
 		});
@@ -550,7 +659,7 @@ describe('mail.migration — worker backfill surface', () => {
 	it('markImportFailed leaves a cancelled migration untouched (guard)', async () => {
 		const { t, migrationId } = await setup();
 		await t.mutation(api.mail.migration.cancel, {});
-		await t.mutation(internal.mail.migration.markImportFailed, {
+		await t.mutation(internal.mail.migrationBackfill.markImportFailed, {
 			migrationId,
 			errorMessage: 'late error from a stale worker batch',
 		});
@@ -561,9 +670,105 @@ describe('mail.migration — worker backfill surface', () => {
 		});
 	});
 
+	it('recordBackfillProgress keeps messages that failed out of the imported count', async () => {
+		const { t, accountId, migrationId } = await setup();
+		await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			ceilingUid: 100,
+			messageCount: 80,
+		});
+
+		await t.mutation(internal.mail.migrationBackfill.recordBackfillProgress, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			newCursor: 50,
+			importedDelta: 30,
+			failedDelta: 20,
+		});
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.messagesImported).toBe(30); // only what actually landed
+			expect(m!.messagesFailed).toBe(20);
+			const row = await ctx.db
+				.query('externalMailFolderSync')
+				.withIndex('by_account', (q) => q.eq('accountId', accountId))
+				.first();
+			// The folder counter tracks the WALK, so progress still completes.
+			expect(row!.backfillDone).toBe(50);
+		});
+	});
+
+	it('completeBackfillImport fails a walk that stored nothing at all', async () => {
+		// The shape the broken ingest took: every folder walked to the end, every
+		// message skipped. Finishing the walk is not importing the mail.
+		const { t, accountId, migrationId } = await setup();
+		await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			ceilingUid: 100,
+			messageCount: 80,
+		});
+		await t.mutation(internal.mail.migrationBackfill.recordBackfillProgress, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			newCursor: 0,
+			importedDelta: 0,
+			failedDelta: 80,
+		});
+
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('failed');
+			expect(m!.lastError).toContain('80');
+			expect(m!.importCompletedAt).toBeUndefined();
+			const audit = await ctx.db.query('mailAuditLog').collect();
+			expect(audit.some((row) => row.event === 'migration.import_failed')).toBe(true);
+			expect(audit.some((row) => row.event === 'migration.import_complete')).toBe(false);
+		});
+	});
+
+	it('completeBackfillImport completes a partial import but records what was lost', async () => {
+		const { t, accountId, migrationId } = await setup();
+		await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			ceilingUid: 100,
+			messageCount: 80,
+		});
+		await t.mutation(internal.mail.migrationBackfill.recordBackfillProgress, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			newCursor: 0,
+			importedDelta: 78,
+			failedDelta: 2,
+		});
+
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('completed');
+			expect(m!.lastError).toContain('2');
+			const audit = await ctx.db.query('mailAuditLog').collect();
+			const complete = audit.find((row) => row.event === 'migration.import_complete');
+			expect(complete!.details).toContain('imported=78');
+			expect(complete!.details).toContain('failed=2');
+		});
+	});
+
 	it('completeBackfillImport finalizes completed when AI indexing is off', async () => {
 		const { t, accountId, migrationId } = await setup(); // ai.knowledge not enabled
-		await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
 		await t.run(async (ctx) => {
 			const m = await ctx.db.get(migrationId);
 			expect(m!.status).toBe('completed');
@@ -576,7 +781,7 @@ describe('mail.migration — worker backfill surface', () => {
 		const t = convexTest(schema, modules);
 		await enableFlags(t, { 'mail.external': true, ai: true, 'ai.knowledge': true, inbox: true });
 		const accountId = await connect(t);
-		await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 			accountId,
 			folderRole: 'inbox',
 			remoteName: 'INBOX',
@@ -585,7 +790,7 @@ describe('mail.migration — worker backfill surface', () => {
 		});
 		const { migrationId } = await t.mutation(api.mail.migration.start, {});
 
-		await t.mutation(internal.mail.migration.completeBackfillImport, { migrationId });
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
 		await t.run(async (ctx) => {
 			const m = await ctx.db.get(migrationId);
 			expect(m!.status).toBe('indexing');
@@ -613,7 +818,7 @@ describe('mail.migration.getStatus', () => {
 			const t = convexTest(schema, modules);
 			await enableFlags(t, { 'mail.external': true });
 			const accountId = await connect(t);
-			await t.mutation(internal.mail.externalDelivery.recordFolderMapping, {
+			await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
 				accountId,
 				folderRole: 'inbox',
 				remoteName: 'INBOX',
@@ -621,19 +826,20 @@ describe('mail.migration.getStatus', () => {
 				initialLastSeenUid: 100,
 			});
 			const { migrationId } = await t.mutation(api.mail.migration.start, {});
-			await t.mutation(internal.mail.migration.initFolderBackfill, {
+			await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
 				accountId,
 				migrationId,
 				remoteName: 'INBOX',
 				ceilingUid: 100,
 				messageCount: 100,
 			});
-			await t.mutation(internal.mail.migration.recordBackfillProgress, {
+			await t.mutation(internal.mail.migrationBackfill.recordBackfillProgress, {
 				accountId,
 				migrationId,
 				remoteName: 'INBOX',
 				newCursor: 25,
 				importedDelta: 75,
+				failedDelta: 0,
 			});
 			return { t };
 		})();
@@ -677,5 +883,198 @@ describe('mail.migration.cancel', () => {
 		await connect(t);
 		const ok = await t.mutation(api.mail.migration.cancel, {});
 		expect(ok).toBe(false);
+	});
+});
+
+// =====================================================================
+// shared team inbox — the same worker surface, keyed by mailbox
+// =====================================================================
+
+describe('mail.migrationShared — the worker backfill surface is scope-agnostic', () => {
+	async function setupShared() {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const { mailboxId, accountId } = await connectTeamInbox(t);
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUidValidity: 1,
+			initialLastSeenUid: 100,
+		});
+		const { migrationId } = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
+		return { t, mailboxId, accountId, migrationId };
+	}
+
+	it('runs the full worker walk on a shared account exactly like a personal one', async () => {
+		const { t, accountId, migrationId } = await setupShared();
+
+		// The worker keys off the account and has no notion of scope.
+		const work = await t.query(internal.mail.migrationBackfill.getBackfillWork, { accountId });
+		expect(work).toEqual({ isActive: true, migrationId });
+
+		expect(
+			await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
+				accountId,
+				migrationId,
+				remoteName: 'INBOX',
+				ceilingUid: 100,
+				messageCount: 80,
+			})
+		).toEqual({ startCursor: 100 });
+
+		expect(
+			await t.mutation(internal.mail.migrationBackfill.recordBackfillProgress, {
+				accountId,
+				migrationId,
+				remoteName: 'INBOX',
+				newCursor: 50,
+				importedDelta: 50,
+				failedDelta: 0,
+			})
+		).toEqual({ stillImporting: true });
+
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.scope).toBe('shared');
+			expect(m!.status).toBe('completed'); // indexing is opt-in and was not requested
+			expect(m!.messagesTotal).toBe(80);
+			expect(m!.messagesImported).toBe(50);
+			// A team import is org infrastructure: nobody's checklist moves.
+			expect(await ctx.db.query('userOnboarding').collect()).toHaveLength(0);
+		});
+	});
+
+	it('cancelShared stops the walk at the next batch boundary', async () => {
+		const { t, mailboxId, accountId, migrationId } = await setupShared();
+		await t.mutation(internal.mail.migrationBackfill.initFolderBackfill, {
+			accountId,
+			migrationId,
+			remoteName: 'INBOX',
+			ceilingUid: 100,
+			messageCount: 80,
+		});
+		expect(await t.mutation(api.mail.migrationShared.cancelShared, { mailboxId })).toBe(true);
+
+		expect(
+			await t.mutation(internal.mail.migrationBackfill.recordBackfillProgress, {
+				accountId,
+				migrationId,
+				remoteName: 'INBOX',
+				newCursor: 50,
+				importedDelta: 50,
+				failedDelta: 0,
+			})
+		).toEqual({ stillImporting: false });
+		expect(
+			(await t.query(internal.mail.migrationBackfill.getBackfillWork, { accountId })).isActive
+		).toBe(false);
+	});
+
+	it('hands off to the knowledge sweep only when the import opted in', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true, ai: true, 'ai.knowledge': true, inbox: true });
+		const { mailboxId } = await connectTeamInbox(t);
+		const { migrationId } = await t.mutation(api.mail.migrationShared.startShared, {
+			mailboxId,
+			indexKnowledge: true,
+		});
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('indexing');
+			expect(await ctx.db.query('userOnboarding').collect()).toHaveLength(0);
+		});
+	});
+});
+
+// =====================================================================
+// purge cascade + the post-import voice-profile refresh
+// =====================================================================
+
+describe('purging an external account drops its migration rows', () => {
+	it('deletes a finished AND an in-flight migration, leaving the worker idle', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true });
+		const accountId = await connect(t);
+		const mailboxId = (await t.run((ctx) => ctx.db.get(accountId)))!.mailboxId;
+
+		const finished = await t.mutation(api.mail.migration.start, {});
+		await t.run((ctx) => ctx.db.patch(finished.migrationId, { status: 'completed' }));
+		const inFlight = await t.mutation(api.mail.migration.start, {});
+
+		await t.mutation(internal.mail.external.accountTeardown._purgeChunk, { accountId, mailboxId });
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(finished.migrationId)).toBeNull();
+			expect(await ctx.db.get(inFlight.migrationId)).toBeNull();
+			expect(await ctx.db.query('mailboxMigrations').collect()).toHaveLength(0);
+			expect(await ctx.db.get(accountId)).toBeNull();
+		});
+		// Deleting the row IS the stop signal — no cancelled tombstone needed.
+		expect(
+			(await t.query(internal.mail.migrationBackfill.getBackfillWork, { accountId })).isActive
+		).toBe(false);
+	});
+});
+
+describe('completeBackfillImport — writing-voice refresh', () => {
+	async function setupWithProfile(profile: { isEnabled: boolean } | null) {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': true, ai: true });
+		const accountId = await connect(t);
+		const mailboxId = (await t.run((ctx) => ctx.db.get(accountId)))!.mailboxId;
+		if (profile) {
+			await t.run(async (ctx) => {
+				const now = Date.now();
+				await ctx.db.insert('mailVoiceProfiles', {
+					mailboxId,
+					isEnabled: profile.isEnabled,
+					status: 'idle',
+					sampleCount: 0,
+					sentCountAtCompute: 0,
+					createdAt: now,
+					updatedAt: now,
+				});
+			});
+		}
+		const { migrationId } = await t.mutation(api.mail.migration.start, {});
+		return { t, mailboxId, migrationId };
+	}
+
+	it('schedules exactly one refresh when personalization is on for the mailbox', async () => {
+		const { t, mailboxId, migrationId } = await setupWithProfile({ isEnabled: true });
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
+
+		expect(await scheduledNames(t)).toEqual(['mail/ai/voiceProfileActions:refresh']);
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('mailVoiceProfiles')
+				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+				.first();
+			expect(row!.status).toBe('refreshing'); // in-flight guard, not a second job
+		});
+
+		// A replayed completion (or a second import) can't stack a second refresh
+		// while the first is still in flight.
+		await t.run((ctx) => ctx.db.patch(migrationId, { status: 'importing' }));
+		await t.mutation(internal.mail.migrationBackfill.completeBackfillImport, { migrationId });
+		expect(await scheduledNames(t)).toEqual(['mail/ai/voiceProfileActions:refresh']);
+	});
+
+	it('schedules nothing when there is no profile or personalization is off', async () => {
+		const none = await setupWithProfile(null);
+		await none.t.mutation(internal.mail.migrationBackfill.completeBackfillImport, {
+			migrationId: none.migrationId,
+		});
+		expect(await scheduledNames(none.t)).toEqual([]);
+
+		const off = await setupWithProfile({ isEnabled: false });
+		await off.t.mutation(internal.mail.migrationBackfill.completeBackfillImport, {
+			migrationId: off.migrationId,
+		});
+		expect(await scheduledNames(off.t)).toEqual([]);
 	});
 });

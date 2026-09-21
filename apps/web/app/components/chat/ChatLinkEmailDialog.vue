@@ -11,21 +11,18 @@ const emit = defineEmits<{ close: [] }>();
 
 const { t, locale } = useI18n();
 
+// Recent threads with nothing typed; a typed query goes to the SERVER
+// (`inbox.queries.listThreads`' `search` argument, over the subject and the
+// participant address). It used to filter the fetched page in the browser, so a
+// thread outside the newest hundred was unlinkable however exactly you spelt it.
+const { query: search, debouncedQuery } = useDebouncedSearch();
+
 const { data: threadsData, isLoading } = useConvexQuery(api.inbox.queries.listThreads, () => ({
+	...(debouncedQuery.value.trim() ? { search: debouncedQuery.value.trim() } : {}),
 	limit: 100,
 }));
 
-const search = ref('');
-
-const threads = computed(() => {
-	const list = threadsData.value?.threads ?? [];
-	const q = search.value.trim().toLowerCase();
-	if (!q) return list;
-	return list.filter(
-		(t) =>
-			t.subject.toLowerCase().includes(q) || (t.contactIdentifier ?? '').toLowerCase().includes(q)
-	);
-});
+const threads = computed(() => threadsData.value?.threads ?? []);
 
 const { linkChannelToInboxThread, unlinkChannel } = useChatActions();
 const isSubmitting = ref(false);
@@ -33,10 +30,10 @@ const isSubmitting = ref(false);
 const linkAndClose = async (threadId: Id<'conversationThreads'>) => {
 	isSubmitting.value = true;
 	try {
-		// useBackendOperation toasts failure and returns undefined; close
+		// useBackendOperation toasts failure and resolves `ok: false`; close
 		// only on a real success result.
 		const result = await linkChannelToInboxThread(props.roomId, threadId);
-		if (result !== undefined) emit('close');
+		if (result.ok) emit('close');
 	} finally {
 		isSubmitting.value = false;
 	}
@@ -46,7 +43,7 @@ const unlinkAndClose = async () => {
 	isSubmitting.value = true;
 	try {
 		const result = await unlinkChannel(props.roomId);
-		if (result !== undefined) emit('close');
+		if (result.ok) emit('close');
 	} finally {
 		isSubmitting.value = false;
 	}
@@ -103,12 +100,7 @@ const formatTime = (timestamp: number) => {
 		</div>
 
 		<div class="flex items-center justify-between gap-3 px-5 py-3 border-t border-border-subtle">
-			<UiButton
-				variant="danger-ghost"
-				size="sm"
-				:disabled="isSubmitting"
-				@click="unlinkAndClose"
-			>
+			<UiButton variant="danger-ghost" size="sm" :disabled="isSubmitting" @click="unlinkAndClose">
 				{{ t('components.chat.chatLinkEmailDialog.removeLink') }}
 			</UiButton>
 			<UiButton variant="secondary" @click="emit('close')">{{ t('common.close') }}</UiButton>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { isValidEmail, normalizeEmail } from '~/utils/validation';
+import { isValidEmail, normalizeEmail } from '@owlat/shared';
 import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
 
 const { t } = useI18n();
@@ -62,15 +62,17 @@ const handleImportBlocklist = async () => {
 	);
 };
 
-// Search state
-const searchQuery = ref('');
+// List FILTER — narrows the loaded suppressions in place. It is not the search
+// box (that is the one ⌘K overlay), which is why it says "Filter…" and wears a
+// filter icon. It ran undebounced, re-filtering the whole list on every
+// keystroke; it now shares `useDebouncedSearch` with every other list filter.
+const { searchQuery, debouncedSearch } = useDebouncedSearch();
 
-// Filtered blocked emails based on search
 const filteredBlockedEmails = computed(() => {
 	if (!blockedEmailsData.value) return [];
-	if (!searchQuery.value.trim()) return blockedEmailsData.value;
+	const query = debouncedSearch.value.toLowerCase().trim();
+	if (!query) return blockedEmailsData.value;
 
-	const query = searchQuery.value.toLowerCase().trim();
 	return blockedEmailsData.value.filter(
 		(be) =>
 			be.email.toLowerCase().includes(query) || (be.notes && be.notes.toLowerCase().includes(query))
@@ -124,7 +126,7 @@ const handleAddBlockedEmail = async () => {
 	});
 	addModal.isSubmitting.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showNotification(t('dashboard.audience.suppressions.toasts.added'));
 	addModal.close();
@@ -141,7 +143,7 @@ const handleDeleteBlockedEmail = async () => {
 	});
 	isDeleting.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showNotification(t('dashboard.audience.suppressions.toasts.removed'));
 	emailToDelete.value = null;
@@ -187,16 +189,11 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				<Icon name="lucide:arrow-left" class="w-4 h-4" />
 				{{ t('dashboard.audience.suppressions.backToAudience') }}
 			</NuxtLink>
-			<div class="flex items-center justify-between">
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.audience.suppressions.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">
-						{{ t('dashboard.audience.suppressions.subtitle') }}
-					</p>
-				</div>
-				<div class="flex items-center gap-2">
+			<UiPageHeader
+				:title="t('dashboard.audience.suppressions.title')"
+				:description="t('dashboard.audience.suppressions.subtitle')"
+			>
+				<template #actions>
 					<UiButton variant="secondary" class="gap-2" @click="blocklistImport.open()">
 						<Icon name="lucide:file-up" class="w-4 h-4" />
 						{{ t('dashboard.audience.suppressions.import') }}
@@ -205,8 +202,8 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 						<Icon name="lucide:plus" class="w-4 h-4" />
 						{{ t('dashboard.audience.suppressions.addSuppression') }}
 					</UiButton>
-				</div>
-			</div>
+				</template>
+			</UiPageHeader>
 		</div>
 
 		<UiQueryBoundary
@@ -245,7 +242,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 					</div>
 				</div>
 
-				<SuppressionSunsetControls />
+				<AudienceSuppressionSunsetControls />
 
 				<!-- Stats Cards -->
 				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -274,16 +271,16 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 
 				<!-- Filters and Search -->
 				<div class="flex flex-col sm:flex-row gap-4">
-					<!-- Search -->
+					<!-- Filter (not search — see the composable comment above) -->
 					<div class="relative flex-1">
 						<Icon
-							name="lucide:search"
+							name="lucide:list-filter"
 							class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
 						/>
 						<input
 							v-model="searchQuery"
 							type="text"
-							:placeholder="t('dashboard.audience.suppressions.searchPlaceholder')"
+							:placeholder="t('common.filterPlaceholder')"
 							class="input pl-10"
 						/>
 					</div>
@@ -330,14 +327,14 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 
 				<!-- No Search Results -->
 				<div
-					v-else-if="filteredBlockedEmails.length === 0 && searchQuery.trim()"
+					v-else-if="filteredBlockedEmails.length === 0 && debouncedSearch.trim()"
 					class="card p-0 overflow-hidden"
 				>
 					<UiEmptyState
 						icon="lucide:search"
 						:title="t('dashboard.audience.suppressions.noResults.title')"
 						:description="
-							t('dashboard.audience.suppressions.noResults.description', { query: searchQuery })
+							t('dashboard.audience.suppressions.noResults.description', { query: debouncedSearch })
 						"
 					/>
 				</div>

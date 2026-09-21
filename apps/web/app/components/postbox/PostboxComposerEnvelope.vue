@@ -7,12 +7,18 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import type { SendAsIdentity } from '~/composables/postbox/usePostboxCompose';
+import type { ComposerGuards } from '~/composables/postbox/usePostboxComposerGuards';
 import {
 	ownDomainsFromIdentities,
 	recipientLabel,
 	canonicalEmailAddress,
 } from '~/utils/recipientHints';
-import { senderAuthDisplay, type SenderAuthDisplay } from '~/utils/senderAlignment';
+import type { RecipientSealView } from '~/utils/sealRecipients';
+import {
+	selectedSenderIdentity,
+	senderAuthDisplay,
+	type SenderAuthDisplay,
+} from '~/utils/senderAlignment';
 
 type RecipientField = 'to' | 'cc' | 'bcc';
 
@@ -27,6 +33,22 @@ const props = defineProps<{
 	availableIdentities: SendAsIdentity[];
 	/** Extra recipients Reply-All would add (raw addresses); drives the gap hint. */
 	replyAllRecipients?: string[];
+	/**
+	 * The composer's pre-send confidence facade. The envelope is where every one
+	 * of its inputs is shown — the From identity, the recipient chips — so it is
+	 * also where the cues about them belong: the did-you-mean corpus and the
+	 * first-time set feed the fields below, and PostboxComposerGuards renders
+	 * the warnings themselves.
+	 */
+	guards: ComposerGuards;
+	/**
+	 * Per-recipient sealing verdicts for this draft (plan idea 11), already
+	 * filtered by the composer to the states where recipient keys are what the
+	 * seal verdict turns on. Passed through to every field so a chip in Cc or Bcc
+	 * carries the same glyph as one in To; absent means the chips say nothing
+	 * about sealing.
+	 */
+	sealStates?: RecipientSealView[];
 }>();
 
 const emit = defineEmits<{
@@ -77,11 +99,13 @@ function identityAuth(identity: SendAsIdentity): SenderAuthDisplay {
 }
 
 // The identity the picker currently shows (the chosen From, falling back to the
-// first) and its authenticity verdict — drives the chip below the picker.
-const selectedIdentity = computed(() => {
-	const address = props.fromAddress || firstIdentityAddress.value;
-	return props.availableIdentities.find((i) => i.address === address) ?? null;
-});
+// first) and its authenticity verdict — drives the chip below the picker. The
+// selection itself comes from `selectedSenderIdentity`, which the composer's
+// pre-send alignment gate reads too, so the chip and the gate can never disagree
+// about WHICH identity is being judged.
+const selectedIdentity = computed(() =>
+	selectedSenderIdentity(props.availableIdentities, props.fromAddress)
+);
 const selectedAuth = computed<SenderAuthDisplay | null>(() =>
 	selectedIdentity.value ? identityAuth(selectedIdentity.value) : null
 );
@@ -207,6 +231,9 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 				:label="t('components.postbox.postboxComposerEnvelope.to')"
 				field="to"
 				:own-domains="ownDomains"
+				:known-domains="guards.knownDomains"
+				:first-time-addresses="guards.firstTimeAddresses"
+				:seal-states="sealStates"
 				@move="moveRecipient($event, 'to')"
 			/>
 			<div class="flex items-center gap-2 text-xs pt-0.5">
@@ -261,6 +288,9 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			:label="t('components.postbox.postboxComposerEnvelope.cc')"
 			field="cc"
 			:own-domains="ownDomains"
+			:known-domains="guards.knownDomains"
+			:first-time-addresses="guards.firstTimeAddresses"
+			:seal-states="sealStates"
 			@move="moveRecipient($event, 'cc')"
 		/>
 		<PostboxRecipientField
@@ -270,8 +300,15 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			:label="t('components.postbox.postboxComposerEnvelope.bcc')"
 			field="bcc"
 			:own-domains="ownDomains"
+			:known-domains="guards.knownDomains"
+			:first-time-addresses="guards.firstTimeAddresses"
+			:seal-states="sealStates"
 			@move="moveRecipient($event, 'bcc')"
 		/>
+		<!-- Pre-send confidence (plan ideas 3, 5, 15): the first-time-recipient
+		     line and the two replay-confirm dialogs, mounted with the fields they
+		     are about. -->
+		<PostboxComposerGuards :guards="guards" />
 		<div class="flex items-baseline gap-2">
 			<label for="subject" class="text-text-tertiary w-12">{{
 				t('components.postbox.postboxComposerEnvelope.subject')

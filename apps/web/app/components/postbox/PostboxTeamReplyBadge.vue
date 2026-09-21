@@ -12,7 +12,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const { data } = useConvexQuery(api.mail.mailbox.latestReplyState, () => ({
+const { data } = useConvexQuery(api.mail.mailbox.messages.latestReplyState, () => ({
 	messageId: props.messageId,
 }));
 

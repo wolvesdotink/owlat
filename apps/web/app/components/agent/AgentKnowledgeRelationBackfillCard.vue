@@ -25,7 +25,7 @@ const progressPercent = computed(() => {
 });
 async function handleCancel() {
 	const result = await cancel({});
-	if (result) showToast(t('components.agent.agentKnowledgeRelationBackfillCard.cancelledToast'));
+	if (result.ok) showToast(t('components.agent.agentKnowledgeRelationBackfillCard.cancelledToast'));
 }
 </script>
 

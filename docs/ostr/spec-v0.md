@@ -102,7 +102,7 @@ value; policy changes follow the cadence and overlap rules in
 ## Related material
 
 - Plan: `TRUST_REGISTRY_PLAN_2026-08-20.html` at the repository root.
-- Decision record: [ADR-0058](../adr/0058-open-sender-trust-registry.md).
+- Decision record: [ADR-0062](../adr/0062-open-sender-trust-registry.md).
 - Reference code: `packages/ostr-core` (schema, canonicalization, signing,
   Merkle primitives, scoring policy), `packages/ostr-client`,
   `packages/ostr-observer`, `apps/ostr-registry`.

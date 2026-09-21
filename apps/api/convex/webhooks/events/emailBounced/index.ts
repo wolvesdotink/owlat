@@ -6,10 +6,11 @@
 
 import { v, type Infer } from 'convex/values';
 import type { WebhookEventModule } from '../../types';
+import { bounceTypeValidator } from '../../../lib/convexValidators';
 
 const schema = v.object({
 	email: v.string(),
-	bounceType: v.union(v.literal('hard'), v.literal('soft')),
+	bounceType: bounceTypeValidator,
 	message: v.string(),
 	timestamp: v.string(),
 });

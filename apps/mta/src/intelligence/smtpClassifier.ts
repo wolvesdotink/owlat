@@ -20,7 +20,7 @@ import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting
  * re-exported here so every existing importer keeps working unchanged.
  *
  * It moved because it grew a SECOND consumer in another deployable: the ramp
- * controller's standalone gate suite (plan D2/D14) treats a subset of these
+ * controller's standalone gate suite treats a subset of these
  * categories — the ones that mean "the receiver is refusing this sending
  * identity" rather than "slow down" — as a hard stop. Two independent spellings
  * of the same names across two apps would drift silently, and the failure mode
@@ -39,7 +39,12 @@ export interface SmtpClassification {
 	suggestedDelayMs: number;
 	/** Whether to count this as a bounce for circuit breaker purposes */
 	countAsBounce: boolean;
-	/** Short operator-facing dashboard explanation for recognized provider feedback. */
+	/**
+	 * Short operator-facing explanation of what the receiver said and what we
+	 * did about it — recognized provider feedback, or a remote-requested retry
+	 * interval this classifier had to clamp. Surfaced on the deferral's
+	 * delivery-log event, so a clamp is never silent.
+	 */
 	annotation?: string;
 }
 
@@ -176,11 +181,15 @@ export function classifySmtpResponse(
 
 	// Greylisting: retry sooner
 	if (GREYLIST_PATTERNS.test(text)) {
+		const greylist = extractGreylistDelay(text);
 		return {
 			category: 'greylisted',
 			retryable: true,
-			suggestedDelayMs: extractGreylistDelay(text),
+			suggestedDelayMs: greylist.delayMs,
 			countAsBounce: false,
+			...(greylist.clampedFromMs === undefined
+				? {}
+				: { annotation: greylistClampAnnotation(greylist.clampedFromMs) }),
 		};
 	}
 
@@ -252,21 +261,79 @@ export function classifySmtpResponse(
 	};
 }
 
+/** A greylist wait must be at least this long — the shipped floor. */
+const MIN_GREYLIST_DELAY_MS = 30_000;
+
+/** No specific interval in the response text. */
+const DEFAULT_GREYLIST_DELAY_MS = 120_000;
+
+/**
+ * CEILING FOR A RETRY INTERVAL DICTATED BY REMOTE RESPONSE TEXT.
+ *
+ * `extractGreylistDelay` is the ONLY delay in this MTA whose value comes from a
+ * stranger. Every other rung is ours: the provider signatures above top out at
+ * 60 minutes, a spent daily warming cap defers by at most `MAX_CAP_DEFER_MS`
+ * (also 60 minutes), and a pressure-lengthened rung is capped at
+ * `maximumPressureRetryDelayMs` (4 hours). Only this one was parsed unbounded,
+ * so `try again in 999999 minutes` bought a ~694-day defer — three things go
+ * wrong at once, none of them recoverable:
+ *
+ *  1. The successor sits in GroupMQ's `:delayed` ZSET holding its payload for
+ *     the whole interval, in a Redis running `noeviction` under a memory cap.
+ *  2. Its defer-handoff receipt is written with a `GOVERNED_MTA_MAX_MESSAGE_AGE_MS`
+ *     TTL, so any wake beyond four days finds the receipt gone and
+ *     `promoteDeferredHandoff` throws — the message dead-letters with the
+ *     Convex Send left `queued` and no terminal edge ever emitted.
+ *  3. A digit run long enough to overflow to `Infinity` came back out of
+ *     `pressureAdjustedDelayMs` as `0`: an immediate re-enqueue, i.e. the hot
+ *     loop, not a long wait.
+ *
+ * One hour is the ceiling because it is the longest rung this MTA asks for
+ * anywhere else, and because greylisting (RFC 6647) is a per-message challenge
+ * measured in minutes — no real implementation asks for more. A clamped rung
+ * can still be lengthened to the shipped 4-hour pressure ceiling, and at hourly
+ * rungs a message still gets ~96 attempts inside its four-day lifetime.
+ */
+export const MAX_GREYLIST_DELAY_MS = 60 * 60 * 1000;
+
+interface GreylistDelay {
+	delayMs: number;
+	/** Set only when the remote asked for longer than the ceiling allows. */
+	clampedFromMs?: number;
+}
+
+/** Apply the floor, then the ceiling, reporting whether the ceiling bit. */
+function boundGreylistDelay(requestedMs: number): GreylistDelay {
+	const floored = Math.max(requestedMs, MIN_GREYLIST_DELAY_MS);
+	// Written as "inside the ceiling" rather than "over" it so a `NaN` or an
+	// `Infinity` from an overlong digit run fails into the ceiling too.
+	if (floored <= MAX_GREYLIST_DELAY_MS) return { delayMs: floored };
+	return { delayMs: MAX_GREYLIST_DELAY_MS, clampedFromMs: requestedMs };
+}
+
 /**
  * Extract delay from greylisting messages that specify a wait time
  * e.g., "try again in 120 seconds" → 120000ms
  * Falls back to 2 minutes if no specific time found
  */
-function extractGreylistDelay(text: string): number {
+function extractGreylistDelay(text: string): GreylistDelay {
 	const secondsMatch = text.match(/try again in (\d+) second/i);
 	if (secondsMatch?.[1]) {
-		return Math.max(parseInt(secondsMatch[1], 10) * 1000, 30_000); // At least 30s
+		return boundGreylistDelay(parseInt(secondsMatch[1], 10) * 1000);
 	}
 
 	const minutesMatch = text.match(/try again in (\d+) minute/i);
 	if (minutesMatch?.[1]) {
-		return Math.max(parseInt(minutesMatch[1], 10) * 60 * 1000, 30_000);
+		return boundGreylistDelay(parseInt(minutesMatch[1], 10) * 60 * 1000);
 	}
 
-	return 120_000; // Default 2 minutes for greylisting
+	return { delayMs: DEFAULT_GREYLIST_DELAY_MS };
+}
+
+/** Name the clamp in the operator's own units, without leaking response text. */
+function greylistClampAnnotation(requestedMs: number): string {
+	const asked = Number.isFinite(requestedMs)
+		? `${Math.round(requestedMs / 60_000)} minutes`
+		: 'an interval too large to read';
+	return `The receiver asked us to wait ${asked} before retrying; clamped to Owlat's ${MAX_GREYLIST_DELAY_MS / 60_000}-minute greylist ceiling.`;
 }

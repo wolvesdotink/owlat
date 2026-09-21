@@ -19,7 +19,7 @@ defineProps<{
 // nothing renders until hydration.
 const coachDraftText = computed(() => {
 	const html = bodyHtml.value ?? '';
-	if (!html || typeof window === 'undefined') return '';
+	if (!html || import.meta.server) return '';
 	const doc = new DOMParser().parseFromString(html, 'text/html');
 	return (doc.body.textContent ?? '').trim();
 });

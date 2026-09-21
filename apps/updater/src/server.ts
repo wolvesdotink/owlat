@@ -1,146 +1,26 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-	applyEnvUpdates,
-	errorMessage,
-	isRateLimited,
-	isValidIPv4,
-	validateComposeTemplate,
-} from './security.js';
+import { errorMessage } from '@owlat/shared';
+import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
+import { applyEnvUpdates, isRateLimited, isValidIPv4 } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import { composeCommand, scheduleUpdaterRecreateSafely, servicesToRecreate } from './rollout.js';
+import { handleUpdate } from './update.js';
 import { handleApplyProfiles } from './applyProfiles.js';
+import { handlePortChecks } from './portChecks.js';
 import { handleProfileState } from './profileState.js';
 
 const PORT = parseInt(process.env['PORT'] || '3200', 10);
-const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
+
+// ── Endpoint handlers ──
 
 // ── Helpers ──
 
 /** Rewrite a `.env` file's content line-by-line (preserves comments + ordering). */
 function rewriteEnvLines(content: string, transform: (line: string) => string): string {
 	return content.split('\n').map(transform).join('\n');
-}
-
-// ── Endpoint handlers ──
-
-async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
-	if (!requireAuth(req, res)) return;
-
-	// Rate limit: max 2 updates per minute
-	if (isRateLimited('update', 2, 60_000)) {
-		return json(res, 429, { error: 'Too many update requests. Try again later.' });
-	}
-
-	let composeTemplate: string | undefined;
-
-	try {
-		const raw = await readBody(req);
-		if (raw) {
-			const body = JSON.parse(raw);
-			composeTemplate = body.composeTemplate;
-		}
-	} catch {
-		// No body or invalid JSON — proceed without compose template update
-	}
-
-	const steps: { step: string; ok?: boolean; stdout: string; stderr: string }[] = [];
-
-	// Step 1: Validate and STAGE the new compose file if provided. The live
-	// docker-compose.yml is only replaced after pull + convex-deploy succeed —
-	// previously it was overwritten first, so a failed update left a
-	// half-applied breaking template behind that the next manual
-	// `docker compose up` would silently complete.
-	const STAGED_FILE = join(OWLAT_DIR, 'docker-compose.next.yml');
-	let composeFileForUpdate = COMPOSE_FILE;
-	if (composeTemplate) {
-		const validation = validateComposeTemplate(composeTemplate);
-		if (!validation.valid) {
-			return json(res, 400, {
-				error: 'Compose template validation failed',
-				reason: validation.reason,
-				steps,
-			});
-		}
-
-		try {
-			writeFileSync(STAGED_FILE, composeTemplate, 'utf-8');
-			composeFileForUpdate = STAGED_FILE;
-			steps.push({ step: 'stage-compose', stdout: 'New compose template staged', stderr: '' });
-		} catch (err) {
-			return json(res, 500, {
-				error: 'Failed to stage compose file',
-				details: errorMessage(err),
-				steps,
-			});
-		}
-	}
-	const composeCmd = `docker compose -f ${composeFileForUpdate}`;
-	const discardStaged = () => {
-		if (composeTemplate && existsSync(STAGED_FILE)) {
-			try {
-				unlinkSync(STAGED_FILE);
-			} catch {
-				// best-effort cleanup
-			}
-		}
-	};
-
-	// Step 2: Pull latest images (against the staged template, so a pull
-	// failure leaves the running stack and its compose file untouched).
-	const pull = exec(`${composeCmd} pull`, OWLAT_DIR);
-	steps.push({ step: 'pull', ...pull });
-
-	if (!pull.ok) {
-		discardStaged();
-		return json(res, 500, { error: 'Docker pull failed — update aborted, nothing changed', steps });
-	}
-
-	// Step 3 (P2.4 / S5): deploy Convex functions BEFORE restarting app
-	// containers. If the new schema is incompatible with the deploy, we
-	// bail out here — the running Web/MTA containers keep serving the old
-	// (still compatible) code rather than being restarted against a half-
-	// deployed backend.
-	//
-	// This requires the existing convex container to still be running at
-	// its previous version, so the one-shot deployer can reach it.
-	const deploy = exec(`${composeCmd} --profile deploy run --rm convex-deploy`, OWLAT_DIR);
-	steps.push({ step: 'convex-deploy', ...deploy });
-
-	if (!deploy.ok) {
-		discardStaged();
-		return json(res, 500, {
-			error: 'convex-deploy failed — update aborted, running stack untouched',
-			steps,
-		});
-	}
-
-	// Step 4: Promote the staged template now that pull + deploy succeeded.
-	if (composeTemplate) {
-		try {
-			writeFileSync(COMPOSE_FILE, composeTemplate, 'utf-8');
-			unlinkSync(STAGED_FILE);
-			steps.push({ step: 'write-compose', stdout: 'Compose file updated', stderr: '' });
-		} catch (err) {
-			return json(res, 500, {
-				error: 'Failed to promote compose file',
-				details: errorMessage(err),
-				steps,
-			});
-		}
-	}
-
-	// Step 5: Apply — recreate changed containers now that the schema is live.
-	// Runs against the promoted docker-compose.yml (+ any override file and
-	// COMPOSE_PROFILES from .env, so profile-gated feature services update too).
-	const up = exec('docker compose up -d --remove-orphans', OWLAT_DIR);
-	steps.push({ step: 'up', ...up });
-
-	if (!up.ok) {
-		return json(res, 500, { error: 'docker compose up failed', steps });
-	}
-
-	json(res, 200, { success: true, steps });
 }
 
 function handleHealth(req: IncomingMessage, res: ServerResponse) {
@@ -155,10 +35,27 @@ function handleHealth(req: IncomingMessage, res: ServerResponse) {
 	// Get running container info
 	const { containers, raw } = composePsServices();
 
+	// `version` below is this container's baked-in OWLAT_VERSION: compose
+	// interpolated it when the updater container was CREATED, so it reports what
+	// is RUNNING. The CONFIGURED version lives in `.env` and is read here, per
+	// request, because the two diverge exactly when nobody recreated the
+	// containers — and without both values in the payload no caller can tell.
+	let configuredVersion: string | undefined;
+	try {
+		configuredVersion = parseConfiguredVersionFromEnv(
+			readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')
+		);
+	} catch {
+		// An unreadable .env is reported by the other endpoints; /health must
+		// still answer with the container facts it does have.
+	}
+
 	json(res, 200, {
 		status: 'ok',
 		timestamp: Date.now(),
 		version: process.env['OWLAT_VERSION'] || 'dev',
+		configuredVersion: configuredVersion ?? null,
+		versionDrift: configuredVersion ? hasVersionDrift(containers, configuredVersion) : null,
 		gitSha: process.env['OWLAT_GIT_SHA'] || 'unknown',
 		buildDate: process.env['OWLAT_BUILD_DATE'] || 'unknown',
 		containers: containers.length > 0 ? containers : raw,
@@ -206,8 +103,8 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 		// Step 2: Write persistent network config (survives reboots)
 		try {
-			mkdirSync(INTERFACES_DIR, { recursive: true });
-			writeFileSync(
+			await mkdir(INTERFACES_DIR, { recursive: true });
+			await writeFile(
 				persistFile,
 				`auto eth0\niface eth0 inet static\n    address ${ip}/32\n`,
 				'utf-8'
@@ -219,7 +116,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 		// Step 3: Append IP to IP_POOLS_CAMPAIGN in .env
 		try {
-			const envContent = readFileSync(envFile, 'utf-8');
+			const envContent = await readFile(envFile, 'utf-8');
 			const updated = rewriteEnvLines(envContent, (line) => {
 				if (line.startsWith('IP_POOLS_CAMPAIGN=')) {
 					const current = line.split('=')[1] || '';
@@ -229,7 +126,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 				}
 				return line;
 			});
-			writeFileSync(envFile, updated, 'utf-8');
+			await writeFile(envFile, updated, 'utf-8');
 			steps.push({ step: 'update-env', stdout: `Added ${ip} to IP_POOLS_CAMPAIGN`, stderr: '' });
 		} catch (err) {
 			steps.push({ step: 'update-env', stdout: '', stderr: errorMessage(err) });
@@ -246,9 +143,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 		// Step 2: Remove persistent config
 		try {
-			if (existsSync(persistFile)) {
-				unlinkSync(persistFile);
-			}
+			await rm(persistFile, { force: true });
 			steps.push({ step: 'remove-persist-config', stdout: `Removed ${persistFile}`, stderr: '' });
 		} catch (err) {
 			steps.push({ step: 'remove-persist-config', stdout: '', stderr: errorMessage(err) });
@@ -256,7 +151,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 		// Step 3: Remove IP from IP_POOLS_CAMPAIGN in .env
 		try {
-			const envContent = readFileSync(envFile, 'utf-8');
+			const envContent = await readFile(envFile, 'utf-8');
 			const updated = rewriteEnvLines(envContent, (line) => {
 				if (line.startsWith('IP_POOLS_CAMPAIGN=')) {
 					const current = line.split('=')[1] || '';
@@ -265,7 +160,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 				}
 				return line;
 			});
-			writeFileSync(envFile, updated, 'utf-8');
+			await writeFile(envFile, updated, 'utf-8');
 			steps.push({
 				step: 'update-env',
 				stdout: `Removed ${ip} from IP_POOLS_CAMPAIGN`,
@@ -337,7 +232,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	const envFile = join(OWLAT_DIR, '.env');
 	let envContent: string;
 	try {
-		envContent = readFileSync(envFile, 'utf-8');
+		envContent = await readFile(envFile, 'utf-8');
 	} catch (err) {
 		return json(res, 500, { error: `Cannot read .env: ${errorMessage(err)}` });
 	}
@@ -361,20 +256,35 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	}
 
 	try {
-		writeFileSync(envFile, rewrite.content, 'utf-8');
+		await writeFile(envFile, rewrite.content, 'utf-8');
 	} catch (err) {
 		return json(res, 500, { error: `Cannot write .env: ${errorMessage(err)}` });
 	}
 
 	// Force-recreate to pick up new env vars. `up -d` alone doesn't
-	// rebuild containers whose env changed — we need --force-recreate.
-	const recreate = exec('docker compose up -d --force-recreate', OWLAT_DIR);
+	// rebuild containers whose env changed — we need --force-recreate. Naming
+	// the services excludes the updater and the socket proxy: a force-recreate
+	// of THOSE stops this very process (and its Docker transport) partway down
+	// the list, leaving the rest of the stack on the old secret.
+	const plan = servicesToRecreate();
+	if (plan.error) {
+		return json(res, 500, { error: 'Container recreate failed', stderr: plan.error });
+	}
+
+	const recreate = exec(
+		`${composeCommand()} up -d --force-recreate ${plan.services.join(' ')}`,
+		OWLAT_DIR
+	);
 
 	if (recreate.stderr && /error/i.test(recreate.stderr)) {
 		return json(res, 500, { error: 'Container recreate failed', stderr: recreate.stderr });
 	}
 
-	json(res, 200, { success: true, step: 'rotate-env' });
+	// The updater must come back on the rotated secret too — through a helper,
+	// for the same reason it is excluded above.
+	const selfUpdate = scheduleUpdaterRecreateSafely();
+
+	json(res, 200, { success: true, step: 'rotate-env', selfUpdate });
 }
 
 /**
@@ -393,6 +303,8 @@ export function buildRequestListener() {
 			await handleRotateEnv(req, res);
 		} else if (req.method === 'POST' && url.pathname === '/apply-profiles') {
 			await handleApplyProfiles(req, res);
+		} else if (req.method === 'POST' && url.pathname === '/port-checks') {
+			await handlePortChecks(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/profile-state') {
 			handleProfileState(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/health') {

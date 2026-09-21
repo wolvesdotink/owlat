@@ -73,7 +73,7 @@ export type AvatarColorToken =
  * Exported so the tile ink and the avatar ink stay one literal, not two that can
  * drift apart.
  */
-export const AVATAR_INK = '#f5f1ea';
+const AVATAR_INK = '#f5f1ea';
 
 /**
  * Fixed accessible palette for deterministic identity avatars. Every token is

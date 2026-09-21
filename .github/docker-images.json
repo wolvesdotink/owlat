@@ -1,5 +1,11 @@
 [
-	{ "name": "web", "dockerfile": "apps/web/Dockerfile", "context": ".", "package": "@owlat/web" },
+	{
+		"name": "web",
+		"dockerfile": "apps/web/Dockerfile",
+		"context": ".",
+		"package": "@owlat/web",
+		"cspShellSmoke": true
+	},
 	{
 		"name": "docs",
 		"dockerfile": "apps/docs/Dockerfile",
@@ -50,6 +56,12 @@
 		"dockerfile": "apps/code-worker/Dockerfile",
 		"context": ".",
 		"package": "@owlat/code-worker"
+	},
+	{
+		"name": "convex-fn-proxy",
+		"dockerfile": "apps/convex-fn-proxy/Dockerfile",
+		"context": ".",
+		"package": "@owlat/convex-fn-proxy"
 	},
 	{
 		"name": "setup",

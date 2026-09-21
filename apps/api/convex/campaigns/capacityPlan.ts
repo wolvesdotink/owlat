@@ -1,14 +1,14 @@
 /**
  * Campaign capacity planner — the PURE decision function behind the binding
- * pre-flight capacity check (deliverability plan rev 3, P0-5).
+ * pre-flight capacity check.
  *
  * A warming deployment with no relay to overflow to can start a campaign it
  * provably cannot finish: the MTA hits the warming cap, defers the tail, and
  * the tail silently expires at `maxMessageAgeMs`. Rather than let that happen,
  * pre-flight refuses the send and hands back a multi-day SCHEDULE — capacity is
- * a schedule, not a failure (plan D2/D14 honesty rule).
+ * a schedule, not a failure — the honesty rule.
  *
- * Purity is the point (D15): no `Date.now()`, no DB reads, no env reads. The
+ * Purity is the point: no `Date.now()`, no DB reads, no env reads. The
  * clock and every input are parameters, so the predicate is exhaustively
  * table-testable. The ctx-bound half (reading warming state, counting the
  * audience) lives in `capacityPreflight.ts`.
@@ -25,7 +25,7 @@
  * whose tail will expire.
  */
 
-import { MS_PER_DAY } from '../lib/constants';
+import { DAY_MS } from '../lib/constants';
 import { utcDayStart } from '../lib/utcDay';
 
 /**
@@ -49,7 +49,7 @@ export const MAX_PLAN_DAYS = 60;
 export const MAX_HORIZON_DAYS = 400;
 
 /** Inputs to the schedule builder — the planner minus the retention horizon. */
-export interface CapacityScheduleInput {
+interface CapacityScheduleInput {
 	/** Eligible recipients. A lower bound is fine — refusing on one is sound. */
 	audienceSize: number;
 	/**
@@ -66,7 +66,7 @@ export interface CapacityScheduleInput {
  * EXTENSION rather than a second copy of the clump so each field's meaning is
  * stated exactly once.
  */
-export interface CampaignCapacityPlanInput extends CapacityScheduleInput {
+interface CampaignCapacityPlanInput extends CapacityScheduleInput {
 	/** How long a queued message survives before the MTA expires it. */
 	maxMessageAgeMs: number;
 }
@@ -96,7 +96,7 @@ export interface CampaignCapacitySchedule {
 	/**
 	 * Recipients the returned slices actually cover. Equals the audience size
 	 * unless `truncated` is set, so a caller can never mistake a partial
-	 * schedule for a complete one (plan D14 — say the quiet part).
+	 * schedule for a complete one (say the quiet part).
 	 */
 	covered: number;
 	/**
@@ -108,8 +108,8 @@ export interface CampaignCapacitySchedule {
 	 * The audience size the schedule was built from is itself a LOWER bound — the
 	 * count stopped at a ceiling or ran out of read budget. A DIFFERENT fact from
 	 * `truncated`: the enumeration finished, but of an audience that is at least
-	 * this big, so the copy says "at least N days" (plan D14 — say the quiet
-	 * part). The two can be true independently.
+	 * this big, so the copy says "at least N days" (say the quiet part). The two
+	 * can be true independently.
 	 */
 	audienceUnderCounted: boolean;
 }
@@ -132,11 +132,11 @@ export function usableDayCount(now: number, maxMessageAgeMs: number): number {
 	const expiresAt = now + maxMessageAgeMs;
 	const dayZeroStart = utcDayStart(now);
 	// Closed form for "how many day-starts at or before the expiry instant":
-	// day k is usable when `dayZeroStart + k * MS_PER_DAY < expiresAt`, so the
-	// count is `ceil((expiresAt - dayZeroStart) / MS_PER_DAY)`. Clamped below at
+	// day k is usable when `dayZeroStart + k * DAY_MS < expiresAt`, so the
+	// count is `ceil((expiresAt - dayZeroStart) / DAY_MS)`. Clamped below at
 	// 1 (the remainder of today is always usable for a positive horizon) and
 	// above at MAX_HORIZON_DAYS.
-	const days = Math.ceil((expiresAt - dayZeroStart) / MS_PER_DAY);
+	const days = Math.ceil((expiresAt - dayZeroStart) / DAY_MS);
 	return Math.min(MAX_HORIZON_DAYS, Math.max(1, days));
 }
 
@@ -262,7 +262,7 @@ export function buildCapacitySchedule(input: CapacityScheduleInput): CampaignCap
 	const truncated = remaining > 0;
 
 	const days = slices.length;
-	const finishesAt = utcDayStart(now) + days * MS_PER_DAY;
+	const finishesAt = utcDayStart(now) + days * DAY_MS;
 	return { fits: false, days, slices, finishesAt, covered, truncated, audienceUnderCounted: false };
 }
 
@@ -272,7 +272,7 @@ export function buildCapacitySchedule(input: CapacityScheduleInput): CampaignCap
  *
  * Degenerate inputs deliberately answer `{ fits: true }` — an empty audience,
  * a hostile audience size, or a non-sensical retention horizon are never
- * grounds to block a send (D2: absence of measurement never blocks).
+ * grounds to block a send (absence of measurement never blocks).
  */
 export function planCampaignCapacity(input: CampaignCapacityPlanInput): CampaignCapacityPlan {
 	const audienceSize = sanitizeCount(input.audienceSize);

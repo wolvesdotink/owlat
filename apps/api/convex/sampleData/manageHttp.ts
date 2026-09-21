@@ -30,6 +30,7 @@ import type { GenericActionCtx, HttpRouter } from 'convex/server';
 import type { DataModel, TableNames } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { safeCompare } from '../lib/safeCompare';
+import { logError } from '../lib/runtimeLog';
 import { SEEDED_TABLES } from '../seedDemo/pipeline';
 
 /** Ids deleted per mutation. Keeps each delete transaction small and bounded. */
@@ -111,8 +112,9 @@ const sampleDataInstallHttp = httpAction(async (ctx, request) => {
 			await ctx.runMutation(internal.sampleData.index.install, {});
 		return jsonResponse(summary, 200);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Internal error';
-		return jsonResponse({ error: message }, 500);
+		// Locked error envelope — log the real cause server-side, return a fixed message.
+		logError('[sampleData] operation failed:', error);
+		return jsonResponse({ error: 'Internal error' }, 500);
 	}
 });
 
@@ -137,8 +139,9 @@ const sampleDataRemoveHttp = httpAction(async (ctx, request) => {
 		}
 		return jsonResponse({ deleted, truncated }, 200);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Internal error';
-		return jsonResponse({ error: message }, 500);
+		// Locked error envelope — log the real cause server-side, return a fixed message.
+		logError('[sampleData] operation failed:', error);
+		return jsonResponse({ error: 'Internal error' }, 500);
 	}
 });
 
@@ -151,8 +154,9 @@ const sampleDataStatusHttp = httpAction(async (ctx, request) => {
 		const total = Object.values(present).reduce((sum, n) => sum + n, 0);
 		return jsonResponse({ present, total, truncated }, 200);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Internal error';
-		return jsonResponse({ error: message }, 500);
+		// Locked error envelope — log the real cause server-side, return a fixed message.
+		logError('[sampleData] operation failed:', error);
+		return jsonResponse({ error: 'Internal error' }, 500);
 	}
 });
 

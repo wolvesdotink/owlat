@@ -182,7 +182,7 @@ export function useFormSettings() {
 			doubleOptIn: addForm.doubleOptIn || undefined,
 		});
 		isAdding.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('shared.useFormSettings.toasts.created'));
 		isAddModalOpen.value = false;
 		resetAddForm();
@@ -254,7 +254,7 @@ export function useFormSettings() {
 			doubleOptIn: editForm.doubleOptIn,
 		});
 		isSaving.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('shared.useFormSettings.toasts.updated'));
 		formToEdit.value = null;
 	};
@@ -269,7 +269,7 @@ export function useFormSettings() {
 			formEndpointId: form._id,
 			isActive: !form.isActive,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(
 			form.isActive
 				? t('shared.useFormSettings.toasts.disabled', { name: form.name })
@@ -289,7 +289,7 @@ export function useFormSettings() {
 			formEndpointId: formToDelete.value._id,
 		});
 		isDeleting.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('shared.useFormSettings.toasts.deleted'));
 		formToDelete.value = null;
 	};

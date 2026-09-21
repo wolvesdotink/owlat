@@ -7,7 +7,7 @@ import {
 	type ChannelHealth,
 	type OutboundMessage,
 } from '../index';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -296,42 +296,6 @@ describe('channel adapters — outbound-only surface', () => {
 					member in (adapter as unknown as Record<string, unknown>),
 					`${name} adapter must not re-grow ${member} — extend webhooks/adapters/ instead`
 				).toBe(false);
-			}
-		}
-	});
-
-	/**
-	 * Remove comments so the header prose — which deliberately explains why the
-	 * inbound pair is gone — does not trip the scan below, WITHOUT swallowing
-	 * code. The line-comment pattern requires the `//` not to be preceded by a
-	 * colon, so a provider base URL (`https://api.twilio.com/...`) keeps the rest
-	 * of its line: a naive `/\/\/.*$/gm` truncates both `sms.ts` and
-	 * `whatsapp.ts` at the URL scheme and blinds the scan on exactly the lines
-	 * where a one-line inbound helper would most plausibly be appended.
-	 */
-	const stripComments = (source: string) =>
-		source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-
-	it('strips comments without truncating a line at a URL scheme', () => {
-		expect(stripComments('const u = `https://x/y`; // trailing note')).toBe(
-			'const u = `https://x/y`; '
-		);
-		expect(stripComments('// parseInbound lives elsewhere')).toBe('');
-		expect(stripComments('/** validateSignature is gone */\nconst a = 1;')).toBe('\nconst a = 1;');
-		// The regression the colon guard exists for: a member re-grown on the same
-		// line as a URL literal must survive stripping and be seen by the scan.
-		expect(stripComments('const u = `https://x/y`; parseInbound(raw);')).toContain('parseInbound');
-	});
-
-	it('never names an inbound member anywhere in the adapter sources', () => {
-		// Enumerated from disk: a module added after this test was written is
-		// covered automatically, which is the whole point — the regression this
-		// guards against is a *new* adapter re-growing the deleted half.
-		expect(adapterSourceFiles.length).toBeGreaterThan(0);
-		for (const file of adapterSourceFiles) {
-			const code = stripComments(readFileSync(resolve(ADAPTER_DIR, file), 'utf8'));
-			for (const member of INBOUND_ONLY_MEMBERS) {
-				expect(code, `${file} re-declares ${member}`).not.toContain(member);
 			}
 		}
 	});

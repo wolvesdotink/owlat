@@ -27,6 +27,8 @@ import { parseMessage } from '@owlat/mail-message';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
+import { emailDomain } from '@owlat/shared/spfAlignment';
+import { MAX_INBOUND_MESSAGE_BYTES } from '@owlat/shared/attachments';
 import { checkConnectionRateLimit, releaseConnection } from './inboundSecurity.js';
 import { createSlotTracker } from '../lib/connectionSlots.js';
 import { evaluateDmarc, dnsDmarcLookup, verifyDkim } from '@owlat/mail-auth';
@@ -50,8 +52,15 @@ export { buildOnRcptTo } from './recipientGate.js';
 // recipientGate.ts); re-exported so existing importers are unaffected.
 export { buildOnMailFrom } from './senderGate.js';
 
-/** Hard cap for buffered inbound MIME (advertised via EHLO SIZE AND wire-enforced by the listener). */
-const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
+/**
+ * Hard cap for buffered inbound MIME (advertised via EHLO SIZE AND
+ * wire-enforced by the listener).
+ *
+ * Shared with the backend rather than spelled here: the API's per-attachment
+ * AI-ingest ceiling is only a real gate while it stays under what this listener
+ * can deliver, and a local copy is how the two drift apart.
+ */
+const MAX_INBOUND_BYTES = MAX_INBOUND_MESSAGE_BYTES;
 
 /**
  * Per-transaction session state carried through the listener. The SPF verdict
@@ -277,7 +286,7 @@ export function buildOnConnect(
  * `parseMessage` reads it (replacing `mailparser`'s `simpleParser`). SPF / DKIM /
  * DMARC / ARC are evaluated over the raw bytes before parsing mangles
  * canonicalization, then the intake pipeline (parseFblOrDsn → resolveRoute →
- * stageAttachments) classifies and the reducer runs the effects. The handler
+ * attachmentMeta) classifies and the reducer runs the effects. The handler
  * ACKs by default, with a narrow transient-storage 451 exception — see
  * {@link AckAndSwallowErrors}.
  */

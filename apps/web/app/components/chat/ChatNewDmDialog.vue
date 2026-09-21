@@ -30,7 +30,7 @@ const handleSubmit = async () => {
 	error.value = null;
 	try {
 		const id = await findOrCreateDm(selectedMembers.value.map((m) => m.memberId));
-		if (id) emit('created', id);
+		if (id.ok) emit('created', id.result);
 	} catch (e) {
 		error.value = e instanceof Error ? e.message : t('components.chat.chatNewDmDialog.startFailed');
 	} finally {

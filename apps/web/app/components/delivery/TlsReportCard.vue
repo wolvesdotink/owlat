@@ -58,7 +58,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 				class="mt-5 flex items-center gap-3 text-text-tertiary"
 				data-testid="tls-report-loading"
 			>
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin" />
+				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none" />
 				<span class="text-sm">{{ t('components.delivery.tlsReportCard.loading') }}</span>
 			</div>
 

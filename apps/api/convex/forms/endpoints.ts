@@ -278,6 +278,18 @@ export const getByConfirmationToken = publicQuery({
 			return null;
 		}
 
+		// Expired-token parity with the contact-fallback branch above: a still-
+		// pending submission whose DOI token has lapsed resolves to null, same
+		// as a lapsed contact-level token. Only the pending state checks —
+		// confirmed submissions have had their token cleared from the contact,
+		// so re-checking it there would break the already-confirmed landing page.
+		if (submission.status === 'pending_confirmation') {
+			const contact = await findContactByConfirmationToken(ctx, args.token);
+			if (contact?.doiTokenExpiresAt && contact.doiTokenExpiresAt < Date.now()) {
+				return null;
+			}
+		}
+
 		// Get the instance name
 		const instanceSettings = await ctx.db.query('instanceSettings').first();
 		const instanceName = instanceSettings?.defaultFromName ?? 'Unknown';

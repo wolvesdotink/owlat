@@ -13,8 +13,17 @@ export interface RemoteOptions {
 	installDir: string;
 	/** Git remote to clone from. */
 	repo: string;
-	/** Branch to install. */
-	branch: string;
+	/**
+	 * Release to install as a bare semver (e.g. `0.4.6`). Checks out the release
+	 * tag `v<version>` and pins `OWLAT_VERSION` so the installer pulls the
+	 * cosign-signed release images instead of building the stack from source on
+	 * the box. With neither `version` nor `branch` set, the wizard resolves the
+	 * newest published release on the server (see
+	 * {@link resolveLatestReleaseCommand}) and fills this in before fetching.
+	 */
+	version?: string;
+	/** Branch to install instead of a release (the hidden development install). */
+	branch?: string;
 	/**
 	 * Local-source dev mode: absolute path to the monorepo root on THIS machine.
 	 * When set, the working tree is uploaded over SSH instead of git-cloned, and
@@ -41,8 +50,66 @@ export function installSource(o: RemoteOptions): InstallSource {
 export const DEFAULT_REMOTE: RemoteOptions = {
 	installDir: '/opt/owlat',
 	repo: 'https://github.com/wolvesdotink/owlat.git',
-	branch: 'main',
 };
+
+/** Whether the install needs the latest release resolved first. */
+export function needsReleaseResolution(o: RemoteOptions): boolean {
+	return installSource(o) === 'git' && !o.version && !o.branch;
+}
+
+/**
+ * A version string that names a published release: bare semver, optionally
+ * with a prerelease suffix. Only these have a `v<version>` tag and signed
+ * images under the same tag; `dev`, `unknown` or an empty string do not.
+ */
+export function isReleaseVersion(version: string | undefined): version is string {
+	return !!version && /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version.trim());
+}
+
+/**
+ * The git ref the install checks out: the release tag, else the branch. Throws
+ * when neither is known — the latest release must be resolved first.
+ */
+export function installRef(o: RemoteOptions): string {
+	if (o.version) return `v${o.version}`;
+	if (o.branch) return o.branch;
+	throw new Error('install ref not resolved: no version or branch');
+}
+
+/** GitHub `owner/repo` slug derived from the clone URL (for the releases API). */
+function githubSlug(repo: string): string {
+	const m = repo.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?\/?$/);
+	return m?.[1] ?? 'wolvesdotink/owlat';
+}
+
+/**
+ * Resolve the newest published STABLE release on the server, the same way
+ * install.sh does: list releases and take the first bare `vX.Y.Z` tag —
+ * prereleases (`v0.3.0-rc.1`) and the `server-v*` / `desktop-v*` lines are
+ * not matched. Prints `release=vX.Y.Z`; prints nothing when the API is
+ * unreachable or no release exists, which the caller treats as failure rather
+ * than silently installing `main`.
+ */
+export function resolveLatestReleaseCommand(o: RemoteOptions): string {
+	const api = `https://api.github.com/repos/${githubSlug(o.repo)}/releases?per_page=30`;
+	return [
+		`curl -fsSL --max-time 10 '${api}'`,
+		`grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[0-9]+\\.[0-9]+\\.[0-9]+"'`,
+		`sed -n 's/.*"v\\([0-9][^"]*\\)"/release=\\1/p'`,
+		'head -1',
+	].join(' | ');
+}
+
+/** Parse the bare semver out of a `release=…` line; `null` for anything else. */
+export function parseResolvedRelease(line: string): string | null {
+	const m = line.trim().match(/^release=(.+)$/);
+	return m?.[1] && isReleaseVersion(m[1]) ? m[1] : null;
+}
+
+/** The setup-cli image published alongside a release. */
+export function releaseSetupImage(version: string): string {
+	return `ghcr.io/wolvesdotink/setup:${version}`;
+}
 
 /** Host path the generated config is uploaded to (inside the install dir). */
 export function setupConfigPath(installDir: string): string {
@@ -54,7 +121,7 @@ export function setupConfigPath(installDir: string): string {
  * mounts the install dir at `/opt/owlat` (and sets `OWLAT_DIR=/opt/owlat`), so
  * the container sees the uploaded file here regardless of the host install dir.
  */
-export const CONTAINER_CONFIG_PATH = '/opt/owlat/.owlat-setup.json';
+const CONTAINER_CONFIG_PATH = '/opt/owlat/.owlat-setup.json';
 
 /** Probe the server: OS, arch, docker presence, compose v2. Output parsed for `docker=no` / `arch=`. */
 export function systemCheckCommand(): string {
@@ -84,7 +151,7 @@ export function installDockerCommand(): string {
  * `image:` interpolation resolves to the locally built images instead of
  * pulling `:latest` from GHCR.
  */
-export const LOCAL_VERSION_TAG = 'dev';
+const LOCAL_VERSION_TAG = 'dev';
 export const LOCAL_SETUP_IMAGE = `ghcr.io/wolvesdotink/setup:${LOCAL_VERSION_TAG}`;
 
 /** Create the install dir (root-owned path like /opt) and hand it to the SSH user. */
@@ -92,15 +159,20 @@ export function prepareInstallDirCommand(o: RemoteOptions): string {
 	return `sudo mkdir -p '${o.installDir}' && sudo chown "$(id -u):$(id -g)" '${o.installDir}'`;
 }
 
-/** Clone (or fast-forward) the Owlat repo into the install dir. */
+/**
+ * Clone (or fast-forward) the Owlat repo into the install dir at the install
+ * ref. `FETCH_HEAD` (not `origin/<ref>`) because the ref is a tag on release
+ * installs, and tags have no remote-tracking branch.
+ */
 export function fetchOwlatCommand(o: RemoteOptions): string {
 	const d = o.installDir;
+	const ref = installRef(o);
 	return [
 		'set -e',
 		`if [ -d '${d}/.git' ]; then`,
-		`  cd '${d}' && git fetch --depth 1 origin '${o.branch}' && git reset --hard 'origin/${o.branch}'`,
+		`  cd '${d}' && git fetch --depth 1 origin '${ref}' && git reset --hard FETCH_HEAD`,
 		'else',
-		`  ${prepareInstallDirCommand(o)} && git clone --depth 1 --branch '${o.branch}' '${o.repo}' '${d}'`,
+		`  ${prepareInstallDirCommand(o)} && git clone --depth 1 --branch '${ref}' '${o.repo}' '${d}'`,
 		'fi',
 	].join('\n');
 }
@@ -178,17 +250,29 @@ export function localSetupImageInvocation(platform: string): {
 /**
  * Drive the existing installer non-interactively with machine-readable progress.
  * `scripts/owlat` forwards `OWLAT_PROGRESS` + `--config` into the setup container.
+ *
+ * A release install mirrors install.sh's pull path: the setup image is pinned
+ * to the release tag and `--owlat-version` makes quickstart write
+ * `OWLAT_VERSION=<semver>` into `.env` so compose pulls the signed release
+ * images. (A flag, not an env var: `OWLAT_VERSION` in the container's
+ * environment would override `.env` in compose interpolation.)
+ *
  * Local-source modes pin the `dev` setup image and tell quickstart either to
  * `docker compose --build` from source (`OWLAT_BUILD_LOCAL`) or to use the
- * pre-pushed `dev` images as-is (`OWLAT_LOCAL_IMAGES`).
+ * pre-pushed `dev` images as-is (`OWLAT_LOCAL_IMAGES`). A branch install sets
+ * nothing and lets the compose default build from the checkout.
  */
 export function installerCommand(o: RemoteOptions): string {
 	const source = installSource(o);
-	const localEnv =
-		source === 'git'
-			? ''
-			: `OWLAT_VERSION=${LOCAL_VERSION_TAG} OWLAT_SETUP_IMAGE='${LOCAL_SETUP_IMAGE}' ${
-					source === 'local-push' ? 'OWLAT_LOCAL_IMAGES=1' : 'OWLAT_BUILD_LOCAL=1'
-				} `;
-	return `cd '${o.installDir}' && ${localEnv}OWLAT_PROGRESS=json OWLAT_ASSUME_YES=1 ./scripts/owlat quickstart --terminal --config '${CONTAINER_CONFIG_PATH}'`;
+	let env = '';
+	let versionFlag = '';
+	if (source !== 'git') {
+		env = `OWLAT_VERSION=${LOCAL_VERSION_TAG} OWLAT_SETUP_IMAGE='${LOCAL_SETUP_IMAGE}' ${
+			source === 'local-push' ? 'OWLAT_LOCAL_IMAGES=1' : 'OWLAT_BUILD_LOCAL=1'
+		} `;
+	} else if (o.version) {
+		env = `OWLAT_SETUP_IMAGE='${releaseSetupImage(o.version)}' `;
+		versionFlag = ` --owlat-version '${o.version}'`;
+	}
+	return `cd '${o.installDir}' && ${env}OWLAT_PROGRESS=json OWLAT_ASSUME_YES=1 ./scripts/owlat quickstart --terminal${versionFlag} --config '${CONTAINER_CONFIG_PATH}'`;
 }

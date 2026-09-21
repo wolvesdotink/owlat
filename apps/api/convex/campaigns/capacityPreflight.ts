@@ -1,16 +1,16 @@
 /**
- * Binding capacity pre-flight — the ctx-bound half of the P0-5 capacity gate
- * (deliverability plan rev 3). The pure predicate lives in `capacityPlan.ts`
- * and the warming projection in `../delivery/warmingCapacity.ts`; this module
- * only LOADS the inputs (projection, audience size) and maps "we could not
- * measure" onto "allow the send".
+ * Binding capacity pre-flight — the ctx-bound half of the capacity gate. The
+ * pure predicate lives in `capacityPlan.ts` and the warming projection in
+ * `../delivery/warmingCapacity.ts`; this module only LOADS the inputs
+ * (projection, audience size) and maps "we could not measure" onto "allow the
+ * send".
  *
- * The governing rule: NEVER refuse on missing data (plan D2/D10). No warming
+ * The governing rule: NEVER refuse on missing data. No warming
  * state, stale warming state, a graduated deployment with no cap, an audience
  * too large to count inside the read budget, or a projection with no positive
  * capacity at all ALL resolve to "capacity unknown → allow". Blocking a
  * campaign because we could not read warming state, or because we ran out of
- * budget counting it, would be exactly the false blocker the plan forbids.
+ * budget counting it, would be exactly the false blocker that rule forbids.
  */
 
 import { v } from 'convex/values';
@@ -39,10 +39,10 @@ type Ctx = MutationCtx | QueryCtx;
 
 /**
  * DOCUMENTS the gate may read while sizing the audience. The gate runs inside
- * `campaigns.scheduling.schedule` and `campaigns.campaigns.sendNow`, where an
+ * `campaigns.scheduling.schedule`, where an
  * unbounded segment scan would both exceed the Convex per-execution read limit
  * — turning a failure to MEASURE into a blocked SEND — and pull the whole live
- * contacts table into the mutation's OCC read set (D16).
+ * contacts table into the mutation's OCC read set.
  *
  * DERIVATION. Convex allows 16,384 documents read per function execution. The
  * budget is charged in DOCUMENTS, not rows, because a row is not one document:
@@ -52,8 +52,8 @@ type Ctx = MutationCtx | QueryCtx;
  * documents per row. Charging rows would let this "bound" overrun the limit by
  * 2-3x on exactly the audiences it exists for — and in production the limit
  * THROWS, the fail-open catch swallows it, and the gate goes dark. The gate is
- * also not the only reader in the mutation: the enclosing `schedule` /
- * `sendNow` loads the campaign, template, domain and sender. 6,000 documents
+ * also not the only reader in the mutation: the enclosing `schedule` loads
+ * the campaign, template, domain and sender. 6,000 documents
  * leaves 10,384 of the 16,384 for everything else.
  *
  * Exhausting it is NOT a refusal and NOT a silent pass: the partial count is
@@ -69,14 +69,15 @@ type Ctx = MutationCtx | QueryCtx;
  * a few thousand a day around schedule day 12), an audience larger than the
  * budget can count is allowed through and its tail expires exactly as it did
  * before this gate existed. That is a deliberate bound, not an oversight: the
- * alternative is refusing sends on an unmeasured audience, which D2 forbids.
+ * alternative is refusing sends on an unmeasured audience, which the
+ * never-refuse-on-missing-data rule forbids.
  * The real fix for very large audiences is a denormalized audience-size
  * counter — the same follow-up `COUNT_CEILING` names — not a bigger budget.
  */
 const AUDIENCE_DOCUMENT_BUDGET = 6_000;
 
 /** What the gate needs to know about the send it is judging. */
-export interface CampaignCapacityOptions {
+interface CampaignCapacityOptions {
 	audience: StoredAudience;
 	/**
 	 * The campaign's From address. Used ONLY to re-verify the relay domain when
@@ -102,9 +103,9 @@ export type CampaignCapacityAssessment =
 
 /**
  * WHY capacity could not be measured. Every `capacityKnown: false` arm carries
- * one (plan D12 — every decision carries a recorded, human-readable reason;
- * D14 — the UI has to be able to say "measurement confidence: low" and name
- * what would improve it).
+ * one: every decision carries a recorded, human-readable reason, and the UI has
+ * to be able to say "measurement confidence: low" and name what would improve
+ * it.
  *
  * The first three are the warming-cap gate's verdict (`warmingCapGate.ts`) and
  * mean the cap is not a constraint at all; the rest are genuine measurement
@@ -129,7 +130,7 @@ export type CapacityUnknownReason =
 	 * not at its PEAK. Under a split route (`adaptive_mix`) how much of an
 	 * audience meets the warming cap depends on how it falls across the ramp
 	 * cells, and nothing has counted that: the campaign is neither provably
-	 * unfinishable (so refusing would be a false blocker, D2) nor provably fine
+	 * unfinishable (so refusing would be a false blocker) nor provably fine
 	 * (so claiming `capacityKnown: true` would be the exact tail-expiry this gate
 	 * exists to prevent). "Unmeasured" is the only honest answer, and it allows.
 	 */
@@ -151,10 +152,11 @@ export async function assessCampaignCapacity(
 	ctx: Ctx,
 	options: CampaignCapacityOptions
 ): Promise<CampaignCapacityAssessment> {
-	// FAIL OPEN, unconditionally. This runs inside `campaigns.scheduling.schedule`
-	// and `campaigns.campaigns.sendNow`: an exception escaping here would not
+	// FAIL OPEN, unconditionally. This runs inside `campaigns.scheduling.schedule`:
+	// an exception escaping here would not
 	// refuse the campaign, it would make the send mutation THROW — a failure to
-	// MEASURE blocking a SEND, exactly what D2 forbids. Every measurement fault
+	// MEASURE blocking a SEND, exactly what this module exists to prevent. Every
+	// measurement fault
 	// (a read limit, a corrupt segment, an unreadable row) degrades to "capacity
 	// unknown → allow".
 	try {
@@ -187,7 +189,7 @@ async function measureCampaignCapacity(
 	// Under a split route (`adaptive_mix`) the reference arm's share of the
 	// audience relays out unmetered, so the warming projection bounds own-arm
 	// volume and nothing more — measuring the whole audience against it would
-	// quote a 95%-relayed campaign a multi-day plan it does not need (D2). But
+	// quote a 95%-relayed campaign a multi-day plan it does not need. But
 	// own-arm volume is `sum over cells of share_c x audience_c` and nothing has
 	// counted THIS audience by cell, so only two statements are sound: at least
 	// `floor x audience` messages meet the cap, and at most `peak x audience` do.
@@ -267,9 +269,9 @@ async function measureCampaignCapacity(
 	// "it fits" off the floor is not yet an approval: with the peak over the
 	// horizon, whether this campaign's tail expires depends on how its recipients
 	// fall across the ramp cells, and nobody has counted that. Saying
-	// `capacityKnown: true` there would be the P0-5 tail-expiry itself, dressed as
-	// a measurement. A refusal, and an already-unmeasured count, both stand as
-	// they are — the peak can only ever turn "it fits" into "unmeasured".
+	// `capacityKnown: true` there would be the tail-expiry itself, dressed as a
+	// measurement. A refusal, and an already-unmeasured count, both stand as they
+	// are — the peak can only ever turn "it fits" into "unmeasured".
 	if (
 		floorVerdict.capacityKnown &&
 		floorVerdict.fits &&
@@ -385,8 +387,7 @@ export function audienceCountCeiling(
  *  - A plan that fits is a MEASUREMENT only when the count was exact. "At least
  *    N recipients fit" says nothing about the audience behind the N, and calling
  *    it `capacityKnown: true` is precisely how a 2M-contact audience gets blessed
- *    off a count that stopped at 25,000. It is unmeasured — which still ALLOWS
- *    (D2), and says why.
+ *    off a count that stopped at 25,000. It is unmeasured — which still ALLOWS, and says why.
  *
  * `suppression_truncated` is excluded by TYPE rather than by branch: an
  * over-count bounds the audience in neither direction, so it may not license
@@ -422,8 +423,7 @@ export function assessCountedPlan(
  * rather than folded into `truncated`: "the enumeration stopped at
  * MAX_PLAN_DAYS" and "the audience is at least N" are different facts and get
  * different copy ("at least N days" vs "more than 60 days"). Folding them made
- * a five-day schedule render as "more than 60 days", which is simply false
- * (D14 honesty).
+ * a five-day schedule render as "more than 60 days", which is simply false.
  */
 export function toAssessment(
 	plan: CampaignCapacityPlan,

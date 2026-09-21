@@ -66,6 +66,14 @@ export const remove = authedMutation({
 	},
 });
 
+// Upper bound on the property-usage count scan. `contactPropertyValues` has one
+// row per (contact, property), so a widely-set property grows with the whole
+// contact base; an uncapped `.collect()` would trip Convex's per-query read
+// limit on a large deployment. The count saturates at this cap — the UI only
+// needs "how widely used" (and whether it is safe to delete), not an exact tally
+// past thousands.
+const PROPERTY_VALUE_COUNT_LIMIT = 10_000;
+
 // Query to count how many contacts have values for a given property
 export const countByProperty = authedQuery({
 	args: { propertyId: v.id('contactProperties') },
@@ -78,7 +86,7 @@ export const countByProperty = authedQuery({
 		const values = await ctx.db
 			.query('contactPropertyValues')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.collect();
+			.take(PROPERTY_VALUE_COUNT_LIMIT); // bounded: count saturates at the cap
 		return values.length;
 	},
 });

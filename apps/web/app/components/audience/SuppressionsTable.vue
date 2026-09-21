@@ -25,7 +25,7 @@ const emit = defineEmits<{ remove: [row: SuppressionRow] }>();
 const { t } = useI18n();
 
 // WHO PUT THIS HERE. A `manual` row can be a colleague's decision or a provider
-// blacklist hit mirrored in with nobody behind it (plan D9); the audit entry is
+// blacklist hit mirrored in with nobody behind it; the audit entry is
 // what tells them apart. Admin-gated, so it simply stays empty for a member and
 // the column falls back to saying nothing.
 const { data: provenanceData } = useOrganizationQuery(api.blockedEmails.listProviderProvenance);

@@ -33,9 +33,16 @@
 #     `latest` (matching Convex's own self-hosted compose): upstream only
 #     publishes `latest` + per-commit SHA tags.
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   # ── Convex Backend (database + serverless functions) ──────────────────
   convex:
+    logging: *default-logging
     image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_VERSION:-latest}
     # Bound to localhost by default: the SPA reaches Convex through the same
     # host (local quickstart) or through the Caddy tls profile (production).
@@ -76,6 +83,7 @@ services:
   #   docker compose --profile dashboard up -d convex-dashboard
   # then reach it through an SSH tunnel (ssh -L 6791:127.0.0.1:6791 host).
   convex-dashboard:
+    logging: *default-logging
     image: ghcr.io/get-convex/convex-dashboard:${CONVEX_DASHBOARD_VERSION:-latest}
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-6791}:6791"
@@ -92,6 +100,7 @@ services:
 
   # ── Web UI (Nuxt SPA) ────────────────────────────────────────────────
   web:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/web:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -110,8 +119,29 @@ services:
       NUXT_PUBLIC_CONVEX_SITE_URL: ${NUXT_PUBLIC_CONVEX_SITE_URL:-http://localhost:3211}
       NUXT_CONVEX_SITE_URL_INTERNAL: http://convex:3211
       NUXT_PUBLIC_SITE_URL: ${NUXT_PUBLIC_SITE_URL:-http://localhost:3000}
-      # Deployment mode — shown in onboarding banner, hides hosted-only UI
-      OWLAT_DEPLOYMENT_MODE: ${OWLAT_DEPLOYMENT_MODE:-selfhost}
+      # Deployment mode — shown in onboarding banner, hides hosted-only UI.
+      # NUXT_PUBLIC_ prefix required: that is the only form Nitro maps onto the
+      # app's runtime config. The operator-facing name in .env stays OWLAT_*.
+      NUXT_PUBLIC_DEPLOYMENT_MODE: ${OWLAT_DEPLOYMENT_MODE:-selfhost}
+      # First-run web setup wizard. OFF by default — the wizard is normally
+      # driven from the `owlat setup` CLI. Both halves are wired from the SAME
+      # variable and must stay that way: the server gate reads OWLAT_SETUP_MODE,
+      # the client-side redirect reads runtime config (NUXT_PUBLIC_* only). Wire
+      # one without the other and the app redirects every route to a wizard whose
+      # API answers 403, with no way back except hand-editing .env.
+      #
+      # To let THIS container serve /setup: set OWLAT_SETUP_MODE=true AND
+      # uncomment the writable ./ mount below (so /api/setup/apply can write
+      # .env), then undo both once setup is finished.
+      OWLAT_SETUP_MODE: ${OWLAT_SETUP_MODE:-false}
+      NUXT_PUBLIC_SETUP_MODE: ${OWLAT_SETUP_MODE:-false}
+      # One-time token gating the unauthenticated /api/setup/* endpoints while
+      # setup mode is on. `owlat setup` mints it into .env and prints it; the
+      # wizard echoes it back. Without it the first caller could seize the
+      # instance (create the admin, rewrite .env).
+      OWLAT_SETUP_TOKEN: ${OWLAT_SETUP_TOKEN:-}
+      OWLAT_DIR: /opt/owlat
+      CONVEX_SITE_URL: ${CONVEX_SITE_URL:-http://convex:3211}
       # Version metadata (for in-app update UI)
       OWLAT_VERSION: ${OWLAT_VERSION:-dev}
       OWLAT_GIT_SHA: ${OWLAT_GIT_SHA:-unknown}
@@ -133,6 +163,12 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    # Uncomment ONLY while running the first-run web setup wizard (with
+    # OWLAT_SETUP_MODE=true). It grants the public web tier write access to the
+    # secrets dir so /api/setup/apply can write .env — remove it again once
+    # setup completes.
+    # volumes:
+    #   - ./:/opt/owlat
     restart: unless-stopped
     # Must exceed the web app's graceful-shutdown HARD_EXIT_MS (40s) so the
     # hard-exit watchdog can fire before Docker SIGKILLs. Matches the VPS template.
@@ -140,6 +176,7 @@ services:
 
   # ── MTA (Mail Transfer Agent) ─────────────────────────────────────────
   mta:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/mta:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -156,12 +193,12 @@ services:
     environment:
       PORT: 3100
       BOUNCE_PORT: 25
-      REDIS_URL: redis://:${REDIS_PASSWORD:-owlat-internal}@redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}@redis:6379
       MTA_API_KEY: ${MTA_API_KEY}
       # Seals DKIM private keys + relay credentials at rest (>= 32 bytes). Minted
       # by setup (ensureSecrets) alongside MTA_API_KEY. The MTA asserts its
       # presence + strength at boot (config.ts), matching the MTA_API_KEY contract.
-      MTA_SECRET: ${MTA_SECRET:-}
+      MTA_SECRET: ${MTA_SECRET:?MTA_SECRET is required (owlat-setup generates it; manual installs use openssl rand -hex 32)}
       EHLO_HOSTNAME: ${EHLO_HOSTNAME:-mail.localhost}
       EHLO_HOSTNAMES: ${EHLO_HOSTNAMES:-}
       MTA_GENERIC_PTR_SUFFIXES: ${MTA_GENERIC_PTR_SUFFIXES:-}
@@ -240,6 +277,7 @@ services:
   # network. The password is defense-in-depth for that internal hop (and a
   # hard requirement if you ever do publish the port).
   redis:
+    logging: *default-logging
     image: redis:${REDIS_VERSION:-7.4-alpine}
     # Run directly as the image's redis user (uid 999, gid 1000). With
     # cap_drop: ALL the root entrypoint has no DAC_OVERRIDE, so it cannot
@@ -249,12 +287,39 @@ services:
     user: "999:1000"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-owlat-internal}
+    # Two independent ceilings, because an unbounded Redis is a whole-host
+    # outage: a defer-handoff leak grew this keyspace to 3.9 GB on a 7.5 GB box
+    # and the KERNEL oom-killer took redis-server down twice in eight minutes,
+    # stopping the MTA rate limiter and the IMAP auth limiter with it.
+    #
+    #   --maxmemory       Redis's own accounting, so it reacts before the cgroup.
+    #   mem_limit         the cgroup ceiling, so a miss (fragmentation, an AOF
+    #                     rewrite fork's copy-on-write, client output buffers)
+    #                     kills this container instead of the host. Kept well
+    #                     above --maxmemory: BGREWRITEAOF forks and COW can
+    #                     briefly approach double the dataset.
+    #
+    # POLICY: noeviction, deliberately. This Redis mixes disposable rate-limiter
+    # counters with DURABILITY records the MTA cannot lose — defer handoffs,
+    # intake receipts, routing-reentry handoffs, idempotency receipts — and all
+    # of those carry a TTL, so no `volatile-*` policy can tell them apart from
+    # the disposable ones and `allkeys-lru` cannot either. Evicting one of them
+    # silently breaks an at-most-once guarantee: a dropped handoff receipt means
+    # a redelivered job forks a second successor and the message is sent twice.
+    # Refusing writes is loud, retried by the MTA, and visible to an operator;
+    # evicting is silent and corrupts mail. Redis already defaults to
+    # noeviction — it is pinned here so the default cannot drift underneath us.
+    command: >-
+      redis-server --appendonly yes
+      --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}
+      --maxmemory ${REDIS_MAXMEMORY:-512mb}
+      --maxmemory-policy noeviction
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-owlat-internal}", "--no-auth-warning", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
+    mem_limit: ${REDIS_MEM_LIMIT:-1g}
     cap_drop:
       - ALL
     security_opt:
@@ -262,21 +327,26 @@ services:
     restart: unless-stopped
 
   # ── ClamAV (antivirus scanning) ──────────────────────────────────────
-  # Tag-pinned only (see the pinning policy above for why upstream images
-  # are not digest-pinned).
+  # First-party wrapper around upstream ClamAV (docker/clamav.Dockerfile):
+  # upstream's alpine image is amd64-only and its arm64 build lives under a
+  # different repository, while the updater allowlist on every existing
+  # install only accepts ghcr.io/wolvesdotink/*. The wrapper picks the base
+  # per architecture and is digest-pinned like every other Owlat image.
   clamav:
-    # `stable` tracks the current supported release — ClamAV deletes old minor
-    # tags from Docker Hub (1.3 is gone), so a numeric default rots into a 404.
-    image: clamav/clamav:${CLAMAV_VERSION:-stable}
+    logging: *default-logging
+    image: ghcr.io/wolvesdotink/clamav:${OWLAT_VERSION:-dev}
+    build:
+      context: docker
+      dockerfile: clamav.Dockerfile
     # No published port: only the MTA talks to clamd, over the internal
     # docker network.
     volumes:
       - clamav-data:/var/lib/clamav
     healthcheck:
       # ClamAV 1.5 renamed the healthcheck helper to clamdcheck.sh (the bare
-      # `clamdcheck` alias is gone from clamav/clamav:stable as of 1.5.4);
-      # older images only have the bare name. Probe both so the floating
-      # `stable` tag can move in either direction without going unhealthy.
+      # `clamdcheck` alias is gone from upstream `stable` as of 1.5.4); older
+      # images only have the bare name. Probe both so a base-image bump can
+      # move in either direction without going unhealthy.
       test: ["CMD-SHELL", "clamdcheck.sh || clamdcheck"]
       interval: 60s
       timeout: 10s
@@ -319,15 +389,28 @@ services:
   # and exposes only the handful of endpoints `docker compose pull/up/ps` needs.
   # Backported from the production VPS template (infra/templates).
   docker-socket-proxy:
+    logging: *default-logging
     image: tecnativa/docker-socket-proxy:${DOCKER_SOCKET_PROXY_VERSION:-0.3}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      # Least-privilege: only the ops the updater invokes. `docker compose
-      # pull`/`up -d` uses CONTAINERS + IMAGES; `docker compose ps --format json`
-      # uses CONTAINERS. SERVICES/TASKS are Swarm-only resources, unused here.
+      # Least-privilege: only the ops the update path invokes.
+      #   CONTAINERS  `compose ps`, and creating/recreating every service
+      #   IMAGES      `compose pull`
+      #   NETWORKS    `compose up`/`run` resolve the project networks before
+      #               they touch a container
+      #   VOLUMES     `compose up` ensures the named volumes exist
+      #   INFO/POST   daemon probe, and write methods on the paths above
+      # NETWORKS and VOLUMES were 0 until 0.5.1, which 403'd `compose run` and
+      # `compose up` — every in-app update died at the convex-deploy step with
+      # "Request forbidden by administrative rules". They widen nothing that
+      # CONTAINERS+POST (create a container, bind-mount anything) does not
+      # already imply; reachability of this proxy stays the real boundary.
+      # SERVICES/TASKS are Swarm-only resources, unused here.
       CONTAINERS: 1
       IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
       INFO: 1
       POST: 1
       # Block everything dangerous.
@@ -336,7 +419,6 @@ services:
       CONFIGS: 0
       DISTRIBUTION: 0
       EXEC: 0
-      NETWORKS: 0
       NODES: 0
       PLUGINS: 0
       SECRETS: 0
@@ -344,7 +426,6 @@ services:
       SWARM: 0
       SYSTEM: 0
       TASKS: 0
-      VOLUMES: 0
     security_opt:
       - no-new-privileges:true
     # Isolated on an internal-only network so ONLY the updater can reach the
@@ -363,6 +444,7 @@ services:
   # rather than mounting the raw RW socket; mounts only the install dir so it can
   # write a new compose template before rolling containers.
   updater:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/updater:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -404,6 +486,7 @@ services:
   # and mta (3100) on subdomains; terminates TLS via Let's Encrypt.
   # Edit Caddyfile to match your domains before bringing this up.
   caddy:
+    logging: *default-logging
     image: caddy:${CADDY_VERSION:-2.8-alpine}
     ports:
       - "80:80"
@@ -439,6 +522,7 @@ services:
   # Required at least once after first boot to push apps/api functions.
   # Re-run after pulling new images: `docker compose --profile deploy run --rm convex-deploy`
   convex-deploy:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/convex-deploy:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -467,6 +551,7 @@ services:
   # about — never a parallel worker. Activated by the `inbox-codetasks` profile
   # (coding agent) and/or the `plugin-tasks` profile (Tier-3 plugin jobs).
   code-worker:
+    logging: *default-logging
     # Never published to a registry — the explicit name just makes the locally
     # built tag deterministic (compose's default name depends on the project
     # directory), so dev-mode image pushes can address it.
@@ -477,10 +562,39 @@ services:
     volumes:
       - code-workspace:/workspace
     environment:
-      CONVEX_URL: http://convex:3210
-      # The worker polls an internalQuery + drives internalMutations, so it
-      # authenticates with the deployment admin key (like imap / mail-sync).
-      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY:-}
+      # LEAST-PRIVILEGE (security review M4): this container runs UNTRUSTED,
+      # inbound-email-driven code, so it holds NO deployment admin key. Instead
+      # it reaches Convex ONLY through the `convex-fn-proxy` sidecar, which holds
+      # the real admin key and forwards ONLY the thirteen allowlisted
+      # `codeWorkTasks:*` / `plugins/workerTasks:*` calls the worker makes. The
+      # worker authenticates to the proxy with CODE_WORKER_PROXY_TOKEN (presented
+      # as its Convex key); the proxy validates+strips it and injects the admin
+      # key. A compromised task cannot use this credential for anything else.
+      #
+      # convexClient.ts keeps the CONVEX_ADMIN_KEY fallback for operators who
+      # revert to a direct, non-proxied deployment — see docs. In the shipped
+      # composed stack the worker gets ONLY the proxy token.
+      CONVEX_URL: http://convex-fn-proxy:3220
+      CODE_WORKER_CONVEX_KEY: ${CODE_WORKER_PROXY_TOKEN:-}
+      # DEFENCE-IN-DEPTH: the `code-worker` network is `internal: true`, so this
+      # container has NO route to the internet of its own — its ONLY way out is
+      # the allowlisted `code-worker-egress` forward-proxy, which permits ONLY the
+      # git remote and the LLM endpoint (deny all else). A compromised task cannot
+      # bypass the allowlist by ignoring these vars, because there is no open
+      # bridge to fall back to. Forcing HTTP(S)_PROXY here is belt-and-braces on
+      # top of that isolation; git honours the same variables. NODE_USE_ENV_PROXY
+      # makes the orchestrator's OWN node fetch (octokit → api.github.com) honour
+      # them too — node's built-in fetch ignores HTTP_PROXY otherwise, so without
+      # it that traffic would fail closed once the network is internal. Convex is
+      # reached DIRECTLY over the internal network via convex-fn-proxy (not through
+      # the egress proxy), so that host is listed in NO_PROXY alongside loopback.
+      HTTP_PROXY: http://code-worker-egress:8888
+      HTTPS_PROXY: http://code-worker-egress:8888
+      http_proxy: http://code-worker-egress:8888
+      https_proxy: http://code-worker-egress:8888
+      NO_PROXY: localhost,127.0.0.1,convex-fn-proxy
+      no_proxy: localhost,127.0.0.1,convex-fn-proxy
+      NODE_USE_ENV_PROXY: "1"
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -544,10 +658,86 @@ services:
     depends_on:
       convex:
         condition: service_healthy
+      convex-fn-proxy:
+        condition: service_started
+      code-worker-egress:
+        condition: service_started
     profiles:
       # Coding-agent tasks (inbox.codeTasks) and the dormant Tier-3 worker
       # protocol. No shipped host path enqueues plugin jobs; `plugin-tasks`
       # starts only the reserved poller contract.
+      - inbox-codetasks
+      - plugin-tasks
+      - dev
+    restart: unless-stopped
+
+  # ── Convex function-allowlist proxy (least-privilege for code-worker) ──
+  # SECURITY REVIEW M4: self-hosted Convex mints only a FULL admin key, so the
+  # least-privilege boundary is built OUTSIDE Convex here. This sidecar holds the
+  # real CONVEX_ADMIN_KEY and forwards ONLY the thirteen allowlisted
+  # `codeWorkTasks:*` / `plugins/workerTasks:*` calls the worker makes; it
+  # authenticates the worker with CODE_WORKER_PROXY_TOKEN (constant-time, then
+  # stripped) and injects the admin key upstream. Any other function path → 403.
+  # The untrusted code-worker therefore never holds admin. Shares the isolated
+  # `code-worker` network with convex (which it forwards to) and the worker.
+  convex-fn-proxy:
+    logging: *default-logging
+    image: owlat-convex-fn-proxy:${OWLAT_VERSION:-dev}
+    build:
+      context: .
+      dockerfile: apps/convex-fn-proxy/Dockerfile
+    environment:
+      CONVEX_URL: http://convex:3210
+      # No `:-` fallback, and not the `:?` form either — see the imap service
+      # for why compose cannot guard this and what stops the crash-loop
+      # instead. An empty key throws at boot here too
+      # (apps/convex-fn-proxy/src/proxy.ts).
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
+      CODE_WORKER_PROXY_TOKEN: ${CODE_WORKER_PROXY_TOKEN:-}
+    # Nothing untrusted runs here, but it holds the admin key, so lock it down:
+    # no capabilities, read-only rootfs, no privilege escalation.
+    cap_drop:
+      - ALL
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - code-worker
+    depends_on:
+      convex:
+        condition: service_healthy
+    profiles:
+      - inbox-codetasks
+      - plugin-tasks
+      - dev
+    restart: unless-stopped
+
+  # ── Allowlisted egress forward-proxy for the code-worker ──
+  # SECURITY REVIEW M4 (defence-in-depth): the worker's HTTP_PROXY/HTTPS_PROXY
+  # point here, so ALL of its outbound traffic is filtered. tinyproxy permits
+  # ONLY the Convex proxy, the git remote and the LLM endpoint (FilterDefaultDeny
+  # in infra/code-worker/tinyproxy.filter); everything else is refused. This is
+  # the ONLY container on BOTH the isolated `code-worker` network (to reach
+  # convex-fn-proxy) and the internet-capable `default` network.
+  code-worker-egress:
+    logging: *default-logging
+    # First-party wrapper (docker/tinyproxy.Dockerfile) around a multi-arch
+    # tinyproxy; see that file for why it is not pulled from Docker Hub directly.
+    image: ghcr.io/wolvesdotink/tinyproxy:${OWLAT_VERSION:-dev}
+    build:
+      context: docker
+      dockerfile: tinyproxy.Dockerfile
+    volumes:
+      - ./infra/code-worker/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
+      - ./infra/code-worker/tinyproxy.filter:/etc/tinyproxy/filter:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - code-worker
+      - default
+    profiles:
       - inbox-codetasks
       - plugin-tasks
       - dev
@@ -560,6 +750,7 @@ services:
   # ollama:11434 — the host must never expose 11434. Gated under --profile dev
   # alongside the other optional AI sidecar.
   ollama:
+    logging: *default-logging
     image: ollama/ollama:${OLLAMA_VERSION:-latest}
     volumes:
       - ollama-data:/root/.ollama
@@ -583,7 +774,25 @@ services:
   # ACME-provisioned default.crt/default.key is left untouched, so dropping in a
   # CA-issued pair just works. For a public mailbox host, replace the self-signed
   # pair with a real certificate (or front IMAPS with a TLS-terminating proxy).
+  #
+  # OWNERSHIP is the second half of the very same crash-loop, and it cost a live
+  # instance 724 restarts: this one-shot runs as root, so the 0600 key it writes
+  # lands as root:root — while the imap image runs as uid 1000 and mounts this
+  # volume `:ro`, so it can neither read the key nor repair it. The symptom is
+  # `EACCES: permission denied, open '/opt/owlat/certs/default.key'` thrown by
+  # loadConfig, forever. Hence the fixup below runs on EVERY boot and on BOTH
+  # branches, not only the one that generates a cert: that is what heals a volume
+  # already poisoned by an older install, or a key an ACME sidecar has just
+  # re-published as root. Contents are still left untouched — only ownership and
+  # mode are normalised, and the key stays 0600 (owner-read only, never group- or
+  # world-readable).
+  #
+  # The uid is a chown target here and the image's `USER` there, so the two are
+  # pinned together: apps/imap/Dockerfile ASSERTS at build time that its runtime
+  # user is exactly IMAP_RUNTIME_USER's default, and
+  # scripts/check-compose-invariants.sh fails the build if either side drifts.
   imap-cert-init:
+    logging: *default-logging
     image: alpine:${ALPINE_VERSION:-3.20}
     command:
       - /bin/sh
@@ -591,24 +800,31 @@ services:
       - |
         cert_dir=/opt/owlat/certs
         if [ -s "$$cert_dir/default.crt" ] && [ -s "$$cert_dir/default.key" ]; then
-          echo "imap-cert-init: TLS cert already present in $$cert_dir — leaving it untouched"
-          exit 0
+          echo "imap-cert-init: TLS cert already present in $$cert_dir — leaving its contents untouched"
+        else
+          echo "imap-cert-init: generating self-signed IMAP TLS cert in $$cert_dir"
+          apk add --no-cache openssl >/dev/null
+          openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+            -keyout "$$cert_dir/default.key" \
+            -out "$$cert_dir/default.crt" \
+            -subj "/CN=$${IMAP_GREETING_HOST}" \
+            -addext "subjectAltName=DNS:$${IMAP_GREETING_HOST}"
         fi
-        echo "imap-cert-init: generating self-signed IMAP TLS cert in $$cert_dir"
-        apk add --no-cache openssl >/dev/null
-        openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-          -keyout "$$cert_dir/default.key" \
-          -out "$$cert_dir/default.crt" \
-          -subj "/CN=$${IMAP_GREETING_HOST}" \
-          -addext "subjectAltName=DNS:$${IMAP_GREETING_HOST}"
+        # Unconditional — see the ownership note above. Runs on the
+        # already-present branch too, so a broken volume heals on the next `up`.
+        chown -R "$${IMAP_RUNTIME_USER}" "$$cert_dir"
+        chmod 644 "$$cert_dir/default.crt"
         chmod 600 "$$cert_dir/default.key"
-        echo "imap-cert-init: done"
+        echo "imap-cert-init: cert dir owned by $${IMAP_RUNTIME_USER}, key kept 0600 — done"
     environment:
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
+      # uid:gid the imap container runs as, and therefore the only owner that can
+      # read a 0600 key off the shared volume. Pinned against apps/imap/Dockerfile.
+      IMAP_RUNTIME_USER: ${IMAP_RUNTIME_USER:-1000:1000}
     volumes:
       - mail-certs:/opt/owlat/certs
-    # no-new-privileges only: this one-shot runs `apk add` (needs CAP_CHOWN to
-    # extract packages), so a blanket cap_drop would break the cert bootstrap.
+    # no-new-privileges only: this one-shot runs `apk add` and `chown` (both need
+    # CAP_CHOWN), so a blanket cap_drop would break the cert bootstrap.
     security_opt:
       - no-new-privileges:true
     profiles:
@@ -618,6 +834,7 @@ services:
   # ── IMAP server (Postbox personal mailboxes — port 993) ──────────────
   # Activated by feature-flag profile "personal-mail" (postbox flag).
   imap:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/imap:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -628,7 +845,37 @@ services:
       IMAP_PORT: "993"
       IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
       CONVEX_URL: http://convex:3210
-      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY:-}
+      # Written with no `:-` fallback as DOCUMENTATION, not as a guard: compose
+      # substitutes a blank string either way. `${VAR}` differs from `${VAR:-}`
+      # only by printing "variable is not set, defaulting to a blank string",
+      # and only when the name is absent from `.env` altogether — setup.sh
+      # writes `CONVEX_ADMIN_KEY=` up front, so it is normally present and
+      # empty and not even the warning fires. The form that WOULD fail closed,
+      # `:?`, is unusable here: the key can only be minted by an
+      # ALREADY-RUNNING backend, so `.env` holds it empty during the first
+      # `docker compose up` by design, and compose interpolates the whole file
+      # before profile filtering — `:?` would abort every compose command,
+      # `down` and `logs` included, mid-install.
+      #
+      # So the crash-loop is stopped where it is actually caused, not here. An
+      # EMPTY key is not a degraded mode: apps/imap/src/config.ts throws
+      # `CONVEX_ADMIN_KEY is required` at boot and `restart: unless-stopped`
+      # retries that forever, because Docker bakes a container's environment at
+      # CREATE time — a live instance burnt 11h that way. Both installers
+      # therefore re-run `up -d` once the key lands (setup.sh
+      # `persist_admin_key`, quickstart `reapplyEnvToRunningStack`), which
+      # recreates exactly the containers whose resolved env changed.
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
+      # Backing store for the LOGIN brute-force limiter (apps/imap/src/rateLimit.ts).
+      # Port 993 is internet-facing and LOGIN is the only thing between the internet
+      # and a user's mail, so this is NOT optional: without it the limiter has no
+      # counters, every password guess is free, and the sole signal is one level-40
+      # log line at boot. Every deployment shipped that way until now.
+      # apps/imap/src/config.ts refuses to boot in production if this is unset —
+      # safe here because REDIS_PASSWORD is already `:?` (setup always mints it),
+      # so a missing password aborts the compose command rather than creating a
+      # container that crash-loops on its own baked-in env.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env first (owlat-setup generates it; manual installs use openssl rand -base64 32)}@redis:6379
       TLS_CERT_DIR: /opt/owlat/certs
       LOG_LEVEL: ${IMAP_LOG_LEVEL:-info}
       NODE_ENV: production
@@ -636,6 +883,10 @@ services:
       - mail-certs:/opt/owlat/certs:ro
     depends_on:
       convex:
+        condition: service_healthy
+      # service_healthy, not service_started: the limiter is a security control,
+      # so port 993 should not accept its first LOGIN before the store answers.
+      redis:
         condition: service_healthy
       # Block until the self-signed default cert is in the shared volume,
       # otherwise the IMAPS listener refuses to start (production TLS guard).
@@ -658,6 +909,7 @@ services:
   # Connects OUT to users' own mailboxes; exposes only an internal /send +
   # /test API to Convex — no public ports.
   mail-sync:
+    logging: *default-logging
     image: ghcr.io/wolvesdotink/mail-sync:${OWLAT_VERSION:-dev}
     build:
       context: .
@@ -665,7 +917,11 @@ services:
     environment:
       MAIL_SYNC_PORT: "3200"
       CONVEX_URL: http://convex:3210
-      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY:-}
+      # No `:-` fallback, and not the `:?` form either — see the imap service
+      # for why compose cannot guard this and what stops the crash-loop
+      # instead. An empty key throws at boot here too
+      # (apps/mail-sync/src/config.ts).
+      CONVEX_ADMIN_KEY: ${CONVEX_ADMIN_KEY}
       # Storage URLs are minted on the PUBLIC convex origin; allow fetching there.
       MAIL_SYNC_FETCH_ORIGINS: ${NUXT_PUBLIC_CONVEX_URL:-http://localhost:3210}
       # Required — generated by setup (ensureSecrets, alongside MTA_API_KEY) and
@@ -793,13 +1049,19 @@ networks:
     enable_ipv6: ${MTA_IPV6_ENABLED:-false}
   docker-proxy:
     internal: true
-  # Isolated bridge for the untrusted code-worker executor. Only convex (which
-  # the worker must reach with the deployment admin key to poll for tasks) also
-  # attaches here, so a compromised code task cannot pivot to the mail/infra
-  # tier that lives on `default`. Internet egress stays open because a code task
-  # must git-push its branch and call the LLM endpoint; narrowing that further
-  # would require an allowlisted egress proxy rather than the open bridge.
+  # Isolated, INTERNAL bridge for the untrusted code-worker executor (security
+  # review M4). `internal: true` gives it NO route to the internet, so a
+  # compromised (inbound-email-driven) code task cannot pivot to the mail/infra
+  # tier on `default` AND cannot reach the internet directly. Its only paths off
+  # this network are the two dual-homed sidecars it depends on: convex-fn-proxy
+  # (which alone holds the Convex admin key and forwards only the thirteen
+  # allowlisted worker functions to convex, which also attaches here) and
+  # code-worker-egress (the tinyproxy forward-proxy — the SOLE bridge to
+  # `default`, permitting only the git remote and the LLM endpoint). Because
+  # there is no open bridge, a task cannot bypass the egress allowlist by
+  # ignoring HTTP_PROXY.
   code-worker:
+    internal: true
 
 volumes:
   convex-data:

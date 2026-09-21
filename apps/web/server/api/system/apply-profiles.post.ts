@@ -2,14 +2,14 @@ import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
 
 /**
- * In-app "Apply & restart" entry point (plan D4): session-authed proxy from
+ * In-app "Apply & restart" entry point: session-authed proxy from
  * the admin features UI to the updater sidecar's POST /apply-profiles.
  *
  * Mirrors `/api/system/update`'s auth shape — platform-admin session cookie,
  * then the configured INSTANCE_SECRET toward the updater. The body carries the
  * resolved feature-flag snapshot, never profile strings: the updater
  * re-validates every key against the shared registry and derives the compose
- * profiles itself (decision D3), so this route can only request states the
+ * profiles itself, so this route can only request states the
  * registry can produce.
  */
 export default defineEventHandler(async (event) => {

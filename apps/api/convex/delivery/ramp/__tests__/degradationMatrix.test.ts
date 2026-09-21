@@ -151,7 +151,7 @@ const CASES: readonly MatrixCase[] = [
 
 /**
  * THE SIGNALS THIS TABLE MAY NOT CLAIM, each with the reason it may not — the
- * shape `gateInputWiring.test.ts` keeps its `KNOWN_UNSUPPLIED` gaps in, applied
+ * shape `scripts/check-gate-input-wiring.ts` keeps its `KNOWN_UNSUPPLIED` gaps in, applied
  * to the substitution vocabulary. A NAMED LIST rather than one hard-coded string
  * search, so the next unclaimable signal is covered by adding a line here instead
  * of by somebody remembering to write a second assertion.

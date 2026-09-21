@@ -1,6 +1,6 @@
 import type { ImapCommandModule } from '../types.js';
 import { asyncSession, syncSession } from '../helpers/session.js';
-import { sleep } from '../../rateLimit.js';
+import { sleep } from '@owlat/shared';
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 
@@ -58,7 +58,7 @@ export const loginModule: ImapCommandModule<LoginArgs> = {
 						authCount: limit.authCount,
 						ipCount: limit.ipCount,
 					},
-					'LOGIN throttled — tarpitting',
+					'LOGIN throttled — tarpitting'
 				);
 				await sleep(Math.min(limit.tarpitMs, TARPIT_SLEEP_CAP_MS));
 				await deps.rateLimiter.recordFailure(deps.remoteIp, address);
@@ -67,11 +67,14 @@ export const loginModule: ImapCommandModule<LoginArgs> = {
 			}
 
 			try {
-				const result = (await deps.convex.action(fn.verifyAppPassword as never, {
-					address,
-					password: args.password,
-					scope: 'imap',
-				} as never)) as VerifyAppPasswordResult | null;
+				const result = (await deps.convex.action(
+					fn.verifyAppPassword as never,
+					{
+						address,
+						password: args.password,
+						scope: 'imap',
+					} as never
+				)) as VerifyAppPasswordResult | null;
 
 				if (!result) {
 					logger.warn({ ip: deps.remoteIp, user: args.user }, 'LOGIN failed');
@@ -85,11 +88,14 @@ export const loginModule: ImapCommandModule<LoginArgs> = {
 				// client sent one); it surfaces in the app-passwords admin UI
 				// as the "Last used" device/client.
 				deps.convex
-					.mutation(fn.touchAppPassword as never, {
-						appPasswordId: result.appPasswordId,
-						ip: deps.remoteIp,
-						...(state.clientId ? { userAgent: state.clientId } : {}),
-					} as never)
+					.mutation(
+						fn.touchAppPassword as never,
+						{
+							appPasswordId: result.appPasswordId,
+							ip: deps.remoteIp,
+							...(state.clientId ? { userAgent: state.clientId } : {}),
+						} as never
+					)
 					.catch(() => undefined);
 
 				deps.commit({

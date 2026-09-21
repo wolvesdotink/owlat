@@ -10,19 +10,17 @@ import {
 	deriveComposerLock,
 	deriveUnsealedPrompt,
 	sealSendBlock,
-	type SealLockText,
 	type SealSkipReason,
 	type SealState,
 } from '../sealComposer';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
 /**
  * The derivation carries catalog keys, so the audit renders them against the
  * real English catalog: what is pinned below is the sentence a sender reads.
  */
 const { t } = createTestI18n().global;
-const render = (text: SealLockText) =>
-	typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
+const render = localizedWith(t);
 
 describe('deriveComposerLock', () => {
 	it('willSeal: verbatim promise copy, ok tone, no unsealed escape hatch', () => {
@@ -107,6 +105,36 @@ describe('deriveComposerLock', () => {
 			expect(t(lock.summary)).not.toContain('will be sealed');
 		}
 	);
+
+	it('willSeal + all recipients verified: says so, and still promises only sealing', () => {
+		const lock = deriveComposerLock({ kind: 'willSeal' }, true);
+		expect(lock.kind).toBe('willSeal');
+		expect(lock.tone).toBe('ok');
+		expect(t(lock.summary)).toBe('This message will be sealed to a verified key');
+		expect(render(lock.detail)).toBe(
+			'Someone here has compared this key with its owner, so Owlat is encrypting to a key a person has checked — not only to the one it keeps seeing.'
+		);
+		// Verification strengthens the claim; it never opens a plaintext route.
+		expect(lock.allowSendUnsealed).toBe(false);
+	});
+
+	it('never claims verification for a state that is not going to seal', () => {
+		// The flag is a WORDING input on willSeal only: passing it with any other
+		// state must change nothing, or the lock could promise a verified key on a
+		// message that goes out in plaintext.
+		const others: SealState[] = [
+			{ kind: 'keyChanged', addresses: ['x@y.test'] },
+			...(Object.keys(REASON_COPY) as SealSkipReason[]).map((reason): SealState => ({
+				kind: 'cannotSeal',
+				reason,
+			})),
+		];
+		for (const state of others) {
+			expect(deriveComposerLock(state, true)).toEqual(deriveComposerLock(state, false));
+			expect(t(deriveComposerLock(state, true).summary)).not.toContain('verified');
+		}
+		expect(deriveComposerLock(null, true)).toEqual(deriveComposerLock(null, false));
+	});
 
 	it('"will be sealed" summary is UNREACHABLE for any non-willSeal state', () => {
 		const nonWillSeal: SealState[] = [

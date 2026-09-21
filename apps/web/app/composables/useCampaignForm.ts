@@ -150,7 +150,7 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 			replyTo: replyTo.value.trim() || undefined,
 			archiveEnabled: archiveEnabled.value,
 		});
-		if (basicsResult === undefined) return false;
+		if (!basicsResult.ok) return false;
 
 		if (!audience.value) {
 			errors.value.audience = t('shared.useCampaignForm.errors.audienceRequired');
@@ -160,14 +160,14 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 			campaignId: campaignId.value,
 			audience: audience.value,
 		});
-		if (audienceResult === undefined) return false;
+		if (!audienceResult.ok) return false;
 
 		const contentResult = await updateContent({
 			campaignId: campaignId.value,
 			emailTemplateId: selectedTemplateId.value!,
 			subject: campaignSubject.value.trim(),
 		});
-		return contentResult !== undefined;
+		return contentResult.ok;
 	};
 
 	// ─── Computed Properties ────────────────────────────────────────────

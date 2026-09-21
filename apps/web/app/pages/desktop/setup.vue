@@ -86,7 +86,8 @@ const keyPath = ref('~/.ssh/id_ed25519');
 const privateKey = ref('');
 const passphrase = ref('');
 const installDir = ref('/opt/owlat');
-const branch = ref('main');
+// The default install targets the newest published server release, resolved
+// on the server when provisioning starts (the same lookup install.sh does).
 // Dev-only (`nuxt dev`, i.e. `tauri dev`): upload this machine's checkout
 // instead of cloning the published repo and build all images on the server
 // from that source. `import.meta.dev` is statically false in `generate:desktop`
@@ -97,7 +98,19 @@ const localSource = ref('');
 // small servers) or on the server (needs ~4 GB RAM for the web build).
 const imageMode = ref<'local' | 'server'>('local');
 const showAdvanced = ref(false);
+// The development install (a branch instead of the release, or the local
+// checkout) is a hidden option: revealed in dev builds, with `?dev` on the
+// route, or by Alt/Shift-clicking the advanced toggle.
+const devOptionsRevealed = ref(isDev || 'dev' in useRoute().query);
+const devInstallChosen = ref(false);
+const devInstall = computed(() => devOptionsRevealed.value && devInstallChosen.value);
+const branch = ref('main');
 const connectError = ref('');
+
+function toggleAdvanced(event: MouseEvent) {
+	if (event.altKey || event.shiftKey) devOptionsRevealed.value = true;
+	showAdvanced.value = !showAdvanced.value;
+}
 
 /** Host-key prompt copy + whether a CHANGED key needs the extra confirmation. */
 const hostKeyPrompt = computed<HostKeyPrompt | null>(() =>
@@ -166,9 +179,13 @@ async function onConnect() {
 		auth,
 		remote: {
 			installDir: installDir.value.trim() || '/opt/owlat',
-			branch: branch.value.trim() || 'main',
-			...(isDev && localSource.value.trim()
-				? { localSource: normalizeLocalPath(localSource.value), localImages: imageMode.value === 'local' }
+			...(devInstall.value
+				? {
+						branch: branch.value.trim() || 'main',
+						...(isDev && localSource.value.trim()
+							? { localSource: normalizeLocalPath(localSource.value), localImages: imageMode.value === 'local' }
+							: {}),
+					}
 				: {}),
 		},
 	});
@@ -292,20 +309,21 @@ const authOptions = computed(() => [
 	{ value: 'key', label: t('desktop.setup.auth.key') },
 	{ value: 'password', label: t('desktop.setup.auth.password') },
 ]);
-const configStep = ref<ConfigStep>('features');
-const stepIndex = computed(() => configSteps.findIndex((s) => s.id === configStep.value));
-const isLastStep = computed(() => stepIndex.value === configSteps.length - 1);
-function goStep(id: ConfigStep) {
-	configStep.value = id;
-}
-function nextStep() {
-	const next = configSteps[stepIndex.value + 1];
-	if (next) configStep.value = next.id;
-}
-function prevStep() {
-	const prev = configSteps[stepIndex.value - 1];
-	if (prev) configStep.value = prev.id;
-}
+// Step navigation is the shared wizard composable, not a second hand-rolled
+// copy of it. The step is deliberately NOT synced to the URL here: the SSH
+// session this wizard configures lives only in memory, so a reload drops back
+// to Connect and a shareable `?step=admin` would be a link to a wizard that is
+// not running.
+const {
+	currentStep: configStep,
+	currentStepIndex: stepIndex,
+	isLastStep,
+	goToStep: goStep,
+	goToNext: nextStep,
+	goToPrevious: prevStep,
+} = useWizard<ConfigStep>(
+	configSteps.map((step, index) => ({ id: step.id, label: step.label, number: index + 1 }))
+);
 
 async function onProvision() {
 	configError.value = '';
@@ -563,7 +581,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							/>
 						</div>
 
-						<button type="button" class="text-xs text-text-secondary hover:text-text-primary" @click="showAdvanced = !showAdvanced">
+						<button type="button" class="text-xs text-text-secondary hover:text-text-primary" @click="toggleAdvanced">
 							{{ showAdvanced ? t('desktop.setup.hideAdvanced') : t('desktop.setup.showAdvanced') }}
 						</button>
 						<div v-if="showAdvanced" class="space-y-3">
@@ -572,12 +590,24 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<label :class="labelClass">{{ t('desktop.setup.fields.installDir') }}</label>
 									<input v-model="installDir" :class="inputClass" :disabled="busy" />
 								</div>
-								<div>
+								<div v-if="devInstall">
 									<label :class="labelClass">{{ t('desktop.setup.fields.branch') }}</label>
 									<input v-model="branch" :class="inputClass" :disabled="busy || !!localSource.trim()" />
 								</div>
+								<div v-else>
+									<label :class="labelClass">{{ t('desktop.setup.fields.version') }}</label>
+									<input :value="t('desktop.setup.fields.versionLatest')" :class="inputClass" readonly />
+									<p class="mt-1.5 text-xs text-text-secondary">{{ t('desktop.setup.fields.versionHint') }}</p>
+								</div>
 							</div>
-							<div v-if="isDev">
+							<label v-if="devOptionsRevealed" class="flex cursor-pointer items-start gap-2.5 text-sm">
+								<input v-model="devInstallChosen" type="checkbox" class="mt-0.5" :disabled="busy" />
+								<span>
+									{{ t('desktop.setup.fields.devInstall') }}
+									<span class="block text-xs text-text-secondary">{{ t('desktop.setup.fields.devInstallHint') }}</span>
+								</span>
+							</label>
+							<div v-if="isDev && devInstall">
 								<label :class="labelClass">{{ t('desktop.setup.fields.localSource') }}</label>
 								<input
 									v-model="localSource"
@@ -906,7 +936,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 					<!-- FINISHING UP: installed, but the public URL isn't answering yet (DNS/TLS) -->
 					<div v-else-if="stage === 'done' && !siteIsLoopback" class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4">
 						<p class="flex items-center gap-2 text-sm font-medium text-warning">
-							<Icon name="lucide:loader-circle" class="size-4" :class="{ 'animate-spin': checkingReach }" />
+							<Icon name="lucide:loader-circle" class="size-4" :class="{ 'animate-spin motion-reduce:animate-none': checkingReach }" />
 							{{ t('desktop.setup.finishing.title') }}
 							</p>
 						<I18nT keypath="desktop.setup.finishing.body" tag="p" class="mt-1 text-xs text-text-secondary" scope="global">
@@ -923,7 +953,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						</div>
 						<UiButton variant="outline" size="sm" class="mt-3" :disabled="checkingReach" @click="recheckReachable">
 							<template #iconLeft>
-								<Icon name="lucide:refresh-cw" class="size-3.5" :class="{ 'animate-spin': checkingReach }" />
+								<Icon name="lucide:refresh-cw" class="size-3.5" :class="{ 'animate-spin motion-reduce:animate-none': checkingReach }" />
 							</template>
 							{{ checkingReach ? t('desktop.setup.finishing.checking') : t('desktop.setup.finishing.checkAgain') }}
 						</UiButton>

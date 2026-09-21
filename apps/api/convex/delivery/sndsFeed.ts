@@ -73,19 +73,19 @@ export function complaintBandSeverity(band: SndsComplaintBand): number | null {
 }
 
 /** The worse of two bands; `unknown` loses to anything banded. */
-export function worseComplaintBand(a: SndsComplaintBand, b: SndsComplaintBand): SndsComplaintBand {
+function worseComplaintBand(a: SndsComplaintBand, b: SndsComplaintBand): SndsComplaintBand {
 	return worstOf(BAND_SEVERITY_ORDER, a, b);
 }
 
 /** SNDS "Filter result" — the traffic-light verdict on the IP's mail. */
-export const SNDS_FILTER_RESULTS = ['unknown', 'green', 'yellow', 'red'] as const;
+const SNDS_FILTER_RESULTS = ['unknown', 'green', 'yellow', 'red'] as const;
 export type SndsFilterResult = (typeof SNDS_FILTER_RESULTS)[number];
 
 /** The filter results in ascending severity, without the `unknown` sentinel. */
 const FILTER_SEVERITY_ORDER: readonly SndsFilterResult[] = SNDS_FILTER_RESULTS.slice(1);
 
 /** The worse of two filter results; `unknown` loses to anything reported. */
-export function worseFilterResult(a: SndsFilterResult, b: SndsFilterResult): SndsFilterResult {
+function worseFilterResult(a: SndsFilterResult, b: SndsFilterResult): SndsFilterResult {
 	return worstOf(FILTER_SEVERITY_ORDER, a, b);
 }
 
@@ -138,7 +138,7 @@ export function sndsCellKey(ip: string, periodStart: number): string {
 	return `${ip}${SNDS_CELL_KEY_SEPARATOR}${periodStart}`;
 }
 
-export interface SndsParseResult {
+interface SndsParseResult {
 	rows: SndsFeedRow[];
 	/** Rows the parser refused. Counted, never thrown — the feed is internet input. */
 	dropped: number;
@@ -151,9 +151,6 @@ export const SNDS_MAX_FEED_BYTES = 4 * 1024 * 1024;
 export const SNDS_MAX_ROWS = 20_000;
 const MAX_LINE_LENGTH = 2_048;
 const MAX_COUNTER = 1_000_000_000_000;
-/** One UTC day. The (IP, day) grain is the unit of everything stored here. */
-export const DAY_MS = 24 * 60 * 60 * 1_000;
-
 /** Keeps binary floating point from turning `0.3 * 10` into `2.999…`. */
 const BAND_EPSILON = 1e-9;
 
@@ -392,7 +389,7 @@ export function parseSndsFeed(body: string, maxRows: number = SNDS_MAX_ROWS): Sn
  * externally-supplied input. Rows for a cell beyond the cap are counted, not
  * folded — dropping them silently would make a poll's numbers unexplainable.
  */
-export const SNDS_MAX_DAY_CELLS = 8_000;
+const SNDS_MAX_DAY_CELLS = 8_000;
 
 /**
  * An in-progress fold of feed rows into (IP, UTC day) observations.
@@ -404,7 +401,7 @@ export const SNDS_MAX_DAY_CELLS = 8_000;
  * stored as a replay, quietly discarding one feed's counters instead of adding
  * them to the other's.
  */
-export interface SndsDayFold {
+interface SndsDayFold {
 	readonly byCell: Map<string, SndsDayObservation>;
 	readonly maxCells: number;
 	/** Rows dropped because the fold was already holding `maxCells` cells. */

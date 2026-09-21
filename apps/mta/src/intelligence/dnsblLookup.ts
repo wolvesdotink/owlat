@@ -12,6 +12,7 @@
  */
 
 import { resolve4 } from 'dns/promises';
+import { sleep as sharedSleep } from '@owlat/shared';
 import type { DnsblListId } from '@owlat/shared/dnsbl';
 import type { IpAuditZoneId } from '@owlat/shared/ipAudit';
 import { reverseIpAddressForDns } from '@owlat/shared/ipAddress';
@@ -208,8 +209,7 @@ export async function checkDnsbl(
 	deps: DnsblLookupDeps = defaultLookupDeps
 ): Promise<DnsblStatus> {
 	const now = deps.now ?? Date.now;
-	const sleep =
-		deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+	const sleep = deps.sleep ?? sharedSleep;
 	// Per-attempt lines drop to debug; this function owns the conclusion line.
 	const attemptDeps: DnsblLookupDeps = { ...deps, quiet: true };
 	const startedAt = now();

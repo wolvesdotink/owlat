@@ -195,7 +195,7 @@ const variants = computed(() => [
 					data-testid="ab-pick-winner"
 					@click="emit('select-winner', variant.key)"
 				>
-					<Icon v-if="isSelectingWinner" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+					<Icon v-if="isSelectingWinner" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 					<Icon v-else name="lucide:trophy" class="w-4 h-4" />
 					{{ t('components.dashboard.campaignAbComparison.pickVariant', { variant: variant.key }) }}
 				</UiButton>

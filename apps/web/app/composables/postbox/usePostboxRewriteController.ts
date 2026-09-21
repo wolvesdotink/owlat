@@ -69,7 +69,7 @@ export function usePostboxRewriteController(opts: RewriteControllerOptions) {
 	const rewrite = usePostboxSelectionRewrite({
 		requestRewrite: async (input: SelectionRewriteInput) => {
 			const mailboxId = opts.mailboxId();
-			const res = await requireConvex().action(api.mail.ai.rewriteSelection, {
+			const res = await requireConvex().action(api.mail.ai.assist.rewriteSelection, {
 				selection: input.selection,
 				intent: input.intent,
 				...(input.targetLanguage ? { targetLanguage: input.targetLanguage } : {}),

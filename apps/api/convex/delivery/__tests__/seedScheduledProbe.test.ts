@@ -31,16 +31,14 @@
  * late for the composition performed there.
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { convexTest } from 'convex-test';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
+import crons from '../../crons';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
-import { insertExternalAccountRow } from '../../mail/externalAccountShared';
+import { insertExternalAccountRow } from '../../mail/external/accountShared';
 import { createTestDomain, createTestInstanceSettings } from '../../__tests__/factories';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import { assertMarketingOneClickHeaders } from '../marketingCompliance';
@@ -53,6 +51,10 @@ import {
 import { assertSeedShadowExclusion, buildComposeInput } from '../worker';
 import { isSeedShadowEnvelope, type WorkerEnvelopeInput } from '../workerEnvelope';
 import { transactionalEmailPool } from '../workpool';
+
+interface CronRecord {
+	readonly crons: Record<string, { readonly name: string } | undefined>;
+}
 
 // The Workpool component is not registered in convex-test, and the worker action
 // would need provider credentials. Stubbing it lets us assert exactly WHAT was
@@ -561,16 +563,10 @@ describe('assertSeedShadowExclusion — now that a transactional envelope can be
 // ── (7) A SWEEP NOTHING STARTS IS A WIDGET ──────────────────────────────────
 
 describe('the scheduled probe is registered as a cron', () => {
-	const convexRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-
-	it('names both the cron and the entry point, and the registration is called', () => {
-		// Assert BOTH halves, so neither the registration nor the call into it can
-		// be dropped unnoticed: a cron target with no registration never runs, and
-		// a registration `crons.ts` never calls registers nothing.
-		const registration = readFileSync(join(convexRoot, 'delivery', 'cronRegistration.ts'), 'utf8');
-		expect(registration).toContain("'sweep scheduled seed probes'");
-		expect(registration).toContain('internal.delivery.seedScheduledProbe.sweepScheduledSeedProbes');
-		const crons = readFileSync(join(convexRoot, 'crons.ts'), 'utf8');
-		expect(crons).toContain('registerDeliveryCrons(crons)');
+	it('names the entry point under the registered cron identifier', () => {
+		const registered = (crons as unknown as CronRecord).crons;
+		expect(registered['sweep scheduled seed probes']?.name).toBe(
+			'delivery/seedScheduledProbe:sweepScheduledSeedProbes'
+		);
 	});
 });

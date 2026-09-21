@@ -19,8 +19,8 @@ export function useMtaStsVerification(domain: () => string | null) {
 		label: 'Verify MTA-STS publication',
 		type: 'action',
 	});
-	type MtaStsVerdict = Awaited<ReturnType<typeof run>>;
-	const verification = ref<MtaStsVerdict>(undefined);
+	type MtaStsVerdict = BackendOperationValue<ReturnType<typeof run>>;
+	const verification = ref<MtaStsVerdict | undefined>(undefined);
 	const checked = ref(false);
 	const ran = ref(false);
 	watch(
@@ -28,7 +28,8 @@ export function useMtaStsVerification(domain: () => string | null) {
 		async (target) => {
 			if (target === null || ran.value) return;
 			ran.value = true;
-			verification.value = await run({ domain: target });
+			const verdict = await run({ domain: target });
+			verification.value = verdict.ok ? verdict.result : undefined;
 			checked.value = true;
 		},
 		{ immediate: true }

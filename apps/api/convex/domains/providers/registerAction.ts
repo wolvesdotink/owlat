@@ -15,12 +15,14 @@
  */
 
 import { v, type Infer } from 'convex/values';
+import { mergeExternalReceivingSpf } from '@owlat/shared/externalReceiving';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { logError, logInfo, logWarn } from '../../lib/runtimeLog';
 import { createMtaIdentityManager } from '../../lib/emailProviders/mtaIdentity';
 import { createSESIdentityManager } from '../../lib/emailProviders/sesIdentity';
+import { getSingletonOrganizationId } from '../../lib/sessionOrganization';
 import { providerFor } from './index';
 import { resolveSesMailFrom } from './ses/mailFrom';
 import type { SendingDomainProviderKind } from './types';
@@ -64,9 +66,76 @@ export const run = internalAction({
 			// adapter reflects it to the provider and builds the `mailFrom` SPF
 			// record on that host. Absent ⇒ the adapter falls back to the global
 			// `MTA_RETURN_PATH_DOMAIN` (historic behavior).
-			const { dnsRecords, identity } = await adapter.registerDomain(domain.domain, {
-				returnPathHost: domain.returnPathHost,
-			});
+			//
+			// Also thread the owning organization (H2): this is a scheduled action
+			// with no session, and Owlat is single-org-per-deployment, so the
+			// singleton org is the domain's owner. The MTA adapter binds the DKIM key
+			// to it so new keys are born owned; providers with no per-domain key
+			// ignore it.
+			//
+			// BEST-EFFORT: the ownership binding is defense-in-depth (the DKIM signer's
+			// fail-closed org check is the real control), so a failure to resolve the
+			// org must NEVER fail the whole registration — we register unbound and log.
+			let organizationId: string | undefined;
+			try {
+				organizationId = await getSingletonOrganizationId(ctx);
+			} catch (orgError) {
+				const orgMessage =
+					orgError instanceof Error ? orgError.message : `Unknown ${tag} org-resolution error`;
+				logWarn(
+					`[${tag}] Could not resolve owning org for ${domain.domain}; registering without DKIM ownership binding:`,
+					orgMessage
+				);
+			}
+			// Thread the domain's inbound-mail arrangement so the adapter generates
+			// records that are correct for a send-only domain. Passed only when the
+			// row actually carries a mode: `undefined` is the adapter's documented
+			// "owlat" default, so a row written before this feature reaches exactly
+			// the code path it always did.
+			const receiving = domain.receivingMode
+				? { mode: domain.receivingMode, provider: domain.externalReceivingProvider }
+				: undefined;
+			const { dnsRecords: providerDnsRecords, identity } = await adapter.registerDomain(
+				domain.domain,
+				{
+					returnPathHost: domain.returnPathHost,
+					organizationId,
+					receiving,
+				}
+			);
+
+			// THE SPF FOLD LIVES HERE, not in the adapters.
+			//
+			// A send-only domain's apex may carry exactly one `v=spf1` record (RFC
+			// 7208 §3.2), and that domain still sends from Google/Microsoft, so the
+			// one record has to authorize both. Every adapter emits an apex SPF of
+			// its own — the MTA's `include:<MTA_SPF_INCLUDE>`, SES's
+			// `include:amazonses.com -all`, Mandrill's — and the panel tells the
+			// operator to publish it EXACTLY AS SHOWN. Folding per adapter means
+			// every future adapter has to remember to; the one that forgets hands a
+			// Google Workspace customer a hard-fail record with no
+			// `include:_spf.google.com` and silently breaks SPF for everything they
+			// still send from Gmail. That is the precise failure this feature exists
+			// to prevent, so the fold sits at the seam EVERY registration passes
+			// through instead.
+			//
+			// Safe over any adapter's record: `mergeExternalReceivingSpf` keeps the
+			// base record's trailing qualifier (SES's `-all` stays `-all`), is
+			// idempotent, and is a no-op for `'other'`/absent — where we have no
+			// include to add and the panel carries the manual-merge instruction.
+			// Only the apex `spf` record is touched; DKIM, DMARC and MAIL FROM are
+			// sending-side and identical in both modes.
+			const providerSpf = providerDnsRecords.spf;
+			const dnsRecords =
+				receiving?.mode === 'external' && providerSpf
+					? {
+							...providerDnsRecords,
+							spf: {
+								...providerSpf,
+								value: mergeExternalReceivingSpf(providerSpf.value, receiving.provider),
+							},
+						}
+					: providerDnsRecords;
 
 			await ctx.runMutation(internal.domains.lifecycle.transition, {
 				domainId: args.domainId,

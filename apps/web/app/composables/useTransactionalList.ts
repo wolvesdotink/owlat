@@ -13,7 +13,7 @@ export type SortOption = {
 	sortOrder: 'asc' | 'desc';
 };
 
-export const SORT_OPTIONS: SortOption[] = [
+const SORT_OPTIONS: SortOption[] = [
 	{
 		label: 'shared.useTransactionalList.sort.lastModified',
 		value: 'updatedAt-desc',
@@ -53,7 +53,7 @@ export const SORT_OPTIONS: SortOption[] = [
 ];
 
 /** `label` is an i18n message key — resolve with `t()` where the filter renders. */
-export const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 	{ value: 'all', label: 'common.all' },
 	{ value: 'draft', label: 'shared.useTransactionalList.status.draft' },
 	{ value: 'published', label: 'shared.useTransactionalList.status.published' },
@@ -175,7 +175,7 @@ export function useTransactionalList() {
 
 	const handleDuplicate = async (emailId: Id<'transactionalEmails'>) => {
 		const result = await duplicateEmail({ id: emailId });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('shared.useTransactionalList.duplicated'));
 	};
 
@@ -201,7 +201,7 @@ export function useTransactionalList() {
 		isDeleting.value = true;
 		const result = await deleteEmail({ id: emailToDelete.value.id });
 		isDeleting.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('shared.useTransactionalList.deleted'));
 		closeDeleteModal();
 	};
@@ -274,10 +274,10 @@ export function useTransactionalList() {
 			defaultLanguage: createForm.defaultLanguage,
 		});
 		isCreating.value = false;
-		if (emailId === undefined) return;
+		if (!emailId.ok) return;
 
 		closeCreateModal();
-		router.push(`/dashboard/send/transactional/${emailId}/edit`);
+		router.push(`/dashboard/send/transactional/${emailId.result}/edit`);
 	};
 
 	// --- NAVIGATION ---

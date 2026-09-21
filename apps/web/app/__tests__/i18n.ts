@@ -12,8 +12,31 @@ import { expect } from 'vitest';
 import type { VueWrapper } from '@vue/test-utils';
 import { createI18n, useI18n } from 'vue-i18n';
 import en from '~~/i18n/locales/en.json';
+import { datetimeFormats, numberFormats } from '~~/i18n/formats';
 
-/** A fresh i18n instance per suite — locale state must not leak between mounts. */
+/**
+ * A string is a message key when it is rooted in the catalog: `auth.login.submit`
+ * is, `Amazon SES` and `the latest measurements` are not. The app leans on
+ * vue-i18n handing a non-key back unchanged (a breadcrumb label a page supplied
+ * as text, a plugin's own field label), so only a KEY that leads nowhere is a
+ * defect here.
+ */
+const CATALOG_ROOTS = new Set(Object.keys(en));
+function isMessageKeyPath(key: string): boolean {
+	const dot = key.indexOf('.');
+	return dot > 0 && CATALOG_ROOTS.has(key.slice(0, dot));
+}
+
+/**
+ * A fresh i18n instance per suite — locale state must not leak between mounts.
+ *
+ * A message key the catalog does not carry THROWS instead of rendering the key
+ * path: vue-i18n's default hands the key back and logs `[intlify] Not found`,
+ * which let a palette row ship reading
+ * `shared.useCommandPaletteProviders.newAutomation` while every suite that
+ * mounted it stayed green. Plain text keeps passing through `t()` unchanged,
+ * silently, because that is the contract the app's screens document.
+ */
 export function createTestI18n() {
 	return createI18n({
 		legacy: false,
@@ -22,6 +45,16 @@ export function createTestI18n() {
 		// `de` present but empty: @nuxtjs/i18n augments createI18n to require every
 		// declared locale, and these suites only ever mount the English copy.
 		messages: { en, de: {} },
+		missing: (locale, key) => {
+			if (!isMessageKeyPath(key)) return key;
+			throw new Error(
+				`i18n message '${key}' is not in the '${locale}' catalog; add it to i18n/locales/${locale}.json.`
+			);
+		},
+		// The same named styles the app installs. A suite formatting against a
+		// different set would be asserting output the browser never renders.
+		datetimeFormats,
+		numberFormats,
 	});
 }
 
@@ -30,6 +63,19 @@ export function createTestI18n() {
  * real one resolves against whichever instance `global.plugins` installed.
  */
 export const i18nStubs = { useI18n };
+
+/** A message as the registries carry it: a bare key, or a key with its params. */
+export type LocalizedMessage = string | { key: string; params?: Record<string, unknown> };
+
+/**
+ * Resolve a registry message through a real `t`, so a suite asserts the English
+ * the catalog renders rather than restating a key path. Bound to the caller's
+ * instance because `t` is per-instance and suites create their own.
+ */
+export function localizedWith(t: ReturnType<typeof createTestI18n>['global']['t']) {
+	return (value: LocalizedMessage): string =>
+		typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+}
 
 /**
  * A message key that leaked into the page instead of its translation.

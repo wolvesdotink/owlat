@@ -1,11 +1,23 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { jsonPrimitiveRecord, updateStepResultValidator } from '../lib/convexValidators';
+import {
+	jsonPrimitiveRecord,
+	mtaStsModeValidator,
+	updateStepResultValidator,
+} from '../lib/convexValidators';
 import { sealPolicyValidator } from '../mail/sealPolicy';
 import {
+	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
 } from '../lib/aiProviderConfigValidators';
+import {
+	desktopReleaseLineValidator,
+	desktopUpdateChannelValidator,
+	desktopUpdateModeValidator,
+	inboundRawRetentionDaysValidator,
+	successOrFailedValidator,
+} from '../lib/literalValidators';
 
 /**
  * Instance-administration tables — the deployment-wide singletons an operator
@@ -40,6 +52,14 @@ export const instanceTables = {
 				baseWidth: v.optional(v.number()), // Base content width in px (default: 600)
 			})
 		),
+		// Durable one-shot latch for `POST /seed/admin`. Set the moment the admin
+		// seed succeeds and checked (in addition to the "any user exists?" probe)
+		// before seeding is allowed again. The user-existence check alone re-arms
+		// if every user is later deleted; this latch survives that, so a second
+		// unauthenticated bootstrap can't create a fresh owner on a de-populated
+		// instance. Unset on installs that predate the latch — harmless, because
+		// those already have users and fail the existence check.
+		adminSeedCompletedAt: v.optional(v.number()),
 		// Instance is moving from another email platform. DEFAULT FALSE — Owlat is
 		// its own platform by default. When true, first-login onboarding offers a
 		// mail import; when false the welcome flow is a pure fresh-start and exposes
@@ -52,16 +72,33 @@ export const instanceTables = {
 		// host is the deployment's own EHLO_HOSTNAME; the policy body + id are
 		// derived by `@owlat/shared/mtaStsPolicy`. Admin-gated write via
 		// `settings.update`, served publicly by the `getMtaStsPolicy` query.
-		mtaStsMode: v.optional(v.union(v.literal('none'), v.literal('testing'), v.literal('enforce'))),
-		// Sealed Mail (E3) org-level sealing policy (locked decision D2): `auto`
+		mtaStsMode: v.optional(mtaStsModeValidator),
+		// Sealed Mail org-level sealing policy: `auto`
 		// seals whenever every recipient has a usable pinned key, `ask` defers to
-		// the composer opt-in (E5), `off` never seals. Unset ⇒ `auto`. Admin-gated
+		// the composer opt-in, `off` never seals. Unset ⇒ `auto`. Admin-gated
 		// write via `workspaces/settings.update`.
 		sealPolicy: v.optional(sealPolicyValidator),
 		// Plaintext SMTP is rejected by default with 550 5.7.10. Owners/admins
 		// may explicitly disable the floor for compatibility with legacy senders.
 		isInboundTlsRequired: v.optional(v.boolean()),
-		// Trusted ARC forwarders (Sealed Mail A5): domains whose validated ARC seal
+		// DEEP BODY SEARCH (ADR-0059). When on, delivery writes a ~8KB
+		// normalized excerpt to `mailMessages.searchBody` and mail search reads the
+		// `search_message_bodies` index instead of the 200-character `snippet` one.
+		// That WIDENS the sealed-at-rest plaintext carve-out, so it is opt-in:
+		// unset ⇒ off ⇒ byte-identical to the snippet-only behaviour. Flipping it
+		// back to false schedules a sweep that clears every excerpt already
+		// written. Admin-gated write via `workspaces/settings.update`.
+		isBodySearchIndexingEnabled: v.optional(v.boolean()),
+		// How long the shared inbox keeps a received message's FILES: the sealed
+		// raw `.eml` on `inboundMessages` and the attachment blobs captured out of
+		// it into `semanticFiles`. Unset ⇒ `DEFAULT_INBOUND_RAW_RETENTION_DAYS`.
+		// Past the horizon the daily sweep in `maintenance/retention.ts`
+		// releases the BYTES ONLY — the message row, its sender, subject, bodies,
+		// attachment metadata and verdicts are all retained, and a released
+		// `semanticFiles` row keeps its summary, extracted text and embedding so
+		// retrieval still works. Admin-gated write via `workspaces/settings.update`.
+		inboundRawRetentionDays: v.optional(inboundRawRetentionDaysValidator),
+		// Trusted ARC forwarders: domains whose validated ARC seal
 		// (RFC 8617) we honour to RESCUE a DMARC fail on inbound forwarded mail —
 		// a mailing-list / forwarding message that broke DKIM but whose sealer
 		// attests the original passed skips Spam-routing instead of false-failing.
@@ -69,8 +106,8 @@ export const instanceTables = {
 		// `@owlat/shared/arcTrust`; an explicit `[]` disables the override entirely.
 		// Admin-gated write via `settings.update`, editable in Settings → Delivery.
 		trustedArcForwarders: v.optional(v.array(v.string())),
-		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH (plan P3-2's named mitigation for
-		// controller complexity). When true, every ramp cell is PINNED at its
+		// THE RAMP CONTROLLER'S GLOBAL KILL SWITCH — the named mitigation for
+		// controller complexity. When true, every ramp cell is PINNED at its
 		// current share: the hourly controller still evaluates and still audits, so
 		// an operator can watch what it WOULD have done, but it writes no share.
 		// Honoured before every other rule, including the hard stops — a paused
@@ -192,6 +229,9 @@ export const instanceTables = {
 				failed: v.number(),
 				rejected: v.number(),
 				archived: v.number(),
+				// Parked as needs-no-reply (the Updates dashboard). Optional: rows
+				// written before the bucket existed have no field and read as 0.
+				informational: v.optional(v.number()),
 				total: v.number(),
 			})
 		),
@@ -205,6 +245,34 @@ export const instanceTables = {
 		// on a non-open → open transition, decremented on open → non-open.
 		// `getInboundStats` reads this instead of collecting the whole
 		// open-thread set per subscriber.
+		// SERVER-MANAGED DESKTOP UPDATES. What connected Owlat desktop apps are
+		// offered when they ask this instance which version to install. Absent —
+		// the ordinary state — means `latest` on the `stable` channel with no
+		// defer window, which is what the app used to get straight from GitHub.
+		// The server can only choose among releases GitHub already published and
+		// this instance already cached; bundles stay signed with a key no server
+		// holds, so a policy can withhold an update but never substitute one.
+		// Admin-gated write via `desktop/updates.updatePolicy` (`settings:manage`).
+		desktopUpdates: v.optional(
+			v.object({
+				// `latest` serves the newest eligible cached release, `pinned` serves
+				// exactly `pinnedVersion`, `paused` serves nothing.
+				mode: desktopUpdateModeValidator,
+				// `prerelease` additionally admits `vX.Y.Z-rc.N` tags.
+				channel: desktopUpdateChannelValidator,
+				// Required when mode is `pinned`; validated against the cache at write
+				// time, so the policy can never point at a release nobody has.
+				pinnedVersion: v.optional(v.string()),
+				// Optional floor. Recorded here and surfaced to clients; ENFORCEMENT
+				// (the blocking "update required" prompt) is not built yet.
+				requiredVersion: v.optional(v.string()),
+				// Hold a release back until `publishedAt + deferHours`. 0..168.
+				deferHours: v.optional(v.number()),
+				// Audit line for the admin page.
+				updatedAt: v.number(),
+				updatedBy: v.string(), // auth user id
+			})
+		),
 		openThreads: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.optional(v.number()),
@@ -241,6 +309,46 @@ export const instanceTables = {
 		.index('by_kind_and_checkedAt', ['kind', 'checkedAt'])
 		.index('by_kind_and_startedAt', ['kind', 'startedAt']),
 
+	// Desktop release cache — what GitHub has published on the two desktop-
+	// bearing release lines (`v*` and `desktop-v*`), so the manifest route can
+	// answer a connected app from cached rows instead of calling GitHub on every
+	// check. Populated by the `desktop-releases-refresh` cron and the admin
+	// "Check now" button (apps/api/convex/desktop/updates.ts); pruned to the
+	// newest 30 release rows.
+	//
+	// Two kinds of documents share this table, following the `systemUpdates`
+	// precedent:
+	//   - kind='release'      — one row per cached release
+	//   - kind='latestCheck'  — singleton recording the last refresh attempt
+	desktopReleases: defineTable({
+		kind: v.union(v.literal('release'), v.literal('latestCheck')),
+
+		// ── Fields for kind='release' ──
+		tag: v.optional(v.string()), // 'v0.4.6' | 'desktop-v0.4.7'
+		version: v.optional(v.string()), // '0.4.6'
+		line: v.optional(desktopReleaseLineValidator),
+		isPrerelease: v.optional(v.boolean()),
+		publishedAt: v.optional(v.number()), // release publish time (epoch ms)
+		notes: v.optional(v.string()), // GitHub release body, for the admin page
+		// The release's `latest.json` as VERBATIM JSON TEXT, not a Convex object:
+		// the manifest route serves it byte-for-byte, so platform keys a future
+		// tauri-action adds round-trip untouched. Validated before it is stored
+		// (version matches the tag, every platform has a URL + signature, every
+		// URL host is on the GitHub allow-list).
+		manifest: v.optional(v.string()),
+		fetchedAt: v.optional(v.number()),
+
+		// ── Fields for kind='latestCheck' (singleton) ──
+		checkedAt: v.optional(v.number()),
+		error: v.optional(v.string()), // e.g. 'rate_limited'
+	})
+		.index('by_kind_and_version', ['kind', 'version'])
+		// The refresh upserts by TAG: the unified `v0.4.7` and a desktop hot-fix
+		// `desktop-v0.4.7` are two releases with two signed bundles, and keying on
+		// the version would make them overwrite each other on every refresh.
+		.index('by_kind_and_tag', ['kind', 'tag'])
+		.index('by_kind_and_checkedAt', ['kind', 'checkedAt']),
+
 	// Operator-recorded backup plan for a self-hosted deployment. The Convex
 	// backend runs in a container and cannot introspect the host's systemd
 	// timer / cron entry (installed by `owlat backup-schedule enable`) or the
@@ -258,7 +366,7 @@ export const instanceTables = {
 		isScheduleEnabled: v.boolean(),
 		// Last manual backup the operator logged after running scripts/backup.sh.
 		lastRunAt: v.optional(v.number()),
-		lastRunStatus: v.optional(v.union(v.literal('success'), v.literal('failed'))),
+		lastRunStatus: v.optional(successOrFailedValidator),
 		// Audit: who last changed this record (auth user email) and when.
 		updatedAt: v.number(),
 		updatedBy: v.optional(v.string()),
@@ -266,7 +374,7 @@ export const instanceTables = {
 
 	// Pluggable AI providers (bring-your-own-key) — PER-ORG SINGLETON (single-org
 	// per deployment; at most one row). Records the admin's choice of AI backend
-	// across TWO DECOUPLED PLANES (2026-07-10 pluggable-AI-providers plan):
+	// across TWO DECOUPLED PLANES:
 	//
 	//   • LANGUAGE plane (all text generation) — `languageProviderKind` selects a
 	//     registered adapter (hosted OpenAI/Anthropic/Google/OpenRouter via an
@@ -280,12 +388,12 @@ export const instanceTables = {
 	//
 	// SECRETS AT REST: the language key (and optional hosted-embedder key) are
 	// stored ONLY as an AES-256-GCM envelope (secretCiphertext/Iv/AuthTag +
-	// EnvelopeVersion), exactly like `externalMailAccounts`, encrypted in a
-	// `'use node'` action with `lib/credentialCrypto`. All envelope columns are
-	// OPTIONAL — a local provider needs no key. Queries NEVER return the envelope,
-	// only `keyPreview` + a "configured" boolean. Decrypt happens only at call time
+	// EnvelopeVersion), exactly like `externalMailAccounts`, encrypted in a `'use
+	// node'` action with `lib/credentialCrypto`. All envelope columns are OPTIONAL
+	// — a local provider needs no key. Queries NEVER return the envelope, only
+	// `keyPreview` + a "configured" boolean. Decrypt happens only at call time
 	// inside a Node action. Env `LLM_*` remains the deployment fallback when this
-	// row is absent; a present row wins (resolution is a later plan piece).
+	// row is absent; a present row wins.
 	//
 	// `embeddingModelVersion` is the dimension guard: it is bumped whenever the
 	// embedding model/provider changes so stale vectors are never silently mixed
@@ -317,6 +425,35 @@ export const instanceTables = {
 		embeddingSecretAuthTag: v.optional(v.string()),
 		embeddingSecretEnvelopeVersion: v.optional(v.number()),
 		embeddingKeyPreview: v.optional(v.string()),
+		// ── DECISION plane (the third plane; opt-in, and OPTIONAL IN EVERY COLUMN) ──
+		// An install that never chose a decision provider stores none of these, and
+		// `lib/decisionProvider.ts` then resolves DEFAULT_DECISION_KIND ('llm') —
+		// the language-backed adapter, i.e. exactly the behaviour it had before this
+		// plane existed. That is why nothing below is required and why no existing
+		// row needs a migration: an upgrade changes nothing until an operator opens
+		// the AI-provider page and enters their own key.
+		decisionProviderKind: v.optional(decisionProviderKindValidator),
+		// The single model id (this plane has no fast/capable tiers). Unset ⇒ the
+		// adapter's pinned default — never an alias, so a vendor cannot move the
+		// model underneath a threshold that decides whether we send mail.
+		decisionModel: v.optional(v.string()),
+		// API-origin override, for an operator fronting the vendor with a proxy.
+		// Unset ⇒ the adapter's own origin.
+		decisionBaseUrl: v.optional(v.string()),
+		// The operator's master switch for the one fallback hop onto the language
+		// plane when the decision plane fails. Unset ⇒ OFF: the hop re-routes onto
+		// a model that costs 24 to 50 times more, on a path fed by strangers
+		// sending us email, so it is never on by default.
+		isDecisionFallbackEnabled: v.optional(v.boolean()),
+		// Decision-provider API key envelope (absent for the language-backed
+		// adapter, which borrows the language plane's key). Written and cleared in
+		// lockstep with the preview below by `aiProviderConfig._persistConfig`.
+		decisionSecretCiphertext: v.optional(v.string()),
+		decisionSecretIv: v.optional(v.string()),
+		decisionSecretAuthTag: v.optional(v.string()),
+		decisionSecretEnvelopeVersion: v.optional(v.number()),
+		// Non-secret masked preview of the decision key for the UI.
+		decisionKeyPreview: v.optional(v.string()),
 		updatedAt: v.number(),
 	}),
 };

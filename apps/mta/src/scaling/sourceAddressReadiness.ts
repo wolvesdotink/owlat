@@ -32,7 +32,7 @@ export interface SourceAddressReadiness {
 	checkedAt: number;
 }
 
-export async function verifySourceAddressReadiness(
+async function verifySourceAddressReadiness(
 	ip: string,
 	deps?: SmtpReachabilityDeps
 ): Promise<SourceAddressReadiness> {

@@ -1,10 +1,11 @@
 'use node';
 
 import {
-	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
-	MAX_GOVERNED_ROUTING_ATTEMPTS,
+	admitGovernedRetry,
+	nextGovernedAttempt,
 	type DeliveryDomain,
 	type GovernedMessageType,
+	type GovernedRetryBudgetOptions,
 } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
@@ -17,28 +18,21 @@ import {
 } from '../lib/sendProviders/catalog';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
 import { defaultSendTransportId } from '../lib/sendProviders/transports';
-import {
-	buildDispatchExtrasFor,
-	type EmailSendParams,
-	type SendProviderKind,
-} from '../lib/sendProviders';
+import { buildDispatchExtrasFor, type EmailSendParams } from '../lib/sendProviders';
 import { resolveLastMileRouting } from './lastMileRouting';
-import { normalizeEngagementScore, type WorkerEnvelopeInput } from './workerEnvelope';
+import {
+	normalizeEngagementScore,
+	type WorkerEnvelopeInput,
+	type WorkerRetryState,
+} from './workerEnvelope';
+import type { SendWorkerOutcome } from './workerOutcome';
 import type { Id } from '../_generated/dataModel';
-
-export interface WorkerRetryState {
-	attempt: number;
-	startedAt: number;
-	idempotencyKey: string;
-	workAttemptId?: string;
-	acceptanceReconciliation?: boolean;
-}
 
 /**
  * The durable reference this dispatch is bound to.
  *
  * `campaign` / `transactional` are countable Sends with a full lifecycle.
- * `seedProbe` is a deliverability shadow copy (D18): durable (its probe-ledger
+ * `seedProbe` is a deliverability shadow copy: durable (its probe-ledger
  * row), org-scoped and unique, but deliberately NOT a Send — no `emailSends`
  * row, no completion handler, no stat shard, no reputation event. It is
  * accepted here so the probe travels the IDENTICAL transport as the mail it
@@ -49,8 +43,8 @@ type DispatchRef =
 	| { kind: 'transactional'; id: Id<'transactionalSends'> }
 	| { kind: 'seedProbe'; id: Id<'seedPlacementProbes'> };
 
-interface GovernedDispatchRequest<TEnvelope> {
-	envelopeInput: TEnvelope;
+interface GovernedDispatchRequest {
+	envelopeInput: WorkerEnvelopeInput;
 	deliveryDomain: DeliveryDomain;
 	messageType: GovernedMessageType;
 	to: string;
@@ -71,73 +65,15 @@ interface GovernedDispatchRequest<TEnvelope> {
 	message: Omit<EmailSendParams, 'to' | 'from' | 'replyTo'>;
 }
 
-export type GovernedDispatchResult<TEnvelope> =
-	| {
-			success: true;
-			providerMessageId: string;
-			providerType: SendProviderKind;
-			sendLatencyMs: number;
-			/**
-			 * The transport took CUSTODY of the message rather than delivering it
-			 * (its catalog entry declares `acceptanceSemantics: 'accepted'`):
-			 * intake accepted the work and delivery remains queued until the
-			 * transport's own feedback terminalizes the Send.
-			 */
-			acceptedForDelivery?: true;
-	  }
-	| {
-			success: false;
-			deferred: true;
-			retryAfterMs: number;
-			envelopeInput: TEnvelope;
-			retryState: WorkerRetryState;
-			/**
-			 * Carried to the completion callback because that is where gate 2's
-			 * numerator is written and the routing result is long gone by then. See
-			 * `LastMileRoutingDeferred.origin`: only `governed` is evidence about this
-			 * sending identity, and only `governed` is counted.
-			 */
-			deferralOrigin: 'governed' | 'local';
-	  }
-	| {
-			success: false;
-			acceptanceUnknown: true;
-			providerMessageId: string;
-			workAttemptId: string;
-			startedAt: number;
-			envelopeInput: TEnvelope;
-			retryState: WorkerRetryState;
-			retryAfterMs?: number;
-	  }
-	/**
-	 * ACCEPTANCE IS OPEN AND CANNOT BE RE-ASKED (plan D4).
-	 *
-	 * The custody arm above (`acceptanceSemantics: 'accepted'`) reconciles by
-	 * REPLAYING the attempt: its idempotency key IS the transport's message id, so
-	 * a repeat dispatch either finds the existing work or creates it, and no
-	 * recipient can be mailed twice. A relay that has no idempotency surface —
-	 * Mandrill's `send-raw` has none — offers no such question. The lost response
-	 * may sit on top of an ACCEPTED and DELIVERED message, so this arm carries no
-	 * envelope and no message id: there is deliberately nothing here a caller
-	 * could re-dispatch from.
-	 *
-	 * What it asks the completion callback for is a PARK, not a retry: keep the
-	 * Send `queued` — the state that says "we do not know yet", which is the
-	 * truth — until the delivery deadline, then terminalize with a code that says
-	 * so. `queued` is also the only state a later transition can still leave;
-	 * `failed` is terminal in `LEGAL_EDGES`, so the shipped behaviour (falling
-	 * through to `throw` → `WORKPOOL_FAILED`) closed the row against every piece
-	 * of evidence that could still arrive AND claimed a definite non-delivery for
-	 * a message that may well have been delivered.
-	 */
-	| {
-			success: false;
-			acceptanceUnknown: true;
-			awaitingProviderFeedback: true;
-			providerType: SendProviderKind;
-			startedAt: number;
-			retryState: WorkerRetryState;
-	  };
+/**
+ * What this boundary can answer, as the seam's own type.
+ *
+ * Four of the five arms in `delivery/workerOutcome.ts` are built here; the
+ * fifth (`suppressed`) never reaches dispatch. Naming the shared union rather
+ * than a private twin is what makes the worker's `returns` gate, this
+ * function's return, and the completion callback's switch the same five cases.
+ */
+type GovernedDispatchResult = Exclude<SendWorkerOutcome, { kind: 'suppressed' }>;
 
 function currentRetryState(
 	retryState: WorkerRetryState | undefined,
@@ -151,8 +87,19 @@ function currentRetryState(
 	};
 }
 
-function nextRetryState(current: WorkerRetryState): WorkerRetryState {
-	return { ...current, attempt: current.attempt + 1 };
+/**
+ * The retry state the next governed attempt inherits.
+ *
+ * The attempt number comes from the shared budget module, so the ONE case that
+ * spends no attempt — a deliberate policy hold — is stated in the same vocabulary
+ * the cap checks read (`GovernedRetryBudgetOptions.isPolicyHold`), instead of being
+ * an invisible skipped increment here.
+ */
+function nextRetryState(
+	current: WorkerRetryState,
+	options: GovernedRetryBudgetOptions = {}
+): WorkerRetryState {
+	return { ...current, attempt: nextGovernedAttempt(current.attempt, options) };
 }
 
 /**
@@ -189,21 +136,26 @@ function reentryRetryState(current: WorkerRetryState): WorkerRetryState {
  * route extras, and both pre-dispatch and provider-side deferral shapes. The
  * worker remains responsible for suppression, composition, and attachments.
  */
-export async function dispatchGovernedEmail<TEnvelope>(
+export async function dispatchGovernedEmail(
 	ctx: ActionCtx,
-	request: GovernedDispatchRequest<TEnvelope>
-): Promise<GovernedDispatchResult<TEnvelope>> {
+	request: GovernedDispatchRequest
+): Promise<GovernedDispatchResult> {
 	const idempotencyKey =
 		request.retryState?.idempotencyKey ??
 		(request.sendRef
 			? `${request.sendRef.kind === 'seedProbe' ? 'probe' : 'send'}_${request.sendRef.id}`
 			: `legacy_${crypto.randomUUID()}`);
 	const retryState = currentRetryState(request.retryState, idempotencyKey);
-	if (retryState.attempt > MAX_GOVERNED_ROUTING_ATTEMPTS) {
+	// BOTH BOUNDS, ONE PREDICATE, CAP FIRST. `attempt` is the ALREADY-INCREMENTED
+	// successor number a re-entry handed us, so the cap refuses the ninth attempt
+	// rather than the eighth. A message that is out of attempts AND out of time is
+	// refused for the cap — the error an operator reads names the bound that was
+	// hit first, which is why the two arms are still spelled separately here.
+	const budget = admitGovernedRetry(retryState, Date.now());
+	if (budget.attempts === 'attempt_capped') {
 		throw new Error('Governed delivery retry limit exhausted.');
 	}
-	const ageMs = Date.now() - retryState.startedAt;
-	if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
+	if (budget.deadline !== 'ok') {
 		throw new Error('Governed delivery deadline expired.');
 	}
 	const organizationId =
@@ -218,7 +170,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		organizationId,
 		messageId: idempotencyKey,
 		workAttemptId,
-		envelopeInput: request.envelopeInput as WorkerEnvelopeInput,
+		envelopeInput: request.envelopeInput,
 		retryState: reentryRetryState(retryState),
 	});
 	const routing = await resolveLastMileRouting(ctx, {
@@ -241,8 +193,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 	if (routing.kind === 'defer') {
 		if (retryState.acceptanceReconciliation) {
 			return {
-				success: false,
-				acceptanceUnknown: true,
+				kind: 'acceptanceUnknown',
 				providerMessageId: idempotencyKey,
 				workAttemptId,
 				startedAt: retryState.startedAt,
@@ -252,21 +203,22 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			};
 		}
 		return {
-			success: false,
-			deferred: true,
+			kind: 'deferred',
 			retryAfterMs: routing.retryAfterMs,
 			deferralOrigin: routing.origin,
 			envelopeInput: request.envelopeInput,
 			// The attempt cap bounds routing churn. A deliberate safety hold is
 			// not churn: consuming attempts would terminalize the send minutes
 			// into a pause that is meant to outlast them, so a held message is
-			// bounded by the delivery deadline instead.
-			retryState: routing.isPolicyHold ? retryState : nextRetryState(retryState),
+			// bounded by the delivery deadline instead. The exemption is NAMED
+			// (`isPolicyHold`) rather than expressed as a skipped increment, so the
+			// cap checks downstream read it in the same vocabulary.
+			retryState: nextRetryState(retryState, { isPolicyHold: routing.isPolicyHold === true }),
 		};
 	}
 
 	const { providerKind, route, routingLease, relayReturnPathHost } = routing;
-	// A CAPABILITY, NOT A KIND (plan D2). Both facts below are declared by the
+	// A CAPABILITY, NOT A KIND. Both facts below are declared by the
 	// transport's catalog entry, so a new provider kind never edits this file:
 	//   · does its provider message id exist before the send (ours, not theirs)?
 	//   · does a successful dispatch mean CUSTODY rather than delivery?
@@ -283,7 +235,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 	// races the send response still be attributed to this Send.
 	//
 	// A seed probe has no Send row to bind a provider identity to — binding is
-	// the Send lifecycle's job, and a probe deliberately has no lifecycle (D18).
+	// the Send lifecycle's job, and a probe deliberately has no lifecycle.
 	if (providerMessageIdIsPreassigned && request.sendRef.kind !== 'seedProbe') {
 		const binding = await ctx.runMutation(internal.delivery.sendLifecycle.bindMtaProviderIdentity, {
 			send: request.sendRef,
@@ -337,14 +289,17 @@ export async function dispatchGovernedEmail<TEnvelope>(
 
 	if (dispatched.result.success) {
 		return {
-			success: true,
+			kind: 'accepted',
 			// A pre-assigned id is authoritative over whatever the response
 			// carried: a deduplicated MTA intake answers a sentinel id, and
 			// recording that would orphan the Send from every later report.
 			providerMessageId: providerMessageIdIsPreassigned ? idempotencyKey : dispatched.result.id,
 			providerType: dispatched.providerType,
 			sendLatencyMs: dispatched.latencyMs,
-			...(transportTakesCustody ? { acceptedForDelivery: true as const } : {}),
+			// STATED, NOT IMPLIED BY ABSENCE. The consumer used to read whether
+			// this key was PRESENT; a required boolean says which of the two
+			// meanings of "accepted" this was, and cannot be forgotten.
+			isCustodyHandoff: transportTakesCustody,
 		};
 	}
 	if (
@@ -352,8 +307,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		dispatched.result.errorCode === 'ROUTING_LEASE_UNREADABLE'
 	) {
 		return {
-			success: false,
-			deferred: true,
+			kind: 'deferred',
 			retryAfterMs: dispatched.result.retryAfterMs ?? 60_000,
 			// TWO 409s, ONE WAIT, TWO DIFFERENT CLAIMS. `ROUTING_DEFERRED` is the MTA
 			// revalidating its own lease at enqueue and withdrawing it — an aged-out
@@ -375,11 +329,10 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		// RE-ASKABLE, BY DECLARATION. A transport that takes custody under an
 		// idempotency key we minted answers the same question twice without
 		// mailing anyone twice, so the ambiguity is resolved by replaying the
-		// attempt rather than by guessing (plan D4).
+		// attempt rather than by guessing.
 		if (transportTakesCustody) {
 			return {
-				success: false,
-				acceptanceUnknown: true,
+				kind: 'acceptanceUnknown',
 				providerMessageId: idempotencyKey,
 				workAttemptId,
 				startedAt: retryState.startedAt,
@@ -399,16 +352,15 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		//
 		// NOT A DEFERRAL, and deliberately not routed through one. An ambiguous
 		// timeout is our own request outcome going missing, not a receiver holding
-		// the message: borrowing the deferral shape would re-enqueue the send (D4
-		// forbids it) and would put a non-observation into
+		// the message: borrowing the deferral shape would re-enqueue the send — a
+		// blind retry on an ambiguous timeout is exactly what we never do — and
+		// would put a non-observation into
 		// `transportOutcomes.deferred`, whose two writers already measure from
 		// different points on the delivery path (see the ruler-asymmetry note in
 		// `delivery/deferralOutcome.ts`). Gate 2's numerator stays untouched here.
 		if (hasProviderFeedbackFor(providerKind)) {
 			return {
-				success: false,
-				acceptanceUnknown: true,
-				awaitingProviderFeedback: true,
+				kind: 'awaitingFeedback',
 				providerType: dispatched.providerType,
 				startedAt: retryState.startedAt,
 				retryState,

@@ -32,9 +32,9 @@ export function useWebhookActions(
 		togglingWebhookId.value = webhookId;
 		const result = await toggleWebhookMutation({ webhookId });
 		togglingWebhookId.value = null;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(
-			result.isActive
+			result.result.isActive
 				? t('shared.useWebhookActions.webhookEnabled')
 				: t('shared.useWebhookActions.webhookDisabled')
 		);
@@ -69,11 +69,11 @@ export function useWebhookActions(
 			webhookId: webhookToRegenerate.value.id,
 		});
 		isRegenerating.value = false;
-		if (result === undefined) {
+		if (!result.ok) {
 			closeRegenerateModal();
 			return;
 		}
-		regeneratedSecret.value = result.secret ?? null;
+		regeneratedSecret.value = result.result.secret ?? null;
 		showNotification(t('shared.useWebhookActions.secretRegenerated'));
 	};
 
@@ -107,7 +107,7 @@ export function useWebhookActions(
 		isDeleting.value = true;
 		const result = await deleteWebhookMutation({ webhookId: webhookToDelete.value.id });
 		isDeleting.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('shared.useWebhookActions.webhookDeleted'));
 		closeDeleteModal();
 	};

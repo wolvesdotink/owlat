@@ -1,5 +1,5 @@
 /**
- * Resolution helpers for the "move my mailbox here" flow (piece c5).
+ * Resolution helpers for the "move my mailbox here" flow.
  *
  * Split out of `mailboxMove.ts` (which holds the Convex queries/mutations) to
  * keep each file focused and under the file-size cap. No Convex functions live
@@ -18,14 +18,14 @@
  */
 
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { getLivePersonalExternalAccountForUser } from './externalAccounts';
+import { getLivePersonalExternalAccountForUser } from './external/accounts';
 import { throwNotFound, throwUnauthenticated } from '../_utils/errors';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 
 type SessionWithRole = NonNullable<Awaited<ReturnType<typeof getBetterAuthSessionWithRole>>>;
 /** A session narrowed to a real org member — `role` is guaranteed non-null. */
-export type MoverSession = SessionWithRole & { role: NonNullable<SessionWithRole['role']> };
+type MoverSession = SessionWithRole & { role: NonNullable<SessionWithRole['role']> };
 
 /**
  * Resolve the caller's own movable external mailbox — the thing a move operates

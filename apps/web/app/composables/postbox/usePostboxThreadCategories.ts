@@ -1,6 +1,6 @@
 /**
  * Smart-inbox category grouping for the inbox view. Reuses the same
- * mail.mailbox.listThreads feed as the conversation view (usePostboxThreadGroups)
+ * mail.mailbox.queries.listThreads feed as the conversation view (usePostboxThreadGroups)
  * and buckets each thread by its advisory `category.label`, then exposes the
  * ordered sections (People first), per-section collapsed state remembered across
  * navigations, and the "Recategorize as…" override mutation.
@@ -8,7 +8,14 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-export type MailCategory = 'person' | 'newsletter' | 'notification' | 'receipt' | 'other';
+export type MailCategory =
+	| 'person'
+	| 'newsletter'
+	| 'notification'
+	| 'receipt'
+	| 'promotion'
+	| 'spam'
+	| 'other';
 
 /**
  * Section order + presentation (People first, "Everything else" last).
@@ -17,7 +24,7 @@ export type MailCategory = 'person' | 'newsletter' | 'notification' | 'receipt' 
  * sentence itself (the i18n registry convention); the list that renders it
  * resolves the key with `t()`.
  */
-export const CATEGORY_SECTIONS: ReadonlyArray<{
+const CATEGORY_SECTIONS: ReadonlyArray<{
 	key: MailCategory;
 	label: string;
 	icon: string;
@@ -43,6 +50,13 @@ export const CATEGORY_SECTIONS: ReadonlyArray<{
 		icon: 'lucide:receipt',
 	},
 	{
+		key: 'promotion',
+		label: 'shared.postbox.usePostboxThreadCategories.sections.promotion',
+		icon: 'lucide:megaphone',
+	},
+	// `spam` has no section: the classifier files it into the Spam folder, and
+	// a thread the owner brings back is recategorized to something else.
+	{
 		key: 'other',
 		label: 'shared.postbox.usePostboxThreadCategories.sections.other',
 		icon: 'lucide:inbox',
@@ -58,7 +72,11 @@ export const RECATEGORIZE_OPTIONS: ReadonlyArray<{ key: MailCategory; label: str
 	{ key: 'newsletter', label: 'shared.postbox.usePostboxThreadCategories.options.newsletter' },
 	{ key: 'notification', label: 'shared.postbox.usePostboxThreadCategories.options.notification' },
 	{ key: 'receipt', label: 'shared.postbox.usePostboxThreadCategories.options.receipt' },
+	{ key: 'promotion', label: 'shared.postbox.usePostboxThreadCategories.options.promotion' },
 	{ key: 'other', label: 'shared.postbox.usePostboxThreadCategories.options.other' },
+	// Last and set apart: "Mark as spam" moves the thread to the Spam folder and
+	// remembers the sender. Any other pick on a spam thread is "Not spam".
+	{ key: 'spam', label: 'shared.postbox.usePostboxThreadCategories.options.spam' },
 ];
 
 export function usePostboxThreadCategories(args: {
@@ -72,7 +90,7 @@ export function usePostboxThreadCategories(args: {
 	);
 
 	const { data, isLoading } = useConvexQuery(
-		api.mail.mailbox.listThreads,
+		api.mail.mailbox.queries.listThreads,
 		() =>
 			args.enabled.value && args.mailboxId.value
 				? {

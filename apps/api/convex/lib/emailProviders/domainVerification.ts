@@ -32,15 +32,10 @@ export function formatFromAddress(email: string, name?: string): string {
 /**
  * Check if a domain is verified
  */
-export async function isDomainVerified(
-	db: DatabaseReader,
-	domain: string
-): Promise<boolean> {
+export async function isDomainVerified(db: DatabaseReader, domain: string): Promise<boolean> {
 	const domainRecord = await db
 		.query('domains')
-		.withIndex('by_domain', (q) =>
-			q.eq('domain', domain.toLowerCase())
-		)
+		.withIndex('by_domain', (q) => q.eq('domain', domain.toLowerCase()))
 		.first();
 
 	if (!domainRecord) {
@@ -60,9 +55,7 @@ export async function isDomainVerificationFresh(
 ): Promise<{ fresh: boolean; lastVerifiedAt?: number; stale: boolean }> {
 	const domainRecord = await db
 		.query('domains')
-		.withIndex('by_domain', (q) =>
-			q.eq('domain', domain.toLowerCase())
-		)
+		.withIndex('by_domain', (q) => q.eq('domain', domain.toLowerCase()))
 		.first();
 
 	if (!domainRecord) {
@@ -102,9 +95,7 @@ export async function validateDomainForSending(
 	// Check if domain exists and its status
 	const domainRecord = await db
 		.query('domains')
-		.withIndex('by_domain', (q) =>
-			q.eq('domain', domain.toLowerCase())
-		)
+		.withIndex('by_domain', (q) => q.eq('domain', domain.toLowerCase()))
 		.first();
 
 	if (domainRecord?.status === 'registering') {
@@ -138,44 +129,5 @@ export async function validateDomainForSending(
 		domain,
 		verified: true,
 		warning,
-	};
-}
-
-/**
- * Get verification status for a domain
- */
-export async function getDomainVerificationStatus(
-	db: DatabaseReader,
-	domain: string
-): Promise<{
-	exists: boolean;
-	status?: 'registering' | 'pending' | 'verified' | 'failed';
-	verified: boolean;
-	lastVerifiedAt?: number;
-	stale: boolean;
-}> {
-	const domainRecord = await db
-		.query('domains')
-		.withIndex('by_domain', (q) =>
-			q.eq('domain', domain.toLowerCase())
-		)
-		.first();
-
-	if (!domainRecord) {
-		return {
-			exists: false,
-			verified: false,
-			stale: false,
-		};
-	}
-
-	const freshness = await isDomainVerificationFresh(db, domain);
-
-	return {
-		exists: true,
-		status: domainRecord.status,
-		verified: domainRecord.status === 'verified',
-		lastVerifiedAt: domainRecord.lastVerifiedAt,
-		stale: freshness.stale,
 	};
 }

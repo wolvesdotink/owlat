@@ -22,12 +22,12 @@ import {
 	GooglePostmasterClient,
 	POSTMASTER_RATIO_METRICS,
 	googleDateObject,
-	isRecord,
 	normalizeDomainStat,
 	parseReadableVerifiedDomain,
 	type PostmasterDomainWire,
 	utcDateDaysAgo,
 } from './googlePostmasterApi.js';
+import { isRecord } from '@owlat/shared';
 import { logger } from './logger.js';
 import {
 	COMPLIANCE_PUSHED_PREFIX,

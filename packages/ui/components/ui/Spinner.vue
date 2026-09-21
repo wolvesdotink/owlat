@@ -40,7 +40,7 @@ const toneClass = computed(() => TONE_CLASSES[props.tone]);
 
 <template>
 	<div
-		class="border-2 border-t-transparent rounded-full animate-spin"
+		class="border-2 border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
 		:class="[sizeClass, toneClass]"
 	/>
 </template>

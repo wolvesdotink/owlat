@@ -58,6 +58,7 @@ const iconStub = { props: ['name'], template: '<span />' };
 const globalMount = {
 	plugins: [createTestI18n()],
 	components: { PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
+	stubs: { PostboxImageBanner: true },
 };
 
 const message = { _id: 'msg-resize', htmlBodyInline: '<p>Tall body</p>' };

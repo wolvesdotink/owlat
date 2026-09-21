@@ -12,9 +12,9 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
+import { DAY_MS } from '../../lib/constants';
 import {
 	createSndsDayFold,
-	DAY_MS,
 	foldedSndsDays,
 	foldSndsDays,
 	normalizeSndsIp,

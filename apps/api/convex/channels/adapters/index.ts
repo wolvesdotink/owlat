@@ -1,5 +1,12 @@
+'use node';
+
 /**
  * Outbound channel provider adapters (NODE-SIDE HELPERS, no Convex functions).
+ *
+ * `'use node'`: the generic webhook adapter POSTs through `fetchGuarded`
+ * (dns/net + undici), so this barrel — and anything re-exported from it — is
+ * Node-only. Its sole consumer, `channels/outbound.ts`, is already an action.
+ * Import the isolate-safe types straight from './types' instead of this barrel.
  *
  * The three adapters an operator can actually configure and send through today
  * — Twilio SMS, the Meta WhatsApp Cloud API, and a generic outbound HTTP
@@ -12,8 +19,10 @@
  * failure, a `healthCheck` that hard-returned healthy, a `validateSignature`
  * that hard-returned true). Those two are deleted; these three are real, so
  * they moved here — next to their only caller — rather than staying behind a
- * package boundary that no second consumer ever crossed. `@owlat/channels` is
- * now exactly what it always load-bearingly was: inbound normalization.
+ * package boundary that no second consumer ever crossed. The inbound
+ * normalization that was the rest of that package now lives in
+ * `webhooks/adapters/inboundRegistry.ts`, next to ITS only caller, and the
+ * package is gone.
  *
  * Not here, deliberately:
  *   - `email` — owned end to end by the send-provider seam

@@ -20,7 +20,7 @@ function distinctCustomFields(conditions: readonly ContactPropertyCondition[]): 
 	return customFields;
 }
 
-export interface ContactPropertyLookup {
+interface ContactPropertyLookup {
 	propertyIds: Map<string, Id<'contactProperties'>>;
 	values: Map<string, unknown>;
 }
@@ -67,7 +67,7 @@ function applyOperator(
 		case 'lte':
 			return Number(fieldValue) <= Number(conditionValue);
 		case 'is_empty':
-			return fieldValue === undefined || fieldValue === null || fieldValue === '';
+			return fieldValue == null || fieldValue === '';
 		case 'not_empty':
 			return fieldValue !== undefined && fieldValue !== null && fieldValue !== '';
 		case 'is_true':

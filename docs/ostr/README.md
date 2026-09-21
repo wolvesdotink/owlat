@@ -36,7 +36,7 @@ Working title only. The public name is chosen at launch and will not contain
 |                  |                                                                                                                                                                           |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Specification    | [spec-v0.md](spec-v0.md), sections in [spec/](spec/)                                                                                                                      |
-| Decision record  | [ADR-0058](../adr/0058-open-sender-trust-registry.md)                                                                                                                     |
+| Decision record  | [ADR-0062](../adr/0062-open-sender-trust-registry.md)                                                                                                                     |
 | Design plan      | `TRUST_REGISTRY_PLAN_2026-08-20.html` at the repository root                                                                                                              |
 | Core library     | `packages/ostr-core` (schema, JCS canonicalization, ed25519, Merkle primitives, scoring policy)                                                                           |
 | Consumer library | `packages/ostr-client` (DNS lookup, snapshot and diff sync, the `bl.`/`wl.` compatibility views). Built; observer re-weighting lands in Phase 3                           |
@@ -71,7 +71,7 @@ The wiring runs one way. Owlat looks up other people's senders, and nothing
 looks up its own: the deliverability stack does not query the instance's own
 domains, so an operator who wants their own standing asks an aggregator by
 hand. Closing that loop, the outbound half of the Postmaster-Tools replacement
-in [ADR-0058](../adr/0058-open-sender-trust-registry.md), is later work and
+in [ADR-0062](../adr/0062-open-sender-trust-registry.md), is later work and
 waits on a federation with more than one observer in it. Reading your own tier
 off a log you are the only contributor to tells you what you already know.
 

@@ -7,10 +7,11 @@ import {
 	recordHostedContributionOutcome,
 	type HostedContributionAuthorizationSpec,
 } from './hostedContributionAuthorization';
+import { completedOrFailedValidator } from '../lib/convexValidators';
 
 /**
  * Runtime authorization seam for a bundled send transport's SENDING-DOMAIN
- * IDENTITY calls (the seams plan's P3.2) — the third sibling of
+ * IDENTITY calls — the third sibling of
  * `sendTransportAuthorization` and `sendTransportWebhookAuthorization`.
  *
  * WHY IT IS ITS OWN SEAM rather than a reuse of the send one. The question is the
@@ -48,7 +49,7 @@ export const recordOutcome = internalMutation({
 	args: {
 		pluginId: v.string(),
 		transportKind: v.string(),
-		outcome: v.union(v.literal('completed'), v.literal('failed')),
+		outcome: completedOrFailedValidator,
 	},
 	handler: (ctx, args): Promise<void> =>
 		recordHostedContributionOutcome(ctx, SPEC, args.pluginId, args.transportKind, args.outcome),

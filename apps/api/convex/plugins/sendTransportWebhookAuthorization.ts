@@ -7,10 +7,11 @@ import {
 	recordHostedContributionOutcome,
 	type HostedContributionAuthorizationSpec,
 } from './hostedContributionAuthorization';
+import { completedOrFailedValidator } from '../lib/convexValidators';
 
 /**
- * Runtime authorization seam for a bundled send transport's FEEDBACK deliveries
- * (the seams plan's D6/P2.2) — the inbound twin of `sendTransportAuthorization`.
+ * Runtime authorization seam for a bundled send transport's FEEDBACK deliveries — the inbound twin
+ * of `sendTransportAuthorization`.
  *
  * WHY IT IS ITS OWN SEAM rather than a reuse of the send one. The question is
  * the same (may this plugin's transport contribution act right now: registered,
@@ -47,7 +48,7 @@ export const recordOutcome = internalMutation({
 	args: {
 		pluginId: v.string(),
 		transportKind: v.string(),
-		outcome: v.union(v.literal('completed'), v.literal('failed')),
+		outcome: completedOrFailedValidator,
 	},
 	handler: (ctx, args): Promise<void> =>
 		recordHostedContributionOutcome(ctx, SPEC, args.pluginId, args.transportKind, args.outcome),

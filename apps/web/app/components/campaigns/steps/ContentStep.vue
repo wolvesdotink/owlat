@@ -38,9 +38,12 @@ const createdTemplate = ref<{
 const { t } = useI18n();
 const { isPending: authPending, isAuthenticated } = useAuth();
 
-const { data: campaignWithRelations } = useConvexQuery(api.campaigns.campaigns.getWithRelations, () => ({
-	campaignId: props.campaignId,
-}));
+const { data: campaignWithRelations } = useConvexQuery(
+	api.campaigns.campaigns.getWithRelations,
+	() => ({
+		campaignId: props.campaignId,
+	})
+);
 
 const { results: emailTemplates } = usePaginatedQuery(
 	api.emailTemplates.emails.list,
@@ -162,13 +165,13 @@ const handleSubmit = async () => {
 				subject: campaignSubject.value.trim(),
 			});
 
-			if (!newId) return;
+			if (!newId.ok) return;
 
-			templateId = newId;
-			selectedTemplateId.value = newId;
+			templateId = newId.result;
+			selectedTemplateId.value = newId.result;
 			selectionType.value = 'existing';
 			createdTemplate.value = {
-				_id: newId,
+				_id: newId.result,
 				name: newTemplateName.value.trim(),
 				subject: campaignSubject.value.trim(),
 			};
@@ -179,7 +182,7 @@ const handleSubmit = async () => {
 			emailTemplateId: templateId!,
 			subject: campaignSubject.value.trim(),
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 
 		emit('submit');
 	} finally {
@@ -216,7 +219,7 @@ defineExpose({
 						:class="[
 							'flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors',
 							selectionType === 'existing'
-								? 'border-brand bg-brand/5'
+								? 'border-text-primary bg-bg-surface'
 								: 'border-border-subtle hover:border-border-default',
 						]"
 					>
@@ -225,7 +228,7 @@ defineExpose({
 							type="radio"
 							name="emailSelectionType"
 							value="existing"
-							class="mt-1 w-4 h-4 text-brand"
+							class="mt-1 w-4 h-4 text-text-primary"
 						/>
 						<div>
 							<p class="font-medium text-text-primary">
@@ -240,7 +243,7 @@ defineExpose({
 						:class="[
 							'flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors',
 							selectionType === 'new'
-								? 'border-brand bg-brand/5'
+								? 'border-text-primary bg-bg-surface'
 								: 'border-border-subtle hover:border-border-default',
 						]"
 					>
@@ -249,7 +252,7 @@ defineExpose({
 							type="radio"
 							name="emailSelectionType"
 							value="new"
-							class="mt-1 w-4 h-4 text-brand"
+							class="mt-1 w-4 h-4 text-text-primary"
 						/>
 						<div>
 							<p class="font-medium text-text-primary">
@@ -267,7 +270,10 @@ defineExpose({
 						t('components.campaigns.steps.contentStep.existingTemplatesLabel')
 					}}</label>
 					<div class="relative mt-1.5">
-						<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2" />
+						<Icon
+							name="lucide:search"
+							class="w-4 h-4 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2"
+						/>
 						<input
 							id="templateSearch"
 							v-model="templateSearchQuery"
@@ -298,7 +304,7 @@ defineExpose({
 								:class="[
 									'w-5 h-5 rounded-full border flex items-center justify-center shrink-0',
 									selectedTemplateId === template._id
-										? 'border-brand bg-brand text-text-inverse'
+										? 'border-text-primary bg-text-primary text-text-inverse'
 										: 'border-border-default text-transparent',
 								]"
 							>
@@ -331,12 +337,12 @@ defineExpose({
 					</p>
 				</div>
 
-				<div v-if="selectedTemplate" class="p-4 bg-brand/5 border border-brand/30 rounded-lg">
+				<div v-if="selectedTemplate" class="p-4 bg-bg-surface border border-border-default rounded-lg">
 					<p class="text-sm text-text-secondary">
 						{{ t('components.campaigns.steps.contentStep.selectedTemplate') }}
 					</p>
 					<div class="mt-1 flex items-center gap-2">
-						<Icon name="lucide:mail" class="w-4 h-4 text-brand" />
+						<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
 						<p class="font-medium text-text-primary truncate">{{ selectedTemplate.name }}</p>
 					</div>
 					<p class="text-sm text-text-secondary truncate mt-1">
@@ -374,7 +380,9 @@ defineExpose({
 				</UiButton>
 				<UiButton type="submit" :loading="isLoading" :disabled="isLoading">
 					{{ isLoading ? t('common.saving') : t('common.next') }}
-					<template v-if="!isLoading" #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4" /></template>
+					<template v-if="!isLoading" #iconRight
+						><Icon name="lucide:arrow-right" class="w-4 h-4"
+					/></template>
 				</UiButton>
 			</div>
 		</form>

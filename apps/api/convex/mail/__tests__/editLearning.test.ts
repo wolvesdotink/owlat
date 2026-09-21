@@ -1,5 +1,5 @@
 /**
- * Pure-logic tests for the edit-learning flywheel (mail/editLearning):
+ * Pure-logic tests for the edit-learning flywheel (mail/ai/editLearning):
  *
  *   - normalizedEditDistance / pushEditDistanceSample / medianEditDistance:
  *     the north-star metric is recorded and bounded
@@ -25,7 +25,7 @@ import {
 	EDIT_RECURRENCE_THRESHOLD,
 	EDIT_DISTANCE_WINDOW,
 	type EditAdjustment,
-} from '../editLearning';
+} from '../ai/editLearning';
 
 describe('normalizedEditDistance', () => {
 	it('is 0 for identical bodies and 1 for fully disjoint ones', () => {

@@ -41,7 +41,6 @@ packages/sdk-java/target/
 .claude/
 .planning/
 .margay/
-.changeset/
 scripts/ralph/
 
 # Rust build artifacts (desktop app) — multi-GB, never needed in images

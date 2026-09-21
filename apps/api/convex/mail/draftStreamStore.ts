@@ -5,7 +5,7 @@
  * Convex action cannot push to the client directly, so it throttle-patches an
  * owner-private scratch row here and the client subscribes via {@link getDraftStream}.
  *
- * Split from the streaming action (mail/reviseDraft.ts, a `'use node'` module
+ * Split from the streaming action (mail/ai/reviseDraft.ts, a `'use node'` module
  * that can hold ONLY actions) because these are queries/mutations. Mirrors the
  * assistant streaming pattern (assistant/conversations.ts patch/finalize).
  *
@@ -21,6 +21,7 @@ import { internalMutation } from '../_generated/server';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
+import { draftSurfaceValidator } from '../lib/literalValidators';
 
 /** Cap the persisted streaming text so a runaway model cannot bloat a row. */
 const DRAFT_STREAM_MAX_CHARS = 20000;
@@ -34,7 +35,7 @@ const DRAFT_STREAM_MAX_CHARS = 20000;
 // all-members: a member owns their own transient revise buffer (owner-scoped).
 export const createDraftStream = authedMutation({
 	args: {
-		surface: v.union(v.literal('compose'), v.literal('review')),
+		surface: draftSurfaceValidator,
 	},
 	handler: async (ctx, args) => {
 		const { userId } = await getMutationContext(ctx);

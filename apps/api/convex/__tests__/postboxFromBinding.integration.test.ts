@@ -17,22 +17,23 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -103,17 +104,12 @@ describe('mailIdentities.resolveAllowedFromAddresses', () => {
 			});
 		});
 
-		const allowed = await t.query(
-			internal.mail.identities.resolveAllowedFromAddresses,
-			{ mailboxId }
-		);
+		const allowed = await t.query(internal.mail.identities.resolveAllowedFromAddresses, {
+			mailboxId,
+		});
 
 		expect(allowed.sort()).toEqual(
-			[
-				'alice@example.com',
-				'alice+sales@example.com',
-				'alice.wonderland@example.com',
-			].sort()
+			['alice@example.com', 'alice+sales@example.com', 'alice.wonderland@example.com'].sort()
 		);
 	});
 
@@ -124,10 +120,9 @@ describe('mailIdentities.resolveAllowedFromAddresses', () => {
 			await ctx.db.patch(mailboxId, { status: 'suspended' });
 		});
 
-		const allowed = await t.query(
-			internal.mail.identities.resolveAllowedFromAddresses,
-			{ mailboxId }
-		);
+		const allowed = await t.query(internal.mail.identities.resolveAllowedFromAddresses, {
+			mailboxId,
+		});
 		expect(allowed).toEqual([]);
 	});
 });
@@ -141,7 +136,7 @@ describe('mail.draftLifecycle.transition({ to: "sent" }) — From-binding', () =
 		let rawStorageId!: Id<'_storage'>;
 		await t.run(async (ctx) => {
 			rawStorageId = await ctx.storage.store(
-				new Blob([new Uint8Array([0])], { type: 'message/rfc822' }),
+				new Blob([new Uint8Array([0])], { type: 'message/rfc822' })
 			);
 		});
 		return {
@@ -272,13 +267,10 @@ describe('mail.draftLifecycle.transition({ to: "sent" }) — From-binding', () =
 			expect(draft?.state).toBe('pending_send');
 		});
 
-		const revertOutcome = await t.mutation(
-			internal.mail.draftLifecycle.transition,
-			{
-				draftId,
-				input: { to: 'draft', at: Date.now(), reason: 'from_revoked' },
-			},
-		);
+		const revertOutcome = await t.mutation(internal.mail.draftLifecycle.transition, {
+			draftId,
+			input: { to: 'draft', at: Date.now(), reason: 'from_revoked' },
+		});
 		expect(revertOutcome.ok).toBe(true);
 
 		await t.run(async (ctx) => {
@@ -305,7 +297,7 @@ describe('mailImap.appendMessage — From-binding', () => {
 		const { mailboxId, inboxFolderId } = await seedMailbox(t, 'alice@example.com');
 		const storageId = await seedStorageBlob(t);
 
-		const result = await t.mutation(internal.mail.imap.appendMessage, {
+		const result = await t.mutation(internal.mail.imap.append.appendMessage, {
 			folderId: inboxFolderId,
 			rawStorageId: storageId,
 			rawSize: 1,
@@ -329,7 +321,7 @@ describe('mailImap.appendMessage — From-binding', () => {
 		const storageId = await seedStorageBlob(t);
 
 		await expect(
-			t.mutation(internal.mail.imap.appendMessage, {
+			t.mutation(internal.mail.imap.append.appendMessage, {
 				folderId: inboxFolderId,
 				rawStorageId: storageId,
 				rawSize: 1,
@@ -357,7 +349,7 @@ describe('mailImap.appendMessage — From-binding', () => {
 		});
 		const storageId = await seedStorageBlob(t);
 
-		const result = await t.mutation(internal.mail.imap.appendMessage, {
+		const result = await t.mutation(internal.mail.imap.append.appendMessage, {
 			folderId: inboxFolderId,
 			rawStorageId: storageId,
 			rawSize: 1,

@@ -73,8 +73,8 @@ async function seedThreadWithClarification(
 		const mailboxId = await ctx.db.insert('mailboxes', {
 			userId,
 			organizationId: 'org-1',
-			address: `${userId}@hinterland.camp`,
-			domain: 'hinterland.camp',
+			address: `${userId}@owlat.test`,
+			domain: 'owlat.test',
 			status: 'active',
 			usedBytes: 0,
 			uidValidity: now,
@@ -124,7 +124,7 @@ async function seedThreadWithClarification(
 			threadId,
 			fromAddress: 'ann@acme.com',
 			fromName: 'Ann',
-			toAddresses: [`${userId}@hinterland.camp`],
+			toAddresses: [`${userId}@owlat.test`],
 			ccAddresses: [],
 			bccAddresses: [],
 			subject: 'Refund?',
@@ -183,7 +183,7 @@ describe('mail.needsReplyClarify.answerClarification', () => {
 		const t = convexTest(schema, modules);
 		const threadId = await seedThreadWithClarification(t, 'user-A');
 
-		const res = await t.mutation(api.mail.needsReplyClarify.answerClarification, {
+		const res = await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
 			threadId,
 			answers: [{ questionId: 'clarify_0', value: 'Yes' }],
 		});
@@ -206,7 +206,7 @@ describe('mail.needsReplyClarify.answerClarification', () => {
 		const threadId = await seedThreadWithClarification(t, 'user-A');
 
 		await expect(
-			t.mutation(api.mail.needsReplyClarify.answerClarification, {
+			t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
 				threadId,
 				answers: [{ questionId: 'does_not_exist', value: 'Yes' }],
 			})
@@ -228,7 +228,7 @@ describe('mail.needsReplyClarify.answerClarification', () => {
 		const threadId = await seedThreadWithClarification(t, 'user-A');
 		sessionMocks.userId = 'user-B';
 		await expect(
-			t.mutation(api.mail.needsReplyClarify.answerClarification, {
+			t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
 				threadId,
 				answers: [{ questionId: 'clarify_0', value: 'Yes' }],
 			})

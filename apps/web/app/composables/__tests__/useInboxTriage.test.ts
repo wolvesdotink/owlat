@@ -71,7 +71,7 @@ describe('useInboxTriage', () => {
 		const rows = ref<Row[]>([{ _id: 'a' }, { _id: 'b' }]);
 		const { visible, run } = useInboxTriage(rows);
 
-		const mutate = vi.fn(async () => ({ success: true }));
+		const mutate = vi.fn(async () => ({ ok: true, result: { success: true } }) as const);
 		const inverse = vi.fn(async () => ({ success: true }));
 
 		const ok = await run({ id: 'a', label: 'Resolved', leavesView: true, mutate, inverse });
@@ -95,8 +95,8 @@ describe('useInboxTriage', () => {
 		const rows = ref<Row[]>([{ _id: 'a' }, { _id: 'b' }]);
 		const { visible, run } = useInboxTriage(rows);
 
-		// useBackendOperation returns `undefined` on failure (it toasts the error itself).
-		const mutate = vi.fn(async () => undefined);
+		// useBackendOperation resolves `ok: false` on failure (it toasts the error itself).
+		const mutate = vi.fn(async () => ({ ok: false }) as const);
 		const inverse = vi.fn();
 
 		const ok = await run({ id: 'a', label: 'Resolved', leavesView: true, mutate, inverse });
@@ -113,7 +113,7 @@ describe('useInboxTriage', () => {
 		const rows = ref<Row[]>([{ _id: 'a' }, { _id: 'b' }]);
 		const { visible, run } = useInboxTriage(rows);
 
-		const mutate = vi.fn(async () => ({ success: true }));
+		const mutate = vi.fn(async () => ({ ok: true, result: { success: true } }) as const);
 		const inverse = vi.fn(async () => ({ success: true }));
 
 		const ok = await run({ id: 'a', label: 'Assigned to you', leavesView: false, mutate, inverse });

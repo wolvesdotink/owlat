@@ -19,9 +19,6 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import {
 	OWN_SENDING_DOMAIN_PROVIDER_KIND,
 	SENDING_DOMAIN_PROVIDERS,
@@ -41,10 +38,6 @@ import {
 	type ApiVerifiedSendProviderKind,
 	type SendProviderKind,
 } from '../../../lib/sendProviders/catalog';
-
-const sourceDir = dirname(fileURLToPath(import.meta.url));
-const readSource = (relativePath: string): string =>
-	readFileSync(resolve(sourceDir, relativePath), 'utf8');
 
 describe('SENDING_DOMAIN_PROVIDERS', () => {
 	it('registers exactly the shipped kinds, each declaring its own kind', () => {
@@ -112,24 +105,6 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 		expect(isSendingDomainProviderKind('toString')).toBe(false);
 		expect(isSendingDomainProviderKind('constructor')).toBe(false);
 	});
-
-	it('names the forward-provisioning effect exactly while it is a hand-written list', () => {
-		// `../index.ts` may warn that registering an adapter does not by itself put
-		// a kind on the FORWARD relay-provisioning path only while
-		// `provision_relay_identity_if_enabled` schedules from a hand-written list
-		// of relay kinds. Pinned in BOTH directions — the same treatment
-		// `apps/docs/__tests__/abstractionsDocs.test.ts` gives the abstraction
-		// page's copy of the warning. The effect is a registry walk today, so a
-		// surviving warning would tell the next author their kind is unreachable on
-		// the forward path when it is not; and if the walk is ever unwound back
-		// into a list, the warning has to come back. Nothing else in the tree would
-		// notice either direction.
-		const stillAHandWrittenList =
-			readSource('../../lifecycle.ts').includes("relayKinds.has('ses')");
-		expect(readSource('../index.ts').includes('provision_relay_identity_if_enabled')).toBe(
-			stillAHandWrittenList
-		);
-	});
 });
 
 describe('completeness against the send-provider catalog (Mandrill D6/D7)', () => {
@@ -180,27 +155,6 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 			});
 		}
 	});
-
-	/**
-	 * The exact core api-verified set — the lower half of a two-sided pin. This
-	 * assignment proves `'ses' | 'mandrill'` is CONTAINED in
-	 * `ApiVerifiedSendProviderKind`; the complement (nothing else is in it) is
-	 * `_ApiVerifiedCoreSetIsExactly_Ses_Mandrill` at the bottom of this file,
-	 * where a type alias is legal. Containment alone would not be a pin: a third
-	 * core kind declaring `domainVerification: 'api'` widens the derived type and
-	 * this line still compiles.
-	 */
-	it('pins the compile-time guard to the same set the catalog declares', () => {
-		// If `domainVerification: 'api'` is added to a kind, this assignment stops
-		// compiling until the kind is added here AND registered above — which is
-		// the point: the type is derived from the catalog literal, so it cannot
-		// drift from it silently.
-		const apiVerifiedKinds: ApiVerifiedSendProviderKind[] = ['ses', 'mandrill'];
-		expect(apiVerifiedKinds).toEqual(['ses', 'mandrill']);
-	});
-
-	// The other direction of the same pin lives at the bottom of this file
-	// (`_ApiVerifiedCoreSetIsExactly_Ses_Mandrill`), where a type alias is legal.
 
 	/**
 	 * ALL THREE relay seams are implemented IF AND ONLY IF the catalog declares
@@ -369,24 +323,24 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 });
 
 /**
- * The upper half of the api-verified set pin, and the reason the case
- * `pins the compile-time guard to the same set the catalog declares` can call
- * itself exact rather than merely non-vacuous.
- *
- * That case's assignment proves `'ses' | 'mandrill'` is CONTAINED in
- * `ApiVerifiedSendProviderKind`; on its own it survives a third core kind
- * declaring `domainVerification: 'api'` without a word. `Exclude` here is the
- * complement, and `AssertNoOtherApiVerifiedKind` accepts only `never` — so the
- * third kind fails `bun run typecheck` (the one gate that sees this file;
- * vitest does not typecheck), naming itself, until it is added to that literal.
+ * The api-verified core set, pinned in both directions at the type level (the
+ * one gate that sees this file is `bun run typecheck`; vitest does not
+ * typecheck). `_ApiVerifiedCoreSetContains_Ses_Mandrill` proves `'ses' |
+ * 'mandrill'` is CONTAINED in `ApiVerifiedSendProviderKind`;
+ * `_ApiVerifiedCoreSetIsExactly_Ses_Mandrill` is the complement — `Exclude`
+ * must be `never`, so a third core kind declaring `domainVerification: 'api'`
+ * fails the build naming itself until it is added to that literal AND
+ * registered above.
  *
  * Nothing UNSAFE follows from a widened set — a missing adapter is caught by
  * `_ApiVerifiedKindsHaveDomainProviders` and a hollow one by
  * `_relayProofTypecheck`, both in `../index.ts`. What this buys is that the new
- * kind is ACKNOWLEDGED: the literal above is where a human states the core set,
+ * kind is ACKNOWLEDGED: the literal here is where a human states the core set,
  * and the runtime table above walks it.
  */
 type AssertNoOtherApiVerifiedKind<_T extends never> = true;
 export type _ApiVerifiedCoreSetIsExactly_Ses_Mandrill = AssertNoOtherApiVerifiedKind<
 	Exclude<ApiVerifiedSendProviderKind, 'ses' | 'mandrill'>
 >;
+type AssertContained<_T extends ApiVerifiedSendProviderKind> = true;
+export type _ApiVerifiedCoreSetContains_Ses_Mandrill = AssertContained<'ses' | 'mandrill'>;

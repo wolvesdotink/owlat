@@ -15,19 +15,3 @@ export interface PickerThread {
 export function threadPickerLabel(thread: PickerThread): string {
 	return thread.subject.trim() || '(no subject)';
 }
-
-/**
- * Narrow a page of threads to those matching the typed query, over the subject
- * and the participant address. `conversationThreads` has no full-text index, so
- * the picker filters a bounded recent page client-side — the same approach the
- * chat "link an email thread" dialog takes.
- */
-export function filterThreadCandidates(threads: PickerThread[], query: string): PickerThread[] {
-	const needle = query.trim().toLowerCase();
-	if (!needle) return threads;
-	return threads.filter(
-		(thread) =>
-			thread.subject.toLowerCase().includes(needle) ||
-			(thread.contactIdentifier ?? '').toLowerCase().includes(needle)
-	);
-}

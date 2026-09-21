@@ -21,9 +21,21 @@ import {
 	mailReplyDefaultValidator,
 	mailDensityValidator,
 	mailViewModeValidator,
+	mailReadingPaneValidator,
+	mailListSizeValidator,
 	mailInboxModeValidator,
+	mailSortOrderValidator,
 	mailNotifyAboutValidator,
-} from '../lib/convexValidators';
+	mailUndoSendSecondsValidator,
+	mailMarkReadPolicyValidator,
+	mailQuietHoursValidator,
+	mailDailyBriefEmailValidator,
+	mailTrashAutoPurgeDaysValidator,
+	mailShareLinkExpiryDaysValidator,
+	mailSwipeActionValidator,
+	mailShortcutPresetValidator,
+	mailShortcutOverridesValidator,
+} from '../lib/mailSettingsValidators';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
 // public: soft-auth — returns null for anonymous; the row is self-scoped to
@@ -45,11 +57,28 @@ export const get = publicQuery({
 			replyDefault: row.replyDefault,
 			density: row.density,
 			viewMode: row.viewMode,
+			readingPane: row.readingPane,
+			listWidth: row.listWidth,
+			listHeight: row.listHeight,
 			inboxMode: row.inboxMode,
+			sortOrder: row.sortOrder,
 			isSendSoundOn: row.isSendSoundOn,
+			undoSendSeconds: row.undoSendSeconds,
 			notifyAbout: row.notifyAbout,
 			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
+			quietHours: row.quietHours,
+			isHidePreviewOn: row.isHidePreviewOn,
 			isSenderScreenerOn: row.isSenderScreenerOn,
+			markReadPolicy: row.markReadPolicy,
+			dailyBriefEmail: row.dailyBriefEmail,
+			lastDailyBriefEmailAt: row.lastDailyBriefEmailAt,
+			trashAutoPurgeDays: row.trashAutoPurgeDays,
+			shareLinkExpiryDays: row.shareLinkExpiryDays,
+			swipeLeftAction: row.swipeLeftAction,
+			swipeRightAction: row.swipeRightAction,
+			shortcutPreset: row.shortcutPreset,
+			shortcutOverrides: row.shortcutOverrides,
+			sealedMailNudgeSeenAt: row.sealedMailNudgeSeenAt,
 		};
 	},
 });
@@ -64,11 +93,30 @@ export const update = authedMutation({
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		density: v.optional(mailDensityValidator),
 		viewMode: v.optional(mailViewModeValidator),
+		readingPane: v.optional(mailReadingPaneValidator),
+		listWidth: v.optional(mailListSizeValidator),
+		listHeight: v.optional(mailListSizeValidator),
 		inboxMode: v.optional(mailInboxModeValidator),
+		sortOrder: v.optional(mailSortOrderValidator),
 		isSendSoundOn: v.optional(v.boolean()),
+		undoSendSeconds: v.optional(mailUndoSendSecondsValidator),
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
+		quietHours: v.optional(mailQuietHoursValidator),
+		isHidePreviewOn: v.optional(v.boolean()),
 		isSenderScreenerOn: v.optional(v.boolean()),
+		markReadPolicy: v.optional(mailMarkReadPolicyValidator),
+		dailyBriefEmail: v.optional(mailDailyBriefEmailValidator),
+		trashAutoPurgeDays: v.optional(mailTrashAutoPurgeDaysValidator),
+		shareLinkExpiryDays: v.optional(mailShareLinkExpiryDaysValidator),
+		swipeLeftAction: v.optional(mailSwipeActionValidator),
+		swipeRightAction: v.optional(mailSwipeActionValidator),
+		shortcutPreset: v.optional(mailShortcutPresetValidator),
+		shortcutOverrides: v.optional(mailShortcutOverridesValidator),
+		// The one-time Sealed-Mail nudge (idea 55). A plain timestamp, so the
+		// caller stamps `Date.now()` on dismissal; there is no closed set to
+		// validate and nothing to clamp.
+		sealedMailNudgeSeenAt: v.optional(v.number()),
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
@@ -87,11 +135,27 @@ export const update = authedMutation({
 			replyDefault?: (typeof args)['replyDefault'];
 			density?: (typeof args)['density'];
 			viewMode?: (typeof args)['viewMode'];
+			readingPane?: (typeof args)['readingPane'];
+			listWidth?: number;
+			listHeight?: number;
 			inboxMode?: (typeof args)['inboxMode'];
+			sortOrder?: (typeof args)['sortOrder'];
 			isSendSoundOn?: boolean;
+			undoSendSeconds?: (typeof args)['undoSendSeconds'];
 			notifyAbout?: (typeof args)['notifyAbout'];
 			isBadgeNonPeopleOn?: boolean;
+			quietHours?: (typeof args)['quietHours'];
+			isHidePreviewOn?: boolean;
 			isSenderScreenerOn?: boolean;
+			markReadPolicy?: (typeof args)['markReadPolicy'];
+			dailyBriefEmail?: (typeof args)['dailyBriefEmail'];
+			trashAutoPurgeDays?: (typeof args)['trashAutoPurgeDays'];
+			shareLinkExpiryDays?: (typeof args)['shareLinkExpiryDays'];
+			shortcutPreset?: (typeof args)['shortcutPreset'];
+			shortcutOverrides?: (typeof args)['shortcutOverrides'];
+			swipeLeftAction?: (typeof args)['swipeLeftAction'];
+			swipeRightAction?: (typeof args)['swipeRightAction'];
+			sealedMailNudgeSeenAt?: number;
 		} = {};
 		if (args.autoAdvance !== undefined) patch.autoAdvance = args.autoAdvance;
 		if (args.isWritingSuggestionsOn !== undefined)
@@ -100,11 +164,41 @@ export const update = authedMutation({
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;
+		if (args.readingPane !== undefined) patch.readingPane = args.readingPane;
+		if (args.listWidth !== undefined) patch.listWidth = args.listWidth;
+		if (args.listHeight !== undefined) patch.listHeight = args.listHeight;
 		if (args.inboxMode !== undefined) patch.inboxMode = args.inboxMode;
+		if (args.sortOrder !== undefined) patch.sortOrder = args.sortOrder;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
+		if (args.undoSendSeconds !== undefined) patch.undoSendSeconds = args.undoSendSeconds;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
 		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;
+		if (args.quietHours !== undefined) patch.quietHours = args.quietHours;
+		if (args.isHidePreviewOn !== undefined) patch.isHidePreviewOn = args.isHidePreviewOn;
 		if (args.isSenderScreenerOn !== undefined) patch.isSenderScreenerOn = args.isSenderScreenerOn;
+		if (args.markReadPolicy !== undefined) patch.markReadPolicy = args.markReadPolicy;
+		if (args.trashAutoPurgeDays !== undefined) patch.trashAutoPurgeDays = args.trashAutoPurgeDays;
+		if (args.shareLinkExpiryDays !== undefined)
+			patch.shareLinkExpiryDays = args.shareLinkExpiryDays;
+		if (args.shortcutPreset !== undefined) patch.shortcutPreset = args.shortcutPreset;
+		if (args.shortcutOverrides !== undefined) patch.shortcutOverrides = args.shortcutOverrides;
+		if (args.swipeLeftAction !== undefined) patch.swipeLeftAction = args.swipeLeftAction;
+		if (args.swipeRightAction !== undefined) patch.swipeRightAction = args.swipeRightAction;
+		if (args.sealedMailNudgeSeenAt !== undefined)
+			patch.sealedMailNudgeSeenAt = args.sealedMailNudgeSeenAt;
+		if (args.dailyBriefEmail !== undefined) {
+			// Clamp here rather than trusting the client: `minute` becomes a
+			// scheduling comparison in a cron, and an out-of-range value would
+			// either never fire or fire every tick.
+			patch.dailyBriefEmail = {
+				enabled: args.dailyBriefEmail.enabled,
+				minute: Math.min(1439, Math.max(0, Math.round(args.dailyBriefEmail.minute))),
+				utcOffsetMinutes: Math.min(
+					840,
+					Math.max(-720, Math.round(args.dailyBriefEmail.utcOffsetMinutes))
+				),
+			};
+		}
 		if (existing) {
 			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 			return existing._id;

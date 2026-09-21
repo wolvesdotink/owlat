@@ -15,7 +15,7 @@ const scopeValidator = v.union(
 	v.object({ type: v.literal('classification'), id: v.string() })
 );
 
-export interface DraftStrategySelectionScope {
+interface DraftStrategySelectionScope {
 	readonly mailboxId?: string;
 	readonly contactId?: string;
 	readonly classification: string;
@@ -101,7 +101,7 @@ export const setSelection = authedMutation({
 			if (!contact || contact.deletedAt !== undefined)
 				throw new TypeError('Unknown draft strategy scope');
 		}
-		const scopeId = String(args.scope.id);
+		const scopeId = args.scope.id;
 		const existing = await ctx.db
 			.query('draftStrategySelections')
 			.withIndex('by_organization_scope', (q) =>

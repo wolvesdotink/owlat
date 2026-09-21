@@ -145,7 +145,7 @@ const {
 					plainTextContent: payload.plainTextContent,
 					plainTextOverride: payload.plainTextOverride,
 				});
-				if (result === undefined) throw new Error('Save failed');
+				if (!result.ok) throw new Error('Save failed');
 			},
 		});
 	},
@@ -185,7 +185,7 @@ const handleTranslations = () => {
 async function handlePublicationToggle() {
 	if (isPublished.value) {
 		const result = await unpublishTemplate({ templateId: templateId.value });
-		if (result) showToast(t('dashboard.send.emails.detail.edit.toasts.unpublished'));
+		if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.unpublished'));
 		return;
 	}
 	const htmlContent = template.value?.htmlContent;
@@ -198,7 +198,7 @@ async function handlePublicationToggle() {
 		htmlContent,
 		htmlTranslations: template.value?.htmlTranslations,
 	});
-	if (result) showToast(t('dashboard.send.emails.detail.edit.toasts.published'));
+	if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.published'));
 }
 </script>
 

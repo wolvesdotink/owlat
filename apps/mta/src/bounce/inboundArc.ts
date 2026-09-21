@@ -19,7 +19,7 @@
  * `verifyArc` (RFC 8617 over the SHARED canon, U4 — no `mailauth` on the inbound
  * runtime path). This module is a THIN ADAPTER: it maps `verifyArc`'s honest
  * `{ cv, sealerDomain, attestsOriginalPass }` result onto the `ArcVerdict` the
- * MTA records, and re-exports the trust predicate that `delivery.ts` applies.
+ * MTA records.
  *
  * The TRUST decision (is this sealer on the operator's allow-list?) lives in the
  * shared `@owlat/shared/arcTrust` predicate and is APPLIED in
@@ -36,14 +36,6 @@
 import { verifyArc } from '@owlat/mail-auth';
 import { logger } from '../monitoring/logger.js';
 import type { ArcChainResult } from '@owlat/shared/arcTrust';
-
-export {
-	DEFAULT_TRUSTED_ARC_FORWARDERS,
-	isTrustedForwarder,
-	shouldArcOverrideDmarc,
-	type ArcChainResult,
-	type ArcOverrideInput,
-} from '@owlat/shared/arcTrust';
 
 /**
  * The verified ARC verdict extracted from an inbound message. All optional-ish

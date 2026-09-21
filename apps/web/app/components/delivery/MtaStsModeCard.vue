@@ -83,7 +83,7 @@ async function selectMode(next: string) {
 	// `next` is a SegmentedControl option value; narrow it before it drives a save.
 	if (!isMtaStsMode(next) || !canManageOrganization.value || next === mode.value) return;
 	const res = await updateSettings({ mtaStsMode: next });
-	if (res === undefined) return; // failure already toasted
+	if (!res.ok) return; // failure already toasted
 	showToast(t(SAVED_TOAST_KEYS[next]));
 }
 </script>

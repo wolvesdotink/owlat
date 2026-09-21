@@ -10,14 +10,11 @@
 import { describe, expect, it } from 'vitest';
 import type { DeliverabilityCell } from '../deliverabilityRouting';
 import {
-	DEFAULT_PLACEMENT_SOURCE_KIND,
 	MAX_PANEL_MAILBOXES_PER_REPORT,
 	MAX_PANEL_REPORTS,
-	PLACEMENT_PROBE_FRESHNESS_MS,
 	PLACEMENT_SOURCE_KINDS,
 	commercialPlacementApiAdapter,
 	commercialReportsToObservations,
-	planPlacementProbeForPromotion,
 	resolvePlacementAdapter,
 	selfHostedSeedPlacementAdapter,
 	type PlacementAdapter,
@@ -39,10 +36,6 @@ function seeds(inbox: number, spam: number, missing = 0): SeedObservation[] {
 }
 
 describe('exactly two implementations', () => {
-	it('the source union is closed at two — no registry, no discovery', () => {
-		expect([...PLACEMENT_SOURCE_KINDS]).toEqual(['self_hosted_seeds', 'commercial_api']);
-	});
-
 	it('both implementations satisfy the same interface', () => {
 		const adapters: PlacementAdapter[] = [
 			selfHostedSeedPlacementAdapter,
@@ -86,10 +79,6 @@ describe('exactly two implementations', () => {
 });
 
 describe('the self-hosted path is the default', () => {
-	it('names self-hosted seeds as the default kind', () => {
-		expect(DEFAULT_PLACEMENT_SOURCE_KIND).toBe('self_hosted_seeds');
-	});
-
 	it('resolves to the seed adapter with no commercial key', () => {
 		const resolution = resolvePlacementAdapter({
 			seedMailboxCount: 8,
@@ -185,105 +174,5 @@ describe('commercial counts fold into the shared observation shape', () => {
 		});
 		expect(rollups).toHaveLength(1);
 		expect(rollups[0]?.status).toBe('collapse_suspected');
-	});
-});
-
-describe('scheduling fires BEFORE a phase promotion', () => {
-	const now = 1_800_000_000_000;
-
-	it('schedules a probe run when a promotion is pending and nothing was measured', () => {
-		const plan = planPlacementProbeForPromotion({
-			cell: CELL,
-			nowMs: now,
-			lastProbeAtMs: null,
-			promotionPending: true,
-		});
-		expect(plan.shouldSchedule).toBe(true);
-		expect(plan.reason).toBe('promotion_pending_no_probe_yet');
-		expect(plan.cellKey).toBe('campaign:gmail');
-	});
-
-	it('schedules when the last reading is older than the freshness window', () => {
-		const plan = planPlacementProbeForPromotion({
-			cell: CELL,
-			nowMs: now,
-			lastProbeAtMs: now - PLACEMENT_PROBE_FRESHNESS_MS - 1,
-			promotionPending: true,
-		});
-		expect(plan.shouldSchedule).toBe(true);
-		expect(plan.reason).toBe('promotion_pending_probe_stale');
-	});
-
-	it('does not schedule on a fresh reading or with no promotion pending', () => {
-		expect(
-			planPlacementProbeForPromotion({
-				cell: CELL,
-				nowMs: now,
-				lastProbeAtMs: now - 1000,
-				promotionPending: true,
-			}).reason
-		).toBe('probe_fresh');
-		expect(
-			planPlacementProbeForPromotion({
-				cell: CELL,
-				nowMs: now,
-				lastProbeAtMs: null,
-				promotionPending: false,
-			}).reason
-		).toBe('no_promotion_pending');
-	});
-
-	it('D2 — a probe that cannot run NEVER blocks the promotion', () => {
-		for (const promotionPending of [true, false]) {
-			for (const lastProbeAtMs of [null, now, now - PLACEMENT_PROBE_FRESHNESS_MS - 1]) {
-				expect(
-					planPlacementProbeForPromotion({
-						cell: CELL,
-						nowMs: now,
-						lastProbeAtMs,
-						promotionPending,
-					}).blocksPromotion
-				).toBe(false);
-			}
-		}
-	});
-
-	it('clock skew cannot manufacture probe traffic', () => {
-		const plan = planPlacementProbeForPromotion({
-			cell: CELL,
-			nowMs: now,
-			// A reading stamped in the future (skewed writer) reads as fresh.
-			lastProbeAtMs: now + 60 * 60 * 1000,
-			promotionPending: true,
-		});
-		expect(plan.shouldSchedule).toBe(false);
-		expect(plan.reason).toBe('probe_fresh');
-	});
-
-	it('a non-finite timestamp is treated as "never measured", not as a hold', () => {
-		const plan = planPlacementProbeForPromotion({
-			cell: CELL,
-			nowMs: now,
-			lastProbeAtMs: Number.NaN,
-			promotionPending: true,
-		});
-		expect(plan.reason).toBe('promotion_pending_no_probe_yet');
-	});
-
-	it('an UNREADABLE clock schedules the probe rather than silently skipping it', () => {
-		// With a NaN `nowMs` the age is NaN and every comparison is false, so an
-		// unguarded implementation reports `probe_fresh` — a broken clock would
-		// promote the cell on evidence of unknown age and gate 5 would never see a
-		// fresh reading.
-		for (const nowMs of [Number.NaN, Number.POSITIVE_INFINITY]) {
-			const plan = planPlacementProbeForPromotion({
-				cell: CELL,
-				nowMs,
-				lastProbeAtMs: now - 1000,
-				promotionPending: true,
-			});
-			expect(plan.shouldSchedule).toBe(true);
-			expect(plan.reason).toBe('promotion_pending_no_probe_yet');
-		}
 	});
 });

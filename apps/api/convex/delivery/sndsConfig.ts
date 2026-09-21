@@ -11,8 +11,8 @@
  */
 
 import { parsePoolIpsLenient } from '../domains/spf';
-import { DAY_MS } from './sndsFeed';
 import { startOfDayUtc } from '../lib/clock';
+import { DAY_MS } from '../lib/constants';
 
 /**
  * How far back a feed row may reach and still be stored.
@@ -23,7 +23,7 @@ import { startOfDayUtc } from '../lib/clock';
  * every `periodStart` is a UTC midnight, so an edge taken at the current instant
  * would sit mid-day and refuse a day the poller had just decided to send.
  */
-export const SNDS_INGEST_MAX_AGE_MS = 14 * DAY_MS;
+const SNDS_INGEST_MAX_AGE_MS = 14 * DAY_MS;
 
 /** How many feed URLs one deployment may configure. */
 export const SNDS_MAX_FEEDS = 8;

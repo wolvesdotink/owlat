@@ -1,5 +1,5 @@
 /**
- * Dual-transport alignment pre-flight (P3-5).
+ * Dual-transport alignment pre-flight.
  *
  * The two arms of a ramp cell must be INDISTINGUISHABLE TO THE RECEIVER in
  * everything except the sending infrastructure. If the own-MTA arm and the
@@ -13,7 +13,7 @@
  *
  *  1. FROM DOMAIN — identical on both arms. Blocking; the whole design rests on
  *     it. Giving the own-MTA arm its own subdomain splits domain reputation and
- *     makes the arms incomparable (D11) — that is a hard failure here, not a
+ *     makes the arms incomparable — that is a hard failure here, not a
  *     warning. Per-STREAM subdomains are a different, legitimate thing.
  *  2. SPF — one record covering the MTA's addresses AND the relay's `include:`,
  *     within RFC 7208's 10-lookup limit (`./spfCoexistence`). The own arm's
@@ -29,10 +29,10 @@
  * Return-Path state is RECORDED, never blocking: a relay that cannot carry our
  * VERP return path only flags the cell's measurement as degraded.
  *
- * D2 — THE ADDITIVE-ONLY THIRD-PARTY RULE: with NO reference transport there is
+ * THE ADDITIVE-ONLY THIRD-PARTY RULE: with NO reference transport there is
  * no second arm and therefore nothing to align. The pre-flight then passes
  * trivially as `single_arm` — no error, no warning, no block. This is the single
- * easiest place in the plan to accidentally make an ESP mandatory.
+ * easiest place to accidentally make an ESP mandatory.
  *
  * The third reference state is the one that keeps that rule honest without
  * opening a hole: a relay IS configured but its signing identity is not known to
@@ -45,7 +45,7 @@
  * without raising a failure, and is retried sooner than the daily cadence.
  *
  * Pure: no DNS, no clock, no Convex — every input, including `checkedAt`, is a
- * parameter (D15).
+ * parameter.
  *
  * The VOCABULARY this speaks — the types, the four check ids, the remedy copy, the
  * DNS-name spellings and the check-result constructors — lives in
@@ -56,6 +56,7 @@
 
 import { organizationalDomain } from './spfAlignment';
 import { evaluateSpfCoexistence } from './spfCoexistence';
+import { normalizeDomain } from './utils/normalizeDomain';
 import type { SpfCoexistenceFailure } from './spfCoexistence';
 import {
 	ALIGNMENT_CHECK_IDS,
@@ -64,7 +65,6 @@ import {
 	ALIGNMENT_UNKNOWN_RETRY_MS,
 	dkimRecordName,
 	fail,
-	normalizeDomain,
 	pass,
 	unknownCheck,
 	type AlignmentArm,
@@ -309,7 +309,7 @@ function verdictFor(checks: readonly AlignmentCheckResult[]): AlignmentVerdict {
 
 /**
  * The pre-flight. With no reference arm it returns `single_arm` and allows the
- * ramp — absence of a third-party transport is a SUPPORTED CONFIGURATION (D2).
+ * ramp — absence of a third-party transport is a SUPPORTED CONFIGURATION.
  * With a relay whose identity we cannot see it returns `unknown` and HOLDS.
  */
 export function evaluateAlignmentPreflight(

@@ -1,10 +1,10 @@
 /**
- * Ramp controller — the gate vocabulary (plan D3, D12, D15).
+ * Ramp controller — the gate vocabulary.
  *
  * Types only: what a gate is asked, what it answers, and the numbers it must
  * hand back with the answer. Split from `gates.ts` so the two evaluator
- * implementations (reference-arm here, trailing-baseline in P1-7) and the
- * dashboard can share one vocabulary without importing either implementation.
+ * implementations (reference-arm and trailing-baseline) and the dashboard can
+ * share one vocabulary without importing either implementation.
  */
 
 import type { SeedPlacementObservation, SmtpBlockObservation } from './gateObservations';
@@ -20,7 +20,7 @@ export type { SeedPlacementObservation, SmtpBlockObservation } from './gateObser
  *
  *  - `pass`               — the measurement is fresh, large enough, inside the threshold.
  *  - `fail`               — the measurement is fresh, large enough, outside it.
- *  - `insufficient_data`  — thin, stale or absent evidence. HOLDS (plan D10): the
+ *  - `insufficient_data`  — thin, stale or absent evidence. HOLDS: the
  *                           controller neither increases nor decreases on it.
  *  - `halt`               — a hard stop that outranks an ordinary fail. Only the
  *                           deferral gate can produce it.
@@ -44,7 +44,7 @@ export type RampGateDecidedReason =
 	| 'reference_tolerance_breached'
 	/**
 	 * The cell moved against ITS OWN 30-day trailing rate by more than the
-	 * standalone substitution allows (plan's "gates, degraded honestly" table).
+	 * standalone substitution allows.
 	 *
 	 * A distinct reason from `reference_tolerance_breached` because the operator
 	 * story is different in a way that changes what they go and look at: the
@@ -64,11 +64,11 @@ export type RampGateDecidedReason =
  *    deferral-rate breach: throttling gets better by slowing down, a block does
  *    not get better by sending at all.
  */
-export type RampGateHaltReason = 'halt_threshold_breached' | 'block_message_detected';
+type RampGateHaltReason = 'halt_threshold_breached' | 'block_message_detected';
 
 /**
  * Why a gate HELD. Every one of these says which arm was unusable and how, so
- * the admin notification can name the thing to fix (plan D12).
+ * the admin notification can name the thing to fix.
  */
 export type RampGateHoldReason =
 	| 'own_sample_below_floor'
@@ -97,28 +97,17 @@ export type RampGateHoldReason =
 	 * was a perfectly good number that a RELATIVE comparison cannot be built on:
 	 * a trailing window with zero hard bounces, or a baseline so high that `k *
 	 * base` reaches 1 and the derived ceiling could never fail anything. Nothing
-	 * is broken; there is simply no relative verdict to give, so the gate holds
-	 * (plan D10).
+	 * is broken; there is simply no relative verdict to give, so the gate holds.
 	 *
 	 * Reporting the second as the first tells an operator whose 30-day window is
 	 * clean and complete that their trailing rate is corrupt — and the audit row
-	 * and the admin notification key off exactly this code (plan D12).
+	 * and the admin notification key off exactly this code.
 	 */
 	| 'reference_not_a_denominator'
 	| 'baseline_not_a_denominator'
 	/** A zero with no writer behind it is not a zero — see `evaluateDeferralGate`. */
 	| 'own_deferral_telemetry_absent'
 	| 'evidence_absent';
-
-/**
- * Why a gate returned what it returned, as a stable machine-readable code. The
- * human sentence is rendered from this plus the measurement; the code is what
- * the audit row and the admin notification key off (plan D12).
- *
- * The union is split per status above so that a `pass` carrying a hold reason
- * is not a representable value.
- */
-export type RampGateReason = RampGateDecidedReason | RampGateHaltReason | RampGateHoldReason;
 
 /**
  * The numbers behind a verdict, in DOCUMENTED units: `*Rate` fields are
@@ -135,7 +124,7 @@ interface RampGateMeasurementBase {
 	 * are never the same number in the same unit.
 	 *
 	 * A separate field rather than an overloaded `thresholdRate`: both are small
-	 * numbers, and an audit row (plan D12) that cannot tell "a ratio floor of
+	 * numbers, and an audit row that cannot tell "a ratio floor of
 	 * 0.95" from "an engagement floor of 95%" is a record nobody can act on. Only
 	 * the engagement family sets it; the ceiling gates leave it absent.
 	 */
@@ -147,7 +136,7 @@ interface RampGateMeasurementBase {
 	 *
 	 * The mirror image of `ratioFloor`, and a SEPARATE field from it for the same
 	 * reason `ratioFloor` is separate from `thresholdRate`: a floor of 0.85 and a
-	 * ceiling of 1.5 mean opposite things, and an audit row (plan D12) that
+	 * ceiling of 1.5 mean opposite things, and an audit row that
 	 * reported one under the other's name would invert the story it tells. Only the
 	 * standalone substitutions set it — the reference-arm gates express their
 	 * comparative half in percentage points, in `toleranceValuePp`.
@@ -168,10 +157,9 @@ interface RampGateMeasurementBase {
 	 *    said "we are refusing this sender", which has nothing to do with how many
 	 *    messages were handed over.
 	 *
-	 * A renderer that prints "N sends" unconditionally is wrong on both, and under
-	 * plan D12 the audit row and the admin notification render from exactly this
-	 * field — see `gateExplanation` in `apps/web/app/utils/deliverabilityMeasurement.ts`
-	 * for the branch that keeps the sentence true.
+	 * A renderer that prints "N sends" unconditionally is wrong on both, and the audit row and the
+	 * admin notification render from exactly this field — see `gateExplanation` in
+	 * `apps/web/app/utils/deliverabilityMeasurement.ts` for the branch that keeps the sentence true.
 	 */
 	readonly ownSample: number;
 	/** Denominator behind `referenceRate`, or `null` when absent. */
@@ -190,7 +178,7 @@ interface RampGateMeasurementBase {
 	 * A separate field rather than an overloaded `minSample`: the engagement
 	 * family's two sub-gates compare against different second series (the
 	 * concurrent reference arm, and the cell's own 30-day trailing baseline)
-	 * whose floors differ by 3x, and an audit row (plan D12) that reports one
+	 * whose floors differ by 3x, and an audit row that reports one
 	 * arm's floor beside the other arm's sample asserts something false about
 	 * both. Only the engagement family sets it; the ceiling gates leave it
 	 * absent, as do one-armed gates.
@@ -217,10 +205,8 @@ export interface RampGateHoldMeasurement extends RampGateMeasurementBase {
 	readonly referenceRate: number | null;
 }
 
-export type RampGateMeasurement = RampGateDecidedMeasurement | RampGateHoldMeasurement;
-
 /**
- * HOW MUCH THE VERDICT IS WORTH (plan D14). Rendered on the cell, recorded in
+ * HOW MUCH THE VERDICT IS WORTH. Rendered on the cell, recorded in
  * the audit row, and — through `mayJustifyIncrease` — enforced by the aggregator.
  *
  *  - `high`   — the measurement is self-hosted and direct. Bounces and 4xx text
@@ -237,7 +223,7 @@ export type RampGateConfidence = 'high' | 'medium' | 'low';
 /**
  * The two things every verdict carries besides the numbers.
  *
- * `mayJustifyIncrease` IS THE ASYMMETRY (plan D14), and it lives on the RESULT
+ * `mayJustifyIncrease` IS THE ASYMMETRY, and it lives on the RESULT
  * rather than in a caller's head on purpose. "The weak gate may only ever cause a
  * decrease, never an increase" stated as a convention is a rule every future
  * caller gets one chance to forget; stated as a field the aggregator reads, a
@@ -293,17 +279,17 @@ export type RampVerdict = 'pass' | 'fail' | 'halt' | 'insufficient_data';
 
 interface RampGateEvaluationBase {
 	/**
-	 * The failing gate is a TRIPWIRE, not a measurement (plan D17): the
+	 * The failing gate is a TRIPWIRE, not a measurement: the
 	 * controller must corroborate it against the deferral or bounce gate before
 	 * acting on it. Only ever true alongside a `fail`/`halt` from a gate in
 	 * `CORROBORATION_REQUIRED_RAMP_GATES`.
 	 */
 	readonly requiresCorroboration: boolean;
-	/** Consecutive clean windows INCLUDING this one (plan D9's K_CLEAN input). */
+	/** Consecutive clean windows INCLUDING this one (the K_CLEAN input). */
 	readonly cleanStreak: number;
 	readonly perGate: readonly RampGateResult[];
 	/**
-	 * The WEAKEST confidence among the gates that DECIDED something (plan D14) —
+	 * The WEAKEST confidence among the gates that DECIDED something —
 	 * `low` when none did, because an evaluation nobody measured is not a
 	 * well-measured one.
 	 *
@@ -316,7 +302,7 @@ interface RampGateEvaluationBase {
 	 * number by the measurement inputs the deployment does not have and is what
 	 * the screen renders.
 	 *
-	 * THE TWO ARE NAMED APART ON PURPOSE. The audit row (plan D12) and the
+	 * THE TWO ARE NAMED APART ON PURPOSE. The audit row and the
 	 * decrease notification record what the DECISION was worth, which is this
 	 * one; anything answering "how well is this cell measured" wants the view's
 	 * level instead. One name over both is how they drift back into two
@@ -324,11 +310,10 @@ interface RampGateEvaluationBase {
 	 */
 	readonly measuredConfidence: RampGateConfidence;
 	/**
-	 * Whether ANY contributing gate passed with `mayJustifyIncrease`. When this is
-	 * false the verdict can never be `pass`, so a low-confidence gate cannot be the
-	 * sole justification for raising a share (plan D14). Carried on the evaluation
-	 * — not just applied to the verdict — so the audit row (plan D12) can say WHY a
-	 * window that looked clean did not advance the streak.
+	 * Whether ANY contributing gate passed with `mayJustifyIncrease`. When this is false the verdict
+	 * can never be `pass`, so a low-confidence gate cannot be the sole justification for raising a
+	 * share. Carried on the evaluation — not just applied to the verdict — so the audit row can say
+	 * WHY a window that looked clean did not advance the streak.
 	 */
 	readonly increaseEvidence: boolean;
 	/**
@@ -347,7 +332,7 @@ interface RampGateEvaluationBase {
  * The gate aggregate, DISCRIMINATED ON `verdict`.
  *
  * A `fail` or a `halt` is the one shape that costs a cell half its share, and
- * the audit row for that retreat has to name what broke (plan D12). Making
+ * the audit row for that retreat has to name what broke. Making
  * `failedGate` REQUIRED on those two members is what stops a decrease from ever
  * being recorded with a reason that says it held: the alternative — one
  * interface with an optional flag — permits a breach with nothing to name, and
@@ -373,14 +358,14 @@ export interface RampGateEvaluationInput {
 	readonly own: TransportOutcomeSummary;
 	/**
 	 * Reference (relay/ESP) arm outcomes, or `null` when no reference transport
-	 * is configured. `null` is a SUPPORTED CONFIGURATION (plan D2), not an error.
+	 * is configured. `null` is a SUPPORTED CONFIGURATION, not an error.
 	 *
 	 * Under `referenceArmGateEvaluator` — the only implementation that exists
 	 * today — `null` makes the two-armed gates (hard bounce, complaint, seed
 	 * placement) HOLD, while the one-armed deferral gate keeps deciding. Nothing
-	 * fails, nothing is blocked; the ramp simply moves on thinner evidence. P1-7
-	 * adds the trailing-baseline evaluator that decides for a standalone
-	 * deployment; the CALLER picks the evaluator, this field does not.
+	 * fails, nothing is blocked; the ramp simply moves on thinner evidence. The
+	 * trailing-baseline evaluator is what decides for a standalone deployment; the
+	 * CALLER picks the evaluator, this field does not.
 	 */
 	readonly reference: TransportOutcomeSummary | null;
 	/**
@@ -405,7 +390,7 @@ export interface RampGateEvaluationInput {
 	 * When true the standalone complaint gate measures real complaints at HIGH
 	 * confidence; when absent or false it falls back to the one-click unsubscribe
 	 * proxy at MEDIUM confidence and says so. Absence lowers confidence and does
-	 * nothing else (plan D2).
+	 * nothing else.
 	 */
 	readonly hasComplaintFeedback?: boolean;
 	/**
@@ -438,13 +423,13 @@ export interface RampGateEvaluationInput {
 	 * Absent or `null` means this cell has no classified probes — no seed
 	 * mailboxes, a cell whose stream the shadow copy does not cover, or a sweep
 	 * that has not been polled yet. That HOLDS gate 5 and never fails it, and
-	 * because seed placement is optional the hold costs the ramp nothing (D2).
+	 * because seed placement is optional the hold costs the ramp nothing.
 	 */
 	readonly ownSeeds?: SeedPlacementObservation | null;
 	/**
 	 * The same window's REFERENCE-arm sweep — gate 5's second clause. `null` on a
 	 * standalone deployment, where the roll-up reports `no_reference_arm` and the
-	 * absolute clause is the whole gate (D3's substitution).
+	 * absolute clause is the whole gate.
 	 */
 	readonly referenceSeeds?: SeedPlacementObservation | null;
 	/** Gate 4's result, computed elsewhere (MPP handling). Absent = not measured. */
@@ -464,7 +449,7 @@ export interface RampGateEvaluationInput {
  * `Math.floor(epoch)`, which satisfies K_CLEAN instantly, and an `evaluatedAt`
  * of single digits. In the one module whose premise is that units are a
  * type-level concern, that is not a risk worth taking; naming the fields removes
- * it, and removes the positional churn P1-5/P1-7 would otherwise cause.
+ * it, and removes the positional churn a widening argument list would cause.
  */
 export interface RampGateAggregationInput {
 	readonly perGate: readonly RampGateResult[];
@@ -475,7 +460,7 @@ export interface RampGateAggregationInput {
 }
 
 /**
- * The gate interface (plan D3). TWO implementations, both taking the same input
+ * The gate interface. TWO implementations, both taking the same input
  * and returning the same evaluation, so the controller is written once.
  */
 export interface RampGateEvaluator {

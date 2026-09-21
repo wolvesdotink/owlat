@@ -5,7 +5,7 @@ import { authedMutation } from '../lib/authedFunctions';
 import type { Doc } from '../_generated/dataModel';
 import { requireDraftAutomation } from './guards';
 import { requireAuthenticatedBundledPlugin } from '../plugins/authorization';
-import { getOrThrow } from '../_utils/errors';
+import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { stepConfigValidator } from '../lib/convexValidators';
 import { emailStepModule } from './steps/email';
 import { delayStepModule } from './steps/delay';
@@ -154,6 +154,12 @@ async function remapConditionBranches(
 // ============== Per-step CRUD mutations ==============
 // Convex path: api.automations.steps.{addStep, updateStep, reorderSteps, removeStep}
 
+// Upper bound on a single reorder request. One automation never legitimately
+// carries anywhere near this many steps; the cap turns an attacker-supplied
+// giant `stepOrder` array into a rejected request instead of an unbounded
+// per-hop `ctx.db.get` fan-out.
+const MAX_STEP_ORDER = 500;
+
 export const addStep = authedMutation({
 	args: {
 		automationId: v.id('automations'),
@@ -271,6 +277,11 @@ export const reorderSteps = authedMutation({
 			'Steps can only be reordered while the automation is a draft'
 		);
 
+		// Bound the request before touching the database.
+		if (args.stepOrder.length > MAX_STEP_ORDER) {
+			throwInvalidInput(`Cannot reorder more than ${MAX_STEP_ORDER} steps at once`);
+		}
+
 		const now = Date.now();
 
 		// Build the old-index → new-index map from the requested order, then
@@ -281,10 +292,17 @@ export const reorderSteps = authedMutation({
 		const oldToNew = new Map<number, number | null>();
 		const conditionSteps: Doc<'automationSteps'>[] = [];
 		orderedSteps.forEach((step, i) => {
-			if (step && step.automationId === args.automationId) {
-				oldToNew.set(step.stepIndex, i);
-				if (step.stepType === 'condition') conditionSteps.push(step);
+			// EVERY supplied id must resolve to a live step OF THIS automation.
+			// Validating up front — before any patch — stops a caller renumbering
+			// (and thereby corrupting the run-order of) steps belonging to an
+			// automation they don't own by slipping foreign step ids into the order
+			// array; the ownership filter used to be applied only when building the
+			// remap while the patch loop below wrote every supplied id unconditionally.
+			if (!step || step.automationId !== args.automationId) {
+				throwInvalidInput('Every step in the order must belong to this automation');
 			}
+			oldToNew.set(step.stepIndex, i);
+			if (step.stepType === 'condition') conditionSteps.push(step);
 		});
 		await remapConditionBranches(ctx, conditionSteps, oldToNew, now);
 

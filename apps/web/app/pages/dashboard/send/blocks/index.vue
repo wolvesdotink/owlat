@@ -34,20 +34,10 @@ const sortOptions = computed<{ value: SortOption; label: string; icon: string }[
 	},
 ]);
 
-// Search state
-const searchQuery = ref('');
-const debouncedSearch = ref('');
-let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-
-// Debounce search input
-watch(searchQuery, (value) => {
-	if (searchTimeout) {
-		clearTimeout(searchTimeout);
-	}
-	searchTimeout = setTimeout(() => {
-		debouncedSearch.value = value;
-	}, 300);
-});
+// List FILTER — narrows this page's blocks. It is not the search box (that is
+// the one ⌘K overlay), which is why it says "Filter…" and wears a filter icon.
+// Debouncing is the shared `useDebouncedSearch`, not a private timeout.
+const { searchQuery, debouncedSearch, clear: clearFilter } = useDebouncedSearch();
 
 // Fetch blocks with real-time updates (uses session-based organization context)
 const {
@@ -84,7 +74,7 @@ const { showToast: showNotification } = useToast();
 // Handle duplicate
 const handleDuplicate = async (blockId: Id<'emailBlocks'>) => {
 	const result = await duplicateBlock({ blockId });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showNotification(t('dashboard.send.blocks.index.duplicatedToast'));
 };
 
@@ -109,7 +99,7 @@ const handleDelete = async () => {
 	isDeleting.value = true;
 	try {
 		const result = await deleteBlock({ blockId: blockToDelete.value.id });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		showNotification(t('dashboard.send.blocks.index.deletedToast'));
 		closeDeleteModal();
 	} finally {
@@ -159,11 +149,11 @@ const handleCreate = async () => {
 			description: createForm.description.trim() || undefined,
 			content: JSON.stringify({ blocks: [] }), // Empty multi-block content
 		});
-		if (blockId === undefined) return;
+		if (!blockId.ok) return;
 
 		closeCreateModal();
 		// Navigate directly to the editor to add content
-		router.push(`/dashboard/send/blocks/${blockId}/edit`);
+		router.push(`/dashboard/send/blocks/${blockId.result}/edit`);
 	} finally {
 		isCreating.value = false;
 	}
@@ -225,7 +215,7 @@ const handleEdit = async () => {
 			name: editForm.name.trim(),
 			description: editForm.description.trim() || undefined,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 
 		showNotification(t('dashboard.send.blocks.index.updatedToast'));
 		closeEditModal();
@@ -282,16 +272,16 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 				/>
 			</div>
 
-			<!-- Search -->
+			<!-- Filter (not search — see the composable comment above) -->
 			<UiInput
 				v-model="searchQuery"
 				type="text"
-				:placeholder="t('dashboard.send.blocks.index.searchPlaceholder')"
+				:placeholder="t('common.filterPlaceholder')"
 				size="sm"
 				class="w-64"
 			>
 				<template #iconLeft>
-					<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary" />
+					<Icon name="lucide:list-filter" class="w-4 h-4 text-text-tertiary" />
 				</template>
 			</UiInput>
 		</div>
@@ -345,13 +335,7 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 					"
 				>
 					<template #action>
-						<UiButton
-							variant="secondary"
-							@click="
-								searchQuery = '';
-								debouncedSearch = '';
-							"
-						>
+						<UiButton variant="secondary" @click="clearFilter">
 							{{ t('dashboard.send.blocks.index.clearSearch') }}
 						</UiButton>
 					</template>

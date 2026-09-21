@@ -32,18 +32,14 @@ interface Input {
 	lists: ListEntry[];
 }
 
-export const topicUnsubscribed: WebhookEventModule<
-	'topic.unsubscribed',
-	Input,
-	Data
-> = {
+export const topicUnsubscribed: WebhookEventModule<'topic.unsubscribed', Input, Data> = {
 	literal: 'topic.unsubscribed',
 	description: 'Contact unsubscribed from one or more topics',
 	isSubscribable: true,
 	schema,
 	build(input) {
 		return {
-			contactId: String(input.contactId),
+			contactId: input.contactId,
 			email: input.email,
 			unsubscribedAt: input.unsubscribedAt,
 			listsRemoved: JSON.stringify(input.lists),

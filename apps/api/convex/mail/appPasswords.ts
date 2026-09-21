@@ -20,8 +20,10 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { requireMailboxAccess } from './permissions';
-import { resolveDeliverableMailbox } from './mailbox';
-import { throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { resolveDeliverableMailbox } from './mailbox/identity';
+import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { mailAppPasswordScopeValidator } from '../lib/convexValidators';
+import { bytesToHex } from '../lib/bytes';
 
 const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
@@ -40,12 +42,6 @@ function generateCleartextPassword(): string {
 		out += BASE32_ALPHABET[bytes[i]! % BASE32_ALPHABET.length];
 	}
 	return out;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-	return Array.from(bytes)
-		.map((b) => b.toString(16).padStart(2, '0'))
-		.join('');
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -106,7 +102,7 @@ export const generate = authedMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		label: v.string(),
-		scopes: v.optional(v.array(v.union(v.literal('imap'), v.literal('smtp')))),
+		scopes: v.optional(v.array(mailAppPasswordScopeValidator)),
 	},
 	handler: async (ctx, args) => {
 		// Minting standing IMAP/SMTP credentials is an owner-grade action: they
@@ -175,7 +171,16 @@ export const revoke = authedMutation({
 export const revokeAll = authedMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+		const session = await requireAdminContext(ctx);
+		// Admin role alone is not enough: bind the caller-supplied mailboxId to the
+		// admin's own organization before touching any credential. A missing mailbox
+		// or one in another org fails closed, so a mailboxId cannot be used to revoke
+		// credentials outside the caller's org.
+		const mailbox = await ctx.db.get(args.mailboxId);
+		if (!mailbox) throwNotFound('Mailbox');
+		if (mailbox.organizationId !== session.activeOrganizationId) {
+			throwForbidden('Mailbox not accessible');
+		}
 		const all = await ctx.db
 			.query('mailAppPasswords')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
@@ -201,7 +206,7 @@ export const verify = internalAction({
 	args: {
 		address: v.string(),
 		password: v.string(),
-		scope: v.union(v.literal('imap'), v.literal('smtp')),
+		scope: mailAppPasswordScopeValidator,
 		// Optional caller IP — used by the shared rate-limit table so the
 		// SMTP submission path can throttle (the IMAP path also uses Redis).
 		ip: v.optional(v.string()),
@@ -272,7 +277,7 @@ export const _candidatesByAddressAndPrefix = internalQuery({
 	args: {
 		address: v.string(),
 		passwordPrefix: v.string(),
-		scope: v.union(v.literal('imap'), v.literal('smtp')),
+		scope: mailAppPasswordScopeValidator,
 	},
 	handler: async (ctx, args) => {
 		// Bind auth to the live hosted mailbox, not an external read-only archive

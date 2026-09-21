@@ -1,5 +1,5 @@
 /**
- * Deliverability dashboard — the PURE view assembly (plan D5, D14, D15).
+ * Deliverability dashboard — the PURE view assembly.
  *
  * SHIP THE MEASUREMENT BEFORE THE CONTROL. Everything here is a total function
  * of its arguments: no clock, no database, no environment. The query shell in
@@ -7,24 +7,24 @@
  *
  * THE ONE RULE THIS MODULE EXISTS TO ENFORCE: a rate is never computed here.
  * Every rate on the wire comes out of `summarizeTransportOutcomeBuckets` — the
- * ONE derivation seam (ADR-0042 / plan D5) — so the controller's gates and this
- * screen cannot disagree about how a number is DERIVED from a set of rows. WHICH
- * ROWS each is handed used to be a separate question and is no longer: the
- * verdicts on a cell view are reached over the controller's own evaluation
- * window, and the counters beside them are reported over
- * `DASHBOARD_WINDOW_DAYS`, with the query naming both spans on the wire (#510).
- * This module groups buckets into days, hands each day's rows to that
- * summarizer, and labels the result. If you find yourself typing `/` next to a
- * counter in this file, you are writing the bug D5 exists to prevent.
+ * ONE derivation seam (ADR-0042) — so the controller's gates and this screen
+ * cannot disagree about how a number is DERIVED from a set of rows. WHICH ROWS
+ * each is handed used to be a separate question and is no longer: the verdicts
+ * on a cell view are reached over the controller's own evaluation window, and
+ * the counters beside them are reported over `DASHBOARD_WINDOW_DAYS`, with the
+ * query naming both spans on the wire (#510). This module groups buckets into
+ * days, hands each day's rows to that summarizer, and labels the result. If you
+ * find yourself typing `/` next to a counter in this file, you are re-deriving
+ * a rate the summarizer already owns.
  *
- * CONFIDENCE (plan D14) COMES FROM THE EVALUATOR, NOT FROM HERE. The grade this
+ * CONFIDENCE COMES FROM THE EVALUATOR, NOT FROM HERE. The grade this
  * module starts from is `RampGateEvaluation.measuredConfidence` — the weakest
  * level among the gates that actually DECIDED something, produced by the same
  * pure core the controller runs. Two judgements are layered on top of it here,
  * and BOTH are about what the deployment could not measure rather than about
  * any rate: `none` when nothing was sent, and the cap by the missing
  * instruments. That is why the two levels are NAMED APART — the evaluation's
- * number grades the DECISION (and is what the D12 audit row records), the level
+ * number grades the DECISION (and is what the audit row records), the level
  * this module produces grades the CELL (and is what the screen renders). See
  * `dashboardConfidence` and `RampGateEvaluation.measuredConfidence`.
  *
@@ -32,10 +32,10 @@
  * (is the sample above the floors). It was replaced rather than extended,
  * because a healthy standalone cell graded `medium` by the decision core and
  * `low` by the screen is the controller and the dashboard disagreeing about a
- * number — the exact failure the D5 single-derivation rule exists to prevent,
- * landing in the one configuration D14 says must be told the truth.
+ * number — the exact failure the single-derivation rule exists to prevent,
+ * landing in the one configuration that most needs to be told the truth.
  *
- * D2 IS THE FRAME. A missing reference transport, a missing seed set and a
+ * ABSENCE IS THE FRAME. A missing reference transport, a missing seed set and a
  * missing external account are all SUPPORTED CONFIGURATIONS. They lower
  * confidence and they say so plainly. Nothing here produces an error, a warning
  * or a "setup incomplete" state, and no field on the wire is named as one.
@@ -51,9 +51,9 @@ import {
 import type { RampGateConfidence, RampGateEvaluation, RampGateResult } from './ramp/gateTypes';
 import { RAMP_GATE_SAMPLE_FLOORS } from './ramp/gateConfig';
 import { weakestConfidence } from './ramp/gateGrades';
+import { DAY_MS } from '../lib/constants';
 
 /** Declared ONCE for the whole feature; the query shell imports it from here. */
-export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** How many days of trend the screen renders at most — one bounded series. */
 export const DASHBOARD_MAX_TREND_DAYS = 30;
@@ -68,8 +68,8 @@ export const DASHBOARD_MAX_TREND_DAYS = 30;
  * this screen is decided over either. Both arms are summarized a second time
  * over the controller's span before they reach the evaluator, so the two readers
  * agree on the verdict (#510); this constant governs the counters, the rates,
- * the trend and the confidence cap rendered beside it, which plan D2/D5 asks for
- * over a week rather than over a day.
+ * the trend and the confidence cap rendered beside it, all reported over a week
+ * rather than over a day.
  */
 export const DASHBOARD_WINDOW_DAYS = 7;
 
@@ -123,11 +123,11 @@ export function dashboardWindow(now: number): DashboardWindow {
 
 // ============ TREND ============
 
-export interface DashboardTrendPoint {
+interface DashboardTrendPoint {
 	/** UTC day start this point summarizes. */
 	readonly day: number;
 	readonly own: TransportOutcomeSummary;
-	/** `null` when no reference transport is configured (D2), not "no data". */
+	/** `null` when no reference transport is configured, not "no data". */
 	readonly reference: TransportOutcomeSummary | null;
 }
 
@@ -184,7 +184,7 @@ export function buildDashboardTrend(input: {
 	return points;
 }
 
-// ============ CONFIDENCE (D14) ============
+// ============ CONFIDENCE ============
 
 /**
  * How much this cell's measurement is worth — `RampGateConfidence` plus the one
@@ -195,7 +195,7 @@ export function buildDashboardTrend(input: {
  *               confidence beside no measurement at all.
  *  - `low`    — the weakest contributing gate was a weak signal (the standalone
  *               trailing-baseline engagement check). The ramp still moves; it
- *               just may not move UP on that evidence (plan D14).
+ *               just may not move UP on that evidence.
  *  - `medium` — the weakest contributing gate was a proxy or a tripwire: the
  *               one-click unsubscribe stand-in for a feedback loop, or a seed
  *               sweep. Real evidence, honestly labelled as second-hand.
@@ -212,7 +212,7 @@ export type DashboardConfidenceImprovement =
 	| 'add_seed_mailboxes'
 	| 'send_more_volume';
 
-export interface DashboardConfidence {
+interface DashboardConfidence {
 	readonly level: DashboardConfidenceLevel;
 	readonly improvements: readonly DashboardConfidenceImprovement[];
 }
@@ -227,11 +227,11 @@ export interface DashboardConfidence {
  *   1. a window with nothing in it is graded `none`, rather than being given
  *      whichever level a column of holds happened to produce;
  *   2. a cell is CAPPED by the measurement inputs it does not have, which is
- *      plan D14's sentence read literally: "measurement confidence: low —
+ *      the operator-facing sentence read literally: "measurement confidence: low —
  *      connect a relay or add seed mailboxes to improve". With NEITHER of those
  *      the cap is `low`; with seeds but no second arm it is `medium`; a cell
  *      with a reference arm has no cap, so absent seeds beside one remain an
- *      invitation rather than a downgrade (plan D2).
+ *      invitation rather than a downgrade.
  *
  *      This is not pessimism about the gates that DID decide — a standalone
  *      bounce gate really is high-confidence direct measurement, and it still
@@ -253,7 +253,7 @@ export interface DashboardConfidence {
  * The IMPROVEMENT CODES are this module's, because they are the one thing the
  * evaluator does not answer: it grades what it measured, and these name what an
  * operator could add to make the next grade better. They are advice and never a
- * warning (plan D2) — `connect_reference_transport` is offered to a supported
+ * warning — `connect_reference_transport` is offered to a supported
  * configuration, not to an incomplete one.
  *
  * WHICH IS WHY THE CAP AND THE OFFER TAKE DIFFERENT INPUTS. The cap is about
@@ -301,12 +301,12 @@ export function dashboardConfidence(input: {
  * exhaustiveness. The numbers behind the verdict travel with it and are rendered
  * beside it, never re-derived.
  */
-export type DashboardGateView = RampGateResult;
+type DashboardGateView = RampGateResult;
 
 export interface DashboardCellView {
 	readonly cell: DeliverabilityCell;
 	readonly cellKey: string;
-	/** Fraction of the cell the own MTA carries, resolved through D1's helper. */
+	/** Fraction of the cell the own MTA carries, resolved through the shared helper. */
 	readonly ownShare: number;
 	readonly phaseCeiling: number | null;
 	/**
@@ -325,7 +325,7 @@ export interface DashboardCellView {
 	 */
 	readonly own: TransportOutcomeSummary;
 	/**
-	 * `null` = standalone cell (D2), rendered with its confidence caveat — and
+	 * `null` = standalone cell, rendered with its confidence caveat — and
 	 * `null` exactly when the DECIDING span found no reference arm, so the column
 	 * is present precisely when the verdict was graded against a second arm.
 	 */
@@ -349,11 +349,10 @@ export interface DashboardCellView {
  * rate the summarizer already derived; this function copies, it does not
  * compute.
  *
- * TWO SPANS ARRIVE HERE AND NEITHER IS DERIVED HERE: `own`/`reference` are the
- * REPORTED window's summaries and `evaluation` carries the DECIDING span's
- * verdicts. Keeping them separate arguments is what lets the shell hand each
- * consumer the right one — the confidence denominator takes the reported sample
- * (plan D2/D5), the gate rows take the evaluator's (#510).
+ * TWO SPANS ARRIVE HERE AND NEITHER IS DERIVED HERE: `own`/`reference` are the REPORTED window's
+ * summaries and `evaluation` carries the DECIDING span's verdicts. Keeping them separate arguments
+ * is what lets the shell hand each consumer the right one — the confidence denominator takes the
+ * reported sample, the gate rows take the evaluator's (#510).
  */
 export function buildDashboardCellView(input: {
 	readonly cell: DeliverabilityCell;

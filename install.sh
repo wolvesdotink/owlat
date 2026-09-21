@@ -115,10 +115,28 @@ require_linux() {
 	die "Unsupported host OS for the server installer: ${platform}."
 }
 
+require_supported_arch() {
+	# The release images are published for linux/amd64 and linux/arm64 only.
+	# On anything else (armv7 boards, RISC-V, s390x, 32-bit x86) every `docker
+	# pull` would fail minutes later with "no matching manifest for <platform>",
+	# after Docker has been installed and the repo cloned — refuse up front.
+	local machine
+	machine="$(uname -m 2>/dev/null || printf 'unknown')"
+	case "$machine" in
+		x86_64|amd64|aarch64|arm64) return ;;
+	esac
+	error "Unsupported CPU architecture: ${machine}."
+	error ""
+	error "Owlat publishes server images for x86_64 (amd64) and aarch64 (arm64)"
+	error "only. Pick a VPS of either kind and re-run this installer there."
+	die "Unsupported CPU architecture for the server installer: ${machine}."
+}
+
 preflight() {
 	info "Running preflight checks…"
 
 	require_linux
+	require_supported_arch
 
 	check_cmd curl
 	check_cmd git
@@ -281,30 +299,13 @@ OWLAT_REF must be a tag, a branch, or a commit reachable on the remote."
 }
 
 # ── Install owlat CLI symlink ─────────────────────────────────────────────────
+# Delegated to the wrapper's own `install-cli` so the symlink has exactly ONE
+# implementation. It has to live there anyway: the desktop SSH wizard and the
+# hand-clone flow both run `scripts/owlat quickstart` and never reach this
+# installer, and they need the CLI on PATH just as much.
 install_owlat_cli() {
-	local cli_target="/usr/local/bin/owlat"
-
-	# Only install if we have write access (or can sudo) and it's not already present
-	# pointing at this clone.
-	if [[ -L "$cli_target" ]]; then
-		local existing_target
-		existing_target=$(readlink "$cli_target")
-		if [[ "$existing_target" == "$OWLAT_INSTALL_DIR/scripts/owlat" ]]; then
-			return  # Already linked to us
-		fi
-	fi
-
-	if [[ -w "$(dirname "$cli_target")" ]]; then
-		ln -sf "$OWLAT_INSTALL_DIR/scripts/owlat" "$cli_target"
-		ok "Installed 'owlat' CLI → $cli_target"
-	elif command -v sudo >/dev/null 2>&1; then
-		info "Installing 'owlat' CLI to $cli_target (sudo required)…"
-		sudo ln -sf "$OWLAT_INSTALL_DIR/scripts/owlat" "$cli_target" \
-			&& ok "Installed 'owlat' CLI → $cli_target" \
-			|| warn "Could not install owlat CLI — run manually: sudo ln -s $OWLAT_INSTALL_DIR/scripts/owlat $cli_target"
-	else
-		warn "Cannot install 'owlat' CLI without sudo — add $OWLAT_INSTALL_DIR/scripts to PATH or symlink scripts/owlat yourself"
-	fi
+	OWLAT_DIR="$OWLAT_INSTALL_DIR" bash "$OWLAT_INSTALL_DIR/scripts/owlat" install-cli \
+		|| warn "Continuing without the 'owlat' CLI on PATH — see the message above."
 }
 
 # ── Hand off to the setup wizard ──────────────────────────────────────────────

@@ -7,6 +7,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { requireDraftCampaign } from './guards';
 import { getOrThrow, throwInvalidState, throwInvalidInput } from '../_utils/errors';
+import { abVariantValidator } from '../lib/convexValidators';
 
 /**
  * Per-variant A/B stats from a variant's `emailSends` rows. opened/clicked are
@@ -17,7 +18,7 @@ import { getOrThrow, throwInvalidState, throwInvalidInput } from '../_utils/erro
  * Reduced shape behind the `getABTestStats` query that powers the report's A/B
  * fold-in.
  */
-export function computeAbVariantStats(sends: ReadonlyArray<Doc<'emailSends'>>): {
+function computeAbVariantStats(sends: ReadonlyArray<Doc<'emailSends'>>): {
 	sent: number;
 	delivered: number;
 	opened: number;
@@ -56,7 +57,7 @@ const AB_VARIANT_SCAN_LIMIT = 10000;
  * shared `computeAbVariantStats` shape. Single source of truth behind the
  * `getABTestStats` query so the load bound and stat math stay in one place.
  */
-export async function loadAbTestStats(
+async function loadAbTestStats(
 	ctx: QueryCtx,
 	campaignId: Id<'campaigns'>
 ): Promise<{
@@ -194,7 +195,7 @@ export const disableABTest = authedMutation({
 export const declareABTestWinner = authedMutation({
 	args: {
 		campaignId: v.id('campaigns'),
-		winner: v.union(v.literal('A'), v.literal('B')),
+		winner: abVariantValidator,
 	},
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(

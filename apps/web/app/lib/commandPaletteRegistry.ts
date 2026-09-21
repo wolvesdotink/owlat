@@ -27,12 +27,21 @@
  * registration wrapper lives in `~/composables/useCommandPaletteRegistry`.
  */
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
-import type { PaletteGroup } from './commandPalette';
+import type { PaletteGroup, PaletteMode } from './commandPalette';
 
 /** Inputs a provider reads while building its groups for the current frame. */
 export interface PaletteBuildContext {
-	/** Current palette query (possibly empty). Providers filter their own items. */
+	/**
+	 * Current palette query with any mode prefix already stripped (possibly
+	 * empty) — providers filter their own items by it and never re-parse it.
+	 */
 	readonly query: string;
+	/**
+	 * The mode the typed prefix selected (`all` when unprefixed). Providers do
+	 * NOT gate on this; they tag their groups with `mode` and the shell filters,
+	 * so one provider can contribute to several modes at once.
+	 */
+	readonly mode: PaletteMode;
 }
 
 /** A named contributor of palette groups. Core surfaces and plugins alike. */

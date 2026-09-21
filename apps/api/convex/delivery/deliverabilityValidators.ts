@@ -3,27 +3,28 @@
 import { v, type Infer } from 'convex/values';
 import { SEED_PLACEMENTS } from '@owlat/shared/seedPlacement';
 import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
-import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
+import { RAMP_PRESET_KEYS, type RampPreset } from '@owlat/shared/deliverabilityIndependence';
+import {
+	ALIGNMENT_CHECK_IDS,
+	ALIGNMENT_CHECK_STATUSES,
+} from '@owlat/shared/deliverabilityAlignment';
+import { literalUnion } from '../lib/convexValidators';
 
 /**
  * The destination-provider cell axis. DERIVED from `DESTINATION_PROVIDER_KEYS`
- * (D8) rather than restated: a hand-written union here compiles fine after a
+ * rather than restated: a hand-written union here compiles fine after a
  * sixth provider joins the taxonomy and then throws `ArgumentValidationError`
  * on the first write of that provider — a runtime failure where the one
  * declaration is supposed to buy a build failure.
  */
-export const destinationProviderValidator = v.union(
-	...DESTINATION_PROVIDER_KEYS.map((providerKey) => v.literal(providerKey))
-);
+export const destinationProviderValidator = literalUnion(DESTINATION_PROVIDER_KEYS);
 
 /**
  * Where a seed probe was found. DERIVED from `SEED_PLACEMENTS` rather than
  * restated: the pure core owns the taxonomy, and a placement added there
  * becomes storable here without a second edit that could be forgotten.
  */
-export const seedPlacementValidator = v.union(
-	...SEED_PLACEMENTS.map((placement) => v.literal(placement))
-);
+export const seedPlacementValidator = literalUnion(SEED_PLACEMENTS);
 
 export const deliverabilitySignalProviderValidator = v.union(
 	v.literal('all'),
@@ -72,24 +73,14 @@ export const deliverabilitySignalValidator = v.object({
 });
 
 /**
- * Dual-transport alignment pre-flight (P3-5). Mirrors ALIGNMENT_CHECK_IDS /
- * ALIGNMENT_CHECK_STATUSES / AlignmentVerdict in
- * @owlat/shared/deliverabilityAlignment; parity is asserted in
- * delivery/__tests__/alignmentBlocking.test.ts.
+ * Dual-transport alignment pre-flight. DERIVED from the vocabulary in
+ * @owlat/shared/deliverabilityAlignment; AlignmentVerdict parity is asserted
+ * in delivery/__tests__/alignmentBlocking.test.ts.
  */
-export const alignmentCheckIdValidator = v.union(
-	v.literal('from_domain'),
-	v.literal('spf'),
-	v.literal('dkim'),
-	v.literal('dmarc')
-);
+export const alignmentCheckIdValidator = literalUnion(ALIGNMENT_CHECK_IDS);
 
 /** `unknown` is "DNS could not answer" — a hold, never a pass and never a fail. */
-export const alignmentCheckStatusValidator = v.union(
-	v.literal('pass'),
-	v.literal('fail'),
-	v.literal('unknown')
-);
+export const alignmentCheckStatusValidator = literalUnion(ALIGNMENT_CHECK_STATUSES);
 
 export const alignmentVerdictValidator = v.union(
 	v.literal('aligned'),
@@ -149,9 +140,9 @@ export const rampDecisionReasonValidator = v.union(
 	v.literal('degradation_ceiling'),
 	v.literal('healthy'),
 	v.literal('graduated'),
-	// THE OPERATOR'S OWN REASONS (plan D12). A human hand on the ramp is still a
-	// decision, and a decision with no audit row is exactly the silence D12
-	// forbids — so an operator hold, pin, force-advance or phase reset writes a
+	// THE OPERATOR'S OWN REASONS. A human hand on the ramp is still a
+	// decision, and a decision with no audit row is exactly the silence the audit
+	// rule forbids — so an operator hold, pin, force-advance or phase reset writes a
 	// `mixDecisions` row with a reason of its own rather than borrowing a gate's.
 	v.literal('operator_pause'),
 	v.literal('operator_pin'),
@@ -163,7 +154,7 @@ export const rampDecisionReasonValidator = v.union(
 );
 
 /**
- * THE PACE ACTUATOR'S REASONS, as a stored vocabulary (plan D3, D12).
+ * THE PACE ACTUATOR'S REASONS, as a stored vocabulary.
  *
  * The second actuator answers the SAME questions in the same order, so it
  * reports the share actuator's whole vocabulary and adds only the reasons that
@@ -181,19 +172,11 @@ export const paceDecisionReasonValidator = v.union(
 );
 
 /**
- * The per-stream aggressiveness preset (plan D9, P3-6).
- *
- * The literals are re-listed rather than mapped from `RAMP_PRESET_KEYS`, because
- * a `v.union(...keys.map(v.literal))` erases to `Validator<string>` and would
- * cost every stored column and every argument its closed union. The assertion
- * below is what stops the two lists drifting: adding a key to
- * `RAMP_PRESET_KEYS` without adding it here is a compile error, and vice versa.
+ * The per-stream aggressiveness preset, DERIVED from
+ * `RAMP_PRESET_KEYS`. The assertion below pins the stored union to the shared
+ * `RampPreset` type so neither can drift from the other.
  */
-export const rampPresetValidator = v.union(
-	v.literal('conservative'),
-	v.literal('balanced'),
-	v.literal('aggressive')
-);
+export const rampPresetValidator = literalUnion(RAMP_PRESET_KEYS);
 
 type ValidatedRampPreset = Infer<typeof rampPresetValidator>;
 /** Mutual assignability, expressed without either parameter constraining the other. */

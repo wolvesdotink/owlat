@@ -107,6 +107,14 @@ const overlayStub = {
 const skeletonStub = { template: '<div class="skeleton" />' };
 // The Daily Brief card owns its own Convex wiring — covered by its own tests.
 const dailyBriefStub = { props: ['mailboxId'], template: '<div class="daily-brief" />' };
+// The shared Today|Browse switch (a UiSegmentedControl in the app) — the view
+// only cares that picking "Browse" reaches it.
+const inboxModeToggleStub = {
+	props: ['mode'],
+	emits: ['select'],
+	template:
+		'<div class="inbox-mode-toggle" :data-mode="mode"><button type="button" data-segment="browse" @click="$emit(\'select\', \'browse\')">Browse</button></div>',
+};
 
 function todayMsg(id: string, overrides: Record<string, unknown> = {}) {
 	return {
@@ -140,6 +148,7 @@ function mountView(extraProps: Record<string, unknown> = {}) {
 				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,
 				PostboxDailyBrief: dailyBriefStub,
+				PostboxInboxModeToggle: inboxModeToggleStub,
 				PostboxThreadList: threadListStub,
 				PostboxThreadListSkeleton: skeletonStub,
 				PostboxTodayReaderOverlay: overlayStub,
@@ -162,10 +171,13 @@ describe('PostboxTodayView', () => {
 		queue.items.value = [queueItem('q1', { threadId: 't1', fromAddress: 'boss@example.com' })];
 		const w = mountView();
 		const text = w.text();
-		// Section order: header count → For you → Today → Show past.
+		// Section order: header count → For you → Today → Show past. ("Today" is
+		// also a segment of the header's mode switch now, so the Today SECTION is
+		// anchored by its id rather than by the first occurrence of the word.)
 		expect(text.indexOf('Inbox')).toBeLessThan(text.indexOf('For you (1)'));
-		expect(text.indexOf('For you (1)')).toBeLessThan(text.indexOf('Today'));
-		expect(text.indexOf('Today')).toBeLessThan(text.indexOf('Show past mails (1)'));
+		expect(text.indexOf('For you (1)')).toBeLessThan(text.indexOf('Show past mails (1)'));
+		expect(w.find('#postbox-for-you').exists()).toBe(true);
+		expect(w.find('#postbox-today').exists()).toBe(true);
 		// The strip carries the ask + one muted context line and routes to the queue.
 		expect(text).toContain('Need the deck');
 		expect(text).toContain('Boss — Can you send it today?');
@@ -206,7 +218,7 @@ describe('PostboxTodayView', () => {
 		expect(w.text()).not.toContain('Show past mails');
 	});
 
-	it('emits browse from the header button and expands past mail inline', async () => {
+	it('emits browse from the header switch and expands past mail inline', async () => {
 		feed.messages.value = [
 			todayMsg('m-old-1', { receivedAt: Date.now() - 8 * 86_400_000, flagSeen: true }),
 			todayMsg('m-old-2', { receivedAt: Date.now() - 9 * 86_400_000, flagSeen: true }),
@@ -214,7 +226,8 @@ describe('PostboxTodayView', () => {
 		queue.items.value = [];
 		threads.value = { threads: [] };
 		const w = mountView();
-		await w.find('button[aria-keyshortcuts="b"]').trigger('click');
+		expect(w.find('.inbox-mode-toggle').attributes('data-mode')).toBe('today');
+		await w.find('[data-segment="browse"]').trigger('click');
 		expect(w.emitted('browse')).toBeTruthy();
 
 		expect(w.find('.thread-list').exists()).toBe(false);

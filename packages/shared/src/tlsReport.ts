@@ -18,6 +18,7 @@
  * the single source of truth for the report schema.
  */
 
+import { isRecord } from './utils/guards';
 // ─── RFC 8460 report shape ──────────────────────────────────────────
 
 /** Policy block echoed in a report (RFC 8460 §4.4). */
@@ -129,10 +130,6 @@ export async function gunzipTlsReport(bytes: Uint8Array): Promise<string> {
 }
 
 // ─── Validation ─────────────────────────────────────────────────────
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function isBoundedString(
 	value: unknown,
@@ -387,7 +384,7 @@ export function digestTlsReport(report: TlsRptReport): TlsReportDigest {
  * report schema. Deliberately explains the *effect* ("STARTTLS stripped
  * upstream") rather than lecturing about the mechanism.
  */
-export const TLS_RPT_FAILURE_EXPLANATIONS: Record<string, string> = {
+const TLS_RPT_FAILURE_EXPLANATIONS: Record<string, string> = {
 	'starttls-not-supported': 'STARTTLS stripped upstream',
 	'certificate-host-mismatch': "Certificate didn't match the server name",
 	'certificate-expired': 'Server certificate had expired',

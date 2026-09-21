@@ -18,11 +18,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal, api } from '../_generated/api';
-import {
-	createTestCampaign,
-	createTestContact,
-	createTestEmailSend,
-} from './factories';
+import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
 import type { Id } from '../_generated/dataModel';
 import { toMtaSuppressionReason } from '../delivery/suppressionMirror';
 
@@ -39,9 +35,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi
-			.fn()
-			.mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
@@ -73,10 +71,10 @@ describe('toMtaSuppressionReason mapping', () => {
 		expect(toMtaSuppressionReason('bounced')).toBe('hard_bounce');
 	});
 
-	it('maps a soft-bounce escalation to the expiring manual reason', () => {
+	it('maps a soft-bounce escalation to its expiring reason', () => {
 		// A suppress-after-N soft escalation is recoverable; it must not pose as a
 		// permanent hard bounce on the MTA list.
-		expect(toMtaSuppressionReason('bounced', 'soft')).toBe('manual');
+		expect(toMtaSuppressionReason('bounced', 'soft')).toBe('soft_bounce');
 	});
 
 	it('maps a manual block to the MTA manual reason', () => {
@@ -99,7 +97,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 			new Response(JSON.stringify({ success: true }), {
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}),
+			})
 		) as unknown as typeof fetch;
 	});
 
@@ -118,7 +116,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
 			const contactId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'bouncer@example.com' }),
+				createTestContact({ email: 'bouncer@example.com' })
 			);
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -127,7 +125,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 					contactId,
 					contactEmail: 'bouncer@example.com',
 					status: 'sent',
-				}),
+				})
 			);
 		});
 
@@ -163,7 +161,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
 			const contactId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'complainer@example.com' }),
+				createTestContact({ email: 'complainer@example.com' })
 			);
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -172,7 +170,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 					contactId,
 					contactEmail: 'complainer@example.com',
 					status: 'delivered',
-				}),
+				})
 			);
 		});
 
@@ -204,6 +202,142 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 		// Normalized (lower-cased) on the way to the MTA.
 		expect(calls[0]!.emails).toEqual(['manual@example.com']);
 		expect(calls[0]!.reason).toBe('manual');
+	});
+
+	it('removing a mirrored block schedules the matching MTA DELETE', async () => {
+		const t = convexTest(schema, modules);
+		const blockedEmailId = await t.mutation(api.blockedEmails.add, {
+			email: 'Remove.Me@Example.com',
+			reason: 'manual',
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		vi.mocked(global.fetch).mockClear();
+
+		await t.mutation(api.blockedEmails.remove, { blockedEmailId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(global.fetch).toHaveBeenCalledWith(
+			'https://mta.internal/suppression/remove.me%40example.com',
+			expect.objectContaining({ method: 'DELETE' })
+		);
+	});
+
+	it('does not unmirror a marketing-only unengaged row', async () => {
+		const t = convexTest(schema, modules);
+		const blockedEmailId = await t.run((ctx) =>
+			ctx.db.insert('blockedEmails', {
+				email: 'quiet@example.com',
+				reason: 'unengaged',
+				createdAt: Date.now(),
+			})
+		);
+
+		await t.mutation(api.blockedEmails.remove, { blockedEmailId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(global.fetch).not.toHaveBeenCalled();
+	});
+
+	it('repairs durable mirrors and removes only stale Convex-owned entries', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('blockedEmails', {
+				email: 'hard@example.com',
+				reason: 'bounced',
+				bounceType: 'hard',
+				createdAt: Date.now(),
+			});
+			await ctx.db.insert('blockedEmails', {
+				email: 'soft@example.com',
+				reason: 'bounced',
+				bounceType: 'soft',
+				createdAt: Date.now(),
+			});
+			await ctx.db.insert('blockedEmails', {
+				email: 'quiet@example.com',
+				reason: 'unengaged',
+				createdAt: Date.now(),
+			});
+			await ctx.db.insert('blockedEmails', {
+				email: 'mixed@example.com',
+				reason: 'bounced',
+				bounceType: 'hard',
+				createdAt: Date.now(),
+			});
+			await ctx.db.insert('blockedEmails', {
+				email: 'mixed@example.com',
+				reason: 'unengaged',
+				createdAt: Date.now(),
+			});
+		});
+		const fetchSpy = vi.mocked(global.fetch);
+		fetchSpy.mockImplementation(async (input) => {
+			const url = String(input);
+			if (url.includes('/suppression/export')) {
+				return new Response(
+					JSON.stringify({
+						entries: [
+							{ email: 'hard@example.com', orphan: true },
+							{ email: 'mixed@example.com' },
+							{ email: 'quiet@example.com', source: 'convex-blocklist', suppressedAt: 123 },
+							{ email: 'stale@example.com', source: 'convex-reconcile', suppressedAt: 456 },
+							{ email: 'postbox@example.com', reason: 'hard_bounce', suppressedAt: 789 },
+							{ email: 'imported@example.com', source: 'operator-import', reason: 'manual' },
+							{ email: 'orphan@example.com', orphan: true },
+						],
+					}),
+					{ status: 200, headers: { 'Content-Type': 'application/json' } }
+				);
+			}
+			return new Response(JSON.stringify({ success: true }), { status: 200 });
+		});
+
+		await expect(t.action(internal.delivery.suppressionMirror.reconcile, {})).resolves.toEqual({
+			mirrored: 3,
+			removed: 2,
+		});
+
+		const bulk = fetchSpy.mock.calls.find((call) => String(call[0]).endsWith('/suppression/bulk'));
+		expect(JSON.parse((bulk![1] as RequestInit).body as string)).toEqual({
+			entries: [
+				{ email: 'hard@example.com', reason: 'hard_bounce', source: 'convex-reconcile' },
+				{
+					email: 'soft@example.com',
+					reason: 'soft_bounce',
+					source: 'convex-reconcile',
+					expiresAt: Date.now() + 7 * 86400 * 1000,
+				},
+				{ email: 'mixed@example.com', reason: 'hard_bounce', source: 'convex-reconcile' },
+			],
+		});
+		const deletes = fetchSpy.mock.calls
+			.filter((call) => (call[1] as RequestInit | undefined)?.method === 'DELETE')
+			.map((call) => String(call[0]).split('?')[0])
+			.sort();
+		expect(deletes).toEqual([
+			'https://mta.internal/suppression/quiet%40example.com',
+			'https://mta.internal/suppression/stale%40example.com',
+		]);
+	});
+
+	it('does not resurrect an expired soft-bounce mirror', async () => {
+		const t = convexTest(schema, modules);
+		await t.run((ctx) =>
+			ctx.db.insert('blockedEmails', {
+				email: 'expired@example.com',
+				reason: 'bounced',
+				bounceType: 'soft',
+				createdAt: Date.now() - 8 * 86400 * 1000,
+			})
+		);
+		vi.mocked(global.fetch).mockResolvedValue(new Response(JSON.stringify({ entries: [] })));
+		expect(await t.action(internal.delivery.suppressionMirror.reconcile, {})).toEqual({
+			mirrored: 0,
+			removed: 0,
+		});
+		expect(
+			vi.mocked(global.fetch).mock.calls.every((call) => !String(call[0]).endsWith('/bulk'))
+		).toBe(true);
 	});
 
 	it('a provider-webhook bounce (addFromEvent) mirrors the address to the MTA', async () => {
@@ -258,7 +392,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 			t.mutation(internal.blockedEmails.addFromEvent, {
 				email: 'no-mta@example.com',
 				reason: 'complained',
-			}),
+			})
 		).resolves.toBeDefined();
 
 		await t.finishAllScheduledFunctions(vi.runAllTimers);

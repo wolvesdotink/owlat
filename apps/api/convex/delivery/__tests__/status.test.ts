@@ -1,5 +1,6 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { requireOrgPermission } from '../../lib/sessionOrganization';
@@ -40,6 +41,22 @@ const deliveryGlob = Object.fromEntries(
 	])
 );
 const modules = { ...rootGlob, ...deliveryGlob };
+
+// Seed a member inbox into the roster so the test-send recipient allowlist (the
+// org's own userProfiles emails) has something to match. Test sends are
+// restricted to member addresses so the diagnostic can't be looped into an open
+// relay to arbitrary external victims.
+async function seedMember(t: ReturnType<typeof convexTest>, email: string): Promise<void> {
+	const now = Date.now();
+	await t.run(async (ctx) => {
+		await ctx.db.insert('userProfiles', {
+			authUserId: `auth-${email}`,
+			email,
+			createdAt: now,
+			updatedAt: now,
+		});
+	});
+}
 
 const ENV_KEYS = [
 	'EMAIL_PROVIDER',
@@ -193,11 +210,11 @@ describe('delivery.status.getProviderFeedbackStatus', () => {
 	});
 });
 
-describe('delivery.status.sendTest — staged diagnostics', () => {
+describe('delivery.statusActions.sendTest — staged diagnostics', () => {
 	it('stops at provider configuration when no transport is usable', async () => {
 		setEnv({});
 		const t = convexTest(schema, modules);
-		const result = await t.action(api.delivery.status.sendTest, { to: 'admin@example.com' });
+		const result = await t.action(api.delivery.statusActions.sendTest, { to: 'admin@example.com' });
 
 		expect(result.success).toBe(false);
 		expect(result.stages[0]).toMatchObject({
@@ -210,7 +227,7 @@ describe('delivery.status.sendTest — staged diagnostics', () => {
 	it('identifies invalid recipient input before resolving a sender', async () => {
 		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
 		const t = convexTest(schema, modules);
-		const result = await t.action(api.delivery.status.sendTest, { to: 'not-an-email' });
+		const result = await t.action(api.delivery.statusActions.sendTest, { to: 'not-an-email' });
 
 		expect(result.success).toBe(false);
 		expect(result.stages.map((stage) => stage.status)).toEqual([
@@ -231,12 +248,63 @@ describe('delivery.status.sendTest — staged diagnostics', () => {
 			})
 		) as unknown as typeof fetch;
 		const t = convexTest(schema, modules);
-		const result = await t.action(api.delivery.status.sendTest, { to: 'admin@example.com' });
+		rateLimiterTest.register(t);
+		await seedMember(t, 'admin@example.com');
+		const result = await t.action(api.delivery.statusActions.sendTest, { to: 'admin@example.com' });
 
 		expect(result.success).toBe(true);
 		expect(result.provider).toBe('mta');
 		expect(result.providerMessageId).toBe('test-message-1');
 		expect(result.attempts).toBe(1);
 		expect(result.stages.every((stage) => stage.status === 'passed')).toBe(true);
+	});
+
+	it('rejects a recipient that is not an organization member inbox (no open relay)', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const sent = vi.fn();
+		global.fetch = sent as unknown as typeof fetch;
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await seedMember(t, 'admin@example.com');
+		const result = await t.action(api.delivery.statusActions.sendTest, {
+			to: 'victim@external.example',
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/member address/i);
+		// The provider was never contacted for the non-member recipient.
+		expect(sent).not.toHaveBeenCalled();
+		expect(result.stages.map((stage) => stage.status)).toEqual([
+			'passed',
+			'failed',
+			'not_run',
+			'not_run',
+			'not_run',
+		]);
+	});
+
+	it('rate-limits repeated test sends to the same member inbox', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		global.fetch = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ success: true, id: 'test-message-1' }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		) as unknown as typeof fetch;
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await seedMember(t, 'admin@example.com');
+
+		let limited = false;
+		for (let i = 0; i < 40; i++) {
+			const result = await t.action(api.delivery.statusActions.sendTest, {
+				to: 'admin@example.com',
+			});
+			if (!result.success && /too many/i.test(result.error ?? '')) {
+				limited = true;
+				break;
+			}
+		}
+		expect(limited).toBe(true);
 	});
 });

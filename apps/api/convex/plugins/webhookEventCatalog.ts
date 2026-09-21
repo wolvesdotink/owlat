@@ -11,7 +11,7 @@ import {
  * namespaced wire kind, its owner, and its subscription eligibility. It remains
  * data-only until a real host publish path is implemented.
  */
-export interface HostedWebhookEventDefinition extends HostedContributionDefinition<'webhooks:publish'> {
+interface HostedWebhookEventDefinition extends HostedContributionDefinition<'webhooks:publish'> {
 	readonly kind: PluginWebhookEventKind;
 	readonly description: string;
 	readonly subscribable: boolean;
@@ -23,9 +23,3 @@ const CATALOG = defineHostedContributionCatalog<HostedWebhookEventDefinition>(
 );
 
 export const WEBHOOK_EVENT_CATALOG = CATALOG.all;
-
-export function pluginWebhookEventDefinition(
-	kind: string
-): HostedWebhookEventDefinition | undefined {
-	return CATALOG.byKind(kind);
-}

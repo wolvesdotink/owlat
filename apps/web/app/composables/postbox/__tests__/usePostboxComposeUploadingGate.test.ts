@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, nextTick, type Ref } from 'vue';
+import { effectScope, ref, nextTick, type Ref } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /** The real catalog behind the `useI18n` auto-import the composable calls. */
@@ -33,6 +33,10 @@ vi.mock('@owlat/api', () => ({
 				listSendAsIdentities: 'identities.listSendAs',
 			},
 			signatures: { list: 'signatures.list' },
+			// usePostboxCompose reads the undo-send window through
+			// usePostboxSettings (plan idea 8); unanswered here, so it resolves to
+			// the 30s default and puts no `undoSendDelayMs` on the wire.
+			settings: { get: 'settings.get', update: 'settings.update' },
 		},
 	},
 }));
@@ -76,17 +80,19 @@ beforeEach(() => {
 		return { data: ref(undefined) };
 	});
 
-	sendRun = vi.fn(async () => undefined);
+	sendRun = vi.fn(async () => ({ ok: false }));
 	// The composable resolves its copy through vue-i18n; install the real
 	// catalog behind the `useI18n` auto-import so toasts read as they ship.
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useBackendOperation', (fn: unknown) => {
 		if (fn === 'drafts.send') return { run: sendRun };
-		if (fn === 'drafts.create') return { run: vi.fn(async () => ({ draftId: 'draft-new' })) };
-		return { run: vi.fn(async () => undefined) };
+		if (fn === 'drafts.create')
+			return { run: vi.fn(async () => ({ ok: true, result: { draftId: 'draft-new' } })) };
+		return { run: vi.fn(async () => ({ ok: true, result: {} })) };
 	});
 	// The offline-outbox chain (E2) pulls these at composable setup; inert here.
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useConvex', () => null);
 });
@@ -99,7 +105,7 @@ async function loadComposable() {
 describe('usePostboxCompose — send blocked while uploading', () => {
 	it('canSend is false while an attachment is still uploading', async () => {
 		const usePostboxCompose = await loadComposable();
-		const composer = usePostboxCompose({ mailboxId: 'mbx-1' as never });
+		const composer = effectScope().run(() => usePostboxCompose({ mailboxId: 'mbx-1' as never }))!;
 
 		composer.toAddresses.value = ['someone@example.com'];
 		composer.subject.value = 'Here is the file';
@@ -116,7 +122,7 @@ describe('usePostboxCompose — send blocked while uploading', () => {
 
 	it('re-enables send and dispatches once the upload settles', async () => {
 		const usePostboxCompose = await loadComposable();
-		const composer = usePostboxCompose({ mailboxId: 'mbx-1' as never });
+		const composer = effectScope().run(() => usePostboxCompose({ mailboxId: 'mbx-1' as never }))!;
 
 		composer.toAddresses.value = ['someone@example.com'];
 		composer.subject.value = 'Here is the file';
@@ -131,7 +137,7 @@ describe('usePostboxCompose — send blocked while uploading', () => {
 		expect(composer.canSend.value).toBe(true);
 
 		// A real send now reaches the backend with the committed attachment.
-		sendRun.mockResolvedValueOnce({ undoToken: 'tok', sendAt: 123 });
+		sendRun.mockResolvedValueOnce({ ok: true, result: { undoToken: 'tok', sendAt: 123 } });
 		const result = await composer.send();
 		expect(sendRun).toHaveBeenCalledOnce();
 		expect(result).toEqual({ undoToken: 'tok', sendAt: 123 });

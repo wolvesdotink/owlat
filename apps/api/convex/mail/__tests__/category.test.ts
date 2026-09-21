@@ -4,11 +4,7 @@
  * override-precedence rule.
  */
 import { describe, it, expect } from 'vitest';
-import {
-	classifyMailCategory,
-	resolveCategory,
-	type MailCategoryInput,
-} from '../category';
+import { classifyMailCategory, resolveCategory, type MailCategoryInput } from '../category';
 
 function input(overrides: Partial<MailCategoryInput> = {}): MailCategoryInput {
 	return {
@@ -21,6 +17,23 @@ function input(overrides: Partial<MailCategoryInput> = {}): MailCategoryInput {
 }
 
 describe('classifyMailCategory', () => {
+	it('classifies a sale pitch from an unknown sender as promotion, not from a known one', () => {
+		expect(classifyMailCategory(input({ subject: 'Flash sale: 40% off this weekend only' }))).toBe(
+			'promotion'
+		);
+		expect(
+			classifyMailCategory(
+				input({ subject: 'Flash sale: 40% off this weekend only', isKnownCorrespondent: true })
+			)
+		).toBe('person');
+	});
+
+	it('lets the newsletter signal win over promotion wording', () => {
+		expect(
+			classifyMailCategory(input({ subject: 'Last chance: 20% off', hasListUnsubscribe: true }))
+		).toBe('newsletter');
+	});
+
 	it('classifies mail with a List-Unsubscribe header as newsletter', () => {
 		expect(classifyMailCategory(input({ hasListUnsubscribe: true }))).toBe('newsletter');
 	});
@@ -40,8 +53,8 @@ describe('classifyMailCategory', () => {
 				input({
 					fromAddress: 'no-reply@shop.example.com',
 					subject: 'Your order confirmation #10432',
-				}),
-			),
+				})
+			)
 		).toBe('receipt');
 	});
 
@@ -49,33 +62,29 @@ describe('classifyMailCategory', () => {
 		// Order confirmations routinely ship from no-reply@ — receipt must win.
 		expect(
 			classifyMailCategory(
-				input({ fromAddress: 'no-reply@stripe.com', subject: 'Payment received' }),
-			),
+				input({ fromAddress: 'no-reply@stripe.com', subject: 'Payment received' })
+			)
 		).toBe('receipt');
 	});
 
 	it('classifies automated/no-reply senders as notification', () => {
-		expect(
-			classifyMailCategory(input({ fromAddress: 'notifications@github.com' })),
-		).toBe('notification');
-		expect(
-			classifyMailCategory(input({ fromAddress: 'no-reply@service.example.com' })),
-		).toBe('notification');
+		expect(classifyMailCategory(input({ fromAddress: 'notifications@github.com' }))).toBe(
+			'notification'
+		);
+		expect(classifyMailCategory(input({ fromAddress: 'no-reply@service.example.com' }))).toBe(
+			'notification'
+		);
 	});
 
 	it('returns null for genuinely ambiguous mail (defer to the LLM)', () => {
 		expect(
-			classifyMailCategory(
-				input({ fromAddress: 'jordan@startup.io', subject: 'Following up' }),
-			),
+			classifyMailCategory(input({ fromAddress: 'jordan@startup.io', subject: 'Following up' }))
 		).toBeNull();
 	});
 
 	it('a known correspondent never overrides an explicit bulk signal', () => {
 		expect(
-			classifyMailCategory(
-				input({ hasListUnsubscribe: true, isKnownCorrespondent: true }),
-			),
+			classifyMailCategory(input({ hasListUnsubscribe: true, isKnownCorrespondent: true }))
 		).toBe('newsletter');
 	});
 });

@@ -1,6 +1,6 @@
 /**
  * Trust-on-first-use (TOFU) pinning — the pure decision core of recipient-key
- * discovery (Sealed Mail, plan 2026-07-11, locked decision D1 PGP/MIME).
+ * discovery (Sealed Mail, PGP/MIME).
  *
  * When we discover a recipient's OpenPGP key (via their instance manifest + WKD,
  * see `e2ee/discovery.ts`) we PIN its fingerprint the first time we see it. On
@@ -26,13 +26,23 @@
 import { normalizeEmail } from '@owlat/shared';
 
 /**
- * A key-rotation statement: the OLD key attests, under its own signature, that
- * it rotated to a NEW key for `address`. Published in the manifest rotation feed
- * (`e2ee/lifecycle.ts` writes it, `e2ee/manifest.ts` serves it) and verified by
- * a peer against the fingerprint it already pinned.
+ * A key-rotation statement, AS PUBLISHED ON THE WIRE: the OLD key attests, under
+ * its own signature, that it rotated to a NEW key. Published in the manifest
+ * rotation feed (`e2ee/lifecycle.ts` writes it, `e2ee/manifest.ts` serves it)
+ * and verified by a peer against the fingerprint it already pinned.
+ *
+ * The rotated ADDRESS is deliberately NOT on the wire: the manifest is a
+ * world-readable, unauthenticated document, so carrying `address` here turned
+ * the rotation feed into a directory that enumerated every mailbox that had ever
+ * rotated a key. The binding to an address is preserved by the SIGNATURE, whose
+ * canonical text ({@link rotationStatementText}) still includes the address — a
+ * verifier reconstructs that text from the address IT is already discovering
+ * (which it learned via a per-hash WKD lookup, not from this feed), so a
+ * statement only verifies for the address it was actually signed for and cannot
+ * be replayed onto a different one. Address discovery stays per-hash (WKD);
+ * nothing here reveals which mailboxes exist.
  */
 export interface RotationStatement {
-	address: string;
 	oldFingerprint: string;
 	newFingerprint: string;
 	/** Armored OpenPGP detached signature by the OLD key over {@link rotationStatementText}. */
@@ -60,13 +70,13 @@ export function rotationStatementText(statement: {
 }
 
 /** Persisted trust state for a discovered recipient key. */
-export type PinState = 'pinned' | 'keyChanged';
+type PinState = 'pinned' | 'keyChanged';
 
 /** Which transition a pin evaluation took (for logging / UI copy / tests). */
-export type PinAction = 'firstUse' | 'unchanged' | 'signedRotation' | 'keyChanged' | 'reaccept';
+type PinAction = 'firstUse' | 'unchanged' | 'signedRotation' | 'keyChanged' | 'reaccept';
 
 /** Inputs to a pin evaluation. */
-export interface PinContext {
+interface PinContext {
 	/** The currently trusted (pinned) fingerprint, or `null` on first contact. */
 	pinnedFingerprint: string | null;
 	/** The fingerprint just observed via discovery. */
@@ -162,4 +172,52 @@ export function evaluatePin(ctx: PinContext): PinDecision {
  */
 export function reacceptObservedKey(observedFingerprint: string): PinDecision {
 	return decide('reaccept', observedFingerprint, observedFingerprint, 'pinned', true);
+}
+
+// ─── Human verification ──────────────────────────────────────────────────────
+//
+// TOFU says "this is the key we saw first". Verification says "a person compared
+// this fingerprint with its owner over some other channel and it matched". The
+// two are independent: pinning is automatic, verification never is.
+//
+// The flag is therefore stored as the FINGERPRINT that was verified, not as a
+// boolean. A boolean would survive a key change and keep claiming a human
+// checked a key nobody has ever seen; storing the checked value makes the claim
+// self-invalidating — the moment the pin moves (a signed rotation, an explicit
+// re-accept) the stored fingerprint no longer matches and the contact reads as
+// unverified again, with no sweep, no migration and no way to forget.
+
+/** What a stored verification amounts to, given where the pin is NOW. */
+type VerificationState =
+	/** Never verified by anyone here. */
+	| 'unverified'
+	/** A human verified exactly the key we would seal to today. */
+	| 'verified'
+	/** A human verified a key, but the pin has moved on since — the check is void. */
+	| 'stale';
+
+/**
+ * Resolve the verification state of a recipient row. Pure, and the SINGLE
+ * definition both planes use, so the backend's badge and the composer's lock can
+ * never disagree about whether a contact is verified.
+ *
+ * `stale` deliberately does not decay to `unverified`: "you checked a different
+ * key" is a more useful thing to tell someone than "you never checked", and it
+ * is the state that should make a reader look twice.
+ */
+export function resolveVerificationState(row: {
+	pinnedFingerprint?: string | null;
+	verifiedFingerprint?: string | null;
+}): VerificationState {
+	if (!row.verifiedFingerprint) return 'unverified';
+	if (!row.pinnedFingerprint) return 'stale';
+	return fingerprintsEqual(row.pinnedFingerprint, row.verifiedFingerprint) ? 'verified' : 'stale';
+}
+
+/** Convenience predicate: is the key we would seal to today human-verified? */
+export function isKeyVerified(row: {
+	pinnedFingerprint?: string | null;
+	verifiedFingerprint?: string | null;
+}): boolean {
+	return resolveVerificationState(row) === 'verified';
 }

@@ -110,7 +110,7 @@ function mountBar(props: { showSearch?: boolean } = { showSearch: true }) {
 					template: '<span class="unread-badge" />',
 				},
 			},
-			stubs: { transition: true },
+			stubs: { transition: true, UiBadge: true },
 		},
 	});
 }

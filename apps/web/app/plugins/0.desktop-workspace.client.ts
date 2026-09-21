@@ -18,6 +18,7 @@ import {
 	showSwitchSkeleton,
 	SWITCH_FLAG_TTL_MS,
 } from '~/lib/desktop/workspaceSwitch';
+import { PLATFORM_ROOT_CLASS, readDesktopPlatform } from '~/lib/desktop/platform';
 import { setupDeepLinks } from '~/lib/desktop/deepLink.client';
 import { setupUpdateChecks } from '~/lib/desktop/updater.client';
 import type { Router } from 'vue-router';
@@ -47,7 +48,7 @@ export default defineNuxtPlugin({
 		// location assignment (a cold re-boot). Desktop-only — never touches web.
 		window.__NUXT_ROUTER__ = nuxtApp['$router'] as Router;
 
-		// Perceived-instant switch (piece d4): if we arrived here via a workspace
+		// Perceived-instant switch: if we arrived here via a workspace
 		// switch, re-paint its skeleton FIRST — before Nuxt mounts — so the reload
 		// replaces like with like instead of flashing bg-base. A stale flag (reload
 		// that never landed within the TTL) is discarded rather than shown. The
@@ -62,14 +63,11 @@ export default defineNuxtPlugin({
 		}
 
 		// Platform hooks on <html> for native-chrome CSS (titlebar, vibrancy).
-		// Complements the .dark/.light color-mode class; kept consistent with
-		// useDesktopContext.ts's navigator.platform detection.
+		// Complements the .dark/.light color-mode class. Same detection as
+		// `useDesktopContext`, because it is the same module.
 		const root = document.documentElement;
 		root.classList.add('is-desktop');
-		const platform = navigator.platform || '';
-		if (/Mac/i.test(platform)) root.classList.add('is-mac');
-		else if (/Win/i.test(platform)) root.classList.add('is-win');
-		else root.classList.add('is-linux');
+		root.classList.add(PLATFORM_ROOT_CLASS[readDesktopPlatform()]);
 
 		// "Open at startup" workspace pin (from /desktop/settings). Applied only on
 		// a COLD launch of the MAIN window: workspace switches reload this webview
@@ -121,6 +119,8 @@ export default defineNuxtPlugin({
 		// Non-blocking: deep links can arrive any time after boot.
 		void setupDeepLinks();
 		// Non-blocking auto-update check (+ a manual `owlat:check-updates` trigger).
+		// Gates itself to the main window: the compose webview boots this plugin
+		// too, and must not run a second updater against the shared native slot.
 		setupUpdateChecks();
 	},
 });

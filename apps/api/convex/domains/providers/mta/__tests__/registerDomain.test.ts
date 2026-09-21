@@ -70,6 +70,23 @@ describe('mtaProvider.registerDomain — DKIM DNS host (PR-74)', () => {
 		expect(result.dnsRecords.dkim![0]!.host).toBe(`${result.identity.dkimSelector}._domainkey`);
 	});
 
+	it('forwards the owning organizationId to the MTA register call (H2)', async () => {
+		registerDomainMock.mockResolvedValue({ selector: 's1', dnsRecord: 'v=DKIM1; p=K' });
+
+		await mtaProvider.registerDomain('acme.com', { organizationId: 'org-123' });
+
+		// (domain, returnPathHost, organizationId) — no custom return-path here.
+		expect(registerDomainMock).toHaveBeenCalledWith('acme.com', undefined, 'org-123');
+	});
+
+	it('sends no org when none is supplied (unchanged historic call)', async () => {
+		registerDomainMock.mockResolvedValue({ selector: 's1', dnsRecord: 'v=DKIM1; p=K' });
+
+		await mtaProvider.registerDomain('acme.com');
+
+		expect(registerDomainMock).toHaveBeenCalledWith('acme.com', undefined, undefined);
+	});
+
 	it('publishes the DMARC record at `_dmarc` (the alignment carries DMARC)', async () => {
 		registerDomainMock.mockResolvedValue({ selector: 's1', dnsRecord: 'v=DKIM1; p=K' });
 

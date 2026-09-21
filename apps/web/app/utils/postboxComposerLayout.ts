@@ -9,8 +9,8 @@
 export const MIN_COMPOSER_WIDTH = 320;
 export const MIN_COMPOSER_HEIGHT = 360;
 /** Fraction of the viewport a composer may grow to at most. */
-export const MAX_COMPOSER_WIDTH_FRACTION = 0.9; // 90vw
-export const MAX_COMPOSER_HEIGHT_FRACTION = 0.85; // 85vh
+const MAX_COMPOSER_WIDTH_FRACTION = 0.9; // 90vw
+const MAX_COMPOSER_HEIGHT_FRACTION = 0.85; // 85vh
 
 /** Default popup composer size before the user drags to resize. */
 export const DEFAULT_COMPOSER_SIZE: ComposerSize = { width: 380, height: 440 };
@@ -58,7 +58,7 @@ export function clampComposerSize(size: Partial<ComposerSize>, viewport: Viewpor
  * so opening more composers while one is focused can never strand the focus
  * surface with an empty teleport mount while its scrim is still up.
  */
-export const MAX_POPUPS = 2;
+const MAX_POPUPS = 2;
 
 export interface ComposerPlacement {
 	popups: ReadonlyArray<{ id: string; slot: number }>;

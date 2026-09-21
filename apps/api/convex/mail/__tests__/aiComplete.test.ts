@@ -1,5 +1,5 @@
 /**
- * Unit tests for the inline ghost-text completion seam (mail/ai.completeDraft):
+ * Unit tests for the inline ghost-text completion seam (mail/ai/assist.completeDraft):
  * prompt assembly frames the thread + draft as untrusted data, and the
  * post-processor collapses a raw model reply into ONE bounded inline fragment,
  * returning '' when the model declined (low confidence).
@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildCompletePrompt, postProcessCompletion } from '../ai';
+import { buildCompletePrompt, postProcessCompletion } from '../ai/assist';
 
 describe('buildCompletePrompt', () => {
 	it('frames the thread + draft as untrusted data, not instructions', () => {
@@ -46,21 +46,15 @@ describe('postProcessCompletion', () => {
 	});
 
 	it('passes through a short confident continuation', () => {
-		expect(postProcessCompletion(' will review it today.')).toBe(
-			' will review it today.',
-		);
+		expect(postProcessCompletion(' will review it today.')).toBe(' will review it today.');
 	});
 
 	it('stops at the first sentence end', () => {
-		expect(postProcessCompletion(' am on it. Also, call me later.')).toBe(
-			' am on it.',
-		);
+		expect(postProcessCompletion(' am on it. Also, call me later.')).toBe(' am on it.');
 	});
 
 	it('strips wrapping quotes some models add', () => {
-		expect(postProcessCompletion('" will follow up soon."')).toBe(
-			' will follow up soon.',
-		);
+		expect(postProcessCompletion('" will follow up soon."')).toBe(' will follow up soon.');
 	});
 
 	it('collapses newlines into a single inline run', () => {

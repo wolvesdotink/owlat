@@ -1,9 +1,15 @@
 /**
  * Per-mailbox label state + CRUD helpers.
+ *
+ * Labels nest (idea 38), so this also exposes the assembled tree and the
+ * per-label unread counts the rail badges. The tree build itself is a pure
+ * function in `~/utils/postboxLabelTree` — this composable only supplies it
+ * with live rows.
  */
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { buildLabelTree } from '~/utils/postboxLabelTree';
 
 export function usePostboxLabels(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
@@ -11,6 +17,13 @@ export function usePostboxLabels(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 	);
 	const labels = computed(() => data.value ?? []);
+
+	const { data: unreadData } = useConvexQuery(api.mail.labels.unreadCounts, () =>
+		mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
+	);
+	/** Sparse: a label with no unread mail is simply absent, i.e. no badge. */
+	const unreadCounts = computed<Record<string, number>>(() => unreadData.value?.counts ?? {});
+	const labelTree = computed(() => buildLabelTree(labels.value, unreadCounts.value));
 
 	const createLabel = useBackendOperation(api.mail.labels.create, {
 		label: () => t('shared.postbox.usePostboxLabels.createLabel'),
@@ -28,9 +41,32 @@ export function usePostboxLabels(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		label: () => t('shared.postbox.usePostboxLabels.updateThreadLabels'),
 	});
 
-	async function create(name: string, color?: string) {
+	const reorderLabels = useBackendOperation(api.mail.labels.reorder, {
+		label: () => t('shared.postbox.usePostboxLabels.reorderLabels'),
+	});
+
+	/**
+	 * `name` may be a path (`Work/Clients/Acme`): the backend creates every
+	 * missing ancestor and returns the leaf, so nesting is one action.
+	 */
+	async function create(name: string, color?: string, parentId?: Id<'mailLabels'>) {
 		if (!mailboxId.value) return null;
-		return createLabel.run({ mailboxId: mailboxId.value, name, color });
+		return createLabel.run({ mailboxId: mailboxId.value, name, color, parentId });
+	}
+
+	/** `null` moves the label back out to a root. */
+	async function setParent(labelId: Id<'mailLabels'>, parentId: Id<'mailLabels'> | null) {
+		await updateLabel.run({ labelId, parentId });
+	}
+
+	async function setPinned(labelId: Id<'mailLabels'>, isPinned: boolean) {
+		await updateLabel.run({ labelId, isPinned });
+	}
+
+	/** Write a sibling run's new order — the shared half of drag and keyboard. */
+	async function reorder(labelIds: Id<'mailLabels'>[]) {
+		if (!mailboxId.value) return;
+		await reorderLabels.run({ mailboxId: mailboxId.value, labelIds });
 	}
 
 	async function rename(labelId: Id<'mailLabels'>, name: string) {
@@ -59,8 +95,13 @@ export function usePostboxLabels(mailboxId: Ref<Id<'mailboxes'> | null>) {
 
 	return {
 		labels,
+		labelTree,
+		unreadCounts,
 		isLoading,
 		create,
+		setParent,
+		setPinned,
+		reorder,
 		rename,
 		setColor,
 		remove,

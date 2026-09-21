@@ -68,70 +68,13 @@ import { sendToMx } from '../sender.js';
 import { resolveMxDestination } from '../mxResolver.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+import { createOwlatHostConfig, createOwlatJob } from '../../__tests__/helpers/fixtures.js';
 
-function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
-	return {
-		messageId: 'msg-001',
-		to: 'user@example.com',
-		from: 'sender@owlat.com',
-		subject: 'Test',
-		html: '<p>Hello</p>',
-		ipPool: 'transactional',
-		organizationId: 'org-1',
-		dkimDomain: 'owlat.com',
-		...overrides,
-	};
-}
+const createJob = (overrides: Partial<EmailJob> = {}): EmailJob =>
+	createOwlatJob({ messageId: 'msg-001', ...overrides });
 
-function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
-	return {
-		port: 3100,
-		bouncePort: 25,
-		redisUrl: 'redis://localhost:6379',
-		apiKey: 'test-key',
-		mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
-		convexSiteUrl: 'https://test.convex.site',
-		webhookSecret: 'secret',
-		ipPools: { transactional: ['10.0.0.1'], campaign: ['10.0.0.2'] },
-		dkimKeys: {},
-		workerConcurrency: 50,
-		serverId: 'test-server',
-		smtpPool: {
-			maxPerHost: 3,
-			idleTimeoutMs: 30000,
-			maxAgeMs: 300000,
-			maxMessagesPerConnection: 100,
-		},
-		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
-		submissionPort: 587,
-		submissionEnabled: false,
-		submissionImplicitTlsPort: 465,
-		submissionImplicitTlsEnabled: false,
-		submissionMaxConnectionsPerIp: 10,
-		submissionMaxClients: 200,
-		submissionMaxAuthFailuresPerIp: 10,
-		contentScreeningEnabled: true,
-		contentMaxSizeKb: 500,
-		deliveryLogMaxLen: 100000,
-		deliveryLogTtlHours: 72,
-		webhookDlqMaxSize: 10000,
-		bounceMaxConnectionsPerIp: 10,
-		bounceMaxClients: 200,
-		bounceTarpitEnabled: false,
-		bounceTarpitDelayMs: 5000,
-		inboundSpfEnabled: false,
-		inboundDkimEnabled: false,
-		inboundDmarcEnabled: false,
-		inboundArcEnabled: false,
-		rspamdRejectThreshold: 15,
-		smtpPoolGlobalMaxPerHost: 10,
-		maxMessageAgeMs: 432_000_000,
-		...overrides,
-	} satisfies MtaConfig;
-}
+const createConfig = (overrides: Partial<MtaConfig> = {}): MtaConfig =>
+	createOwlatHostConfig({ mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!', ...overrides });
 
 describe('sendToMx — header injection (PR-43)', () => {
 	let redis: InstanceType<typeof Redis>;

@@ -1,16 +1,15 @@
 /**
- * Pure helpers for the campaign wizard's sender picker (2026-07-10 experience
- * plan, decision 8 / piece d3). The Setup step replaces the free-text
- * from-name / from-email fields with a SELECT over the ENABLED curated senders;
- * a "Custom address…" option is revealed ONLY when the instance allows custom
- * campaign senders (when off it is invisible, never a disabled row).
+ * Pure helpers for the campaign wizard's sender picker. The Setup step
+ * replaces the free-text from-name / from-email fields with a SELECT over the ENABLED curated senders; a "Custom
+ * address…" option is revealed ONLY when the instance allows custom campaign
+ * senders (when off it is invisible, never a disabled row).
  *
  * Framework-free so the option-mapping, default-selection and submit-guard logic
  * are unit-tested directly. The server-side gate (`campaigns/senders.ts`) stays
  * the floor — this mirrors it in the UI so an unsubmittable address is never
  * offered in the first place.
  */
-import { isValidEmail } from './validation';
+import { isValidEmail } from '@owlat/shared';
 
 /** Message-key root for this module; see `i18n/locales/en.json`. */
 const K = 'shared.campaignSenderPicker';

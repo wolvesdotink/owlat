@@ -1,6 +1,6 @@
 /**
  * The HOSTED sending-domain identity provider — one adapter that serves every
- * bundled plugin transport declaring a `domainIdentity` (the seams plan's P3.2).
+ * bundled plugin transport declaring a `domainIdentity`.
  *
  * ONE IMPLEMENTATION, MANY KINDS, and that is the difference from every adapter
  * folder beside this one. `../ses/` and `../mandrill/` each encode a provider's

@@ -11,6 +11,8 @@ const props = defineProps<{
 	open: boolean;
 }>();
 
+const { t } = useI18n();
+
 const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 
 // Off-canvas is a transform, not an unmount, so the rail's links and controls
@@ -38,15 +40,26 @@ const isOffCanvas = computed(() => !isDesktopViewport.value && !props.open);
 		/>
 	</Transition>
 
-	<div
-		class="fixed top-0 left-0 z-50 h-full flex transition-transform pt-[env(safe-area-inset-top)] lg:pt-0 lg:static lg:z-auto lg:h-auto lg:translate-x-0 lg:transition-none"
-		:class="
-			open
-				? 'translate-x-0 duration-(--motion-moderate)'
-				: '-translate-x-full duration-(--motion-moderate-exit)'
-		"
-		:inert="isOffCanvas ? true : undefined"
-	>
-		<PostboxFolderRail :mailbox-id="mailboxId" :folder-role="folderRole" :folder-id="folderId" />
-	</div>
+	<DashboardNavigationPortal :title="t('shell.dashboard.mailNavigation')">
+		<div
+			class="fixed top-0 left-0 z-50 h-full flex transition-transform pt-[env(safe-area-inset-top)] lg:pt-0 lg:static lg:z-auto lg:h-auto lg:translate-x-0 lg:transition-none"
+			:class="
+				open
+					? 'translate-x-0 duration-(--motion-moderate)'
+					: '-translate-x-full duration-(--motion-moderate-exit)'
+			"
+			:inert="isOffCanvas ? true : undefined"
+		>
+			<!-- Below lg the rail IS the drawer: it was opened deliberately and there
+		     is no adjacent content to make room for, so the saved collapsed
+		     preference (a desktop space tradeoff) must not turn it into an icon
+		     strip. At lg+ the drawer is a static column and the preference wins. -->
+			<PostboxFolderRail
+				:mailbox-id="mailboxId"
+				:folder-role="folderRole"
+				:folder-id="folderId"
+				:force-expanded="true"
+			/>
+		</div>
+	</DashboardNavigationPortal>
 </template>

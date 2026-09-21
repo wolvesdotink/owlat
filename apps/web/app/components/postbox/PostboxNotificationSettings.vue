@@ -1,8 +1,10 @@
 <script setup lang="ts">
 /**
- * Desktop-only native notification preferences (scope + badge counting).
- * Self-contained: reads/writes the same per-user mail-settings row via
- * usePostboxSettings, so the parent settings page stays under the file-size cap.
+ * Desktop-only native notification preferences: OS permission, scope, badge
+ * counting, quiet hours and preview hiding. Self-contained — reads/writes the
+ * same per-user mail-settings row via usePostboxSettings, so the parent
+ * settings page stays under the file-size cap. The permission strip and the
+ * quiet-hours editor are split out for the same reason.
  */
 import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { POSTBOX_NOTIFY_ABOUT_OPTIONS } from '~/utils/postboxNotify';
@@ -22,6 +24,10 @@ const {
 	setNotifyAbout,
 	badgeNonPeople,
 	setBadgeNonPeople,
+	quietHours,
+	setQuietHours,
+	hidePreview,
+	setHidePreview,
 	senderScreener,
 	setSenderScreener,
 	isSaving,
@@ -39,6 +45,10 @@ function onBadgeNonPeopleChange(event: Event) {
 function onSenderScreenerChange(event: Event) {
 	void setSenderScreener((event.target as HTMLInputElement).checked);
 }
+
+function onHidePreviewChange(event: Event) {
+	void setHidePreview((event.target as HTMLInputElement).checked);
+}
 </script>
 
 <template>
@@ -48,6 +58,7 @@ function onSenderScreenerChange(event: Event) {
 				{{ t('components.postbox.postboxNotificationSettings.heading') }}
 			</h2>
 		</header>
+		<PostboxNotificationPermission />
 		<div class="px-5 py-4 flex items-center justify-between gap-4">
 			<div class="min-w-0">
 				<label for="postbox-notify-about" class="font-medium text-sm block">
@@ -85,6 +96,29 @@ function onSenderScreenerChange(event: Event) {
 				:checked="badgeNonPeople"
 				:disabled="isSaving"
 				@change="onBadgeNonPeopleChange"
+			/>
+		</div>
+		<PostboxQuietHoursFields
+			:value="quietHours"
+			:disabled="isSaving"
+			@update="setQuietHours($event)"
+		/>
+		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
+			<div class="min-w-0">
+				<label for="postbox-hide-preview" class="font-medium text-sm block">
+					{{ t('components.postbox.postboxNotificationSettings.hidePreview.label') }}
+				</label>
+				<p class="text-xs text-text-tertiary mt-0.5">
+					{{ t('components.postbox.postboxNotificationSettings.hidePreview.hint') }}
+				</p>
+			</div>
+			<input
+				id="postbox-hide-preview"
+				type="checkbox"
+				class="shrink-0 h-4 w-4"
+				:checked="hidePreview"
+				:disabled="isSaving"
+				@change="onHidePreviewChange"
 			/>
 		</div>
 		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">

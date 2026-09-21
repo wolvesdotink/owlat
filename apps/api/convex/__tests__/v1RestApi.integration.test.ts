@@ -41,8 +41,8 @@ const modules = Object.fromEntries(
 			!p.includes('knowledgeExtraction') &&
 			!p.includes('semanticFileProcessing') &&
 			!p.includes('visualizationAgent') &&
-			!p.includes('llmProvider'),
-	),
+			!p.includes('llmProvider')
+	)
 );
 
 // Every v1 scope — used to seed an "all-access" key for success-path tests.
@@ -82,7 +82,7 @@ function makeKey(suffix = 'a'.repeat(40)): string {
 async function seedKey(
 	t: ReturnType<typeof convexTest>,
 	scopes: string[],
-	suffix?: string,
+	suffix?: string
 ): Promise<string> {
 	const key = makeKey(suffix);
 	const keyHash = await hashKey(key);
@@ -112,6 +112,10 @@ beforeEach(() => {
 	// Some handlers read SITE_URL via lib/env getOptional — keep it unset so the
 	// optional read returns undefined rather than throwing.
 	delete process.env['SITE_URL'];
+	// Local integration deployment: opt into dev mode so cors.allowedOrigins() and
+	// auth.resolveTrustedOrigins() use the loopback defaults instead of the
+	// production fail-closed throw (which now requires SITE_URL/ALLOWED_ORIGINS).
+	process.env['OWLAT_DEV_MODE'] = 'true';
 });
 afterEach(() => {
 	process.env = { ...SAVED_ENV };
@@ -282,6 +286,34 @@ describe('POST /api/v1/contacts (createContact → contacts:write)', () => {
 		const body = await res.json();
 		expect(body.error.category).toBe('already_exists');
 	});
+
+	it('locks the error envelope — the raw internal message (which embeds the email) never reaches the caller', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['contacts:write']);
+		// `createForTeam` throws `A contact with this email already exists: <email>`,
+		// so the address is the sentinel that the raw internal message carries. The
+		// handler must classify it and return ONLY the fixed string, never echoing
+		// the address (or any other raw `error.message`) back to the API caller.
+		const sentinel = 'leak-canary-7z9@sentinel.example';
+		const first = await t.fetch('/api/v1/contacts', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: sentinel }),
+		});
+		expect(first.status).toBe(201);
+		const res = await t.fetch('/api/v1/contacts', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: sentinel }),
+		});
+		expect(res.status).toBe(409);
+		const raw = await res.text();
+		// The fixed, non-revealing string ships…
+		expect(JSON.parse(raw).error.message).toBe('A contact with this email already exists');
+		// …and the sentinel from the raw internal error is nowhere in the body.
+		expect(raw).not.toContain(sentinel);
+		expect(raw).not.toContain('leak-canary');
+	});
 });
 
 // ─── GET /api/v1/contacts/{idOrEmail} (get) ──────────────────────────────────
@@ -316,7 +348,7 @@ describe('GET /api/v1/contacts/{idOrEmail} (getContact → contacts:read)', () =
 		const t = setupTest();
 		const key = await seedKey(t, ['contacts:read']);
 		const id = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact({ email: 'by-id@example.com' })),
+			ctx.db.insert('contacts', createTestContact({ email: 'by-id@example.com' }))
 		);
 		const res = await t.fetch(`/api/v1/contacts/${id}`, {
 			method: 'GET',
@@ -346,7 +378,7 @@ describe('GET /api/v1/contacts/{idOrEmail} (getContact → contacts:read)', () =
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'erased@example.com', deletedAt: Date.now() }),
+				createTestContact({ email: 'erased@example.com', deletedAt: Date.now() })
 			);
 		});
 		const res = await t.fetch('/api/v1/contacts/erased@example.com', {
@@ -389,7 +421,7 @@ describe('PUT /api/v1/contacts/{idOrEmail} (updateContact → contacts:write)', 
 		const t = setupTest();
 		const key = await seedKey(t, ['contacts:write']);
 		const id = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact({ email: 'upd@example.com', firstName: 'Old' })),
+			ctx.db.insert('contacts', createTestContact({ email: 'upd@example.com', firstName: 'Old' }))
 		);
 		const res = await t.fetch(`/api/v1/contacts/${id}`, {
 			method: 'PUT',
@@ -411,6 +443,35 @@ describe('PUT /api/v1/contacts/{idOrEmail} (updateContact → contacts:write)', 
 		});
 		expect(res.status).toBe(404);
 	});
+
+	it('locks the error envelope on a duplicate-email update — no raw internal message leaks', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['contacts:write']);
+		// Re-pointing one contact at another live contact's address makes
+		// `updateForTeam` throw `A contact with this email already exists: <email>`.
+		// The target address is the sentinel; the handler must reply with the fixed
+		// string only.
+		const sentinel = 'update-canary-4k2@sentinel.example';
+		const taken = await t.fetch('/api/v1/contacts', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: sentinel }),
+		});
+		expect(taken.status).toBe(201);
+		const moverId = await t.run(async (ctx) =>
+			ctx.db.insert('contacts', createTestContact({ email: 'mover@example.com' }))
+		);
+		const res = await t.fetch(`/api/v1/contacts/${moverId}`, {
+			method: 'PUT',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: sentinel }),
+		});
+		expect(res.status).toBe(409);
+		const raw = await res.text();
+		expect(JSON.parse(raw).error.message).toBe('A contact with this email already exists');
+		expect(raw).not.toContain(sentinel);
+		expect(raw).not.toContain('update-canary');
+	});
 });
 
 // ─── DELETE /api/v1/contacts/{idOrEmail} (delete) ────────────────────────────
@@ -430,7 +491,7 @@ describe('DELETE /api/v1/contacts/{idOrEmail} (deleteContact → contacts:write)
 		const t = setupTest();
 		const key = await seedKey(t, ['contacts:write']);
 		const id = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact({ email: 'del@example.com' })),
+			ctx.db.insert('contacts', createTestContact({ email: 'del@example.com' }))
 		);
 		const res = await t.fetch(`/api/v1/contacts/${id}`, {
 			method: 'DELETE',
@@ -644,10 +705,7 @@ describe('POST /api/v1/topics/{id}/contacts (addContactToTopic → topics:write)
 		const t = setupTest();
 		const key = await seedKey(t, ['topics:write']);
 		const { topicId } = await t.run(async (ctx) => {
-			const topicId = await ctx.db.insert(
-				'topics',
-				createTestTopic({ requireDoubleOptIn: false }),
-			);
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 			await ctx.db.insert('contacts', createTestContact({ email: 'member@example.com' }));
 			return { topicId };
 		});
@@ -712,10 +770,7 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 		const t = setupTest();
 		const key = await seedKey(t, ['topics:write']);
 		const { topicId } = await t.run(async (ctx) => {
-			const topicId = await ctx.db.insert(
-				'topics',
-				createTestTopic({ requireDoubleOptIn: false }),
-			);
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 			await ctx.db.insert('contacts', createTestContact({ email: 'leaving@example.com' }));
 			return { topicId };
 		});
@@ -743,13 +798,10 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 		const t = setupTest();
 		const key = await seedKey(t, ['topics:write']);
 		const { topicId, contactId } = await t.run(async (ctx) => {
-			const topicId = await ctx.db.insert(
-				'topics',
-				createTestTopic({ requireDoubleOptIn: false }),
-			);
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 			const contactId = await ctx.db.insert(
 				'contacts',
-				createTestContact({ email: 'leaving@example.com' }),
+				createTestContact({ email: 'leaving@example.com' })
 			);
 			return { topicId, contactId };
 		});
@@ -763,9 +815,9 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 			ctx.db
 				.query('contactTopics')
 				.withIndex('by_contact_and_topic', (q) =>
-					q.eq('contactId', contactId).eq('topicId', topicId),
+					q.eq('contactId', contactId).eq('topicId', topicId)
 				)
-				.first(),
+				.first()
 		);
 		expect(membershipBefore).not.toBeNull();
 
@@ -781,9 +833,9 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 			ctx.db
 				.query('contactTopics')
 				.withIndex('by_contact_and_topic', (q) =>
-					q.eq('contactId', contactId).eq('topicId', topicId),
+					q.eq('contactId', contactId).eq('topicId', topicId)
 				)
-				.first(),
+				.first()
 		);
 		expect(membershipAfter).toBeNull();
 	});
@@ -792,10 +844,7 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 		const t = setupTest();
 		const key = await seedKey(t, ['topics:write']);
 		const { topicId } = await t.run(async (ctx) => {
-			const topicId = await ctx.db.insert(
-				'topics',
-				createTestTopic({ requireDoubleOptIn: false }),
-			);
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 			await ctx.db.insert('contacts', createTestContact({ email: 'notamember@example.com' }));
 			return { topicId };
 		});

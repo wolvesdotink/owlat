@@ -1,0 +1,49 @@
+/*
+ * Postbox reading-pane geometry.
+ *
+ * A single `data-reading-pane` attribute on the Postbox root drives where the
+ * reader sits, exactly the way `data-density` drives row spacing — components
+ * never re-implement the layout. Three panes:
+ *   - right (default): the reader beside the list, the list sized by
+ *     `--pbx-list-width`. This is the geometry that shipped before the control
+ *     existed, so an untouched preference renders identically.
+ *   - bottom: a full-width list above the reader, the list sized by
+ *     `--pbx-list-height`.
+ *   - off: no reading pane at all — the list takes the whole width and opening
+ *     a message hands the width to the reader (the drill-in the narrow layout
+ *     has always used, applied at every width).
+ *
+ * The two custom properties are published by PostboxLayout from the persisted,
+ * already-clamped preference (utils/postboxReadingPane), so this file has no
+ * bounds of its own to drift from the TypeScript ones.
+ *
+ * Everything here is scoped to `lg` and up. Below that the three panes are a
+ * stacked drill-in regardless of the pane preference: there is no room for a
+ * second pane on a phone, and no pointer precision for a 6px divider.
+ */
+
+@media (min-width: 64rem) {
+	/* Side-by-side: the list is a fixed track, the reader takes the rest. */
+	[data-reading-pane='right'] .pbx-pane-list {
+		width: var(--pbx-list-width, 24rem);
+		flex: 0 0 auto;
+	}
+
+	/* Stacked: the split flips to a column, the list becomes a fixed-height
+	   full-width track and the reader takes the remaining height. */
+	[data-reading-pane='bottom'] .pbx-pane-split {
+		flex-direction: column;
+	}
+
+	[data-reading-pane='bottom'] .pbx-pane-list {
+		width: 100%;
+		height: var(--pbx-list-height, 20rem);
+		flex: 0 0 auto;
+	}
+
+	/* No reading pane: the list is the whole surface. */
+	[data-reading-pane='off'] .pbx-pane-list {
+		width: 100%;
+		flex: 1 1 auto;
+	}
+}

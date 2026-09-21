@@ -210,7 +210,7 @@ export const getByContact = publicQuery({
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
 			.collect(); // bounded: junction rows for one contact (knowledge per person)
 
-		const entryMap = await batchGet<Doc<'knowledgeEntries'>, 'knowledgeEntries'>(
+		const entryMap = await batchGet(
 			ctx,
 			links.map((link) => link.entryId)
 		);
@@ -745,9 +745,11 @@ export const getByIds = internalQuery({
 		ids: v.array(v.id('knowledgeEntries')),
 	},
 	handler: async (ctx, args) => {
+		// Independent ids: one deduplicated, parallel read.
+		const byId = await batchGet(ctx, args.ids);
 		const out: Doc<'knowledgeEntries'>[] = [];
 		for (const id of args.ids) {
-			const entry = await ctx.db.get(id);
+			const entry = byId.get(id);
 			if (entry) out.push(entry);
 		}
 		return out;
@@ -781,7 +783,7 @@ export const getOpenCommitmentsByContact = internalQuery({
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
 			.collect(); // bounded: junction rows for one contact (knowledge per person)
 
-		const entryMap = await batchGet<Doc<'knowledgeEntries'>, 'knowledgeEntries'>(
+		const entryMap = await batchGet(
 			ctx,
 			links.map((link) => link.entryId)
 		);

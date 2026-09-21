@@ -1,17 +1,26 @@
 /**
  * Pure-logic coverage for the shared command-palette model:
  *   - provider merge: ordering, empty-group drop, per-group capping
- *   - query filtering: prefix-first ranking, subtitle fallback, stability
+ *   - query filtering: fuzzy subsequence ranking, subtitle fallback, stability
+ *   - match highlighting: the runs a row bolds
+ *   - mode prefixes: `>` commands, `@` people, `#` labels/folders
+ *   - argument items: the two-step option list
  *   - keyboard flow: clamp-only Arrow navigation over the flattened list
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
 	type PaletteGroup,
 	type PaletteItem,
+	buildArgumentGroups,
 	filterItems,
 	flattenGroups,
+	fuzzyMatch,
+	groupsForMode,
+	highlightSegments,
 	mergeGroups,
 	moveSelection,
+	parsePaletteQuery,
+	scoreItems,
 } from '../commandPalette';
 
 function item(id: string, label: string, subtitle?: string): PaletteItem {
@@ -74,6 +83,129 @@ describe('filterItems', () => {
 
 	it('excludes non-matches', () => {
 		expect(filterItems(items, 'zzz')).toHaveLength(0);
+	});
+
+	it('matches a subsequence, so an abbreviation finds the command', () => {
+		const commands = [item('1', 'Postbox settings'), item('2', 'Campaign analytics')];
+		// Plain substring filtering matched nothing for this.
+		expect(filterItems(commands, 'pbx settings').map((r) => r.id)).toEqual(['1']);
+		expect(filterItems(commands, 'canal').map((r) => r.id)).toEqual(['2']);
+	});
+
+	it('ranks a contiguous hit above a scattered one', () => {
+		const commands = [item('scattered', 'Contacts audit'), item('contiguous', 'Cancel')];
+		expect(filterItems(commands, 'ca').map((r) => r.id)).toEqual(['contiguous', 'scattered']);
+	});
+
+	it('reports which field matched and where', () => {
+		const [first] = scoreItems(items, 'acme');
+		expect(first?.field).toBe('label');
+		expect(first?.indices).toEqual([0, 1, 2, 3]);
+
+		const [bySubtitle] = scoreItems([item('x', 'Nothing alike', 'billing@acme.test')], 'billing');
+		expect(bySubtitle?.field).toBe('subtitle');
+	});
+
+	it('keeps input order for equally scored items', () => {
+		const twins = [item('a', 'Archive'), item('b', 'Archive')];
+		expect(filterItems(twins, 'arch').map((r) => r.id)).toEqual(['a', 'b']);
+	});
+});
+
+describe('fuzzyMatch', () => {
+	it('scores a prefix above a word start above a mid-word hit', () => {
+		const prefix = fuzzyMatch('mail settings', 'mail')?.score ?? 0;
+		const wordStart = fuzzyMatch('open mail now', 'mail')?.score ?? 0;
+		const midWord = fuzzyMatch('airmail', 'mail')?.score ?? 0;
+		expect(prefix).toBeGreaterThan(wordStart);
+		expect(wordStart).toBeGreaterThan(midWord);
+	});
+
+	it('returns null when a character is missing, and matches everything when empty', () => {
+		expect(fuzzyMatch('Compose', 'zq')).toBeNull();
+		expect(fuzzyMatch('Compose', '  ')).toEqual({ score: 0, indices: [] });
+	});
+});
+
+describe('highlightSegments', () => {
+	it('splits the text into matched and unmatched runs', () => {
+		expect(highlightSegments('Compose', 'comp')).toEqual([
+			{ text: 'Comp', isMatch: true },
+			{ text: 'ose', isMatch: false },
+		]);
+	});
+
+	it('returns one plain run when the query does not match', () => {
+		expect(highlightSegments('Compose', 'zzz')).toEqual([{ text: 'Compose', isMatch: false }]);
+	});
+});
+
+describe('parsePaletteQuery', () => {
+	it('reads the three mode prefixes and strips them from the term', () => {
+		expect(parsePaletteQuery('> arch')).toEqual({ mode: 'commands', term: 'arch', prefix: '>' });
+		expect(parsePaletteQuery('@ada')).toEqual({ mode: 'people', term: 'ada', prefix: '@' });
+		expect(parsePaletteQuery('#work')).toEqual({ mode: 'labels', term: 'work', prefix: '#' });
+	});
+
+	it('leaves an unprefixed query untouched', () => {
+		expect(parsePaletteQuery('invoice 4471')).toEqual({
+			mode: 'all',
+			term: 'invoice 4471',
+			prefix: '',
+		});
+	});
+});
+
+describe('groupsForMode', () => {
+	const groups = [
+		{ ...group('verbs', 0, [item('v', 'V')]), mode: 'commands' as const },
+		{ ...group('contacts', 1, [item('c', 'C')]), mode: 'people' as const },
+		group('recent', 2, [item('r', 'R')]),
+	];
+
+	it('admits every group in the unprefixed palette', () => {
+		expect(groupsForMode(groups, 'all').map((g) => g.key)).toEqual(['verbs', 'contacts', 'recent']);
+	});
+
+	it('admits only the groups that opted into a narrowed mode', () => {
+		expect(groupsForMode(groups, 'people').map((g) => g.key)).toEqual(['contacts']);
+		// A group without a mode never leaks into a narrowed search.
+		expect(groupsForMode(groups, 'labels')).toEqual([]);
+	});
+});
+
+describe('buildArgumentGroups', () => {
+	const spec = {
+		promptKey: 'prompt',
+		headingKey: 'heading',
+		icon: 'lucide:tag',
+		options: [
+			{ id: 'work', label: 'Work', run: () => {} },
+			{ id: 'personal', label: 'Personal', run: () => {} },
+		],
+	};
+
+	it('turns the options into one filtered group carrying the heading key', () => {
+		const [built] = buildArgumentGroups(spec, 'wor');
+		expect(built?.heading).toBe('heading');
+		expect(built?.items.map((i) => i.id)).toEqual(['argument:work']);
+	});
+
+	it('runs the chosen option, not the parent item', () => {
+		const run = vi.fn();
+		const [built] = buildArgumentGroups({ ...spec, options: [{ id: 'a', label: 'A', run }] }, '');
+		built?.items[0]?.run();
+		expect(run).toHaveBeenCalledOnce();
+	});
+
+	it('does not cap the option list (a mailbox can have many labels)', () => {
+		const many = Array.from({ length: 40 }, (_, i) => ({
+			id: `l${i}`,
+			label: `Label ${i}`,
+			run: () => {},
+		}));
+		const [built] = buildArgumentGroups({ ...spec, options: many }, '');
+		expect(mergeGroups(built ? [built] : [])[0]?.items).toHaveLength(40);
 	});
 });
 

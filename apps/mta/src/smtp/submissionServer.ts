@@ -49,6 +49,7 @@ import { verifyPostboxAppPassword } from '../auth/postboxAuth.js';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
 import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { logger } from '../monitoring/logger.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { emailDomain } from '@owlat/shared/spfAlignment';
 import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
@@ -76,10 +77,21 @@ import {
  */
 const MAX_SUBMISSION_BYTES = MAX_ATTACHMENT_BYTES;
 
+/** Deliberate 587/465 command-idle policy (the listener default is 5 minutes). */
+export const SUBMISSION_COMMAND_TIMEOUT_MS = 120_000;
+
 /** The authenticated identity of a submission session. */
 export interface AuthenticatedSession {
 	organizationId: string;
 	credentialName: string;
+	/**
+	 * The organization's verified sending domains (lowercased) for a per-org
+	 * credential session. When present, the DATA hook rejects a From whose domain
+	 * is not in this set (H2 cross-tenant From-forgery guard). Absent for the
+	 * master session (broad send) and for legacy credentials created before the
+	 * field existed — see {@link OrgCredential.allowedDomains}.
+	 */
+	allowedDomains?: readonly string[];
 	/** Set when authenticated via a Postbox app password (per-user). */
 	postbox?: {
 		mailboxId: string;
@@ -190,7 +202,7 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 			// Master key — constant-time compare like every other secret check.
 			if (timingSafeStringEqual(apiKey, config.apiKey)) {
 				session.state.auth = { organizationId: '__master__', credentialName: 'master' };
-				await clearAuthFailures(redis, remoteIp).catch(() => {});
+				await fireAndForget(clearAuthFailures(redis, remoteIp), logger, 'clear_auth_failures');
 				return { ok: true, user: 'master' };
 			}
 
@@ -200,8 +212,9 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 				session.state.auth = {
 					organizationId: credential.organizationId,
 					credentialName: credential.name,
+					...(credential.allowedDomains ? { allowedDomains: credential.allowedDomains } : {}),
 				};
-				await clearAuthFailures(redis, remoteIp).catch(() => {});
+				await fireAndForget(clearAuthFailures(redis, remoteIp), logger, 'clear_auth_failures');
 				return { ok: true, user: credential.name };
 			}
 
@@ -226,7 +239,7 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 							userId: result.userId,
 						},
 					};
-					await clearAuthFailures(redis, remoteIp).catch(() => {});
+					await fireAndForget(clearAuthFailures(redis, remoteIp), logger, 'clear_auth_failures');
 					return { ok: true, user: username };
 				}
 			}
@@ -326,6 +339,29 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 					enhanced: '5.7.1',
 					text: 'From address must match authenticated mailbox',
 				};
+			}
+
+			// Per-org credential sessions (not Postbox, not the master key) MUST send
+			// From a domain in their organization's verified-sending-domain set (H2).
+			// Otherwise a per-org credential could send From any domain and — before
+			// the org-scoped DKIM guard — have it signed with another tenant's key.
+			// The master session (organizationId '__master__') carries no allowedDomains
+			// and keeps broad send; legacy credentials with none recorded stay unscoped
+			// here (the DKIM signer is the fail-closed backstop). A present-but-empty
+			// set authorizes no domain (fail-closed).
+			if (!authData.postbox && authData.allowedDomains) {
+				const allowed = new Set(authData.allowedDomains.map((domain) => domain.toLowerCase()));
+				if (!allowed.has(fromDomain)) {
+					logger.warn(
+						{ organizationId: authData.organizationId, fromDomain },
+						'SMTP submission rejected — From domain not in organization verified set'
+					);
+					return {
+						code: 553,
+						enhanced: '5.7.1',
+						text: 'From domain is not authorized for this organization',
+					};
+				}
 			}
 
 			const clientRequestBinding = await bindSubmissionClientRequest(redis, identity, recipients);
@@ -475,10 +511,47 @@ export function buildOnMailFrom() {
  * policy — see `@owlat/smtp-listener` `DEFAULT_SMTP_CIPHERS`). Asserts the
  * cert/key are present first so neither listener can be built over plaintext
  * (RFC 8314 §3.3).
+ *
+ * `handshakeTimeoutMs` is the pre-session sibling of the listener's
+ * `timeouts.commandMs`: on the implicit-TLS listener the command idle timer does
+ * not exist yet, so this is the ONLY bound on a peer that completes the TCP
+ * handshake and then stalls. It is ignored on the 587 listener, whose STARTTLS
+ * upgrade runs with the explicit 120 s command idle timer already armed.
+ *
+ * 30 SECONDS, and it is a policy number, not a tuning knob — hence a literal
+ * rather than an env var:
+ *
+ *  - The floor is set by legitimate LOSS, not by slow clients. The server does
+ *    the expensive part of a handshake, so the pathological honest case is a
+ *    lossy mobile link retransmitting the ClientHello: RFC 6298 starts the RTO
+ *    at 1 s and doubles it, so three consecutive losses cost ~7 s and four cost
+ *    ~15 s. A single-digit window would cut off a real client at three or four
+ *    losses; 30 s leaves ~2x headroom over four.
+ *  - The ceiling is set by LOG VOLUME. The teardown in `@owlat/smtp-listener`'s
+ *    `server.ts` logs on exactly this path, so the sustained attacker-driven
+ *    line rate is (connections they can hold) / (this window): every factor
+ *    shaved off the window multiplies it, into a container log with no rotation
+ *    policy. 30 s is 4x node's 120 s default, which is a bounded, deliberate
+ *    increase rather than an open-ended one.
+ *  - It is conservative against every comparable: Postfix `smtpd_starttls_timeout`
+ *    300 s (10 s only in stress mode), Dovecot ~3 min, nginx
+ *    `ssl_handshake_timeout` 60 s, node 120 s — and the `smtp-server` package
+ *    this path replaced had NO handshake timeout at all. In-repo precedent for
+ *    rejecting a library's long default is `bounce/server.ts`, which pins its
+ *    idle timers at 60 s.
+ *
+ * Read `createImplicitTlsServer`'s note in `@owlat/smtp-listener` before going
+ * lower: enforcing the deadline resets a handshake that is merely slow, which is
+ * free today (no `SNICallback` is supplied anywhere) but would not be for a
+ * multi-cert deployment whose SNI resolver does a network or database lookup.
  */
 function submissionTls(config: MtaConfig): SmtpTlsConfig {
 	assertSubmissionTlsConfigured(config.submissionTlsCert, config.submissionTlsKey);
-	return { cert: config.submissionTlsCert!, key: config.submissionTlsKey! };
+	return {
+		cert: config.submissionTlsCert!,
+		key: config.submissionTlsKey!,
+		handshakeTimeoutMs: 30_000,
+	};
 }
 
 /**
@@ -498,10 +571,10 @@ function buildSubmissionListener(
 	// cannot be required before AUTH (RFC 8314 §3.3). Fail fast.
 	const tls = submissionTls(config);
 
-	// Reconciles per-IP slot increments against socket lifetime. It marks a slot for
-	// release only for connections that actually incremented in `onConnect`, so the
-	// 465 raw-accept never decrements a slot it never took (cap bypass) and a
-	// 421-refused connect never double-decrements (587) — and it self-heals the race
+	// Reconciles per-IP slot increments against socket lifetime. Port 465 takes
+	// the slot at raw TCP accept, before TLS; port 587 takes it in `onConnect`.
+	// Rejected connects are never marked, preventing a double decrement, and the
+	// tracker self-heals the race
 	// where a connection RSTs while its async rate-limit check is still in flight.
 	const slots = createSlotTracker(redis, releaseConnection);
 
@@ -524,6 +597,10 @@ function buildSubmissionListener(
 		banner: `${config.ehloHostname} Owlat SMTP Submission`,
 		extensions: [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER, SUBMISSION_DEDUPLICATION_MAIL_PARAMETER],
 		maxMessageBytes: MAX_SUBMISSION_BYTES, // advertised via EHLO SIZE; enforced in the loop
+		// A silent 587/STARTTLS peer should not occupy a submission slot for the
+		// listener default of five minutes. Two minutes still leaves ample room for
+		// an authenticated client sending DATA over a slow link.
+		timeouts: { commandMs: SUBMISSION_COMMAND_TIMEOUT_MS },
 		tls,
 		implicitTls,
 		auth: {
@@ -532,16 +609,18 @@ function buildSubmissionListener(
 			authenticate: buildAuthenticate({ redis, config }),
 		},
 		createSession: () => ({}),
-		onConnect: buildOnConnect(
-			{ redis, config },
-			(session) => {
-				// Mark this connection as holding a slot so — and only so — its socket
-				// close releases it. If the peer already left while the rate-limit check
-				// was in flight, `hold` releases the increment immediately instead.
-				slots.hold(session);
-			},
-			() => liveConnections.count > config.submissionMaxClients
-		),
+		onConnect: implicitTls
+			? () => undefined // 465 is admitted before TLS in the raw-accept hook below.
+			: buildOnConnect(
+					{ redis, config },
+					(session) => {
+						// Mark this connection as holding a slot so — and only so — its socket
+						// close releases it. If the peer already left while the rate-limit check
+						// was in flight, `hold` releases the increment immediately instead.
+						slots.hold(session);
+					},
+					() => liveConnections.count > config.submissionMaxClients
+				),
 		// Submission never relays unauthenticated: refuse MAIL FROM until AUTH.
 		onMailFrom: buildOnMailFrom(),
 		onData: buildOnData({ queue, redis }),
@@ -557,19 +636,61 @@ function buildSubmissionListener(
 	// state lives in submissionSecurity.ts (I8); the listener exposes only the socket,
 	// so the release is wired here on the raw server's `connection` event (emitted for
 	// both the plaintext 587 and implicit-TLS 465 servers). The raw event fires on TCP
-	// accept — for 465 that is BEFORE the TLS handshake, so a failed/plaintext
-	// handshake connection never reaches `onConnect` and thus never releases a slot it
-	// never incremented (cap bypass). Tracking the live connection at accept also lets
+	// accept — for 465 that is BEFORE the TLS handshake, so this hook takes the slot
+	// below and the close tracker releases it even when a failed/plaintext handshake
+	// never reaches `onConnect`. Tracking the live connection at accept also lets
 	// `hold` self-heal a connection that RSTs while its async rate-limit check is still
 	// pending. `prependListener` runs this AHEAD of the listener's internal accept
 	// handler so `count` includes the connection under decision when `onConnect` runs
 	// its synchronous `isOverCapacity()` check (see the `liveConnections` note above).
+	// Node's TLS connection handler wraps the raw socket and starts reading even
+	// if that socket was paused. Defer that handler until admission resolves.
+	const tlsAccept = implicitTls ? listener.raw.listeners('connection') : [];
+	if (implicitTls) listener.raw.removeAllListeners('connection');
 	listener.raw.prependListener('connection', (socket) => {
 		liveConnections.count += 1;
 		socket.once('close', () => {
 			liveConnections.count -= 1;
 		});
 		slots.track(socket);
+
+		if (!implicitTls) return;
+		// TLS's `onConnect` runs only after a handshake, which let silent peers on
+		// 465 bypass the per-IP cap. Pause before reading a ClientHello, acquire the
+		// same slot the plaintext listener uses, then resume only admitted peers.
+		// The global cap is also applied here because pre-handshake sockets must not
+		// be invisible to either admission policy.
+		if (liveConnections.count > config.submissionMaxClients) {
+			socket.destroy();
+			return;
+		}
+		socket.pause();
+		const admissionDeadline = setTimeout(() => socket.destroy(), 30_000);
+		socket.once('close', () => clearTimeout(admissionDeadline));
+		const acceptTls = () => {
+			clearTimeout(admissionDeadline);
+			if (socket.destroyed) return;
+			for (const accept of tlsAccept) accept.call(listener.raw, socket);
+		};
+		const peer = {
+			remoteAddress: socket.remoteAddress ?? 'unknown',
+			remotePort: socket.remotePort ?? 0,
+		};
+		void checkConnectionRateLimit(redis, peer.remoteAddress, config.submissionMaxConnectionsPerIp)
+			.then((allowed) => {
+				if (!allowed) {
+					logger.warn({ remoteIp: peer.remoteAddress }, 'Submission TLS connection rate limited');
+					socket.destroy();
+					return;
+				}
+				slots.hold(peer);
+				acceptTls();
+			})
+			.catch((err) => {
+				// Match the post-handshake limiter's fail-open posture on Redis faults.
+				logger.error({ err, remoteIp: peer.remoteAddress }, 'TLS admission rate limit failed');
+				acceptTls();
+			});
 	});
 
 	return listener;

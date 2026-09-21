@@ -20,13 +20,12 @@
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
-import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
-import { clearsignedSignatureMirror } from './inboundSignatureMirror';
+import { receiveInboundMail } from '../inbox/receiveInbound';
 import { isAllowedSnsHost } from './adapters/ses';
 import { isPostboxMessageId, isReturnPathProbeMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
-import { logError } from '../lib/runtimeLog';
+import { logError, logWarn } from '../lib/runtimeLog';
 import { dispatchComplaint } from './complaintDispatch';
 import { applyFailureSuppression, applyProviderSuppression } from './providerSuppression';
 import { recordUnresolvedBounce } from './unresolvedBounce';
@@ -216,7 +215,7 @@ const DISPATCH: DispatchTable = {
 		// A relay holding a message it already accepted moves NO send state — the
 		// relay is still retrying and owns the terminal edge. The only thing this
 		// records is the (cell, arm) `deferred` counter ramp gate 2 divides; the
-		// recorder is fail-soft on an id it cannot resolve. See plan D10 and the
+		// recorder is fail-soft on an id it cannot resolve. See the
 		// `recordRelayDeferral` docstring for why it, unlike the governed writer,
 		// accepts a send that is already `sent`.
 		return await ctx.runMutation(internal.delivery.deferralOutcome.recordRelayDeferral, {
@@ -250,60 +249,12 @@ const DISPATCH: DispatchTable = {
 		});
 	},
 	'inbound.received': async (ctx, e) => {
-		const m = e.mail;
-		const attachmentMeta = m.attachments.length > 0 ? JSON.stringify(m.attachments) : undefined;
-
-		// Sealed Mail (E4, D3): decrypt-on-ingest for the AI-inbox path. When Sealed
-		// Mail is on and the body carries an armored PGP ciphertext, route through the
-		// Node decrypt action so the PLAINTEXT reaches `receiveMessage` (and thus the
-		// agent pipeline + the unified-timeline mirror). Anything else — plaintext,
-		// flag off, or a ciphertext we cannot recover here — takes the unchanged path.
-		const armoredCiphertext = m.textBody ? extractArmoredCiphertext(m.textBody) : null;
-		if (armoredCiphertext && (await ctx.runQuery(internal.e2ee.keys.isSealedMailEnabled, {}))) {
-			await ctx.runAction(internal.e2ee.open.decryptAndReceive, {
-				armoredCiphertext,
-				recipientAddress: m.to,
-				from: m.from,
-				to: m.to,
-				subject: m.subject,
-				textBody: m.textBody,
-				htmlBody: m.htmlBody,
-				headers: JSON.stringify(m.headers),
-				messageId: m.messageId,
-				inReplyTo: m.inReplyTo,
-				references: m.references,
-				attachmentMeta,
-				timestamp: m.timestamp,
-				spfResult: m.spfResult,
-				dkimResult: m.dkimResult,
-				dmarcResult: m.dmarcResult,
-				dmarcPolicy: m.dmarcPolicy,
-			});
-			return;
-		}
-
-		await ctx.runMutation(internal.inbox.messages.receiveMessage, {
-			from: m.from,
-			to: m.to,
-			subject: m.subject,
-			textBody: m.textBody,
-			htmlBody: m.htmlBody,
-			headers: JSON.stringify(m.headers),
-			messageId: m.messageId,
-			inReplyTo: m.inReplyTo,
-			references: m.references,
-			attachmentMeta,
-			timestamp: m.timestamp,
-			// RFC 8601 inbound auth verdicts. Previously dropped on this AI-inbox
-			// path; now persisted so the reader can show an honest sender badge.
-			spfResult: m.spfResult,
-			dkimResult: m.dkimResult,
-			dmarcResult: m.dmarcResult,
-			dmarcPolicy: m.dmarcPolicy,
-			// F1 (D9): AI-inbox mirror of the clearsigned-body signature verdict —
-			// see webhooks/inboundSignatureMirror.ts. Best-effort, never blocks.
-			...((await clearsignedSignatureMirror(ctx, m.textBody, m.from)) ?? {}),
-		});
+		// The legacy route: same persistence, no raw bytes. Kept working (rather
+		// than turned into an explicit ignore) so DLQ events queued before the
+		// route split — and an MTA binary that predates it — still deliver. The
+		// only observable difference is the absent `.eml`, which the reader
+		// renders as "no longer stored" rather than a broken download.
+		await receiveInboundMail(ctx, e.mail, {});
 	},
 	'channel.received': async (ctx, e) => {
 		await ctx.runMutation(internal.webhooks.channels.processInboundChannel, {
@@ -315,8 +266,7 @@ const DISPATCH: DispatchTable = {
 		});
 	},
 	'internal.circuit_breaker_tripped': async (ctx, e) => {
-		// eslint-disable-next-line no-console
-		console.warn(`[Webhook Dispatcher] Circuit breaker tripped: ${e.message}`);
+		logWarn(`[Webhook Dispatcher] Circuit breaker tripped: ${e.message}`);
 		try {
 			// Per ADR-0011 the legacy `throttled` literal was dropped; the
 			// circuit-breaker signal re-targets to `warned` (no operational
@@ -382,8 +332,7 @@ const DISPATCH: DispatchTable = {
 		// flip the instance abuse status to `warned` (advisory, never auto-pauses
 		// sends) with a campaign-specific reason + audit entry so the alert is
 		// persisted and operator-visible instead of being a dead drop.
-		// eslint-disable-next-line no-console
-		console.warn(`[Webhook Dispatcher] Campaign complaint rate alert: ${e.message}`);
+		logWarn(`[Webhook Dispatcher] Campaign complaint rate alert: ${e.message}`);
 		const outcome = await ctx.runMutation(
 			internal.workspaces.abuseStatus.recordCampaignComplaintAlert,
 			{
@@ -405,8 +354,8 @@ const DISPATCH: DispatchTable = {
 		return outcome;
 	},
 	'internal.ip_event': async (ctx, e) => {
-		const level = e.severity === 'critical' ? 'error' : 'warn';
-		console[level](`[Webhook Dispatcher] ${e.subkind}: ${e.message ?? ''}`);
+		const log = e.severity === 'critical' ? logError : logWarn;
+		log(`[Webhook Dispatcher] ${e.subkind}: ${e.message ?? ''}`);
 		if (
 			e.subkind === 'warming_complete' ||
 			e.subkind === 'blocklisted' ||
@@ -415,8 +364,8 @@ const DISPATCH: DispatchTable = {
 			try {
 				await ctx.scheduler.runAfter(0, internal.delivery.warmingSync.syncWarmingState, {});
 			} catch (err) {
-				// eslint-disable-next-line no-console
-				console.error('[Webhook Dispatcher] Failed to trigger warming sync:', err);
+				// Fail soft: the sync is a refresh and the event is already recorded.
+				logError(`[Webhook Dispatcher] warming sync did not schedule (${e.subkind})`, err);
 			}
 		}
 	},

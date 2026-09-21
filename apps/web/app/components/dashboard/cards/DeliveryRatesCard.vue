@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { formatNumber } from '~/utils/formatters';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 const { data: overview, isLoading } = useOrganizationQuery(
 	api.analytics.reputationQueries.getSendingOverview
@@ -49,11 +50,6 @@ const tierVariant = computed<'neutral' | 'warning' | 'default' | 'success'>(() =
 const dailyLimit = computed(() => warming.value?.totalDailyCap ?? null);
 const remaining = computed(() => warming.value?.remainingToday ?? null);
 
-/** Grouped against the active locale; `null` keeps the blank the card showed. */
-function formatNumber(value: number | null): string {
-	return value === null ? '' : new Intl.NumberFormat(locale.value).format(value);
-}
-
 const usagePercent = computed(() => {
 	const cap = dailyLimit.value;
 	if (!cap || remaining.value === null) return 0;
@@ -63,26 +59,24 @@ const usagePercent = computed(() => {
 </script>
 
 <template>
-	<UiCard padding="none" overflow="hidden">
+	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:gauge" size="sm" variant="success" />
+					<UiIconBox icon="lucide:gauge" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.deliveryRates.title') }}
 					</h3>
 				</div>
 				<NuxtLink
 					to="/dashboard/admin/delivery"
-					class="text-xs font-medium text-brand hover:text-brand/80 transition-colors"
+					class="text-xs font-medium whitespace-nowrap text-text-secondary hover:text-brand transition-colors"
 				>
 					{{ t('components.dashboard.cards.deliveryRates.details') }}
 				</NuxtLink>
 			</div>
 
-			<div v-if="isLoading" class="flex items-center justify-center py-6">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
-			</div>
+			<DashboardCardSkeleton v-if="isLoading" shape="stat" :count="2" />
 
 			<div v-else-if="!overview" class="py-4 text-center">
 				<p class="text-sm text-text-tertiary">
@@ -100,7 +94,9 @@ const usagePercent = computed(() => {
 						<span class="text-xs text-text-secondary">{{
 							t('components.dashboard.cards.deliveryRates.dailyLimitUsage')
 						}}</span>
-						<span class="text-xs font-medium text-text-primary">{{ usagePercent }}%</span>
+						<span class="text-xs font-medium tabular-nums text-text-primary">
+							{{ usagePercent }}%
+						</span>
 					</div>
 					<UiProgressBar
 						size="sm"
@@ -109,14 +105,14 @@ const usagePercent = computed(() => {
 						:aria-label="t('components.dashboard.cards.deliveryRates.usageBarLabel')"
 					/>
 					<div class="flex items-center justify-between mt-1">
-						<span class="text-xs text-text-tertiary">
+						<span class="text-xs tabular-nums text-text-tertiary">
 							{{
 								t('components.dashboard.cards.deliveryRates.remaining', {
-									count: formatNumber(remaining),
+									count: remaining === null ? '' : formatNumber(remaining),
 								})
 							}}
 						</span>
-						<span class="text-xs text-text-tertiary">
+						<span class="text-xs tabular-nums text-text-tertiary">
 							{{
 								t('components.dashboard.cards.deliveryRates.limit', {
 									count: formatNumber(dailyLimit),

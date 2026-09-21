@@ -1,4 +1,5 @@
 import type { Doc, Id } from '../../_generated/dataModel';
+import type { LifecycleReason } from '../../lib/lifecycle';
 import type { Effect } from './effects';
 
 // ============================================================================
@@ -51,7 +52,9 @@ export type TransitionOutcome =
 	  }
 	| {
 			ok: false;
-			reason: 'send_not_found' | 'illegal_edge' | 'invalid_for_kind' | 'terminal';
+			// `illegal_edge` / `terminal` come from the generic lifecycle core;
+			// the two literals below are this module's own.
+			reason: LifecycleReason<'send_not_found' | 'invalid_for_kind'>;
 			from?: SendStatus;
 			to?: SendStatus;
 	  };

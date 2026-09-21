@@ -12,6 +12,13 @@ import {
 import { pendingClarificationValidator } from '../inbox/clarificationValidators';
 import { attachmentSuggestionsValidator } from '../inbox/attachmentValidators';
 import { agentStepKindValidator } from '../agent/steps/catalog';
+import { llmUsageTagFields } from '../lib/llmUsageTags';
+import {
+	agentMetricTypeValidator,
+	attachmentIndexingValidator,
+	contextTierValidator,
+	virusVerdictValidator,
+} from '../lib/literalValidators';
 
 /**
  * Inbox / Agent pipeline tables — AI-assisted shared inbox.
@@ -20,6 +27,9 @@ import { agentStepKindValidator } from '../agent/steps/catalog';
  * tracks per-step pipeline execution; knowledgeBackfillJobs gates the initial
  * history scan; agentMetrics + llmUsageEvents cover monitoring/spend;
  * coalesceBatches debounces bursts.
+ *
+ * The per-person collaboration signals (threadPresence, threadReads,
+ * inboxAssignmentNotices) live in `schema/inboxCollaboration.ts`.
  *
  * The autonomy / graduated-trust tables (agentConfig, agentCircuitBreakers,
  * autonomyRules, autonomyFeedback, autonomySuggestions, agentShadowDecisions,
@@ -92,7 +102,20 @@ export const inboxTables = {
 		.index('by_contact', ['contactId'])
 		.index('by_assigned_to', ['assignedTo'])
 		.index('by_snoozed_until', ['snoozedUntil'])
-		.index('by_normalized_subject_and_contact', ['normalizedSubject', 'contactIdentifier']),
+		.index('by_normalized_subject_and_contact', ['normalizedSubject', 'contactIdentifier'])
+		// Team Inbox TEXT SEARCH. Two indexes rather than one denormalized
+		// `searchableText` column: a thread's subject and its participant are both
+		// written once at insert and never patched (inbox/threads/module.ts), so a
+		// third derived column would only add a backfill and a drift risk for
+		// exactly the two fields the pickers already matched client-side. The
+		// search path reads both and merges them (inbox/threadFilters.ts).
+		//
+		// SEALED-AT-REST NOTE (Sealed Mail E8b): these index thread METADATA — the
+		// subject line and the participant address — not a message body.
+		// `lastPreview` IS a sealed body and is deliberately NOT indexed here.
+		// See lib/atRestBodies.ts.
+		.searchIndex('search_thread_subject', { searchField: 'subject' })
+		.searchIndex('search_thread_participant', { searchField: 'contactIdentifier' }),
 
 	// Inbound Messages - stores every inbound email with its processing state
 	inboundMessages: defineTable({
@@ -109,8 +132,60 @@ export const inboxTables = {
 		references: v.optional(v.string()),
 		// Raw headers (JSON string for audit)
 		headers: v.optional(v.string()),
-		// Attachment metadata (JSON array: [{filename, contentType, size}], content stored separately)
+		// Attachment metadata, as a JSON array, in one of TWO shapes discriminated
+		// by `attachmentMetaVersion` beside it:
+		//   0 (the column absent) — `{filename, contentType, size}`, everything
+		//     written before the raw-carrying route existed. The bytes were not
+		//     stored, so there was nothing for a reader to address;
+		//   1 — `{filename?, contentType, size, partIndex?}`. The BYTES are in the
+		//     sealed raw `.eml` at `rawStorageId` below, and `partIndex` is how a
+		//     reader addresses one part inside it.
+		// An unvalidated JSON string, unlike the structured
+		// `mailMessages.attachments`, so every reader parses it defensively.
 		attachmentMeta: v.optional(v.string()),
+		// The shape of the blob above — CONVENTIONS.md "Schema evolution" requires
+		// a JSON `v.string()` column to carry one, so the next change to that
+		// shape is a version bump rather than a reader guessing from whether a
+		// field happens to be present.
+		attachmentMetaVersion: v.optional(v.number()),
+		// The whole received message, sealed at rest (`lib/sealedBlob.ts`). The
+		// attachment bytes, the AV scan input and the reader's download all come
+		// out of this one blob rather than a second copy per part.
+		//
+		// OPTIONAL, unlike the REQUIRED `mailMessages.rawStorageId`/`rawSize`
+		// pair: every row written before this landed has none, and mail arriving
+		// through the legacy `/webhooks/mta` route (an older MTA binary, a DLQ
+		// replay) still has none. Absent means "no raw stored" — a first-class
+		// state every reader handles, not a backfill waiting to happen.
+		rawStorageId: v.optional(v.id('_storage')),
+		// Size of that blob, in bytes. KEPT past the sweep on purpose: once the
+		// bytes are released it is the only thing left that says how big the
+		// original message was, and the reader shows it beside the "no longer
+		// stored" line so the entry is a fact rather than an absence.
+		rawSize: v.optional(v.number()),
+		// Aggregate malware verdict over the message's attachment leaves, from the
+		// MTA's ClamAV endpoint. `infected` quarantines the row and skips the agent
+		// pipeline. ABSENT IS NOT `clean`: it means nothing was scanned — either
+		// there was nothing to scan or the scanner is not configured — and the two
+		// are indistinguishable, so no verdict is asserted.
+		virusVerdict: v.optional(virusVerdictValidator),
+		// Sweep marker for the raw-blob retention pass, set with `rawStorageId` and
+		// cleared with it. It exists because almost every row in this table
+		// predates raw storage and holds no blob: a time-only walk would re-scan
+		// the entire history on every tick and never terminate, while an index
+		// keyed on the marker only ever contains rows that still hold bytes.
+		isRawRetained: v.optional(v.literal(true)),
+		// When the retention sweep released this message's raw blob. It is what
+		// separates "the window passed" from "the bytes were never carried" —
+		// every row older than the raw-carrying route has no `rawStorageId`
+		// either, and telling a user that a 90-day window expired on a message
+		// from last week is simply false. Set exactly once, by the sweep.
+		rawReleasedAt: v.optional(v.number()),
+		// What attachment capture did with this message's files — see
+		// `lib/literalValidators.ts:attachmentIndexingValidator`. Absent on a
+		// message with no eligible attachments and on every row that predates the
+		// marker. Patched after the insert, because capture runs after it.
+		attachmentIndexing: v.optional(attachmentIndexingValidator),
 		// RFC 8601 inbound authentication verdicts, computed by the MTA over the
 		// raw bytes at ingest (SPF on MAIL FROM, DKIM on the d= signature, DMARC
 		// binding the two to the From domain via alignment). The AI-inbox path
@@ -162,12 +237,16 @@ export const inboxTables = {
 			v.literal('drafting'), // Agent draft generation in progress
 			v.literal('draft_ready'), // Draft ready for human review
 			v.literal('awaiting_clarification'), // Parked awaiting an owner answer before drafting
+			v.literal('informational'), // Needs no reply — surfaced on the Updates dashboard
 			v.literal('approved'), // Draft approved by human or auto-approved
 			v.literal('sent'), // Reply sent
 			v.literal('rejected'), // Draft rejected by human
 			v.literal('archived'), // Archived without reply (spam, etc.)
 			v.literal('failed') // Pipeline error
 		),
+		// The lifecycle's archive reason (`classifier_spam`, `update_dismissed`, …),
+		// written on every `→ archived` transition; the Updates Spam tab reads it.
+		archiveReason: v.optional(v.string()),
 		// Security filter results
 		securityFlags: v.optional(securityFlagsValidator),
 		// Agent classification result
@@ -198,9 +277,7 @@ export const inboxTables = {
 		// classifier confidence. Absent when the self-check failed.
 		draftQuality: v.optional(draftQualityValidator),
 		// Context compaction tier used (for transparency in review queue)
-		contextTier: v.optional(
-			v.union(v.literal('normal'), v.literal('compacted'), v.literal('emergency'))
-		),
+		contextTier: v.optional(contextTierValidator),
 		// Retrieval coverage / grounding signal from context_retrieval —
 		// advisory only (see contextCoverageValidator).
 		contextCoverage: v.optional(contextCoverageValidator),
@@ -292,7 +369,11 @@ export const inboxTables = {
 		.index('by_processing_status', ['processingStatus'])
 		.index('by_received_at', ['receivedAt'])
 		.index('by_contact', ['contactId'])
-		.index('by_assigned_to_and_status', ['assignedTo', 'processingStatus']),
+		.index('by_assigned_to_and_status', ['assignedTo', 'processingStatus'])
+		// Drives the raw-blob retention sweep: the equality component keeps the
+		// scanned range to rows that still hold a blob, so the walk is bounded by
+		// what is left to release rather than by the size of the table.
+		.index('by_raw_retention', ['isRawRetained', 'receivedAt']),
 
 	// Agent Actions - tracks individual pipeline step executions
 	agentActions: defineTable({
@@ -364,15 +445,7 @@ export const inboxTables = {
 
 	// Agent Metrics - rolling window metrics for monitoring
 	agentMetrics: defineTable({
-		metricType: v.union(
-			v.literal('queue_depth'),
-			v.literal('processing_latency'),
-			v.literal('classification_accuracy'),
-			v.literal('auto_approve_ratio'),
-			v.literal('rejection_rate'),
-			v.literal('llm_cost'),
-			v.literal('error_rate')
-		),
+		metricType: agentMetricTypeValidator,
 		value: v.number(),
 		windowStart: v.number(),
 		windowEnd: v.number(),
@@ -385,10 +458,10 @@ export const inboxTables = {
 		// filtering windowStart in memory after an equality-only index seek.
 		.index('by_metric_type_and_window_start', ['metricType', 'windowStart']),
 
-	// Per-call LLM usage + estimated cost for EVERY feature, not just the inbound
-	// agent (which also records to agentActions). Gives a deployment-wide AI-spend
-	// view, the data foundation for budget alerts. Windowed reads via the system
-	// by_creation_time index; retention prunes the tail.
+	// Per-call LLM usage + estimated cost for EVERY feature and every plane, not
+	// just the inbound agent (which also records to agentActions). Windowed reads
+	// via the system by_creation_time index; retention prunes the tail. The four
+	// optional tags — plane, plus the decision plane's — are lib/llmUsageTags.ts.
 	llmUsageEvents: defineTable({
 		feature: v.string(),
 		organizationId: v.optional(v.string()),
@@ -399,6 +472,7 @@ export const inboxTables = {
 		totalTokens: v.number(),
 		costUsd: v.number(),
 		createdAt: v.number(),
+		...llmUsageTagFields,
 	})
 		.index('by_feature', ['feature'])
 		.index('by_organization_id_and_created_at', ['organizationId', 'createdAt'])
@@ -407,44 +481,6 @@ export const inboxTables = {
 			'pluginId',
 			'createdAt',
 		]),
-
-	// Thread Presence - ephemeral "who is here" rows for the shared-inbox thread
-	// view. One row per (thread, user); `mode` is `viewing` while the thread is
-	// open and `replying` while a reply/review editor is focused. `heartbeatAt`
-	// is refreshed every ~20s by the client (inbox/presence.ts → heartbeat); a
-	// row is considered ACTIVE only while `heartbeatAt` is within
-	// PRESENCE_ACTIVE_WINDOW_MS (60s), and the `sweep expired presence` cron
-	// deletes rows past that window. Purely a read-side collaboration hint — it
-	// never gates a mutation and never records an audit-log entry.
-	threadPresence: defineTable({
-		threadId: v.id('conversationThreads'),
-		userId: v.string(), // BetterAuth user ID
-		mode: v.union(v.literal('viewing'), v.literal('replying')),
-		heartbeatAt: v.number(),
-	})
-		.index('by_thread', ['threadId'])
-		.index('by_user', ['userId'])
-		.index('by_heartbeat', ['heartbeatAt'])
-		// One row per (user, thread) — point-read the caller's own presence on
-		// heartbeat/leave via `.unique()` instead of scanning all their rows.
-		.index('by_user_thread', ['userId', 'threadId'])
-		// Range-scan a thread's ACTIVE rows (heartbeatAt within the window)
-		// directly on the index — no in-memory window predicate.
-		.index('by_thread_heartbeat', ['threadId', 'heartbeatAt']),
-
-	// Thread Reads - per-user "last seen" marker for shared-inbox threads, the
-	// unread counterpart to chat's `chatRoomMembers.lastReadAt`. One row per
-	// (user, thread), upserted to `lastSeenAt = now` whenever that user opens the
-	// thread. A thread is UNREAD for a user when its `lastMessageAt` is newer than
-	// that user's `lastSeenAt` (or they have no row yet). Purely a read-side badge
-	// — it never gates a mutation and records no audit-log entry.
-	threadReads: defineTable({
-		threadId: v.id('conversationThreads'),
-		userId: v.string(), // BetterAuth user ID
-		lastSeenAt: v.number(),
-	})
-		// Point-read (and upsert) the caller's own marker for one thread.
-		.index('by_user_thread', ['userId', 'threadId']),
 
 	// Coalesce Batches - one in-flight debounce window per thread. When rapid
 	// messages arrive on the same thread, the pending batch's scheduled job is
@@ -461,25 +497,4 @@ export const inboxTables = {
 		// rows written before the field existed; readers fall back to createdAt.
 		firstReceivedAt: v.optional(v.number()),
 	}).index('by_thread', ['threadId']),
-
-	// Assignment Notices - one row per "a teammate assigned this thread to you"
-	// event. Written by `inbox.mutations.assignThread` when the new assignee is
-	// someone OTHER than the person doing the assigning (self-assign never
-	// notifies). The assignee's session subscribes via
-	// `inbox.queries.pendingAssignments`, which drives an in-app toast and a
-	// desktop notification; the client coalesces bursts and remembers which
-	// notices it has already surfaced, so this table is an append-only signal —
-	// never mutated, and old rows simply age out of the query window.
-	inboxAssignmentNotices: defineTable({
-		// Assignee (BetterAuth user id) — who the thread was handed to.
-		userId: v.string(),
-		threadId: v.id('conversationThreads'),
-		// Denormalized at write time so the notice renders without joining.
-		subject: v.string(),
-		// Display name (or email) of the teammate who did the assigning.
-		assignedByName: v.string(),
-		createdAt: v.number(),
-	})
-		// Newest-first window of notices for one assignee.
-		.index('by_user_and_created', ['userId', 'createdAt']),
 };

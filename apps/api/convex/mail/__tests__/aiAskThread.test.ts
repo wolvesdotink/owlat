@@ -1,13 +1,13 @@
 /**
  * Unit tests for the scoped "Ask about this thread…" prompt assembly
- * (mail/ai.buildAskThreadPrompt): the flattened transcript is included and
+ * (mail/ai/assist.buildAskThreadPrompt): the flattened transcript is included and
  * framed as untrusted data, the SYSTEM_GUARD framing is present, the user's
  * question is carried through, and prior in-memory Q/A history is replayed and
  * bounded. These exercise the pure exported helper directly — no network.
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildAskThreadPrompt } from '../ai';
+import { buildAskThreadPrompt } from '../ai/assist';
 
 describe('buildAskThreadPrompt', () => {
 	it('includes the transcript and the question, framed as untrusted data', () => {

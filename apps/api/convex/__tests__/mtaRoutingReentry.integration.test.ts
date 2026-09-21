@@ -146,10 +146,11 @@ describe('authenticated MTA routing re-entry', () => {
 			result: {
 				kind: 'success',
 				returnValue: {
-					success: true,
+					kind: 'accepted',
 					providerMessageId: value.retryState.idempotencyKey,
 					providerType: 'mta',
-					acceptedForDelivery: true,
+					sendLatencyMs: 7,
+					isCustodyHandoff: true,
 				},
 			},
 			context: { sendRef: { kind: 'campaign', id: value.sendId } },
@@ -177,9 +178,11 @@ describe('authenticated MTA routing re-entry', () => {
 				result: {
 					kind: 'success',
 					returnValue: {
-						success: true,
+						kind: 'accepted',
 						providerMessageId: relayId,
 						providerType: 'ses',
+						sendLatencyMs: 7,
+						isCustodyHandoff: false,
 					},
 				},
 				context: { sendRef: { kind: 'campaign', id: value.sendId } },

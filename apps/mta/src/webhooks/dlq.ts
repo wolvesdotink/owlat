@@ -16,6 +16,7 @@ import { parseDeliveryFailure, type WebhookDeliveryFailure } from './dlqFailure.
 import { webhookDlqRetryDelayMs } from './dlqRetryPolicy.js';
 import { STORE_LUA } from './dlqStoreScript.js';
 import { isMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
+import { isRecord } from '@owlat/shared';
 
 export {
 	classifyWebhookHttpFailure,
@@ -45,10 +46,6 @@ export interface ClaimedDlqEntry extends DlqEntry {
 
 export const WEBHOOK_DLQ_CLAIM_LEASE_MS = 15 * 60 * 1000;
 export const WEBHOOK_DLQ_AUTO_RETRY_LIMIT = 8;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
 
 function isFiniteNumber(value: unknown): value is number {
 	return typeof value === 'number' && Number.isFinite(value);

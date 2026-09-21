@@ -17,13 +17,15 @@ import {
 	startSubmissionServer,
 } from './smtp/submissionServer.js';
 import { initializePools } from './scaling/ipPool.js';
-import { runFcrdnsReadinessCheck } from './scaling/fcrdns.js';
-import { runIpv6SpfReadinessCheck } from './scaling/ipv6SpfReadiness.js';
-import { runSourceAddressReadinessCheck } from './scaling/sourceAddressReadiness.js';
+import { refreshOutboundIdentity } from './scaling/outboundIdentityRefresh.js';
 import { flushPendingIpReadinessAlerts } from './scaling/ipReadinessAlerts.js';
 import { startDnsblChecker } from './intelligence/dnsbl.js';
 import { configuredAuditIps, defaultIpAuditDeps, startIpAuditor } from './scaling/ipAudit.js';
 import { initializeWarming, evaluateDay } from './intelligence/warming.js';
+import {
+	sweepExpiredSuppressions,
+	SUPPRESSION_SWEEP_BATCH,
+} from './intelligence/suppressionList.js';
 import * as orgLimits from './intelligence/orgLimits.js';
 import { pool } from './smtp/connectionPool.js';
 import { assertLeaseProtocolCutoverSafe } from './smtp/poolGlobalCap.js';
@@ -39,6 +41,7 @@ import { notifyConvex } from './webhooks/convexNotifier.js';
 import { sweepWebhookDlq } from './webhooks/dlqSweeper.js';
 import { logger } from './monitoring/logger.js';
 import { closeListenerSafely } from './lib/closeListenerSafely.js';
+import { fireAndForget } from './lib/fireAndForget.js';
 import { pathToFileURL } from 'node:url';
 
 export async function main() {
@@ -107,9 +110,7 @@ export async function main() {
 	// ── 4b. FCrDNS readiness gate ──
 	// Complete the first observation before a worker can select an IP. A fresh,
 	// never-verified address therefore cannot race its quarantine at startup.
-	await runSourceAddressReadinessCheck(redis, config);
-	await runFcrdnsReadinessCheck(redis, config);
-	await runIpv6SpfReadinessCheck(redis, config);
+	await refreshOutboundIdentity(redis, config);
 	await flushPendingIpReadinessAlerts(redis, config);
 
 	// ── 4c. Finish this process's first DNSBL sweep, then elect the cron leader ──
@@ -136,16 +137,17 @@ export async function main() {
 	// Recover routing/lifecycle callbacks automatically after a Convex outage.
 	// The sweep is bounded and leader-gated; exhausted entries remain available
 	// through the authenticated manual DLQ routes.
-	const webhookDlqInterval = setInterval(() => {
+	const webhookDlqInterval = setInterval(async () => {
 		if (!isLeader()) return;
-		void flushPendingIpReadinessAlerts(redis, config)
-			.then(() => sweepWebhookDlq(redis, config))
-			.catch(() =>
-				logger.error(
-					{ operation: 'convex_webhook_dlq', category: 'automatic_retry' },
-					'Automatic webhook recovery sweep failed'
-				)
+		try {
+			await flushPendingIpReadinessAlerts(redis, config);
+			await sweepWebhookDlq(redis, config);
+		} catch (err) {
+			logger.error(
+				{ err, operation: 'convex_webhook_dlq', category: 'automatic_retry' },
+				'Automatic webhook recovery sweep failed'
 			);
+		}
 	}, 60_000);
 
 	// ── 7. Start HTTP server ──
@@ -202,12 +204,39 @@ export async function main() {
 
 	// ── 10b. Re-verify outbound identity hourly (leader only) ──
 	const fcrdnsInterval = setInterval(
-		() => {
+		async () => {
 			if (!isLeader()) return;
-			void runSourceAddressReadinessCheck(redis, config)
-				.then(() => runFcrdnsReadinessCheck(redis, config))
-				.then(() => runIpv6SpfReadinessCheck(redis, config))
-				.catch((err) => logger.error({ err }, 'Periodic outbound-IP readiness check failed'));
+			try {
+				await refreshOutboundIdentity(redis, config);
+			} catch (err) {
+				logger.error({ err }, 'Periodic outbound-IP readiness check failed');
+			}
+		},
+		60 * 60 * 1000
+	);
+
+	// ── 10c. Reclaim expired temporary suppressions (hourly — leader only) ──
+	// Only TEMPORARY suppressions are due-indexed, so this can never remove a
+	// hard bounce or a complaint. It exists because the lazy expiry check in
+	// `isSuppressed` only fires for an address somebody tries to mail again:
+	// without a sweep, every soft-bounce suppression nobody retries would stay
+	// on a list that grows forever on a Redis configured `noeviction`.
+	const suppressionSweepInterval = setInterval(
+		async () => {
+			if (!isLeader()) return;
+			try {
+				// Drain in bounded batches so a backlog is cleared over one run
+				// rather than one per hour, but stop well short of an unbounded walk.
+				// The stop condition is `processed`, not `removed`: a batch that was
+				// all keep/repair arms reclaims nothing while still consuming the
+				// whole limit, and stopping on `removed` would leave the rest due.
+				for (let batch = 0; batch < 20; batch += 1) {
+					const swept = await sweepExpiredSuppressions(redis);
+					if (swept.processed < SUPPRESSION_SWEEP_BATCH) break;
+				}
+			} catch (err) {
+				logger.error({ err }, 'Expired-suppression sweep failed');
+			}
 		},
 		60 * 60 * 1000
 	);
@@ -279,18 +308,22 @@ export async function main() {
 	// customer's `dnsRecords` + `verifyDomain` track the rotated key (RFC 6376
 	// §3.6.1). Fire-and-forget with the notifier's own retry/DLQ.
 	const notifyDkimRotation: DkimRotationNotifier = async (rotation) => {
-		await notifyConvex(
-			{
-				event: 'dkim.rotated',
-				domain: rotation.domain,
-				selector: rotation.selector,
-				dnsRecord: rotation.dnsRecord,
-				phase: rotation.phase,
-				timestamp: Date.now(),
-			},
-			config,
-			redis
-		).catch(() => {});
+		await fireAndForget(
+			notifyConvex(
+				{
+					event: 'dkim.rotated',
+					domain: rotation.domain,
+					selector: rotation.selector,
+					dnsRecord: rotation.dnsRecord,
+					phase: rotation.phase,
+					timestamp: Date.now(),
+				},
+				config,
+				redis
+			),
+			logger,
+			'dkim_rotation_notify'
+		);
 	};
 	const dkimRotationInterval = setInterval(
 		async () => {
@@ -322,7 +355,7 @@ export async function main() {
 	await worker.run();
 	logger.info('GroupMQ worker started');
 
-	// ── Graceful shutdown (P5.3) ──
+	// ── Graceful shutdown ──
 	//
 	// Matches stop_grace_period: 45s in the compose templates — we target
 	// a 40s drain so Docker's SIGKILL never fires. Idempotent: a second
@@ -364,6 +397,7 @@ export async function main() {
 		clearInterval(tlsRptInterval);
 		clearInterval(dkimRotationInterval);
 		clearInterval(webhookDlqInterval);
+		clearInterval(suppressionSweepInterval);
 		// Stop claiming liveness the moment we start draining.
 		stopHeartbeat();
 

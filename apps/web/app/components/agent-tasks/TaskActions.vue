@@ -23,7 +23,7 @@ withDefaults(
 		/**
 		 * Soft-hold: a teammate is actively replying to this thread, so the primary
 		 * action is HELD — disabled-styled but visible, with {@link heldReason} shown
-		 * beneath. Releases on its own when their presence drops (see UX piece b3b).
+		 * beneath. Releases on its own when their presence drops.
 		 */
 		held?: boolean;
 		/** Plain-language reason shown under the row while `held`. */
@@ -63,7 +63,7 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 				<Icon
 					v-if="primaryLoading"
 					name="lucide:loader-2"
-					class="w-3.5 h-3.5 animate-spin"
+					class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
 					aria-hidden="true"
 				/>
 				<Icon v-else-if="primaryIcon" :name="primaryIcon" class="w-3.5 h-3.5" aria-hidden="true" />

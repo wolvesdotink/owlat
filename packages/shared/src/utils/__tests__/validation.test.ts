@@ -1,14 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-	isValidEmail,
-	isValidDomain,
-	isValidUrl,
-	isValidPhone,
-	isValidSlug,
-	isEmpty,
-	isNonEmptyString,
-	toSlug,
-} from '../validation';
+import { isValidEmail, isValidDomain, isValidUrl, isEmpty, toSlug } from '../validation';
 
 describe('isValidEmail', () => {
 	it('accepts valid emails', () => {
@@ -123,59 +114,6 @@ describe('isValidUrl', () => {
 	});
 });
 
-describe('isValidPhone', () => {
-	it('accepts international format numbers', () => {
-		expect(isValidPhone('+14155552671')).toBe(true);
-		expect(isValidPhone('+441234567890')).toBe(true);
-		expect(isValidPhone('14155552671')).toBe(true);
-	});
-
-	it('strips formatting characters before validation', () => {
-		expect(isValidPhone('+1 (415) 555-2671')).toBe(true);
-		expect(isValidPhone('+1-415-555-2671')).toBe(true);
-	});
-
-	it('rejects numbers starting with 0', () => {
-		expect(isValidPhone('0123456789')).toBe(false);
-	});
-
-	it('rejects empty string', () => {
-		expect(isValidPhone('')).toBe(false);
-	});
-});
-
-describe('isValidSlug', () => {
-	it('accepts valid slugs', () => {
-		expect(isValidSlug('hello-world')).toBe(true);
-		expect(isValidSlug('hello')).toBe(true);
-		expect(isValidSlug('my-long-slug-123')).toBe(true);
-		expect(isValidSlug('a1b2c3')).toBe(true);
-	});
-
-	it('rejects uppercase characters', () => {
-		expect(isValidSlug('Hello')).toBe(false);
-	});
-
-	it('rejects special characters', () => {
-		expect(isValidSlug('hello_world')).toBe(false);
-		expect(isValidSlug('hello world')).toBe(false);
-		expect(isValidSlug('hello.world')).toBe(false);
-	});
-
-	it('rejects leading or trailing hyphens', () => {
-		expect(isValidSlug('-hello')).toBe(false);
-		expect(isValidSlug('hello-')).toBe(false);
-	});
-
-	it('rejects consecutive hyphens', () => {
-		expect(isValidSlug('hello--world')).toBe(false);
-	});
-
-	it('rejects empty string', () => {
-		expect(isValidSlug('')).toBe(false);
-	});
-});
-
 describe('isEmpty', () => {
 	it('returns true for null', () => {
 		expect(isEmpty(null)).toBe(true);
@@ -197,26 +135,6 @@ describe('isEmpty', () => {
 	it('returns false for non-empty string', () => {
 		expect(isEmpty('hello')).toBe(false);
 		expect(isEmpty(' hello ')).toBe(false);
-	});
-});
-
-describe('isNonEmptyString', () => {
-	it('returns true for non-empty strings', () => {
-		expect(isNonEmptyString('hello')).toBe(true);
-		expect(isNonEmptyString(' a ')).toBe(true);
-	});
-
-	it('returns false for empty strings', () => {
-		expect(isNonEmptyString('')).toBe(false);
-		expect(isNonEmptyString('   ')).toBe(false);
-	});
-
-	it('returns false for non-string types', () => {
-		expect(isNonEmptyString(null)).toBe(false);
-		expect(isNonEmptyString(undefined)).toBe(false);
-		expect(isNonEmptyString(123)).toBe(false);
-		expect(isNonEmptyString({})).toBe(false);
-		expect(isNonEmptyString([])).toBe(false);
 	});
 });
 

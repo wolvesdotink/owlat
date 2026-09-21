@@ -42,7 +42,7 @@ export function formatLanguageLabel(opt: Pick<LanguageOption, 'label' | 'nativeL
 }
 
 /** Catalog variant for contact-level pickers where "unset" is a valid choice. */
-export const languageOptionsWithUnset: LanguageOption[] = [
+const languageOptionsWithUnset: LanguageOption[] = [
 	{
 		value: '',
 		label: 'shared.data.languageOptions.notSetEmailDefault',

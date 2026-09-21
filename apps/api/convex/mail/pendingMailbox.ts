@@ -5,7 +5,7 @@
  * invite time; the row is consumed (mailbox actually provisioned)
  * when the invitee accepts and we finally have their `userId`.
  *
- * Live mailbox CRUD stays in `mail/mailbox.ts`; this file only owns
+ * Live mailbox CRUD stays in `mail/mailbox/identity.ts`; this file only owns
  * the intent layer.
  */
 
@@ -24,7 +24,7 @@ import {
 	throwInvalidState,
 	throwAlreadyExists,
 } from '../_utils/errors';
-import { canonicalAddress, provisionMailbox, isDomainVerified } from './mailbox';
+import { canonicalAddress, provisionMailbox, isDomainVerified } from './mailbox/identity';
 
 // Upper bound on the reservations swept per domain in one verify/remove pass.
 // A brand-new instance carries at most a handful of pre-verification
@@ -52,7 +52,7 @@ const LOCALPART_PATTERN = /^[a-z0-9._-]+$/;
  * On success it provisions the mailbox at the reserved address, deletes the
  * reservation, marks the user's onboarding mailbox-ready, and returns the id.
  */
-export type ClaimReservedResult =
+type ClaimReservedResult =
 	| { ok: true; mailboxId: Id<'mailboxes'> }
 	| { ok: false; reason: 'domain_unverified' | 'address_taken' };
 

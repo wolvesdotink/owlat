@@ -39,7 +39,7 @@ const SECRET_ENTROPY_BYTES = 32;
 const SECRET_PREFIX = 'cah_';
 
 /** A sealed connected-app secret: the raw box plus the KDF/cipher version. */
-export interface ConnectedAppSecretEnvelope extends SecretBoxEnvelope {
+interface ConnectedAppSecretEnvelope extends SecretBoxEnvelope {
 	/** matches CURRENT_CONNECTED_APP_SECRET_VERSION at seal time */
 	version: number;
 }
@@ -62,9 +62,4 @@ export function generateConnectedAppSecret(): string {
 export function sealConnectedAppSecret(plaintext: string): ConnectedAppSecretEnvelope {
 	const box = connectedAppBox().seal(plaintext);
 	return { ...box, version: CURRENT_CONNECTED_APP_SECRET_VERSION };
-}
-
-/** Open a sealed envelope back to the plaintext secret. Throws on tamper. */
-export function openConnectedAppSecret(envelope: ConnectedAppSecretEnvelope): string {
-	return connectedAppBox().open(envelope);
 }

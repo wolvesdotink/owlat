@@ -1,6 +1,6 @@
 /**
  * Contact engagement score — the Convex plumbing around the pure core in
- * `engagementScore.ts` (deliverability plan P0-2).
+ * `engagementScore.ts`.
  *
  * Two write paths, one scoring model:
  *
@@ -106,7 +106,7 @@ export const ENGAGEMENT_SCORE_STALE_MS = 20 * 60 * 60 * 1000;
  * A term that old is worth 2^-8.9 ≈ 0.2% of its original weight — below the
  * rounding step of the 0-100 score, so the truncation is invisible.
  */
-export const RECOMPUTE_LOOKBACK_MS = 400 * 24 * 60 * 60 * 1000;
+const RECOMPUTE_LOOKBACK_MS = 400 * 24 * 60 * 60 * 1000;
 
 // ─── Shared write helper ────────────────────────────────────────────────────
 

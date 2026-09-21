@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { EditorBlock } from '@owlat/email-builder';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
+import type { PreflightFinding } from '~/utils/postboxPreflight';
 
 const props = defineProps<{
 	canSend: boolean;
@@ -13,7 +15,13 @@ const props = defineProps<{
 	signatures: { _id: Id<'mailSignatures'>; name: string }[];
 	activeSignatureId: Id<'mailSignatures'> | null;
 	composerMode: ComposerMode;
+	/** Live subject + body, for the read-only "Preview as sent" dialog below. */
+	subject: string;
+	bodyHtml: string;
+	bodyBlocks: EditorBlock[];
 	persistentToolbar: boolean;
+	/** Deterministic pre-send findings (plan idea 6); empty means nothing to say. */
+	preflight?: PreflightFinding[];
 	lastSavedLabel: string;
 }>();
 
@@ -52,6 +60,9 @@ const { isDesktop, pickNativeFiles } = useNativeFilePicker();
 // first click outside it — which includes clicks inside the teleported dialog —
 // so a dialog owned by the slot would be unmounted mid-interaction.
 const followUpPickerOpen = ref(false);
+// Same reason as followUpPickerOpen: the ⋯ panel unmounts on the first click
+// outside it, so the preview dialog it opens is rendered as its sibling below.
+const previewOpen = ref(false);
 
 async function onAttachClick() {
 	if (isDesktop.value) {
@@ -81,7 +92,11 @@ function onPickFiles(event: Event) {
 				:disabled="!canSend || sending || isScheduled"
 				@click="emit('send')"
 			>
-				<Icon v-if="sending" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin" />
+				<Icon
+					v-if="sending"
+					name="lucide:loader-2"
+					class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
+				/>
 				<Icon v-else name="lucide:send" class="w-4 h-4 mr-1.5" />
 				{{ sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send') }}
 			</UiButton>
@@ -93,7 +108,19 @@ function onPickFiles(event: Event) {
 			>
 				<Icon name="lucide:paperclip" class="w-4 h-4" />
 			</UiButton>
-			<input ref="fileInput" type="file" multiple class="hidden" @change="onPickFiles" />
+			<!-- A proxy for the paperclip button above, opened by `.click()` and
+			     never seen or tabbed to. Out of the accessibility tree explicitly:
+			     `class="hidden"` is a stylesheet away from being an unlabelled,
+			     focusable file field a screen reader would announce. -->
+			<input
+				ref="fileInput"
+				type="file"
+				multiple
+				class="hidden"
+				aria-hidden="true"
+				tabindex="-1"
+				@change="onPickFiles"
+			/>
 			<!-- Secondary controls collapse behind ⋯ to keep the footer
 			     lean; the schedule shortcut (Cmd/Ctrl+Shift+Enter) still works. -->
 			<PostboxOverflowMenu
@@ -128,6 +155,21 @@ function onPickFiles(event: Event) {
 						</select>
 					</label>
 					<div class="border-t border-border-subtle my-1" />
+					<!-- Plan idea 14: the HTML, the REAL text/plain alternative and a
+					     dark rendering, from the same builder the send path uses. -->
+					<button
+						type="button"
+						role="menuitem"
+						class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+						@click="
+							previewOpen = true;
+							close();
+						"
+					>
+						<Icon name="lucide:scan-eye" class="w-4 h-4 text-text-tertiary" />
+						{{ t('components.postbox.postboxComposerFooter.previewAsSent') }}
+					</button>
+					<div class="border-t border-border-subtle my-1" />
 					<button
 						type="button"
 						role="menuitem"
@@ -153,8 +195,20 @@ function onPickFiles(event: Event) {
 					</div>
 				</template>
 			</PostboxOverflowMenu>
+			<!-- Plan idea 6: the always-on checks, stated beside Send and nowhere
+			     else. Advisory — Send stays enabled. -->
+			<PostboxComposerPreflightChip :findings="preflight ?? []" />
 			<!-- Deliberately a sibling of the ⋯ menu, not slot content: the dialog
 			     must survive the panel closing (see followUpPickerOpen above). -->
+			<!-- Plan idea 14: read-only, derived from the send path's own builder. -->
+			<PostboxPreviewAsSent
+				:open="previewOpen"
+				:subject="subject"
+				:body-html="bodyHtml"
+				:body-blocks="bodyBlocks"
+				:composer-mode="composerMode"
+				@update:open="previewOpen = $event"
+			/>
 			<PostboxFollowUpDialog
 				:open="followUpPickerOpen"
 				@update:open="followUpPickerOpen = $event"

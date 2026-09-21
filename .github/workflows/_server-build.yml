@@ -44,31 +44,75 @@ jobs:
       git_sha: ${{ steps.meta.outputs.git_sha }}
       build_date: ${{ steps.meta.outputs.build_date }}
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
+      # Gate every downstream job on a strict-semver version BEFORE anything
+      # builds or signs. `inputs.version` is interpolated into several later
+      # run blocks (compose generation, sha256sum); this check — the same one
+      # the desktop core applies before stamping Cargo.toml — ensures a crafted
+      # tag cannot carry shell metacharacters into those scripts.
+      - id: validate-version
+        name: Validate release version is strict semver
+        env:
+          # Passed via env (never interpolated into the script body) so a crafted
+          # tag cannot break out of quotes.
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release version '$VERSION' is not strict semver (expected X.Y.Z or X.Y.Z-prerelease)." >&2
+            exit 1
+          fi
+
       - id: meta
         name: Compute build metadata
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          GIT_SHA=$(git rev-parse --short HEAD)
+          # Full sha, not --short: the value reaches the browser through Nitro's
+          # env overlay, which runs everything through `destr`, and an all-digit
+          # short sha ("12345678") would arrive as a number — or "1e234567" as
+          # Infinity. The UI truncates for display anyway.
+          GIT_SHA=$(git rev-parse HEAD)
           BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "git_sha=${GIT_SHA}" >> "$GITHUB_OUTPUT"
           echo "build_date=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
-          echo "Resolved: VERSION=${{ inputs.version }} GIT_SHA=${GIT_SHA} BUILD_DATE=${BUILD_DATE}"
+          echo "Resolved: VERSION=${VERSION} GIT_SHA=${GIT_SHA} BUILD_DATE=${BUILD_DATE}"
 
-  # ── Build + push each image in parallel ──────────────────────────────────────
+  # ── Build + push each image, natively per architecture ───────────────────────
+  # Every image is published for linux/amd64 AND linux/arm64 (Hetzner CAX,
+  # Oracle Ampere, AWS Graviton, Raspberry Pi — the cheapest tier at most
+  # providers is arm64, and an amd64-only image fails the install with
+  # "no matching manifest for linux/arm64/v8"). Each architecture builds on a
+  # NATIVE runner (`ubuntu-24.04-arm` for arm64, free for public repos) rather
+  # than under QEMU: bun-driven builds are both painfully slow and flaky under
+  # user-mode emulation. Each leg pushes an untagged, per-arch image BY DIGEST;
+  # the `merge-manifests` job below stitches the two into one multi-arch
+  # manifest list per tag, and that list digest is what gets signed, attested,
+  # and pinned into the release compose.
   build-and-push:
-    name: Build & push ${{ matrix.name }}
+    name: Build ${{ matrix.name }} (${{ matrix.platform }})
     needs: resolve
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
+      # `name` MUST be a base matrix key alongside `platform`. With `platform`
+      # alone, each `include` entry below carries a key (`name`) that is not an
+      # original matrix value, so GitHub merges every entry into the SAME two
+      # combinations in turn and only the last image survives — v0.4.10 built
+      # nothing but tinyproxy. With `name` in the base matrix, each include
+      # entry only adds `dockerfile`/`context` to the combinations whose `name`
+      # matches, which is the documented merge behaviour.
       matrix:
+        platform: [linux/amd64, linux/arm64]
+        # Keep in sync with the merge-manifests matrix and verify-anonymous-pull.
+        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup, clamav, tinyproxy]
         include:
           - name: web
             dockerfile: apps/web/Dockerfile
@@ -93,26 +137,39 @@ jobs:
           - name: code-worker
             dockerfile: apps/code-worker/Dockerfile
             context: .
+          - name: convex-fn-proxy
+            dockerfile: apps/convex-fn-proxy/Dockerfile
+            # Monorepo-root context: the proxy's `catalog:` versions only resolve
+            # via a bun workspace install (see its Dockerfile).
+            context: .
           - name: setup
             dockerfile: apps/setup-cli/Dockerfile
             context: .
           - name: ostr-registry
             dockerfile: apps/ostr-registry/Dockerfile
             context: .
+          # Thin first-party wrappers around upstream images that are not
+          # multi-arch under one name (see the Dockerfiles for the reasoning).
+          - name: clamav
+            dockerfile: docker/clamav.Dockerfile
+            context: docker
+          - name: tinyproxy
+            dockerfile: docker/tinyproxy.Dockerfile
+            context: docker
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -120,7 +177,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
           tags: |
@@ -128,18 +185,29 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=v${{ inputs.version }}
             type=raw,value=latest
 
-      - name: Build and push
+      # Derive a filesystem-safe arch suffix (linux/arm64 → arm64) for the
+      # cache scope and the digest artifact name.
+      - name: Resolve platform pair
+        id: platform
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: echo "arch=${PLATFORM#linux/}" >> "$GITHUB_OUTPUT"
+
+      # `push-by-digest` publishes an UNTAGGED per-arch image and returns its
+      # digest; `tags` therefore carries only the bare image name. The tags
+      # from `meta` are applied by merge-manifests to the combined list.
+      - name: Build and push (by digest)
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
+          tags: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-          cache-from: type=gha,scope=release-${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=release-${{ matrix.name }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-${{ matrix.name }}-${{ steps.platform.outputs.arch }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.name }}-${{ steps.platform.outputs.arch }}
           provenance: mode=max
           sbom: true
           build-args: |
@@ -147,13 +215,104 @@ jobs:
             OWLAT_GIT_SHA=${{ needs.resolve.outputs.git_sha }}
             OWLAT_BUILD_DATE=${{ needs.resolve.outputs.build_date }}
 
+      # Matrix jobs cannot share job outputs (last writer wins), so each leg
+      # publishes its per-arch digest as a tiny artifact for merge-manifests.
+      - name: Record per-arch digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/arch-digest
+          echo "${DIGEST}" > "/tmp/arch-digest/${{ steps.platform.outputs.arch }}.txt"
+          cat "/tmp/arch-digest/${{ steps.platform.outputs.arch }}.txt"
+
+      - name: Upload per-arch digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: arch-digest-${{ matrix.name }}-${{ steps.platform.outputs.arch }}
+          path: /tmp/arch-digest/${{ steps.platform.outputs.arch }}.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── Merge the per-arch images into one multi-arch manifest per tag ──────────
+  # Also the ONLY place that signs and attests: the digest consumers pin, pull
+  # and verify is the manifest LIST digest, not either per-arch leaf.
+  merge-manifests:
+    name: Publish ${{ matrix.name }} (multi-arch)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in sync with the build-and-push matrix above.
+        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup, clamav, tinyproxy]
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+
+      - name: Collect per-arch digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: arch-digest-${{ matrix.name }}-*
+          path: /tmp/arch-digest
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          tags: |
+            type=semver,pattern={{version}},value=v${{ inputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ inputs.version }}
+            type=raw,value=latest
+
+      - name: Create multi-arch manifest list
+        id: merge
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # Exactly one digest per platform, or the release ships a half-built image.
+          for arch in amd64 arm64; do
+            [ -s "/tmp/arch-digest/${arch}.txt" ] || { echo "::error::missing ${arch} digest for ${IMAGE}"; exit 1; }
+          done
+          refs=()
+          for f in /tmp/arch-digest/*.txt; do refs+=("${IMAGE}@$(cat "$f")"); done
+          tag_args=()
+          for tag in $TAGS; do tag_args+=(-t "$tag"); done
+          docker buildx imagetools create "${tag_args[@]}" "${refs[@]}"
+          # The list digest is what every downstream step keys on.
+          digest=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::could not read list digest for ${IMAGE}:${VERSION} (got '${digest}')"; exit 1; }
+          # Prove both platforms are present in the published list.
+          platforms=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --format '{{range .Manifest.Manifests}}{{if ne .Platform.OS "unknown"}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}{{end}}')
+          echo "Published ${IMAGE}:${VERSION}@${digest} for: ${platforms}"
+          for want in linux/amd64 linux/arm64; do
+            case " $platforms " in *" $want "*) ;; *) echo "::error::${IMAGE}:${VERSION} lacks ${want}"; exit 1 ;; esac
+          done
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
       # The release compose pins each image to :<version>@sha256:<digest>.
       # Matrix jobs cannot share job outputs (last writer wins), so each leg
       # publishes its digest as a tiny artifact for upload-release-assets to
       # collect and feed into gen-release-compose.sh.
       - name: Record image digest for compose pinning
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ steps.merge.outputs.digest }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/image-digest
@@ -161,7 +320,7 @@ jobs:
           cat "/tmp/image-digest/${{ matrix.name }}.txt"
 
       - name: Upload image digest
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: image-digest-${{ matrix.name }}
           path: /tmp/image-digest/${{ matrix.name }}.txt
@@ -172,11 +331,18 @@ jobs:
       # GitHub OIDC. Verification (`cosign verify --certificate-identity-regexp`)
       # then proves the image came from this repo's release workflow.
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          # cosign-installer v4 defaults to cosign 3.x, which signs with the new
+          # bundle format stored as an OCI 1.1 referrer. cosign 2.x clients (what
+          # most operators still have, and what the release notes' `cosign verify`
+          # assumes) cannot find those signatures. Stay on the 2.x line until the
+          # format switch is made deliberately and announced in the release notes.
+          cosign-release: v2.6.5
 
       - name: Sign published image digest (cosign keyless)
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ steps.merge.outputs.digest }}
           TAGS: ${{ steps.meta.outputs.tags }}
           COSIGN_EXPERIMENTAL: "1"
         run: |
@@ -189,10 +355,10 @@ jobs:
       # Publish an SLSA provenance attestation pinned to the image digest.
       # Consumers verify with `gh attestation verify --repo wolvesdotink/owlat`.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-name: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ steps.merge.outputs.digest }}
           push-to-registry: true
 
   # ── Verify the pushed images are anonymously pullable ────────────────────────
@@ -204,10 +370,10 @@ jobs:
   # `server` job and therefore blocks the draft release from going live.
   verify-anonymous-pull:
     name: Verify images pull anonymously
-    needs: build-and-push
+    needs: merge-manifests
     runs-on: ubuntu-latest
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
 
@@ -216,9 +382,17 @@ jobs:
           set -euo pipefail
           failed=0
           # Keep this list in sync with the build-and-push matrix above.
-          for name in web mta updater convex-deploy imap mail-sync code-worker setup ostr-registry; do
+          for name in web mta updater convex-deploy imap mail-sync code-worker convex-fn-proxy setup ostr-registry clamav tinyproxy; do
             image="${IMAGE_PREFIX}/${name}:${{ inputs.version }}"
-            if docker manifest inspect "$image" > /dev/null 2>&1; then
+            if manifest=$(docker manifest inspect "$image" 2>/dev/null); then
+              # Anonymously visible AND multi-arch: an image that lost a platform
+              # would still pull on amd64 and only fail on an arm64 install.
+              for want in amd64 arm64; do
+                if ! printf '%s' "$manifest" | grep -q "\"architecture\": \"${want}\""; then
+                  echo "FAILED   ${image} — manifest list lacks linux/${want}"
+                  failed=1
+                fi
+              done
               echo "OK       ${image}"
             else
               echo "FAILED   ${image} — not anonymously pullable (package private or missing)"
@@ -236,19 +410,19 @@ jobs:
   # ── Generate pinned compose template + attach it to the caller's Release ─────
   upload-release-assets:
     name: Upload compose assets to the Release
-    needs: [resolve, build-and-push]
+    needs: [resolve, merge-manifests]
     runs-on: ubuntu-latest
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Collect image digests
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: image-digest-*
           path: /tmp/image-digest
@@ -268,7 +442,12 @@ jobs:
           cp "docker-compose-${{ inputs.version }}.yml" docker-compose.verify.yml
           docker compose -f docker-compose.verify.yml config --quiet
         env:
-          # Supply placeholder envs so compose parses
+          # Supply placeholder envs so compose parses. Every `${VAR:?}` in
+          # docker-compose.yml MUST be listed here — a missing one fails
+          # interpolation, which fails this job and silently skips `publish`
+          # (the v0.4.0 release died exactly this way). The
+          # compose-required-vars test in scripts/__tests__ keeps the two lists
+          # in sync.
           OWLAT_VERSION: ${{ inputs.version }}
           CONVEX_BACKEND_VERSION: placeholder
           INSTANCE_SECRET: placeholder
@@ -277,6 +456,8 @@ jobs:
           BOUNCE_VERP_KEY: placeholder
           FBL_DEDUP_PROTOCOL: placeholder
           FBL_DEDUP_CUTOVER_ACK: placeholder
+          REDIS_PASSWORD: placeholder
+          MTA_SECRET: placeholder
 
       # S2 / Phase 1.3: publish a SHA256 manifest alongside the compose file so
       # the in-app updater (apps/web/server/api/system/update.post.ts) can
@@ -291,7 +472,7 @@ jobs:
       # Attest the compose file itself so consumers can verify it via
       # `gh attestation verify docker-compose-<v>.yml --repo wolvesdotink/owlat`.
       - name: Attest compose artifact provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: |
             docker-compose-${{ inputs.version }}.yml
@@ -319,21 +500,30 @@ jobs:
   # Two volume states, because both have shipped broken before (#551): `fresh`
   # (first install) and `seeded` (volumes created by the PREVIOUS release, the
   # upgrade path — Redis appendonlydir/ClamAV DB ownership only breaks there).
+  #
+  # A third leg installs `fresh` on an arm64 runner: the proof that the
+  # multi-arch manifests actually boot on the other architecture. (No seeded
+  # arm64 leg: it would boot the PREVIOUS release's images to seed the volumes,
+  # and releases before multi-arch have none for arm64.)
   e2e-install:
-    name: E2E install (${{ matrix.volumes }} volumes)
-    needs: [build-and-push, verify-anonymous-pull, upload-release-assets]
-    runs-on: ubuntu-latest
+    name: E2E install (${{ matrix.volumes }} volumes, ${{ matrix.arch }})
+    needs: [merge-manifests, verify-anonymous-pull, upload-release-assets]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         volumes: [fresh, seeded]
+        arch: [amd64]
+        include:
+          - volumes: fresh
+            arch: arm64
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       VERSION: ${{ inputs.version }}
       TAG: ${{ inputs.tag }}
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
 
@@ -539,7 +729,19 @@ jobs:
               | jq -e '.redis == "connected" and .worker.alive == true'
           }
           wait_http "mta worker (redis connected + heartbeat alive)" 600 mta_check
-          echo "E2E install (${{ matrix.volumes }} volumes) succeeded: compose verified, images pulled anonymously, functions deployed, stack healthy."
+          # The app must report the version it IS. nuxt.config.ts is evaluated at
+          # image build and Nitro only overlays NUXT_PUBLIC_* env, so a naming slip
+          # leaves every install reporting "dev" — which makes the admin page's
+          # update check short-circuit and hides the in-app updater entirely. This
+          # is the only gate that runs the real release build-args end to end.
+          if ! curl -fsS --max-time 15 http://localhost:3000/auth/login \
+            | grep -q "owlatVersion:\"${VERSION}\""; then
+            echo "::error::the web shell does not report version ${VERSION}; the in-app updater will be hidden on this release"
+            curl -fsS --max-time 15 http://localhost:3000/auth/login \
+              | grep -o 'owlatVersion:"[^"]*"' | head -1 || echo "(no owlatVersion in the shell at all)"
+            exit 1
+          fi
+          echo "E2E install (${{ matrix.volumes }} volumes) succeeded: compose verified, images pulled anonymously, functions deployed, stack healthy, shell reports ${VERSION}."
 
       - name: Dump stack state on failure
         if: failure()

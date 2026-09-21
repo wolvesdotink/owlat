@@ -8,7 +8,7 @@ import {
 } from '~/utils/channelKinds';
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -57,7 +57,7 @@ async function addChannel(kind: ChannelKind) {
 	// via the getChannelConfigs subscription, where credentials are configured.
 	const result = await addChannelConfig({ channel: kind, isEnabled: false });
 	addingChannel.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	displayToast(t('dashboard.admin.instance.channels.addedToast'));
 }
 
@@ -90,15 +90,6 @@ const handleChannelError = (message: string) => {
 
 <template>
 	<div class="p-6 lg:p-8">
-		<!-- Back Navigation -->
-		<NuxtLink
-			to="/dashboard/admin"
-			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
-		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			{{ t('dashboard.admin.instance.channels.backToSettings') }}
-		</NuxtLink>
-
 		<!-- Header -->
 		<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
 			<div class="flex items-center gap-4">
@@ -114,9 +105,11 @@ const handleChannelError = (message: string) => {
 						class="text-text-secondary mt-1 max-w-xl"
 					>
 						<template #transportLink>
-							<NuxtLink to="/dashboard/admin/delivery/transport" class="text-brand hover:underline">{{
-								t('dashboard.admin.instance.channels.subtitleTransportLink')
-							}}</NuxtLink>
+							<NuxtLink
+								to="/dashboard/admin/delivery/transport"
+								class="text-brand hover:underline"
+								>{{ t('dashboard.admin.instance.channels.subtitleTransportLink') }}</NuxtLink
+							>
 						</template>
 						<template #domainLink>
 							<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">{{

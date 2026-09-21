@@ -162,5 +162,3 @@ export function usePostboxSelectionRewrite(options: UsePostboxSelectionRewriteOp
 		hasPreview,
 	};
 }
-
-export type PostboxSelectionRewrite = ReturnType<typeof usePostboxSelectionRewrite>;

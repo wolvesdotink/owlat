@@ -17,6 +17,24 @@ import { isValidConvexId } from '../lib/inputGuards';
 import { readSealedBlobBytes, verifyBlobToken } from '../lib/sealedBlob';
 import { logError } from '../lib/runtimeLog';
 import { errorResponse } from '../lib/httpResponse';
+import { corsHeaders } from '../lib/cors';
+
+/**
+ * Content types safe to render INLINE in a browser. A sealed blob's content-type
+ * is attacker-influenceable (it was chosen by whoever composed the sealed
+ * message), so anything outside this narrow allowlist is served as an
+ * `attachment` download with `nosniff`, never rendered in the reader's origin.
+ * Images and PDFs are the two kinds the Postbox reader displays inline; both are
+ * handled by the browser's own sandboxed viewers. Everything else — most
+ * dangerously `text/html`, `image/svg+xml` (scriptable), and any wildcard
+ * catch-all type a caller might smuggle — downloads instead of executing.
+ */
+function isInlineContentType(contentType: string): boolean {
+	const base = contentType.split(';')[0]?.trim().toLowerCase() ?? '';
+	// SVG is an image but is scriptable, so it is deliberately NOT inline.
+	if (base === 'image/svg+xml') return false;
+	return base.startsWith('image/') || base === 'application/pdf';
+}
 
 export const serveSealedBlob = httpAction(async (ctx, request) => {
 	const url = new URL(request.url);
@@ -35,16 +53,27 @@ export const serveSealedBlob = httpAction(async (ctx, request) => {
 		// Copy into a fresh ArrayBuffer-backed view so the Response body type is
 		// unambiguous across runtimes.
 		const body = new Uint8Array(bytes);
+		const inline = isInlineContentType(verified.contentType);
 		return new Response(body, {
 			status: 200,
 			headers: {
 				'Content-Type': verified.contentType,
 				'Cache-Control': 'no-store',
+				// The content-type is attacker-influenceable, so never let the browser
+				// sniff a different one, and only render the two kinds the reader shows
+				// inline (image/*, application/pdf). Anything else downloads.
+				'X-Content-Type-Options': 'nosniff',
+				'Content-Disposition': inline ? 'inline' : 'attachment',
+				// Belt-and-suspenders: even a served-inline blob must not execute
+				// script or navigate; a sandbox CSP neutralises an HTML/SVG type that
+				// slipped the allowlist.
+				'Content-Security-Policy': "default-src 'none'; sandbox",
 				// The Postbox web reader fetches this cross-origin (the app origin →
-				// the `.convex.site` HTTP-actions host), exactly as it did the Convex
-				// signed storage URL this replaces. Allow the read; the capability
-				// token is the access control.
-				'Access-Control-Allow-Origin': '*',
+				// the `.convex.site` HTTP-actions host). Scope the grant to the app
+				// origin(s) rather than `*`; the capability token remains the access
+				// control, this just stops any other origin from reading the bytes
+				// through the victim's browser.
+				...corsHeaders('GET, OPTIONS', request.headers.get('Origin')),
 			},
 		});
 	} catch (err) {

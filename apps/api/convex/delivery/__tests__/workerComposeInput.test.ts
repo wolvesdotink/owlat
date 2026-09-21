@@ -197,7 +197,7 @@ describe('worker legacy message-type derivation', () => {
 });
 
 // CL-01: the agent 1:1 reply path collapses onto the transactional envelope, so
-// `enqueueNonCampaignSend` threads `autoSubmittedType: 'auto-replied'` through
+// `delivery/nonCampaignIntake.intake` threads `autoSubmittedType: 'auto-replied'` through
 // `envelopeInput`. Exercise the full envelope → buildComposeInput → composeForSend
 // path to prove the agent reply lands `Auto-Submitted: auto-replied` (RFC 3834 §2)
 // with NO List-Unsubscribe, while a plain transactional send keeps `auto-generated`.

@@ -5,7 +5,7 @@
  *
  * ONE place that turns a prompt into up-to-3 distinct, ready-to-send reply
  * variants via the capable-tier `runLlmObject` seam. Used by BOTH:
- *   - the Postbox composer's `suggestReplies` (mail/ai.ts), and
+ *   - the Postbox composer's `suggestReplies` (mail/ai/assist.ts), and
  *   - the inbound agent's `draft` step (agent/steps/draft), which offers the
  *     reviewer 2–3 pickable drafts on low-confidence / low-quality cases.
  *
@@ -25,7 +25,7 @@ import type { TokenUsage } from '../agent/steps/types';
 export const MAX_REPLY_OPTIONS = 3;
 
 /** Structured output: up to {@link MAX_REPLY_OPTIONS} short reply variants. */
-export const replyOptionsSchema = z.object({
+const replyOptionsSchema = z.object({
 	replies: z.array(z.string()).max(MAX_REPLY_OPTIONS),
 });
 

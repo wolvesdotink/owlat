@@ -8,7 +8,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { parseDeliveryProviderFromEnv, renderComposeOverride } from '@owlat/shared/composeOverride';
-import { getActiveProfiles, type FeatureFlagState } from '@owlat/shared/featureFlags';
+import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 
 /**
  * The built-in MTA is opt-in: its `mta` compose profile activates when MTA is
@@ -35,15 +35,4 @@ export async function writeComposeOverride(
 	const { profiles, yaml } = renderComposeOverride(flags, { ...opts, deliveryProvider });
 	await writeFile(path, yaml, 'utf-8');
 	return profiles;
-}
-
-/**
- * Build the COMPOSE_PROFILES env var string passed to docker compose.
- * Use this when you don't want a marker file — just the comma-separated list.
- */
-export function buildComposeProfilesEnv(
-	flags: FeatureFlagState,
-	opts: { hosted?: boolean; deliveryProvider?: string } = {}
-): string {
-	return getActiveProfiles(flags, opts).join(',');
 }

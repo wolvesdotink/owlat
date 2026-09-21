@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -36,11 +36,60 @@ afterAll(() => server.close());
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
-	execSyncMock.mockReset().mockReturnValue('');
-	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n');
+	execSyncMock.mockReset().mockImplementation(dockerFixture);
+	writeFileSync(
+		join(OWLAT_DIR, '.env'),
+		'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n'
+	);
 });
 
 const AUTH = { 'x-instance-secret': 'test-instance-secret-0123456789' };
+
+/**
+ * What a healthy Docker answers. The update path now reads the daemon before it
+ * writes to it — an API preflight, the service list it must recreate, and its
+ * own container's plumbing — so a mock that returns '' for everything describes
+ * a broken host, not a quiet one.
+ */
+function dockerFixture(command: unknown): string {
+	const cmd = String(command);
+	if (cmd.includes('config --services')) {
+		return 'web\nconvex\nmta\nupdater\ndocker-socket-proxy\n';
+	}
+	if (cmd.startsWith('docker inspect')) {
+		return [
+			'ghcr.io/wolvesdotink/updater:0.5.0',
+			`${HOST_INSTALL_DIR}:${OWLAT_DIR}:rw `,
+			'owlat_default owlat_docker-proxy ',
+		].join('\n');
+	}
+	if (cmd.startsWith('docker run')) return 'helper-container-id\n';
+	return '';
+}
+
+/** A docker that fails `match`, and behaves for everything else. */
+function dockerFailing(match: (cmd: string) => boolean, stderr: string) {
+	return (command: unknown): string => {
+		if (match(String(command))) {
+			const err = new Error('boom') as Error & { stdout: string; stderr: string };
+			err.stdout = '';
+			err.stderr = stderr;
+			throw err;
+		}
+		return dockerFixture(command);
+	};
+}
+
+/**
+ * The host path the install dir is bind-mounted FROM. Compose has to be told
+ * about it with --project-directory, or every relative bind in the compose file
+ * resolves to a path that only exists inside the updater container.
+ */
+const HOST_INSTALL_DIR = '/srv/owlat';
+const COMPOSE = `docker compose --project-directory ${HOST_INSTALL_DIR} --env-file ${join(OWLAT_DIR, '.env')} -f ${join(OWLAT_DIR, 'docker-compose.yml')}`;
+
+const composeCommands = () =>
+	execSyncMock.mock.calls.map((c) => String(c[0])).filter((c) => c.startsWith('docker compose'));
 
 function post(path: string, body?: unknown, headers: Record<string, string> = AUTH) {
 	return fetch(`${base}${path}`, {
@@ -73,10 +122,97 @@ describe('POST /update', () => {
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { success: boolean };
 		expect(json.success).toBe(true);
+		const cmds = composeCommands();
+		expect(cmds[0]).toBe(`${COMPOSE} pull`);
+		expect(cmds[1]).toBe(`${COMPOSE} --profile deploy run --rm convex-deploy`);
+		expect(cmds[2]).toBe(`${COMPOSE} config --services`);
+		expect(cmds[3]).toBe(`${COMPOSE} up -d --remove-orphans web convex mta`);
+	});
+
+	/**
+	 * The proxy in front of the Docker socket is the feature list of in-app
+	 * updates: with its NETWORKS/VOLUMES groups off, `compose up` and
+	 * `compose run` 403. That used to surface five minutes in as
+	 * "convex-deploy failed", with a compose file already staged.
+	 */
+	it('refuses — before touching anything — when the Docker API denies what the rollout needs', async () => {
+		writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {} # original\n');
+		execSyncMock.mockImplementation(
+			dockerFailing(
+				(cmd) => cmd.startsWith('docker network ls'),
+				'Error response from daemon: <html><body><h1>403 Forbidden</h1>\n</body></html>'
+			)
+		);
+
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:9.9.9', ''].join(
+			'\n'
+		);
+		const res = await post('/update', { composeTemplate: template });
+
+		expect(res.status).toBe(500);
+		const json = (await res.json()) as { error: string; steps: Array<{ step: string }> };
+		expect(json.error).toContain('403 Forbidden');
+		expect(json.error).toContain('docker compose up -d docker-socket-proxy');
+		expect(json.steps.map((s) => s.step)).toEqual(['docker-api-preflight']);
+		// Nothing staged, nothing pulled, live compose file untouched.
+		expect(composeCommands()).toEqual([]);
+		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
+		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(
+			'services: {} # original\n'
+		);
+	});
+
+	/**
+	 * Compose recreate stops the old container before starting the new one. For
+	 * the updater that is the process issuing the command, and for the socket
+	 * proxy it is that process's only transport — either one takes the rest of
+	 * the rollout with it, leaving half the stack on the old release.
+	 */
+	it('never recreates the updater or the socket proxy as part of the rollout', async () => {
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		const up = composeCommands().find((cmd) => cmd.includes(' up -d'));
+		expect(up).toBe(`${COMPOSE} up -d --remove-orphans web convex mta`);
+		const recreated = up?.split(' --remove-orphans ')[1]?.split(' ');
+		expect(recreated).not.toContain('updater');
+		expect(recreated).not.toContain('docker-socket-proxy');
+	});
+
+	it("hands the updater's own replacement to a helper that clones its plumbing", async () => {
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+
 		const cmds = execSyncMock.mock.calls.map((c) => String(c[0]));
-		expect(cmds[0]).toMatch(/^docker compose -f .*docker-compose\.yml pull$/);
-		expect(cmds[1]).toMatch(/--profile deploy run --rm convex-deploy$/);
-		expect(cmds[2]).toBe('docker compose up -d --remove-orphans');
+		const run = cmds.find((cmd) => cmd.startsWith('docker run'));
+		expect(run).toBeDefined();
+		// Same image it is already running (nothing new is pulled), same bind
+		// mounts (the promoted compose file), first network at create time.
+		expect(run).toContain('ghcr.io/wolvesdotink/updater:0.5.0');
+		expect(run).toContain(`-v ${HOST_INSTALL_DIR}:${OWLAT_DIR}:rw`);
+		expect(run).toContain('--network owlat_default');
+		expect(run).toContain(`${COMPOSE} up -d --no-deps updater`);
+		// …and the remaining networks attached after create, or the helper
+		// cannot reach the Docker API it was handed.
+		expect(cmds).toContain('docker network connect owlat_docker-proxy helper-container-id');
+
+		const json = (await res.json()) as { steps: Array<{ step: string; ok?: boolean }> };
+		expect(json.steps.at(-1)).toMatchObject({ step: 'self-update', ok: true });
+	});
+
+	it('reports a failed hand-off without failing an update that already landed', async () => {
+		execSyncMock.mockImplementation(
+			dockerFailing((cmd) => cmd.startsWith('docker run'), 'no such image')
+		);
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		const json = (await res.json()) as {
+			success: boolean;
+			steps: Array<{ step: string; ok?: boolean; stderr: string }>;
+		};
+		expect(json.success).toBe(true);
+		const selfUpdate = json.steps.find((s) => s.step === 'self-update');
+		expect(selfUpdate?.ok).toBe(false);
+		expect(selfUpdate?.stderr).toContain('docker compose up -d updater');
 	});
 
 	it('rejects a compose template with a disallowed image, before any docker call', async () => {
@@ -97,56 +233,152 @@ describe('POST /update', () => {
 	});
 
 	it('stages the template, promotes it only after pull + deploy succeed', async () => {
-		const template = ['services:', '  web:', "    image: ghcr.io/wolvesdotink/web:1.0.0", ''].join('\n');
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:1.0.0', ''].join(
+			'\n'
+		);
 		const res = await post('/update', { composeTemplate: template });
 		const json = (await res.json()) as { steps?: Array<{ step: string }> };
 		expect(json.steps?.map((s) => s.step)).toEqual([
+			'docker-api-preflight',
 			'stage-compose',
 			'pull',
 			'convex-deploy',
 			'write-compose',
+			'pin-version',
 			'up',
+			'self-update',
 		]);
 		// pull/deploy ran against the STAGED file, not the live one
-		const cmds = execSyncMock.mock.calls.map((c) => String(c[0]));
-		expect(cmds[0]).toContain('docker-compose.next.yml');
+		expect(composeCommands()[0]).toContain('docker-compose.next.yml');
 		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(template);
 		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
 		expect(res.status).toBe(200);
 	});
 
+	/**
+	 * `.env` is the CONFIGURED version of the deployment — compose interpolates
+	 * it into every container's OWLAT_VERSION, which is what the dashboard
+	 * reports as installed and what /health diffs against the running images.
+	 * Nothing else in the update path writes it, so a successful update used to
+	 * leave the dashboard claiming the old version was still installed with the
+	 * same update still available.
+	 */
+	it('pins .env OWLAT_VERSION to the applied release, before the containers are recreated', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.16\n');
+		const template = [
+			'services:',
+			'  web:',
+			`    image: ghcr.io/wolvesdotink/web:0.4.17@sha256:${'a'.repeat(64)}`,
+			'',
+		].join('\n');
+
+		const envAtUp: string[] = [];
+		execSyncMock.mockImplementation((cmd: unknown) => {
+			if (String(cmd).includes(' up -d --remove-orphans')) {
+				envAtUp.push(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8'));
+			}
+			return dockerFixture(cmd);
+		});
+
+		const res = await post('/update', { composeTemplate: template });
+		expect(res.status).toBe(200);
+
+		const json = (await res.json()) as { steps?: Array<{ step: string; ok?: boolean }> };
+		expect(json.steps?.map((s) => s.step)).toEqual([
+			'docker-api-preflight',
+			'stage-compose',
+			'pull',
+			'convex-deploy',
+			'write-compose',
+			'pin-version',
+			'up',
+			'self-update',
+		]);
+		expect(json.steps?.find((s) => s.step === 'pin-version')?.ok).toBe(true);
+
+		const env = readFileSync(join(OWLAT_DIR, '.env'), 'utf-8');
+		expect(env).toContain('OWLAT_VERSION=0.4.17');
+		expect(env).toContain('FOO=bar'); // untouched lines preserved
+		// The recreate must see the new pin, or the containers come back on the
+		// old version and the bookkeeping is a lie.
+		expect(envAtUp).toHaveLength(1);
+		expect(envAtUp[0]).toContain('OWLAT_VERSION=0.4.17');
+	});
+
+	it('appends OWLAT_VERSION when .env has no pin yet', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n');
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:1.2.3', ''].join(
+			'\n'
+		);
+		const res = await post('/update', { composeTemplate: template });
+		expect(res.status).toBe(200);
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toContain('OWLAT_VERSION=1.2.3');
+	});
+
+	it('leaves .env alone for a template that pins no concrete version', async () => {
+		writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.16\n');
+		const template = [
+			'services:',
+			'  web:',
+			'    image: ghcr.io/wolvesdotink/web:${OWLAT_VERSION:-dev}',
+			'',
+		].join('\n');
+		const res = await post('/update', { composeTemplate: template });
+		expect(res.status).toBe(200);
+		const json = (await res.json()) as { steps?: Array<{ step: string }> };
+		expect(json.steps?.map((s) => s.step)).not.toContain('pin-version');
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toBe('OWLAT_VERSION=0.4.16\n');
+	});
+
 	it('leaves the live compose file untouched when the pull fails', async () => {
 		writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {} # original\n');
-		execSyncMock.mockImplementation((cmd: string) => {
-			if (String(cmd).includes('pull')) {
-				const err = new Error('boom') as Error & { stdout: string; stderr: string };
-				err.stdout = '';
-				err.stderr = 'Error response from daemon: manifest unknown';
-				throw err;
-			}
-			return '';
-		});
-		const template = ['services:', '  web:', "    image: ghcr.io/wolvesdotink/web:9.9.9", ''].join('\n');
+		execSyncMock.mockImplementation(
+			dockerFailing((cmd) => cmd.includes('pull'), 'Error response from daemon: manifest unknown')
+		);
+		const template = ['services:', '  web:', '    image: ghcr.io/wolvesdotink/web:9.9.9', ''].join(
+			'\n'
+		);
 		const res = await post('/update', { composeTemplate: template });
 		expect(res.status).toBe(500);
-		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe('services: {} # original\n');
+		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(
+			'services: {} # original\n'
+		);
 		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
 	});
 
 	it('stops before docker compose up when convex-deploy fails', async () => {
-		execSyncMock.mockImplementation((cmd: string) => {
-			if (String(cmd).includes('convex-deploy')) {
-				const err = new Error('boom') as Error & { stdout: string; stderr: string };
-				err.stdout = '';
-				err.stderr = 'Error: schema validation failed';
-				throw err;
-			}
-			return '';
-		});
+		execSyncMock.mockImplementation(
+			dockerFailing((cmd) => cmd.includes('convex-deploy'), 'Error: schema validation failed')
+		);
 		const res = await post('/update');
 		expect(res.status).toBe(500);
-		const cmds = execSyncMock.mock.calls.map((c) => c[0]);
-		expect(cmds).not.toContain('docker compose up -d --remove-orphans');
+		expect(composeCommands().some((cmd) => cmd.includes(' up -d'))).toBe(false);
+	});
+
+	/**
+	 * `./Caddyfile:/etc/caddy/Caddyfile` is resolved by compose against the
+	 * project directory and handed to the daemon as a HOST path. Run from inside
+	 * the updater, `./` is the container's own mount point, so a recreate used to
+	 * bind a path that exists on no host — Docker creates it, empty, and mounts
+	 * it over the real config.
+	 */
+	it('runs compose against the install dir as the HOST sees it', async () => {
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		for (const cmd of composeCommands()) {
+			expect(cmd).toContain(`--project-directory ${HOST_INSTALL_DIR}`);
+			// …while reading the files and the env from the paths THIS container has.
+			expect(cmd).toContain(`--env-file ${join(OWLAT_DIR, '.env')}`);
+		}
+	});
+
+	it('falls back to a bare compose command when the host path cannot be read', async () => {
+		execSyncMock.mockImplementation(
+			dockerFailing((cmd) => cmd.startsWith('docker inspect'), 'permission denied')
+		);
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		expect(composeCommands()).toContain('docker compose up -d --remove-orphans web convex mta');
 	});
 
 	it('rate-limits update requests', async () => {
@@ -202,7 +434,10 @@ describe('POST /rotate-env', () => {
 	});
 
 	it('rejects CR/LF injection into the env file', async () => {
-		const res = await post('/rotate-env', { ...valid, mtaApiKey: 'evil\nINJECTED=1-padme-16chars' });
+		const res = await post('/rotate-env', {
+			...valid,
+			mtaApiKey: 'evil\nINJECTED=1-padme-16chars',
+		});
 		expect(res.status).toBe(400);
 	});
 
@@ -212,8 +447,12 @@ describe('POST /rotate-env', () => {
 		const env = readFileSync(join(OWLAT_DIR, '.env'), 'utf-8');
 		expect(env).toContain(`INSTANCE_SECRET=${valid.instanceSecret}`);
 		expect(env).toContain('FOO=bar'); // untouched lines preserved
-		const cmds = execSyncMock.mock.calls.map((c) => c[0]);
-		expect(cmds).toContain('docker compose up -d --force-recreate');
+		// Named services: force-recreating the updater would stop this very
+		// process partway down the list, leaving the rest on the old secret.
+		expect(composeCommands()).toContain(`${COMPOSE} up -d --force-recreate web convex mta`);
+		expect(
+			execSyncMock.mock.calls.map((c) => String(c[0])).some((c) => c.startsWith('docker run'))
+		).toBe(true);
 	});
 });
 
@@ -225,11 +464,92 @@ describe('GET /health', () => {
 
 	it('reports parsed container rows with image tags', async () => {
 		execSyncMock.mockReturnValue(
-			'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:1.2.3","Health":"healthy"}\n',
+			'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:1.2.3","Health":"healthy"}\n'
 		);
 		const res = await fetch(`${base}/health`, { headers: AUTH });
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { containers: Array<Record<string, unknown>> };
 		expect(json.containers[0]).toMatchObject({ service: 'web', imageTag: '1.2.3' });
+	});
+
+	/**
+	 * `version` is the updater container's baked-in OWLAT_VERSION — what is
+	 * RUNNING. Without the CONFIGURED value from `.env` alongside it, no caller
+	 * of /health can tell that the two have diverged.
+	 */
+	describe('version drift', () => {
+		function health() {
+			return fetch(`${base}/health`, { headers: AUTH }).then(
+				(res) =>
+					res.json() as Promise<{
+						version: string;
+						configuredVersion: string | null;
+						versionDrift: boolean | null;
+					}>
+			);
+		}
+
+		it('reports drift when .env was advanced but containers were never recreated', async () => {
+			// The observed production case: .env says 0.4.13, every container 0.4.12.
+			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\nFOO=bar\n');
+			execSyncMock.mockReturnValue(
+				['web', 'mta', 'imap']
+					.map(
+						(name) =>
+							`{"Service":"${name}","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/${name}:0.4.12","Health":"healthy"}`
+					)
+					.join('\n')
+			);
+			const json = await health();
+			expect(json.configuredVersion).toBe('0.4.13');
+			expect(json.versionDrift).toBe(true);
+		});
+
+		it('reports no drift when every container runs the configured version', async () => {
+			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\n');
+			execSyncMock.mockReturnValue(
+				'{"Service":"web","State":"running","Status":"Up 2 hours","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}\n'
+			);
+			const json = await health();
+			expect(json.configuredVersion).toBe('0.4.13');
+			expect(json.versionDrift).toBe(false);
+		});
+
+		it('ignores third-party images pinned to their own versions', async () => {
+			writeFileSync(join(OWLAT_DIR, '.env'), 'OWLAT_VERSION=0.4.13\n');
+			execSyncMock.mockReturnValue(
+				[
+					'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.13","Health":"healthy"}',
+					'{"Service":"redis","State":"running","Status":"Up","Image":"redis:7.4-alpine","Health":"healthy"}',
+					'{"Service":"caddy","State":"running","Status":"Up","Image":"caddy:2.8-alpine","Health":""}',
+				].join('\n')
+			);
+			expect((await health()).versionDrift).toBe(false);
+		});
+
+		it('answers null — never a false verdict — when .env carries no OWLAT_VERSION', async () => {
+			writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\n');
+			execSyncMock.mockReturnValue(
+				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n'
+			);
+			const json = await health();
+			expect(json.configuredVersion).toBeNull();
+			expect(json.versionDrift).toBeNull();
+		});
+
+		it('still reports container facts when .env cannot be read', async () => {
+			rmSync(join(OWLAT_DIR, '.env'));
+			execSyncMock.mockReturnValue(
+				'{"Service":"web","State":"running","Status":"Up","Image":"ghcr.io/wolvesdotink/web:0.4.12","Health":"healthy"}\n'
+			);
+			const res = await fetch(`${base}/health`, { headers: AUTH });
+			expect(res.status).toBe(200);
+			const json = (await res.json()) as {
+				configuredVersion: string | null;
+				containers: Array<Record<string, unknown>>;
+			};
+			expect(json.configuredVersion).toBeNull();
+			expect(json.containers[0]).toMatchObject({ service: 'web' });
+		});
 	});
 });

@@ -22,15 +22,14 @@ import type { AdminDraft, EmailStepDraft } from './useSetupWizard';
 
 // Mirrors the server's deliberately-lenient check in apply.post.ts so the client
 // never blocks an address the backend would accept (or vice-versa). Named
-// distinctly from the strict `@owlat/shared` `isValidEmail` (also auto-imported)
-// to avoid a Nuxt auto-import collision.
+// distinctly from the strict `@owlat/shared` `isValidEmail`.
 const EMAIL_RE = /^.+@.+\..+$/;
 
 export function isSetupEmailValid(value: string): boolean {
 	return EMAIL_RE.test(value.trim());
 }
 
-export const MIN_PASSWORD_LENGTH = 12;
+const MIN_PASSWORD_LENGTH = 12;
 
 export interface AdminErrors {
 	email?: string;

@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
+import { formatNumber } from '~/utils/formatters';
 
 const { t, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.campaigns.detail.edit.pageTitle') });
-
-const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
-const formatNumber = (value: number) => numberFormat.value.format(value);
 
 definePageMeta({
 	layout: 'dashboard',
@@ -172,13 +170,12 @@ const sendEstimate = computed(() => {
 
 // The BINDING capacity plan, previewed BEFORE the operator presses send.
 //
-// Same assessment pre-flight makes, so the operator sees "Sending over N days"
-// as a first-class choice rather than discovering it as a refusal (deliverability
-// plan D14 — a multi-day send is a normal, visible state for a warming
-// deployment, never a surprise). Skips until there is an audience and a valid
-// From address; `fromEmail` is what decides whether warm-up overflow to a
-// verified relay absorbs the tail, so previewing without it would answer a
-// different question than the gate.
+// Same assessment pre-flight makes, so the operator sees "Sending over N days" as
+// a first-class choice rather than discovering it as a refusal (a multi-day send
+// is a normal, visible state for a warming deployment, never a surprise). Skips
+// until there is an audience and a valid From address; `fromEmail` is what
+// decides whether warm-up overflow to a verified relay absorbs the tail, so
+// previewing without it would answer a different question than the gate.
 const { data: capacityPreviewRaw } = useOrganizationQuery(
 	api.campaigns.capacityPreflight.getCampaignCapacityPlan,
 	() => {
@@ -235,7 +232,11 @@ const shownCapacityPlan = computed(() => {
 						</button>
 						<div>
 							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-								{{ isScheduled ? t('dashboard.campaigns.detail.edit.titleScheduled') : t('dashboard.campaigns.detail.edit.title') }}
+								{{
+									isScheduled
+										? t('dashboard.campaigns.detail.edit.titleScheduled')
+										: t('dashboard.campaigns.detail.edit.title')
+								}}
 							</h1>
 							<p class="text-sm text-text-secondary">
 								{{ campaignData?.name || t('dashboard.campaigns.detail.edit.loadingName') }}
@@ -285,7 +286,9 @@ const shownCapacityPlan = computed(() => {
 					rounded="full"
 					class="mb-4 mx-auto"
 				/>
-				<p class="text-text-primary font-medium">{{ t('dashboard.campaigns.detail.edit.notFoundTitle') }}</p>
+				<p class="text-text-primary font-medium">
+					{{ t('dashboard.campaigns.detail.edit.notFoundTitle') }}
+				</p>
 				<p class="text-sm text-text-secondary mt-1">
 					{{ t('dashboard.campaigns.detail.edit.notFoundDescription') }}
 				</p>
@@ -306,9 +309,15 @@ const shownCapacityPlan = computed(() => {
 					rounded="full"
 					class="mb-4 mx-auto"
 				/>
-				<p class="text-text-primary font-medium">{{ t('dashboard.campaigns.detail.edit.cannotEditTitle') }}</p>
+				<p class="text-text-primary font-medium">
+					{{ t('dashboard.campaigns.detail.edit.cannotEditTitle') }}
+				</p>
 				<p class="text-sm text-text-secondary mt-1">
-					{{ t('dashboard.campaigns.detail.edit.cannotEditDescription', { status: campaignData.status }) }}
+					{{
+						t('dashboard.campaigns.detail.edit.cannotEditDescription', {
+							status: campaignData.status,
+						})
+					}}
 				</p>
 				<UiButton variant="secondary" class="mt-6" @click="handleBack">
 					{{ t('dashboard.campaigns.detail.edit.backToCampaigns') }}
@@ -322,7 +331,9 @@ const shownCapacityPlan = computed(() => {
 				>
 					<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
-						<p class="text-sm font-medium text-text-primary">{{ t('dashboard.campaigns.detail.edit.underReview.title') }}</p>
+						<p class="text-sm font-medium text-text-primary">
+							{{ t('dashboard.campaigns.detail.edit.underReview.title') }}
+						</p>
 						<p class="text-sm text-text-secondary mt-1">
 							{{ t('dashboard.campaigns.detail.edit.underReview.description') }}
 						</p>
@@ -334,7 +345,9 @@ const shownCapacityPlan = computed(() => {
 				>
 					<Icon name="lucide:alert-triangle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
 					<div>
-						<p class="text-sm font-medium text-text-primary">{{ t('dashboard.campaigns.detail.edit.underReview.issuesTitle') }}</p>
+						<p class="text-sm font-medium text-text-primary">
+							{{ t('dashboard.campaigns.detail.edit.underReview.issuesTitle') }}
+						</p>
 						<p class="text-sm text-text-secondary mt-1">
 							{{ campaignData.contentBlockReason }}
 						</p>
@@ -355,7 +368,9 @@ const shownCapacityPlan = computed(() => {
 					>
 						<Icon name="lucide:shield-alert" class="w-5 h-5 text-error shrink-0 mt-0.5" />
 						<div>
-							<p class="text-sm font-medium text-text-primary">{{ t('dashboard.campaigns.detail.edit.contentBlocked.title') }}</p>
+							<p class="text-sm font-medium text-text-primary">
+								{{ t('dashboard.campaigns.detail.edit.contentBlocked.title') }}
+							</p>
 							<p class="text-sm text-text-secondary mt-1">
 								{{ t('dashboard.campaigns.detail.edit.contentBlocked.description') }}
 							</p>
@@ -384,7 +399,9 @@ const shownCapacityPlan = computed(() => {
 						<div class="flex items-start gap-3">
 							<Icon name="lucide:clock" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 							<div class="flex-1">
-								<p class="text-sm font-medium text-brand">{{ t('dashboard.campaigns.detail.edit.scheduledNotice.title') }}</p>
+								<p class="text-sm font-medium text-brand">
+									{{ t('dashboard.campaigns.detail.edit.scheduledNotice.title') }}
+								</p>
 								<I18nT
 									keypath="dashboard.campaigns.detail.edit.scheduledNotice.description"
 									tag="p"
@@ -400,17 +417,17 @@ const shownCapacityPlan = computed(() => {
 										class="text-sm text-brand hover:text-brand/80 font-medium"
 										:disabled="isSaving"
 										@click="handleUnschedule"
-										>
+									>
 										{{ t('dashboard.campaigns.detail.edit.scheduledNotice.unschedule') }}
-										</button>
+									</button>
 									<span class="text-brand/40">|</span>
 									<button
 										class="text-sm text-error hover:text-error/80 font-medium"
 										:disabled="isSaving"
 										@click="handleCancel"
-										>
+									>
 										{{ t('dashboard.campaigns.detail.edit.scheduledNotice.cancelCampaign') }}
-										</button>
+									</button>
 								</div>
 							</div>
 						</div>
@@ -418,20 +435,25 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Campaign Details Card -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold text-text-primary mb-6">{{ t('dashboard.campaigns.detail.edit.details.title') }}</h2>
+						<h2 class="text-lg font-semibold text-text-primary mb-6">
+							{{ t('dashboard.campaigns.detail.edit.details.title') }}
+						</h2>
 
 						<div class="space-y-6">
 							<!-- Campaign Name -->
 							<div>
 								<label for="campaignName" class="label flex items-center gap-2">
 									<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
-									{{ t('dashboard.campaigns.detail.edit.details.campaignName') }} <span class="text-error">*</span>
+									{{ t('dashboard.campaigns.detail.edit.details.campaignName') }}
+									<span class="text-error">*</span>
 								</label>
 								<input
 									id="campaignName"
 									v-model="campaignName"
 									type="text"
-									:placeholder="t('dashboard.campaigns.detail.edit.details.campaignNamePlaceholder')"
+									:placeholder="
+										t('dashboard.campaigns.detail.edit.details.campaignNamePlaceholder')
+									"
 									:class="['input mt-1.5', errors.campaignName ? 'input-error' : '']"
 									:disabled="isScheduled"
 								/>
@@ -461,7 +483,8 @@ const shownCapacityPlan = computed(() => {
 								<div>
 									<label for="fromEmail" class="label flex items-center gap-2">
 										<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-										{{ t('dashboard.campaigns.detail.edit.details.fromEmail') }} <span class="text-error">*</span>
+										{{ t('dashboard.campaigns.detail.edit.details.fromEmail') }}
+										<span class="text-error">*</span>
 									</label>
 									<input
 										id="fromEmail"
@@ -482,7 +505,9 @@ const shownCapacityPlan = computed(() => {
 								<label for="replyTo" class="label flex items-center gap-2">
 									<Icon name="lucide:reply" class="w-4 h-4 text-text-tertiary" />
 									{{ t('dashboard.campaigns.detail.edit.details.replyTo') }}
-									<span class="text-text-tertiary">{{ t('dashboard.campaigns.detail.edit.details.optionalSuffix') }}</span>
+									<span class="text-text-tertiary">{{
+										t('dashboard.campaigns.detail.edit.details.optionalSuffix')
+									}}</span>
 								</label>
 								<input
 									id="replyTo"
@@ -498,7 +523,9 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Audience Card -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold text-text-primary mb-6">{{ t('dashboard.campaigns.detail.edit.audience.title') }}</h2>
+						<h2 class="text-lg font-semibold text-text-primary mb-6">
+							{{ t('dashboard.campaigns.detail.edit.audience.title') }}
+						</h2>
 
 						<div class="space-y-4">
 							<!-- Topic -->
@@ -522,7 +549,9 @@ const shownCapacityPlan = computed(() => {
 								<div class="flex-1">
 									<div class="flex items-center gap-2">
 										<Icon name="lucide:list-checks" class="w-5 h-5 text-brand" />
-										<span class="font-medium text-text-primary">{{ t('dashboard.campaigns.detail.edit.audience.topicTitle') }}</span>
+										<span class="font-medium text-text-primary">{{
+											t('dashboard.campaigns.detail.edit.audience.topicTitle')
+										}}</span>
 									</div>
 									<p class="text-sm text-text-secondary mt-1">
 										{{ t('dashboard.campaigns.detail.edit.audience.topicDescription') }}
@@ -535,9 +564,16 @@ const shownCapacityPlan = computed(() => {
 											:disabled="isScheduled"
 											@click.stop
 										>
-											<option :value="null" disabled>{{ t('dashboard.campaigns.detail.edit.audience.selectTopic') }}</option>
+											<option :value="null" disabled>
+												{{ t('dashboard.campaigns.detail.edit.audience.selectTopic') }}
+											</option>
 											<option v-for="list in topics" :key="list._id" :value="list._id">
-												{{ t('dashboard.campaigns.detail.edit.audience.topicOption', { name: list.name, count: list.contactCount }) }}
+												{{
+													t('dashboard.campaigns.detail.edit.audience.topicOption', {
+														name: list.name,
+														count: list.contactCount,
+													})
+												}}
 											</option>
 										</select>
 										<p v-if="errors.audience" class="mt-1.5 text-sm text-error">
@@ -568,7 +604,9 @@ const shownCapacityPlan = computed(() => {
 								<div class="flex-1">
 									<div class="flex items-center gap-2">
 										<Icon name="lucide:filter" class="w-5 h-5 text-warning" />
-										<span class="font-medium text-text-primary">{{ t('dashboard.campaigns.detail.edit.audience.segmentTitle') }}</span>
+										<span class="font-medium text-text-primary">{{
+											t('dashboard.campaigns.detail.edit.audience.segmentTitle')
+										}}</span>
 									</div>
 									<p class="text-sm text-text-secondary mt-1">
 										{{ t('dashboard.campaigns.detail.edit.audience.segmentDescription') }}
@@ -581,7 +619,9 @@ const shownCapacityPlan = computed(() => {
 											:disabled="isScheduled"
 											@click.stop
 										>
-											<option :value="null" disabled>{{ t('dashboard.campaigns.detail.edit.audience.selectSegment') }}</option>
+											<option :value="null" disabled>
+												{{ t('dashboard.campaigns.detail.edit.audience.selectSegment') }}
+											</option>
 											<option v-for="segment in segments" :key="segment._id" :value="segment._id">
 												{{ segment.name }}
 											</option>
@@ -607,7 +647,9 @@ const shownCapacityPlan = computed(() => {
 								<p v-if="audienceType === 'topic'" class="mt-1 text-sm text-text-tertiary">
 									{{ t('dashboard.campaigns.detail.edit.audience.eligibleForTopic') }}
 								</p>
-								<p v-else class="mt-1 text-sm text-text-tertiary">{{ t('dashboard.campaigns.detail.edit.audience.eligible') }}</p>
+								<p v-else class="mt-1 text-sm text-text-tertiary">
+									{{ t('dashboard.campaigns.detail.edit.audience.eligible') }}
+								</p>
 
 								<!-- Warning if there are non-opted-in contacts (only for topic) -->
 								<div
@@ -644,13 +686,16 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Email Content Card -->
 					<div class="card p-6">
-						<h2 class="text-lg font-semibold text-text-primary mb-6">{{ t('dashboard.campaigns.detail.edit.content.title') }}</h2>
+						<h2 class="text-lg font-semibold text-text-primary mb-6">
+							{{ t('dashboard.campaigns.detail.edit.content.title') }}
+						</h2>
 
 						<div class="space-y-6">
 							<!-- Selected Template -->
 							<div>
 								<label class="label">
-									{{ t('dashboard.campaigns.detail.edit.content.template') }} <span class="text-error">*</span>
+									{{ t('dashboard.campaigns.detail.edit.content.template') }}
+									<span class="text-error">*</span>
 								</label>
 								<div
 									v-if="selectedTemplate"
@@ -668,7 +713,10 @@ const shownCapacityPlan = computed(() => {
 													{{ selectedTemplate.name }}
 												</p>
 												<p class="text-sm text-text-secondary truncate">
-													{{ selectedTemplate.subject || t('dashboard.campaigns.detail.edit.content.noSubject') }}
+													{{
+														selectedTemplate.subject ||
+														t('dashboard.campaigns.detail.edit.content.noSubject')
+													}}
 												</p>
 											</div>
 										</div>
@@ -691,9 +739,9 @@ const shownCapacityPlan = computed(() => {
 								<div
 									v-else
 									class="mt-2 p-4 bg-bg-surface shadow-surface-1 rounded-lg text-text-tertiary"
-									>
+								>
 									{{ t('dashboard.campaigns.detail.edit.content.noTemplate') }}
-									</div>
+								</div>
 								<p v-if="errors.content" class="mt-1.5 text-sm text-error">
 									{{ errors.content }}
 								</p>
@@ -707,7 +755,8 @@ const shownCapacityPlan = computed(() => {
 							<div>
 								<label for="subject" class="label flex items-center gap-2">
 									<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-									{{ t('dashboard.campaigns.detail.edit.content.subject') }} <span class="text-error">*</span>
+									{{ t('dashboard.campaigns.detail.edit.content.subject') }}
+									<span class="text-error">*</span>
 								</label>
 								<input
 									id="subject"
@@ -744,7 +793,9 @@ const shownCapacityPlan = computed(() => {
 					<div class="card p-6">
 						<div class="flex items-center justify-between">
 							<div>
-								<h3 class="text-lg font-semibold text-text-primary">{{ t('dashboard.campaigns.detail.edit.archive.title') }}</h3>
+								<h3 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.campaigns.detail.edit.archive.title') }}
+								</h3>
 								<p class="text-sm text-text-secondary mt-1">
 									{{ t('dashboard.campaigns.detail.edit.archive.description') }}
 								</p>
@@ -760,7 +811,11 @@ const shownCapacityPlan = computed(() => {
 					<!-- Schedule Card -->
 					<div class="card p-6">
 						<h2 class="text-lg font-semibold text-text-primary mb-6">
-							{{ isScheduled ? t('dashboard.campaigns.detail.edit.schedule.retitle') : t('dashboard.campaigns.detail.edit.schedule.title') }}
+							{{
+								isScheduled
+									? t('dashboard.campaigns.detail.edit.schedule.retitle')
+									: t('dashboard.campaigns.detail.edit.schedule.title')
+							}}
 						</h2>
 
 						<div class="grid grid-cols-2 gap-4">
@@ -806,7 +861,9 @@ const shownCapacityPlan = computed(() => {
 									<p class="text-xs text-text-secondary mt-1">
 										{{
 											t('dashboard.campaigns.detail.edit.schedule.recipientTimezoneHint', {
-												time: scheduledTime || t('dashboard.campaigns.detail.edit.schedule.theScheduledTime'),
+												time:
+													scheduledTime ||
+													t('dashboard.campaigns.detail.edit.schedule.theScheduledTime'),
 											})
 										}}
 									</p>
@@ -819,16 +876,28 @@ const shownCapacityPlan = computed(() => {
 							class="mt-4 p-3 bg-bg-surface shadow-surface-1 rounded-lg"
 						>
 							<template v-if="useRecipientTimezone">
-								<p class="text-sm text-text-secondary">{{ t('dashboard.campaigns.detail.edit.schedule.willBeSentAt') }}</p>
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.campaigns.detail.edit.schedule.willBeSentAt') }}
+								</p>
 								<p class="font-medium text-text-primary mt-1">
-									{{ t('dashboard.campaigns.detail.edit.schedule.inRecipientTimezone', { time: scheduledTime }) }}
+									{{
+										t('dashboard.campaigns.detail.edit.schedule.inRecipientTimezone', {
+											time: scheduledTime,
+										})
+									}}
 								</p>
 								<p class="text-xs text-text-tertiary mt-2">
-									{{ t('dashboard.campaigns.detail.edit.schedule.timezoneExamples', { time: scheduledTime }) }}
+									{{
+										t('dashboard.campaigns.detail.edit.schedule.timezoneExamples', {
+											time: scheduledTime,
+										})
+									}}
 								</p>
 							</template>
 							<template v-else>
-								<p class="text-sm text-text-secondary">{{ t('dashboard.campaigns.detail.edit.schedule.willBeSent') }}</p>
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.campaigns.detail.edit.schedule.willBeSent') }}
+								</p>
 								<p class="font-medium text-text-primary mt-1">
 									{{ formatDate(scheduledDate, scheduledTime) }}
 								</p>
@@ -840,8 +909,12 @@ const shownCapacityPlan = computed(() => {
 					<div class="card p-6">
 						<div class="flex items-center justify-between">
 							<div>
-								<h3 class="text-lg font-semibold text-text-primary">{{ t('dashboard.campaigns.detail.edit.test.title') }}</h3>
-								<p class="text-sm text-text-secondary mt-1">{{ t('dashboard.campaigns.detail.edit.test.description') }}</p>
+								<h3 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.campaigns.detail.edit.test.title') }}
+								</h3>
+								<p class="text-sm text-text-secondary mt-1">
+									{{ t('dashboard.campaigns.detail.edit.test.description') }}
+								</p>
 							</div>
 							<UiButton variant="secondary" class="gap-2" @click="isTestEmailModalOpen = true">
 								<Icon name="lucide:send-horizonal" class="w-4 h-4" />
@@ -855,7 +928,9 @@ const shownCapacityPlan = computed(() => {
 						<div class="flex items-center gap-3 mb-4">
 							<UiIconBox icon="lucide:flame" size="lg" variant="brand" rounded="xl" />
 							<div>
-								<h2 class="text-lg font-semibold text-text-primary">{{ t('dashboard.campaigns.detail.edit.warmup.title') }}</h2>
+								<h2 class="text-lg font-semibold text-text-primary">
+									{{ t('dashboard.campaigns.detail.edit.warmup.title') }}
+								</h2>
 								<p class="text-sm text-text-secondary">
 									{{ t('dashboard.campaigns.detail.edit.warmup.subtitle') }}
 								</p>
@@ -869,7 +944,9 @@ const shownCapacityPlan = computed(() => {
 						>
 							<Icon name="lucide:check-circle" class="w-5 h-5 text-success shrink-0" />
 							<div>
-								<p class="text-sm font-medium text-success">{{ t('dashboard.campaigns.detail.edit.warmup.graduatedTitle') }}</p>
+								<p class="text-sm font-medium text-success">
+									{{ t('dashboard.campaigns.detail.edit.warmup.graduatedTitle') }}
+								</p>
 								<p class="text-sm text-text-secondary">
 									{{ t('dashboard.campaigns.detail.edit.warmup.graduatedDescription') }}
 								</p>
@@ -881,7 +958,9 @@ const shownCapacityPlan = computed(() => {
 							<!-- Progress -->
 							<div>
 								<div class="flex items-center justify-between mb-2">
-									<p class="text-sm text-text-secondary">{{ t('dashboard.campaigns.detail.edit.warmup.progress') }}</p>
+									<p class="text-sm text-text-secondary">
+										{{ t('dashboard.campaigns.detail.edit.warmup.progress') }}
+									</p>
 									<p class="text-sm font-medium text-text-primary">
 										{{
 											t('dashboard.campaigns.detail.edit.warmup.dayOf', {
@@ -902,14 +981,17 @@ const shownCapacityPlan = computed(() => {
 
 							<!-- Today's Capacity -->
 							<div class="flex items-center justify-between p-3 bg-bg-surface rounded-lg">
-								<p class="text-sm text-text-secondary">{{ t('dashboard.campaigns.detail.edit.warmup.remainingCapacity') }}</p>
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.campaigns.detail.edit.warmup.remainingCapacity') }}
+								</p>
 								<p class="text-sm font-medium text-text-primary">
 									{{
 										t('dashboard.campaigns.detail.edit.warmup.remainingOfCap', {
 											remaining: formatNumber(
 												Math.max(
 													0,
-													warmingOverview.warming.totalDailyCap - warmingOverview.warming.totalSentToday
+													warmingOverview.warming.totalDailyCap -
+														warmingOverview.warming.totalSentToday
 												)
 											),
 											cap: formatNumber(warmingOverview.warming.totalDailyCap),
@@ -920,7 +1002,7 @@ const shownCapacityPlan = computed(() => {
 
 							<!-- The multi-day schedule: previewed BEFORE the send, and re-rendered
 							     from the refusal itself when pre-flight hands one back. Capacity is a
-							     schedule, not a failure (deliverability plan D14). -->
+							     schedule, not a failure. -->
 							<CampaignsCapacitySchedulePanel
 								v-if="shownCapacityPlan"
 								:plan="shownCapacityPlan"
@@ -936,7 +1018,13 @@ const shownCapacityPlan = computed(() => {
 								<Icon name="lucide:clock" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 								<div>
 									<p class="text-sm font-medium text-text-primary">
-										{{ t('dashboard.campaigns.detail.edit.warmup.estimatedDays', { days: sendEstimate.days }, sendEstimate.days) }}
+										{{
+											t(
+												'dashboard.campaigns.detail.edit.warmup.estimatedDays',
+												{ days: sendEstimate.days },
+												sendEstimate.days
+											)
+										}}
 									</p>
 									<p class="text-sm text-text-secondary mt-0.5">
 										{{
@@ -953,7 +1041,7 @@ const shownCapacityPlan = computed(() => {
 
 					<!-- Sending readiness, immediately above the send/schedule buttons: the
 					     ramp cap belongs where the decision is made, not in a pre-flight
-					     refusal after it (deliverability plan D14). Renders nothing when
+					     refusal after it. Renders nothing when
 					     capacity is unmeasured or uncapped-and-unremarkable. -->
 					<CampaignsSendReadinessNote
 						:readiness="sendingReadiness"
@@ -974,7 +1062,11 @@ const shownCapacityPlan = computed(() => {
 								:disabled="isSaving"
 								@click="handleSave"
 							>
-								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon
+									v-if="isSaving"
+									name="lucide:loader-2"
+									class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								/>
 								{{ t('dashboard.campaigns.detail.edit.actions.saveDraft') }}
 							</UiButton>
 
@@ -985,14 +1077,26 @@ const shownCapacityPlan = computed(() => {
 								:disabled="isSaving || !scheduledDate || !scheduledTime"
 								@click="handleSchedule"
 							>
-								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon
+									v-if="isSaving"
+									name="lucide:loader-2"
+									class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								/>
 								<Icon v-else name="lucide:clock" class="w-4 h-4" />
-								{{ isScheduled ? t('dashboard.campaigns.detail.edit.actions.reschedule') : t('dashboard.campaigns.detail.edit.actions.schedule') }}
+								{{
+									isScheduled
+										? t('dashboard.campaigns.detail.edit.actions.reschedule')
+										: t('dashboard.campaigns.detail.edit.actions.schedule')
+								}}
 							</UiButton>
 
 							<!-- Send Now button -->
 							<UiButton class="gap-2" :disabled="isSaving" @click="showSendConfirm = true">
-								<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+								<Icon
+									v-if="isSaving"
+									name="lucide:loader-2"
+									class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								/>
 								<Icon v-else name="lucide:send" class="w-4 h-4" />
 								{{ t('dashboard.campaigns.detail.edit.actions.sendNow') }}
 							</UiButton>
@@ -1008,7 +1112,9 @@ const shownCapacityPlan = computed(() => {
 			variant="warning"
 			:title="t('dashboard.campaigns.detail.edit.sendConfirm.title')"
 			:description="
-				t('dashboard.campaigns.detail.edit.sendConfirm.description', { count: formatNumber(audienceCount?.eligible ?? 0) })
+				t('dashboard.campaigns.detail.edit.sendConfirm.description', {
+					count: formatNumber(audienceCount?.eligible ?? 0),
+				})
 			"
 			:confirm-text="t('dashboard.campaigns.detail.edit.actions.sendNow')"
 			:is-loading="isSaving"

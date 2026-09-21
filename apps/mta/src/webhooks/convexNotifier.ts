@@ -7,6 +7,7 @@
 
 import { createHmac, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
+import { isRecord, sleep } from '@owlat/shared';
 import type { GooglePostmasterWebhookEvent, MtaWebhookEvent } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import {
@@ -43,10 +44,6 @@ export type PostmasterAcknowledgement =
 	| { disposition: 'ignored_unowned'; retained: false }
 	| { disposition: 'delivery_failed'; retained: false };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
-
 function isPostmasterEvent(event: MtaWebhookEvent): event is GooglePostmasterWebhookEvent {
 	return (
 		event.event === 'postmaster.authorize_domain' ||
@@ -64,14 +61,34 @@ const POSTMASTER_ACKNOWLEDGEMENT_KIND = {
 type PostmasterAcknowledgementKind =
 	(typeof POSTMASTER_ACKNOWLEDGEMENT_KIND)[keyof typeof POSTMASTER_ACKNOWLEDGEMENT_KIND];
 
+/**
+ * Which Convex route an event is delivered to.
+ *
+ * Both inbound-MAIL kinds carry the whole message as `rawBytesBase64`, so both
+ * go to a standalone `httpAction` rather than the shared webhook pipeline: that
+ * pipeline enforces a 5 MiB pre-auth body cap and 413s anything above it, which
+ * the retry/DLQ machinery below would then burn six attempts on before parking
+ * the message unseen. Everything else — bounces, complaints, reputation,
+ * postmaster — is small and takes the shared route.
+ */
+function webhookPathFor(eventType: MtaWebhookEvent['event']): string {
+	switch (eventType) {
+		case 'inbound.mailbox.received':
+			return '/webhooks/mta-mailbox';
+		case 'inbound.received':
+			return '/webhooks/mta-inbound';
+		default:
+			return '/webhooks/mta';
+	}
+}
+
 async function deliverWithRetries<T>(
 	event: MtaWebhookEvent,
 	config: MtaConfig,
 	options: NotifyConvexOptions,
 	decodeSuccessfulResponse: SuccessfulResponseDecoder<T>
 ): Promise<WebhookDeliveryResult<T>> {
-	const path =
-		event.event === 'inbound.mailbox.received' ? '/webhooks/mta-mailbox' : '/webhooks/mta';
+	const path = webhookPathFor(event.event);
 	const url = `${config.convexSiteUrl}${path}`;
 	let deliveryFailure: WebhookDeliveryFailure = { category: 'unknown' };
 
@@ -146,7 +163,7 @@ async function deliverWithRetries<T>(
 				deliveryFailure = { category: 'deadline_exhausted' };
 				break;
 			}
-			await new Promise((resolve) => setTimeout(resolve, delayMs));
+			await sleep(delayMs);
 		}
 	}
 

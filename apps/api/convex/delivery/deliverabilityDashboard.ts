@@ -1,11 +1,11 @@
 /**
- * Deliverability dashboard — the READ side (plan D2, D5, D14, D15).
+ * Deliverability dashboard — the READ side.
  *
  * SHIP THE MEASUREMENT BEFORE THE CONTROL. This query is the human's
  * sanity-check on the gates: per cell, both arms' outcomes, every gate's
  * verdict WITH the numbers that produced it, and how much the measurement is
  * worth. It is READ-ONLY by construction — there is no mutation in this module
- * and there will not be one; P3-6 adds the control surface separately.
+ * and there will not be one; the control surface lives separately.
  *
  * SHAPE. One index read per (cell, arm) over the widest window any sub-view needs
  * (the deciding span, the reported window, the trailing baseline, the daily
@@ -23,7 +23,7 @@
  *
  * THE SEVEN DAYS DID NOT GO AWAY — THEY STOPPED DECIDING. `DASHBOARD_WINDOW_DAYS`
  * is still what the arm table, the trend, the sample counts and the confidence
- * cap are reported over (plan D2/D5); the harm in #510 was a VERDICT that
+ * cap are reported over; the harm in #510 was a VERDICT that
  * disagreed, not a column that was wide. So each arm is summarized TWICE out of
  * the one index read it already costs — the deciding span for the evaluator, the
  * reported window for the cards — and BOTH ARE NAMED ON THE WIRE
@@ -38,12 +38,12 @@
  * clauses that compare a cell against its OWN past where the baseline is thin at
  * exactly that edge, and never enough to grade the two arms on different rows.
  *
- * D2. A cell with no reference arm is a SUPPORTED CONFIGURATION, not an
+ * A CELL WITH NO REFERENCE ARM IS A SUPPORTED CONFIGURATION, not an
  * incomplete setup. `reference` is `null`, the TRAILING-BASELINE evaluator runs
  * instead of the two-armed one — the standalone implementation is the honest
  * answer for a standalone cell, not a fallback — and `dashboardConfidence` caps
  * the level at what the missing measurement inputs allow, so the screen says
- * "measurement confidence: low" and names what would improve it (plan D14)
+ * "measurement confidence: low" and names what would improve it
  * rather than grading a column of holds `high`. Nothing throws, nothing renders
  * as an error, nothing is blocked.
  *
@@ -195,7 +195,7 @@ export const getDeliverabilityDashboard = authedQuery({
 	handler: async (ctx): Promise<DeliverabilityDashboard> => {
 		const organizationId = await getSingletonOrganizationId(ctx);
 		// The clock is read HERE, in the shell, and passed down: every decision
-		// function below it is pure (plan D15). There is deliberately no `now` arg —
+		// function below it is pure. There is deliberately no `now` arg —
 		// a caller-supplied clock on a public read makes a stale window look fresh.
 		const now = Date.now();
 		const window = dashboardWindow(now);
@@ -213,7 +213,7 @@ export const getDeliverabilityDashboard = authedQuery({
 		const deploymentPresence = await loadRampDeploymentPresence(ctx, { organizationId, now });
 		// ONE read for the whole screen: seed COVERAGE is an org-level fact (are
 		// there seed mailboxes at all), not a per-cell one, and it only lowers
-		// confidence — a deployment with none is supported, never nagged (plan D2).
+		// confidence — a deployment with none is supported, never nagged.
 		// ONE row through the seed index, not a placement window: the screen needs
 		// the boolean, and the roll-up it used to buy it from scans the probe index,
 		// expands one observation per probe and fans out a `db.get` per account.
@@ -226,7 +226,7 @@ export const getDeliverabilityDashboard = authedQuery({
 		// reach, not a friendlier one (ADR-0042).
 		const seedSweeps = await summarizeSeedPlacementSweeps(ctx.db, organizationId, now);
 		// THE REPORTED WINDOW: the seven UTC days every counter, rate and trend point
-		// on this screen is summarized over (plan D2/D5). Nothing is GRADED over it.
+		// on this screen is summarized over. Nothing is GRADED over it.
 		const reportedWindow = { since: window.sinceDay, until: window.untilDay };
 		// THE DECIDING SPAN: the controller's own evaluation window, anchored on the
 		// same clock its tick anchors on, so both arms reach the evaluator over the
@@ -379,8 +379,8 @@ export const getDeliverabilityDashboard = authedQuery({
 					ownShare: resolveOwnShare(routeState),
 					phaseCeiling: routeState?.phaseCeiling ?? null,
 					// THE REPORTED PAIR: columns, counters and the honesty denominator are
-					// the seven days plan D2/D5 specifies. The VERDICT beside them travels
-					// inside `evaluation`, over the deciding span.
+					// the seven reported days. The VERDICT beside them travels inside
+					// `evaluation`, over the deciding span.
 					own: reportedOwn,
 					reference,
 					evaluation,

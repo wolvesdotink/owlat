@@ -36,7 +36,7 @@ beforeAll(() => {
 beforeEach(() => {
 	suggestLoading.value = false;
 	suggestRun.mockReset();
-	suggestRun.mockResolvedValue(undefined);
+	suggestRun.mockResolvedValue({ ok: false });
 });
 
 const iconStub = { props: ['name'], template: '<span />' };
@@ -63,7 +63,10 @@ describe('PostboxSchedulingChip', () => {
 	});
 
 	it('drafts scheduling-focused replies on click and shows the options', async () => {
-		suggestRun.mockResolvedValue({ replies: ['Tuesday works for me.', 'How about Thursday?'] });
+		suggestRun.mockResolvedValue({
+			ok: true,
+			result: { replies: ['Tuesday works for me.', 'How about Thursday?'] },
+		});
 		const wrapper = mountChip();
 
 		await wrapper.findAll('button')[0]!.trigger('click');
@@ -80,7 +83,7 @@ describe('PostboxSchedulingChip', () => {
 	});
 
 	it('emits use-reply when a suggested reply is picked', async () => {
-		suggestRun.mockResolvedValue({ replies: ['Tuesday works for me.'] });
+		suggestRun.mockResolvedValue({ ok: true, result: { replies: ['Tuesday works for me.'] } });
 		const wrapper = mountChip();
 
 		await wrapper.findAll('button')[0]!.trigger('click');
@@ -99,7 +102,7 @@ describe('PostboxSchedulingChip', () => {
 	});
 
 	it('shows no reply options when the action fails (fail-soft)', async () => {
-		suggestRun.mockResolvedValue(undefined);
+		suggestRun.mockResolvedValue({ ok: false });
 		const wrapper = mountChip();
 
 		await wrapper.findAll('button')[0]!.trigger('click');

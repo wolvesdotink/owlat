@@ -92,8 +92,8 @@ export function useContactBulkOperations(deps: {
 			selectedContactIds,
 			async (batch) => {
 				const result = await addContactsToList({ topicId: listId, contactIds: batch });
-				if (result === undefined) throw ABORTED;
-				return result;
+				if (!result.ok) throw ABORTED;
+				return result.result;
 			},
 			{ batchSize: BATCH_SIZES.CONTACTS_ADD_TO_LIST, type: 'add' }
 		);
@@ -124,8 +124,8 @@ export function useContactBulkOperations(deps: {
 			selectedContactIds,
 			async (batch) => {
 				const result = await removeContactsFromList({ topicId: listId, contactIds: batch });
-				if (result === undefined) throw ABORTED;
-				return result;
+				if (!result.ok) throw ABORTED;
+				return result.result;
 			},
 			{ batchSize: BATCH_SIZES.CONTACTS_REMOVE_FROM_LIST, type: 'remove' }
 		);
@@ -158,8 +158,8 @@ export function useContactBulkOperations(deps: {
 			selectedContactIds,
 			async (batch) => {
 				const result = await bulkDeleteContacts({ contactIds: batch });
-				if (result === undefined) throw ABORTED;
-				return result;
+				if (!result.ok) throw ABORTED;
+				return result.result;
 			},
 			{ batchSize: BATCH_SIZES.CONTACTS_DELETE, type: 'delete' }
 		);

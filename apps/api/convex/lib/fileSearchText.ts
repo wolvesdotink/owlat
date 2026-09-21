@@ -21,7 +21,7 @@ const EXTRACTED_TEXT_BUDGET = 1000;
 /** Ceiling on the stored value — the whole field is indexed. */
 const SEARCHABLE_TEXT_MAX = 5000;
 
-export interface FileSearchTextParts {
+interface FileSearchTextParts {
 	filename: string;
 	title?: string;
 	summary?: string;

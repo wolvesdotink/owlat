@@ -1,5 +1,5 @@
 /**
- * Collision soft-hold copy + result helpers (UX piece b3b).
+ * Collision soft-hold copy + result helpers.
  *
  * When a teammate is actively replying to the same shared-inbox thread, the
  * primary send/approve control renders HELD — disabled-styled but visible, with

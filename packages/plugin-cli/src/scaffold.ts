@@ -135,9 +135,9 @@ function packageJson(
 		// PRIVATE AT EVERY TEMPLATE, because every template scaffolds INTO THIS
 		// WORKSPACE: `create` defaults to `examples/plugins/<id>` and `resolveTargetDir`
 		// refuses a directory outside the repository, so what the generator writes is
-		// always a workspace member. A non-private one would be rewritten by
-		// `release:cut` and published by `changeset publish` alongside the real
-		// packages — a half-finished scaffold on npm under the workspace scope.
+		// always a workspace member. A non-private one would be version-bumped by
+		// `release:cut` and publishable alongside the real packages — a
+		// half-finished scaffold on npm under the workspace scope.
 		//
 		// It is also the honest state of the artifact: the manifest below carries
 		// `workspace:*` and `catalog:` specifiers, and the tsconfig and lint script

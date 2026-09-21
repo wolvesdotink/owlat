@@ -1,5 +1,5 @@
 /**
- * mail.mailbox.listThreads — the conversation (thread-grouped) inbox view.
+ * mail.mailbox.queries.listThreads — the conversation (thread-grouped) inbox view.
  * Returns threads whose folderRoles include the folder, newest first, hiding
  * threads whose latest message is snoozed.
  */
@@ -24,10 +24,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -115,13 +116,19 @@ async function seedThread(t: ReturnType<typeof convexTest>, folderRoles: string[
 	return { mailboxId, messageId, threadId };
 }
 
-describe('mail.mailbox.listThreads', () => {
+describe('mail.mailbox.queries.listThreads', () => {
 	it('returns inbox threads, hiding non-inbox ones', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seedThread(t, ['inbox']);
-		const res = await t.query(api.mail.mailbox.listThreads, { mailboxId, folderRole: 'inbox' });
+		const res = await t.query(api.mail.mailbox.queries.listThreads, {
+			mailboxId,
+			folderRole: 'inbox',
+		});
 		expect(res.threads).toHaveLength(1);
-		const sent = await t.query(api.mail.mailbox.listThreads, { mailboxId, folderRole: 'sent' });
+		const sent = await t.query(api.mail.mailbox.queries.listThreads, {
+			mailboxId,
+			folderRole: 'sent',
+		});
 		expect(sent.threads).toHaveLength(0);
 	});
 
@@ -131,7 +138,10 @@ describe('mail.mailbox.listThreads', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.patch(messageId, { snoozedUntil: Date.now() + 60 * 60 * 1000 });
 		});
-		const res = await t.query(api.mail.mailbox.listThreads, { mailboxId, folderRole: 'inbox' });
+		const res = await t.query(api.mail.mailbox.queries.listThreads, {
+			mailboxId,
+			folderRole: 'inbox',
+		});
 		expect(res.threads).toHaveLength(0);
 	});
 });

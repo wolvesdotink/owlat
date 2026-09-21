@@ -1,7 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
-import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { listResources } from '../lib/listing';
@@ -13,13 +12,11 @@ import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow, throwInvalidState, throwForbidden } from '../_utils/errors';
 import { campaignStatusValidator } from '../lib/convexValidators';
 import { audienceValidator } from './audience';
-import { preflightErrorData, validateReadyToSend } from './preflight';
 import {
 	seedDefaultSenderIfNeeded,
 	isCampaignSenderAllowed,
 	senderNotAllowedMessage,
 } from './senders';
-import { assertTransitioned } from './lifecycle';
 import { requireDraftCampaign } from './guards';
 
 // Query to get campaign with related data (template, topic, segment)
@@ -312,52 +309,5 @@ export const create = authedMutation({
 		await trackEvent(ctx, session, 'campaign_created', { campaignId });
 
 		return campaignId;
-	},
-});
-
-/**
- * Send a campaign immediately. Auth + pre-flight shell; the **Campaign
- * lifecycle (module)** owns the status patch, scheduler hop, PostHog
- * event, and AB-test kickoff effects.
- */
-export const sendNow = authedMutation({
-	args: {
-		campaignId: v.id('campaigns'),
-	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'campaigns:send',
-			'You do not have permission to send campaigns'
-		);
-
-		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
-
-		if (campaign.status !== 'draft' && campaign.status !== 'scheduled') {
-			throwInvalidState('Only draft or scheduled campaigns can be sent');
-		}
-
-		// Bootstrap the curated list from the org default before pre-flight so an
-		// upgraded deployment (empty list, toggle off) can still send from its own
-		// default address instead of failing `sender_not_allowed`.
-		await seedDefaultSenderIfNeeded(ctx);
-
-		const preflight = await validateReadyToSend(ctx, campaign);
-		if (!preflight.ok) {
-			// Carry the structured refusal (and, for a capacity refusal, the
-			// multi-day plan) so the client can offer "send over N days" as a
-			// first-class choice instead of just showing prose.
-			throwInvalidState(preflight.message, preflightErrorData(preflight));
-		}
-
-		const outcome = await ctx.runMutation(internal.campaigns.lifecycle.transition, {
-			campaignId: args.campaignId,
-			input: { to: 'sending', at: Date.now() },
-			userId: session.userId,
-		});
-
-		assertTransitioned(outcome, 'send');
-
-		return args.campaignId;
 	},
 });

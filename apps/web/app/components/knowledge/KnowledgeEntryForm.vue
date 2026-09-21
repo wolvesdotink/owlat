@@ -94,7 +94,7 @@ const handleSubmit = async () => {
 	if (props.isEdit && props.entryId) {
 		const result = await updateEntry({ entryId: props.entryId, ...payload });
 		isSubmitting.value = false;
-		if (result === undefined) return;
+		if (!result.ok) return;
 		emit('saved', props.entryId as string);
 		return;
 	}
@@ -102,8 +102,8 @@ const handleSubmit = async () => {
 	const id = await createEntry(payload);
 
 	isSubmitting.value = false;
-	if (id === undefined) return;
-	emit('saved', id as string);
+	if (!id.ok) return;
+	emit('saved', id.result as string);
 };
 
 const handleCancel = () => {

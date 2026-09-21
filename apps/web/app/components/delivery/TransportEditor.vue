@@ -335,7 +335,9 @@ function cancel() {
 						rounded="lg"
 					/>
 					<div class="flex-1">
-						<div class="font-medium text-text-primary">{{ t(opt.label) }}</div>
+						<div class="font-medium text-text-primary">
+							{{ opt.labelKey ? t(opt.labelKey) : opt.label }}
+						</div>
 						<div class="text-sm text-text-secondary">{{ t(opt.hint) }}</div>
 					</div>
 				</label>
@@ -347,7 +349,7 @@ function cancel() {
 			</p>
 
 			<!-- ONE form for every transport: the selected entry's `credentialFields`
-			     descriptors, rendered generically (plan D5). The only copy this screen
+			     descriptors, rendered generically. The only copy this screen
 			     adds is for the outbound-TLS floor, through the renderer's per-field
 			     slot — keyed by that field, not by the provider that declares it. -->
 			<TransportCredentialFields

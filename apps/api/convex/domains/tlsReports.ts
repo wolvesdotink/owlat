@@ -30,10 +30,10 @@ import {
 	TLS_RPT_MAX_REPORT_ID_LENGTH,
 	TLS_RPT_MAX_SESSION_COUNT,
 } from '@owlat/shared';
+import { DAY_MS } from '../lib/constants';
 
 /** Window the dashboard summarises. */
 const SUMMARY_WINDOW_DAYS = 30;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_REPORTS_PER_SUMMARY = 5_000;
 
 const failureTypeCountValidator = v.array(v.object({ type: v.string(), count: v.number() }));

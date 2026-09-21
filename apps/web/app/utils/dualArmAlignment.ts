@@ -1,11 +1,11 @@
 /**
- * The dual-transport alignment gate for the delivery readiness panel (P3-5).
+ * The dual-transport alignment gate for the delivery readiness panel.
  *
  * Split out of `deliveryReadiness.ts` (which sits at the repo's 500-LOC cap):
  * that file owns the go-live verdict — can this instance send at all — while this
  * one owns a strictly ADVISORY gate about the gradual own-server/relay
- * switchover. Keeping them apart is also what makes the D2 rule easy to see: this
- * module's only job is to decide when to say NOTHING.
+ * switchover. Keeping them apart is also what makes the additive-only rule easy
+ * to see: this module's only job is to decide when to say NOTHING.
  *
  * Pure primitives in, plain data out — no Convex client, no DOM.
  */
@@ -56,7 +56,7 @@ const DOMAINS_HREF = '/dashboard/admin/delivery/domains';
  *
  * `single_arm` rows are nothing to say, exactly like no rows at all: a deployment
  * with no reference transport must not be told about a check that cannot apply to
- * it (D2). A `blocked` verdict outranks an `unknown` one, and an `unknown`
+ * it. A `blocked` verdict outranks an `unknown` one, and an `unknown`
  * outranks `aligned`, because that is the order an operator should read them in.
  */
 export function summarizeDualArmAlignment(
@@ -93,7 +93,7 @@ export function summarizeDualArmAlignment(
 
 /**
  * The gate itself — rendered only when a reference transport is actually in play,
- * so a deployment running on the own MTA alone never sees it (D2).
+ * so a deployment running on the own MTA alone never sees it.
  *
  * It never blocks sending: what it gates is the RAMP. A `blocked` verdict means
  * the two arms are not comparable yet, so the controller holds the cell at 0%

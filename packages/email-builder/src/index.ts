@@ -143,7 +143,6 @@ export {
 	type PropertyGroup,
 	type PropertyField,
 	type FieldType,
-	registerSchema,
 	getSchema,
 	getAllSchemas,
 	getToolbarFields,
@@ -152,7 +151,6 @@ export {
 // Host-mediated email-block composition.
 export {
 	composeHostedEmailBlocks,
-	finalizeEmailBlockRegistries,
 	areEmailBlockRegistriesFrozen,
 	EmailBlockCompositionError,
 	type HostedEmailBlockContribution,

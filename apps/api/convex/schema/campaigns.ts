@@ -4,8 +4,11 @@ import {
 	abTestConfigValidator,
 	linkClickValidator,
 	campaignStatusValidator,
+	abVariantValidator,
+	bounceTypeValidator,
 } from '../lib/convexValidators';
 import { audienceValidator } from '../campaigns/audience';
+import { sendStatusValidator } from '../lib/literalValidators';
 
 /**
  * Campaign send job — the checkpoint row for one large-audience send walk
@@ -56,7 +59,7 @@ const campaignSendJobs = defineTable({
 	// Per-variant split percentage (10–50) — kept for diagnostics / clarity.
 	splitPercentage: v.optional(v.number()),
 	// The declared winner, set when the row is reset for the `ab_winner` phase.
-	winningVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
+	winningVariant: v.optional(abVariantValidator),
 	// Opaque Convex pagination cursor for the NEXT page. `''` = start.
 	cursor: v.string(),
 	// Frozen Audience snapshot — captured once, never re-read from the campaign.
@@ -65,7 +68,7 @@ const campaignSendJobs = defineTable({
 	enqueuedCount: v.number(),
 	// Running total of raw candidates examined (the count denominator).
 	totalCandidates: v.number(),
-	// THE MULTI-DAY SEND PLAN (deliverability plan P3-7). A warming deployment
+	// THE MULTI-DAY SEND PLAN. A warming deployment
 	// with no relay to overflow to sends a large campaign over several days: the
 	// walker enqueues only today's capacity slice and resumes in the next cap
 	// window. Every field is OPTIONAL and absent on a pre-migration row — a walk
@@ -190,7 +193,7 @@ export const campaignTables = {
 		abVariantBOpened: v.optional(v.number()),
 		abVariantBClicked: v.optional(v.number()),
 		// Winner information
-		abWinner: v.optional(v.union(v.literal('A'), v.literal('B'))),
+		abWinner: v.optional(abVariantValidator),
 		abWinnerSelectedAt: v.optional(v.number()),
 		// Campaign archive fields (public "View in browser" link)
 		archiveEnabled: v.optional(v.boolean()),
@@ -222,7 +225,7 @@ export const campaignTables = {
 		.index('by_archive_token', ['archiveToken'])
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` indexes campaign
 		// METADATA (name, subject), not a sealed 1:1 message body — campaigns are the
-		// plaintext broadcast plane (D5) and are out of E8b's at-rest sealing scope.
+		// plaintext broadcast plane and are out of E8b's at-rest sealing scope.
 		// See lib/atRestBodies.ts and apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_campaigns', {
 			searchField: 'searchableText',
@@ -243,16 +246,7 @@ export const campaignTables = {
 		// Current status of this email send. `failed` is a terminal state set
 		// when the workpool reports the action errored — distinct from `bounced`
 		// (provider accepted then receiver rejected). See CONTEXT.md "Send status".
-		status: v.union(
-			v.literal('queued'),
-			v.literal('sent'),
-			v.literal('failed'),
-			v.literal('delivered'),
-			v.literal('opened'),
-			v.literal('clicked'),
-			v.literal('bounced'),
-			v.literal('complained')
-		),
+		status: sendStatusValidator,
 		// Email provider message ID for tracking
 		providerMessageId: v.optional(v.string()),
 		// Highest accepted MTA pre-network routing handoff enqueued for this Send.
@@ -260,7 +254,7 @@ export const campaignTables = {
 		// Personalized content for this recipient (to preserve exactly what was sent)
 		personalizedSubject: v.optional(v.string()),
 		// A/B test variant tracking - "A" or "B" for test recipients
-		abVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
+		abVariant: v.optional(abVariantValidator),
 		// Timestamps for status changes
 		queuedAt: v.number(),
 		sentAt: v.optional(v.number()),
@@ -270,7 +264,7 @@ export const campaignTables = {
 		clickedAt: v.optional(v.number()),
 		bouncedAt: v.optional(v.number()),
 		// Bounce classification; required-via-runtime-guard when status='bounced'.
-		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
+		bounceType: v.optional(bounceTypeValidator),
 		complainedAt: v.optional(v.number()),
 		// When this send absorbed the recipient's unsubscribe. NOT a status — the
 		// send itself succeeded — and NOT the contact's unsubscribe record either
@@ -296,7 +290,7 @@ export const campaignTables = {
 		// Provider routing metadata (multi-tenant sending platform).
 		// Which provider sent this email: a `SendTransportKind` (`@owlat/shared`),
 		// core or `plugin.<pluginId>.<localId>`, written POST-HOC from the dispatch
-		// result. Stored open per ADR-0055 (D10); the kinds have one declaration,
+		// result. Stored open per ADR-0055; the kinds have one declaration,
 		// which is the catalog, so they are deliberately not re-listed here.
 		providerType: v.optional(v.string()),
 		// Correlation ID for end-to-end traceability (API request → send → webhook)

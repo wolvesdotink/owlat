@@ -66,6 +66,7 @@ export type RouteTransition =
 			confidenceScore?: number;
 			classification?: Classification;
 	  }
+	| { to: 'informational'; classification?: Classification }
 	| { to: 'quarantined'; securityFlags: SecurityFlags }
 	| {
 			to: 'archived';

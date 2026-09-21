@@ -3,7 +3,7 @@ import type { MutationCtx } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { requireSelf } from '../lib/sessionOrganization';
 import { throwInvalidState } from '../_utils/errors';
-import { getActiveMailboxForUser } from '../mail/mailbox';
+import { getActiveMailboxForUser } from '../mail/mailbox/identity';
 
 /**
  * Per-user first-login onboarding state.
@@ -16,7 +16,7 @@ import { getActiveMailboxForUser } from '../mail/mailbox';
  * Steps are written idempotently from the real product flows via
  * {@link markOnboardingStep} — no polling, no client-driven progress. A user can
  * only ever read or write THEIR OWN row (`requireSelf`); there is no cross-user
- * read path here. The consuming UI (piece c1) subscribes to `get`.
+ * read path here. The consuming UI subscribes to `get`.
  */
 
 /**

@@ -6,12 +6,15 @@ interface Props {
 	variant?: BadgeVariant;
 	size?: BadgeSize;
 	dot?: boolean;
+	/** Fully rounded ends — the shape of a status pill. */
+	pill?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	variant: 'default',
 	size: 'sm',
 	dot: false,
+	pill: false,
 });
 
 const variantClasses: Record<BadgeVariant, { bg: string; text: string; dot: string }> = {
@@ -29,7 +32,14 @@ const sizeClasses: Record<BadgeSize, string> = {
 
 const badgeClasses = computed(() => {
 	const variant = variantClasses[props.variant];
-	const classes = ['inline-flex', 'items-center', 'gap-1', 'rounded', 'text-xs', 'font-medium'];
+	const classes = [
+		'inline-flex',
+		'items-center',
+		'gap-1',
+		props.pill ? 'rounded-full' : 'rounded',
+		'text-xs',
+		'font-medium',
+	];
 
 	if (props.dot) {
 		// Dot mode: smaller padding, no background

@@ -5,7 +5,7 @@ import {
 	selectRuntimeEnvVars,
 	CONVEX_RUNTIME_ENV_KEYS,
 } from '../convexDeploy';
-import { ensureSecrets } from '../secrets';
+import { ensureSecrets } from '@owlat/shared/setupSecrets';
 
 describe('parseAdminKey', () => {
 	it('extracts a prefixed self-hosted key (keeps the | separator)', () => {
@@ -15,12 +15,13 @@ describe('parseAdminKey', () => {
 
 	it('extracts a bare long token', () => {
 		expect(parseAdminKey('  0123456789abcdef0123456789abcdef  ')).toBe(
-			'0123456789abcdef0123456789abcdef',
+			'0123456789abcdef0123456789abcdef'
 		);
 	});
 
 	it('takes the LAST key-shaped token when several are printed', () => {
-		const out = 'noise short\nfirstkey_0123456789abcdef0\nconvex-self-hosted|finalkey0123456789abcdef';
+		const out =
+			'noise short\nfirstkey_0123456789abcdef0\nconvex-self-hosted|finalkey0123456789abcdef';
 		expect(parseAdminKey(out)).toBe('convex-self-hosted|finalkey0123456789abcdef');
 	});
 

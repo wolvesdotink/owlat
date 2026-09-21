@@ -6,25 +6,26 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.preferences.members.detail.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'preferences',
 	middleware: 'auth',
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const mailboxId = useRouteId<'mailboxes'>('mailboxId');
 
-const { data: mailbox, isLoading: mailboxLoading } = useConvexQuery(api.mail.mailbox.get, () => ({
-	mailboxId: mailboxId.value,
-}));
+const { data: mailbox, isLoading: mailboxLoading } = useConvexQuery(
+	api.mail.mailbox.identity.get,
+	() => ({
+		mailboxId: mailboxId.value,
+	})
+);
 // `mailbox.get` soft-fails to `null` for a bad id, a personal mailbox, or an
 // inbox the caller has no access to — distinct from `undefined` (still loading).
 const notFound = computed(() => !mailboxLoading.value && mailbox.value === null);
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
-		<PreferencesBackLink />
-
+	<div>
 		<h1 class="text-2xl font-medium tracking-[-0.02em]">
 			{{ t('dashboard.preferences.members.detail.title') }}
 		</h1>

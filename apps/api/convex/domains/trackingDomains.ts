@@ -12,6 +12,7 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
 import { getOptional } from '../lib/env';
+import { logError, logWarn } from '../lib/runtimeLog';
 
 /**
  * The host a branded tracking subdomain must CNAME at.
@@ -177,10 +178,11 @@ export const verifyTrackingDomainDns = internalAction({
 			});
 
 			if (!response.ok) {
-				// eslint-disable-next-line no-console
-				console.warn(
-					`[Tracking Domain DNS] DNS query failed for ${args.domain}: ${response.status}`
-				);
+				logWarn('[Tracking Domain DNS] DNS query failed', {
+					trackingDomainId: args.trackingDomainId,
+					domain: args.domain,
+					status: response.status,
+				});
 				return { verified: false, error: 'DNS query failed' };
 			}
 
@@ -203,14 +205,23 @@ export const verifyTrackingDomainDns = internalAction({
 				return { verified: true };
 			}
 
-			// eslint-disable-next-line no-console
-			console.warn(
-				`[Tracking Domain DNS] CNAME for ${args.domain} does not match ${args.expectedCname}. Found: ${cnameAnswers.map((a) => a.data).join(', ') || 'no CNAME records'}`
-			);
+			logWarn('[Tracking Domain DNS] CNAME does not match', {
+				trackingDomainId: args.trackingDomainId,
+				domain: args.domain,
+				expectedCname: args.expectedCname,
+				found: cnameAnswers.map((a) => a.data),
+			});
 			return { verified: false, error: 'CNAME does not match expected target' };
 		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.error(`[Tracking Domain DNS] Error verifying ${args.domain}:`, error);
+			// Fail soft: the caller gets `verified: false` with a generic reason
+			// (the raw resolver error is not for the browser), and the log carries
+			// the detail an operator needs.
+			logError('[Tracking Domain DNS] verification failed', {
+				trackingDomainId: args.trackingDomainId,
+				domain: args.domain,
+				expectedCname: args.expectedCname,
+				error,
+			});
 			return { verified: false, error: 'DNS verification error' };
 		}
 	},

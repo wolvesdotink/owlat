@@ -106,9 +106,11 @@ describe('splitZone', () => {
 	});
 
 	it('exposes the offending input on the thrown error', () => {
+		// expect.assertions is what makes the catch block load-bearing: without it
+		// a splitZone that stopped throwing would run zero assertions and pass.
+		expect.assertions(2);
 		try {
 			splitZone('co.uk');
-			expect.unreachable('should have thrown');
 		} catch (err) {
 			expect(err).toBeInstanceOf(InvalidDomainError);
 			expect((err as InvalidDomainError).input).toBe('co.uk');

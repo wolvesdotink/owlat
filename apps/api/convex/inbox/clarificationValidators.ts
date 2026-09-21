@@ -14,10 +14,21 @@
  * `[CONFIRMED BY OWNER]` block and resumes the draft. `answer` is absent until
  * the question is answered; `source` records whether the value came from the
  * owner ("user") or was auto-filled from stored memory ("memory"). No question
- * GENERATION happens in this piece — a later piece emits into this shape.
+ * GENERATION happens here — the generator emits into this shape.
  */
 
 import { v } from 'convex/values';
+
+/**
+ * One translation of a question (text + option chips) into an interface
+ * locale. The canonical `text` / `options` are English; the UI renders the
+ * entry matching the reader's locale and falls back to the canonical copy.
+ */
+export const clarificationTranslationValidator = v.object({
+	locale: v.string(),
+	text: v.string(),
+	options: v.optional(v.array(v.string())),
+});
 
 export const clarificationQuestionValidator = v.object({
 	// Stable id used to match an incoming answer back to its question.
@@ -29,13 +40,16 @@ export const clarificationQuestionValidator = v.object({
 	text: v.string(),
 	// Optional suggested answers (for a multiple-choice slot).
 	options: v.optional(v.array(v.string())),
+	// Per-locale renderings of `text` + `options`; see
+	// clarificationTranslationValidator. Absent when localization failed.
+	translations: v.optional(v.array(clarificationTranslationValidator)),
 	// The resolved answer — absent until answered.
 	answer: v.optional(
 		v.object({
 			value: v.string(),
 			source: v.union(v.literal('user'), v.literal('memory')),
 			at: v.number(),
-		}),
+		})
 	),
 });
 

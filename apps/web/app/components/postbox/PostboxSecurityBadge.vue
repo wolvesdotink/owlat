@@ -316,7 +316,7 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 				<Icon
 					:name="downloadingEml ? 'lucide:loader-2' : 'lucide:download'"
 					class="w-3.5 h-3.5 text-text-tertiary"
-					:class="{ 'animate-spin': downloadingEml }"
+					:class="{ 'animate-spin motion-reduce:animate-none': downloadingEml }"
 				/>
 				{{ t('components.postbox.postboxSecurityBadge.downloadEml') }}
 			</button>

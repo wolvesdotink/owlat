@@ -1,6 +1,6 @@
 /**
  * The SCHEDULED seed probe — placement evidence for the streams that have no
- * campaign to shadow (plan P4-7, issue #500).
+ * campaign to shadow (issue #500).
  *
  * `delivery/seedShadowCopy.ts` measures the `campaign` cells by cloning a real
  * campaign envelope inside the transaction that enqueues it. The other two
@@ -20,11 +20,11 @@
  * That is the one honest gap between this probe and the campaign shadow copy,
  * and it is stated here rather than left for a reader to infer: a deployment
  * whose transactional templates are themselves filter-bait will still see a
- * clean probe. Placement is a TRIPWIRE for collapse (D17), and stream-wide
+ * clean probe. Placement is a TRIPWIRE for collapse, and stream-wide
  * collapse — a route, a reputation, an authentication failure — is exactly what
  * this shape does catch.
  *
- * NOT COUNTABLE, BY CONSTRUCTION (D18). A probe carries NO `sendId`, so there
+ * NOT COUNTABLE, BY CONSTRUCTION. A probe carries NO `sendId`, so there
  * is no `transactionalSends` row; it is enqueued with NO `onComplete` and no
  * `sendRef` context, so the Send lifecycle — and with it every daily stat, every
  * `sendingReputation` event, every customer webhook and every contact activity
@@ -35,7 +35,7 @@
  * `delivery/worker.ts#assertSeedShadowExclusion`, which now covers both envelope
  * kinds precisely because this module exists.
  *
- * D2 — ADDITIVE-ONLY. Zero seed mailboxes, no default sender, an unverified
+ * ADDITIVE-ONLY. Zero seed mailboxes, no default sender, an unverified
  * sending domain or no configured route each make this a permanent no-op. It
  * never throws, never blocks a send, never nags, and gate 5 simply keeps
  * holding on the cells it has no evidence for, which costs the ramp nothing.
@@ -143,7 +143,7 @@ async function lastProbedAt(
 	return newest?.sentAt ?? null;
 }
 
-/** The deployment's default sending identity, or `null` when none is set (D2). */
+/** The deployment's default sending identity, or `null` when none is set. */
 async function resolveProbeSender(ctx: MutationCtx): Promise<string | null> {
 	const settings = await ctx.db.query('instanceSettings').first();
 	const fromEmail = settings?.defaultFromEmail ?? getOptional('DEFAULT_FROM_EMAIL');
@@ -250,7 +250,7 @@ async function probeStream(
  * organization split across two pages is harmless: the cadence guard in
  * {@link probeStream} sees the rows the first page wrote.
  *
- * D16: cursor-paged and self-rescheduling, so no organization can be starved by
+ * Cursor-paged and self-rescheduling, so no organization can be starved by
  * sorting last.
  */
 export const sweepScheduledSeedProbes = internalMutation({

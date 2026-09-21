@@ -1,27 +1,20 @@
-/* Shared UI Component Styles
- *
- * Form Element Sizing Conventions:
- * - All form elements (input, select, textarea, button) use py-3 (12px vertical padding)
- * - This ensures consistent height for inline layouts (e.g., search bar + button)
- * - Calculated height: py-3 (24px) + text (~20px) ≈ 44px (elevation comes from
- *   shadow rings, not borders, so borders no longer add to the box)
- * - Small variants use py-2 (8px vertical padding) for compact layouts
- * - Large variants use h-12 (48px fixed height) for emphasis
- */
+/* Shared controls use a compact app rhythm: 36px default, 32px small,
+ * 48px large. Minimum heights keep icon-only and text buttons aligned while
+ * allowing translated labels to wrap. Coarse pointers retain 44px targets. */
 @layer components {
 	/* Single source of the button design system — UiButton composes these
 	   classes; raw markup uses them directly. Keep variants HERE, not in
 	   UiButton's script (the two had already drifted once). */
 	.btn {
-		@apply inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full font-medium transition-[color,background-color,border-color,box-shadow,scale] duration-(--motion-fast) ease-spring active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base disabled:pointer-events-none disabled:opacity-50;
+		@apply inline-flex items-center justify-center gap-2 min-h-9 px-3.5 py-2 rounded-lg text-sm leading-5 font-medium transition-[color,background-color,border-color,box-shadow,scale] duration-(--motion-fast) ease-spring active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base disabled:pointer-events-none disabled:opacity-50;
 	}
 
 	.btn-sm {
-		@apply px-3.5 py-2 text-sm;
+		@apply min-h-8 px-3 py-1.5 text-sm;
 	}
 
 	.btn-lg {
-		@apply h-12 px-7;
+		@apply min-h-12 px-6 py-3 text-base;
 	}
 
 	/* Monochrome primary: near-black fill in light mode, white fill in dark —
@@ -63,11 +56,11 @@
 	}
 
 	.input {
-		@apply w-full px-4 py-3 bg-surface-1 shadow-surface-1 rounded-xl text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring;
+		@apply w-full px-3 py-2 min-h-9 text-sm leading-5 bg-surface-1 shadow-surface-1 rounded-xl text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring;
 	}
 
 	.input-sm {
-		@apply px-3 py-2 text-sm;
+		@apply min-h-8 px-3 py-1.5 text-sm;
 	}
 
 	.input-error {
@@ -136,4 +129,18 @@
 @utility surface-8 {
 	background-color: var(--surface-8);
 	box-shadow: var(--shadow-8);
+}
+
+/* A mouse can use compact controls; touch needs room for a finger. */
+@media (pointer: coarse) {
+	.btn {
+		min-height: 44px;
+		min-width: 44px;
+	}
+	.input,
+	.ui-input-control,
+	.ui-select-control {
+		min-height: 44px;
+		font-size: 16px;
+	}
 }

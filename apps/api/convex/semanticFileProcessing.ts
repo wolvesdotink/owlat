@@ -26,13 +26,16 @@ import {
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
 import { embed } from 'ai';
 import { z } from 'zod';
-import { logInfo } from './lib/runtimeLog';
+import { logError, logInfo } from './lib/runtimeLog';
 import { runLlmObject } from './lib/llm/dispatch';
 import { recordLlmSpend } from './analytics/llmUsage';
 import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
 import { isContactScopeVisible } from './lib/contactScope';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { reciprocalRankFusion } from './lib/rrf';
+import { injectionRisk } from './knowledge/extraction';
+import { detectInjection } from './agent/steps/security_scan/patterns';
+import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
 
 /**
  * Process a newly uploaded file: extract text, generate summary,
@@ -53,7 +56,10 @@ export const processFile = internalAction({
 			previousVersionId: file.previousVersionId,
 		});
 
-		// Get the file blob from storage
+		// Get the file blob from storage. A file whose bytes the retention sweep
+		// released has nothing left to extract — its summary, extracted text and
+		// embedding are already on the row and stay there.
+		if (!file.storageId) return;
 		const blob = await ctx.storage.get(file.storageId);
 		if (!blob) return;
 
@@ -62,8 +68,14 @@ export const processFile = internalAction({
 		try {
 			extractedText = await extractText(blob, file.mimeType, file.filename);
 		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.error('Text extraction failed:', error);
+			// Fail soft: the file still gets filename/tag metadata below. Name the
+			// file so an operator can tell which upload lost its text.
+			logError('[semantic_file] text extraction failed', {
+				fileId: args.fileId,
+				filename: file.filename,
+				mimeType: file.mimeType,
+				error,
+			});
 		}
 
 		if (!extractedText && !file.title) {
@@ -81,13 +93,31 @@ export const processFile = internalAction({
 			return;
 		}
 
+		// Prompt-injection guard on the untrusted extracted body. The text is fed
+		// verbatim into the summarize/tag LLM prompt below, and its output is
+		// persisted and later surfaced back to the assistant, so a planted
+		// instruction could poison downstream models. When the deterministic
+		// patterns flag the body, skip the LLM summarization/tag step entirely
+		// (never feed poisoned text to a model) and fall back to filename metadata.
+		const injectionReason = injectionRisk(extractedText);
+		if (injectionReason) {
+			logInfo('[semantic_file] extracted text tripped the injection guard; skipping AI summary', {
+				fileId: args.fileId,
+				reason: injectionReason,
+			});
+		}
+
 		// 2. Generate summary and tags via LLM
 		const textForAI = truncateForLLM(extractedText, 8000);
 		let summary = '';
 		let autoTags: string[] = [];
 		let title = file.title;
 
-		if (textForAI.length > 50) {
+		if (injectionReason) {
+			// Poisoned extracted text: don't hand it to the model. Keep filename-only
+			// metadata so the file is still searchable without an AI round-trip.
+			title = title || file.filename;
+		} else if (textForAI.length > 50) {
 			try {
 				const result = await runLlmObject({
 					model: await resolveLanguageModel(ctx, 'summarize'),
@@ -114,8 +144,11 @@ ${textForAI}`,
 				summary = result.object.summary;
 				autoTags = result.object.tags;
 			} catch (error) {
-				// eslint-disable-next-line no-console
-				console.error('LLM processing failed:', error);
+				logError('[semantic_file] summarize/tag call failed', {
+					fileId: args.fileId,
+					filename: file.filename,
+					error,
+				});
 				// Fallback: use filename as title
 				title = title || file.filename;
 			}
@@ -138,8 +171,11 @@ ${textForAI}`,
 				assertEmbeddingDimension(embeddingResult.embedding);
 				embedding = embeddingResult.embedding;
 			} catch (error) {
-				// eslint-disable-next-line no-console
-				console.error('Embedding generation failed:', error);
+				logError('[semantic_file] embedding generation failed', {
+					fileId: args.fileId,
+					filename: file.filename,
+					error,
+				});
 			}
 		}
 
@@ -151,6 +187,11 @@ ${textForAI}`,
 			.map(slugifyTag)
 			.filter(Boolean);
 		autoTags = Array.from(new Set([...autoTags, ...contextTags]));
+
+		// Scrub any auto-tag that carries an injection attempt before it is
+		// persisted, indexed into `searchableText`, and surfaced back to a model via
+		// retrieval. The auto-tags are LLM-derived from untrusted file content.
+		autoTags = scrubTags(autoTags);
 
 		// 3c. Version provenance: a coarse diff summary vs the previous version.
 		let changeSummary: string | undefined;
@@ -198,6 +239,17 @@ ${textForAI}`,
 		}
 	},
 });
+
+/**
+ * Drop any tag that carries a prompt-injection attempt. Auto-tags are derived by
+ * the LLM from untrusted extracted file content, so a planted instruction could
+ * otherwise be persisted into `autoTags` / `searchableText` and reach a model via
+ * retrieval. Deterministic pattern match — no extra LLM cost. Exported for unit
+ * tests.
+ */
+export function scrubTags(tags: string[]): string[] {
+	return tags.filter((tag) => !detectInjection(tag).detected);
+}
 
 /** Normalize a phrase into a lowercase kebab tag (e.g. "Q3 Financials" → "q3-financials"). */
 function slugifyTag(input: string): string {
@@ -326,34 +378,34 @@ export const semanticSearch = internalAction({
 // Text Extraction Helpers
 // ============================================================
 
-// Exported for unit tests — pure, no ctx. Encodes which formats yield real
-// extracted text (text/json/html/csv/pdf) vs a filename-only placeholder
-// (docx/xlsx/images/unknown).
+/**
+ * Turn a stored file into the text everything downstream reads.
+ *
+ * WHAT EACH FORMAT YIELDS IS NOT DECIDED HERE — `lib/fileExtraction` owns the
+ * one classification, and the V8-side capture path consults the same table to
+ * mark a name-only file as such instead of rendering it like a PDF the
+ * assistant read cover to cover. This module is `'use node'` and that one is
+ * not, which is a one-way restriction: a Node module may import a V8-safe one
+ * (this file already imports `lib/constants`, `lib/fileSearchText` and
+ * `lib/rrf`), so there is no second branch list to keep in step.
+ *
+ * Exported for unit tests — pure, no ctx.
+ */
 export async function extractText(blob: Blob, mimeType: string, filename: string): Promise<string> {
-	// HTML — strip tags. MUST precede the generic `text/*` branch below:
-	// `text/html` starts with `text/`, so checking text/* first would return the
-	// raw markup (incl. <script>/<style> bodies) straight into the LLM /
-	// knowledge-graph ingestion path.
-	if (mimeType === 'text/html') {
-		const html = await blob.text();
-		return stripHtmlTags(html);
-	}
+	const format = classifyExtraction(mimeType, filename);
 
-	// Plain text files
-	if (mimeType.startsWith('text/') || mimeType === 'application/json') {
-		return await blob.text();
-	}
+	// HTML — strip tags, including `<script>`/`<style>` BODIES, so nothing
+	// smuggled in markup reaches the LLM / knowledge-graph ingestion path.
+	if (format === 'html') return stripHtmlTags(await blob.text());
 
-	// CSV
-	if (mimeType === 'text/csv' || filename.endsWith('.csv')) {
-		return await blob.text();
-	}
+	// Plain text, JSON and CSV are their own bytes.
+	if (format === 'text' || format === 'csv') return await blob.text();
 
 	// PDF — pure-JS extraction via unpdf (serverless-friendly, no native deps).
-	// Falls back to the placeholder stub on any failure so corrupt or
-	// extraction-failed PDFs still flow through the pipeline.
-	if (mimeType === 'application/pdf' || filename.endsWith('.pdf')) {
-		const placeholder = `[PDF file: ${filename}]`;
+	// Falls back to the placeholder on any failure, so corrupt, encrypted or
+	// scanned-image PDFs still flow through the pipeline.
+	if (format === 'pdf') {
+		const placeholder = extractionPlaceholder(format, filename);
 		try {
 			const buffer = await blob.arrayBuffer();
 			const pdf = await getDocumentProxy(new Uint8Array(buffer));
@@ -361,36 +413,18 @@ export async function extractText(blob: Blob, mimeType: string, filename: string
 			const cleaned = text.replace(/\s+/g, ' ').trim();
 			return cleaned.length > 0 ? cleaned : placeholder;
 		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.error('PDF text extraction failed:', error);
+			logError('[semantic_file] PDF text extraction failed', {
+				filename,
+				error,
+			});
 			return placeholder;
 		}
 	}
 
-	// For remaining binary formats (DOCX, XLSX, etc.), we'd need external
-	// libraries or a processing service. For now, return a placeholder and
-	// rely on filename/title.
-
-	if (
-		mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-		mimeType === 'application/msword'
-	) {
-		return `[Word document: ${filename}]`;
-	}
-
-	if (
-		mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-		mimeType === 'application/vnd.ms-excel'
-	) {
-		return `[Spreadsheet: ${filename}]`;
-	}
-
-	// Images — no text extraction (could use OCR in future)
-	if (mimeType.startsWith('image/')) {
-		return `[Image: ${filename}]`;
-	}
-
-	return `[File: ${filename}]`;
+	// DOCX, XLSX, images and everything unrecognised: reading them would need
+	// external libraries or a processing service, so the file is ingested under
+	// its own name and nothing else.
+	return extractionPlaceholder(format, filename);
 }
 
 // Exported for unit tests. Drops <script>/<style> bodies before tags so file

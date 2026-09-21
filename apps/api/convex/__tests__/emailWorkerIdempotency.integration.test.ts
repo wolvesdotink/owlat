@@ -121,7 +121,7 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 		//     retry. Exactly two provider POSTs (1 fail + 1 success) — the
 		//     dispatch retry, NOT a workpool re-run (which would re-enter the
 		//     whole worker and re-POST from scratch).
-		expect(result.success).toBe(true);
+		expect(result.kind).toBe('accepted');
 		expect(fetchSpy).toHaveBeenCalledTimes(3);
 
 		// (b) Both POSTs carry the SAME messageId, derived from the send-row id —
@@ -174,7 +174,7 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 			},
 		});
 
-		expect(result.success).toBe(true);
+		expect(result.kind).toBe('accepted');
 		expect(fetchSpy).toHaveBeenCalledTimes(2);
 		const body = JSON.parse(fetchSpy.mock.calls[1]![1]!.body as string);
 		expect(body.messageId).toBe(`send_${emailSendId!}`);

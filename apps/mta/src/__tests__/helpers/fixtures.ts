@@ -61,6 +61,46 @@ export function createTestConfig(overrides?: Partial<MtaConfig>): MtaConfig {
 		inboundSpfEnabled: false,
 		rspamdRejectThreshold: 15,
 		smtpPoolGlobalMaxPerHost: 10,
+		maxMessageAgeMs: 432_000_000,
+		submissionImplicitTlsEnabled: false,
+		submissionImplicitTlsPort: 465,
+		submissionMaxClients: 200,
+		submissionMaxConnectionsPerIp: 10,
+		submissionMaxAuthFailuresPerIp: 10,
+		inboundDkimEnabled: false,
+		inboundDmarcEnabled: false,
+		inboundArcEnabled: false,
+		...overrides,
+	};
+}
+
+/** The config the send-path, dispatch and DNSBL suites run under: an MTA hosted at mail.owlat.com. */
+export function createOwlatHostConfig(overrides?: Partial<MtaConfig>): MtaConfig {
+	return createTestConfig({
+		bouncePort: 25,
+		apiKey: 'test-key',
+		ehloHostname: 'mail.owlat.com',
+		returnPathDomain: 'bounces.owlat.com',
+		convexSiteUrl: 'https://test.convex.site',
+		webhookSecret: 'secret',
+		ipPools: { transactional: ['10.0.0.1'], campaign: ['10.0.0.2'] },
+		workerConcurrency: 50,
+		serverId: 'test-server',
+		...overrides,
+	});
+}
+
+/** A job from the owlat.com tenant, as the send-path and dispatch suites shape it. */
+export function createOwlatJob(overrides?: Partial<EmailJob>): EmailJob {
+	return {
+		messageId: 'msg-1',
+		to: 'user@example.com',
+		from: 'sender@owlat.com',
+		subject: 'Test',
+		html: '<p>Hello</p>',
+		ipPool: 'transactional',
+		organizationId: 'org-1',
+		dkimDomain: 'owlat.com',
 		...overrides,
 	};
 }

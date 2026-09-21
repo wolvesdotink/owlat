@@ -100,7 +100,7 @@ async function copyValue(value: string, key: string) {
 					<Icon
 						:name="status.icon"
 						class="h-3.5 w-3.5"
-						:class="{ 'animate-spin': item.status === 'pending-dns' }"
+						:class="{ 'animate-spin motion-reduce:animate-none': item.status === 'pending-dns' }"
 					/>
 					{{ t(status.label) }}
 				</span>

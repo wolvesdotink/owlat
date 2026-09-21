@@ -6,7 +6,7 @@
 ARG RUNTIME_BASE=platformatic/node-caged:26-slim
 
 # ── Stage 1: Install dependencies ──
-FROM oven/bun:1.3.14-alpine AS deps
+FROM oven/bun:1.4.2-alpine AS deps
 
 RUN apk add --no-cache python3 make g++
 # node-gyp must be preinstalled (lands in /usr/local/bin): better-sqlite3
@@ -85,8 +85,15 @@ LABEL org.opencontainers.image.source="https://github.com/wolvesdotink/owlat" \
       org.opencontainers.image.revision="${OWLAT_GIT_SHA}" \
       org.opencontainers.image.created="${OWLAT_BUILD_DATE}"
 
+# OWLAT_* is what the server routes read (system/update.post.ts); the
+# NUXT_PUBLIC_OWLAT_* twins are what Nitro maps onto public runtime config, and
+# so what the browser sees. Without them the app reports "dev" however the image
+# was built, which is what hid the in-app updater on every published release.
 ENV HOST=0.0.0.0 \
     PORT=3000 \
+    NUXT_PUBLIC_OWLAT_VERSION=${OWLAT_VERSION} \
+    NUXT_PUBLIC_OWLAT_GIT_SHA=${OWLAT_GIT_SHA} \
+    NUXT_PUBLIC_OWLAT_BUILD_DATE=${OWLAT_BUILD_DATE} \
     OWLAT_VERSION=${OWLAT_VERSION} \
     OWLAT_GIT_SHA=${OWLAT_GIT_SHA} \
     OWLAT_BUILD_DATE=${OWLAT_BUILD_DATE}

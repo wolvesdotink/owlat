@@ -3,7 +3,7 @@
  *
  * `acceptanceSemanticsFor` and `messageIdSourceFor` each apply a default to an
  * entry that declared nothing, and the safety of the whole seam rests on WHICH
- * default: an entry read as `accepted` would report `acceptedForDelivery` for a
+ * default: an entry read as `accepted` would report `isCustodyHandoff` for a
  * transport that never took custody, and one read as `idempotency-key` would get
  * an identity pre-bound under an id the provider never saw and would answer an
  * ambiguous send by REPLAYING it into a transport with no idempotency surface —

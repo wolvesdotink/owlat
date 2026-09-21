@@ -6,6 +6,7 @@ import {
 	buildSetupSummary,
 	buildApplyBody,
 	interpretSetupModeProbe,
+	setupSignInHref,
 	setupStepPath,
 	SMTP_RELAY_PRESETS,
 	type AdminDraft,
@@ -89,6 +90,24 @@ describe('useSetupWizard step model', () => {
 		expect(SETUP_STEPS.map((s) => s.id)).toEqual(['mode', 'features', 'email', 'admin', 'review']);
 		expect(SETUP_STEPS.map((s) => s.number)).toEqual([1, 2, 3, 4, 5]);
 	});
+
+	/**
+	 * REGRESSION — the splash cannot promise a different wizard from the one that
+	 * runs. `/setup` hand-wrote a four-item preview (mode → features → email →
+	 * "Admin & review") while this list has run five since the admin step was
+	 * split out, so the first screen of the product understated the work and then
+	 * produced an unannounced account step. It now maps THIS list through
+	 * `setup.index.steps.<id>.*`, which only holds while every id has copy.
+	 */
+	it('has splash copy for every step, so the preview cannot understate the wizard', () => {
+		const splash = en.setup.index.steps as Record<string, { title: string; desc: string }>;
+		for (const step of SETUP_STEPS) {
+			expect(splash[step.id]?.title, `missing title for ${step.id}`).toBeTruthy();
+			expect(splash[step.id]?.desc, `missing desc for ${step.id}`).toBeTruthy();
+		}
+		// And nothing left over from the hand-written version pretending to be a step.
+		expect(Object.keys(splash).sort()).toEqual([...SETUP_STEPS].map((s) => s.id).sort());
+	});
 });
 
 describe('email validation helper', () => {
@@ -103,15 +122,15 @@ describe('email validation helper', () => {
 
 describe('admin step navigation gate', () => {
 	it('cannot advance with an invalid email', () => {
-		const errors = validateAdmin({ ...validAdmin, email: 'not-an-email' });
-		expect(errors.email).toBeTruthy();
-		expect(adminIsValid({ ...validAdmin, email: 'not-an-email' })).toBe(false);
+		expect(validateAdmin({ ...validAdmin, email: 'not-an-email' })).toEqual({
+			email: 'shared.setupWizardValidation.admin.emailInvalid',
+		});
 	});
 
 	it('cannot advance with a password under 12 characters', () => {
-		const errors = validateAdmin({ ...validAdmin, password: 'short' });
-		expect(errors.password).toBeTruthy();
-		expect(adminIsValid({ ...validAdmin, password: 'short' })).toBe(false);
+		expect(validateAdmin({ ...validAdmin, password: 'short' })).toEqual({
+			password: 'shared.setupWizardValidation.admin.passwordTooShort',
+		});
 	});
 
 	it('can advance once email and password are valid', () => {
@@ -123,8 +142,9 @@ describe('admin step navigation gate', () => {
 describe('email step navigation gate', () => {
 	it('cannot advance with "none" when a delivery provider is required', () => {
 		const draft = emailDraft({ provider: 'none', requiresProvider: true });
-		expect(validateEmailStep(draft).provider).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			provider: 'shared.setupWizardValidation.email.providerRequired',
+		});
 	});
 
 	it('can advance with "none" when no provider is required (receive-only)', () => {
@@ -134,20 +154,23 @@ describe('email step navigation gate', () => {
 
 	it('cannot advance with Resend selected but no API key', () => {
 		const draft = emailDraft({ provider: 'resend', resendKey: '' });
-		expect(validateEmailStep(draft).resendKey).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			resendKey: 'shared.setupWizardValidation.email.resendKeyRequired',
+		});
 	});
 
 	it('cannot advance with SES selected but missing credentials', () => {
 		const draft = emailDraft({ provider: 'ses' });
-		expect(validateEmailStep(draft).ses).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			ses: 'shared.setupWizardValidation.email.sesIncomplete',
+		});
 	});
 
 	it('cannot advance with an SMTP relay missing host/username/password', () => {
 		const draft = emailDraft({ provider: 'smtp', smtp: { ...blankSmtp } });
-		expect(validateEmailStep(draft).smtp).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			smtp: 'shared.setupWizardValidation.email.smtpIncomplete',
+		});
 	});
 
 	it('cannot advance with an SMTP relay host but missing credentials', () => {
@@ -155,17 +178,17 @@ describe('email step navigation gate', () => {
 			provider: 'smtp',
 			smtp: smtpRelay({ username: '', password: '' }),
 		});
-		expect(validateEmailStep(draft).smtp).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			smtp: 'shared.setupWizardValidation.email.smtpIncomplete',
+		});
 	});
 
 	it('rejects a non-numeric or out-of-range SMTP port', () => {
-		expect(
-			validateEmailStep(emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: 'abc' }) })).smtp
-		).toBeTruthy();
-		expect(
-			validateEmailStep(emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: '70000' }) })).smtp
-		).toBeTruthy();
+		for (const port of ['abc', '70000']) {
+			expect(
+				validateEmailStep(emailDraft({ provider: 'smtp', smtp: smtpRelay({ port }) })).smtp
+			).toBe('shared.setupWizardValidation.email.smtpPortInvalid');
+		}
 	});
 
 	it('accepts a complete SMTP relay (blank port defaults to 587)', () => {
@@ -187,8 +210,9 @@ describe('email step navigation gate', () => {
 
 	it('rejects a malformed optional From address', () => {
 		const draft = emailDraft({ provider: 'mta', fromEmail: 'bogus' });
-		expect(validateEmailStep(draft).fromEmail).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			fromEmail: 'shared.setupWizardValidation.email.fromEmailInvalid',
+		});
 	});
 
 	it('accepts a blank From address (the field is optional)', () => {
@@ -207,8 +231,9 @@ describe('email step navigation gate', () => {
 				ehloHostnames: '',
 			},
 		});
-		expect(validateEmailStep(draft).mtaIdentity).toBeTruthy();
-		expect(emailStepIsValid(draft)).toBe(false);
+		expect(validateEmailStep(draft)).toMatchObject({
+			mtaIdentity: 'shared.setupMtaIdentity.missingIpsOrHostname',
+		});
 	});
 
 	it('rejects malformed per-IP EHLO JSON', () => {
@@ -398,16 +423,38 @@ describe('draft persistence round-trip', () => {
 		token: 'stk_abc123',
 	};
 
-	it('restores every collected field after a serialize→parse reload', () => {
+	it('restores every non-secret field after a serialize→parse reload', () => {
 		const restored = parseSetupDraft(serializeSetupDraft(fullDraft));
-		expect(restored).toEqual(fullDraft);
+		expect(restored).toEqual({
+			flags: fullDraft.flags,
+			env: fullDraft.env,
+			// Password blanked, token dropped — the two bearer secrets never persist.
+			admin: { ...validAdmin, password: '' },
+			isMigrationMode: true,
+		});
 	});
 
-	it('preserves the setup token and provider credentials across a reload', () => {
-		const restored = parseSetupDraft(serializeSetupDraft(fullDraft));
-		expect(restored?.token).toBe('stk_abc123');
+	it('never persists the admin password or the setup token', () => {
+		const serialized = serializeSetupDraft(fullDraft);
+		// The raw sessionStorage payload must not contain either secret verbatim.
+		expect(serialized).not.toContain(validAdmin.password);
+		expect(serialized).not.toContain('stk_abc123');
+		const restored = parseSetupDraft(serialized);
+		expect(restored?.token).toBeUndefined();
+		expect(restored?.admin?.password).toBe('');
+		// Provider credentials in `env` are still restored (narrower tradeoff).
 		expect(restored?.env?.['RESEND_API_KEY']).toBe('re_live_1');
-		expect(restored?.admin?.password).toBe(validAdmin.password);
+	});
+
+	it('refuses to surface a password from a legacy entry that still carries one', () => {
+		const restored = parseSetupDraft(
+			JSON.stringify({
+				admin: { email: 'a@b.co', name: 'Admin', password: 'leaked-legacy-secret' },
+				token: 'stk_legacy',
+			})
+		);
+		expect(restored?.admin?.password).toBe('');
+		expect(restored?.token).toBeUndefined();
 	});
 
 	it('returns null for a missing or non-JSON payload so a bad entry never crashes', () => {
@@ -433,9 +480,10 @@ describe('draft persistence round-trip', () => {
 		expect(restored).toEqual({});
 	});
 
-	it('accepts a partial draft, surfacing only the well-typed fields', () => {
+	it('accepts a partial draft, surfacing only the well-typed non-secret fields', () => {
 		const restored = parseSetupDraft(JSON.stringify({ token: 'stk_x', isMigrationMode: false }));
-		expect(restored).toEqual({ token: 'stk_x', isMigrationMode: false });
+		// `token` is never surfaced from storage, so only the migration flag remains.
+		expect(restored).toEqual({ isMigrationMode: false });
 	});
 });
 
@@ -452,13 +500,49 @@ describe('readSetupDraft — sessionStorage read the reload restore hinges on', 
 		sessionStorage.clear();
 	});
 
-	it('returns the persisted draft seeded under the namespaced key', () => {
+	it('returns the persisted (secret-stripped) draft seeded under the namespaced key', () => {
 		sessionStorage.setItem(SETUP_DRAFT_STORAGE_KEY, serializeSetupDraft(fullDraft));
-		expect(readSetupDraft()).toEqual(fullDraft);
+		expect(readSetupDraft()).toEqual({
+			flags: fullDraft.flags,
+			env: fullDraft.env,
+			admin: { ...validAdmin, password: '' },
+			isMigrationMode: true,
+		});
 	});
 
 	it('returns null when no draft has been persisted', () => {
 		expect(readSetupDraft()).toBeNull();
+	});
+});
+
+describe('the post-setup handoff URL', () => {
+	// The wizard's ONE full page load: the review step's finale hands off here on
+	// a click, instead of the two `window.location.href` reloads that used to fire
+	// on their own and drop the operator on a bare login form.
+	const target = '/auth/login?postSetup=1&email=admin%40acme.test';
+
+	it('is the server-chosen login target when no destination was picked', () => {
+		expect(setupSignInHref(target)).toBe(target);
+	});
+
+	it('carries the picked destination through as the login form\'s "redirect"', () => {
+		expect(setupSignInHref(target, '/dashboard/postbox')).toBe(
+			`${target}&redirect=%2Fdashboard%2Fpostbox`
+		);
+	});
+
+	it('opens the query string when the target has none', () => {
+		expect(setupSignInHref('/auth/login', '/dashboard/admin/team')).toBe(
+			'/auth/login?redirect=%2Fdashboard%2Fadmin%2Fteam'
+		);
+	});
+
+	it('encodes the destination rather than splicing it in raw', () => {
+		// A destination is never operator input here, but an un-encoded `&` would
+		// still silently truncate the redirect into a second query parameter.
+		expect(setupSignInHref(target, '/dashboard/x?a=1&b=2')).toContain(
+			'redirect=%2Fdashboard%2Fx%3Fa%3D1%26b%3D2'
+		);
 	});
 });
 

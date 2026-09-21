@@ -43,7 +43,6 @@ export {
 	serializeRset,
 	serializeQuit,
 	serializeStartTls,
-	serializeNoop,
 	serializeAuth,
 	serializeAuthContinuation,
 	parseEhloCapabilities,

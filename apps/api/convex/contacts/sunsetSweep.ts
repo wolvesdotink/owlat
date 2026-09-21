@@ -1,8 +1,8 @@
 /**
- * The sunset SWEEP — the hourly cron that converges the book (deliverability
- * plan P4-4). The decision lives in `sunsetPolicy.ts` (pure), the per-contact
- * reads and writes in `sunsetEngine.ts`, the operator surface in `sunset.ts`;
- * this file is only the bounded scan around them.
+ * The sunset SWEEP — the hourly cron that converges the book. The decision
+ * lives in `sunsetPolicy.ts` (pure), the per-contact reads and writes in
+ * `sunsetEngine.ts`, the operator surface in `sunset.ts`; this file is only
+ * the bounded scan around them.
  *
  * THE SWEEP IS A BOUNDED, RESUMABLE SCAN — never a full-table walk. It ranges
  * the `contacts.by_sunset_evaluated_at` index for rows whose stamp is older
@@ -28,16 +28,17 @@ import {
 	resolveSunsetPolicyForContact,
 	type SunsetPolicyRow,
 } from './sunsetEngine';
-import { isClockCorroborated, MS_PER_DAY, type SunsetClock } from './sunsetPolicy';
+import { isClockCorroborated, type SunsetClock } from './sunsetPolicy';
+import { DAY_MS } from '../lib/constants';
 
 /** A contact is re-evaluated at most once a day. */
-export const SUNSET_STALE_MS = MS_PER_DAY;
+export const SUNSET_STALE_MS = DAY_MS;
 
 /** Contacts inspected per transaction. Keeps one batch inside the read budget. */
 export const SUNSET_BATCH_SIZE = 50;
 
 /** Chained batches per tick — the hard ceiling on one sweep's work. */
-export const SUNSET_MAX_BATCHES = 20;
+const SUNSET_MAX_BATCHES = 20;
 
 /**
  * Contacts one tick can converge: 50 x 20 = 1000.
@@ -66,7 +67,7 @@ export const SUNSET_CONTACTS_PER_TICK = SUNSET_BATCH_SIZE * SUNSET_MAX_BATCHES;
  * genuine backlog (a real book that really is that quiet) drains at 100 an hour
  * with an audit trail at every step, which is the pace this decision deserves.
  */
-export const SUNSET_MAX_SUPPRESSIONS_PER_TICK = 100;
+const SUNSET_MAX_SUPPRESSIONS_PER_TICK = 100;
 
 /**
  * ONE statement of how a caller-supplied bound is coerced. THE TWO FAILURE
@@ -107,7 +108,7 @@ function clampArg(options: {
  * the audit trail under a message that says nothing new. The first tick to
  * notice always reports; after that, once a day.
  */
-const SUNSET_STALL_REPORT_INTERVAL_MS = MS_PER_DAY;
+const SUNSET_STALL_REPORT_INTERVAL_MS = DAY_MS;
 
 /**
  * Record what this tick learned about the clock on the ONE deployment-wide

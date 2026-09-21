@@ -1,21 +1,11 @@
 import { httpRouter } from 'convex/server';
 import { authComponent, createAuth } from './auth/auth';
 import { trackOpen, trackClick } from './delivery/trackingHttp';
-import { handleCors, healthCheck } from './auth/apiAuth';
-import { seedAdmin } from './seedAdmin';
-import { seedDemoHttp } from './seedDemo';
+import { seedAdmin } from './seedAdminHttp';
+import { seedDemoHttp } from './seedDemo/indexHttp';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';
-import { resetHttp } from './devShortcuts/reset';
-import {
-	createContact,
-	getContact,
-	updateContact,
-	deleteContact,
-	listContacts,
-} from './contacts/api';
-import { sendEvent } from './eventsApi';
-import { sendTransactional } from './transactional/api';
-import { addContactToTopic, removeContactFromTopic } from './topics/apiHttp';
+import { registerPublicApiRoutes } from './apiV1Http';
+import { resetHttp } from './devShortcuts/resetHttp';
 import {
 	handleOneClickUnsubscribe,
 	handleSeedProbeUnsubscribe,
@@ -28,11 +18,18 @@ import {
 	webhookUrlValidationProbe,
 } from './webhooks/providerFeedbackHttp';
 import { pluginFeedbackWebhook } from './webhooks/pluginFeedbackHttp';
-import { handleMailWebhook } from './mail/webhook';
+import { handleMailWebhook } from './mail/webhookHttp';
+import { handleInboundWebhook } from './inbox/inboundWebhookHttp';
+import { handleRawMessageUpload } from './mail/external/rawUploadHttp';
 import { serveSealedBlob } from './mail/sealedBlobHttp';
+import { serveAttachmentShare } from './mail/attachmentShareHttp';
 import { handleVerifyCredential } from './mail/authHttp';
 import { handleTlsReportWebhook } from './domains/tlsReportsHttp';
-import { handleSmsWebhook, handleWhatsAppWebhook, handleGenericWebhook } from './webhooks/channels';
+import {
+	handleSmsWebhook,
+	handleWhatsAppWebhook,
+	handleGenericWebhook,
+} from './webhooks/channelsHttp';
 import { handleGithubWebhook } from './webhooks/githubHttp';
 import { verifyContactDoiToken, confirmContactDoi } from './topics/doiHttp';
 import { getCampaignArchive } from './campaigns/archiveHttp';
@@ -118,119 +115,11 @@ http.route({
 });
 
 // ============ PUBLIC API v1 ROUTES ============
-
-// API health check (no authentication required)
-http.route({
-	path: '/api/v1/health',
-	method: 'GET',
-	handler: healthCheck,
-});
-
-// CORS preflight handlers for API routes
-// Contacts API
-http.route({
-	path: '/api/v1/contacts',
-	method: 'OPTIONS',
-	handler: handleCors,
-});
-
-http.route({
-	pathPrefix: '/api/v1/contacts/',
-	method: 'OPTIONS',
-	handler: handleCors,
-});
-
-// Events API
-http.route({
-	path: '/api/v1/events',
-	method: 'OPTIONS',
-	handler: handleCors,
-});
-
-// Transactional API
-http.route({
-	path: '/api/v1/transactional',
-	method: 'OPTIONS',
-	handler: handleCors,
-});
-
-// Topics API (single prefix covers all topic sub-paths)
-http.route({
-	pathPrefix: '/api/v1/topics/',
-	method: 'OPTIONS',
-	handler: handleCors,
-});
-
-// ============ CONTACTS API ENDPOINTS ============
-
-// GET /api/v1/contacts - List contacts
-http.route({
-	path: '/api/v1/contacts',
-	method: 'GET',
-	handler: listContacts,
-});
-
-// POST /api/v1/contacts - Create contact
-http.route({
-	path: '/api/v1/contacts',
-	method: 'POST',
-	handler: createContact,
-});
-
-// GET /api/v1/contacts/{id} - Get contact by ID or email
-http.route({
-	pathPrefix: '/api/v1/contacts/',
-	method: 'GET',
-	handler: getContact,
-});
-
-// PUT /api/v1/contacts/{id} - Update contact
-http.route({
-	pathPrefix: '/api/v1/contacts/',
-	method: 'PUT',
-	handler: updateContact,
-});
-
-// DELETE /api/v1/contacts/{id} - Delete contact
-http.route({
-	pathPrefix: '/api/v1/contacts/',
-	method: 'DELETE',
-	handler: deleteContact,
-});
-
-// ============ EVENTS API ENDPOINTS ============
-
-// POST /api/v1/events - Send event to trigger automations
-http.route({
-	path: '/api/v1/events',
-	method: 'POST',
-	handler: sendEvent,
-});
-
-// ============ TRANSACTIONAL API ENDPOINTS ============
-
-// POST /api/v1/transactional - Send transactional email
-http.route({
-	path: '/api/v1/transactional',
-	method: 'POST',
-	handler: sendTransactional,
-});
-
-// ============ TOPICS API ENDPOINTS ============
-
-// POST /api/v1/topics/{topicId}/contacts - Add contact to topic
-http.route({
-	pathPrefix: '/api/v1/topics/',
-	method: 'POST',
-	handler: addContactToTopic,
-});
-
-// DELETE /api/v1/topics/{topicId}/contacts/{emailOrId} - Remove contact from topic
-http.route({
-	pathPrefix: '/api/v1/topics/',
-	method: 'DELETE',
-	handler: removeContactFromTopic,
-});
+// The whole /api/v1 surface (health, CORS preflights, contacts, events,
+// transactional, topics) registers from `apiV1Http.ts`, the same way the
+// sample-data routes do. It is one versioned contract with one set of URLs, and
+// keeping it here pushed this file past the ~500 LOC ratchet.
+registerPublicApiRoutes(http);
 
 // ============ FORM SUBMISSION ENDPOINTS ============
 
@@ -300,17 +189,15 @@ http.route({
 	handler: providerFeedbackWebhook('ses'),
 });
 
-// POST /webhooks/plugin/<pluginId> - feedback from a BUNDLED PLUGIN transport
-// (the seams plan's D6/P2.2). One route for every plugin-tier transport, keyed
-// by plugin id rather than by kind, dispatched through the generated webhook
-// registry behind the hosted-contribution authorization seam. A `pathPrefix`
-// because the addressable set is whatever `plugins.config.ts` bundles — but the
-// prefix itself is WRITTEN OUT, for the same reason every path above is: these
-// URLs get pasted into provider consoles we do not own, and a path assembled
-// from a variable is a path that can move without anyone editing this file.
-// `PLUGIN_FEEDBACK_PATH_PREFIX` in the handler is the parsing half of the same
-// string; `webhooks/__tests__/pluginFeedbackRouteRegistration.test.ts` drives
-// the real router with it, so the two cannot drift apart silently.
+// POST /webhooks/plugin/<pluginId> - feedback from a BUNDLED PLUGIN transport. One route for every
+// plugin-tier transport, keyed by plugin id rather than by kind, dispatched through the generated
+// webhook registry behind the hosted-contribution authorization seam. A `pathPrefix` because the
+// addressable set is whatever `plugins.config.ts` bundles — but the prefix itself is WRITTEN OUT,
+// for the same reason every path above is: these URLs get pasted into provider consoles we do not
+// own, and a path assembled from a variable is a path that can move without anyone editing this
+// file. `PLUGIN_FEEDBACK_PATH_PREFIX` in the handler is the parsing half of the same string;
+// `webhooks/__tests__/pluginFeedbackRouteRegistration.test.ts` drives the real router with it, so
+// the two cannot drift apart silently.
 http.route({
 	pathPrefix: '/webhooks/plugin/',
 	method: 'POST',
@@ -322,6 +209,26 @@ http.route({
 	path: '/webhooks/mta-mailbox',
 	method: 'POST',
 	handler: handleMailWebhook,
+});
+
+// POST /webhooks/mta-inbound - team-inbox (AI shared inbox) delivery from MTA.
+// Standalone for the same reason its mailbox sibling above is: the payload
+// carries the whole message, and the shared webhook pipeline caps a body at
+// 5 MiB pre-auth (see inbox/inboundWebhookHttp.ts).
+http.route({
+	path: '/webhooks/mta-inbound',
+	method: 'POST',
+	handler: handleInboundWebhook,
+});
+
+// POST /mail-sync/raw-message - raw `.eml` upload from the mail-sync worker.
+// An HTTP action, not a function argument: a function-call body is capped at
+// 16 MiB and base64 inflates by 4/3, which silently dropped every message over
+// ~12 MiB of source (see mail/external/rawUploadHttp.ts).
+http.route({
+	path: '/mail-sync/raw-message',
+	method: 'POST',
+	handler: handleRawMessageUpload,
 });
 
 // POST /webhooks/mta-verify-credential - app-password verification for MTA SMTP submission
@@ -346,6 +253,17 @@ http.route({
 	path: '/sealed-blob',
 	method: 'GET',
 	handler: serveSealedBlob,
+});
+
+// GET /attachment-share/{token} - the PUBLIC expiring-token download for a file
+// the composer lifted out of a message. No session and no
+// signature: the token in the path is the whole capability, and every gate
+// (revoked / expired / narrowed to the mailbox / bytes reclaimed) is decided
+// per request inside the handler.
+http.route({
+	pathPrefix: '/attachment-share/',
+	method: 'GET',
+	handler: serveAttachmentShare,
 });
 
 // ============ CHANNEL WEBHOOK ENDPOINTS ============

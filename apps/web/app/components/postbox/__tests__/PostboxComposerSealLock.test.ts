@@ -25,9 +25,14 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-function mountLock(sealState: SealState | null, enabled = true, pending = false) {
+function mountLock(
+	sealState: SealState | null,
+	enabled = true,
+	pending = false,
+	blockingRecipients: string[] = []
+) {
 	return mount(PostboxComposerSealLock, {
-		props: { enabled, sealState, pending },
+		props: { enabled, sealState, pending, blockingRecipients },
 		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
 	});
 }
@@ -100,5 +105,36 @@ describe('PostboxComposerSealLock', () => {
 	it('no seal state and nothing in flight renders nothing', () => {
 		const wrapper = mountLock(null);
 		expect(wrapper.find('[data-testid="seal-lock"]').exists()).toBe(false);
+	});
+
+	it('names the blocking recipients and offers to remove each one (plan idea 11)', async () => {
+		const wrapper = mountLock({ kind: 'cannotSeal', reason: 'recipient_no_key' }, true, false, [
+			'jonas@acme.test',
+			'mei@acme.test',
+		]);
+		const blockers = wrapper.get('[data-testid="seal-lock-blockers"]');
+		expect(blockers.text()).toContain('No sealing key for:');
+		expect(blockers.text()).toContain('jonas@acme.test');
+		expect(blockers.text()).toContain('mei@acme.test');
+
+		const buttons = wrapper.findAll('[data-testid="seal-lock-remove-blocker"]');
+		expect(buttons).toHaveLength(2);
+		await buttons[0]?.trigger('click');
+		// The lock only ASKS for the removal — the composer owns the recipient list.
+		expect(wrapper.emitted('remove-recipient')).toEqual([['jonas@acme.test']]);
+		// …and naming a blocker never doubles as plaintext consent.
+		expect(wrapper.emitted('request-unsealed')).toBeUndefined();
+	});
+
+	it('still offers the unsealed decision alongside the blockers, unchanged', () => {
+		const wrapper = mountLock({ kind: 'cannotSeal', reason: 'recipient_no_key' }, true, false, [
+			'jonas@acme.test',
+		]);
+		expect(wrapper.find('[data-testid="seal-lock-send-unsealed"]').exists()).toBe(true);
+	});
+
+	it('names nobody when the composer passed no blockers', () => {
+		const wrapper = mountLock({ kind: 'cannotSeal', reason: 'policy_off' });
+		expect(wrapper.find('[data-testid="seal-lock-blockers"]').exists()).toBe(false);
 	});
 });

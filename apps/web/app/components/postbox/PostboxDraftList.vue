@@ -31,7 +31,7 @@ function preview(bodyHtml: string | undefined): string {
 
 <template>
 	<div v-if="isLoading" class="p-6 flex justify-center">
-		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 	</div>
 	<div v-else-if="drafts.length === 0" class="p-12 text-center">
 		<Icon name="lucide:file-edit" class="w-10 h-10 mx-auto text-text-tertiary" />

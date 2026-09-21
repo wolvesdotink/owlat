@@ -24,7 +24,7 @@ import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { sealBodyAtWrite } from '../lib/messageBody';
-import { assertStateIs } from './draftLifecycle';
+import { assertStateIs } from './draftLifecycle/reducers';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadDiscoveryAddresses } from './outboundQueries';
 import {
@@ -64,10 +64,10 @@ export const create = authedMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		inReplyToMessageId: v.optional(v.id('mailMessages')),
-		// Idempotency key for offline-outbox replays (adoption-gaps D8): the
-		// queued outbox item's client-generated id. A retry after a lost
-		// response finds the draft the first attempt already created instead
-		// of forking a duplicate (and, downstream, a duplicate send).
+		// Idempotency key for offline-outbox replays: the queued outbox
+		// item's client-generated id. A retry after a lost response finds the
+		// draft the first attempt already created instead of forking a
+		// duplicate (and, downstream, a duplicate send).
 		clientNonce: v.optional(v.string()),
 	},
 	handler: async (
@@ -328,7 +328,7 @@ export const get = publicQuery({
 });
 
 /**
- * Composer seal state for a draft (Sealed Mail E5, flag `sealedMail`). A
+ * Composer seal state for a draft (Sealed Mail, flag `sealedMail`). A
  * `publicQuery` soft-auth wrapper (returns `null` for anonymous callers) that
  * scopes the draft to the caller's mailbox in-handler via `requireMailboxAccess`.
  * Answers, for the compose surface: would sending now seal (`willSeal`), which
@@ -342,6 +342,11 @@ export const get = publicQuery({
  * PUBLIC trust state — never any private key material. Returns `null` (rather
  * than throwing) when the draft is gone or the caller can't access its mailbox,
  * so the composer renders no lock instead of an error.
+ *
+ * Returns the per-recipient key verdicts alongside the aggregate so the
+ * envelope can mark WHICH chip blocks encryption. Same projection
+ * (`toRecipientSealViews`), same public-trust-only rule: an address, its
+ * discovery outcome, and whether it can be sealed to — no key material.
  */
 // public: soft-auth — returns null for anonymous; mailbox access is enforced in-handler
 export const getComposerSealState = publicQuery({

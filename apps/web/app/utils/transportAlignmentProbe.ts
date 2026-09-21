@@ -1,5 +1,5 @@
 /**
- * Live-DNS gather for the transport wizard's alignment step (P2-4).
+ * Live-DNS gather for the transport wizard's alignment step.
  *
  * The DECISION is not made here. This module resolves the three TXT names the
  * shipped pre-flight reads — the From domain, `_dmarc.<from>` and one
@@ -19,13 +19,13 @@
 import {
 	dkimRecordName,
 	evaluateAlignmentPreflight,
-	normalizeDomain,
 	type AlignmentDnsFacts,
 	type AlignmentPreflightResult,
 	type AlignmentArm,
 	type DnsTxtObservation,
 	type ReferenceArmInput,
 } from '@owlat/shared/deliverabilityAlignment';
+import { normalizeDomain } from '@owlat/shared';
 import { dohQuery, DNS_TYPE_TXT, DNS_STATUS_NXDOMAIN } from './doh';
 
 /** DoH JSON `Status` values we distinguish beyond NXDOMAIN (RFC 1035 §4.1.1). */
@@ -96,8 +96,8 @@ async function gatherAlignmentDns(
 
 /**
  * The wizard's alignment step: gather live DNS, then run the shipped evaluator.
- * `checkedAt` is a parameter so the caller owns the clock (D15 applies to the
- * evaluator; this shell simply refuses to invent one).
+ * `checkedAt` is a parameter so the caller owns the clock; this shell refuses
+ * to invent one.
  */
 export async function runAlignmentProbe(
 	ownArm: AlignmentArm,

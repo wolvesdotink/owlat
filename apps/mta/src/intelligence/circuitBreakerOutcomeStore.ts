@@ -42,7 +42,7 @@ function circuitBreakerStateKey(scope: string): string {
 	return `${BREAKER_PREFIX}{${scope}}:state`;
 }
 
-export async function appendCircuitBreakerOutcome(
+async function appendCircuitBreakerOutcome(
 	redis: Redis,
 	scope: string,
 	marker: 'b' | 'c' | 'd',

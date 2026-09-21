@@ -1289,9 +1289,9 @@ Producers of transition calls today (post-deepening):
 - `convex/campaigns/scheduling.ts:unschedule` (`→ draft`)
 - One surviving `schedule` mutation (`→ scheduled`) — the
   `scheduleForOrganization` duplicate in `organization.ts` is deleted;
-  HTTP callers delegate.
-- One surviving `sendNow` mutation (`→ sending`) — the
-  `sendNowForOrganization` duplicate is deleted similarly.
+  HTTP callers delegate. It is the only client entry point left: the
+  `sendNow` mutation (`→ sending`) and its `sendNowForOrganization`
+  duplicate are both deleted; the web client only ever called `schedule`.
 - The campaign-send orchestrator (`emails.startCampaignSendInternal` or
   its successor) calls `lifecycle.transition({ to: 'sending' })` on the
   scheduler-tick path (replacing the deleted
@@ -1998,10 +1998,11 @@ attachmentRefs? })` — internal mutation. `templateLookup` is a
   `{ filename, contentType?, url, storageId? }`. Returns one of:
   - `{ ok: true, sendId, contactId, contactCreated, language,
 queued: true }`
-  - `{ ok: false, reason: 'abuse_blocked' | 'recipient_blocked' |
-'template_not_found' | 'template_not_published' |
-'template_no_content' | 'domain_unverified' | 'invalid_variables',
-detail? }`.
+  - `{ ok: false, reason, detail? }` where `reason` is the shared
+    `SendIntakeRejectionReason` (`'abuse_blocked' |
+'no_delivery_provider' | 'recipient_blocked'`) plus this intake's own
+    `'template_not_found' | 'template_not_published' |
+'template_no_content' | 'domain_unverified' | 'invalid_variables'`.
 
 The HTTP shell pre-validates input before calling `dispatch`:
 JSON-shape validation (required fields, types, email format, language
@@ -2012,40 +2013,42 @@ module's input is typed, well-formed data.
 
 Per-call order of operations:
 
-1. Abuse gate (`isSendingAllowed` on `instanceSettings.abuseStatus`)
-   → `abuse_blocked`.
-2. Blocklist (`blockedEmails.isBlockedInternal`) → `recipient_blocked`.
-3. Template lookup (by `id` or `slug` via the `templateLookup`
+1. The **Send intake gates (module)** sequence — abuse gate
+   (`isSendingAllowed` on `instanceSettings.abuseStatus`) →
+   `abuse_blocked`; delivery-provider gate (`isDeliveryConfigured` for
+   `messageType: 'transactional'`) → `no_delivery_provider`; blocklist
+   (`isSuppressed`, scope `'transactional'`) → `recipient_blocked`.
+2. Template lookup (by `id` or `slug` via the `templateLookup`
    discriminator). Missing → `template_not_found`. Not published →
    `template_not_published`. No `htmlContent` → `template_no_content`.
-4. Sender + domain resolution (`defaultFromEmail` →
+3. Sender + domain resolution (`defaultFromEmail` →
    `domains.domains.getEmailDomainVerificationStatus`). Unverified →
    `domain_unverified`.
-5. Validate `dataVariables` against
+4. Validate `dataVariables` against
    `transactionalEmail.dataVariablesSchema` → `invalid_variables`.
-6. **Contact resolution (module)** (`mode: 'upsert'`, `source:
+5. **Contact resolution (module)** (`mode: 'upsert'`, `source:
 'transactional'`) — closes the previously open-coded contact upsert
    with race-retry `try/catch` hack at
    `transactionalApiHttp.ts:484-512`.
-7. Language resolution (request → contact → template default → `'en'`).
+6. Language resolution (request → contact → template default → `'en'`).
    Pulls `htmlContent` + `subject` from `htmlTranslations[language]`
    when available; falls back to default otherwise.
-8. Provider route resolution
+7. Provider route resolution
    (`providerRoutes.getRoute({ messageType: 'transactional' })` +
    provider health → `resolveRoute`).
-9. Template attachments + request attachments merge (template-side
+8. Template attachments + request attachments merge (template-side
    attachments JSON-parsed once at intake; pre-deepening this lived in
    the HTTP shell).
-10. Insert `transactionalSends` row in `queued`. Writes `language` on
-    the row (new field — closes the silent drift where resolved
-    language was only on the API response, not persisted).
-11. Increment BOTH counters atomically with the row insert:
+9. Insert `transactionalSends` row in `queued`. Writes `language` on
+   the row (new field — closes the silent drift where resolved
+   language was only on the API response, not persisted).
+10. Increment BOTH counters atomically with the row insert:
     `instanceSettings.transactionalSendCount` and
     `emailsQueries.incrementDailySendCountInternal`. Today the daily
     counter is incremented from the HTTP shell _after_ the enqueue;
     consolidating into the module closes the drift seam where any
     future non-HTTP shell would miss it.
-12. Enqueue `transactionalEmailPool.enqueueAction` with
+11. Enqueue `transactionalEmailPool.enqueueAction` with
     `onComplete: emailOnComplete` and `sendRef: { kind: 'transactional',
 id: sendId }`.
 
@@ -2118,6 +2121,82 @@ with **Transactional send** the row), Transactional send orchestrator
 (the orchestrator role is reserved for the **Campaign send
 orchestrator** — that one composes multiple lifecycle calls; this
 module is a single intake function).
+
+**Send intake gates (module)**:
+The module at `convex/delivery/sendIntakeGates.ts` that owns the one
+pre-row gate sequence every send intake runs, in one fixed order:
+**abuse → provider-ready → suppression**. It also names the shared
+refusal vocabulary `SendIntakeRejectionReason` (`abuse_blocked |
+no_delivery_provider | recipient_blocked`), which the
+**Transactional send intake (module)** composes with its own
+template/variable reasons and the **Non-campaign send intake (module)**
+uses whole. Two shapes of the provider question, chosen by the caller:
+`{ kind: 'message_type' }` (route-independent — "can this message type
+deliver at all?", for an intake whose `from` is not settled yet) and
+`{ kind: 'resolved_route' }` (resolve this send's route, judge the
+provider it selected, and hand the resolution back so the row and the
+envelope are stamped from it).
+
+Every gate is PRE-ROW by construction: a refusal leaves no
+`transactionalSends` row, no `sendAssignments` row and no workpool job
+behind. That property is what lets callers treat a rejection as final
+rather than as a failed send to retry. Transient refusals (an open
+delivery circuit, an unverified fallback relay) are deliberately NOT in
+the union — they surface as routing deferrals from the send path, which
+is where the bounded retry lives.
+_Avoid_: Send gate (module) (there is also an **Abuse gate** and a
+suppression gate — the plural names the sequence, which is the thing
+that is shared), Intake validation (these are policy refusals, not
+input validation; the shells validate shape).
+
+**Non-campaign send intake (module)**:
+The module at `convex/delivery/nonCampaignIntake.ts` that owns the
+intake path for every 1:1, non-template-API Send — automation email
+steps (`kind: 'automation'`) and agent approved-replies
+(`kind: 'agent_reply'`). Sibling of the **Transactional send intake
+(module)** and modelled on it: same gate sequence via the **Send intake
+gates (module)**, same in-transaction route resolution, same
+`transactionalSends` row insert → `sendAssignments` record →
+transactional-workpool enqueue, same `ok`-discriminated outcome.
+
+Single entry point:
+
+- `intake({ kind, email, contactId?, automationId?, inboundMessageId?,
+transactionalEmailId?, subject, html, from, replyTo?, headers?,
+listUnsubscribe?, convexSiteUrl? })` — internal mutation. Returns
+  `{ ok: true, sendId, queued: true }` or `{ ok: false, reason,
+detail? }` with `reason: SendIntakeRejectionReason`. `subject` and
+  `html` are PRE-RENDERED by the caller and carry no `dataVariables`.
+
+Two per-kind policy tables, both total by construction (`satisfies
+Record<NonCampaignSendKind, …>`, so a third kind is a compile error
+until it names its policy): the suppression scope (`automation` is
+marketing and takes the strict scope; `agent_reply` is a 1:1 answer to
+a human who wrote in and takes the transactional one) and the route
+table / envelope `messageType`.
+
+Replaces `delivery/enqueue.ts:enqueueNonCampaignSend`, which threw its
+refusals from two exported magic-string constants that its two callers
+re-classified by matching `error.message`. Both producers now map the
+reasons through a total `Record<NonCampaignIntakeRejectionReason, …>` —
+`recipient_blocked` is a permanent per-recipient verdict (the automation
+step completes without sending; the agent reply archives the inbound
+message as `sender_blocked`), while `no_delivery_provider` and
+`abuse_blocked` are deployment faults that fail and stay re-drivable.
+See the PIECE C2 amendment in
+`docs/adr/0021-transactional-send-intake-module.md`.
+
+The module does _not_ own: the campaign producer (`delivery/enqueue.ts`
+— a bulk fan-out from an already-gated orchestrator, not an intake); the
+member-only test preview (`delivery/enqueueTestSend.ts`); template
+personalization (the automation step composes before calling); draft
+escaping or the pre-send reference monitor (the agent pipeline); the
+`queued → sent | failed` transitions (**Send completion (module)**).
+_Avoid_: Non-campaign enqueue (module) (names the mechanism, not the
+role — the shape is an intake with a classified outcome, like its
+sibling), Automation send intake (module) (only half of what it owns),
+1:1 send intake (module) ("1:1" is not a noun the rest of the domain
+language uses).
 
 **Transactional email status**:
 The current state of a **Transactional email** at
@@ -2294,11 +2373,24 @@ and a `TransitionOutcome` reporting `ok | reason` for duplicate / illegal /
 terminal / kind-mismatched attempts. Two instances today: **Send lifecycle**
 (campaign + transactional `Send`) and **Postbox outbound lifecycle**
 (`mailMessages.outbound`). Both expose `transition` and a webhook-friendly
-`transitionByProviderMessageId`. Replicated by convention, not by a generic
-`Lifecycle<S, E, Eff>` factor — when a third instance lands and the duplication
-bites, that's when the factor lands.
+`transitionByProviderMessageId`. Replicated by convention everywhere except the
+_dispatcher preamble_, which ADR-0058 factored into the **Lifecycle core**
+(`convex/lib/lifecycle.ts`) after eleven instances. Reducers, effects and
+module-local outcome literals stay in the module.
 _Avoid_: State machine (generic; doesn't signal the dispatched-to-MTA
 boundary), Lifecycle alone (every CRUD module has one).
+
+**Lifecycle core**:
+The one layer every Outbound-lifecycle instance shares verbatim, extracted to
+`convex/lib/lifecycle.ts` (ADR-0058). `defineLifecycle(spec, options)` builds a
+graph from a declarative edge spec; `graph.classify(from, to)` returns
+`proceed` (with an `isSelfLoop` flag) or `refused` (`illegal_edge`, or
+`terminal` for the five machines that opt in); `LifecycleReason<TExtra>` unions
+the core's reasons with a module's own literals; `refuse(verdict, context)`
+builds the shared `ok: false` shape. Its scope is the dispatcher preamble and
+nothing else — no `ctx`, no reducers, no effects, no persistence.
+_Avoid_: Lifecycle framework / generic `Lifecycle<S, E, Eff>` (both name the
+larger factor four ADRs refused), State machine engine.
 
 **Send**:
 A single addressed message dispatch tracked in `emailSends` (campaign) or
@@ -3216,6 +3308,29 @@ dispatcher** to a `sent → delivered` Send lifecycle transition.
 _Avoid_: Send (Convex-side term — one Send spans 1..N attempts), Job
 alone (GroupMQ vocabulary; doesn't signal the per-attempt scope).
 
+**Defer ladder**:
+The chain of jobs one message walks while it keeps being deferred. A defer
+is never thrown back at GroupMQ — `handler.ts` enqueues a successor with the
+computed per-category delay and completes — so a defer consumes no delivery
+attempt and `maxAttempts` cannot end a ladder. Two things do: the
+max-message-age cap (bounds it in time) and the **Defer successor budget**
+(bounds it in count). Each rung's successor id is derived from its
+predecessor's, and the whole ladder shares one handoff receipt slot keyed by
+its chain.
+_Avoid_: Retry chain (GroupMQ's `attempts` are a different, unrelated
+counter), re-queue loop (names the failure mode, not the mechanism).
+
+**Defer successor budget**:
+The cap at `apps/mta/src/queue/deferBudget.ts` on how many successors one
+`messageId` may mint, counted in Redis across every chain of that message —
+governed sends carry their own `workAttemptId` per attempt, so one message
+can have several roots and therefore several ladders. Sized as the rungs a
+one-per-minute ladder could take before the message expires anyway — a
+policy floor, not the shortest defer the MTA issues, which is a flat 5s on
+a contended domain slot. Exhausting it is terminal: a soft bounce naming
+the runaway, never another successor.
+_Avoid_: Rate limit (this is a lifetime count, not a per-interval rate).
+
 **Dispatch pipeline (module)**:
 The module at `apps/mta/src/dispatch/pipeline.ts` that owns the ordered
 pre-send check sequence for a Dispatch attempt. Composed of typed
@@ -3528,10 +3643,10 @@ draft-status).
 **Inbox processing status**:
 The current state of an inbound message in `inboundMessages.processingStatus`:
 `received | security_check | quarantined | classifying | drafting |
-draft_ready | awaiting_clarification | approved | sent | rejected | archived |
-failed`. Twelve states
-covering the joined agent-pipeline progression and the human draft-review
-hand-off. Companion fields written atomically with the status: `errorMessage`
+draft_ready | awaiting_clarification | informational | approved | sent |
+rejected | archived | failed`. Thirteen states
+covering the joined agent-pipeline progression, the needs-no-reply parking
+state (ADR-0061) and the human draft-review hand-off. Companion fields written atomically with the status: `errorMessage`
 (on `failed`), `processedAt` (on terminals), `securityFlags` (on
 `quarantined` / `archived`), `classification` (when `classify` completes),
 `draftResponse` / `draftSubject` / `confidenceScore` (when `draft` completes),
@@ -3544,6 +3659,9 @@ hand-off. Companion fields written atomically with the status: `errorMessage`
 - `classifying → drafting`
 - `classifying → draft_ready` (no draft generation is needed)
 - `classifying → awaiting_clarification`
+- `classifying → informational` (the sender expects no reply; Updates dashboard)
+- `informational → drafting` (a reader overrules the classifier and asks for a draft)
+- `informational → archived` (a reader dismisses the update)
 - `awaiting_clarification → drafting`
 - `awaiting_clarification → archived` (owner dismisses the message)
 - `drafting → draft_ready`
@@ -4284,7 +4402,7 @@ Four entry points:
   family is the only writer of the wipe; this entry is the public
   shell (auth + scheduler call + synchronous response).
 - `createInternal(ctx, args)` — internal mutation; no auth (called by
-  `seedAdmin.ts`). Idempotent: skips if a row already exists.
+  `seedAdminHttp.ts`). Idempotent: skips if a row already exists.
 
 Replaces the duplicate `get`/`update`/`create` pair across
 `convex/instanceSettings.ts` and `convex/organizationSettings.ts`. Both
@@ -5099,6 +5217,14 @@ UI treatment — `useBackendOperation` for writes, `useBackendQuery` for reactiv
 reads.
 _Avoid_: mutation wrapper, `useConvexMutation`.
 
+**Operation result**:
+The `{ ok: true, result } | { ok: false }` envelope an **Operation module**
+write resolves. `ok` is the only thing a caller ever tests — the failure arm
+carries nothing because the treatment (toast / inline / redirect / telemetry)
+has already been applied. Replaces the `T | undefined` sentinel, which could
+not tell a write that legitimately returned nothing from one that failed.
+_Avoid_: the undefined sentinel, "returns `undefined` on failure".
+
 ## Resource listing
 
 The one read-side surface for "give me a filtered, searched, paginated,
@@ -5130,7 +5256,8 @@ primitives it subsumes at call sites).
 **Listing descriptor**:
 One entity's full read surface, declared as data: the search index (and its
 `filterFields`), the browse index + the legal sort keys, whether the entity
-is soft-deletable, the optional per-row `enrich`, and its **Facets**. The
+is soft-deletable, the optional per-row `enrich`, the optional per-row
+`redact`, and its **Facets**. The
 unit the **Listing engine** consumes; one per listable entity (Contact,
 Campaign, Email template, Topic, Segment, Automation). Shared by the
 entity's `list` _and_ its `get` for the enrichment half, so the two stop
@@ -5140,7 +5267,11 @@ duplicating it (today `topics.ts:list` and `topics.ts:get` both inline the
 path only** — passing `search` means relevance order, full stop. The
 `enrich` cost (an O(1) cached field vs. a per-row scan) is the descriptor
 author's stated responsibility, documented on the descriptor; the engine
-runs it without hiding the cost.
+runs it without hiding the cost. When the row carries **capability fields**
+(tokens that authorize an action on the row), the descriptor declares them
+once in `redact`: the engine strips them from every page row before
+enrichment, on both paths — a listing read cannot leak them by a caller
+forgetting. See ADR-0037's amendment.
 _Avoid_: Listing module (collides with the two-half module-family pattern —
 Block module, Step module — listing is single-runtime, has no editor half),
 list config (undersells that it owns enrichment + facets), List schema.
@@ -5170,7 +5301,9 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   a `DatabaseReader` — the session-auth shell (`contacts.ts:list`) and the
   API-key shell (`*/organization.ts:listByOrganization`) keep their own auth,
   the same effects-vs-shell split the lifecycle modules use. The descriptor's
-  `enrich` is shared by the entity's `list` and `get`.
+  `enrich` is shared by the entity's `list` and `get`; its `redact` is
+  enforced by the engine on every page row, and non-listing reads apply the
+  same redactor directly.
 - A **Block** is implemented by exactly one **Block module** (one-to-one,
   keyed by `type`).
 - The **Walker** dispatches to a **Block** based on `block.type`, applies
@@ -5579,13 +5712,17 @@ force?)` guard consumed by every mutation that touches publishable
   deletion as lifecycle entry points (`create()` and `remove()`),
   bracketing the state machine — Topic subscription is the closest
   precedent but it acts on membership rows, not the parent row. The
-  `Lifecycle<S, T, E>` factor question is "active design" rather than
-  "hypothetical" but has not yet landed — each instance differs in
-  non-trivial ways (external keys, polymorphic identity, override entry
-  points, cross-machine coordination, per-kind adapter dispatch) that
-  would be lossy to push behind a generic factor. The factor lands when
-  the duplication bites at the _reducer-implementation_ level, not at
-  the type-signature level — and so far the reducers genuinely diverge.
+  `Lifecycle<S, T, E>` factor question is settled by splitting it in
+  two. The _whole-machine_ factor stays refused: each instance differs
+  in non-trivial ways (external keys, polymorphic identity, override
+  entry points, cross-machine coordination, per-kind adapter dispatch)
+  that would be lossy to push behind a generic runner, and the reducers
+  genuinely diverge. The _dispatcher preamble_ — edge graph, transition
+  validation, self-loop and terminal classification, the shared
+  `ok: false` scaffolding — carries no module vocabulary at all, and
+  ADR-0058 factored exactly that into the **Lifecycle core**
+  (`convex/lib/lifecycle.ts`), piloted on Postbox outbound lifecycle.
+  The remaining machines migrate as they are touched.
 
 ## Example dialogue
 
@@ -5722,18 +5859,24 @@ matching code comment at the cited file.
   (id + short expiry) like `trackClick` if open-count integrity ever needs to
   be stronger than rate-limited best-effort.
 
-- **`platformAdmin/*` is control-plane-only and inert on OSS self-host.**
-  No production path populates the `platformAdmins` table on an OSS
-  deployment (the optional first-admin bootstrap is the hand-run
-  `migrations/0036_seed_platform_admin:run`; `addPlatformAdmin` needs an
-  existing admin), so
-  `requirePlatformAdmin` always throws FORBIDDEN and the console renders empty.
-  Intentional: the multi-tenant control plane that would seed and use these
-  admins lives in the separate private Nest repo (see _Nest Extracted_); this
-  repo is single-org-per-deployment OSS. The module is kept so the control
-  plane reuses it unchanged, but no OSS bootstrap is wired — granting one
-  operator instance-wide power is a deployer decision, not a default. Intended
-  authz model: each `platformAdmin/*` function is an `authedMutation` /
+- **`platformAdmin/*` is the deployment tier, and the setup user holds it.**
+  Org roles (owner/admin/editor) govern the product; `platformAdmins` governs
+  the box — in-app updates, backups, the operator console. An org owner is not
+  automatically a platform admin. The roster is bootstrapped by
+  `platformAdmin/bootstrap.ts`: `/seed/admin` grants the setup user
+  `superadmin` on every fresh install, and an instance seeded before that
+  shipped is claimed once by its org owner from the admin hub
+  (`claimInitialPlatformAdmin`, an `ownerMutation` — its only caller).
+  `migrations/0036_seed_platform_admin:run` survives as the break-glass path
+  when neither in-app caller can run. All three refuse once ANY platform admin
+  exists: that empty-table precondition, not the caller's org role, is what
+  keeps the bootstrap from being an escalation route; past it, promotion goes
+  through `addPlatformAdmin` (superadmin-only, driven by Operator → Admins).
+  The grant is revoked by member erasure and by `POST /dev/reset` alongside the
+  users it is keyed to. The same module still backs the multi-tenant control
+  plane in the separate private Nest repo (see _Nest Extracted_), which is why
+  the cross-org queries here look bigger than a single-org deployment needs.
+  Authz model: each `platformAdmin/*` function is an `authedMutation` /
   `authedQuery` whose handler calls `requirePlatformAdmin(ctx)` first
   (superadmin-only ops also check `role === 'superadmin'`).
 

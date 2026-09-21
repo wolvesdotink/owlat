@@ -1,0 +1,7 @@
+{
+  "secret": "fixture-instance-secret-do-not-use-in-production",
+  "inlinePlaintext": "<p>Héllo — wörld 🌍</p>\nLine two\tTabbed",
+  "inlineSealed": "atrest:1:WYYpFofqUyAIifa+:cDrbTGM3m/s28cpTTiq/7cjZWqClX++U397CwfWdbs+CzSG3prRXDJJNGpIrujde+XylJtG1LpYtrCAFaQ==",
+  "blobPlaintextBase64": "AAH//kFCgH8=",
+  "blobSealedBase64": "QVJCTEIxAeDKmvMHgn59YvpvPEGlxTnsQogjXZIid/ZLUCd/aR5Vucwk+w=="
+}

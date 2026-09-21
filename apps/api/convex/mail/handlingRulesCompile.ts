@@ -82,7 +82,7 @@ const compiledRuleSchema = z.object({
 		.describe('What to do when the matcher fires.'),
 });
 
-export type CompiledRule = z.infer<typeof compiledRuleSchema>;
+type CompiledRule = z.infer<typeof compiledRuleSchema>;
 
 /**
  * Build the compile prompt. Pure + exported so the unit test can assert the
@@ -140,7 +140,7 @@ export const compile = authedAction({
 		if (!instruction) throwInvalidInput('Rule text is required');
 
 		// Flag / budget / rate-limit gate, shared with the advisory Postbox AI.
-		await ctx.runMutation(internal.mail.aiGate.assertAiAllowed, {});
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
 		const model = await resolveLanguageModel(ctx, 'classify'); // cheap tier — this is a light extraction
 		const { object, tokenUsage, modelUsed } = await runLlmObject({

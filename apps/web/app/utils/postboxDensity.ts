@@ -13,12 +13,19 @@ export type PostboxDensity = 'comfortable' | 'compact';
 
 export const POSTBOX_DENSITY_DEFAULT: PostboxDensity = 'comfortable';
 
+/**
+ * The picker options. Module scope never calls `useI18n`, so `label` is the
+ * catalog key the rendering surface resolves through `t()` — the same shape the
+ * reading-pane and sort-order registries use. (They were bare English strings,
+ * which `t()` echoed back verbatim: correct in English, untranslated anywhere
+ * else.)
+ */
 export const POSTBOX_DENSITY_OPTIONS: Array<{
 	value: PostboxDensity;
 	label: string;
 }> = [
-	{ value: 'comfortable', label: 'Comfortable' },
-	{ value: 'compact', label: 'Compact' },
+	{ value: 'comfortable', label: 'shared.postboxDensity.comfortable' },
+	{ value: 'compact', label: 'shared.postboxDensity.compact' },
 ];
 
 /**
@@ -46,3 +53,11 @@ export const POSTBOX_ROW_HEIGHT: Record<PostboxDensity, number> = {
 	comfortable: 76,
 	compact: 52,
 };
+
+/**
+ * Height of a collapsible section header in the grouped list renderers
+ * (`px-4 py-2` around a 16px `text-xs` line). Density-independent: the header
+ * is a label, not a row, and stays the same size in both modes. The sectioned
+ * windowing math needs it to know where each section's rows begin.
+ */
+export const POSTBOX_SECTION_HEADER_HEIGHT = 32;

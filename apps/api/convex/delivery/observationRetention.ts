@@ -16,10 +16,7 @@ import type { MutationCtx } from '../_generated/server';
 type ExpirableRow = { readonly _id: Id<TableNames> };
 
 /** One table's page of rows older than `horizon`, at most `limit` of them. */
-export type ExpiredObservationScan = (
-	horizon: number,
-	limit: number
-) => Promise<readonly ExpirableRow[]>;
+type ExpiredObservationScan = (horizon: number, limit: number) => Promise<readonly ExpirableRow[]>;
 
 export interface ObservationSweepResult {
 	deleted: number;

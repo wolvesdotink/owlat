@@ -25,7 +25,6 @@ import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import type { QueryCtx } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
 import { audienceValidator, type StoredAudience } from './audience';
 import { batchGet } from '../_utils/batchLoader';
 import { logWarn } from '../lib/runtimeLog';
@@ -84,13 +83,13 @@ async function resolveRecipientPageImpl(
 			.withIndex('by_topic', (q) => q.eq('topicId', audience.topicId))
 			.paginate({ cursor: cursor === '' ? null : cursor, numItems });
 
-		const contacts = await batchGet<Doc<'contacts'>>(
+		const contacts = await batchGet(
 			ctx,
 			page.map((membership) => membership.contactId)
 		);
 		const recipients: CampaignRecipient[] = [];
 		for (const membership of page) {
-			const contact = contacts.get(String(membership.contactId));
+			const contact = contacts.get(membership.contactId);
 			if (!contact) continue; // orphan membership (contact hard-deleted)
 			const recipient = selectRecipient(contact, gate, membership.pendingDoiConfirmation);
 			if (recipient) recipients.push(recipient);

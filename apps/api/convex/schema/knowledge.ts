@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { captureSourceValidator, semanticFileSourceTypeValidator } from '../lib/literalValidators';
 
 /**
  * The knowledge entry types, as a literal tuple. Single source of truth for both
@@ -47,7 +48,7 @@ export const POLICY_ENTRY_TYPES = ['policy', 'faq'] as const;
  * fresh extractions that don't set it, stay recallable until a human resolves
  * them). Only `fulfilled` / `cancelled` drop a commitment out of the open-recall.
  */
-export const COMMITMENT_STATUSES = ['open', 'fulfilled', 'cancelled'] as const;
+const COMMITMENT_STATUSES = ['open', 'fulfilled', 'cancelled'] as const;
 
 /**
  * Validator for `knowledgeEntries.commitmentStatus`, derived from
@@ -137,7 +138,7 @@ export const EDGE_PROVENANCES = ['deterministic', 'llm', 'manual'] as const;
 /**
  * Validator for `knowledgeRelations.provenance`, derived from `EDGE_PROVENANCES`.
  */
-export const edgeProvenanceValidator = v.union(...EDGE_PROVENANCES.map((p) => v.literal(p)));
+const edgeProvenanceValidator = v.union(...EDGE_PROVENANCES.map((p) => v.literal(p)));
 
 /**
  * Knowledge graph + semantic file tables — typed knowledge extracted from communications,
@@ -270,7 +271,14 @@ export const knowledgeTables = {
 
 	// Semantic Files - files with embeddings, auto-tags, and version tracking
 	semanticFiles: defineTable({
-		storageId: v.id('_storage'),
+		// OPTIONAL because the retention sweep RELEASES BYTES WITHOUT DELETING THE
+		// ROW: past the configured horizon an `email_attachment` file's blob is
+		// deleted and this reference cleared, while `summary`, `extractedText`,
+		// `searchableText` and `embedding` survive so `[RELEVANT FILES]` retrieval
+		// keeps working. Absent ⇒ the bytes are gone; every reader treats that as
+		// a first-class state (no URL, no re-extraction, not offered as an
+		// attachment suggestion).
+		storageId: v.optional(v.id('_storage')),
 		filename: v.string(),
 		mimeType: v.string(),
 		fileSize: v.number(),
@@ -281,11 +289,7 @@ export const knowledgeTables = {
 		tags: v.optional(v.array(v.string())),
 		autoTags: v.optional(v.array(v.string())),
 		// Provenance
-		sourceType: v.union(
-			v.literal('upload'),
-			v.literal('email_attachment'),
-			v.literal('agent_generated')
-		),
+		sourceType: semanticFileSourceTypeValidator,
 		sourceMessageId: v.optional(v.string()),
 		uploadedBy: v.optional(v.string()),
 		// Provenance: why/where this version was shared. JSON-stringified
@@ -309,6 +313,21 @@ export const knowledgeTables = {
 		embeddingGeneratedAt: v.optional(v.number()),
 		// Full-text search
 		searchableText: v.optional(v.string()),
+		// WHICH inbound route captured this file, set only by `captureAttachments`
+		// (an upload or an agent-generated file leaves it absent). `sourceType`
+		// alone cannot answer this: BOTH inbound routes write
+		// `sourceType: 'email_attachment'`, so a retention horizon configured for
+		// the shared inbox would otherwise also strip the file-library blobs of
+		// personal-mailbox (Postbox) mail, which has its own permanent raw storage
+		// and no horizon at all. The inbound retention sweep scans
+		// `captureSource === 'team_inbox'` and nothing else.
+		captureSource: v.optional(captureSourceValidator),
+		// When the retention sweep released this file's bytes. Set exactly once,
+		// by the sweep, together with clearing `storageId`. It is also the
+		// equality component of `by_attachment_retention`, which is what makes
+		// that sweep self-terminating: a released row falls out of the scanned
+		// range instead of being re-examined on every tick.
+		bytesReleasedAt: v.optional(v.number()),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -316,6 +335,7 @@ export const knowledgeTables = {
 		.index('by_created_at', ['createdAt'])
 		.index('by_thread', ['threadId'])
 		.index('by_previous_version', ['previousVersionId'])
+		.index('by_attachment_retention', ['captureSource', 'bytesReleasedAt', 'createdAt'])
 		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): as with knowledge entries,
 		// `searchableText` (full-text) and `embedding` (vector) stay PLAINTEXT-DERIVED
 		// so file search + semantic retrieval keep working — Convex indexes plaintext.

@@ -8,6 +8,7 @@
  * attests, and a bare SPF/DKIM pass counts only when it ALIGNS with the From.
  */
 
+import { normalizeDomain } from '@owlat/shared';
 import { isSpfAligned } from '@owlat/shared/spfAlignment';
 import type { HeaderField } from '../dkim/message.js';
 
@@ -115,9 +116,4 @@ export function aarAttestsPass(aar: HeaderField): boolean {
  */
 function domainsAlign(authDomain: string, fromDomain: string): boolean {
 	return isSpfAligned(authDomain, fromDomain, 'relaxed');
-}
-
-/** Lowercase, trim, and drop a trailing root dot from a domain. */
-export function normalizeDomain(domain: string | undefined): string {
-	return (domain ?? '').trim().toLowerCase().replace(/\.$/, '');
 }

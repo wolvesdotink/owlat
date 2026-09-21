@@ -28,11 +28,12 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -117,37 +118,497 @@ async function seed(t: ReturnType<typeof convexTest>) {
 	return { mailboxId };
 }
 
-describe('mail.mailbox.search', () => {
+describe('mail.mailbox.search.search', () => {
 	it('matches free text combined with a partial from-token', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seed(t);
-		const results = await t.query(api.mail.mailbox.search, {
+		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: 'meeting',
 			from: 'sara',
 		});
-		expect(results.map((m) => m.subject)).toEqual(['project meeting']);
+		expect(results.messages.map((m) => m.subject)).toEqual(['project meeting']);
+		expect(results.hasMore).toBe(false);
+		expect(results.nextCursor).toBeNull();
 	});
 
 	it('matches a partial from-token with no free text', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seed(t);
-		const results = await t.query(api.mail.mailbox.search, {
+		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: '',
 			from: 'sara',
 		});
-		expect(results.map((m) => m.subject)).toEqual(['project meeting']);
+		expect(results.messages.map((m) => m.subject)).toEqual(['project meeting']);
 	});
 
 	it('excludes a non-matching from-token', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seed(t);
-		const results = await t.query(api.mail.mailbox.search, {
+		const results = await t.query(api.mail.mailbox.search.search, {
 			mailboxId,
 			text: 'meeting',
 			from: 'bob',
 		});
-		expect(results).toEqual([]);
+		expect(results.messages).toEqual([]);
+	});
+
+	it('requires a quoted phrase to appear verbatim, not as loose tokens', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seed(t);
+
+		// The seeded row's snippet is "meeting notes about the launch": both words
+		// are present, so the token index matches either ordering. Only the
+		// adjacent one is a phrase hit.
+		const adjacent = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: 'meeting notes',
+			phrases: ['meeting notes'],
+		});
+		expect(adjacent.messages.map((m) => m.subject)).toEqual(['project meeting']);
+
+		const reversed = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: 'meeting notes',
+			phrases: ['notes meeting'],
+		});
+		expect(reversed.messages).toEqual([]);
+	});
+
+	it('matches a phrase across the subject as well as the snippet', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seed(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: 'project meeting',
+			phrases: ['project meeting'],
+		});
+		expect(results.messages.map((m) => m.subject)).toEqual(['project meeting']);
+	});
+
+	it('requires EVERY phrase when more than one is quoted', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seed(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: 'meeting',
+			phrases: ['meeting notes', 'no such phrase'],
+		});
+		expect(results.messages).toEqual([]);
+	});
+
+	it('paginates: the cursor continues where the first page stopped', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seed(t);
+		// Seed two more matches so the first page (limit 1) can't hold them all.
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const inboxId = (await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailboxId).eq('role', 'inbox'))
+				.first())!._id;
+			const threadId = (await ctx.db
+				.query('mailThreads')
+				.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', mailboxId))
+				.first())!._id;
+			for (const [i, subject] of ['second meeting', 'third meeting'].entries()) {
+				const storageId = await ctx.storage.store(new Blob([subject]));
+				await ctx.db.insert('mailMessages', {
+					mailboxId,
+					folderId: inboxId,
+					uid: i + 2,
+					modseq: i + 2,
+					rfc822MessageId: `<m${i + 2}@acme.com>`,
+					threadId,
+					fromAddress: 'sara@acme.com',
+					toAddresses: ['me@example.com'],
+					ccAddresses: [],
+					bccAddresses: [],
+					subject,
+					normalizedSubject: subject,
+					snippet: `${subject} notes`,
+					rawStorageId: storageId,
+					rawSize: 7,
+					attachments: [],
+					hasAttachments: false,
+					flagSeen: false,
+					flagFlagged: false,
+					flagAnswered: false,
+					flagDraft: false,
+					flagDeleted: false,
+					customFlags: [],
+					labelIds: [],
+					receivedAt: now + (i + 1) * 1000,
+					internalDate: now,
+					createdAt: now,
+					updatedAt: now,
+				});
+			}
+		});
+
+		const page1 = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: 'meeting',
+			limit: 1,
+		});
+		expect(page1.messages).toHaveLength(1);
+		expect(page1.hasMore).toBe(true);
+		expect(page1.nextCursor).not.toBeNull();
+
+		const page2 = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: 'meeting',
+			limit: 1,
+			cursor: page1.nextCursor!,
+		});
+		expect(page2.messages).toHaveLength(1);
+		// No overlap and no repeat between pages.
+		expect(page2.messages[0]!._id).not.toBe(page1.messages[0]!._id);
+	});
+
+	it('a post-filter that zeroes a page never skips or repeats later matches', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seed(t);
+		// Two bob messages newer than the seeded sara one, plus a second sara
+		// message between them: at limit 2 the FIRST page is entirely
+		// post-filtered away by `from: sara` — its cursor must carry the scan
+		// position (rows consumed, not skipped) so page two still sees both
+		// sara rows exactly once.
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const inboxId = (await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailboxId).eq('role', 'inbox'))
+				.first())!._id;
+			const threadId = (await ctx.db
+				.query('mailThreads')
+				.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', mailboxId))
+				.first())!._id;
+			const inserts: Array<{ from: string; at: number; subject: string }> = [
+				{ from: 'bob@acme.com', at: now + 3000, subject: 'bob meeting one' },
+				{ from: 'sara@acme.com', at: now + 1000, subject: 'second meeting' },
+				{ from: 'bob@acme.com', at: now + 2000, subject: 'bob meeting two' },
+			];
+			for (const [i, insert] of inserts.entries()) {
+				const storageId = await ctx.storage.store(new Blob([insert.subject]));
+				await ctx.db.insert('mailMessages', {
+					mailboxId,
+					folderId: inboxId,
+					uid: i + 2,
+					modseq: i + 2,
+					rfc822MessageId: `<m${i + 2}@acme.com>`,
+					threadId,
+					fromAddress: insert.from,
+					toAddresses: ['me@example.com'],
+					ccAddresses: [],
+					bccAddresses: [],
+					subject: insert.subject,
+					normalizedSubject: insert.subject,
+					snippet: `${insert.subject} notes`,
+					rawStorageId: storageId,
+					rawSize: 7,
+					attachments: [],
+					hasAttachments: false,
+					flagSeen: false,
+					flagFlagged: false,
+					flagAnswered: false,
+					flagDraft: false,
+					flagDeleted: false,
+					customFlags: [],
+					labelIds: [],
+					receivedAt: insert.at,
+					internalDate: now,
+					createdAt: now,
+					updatedAt: now,
+				});
+			}
+		});
+
+		const collected: string[] = [];
+		let cursor: string | undefined;
+		for (let page = 0; page < 5; page++) {
+			const result = await t.query(api.mail.mailbox.search.search, {
+				mailboxId,
+				text: 'meeting',
+				from: 'sara',
+				limit: 2,
+				...(cursor ? { cursor } : {}),
+			});
+			collected.push(...result.messages.map((m) => m.subject));
+			if (!result.nextCursor) break;
+			cursor = result.nextCursor;
+		}
+		// Both sara rows collected exactly once: the zeroed first page handed
+		// its scan position on. (Text-branch order is relevance, not time —
+		// compare as a set.)
+		expect([...collected].sort()).toEqual(['project meeting', 'second meeting']);
+	});
+});
+
+/**
+ * A mailbox with enough variety to exercise the grammar the parser grew:
+ * cc/bcc recipients, attachment filenames, raw sizes and a label.
+ */
+async function seedGrammar(t: ReturnType<typeof convexTest>) {
+	let mailboxId!: Id<'mailboxes'>;
+	await t.run(async (ctx) => {
+		const now = Date.now();
+		mailboxId = await ctx.db.insert('mailboxes', {
+			userId: 'test-user',
+			organizationId: 'test-org',
+			address: 'me@example.com',
+			domain: 'example.com',
+			status: 'active',
+			usedBytes: 0,
+			uidValidity: now,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const inboxId = await ctx.db.insert('mailFolders', {
+			mailboxId,
+			name: 'INBOX',
+			role: 'inbox',
+			uidValidity: now,
+			uidNext: 1,
+			highestModseq: 1,
+			totalCount: 0,
+			unseenCount: 0,
+			subscribed: true,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const labelId = await ctx.db.insert('mailLabels', {
+			mailboxId,
+			name: 'Billing',
+			createdAt: now,
+		});
+		const rows = [
+			{
+				subject: 'invoice 4471',
+				from: 'ines@northwind.studio',
+				cc: ['legal@northwind.studio'],
+				bcc: [],
+				size: 12 * 1024 * 1024,
+				files: ['invoice-4471.pdf'],
+				labels: [labelId],
+			},
+			{
+				subject: 'lunch plans',
+				from: 'mei@tanaka.jp',
+				cc: [],
+				bcc: ['archive@example.com'],
+				size: 2 * 1024,
+				files: [],
+				labels: [],
+			},
+			{
+				subject: 'quarterly deck',
+				from: 'ines@northwind.studio',
+				cc: [],
+				bcc: [],
+				size: 6 * 1024 * 1024,
+				files: ['deck.key'],
+				labels: [],
+			},
+		];
+		for (const [i, row] of rows.entries()) {
+			const threadId = await ctx.db.insert('mailThreads', {
+				mailboxId,
+				normalizedSubject: row.subject,
+				participants: [row.from],
+				messageCount: 1,
+				unreadCount: 0,
+				hasFlagged: false,
+				hasAttachments: row.files.length > 0,
+				lastMessageAt: now + i,
+				firstMessageAt: now + i,
+				latestSnippet: row.subject,
+				latestFromAddress: row.from,
+				latestSubject: row.subject,
+				folderRoles: ['inbox'],
+				labelIds: row.labels,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const storageId = await ctx.storage.store(new Blob([row.subject]));
+			await ctx.db.insert('mailMessages', {
+				mailboxId,
+				folderId: inboxId,
+				uid: i + 1,
+				modseq: i + 1,
+				rfc822MessageId: `<g${i}@acme.com>`,
+				threadId,
+				fromAddress: row.from,
+				toAddresses: ['me@example.com'],
+				ccAddresses: row.cc,
+				bccAddresses: row.bcc,
+				subject: row.subject,
+				normalizedSubject: row.subject,
+				snippet: `${row.subject} body`,
+				rawStorageId: storageId,
+				rawSize: row.size,
+				attachments: row.files.map((filename, index) => ({
+					filename,
+					contentType: 'application/octet-stream',
+					size: 1,
+					partIndex: String(index),
+				})),
+				hasAttachments: row.files.length > 0,
+				flagSeen: false,
+				flagFlagged: false,
+				flagAnswered: false,
+				flagDraft: false,
+				flagDeleted: false,
+				customFlags: [],
+				labelIds: row.labels,
+				receivedAt: now + i,
+				internalDate: now + i,
+				createdAt: now,
+				updatedAt: now,
+			});
+		}
+	});
+	return { mailboxId };
+}
+
+describe('mail.mailbox.search.search — filter-grammar parity', () => {
+	it('filters on cc: and bcc:', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedGrammar(t);
+		const cc = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			cc: 'legal',
+		});
+		expect(cc.messages.map((m) => m.subject)).toEqual(['invoice 4471']);
+		const bcc = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			bcc: 'archive@example.com',
+		});
+		expect(bcc.messages.map((m) => m.subject)).toEqual(['lunch plans']);
+	});
+
+	it('bounds on larger:/smaller: against the raw size', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedGrammar(t);
+		const big = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			largerThan: 5 * 1024 * 1024,
+		});
+		expect(big.messages.map((m) => m.subject).sort()).toEqual(['invoice 4471', 'quarterly deck']);
+		const small = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			smallerThan: 1024 * 1024,
+		});
+		expect(small.messages.map((m) => m.subject)).toEqual(['lunch plans']);
+	});
+
+	it('matches filename: against the stored attachment metadata', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedGrammar(t);
+		const hit = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			filename: 'invoice',
+		});
+		expect(hit.messages.map((m) => m.subject)).toEqual(['invoice 4471']);
+		const miss = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			filename: 'nothing.zip',
+		});
+		expect(miss.messages).toEqual([]);
+	});
+
+	it('resolves label: case-insensitively against the stored display name', async () => {
+		// The parser lowercases every operand, so `label:billing` has to reach a
+		// label the user named "Billing" or the operator is unusable.
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedGrammar(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			labelName: 'billing',
+		});
+		expect(results.messages.map((m) => m.subject)).toEqual(['invoice 4471']);
+	});
+
+	it('excludes on a negated operator without emptying the result set', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedGrammar(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			not: { from: ['ines'] },
+		});
+		expect(results.messages.map((m) => m.subject)).toEqual(['lunch plans']);
+	});
+
+	it('ignores an exclusion naming a label that does not exist', async () => {
+		// An unresolvable exclusion excludes nothing; reading it as "match none"
+		// would blank the results for a typo.
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedGrammar(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			not: { labelName: ['does-not-exist'] },
+		});
+		expect(results.messages).toHaveLength(3);
+	});
+
+	it('returns nothing when the only clause names a missing label', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedGrammar(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			labelName: 'nope',
+		});
+		expect(results.messages).toEqual([]);
+	});
+
+	it('unions the sides of a single-level OR', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedGrammar(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			from: 'mei',
+			or: [{ text: '', labelName: 'billing' }],
+		});
+		expect(results.messages.map((m) => m.subject).sort()).toEqual(['invoice 4471', 'lunch plans']);
+	});
+
+	it('checks each OR side against its own free text', async () => {
+		// A disjunction gives up the search index, so the clause text has to be
+		// re-checked in the post-filter or every alternative would match.
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedGrammar(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: 'lunch',
+			or: [{ text: 'deck' }],
+		});
+		expect(results.messages.map((m) => m.subject).sort()).toEqual([
+			'lunch plans',
+			'quarterly deck',
+		]);
+	});
+
+	it('drops a dead OR side instead of letting it widen the union', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedGrammar(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			from: 'mei',
+			or: [{ text: '', labelName: 'missing' }],
+		});
+		expect(results.messages.map((m) => m.subject)).toEqual(['lunch plans']);
 	});
 });

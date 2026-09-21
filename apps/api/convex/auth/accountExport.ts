@@ -171,6 +171,37 @@ async function stageAccountExportContent(
 	}
 }
 
+/**
+ * The manifest the "Export my data" card shows BEFORE the export runs (idea 67).
+ *
+ * Names every resource the download will contain and, for the personal ones,
+ * how many rows that is. Organization resources are listed without a count —
+ * counting them would re-walk exactly the rows the export is about to stream —
+ * so the card says "counted as it exports" for those rather than inventing a
+ * number. Nothing here starts an export session or stages an artifact: it is a
+ * read the user can take before deciding.
+ */
+// authz: self — getPersonalExportCounts enforces args.userId
+export const getExportPlan = authedAction({
+	args: { userId: v.string() },
+	handler: async (
+		ctx,
+		args
+	): Promise<{
+		personal: Array<{ resource: string; count: number; isCapped: boolean }>;
+		organizationResources: string[];
+	}> => {
+		const personal: Array<{ resource: string; count: number; isCapped: boolean }> =
+			await ctx.runQuery(internal.auth.accountExportQueries.getPersonalExportCounts, {
+				userId: args.userId,
+			});
+		return {
+			personal,
+			organizationResources: [...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES],
+		};
+	},
+});
+
 /** Start or resume the caller's bounded, short-lived GDPR export session. */
 // authz: self — beginSession and getProfile both enforce args.userId.
 export const exportUserData = authedAction({

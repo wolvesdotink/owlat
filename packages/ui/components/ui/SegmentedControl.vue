@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, nextTick } from 'vue';
 
 interface SegmentOption {
 	value: string;
@@ -71,18 +71,77 @@ const handleKeyDown = (event: KeyboardEvent) => {
 	}
 };
 
+/**
+ * The sliding highlight is MEASURED off the selected button rather than
+ * computed as `100 / options.length`.
+ *
+ * The track is `repeat(N, 1fr)`, and `1fr` is `minmax(auto, 1fr)`: a label wider
+ * than its equal share (Conversations next to Flat) grows its column and shrinks
+ * the others. An indicator sized at a flat 1/N of the track then runs past the
+ * short first segment and paints over the next label — the exact defect this
+ * replaces. Reading `offsetLeft`/`offsetWidth` costs one layout read per change
+ * and is correct for any label lengths, in any locale, at any font size.
+ */
+const measured = ref<{ left: number; width: number } | null>(null);
+const rootRef = ref<HTMLElement | null>(null);
+
+/**
+ * The track's inset, in px, shared by the stylesheet and the pre-measure
+ * fallback below. One number rather than two: the fallback's first column has
+ * to start exactly where `.segmented-control`'s padding puts the first button,
+ * or the indicator jumps by that difference on mount.
+ */
+const TRACK_PADDING = 4;
+
+function measure() {
+	const button = tabButtonRefs.value[selectedIndex.value];
+	// `offsetWidth === 0` means the control is display:none or not laid out yet
+	// (and, in jsdom/happy-dom, that there is no layout at all): keep the
+	// analytical fallback rather than collapsing the indicator to nothing.
+	if (!button || button.offsetWidth === 0) {
+		measured.value = null;
+		return;
+	}
+	measured.value = { left: button.offsetLeft, width: button.offsetWidth };
+}
+
+let observer: ResizeObserver | null = null;
+
+onMounted(() => {
+	measure();
+	// The track resizes with its container (and with a late webfont swap), which
+	// moves every column boundary the indicator is pinned to.
+	if (typeof ResizeObserver !== 'undefined' && rootRef.value) {
+		observer = new ResizeObserver(() => measure());
+		observer.observe(rootRef.value);
+	}
+});
+
+onBeforeUnmount(() => {
+	observer?.disconnect();
+	observer = null;
+});
+
+watch([selectedIndex, () => props.options], () => void nextTick(measure));
+
 const indicatorStyle = computed(() => {
-	const count = props.options.length;
-	const width = 100 / count;
+	const geometry = measured.value;
+	if (geometry) return { left: `${geometry.left}px`, width: `${geometry.width}px` };
+	// Pre-measure (SSR's first paint) fallback: equal columns, offset by the
+	// track padding. Replaced by the measured geometry on mount.
+	const share = 100 / props.options.length;
+	const offset = selectedIndex.value * TRACK_PADDING;
 	return {
-		width: `calc(${width}% - 3px)`,
-		transform: `translateX(calc(${selectedIndex.value * 100}% + ${selectedIndex.value * 3}px))`,
+		left: `${TRACK_PADDING}px`,
+		width: `calc(${share}% - ${TRACK_PADDING}px)`,
+		transform: `translateX(calc(${selectedIndex.value * 100}% + ${offset}px))`,
 	};
 });
 </script>
 
 <template>
 	<div
+		ref="rootRef"
 		role="tablist"
 		class="segmented-control"
 		:class="`segmented-control--${size}`"
@@ -114,22 +173,36 @@ const indicatorStyle = computed(() => {
 	position: relative;
 	display: grid;
 	grid-template-columns: v-bind('`repeat(${options.length}, 1fr)`');
-	background: var(--color-bg-surface, #f3f4f6);
-	border: 1px solid var(--color-border, #e5e7eb);
-	border-radius: 8px;
-	padding: 3px;
+	background: var(--surface-2);
+	/* Rule 2 — elevation is a shadow ring, never a painted border. The old rule
+	   was `1px solid var(--color-border, #e5e7eb)`, and `--color-border` has
+	   never existed in the token set, so the hex fallback always won and every
+	   segmented control drew a literal grey-200 hairline in BOTH themes. Hex
+	   fallbacks are gone throughout this block for the same reason: a fallback
+	   here is a theme-locked value that only shows up when a token is renamed. */
+	box-shadow: var(--shadow-1);
+	/* Pill, like every other chip in the design language. */
+	border-radius: 9999px;
+	padding: 4px;
 }
 
+/* `left`/`width` (and, before the first measurement, `transform`) are supplied
+   inline from the measured geometry — see `indicatorStyle`. */
 .segmented-control__indicator {
 	position: absolute;
-	top: 3px;
-	left: 3px;
-	height: calc(100% - 6px);
-	background: var(--color-brand, #c4785a);
-	border-radius: 5px;
-	transition: transform var(--motion-moderate) var(--ease-spring);
+	top: 4px;
+	height: calc(100% - 8px);
+	/* Monochrome selection: one step up the ladder plus a ring, the same recipe
+	   as `.btn-secondary`. It used to be a solid `--color-brand` fill, i.e. a
+	   terracotta nav pill — the smell DESIGN-LANGUAGE.md §5 names first. */
+	background: var(--surface-3);
+	border-radius: 9999px;
+	transition:
+		left var(--motion-moderate) var(--ease-spring),
+		width var(--motion-moderate) var(--ease-spring),
+		transform var(--motion-moderate) var(--ease-spring);
 	z-index: 0;
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+	box-shadow: var(--shadow-2);
 }
 
 .segmented-control__btn {
@@ -138,13 +211,13 @@ const indicatorStyle = computed(() => {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: 5px;
-	font-size: 13px;
+	gap: 4px;
+	font-size: var(--text-caption);
 	line-height: 1;
 	border: none;
 	background: transparent;
-	border-radius: 5px;
-	color: var(--color-text-secondary, #6b7280);
+	border-radius: 9999px;
+	color: var(--color-text-secondary);
 	cursor: pointer;
 	transition:
 		color var(--motion-fast) var(--ease-spring),
@@ -153,21 +226,23 @@ const indicatorStyle = computed(() => {
 }
 
 .segmented-control--sm .segmented-control__btn {
-	padding: 4px 10px;
-	font-size: 12px;
+	padding: 4px 8px;
+	font-size: var(--text-2xs);
 }
 
 .segmented-control--md .segmented-control__btn {
-	padding: 5px 12px;
+	padding: 4px 12px;
 }
 
 .segmented-control__btn:hover:not(.segmented-control__btn--active):not(:disabled) {
-	color: var(--color-text-primary, #111827);
+	color: var(--color-text-primary);
 }
 
+/* Rule 3 — the selected segment is carried by weight and text colour, not by
+   an inverse label on a coloured chip. */
 .segmented-control__btn--active {
-	color: var(--color-text-inverse, #fff);
-	font-weight: var(--font-weight-medium, 500);
+	color: var(--color-text-primary);
+	font-weight: var(--font-weight-medium);
 }
 
 .segmented-control__btn:disabled {

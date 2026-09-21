@@ -1,15 +1,14 @@
 'use node';
 
 /**
- * Inbound unsealing — the `'use node'` plane of decrypt-on-ingest (Sealed Mail
- * plan 2026-07-11, locked decision D3).
+ * Inbound unsealing — the `'use node'` plane of decrypt-on-ingest.
  *
- * D3: DECRYPT-ON-INGEST. When a sealed PGP/MIME message arrives for an address we
+ * DECRYPT ON INGEST. When a sealed PGP/MIME message arrives for an address we
  * hold a vault key for, we decrypt it here and let the PLAINTEXT flow into the
  * normal pipeline (categorize / needs-reply / agent / knowledge / search all keep
  * working); the sealed original is retained as the raw `.eml`. The body is
  * decrypted with the recipient's vault key, the signature is verified against the
- * discovered/pinned SENDER key, and the protected headers (real Subject, D4) are
+ * discovered/pinned SENDER key, and the protected headers (real Subject) are
  * restored from the inner MIME.
  *
  * FAILURE HONESTY (asserted in tests): a message we cannot decrypt (no usable
@@ -29,9 +28,13 @@ import { v, type Infer } from 'convex/values';
 import * as openpgp from 'openpgp';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { normalizeEmail } from '@owlat/shared';
+import {
+	inboundMessageArgs,
+	inboundReceiveResultValidator,
+	type InboundReceiveResult,
+} from '../inbox/receiveInbound';
 import { openPrivateKey } from './sealing';
 import { shouldRefetch } from './discovery';
 import {
@@ -45,11 +48,11 @@ import {
 } from './inboundSeal';
 
 /** The outcome of a low-level open attempt. Bytes + keys in, structured out. */
-export type OpenOutcome =
+type OpenOutcome =
 	| { status: 'opened'; innerMime: string; signatureValid: boolean; signerFingerprint?: string }
 	| { status: 'cannotDecrypt' };
 
-export interface OpenParams {
+interface OpenParams {
 	/** The raw sealed message (PGP/MIME) or its inline-armored body. */
 	raw: string;
 	/** Armored PRIVATE keys of the recipient addresses we hold in the vault. */
@@ -61,7 +64,7 @@ export interface OpenParams {
 /**
  * Decrypt + signature-verify a sealed message. PURE of `ctx`/db — bytes and keys
  * in, an outcome out — so it is unit-testable against committed fixtures and the
- * E3 sealer without a network or the vault. Never throws: a decrypt failure
+ * sealer without a network or the vault. Never throws: a decrypt failure
  * (wrong/absent key, corrupt ciphertext) resolves to `cannotDecrypt`, and a
  * signature that does not verify resolves to `signatureValid: false` (never a
  * thrown error that would fail ingest).
@@ -208,44 +211,26 @@ export const openInboundForMailbox = internalAction({
 /**
  * INTERNAL: decrypt a sealed inbound message on the AI-inbox path and hand the
  * PLAINTEXT to `inbox.messages.receiveMessage`, so the agent pipeline + the
- * unified-timeline mirror consume decrypted text (D3). Called by
+ * unified-timeline mirror consume decrypted text. Called by
  * `webhooks/dispatcher.ts` when an inbound event carries an armored ciphertext.
  * On a decrypt failure the ORIGINAL (ciphertext) body is passed through with the
  * `sealed` flag but NO signature claim — the reader's existing "Encrypted" path.
  */
 export const decryptAndReceive = internalAction({
 	args: {
+		// Everything that came off the wire, in the one spelling
+		// `receiveMessage` also uses. This is the SECOND writer of an
+		// `inboundMessages` row, and both are called with one spread of the same
+		// `persisted` bag (`inbox/receiveInbound.ts`), so a new stored column
+		// reaches this path or fails to compile.
+		...inboundMessageArgs,
 		armoredCiphertext: v.string(),
 		recipientAddress: v.string(),
-		from: v.string(),
-		to: v.string(),
-		subject: v.string(),
-		textBody: v.optional(v.string()),
-		htmlBody: v.optional(v.string()),
-		headers: v.optional(v.string()),
-		messageId: v.string(),
-		inReplyTo: v.optional(v.string()),
-		references: v.optional(v.string()),
-		attachmentMeta: v.optional(v.string()),
-		timestamp: v.number(),
-		spfResult: v.optional(v.string()),
-		dkimResult: v.optional(v.string()),
-		dmarcResult: v.optional(v.string()),
-		dmarcPolicy: v.optional(v.string()),
 	},
-	returns: v.object({
-		inboundMessageId: v.id('inboundMessages'),
-		threadId: v.id('conversationThreads'),
-		contactId: v.id('contacts'),
-	}),
-	handler: async (
-		ctx,
-		args
-	): Promise<{
-		inboundMessageId: Id<'inboundMessages'>;
-		threadId: Id<'conversationThreads'>;
-		contactId: Id<'contacts'>;
-	}> => {
+	// The same union `receiveMessage` returns — this action is the sealed-mail
+	// writer of that shape, and it forwards the mutation's result verbatim.
+	returns: inboundReceiveResultValidator,
+	handler: async (ctx, args): Promise<InboundReceiveResult> => {
 		const outcome = await openWithVault(
 			ctx,
 			args.armoredCiphertext,
@@ -267,7 +252,7 @@ export const decryptAndReceive = internalAction({
 			const restored = parseInnerMessage(outcome.innerMime);
 			if (restored.subject !== undefined) subject = restored.subject;
 			// The decrypted plaintext REPLACES the ciphertext body so the agent
-			// pipeline + the unified mirror consume real text (D3). Fail-safe: only
+			// pipeline + the unified mirror consume real text. Fail-safe: only
 			// replace when the restore yields a usable body — see usableRestoredBodies.
 			const bodies = usableRestoredBodies(restored);
 			if (bodies) {
@@ -283,22 +268,17 @@ export const decryptAndReceive = internalAction({
 			};
 		}
 
+		// Forwarded by DIFFERENCE, not field by field: whatever this action was
+		// given minus the two fields that are its own is exactly what the
+		// mutation takes, so a column added to `inboundMessageArgs` arrives here
+		// without an edit. Only the three values decryption may have replaced
+		// are named.
+		const { armoredCiphertext: _ciphertext, recipientAddress: _recipient, ...persisted } = args;
 		return await ctx.runMutation(internal.inbox.messages.receiveMessage, {
-			from: args.from,
-			to: args.to,
+			...persisted,
 			subject,
 			textBody,
 			htmlBody,
-			headers: args.headers,
-			messageId: args.messageId,
-			inReplyTo: args.inReplyTo,
-			references: args.references,
-			attachmentMeta: args.attachmentMeta,
-			timestamp: args.timestamp,
-			spfResult: args.spfResult,
-			dkimResult: args.dkimResult,
-			dmarcResult: args.dmarcResult,
-			dmarcPolicy: args.dmarcPolicy,
 			...sealedFlags,
 		});
 	},
@@ -317,7 +297,7 @@ async function openWithVault(
 	from: string
 ): Promise<OpenOutcome> {
 	// Load EVERY sealed private key for the address — the active key plus any
-	// retired decrypt-only keys kept across a rotation (E6) — and open the sealed
+	// retired decrypt-only keys kept across a rotation — and open the sealed
 	// envelope against all of them, so a message sealed to a now-rotated key still
 	// decrypts (the DKIM overlap-rotation property for decryption).
 	const sealedKeys = await ctx.runQuery(internal.e2ee.keys.getAddressPrivateKeysInternal, {

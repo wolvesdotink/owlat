@@ -14,11 +14,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-	assembleCapabilityLine,
-	CAPABILITY_LINE,
-	PLAINTEXT_CAPABILITY_LINE,
-} from '../commands/walker.js';
+import { assembleCapabilityLine } from '../commands/walker.js';
+
+const CAPABILITY_LINE = assembleCapabilityLine(true);
+const PLAINTEXT_CAPABILITY_LINE = assembleCapabilityLine(false);
 
 /** Capabilities each module declares, mirrored from the modules under test. */
 const MODULE_CAPABILITIES: readonly string[] = [
@@ -61,7 +60,7 @@ describe('CAPABILITY_LINE — exact advertised set (snapshot)', () => {
 				'UIDPLUS',
 				'UNSELECT',
 				'ENABLE',
-			].sort(),
+			].sort()
 		);
 	});
 
@@ -91,11 +90,7 @@ describe('CAPABILITY_LINE — module/line consistency', () => {
 	it('declares no advertised atom without an owning module or TLS-state rule', () => {
 		// Every atom on the TLS line is either IMAP4rev1, a module-declared cap, or
 		// AUTH=PLAIN (the only TLS-state atom that turns ON). Nothing else.
-		const allowed = new Set<string>([
-			'IMAP4rev1',
-			'AUTH=PLAIN',
-			...MODULE_CAPABILITIES,
-		]);
+		const allowed = new Set<string>(['IMAP4rev1', 'AUTH=PLAIN', ...MODULE_CAPABILITIES]);
 		for (const atom of atomsOf(CAPABILITY_LINE)) {
 			expect(allowed.has(atom)).toBe(true);
 		}

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { withSetup } from '~/__tests__/withSetup';
 
 // useUnsavedChanges imports `onBeforeRouteLeave`/`useRouter` from vue-router.
 // Capture the registered leave guard and a router push spy so we can drive the
@@ -24,7 +25,7 @@ describe('useUnsavedChanges navigation guard', () => {
 	});
 
 	it('allows navigation and never prompts while there are no unsaved changes', () => {
-		const guarded = useUnsavedChanges();
+		const guarded = withSetup(() => useUnsavedChanges()).result;
 		const next = vi.fn();
 
 		h.guard?.({ fullPath: '/somewhere' }, {}, next);
@@ -37,7 +38,7 @@ describe('useUnsavedChanges navigation guard', () => {
 	});
 
 	it('prompts and blocks navigation only when genuinely dirty', () => {
-		const guarded = useUnsavedChanges();
+		const guarded = withSetup(() => useUnsavedChanges()).result;
 		guarded.setHasChanges(true);
 		const next = vi.fn();
 
@@ -50,7 +51,7 @@ describe('useUnsavedChanges navigation guard', () => {
 	});
 
 	it('confirmDiscard clears the dirty state and navigates to the pending route', () => {
-		const guarded = useUnsavedChanges();
+		const guarded = withSetup(() => useUnsavedChanges()).result;
 		guarded.setHasChanges(true);
 		h.guard?.({ fullPath: '/target' }, {}, vi.fn());
 
@@ -64,7 +65,7 @@ describe('useUnsavedChanges navigation guard', () => {
 
 	it('confirmSave runs onSave, clears dirty, then navigates', async () => {
 		const onSave = vi.fn().mockResolvedValue(undefined);
-		const guarded = useUnsavedChanges({ onSave });
+		const guarded = withSetup(() => useUnsavedChanges({ onSave })).result;
 		guarded.setHasChanges(true);
 		h.guard?.({ fullPath: '/target' }, {}, vi.fn());
 
@@ -76,7 +77,7 @@ describe('useUnsavedChanges navigation guard', () => {
 	});
 
 	it('cancelNavigation dismisses the dialog and stays put', () => {
-		const guarded = useUnsavedChanges();
+		const guarded = withSetup(() => useUnsavedChanges()).result;
 		guarded.setHasChanges(true);
 		h.guard?.({ fullPath: '/target' }, {}, vi.fn());
 

@@ -8,13 +8,31 @@
  * can import the accessors directly via `~/utils/knowledgeEntryTypes`.
  */
 
-export type EntryType = 'fact' | 'decision' | 'event' | 'preference' | 'goal' | 'relationship' | 'action_item';
+export type EntryType =
+	| 'fact'
+	| 'decision'
+	| 'event'
+	| 'preference'
+	| 'goal'
+	| 'relationship'
+	| 'action_item';
 
 export type EntryTypeVariant = 'default' | 'success' | 'warning' | 'error' | 'neutral';
 
-export const ENTRY_TYPES: EntryType[] = ['fact', 'decision', 'event', 'preference', 'goal', 'relationship', 'action_item'];
+export const ENTRY_TYPES: EntryType[] = [
+	'fact',
+	'decision',
+	'event',
+	'preference',
+	'goal',
+	'relationship',
+	'action_item',
+];
 
-export const TYPE_CONFIG: Record<EntryType, { variant: EntryTypeVariant; icon: string; label: string }> = {
+export const TYPE_CONFIG: Record<
+	EntryType,
+	{ variant: EntryTypeVariant; icon: string; label: string }
+> = {
 	fact: { variant: 'default', icon: 'lucide:book-open', label: 'Fact' },
 	decision: { variant: 'warning', icon: 'lucide:gavel', label: 'Decision' },
 	event: { variant: 'neutral', icon: 'lucide:calendar', label: 'Event' },
@@ -35,22 +53,39 @@ export const SOURCE_CONFIG: Record<string, { icon: string; label: string }> = {
 	agent_extracted: { icon: 'lucide:bot', label: 'AI Extracted' },
 };
 
-export const entryTypeVariant = (type: string): EntryTypeVariant => TYPE_CONFIG[type as EntryType]?.variant ?? 'neutral';
-export const entryTypeIcon = (type: string): string => TYPE_CONFIG[type as EntryType]?.icon ?? 'lucide:circle';
-export const entryTypeLabel = (type: string): string => TYPE_CONFIG[type as EntryType]?.label ?? type;
+export const entryTypeVariant = (type: string): EntryTypeVariant =>
+	TYPE_CONFIG[type as EntryType]?.variant ?? 'neutral';
+export const entryTypeIcon = (type: string): string =>
+	TYPE_CONFIG[type as EntryType]?.icon ?? 'lucide:circle';
+export const entryTypeLabel = (type: string): string =>
+	TYPE_CONFIG[type as EntryType]?.label ?? type;
 
-export const sourceIcon = (source: string): string => SOURCE_CONFIG[source]?.icon ?? 'lucide:circle';
+export const sourceIcon = (source: string): string =>
+	SOURCE_CONFIG[source]?.icon ?? 'lucide:circle';
 export const sourceLabel = (source: string): string => SOURCE_CONFIG[source]?.label ?? source;
 
 // Mirrors the backend RELATION_TYPES tuple (schema/knowledge.ts) — the six typed
 // edges a relation between two entries can carry.
-export type RelationType = 'supports' | 'contradicts' | 'supersedes' | 'relates_to' | 'causes' | 'blocks';
+export type RelationType =
+	| 'supports'
+	| 'contradicts'
+	| 'supersedes'
+	| 'relates_to'
+	| 'causes'
+	| 'blocks';
 
-export const RELATION_TYPES: RelationType[] = ['supports', 'contradicts', 'supersedes', 'relates_to', 'causes', 'blocks'];
+export const RELATION_TYPES: RelationType[] = [
+	'supports',
+	'contradicts',
+	'supersedes',
+	'relates_to',
+	'causes',
+	'blocks',
+];
 
 // Single source of truth for how a relation type is rendered — badge classes +
 // human label — shared by the picker (entry detail page) and RelationsList.
-export const RELATION_CONFIG: Record<RelationType, { label: string; badgeClass: string }> = {
+const RELATION_CONFIG: Record<RelationType, { label: string; badgeClass: string }> = {
 	supports: { label: 'Supports', badgeClass: 'bg-success-subtle text-success' },
 	contradicts: { label: 'Contradicts', badgeClass: 'bg-error/10 text-error' },
 	supersedes: { label: 'Supersedes', badgeClass: 'bg-info/10 text-info' },
@@ -59,6 +94,7 @@ export const RELATION_CONFIG: Record<RelationType, { label: string; badgeClass: 
 	blocks: { label: 'Blocks', badgeClass: 'bg-error/10 text-error' },
 };
 
-export const relationLabel = (type: string): string => RELATION_CONFIG[type as RelationType]?.label ?? type;
+export const relationLabel = (type: string): string =>
+	RELATION_CONFIG[type as RelationType]?.label ?? type;
 export const relationBadgeClass = (type: string): string =>
 	RELATION_CONFIG[type as RelationType]?.badgeClass ?? 'bg-bg-surface text-text-secondary';

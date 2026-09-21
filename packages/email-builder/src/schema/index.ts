@@ -15,7 +15,7 @@ const schemas = new Map<string, BlockAttributeSchema>();
 /**
  * Register a block attribute schema.
  */
-export function registerSchema(schema: BlockAttributeSchema): void {
+function registerSchema(schema: BlockAttributeSchema): void {
 	schemas.set(schema.type, schema);
 }
 

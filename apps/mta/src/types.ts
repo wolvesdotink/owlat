@@ -26,6 +26,13 @@ export interface EmailJob {
 	workAttemptId?: string;
 	/** Durable predecessor→successor handoff promoted when a deferred job starts. */
 	deferHandoffId?: string;
+	/**
+	 * Stable identity of this job's defer chain, carried verbatim across every
+	 * re-enqueue. One retry ladder owns ONE handoff receipt slot keyed by this,
+	 * rather than a fresh four-day key per deferral. Absent on the first attempt
+	 * (the root derives it) and on jobs enqueued before chains existed.
+	 */
+	deferChainId?: string;
 	/** Recipient email address */
 	to: string;
 	/** Sender email address */
@@ -125,7 +132,7 @@ export interface EmailJobResult {
 	error?: string;
 	/**
 	 * Bounce classification. `'ambiguous'` is the post-DATA drop with no server
-	 * reply (AMBIGUOUS_TIMEOUT, W8): the message may already have been accepted,
+	 * reply (AMBIGUOUS_TIMEOUT): the message may already have been accepted,
 	 * so it is TERMINAL but must NOT be treated as a hard bounce — no recipient
 	 * suppression and no bounce-reputation penalties (see `dispatch/outcome.ts`).
 	 */
@@ -169,7 +176,7 @@ export interface InboundAuthVerdicts {
 	/** DMARC alignment input: the d= domain of the passing DKIM signature. */
 	dkimSigningDomain?: string;
 	/**
-	 * ARC chain-validation result (`cv=`, RFC 8617, Sealed Mail A5). Only `pass`
+	 * ARC chain-validation result (`cv=`, RFC 8617). Only `pass`
 	 * is eligible to rescue a DMARC fail. Absent on older MTA builds / no chain.
 	 */
 	arcCv?: string;
@@ -240,7 +247,23 @@ export interface MailboxInboundPayload extends InboundAuthVerdicts {
 /** Parsed inbound email content forwarded to Convex (AI-inbox `inbound.received`) */
 export interface InboundEmailPayload extends Pick<
 	InboundAuthVerdicts,
-	'spfResult' | 'dkimResult' | 'dmarcResult' | 'dmarcPolicy'
+	| 'spfResult'
+	| 'dkimResult'
+	| 'dmarcResult'
+	| 'dmarcPolicy'
+	// The alignment inputs ride along too: Convex decides whether a From with
+	// no published DMARC policy may still be scoped to the contact it claims,
+	// and that decision is only worth anything with the authenticated domains
+	// in hand.
+	| 'envelopeFromDomain'
+	| 'dkimSigningDomain'
+	// The ARC triple, for the same reason the personal-mailbox payload carries
+	// it: a trusted forwarder's valid seal RESCUES a DMARC fail (RFC 8617), and
+	// without these three the receiving side sees only the bare `fail` and
+	// refuses to file a forwarded message's attachments under its real sender.
+	| 'arcCv'
+	| 'arcSealerDomain'
+	| 'arcAttestsOriginalPass'
 > {
 	from: string;
 	to: string;
@@ -252,13 +275,26 @@ export interface InboundEmailPayload extends Pick<
 	messageId?: string;
 	inReplyTo?: string;
 	references?: string;
+	/**
+	 * The whole message as base64 RFC822 — the same field the personal-mailbox
+	 * payload has always carried. Convex seals it into `_storage`, scans it for
+	 * malware and re-extracts MIME parts from it, which is how attachment BYTES
+	 * become reachable on this route at all.
+	 *
+	 * Optional because it is additive on a live wire: an MTA that predates it
+	 * (or a DLQ event queued before the deploy) simply omits it, and the
+	 * receiving side stores the message with no raw blob rather than failing.
+	 */
+	rawBytesBase64?: string;
+	// Metadata only — the bytes ride `rawBytesBase64` above, not this array.
+	// `partIndex` is the MIME walk position `@owlat/shared/mailMime`'s
+	// `extractAttachmentAt` addresses a part by; without it a reader can only
+	// match on filename, which is ambiguous for two identically-named parts.
 	attachments: Array<{
 		filename?: string;
 		contentType: string;
 		size: number;
-		// Note: attachment content is NOT included in the webhook payload
-		// to avoid size issues. Attachments can be fetched separately via MTA API.
-		redisKey?: string;
+		partIndex: string;
 	}>;
 }
 
@@ -321,6 +357,13 @@ export interface IpPoolConfig {
 export interface DkimKeyConfig {
 	selector: string;
 	privateKey: string;
+	/**
+	 * Owning organization (the cross-tenant DKIM guard). When set, the key may only
+	 * sign for jobs from this organization — see {@link getDkimOptions}. Absent on
+	 * legacy keys (registered before ownership was recorded) and on env-seeded
+	 * keys, which stay usable by any org until re-registered with an owner.
+	 */
+	organizationId?: string;
 }
 
 // ============ Bounce Types ============
@@ -387,14 +430,14 @@ export interface BounceClassification {
 export type MetricOutcome = 'delivered' | 'bounced' | 'deferred' | 'rejected' | 'error';
 
 /*
- * DestinationProviderKey is NOT exported from this module — deliberately (D8).
+ * DestinationProviderKey is NOT exported from this module — deliberately.
  *
- * It used to be spelled out here as a second union, so a provider added to the
- * shared taxonomy widened the ramp's cell axis on the Convex side while the
- * MTA's own consumers — cell keys, warming dimensions, ISP metrics, profile
- * shaping — kept the old five and never failed to compile. A re-export would
- * have fixed the divergence but left ONE taxonomy behind TWO doors, with no
- * rule for which to use: the next person widening the taxonomy greps
+ * Spelling it out here as a second union means a provider added to the shared
+ * taxonomy widens the ramp's cell axis on the Convex side while the MTA's own
+ * consumers — cell keys, warming dimensions, ISP metrics, profile shaping — keep
+ * the old five and never fail to compile. A re-export would have fixed the
+ * divergence but left ONE taxonomy behind TWO doors, with no rule for which to
+ * use: the next person widening the taxonomy greps
  * `@owlat/shared/deliverabilityRouting` for its consumers and silently misses
  * every file that typed itself through `types.js`. So every MTA consumer now
  * imports the type from the one module that declares it, and this file only

@@ -51,30 +51,32 @@ const handleKeydown = (event: KeyboardEvent) => {
 				@input="grow"
 			/>
 
-			<button
+			<UiButton
 				v-if="streaming"
-				class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center bg-bg-surface border border-border-subtle text-text-secondary hover:text-text-primary transition-colors"
+				variant="secondary"
+				class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
 				:title="t('components.assistant.assistantComposer.stop')"
 				:aria-label="t('components.assistant.assistantComposer.stop')"
 				@click="emit('stop')"
 			>
 				<Icon name="lucide:square" class="w-4 h-4" />
-			</button>
-			<button
+			</UiButton>
+			<!-- Send is `.btn-primary` — monochrome by design. A solid terracotta
+			     fill pinned to the bottom of a full-height pane is the most saturated
+			     thing on the screen, and this one competed with the assistant's own
+			     accents (the sparkles glyph, the user bubble). UiButton also brings
+			     the disabled state, which used to be a third recipe written by hand. -->
+			<UiButton
 				v-else
+				variant="primary"
 				:disabled="!canSend"
-				class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors"
-				:class="
-					canSend
-						? 'bg-brand text-text-inverse hover:bg-brand/90'
-						: 'bg-bg-surface text-text-tertiary border border-border-subtle cursor-not-allowed'
-				"
+				class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
 				:title="t('common.send')"
 				:aria-label="t('common.send')"
 				@click="submit"
 			>
 				<Icon name="lucide:send" class="w-4 h-4" />
-			</button>
+			</UiButton>
 		</div>
 		<p class="text-[11px] text-text-tertiary mt-1.5 px-1">
 			{{ t('components.assistant.assistantComposer.hint') }}

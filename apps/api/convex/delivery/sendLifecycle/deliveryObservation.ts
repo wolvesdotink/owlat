@@ -88,7 +88,7 @@ export function reduceDeliveryObservation(
 		});
 	}
 	effects.push({ kind: 'daily_stats_bump', field: 'delivered', at });
-	// The per-cell, per-arm outcome counter (plan D5) belongs HERE, next to the
+	// The per-cell, per-arm outcome counter belongs HERE, next to the
 	// shipped delivered counter above it that it has to agree with — see
 	// `transportOutcomeEventForTransition` for why the transition map cannot
 	// emit it.

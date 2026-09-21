@@ -83,6 +83,7 @@ vi.mock('@owlat/smtp-client', () => ({
 
 import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
 import { sendProviderDispatch } from '../dispatch';
+import { fakeDispatchCtx } from './dispatchFixtures';
 import { _resetResendClientCacheForTests } from '../resend';
 import { _resetSmtpConfigCacheForTests } from '../smtp';
 import { _resetMandrillConfigCacheForTests } from '../mandrill';
@@ -111,13 +112,6 @@ function expectNoSecret(text: string): void {
 	for (const secret of SECRETS) {
 		expect(text).not.toContain(secret);
 	}
-}
-
-function fakeCtx(): Parameters<typeof sendProviderDispatch>[0] {
-	return {
-		runMutation: vi.fn(async () => true),
-		scheduler: { runAfter: vi.fn(async () => undefined) },
-	} as unknown as Parameters<typeof sendProviderDispatch>[0];
 }
 
 /**
@@ -200,7 +194,7 @@ describe('dispatch results and errors carry no sealed config', () => {
 				})
 		) as unknown as typeof fetch;
 
-		const dispatched = await sendProviderDispatch(fakeCtx(), 'mta', params);
+		const dispatched = await sendProviderDispatch(fakeDispatchCtx(), 'mta', params);
 
 		expect(dispatched.transportId).toBe('mta');
 		expectNoSecret(JSON.stringify(dispatched));
@@ -213,7 +207,7 @@ describe('dispatch results and errors carry no sealed config', () => {
 				async () => new Response('upstream rejected the request', { status: 400 })
 			) as unknown as typeof fetch;
 
-		const dispatched = await sendProviderDispatch(fakeCtx(), 'mta', params);
+		const dispatched = await sendProviderDispatch(fakeDispatchCtx(), 'mta', params);
 
 		expect(dispatched.result.success).toBe(false);
 		expectNoSecret(JSON.stringify(dispatched));
@@ -230,7 +224,7 @@ describe('dispatch results and errors carry no sealed config', () => {
 				new Response(init.body as string, { status: 400 })
 		) as unknown as typeof fetch;
 
-		const dispatched = await sendProviderDispatch(fakeCtx(), 'mandrill', params);
+		const dispatched = await sendProviderDispatch(fakeDispatchCtx(), 'mandrill', params);
 
 		expect(dispatched.result.success).toBe(false);
 		expectNoSecret(JSON.stringify(dispatched));
@@ -240,7 +234,7 @@ describe('dispatch results and errors carry no sealed config', () => {
 		// The host hands this value to third-party code by design (the seams plan's
 		// P3.1), which makes every OTHER surface the interesting one: the record the
 		// router holds, the result the Send row is written from, and the failure text.
-		const dispatched = await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
+		const dispatched = await sendProviderDispatch(fakeDispatchCtx(), SENDBIRD_KIND, params);
 
 		expect(dispatched.transportId).toBe('plugin.mail-pack.sendbird');
 		expectNoSecret(JSON.stringify(dispatched));
@@ -261,7 +255,7 @@ describe('dispatch results and errors carry no sealed config', () => {
 			throw new Error(`upstream rejected ${JSON.stringify(config.env)}`);
 		});
 
-		const dispatched = await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
+		const dispatched = await sendProviderDispatch(fakeDispatchCtx(), SENDBIRD_KIND, params);
 
 		expect(dispatched.result.success).toBe(false);
 		expectNoSecret(JSON.stringify(dispatched));
@@ -301,12 +295,12 @@ describe('dispatch results and errors carry no sealed config', () => {
 					: new Response(JSON.stringify({ success: true, id: 'x' }), { status: 200 })
 			) as unknown as typeof fetch;
 
-		await sendProviderDispatch(fakeCtx(), 'mta', params);
-		await sendProviderDispatch(fakeCtx(), 'resend', params);
-		await sendProviderDispatch(fakeCtx(), 'smtp', params);
-		await sendProviderDispatch(fakeCtx(), namedSendTransportId('smtp', 'backup'), params);
-		await sendProviderDispatch(fakeCtx(), 'mandrill', params);
-		await sendProviderDispatch(fakeCtx(), SENDBIRD_KIND, params);
+		await sendProviderDispatch(fakeDispatchCtx(), 'mta', params);
+		await sendProviderDispatch(fakeDispatchCtx(), 'resend', params);
+		await sendProviderDispatch(fakeDispatchCtx(), 'smtp', params);
+		await sendProviderDispatch(fakeDispatchCtx(), namedSendTransportId('smtp', 'backup'), params);
+		await sendProviderDispatch(fakeDispatchCtx(), 'mandrill', params);
+		await sendProviderDispatch(fakeDispatchCtx(), SENDBIRD_KIND, params);
 
 		expectNoSecret(written.join('\n'));
 	});

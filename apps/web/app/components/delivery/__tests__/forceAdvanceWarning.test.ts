@@ -26,7 +26,9 @@ beforeAll(() => {
 
 describe('force-advance control', () => {
 	it('emits an INTENT, never a write, and names the consequence beside the button', async () => {
-		const wrapper = mount(RampCellControls, { props: { cell: cellControl() } });
+		const wrapper = mount(RampCellControls, {
+			props: { cell: cellControl(), hasRelayConfigured: false },
+		});
 		await wrapper.find('[data-testid="ramp-control-force-advance"]').trigger('click');
 		// The component asks; it never writes. The page turns this into a dialog.
 		expect(wrapper.emitted('forceAdvance')).toHaveLength(1);
@@ -44,7 +46,7 @@ describe('force-advance control', () => {
 	 */
 	it('resyncs its number inputs when the selected cell changes', async () => {
 		const wrapper = mount(RampCellControls, {
-			props: { cell: cellControl({ ownShare: 0.25, pinnedShare: 0.4 }) },
+			props: { cell: cellControl({ ownShare: 0.25, pinnedShare: 0.4 }), hasRelayConfigured: false },
 		});
 		expect(
 			wrapper.find<HTMLInputElement>('[data-testid="ramp-control-force-input"]').element.value

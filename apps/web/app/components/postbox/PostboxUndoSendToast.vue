@@ -6,9 +6,9 @@ const { t } = useI18n();
 
 const { state, dismiss } = usePostboxUndoSend();
 const stack = usePostboxComposerStack();
-// Offline-queued sends arm this toast with a synthetic `outbox:` token
-// (adoption-gaps D8); undo for those un-queues on-device instead of asking
-// the server to cancel.
+// Offline-queued sends arm this toast with a synthetic `outbox:` token;
+// undo for those un-queues on-device instead of asking the server to
+// cancel.
 const offlineOutbox = usePostboxOfflineOutbox();
 const cancelPending = useBackendOperation(api.mail.drafts.cancelPendingSend, {
 	label: () => t('components.postbox.postboxUndoSendToast.undoSendOperation'),
@@ -75,31 +75,31 @@ async function handleUndo() {
 	const result = await cancelPending.run({ undoToken });
 	dismiss();
 	// Reopen the recovered draft so the user lands back in the editor.
-	if (result?.ok && result.draftId && mailboxId) {
-		stack.open({ mailboxId, draftId: result.draftId as Id<'mailDrafts'> });
+	if (result.ok && result.result.ok && mailboxId) {
+		stack.open({ mailboxId, draftId: result.result.draftId as Id<'mailDrafts'> });
 	}
 }
 </script>
 
 <template>
 	<Transition name="pbx-toast">
-	<div
-		v-if="state.visible && remainingSec > 0"
-		class="fixed bottom-4 left-4 bg-text-primary text-text-inverse rounded-md shadow-lg px-4 py-3 flex items-center gap-3 z-50"
-	>
-		<Icon name="lucide:send" class="w-4 h-4" />
-		<span class="text-sm">{{
-			isQueued
-				? t('components.postbox.postboxUndoSendToast.queued', { seconds: remainingSec })
-				: t('components.postbox.postboxUndoSendToast.sending', { seconds: remainingSec })
-		}}</span>
-		<button
-			type="button"
-			class="text-sm font-semibold text-brand hover:underline"
-			@click="handleUndo"
+		<div
+			v-if="state.visible && remainingSec > 0"
+			class="fixed bottom-4 left-4 bg-text-primary text-text-inverse rounded-md shadow-lg px-4 py-3 flex items-center gap-3 z-50"
 		>
-			{{ t('components.postbox.postboxUndoSendToast.undo') }}
-		</button>
-	</div>
+			<Icon name="lucide:send" class="w-4 h-4" />
+			<span class="text-sm">{{
+				isQueued
+					? t('components.postbox.postboxUndoSendToast.queued', { seconds: remainingSec })
+					: t('components.postbox.postboxUndoSendToast.sending', { seconds: remainingSec })
+			}}</span>
+			<button
+				type="button"
+				class="text-sm font-semibold text-brand hover:underline"
+				@click="handleUndo"
+			>
+				{{ t('components.postbox.postboxUndoSendToast.undo') }}
+			</button>
+		</div>
 	</Transition>
 </template>

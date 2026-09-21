@@ -25,10 +25,10 @@ import { authedQuery, authedMutation, featureGated } from '../lib/authedFunction
 export const chatQuery = featureGated(authedQuery, 'chat');
 export const chatMutation = featureGated(authedMutation, 'chat');
 
-export const CHANNEL_NAME_MAX = 80;
+const CHANNEL_NAME_MAX = 80;
 export const CHANNEL_DESC_MAX = 280;
-export const MESSAGE_TEXT_MAX = 8000;
-export const MENTION_PATTERN = /@([a-zA-Z0-9_\-.]{1,64})/g;
+const MESSAGE_TEXT_MAX = 8000;
+const MENTION_PATTERN = /@([a-zA-Z0-9_\-.]{1,64})/g;
 
 /**
  * Reserved author id for AI assistant replies (`@assistant`). It is NOT a valid
@@ -41,7 +41,7 @@ export const MENTION_PATTERN = /@([a-zA-Z0-9_\-.]{1,64})/g;
 export const ASSISTANT_AUTHOR_ID = 'system:assistant';
 
 /** The reserved @-handle that invokes the AI assistant in a room. */
-export const ASSISTANT_MENTION_HANDLE = 'assistant';
+const ASSISTANT_MENTION_HANDLE = 'assistant';
 /** Hard cap on how many people one membership-write call may touch. */
 export const CHAT_MEMBER_BATCH_MAX = 50;
 

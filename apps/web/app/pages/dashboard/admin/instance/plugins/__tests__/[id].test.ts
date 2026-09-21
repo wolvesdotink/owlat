@@ -17,7 +17,7 @@
  * middleware declaration ever goes missing.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 
 const routeId = ref('policy-pack');
@@ -44,8 +44,9 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	]),
 }));
 
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { i18nStubs } from '~/__tests__/i18n';
 import PluginDetailPage from '../[id].vue';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 const overview = ref<{
 	plugins: Array<Record<string, unknown>>;
@@ -65,8 +66,8 @@ beforeEach(() => {
 	overview.value = { plugins: [], orphaned: [] };
 	operationCall = 0;
 	overviewQueryArgs = undefined;
-	setPluginSettings.mockReset();
-	resetPluginSettings.mockReset();
+	setPluginSettings.mockReset().mockResolvedValue({ ok: false });
+	resetPluginSettings.mockReset().mockResolvedValue({ ok: false });
 	showToast.mockReset();
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
@@ -110,20 +111,15 @@ const confirmationStub = {
 const buttonStub = { template: '<button v-bind="$attrs"><slot/></button>' };
 
 function mountPage() {
-	return mount(PluginDetailPage, {
-		global: {
-			plugins: [createTestI18n()],
-			stubs: {
-				UiQueryBoundary: passthroughStub,
-				UiCard: passthroughStub,
-				UiEmptyState: emptyStateStub,
-				UiConfirmationDialog: confirmationStub,
-				UiButton: buttonStub,
-				UiBadge: true,
-				UiIconBox: true,
-				Icon: true,
-				NuxtLink: true,
-			},
+	return mountDashboardPage(PluginDetailPage, {
+		stubs: {
+			UiQueryBoundary: passthroughStub,
+			UiCard: passthroughStub,
+			UiEmptyState: emptyStateStub,
+			UiConfirmationDialog: confirmationStub,
+			UiButton: buttonStub,
+			UiBadge: true,
+			NuxtLink: true,
 		},
 	});
 }
@@ -160,7 +156,7 @@ describe('plugin detail — orphaned clear is confirmation-gated', () => {
 	});
 
 	it('reports a purge, not a reset-to-defaults, on the orphan path', async () => {
-		resetPluginSettings.mockResolvedValue({ values: {}, secretsSet: {} });
+		resetPluginSettings.mockResolvedValue({ ok: true, result: { values: {}, secretsSet: {} } });
 		const wrapper = mountPage();
 		await clickButtonByText(wrapper, 'Clear residual settings');
 		await wrapper.find('[data-testid="confirm"]').trigger('click');
@@ -192,8 +188,8 @@ describe('plugin detail — save seeds from the returned redacted state', () => 
 
 	it('keeps an edit typed after save when a stale live-query value re-emits', async () => {
 		setPluginSettings.mockResolvedValue({
-			values: { endpoint: 'https://saved.example' },
-			secretsSet: {},
+			ok: true,
+			result: { values: { endpoint: 'https://saved.example' }, secretsSet: {} },
 		});
 		const wrapper = mountPage();
 

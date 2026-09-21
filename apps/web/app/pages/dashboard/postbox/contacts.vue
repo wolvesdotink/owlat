@@ -68,14 +68,14 @@ async function submit() {
 		displayName: form.value.displayName.trim() || undefined,
 		organization: form.value.organization.trim() || undefined,
 	});
-	if (result !== undefined) editOpen.value = false;
+	if (result.ok) editOpen.value = false;
 }
 
 // Removing a contact is no longer silent: it confirms with a toast that offers
 // an immediate Undo, which re-adds the contact from the captured details.
 async function removeContact(c: MailContact) {
 	const result = await remove(c._id);
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(
 		t('dashboard.postbox.contacts.removedToast', { contact: c.displayName || c.email }),
 		'success',
@@ -134,7 +134,7 @@ function initial(c: { displayName?: string; email: string }) {
 
 		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
 			<div v-if="isLoading" class="flex justify-center py-12">
-				<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+				<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
 			</div>
 			<div v-else-if="filtered.length === 0" class="text-center py-12">
 				<Icon name="lucide:users" class="w-10 h-10 mx-auto text-text-tertiary" />

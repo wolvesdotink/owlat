@@ -27,6 +27,11 @@ Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 const stubs = {
 	Icon: { template: '<i />' },
 	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+	UiEmptyState: true,
+	// The sending-only receiving-mode choice — suppressed in the tracking context,
+	// but the render function resolves it either way. Exercised by
+	// externalReceiving.test.ts.
+	DomainsReceivingModeChoice: true,
 };
 
 // The section's Nuxt data/UI composables, stubbed inert so it mounts offline.
@@ -170,7 +175,14 @@ describe('X2 — submit + tracking-context behaviour', () => {
 		// Same { domain, returnPathHost } shape as the sending flow; tracking has no
 		// return path (the Advanced section is suppressed), so returnPathHost is null.
 		expect(w.emitted('submit')![0]).toEqual([
-			{ domain: 'track.example.com', returnPathHost: null },
+			{
+				domain: 'track.example.com',
+				returnPathHost: null,
+				// The tracking flow never asks the receiving question, so the payload
+				// carries the historical default and nothing downstream changes.
+				receivingMode: 'owlat',
+				externalReceivingProvider: null,
+			},
 		]);
 	});
 

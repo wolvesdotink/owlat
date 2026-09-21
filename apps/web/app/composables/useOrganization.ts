@@ -126,12 +126,28 @@ let watchSetUp = false;
 const ORGANIZATION_SYNC_TIMEOUT_MS = 5_000;
 
 /**
+ * The message catalog, resolved where one exists.
+ *
+ * `useOrganization` is called from route middleware (the `admin`-gated pages'
+ * guard reads `currentMemberRole` / permission flags) as well as from page
+ * setups, and `useI18n()` THROWS outside a component instance — which would 500
+ * every `admin`-gated route. Middleware only reads org state; it never reaches a
+ * branch that produces user copy, so outside a component the fallback degrades a
+ * key to itself rather than taking the app down. Mirrors `useAuth.ts`.
+ */
+export function organizationTranslator(): (key: string) => string {
+	if (!getCurrentInstance()) return (key: string) => key;
+	const { t } = useI18n();
+	return (key: string) => t(key);
+}
+
+/**
  * Composable for managing BetterAuth organization membership.
  * Uses shared state (useState) so all callers share the same data and
  * only one set of HTTP requests is made per organization switch.
  */
 export function useOrganization() {
-	const { t } = useI18n();
+	const t = organizationTranslator();
 	// BetterAuth hooks — called fresh each time; they return the same internal
 	// reactive state so multiple calls are cheap. Caching at module level broke
 	// reactivity across HMR and could prevent isPending from resolving.
@@ -142,6 +158,16 @@ export function useOrganization() {
 	const members = useState<OrganizationMember[]>('org-members', () => []);
 	const invitations = useState<OrganizationInvitation[]>('org-invitations', () => []);
 	const isLoadingMembers = useState<boolean>('org-loading-members', () => false);
+	// Whether the members fetch has SETTLED at least once this session.
+	//
+	// `isLoadingMembers` starts false and only turns true inside `fetchMembers`,
+	// which a watcher fires when `organizationId` arrives from BetterAuth — a
+	// separate async request. On a cold load there is a window where the session
+	// is known, the role is not, and nothing is "loading": the admin guard read
+	// that as "loaded, and not an admin" and bounced owners off every admin deep
+	// link (a refresh or a bookmark; in-app navigation was fine because the role
+	// was already cached). Guards must wait on this, not on `isLoadingMembers`.
+	const hasResolvedMembers = useState<boolean>('org-members-resolved', () => false);
 	// Non-null once a members/invitations fetch fails, so the team page can render
 	// an explicit error state (with a retry) instead of an ambiguous empty list.
 	const membersError = useState<string | null>('org-members-error', () => null);
@@ -154,6 +180,22 @@ export function useOrganization() {
 	});
 
 	const organizationId = computed(() => organization.value?.id ?? null);
+
+	/**
+	 * The active-organization request failed.
+	 *
+	 * It settles with an error rather than an organization when the session still
+	 * names an organization the user is no longer in — better-auth only clears
+	 * `activeOrganizationId` when a member removes THEMSELVES, so an admin
+	 * removing someone leaves that person's open tab pointing at a `FORBIDDEN`
+	 * — and on any transient failure, such as the backend restarting mid-update.
+	 *
+	 * That is a settled answer: no organization is coming, so no role is coming
+	 * either. Callers that wait for the role must stop waiting, or the guards
+	 * stall for their whole timeout on every navigation and every page that folds
+	 * this into its loading flag spins forever.
+	 */
+	const activeOrganizationError = computed(() => activeOrgRef.value?.error ?? null);
 
 	const isLoading = computed(() => {
 		// Only track our own loading state (members/invitations fetch).
@@ -281,6 +323,9 @@ export function useOrganization() {
 				membersError.value = t('shared.useOrganization.errors.membersLoadFailed');
 			} finally {
 				isLoadingMembers.value = false;
+				// Settled — success or failure. A failed fetch must still release
+				// the guards, or an unreachable backend wedges every admin route.
+				hasResolvedMembers.value = true;
 				inflightFetch = null;
 				inflightOrgId = null;
 			}
@@ -354,7 +399,7 @@ export function useOrganization() {
 				domain: mailbox.domain,
 				displayName: mailbox.displayName,
 			});
-			if (reserved === undefined) {
+			if (!reserved.ok) {
 				const wrapped = new Error(t('shared.useOrganization.errors.mailboxNotReserved'));
 				(wrapped as Error & { invitationSent?: boolean }).invitationSent = true;
 				throw wrapped;
@@ -525,7 +570,7 @@ export function useOrganization() {
 		}
 
 		const allowed = await throttleResend({ invitationId: invitation.id });
-		if (allowed === undefined) {
+		if (!allowed.ok) {
 			// Throttled (or the throttle mutation failed) — `run` already toasted.
 			return false;
 		}
@@ -634,6 +679,11 @@ export function useOrganization() {
 					members.value = [];
 					invitations.value = [];
 					currentMemberRole.value = null;
+					// Re-arm: the next organization's role is unknown again. Leaving
+					// this true let a sign-out-then-sign-in in the same tab reuse the
+					// previous session's "resolved", which puts the admin-deep-link
+					// bounce straight back.
+					hasResolvedMembers.value = false;
 				}
 			},
 			{ immediate: true }
@@ -650,6 +700,8 @@ export function useOrganization() {
 		currentMemberRole,
 		isLoading,
 		isLoadingMembers,
+		hasResolvedMembers,
+		activeOrganizationError,
 		membersError,
 
 		// Permission checks

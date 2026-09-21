@@ -87,10 +87,9 @@ export function categoryToHttpStatus(category: OperationErrorCategory): number {
 /**
  * Narrow an arbitrary string to a known category.
  */
-export function isOperationErrorCategory(value: unknown): value is OperationErrorCategory {
+function isOperationErrorCategory(value: unknown): value is OperationErrorCategory {
 	return (
-		typeof value === 'string' &&
-		(OPERATION_ERROR_CATEGORIES as readonly string[]).includes(value)
+		typeof value === 'string' && (OPERATION_ERROR_CATEGORIES as readonly string[]).includes(value)
 	);
 }
 
@@ -99,7 +98,7 @@ export function isOperationErrorCategory(value: unknown): value is OperationErro
  * plus a string `message`)? Used by the Operation modules to tell a categorized
  * backend throw apart from an opaque transport/runtime failure.
  */
-export function isOperationError(value: unknown): value is OperationError {
+function isOperationError(value: unknown): value is OperationError {
 	if (value === null || typeof value !== 'object') return false;
 	const candidate = value as Record<string, unknown>;
 	return (

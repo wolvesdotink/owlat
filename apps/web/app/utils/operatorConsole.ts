@@ -9,10 +9,6 @@
 
 import { formatPercentage } from '~/utils/formatters';
 
-export type AbuseStatus = 'clean' | 'warned' | 'suspended' | 'banned';
-export type RiskLevel = 'low' | 'medium' | 'high' | 'critical' | string;
-export type ScanLevel = 'safe' | 'suspicious' | 'blocked' | string;
-
 /** UiBadge variant for an org abuse status. */
 export function abuseStatusVariant(
 	status: string | undefined

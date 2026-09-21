@@ -1,5 +1,7 @@
+import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
+import { uiLayerIconNames } from './scripts/uiLayerIcons';
 
 // Local default endpoints, single-sourced so the CSP connect-src and the
 // runtimeConfig fallbacks (and the PostHog plugin) can't drift.
@@ -27,6 +29,17 @@ export default defineNuxtConfig({
 	},
 
 	nitro: {
+		// The offline app shell service worker (service-worker/sw.js → /sw.js).
+		// It is NOT in public/ so that this one line can keep it out of a build:
+		// the desktop bundle (`generate:desktop`) is served from a Tauri custom
+		// scheme where service workers do not apply, so it must never contain the
+		// file — and the client plugin refuses to register there anyway.
+		// `maxAge: 0` is deliberate: a long-cached worker script is a deploy that
+		// can never be picked up.
+		publicAssets:
+			process.env['OWLAT_DESKTOP'] === 'true'
+				? []
+				: [{ dir: fileURLToPath(new URL('./service-worker', import.meta.url)), maxAge: 0 }],
 		// Exclude papaparse from the server bundle — it's client-only and its
 		// blob URL code breaks Rollup's parser during the Nitro build.
 		externals: {
@@ -82,18 +95,46 @@ export default defineNuxtConfig({
 				// previews and inline component styles legitimately need it.
 				// Dropped from script-src to remove the in-page XSS escalation
 				// path. Bundled Nuxt scripts load via `<script src>` and are
-				// covered by 'self' / 'https:'. If your build emits an inline
-				// script (e.g. color-mode FOUC prevention), enable
-				// nuxt-security nonce mode or move it to a static file.
-				// Desktop builds keep 'unsafe-inline': the dev SPA shell boots via
-				// inline scripts (WebKit blocks them without it → blank window), and
-				// the packaged app's enforcement boundary is tauri.conf.json's CSP,
-				// which allows inline scripts anyway.
+				// covered by 'self' — no script is ever fetched from a third
+				// party (icons are bundled via @nuxt/icon's clientBundle, fonts
+				// ride font-src). Keeping 'https:' here would let an injected
+				// <script src="https://attacker…"> through and void the policy.
+				// The SPA shell DOES emit inline scripts, and one of them is
+				// load-bearing: Nitro renders `window.__NUXT__.config` per request
+				// (that is how a self-hosted deployment's NUXT_PUBLIC_* reach the
+				// browser at all), and `nuxt/dist/app/nuxt.js` reads
+				// `payload.config.app` straight after. Block it and the app never
+				// mounts — a blank window, not a degraded one. The importmap and the
+				// colour-mode FOUC script are inline too.
+				// They are served WITH a nonce; the nonce reaches this header only
+				// because of the literal `'nonce-{{nonce}}'` source below, which
+				// nuxt-security substitutes per request (runtime/nitro/plugins/
+				// 50-updateCsp.js). Replacing this array without that token silently
+				// un-nonces the policy while the tags keep their nonce attribute,
+				// which is exactly how every published web image up to 0.4.5 shipped
+				// a blank app. Keep the token whenever you touch this line.
+				// Desktop builds keep 'unsafe-inline' instead: `generate:desktop`
+				// prerenders (hash mode, no per-request nonce), WebKit blocks the dev
+				// SPA shell's inline scripts without it → blank window, and the
+				// packaged app's enforcement boundary is tauri.conf.json's CSP.
 				'style-src': ["'self'", 'https:', "'unsafe-inline'"],
+				// The offline app shell worker (/sw.js). Same value on both branches
+				// — it is only ever registered from this origin, and the desktop
+				// build ships no worker at all. Stated explicitly rather than left to
+				// the worker-src → script-src fallback, so tightening script-src (or
+				// adding a default-src) can never silently stop the worker from
+				// registering, which would degrade to a blank offline window.
+				'worker-src': ["'self'"],
 				'script-src':
 					process.env['OWLAT_DESKTOP'] === 'true'
 						? ["'self'", 'https:', "'unsafe-inline'"]
-						: ["'self'", 'https:'],
+						: ["'self'", "'nonce-{{nonce}}'"],
+				// Every iframe in the app is srcdoc-based (email previews, postbox
+				// bodies, archives, share pages — all sanitized + sandboxed), so
+				// remote frame loads are never legitimate. Local-scheme frames
+				// (about:srcdoc) are exempt from frame-src and inherit this
+				// document's policy, so this only bars future external embeds.
+				'frame-src': ["'none'"],
 				// Desktop builds (`OWLAT_DESKTOP=true`, produced by `generate:desktop`)
 				// connect to arbitrary self-hosted instances chosen at runtime, so the
 				// build-time single-URL allowlist is wrong for them — allow any https/wss
@@ -151,21 +192,49 @@ export default defineNuxtConfig({
 		},
 
 		corsHandler: {
-			origin: [
-				process.env['NUXT_PUBLIC_SITE_URL'] || DEFAULT_SITE_URL,
-				// Desktop app webview origins — needed so a packaged desktop client
-				// can reach this instance's public `/api/instance-info` discovery
-				// endpoint cross-origin. (Auth itself goes to the Convex site URL and
-				// is governed by BetterAuth trustedOrigins, not this handler.)
-				'tauri://localhost',
-				'https://tauri.localhost',
-			].filter(Boolean) as string[],
+			// Desktop app webview origins only. The browser app calls /api/* from
+			// its own origin, where CORS is never consulted, so listing the site
+			// URL here achieved nothing — and being read at build time it was
+			// baked to the localhost default in every published image anyway,
+			// which quietly allow-listed http://localhost:3000 with credentials.
+			// (Auth itself goes to the Convex site URL and is governed by
+			// BetterAuth trustedOrigins, not this handler.)
+			origin: ['tauri://localhost', 'https://tauri.localhost'],
 			methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
 			credentials: true,
 		},
 
-		// rateLimiter and requestSizeLimiter removed — Workers are stateless,
-		// use Cloudflare WAF rate limiting rules instead (configured in dashboard).
+		// OFF, explicitly. Omitting the key does NOT disable these — nuxt-security
+		// merges its own defaults, so leaving them out shipped a 150-request /
+		// 5-minute cap on EVERY Nitro route in every self-hosted build, which is
+		// the opposite of what the previous comment here claimed. It is not a
+		// theoretical cost: the limiter's 429 on `/api/auth/*` reads to the app as
+		// "no session", so a busy tab signs the user out and lands them on the
+		// login page. Worse behind a reverse proxy or NAT, where every user shares
+		// one bucket.
+		//
+		// It also bought less than it looked: the bucket keyed on the LEFTMOST
+		// X-Forwarded-For value, so anyone could set that header and skip it,
+		// while a real user behind a proxy could not.
+		//
+		// What remains in front of each route on this tier: `/api/auth/**` has
+		// BetterAuth's limiter (`convex/auth/auth.ts`, on outside dev) — itself
+		// one shared bucket behind a proxy, since this proxy deliberately
+		// overwrites XFF with the peer IP; `/api/setup/*` a 238-bit timing-safe
+		// token; `/api/self-update` and `/api/internal/*` the instance secret;
+		// `/api/system/*` and `/api/delivery/*` an admin check. The gap worth
+		// knowing about is the unauthenticated `.well-known` handlers, which run
+		// Convex QUERIES that `publicRateLimit` (HTTP actions only) does not
+		// cover — a per-route limit or a proxy rule is the right home for that,
+		// not a blanket cap that logs legitimate users out.
+		rateLimiter: false,
+		// requestSizeLimiter stays ON (module default: 2 MB, 8 MB multipart). It is
+		// the only body cap in front of the auth proxy, which buffers the whole
+		// request with readRawBody before forwarding, and nothing legitimate on
+		// this tier comes close — env/flag JSON and credentials; real uploads go
+		// straight to Convex. A chunked body slips past a content-length check, so
+		// it is partial cover, but partial beats none on a route that buffers into
+		// memory.
 
 		xssValidator: {},
 
@@ -182,6 +251,15 @@ export default defineNuxtConfig({
 		// browser's Origin header verbatim.
 		'/api/auth/**': { csurf: false },
 
+		// Machine-to-machine control-plane routes authenticate with the
+		// X-Instance-Secret header, not the session cookie, so nuxt-csurf's
+		// cookie+header pair can never be satisfied and every POST would 403
+		// ("CSRF Cookie not found"). Safe to exempt — there is no browser
+		// credential to forge: a cross-site attacker without INSTANCE_SECRET is
+		// rejected by requireInstanceSecret regardless of CSRF.
+		'/api/self-update': { csurf: false },
+		'/api/internal/**': { csurf: false },
+
 		// IA restructure: the Mail + Campaigns sidebar sections merged into one
 		// "Send" section and the email surfaces moved under /dashboard/send/*.
 		// Redirect the old paths so bookmarks and deep links keep working. Splat
@@ -195,6 +273,15 @@ export default defineNuxtConfig({
 		// standalone list is gone; send its old deep link to the command center.
 		'/dashboard/campaigns/ab-results': { redirect: '/dashboard/campaigns' },
 
+		// The retired "All campaigns" list, the reports index and the old inbox
+		// "channels" feed were page components whose whole body was a
+		// navigateTo(). Nitro carries the query string over, so a
+		// /dashboard/campaigns/all?status=scheduled deep link still lands on the
+		// matching command-center pill.
+		'/dashboard/campaigns/all': { redirect: '/dashboard/campaigns' },
+		'/dashboard/campaigns/reports': { redirect: '/dashboard/campaigns?status=sent' },
+		'/dashboard/inbox/channels': { redirect: '/dashboard/inbox/activity' },
+
 		// NOTE: pre-release `/dashboard/settings/*` and `/dashboard/delivery/*` URLs
 		// intentionally 404 — the app never shipped, so no compatibility redirects
 		// are kept. Do not add `/dashboard/admin/**` redirect rules here:
@@ -205,13 +292,36 @@ export default defineNuxtConfig({
 
 	icon: {
 		serverBundle: 'local',
+		// Render icons as inline <svg> instead of @nuxt/icon's default CSS mode,
+		// which paints an icon by inserting a <style> element at runtime whose
+		// rule masks a data: URL. Inside the Tauri webview that chain has two
+		// extra links that can break it — this app's CSP is layered under Tauri's
+		// own, and the webview is WebKit, whose mask handling differs from the
+		// Chromium one every dev session runs against — and when either breaks,
+		// the icon is an empty box with nothing in the console. Inline SVG needs
+		// nothing beyond the icon data already in the bundle below.
+		mode: 'svg',
 		// The desktop build (`generate:desktop`) is served statically inside the
 		// Tauri webview — there is no Nitro server, so the default
-		// /api/_nuxt_icon endpoint never exists and every icon request fails.
-		// Bundling all statically-referenced icons into the client JS makes them
-		// render offline in the desktop app (and skips the fetch on the web too).
+		// /api/_nuxt_icon endpoint never exists, and an icon that is not in the
+		// client bundle falls back to fetching api.iconify.design, which a
+		// desktop user (or a firewalled one) cannot reach. Everything referenced
+		// anywhere in the app therefore has to be bundled.
 		clientBundle: {
-			scan: true,
+			// The packages/ui layer, which the scan below cannot reach — see
+			// scripts/uiLayerIcons.ts for why it needs its own reader.
+			icons: uiLayerIconNames(),
+			scan: {
+				// `ts` is added to @nuxt/icon's defaults because plenty of this app's
+				// icon names live in plain modules (nav tables, status → icon maps,
+				// composables) rather than in the component that renders them. They
+				// were silently missing from the bundle: an icon the scan does not see
+				// is not a build error, the module just leaves it to the runtime — and
+				// on the desktop the runtime has nowhere to fetch it from.
+				// `scripts/check-icon-names.sh` fails the lint if a referenced icon is
+				// unresolvable or sits in a file outside these globs.
+				globInclude: ['**/*.{vue,jsx,tsx,ts,md,mdc,mdx,yml,yaml}'],
+			},
 			sizeLimitKb: 512,
 		},
 	},
@@ -288,7 +398,11 @@ export default defineNuxtConfig({
 		dirs: ['composables/postbox', 'composables/chat'],
 	},
 
-	css: ['@owlat/email-builder/styles', '@owlat/email-previewer/styles', '~/assets/css/main.css'],
+	css: [
+		'@owlat/email-builder/styles',
+		'@owlat/email-builder/preview-styles',
+		'~/assets/css/main.css',
+	],
 
 	vite: {
 		plugins: [tailwindcss() as PluginOption],
@@ -321,17 +435,34 @@ export default defineNuxtConfig({
 			// auth) so the SPA reads its backend from the active workspace at runtime
 			// instead of the build-time NUXT_PUBLIC_CONVEX_URL.
 			isDesktopBuild: process.env['OWLAT_DESKTOP'] === 'true',
+			// Offline app shell kill switch (`NUXT_PUBLIC_OFFLINE_SHELL=false`).
+			// ON by default: the service worker only ever caches the SPA shell and
+			// content-hashed build assets, and answers navigations network-first.
+			// Overlaid at startup like every other NUXT_PUBLIC_* value, so an
+			// operator can flip it with env; no rebuild needed.
+			offlineShell: process.env['NUXT_PUBLIC_OFFLINE_SHELL'] !== 'false',
 			// Deployment mode — 'selfhost' or 'hosted'
 			// Drives the onboarding banner, hides hosted-only UI (billing tabs,
 			// upgrade prompts), and gates the in-app update feature.
-			deploymentMode: process.env['OWLAT_DEPLOYMENT_MODE'] || 'selfhost',
+			// Every name here is the one Nitro maps onto public runtime config at
+			// STARTUP: NUXT_PUBLIC_ + CONSTANT_CASE(key). This file is evaluated
+			// when the IMAGE IS BUILT, so a key that reads any other name is
+			// frozen at its build-time value in every published image and no
+			// amount of operator env will move it. That is not theoretical: these
+			// five read OWLAT_* until v0.4.5, so `owlatVersion` was "dev" in every
+			// release — which made the admin page's update check short-circuit and
+			// hid the in-app updater from every self-hosted install.
+			deploymentMode: process.env['NUXT_PUBLIC_DEPLOYMENT_MODE'] || 'selfhost',
 			// First-run setup mode — when true the global setup middleware
 			// redirects all routes to /setup/* until the wizard completes.
-			setupMode: process.env['OWLAT_SETUP_MODE'] === 'true',
-			// Build-time version metadata (for Settings → System)
-			owlatVersion: process.env['OWLAT_VERSION'] || 'dev',
-			owlatGitSha: process.env['OWLAT_GIT_SHA'] || 'unknown',
-			owlatBuildDate: process.env['OWLAT_BUILD_DATE'] || 'unknown',
+			setupMode: process.env['NUXT_PUBLIC_SETUP_MODE'] === 'true',
+			// Version metadata (for Settings → System). A property of the IMAGE,
+			// not of the deployment: the web Dockerfile's runtime stage exports
+			// these, and compose must not override them or the app would report a
+			// version the running image does not have.
+			owlatVersion: process.env['NUXT_PUBLIC_OWLAT_VERSION'] || 'dev',
+			owlatGitSha: process.env['NUXT_PUBLIC_OWLAT_GIT_SHA'] || 'unknown',
+			owlatBuildDate: process.env['NUXT_PUBLIC_OWLAT_BUILD_DATE'] || 'unknown',
 			// PostHog product analytics
 			posthogApiKey: process.env['NUXT_PUBLIC_POSTHOG_API_KEY'] || '',
 			posthogHost: process.env['NUXT_PUBLIC_POSTHOG_HOST'] || POSTHOG_DEFAULT_HOST,

@@ -46,13 +46,13 @@ const { run: restoreContact } = useBackendOperation(api.contacts.sunset.restoreS
 
 const savePolicy = async () => {
 	const saved = await setPolicy({ ...policyForm });
-	if (saved !== undefined)
+	if (saved.ok)
 		showNotification(t('components.audience.suppressionSunsetControls.policySavedToast'));
 };
 
 const toggleExemption = async (contactId: Id<'contacts'>, exempt: boolean) => {
 	const changed = await setExemption({ contactId, exempt });
-	if (changed !== undefined)
+	if (changed.ok)
 		showNotification(
 			exempt
 				? t('components.audience.suppressionSunsetControls.exemptedToast')
@@ -62,7 +62,7 @@ const toggleExemption = async (contactId: Id<'contacts'>, exempt: boolean) => {
 
 const restore = async (contactId: Id<'contacts'>) => {
 	const result = await restoreContact({ contactId });
-	if (result?.outcome === 'restored')
+	if (result.ok && result.result?.outcome === 'restored')
 		showNotification(t('components.audience.suppressionSunsetControls.restoredToast'));
 };
 </script>

@@ -1,6 +1,6 @@
 /**
  * Recovery-kit assembly — the PURE core of the Sealed Mail key-recovery kit
- * (plan 2026-07-11, locked decision D7: RECOVERY KIT ONLY, no admin escrow).
+ * (RECOVERY KIT ONLY, no admin escrow).
  *
  * A recovery kit is the armored OpenPGP PRIVATE key for one address plus
  * plain-language instructions for keeping it safe and using it to restore access
@@ -17,7 +17,7 @@
  */
 
 /** The inputs a recovery kit is built from (all PUBLIC except the private key itself). */
-export interface RecoveryKitInput {
+interface RecoveryKitInput {
 	/** The email address the key belongs to (`localpart@domain`). */
 	address: string;
 	/** The uppercase-hex OpenPGP fingerprint of the key. */

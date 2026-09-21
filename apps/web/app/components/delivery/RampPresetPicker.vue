@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * PER-STREAM AGGRESSIVENESS (plan D9, D14).
+ * PER-STREAM AGGRESSIVENESS.
  *
  * NONE OF THE THREE IS LABELLED "RECOMMENDED". Each is described by what it
  * costs and what it buys, and the deployment's default is stated separately as a
@@ -8,7 +8,7 @@
  * signal is genuinely the weaker one, which is a statement about evidence rather
  * than about nerve, and the copy says exactly that.
  *
- * SAY THE QUIET PART (plan D14). On a standalone deployment the two faster
+ * SAY THE QUIET PART. On a standalone deployment the two faster
  * paces run the reference-arm constants with no reference arm to corroborate
  * them, so each of them carries the sentence that says so. They stay selectable
  * — this is an operator's deployment and the trade-off is theirs to take — but
@@ -33,8 +33,8 @@ const props = defineProps<{
 	/**
 	 * Whether the deployment has a reference arm configured. Stated by the view
 	 * object the parent renders from (`RampControlsView.referenceTransportId`)
-	 * rather than inferred from the pace, so the D14 copy below depends on the
-	 * fact instead of on a constant that happens to correlate with it.
+	 * rather than inferred from the pace, so the copy below depends on the fact
+	 * instead of on a constant that happens to correlate with it.
 	 */
 	hasReferenceArm: boolean;
 	busy?: boolean;

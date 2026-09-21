@@ -2,9 +2,9 @@
 import { api } from '@owlat/api';
 
 /**
- * Sealed Mail settings (E5, flag `sealedMail`). The org-level sealing policy
- * (locked decision D2): `auto` seals whenever every recipient can receive sealed
- * mail; `ask` keeps sealing available but never seals automatically; `off` never
+ * Sealed Mail settings (flag `sealedMail`). The org-level sealing policy:
+ * `auto` seals whenever every recipient can receive sealed mail; `ask` keeps
+ * sealing available but never seals automatically; `off` never
  * seals. Owner/admin only — the backend floor is `settings:manage`, and the
  * `admin` route middleware below redirects a non-admin to /dashboard before this
  * page renders, so the page itself never has to say "owners and admins only".
@@ -14,7 +14,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.instance.sealedMail.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -72,7 +72,7 @@ async function choose(value: SealPolicy) {
 	const previous = policy.value;
 	policy.value = value;
 	const result = await saveSettings({ sealPolicy: value });
-	if (result === undefined) policy.value = previous;
+	if (!result.ok) policy.value = previous;
 }
 
 async function setInboundTlsRequired(value: boolean) {
@@ -80,10 +80,10 @@ async function setInboundTlsRequired(value: boolean) {
 	const previous = isInboundTlsRequired.value;
 	isInboundTlsRequired.value = value;
 	const result = await saveSettings({ isInboundTlsRequired: value });
-	if (result === undefined) isInboundTlsRequired.value = previous;
+	if (!result.ok) isInboundTlsRequired.value = previous;
 }
 
-// ── Recovery kit (E6, locked decision D7). The armored private key + plain-words
+// ── Recovery kit. The armored private key + plain-words
 // instructions for one address — the only sanctioned private-key egress, and the
 // import path to restore access after a rebuild. Owner/admin only.
 const kitAddress = ref('');
@@ -103,18 +103,18 @@ async function downloadKit() {
 	const address = kitAddress.value.trim();
 	if (!address) return;
 	const kit = await exportKit({ address });
-	if (kit === undefined) return; // operation error already surfaced
-	if (kit === null) {
+	if (!kit.ok) return; // operation error already surfaced
+	if (kit.result === null) {
 		showToast(t('dashboard.admin.instance.sealedMail.toasts.noKeyForAddress'), 'error');
 		return;
 	}
 	// Bundle the instructions and the private key into one downloadable file.
-	const contents = `${kit.instructions}\n\n${kit.privateKeyArmored}\n`;
+	const contents = `${kit.result.instructions}\n\n${kit.result.privateKeyArmored}\n`;
 	const blob = new Blob([contents], { type: 'application/pgp-keys' });
 	const url = URL.createObjectURL(blob);
 	const anchor = document.createElement('a');
 	anchor.href = url;
-	anchor.download = kit.filename;
+	anchor.download = kit.result.filename;
 	// Attach to the DOM before clicking — some browsers won't trigger a download
 	// from a detached anchor (matches the `downloadCsv` convention).
 	document.body.appendChild(anchor);
@@ -129,8 +129,8 @@ async function restoreKit() {
 	const privateKeyArmored = importKey.value.trim();
 	if (!address || !privateKeyArmored) return;
 	const result = await importKit({ address, privateKeyArmored });
-	if (result === undefined) return;
-	if (result.imported) {
+	if (!result.ok) return;
+	if (result.result.imported) {
 		showToast(t('dashboard.admin.instance.sealedMail.toasts.kitImported'), 'success');
 		importKey.value = '';
 	} else {
@@ -138,7 +138,7 @@ async function restoreKit() {
 	}
 }
 
-// ── Re-seal after an instance-secret change (E6). After rotating INSTANCE_SECRET
+// ── Re-seal after an instance-secret change. After rotating INSTANCE_SECRET
 // (with the previous value kept in INSTANCE_SECRET_PREVIOUS during the window),
 // this re-encrypts every stored key under the new secret so the old secret can be
 // retired. The reachable operator trigger the self-host docs point at. Admin only.
@@ -148,7 +148,7 @@ const { run: reSeal, isLoading: reSealing } = useBackendOperation(api.e2ee.lifec
 
 async function runReSeal() {
 	const result = await reSeal({});
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.admin.instance.sealedMail.toasts.reSealStarted'), 'success');
 }
 </script>
@@ -156,13 +156,6 @@ async function runReSeal() {
 <template>
 	<div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 		<div>
-			<NuxtLink
-				to="/dashboard/admin"
-				class="inline-flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.instance.sealedMail.backToSettings') }}
-			</NuxtLink>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.instance.sealedMail.title') }}
 			</h1>
@@ -175,10 +168,7 @@ async function runReSeal() {
 			{{ t('dashboard.admin.instance.sealedMail.noWorkspace') }}
 		</div>
 		<template v-else>
-			<div
-				v-if="!sealedMailEnabled"
-				class="flex items-start gap-2.5 card p-4"
-			>
+			<div v-if="!sealedMailEnabled" class="flex items-start gap-2.5 card p-4">
 				<Icon name="lucide:info" class="w-4 h-4 text-text-tertiary flex-shrink-0 mt-0.5" />
 				<p class="text-sm text-text-secondary">
 					{{ t('dashboard.admin.instance.sealedMail.disabledNotice') }}
@@ -217,7 +207,9 @@ async function runReSeal() {
 			<section class="space-y-4 card p-5">
 				<div class="flex items-start justify-between gap-4">
 					<div class="min-w-0">
-						<h2 class="text-base font-semibold text-text-primary">{{ t('dashboard.admin.instance.sealedMail.tls.title') }}</h2>
+						<h2 class="text-base font-semibold text-text-primary">
+							{{ t('dashboard.admin.instance.sealedMail.tls.title') }}
+						</h2>
 						<p class="mt-1 text-sm text-text-secondary">
 							{{ t('dashboard.admin.instance.sealedMail.tls.description') }}
 						</p>
@@ -235,7 +227,12 @@ async function runReSeal() {
 				</div>
 			</section>
 
-			<!-- Recovery kit (E6 / D7): download the private key for an address so
+			<!-- Deep body search (idea 32 / ADR-0059): the other lever on how much
+			     plaintext this instance keeps indexable. It belongs beside the
+			     sealing policy because that is what it trades against. -->
+			<SettingsBodySearchIndexCard />
+
+			<!-- Recovery kit: download the private key for an address so
 			     sealed mail can be restored later; import one to restore access. -->
 			<section class="space-y-4 card p-5">
 				<div>
@@ -248,18 +245,18 @@ async function runReSeal() {
 				</div>
 
 				<div class="space-y-2">
-					<label for="kit-address" class="block text-sm font-medium text-text-primary">
+					<label for="kit.result-address" class="block text-sm font-medium text-text-primary">
 						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.downloadLabel') }}
 					</label>
 					<div class="flex flex-wrap items-center gap-2">
 						<input
-							id="kit-address"
+							id="kit.result-address"
 							v-model="kitAddress"
 							type="email"
 							inputmode="email"
 							autocomplete="off"
 							:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.addressPlaceholder')"
-							data-testid="recovery-kit-address"
+							data-testid="recovery-kit.result-address"
 							class="input input-sm min-w-0 flex-1"
 						/>
 						<UiButton
@@ -275,29 +272,32 @@ async function runReSeal() {
 				</div>
 
 				<div class="space-y-2 border-t border-border-subtle pt-4">
-					<label for="kit-import-address" class="block text-sm font-medium text-text-primary">
+					<label
+						for="kit.result-import-address"
+						class="block text-sm font-medium text-text-primary"
+					>
 						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.restoreLabel') }}
 					</label>
 					<p class="text-xs text-text-secondary">
 						{{ t('dashboard.admin.instance.sealedMail.recoveryKit.restoreDescription') }}
 					</p>
 					<input
-						id="kit-import-address"
+						id="kit.result-import-address"
 						v-model="importAddress"
 						type="email"
 						inputmode="email"
 						autocomplete="off"
 						:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.addressPlaceholder')"
-						data-testid="recovery-kit-import-address"
+						data-testid="recovery-kit.result-import-address"
 						class="input input-sm"
 					/>
 					<textarea
-						id="kit-import-key"
+						id="kit.result-import-key"
 						v-model="importKey"
 						rows="4"
 						spellcheck="false"
 						:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.importKeyPlaceholder')"
-						data-testid="recovery-kit-import-key"
+						data-testid="recovery-kit.result-import-key"
 						class="input input-sm font-mono text-xs"
 					/>
 					<div class="flex justify-end">
@@ -314,7 +314,7 @@ async function runReSeal() {
 				</div>
 			</section>
 
-			<!-- Re-seal after an instance-secret change (E6). The reachable trigger the
+			<!-- Re-seal after an instance-secret change. The reachable trigger the
 			     self-host docs point at for the INSTANCE_SECRET rotation acceptance. -->
 			<section class="space-y-4 card p-5">
 				<div>

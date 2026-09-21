@@ -27,6 +27,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
+import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { logWarn } from '../lib/runtimeLog';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -62,12 +63,18 @@ const transitionInputValidator = v.union(
 );
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
+//
+// The graph and the dispatcher preamble that reads it live in the generic
+// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducer, the `→ active`
+// preconditions and the effects below stay here. `reportsTerminalRefusals` is
+// off — no state is terminal here and the published outcome union carries only
+// `illegal_edge`.
 
-export const LEGAL_EDGES: Record<AutomationStatus, ReadonlySet<AutomationStatus>> = {
-	draft: new Set<AutomationStatus>(['active']),
-	active: new Set<AutomationStatus>(['paused']),
-	paused: new Set<AutomationStatus>(['active', 'draft']),
-};
+export const AUTOMATION_LIFECYCLE = defineLifecycle<AutomationStatus>({
+	draft: ['active'],
+	active: ['paused'],
+	paused: ['active', 'draft'],
+});
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
@@ -225,9 +232,7 @@ function buildPatch(
  * `automations.ts:360-368` — runs on `draft → active` AND `paused → active`,
  * closing the resume-skips-validation drift.
  */
-export function validateTriggerConfig(
-	automation: Doc<'automations'>
-): 'invalid_trigger_config' | null {
+function validateTriggerConfig(automation: Doc<'automations'>): 'invalid_trigger_config' | null {
 	if (automation.triggerType === 'contact_updated' && !automation.triggerConfig) {
 		return 'invalid_trigger_config';
 	}
@@ -259,7 +264,7 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 				await ctx.scheduler.runAfter(0, internal.lib.posthog.capture, {
 					distinctId: effect.userId,
 					event: effect.event,
-					properties: { automationId: String(effect.automationId) },
+					properties: { automationId: effect.automationId },
 				});
 				break;
 			}
@@ -276,22 +281,20 @@ async function dispatch(
 	userId: string
 ): Promise<AutomationTransitionOutcome> {
 	const from = automation.status as AutomationStatus;
-	const isLegal = LEGAL_EDGES[from].has(input.to);
-	const isSelfLoop = from === input.to;
+	const verdict = AUTOMATION_LIFECYCLE.classify(from, input.to);
 
-	if (!isLegal && !isSelfLoop) {
-		return { ok: false, reason: 'illegal_edge', from, to: input.to };
+	if (verdict.kind === 'refused') {
+		return refuse(verdict);
 	}
 
 	// Preconditions for `→ active` (both `draft → active` and
 	// `paused → active`). Skipped on self-loops (already `active`).
-	if (input.to === 'active' && !isSelfLoop) {
-		const stepCount = await ctx.db
+	if (input.to === 'active' && !verdict.isSelfLoop) {
+		const steps = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))
-			.collect() // bounded: one automation's steps
-			.then((steps) => steps.length);
-		if (stepCount === 0) {
+			.collect(); // bounded: one automation's steps
+		if (steps.length === 0) {
 			return { ok: false, reason: 'no_steps', from, to: input.to };
 		}
 		const triggerCheck = validateTriggerConfig(automation);
@@ -378,7 +381,7 @@ export const recordRunFailure = internalMutation({
 		await ctx.db.patch(args.automationId, { consecutiveRunFailures: failures });
 		if (failures >= AUTOMATION_FAILURE_BREAKER_THRESHOLD && automation.status === 'active') {
 			logWarn('[automation breaker] pausing automation after consecutive run failures', {
-				automationId: String(args.automationId),
+				automationId: args.automationId,
 				consecutiveRunFailures: failures,
 			});
 			// `automation.status` is still 'active' (the counter patch above doesn't

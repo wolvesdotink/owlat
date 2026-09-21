@@ -54,9 +54,8 @@ import {
 	measurementSubhead,
 	standaloneNote,
 	type DeliverabilityDashboardGate,
-	type LocalizedText,
 } from '~/utils/deliverabilityMeasurement';
-import { createTestI18n } from '~/__tests__/i18n';
+import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 import { decisionWindowLabel, reportedWindowLabel } from '~/utils/deliverabilityWindows';
 import { formatShortDate } from '~/utils/formatters';
 
@@ -66,8 +65,7 @@ import { formatShortDate } from '~/utils/formatters';
  * real English catalog, because the unit nouns it pins live in the copy.
  */
 const { t } = createTestI18n().global;
-const localized = (value: LocalizedText): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = localizedWith(t);
 const explain = (gate: DeliverabilityDashboardGate): string => localized(gateExplanation(gate));
 const noteFor = (input: Parameters<typeof standaloneNote>[0]): string =>
 	localized(standaloneNote(input));

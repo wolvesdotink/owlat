@@ -2,7 +2,8 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # owlat — thin CLI wrapper around docker compose + the in-app update pipeline.
 #
-# Installed by install.sh to /usr/local/bin/owlat. Always operates from
+# Installed to /usr/local/bin/owlat by install.sh, by any `quickstart`/`setup`/
+# `config` run, or on demand with `owlat install-cli`. Always operates from
 # $OWLAT_DIR (default: /opt/owlat). Hides docker-compose ceremony and acts as
 # the natural home for ops commands.
 #
@@ -27,20 +28,31 @@
 #   owlat restore <file>      — bash scripts/restore.sh <file>
 #   owlat shell <service>     — docker compose exec <service> sh
 #   owlat version             — print stack version
+#   owlat install-cli         — (re)link this script into /usr/local/bin
 #   owlat --help              — this help
 # ═══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
 OWLAT_DIR="${OWLAT_DIR:-/opt/owlat}"
 
+# This script's own absolute path, symlinks resolved. Used twice: to fall back to
+# the clone we were invoked from, and as the target of the /usr/local/bin link.
+# A relative link target is resolved against the link's own directory, not $PWD.
+OWLAT_CLI_SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$OWLAT_CLI_SOURCE" ]]; do
+	_link_dir=$(cd "$(dirname "$OWLAT_CLI_SOURCE")" && pwd)
+	_link_target=$(readlink "$OWLAT_CLI_SOURCE")
+	if [[ "$_link_target" == /* ]]; then
+		OWLAT_CLI_SOURCE="$_link_target"
+	else
+		OWLAT_CLI_SOURCE="$_link_dir/$_link_target"
+	fi
+done
+OWLAT_CLI_SOURCE="$(cd "$(dirname "$OWLAT_CLI_SOURCE")" && pwd)/$(basename "$OWLAT_CLI_SOURCE")"
+
 # Fall back to the repo root if we were invoked from inside a clone
 if [[ ! -f "$OWLAT_DIR/docker-compose.yml" ]]; then
-	# Resolve symlinks to find the script's real location
-	SCRIPT_PATH="${BASH_SOURCE[0]}"
-	while [[ -L "$SCRIPT_PATH" ]]; do
-		SCRIPT_PATH=$(readlink "$SCRIPT_PATH")
-	done
-	REPO_ROOT=$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)
+	REPO_ROOT=$(cd "$(dirname "$OWLAT_CLI_SOURCE")/.." && pwd)
 	if [[ -f "$REPO_ROOT/docker-compose.yml" ]]; then
 		OWLAT_DIR="$REPO_ROOT"
 	fi
@@ -63,7 +75,70 @@ fi
 
 show_help() {
 	# Print the whole subcommand block from the header comment (through `--help`).
-	sed -n '4,30p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '4,32p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+# ── owlat on PATH ─────────────────────────────────────────────────────────────
+# The docs promise `owlat <command>` works from anywhere once a box is installed,
+# but install.sh was the only thing that ever created the symlink. It is not the
+# only way a box gets provisioned: the desktop SSH wizard clones the repo itself
+# and runs `./scripts/owlat quickstart` directly (apps/web/app/lib/desktop/
+# provisioningCommands.ts), and the documented hand-clone flow does the same — so
+# both landed a working stack with no `owlat` on PATH.
+#
+# Linking from HERE covers every path that reaches this script, and because the
+# provisioning subcommands re-check it on each run, a box that was installed
+# before this existed repairs itself the next time the wizard is opened.
+OWLAT_CLI_LINK="${OWLAT_CLI_LINK:-/usr/local/bin/owlat}"
+
+# Link this script to $OWLAT_CLI_LINK. Two modes:
+#   ensure_cli_on_path          implicit (before the wizard): links only when it
+#                               can be done without a password prompt, so a local
+#                               `scripts/owlat quickstart` on a dev machine never
+#                               stops to ask for sudo mid-install.
+#   ensure_cli_on_path --sudo   explicit (`owlat install-cli`): the operator asked
+#                               for it, so escalating with sudo is expected.
+# Returns non-zero when the link is still missing; callers decide whether that
+# matters (it never aborts the wizard).
+ensure_cli_on_path() {
+	local allow_sudo=0
+	[[ "${1:-}" == "--sudo" ]] && allow_sudo=1
+
+	if [[ "${OWLAT_SKIP_CLI_LINK:-0}" == "1" ]]; then
+		return 0
+	fi
+
+	# Already ours — the common case on every re-run.
+	if [[ -L "$OWLAT_CLI_LINK" && "$(readlink "$OWLAT_CLI_LINK")" == "$OWLAT_CLI_SOURCE" ]]; then
+		return 0
+	fi
+
+	# Something that is not a symlink lives there: a distro package, an operator's
+	# own wrapper. Overwriting it would be destructive and is never what we want.
+	if [[ -e "$OWLAT_CLI_LINK" && ! -L "$OWLAT_CLI_LINK" ]]; then
+		printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} $OWLAT_CLI_LINK exists and is not a symlink — leaving it alone." >&2
+		return 1
+	fi
+
+	local link_dir
+	link_dir="$(dirname "$OWLAT_CLI_LINK")"
+
+	if [[ -d "$link_dir" && -w "$link_dir" ]] && ln -sfn "$OWLAT_CLI_SOURCE" "$OWLAT_CLI_LINK" 2>/dev/null; then
+		printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Installed 'owlat' CLI → $OWLAT_CLI_LINK"
+		return 0
+	fi
+
+	if [[ "$allow_sudo" == "1" ]] && command -v sudo >/dev/null 2>&1; then
+		printf '%b\n' "${CYAN}${BOLD}[info]${RESET} Installing 'owlat' CLI to $OWLAT_CLI_LINK (sudo required)…"
+		if sudo mkdir -p "$link_dir" && sudo ln -sfn "$OWLAT_CLI_SOURCE" "$OWLAT_CLI_LINK"; then
+			printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Installed 'owlat' CLI → $OWLAT_CLI_LINK"
+			return 0
+		fi
+	fi
+
+	printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} 'owlat' is not on your PATH ($OWLAT_CLI_LINK could not be written)." >&2
+	printf '  Finish with: sudo %s install-cli\n' "$OWLAT_CLI_SOURCE" >&2
+	return 1
 }
 
 # ── Scheduled backups ─────────────────────────────────────────────────────────
@@ -220,6 +295,21 @@ fi
 OWLAT_VERSION_TAG="${OWLAT_VERSION_TAG:-latest}"
 OWLAT_SETUP_IMAGE="${OWLAT_SETUP_IMAGE:-ghcr.io/wolvesdotink/setup:${OWLAT_VERSION_TAG}}"
 
+# The release images exist for linux/amd64 and linux/arm64 only. Refuse the
+# wizard on any other CPU up front, instead of failing on the first `docker
+# pull` with "no matching manifest for <platform>" (install.sh runs the same
+# check earlier; this covers a hand-cloned `owlat quickstart`).
+require_supported_arch() {
+	local machine
+	machine="$(uname -m 2>/dev/null || printf 'unknown')"
+	case "$machine" in
+		x86_64|amd64|aarch64|arm64) return ;;
+	esac
+	echo "Error: unsupported CPU architecture '${machine}'." >&2
+	echo "Owlat publishes server images for x86_64 (amd64) and aarch64 (arm64) only." >&2
+	exit 1
+}
+
 # Run the TS setup CLI inside the owlat/setup container.
 # Falls back to legacy bash wizard with --legacy.
 run_setup_container() {
@@ -281,6 +371,22 @@ case "$cmd" in
 				set -- "$@" --config "$CONFIG_IN_CONTAINER"
 			fi
 		fi
+		;;
+esac
+
+case "$cmd" in
+	setup|quickstart|config|sample-data|feature|env|doctor)
+		require_supported_arch
+		;;
+esac
+
+# Provisioning subcommands double as the repair path: an install that never got
+# the symlink (desktop SSH flow, hand-clone) gains it here, and one that already
+# has it pays a single readlink. Best-effort — a wizard must never abort because
+# /usr/local/bin is read-only.
+case "$cmd" in
+	setup|quickstart|config)
+		ensure_cli_on_path || true
 		;;
 esac
 
@@ -551,6 +657,11 @@ case "$cmd" in
 			echo "Error: No response from updater" >&2
 			exit 1
 		fi
+		;;
+	install-cli)
+		# Explicit repair/first-install of the PATH entry. install.sh delegates here
+		# so the symlink has exactly one implementation.
+		ensure_cli_on_path --sudo
 		;;
 	help|--help|-h)
 		show_help

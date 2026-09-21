@@ -96,21 +96,22 @@ const quickActions = computed(() => [
 	},
 ]);
 
-// Get type badge color
+// Get type badge color. `lavender` was never a token — `bg-lavender-subtle
+// text-lavender` resolved to nothing, so transactional badges rendered
+// chip-less. `info` is the real quiet tint that pairs with brand here.
 function getTypeBadgeClass(type: string): string {
-	return type === 'marketing' ? 'bg-brand-subtle text-brand' : 'bg-lavender-subtle text-lavender';
+	return type === 'marketing' ? 'bg-brand-subtle text-brand' : 'bg-info-subtle text-info';
 }
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
-		<div class="mb-8">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.send.index.title') }}
-			</h1>
-			<p class="mt-1 text-text-secondary">{{ t('dashboard.send.index.subtitle') }}</p>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.send.index.title')"
+			:description="t('dashboard.send.index.subtitle')"
+			class="mb-8"
+		/>
 
 		<!-- Stats Cards -->
 		<UiErrorAlert
@@ -140,7 +141,7 @@ function getTypeBadgeClass(type: string): string {
 							<Icon
 								v-if="countsLoading || blocksStatsLoading"
 								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin text-text-tertiary"
+								class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
 							/>
 						</div>
 					</div>
@@ -196,7 +197,7 @@ function getTypeBadgeClass(type: string): string {
 				<div class="card">
 					<!-- Loading state -->
 					<div v-if="templatesLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
 					</div>
 
 					<!-- Empty state -->
@@ -270,7 +271,7 @@ function getTypeBadgeClass(type: string): string {
 				<div class="card">
 					<!-- Loading state -->
 					<div v-if="blocksLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
 					</div>
 
 					<!-- Empty state -->

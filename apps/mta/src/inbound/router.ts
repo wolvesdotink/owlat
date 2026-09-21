@@ -40,9 +40,9 @@ function routeKey(domain: string, address: string): string {
 // ─── TLS-RPT system route (RFC 8460) ────────────────────────────────
 
 /** Synthetic id for the TLS-RPT reporting-address system route. */
-export const TLS_RPT_SYSTEM_ROUTE_ID = '__system:tls-rpt__';
+const TLS_RPT_SYSTEM_ROUTE_ID = '__system:tls-rpt__';
 /** Convex webhook path the TLS-RPT system route delivers to. */
-export const TLS_RPT_WEBHOOK_PATH = '/webhooks/mta-tls-report';
+const TLS_RPT_WEBHOOK_PATH = '/webhooks/mta-tls-report';
 
 /** Config the inbound pipeline threads through to recognise the rua address. */
 export interface TlsRptSystemRouteConfig {
@@ -60,7 +60,7 @@ export interface TlsRptSystemRouteConfig {
  * Returns null for empty/`https:` reporting URIs (those are polled elsewhere,
  * not delivered as inbound mail) or anything without an `@`.
  */
-export function parseRuaAddress(rua: string | undefined): string | null {
+function parseRuaAddress(rua: string | undefined): string | null {
 	if (!rua) return null;
 	const trimmed = rua.trim();
 	if (!trimmed) return null;
@@ -78,7 +78,7 @@ export function parseRuaAddress(rua: string | undefined): string | null {
  * recipient matches the configured rua address. Takes the already-parsed rua
  * address (via {@link parseRuaAddress}) so the caller parses it exactly once.
  */
-export function buildTlsRptSystemRoute(
+function buildTlsRptSystemRoute(
 	config: TlsRptSystemRouteConfig,
 	parsedRua: string | null
 ): InboundRoute {

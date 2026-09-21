@@ -14,6 +14,7 @@ import { extractAttachments } from '@owlat/shared/mailMime';
 import { downscaleImageFile } from './postboxInlineImage';
 import { attachmentMeter } from './postboxAttachmentMeter';
 import { createAttachmentUploads, xhrPutFile } from './postboxAttachmentUploads';
+import { appendShareLinkBlock, shareLinkBlockHtml } from '~/utils/postboxShareLink';
 
 // Per-file attachment ceiling for user-facing copy, derived from the shared cap
 // (mirrors MAX_LIBRARY_FILE_MB) so the label moves with MAX_ATTACHMENT_BYTES.
@@ -33,6 +34,12 @@ export interface ComposerAttachment {
 export function usePostboxComposeAttachments(opts: {
 	ensureDraft: () => Promise<Id<'mailDrafts'> | null>;
 	draftId: Ref<Id<'mailDrafts'> | null>;
+	/**
+	 * The draft body. "Share as link instead" edits it: the attachment leaves the
+	 * message and a link block takes its place, so the two halves of the swap
+	 * have to happen against the same ref the parent autosaves.
+	 */
+	bodyHtml?: Ref<string>;
 	/** Attach a transient generated file handed off via usePostboxPendingAttachments. */
 	attachPendingKey?: string;
 	/** Forward: clone the original message's attachments onto this draft. */
@@ -68,12 +75,16 @@ export function usePostboxComposeAttachments(opts: {
 	// upload URL + XHR + addAttachment) is injected so the state machine stays
 	// testable and this composable owns only the wiring.
 	const uploader = createAttachmentUploads({
-		generateUploadUrl: async () => (await generateUploadUrl.run({})) ?? null,
+		generateUploadUrl: async () => {
+			const minted = await generateUploadUrl.run({});
+			return minted.ok ? minted.result : null;
+		},
 		putFile: xhrPutFile,
 		attach: async (a) => {
 			const draftIdVal = opts.draftId.value;
 			if (!draftIdVal) return false;
-			// addAttachment returns { ok } — run() yields undefined on failure.
+			// addAttachment returns its own `{ ok }`; a failed operation is the
+			// envelope's `ok: false` and never reaches it.
 			const result = await addAttachmentOp.run({
 				draftId: draftIdVal,
 				storageId: a.storageId as Id<'_storage'>,
@@ -81,7 +92,7 @@ export function usePostboxComposeAttachments(opts: {
 				contentType: a.contentType,
 				size: a.size,
 			});
-			return !!result?.ok;
+			return result.ok && result.result.ok;
 		},
 		onCommitted: (a, thumbUrl) => {
 			if (thumbUrl) thumbUrls.set(a.storageId, thumbUrl);
@@ -201,9 +212,9 @@ export function usePostboxComposeAttachments(opts: {
 		uploadingCount.value += 1;
 		try {
 			const url = await generateUploadUrl.run({});
-			if (!url) return null;
+			if (!url.ok) return null;
 			const contentType = scaled.type || 'image/jpeg';
-			const res = await fetch(url, {
+			const res = await fetch(url.result, {
 				method: 'POST',
 				headers: { 'Content-Type': contentType },
 				body: scaled,
@@ -226,7 +237,7 @@ export function usePostboxComposeAttachments(opts: {
 				isInline: true,
 				contentId,
 			});
-			if (!result?.ok) return null;
+			if (!result.ok || !result.result.ok) return null;
 			inlineParts.value = [...inlineParts.value, { contentId, storageId }];
 			return { contentId, previewUrl: URL.createObjectURL(scaled) };
 		} finally {
@@ -247,6 +258,74 @@ export function usePostboxComposeAttachments(opts: {
 		});
 	}
 
+	// ── Share as link instead (idea 10) ──────────────────────────────────────
+	const shareAttachmentOp = useBackendOperation(
+		api.mail.attachmentSharesActions.shareDraftAttachment,
+		{ label: () => t('shared.postbox.usePostboxComposeAttachments.shareOperation') }
+	);
+
+	/**
+	 * Swap one committed attachment for an expiring link in the body.
+	 *
+	 * The server owns the swap — it detaches the part and creates the share in
+	 * one transaction after the malware scan — so this only mirrors the result
+	 * locally: drop the chip, append the block. If the scan refuses the file,
+	 * the chip stays exactly where it was and the user is told why, because the
+	 * alternative (a silently vanished attachment) is far worse than a bounce.
+	 */
+	async function shareAsLink(storageId: string): Promise<boolean> {
+		const id = opts.draftId.value;
+		if (!id) return false;
+		const attachment = attachments.value.find((a) => a.storageId === storageId);
+		if (!attachment) return false;
+
+		const outcome = await shareAttachmentOp.run({
+			draftId: id,
+			storageId: storageId as Id<'_storage'>,
+		});
+		if (!outcome.ok) return false;
+		const share = outcome.result;
+		if (!share.ok) {
+			// Two different refusals, two different sentences: the scanner found
+			// malware, or the file-type gate will not pass this type through.
+			// Telling someone their spreadsheet is infected because a policy
+			// refused its type is the kind of false alarm that stops being read.
+			const key =
+				share.reason === 'refused'
+					? 'shared.postbox.usePostboxComposeAttachments.shareRefused'
+					: 'shared.postbox.usePostboxComposeAttachments.shareInfected';
+			showToast(t(key, { filename: share.filename }), 'error');
+			return false;
+		}
+
+		if (opts.bodyHtml) {
+			opts.bodyHtml.value = appendShareLinkBlock(
+				opts.bodyHtml.value,
+				shareLinkBlockHtml({
+					url: share.url,
+					filename: share.filename,
+					heading: t('shared.postbox.usePostboxComposeAttachments.shareBlockHeading'),
+					meta: t('shared.postbox.usePostboxComposeAttachments.shareBlockMeta', {
+						size: formatCompactFileSize(share.size),
+						date: formatDate(share.expiresAt, 'medium', locale.value),
+					}),
+				})
+			);
+		}
+
+		attachments.value = attachments.value.filter((a) => a.storageId !== storageId);
+		const thumb = thumbUrls.get(storageId);
+		if (thumb) {
+			URL.revokeObjectURL(thumb);
+			thumbUrls.delete(storageId);
+		}
+		showToast(
+			t('shared.postbox.usePostboxComposeAttachments.shareDone', { filename: share.filename }),
+			'success'
+		);
+		return true;
+	}
+
 	async function removeAttachment(storageId: string) {
 		const id = opts.draftId.value;
 		if (!id) return;
@@ -254,7 +333,7 @@ export function usePostboxComposeAttachments(opts: {
 			draftId: id,
 			storageId: storageId as Id<'_storage'>,
 		});
-		if (!result?.ok) return;
+		if (!result.ok || !result.result?.ok) return;
 		attachments.value = attachments.value.filter((a) => a.storageId !== storageId);
 		const thumb = thumbUrls.get(storageId);
 		if (thumb) {
@@ -306,6 +385,8 @@ export function usePostboxComposeAttachments(opts: {
 		thumbUrlFor,
 		addFiles,
 		removeAttachment,
+		shareAsLink,
+		isSharing: shareAttachmentOp.isLoading,
 		cancelUpload: uploader.cancel,
 		retryUpload: uploader.retry,
 		addInlineImage,

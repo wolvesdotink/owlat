@@ -37,7 +37,7 @@ type ThrowableCategory = Exclude<OperationErrorCategory, 'network'>;
 function throwOperationError(
 	category: ThrowableCategory,
 	message: string,
-	data?: Record<string, unknown>,
+	data?: Record<string, unknown>
 ): never {
 	const payload: OperationError = { category, message };
 	if (data !== undefined) payload.data = data;
@@ -67,7 +67,7 @@ export function throwNotFound(resource: string): never {
 export async function getOrThrow<T extends TableNames>(
 	ctx: { db: { get<TN extends TableNames>(id: Id<TN>): Promise<Doc<TN> | null> } },
 	id: Id<T>,
-	label: string,
+	label: string
 ): Promise<Doc<T>> {
 	const doc = await ctx.db.get(id);
 	if (!doc) throwNotFound(label);
@@ -94,15 +94,10 @@ export function throwRateLimited(message: string, retryAfter?: number): never {
 	throwOperationError(
 		'rate_limited',
 		message,
-		retryAfter !== undefined ? { retryAfter } : undefined,
+		retryAfter !== undefined ? { retryAfter } : undefined
 	);
-}
-
-export function throwLimitReached(message: string, data?: Record<string, unknown>): never {
-	throwOperationError('limit_reached', message, data);
 }
 
 export function throwInternal(message: string, data?: Record<string, unknown>): never {
 	throwOperationError('internal', message, data);
 }
-

@@ -1,6 +1,6 @@
 /**
  * Well-known email-client platform limits — the single source of truth shared by
- * the email-renderer's size analyzer and the email-previewer's Size tab. (The
+ * the email-renderer's size analyzer and the builder preview's Size tab. (The
  * previewer avoids depending on the heavy email-renderer package but can take
  * these constants from @owlat/shared.)
  */

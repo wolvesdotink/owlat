@@ -2,7 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
-import { createTestDomain } from './factories';
+import { createTestDomain, flushScheduled } from './factories';
 import type { Id } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -53,8 +53,7 @@ describe('domains.create', () => {
 			expect(domain!.dnsRecords).toEqual({});
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await t.finishInProgressScheduledFunctions();
+		await flushScheduled(t);
 	});
 
 	it('should reject invalid domain format', async () => {
@@ -80,8 +79,7 @@ describe('domains.create', () => {
 			})
 		).rejects.toThrow(/already been added/);
 
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await t.finishInProgressScheduledFunctions();
+		await flushScheduled(t);
 	});
 
 	it('should lowercase domain name', async () => {
@@ -96,8 +94,7 @@ describe('domains.create', () => {
 			expect(domain!.domain).toBe('example.com');
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await t.finishInProgressScheduledFunctions();
+		await flushScheduled(t);
 	});
 });
 
@@ -158,8 +155,7 @@ describe('domains.remove', () => {
 			expect(domain).toBeNull();
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await t.finishInProgressScheduledFunctions();
+		await flushScheduled(t);
 	});
 
 	it('should throw for non-existent domain', async () => {
@@ -222,8 +218,7 @@ describe('domains.regenerateDnsRecords', () => {
 			expect(identities).toHaveLength(0);
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await t.finishInProgressScheduledFunctions();
+		await flushScheduled(t);
 	});
 });
 

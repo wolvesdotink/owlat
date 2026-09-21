@@ -38,7 +38,6 @@ export {
 	parseAddressObject,
 	parseAddressObjects,
 	formatAddress,
-	formatAddressList,
 	type EmailAddress,
 	type AddressObject,
 } from './parse/address';

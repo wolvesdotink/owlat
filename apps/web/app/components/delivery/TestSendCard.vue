@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Staged real-message diagnostic for the active delivery transport. */
 import { api } from '@owlat/api';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 
 const props = defineProps<{
 	canSend: boolean;
@@ -62,10 +62,13 @@ watch(
 	{ immediate: true }
 );
 
-const { run: sendTest, isLoading: isSending } = useBackendOperation(api.delivery.status.sendTest, {
-	label: () => t('components.delivery.testSendCard.operationLabel'),
-	type: 'action',
-});
+const { run: sendTest, isLoading: isSending } = useBackendOperation(
+	api.delivery.statusActions.sendTest,
+	{
+		label: () => t('components.delivery.testSendCard.operationLabel'),
+		type: 'action',
+	}
+);
 
 async function handleSendTest() {
 	testError.value = '';
@@ -77,24 +80,25 @@ async function handleSendTest() {
 		return;
 	}
 	const result = await sendTest({ to });
-	if (result === undefined) return;
-	testStages.value = result.stages;
+	if (!result.ok) return;
+	testStages.value = result.result.stages;
 	if (
-		result.provider &&
-		result.providerMessageId &&
-		result.latencyMs !== null &&
-		result.attempts !== null
+		result.result.provider &&
+		result.result.providerMessageId &&
+		result.result.latencyMs !== null &&
+		result.result.attempts !== null
 	) {
 		testReceipt.value = {
-			provider: result.provider,
-			providerMessageId: result.providerMessageId,
-			latencyMs: result.latencyMs,
-			attempts: result.attempts,
+			provider: result.result.provider,
+			providerMessageId: result.result.providerMessageId,
+			latencyMs: result.result.latencyMs,
+			attempts: result.result.attempts,
 		};
 	}
-	if (result.success) showToast(t('components.delivery.testSendCard.acceptedToast', { email: to }));
-	else testError.value = result.error ?? t('components.delivery.testSendCard.sendFailed');
-	emit('result', { success: result.success });
+	if (result.result.success)
+		showToast(t('components.delivery.testSendCard.acceptedToast', { email: to }));
+	else testError.value = result.result.error ?? t('components.delivery.testSendCard.sendFailed');
+	emit('result', { success: result.result.success });
 }
 </script>
 

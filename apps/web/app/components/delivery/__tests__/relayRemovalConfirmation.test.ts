@@ -18,10 +18,12 @@ import {
 import IndependencePage from '~/pages/dashboard/admin/delivery/advanced/independence.vue';
 import IndependenceTrendChart from '../IndependenceTrendChart.vue';
 import RampConfirmDialog from '../RampConfirmDialog.vue';
+import ErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { i18nStubs } from '~/__tests__/i18n';
 import { DAY_MS, NOW, independenceSummary } from './rampFixtures';
 import type { IndependenceSummary } from '~/utils/deliverabilityIndependenceCopy';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 describe('relay removal safety', () => {
 	it('is safe only when every cell has graduated', () => {
@@ -72,24 +74,13 @@ beforeEach(() => {
 	}));
 });
 
-const passthroughCard = { template: '<div><slot /></div>' };
-
 function mountPage() {
-	return mount(IndependencePage, {
-		global: {
-			plugins: [createTestI18n()],
-			stubs: {
-				UiIconBox: true,
-				Icon: true,
-				UiSpinner: true,
-				UiEmptyState: true,
-				UiCard: passthroughCard,
-			},
-			components: {
-				UiQueryBoundary: QueryBoundary,
-				DeliveryIndependenceTrendChart: IndependenceTrendChart,
-				DeliveryRampConfirmDialog: RampConfirmDialog,
-			},
+	return mountDashboardPage(IndependencePage, {
+		components: {
+			UiQueryBoundary: QueryBoundary,
+			UiErrorAlert: ErrorAlert,
+			DeliveryIndependenceTrendChart: IndependenceTrendChart,
+			DeliveryRampConfirmDialog: RampConfirmDialog,
 		},
 	});
 }

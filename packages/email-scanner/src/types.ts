@@ -140,29 +140,3 @@ export interface ClamClientOptions {
 }
 
 // ============ ENHANCED SCAN OPTIONS ============
-
-export interface EnhancedScanOptions {
-	/** Whether to check URL reputation via external APIs */
-	checkUrlReputation?: boolean;
-	/** Google Safe Browsing API key */
-	safeBrowsingApiKey?: string;
-	/** URL reputation cache implementation */
-	urlCache?: UrlReputationCache;
-	/** Attachments to validate (filename + first bytes) */
-	attachments?: Array<{
-		filename: string;
-		firstBytes?: Uint8Array;
-		fullBuffer?: Buffer;
-	}>;
-	/** File policy overrides */
-	filePolicy?: FilePolicy;
-}
-
-export interface EnhancedScanResult extends ContentScanResult {
-	/** URL reputation results (if checked) */
-	urlReputationResults?: UrlReputationResult[];
-	/** File validation results (if attachments provided) */
-	fileValidationResults?: FileValidationResult[];
-	/** ClamAV scan results (if attachments scanned) */
-	clamResults?: ClamScanResult[];
-}

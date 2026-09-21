@@ -7,7 +7,11 @@
  *
  * Inputs:
  *   - --email, --name, --password (or interactive prompts)
- *   - --assume-yes / -y to skip prompts (requires the three flags)
+ *   - --assume-yes / -y to skip prompts: missing flags fall back to the dev
+ *     email/name defaults and a RANDOMLY GENERATED password that is printed
+ *     once. A known placeholder password (e.g. the historical
+ *     `devpassword12345` default) is refused everywhere — it is public knowledge,
+ *     so an admin account holding it is effectively unauthenticated.
  *
  * Used standalone, and also called by `quickstart` after the docker stack
  * comes up healthy.
@@ -21,6 +25,7 @@ import { loadBackendContext, postJson } from '../lib/backend';
 import { loadFlagState } from '../lib/flagState';
 import { isValidEmail } from '../lib/validators';
 import { resolveFlags } from '@owlat/shared/featureFlags';
+import { generateSecret, isKnownPlaceholderSecret } from '@owlat/shared/setupSecrets';
 
 import type { CliOptions as RunOptions } from '../lib/cliOptions';
 
@@ -45,12 +50,30 @@ export async function runBootstrapOrg(opts: RunOptions): Promise<number> {
 		(await ask('Admin display name', () => undefined, opts.assumeYes ? 'Dev Admin' : undefined));
 	if (name === null) return 1;
 
-	const password =
-		fromArgs.password ?? (await askPassword(opts.assumeYes ? 'devpassword12345' : undefined));
+	const password = fromArgs.password ?? (await resolveAdminPassword(opts.assumeYes));
 	if (password === null) return 1;
 
 	const exitCode = await bootstrap({ email, name, password }, opts);
 	return exitCode;
+}
+
+/**
+ * Resolve the admin password for a non-interactive run. An explicitly provided
+ * password wins; otherwise assume-yes generates a strong random one and prints
+ * it exactly once (the historical hardcoded default is public knowledge, so it
+ * must never be silently provisioned). Interactive runs prompt.
+ * Returns null only when the interactive prompt was cancelled.
+ */
+export async function resolveAdminPassword(assumeYes: boolean): Promise<string | null> {
+	if (assumeYes) {
+		const generated = generateSecret(24);
+		log.warning(
+			'No --password given — generated a random admin password (shown ONCE; store it now):'
+		);
+		log.message(generated);
+		return generated;
+	}
+	return askPassword();
 }
 
 export async function bootstrap(
@@ -58,6 +81,18 @@ export async function bootstrap(
 	opts: RunOptions,
 	baseUrlOverride?: string
 ): Promise<number> {
+	// Choke point for every caller (quickstart, standalone command, --config
+	// file): a publicly-known placeholder password must never reach /seed/admin,
+	// because the resulting owner account would be authenticatable by anyone
+	// who has read the repo.
+	if (isKnownPlaceholderSecret(input.password)) {
+		log.error(
+			'Refusing to create the admin account with a known placeholder password. ' +
+				'Pass a strong --password or set OWLAT_ADMIN_PASSWORD.'
+		);
+		return 1;
+	}
+
 	const s = progressSpinner();
 	s.start('Hashing password (scrypt)');
 	const passwordHash = await hashPassword(input.password);

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { withSetup } from '~/__tests__/withSetup';
 import { createTestI18n } from '~/__tests__/i18n';
 
 // The summary builders are pure, so they hand back key+params clauses; this is
@@ -50,22 +51,24 @@ function key(k: string, target?: EventTarget): KeyboardEvent {
 /** The browse list's wiring: the keyboard layered over the selection Set. */
 function selectionHarness(ids = ['a', 'b', 'c']) {
 	const items = ref<Row[]>(ids.map((_id) => ({ _id })));
-	const bulk = useReviewBulkSelect(items);
+	const bulk = withSetup(() => useReviewBulkSelect(items)).result;
 	const calls: Array<[string, string]> = [];
-	const kb = useReviewQueueKeyboard<Row>({
-		items,
-		resetKey: ref('ready'),
-		rowDomId: (r) => `review-row-${r._id}`,
-		onOpen: (r) => calls.push(['open', r._id]),
-		onApprove: (r) => calls.push(['approve', r._id]),
-		onEdit: (r) => calls.push(['edit', r._id]),
-		onReject: (r) => calls.push(['reject', r._id]),
-		selection: {
-			toggle: (r) => bulk.toggle(r._id),
-			selectMany: (rows) => bulk.selectMany(rows.map((r) => r._id)),
-			selectAllVisible: () => bulk.selectAllVisible(),
-		},
-	});
+	const kb = withSetup(() =>
+		useReviewQueueKeyboard<Row>({
+			items,
+			resetKey: ref('ready'),
+			rowDomId: (r) => `review-row-${r._id}`,
+			onOpen: (r) => calls.push(['open', r._id]),
+			onApprove: (r) => calls.push(['approve', r._id]),
+			onEdit: (r) => calls.push(['edit', r._id]),
+			onReject: (r) => calls.push(['reject', r._id]),
+			selection: {
+				toggle: (r) => bulk.toggle(r._id),
+				selectMany: (rows) => bulk.selectMany(rows.map((r) => r._id)),
+				selectAllVisible: () => bulk.selectAllVisible(),
+			},
+		})
+	).result;
 	return { items, bulk, kb, calls };
 }
 
@@ -137,15 +140,17 @@ describe('selection keyboard model', () => {
 
 	it('without a selection model, x keeps its original reject mapping', () => {
 		const calls: Array<[string, string]> = [];
-		const kb = useReviewQueueKeyboard<Row>({
-			items: ref([{ _id: 'a' }]),
-			resetKey: ref('ready'),
-			rowDomId: (r) => r._id,
-			onOpen: () => {},
-			onApprove: () => {},
-			onEdit: () => {},
-			onReject: (r) => calls.push(['reject', r._id]),
-		});
+		const kb = withSetup(() =>
+			useReviewQueueKeyboard<Row>({
+				items: ref([{ _id: 'a' }]),
+				resetKey: ref('ready'),
+				rowDomId: (r) => r._id,
+				onOpen: () => {},
+				onApprove: () => {},
+				onEdit: () => {},
+				onReject: (r) => calls.push(['reject', r._id]),
+			})
+		).result;
 		kb.onKeydown(key('j'));
 		kb.onKeydown(key('x'));
 		expect(calls).toEqual([['reject', 'a']]);
@@ -157,7 +162,7 @@ describe('useReviewBulkSelect', () => {
 
 	it('caps the selection at the 50-item batch limit', () => {
 		const items = ref<Row[]>(Array.from({ length: 60 }, (_, i) => ({ _id: `m${i}` })));
-		const bulk = useReviewBulkSelect(items);
+		const bulk = withSetup(() => useReviewBulkSelect(items)).result;
 		bulk.selectAllVisible();
 		expect(bulk.count.value).toBe(REVIEW_BULK_ACTION_LIMIT);
 		// Toggling one more ON past the cap is refused; toggling OFF still works.
@@ -169,7 +174,7 @@ describe('useReviewBulkSelect', () => {
 
 	it('prunes ids whose rows left the visible list', async () => {
 		const items = ref<Row[]>([{ _id: 'a' }, { _id: 'b' }]);
-		const bulk = useReviewBulkSelect(items);
+		const bulk = withSetup(() => useReviewBulkSelect(items)).result;
 		bulk.selectMany(['a', 'b']);
 		items.value = [{ _id: 'b' }]; // 'a' was approved elsewhere
 		await nextTick();
@@ -283,13 +288,16 @@ describe('useReviewBulkActions', () => {
 	it('approve: hides optimistically, restores per id, arms ONE undo toast with the summary', async () => {
 		const { actions, hidden, restored, clearSelection } = await harness(['a', 'b', 'c', 'd']);
 		runs[0]!.mockResolvedValue({
-			outcomes: [
-				{ inboundMessageId: 'a', outcome: 'approved' },
-				{ inboundMessageId: 'b', outcome: 'approved' },
-				{ inboundMessageId: 'c', outcome: 'reply_in_progress', heldByName: 'Dana' },
-				{ inboundMessageId: 'd', outcome: 'not_found' },
-			],
-			undo: { sendAt: 123_456 },
+			ok: true,
+			result: {
+				outcomes: [
+					{ inboundMessageId: 'a', outcome: 'approved' },
+					{ inboundMessageId: 'b', outcome: 'approved' },
+					{ inboundMessageId: 'c', outcome: 'reply_in_progress', heldByName: 'Dana' },
+					{ inboundMessageId: 'd', outcome: 'not_found' },
+				],
+				undo: { sendAt: 123_456 },
+			},
 		});
 
 		await actions.approveSelected();
@@ -311,19 +319,25 @@ describe('useReviewBulkActions', () => {
 	it('undo-all cancels the batch and restores only the rows that came back', async () => {
 		const { actions, restored } = await harness(['a', 'b']);
 		runs[0]!.mockResolvedValue({
-			outcomes: [
-				{ inboundMessageId: 'a', outcome: 'approved' },
-				{ inboundMessageId: 'b', outcome: 'approved' },
-			],
-			undo: { sendAt: 999 },
+			ok: true,
+			result: {
+				outcomes: [
+					{ inboundMessageId: 'a', outcome: 'approved' },
+					{ inboundMessageId: 'b', outcome: 'approved' },
+				],
+				undo: { sendAt: 999 },
+			},
 		});
 		await actions.approveSelected();
 
 		runs[2]!.mockResolvedValue({
-			outcomes: [
-				{ inboundMessageId: 'a', cancelled: true, reason: 'cancelled' },
-				{ inboundMessageId: 'b', cancelled: false, reason: 'already_sent' },
-			],
+			ok: true,
+			result: {
+				outcomes: [
+					{ inboundMessageId: 'a', cancelled: true, reason: 'cancelled' },
+					{ inboundMessageId: 'b', cancelled: false, reason: 'already_sent' },
+				],
+			},
 		});
 		await arm.mock.calls[0]![0].onUndo();
 
@@ -335,8 +349,11 @@ describe('useReviewBulkActions', () => {
 	it('approve without an open window falls back to a plain summary toast', async () => {
 		const { actions } = await harness(['a']);
 		runs[0]!.mockResolvedValue({
-			outcomes: [{ inboundMessageId: 'a', outcome: 'approved' }],
-			// no `undo` — humanApproveUndoDelayMs is 0
+			ok: true,
+			result: {
+				outcomes: [{ inboundMessageId: 'a', outcome: 'approved' }],
+				// no `undo` — humanApproveUndoDelayMs is 0
+			},
 		});
 		await actions.approveSelected();
 		expect(arm).not.toHaveBeenCalled();
@@ -348,10 +365,13 @@ describe('useReviewBulkActions', () => {
 	it('an all-lost-race batch keeps the rows hidden, arms no undo, and says so', async () => {
 		const { actions, hidden, restored, clearSelection } = await harness(['a', 'b']);
 		runs[0]!.mockResolvedValue({
-			outcomes: [
-				{ inboundMessageId: 'a', outcome: 'not_found' },
-				{ inboundMessageId: 'b', outcome: 'not_found' },
-			],
+			ok: true,
+			result: {
+				outcomes: [
+					{ inboundMessageId: 'a', outcome: 'not_found' },
+					{ inboundMessageId: 'b', outcome: 'not_found' },
+				],
+			},
 		});
 
 		await actions.approveSelected();
@@ -365,7 +385,7 @@ describe('useReviewBulkActions', () => {
 
 	it('a categorized failure restores every hidden row and keeps the selection', async () => {
 		const { actions, restored, clearSelection } = await harness(['a', 'b']);
-		runs[0]!.mockResolvedValue(undefined); // useBackendOperation already toasted
+		runs[0]!.mockResolvedValue({ ok: false }); // useBackendOperation already toasted
 		await actions.approveSelected();
 		expect(restored).toEqual(['a', 'b']);
 		expect(clearSelection).not.toHaveBeenCalled();
@@ -375,10 +395,13 @@ describe('useReviewBulkActions', () => {
 	it('reject: same batch shape, no undo, honest summary', async () => {
 		const { actions, hidden, clearSelection } = await harness(['a', 'b']);
 		runs[1]!.mockResolvedValue({
-			outcomes: [
-				{ inboundMessageId: 'a', outcome: 'rejected' },
-				{ inboundMessageId: 'b', outcome: 'not_found' },
-			],
+			ok: true,
+			result: {
+				outcomes: [
+					{ inboundMessageId: 'a', outcome: 'rejected' },
+					{ inboundMessageId: 'b', outcome: 'not_found' },
+				],
+			},
 		});
 		await actions.rejectSelected();
 		expect(runs[1]).toHaveBeenCalledWith({ inboundMessageIds: ['a', 'b'] });

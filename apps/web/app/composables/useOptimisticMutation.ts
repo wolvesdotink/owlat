@@ -75,14 +75,14 @@ export function useOptimisticMutation<M extends FunctionReference<'mutation' | '
 	): Promise<FunctionReturnType<M> | undefined> => {
 		const revert = optimistic.apply();
 		const result = await backend.run(args);
-		if (result === undefined) {
+		if (!result.ok) {
 			// The write failed; `useBackendOperation` already surfaced the
 			// categorized error. Roll the optimistic change back.
 			revert();
 			return undefined;
 		}
 		if (optimistic.undo) offerUndo(optimistic.undo);
-		return result;
+		return result.result;
 	};
 
 	return {

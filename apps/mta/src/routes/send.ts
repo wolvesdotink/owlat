@@ -66,7 +66,7 @@ export function createSendHandler(
 ) {
 	return async (c: Context) => {
 		// Check system health
-		const health = await checkSystemHealth(redis);
+		const health = await checkSystemHealth(redis, queue);
 		if (!health.redisHealthy) {
 			return refuse(c, { error: 'Service temporarily unavailable' }, 503);
 		}

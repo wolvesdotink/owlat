@@ -12,7 +12,7 @@ const { open: openSearch } = useCommandPalette();
 <template>
 	<button
 		class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary bg-bg-surface hover:bg-bg-surface-hover border border-border-subtle rounded-lg transition-colors duration-(--motion-fast)"
-		@click="openSearch"
+		@click="() => openSearch()"
 	>
 		<Icon name="lucide:search" class="w-4 h-4" />
 		<span class="hidden sm:inline">{{ t('components.globalSearch.search') }}</span>

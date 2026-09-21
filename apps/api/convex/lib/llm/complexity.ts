@@ -76,10 +76,10 @@ export const TRIVIAL_CLASSIFICATION_CONFIDENCE = 0.8;
  * reasoning. Anything that asks a question, lodges a complaint, or is otherwise
  * substantive stays on the capable tier.
  */
-const TRIVIAL_INTENTS = new Set(['praise', 'informational', 'unsubscribe']);
+const TRIVIAL_INTENTS = new Set(['praise', 'informational', 'acknowledgment', 'unsubscribe']);
 
 /** Priorities that must always keep the capable tier regardless of intent. */
-const NON_DOWNGRADEABLE_PRIORITIES = new Set(['high', 'critical']);
+const NON_DOWNGRADEABLE_PRIORITIES = new Set(['urgent', 'high', 'critical']);
 
 /**
  * Decide, from TRUSTED classifier signals ONLY, whether an inbound message is

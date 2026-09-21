@@ -7,7 +7,7 @@
  * same queries the screen subscribes to. The page renders it; it decides
  * nothing.
  *
- * THE SHAPE THE PRESET WRITES (plan §10, D8). A migration is not a per-stream
+ * THE SHAPE THE PRESET WRITES. A migration is not a per-stream
  * experiment: the runbook moves the deployment, so all three message types get
  * the same treatment — `adaptive_mix` over `[mta, mandrill]` with Mandrill named
  * as the deliverability-fallback relay — and all three streams get the
@@ -16,7 +16,7 @@
  * rather than a new backend mutation that would duplicate two shipped
  * permission checks and two shipped audit trails.
  *
- * THE ONE RULE THE FLOW POLICES (D8). The alignment machinery wants EXACTLY ONE
+ * THE ONE RULE THE FLOW POLICES. The alignment machinery wants EXACTLY ONE
  * reference relay. A second enabled relay does not fail the write — it degrades
  * measurement confidence, which holds the ramp at ownShare 0 while looking
  * perfectly healthy — so it is surfaced here as a warning naming the kinds, and
@@ -47,7 +47,7 @@ export type MigrationMessage = string | { key: string; params?: Record<string, u
 export const MIGRATION_RELAY_KIND = 'mandrill';
 
 /** Owlat's own arm — the transport the ramp migrates traffic TO. */
-export const MIGRATION_OWN_KIND = 'mta';
+const MIGRATION_OWN_KIND = 'mta';
 
 /**
  * Every message type, in runbook order. A migration covers all three streams:
@@ -57,10 +57,10 @@ export const MIGRATION_OWN_KIND = 'mta';
 export const MIGRATION_MESSAGE_TYPES = ['transactional', 'campaign', 'automation'] as const;
 export type MigrationMessageType = (typeof MIGRATION_MESSAGE_TYPES)[number];
 
-/** Migrations ramp at the cautious pace (plan P4.2). */
+/** Migrations ramp at the cautious pace. */
 export const MIGRATION_RAMP_PRESET = 'conservative';
 
-export const MIGRATION_STEP_IDS = ['connect', 'history', 'domain', 'preset', 'watch'] as const;
+const MIGRATION_STEP_IDS = ['connect', 'history', 'domain', 'preset', 'watch'] as const;
 export type MigrationStepId = (typeof MIGRATION_STEP_IDS)[number];
 
 export type MigrationStepState = 'complete' | 'current' | 'blocked' | 'upcoming';
@@ -151,7 +151,7 @@ export function isMigrationDomainReady(
 	return migrationDomainRows(identities, now).some((row) => row.isReady);
 }
 
-// ── D8: exactly one reference relay ────────────────────────────────
+// ── Exactly one reference relay ──────────────────────────────────
 
 export interface MigrationRouteView {
 	readonly messageType: string;
@@ -176,7 +176,7 @@ export function competingRelayKinds(
 	return [...kinds].sort();
 }
 
-/** The D8 warning, or null when Mandrill is already the only relay. */
+/** The competing-relay warning, or null when Mandrill is already the only relay. */
 export function competingRelayWarning(
 	routes: readonly MigrationRouteView[] | null | undefined
 ): MigrationMessage | null {
@@ -207,7 +207,7 @@ export interface MigrationRoutePayload {
  * `fallbackRelayIssue` below refuses with the backend's own sentence instead of
  * the mutation refusing after three-quarters of the preset has landed.
  */
-export function migrationRouteProviders(
+function migrationRouteProviders(
 	catalog: readonly MigrationTransportEntry[] | null | undefined
 ): readonly RouteProviderEntry[] {
 	return [

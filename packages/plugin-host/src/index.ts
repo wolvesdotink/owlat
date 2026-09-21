@@ -46,7 +46,7 @@ export { createPluginHost } from './host';
 export type { CreatePluginHostOptions, PluginHost } from './host';
 export { createPluginPermissionService } from './permissions';
 export type { PluginPermissionPolicy } from './permissions';
-export { isPluginPackageName, parsePluginPackageName, PluginPackageNameError } from './packageName';
+export { parsePluginPackageName, PluginPackageNameError } from './packageName';
 export type { PluginPackageName } from './packageName';
 export {
 	assertPluginEnvironmentRequirements,

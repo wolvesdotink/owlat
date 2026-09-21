@@ -11,7 +11,7 @@
  *      senders → notification; a known human correspondent (in the address book
  *      / previously written to) → person. Genuinely ambiguous mail returns
  *      `null` and defers to the LLM.
- *   2. Cheap-tier LLM refinement (mail/categoryClassify.ts, 'use node') for the
+ *   2. Cheap-tier LLM refinement (mail/ai/categoryClassify.ts, 'use node') for the
  *      ambiguous remainder, behind the same aiGate as the rest of Postbox AI.
  *      Fail-soft: any LLM/gate failure leaves the deterministic label (or
  *      `other` when the heuristic was ambiguous).
@@ -19,8 +19,9 @@
  * A per-sender user override (mailSenderCategoryOverrides) always wins and is
  * remembered for that sender — see `resolveCategory` and `recategorize`.
  *
- * Trigger: `enqueueCategoryCheck` on inbound webhook delivery (inbox only,
- * bounded to the affected thread), plus the hand-run
+ * Trigger: `enqueueCategoryCheck` on inbound webhook delivery and on forward
+ * external IMAP sync (inbox only, bounded to the affected thread; a historical
+ * import never enqueues), plus the hand-run
  * `migrations/0037_backfill_mail_categories:run` for recent existing threads.
  */
 
@@ -38,24 +39,36 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReply';
 import { requireMailboxAccess } from './permissions';
+import { moveMessagesToFolder } from './messageActions';
+import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
-export const MAIL_CATEGORIES = [
+const MAIL_CATEGORIES = [
 	'person',
 	'newsletter',
 	'notification',
 	'receipt',
+	'promotion',
+	'spam',
 	'other',
 ] as const;
 export type MailCategory = (typeof MAIL_CATEGORIES)[number];
 
 /** Categories a user may pick in "Recategorize as…" (no ambiguity there). */
-export type MailCategorySource = 'heuristic' | 'llm' | 'user';
+type MailCategorySource = 'heuristic' | 'llm' | 'user';
 
 /** Subject keywords that mark transactional receipts / orders / invoices. */
 const RECEIPT_SUBJECT =
 	/\b(receipt|invoice|order\s*(confirmation|#|no\.?|number)?|your\s+order|order\s+shipped|payment\s+(received|confirmation)|purchase|billed|your\s+bill|subscription\s+renew(ed|al)|charged|paid)\b/i;
+
+/**
+ * Subject phrases that mark a promotion: a sale, a discount, a limited offer.
+ * Checked AFTER the newsletter signal (a subscribed newsletter announcing a
+ * sale is still the newsletter the owner asked for) and BEFORE receipts.
+ */
+const PROMOTION_SUBJECT =
+	/(\b\d{1,2}\s?%\s?(off|rabatt|discount)|\b(sale|flash\s+sale|limited[-\s]time|last\s+chance|exclusive\s+offer|special\s+offer|coupon|promo\s*code|voucher|black\s+friday|cyber\s+monday|free\s+trial|upgrade\s+now|don'?t\s+miss|angebot|gutschein|aktion)\b)/i;
 
 /** Local-parts of automated/system senders that emit notifications. */
 const NOTIFICATION_LOCAL_PART =
@@ -91,6 +104,10 @@ export function classifyMailCategory(input: MailCategoryInput): MailCategory | n
 	if (input.hasListUnsubscribe || isBulkPrecedence(input.precedence)) {
 		return 'newsletter';
 	}
+
+	// Promotion: sale / discount / offer phrasing from a sender the owner has
+	// never written to. A known correspondent announcing a sale is a person.
+	if (!input.isKnownCorrespondent && PROMOTION_SUBJECT.test(input.subject)) return 'promotion';
 
 	// Receipt: transactional keywords in the subject. Checked before
 	// notification because order confirmations routinely come from no-reply@.
@@ -138,15 +155,16 @@ export function resolveCategory(opts: {
 
 /**
  * Schedule category classification for a thread. Called from the inbound
- * webhook delivery path for inbox deliveries only (bulk IMAP backfill must not
- * fan out background work), and from the one-shot `backfill` action.
+ * webhook delivery path and from forward external IMAP sync, for inbox
+ * deliveries only (a bulk IMAP history import must not fan out background
+ * work), and from the one-shot `backfill` action.
  */
 export async function enqueueCategoryCheck(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
 	opts: { precedence?: string } = {}
 ): Promise<void> {
-	await ctx.scheduler.runAfter(0, internal.mail.categoryClassify.classifyThread, {
+	await ctx.scheduler.runAfter(0, internal.mail.ai.categoryClassify.classifyThread, {
 		threadId,
 		precedence: opts.precedence,
 	});
@@ -155,7 +173,7 @@ export async function enqueueCategoryCheck(
 // ─── Convex functions ────────────────────────────────────────────────────────
 
 /** How many newest thread messages the classify action considers. */
-export const CATEGORY_CONTEXT_MESSAGES = 4;
+const CATEGORY_CONTEXT_MESSAGES = 4;
 
 /**
  * Bounded thread context for the classify action: owner address, latest
@@ -266,14 +284,8 @@ export const applyCategory = internalMutation({
 	args: {
 		threadId: v.id('mailThreads'),
 		expectedLatestMessageId: v.optional(v.id('mailMessages')),
-		label: v.union(
-			v.literal('person'),
-			v.literal('newsletter'),
-			v.literal('notification'),
-			v.literal('receipt'),
-			v.literal('other')
-		),
-		source: v.union(v.literal('heuristic'), v.literal('llm'), v.literal('user')),
+		label: mailCategoryLabelValidator,
+		source: mailCategorySourceValidator,
 	},
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
@@ -286,12 +298,50 @@ export const applyCategory = internalMutation({
 		) {
 			return; // stale — a newer ingest re-enqueued its own check
 		}
+		const previous = thread.category?.label;
 		await ctx.db.patch(args.threadId, {
 			category: { label: args.label, source: args.source, classifiedAt: Date.now() },
 			updatedAt: Date.now(),
 		});
+		// Spam goes to the Spam folder the moment the classifier says so; the
+		// thread keeps its label, so "Not spam" (recategorize) can bring it back.
+		if (args.label === 'spam' && previous !== 'spam') {
+			await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
+		}
 	},
 });
+
+/**
+ * Move every message of `thread` that sits in the `fromRole` system folder
+ * into the `toRole` one. Best-effort: a mailbox without the target folder, or
+ * a thread with nothing in the source folder, is a no-op. Reuses the one
+ * bookkeeping helper every folder move goes through.
+ */
+async function moveThreadBetweenRoles(
+	ctx: MutationCtx,
+	thread: Doc<'mailThreads'>,
+	fromRole: 'inbox' | 'spam',
+	toRole: 'inbox' | 'spam'
+): Promise<void> {
+	const source = await ctx.db
+		.query('mailFolders')
+		.withIndex('by_mailbox_and_role', (q) =>
+			q.eq('mailboxId', thread.mailboxId).eq('role', fromRole)
+		)
+		.first();
+	const target = await ctx.db
+		.query('mailFolders')
+		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', thread.mailboxId).eq('role', toRole))
+		.first();
+	if (!source || !target) return;
+	const messages = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
+		.collect(); // bounded: one thread's messages
+	const messageIds = messages.filter((m) => m.folderId === source._id).map((m) => m._id);
+	if (messageIds.length === 0) return;
+	await moveMessagesToFolder(ctx, { messageIds, targetFolderId: target._id });
+}
 
 /**
  * User "Recategorize as…" — writes a per-sender override that always wins and
@@ -303,13 +353,7 @@ export const applyCategory = internalMutation({
 export const recategorize = authedMutation({
 	args: {
 		threadId: v.id('mailThreads'),
-		label: v.union(
-			v.literal('person'),
-			v.literal('newsletter'),
-			v.literal('notification'),
-			v.literal('receipt'),
-			v.literal('other')
-		),
+		label: mailCategoryLabelValidator,
 	},
 	handler: async (ctx, args) => {
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
@@ -343,10 +387,20 @@ export const recategorize = authedMutation({
 			}
 		}
 
+		const previous = thread.category?.label;
 		await ctx.db.patch(args.threadId, {
 			category: { label: args.label, source: 'user', classifiedAt: now },
 			updatedAt: now,
 		});
+		// The owner is in charge: marking spam files it away, and "Not spam" —
+		// any other label on a thread the classifier filed as spam — brings the
+		// messages back to the inbox. The per-sender override above makes sure
+		// the classifier never files that sender as spam again.
+		if (args.label === 'spam' && previous !== 'spam') {
+			await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
+		} else if (args.label !== 'spam' && previous === 'spam') {
+			await moveThreadBetweenRoles(ctx, thread, 'spam', 'inbox');
+		}
 	},
 });
 

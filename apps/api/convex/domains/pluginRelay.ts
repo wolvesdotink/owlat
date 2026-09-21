@@ -1,6 +1,5 @@
 /**
- * A bundled plugin's two sending-domain identity calls, as scheduled work (the
- * seams plan's P3.2).
+ * A bundled plugin's two sending-domain identity calls, as scheduled work.
  *
  * `provision` mirrors `sesRelay.provision` / `mandrillRelay.provision`: a domain
  * whose PRIMARY provider is our own MTA also gets registered at the plugin relay

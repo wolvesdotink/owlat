@@ -23,6 +23,7 @@ import {
 import { ALERT_MESSAGE_MAX_LENGTH, boundedListingDetail, type DnsblListing } from './dnsblAlert.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
+import { fireAndForget } from '../lib/fireAndForget.js';
 import { pool } from '../smtp/connectionPool.js';
 import {
 	applyIpPoolObservation,
@@ -35,6 +36,16 @@ const DNSBL_PREFIX = 'mta:dnsbl:';
 const IP_POOL_BLOCKED = 'mta:ip-pool:blocked';
 /** Set while the fully-listed halt alert has already been sent for the day. */
 const ALL_IPS_BLOCKED_ALERT_KEY = 'mta:dnsbl:all-ips-blocked-alerted';
+/**
+ * Upper bound on how long a sweep waits for Convex to acknowledge an alert it
+ * awaits inline. The notifier's full retry ladder runs ~6.5 minutes, and the
+ * boot sweep sits in front of the HTTP listener: on a fresh install the
+ * function runtime is not deployed yet (the installer deploys it only after
+ * /health answers), so every attempt 404s and the installer times out waiting
+ * for a listener that is still sleeping between retries. Past the deadline the
+ * event lands in the dead-letter queue, which the leader sweeps every minute.
+ */
+export const SWEEP_ALERT_DEADLINE_MS = 20_000;
 const DAY_SECONDS = 24 * 60 * 60;
 /**
  * Addresses whose zone lookups may be in flight at once.
@@ -217,7 +228,8 @@ export async function runDnsblCheck(
 					timestamp: Date.now(),
 				},
 				config,
-				redis
+				redis,
+				{ deadline: Date.now() + SWEEP_ALERT_DEADLINE_MS }
 			).catch(() =>
 				logger.error(
 					{
@@ -233,18 +245,22 @@ export async function runDnsblCheck(
 			// WARNING: Deprioritize but keep active
 			logger.warn({ ip, listedOn }, 'IP degraded — listed on non-critical blocklist');
 
-			await notifyConvex(
-				{
-					event: 'ip.blocklisted',
-					ip,
-					blocklists: listedOn,
-					severity: 'warning',
-					message: `IP ${ip} listed on ${listedOn.join(', ')} (non-critical)`,
-					timestamp: Date.now(),
-				},
-				config,
-				redis
-			).catch(() => {});
+			await fireAndForget(
+				notifyConvex(
+					{
+						event: 'ip.blocklisted',
+						ip,
+						blocklists: listedOn,
+						severity: 'warning',
+						message: `IP ${ip} listed on ${listedOn.join(', ')} (non-critical)`,
+						timestamp: Date.now(),
+					},
+					config,
+					redis
+				),
+				logger,
+				'dnsbl_listed_notify'
+			);
 		}
 		const spamhausCleared = previousSpamhausStatus === 'listed' && spamhaus.status === 'clean';
 		const allListsCleared =
@@ -255,17 +271,21 @@ export async function runDnsblCheck(
 		if (spamhausCleared || allListsCleared) {
 			logger.info({ ip }, 'IP delisted — Spamhaus quarantine cleared');
 
-			await notifyConvex(
-				{
-					event: 'ip.delisted',
-					ip,
-					severity: 'info',
-					message: `IP ${ip} is not listed on Spamhaus`,
-					timestamp: Date.now(),
-				},
-				config,
-				redis
-			).catch(() => {});
+			await fireAndForget(
+				notifyConvex(
+					{
+						event: 'ip.delisted',
+						ip,
+						severity: 'info',
+						message: `IP ${ip} is not listed on Spamhaus`,
+						timestamp: Date.now(),
+					},
+					config,
+					redis
+				),
+				logger,
+				'dnsbl_delisted_notify'
+			);
 		}
 	}
 
@@ -315,14 +335,15 @@ export async function runDnsblCheck(
 						timestamp: Date.now(),
 					},
 					config,
-					redis
+					redis,
+					{ deadline: Date.now() + SWEEP_ALERT_DEADLINE_MS }
 				).catch(() =>
 					// A THROWN alert never reached the notifier's own durability, so it
 					// must not consume the day's slot: drop the dedup key and the next
 					// sweep retries it. A `false` return is the other case and keeps the
 					// key deliberately — that event is already in the dead-letter queue,
 					// which owns its redelivery, so re-alerting would duplicate it.
-					redis.del(ALL_IPS_BLOCKED_ALERT_KEY).catch(() => {})
+					fireAndForget(redis.del(ALL_IPS_BLOCKED_ALERT_KEY), logger, 'all_ips_blocked_alert_reset')
 				);
 			}
 		} else {
@@ -330,7 +351,11 @@ export async function runDnsblCheck(
 		}
 	} else {
 		// The halt lifted: the next one is a new event and alerts immediately.
-		await redis.del(ALL_IPS_BLOCKED_ALERT_KEY).catch(() => {});
+		await fireAndForget(
+			redis.del(ALL_IPS_BLOCKED_ALERT_KEY),
+			logger,
+			'all_ips_blocked_alert_reset'
+		);
 	}
 }
 

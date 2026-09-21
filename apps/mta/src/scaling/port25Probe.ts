@@ -23,7 +23,7 @@ import {
 export const PORT25_PROBE_DOMAINS = ['gmail.com', 'outlook.com', 'yahoo.com'] as const;
 
 /** Whole-probe budget. Individual connects are already capped by the shipped probe. */
-export const PORT25_PROBE_DEADLINE_MS = 20_000;
+const PORT25_PROBE_DEADLINE_MS = 20_000;
 
 export type Port25TargetOutcome =
 	| 'connected'

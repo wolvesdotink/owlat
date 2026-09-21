@@ -13,7 +13,8 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import type { Doc } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
+import { listSharedInboxReaderIds } from '../access';
 import { transition as threadTransition } from '../threads/module';
 import { applyInboxStatsDelta, bucketForStatus } from '../../lib/inboxStats';
 import {
@@ -24,7 +25,7 @@ import {
 	type TransitionInput,
 	type TransitionOutcome,
 } from './types';
-import { canFail, LEGAL_EDGES, reduce, TERMINAL } from './reducers';
+import { canFail, PROCESSING_LIFECYCLE, reduce } from './reducers';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -63,6 +64,50 @@ export function resolveHumanApproveUndoDelayMs(configured: number | undefined): 
 	return configured === undefined
 		? DEFAULT_HUMAN_APPROVE_UNDO_DELAY_MS
 		: clampHumanApproveUndoDelayMs(configured);
+}
+
+// ─── Clarification notices ──────────────────────────────────────────────────
+
+/**
+ * Who has to answer the agent's questions on this message: the message's own
+ * assignee, else the thread's assignee. Without either there is no single
+ * responsible person, so the notice fans out to every shared-inbox reader
+ * (owner / admin) — the same set that sees the review queue.
+ */
+export async function resolveClarificationRecipients(
+	ctx: MutationCtx,
+	message: Doc<'inboundMessages'>
+): Promise<string[]> {
+	if (message.assignedTo) return [message.assignedTo];
+	const thread = message.threadId ? await ctx.db.get(message.threadId) : null;
+	if (thread?.assignedTo) return [thread.assignedTo];
+	return listSharedInboxReaderIds(ctx);
+}
+
+/**
+ * Append one `clarification` notice per recipient. Best-effort: the message
+ * is already parked in `awaiting_clarification`; a missing row or profile
+ * only means fewer notices, never a failed transition.
+ */
+async function notifyClarification(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<void> {
+	const message = await ctx.db.get(inboundMessageId);
+	if (!message?.threadId) return;
+	const recipients = await resolveClarificationRecipients(ctx, message);
+	const now = Date.now();
+	for (const userId of recipients) {
+		await ctx.db.insert('inboxAssignmentNotices', {
+			kind: 'clarification',
+			inboundMessageId,
+			userId,
+			threadId: message.threadId,
+			subject: message.subject ?? 'No subject',
+			assignedByName: message.from,
+			createdAt: now,
+		});
+	}
 }
 
 // ─── Runner ─────────────────────────────────────────────────────────────────
@@ -107,6 +152,10 @@ export async function applyEffects(
 					status: 'pending' as ActionStatus,
 					errorMessage: undefined,
 				});
+				break;
+			}
+			case 'notify_clarification': {
+				await notifyClarification(ctx, effect.inboundMessageId);
 				break;
 			}
 			case 'set_thread_draft_status': {
@@ -246,17 +295,20 @@ export async function dispatch(
 	} else if (input.to === 'archived' && from !== 'security_check') {
 		// Block-sender / spam-from-classifier can archive from any
 		// non-terminal state — star-source for archived too.
-		if (TERMINAL.has(from)) {
+		if (PROCESSING_LIFECYCLE.isTerminal(from)) {
 			return { ok: false, reason: 'terminal', from, to: input.to };
 		}
-	} else {
-		const isLegal = LEGAL_EDGES[from].has(input.to);
-		if (!isLegal) {
-			if (TERMINAL.has(from)) {
-				return { ok: false, reason: 'terminal', from, to: input.to };
-			}
-			return { ok: false, reason: 'illegal_edge', from, to: input.to };
-		}
+	} else if (!PROCESSING_LIFECYCLE.isLegalEdge(from, input.to)) {
+		// Deliberately `isLegalEdge` rather than the core's `classify`: this
+		// machine has never granted the implicit self-loop pass, and a same-state
+		// re-drive (`drafting → drafting`) must keep refusing rather than
+		// re-running the reducer and re-firing its effects.
+		return {
+			ok: false,
+			reason: PROCESSING_LIFECYCLE.isTerminal(from) ? 'terminal' : 'illegal_edge',
+			from,
+			to: input.to,
+		};
 	}
 
 	const result = reduce(message, input);

@@ -11,18 +11,21 @@ export type StorageUploadResult =
  * error handling.
  *
  * Returns a discriminated result so each caller keeps its own UX for the three
- * failure modes (toast / throw / silent skip). The POST itself may still throw on
- * a transport error — callers that swallow that wrap this call in try/catch.
+ * failure modes (toast / throw / silent skip). `generateUploadUrl` is a
+ * `useBackendOperation` `run` — a failed mint has already been surfaced by the
+ * operation module, so it lands here as the `no-url` reason and nothing else.
+ * The POST itself may still throw on a transport error — callers that swallow
+ * that wrap this call in try/catch.
  */
 export async function uploadFileToStorage(
 	file: File,
-	generateUploadUrl: () => Promise<string | undefined>,
-	contentType: string = file.type,
+	generateUploadUrl: () => Promise<BackendOperationResult<string>>,
+	contentType: string = file.type
 ): Promise<StorageUploadResult> {
-	const uploadUrl = await generateUploadUrl();
-	if (uploadUrl === undefined) return { ok: false, reason: 'no-url' };
+	const minted = await generateUploadUrl();
+	if (!minted.ok) return { ok: false, reason: 'no-url' };
 
-	const response = await fetch(uploadUrl, {
+	const response = await fetch(minted.result, {
 		method: 'POST',
 		headers: { 'Content-Type': contentType },
 		body: file,

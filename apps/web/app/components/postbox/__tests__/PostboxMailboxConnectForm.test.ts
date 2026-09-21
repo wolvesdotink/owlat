@@ -17,11 +17,15 @@ vi.stubGlobal('onBeforeUnmount', onBeforeUnmount);
 // The form renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
 
 import PostboxMailboxConnectForm from '../PostboxMailboxConnectForm.vue';
+import PostboxGoogleSignIn from '../PostboxGoogleSignIn.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 vi.stubGlobal('useI18n', i18nStubs.useI18n);
 import type { MailProvider } from '~/utils/mailAutodiscover';
 import type { Id } from '@owlat/api/dataModel';
+import { queryResult } from '~/__tests__/queryStubs';
+import type { GoogleConnectIntent } from '~/composables/postbox/useGoogleOAuthConnect';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
 // `api` is a bottomless Proxy — every path is the same value, so the operation
 // each call site targets can't be told apart by identity. We discriminate on the
@@ -33,6 +37,11 @@ vi.mock('@owlat/api', () => {
 	});
 	return { api: anyPath };
 });
+
+/** Whether `googleOAuth.isConfigured` answers yes for the mounted form. */
+let googleConfigured: boolean;
+/** Calls the Google branch made: one per "Sign in with Google" click. */
+let googleConnect: ReturnType<typeof vi.fn>;
 
 const CONNECT = 'Connect mailbox';
 const CONNECT_SHARED = 'Connect team inbox';
@@ -47,6 +56,15 @@ function runFor(label: string) {
 
 beforeEach(() => {
 	runs = new Map();
+	googleConfigured = false;
+	googleConnect = vi.fn(async () => true);
+	vi.stubGlobal('useConvexQuery', () => queryResult({ configured: googleConfigured }));
+	vi.stubGlobal('useRoute', () => ({ fullPath: '/dashboard/postbox/migrate' }));
+	vi.stubGlobal('useGoogleOAuthConnect', () => ({
+		connect: googleConnect,
+		isLoading: ref(false),
+		handedOffToBrowser: ref(false),
+	}));
 	vi.stubGlobal(
 		'useBackendOperation',
 		(_fn: unknown, opts?: { label?: string | (() => string) }) => {
@@ -81,7 +99,22 @@ const provider: MailProvider = {
 		isSmtpSecure: true,
 	},
 	appPassword: null,
+	oauth: null,
 	manualServer: false,
+};
+
+/** Gmail, the one provider that can be connected with OAuth. */
+const googleProvider: MailProvider = {
+	...provider,
+	id: 'gmail',
+	name: 'shared.mailAutodiscover.provider.gmail.name',
+	hint: 'shared.mailAutodiscover.provider.gmail.hint',
+	appPassword: {
+		provider: 'Gmail',
+		url: 'https://myaccount.google.com/apppasswords',
+		steps: 'shared.mailAutodiscover.appPassword.gmail',
+	},
+	oauth: { provider: 'google' },
 };
 
 const account = {
@@ -104,11 +137,19 @@ const UiInputStub = {
 	template:
 		'<label><span>{{ label }}</span><input :type="type" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /></label>',
 };
-const UiButtonStub = { template: '<button type="submit"><slot /></button>' };
+// Respects `type`: the Google branch's buttons are `type="button"`, and a stub
+// that made everything a submit button would fire the password form's submit
+// handler on a click that must never reach it.
+const UiButtonStub = {
+	props: ['type'],
+	template: '<button :type="type || \'submit\'"><slot /></button>',
+};
 const UiErrorAlertStub = { props: ['message'], template: '<div class="err">{{ message }}</div>' };
 const iconStub = { props: ['name'], template: '<span />' };
 
 type FormProps = {
+	provider?: MailProvider;
+	seedProvider?: DestinationProviderKey;
 	mode: 'connect' | 'update';
 	shared?: boolean;
 	displayName?: string;
@@ -122,12 +163,18 @@ function mountForm(props: FormProps) {
 		props: { provider, ...props },
 		global: {
 			plugins: [createTestI18n()],
+			// The Google branch is rendered for real — its copy is the surface these
+			// cases are about. The server fields are a stub: they carry no Google
+			// behaviour and their disclosure markup is audited in its own suite.
+			components: { PostboxGoogleSignIn },
 			stubs: {
+				PostboxMailboxServerFields: true,
 				UiInput: UiInputStub,
 				UiButton: UiButtonStub,
 				UiErrorAlert: UiErrorAlertStub,
 				Icon: iconStub,
 				PostboxAppPasswordCallout: true,
+				UiDisclosure: { template: '<div><slot name="label" /><slot /></div>' },
 			},
 		},
 	});
@@ -210,5 +257,177 @@ describe('PostboxMailboxConnectForm provider copy', () => {
 		expect(wrapper.text()).toContain('Any IMAP mailbox address');
 		expect(wrapper.text()).not.toContain('shared.mailAutodiscover');
 		expectFullyLocalized(wrapper);
+	});
+});
+
+// ── Google sign-in branch ───────────────────────────────────────────────────
+
+/** Click the button whose visible label contains `text`. */
+async function clickButton(wrapper: VueWrapper, text: string) {
+	const button = wrapper.findAll('button').find((b) => b.text().includes(text));
+	expect(button, `no button labelled "${text}"`).toBeDefined();
+	await button!.trigger('click');
+	await flushPromises();
+}
+
+/** The intent the Google branch handed `useGoogleOAuthConnect().connect`. */
+function connectedWith(): { intent: GoogleConnectIntent; returnTo: string } {
+	expect(googleConnect).toHaveBeenCalledTimes(1);
+	const [intent, returnTo] = googleConnect.mock.calls[0] as [GoogleConnectIntent, string];
+	return { intent, returnTo };
+}
+
+const oauthAccount = { ...account, authMethod: 'oauth2', status: 'active' };
+
+/**
+ * The rendered order of the two paths: which one the user meets first. Compared
+ * in DOM order rather than by searching the markup, so the component's own
+ * comments can never be mistaken for its copy.
+ */
+function googleComesBeforePassword(wrapper: VueWrapper): boolean {
+	const google = wrapper.findComponent(PostboxGoogleSignIn);
+	expect(google.exists(), 'no Google block rendered').toBe(true);
+	const password = wrapper.find('input[type="password"]').element;
+	// DOCUMENT_POSITION_FOLLOWING: the password field comes after the block.
+	return (google.element.compareDocumentPosition(password) & 4) !== 0;
+}
+
+describe('PostboxMailboxConnectForm Google branch', () => {
+	it('keeps the app-password form whole, and adds Google under it, when a client is configured', () => {
+		googleConfigured = true;
+		const wrapper = mountForm({ provider: googleProvider, mode: 'connect' });
+
+		// Google sign-in is an EXTRA. Configuring an OAuth client is work only an
+		// admin can do, so it must never cost the path every Gmail user can take:
+		// the password form renders whole, and first.
+		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+		expect(wrapper.find('input[type="email"]').exists()).toBe(true);
+		expect(wrapper.text()).toContain('Test connection');
+		expect(wrapper.findComponent({ name: 'PostboxAppPasswordCallout' }).exists()).toBe(true);
+
+		expect(wrapper.text()).toContain('Sign in with Google');
+		expect(googleComesBeforePassword(wrapper)).toBe(false);
+		expectFullyLocalized(wrapper);
+	});
+
+	it('renders the app-password form exactly as before when no client is configured', () => {
+		googleConfigured = false;
+		const wrapper = mountForm({ provider: googleProvider, mode: 'connect' });
+
+		expect(wrapper.text()).not.toContain('with Google');
+		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+		expect(wrapper.find('input[type="email"]').exists()).toBe(true);
+		expect(wrapper.text()).toContain('Test connection');
+		expect(wrapper.findComponent({ name: 'PostboxAppPasswordCallout' }).exists()).toBe(true);
+	});
+
+	it('submits the password path even where Google sign-in is on offer', async () => {
+		googleConfigured = true;
+		const wrapper = mountForm({ provider: googleProvider, mode: 'connect' });
+
+		await fill(wrapper, { email: 'me@gmail.com' });
+		await wrapper.find('form').trigger('submit');
+		await flushPromises();
+
+		expect(runFor(CONNECT)!).toHaveBeenCalledTimes(1);
+		expect(googleConnect).not.toHaveBeenCalled();
+	});
+
+	it('leads with the re-authorization, password form still below, for an OAuth account', async () => {
+		googleConfigured = true;
+		const wrapper = mountForm({
+			provider: googleProvider,
+			mode: 'update',
+			account: oauthAccount,
+		});
+
+		// The one mount where Google leads: there is no password on this account to
+		// re-enter, so reconnecting is what the user came for. Rotating it onto an
+		// app password stays available underneath.
+		expect(wrapper.text()).toContain('Reconnect with Google');
+		expect(googleComesBeforePassword(wrapper)).toBe(true);
+		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+		expect(wrapper.text()).toContain('Test connection');
+		expectFullyLocalized(wrapper);
+
+		await clickButton(wrapper, 'Reconnect with Google');
+		expect(connectedWith().intent).toEqual({ kind: 'update' });
+	});
+
+	it('does not lead with Google, or say "Reconnect", when the account uses a password', () => {
+		googleConfigured = true;
+		const wrapper = mountForm({ provider: googleProvider, mode: 'update', account });
+
+		expect(wrapper.text()).toContain('Sign in with Google');
+		expect(wrapper.text()).not.toContain('Reconnect with Google');
+		expect(googleComesBeforePassword(wrapper)).toBe(false);
+	});
+
+	it('flags the return path so the wizard can start the import on the way back', async () => {
+		googleConfigured = true;
+		const wrapper = mountForm({ provider: googleProvider, mode: 'connect' });
+
+		await clickButton(wrapper, 'with Google');
+
+		expect(connectedWith().returnTo).toBe('/dashboard/postbox/migrate?googleConnected=1');
+	});
+
+	// The same five-way fan-out `handleSubmit` dispatches on. A wrong intent here
+	// is the OAuth twin of the bug the submit-dispatch suite guards: the exchange
+	// would connect a team inbox as the caller's personal mailbox, or rewrite a
+	// personal account from a team-inbox form.
+	const intentCases: { name: string; props: FormProps; intent: GoogleConnectIntent }[] = [
+		{ name: 'personal connect', props: { mode: 'connect' }, intent: { kind: 'connect' } },
+		{
+			name: 'personal update',
+			props: { mode: 'update', account: oauthAccount },
+			intent: { kind: 'update' },
+		},
+		{
+			name: 'team inbox connect',
+			props: { mode: 'connect', shared: true, displayName: 'Support', memberUserIds: ['u1'] },
+			intent: { kind: 'connectShared', displayName: 'Support', memberUserIds: ['u1'] },
+		},
+		{
+			name: 'team inbox update',
+			props: {
+				mode: 'update',
+				shared: true,
+				mailboxId: 'mbx-42' as Id<'mailboxes'>,
+				account: oauthAccount,
+			},
+			intent: { kind: 'updateShared', mailboxId: 'mbx-42' as Id<'mailboxes'> },
+		},
+		{
+			name: 'deliverability seed connect',
+			props: { mode: 'connect', seedProvider: 'gmail' },
+			intent: { kind: 'connectSeed', seedProvider: 'gmail' },
+		},
+	];
+
+	it.each(intentCases)('maps the $name mount to its connect intent', async ({ props, intent }) => {
+		googleConfigured = true;
+		const wrapper = mountForm({ provider: googleProvider, ...props });
+
+		await clickButton(wrapper, 'with Google');
+
+		expect(connectedWith().intent).toEqual(intent);
+	});
+
+	it('refuses a team-inbox re-authorization that lost its mailbox', async () => {
+		googleConfigured = true;
+		const wrapper = mountForm({
+			provider: googleProvider,
+			mode: 'update',
+			shared: true,
+			account: oauthAccount,
+		});
+
+		await clickButton(wrapper, 'with Google');
+
+		// Never fall through to the personal account — the same trap the submit
+		// path guards, reached through the OAuth door.
+		expect(googleConnect).not.toHaveBeenCalled();
+		expect(wrapper.text()).toContain('its mailbox is missing');
 	});
 });

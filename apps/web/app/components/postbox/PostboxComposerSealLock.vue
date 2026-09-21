@@ -18,6 +18,15 @@
  * owns the confirm dialog, so the same prompt covers this control, the Send
  * button and the send shortcut.
  *
+ * When a missing recipient key is the blocker, the lock also NAMES the keyless
+ * recipients and offers to remove each one (plan idea 11) — the alternative to
+ * plaintext that the aggregate verdict alone left invisible. That is an edit to
+ * the recipient list, not a second consent path: the unsealed prompt is still
+ * the only way a message goes out in plaintext, and removing someone just
+ * re-runs the server's own derivation on a shorter list. The button says what
+ * it does ("Remove {address}") and promises nothing about the result, because
+ * the shortened list can still fail to seal for an unrelated reason.
+ *
  * Every string it renders comes from the pure derivation, whose honesty audit is
  * a unit test. When the flag is off the parent passes `enabled=false` and the
  * lock renders nothing.
@@ -33,13 +42,28 @@ const props = withDefaults(
 		sealState: SealState | null;
 		/** The state query is in flight for this draft — render the checking lock. */
 		pending?: boolean;
+		/**
+		 * Addresses whose missing sealing key is why this draft cannot be sealed
+		 * (`sealBlockingRecipients`). Empty for every other state, including
+		 * `keyChanged` — that one is resolved on the conversation, and the lock's
+		 * own copy already names the rotated addresses.
+		 */
+		blockingRecipients?: string[];
+		/**
+		 * Every recipient's key has been verified by a human here (plan idea 54).
+		 * Only strengthens the `willSeal` wording; it never changes whether the
+		 * message seals or whether Send is allowed.
+		 */
+		allVerified?: boolean;
 	}>(),
-	{ pending: false }
+	{ pending: false, blockingRecipients: () => [], allVerified: false }
 );
 
 const emit = defineEmits<{
 	/** cannotSeal only: the reader wants to decide about sending unsealed. */
 	'request-unsealed': [];
+	/** Drop this keyless recipient from the envelope; the state then recomputes. */
+	'remove-recipient': [address: string];
 }>();
 
 const { t } = useI18n();
@@ -51,7 +75,9 @@ const localize = (value: string | { key: string; params?: Record<string, unknown
 // Nothing to say only before a draft exists (no query yet): from the moment the
 // state is being computed the lock speaks, first as `checking`.
 const lock = computed(() =>
-	props.enabled && (props.sealState || props.pending) ? deriveComposerLock(props.sealState) : null
+	props.enabled && (props.sealState || props.pending)
+		? deriveComposerLock(props.sealState, props.allVerified)
+		: null
 );
 
 // FF-token chip/icon classes, shared with the reader's sealed badge.
@@ -71,13 +97,40 @@ const toneClasses = computed(() =>
 			<Icon
 				:name="lock.icon"
 				class="w-3.5 h-3.5"
-				:class="[toneClasses.icon, lock.kind === 'checking' && 'animate-spin']"
+				:class="[
+					toneClasses.icon,
+					lock.kind === 'checking' && 'animate-spin motion-reduce:animate-none',
+				]"
 			/>
 			<span data-testid="seal-lock-summary">{{ localize(lock.summary) }}</span>
 		</div>
 		<p class="mt-1.5 text-xs text-text-secondary max-w-prose" data-testid="seal-lock-detail">
 			{{ localize(lock.detail) }}
 		</p>
+		<!-- Plan idea 11: who is blocking encryption, and the one edit that can
+		     change the answer. Shown above the plaintext control so removing a
+		     keyless recipient reads as the alternative it is. -->
+		<div
+			v-if="blockingRecipients.length > 0"
+			class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+			data-testid="seal-lock-blockers"
+		>
+			<span class="text-text-secondary">
+				{{ t('components.postbox.postboxComposerSealLock.blockedBy') }}
+			</span>
+			<button
+				v-for="address in blockingRecipients"
+				:key="address"
+				type="button"
+				class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border-subtle text-text-secondary hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+				data-testid="seal-lock-remove-blocker"
+				:aria-label="t('components.postbox.postboxComposerSealLock.removeBlocker', { address })"
+				@click="emit('remove-recipient', address)"
+			>
+				{{ address }}
+				<Icon name="lucide:x" class="w-3 h-3" />
+			</button>
+		</div>
 		<div v-if="lock.allowSendUnsealed" class="mt-1.5 flex flex-wrap items-center gap-2">
 			<button
 				type="button"

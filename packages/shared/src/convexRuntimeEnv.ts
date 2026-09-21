@@ -47,7 +47,7 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'BETTER_AUTH_SECRET',
 	'INSTANCE_SECRET',
 	// The PREVIOUS INSTANCE_SECRET — set ONLY during a secret-rotation window
-	// (Sealed Mail key lifecycle, E6). Pushed into the deployment so the E2EE key
+	// for the Sealed Mail key lifecycle. Pushed into the deployment so the E2EE key
 	// box's mixed-vault fallback (open under current, else previous) actually
 	// reaches the Convex function runtime while the re-seal migration runs; a
 	// self-hoster who set it only in the compose .env would otherwise find the
@@ -55,6 +55,11 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'INSTANCE_SECRET_PREVIOUS',
 	'OWLAT_VERSION',
 	'OWLAT_DEV_MODE',
+	// Email-verification opt-in. Read at Convex function runtime by
+	// auth/auth.ts to enable BetterAuth `requireEmailVerification` / `sendOnSignUp`
+	// and the org plugin's `requireEmailVerificationOnInvitation`. Must reach the
+	// deployment or the opt-in is un-enableable through the supported flows.
+	'REQUIRE_EMAIL_VERIFICATION',
 	// Site URLs
 	'SITE_URL',
 	'ADMIN_SITE_URL',
@@ -98,7 +103,7 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// runtime (delivery status + campaign From-picker), so it must be pushed.
 	'OUTBOUND_DKIM_DOMAIN',
 	'SPF_QUALIFIER',
-	// BIMI (P4-7). The DOMAIN WIZARD generates the `_bimi` record at Convex
+	// BIMI. The DOMAIN WIZARD generates the `_bimi` record at Convex
 	// function runtime, so these must reach the deployment and not merely the
 	// MTA's env — a self-hoster who set them would otherwise find the wizard
 	// still reporting that no logo is known, with no error to explain it.
@@ -177,6 +182,17 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'LLM_COMPLEXITY_ROUTING',
 	'OPENAI_API_KEY',
 	'OPENROUTER_API_KEY',
+	// DECISION plane (the third AI plane). Read at Convex function runtime by
+	// lib/decisionProvider.ts via getOptional(), so a self-hoster who configures
+	// the plane through .env alone would otherwise find it silently never applied:
+	// the resolver would see no key, degrade to the language-backed adapter, and
+	// the deployment would keep paying language-plane prices for every decision
+	// with nothing on screen to explain why. Every one of these is optional —
+	// unset means the plane resolves exactly as it did before it existed.
+	'TYPESAFE_API_KEY',
+	'DECISION_PROVIDER',
+	'DECISION_MODEL',
+	'DECISION_BASE_URL',
 	// Per-org dollar-spend budget for LLM calls (analytics/spendBudget.ts).
 	// Pushed into the deployment so resolveBudgetConfig() reads real ceilings
 	// at function runtime; without these the gate reads the '0' default and the
@@ -196,6 +212,17 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// every caller, and the public rate-limit buckets collapse to coarse shared
 	// keys — so an operator who sets it in .env would still get no per-IP keying.
 	'RATE_LIMIT_TRUSTED_PROXY',
+	// Shared secret the reverse proxy must present in `X-Owlat-Proxy-Secret` for
+	// the `cloudflare`/`xrealip` trust modes to believe their forwarded-IP header
+	// header. Read at Convex function runtime by publicRateLimit.getClientIp, so it
+	// must be pushed into the deployment — otherwise those modes never trust the
+	// header and every caller collapses to the shared 'unknown' bucket.
+	'RATE_LIMIT_PROXY_SECRET',
+	// Reverse-proxy IPs / CIDRs that front this deployment, used by the BetterAuth
+	// login limiter's right-anchored X-Forwarded-For walk. Read at Convex
+	// function runtime by auth/auth.ts, so it must be pushed into the deployment —
+	// otherwise a multi-hop XFF chain degrades to single-value-only trust.
+	'RATE_LIMIT_TRUSTED_PROXIES',
 	// Inbound channel webhooks
 	'TWILIO_AUTH_TOKEN',
 	'META_APP_SECRET',
@@ -211,12 +238,18 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// timezone used to label open slots. Unset ⇒ exactly today's sender-phrase-only
 	// scheduling replies.
 	'CALENDAR_FREEBUSY_ICS_URL',
+	// Google OAuth client for connecting an external Gmail mailbox with Google
+	// sign-in. Read at Convex function runtime (`mail/external/googleOAuth*`), so
+	// it must reach the deployment env store — left in the compose `.env` alone,
+	// the Gmail card would silently keep offering only the app-password path.
+	'GOOGLE_OAUTH_CLIENT_ID',
+	'GOOGLE_OAUTH_CLIENT_SECRET',
 	'CALENDAR_TIMEZONE',
 	// Microsoft SNDS "Automated Data Access" feed URLs, read at Convex function
 	// runtime by the SNDS poller via getOptional(). Without the push a self-hoster
 	// who sets it in .env would find getOptional('SNDS_DATA_FEED_URLS') always
 	// undefined and the poller silently dead in production. Unset ⇒ the poller
-	// returns immediately: SNDS enrollment is additive-only (D2).
+	// returns immediately: SNDS enrollment is additive-only.
 	'SNDS_DATA_FEED_URLS',
 ] as const;
 

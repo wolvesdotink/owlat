@@ -14,9 +14,11 @@ useHead({ title: () => t('desktop.connect.pageTitle') });
 definePageMeta({ layout: false });
 
 import { formatConnectionCode } from '~/lib/desktop/connectionCode';
+import { requiresTwoFactor } from '~/utils/accountTwoFactor';
+import { useTwoFactorChallenge } from '~/composables/useTwoFactorChallenge';
 
 const route = useRoute();
-const { user, signInWithEmail, isPending } = useAuth();
+const { user, signInWithEmail, completeTwoFactorSignIn, isPending } = useAuth();
 
 const state = computed(() => String(route.query['state'] ?? ''));
 const redirect = computed(() => String(route.query['redirect'] ?? ''));
@@ -33,6 +35,36 @@ const handingBack = ref(false);
 // browsers that refuse custom schemes). See lib/desktop/connectionCode.ts.
 const connectionCode = ref('');
 const codeCopied = ref(false);
+
+/**
+ * Sign-in is two stages once the account has TOTP enabled: BetterAuth answers
+ * the password POST with `{ twoFactorRedirect: true }` and NO session, so the
+ * `user` watcher below never fires and there is nothing to hand back yet. The
+ * challenge is a stage of THIS form — the desktop handshake has nowhere to
+ * navigate to, and the `state` nonce lives in the query string of this very URL.
+ */
+const {
+	stage,
+	code: twoFactorCode,
+	useBackupCode,
+	method: twoFactorMethod,
+	canSubmit: canSubmitCode,
+	onCodeInput,
+	challenge,
+	switchMethod,
+	reset: resetChallenge,
+} = useTwoFactorChallenge();
+
+function switchCodeMethod() {
+	switchMethod();
+	errorMessage.value = '';
+}
+
+function backToCredentials() {
+	resetChallenge();
+	password.value = '';
+	errorMessage.value = '';
+}
 
 async function copyCode() {
 	try {
@@ -81,9 +113,32 @@ async function handleSubmit() {
 	}
 	isLoading.value = true;
 	try {
-		await signInWithEmail(email.value, password.value);
+		const result = await signInWithEmail(email.value, password.value);
+		// The password was right but the account wants its second factor. No
+		// session exists, so waiting on the `user` watcher here would hang the
+		// page on a silent, empty form.
+		if (requiresTwoFactor(result)) {
+			challenge();
+			return;
+		}
 		await nextTick();
 		// The `user` watcher fires `generateAndReturn` once the session resolves.
+	} catch (e) {
+		errorMessage.value = e instanceof Error ? e.message : t('desktop.connect.errors.signInFailed');
+	} finally {
+		isLoading.value = false;
+	}
+}
+
+async function handleTwoFactorSubmit() {
+	if (!canSubmitCode.value) return;
+	errorMessage.value = '';
+	isLoading.value = true;
+	try {
+		await completeTwoFactorSignIn({ code: twoFactorCode.value, method: twoFactorMethod.value });
+		await nextTick();
+		// Same tail as the one-stage sign-in: the `user` watcher hands the token
+		// back once the session resolves.
 	} catch (e) {
 		errorMessage.value = e instanceof Error ? e.message : t('desktop.connect.errors.signInFailed');
 	} finally {
@@ -125,7 +180,7 @@ async function handleSubmit() {
 				</div>
 			</div>
 
-			<form v-else class="space-y-4" @submit.prevent="handleSubmit">
+			<form v-else-if="stage === 'credentials'" class="space-y-4" @submit.prevent="handleSubmit">
 				<div>
 					<label class="label mb-1 text-sm" for="email">{{ t('common.email') }}</label>
 					<input
@@ -152,6 +207,54 @@ async function handleSubmit() {
 				<UiButton type="submit" :disabled="isLoading" full-width>
 					{{ isLoading ? t('desktop.connect.signingInButton') : t('desktop.connect.submit') }}
 				</UiButton>
+			</form>
+
+			<!--
+				Second stage. The password has already been accepted; the server is
+				holding the session behind a short-lived challenge cookie. The copy is
+				the sign-in page's — it is the same question, asked by the same
+				product, and a second set of keys would only drift from the first.
+			-->
+			<form v-else class="space-y-4" @submit.prevent="handleTwoFactorSubmit">
+				<div>
+					<h2 class="text-sm font-medium">{{ t('auth.login.twoFactor.title') }}</h2>
+					<p class="mt-1 text-sm text-text-secondary">
+						{{
+							useBackupCode ? t('auth.login.twoFactor.backupBody') : t('auth.login.twoFactor.body')
+						}}
+					</p>
+				</div>
+				<div>
+					<label class="label mb-1 text-sm" for="two-factor-code">{{
+						useBackupCode
+							? t('auth.login.twoFactor.backupLabel')
+							: t('auth.login.twoFactor.codeLabel')
+					}}</label>
+					<input
+						id="two-factor-code"
+						:value="twoFactorCode"
+						:autocomplete="useBackupCode ? 'off' : 'one-time-code'"
+						type="text"
+						class="input input-sm text-sm"
+						@input="onCodeInput(($event.target as HTMLInputElement).value)"
+					/>
+				</div>
+				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
+				<UiButton type="submit" :disabled="isLoading || !canSubmitCode" full-width>
+					{{ isLoading ? t('auth.login.twoFactor.submitting') : t('auth.login.twoFactor.submit') }}
+				</UiButton>
+				<div class="flex items-center justify-between text-sm">
+					<button type="button" class="link" @click="switchCodeMethod">
+						{{
+							useBackupCode
+								? t('auth.login.twoFactor.useAuthenticator')
+								: t('auth.login.twoFactor.useBackupCode')
+						}}
+					</button>
+					<button type="button" class="link" @click="backToCredentials">
+						{{ t('auth.login.twoFactor.cancel') }}
+					</button>
+				</div>
 			</form>
 		</div>
 	</div>

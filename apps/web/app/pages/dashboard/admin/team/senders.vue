@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 import { mapSenderVerification } from '~/utils/campaignSenderVerification';
 
 const { t } = useI18n();
@@ -9,7 +9,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.team.senders.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -137,7 +137,7 @@ async function confirmRemove() {
 	isRemoving.value = true;
 	const result = await removeSender({ id: sender._id });
 	isRemoving.value = false;
-	if (result !== undefined) {
+	if (result.ok) {
 		senderPendingRemoval.value = null;
 	}
 }
@@ -190,7 +190,7 @@ async function onSubmitAdd() {
 		email: addForm.email.trim(),
 		displayName: addForm.displayName.trim() || undefined,
 	});
-	if (result !== undefined) {
+	if (result.ok) {
 		isAddOpen.value = false;
 	}
 }
@@ -200,13 +200,6 @@ async function onSubmitAdd() {
 	<div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 		<!-- Header -->
 		<div>
-			<NuxtLink
-				to="/dashboard/admin"
-				class="inline-flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.team.senders.backToSettings') }}
-			</NuxtLink>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.team.senders.title') }}
 			</h1>
@@ -221,7 +214,9 @@ async function onSubmitAdd() {
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
 			<UiIconBox icon="lucide:mail" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.senders.noWorkspace.title') }}</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.admin.team.senders.noWorkspace.title') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 				{{ t('dashboard.admin.team.senders.noWorkspace.description') }}
 			</p>
@@ -269,7 +264,9 @@ async function onSubmitAdd() {
 						rounded="full"
 						class="mb-3"
 					/>
-					<p class="text-text-secondary font-medium">{{ t('dashboard.admin.team.senders.empty.title') }}</p>
+					<p class="text-text-secondary font-medium">
+						{{ t('dashboard.admin.team.senders.empty.title') }}
+					</p>
 					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
 						{{ t('dashboard.admin.team.senders.empty.description') }}
 					</p>
@@ -351,7 +348,12 @@ async function onSubmitAdd() {
 				</div>
 			</UiCard>
 
-			<I18nT keypath="dashboard.admin.team.senders.appSenderHint" tag="p" scope="global" class="text-xs text-text-tertiary">
+			<I18nT
+				keypath="dashboard.admin.team.senders.appSenderHint"
+				tag="p"
+				scope="global"
+				class="text-xs text-text-tertiary"
+			>
 				<template #generalSettingsLink>
 					<NuxtLink to="/dashboard/admin" class="text-brand hover:underline">{{
 						t('dashboard.admin.team.senders.appSenderHintLink')
@@ -432,7 +434,11 @@ async function onSubmitAdd() {
 					:loading="creating"
 					:disabled="creating || !verification.canAdd"
 				>
-					{{ creating ? t('dashboard.admin.team.senders.addModal.submitting') : t('dashboard.admin.team.senders.addSender') }}
+					{{
+						creating
+							? t('dashboard.admin.team.senders.addModal.submitting')
+							: t('dashboard.admin.team.senders.addSender')
+					}}
 				</UiButton>
 			</template>
 		</UiModal>
@@ -444,8 +450,12 @@ async function onSubmitAdd() {
 			:title="t('dashboard.admin.team.senders.removeDialog.title')"
 			:description="
 				senderPendingRemoval?.isDefault
-					? t('dashboard.admin.team.senders.removeDialog.descriptionDefault', { email: senderPendingRemoval?.email })
-					: t('dashboard.admin.team.senders.removeDialog.description', { email: senderPendingRemoval?.email })
+					? t('dashboard.admin.team.senders.removeDialog.descriptionDefault', {
+							email: senderPendingRemoval?.email,
+						})
+					: t('dashboard.admin.team.senders.removeDialog.description', {
+							email: senderPendingRemoval?.email,
+						})
 			"
 			:confirm-text="t('dashboard.admin.team.senders.removeDialog.confirm')"
 			:is-loading="isRemoving"

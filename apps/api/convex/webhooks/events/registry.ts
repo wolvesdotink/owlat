@@ -35,18 +35,8 @@ export const WEBHOOK_EVENT_REGISTRY = {
 
 export type WebhookEventLiteral = keyof typeof WEBHOOK_EVENT_REGISTRY;
 
-export type WebhookEventModuleFor<L extends WebhookEventLiteral> =
-	(typeof WEBHOOK_EVENT_REGISTRY)[L];
+type WebhookEventModuleFor<L extends WebhookEventLiteral> = (typeof WEBHOOK_EVENT_REGISTRY)[L];
 
 export type WebhookEventInputFor<L extends WebhookEventLiteral> = Parameters<
 	WebhookEventModuleFor<L>['build']
 >[0];
-
-export type WebhookEventDataFor<L extends WebhookEventLiteral> = ReturnType<
-	WebhookEventModuleFor<L>['build']
->;
-
-/** Subscribable subset (excludes `test`). Used by the events.ts catalog. */
-export const SUBSCRIBABLE_LITERALS = Object.values(WEBHOOK_EVENT_REGISTRY)
-	.filter((m) => m.isSubscribable)
-	.map((m) => m.literal);

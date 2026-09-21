@@ -1,5 +1,5 @@
 /**
- * THE INDEPENDENCE SCREEN'S COPY (plan D14) — presentation only.
+ * THE INDEPENDENCE SCREEN'S COPY — presentation only.
  *
  * The half of the ramp vocabulary that speaks about the DEPLOYMENT rather than
  * about a cell: the headline, the money, the projected date the relay stops
@@ -27,16 +27,16 @@ export type IndependenceSummary = FunctionReturnType<
 	typeof api.delivery.rampIndependence.getIndependenceSummary
 >;
 
-// ============ THE HEADLINE (D14) ============
+// ============ THE HEADLINE ============
 
 /**
  * WITH NO RELAY THERE IS NOTHING TO BECOME INDEPENDENT OF, so the screen is not
  * a degraded "Sending independence" — it is a different, honest feature whose
- * headline is today's capacity and what is holding it back (plan D14).
+ * headline is today's capacity and what is holding it back.
  *
  * ONE FUNCTION, TWO SCREENS. The Measurement dashboard shipped this exact rename
  * first; re-deciding it here would let the two screens disagree about what the
- * standalone feature is CALLED, which is the one thing D14 cares about. So the
+ * standalone feature is CALLED. So the
  * two words come from there, not from a copy — the SUBHEAD below is genuinely
  * different prose (that screen is read-only; this one is the ramp) and stays
  * local.

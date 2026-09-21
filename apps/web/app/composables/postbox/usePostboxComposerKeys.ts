@@ -23,7 +23,10 @@ export function usePostboxComposerKeys(options: {
 	onMinimize: () => void;
 }) {
 	const { t } = useI18n();
-	const isMac = computed(() => import.meta.client && /Mac|iP(hone|ad|od)/.test(navigator.platform));
+	// Not `useDesktopContext().isMac`: that one is gated on the desktop RUNTIME,
+	// and a browser on a Mac still wants the ⌘ hint.
+	const { platform } = useDesktopContext();
+	const isMac = computed(() => import.meta.client && platform.value === 'mac');
 	const sendShortcutHint = computed(() =>
 		isMac.value
 			? t('shared.postbox.usePostboxComposerKeys.sendMac')

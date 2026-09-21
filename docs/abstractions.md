@@ -27,7 +27,7 @@ Factories cache the resolved provider per-process. Tests can call
 | Interface                                                               | Env var                 | Implementations                                                             | Files                                                                                    |
 | ----------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `EmailProvider` (domain identity/verification) — **legacy, superseded** | `EMAIL_PROVIDER` (mta)  | see `domains/providers/` below                                              | `emailProviders/{sesIdentity,mtaIdentity,domainVerification}.ts`                         |
-| Send providers (delivery dispatch + health + routing)                   | per-org config          | `mta`, `ses`, `resend`, `smtp`, `mandrill`, `emailit`                        | `sendProviders/` (adapters) + `packages/shared/src/sendProviderCatalog.ts` (the catalog) |
+| Send providers (delivery dispatch + health + routing)                   | per-org config          | `mta`, `ses`, `resend`, `smtp`, `mandrill`, `emailit`                       | `sendProviders/` (adapters) + `packages/shared/src/sendProviderCatalog.ts` (the catalog) |
 | `LLMProvider`                                                           | `LLM_PROVIDER` (openai) | OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Claude-via-compat) | `llmProvider.ts`                                                                         |
 
 The first row is **history, not a seam to implement**: there is no `EmailProvider`
@@ -38,9 +38,8 @@ survives under `emailProviders/` is what those adapters call:
 `sesIdentity.ts` / `mtaIdentity.ts` are the two provider identity API clients,
 and `domainVerification.ts` holds the From-address helpers **and** the
 `domains`-table verification gate (`isDomainVerified`,
-`isDomainVerificationFresh`, `validateDomainForSending`,
-`getDomainVerificationStatus`) that the send path checks before a campaign goes
-out. `EMAIL_PROVIDER` stays on the row because it is still what picks a newly
+`isDomainVerificationFresh`, `validateDomainForSending`) that the send path
+checks before a campaign goes out. `EMAIL_PROVIDER` stays on the row because it is still what picks a newly
 created domain's `providerType` — see the section below.
 
 The send-provider seam is deliberately **two halves**. The DATA half — what each
@@ -150,7 +149,7 @@ kind silently gets neither. That capability has no home on the adapter
 interface yet. It is one of the surviving families of kind literals, and the
 families are DATA rather than prose, split by what the literal is. A kind
 _declaration_ (`const X = 'ses'`) is enumerated by `SURVIVING_KIND_LITERALS` in
-`apps/api/convex/lib/sendProviders/__tests__/kindLiteralCustody.test.ts`, with
+`apps/api/scripts/check-kind-literal-custody.ts`, with
 its family and its owner; a _comparison_ — the return-path branches included —
 is enumerated by the ratchet's allowlist below. Both fail in both directions:
 an unenumerated literal fails, and an entry whose literal has been swept fails
@@ -497,36 +496,31 @@ the route strips `Bearer ` first). D10 deleted the pair rather than keep two
 expressions of one rule. A new inbound source is a new `webhooks/adapters/`
 module, never a method here.
 
-## Inbound mail normalization (`packages/channels/`)
+## Inbound mail normalization (`apps/api/convex/webhooks/adapters/inboundRegistry.ts`)
 
-`@owlat/channels` is exactly one thing, whatever its name still suggests, and
-this is its only row: the source-keyed registry in
-`packages/channels/src/inboundRegistry.ts` that turns a vendor's inbound
-envelope into the canonical `InboundEmailMessage`. The package holds nothing
-else — the stub outbound `ChannelAdapter` classes that used to live beside it
-were deleted by the D10 honesty pass, and the three real ones moved to
-`apps/api/convex/channels/adapters/` (the section above).
+The source-keyed registry that turns a vendor's inbound envelope into the
+canonical `InboundEmailMessage` the backend persists. It was `@owlat/channels`
+until that package was folded away: after the D10 honesty pass it held nothing
+but this registry, behind a workspace boundary only `webhooks/` ever crossed,
+so it moved next to its caller — as the three real outbound adapters already
+had (the section above).
 
 | `InboundSource` key | Adapter                                                     |
 | ------------------- | ----------------------------------------------------------- |
 | `mta`               | `MtaInboundAdapter` — the `inbound.received` event envelope |
 | `resend`            | `ResendInboundAdapter` — flat inbound-mail payload          |
-| `ses`               | declared, **not registered** — lookup throws                |
-| `postmark`          | declared, **not registered** — lookup throws                |
-| `mailgun`           | declared, **not registered** — lookup throws                |
 
-The last three are keys in the `InboundSource` union with no adapter behind
-them, on purpose: `getInboundChannelAdapter` throws a named error for them, so a
-caller can tell "source registered but not implemented" from "unknown source"
-instead of silently parsing nothing. Consumers reach an adapter through
-`getInboundChannelAdapter(source)` — today the MTA feedback adapter (for
-`inbound.received`). **A new inbound vendor is a new adapter module plus a
-`registerInboundChannelAdapter()` call**; no handler and no other row in this
-file needs editing for it.
+The union holds exactly the sources with an adapter. It used to also declare
+`ses`, `postmark` and `mailgun`, which nothing implemented, so
+`getInboundChannelAdapter` compiled for them and threw at runtime; the lookup
+is now total over the union and cannot throw. Consumers reach an adapter
+through `getInboundChannelAdapter(source)` — today the MTA feedback adapter
+(for `inbound.received`). A new inbound vendor is a new adapter plus a key in
+`ADAPTERS`; no handler and no other row in this file needs editing for it.
 
-Not to be confused with `webhooks/adapters/` in apps/api, which verifies and
-parses _channel_ (SMS/WhatsApp/generic) webhooks — a different seam with a
-different job. This registry only ever sees mail.
+Not to be confused with the sibling `webhooks/adapters/{twilio,meta,generic}.ts`
+modules, which verify and parse _channel_ (SMS/WhatsApp/generic) webhooks — a
+different seam with a different job. This registry only ever sees mail.
 
 ---
 

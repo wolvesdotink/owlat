@@ -19,7 +19,7 @@
 import { ref } from 'vue';
 import { countWords } from './usePostboxSelectionRewrite';
 
-/** Mirrors the backend `CoachCategory` union in mail/ai.ts. */
+/** Mirrors the backend `CoachCategory` union in mail/ai/assist.ts. */
 export type CoachCategory = 'tone' | 'ambiguity' | 'clarity' | 'missing-answer';
 
 export interface CoachSuggestion {
@@ -136,5 +136,3 @@ export function usePostboxCoach(options: UsePostboxCoachOptions) {
 		isClean,
 	};
 }
-
-export type PostboxCoach = ReturnType<typeof usePostboxCoach>;

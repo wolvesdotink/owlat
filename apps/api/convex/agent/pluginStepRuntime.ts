@@ -1,5 +1,6 @@
 import type { PluginAgentStepInput } from '@owlat/plugin-kit';
 import { isSafeAgentLifecycleEdge, type AgentStepPlacement } from '@owlat/plugin-host';
+import { isPlainObject } from '@owlat/shared';
 import type { Doc } from '../_generated/dataModel';
 import { encodePluginStorageValue } from '../plugins/storageJson';
 import { openInboundMessageBody } from '../lib/messageBody';
@@ -12,7 +13,7 @@ export const PLUGIN_AGENT_STEP_INPUT_LIMITS = Object.freeze({
 });
 const MAX_CAUTION_REASON_CODE_POINTS = 500;
 
-export interface HostedPluginStepResult {
+interface HostedPluginStepResult {
 	readonly kind: 'continue' | 'caution';
 	readonly to?: 'archived' | 'draft_ready' | 'failed';
 	/** Fixed host-owned metadata. No plugin-authored text crosses this boundary. */
@@ -108,12 +109,6 @@ function hasAtMostCodePoints(value: string, limit: number): boolean {
 		if (count > limit) return false;
 	}
 	return true;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
 
 function dataField(value: Record<string, unknown>, field: string, required: boolean): unknown {

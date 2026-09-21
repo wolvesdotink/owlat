@@ -9,11 +9,11 @@
  *
  * Two rules govern everything here:
  *
- *  - NEVER report zero for something we could not measure (plan D2/D10).
+ *  - NEVER report zero for something we could not measure.
  *    Missing state, stale state, no active campaign IPs, or an effectively
  *    unbounded (graduated) pool all answer `null` — "capacity unknown" — and
  *    every caller maps that onto "allow the send".
- *  - STATE THE BOUND HONESTLY (plan D14). The projection is the PUBLISHED BASE
+ *  - STATE THE BOUND HONESTLY. The projection is the PUBLISHED BASE
  *    SCHEDULE walked at ONE schedule day per calendar day, summed over the
  *    active campaign IPs. That is not an upper bound in general, and this file
  *    does not claim one. The error runs in BOTH directions, and each direction
@@ -47,7 +47,7 @@
 import { getWarmingCapForDay } from '@owlat/shared/warming';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import { MS_PER_DAY } from '../lib/constants';
+import { DAY_MS } from '../lib/constants';
 
 type Ctx = MutationCtx | QueryCtx;
 
@@ -62,7 +62,7 @@ const CAPACITY_PROJECTION_DAYS = 30;
  * The sync runs every five minutes, so a day of silence means the pipe is
  * broken — and a broken measurement pipe must never block sending.
  */
-const WARMING_STATE_MAX_AGE_MS = 1 * MS_PER_DAY;
+const WARMING_STATE_MAX_AGE_MS = 1 * DAY_MS;
 
 export interface WarmingCapacityOptions {
 	/** Current wall-clock time (ms since epoch); staleness is judged against it. */
@@ -180,7 +180,7 @@ export async function loadWarmingCapacity(
 	const startsAt = options.startsAt ?? options.now;
 	const anchorDayOffset =
 		Number.isFinite(startsAt) && Number.isFinite(options.now)
-			? Math.max(0, Math.floor(startsAt / MS_PER_DAY) - Math.floor(options.now / MS_PER_DAY))
+			? Math.max(0, Math.floor(startsAt / DAY_MS) - Math.floor(options.now / DAY_MS))
 			: 0;
 
 	// Today's remainder over the SAME population index k>0 projects.

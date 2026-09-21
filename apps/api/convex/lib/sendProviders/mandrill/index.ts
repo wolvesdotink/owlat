@@ -3,8 +3,8 @@
 /**
  * Mailchimp Transactional (Mandrill) Send provider adapter (module).
  *
- * Per ADR-0020, plan D1–D5. The MIGRATION arm: a team arriving from Mailchimp
- * keeps sending through their existing Mandrill account while the shipped ramp
+ * Per ADR-0020. The MIGRATION arm: a team arriving from Mailchimp keeps
+ * sending through their existing Mandrill account while the shipped ramp
  * controller walks traffic onto Owlat's own MTA cell by cell. Mandrill is
  * therefore just another reference arm — nothing in routing, the ramp, or the
  * measurement plane knows this file exists.
@@ -13,7 +13,7 @@
  * config cache and a timeout wrapper around one single-attempt call. Two things
  * differ, and both are decisions rather than accidents:
  *
- *  - **We send our own MIME (D3).** Owlat's composition pipeline IS the product:
+ *  - **We send our own MIME.** Owlat's composition pipeline IS the product:
  *    first-party open/click tracking, RFC 8058 one-click unsubscribe headers,
  *    `Feedback-ID`, `List-Id`, a plain-text part derived from the UNTRACKED
  *    HTML. So this adapter composes the whole message with `@owlat/mail-message`
@@ -22,7 +22,7 @@
  *    Mandrill `open`/`click` webhook events are ignored for the same reason: both
  *    arms must be measured on identical instrumentation or the `engagement_ratio`
  *    ramp gate is comparing two different rulers.
- *  - **A timeout is TERMINAL (D4).** Mandrill's API has no idempotency key, so a
+ *  - **A timeout is TERMINAL.** Mandrill's API has no idempotency key, so a
  *    timed-out request may or may not have been accepted. Retrying would
  *    double-deliver, which is why this returns `AMBIGUOUS_TIMEOUT` +
  *    `acceptanceUnknown` — the SES posture, never the Resend one.
@@ -112,8 +112,8 @@ const ACCEPTED_STATUSES: ReadonlySet<string> = new Set(['sent', 'queued', 'sched
 /**
  * The `messages/send-raw` request body.
  *
- * The feature-off flags are the executable form of D3 and are asserted verbatim
- * by `__tests__/sendRaw.test.ts`. They are sent UNCONDITIONALLY — never omitted
+ * The feature-off flags are the executable form of that rule and are asserted
+ * verbatim by `__tests__/sendRaw.test.ts`. They are sent UNCONDITIONALLY — never omitted
  * when falsy — because an omitted flag inherits the ACCOUNT's default, and an
  * operator who left click-tracking on in the Mandrill dashboard would otherwise
  * get every link in every campaign silently rewritten to a Mandrill redirector:
@@ -143,7 +143,7 @@ interface MandrillSendRawBody {
  * Our pipeline sends ONE recipient per send (`EmailSendParams.to` is a single
  * address), so the array has exactly one meaningful entry and the first is it.
  * A `sent | queued | scheduled` entry is a success whose `_id` becomes the
- * `providerMessageId` the webhook adapter joins on (P2.1); `rejected` and
+ * `providerMessageId` the webhook adapter joins on; `rejected` and
  * `invalid` are failures even though the HTTP call succeeded.
  */
 function readRecipientResult(payload: unknown): EmailSendAttempt {
@@ -240,7 +240,7 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 	 *
 	 * `ipPool` passes the resolved route's pool name straight through — free-form
 	 * because Mandrill pool names are whatever the account created. The
-	 * return-path domain is the D5 probe verdict: `relayReturnPathHost` is set
+	 * return-path domain is the probe verdict: `relayReturnPathHost` is set
 	 * only once the routing pass has PROVEN this transport honours a custom
 	 * return path and the From domain's host authorises it, so no separate field
 	 * (and no second probe) is needed here.
@@ -285,8 +285,11 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 				attachments: params.attachments?.map((a) => ({
 					filename: a.filename,
 					contentType: a.contentType ?? 'application/octet-stream',
+					// `EmailAttachment.content` is runtime-neutral bytes (the isolate has no
+					// Buffer); this module is `'use node'`, so the composer's Buffer is
+					// available here at the boundary.
 					isInline: false,
-					data: a.content,
+					data: Buffer.from(a.content),
 				})),
 			});
 		} catch (error) {
@@ -304,10 +307,10 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 			to: composed.envelope.to,
 			from_email: composed.envelope.from,
 			// Accept-then-queue, so one slow recipient domain cannot hold the HTTP
-			// call open past our deadline and manufacture a D4 ambiguity.
+			// call open past our deadline and manufacture an ambiguous outcome.
 			async: true,
-			// ── D3: every Mandrill feature that would rewrite or re-instrument our
-			// MIME, off. Unconditional; see MandrillSendRawBody.
+			// ── Every Mandrill feature that would rewrite or re-instrument our MIME,
+			// off. Unconditional; see MandrillSendRawBody.
 			track_opens: false,
 			track_clicks: false,
 			auto_html: false,
@@ -359,7 +362,7 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 			);
 			const errorName = error instanceof Error ? error.name : undefined;
 
-			// D4 — NEVER blind-retry a timeout. Mandrill has no idempotency surface,
+			// NEVER blind-retry a timeout. Mandrill has no idempotency surface,
 			// so a lost response may sit on top of an accepted (and delivered)
 			// message. `AMBIGUOUS_TIMEOUT` is not retryable, and `acceptanceUnknown`
 			// tells the governed boundary the outcome is genuinely undecided rather
@@ -396,7 +399,7 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 	},
 
 	/**
-	 * `sendReturnPathProbe` IS DELIBERATELY ABSENT (plan D5).
+	 * `sendReturnPathProbe` IS DELIBERATELY ABSENT.
 	 *
 	 * The probe proves one thing and proves it one way: it puts a SIGNED VERP
 	 * ADDRESS on the wire as the RFC5321.MailFrom and waits for the DSN, because

@@ -1,18 +1,9 @@
-import type { FunctionReference } from 'convex/server';
-import { api, internal } from '@owlat/api';
-import { isValidTargetVersion } from '@owlat/shared/composeVerify';
+import type { Id } from '@owlat/api/dataModel';
+import { api } from '@owlat/api';
+import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
-
-// ConvexHttpClient.mutation's type only admits public function references, but
-// internal mutations execute fine at runtime. Re-tag the visibility while
-// preserving the inferred argument and return types.
-function asPublicMutation<Args extends Record<string, unknown>, Ret>(
-	ref: FunctionReference<'mutation', 'internal', Args, Ret>
-): FunctionReference<'mutation', 'public', Args, Ret> {
-	return ref as unknown as FunctionReference<'mutation', 'public', Args, Ret>;
-}
 
 /**
  * Self-hosted in-app update entry point.
@@ -24,10 +15,17 @@ function asPublicMutation<Args extends Record<string, unknown>, Ret>(
  * Flow:
  *   1. Verify caller is a platform admin (via session cookie → Convex).
  *   2. Download the pinned docker-compose-<version>.yml from GitHub Releases.
- *   3. Record an "updateRun" doc via internal.systemUpdates.recordUpdateStart.
+ *   3. Record an "updateRun" doc via api.systemUpdates.recordUpdateStart.
  *   4. POST to http://updater:3200/update with the downloaded compose template.
- *   5. Record result via internal.systemUpdates.recordUpdateFinish.
+ *   5. Record result via api.systemUpdates.recordUpdateFinish.
  *   6. Return the updater's response to the client.
+ *
+ * Both record calls address the PUBLIC function surface, because that is the
+ * only one a `ConvexHttpClient` can reach — an `internal*` reference forwarded
+ * from here resolves to nothing ("Could not find public function for …") and
+ * took the whole route down with a 500. They are platform-admin gated inside
+ * Convex, and the audit actor is derived from the session there rather than
+ * passed in from here.
  *
  * The web container will be restarted by the updater mid-flight. The UI
  * handles this by polling /api/internal/updater-health with retry.
@@ -61,26 +59,26 @@ export default defineEventHandler(async (event) => {
 	//    `/api/self-update` so both routes stay in lock-step.
 	const composeTemplate = await resolveVerifiedComposeTemplate({ targetVersion, currentVersion });
 
-	// 2. Look up the acting admin's user id for the audit trail. Falls back to
-	//    the generic 'platform-admin' tag only if the lookup fails (it won't
-	//    normally — requirePlatformAdmin already proved an admin session).
-	const initiatedBy =
-		(await client
-			.query(api.platformAdmin.platformAdmin.currentPlatformAdminUserId, {})
-			.catch(() => null)) ?? 'platform-admin';
+	// 2. Record the update start. Best-effort: the audit row is not worth
+	//    refusing to update over. An operator reaching for "Update now" is
+	//    often reaching for it BECAUSE something is unwell, and a Convex that
+	//    cannot take this write must not be what stops the update that fixes
+	//    it — which is exactly what happened while this call was unroutable.
+	let runId: Id<'systemUpdates'> | null = null;
+	try {
+		runId = await client.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: currentVersion,
+			versionTo: targetVersion,
+		});
+	} catch (err) {
+		console.error('[system/update] could not record the update start', err);
+	}
 
-	// 3. Record the update start.
-	const runId = await client.mutation(asPublicMutation(internal.systemUpdates.recordUpdateStart), {
-		versionFrom: currentVersion,
-		versionTo: targetVersion,
-		initiatedBy,
-	});
-
-	// 4. Dispatch to the updater sidecar.
+	// 3. Dispatch to the updater sidecar.
 	let updaterResult: {
 		success?: boolean;
 		error?: string;
-		steps?: { step: string; stdout: string; stderr: string }[];
+		steps?: { step: string; ok?: boolean; stdout: string; stderr: string }[];
 	} = {};
 	let updaterOk = false;
 
@@ -101,23 +99,36 @@ export default defineEventHandler(async (event) => {
 		updaterOk = false;
 	}
 
-	// 5. Record the result. (Uses `client` which we created in requirePlatformAdmin;
-	// its auth JWT may have expired mid-update if the web container restarted,
-	// but internal mutations in Convex don't require client-side auth — this
-	// call is purely best-effort audit.)
-	try {
-		await client.mutation(asPublicMutation(internal.systemUpdates.recordUpdateFinish), {
-			runId,
-			status: updaterOk ? 'success' : 'failed',
-			steps: updaterResult.steps,
-			error: updaterResult.error,
-		});
-	} catch {
-		// Convex may have dropped auth during the update. Ignore — the UI will
-		// reconcile on the next page load by reading the history.
+	// 4. Record the result. (Uses `client` which we created in requirePlatformAdmin;
+	// its auth JWT may have expired mid-update if the web container restarted —
+	// this call is purely best-effort audit.)
+	if (runId) {
+		try {
+			await client.mutation(api.systemUpdates.recordUpdateFinish, {
+				runId,
+				status: updaterOk ? 'success' : 'failed',
+				steps: updaterResult.steps,
+				error: updaterResult.error,
+			});
+		} catch {
+			// Convex may have dropped auth during the update. Ignore — the UI will
+			// reconcile on the next page load by reading the history.
+		}
 	}
 
 	if (!updaterOk) {
+		// The browser only ever shows the status line (`[POST] "…": 502`), so
+		// without this the reason — which the sidecar states precisely, down to
+		// the host command that fixes it — exists nowhere an operator can read.
+		// `docker logs owlat-web-1` is where they look next.
+		console.error(
+			'[system/update] update failed:',
+			updaterResult.error || 'no error reported',
+			(updaterResult.steps ?? [])
+				.filter((step) => step.ok === false)
+				.map((step) => `${step.step}: ${step.stderr}`)
+				.join(' | ')
+		);
 		throw createError({
 			statusCode: 502,
 			message: updaterResult.error || 'Update failed',

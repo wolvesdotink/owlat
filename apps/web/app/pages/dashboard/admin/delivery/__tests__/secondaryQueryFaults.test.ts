@@ -96,6 +96,9 @@ const globalOptions = {
 		UiEmptyState: true,
 		UiButton: { template: '<button><slot /></button>' },
 		UiCard: passthroughCard,
+		UiSkeleton: true,
+		DeliveryReferenceRelayNotice: true,
+		DeliveryMeasurementCoverageCard: true,
 	},
 	components: {
 		UiQueryBoundary: QueryBoundary,
@@ -304,6 +307,8 @@ describe('the delivery hub page', () => {
 			UiSpinner: true,
 			UiStatTile: true,
 			UiTrendChart: true,
+			UiSkeleton: true,
+			DeliveryMeasurementCoverageCard: true,
 			DeliveryReadinessPanel: true,
 			DeliveryTransportCard: true,
 			DeliveryComplianceTelemetryCard: true,

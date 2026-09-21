@@ -104,11 +104,11 @@ const alignmentSource = computed<ReadinessAlignmentSource | null>(() => {
 	return { facts: summary.alignment, fromDomains };
 });
 
-// The dual-transport ramp's alignment pre-flight (P3-5): non-secret DNS-facing
+// The dual-transport ramp's alignment pre-flight: non-secret DNS-facing
 // verdicts, one row per sending domain, member-readable like the rest of this
 // panel. A deployment with no reference transport has only `single_arm` rows (or
 // none at all), which the readiness fold treats as "nothing to say" — so no gate
-// appears and nothing reads as an unfinished setup (D2).
+// appears and nothing reads as an unfinished setup.
 const { data: dualArmRows } = useOrganizationQuery(
 	api.delivery.alignmentPreflight.getAlignmentReadiness
 );
@@ -141,13 +141,13 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 		<!-- Loading: skeleton over spinner-only, matching the native-feel bar. -->
 		<div v-if="isLoading" class="p-6 space-y-4" aria-busy="true">
 			<div class="flex items-center gap-3">
-				<div class="w-10 h-10 rounded-xl bg-bg-surface animate-pulse" />
+				<div class="w-10 h-10 rounded-xl bg-bg-surface animate-pulse motion-reduce:animate-none" />
 				<div class="flex-1 space-y-2">
-					<div class="h-4 w-40 rounded bg-bg-surface animate-pulse" />
-					<div class="h-3 w-64 rounded bg-bg-surface animate-pulse" />
+					<div class="h-4 w-40 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
+					<div class="h-3 w-64 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
 				</div>
 			</div>
-			<div v-for="n in 3" :key="n" class="h-12 rounded-lg bg-bg-surface animate-pulse" />
+			<div v-for="n in 3" :key="n" class="h-12 rounded-lg bg-bg-surface animate-pulse motion-reduce:animate-none" />
 		</div>
 
 		<!-- Error -->

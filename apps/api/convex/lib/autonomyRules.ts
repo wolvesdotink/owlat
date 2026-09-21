@@ -74,7 +74,7 @@ export async function getSenderRule(
  * `sender` is null when the caller could not resolve a sender (legacy callers
  * that pass only a category); in that case only the category rule is considered.
  */
-export type EffectiveRule =
+type EffectiveRule =
 	| { kind: 'rule'; rule: Doc<'autonomyRules'>; scope: 'sender' | 'category' }
 	| { kind: 'blocked'; reason: string }
 	| { kind: 'none' };

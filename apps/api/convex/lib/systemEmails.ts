@@ -1,4 +1,9 @@
 import { escapeHtml } from '@owlat/shared/html';
+import {
+	deletionEmailCopy,
+	type SystemEmailLocale,
+	type DeletionEmailCopy,
+} from './systemEmailCopy';
 
 /**
  * Shared HTML shell + generators for Owlat's system / auth emails (invitation,
@@ -10,11 +15,17 @@ import { escapeHtml } from '@owlat/shared/html';
  * are responsible for escaping any untrusted values they interpolate into the
  * body/title (the generators below do, via escapeHtml).
  */
-export function renderSystemEmail(opts: { title: string; body: string; footer?: string }): string {
+export function renderSystemEmail(opts: {
+	title: string;
+	body: string;
+	footer?: string;
+	/** The document language, so a screen reader pronounces the mail correctly. */
+	lang?: string;
+}): string {
 	const footer = opts.footer ?? 'Sent by Owlat';
 	return `
 <!DOCTYPE html>
-<html lang="en">
+<html lang="${opts.lang ?? 'en'}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -57,7 +68,11 @@ ${opts.body}
  * copies into one. `url` is assumed already trusted (the generators pass
  * server-built URLs, never user input); `label` is static button text.
  */
-function ctaWithFallback(url: string, label: string): string {
+function ctaWithFallback(
+	url: string,
+	label: string,
+	fallbackLine = 'Or copy and paste this link into your browser:'
+): string {
 	return `              <!-- CTA Button -->
               <table role="presentation" style="width: 100%;">
                 <tr>
@@ -71,7 +86,7 @@ function ctaWithFallback(url: string, label: string): string {
 
               <!-- Link fallback -->
               <p style="margin: 0 0 8px 0; font-size: 13px; color: #6b635a;">
-                Or copy and paste this link into your browser:
+                ${fallbackLine}
               </p>
               <p style="margin: 0 0 32px 0; font-size: 13px; word-break: break-all;">
                 <a href="${url}" style="color: #c4785a; text-decoration: underline;">
@@ -277,63 +292,67 @@ ${ctaWithFallback(verifyUrl, 'Verify new email')}
 }
 
 /** Account-deletion confirmation (carries the cancel link). */
+/**
+ * Account-deletion confirmation, in the recipient's own language.
+ *
+ * The one system email whose copy is translated (`lib/systemEmailCopy.ts`).
+ * It earned that first because it is the one this product sends about something
+ * irreversible: a person who set the interface to German and then received an
+ * English warning about their account being erased in 30 days is being asked to
+ * act on a sentence they may not read.
+ */
 export function generateDeletionEmailHtml(
 	email: string,
 	scheduledDate: string,
-	cancelUrl: string
+	cancelUrl: string,
+	locale: SystemEmailLocale = 'en'
 ): string {
+	const copy: DeletionEmailCopy = deletionEmailCopy(locale);
+	const items = copy.deletedItems.map((item) => `                <li>${item}</li>`).join('\n');
+
 	const body = `              <!-- Header with warning -->
               <div style="margin: 0 0 24px 0; padding: 16px; background-color: #1e1514; border-radius: 12px; border: 1px solid #c46b5a;">
                 <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #c46b5a;">
-                  ⚠️ Account Deletion Scheduled
+                  \u26a0\ufe0f ${copy.heading}
                 </h1>
                 <p style="margin: 0; color: #c46b5a; font-size: 14px;">
-                  Your account will be permanently deleted on <strong>${scheduledDate}</strong>
+                  ${copy.scheduledFor(scheduledDate)}
                 </p>
               </div>
 
               <!-- Message -->
               <p style="margin: 0 0 16px 0; font-size: 16px; color: #f5f2ef;">
-                Hi,
+                ${copy.greeting}
               </p>
               <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
-                We received a request to delete your Owlat account associated with <strong style="color: #f5f2ef;">${email}</strong>.
+                ${copy.received(escapeHtml(email))}
               </p>
               <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
-                Your account and all associated data will be permanently deleted after a 30-day grace period. This includes:
+                ${copy.graceNote}
               </p>
 
               <!-- What will be deleted -->
               <ul style="margin: 0 0 24px 0; padding-left: 24px; color: #a09890; font-size: 14px; line-height: 1.8;">
-                <li>All contacts and their data</li>
-                <li>Email templates and campaigns</li>
-                <li>Automations and workflows</li>
-                <li>Analytics and reports</li>
-                <li>API keys and webhooks</li>
-                <li>Team settings and configurations</li>
+${items}
               </ul>
 
               <p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
-                If you didn't request this deletion or have changed your mind, you can cancel this request at any time before the deletion date.
+                ${copy.changedYourMind}
               </p>
 
-${ctaWithFallback(cancelUrl, 'Cancel Account Deletion')}
+${ctaWithFallback(cancelUrl, copy.cta, copy.linkFallback)}
 
               <!-- Footer note -->
               <div style="padding-top: 24px; border-top: 1px solid #252220;">
                 <p style="margin: 0 0 8px 0; font-size: 13px; color: #6b635a;">
-                  If you did request this deletion, no action is needed. Your account will be automatically deleted on the scheduled date.
+                  ${copy.noActionNeeded}
                 </p>
                 <p style="margin: 0; font-size: 13px; color: #6b635a;">
-                  For security reasons, this action cannot be undone after the 30-day period.
+                  ${copy.irreversible}
                 </p>
               </div>`;
 
-	return renderSystemEmail({
-		title: 'Account Deletion Request Confirmed',
-		body,
-		footer: 'This is an automated email from Owlat',
-	});
+	return renderSystemEmail({ title: copy.title, body, footer: copy.footer, lang: locale });
 }
 
 /** Double-opt-in subscription confirmation. */

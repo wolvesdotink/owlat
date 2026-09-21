@@ -12,7 +12,7 @@ them (an earlier standalone copy here had drifted out of sync with the code).
   Reputation window, etc.) — [`CONTEXT.md`](./CONTEXT.md), kept in sync with the
   ADRs in [`docs/adr/`](./docs/adr/).
 - **Design tokens** ("Warm Minimal" palette, typography, component classes) live
-  in code: [`apps/web/app/assets/css/main.css`](./apps/web/app/assets/css/main.css)
+  in code: [`packages/ui/assets/css/tokens.css`](./packages/ui/assets/css/tokens.css)
   is the single source of truth.
 - **Product / API / developer docs** — the Nuxt Content site under
   [`apps/docs/content/`](./apps/docs/content/).

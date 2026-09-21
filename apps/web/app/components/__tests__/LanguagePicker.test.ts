@@ -16,7 +16,7 @@
  */
 import { describe, expect, it, beforeAll, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { createI18n, useI18n as useVueI18n } from 'vue-i18n';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,6 +26,16 @@ import en from '~~/i18n/locales/en.json';
 import de from '~~/i18n/locales/de.json';
 import LanguagePicker from '../LanguagePicker.vue';
 import PreferencesLanguage from '../preferences/PreferencesLanguage.vue';
+
+// The generated Convex `api` object is only passed through to the stubbed
+// client; a self-returning proxy stands in for any path.
+vi.mock('@owlat/api', () => {
+	const anyPath: unknown = new Proxy(function () {}, {
+		get: () => anyPath,
+		apply: () => anyPath,
+	});
+	return { api: anyPath };
+});
 
 /** The `locales:` entries the i18n module is actually configured with. */
 function configuredLocales(): Array<{ code: string; language: string; name: string }> {
@@ -43,6 +53,9 @@ function configuredLocales(): Array<{ code: string; language: string; name: stri
 
 const locales = configuredLocales();
 const setLocale = vi.fn(async () => {});
+/** The account-level echo of the choice (`userProfiles.setLocale`). */
+const mutation = vi.fn(async () => null);
+const isAuthenticated = ref(true);
 
 /**
  * `useI18n()` in the app is the module-extended composer, so the stub is the
@@ -59,11 +72,17 @@ function useI18nStub() {
 }
 
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: useI18nStub, computed });
+	Object.assign(globalThis, {
+		useI18n: useI18nStub,
+		computed,
+		useAuth: () => ({ isAuthenticated }),
+		useConvex: () => ({ mutation }),
+	});
 });
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	isAuthenticated.value = true;
 });
 
 /** `createI18n` is typed against the module's registered codes, not `string`. */
@@ -111,6 +130,34 @@ describe('LanguagePicker', () => {
 		await w.findAll('button')[locales.indexOf(target)]!.trigger('click');
 
 		expect(setLocale).toHaveBeenCalledWith(target.code);
+		// And the durable copy, which is what a NEW DEVICE and every system email
+		// read — neither of which can see the cookie `setLocale` just wrote.
+		expect(mutation).toHaveBeenCalledWith(expect.anything(), { locale: target.code });
+	});
+
+	it('writes the cookie before the account, and survives the account write failing', async () => {
+		// A preference echo that could not be saved is not worth a red toast: the
+		// language has already changed, and the next click retries it.
+		mutation.mockRejectedValueOnce(new Error('offline'));
+		const w = mountPicker(LanguagePicker);
+		const target = locales.find((entry) => entry.code !== 'en')!;
+
+		await w.findAll('button')[locales.indexOf(target)]!.trigger('click');
+
+		expect(setLocale).toHaveBeenCalledWith(target.code);
+	});
+
+	it('does not call the account mutation when signed out', async () => {
+		// The setup and auth screens mount this picker too, where the mutation
+		// would only 403.
+		isAuthenticated.value = false;
+		const w = mountPicker(LanguagePicker);
+		const target = locales.find((entry) => entry.code !== 'en')!;
+
+		await w.findAll('button')[locales.indexOf(target)]!.trigger('click');
+
+		expect(setLocale).toHaveBeenCalledWith(target.code);
+		expect(mutation).not.toHaveBeenCalled();
 	});
 
 	it('ignores a click on the locale already active', async () => {
@@ -128,7 +175,11 @@ describe('PreferencesLanguage', () => {
 
 		expect(w.text()).toContain('Language');
 		expect(w.text()).toContain("Choose the language Owlat's interface is shown in on this device.");
-		expect(w.text()).toContain('Remembered in this browser.');
+		// The hint has to name BOTH places the choice is kept: the cookie is what
+		// the next page load reads, and the account is what a new device and every
+		// system email read.
+		expect(w.text()).toContain('Remembered in this browser and on your account');
+		expect(w.text()).toContain('the emails we send you follow it too');
 		expect(w.findAllComponents(LanguagePicker)).toHaveLength(1);
 		expectFullyLocalized(w);
 	});

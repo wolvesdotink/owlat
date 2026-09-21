@@ -31,6 +31,9 @@ Object.assign(globalThis, {
 const formStubs = {
 	Icon: { template: '<i />' },
 	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+	// The receiving-mode choice has its own suite (externalReceiving.test.ts);
+	// inert here so these assertions stay about the return path.
+	DomainsReceivingModeChoice: true,
 };
 
 function mountForm() {
@@ -102,7 +105,12 @@ describe('AddDomainForm — Advanced return-path disclosure', () => {
 		await w.get('[data-testid="returnpath-input"]').setValue('bounce');
 		await w.get('form').trigger('submit');
 		expect(w.emitted('submit')![0]).toEqual([
-			{ domain: 'mail.example.com', returnPathHost: 'bounce.example.com' },
+			{
+				domain: 'mail.example.com',
+				returnPathHost: 'bounce.example.com',
+				receivingMode: 'owlat',
+				externalReceivingProvider: null,
+			},
 		]);
 	});
 
@@ -110,7 +118,14 @@ describe('AddDomainForm — Advanced return-path disclosure', () => {
 		const w = mountForm();
 		await w.get('[data-testid="domain-input"]').setValue('example.com');
 		await w.get('form').trigger('submit');
-		expect(w.emitted('submit')![0]).toEqual([{ domain: 'mail.example.com', returnPathHost: null }]);
+		expect(w.emitted('submit')![0]).toEqual([
+			{
+				domain: 'mail.example.com',
+				returnPathHost: null,
+				receivingMode: 'owlat',
+				externalReceivingProvider: null,
+			},
+		]);
 	});
 });
 
@@ -135,7 +150,7 @@ function mountEditor(props: Record<string, unknown> = {}) {
 
 describe('ReturnPathEditor — edit affordance', () => {
 	beforeEach(() => {
-		mockRun = vi.fn(async () => null); // void mutation → null on success
+		mockRun = vi.fn(async () => ({ ok: true, result: null })); // void mutation → null on success
 		savingRef = ref(false);
 		vi.stubGlobal('useBackendOperation', () => ({ run: mockRun, isLoading: savingRef }));
 	});
@@ -247,8 +262,14 @@ const rowStubs = {
 	UiIconBox: { template: '<i />' },
 	DomainsDNSRecordPanel: { template: '<div />' },
 	DomainsReceivingDnsSection: { template: '<div />' },
+	// Send-only receiving surfaces — exercised by externalReceiving.test.ts.
+	DomainsExternalReceivingSection: true,
+	DomainsReceivingModeSwitch: true,
 	// Exercised above; inert here (it calls a mutation on setup).
 	DomainsReturnPathEditor: { template: '<div />' },
+	DomainsStreamSubdomainPlanPanel: true,
+	DomainsYahooCflPanel: true,
+	DomainsDnsPropagationNote: true,
 };
 
 function makeRowDomain(domainName: string) {
@@ -320,7 +341,7 @@ function makeDeps(overrides: Partial<AddDomainFlowDeps> = {}): {
 	};
 } {
 	const calls = {
-		createDomain: vi.fn(async () => 'domain_new' as never),
+		createDomain: vi.fn(async () => ({ ok: true, result: 'domain_new' }) as never),
 		close: vi.fn(),
 		showToast: vi.fn(),
 		setLoading: vi.fn(),
@@ -342,6 +363,8 @@ describe('useAddDomain — atomic create-with-host orchestration (F2 finding 1)'
 		await useAddDomain(deps).handleAddDomain({
 			domain: 'mail.example.com',
 			returnPathHost: 'bounce.example.com',
+			receivingMode: 'owlat',
+			externalReceivingProvider: null,
 		});
 		// ONE write — the host is folded into create, not a second setReturnPathHost.
 		expect(calls.createDomain).toHaveBeenCalledTimes(1);
@@ -356,16 +379,23 @@ describe('useAddDomain — atomic create-with-host orchestration (F2 finding 1)'
 
 	it('omits the host when none was supplied', async () => {
 		const { deps, calls } = makeDeps();
-		await useAddDomain(deps).handleAddDomain({ domain: 'example.com', returnPathHost: null });
+		await useAddDomain(deps).handleAddDomain({
+			domain: 'example.com',
+			returnPathHost: null,
+			receivingMode: 'owlat',
+			externalReceivingProvider: null,
+		});
 		expect(calls.createDomain).toHaveBeenCalledWith({ domain: 'example.com' });
 		expect(calls.showToast.mock.calls[0]![0]).toContain('added successfully');
 	});
 
 	it('does nothing on a create failure — no close, no toast (the invalid host fails create)', async () => {
-		const { deps, calls } = makeDeps({ createDomain: vi.fn(async () => undefined) });
+		const { deps, calls } = makeDeps({ createDomain: vi.fn(async () => ({ ok: false })) });
 		await useAddDomain(deps).handleAddDomain({
 			domain: 'mail.example.com',
 			returnPathHost: 'bounce.example.com',
+			receivingMode: 'owlat',
+			externalReceivingProvider: null,
 		});
 		expect(calls.close).not.toHaveBeenCalled();
 		expect(calls.showToast).not.toHaveBeenCalled();

@@ -9,10 +9,10 @@
  * configured transport (deployment-scoped, like the transport configuration
  * itself).
  *
- * Plan D2: everything here is additive. A transport that was never probed, a
- * probe that never came back, a deployment with no relay at all — all resolve
- * to a usable posture with `degraded` measurement. Nothing throws, nothing
- * blocks a send, nothing surfaces an error state.
+ * Everything here is additive. A transport that was never probed, a probe
+ * that never came back, a deployment with no relay at all — all resolve to a
+ * usable posture with `degraded` measurement. Nothing throws, nothing blocks
+ * a send, nothing surfaces an error state.
  */
 
 import { v } from 'convex/values';
@@ -222,7 +222,7 @@ export const recordProbeSubmission = internalMutation({
 
 /**
  * Settle a transport whose OWN adapter cannot put a chosen envelope sender on
- * the wire (plan D5) — Mandrill today, and any future kind that declares
+ * the wire — Mandrill today, and any future kind that declares
  * `supportsCustomReturnPath: 'probe'` without implementing `sendReturnPathProbe`.
  *
  * NOTHING WAS SENT, and that is the point. The signed VERP token lives in the
@@ -237,7 +237,7 @@ export const recordProbeSubmission = internalMutation({
  * `sentEnvelopeSender` is empty for the same reason: no address reached a wire,
  * and recording the one we WOULD have used would read as evidence of a send.
  * The verdict is `unsupported`, which the send path already treats as "do not
- * stamp" and the gates already treat as degraded-but-not-blocked (D2) — for a
+ * stamp" and the gates already treat as degraded-but-not-blocked — for a
  * kind with provider feedback that is a widened bounce tolerance, not a fault.
  */
 export const recordProbeWithoutEnvelopeControl = internalMutation({
@@ -370,7 +370,7 @@ function returnPathSpfProof(
 /**
  * The return-path host a RELAY send from `fromAddress` may stamp as its VERP
  * envelope sender — or `undefined`, which means "keep the composer's envelope
- * sender", the shipped behaviour (plan G-08, D2, D11).
+ * sender", the shipped behaviour.
  *
  * Three conditions, all required, evaluated cheapest-first so an unproven relay
  * costs exactly one indexed read:
@@ -382,12 +382,12 @@ function returnPathSpfProof(
  *     keys it by the DKIM signing domain), so both arms of a cell present the
  *     same RFC5321.MailFrom domain for the same From domain — which is what
  *     makes their SPF evaluation, DMARC SPF alignment and therefore their
- *     bounce data comparable at all (D11);
+ *     bounce data comparable at all;
  *  3. that host's PUBLISHED SPF authorises this transport — otherwise the
  *     stamp would make the receiver evaluate SPF for the bounce domain against
  *     the relay's IP and fail it, degrading the very arm being measured.
  *
- * Any of them missing is a degraded measurement, never an error (D2).
+ * Any of them missing is a degraded measurement, never an error.
  */
 export async function relayReturnPathHostFor(
 	ctx: QueryCtx,
@@ -424,7 +424,7 @@ export async function relayReturnPathHostFor(
 
 /**
  * The recorded return-path posture of the REFERENCE transport, for the transport
- * connection wizard's fourth step (P2-4).
+ * connection wizard's fourth step.
  *
  * Two things separate this from {@link transportReturnPathCapability}, which it
  * otherwise resolves through the exact same {@link returnPathCapabilityFor}
@@ -437,7 +437,7 @@ export async function relayReturnPathHostFor(
  *    copy that says "this provider" would describe our own infrastructure as if
  *    it were the ESP. `transportId` is therefore resolved from the configured
  *    relay surface, and `transportId: null` — no relay, or more than one — is a
- *    first-class answer the UI states plainly (D2);
+ *    first-class answer the UI states plainly;
  *  - it is member-visible, where the internal one is for the ramp.
  *
  * The posture is RECORDED, never gated on. It settles only once a real bounce

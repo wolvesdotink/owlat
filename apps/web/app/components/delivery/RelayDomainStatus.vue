@@ -36,6 +36,7 @@
  */
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
+import { formatDateTime } from '~/utils/formatters';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	relayDomainDisplay,
@@ -58,7 +59,7 @@ const {
 });
 const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === 'CanLoadMore');
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 /**
  * The display vocabulary in `utils/relayDomainDisplay` carries i18n keys rather
@@ -134,14 +135,7 @@ async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
 	verifyingRelayDomainId.value = domainId;
 	const result = await verifyRelayDomain({ domainId });
 	verifyingRelayDomainId.value = null;
-	if (result !== undefined)
-		showNotification(t('components.delivery.relayDomainStatus.verifyRefreshed'));
-}
-
-function formatDate(at: number | null | undefined): string {
-	return at === null || at === undefined
-		? t('components.delivery.relayDomainStatus.notScheduled')
-		: new Date(at).toLocaleString(locale.value);
+	if (result.ok) showNotification(t('components.delivery.relayDomainStatus.verifyRefreshed'));
 }
 
 /**
@@ -224,18 +218,14 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 				class="rounded bg-bg-surface p-3 text-xs text-text-secondary"
 				data-testid="relay-spf-error"
 			>
-				{{
-					t('components.delivery.relayDomainStatus.spfError', { error: entry.row.spf.error })
-				}}
+				{{ t('components.delivery.relayDomainStatus.spfError', { error: entry.row.spf.error }) }}
 			</p>
 			<p
 				v-if="entry.row.dkim?.error"
 				class="rounded bg-bg-surface p-3 text-xs text-text-secondary"
 				data-testid="relay-dkim-error"
 			>
-				{{
-					t('components.delivery.relayDomainStatus.dkimError', { error: entry.row.dkim.error })
-				}}
+				{{ t('components.delivery.relayDomainStatus.dkimError', { error: entry.row.dkim.error }) }}
 			</p>
 			<p
 				v-if="entry.row.lastError"
@@ -264,8 +254,7 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 				data-testid="relay-dns-record"
 			>
 				<p class="text-text-tertiary">
-					{{ record.label }}<span v-if="record.type"> · {{ record.type }}</span>
-					{{ record.host
+					{{ record.label }}<span v-if="record.type"> · {{ record.type }}</span> {{ record.host
 					}}<span v-if="record.priority">
 						{{
 							t('components.delivery.relayDomainStatus.recordPriority', {
@@ -311,8 +300,10 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 			>
 				{{
 					t('components.delivery.relayDomainStatus.freshness', {
-						lastConfirmed: formatDate(entry.row.lastCheckedAt),
-						nextCheck: formatDate(entry.row.nextCheckDueAt),
+						lastConfirmed: formatDateTime(entry.row.lastCheckedAt),
+						nextCheck: entry.row.nextCheckDueAt
+							? formatDateTime(entry.row.nextCheckDueAt)
+							: t('components.delivery.relayDomainStatus.notScheduled'),
 					})
 				}}
 			</p>

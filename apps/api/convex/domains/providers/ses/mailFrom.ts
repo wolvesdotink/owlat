@@ -18,14 +18,14 @@
 import type { DnsRecord } from '../../domains';
 
 /** Default MAIL FROM sub-label when a domain sets no explicit return-path host. */
-export const SES_DEFAULT_MAIL_FROM_LABEL = 'mail';
+const SES_DEFAULT_MAIL_FROM_LABEL = 'mail';
 
 /**
  * The resolved SES custom MAIL FROM for a domain: the sub-label the DNS records
  * hang off (relative to the sending domain) and the full MAIL FROM domain passed
  * to SES's `SetIdentityMailFromDomain`.
  */
-export interface SesMailFrom {
+interface SesMailFrom {
 	/** Label(s) relative to the sending domain, e.g. `mail` or `bounce`. */
 	readonly host: string;
 	/** Full MAIL FROM domain, e.g. `bounce.example.com`. */

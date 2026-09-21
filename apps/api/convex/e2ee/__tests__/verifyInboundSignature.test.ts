@@ -21,7 +21,8 @@ import { describe, it, expect } from 'vitest';
 import * as openpgp from 'openpgp';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import { discoverKeyForAddress, type DiscoveryDeps } from '../discovery';
+import { discoverKeyForAddress } from '../discovery';
+import { type DiscoveryDeps } from '../discoveryFetch';
 import { verifyDetachedSignature, verifyClearsignedBody } from '../verifyInboundSignature';
 import {
 	generateTestKeypair,

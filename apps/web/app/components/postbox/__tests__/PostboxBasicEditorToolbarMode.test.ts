@@ -50,6 +50,8 @@ function mountEditor(props: Record<string, unknown> = {}) {
 				PostboxEditorToolbar: persistentStub,
 				PostboxFloatingFormatBar: floatingStub,
 				PostboxRewriteLayer: true,
+				PostboxEmojiPicker: true,
+				PostboxSnippetSurface: true,
 				Icon: { props: ['name'], template: '<span />' },
 			},
 		},

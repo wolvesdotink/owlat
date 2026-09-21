@@ -55,17 +55,29 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
+import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { clearReservationsForDomain } from '../mail/pendingMailbox';
-import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
+import {
+	dnsRecordsValidator,
+	externalReceivingProviderValidator,
+	receivingModeValidator,
+	verificationResultsValidator,
+} from '../lib/convexValidators';
 import { getOptional, getRequired } from '../lib/env';
 import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
+import {
+	mergeExternalReceivingSpf,
+	type DomainReceivingMode,
+} from '@owlat/shared/externalReceiving';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY, dmarcPolicyValidator } from './dmarc';
 import {
 	buildReturnPathMailFromRecords,
+	buildSpfRecordValue,
 	parsePoolIps,
 	parseReturnPathRelaySpfTerms,
 	resolveSpfQualifier,
 } from './spf';
+import { buildTlsRptRecordValue, TLSRPT_HOST } from './tlsRpt';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './providers/ses/mailFrom';
 import { mandrillIdentityValidator } from './providers/mandrill/validators';
 import { logWarn } from '../lib/runtimeLog';
@@ -75,6 +87,7 @@ import {
 	relayIdentityBackfills,
 } from '../lib/sendProviders/fallbackRelays';
 import {
+	isOwnPrimarySendingDomain,
 	isSendingDomainProviderKind,
 	providerFor,
 	type ProviderIdentity,
@@ -142,7 +155,7 @@ export type SendingDomainTransitionOutcome =
 			to?: SendingDomainStatus;
 	  };
 
-export type SendingDomainCreateOutcome =
+type SendingDomainCreateOutcome =
 	| { ok: true; domainId: Id<'domains'> }
 	| {
 			ok: false;
@@ -154,7 +167,7 @@ export type SendingDomainCreateOutcome =
 				| 'return_path_not_subdomain';
 	  };
 
-export type SendingDomainRemoveOutcome = { ok: true } | { ok: false; reason: 'domain_not_found' };
+type SendingDomainRemoveOutcome = { ok: true } | { ok: false; reason: 'domain_not_found' };
 
 // Ingestion permits one row per UTC day and retains 90 days. Leave headroom
 // for an in-flight cleanup, but fail the parent deletion atomically if that
@@ -173,7 +186,7 @@ const providerIdentityValidator = v.union(
 		dkimTokens: v.array(v.string()),
 		verificationToken: v.string(),
 	}),
-	// Mandrill (P3.1). State rather than key material: one shared selector, so
+	// Mandrill. State rather than key material: one shared selector, so
 	// the DNS is derived from the domain name and only Mandrill's own view of
 	// it is worth carrying across the action → mutation boundary. Imported
 	// rather than restated — the relay sweep's store mutation validates the same
@@ -270,13 +283,19 @@ export function deriveVerificationVerdict(
 }
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
+//
+// The graph and the dispatcher preamble that reads it live in the generic
+// lifecycle core (`lib/lifecycle.ts`, ADR-0058); the reducers, the per-provider
+// identity write and the effects below stay here. `reportsTerminalRefusals` is
+// off — no state is terminal (a verified domain can be re-registered, a failed
+// one re-checked) and the published outcome union carries only `illegal_edge`.
 
-const LEGAL_EDGES: Record<SendingDomainStatus, ReadonlySet<SendingDomainStatus>> = {
-	registering: new Set<SendingDomainStatus>(['pending', 'failed']),
-	pending: new Set<SendingDomainStatus>(['verified', 'failed', 'registering']),
-	verified: new Set<SendingDomainStatus>(['registering', 'failed', 'pending']),
-	failed: new Set<SendingDomainStatus>(['registering', 'verified', 'pending']),
-};
+const SENDING_DOMAIN_LIFECYCLE = defineLifecycle<SendingDomainStatus>({
+	registering: ['pending', 'failed'],
+	pending: ['verified', 'failed', 'registering'],
+	verified: ['registering', 'failed', 'pending'],
+	failed: ['registering', 'verified', 'pending'],
+});
 
 // ─── Effects ────────────────────────────────────────────────────────────────
 
@@ -312,13 +331,13 @@ type Effect =
 	| {
 			// A domain just verified — provision any COEXISTING relay identity the
 			// deployment's fallback configuration calls for (an SES or Mandrill
-			// identity on a domain whose primary provider is our own MTA). Named
-			// for the capability rather than for one provider since P3.1 added the
-			// second one.
+			// identity on a domain whose primary provider is our own MTA). Named for
+			// the capability rather than for one provider, because there is more
+			// than one.
 			//
 			// THE ID ONLY. This variant used to carry the reducer's `providerType`
-			// as well, and the handler gated on it; since P0.4 the own-MTA-primary
-			// gate lives in `ensureRelayIdentities` and reads the DOC, so a
+			// as well, and the handler gated on it; the own-MTA-primary gate now
+			// lives in `ensureRelayIdentities` and reads the DOC, so a
 			// `providerType` here would be a payload nothing dereferences — read by
 			// the next author as "the gate is applied at construction time", which
 			// is the two-subjects-for-one-rule seam the move removed.
@@ -616,11 +635,10 @@ async function dispatch(
 	userId: string
 ): Promise<SendingDomainTransitionOutcome> {
 	const from = domain.status as SendingDomainStatus;
-	const isLegal = LEGAL_EDGES[from].has(input.to);
-	const isSelfLoop = from === input.to;
+	const verdict = SENDING_DOMAIN_LIFECYCLE.classify(from, input.to);
 
-	if (!isLegal && !isSelfLoop) {
-		return { ok: false, reason: 'illegal_edge', from, to: input.to };
+	if (verdict.kind === 'refused') {
+		return refuse(verdict);
 	}
 
 	const result = reduce(domain, input);
@@ -631,7 +649,7 @@ async function dispatch(
 
 	// On register-completion `→ pending`, persist the per-provider identity
 	// sibling row atomically with the status patch.
-	if (input.to === 'pending' && input.identity !== undefined && !isSelfLoop) {
+	if (input.to === 'pending' && input.identity !== undefined && !verdict.isSelfLoop) {
 		const providerKind = isSendingDomainProviderKind(domain.providerType)
 			? domain.providerType
 			: null;
@@ -659,12 +677,24 @@ export const create = internalMutation({
 		domain: v.string(),
 		userId: v.string(),
 		// Optional per-domain VERP return-path host, set ATOMICALLY with creation
-		// (F2 finding 1). Threading it here — rather than a second `setReturnPathHost`
+		// rather than by a follow-up write. Threading it here — rather than a second
+		// `setReturnPathHost`
 		// write after `create` — means the row already carries the host when the
 		// register-completion `→ pending` transition lands, so that transition is a
 		// real edge (not a `pending → pending` self-loop that would drop the DKIM/
 		// DMARC bundle + provider identity if it raced a separate status patch).
 		returnPathHost: v.optional(v.string()),
+		// The domain's inbound-mail arrangement, stored ATOMICALLY with the insert
+		// for exactly the `returnPathHost` reason above: `register_with_provider`
+		// is scheduled from this same mutation and reads the row ONCE, before its
+		// slow provider I/O, so the mode has to be on the row already or the very
+		// first record bundle is generated for the wrong arrangement (apex SPF
+		// without the customer's provider include, plus a TLS-RPT record for an MX
+		// we do not run). This is the whole reason `setReceivingMode` REFUSES to
+		// run mid-registration and `create` does not have to. Absent ⇒ `'owlat'`;
+		// nothing is written and the row is indistinguishable from a pre-feature one.
+		receivingMode: v.optional(receivingModeValidator),
+		externalReceivingProvider: v.optional(externalReceivingProviderValidator),
 	},
 	handler: async (ctx, args): Promise<SendingDomainCreateOutcome> => {
 		const domainRegex = /^(?!-)[A-Za-z0-9-]+([-.][A-Za-z0-9]+)*\.[A-Za-z]{2,}$/;
@@ -705,12 +735,22 @@ export const create = internalMutation({
 			returnPathHost = host;
 		}
 
+		// `'owlat'` carries no provider — see `setReceivingMode`, which clears the
+		// field for the same reason: a provider left behind on an owlat-receiving
+		// row is a stale answer the next switch to external would silently reuse.
+		const externalReceivingProvider =
+			args.receivingMode === 'external' ? args.externalReceivingProvider : undefined;
+
 		const domainId = await ctx.db.insert('domains', {
 			domain: normalized,
 			status: 'registering',
 			dnsRecords: {},
 			providerType: providerKind,
 			...(returnPathHost ? { returnPathHost } : {}),
+			// Written only when asked for, so an unset mode stays ABSENT on the row
+			// rather than being materialised as an explicit `'owlat'`.
+			...(args.receivingMode ? { receivingMode: args.receivingMode } : {}),
+			...(externalReceivingProvider ? { externalReceivingProvider } : {}),
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -797,7 +837,7 @@ export const recordVerification = internalMutation({
 	},
 });
 
-export type SendingDomainDmarcOutcome =
+type SendingDomainDmarcOutcome =
 	| { ok: true; policy: 'none' | 'quarantine' | 'reject'; changed: boolean }
 	| { ok: false; reason: 'domain_not_found' | 'no_dmarc_record' };
 
@@ -900,7 +940,229 @@ export const setDmarcPolicy = internalMutation({
 	},
 });
 
-export type SendingDomainReturnPathOutcome =
+type SendingDomainReceivingOutcome =
+	| { ok: true; receivingMode: DomainReceivingMode; changed: boolean }
+	| { ok: false; reason: 'domain_not_found' | 'registering' };
+
+/**
+ * Switch a sending domain between "Owlat receives it" and "my existing provider
+ * keeps receiving it" (send-only).
+ *
+ * Surgical single-record regeneration, modelled on `setDmarcPolicy` /
+ * `setReturnPathHost` rather than a full `→ registering` re-registration: the
+ * mode changes what two records should say, and re-registering would throw away
+ * the DKIM key + reset `_dmarc` to `p=none` to achieve it.
+ *
+ * Two records move, and only for our OWN MTA:
+ *   - apex SPF, rebuilt FROM SCRATCH (not edited in place) so switching
+ *     google → microsoft drops the google include instead of accumulating both,
+ *     and switching back to `'owlat'` drops them all. The rebuild reuses the
+ *     registration path's builders, so the value is byte-identical to what a
+ *     re-registration would have produced.
+ *   - `_smtp._tls`, dropped when going external and restored when coming back.
+ *
+ * A RELAY-PRIMARY domain (SES, Mandrill) keeps its stored apex SPF untouched.
+ * That record was generated by that provider's adapter from ITS sending hosts;
+ * rebuilding it here from `MTA_SPF_INCLUDE` would authorize the wrong sender
+ * entirely, and we have no safe way to regenerate the relay's own record from a
+ * mutation. So the stored record is LEFT UNMERGED, and it does not carry the
+ * external receiver's include even though the mode says it should. That is a
+ * deliberate, conservative gap rather than a correct record: what makes it
+ * acceptable is that the domain panel derives its "SPF is already merged" claim
+ * from the RECORD (`externalReceivingSpfMerged`), so this domain is told, in
+ * words, to add the include itself. A registration — which regenerates the
+ * bundle from the adapter — folds it in at the provider-agnostic seam
+ * (`providers/registerAction.ts`) for every provider, relays included.
+ *
+ * DKIM, DMARC and MAIL FROM are deliberately untouched: all three describe mail
+ * WE send, which the inbound arrangement does not change. The bounce path is
+ * likewise unaffected — a per-domain `returnPathHost` gets its MX on a SUBDOMAIN
+ * (`bounce.<domain>`), so the apex MX the customer must not touch never enters
+ * into it.
+ *
+ * Refuses outright while the domain is `registering` — see the guard in the
+ * handler; the mode cannot reach a bundle that is already being generated.
+ *
+ * Single writer of `domains.receivingMode` + `domains.externalReceivingProvider`,
+ * per the module's invariant.
+ */
+export const setReceivingMode = internalMutation({
+	args: {
+		domainId: v.id('domains'),
+		mode: receivingModeValidator,
+		provider: v.optional(externalReceivingProviderValidator),
+		userId: v.string(),
+	},
+	handler: async (ctx, args): Promise<SendingDomainReceivingOutcome> => {
+		const domain = await ctx.db.get(args.domainId);
+		if (!domain) return { ok: false, reason: 'domain_not_found' };
+
+		// A provider is meaningless under `'owlat'`, and keeping one would be a
+		// stale answer that a later switch back to external silently reused instead
+		// of asking the operator who their mail provider is now.
+		const provider = args.mode === 'external' ? args.provider : undefined;
+		// Absent ⇒ `'owlat'`: a pre-feature row compares equal to an explicit
+		// `'owlat'` request, so re-asserting today's behaviour is a no-op rather
+		// than a gratuitous drop to `pending`.
+		const previousMode: DomainReceivingMode = domain.receivingMode ?? 'owlat';
+		const previousProvider = domain.externalReceivingProvider;
+		if (previousMode === args.mode && previousProvider === provider) {
+			return { ok: true, receivingMode: args.mode, changed: false };
+		}
+
+		const at = Date.now();
+		const modeFields = {
+			receivingMode: args.mode,
+			// `undefined` removes the field from the row.
+			externalReceivingProvider: provider,
+		};
+		const auditDetails = (applied: string) => ({
+			domain: domain.domain,
+			previousMode,
+			newMode: args.mode,
+			previousProvider: previousProvider ?? null,
+			newProvider: provider ?? null,
+			applied,
+		});
+
+		// REFUSED while a registration is in flight, rather than stored and hoped for.
+		//
+		// Two things are impossible here at once. Patching `status: 'pending'` would
+		// turn the register-completion `registering → pending` into a self-loop,
+		// which `reduceSelfLoop` strips down to `verificationResults` only, dropping
+		// the whole DKIM/DMARC bundle AND the provider identity row. And storing the
+		// mode alone does NOT make the in-flight registration honour it:
+		// `registerAction.run` reads the row ONCE and then does slow provider I/O, so
+		// a mode written after that read lands on a row whose bundle was already
+		// generated for the old one — an external-receiving domain left holding an
+		// apex SPF with no provider include and a TLS-RPT record for an MX we do not
+		// run. `setReturnPathHost` can defer to the registration because
+		// `reconcileReturnPathAfterRegistration` re-reads and repairs afterwards;
+		// nothing reconciles the mode, and a same-mode re-save short-circuits as
+		// `changed: false`, so the divergence would never self-heal.
+		//
+		// Registration is seconds long and the caller is a human at a panel, so
+		// "wait and try again" is the whole cost of being right. `create` is
+		// unaffected: it writes the mode in the same transaction that schedules the
+		// registration, so the row already carries it when the action reads it.
+		if (domain.status === 'registering') {
+			return { ok: false, reason: 'registering' };
+		}
+
+		const external = args.mode === 'external';
+		// The sanctioned own-vs-relay predicate, not a third spelling of
+		// `providerType === 'mta'`: it also admits the legacy rows that recorded no
+		// kind, whose records our own MTA adapter generated. Regenerating a record
+		// WE emitted is the repair side of that predicate — nothing here mints a
+		// provider-side identity for a row whose provider was never recorded.
+		const ownMta = isOwnPrimarySendingDomain(domain.providerType);
+		const dnsRecords = domain.dnsRecords as DnsRecords;
+		const nextDnsRecords: DnsRecords = { ...dnsRecords };
+		let spfChanged = false;
+		let tlsRptChanged = false;
+
+		const spfInclude = getOptional('MTA_SPF_INCLUDE');
+		if (ownMta && dnsRecords.spf && spfInclude) {
+			const value = mergeExternalReceivingSpf(
+				buildSpfRecordValue({
+					include: spfInclude,
+					qualifier: resolveSpfQualifier(getOptional('SPF_QUALIFIER')),
+				}),
+				external ? provider : undefined
+			);
+			if (value !== dnsRecords.spf.value) {
+				nextDnsRecords.spf = { ...dnsRecords.spf, value };
+				spfChanged = true;
+			}
+		}
+
+		// A DANE association is stored under `tlsRpt` on rows that predate the
+		// dedicated `tlsa` field (the verifier still reads it that way). Deleting
+		// one here because the mode went external would silently withdraw the
+		// operator's TLSA record, which has nothing to do with who receives mail.
+		const tlsaStoredUnderTlsRpt = dnsRecords.tlsRpt?.type === 'TLSA';
+		if (ownMta && !tlsaStoredUnderTlsRpt) {
+			if (external && dnsRecords.tlsRpt) {
+				delete nextDnsRecords.tlsRpt;
+				tlsRptChanged = true;
+			} else if (!external && !dnsRecords.tlsRpt) {
+				// Restored only when the operator still has a reporting destination
+				// configured; absent `MTA_TLSRPT_RUA` the record was never emitted at
+				// registration either, so coming back must not invent one.
+				const value = buildTlsRptRecordValue(getOptional('MTA_TLSRPT_RUA'));
+				if (value) {
+					nextDnsRecords.tlsRpt = { type: 'TXT', host: TLSRPT_HOST, value };
+					tlsRptChanged = true;
+				}
+			}
+		}
+
+		const recordsChanged = spfChanged || tlsRptChanged;
+		// A domain whose REGISTRATION failed keeps its `failed` status even when a
+		// record moved. That row never got a bundle from the provider — it carries
+		// `dnsRecords: {}` (or a fragment), no DKIM, and a `lastRegistrationError`
+		// the panel shows with a "try again" path. Dropping it to `pending` would
+		// claim it is merely waiting on the operator's DNS, hand them a lone
+		// TLS-RPT record to publish, and hide the real problem behind a status that
+		// says setup succeeded. Narrow on purpose: a `failed` row WITHOUT a
+		// registration error failed VERIFICATION, which is exactly the case
+		// re-publishing fixes, so that one still drops. The mode is stored either
+		// way, so the retry registers with the right arrangement.
+		const registrationFailed =
+			domain.status === 'failed' && domain.lastRegistrationError !== undefined;
+		const dropToPending = recordsChanged && !registrationFailed;
+
+		// Only the results for the records that actually moved are dropped — the
+		// customer has to re-publish those and only those (mirrors setDmarcPolicy).
+		const verificationResults = domain.verificationResults as VerificationResults | undefined;
+		const nextVerificationResults: VerificationResults | undefined =
+			verificationResults && recordsChanged
+				? {
+						...verificationResults,
+						...(spfChanged ? { spf: undefined } : {}),
+						...(tlsRptChanged ? { tlsRpt: undefined } : {}),
+					}
+				: undefined;
+
+		await ctx.db.patch(args.domainId, {
+			...modeFields,
+			...(recordsChanged ? { dnsRecords: nextDnsRecords } : {}),
+			// Back to `pending` ONLY when a published record changed: the operator
+			// now has DNS to republish, so claiming the domain is still verified
+			// would be a lie. A mode flip that moved no record (no `MTA_SPF_INCLUDE`,
+			// no TLS-RPT destination, a relay-primary domain) leaves a verified
+			// domain verified rather than downgrading it for nothing — and a
+			// registration failure outranks both (see `registrationFailed`).
+			...(dropToPending ? { status: 'pending' as const } : {}),
+			...(nextVerificationResults !== undefined
+				? { verificationResults: nextVerificationResults }
+				: {}),
+			updatedAt: at,
+		});
+
+		await applyEffects(
+			ctx,
+			[
+				{
+					kind: 'audit_log',
+					action: 'sending_domain.receiving_mode_changed',
+					domainId: args.domainId,
+					// Its OWN action rather than routing the status move through
+					// `dispatch`: the reducer would audit a `verified → pending` edge as
+					// `sending_domain.verification_failed`, and "DNS verification failed"
+					// is the wrong story for an operator who deliberately changed where
+					// their mail is received.
+					details: auditDetails(dropToPending ? 'transitioned' : 'recorded'),
+				},
+			],
+			args.userId
+		);
+
+		return { ok: true, receivingMode: args.mode, changed: true };
+	},
+});
+
+type SendingDomainReturnPathOutcome =
 	| { ok: true; returnPathHost: string; changed: boolean }
 	| {
 			ok: false;
@@ -952,7 +1214,7 @@ function buildReturnPathMailFrom(
 }
 
 /**
- * Set (or change) the domain's per-domain VERP return-path host (D1/D2).
+ * Set (or change) the domain's per-domain VERP return-path host.
  *
  * Regenerates the `mailFrom` SPF record on the new host and clears the stale
  * MAIL FROM verification result — the customer must publish the record at the
@@ -963,9 +1225,9 @@ function buildReturnPathMailFrom(
  *
  * The provider must ALSO learn the new host so its bounce envelope uses it:
  *   - MTA: reflected out-of-band via the scheduled `pushReturnPathHost` action —
- *     the D1 register endpoint is idempotent for the DKIM key, so this touches
+ *     the register endpoint is idempotent for the DKIM key, so this touches
  *     only the return-path host, never the signing key.
- *   - SES (X1): reflected via `reflectSesMailFrom`, which calls SES's
+ *   - SES: reflected via `reflectSesMailFrom`, which calls SES's
  *     `SetIdentityMailFromDomain`. SES's custom MAIL FROM must be a *subdomain of
  *     the sending domain*, so an out-of-zone/apex host is rejected
  *     (`host_not_subdomain`); the regenerated records are SES's MX + SPF TXT
@@ -988,7 +1250,7 @@ export const setReturnPathHost = internalMutation({
 		if (!domain) return { ok: false, reason: 'domain_not_found' };
 
 		const providerType = domain.providerType;
-		// Return-path host is honored by the built-in MTA and by SES (X1); other
+		// Return-path host is honored by the built-in MTA and by SES; other
 		// providers manage their own bounce path and are not supported.
 		if (providerType !== 'mta' && providerType !== 'ses') {
 			return { ok: false, reason: 'unsupported_provider' };
@@ -1303,7 +1565,7 @@ export const recordReturnPathPushResult = internalMutation({
 	},
 });
 
-export type SendingDomainDkimRotationOutcome =
+type SendingDomainDkimRotationOutcome =
 	| { ok: true; phase: 'pending' | 'activated'; selector: string; changed: boolean }
 	| { ok: false; reason: 'domain_not_found' };
 

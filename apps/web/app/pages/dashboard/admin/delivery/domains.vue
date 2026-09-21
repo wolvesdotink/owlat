@@ -11,7 +11,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.delivery.domains.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -31,6 +31,10 @@ const outboundIpDetail = computed(() => {
 });
 
 const isLoading = computed(() => teamLoading.value || domainsLoading.value);
+
+// The list has answered and is empty — the empty state below owns the primary
+// action then, so the header's copy of it steps down to a hairline.
+const hasNoDomains = computed(() => !!domainsData.value && domainsData.value.length === 0);
 
 // Offer the external-mailbox path (connect your own IMAP/SMTP) when no domain
 // is verified and the feature is enabled — the "no domain to send from" wall.
@@ -66,7 +70,7 @@ const { run: forceVerifyDomain } = isDevBuild
 	? useBackendOperation(api.devShortcuts.forceVerifyDomain.forceVerifyDomain, {
 			label: () => t('dashboard.admin.delivery.domains.operations.forceVerify'),
 		})
-	: { run: async (_: { domainId: Id<'domains'> }) => undefined };
+	: { run: async (_: { domainId: Id<'domains'> }) => ({ ok: false }) as const };
 
 // Force Verify is owner/admin-only. The backend re-checks via
 // `requirePermission('organization:manage')`; the client-side gate is here so
@@ -138,7 +142,7 @@ const handleDeleteDomain = async () => {
 	const result = await removeDomain({ domainId: deleteModal.data.value._id });
 	deleteModal.setLoading(false);
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	deleteModal.close();
 	showToast(t('dashboard.admin.delivery.domains.toasts.removed'));
@@ -150,8 +154,8 @@ const handleVerifyDomain = async (domainId: Id<'domains'>) => {
 	verifyingDomainId.value = domainId;
 	try {
 		const result = await verifyDomain({ domainId });
-		if (result === undefined) return; // run() already surfaced the failure
-		if (result.allVerified) {
+		if (!result.ok) return; // run() already surfaced the failure
+		if (result.result.allVerified) {
 			showToast(t('dashboard.admin.delivery.domains.toasts.verified'));
 		} else {
 			showToast(t('dashboard.admin.delivery.domains.toasts.verificationIncomplete'), 'error');
@@ -164,7 +168,7 @@ const handleVerifyDomain = async (domainId: Id<'domains'>) => {
 // Handle retry registration (for failed registration)
 const handleRetryRegistration = async (domainId: Id<'domains'>) => {
 	const result = await retryRegistration({ domainId });
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.admin.delivery.domains.toasts.regenerating'));
 };
 
@@ -216,7 +220,7 @@ const handleDmarcPolicyChange = async (domainId: Id<'domains'>, policy: DmarcPol
 	updatingDmarcDomainId.value = domainId;
 	try {
 		const result = await setDmarcPolicy({ domainId, policy });
-		if (result === undefined) return; // run() already surfaced the failure
+		if (!result.ok) return; // run() already surfaced the failure
 		showToast(
 			policy === 'none'
 				? t('dashboard.admin.delivery.domains.toasts.dmarcMonitorOnly')
@@ -233,7 +237,7 @@ const handleForceVerify = async (domainId: Id<'domains'>) => {
 	forcingDomainId.value = domainId;
 	const result = await forceVerifyDomain({ domainId });
 	forcingDomainId.value = null;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.admin.delivery.domains.toasts.forceVerified'));
 };
 
@@ -275,14 +279,9 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/admin/delivery"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.delivery.backToSetup') }}
-			</NuxtLink>
-			<div class="flex items-center justify-between">
+			<!-- Stacked below `sm`: at 390px a side-by-side header leaves the title
+			     and the lede a ~180px column to wrap in. -->
+			<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
 				<div>
 					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ t('dashboard.admin.delivery.domains.title') }}
@@ -291,7 +290,17 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 						{{ t('dashboard.admin.delivery.domains.lede') }}
 					</p>
 				</div>
-				<UiButton class="gap-2" @click="addModal.open()">
+				<!-- `shrink-0 whitespace-nowrap`: in a `justify-between` header the lede
+				     squeezed this pill until its label wrapped to two lines and the
+				     full radius turned it into an oval. While the list is empty the
+				     empty state carries the primary "Add your first domain", so this
+				     one steps down to a hairline rather than putting two black pills
+				     on one screen. -->
+				<UiButton
+					:variant="hasNoDomains ? 'secondary' : 'primary'"
+					class="gap-2 shrink-0 self-start whitespace-nowrap sm:self-auto"
+					@click="addModal.open()"
+				>
 					<Icon name="lucide:plus" class="w-4 h-4" />
 					{{ t('dashboard.admin.delivery.domains.addDomain') }}
 				</UiButton>
@@ -303,19 +312,15 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 			<DashboardListSkeleton variant="card" leading :rows="4" />
 		</div>
 
-		<!-- No Team State -->
-		<div
+		<!-- No Team State — a precondition, not an empty list, so the eyebrow
+		     names the surface rather than claiming there is nothing here. -->
+		<UiEmptyState
 			v-else-if="!hasActiveOrganization"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox icon="lucide:globe" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.admin.delivery.domains.noTeam.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.admin.delivery.domains.noTeam.description') }}
-			</p>
-		</div>
+			icon="lucide:globe"
+			:eyebrow="t('dashboard.admin.delivery.domains.title')"
+			:title="t('dashboard.admin.delivery.domains.noTeam.title')"
+			:description="t('dashboard.admin.delivery.domains.noTeam.description')"
+		/>
 
 		<!-- Content -->
 		<div v-else class="space-y-8">
@@ -371,22 +376,19 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 			</div>
 
 			<!-- Empty State -->
-			<div
+			<UiEmptyState
 				v-if="domainsData && domainsData.length === 0"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
+				icon="lucide:globe"
+				:title="t('dashboard.admin.delivery.domains.empty.title')"
+				:description="t('dashboard.admin.delivery.domains.empty.description')"
 			>
-				<UiIconBox icon="lucide:globe" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">
-					{{ t('dashboard.admin.delivery.domains.empty.title') }}
-				</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					{{ t('dashboard.admin.delivery.domains.empty.description') }}
-				</p>
-				<UiButton class="gap-2 mt-4" @click="addModal.open()">
-					<Icon name="lucide:plus" class="w-4 h-4" />
-					{{ t('dashboard.admin.delivery.domains.empty.action') }}
-				</UiButton>
-			</div>
+				<template #action>
+					<UiButton class="gap-2" @click="addModal.open()">
+						<Icon name="lucide:plus" class="w-4 h-4" />
+						{{ t('dashboard.admin.delivery.domains.empty.action') }}
+					</UiButton>
+				</template>
+			</UiEmptyState>
 
 			<!-- Domains List -->
 			<div v-else-if="domainsData && domainsData.length > 0" class="space-y-4">

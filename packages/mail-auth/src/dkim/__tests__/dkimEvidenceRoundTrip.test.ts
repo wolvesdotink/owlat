@@ -29,7 +29,7 @@ import {
 	canonicalizeHeaderField,
 	parseCanonicalization,
 	stripSignatureValue,
-} from '../../canon.js';
+} from '@owlat/mail-canon';
 import { verifyDkim, type DkimDnsResolver } from '../verify.js';
 import type { DkimSignatureEvidence } from '../evidence.js';
 import { mintSignature } from './helpers/mint.js';

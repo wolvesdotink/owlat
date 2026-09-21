@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * CELLS — the grid, and the evidence behind every verdict (plan D12, P3-6).
+ * CELLS — the grid, and the evidence behind every verdict.
  *
  * The grid answers the four questions an operator has about a cell: what share
  * it carries, what state it is in, what is holding it back, and what the
@@ -11,8 +11,8 @@
  * TWO READS, NOT ONE, AND DELIBERATELY SO. The ramp position comes from the
  * control query and the gate evidence from the shipped measurement dashboard;
  * merging them server-side would have made one screen's read the other's
- * dependency, and the measurement dashboard is the piece that must keep working
- * on its own.
+ * dependency, and the measurement dashboard is the screen that must keep
+ * working on its own.
  */
 import { api } from '@owlat/api';
 import { rampCellLabel, type RampCellControl } from '~/utils/deliverabilityRamp';
@@ -34,7 +34,7 @@ function localized(value: LocalizedText): string {
 
 useHead({ title: () => t('dashboard.admin.delivery.advanced.cells.pageTitle') });
 
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const {
 	data: controls,
@@ -116,7 +116,7 @@ function select(cellKey: string): void {
 			</p>
 		</header>
 
-		<!-- Plan D8: with two reference relays there is no single second arm, so
+		<!-- With two reference relays there is no single second arm, so
 		     every share below holds. The reason belongs on the screen where the
 		     frozen share is watched, not only where relays are configured. -->
 		<DeliveryReferenceRelayNotice class="mb-6" />
@@ -134,7 +134,7 @@ function select(cellKey: string): void {
 					aria-live="polite"
 					:aria-label="t('dashboard.admin.delivery.advanced.cells.loading')"
 				>
-					<div class="h-64 animate-pulse rounded-xl bg-bg-surface" />
+					<div class="h-64 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
 				</div>
 			</template>
 
@@ -169,7 +169,7 @@ function select(cellKey: string): void {
 					>
 						<template #loading>
 							<div
-								class="mt-3 h-24 animate-pulse rounded-lg bg-bg-surface"
+								class="mt-3 h-24 animate-pulse motion-reduce:animate-none rounded-lg bg-bg-surface"
 								role="status"
 								aria-live="polite"
 								:aria-label="t('dashboard.admin.delivery.advanced.cells.evidenceLoading')"
@@ -202,7 +202,7 @@ function select(cellKey: string): void {
 					>
 						<template #loading>
 							<div
-								class="mt-3 h-24 animate-pulse rounded-lg bg-bg-surface"
+								class="mt-3 h-24 animate-pulse motion-reduce:animate-none rounded-lg bg-bg-surface"
 								role="status"
 								aria-live="polite"
 								:aria-label="t('dashboard.admin.delivery.advanced.cells.historyLoading')"

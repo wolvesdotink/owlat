@@ -7,7 +7,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.operator.index.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'platform-admin'],
 });
 
@@ -51,7 +51,11 @@ const tabs = computed(() => [
 		label: t('dashboard.admin.operator.index.tabs.organizations'),
 		count: flaggedOrgs.value?.length ?? 0,
 	},
-	{ value: 'admins', label: t('dashboard.admin.operator.index.tabs.admins'), count: admins.value?.length ?? 0 },
+	{
+		value: 'admins',
+		label: t('dashboard.admin.operator.index.tabs.admins'),
+		count: admins.value?.length ?? 0,
+	},
 ]);
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
@@ -93,7 +97,7 @@ type ReviewItem = {
 async function onApprove(item: ReviewItem) {
 	if (item.type === 'campaign') {
 		const r = await approveCampaign({ campaignId: item.id as Id<'campaigns'> });
-		if (r)
+		if (r.ok)
 			showToast(
 				t('dashboard.admin.operator.index.toasts.approvedCampaign', {
 					name: item.name ?? t('dashboard.admin.operator.index.fallbackNames.campaign'),
@@ -103,7 +107,7 @@ async function onApprove(item: ReviewItem) {
 		const r = await approveTransactional({
 			transactionalEmailId: item.id as Id<'transactionalEmails'>,
 		});
-		if (r)
+		if (r.ok)
 			showToast(
 				t('dashboard.admin.operator.index.toasts.approvedTransactional', {
 					name: item.name ?? t('dashboard.admin.operator.index.fallbackNames.email'),
@@ -134,9 +138,11 @@ async function confirmReject() {
 		resourceId: item.id,
 		reason: rejectReason.value.trim(),
 	});
-	if (r) {
+	if (r.ok) {
 		showToast(
-			t('dashboard.admin.operator.index.toasts.rejected', { name: item.name ?? t('dashboard.admin.operator.index.fallbackNames.content') })
+			t('dashboard.admin.operator.index.toasts.rejected', {
+				name: item.name ?? t('dashboard.admin.operator.index.fallbackNames.content'),
+			})
 		);
 		rejectModalOpen.value = false;
 		rejectTarget.value = null;
@@ -170,13 +176,15 @@ async function confirmStatus() {
 		abuseStatus: statusTargetValue.value,
 		reason: statusReason.value.trim(),
 	});
-	if (r) {
-		showToast(t('dashboard.admin.operator.index.toasts.statusSet', { status: statusTargetValue.value }));
+	if (r.ok) {
+		showToast(
+			t('dashboard.admin.operator.index.toasts.statusSet', { status: statusTargetValue.value })
+		);
 		statusModalOpen.value = false;
 	}
 }
 
-const currentAbuseStatus = computed(() => orgDetail.value?.settings.abuseStatus ?? 'clean');
+const currentAbuseStatus = computed(() => orgDetail.value?.settings?.abuseStatus ?? 'clean');
 
 // `warned` is the soft auto-warn state: flagged but sending is still allowed
 // (the backend gate only stops `suspended` / `banned`). Surface it honestly so
@@ -188,13 +196,29 @@ const addAdminModalOpen = ref(false);
 const addAdminUserId = ref('');
 const addAdminRole = ref<'admin' | 'superadmin'>('admin');
 
+// Anyone already on the roster is not a candidate — `addPlatformAdmin` refuses a
+// duplicate, so offering them here could only ever produce an error toast.
+const promotableUsers = computed(() => {
+	const existing = new Set((admins.value ?? []).map((a) => a.authUserId));
+	return (allUsers.value ?? []).filter((u) => !existing.has(u.authUserId));
+});
+
 const userOptions = computed(() => [
 	{ value: '', label: t('dashboard.admin.operator.index.addAdminModal.selectUser') },
-	...(allUsers.value ?? []).map((u) => ({
+	...promotableUsers.value.map((u) => ({
 		value: u.authUserId,
-		label: u.name ? t('dashboard.admin.operator.index.addAdminModal.userOption', { name: u.name, email: u.email }) : u.email,
+		label: u.name
+			? t('dashboard.admin.operator.index.addAdminModal.userOption', {
+					name: u.name,
+					email: u.email,
+				})
+			: u.email,
 	})),
 ]);
+
+// Every member already holds platform admin. Say so, rather than opening a
+// modal whose only control is an empty dropdown.
+const hasPromotableUsers = computed(() => promotableUsers.value.length > 0);
 
 const roleOptions = computed(() => [
 	{ value: 'admin', label: t('dashboard.admin.operator.index.roleOptions.admin') },
@@ -218,7 +242,7 @@ async function confirmAddAdmin() {
 		email: user?.email ?? '',
 		role: addAdminRole.value,
 	});
-	if (r) {
+	if (r.ok) {
 		showToast(t('dashboard.admin.operator.index.toasts.adminAdded'));
 		addAdminModalOpen.value = false;
 	}
@@ -226,7 +250,7 @@ async function confirmAddAdmin() {
 
 async function onRemoveAdmin(adminId: string, email: string) {
 	const r = await removePlatformAdmin({ adminId: adminId as Id<'platformAdmins'> });
-	if (r) showToast(t('dashboard.admin.operator.index.toasts.adminRemoved', { email }));
+	if (r.ok) showToast(t('dashboard.admin.operator.index.toasts.adminRemoved', { email }));
 }
 
 const anyMutationLoading = computed(
@@ -244,13 +268,6 @@ const anyMutationLoading = computed(
 	<div class="p-6 lg:p-8 max-w-[1100px] mx-auto">
 		<!-- Header -->
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/admin"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.operator.index.backToSettings') }}
-			</NuxtLink>
 			<div class="flex items-center gap-3">
 				<UiIconBox icon="lucide:shield-alert" size="lg" variant="brand" rounded="xl" />
 				<div>
@@ -274,7 +291,7 @@ const anyMutationLoading = computed(
 						{{ t('dashboard.admin.operator.index.stats.totalSent') }}
 					</p>
 					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ stats?.sending.totalSent ?? 0 }}
+						{{ stats?.sending?.totalSent ?? 0 }}
 					</p>
 				</div>
 				<div class="card p-5">
@@ -282,7 +299,7 @@ const anyMutationLoading = computed(
 						{{ t('dashboard.admin.operator.index.stats.bounceRate') }}
 					</p>
 					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ formatRate(stats?.sending.bounceRate) }}
+						{{ formatRate(stats?.sending?.bounceRate) }}
 					</p>
 				</div>
 				<div class="card p-5">
@@ -290,7 +307,7 @@ const anyMutationLoading = computed(
 						{{ t('dashboard.admin.operator.index.stats.complaintRate') }}
 					</p>
 					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ formatRate(stats?.sending.complaintRate) }}
+						{{ formatRate(stats?.sending?.complaintRate) }}
 					</p>
 				</div>
 				<div class="card p-5">
@@ -313,16 +330,20 @@ const anyMutationLoading = computed(
 				<div
 					v-if="
 						!recentAbuse ||
-						(recentAbuse.flaggedScans.length === 0 && recentAbuse.pendingReview.length === 0)
+						(!recentAbuse.flaggedScans?.length && !recentAbuse.pendingReview?.length)
 					"
 					class="text-caption text-text-tertiary"
 				>
 					{{ t('dashboard.admin.operator.index.abuse.empty') }}
 				</div>
 				<div v-else class="space-y-4">
-					<div v-if="recentAbuse.pendingReview.length">
+					<div v-if="recentAbuse.pendingReview?.length">
 						<p class="text-xs font-medium text-text-secondary mb-2">
-							{{ t('dashboard.admin.operator.index.abuse.pendingReview', { count: recentAbuse.pendingReview.length }) }}
+							{{
+								t('dashboard.admin.operator.index.abuse.pendingReview', {
+									count: recentAbuse.pendingReview.length,
+								})
+							}}
 						</p>
 						<ul class="space-y-1">
 							<li
@@ -335,9 +356,13 @@ const anyMutationLoading = computed(
 							</li>
 						</ul>
 					</div>
-					<div v-if="recentAbuse.flaggedScans.length">
+					<div v-if="recentAbuse.flaggedScans?.length">
 						<p class="text-xs font-medium text-text-secondary mb-2">
-							{{ t('dashboard.admin.operator.index.abuse.flaggedScans', { count: recentAbuse.flaggedScans.length }) }}
+							{{
+								t('dashboard.admin.operator.index.abuse.flaggedScans', {
+									count: recentAbuse.flaggedScans.length,
+								})
+							}}
 						</p>
 						<ul class="space-y-1">
 							<li
@@ -346,7 +371,12 @@ const anyMutationLoading = computed(
 								class="flex items-center justify-between text-caption"
 							>
 								<span class="text-text-primary">
-									{{ t('dashboard.admin.operator.index.abuse.scanEntry', { resourceType: s.resourceType, score: s.score }) }}
+									{{
+										t('dashboard.admin.operator.index.abuse.scanEntry', {
+											resourceType: s.resourceType,
+											score: s.score,
+										})
+									}}
 								</span>
 								<UiBadge :variant="scanLevelVariant(s.level)">{{ s.level }}</UiBadge>
 							</li>
@@ -364,7 +394,7 @@ const anyMutationLoading = computed(
 				</h3>
 
 				<UiEmptyState
-					v-if="!reviewQueue || reviewQueue.pending.length === 0"
+					v-if="!reviewQueue?.pending?.length"
 					icon="lucide:check-circle-2"
 					:title="t('dashboard.admin.operator.index.review.emptyTitle')"
 					:description="t('dashboard.admin.operator.index.review.emptyDescription')"
@@ -388,7 +418,11 @@ const anyMutationLoading = computed(
 								{{ item.subject }}
 							</p>
 							<p class="mt-1 text-xs text-text-tertiary">
-								{{ t('dashboard.admin.operator.index.review.updated', { time: formatRelativeTime(item.updatedAt) }) }}
+								{{
+									t('dashboard.admin.operator.index.review.updated', {
+										time: formatRelativeTime(item.updatedAt),
+									})
+								}}
 							</p>
 						</div>
 						<div class="flex gap-2 shrink-0">
@@ -415,10 +449,7 @@ const anyMutationLoading = computed(
 			</div>
 
 			<!-- Recently reviewed -->
-			<div
-				v-if="reviewQueue && reviewQueue.recentlyReviewed.length"
-				class="card"
-			>
+			<div v-if="reviewQueue?.recentlyReviewed?.length" class="card">
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
 					{{ t('dashboard.admin.operator.index.review.recentlyReviewed') }}
 				</h3>
@@ -459,10 +490,14 @@ const anyMutationLoading = computed(
 							</span>
 						</div>
 						<p
-							v-if="orgDetail?.settings.abuseStatusReason"
+							v-if="orgDetail?.settings?.abuseStatusReason"
 							class="mt-2 text-caption text-text-secondary"
 						>
-							{{ t('dashboard.admin.operator.index.sending.reason', { reason: orgDetail.settings.abuseStatusReason }) }}
+							{{
+								t('dashboard.admin.operator.index.sending.reason', {
+									reason: orgDetail?.settings?.abuseStatusReason,
+								})
+							}}
 						</p>
 					</div>
 					<div class="flex gap-2">
@@ -531,34 +566,47 @@ const anyMutationLoading = computed(
 				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
 					{{ t('dashboard.admin.operator.index.workspaces.title') }}
 				</h3>
-				<table class="w-full text-caption">
-					<thead>
-						<tr class="border-b border-border-subtle text-text-tertiary">
-							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.operator.index.workspaces.sender') }}</th>
-							<th class="text-left py-2 font-medium">{{ t('common.status') }}</th>
-							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.operator.index.workspaces.risk') }}</th>
-							<th class="text-right py-2 font-medium">{{ t('dashboard.admin.operator.index.workspaces.contacts') }}</th>
-						</tr>
-					</thead>
-					<tbody>
-						<tr
-							v-for="(o, i) in allOrgs ?? []"
-							:key="i"
-							class="border-b border-border-subtle last:border-b-0"
-						>
-							<td class="py-2 text-text-primary">
-								{{ o.defaultFromName || o.defaultFromEmail || '—' }}
-							</td>
-							<td class="py-2">
-								<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{ o.abuseStatus }}</UiBadge>
-							</td>
-							<td class="py-2">
-								<UiBadge :variant="riskLevelVariant(o.riskLevel)">{{ o.riskLevel }}</UiBadge>
-							</td>
-							<td class="py-2 text-right text-text-secondary">{{ o.contactCount }}</td>
-						</tr>
-					</tbody>
-				</table>
+				<!-- Scroll container: sender, two badges and a count do not fit a
+				     phone, and without this the card just clipped them. The negative
+				     margin lets the scroll area bleed to the card's edges. -->
+				<div class="-mx-6 px-6 overflow-x-auto">
+					<table class="w-full min-w-max text-caption">
+						<thead>
+							<tr class="border-b border-border-subtle text-text-tertiary">
+								<th class="text-left py-2 font-medium">
+									{{ t('dashboard.admin.operator.index.workspaces.sender') }}
+								</th>
+								<th class="text-left py-2 font-medium">{{ t('common.status') }}</th>
+								<th class="text-left py-2 font-medium">
+									{{ t('dashboard.admin.operator.index.workspaces.risk') }}
+								</th>
+								<th class="text-right py-2 font-medium">
+									{{ t('dashboard.admin.operator.index.workspaces.contacts') }}
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr
+								v-for="(o, i) in allOrgs ?? []"
+								:key="i"
+								class="border-b border-border-subtle last:border-b-0"
+							>
+								<td class="py-2 text-text-primary">
+									{{ o.defaultFromName || o.defaultFromEmail || '—' }}
+								</td>
+								<td class="py-2">
+									<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{
+										o.abuseStatus
+									}}</UiBadge>
+								</td>
+								<td class="py-2">
+									<UiBadge :variant="riskLevelVariant(o.riskLevel)">{{ o.riskLevel }}</UiBadge>
+								</td>
+								<td class="py-2 text-right text-text-secondary">{{ o.contactCount }}</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
 			</div>
 		</div>
 
@@ -572,7 +620,12 @@ const anyMutationLoading = computed(
 					<UiButton
 						variant="secondary"
 						size="sm"
-						:disabled="anyMutationLoading"
+						:disabled="anyMutationLoading || !hasPromotableUsers"
+						:title="
+							hasPromotableUsers
+								? undefined
+								: t('dashboard.admin.operator.index.admins.allPromoted')
+						"
 						@click="openAddAdmin"
 					>
 						<template #iconLeft>
@@ -582,41 +635,50 @@ const anyMutationLoading = computed(
 					</UiButton>
 				</div>
 
-				<table class="w-full text-caption">
-					<thead>
-						<tr class="border-b border-border-subtle text-text-tertiary">
-							<th class="text-left py-2 font-medium">{{ t('common.email') }}</th>
-							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.operator.index.admins.role') }}</th>
-							<th class="text-left py-2 font-medium">{{ t('dashboard.admin.operator.index.admins.added') }}</th>
-							<th class="text-right py-2 font-medium" />
-						</tr>
-					</thead>
-					<tbody>
-						<tr
-							v-for="a in admins ?? []"
-							:key="a.id"
-							class="border-b border-border-subtle last:border-b-0"
-						>
-							<td class="py-2 text-text-primary">{{ a.email }}</td>
-							<td class="py-2">
-								<UiBadge :variant="a.role === 'superadmin' ? 'warning' : 'neutral'">{{
-									a.role
-								}}</UiBadge>
-							</td>
-							<td class="py-2 text-text-secondary">{{ formatRelativeTime(a.createdAt) }}</td>
-							<td class="py-2 text-right">
-								<UiButton
-									variant="danger-ghost"
-									size="sm"
-									:disabled="anyMutationLoading"
-									@click="onRemoveAdmin(a.id, a.email)"
-								>
-									{{ t('common.remove') }}
-								</UiButton>
-							</td>
-						</tr>
-					</tbody>
-				</table>
+				<!-- Scroll container: email, role, added and the remove action do not
+				     fit a phone, and without this the card just clipped them. The
+				     negative margin lets the scroll area bleed to the card's edges. -->
+				<div class="-mx-6 px-6 overflow-x-auto">
+					<table class="w-full min-w-max text-caption">
+						<thead>
+							<tr class="border-b border-border-subtle text-text-tertiary">
+								<th class="text-left py-2 font-medium">{{ t('common.email') }}</th>
+								<th class="text-left py-2 font-medium">
+									{{ t('dashboard.admin.operator.index.admins.role') }}
+								</th>
+								<th class="text-left py-2 font-medium">
+									{{ t('dashboard.admin.operator.index.admins.added') }}
+								</th>
+								<th class="text-right py-2 font-medium" />
+							</tr>
+						</thead>
+						<tbody>
+							<tr
+								v-for="a in admins ?? []"
+								:key="a.id"
+								class="border-b border-border-subtle last:border-b-0"
+							>
+								<td class="py-2 text-text-primary">{{ a.email }}</td>
+								<td class="py-2">
+									<UiBadge :variant="a.role === 'superadmin' ? 'warning' : 'neutral'">{{
+										a.role
+									}}</UiBadge>
+								</td>
+								<td class="py-2 text-text-secondary">{{ formatRelativeTime(a.createdAt) }}</td>
+								<td class="py-2 text-right">
+									<UiButton
+										variant="danger-ghost"
+										size="sm"
+										:disabled="anyMutationLoading"
+										@click="onRemoveAdmin(a.id, a.email)"
+									>
+										{{ t('common.remove') }}
+									</UiButton>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
 				<p class="mt-3 text-xs text-text-tertiary">
 					{{ t('dashboard.admin.operator.index.admins.footnote') }}
 				</p>
@@ -624,7 +686,10 @@ const anyMutationLoading = computed(
 		</div>
 
 		<!-- Reject modal -->
-		<UiModal v-model:open="rejectModalOpen" :title="t('dashboard.admin.operator.index.rejectModal.title')">
+		<UiModal
+			v-model:open="rejectModalOpen"
+			:title="t('dashboard.admin.operator.index.rejectModal.title')"
+		>
 			<div class="space-y-3">
 				<p class="text-sm text-text-secondary">
 					{{ t('dashboard.admin.operator.index.rejectModal.body', { name: rejectTarget?.name }) }}
@@ -637,7 +702,9 @@ const anyMutationLoading = computed(
 				/>
 			</div>
 			<template #footer>
-				<UiButton variant="ghost" @click="rejectModalOpen = false">{{ t('common.cancel') }}</UiButton>
+				<UiButton variant="ghost" @click="rejectModalOpen = false">{{
+					t('common.cancel')
+				}}</UiButton>
 				<UiButton variant="danger" :loading="rejecting" @click="confirmReject">{{
 					t('dashboard.admin.operator.index.review.reject')
 				}}</UiButton>
@@ -645,7 +712,10 @@ const anyMutationLoading = computed(
 		</UiModal>
 
 		<!-- Org status modal -->
-		<UiModal v-model:open="statusModalOpen" :title="t('dashboard.admin.operator.index.statusModal.title')">
+		<UiModal
+			v-model:open="statusModalOpen"
+			:title="t('dashboard.admin.operator.index.statusModal.title')"
+		>
 			<div class="space-y-3">
 				<UiSelect
 					v-model="statusTargetValue"
@@ -660,7 +730,9 @@ const anyMutationLoading = computed(
 				/>
 			</div>
 			<template #footer>
-				<UiButton variant="ghost" @click="statusModalOpen = false">{{ t('common.cancel') }}</UiButton>
+				<UiButton variant="ghost" @click="statusModalOpen = false">{{
+					t('common.cancel')
+				}}</UiButton>
 				<UiButton variant="primary" :loading="settingStatus" @click="confirmStatus">{{
 					t('common.apply')
 				}}</UiButton>
@@ -668,7 +740,10 @@ const anyMutationLoading = computed(
 		</UiModal>
 
 		<!-- Add admin modal -->
-		<UiModal v-model:open="addAdminModalOpen" :title="t('dashboard.admin.operator.index.addAdminModal.title')">
+		<UiModal
+			v-model:open="addAdminModalOpen"
+			:title="t('dashboard.admin.operator.index.addAdminModal.title')"
+		>
 			<div class="space-y-3">
 				<UiSelect
 					v-model="addAdminUserId"
@@ -682,7 +757,9 @@ const anyMutationLoading = computed(
 				/>
 			</div>
 			<template #footer>
-				<UiButton variant="ghost" @click="addAdminModalOpen = false">{{ t('common.cancel') }}</UiButton>
+				<UiButton variant="ghost" @click="addAdminModalOpen = false">{{
+					t('common.cancel')
+				}}</UiButton>
 				<UiButton variant="primary" :loading="addingAdmin" @click="confirmAddAdmin">{{
 					t('dashboard.admin.operator.index.admins.add')
 				}}</UiButton>

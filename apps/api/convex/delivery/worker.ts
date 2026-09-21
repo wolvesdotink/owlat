@@ -16,13 +16,14 @@ import { fetchGuarded } from '../lib/ssrfGuard';
 import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
 import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
 import { dispatchGovernedEmail } from './governedDispatch';
-import { armForTransport } from './sendAssignments';
+import { armForTransportLabel } from './sendAssignments';
 import {
 	envelopeInputValidator,
 	isSeedShadowEnvelope,
 	retryStateValidator,
 	type WorkerEnvelopeInput,
 } from './workerEnvelope';
+import { sendWorkerOutcomeValidator } from './workerOutcome';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -282,7 +283,7 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 // send.
 async function resolveAttachments(
 	refs: { filename: string; contentType?: string; url: string }[]
-): Promise<{ filename: string; content: Buffer; contentType?: string }[]> {
+): Promise<{ filename: string; content: Uint8Array; contentType?: string }[]> {
 	return Promise.all(
 		refs.map(async (att) => {
 			// SSRF guard: the attachment URL is attacker-influenced (any API-key
@@ -332,6 +333,13 @@ async function resolveAttachments(
 					`Attachment "${att.filename}" blocked by malware scan: ${scanVerdict.reason}`
 				);
 			}
+			// The endpoint's own type gate refused it. Reachable only if its
+			// allowlist is stricter than the `validateFile` call above, and it is
+			// not malware — so it aborts the send with the type reason, not with
+			// a malware sentence.
+			if (scanVerdict.kind === 'refused') {
+				throw new Error(`Attachment "${att.filename}" blocked: ${scanVerdict.reason}`);
+			}
 
 			return {
 				filename: att.filename,
@@ -356,6 +364,11 @@ export const sendSingleEmail = internalAction({
 		envelopeInput: envelopeInputValidator,
 		retryState: v.optional(retryStateValidator),
 	},
+	// THE GATE ON THE WAY OUT. The workpool surfaces this value to
+	// `delivery/sendCompletion.ts` as an untyped `result.returnValue`; declaring
+	// the union here is what makes the shape the completion callback matches
+	// against something the runtime already refused to let past.
+	returns: sendWorkerOutcomeValidator,
 	handler: async (ctx, { envelopeInput, retryState }) => {
 		// Suppression re-check — campaign path only. Campaigns filter the blocklist
 		// once, at audience-resolution time, then enqueue. But the timezone path
@@ -366,7 +379,8 @@ export const sendSingleEmail = internalAction({
 		// gate before dispatch — to honor the suppression obligation (CAN-SPAM
 		// §316.5 + the Gmail/Yahoo 2024 sender requirements). O(1) indexed point
 		// read via `blockedEmails.by_email`; NOT a scan. The non-campaign path
-		// already gates at enqueue (delivery/enqueue.ts), so it is not re-checked.
+		// already gates at intake (delivery/nonCampaignIntake.ts, via
+		// delivery/sendIntakeGates.ts), so it is not re-checked.
 		if (envelopeInput.kind === 'campaign') {
 			const blocked = await ctx.runQuery(internal.blockedEmails.isBlockedInternal, {
 				email: envelopeInput.to,
@@ -374,9 +388,10 @@ export const sendSingleEmail = internalAction({
 			if (blocked) {
 				// Finalize as skipped without delivering. Return normally (do NOT
 				// throw) so the workpool run counts as a success and does not retry;
-				// the Send completion handler translates `suppressed` into a terminal
-				// non-delivery transition (status 'failed', code RECIPIENT_SUPPRESSED).
-				return { success: false, suppressed: true };
+				// the Send completion handler translates the `suppressed` arm into a
+				// terminal non-delivery transition (status 'failed', code
+				// RECIPIENT_SUPPRESSED).
+				return { kind: 'suppressed' as const };
 			}
 		}
 
@@ -458,17 +473,18 @@ export const sendSingleEmail = internalAction({
 		if (
 			envelopeInput.seedProbeRef !== undefined &&
 			envelopeInput.organizationId !== undefined &&
-			dispatchResult.success
+			dispatchResult.kind === 'accepted'
 		) {
 			await ctx.runMutation(internal.analytics.seedPlacement.recordSeedProbeDispatch, {
 				organizationId: envelopeInput.organizationId,
 				probeRef: envelopeInput.seedProbeRef,
 				// ONE arm split, not a second copy of it. The measurement plane is
 				// keyed by arm, so a probe filed under a different rule than the
-				// assignment rows use would compare two populations; `armForTransport`
-				// is the same function `sendAssignments` records with, reading D3's
-				// single own-arm declaration.
-				transportArm: armForTransport(dispatchResult.providerType),
+				// assignment rows use would compare two populations;
+				// `armForTransportLabel` defers to the same `armForTransport` the
+				// assignment rows are written with, reading D3's single own-arm
+				// declaration.
+				transportArm: armForTransportLabel(dispatchResult.providerType),
 				now: Date.now(),
 			});
 		}

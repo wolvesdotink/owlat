@@ -95,7 +95,13 @@ describe('buildAssumeYesConfig', () => {
 		expect(config.version).toBe(1);
 		expect(config.deploymentMode).toBe('selfhost');
 		expect(config.sending).toEqual({ provider: 'mta' });
-		expect(config.admin).toEqual({ email: 'dev@example.com', name: 'Dev Admin', password: 'devpassword12345' });
+		expect(config.admin.email).toBe('dev@example.com');
+		expect(config.admin.name).toBe('Dev Admin');
+		// The historical hardcoded default (`devpassword12345`) is public
+		// knowledge, so an unattended install must never provision it. The
+		// generated fallback must be strong enough to stand as a real credential.
+		expect(config.admin.password).not.toBe('devpassword12345');
+		expect(config.admin.password).toMatch(/^[A-Za-z0-9]{20,}$/);
 
 		// The default-feature pack enables campaigns/transactional, so a delivery
 		// provider is mandatory — `parseSetupConfig` re-validates that invariant and
@@ -130,7 +136,10 @@ describe('buildAssumeYesConfig', () => {
 	});
 
 	it('reads a provider already persisted in the existing .env on a re-run', () => {
-		const config = buildAssumeYesConfig({ EMAIL_PROVIDER: 'mta', OWLAT_DEPLOYMENT_MODE: 'selfhost' });
+		const config = buildAssumeYesConfig({
+			EMAIL_PROVIDER: 'mta',
+			OWLAT_DEPLOYMENT_MODE: 'selfhost',
+		});
 		expect(config.sending).toEqual({ provider: 'mta' });
 		expect(config.deploymentMode).toBe('selfhost');
 	});

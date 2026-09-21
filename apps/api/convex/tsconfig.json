@@ -10,6 +10,10 @@
 		"noUncheckedIndexedAccess": true,
 		"useUnknownInCatchVariables": true,
 		"noPropertyAccessFromIndexSignature": true,
+		/* Convex has one tsconfig for both runtimes, so the `use node` modules need
+		 * Node declarations and make them visible to isolate modules too. TypeScript
+		 * cannot scope `types` by a source-file directive; lint:convex-globals owns
+		 * the runtime boundary and rejects Node APIs/import edges in the V8 graph. */
 		"types": ["node"],
 		"moduleResolution": "Bundler",
 		"jsx": "react-jsx",

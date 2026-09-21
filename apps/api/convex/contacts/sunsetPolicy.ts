@@ -1,5 +1,5 @@
 /**
- * Sunset policy — the PURE decision core (deliverability plan P4-4, D15).
+ * Sunset policy — the PURE decision core.
  *
  * WHY IT EXISTS. Unengaged recipients are the dominant source of spam-folder
  * placement and spam-trap hits, and those are the two things that pin a young
@@ -14,16 +14,15 @@
  * conservative 180 / 270 days (see `SUNSET_POLICY_DEFAULTS`). Operators tune it
  * per topic; the tuning is a merge, not a replacement (`resolveSunsetPolicy`).
  *
- * BUILT ON P0-2, NOT BESIDE IT. "Has this contact engaged" is already answered
- * by the engagement machinery: `analytics/engagementActivity.ts` owns the ONE
- * table of which `contactActivities` literals count as engagement, and the
- * sunset engine derives its "last engagement" instant from that same table
- * (see `contacts/sunsetEngine.ts`). Nothing here re-derives engagement from raw
- * activities a second time.
+ * BUILT ON THE ENGAGEMENT MACHINERY, NOT BESIDE IT. "Has this contact engaged" is already answered
+ * by the engagement machinery: `analytics/engagementActivity.ts` owns the ONE table of which
+ * `contactActivities` literals count as engagement, and the sunset engine derives its "last
+ * engagement" instant from that same table (see `contacts/sunsetEngine.ts`). Nothing here
+ * re-derives engagement from raw activities a second time.
  *
- * SAFETY IS THE POINT. Auto-suppression is the most destructive thing in the
- * deliverability plan, so every path that can suppress is guarded BEFORE any
- * arithmetic runs, and each guard has a named reason that reaches the audit
+ * SAFETY IS THE POINT. Auto-suppression is the most destructive thing the
+ * deliverability stack does, so every path that can suppress is guarded BEFORE
+ * any arithmetic runs, and each guard has a named reason that reaches the audit
  * log:
  *
  *   - a disabled policy never fires;
@@ -50,16 +49,7 @@
  * `__tests__/sunset*.test.ts` are fully deterministic.
  */
 
-import { MS_PER_DAY } from '../lib/constants';
-
-/**
- * One day in milliseconds — the unit every sunset window and interval is
- * written in. Re-exported from `lib/constants.ts` rather than redeclared:
- * there is ONE definition of where a day starts in this app, and the sunset
- * modules read it from here. It is a plain number with no db, clock or env
- * read behind it, so the purity of this core is unaffected.
- */
-export { MS_PER_DAY };
+import { DAY_MS } from '../lib/constants';
 
 // ─── Defaults ───────────────────────────────────────────────────────────────
 
@@ -109,7 +99,7 @@ export const SUNSET_MIN_WINDOW_DAYS = 30;
  * corroboration source, and why the sweep surfaces the stall rather than
  * failing quietly.
  */
-export const SUNSET_MAX_CLOCK_LEAD_MS = 30 * MS_PER_DAY;
+export const SUNSET_MAX_CLOCK_LEAD_MS = 30 * DAY_MS;
 
 /**
  * Is `now` corroborated by an independently-written earlier observation?
@@ -171,13 +161,6 @@ export type SunsetPolicyOverride = {
 /** Where a contact sits on the sunset track. Absent on a legacy row means `engaged`. */
 export type SunsetStage = 'engaged' | 'reengagement' | 'suppressed';
 
-export type SunsetAction =
-	| 'hold'
-	| 'enter_reengagement'
-	| 'suppress'
-	/** Back to `engaged` from the re-engagement track — the contact engaged again. */
-	| 'resume';
-
 /**
  * Why the engine did what it did. Every verdict carries one, it reaches the
  * audit log verbatim, and the KPI is that no transition is ever unexplained.
@@ -230,7 +213,7 @@ export type SunsetClock = {
 export type SunsetFacts = SunsetClock & {
 	/** Contact row creation instant — the tenure clock. */
 	createdAt: number;
-	/** Newest open/click/reply, per the P0-2 engagement literals. */
+	/** Newest open/click/reply, per the engagement literals. */
 	lastEngagementAt?: number | undefined;
 	/** Oldest `email_sent` — when this contact first became measurable. */
 	firstMessagedAt?: number | undefined;
@@ -253,7 +236,7 @@ export type SunsetFacts = SunsetClock & {
  * any arithmetic, so it deliberately carries no day counts: there is no honest
  * number to report when the reason for holding is "we could not measure".
  */
-export type SunsetHoldVerdict = {
+type SunsetHoldVerdict = {
 	action: 'hold';
 	/** The stage the contact stays in. */
 	stage: SunsetStage;
@@ -430,18 +413,18 @@ export function evaluateSunset(facts: SunsetFacts, policy: SunsetPolicy): Sunset
 		return hold('no_send_history', stage);
 	}
 
-	const tenureDays = (facts.now - facts.createdAt) / MS_PER_DAY;
+	const tenureDays = (facts.now - facts.createdAt) / DAY_MS;
 	// Quiet since the last engagement, or — never having engaged — since the
 	// first time we gave the contact something to engage WITH.
 	const quietSince = Math.max(
 		facts.lastEngagementAt ?? facts.firstMessagedAt,
 		facts.firstMessagedAt
 	);
-	const quietDays = (facts.now - quietSince) / MS_PER_DAY;
+	const quietDays = (facts.now - quietSince) / DAY_MS;
 	// How long the contact has been measurable at all. Judging a 20-day-old
 	// contact against a 270-day window is a category error, so both the tenure
 	// and the measurement span must cover the window being applied.
-	const measurableDays = (facts.now - facts.firstMessagedAt) / MS_PER_DAY;
+	const measurableDays = (facts.now - facts.firstMessagedAt) / DAY_MS;
 
 	// 6. Recent engagement resets the track. A suppressed contact is NOT
 	//    auto-resurrected: coming back is an operator action (`restore`).

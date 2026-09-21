@@ -14,7 +14,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { assertStateIs, dedupedRecipients } from '../mail/draftLifecycle';
+import { assertStateIs, dedupedRecipients } from '../mail/draftLifecycle/reducers';
 import type { Doc } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {

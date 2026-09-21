@@ -13,8 +13,9 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vite
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h, ref } from 'vue';
 
-import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { i18nStubs } from '~/__tests__/i18n';
 import ContactsPage from '../contacts.vue';
+import { mountDashboardPage } from '~/__tests__/a11y';
 
 type Contact = {
 	_id: string;
@@ -23,8 +24,8 @@ type Contact = {
 	organization?: string;
 };
 
-const save = vi.fn(async () => 'contact-id');
-const remove = vi.fn(async () => null);
+const save = vi.fn(async () => ({ ok: true, result: 'contact-id' }));
+const remove = vi.fn(async () => ({ ok: true, result: null }));
 const composerOpen = vi.fn();
 const showToast = vi.fn();
 const contacts = ref<Contact[]>([]);
@@ -69,15 +70,12 @@ const modalStub = defineComponent({
 let wrapper: VueWrapper | null = null;
 
 function mountPage() {
-	wrapper = mount(ContactsPage, {
-		global: {
-			plugins: [createTestI18n()],
-			components: {
-				Icon: iconStub,
-				UiModal: modalStub,
-				PostboxMailboxGuard: passthrough('PostboxMailboxGuard'),
-				PostboxComposerStack: passthrough('PostboxComposerStack'),
-			},
+	wrapper = mountDashboardPage(ContactsPage, {
+		components: {
+			Icon: iconStub,
+			UiModal: modalStub,
+			PostboxMailboxGuard: passthrough('PostboxMailboxGuard'),
+			PostboxComposerStack: passthrough('PostboxComposerStack'),
 		},
 	});
 	return wrapper;

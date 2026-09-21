@@ -25,7 +25,7 @@ const SENT_ROLLUP_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 const ROLLUP_PAGE_SIZE = 50;
 
-export type CampaignStatField =
+type CampaignStatField =
 	| 'statsSent'
 	| 'statsFailed'
 	| 'statsDelivered'
@@ -56,7 +56,7 @@ const FIELDS: readonly CampaignStatField[] = [
 export async function bumpCampaignStats(
 	ctx: MutationCtx,
 	campaignId: Doc<'campaigns'>['_id'],
-	deltas: Partial<Record<CampaignStatField, number>>,
+	deltas: Partial<Record<CampaignStatField, number>>
 ): Promise<void> {
 	await bumpStatShard<CampaignStatField, Doc<'campaignStatShards'>>(
 		{
@@ -65,24 +65,24 @@ export async function bumpCampaignStats(
 				ctx.db
 					.query('campaignStatShards')
 					.withIndex('by_campaign_and_shard', (q) =>
-						q.eq('campaignId', campaignId).eq('shardKey', shardKey),
+						q.eq('campaignId', campaignId).eq('shardKey', shardKey)
 					)
 					.unique(),
 			patchShard: (shard, patch) => ctx.db.patch(shard._id, patch),
 			insertShard: (shardKey, d) =>
 				ctx.db.insert('campaignStatShards', { campaignId, shardKey, ...d }),
 		},
-		deltas,
+		deltas
 	);
 }
 
-export type CampaignStatsSummary = Record<CampaignStatField, number>;
+type CampaignStatsSummary = Record<CampaignStatField, number>;
 
 /** Sum a campaign's shards. The reader-side seam that makes the shard split
  * invisible. Bounded: at most SHARD_COUNT rows. */
 export async function summarizeCampaignStats(
 	db: DatabaseReader,
-	campaignId: Doc<'campaigns'>['_id'],
+	campaignId: Doc<'campaigns'>['_id']
 ): Promise<CampaignStatsSummary> {
 	const shards = await db
 		.query('campaignStatShards')
@@ -99,7 +99,7 @@ export async function summarizeCampaignStats(
  */
 export async function rollupCampaignStatsRow(
 	ctx: MutationCtx,
-	campaign: Doc<'campaigns'>,
+	campaign: Doc<'campaigns'>
 ): Promise<void> {
 	const sum = await summarizeCampaignStats(ctx.db, campaign._id);
 	if (FIELDS.every((f) => (campaign[f] ?? 0) === sum[f])) return; // no change

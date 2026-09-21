@@ -15,14 +15,14 @@ import { mount } from '@vue/test-utils';
 // triggers the component's `setup()` and the reverse-DNS preflight is inert. The
 // component only destructures `run`, so that is all the stub needs to expose.
 vi.stubGlobal('useBackendOperation', () => ({
-	run: vi.fn(async () => undefined),
+	run: vi.fn(async () => ({ ok: false })),
 }));
 
 // The MTA-STS guidance query + runtime config are also bare auto-imports. Mutable
 // backing values so individual tests can turn a published policy on/off.
 let mtaStsPolicyId: string | null = null;
 let siteUrl = '';
-vi.stubGlobal('useConvexQuery', () => ({ data: ref({ policyId: mtaStsPolicyId }) }));
+vi.stubGlobal('useConvexQuery', () => queryResult({ policyId: mtaStsPolicyId }));
 vi.stubGlobal('useRuntimeConfig', () => ({ public: { siteUrl } }));
 
 // `useMtaStsVerification` is a Nuxt auto-import the SFC references as a bare
@@ -40,6 +40,7 @@ beforeEach(() => {
 
 import ReceivingDnsSection from '../ReceivingDnsSection.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { queryResult } from '~/__tests__/queryStubs';
 
 // The section renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });

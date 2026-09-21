@@ -16,13 +16,13 @@ import type { SectionKey } from '~/composables/useSidebarState';
 
 export type SidebarContext = 'inbox' | 'marketing';
 
-export const SIDEBAR_CONTEXTS: readonly SidebarContext[] = ['inbox', 'marketing'];
+const SIDEBAR_CONTEXTS: readonly SidebarContext[] = ['inbox', 'marketing'];
 
 /**
  * Which context each sidebar section belongs to. Total over SectionKey so the
  * compiler forces every new section to declare its home.
  */
-export const SECTION_CONTEXT: Record<SectionKey, SidebarContext | 'shared'> = {
+const SECTION_CONTEXT: Record<SectionKey, SidebarContext | 'shared'> = {
 	inbox: 'inbox',
 	postbox: 'inbox',
 	chat: 'inbox',

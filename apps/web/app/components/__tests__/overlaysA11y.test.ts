@@ -13,10 +13,17 @@ import { auditA11y, dashboardShellStubs, installNuxtStubs, queryResult } from '~
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useCommandPaletteProviders } from '~/composables/useCommandPaletteProviders';
 import { useCommandPaletteRegistry } from '~/composables/useCommandPaletteRegistry';
+import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
+import { useCommandPaletteScope } from '~/composables/useCommandPaletteScope';
+import { useCommandPaletteMailScope } from '~/composables/useCommandPaletteMailScope';
+import { useCommandPaletteInboxScope } from '~/composables/useCommandPaletteInboxScope';
+import { useCommandPaletteObjectItems } from '~/composables/useCommandPaletteObjectItems';
+import { useCommandPaletteAsk } from '~/composables/useCommandPaletteAsk';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
 import type { SearchResults } from '~/lib/commandPaletteCore';
 import AppCommandPalette from '../AppCommandPalette.vue';
+import AppCommandPaletteResults from '../AppCommandPaletteResults.vue';
 import KeyboardShortcutsHelp from '../KeyboardShortcutsHelp.vue';
 import Breadcrumbs from '../Breadcrumbs.vue';
 
@@ -49,6 +56,16 @@ const searchResults: SearchResults = {
 			url: '/dashboard/campaigns/campaign1',
 		},
 	],
+	mail: [
+		{
+			id: 'message1',
+			type: 'mail',
+			title: 'Spring invoice',
+			subtitle: 'Ada Lovelace · attached',
+			url: '/dashboard/postbox/inbox/message1',
+			mailboxId: 'mailbox1',
+		},
+	],
 };
 
 beforeEach(() => {
@@ -69,6 +86,14 @@ beforeEach(() => {
 		}),
 		useCommandPaletteProviders,
 		useCommandPaletteRegistry,
+		useCommandPaletteRecents,
+		// The scope machinery is real: the audit should see the chip, the
+		// placeholder and the rows the route-scoped overlay actually renders.
+		useCommandPaletteScope,
+		useCommandPaletteMailScope,
+		useCommandPaletteInboxScope,
+		useCommandPaletteObjectItems,
+		useCommandPaletteAsk,
 		useDebouncedSearch,
 		useBreadcrumbs: () => ({
 			breadcrumbs: ref([
@@ -94,6 +119,10 @@ beforeEach(() => {
 			getRegisteredShortcuts: () => [],
 		}),
 		useModalFocus: vi.fn(),
+		// The palette points the Postbox selection at a mail hit's own mailbox
+		// before navigating; the state-only composable keeps that off the query
+		// layer, so the audit only needs its setter.
+		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null), setActiveMailboxId: vi.fn() }),
 		COMMAND_PALETTE_OPEN_EVENT,
 		useOrganizationQuery: () => queryResult(searchResults),
 	});
@@ -114,7 +143,9 @@ function paletteOptions(): NodeListOf<Element> {
 describe('command palette — accessibility', () => {
 	it('has no axe violations listing its idle destinations', async () => {
 		const violations = await auditA11y(AppCommandPalette, {
-			global: { plugins: [createTestI18n()] },
+			// The result region is a child component; unresolved, the audit would
+			// scan an overlay with no rows in it.
+			global: { plugins: [createTestI18n()], components: { AppCommandPaletteResults } },
 			prepare: async () => {
 				await openPalette();
 				// Without rows there is no listbox to audit — no `role="option"`,
@@ -132,7 +163,9 @@ describe('command palette — accessibility', () => {
 
 	it('has no axe violations showing results for a typed query', async () => {
 		const violations = await auditA11y(AppCommandPalette, {
-			global: { plugins: [createTestI18n()] },
+			// The result region is a child component; unresolved, the audit would
+			// scan an overlay with no rows in it.
+			global: { plugins: [createTestI18n()], components: { AppCommandPaletteResults } },
 			// The results branch is different markup: object-search groups with
 			// subtitled rows, rendered only once the query passes the minimum.
 			prepare: async () => {

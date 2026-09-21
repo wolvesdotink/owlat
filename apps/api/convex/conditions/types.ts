@@ -15,7 +15,7 @@ export type PropertyOperator =
 	| 'is_true'
 	| 'is_false';
 
-export type BooleanOperator = 'is_true' | 'is_false';
+type BooleanOperator = 'is_true' | 'is_false';
 
 export type ContactPropertyCondition = {
 	kind: 'contact_property';

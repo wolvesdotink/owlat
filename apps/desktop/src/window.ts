@@ -30,10 +30,6 @@ export async function closeWindow(): Promise<void> {
 	await getCurrentWindow().close();
 }
 
-export async function isWindowMaximized(): Promise<boolean> {
-	return getCurrentWindow().isMaximized();
-}
-
 /**
  * Apply the native window material: macOS → `sidebar` (Finder/Mail vibrancy),
  * Windows 11 → `mica`. Requires `transparent: true` on the window. Rejects on
@@ -43,10 +39,6 @@ export async function isWindowMaximized(): Promise<boolean> {
 export async function applyVibrancy(material: 'sidebar' | 'mica'): Promise<void> {
 	const effect = material === 'mica' ? Effect.Mica : Effect.Sidebar;
 	await getCurrentWindow().setEffects({ effects: [effect] });
-}
-
-export async function clearVibrancy(): Promise<void> {
-	await getCurrentWindow().clearEffects();
 }
 
 /**

@@ -27,14 +27,14 @@ export const emailsSentTotal = new Counter({
 	registers: [registry],
 });
 
-export const bouncesTotal = new Counter({
+const bouncesTotal = new Counter({
 	name: 'mta_bounces_total',
 	help: 'Total bounces by type',
 	labelNames: ['type', 'isp'] as const,
 	registers: [registry],
 });
 
-export const smtpDuration = new Histogram({
+const smtpDuration = new Histogram({
 	name: 'mta_smtp_duration_seconds',
 	help: 'SMTP transaction duration',
 	labelNames: ['pool', 'isp'] as const,
@@ -49,35 +49,10 @@ export const queueDepth = new Gauge({
 	registers: [registry],
 });
 
-export const activeConnections = new Gauge({
-	name: 'mta_active_connections',
-	help: 'Currently active SMTP connections',
-	registers: [registry],
-});
-
 export const warmingPhase = new Gauge({
 	name: 'mta_warming_phase',
 	help: 'IP warming phase (0=ramp, 1=plateau, 2=graduated)',
 	labelNames: ['ip'] as const,
-	registers: [registry],
-});
-
-export const deduplicationsTotal = new Counter({
-	name: 'mta_deduplications_total',
-	help: 'Total number of deduplicated (skipped) messages',
-	registers: [registry],
-});
-
-export const mtaStsEnforced = new Counter({
-	name: 'mta_sts_enforced_total',
-	help: 'Total sends where MTA-STS enforce mode was active',
-	labelNames: ['domain'] as const,
-	registers: [registry],
-});
-
-export const mtaStsMxSkipped = new Counter({
-	name: 'mta_sts_mx_skipped_total',
-	help: 'MX hosts skipped due to MTA-STS policy violation',
 	registers: [registry],
 });
 

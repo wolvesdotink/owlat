@@ -1,11 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import {
-	emailSettingsSave,
-	type EmailSettingsUpdatePayload,
-} from '../emailSettingsSave';
+import { emailSettingsSave, type EmailSettingsUpdatePayload } from '../emailSettingsSave';
 
 const payload = (
-	overrides: Partial<EmailSettingsUpdatePayload> = {},
+	overrides: Partial<EmailSettingsUpdatePayload> = {}
 ): EmailSettingsUpdatePayload => ({
 	subject: 'English subject',
 	previewText: 'English preview',
@@ -17,7 +14,7 @@ const payload = (
 
 describe('emailSettingsSave', () => {
 	it('routes a plain edit (unchanged default language) through update', async () => {
-		const update = vi.fn().mockResolvedValue('tmpl_1');
+		const update = vi.fn().mockResolvedValue({ ok: true, result: 'tmpl_1' });
 		const setDefaultLanguage = vi.fn();
 		const updatePayload = payload();
 
@@ -36,16 +33,16 @@ describe('emailSettingsSave', () => {
 	});
 
 	it('persists pending edits BEFORE swapping on a default-language change', async () => {
-		const update = vi.fn().mockResolvedValue('tmpl_1');
-		const setDefaultLanguage = vi.fn().mockResolvedValue('tmpl_1');
+		const update = vi.fn().mockResolvedValue({ ok: true, result: 'tmpl_1' });
+		const setDefaultLanguage = vi.fn().mockResolvedValue({ ok: true, result: 'tmpl_1' });
 		const order: string[] = [];
 		update.mockImplementation(() => {
 			order.push('update');
-			return Promise.resolve('tmpl_1');
+			return Promise.resolve({ ok: true, result: 'tmpl_1' });
 		});
 		setDefaultLanguage.mockImplementation(() => {
 			order.push('setDefaultLanguage');
-			return Promise.resolve('tmpl_1');
+			return Promise.resolve({ ok: true, result: 'tmpl_1' });
 		});
 
 		const result = await emailSettingsSave({
@@ -69,8 +66,8 @@ describe('emailSettingsSave', () => {
 	it('persists a freshly-typed subject in the same save as a default-language swap', async () => {
 		// User picks 'de' as the new default AND types a German subject in the card
 		// above the dropdown. The typed subject must not be silently dropped.
-		const update = vi.fn().mockResolvedValue('tmpl_1');
-		const setDefaultLanguage = vi.fn().mockResolvedValue('tmpl_1');
+		const update = vi.fn().mockResolvedValue({ ok: true, result: 'tmpl_1' });
+		const setDefaultLanguage = vi.fn().mockResolvedValue({ ok: true, result: 'tmpl_1' });
 		const combinedPayload = payload({
 			defaultLanguage: 'de',
 			subject: 'Frisch getippter Betreff',
@@ -98,8 +95,8 @@ describe('emailSettingsSave', () => {
 	it('persists a just-added overlay before promoting it (no backend not-found)', async () => {
 		// User adds 'fr' via addLanguage() and promotes it to default in the same
 		// save. The overlay is persisted first so setDefaultLanguage finds it.
-		const update = vi.fn().mockResolvedValue('tmpl_1');
-		const setDefaultLanguage = vi.fn().mockResolvedValue('tmpl_1');
+		const update = vi.fn().mockResolvedValue({ ok: true, result: 'tmpl_1' });
+		const setDefaultLanguage = vi.fn().mockResolvedValue({ ok: true, result: 'tmpl_1' });
 		const withFr = payload({
 			defaultLanguage: 'fr',
 			supportedLanguages: ['en', 'de', 'fr'],
@@ -126,7 +123,7 @@ describe('emailSettingsSave', () => {
 	});
 
 	it('aborts the swap (and reports failed) when the pre-swap update fails', async () => {
-		const update = vi.fn().mockResolvedValue(undefined);
+		const update = vi.fn().mockResolvedValue({ ok: false });
 		const setDefaultLanguage = vi.fn();
 
 		const result = await emailSettingsSave({
@@ -162,8 +159,8 @@ describe('emailSettingsSave', () => {
 		expect(setDefaultLanguage).not.toHaveBeenCalled();
 	});
 
-	it('reports failed when update resolves undefined (its own error already toasted)', async () => {
-		const update = vi.fn().mockResolvedValue(undefined);
+	it('reports failed when update fails (its own error already toasted)', async () => {
+		const update = vi.fn().mockResolvedValue({ ok: false });
 		const setDefaultLanguage = vi.fn();
 
 		const result = await emailSettingsSave({
@@ -178,10 +175,10 @@ describe('emailSettingsSave', () => {
 		expect(result).toEqual({ status: 'failed' });
 	});
 
-	it('reports failed when setDefaultLanguage resolves undefined', async () => {
+	it('reports failed when setDefaultLanguage fails', async () => {
 		// Step 1 (persist) succeeds, step 2 (swap) fails.
-		const update = vi.fn().mockResolvedValue('tmpl_1');
-		const setDefaultLanguage = vi.fn().mockResolvedValue(undefined);
+		const update = vi.fn().mockResolvedValue({ ok: true, result: 'tmpl_1' });
+		const setDefaultLanguage = vi.fn().mockResolvedValue({ ok: false });
 
 		const result = await emailSettingsSave({
 			persistedDefaultLanguage: 'en',

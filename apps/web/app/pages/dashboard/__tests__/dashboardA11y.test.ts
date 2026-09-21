@@ -87,6 +87,17 @@ beforeEach(() => {
 		useDebouncedSearch,
 		useFormModal,
 		usePostboxListKeyboard,
+		// Inert: the real guard registers `onBeforeRouteLeave`, which needs a
+		// router and a matched route no audited page is mounted under.
+		useUnsavedChanges: () => ({
+			showDialog: ref(false),
+			hasUnsavedChanges: ref(false),
+			pendingRoute: ref<string | null>(null),
+			confirmDiscard: vi.fn(),
+			confirmSave: vi.fn(),
+			cancelNavigation: vi.fn(),
+			setHasChanges: vi.fn(),
+		}),
 		useWizard,
 
 		// Backend-backed page composables.

@@ -9,7 +9,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { afterEach, describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import {
@@ -17,6 +17,7 @@ import {
 	createTestContact,
 	createTestEmailSend,
 	createTestTransactionalEmail,
+	flushScheduled,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { WorkId } from '@convex-dev/workpool';
@@ -31,12 +32,18 @@ const testWorkId = 'test-work-id' as WorkId;
 // worker run (mirrors the shape `sendSingleEmail` surfaces on completion).
 const workerSuccess = (providerMessageId: string) => ({
 	kind: 'success' as const,
-	returnValue: { success: true, providerMessageId },
+	returnValue: {
+		kind: 'accepted',
+		providerMessageId,
+		providerType: 'mta',
+		sendLatencyMs: 12,
+		isCustodyHandoff: false,
+	},
 });
 const workerFailure = (error: string) => ({ kind: 'failed' as const, error });
 
 afterEach(async () => {
-	await new Promise((resolve) => setTimeout(resolve, 25));
+	await flushScheduled();
 });
 
 async function setupCampaignSend(t: ReturnType<typeof convexTest>): Promise<Id<'emailSends'>> {
@@ -84,10 +91,11 @@ describe('completeSend — campaign Sends', () => {
 			result: {
 				kind: 'success',
 				returnValue: {
-					success: true,
+					kind: 'accepted',
 					providerMessageId: 'mta-provisional-1',
 					providerType: 'mta',
-					acceptedForDelivery: true,
+					sendLatencyMs: 12,
+					isCustodyHandoff: true,
 				},
 			},
 			context: { sendRef: { kind: 'campaign', id: sendId } },
@@ -134,10 +142,11 @@ describe('completeSend — campaign Sends', () => {
 			result: {
 				kind: 'success',
 				returnValue: {
-					success: true,
+					kind: 'accepted',
 					providerMessageId: 'mta-race-1',
 					providerType: 'mta',
-					acceptedForDelivery: true,
+					sendLatencyMs: 12,
+					isCustodyHandoff: true,
 				},
 			},
 			context: { sendRef: { kind: 'campaign', id: sendId } },
@@ -159,11 +168,17 @@ describe('completeSend — campaign Sends', () => {
 			result: {
 				kind: 'success',
 				returnValue: {
-					success: false,
-					deferred: true,
+					kind: 'deferred',
 					deferralOrigin: 'governed',
 					retryAfterMs: 60_000,
-					envelopeInput: { kind: 'campaign' },
+					envelopeInput: {
+						kind: 'campaign',
+						to: 'recipient@example.com',
+						from: 'sender@example.com',
+						template: { subject: 'Subject', htmlContent: '<p>Body</p>' },
+						contactInfo: { email: 'recipient@example.com' },
+						emailSendId: sendId,
+					},
 					retryState: {
 						attempt: 1,
 						startedAt: Date.now(),
@@ -197,10 +212,11 @@ describe('completeSend — campaign Sends', () => {
 			result: {
 				kind: 'success',
 				returnValue: {
-					success: true,
+					kind: 'accepted',
 					providerMessageId: 'campaign-msg-1',
 					providerType: 'mta',
 					sendLatencyMs: 42,
+					isCustodyHandoff: false,
 				},
 			},
 			context: {
@@ -237,13 +253,30 @@ describe('completeSend — campaign Sends', () => {
 		});
 	});
 
-	it('success but missing providerMessageId is treated as failure', async () => {
+	// A RESULT NOBODY CAN READ IS NOT A SEND THAT FAILED. An acceptance missing
+	// its message id matches none of the five arms, so it takes the boundary's own
+	// completion path with its own code — never `WORKPOOL_FAILED`, which would
+	// claim a definite non-delivery for a message that may well have been
+	// delivered, on a row `failed` then closes to every later transition.
+	it.each([
+		['an acceptance with no message id', { kind: 'accepted', providerType: 'mta' }],
+		['the shape a previous build produced', { success: true, providerMessageId: 'legacy-1' }],
+		['an arm this deployment does not know', { kind: 'teleported' }],
+		['a value that is not an object at all', 'ok'],
+		[
+			'an arm carrying an unexpected field',
+			{
+				kind: 'suppressed',
+				reason: 'blocklist',
+			},
+		],
+	])('refuses %s loudly instead of terminalizing it as a send failure', async (_label, value) => {
 		const t = convexTest(schema, modules);
 		const sendId = await setupCampaignSend(t);
 
 		await t.mutation(internal.delivery.sendCompletion.completeSend, {
 			workId: testWorkId,
-			result: { kind: 'success', returnValue: { success: true } }, // no providerMessageId
+			result: { kind: 'success', returnValue: value },
 			context: {
 				sendRef: { kind: 'campaign' as const, id: sendId },
 			},
@@ -252,8 +285,35 @@ describe('completeSend — campaign Sends', () => {
 		await t.run(async (ctx) => {
 			const send = await ctx.db.get(sendId);
 			expect(send?.status).toBe('failed');
-			expect(send?.errorCode).toBe('WORKPOOL_FAILED');
+			expect(send?.errorCode).toBe('WORKER_RESULT_MALFORMED');
+			expect(send?.errorCode).not.toBe('WORKPOOL_FAILED');
+			expect(send?.errorMessage).toContain('cannot read');
 		});
+	});
+
+	it('does not leak the refused value into telemetry — only its shape', async () => {
+		const t = convexTest(schema, modules);
+		const sendId = await setupCampaignSend(t);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: testWorkId,
+			result: {
+				kind: 'success',
+				returnValue: { kind: 'accepted', providerType: 'secret@example.com' },
+			},
+			context: { sendRef: { kind: 'campaign' as const, id: sendId } },
+		});
+
+		const call = logged.mock.calls[0];
+		expect(call?.[0]).toContain('Unreadable worker result');
+		const details = JSON.stringify(call?.[1]);
+		expect(details).toContain('kind=accepted');
+		expect(details).toContain('providerType');
+		// The rejected value can be an envelope, and an envelope carries the
+		// recipient: field NAMES are telemetry, field VALUES are not.
+		expect(details).not.toContain('secret@example.com');
+		logged.mockRestore();
 	});
 
 	it('falls back to "Unknown error" when no error string is provided', async () => {
@@ -291,10 +351,11 @@ describe('completeSend — transactional Sends', () => {
 			result: {
 				kind: 'success',
 				returnValue: {
-					success: true,
+					kind: 'accepted',
 					providerMessageId: 'tx-msg-1',
 					providerType: 'resend',
 					sendLatencyMs: 88,
+					isCustodyHandoff: false,
 				},
 			},
 			context: {
@@ -353,10 +414,11 @@ describe('completeSend — does NOT write providerHealth (ADR-0020 regression)',
 			result: {
 				kind: 'success',
 				returnValue: {
-					success: true,
+					kind: 'accepted',
 					providerMessageId: 'p-1',
 					providerType: 'mta',
 					sendLatencyMs: 120,
+					isCustodyHandoff: false,
 				},
 			},
 			context: {
@@ -390,18 +452,21 @@ describe('completeSend — does NOT write providerHealth (ADR-0020 regression)',
 		});
 	});
 
-	it('does not record a row when providerType is undefined', async () => {
+	it('does not record a row for a custody handoff either', async () => {
 		const t = convexTest(schema, modules);
 		const sendId = await setupCampaignSend(t);
+		await t.run((ctx) => ctx.db.patch(sendId, { providerMessageId: undefined }));
 
 		await t.mutation(internal.delivery.sendCompletion.completeSend, {
 			workId: testWorkId,
 			result: {
 				kind: 'success',
 				returnValue: {
-					success: true,
-					providerMessageId: 'p-noprov',
-					// no providerType
+					kind: 'accepted',
+					providerMessageId: 'p-custody',
+					providerType: 'mta',
+					sendLatencyMs: 3,
+					isCustodyHandoff: true,
 				},
 			},
 			context: {
@@ -603,10 +668,11 @@ describe('completeSend — does NOT write providerHealth (ADR-0020 regression)',
 				result: {
 					kind: 'success',
 					returnValue: {
-						success: true,
+						kind: 'accepted',
 						providerMessageId: 'send_agent_mta',
 						providerType: 'mta',
-						acceptedForDelivery: true,
+						sendLatencyMs: 9,
+						isCustodyHandoff: true,
 					},
 				},
 				context: { sendRef: { kind: 'transactional', id: sendId } },

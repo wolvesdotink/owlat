@@ -41,7 +41,7 @@ const { itemTitle } = useDeliverabilityChecklistCopy();
 useHead({ title: () => t('dashboard.admin.delivery.deliverability.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -80,7 +80,7 @@ async function updateRegressionAlert(
 			kind === 'acknowledge'
 				? await acknowledgeRegressionAlert({ alertId: alert.id })
 				: await resolveRegressionAlert({ alertId: alert.id });
-		if (result) {
+		if (result.ok) {
 			showToast(
 				kind === 'acknowledge'
 					? t('dashboard.admin.delivery.deliverability.toasts.acknowledged')
@@ -127,15 +127,15 @@ async function verify(item: DeliverabilityChecklistItem) {
 			itemId: item.id,
 			...(item.scope.kind === 'domain' ? { domainId: item.scope.domainId } : {}),
 		});
-		if (!result) return;
-		if (result.status === 'pass') {
+		if (!result.ok) return;
+		if (result.result.status === 'pass') {
 			showToast(
 				t('dashboard.admin.delivery.deliverability.toasts.itemVerified', {
 					title: itemTitle(item),
 				}),
 				'success'
 			);
-		} else if (result.status === 'pending-dns') {
+		} else if (result.result.status === 'pending-dns') {
 			showToast(t('dashboard.admin.delivery.deliverability.toasts.pendingDns'));
 		} else {
 			showToast(t('dashboard.admin.delivery.deliverability.toasts.needsAttention'), 'warning');
@@ -152,16 +152,16 @@ const { run: startLoopback, isLoading: isStartingLoopback } = useBackendOperatio
 
 async function startProof(domainId: Id<'domains'>) {
 	const result = await startLoopback({ domainId });
-	if (!result) return;
+	if (!result.ok) return;
 	showToast(
-		result.status === 'passed'
+		result.result.status === 'passed'
 			? t('dashboard.admin.delivery.deliverability.toasts.proofPassed')
-			: result.status === 'sending' || result.status === 'awaiting_inbound'
+			: result.result.status === 'sending' || result.result.status === 'awaiting_inbound'
 				? t('dashboard.admin.delivery.deliverability.toasts.proofSending')
 				: t('dashboard.admin.delivery.deliverability.toasts.proofFailed'),
-		result.status === 'passed'
+		result.result.status === 'passed'
 			? 'success'
-			: result.status === 'failed' || result.status === 'timed_out'
+			: result.result.status === 'failed' || result.result.status === 'timed_out'
 				? 'warning'
 				: 'info'
 	);
@@ -219,9 +219,9 @@ async function copyReport() {
 					class="space-y-5"
 					:aria-label="t('dashboard.admin.delivery.deliverability.loadingChecks')"
 				>
-					<div class="h-32 animate-pulse rounded-xl bg-bg-surface" />
-					<div class="h-80 animate-pulse rounded-xl bg-bg-surface" />
-					<div class="h-48 animate-pulse rounded-xl bg-bg-surface" />
+					<div class="h-32 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
+					<div class="h-80 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
+					<div class="h-48 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
 				</div>
 			</template>
 			<template #empty>
@@ -230,9 +230,11 @@ async function copyReport() {
 					:title="t('dashboard.admin.delivery.deliverability.empty.title')"
 					:description="t('dashboard.admin.delivery.deliverability.empty.description')"
 				>
-					<UiButton to="/dashboard/admin/delivery">
-						{{ t('dashboard.admin.delivery.deliverability.empty.action') }}
-					</UiButton>
+					<template #action>
+						<UiButton to="/dashboard/admin/delivery">
+							{{ t('dashboard.admin.delivery.deliverability.empty.action') }}
+						</UiButton>
+					</template>
 				</UiEmptyState>
 			</template>
 

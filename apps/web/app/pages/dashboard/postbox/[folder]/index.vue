@@ -55,7 +55,7 @@ const userId = computed(() => user.value?.id ?? null);
 			</div>
 		</div>
 		<div v-else class="flex-1 flex items-center justify-center">
-			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin text-text-tertiary" />
+			<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
 		</div>
 		<PostboxComposerStack />
 	</div>

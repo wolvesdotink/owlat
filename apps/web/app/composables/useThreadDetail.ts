@@ -87,7 +87,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	// transitions to `approved` and is queued for sending. `editDraft` only
 	// patches the draft text (leaving the message in `draft_ready`), so the
 	// follow-up `approveDraft` reads the just-saved text and fires the transition.
-	// Each step toasts its own categorized failure and resolves to `undefined`,
+	// Each step toasts its own categorized failure and resolves to `ok: false`,
 	// so a failed save short-circuits before approval.
 	const saveEditedDraft = async (messageId: Id<'inboundMessages'>) => {
 		const saved = await editDraft({
@@ -95,16 +95,16 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 			draftResponse: editedDraftResponse.value,
 			draftSubject: editedDraftSubject.value || undefined,
 		});
-		if (saved === undefined) return undefined;
+		if (!saved.ok) return saved;
 
 		const approved = await approveDraft({ inboundMessageId: messageId });
-		if (approved === undefined) return undefined;
+		if (!approved.ok) return approved;
 
 		isEditingDraft.value = false;
 		return approved;
 	};
 
-	// Inline "Save" (piece D1'): persist the working edit as a draft revision
+	// Inline "Save": persist the working edit as a draft revision
 	// WITHOUT approving — the message stays in `draft_ready`, the agent original
 	// is preserved as revision 0, and no autonomy feedback is recorded. Editing
 	// mode closes on success; the saved text becomes the visible working draft.
@@ -114,7 +114,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 			draftResponse: editedDraftResponse.value,
 			draftSubject: editedDraftSubject.value || undefined,
 		});
-		if (saved === undefined) return undefined;
+		if (!saved.ok) return saved;
 
 		isEditingDraft.value = false;
 		return saved;
@@ -143,7 +143,12 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		const colors: Record<string, string> = {
 			received: 'text-text-tertiary bg-bg-surface',
 			processing: 'text-brand bg-brand-subtle',
+			security_check: 'text-brand bg-brand-subtle',
+			classifying: 'text-brand bg-brand-subtle',
+			drafting: 'text-brand bg-brand-subtle',
 			classified: 'text-brand bg-brand-subtle',
+			awaiting_clarification: 'text-warning bg-warning/10',
+			informational: 'text-text-secondary bg-bg-surface',
 			draft_ready: 'text-warning bg-warning/10',
 			approved: 'text-success bg-success-subtle',
 			sent: 'text-success bg-success-subtle',
@@ -156,6 +161,13 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	const PROCESSING_STATUS_KEYS: Record<string, string> = {
 		received: 'shared.useThreadDetail.processingStatus.received',
 		processing: 'shared.useThreadDetail.processingStatus.processing',
+		security_check: 'shared.useThreadDetail.processingStatus.processing',
+		classifying: 'shared.useThreadDetail.processingStatus.processing',
+		drafting: 'shared.useThreadDetail.processingStatus.processing',
+		awaiting_clarification: 'shared.useThreadDetail.processingStatus.awaitingClarification',
+		informational: 'shared.useThreadDetail.processingStatus.informational',
+		rejected: 'shared.useThreadDetail.processingStatus.rejected',
+		archived: 'shared.useThreadDetail.processingStatus.archived',
 		classified: 'shared.useThreadDetail.processingStatus.classified',
 		draft_ready: 'shared.useThreadDetail.processingStatus.draftReady',
 		approved: 'shared.useThreadDetail.processingStatus.approved',

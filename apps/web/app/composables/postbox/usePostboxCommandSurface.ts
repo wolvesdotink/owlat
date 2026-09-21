@@ -47,9 +47,14 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 	// there's a choice, plus every team inbox). Reactive so entries appear the
 	// instant a shared inbox's membership resolves.
 	const { sections, switchToMailbox } = usePostboxMailbox();
+	// The mailbox's labels, for the `#` mode and for the "Label as…" argument
+	// step. Read at build time so a label created mid-session shows up.
+	const { labels } = usePostboxLabels(mailboxId);
 
-	function dispatchReaderAction(action: string) {
-		window.dispatchEvent(new CustomEvent('owlat:postbox-reader-action', { detail: { action } }));
+	function dispatchReaderAction(action: string, detail: Record<string, unknown> = {}) {
+		window.dispatchEvent(
+			new CustomEvent('owlat:postbox-reader-action', { detail: { action, ...detail } })
+		);
 	}
 
 	function buildSurfaceGroups(): PaletteGroup[] {
@@ -59,6 +64,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 				heading: t('shared.postbox.usePostboxCommandSurface.groups.mailbox'),
 				order: 0,
 				cap: 12,
+				mode: 'commands',
 				items: [
 					{
 						id: 'postbox:compose',
@@ -106,12 +112,31 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 						icon: 'lucide:printer',
 						run: () => dispatchReaderAction('print'),
 					},
+					{
+						// Two-step: one row that asks WHICH label, instead of one row per
+						// label drowning every other command in the palette.
+						id: 'postbox:label-as',
+						label: t('shared.postbox.usePostboxCommandSurface.items.labelAs'),
+						icon: 'lucide:tag',
+						run: () => {},
+						argument: {
+							promptKey: 'shared.postbox.usePostboxCommandSurface.argument.labelPrompt',
+							headingKey: 'shared.postbox.usePostboxCommandSurface.groups.labels',
+							icon: 'lucide:tag',
+							options: labels.value.map((label) => ({
+								id: `label-${label._id}`,
+								label: label.name,
+								run: () => dispatchReaderAction('label', { labelId: label._id }),
+							})),
+						},
+					},
 				],
 			},
 			{
 				key: 'postbox-folders',
 				heading: t('shared.postbox.usePostboxCommandSurface.groups.postbox'),
 				order: 12,
+				mode: 'labels',
 				items: [
 					{
 						id: 'postbox:archive',
@@ -172,7 +197,26 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 				key: 'postbox-switch-mailbox',
 				heading: t('shared.postbox.usePostboxCommandSurface.groups.switchMailbox'),
 				order: 24,
+				mode: 'commands',
 				items: switchItems,
+			});
+		}
+
+		// Labels as destinations — the `#` mode's other half (folders above), and
+		// the only place the palette lists them at all.
+		if (labels.value.length > 0) {
+			groups.push({
+				key: 'postbox-labels',
+				heading: t('shared.postbox.usePostboxCommandSurface.groups.labels'),
+				order: 13,
+				cap: 8,
+				mode: 'labels',
+				items: labels.value.map((label) => ({
+					id: `postbox:label-${label._id}`,
+					label: label.name,
+					icon: 'lucide:tag',
+					run: () => void navigateTo(`/dashboard/postbox/label/${label._id}`),
+				})),
 			});
 		}
 

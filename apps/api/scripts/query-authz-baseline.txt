@@ -30,7 +30,6 @@ convex/chat/messages.ts:myUnreadCounts
 convex/chat/rooms.ts:getRoom
 convex/chat/rooms.ts:listMyChannels
 convex/chat/rooms.ts:listPublicChannels
-convex/codeWorkTasks.ts:listRecent
 convex/contacts/activities.ts:getRecent
 convex/contacts/activities.ts:listByContact
 convex/contacts/analytics.ts:getAudienceStats
@@ -77,7 +76,6 @@ convex/mediaAssets.ts:getStats
 convex/mediaAssets.ts:list
 convex/mediaAssets.ts:listTags
 convex/workspaces/settings.ts:get
-convex/providerRoutes.ts:listRoutes
 convex/segments.ts:get
 convex/segments.ts:list
 convex/semanticFiles.ts:get
@@ -85,7 +83,6 @@ convex/semanticFiles.ts:getVersionHistory
 convex/semanticFiles.ts:list
 convex/semanticFiles.ts:listByContact
 convex/semanticFiles.ts:search
-convex/shareLinks.ts:listShareLinks
 convex/storage.ts:getUrl
 convex/topics/topics.ts:get
 convex/topics/topics.ts:getContactInTopicDetails

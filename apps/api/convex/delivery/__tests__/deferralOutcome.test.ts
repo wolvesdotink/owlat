@@ -60,12 +60,26 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 
 const testWorkId = 'test-work-id' as WorkId;
 
+/** The re-entry payload every `deferred` arm carries, valid on the wire. */
+function campaignEnvelope(sendId: Id<'emailSends'>) {
+	return {
+		kind: 'campaign' as const,
+		to: 'recipient@example.com',
+		from: 'sender@example.com',
+		template: { subject: 'Subject', htmlContent: '<p>Body</p>' },
+		contactInfo: { email: 'recipient@example.com' },
+		emailSendId: sendId,
+	};
+}
+
 /**
  * The worker result a last-mile deferral produces (`governedDispatch.ts`).
  *
- * `retryState` present means the completion callback re-enqueues the send;
- * omitting it is the exhausted case, where the same observation ends in a
- * terminal `failed` instead.
+ * ATTEMPTS, NOT A MISSING PAYLOAD, are what exhaust a deferral now: the arm
+ * always carries its envelope and retry state (the wire refuses a `deferred`
+ * without them), and the completion callback re-enqueues only while attempts
+ * remain. A retry state past the cap is the exhausted case, where the same
+ * observation ends in a terminal `failed` instead.
  */
 function deferredResult(
 	sendId: Id<'emailSends'>,
@@ -75,16 +89,17 @@ function deferredResult(
 	return {
 		kind: 'success' as const,
 		returnValue: {
-			success: false,
-			deferred: true,
+			kind: 'deferred',
 			deferralOrigin: options.origin ?? ('governed' as const),
 			retryAfterMs: 60_000,
-			...(retry
-				? {
-						envelopeInput: { kind: 'campaign' },
-						retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: `send_${sendId}` },
-					}
-				: {}),
+			envelopeInput: campaignEnvelope(sendId),
+			retryState: {
+				// One past the shipped governed attempt cap of 8 — the predicate owns the
+				// number, so it is spelled here rather than imported.
+				attempt: retry ? 1 : 9,
+				startedAt: Date.now(),
+				idempotencyKey: `send_${sendId}`,
+			},
 		},
 	};
 }
@@ -190,8 +205,8 @@ describe('a last-mile deferral reaches the counter through the real writer', () 
 		const t = convexTest(schema, modules);
 		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
 
-		// No retry state: the callback cannot re-enqueue, so this deferral is the
-		// last thing that happened to the message. It is still a deferral.
+		// Out of routing attempts: the callback cannot re-enqueue, so this deferral
+		// is the last thing that happened to the message. It is still a deferral.
 		await completeDeferred(t, sendId, { retryable: false });
 
 		await t.run(async (ctx) => {
@@ -211,7 +226,13 @@ describe('a last-mile deferral reaches the counter through the real writer', () 
 			workId: testWorkId,
 			result: {
 				kind: 'success',
-				returnValue: { success: true, providerMessageId: 'msg-1', providerType: 'mta' },
+				returnValue: {
+					kind: 'accepted',
+					providerMessageId: 'msg-1',
+					providerType: 'mta',
+					sendLatencyMs: 5,
+					isCustodyHandoff: false,
+				},
 			},
 			context: { sendRef: { kind: 'campaign', id: sendId } },
 		});
@@ -443,22 +464,23 @@ describe('only the governed half of a deferral is gate 2 evidence', () => {
 		});
 	});
 
-	it('records nothing for a deferral that names no origin at all', async () => {
+	it('counts nothing for a deferral that names no origin — it is not a deferral at all', async () => {
 		const t = convexTest(schema, modules);
 		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx, { assignment: {} }));
 
-		// An in-flight worker running the previous build answers without the field.
-		// An unlabelled deferral is not counted rather than guessed at — the halt is
-		// the expensive direction to be wrong in.
+		// The routing layer ALWAYS names an origin (`LastMileRoutingDeferred.origin`
+		// is required), so a value without one is not an older worker to be
+		// tolerated — it is a shape no build of the worker produces. It takes the
+		// unreadable-result path, and the one thing that must not happen either way
+		// is a bump: gate 2's halt is the expensive direction to be wrong in.
 		await t.mutation(internal.delivery.sendCompletion.completeSend, {
 			workId: testWorkId,
 			result: {
 				kind: 'success',
 				returnValue: {
-					success: false,
-					deferred: true,
+					kind: 'deferred',
 					retryAfterMs: 60_000,
-					envelopeInput: { kind: 'campaign' },
+					envelopeInput: campaignEnvelope(sendId),
 					retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: `send_${sendId}` },
 				},
 			},
@@ -468,7 +490,10 @@ describe('only the governed half of a deferral is gate 2 evidence', () => {
 
 		await t.run(async (ctx) => {
 			expect(await readBuckets(ctx)).toHaveLength(0);
-			expect((await ctx.db.get(sendId))?.status).toBe('queued');
+			const send = await ctx.db.get(sendId);
+			expect(send?.errorCode).toBe('WORKER_RESULT_MALFORMED');
+			// NOT `WORKPOOL_FAILED`: nothing here knows the send failed.
+			expect(send?.status).toBe('failed');
 		});
 	});
 });

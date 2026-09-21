@@ -19,13 +19,13 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { summarize, type ReputationSummary } from './sendingReputation';
 import { startOfDayUtc } from '../lib/clock';
+import { DAY_MS } from '../lib/constants';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 /** How much snapshot history to keep. ~90 days of daily points. */
 const SNAPSHOT_RETENTION_MS = 90 * DAY_MS;
 
 /** The persisted per-day metrics, derived from a rolling reputation summary. */
-export interface SnapshotMetrics {
+interface SnapshotMetrics {
 	deliveryRate: number;
 	bounceRate: number;
 	complaintRate: number;
@@ -85,7 +85,7 @@ export const writeDailySnapshot = internalMutation({
 });
 
 /** Chart-ready snapshot point (oldest → newest). */
-export interface DeliverySnapshotPoint extends SnapshotMetrics {
+interface DeliverySnapshotPoint extends SnapshotMetrics {
 	periodStart: number;
 }
 

@@ -16,7 +16,7 @@ import { EDGE_CONFIDENCE_TAGS, EDGE_PROVENANCES } from '../schema/knowledge';
 export type EdgeConfidenceTag = (typeof EDGE_CONFIDENCE_TAGS)[number];
 
 /** Where an edge came from. Derived from the schema's single source. */
-export type EdgeProvenance = (typeof EDGE_PROVENANCES)[number];
+type EdgeProvenance = (typeof EDGE_PROVENANCES)[number];
 
 /**
  * Strength rank for a confidence tag (higher = stronger): extracted > inferred >
@@ -87,9 +87,7 @@ export function mergeEdgeAttrs(kept: EdgeAttrs, incoming: EdgeAttrs): EdgeAttrs 
 			? incoming.provenance
 			: kept.provenance;
 
-	const weights = [kept.weight, incoming.weight].filter(
-		(w): w is number => w !== undefined,
-	);
+	const weights = [kept.weight, incoming.weight].filter((w): w is number => w !== undefined);
 	const weight = weights.length > 0 ? Math.max(...weights) : undefined;
 
 	const merged: EdgeAttrs = {
@@ -116,7 +114,7 @@ export const INFERRED_CONFIDENCE_FLOOR = 0.75;
  * directly and never call this.)
  */
 export function tagForInferredConfidence(
-	confidence: number,
+	confidence: number
 ): Extract<EdgeConfidenceTag, 'inferred' | 'ambiguous'> {
 	return confidence >= INFERRED_CONFIDENCE_FLOOR ? 'inferred' : 'ambiguous';
 }

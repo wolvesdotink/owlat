@@ -1,8 +1,7 @@
 import type { MutationCtx, DatabaseReader } from '../_generated/server';
+import { DAY_MS } from './constants';
 
 type Field = 'sent' | 'delivered' | 'opened' | 'clicked';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Write-shard count per (date) bucket. Each event picks a random shard and bumps
@@ -64,7 +63,7 @@ export async function bumpSendDailyStat(ctx: MutationCtx, field: Field, at: numb
 	});
 }
 
-export interface DailyStatRow {
+interface DailyStatRow {
 	date: string;
 	sent: number;
 	delivered: number;

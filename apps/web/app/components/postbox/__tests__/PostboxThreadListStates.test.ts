@@ -13,11 +13,15 @@
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref, computed, type Ref } from 'vue';
+import { ref, computed, nextTick, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxThreadList from '../PostboxThreadList.vue';
+import { usePostboxRowTriage } from '../../../composables/postbox/usePostboxRowTriage';
+import { usePostboxOptimisticFlags } from '../../../composables/postbox/usePostboxOptimisticFlags';
+import { usePostboxRowPickers } from '../../../composables/postbox/usePostboxRowPickers';
+import { nextUnreadIndex } from '../../../utils/postboxShortcuts';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
@@ -35,6 +39,8 @@ vi.mock('@owlat/api', () => {
 });
 
 const prefetchSpy = vi.fn();
+/** Every triage mutation the list runs; resolves like a landed useBackendOperation. */
+const runSpy = vi.fn(async (_args: unknown): Promise<unknown> => ({ ok: true, result: null }));
 
 beforeAll(() => {
 	vi.stubGlobal('usePostboxPrefetch', () => ({ prefetch: prefetchSpy }));
@@ -42,7 +48,10 @@ beforeAll(() => {
 		toggle: vi.fn(),
 		isSelected: () => false,
 	}));
-	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(async () => undefined) }));
+	vi.stubGlobal('useBackendOperation', () => ({ run: runSpy }));
+	// The REAL flag-override composable: the list's optimistic star / mark-read
+	// painting is the behaviour under test, not a stub of it.
+	vi.stubGlobal('usePostboxOptimisticFlags', usePostboxOptimisticFlags);
 	vi.stubGlobal('usePostboxOptimisticHide', (messages: Ref<unknown[]>) => ({
 		visible: computed(() => messages.value),
 		hide: vi.fn(),
@@ -52,11 +61,21 @@ beforeAll(() => {
 		registerMoveBack: vi.fn(),
 		onWindowKeydown: vi.fn(),
 	}));
+	// The REAL triage composable, running against the inert useBackendOperation /
+	// usePostboxTriageUndo stubs above — the list's verbs stay covered end to end
+	// rather than being replaced by a mock that can drift from the real shape.
+	vi.stubGlobal('usePostboxRowTriage', usePostboxRowTriage);
 	vi.stubGlobal('useState', (_key: string, init?: () => unknown) => ref(init ? init() : null));
 	vi.stubGlobal('POSTBOX_PENDING_COMPOSE_KEY', 'postbox:pending-compose');
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
+	// The h/l/v picker state lives in its own composable now; real, because it is
+	// only refs over the two stubbed queries above.
+	vi.stubGlobal('usePostboxRowPickers', usePostboxRowPickers);
+	vi.stubGlobal('nextUnreadIndex', nextUnreadIndex);
 	vi.stubGlobal('usePostboxSettings', () => ({ density: ref('comfortable') }));
+	// The list resolves the sender-trust-marker flag once and passes it down.
+	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => true }));
 	vi.stubGlobal('usePostboxListKeyboard', () => ({
 		focusedIndex: ref(-1),
 		activeId: ref(undefined),
@@ -120,6 +139,9 @@ function mountList(opts: {
 				PostboxSnoozeDialog: dialogStub,
 				PostboxLabelPickerDialog: dialogStub,
 				PostboxMovePickerDialog: dialogStub,
+				PostboxSwipeTrack: { template: '<div><slot /></div>' },
+				PostboxThreadRowFollowUp: { template: '<span />' },
+				UiAvatar: { template: '<span />' },
 			},
 			mocks: {
 				formatThreadTimestamp: () => '5m',
@@ -201,5 +223,65 @@ describe('PostboxThreadList states', () => {
 		});
 		await w.setProps({ activeMessageId: 'msg-2' });
 		expect(prefetchSpy).toHaveBeenCalledWith(['msg-3', 'msg-1']);
+	});
+});
+
+describe('PostboxThreadList optimistic star / mark-read', () => {
+	it('paints the star before the subscription confirms it', async () => {
+		runSpy.mockClear();
+		const w = mountList({ loading: false, messages: [makeMessage(1)] });
+		expect(w.find('[aria-label="Star"]').exists()).toBe(true);
+
+		await w.find('[aria-label="Star"]').trigger('click');
+		// No new props were delivered — the row is already showing the new state.
+		expect(w.find('[aria-label="Unstar"]').exists()).toBe(true);
+		expect(runSpy).toHaveBeenCalledWith({ messageId: 'msg-1', starred: true });
+	});
+
+	it('paints mark-read before the subscription confirms it', async () => {
+		runSpy.mockClear();
+		const w = mountList({ loading: false, messages: [makeMessage(1)] });
+		await w.find('[aria-label="Mark read"]').trigger('click');
+		expect(w.find('[aria-label="Mark unread"]').exists()).toBe(true);
+		expect(runSpy).toHaveBeenCalledWith({ messageId: 'msg-1', seen: true });
+	});
+
+	it('snaps the star back when the mutation fails', async () => {
+		runSpy.mockClear();
+		runSpy.mockResolvedValueOnce({ ok: false });
+		const w = mountList({ loading: false, messages: [makeMessage(1)] });
+		await w.find('[aria-label="Star"]').trigger('click');
+		await nextTick();
+		expect(w.find('[aria-label="Star"]').exists()).toBe(true);
+		expect(w.find('[aria-label="Unstar"]').exists()).toBe(false);
+	});
+
+	it('hands back to the live row once the confirmed flags arrive', async () => {
+		runSpy.mockClear();
+		const starred = { ...makeMessage(1), flagFlagged: true };
+		const w = mountList({ loading: false, messages: [makeMessage(1)] });
+		await w.find('[aria-label="Star"]').trigger('click');
+		await w.setProps({ messages: [starred] });
+		expect(w.find('[aria-label="Unstar"]').exists()).toBe(true);
+
+		// Unstarred elsewhere (another client): no stale override masks it.
+		await w.setProps({ messages: [makeMessage(1)] });
+		expect(w.find('[aria-label="Star"]').exists()).toBe(true);
+	});
+});
+
+describe('PostboxThreadList hover read-ahead', () => {
+	it('warms the hovered row, not just the keyboard-focused one', async () => {
+		prefetchSpy.mockClear();
+		const w = mountList({ loading: false, messages: [makeMessage(1), makeMessage(2)] });
+		await w.findAll('li')[1]!.trigger('mouseenter');
+		expect(prefetchSpy).toHaveBeenCalledWith(['msg-2']);
+	});
+
+	it('warms a row the focus ring lands on (tabbing, not just the pointer)', async () => {
+		prefetchSpy.mockClear();
+		const w = mountList({ loading: false, messages: [makeMessage(1), makeMessage(2)] });
+		await w.findAll('li')[0]!.trigger('focusin');
+		expect(prefetchSpy).toHaveBeenCalledWith(['msg-1']);
 	});
 });

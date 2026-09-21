@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 
 const { t } = useI18n();
 

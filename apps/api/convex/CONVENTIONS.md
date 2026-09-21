@@ -1,9 +1,9 @@
 # Convex Backend Conventions
 
 This document captures the conventions for organizing files in
-`apps/api/convex/`. The flat 161-file layout has outgrown the legacy
-single-prefix-per-file pattern; new code should follow the rules below, and
-existing files migrate to them as touched.
+`apps/api/convex/`. The tree (161 flat files when this was written, well over a
+thousand now) has outgrown the legacy single-prefix-per-file pattern; new code
+should follow the rules below, and existing files migrate to them as touched.
 
 ---
 
@@ -35,7 +35,7 @@ convex/
 ```
 
 Convex generated function paths mirror the folder structure: a query in
-`mail/imap.ts` is reached via `api.mail.imap.<funcName>`.
+`mail/imap/session.ts` is reached via `api.mail.imap.session.<funcName>`.
 
 **Magic root files never move into domain folders.** `schema.ts`,
 `convex.config.ts`, `http.ts`, and `auth.config.ts` are filenames the Convex
@@ -52,7 +52,7 @@ Default: queries, mutations, and actions for one feature live in a single file
 mixing them together.
 
 ```ts
-// mail/imap.ts
+// mail/<feature>.ts
 export const listFolders = query({ ... });
 export const fetchMessage = query({ ... });
 export const setFlag = mutation({ ... });
@@ -106,6 +106,15 @@ forms/
 ├── api.ts        # queries/mutations
 └── apiHttp.ts    # HTTP routes that call into api.ts
 ```
+
+The rule holds for a file that grew an `httpAction` next to its
+queries/mutations: move the route into the `*Http.ts` sibling rather than
+renaming the whole module, so the generated paths its callers already use
+(`internal.<domain>.<feature>.*`) do not move. `webhooks/channels.ts` +
+`channelsHttp.ts`, `auth/apiAuth.ts` + `apiAuthHttp.ts`, `devShortcuts/reset.ts`
++ `resetHttp.ts` and `seedDemo/index.ts` + `indexHttp.ts` are that split; a file
+that is ONLY routes is simply named `*Http.ts` (`mail/webhookHttp.ts`,
+`seedAdminHttp.ts`).
 
 ---
 
@@ -224,6 +233,37 @@ three ways:
 Do **not** use `isAdminRole`/`isOwnerRole` inline (removed) — they obscure the
 capability being checked. See ADR-0039 (enforcement model) and ADR-0040
 (shared-inbox example).
+
+## Read-side token redaction
+
+`authedQuery` / `publicQuery` serialize whatever the handler returns straight to
+the browser, so a read that returns a raw `Doc` from a **token-bearing** table
+ships a live bearer secret to every reader — the H4/M8 class. Four tables carry
+such a secret:
+
+| table        | secret field(s)                          | bearer for                          |
+| ------------ | ---------------------------------------- | ----------------------------------- |
+| `contacts`   | `doiConfirmationToken` / `doiTokenExpiresAt` | unauthenticated `POST /confirm/doi` |
+| `shareLinks` | `token`                                  | unauthenticated `/share` route      |
+| `apiKeys`    | `keyHash`                                | the API-key verifier                |
+| `webhooks`   | `secret`                                 | the HMAC signing secret             |
+
+`scripts/check-token-redaction.sh` (wired into `bun run lint`) is the read-side
+sibling of `check-permissions.sh`: a **ratchet** that fails CI on any _new_
+`authedQuery`/`publicQuery` which scans one of these tables (`ctx.db.query('…')`)
+without stripping the secret. Satisfy it one of three ways:
+
+- **Redaction/projection helper** — `redactContactCapabilityFields` (returns the
+  `PublicContact` shape, `contacts/listing.ts`) or `stripWebhookSecret`
+  (`webhooks/endpoints.ts`). Prefer this. When you add a new per-table redactor,
+  add its name to the helper regex in the script.
+- **`// token-safe: <reason>` comment** — inside the handler or on the line above
+  the `export const`, when the read genuinely returns no secret (projects to a
+  token-free shape, returns only counts/ids, etc.).
+- **`scripts/token-redaction-baseline.txt`** — the frozen set of reads reviewed
+  when the gate landed (count-only / id-only / field-projected / admin-gated
+  reads that leak no token). Do **not** add new entries; delete an entry once its
+  read is redacted or annotated so the ratchet only moves down.
 
 ## Hosted plugin actions
 
@@ -400,9 +440,13 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   mutations stay V8-safe and only ever see the envelope. The plaintext is
   returned exactly once, at register or rotate, and is never stored or logged.
 - `hookProtocol` (kinds, headers, response validation) and `hookSignature`
-  (canonical signing strings, constant-time verification) are pure and V8-safe.
-  Keep crypto to Web Crypto there; `hookClient` owns the SSRF-guarded transport,
-  and any future runtime adapter must own plugin binding and outcome handling.
+  (canonical signing strings, constant-time verification) are pure and V8-safe
+  and define the wire contract the docs and the example apps implement. Keep
+  crypto to Web Crypto there. No host-side hook transport exists: the earlier
+  client, circuit breaker, outcome mapper, and app-authenticated storage binder
+  were removed because nothing in production called them. A future runtime
+  adapter must own the SSRF-guarded transport, plugin binding, and outcome
+  handling, and open the sealed secret only after resolving the app.
 - Hook fail directions are fixed: `gate` fails closed to a caution objection;
   `draft` and `score` fail open. Never add an accept value to a gate response.
 - Resolve the app and circuit state before opening the secret: a missing,
@@ -492,6 +536,22 @@ feature-named `schema/<feature>.ts` sibling exporting its own
 `schema/sendAssignments.ts`, split out because `schema/delivery.ts` sits at the
 cap. That is the sanctioned escape hatch; do NOT add a file-size baseline entry
 to keep growing a capped domain module.
+
+A domain that has outgrown one file splits into feature siblings that the
+domain module composes, so `schema.ts` keeps importing one name. Personal Mail
+is the worked example: `schema/mail.ts` is now only
+
+```ts
+export const mailTables = {
+	...mailboxesTables,
+	...mailMessagesTables,
+	// ... one spread per schema/mail*.ts sibling
+};
+```
+
+with the 41 table definitions living in `schema/mailboxes.ts`,
+`schema/mailMessages.ts`, `schema/mailThreads.ts` and the rest. Put a new
+Postbox table in the sibling that owns its feature, not in `schema/mail.ts`.
 
 ## Schema evolution (post-launch immutability)
 

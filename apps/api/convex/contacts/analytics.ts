@@ -3,6 +3,13 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getCachedContactCount } from '../lib/contactCountHelpers';
 import { countWithPagination } from '../lib/pagination';
 import { topicListing } from '../topics/listing';
+import { redactContactCapabilityFields } from './listing';
+
+// Upper bound on the "recent contacts" dashboard read. Callers pass a small
+// limit (default 5), but a hostile or buggy caller could ask for an unbounded
+// page; clamp it so a single member-readable query can never scan the whole
+// Contacts table.
+const RECENT_LIMIT_CAP = 500;
 
 // Upper bound on the reactive subscriber-growth scan. A live unbounded collect
 // of every contact created in the last 30 days throws once the set exceeds the
@@ -52,9 +59,15 @@ export const getSubscriberGrowth = authedQuery({
 		// first, the recent days always stay complete; if the cap is hit the
 		// oldest days in the window undercount and `truncated` flags it. Past
 		// this scale a per-day new-contact roll-up counter would be warranted.
+		//
+		// Ride the soft-delete browse index pinned to `deletedAt === undefined`
+		// so GDPR-erased contacts never inflate the growth series — the
+		// composite index leads with `deletedAt`, then orders by `createdAt`.
 		const scanned = await ctx.db
 			.query('contacts')
-			.withIndex('by_created_at', (q) => q.gte('createdAt', thirtyDaysAgo))
+			.withIndex('by_deleted_at_and_created_at', (q) =>
+				q.eq('deletedAt', undefined).gte('createdAt', thirtyDaysAgo)
+			)
 			.order('desc')
 			.take(GROWTH_SCAN_CAP + 1);
 		const truncated = scanned.length > GROWTH_SCAN_CAP;
@@ -96,10 +109,21 @@ export const getRecent = authedQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const limit = args.limit ?? 5;
+		// Clamp the caller-supplied limit into [0, RECENT_LIMIT_CAP] so a single
+		// member-readable read is always bounded.
+		const limit = Math.min(Math.max(args.limit ?? 5, 0), RECENT_LIMIT_CAP);
 
-		// Use the createdAt index for efficient ordering and limiting
-		return await ctx.db.query('contacts').withIndex('by_created_at').order('desc').take(limit);
+		// Ride the soft-delete browse index pinned to `deletedAt === undefined`
+		// (leading key) so GDPR-erased contacts never surface, then order by
+		// createdAt desc within it. Redact the DOI capability fields
+		// (doiConfirmationToken / doiTokenExpiresAt) — a member-readable read must
+		// never leak the bearer token for the public /confirm/doi route.
+		const recent = await ctx.db
+			.query('contacts')
+			.withIndex('by_deleted_at_and_created_at', (q) => q.eq('deletedAt', undefined))
+			.order('desc')
+			.take(limit);
+		return recent.map(redactContactCapabilityFields);
 	},
 });
 

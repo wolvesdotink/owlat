@@ -39,19 +39,12 @@ const { run: deleteRule } = useBackendOperation(api.autonomy.deleteRule, {
 });
 
 const categories = computed(() =>
-	[
-		'support',
-		'sales',
-		'billing',
-		'feature_request',
-		'complaint',
-		'spam',
-		'internal',
-		'other',
-	].map((value) => ({
-		value,
-		label: t(`components.autonomy.autonomyRuleEditor.categories.${value}`),
-	}))
+	['support', 'sales', 'billing', 'feature_request', 'complaint', 'spam', 'internal', 'other'].map(
+		(value) => ({
+			value,
+			label: t(`components.autonomy.autonomyRuleEditor.categories.${value}`),
+		})
+	)
 );
 
 // Form state
@@ -94,7 +87,7 @@ const handleSave = async () => {
 			maxDailyAutoActions: form.maxDailyAutoActions,
 			isEnabled: form.enabled,
 		});
-		if (result === undefined) return;
+		if (!result.ok) return;
 		emit('saved');
 	} finally {
 		isSaving.value = false;
@@ -106,7 +99,7 @@ const handleDelete = async () => {
 	isDeleting.value = true;
 	try {
 		const result = await deleteRule({ ruleId: props.rule._id as Id<'autonomyRules'> });
-		if (result === undefined) return;
+		if (!result.ok) return;
 		emit('deleted');
 	} finally {
 		isDeleting.value = false;
@@ -255,12 +248,7 @@ const handleCancel = () => {
 				<UiButton variant="secondary" @click="showDeleteConfirm = false">
 					{{ t('common.cancel') }}
 				</UiButton>
-				<UiButton
-					variant="danger"
-					class="gap-2"
-					:disabled="isDeleting"
-					@click="handleDelete"
-				>
+				<UiButton variant="danger" class="gap-2" :disabled="isDeleting" @click="handleDelete">
 					<UiSpinner v-if="isDeleting" size="xs" tone="inverse" />
 					{{ t('common.delete') }}
 				</UiButton>

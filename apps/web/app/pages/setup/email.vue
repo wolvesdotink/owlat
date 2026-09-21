@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { SETUP_WIZARD_STEPS, buildProviderEnv } from '~/composables/useSetupWizard';
+import { apiFetch } from '~/lib/csrfFetch';
 import { emailStepIsValid } from '~/composables/setupWizardValidation';
 import { useSetupEmailStepForm } from '~/composables/useSetupEmailStepForm';
 
@@ -83,7 +84,7 @@ async function next() {
 		// Validate a Resend key against the live API before committing it, so the
 		// operator finds out here rather than at first send.
 		if (provider.value === 'resend') {
-			const res = await $fetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
+			const res = await apiFetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
 				method: 'POST',
 				headers: setupHeaders,
 				body: { provider: 'resend', apiKey: resendKey.value },
@@ -94,7 +95,7 @@ async function next() {
 			}
 		}
 		if (provider.value === 'emailit') {
-			const res = await $fetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
+			const res = await apiFetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
 				method: 'POST',
 				headers: setupHeaders,
 				body: { provider: 'emailit', apiKey: emailitKey.value },
@@ -108,7 +109,7 @@ async function next() {
 		// real handshake, so a wrong host/port/password is caught here, not at send.
 		if (provider.value === 'smtp') {
 			const trimmedPort = smtpPort.value.trim();
-			const res = await $fetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
+			const res = await apiFetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
 				method: 'POST',
 				headers: setupHeaders,
 				body: {
@@ -198,7 +199,7 @@ async function next() {
 							class="flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-[border-color,background-color,box-shadow] duration-(--motion-fast) ease-spring"
 							:class="
 								provider === opt.value
-									? 'border-brand shadow-surface-2 bg-brand-soft'
+									? 'border-transparent bg-(--surface-2-selected) shadow-surface-2'
 									: 'border-transparent bg-surface-1 shadow-surface-1 hover:shadow-surface-2'
 							"
 						>
@@ -373,6 +374,21 @@ async function next() {
 							placeholder='{"203.0.113.11":"mail2.example.com"}'
 							:help-text="t('setup.email.ehloOverridesHelp')"
 						/>
+						<!--
+							The PTR record is the one piece of this step that is not a field:
+							it is set in the hosting provider's console, by hand, and setup
+							refuses to finish without it. Saying so here — rather than only in
+							the failure message — is the difference between a five-minute
+							detour and an install that dies on "FCrDNS blocked".
+						-->
+						<div class="rounded-xl border border-border-subtle p-4">
+							<h3 class="font-medium text-text-primary">
+								{{ t('setup.email.reverseDnsHeading') }}
+							</h3>
+							<p class="text-sm text-text-secondary mt-1">
+								{{ t('setup.email.reverseDnsBody') }}
+							</p>
+						</div>
 						<p v-if="showErrors && errors.mtaIdentity" class="text-sm text-error">
 							{{ errorText(errors.mtaIdentity) }}
 						</p>

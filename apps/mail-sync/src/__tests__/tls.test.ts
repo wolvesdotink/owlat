@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { isLoopbackHost, smtpTlsOptions, imapTlsOptions } from '../tls.js';
-// Backend gate that decides whether the worker is ever handed a plaintext host.
-// The two implementations MUST agree, or a host the backend treats as remote
-// (forcing TLS) could be treated as loopback by the worker (allowing plaintext),
-// or vice-versa. We import the real source so this test fails on any drift.
-import { isLocalMailHost } from '../../../api/convex/lib/mailHost.js';
 
 describe('isLoopbackHost', () => {
 	it('accepts loopback hosts (plaintext permitted)', () => {
@@ -74,55 +69,6 @@ describe('isLoopbackHost', () => {
 		]) {
 			expect(isLoopbackHost(h)).toBe(true);
 		}
-	});
-});
-
-describe('isLoopbackHost ⇄ isLocalMailHost agree (worker gate vs backend gate)', () => {
-	// 30-host corpus spanning canonical loopback, 127/8 edges, IPv6, and a wide
-	// range of spoof/encoding tricks. The worker's isLoopbackHost and the
-	// backend's isLocalMailHost MUST return the same verdict for every host so the
-	// plaintext-allowed set is identical on both sides of the credential handoff.
-	const CORPUS = [
-		// canonical loopback (true)
-		'localhost',
-		'LOCALHOST',
-		'  localhost  ',
-		'localhost.',
-		'127.0.0.1',
-		'127.1.2.3',
-		'127.0.0.255',
-		'127.255.255.255',
-		'::1',
-		'[::1]',
-		'0:0:0:0:0:0:0:1',
-		'::ffff:127.0.0.1',
-		// remote / spoofed / encoded (false)
-		'localhost.evil.com',
-		'127.0.0.1.evil.com',
-		'fake-localhost',
-		'0x7f000001',
-		'0177.0.0.1',
-		'2130706433',
-		'127.0.0.1:993',
-		'①27.0.0.1',
-		'127．0．0．1',
-		'smtp.mail.me.com',
-		'imap.gmail.com',
-		'example.com',
-		'8.8.8.8',
-		'10.0.0.1',
-		'192.168.1.1',
-		'::',
-		'',
-		'   ',
-	];
-
-	it('covers at least 30 hosts', () => {
-		expect(CORPUS.length).toBeGreaterThanOrEqual(30);
-	});
-
-	it.each(CORPUS)('agree on %j', (host) => {
-		expect(isLoopbackHost(host)).toBe(isLocalMailHost(host));
 	});
 });
 

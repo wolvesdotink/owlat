@@ -153,7 +153,56 @@
  * opacity-only, pointer-events gated, zero layout shift, moderate tier.
  */
 
+/*
+ * Swipe-to-triage on a thread row (UX plan idea 21).
+ *
+ * The gesture itself is JS (composables/postbox/usePostboxRowGestures.ts); this
+ * is the three things it needs from CSS.
+ */
+
+@media (hover: none) {
+	/* The browser keeps the vertical axis — the folder still has to scroll — and
+	   hands the horizontal one to the gesture layer. Without this the row would
+	   fight the scroller for every diagonal drag. Scoped to hover-less devices,
+	   so a mouse on the desktop list is untouched (and mouse pointers never
+	   reach the swipe layer anyway). */
+	.postbox-thread-list .pbx-row-li {
+		touch-action: pan-y;
+	}
+}
+
+/* A row being dragged has to be opaque: the coloured track sits behind it, and
+   an unpainted row would let the fill show through the sender and subject. */
+.pbx-row-swiping .pbx-row-link {
+	position: relative;
+	z-index: 1;
+	background-color: var(--color-bg-base);
+}
+
+/* The release: spring back to rest. Added ONLY on release — a transition during
+   the drag would put the row behind the finger, which is the one thing direct
+   manipulation cannot afford. Mirrored by POSTBOX_SWIPE_SETTLE_MS, which is how
+   long the gesture layer waits before dropping the track. */
+:root {
+	--pbx-swipe-settle: 180ms;
+}
+.pbx-row-settle {
+	transition: transform var(--pbx-swipe-settle) var(--pbx-motion-ease-exit);
+}
+
 @media (prefers-reduced-motion: reduce) {
+	/* The row still follows the finger — that is the gesture, not decoration —
+	   but nothing moves on its own: no spring-back tween (the composable also
+	   drops its settle delay to zero) and no growing icon on the track. The
+	   `!important` overrides the inline scale the track component computes from
+	   the drag's progress, which is the only way a media query can reach it. */
+	.pbx-row-settle {
+		transition: none;
+	}
+	.pbx-swipe-track-mark {
+		transform: none !important;
+	}
+
 	/* Collapse all Postbox transitions to opacity-only: no movement, no scale. */
 	.pbx-reader-enter-active,
 	.pbx-reader-leave-active,

@@ -75,8 +75,8 @@ async function seedMailbox(
 		id = await ctx.db.insert('mailboxes', {
 			userId,
 			organizationId: 'org-1',
-			address: `${userId}@hinterland.camp`,
-			domain: 'hinterland.camp',
+			address: `${userId}@owlat.test`,
+			domain: 'owlat.test',
 			status: 'active',
 			usedBytes: 0,
 			uidValidity: now,

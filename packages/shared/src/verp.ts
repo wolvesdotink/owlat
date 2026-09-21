@@ -28,7 +28,7 @@ import { normalizeReturnPathDomain, normalizeVerpKey } from './verpNormalize';
 export { normalizeReturnPathDomain, normalizeVerpKey };
 
 /** Length (chars) of the base64url-encoded truncated HMAC carried in the token. */
-export const VERP_MAC_B64URL_LEN = 14; // ~84 bits
+const VERP_MAC_B64URL_LEN = 14; // ~84 bits
 
 /** Window granularity: one bucket per day. */
 export const VERP_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -41,7 +41,7 @@ export const VERP_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const VERP_WINDOW_TOLERANCE = 6;
 
 /** Local-part prefix every VERP address carries. */
-export const VERP_LOCAL_PART_PREFIX = 'bounce';
+const VERP_LOCAL_PART_PREFIX = 'bounce';
 
 /**
  * Minimum signing-key length. The MTA rejects anything shorter at startup
@@ -186,7 +186,7 @@ export function parseVerpAddress(
  * generated, every probe would age out, and EVERY relay would grade unsupported
  * forever with nothing to diagnose.
  */
-export const RETURN_PATH_PROBE_LOCAL_PART_PREFIX = 'return-path-probe-';
+const RETURN_PATH_PROBE_LOCAL_PART_PREFIX = 'return-path-probe-';
 
 /** The recipient one return-path capability probe is addressed to. */
 export function returnPathProbeRecipient(probeId: string, returnPathDomain: string): string {

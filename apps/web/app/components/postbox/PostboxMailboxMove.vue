@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Postbox → "Move my mailbox here" (piece c5).
+ * Postbox → "Move my mailbox here".
  *
  * The staged full move of a connected external mailbox onto an Owlat-hosted
  * mailbox on the SAME address. Three stages the user drives at their own pace:
@@ -112,7 +112,7 @@ async function onProvision() {
 }
 async function onCheckMx() {
 	const res = await checkMx.run({});
-	if (res !== undefined) mxCheck.value = res;
+	if (res.ok) mxCheck.value = res.result;
 }
 async function onArchive() {
 	opError.value = null;
@@ -123,7 +123,7 @@ async function onArchive() {
 async function onCancel() {
 	opError.value = null;
 	const res = await cancelMove.run({});
-	if (res !== undefined) {
+	if (res.ok) {
 		// Clear the verdict so a fresh move doesn't resurface the old result.
 		mxCheck.value = null;
 		showCancel.value = false;
@@ -141,7 +141,7 @@ async function onCancel() {
 
 		<!-- Loading -->
 		<div v-if="isLoading" class="p-8 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
 		</div>
 
 		<!-- Error: the subscription failed. Don't silently drop the section. -->

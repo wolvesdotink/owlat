@@ -91,7 +91,7 @@ export const SEED_REACHED_THRESHOLD = 0.9;
  * here; the corroboration gate in front of the tripwire, not a cleverer
  * detector, is what protects the eight-mailbox case from acting on noise.
  */
-export const SEED_COLLAPSE_THRESHOLD = 0.5;
+const SEED_COLLAPSE_THRESHOLD = 0.5;
 
 /**
  * Gate 5's SECOND clause (`>= ref - 5 pp`): how far the own arm's reached share

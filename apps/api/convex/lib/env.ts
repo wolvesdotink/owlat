@@ -2,7 +2,8 @@
  * Typed environment variable access for the Convex backend.
  *
  * All `process.env.*` reads in `apps/api/convex/` MUST go through this module.
- * The lint rule in `.eslintrc` rejects raw `process.env.` outside this file.
+ * `scripts/check-env.sh` (`bun run lint:env` in this workspace, part of its
+ * `lint` script) rejects raw `process.env.` outside this file.
  *
  * Add a new variable here when introducing one — the union below is the single
  * source of truth, and adding to it is the only place TypeScript will allow.
@@ -18,7 +19,7 @@ export type EnvKey =
 	| 'BETTER_AUTH_SECRET'
 	| 'INSTANCE_SECRET'
 	// The PREVIOUS INSTANCE_SECRET, set ONLY during a secret rotation window
-	// (Sealed Mail key lifecycle, E6). While set, the E2EE key box opens a sealed
+	// for the Sealed Mail key lifecycle. While set, the E2EE key box opens a sealed
 	// private key under the current secret and, on failure, falls back to this one
 	// — so the vault keeps reading correctly mid-migration while
 	// `e2ee/lifecycleNode.ts:reSealVault` re-seals every row under the new secret.
@@ -29,6 +30,13 @@ export type EnvKey =
 	// (`/seed/demo`, `/dev/reset`, `forceVerifyDomain`). Fail-closed default:
 	// leaving it unset on a production deployment refuses those endpoints.
 	| 'OWLAT_DEV_MODE'
+	// When set to 'true' / '1' / 'yes' / 'on', requires a verified email before a
+	// signup or invitation can sign in (BetterAuth `requireEmailVerification` +
+	// `sendOnSignUp` and the org plugin's `requireEmailVerificationOnInvitation`).
+	// Fail-OPEN default: unset leaves the existing behavior so installs whose
+	// current users are unverified are not locked out. Deployments SHOULD enable
+	// it — see auth/auth.ts.
+	| 'REQUIRE_EMAIL_VERIFICATION'
 	// Site URLs
 	| 'SITE_URL'
 	| 'ADMIN_SITE_URL'
@@ -102,11 +110,11 @@ export type EnvKey =
 	// Unset ⇒ no `rua=` tag (Owlat does not provision a per-customer
 	// `dmarc@<domain>` mailbox, so reports would otherwise go unread).
 	| 'MTA_DMARC_RUA'
-	// BIMI (P4-7) — OPTIONAL IN EVERY SENSE. The domain wizard offers a BIMI
+	// BIMI — OPTIONAL IN EVERY SENSE. The domain wizard offers a BIMI
 	// record only once the domain's DMARC is at `p=quarantine` or stricter, and
 	// only once a logo is known; unset ⇒ the wizard states that BIMI exists and
 	// what a VMC is, and generates no record. Never a blocked send, never a
-	// blocked promotion, never an unresolvable warning (D2).
+	// blocked promotion, never an unresolvable warning.
 	// HTTPS URL of the SVG Tiny PS brand logo (the `l=` tag).
 	| 'MTA_BIMI_LOGO_URL'
 	// HTTPS URL of the Verified Mark Certificate PEM (the `a=` tag). Gmail and
@@ -195,6 +203,28 @@ export type EnvKey =
 	| 'LLM_COMPLEXITY_ROUTING'
 	| 'OPENAI_API_KEY'
 	| 'OPENROUTER_API_KEY'
+	// DECISION plane (the third AI plane — typed questions in, typed answers with
+	// their probabilities out). OPT-IN IN EVERY VARIABLE: an install that sets
+	// none of them resolves to the language-backed adapter, which is exactly its
+	// behaviour before the plane existed. Read only by lib/decisionProvider.ts.
+	// The TypeSafe (Jev) API key — the deployment-level equivalent of the stored
+	// per-org key, for a self-hoster who configures through the environment. A
+	// stored key wins when both are present. Unset ⇒ the plane has no credential
+	// and resolution degrades to the language plane.
+	| 'TYPESAFE_API_KEY'
+	// Which decision adapter answers: 'typesafe' or 'llm'. Consulted only when the
+	// stored row names no kind; an unrecognised value is ignored rather than
+	// thrown on, so a typo degrades to today's behaviour instead of taking the
+	// inbound path down.
+	| 'DECISION_PROVIDER'
+	// Decision model id override. Unset ⇒ the adapter's pinned version (never an
+	// alias — a model that moved underneath a calibrated threshold is the failure
+	// this pin exists to prevent).
+	| 'DECISION_MODEL'
+	// Decision API ORIGIN override, for an operator fronting the vendor with their
+	// own proxy. The endpoint path is appended by the adapter, so this is an origin
+	// and not a full URL. Unset ⇒ the adapter's own origin.
+	| 'DECISION_BASE_URL'
 	// Per-org dollar-spend budget for LLM calls (analytics/spendBudget.ts).
 	// Daily / monthly USD ceilings — unset or `0` ⇒ no limit for that period
 	// (the budget gate is a no-op). When a ceiling is hit the autonomous path
@@ -215,7 +245,7 @@ export type EnvKey =
 	// additive-only, so its absence lowers measurement confidence for the
 	// Microsoft cell and slows that cell's ramp, and does nothing else.
 	| 'SNDS_DATA_FEED_URLS'
-	// Open Sender Trust Registry — CONSUMER half (plan §12.2, ADR-0058). The
+	// Open Sender Trust Registry — CONSUMER half (plan §12.2, ADR-0062). The
 	// registry is a public reputation source an instance READS; consuming it is
 	// opt-in twice over, by this URL and by the `ostr` feature flag.
 	// Base URL of the aggregator that serves tier/score/explanation lookups (an
@@ -230,7 +260,7 @@ export type EnvKey =
 	// authenticated and are treated as no answer at all. Never fabricated, never
 	// defaulted: a wrong key must fail loudly, not silently downgrade to trust.
 	| 'OSTR_AGGREGATOR_PUBLIC_KEY'
-	// Open Sender Trust Registry — OBSERVER half (plan §7, ADR-0058). Reading the
+	// Open Sender Trust Registry — OBSERVER half (plan §7, ADR-0062). Reading the
 	// registry costs a lookup; CONTRIBUTING to it means turning a user's "mark as
 	// spam" into a signed, permanently logged attestation, so the observer half
 	// is env-gated rather than feature-flagged: it is an operator's decision
@@ -280,6 +310,24 @@ export type EnvKey =
 	// the right), 'xrealip' (X-Real-IP). Unset ⇒ headers are NOT trusted (single
 	// shared bucket) so a spoofed header can't multiply rate-limit buckets.
 	| 'RATE_LIMIT_TRUSTED_PROXY'
+	// Shared secret a trusted reverse proxy INJECTS (and strips from client
+	// requests) to authenticate the `cloudflare` / `xrealip` trusted-proxy modes.
+	// Those modes believe an otherwise client-settable header (CF-Connecting-IP /
+	// X-Real-IP); because a Convex deployment is directly reachable at its
+	// *.convex.site URL, the header is only trusted when the request also presents
+	// this secret in `X-Owlat-Proxy-Secret` (constant-time compared). Unset, or a
+	// mismatched/absent secret ⇒ the forwarded IP is NOT trusted and the caller
+	// falls back to the shared 'unknown' bucket (fail closed) — see
+	// publicRateLimit.getClientIp. Unused by the `xforwarded` mode, which is
+	// bypass-resistant on its own.
+	| 'RATE_LIMIT_PROXY_SECRET'
+	// Reverse-proxy IPs / CIDR ranges that front this deployment, used ONLY by the
+	// BetterAuth login limiter when RATE_LIMIT_TRUSTED_PROXY is `xforwarded`: the
+	// X-Forwarded-For chain is walked right-to-left and trusted hops are skipped so
+	// the first UNTRUSTED entry is keyed — a client-injected leftmost hop can never
+	// mint a fresh limiter bucket. Comma- or whitespace-separated (e.g.
+	// `10.0.0.0/8, 192.0.2.10`). Unset ⇒ only a single-value XFF is trusted.
+	| 'RATE_LIMIT_TRUSTED_PROXIES'
 	// Inbound channel webhooks (SMS / WhatsApp / generic)
 	| 'TWILIO_AUTH_TOKEN'
 	| 'META_APP_SECRET'
@@ -287,6 +335,15 @@ export type EnvKey =
 	| 'GENERIC_WEBHOOK_SECRET'
 	// Code-work / GitHub PR merge webhook
 	| 'GITHUB_WEBHOOK_SECRET'
+	// Google OAuth client for CONNECTING an external Gmail/Workspace mailbox with
+	// Google sign-in (authorization-code + PKCE) instead of an app password. The
+	// client's redirect URI must be `${SITE_URL}/oauth/google/callback`.
+	// Unset ⇒ Google sign-in is unavailable and the Gmail connect form offers the
+	// app-password path only; app passwords keep working either way.
+	| 'GOOGLE_OAUTH_CLIENT_ID'
+	// Client secret of the same Google OAuth client. Used only server-side, in the
+	// token exchange/refresh. Unset ⇒ same as above: no Google sign-in.
+	| 'GOOGLE_OAUTH_CLIENT_SECRET'
 	// Calendar / availability grounding for scheduling replies (mail/availability).
 	// Optional read-only ICS/CalDAV subscription URL for the owner's own calendar
 	// (a private iCal export). Fetched server-side, in-deployment, to derive

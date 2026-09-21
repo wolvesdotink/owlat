@@ -259,8 +259,8 @@ describe('the send-provider template', () => {
 	 * PRIVATE AT BOTH TEMPLATES, because `create` cannot emit anywhere else:
 	 * `resolveTargetDir` refuses a directory outside the workspace and the default
 	 * is `examples/plugins/<id>`, so what the generator writes is always a workspace
-	 * member — one `release:cut` would version and `changeset publish` would publish
-	 * beside the real packages. `private` is what stops that, and the emitted
+	 * member — one `release:cut` would version it beside the real packages and
+	 * leave it publishable. `private` is what stops that, and the emitted
 	 * manifest is workspace-bound anyway (`workspace:*`, `catalog:`), so publishing
 	 * is the last step of MOVING OUT rather than a step on its own.
 	 *

@@ -54,7 +54,7 @@ export const HOURLY_DELIVERABILITY_CHECK_IDS = [
 	'deployment.ipv6_aaaa',
 ] as const satisfies readonly DeliverabilityCheckId[];
 
-export const DELIVERABILITY_EVIDENCE_CADENCE_MS = {
+const DELIVERABILITY_EVIDENCE_CADENCE_MS = {
 	hourly: 60 * 60_000,
 	daily: 24 * 60 * 60_000,
 } as const;
@@ -62,13 +62,13 @@ export const DELIVERABILITY_EVIDENCE_CADENCE_MS = {
 // Scheduled work can start slightly after its nominal interval. This grace
 // prevents a passing item from flickering stale while its next sweep is
 // already queued, without allowing an old result to remain green indefinitely.
-export const DELIVERABILITY_EVIDENCE_SWEEP_GRACE_MS = 15 * 60_000;
+const DELIVERABILITY_EVIDENCE_SWEEP_GRACE_MS = 15 * 60_000;
 
 const HOURLY_DELIVERABILITY_CHECKS = new Set<DeliverabilityCheckId>(
 	HOURLY_DELIVERABILITY_CHECK_IDS
 );
 
-export function deliverabilityEvidenceMaxAgeMs(itemId: DeliverabilityCheckId): number {
+function deliverabilityEvidenceMaxAgeMs(itemId: DeliverabilityCheckId): number {
 	const cadence = HOURLY_DELIVERABILITY_CHECKS.has(itemId)
 		? DELIVERABILITY_EVIDENCE_CADENCE_MS.hourly
 		: DELIVERABILITY_EVIDENCE_CADENCE_MS.daily;

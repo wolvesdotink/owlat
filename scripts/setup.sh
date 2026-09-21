@@ -1033,13 +1033,33 @@ configure_selfhost_core() {
   # Auto-generate instance secret
   SELFHOST_INSTANCE_SECRET=$(openssl rand -hex 32)
   set_selfhost_var "INSTANCE_SECRET" "$SELFHOST_INSTANCE_SECRET"
-  # Convex needs it too: seedAdmin.ts compares the X-Instance-Secret header
+  # Convex needs it too: seedAdminHttp.ts compares the X-Instance-Secret header
   # against INSTANCE_SECRET, so /seed/admin returns 401 unless it is set here.
   set_convex_var "INSTANCE_SECRET" "$SELFHOST_INSTANCE_SECRET"
   success "Generated INSTANCE_SECRET"
 
   # CONVEX_ADMIN_KEY will be set after boot
   set_selfhost_var "CONVEX_ADMIN_KEY" ""
+
+  # Redis auth. docker-compose.yml fails closed on an unset REDIS_PASSWORD
+  # rather than falling back to a known literal, and compose interpolates the
+  # WHOLE file before profile filtering — so without this even `docker compose
+  # down|logs|ps` aborts, i.e. the operator's own recovery commands. Reuse the
+  # value an earlier install wrote instead of minting a new one: this wizard
+  # rewrites .env from scratch, and silently rotating a running deployment's
+  # Redis password is not its call (the shared `ensureSecrets` is idempotent
+  # here too).
+  local redis_password=""
+  if [[ -s ".env" ]]; then
+    redis_password=$(grep -E '^REDIS_PASSWORD=' .env | tail -1 | cut -d= -f2- || true)
+  fi
+  if [[ -n "$redis_password" ]]; then
+    set_selfhost_var "REDIS_PASSWORD" "$redis_password"
+    info "Reusing existing REDIS_PASSWORD"
+  else
+    set_selfhost_var "REDIS_PASSWORD" "$(generate_secret)"
+    success "Generated REDIS_PASSWORD"
+  fi
 
   echo ""
 
@@ -1173,6 +1193,17 @@ configure_selfhost_mta() {
 
   prompt_default "Campaign IP pool" "127.0.0.1" ip_campaign
   set_selfhost_var "IP_POOLS_CAMPAIGN" "$ip_campaign"
+
+  # Reverse DNS is the one record this wizard cannot create, and the MTA will
+  # not send a single message until it forward-confirms to the EHLO hostname.
+  # Spell it out here rather than leaving it to the runtime failure.
+  echo ""
+  echo -e "  ${BOLD}Reverse DNS (PTR) — you must set this yourself${RESET}"
+  echo -e "  ${DIM}Point the PTR record of every sending IP above at ${RESET}${BOLD}${ehlo_hostname}${RESET}${DIM},${RESET}"
+  echo -e "  ${DIM}and point ${ehlo_hostname} back at the IP with an A record.${RESET}"
+  echo -e "  ${DIM}PTR is set where you rent the IP (your hosting provider's console),${RESET}"
+  echo -e "  ${DIM}not in your DNS zone. Verify with: dig -x <ip> +short${RESET}"
+  echo -e "  ${DIM}Until it matches, the MTA refuses to send. Re-check with 'owlat doctor'.${RESET}"
   set_convex_var "MTA_IP_POOLS" "$(derive_mta_ip_pools "$ip_transactional" "$ip_campaign")"
   # The legacy wizard keeps the safe default. Guided IPv6 enablement belongs to
   # the verified setup flow; advanced operators may set this after setup.
@@ -1315,6 +1346,12 @@ write_selfhost_env() {
     echo "FBL_DEDUP_CUTOVER_ACK=${fbl_dedup_cutover_ack}"
     echo "MTA_LOG_LEVEL=${SELFHOST_VARS[MTA_LOG_LEVEL]:-info}"
     echo ""
+    echo "# ── Redis (internal-only; password is defense-in-depth) ─────────────────────"
+    echo "# REQUIRED: compose fails closed without it — even 'docker compose down' aborts."
+    # Never emit an empty value: an unset REDIS_PASSWORD wedges every compose
+    # subcommand, so mint one here even if a future caller skips the core step.
+    echo "REDIS_PASSWORD=${SELFHOST_VARS[REDIS_PASSWORD]:-$(generate_secret)}"
+    echo ""
     echo "# ── Port Overrides (optional) ────────────────────────────────────────────────"
     echo "# CONVEX_PORT=3210"
     echo "# CONVEX_SITE_PORT=3211"
@@ -1342,6 +1379,32 @@ write_selfhost_env() {
 }
 
 # ── Self-Hosted: Docker Compose ─────────────────────────────────────────────
+
+# Persist the admin key to .env AND re-apply .env to the containers that were
+# created before it existed.
+#
+# The bring-up is unscoped and necessarily runs first — only an already-running
+# backend can mint the key — so imap, mail-sync and convex-fn-proxy were created
+# holding an EMPTY CONVEX_ADMIN_KEY, which they reject at boot
+# ("CONVEX_ADMIN_KEY is required"), crash-looping forever under
+# `restart: unless-stopped`, because Docker bakes env at CREATE time.
+# A plain `up -d` recreates ONLY the containers whose resolved config changed
+# (not --force-recreate, which would also bounce the healthy backend).
+# Non-fatal: the key is saved, so `owlat start` also repairs it.
+#
+# Both ways the key can arrive — auto-generated, or pasted by hand when
+# generate_admin_key.sh fails — land here, so neither can leave the stack
+# crash-looping.
+persist_admin_key() {
+  [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]] || return 0
+  sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
+  rm -f .env.bak
+  success "Admin key saved to .env"
+
+  if ! docker compose up -d >/dev/null 2>&1; then
+    warn "Could not re-apply .env to the running stack. If Postbox or external mail is enabled, run: docker compose up -d"
+  fi
+}
 
 run_docker_compose() {
   section "Starting Docker Compose Stack"
@@ -1391,11 +1454,7 @@ run_docker_compose() {
     warn "Could not auto-generate admin key"
     echo -e "    ${DIM}Run manually: docker compose exec convex ./generate_admin_key.sh${RESET}"
     prompt_default "Paste the admin key here" "" SELFHOST_CONVEX_ADMIN_KEY
-    # Update .env
-    if [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]]; then
-      sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
-      rm -f .env.bak
-    fi
+    persist_admin_key
     return
   }
 
@@ -1408,12 +1467,8 @@ run_docker_compose() {
     prompt_default "Paste the admin key" "" SELFHOST_CONVEX_ADMIN_KEY
   fi
 
-  # Write admin key back to .env
-  if [[ -n "$SELFHOST_CONVEX_ADMIN_KEY" ]]; then
-    sed -i.bak "s/^CONVEX_ADMIN_KEY=.*/CONVEX_ADMIN_KEY=${SELFHOST_CONVEX_ADMIN_KEY}/" .env
-    rm -f .env.bak
-    success "Admin key saved to .env"
-  fi
+  # Write admin key back to .env and re-apply it to the stack.
+  persist_admin_key
 
   # 4. Deploy Convex functions
   echo ""
@@ -1975,13 +2030,17 @@ doctor() {
     doctor_check pass ".env file present"
 
     local missing=()
-    for var in INSTANCE_SECRET MTA_API_KEY MTA_WEBHOOK_SECRET MTA_SECRET BOUNCE_VERP_KEY; do
+    # REDIS_PASSWORD is in here because compose interpolates it in three places
+    # with `:?`: an install predating the fail-closed default cannot run ANY
+    # `docker compose` subcommand, and the raw error names the variable without
+    # saying which of the wizard's outputs should have written it.
+    for var in INSTANCE_SECRET MTA_API_KEY MTA_WEBHOOK_SECRET MTA_SECRET BOUNCE_VERP_KEY REDIS_PASSWORD; do
       if ! grep -qE "^${var}=.+" .env 2>/dev/null; then
         missing+=("$var")
       fi
     done
     if [[ ${#missing[@]} -eq 0 ]]; then
-      doctor_check pass "Required secrets set" "INSTANCE_SECRET, MTA_API_KEY, MTA_WEBHOOK_SECRET, MTA_SECRET, BOUNCE_VERP_KEY"
+      doctor_check pass "Required secrets set" "INSTANCE_SECRET, MTA_API_KEY, MTA_WEBHOOK_SECRET, MTA_SECRET, BOUNCE_VERP_KEY, REDIS_PASSWORD"
     else
       doctor_check fail "Missing secrets" "${missing[*]}" "regenerate with: openssl rand -hex 32"
     fi

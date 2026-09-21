@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	buildGettingStarted,
 	BACKUPS_STEP,
+	FINISH_SETUP_STEP,
 	INSTANCE_STEPS,
 	READY_TO_SEND_STEP,
 	SEND_BLOCKED_REASON,
@@ -207,7 +208,55 @@ describe('buildGettingStarted — progress counts', () => {
 			input({ role: 'admin', mode: 'fresh', instanceFlags, personalCompleted })
 		);
 		expect(model.completedCount).toBe(2);
-		expect(model.totalCount).toBe(model.sections.flatMap((s) => s.steps).length);
+		expect(model.totalCount).toBe(
+			model.sections.flatMap((s) => s.steps).filter((step) => !step.informational).length
+		);
+	});
+
+	it('leaves the informational "Finish setting up" row out of the counts', () => {
+		const model = buildGettingStarted(input({ role: 'member', mode: 'fresh' }));
+		const rendered = model.sections.flatMap((s) => s.steps);
+		// It is on screen…
+		expect(rendered.map((step) => step.id)).toContain(FINISH_SETUP_STEP.id);
+		// …but it is a door, not a task: the counts see only the real steps.
+		expect(model.totalCount).toBe(rendered.length - 1);
+	});
+});
+
+describe('the way back into the welcome flow', () => {
+	it('ends the personal section with a permanent link to /welcome', () => {
+		const model = buildGettingStarted(input({ role: 'member', mode: 'fresh' }));
+		const personal = model.sections.find((s) => s.id === 'personal');
+		const last = personal?.steps.at(-1);
+		expect(last?.id).toBe(FINISH_SETUP_STEP.id);
+		// The screen the first-login middleware only ever routes to once.
+		expect(last?.href).toBe('/welcome');
+		expect(last?.informational).toBe(true);
+		// Never ticked and never blocked — it is always available, in both modes.
+		expect(last?.completed).toBe(false);
+		expect(last?.blocked).toBeUndefined();
+	});
+
+	it('offers it however much of the personal checklist is already done', () => {
+		// Every real step but the last: the member is deep into onboarding and has
+		// long since been "welcomed", which is exactly when /welcome used to be
+		// unreachable.
+		const personalCompleted = new Set<ChecklistStepId>(['mailboxReady', 'aiConnected']);
+		const model = buildGettingStarted(input({ role: 'member', personalCompleted }));
+		expect(allStepIds(model)).toContain(FINISH_SETUP_STEP.id);
+	});
+
+	it('disappears with the section once nothing personal is left to do', () => {
+		// A finished (or dismissed) checklist takes the whole card away, so the
+		// entry never lingers for a member with nothing to set up.
+		const personalCompleted = new Set<ChecklistStepId>([
+			'mailboxReady',
+			'aiConnected',
+			'firstSendDone',
+		]);
+		const model = buildGettingStarted(input({ role: 'member', personalCompleted }));
+		expect(model.visible).toBe(false);
+		expect(allStepIds(model)).not.toContain(FINISH_SETUP_STEP.id);
 	});
 });
 

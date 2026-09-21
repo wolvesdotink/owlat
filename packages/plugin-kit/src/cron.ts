@@ -1,11 +1,9 @@
-import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
+import type { PluginLocalId } from './namespacedKind';
 import type { PluginLlmService, PluginLogger } from './context';
 import type { PluginStaticModuleExport } from './sendTransport';
 
 /** Capability assigned by the host to every bundled plugin cron. */
 export const PLUGIN_CRON_CAPABILITY = 'scheduler:cron' as const;
-
-export type PluginCronCapability = typeof PLUGIN_CRON_CAPABILITY;
 
 /**
  * Scheduling limits the host enforces on plugin crons at manifest validation,
@@ -21,9 +19,6 @@ export const PLUGIN_CRON_TIMEOUT_MIN_MS = 1_000;
 export const PLUGIN_CRON_TIMEOUT_MAX_MS = 5 * 60_000; // 300000
 
 /** Local contribution identity. The host namespaces it with the owning plugin id. */
-
-/** Collision-safe cron kind used as the unique Convex cron registration name. */
-export type PluginCronKind = PluginNamespacedKind;
 
 /** Fixed-interval schedule; the only shape a bundled plugin cron may request. */
 export interface PluginCronSchedule {

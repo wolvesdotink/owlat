@@ -96,8 +96,6 @@ export interface InstanceInfo {
 	deploymentMode: string;
 }
 
-export const WORKSPACE_STORE_FILE = 'workspaces.json';
-
 /** Keychain account key for a workspace's session blob. */
 export function workspaceTokenRef(id: string): string {
 	return `owlat-ws:${id}`;

@@ -2,7 +2,6 @@ import { resolve4, resolve6, resolveTxt, reverse } from 'node:dns/promises';
 import {
 	fcrdnsReasonMessage,
 	isFqdn,
-	normalizeDnsName,
 	parseGenericPtrSuffixes,
 	parseUnverifiedFcrdnsOverride,
 	reverseDnsGuidance,
@@ -10,6 +9,7 @@ import {
 	type FcrdnsDnsDeps,
 	type FcrdnsVerification,
 } from '@owlat/shared/fcrdns';
+import { normalizeDomain } from '@owlat/shared';
 import {
 	hasIpv4FallbackForIpv6,
 	isIpv4MappedIpv6,
@@ -110,7 +110,7 @@ export async function preflightMtaIdentities(
 		}
 	}
 
-	const defaultEhlo = normalizeDnsName(env['EHLO_HOSTNAME'] ?? '');
+	const defaultEhlo = normalizeDomain(env['EHLO_HOSTNAME'] ?? '');
 	let perIpEhlo: Record<string, string> = {};
 	try {
 		perIpEhlo = parseCanonicalEhloHostnames(env['EHLO_HOSTNAMES']);
@@ -127,7 +127,7 @@ export async function preflightMtaIdentities(
 	}
 	const findings = await Promise.all(
 		normalizedIps.map(async ({ address: ip, family }) => {
-			const ehlo = normalizeDnsName(perIpEhlo[ip] ?? defaultEhlo);
+			const ehlo = normalizeDomain(perIpEhlo[ip] ?? defaultEhlo);
 			if (!isFqdn(ehlo)) {
 				return {
 					failure: `Outbound IP ${ip}: set EHLO_HOSTNAME or EHLO_HOSTNAMES to a valid FQDN.`,
@@ -169,7 +169,7 @@ export async function preflightMtaIdentities(
 	let ipv6Spf: Ipv6SpfReadiness[] | undefined;
 	const ipv6Ips = normalizedIps.filter((ip) => ip.family === 'ipv6').map((ip) => ip.address);
 	if (ipv6Ips.length > 0) {
-		const returnPathDomain = normalizeDnsName(env['RETURN_PATH_DOMAIN'] ?? '');
+		const returnPathDomain = normalizeDomain(env['RETURN_PATH_DOMAIN'] ?? '');
 		if (!isFqdn(returnPathDomain)) {
 			return {
 				ok: false,

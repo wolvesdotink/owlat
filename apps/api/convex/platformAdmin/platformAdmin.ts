@@ -8,31 +8,36 @@ import { requireAuthenticatedIdentity } from '../lib/sessionOrganization';
 /**
  * Platform-admin authorization.
  *
- * CONTROL-PLANE-ONLY / INERT ON OSS SELF-HOST (intentional, not a bug):
- * the platform-admin console is a multi-tenant operator surface. On an OSS
- * self-host deployment NO production path populates the `platformAdmins`
- * table — the optional bootstrap is a hand-run migration, and
- * `addPlatformAdmin` requires an EXISTING platform admin. So without that
- * explicit operator action, `requirePlatformAdmin` always throws FORBIDDEN and
- * `isPlatformAdmin` always returns false: every
- * `platformAdmin/*` function is reachable in code but unreachable in practice,
- * and the console renders empty rather than exposing cross-tenant controls.
+ * The tier ABOVE the organization roles. Org roles (owner/admin/editor) govern
+ * the product — members, campaigns, mailboxes, settings. Platform admin governs
+ * the DEPLOYMENT: applying an in-app update, restoring a backup, the operator
+ * console. They are deliberately separate checks, and an org owner is NOT
+ * automatically a platform admin — `platformAdmins` membership is its own row,
+ * granted once and then managed by a `superadmin`.
  *
- * This is deliberate. The control plane (the surface that would seed and use
- * these admins across many tenants) lives in the SEPARATE private Nest repo
- * (see MEMORY: "Nest Extracted", 2026-05-15); this repo is single-org-per-
- * deployment OSS. We keep the module so the control plane can reuse it
- * unchanged, but we do NOT auto-run an OSS bootstrap — granting one machine
- * operator power over the instance is a product decision for the deployer.
- * To enable it deliberately, a deployer runs
- * `migrations/0036_seed_platform_admin:run` once against their own auth user id.
+ * How the roster is populated (see `bootstrap.ts` for the full rationale):
  *
- * Intended authorization model for the mutations/queries that DO run when a
- * platform admin exists: each is an `authedMutation` / `authedQuery` whose
- * handler first calls `requirePlatformAdmin(ctx)` (FORBIDDEN otherwise), and
- * superadmin-only operations additionally check `role === 'superadmin'`. The
- * session floor lives in `authedFunctions`; `requirePlatformAdmin` is the
- * second, role gate on top of it.
+ *   - Fresh installs: `/seed/admin` grants the setup user `superadmin` as part
+ *     of the bootstrap, so the operator surface works out of the box.
+ *   - Installs seeded before that existed: the org owner claims the empty
+ *     roster once from the admin hub (`claimInitialPlatformAdmin`).
+ *   - Everyone after that: a `superadmin` promotes them via `addPlatformAdmin`,
+ *     which is what `Operator → Admins` drives.
+ *
+ * Both bootstrap paths refuse once ANY platform admin exists, so the empty-table
+ * precondition — not the caller's org role — is what keeps them from becoming an
+ * escalation route.
+ *
+ * Authorization model for the functions that consume this module: each is an
+ * `authedMutation` / `authedQuery` whose handler first calls
+ * `requirePlatformAdmin(ctx)` (FORBIDDEN otherwise), and superadmin-only
+ * operations additionally check `role === 'superadmin'`. The session floor lives
+ * in `authedFunctions`; `requirePlatformAdmin` is the second, role gate on top
+ * of it.
+ *
+ * The same module backs the multi-tenant control plane in the separate private
+ * Nest repo (see MEMORY: "Nest Extracted"); the queries here stay
+ * single-deployment-shaped because this repo is one org per deployment.
  */
 
 /**
@@ -89,22 +94,6 @@ export const isPlatformAdmin = publicQuery({
 	handler: async (ctx) => {
 		const admin = await getPlatformAdmin(ctx);
 		return admin !== null;
-	},
-});
-
-/**
- * Public query returning the current platform admin's auth user id (or null
- * when the caller is not a platform admin). Used by server routes that need to
- * record the real actor in an audit trail — e.g. the in-app system-update flow
- * stamps this id as `initiatedBy` instead of a generic 'platform-admin' tag.
- */
-// public: returns the caller's own id only when they are already a platform
-// admin; anonymous / non-admin callers get null. No cross-user disclosure.
-export const currentPlatformAdminUserId = publicQuery({
-	args: {},
-	handler: async (ctx) => {
-		const admin = await getPlatformAdmin(ctx);
-		return admin?.authUserId ?? null;
 	},
 });
 

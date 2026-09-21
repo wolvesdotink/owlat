@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isValidEmail } from '~/utils/validation';
+import { isValidEmail } from '@owlat/shared';
 
 const { t } = useI18n();
 

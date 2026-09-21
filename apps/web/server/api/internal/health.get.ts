@@ -3,6 +3,10 @@ import { requireInstanceSecret } from '~~/server/utils/updater';
 /**
  * Aggregated health check endpoint for control plane monitoring.
  *
+ * Caller status: nothing in this repository calls it; it exists for an
+ * external control-plane probe. Kept until an operator confirms no monitor
+ * still polls it.
+ *
  * This endpoint checks all local services (Convex, MTA) from within the VPS,
  * avoiding the need for the control plane to reach internal ports directly.
  * Protected by X-Instance-Secret header.

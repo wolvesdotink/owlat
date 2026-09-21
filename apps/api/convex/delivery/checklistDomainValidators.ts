@@ -68,6 +68,22 @@ export async function observeDomainCheck(
 					},
 				}
 			: domain.dnsRecords;
+	// Same reasoning as the `domain.mta_sts` case below, one notch softer, and
+	// answered BEFORE the DNS bundle is fetched because there is nothing to look
+	// up: TLS-RPT solicits reports about TLS on INBOUND delivery, and for a
+	// send-only domain that delivery terminates at Google or Microsoft — so the
+	// MTA adapter deliberately emits no `_smtp._tls` record for it. Letting this
+	// fall through to the generic "no TLS-RPT record is configured" warn would
+	// turn the mode's own correct behaviour into a permanent complaint against
+	// the operator, which is exactly the nag this mode exists to remove.
+	if (itemId === 'domain.tls_rpt' && domain.receivingMode === 'external') {
+		return checklistObservation(
+			'dns.tls-rpt',
+			'pass',
+			'Inbound mail for this domain is received by an external provider, so TLS reporting on delivery to it is theirs, not ours.',
+			providerValues
+		);
+	}
 	const results = traits.needsDomainDnsBundle
 		? await runDnsLookups(domain.domain, dnsRecords)
 		: null;
@@ -254,6 +270,23 @@ export async function observeDomainCheck(
 			);
 		}
 		case 'domain.mta_sts': {
+			// A send-only domain is not ours to pin. MTA-STS binds senders to the MX
+			// in the policy — ours — while this domain's mail is delivered to Google
+			// or Microsoft, so an `enforce` policy published here blackholes the
+			// customer's inbound mail. Nothing generates the record for such a domain
+			// (`checklistRecords.ts`), so verifying it could only ever report a
+			// pending/failed item for a record the operator has been told, correctly,
+			// never to publish. `pass` rather than `warn`: the item is satisfied, not
+			// deferred, and a permanent warning on a supported configuration is the
+			// nag this whole mode exists to remove.
+			if (domain.receivingMode === 'external') {
+				return checklistObservation(
+					'https.mta-sts',
+					'pass',
+					'Inbound mail for this domain is received by an external provider, so MTA-STS is theirs to publish, not ours.',
+					providerValues
+				);
+			}
 			const expected = await ctx.runQuery(api.domains.mtaSts.getMtaStsPolicy, {});
 			if (!expected) {
 				return checklistObservation(

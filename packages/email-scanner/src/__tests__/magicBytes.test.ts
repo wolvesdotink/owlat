@@ -4,7 +4,7 @@ import { detectFileType, isDangerousFileType } from '../files/magicBytes.js';
 describe('magic bytes detection', () => {
 	describe('detectFileType', () => {
 		it('detects Windows PE executable (.exe)', () => {
-			const bytes = new Uint8Array([0x4D, 0x5A, 0x90, 0x00]);
+			const bytes = new Uint8Array([0x4d, 0x5a, 0x90, 0x00]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -14,7 +14,7 @@ describe('magic bytes detection', () => {
 		});
 
 		it('detects ELF executable (Linux)', () => {
-			const bytes = new Uint8Array([0x7F, 0x45, 0x4C, 0x46, 0x02]);
+			const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x02]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -23,7 +23,7 @@ describe('magic bytes detection', () => {
 		});
 
 		it('detects Mach-O executable (macOS 64-bit)', () => {
-			const bytes = new Uint8Array([0xFE, 0xED, 0xFA, 0xCF]);
+			const bytes = new Uint8Array([0xfe, 0xed, 0xfa, 0xcf]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -31,7 +31,7 @@ describe('magic bytes detection', () => {
 		});
 
 		it('detects PDF document', () => {
-			const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D]);
+			const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -41,7 +41,7 @@ describe('magic bytes detection', () => {
 		});
 
 		it('detects PNG image', () => {
-			const bytes = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+			const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -51,7 +51,7 @@ describe('magic bytes detection', () => {
 		});
 
 		it('detects JPEG image', () => {
-			const bytes = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0]);
+			const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -69,7 +69,7 @@ describe('magic bytes detection', () => {
 		});
 
 		it('detects ZIP archive', () => {
-			const bytes = new Uint8Array([0x50, 0x4B, 0x03, 0x04]);
+			const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -78,7 +78,7 @@ describe('magic bytes detection', () => {
 		});
 
 		it('detects GZIP archive', () => {
-			const bytes = new Uint8Array([0x1F, 0x8B, 0x08]);
+			const bytes = new Uint8Array([0x1f, 0x8b, 0x08]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -87,7 +87,7 @@ describe('magic bytes detection', () => {
 		});
 
 		it('detects MSI installer / OLE2 compound document', () => {
-			const bytes = new Uint8Array([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
+			const bytes = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -95,8 +95,31 @@ describe('magic bytes detection', () => {
 			expect(result!.dangerous).toBe(true);
 		});
 
+		it('reads the same OLE2 bytes as a legacy Office document when the name says so', () => {
+			// One magic number, two very different files. Without the name, the
+			// container stays dangerous; with `.doc` / `.xls` / `.ppt` it is the
+			// document the policy allowlist already permits — every legacy Word
+			// attachment a customer sends used to come back "Microsoft Installer".
+			const bytes = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+
+			for (const [filename, mime] of [
+				['report.doc', 'application/msword'],
+				['Q3.XLS', 'application/vnd.ms-excel'],
+				['deck.ppt', 'application/vnd.ms-powerpoint'],
+			] as const) {
+				const result = detectFileType(bytes, undefined, filename);
+				expect(result!.mime).toBe(mime);
+				expect(result!.dangerous).toBe(false);
+			}
+
+			// A name that does not claim one of those keeps the installer verdict.
+			const installer = detectFileType(bytes, undefined, 'setup.msi');
+			expect(installer!.dangerous).toBe(true);
+			expect(detectFileType(bytes, undefined, 'invoice.pdf.exe')!.dangerous).toBe(true);
+		});
+
 		it('detects RAR archive', () => {
-			const bytes = new Uint8Array([0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]);
+			const bytes = new Uint8Array([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -107,7 +130,7 @@ describe('magic bytes detection', () => {
 		it('detects BMP image', () => {
 			// Note: BMP starts with 'BM' (0x42, 0x4D) which is same pattern as exe check
 			// But exe is 'MZ' (0x4D, 0x5A), so they don't conflict
-			const bytes = new Uint8Array([0x42, 0x4D, 0x36, 0x00]);
+			const bytes = new Uint8Array([0x42, 0x4d, 0x36, 0x00]);
 			const result = detectFileType(bytes);
 
 			expect(result).not.toBeNull();
@@ -130,7 +153,7 @@ describe('magic bytes detection', () => {
 		});
 
 		it('returns null for single byte', () => {
-			const bytes = new Uint8Array([0x4D]);
+			const bytes = new Uint8Array([0x4d]);
 			const result = detectFileType(bytes);
 
 			// MZ needs 2 bytes
@@ -155,17 +178,19 @@ describe('magic bytes detection', () => {
 
 	describe('isDangerousFileType', () => {
 		it('returns true for exe', () => {
-			expect(isDangerousFileType(new Uint8Array([0x4D, 0x5A, 0x90]))).toBe(true);
+			expect(isDangerousFileType(new Uint8Array([0x4d, 0x5a, 0x90]))).toBe(true);
 		});
 
 		it('returns true for a renamed ISO when the deep probe is supplied', () => {
 			expect(
-				isDangerousFileType(new Uint8Array(32), new Uint8Array([0x43, 0x44, 0x30, 0x30, 0x31])),
+				isDangerousFileType(new Uint8Array(32), new Uint8Array([0x43, 0x44, 0x30, 0x30, 0x31]))
 			).toBe(true);
 		});
 
 		it('returns false for PNG', () => {
-			expect(isDangerousFileType(new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))).toBe(false);
+			expect(
+				isDangerousFileType(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+			).toBe(false);
 		});
 
 		it('returns false for unknown types', () => {
@@ -175,7 +200,12 @@ describe('magic bytes detection', () => {
 });
 
 // filePolicy default-policy security expectations (see filePolicy.ts)
-import { DEFAULT_FILE_POLICY, isMimeTypeAllowed, isExtensionAllowed, mergePolicy } from '../files/filePolicy.js';
+import {
+	DEFAULT_FILE_POLICY,
+	isMimeTypeAllowed,
+	isExtensionAllowed,
+	mergePolicy,
+} from '../files/filePolicy.js';
 
 describe('DEFAULT_FILE_POLICY', () => {
 	it('rejects script-capable SVG by default', () => {

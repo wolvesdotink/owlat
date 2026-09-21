@@ -1,11 +1,8 @@
-import type { PluginNamespacedKind } from './namespacedKind';
 import type { PluginLlmService } from './context';
 import type { PluginStaticModuleExport } from './sendTransport';
 
 export const PLUGIN_DRAFT_STRATEGY_CAPABILITY = 'draft:strategy' as const;
 export const PLUGIN_DRAFT_STRATEGY_TIMEOUT_MAX_MS = 30_000;
-
-export type PluginDraftStrategyKind = PluginNamespacedKind;
 
 /** Data-only bundled-strategy declaration. */
 export interface PluginDraftStrategyDefinition {

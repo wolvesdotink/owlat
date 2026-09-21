@@ -2,7 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
-import { createTestWebhook, enableFeatures } from './factories';
+import { createTestWebhook, flushScheduled, enableFeatures } from './factories';
 import type { Id } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -900,8 +900,7 @@ describe('webhooks.sendTestWebhook', () => {
 		});
 
 		// Let scheduled functions run
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await t.finishInProgressScheduledFunctions();
+		await flushScheduled(t);
 	});
 
 	it('should reject if webhook is inactive', async () => {

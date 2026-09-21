@@ -16,9 +16,8 @@ import {
 import { readExactFunctionModule } from './hostedModuleSnapshot';
 
 /**
- * Host view of a bundled send transport's FEEDBACK half (the seams plan's D6,
- * wired by P2.2) — the declaration side, plus the executable parse half it is
- * paired with.
+ * Host view of a bundled send transport's FEEDBACK half — the declaration side,
+ * plus the executable parse half it is paired with.
  *
  * Two things live here because they are one fact with two representations, and
  * the whole value of the pair is that they are checked against each other at
@@ -33,7 +32,7 @@ import { readExactFunctionModule } from './hostedModuleSnapshot';
  * adapter's opt-in to raw retention; absent, the verified body is parsed and
  * dropped.
  */
-export interface HostedSendTransportWebhookDefinition extends HostedContributionDefinition<'send:transport'> {
+interface HostedSendTransportWebhookDefinition extends HostedContributionDefinition<'send:transport'> {
 	/** The contribution's local id; `kind` is this namespaced by the plugin id. */
 	readonly localId: string;
 	readonly signature: PluginWebhookSignatureContract;
@@ -41,7 +40,7 @@ export interface HostedSendTransportWebhookDefinition extends HostedContribution
 }
 
 /** The parse-only half. Authenticity was decided before this is called. */
-export interface HostedSendTransportWebhookModule {
+interface HostedSendTransportWebhookModule {
 	parseEvents(rawBody: string): unknown;
 }
 

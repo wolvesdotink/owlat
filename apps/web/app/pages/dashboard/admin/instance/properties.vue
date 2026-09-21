@@ -7,7 +7,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.instance.properties.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	middleware: ['auth', 'admin'],
 });
 
@@ -188,11 +188,9 @@ const handleCreate = async () => {
 	});
 	isCreating.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
-	showToast(
-		t('dashboard.admin.instance.properties.toasts.created', { label: createForm.label })
-	);
+	showToast(t('dashboard.admin.instance.properties.toasts.created', { label: createForm.label }));
 	closeCreateModal();
 };
 
@@ -209,7 +207,7 @@ const handleEdit = async () => {
 	});
 	isEditing.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showToast(t('dashboard.admin.instance.properties.toasts.updated'));
 	isEditModalOpen.value = false;
@@ -266,7 +264,7 @@ const handleDelete = async () => {
 	});
 	isDeleting.value = false;
 
-	if (result === undefined) return;
+	if (!result.ok) return;
 
 	showToast(
 		t('dashboard.admin.instance.properties.toasts.deleted', {
@@ -286,13 +284,6 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/admin"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.admin.instance.properties.backToSettings') }}
-			</NuxtLink>
 			<div class="flex items-center justify-between">
 				<div>
 					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
@@ -506,9 +497,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 
 					<!-- Type -->
 					<div>
-						<label class="label">{{
-							t('dashboard.admin.instance.properties.fields.type')
-						}}</label>
+						<label class="label">{{ t('dashboard.admin.instance.properties.fields.type') }}</label>
 						<div class="grid grid-cols-2 gap-3">
 							<button
 								v-for="type in propertyTypes"
@@ -633,7 +622,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 				v-if="isLoadingUsageCount"
 				class="mt-4 p-4 rounded-xl bg-bg-surface border border-border-subtle flex items-center gap-3"
 			>
-				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin text-text-tertiary" />
+				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary" />
 				<span class="text-sm text-text-tertiary">
 					{{ t('dashboard.admin.instance.properties.deleteModal.checkingUsage') }}
 				</span>

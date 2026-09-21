@@ -34,12 +34,22 @@ const {
 			<VisualizationsVisualizationPrompt />
 		</div>
 
-		<!-- Loading -->
-		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">{{ t('dashboard.visualizations.loading') }}</p>
-			</div>
+		<!--
+			Loading — the grid, at card geometry, not a centred spinner.
+
+			`role="status"` + the existing loading copy as the accessible name keeps
+			the announcement the spinner block carried, while the placeholders keep
+			the two-column geometry so nothing snaps when the query lands.
+		-->
+		<div
+			v-if="isLoading"
+			role="status"
+			aria-busy="true"
+			:aria-label="t('dashboard.visualizations.loading')"
+			data-testid="visualizations-grid-skeleton"
+			class="grid grid-cols-1 lg:grid-cols-2 gap-4"
+		>
+			<VisualizationsVisualizationCardSkeleton v-for="n in 4" :key="`viz-placeholder-${n}`" />
 		</div>
 
 		<!-- Error -->
@@ -69,7 +79,7 @@ const {
 		</div>
 
 		<!-- Visualizations grid -->
-		<div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+		<div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 			<VisualizationsVisualizationCard
 				v-for="viz in visualizations"
 				:key="viz._id"

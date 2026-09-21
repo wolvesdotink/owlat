@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx } from '../_generated/server';
+import { defineLifecycle, refuse, type LifecycleReason } from '../lib/lifecycle';
 import { recordPostboxOutboundAudit, type PostboxOutboundAuditEvent } from './postboxOutboundAudit';
 
 // Postbox outbound lifecycle — the single writer of every
@@ -35,13 +36,14 @@ export type TransitionOutcome =
 	  }
 	| {
 			ok: false;
-			reason:
+			// `illegal_edge` / `terminal` come from the generic lifecycle core;
+			// the four literals below are this module's own.
+			reason: LifecycleReason<
 				| 'message_not_found'
 				| 'message_has_no_outbound'
 				| 'recipient_not_found'
-				| 'illegal_edge'
-				| 'terminal'
-				| 'unknown_mta_id_prefix';
+				| 'unknown_mta_id_prefix'
+			>;
 			mailMessageId?: Id<'mailMessages'>;
 			recipientIdx?: number;
 			from?: RecipientState;
@@ -66,13 +68,19 @@ const transitionInputValidator = v.union(
 // Mirrors the CONTEXT.md "Postbox outbound state" section. `bounced` and
 // `failed` are terminal — outbound transitions are refused. Each recipient
 // transitions independently; there is no row-wide downgrade guard.
+//
+// The graph and its dispatcher preamble live in the generic lifecycle core
+// (`lib/lifecycle.ts`, ADR-0058); reducers and effects stay below.
 
-const LEGAL_EDGES: Record<RecipientState, ReadonlySet<RecipientState>> = {
-	queued: new Set<RecipientState>(['sent', 'bounced', 'failed']),
-	sent: new Set<RecipientState>(['bounced']),
-	bounced: new Set<RecipientState>(),
-	failed: new Set<RecipientState>(),
-};
+const RECIPIENT_LIFECYCLE = defineLifecycle<RecipientState>(
+	{
+		queued: ['sent', 'bounced', 'failed'],
+		sent: ['bounced'],
+		bounced: [],
+		failed: [],
+	},
+	{ reportsTerminalRefusals: true }
+);
 
 const POSTBOX_PREFIX = 'pb-';
 
@@ -262,28 +270,10 @@ async function dispatch(
 
 	const from = recipient.state;
 	const aggregateBefore = message.outbound.state;
-	const isLegalEdge = LEGAL_EDGES[from].has(input.to);
-	const isSelfLoop = from === input.to;
+	const verdict = RECIPIENT_LIFECYCLE.classify(from, input.to);
 
-	if (!isLegalEdge && !isSelfLoop) {
-		if (LEGAL_EDGES[from].size === 0) {
-			return {
-				ok: false,
-				reason: 'terminal',
-				mailMessageId,
-				recipientIdx,
-				from,
-				to: input.to,
-			};
-		}
-		return {
-			ok: false,
-			reason: 'illegal_edge',
-			mailMessageId,
-			recipientIdx,
-			from,
-			to: input.to,
-		};
+	if (verdict.kind === 'refused') {
+		return refuse(verdict, { mailMessageId, recipientIdx });
 	}
 
 	let result: ReducerResult;

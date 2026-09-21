@@ -23,7 +23,9 @@ test.describe('Settings — API Keys', () => {
 		await apiKeysPage.createApiKey(keyName);
 
 		// The "API Key Created" modal should be visible with the key
-		await expect(page.getByText('API Key Created')).toBeVisible({ timeout: 10_000 });
+		await expect(
+			page.locator('[role="dialog"]').getByRole('heading', { name: 'API Key Created' })
+		).toBeVisible({ timeout: 10_000 });
 
 		// Close the created key modal
 		await apiKeysPage.closeCreatedKeyModal();
@@ -35,9 +37,7 @@ test.describe('Settings — API Keys', () => {
 	test('empty name shows validation error', async ({ page }) => {
 		await apiKeysPage.createKeyButton.click();
 
-		// Wait for the overlay modal to appear
-		await page.locator('.fixed.inset-0.z-50').waitFor({ timeout: 10_000 });
-		const modal = page.locator('.fixed.inset-0.z-50');
+		const modal = await apiKeysPage.waitForModal();
 
 		// Try to submit without filling in a name
 		await modal.getByRole('button', { name: /Create Key/ }).click();

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { ConvexError } from 'convex/values';
 import { createTestI18n } from '~/__tests__/i18n';
+import { useAnnounce } from '../useAnnounce';
 import { useOptimisticMutation } from '../useOptimisticMutation';
 
 // The "Undo" action label comes from the catalog via the `useI18n` auto-import.
@@ -22,6 +23,8 @@ describe('useOptimisticMutation', () => {
 		vi.stubGlobal('useI18n', () => i18n.global);
 		vi.stubGlobal('useConvex', () => ({ mutation, action: vi.fn() }));
 		vi.stubGlobal('useToast', () => ({ showToast }));
+		// `useBackendOperation` underneath announces every landed write.
+		vi.stubGlobal('useAnnounce', useAnnounce);
 		vi.stubGlobal('usePostHog', () => ({ captureError }));
 		vi.stubGlobal('navigateTo', vi.fn());
 		// Stub the REAL useBackendOperation (consumed via Nuxt auto-import) so the

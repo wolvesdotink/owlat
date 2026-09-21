@@ -5,7 +5,7 @@
  * path: inbound email, channel webhook, bulk import, HTTP API, automation
  * trigger. Behaviour forks on `mode`:
  *
- *   strict — match → throw ALREADY_EXISTS. create otherwise.
+ *   strict — match → throw already_exists. create otherwise.
  *   upsert — match → return matched id, no field update. create otherwise.
  *   merge  — match → patch fields where new value is non-empty
  *            (existing wins for undefined/empty). create otherwise.
@@ -28,68 +28,42 @@
  * See docs/adr/0008-contact-resolution-module.md.
  */
 
-import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwAlreadyExists } from '../_utils/errors';
 import { buildSearchableText } from '../lib/queryHelpers';
+import { literalUnion } from '../lib/convexValidators';
 
 // ============================================================
 // Types
 // ============================================================
 
-export const CHANNEL_KIND_LITERALS = [
-	'email',
-	'sms',
-	'whatsapp',
-	'phone',
-	'generic',
-	'chat',
-] as const;
+const CHANNEL_KIND_LITERALS = ['email', 'sms', 'whatsapp', 'phone', 'generic', 'chat'] as const;
 
 export type ChannelKind = (typeof CHANNEL_KIND_LITERALS)[number];
 
-export const channelKindValidator = v.union(...CHANNEL_KIND_LITERALS.map((l) => v.literal(l)));
-
-export const CONTACT_SOURCE_LITERALS = [
-	'api',
-	'import',
-	'form',
-	'transactional',
-	'inbound',
-] as const;
+const CONTACT_SOURCE_LITERALS = ['api', 'import', 'form', 'transactional', 'inbound'] as const;
 
 export type ContactSource = (typeof CONTACT_SOURCE_LITERALS)[number];
 
-export const contactSourceValidator = v.union(...CONTACT_SOURCE_LITERALS.map((l) => v.literal(l)));
+export const contactSourceValidator = literalUnion(CONTACT_SOURCE_LITERALS);
 
 // Sources a caller may set when CREATING a contact. 'inbound' is excluded — it
 // is assigned only internally the first time a contact appears via an inbound
 // message, never accepted from the create API.
-export const CONTACT_CREATE_SOURCE_LITERALS = ['api', 'import', 'form', 'transactional'] as const;
+const CONTACT_CREATE_SOURCE_LITERALS = ['api', 'import', 'form', 'transactional'] as const;
 
-export const contactCreateSourceValidator = v.union(
-	...CONTACT_CREATE_SOURCE_LITERALS.map((l) => v.literal(l))
-);
+export const contactCreateSourceValidator = literalUnion(CONTACT_CREATE_SOURCE_LITERALS);
 
-export const RESOLVE_MODE_LITERALS = ['strict', 'upsert', 'merge'] as const;
+const RESOLVE_MODE_LITERALS = ['strict', 'upsert', 'merge'] as const;
 
 export type ResolveMode = (typeof RESOLVE_MODE_LITERALS)[number];
-
-export const resolveModeValidator = v.union(...RESOLVE_MODE_LITERALS.map((l) => v.literal(l)));
 
 /**
  * Optional Contact fields that may be set at create time and (in `merge` mode)
  * patched on match. Empty/undefined values are ignored — never overwrite a
  * user-set name with `extractNameFromEmail`-style junk.
  */
-export const contactFieldsValidator = v.object({
-	firstName: v.optional(v.string()),
-	lastName: v.optional(v.string()),
-	language: v.optional(v.string()),
-	timezone: v.optional(v.string()),
-});
-
 export type ContactFields = {
 	firstName?: string;
 	lastName?: string;

@@ -24,6 +24,11 @@
 		"disclosure": {
 			"label": "Erweitert"
 		},
+		"emptyState": {
+			"nothingYet": "Noch nichts vorhanden",
+			"noResults": "Keine Treffer",
+			"clear": "Filter zurücksetzen"
+		},
 		"errorBoundary": {
 			"message": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
 		},

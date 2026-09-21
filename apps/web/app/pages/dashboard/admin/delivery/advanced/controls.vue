@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * CONTROLS — the human's hand on the ramp (plan D9, D12, D14, P3-6).
+ * CONTROLS — the human's hand on the ramp.
  *
  * Enrol a cell, pause it, pin it, force-advance it, reset or promote its phase,
  * and set the per-stream pace. Every one of them goes through an org-scoped,
  * admin-gated mutation and lands in the audit trail; the retreats the controller
  * made on its own are listed here too, naming the check that broke and what to
- * do about it (plan D12), because a silent retreat will be reported as a bug.
+ * do about it, because a silent retreat will be reported as a bug.
  *
  * ONE WRITE CALL SITE PER CONTROL. The control components emit intent and this
  * page owns the mutations, so refusal handling is written once rather than five
@@ -62,7 +62,7 @@ function localized(value: LocalizedText): string {
 
 useHead({ title: () => t('dashboard.admin.delivery.advanced.controls.pageTitle') });
 
-definePageMeta({ layout: 'dashboard', middleware: ['auth', 'admin'] });
+definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const {
 	data: controls,
@@ -155,7 +155,7 @@ const outcome = ref<string | null>(null);
 
 /**
  * WHAT THE NEXT RUNG IS STILL WAITING ON, kept beside the refusal that named it.
- * "Not yet" with no list is the shape of an unactionable refusal (plan D12/D14).
+ * "Not yet" with no list is the shape of an unactionable refusal.
  */
 const outstanding = ref<readonly RampPromotionCondition[]>([]);
 
@@ -204,12 +204,13 @@ function cellArgs(cell: RampCellControl) {
  * card afterwards; the other four have nothing to add to it.
  */
 async function writeSelectedCell<T extends { readonly refusal?: RampControlRefusal }>(
-	write: (cell: RampCellControl) => Promise<T | undefined>
+	write: (cell: RampCellControl) => Promise<BackendOperationResult<T>>
 ): Promise<T | undefined> {
 	const cell = selectedCell.value;
 	if (cell === null) return undefined;
 	beginWrite();
-	const result = await write(cell);
+	const written = await write(cell);
+	const result = written.ok ? written.result : undefined;
 	refusal.value = result?.refusal ?? null;
 	refetch();
 	return result;
@@ -313,7 +314,7 @@ async function changePreset(
 					aria-live="polite"
 					:aria-label="t('dashboard.admin.delivery.advanced.controls.loading')"
 				>
-					<div class="h-40 animate-pulse rounded-xl bg-bg-surface" />
+					<div class="h-40 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
 				</div>
 			</template>
 
@@ -436,7 +437,7 @@ async function changePreset(
 					>
 						<template #loading>
 							<div
-								class="mt-3 h-16 animate-pulse rounded-lg bg-bg-surface"
+								class="mt-3 h-16 animate-pulse motion-reduce:animate-none rounded-lg bg-bg-surface"
 								role="status"
 								aria-live="polite"
 								:aria-label="t('dashboard.admin.delivery.advanced.controls.pullBacksLoading')"

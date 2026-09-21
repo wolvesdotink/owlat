@@ -85,7 +85,7 @@ const progressPercent = computed(() =>
 			>
 				<template #loading>
 					<div
-						class="h-40 animate-pulse rounded-lg bg-bg-surface"
+						class="h-40 animate-pulse motion-reduce:animate-none rounded-lg bg-bg-surface"
 						role="status"
 						aria-live="polite"
 						:aria-label="t('components.delivery.rampNarrativeCard.loading')"

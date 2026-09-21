@@ -14,10 +14,10 @@ import { composeHostedCatalog } from '../../lib/hostedCatalog';
 import { WEBHOOK_EVENT_CATALOG } from '../../plugins/webhookEventCatalog';
 import { WEBHOOK_EVENT_REGISTRY, type WebhookEventLiteral } from './registry';
 
-export type CoreWebhookEventKind = WebhookEventLiteral;
-export type WebhookEventKind = CoreWebhookEventKind | PluginWebhookEventKind;
+type CoreWebhookEventKind = WebhookEventLiteral;
+type WebhookEventKind = CoreWebhookEventKind | PluginWebhookEventKind;
 
-export interface WebhookEventCatalogEntry {
+interface WebhookEventCatalogEntry {
 	readonly kind: WebhookEventKind;
 	readonly description: string;
 	readonly subscribable: boolean;

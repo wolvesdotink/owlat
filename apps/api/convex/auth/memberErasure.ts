@@ -14,7 +14,8 @@
  *
  * Phases per hop:
  *   1. While the user has a mailbox: drain one batch of its mailMessages
- *      (purging the up-to-three storage blobs per row); once drained, delete
+ *      (its `mailAttachments` index rows, then the up-to-three storage blobs
+ *      per row, freed with the LAST row referencing them); once drained, delete
  *      the mailbox's children (folders/labels/filters/signatures/drafts incl.
  *      attachment blobs/threads/aliases/imap-sync/app-passwords) and the
  *      mailbox row itself.
@@ -38,6 +39,8 @@ import {
 	boundedDeliverabilityAlertRecipientRows,
 	deliverabilityAlertNotificationPatch,
 } from '../delivery/checklistAlertRecipients';
+import { removeMessageAttachments } from '../mail/attachmentIndex';
+import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
@@ -87,10 +90,15 @@ export const eraseMemberData = internalMutation({
 				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailbox._id))
 				.take(MESSAGE_BATCH);
 			for (const msg of messages) {
-				await ctx.storage.delete(msg.rawStorageId);
-				if (msg.textBodyStorageId) await ctx.storage.delete(msg.textBodyStorageId);
-				if (msg.htmlBodyStorageId) await ctx.storage.delete(msg.htmlBodyStorageId);
-				await ctx.db.delete(msg._id);
+				// The attachment index is a function of the message table, and this
+				// walk deletes the MAILBOX row too — so nothing ever walks those rows
+				// again. A junction row left behind survives a COMPLETED erasure with
+				// the correspondent's address and the filename they sent still on it,
+				// still reachable through `search_filenames`/`by_mailbox_and_from`.
+				await removeMessageAttachments(ctx, msg._id);
+				// Refcount-aware (mail/messagePurge.ts): IMAP COPY shares one blob
+				// across rows, so a blob is freed only with its LAST row.
+				await deleteMessageRowAndBlobs(ctx, msg);
 			}
 			if (messages.length === MESSAGE_BATCH) {
 				await reschedule();
@@ -208,6 +216,13 @@ export const eraseMemberData = internalMutation({
 				.withIndex('by_account', (q) => q.eq('accountId', account._id))
 				.collect(); // bounded: folders of one account
 			for (const row of syncRows) await ctx.db.delete(row._id);
+			// The import records name the account row deleted below, and carry the
+			// erased member's `userId` themselves.
+			const migrations = await ctx.db
+				.query('mailboxMigrations')
+				.withIndex('by_account', (q) => q.eq('accountId', account._id))
+				.collect(); // bounded: one migration per import attempt
+			for (const migration of migrations) await ctx.db.delete(migration._id);
 			await ctx.db.delete(account._id);
 		}
 		const userPasswords = await ctx.db
@@ -230,6 +245,18 @@ export const eraseMemberData = internalMutation({
 			.withIndex('by_user_and_created', (q) => q.eq('userId', args.authUserId))
 			.collect(); // bounded: at most one pending notice per readiness edge
 		for (const notice of sendReadyNotices) await ctx.db.delete(notice._id);
+
+		// Platform-admin grant. This is deployment-level power (in-app updates,
+		// backups, the operator console) keyed by BetterAuth user id, so leaving
+		// the row behind would mean a departed member's id still satisfies
+		// `requirePlatformAdmin` — and the id is reusable ground for whoever
+		// claims that identity next. It also carries their email, which this
+		// erasure is meant to remove.
+		const platformAdminRows = await ctx.db
+			.query('platformAdmins')
+			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
+			.collect(); // bounded: at most one row per user
+		for (const row of platformAdminRows) await ctx.db.delete(row._id);
 
 		// Open/resolved mailbox requests carry the member's email + name; drop
 		// them so no PII survives on the admin dashboard.

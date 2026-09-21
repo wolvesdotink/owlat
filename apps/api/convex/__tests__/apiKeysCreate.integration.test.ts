@@ -128,3 +128,27 @@ describe('apiKeys.create — least privilege', () => {
 		expect(stored?.expiresAt).toBe(expiresAt);
 	});
 });
+
+/**
+ * L2 — `listByTeam` must not return the stored `keyHash` (the SHA-256 verifier).
+ * A management list has no use for it, and returning it hands an admin-scoped
+ * reader an offline brute-force target.
+ */
+describe('apiKeys.listByTeam — keyHash projection', () => {
+	it('omits keyHash from every listed key but keeps the display prefix', async () => {
+		const t = convexTest(schema, modules).withIdentity(testUser);
+		const created = await t.mutation(api.auth.apiKeys.create, {
+			name: 'listed',
+			scopes: ['contacts:read'],
+		});
+
+		const listed = await t.query(api.auth.apiKeys.listByTeam, {});
+		expect(listed.length).toBe(1);
+		const row = listed[0]!;
+		expect('keyHash' in row).toBe(false);
+		// The prefix (safe display identifier) and name still surface for the UI.
+		expect(row.keyPrefix).toBe(created.keyPrefix);
+		expect(row.name).toBe('listed');
+		expect(row._id).toBe(created.keyId);
+	});
+});

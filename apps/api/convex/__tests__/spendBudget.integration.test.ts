@@ -114,7 +114,7 @@ describe('analytics.spendBudget.getBudgetStatus', () => {
 	});
 });
 
-describe('mail.aiGate.assertAiAllowed with a spend budget', () => {
+describe('mail.ai.gate.assertAiAllowed with a spend budget', () => {
 	it('blocks advisory AI with a clear reason once the budget is exhausted', async () => {
 		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
 		const t = convexTest(schema, modules);
@@ -122,7 +122,7 @@ describe('mail.aiGate.assertAiAllowed with a spend budget', () => {
 		await setAiFlag(t, true);
 		await insertSpend(t, 12, Date.now());
 
-		await expect(t.mutation(internal.mail.aiGate.assertAiAllowed, {})).rejects.toThrow(
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).rejects.toThrow(
 			/spend budget|paused/i
 		);
 	});
@@ -134,6 +134,6 @@ describe('mail.aiGate.assertAiAllowed with a spend budget', () => {
 		await setAiFlag(t, true);
 		await insertSpend(t, 1, Date.now());
 
-		await expect(t.mutation(internal.mail.aiGate.assertAiAllowed, {})).resolves.toBeNull();
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).resolves.toBeNull();
 	});
 });

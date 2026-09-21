@@ -39,7 +39,7 @@ export interface PendingQuestion {
 }
 
 /** A silent fill: the stored answer that resolves a pending question. */
-export interface StandingFill {
+interface StandingFill {
 	questionId: string;
 	slotType: string;
 	value: string;
@@ -78,7 +78,7 @@ export function isStandingAnswerVisible(
 /** A question matched to the stored row that resolves it. Generic over the row
  * so a Convex caller keeps the full document (to bump usage) while a pure test
  * uses the minimal shape. */
-export interface MatchedStandingAnswer<T extends StandingAnswerRow> {
+interface MatchedStandingAnswer<T extends StandingAnswerRow> {
 	questionId: string;
 	slotType: string;
 	row: T;

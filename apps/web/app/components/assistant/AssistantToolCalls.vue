@@ -55,7 +55,7 @@ const summary = computed(() =>
 					<Icon
 						v-if="tc.status === 'running'"
 						name="lucide:loader-circle"
-						class="w-3.5 h-3.5 animate-spin text-brand"
+						class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none text-brand"
 					/>
 					<Icon
 						v-else-if="tc.status === 'done'"

@@ -19,6 +19,7 @@ import { mount } from '@vue/test-utils';
 import ContactsIndex from '../index.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { installNuxtStubs, paginatedResult, queryResult } from '~/__tests__/a11y';
+import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import { useBulkOperation } from '~/composables/useBulkOperation';
 import { useBulkSelection } from '~/composables/useBulkSelection';
 import { useClickOutside } from '~/composables/useClickOutside';
@@ -61,10 +62,24 @@ function languageOptionTexts(): string[] {
 	const wrapper = mount(ContactsIndex, {
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { UiSelect: selectStub },
-			// Feature components are left unresolved on purpose; the resulting
-			// warning storm would bury a real one.
-			config: { warnHandler: () => {} },
+			components: { UiQueryBoundary: QueryBoundary },
+			// The picker sits in the add-contact modal; the rest of the page is not
+			// the subject here.
+			stubs: {
+				UiSelect: selectStub,
+				UiModal: { template: '<div><slot /></div>' },
+				UiPageHeader: { template: '<div><slot /><slot name="actions" /></div>' },
+				UiInput: true,
+				UiErrorAlert: true,
+				UiSpinner: true,
+				UiEmptyState: true,
+				UiContextMenu: true,
+				DashboardListSkeleton: true,
+				LazyContactsCsvImportModal: true,
+				LazyContactsExportModal: true,
+				LazyContactsIntegrationImportModal: true,
+				LazyContactsBulkDeleteModal: true,
+			},
 		},
 	});
 	const picker = wrapper.find('select[aria-label="Preferred Language"]');

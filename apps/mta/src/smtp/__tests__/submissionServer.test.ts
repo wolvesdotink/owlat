@@ -27,6 +27,7 @@ import {
 	buildOnMailFrom,
 	createSubmissionServer,
 	createImplicitTlsSubmissionServer,
+	SUBMISSION_COMMAND_TIMEOUT_MS,
 	type SubmissionSessionState,
 	type AuthenticatedSession,
 } from '../submissionServer.js';
@@ -160,6 +161,16 @@ describe('submission authenticate — auth chain', () => {
 		const { outcome, session } = await authCall({ username: 'x', password: 'org-key' });
 		expect(outcome).toEqual({ ok: true, user: 'ci-cred' });
 		expect(session.state.auth).toMatchObject({ organizationId: 'org1', credentialName: 'ci-cred' });
+	});
+
+	it('binds the credential verified-domain set onto the session identity', async () => {
+		lookupCredentialMock.mockResolvedValue({
+			organizationId: 'org1',
+			name: 'ci-cred',
+			allowedDomains: ['brand.com', 'brand.net'],
+		});
+		const { session } = await authCall({ username: 'x', password: 'org-key' });
+		expect(session.state.auth?.allowedDomains).toEqual(['brand.com', 'brand.net']);
 	});
 
 	it('accepts a Postbox app password and binds the mailbox identity', async () => {
@@ -302,6 +313,48 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 				'"state":"accepted"'
 			);
 		}
+	});
+
+	it('rejects a per-org credential sending From a domain outside its verified set (553 5.7.1)', async () => {
+		const { reply, queue } = await dataCall(baseMime('spoof@victim-tenant.com', 'target@x.com'), {
+			organizationId: 'org1',
+			credentialName: 'cred',
+			allowedDomains: ['brand.com', 'brand.net'],
+		});
+		expect(reply?.code).toBe(553);
+		expect(reply?.enhanced).toBe('5.7.1');
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('accepts a per-org credential sending From a verified domain (case-insensitive)', async () => {
+		const { reply, queue } = await dataCall(baseMime('Sales@Brand.com', 'target@x.com'), {
+			organizationId: 'org1',
+			credentialName: 'cred',
+			allowedDomains: ['brand.com'],
+		});
+		expect(reply).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledTimes(1);
+		expect(queue.add.mock.calls[0]![0].data.dkimDomain).toBe('brand.com');
+	});
+
+	it('rejects any From for a per-org credential with an empty verified set (fail-closed)', async () => {
+		const { reply, queue } = await dataCall(baseMime('anyone@brand.com', 'target@x.com'), {
+			organizationId: 'org1',
+			credentialName: 'cred',
+			allowedDomains: [],
+		});
+		expect(reply?.code).toBe(553);
+		expect(reply?.enhanced).toBe('5.7.1');
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('does not domain-restrict the master session (broad send, no allowedDomains)', async () => {
+		const { reply, queue } = await dataCall(baseMime('anyone@any-domain.com', 'target@x.com'), {
+			organizationId: '__master__',
+			credentialName: 'master',
+		});
+		expect(reply).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledTimes(1);
 	});
 
 	it('uses the SMTP envelope recipient order and removes exact duplicates', async () => {
@@ -1123,6 +1176,14 @@ describe('submission TLS gate — wire-level', () => {
 		conn.write(`${line}\r\n`);
 	}
 
+	async function waitFor(check: () => Promise<boolean>, timeoutMs = 1_000): Promise<void> {
+		const deadline = Date.now() + timeoutMs;
+		while (!(await check())) {
+			if (Date.now() >= deadline) throw new Error('timed out waiting for condition');
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+	}
+
 	const plainAuth = (user: string, pass: string): string =>
 		Buffer.from(`\0${user}\0${pass}`, 'utf8').toString('base64');
 
@@ -1284,6 +1345,111 @@ describe('submission TLS gate — wire-level', () => {
 			});
 			expect(result).toBe('no-banner');
 		} finally {
+			await server.close();
+		}
+	});
+
+	it('465: silent pre-handshake sockets consume and release the per-IP connection cap', async () => {
+		const liveRedis = new Redis() as unknown as RealRedis;
+		const server = createImplicitTlsSubmissionServer(
+			queue,
+			liveRedis,
+			tlsConfig({ submissionMaxConnectionsPerIp: 1 })
+		);
+		const port = await boot(server);
+		const first = net.connect(port, '127.0.0.1');
+		let second: net.Socket | undefined;
+		try {
+			await new Promise<void>((resolve, reject) => {
+				first.once('connect', resolve);
+				first.once('error', reject);
+			});
+			await waitFor(async () => (await liveRedis.get('mta:submission:conn:127.0.0.1')) === '1');
+
+			second = net.connect(port, '127.0.0.1');
+			await new Promise<void>((resolve, reject) => {
+				const timer = setTimeout(() => reject(new Error('over-cap socket stayed open')), 1_000);
+				second!.once('error', () => {
+					clearTimeout(timer);
+					resolve();
+				});
+				second!.once('close', () => {
+					clearTimeout(timer);
+					resolve();
+				});
+			});
+			expect(await liveRedis.get('mta:submission:conn:127.0.0.1')).toBe('1');
+
+			first.destroy();
+			await waitFor(async () => (await liveRedis.exists('mta:submission:conn:127.0.0.1')) === 0);
+		} finally {
+			first.destroy();
+			second?.destroy();
+			await server.close();
+		}
+	});
+
+	it('465: the TLS handshake window is bounded at 30 s, not the 120 s node default', () => {
+		// On 465 the handshake runs BEFORE any SMTP session, so the command idle
+		// timer is not armed yet and this window is the only bound on a peer that
+		// connects and then goes silent. Dropping `handshakeTimeoutMs` from
+		// `submissionTls` would silently restore node's 120 s, during which an
+		// unauthenticated peer pins a connection slot; nothing else in the listener
+		// would notice, so the wiring is pinned here.
+		//
+		// Read back off the tls.Server rather than waited out (30 s of wall clock is
+		// not a unit test). The teardown BEHAVIOUR this window drives is covered
+		// end-to-end in `@owlat/smtp-listener`'s hostile suite with a short window.
+		const server = createImplicitTlsSubmissionServer(
+			queue,
+			new Redis() as unknown as RealRedis,
+			tlsConfig()
+		);
+		// Never listened, so nothing to close: the window is baked into the
+		// tls.Server at construction, which is exactly the wiring under test.
+		const raw = server.raw as unknown as Record<symbol, unknown>;
+		const key = Object.getOwnPropertySymbols(server.raw).find(
+			(sym) => sym.description === 'handshake-timeout'
+		);
+		// Fail loudly if node ever renames the slot, rather than passing vacuously.
+		if (!key) throw new Error('node no longer stores the window under Symbol(handshake-timeout)');
+		expect(raw[key]).toBe(30_000);
+	});
+
+	it('pins the SMTP command idle window to two minutes', () => {
+		expect(SUBMISSION_COMMAND_TIMEOUT_MS).toBe(120_000);
+	});
+	it('waits for admission before starting a TLS handshake', async () => {
+		const liveRedis = new Redis() as unknown as RealRedis;
+		let decide!: (n: number) => void;
+		vi.spyOn(liveRedis, 'eval').mockImplementationOnce(
+			() =>
+				new Promise<number>((resolve) => {
+					decide = resolve;
+				}) as never
+		);
+		const server = createImplicitTlsSubmissionServer(queue, liveRedis, tlsConfig());
+		const port = await boot(server);
+		const client = tls.connect({ port, host: '127.0.0.1', rejectUnauthorized: false });
+		client.on('error', () => {});
+		let secured = false;
+		let greeting = '';
+		client.on('secureConnect', () => {
+			secured = true;
+		});
+		client.on('data', (chunk) => {
+			greeting += chunk.toString();
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 100));
+			expect(secured).toBe(false);
+			expect(greeting).toBe('');
+			decide(1);
+			await waitFor(async () => greeting.startsWith('220 '));
+			expect(secured).toBe(true);
+		} finally {
+			decide?.(0);
+			client.destroy();
 			await server.close();
 		}
 	});

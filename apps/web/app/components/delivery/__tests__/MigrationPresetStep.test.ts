@@ -183,7 +183,7 @@ describe('the preset declines to write', () => {
 					},
 				},
 			]),
-			undefined
+			{ ok: false }
 		);
 		await apply(wrapper);
 

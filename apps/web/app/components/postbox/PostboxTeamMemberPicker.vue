@@ -34,7 +34,7 @@ const { t } = useI18n();
 			v-if="loading && members.length === 0"
 			class="flex items-center gap-2 text-text-secondary text-sm py-2"
 		>
-			<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+			<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
 			{{ t('components.postbox.postboxTeamMemberPicker.loading') }}
 		</div>
 		<p v-else-if="members.length === 0" class="text-sm text-text-secondary">

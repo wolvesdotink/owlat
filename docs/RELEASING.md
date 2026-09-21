@@ -14,11 +14,11 @@ git push origin main v<X.Y.Z>
 
 Pushing the tag triggers one of three pipelines:
 
-| Tag | Workflow | Ships |
-| --- | --- | --- |
-| `vX.Y.Z` | `release.yml` (unified) | server images + desktop apps + install assets — the line `install.sh` and the updater follow |
-| `server-vX.Y.Z` | `server-release.yml` | server images + compose assets only |
-| `desktop-vX.Y.Z` | `desktop-release.yml` | desktop apps only |
+| Tag              | Workflow                | Ships                                                                                        |
+| ---------------- | ----------------------- | -------------------------------------------------------------------------------------------- |
+| `vX.Y.Z`         | `release.yml` (unified) | server images + desktop apps + install assets — the line `install.sh` and the updater follow |
+| `server-vX.Y.Z`  | `server-release.yml`    | server images + compose assets only                                                          |
+| `desktop-vX.Y.Z` | `desktop-release.yml`   | desktop apps only                                                                            |
 
 ## What gates the release
 
@@ -26,25 +26,31 @@ Both server pipelines run the reusable core (`_server-build.yml`). The GitHub
 Release is created as a DRAFT up front; every job below must pass before the
 `publish` job flips it live, so a red gate means nothing was shipped:
 
-1. **`verify`** (unified line only) — full `ci:verify` of the exact tagged
-   commit.
-2. **`build-and-push`** — builds all eight images, cosign-signs each digest,
-   publishes SLSA attestations, and records each image digest for compose
-   pinning.
-3. **`verify-anonymous-pull`** — `docker manifest inspect` on every image
-   WITHOUT credentials. This is the backstop for the GHCR visibility trap
+1. **`verify`** (the shared `_verify.yml`, called by all three release
+   workflows) — full `ci:verify` of the exact tagged commit.
+2. **`build-and-push`** — builds every image natively for linux/amd64 (on
+   `ubuntu-latest`) and linux/arm64 (on `ubuntu-24.04-arm`), pushing each
+   per-arch image untagged, by digest.
+3. **`merge-manifests`** — stitches the two per-arch digests of each image
+   into one multi-arch manifest list per tag, fails if either platform is
+   missing, cosign-signs the LIST digest, publishes the SLSA attestation, and
+   records that digest for compose pinning. Consumers pin, pull and verify the
+   list digest, never a per-arch leaf.
+4. **`verify-anonymous-pull`** — `docker manifest inspect` on every image
+   WITHOUT credentials, also asserting both platforms are listed. This is the backstop for the GHCR visibility trap
    below.
-4. **`upload-release-assets`** — generates `docker-compose-<version>.yml` with
+5. **`upload-release-assets`** — generates `docker-compose-<version>.yml` with
    every Owlat image pinned to `:<version>@sha256:<digest>` (the digests come
    from build-push-action, via `scripts/gen-release-compose.sh`), plus its
    `.sha256` manifest and provenance attestation.
-5. **`e2e-install`** — from a clean runner with no checkout: downloads the
+6. **`e2e-install`** — from a clean runner with no checkout: downloads the
    compose + checksum from the draft release, pulls every first-party image
    anonymously, boots the stack with a scripted minimal env, deploys the
    Convex functions, and waits for web / MTA(+worker) / Redis / ClamAV health.
-   Runs twice: `fresh` volumes and volumes `seeded` by the previous release
-   (the upgrade path — Redis/ClamAV volume-ownership regressions only show up
-   there).
+   Runs three times: `fresh` volumes and volumes `seeded` by the previous
+   release on amd64 (the upgrade path — Redis/ClamAV volume-ownership
+   regressions only show up there), plus `fresh` on an arm64 runner to prove
+   the multi-arch manifests actually boot there.
 
 ## GHCR visibility: the manual step (read before adding a new image)
 
@@ -68,7 +74,10 @@ before the draft goes live instead. When it goes red on a new image:
 So when a release adds a new service image, expect its first run to stop at
 `verify-anonymous-pull` by design. Checklist for a new image:
 
-- add it to the `build-and-push` matrix in `_server-build.yml`;
+- add it to the `build-and-push` matrix AND the `merge-manifests` matrix in
+  `_server-build.yml` (the `clamav` and `tinyproxy` wrappers added in 0.4.10
+  are the most recent example — expect their first release to stop at
+  `verify-anonymous-pull` until both packages are flipped public);
 - add it to the image list in the `verify-anonymous-pull` job (kept in sync by
   hand);
 - after the first release run pushes it: flip the package public, then re-run.
@@ -77,6 +86,6 @@ So when a release adds a new service image, expect its first run to stop at
 
 - `docs/adr/` — architecture decisions, including supply-chain hardening.
 - `scripts/gen-release-compose.sh` — release compose generation + digest
-  pinning (unit-tested via `bun run lint:release-compose`).
+  pinning (unit-tested via `bun run lint:script-tests`).
 - `install.sh` / `scripts/owlat upgrade` — the consumer side of the release
   assets.

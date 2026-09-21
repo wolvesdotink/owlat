@@ -35,7 +35,7 @@ async function handleCreatePolicy() {
 	const content = policyContent.value.trim();
 	if (!title || !content) return;
 	const result = await createPolicy.run({ title, content, entryType: 'faq' });
-	if (!result) return;
+	if (!result.ok) return;
 	policyTitle.value = '';
 	policyContent.value = '';
 }
@@ -268,7 +268,11 @@ const handleCancelled = () => {
 						{{ t('dashboard.knowledge.index.entryTypesTitle') }}
 					</h3>
 					<div class="space-y-2">
-						<div v-for="entryType in ENTRY_TYPES" :key="entryType" class="flex items-center gap-2.5">
+						<div
+							v-for="entryType in ENTRY_TYPES"
+							:key="entryType"
+							class="flex items-center gap-2.5"
+						>
 							<div
 								class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
 								:class="{

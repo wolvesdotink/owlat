@@ -28,7 +28,7 @@ const handleCancelBackfill = async () => {
 	isCancellingBackfill.value = true;
 	const result = await cancelBackfill({});
 	isCancellingBackfill.value = false;
-	if (result === undefined) return;
+	if (!result.ok) return;
 	showToast(t('dashboard.admin.instance.agent.backfillCancelledToast'));
 };
 

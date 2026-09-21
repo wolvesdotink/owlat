@@ -50,7 +50,13 @@ import {
 	useTemplateRef,
 	type Component,
 } from 'vue';
+import { IconStub, NuxtLinkStub } from './nuxtComponents';
+import { tolerateUnresolvedComponents } from './vueWarnings';
+import { paginatedResult, queryResult } from './queryStubs';
+import { createTestI18n } from './i18n';
+import { useAnnounce } from '~/composables/useAnnounce';
 import { useAuthForm } from '~/composables/useAuthForm';
+import { useBreadcrumbs } from '~/composables/useBreadcrumbs';
 import {
 	useMediaQuery,
 	useEmailBuilderViewport,
@@ -105,25 +111,6 @@ for (const [path, module] of Object.entries({
 	if (name) uiComponents[`Ui${name}`] = (module as { default: Component }).default;
 }
 
-const NuxtLinkStub = defineComponent({
-	name: 'NuxtLink',
-	inheritAttrs: false,
-	props: { to: { type: [String, Object], default: undefined } },
-	setup(props, { attrs, slots }) {
-		const href =
-			typeof props.to === 'string' ? props.to : ((props.to as { path?: string })?.path ?? '#');
-		return () => h('a', { ...attrs, href }, slots.default?.());
-	},
-});
-
-const IconStub = defineComponent({
-	name: 'Icon',
-	props: { name: { type: String, default: '' } },
-	// Matches the real @nuxt/icon output: a decorative glyph with no accessible
-	// name, so an icon-only control still fails `button-name` here.
-	setup: () => () => h('span', { 'aria-hidden': 'true' }),
-});
-
 /**
  * Component names Vue could not resolve during the audit currently running.
  * Feature components land here on purpose (they are left unresolved so a page
@@ -131,7 +118,6 @@ const IconStub = defineComponent({
  * real UI layer silently dropped out of the audit, which `auditA11y` fails on.
  */
 const unresolvedComponents = new Set<string>();
-const UNRESOLVED_COMPONENT = /Failed to resolve component: (\S+)/;
 
 const a11yGlobal = {
 	components: { ...uiComponents, NuxtLink: NuxtLinkStub, Icon: IconStub },
@@ -148,36 +134,11 @@ const a11yGlobal = {
 		// unresolved; the resulting warning storm would bury a real one. Swallowed
 		// is not the same as ignored, though — every name is recorded so a rename
 		// in the UI layer cannot quietly shrink what the audit covers.
-		warnHandler: (message: string): void => {
-			const unresolved = UNRESOLVED_COMPONENT.exec(message);
-			if (unresolved?.[1]) unresolvedComponents.add(unresolved[1]);
-			else console.warn(message);
-		},
+		warnHandler: tolerateUnresolvedComponents((name) => unresolvedComponents.add(name)),
 	},
 };
 
-/** A ref-shaped query result: what every Convex-backed composable hands a template. */
-export function queryResult<T>(data: T) {
-	return {
-		data: ref(data),
-		isLoading: ref(false),
-		isRefetching: ref(false),
-		error: ref(null),
-		refetch: vi.fn(),
-	};
-}
-
-/** A `usePaginatedQuery` result with a single, already-exhausted page. */
-export function paginatedResult<T>(results: T[]) {
-	return {
-		results: ref(results),
-		status: ref('Exhausted'),
-		isLoading: ref(false),
-		error: ref(null),
-		loadMore: vi.fn(),
-		reset: vi.fn(),
-	};
-}
+export { queryResult, paginatedResult };
 
 /**
  * The Nuxt/app auto-imports a mounted page reaches for. Absent a stub these are
@@ -270,6 +231,9 @@ function defaultStubs(): Record<string, unknown> {
 		// App-wide composables. Pure ones (no backend, no browser API) are wired
 		// to their REAL implementation so the audit sees the real markup path.
 		useAuthForm,
+		// The app's live region: real, so a surface that announces something is
+		// audited with the announcement in the DOM rather than with a spy.
+		useAnnounce,
 		// Real media-query composables too: happy-dom implements matchMedia, and
 		// its default viewport is desktop-sized, so audits see the table branch.
 		useMediaQuery,
@@ -348,9 +312,27 @@ function defaultStubs(): Record<string, unknown> {
 			closeHelpModal: vi.fn(),
 			getRegisteredShortcuts: () => [],
 		}),
+		// The bridge from the settings row to the shortcut registry. Stubbed
+		// rather than real: it opens a Convex query, and the registry it feeds is
+		// module state that already reads as the shipped map.
+		useShortcutPreferences: vi.fn(),
+		// The shared create verbs, and the palette providers a surface registers
+		// while it is mounted. Stubbed rather than real: an audit that opened a
+		// composer or wrote into the shared provider registry would leak that into
+		// the next mount, and neither is what the scan is looking at.
+		useQuickCreate: () => ({ openCompose: vi.fn(), openNewContact: vi.fn() }),
+		useCampaignCommandSurface: vi.fn(),
+		usePostboxThreadCommandSurface: vi.fn(),
 		useClickOutside: vi.fn(),
 		useColorMode: () => reactive({ preference: 'dark', value: 'dark' }),
-		useAppTheme: () => ({ theme: ref('dark'), setTheme: vi.fn() }),
+		useAppTheme: () => ({
+			themePreference: ref('dark'),
+			resolvedTheme: ref('dark'),
+			isDark: ref(true),
+			isLight: ref(false),
+			isHydrated: ref(true),
+			setTheme: vi.fn(),
+		}),
 	};
 }
 
@@ -369,6 +351,36 @@ function convexClientStub() {
  * refs handed out are fresh each time, so a page that writes to one cannot
  * leak that state into the next audit.
  */
+/** Chrome a page suite never asserts on: inert icons, spinners, empty states, a passthrough card. */
+const DASHBOARD_PAGE_STUBS: Record<string, unknown> = {
+	UiIconBox: true,
+	Icon: true,
+	UiSpinner: true,
+	UiEmptyState: true,
+	UiCard: { template: '<div><slot name="header" /><slot /></div>' },
+};
+
+/**
+ * Mount a dashboard page against the real English catalog with the inert
+ * chrome above, overridable per suite. A name a suite registers as a real
+ * `component` is left out of the default stubs, since a stub would shadow it.
+ */
+export function mountDashboardPage(
+	component: Component,
+	global: { stubs?: Record<string, unknown>; components?: Record<string, Component> } = {}
+): VueWrapper {
+	const stubs = Object.fromEntries(
+		Object.entries(DASHBOARD_PAGE_STUBS).filter(([name]) => !(name in (global.components ?? {})))
+	);
+	return mount(component, {
+		global: {
+			plugins: [createTestI18n()],
+			stubs: { ...stubs, ...global.stubs },
+			components: { ...global.components },
+		},
+	}) as VueWrapper;
+}
+
 export function installNuxtStubs(overrides: Record<string, unknown> = {}): void {
 	for (const [name, value] of Object.entries({ ...defaultStubs(), ...overrides })) {
 		vi.stubGlobal(name, value);
@@ -396,10 +408,14 @@ export function dashboardShellStubs(): Record<string, unknown> {
 		useSidebarState: () => ({
 			isCollapsed: ref(false),
 			isHidden: ref(false),
+			effectiveCollapsed: ref(false),
 			effectiveHidden: ref(false),
 			sidebarMode: ref('expanded'),
 			isPeeking: ref(false),
 			sectionStates: ref({}),
+			focusArea: ref(null),
+			isFocusPinned: ref(false),
+			setRoutePath: vi.fn(),
 			toggleCollapsed: vi.fn(),
 			setCollapsed: vi.fn(),
 			toggleHidden: vi.fn(),
@@ -445,6 +461,9 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			switchContext: vi.fn(),
 		}),
 		useDashboardNavigation: () => ({ navigationSections: ref(sections) }),
+		// Real: the trail is built from the route registries and the stubbed
+		// route, and the shell announces its last crumb on every navigation.
+		useBreadcrumbs,
 		useSendReadyNotice: () => ({ isSendPathReady: ref(true) }),
 	};
 }

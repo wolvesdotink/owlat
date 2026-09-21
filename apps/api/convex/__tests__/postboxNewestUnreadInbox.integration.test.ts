@@ -1,5 +1,5 @@
 /**
- * Coverage for mail.mailbox.newestUnreadInbox — the bounded unread window behind
+ * Coverage for mail.mailbox.queries.newestUnreadInbox — the bounded unread window behind
  * the desktop unread badge and category-aware toast decisions. The
  * smart-inbox `category` object lives on the THREAD (mailThreads.category), not
  * on the message, so this asserts the query sources the label from the thread —
@@ -101,7 +101,7 @@ async function seedInboxMessage(
 	});
 }
 
-describe('mail.mailbox.newestUnreadInbox', () => {
+describe('mail.mailbox.queries.newestUnreadInbox', () => {
 	it("populates each peek message's category from its thread", async () => {
 		const t = convexTest(schema, modules);
 		let mailboxId!: Id<'mailboxes'>;
@@ -146,7 +146,7 @@ describe('mail.mailbox.newestUnreadInbox', () => {
 			subject: 'Uncategorized',
 		});
 
-		const peek = await t.query(api.mail.mailbox.newestUnreadInbox, {});
+		const peek = await t.query(api.mail.mailbox.queries.newestUnreadInbox, {});
 		expect(peek.total).toBe(2);
 		const bySubject = Object.fromEntries(peek.messages.map((m) => [m.subject, m.category]));
 		// Category is sourced from the thread, not the (category-less) message.

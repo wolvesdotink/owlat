@@ -47,7 +47,7 @@ import {
 	type TierResult,
 } from '@owlat/ostr-client';
 import type { MtaConfig } from '../config.js';
-import { normalizeIp } from './inboundSecurity.js';
+import { normalizeSlotIp as normalizeIp } from '../lib/connectionSlots.js';
 import { logger } from '../monitoring/logger.js';
 
 /** The config slice the lookups read — nothing else of `MtaConfig` is consulted. */

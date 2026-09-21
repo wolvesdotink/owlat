@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
+import { UnsavedChangesDialog } from '@owlat/email-builder';
+
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.instance.aiProvider.pageTitle') });
 
 definePageMeta({
-	layout: 'dashboard',
+	layout: 'admin',
 	// Reachable on-ramp: this is how an admin turns AI on, so it is NOT gated by
 	// the `ai` flag (chicken-and-egg). The admin gate is enforced server-side —
 	// `saveConfig` requires `organization:manage` and audit-logs the change.
@@ -46,6 +49,28 @@ const {
 	handleSave,
 	handleTest,
 	handleLoadModels,
+	// The DECISION plane — the opt-in third card. Every one of these is inert
+	// until an operator switches it on, and `decisionSaveArgs` sends nothing at
+	// all until then, so an install that never opted in saves what it always did.
+	decisionOptions,
+	decisionForm,
+	decisionEnabled,
+	decisionConsent,
+	decisionError,
+	decisionTestState,
+	decisionMeta,
+	decisionRequiresKey,
+	decisionModelOptions,
+	decisionEndpoint,
+	decisionKeyPreview,
+	storedDecisionKeySet,
+	decisionKeyHint,
+	decisionConsentOwed,
+	decisionDegradedReasons,
+	decisionThresholdsInert,
+	decisionFallbackSurfaces,
+	decisionThresholds,
+	handleDecisionTest,
 } = useAiProviderForm();
 
 // The registry hands option labels over as message keys (aiProviders.ts:
@@ -57,18 +82,62 @@ const providerOptions = computed(() =>
 const embeddingOptions = computed(() =>
 	embeddingOptionKeys.map((option) => ({ ...option, label: t(option.label) }))
 );
+
+// `validateDecisionConfig` answers in message keys, like its language sibling.
+const decisionErrorText = computed(() => (decisionError.value ? t(decisionError.value) : null));
+
+// What the decision plane actually did over the last day, read off the same
+// ledger rows the spend ceiling reads: how often the expensive fallback hop
+// fired, how often an answer came back uncalibrated (so every threshold
+// downstream went inert) and how often the provider pushed back. A plane that
+// has answered nothing reports zeroes and the card stays quiet about it.
+const { data: decisionCounters } = useOrganizationQuery(
+	api.analytics.llmUsage.getDecisionPlaneCounters,
+	() => ({ hoursBack: DECISION_HEALTH_HOURS })
+);
+const decisionHealth = computed(() =>
+	decisionCounters.value && decisionCounters.value.attempts > 0
+		? {
+				attempts: decisionCounters.value.attempts,
+				fallbackRate: decisionCounters.value.fallbackRate,
+				uncalibratedRate: decisionCounters.value.uncalibratedRate,
+				throttledRate: decisionCounters.value.throttledRate,
+			}
+		: null
+);
+// Both test buttons read the STORED row, so both wait for a clean, saved form.
+const canTest = computed(() => !isDirty.value && config.value?.configured === true);
+const decisionFeature = useFeatureFlag();
+const decisionFeatureState = computed(() => {
+	if (decisionFeature.error.value) return 'error';
+	if (decisionFeature.isLoading.value) return 'loading';
+	return decisionFeature.isEnabled('ai.decisionPlane') ? 'enabled' : 'disabled';
+});
+
+// Unsaved-changes guard: navigating away with an unsaved provider edit — a
+// pasted API key above all — prompts to save/discard instead of dropping it.
+// Same shared composable + dialog the General settings page uses.
+const {
+	showDialog: showUnsavedDialog,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		await handleSave();
+		// `useAiProviderForm.handleSave` clears `isDirty` only once the write
+		// lands; a validation stop or a refused mutation leaves it set, so a
+		// still-dirty form means the save failed and the operator stays here.
+		if (isDirty.value) throw new Error('Save failed');
+	},
+});
+
+watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
-		<NuxtLink
-			to="/dashboard/admin"
-			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
-		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
-			{{ t('dashboard.admin.instance.aiProvider.backToSettings') }}
-		</NuxtLink>
-
 		<div class="flex items-center gap-4 mb-8">
 			<UiIconBox icon="lucide:sparkles" size="xl" variant="brand" rounded="full" />
 			<div>
@@ -82,14 +151,25 @@ const embeddingOptions = computed(() =>
 		</div>
 
 		<UiQueryBoundary :loading="isLoading && !config" :error="error">
+			<!--
+				First load: a content-shaped placeholder at the geometry of the
+				provider cards below, rather than a centred spinner that blanks
+				the page and then reflows.
+			-->
 			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">
-							{{ t('dashboard.admin.instance.aiProvider.loading') }}
-						</p>
-					</div>
+				<div
+					class="space-y-6 max-w-3xl"
+					role="status"
+					aria-busy="true"
+					:aria-label="t('dashboard.admin.instance.aiProvider.loading')"
+				>
+					<UiCard v-for="card in 3" :key="card">
+						<div class="space-y-4">
+							<UiSkeleton class="h-5 w-48" />
+							<UiSkeletonText :lines="2" size="sm" last-line-width="w-1/2" />
+							<UiSkeleton v-for="field in 3" :key="field" class="h-10 rounded-lg" />
+						</div>
+					</UiCard>
 				</div>
 			</template>
 
@@ -288,6 +368,39 @@ const embeddingOptions = computed(() =>
 					</div>
 				</UiCard>
 
+				<SettingsAiDecisionCard
+					v-model:enabled="decisionEnabled"
+					v-model:kind="decisionForm.kind"
+					v-model:model-choice="decisionForm.modelChoice"
+					v-model:model-custom="decisionForm.modelCustom"
+					v-model:base-url="decisionForm.baseUrl"
+					v-model:api-key="decisionForm.apiKey"
+					v-model:fallback-enabled="decisionForm.isFallbackEnabled"
+					v-model:consent="decisionConsent"
+					:options="decisionOptions"
+					:meta="decisionMeta"
+					:requires-key="decisionRequiresKey"
+					:model-options="decisionModelOptions"
+					:endpoint-host="decisionEndpoint"
+					:stored-key-set="storedDecisionKeySet"
+					:key-preview="decisionKeyPreview"
+					:error="decisionErrorText"
+					:key-hint="decisionKeyHint"
+					:consent-owed="decisionConsentOwed"
+					:degraded-reasons="decisionDegradedReasons"
+					:thresholds-inert="decisionThresholdsInert"
+					:fallback-surfaces="decisionFallbackSurfaces"
+					:thresholds="decisionThresholds"
+					:test-state="decisionTestState"
+					:health="decisionHealth"
+					:health-hours="DECISION_HEALTH_HOURS"
+					:is-testing="isTesting"
+					:is-saving="isSaving"
+					:can-test="canTest"
+					:feature-state="decisionFeatureState"
+					@test="handleDecisionTest"
+				/>
+
 				<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 					<div class="flex items-center gap-3">
 						<UiButton
@@ -335,5 +448,13 @@ const embeddingOptions = computed(() =>
 				</div>
 			</form>
 		</UiQueryBoundary>
+
+		<!-- Unsaved Changes Dialog -->
+		<UnsavedChangesDialog
+			:show="showUnsavedDialog"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
+		/>
 	</div>
 </template>

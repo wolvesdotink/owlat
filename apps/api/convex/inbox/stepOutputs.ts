@@ -23,6 +23,7 @@ import {
 	groundingSourceValidator,
 } from '../lib/convexValidators';
 import { attachmentSuggestionsValidator } from './attachmentValidators';
+import { contextTierValidator } from '../lib/literalValidators';
 
 /**
  * Record the context-tier metadata onto an inboundMessage without
@@ -38,7 +39,7 @@ import { attachmentSuggestionsValidator } from './attachmentValidators';
 export const recordContextTier = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
-		contextTier: v.union(v.literal('normal'), v.literal('compacted'), v.literal('emergency')),
+		contextTier: contextTierValidator,
 		contextCoverage: v.optional(contextCoverageValidator),
 		// The prior emails + knowledge entries actually assembled into the
 		// briefing — read-side provenance for the review UI. Optional so callers

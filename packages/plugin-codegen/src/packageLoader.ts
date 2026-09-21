@@ -7,6 +7,7 @@ import {
 	type ValidatedBundledPluginSource,
 } from '@owlat/plugin-host';
 import { parsePluginManifest, pluginContributionModules } from '@owlat/plugin-kit';
+import { isRecord } from '@owlat/shared';
 import { PluginCodegenError } from './errors';
 import {
 	resolveVerifiedPluginEntry,
@@ -92,10 +93,6 @@ function readDefaultExport(loadedModule: unknown): unknown {
 	if (!isRecord(loadedModule)) return undefined;
 	const descriptor = Object.getOwnPropertyDescriptor(loadedModule, 'default');
 	return descriptor && 'value' in descriptor ? descriptor.value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 async function importModule(resolvedEntry: string): Promise<unknown> {

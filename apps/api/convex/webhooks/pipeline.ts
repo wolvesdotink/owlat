@@ -7,7 +7,7 @@
  * Replaces the verify/parse/audit/dispatch ceremony that each provider's own
  * HTTP entry point used to open-code. The send-provider half of those entry
  * points is now one parameterized dispatcher over one registry
- * (`./providerFeedbackHttp.ts` + `./adapters/index.ts`, the seams plan's P2.1);
+ * (`./providerFeedbackHttp.ts` + `./adapters/index.ts`);
  * the channel half still registers a handler per vendor (`./channels.ts`).
  */
 
@@ -17,6 +17,19 @@ import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
 import { logError } from '../lib/runtimeLog';
 import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
 import type { InboundEvent } from './types';
+
+/**
+ * Hard ceiling on an inbound webhook body, enforced pre-auth. Provider event
+ * batches are small JSON documents; 5 MiB leaves generous headroom for the
+ * largest (a Mandrill `mandrill_events` array) while capping how much
+ * unauthenticated data any caller can push into memory.
+ */
+const MAX_WEBHOOK_BODY_BYTES = 5 * 1024 * 1024;
+
+/** UTF-8 byte length of a string (a multibyte char is more than one byte). */
+function byteLength(s: string): number {
+	return new TextEncoder().encode(s).length;
+}
 
 /**
  * EVENT SEMANTICS ONLY — what a provider's bytes MEAN, with no opinion about
@@ -75,8 +88,8 @@ export interface InboundParser<S extends string = string> {
 /**
  * A parser for a provider that delivers a BATCH of events per request.
  *
- * Mandrill posts a `mandrill_events` array of up to thousands of items (plan
- * D10) where Resend, SES and the MTA post one event each. Rather than widening
+ * Mandrill posts a `mandrill_events` array of up to thousands of items where
+ * Resend, SES and the MTA post one event each. Rather than widening
  * `parseEvent` — which would make every single-event adapter's return type
  * `InboundEvent | InboundEvent[] | null` and push the narrowing onto every
  * caller — a batch provider implements `parseEvents` and the pipeline
@@ -167,11 +180,27 @@ export async function runInboundPipeline(
 	);
 	if (!rateOk) return rateLimitedResponse(retryAfter);
 
+	// Bound the body BEFORE reading it — the body is unauthenticated at this point
+	// (signature verification happens next), so an attacker could otherwise stream
+	// an arbitrarily large payload into memory pre-auth. A `Content-Length` beyond
+	// the cap is rejected without reading a byte; the largest legitimate provider
+	// batch (Mandrill's `mandrill_events`) is comfortably under it.
+	const declaredLength = Number(request.headers.get('Content-Length'));
+	if (Number.isFinite(declaredLength) && declaredLength > MAX_WEBHOOK_BODY_BYTES) {
+		return jsonResponse(413, { error: 'Payload too large' });
+	}
+
 	let rawBody: string;
 	try {
 		rawBody = await request.text();
 	} catch {
 		return jsonResponse(400, { error: 'Failed to read request body' });
+	}
+
+	// Defense for a chunked request that omits Content-Length: enforce the same
+	// cap on the bytes actually read so the header can't be simply left off.
+	if (byteLength(rawBody) > MAX_WEBHOOK_BODY_BYTES) {
+		return jsonResponse(413, { error: 'Payload too large' });
 	}
 
 	const verification = await adapter.verifySignature(request, rawBody, ctx);

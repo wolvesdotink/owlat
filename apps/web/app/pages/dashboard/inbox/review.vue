@@ -27,7 +27,7 @@ const focusMode = ref(false);
 		<ReviewFocusFlow v-if="focusMode" @exit="focusMode = false" />
 		<ReviewBrowseList v-else @focus="focusMode = true" />
 		<!-- One shared countdown-undo toast for approvals ("Approved — Undo (14s)"),
-		     armed by whichever surface just approved (piece C1). -->
+		     armed by whichever surface just approved. -->
 		<ReviewApproveUndoToast />
 	</div>
 </template>

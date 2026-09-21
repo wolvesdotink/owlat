@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createTestI18n } from '~/__tests__/i18n';
-import { planOwnershipTransfer } from '../useOrganization';
+import { organizationTranslator, planOwnershipTransfer } from '../useOrganization';
 
 // `planOwnershipTransfer` is module scope, so it throws the message KEY and
 // `transferOwnership` resolves it; resolving it here keeps the assertions on
@@ -55,6 +55,28 @@ describe('planOwnershipTransfer', () => {
 	it('rejects a no-op transfer to the current owner', () => {
 		expect(refusalOf(() => planOwnershipTransfer([owner, admin], 'u-owner', 'm-owner'))).toMatch(
 			/already the owner/i
+		);
+	});
+});
+
+describe('organizationTranslator (middleware-context guard)', () => {
+	// Regression for the admin-route 500: `useOrganization` is called from the
+	// `admin`-gated route guard, which runs OUTSIDE a Vue component instance,
+	// where `useI18n()` throws. This suite deliberately does NOT install/stub the
+	// i18n plugin — so if the `getCurrentInstance()` guard regressed, invoking the
+	// translator would reference the undefined `useI18n` auto-import and throw,
+	// re-500-ing every admin page. The guard must degrade a key to itself instead.
+	it('does not call useI18n outside a component instance (no throw)', () => {
+		// The test body runs with no current component instance, exactly like a
+		// route middleware. getCurrentInstance() is the real Vue one here.
+		expect(getCurrentInstance()).toBeNull();
+		let t!: (key: string) => string;
+		expect(() => {
+			t = organizationTranslator();
+		}).not.toThrow();
+		// Falls back to the key itself rather than a resolved sentence.
+		expect(t('shared.useOrganization.errors.noActiveOrganization')).toBe(
+			'shared.useOrganization.errors.noActiveOrganization'
 		);
 	});
 });
