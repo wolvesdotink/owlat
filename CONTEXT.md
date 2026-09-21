@@ -5040,9 +5040,15 @@ the layer above per-**Condition** evaluation. Two layers:
 - **Lenient async conveniences** for the preview / count / cron paths,
   which bake in the live-**Contact** scan (`notSoftDeleted`) and treat a
   corrupt filter as a zero match: `countLiveMatches`, `matchLiveContacts`
-  (optional `limit`), and `countLiveMatchesForSegments` (one preloaded
-  lookup + one Contact scan shared across many Segments — the cron's
-  batch path).
+  (optional `limit`), and `countLiveMatchesForSegments` (one Contact walk
+  and one per-chunk lookup shared across many Segments — the cron's batch
+  path). Each covers ONE budgeted slice of the population
+  (`conditions/liveContactScan.ts`: a document budget plus a
+  `by_deleted_at` checkpoint) and returns `{ scanned, done, cursor }`
+  alongside its partial result, because Convex's per-execution read limit
+  applies however the rows are fetched — streaming them is not the same as
+  bounding them. Callers accumulate across self-rescheduled executions
+  (`segments/countRefresh.ts`).
 - `evaluateAgainstContact(ctx, conditions, logic, contact)` — the
   single-Contact case, used by the automation `condition` step.
 

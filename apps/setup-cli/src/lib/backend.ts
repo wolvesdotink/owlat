@@ -18,14 +18,17 @@ export interface BackendContext {
 	instanceSecret: string;
 }
 
-export async function loadBackendContext(owlatDir: string, baseUrlOverride?: string): Promise<BackendContext> {
+export async function loadBackendContext(
+	owlatDir: string,
+	baseUrlOverride?: string
+): Promise<BackendContext> {
 	const envPath = join(owlatDir, '.env');
 	const env = await readEnv(envPath);
 
 	const instanceSecret = env['INSTANCE_SECRET'];
 	if (!instanceSecret) {
 		throw new Error(
-			`No INSTANCE_SECRET in ${envPath}. Run \`owlat-setup setup\` (or \`bun run setup\`) first to bootstrap the env.`,
+			`No INSTANCE_SECRET in ${envPath}. Run \`owlat-setup setup\` (or \`bun run setup\`) first to bootstrap the env.`
 		);
 	}
 
@@ -51,7 +54,7 @@ export interface PostJsonOptions {
 
 export async function postJson<T = unknown>(
 	ctx: BackendContext,
-	opts: PostJsonOptions,
+	opts: PostJsonOptions
 ): Promise<{ status: number; body: T }> {
 	const url = new URL(opts.path, ctx.baseUrl);
 	for (const [k, v] of Object.entries(opts.searchParams ?? {})) {
@@ -79,4 +82,24 @@ export async function postJson<T = unknown>(
 		}
 	}
 	return { status: resp.status, body: parsed as T };
+}
+
+/**
+ * The human-readable message out of a backend refusal.
+ *
+ * The `/seed/*`, `/dev/*` and `/sample-data/*` endpoints answer failures in the
+ * locked envelope `{ error: { category, message } }` (ADR-0036). The string
+ * form (`{ error: "…" }`) is still accepted because the CLI is upgraded
+ * independently of the backend it talks to, and an operator running a new CLI
+ * against an older container should read the reason, not `[object Object]`.
+ */
+export function backendErrorMessage(body: unknown, fallback: string): string {
+	if (body === null || typeof body !== 'object') return fallback;
+	const error = (body as { error?: unknown }).error;
+	if (typeof error === 'string' && error.length > 0) return error;
+	if (error !== null && typeof error === 'object') {
+		const message = (error as { message?: unknown }).message;
+		if (typeof message === 'string' && message.length > 0) return message;
+	}
+	return fallback;
 }

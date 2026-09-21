@@ -247,7 +247,7 @@ describe('shell — method gate', () => {
 		expect(response.status).toBe(405);
 		const body = await response.json();
 		expect(body).toEqual({
-			error: { message: 'Method not allowed' },
+			error: { category: 'invalid_input', message: 'Method not allowed' },
 		});
 	});
 });

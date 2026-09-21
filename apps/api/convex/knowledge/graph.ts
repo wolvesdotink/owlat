@@ -14,6 +14,7 @@ import { publicQuery, authedMutation } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { getMutationContext, isActiveOrgMember } from '../lib/sessionOrganization';
 import { batchGet } from '../_utils/batchLoader';
+import { throwInvalidInput } from '../_utils/errors';
 import { sameContactScope } from '../lib/contactScope';
 import {
 	entryTypeValidator,
@@ -503,13 +504,13 @@ export const addRelation = authedMutation({
 		await getMutationContext(ctx);
 
 		if (args.fromEntryId === args.toEntryId) {
-			throw new Error('A knowledge entry cannot be related to itself.');
+			throwInvalidInput('A knowledge entry cannot be related to itself.');
 		}
 
 		const from = await ctx.db.get(args.fromEntryId);
 		const to = await ctx.db.get(args.toEntryId);
 		if (!from || !to) {
-			throw new Error('Both knowledge entries must exist to relate them.');
+			throwInvalidInput('Both knowledge entries must exist to relate them.');
 		}
 
 		// De-dupe an identical edge (same direction + type) so re-clicking "Add"
@@ -597,7 +598,7 @@ export const createPolicyEntry = authedMutation({
 		await getMutationContext(ctx);
 
 		if (args.title.trim().length === 0 || args.content.trim().length === 0) {
-			throw new Error('A curated answer needs both a question and an answer.');
+			throwInvalidInput('A curated answer needs both a question and an answer.');
 		}
 
 		const now = Date.now();

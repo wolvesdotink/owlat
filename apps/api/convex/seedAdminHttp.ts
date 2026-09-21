@@ -1,3 +1,4 @@
+import { readBodyText } from './lib/readBody';
 import { httpAction } from './_generated/server';
 import { components } from './_generated/api';
 import { internal } from './_generated/api';
@@ -6,6 +7,7 @@ import { betterAuthAdapterArgs } from './lib/betterAuthAdapterArgs';
 import { safeCompare } from './lib/safeCompare';
 import { getClientIp, rateLimitedResponse } from './publicRateLimit';
 import { logError } from './lib/runtimeLog';
+import { errorResponse, jsonResponse } from './lib/httpResponse';
 
 /**
  * HTTP action to seed the first admin user on a local instance.
@@ -49,10 +51,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	const expectedSecret = getOptional('INSTANCE_SECRET');
 
 	if (!expectedSecret || !secret || !safeCompare(secret, expectedSecret)) {
-		return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-			status: 401,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return errorResponse('unauthenticated', 'Unauthorized');
 	}
 
 	// Parse request body
@@ -64,7 +63,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		isMigrationMode?: boolean;
 	};
 	try {
-		body = (await request.json()) as {
+		body = JSON.parse(await readBodyText(request, 100_000)) as {
 			email: string;
 			name: string;
 			passwordHash: string;
@@ -72,20 +71,11 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 			isMigrationMode?: boolean;
 		};
 	} catch {
-		return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
-			status: 400,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return errorResponse('invalid_input', 'Invalid JSON body');
 	}
 
 	if (!body.email || !body.name || !body.passwordHash) {
-		return new Response(
-			JSON.stringify({ error: 'Missing required fields: email, name, passwordHash' }),
-			{
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			}
-		);
+		return errorResponse('invalid_input', 'Missing required fields: email, name, passwordHash');
 	}
 
 	// One-shot check: refuse if any user already exists…
@@ -96,13 +86,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	});
 
 	if (existingUser && existingUser.page && existingUser.page.length > 0) {
-		return new Response(
-			JSON.stringify({ error: 'Users already exist. Seed endpoint is one-shot only.' }),
-			{
-				status: 409,
-				headers: { 'Content-Type': 'application/json' },
-			}
-		);
+		return errorResponse('already_exists', 'Users already exist. Seed endpoint is one-shot only.');
 	}
 
 	// Fast path: refuse before any write if the durable latch is already stamped,
@@ -114,13 +98,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		{}
 	);
 	if (alreadySeeded) {
-		return new Response(
-			JSON.stringify({ error: 'Admin seed has already completed on this instance.' }),
-			{
-				status: 409,
-				headers: { 'Content-Type': 'application/json' },
-			}
-		);
+		return errorResponse('already_exists', 'Admin seed has already completed on this instance.');
 	}
 
 	// The org display name is needed both to seed `instanceSettings.defaultFromName`
@@ -147,13 +125,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		{}
 	);
 	if (!claimed) {
-		return new Response(
-			JSON.stringify({ error: 'Admin seed has already completed on this instance.' }),
-			{
-				status: 409,
-				headers: { 'Content-Type': 'application/json' },
-			}
-		);
+		return errorResponse('already_exists', 'Admin seed has already completed on this instance.');
 	}
 
 	try {
@@ -267,17 +239,11 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 			});
 		}
 
-		return new Response(JSON.stringify({ success: true, userId }), {
-			status: 201,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonResponse({ success: true, userId }, 201);
 	} catch (error) {
 		// Locked error envelope — log the real cause server-side, return a fixed
 		// message so an internal error never leaks its detail to the HTTP caller.
 		logError('[seedAdmin] seed failed:', error);
-		return new Response(JSON.stringify({ error: 'Internal error' }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return errorResponse('internal', 'Internal error');
 	}
 });

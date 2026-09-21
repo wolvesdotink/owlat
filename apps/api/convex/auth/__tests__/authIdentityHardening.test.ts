@@ -12,9 +12,8 @@ import { assertRegistrationAllowed } from '../registrationGate';
  *     RATE_LIMIT_TRUSTED_PROXY switch, instead of the spoofable leftmost XFF.
  *   - L10: `trustedOrigins` drops the silent loopback fallback in production and
  *     requires SITE_URL.
- *   - H3: email verification (signup + invitation) is enabled together and only
- *     when REQUIRE_EMAIL_VERIFICATION opts in, so existing installs aren't locked
- *     out.
+ *   - H3: invitation acceptance always requires email verification, independently
+ *     of the optional legacy sign-in verification policy.
  *
  * ctx is never touched (option shape only), matching authOptionsSecret.test.ts.
  */
@@ -153,11 +152,22 @@ describe('server-side registration gate (H3)', () => {
 		expiresAt: Date.now() - 60_000,
 	});
 
-	it('allows the very first account when no user exists yet (signup bootstrap)', async () => {
+	it('allows first-account signup only in explicit development mode', async () => {
+		vi.stubEnv('OWLAT_DEV_MODE', 'true');
 		await expect(
 			assertRegistrationAllowed(ctxWith([], []), 'owner@example.com')
 		).resolves.toBeUndefined();
 	});
+
+	it.each(['', 'false'])(
+		'rejects production first-account signup with dev mode %j',
+		async (mode) => {
+			vi.stubEnv('OWLAT_DEV_MODE', mode);
+			await expect(
+				assertRegistrationAllowed(ctxWith([], []), 'owner@owlat.example')
+			).rejects.toThrow(/complete instance setup/);
+		}
+	);
 
 	it('rejects a missing/blank email (fails closed)', async () => {
 		await expect(assertRegistrationAllowed(ctxWith([{}], []), '')).rejects.toThrow(/email/i);
@@ -190,12 +200,17 @@ describe('server-side registration gate (H3)', () => {
 });
 
 describe('email verification enablement (H3)', () => {
-	it('is off by default (unset) so existing installs are not locked out', () => {
-		vi.stubEnv('REQUIRE_EMAIL_VERIFICATION', '');
-		const options = createAuthOptions(ctx);
-		expect(options.emailAndPassword?.requireEmailVerification).toBe(false);
-		expect(options.emailVerification?.sendOnSignUp).toBe(false);
-	});
+	it.each(['', 'false'])(
+		'preserves legacy sign-in with setting %j while securing invitations',
+		(setting) => {
+			vi.stubEnv('REQUIRE_EMAIL_VERIFICATION', setting);
+			const options = createAuthOptions(ctx);
+			expect(options.emailAndPassword?.requireEmailVerification).toBe(false);
+			expect(options.emailVerification?.sendOnSignUp).toBe(true);
+			const org = options.plugins.find((plugin) => plugin.id === 'organization');
+			expect(org).toMatchObject({ options: { requireEmailVerificationOnInvitation: true } });
+		}
+	);
 
 	it('enables signup verification when REQUIRE_EMAIL_VERIFICATION opts in', () => {
 		vi.stubEnv('REQUIRE_EMAIL_VERIFICATION', 'true');

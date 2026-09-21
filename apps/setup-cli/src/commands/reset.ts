@@ -8,13 +8,12 @@
 
 import { intro, outro, confirm, isCancel, log, spinner } from '@clack/prompts';
 import pc from 'picocolors';
-import { loadBackendContext, postJson } from '../lib/backend';
+import { backendErrorMessage, loadBackendContext, postJson } from '../lib/backend';
 
 import type { CliOptions as RunOptions } from '../lib/cliOptions';
 
 interface ResetResponse {
 	deleted?: Record<string, number>;
-	error?: string;
 }
 
 export async function runReset(opts: RunOptions): Promise<number> {
@@ -44,7 +43,7 @@ export async function runReset(opts: RunOptions): Promise<number> {
 	}
 
 	if (response.status !== 200) {
-		s.stop(pc.red(`Failed: ${response.body?.error ?? `HTTP ${response.status}`}`));
+		s.stop(pc.red(`Failed: ${backendErrorMessage(response.body, `HTTP ${response.status}`)}`));
 		return 1;
 	}
 

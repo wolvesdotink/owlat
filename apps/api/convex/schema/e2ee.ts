@@ -82,7 +82,6 @@ export const e2eeTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_address', ['address'])
-		.index('by_fingerprint', ['fingerprint'])
 		.index('by_kind', ['kind'])
 		// Direct-method WKD lookup: match a stored address key by its domain +
 		// local-part hash in one indexed read.

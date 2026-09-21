@@ -96,6 +96,10 @@ export default defineEventHandler(async (event) => {
 			method: event.method,
 			headers,
 			body,
+			// Auth callback URLs are browser destinations, not server fetch targets.
+			// Preserve the redirect and its session cookies for the browser rather
+			// than forwarding request headers to a second origin on the server.
+			redirect: 'manual',
 		});
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);

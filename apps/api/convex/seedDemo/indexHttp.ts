@@ -25,6 +25,7 @@ import { getOptional } from '../lib/env';
 import { safeCompare } from '../lib/safeCompare';
 import { logError } from '../lib/runtimeLog';
 import { devDeploymentResponseOrNull } from '../devShortcuts/_guard';
+import { errorResponse, jsonResponse } from '../lib/httpResponse';
 
 export const seedDemoHttp = httpAction(async (ctx, request) => {
 	const devResp = devDeploymentResponseOrNull();
@@ -33,7 +34,7 @@ export const seedDemoHttp = httpAction(async (ctx, request) => {
 	const secret = request.headers.get('X-Instance-Secret');
 	const expected = getOptional('INSTANCE_SECRET');
 	if (!expected || !secret || !safeCompare(secret, expected)) {
-		return jsonResponse({ error: 'Unauthorized' }, 401);
+		return errorResponse('unauthenticated', 'Unauthorized');
 	}
 
 	const url = new URL(request.url);
@@ -50,17 +51,10 @@ export const seedDemoHttp = httpAction(async (ctx, request) => {
 		);
 		summary.inserted['mailboxMessages'] = messages.inserted;
 		summary.skipped['mailboxMessages'] = messages.skipped;
-		return jsonResponse(summary, 200);
+		return jsonResponse(summary);
 	} catch (error) {
 		// Locked error envelope — log the real cause server-side, return a fixed message.
 		logError('[seedDemo] demo seed failed:', error);
-		return jsonResponse({ error: 'Internal error' }, 500);
+		return errorResponse('internal', 'Internal error');
 	}
 });
-
-function jsonResponse(body: unknown, status: number): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { 'Content-Type': 'application/json' },
-	});
-}

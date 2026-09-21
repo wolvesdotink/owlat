@@ -13,15 +13,15 @@ export {
 	SANDBOX_GID,
 	runUntrusted,
 	runGit,
-	killProcessGroup,
+	reapSandboxProcesses,
 	type DetachedRunResult,
 } from './sandbox.js';
 
 const WORKSPACE_ROOT = process.env['WORKSPACE_ROOT'] ?? '/workspace';
 const GIT_REPO_URL = process.env['GIT_REPO_URL'] ?? '';
-// Tokenless clone URL + out-of-band auth args. The credential in GIT_REPO_URL is
+// Tokenless clone URL + authentication environment. The credential in GIT_REPO_URL is
 // NEVER written into the workspace .git/config (see parseRepoUrl).
-const { cleanUrl: GIT_CLEAN_URL, authArgs: GIT_AUTH_ARGS } = parseRepoUrl(GIT_REPO_URL);
+const { cleanUrl: GIT_CLEAN_URL, authEnv: GIT_AUTH_ENV } = parseRepoUrl(GIT_REPO_URL);
 const GIT_BASE_BRANCH = process.env['GIT_BASE_BRANCH'] ?? 'main';
 const GITHUB_OWNER = process.env['GITHUB_OWNER'] ?? '';
 const GITHUB_REPO = process.env['GITHUB_REPO'] ?? '';
@@ -36,20 +36,11 @@ const GITHUB_REPO = process.env['GITHUB_REPO'] ?? '';
  * `"; rm -rf / #` is passed as a single literal argv element and is never
  * interpreted by a shell. They are exported so the invariant can be unit-tested.
  */
-/**
- * Split a clone URL that embeds credentials (e.g.
- * `https://x-access-token:ghp_xxx@github.com/o/r.git`) into a tokenless URL plus
- * the git `-c http.extraheader=...` argv that carries the credential out-of-band.
- *
- * SECURITY: the credential must never be persisted into `<workDir>/.git/config`,
- * because the untrusted OpenCode agent (and `npx vitest`) run with that workspace
- * as cwd/HOME and could read it straight off disk — defeating the env-stripping
- * isolation in buildAgentEnv. Cloning the tokenless URL keeps `.git/config`
- * secret-free; the per-invocation `http.extraheader` authenticates clone/pull/push
- * without writing the token anywhere, and those commands only ever run while NO
- * untrusted child is executing (clone/pull before the agent, push after tests).
+/** Remove URL credentials and pass Git authentication only through its environment.
+ * Unlike /proc/<pid>/environ, root-owned /proc/<pid>/cmdline is readable by the
+ * sandbox uid. Never put an Authorization header in Git's argv or disk config.
  */
-export function parseRepoUrl(repoUrl: string): { cleanUrl: string; authArgs: string[] } {
+export function parseRepoUrl(repoUrl: string): { cleanUrl: string; authEnv: NodeJS.ProcessEnv } {
 	try {
 		const u = new URL(repoUrl);
 		if (u.username || u.password) {
@@ -59,30 +50,26 @@ export function parseRepoUrl(repoUrl: string): { cleanUrl: string; authArgs: str
 			u.password = '';
 			return {
 				cleanUrl: u.toString(),
-				authArgs: ['-c', `http.extraheader=Authorization: Basic ${basic}`],
+				authEnv: {
+					GIT_CONFIG_COUNT: '1',
+					GIT_CONFIG_KEY_0: 'http.extraheader',
+					GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
+				},
 			};
 		}
 	} catch {
-		// Not a parseable URL (e.g. an scp-style git@host:path) — pass through.
+		// Fail closed: a malformed credential URL must never reach Git's argv.
+		if (repoUrl.includes('://')) throw new Error('Invalid Git repository URL');
 	}
-	return { cleanUrl: repoUrl, authArgs: [] };
+	return { cleanUrl: repoUrl, authEnv: {} };
 }
 
-export function buildCloneArgs(
-	repoUrl: string,
-	baseBranch: string,
-	workDir: string,
-	authArgs: string[] = []
-): string[] {
-	return [...authArgs, 'clone', '--depth', '1', '--branch', baseBranch, repoUrl, workDir];
+export function buildCloneArgs(repoUrl: string, baseBranch: string, workDir: string): string[] {
+	return ['clone', '--depth', '1', '--branch', baseBranch, repoUrl, workDir];
 }
 
-export function buildPullArgs(
-	workDir: string,
-	baseBranch: string,
-	authArgs: string[] = []
-): string[] {
-	return [...authArgs, '-C', workDir, 'pull', 'origin', baseBranch];
+export function buildPullArgs(workDir: string, baseBranch: string): string[] {
+	return ['-C', workDir, 'pull', 'origin', baseBranch];
 }
 
 /** Force `origin` to a (tokenless) URL — scrubs any credential a prior run may
@@ -107,12 +94,8 @@ export function buildCommitArgs(workDir: string, message: string): string[] {
 	return ['-C', workDir, 'commit', '-m', message];
 }
 
-export function buildPushArgs(
-	workDir: string,
-	branchName: string,
-	authArgs: string[] = []
-): string[] {
-	return [...authArgs, '-C', workDir, 'push', 'origin', branchName];
+export function buildPushArgs(workDir: string, branchName: string): string[] {
+	return ['-C', workDir, 'push', 'origin', branchName];
 }
 
 /**
@@ -240,14 +223,18 @@ function setupWorkspace(taskId: string): string {
 		log(`Cloning repo into ${workDir}`);
 		// Clone the tokenless URL; authenticate via the out-of-band header so no
 		// credential is persisted into workDir/.git/config for the untrusted agent.
-		runGit(buildCloneArgs(GIT_CLEAN_URL, GIT_BASE_BRANCH, workDir, GIT_AUTH_ARGS), {
+		runGit(buildCloneArgs(GIT_CLEAN_URL, GIT_BASE_BRANCH, workDir), {
 			stdio: 'inherit',
+			env: { ...process.env, ...GIT_AUTH_ENV },
 		});
 	} else {
 		// Scrub any credential a prior (older) run may have left in origin, then pull.
 		runGit(buildSetOriginUrlArgs(workDir, GIT_CLEAN_URL), { stdio: 'inherit' });
 		log(`Pulling latest into ${workDir}`);
-		runGit(buildPullArgs(workDir, GIT_BASE_BRANCH, GIT_AUTH_ARGS), { stdio: 'inherit' });
+		runGit(buildPullArgs(workDir, GIT_BASE_BRANCH), {
+			stdio: 'inherit',
+			env: { ...process.env, ...GIT_AUTH_ENV },
+		});
 	}
 
 	const branchName = buildBranchName(taskId);
@@ -267,7 +254,8 @@ function setupWorkspace(taskId: string): string {
 export async function runCodingAgent(
 	workDir: string,
 	description: string,
-	spawnFn: typeof spawn = spawn
+	spawnFn: typeof spawn = spawn,
+	reap?: () => void | Promise<void>
 ): Promise<{ success: boolean; output: string }> {
 	const opencodeBin = process.env['OPENCODE_BIN'] ?? 'opencode';
 
@@ -275,7 +263,7 @@ export async function runCodingAgent(
 		// UNTRUSTED: argv array + shell:false means the attacker-controlled
 		// description can never break out into a shell command; runUntrusted also
 		// drops the child to the sandbox uid so it cannot reach the orchestrator's
-		// secrets. Detached so a timeout reaps the whole tree.
+		// secrets. Cleanup reaps every process using the sandbox uid.
 		const result = await runUntrusted(
 			opencodeBin,
 			buildOpencodeArgs(description),
@@ -283,13 +271,14 @@ export async function runCodingAgent(
 				cwd: workDir,
 				timeoutMs: 600_000, // 10 minute timeout
 				env: buildAgentEnv(workDir),
+				reap,
 			},
 			spawnFn
 		);
 		if (result.timedOut) {
 			return {
 				success: false,
-				output: `OpenCode timed out after 10m; process group killed.\n${(result.stdout + result.stderr).slice(-2000)}`,
+				output: `OpenCode timed out after 10m; sandbox processes killed.\n${(result.stdout + result.stderr).slice(-2000)}`,
 			};
 		}
 		if (result.code !== 0) {
@@ -313,13 +302,13 @@ export async function runCodingAgent(
  */
 export async function runTests(
 	workDir: string,
-	spawnFn: typeof spawn = spawn
+	spawnFn: typeof spawn = spawn,
+	reap?: () => void | Promise<void>
 ): Promise<{ passed: boolean; output: string }> {
 	try {
 		// UNTRUSTED: vitest configs + test files run arbitrary Node at collection
 		// time, so this goes through runUntrusted (sandbox uid, shell:false, argv
-		// array). Detached so a timeout kills vitest's whole worker pool, not just
-		// the direct child.
+		// array). Cleanup includes detached workers and runs after every exit.
 		const result = await runUntrusted(
 			'npx',
 			buildVitestArgs(),
@@ -327,13 +316,14 @@ export async function runTests(
 				cwd: workDir,
 				timeoutMs: 300_000, // 5 minute timeout
 				env: buildTestEnv(workDir),
+				reap,
 			},
 			spawnFn
 		);
 		if (result.timedOut) {
 			return {
 				passed: false,
-				output: `Tests timed out after 5m; process group killed.\n${(result.stdout + result.stderr).slice(-2000)}`,
+				output: `Tests timed out after 5m; sandbox processes killed.\n${(result.stdout + result.stderr).slice(-2000)}`,
 			};
 		}
 		// vitest exits non-zero iff any test failed, so `passed` is derived purely
@@ -436,11 +426,14 @@ export async function processTask(task: CodeWorkTask): Promise<void> {
 		await client.mutation(fn.markTesting, { taskId });
 		const testResult = await runTests(workDir);
 
-		// 7. Push and create PR. Auth is supplied out-of-band (GIT_AUTH_ARGS); the
+		// 7. Push and create PR. Auth is supplied through Git's environment; the
 		// untrusted agent + tests have already finished, and the token was never
 		// written to workDir/.git/config.
 		log(`Pushing branch ${branchName}`);
-		runGit(buildPushArgs(workDir, branchName, GIT_AUTH_ARGS), { stdio: 'inherit' });
+		runGit(buildPushArgs(workDir, branchName), {
+			stdio: 'inherit',
+			env: { ...process.env, ...GIT_AUTH_ENV },
+		});
 
 		let prUrl = '';
 		if (GITHUB_OWNER && GITHUB_REPO) {

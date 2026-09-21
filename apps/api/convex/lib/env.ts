@@ -30,12 +30,9 @@ export type EnvKey =
 	// (`/seed/demo`, `/dev/reset`, `forceVerifyDomain`). Fail-closed default:
 	// leaving it unset on a production deployment refuses those endpoints.
 	| 'OWLAT_DEV_MODE'
-	// When set to 'true' / '1' / 'yes' / 'on', requires a verified email before a
-	// signup or invitation can sign in (BetterAuth `requireEmailVerification` +
-	// `sendOnSignUp` and the org plugin's `requireEmailVerificationOnInvitation`).
-	// Fail-OPEN default: unset leaves the existing behavior so installs whose
-	// current users are unverified are not locked out. Deployments SHOULD enable
-	// it — see auth/auth.ts.
+	// When truthy, requires verified email for sign-in. Unset preserves legacy
+	// members' ability to sign in. New signups always receive a verification email
+	// and invitation acceptance always requires verified inbox ownership.
 	| 'REQUIRE_EMAIL_VERIFICATION'
 	// Site URLs
 	| 'SITE_URL'

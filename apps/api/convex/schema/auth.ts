@@ -112,7 +112,6 @@ export const authTables = {
 	})
 		.index('by_user_profile', ['userProfileId'])
 		.index('by_status', ['status'])
-		.index('by_scheduled_for_deletion', ['scheduledForDeletion'])
 		.index('by_cancellation_token', ['cancellationToken']),
 
 	// Short-lived, per-user GDPR export sessions. A single active session is
@@ -146,7 +145,6 @@ export const authTables = {
 		createdAt: v.number(),
 	})
 		.index('by_session', ['sessionId'])
-		.index('by_artifact', ['artifactId'])
 		.index('by_token', ['leaseToken']),
 
 	// Onboarding dismissal — INSTANCE-SCOPED (single org per deployment).
@@ -291,8 +289,7 @@ export const authTables = {
 			'organizationId',
 			'pluginId',
 			'createdAt',
-		])
-		.index('by_user_and_created_at', ['userId', 'createdAt']),
+		]),
 
 	// Resend throttle for organization invitations. One row per BetterAuth
 	// invitationId records when its invite email was last (re)sent. The
