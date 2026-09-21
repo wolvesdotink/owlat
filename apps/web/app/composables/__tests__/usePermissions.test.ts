@@ -89,6 +89,67 @@ describe('usePermissions', () => {
 		});
 	});
 
+	describe('can() — the shared permission map', () => {
+		it('gives an editor the campaign pipeline but none of the content domains', () => {
+			roleRef.value = 'editor';
+			const { can } = usePermissions();
+
+			expect(can('campaigns:send')).toBe(true);
+			expect(can('contacts:annotate')).toBe(true);
+			// The seven the composable used to omit entirely, which is how an editor
+			// was offered buttons the backend then refused.
+			expect(can('templates:manage')).toBe(false);
+			expect(can('automations:manage')).toBe(false);
+			expect(can('topics:manage')).toBe(false);
+			expect(can('segments:manage')).toBe(false);
+			expect(can('media:manage')).toBe(false);
+			expect(can('imports:manage')).toBe(false);
+			expect(can('shareLinks:manage')).toBe(false);
+		});
+
+		it('gives an admin the content domains but not organization deletion', () => {
+			roleRef.value = 'admin';
+			const { can } = usePermissions();
+
+			expect(can('segments:manage')).toBe(true);
+			expect(can('shareLinks:manage')).toBe(true);
+			expect(can('organization:delete')).toBe(false);
+		});
+
+		it('grants nothing while the role is unresolved', () => {
+			roleRef.value = null;
+			const { can } = usePermissions();
+
+			expect(can('emails:test')).toBe(false);
+			expect(can('segments:manage')).toBe(false);
+		});
+
+		it('tracks the role reactively', () => {
+			roleRef.value = 'editor';
+			const { can } = usePermissions();
+
+			expect(can('topics:manage')).toBe(false);
+			roleRef.value = 'owner';
+			expect(can('topics:manage')).toBe(true);
+		});
+	});
+
+	describe('showGateFor()', () => {
+		it('stays quiet until the role resolves, then gates a role that lacks it', () => {
+			roleRef.value = null;
+			const { showGateFor } = usePermissions();
+
+			// No flash of the gated state on first paint.
+			expect(showGateFor('segments:manage')).toBe(false);
+
+			roleRef.value = 'editor';
+			expect(showGateFor('segments:manage')).toBe(true);
+
+			roleRef.value = 'admin';
+			expect(showGateFor('segments:manage')).toBe(false);
+		});
+	});
+
 	describe('reactive updates', () => {
 		it('updates permissions when role changes', () => {
 			roleRef.value = 'editor';

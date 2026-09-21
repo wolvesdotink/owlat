@@ -12,6 +12,12 @@ definePageMeta({
 });
 
 const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext();
+// Transactional emails are templates for authorization: create, duplicate and
+// remove all require `templates:manage` (owner/admin) —
+// `apps/api/convex/transactional/emails.ts`. The list stays browsable.
+const { can, showGateFor } = usePermissions();
+const canManage = computed(() => can('templates:manage'));
+const showManageGate = computed(() => showGateFor('templates:manage'));
 
 const {
 	selectedStatus,
@@ -81,12 +87,15 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 					{{ t('dashboard.send.transactional.index.subtitle') }}
 				</p>
 			</div>
-			<UiButton size="sm" @click="openCreateModal">
+			<UiButton v-if="canManage" size="sm" @click="openCreateModal">
 				<template #iconLeft>
 					<Icon name="lucide:plus" class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.send.transactional.index.newEmail') }}
 			</UiButton>
+			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
+				{{ t('dashboard.send.transactional.index.adminsOnly') }}
+			</p>
 		</div>
 
 		<!-- Filters and Search -->
@@ -242,7 +251,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 					:title="t('dashboard.send.transactional.index.empty.title')"
 					:description="t('dashboard.send.transactional.index.empty.description')"
 				>
-					<template #action>
+					<template v-if="canManage" #action>
 						<UiButton @click="openCreateModal">
 							<template #iconLeft>
 								<Icon name="lucide:plus" class="w-4 h-4" />
@@ -332,6 +341,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									<Icon name="lucide:pencil" class="w-4 h-4" />
 								</button>
 								<button
+									v-if="canManage"
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="handleDuplicate(email._id)"
 									:aria-label="t('common.copy')"
@@ -339,6 +349,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									<Icon name="lucide:copy" class="w-4 h-4" />
 								</button>
 								<button
+									v-if="canManage"
 									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-text-inverse transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 									@click.stop="openDeleteModal(email._id, email.name)"
 									:aria-label="t('common.delete')"
@@ -379,11 +390,16 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									<UiDropdownMenuItem icon="lucide:pencil" @click="handleEdit(email._id)">
 										{{ t('common.edit') }}
 									</UiDropdownMenuItem>
-									<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(email._id)">
+									<UiDropdownMenuItem
+										v-if="canManage"
+										icon="lucide:copy"
+										@click="handleDuplicate(email._id)"
+									>
 										{{ t('common.duplicate') }}
 									</UiDropdownMenuItem>
-									<UiDropdownDivider />
+									<UiDropdownDivider v-if="canManage" />
 									<UiDropdownMenuItem
+										v-if="canManage"
 										icon="lucide:trash-2"
 										danger
 										@click="openDeleteModal(email._id, email.name)"
@@ -539,11 +555,16 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 												>
 													{{ t('dashboard.send.transactional.index.viewSends') }}
 												</UiDropdownMenuItem>
-												<UiDropdownMenuItem icon="lucide:copy" @click="handleDuplicate(email._id)">
+												<UiDropdownMenuItem
+													v-if="canManage"
+													icon="lucide:copy"
+													@click="handleDuplicate(email._id)"
+												>
 													{{ t('common.duplicate') }}
 												</UiDropdownMenuItem>
-												<UiDropdownDivider />
+												<UiDropdownDivider v-if="canManage" />
 												<UiDropdownMenuItem
+													v-if="canManage"
 													icon="lucide:trash-2"
 													danger
 													@click="openDeleteModal(email._id, email.name)"
@@ -744,8 +765,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('curl') }}</pre
-								>
+									>{{ getCodeSnippet('curl') }}</pre>
 							</div>
 
 							<!-- JavaScript -->
@@ -771,8 +791,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('javascript') }}</pre
-								>
+									>{{ getCodeSnippet('javascript') }}</pre>
 							</div>
 
 							<!-- Python -->
@@ -798,8 +817,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								</div>
 								<pre
 									class="p-4 rounded-lg bg-bg-deep text-text-secondary text-sm font-mono overflow-x-auto whitespace-pre-wrap"
-									>{{ getCodeSnippet('python') }}</pre
-								>
+									>{{ getCodeSnippet('python') }}</pre>
 							</div>
 
 							<div class="mt-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
