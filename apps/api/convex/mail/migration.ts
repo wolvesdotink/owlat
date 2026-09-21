@@ -147,20 +147,53 @@ export async function startMigrationForAccount(
 		return { migrationId: existing._id, status: existing.status };
 	}
 
-	// Reset per-folder backfill cursors so the worker re-walks the full
-	// history (a prior run leaves them at 0). Forward-sync's `lastSeenUid`
-	// is untouched — new mail keeps flowing.
 	const syncRows = await ctx.db
 		.query('externalMailFolderSync')
 		.withIndex('by_account', (q) => q.eq('accountId', account._id))
 		.collect(); // bounded: per-account folder cursors (≤ a handful)
-	for (const r of syncRows) {
-		await ctx.db.patch(r._id, {
-			backfillCursor: undefined,
-			backfillTotal: undefined,
-			backfillDone: undefined,
-		});
+
+	// A FAILED run leaves real, resumable progress behind: the worker persists a
+	// descending cursor after every batch, so a walk that died 60% through a
+	// folder can pick up exactly where it stopped. Wiping that made the wizard's
+	// 'Try again' re-fetch the whole history — which, against a provider that
+	// failed the first run by rate-limiting the account, spends the same quota on
+	// the same already-imported mail and hits the same wall at the same point.
+	// An import that cannot get past its provider's daily budget in one sitting
+	// can never finish that way.
+	//
+	// Resume only when the cursors still hold unfinished work. A run that failed
+	// having walked everything (`completeBackfillImport` refuses a walk that
+	// stored nothing) leaves every cursor at 0, and resuming that would re-fail
+	// instantly without fetching a single message — so it re-walks, as before.
+	const previous = existing;
+	const hasUnfinishedWalk = syncRows.some((r) => (r.backfillCursor ?? 0) > 0);
+	const isResume = previous?.status === 'failed' && hasUnfinishedWalk;
+
+	if (!isResume) {
+		// Reset per-folder backfill cursors so the worker re-walks the full
+		// history (a completed run leaves them at 0). Forward-sync's `lastSeenUid`
+		// is untouched — new mail keeps flowing.
+		for (const r of syncRows) {
+			await ctx.db.patch(r._id, {
+				backfillCursor: undefined,
+				backfillTotal: undefined,
+				backfillDone: undefined,
+			});
+		}
 	}
+
+	// Carry the resumed walk's counters onto the new row. `initFolderBackfill`
+	// returns an already-initialised folder's cursor WITHOUT re-adding its total,
+	// so a resumed migration that started at zero would render a full bar over a
+	// `messagesTotal` of 0 and then count backwards. Folders the failed run never
+	// reached have no `backfillTotal` yet and still add theirs on first sight.
+	const carried = isResume
+		? {
+				messagesTotal: syncRows.reduce((sum, r) => sum + (r.backfillTotal ?? 0), 0),
+				messagesImported: previous?.messagesImported ?? 0,
+				messagesFailed: previous?.messagesFailed ?? 0,
+			}
+		: { messagesTotal: 0, messagesImported: 0, messagesFailed: 0 };
 
 	const now = Date.now();
 	const migrationId = await ctx.db.insert('mailboxMigrations', {
@@ -172,8 +205,9 @@ export async function startMigrationForAccount(
 		source: args.source,
 		status: 'importing',
 		isAiIndexingEnabled: args.isAiIndexingEnabled,
-		messagesTotal: 0,
-		messagesImported: 0,
+		messagesTotal: carried.messagesTotal,
+		messagesImported: carried.messagesImported,
+		messagesFailed: carried.messagesFailed,
 		messagesIndexed: 0,
 		startedAt: now,
 		updatedAt: now,
@@ -181,7 +215,7 @@ export async function startMigrationForAccount(
 	await ctx.db.insert('mailAuditLog', {
 		mailboxId: args.mailboxId,
 		event: 'migration.started',
-		details: `scope=${args.scope} source=${args.source} ai=${args.isAiIndexingEnabled}`,
+		details: `scope=${args.scope} source=${args.source} ai=${args.isAiIndexingEnabled} resumed=${isResume}`,
 		occurredAt: now,
 	});
 	return { migrationId, status: 'importing' as const };
