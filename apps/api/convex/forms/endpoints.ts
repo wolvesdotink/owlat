@@ -241,6 +241,7 @@ export const getSubmissions = authedQuery({
  * Get form submission by confirmation token
  */
 // public: DOI confirmation landing page — token is the capability, no session
+// authz: the confirmation token IS the capability; there is no session on a DOI landing page.
 export const getByConfirmationToken = publicQuery({
 	args: {
 		token: v.string(),

@@ -343,6 +343,7 @@ export const discard = authedMutation({
 });
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+// authz: gate lives in draftQueries.getDraftHandler (requireMailboxAccess).
 export const get = publicQuery({
 	args: { draftId: v.id('mailDrafts') },
 	handler: getDraftHandler,
@@ -370,12 +371,14 @@ export const get = publicQuery({
  * discovery outcome, and whether it can be sealed to — no key material.
  */
 // public: soft-auth — returns null for anonymous; mailbox access is enforced in-handler
+// authz: gate lives in draftQueries.getComposerSealStateHandler (requireMailboxAccess).
 export const getComposerSealState = publicQuery({
 	args: { draftId: v.id('mailDrafts') },
 	handler: getComposerSealStateHandler,
 });
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+// authz: gate lives in draftQueries.listForMailboxHandler (requireMailboxAccess).
 export const listForMailbox = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: listForMailboxHandler,
