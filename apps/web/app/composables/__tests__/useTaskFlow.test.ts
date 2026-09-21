@@ -322,3 +322,103 @@ describe('useTaskFlow — completion, undo, summary', () => {
 		expect(flow.summary.value).toBe('2 answered · 1 approved');
 	});
 });
+
+describe('useTaskFlow — browsing (back / next without acting)', () => {
+	it('next() and back() move between pending cards without completing anything', () => {
+		const { flow } = setup([
+			{ id: 'a', kind: 'reply' },
+			{ id: 'b', kind: 'reply' },
+			{ id: 'c', kind: 'reply' },
+		]);
+		expect(flow.canGoBack.value).toBe(false);
+		expect(flow.canGoNext.value).toBe(true);
+
+		flow.next();
+		expect(flow.current.value?.id).toBe('b');
+		expect(flow.position.value).toBe(2);
+		expect(flow.canGoBack.value).toBe(true);
+
+		flow.next();
+		expect(flow.current.value?.id).toBe('c');
+		expect(flow.canGoNext.value).toBe(false);
+		// Never runs off the end into the done state.
+		flow.next();
+		expect(flow.current.value?.id).toBe('c');
+		expect(flow.isComplete.value).toBe(false);
+
+		flow.back();
+		flow.back();
+		expect(flow.current.value?.id).toBe('a');
+		flow.back();
+		expect(flow.current.value?.id).toBe('a');
+
+		expect(flow.canUndo.value).toBe(false);
+		expect(flow.summary.value).toBe('');
+		expect(flow.total.value).toBe(3);
+	});
+
+	it('browsing never lands on a completed card, and completing after browsing back skips it', () => {
+		const { flow } = setup([
+			{ id: 'a', kind: 'reply' },
+			{ id: 'b', kind: 'reply' },
+			{ id: 'c', kind: 'reply' },
+		]);
+		flow.next(); // on b
+		flow.complete('b', { outcome: 'done' }); // → c
+		expect(flow.current.value?.id).toBe('c');
+		flow.back(); // b is done → lands on a
+		expect(flow.current.value?.id).toBe('a');
+		expect(flow.nextItem.value?.id).toBe('c');
+		expect(flow.remainingSeconds.value).toBeGreaterThan(0);
+
+		flow.complete('a', { outcome: 'done' }); // skips completed b → c
+		expect(flow.current.value?.id).toBe('c');
+		flow.complete('c', { outcome: 'done' });
+		expect(flow.isComplete.value).toBe(true);
+		expect(flow.summary.value).toBe('3 done');
+	});
+
+	it('browsing skips externally-removed cards in both directions', async () => {
+		const { source, flow } = setup([
+			{ id: 'a', kind: 'reply' },
+			{ id: 'b', kind: 'reply' },
+			{ id: 'c', kind: 'reply' },
+		]);
+		source.value = [
+			{ id: 'a', kind: 'reply' },
+			{ id: 'c', kind: 'reply' },
+		];
+		await nextTick();
+		flow.next();
+		expect(flow.current.value?.id).toBe('c');
+		flow.back();
+		expect(flow.current.value?.id).toBe('a');
+	});
+
+	it('undo after browsing restores the completed card and its position', async () => {
+		const { flow } = setup([
+			{ id: 'a', kind: 'reply' },
+			{ id: 'b', kind: 'reply' },
+			{ id: 'c', kind: 'reply' },
+		]);
+		flow.complete('a', { outcome: 'done' }); // → b
+		flow.next(); // → c
+		expect(await flow.undo()).toBe(true);
+		expect(flow.current.value?.id).toBe('a');
+		expect(flow.position.value).toBe(1);
+		expect(flow.canGoNext.value).toBe(true);
+	});
+
+	it('is inert before start()', () => {
+		const source = ref<Task[]>([
+			{ id: 'a', kind: 'reply' },
+			{ id: 'b', kind: 'reply' },
+		]);
+		const flow = useTaskFlow(source, { key });
+		expect(flow.canGoBack.value).toBe(false);
+		expect(flow.canGoNext.value).toBe(false);
+		flow.next();
+		flow.back();
+		expect(flow.currentId.value).toBeNull();
+	});
+});

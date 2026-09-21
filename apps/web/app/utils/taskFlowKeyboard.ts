@@ -48,12 +48,21 @@ export function resolveReviewFocusKey(
 }
 
 /** Actions the Reply Queue's focused card keyboard can invoke. */
-export type ReplyFocusKeyAction = 'markDone' | 'draftReply' | 'archive' | 'skip';
+export type ReplyFocusKeyAction =
+	| 'markDone'
+	| 'draftReply'
+	| 'archive'
+	| 'skip'
+	| 'browseBack'
+	| 'browseNext';
 
 /**
  * Resolve a keypress to a Reply Queue focused-card action, or `null` for none.
- * Built-in vocabulary: `Enter` marks a follow-up done else drafts a reply, `e`
- * archives a non-follow-up row. A non-native card only honours `s` → skip.
+ * Browsing — `←` / `→` (and `k` / `j`) — moves between the open cards without
+ * acting on any of them and is honoured for EVERY kind, since it never touches
+ * the underlying item. Built-in vocabulary: `Enter` marks a follow-up done
+ * else drafts a reply, `e` archives a non-follow-up row. A non-native card
+ * otherwise only honours `s` → skip.
  */
 export function resolveReplyFocusKey(
 	rawKey: string,
@@ -62,6 +71,8 @@ export function resolveReplyFocusKey(
 	const { currentKind } = ctx;
 	if (!currentKind) return null;
 	const key = rawKey.toLowerCase();
+	if (key === 'arrowleft' || key === 'k') return 'browseBack';
+	if (key === 'arrowright' || key === 'j') return 'browseNext';
 	if (!isBuiltInTaskFlowKind(currentKind)) {
 		return key === 's' ? 'skip' : null;
 	}

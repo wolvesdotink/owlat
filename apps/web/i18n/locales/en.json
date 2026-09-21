@@ -221,12 +221,16 @@
 		},
 		"agentTasks": {
 			"agentTaskFlow": {
+				"back": "Previous",
+				"backTitle": "Previous open task (←)",
 				"estimateLeft": "{estimate} left",
 				"exit": "Exit",
 				"exitTitle": "Exit (Esc)",
 				"newCount": "+{count} new",
 				"newCountTitle": "{count} arrived since you started",
+				"next": "Next",
 				"nextLabel": "Next:",
+				"nextTitle": "Next open task (→)",
 				"progress": "{position} of {total}",
 				"undo": "Undo",
 				"undoTitle": "Undo last (⌘Z)"
@@ -4044,6 +4048,7 @@
 				"removeRecipient": "Remove {address}"
 			},
 			"postboxReplyFlow": {
+				"browse": "Browse",
 				"done": {
 					"backToInbox": "Back to inbox",
 					"backToToday": "Back to Today",
