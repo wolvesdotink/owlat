@@ -2,77 +2,175 @@
  * IMAP FETCH — envelopes, UID sets and the raw RFC822 blob (see mail/imap/ for
  * the module overview). These are the reads that answer `FETCH` and the
  * sequence-number ↔ UID translation the server needs before `STORE`.
+ *
+ * Every folder-scoped read here is a PAGE, never the folder. Convex reads whole
+ * documents (a `mailMessages` row carries its attachment metadata) and caps one
+ * function execution at 16,384 documents / 8 MiB, so a single `.collect()` over
+ * a folder is not a slow path — on a real INBOX it is a hard failure. The
+ * sidecar (`apps/imap`) drives the paging: each query returns at most one page
+ * plus the cursor to resume from, and `nextUid === null` means the caller has
+ * seen the whole requested window.
  */
 
+import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
+import type { Doc } from '../../_generated/dataModel';
 import { internalAction, internalQuery } from '../../_generated/server';
 import { sealedBlobUrl } from '../../lib/sealedBlob';
 
-/** Bulk envelope fetch for IMAP `FETCH 1:* (FLAGS UID INTERNALDATE ENVELOPE)`. */
+/**
+ * Rows per page.
+ *
+ * `.take()` reads whole documents whatever the handler projects, so both page
+ * sizes are set by the per-execution budget (16,384 documents / 8 MiB), not by
+ * the size of the answer. The envelope reads return most of the row, so they
+ * stay small; the UID listing returns two numbers per row and is the walk a
+ * client pays for on EVERY command, so it takes a larger page — 100k-message
+ * folders are the case this exists for, and 500 round trips per FETCH is its
+ * own kind of broken.
+ */
+const DEFAULT_ENVELOPE_PAGE_SIZE = 200;
+const DEFAULT_UID_PAGE_SIZE = 1_000;
+const MAX_PAGE_SIZE = 1_000;
+
+function pageSize(requested: number | undefined, fallback: number): number {
+	if (requested === undefined || !Number.isFinite(requested)) return fallback;
+	return Math.max(1, Math.min(Math.floor(requested), MAX_PAGE_SIZE));
+}
+
+/**
+ * `nextUid` for a UID-ordered page: the UID to resume from when the page came
+ * back full, `null` once the window is exhausted. A short page can only mean
+ * the index range ran out, because the range scan is ordered.
+ *
+ * Resuming at `last.uid + 1` against a `gte` bound assumes UIDs are integers,
+ * which is what `uidNext` allocates (RFC 3501 §2.3.1.1). A fractional uid would
+ * be skipped rather than re-read.
+ */
+function nextUid(rows: ReadonlyArray<{ uid: number }>, limit: number): number | null {
+	if (rows.length < limit) return null;
+	const last = rows[rows.length - 1];
+	return last === undefined ? null : last.uid + 1;
+}
+
+/** The IMAP-visible projection of a message row. */
+function toEnvelope(m: Doc<'mailMessages'>) {
+	return {
+		_id: m._id,
+		uid: m.uid,
+		modseq: m.modseq,
+		rawSize: m.rawSize,
+		rfc822MessageId: m.rfc822MessageId,
+		inReplyTo: m.inReplyTo,
+		references: m.references,
+		fromAddress: m.fromAddress,
+		fromName: m.fromName,
+		toAddresses: m.toAddresses,
+		ccAddresses: m.ccAddresses,
+		bccAddresses: m.bccAddresses,
+		replyToAddress: m.replyToAddress,
+		subject: m.subject,
+		internalDate: m.internalDate,
+		attachments: m.attachments,
+		hasAttachments: m.hasAttachments,
+		flagSeen: m.flagSeen,
+		flagFlagged: m.flagFlagged,
+		flagAnswered: m.flagAnswered,
+		flagDraft: m.flagDraft,
+		flagDeleted: m.flagDeleted,
+		customFlags: m.customFlags,
+	};
+}
+
+/**
+ * One page of envelopes inside a UID window, ascending — the read behind
+ * `FETCH <set> (FLAGS UID INTERNALDATE ENVELOPE)`. The caller passes the
+ * window it actually asked for and re-issues from `nextUid` until that comes
+ * back `null`, so a `FETCH 1:*` over a big folder is N bounded reads instead of
+ * one read of everything.
+ */
 export const fetchEnvelopes = internalQuery({
 	args: {
 		folderId: v.id('mailFolders'),
 		uidLow: v.number(),
 		uidHigh: v.number(),
-		modseqSince: v.optional(v.number()),
+		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const messages = await ctx.db
+		const limit = pageSize(args.limit, DEFAULT_ENVELOPE_PAGE_SIZE);
+		const rows = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_folder_and_uid', (q) =>
 				q.eq('folderId', args.folderId).gte('uid', args.uidLow).lte('uid', args.uidHigh)
 			)
-			.collect(); // bounded: one folder's messages in a UID range
-
-		const filtered = args.modseqSince
-			? messages.filter((m) => m.modseq > (args.modseqSince ?? 0))
-			: messages;
-
-		return filtered
-			.sort((a, b) => a.uid - b.uid)
-			.map((m) => ({
-				_id: m._id,
-				uid: m.uid,
-				modseq: m.modseq,
-				rawSize: m.rawSize,
-				rfc822MessageId: m.rfc822MessageId,
-				inReplyTo: m.inReplyTo,
-				references: m.references,
-				fromAddress: m.fromAddress,
-				fromName: m.fromName,
-				toAddresses: m.toAddresses,
-				ccAddresses: m.ccAddresses,
-				bccAddresses: m.bccAddresses,
-				replyToAddress: m.replyToAddress,
-				subject: m.subject,
-				internalDate: m.internalDate,
-				attachments: m.attachments,
-				hasAttachments: m.hasAttachments,
-				flagSeen: m.flagSeen,
-				flagFlagged: m.flagFlagged,
-				flagAnswered: m.flagAnswered,
-				flagDraft: m.flagDraft,
-				flagDeleted: m.flagDeleted,
-				customFlags: m.customFlags,
-			}));
+			.take(limit);
+		// The index walks `uid` ascending, so the page is already in IMAP order.
+		return { rows: rows.map(toEnvelope), nextUid: nextUid(rows, limit) };
 	},
 });
 
 /**
- * All UIDs in a folder, ascending. The IMAP server builds its
- * per-command sequence-number ↔ UID map from this so that non-UID
- * FETCH/STORE sets are interpreted as 1-based positions and the per-row
+ * One page of the rows whose `modseq` advanced past `modseqSince` — today the
+ * IDLE poll's read, and the read a `FETCH … (CHANGEDSINCE n)` modifier will use
+ * when that lands (RFC 7162; only `UNCHANGEDSINCE` on STORE is implemented so
+ * far). Served off `by_folder_and_modseq` — the alternative, reading a UID
+ * window and dropping the unchanged rows in JS, reads the whole folder to
+ * answer "what changed in the last five seconds", which is exactly the question
+ * an index answers.
+ *
+ * Paged with Convex cursors rather than a `> lastSeenModseq` watermark because
+ * the range is mutated while it is walked — that is what IDLE is polling for.
+ * A cursor stays anchored where the previous page stopped; a watermark re-reads
+ * from a value the folder has since moved past. modseq only ever increases, so
+ * a row re-stamped mid-walk moves forward in the index: the cursor may hand it
+ * back twice (harmless — the same flags, pushed again) but never skips it.
+ */
+export const fetchChangedEnvelopes = internalQuery({
+	args: {
+		folderId: v.id('mailFolders'),
+		modseqSince: v.number(),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, args) => {
+		const result = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_folder_and_modseq', (q) =>
+				q.eq('folderId', args.folderId).gt('modseq', args.modseqSince)
+			)
+			.paginate(args.paginationOpts);
+		return { ...result, page: result.page.map(toEnvelope) };
+	},
+});
+
+/**
+ * One page of a folder's UIDs, ascending. The IMAP server builds its
+ * per-command sequence-number ↔ UID map from the concatenated pages so that
+ * non-UID FETCH/STORE sets are interpreted as 1-based positions and the per-row
  * `* {seq} FETCH` reply carries the true sequence number rather than a
  * fabricated 1..N counter (RFC 3501 §2.3.1.2 / §6.4.5 / §6.4.8).
+ *
+ * The sidecar genuinely needs the whole ordered UID set to do that, but it
+ * needs only the UIDs — so this pages, and each execution reads at most
+ * `limit` rows. Resume from `nextUid` until it is `null`.
  */
-export const listFolderUids = internalQuery({
-	args: { folderId: v.id('mailFolders') },
+export const listFolderUidsPage = internalQuery({
+	args: {
+		folderId: v.id('mailFolders'),
+		afterUid: v.optional(v.number()),
+		limit: v.optional(v.number()),
+	},
 	handler: async (ctx, args) => {
-		const messages = await ctx.db
+		const limit = pageSize(args.limit, DEFAULT_UID_PAGE_SIZE);
+		const after = args.afterUid;
+		const rows = await ctx.db
 			.query('mailMessages')
-			.withIndex('by_folder_and_uid', (q) => q.eq('folderId', args.folderId))
-			.collect(); // bounded: one folder's messages in a UID range
-		return messages.map((m) => m.uid).sort((a, b) => a - b);
+			.withIndex('by_folder_and_uid', (q) =>
+				after === undefined
+					? q.eq('folderId', args.folderId)
+					: q.eq('folderId', args.folderId).gte('uid', after)
+			)
+			.take(limit);
+		return { uids: rows.map((m) => m.uid), nextUid: nextUid(rows, limit) };
 	},
 });
 
@@ -106,29 +204,29 @@ export const getRawStorageUrl = internalAction({
 });
 
 /**
- * Helper: resolve the IMAP-visible message ids for a UID set. Used by
- * the IMAP server to translate `STORE 1:* +FLAGS \Seen` into the
- * concrete mailMessages ids that `storeFlags` expects.
+ * Helper: one page of the IMAP-visible message ids for a UID window. Used by
+ * the IMAP server to translate `STORE 1:* +FLAGS \Seen` into the concrete
+ * mailMessages ids that `storeFlags` expects — `1:*` is a whole-folder window,
+ * so this pages the same way `fetchEnvelopes` does.
  */
 export const resolveMessageIdsByUid = internalQuery({
 	args: {
 		folderId: v.id('mailFolders'),
 		uidLow: v.number(),
 		uidHigh: v.number(),
+		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const messages = await ctx.db
+		const limit = pageSize(args.limit, DEFAULT_ENVELOPE_PAGE_SIZE);
+		const rows = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_folder_and_uid', (q) =>
 				q.eq('folderId', args.folderId).gte('uid', args.uidLow).lte('uid', args.uidHigh)
 			)
-			.collect(); // bounded: one folder's messages in a UID range
-		return messages
-			.sort((a, b) => a.uid - b.uid)
-			.map((m) => ({
-				_id: m._id,
-				uid: m.uid,
-				modseq: m.modseq,
-			}));
+			.take(limit);
+		return {
+			rows: rows.map((m) => ({ _id: m._id, uid: m.uid, modseq: m.modseq })),
+			nextUid: nextUid(rows, limit),
+		};
 	},
 });

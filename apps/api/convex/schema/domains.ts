@@ -234,6 +234,5 @@ export const domainTables = {
 		receivedAt: v.number(),
 	})
 		.index('by_reporter_report_id', ['organizationName', 'reportId'])
-		.index('by_policyDomain', ['policyDomain'])
 		.index('by_range_start_ms', ['rangeStartMs']),
 };

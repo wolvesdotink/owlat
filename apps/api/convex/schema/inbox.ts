@@ -92,7 +92,6 @@ export const inboxTables = {
 		snoozeReturnedAt: v.optional(v.number()),
 		createdAt: v.number(),
 	})
-		.index('by_contact_identifier', ['contactIdentifier'])
 		.index('by_status', ['status'])
 		// Status + recency: lets the Team Inbox filter pills page an Open / Waiting
 		// / Resolved view in true lastMessageAt order (both directions) instead of
@@ -369,7 +368,6 @@ export const inboxTables = {
 		.index('by_processing_status', ['processingStatus'])
 		.index('by_received_at', ['receivedAt'])
 		.index('by_contact', ['contactId'])
-		.index('by_assigned_to_and_status', ['assignedTo', 'processingStatus'])
 		// Drives the raw-blob retention sweep: the equality component keeps the
 		// scanned range to rows that still hold a blob, so the walk is bounded by
 		// what is left to release rather than by the size of the table.
@@ -412,8 +410,7 @@ export const inboxTables = {
 		createdAt: v.number(),
 	})
 		.index('by_inbound_message', ['inboundMessageId'])
-		.index('by_status', ['status'])
-		.index('by_inbound_message_and_type', ['inboundMessageId', 'actionType']),
+		.index('by_status', ['status']),
 
 	// Knowledge Backfill Jobs - tracks one-time bulk extraction of historical
 	// inbound mail into the knowledge graph. Created when the agent master
@@ -451,7 +448,6 @@ export const inboxTables = {
 		windowEnd: v.number(),
 		createdAt: v.number(),
 	})
-		.index('by_metric_type', ['metricType'])
 		.index('by_window_start', ['windowStart'])
 		// Dashboard reads select one metricType over a recent window; the
 		// compound index bounds the scan to that type's window instead of
@@ -474,7 +470,6 @@ export const inboxTables = {
 		createdAt: v.number(),
 		...llmUsageTagFields,
 	})
-		.index('by_feature', ['feature'])
 		.index('by_organization_id_and_created_at', ['organizationId', 'createdAt'])
 		.index('by_organization_id_and_plugin_id_and_created_at', [
 			'organizationId',

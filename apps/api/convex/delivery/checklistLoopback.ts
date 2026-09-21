@@ -8,6 +8,7 @@ import {
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
+import { throwInvalidState } from '../_utils/errors';
 import { getOptional } from '../lib/env';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { internalAction } from '../_generated/server';
@@ -43,17 +44,17 @@ export const start = authedAction({
 			{ organizationId, domainId: args.domainId }
 		)) as LoopbackStartContext;
 		if (!startContext.allowed) {
-			throw new Error('Complete the blocking deliverability checks before running a proof.');
+			throwInvalidState('Complete the blocking deliverability checks before running a proof.');
 		}
 		if (getOptional('EMAIL_PROVIDER') !== OWN_ARM_TRANSPORT_KIND) {
-			throw new Error(
+			throwInvalidState(
 				'The end-to-end proof requires the built-in MTA as the active delivery provider.'
 			);
 		}
 		const returnPathDomain = getOptional('MTA_RETURN_PATH_DOMAIN');
 		const webhookSecret = getOptional('MTA_WEBHOOK_SECRET');
 		if (!returnPathDomain || !webhookSecret) {
-			throw new Error('The end-to-end proof requires the global MTA return-path domain.');
+			throwInvalidState('The end-to-end proof requires the global MTA return-path domain.');
 		}
 		const attemptId = crypto.randomUUID();
 		const now = Date.now();

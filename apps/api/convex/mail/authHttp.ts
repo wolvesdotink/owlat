@@ -1,3 +1,4 @@
+import { BodyTooLargeError, readBodyText } from '../lib/readBody';
 /**
  * HMAC-signed credential verification endpoint for the MTA / IMAP server.
  *
@@ -63,7 +64,17 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 		});
 	}
 
-	const bodyText = await request.text();
+	let bodyText: string;
+	try {
+		bodyText = await readBodyText(request, 100_000);
+	} catch (error) {
+		return new Response(
+			error instanceof BodyTooLargeError ? 'Payload too large' : 'Unreadable body',
+			{
+				status: error instanceof BodyTooLargeError ? 413 : 400,
+			}
+		);
+	}
 
 	const enc = new TextEncoder();
 	const key = await crypto.subtle.importKey(

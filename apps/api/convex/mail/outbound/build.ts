@@ -20,6 +20,7 @@ import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/i
 import { decideSeal, type OutboundEncryptionInfo } from '../sealPolicy';
 import { sealMime, type SealedMime } from '../../e2ee/seal';
 import { openPrivateKey } from '../../e2ee/sealing';
+import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 
 interface DraftAttachmentBuffer {
 	filename: string;
@@ -86,13 +87,34 @@ export async function bufferDraftAttachments(
 	draft: DraftRow
 ): Promise<{ inlinedHtml: string; attachments: DraftAttachmentBuffer[] }> {
 	const { html: inlinedHtml, referencedCids } = rewriteInlineImageCids(draft.bodyHtml ?? '');
+	const pending = draft.attachments.filter(
+		(att) => !att.isInline || isInlineImageReferenced(referencedCids, att.contentId)
+	);
+	if (pending.length === 0) return { inlinedHtml, attachments: [] };
+	if (pending.length > ATTACHMENT_COMPOSE_LIMITS.maxCount) {
+		throw new BlockedAttachmentError('message', 'Too many attachments', 'refused');
+	}
+	// Old drafts can contain forged size fields. Inspect native metadata before
+	// loading any bytes, including referenced inline images and repeated ids.
+	const sizes = await ctx.runQuery(internal.storage.uploads.fileSizes, {
+		storageIds: pending.map((att) => att.storageId),
+	});
+	let totalBytes = 0;
+	for (const [index, size] of sizes.entries()) {
+		if (size === null) continue;
+		totalBytes += size;
+		if (size > MAX_ATTACHMENT_BYTES || totalBytes > ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes) {
+			throw new BlockedAttachmentError(
+				pending[index]!.filename,
+				'Attachment size limit exceeded',
+				'refused'
+			);
+		}
+	}
 
 	const attachments: DraftAttachmentBuffer[] = [];
-	for (const att of draft.attachments) {
-		// Drop inline parts the body no longer references (image deleted).
-		if (att.isInline && !isInlineImageReferenced(referencedCids, att.contentId)) {
-			continue;
-		}
+	for (const [index, att] of pending.entries()) {
+		if (sizes[index] === null) continue;
 		const blob = await ctx.storage.get(att.storageId);
 		if (!blob) continue;
 		const buf = Buffer.from(await blob.arrayBuffer());

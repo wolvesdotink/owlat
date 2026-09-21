@@ -89,7 +89,6 @@ export const mailCompositionTables = {
 	})
 		.index('by_mailbox', ['mailboxId'])
 		.index('by_mailbox_and_edited', ['mailboxId', 'lastEditedAt'])
-		.index('by_scheduled', ['scheduledSendAt'])
 		.index('by_state_and_scheduled', ['state', 'scheduledSendAt'])
 		.index('by_undo_token', ['undoToken'])
 		.index('by_client_nonce', ['clientNonce']),
@@ -264,9 +263,7 @@ export const mailCompositionTables = {
 		variables: v.optional(v.array(mailSnippetVariableValidator)),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	})
-		.index('by_mailbox', ['mailboxId'])
-		.index('by_mailbox_and_shortcut', ['mailboxId', 'shortcut']),
+	}).index('by_mailbox', ['mailboxId']),
 
 	// Per-user Postbox behavior preferences (one row per BetterAuth user,
 	// spanning all of the user's mailboxes). Currently: what the reader does

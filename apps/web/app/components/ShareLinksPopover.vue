@@ -22,8 +22,17 @@ const panelRightPx = computed(() => {
 
 const { showToast } = useToast();
 
+// The whole popover is an admin surface: minting, revoking AND listing are all
+// held to `shareLinks:manage` (a row carries the bearer token for the public
+// /share route). For an editor the query would throw and the panel would show
+// an empty list that no button could fill, so the trigger is not offered at all
+// and the query is skipped — the same shape the admin settings pages use.
+const { can } = usePermissions();
+const canShare = computed(() => can('shareLinks:manage'));
+
 // Query existing share links
 const queryArgs = computed(() => {
+	if (!canShare.value) return 'skip' as const;
 	if (props.emailTemplateId) return { emailTemplateId: props.emailTemplateId };
 	if (props.transactionalEmailId) return { transactionalEmailId: props.transactionalEmailId };
 	return 'skip' as const;
@@ -96,7 +105,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 </script>
 
 <template>
-	<div class="relative inline-block">
+	<div v-if="canShare" class="relative inline-block">
 		<div ref="triggerRef">
 			<UiButton
 				variant="outline"
@@ -152,7 +161,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 							@click="handleCreate"
 						>
 							<template #iconLeft>
-								<Icon v-if="isCreating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+								<Icon
+									v-if="isCreating"
+									name="lucide:loader-2"
+									class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								/>
 								<Icon v-else name="lucide:plus" class="w-4 h-4" />
 							</template>
 							{{

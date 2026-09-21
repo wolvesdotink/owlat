@@ -1,4 +1,5 @@
 import { defineSchema } from 'convex/server';
+import { storageTables } from './schema/storage';
 import { mailTables } from './schema/mail';
 import { webhookTables } from './schema/webhooks';
 import { topicTables } from './schema/topics';
@@ -37,6 +38,7 @@ import { sndsTables } from './schema/snds';
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
 export default defineSchema({
+	...storageTables,
 	...mailTables,
 	...webhookTables,
 	...topicTables,

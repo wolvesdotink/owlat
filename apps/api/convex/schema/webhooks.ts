@@ -69,12 +69,10 @@ export const webhookTables = {
 		// log the webhook ever produced and filtering in memory.
 		.index('by_webhook_and_scheduled_at', ['webhookId', 'scheduledAt'])
 		.index('by_status', ['status'])
-		.index('by_webhook_and_status', ['webhookId', 'status'])
 		// Retention cleanup range-scans one status for rows older than a cutoff;
 		// the compound index seeks straight to the old tail instead of scanning
 		// every row of that status.
-		.index('by_status_and_completed_at', ['status', 'completedAt'])
-		.index('by_event', ['event']),
+		.index('by_status_and_completed_at', ['status', 'completedAt']),
 
 	// Webhook Payloads - raw webhook payloads for audit and dispute resolution
 	webhookPayloads: defineTable({

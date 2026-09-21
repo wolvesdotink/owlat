@@ -3,6 +3,8 @@ import { getUserIdFromSession } from './lib/sessionOrganization';
 import { rateLimiter } from './rateLimiter';
 import { throwRateLimited, throwNotFound } from './_utils/errors';
 import { v } from 'convex/values';
+import { isChatAttachment } from './chat/attachmentAccess';
+import { mintUploadUrl } from './storage/uploads';
 
 /**
  * Generate an upload URL for file storage.
@@ -12,9 +14,9 @@ import { v } from 'convex/values';
 // chat attachment) references the stored blob.
 export const generateUploadUrl = authedMutation({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx, _args, session) => {
 		// Require authentication before generating upload URLs
-		const userId = await getUserIdFromSession(ctx);
+		const userId = session.userId;
 		// The blob is content-inert but not cost-inert: an unbounded mint loop
 		// fills `_storage` with orphaned bytes the instance pays for. Cap per
 		// user; interactive multi-file uploads stay well under the bucket.
@@ -22,7 +24,7 @@ export const generateUploadUrl = authedMutation({
 		if (!res.ok) {
 			throwRateLimited('Too many uploads — try again in a moment.', res.retryAfter);
 		}
-		return await ctx.storage.generateUploadUrl();
+		return await mintUploadUrl(ctx, session);
 	},
 });
 
@@ -51,7 +53,7 @@ export const getUrl = authedQuery({
 			.withIndex('by_storage_id', (q) => q.eq('storageId', args.storageId))
 			.first();
 
-		if (!owningAsset) {
+		if (!owningAsset || isChatAttachment(owningAsset)) {
 			throwNotFound('File');
 		}
 

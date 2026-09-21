@@ -135,26 +135,57 @@ describe('agentHealth.getMetricHistory', () => {
 	});
 });
 
-// ============ recordMetric (internal) ============
+// ============ recordMetrics (internal) ============
 
-describe('agentHealth.recordMetric', () => {
-	it('should insert a metric data point', async () => {
+describe('agentHealth.recordMetrics', () => {
+	it('should insert every data point of a window', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
 
-		await t.mutation(internal.agentHealth.recordMetric, {
-			metricType: 'processing_latency',
-			value: 250,
-			windowStart: now - 300000,
-			windowEnd: now,
+		await t.mutation(internal.agentHealth.recordMetrics, {
+			metrics: [
+				{
+					metricType: 'processing_latency',
+					value: 250,
+					windowStart: now - 300000,
+					windowEnd: now,
+				},
+				{ metricType: 'queue_depth', value: 7, windowStart: now - 300000, windowEnd: now },
+			],
 		});
 
 		await t.run(async (ctx) => {
 			const metrics = await ctx.db.query('agentMetrics').collect();
-			expect(metrics).toHaveLength(1);
-			expect(metrics[0]!.metricType).toBe('processing_latency');
-			expect(metrics[0]!.value).toBe(250);
-			expect(metrics[0]!.createdAt).toBeTypeOf('number');
+			expect(metrics).toHaveLength(2);
+			const latency = metrics.find((m) => m.metricType === 'processing_latency');
+			expect(latency!.value).toBe(250);
+			expect(latency!.createdAt).toBeTypeOf('number');
+			expect(metrics.find((m) => m.metricType === 'queue_depth')!.value).toBe(7);
+		});
+	});
+
+	it('writes NOTHING when one row of the window is invalid', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+
+		// The second row's metricType is not a member of
+		// agentMetricTypeValidator, so the argument validator rejects the call.
+		const metrics = [
+			{ metricType: 'queue_depth', value: 7, windowStart: now - 300000, windowEnd: now },
+			{ metricType: 'not_a_metric', value: 1, windowStart: now - 300000, windowEnd: now },
+		] as unknown as {
+			metricType: 'queue_depth';
+			value: number;
+			windowStart: number;
+			windowEnd: number;
+		}[];
+
+		await expect(t.mutation(internal.agentHealth.recordMetrics, { metrics })).rejects.toThrow();
+
+		// The whole window is one transaction: a partial write here would leave
+		// the dashboard reading a queue depth with no error rate beside it.
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('agentMetrics').collect()).toHaveLength(0);
 		});
 	});
 });
@@ -237,45 +268,6 @@ describe('agentHealth.updateCircuitBreaker', () => {
 				.first();
 			expect(breaker!.state).toBe('closed');
 			expect(breaker!.recoveredAt).toBeTypeOf('number');
-		});
-	});
-});
-
-// ============ cleanupOldMetrics (internal) ============
-
-describe('agentHealth.cleanupOldMetrics', () => {
-	it('should remove metrics older than 7 days', async () => {
-		const t = convexTest(schema, modules);
-		const now = Date.now();
-		const eightDaysAgo = now - 8 * 24 * 60 * 60 * 1000;
-
-		await t.run(async (ctx) => {
-			// Old metric (should be deleted)
-			await ctx.db.insert(
-				'agentMetrics',
-				createTestAgentMetric({
-					windowStart: eightDaysAgo,
-					windowEnd: eightDaysAgo + 300000,
-					createdAt: eightDaysAgo,
-				})
-			);
-			// Recent metric (should be kept)
-			await ctx.db.insert(
-				'agentMetrics',
-				createTestAgentMetric({
-					windowStart: now - 60000,
-					windowEnd: now,
-					createdAt: now,
-				})
-			);
-		});
-
-		await t.mutation(internal.agentHealth.cleanupOldMetrics);
-
-		await t.run(async (ctx) => {
-			const metrics = await ctx.db.query('agentMetrics').collect();
-			expect(metrics).toHaveLength(1);
-			expect(metrics[0]!.windowStart).toBeGreaterThan(eightDaysAgo);
 		});
 	});
 });
@@ -606,6 +598,30 @@ describe('agentHealth.rollupMetrics', () => {
 		});
 		expect(history).toHaveLength(1);
 		expect(history[0]!.value).toBeCloseTo(0.6, 5);
+	});
+
+	it('writes the whole window in one transaction', async () => {
+		const t = convexTest(schema, modules);
+
+		await t.action(internal.agentHealth.rollupMetrics);
+
+		const metrics = await t.run(async (ctx) => await ctx.db.query('agentMetrics').collect());
+		// Every metric type this window produced (processing_latency needs a
+		// completed action, so an empty window records the other six).
+		expect(new Set(metrics.map((m) => m.metricType))).toEqual(
+			new Set([
+				'queue_depth',
+				'error_rate',
+				'classification_accuracy',
+				'auto_approve_ratio',
+				'rejection_rate',
+				'llm_cost',
+			])
+		);
+		// One `createdAt` across the window is the observable proof it was one
+		// mutation rather than a point-per-transaction fan-out.
+		expect(new Set(metrics.map((m) => m.createdAt)).size).toBe(1);
+		expect(new Set(metrics.map((m) => m.windowStart)).size).toBe(1);
 	});
 
 	it('records classification_accuracy as 0 when there are no scored classify actions', async () => {

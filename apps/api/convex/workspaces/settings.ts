@@ -29,6 +29,7 @@ import { inboundRawRetentionDaysValidator } from '../lib/literalValidators';
 import { internalMutation, internalQuery } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
+import { throwInvalidInput } from '../_utils/errors';
 import { internal } from '../_generated/api';
 import { recordAuditLog } from '../lib/auditLog';
 import {
@@ -112,16 +113,16 @@ export const update = authedMutation({
 			args.relayMinorUnitsPerThousand !== undefined &&
 			(!Number.isFinite(args.relayMinorUnitsPerThousand) || args.relayMinorUnitsPerThousand < 0)
 		) {
-			throw new Error('A relay price must be a non-negative number of minor units per thousand');
+			throwInvalidInput('A relay price must be a non-negative number of minor units per thousand');
 		}
 		if (args.relayCurrency !== undefined && !/^[A-Za-z]{3}$/.test(args.relayCurrency)) {
-			throw new Error('A relay currency must be a three-letter ISO-4217 code');
+			throwInvalidInput('A relay currency must be a three-letter ISO-4217 code');
 		}
 		if (
 			args.trustedArcForwarders !== undefined &&
 			args.trustedArcForwarders.length > MAX_TRUSTED_ARC_FORWARDERS
 		) {
-			throw new Error(`At most ${MAX_TRUSTED_ARC_FORWARDERS} trusted ARC forwarders are allowed`);
+			throwInvalidInput(`At most ${MAX_TRUSTED_ARC_FORWARDERS} trusted ARC forwarders are allowed`);
 		}
 		// Validate the trusted-forwarder list server-side: normalize, drop
 		// single-label / whitespace entries, and de-duplicate so the persisted
