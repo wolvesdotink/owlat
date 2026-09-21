@@ -13,6 +13,12 @@
  * sight: a purely cosmetic backslash re-wrap of the COPY instruction, an image
  * that installs from the frozen lockfile without copying any manifest, and a
  * frozen-install stage that omits the root dependency patches.
+ *
+ * The source-closure half of the guard is exercised the same way. Its cases pin
+ * the regression it was added for (a workspace whose source is copied without
+ * its dependency's source) and the two asymmetries that keep it quiet on the
+ * real tree: a `--from=<stage>` copy satisfies a dependency without demanding
+ * one, and a manifest-only copy is not a source copy.
  */
 
 import { execFile } from 'node:child_process';
@@ -224,6 +230,108 @@ describe('docker workspace-manifest guard', () => {
 		expect(result.code).toBe(1);
 	});
 
+	/**
+	 * A two-workspace graph: `lib` depends on `dep`, both in-repo. This is the
+	 * `@owlat/shared` → `@owlat/mail-message` edge that broke the updater and
+	 * setup images in PR #733, reduced to its smallest form.
+	 */
+	const CLOSURE_WORKSPACES = {
+		'package.json': JSON.stringify({
+			name: 'guard-fixture',
+			private: true,
+			workspaces: ['apps/*', 'packages/*'],
+		}),
+		'apps/web/package.json': '{"name":"web"}',
+		'packages/lib/package.json': JSON.stringify({
+			name: 'lib',
+			dependencies: { dep: 'workspace:*' },
+		}),
+		'packages/dep/package.json': '{"name":"dep"}',
+	};
+
+	const CLOSURE_GLOBS = 'apps/*/package.json packages/*/package.json';
+
+	function closureImage(copyLines: readonly string[]): string {
+		return [
+			'FROM oven/bun:1 AS build',
+			`COPY --parents ${CLOSURE_GLOBS} ./`,
+			'RUN bun install --frozen-lockfile',
+			...copyLines,
+			'',
+		].join('\n');
+	}
+
+	it('fails an image copying a workspace source without its dependency source', async () => {
+		const result = await runGuard({
+			...CLOSURE_WORKSPACES,
+			'apps/web/Dockerfile': closureImage(['COPY packages/lib packages/lib']),
+		});
+
+		expect(result.output).toContain(
+			'FAIL: apps/web/Dockerfile (stage 1) copies lib source but not its dependency dep (packages/dep)'
+		);
+		expect(result.code).toBe(1);
+	});
+
+	it('accepts the same image once the dependency source travels with it', async () => {
+		const result = await runGuard({
+			...CLOSURE_WORKSPACES,
+			'apps/web/Dockerfile': closureImage([
+				'COPY packages/lib packages/lib',
+				'COPY packages/dep packages/dep',
+			]),
+		});
+
+		expect(result.output).toContain("copies a workspace's source copies its dependency closure");
+		expect(result.code).toBe(0);
+	});
+
+	it('accepts a partial source copy that mirrors the src/ granularity', async () => {
+		// apps/updater copies `packages/shared/src`, not the whole package; the
+		// guard must read that as covering the workspace.
+		const result = await runGuard({
+			...CLOSURE_WORKSPACES,
+			'apps/web/Dockerfile': closureImage([
+				'COPY packages/lib/src packages/lib/src',
+				'COPY packages/dep/src packages/dep/src',
+			]),
+		});
+
+		expect(result.code).toBe(0);
+	});
+
+	it('lets a --from= copy satisfy a dependency without demanding one', async () => {
+		// docker/convex-deploy.Dockerfile's real shape: the dependency arrives as a
+		// built artifact from an earlier stage, with only its manifest from context.
+		const result = await runGuard({
+			...CLOSURE_WORKSPACES,
+			'apps/web/Dockerfile': [
+				'FROM oven/bun:1 AS deps',
+				`COPY --parents ${CLOSURE_GLOBS} ./`,
+				'RUN bun install --frozen-lockfile',
+				'FROM oven/bun:1 AS build',
+				`COPY --parents ${CLOSURE_GLOBS} ./`,
+				'COPY packages/lib packages/lib',
+				'COPY --from=deps /app/packages/dep/dist/ packages/dep/dist/',
+				'',
+			].join('\n'),
+		});
+
+		expect(result.code).toBe(0);
+	});
+
+	it('does not read the manifest COPY line as a source copy', async () => {
+		// `COPY --parents packages/*/package.json ./` must never trip the closure
+		// check, or every image would fail it.
+		const result = await runGuard({
+			...CLOSURE_WORKSPACES,
+			'apps/web/Dockerfile': closureImage([]),
+		});
+
+		expect(result.output).not.toContain('source but not its dependency');
+		expect(result.code).toBe(0);
+	});
+
 	// The only case here that runs the guard over the REAL tree: a `git ls-files`
 	// plus a parse of every Dockerfile in the repository. That fixed subprocess
 	// cost is well inside vitest's 5s default standalone, but this file shares a
@@ -238,6 +346,7 @@ describe('docker workspace-manifest guard', () => {
 			expect(stdout).toMatch(
 				/^ok: {3}all \d+ Dockerfiles copy every one of the \d+ workspace manifests/
 			);
+			expect(stdout).toContain("copies a workspace's source copies its dependency closure");
 		},
 		PARALLEL_GATE_TIMEOUT_MS
 	);

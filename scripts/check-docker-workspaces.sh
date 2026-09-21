@@ -177,6 +177,125 @@ if [ "$checked" -eq 0 ]; then
 	exit 1
 fi
 
+# ── Source closure: copying a workspace means copying what it depends on ──
+#
+# The manifest check above is about what a frozen `bun install` needs. It says
+# nothing about the SOURCE tree a bundle actually reads, and the two are not the
+# same: `packages/*/package.json` being present is exactly what makes the
+# failure confusing, because the workspace symlink resolves and only the files
+# behind it are missing.
+#
+# That is how PR #733 broke the updater and setup images. `@owlat/shared`'s
+# barrel gained a re-export of `./address`, which parses through
+# `@owlat/mail-message` — a real workspace edge — and the two images that copy
+# `packages/shared` without `packages/mail-message` stopped building, while the
+# four that already copied both kept working. Nothing in `bun run ci:verify`
+# builds images, so CI found it and local verification did not.
+#
+# The rule, per BUILD STAGE: if a stage copies a workspace's source out of the
+# build context, every in-repo workspace that workspace DECLARES as a runtime
+# dependency must be present in that stage too, transitively. Declared, not
+# reached: the updater's bundle tree-shakes `address.ts` away entirely (the
+# string does not appear in dist/index.js) yet the build still fails without the
+# source, because the bundler resolves the whole re-export graph before it
+# shakes. A gate keyed on what survives into the image would have missed this.
+#
+# Two asymmetries keep the false-positive rate at zero on this tree:
+#   - `COPY --from=<stage>` SATISFIES a dependency without TRIGGERING one. That
+#     is how `docker/convex-deploy.Dockerfile` legitimately brings plugin-kit and
+#     provider-kit in as built `dist/`, with only their manifests from context.
+#   - A `package.json`-only copy is a manifest copy, not a source copy, so the
+#     `COPY --parents … package.json` line above never trips this.
+#
+# Hard-0 with no baseline, like the manifest check it extends.
+closure_failures=$(
+	node -e '
+const fs = require("node:fs");
+const cp = require("node:child_process");
+
+const manifests = cp
+	.execSync("git ls-files \"packages/*/package.json\" \"apps/*/package.json\" \"examples/*/package.json\" \"examples/plugins/*/package.json\"", { encoding: "utf8" })
+	.trim()
+	.split("\n")
+	.filter(Boolean);
+
+const byName = {};
+const byDir = {};
+for (const manifestPath of manifests) {
+	const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+	const dir = manifestPath.replace(/\/package\.json$/, "");
+	// Runtime `dependencies` only: devDependencies are not bundled, and a
+	// peerDependency is the consumer’s to provide.
+	byName[manifest.name] = { dir, deps: Object.keys(manifest.dependencies ?? {}) };
+	byDir[dir] = manifest.name;
+}
+const dirs = Object.keys(byDir);
+
+function closure(name, seen = new Set()) {
+	for (const dep of byName[name]?.deps ?? []) {
+		if (byName[dep] && !seen.has(dep)) {
+			seen.add(dep);
+			closure(dep, seen);
+		}
+	}
+	return seen;
+}
+
+// Same continuation folding as join_continuations(), for the same reason: a
+// cosmetic re-wrap must not take an image out of the guard’s sight.
+const fold = (text) => text.replace(/\\\r?\n/g, " ");
+
+const dockerfiles = cp
+	.execSync("git ls-files \"*Dockerfile\" \"*.Dockerfile\"", { encoding: "utf8" })
+	.trim()
+	.split("\n")
+	.filter(Boolean);
+
+for (const file of dockerfiles) {
+	const stages = fold(fs.readFileSync(file, "utf8")).split(/^\s*FROM\s/mi).slice(1);
+	stages.forEach((stage, index) => {
+		const fromContext = new Set();
+		const present = new Set();
+		for (const line of stage.split("\n")) {
+			const copy = line.match(/^\s*COPY\s+(.*)$/i);
+			if (!copy) continue;
+			let args = copy[1].trim().split(/\s+/);
+			const stageScoped = args.some((arg) => arg.startsWith("--from="));
+			args = args.filter((arg) => !arg.startsWith("--"));
+			for (const source of args.slice(0, -1)) {
+				if (source.split("/").pop() === "package.json") continue;
+				// A --from= source is an absolute path inside the earlier stage
+				// (/app/packages/x, /build/packages/x); map it back to the repo path.
+				const path = source.replace(/\/+$/, "").replace(/^\/(app|build)\//, "");
+				for (const dir of dirs) {
+					if (path !== dir && !path.startsWith(dir + "/")) continue;
+					present.add(byDir[dir]);
+					if (!stageScoped) fromContext.add(byDir[dir]);
+				}
+			}
+		}
+		for (const name of fromContext) {
+			for (const needed of closure(name)) {
+				if (present.has(needed)) continue;
+				console.log(
+					`FAIL: ${file} (stage ${index + 1}) copies ${name} source but not its dependency ${needed} (${byName[needed].dir})`
+				);
+			}
+		}
+	});
+}
+'
+) || exit 1
+
+if [ -n "$closure_failures" ]; then
+	printf '%s\n' "$closure_failures"
+	echo ""
+	echo "An image that copies a workspace's SOURCE must also copy the source of"
+	echo "every in-repo workspace it depends on, transitively — the manifest alone"
+	echo "makes the symlink resolve and the files behind it missing."
+	exit 1
+fi
+
 if [ "$failures" -gt 0 ]; then
 	echo ""
 	echo "Each image's 'COPY --parents … package.json' line must cover every"
@@ -186,3 +305,4 @@ if [ "$failures" -gt 0 ]; then
 fi
 
 echo "ok:   all $checked Dockerfiles copy every one of the ${#manifests[@]} workspace manifests and required dependency patches"
+echo "ok:   every Dockerfile that copies a workspace's source copies its dependency closure"
