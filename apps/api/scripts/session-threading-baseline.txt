@@ -221,7 +221,6 @@ convex/semanticFiles.ts:remove
 convex/semanticFiles.ts:update
 convex/shareLinks.ts:createShareLink
 convex/shareLinks.ts:revokeShareLink
-convex/storage.ts:generateUploadUrl
 convex/storage.ts:getUrl
 convex/topics/bulk.ts:addContacts
 convex/topics/bulk.ts:removeContacts

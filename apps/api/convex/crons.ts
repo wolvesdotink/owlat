@@ -8,6 +8,13 @@ import { registerSeedPlacementCrons } from './analytics/cronRegistration';
 const crons = cronJobs();
 
 crons.interval(
+	'cleanup abandoned storage uploads',
+	{ minutes: 15 },
+	internal.storage.uploads.cleanup,
+	{}
+);
+
+crons.interval(
 	'reconcile MTA suppressions',
 	{ hours: 24 },
 	internal.delivery.suppressionMirror.reconcile,

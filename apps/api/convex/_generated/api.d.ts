@@ -1,3 +1,8 @@
+import type * as chat_attachmentAccess from '../chat/attachmentAccess.js';
+import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
+import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
+import type * as storage_uploads from '../storage/uploads.js';
+import type * as schema_storage from '../schema/storage.js';
 /* eslint-disable */
 /**
  * Generated `api` utility.
@@ -566,6 +571,7 @@ import type * as knowledge_graphTraversal from '../knowledge/graphTraversal.js';
 import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
+import type * as lib_readBody from '../lib/readBody.js';
 import type * as lib_aiProviderConfigValidators from '../lib/aiProviderConfigValidators.js';
 import type * as lib_appLocales from '../lib/appLocales.js';
 import type * as lib_atRestBodies from '../lib/atRestBodies.js';
@@ -893,6 +899,7 @@ import type * as migrations_0040_backfill_credential_allowed_domains from '../mi
 import type * as migrations_0041_forget_disconnected_credentials from '../migrations/0041_forget_disconnected_credentials.js';
 import type * as migrations_0042_recompute_mailbox_used_bytes from '../migrations/0042_recompute_mailbox_used_bytes.js';
 import type * as migrations_0043_detect_missing_mail_blobs from '../migrations/0043_detect_missing_mail_blobs.js';
+import type * as migrations_0044_private_chat_media from '../migrations/0044_private_chat_media.js';
 import type * as platformAdmin_bootstrap from '../platformAdmin/bootstrap.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
@@ -1137,6 +1144,11 @@ import type * as workspaces_settings from '../workspaces/settings.js';
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
 declare const fullApi: ApiFromModules<{
+	'chat/attachmentAccess': typeof chat_attachmentAccess;
+	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
+	'storage/uploadsHttp': typeof storage_uploadsHttp;
+	'storage/uploads': typeof storage_uploads;
+	'schema/storage': typeof schema_storage;
 	'__tests__/factories': typeof __tests___factories;
 	'__tests__/helpers/permissionGateMock': typeof __tests___helpers_permissionGateMock;
 	'_utils/batchLoader': typeof _utils_batchLoader;
@@ -1695,6 +1707,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/maintenance': typeof knowledge_maintenance;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
+	'lib/readBody': typeof lib_readBody;
 	'lib/aiProviderConfigValidators': typeof lib_aiProviderConfigValidators;
 	'lib/appLocales': typeof lib_appLocales;
 	'lib/atRestBodies': typeof lib_atRestBodies;
@@ -2022,6 +2035,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0041_forget_disconnected_credentials': typeof migrations_0041_forget_disconnected_credentials;
 	'migrations/0042_recompute_mailbox_used_bytes': typeof migrations_0042_recompute_mailbox_used_bytes;
 	'migrations/0043_detect_missing_mail_blobs': typeof migrations_0043_detect_missing_mail_blobs;
+	'migrations/0044_private_chat_media': typeof migrations_0044_private_chat_media;
 	'platformAdmin/bootstrap': typeof platformAdmin_bootstrap;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;

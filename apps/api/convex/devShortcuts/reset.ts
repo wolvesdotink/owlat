@@ -195,6 +195,10 @@ export const runReset = internalMutation({
  */
 function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>): Id<'_storage'>[] {
 	switch (table) {
+		case 'storageUploads': {
+			const upload = row as Doc<'storageUploads'>;
+			return upload.status !== 'bound' && upload.storageId ? [upload.storageId] : [];
+		}
 		case 'accountExportArtifacts':
 			return [(row as Doc<'accountExportArtifacts'>).storageId];
 		case 'mediaAssets':

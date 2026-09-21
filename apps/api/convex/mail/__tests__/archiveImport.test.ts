@@ -11,6 +11,7 @@
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
+import { recordUploadedBlob } from '../../__tests__/uploadFixtures.testlib';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
 import { MAX_ARCHIVE_BYTES } from '../archiveImport';
@@ -28,11 +29,13 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn(async () => ({
 			userId: sessionMocks.userId,
 			role: sessionMocks.role,
+			activeOrganizationId: 'org-1',
 		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getMutationContext: vi.fn(async () => ({
 			userId: sessionMocks.userId,
 			role: sessionMocks.role,
+			activeOrganizationId: 'org-1',
 		})),
 		getBetterAuthSessionWithRole: vi.fn(async () => ({
 			userId: sessionMocks.userId,
@@ -82,6 +85,7 @@ async function storeArchive(t: TestConvex<typeof schema>, text: string): Promise
 	let storageId!: Id<'_storage'>;
 	await t.run(async (ctx) => {
 		storageId = await ctx.storage.store(new Blob([text], { type: 'application/mbox' }));
+		await recordUploadedBlob(ctx, storageId, sessionMocks.userId);
 	});
 	return storageId;
 }

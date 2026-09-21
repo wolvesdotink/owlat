@@ -7,9 +7,9 @@
  * user confirmation; the POST happens server-side (the sender's endpoint
  * never sees the user's browser/IP context, and the request works even when
  * the endpoint lacks CORS). The target URL comes from an attacker-controlled
- * mail header, so it is re-validated here with the shared SSRF guard
- * (`isSafeUnsubscribeUrl`: https only, no credentials, no IP-literal /
- * local / internal hosts) before any network I/O.
+ * mail header. The shared URL policy requires https without credentials or
+ * literal/local hosts; fetchGuarded additionally validates DNS answers before
+ * the request and at socket connection time to prevent DNS rebinding.
  *
  * Fail-soft: network errors, timeouts, and non-2xx responses come back as
  * `{ ok: false }` for a toast — never a thrown error, and nothing about the
@@ -20,6 +20,7 @@ import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import { api } from '../_generated/api';
 import { isSafeUnsubscribeUrl } from '@owlat/shared/listUnsubscribe';
+import { fetchGuarded, SsrfBlockedError } from '../lib/ssrfGuard';
 import { logError } from '../lib/runtimeLog';
 import { throwNotFound } from '../_utils/errors';
 
@@ -39,7 +40,7 @@ export type OneClickResult = { ok: true } | { ok: false; error: string };
  */
 export async function postOneClickUnsubscribe(
 	url: string,
-	fetchImpl: typeof fetch = fetch
+	fetchImpl: (url: string, init: RequestInit) => Promise<Response> = fetchGuarded
 ): Promise<OneClickResult> {
 	if (!isSafeUnsubscribeUrl(url)) return { ok: false, error: 'unsafe_url' };
 	try {
@@ -50,10 +51,12 @@ export async function postOneClickUnsubscribe(
 			redirect: 'manual',
 			signal: AbortSignal.timeout(ONE_CLICK_TIMEOUT_MS),
 		});
+		// Only the status matters; do not retain an untrusted response stream.
+		void res.body?.cancel().catch(() => undefined);
 		if (res.ok) return { ok: true };
 		return { ok: false, error: `http_${res.status}` };
-	} catch {
-		return { ok: false, error: 'network' };
+	} catch (error) {
+		return { ok: false, error: error instanceof SsrfBlockedError ? 'unsafe_url' : 'network' };
 	}
 }
 

@@ -16,11 +16,11 @@ describe('mediaAssets.reconcileAssetSize', () => {
 	async function seedAsset(
 		t: ReturnType<typeof convexTest>,
 		claimedFileSize: number,
-		bytes: Uint8Array,
+		bytes: Uint8Array
 	) {
 		return t.run(async (ctx) => {
 			const storageId = await ctx.storage.store(
-				new Blob([bytes.buffer as ArrayBuffer], { type: 'image/png' }),
+				new Blob([bytes.buffer as ArrayBuffer], { type: 'image/png' })
 			);
 			const assetId = await ctx.db.insert('mediaAssets', {
 				storageId,
@@ -31,6 +31,13 @@ describe('mediaAssets.reconcileAssetSize', () => {
 				uploadedBy: 'user-1',
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('storageUploads', {
+				storageId,
+				userId: 'user-1',
+				organizationId: 'org-1',
+				status: 'bound',
+				resourceKey: `mediaAssets:${assetId}`,
 			});
 			return { assetId, storageId, actualSize: (await ctx.storage.get(storageId))!.size };
 		});
