@@ -61,6 +61,7 @@ import {
 } from '../plugins/featureFlagRegistry';
 
 // public: pre-auth setup/nav rendering needs flags before login
+// authz: no gate by design — flag values are instance configuration the pre-auth shell renders from.
 export const getFeatureFlags = publicQuery({
 	args: {},
 	handler: async (ctx) => {

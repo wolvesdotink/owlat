@@ -68,6 +68,7 @@ async function getCallerActiveExternalMailbox(ctx: QueryCtx | MutationCtx): Prom
  * to render the reversible toggle even after the prompt is gone.
  */
 // public: soft-auth — returns { configured:false } for anonymous or hosted-only users.
+// authz: self-scoped — getCallerActiveExternalMailbox resolves the caller's own mailbox off their session.
 export const sendingSwitchStatus = publicQuery({
 	args: {},
 	handler: async (ctx) => {

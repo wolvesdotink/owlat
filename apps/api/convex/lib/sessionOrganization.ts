@@ -2,6 +2,17 @@ import type { QueryCtx, MutationCtx, ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { components } from '../_generated/api';
 import { throwUnauthenticated, throwForbidden } from '../_utils/errors';
+import {
+	hasPermission,
+	type OrganizationRole,
+	type Permission,
+} from '@owlat/shared/organizationPermissions';
+
+// The role vocabulary and the role -> permission map are defined once in
+// `@owlat/shared/organizationPermissions` so the web app can gate its buttons
+// on the same table this file enforces. Re-exported here because every backend
+// module already imports them from `lib/sessionOrganization`.
+export { hasPermission, type OrganizationRole, type Permission };
 
 /** Shape returned by the BetterAuth adapter for session lookups. */
 interface BetterAuthSession {
@@ -12,12 +23,6 @@ interface BetterAuthSession {
 interface BetterAuthMember {
 	role: string;
 }
-
-/**
- * Organization role type - matches BetterAuth custom roles.
- * Uses 'editor' instead of BetterAuth's default 'member'.
- */
-export type OrganizationRole = 'owner' | 'admin' | 'editor';
 
 /**
  * Full mutation context including user ID and role information.
@@ -409,76 +414,6 @@ export function requirePermission(
 
 // isAdminRole / isOwnerRole removed — use `hasPermission(role, '<scope>:<verb>')`
 // from the Permission union below. See CONVENTIONS.md.
-
-// ============== Permission System ==============
-
-export type Permission =
-	// Marketing send pipeline
-	| 'campaigns:send'
-	| 'campaigns:manage'
-	| 'campaigns:schedule'
-	// Content authoring
-	| 'templates:manage'
-	| 'automations:manage'
-	| 'topics:manage'
-	| 'segments:manage'
-	| 'media:manage'
-	| 'shareLinks:manage'
-	| 'imports:manage'
-	// CRM
-	| 'contacts:manage'
-	| 'contacts:annotate'
-	// Org + admin
-	| 'organization:manage'
-	| 'settings:manage'
-	| 'organization:delete'
-	// Self-service
-	| 'emails:test'
-	// Read the org knowledge graph (any member) — quick-query / agent context
-	| 'knowledge:read'
-	// Internal team chat
-	| 'chat:participate'
-	| 'chat:manage';
-
-const isAdmin = (role: OrganizationRole) => role === 'owner' || role === 'admin';
-const isOwner = (role: OrganizationRole) => role === 'owner';
-// Any org member (owner, admin, or editor). Editors run the marketing send
-// pipeline end-to-end now that the campaign-sender guardrail exists (2026-07-10
-// experience plan, decision 8): they may create/edit/schedule/send campaigns,
-// but only from the curated `campaignSenders` list (or, if an admin has enabled
-// the custom-senders toggle, any verified sending domain). Curating that list
-// and flipping the toggle stay admin-only — see `campaigns/senders.ts`.
-const isEditorOrAbove = (role: OrganizationRole) =>
-	role === 'owner' || role === 'admin' || role === 'editor';
-
-const PERMISSION_MAP: Record<Permission, (role: OrganizationRole) => boolean> = {
-	'campaigns:send': isEditorOrAbove,
-	'campaigns:manage': isEditorOrAbove,
-	'campaigns:schedule': isEditorOrAbove,
-	'templates:manage': isAdmin,
-	'automations:manage': isAdmin,
-	'topics:manage': isAdmin,
-	'segments:manage': isAdmin,
-	'media:manage': isAdmin,
-	'shareLinks:manage': isAdmin,
-	'imports:manage': isAdmin,
-	'contacts:manage': isAdmin,
-	'contacts:annotate': isEditorOrAbove,
-	'organization:manage': isAdmin,
-	'settings:manage': isAdmin,
-	'organization:delete': isOwner,
-	'emails:test': () => true,
-	'knowledge:read': () => true,
-	'chat:participate': () => true,
-	'chat:manage': isAdmin,
-};
-
-/**
- * Check if a role has a specific permission.
- */
-export function hasPermission(role: OrganizationRole, permission: Permission): boolean {
-	return PERMISSION_MAP[permission](role);
-}
 
 /**
  * Get mutation context and assert admin-level role via the typed permission

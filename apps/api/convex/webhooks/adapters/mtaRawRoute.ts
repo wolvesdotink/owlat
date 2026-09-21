@@ -1,3 +1,4 @@
+import { BodyTooLargeError, readBodyText } from '../../lib/readBody';
 /**
  * The shared middle of the two MTA routes whose body IS the message.
  *
@@ -56,6 +57,10 @@ export type VerifiedMtaBody = { ok: true; bodyText: string } | { ok: false; resp
  * erasure already govern it.
  */
 const AUDIT_SUMMARY_VERSION = 1;
+
+// The MTA accepts at most 10 MiB of raw mail. This leaves headroom for base64,
+// parsed bodies and JSON escaping while bounding unauthenticated wire bytes.
+const MAX_RAW_WEBHOOK_BYTES = 64 * 1024 * 1024;
 
 /** Cap on any single caller-supplied string copied into an audit row. */
 const AUDIT_FIELD_MAX_CHARS = 256;
@@ -202,8 +207,8 @@ function declaresBodyUnder(request: Request, limit: number): boolean {
  * big to verify for free, and every verified request, reaches the bucket.
  *
  * Returns the verified body, or the exact `Response` to answer with. The body
- * read is UNBOUNDED, which is the whole reason these routes exist outside the
- * pipeline — see either route's header.
+ * budget is larger than the feedback pipeline's because these routes carry
+ * complete messages, but is enforced while reading even before authentication.
  */
 export async function readVerifiedMtaBody(
 	ctx: ActionCtx,
@@ -236,8 +241,11 @@ export async function readVerifiedMtaBody(
 	const readAndVerify = async (): Promise<VerifiedMtaBody> => {
 		let bodyText: string;
 		try {
-			bodyText = await request.text();
-		} catch {
+			bodyText = await readBodyText(request, MAX_RAW_WEBHOOK_BYTES);
+		} catch (error) {
+			if (error instanceof BodyTooLargeError) {
+				return { ok: false, response: jsonResponse(413, { error: 'Payload too large' }) };
+			}
 			return { ok: false, response: jsonResponse(400, { error: 'Failed to read request body' }) };
 		}
 		if (!(await verifyMtaHeaders(bodyText, signature, mtaTimestamp, secret))) {

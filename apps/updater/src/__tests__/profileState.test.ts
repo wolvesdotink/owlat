@@ -16,11 +16,20 @@ import { join } from 'node:path';
  * /apply-profiles wrote.
  */
 
-const { execSyncMock, rateLimitedMock } = vi.hoisted(() => ({
-	execSyncMock: vi.fn(),
+const { execFileSyncMock, rateLimitedMock } = vi.hoisted(() => ({
+	execFileSyncMock: vi.fn(),
 	rateLimitedMock: vi.fn((_endpoint: string) => false),
 }));
-vi.mock('node:child_process', () => ({ execSync: execSyncMock }));
+vi.mock('node:child_process', () => ({ execFileSync: execFileSyncMock }));
+/**
+ * The argv of each child process, rendered as one line for assertions. `exec`
+ * runs execFileSync — there is no shell command string to inspect, so the
+ * arguments are joined here rather than in production code.
+ */
+function commandLines(): string[] {
+	return execFileSyncMock.mock.calls.map((c) => [c[0], ...(c[1] as string[])].join(' '));
+}
+
 vi.mock('../security.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../security.js')>();
 	return { ...actual, isRateLimited: rateLimitedMock };
@@ -52,7 +61,7 @@ const INITIAL_ENV =
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
-	execSyncMock.mockReset().mockReturnValue('');
+	execFileSyncMock.mockReset().mockReturnValue('');
 	writeFileSync(ENV_FILE, INITIAL_ENV);
 });
 
@@ -72,20 +81,20 @@ describe('auth + rate limit', () => {
 	it('rejects a missing instance secret with 401', async () => {
 		const res = await get({});
 		expect(res.status).toBe(401);
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects a wrong instance secret with 401', async () => {
 		const res = await get({ 'x-instance-secret': 'wrong-but-long-enough-000000' });
 		expect(res.status).toBe(401);
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('returns 429 when rate limited, before running docker', async () => {
 		rateLimitedMock.mockImplementation((endpoint: string) => endpoint === 'profile-state');
 		const res = await get();
 		expect(res.status).toBe(429);
-		expect(execSyncMock).not.toHaveBeenCalled();
+		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
 	it('does not share a rate-limit bucket with the write endpoints', async () => {
@@ -116,7 +125,7 @@ describe('.env parsing', () => {
 	});
 
 	it('round-trips what /apply-profiles writes', async () => {
-		execSyncMock.mockReturnValue('');
+		execFileSyncMock.mockReturnValue('');
 		const applied = await fetch(`${base}/apply-profiles`, {
 			method: 'POST',
 			headers: AUTH,
@@ -139,7 +148,7 @@ describe('.env parsing', () => {
 
 describe('compose ps mapping', () => {
 	it('maps each service row through the shared parser', async () => {
-		execSyncMock.mockReturnValue(
+		execFileSyncMock.mockReturnValue(
 			'{"Service":"mail-sync","State":"running","Status":"Up 5 seconds","Image":"ghcr.io/wolvesdotink/mail-sync:0.4.3","Health":"healthy"}\n' +
 				'{"Service":"mta","State":"exited","Status":"Exited (0)","Image":"ghcr.io/wolvesdotink/mta:0.4.3","Health":""}\n'
 		);
@@ -165,21 +174,19 @@ describe('compose ps mapping', () => {
 	});
 
 	it('falls back to raw stdout when compose ps is not JSON', async () => {
-		execSyncMock.mockReturnValue('NAME   STATE\nweb    running\n');
+		execFileSyncMock.mockReturnValue('NAME   STATE\nweb    running\n');
 		const body = (await (await get()).json()) as ProfileState;
 		expect(body.services).toBe('NAME   STATE\nweb    running\n');
 	});
 
 	it('is read-only: only `compose ps` runs, and .env is untouched', async () => {
 		await get();
-		expect(execSyncMock.mock.calls.map((c) => String(c[0]))).toEqual([
-			'docker compose ps --format json',
-		]);
+		expect(commandLines()).toEqual(['docker compose ps --format json']);
 		expect(readFileSync(ENV_FILE, 'utf-8')).toBe(INITIAL_ENV);
 	});
 
 	it('still answers when the docker daemon is down', async () => {
-		execSyncMock.mockImplementation(() => {
+		execFileSyncMock.mockImplementation(() => {
 			throw Object.assign(new Error('boom'), { stderr: 'daemon down' });
 		});
 		const res = await get();

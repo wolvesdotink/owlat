@@ -320,7 +320,11 @@
 				"label": "Aufgabe wird geladen"
 			},
 			"taskOptions": {
+				"lead": "Klicken Sie auf einen Vorschlag, um ihn als Antwort zu übernehmen, oder schreiben Sie unten selbst.",
 				"orTypeAnswerPlaceholder": "Oder geben Sie eine Antwort ein…",
+				"readback": "Ihre Antwort: {answer}",
+				"readbackRemembered": "Ihre Antwort: {answer} (aus Ihrer früheren Antwort vorausgewählt — wählen Sie eine andere, um sie zu ändern)",
+				"rememberedTag": "letztes Mal",
 				"typeAnswerPlaceholder": "Geben Sie Ihre Antwort ein…"
 			}
 		},
@@ -447,8 +451,6 @@
 		"automations": {
 			"stepEditorPanel": {
 				"delete": "Schritt löschen",
-				"emptyBody": "Klicken Sie im Workflow auf einen Schritt, um dessen Einstellungen zu konfigurieren.",
-				"emptyTitle": "Schritt auswählen",
 				"save": "Änderungen speichern",
 				"title": "Schritteinstellungen"
 			},
@@ -7764,6 +7766,7 @@
 						"edit": "Segment bearbeiten",
 						"viewContacts": "Kontakte ansehen"
 					},
+					"adminsOnly": "Nur Inhaber und Administratoren können Segmente erstellen oder bearbeiten.",
 					"clearSearch": "Suche zurücksetzen",
 					"count": "{count} Segment | {count} Segmente",
 					"deleteDialog": {
@@ -8004,6 +8007,7 @@
 						"delete": "Thema löschen",
 						"edit": "Thema bearbeiten"
 					},
+					"adminsOnly": "Nur Inhaber und Administratoren können Themen erstellen oder bearbeiten.",
 					"clearSearch": "Suche zurücksetzen",
 					"count": "{count} Thema | {count} Themen",
 					"createModal": {
@@ -8176,6 +8180,7 @@
 					"pause": "Pausieren",
 					"viewDetails": "Details ansehen"
 				},
+				"adminsOnly": "Nur Inhaber und Administratoren können Automationen erstellen oder bearbeiten.",
 				"clearSearch": "Suche zurücksetzen",
 				"deleteDialog": {
 					"activeWarning": "Aktive Automationen müssen vor dem Löschen pausiert werden.",
@@ -8710,10 +8715,12 @@
 			"detail": {
 				"agentDraft": "Agentenentwurf",
 				"agentNeedsInput": "Der Agent braucht Ihre Eingabe",
+				"agentNeedsInputEyebrow": "Wartet auf Sie",
 				"aiClassification": "KI-Klassifizierung",
 				"answerAndResume": "Antworten und Entwurf fortsetzen",
 				"answerClarificationOperation": "Rückfrage beantworten",
 				"answerPlaceholder": "Antwort eingeben",
+				"answerRemaining": "Noch {count} Antwort bis zum Fortsetzen | Noch {count} Antworten bis zum Fortsetzen",
 				"approveAndSend": "Freigeben & senden",
 				"assign": "Zuweisen",
 				"assignThreadAria": "Konversation zuweisen",
@@ -8733,6 +8740,8 @@
 				},
 				"changeStatusAria": "Status der Konversation ändern",
 				"channelLinkFailedToast": "Kanal erstellt, aber die Verknüpfung ist fehlgeschlagen",
+				"clarificationLead": "Antworten Sie unten, dann stellt der Agent den Entwurf mit Ihren Angaben als bestätigten Fakten fertig.",
+				"clarificationProgress": "{answered} von {total} beantwortet",
 				"clarificationSavedToast": "Antworten gespeichert — Entwurf wird fortgesetzt",
 				"confidenceChip": "{percent} % Konfidenz",
 				"contact": "Kontakt",
@@ -8760,13 +8769,19 @@
 				},
 				"priorityChip": "Priorität: {priority}",
 				"processingFailed": "Verarbeitung fehlgeschlagen",
+				"questionCounter": "Frage {index} von {total}",
 				"reject": "Ablehnen",
 				"rejectDraft": "Entwurf ablehnen",
 				"rejectModalBody": "Geben Sie optional eine Begründung an. Dieses Feedback verbessert künftige Entwürfe.",
 				"rejectReasonPlaceholder": "Begründung der Ablehnung (optional)",
 				"rejecting": "Wird abgelehnt …",
+				"replyLanguageNote": "Die Antwort wird auf {language} verfasst.",
 				"retriedToast": "Nachricht erneut zur Verarbeitung eingereiht",
 				"retryProcessing": "Erneut verarbeiten",
+				"reusedAnswersEyebrow": "Aus dem Gedächtnis",
+				"reusedAnswersHint": "Dieselbe Frage wurde schon einmal beantwortet, daher hat der Agent diese Antwort erneut angewendet. Bearbeiten Sie den Entwurf, wenn er anders lauten soll, oder",
+				"reusedAnswersManage": "prüfen Sie, was Owlat sich gemerkt hat.",
+				"reusedAnswersTitle": "Owlat hat für diesen Entwurf Ihre früheren Antworten wiederverwendet",
 				"sendingAutomatically": "Automatischer Versand in {seconds} s",
 				"sentiments": {
 					"negative": "negativ",
@@ -8914,6 +8929,73 @@
 			},
 			"review": {
 				"pageTitle": "Prüfliste — Owlat"
+			},
+			"updates": {
+				"blockDialogConfirm": "Absender sperren",
+				"blockDialogDescription": "Künftige Nachrichten von {sender} werden stillschweigend verworfen.",
+				"blockDialogTitle": "Diesen Absender sperren?",
+				"blockOperation": "Absender sperren",
+				"blockSender": "Absender sperren",
+				"blockedToast": "Absender gesperrt",
+				"dismiss": "Erledigt",
+				"dismissOperation": "Neuigkeit verwerfen",
+				"dismissedToast": "Neuigkeit verworfen",
+				"empty": {
+					"updates": {
+						"title": "Sie sind auf dem Laufenden",
+						"body": "Nachrichten ohne Antwortbedarf landen hier, sortiert danach, wie wichtig sie für Sie sind."
+					},
+					"promotions": {
+						"title": "Keine Werbung",
+						"body": "Werbung, Kaltakquise und Newsletter, die der Agent abgelegt hat, erscheinen hier."
+					},
+					"notifications": {
+						"title": "Keine Benachrichtigungen",
+						"body": "Automatische Systemmails und Belege, die der Agent abgelegt hat, erscheinen hier."
+					},
+					"spam": {
+						"title": "Kein Spam erkannt",
+						"body": "Nachrichten, die der Agent als Spam archiviert hat, stehen hier, damit Sie sein Urteil prüfen und Absender sperren können."
+					}
+				},
+				"emptyBody": "Nachrichten ohne Antwortbedarf landen hier, sortiert danach, wie wichtig sie für Sie sind.",
+				"emptyTitle": "Sie sind auf dem Laufenden",
+				"errorMessage": "Die Neuigkeiten konnten nicht geladen werden. Versuchen Sie es gleich noch einmal.",
+				"errorTitle": "Neuigkeiten konnten nicht geladen werden",
+				"hintMove": "bewegen",
+				"hintOpen": "öffnen",
+				"importance": {
+					"high": "Wichtig",
+					"low": "Niedrig",
+					"normal": "Gut zu wissen"
+				},
+				"kinds": {
+					"personal": "persönlich",
+					"update": "Info",
+					"notification": "Benachrichtigung",
+					"receipt": "Beleg",
+					"newsletter": "Newsletter",
+					"advertising": "Werbung"
+				},
+				"listAriaLabel": "Neuigkeiten ohne Antwortbedarf",
+				"loading": "Neuigkeiten werden geladen…",
+				"noSubject": "Kein Betreff",
+				"open": "Öffnen",
+				"openReviewQueue": "Prüfliste öffnen",
+				"pageTitle": "Neuigkeiten — Owlat",
+				"replyRequestedToast": "Der Agent entwirft eine Antwort. Sie erscheint in der Prüfliste.",
+				"requestReply": "Antwort entwerfen",
+				"requestReplyOperation": "Antwortentwurf anfordern",
+				"spamNote": "Vom Agenten als Spam archiviert. Öffnen Sie eine Nachricht zur Prüfung; das Sperren eines Absenders verwirft künftige Mails, bevor die Verarbeitung läuft.",
+				"subtitle": "Nachrichten, die laut Agent keine Antwort brauchen, die wichtigsten zuerst. Hier wartet nichts auf Sie.",
+				"tabs": {
+					"updates": "Neuigkeiten",
+					"promotions": "Werbung",
+					"notifications": "Benachrichtigungen",
+					"spam": "Spam"
+				},
+				"tabsAriaLabel": "Ansichten",
+				"title": "Neuigkeiten"
 			}
 		},
 		"index": {
@@ -9632,6 +9714,7 @@
 					}
 				},
 				"index": {
+					"adminsOnly": "Nur Inhaber und Administratoren können Bausteine erstellen oder löschen.",
 					"blockCount": "{count} Baustein | {count} Bausteine",
 					"blocksBadge": "{count} Bausteine",
 					"clearSearch": "Suche zurücksetzen",
@@ -9808,6 +9891,7 @@
 			},
 			"marketing": {
 				"index": {
+					"adminsOnly": "Nur Inhaber und Administratoren können Vorlagen erstellen oder löschen.",
 					"clearSearch": "Suche zurücksetzen",
 					"columns": {
 						"subject": "Betreff",
@@ -9971,6 +10055,7 @@
 					}
 				},
 				"index": {
+					"adminsOnly": "Nur Inhaber und Administratoren können Transaktions-E-Mails erstellen oder löschen.",
 					"apiUsage": {
 						"copied": "Kopiert!",
 						"note": "{label} Ersetzen Sie {placeholder} durch Ihren tatsächlichen API-Schlüssel. API-Schlüssel können Sie unter {settings} erstellen.",
@@ -11428,7 +11513,8 @@
 					"allThreads": "Alle Konversationen",
 					"codeTasks": "Code-Aufgaben",
 					"quarantine": "Quarantäne",
-					"reviewQueue": "Prüf-Warteschlange"
+					"reviewQueue": "Prüf-Warteschlange",
+					"updates": "Neuigkeiten"
 				},
 				"knowledge": {
 					"explorer": "Explorer",
@@ -12151,6 +12237,17 @@
 		},
 		"inbox": {
 			"assignmentNoticeRules": {
+				"clarification": {
+					"notificationBody": {
+						"noSubject": "Kein Betreff · der Agent hat eine Frage an Sie",
+						"withSubject": "{subject} · der Agent hat eine Frage an Sie"
+					},
+					"notificationTitle": "Ihre Eingabe wird gebraucht",
+					"toast": {
+						"noSubject": "Der Agent braucht Ihre Eingabe für eine Antwort — Kein Betreff",
+						"withSubject": "Der Agent braucht Ihre Eingabe für eine Antwort — {subject}"
+					}
+				},
 				"notification": {
 					"body": {
 						"noSubject": "Kein Betreff · von {assignedByName}",
@@ -12558,7 +12655,9 @@
 					"notification": "Benachrichtigung",
 					"other": "Sonstiges",
 					"person": "Person",
-					"receipt": "Beleg"
+					"promotion": "Werbung",
+					"receipt": "Beleg",
+					"spam": "Spam"
 				},
 				"recategorizeThread": "Konversation neu einordnen",
 				"sections": {
@@ -12566,6 +12665,7 @@
 					"notification": "Benachrichtigungen",
 					"other": "Alles Übrige",
 					"person": "Personen",
+					"promotion": "Werbung",
 					"receipt": "Belege"
 				}
 			},
@@ -14202,12 +14302,16 @@
 			"assignThread": "Konversation zuweisen",
 			"processingStatus": {
 				"approved": "Freigegeben",
+				"archived": "Archiviert",
+				"awaitingClarification": "Wartet auf Ihre Eingabe",
 				"classified": "Klassifiziert",
 				"draftReady": "Entwurf bereit",
 				"failed": "Fehlgeschlagen",
+				"informational": "Keine Antwort nötig",
 				"processing": "In Verarbeitung",
 				"quarantined": "In Quarantäne",
 				"received": "Empfangen",
+				"rejected": "Abgelehnt",
 				"sent": "Gesendet"
 			},
 			"rejectDraft": "Entwurf ablehnen",
@@ -14386,6 +14490,7 @@
 		"postboxBundles": {
 			"newsletter": "Newsletter",
 			"notification": "Benachrichtigungen",
+			"promotion": "Werbung",
 			"receipt": "Belege"
 		},
 		"accountExportResources": {

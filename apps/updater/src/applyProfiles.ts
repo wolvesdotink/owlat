@@ -7,7 +7,7 @@
  * produce.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getActiveProfiles } from '@owlat/shared/featureFlags';
 import {
@@ -17,6 +17,7 @@ import {
 import { errorMessage } from '@owlat/shared';
 import { applyEnvUpdates, isRateLimited, validateFlagSnapshot } from './security.js';
 import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import { composeArgv, servicesToRecreate } from './rollout.js';
 
 export async function handleApplyProfiles(req: IncomingMessage, res: ServerResponse) {
 	if (!requireAuth(req, res)) return;
@@ -41,7 +42,7 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 	const envFile = join(OWLAT_DIR, '.env');
 	let envContent: string;
 	try {
-		envContent = readFileSync(envFile, 'utf-8');
+		envContent = await readFile(envFile, 'utf-8');
 	} catch (err) {
 		return json(res, 500, { error: `Cannot read .env: ${errorMessage(err)}` });
 	}
@@ -52,6 +53,14 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 	const deliveryProvider = parseDeliveryProviderFromEnv(envContent);
 	const profiles = getActiveProfiles(flags, { deliveryProvider });
 
+	// The four file operations below are awaited, not the sync twins they used
+	// to be (and not because either is faster here). A fully synchronous handler
+	// never yields, so a SIGTERM arriving during it cannot be observed until it
+	// is over — which means the critical-section protection around this endpoint
+	// would be describing a race that could not happen, while the real one, the
+	// window between the last write and `docker compose up -d`, went unguarded.
+	// Awaiting makes those points real suspension points, so the shutdown path
+	// can see the sequence in flight and wait for it.
 	const steps: { step: string; ok?: boolean; stdout: string; stderr: string }[] = [];
 
 	// Step 1: converge COMPOSE_PROFILES in .env (append when a pre-profiles
@@ -66,7 +75,7 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 		return json(res, 500, { error: rewrite.reason });
 	}
 	try {
-		writeFileSync(envFile, rewrite.content, 'utf-8');
+		await writeFile(envFile, rewrite.content, 'utf-8');
 		steps.push({ step: 'write-env', stdout: `COMPOSE_PROFILES=${profiles.join(',')}`, stderr: '' });
 	} catch (err) {
 		return json(res, 500, { error: `Cannot write .env: ${errorMessage(err)}`, steps });
@@ -74,7 +83,7 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 
 	// Step 2: regenerate the override via the shared writer.
 	try {
-		writeFileSync(
+		await writeFile(
 			join(OWLAT_DIR, 'docker-compose.override.yml'),
 			renderComposeOverrideYaml(profiles),
 			'utf-8'
@@ -91,7 +100,7 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 	// Step 3: mirror the snapshot to the CLI-side flag store so `owlat doctor` /
 	// `feature` / `pack` see the applied state instead of recomputing defaults.
 	try {
-		writeFileSync(join(OWLAT_DIR, '.owlat-flags.json'), JSON.stringify(flags, null, 2), {
+		await writeFile(join(OWLAT_DIR, '.owlat-flags.json'), JSON.stringify(flags, null, 2), {
 			mode: 0o600,
 		});
 		steps.push({ step: 'write-flag-mirror', stdout: 'Wrote .owlat-flags.json', stderr: '' });
@@ -100,7 +109,19 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 	}
 
 	// Step 4: apply — compose reads COMPOSE_PROFILES from the .env just written.
-	const up = exec('docker compose up -d --remove-orphans', OWLAT_DIR);
+	// Named services, so a profile change can never recreate the updater or the
+	// socket proxy out from under the command applying it.
+	const plan = servicesToRecreate();
+	if (plan.error) {
+		steps.push({ step: 'up', ok: false, stdout: '', stderr: plan.error });
+		return json(res, 500, { error: `docker compose up failed: ${plan.error}`, profiles, steps });
+	}
+
+	const up = exec(
+		'docker',
+		[...composeArgv(), 'up', '-d', '--remove-orphans', ...plan.services],
+		OWLAT_DIR
+	);
 	steps.push({ step: 'up', ...up });
 	if (!up.ok) {
 		return json(res, 500, { error: 'docker compose up failed', profiles, steps });

@@ -130,6 +130,12 @@ numbers) ride in `data`/`message`, never as new categories. Casing settles to
 | `internal` | 500 | toast "something went wrong" | **yes** | INTERNAL_ERROR, EXTERNAL_SERVICE_ERROR, unknown |
 | `network` | — (client) | toast "check connection" + retry | **yes** (post-retry) | client fetch failure / Convex disconnect |
 
+One status in the HTTP serialization is not derived from the category:
+`lib/httpResponse.ts:methodNotAllowed` answers `405` with `invalid_input`. A
+wrong verb on an existing path is a transport fact, and `405` says it more
+precisely than `400` — but the body still carries a category, so no client has
+to special-case one response shape.
+
 ### Three adapters at the seam
 
 - **Thrown (in-app):** `ConvexError({ category, message, data })`. The seven
@@ -143,6 +149,12 @@ numbers) ride in `data`/`message`, never as new categories. Casing settles to
   `RateLimitError`, …) — good ergonomics, fewer external breaks — but retune
   `.code` to the canonical `category` and surface `.data` (so
   `RateLimitError.retryAfter` reads from `data.retryAfter`).
+
+Inbound provider webhook responses are exempt from the HTTP envelope: their
+bodies are read by the provider, not by us, and a provider's retry/disable
+behaviour can be bound to the exact shape it was given — so the inbound
+handlers (`webhooks/*`, `mail/authHttp.ts`, `mail/webhookHttp.ts`,
+`inbox/inboundWebhookHttp.ts`) answer in whatever shape their sender expects.
 
 ### Two app-side modules (centralized policy)
 

@@ -356,7 +356,6 @@ export const templateTables = {
 		.index('by_status', ['status'])
 		.index('by_email', ['email'])
 		.index('by_contact', ['contactId'])
-		.index('by_sent_at', ['sentAt'])
 		.index('by_provider_message_id', ['providerMessageId'])
 		// Answers "does this inbound message already have a send?" as a point
 		// lookup. The stuck-approved reconciler used to infer that from a bounded

@@ -30,6 +30,7 @@ import {
 	type ProfileSummary,
 } from './_helpers';
 import { resolveMentionsToMemberIds } from './mentions';
+import { isChatAttachment } from './attachmentAccess';
 import {
 	assistantToolCallValidator,
 	assistantMessageStatusValidator,
@@ -66,7 +67,7 @@ export const listMessages = chatQuery({
 			.withIndex('by_room_and_created', (q) =>
 				args.beforeCreatedAt !== undefined
 					? q.eq('roomId', args.roomId).lt('createdAt', args.beforeCreatedAt)
-					: q.eq('roomId', args.roomId),
+					: q.eq('roomId', args.roomId)
 			)
 			.order('desc');
 
@@ -101,7 +102,7 @@ export const listMessages = chatQuery({
 		return {
 			messages: enriched,
 			hasMore,
-			nextCursor: hasMore ? enriched[0]?.createdAt ?? null : null,
+			nextCursor: hasMore ? (enriched[0]?.createdAt ?? null) : null,
 		};
 	},
 });
@@ -132,6 +133,14 @@ export const sendMessage = chatMutation({
 		const membership = await assertCanWriteRoom(ctx, args.roomId, userId);
 
 		const text = requireMessageText(args.text);
+		// A room membership check alone cannot authorize a caller-supplied file:
+		// otherwise a private attachment could be reposted into any readable room.
+		for (const attachmentId of new Set(args.attachmentIds ?? [])) {
+			const asset = await ctx.db.get(attachmentId);
+			if (!asset || (isChatAttachment(asset) && asset.uploadedBy !== userId)) {
+				throwForbidden('Attachment not accessible');
+			}
+		}
 
 		// Resolve @mentions to known userProfiles. Unknown handles are dropped
 		// silently; they remain in the message text but don't generate a
@@ -159,7 +168,8 @@ export const sendMessage = chatMutation({
 			authorId: userId,
 			text,
 			mentions: uniqueMentions.length > 0 ? uniqueMentions : undefined,
-			attachmentIds: args.attachmentIds && args.attachmentIds.length > 0 ? args.attachmentIds : undefined,
+			attachmentIds:
+				args.attachmentIds && args.attachmentIds.length > 0 ? args.attachmentIds : undefined,
 			createdAt: now,
 		});
 
@@ -290,7 +300,7 @@ export const markRead = chatMutation({
 		const unreadMentions = await ctx.db
 			.query('chatMentions')
 			.withIndex('by_mentioned_unread', (q) =>
-				q.eq('mentionedMemberId', userId).eq('readAt', undefined),
+				q.eq('mentionedMemberId', userId).eq('readAt', undefined)
 			)
 			.collect(); // bounded: caller's unread mentions (small per-user backlog)
 		for (const mention of unreadMentions) {
@@ -324,7 +334,7 @@ export const myUnreadCounts = chatQuery({
 		const unreadMentions = await ctx.db
 			.query('chatMentions')
 			.withIndex('by_mentioned_unread', (q) =>
-				q.eq('mentionedMemberId', userId).eq('readAt', undefined),
+				q.eq('mentionedMemberId', userId).eq('readAt', undefined)
 			)
 			.collect(); // bounded: caller's unread mentions (small per-user backlog)
 		const mentionRoomIds = new Set(unreadMentions.map((m) => m.roomId.toString()));
@@ -333,7 +343,7 @@ export const myUnreadCounts = chatQuery({
 			const recent = await ctx.db
 				.query('chatMessages')
 				.withIndex('by_room_and_created', (q) =>
-					q.eq('roomId', membership.roomId).gt('createdAt', membership.lastReadAt),
+					q.eq('roomId', membership.roomId).gt('createdAt', membership.lastReadAt)
 				)
 				.take(101);
 			// Exclude soft-deleted + the user's own messages from the unread count.
@@ -429,7 +439,7 @@ export const finalizeAssistantChatMessage = internalMutation({
 	handler: async (ctx, args) => {
 		const msg = await ctx.db.get(args.messageId);
 		if (!msg || msg.deletedAt) return;
-		const status = msg.aiStatus === 'streaming' ? args.status : msg.aiStatus ?? args.status;
+		const status = msg.aiStatus === 'streaming' ? args.status : (msg.aiStatus ?? args.status);
 		const finalText =
 			args.status === 'error' && !args.text.trim()
 				? '⚠️ The assistant could not complete this reply.'

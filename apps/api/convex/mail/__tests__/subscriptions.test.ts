@@ -20,6 +20,11 @@ import {
 	type SubscriptionMessageInput,
 } from '../subscriptions';
 import { modules, seedMailbox } from './helpers.testlib';
+import { fetchGuarded } from '../../lib/ssrfGuard';
+
+// These tests exercise selection and archive state; unsubscribe's own tests
+// cover DNS/redirect refusal at the transport boundary.
+vi.mock('../../lib/ssrfGuard', () => ({ fetchGuarded: vi.fn() }));
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -398,8 +403,8 @@ describe('mail.subscriptions.sendersOfMessages', () => {
 describe('mail.subscriptions.unsubscribeAndArchive', () => {
 	/** One-Click endpoints answer 200; the POST itself is `unsubscribe.ts`'s. */
 	function stubOneClickEndpoint() {
-		const fetchSpy = vi.fn(async () => new Response(null, { status: 200 }));
-		vi.stubGlobal('fetch', fetchSpy);
+		const fetchSpy = vi.mocked(fetchGuarded).mockReset();
+		fetchSpy.mockImplementation(async () => new Response(null, { status: 200 }));
 		return fetchSpy;
 	}
 
