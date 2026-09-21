@@ -5,8 +5,3 @@
 # so this file cannot rot into a list of permanent exemptions.
 #
 # Keep the reason with the entry.
-
-# Lands with the IMAP CONDSTORE (RFC 7162) work: `SEARCH MODSEQ` / `CHANGEDSINCE`
-# needs a per-folder modseq range, and dropping the index now would only mean
-# re-adding it (and re-backfilling) in that change.
-mailMessages.by_folder_and_modseq
