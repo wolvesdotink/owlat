@@ -24,11 +24,11 @@
 
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
-import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { logWarn } from '../lib/runtimeLog';
+import { trackEvent } from '../lib/posthogHelpers';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -261,10 +261,10 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 				break;
 			}
 			case 'track_event': {
-				await ctx.scheduler.runAfter(0, internal.lib.posthog.capture, {
-					distinctId: effect.userId,
-					event: effect.event,
-					properties: { automationId: effect.automationId },
+				// Through the shared helper, not a direct schedule: that is where
+				// `analytics.posthog` is enforced.
+				await trackEvent(ctx, { userId: effect.userId }, effect.event, {
+					automationId: effect.automationId,
 				});
 				break;
 			}
