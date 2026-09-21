@@ -28,7 +28,7 @@
 	},
 	"devDependencies": {
 		"@tauri-apps/cli": "^2.11.4",
-		"@vitest/coverage-v8": "^4.1.10",
+		"@vitest/coverage-v8": "^5.0.1",
 		"typescript": "^7.0.2",
 		"vitest": "^4.1.10"
 	}
