@@ -10,6 +10,7 @@
  * the guard runs outside a component `setup()`, so that crash fails this file.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { api } from '@owlat/api';
 import { getCurrentInstance } from 'vue';
 import type { RouteLocationNormalized } from 'vue-router';
 import {
@@ -20,6 +21,8 @@ import {
 	route,
 	session,
 	signIn,
+	useActiveOrganization,
+	useListOrganizations,
 	type Redirect,
 } from './harness';
 
@@ -148,6 +151,23 @@ describe('admin middleware', () => {
 		consoleError.mockRestore();
 	});
 
+	it('does not open another Convex subscription per navigation', async () => {
+		// The guard calls `useOrganizationContext()` inside `runWithContext`, whose
+		// effect scope is gone once the guard has awaited — so nothing would ever
+		// unsubscribe. With 117 guarded pages that is one leaked workspace-settings
+		// subscription per navigation. The query is a module singleton now, so the
+		// count must not grow.
+		signIn({ role: 'admin' });
+		const { middleware, convex } = await load();
+
+		await middleware(to, to);
+		const afterFirst = convex!.subscriptionCount(api.workspaces.settings.get);
+		expect(afterFirst).toBe(1);
+
+		await middleware(to, to);
+		expect(convex!.subscriptionCount(api.workspaces.settings.get)).toBe(afterFirst);
+	});
+
 	it('sends a signed-out visitor to sign in without loading the organization', async () => {
 		const { middleware } = await load();
 
@@ -156,6 +176,13 @@ describe('admin middleware', () => {
 			options: undefined,
 		});
 		expect(listMembers).not.toHaveBeenCalled();
+		// Constructing the organization stores IS the request: better-auth fetches
+		// the full organization and the organization list as soon as the hooks are
+		// built. A signed-out visitor would collect 401s from both on the way to
+		// the login redirect, so the guard must not build them before it has
+		// decided.
+		expect(useActiveOrganization).not.toHaveBeenCalled();
+		expect(useListOrganizations).not.toHaveBeenCalled();
 	});
 
 	it('holds a pending session until it settles, then decides on the outcome', async () => {

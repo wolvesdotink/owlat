@@ -1,10 +1,69 @@
-import type { FunctionReference, FunctionArgs, FunctionReturnType } from 'convex/server';
+import {
+	getFunctionName,
+	type FunctionReference,
+	type FunctionArgs,
+	type FunctionReturnType,
+} from 'convex/server';
+import { convexToJson } from 'convex/values';
+import { logWarn } from '~/lib/runtimeLog';
 import type { Ref } from 'vue';
 
 export type ArgsOrFactory<Args> = Args | (() => Args | 'skip');
 
 function resolveArgs<Args>(args: ArgsOrFactory<Args>): Args | 'skip' {
 	return typeof args === 'function' ? (args as () => Args | 'skip')() : args;
+}
+
+/**
+ * JSON with object keys in a fixed order. `convexToJson` already sorts keys and
+ * drops `undefined` fields, so the sorting here is for the fallback path below,
+ * where the args never went through it.
+ */
+function stableJson(value: unknown): string {
+	if (value === undefined) return 'undefined';
+	if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'undefined';
+	if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+	const entries = Object.entries(value as Record<string, unknown>)
+		.filter(([, v]) => v !== undefined)
+		.sort(([a], [b]) => (a < b ? -1 : 1));
+	return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(',')}}`;
+}
+
+/**
+ * Counter behind the last-resort identity below. Module scope so two queries
+ * cannot collide on the same token.
+ */
+let unserialisableArgsCounter = 0;
+
+/**
+ * Identity of a set of query args, for deciding whether to re-subscribe.
+ *
+ * Args factories return a fresh object literal on every evaluation, so comparing
+ * by reference (or watching `deep`, which skips the changed-check entirely) makes
+ * any unrelated re-evaluation — a Convex push handing a component a structurally
+ * identical prop, say — tear down and reopen the subscription, blanking `data`
+ * and flashing a spinner. Compare the VALUE instead: Convex args are
+ * JSON-compatible, and `convexToJson` normalises the exotic members (Int64,
+ * bytes) into that shape.
+ *
+ * Anything `convexToJson` rejects is not a valid query arg, so the Convex client
+ * is about to throw on it anyway — but this runs inside a watcher, where a throw
+ * would take the caller down instead. Try the raw value, and if even that will
+ * not stringify (a bigint, a cycle), answer with a token that is unique per
+ * evaluation: the query then re-subscribes on every change, which is exactly the
+ * behaviour this composable had before.
+ */
+function argsIdentity(args: unknown): string {
+	if (args === 'skip') return 'skip';
+	try {
+		return stableJson(convexToJson(args as Parameters<typeof convexToJson>[0]));
+	} catch {
+		try {
+			return stableJson(args);
+		} catch {
+			return `unserialisable:${(unserialisableArgsCounter += 1)}`;
+		}
+	}
 }
 
 /** Return type of useConvexQuery, preserving the query result type */
@@ -58,6 +117,7 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	};
 
 	const resolvedArgs = computed(() => resolveArgs(args));
+	const argsKey = computed(() => argsIdentity(resolvedArgs.value));
 
 	const subscribe = (opts?: { background?: boolean }) => {
 		// Clean up previous subscription and timeout. MUST null the handle after
@@ -129,8 +189,8 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 		}, timeoutMs);
 	};
 
-	// Watch for args changes
-	watch(resolvedArgs, () => subscribe(), { immediate: true, deep: true });
+	// Re-subscribe only when the args' VALUE changes — see `argsIdentity`.
+	watch(argsKey, () => subscribe(), { immediate: true });
 
 	// Force a fresh read with the current args, keeping prior data visible.
 	const refetch = () => subscribe({ background: true });
@@ -143,6 +203,22 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 				unsubscribe();
 			}
 		});
+	} else if (import.meta.dev) {
+		// No scope means nothing will ever call the unsubscribe: the socket
+		// subscription outlives whatever created it. The usual cause is a call
+		// made after an `await` in route middleware, where Nuxt's `runWithContext`
+		// scope is no longer active — one leaked subscription per navigation, on a
+		// guard that runs on nearly every page. Shared state like this belongs in a
+		// module singleton owned by a detached `effectScope`; see `useFeatureFlag`.
+		let name: string;
+		try {
+			name = getFunctionName(query);
+		} catch {
+			name = String(query);
+		}
+		logWarn(
+			`[useConvexQuery] ${name} was created outside an effect scope — its subscription will never be released.`
+		);
 	}
 
 	return { data, error, isLoading, isRefetching, refetch };

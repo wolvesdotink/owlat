@@ -1,5 +1,49 @@
 import { api } from '@owlat/api';
+import { effectScope, type EffectScope } from 'vue';
+import type { ConvexQueryResult } from './useConvexQuery';
 import type { OrganizationRole } from './useOrganization';
+
+type SettingsQuery = ConvexQueryResult<(typeof api.workspaces.settings.get)['_returnType']> | null;
+
+let settingsScope: EffectScope | null = null;
+
+let settingsQuery: SettingsQuery = null;
+
+/**
+ * The workspace-settings subscription, opened ONCE for the app's lifetime.
+ *
+ * `useOrganizationContext` is reached from the `auth` and `admin` route guards,
+ * which call it after an `await` — there is no effect scope there, so
+ * `useConvexQuery` had nothing to register a teardown on and every navigation to
+ * one of the 117 guarded pages opened another subscription that was never
+ * closed. The settings are a single workspace-wide document, so one subscription
+ * is also the correct shape. Own it in a DETACHED scope, as `useFeatureFlag`
+ * does, so the first caller's component scope cannot dispose it out from under
+ * everyone else.
+ */
+function workspaceSettingsQuery(): NonNullable<SettingsQuery> {
+	if (!settingsQuery) {
+		settingsScope = effectScope(true);
+		settingsScope.run(() => {
+			const { isPending: authPending, activeOrganizationId } = useAuth();
+			settingsQuery = useConvexQuery(api.workspaces.settings.get, () => {
+				if (authPending.value) {
+					return 'skip';
+				}
+				if (!activeOrganizationId.value) {
+					return 'skip';
+				}
+				return {};
+			});
+		});
+	}
+	// `run` is a no-op on a stopped scope, and a fresh detached one is never
+	// stopped — but say so rather than asserting a null away.
+	if (!settingsQuery) {
+		throw new Error('useOrganizationContext: could not build the workspace-settings query');
+	}
+	return settingsQuery;
+}
 
 /**
  * Composable for getting the current user's active organization context.
@@ -25,20 +69,9 @@ export function useOrganizationContext() {
 		setActive,
 	} = useOrganization();
 
-	// Get instance settings from Convex (timezone, email theme, etc.)
-	const {
-		data: settings,
-		isLoading: settingsLoading,
-		error,
-	} = useConvexQuery(api.workspaces.settings.get, () => {
-		if (authPending.value) {
-			return 'skip';
-		}
-		if (!activeOrganizationId.value) {
-			return 'skip';
-		}
-		return {};
-	});
+	// Instance settings from Convex (timezone, email theme, etc.) — shared, see
+	// `workspaceSettingsQuery`.
+	const { data: settings, isLoading: settingsLoading, error } = workspaceSettingsQuery();
 
 	// Loading logic:
 	// 1. If auth session is still loading, we're loading
@@ -95,4 +128,13 @@ export function useOrganizationContext() {
 		// Convenience flags
 		hasActiveOrganization: computed(() => !!activeOrganizationId.value),
 	};
+}
+
+// Detached scopes outlive their callers and must be stopped on hot replacement.
+if (import.meta.hot) {
+	import.meta.hot.dispose(() => {
+		settingsScope?.stop();
+		settingsScope = null;
+		settingsQuery = null;
+	});
 }
