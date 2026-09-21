@@ -55,7 +55,7 @@ describe('untrusted children run as the sandbox uid/gid', () => {
 		await runUntrusted(
 			'opencode',
 			['--message', 'x'],
-			{ cwd: '/w', env: {}, timeoutMs: 1000 },
+			{ cwd: '/w', env: {}, timeoutMs: 1000, reap: vi.fn() },
 			spy
 		);
 		expect(spy).toHaveBeenCalledTimes(1);
@@ -65,7 +65,7 @@ describe('untrusted children run as the sandbox uid/gid', () => {
 
 	it('runCodingAgent spawns the opencode agent as the sandbox uid/gid', async () => {
 		const spy = fakeSpawn();
-		await runCodingAgent('/workspace/task-1', 'do the thing', spy);
+		await runCodingAgent('/workspace/task-1', 'do the thing', spy, vi.fn());
 		const [cmd, , opts] = (spy as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
 		expect(cmd).toBe('opencode');
 		expect(opts).toMatchObject({ uid: SANDBOX_UID, gid: SANDBOX_GID });
@@ -73,7 +73,7 @@ describe('untrusted children run as the sandbox uid/gid', () => {
 
 	it('runTests spawns `npx vitest` as the sandbox uid/gid', async () => {
 		const spy = fakeSpawn();
-		await runTests('/workspace/task-1', spy);
+		await runTests('/workspace/task-1', spy, vi.fn());
 		const [cmd, args, opts] = (spy as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
 		expect(cmd).toBe('npx');
 		expect(args).toEqual(['vitest', 'run', '--reporter=verbose']);
