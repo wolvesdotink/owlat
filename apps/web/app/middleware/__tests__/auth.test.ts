@@ -18,6 +18,8 @@ import {
 	session,
 	setActiveOrganization,
 	signIn,
+	useActiveOrganization,
+	useListOrganizations,
 	type Redirect,
 } from './harness';
 
@@ -42,6 +44,20 @@ describe('auth middleware — signed out', () => {
 			redirect: { path: '/auth/login', query: { redirect: '/dashboard/campaigns?tab=sent' } },
 			options: undefined,
 		});
+	});
+
+	it('does not build the organization stores before redirecting', async () => {
+		// Constructing better-auth's organization hooks IS the request: it fetches
+		// the full organization and the organization list. A signed-out visitor
+		// would only collect 401s from both on the way to the login redirect, so
+		// the guard must decide first and build the context afterwards.
+		const { middleware } = await load();
+		const to = route('/dashboard');
+
+		await middleware(to, to);
+
+		expect(useActiveOrganization).not.toHaveBeenCalled();
+		expect(useListOrganizations).not.toHaveBeenCalled();
 	});
 
 	it('does not carry the landing page as a return URL', async () => {

@@ -21,6 +21,10 @@ RUN bun install --frozen-lockfile --filter @owlat/setup-cli
 # it tsc aborts with TS5083 and bun build silently drops the compiler options.
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
+# The barrel import of @owlat/shared re-exports ./address, which parses through
+# @owlat/mail-message, so its source must be present for the bundle to resolve.
+COPY packages/mail-message packages/mail-message
+COPY packages/mail-canon packages/mail-canon
 COPY apps/setup-cli apps/setup-cli
 RUN cd apps/setup-cli && bun run build
 

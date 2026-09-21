@@ -19,7 +19,7 @@
 import { v } from 'convex/values';
 import { openMailMessageInlineBody } from '../../lib/messageBody';
 import { internalMutation, internalQuery } from '../../_generated/server';
-import { authedMutation } from '../../lib/authedFunctions';
+import { postboxMutation } from '../_helpers';
 import { internal } from '../../_generated/api';
 import { getOrThrow, throwForbidden, throwInvalidInput, throwNotFound } from '../../_utils/errors';
 import { requireMailboxAccess } from '../permissions';
@@ -40,7 +40,7 @@ import { captureStandingAnswers } from '../../inbox/clarificationMemory';
  */
 // authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
-export const answerClarification = authedMutation({
+export const answerClarification = postboxMutation({
 	args: {
 		threadId: v.id('mailThreads'),
 		answers: v.array(v.object({ questionId: v.string(), value: v.string() })),

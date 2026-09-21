@@ -17,6 +17,7 @@ import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 import { seedMailbox } from './helpers.testlib';
 import { enableSealedMail } from '../../e2ee/__tests__/sealedMailTestHelpers';
 import { wkdHashForAddress } from '../../e2ee/wkd';
+import { enableFeatures } from '../../__tests__/factories';
 
 // One mutable session drives the `authedMutation` wrapper floors AND the
 // in-handler admin / mailbox-access gates (mirrors mailboxAccess.test.ts).
@@ -200,6 +201,7 @@ describe('Sealed Mail revocation on address deletion', () => {
 
 	it('keeps the vault key active while public discovery is withdrawn when Sealed Mail is off', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		// NOTE: sealedMail NOT enabled — deletion must not touch the key.
 		const address = 'flagoff@owlat.test';
 		const mailboxId = await seedMailbox(t, { address, domain: 'owlat.test' });

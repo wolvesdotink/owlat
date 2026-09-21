@@ -216,6 +216,7 @@ async function setNeedsReply(
 describe('mail.needsReplyClassify.classifyThread', () => {
 	it('persists the LLM-refined result on the thread', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const seeded = await seedMailbox(t);
@@ -251,6 +252,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 
 	it('clears the flag when the LLM demotes the candidate (needsReply: false)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const seeded = await seedMailbox(t);
@@ -273,6 +275,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 
 	it('falls back to the deterministic candidate when the LLM dispatch throws', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const seeded = await seedMailbox(t);
@@ -297,6 +300,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 
 	it('keeps the deterministic candidate and never calls the LLM when `ai` is off', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		// No enableFeatures → aiGate throws → fail-soft to the heuristic flag.
 		const seeded = await seedMailbox(t);
@@ -313,6 +317,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 
 	it('clears flag + pending for a no-reply sender without any LLM call', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const seeded = await seedMailbox(t);
@@ -332,6 +337,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 
 	it('does not flag when the owner is only Cc-ed', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const seeded = await seedMailbox(t);
@@ -354,6 +360,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 describe('needs-reply clearing', () => {
 	it('clears on outbound send in the thread (draftLifecycle → sent)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t);
 		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
 		await setNeedsReply(t, threadId, messageId);
@@ -403,6 +410,7 @@ describe('needs-reply clearing', () => {
 
 	it('clears when the thread mail is trashed (messageActions.trash)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t);
 		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
 		await setNeedsReply(t, threadId, messageId);
@@ -415,6 +423,7 @@ describe('needs-reply clearing', () => {
 
 	it('clears via the manual clear mutation', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t);
 		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
 		await setNeedsReply(t, threadId, messageId);
@@ -431,6 +440,7 @@ describe('needs-reply clearing', () => {
 describe('mail.needsReply.listQueue', () => {
 	it('returns flagged threads joined with the trigger message fields', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t);
 		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
 		await t.run(async (ctx) => {
@@ -466,6 +476,7 @@ describe('mail.needsReply.listQueue', () => {
 
 	it('hides a snoozed trigger message and floats it back after wakeup', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t);
 		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
 		await setNeedsReply(t, threadId, messageId);
@@ -492,6 +503,7 @@ describe('mail.needsReply.listQueue', () => {
 
 	it('drops only the row whose trigger message is gone', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t);
 		const orphan = await seedThreadWithMessage(t, seeded);
 		const intact = await seedThreadWithMessage(t, seeded);
@@ -510,6 +522,7 @@ describe('mail.needsReply.listQueue', () => {
 
 	it('returns an empty list for an anonymous caller (soft-auth)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t);
 		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
 		await setNeedsReply(t, threadId, messageId);
@@ -524,6 +537,7 @@ describe('mail.needsReply.listQueue', () => {
 
 	it('returns an empty list for an editor who does not own the mailbox', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t); // mailbox.userId === 'test-user'
 		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
 		await setNeedsReply(t, threadId, messageId);
@@ -546,6 +560,7 @@ describe('mail.needsReply.listQueue', () => {
 describe('mail.needsReply.sweepPending', () => {
 	it('re-schedules only stale pending threads and bumps their marker', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t);
 		const staleAt = Date.now() - 10 * 60 * 1000;
 		const { threadId: staleThread } = await seedThreadWithMessage(t, seeded, {

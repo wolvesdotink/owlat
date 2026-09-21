@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
+import { enableFeatures } from '../../__tests__/factories';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -95,6 +96,7 @@ beforeEach(() => {
 describe('mail.snippets CRUD', () => {
 	it('creates, lists, updates and removes a snippet', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 
 		const id = await t.mutation(api.mail.snippets.create, {
@@ -126,6 +128,7 @@ describe('mail.snippets CRUD', () => {
 
 	it('trims the name and rejects an empty one', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 		await expect(
 			t.mutation(api.mail.snippets.create, {
@@ -139,6 +142,7 @@ describe('mail.snippets CRUD', () => {
 
 	it('sanitizes body HTML on save (strips scripts)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 		const id = await t.mutation(api.mail.snippets.create, {
 			mailboxId,
@@ -156,6 +160,7 @@ describe('mail.snippets CRUD', () => {
 describe('mail.snippets mailbox ownership', () => {
 	it("a non-owner editor cannot list another user's snippets", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 		await t.mutation(api.mail.snippets.create, {
 			mailboxId,
@@ -172,6 +177,7 @@ describe('mail.snippets mailbox ownership', () => {
 
 	it("a non-owner editor cannot create in another user's mailbox", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 
 		sessionMocks.userId = 'user-B';
@@ -188,6 +194,7 @@ describe('mail.snippets mailbox ownership', () => {
 
 	it('an admin can access any mailbox in the org', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const mailboxId = await seedMailbox(t, 'user-A');
 
 		sessionMocks.userId = 'admin-user';

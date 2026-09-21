@@ -16,6 +16,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'test-user',
@@ -181,6 +182,7 @@ const HOUR = 60 * 60 * 1000;
 describe('postbox thread-scope snooze', () => {
 	it('defers every inbox message of the thread with one wake time, leaving the sent copy alone', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const threadId = await newThread(t, seeded, 'planning');
 		const a = await addMessage(t, seeded, { threadId, subject: 'planning' });
@@ -219,6 +221,7 @@ describe('postbox thread-scope snooze', () => {
 
 	it('rejects a wake time in the past', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const threadId = await newThread(t, seeded, 'planning');
 		await addMessage(t, seeded, { threadId, subject: 'planning' });
@@ -229,6 +232,7 @@ describe('postbox thread-scope snooze', () => {
 
 	it('refuses a thread the caller has no access to', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const threadId = await newThread(t, seeded, 'planning');
 		await addMessage(t, seeded, { threadId, subject: 'planning' });
@@ -247,6 +251,7 @@ describe('postbox thread-scope snooze', () => {
 
 	it('unsnoozeMany wakes the whole conversation early', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const threadId = await newThread(t, seeded, 'planning');
 		const a = await addMessage(t, seeded, { threadId, subject: 'planning' });
@@ -269,6 +274,7 @@ describe('postbox thread-scope snooze', () => {
 		// The sweep pages 100 due rows. A thread snoozed as a unit can straddle
 		// that boundary; it must still come back as ONE conversation.
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const past = Date.now() - 1000;
 		const noiseThread = await newThread(t, seeded, 'noise');
@@ -304,6 +310,7 @@ describe('postbox thread-scope snooze', () => {
 
 	it('the sweep stamps snoozeReturnedAt, the list row carries it, and opening clears it', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const threadId = await newThread(t, seeded, 'planning');
 		await addMessage(t, seeded, {
@@ -330,6 +337,7 @@ describe('postbox thread-scope snooze', () => {
 
 	it('re-snoozing a returned thread drops the stale returned marker', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const threadId = await newThread(t, seeded, 'planning');
 		await addMessage(t, seeded, {

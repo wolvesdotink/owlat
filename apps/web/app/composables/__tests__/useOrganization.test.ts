@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { createTestI18n } from '~/__tests__/i18n';
 import { organizationTranslator, planOwnershipTransfer } from '../useOrganization';
 
@@ -78,5 +78,71 @@ describe('organizationTranslator (middleware-context guard)', () => {
 		expect(t('shared.useOrganization.errors.noActiveOrganization')).toBe(
 			'shared.useOrganization.errors.noActiveOrganization'
 		);
+	});
+});
+
+/**
+ * `useOrganization` reached for `useAuth()` from inside `fetchMembers`,
+ * `transferOwnership` and `setActive` — all of them after an `await`, where
+ * there is no effect scope for the session store's listener to be released
+ * from, and no component instance for `useAuth`'s translator. Each fetch left a
+ * subscriber behind. One `useAuth()` per composable call, closed over.
+ */
+describe('useOrganization session wiring', () => {
+	const activeOrganization = ref<{ id: string } | null>({ id: 'org-1' });
+	const listMembers = vi.fn(async () => ({
+		data: { members: [{ id: 'm-owner', userId: 'u-owner', role: 'owner' }] },
+	}));
+	const listInvitations = vi.fn(async () => ({ data: [] as unknown[] }));
+
+	beforeEach(() => {
+		vi.resetModules();
+		listMembers.mockClear();
+		listInvitations.mockClear();
+		vi.doMock('~/lib/auth-client', () => ({
+			useActiveOrganization: () =>
+				computed(() => ({ data: activeOrganization.value, error: null, isPending: false })),
+			useListOrganizations: () => computed(() => ({ data: [] })),
+			listMembers,
+			listInvitations,
+			inviteMember: vi.fn(),
+			removeMember: vi.fn(),
+			updateMemberRole: vi.fn(),
+			cancelInvitation: vi.fn(),
+			setActiveOrganization: vi.fn(),
+			updateOrganization: vi.fn(),
+			getFullOrganization: vi.fn(),
+		}));
+
+		const state = new Map<string, unknown>();
+		vi.stubGlobal('useState', (key: string, init: () => unknown) => {
+			if (!state.has(key)) state.set(key, ref(init()));
+			return state.get(key);
+		});
+		vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn() }));
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.doUnmock('~/lib/auth-client');
+	});
+
+	it('builds useAuth once per call, however many fetches run', async () => {
+		const useAuthSpy = vi.fn(() => ({
+			user: ref({ id: 'u-owner' }),
+			refetch: vi.fn(async () => null),
+		}));
+		vi.stubGlobal('useAuth', useAuthSpy);
+
+		const { useOrganization } = await import('../useOrganization');
+		const organization = useOrganization();
+		expect(useAuthSpy).toHaveBeenCalledOnce();
+
+		await organization.fetchMembers({ force: true });
+		await organization.fetchMembers({ force: true });
+		expect(listMembers.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+		expect(useAuthSpy).toHaveBeenCalledOnce();
+		expect(organization.currentMemberRole.value).toBe('owner');
 	});
 });

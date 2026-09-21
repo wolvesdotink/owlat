@@ -15,6 +15,7 @@ import { buildReplySubject } from '../lib/emailAddress';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import { parseAddress } from '@owlat/shared';
+import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { isOutboundChannel } from '../lib/convexValidators';
 import { runReferenceMonitor } from './referenceMonitor';
@@ -407,7 +408,9 @@ export const sendApprovedReply = internalAction({
 			return;
 		}
 
-		logInfo(`[Agent Pipeline] Enqueued approved reply to ${recipient} (sendId=${outcome.sendId})`);
+		logInfo(
+			`[Agent Pipeline] Enqueued approved reply to ${redactEmailAddress(recipient)} (sendId=${outcome.sendId})`
+		);
 
 		await recordHumanApprovalFeedback();
 	},

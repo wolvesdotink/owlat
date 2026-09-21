@@ -95,7 +95,7 @@ import {
 	requireOrgPermission,
 	type MutationSessionContext,
 } from './sessionOrganization';
-import { assertFeatureEnabled } from './featureFlags';
+import { assertFeatureEnabled, assertAnyFeatureEnabled } from './featureFlags';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 
 /**
@@ -357,6 +357,42 @@ export function featureGated<
 			...(fn.returns !== undefined ? { returns: fn.returns } : {}),
 			handler: async (ctx: QueryCtx | MutationCtx, ...rest: unknown[]) => {
 				await assertFeatureEnabled(ctx, flag);
+				return (fn.handler as unknown as (c: unknown, ...r: unknown[]) => unknown)(ctx, ...rest);
+			},
+		})) as unknown as Builder;
+}
+
+/**
+ * The any-of sibling of `featureGated`: the composed builder passes when **at
+ * least one** of the listed flags is enabled, and throws `forbidden` naming all
+ * of them when none is.
+ *
+ * Exists because not every gated surface hangs off a single capability. The
+ * Postbox UI is reachable through hosted mailboxes (`postbox`) OR a connected
+ * external mailbox (`mail.external`), and those two flags are deliberately
+ * independent — `mail.external` does not require `postbox`, so that the
+ * no-domain user is not forced into the hosted ACME + IMAP-server stack.
+ * Gating those handlers on either flag alone would refuse half the instances
+ * that legitimately have the surface, which is why this is a primitive rather
+ * than a chain of `featureGated` wrappers (chaining would be AND, not OR).
+ *
+ * Same composition rules as `featureGated`: the flag floor runs after the
+ * wrapped builder's auth floor and before the handler, arguments and the
+ * threaded session are forwarded positionally, and only query/mutation builders
+ * can be gated this way because the check reads `ctx.db`.
+ *
+ * @example
+ *   const postboxQuery = featureGatedAny(authedQuery, ['postbox', 'mail.external']);
+ */
+export function featureGatedAny<
+	Builder extends RawQuery | RawMutation | SessionQueryBuilder | SessionMutationBuilder,
+>(builder: Builder, flags: readonly [FeatureFlagKey, ...FeatureFlagKey[]]): Builder {
+	return ((fn: FunctionConfig) =>
+		(builder as unknown as (f: FunctionConfig) => unknown)({
+			args: fn.args,
+			...(fn.returns !== undefined ? { returns: fn.returns } : {}),
+			handler: async (ctx: QueryCtx | MutationCtx, ...rest: unknown[]) => {
+				await assertAnyFeatureEnabled(ctx, flags);
 				return (fn.handler as unknown as (c: unknown, ...r: unknown[]) => unknown)(ctx, ...rest);
 			},
 		})) as unknown as Builder;

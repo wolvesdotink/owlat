@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -104,6 +105,7 @@ async function seedInboxMessage(
 describe('mail.mailbox.queries.newestUnreadInbox', () => {
 	it("populates each peek message's category from its thread", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		let mailboxId!: Id<'mailboxes'>;
 		let folderId!: Id<'mailFolders'>;
 		await t.run(async (ctx) => {

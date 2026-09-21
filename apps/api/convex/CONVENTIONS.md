@@ -265,6 +265,41 @@ without stripping the secret. Satisfy it one of three ways:
   reads that leak no token). Do **not** add new entries; delete an entry once its
   read is redacted or annotated so the ratchet only moves down.
 
+## Process-log PII
+
+The Convex function log leaves the deployment: operators ship it to an
+aggregator and read it without a mail-content grant. A correspondent's address
+and a message subject therefore do not go in one — redact them instead of
+dropping the field, so the line stays useful:
+
+```ts
+import { redactEmailAddress, redactSubject } from '@owlat/shared/logRedaction';
+
+logWarn('[Inbound Email] duplicate delivery', {
+	messageId: args.messageId,
+	from: redactEmailAddress(args.from), // redacted-<digest>@example.com
+	subject: redactSubject(args.subject), // [subject len=24 <digest>]
+});
+```
+
+The digest is stable and unsalted, so two lines about the same recipient
+correlate — across the MTA boundary and across restarts — while the plaintext
+never lands.
+
+`scripts/check-log-pii.sh` (wired into `bun run lint`) enforces this with a
+**baseline of zero**: a `logInfo`/`logWarn`/`logError`/`logDebug`/`console.*`
+call whose payload carries a `from` / `to` / `subject` / `email` / `recipient` /
+`rcptTo` / `mailFrom` / `address` / `sender` key fails unless the value passes
+through a redaction helper. Qualified names — `fromDomain`, `toCount`,
+`senderId`, `recipientHash` — are out of scope by construction; a domain, a
+count, an id or a digest is not the address. A value that is genuinely not a
+correspondent address opts out with `// log-pii-safe: <reason>` inside the call
+or in the comment block directly above it.
+
+This is about **process logs only**. `auditLogs`, delivery-log rows and anything
+else persisted on purpose and read back by the UI keep the addresses they need;
+the gate never looks at them.
+
 ## Hosted plugin actions
 
 - Never give plugin code a raw Convex context. Bind host services to the

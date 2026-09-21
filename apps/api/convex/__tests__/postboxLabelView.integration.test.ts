@@ -14,6 +14,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -148,6 +149,7 @@ async function seed(t: ReturnType<typeof convexTest>): Promise<Fixture> {
 describe('mail.mailbox.queries.listByLabel', () => {
 	it('returns exactly the messages carrying the label, newest first', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, labelA, labeledIds } = await seed(t);
 
 		const result = await t.query(api.mail.mailbox.queries.listByLabel, {
@@ -161,6 +163,7 @@ describe('mail.mailbox.queries.listByLabel', () => {
 
 	it('slices by limit and reports hasMore honestly', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, labelA, labeledIds } = await seed(t);
 
 		const page = await t.query(api.mail.mailbox.queries.listByLabel, {
@@ -174,6 +177,7 @@ describe('mail.mailbox.queries.listByLabel', () => {
 
 	it("does not leak another label's messages through a shared message", async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, labelB } = await seed(t);
 		// Message 5 carries both A and B; querying B returns only that one.
 		const result = await t.query(api.mail.mailbox.queries.listByLabel, {
@@ -186,6 +190,7 @@ describe('mail.mailbox.queries.listByLabel', () => {
 
 	it('hides still-snoozed rows like every other folder view', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, labelA } = await seed(t);
 		await t.run(async (ctx) => {
 			// Snooze the newest labeled message ("message 5").
@@ -206,6 +211,7 @@ describe('mail.mailbox.queries.listByLabel', () => {
 
 	it('snoozed rows do not eat result slots or inflate hasMore', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, labelA } = await seed(t);
 		await t.run(async (ctx) => {
 			const scanned = await ctx.db
@@ -233,6 +239,7 @@ describe('mail.mailbox.queries.listByLabel', () => {
 
 	it('rows older than the scan window are out of reach — the documented edge', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { mailboxId, labelA } = await seed(t);
 		// Push the mailbox past LABEL_SCAN_WINDOW (1000): 993 unlabeled fillers
 		// newer than the fixture's 7 rows, then one LABELED row older than all

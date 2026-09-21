@@ -18,7 +18,7 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import type { Id } from '../_generated/dataModel';
 import { throwForbidden } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
@@ -59,7 +59,7 @@ const importedActionValidator = v.object({
  * for everyone who reads it.
  */
 // authz: self — requireMailboxAccess at owner level, the same gate filters.create uses
-export const importGmailFilters = authedMutation({
+export const importGmailFilters = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		filters: v.array(

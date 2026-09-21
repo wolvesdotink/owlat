@@ -10,8 +10,13 @@ export default defineNuxtRouteMiddleware(async () => {
 	await waitUntilReady();
 	if (!isAuthenticated.value) return navigateTo('/auth/login');
 
+	// Below the auth check on purpose: the organization context opens better-auth's
+	// organization requests, and a signed-out visitor would only collect 401s from
+	// them on the way to the login redirect. Building it after an `await` — where
+	// the guard's effect scope is gone — leaks nothing, because the subscriptions
+	// underneath are app-lifetime singletons.
 	const { isLoading } = useOrganizationContext();
-	await waitForLoaded(isLoading);
 	const { isAdmin } = usePermissions();
+	await waitForLoaded(isLoading);
 	if (!isAdmin.value) return navigateTo('/dashboard', { replace: true });
 });

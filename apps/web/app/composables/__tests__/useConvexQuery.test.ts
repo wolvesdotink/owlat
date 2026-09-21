@@ -234,6 +234,98 @@ describe('useConvexQuery', () => {
 			);
 		});
 
+		it('does not resubscribe when args are deeply equal but a new object', async () => {
+			// A Convex push replaces a prop with a structurally identical object;
+			// the factory then produces a fresh literal with the same values. That
+			// must NOT tear down the subscription — doing so blanks `data` and
+			// flashes a spinner on every unrelated push.
+			const message = ref({ id: 'm1', labels: ['inbox'] });
+			const { data } = useConvexQuery(fakeQuery, () => ({
+				id: message.value.id,
+				labels: message.value.labels,
+			}));
+			mockOnUpdateCallback!({ body: 'hi' });
+
+			message.value = { id: 'm1', labels: ['inbox'] };
+			await nextTick();
+
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(1);
+			expect(mockUnsubscribe).not.toHaveBeenCalled();
+			expect(data.value).toEqual({ body: 'hi' });
+		});
+
+		it('does resubscribe when a nested value changes', async () => {
+			const message = ref({ id: 'm1', labels: ['inbox'] });
+			useConvexQuery(fakeQuery, () => ({
+				id: message.value.id,
+				labels: message.value.labels,
+			}));
+
+			message.value = { id: 'm1', labels: ['archive'] };
+			await nextTick();
+
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+			expect(mockClient.onUpdate).toHaveBeenLastCalledWith(
+				fakeQuery,
+				{ id: 'm1', labels: ['archive'] },
+				expect.any(Function),
+				expect.any(Function)
+			);
+		});
+
+		it('subscribes once across skip → args → same args', async () => {
+			const ready = ref(false);
+			const nonce = ref(0);
+			useConvexQuery(fakeQuery, () => {
+				// `nonce` only forces re-evaluation; it is not part of the args.
+				void nonce.value;
+				return ready.value ? { teamId: '123' } : ('skip' as const);
+			});
+
+			expect(mockClient.onUpdate).not.toHaveBeenCalled();
+
+			ready.value = true;
+			await nextTick();
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(1);
+
+			nonce.value = 1;
+			await nextTick();
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(1);
+			expect(mockUnsubscribe).not.toHaveBeenCalled();
+		});
+
+		it('ignores key order when comparing args', async () => {
+			const flipped = ref(false);
+			useConvexQuery(fakeQuery, () =>
+				flipped.value ? { b: 2, a: 1 } : ({ a: 1, b: 2 } as Record<string, number>)
+			);
+
+			flipped.value = true;
+			await nextTick();
+
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(1);
+		});
+
+		it('falls back to re-subscribing when the args will not serialise', async () => {
+			// Not valid Convex args, so the client is about to reject them anyway —
+			// but the comparison runs inside a watcher, where throwing would take
+			// the caller down. Degrade to the old behaviour (re-subscribe on every
+			// evaluation) instead.
+			const tick = ref(0);
+			useConvexQuery(fakeQuery, () => {
+				const cyclic: Record<string, unknown> = { tick: tick.value };
+				cyclic['self'] = cyclic;
+				return cyclic;
+			});
+
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(1);
+
+			tick.value = 1;
+			await nextTick();
+
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+		});
+
 		it('unsubscribes old subscription before subscribing new on args change', async () => {
 			const teamId = ref('123');
 			useConvexQuery(fakeQuery, () => ({ teamId: teamId.value }));

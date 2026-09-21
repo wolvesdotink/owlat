@@ -175,6 +175,7 @@ async function getThread(
 describe('mail.ai.getOrGenerateThreadSummary', () => {
 	it('serves a warm cache (matching messageCount) without a dispatch call', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const mailboxId = await seedMailbox(t);
@@ -203,6 +204,7 @@ describe('mail.ai.getOrGenerateThreadSummary', () => {
 
 	it('regenerates on a cold cache and persists the result', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const mailboxId = await seedMailbox(t);
@@ -233,6 +235,7 @@ describe('mail.ai.getOrGenerateThreadSummary', () => {
 
 	it('regenerates when the cache is stale (messageCount mismatch)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const mailboxId = await seedMailbox(t);
@@ -259,6 +262,7 @@ describe('mail.ai.getOrGenerateThreadSummary', () => {
 
 	it('returns null and caches nothing when the dispatch throws (fail-soft)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const mailboxId = await seedMailbox(t);
@@ -279,6 +283,7 @@ describe('mail.ai.getOrGenerateThreadSummary', () => {
 describe('mail.summaryCache.getThreadSummary', () => {
 	it('returns a fresh cache and null for a stale one', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t);
 		const { threadId, latestMessageId } = await seedThread(t, mailboxId, 5);

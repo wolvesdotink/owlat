@@ -53,8 +53,9 @@ vi.mock('../lib/llm/dispatch', async () => {
 	return { ...actual, runLlmStream: vi.fn() };
 });
 
-function makeT() {
+async function makeT() {
 	const t = convexTest(schema, modules);
+	await enableFeatures(t, ['mail.external']);
 	rateLimiterTest.register(t);
 	return t;
 }
@@ -66,7 +67,7 @@ beforeEach(() => {
 
 describe('reviseDraft — streaming', () => {
 	it('streams parts into the buffer, applies the instruction, and finalizes complete', async () => {
-		const t = makeT();
+		const t = await makeT();
 		await enableFeatures(t, ['ai']);
 
 		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
@@ -112,7 +113,7 @@ describe('reviseDraft — streaming', () => {
 	});
 
 	it('runs the injection scan on the FINAL text and flags a tripped result (advisory, still complete)', async () => {
-		const t = makeT();
+		const t = await makeT();
 		await enableFeatures(t, ['ai']);
 
 		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
@@ -146,7 +147,7 @@ describe('reviseDraft — streaming', () => {
 	});
 
 	it('fails soft: a stream error settles the buffer as error and never throws to the caller', async () => {
-		const t = makeT();
+		const t = await makeT();
 		await enableFeatures(t, ['ai']);
 
 		vi.mocked(runLlmStream).mockImplementation(async () => {
@@ -170,7 +171,7 @@ describe('reviseDraft — streaming', () => {
 	});
 
 	it('applying the revised text persists as a draft REVISION — agent original preserved, no feedback (D7)', async () => {
-		const t = makeT();
+		const t = await makeT();
 		await enableFeatures(t, ['ai']);
 
 		vi.mocked(runLlmStream).mockImplementation(async () => ({
@@ -231,7 +232,7 @@ describe('reviseDraft — streaming', () => {
 	});
 
 	it('rejects streaming into a buffer the caller does not own', async () => {
-		const t = makeT();
+		const t = await makeT();
 		await enableFeatures(t, ['ai']);
 
 		// Buffer created as user-a.

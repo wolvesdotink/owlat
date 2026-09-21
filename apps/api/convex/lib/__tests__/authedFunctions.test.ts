@@ -36,6 +36,7 @@ import {
 	adminMutation,
 	ownerMutation,
 	featureGated,
+	featureGatedAny,
 } from '../authedFunctions';
 import * as sessionOrganization from '../sessionOrganization';
 import type { MutationSessionContext } from '../sessionOrganization';
@@ -71,7 +72,11 @@ vi.mock('../sessionOrganization', async (importOriginal) => {
 
 vi.mock('../featureFlags', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../featureFlags')>();
-	return { ...actual, assertFeatureEnabled: vi.fn(async () => undefined) };
+	return {
+		...actual,
+		assertFeatureEnabled: vi.fn(async () => undefined),
+		assertAnyFeatureEnabled: vi.fn(async () => undefined),
+	};
 });
 
 /** Identity-comparable and deliberately featureless — no handler here reads it. */
@@ -239,6 +244,85 @@ describe('featureGated forwards what the builder it wraps hands the handler', ()
 
 		await expect(invoke(fn)).rejects.toThrow(/do not have access/);
 		expect(vi.mocked(featureFlags.assertFeatureEnabled)).not.toHaveBeenCalled();
+		expect(handler).not.toHaveBeenCalled();
+	});
+});
+
+describe('featureGatedAny composes an any-of flag floor', () => {
+	const POSTBOX_FLAGS = ['postbox', 'mail.external'] as const;
+
+	it('threads args AND the session through the flag floor', async () => {
+		const gated = featureGatedAny(authedQuery, POSTBOX_FLAGS);
+		const handler = vi.fn(echo);
+		const fn = (gated as unknown as LooseBuilder)({
+			args: {},
+			handler: handler as unknown as (c: never, a: never, s: never) => unknown,
+		});
+
+		const result = (await invoke(fn, { mailboxId: 'mbx-1' })) as {
+			args: unknown;
+			session: unknown;
+		};
+
+		expect(result.session).toBe(MEMBER);
+		expect(result.args).toEqual({ mailboxId: 'mbx-1' });
+		expect(vi.mocked(featureFlags.assertAnyFeatureEnabled)).toHaveBeenCalledWith(
+			ctx,
+			POSTBOX_FLAGS
+		);
+	});
+
+	it('keeps the order auth floor → flag floor → handler', async () => {
+		const order: string[] = [];
+		vi.mocked(sessionOrganization.getMutationContext).mockImplementationOnce(async () => {
+			order.push('floor');
+			return MEMBER;
+		});
+		vi.mocked(featureFlags.assertAnyFeatureEnabled).mockImplementationOnce(async () => {
+			order.push('flag');
+		});
+		const gated = featureGatedAny(authedMutation, POSTBOX_FLAGS);
+		const fn = (gated as unknown as LooseBuilder)({
+			args: {},
+			handler: (() => {
+				order.push('handler');
+				return Promise.resolve(null);
+			}) as unknown as (c: never, a: never, s: never) => unknown,
+		});
+
+		await invoke(fn);
+
+		expect(order).toEqual(['floor', 'flag', 'handler']);
+	});
+
+	it('does not reach the handler when no listed flag is enabled', async () => {
+		vi.mocked(featureFlags.assertAnyFeatureEnabled).mockRejectedValueOnce(
+			new Error('This area needs "postbox" or "mail.external" enabled')
+		);
+		const gated = featureGatedAny(authedQuery, POSTBOX_FLAGS);
+		const handler = vi.fn(echo);
+		const fn = (gated as unknown as LooseBuilder)({
+			args: {},
+			handler: handler as unknown as (c: never, a: never, s: never) => unknown,
+		});
+
+		await expect(invoke(fn)).rejects.toThrow(/postbox.*mail\.external/);
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it('does not run the flag check when the auth floor refuses first', async () => {
+		vi.mocked(sessionOrganization.requireOrgMember).mockRejectedValueOnce(
+			new Error('You do not have access to this organization')
+		);
+		const gated = featureGatedAny(authedQuery, POSTBOX_FLAGS);
+		const handler = vi.fn(echo);
+		const fn = (gated as unknown as LooseBuilder)({
+			args: {},
+			handler: handler as unknown as (c: never, a: never, s: never) => unknown,
+		});
+
+		await expect(invoke(fn)).rejects.toThrow(/do not have access/);
+		expect(vi.mocked(featureFlags.assertAnyFeatureEnabled)).not.toHaveBeenCalled();
 		expect(handler).not.toHaveBeenCalled();
 	});
 });

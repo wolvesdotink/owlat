@@ -15,7 +15,8 @@
 
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, internalAction } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext } from '../lib/sessionOrganization';
@@ -98,7 +99,7 @@ async function verifyPassword(cleartext: string, encoded: string): Promise<boole
  * Generate a fresh app password. Returns the cleartext ONCE — the caller
  * MUST surface it to the user immediately because we never store it.
  */
-export const generate = authedMutation({
+export const generate = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		label: v.string(),
@@ -155,7 +156,7 @@ export const list = publicQuery({
 	},
 });
 
-export const revoke = authedMutation({
+export const revoke = postboxMutation({
 	args: { appPasswordId: v.id('mailAppPasswords') },
 	handler: async (ctx, args) => {
 		const row = await ctx.db.get(args.appPasswordId);
@@ -168,7 +169,7 @@ export const revoke = authedMutation({
 });
 
 /** Owner-level emergency: revoke ALL app passwords for a mailbox. */
-export const revokeAll = authedMutation({
+export const revokeAll = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
 		const session = await requireAdminContext(ctx);

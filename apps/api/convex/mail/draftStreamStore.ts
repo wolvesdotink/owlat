@@ -16,7 +16,7 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation, authedQuery } from '../lib/authedFunctions';
+import { postboxQuery, postboxMutation } from './_helpers';
 import { internalMutation } from '../_generated/server';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { tokenUsageValidator } from '../lib/convexValidators';
@@ -33,7 +33,7 @@ const DRAFT_STREAM_MAX_CHARS = 20000;
  * the first token lands.
  */
 // all-members: a member owns their own transient revise buffer (owner-scoped).
-export const createDraftStream = authedMutation({
+export const createDraftStream = postboxMutation({
 	args: {
 		surface: draftSurfaceValidator,
 	},
@@ -125,7 +125,7 @@ export const finalizeDraftStream = internalMutation({
 
 /** Owner-scoped subscription target: the reactive read the client renders. */
 // all-members: a member reads only their own revise buffer (owner-scoped).
-export const getDraftStream = authedQuery({
+export const getDraftStream = postboxQuery({
 	args: { streamId: v.id('aiDraftStreams') },
 	handler: async (ctx, args) => {
 		const userId = await getUserIdFromSession(ctx);
@@ -143,7 +143,7 @@ export const getDraftStream = authedQuery({
 
 /** Delete a buffer once the client has applied/discarded the result. */
 // all-members: a member deletes only their own revise buffer (owner-scoped).
-export const deleteDraftStream = authedMutation({
+export const deleteDraftStream = postboxMutation({
 	args: { streamId: v.id('aiDraftStreams') },
 	handler: async (ctx, args) => {
 		const userId = await getUserIdFromSession(ctx);

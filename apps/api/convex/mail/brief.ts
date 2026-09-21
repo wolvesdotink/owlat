@@ -29,7 +29,8 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { isBundledCategory } from './dailyBrief';
 
@@ -217,7 +218,7 @@ export const getBriefCard = publicQuery({
  */
 // authz: per-user mailbox access via requireMailboxAccess; writes only the
 // caller's own card row.
-export const refresh = authedMutation({
+export const refresh = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		// Viewer-local calendar day (YYYY-MM-DD) + its local-midnight timestamp.
@@ -283,7 +284,7 @@ export const refresh = authedMutation({
  */
 // authz: per-user mailbox access via requireMailboxAccess; writes only the
 // caller's own card row.
-export const dismiss = authedMutation({
+export const dismiss = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		// The viewer-local day being dismissed (YYYY-MM-DD).

@@ -33,7 +33,7 @@ import {
 	type MutationCtx,
 	type QueryCtx,
 } from '../_generated/server';
-import { authedMutation } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
@@ -350,7 +350,7 @@ async function moveThreadBetweenRoles(
  */
 // authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
-export const recategorize = authedMutation({
+export const recategorize = postboxMutation({
 	args: {
 		threadId: v.id('mailThreads'),
 		label: mailCategoryLabelValidator,

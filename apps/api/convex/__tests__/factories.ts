@@ -9,7 +9,10 @@ import { FEATURE_FLAG_REGISTRY } from '../plugins/featureFlagRegistry';
  * the transitive closure of their `requires` dependencies (e.g. enabling
  * `ai.autonomy` also enables `ai`, `ai.agent`, and `inbox`).
  *
- * Inserts an `instanceSettings` row with the resulting flag map.
+ * Writes the resulting flag map onto the singleton `instanceSettings` row,
+ * merging into an existing one rather than inserting a second: the flag readers
+ * take `.first()`, so a duplicate row would make one of the two calls silently
+ * invisible. Safe to call more than once per test.
  *
  *   await enableFeatures(t, ['webhooks']);
  *   await enableFeatures(t, ['ai.autonomy']); // pulls in ai + ai.agent + inbox
@@ -39,6 +42,14 @@ export async function enableFeatures(
 	for (const f of enabled) featureFlags[f] = true;
 	const now = Date.now();
 	await t.run(async (ctx) => {
+		const settings = await ctx.db.query('instanceSettings').first();
+		if (settings) {
+			await ctx.db.patch(settings._id, {
+				featureFlags: { ...(settings.featureFlags ?? {}), ...featureFlags },
+				updatedAt: now,
+			});
+			return;
+		}
 		await ctx.db.insert('instanceSettings', {
 			featureFlags,
 			createdAt: now,

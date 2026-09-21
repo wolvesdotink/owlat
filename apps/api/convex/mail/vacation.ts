@@ -17,7 +17,8 @@
 
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 
@@ -36,7 +37,7 @@ export const get = publicQuery({
 	},
 });
 
-export const upsert = authedMutation({
+export const upsert = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		isEnabled: v.boolean(),
@@ -89,7 +90,7 @@ export const upsert = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');

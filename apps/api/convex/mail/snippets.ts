@@ -25,7 +25,8 @@ import {
 	mailSnippetVariableValidator,
 	type MailSnippetVariableSource,
 } from '../lib/mailContentValidators';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 
@@ -96,7 +97,7 @@ export const list = publicQuery({
 	},
 });
 
-export const create = authedMutation({
+export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		name: v.string(),
@@ -125,7 +126,7 @@ export const create = authedMutation({
 	},
 });
 
-export const update = authedMutation({
+export const update = postboxMutation({
 	args: {
 		snippetId: v.id('mailSnippets'),
 		name: v.optional(v.string()),
@@ -153,7 +154,7 @@ export const update = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { snippetId: v.id('mailSnippets') },
 	handler: async (ctx, args) => {
 		const snippet = await ctx.db.get(args.snippetId);

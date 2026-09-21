@@ -20,7 +20,7 @@
 
 import { v } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
-import { authedMutation } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
 
@@ -32,7 +32,7 @@ import { requireMailboxAccess } from './permissions';
  */
 // authz: message → thread → mailbox access via requireMailboxAccess; org
 // membership via authedMutation.
-export const setNotifyOnReplyForMessage = authedMutation({
+export const setNotifyOnReplyForMessage = postboxMutation({
 	args: { messageId: v.id('mailMessages'), enabled: v.boolean() },
 	handler: async (ctx, args): Promise<{ ok: true; threadId: Id<'mailThreads'> }> => {
 		const message = await getOrThrow(ctx, args.messageId, 'Message');

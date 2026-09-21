@@ -7,7 +7,7 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -54,7 +54,7 @@ const FOLDER_RELOCATE_BATCH = 256;
 
 const RESERVED_NAMES = new Set(['INBOX', 'Sent', 'Drafts', 'Trash', 'Spam', 'Archive']);
 
-export const create = authedMutation({
+export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		name: v.string(),
@@ -101,7 +101,7 @@ export const create = authedMutation({
 	},
 });
 
-export const rename = authedMutation({
+export const rename = postboxMutation({
 	args: { folderId: v.id('mailFolders'), name: v.string() },
 	handler: async (ctx, args) => {
 		const folder = await getOrThrow(ctx, args.folderId, 'Folder');
@@ -127,7 +127,7 @@ export const rename = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const remove = postboxMutation({
 	args: { folderId: v.id('mailFolders') },
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.folderId);
@@ -218,7 +218,7 @@ export const relocateAndDeleteFolder = internalMutation({
 	},
 });
 
-export const setSubscribed = authedMutation({
+export const setSubscribed = postboxMutation({
 	args: { folderId: v.id('mailFolders'), subscribed: v.boolean() },
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.folderId);

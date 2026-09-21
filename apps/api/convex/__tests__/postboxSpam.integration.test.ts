@@ -8,6 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -27,22 +28,23 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -136,6 +138,7 @@ async function seed(t: ReturnType<typeof convexTest>) {
 describe('postbox spam triage', () => {
 	it('reportSpam moves to Spam and stamps the verdict; notSpam restores it', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { spamId, inboxId, messageId } = await seed(t);
 
 		// Returns { ok } on success so the bulk-actions composable clears the
@@ -149,9 +152,10 @@ describe('postbox spam triage', () => {
 		expect(msg?.folderId).toBe(spamId);
 		expect(msg?.spamVerdict).toBe('spam');
 
-		expect(
-			await t.mutation(api.mail.messageActions.notSpam, { messageIds: [messageId] })
-		).toEqual({ ok: true, moved: [{ messageId, sourceFolderId: spamId }] });
+		expect(await t.mutation(api.mail.messageActions.notSpam, { messageIds: [messageId] })).toEqual({
+			ok: true,
+			moved: [{ messageId, sourceFolderId: spamId }],
+		});
 		msg = await t.run((ctx) => ctx.db.get(messageId));
 		expect(msg?.folderId).toBe(inboxId);
 		expect(msg?.spamVerdict).toBe('ham');
@@ -159,13 +163,12 @@ describe('postbox spam triage', () => {
 
 	it('blockSender creates a filter for the sender and moves the message to Spam', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		const { spamId, messageId } = await seed(t);
 
 		await t.mutation(api.mail.messageActions.blockSender, { messageId });
 
-		const filters = await t.run((ctx) =>
-			ctx.db.query('mailFilters').collect()
-		);
+		const filters = await t.run((ctx) => ctx.db.query('mailFilters').collect());
 		expect(filters.length).toBe(1);
 		expect(filters[0]!.conditions[0]).toMatchObject({
 			field: 'from',

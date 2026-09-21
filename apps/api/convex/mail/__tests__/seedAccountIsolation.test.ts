@@ -30,6 +30,7 @@ import { getActiveMailboxForUser } from '../mailbox/identity';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
 import type { DatabaseWriter } from '../../_generated/server';
 import { loadSeedAccounts } from '../../analytics/seedAccounts';
+import { enableFeatures } from '../../__tests__/factories';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'admin-user',
@@ -100,6 +101,7 @@ async function connectSeed(t: TestConvex<typeof schema>, emailAddress: string): 
 describe('the seed connect path has an admin floor', () => {
 	it('refuses an ordinary member', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('editor');
 		await expect(connectSeed(t, 'owlat.seed.01@gmail.example')).rejects.toThrow(
 			/owners and admins/
@@ -110,12 +112,14 @@ describe('the seed connect path has an admin floor', () => {
 
 	it('refuses an unauthenticated caller', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession(null);
 		await expect(connectSeed(t, 'owlat.seed.01@gmail.example')).rejects.toThrow();
 	});
 
 	it('allows an admin, and tags the row as a seed', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin');
 		await connectSeed(t, 'owlat.seed.01@gmail.example');
 		const rows = await t.run(async (ctx) => ctx.db.query('externalMailAccounts').collect());
@@ -128,6 +132,7 @@ describe('the seed connect path has an admin floor', () => {
 describe('a seed mailbox is never handed to the inbound sync worker', () => {
 	it('is excluded from listConnectableAccounts while ordinary accounts are not', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin');
 		await connectSeed(t, 'owlat.seed.01@gmail.example');
 
@@ -177,6 +182,7 @@ describe('a seed mailbox is never handed to the inbound sync worker', () => {
 describe('a seed mailbox is never the connecting admin’s own inbox', () => {
 	it('is absent from loadAccessibleMailboxes', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin');
 		await connectSeed(t, 'owlat.seed.01@gmail.example');
 
@@ -186,6 +192,7 @@ describe('a seed mailbox is never the connecting admin’s own inbox', () => {
 
 	it('does not make an admin without a mailbox look like they already have one', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin');
 		await connectSeed(t, 'owlat.seed.01@gmail.example');
 
@@ -195,6 +202,7 @@ describe('a seed mailbox is never the connecting admin’s own inbox', () => {
 
 	it('still surfaces the admin’s REAL mailbox alongside a connected seed', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin');
 		const realMailboxId = await t.run(async (ctx) => {
 			const mailboxId = await ctx.db.insert('mailboxes', {
@@ -228,6 +236,7 @@ describe('a seed mailbox is never the connecting admin’s own inbox', () => {
 
 	it('tags the provisioned mailbox row with scope=seed', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin');
 		await connectSeed(t, 'owlat.seed.01@gmail.example');
 		const mailboxes = await t.run(async (ctx) => ctx.db.query('mailboxes').collect());
@@ -273,6 +282,7 @@ async function insertSeedRow(
 describe('the seed set is bounded at connect time, never silently truncated', () => {
 	it('refuses the seed past the per-organization limit', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin');
 		// Fill the ledger straight to the cap; the cap itself lives in
 		// @owlat/shared so the connect guard and the read page cannot disagree.
@@ -292,6 +302,7 @@ describe('the seed set is bounded at connect time, never silently truncated', ()
 	// page. Both now select the live statuses THROUGH the index.
 	it('counts and reads every LIVE seed even when the org has retired seeds', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		setSession('admin');
 		await t.run(async (ctx) => {
 			// The retired rows sort FIRST, so a bounded page would hand them out.

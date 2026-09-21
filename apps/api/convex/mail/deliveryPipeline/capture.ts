@@ -28,6 +28,7 @@ import { isFileTypeAccepted } from '@owlat/email-scanner';
 import { emailDomain, isSpfAligned } from '@owlat/shared/spfAlignment';
 import { hasTextExtraction } from '../../lib/fileExtraction';
 import { logWarn } from '../../lib/runtimeLog';
+import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import type { InboundAttachmentPart, UnclearedLeaves } from './attachmentParts';
 import type { CaptureSource } from '../../lib/literalValidators';
 import type { DmarcOverride } from './routing';
@@ -364,7 +365,7 @@ export async function captureAttachments(
 			'[Attachment capture] the From header could not be verified — bytes stored, indexing skipped',
 			{
 				messageId: input.messageId,
-				from: input.from,
+				from: redactEmailAddress(input.from),
 				dmarcResult: input.auth.dmarcResult,
 			}
 		);

@@ -59,6 +59,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
 			return;
 		}
 
+		// Built only once the visitor is known to be signed in and to have a user
+		// id: it opens better-auth's organization requests, which a signed-out
+		// visitor would only answer with 401s on the way to the login redirect.
+		// Its subscriptions are app-lifetime singletons, so building it here —
+		// after an `await`, where the guard's effect scope is gone — leaks nothing.
 		const { isLoading: organizationLoading, organization, setActive } = useOrganizationContext();
 
 		// Wait for organization data to load

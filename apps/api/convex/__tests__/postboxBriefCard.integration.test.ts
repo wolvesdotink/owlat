@@ -23,6 +23,7 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { NEW_MAIL_STALE_THRESHOLD } from '../mail/brief';
+import { enableFeatures } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -250,6 +251,7 @@ async function seedAgentActivity(
 describe('mail.brief freshness policy', () => {
 	it('no cache yet: read is stale, refresh generates, second refresh is a no-op (once per morning)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t);
 		await seedMessages(t, mailboxId, 2, DAY_START + 1000);
@@ -281,6 +283,7 @@ describe('mail.brief freshness policy', () => {
 
 	it(`>= ${NEW_MAIL_STALE_THRESHOLD} new messages since generation flip the card stale and refresh regenerates`, async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t);
 		const first = await t.mutation(api.mail.brief.refresh, {
@@ -313,6 +316,7 @@ describe('mail.brief freshness policy', () => {
 
 	it('a new local day is stale and regeneration clears the previous day dismissal', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t);
 		await t.mutation(api.mail.brief.refresh, {
@@ -348,6 +352,7 @@ describe('mail.brief freshness policy', () => {
 
 	it('fail-soft: an inactive mailbox yields null from read, refresh and dismiss', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t, { status: 'suspended' });
 

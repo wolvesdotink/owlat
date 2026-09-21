@@ -93,24 +93,27 @@ async function seedUsers(t: TestConvex<typeof schema>, ...authUserIds: string[])
 
 /** Turn on the `mail.external` flag the sending/migration surfaces gate on. */
 async function enableExternal(t: TestConvex<typeof schema>): Promise<void> {
-	await t.run(async (ctx) => {
-		await ctx.db.insert('instanceSettings', {
-			featureFlags: { 'mail.external': true },
-			createdAt: Date.now(),
-		});
-	});
+	await enableFlags(t, { 'mail.external': true });
 }
 
-/** Seed the instance feature flags a case needs (superset of `enableExternal`). */
+/**
+ * Seed the instance feature flags a case needs (superset of `enableExternal`).
+ * Merges into the singleton row rather than inserting a second one — the flag
+ * readers take `.first()`, so two rows would make the later call invisible.
+ */
 async function enableFlags(
 	t: TestConvex<typeof schema>,
 	flags: Record<string, boolean>
 ): Promise<void> {
 	await t.run(async (ctx) => {
-		await ctx.db.insert('instanceSettings', {
-			featureFlags: flags,
-			createdAt: Date.now(),
-		});
+		const settings = await ctx.db.query('instanceSettings').first();
+		if (settings) {
+			await ctx.db.patch(settings._id, {
+				featureFlags: { ...(settings.featureFlags ?? {}), ...flags },
+			});
+			return;
+		}
+		await ctx.db.insert('instanceSettings', { featureFlags: flags, createdAt: Date.now() });
 	});
 }
 
@@ -147,6 +150,7 @@ async function roles(
 describe('_connectSharedInternal — external account as a shared team inbox', () => {
 	it('provisions a shared external mailbox, its account, and the initial roster', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'user-B', 'user-C');
 
@@ -184,6 +188,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 
 	it('grants added members access via the shared membership model', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'user-B');
 		const { mailboxId } = await t.mutation(
@@ -203,6 +208,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 
 	it('surfaces the connected inbox in the admin listShared overview as kind=external', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'user-B');
 		const { mailboxId } = await t.mutation(
@@ -218,6 +224,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 
 	it('rejects a non-admin caller (team inbox is org infrastructure)', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('editor-user', 'editor');
 		await expect(
 			t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
@@ -230,6 +237,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 
 	it('rejects an initial member who is not an org member', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await expect(
 			t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
@@ -242,6 +250,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 
 	it('rejects an address already claimed by another active mailbox', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await t.run(async (ctx) => {
 			const now = Date.now();
@@ -270,6 +279,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 describe('personal/shared external-account isolation', () => {
 	it('a live SHARED external account does not block the admin connecting a PERSONAL one', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		// Connect a shared team inbox first (leaves a live scope=shared account).
 		await t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
@@ -292,6 +302,7 @@ describe('personal/shared external-account isolation', () => {
 
 	it('still enforces one live PERSONAL external account per user', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await t.mutation(internal.mail.external.accounts._connectInternal, {
 			...CREDS,
@@ -311,6 +322,7 @@ describe('personal/shared external-account isolation', () => {
 describe('removing a shared external inbox stops its sync worker', () => {
 	it('marks the linked external account disconnected on mailbox delete', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		const { mailboxId, externalAccountId } = await t.mutation(
 			internal.mail.external.sharedInbox._connectSharedInternal,
@@ -333,6 +345,7 @@ describe('removing a shared external inbox stops its sync worker', () => {
 describe('a shared external account is invisible to the PERSONAL sending + migration surfaces', () => {
 	it('sendingSwitchStatus / migration.getStatus ignore a caller who owns only a shared inbox', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await enableExternal(t);
 		// The admin has connected ONLY a shared team inbox (no personal account).
@@ -350,6 +363,7 @@ describe('a shared external account is invisible to the PERSONAL sending + migra
 
 	it('migration.start refuses when the caller owns only a shared inbox', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await enableExternal(t);
 		await t.mutation(internal.mail.external.sharedInbox._connectSharedInternal, {
@@ -382,6 +396,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 
 	it('refuses a plain member; allows the mailbox owner and an org admin', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		await enableFlags(t, { 'mail.external': true });
 		await seedUsers(t, 'user-B');
 		const { mailboxId } = await connectInbox(t, ['user-B']);
@@ -414,6 +429,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 
 	it('refuses a personal or hosted mailbox id', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		await enableFlags(t, { 'mail.external': true });
 		setSession('admin-user', 'admin');
 		const [hostedId, personalId] = await t.run(async (ctx) => {
@@ -452,6 +468,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 
 	it('is idempotent while a migration is importing or indexing', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		await enableFlags(t, { 'mail.external': true });
 		const { mailboxId } = await connectInbox(t);
 
@@ -470,6 +487,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 
 	it('resets the folder backfill cursors and leaves forward sync alone', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		await enableFlags(t, { 'mail.external': true });
 		const { mailboxId, externalAccountId } = await connectInbox(t);
 		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
@@ -504,6 +522,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 
 	it('never stamps an onboarding step — on start, import completion, or indexing', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		await enableFlags(t, { 'mail.external': true });
 		const { mailboxId } = await connectInbox(t);
 
@@ -565,6 +584,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 
 	it('getStatusShared returns the job for an owner and null for a non-member', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		await enableFlags(t, { 'mail.external': true });
 		await seedUsers(t, 'user-B');
 		const { mailboxId } = await connectInbox(t, ['user-B']);
@@ -584,6 +604,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 
 	it('getStatusShared reports nothing at all when mail.external is off', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		await enableFlags(t, { 'mail.external': true });
 		const { mailboxId } = await connectInbox(t);
 		await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
@@ -601,6 +622,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 
 	it('cancelShared stops an in-flight import and is a no-op afterwards', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		await enableFlags(t, { 'mail.external': true });
 		const { mailboxId, externalAccountId } = await connectInbox(t);
 		const { migrationId } = await t.mutation(api.mail.migrationShared.startShared, { mailboxId });
@@ -622,6 +644,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 
 	it('refuses a member cancelling, and an outsider reaching either twin', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		await enableFlags(t, { 'mail.external': true });
 		await seedUsers(t, 'user-B');
 		const { mailboxId } = await connectInbox(t, ['user-B']);
@@ -641,6 +664,7 @@ describe("shared migration — importing a team inbox's existing mail", () => {
 describe('shared external inbox credential rotation / repair', () => {
 	it('rotates the linked account credentials and resets it to pending', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		const { mailboxId, externalAccountId } = await t.mutation(
 			internal.mail.external.sharedInbox._connectSharedInternal,
@@ -671,6 +695,7 @@ describe('shared external inbox credential rotation / repair', () => {
 
 	it('surfaces the account status (never the secret) to admins via getSharedExternalAccount', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		const { mailboxId, externalAccountId } = await t.mutation(
 			internal.mail.external.sharedInbox._connectSharedInternal,
@@ -690,6 +715,7 @@ describe('shared external inbox credential rotation / repair', () => {
 
 	it('hides connection metadata from a plain member (owner floor, soft-fail)', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'user-B');
 		// user-B is on the roster as a plain `member`, not an owner.
@@ -710,6 +736,7 @@ describe('shared external inbox credential rotation / repair', () => {
 
 	it('listShared surfaces the linked external account status for the admin overview', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		const { mailboxId, externalAccountId } = await t.mutation(
 			internal.mail.external.sharedInbox._connectSharedInternal,
@@ -726,6 +753,7 @@ describe('shared external inbox credential rotation / repair', () => {
 
 	it('refuses a non-admin repairing the team inbox', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		const { mailboxId } = await t.mutation(
 			internal.mail.external.sharedInbox._connectSharedInternal,
@@ -746,6 +774,7 @@ describe('shared external inbox credential rotation / repair', () => {
 describe('purging a removed shared external inbox', () => {
 	it('cascade-deletes the account, mailbox, and roster', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'user-B');
 		const { mailboxId, externalAccountId } = await t.mutation(
@@ -776,6 +805,7 @@ describe('purging a removed shared external inbox', () => {
 
 	it('cancels an in-flight import before the first purge chunk runs', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		await enableFlags(t, { 'mail.external': true });
 		setSession('admin-user', 'admin');
 		const { mailboxId, externalAccountId } = await t.mutation(
@@ -812,6 +842,7 @@ describe('purging a removed shared external inbox', () => {
 
 	it('rejects a non-admin caller', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		const { mailboxId } = await t.mutation(
 			internal.mail.external.sharedInbox._connectSharedInternal,
@@ -827,6 +858,7 @@ describe('purging a removed shared external inbox', () => {
 describe('member erasure preserves a shared team inbox (org infrastructure)', () => {
 	it('keeps the shared mailbox, its credentials, and the custodian owner row', async () => {
 		const t = convexTest(schema, modules);
+		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'admin-user');
 		const { mailboxId, externalAccountId } = await t.mutation(

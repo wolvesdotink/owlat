@@ -18,6 +18,10 @@
 			"types": "./src/parse/headers.ts",
 			"import": "./src/parse/headers.ts"
 		},
+		"./parse/address": {
+			"types": "./src/parse/address.ts",
+			"import": "./src/parse/address.ts"
+		},
 		"./compose/headers": {
 			"types": "./src/compose/headers.ts",
 			"import": "./src/compose/headers.ts"
@@ -58,7 +62,7 @@
 		"@vitest/coverage-v8": "catalog:",
 		"mailauth": "^5.0.0",
 		"mailparser": "^3.7.0",
-		"nodemailer": "^9.1.0",
+		"nodemailer": "^10.0.10",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}

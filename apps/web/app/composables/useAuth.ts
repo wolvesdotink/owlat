@@ -1,4 +1,5 @@
 import type { BetterFetchError } from '@better-fetch/fetch';
+import { effectScope, type EffectScope } from 'vue';
 import { authClient, type AuthSessionData } from '~/lib/auth-client';
 import { resetConvexAuthTokenCache } from '~/lib/convex-auth';
 import { requiresTwoFactor } from '~/utils/accountTwoFactor';
@@ -70,9 +71,48 @@ function matchesExpectedSession(session: SessionData, options: RefreshSessionOpt
 	return true;
 }
 
+/**
+ * The better-auth session store, subscribed ONCE for the app's lifetime.
+ *
+ * `authClient.useSession()` opens a nanostore subscription and only releases it
+ * through `onScopeDispose` — i.e. only when an effect scope is active. `useAuth`
+ * is called from route middleware, where after the first `await` there is none,
+ * so every navigation to a guarded route added a listener that was never
+ * released. The session is a single piece of global state, so one subscriber is
+ * the right shape anyway; a DETACHED scope owns it so no caller's teardown can
+ * cut everyone else off. Mirrors `useFeatureFlag`.
+ */
+// Wrapped rather than `ReturnType<typeof authClient.useSession>`: better-auth
+// declares that hook with a server (Promise) and a client (Ref) result, and only
+// a real call expression picks the right one.
+function createSessionStore() {
+	return authClient.useSession();
+}
+
+type SessionStore = ReturnType<typeof createSessionStore>;
+
+let sessionScope: EffectScope | null = null;
+
+let sharedSession: SessionStore | null = null;
+
+function sessionStore(): SessionStore {
+	if (!sharedSession) {
+		sessionScope = effectScope(true);
+		sessionScope.run(() => {
+			sharedSession = createSessionStore();
+		});
+		// `run` is a no-op on a stopped scope, and a fresh detached one is never
+		// stopped — but say so rather than asserting a null away.
+		if (!sharedSession) {
+			throw new Error('useAuth: could not build the better-auth session store');
+		}
+	}
+	return sharedSession;
+}
+
 export function useAuth() {
 	const t = authTranslator();
-	const sessionState = authClient.useSession();
+	const sessionState = sessionStore();
 
 	const sessionData = computed<SessionData>(() => sessionState.value.data ?? null);
 
@@ -307,4 +347,13 @@ export function useAuth() {
 		refetch,
 		waitUntilReady,
 	};
+}
+
+// Detached scopes outlive their callers and must be stopped on hot replacement.
+if (import.meta.hot) {
+	import.meta.hot.dispose(() => {
+		sessionScope?.stop();
+		sessionScope = null;
+		sharedSession = null;
+	});
 }

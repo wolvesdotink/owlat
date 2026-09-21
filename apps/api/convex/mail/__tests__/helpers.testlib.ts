@@ -18,6 +18,7 @@
 import type { TestConvex } from 'convex-test';
 import type { Id } from '../../_generated/dataModel';
 import schema from '../../schema';
+import { enableFeatures } from '../../__tests__/factories';
 
 // The node-only / agent modules can't load in the test isolate; filter them
 // out. Sibling `mail/*` modules glob in as `../foo.ts` (this dir is
@@ -62,6 +63,18 @@ export type MailboxSeed = {
 	status?: 'active' | 'suspended' | 'deleted';
 	scope?: 'personal' | 'shared';
 	kind?: 'hosted' | 'external';
+	/**
+	 * Leave the Postbox feature flags OFF. A `mailboxes` row only exists on an
+	 * instance that has personal mail, so seeding one turns `mail.external` on by
+	 * default — otherwise every fixture would have to repeat the flag and the
+	 * `mail/**` gates (mail/_helpers.ts, the `feature_off` mailbox outcome) would
+	 * refuse the very rows the test just wrote. `mail.external` rather than
+	 * `postbox` because it has no dependents: `postbox` cascades `sealedMail` and
+	 * `senderAuthBadges` (both default-on) into every fixture that seeds a
+	 * mailbox, silently changing what those tests exercise. Opt out to exercise
+	 * the gates themselves.
+	 */
+	featuresOff?: boolean;
 };
 
 /** Insert a `mailboxes` row and return its id. */
@@ -70,6 +83,7 @@ export async function seedMailbox(
 	seed: MailboxSeed = {}
 ): Promise<Id<'mailboxes'>> {
 	let id!: Id<'mailboxes'>;
+	if (seed.featuresOff !== true) await enableFeatures(t, ['mail.external']);
 	await t.run(async (ctx) => {
 		const now = Date.now();
 		id = await ctx.db.insert('mailboxes', {

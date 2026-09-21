@@ -1,4 +1,5 @@
 import { api } from '@owlat/api';
+import { effectScope, type EffectScope } from 'vue';
 import type { OrganizationRole } from '@owlat/shared/organizationPermissions';
 import {
 	useActiveOrganization,
@@ -150,13 +151,53 @@ export function organizationTranslator(): (key: string) => string {
  * Uses shared state (useState) so all callers share the same data and
  * only one set of HTTP requests is made per organization switch.
  */
+/**
+ * The BetterAuth organization stores, subscribed ONCE for the app's lifetime.
+ *
+ * They are nanostore-backed and release their listener only through
+ * `onScopeDispose`, so a call made where no effect scope is active — route
+ * middleware after its first `await`, which is how the `auth` and `admin` guards
+ * reach this composable — subscribed forever. One listener per navigation over
+ * 117 guarded pages. Both stores are app-wide singletons upstream, so a single
+ * subscriber is also the correct shape; a DETACHED scope owns it so no caller's
+ * teardown can freeze the refs for everyone else. The module explicitly stops its detached scopes on hot replacement
+ * before the replacement module builds new subscriptions.
+ */
+let organizationScope: EffectScope | null = null;
+let membersScope: EffectScope | null = null;
+
+let organizationStores: {
+	activeOrganization: ReturnType<typeof useActiveOrganization>;
+	organizationsList: ReturnType<typeof useListOrganizations>;
+} | null = null;
+
+function betterAuthOrganizationStores(): NonNullable<typeof organizationStores> {
+	if (!organizationStores) {
+		organizationScope = effectScope(true);
+		organizationScope.run(() => {
+			organizationStores = {
+				activeOrganization: useActiveOrganization(),
+				organizationsList: useListOrganizations(),
+			};
+		});
+		// `run` is a no-op on a stopped scope, and a fresh detached one is never
+		// stopped — but say so rather than asserting a null away.
+		if (!organizationStores) {
+			throw new Error('useOrganization: could not build the better-auth organization stores');
+		}
+	}
+	return organizationStores;
+}
+
 export function useOrganization() {
 	const t = organizationTranslator();
-	// BetterAuth hooks — called fresh each time; they return the same internal
-	// reactive state so multiple calls are cheap. Caching at module level broke
-	// reactivity across HMR and could prevent isPending from resolving.
-	const activeOrgRef = useActiveOrganization();
-	const orgsListRef = useListOrganizations();
+	// Built here, not inside the async bodies below. Those run after an `await`,
+	// where there is no effect scope and no component instance — so a `useAuth()`
+	// there would leak whatever it subscribes to and silently take the
+	// no-instance branch of its translator.
+	const { user: sessionUser, refetch: refetchSession } = useAuth();
+	const { activeOrganization: activeOrgRef, organizationsList: orgsListRef } =
+		betterAuthOrganizationStores();
 
 	// Shared reactive state via useState — all instances share the same refs
 	const members = useState<OrganizationMember[]>('org-members', () => []);
@@ -300,9 +341,8 @@ export function useOrganization() {
 					})) as OrganizationMember[];
 
 					// Find current user's role
-					const { user } = useAuth();
-					if (user.value?.id) {
-						const currentMember = members.value.find((m) => m.userId === user.value?.id);
+					if (sessionUser.value?.id) {
+						const currentMember = members.value.find((m) => m.userId === sessionUser.value?.id);
 						currentMemberRole.value = currentMember?.role ?? null;
 					}
 				}
@@ -483,13 +523,12 @@ export function useOrganization() {
 			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
 		}
 
-		const { user } = useAuth();
 		// `planOwnershipTransfer` is module scope, so it throws the message KEY;
 		// resolve it here, where `t` exists, so the team page toasts the sentence
 		// rather than a key path.
 		let steps: Array<{ memberId: string; role: OrganizationRole }>;
 		try {
-			steps = planOwnershipTransfer(members.value, user.value?.id, newOwnerMemberId);
+			steps = planOwnershipTransfer(members.value, sessionUser.value?.id, newOwnerMemberId);
 		} catch (error) {
 			if (error instanceof Error) throw new Error(t(error.message));
 			throw error;
@@ -609,8 +648,7 @@ export function useOrganization() {
 			);
 		}
 
-		const { refetch } = useAuth();
-		await refetch({
+		await refetchSession({
 			force: true,
 			expected: 'authenticated',
 			activeOrganizationId: orgId,
@@ -668,30 +706,38 @@ export function useOrganization() {
 
 	// Single watch — only the first instance sets it up to avoid duplicate fetchMembers.
 	// Uses module-level flag (not useState) so it resets on HMR, allowing the watch to be re-created.
+	//
+	// It belongs to a DETACHED scope, not to whichever caller happened to be
+	// first: registered on a component's scope, that component unmounting would
+	// stop the app's ONLY members watcher and no later organization switch would
+	// refetch the member list (and therefore the role) for anybody.
 	if (!watchSetUp) {
 		watchSetUp = true;
-		watch(
-			organizationId,
-			async (newId) => {
-				if (newId) {
-					try {
-						await fetchMembers();
-					} catch {
-						// Fetch failed silently
+		membersScope = effectScope(true);
+		membersScope.run(() => {
+			watch(
+				organizationId,
+				async (newId) => {
+					if (newId) {
+						try {
+							await fetchMembers();
+						} catch {
+							// Fetch failed silently
+						}
+					} else {
+						members.value = [];
+						invitations.value = [];
+						currentMemberRole.value = null;
+						// Re-arm: the next organization's role is unknown again. Leaving
+						// this true let a sign-out-then-sign-in in the same tab reuse the
+						// previous session's "resolved", which puts the admin-deep-link
+						// bounce straight back.
+						hasResolvedMembers.value = false;
 					}
-				} else {
-					members.value = [];
-					invitations.value = [];
-					currentMemberRole.value = null;
-					// Re-arm: the next organization's role is unknown again. Leaving
-					// this true let a sign-out-then-sign-in in the same tab reuse the
-					// previous session's "resolved", which puts the admin-deep-link
-					// bounce straight back.
-					hasResolvedMembers.value = false;
-				}
-			},
-			{ immediate: true }
-		);
+				},
+				{ immediate: true }
+			);
+		});
 	}
 
 	return {
@@ -724,4 +770,16 @@ export function useOrganization() {
 		update,
 		getFullOrganization,
 	};
+}
+
+// Detached scopes outlive their callers and must be stopped on hot replacement.
+if (import.meta.hot) {
+	import.meta.hot.dispose(() => {
+		organizationScope?.stop();
+		organizationScope = null;
+		organizationStores = null;
+		membersScope?.stop();
+		membersScope = null;
+		watchSetUp = false;
+	});
 }

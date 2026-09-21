@@ -1,17 +1,39 @@
 /**
  * Email-address parsing primitives shared across apps.
  *
- * Three apps previously had their own parser at increasing levels of
- * sophistication:
- * - `apps/mta/src/queue/groups.ts` — naive `lastIndexOf('@')`
- * - `apps/mta/src/intelligence/contentScreening.ts` — display-name unwrap
- * - `apps/imap/src/mime.ts` — RFC 5322 address-list parsing with comma
- *   handling inside angle brackets / quoted strings
+ * This module is an ADAPTER, not a parser. The repo used to carry two live
+ * RFC 5322 address parsers: a regex-and-depth-counter here, and the
+ * comment-aware, group-aware, length-bounded one in `@owlat/mail-message`
+ * that the in-house message parser is built on. The mail path ran on the weak
+ * one — `apps/imap`'s APPEND header extractor, the MTA's `/send` and inbound
+ * routing, and the Convex sender derivations all call in through here, every
+ * one of them on headers an unauthenticated peer controls.
  *
- * Consolidated here so MTA, IMAP, and the API agree on what a valid sender
- * is. RFC 5322 §3.4 isn't fully implemented (group syntax, domain literals,
- * comments) — but the subset email clients actually emit is covered.
+ * The regex it used (`/^(.*?)<\s*([^>]+?)\s*>\s*$/`) backtracked
+ * catastrophically on a `<`-run with no closing `>` — measured here at 6.6 ms
+ * for 4 KB, 26 ms for 8 KB, 111 ms for 16 KB, i.e. clean O(n^2) with no input
+ * cap at all — so one crafted `From:` could pin a core for minutes. It also
+ * had no RFC 5322 comment handling (`(a@b.com) real@z.com` parsed as the
+ * address `(a@b.com)`) and no group syntax (`Friends: a@x, b@y;` yielded a
+ * trailing-semicolon address `b@y;`).
+ *
+ * Rather than fix the same bugs twice, these functions now delegate to
+ * `@owlat/mail-message`'s parser and map its `EmailAddress` onto the
+ * {@link ParsedAddress} shape every call site here already expects — the same
+ * re-export-the-one-implementation shape `apps/mta/src/bounce/verp.ts` uses
+ * over `./verp`, and the same edge `./mailMime` already takes to
+ * `@owlat/mail-message/parse/headers`. The `/parse/address` subpath is
+ * imported (not the package root) so the web bundle that reaches this module
+ * through the shared barrel pulls in the address/header scanners and nothing
+ * else; both are browser-safe (`TextDecoder` only, no `node:` builtin), which
+ * is why this can stay in the barrel instead of moving to a subpath export.
  */
+
+import {
+	type EmailAddress,
+	parseAddressList as parseMailboxList,
+	parseMailboxAddress,
+} from '@owlat/mail-message/parse/address';
 
 export interface ParsedAddress {
 	/** Display name, when present. Stripped of surrounding quotes. */
@@ -20,54 +42,50 @@ export interface ParsedAddress {
 	address: string;
 }
 
+/** Narrow one `EmailAddress` to the shared shape, dropping the `name: ''` sentinel. */
+function toParsedAddress(addr: EmailAddress): ParsedAddress {
+	return addr.name === '' ? { address: addr.address } : { name: addr.name, address: addr.address };
+}
+
 /**
  * Parse one address. Accepts `email@host`, `<email@host>`, or
  * `"Name" <email@host>` / `Name <email@host>`. Returns `null` if no
  * `local@domain` can be extracted.
+ *
+ * Deliberately the single-mailbox entry point rather than
+ * `parseAddressList(input)[0]`: callers hand this a field that holds ONE
+ * address (an API `from`, an inbound recipient), where an unquoted comma in
+ * the display phrase (`Smith, John <j@x>`) is part of the name and must not
+ * be read as a list separator.
  */
 export function parseAddress(input: string): ParsedAddress | null {
-	const trimmed = input.trim();
-	if (!trimmed) return null;
-	const angle = trimmed.match(/^(.*?)<\s*([^>]+?)\s*>\s*$/);
-	if (angle && angle[1] !== undefined && angle[2] !== undefined) {
-		const rawName = angle[1].trim().replace(/^"(.*)"$/, '$1');
-		const address = angle[2].toLowerCase();
-		if (!address.includes('@')) return null;
-		return { name: rawName || undefined, address };
-	}
-	// Bare address path — try to find one `local@domain` token.
-	const bareMatch = trimmed.match(/([^\s<>]+@[^\s<>]+)/);
-	if (!bareMatch || bareMatch[1] === undefined) return null;
-	return { address: bareMatch[1].toLowerCase() };
+	const parsed = parseMailboxAddress(input);
+	return parsed === null ? null : toParsedAddress(parsed);
 }
 
 /**
- * Parse a comma-separated address list (`From:` / `To:` / `Cc:` header value
- * after MIME-encoded-word decoding). Commas inside angle brackets and quoted
- * strings don't split.
+ * Parse a comma-separated address list (`From:` / `To:` / `Cc:` header value).
+ * Commas inside angle brackets, quoted strings and RFC 5322 comments don't
+ * split, and `Group: a@x, b@y;` is flattened to its members — the group
+ * container itself has no address of its own, so it is not a recipient.
+ * Entries that hold no parseable `local@domain` (an empty
+ * `Undisclosed recipients:;` group, a stray comma) are dropped, as before.
+ *
+ * Display names come back RFC 2047-decoded, so a `=?utf-8?B?…?=` phrase reads
+ * as text rather than as the encoded word itself.
  */
 export function parseAddressList(value: string): ParsedAddress[] {
 	const out: ParsedAddress[] = [];
-	let depth = 0;
-	let inQuote = false;
-	let buf = '';
-	const flush = (): void => {
-		const parsed = parseAddress(buf);
-		if (parsed) out.push(parsed);
-		buf = '';
+	const push = (addr: EmailAddress): void => {
+		if (addr.address !== '') out.push(toParsedAddress(addr));
 	};
-	for (let i = 0; i < value.length; i++) {
-		const ch = value[i];
-		if (ch === '"') inQuote = !inQuote;
-		if (!inQuote && ch === '<') depth += 1;
-		if (!inQuote && ch === '>') depth -= 1;
-		if (ch === ',' && depth === 0 && !inQuote) {
-			flush();
+	for (const entry of parseMailboxList(value)) {
+		if (entry.group !== undefined) {
+			for (const member of entry.group) push(member);
 			continue;
 		}
-		buf += ch;
+		push(entry);
 	}
-	flush();
 	return out;
 }
 
