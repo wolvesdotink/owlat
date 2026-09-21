@@ -421,8 +421,8 @@ export const deliverToMailbox = internalMutation({
 		// 11b. Reply Queue: enqueue needs-reply classification for the affected
 		// thread — inbox deliveries only (spam/trash/filter-moved mail never
 		// needs a reply prompt), and only on this webhook ingest path so bulk
-		// IMAP backfill can't fan out background LLM work. The Precedence
-		// header rides along because it is not persisted on the message row.
+		// IMAP backfill can't fan out background LLM work. The ingest-time
+		// headers ride along because they are not persisted on the message row.
 		// The row's ACTUAL folder is what counts: a MUTED thread's delivery was
 		// re-routed to Archive inside the insert (mail/mute.ts), and neither the
 		// Reply Queue nor the category classifier should spend work on it.
@@ -430,6 +430,11 @@ export const deliverToMailbox = internalMutation({
 		if (delivered && folder.role === 'inbox' && delivered.folderId === folder._id) {
 			await enqueueNeedsReplyCheck(ctx, delivered.threadId, {
 				precedence: args.antiLoopHeaders?.['precedence'],
+				// RFC 3834 / list traffic: the strongest "a machine sent this" signal
+				// the Reply Queue can get, and like Precedence it lives only on the
+				// wire — extractAntiLoopHeaders already parsed both out for us.
+				autoSubmitted: args.antiLoopHeaders?.['auto-submitted'],
+				listId: args.antiLoopHeaders?.['list-id'],
 			});
 			// Smart-inbox categories: classify the thread for the split-inbox
 			// view (advisory, off by default in the UI). Same inbox-only bound as

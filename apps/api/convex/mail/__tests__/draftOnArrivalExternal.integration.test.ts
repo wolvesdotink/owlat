@@ -33,7 +33,7 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
 import { modules } from './helpers.testlib';
-import { evaluateNeedsReplyCandidate } from '../needsReply';
+import { evaluateNeedsReplyCandidate } from '../needsReplyHeuristic';
 
 // ─── Seams: session + LLM only (storage, scheduler, draft service are real) ──
 
@@ -57,7 +57,7 @@ const llm = vi.hoisted(() => ({
 	})),
 	// One object per structured call, carrying BOTH shapes the pipeline asks
 	// for: the draft service's verification verdict (score/complete/grounded)
-	// and the needs-reply refinement (needsReply/urgency/…), which the shared
+	// and the needs-reply refinement (intent/needsReply/urgency/…), which the shared
 	// ingest → classify case below runs through. Each caller reads only its own
 	// keys, and the zod schemas are never applied to a mocked return.
 	runLlmObject: vi.fn(async () => ({
@@ -66,6 +66,7 @@ const llm = vi.hoisted(() => ({
 			complete: true,
 			grounded: true,
 			flags: [],
+			intent: 'direct_question',
 			needsReply: true,
 			urgency: 'normal',
 			askSummary: 'Confirm Friday.',
@@ -443,5 +444,54 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 		const queue = await t.query(api.mail.needsReply.listQueue, { mailboxId });
 		expect(queue.items).toHaveLength(1);
 		expect(queue.items[0]!.draftSlot?.draft).toBe('EXTERNAL DRAFT BODY');
+	});
+
+	// The same synced path, for the mail that started this screen: an
+	// auto-generated notes/digest robot. The worker parses Auto-Submitted off the
+	// raw .eml and ingest hands it to the classifier, which drops the thread
+	// before any LLM call — so no queue row and no draft.
+	it('SHARED inbox: machine-generated mail (Auto-Submitted) never reaches the queue', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await seedInstanceFlags(t, {
+			ai: true,
+			'mail.external': true,
+			postbox: false,
+			'postbox.aiDraft': true,
+		});
+		const { mailboxId, accountId } = await seedSharedExternalAccount(t);
+
+		vi.useFakeTimers();
+		try {
+			const rawStorageId = await t.run(async (ctx) => await ctx.storage.store(new Blob(['raw'])));
+			await t.mutation(internal.mail.external.delivery.ingestExternalMessage, {
+				accountId,
+				folderRole: 'inbox',
+				remoteName: 'INBOX',
+				remoteUid: 43,
+				remoteUidValidity: 7,
+				rawStorageId,
+				rawSize: 3,
+				from: 'Meeting notes <notes-bot@acme.test>',
+				to: [OWNER_ADDRESS],
+				cc: [],
+				bcc: [],
+				subject: "Notes: 'Tech Jour Fixe'",
+				textBodyInline: 'Action items: confirm the billing split with Markus.',
+				messageId: '<m2@acme.test>',
+				receivedAt: Date.now(),
+				attachments: [],
+				origin: 'sync',
+				antiLoopHeaders: { 'auto-submitted': 'auto-generated' },
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		const queue = await t.query(api.mail.needsReply.listQueue, { mailboxId });
+		expect(queue.items).toEqual([]);
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
+		expect(llm.runLlmText).not.toHaveBeenCalled();
 	});
 });

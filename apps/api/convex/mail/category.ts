@@ -37,7 +37,7 @@ import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
-import { isBulkOrNoReplySender } from './needsReply';
+import { isBulkOrNoReplySender } from './needsReplyHeuristic';
 import { requireMailboxAccess } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';

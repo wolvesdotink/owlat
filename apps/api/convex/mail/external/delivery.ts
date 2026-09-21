@@ -103,8 +103,9 @@ export const ingestExternalMessage = internalMutation({
 		// (an older worker); see the file header.
 		origin: v.optional(v.union(v.literal('sync'), v.literal('backfill'))),
 		// Anti-loop headers parsed by ingestExternalRaw — same shape as the hosted
-		// path (mail/delivery.ts). Only `precedence` is read, to suppress bulk mail
-		// in the classifiers; nothing here is persisted on the message row.
+		// path (mail/delivery.ts). Precedence/Auto-Submitted/List-Id are read to
+		// suppress bulk + machine-generated mail in the classifiers; none of it is
+		// persisted on the message row.
 		antiLoopHeaders: v.optional(v.record(v.string(), v.string())),
 	},
 	handler: async (ctx, args): Promise<ExternalIngestOutcome> => {
@@ -193,7 +194,12 @@ export const ingestExternalMessage = internalMutation({
 			const delivered = await ctx.db.get(messageId);
 			if (delivered && delivered.folderId === folder._id) {
 				const precedence = args.antiLoopHeaders?.['precedence'];
-				await enqueueNeedsReplyCheck(ctx, delivered.threadId, { precedence });
+				// Auto-Submitted / List-Id ride along too — why a synced robot stays out.
+				await enqueueNeedsReplyCheck(ctx, delivered.threadId, {
+					precedence,
+					autoSubmitted: args.antiLoopHeaders?.['auto-submitted'],
+					listId: args.antiLoopHeaders?.['list-id'],
+				});
 				await enqueueCategoryCheck(ctx, delivered.threadId, { precedence });
 			}
 		}
