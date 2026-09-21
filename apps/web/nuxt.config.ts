@@ -251,6 +251,15 @@ export default defineNuxtConfig({
 		// browser's Origin header verbatim.
 		'/api/auth/**': { csurf: false },
 
+		// One-use upload capabilities authenticate this byte-stream endpoint.
+		// Its streaming counter enforces the archive limit without buffering.
+		// The XSS middleware also reads the whole POST body; binary uploads must
+		// bypass it so authentication and the streaming byte limit run first.
+		'/api/storage/upload': {
+			csurf: false,
+			security: { requestSizeLimiter: false, xssValidator: false },
+		},
+
 		// Machine-to-machine control-plane routes authenticate with the
 		// X-Instance-Secret header, not the session cookie, so nuxt-csurf's
 		// cookie+header pair can never be satisfied and every POST would 403

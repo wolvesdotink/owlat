@@ -20,7 +20,7 @@ import { log } from './log.js';
  * env into the sandbox.
  *
  * Cancellation and retries are host-authoritative: a heartbeat loop proves
- * liveness and learns of an operator cancel (killing the whole process group so
+ * liveness and learns of an operator cancel (reaping all sandbox processes so
  * a job cannot escape it); the terminal `fail`/`complete` mutations own the
  * retry ceiling and the cancelled-is-never-retried rule.
  */
@@ -156,8 +156,8 @@ export interface RunPluginJobDeps {
 	readonly heartbeatIntervalMs?: number;
 	readonly prepareDir?: (dir: string) => void;
 	readonly cleanupDir?: (dir: string) => void;
-	/** Injected group-kill, threaded into the sandbox for deterministic tests. */
-	readonly kill?: (targetPid: number, signal: NodeJS.Signals) => void;
+	/** Injected sandbox cleanup, threaded through for deterministic tests. */
+	readonly reap?: () => void | Promise<void>;
 }
 
 /**
@@ -220,7 +220,7 @@ export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}
 				env: buildJobEnv(workDir),
 				timeoutMs: task.timeoutMs,
 				signal: controller.signal,
-				kill: deps.kill,
+				reap: deps.reap,
 			},
 			spawnFn
 		);
@@ -238,7 +238,7 @@ export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}
 		if (result.timedOut) {
 			await client.mutation(pluginFn.fail, {
 				taskId: task.taskId,
-				errorMessage: `Job exceeded its ${task.timeoutMs}ms budget; process group killed`,
+				errorMessage: `Job exceeded its ${task.timeoutMs}ms budget; sandbox processes killed`,
 				reasonCode: 'worker_timeout',
 			});
 			return;

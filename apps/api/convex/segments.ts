@@ -1,13 +1,11 @@
 import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
-import { internalMutation, internalQuery } from './_generated/server';
+import { internalQuery } from './_generated/server';
 import { authedQuery, authedMutation, authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { getOrThrow } from './_utils/errors';
 import {
-	evaluateSegmentCount,
-	countLiveMatchesForSegments,
 	countMatchingContactsPage as countMatchingContactsPageImpl,
 	listMatchingContactsPage as listMatchingContactsPageImpl,
 	type SegmentCountPage,
@@ -18,7 +16,6 @@ import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { segmentFiltersValidator } from './lib/convexValidators';
 import { listResources } from './lib/listing';
 import { segmentListing } from './segments/listing';
-import { toPaginationCursor } from './lib/paginationCursor';
 import { recordAuditLog } from './lib/auditLog';
 
 // Types for segment filter configuration — re-exported from the canonical
@@ -225,7 +222,7 @@ export const update = authedMutation({
 
 		// Async count update when filters change (fire-and-forget)
 		if (args.filters !== undefined) {
-			await ctx.scheduler.runAfter(0, internal.segments.refreshSingleSegmentCount, {
+			await ctx.scheduler.runAfter(0, internal.segments.countRefresh.refreshSingleSegmentCount, {
 				segmentId: args.id,
 			});
 		}
@@ -314,7 +311,7 @@ export const create = authedMutation({
 		});
 
 		// Async count update (fire-and-forget)
-		await ctx.scheduler.runAfter(0, internal.segments.refreshSingleSegmentCount, {
+		await ctx.scheduler.runAfter(0, internal.segments.countRefresh.refreshSingleSegmentCount, {
 			segmentId,
 		});
 
@@ -381,78 +378,5 @@ export const countMatchingContacts = authedAction({
 			cursor = page.continueCursor;
 		}
 		return total;
-	},
-});
-
-// ==========================================
-// INTERNAL MUTATIONS FOR CRON-BASED REFRESH
-// ==========================================
-
-const BATCH_SIZE = 10;
-
-/**
- * Refresh cached counts for a batch of segments.
- * Called by cron every 30 minutes. Processes segments in batches
- * using Convex .paginate() to avoid full table scans.
- * Groups segments by org to share contact data across evaluations.
- */
-export const refreshAllSegmentCounts = internalMutation({
-	args: {
-		cursor: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		// Use Convex pagination — each batch only reads its own page
-		const paginationResult = await ctx.db.query('segments').paginate({
-			cursor: toPaginationCursor(args.cursor),
-			numItems: BATCH_SIZE,
-		});
-
-		const batch = paginationResult.page;
-
-		if (batch.length > 0) {
-			// Use batch evaluation — groups by org, shares contact data
-			const counts = await countLiveMatchesForSegments(
-				ctx,
-				batch.map((s) => ({
-					segmentId: s._id as string,
-					filters: s.filters,
-				}))
-			);
-
-			for (const segment of batch) {
-				const count = counts.get(segment._id as string) ?? 0;
-				await ctx.db.patch(segment._id, {
-					cachedCount: count,
-					cachedCountUpdatedAt: Date.now(),
-				});
-			}
-		}
-
-		// If there are more segments, schedule the next batch
-		if (!paginationResult.isDone) {
-			await ctx.scheduler.runAfter(0, internal.segments.refreshAllSegmentCounts, {
-				cursor: paginationResult.continueCursor as string,
-			});
-		}
-	},
-});
-
-/**
- * Refresh the cached count for a single segment.
- * Used as a fire-and-forget task after create/update mutations.
- */
-export const refreshSingleSegmentCount = internalMutation({
-	args: {
-		segmentId: v.id('segments'),
-	},
-	handler: async (ctx, args) => {
-		const segment = await ctx.db.get(args.segmentId);
-		if (!segment) return;
-
-		const result = await evaluateSegmentCount(ctx, segment.filters);
-		await ctx.db.patch(args.segmentId, {
-			cachedCount: result.total,
-			cachedCountUpdatedAt: Date.now(),
-		});
 	},
 });

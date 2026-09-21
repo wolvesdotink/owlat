@@ -19,6 +19,17 @@
 
 import { v } from 'convex/values';
 
+/**
+ * One translation of a question (text + option chips) into an interface
+ * locale. The canonical `text` / `options` are English; the UI renders the
+ * entry matching the reader's locale and falls back to the canonical copy.
+ */
+export const clarificationTranslationValidator = v.object({
+	locale: v.string(),
+	text: v.string(),
+	options: v.optional(v.array(v.string())),
+});
+
 export const clarificationQuestionValidator = v.object({
 	// Stable id used to match an incoming answer back to its question.
 	id: v.string(),
@@ -29,6 +40,9 @@ export const clarificationQuestionValidator = v.object({
 	text: v.string(),
 	// Optional suggested answers (for a multiple-choice slot).
 	options: v.optional(v.array(v.string())),
+	// Per-locale renderings of `text` + `options`; see
+	// clarificationTranslationValidator. Absent when localization failed.
+	translations: v.optional(v.array(clarificationTranslationValidator)),
 	// The resolved answer — absent until answered.
 	answer: v.optional(
 		v.object({

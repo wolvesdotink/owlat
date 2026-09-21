@@ -727,11 +727,14 @@ describe('ImapConnection — SELECT / EXAMINE PERMANENTFLAGS', () => {
 		mocks.convex.query.mockReset();
 		mocks.convex.mutation.mockReset();
 
-		// STORE 1 +FLAGS (\Flagged): listFolderUids (seq↔UID map) →
+		// STORE 1 +FLAGS (\Flagged): listFolderUidsPage (seq↔UID map) →
 		// collectMessageIds → resolveMessageIdsByUid, then storeFlags mutation
 		// returns the updated row. Sequence 1 maps to UID 1.
-		mocks.convex.query.mockResolvedValueOnce([1]); // listFolderUids
-		mocks.convex.query.mockResolvedValueOnce([{ _id: 'm1', uid: 1 }]); // resolveMessageIdsByUid
+		mocks.convex.query.mockResolvedValueOnce({ uids: [1], nextUid: null }); // listFolderUidsPage
+		mocks.convex.query.mockResolvedValueOnce({
+			rows: [{ _id: 'm1', uid: 1, modseq: 7 }],
+			nextUid: null,
+		}); // resolveMessageIdsByUid
 		mocks.convex.mutation.mockResolvedValueOnce({
 			updated: [{ uid: 1, modseq: 8, flags: ['\\Flagged'] }],
 			unchanged: [],
@@ -746,22 +749,25 @@ describe('ImapConnection — SELECT / EXAMINE PERMANENTFLAGS', () => {
 		expect(storeLines.pop()).toBe('a002 OK STORE completed');
 
 		// FETCH 1 (FLAGS) now reflects the stored flag. The module first reads
-		// listFolderUids to build the seq↔UID map (sequence 1 → UID 1), then
+		// listFolderUidsPage to build the seq↔UID map (sequence 1 → UID 1), then
 		// fetchEnvelopes for the resolved UID.
 		mocks.socket.written.length = 0;
 		mocks.convex.query.mockReset();
-		mocks.convex.query.mockResolvedValueOnce([1]); // listFolderUids
-		mocks.convex.query.mockResolvedValueOnce([
-			{
-				uid: 1,
-				flagSeen: false,
-				flagFlagged: true,
-				flagAnswered: false,
-				flagDraft: false,
-				flagDeleted: false,
-				customFlags: [],
-			},
-		]);
+		mocks.convex.query.mockResolvedValueOnce({ uids: [1], nextUid: null }); // listFolderUidsPage
+		mocks.convex.query.mockResolvedValueOnce({
+			rows: [
+				{
+					uid: 1,
+					flagSeen: false,
+					flagFlagged: true,
+					flagAnswered: false,
+					flagDraft: false,
+					flagDeleted: false,
+					customFlags: [],
+				},
+			],
+			nextUid: null,
+		});
 		await execMulti(mocks.socket, 'a003 FETCH 1 (FLAGS)');
 		const fetchLines = mocks.socket.lines();
 		expect(fetchLines).toContain('* 1 FETCH (FLAGS (\\Flagged))');

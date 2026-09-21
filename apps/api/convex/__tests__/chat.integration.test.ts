@@ -15,6 +15,7 @@
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
+import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api } from '../_generated/api';
 import { enableFeatures } from './factories';
 
@@ -34,6 +35,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
+			activeOrganizationId: 'test-org',
 		})),
 		requireOrgPermission: vi
 			.fn()
@@ -47,13 +49,21 @@ vi.mock('../lib/sessionOrganization', async () => {
 					),
 					message
 				);
-				return { userId: sessionMock.user.id, role: sessionMock.user.role };
+				return {
+					userId: sessionMock.user.id,
+					role: sessionMock.user.role,
+					activeOrganizationId: 'test-org',
+				};
 			}),
 		requireAdminContext: vi.fn().mockImplementation(async () => {
 			if (sessionMock.user.role === 'editor') {
 				throw new Error('forbidden');
 			}
-			return { userId: sessionMock.user.id, role: sessionMock.user.role };
+			return {
+				userId: sessionMock.user.id,
+				role: sessionMock.user.role,
+				activeOrganizationId: 'test-org',
+			};
 		}),
 	};
 });
@@ -102,6 +112,14 @@ const seedUsers = async (t: TestConvex<typeof schema>, ids: string[]) => {
 		}
 	});
 };
+
+async function storeChatUpload(t: TestConvex<typeof schema>, blob: Blob) {
+	return t.run(async (ctx) => {
+		const storageId = await ctx.storage.store(blob);
+		await recordUploadedBlob(ctx, storageId, sessionMock.user.id, 'test-org');
+		return storageId;
+	});
+}
 
 beforeEach(() => {
 	setUser('user-alice', 'owner');
@@ -593,5 +611,132 @@ describe('chat.emailLink', () => {
 		});
 		const room = await t.run(async (ctx) => ctx.db.get(roomId!));
 		expect(room?.linkedInboxThreadId).toBe(inboxThreadId);
+	});
+});
+
+describe('chat attachment privacy across the media library', () => {
+	async function privateAttachment() {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat']);
+		const roomId = await t.mutation(api.chat.rooms.createChannel, {
+			name: 'secret',
+			visibility: 'private',
+		});
+		const storageId = await storeChatUpload(t, new Blob(['private document']));
+		const assetId = await t.mutation(api.chat.attachments.registerAttachment, {
+			storageId,
+			filename: 'confidential.txt',
+			mimeType: 'text/plain',
+			fileSize: 16,
+		});
+		const messageId = await t.mutation(api.chat.messages.sendMessage, {
+			roomId,
+			text: 'Private attachment',
+			attachmentIds: [assetId],
+		});
+		return { t, roomId, storageId, assetId, messageId };
+	}
+
+	it('hides private bytes and metadata from every library read', async () => {
+		const { t, storageId, messageId } = await privateAttachment();
+		setUser('user-bob');
+		await expect(
+			t.query(api.chat.attachments.getAttachmentDetails, { messageId })
+		).rejects.toThrow();
+		for (const search of [undefined, 'confidential']) {
+			const page = await t.query(api.mediaAssets.list, {
+				paginationOpts: { numItems: 20, cursor: null },
+				...(search ? { search } : {}),
+			});
+			expect(page.page).toEqual([]);
+		}
+		expect(await t.query(api.mediaAssets.getStats, {})).toMatchObject({
+			totalCount: 0,
+			totalBytes: 0,
+		});
+		expect(await t.query(api.mediaAssets.listTags, {})).toEqual([]);
+		await expect(t.query(api.storage.getUrl, { storageId })).rejects.toThrow();
+	});
+
+	it('rejects relabeling, deleting, and re-registering private attachments even by an admin', async () => {
+		const { t, storageId, assetId } = await privateAttachment();
+		setUser('user-bob', 'owner');
+		await expect(t.mutation(api.mediaAssets.update, { assetId, tags: [] })).rejects.toThrow();
+		await expect(t.mutation(api.mediaAssets.bulkDelete, { assetIds: [assetId] })).rejects.toThrow();
+		await expect(
+			t.mutation(api.mediaAssets.create, {
+				storageId,
+				filename: 'stolen.txt',
+				mimeType: 'text/plain',
+				fileSize: 16,
+			})
+		).rejects.toThrow();
+		await expect(
+			t.mutation(api.chat.attachments.registerAttachment, {
+				storageId,
+				filename: 'stolen.txt',
+				mimeType: 'text/plain',
+				fileSize: 16,
+			})
+		).rejects.toThrow();
+		expect(await t.run(async (ctx) => (await ctx.storage.get(storageId)) !== null)).toBe(true);
+	});
+
+	it('rejects borrowing another user private attachment into an accessible room', async () => {
+		const { t, assetId } = await privateAttachment();
+		setUser('user-bob', 'owner');
+		const roomId = await t.mutation(api.chat.rooms.createChannel, {
+			name: 'bob',
+			visibility: 'public',
+		});
+		await expect(
+			t.mutation(api.chat.messages.sendMessage, {
+				roomId,
+				text: 'Borrowed attachment',
+				attachmentIds: [assetId],
+			})
+		).rejects.toThrow();
+	});
+
+	it('preserves authorized message downloads and shared marketing assets', async () => {
+		const { t, messageId } = await privateAttachment();
+		const details = await t.query(api.chat.attachments.getAttachmentDetails, { messageId });
+		expect(details).toHaveLength(1);
+		expect(details[0]?.url).toBeTruthy();
+		const shared = await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(new Blob(['shared image']));
+			const assetId = await ctx.db.insert('mediaAssets', {
+				storageId,
+				filename: 'logo.png',
+				mimeType: 'image/png',
+				fileSize: 12,
+				url: (await ctx.storage.getUrl(storageId))!,
+				uploadedBy: 'another-user',
+				tags: ['branding'],
+				searchableText: 'logo',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			return { storageId, assetId };
+		});
+		setUser('user-bob', 'owner');
+		const page = await t.query(api.mediaAssets.list, {
+			paginationOpts: { numItems: 20, cursor: null },
+		});
+		expect(page.page.map((asset) => asset._id)).toEqual([shared.assetId]);
+		expect(await t.query(api.storage.getUrl, { storageId: shared.storageId })).toBeTruthy();
+		expect(await t.query(api.mediaAssets.listTags, {})).toEqual(['branding']);
+		const roomId = await t.mutation(api.chat.rooms.createChannel, {
+			name: 'marketing',
+			visibility: 'public',
+		});
+		const sharedMessage = await t.mutation(api.chat.messages.sendMessage, {
+			roomId,
+			text: 'Shared logo',
+			attachmentIds: [shared.assetId],
+		});
+		expect(
+			await t.query(api.chat.attachments.getAttachmentDetails, { messageId: sharedMessage })
+		).toHaveLength(1);
 	});
 });

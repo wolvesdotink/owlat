@@ -36,7 +36,7 @@ export interface ListUnsubscribeTarget {
  */
 export function parseListUnsubscribe(
 	listUnsubscribe: string | undefined | null,
-	listUnsubscribePost?: string | undefined | null,
+	listUnsubscribePost?: string | undefined | null
 ): ListUnsubscribeTarget | null {
 	if (!listUnsubscribe) return null;
 
@@ -53,7 +53,9 @@ export function parseListUnsubscribe(
 	// RFC 8058 §3.1: the POST header's value is exactly the pair
 	// `List-Unsubscribe=One-Click`; One-Click only applies to the https URI.
 	const oneClick =
-		!!httpUrl && !!listUnsubscribePost && /list-unsubscribe\s*=\s*one-click/i.test(listUnsubscribePost);
+		!!httpUrl &&
+		!!listUnsubscribePost &&
+		/list-unsubscribe\s*=\s*one-click/i.test(listUnsubscribePost);
 
 	return { httpUrl, mailtoUrl, oneClick };
 }
@@ -101,9 +103,9 @@ const IPV4_LITERAL = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
  *     *.internal, single-label hostnames).
  *
  * NOTE: this validates the URL as written; it does not resolve DNS, so a
- * public hostname pointing at an internal IP (DNS rebinding) is out of scope
- * here — the POST is fire-and-forget with a bounded timeout and its response
- * body is never surfaced to the client, which bounds that residual risk.
+ * public hostname pointing at an internal IP cannot be rejected here. Server
+ * callers must additionally use the DNS-aware fetchGuarded transport; withholding
+ * the response body alone does not prevent blind SSRF.
  */
 export function isSafeUnsubscribeUrl(url: string): boolean {
 	let parsed: URL;

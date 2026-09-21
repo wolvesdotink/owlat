@@ -23,6 +23,7 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 

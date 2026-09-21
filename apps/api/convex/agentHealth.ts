@@ -6,7 +6,7 @@
  * Follows the circuit breaker pattern from the MTA.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import {
 	internalQuery,
 	internalMutation,
@@ -235,21 +235,34 @@ export const getCircuitBreakersInternal = internalQuery({
 // Internal Mutations
 // ============================================================
 
+/** One rollup data point, before it is stamped with `createdAt`. */
+const agentMetricRowValidator = v.object({
+	metricType: agentMetricTypeValidator,
+	value: v.number(),
+	windowStart: v.number(),
+	windowEnd: v.number(),
+});
+
+type AgentMetricRow = Infer<typeof agentMetricRowValidator>;
+
 /**
- * Record a metric data point
+ * Record a rollup window's data points — ALL of them, in ONE transaction.
+ *
+ * One window is one observation: writing its seven or eight points through
+ * seven or eight separate mutations meant seven or eight transactions (and as
+ * many OCC write conflicts on `agentMetrics`) per tick, and a failure partway
+ * through left a half-written window on the dashboard — an error_rate with no
+ * llm_cost beside it, which reads as "the pipeline was cheap and broken"
+ * rather than "the rollup died". Either the window lands or none of it does.
  */
-export const recordMetric = internalMutation({
-	args: {
-		metricType: agentMetricTypeValidator,
-		value: v.number(),
-		windowStart: v.number(),
-		windowEnd: v.number(),
-	},
+export const recordMetrics = internalMutation({
+	args: { metrics: v.array(agentMetricRowValidator) },
+	returns: v.null(),
 	handler: async (ctx, args) => {
-		await ctx.db.insert('agentMetrics', {
-			...args,
-			createdAt: Date.now(),
-		});
+		const createdAt = Date.now();
+		for (const metric of args.metrics) {
+			await ctx.db.insert('agentMetrics', { ...metric, createdAt });
+		}
 	},
 });
 
@@ -298,26 +311,6 @@ export const updateCircuitBreaker = internalMutation({
 	},
 });
 
-/**
- * Clean up old metrics (keep last 7 days)
- */
-export const cleanupOldMetrics = internalMutation({
-	args: {},
-	returns: v.null(),
-	handler: async (ctx) => {
-		const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-
-		const old = await ctx.db
-			.query('agentMetrics')
-			.withIndex('by_window_start', (q) => q.lt('windowStart', sevenDaysAgo))
-			.take(500);
-
-		for (const metric of old) {
-			await ctx.db.delete(metric._id);
-		}
-	},
-});
-
 // ============================================================
 // Internal Action: Metrics Rollup (called by cron)
 // ============================================================
@@ -325,6 +318,13 @@ export const cleanupOldMetrics = internalMutation({
 /**
  * Compute and record metrics from recent pipeline activity.
  * Called every 5 minutes by cron.
+ *
+ * Stays an ACTION rather than collapsing into one read-and-write mutation: the
+ * window is computed off a 5000-row `agentActions` scan and a 1000-row
+ * `inboundMessages` scan, and holding that much of the pipeline's hottest table
+ * inside a write transaction would make the rollup conflict with the very
+ * pipeline it measures. The reads are snapshot-consistent per query and the
+ * WRITE — the part that has to be all-or-nothing — is one transaction.
  */
 export const rollupMetrics = internalAction({
 	args: {},
@@ -333,6 +333,13 @@ export const rollupMetrics = internalAction({
 		const now = Date.now();
 		const windowStart = now - 5 * 60 * 1000;
 
+		// Every point this window produces, collected first and written once at
+		// the end — see `recordMetrics` for why the window is one transaction.
+		const metrics: AgentMetricRow[] = [];
+		const record = (metricType: AgentMetricRow['metricType'], value: number) => {
+			metrics.push({ metricType, value, windowStart, windowEnd: now });
+		};
+
 		// Get recent agent actions for this window
 		const actions = await ctx.runQuery(internal.agentHealth.getRecentActions, {
 			since: windowStart,
@@ -340,24 +347,14 @@ export const rollupMetrics = internalAction({
 
 		// Queue depth: count pending messages
 		const queueDepth = await ctx.runQuery(internal.agentHealth.getPendingCount);
-		await ctx.runMutation(internal.agentHealth.recordMetric, {
-			metricType: 'queue_depth',
-			value: queueDepth,
-			windowStart,
-			windowEnd: now,
-		});
+		record('queue_depth', queueDepth);
 
 		// Processing latency: average duration of completed actions
 		const completedActions = actions.filter((a) => a.status === 'completed' && a.durationMs);
 		if (completedActions.length > 0) {
 			const avgLatency =
 				completedActions.reduce((sum, a) => sum + (a.durationMs ?? 0), 0) / completedActions.length;
-			await ctx.runMutation(internal.agentHealth.recordMetric, {
-				metricType: 'processing_latency',
-				value: Math.round(avgLatency),
-				windowStart,
-				windowEnd: now,
-			});
+			record('processing_latency', Math.round(avgLatency));
 		}
 
 		// Error rate: failed / total. Count both the retryable `failed` state and
@@ -369,13 +366,7 @@ export const rollupMetrics = internalAction({
 			(a) => a.status === 'failed' || a.status === 'abandoned'
 		).length;
 		const errorRate = totalActions > 0 ? failedActions / totalActions : 0;
-
-		await ctx.runMutation(internal.agentHealth.recordMetric, {
-			metricType: 'error_rate',
-			value: errorRate,
-			windowStart,
-			windowEnd: now,
-		});
+		record('error_rate', errorRate);
 
 		// Confidence degradation: fraction of recent classifications whose
 		// confidence fell below 0.5. A spike here means the model is unsure
@@ -442,32 +433,14 @@ export const rollupMetrics = internalAction({
 
 		// Record the previously-reserved metric types so their dashboard cards
 		// stop reading zero.
-		await ctx.runMutation(internal.agentHealth.recordMetric, {
-			metricType: 'classification_accuracy',
-			value: classificationAccuracy,
-			windowStart,
-			windowEnd: now,
-		});
-		await ctx.runMutation(internal.agentHealth.recordMetric, {
-			metricType: 'auto_approve_ratio',
-			value: autoApproveRatio,
-			windowStart,
-			windowEnd: now,
-		});
-		await ctx.runMutation(internal.agentHealth.recordMetric, {
-			metricType: 'rejection_rate',
-			value: rejectionRate,
-			windowStart,
-			windowEnd: now,
-		});
+		record('classification_accuracy', classificationAccuracy);
+		record('auto_approve_ratio', autoApproveRatio);
+		record('rejection_rate', rejectionRate);
 		// Real estimated dollars (priced per model via lib/llm/pricing), not a raw
 		// token count — the dashboard renders this with a "$".
-		await ctx.runMutation(internal.agentHealth.recordMetric, {
-			metricType: 'llm_cost',
-			value: costTotalUsd,
-			windowStart,
-			windowEnd: now,
-		});
+		record('llm_cost', costTotalUsd);
+
+		await ctx.runMutation(internal.agentHealth.recordMetrics, { metrics });
 
 		// Evaluate all three circuit breakers off this window's signals.
 		await evaluateCircuitBreakers(ctx, {
@@ -475,12 +448,6 @@ export const rollupMetrics = internalAction({
 			confidence_degradation: confidenceDegradation,
 			rejection_spike: rejectionRate,
 		});
-
-		// Cleanup old metrics periodically
-		if (Math.random() < 0.05) {
-			// ~5% chance each run
-			await ctx.runMutation(internal.agentHealth.cleanupOldMetrics);
-		}
 	},
 });
 

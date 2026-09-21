@@ -186,6 +186,8 @@ export const mailCategoryLabelValidator = v.union(
 	v.literal('newsletter'),
 	v.literal('notification'),
 	v.literal('receipt'),
+	v.literal('promotion'),
+	v.literal('spam'),
 	v.literal('other')
 );
 /** Who assigned a mail category; `user` overrides the classifiers. */

@@ -59,7 +59,7 @@ export const mailAuthTables = {
 		ip: v.optional(v.string()),
 		userAgent: v.optional(v.string()),
 		occurredAt: v.number(),
-	}).index('by_mailbox_and_time', ['mailboxId', 'occurredAt']),
+	}),
 
 	// App passwords for native IMAP/SMTP clients (Apple Mail, Thunderbird, …)
 	// The cleartext password is shown ONCE at creation and never recoverable.

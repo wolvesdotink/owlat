@@ -1,3 +1,8 @@
+import type * as chat_attachmentAccess from '../chat/attachmentAccess.js';
+import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
+import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
+import type * as storage_uploads from '../storage/uploads.js';
+import type * as schema_storage from '../schema/storage.js';
 /* eslint-disable */
 /**
  * Generated `api` utility.
@@ -22,12 +27,15 @@ import type * as agent_pluginStepRuntime from '../agent/pluginStepRuntime.js';
 import type * as agent_referenceMonitor from '../agent/referenceMonitor.js';
 import type * as agent_shadowScorecard from '../agent/shadowScorecard.js';
 import type * as agent_shadowSimilarity from '../agent/shadowSimilarity.js';
+import type * as agent_shared_draftOptionsPolicy from '../agent/shared/draftOptionsPolicy.js';
 import type * as agent_shared_draftService from '../agent/shared/draftService.js';
 import type * as agent_shared_draftStrategyHost from '../agent/shared/draftStrategyHost.js';
 import type * as agent_shared_draftStrategyRunner from '../agent/shared/draftStrategyRunner.js';
+import type * as agent_shared_replyLanguage from '../agent/shared/replyLanguage.js';
 import type * as agent_steps_clarify_attachment from '../agent/steps/clarify/attachment.js';
 import type * as agent_steps_clarify_index from '../agent/steps/clarify/index.js';
 import type * as agent_steps_catalog from '../agent/steps/catalog.js';
+import type * as agent_steps_clarify_options from '../agent/steps/clarify/options.js';
 import type * as agent_steps_classify_index from '../agent/steps/classify/index.js';
 import type * as agent_steps_context_retrieval_currentMessage from '../agent/steps/context_retrieval/currentMessage.js';
 import type * as agent_steps_context_retrieval_emergency from '../agent/steps/context_retrieval/emergency.js';
@@ -182,6 +190,7 @@ import type * as codeWorkTasks from '../codeWorkTasks.js';
 import type * as conditions_contact_property_index from '../conditions/contact_property/index.js';
 import type * as conditions_email_activity_index from '../conditions/email_activity/index.js';
 import type * as conditions_index from '../conditions/index.js';
+import type * as conditions_liveContactScan from '../conditions/liveContactScan.js';
 import type * as conditions_segmentMatch from '../conditions/segmentMatch.js';
 import type * as conditions_topic_membership_index from '../conditions/topic_membership/index.js';
 import type * as conditions_types from '../conditions/types.js';
@@ -515,6 +524,7 @@ import type * as inbox_attachmentValidators from '../inbox/attachmentValidators.
 import type * as inbox_bulkMutations from '../inbox/bulkMutations.js';
 import type * as inbox_clarification from '../inbox/clarification.js';
 import type * as inbox_clarificationLog from '../inbox/clarificationLog.js';
+import type * as inbox_clarificationLocalize from '../inbox/clarificationLocalize.js';
 import type * as inbox_clarificationMemory from '../inbox/clarificationMemory.js';
 import type * as inbox_clarificationMemoryMatch from '../inbox/clarificationMemoryMatch.js';
 import type * as inbox_clarificationSlots from '../inbox/clarificationSlots.js';
@@ -540,6 +550,7 @@ import type * as inbox_stepOutputs from '../inbox/stepOutputs.js';
 import type * as inbox_threadFilters from '../inbox/threadFilters.js';
 import type * as inbox_threadSearch from '../inbox/threadSearch.js';
 import type * as inbox_threadSort from '../inbox/threadSort.js';
+import type * as inbox_updates from '../inbox/updates.js';
 import type * as inbox_threads_module from '../inbox/threads/module.js';
 import type * as integrationImports__common from '../integrationImports/_common.js';
 import type * as integrationImports_credentialSeal from '../integrationImports/credentialSeal.js';
@@ -561,7 +572,9 @@ import type * as knowledge_graphTraversal from '../knowledge/graphTraversal.js';
 import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
+import type * as lib_readBody from '../lib/readBody.js';
 import type * as lib_aiProviderConfigValidators from '../lib/aiProviderConfigValidators.js';
+import type * as lib_appLocales from '../lib/appLocales.js';
 import type * as lib_atRestBodies from '../lib/atRestBodies.js';
 import type * as lib_bytes from '../lib/bytes.js';
 import type * as lib_auditLog from '../lib/auditLog.js';
@@ -569,6 +582,7 @@ import type * as lib_authedFunctions from '../lib/authedFunctions.js';
 import type * as lib_automationConfigTypes from '../lib/automationConfigTypes.js';
 import type * as lib_autonomyRules from '../lib/autonomyRules.js';
 import type * as lib_betterAuthAdapterArgs from '../lib/betterAuthAdapterArgs.js';
+import type * as lib_classificationValidator from '../lib/classificationValidator.js';
 import type * as lib_clock from '../lib/clock.js';
 import type * as lib_codeAgentGuard from '../lib/codeAgentGuard.js';
 import type * as lib_codeTaskRetry from '../lib/codeTaskRetry.js';
@@ -886,6 +900,7 @@ import type * as migrations_0040_backfill_credential_allowed_domains from '../mi
 import type * as migrations_0041_forget_disconnected_credentials from '../migrations/0041_forget_disconnected_credentials.js';
 import type * as migrations_0042_recompute_mailbox_used_bytes from '../migrations/0042_recompute_mailbox_used_bytes.js';
 import type * as migrations_0043_detect_missing_mail_blobs from '../migrations/0043_detect_missing_mail_blobs.js';
+import type * as migrations_0044_private_chat_media from '../migrations/0044_private_chat_media.js';
 import type * as platformAdmin_bootstrap from '../platformAdmin/bootstrap.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
@@ -1030,6 +1045,7 @@ import type * as seedDemo_loaders_webhooks from '../seedDemo/loaders/webhooks.js
 import type * as seedDemo_messages from '../seedDemo/messages.js';
 import type * as seedDemo_pipeline from '../seedDemo/pipeline.js';
 import type * as segments from '../segments.js';
+import type * as segments_countRefresh from '../segments/countRefresh.js';
 import type * as segments_listing from '../segments/listing.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
 import type * as semanticFiles from '../semanticFiles.js';
@@ -1130,6 +1146,11 @@ import type * as workspaces_settings from '../workspaces/settings.js';
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
 declare const fullApi: ApiFromModules<{
+	'chat/attachmentAccess': typeof chat_attachmentAccess;
+	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
+	'storage/uploadsHttp': typeof storage_uploadsHttp;
+	'storage/uploads': typeof storage_uploads;
+	'schema/storage': typeof schema_storage;
 	'__tests__/factories': typeof __tests___factories;
 	'__tests__/helpers/permissionGateMock': typeof __tests___helpers_permissionGateMock;
 	'_utils/batchLoader': typeof _utils_batchLoader;
@@ -1144,12 +1165,15 @@ declare const fullApi: ApiFromModules<{
 	'agent/referenceMonitor': typeof agent_referenceMonitor;
 	'agent/shadowScorecard': typeof agent_shadowScorecard;
 	'agent/shadowSimilarity': typeof agent_shadowSimilarity;
+	'agent/shared/draftOptionsPolicy': typeof agent_shared_draftOptionsPolicy;
 	'agent/shared/draftService': typeof agent_shared_draftService;
 	'agent/shared/draftStrategyHost': typeof agent_shared_draftStrategyHost;
 	'agent/shared/draftStrategyRunner': typeof agent_shared_draftStrategyRunner;
+	'agent/shared/replyLanguage': typeof agent_shared_replyLanguage;
 	'agent/steps/clarify/attachment': typeof agent_steps_clarify_attachment;
 	'agent/steps/clarify/index': typeof agent_steps_clarify_index;
 	'agent/steps/catalog': typeof agent_steps_catalog;
+	'agent/steps/clarify/options': typeof agent_steps_clarify_options;
 	'agent/steps/classify/index': typeof agent_steps_classify_index;
 	'agent/steps/context_retrieval/currentMessage': typeof agent_steps_context_retrieval_currentMessage;
 	'agent/steps/context_retrieval/emergency': typeof agent_steps_context_retrieval_emergency;
@@ -1304,6 +1328,7 @@ declare const fullApi: ApiFromModules<{
 	'conditions/contact_property/index': typeof conditions_contact_property_index;
 	'conditions/email_activity/index': typeof conditions_email_activity_index;
 	'conditions/index': typeof conditions_index;
+	'conditions/liveContactScan': typeof conditions_liveContactScan;
 	'conditions/segmentMatch': typeof conditions_segmentMatch;
 	'conditions/topic_membership/index': typeof conditions_topic_membership_index;
 	'conditions/types': typeof conditions_types;
@@ -1637,6 +1662,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/bulkMutations': typeof inbox_bulkMutations;
 	'inbox/clarification': typeof inbox_clarification;
 	'inbox/clarificationLog': typeof inbox_clarificationLog;
+	'inbox/clarificationLocalize': typeof inbox_clarificationLocalize;
 	'inbox/clarificationMemory': typeof inbox_clarificationMemory;
 	'inbox/clarificationMemoryMatch': typeof inbox_clarificationMemoryMatch;
 	'inbox/clarificationSlots': typeof inbox_clarificationSlots;
@@ -1662,6 +1688,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/threadFilters': typeof inbox_threadFilters;
 	'inbox/threadSearch': typeof inbox_threadSearch;
 	'inbox/threadSort': typeof inbox_threadSort;
+	'inbox/updates': typeof inbox_updates;
 	'inbox/threads/module': typeof inbox_threads_module;
 	'integrationImports/_common': typeof integrationImports__common;
 	'integrationImports/credentialSeal': typeof integrationImports_credentialSeal;
@@ -1683,7 +1710,9 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/maintenance': typeof knowledge_maintenance;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
+	'lib/readBody': typeof lib_readBody;
 	'lib/aiProviderConfigValidators': typeof lib_aiProviderConfigValidators;
+	'lib/appLocales': typeof lib_appLocales;
 	'lib/atRestBodies': typeof lib_atRestBodies;
 	'lib/bytes': typeof lib_bytes;
 	'lib/auditLog': typeof lib_auditLog;
@@ -1691,6 +1720,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/automationConfigTypes': typeof lib_automationConfigTypes;
 	'lib/autonomyRules': typeof lib_autonomyRules;
 	'lib/betterAuthAdapterArgs': typeof lib_betterAuthAdapterArgs;
+	'lib/classificationValidator': typeof lib_classificationValidator;
 	'lib/clock': typeof lib_clock;
 	'lib/codeAgentGuard': typeof lib_codeAgentGuard;
 	'lib/codeTaskRetry': typeof lib_codeTaskRetry;
@@ -2008,6 +2038,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0041_forget_disconnected_credentials': typeof migrations_0041_forget_disconnected_credentials;
 	'migrations/0042_recompute_mailbox_used_bytes': typeof migrations_0042_recompute_mailbox_used_bytes;
 	'migrations/0043_detect_missing_mail_blobs': typeof migrations_0043_detect_missing_mail_blobs;
+	'migrations/0044_private_chat_media': typeof migrations_0044_private_chat_media;
 	'platformAdmin/bootstrap': typeof platformAdmin_bootstrap;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;
@@ -2152,6 +2183,7 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/messages': typeof seedDemo_messages;
 	'seedDemo/pipeline': typeof seedDemo_pipeline;
 	segments: typeof segments;
+	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
 	semanticFileProcessing: typeof semanticFileProcessing;
 	semanticFiles: typeof semanticFiles;

@@ -22,6 +22,7 @@ import type { MutationCtx } from '../../../_generated/server';
  * data must add a literal here and a sibling step module.
  */
 export type OrganizationDeletionTable =
+	| 'storageUploads'
 	| 'accountExportArtifactLeases'
 	| 'accountExportArtifacts'
 	| 'accountExportSessions'
@@ -207,6 +208,7 @@ type AssertWipeCoversTenantData<_T extends never> = true;
 export type _WipeCoversAllTenantTables = AssertWipeCoversTenantData<TenantTableMissingFromWipe>;
 
 export const organizationDeletionTableValidator = v.union(
+	v.literal('storageUploads'),
 	v.literal('accountExportArtifactLeases'),
 	v.literal('accountExportArtifacts'),
 	v.literal('accountExportSessions'),

@@ -121,9 +121,11 @@ export function makeSegmentPredicate(
 
 // ── Lenient async conveniences — preview / count / cron. Bake in the
 // notSoftDeleted scan; treat corrupt filters as a zero match. ──
-export function countLiveMatches(ctx, input): Promise<number>;
-export function matchLiveContacts(ctx, input, opts?: { limit?: number }): Promise<Doc<'contacts'>[]>;
-export function countLiveMatchesForSegments(ctx, segments): Promise<Map<string, number>>;
+// Amended (budgeted-slice pass): each covers ONE budgeted execution and reports
+// where it stopped — see the amendment below.
+export function countLiveMatches(ctx, input, opts?): Promise<LiveScanProgress & { matched: number }>;
+export function matchLiveContacts(ctx, input, opts?): Promise<LiveScanProgress & { contacts: Doc<'contacts'>[] }>;
+export function countLiveMatchesForSegments(ctx, segments, opts?): Promise<LiveScanProgress & { counts: Map<string, number> }>;
 
 // ── Single-Contact case — the automation `condition` step. ──
 export function evaluateAgainstContact(ctx, conditions: Condition[], logic, contact): Promise<boolean>;
@@ -266,3 +268,39 @@ slowly on a many-condition segment, now behaves correctly. No send-path
 behaviour changes (the campaign matcher already filtered soft-deleted;
 this routes it through the shared predicate without altering its result).
 ```
+
+## Amendment — the conveniences cover one budgeted slice
+
+The conveniences above originally owned an *unbounded* live-Contact scan:
+they streamed the whole population with `for await` on the premise that
+streaming kept the reads incremental. It does not. Convex's per-execution
+limit (16,384 documents / 8 MiB) applies to a function execution however
+its rows are fetched, so the cron sweep and the on-write refresh — both
+mutations, which also carry every read into their OCC conflict set —
+would have failed outright once the contacts table outgrew it.
+
+Each convenience now covers ONE budgeted slice of the population and
+returns `LiveScanProgress` (`{ scanned, done, cursor }`) alongside its
+partial result; the walk itself lives in `conditions/liveContactScan.ts`
+(a DOCUMENT budget plus an explicit `by_deleted_at` continuation, since
+Convex permits one `.paginate()` per execution and the sweep spends its
+own on the `segments` table). Callers accumulate across self-rescheduled
+executions — `segments/countRefresh.ts` for the cron sweep and the
+single-segment refresh, both of which refuse to write a tally whose
+segment was re-filtered mid-walk.
+
+Two claims elsewhere in this ADR are superseded by that change:
+
+- §"The two-layer split is load-bearing" says the multi-segment cron
+  shares "one Contact scan *and* one combined lookup". The shared walk
+  stays — one pass serves every segment in the batch — but the lookup is
+  now resolved PER CHUNK via `preloadConditionsLookupForContacts` (point
+  reads over the chunk's contacts) instead of front-loading whole
+  columns, so the read cost scales with the budget rather than with the
+  size of whatever topic or property a condition names. The trade is real
+  in the other direction: a batch whose segments carry many
+  `topic_membership` conditions costs several documents per contact, so
+  its sweep takes more scheduled hops.
+- The conveniences are no longer "one preload, one scan" per call. The
+  pure core (`parseSegmentFilters` + `makeSegmentPredicate`) and the
+  single-Contact case are unchanged.

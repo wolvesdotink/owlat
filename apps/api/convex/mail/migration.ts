@@ -216,6 +216,7 @@ export async function cancelMigrationForAccount(
  * progress for the wizard, or `null`. Soft-auth (org members only).
  */
 // public: soft-auth — returns null for anonymous/non-members; scoped to the caller's own account
+// authz: self-scoped — reads only the session user's own account migration.
 export const getStatus = publicQuery({
 	args: {},
 	handler: async (ctx) => {

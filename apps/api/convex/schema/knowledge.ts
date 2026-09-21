@@ -334,7 +334,6 @@ export const knowledgeTables = {
 	})
 		.index('by_created_at', ['createdAt'])
 		.index('by_thread', ['threadId'])
-		.index('by_previous_version', ['previousVersionId'])
 		.index('by_attachment_retention', ['captureSource', 'bytesReleasedAt', 'createdAt'])
 		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): as with knowledge entries,
 		// `searchableText` (full-text) and `embedding` (vector) stay PLAINTEXT-DERIVED

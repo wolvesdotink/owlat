@@ -33,6 +33,7 @@ export type ProcessingStatus =
 	| 'drafting'
 	| 'draft_ready'
 	| 'awaiting_clarification'
+	| 'informational'
 	| 'approved'
 	| 'sent'
 	| 'rejected'
@@ -123,6 +124,16 @@ export type TransitionInput =
 			tokenUsage?: TokenUsage;
 	  }
 	| {
+			to: 'informational';
+			at: number;
+			completedActionId?: Id<'agentActions'>;
+			output?: string;
+			classification?: Classification;
+			durationMs?: number;
+			modelUsed?: string;
+			tokenUsage?: TokenUsage;
+	  }
+	| {
 			to: 'quarantined';
 			at: number;
 			completedActionId?: Id<'agentActions'>;
@@ -141,7 +152,8 @@ export type TransitionInput =
 				| 'handling_rule_archive'
 				| 'coalesced'
 				| 'clarification_dismissed'
-				| 'plugin_caution';
+				| 'plugin_caution'
+				| 'update_dismissed';
 			securityFlags?: SecurityFlags;
 			userId?: string;
 			output?: string;
@@ -246,6 +258,16 @@ export const transitionInputValidator = v.union(
 		tokenUsage: v.optional(tokenUsageValidator),
 	}),
 	v.object({
+		to: v.literal('informational'),
+		at: v.number(),
+		completedActionId: v.optional(v.id('agentActions')),
+		output: v.optional(v.string()),
+		classification: v.optional(classificationValidator),
+		durationMs: v.optional(v.number()),
+		modelUsed: v.optional(v.string()),
+		tokenUsage: v.optional(tokenUsageValidator),
+	}),
+	v.object({
 		to: v.literal('quarantined'),
 		at: v.number(),
 		completedActionId: v.optional(v.id('agentActions')),
@@ -264,7 +286,8 @@ export const transitionInputValidator = v.union(
 			v.literal('handling_rule_archive'),
 			v.literal('coalesced'),
 			v.literal('clarification_dismissed'),
-			v.literal('plugin_caution')
+			v.literal('plugin_caution'),
+			v.literal('update_dismissed')
 		),
 		securityFlags: v.optional(securityFlagsValidator),
 		userId: v.optional(v.string()),
@@ -305,6 +328,13 @@ export const transitionInputValidator = v.union(
 // ─── Effects ────────────────────────────────────────────────────────────────
 
 export type Effect =
+	| {
+			// Tell the person who has to answer the agent's clarification questions
+			// (the message / thread assignee, else every shared-inbox reader) by
+			// appending an `inboxAssignmentNotices` row of kind `clarification`.
+			kind: 'notify_clarification';
+			inboundMessageId: Id<'inboundMessages'>;
+	  }
 	| {
 			kind: 'complete_action';
 			actionId: Id<'agentActions'>;

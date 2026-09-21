@@ -1,3 +1,4 @@
+import { BodyTooLargeError, readBodyText } from '../lib/readBody';
 /**
  * Inbound webhook pipeline — shared HTTP shell for per-provider adapters.
  *
@@ -25,11 +26,6 @@ import type { InboundEvent } from './types';
  * unauthenticated data any caller can push into memory.
  */
 const MAX_WEBHOOK_BODY_BYTES = 5 * 1024 * 1024;
-
-/** UTF-8 byte length of a string (a multibyte char is more than one byte). */
-function byteLength(s: string): number {
-	return new TextEncoder().encode(s).length;
-}
 
 /**
  * EVENT SEMANTICS ONLY — what a provider's bytes MEAN, with no opinion about
@@ -192,15 +188,11 @@ export async function runInboundPipeline(
 
 	let rawBody: string;
 	try {
-		rawBody = await request.text();
-	} catch {
+		rawBody = await readBodyText(request, MAX_WEBHOOK_BODY_BYTES);
+	} catch (error) {
+		if (error instanceof BodyTooLargeError)
+			return jsonResponse(413, { error: 'Payload too large' });
 		return jsonResponse(400, { error: 'Failed to read request body' });
-	}
-
-	// Defense for a chunked request that omits Content-Length: enforce the same
-	// cap on the bytes actually read so the header can't be simply left off.
-	if (byteLength(rawBody) > MAX_WEBHOOK_BODY_BYTES) {
-		return jsonResponse(413, { error: 'Payload too large' });
 	}
 
 	const verification = await adapter.verifySignature(request, rawBody, ctx);

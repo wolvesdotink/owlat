@@ -12,6 +12,19 @@
 #      helpers and internal{Query,Mutation,Action} may still throw bare Error —
 #      those are invariant bugs, never surfaced.
 #
+#      The handler shapes this check recognizes are the *secure-by-default
+#      builders* from lib/authedFunctions.ts and the feature-gated builders
+#      composed from them, NOT the bare `query(` / `mutation(` / `action(`
+#      Convex builders: check-public-functions.sh bans those everywhere outside
+#      lib/authedFunctions.ts, so keying on them alone matched zero functions
+#      and this check silently passed on everything. The bare names stay in the
+#      list only so the gate still fires if that ban is ever relaxed.
+#      `httpAction`, `publicTokenEndpoint` and `createAuthenticatedHandler`
+#      (auth/apiHandlers.ts, the nine API-key HTTP exports) are out of scope: the
+#      HTTP surface serializes failures through lib/httpResponse.ts, which has
+#      its own category seam, and a bare throw there becomes a 500 rather than
+#      an uncategorized client error.
+#
 # Category-literal validity is enforced by the compiler: every error category
 # usage is typed `OperationErrorCategory` (throwers, errorResponse, the SDK
 # parse), so tsc rejects an out-of-union value. A bash grep can't tell an error
@@ -48,17 +61,29 @@ fi
 
 # ── Check 2: bare `throw new Error` inside user-facing handler blocks ─────────
 # awk walks each file tracking brace depth from the start of an
-# `export const X = (query|mutation|action)({ ... })` declaration to its close,
-# and flags any bare `throw new Error(` lexically within. internal* and plain
+# `export const X = <public builder>({ ... })` declaration to its close, and
+# flags any bare `throw new Error(` lexically within. internal* and plain
 # helpers are not matched, so their bare throws are allowed.
+#
+# Every public builder actually in use, so that adding one to
+# lib/authedFunctions.ts (or composing a new feature-gated pair) does not
+# quietly carve a hole in this gate:
+#   lib/authedFunctions.ts  authedQuery authedMutation authedAction
+#                           authedIdentityMutation adminQuery adminMutation
+#                           ownerMutation publicQuery publicMutation publicAction
+#   chat/_helpers.ts        chatQuery chatMutation          (featureGated 'chat')
+#   assistant/conversations.ts
+#                           assistantQuery assistantMutation (featureGated 'ai')
+PUBLIC_BUILDERS='query|mutation|action|authedQuery|authedMutation|authedAction|authedIdentityMutation|adminQuery|adminMutation|ownerMutation|publicQuery|publicMutation|publicAction|chatQuery|chatMutation|assistantQuery|assistantMutation'
+
 bare_throws=$(find convex -name "*.ts" \
 	-not -path "*/_generated/*" \
 	-not -path "*/__tests__/*" \
 	! -name "*.test.ts" \
-	-exec awk '
+	-exec awk -v builders="$PUBLIC_BUILDERS" '
 		{
 			line = $0
-			if (line ~ /^export const [A-Za-z0-9_]+ = (query|mutation|action)\(/) {
+			if (line ~ "^export const [A-Za-z0-9_]+ = (" builders ")\\(") {
 				inpub = 1
 				depth = 0
 			}

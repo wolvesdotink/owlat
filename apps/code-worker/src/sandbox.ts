@@ -1,5 +1,5 @@
 import { execFileSync, spawn, type ExecFileSyncOptions } from 'node:child_process';
-import { statSync } from 'node:fs';
+import { chmodSync, chownSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -29,25 +29,70 @@ export const SANDBOX_UID = Number(process.env['CODE_SANDBOX_UID'] ?? 10001);
 export const SANDBOX_GID = Number(process.env['CODE_SANDBOX_GID'] ?? 10001);
 
 /**
- * Kill an entire process group given the group leader's pid.
+ * Reap every process using the dedicated sandbox uid, including setsid children.
+ * The worker runs one job at a time in its own PID namespace. A helper drops to
+ * that uid before signalling: confined root has no CAP_KILL and cannot signal
+ * its cross-uid children. Linux kill(-1) excludes the caller and PID 1, and the
+ * helper has no capability to signal other uids. No credentials reach it.
  *
- * The untrusted children (the coding agent, `npx vitest`) are spawned
- * `detached`, so each becomes the leader of its OWN process group. Signalling
- * the NEGATIVE pid reaps the whole group — the direct child *and* every
- * grandchild it spawned (vitest's worker pool, detached helpers) — instead of
- * leaving orphaned workers running after a timeout. The `kill` param is
- * injectable so the group-targeting can be unit-tested without real processes.
+ * A failed cleanup is fatal: continuing would let an old task overlap trusted
+ * Git operations or a new job. Exiting PID 1 tears down the container's tasks.
  */
-export function killProcessGroup(
-	pid: number | undefined,
-	kill: (targetPid: number, signal: NodeJS.Signals) => void = process.kill
-): void {
-	if (!pid || pid <= 0) return;
-	try {
-		kill(-pid, 'SIGKILL');
-	} catch {
-		// The group already exited between the timeout firing and this signal.
-	}
+export function reapSandboxProcesses(
+	spawnFn: typeof spawn = spawn,
+	fatal: (code: number) => never = process.exit
+): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (
+			!Number.isInteger(SANDBOX_UID) ||
+			SANDBOX_UID <= 0 ||
+			!Number.isInteger(SANDBOX_GID) ||
+			SANDBOX_GID <= 0
+		) {
+			throw new Error('Sandbox uid and gid must be positive integers');
+		}
+		let settled = false;
+		const fail = () => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			console.error('Sandbox process cleanup failed; stopping the worker');
+			try {
+				fatal(1);
+			} catch (error) {
+				reject(error);
+			}
+		};
+		// Stay asynchronous: hostile same-uid code can stop the helper. Root
+		// cannot signal it without CAP_KILL, so the parent deadline must still run.
+		const timer = setTimeout(fail, 5_000);
+		try {
+			const helper = spawnFn(
+				process.execPath,
+				[
+					'-e',
+					"try { process.kill(-1, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }",
+				],
+				{
+					uid: SANDBOX_UID,
+					gid: SANDBOX_GID,
+					env: {},
+					cwd: '/',
+					stdio: 'ignore',
+				}
+			);
+			helper.once('error', fail);
+			helper.once('exit', (code) => {
+				if (settled) return;
+				if (code !== 0) return fail();
+				settled = true;
+				clearTimeout(timer);
+				resolve();
+			});
+		} catch {
+			fail();
+		}
+	});
 }
 
 export interface DetachedRunResult {
@@ -55,7 +100,7 @@ export interface DetachedRunResult {
 	stdout: string;
 	stderr: string;
 	timedOut: boolean;
-	/** True when an external cancellation (AbortSignal) reaped the process group. */
+	/** True when an external cancellation (AbortSignal) reaped the sandbox processes. */
 	killed: boolean;
 }
 
@@ -65,30 +110,15 @@ export interface SandboxRunOptions {
 	env: NodeJS.ProcessEnv;
 	timeoutMs: number;
 	/**
-	 * Cooperative cancellation. When it aborts, the WHOLE process group is reaped
-	 * (negative pid) exactly like a timeout — so a plugin job cannot escape an
-	 * operator cancellation by spawning detached grandchildren.
+	 * Cooperative cancellation. When it aborts, all sandbox processes are reaped, including
+	 * detached grandchildren, before the next task can start.
 	 */
 	signal?: AbortSignal;
-	/**
-	 * Injectable group-kill (defaults to `process.kill`). Exists so the
-	 * timeout/cancel reaping can be unit-tested without signalling real pids.
-	 */
-	kill?: (targetPid: number, signal: NodeJS.Signals) => void;
+	/** Injectable cleanup for tests; production reaps the dedicated sandbox uid. */
+	reap?: () => void | Promise<void>;
 }
 
-/**
- * Run an UNTRUSTED subprocess in its own process group and, on timeout, kill the
- * WHOLE group.
- *
- * `execFileSync`'s built-in `timeout` only signals the direct child, so a
- * timed-out `vitest` run would leave its detached worker pool alive — still
- * burning CPU/memory against the container's resource limits. Spawning
- * `detached` (a new process group) and killing the negative pid guarantees the
- * entire process tree is reaped when the deadline is hit. `shell: false` is
- * kept (spawn with an argv array), preserving the shell-injection isolation the
- * argv builders rely on.
- */
+/** Run untrusted code and reap sandbox processes before reporting its result. */
 function runDetached(
 	command: string,
 	args: string[],
@@ -113,6 +143,9 @@ function runDetached(
 		let stderr = '';
 		let timedOut = false;
 		let killed = false;
+		let reaping: Promise<void> | undefined;
+		const reap = () =>
+			(reaping ??= Promise.resolve().then(() => (opts.reap ?? reapSandboxProcesses)()));
 
 		child.stdout?.on('data', (chunk: Buffer) => {
 			stdout += chunk.toString();
@@ -123,15 +156,13 @@ function runDetached(
 
 		const timer = setTimeout(() => {
 			timedOut = true;
-			killProcessGroup(child.pid, opts.kill);
+			void reap().catch(reject);
 		}, opts.timeoutMs);
 
-		// Operator cancellation: reap the WHOLE group, same as a timeout. A job
-		// cannot dodge cancellation by detaching workers — signalling the negative
-		// pid takes the entire tree down.
+		// Operator cancellation reaps the dedicated uid, including detached children.
 		const onAbort = () => {
 			killed = true;
-			killProcessGroup(child.pid, opts.kill);
+			void reap().catch(reject);
 		};
 		if (opts.signal) {
 			if (opts.signal.aborted) onAbort();
@@ -142,13 +173,20 @@ function runDetached(
 			opts.signal?.removeEventListener('abort', onAbort);
 		};
 
+		// Exit precedes close: descendants can keep stdout open after their parent
+		// exits. Reap them here so close is guaranteed to follow. Also clean up
+		// successful jobs, which may have left detached background processes.
+		child.once('exit', () => {
+			cleanup();
+			void reap().catch(reject);
+		});
 		child.once('error', (err) => {
 			cleanup();
-			reject(err);
+			void reap().then(() => reject(err), reject);
 		});
 		child.once('close', (code) => {
 			cleanup();
-			resolve({ code, stdout, stderr, timedOut, killed });
+			void reap().then(() => resolve({ code, stdout, stderr, timedOut, killed }), reject);
 		});
 	});
 }
@@ -171,6 +209,14 @@ export function runUntrusted(
 	opts: SandboxRunOptions,
 	spawnFn: typeof spawn = spawn
 ): Promise<DetachedRunResult> {
+	if (
+		!Number.isInteger(SANDBOX_UID) ||
+		SANDBOX_UID <= 0 ||
+		!Number.isInteger(SANDBOX_GID) ||
+		SANDBOX_GID <= 0
+	) {
+		throw new Error('Sandbox uid and gid must be positive integers');
+	}
 	return runDetached(command, args, { ...opts, uid: SANDBOX_UID, gid: SANDBOX_GID }, spawnFn);
 }
 
@@ -178,10 +224,9 @@ export function runUntrusted(
  * Run a TRUSTED git command as the orchestrator (ROOT — no uid/gid drop).
  *
  * These are the only commands that carry the GITHUB_TOKEN (out-of-band via
- * `-c http.extraheader`), so they MUST run as root and MUST NOT be dropped to
- * the sandbox uid: the token would otherwise land in a sandbox-readable
- * /proc/<pid>/cmdline. Root git reads the (world-readable) sandbox-owned working
- * tree and writes only the root-owned .git, so no DAC_OVERRIDE cap is needed.
+ * Git config environment variables), so they stay root: the token would otherwise
+ * land in a sandbox-readable /proc/<pid>/environ. Command lines never carry
+ * authentication headers. Root Git writes only the root-owned .git directory.
  * `execFn` is injectable so the trusted/untrusted split can be unit-tested.
  */
 export function runGit(
@@ -193,14 +238,17 @@ export function runGit(
 }
 
 /**
- * Hand the working tree to the sandbox uid so the untrusted agent can WRITE it,
- * while re-asserting root ownership of `.git` so trusted root git keeps working
- * with no dubious-ownership / EACCES and the token-bearing .git stays unreadable
- * by the sandbox. Runs as root BEFORE the agent; needs only CAP_CHOWN.
+ * Hand working files to the sandbox, preserving a root-owned repository boundary.
+ * The root directory is group-writable with the sticky bit: the sandbox can
+ * create/edit its files but cannot rename or replace root-owned `.git`, even
+ * though it can write the parent directory. Otherwise replacing `.git` could
+ * plant hooks/configuration for subsequent privileged Git commands.
  */
 export function handOffWorkspaceToSandbox(workDir: string): void {
 	execFileSync('chown', ['-R', `${SANDBOX_UID}:${SANDBOX_GID}`, workDir], { stdio: 'inherit' });
 	execFileSync('chown', ['-R', '0:0', path.join(workDir, '.git')], { stdio: 'inherit' });
+	chownSync(workDir, 0, SANDBOX_GID);
+	chmodSync(workDir, 0o1770);
 }
 
 /**

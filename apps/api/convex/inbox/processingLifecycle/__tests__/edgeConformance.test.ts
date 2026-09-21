@@ -10,6 +10,7 @@ const STATUSES = [
 	'drafting',
 	'draft_ready',
 	'awaiting_clarification',
+	'informational',
 	'approved',
 	'sent',
 	'rejected',
@@ -21,7 +22,8 @@ const EXPECTED_EDGES: Readonly<Record<ProcessingStatus, readonly ProcessingStatu
 	received: ['security_check', 'archived'],
 	security_check: ['classifying', 'quarantined', 'archived'],
 	quarantined: ['received', 'archived'],
-	classifying: ['drafting', 'draft_ready', 'awaiting_clarification', 'archived'],
+	classifying: ['drafting', 'draft_ready', 'awaiting_clarification', 'informational', 'archived'],
+	informational: ['drafting', 'archived'],
 	drafting: ['draft_ready', 'approved'],
 	draft_ready: ['approved', 'rejected', 'archived'],
 	awaiting_clarification: ['drafting', 'archived'],
@@ -33,7 +35,7 @@ const EXPECTED_EDGES: Readonly<Record<ProcessingStatus, readonly ProcessingStatu
 };
 
 describe('inbox lifecycle edge conformance', () => {
-	it('pins all twelve core states and every declared legal edge', () => {
+	it('pins all thirteen core states and every declared legal edge', () => {
 		expect(new Set(PROCESSING_LIFECYCLE.states)).toEqual(new Set(STATUSES));
 		for (const from of STATUSES) {
 			expect([...PROCESSING_LIFECYCLE.legalTargets(from)], from).toEqual(EXPECTED_EDGES[from]);
