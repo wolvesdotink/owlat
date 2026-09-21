@@ -51,7 +51,7 @@
 		"@ai-sdk/openai-compatible": "catalog:ai",
 		"@aws-sdk/client-ses": "^3.1014.0",
 		"@convex-dev/better-auth": "catalog:convex",
-		"@convex-dev/rate-limiter": "^0.3.2",
+		"@convex-dev/rate-limiter": "^0.4.0",
 		"@convex-dev/workpool": "^0.4.3",
 		"@owlat/email-renderer": "workspace:*",
 		"@owlat/email-scanner": "workspace:*",
@@ -80,7 +80,7 @@
 		"@types/node": "catalog:",
 		"@types/sanitize-html": "^2.13.0",
 		"@vitest/coverage-v8": "catalog:",
-		"convex-test": "^0.0.58",
+		"convex-test": "^0.0.59",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}
