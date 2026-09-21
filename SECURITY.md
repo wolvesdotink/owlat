@@ -63,6 +63,7 @@ their tests.
 | Plugin authority + scope        | `apps/api/convex/plugins/authorization.ts`                        | `requireAuthenticatedBundledPlugin`                                               |
 | Plugin LLM spend boundary       | `apps/api/convex/plugins/llm.ts`, `llmAccounting.ts`              | bounded request, exact model + endpoint admission, atomic reservation and conservative settlement  |
 | Plugin audit metadata           | `apps/api/convex/plugins/audit.ts`                                | `recordHostedPluginAudit` allowlist; no content, keys, cursors, secrets, or errors |
+| Process-log de-identification   | `packages/shared/src/logRedaction.ts`                             | `redactEmailAddress`, `redactSubject`, `LOG_REDACT_PATHS` + `logRedactCensor`      |
 
 ---
 
@@ -144,6 +145,43 @@ For every new function in `apps/api/convex/`:
 
 The `.semgrep.yml` rule `convex-userid-without-session-check` will
 catch the most common variants of (1) and (2) at PR time.
+
+---
+
+## What may go in a process log
+
+Process logs — Convex's function log and the sidecars' pino stdout — leave the
+box. They are shipped to whatever aggregator the operator configures, read by
+people holding no mail-content grant, and they outlive the message they
+describe. So a correspondent's address and a message subject do not go in one.
+
+1. **Redact, do not drop.** Route the value through
+   `@owlat/shared/logRedaction`: `redactEmailAddress('marcel@example.com')` →
+   `redacted-<digest>@example.com`, `redactSubject(s)` → `[subject len=N
+   <digest>]`. The domain survives because it identifies a host and is what
+   operators route on; the digest is stable and unsalted, so two lines about the
+   same recipient still line up across services and across restarts.
+2. **Know what that is and is not.** An address is low-entropy, so an unsalted
+   digest is de-identification, not anonymisation: someone holding both the log
+   and a candidate list can confirm a guess. What it buys is that the plaintext
+   is not in the log — a leaked file, a screenshot, or a third-party index shows
+   nobody's address.
+3. **The backend is gated.** `apps/api/scripts/check-log-pii.sh` (baseline zero,
+   wired into `apps/api` `lint`) fails any `logInfo`/`logWarn`/`logError`/
+   `logDebug`/`console.*` call whose payload has a `from` / `to` / `subject` /
+   `email` / `recipient` / `rcptTo` / `mailFrom` / `address` / `sender` key that
+   is not redacted. Qualified names (`fromDomain`, `toCount`, `senderId`) are out
+   of scope; a genuinely non-address value opts out with `// log-pii-safe:
+   <reason>`.
+4. **The sidecars are central.** `apps/mta`, `apps/imap` and `apps/mail-sync`
+   configure pino's `redact` with `LOG_REDACT_PATHS` + `logRedactCensor` in their
+   logger module, so a new `logger.info({ rcptTo }, '…')` is censored without
+   the author doing anything. The censor decides by value, not by key: a string
+   with an `@` is treated as an address, `{ to: 'deferred' }` stays readable.
+
+None of this touches data persisted on purpose. `auditLogs`, delivery-log rows
+and anything else the UI reads back are governed by their own retention and
+permission rules, and they keep the addresses they need.
 
 ---
 

@@ -9,6 +9,7 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
+import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { getMtaConfig } from './mtaClient';
 
 export const pushAliasToCache = internalAction({
@@ -45,7 +46,9 @@ export const pushAliasToCache = internalAction({
 					isInboundTlsRequired,
 				}),
 			});
-			logInfo(`[Alias cache] Pushed ${args.alias} -> ${mailbox.address}`);
+			logInfo(
+				`[Alias cache] Pushed ${redactEmailAddress(args.alias)} -> ${redactEmailAddress(mailbox.address)}`
+			);
 		} catch (err) {
 			logError('[Alias cache] Push error:', err);
 		}
