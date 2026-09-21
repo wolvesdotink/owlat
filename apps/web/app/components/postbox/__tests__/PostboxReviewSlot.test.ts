@@ -59,6 +59,19 @@ describe('PostboxReviewSlot', () => {
 		expect(wrapper.text()).not.toMatch(/\d+%/);
 	});
 
+	it('renders the FULL draft — never a trimmed preview — so it can be judged in place', () => {
+		const long = Array.from({ length: 12 }, (_, i) => `Paragraph ${i + 1} of the draft.`).join(
+			'\n\n'
+		);
+		expect(long.length).toBeGreaterThan(240);
+		const wrapper = mountSlot(makeSlot({ draft: long }));
+		const draft = wrapper.find('[data-testid="review-slot-draft"]');
+		expect(draft.text()).toContain('Paragraph 1 of the draft.');
+		expect(draft.text()).toContain('Paragraph 12 of the draft.');
+		expect(draft.text()).not.toContain('…');
+		expect(draft.find('p').classes()).not.toContain('line-clamp-3');
+	});
+
 	it('translates self-check flags into plain-language popover reasons — never the raw string', async () => {
 		const wrapper = mountSlot(
 			makeSlot({

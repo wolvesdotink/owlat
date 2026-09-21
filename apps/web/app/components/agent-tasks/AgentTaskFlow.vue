@@ -13,6 +13,9 @@
  *
  * Keyboard: Esc exits the flow (the page preserves position). Cmd/Ctrl+Z undo
  * is owned by the page's useTaskFlow (window handler) so it works from anywhere.
+ * Browsing (previous/next without acting) is opt-in via `browsable`: the shell
+ * shows the two arrows and emits `back` / `next`; the page's useTaskFlow moves
+ * the cursor, so a reader can look at every open card before acting on one.
  *
  * Explicitly imported by consumers (never via the path-prefixed auto-import).
  */
@@ -34,6 +37,12 @@ withDefaults(
 		complete?: boolean;
 		/** Whether an undo is available (shows the quiet Cmd+Z affordance). */
 		canUndo?: boolean;
+		/** Show the previous/next browse arrows (the page owns the cursor). */
+		browsable?: boolean;
+		/** Whether a pending card exists before the current one. */
+		canGoBack?: boolean;
+		/** Whether a pending card exists after the current one. */
+		canGoNext?: boolean;
 	}>(),
 	{
 		newCount: 0,
@@ -42,10 +51,18 @@ withDefaults(
 		peekLabel: '',
 		complete: false,
 		canUndo: false,
+		browsable: false,
+		canGoBack: false,
+		canGoNext: false,
 	}
 );
 
-const emit = defineEmits<{ (e: 'exit'): void; (e: 'undo'): void }>();
+const emit = defineEmits<{
+	(e: 'exit'): void;
+	(e: 'undo'): void;
+	(e: 'back'): void;
+	(e: 'next'): void;
+}>();
 
 const { t } = useI18n();
 
@@ -85,10 +102,40 @@ const MAX_DOTS = 9;
 						{{ t('components.agentTasks.agentTaskFlow.newCount', { count: newCount }) }}
 					</span>
 					<span v-if="estimateLabel && !complete" class="text-xs text-text-tertiary truncate">
-						· {{ t('components.agentTasks.agentTaskFlow.estimateLeft', { estimate: estimateLabel }) }}
+						·
+						{{ t('components.agentTasks.agentTaskFlow.estimateLeft', { estimate: estimateLabel }) }}
 					</span>
 				</div>
 				<div class="flex items-center gap-3 flex-shrink-0">
+					<!-- Browse arrows: move between open cards without acting on them. -->
+					<div
+						v-if="browsable && !complete"
+						class="inline-flex items-center gap-0.5"
+						data-testid="task-flow-browse"
+					>
+						<button
+							type="button"
+							data-testid="task-flow-back"
+							class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
+							:disabled="!canGoBack"
+							:title="t('components.agentTasks.agentTaskFlow.backTitle')"
+							:aria-label="t('components.agentTasks.agentTaskFlow.back')"
+							@click="emit('back')"
+						>
+							<Icon name="lucide:chevron-left" class="w-4 h-4" aria-hidden="true" />
+						</button>
+						<button
+							type="button"
+							data-testid="task-flow-next"
+							class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
+							:disabled="!canGoNext"
+							:title="t('components.agentTasks.agentTaskFlow.nextTitle')"
+							:aria-label="t('components.agentTasks.agentTaskFlow.next')"
+							@click="emit('next')"
+						>
+							<Icon name="lucide:chevron-right" class="w-4 h-4" aria-hidden="true" />
+						</button>
+					</div>
 					<button
 						v-if="canUndo"
 						type="button"

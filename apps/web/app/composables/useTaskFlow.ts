@@ -15,9 +15,12 @@
  *
  * PROGRESS MONOTONICITY. `position` is a cursor that only moves forward as you
  * complete cards; new arrivals grow the total (m) and the "+n new" hint but
- * never push `position` backwards. The one sanctioned exception is `undo()`,
- * which is an explicit reversal of your last action and therefore restores the
- * prior card AND its position.
+ * never push `position` backwards. Two sanctioned exceptions: `undo()`, an
+ * explicit reversal of your last action that restores the prior card AND its
+ * position; and BROWSING (`back()` / `next()`), which moves the cursor over the
+ * still-pending cards without completing anything — so you can read every open
+ * draft before acting on any of them. Completed cards are never revisited by
+ * browsing (undo is the only way back to one).
  *
  * UNDO. `complete()` may register an inverse callback; `undo()` (Cmd/Ctrl+Z,
  * mirroring usePostboxUndoSend / usePostboxTriageUndo) pops the last action,
@@ -137,14 +140,33 @@ export function useTaskFlow<T>(source: Ref<readonly T[]>, options: UseTaskFlowOp
 		return itemsById.value.get(id) ?? itemCache.get(id) ?? null;
 	});
 
+	/** True when the card at `id` is still pending — neither completed nor gone. */
+	function isPending(id: string): boolean {
+		return !completedIds.value.has(id) && !externallyRemoved.value.has(id);
+	}
+
+	/** Index of the next pending card after `from`, or -1 when none is left. */
+	function nextPendingIndex(from: number): number {
+		for (let i = from + 1; i < orderedIds.value.length; i++) {
+			if (isPending(orderedIds.value[i]!)) return i;
+		}
+		return -1;
+	}
+
+	/** Index of the nearest pending card before `from`, or -1 when none. */
+	function prevPendingIndex(from: number): number {
+		for (let i = Math.min(from, orderedIds.value.length) - 1; i >= 0; i--) {
+			if (isPending(orderedIds.value[i]!)) return i;
+		}
+		return -1;
+	}
+
 	/** The next still-actionable card after the current one (the muted peek). */
 	const nextItem = computed<T | null>(() => {
-		for (let i = cursor.value + 1; i < orderedIds.value.length; i++) {
-			const id = orderedIds.value[i]!;
-			if (externallyRemoved.value.has(id)) continue;
-			return itemsById.value.get(id) ?? itemCache.get(id) ?? null;
-		}
-		return null;
+		const i = nextPendingIndex(cursor.value);
+		if (i === -1) return null;
+		const id = orderedIds.value[i]!;
+		return itemsById.value.get(id) ?? itemCache.get(id) ?? null;
 	});
 
 	const total = computed(() => orderedIds.value.length);
@@ -157,7 +179,7 @@ export function useTaskFlow<T>(source: Ref<readonly T[]>, options: UseTaskFlowOp
 		let n = 0;
 		for (let i = cursor.value; i < orderedIds.value.length; i++) {
 			const id = orderedIds.value[i]!;
-			if (!snapshotIds.value.has(id) && !externallyRemoved.value.has(id)) n++;
+			if (!snapshotIds.value.has(id) && isPending(id)) n++;
 		}
 		return n;
 	});
@@ -167,7 +189,7 @@ export function useTaskFlow<T>(source: Ref<readonly T[]>, options: UseTaskFlowOp
 		const kinds: TaskFlowKind[] = [];
 		for (let i = cursor.value; i < orderedIds.value.length; i++) {
 			const id = orderedIds.value[i]!;
-			if (externallyRemoved.value.has(id)) continue;
+			if (!isPending(id)) continue;
 			const item = itemsById.value.get(id) ?? itemCache.get(id);
 			if (item) kinds.push(keyOf(item).kind);
 		}
@@ -184,14 +206,36 @@ export function useTaskFlow<T>(source: Ref<readonly T[]>, options: UseTaskFlowOp
 		tallies.value = next.filter((t) => t.count > 0);
 	}
 
-	/** Move the cursor forward one card, skipping any that vanished externally. */
+	/**
+	 * Move the cursor forward to the next pending card, skipping any that
+	 * vanished externally or were completed earlier (possible after browsing
+	 * back). Lands past the end — the done state — when nothing is left.
+	 */
 	function advance() {
-		let next = cursor.value + 1;
-		while (next < orderedIds.value.length && externallyRemoved.value.has(orderedIds.value[next]!)) {
-			next++;
-		}
-		cursor.value = next;
+		const i = nextPendingIndex(cursor.value);
+		cursor.value = i === -1 ? orderedIds.value.length : i;
 	}
+
+	/** Browse to the previous pending card without acting on the current one. */
+	function back() {
+		if (!active.value) return;
+		const i = prevPendingIndex(cursor.value);
+		if (i !== -1) cursor.value = i;
+	}
+
+	/**
+	 * Browse to the next pending card without acting on the current one. Unlike
+	 * skip(), this never runs off the end into the done state — the last open
+	 * card stays in focus.
+	 */
+	function next() {
+		if (!active.value) return;
+		const i = nextPendingIndex(cursor.value);
+		if (i !== -1) cursor.value = i;
+	}
+
+	const canGoBack = computed(() => active.value && prevPendingIndex(cursor.value) !== -1);
+	const canGoNext = computed(() => active.value && nextPendingIndex(cursor.value) !== -1);
 
 	/**
 	 * Complete the current card and auto-advance. `outcome` feeds the end-state
@@ -310,8 +354,12 @@ export function useTaskFlow<T>(source: Ref<readonly T[]>, options: UseTaskFlowOp
 		summary,
 		tallies,
 		canUndo,
+		canGoBack,
+		canGoNext,
 		complete,
 		skip,
+		back,
+		next,
 		undo,
 		undoById,
 		onWindowKeydown,

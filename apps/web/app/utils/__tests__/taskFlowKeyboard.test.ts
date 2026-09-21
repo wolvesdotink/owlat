@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { resolveReviewFocusKey, resolveReplyFocusKey } from '../taskFlowKeyboard';
+import type { TaskFlowKind } from '../taskFlow';
 
 describe('resolveReviewFocusKey', () => {
 	it('maps the built-in Review vocabulary (draft-review card)', () => {
@@ -60,6 +61,16 @@ describe('resolveReplyFocusKey', () => {
 		expect(resolveReplyFocusKey('a', ctx)).toBeNull();
 		expect(resolveReplyFocusKey('x', ctx)).toBeNull();
 		expect(resolveReplyFocusKey('s', ctx)).toBe('skip');
+	});
+
+	it('browses back/next on arrows and k/j for EVERY kind (browsing never acts)', () => {
+		for (const currentKind of ['reply', 'plugin:whatever'] as const) {
+			const ctx = { currentKind: currentKind as TaskFlowKind, isFollowup: false };
+			expect(resolveReplyFocusKey('ArrowLeft', ctx)).toBe('browseBack');
+			expect(resolveReplyFocusKey('k', ctx)).toBe('browseBack');
+			expect(resolveReplyFocusKey('ArrowRight', ctx)).toBe('browseNext');
+			expect(resolveReplyFocusKey('j', ctx)).toBe('browseNext');
+		}
 	});
 
 	it('does nothing without a current kind', () => {

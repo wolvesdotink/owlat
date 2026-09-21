@@ -92,8 +92,9 @@ watch(
 	{ immediate: true }
 );
 
-// Keyboard: Cmd/Ctrl+Z undo (flow), plus the Postbox row conventions on the
-// focused card — Enter = reply/done, e = archive. Gated to built-in kinds: a
+// Keyboard: Cmd/Ctrl+Z undo (flow), ←/→ (or k/j) browse between the open
+// cards without acting, plus the Postbox row conventions on the focused card
+// — Enter = reply/done, e = archive. Action keys are gated to built-in kinds: a
 // plugin/unknown card only honours `s` → skip (its native controls own
 // everything else), so the ambient shortcuts can never fire a hidden reply or
 // archive on a card that does not display them. Inert while typing.
@@ -112,6 +113,8 @@ function onCardKeydown(event: KeyboardEvent) {
 	if (action === 'markDone') void markDone(row);
 	else if (action === 'draftReply') void draftReply(row);
 	else if (action === 'archive') void archiveRow(row);
+	else if (action === 'browseBack') flow.back();
+	else if (action === 'browseNext') flow.next();
 	else flow.skip(row.id);
 }
 onMounted(() => {
@@ -271,7 +274,10 @@ function urgencyLabel(urgency: string): string {
 
 <template>
 	<div v-if="isLoading && !flow.active.value" class="p-10 text-center">
-		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary mx-auto" />
+		<Icon
+			name="lucide:loader-2"
+			class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary mx-auto"
+		/>
 	</div>
 
 	<!-- Quiet inbox-zero moment before entering (or an empty queue). -->
@@ -292,8 +298,13 @@ function urgencyLabel(urgency: string): string {
 		:peek-label="peekLabel"
 		:complete="flow.isComplete.value"
 		:can-undo="flow.canUndo.value"
+		browsable
+		:can-go-back="flow.canGoBack.value"
+		:can-go-next="flow.canGoNext.value"
 		@exit="navigateTo('/dashboard/postbox/inbox')"
 		@undo="flow.undo()"
+		@back="flow.back()"
+		@next="flow.next()"
 	>
 		<!-- The current card -->
 		<template v-if="current">
@@ -368,6 +379,7 @@ function urgencyLabel(urgency: string): string {
 					:hints="[
 						{ keys: ['Enter'], label: t('components.postbox.postboxReplyFlow.reply') },
 						{ keys: ['e'], label: t('common.archive') },
+						{ keys: ['←', '→'], label: t('components.postbox.postboxReplyFlow.browse') },
 					]"
 					@primary="draftReply(current!)"
 					@skip="markDone(current!)"

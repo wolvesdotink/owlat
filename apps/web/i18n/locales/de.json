@@ -221,12 +221,16 @@
 		},
 		"agentTasks": {
 			"agentTaskFlow": {
+				"back": "Zurück",
+				"backTitle": "Vorherige offene Aufgabe (←)",
 				"estimateLeft": "noch {estimate}",
 				"exit": "Beenden",
 				"exitTitle": "Beenden (Esc)",
 				"newCount": "+{count} neu",
 				"newCountTitle": "{count} seit Ihrem Start hinzugekommen",
+				"next": "Weiter",
 				"nextLabel": "Als Nächstes:",
+				"nextTitle": "Nächste offene Aufgabe (→)",
 				"progress": "{position} von {total}",
 				"undo": "Rückgängig",
 				"undoTitle": "Letzte Aktion rückgängig machen (⌘Z)"
@@ -4024,6 +4028,7 @@
 				"removeRecipient": "{address} entfernen"
 			},
 			"postboxReplyFlow": {
+				"browse": "Blättern",
 				"done": {
 					"backToInbox": "Zurück zum Posteingang",
 					"backToToday": "Zurück zu Heute",

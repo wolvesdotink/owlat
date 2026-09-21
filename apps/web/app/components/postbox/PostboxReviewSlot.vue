@@ -15,8 +15,9 @@ import { trustLabel } from '~/utils/trustLabel';
  * reply the moment the message landed: a "Draft ready" chip, a human trust chip
  * ("Ready to send" / "Worth a look" / "Needs you" — never raw confidence
  * percentages; the self-check flags become plain-language reasons in the chip's
- * popover), a preview of the draft, and a keyboard-first "Review & send" action
- * that opens the composer prefilled.
+ * popover), the FULL draft — never a trimmed preview, so the reader can judge
+ * it without opening the composer — and a keyboard-first "Review & send"
+ * action that opens the composer prefilled.
  *
  * HUMAN REVIEW ONLY: this surface never sends. It emits `review` (open the
  * composer with the draft) and `dismiss` (drop the slot from view).
@@ -39,11 +40,8 @@ const trust = computed(() =>
 	)
 );
 
-/** Trimmed preview so a long draft doesn't blow up the row. */
-const preview = computed(() => {
-	const body = props.draftSlot.draft.trim();
-	return body.length > 240 ? `${body.slice(0, 240)}…` : body;
-});
+/** The whole draft, whitespace-trimmed; the shell scrolls if it runs long. */
+const draftText = computed(() => props.draftSlot.draft.trim());
 </script>
 
 <template>
@@ -69,7 +67,12 @@ const preview = computed(() => {
 			</span>
 		</div>
 
-		<TaskAsk class="mt-1.5" :detail="preview" />
+		<TaskAsk
+			class="mt-1.5 max-h-[50vh] overflow-y-auto"
+			data-testid="review-slot-draft"
+			:detail="draftText"
+			:clamp-detail="false"
+		/>
 
 		<TaskActions
 			class="mt-2"
