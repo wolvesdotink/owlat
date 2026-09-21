@@ -6,7 +6,7 @@ import { getInstanceSecret } from '../../utils/updater';
 /** Stream bytes to native Convex storage; only this server can attest the returned id. */
 export default defineEventHandler(async (event) => {
 	setHeader(event, 'Cache-Control', 'no-store');
-	const token = getQuery(event).token;
+	const token = getQuery(event)['token'];
 	if (typeof token !== 'string' || !token || token.length > 100) {
 		throw createError({ statusCode: 401, message: 'Invalid upload token' });
 	}
@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
 		const body = (
 			Readable.toWeb(event.node.req, {
 				strategy: { highWaterMark: 64 * 1024, size: (chunk: Uint8Array) => chunk.byteLength },
-			}) as ReadableStream<Uint8Array>
+			}) as unknown as ReadableStream<Uint8Array>
 		).pipeThrough(
 			new TransformStream<Uint8Array, Uint8Array>({
 				transform(chunk, controller) {
