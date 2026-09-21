@@ -207,7 +207,7 @@ crons.interval(
 crons.interval(
 	'refresh segment counts',
 	{ minutes: 30 },
-	internal.segments.refreshAllSegmentCounts,
+	internal.segments.countRefresh.refreshAllSegmentCounts,
 	{}
 );
 

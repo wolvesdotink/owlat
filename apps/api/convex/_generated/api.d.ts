@@ -190,6 +190,7 @@ import type * as codeWorkTasks from '../codeWorkTasks.js';
 import type * as conditions_contact_property_index from '../conditions/contact_property/index.js';
 import type * as conditions_email_activity_index from '../conditions/email_activity/index.js';
 import type * as conditions_index from '../conditions/index.js';
+import type * as conditions_liveContactScan from '../conditions/liveContactScan.js';
 import type * as conditions_segmentMatch from '../conditions/segmentMatch.js';
 import type * as conditions_topic_membership_index from '../conditions/topic_membership/index.js';
 import type * as conditions_types from '../conditions/types.js';
@@ -1044,6 +1045,7 @@ import type * as seedDemo_loaders_webhooks from '../seedDemo/loaders/webhooks.js
 import type * as seedDemo_messages from '../seedDemo/messages.js';
 import type * as seedDemo_pipeline from '../seedDemo/pipeline.js';
 import type * as segments from '../segments.js';
+import type * as segments_countRefresh from '../segments/countRefresh.js';
 import type * as segments_listing from '../segments/listing.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
 import type * as semanticFiles from '../semanticFiles.js';
@@ -1326,6 +1328,7 @@ declare const fullApi: ApiFromModules<{
 	'conditions/contact_property/index': typeof conditions_contact_property_index;
 	'conditions/email_activity/index': typeof conditions_email_activity_index;
 	'conditions/index': typeof conditions_index;
+	'conditions/liveContactScan': typeof conditions_liveContactScan;
 	'conditions/segmentMatch': typeof conditions_segmentMatch;
 	'conditions/topic_membership/index': typeof conditions_topic_membership_index;
 	'conditions/types': typeof conditions_types;
@@ -2180,6 +2183,7 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/messages': typeof seedDemo_messages;
 	'seedDemo/pipeline': typeof seedDemo_pipeline;
 	segments: typeof segments;
+	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
 	semanticFileProcessing: typeof semanticFileProcessing;
 	semanticFiles: typeof semanticFiles;
