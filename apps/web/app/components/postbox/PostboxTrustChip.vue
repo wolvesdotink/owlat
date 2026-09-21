@@ -31,6 +31,8 @@ const props = defineProps<{
 	fromAddress: string;
 	/** Feature flag `senderAuthBadges` — gates the auth row, not a second chip. */
 	authEnabled: boolean;
+	ostrEnabled?: boolean;
+	ostrTier?: string;
 	auth: SenderAuthInput;
 	heuristics?: SenderHeuristics;
 	/** Feature flag `sealedMail` — gates the sealed row and the key panel. */
@@ -141,7 +143,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 		>
 			<!-- Sender authentication (flag `senderAuthBadges`): renders nothing on a
 			     legacy row with no verdicts, which is the honest answer. -->
-			<PostboxAuthBadge :enabled="authEnabled" :auth="auth" :heuristics="heuristics" />
+			<PostboxAuthBadge :enabled="authEnabled" :auth="auth" :heuristics="heuristics" :ostr-enabled="ostrEnabled" :ostr-tier="ostrTier" />
 
 			<!-- PGP / S-MIME structure, the inbound signature verdict and the sealed
 			     record, with the recovery controls for ciphertext we can't open. -->

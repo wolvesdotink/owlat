@@ -1,31 +1,18 @@
 /**
- * Personal-mail delivery pipeline.
+ * Personal-mail delivery: stage MIME, thread it, allocate UID/modseq, persist
+ * the message, and update folder/thread aggregates. Invoked by webhookHttp.ts
+ * after the MTA HMAC is verified; function paths remain internal.mail.delivery.*.
  *
- * Called by `apps/api/convex/mailWebhook.ts` after the MTA HMAC-verifies an
- * `inbound.mailbox.received` event. Stores raw .eml in ctx.storage, performs
- * RFC 5322 threading, allocates per-folder UID + modseq atomically, inserts
- * a mailMessages row, and updates folder/thread aggregates.
- *
- * This file is the Convex-function surface — the ingest action and the
- * delivery mutation, at their existing `internal.mail.delivery.*` paths. The
- * steps live beside it in `./deliveryPipeline/`:
- *
- *   ingest.ts   raw staging, decrypt-on-ingest, signature verify, body split,
- *               attachment capture (action-only)
- *   scan.ts     the aggregate inbound malware verdict
- *   routing.ts  pure spam / filter / DMARC-ARC decisions
- *   insert.ts   threading, UID+modseq, the row insert and its aggregates
- *
- * (`deliveryPipeline/` rather than `delivery/` so it never reads as a sibling
- * of the top-level `convex/delivery/` campaign send domain.)
- *
- * Threading order:
- *   1. In-Reply-To header → existing message by rfc822MessageId
- *   2. References header → any referenced message
- *   3. Fallback: mailbox + normalized subject (24h window)
+ * Action preparation lives in deliveryPipeline/{ingest,capture}; scan, routing,
+ * and insert own the mutation-side decisions and writes. Threading prefers
+ * In-Reply-To, then References, then mailbox + normalized subject within 24h.
  */
 
 import { v } from 'convex/values';
+import { resolveFlagsFromSettings } from '../lib/featureFlags';
+import { isOstrFlaggedTier, ostrDkimEvidenceValidator, ostrTierValidator } from '../ostr/signals';
+import { isObserverModeEnabled } from '../ostr/config';
+import { recordOstrEvidence } from '../ostr/store';
 import { spamVerdictValidator } from '../lib/convexValidators';
 import {
 	mailMessageAttachmentValidator,
@@ -102,6 +89,8 @@ export const ingestFromWebhook = internalAction({
 		// stored beside the verdicts on `mailMessages`. Both optional.
 		envelopeFromDomain: v.optional(v.string()),
 		dkimSigningDomain: v.optional(v.string()),
+		ostrTier: v.optional(ostrTierValidator),
+		ostrDkimEvidence: v.optional(ostrDkimEvidenceValidator),
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const prepared = await prepareInboundMessage(ctx, args);
@@ -144,6 +133,8 @@ export const ingestFromWebhook = internalAction({
 			arcAttestsOriginalPass: args.arcAttestsOriginalPass,
 			envelopeFromDomain: args.envelopeFromDomain,
 			dkimSigningDomain: args.dkimSigningDomain,
+			ostrTier: args.ostrTier,
+			ostrDkimEvidence: args.ostrDkimEvidence,
 			inboundEncryptionInfo: prepared.inboundEncryptionInfo,
 			inboundSignatureInfo: prepared.inboundSignatureInfo,
 		});
@@ -255,6 +246,8 @@ export const deliverToMailbox = internalMutation({
 		// stored beside the verdicts on `mailMessages`. Both optional.
 		envelopeFromDomain: v.optional(v.string()),
 		dkimSigningDomain: v.optional(v.string()),
+		ostrTier: v.optional(ostrTierValidator),
+		ostrDkimEvidence: v.optional(ostrDkimEvidenceValidator),
 		// Sealed Mail (E4, D3): the inbound unsealing outcome, computed by the
 		// ingest action before this mutation. Present only for a message that
 		// arrived sealed; the body args above already hold the RESTORED plaintext
@@ -341,8 +334,15 @@ export const deliverToMailbox = internalMutation({
 			settings?.trustedArcForwarders
 		);
 
+		// The advisory tier may route to Spam only when explicitly enabled.
+		const ostrRoutesToSpam =
+			isOstrFlaggedTier(args.ostrTier) && resolveFlagsFromSettings(settings)['ostr'] === true;
+
 		const initialRole =
-			spamVerdict === 'spam' || args.virusVerdict === 'infected' || isDmarcQuarantine
+			spamVerdict === 'spam' ||
+			args.virusVerdict === 'infected' ||
+			isDmarcQuarantine ||
+			ostrRoutesToSpam
 				? 'spam'
 				: filterOutcome.isTrashed
 					? 'trash'
@@ -408,6 +408,7 @@ export const deliverToMailbox = internalMutation({
 			dmarcPolicy: args.dmarcPolicy,
 			dmarcOverride,
 			arcSealer,
+			ostrTier: args.ostrTier,
 			envelopeFromDomain: args.envelopeFromDomain,
 			dkimSigningDomain: args.dkimSigningDomain,
 			senderHeuristics,
@@ -417,6 +418,15 @@ export const deliverToMailbox = internalMutation({
 			pinnedSection: filterOutcome.pinnedSection,
 			countUsedBytes: true,
 		});
+
+		// Retain raw signed-header evidence only for an opted-in observer.
+		if (args.ostrDkimEvidence !== undefined && isObserverModeEnabled()) {
+			await recordOstrEvidence(ctx, {
+				messageId,
+				mailboxId: mailbox._id,
+				evidence: args.ostrDkimEvidence,
+			});
+		}
 
 		// 11b. Reply Queue: enqueue needs-reply classification for the affected
 		// thread — inbox deliveries only (spam/trash/filter-moved mail never

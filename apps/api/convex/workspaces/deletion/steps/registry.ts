@@ -255,6 +255,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'shareLinks',
 	'integrationImports',
 	'codeWorkTasks',
+	'ostrEvidence',
+	'ostrReportQueue',
+	'ostrBatchCommitments',
+	'ostrObserverState',
 
 	// UI / onboarding state
 	'onboardingProgress',
@@ -452,6 +456,10 @@ export const ORGANIZATION_DELETION_STEPS = {
 	shareLinks: makeSweepStep('shareLinks'),
 	integrationImports: makeSweepStep('integrationImports'),
 	codeWorkTasks: makeSweepStep('codeWorkTasks'),
+	ostrEvidence: makeSweepStep('ostrEvidence'),
+	ostrReportQueue: makeSweepStep('ostrReportQueue'),
+	ostrBatchCommitments: makeSweepStep('ostrBatchCommitments'),
+	ostrObserverState: makeSweepStep('ostrObserverState'),
 } as const satisfies {
 	readonly [K in OrganizationDeletionTable]: OrganizationDeletionStepModule<K>;
 };

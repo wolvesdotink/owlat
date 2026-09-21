@@ -1,0 +1,51 @@
+{
+	"description": "Trap hits on two addresses inside one IPv6 /64, spelled differently. Bare-IP evidence aggregates to the /64 (plan D2), so both reach the queried address.",
+	"subject": {
+		"ip": "2001:db8:0:1::a"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 10,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "trap-hit",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"ip": "2001:0db8:0000:0001:0000:0000:0000:000b"
+				},
+				"window": {
+					"from": "2026-07-31T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"hits": 60
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 10,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "trap-hit",
+				"observer": "gw.observer-d.example",
+				"subject": {
+					"ip": "2001:db8:0:1::c"
+				},
+				"window": {
+					"from": "2026-07-31T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"hits": 40
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

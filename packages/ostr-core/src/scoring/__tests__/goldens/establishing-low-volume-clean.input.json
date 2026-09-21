@@ -1,0 +1,81 @@
+{
+	"description": "Weeks of low-volume clean traffic seen by two observers.",
+	"subject": {
+		"domain": "steady.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 4,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "steady.example"
+				},
+				"window": {
+					"from": "2026-07-21T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 1800,
+					"spfPass": 1620,
+					"dkimPass": 1674,
+					"dmarcPass": 1710,
+					"tlsInbound": 1800,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 7,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "steady.example"
+				},
+				"window": {
+					"from": "2026-07-23T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 1200,
+					"spfPass": 1080,
+					"dkimPass": 1116,
+					"dmarcPass": 1140,
+					"tlsInbound": 1200,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 2,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "posture",
+				"observer": "steady.example",
+				"subject": {
+					"domain": "steady.example"
+				},
+				"body": {
+					"dmarcPolicy": "quarantine",
+					"dnssec": true
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

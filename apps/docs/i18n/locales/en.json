@@ -256,6 +256,7 @@
 			"developer-mta-system": "MTA System",
 			"developer-providers": "Providers",
 			"developer-deliverability-infrastructure": "Deliverability Infrastructure",
+			"developer-trust-registry": "Trust Registry (OSTR)",
 			"developer-campaign-internals": "Campaign Internals",
 			"developer-audience-internals": "Audience Internals",
 			"developer-automation-internals": "Automation Internals",

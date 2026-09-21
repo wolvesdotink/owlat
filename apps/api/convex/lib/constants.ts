@@ -131,6 +131,24 @@ export const HOUR_MS = 60 * 60 * 1000;
 export const DAY_MS = 24 * HOUR_MS;
 
 /**
+ * `ostrSubmissionLog.attestationJson` — a signed OSTR attestation, stored
+ * verbatim so a retry posts the SAME bytes (the ed25519 signature covers the
+ * JCS-canonical form, and the document cannot be re-derived once the traffic
+ * accumulator has consumed its counters). The envelope carries its own `v: 1`;
+ * this version tracks how WE store it, so a reader can branch if the column
+ * ever stops holding one whole attestation.
+ */
+export const CURRENT_OSTR_ATTESTATION_BLOB_VERSION = 1;
+
+/**
+ * `ostrObserverState.accumulatorState` — `@owlat/ostr-observer`'s
+ * `TrafficAccumulatorState` as JSON. The package validates and re-normalizes
+ * the blob on `TrafficAccumulator.restore` and throws on a version it does not
+ * know, so bumping this means bumping the package's `v` too.
+ */
+export const CURRENT_OSTR_ACCUMULATOR_STATE_VERSION = 1;
+
+/**
  * The shape `inboundMessages.attachmentMeta` is written in today.
  *
  * `1` is `{filename?, contentType, size, partIndex?}`. Version `0` — the column

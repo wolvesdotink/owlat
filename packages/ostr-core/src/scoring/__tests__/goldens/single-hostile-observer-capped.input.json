@@ -1,0 +1,106 @@
+{
+	"description": "One observer alone reports enormous complaint and trap volume: the per-observer cap bounds it and the <3-observer rule blocks flagged.",
+	"subject": {
+		"domain": "targeted.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 39,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "hostile.example",
+				"subject": {
+					"domain": "targeted.example"
+				},
+				"window": {
+					"from": "2026-08-10T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 9000,
+					"spfPass": 8910,
+					"dkimPass": 8910,
+					"dmarcPass": 8910,
+					"tlsInbound": 9000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 40,
+			"loggedAt": "2026-08-17T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "targeted.example"
+				},
+				"window": {
+					"from": "2026-02-01T00:00:00Z",
+					"to": "2026-08-17T00:00:00Z"
+				},
+				"body": {
+					"messages": 50000,
+					"spfPass": 49500,
+					"dkimPass": 49750,
+					"dmarcPass": 49500,
+					"tlsInbound": 50000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 41,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "hostile.example",
+				"subject": {
+					"domain": "targeted.example"
+				},
+				"window": {
+					"from": "2026-08-10T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"reports": 5000,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 42,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "trap-hit",
+				"observer": "hostile.example",
+				"subject": {
+					"domain": "targeted.example"
+				},
+				"window": {
+					"from": "2026-08-10T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"hits": 500
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

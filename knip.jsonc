@@ -163,6 +163,7 @@
 		"apps/convex-fn-proxy": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"apps/imap": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"apps/mail-sync": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		"apps/ostr-registry": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"apps/mta": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"apps/updater": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"apps/setup-cli": {
@@ -293,6 +294,17 @@
 		// `knip --trace-export UniversalPadding --trace-file
 		// packages/shared/src/types/blocks.ts` (2026-09-11). UniversalBorder is
 		// aliased the same way but has no terminal importer, so it is real debt.
+		"packages/ostr-core": {
+			"entry": [
+				"src/index.ts",
+				"src/attestation/index.ts",
+				"src/merkle/index.ts",
+				"src/scoring/index.ts",
+				"src/**/__tests__/**/*.ts",
+			],
+		},
+		"packages/ostr-client": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
+		"packages/ostr-observer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-scanner": {

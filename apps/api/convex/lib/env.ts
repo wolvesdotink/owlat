@@ -245,6 +245,21 @@ export type EnvKey =
 	// additive-only, so its absence lowers measurement confidence for the
 	// Microsoft cell and slows that cell's ramp, and does nothing else.
 	| 'SNDS_DATA_FEED_URLS'
+	// Open Sender Trust Registry (ADR-0062): consumer configuration is opt-in.
+	// Set the aggregator URL and its Ed25519 verification key together.
+	| 'OSTR_AGGREGATOR_URL'
+	| 'OSTR_AGGREGATOR_PUBLIC_KEY'
+	// Observer mode publishes permanent attestations about received mail.
+	// Off by default; the mailbox privacy floor still applies when enabled.
+	| 'OSTR_OBSERVER_ENABLED'
+	// Observer identity: publishes its public key at _ostr.<domain>.
+	| 'OSTR_OBSERVER_DOMAIN'
+	// Raw 32-byte Ed25519 private key, base64; unset means no publication.
+	| 'OSTR_OBSERVER_PRIVATE_KEY'
+	// Full submission URLs, comma-separated; two or more provide redundancy.
+	| 'OSTR_LOG_URLS'
+	// Raise-only override of the packaged mailbox privacy floor.
+	| 'OSTR_MIN_MAILBOXES'
 	// Analytics & links
 	| 'POSTHOG_API_KEY'
 	| 'POSTHOG_HOST'

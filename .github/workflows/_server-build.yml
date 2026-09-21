@@ -145,6 +145,9 @@ jobs:
           - name: setup
             dockerfile: apps/setup-cli/Dockerfile
             context: .
+          - name: ostr-registry
+            dockerfile: apps/ostr-registry/Dockerfile
+            context: .
           # Thin first-party wrappers around upstream images that are not
           # multi-arch under one name (see the Dockerfiles for the reasoning).
           - name: clamav
@@ -379,7 +382,7 @@ jobs:
           set -euo pipefail
           failed=0
           # Keep this list in sync with the build-and-push matrix above.
-          for name in web mta updater convex-deploy imap mail-sync code-worker convex-fn-proxy setup clamav tinyproxy; do
+          for name in web mta updater convex-deploy imap mail-sync code-worker convex-fn-proxy setup ostr-registry clamav tinyproxy; do
             image="${IMAGE_PREFIX}/${name}:${{ inputs.version }}"
             if manifest=$(docker manifest inspect "$image" 2>/dev/null); then
               # Anonymously visible AND multi-arch: an image that lost a platform

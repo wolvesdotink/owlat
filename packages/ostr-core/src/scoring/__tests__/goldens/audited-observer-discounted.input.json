@@ -1,0 +1,160 @@
+{
+	"description": "The same complaint volume from an observer under two upheld audit-findings and from an unaudited peer.",
+	"subject": {
+		"domain": "contested.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 88,
+			"loggedAt": "2026-02-15T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "contested.example"
+				},
+				"window": {
+					"from": "2026-02-01T00:00:00Z",
+					"to": "2026-02-15T00:00:00Z"
+				},
+				"body": {
+					"messages": 6000,
+					"spfPass": 5640,
+					"dkimPass": 5640,
+					"dmarcPass": 5640,
+					"tlsInbound": 6000,
+					"uniqueRecipientsBucket": 4,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 89,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "sloppy.example",
+				"subject": {
+					"domain": "contested.example"
+				},
+				"window": {
+					"from": "2026-07-31T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 20000,
+					"spfPass": 19000,
+					"dkimPass": 19000,
+					"dmarcPass": 19000,
+					"tlsInbound": 20000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 90,
+			"loggedAt": "2026-08-17T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "contested.example"
+				},
+				"window": {
+					"from": "2026-02-01T00:00:00Z",
+					"to": "2026-08-17T00:00:00Z"
+				},
+				"body": {
+					"messages": 80000,
+					"spfPass": 72000,
+					"dkimPass": 74400,
+					"dmarcPass": 76000,
+					"tlsInbound": 80000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 91,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "spam-report-batch",
+				"observer": "sloppy.example",
+				"subject": {
+					"domain": "contested.example"
+				},
+				"window": {
+					"from": "2026-07-31T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"reports": 300,
+					"commitment": "a3f1c0d9b8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 92,
+			"loggedAt": "2026-07-20T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "audit-finding",
+				"observer": "monitor.example",
+				"subject": {
+					"domain": "sloppy.example"
+				},
+				"body": {
+					"finding": "statistical-outlier",
+					"evidence": [
+						{
+							"logId": "log-a",
+							"index": 91
+						}
+					],
+					"statement": "Report volume exceeds the observed inbound volume of the reporting infrastructure."
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 93,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "audit-finding",
+				"observer": "monitor.example",
+				"subject": {
+					"domain": "sloppy.example"
+				},
+				"body": {
+					"finding": "duplicate-evidence",
+					"evidence": [
+						{
+							"logId": "log-a",
+							"index": 91
+						}
+					],
+					"statement": "Two batches commit to overlapping evidence bundles."
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

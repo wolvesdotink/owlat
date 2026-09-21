@@ -43,6 +43,8 @@ const props = defineProps<{
 	showSenderControls: boolean;
 	/** Feature flag `senderAuthBadges`. */
 	authEnabled: boolean;
+	ostrEnabled?: boolean;
+	ostrTier?: string;
 	/** Feature flag `sealedMail`. */
 	sealedEnabled: boolean;
 	secureClass: SecureMessageClass;
@@ -204,6 +206,8 @@ const MENU_ITEM_CLASS =
 							:mailbox-id="mailboxId"
 							:from-address="msg.fromAddress"
 							:auth-enabled="authEnabled"
+							:ostr-enabled="ostrEnabled"
+							:ostr-tier="msg.ostrTier"
 							:auth="authInput"
 							:heuristics="msg.senderHeuristics"
 							:sealed-enabled="sealedEnabled"

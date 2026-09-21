@@ -1,0 +1,44 @@
+{
+	"name": "@owlat/ostr-core",
+	"version": "0.4.4",
+	"private": true,
+	"description": "Open Sender Trust Registry (OSTR) core: attestation schema and admissibility rules, RFC 8785 (JCS) canonicalization, ed25519 signing, RFC 9162-style Merkle log primitives, and the versioned deterministic scoring policy. Pure TypeScript — no I/O, no third-party dependencies.",
+	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
+	"type": "module",
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		},
+		"./attestation": {
+			"types": "./src/attestation/index.ts",
+			"import": "./src/attestation/index.ts"
+		},
+		"./merkle": {
+			"types": "./src/merkle/index.ts",
+			"import": "./src/merkle/index.ts"
+		},
+		"./scoring": {
+			"types": "./src/scoring/index.ts",
+			"import": "./src/scoring/index.ts"
+		}
+	},
+	"scripts": {
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

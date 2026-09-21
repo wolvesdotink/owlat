@@ -219,6 +219,7 @@ export const sidebarConfig: SidebarGroup[] = [
 				label: 'Deliverability Infrastructure',
 				to: '/developer/deliverability-infrastructure',
 			},
+			{ label: 'Trust Registry (OSTR)', to: '/developer/trust-registry' },
 		],
 	},
 	{

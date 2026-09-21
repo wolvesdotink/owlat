@@ -1,0 +1,120 @@
+{
+	"description": "The observer retracted its own trap-hit batch; the retracted attestation stays in the log but out of the score.",
+	"subject": {
+		"domain": "cleared.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 70,
+			"loggedAt": "2026-07-31T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "cleared.example"
+				},
+				"window": {
+					"from": "2026-05-22T00:00:00Z",
+					"to": "2026-07-31T00:00:00Z"
+				},
+				"body": {
+					"messages": 12000,
+					"spfPass": 10800,
+					"dkimPass": 11160,
+					"dmarcPass": 11400,
+					"tlsInbound": 12000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 71,
+			"loggedAt": "2026-08-08T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "trap-hit",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "cleared.example"
+				},
+				"window": {
+					"from": "2026-07-21T00:00:00Z",
+					"to": "2026-08-07T00:00:00Z"
+				},
+				"body": {
+					"hits": 60
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 72,
+			"loggedAt": "2026-08-14T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "retraction",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "cleared.example"
+				},
+				"body": {
+					"supersedes": {
+						"logId": "log-a",
+						"index": 71
+					},
+					"reason": "trap address was misattributed after a list merge"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 70,
+			"loggedAt": "2026-08-15T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "trap-hit",
+				"observer": "impostor.example",
+				"subject": {
+					"domain": "cleared.example"
+				},
+				"window": {
+					"from": "2026-07-21T00:00:00Z",
+					"to": "2026-08-07T00:00:00Z"
+				},
+				"body": {
+					"hits": 60
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 71,
+			"loggedAt": "2026-08-16T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "retraction",
+				"observer": "unrelated.example",
+				"subject": {
+					"domain": "cleared.example"
+				},
+				"body": {
+					"supersedes": {
+						"logId": "log-b",
+						"index": 70
+					},
+					"reason": "not my attestation to retract"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

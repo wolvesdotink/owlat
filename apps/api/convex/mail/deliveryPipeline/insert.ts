@@ -9,6 +9,7 @@
  * (`mail/external/delivery.ts::ingestExternalMessage`).
  */
 
+import type { OstrTier } from '../../ostr/signals';
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { extractEmail, normalizeSubject } from '../../lib/emailAddress';
@@ -113,6 +114,7 @@ export async function insertDeliveredMessage(
 		 * rescued a DMARC fail; `arcSealer` names the honoured sealer's `d=`. */
 		dmarcOverride?: string;
 		arcSealer?: string;
+		ostrTier?: OstrTier;
 		envelopeFromDomain?: string;
 		dkimSigningDomain?: string;
 		/** Ingest-computed sender-impersonation heuristics (Sealed Mail A4). */
@@ -262,6 +264,7 @@ export async function insertDeliveredMessage(
 		dmarcPolicy: params.dmarcPolicy,
 		dmarcOverride: params.dmarcOverride,
 		arcSealer: params.arcSealer,
+		ostrTier: params.ostrTier,
 		envelopeFromDomain: params.envelopeFromDomain,
 		dkimSigningDomain: params.dkimSigningDomain,
 		senderHeuristics: params.senderHeuristics,

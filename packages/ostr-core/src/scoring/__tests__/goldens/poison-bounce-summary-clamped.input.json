@@ -1,0 +1,90 @@
+{
+	"description": "Two honest observers report a decade-2 bounce bucket; a one-message summary tries to cancel the signal with an absurd negative bucket. Buckets are clamped to the policy encoding, so the penalty survives.",
+	"subject": {
+		"domain": "bouncy.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 40,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "bouncy.example"
+				},
+				"window": {
+					"from": "2025-10-24T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 45000,
+					"spfPass": 44550,
+					"dkimPass": 44550,
+					"dmarcPass": 44550,
+					"tlsInbound": 45000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 2
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 41,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "bouncy.example"
+				},
+				"window": {
+					"from": "2025-10-24T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"messages": 45000,
+					"spfPass": 44550,
+					"dkimPass": 44550,
+					"dmarcPass": 44550,
+					"tlsInbound": 45000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 2
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 42,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "friend.example",
+				"subject": {
+					"domain": "bouncy.example"
+				},
+				"window": {
+					"from": "2025-10-24T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 1,
+					"spfPass": 1,
+					"dkimPass": 1,
+					"dmarcPass": 1,
+					"tlsInbound": 1,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": -1000000000
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

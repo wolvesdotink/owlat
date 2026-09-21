@@ -1,3 +1,4 @@
+import { ostrTierValidator } from '../ostr/signals';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
@@ -161,6 +162,7 @@ export const mailMessagesTables = {
 		// so an ordinary message can never render it.
 		dmarcOverride: v.optional(v.string()),
 		arcSealer: v.optional(v.string()),
+		ostrTier: v.optional(ostrTierValidator),
 		// Sender-impersonation heuristics computed at ingest (Sealed Mail A4).
 		// Two content-visible signals derived from the scanner rule (a From domain
 		// that homoglyph/punycode-spoofs a real one, a Reply-To on a different
@@ -264,6 +266,8 @@ export const mailMessagesTables = {
 		.index('by_folder_and_seen', ['folderId', 'flagSeen', 'uid'])
 		.index('by_folder_and_modseq', ['folderId', 'modseq'])
 		.index('by_mailbox_and_received', ['mailboxId', 'receivedAt'])
+		// Receiver clock: sender-controlled Date headers must not alter observer volume.
+		.index('by_mailbox_and_created', ['mailboxId', 'createdAt'])
 		// Folder-scoped arrival order — backs the per-folder list page directly (no
 		// mailbox-wide overfetch-then-filter that starved minority folders).
 		.index('by_folder_and_received', ['folderId', 'receivedAt'])

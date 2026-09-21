@@ -1,0 +1,121 @@
+{
+	"description": "Newcomer with posture plus two scoped, unexpired vouches; a third vouch has expired and one was revoked.",
+	"subject": {
+		"domain": "sponsored.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 50,
+			"loggedAt": "2026-07-31T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "posture",
+				"observer": "sponsored.example",
+				"subject": {
+					"domain": "sponsored.example"
+				},
+				"body": {
+					"dmarcPolicy": "reject",
+					"dnssec": true,
+					"declaredIps": ["203.0.113.9"]
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 51,
+			"loggedAt": "2026-08-02T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "host.provider.example",
+				"subject": {
+					"domain": "sponsored.example"
+				},
+				"body": {
+					"scope": "transactional mail only",
+					"expires": "2026-12-18T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 52,
+			"loggedAt": "2026-08-02T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "partner.example",
+				"subject": {
+					"domain": "sponsored.example"
+				},
+				"body": {
+					"scope": "billing notifications",
+					"expires": "2026-10-19T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 53,
+			"loggedAt": "2026-08-02T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "lapsed.example",
+				"subject": {
+					"domain": "sponsored.example"
+				},
+				"body": {
+					"scope": "marketing",
+					"expires": "2026-08-15T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 50,
+			"loggedAt": "2026-08-03T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch",
+				"observer": "regretful.example",
+				"subject": {
+					"domain": "sponsored.example"
+				},
+				"body": {
+					"scope": "all mail",
+					"expires": "2027-06-16T00:00:00Z"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-b",
+			"index": 51,
+			"loggedAt": "2026-08-04T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "vouch-revoke",
+				"observer": "regretful.example",
+				"subject": {
+					"domain": "sponsored.example"
+				},
+				"body": {
+					"vouch": {
+						"logId": "log-b",
+						"index": 50
+					},
+					"reason": "tenant moved off our platform"
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

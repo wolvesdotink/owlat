@@ -17,13 +17,14 @@ import {
 } from './governedDeliveryConfig.js';
 import type { PoolCoordinationProtocol } from './smtp/poolGlobalCap.js';
 import { loadOutboundIpConfig } from './outboundIpConfig.js';
+import { loadOstrConfig, type OstrConfig } from './ostrConfig.js';
 
 // EHLO hostname validation + per-IP resolution live in ehloConfig.ts (to keep
 // this module under the file-size gate); re-exported so existing importers are
 // unaffected.
 export { assertValidEhloHostname, resolveEhloForIp } from './ehloConfig.js';
 
-export interface MtaConfig extends GovernedDeliveryConfig {
+export interface MtaConfig extends GovernedDeliveryConfig, OstrConfig {
 	/** HTTP server port */
 	port: number;
 	/** Inbound SMTP port for bounce processing */
@@ -262,6 +263,12 @@ export function loadConfig(): MtaConfig {
 	) {
 		throw new Error('INVALUEMENT_DNSBL_ZONE must be a DNS hostname');
 	}
+	// OSTR (plan §12.2) — parsing and validation live in ostrConfig.ts to keep
+	// this module under the file-size gate. Loaded HERE, in the order it was
+	// validated before the split, so a malformed OSTR value still fails the boot
+	// ahead of everything below it.
+	const ostr = loadOstrConfig(optionalEnv);
+
 	const poolCoordinationProtocol = optionalEnv('SMTP_POOL_COORDINATION_PROTOCOL', 'legacy-v0');
 	if (poolCoordinationProtocol !== 'legacy-v0' && poolCoordinationProtocol !== 'leases-v1') {
 		throw new Error('SMTP_POOL_COORDINATION_PROTOCOL must be legacy-v0 or leases-v1');
@@ -415,6 +422,7 @@ export function loadConfig(): MtaConfig {
 		inboundDkimEnabled: optionalEnv('INBOUND_DKIM_ENABLED', 'true') === 'true',
 		inboundDmarcEnabled: optionalEnv('INBOUND_DMARC_ENABLED', 'true') === 'true',
 		inboundArcEnabled: optionalEnv('INBOUND_ARC_ENABLED', 'true') === 'true',
+		...ostr,
 		rspamdUrl: process.env['RSPAMD_URL'],
 		rspamdRejectThreshold: parseFloat(optionalEnv('RSPAMD_REJECT_THRESHOLD', '15')),
 		googlePostmaster: googlePostmasterConfigured

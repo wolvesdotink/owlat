@@ -1,0 +1,1 @@
+{"explanation":[{"contribution":12,"evidence":[{"index":1,"logId":"log-a"}],"signal":"posture","summary":"Published posture: DMARC p=reject, strict alignment, DNSSEC, MTA-STS, TLS-RPT, declared IPs."}],"policy":"ostr-policy-v1","score":52,"subject":{"domain":"newcomer.example"},"tier":"establishing"}

@@ -1,0 +1,90 @@
+{
+	"description": "A one-message summary with a twenty-thousand-day window tries to backdate a four-day-old subject. History is per observer and volume-weighted, so the forged span buys almost nothing.",
+	"subject": {
+		"domain": "freshly.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 50,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "freshly.example"
+				},
+				"window": {
+					"from": "2026-08-16T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 1000000,
+					"spfPass": 990000,
+					"dkimPass": 990000,
+					"dmarcPass": 990000,
+					"tlsInbound": 1000000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 51,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"domain": "freshly.example"
+				},
+				"window": {
+					"from": "2026-08-16T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 1000000,
+					"spfPass": 990000,
+					"dkimPass": 990000,
+					"dmarcPass": 990000,
+					"tlsInbound": 1000000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 52,
+			"loggedAt": "2026-08-19T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "liar.example",
+				"subject": {
+					"domain": "freshly.example"
+				},
+				"window": {
+					"from": "1971-11-17T00:00:00Z",
+					"to": "2026-08-19T00:00:00Z"
+				},
+				"body": {
+					"messages": 1,
+					"spfPass": 1,
+					"dkimPass": 1,
+					"dmarcPass": 1,
+					"tlsInbound": 1,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

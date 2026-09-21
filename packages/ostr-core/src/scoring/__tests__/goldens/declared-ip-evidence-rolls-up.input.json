@@ -1,0 +1,98 @@
+{
+	"description": "Bare-IP trap evidence on an IP the domain declared in posture flows into the domain score; evidence on an undeclared IP does not.",
+	"subject": {
+		"domain": "multihomed.example"
+	},
+	"asOf": "2026-08-20T00:00:00Z",
+	"entries": [
+		{
+			"logId": "log-a",
+			"index": 100,
+			"loggedAt": "2026-07-21T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "posture",
+				"observer": "multihomed.example",
+				"subject": {
+					"domain": "multihomed.example"
+				},
+				"body": {
+					"dmarcPolicy": "reject",
+					"dnssec": true,
+					"declaredIps": ["198.51.100.7"]
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 101,
+			"loggedAt": "2026-08-17T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "traffic-summary",
+				"observer": "mx.observer-a.net",
+				"subject": {
+					"domain": "multihomed.example",
+					"ip": "198.51.100.7"
+				},
+				"window": {
+					"from": "2026-04-22T00:00:00Z",
+					"to": "2026-08-17T00:00:00Z"
+				},
+				"body": {
+					"messages": 22000,
+					"spfPass": 21780,
+					"dkimPass": 21890,
+					"dmarcPass": 21780,
+					"tlsInbound": 22000,
+					"uniqueRecipientsBucket": 3,
+					"bounceRateBucket": 0
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 102,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "trap-hit",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"ip": "198.51.100.7"
+				},
+				"window": {
+					"from": "2026-07-31T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"hits": 30
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		},
+		{
+			"logId": "log-a",
+			"index": 103,
+			"loggedAt": "2026-08-18T00:00:00Z",
+			"attestation": {
+				"v": 1,
+				"kind": "trap-hit",
+				"observer": "mail.observer-b.org",
+				"subject": {
+					"ip": "203.0.113.200"
+				},
+				"window": {
+					"from": "2026-07-31T00:00:00Z",
+					"to": "2026-08-18T00:00:00Z"
+				},
+				"body": {
+					"hits": 900
+				},
+				"sig": "ed25519:c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+			}
+		}
+	]
+}

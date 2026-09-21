@@ -47,6 +47,11 @@ export type PostboxReaderMessage = {
 	// names the honoured sealer so the badge can render "verified via forwarder".
 	dmarcOverride?: string;
 	arcSealer?: string;
+	// The sender's OSTR registry tier, resolved by the MTA and persisted at
+	// delivery (`mailMessages.ostrTier`). Absent on every row an instance
+	// received without a registry consumer configured; the badge renders a chip
+	// only for a tier that actually says something (never for `unknown`).
+	ostrTier?: string;
 	// Ingest-computed sender-impersonation heuristics (Sealed Mail A4), threaded
 	// through so the sender badge can render secondary detail lines (first-time
 	// sender, look-alike of a known contact's domain). Whole object absent when
@@ -504,6 +509,10 @@ const {
 // compute for every message; the flag only decides whether it renders.
 const authBadgesEnabled = computed(() => isFeatureEnabled('senderAuthBadges'));
 
+// OSTR tier chip inside that badge (flag `ostr`). Independent of the auth
+// verdicts: it reports the registry's read on the sender, not what we checked.
+const ostrEnabled = computed(() => isFeatureEnabled('ostr'));
+
 // Sealed-Mail reader badge (E5, flag `sealedMail`). Gates the honest "Sealed —
 // sender verified / not verified" / "can't decrypt" chip driven by the inbound
 // sealing record. When off, sealed messages fall back to the structural badge.
@@ -756,6 +765,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 				:show-reply-all="hasOtherRecipients(msg)"
 				:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
 				:auth-enabled="authBadgesEnabled"
+				:ostr-enabled="ostrEnabled"
 				:sealed-enabled="sealedMailEnabled"
 				:secure-class="secureClass(msg)"
 				:hide-body="hideRawBody(msg)"

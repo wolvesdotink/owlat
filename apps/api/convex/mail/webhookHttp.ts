@@ -20,6 +20,8 @@
  * adapter.
  */
 
+import { isOstrTier, parseOstrDkimEvidence } from '../ostr/signals';
+import { isObserverModeEnabled } from '../ostr/config';
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError } from '../lib/runtimeLog';
@@ -82,6 +84,8 @@ interface MailWebhookPayload {
 		arcCv?: string;
 		arcSealerDomain?: string;
 		arcAttestsOriginalPass?: boolean;
+		ostrTier?: unknown;
+		ostrDkimEvidence?: unknown;
 	};
 }
 
@@ -127,6 +131,11 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 	}
 
 	const mp = payload.mailboxPayload;
+	// Invalid advisory data must never prevent delivery; retain evidence only by opt-in.
+	const ostrTier = isOstrTier(mp.ostrTier) ? mp.ostrTier : undefined;
+	const ostrDkimEvidence = isObserverModeEnabled()
+		? parseOstrDkimEvidence(mp.ostrDkimEvidence)
+		: undefined;
 
 	try {
 		const result = await ctx.runAction(internal.mail.delivery.ingestFromWebhook, {
@@ -159,6 +168,8 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 			arcAttestsOriginalPass: mp.arcAttestsOriginalPass,
 			envelopeFromDomain: mp.envelopeFromDomain,
 			dkimSigningDomain: mp.dkimSigningDomain,
+			ostrTier,
+			ostrDkimEvidence,
 		});
 
 		return jsonResponse(200, { success: true, result });
