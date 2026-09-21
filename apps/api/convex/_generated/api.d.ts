@@ -750,6 +750,7 @@ import type * as mail_ai_gate from '../mail/ai/gate.js';
 import type * as mail_ai_needsReplyClarify from '../mail/ai/needsReplyClarify.js';
 import type * as mail_ai_needsReplyClassify from '../mail/ai/needsReplyClassify.js';
 import type * as mail_ai_needsReplyScoring from '../mail/ai/needsReplyScoring.js';
+import type * as mail_ai_replyIntent from '../mail/ai/replyIntent.js';
 import type * as mail_ai_priorityScore from '../mail/ai/priorityScore.js';
 import type * as mail_ai_promptGuards from '../mail/ai/promptGuards.js';
 import type * as mail_ai_reviseDraft from '../mail/ai/reviseDraft.js';
@@ -857,6 +858,7 @@ import type * as mail_migrationShared from '../mail/migrationShared.js';
 import type * as mail_mtaClient from '../mail/mtaClient.js';
 import type * as mail_mute from '../mail/mute.js';
 import type * as mail_needsReply from '../mail/needsReply.js';
+import type * as mail_needsReplyHeuristic from '../mail/needsReplyHeuristic.js';
 import type * as mail_outbound from '../mail/outbound.js';
 import type * as mail_outbound_build from '../mail/outbound/build.js';
 import type * as mail_outbound_dispatch from '../mail/outbound/dispatch.js';
@@ -903,6 +905,7 @@ import type * as migrations_0041_forget_disconnected_credentials from '../migrat
 import type * as migrations_0042_recompute_mailbox_used_bytes from '../migrations/0042_recompute_mailbox_used_bytes.js';
 import type * as migrations_0043_detect_missing_mail_blobs from '../migrations/0043_detect_missing_mail_blobs.js';
 import type * as migrations_0044_private_chat_media from '../migrations/0044_private_chat_media.js';
+import type * as migrations_0045_recheck_needs_reply from '../migrations/0045_recheck_needs_reply.js';
 import type * as platformAdmin_bootstrap from '../platformAdmin/bootstrap.js';
 import type * as platformAdmin_mutations from '../platformAdmin/mutations.js';
 import type * as platformAdmin_platformAdmin from '../platformAdmin/platformAdmin.js';
@@ -1890,6 +1893,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/ai/needsReplyClarify': typeof mail_ai_needsReplyClarify;
 	'mail/ai/needsReplyClassify': typeof mail_ai_needsReplyClassify;
 	'mail/ai/needsReplyScoring': typeof mail_ai_needsReplyScoring;
+	'mail/ai/replyIntent': typeof mail_ai_replyIntent;
 	'mail/ai/priorityScore': typeof mail_ai_priorityScore;
 	'mail/ai/promptGuards': typeof mail_ai_promptGuards;
 	'mail/ai/reviseDraft': typeof mail_ai_reviseDraft;
@@ -1997,6 +2001,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mtaClient': typeof mail_mtaClient;
 	'mail/mute': typeof mail_mute;
 	'mail/needsReply': typeof mail_needsReply;
+	'mail/needsReplyHeuristic': typeof mail_needsReplyHeuristic;
 	'mail/outbound': typeof mail_outbound;
 	'mail/outbound/build': typeof mail_outbound_build;
 	'mail/outbound/dispatch': typeof mail_outbound_dispatch;
@@ -2043,6 +2048,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0042_recompute_mailbox_used_bytes': typeof migrations_0042_recompute_mailbox_used_bytes;
 	'migrations/0043_detect_missing_mail_blobs': typeof migrations_0043_detect_missing_mail_blobs;
 	'migrations/0044_private_chat_media': typeof migrations_0044_private_chat_media;
+	'migrations/0045_recheck_needs_reply': typeof migrations_0045_recheck_needs_reply;
 	'platformAdmin/bootstrap': typeof platformAdmin_bootstrap;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;

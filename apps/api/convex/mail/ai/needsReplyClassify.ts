@@ -5,16 +5,21 @@
  * overview). Runs per-thread, scheduled by inbound ingest or the reconcile
  * cron:
  *
- *   1. Deterministic heuristic over the newest thread messages. Not a
- *      candidate → clears the flag and finishes (no LLM spend).
+ *   1. Deterministic screen over the newest thread messages
+ *      (mail/needsReplyHeuristic.ts). Not a candidate → clears the flag and
+ *      finishes (no LLM spend).
  *   2. Candidate → persists the deterministic flag FIRST (source `heuristic`,
  *      urgency `normal`), so a crash or LLM failure anywhere after this point
  *      still leaves the baseline signal (fail-soft).
  *   3. LLM refinement on the cheap "summarize" tier, behind the same aiGate
  *      as the user-triggered Postbox AI (feature flag + rate limit). The
  *      thread body is attacker-controlled inbound mail, so it is framed as
- *      untrusted DATA (SYSTEM_GUARD), mirroring mail/ai/assist.ts. The result only
- *      ever updates the advisory flag — it never sends or modifies mail.
+ *      untrusted DATA (SYSTEM_GUARD), mirroring mail/ai/assist.ts. The model
+ *      NAMES the message from the closed reply-intent taxonomy (./replyIntent.ts)
+ *      and that module — not the model's boolean — decides whether the row
+ *      belongs in the queue, so an FYI or a recap full of action items can no
+ *      longer promote itself. The result only ever updates the advisory flag —
+ *      it never sends or modifies mail.
  */
 
 import { v } from 'convex/values';
@@ -24,7 +29,18 @@ import { internal } from '../../_generated/api';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
 import { recordLlmSpend } from '../../analytics/llmUsage';
-import { evaluateNeedsReplyCandidate } from '../needsReply';
+import {
+	evaluateNeedsReplyCandidate,
+	isPublishingAddress,
+	isUnattendedAddress,
+} from '../needsReplyHeuristic';
+import {
+	REPLY_INTENTS,
+	buildReplyIntentPrompt,
+	decideNeedsReply,
+	normalizeDueHint,
+	normalizeMeetingIntent,
+} from './replyIntent';
 import {
 	replySlotsSchema,
 	divergenceSchema,
@@ -45,6 +61,9 @@ import { SYSTEM_GUARD } from './promptGuards';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
 
 const refinementSchema = z.object({
+	// What the message IS (closed taxonomy, ai/replyIntent.ts). The queue
+	// verdict is decided from this, not from `needsReply` alone.
+	intent: z.enum(REPLY_INTENTS),
 	needsReply: z.boolean(),
 	urgency: z.enum(['high', 'normal', 'low']),
 	// One line: what the sender is asking of the reader. Empty when nothing is.
@@ -63,51 +82,17 @@ const refinementSchema = z.object({
 		.nullable(),
 });
 
-/** Keep only a parseable ISO-like date hint; drop hallucinated formats. */
-export function normalizeDueHint(raw: string | null): string | undefined {
-	if (!raw) return undefined;
-	const trimmed = raw.trim();
-	if (!/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return undefined;
-	return Number.isNaN(Date.parse(trimmed)) ? undefined : trimmed.slice(0, 10);
-}
-
-const MAX_PROPOSED_TIMES = 6;
-const MAX_TIME_PHRASE_CHARS = 80;
-const MAX_TOPIC_CHARS = 120;
-
-interface MeetingIntent {
-	isScheduling: boolean;
-	proposedTimes: string[];
-	topic?: string;
-}
-
-/**
- * Coerce the LLM's raw meetingIntent into the bounded persisted shape, or
- * `undefined` when there is nothing to show. Returns `undefined` when the
- * trigger message already carries a calendar invite (.ics) — that path is
- * owned by PostboxInviteCard, and the plain-prose chip must never double up on
- * it. Pure + exported so it unit-tests without a live model or Convex.
- */
-export function normalizeMeetingIntent(
-	raw: { isScheduling: boolean; proposedTimes: string[]; topic: string | null } | null,
-	opts: { hasCalendarInvite: boolean }
-): MeetingIntent | undefined {
-	if (opts.hasCalendarInvite) return undefined;
-	if (!raw || !raw.isScheduling) return undefined;
-	const proposedTimes = (raw.proposedTimes ?? [])
-		.map((t) => t.trim().slice(0, MAX_TIME_PHRASE_CHARS))
-		.filter((t) => t.length > 0)
-		.slice(0, MAX_PROPOSED_TIMES);
-	const topic = raw.topic?.trim().slice(0, MAX_TOPIC_CHARS) || undefined;
-	return { isScheduling: true, proposedTimes, topic };
-}
-
 export const classifyThread = internalAction({
 	args: {
 		threadId: v.id('mailThreads'),
-		// Raw Precedence header of the triggering message — only available on
-		// the ingest-time trigger (the header is not persisted on the row).
+		// Ingest-time headers of the triggering message — only available on the
+		// ingest trigger (none of them are persisted on the row, so the reconcile
+		// sweep re-classifies without them and leans on the sender screens).
 		precedence: v.optional(v.string()),
+		/** RFC 3834 Auto-Submitted. */
+		autoSubmitted: v.optional(v.string()),
+		/** RFC 2919 List-Id. */
+		listId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const context = await ctx.runQuery(internal.mail.needsReply.getThreadContext, {
@@ -119,6 +104,8 @@ export const classifyThread = internalAction({
 			ownerAddresses: [context.ownerAddress],
 			messages: context.messages,
 			precedence: args.precedence,
+			autoSubmitted: args.autoSubmitted,
+			listId: args.listId,
 		});
 
 		if (!evaluation.candidate) {
@@ -162,26 +149,31 @@ export const classifyThread = internalAction({
 				// High-volume background classification → cheap "summarize" tier.
 				model: await resolveLanguageModel(ctx, 'summarize'),
 				schema: refinementSchema,
-				prompt:
-					`${SYSTEM_GUARD}\n\nThe reader is ${context.ownerAddress}. Decide whether the LAST inbound message ` +
-					`in this thread needs a reply from the reader. Classify urgency (high/normal/low), give a one-line ` +
-					`askSummary of what the sender is asking (max 120 characters, null if nothing is asked), and a ` +
-					`dueHint as an ISO date (YYYY-MM-DD) only if the message states a concrete deadline, else null. ` +
-					`Also set meetingIntent when the sender is trying to SCHEDULE a meeting/call in prose ` +
-					`(isScheduling true), capturing any proposedTimes as the sender's VERBATIM phrases (e.g. ` +
-					`"Tuesday afternoon", "next week", "after 3pm") and an optional short topic; use null when the ` +
-					`message is not about scheduling.` +
-					`\n\nThread:\n\n${transcript}`,
+				prompt: buildReplyIntentPrompt({
+					systemGuard: SYSTEM_GUARD,
+					ownerAddress: context.ownerAddress,
+					transcript,
+					senderLooksAutomated: isPublishingAddress(latestInbound.fromAddress),
+				}),
 				temperature: 0,
 			});
 			await recordLlmSpend(ctx, 'postbox_needs_reply', tokenUsage, modelUsed);
+
+			// The queue verdict: the model's intent AND its boolean AND a sender who
+			// can receive the reply (ai/replyIntent.ts). An FYI/recap/receipt is
+			// dropped here even when the model's boolean said otherwise.
+			const decision = decideNeedsReply({
+				intent: object.intent,
+				modelNeedsReply: object.needsReply,
+				isUnattendedSender: isUnattendedAddress(latestInbound.fromAddress),
+			});
 
 			// Clarification loop: only when the message genuinely needs a reply do
 			// we spend the extra passes deciding whether a good reply is missing a
 			// fact only the owner can supply. Self-contained fail-soft (returns
 			// undefined on any error) so a clarification failure never downgrades
 			// the refinement above.
-			let clarification = object.needsReply
+			let clarification = decision.needsReply
 				? await refineClarification(ctx, {
 						transcript,
 						fromAddress: latestInbound.fromAddress,
@@ -221,7 +213,7 @@ export const classifyThread = internalAction({
 			await ctx.runMutation(internal.mail.needsReply.applyResult, {
 				threadId: args.threadId,
 				expectedLatestMessageId: context.latestMessageId,
-				needsReply: object.needsReply
+				needsReply: decision.needsReply
 					? {
 							messageId: latestInbound.messageId,
 							source: 'llm',

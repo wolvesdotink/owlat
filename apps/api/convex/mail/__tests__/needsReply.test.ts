@@ -1,15 +1,19 @@
 /**
- * Pure-helper coverage for the Reply Queue base heuristic
- * (mail/needsReply.ts evaluateNeedsReplyCandidate / isBulkOrNoReplySender)
- * and the LLM dueHint normalizer (mail/ai/needsReplyClassify.ts).
+ * Pure-helper coverage for the Reply Queue base screen
+ * (mail/needsReplyHeuristic.ts evaluateNeedsReplyCandidate /
+ * isBulkOrNoReplySender / the automation screens) and the LLM dueHint
+ * normalizer (mail/ai/needsReplyClassify.ts).
  */
 import { describe, it, expect } from 'vitest';
 import {
 	evaluateNeedsReplyCandidate,
 	isBulkOrNoReplySender,
+	isInformationalSubject,
+	isPublishingAddress,
+	isUnattendedAddress,
 	type NeedsReplyMessageInput,
-} from '../needsReply';
-import { normalizeDueHint, normalizeMeetingIntent } from '../ai/needsReplyClassify';
+} from '../needsReplyHeuristic';
+import { normalizeDueHint, normalizeMeetingIntent } from '../ai/replyIntent';
 import { isCalendarAttachment } from '../needsReply';
 
 const OWNER = 'me@example.com';
@@ -22,6 +26,7 @@ function msg(overrides: Partial<NeedsReplyMessageInput> = {}): NeedsReplyMessage
 		hasListUnsubscribe: false,
 		isFromOwner: false,
 		receivedAt: 1000,
+		subject: 'Quick question about the invoice',
 		...overrides,
 	};
 }
@@ -131,6 +136,75 @@ describe('evaluateNeedsReplyCandidate', () => {
 		expect(result).toEqual({ candidate: false, reason: 'no_inbound' });
 	});
 
+	it('does not flag machine-generated mail (Auto-Submitted)', () => {
+		const result = evaluateNeedsReplyCandidate({
+			ownerAddresses: [OWNER],
+			messages: [msg()],
+			autoSubmitted: 'auto-generated',
+		});
+		expect(result).toEqual({ candidate: false, reason: 'automated' });
+	});
+
+	it('still flags a human message that explicitly says Auto-Submitted: no', () => {
+		const result = evaluateNeedsReplyCandidate({
+			ownerAddresses: [OWNER],
+			messages: [msg()],
+			autoSubmitted: 'no',
+		});
+		expect(result.candidate).toBe(true);
+	});
+
+	it('does not flag mailing-list traffic (List-Id)', () => {
+		const result = evaluateNeedsReplyCandidate({
+			ownerAddresses: [OWNER],
+			messages: [msg()],
+			listId: '<dev.lists.example>',
+		});
+		expect(result).toEqual({ candidate: false, reason: 'automated' });
+	});
+
+	it('does not flag a meeting-notes robot, headers or not', () => {
+		// The reported bug: Gemini's notes mail landed in the queue as "Needs
+		// you" and was offered a draft reply, because the recap listed to-dos.
+		const result = evaluateNeedsReplyCandidate({
+			ownerAddresses: [OWNER],
+			messages: [
+				msg({
+					fromAddress: 'gemini-notes@google.com',
+					subject: "Notes: 'Tech Jour Fixe' 18 Sept 2026",
+				}),
+			],
+		});
+		expect(result).toEqual({ candidate: false, reason: 'automated' });
+	});
+
+	it('still flags a person at a publishing address who actually asks something', () => {
+		const result = evaluateNeedsReplyCandidate({
+			ownerAddresses: [OWNER],
+			messages: [
+				msg({ fromAddress: 'team-notes@partner.example', subject: 'Can you review this?' }),
+			],
+		});
+		expect(result.candidate).toBe(true);
+	});
+
+	it('still flags a colleague sending meeting notes from their own address', () => {
+		// Subject alone is not enough: a human sending notes may well want a reply.
+		const result = evaluateNeedsReplyCandidate({
+			ownerAddresses: [OWNER],
+			messages: [msg({ fromAddress: 'alice@example.com', subject: 'Notes from today' })],
+		});
+		expect(result.candidate).toBe(true);
+	});
+
+	it('does not flag a message whose Reply-To points at a no-reply mailbox', () => {
+		const result = evaluateNeedsReplyCandidate({
+			ownerAddresses: [OWNER],
+			messages: [msg({ replyToAddress: 'no-reply@example.com' })],
+		});
+		expect(result).toEqual({ candidate: false, reason: 'bulk_sender' });
+	});
+
 	it('evaluates the LATEST inbound message, not an older personal one', () => {
 		// Older personal mail, then a newer newsletter in the same thread: the
 		// newest inbound is bulk, so nothing needs a reply.
@@ -156,6 +230,61 @@ describe('isBulkOrNoReplySender', () => {
 		expect(
 			isBulkOrNoReplySender({ fromAddress: 'replyn@example.com', hasListUnsubscribe: false })
 		).toBe(false);
+	});
+
+	it('catches a no-reply marker buried in a compound local part', () => {
+		for (const from of [
+			'drive-shares-noreply@google.com',
+			'no.reply@bank.example',
+			'do_not_reply@shop.example',
+			'github-notifications@github.example',
+		]) {
+			expect(isBulkOrNoReplySender({ fromAddress: from, hasListUnsubscribe: false })).toBe(true);
+		}
+	});
+});
+
+describe('isUnattendedAddress', () => {
+	it('matches unattended mailboxes and leaves people alone', () => {
+		expect(isUnattendedAddress('noreply+orders@shop.example')).toBe(true);
+		expect(isUnattendedAddress('team-alerts@ci.example')).toBe(true);
+		expect(isUnattendedAddress('MAILER-DAEMON@mx.example')).toBe(true);
+		expect(isUnattendedAddress('botanist@garden.example')).toBe(false);
+		expect(isUnattendedAddress('updated.marcus@example.com')).toBe(false);
+	});
+});
+
+describe('isPublishingAddress', () => {
+	it('recognises addresses that publish rather than converse', () => {
+		expect(isPublishingAddress('gemini-notes@google.com')).toBe(true);
+		expect(isPublishingAddress('weekly.digest@example.com')).toBe(true);
+		expect(isPublishingAddress('alice@example.com')).toBe(false);
+	});
+});
+
+describe('isInformationalSubject', () => {
+	it('matches records of something that already happened', () => {
+		for (const subject of [
+			"Notes: 'Tech Jour Fixe' 18 Sept 2026",
+			'Re: Minutes from Monday',
+			'Meeting notes — product sync',
+			'Notizen: Wochenplanung',
+			'Recap of the launch review',
+		]) {
+			expect(isInformationalSubject(subject)).toBe(true);
+		}
+	});
+
+	it('does not match a subject that asks for something', () => {
+		for (const subject of [
+			'Summary needed — can you send yours?',
+			'Quick question about the notes',
+			'Notes: did you see the second item?',
+			'Invoice 4711',
+			undefined,
+		]) {
+			expect(isInformationalSubject(subject)).toBe(false);
+		}
 	});
 });
 

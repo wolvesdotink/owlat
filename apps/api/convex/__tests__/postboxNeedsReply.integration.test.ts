@@ -226,6 +226,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 
 		runLlmObjectMock.mockResolvedValue({
 			object: {
+				intent: 'request_for_action',
 				needsReply: true,
 				urgency: 'high',
 				askSummary: 'Send the report',
@@ -261,7 +262,13 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		});
 
 		runLlmObjectMock.mockResolvedValue({
-			object: { needsReply: false, urgency: 'low', askSummary: null, dueHint: null },
+			object: {
+				intent: 'direct_question',
+				needsReply: false,
+				urgency: 'low',
+				askSummary: null,
+				dueHint: null,
+			},
 			tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
 			modelUsed: 'test-model',
 		});
@@ -271,6 +278,59 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toBeUndefined();
 		expect(thread?.needsReplyPendingAt).toBeUndefined();
+	});
+
+	it('clears the flag for a recap the model still called reply-worthy', async () => {
+		// The meeting-notes bug end to end: the model sees the to-do bullets and
+		// answers needsReply true, but it named the message informational_update
+		// and the intent has the final say (mail/ai/replyIntent.ts).
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
+		});
+		await setNeedsReply(t, threadId, messageId); // stale flag from before
+
+		runLlmObjectMock.mockResolvedValue({
+			object: {
+				intent: 'informational_update',
+				needsReply: true,
+				urgency: 'normal',
+				askSummary: 'Confirm the action items',
+				dueHint: null,
+			},
+			tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+			modelUsed: 'test-model',
+		});
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
+
+		const thread = await getThread(t, threadId);
+		expect(thread?.needsReply).toBeUndefined();
+		expect(thread?.needsReplyPendingAt).toBeUndefined();
+	});
+
+	it('clears flag + pending for machine-generated mail without any LLM call', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
+		});
+		await setNeedsReply(t, threadId, messageId); // stale flag from before
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, {
+			threadId,
+			autoSubmitted: 'auto-generated',
+		});
+
+		const thread = await getThread(t, threadId);
+		expect(thread?.needsReply).toBeUndefined();
+		expect(thread?.needsReplyPendingAt).toBeUndefined();
+		expect(runLlmObjectMock).not.toHaveBeenCalled();
 	});
 
 	it('falls back to the deterministic candidate when the LLM dispatch throws', async () => {

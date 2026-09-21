@@ -30,7 +30,7 @@ import { v } from 'convex/values';
 import { openMailMessageInlineBody } from '../lib/messageBody';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { isBulkOrNoReplySender } from './needsReply';
+import { isBulkOrNoReplySender } from './needsReplyHeuristic';
 import { armThreadFollowUp, followUpWaitingOn } from './followUps';
 import { messageDirectionValidator, detectionSourceValidator } from '../lib/convexValidators';
 
@@ -87,7 +87,7 @@ export function shouldExtractOutboundCommitment(opts: {
  * Parse an ISO date hint (YYYY-MM-DD) to an absolute deadline timestamp,
  * anchored to the END of that day in UTC so a same-day promise isn't treated as
  * already lapsed. Returns `undefined` for a non-parseable hint. Pure. (Mirrors
- * needsReplyClassify.normalizeDueHint's ISO guard, extended to a timestamp.)
+ * replyIntent.normalizeDueHint’s ISO guard, extended to a timestamp.)
  */
 export function dueHintToTimestamp(dueHint: string | null | undefined): number | undefined {
 	if (!dueHint) return undefined;

@@ -3,15 +3,18 @@
  * personal (Postbox) mail threads.
  *
  * Two-stage signal:
- *   1. Deterministic base heuristic (pure, unit-tested below in
- *      `evaluateNeedsReplyCandidate`): the latest inbound message addresses
- *      the owner in To (not only Cc), is not from a no-reply/bulk sender
- *      (List-Unsubscribe / Precedence: bulk / no-reply local-parts), and the
- *      owner has not sent a later message in the thread.
+ *   1. Deterministic base screen (pure, in the sibling `needsReplyHeuristic.ts`
+ *      so this file stays under the domain-file size cap): the latest inbound
+ *      message addresses the owner in To (not only Cc), carries no
+ *      machine-generated marker (Auto-Submitted / List-Id / Precedence /
+ *      List-Unsubscribe), is not from an unattended sender, and the owner has
+ *      not sent a later message in the thread.
  *   2. Cheap-tier LLM refinement (mail/ai/needsReplyClassify.ts, 'use node')
- *      that classifies candidates: needsReply, urgency, askSummary, dueHint.
- *      Fail-soft: any LLM/gate failure leaves the deterministic candidate
- *      flag with urgency `normal` and no askSummary.
+ *      that classifies candidates: a reply INTENT (mail/ai/replyIntent.ts),
+ *      urgency, askSummary, dueHint. Only a reply-expecting intent keeps the
+ *      flag — an FYI, a recap or a receipt clears it, even when the model's own
+ *      boolean says otherwise. Fail-soft: any LLM/gate failure leaves the
+ *      deterministic candidate flag with urgency `normal` and no askSummary.
  *
  * Trigger: `enqueueNeedsReplyCheck` on inbound webhook delivery (bounded to
  * the affected thread), plus a reconcile cron (`sweepPending`) that
@@ -36,98 +39,7 @@ import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { isFeatureEnabled } from '../lib/featureFlags';
-
-// ─── Deterministic heuristic (pure) ─────────────────────────────────────────
-
-/** Local-parts that never expect a reply (automated / bounce senders). */
-const NO_REPLY_LOCAL_PART =
-	/^(no-?reply|do-?not-?reply|donotreply|mailer-daemon|postmaster|bounce(s)?|notification(s)?|alerts?|newsletter|marketing|updates?)([+._\-].*)?$/i;
-
-/** Precedence header values that mark bulk/automated mail (RFC 2076 §3.9). */
-const BULK_PRECEDENCE = new Set(['bulk', 'list', 'junk', 'auto_reply']);
-
-export interface NeedsReplyMessageInput {
-	fromAddress: string;
-	toAddresses: string[];
-	ccAddresses: string[];
-	/** A List-Unsubscribe target was parsed at ingest (bulk/list mail). */
-	hasListUnsubscribe: boolean;
-	/** Sent by the mailbox owner (outbound / self-sent). */
-	isFromOwner: boolean;
-	receivedAt: number;
-}
-
-type NeedsReplyEvaluation =
-	| { candidate: true; latestInboundIndex: number }
-	| {
-			candidate: false;
-			reason: 'no_inbound' | 'owner_replied' | 'bulk_sender' | 'not_in_to';
-	  };
-
-/** True when the sender looks like bulk/no-reply mail nobody should answer. */
-export function isBulkOrNoReplySender(msg: {
-	fromAddress: string;
-	hasListUnsubscribe: boolean;
-	/** Raw Precedence header value, only known at ingest time. */
-	precedence?: string;
-}): boolean {
-	if (msg.hasListUnsubscribe) return true;
-	const precedence = msg.precedence?.trim().toLowerCase();
-	if (precedence && BULK_PRECEDENCE.has(precedence)) return true;
-	const localPart = msg.fromAddress.split('@', 1)[0] ?? '';
-	return NO_REPLY_LOCAL_PART.test(localPart);
-}
-
-/**
- * Deterministic "needs a reply from me" candidate check over a thread's
- * messages (any order). Pure so it unit-tests without Convex.
- *
- * `precedence` applies to the latest inbound message only — the header is not
- * persisted on the row, so it is available at ingest but not on re-sweeps.
- */
-export function evaluateNeedsReplyCandidate(opts: {
-	/** Lowercased addresses that count as "me" (mailbox address). */
-	ownerAddresses: string[];
-	messages: NeedsReplyMessageInput[];
-	precedence?: string;
-}): NeedsReplyEvaluation {
-	const owners = new Set(opts.ownerAddresses.map((a) => a.toLowerCase()));
-	const ordered = opts.messages
-		.map((m, index) => ({ m, index }))
-		.sort((a, b) => a.m.receivedAt - b.m.receivedAt);
-
-	let latestInbound: { m: NeedsReplyMessageInput; index: number } | undefined;
-	for (const entry of ordered) {
-		if (!entry.m.isFromOwner && !owners.has(entry.m.fromAddress.toLowerCase())) {
-			latestInbound = entry;
-		}
-	}
-	if (!latestInbound) return { candidate: false, reason: 'no_inbound' };
-
-	// Owner sent a later message → already replied (or moved on).
-	const ownerRepliedAfter = ordered.some(
-		(e) =>
-			(e.m.isFromOwner || owners.has(e.m.fromAddress.toLowerCase())) &&
-			e.m.receivedAt >= latestInbound.m.receivedAt
-	);
-	if (ownerRepliedAfter) return { candidate: false, reason: 'owner_replied' };
-
-	if (
-		isBulkOrNoReplySender({
-			fromAddress: latestInbound.m.fromAddress,
-			hasListUnsubscribe: latestInbound.m.hasListUnsubscribe,
-			precedence: opts.precedence,
-		})
-	) {
-		return { candidate: false, reason: 'bulk_sender' };
-	}
-
-	// Addressed to me directly (To), not only Cc'd.
-	const inTo = latestInbound.m.toAddresses.some((a) => owners.has(a.toLowerCase()));
-	if (!inTo) return { candidate: false, reason: 'not_in_to' };
-
-	return { candidate: true, latestInboundIndex: latestInbound.index };
-}
+import type { NeedsReplyHeaders } from './needsReplyHeuristic';
 
 /** True when an attachment is a calendar invite (.ics / text/calendar). */
 export function isCalendarAttachment(att: { filename: string; contentType: string }): boolean {
@@ -151,7 +63,9 @@ export const NEEDS_REPLY_CONTEXT_MESSAGES = 6;
 export async function enqueueNeedsReplyCheck(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
-	opts: { precedence?: string } = {}
+	// Ingest-time headers of the triggering message. None of them are persisted
+	// on the row, so they ride along here or the screen never sees them.
+	opts: NeedsReplyHeaders = {}
 ): Promise<void> {
 	await ctx.db.patch(threadId, {
 		needsReplyPendingAt: Date.now(),
@@ -160,6 +74,8 @@ export async function enqueueNeedsReplyCheck(
 	await ctx.scheduler.runAfter(0, internal.mail.ai.needsReplyClassify.classifyThread, {
 		threadId,
 		precedence: opts.precedence,
+		autoSubmitted: opts.autoSubmitted,
+		listId: opts.listId,
 	});
 }
 
@@ -211,6 +127,7 @@ export const getThreadContext = internalQuery({
 					toAddresses: m.toAddresses,
 					ccAddresses: m.ccAddresses,
 					hasListUnsubscribe: m.unsubscribe !== undefined,
+					replyToAddress: m.replyToAddress,
 					// A real calendar invite (.ics) is handled by PostboxInviteCard —
 					// the scheduling chip must never double up on it.
 					hasCalendarInvite: (m.attachments ?? []).some(isCalendarAttachment),
@@ -496,5 +413,37 @@ export const sweepPending = internalMutation({
 			});
 		}
 		return { rescheduled: stale.length };
+	},
+});
+
+/**
+ * Every thread in a mailbox currently carrying the needs-reply flag, newest
+ * first. Feeds the one-shot `migrations/0045_recheck_needs_reply` so a
+ * tightened screen also applies to rows that were flagged under the old rules —
+ * without it, yesterday's meeting-notes card sits in the queue forever.
+ */
+export const listFlaggedThreads = internalQuery({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args): Promise<Id<'mailThreads'>[]> => {
+		const threads = await ctx.db
+			.query('mailThreads')
+			.withIndex('by_mailbox_needs_reply', (q) =>
+				q.eq('mailboxId', args.mailboxId).gt('needsReply.detectedAt', 0)
+			)
+			.order('desc')
+			.take(QUEUE_LIMIT);
+		return threads.map((t) => t._id);
+	},
+});
+
+/**
+ * Re-run classification for one already-flagged thread. Same path as the
+ * reconcile cron, so the ingest-time headers are gone and the verdict rests on
+ * the sender/subject screens plus the refinement pass.
+ */
+export const requeue = internalMutation({
+	args: { threadId: v.id('mailThreads') },
+	handler: async (ctx, args) => {
+		await enqueueNeedsReplyCheck(ctx, args.threadId);
 	},
 });
