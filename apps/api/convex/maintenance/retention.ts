@@ -10,6 +10,8 @@
  *   - formSubmissions: the submission itself belongs to the contact (and is
  *     erased with the contact); only the operational metadata (ipAddress,
  *     userAgent) is scrubbed after FORM_META_RETENTION_MS.
+ *   - agentMetrics rollup points: deleted after AGENT_METRICS_RETENTION_MS
+ *     (7 days), the longest window the health dashboard charts.
  *   - inbound mail FILES: the sealed raw `.eml` on `inboundMessages` and the
  *     team-inbox attachment blobs captured out of it into `semanticFiles` are
  *     released after an ADMIN-CONFIGURABLE horizon
@@ -33,6 +35,9 @@ const BATCH = 200;
 
 /** Operational metadata on form submissions ages out after 90 days. */
 const FORM_META_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** Agent-health rollup points age out after 7 days — the dashboard's longest window. */
+const AGENT_METRICS_RETENTION_MS = 7 * DAY_MS;
 
 export const sweepAuditLogs = internalMutation({
 	args: {},
@@ -84,6 +89,31 @@ export const sweepPluginLlmAccounting = internalMutation({
 		}
 		if (reservations.length === BATCH || dailyUsage.length === BATCH) {
 			await ctx.scheduler.runAfter(0, internal.maintenance.retention.sweepPluginLlmAccounting, {});
+		}
+	},
+});
+
+/**
+ * Agent-health rollup points (`agentMetrics`) past their 7-day window.
+ *
+ * Lives here, on the daily schedule every other table's retention runs on,
+ * because it used to be fired from inside the 5-minute rollup behind
+ * `Math.random() < 0.05` — a sweep that ran on no schedule anyone could reason
+ * about, and, because it neither batched to completion nor rescheduled itself,
+ * could not drain a backlog larger than one batch even when it did fire.
+ */
+export const sweepAgentMetrics = internalMutation({
+	args: {},
+	returns: v.null(),
+	handler: async (ctx) => {
+		const cutoff = Date.now() - AGENT_METRICS_RETENTION_MS;
+		const stale = await ctx.db
+			.query('agentMetrics')
+			.withIndex('by_window_start', (q) => q.lt('windowStart', cutoff))
+			.take(BATCH);
+		for (const row of stale) await ctx.db.delete(row._id);
+		if (stale.length === BATCH) {
+			await ctx.scheduler.runAfter(0, internal.maintenance.retention.sweepAgentMetrics, {});
 		}
 	},
 });

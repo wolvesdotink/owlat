@@ -7766,6 +7766,7 @@
 						"edit": "Segment bearbeiten",
 						"viewContacts": "Kontakte ansehen"
 					},
+					"adminsOnly": "Nur Inhaber und Administratoren können Segmente erstellen oder bearbeiten.",
 					"clearSearch": "Suche zurücksetzen",
 					"count": "{count} Segment | {count} Segmente",
 					"deleteDialog": {
@@ -8006,6 +8007,7 @@
 						"delete": "Thema löschen",
 						"edit": "Thema bearbeiten"
 					},
+					"adminsOnly": "Nur Inhaber und Administratoren können Themen erstellen oder bearbeiten.",
 					"clearSearch": "Suche zurücksetzen",
 					"count": "{count} Thema | {count} Themen",
 					"createModal": {
@@ -8178,6 +8180,7 @@
 					"pause": "Pausieren",
 					"viewDetails": "Details ansehen"
 				},
+				"adminsOnly": "Nur Inhaber und Administratoren können Automationen erstellen oder bearbeiten.",
 				"clearSearch": "Suche zurücksetzen",
 				"deleteDialog": {
 					"activeWarning": "Aktive Automationen müssen vor dem Löschen pausiert werden.",
@@ -9711,6 +9714,7 @@
 					}
 				},
 				"index": {
+					"adminsOnly": "Nur Inhaber und Administratoren können Bausteine erstellen oder löschen.",
 					"blockCount": "{count} Baustein | {count} Bausteine",
 					"blocksBadge": "{count} Bausteine",
 					"clearSearch": "Suche zurücksetzen",
@@ -9887,6 +9891,7 @@
 			},
 			"marketing": {
 				"index": {
+					"adminsOnly": "Nur Inhaber und Administratoren können Vorlagen erstellen oder löschen.",
 					"clearSearch": "Suche zurücksetzen",
 					"columns": {
 						"subject": "Betreff",
@@ -10050,6 +10055,7 @@
 					}
 				},
 				"index": {
+					"adminsOnly": "Nur Inhaber und Administratoren können Transaktions-E-Mails erstellen oder löschen.",
 					"apiUsage": {
 						"copied": "Kopiert!",
 						"note": "{label} Ersetzen Sie {placeholder} durch Ihren tatsächlichen API-Schlüssel. API-Schlüssel können Sie unter {settings} erstellen.",

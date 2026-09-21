@@ -206,9 +206,14 @@ export default defineEventHandler(
 			});
 			seedStatus = seedRes.status;
 			if (seedStatus !== 201 && seedStatus !== 409) {
+				// The backend answers refusals in the locked envelope
+				// `{ error: { category, message } }` (ADR-0036); the older string
+				// form is still read so a mixed-version stack still shows a reason.
 				seedError = await seedRes
 					.json()
-					.then((j: { error?: string }) => j?.error)
+					.then((j: { error?: string | { message?: string } }) =>
+						typeof j?.error === 'string' ? j.error : j?.error?.message
+					)
 					.catch(() => undefined);
 			}
 		} catch (e) {

@@ -17,6 +17,7 @@
  */
 
 import type { MutationCtx } from '../../_generated/server';
+import { deleteOwnedUpload } from '../../storage/uploads';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { recordAuditLog } from '../../lib/auditLog';
@@ -330,7 +331,7 @@ async function applyNonSentEffects(
 			}
 			case 'delete_attachment_storage': {
 				for (const storageId of effect.storageIds) {
-					await ctx.storage.delete(storageId);
+					await deleteOwnedUpload(ctx, storageId, `mailDrafts:${effect.draftId}`);
 				}
 				break;
 			}

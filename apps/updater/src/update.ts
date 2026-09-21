@@ -24,7 +24,7 @@ import {
 } from './security.js';
 import { exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
 import {
-	composeCommand,
+	composeArgv,
 	dockerApiPreflight,
 	scheduleUpdaterRecreateSafely,
 	servicesToRecreate,
@@ -141,7 +141,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// Every compose call names the project directory as the HOST sees it, so a
 	// relative bind in the template resolves to the real file and not to a path
 	// that only exists inside this container.
-	const composeCmd = composeCommand([composeFileForUpdate]);
+	const composeArgs = composeArgv([composeFileForUpdate]);
 	const discardStaged = async () => {
 		if (!composeTemplate) return;
 		try {
@@ -153,7 +153,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 
 	// Step 4: Pull latest images (against the staged template, so a pull
 	// failure leaves the running stack and its compose file untouched).
-	const pull = exec(`${composeCmd} pull`, OWLAT_DIR);
+	const pull = exec('docker', [...composeArgs, 'pull'], OWLAT_DIR);
 	steps.push({ step: 'pull', ...pull });
 
 	if (!pull.ok) {
@@ -169,7 +169,11 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	//
 	// This requires the existing convex container to still be running at
 	// its previous version, so the one-shot deployer can reach it.
-	const deploy = exec(`${composeCmd} --profile deploy run --rm convex-deploy`, OWLAT_DIR);
+	const deploy = exec(
+		'docker',
+		[...composeArgs, '--profile', 'deploy', 'run', '--rm', 'convex-deploy'],
+		OWLAT_DIR
+	);
 	steps.push({ step: 'convex-deploy', ...deploy });
 
 	if (!deploy.ok) {
@@ -218,7 +222,8 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	}
 
 	const up = exec(
-		`${composeCommand()} up -d --remove-orphans ${plan.services.join(' ')}`,
+		'docker',
+		[...composeArgv(), 'up', '-d', '--remove-orphans', ...plan.services],
 		OWLAT_DIR
 	);
 	steps.push({ step: 'up', ...up });

@@ -1,5 +1,5 @@
-import type posthog from 'posthog-js';
 import { logError } from '~/lib/runtimeLog';
+import type { PostHogHandle } from '~/composables/usePostHog';
 
 /**
  * Global error handler plugin.
@@ -10,7 +10,9 @@ export default defineNuxtPlugin((nuxtApp) => {
 	const { showToast } = useToast();
 
 	function captureToPostHog(error: unknown, source: string) {
-		const ph = nuxtApp['$posthog'] as typeof posthog | null;
+		// Empty until `analytics.posthog` resolves on, and again once it is turned
+		// off — an exception raised in between is logged locally and not shipped.
+		const ph = (nuxtApp['$posthog'] as PostHogHandle | null)?.value ?? null;
 		if (!ph) return;
 
 		const err = error instanceof Error ? error : new Error(String(error));

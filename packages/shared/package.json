@@ -33,6 +33,10 @@
 			"types": "./src/featureFlags.ts",
 			"import": "./src/featureFlags.ts"
 		},
+		"./organizationPermissions": {
+			"types": "./src/organizationPermissions.ts",
+			"import": "./src/organizationPermissions.ts"
+		},
 		"./operatingModes": {
 			"types": "./src/operatingModes.ts",
 			"import": "./src/operatingModes.ts"
@@ -308,6 +312,10 @@
 		"./composeOverride": {
 			"types": "./src/composeOverride.ts",
 			"import": "./src/composeOverride.ts"
+		},
+		"./nodeShutdown": {
+			"types": "./src/nodeShutdown.ts",
+			"import": "./src/nodeShutdown.ts"
 		},
 		"./networkPorts": {
 			"types": "./src/networkPorts.ts",

@@ -1,3 +1,4 @@
+import { BodyTooLargeError, readBodyText } from '../lib/readBody';
 /**
  * GitHub merge webhook HTTP endpoint.
  *
@@ -86,7 +87,17 @@ export const handleGithubWebhook = httpAction(async (ctx, request) => {
 		return new Response('Missing X-Hub-Signature-256 header', { status: 401 });
 	}
 
-	const rawBody = await request.text();
+	let rawBody: string;
+	try {
+		rawBody = await readBodyText(request, 5 * 1024 * 1024);
+	} catch (error) {
+		return new Response(
+			error instanceof BodyTooLargeError ? 'Payload too large' : 'Unreadable body',
+			{
+				status: error instanceof BodyTooLargeError ? 413 : 400,
+			}
+		);
+	}
 	if (!(await verifyGithubSignature(rawBody, signature, secret))) {
 		return new Response('Invalid GitHub signature', { status: 401 });
 	}

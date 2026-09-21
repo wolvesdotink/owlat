@@ -32,6 +32,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse, type LifecycleReason } from '../lib/lifecycle';
 import { rollupCampaignStatsRow } from './statShards';
+import { trackEvent } from '../lib/posthogHelpers';
 import { throwInvalidState } from '../_utils/errors';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -429,10 +430,10 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 				break;
 			}
 			case 'track_event': {
-				await ctx.scheduler.runAfter(0, internal.lib.posthog.capture, {
-					distinctId: effect.userId,
-					event: effect.event,
-					properties: { campaignId: effect.campaignId },
+				// Through the shared helper, not a direct schedule: that is where
+				// `analytics.posthog` is enforced.
+				await trackEvent(ctx, { userId: effect.userId }, effect.event, {
+					campaignId: effect.campaignId,
 				});
 				break;
 			}

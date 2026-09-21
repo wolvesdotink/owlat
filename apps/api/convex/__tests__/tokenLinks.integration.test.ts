@@ -912,6 +912,14 @@ describe('seedAdmin (POST /seed/admin)', () => {
 			body: JSON.stringify({ email: 'admin@example.com' }),
 		});
 		expect(res.status).toBe(400);
+		// The shared envelope, not a bare { error: string }: the setup CLI and the
+		// web setup wizard both read the reason out of a failed bootstrap.
+		expect(await res.json()).toEqual({
+			error: {
+				category: 'invalid_input',
+				message: 'Missing required fields: email, name, passwordHash',
+			},
+		});
 	});
 
 	it('rate-limits the endpoint per IP (429) before the secret check (L5)', async () => {

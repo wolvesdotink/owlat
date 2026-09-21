@@ -6,6 +6,7 @@ import { asyncSession, syncSession } from '../helpers/session.js';
 import { requireAuth, requireSelect, requireWritableSelect } from '../helpers/auth.js';
 import { collectMessageIdsByUid } from '../helpers/uidSet.js';
 import { buildSeqMap, resolveSet, seqForUid } from '../helpers/seqMap.js';
+import { loadFolderUids } from '../helpers/folderPaging.js';
 
 export interface StoreArgs {
 	readonly set: string;
@@ -78,10 +79,7 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 				// Resolve the set against the folder's sequence ↔ UID map: a
 				// non-UID set holds positions, a UID set holds UIDs. The map is
 				// reused below to emit each updated row's true sequence number.
-				const folderUids = (await deps.convex.query(
-					fn.listFolderUids as never,
-					{ folderId: state.selected!.folderId } as never
-				)) as number[];
+				const folderUids = await loadFolderUids(deps.convex, state.selected!.folderId);
 				const seqMap = buildSeqMap(folderUids);
 				const resolved = resolveSet(seqMap, args.set, args.byUid);
 				if (resolved.length === 0) {

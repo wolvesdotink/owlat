@@ -211,8 +211,7 @@ export const autonomyTables = {
 		resolvedAt: v.optional(v.number()),
 	})
 		.index('by_message', ['inboundMessageId'])
-		.index('by_category', ['category'])
-		.index('by_sender', ['sender']),
+		.index('by_category', ['category']),
 
 	// Agent Shadow Scorecard - running per-(category, sender) aggregate of the
 	// shadow observations above. `matched` counts the cases where the shadowed

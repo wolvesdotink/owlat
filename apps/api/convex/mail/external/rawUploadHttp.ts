@@ -1,3 +1,4 @@
+import { BodyTooLargeError, readBodyBytes } from '../../lib/readBody';
 /**
  * Raw `.eml` upload for the mail-sync worker.
  *
@@ -61,8 +62,10 @@ export const handleRawMessageUpload = httpAction(async (ctx, request) => {
 
 	let bytes: Uint8Array;
 	try {
-		bytes = new Uint8Array(await request.arrayBuffer());
+		bytes = new Uint8Array(await readBodyBytes(request, MAX_RAW_MESSAGE_BYTES));
 	} catch (error) {
+		if (error instanceof BodyTooLargeError)
+			return errorResponse('limit_reached', 'Message too large');
 		logError('mail-sync raw upload: unreadable body', error);
 		return errorResponse('invalid_input', 'Unreadable body');
 	}

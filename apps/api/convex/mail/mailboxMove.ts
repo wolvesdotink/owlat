@@ -77,6 +77,7 @@ function inboundMailHost(): string | null {
  * move.
  */
 // public: soft-auth — reads only the caller's own external mailbox + move rows.
+// authz: self-scoped — resolves the caller's own external mailbox/move rows off their session.
 export const moveStatus = publicQuery({
 	args: {},
 	handler: async (ctx) => {

@@ -123,6 +123,44 @@ describe('inbox role enforcement — approveDraft (mutation)', () => {
 	});
 });
 
+describe('inbox role enforcement — markThreadSeen (mutation)', () => {
+	async function seedThread(t: ReturnType<typeof convexTest>): Promise<Id<'conversationThreads'>> {
+		let threadId!: Id<'conversationThreads'>;
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
+		});
+		return threadId;
+	}
+
+	/**
+	 * The per-user unread marker is a read-side badge, but it is still a WRITE
+	 * against an arbitrary thread id, and an editor cannot read the shared inbox
+	 * at all — so it sits on the same floor as the rest.
+	 */
+	it('rejects an editor', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await seedThread(t);
+		mockRole = 'editor';
+		await expect(
+			t.withIdentity(testIdentity).mutation(api.inbox.reads.markThreadSeen, { threadId })
+		).rejects.toThrow(/owners and admins/i);
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('threadReads').collect());
+		expect(rows).toHaveLength(0);
+	});
+
+	it('allows an admin', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await seedThread(t);
+		mockRole = 'admin';
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.reads.markThreadSeen, { threadId });
+		expect(result.success).toBe(true);
+	});
+});
+
 describe('inbox role enforcement — listThreads (query)', () => {
 	async function seedThread(t: ReturnType<typeof convexTest>) {
 		await enableFeatures(t, ['inbox']);
@@ -136,9 +174,7 @@ describe('inbox role enforcement — listThreads (query)', () => {
 		const t = convexTest(schema, modules);
 		await seedThread(t);
 		mockRole = 'editor';
-		const result = await t
-			.withIdentity(testIdentity)
-			.query(api.inbox.queries.listThreads, {});
+		const result = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
 		expect(result.threads).toHaveLength(0);
 	});
 
@@ -146,9 +182,7 @@ describe('inbox role enforcement — listThreads (query)', () => {
 		const t = convexTest(schema, modules);
 		await seedThread(t);
 		mockRole = 'admin';
-		const result = await t
-			.withIdentity(testIdentity)
-			.query(api.inbox.queries.listThreads, {});
+		const result = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
 		expect(result.threads).toHaveLength(1);
 	});
 });
