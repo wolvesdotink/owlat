@@ -461,7 +461,7 @@
         "@vitest/coverage-v8": "catalog:",
         "mailauth": "^5.0.0",
         "mailparser": "^3.7.0",
-        "nodemailer": "^9.1.0",
+        "nodemailer": "^10.0.10",
         "typescript": "catalog:",
         "vitest": "catalog:",
       },
@@ -647,7 +647,7 @@
     "js-cookie": "^3.0.8",
     "js-yaml": "^3.15.2",
     "linkify-it": "^5.0.2",
-    "nodemailer": "9.1.1",
+    "nodemailer": "10.0.10",
     "nuxt": "4.5.2",
     "nuxt-og-image": "6.7.4",
     "postcss": "^8.5.26",
@@ -2998,7 +2998,7 @@
 
     "node-releases": ["node-releases@2.0.54", "", {}, "sha512-YHs7BmmcsdAI5Ozuf8JZo6PT0mv2GIWC9vMfvUC3dp65M8hn7Ux8CPL+2oBI7juNuj9d0ndhTcznq2ODBps9cQ=="],
 
-    "nodemailer": ["nodemailer@9.1.1", "", {}, "sha512-izw9mVKFix6YSnC9eLgV6g1opl9DUlRio9ZNcq+Wu9Ujn2UwF+8Nl0B8nz22kEC+CTZCvinkxwJ0DeFbb6NwcQ=="],
+    "nodemailer": ["nodemailer@10.0.10", "", {}, "sha512-He9XskOFms62SyAKkLu8CcGcYHAo+BSHSsORI8s4PJH8qZgZY4L4lDfvyN0twvmbpyG+eGrxpyBlskj9d9rJ8A=="],
 
     "nopt": ["nopt@7.2.1", "", { "dependencies": { "abbrev": "^2.0.0" }, "bin": { "nopt": "bin/nopt.js" } }, "sha512-taM24ViiimT/XntxbPyJQzCG+p4EKOpgD3mxFwW38mGjVUrfERQOeY4EDHjdnptttfHuHQXFx+lTP08Q+mLa/w=="],
 
