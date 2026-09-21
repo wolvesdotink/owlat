@@ -1,5 +1,5 @@
-import { api } from "@owlat/api";
-import { effectScope, type EffectScope } from "vue";
+import { api } from '@owlat/api';
+import { effectScope, type EffectScope } from 'vue';
 import {
 	useActiveOrganization,
 	useListOrganizations,
@@ -12,7 +12,7 @@ import {
 	setActiveOrganization,
 	updateOrganization as updateOrg,
 	getFullOrganization as getFullOrg,
-} from "~/lib/auth-client";
+} from '~/lib/auth-client';
 
 export interface PendingMailboxInput {
 	localpart: string;
@@ -20,7 +20,7 @@ export interface PendingMailboxInput {
 	displayName?: string;
 }
 
-export type OrganizationRole = "owner" | "admin" | "editor";
+export type OrganizationRole = 'owner' | 'admin' | 'editor';
 
 /**
  * Plan the two role changes that make up an ownership transfer.
@@ -39,35 +39,35 @@ export type OrganizationRole = "owner" | "admin" | "editor";
  * @throws if there is no current owner, or the chosen member is already the owner.
  */
 export function planOwnershipTransfer(
-	members: Pick<OrganizationMember, "id" | "userId" | "role">[],
+	members: Pick<OrganizationMember, 'id' | 'userId' | 'role'>[],
 	currentUserId: string | null | undefined,
-	newOwnerMemberId: string,
+	newOwnerMemberId: string
 ): Array<{ memberId: string; role: OrganizationRole }> {
 	const currentOwner = currentUserId
-		? members.find((m) => m.userId === currentUserId && m.role === "owner")
+		? members.find((m) => m.userId === currentUserId && m.role === 'owner')
 		: undefined;
 	if (!currentOwner) {
-		throw new Error("shared.useOrganization.errors.notCurrentOwner");
+		throw new Error('shared.useOrganization.errors.notCurrentOwner');
 	}
 	if (currentOwner.id === newOwnerMemberId) {
-		throw new Error("shared.useOrganization.errors.alreadyOwner");
+		throw new Error('shared.useOrganization.errors.alreadyOwner');
 	}
 
 	return [
-		{ memberId: newOwnerMemberId, role: "owner" },
-		{ memberId: currentOwner.id, role: "admin" },
+		{ memberId: newOwnerMemberId, role: 'owner' },
+		{ memberId: currentOwner.id, role: 'admin' },
 	];
 }
 
 // BetterAuth uses 'member' internally, but we use 'editor' in our app
-type BetterAuthRole = "owner" | "admin" | "member";
+type BetterAuthRole = 'owner' | 'admin' | 'member';
 
 /**
  * Map BetterAuth role to our app role
  * BetterAuth uses 'member', we use 'editor'
  */
 function mapFromBetterAuthRole(role: string): OrganizationRole {
-	if (role === "member") return "editor";
+	if (role === 'member') return 'editor';
 	return role as OrganizationRole;
 }
 
@@ -76,7 +76,7 @@ function mapFromBetterAuthRole(role: string): OrganizationRole {
  * We use 'editor', BetterAuth expects 'member'
  */
 function mapToBetterAuthRole(role: OrganizationRole): BetterAuthRole {
-	if (role === "editor") return "member";
+	if (role === 'editor') return 'member';
 	return role as BetterAuthRole;
 }
 
@@ -98,7 +98,7 @@ export interface OrganizationInvitation {
 	id: string;
 	email: string;
 	role: OrganizationRole;
-	status: "pending" | "accepted" | "rejected" | "canceled";
+	status: 'pending' | 'accepted' | 'rejected' | 'canceled';
 	expiresAt: Date;
 	inviterId: string;
 	organizationId: string;
@@ -179,7 +179,7 @@ function betterAuthOrganizationStores(): NonNullable<typeof organizationStores> 
 		// `run` is a no-op on a stopped scope, and a fresh detached one is never
 		// stopped — but say so rather than asserting a null away.
 		if (!organizationStores) {
-			throw new Error("useOrganization: could not build the better-auth organization stores");
+			throw new Error('useOrganization: could not build the better-auth organization stores');
 		}
 	}
 	return organizationStores;
@@ -196,9 +196,9 @@ export function useOrganization() {
 		betterAuthOrganizationStores();
 
 	// Shared reactive state via useState — all instances share the same refs
-	const members = useState<OrganizationMember[]>("org-members", () => []);
-	const invitations = useState<OrganizationInvitation[]>("org-invitations", () => []);
-	const isLoadingMembers = useState<boolean>("org-loading-members", () => false);
+	const members = useState<OrganizationMember[]>('org-members', () => []);
+	const invitations = useState<OrganizationInvitation[]>('org-invitations', () => []);
+	const isLoadingMembers = useState<boolean>('org-loading-members', () => false);
 	// Whether the members fetch has SETTLED at least once this session.
 	//
 	// `isLoadingMembers` starts false and only turns true inside `fetchMembers`,
@@ -208,11 +208,11 @@ export function useOrganization() {
 	// that as "loaded, and not an admin" and bounced owners off every admin deep
 	// link (a refresh or a bookmark; in-app navigation was fine because the role
 	// was already cached). Guards must wait on this, not on `isLoadingMembers`.
-	const hasResolvedMembers = useState<boolean>("org-members-resolved", () => false);
+	const hasResolvedMembers = useState<boolean>('org-members-resolved', () => false);
 	// Non-null once a members/invitations fetch fails, so the team page can render
 	// an explicit error state (with a retry) instead of an ambiguous empty list.
-	const membersError = useState<string | null>("org-members-error", () => null);
-	const currentMemberRole = useState<OrganizationRole | null>("org-current-role", () => null);
+	const membersError = useState<string | null>('org-members-error', () => null);
+	const currentMemberRole = useState<OrganizationRole | null>('org-current-role', () => null);
 
 	// Computed values - BetterAuth hooks return refs with nested data/isPending
 	const organization = computed(() => {
@@ -254,14 +254,14 @@ export function useOrganization() {
 
 	// Permission checks
 	const canManageMembers = computed(() => {
-		return currentMemberRole.value === "owner" || currentMemberRole.value === "admin";
+		return currentMemberRole.value === 'owner' || currentMemberRole.value === 'admin';
 	});
 
-	const isOwner = computed(() => currentMemberRole.value === "owner");
+	const isOwner = computed(() => currentMemberRole.value === 'owner');
 
 	async function waitForActiveOrganization(
 		orgId: string,
-		timeoutMs = ORGANIZATION_SYNC_TIMEOUT_MS,
+		timeoutMs = ORGANIZATION_SYNC_TIMEOUT_MS
 	) {
 		if (organizationId.value === orgId) {
 			return;
@@ -270,7 +270,7 @@ export function useOrganization() {
 		await new Promise<void>((resolve, reject) => {
 			const timeoutId = setTimeout(() => {
 				stop();
-				reject(new Error(t("shared.useOrganization.errors.organizationSyncTimeout")));
+				reject(new Error(t('shared.useOrganization.errors.organizationSyncTimeout')));
 			}, timeoutMs);
 
 			const stop = watch(
@@ -282,7 +282,7 @@ export function useOrganization() {
 						resolve();
 					}
 				},
-				{ immediate: true },
+				{ immediate: true }
 			);
 		});
 	}
@@ -333,7 +333,7 @@ export function useOrganization() {
 					// Map BetterAuth roles to our app roles (member -> editor)
 					members.value = membersResult.data.members.map((m: Record<string, unknown>) => ({
 						...m,
-						role: mapFromBetterAuthRole(m["role"] as string),
+						role: mapFromBetterAuthRole(m['role'] as string),
 					})) as OrganizationMember[];
 
 					// Find current user's role
@@ -346,10 +346,10 @@ export function useOrganization() {
 				if (invitationsResult.data) {
 					// Filter to only show pending invitations and map roles (member -> editor)
 					invitations.value = (invitationsResult.data as Array<Record<string, unknown>>)
-						.filter((inv) => inv["status"] === "pending")
+						.filter((inv) => inv['status'] === 'pending')
 						.map((inv) => ({
 							...inv,
-							role: mapFromBetterAuthRole(inv["role"] as string),
+							role: mapFromBetterAuthRole(inv['role'] as string),
 						})) as OrganizationInvitation[];
 				}
 
@@ -359,8 +359,8 @@ export function useOrganization() {
 				// Surface a fixed, human message so the team page shows a retryable
 				// error state instead of an ambiguous empty list — never leak a raw
 				// "Failed to fetch"-grade string into user-facing copy.
-				console.error("[useOrganization] failed to load team members", error);
-				membersError.value = t("shared.useOrganization.errors.membersLoadFailed");
+				console.error('[useOrganization] failed to load team members', error);
+				membersError.value = t('shared.useOrganization.errors.membersLoadFailed');
 			} finally {
 				isLoadingMembers.value = false;
 				// Settled — success or failure. A failed fetch must still release
@@ -378,13 +378,13 @@ export function useOrganization() {
 
 	// Convex mutations for mailbox reservation tied to invitations.
 	const { run: setPendingMailbox } = useBackendOperation(api.mail.pendingMailbox.setForInvitation, {
-		label: () => t("shared.useOrganization.operations.reserveMailbox"),
+		label: () => t('shared.useOrganization.operations.reserveMailbox'),
 	});
 	const { run: cancelPendingMailbox } = useBackendOperation(
 		api.mail.pendingMailbox.cancelForInvitation,
 		{
-			label: () => t("shared.useOrganization.operations.cancelReservedMailbox"),
-		},
+			label: () => t('shared.useOrganization.operations.cancelReservedMailbox'),
+		}
 	);
 	// Grants are keyed by invitee email (not invitation id), so cancelling an
 	// invite must also sweep any pending team-inbox membership reserved for them —
@@ -392,15 +392,15 @@ export function useOrganization() {
 	const { run: cancelPendingInboxMemberships } = useBackendOperation(
 		api.mail.pendingInboxMembership.cancelInboxMembershipsForEmail,
 		{
-			label: () => t("shared.useOrganization.operations.cancelReservedInboxAccess"),
-		},
+			label: () => t('shared.useOrganization.operations.cancelReservedInboxAccess'),
+		}
 	);
 	// Read-only pre-check for the 1/min resend floor (the floor itself is enforced
 	// server-side in the send hook). `run` toasts the rate-limit message and
 	// returns undefined when the cooldown hasn't elapsed, so `resendInvite` can
 	// bail out before hitting BetterAuth's resend.
 	const { run: throttleResend } = useBackendOperation(api.auth.invitationResend.throttleResend, {
-		label: () => t("shared.useOrganization.operations.resendInvitation"),
+		label: () => t('shared.useOrganization.operations.resendInvitation'),
 	});
 
 	/**
@@ -410,7 +410,7 @@ export function useOrganization() {
 	 */
 	async function invite(email: string, role: OrganizationRole, mailbox?: PendingMailboxInput) {
 		if (!organizationId.value) {
-			throw new Error(t("shared.useOrganization.errors.noActiveOrganization"));
+			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
 		}
 
 		// Map our role to BetterAuth role (editor -> member)
@@ -422,7 +422,7 @@ export function useOrganization() {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t("shared.useOrganization.errors.sendInvitationFailed"),
+				result.error.message || t('shared.useOrganization.errors.sendInvitationFailed')
 			);
 		}
 
@@ -440,7 +440,7 @@ export function useOrganization() {
 				displayName: mailbox.displayName,
 			});
 			if (!reserved.ok) {
-				const wrapped = new Error(t("shared.useOrganization.errors.mailboxNotReserved"));
+				const wrapped = new Error(t('shared.useOrganization.errors.mailboxNotReserved'));
 				(wrapped as Error & { invitationSent?: boolean }).invitationSent = true;
 				throw wrapped;
 			}
@@ -457,7 +457,7 @@ export function useOrganization() {
 	 */
 	async function remove(memberIdOrEmail: string) {
 		if (!organizationId.value) {
-			throw new Error(t("shared.useOrganization.errors.noActiveOrganization"));
+			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
 		}
 
 		const result = await removeOrgMember({
@@ -467,7 +467,7 @@ export function useOrganization() {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t("shared.useOrganization.errors.removeMemberFailed"),
+				result.error.message || t('shared.useOrganization.errors.removeMemberFailed')
 			);
 		}
 
@@ -482,7 +482,7 @@ export function useOrganization() {
 	 */
 	async function updateRole(memberId: string, role: OrganizationRole) {
 		if (!organizationId.value) {
-			throw new Error(t("shared.useOrganization.errors.noActiveOrganization"));
+			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
 		}
 
 		// Map our role to BetterAuth role (editor -> member)
@@ -493,7 +493,7 @@ export function useOrganization() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || t("shared.useOrganization.errors.updateRoleFailed"));
+			throw new Error(result.error.message || t('shared.useOrganization.errors.updateRoleFailed'));
 		}
 
 		// Refresh members list
@@ -516,7 +516,7 @@ export function useOrganization() {
 	 */
 	async function transferOwnership(newOwnerMemberId: string) {
 		if (!organizationId.value) {
-			throw new Error(t("shared.useOrganization.errors.noActiveOrganization"));
+			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
 		}
 
 		// `planOwnershipTransfer` is module scope, so it throws the message KEY;
@@ -542,7 +542,7 @@ export function useOrganization() {
 			});
 			if (result.error) {
 				throw new Error(
-					result.error.message || t("shared.useOrganization.errors.transferOwnershipFailed"),
+					result.error.message || t('shared.useOrganization.errors.transferOwnershipFailed')
 				);
 			}
 			lastData = result.data;
@@ -560,7 +560,7 @@ export function useOrganization() {
 	 */
 	async function cancelInvite(invitationId: string, inviteeEmail?: string) {
 		if (!organizationId.value) {
-			throw new Error(t("shared.useOrganization.errors.noActiveOrganization"));
+			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
 		}
 
 		const result = await cancelOrgInvitation({
@@ -569,7 +569,7 @@ export function useOrganization() {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t("shared.useOrganization.errors.cancelInvitationFailed"),
+				result.error.message || t('shared.useOrganization.errors.cancelInvitationFailed')
 			);
 		}
 
@@ -602,10 +602,10 @@ export function useOrganization() {
 	 * @returns `true` when the email was re-sent, `false` when it was throttled.
 	 */
 	async function resendInvite(
-		invitation: Pick<OrganizationInvitation, "id" | "email" | "role">,
+		invitation: Pick<OrganizationInvitation, 'id' | 'email' | 'role'>
 	): Promise<boolean> {
 		if (!organizationId.value) {
-			throw new Error(t("shared.useOrganization.errors.noActiveOrganization"));
+			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
 		}
 
 		const allowed = await throttleResend({ invitationId: invitation.id });
@@ -623,7 +623,7 @@ export function useOrganization() {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t("shared.useOrganization.errors.resendInvitationFailed"),
+				result.error.message || t('shared.useOrganization.errors.resendInvitationFailed')
 			);
 		}
 
@@ -640,13 +640,13 @@ export function useOrganization() {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t("shared.useOrganization.errors.setActiveOrganizationFailed"),
+				result.error.message || t('shared.useOrganization.errors.setActiveOrganizationFailed')
 			);
 		}
 
 		await refetchSession({
 			force: true,
-			expected: "authenticated",
+			expected: 'authenticated',
 			activeOrganizationId: orgId,
 		});
 		await waitForActiveOrganization(orgId);
@@ -660,7 +660,7 @@ export function useOrganization() {
 	 */
 	async function update(data: { name?: string; slug?: string; logo?: string }) {
 		if (!organizationId.value) {
-			throw new Error(t("shared.useOrganization.errors.noActiveOrganization"));
+			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
 		}
 
 		const result = await updateOrg({
@@ -670,7 +670,7 @@ export function useOrganization() {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t("shared.useOrganization.errors.updateOrganizationFailed"),
+				result.error.message || t('shared.useOrganization.errors.updateOrganizationFailed')
 			);
 		}
 
@@ -682,7 +682,7 @@ export function useOrganization() {
 	 */
 	async function getFullOrganization() {
 		if (!organizationId.value) {
-			throw new Error(t("shared.useOrganization.errors.noActiveOrganization"));
+			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
 		}
 
 		const result = await getFullOrg({
@@ -693,7 +693,7 @@ export function useOrganization() {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t("shared.useOrganization.errors.getOrganizationFailed"),
+				result.error.message || t('shared.useOrganization.errors.getOrganizationFailed')
 			);
 		}
 
@@ -731,7 +731,7 @@ export function useOrganization() {
 						hasResolvedMembers.value = false;
 					}
 				},
-				{ immediate: true },
+				{ immediate: true }
 			);
 		});
 	}
