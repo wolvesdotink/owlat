@@ -135,14 +135,21 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 		const convex = mockConvex();
 		// Folder starts with UIDs 1,2 / count 2 / modseq 7 (matches SELECTED).
 		// The query mock answers by function-ref + args across the three poll
-		// ticks. peekFolderModseq returns counters; listFolderUids returns the
-		// live UID list; fetchEnvelopes returns rows changed since modseqSince.
+		// ticks. peekFolderModseq returns counters; listFolderUidsPage returns the
+		// live UID list as one page; fetchChangedEnvelopes returns the rows the
+		// `by_folder_and_modseq` index would yield for modseq > modseqSince.
 		convex.query.mockImplementation((ref: string, qargs: Record<string, unknown>) => {
 			if (ref === 'mail/imap/session:peekFolderModseq') return Promise.resolve(peek);
-			if (ref === 'mail/imap/fetch:listFolderUids') return Promise.resolve(uids);
-			if (ref === 'mail/imap/fetch:fetchEnvelopes') {
+			if (ref === 'mail/imap/fetch:listFolderUidsPage') {
+				return Promise.resolve({ uids, nextUid: null });
+			}
+			if (ref === 'mail/imap/fetch:fetchChangedEnvelopes') {
 				const since = (qargs.modseqSince as number) ?? 0;
-				return Promise.resolve(rows.filter((r) => r.modseq > since));
+				return Promise.resolve({
+					page: rows.filter((r) => r.modseq > since),
+					isDone: true,
+					continueCursor: null,
+				});
 			}
 			return Promise.resolve(null);
 		});

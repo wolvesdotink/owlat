@@ -23,6 +23,7 @@
  */
 
 import { v } from 'convex/values';
+import { normalizeEmail } from '@owlat/shared';
 import { publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';
 import type { QueryCtx } from '../_generated/server';
@@ -37,10 +38,6 @@ const SCAN_LIMIT = 250;
 
 /** Distinct recent conversations listed. The panel is a summary, not a folder. */
 const THREAD_LIMIT = 8;
-
-function normalizeEmail(raw: string): string {
-	return raw.trim().toLowerCase();
-}
 
 /** One recent conversation with this sender, as the panel renders it. */
 interface SenderThreadRow {

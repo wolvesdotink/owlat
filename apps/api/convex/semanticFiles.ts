@@ -8,6 +8,7 @@
  */
 
 import { v } from 'convex/values';
+import { consumeUpload, deleteOwnedUpload, storedFileSize } from './storage/uploads';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import { internalQuery, internalMutation, type MutationCtx } from './_generated/server';
 import { internal } from './_generated/api';
@@ -338,11 +339,14 @@ export const create = authedMutation({
 		}
 		// Enforce the advertised per-file size ceiling. The client guards on this
 		// too, but a forged request must not get past the server.
-		if (args.fileSize > MAX_LIBRARY_FILE_BYTES) {
+		const fileSize = await storedFileSize(ctx, args.storageId);
+		if (fileSize <= 0) throwInvalidInput('File size must be positive');
+		if (fileSize > MAX_LIBRARY_FILE_BYTES) {
 			throwInvalidInput(`File exceeds the ${MAX_LIBRARY_FILE_MB} MB upload limit`);
 		}
 
-		const fileId = await insertSemanticFile(ctx, { ...args, uploadedBy: session.userId });
+		const fileId = await insertSemanticFile(ctx, { ...args, fileSize, uploadedBy: session.userId });
+		await consumeUpload(ctx, args.storageId, session, `semanticFiles:${fileId}`);
 		// Kick off async processing: text extraction, summary, auto-tags, embedding.
 		await ctx.scheduler.runAfter(0, internal.semanticFileProcessing.processFile, { fileId });
 		return fileId;
@@ -589,7 +593,16 @@ export const remove = authedMutation({
 		// Tear down the junction rows before the parent file.
 		await syncFileContacts(ctx, args.fileId, undefined);
 		// Delete the stored file, if the retention sweep has not already released it.
-		if (file.storageId) await ctx.storage.delete(file.storageId);
+		if (file.storageId) {
+			if (file.uploadedBy !== undefined) {
+				// User-created rows require proven ownership, including legacy rows
+				// that may have linked another resource's storage id before receipts.
+				await deleteOwnedUpload(ctx, file.storageId, `semanticFiles:${file._id}`);
+			} else {
+				// Internal ingestion owns its staged blob; it has no browser receipt.
+				await ctx.storage.delete(file.storageId);
+			}
+		}
 		await ctx.db.delete(args.fileId);
 	},
 });

@@ -1,6 +1,7 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
+import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 
@@ -54,6 +55,7 @@ async function linkedFile(t: Harness): Promise<{
 		})
 	);
 	const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['body'])));
+	await t.run((ctx) => recordUploadedBlob(ctx, storageId, 'admin-user'));
 	const fileId = await t.mutation(api.semanticFiles.create, {
 		storageId,
 		filename: 'receipt.txt',

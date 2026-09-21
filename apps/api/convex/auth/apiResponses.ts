@@ -84,8 +84,10 @@ export function errorResponse(
 
 /**
  * API-key posture 405 — composes origin-aware CORS around the shared
- * `methodNotAllowed`. Method routing is a transport concern, not an Operation
- * outcome, so it carries no category.
+ * `methodNotAllowed`. The body carries `invalid_input` like every other
+ * envelope; the status stays 405 because method routing is a transport concern
+ * and the transport's own code is the more useful one. See
+ * `lib/httpResponse.ts:methodNotAllowed`.
  */
 export function methodNotAllowed(
 	message = 'Method not allowed',

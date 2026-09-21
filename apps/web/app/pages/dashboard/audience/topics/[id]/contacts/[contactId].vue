@@ -2,6 +2,10 @@
 import { api } from '@owlat/api';
 
 const { t } = useI18n();
+// Removing a contact from a topic requires `topics:manage` (owner/admin) —
+// `apps/api/convex/topics/topics.ts`. Reading this page does not.
+const { can } = usePermissions();
+const canManage = computed(() => can('topics:manage'));
 
 useHead({ title: () => t('dashboard.audience.topics.detail.contacts.detail.pageTitle') });
 
@@ -444,6 +448,7 @@ const contactInitials = computed(() => {
 							</UiButton>
 
 							<UiButton
+								v-if="canManage"
 								full-width
 								class="gap-2 text-error bg-error-subtle hover:bg-error/20 border-0"
 								@click="isRemoveModalOpen = true"

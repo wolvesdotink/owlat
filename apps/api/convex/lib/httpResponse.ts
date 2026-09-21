@@ -54,7 +54,7 @@ export function publicCorsHeaders(methods: CorsMethodsHeader): Record<string, st
 export function jsonResponse(
 	data: unknown,
 	status = 200,
-	corsHeaders: Record<string, string> | null = null,
+	corsHeaders: Record<string, string> | null = null
 ): Response {
 	const headers: Record<string, string> = {
 		'Content-Type': 'application/json',
@@ -78,7 +78,7 @@ export function errorResponse(
 	category: OperationErrorCategory,
 	message: string,
 	data?: Record<string, unknown>,
-	corsHeaders: Record<string, string> | null = null,
+	corsHeaders: Record<string, string> | null = null
 ): Response {
 	const error: OperationError = { category, message };
 	if (data !== undefined) error.data = data;
@@ -94,7 +94,7 @@ export function errorResponse(
  */
 export function errorResponseFromThrow(
 	e: unknown,
-	corsHeaders: Record<string, string> | null = null,
+	corsHeaders: Record<string, string> | null = null
 ): Response {
 	const op = extractOperationError(e);
 	if (op) {
@@ -105,15 +105,19 @@ export function errorResponseFromThrow(
 }
 
 /**
- * A 405 response for an unsupported HTTP method. Method routing is a
- * transport concern, not an Operation outcome — there is no Operation error
- * category for it — so this is a small dedicated helper rather than a
- * `category`. The body keeps the `error` envelope for consistency but omits
- * `category`.
+ * A 405 response for an unsupported HTTP method.
+ *
+ * Method routing is a transport concern, so the STATUS is 405 rather than the
+ * one `categoryToHttpStatus` would derive — this is the one helper where the
+ * two disagree, and the transport wins. The body still carries a `category`:
+ * a client that reads `error.category` to decide what happened should not have
+ * to special-case one response shape for one status, and `invalid_input` is
+ * what a request addressed to a route with the wrong verb is.
  */
 export function methodNotAllowed(
 	message = 'Method not allowed',
-	corsHeaders: Record<string, string> | null = null,
+	corsHeaders: Record<string, string> | null = null
 ): Response {
-	return jsonResponse({ error: { message } }, 405, corsHeaders);
+	const error: OperationError = { category: 'invalid_input', message };
+	return jsonResponse({ error }, 405, corsHeaders);
 }

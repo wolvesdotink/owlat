@@ -82,6 +82,7 @@ export const listRawMessagePage = internalQuery({
  * one.
  */
 // public: soft-auth — the internal source query returns an empty page for anonymous callers and enforces mailbox access
+// authz: gate lives in internal.mail.mailbox.rawExport.listRawMessagePage (mailbox access, inherited identity).
 export const listRawMessageUrls = publicAction({
 	args: {
 		mailboxId: v.id('mailboxes'),

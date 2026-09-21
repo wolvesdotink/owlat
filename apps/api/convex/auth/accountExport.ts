@@ -12,6 +12,7 @@ import { components, internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
 import { authedAction } from '../lib/authedFunctions';
+import { throwInvalidInput } from '../_utils/errors';
 import {
 	openEmailTemplateContent,
 	openTransactionalEmailContent,
@@ -315,7 +316,7 @@ export const exportUserDataPage = authedAction({
 			});
 		}
 		if (args.resource === 'emailTemplates' || args.resource === 'transactionalEmails') {
-			if (!args.organizationId) throw new Error('Template export page requires organizationId');
+			if (!args.organizationId) throwInvalidInput('Template export page requires organizationId');
 			const result = (await ctx.runQuery(
 				internal.auth.accountExportQueries.listTemplateContentData,
 				{
@@ -366,7 +367,8 @@ export const exportUserDataPage = authedAction({
 			return serializeAccountExportPage({ ...result, page });
 		}
 		if (isAccountExportOrganizationResource(args.resource)) {
-			if (!args.organizationId) throw new Error('Organization export page requires organizationId');
+			if (!args.organizationId)
+				throwInvalidInput('Organization export page requires organizationId');
 			return (await ctx.runQuery(internal.auth.accountExportQueries.listOrganizationData, {
 				userId: args.userId,
 				organizationId: args.organizationId,
@@ -382,7 +384,7 @@ export const exportUserDataPage = authedAction({
 			return serializeAccountExportPage(result);
 		}
 		if (args.resource === 'mailMessages') {
-			if (!args.mailboxId) throw new Error('Mail message export page requires mailboxId');
+			if (!args.mailboxId) throwInvalidInput('Mail message export page requires mailboxId');
 			const result = (await ctx.runQuery(internal.auth.accountExportQueries.listMailboxMessages, {
 				userId: args.userId,
 				mailboxId: args.mailboxId,
@@ -411,7 +413,7 @@ export const exportUserDataPage = authedAction({
 			return serializeAccountExportPage({ ...result, page });
 		}
 		if (args.resource === 'mailDrafts') {
-			if (!args.mailboxId) throw new Error('Mail draft export page requires mailboxId');
+			if (!args.mailboxId) throwInvalidInput('Mail draft export page requires mailboxId');
 			const result = (await ctx.runQuery(internal.auth.accountExportQueries.listMailboxDrafts, {
 				userId: args.userId,
 				mailboxId: args.mailboxId,

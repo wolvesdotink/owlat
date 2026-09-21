@@ -179,7 +179,7 @@ const knownStructureDrift = {
 	},
 	'3.developer/8.environment-variables.md': {
 		en: {
-			headings: '2333331111111311311311111111114311111113433322334343334434323323332331222223333',
+			headings: '23333311111113113113111111111143111111134333223343433344343233233323312222233332',
 			fences: [
 				'sh',
 				'plain',
@@ -246,7 +246,7 @@ const knownStructureDrift = {
 			],
 		},
 		de: {
-			headings: '233333111111131131131111111111431111111343322334343334434323323332331222223333',
+			headings: '2333331111111311311311111111114311111113433223343433344343233233323312222233332',
 			fences: [
 				'sh',
 				'plain',
@@ -334,7 +334,6 @@ const knownSymbolDrift = {
 	},
 	'3.developer/31.self-hosting-config.md': { enOnly: ['NUXT_PUBLIC_DEPLOYMENT_MODE'], deOnly: [] },
 	'3.developer/38.dnsbl-delisting.md': { enOnly: [], deOnly: ['POST /ip-audit/run'] },
-	'3.developer/5.authentication.md': { enOnly: ['REQUIRE_EMAIL_VERIFICATION'], deOnly: [] },
 	'3.developer/8.environment-variables.md': {
 		enOnly: [
 			'CODE_WORKER_CONVEX_KEY',

@@ -14,15 +14,17 @@
  */
 
 import { v } from 'convex/values';
+import { consumeUpload, deleteOwnedUpload, storedFileSize } from '../storage/uploads';
 import { internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import { authedMutation, authedQuery, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
+import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
-import { getOrThrow, throwForbidden } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { sealBodyAtWrite } from '../lib/messageBody';
 import { assertStateIs } from './draftLifecycle/reducers';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -262,10 +264,29 @@ export const addAttachment = authedMutation({
 		isInline: v.optional(v.boolean()),
 		contentId: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
+		assertStateIs(draft, 'draft');
+		await consumeUpload(ctx, args.storageId, session, `mailDrafts:${args.draftId}`);
+		if (draft.attachments.length >= ATTACHMENT_COMPOSE_LIMITS.maxCount) {
+			throwInvalidInput('Too many attachments');
+		}
+		const size = await storedFileSize(ctx, args.storageId);
+		if (size <= 0 || size > MAX_ATTACHMENT_BYTES)
+			throwInvalidInput('Attachment size exceeds the allowed limit');
+		// Inline images are transmitted too. Re-read legacy attachment sizes so
+		// previously underreported rows cannot evade the total-byte limit.
+		const existingSizes = await Promise.all(
+			draft.attachments.map((attachment) => storedFileSize(ctx, attachment.storageId))
+		);
+		if (
+			existingSizes.reduce((total, bytes) => total + bytes, size) >
+			ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes
+		) {
+			throwInvalidInput('Attachments exceed the total size limit');
+		}
 
 		await ctx.db.patch(args.draftId, {
 			attachments: [
@@ -274,7 +295,7 @@ export const addAttachment = authedMutation({
 					storageId: args.storageId,
 					filename: args.filename,
 					contentType: args.contentType,
-					size: args.size,
+					size,
 					isInline: args.isInline ?? false,
 					contentId: args.contentId,
 				},
@@ -301,7 +322,7 @@ export const removeAttachment = authedMutation({
 			lastEditedAt: Date.now(),
 		});
 		if (toDelete) {
-			await ctx.storage.delete(toDelete.storageId);
+			await deleteOwnedUpload(ctx, toDelete.storageId, `mailDrafts:${args.draftId}`);
 		}
 		return { ok: true };
 	},
@@ -315,13 +336,14 @@ export const discard = authedMutation({
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return;
 		for (const att of draft.attachments) {
-			await ctx.storage.delete(att.storageId);
+			await deleteOwnedUpload(ctx, att.storageId, `mailDrafts:${args.draftId}`);
 		}
 		await ctx.db.delete(args.draftId);
 	},
 });
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+// authz: gate lives in draftQueries.getDraftHandler (requireMailboxAccess).
 export const get = publicQuery({
 	args: { draftId: v.id('mailDrafts') },
 	handler: getDraftHandler,
@@ -349,12 +371,14 @@ export const get = publicQuery({
  * discovery outcome, and whether it can be sealed to — no key material.
  */
 // public: soft-auth — returns null for anonymous; mailbox access is enforced in-handler
+// authz: gate lives in draftQueries.getComposerSealStateHandler (requireMailboxAccess).
 export const getComposerSealState = publicQuery({
 	args: { draftId: v.id('mailDrafts') },
 	handler: getComposerSealStateHandler,
 });
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+// authz: gate lives in draftQueries.listForMailboxHandler (requireMailboxAccess).
 export const listForMailbox = publicQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: listForMailboxHandler,

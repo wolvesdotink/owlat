@@ -21,7 +21,7 @@ import { intro, outro, text, password as passwordPrompt, isCancel, log } from '@
 import { progressSpinner } from '../lib/progress';
 import pc from 'picocolors';
 import { hashPassword } from '../lib/passwordHash';
-import { loadBackendContext, postJson } from '../lib/backend';
+import { backendErrorMessage, loadBackendContext, postJson } from '../lib/backend';
 import { loadFlagState } from '../lib/flagState';
 import { isValidEmail } from '../lib/validators';
 import { resolveFlags } from '@owlat/shared/featureFlags';
@@ -108,7 +108,7 @@ export async function bootstrap(
 	s.start(`POST ${ctx.baseUrl}/seed/admin`);
 	let response;
 	try {
-		response = await postJson<{ success?: boolean; userId?: string; error?: string }>(ctx, {
+		response = await postJson<{ success?: boolean; userId?: string }>(ctx, {
 			path: '/seed/admin',
 			body: { email: input.email, name: input.name, passwordHash, flags },
 		});
@@ -134,7 +134,7 @@ export async function bootstrap(
 		return 0;
 	}
 
-	const message = response.body?.error ?? `Unexpected status ${response.status}`;
+	const message = backendErrorMessage(response.body, `Unexpected status ${response.status}`);
 	s.stop(pc.red(`Failed: ${message}`));
 	return 1;
 }

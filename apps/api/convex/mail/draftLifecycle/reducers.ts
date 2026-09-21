@@ -222,6 +222,7 @@ export function reduceSent(
 			// no orphaned blobs.
 			{
 				kind: 'delete_attachment_storage',
+				draftId: draft._id,
 				storageIds: draft.attachments.map((a) => a.storageId),
 			},
 			{

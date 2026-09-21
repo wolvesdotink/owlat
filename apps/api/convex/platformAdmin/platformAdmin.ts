@@ -89,6 +89,7 @@ export async function requirePlatformAdmin(ctx: QueryCtx): Promise<{
  * Public query to check if current user is a platform admin.
  */
 // public: nav helper, returns a boolean; safe for anonymous
+// authz: self-scoped — answers only whether the CALLER is a platform admin.
 export const isPlatformAdmin = publicQuery({
 	args: {},
 	handler: async (ctx) => {

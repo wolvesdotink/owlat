@@ -1,13 +1,10 @@
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
-import type {
-	CommandSession,
-	ImapCommandModule,
-	SelectedState,
-} from '../types.js';
+import type { CommandSession, ImapCommandModule, SelectedState } from '../types.js';
 import { syncSession } from '../helpers/session.js';
 import { requireAuth, requireSelect } from '../helpers/auth.js';
 import { buildSeqMap, seqForUid } from '../helpers/seqMap.js';
+import { loadChangedEnvelopes, loadFolderUids } from '../helpers/folderPaging.js';
 import { formatFlags, type FetchEnvelope } from '../fetch/format.js';
 
 interface PeekResult {
@@ -100,7 +97,7 @@ export function diffIdle(args: {
 		const seq = seqForUid(nextMap, row.uid);
 		if (seq === undefined) continue;
 		fetches.push(
-			`* ${seq} FETCH (UID ${row.uid} MODSEQ (${row.modseq}) FLAGS (${formatFlags(row)}))`,
+			`* ${seq} FETCH (UID ${row.uid} MODSEQ (${row.modseq}) FLAGS (${formatFlags(row)}))`
 		);
 	}
 
@@ -169,9 +166,7 @@ export const idleModule: ImapCommandModule<void> = {
 		let lastUids: number[] | null = null;
 		const seedUids = (async () => {
 			try {
-				lastUids = (await deps.convex.query(fn.listFolderUids as never, {
-					folderId: currentSelected.folderId,
-				} as never)) as number[];
+				lastUids = await loadFolderUids(deps.convex, currentSelected.folderId);
 			} catch (err) {
 				logger.warn({ err }, 'IDLE seed UID list failed');
 			}
@@ -180,29 +175,27 @@ export const idleModule: ImapCommandModule<void> = {
 		const pollTimer = setInterval(async () => {
 			try {
 				await seedUids;
-				const peek = (await deps.convex.query(fn.peekFolderModseq as never, {
-					folderId: currentSelected.folderId,
-				} as never)) as PeekResult | null;
+				const peek = (await deps.convex.query(
+					fn.peekFolderModseq as never,
+					{
+						folderId: currentSelected.folderId,
+					} as never
+				)) as PeekResult | null;
 				if (!peek) return;
 				// Nothing observable changed → cheap path, no UID list fetch.
 				if (peek.totalCount === lastTotal && peek.highestModseq === lastModseq) {
 					return;
 				}
 
-				const nextUids = (await deps.convex.query(fn.listFolderUids as never, {
-					folderId: currentSelected.folderId,
-				} as never)) as number[];
+				const nextUids = await loadFolderUids(deps.convex, currentSelected.folderId);
 				// Rows whose flags (or any field) changed since the last announced
-				// modseq. One range query over the whole folder; the convex side
-				// filters to modseq > lastModseq.
+				// modseq, read off `by_folder_and_modseq`. The poll runs every five
+				// seconds for the whole life of an IDLE, so it must cost what
+				// changed — not the size of the folder, which is what reading a UID
+				// window and dropping the unchanged rows afterwards cost.
 				const changedRows =
 					peek.highestModseq !== lastModseq
-						? ((await deps.convex.query(fn.fetchEnvelopes as never, {
-								folderId: currentSelected.folderId,
-								uidLow: 1,
-								uidHigh: Math.max(peek.uidNext - 1, 1),
-								modseqSince: lastModseq,
-							} as never)) as FetchEnvelope[])
+						? await loadChangedEnvelopes(deps.convex, currentSelected.folderId, lastModseq)
 						: [];
 
 				const prevUids = lastUids ?? nextUids;
