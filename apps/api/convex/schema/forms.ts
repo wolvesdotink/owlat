@@ -32,8 +32,7 @@ export const formTables = {
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	})
-		.index('by_active', ['isActive']),
+	}).index('by_active', ['isActive']),
 
 	// Form Submissions - tracks form submissions for analytics
 	formSubmissions: defineTable({
@@ -69,7 +68,5 @@ export const formTables = {
 		.index('by_form_endpoint', ['formEndpointId'])
 		.index('by_contact', ['contactId'])
 		.index('by_status', ['status'])
-		.index('by_form_endpoint_and_status', ['formEndpointId', 'status'])
-		.index('by_confirmation_token', ['confirmationToken'])
-		.index('by_submitted_at', ['submittedAt']),
+		.index('by_confirmation_token', ['confirmationToken']),
 };

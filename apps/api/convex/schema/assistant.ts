@@ -39,7 +39,6 @@ export const assistantTables = {
 		// Soft-delete: user-initiated deletes mark the row; list queries filter it.
 		deletedAt: v.optional(v.number()),
 	})
-		.index('by_owner', ['ownerId'])
 		// Conversation list: owner leads, lastMessageAt orders within it (desc).
 		.index('by_owner_and_last_message', ['ownerId', 'lastMessageAt']),
 
@@ -62,7 +61,5 @@ export const assistantTables = {
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		createdAt: v.number(),
-	})
-		.index('by_conversation_and_created', ['conversationId', 'createdAt'])
-		.index('by_owner', ['ownerId']),
+	}).index('by_conversation_and_created', ['conversationId', 'createdAt']),
 };

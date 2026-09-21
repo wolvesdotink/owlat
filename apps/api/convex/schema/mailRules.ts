@@ -151,9 +151,7 @@ export const mailRulesTables = {
 		mailboxId: v.id('mailboxes'),
 		senderEmail: v.string(),
 		repliedAt: v.number(),
-	})
-		.index('by_mailbox_and_sender', ['mailboxId', 'senderEmail'])
-		.index('by_replied_at', ['repliedAt']),
+	}).index('by_mailbox_and_sender', ['mailboxId', 'senderEmail']),
 
 	// Personal address book — distinct from CRM `contacts` (which is
 	// org-shared). Auto-populated as the user composes / replies, and

@@ -249,8 +249,7 @@ export const mailAccountsTables = {
 		backfillDone: v.optional(v.number()),
 	})
 		.index('by_account', ['accountId'])
-		.index('by_account_and_remote', ['accountId', 'remoteName'])
-		.index('by_folder', ['folderId']),
+		.index('by_account_and_remote', ['accountId', 'remoteName']),
 
 	// Mailbox migration job — a one-time historical import of a connected
 	// external mailbox (e.g. "Migrate from Google"). 1:1 with an

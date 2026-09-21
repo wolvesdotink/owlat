@@ -41,5 +41,5 @@ export const draftStreamTables = {
 		errorMessage: v.optional(v.string()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	}).index('by_owner', ['ownerId']),
+	}),
 };
