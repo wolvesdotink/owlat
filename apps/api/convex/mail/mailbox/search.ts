@@ -17,6 +17,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { loadAccessibleMailboxes, loadReadableMailbox } from '../permissions';
 import { readSession, type FolderRole } from './shared';
 import { resolveBodySearchMode, textSearchQuery } from '../searchBody';
+import { openMailMessageRows } from '../../lib/messageBody';
 import {
 	type MailboxPage,
 	type MailboxScanPosition,
@@ -261,7 +262,9 @@ async function searchByFilename(
 	}
 
 	return {
-		messages,
+		// E8b: results leave the read boundary with their inline bodies unsealed —
+		// the reader renders a result row's body straight off the row.
+		messages: await openMailMessageRows(messages),
 		hasMore: !page.isDone,
 		nextCursor: page.isDone ? null : page.continueCursor,
 	};
@@ -324,7 +327,7 @@ export const search = publicQuery({
 			}
 			const merged = mergeMailboxPages(pages, limit);
 			return {
-				messages: merged.page,
+				messages: await openMailMessageRows(merged.page),
 				hasMore: merged.hasMore,
 				nextCursor: merged.hasMore ? encodeMultiCursor(merged.cursor) : null,
 			};
@@ -395,7 +398,7 @@ export const search = publicQuery({
 		);
 
 		return {
-			messages: filtered,
+			messages: await openMailMessageRows(filtered),
 			hasMore: !page.isDone,
 			nextCursor: page.isDone ? null : page.continueCursor,
 		};

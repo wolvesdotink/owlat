@@ -75,28 +75,66 @@ export interface WebSecretBox {
 }
 
 /**
+ * Derived keys, memoized on the (secret, salt, info) triple they came FROM.
+ *
+ * Every call into a box derives its key first, and consumers build a fresh box
+ * per call — so opening one mailbox list page (50 rows x a text and an html
+ * body) paid for ~100 `importKey` + `deriveKey` round trips over the same
+ * secret and the same labels. Keying on the triple keeps domain separation
+ * exact and means a rotated secret or a re-labelled context MISSES the cache
+ * rather than being served a stale key; the keys themselves are
+ * non-extractable and never leave an isolate that already holds the secret.
+ * Purely an optimization — deleting this map changes nothing but speed.
+ */
+const derivedKeys = new Map<string, Promise<CryptoKey>>();
+/** Distinct (secret, context) pairs to remember. A deployment has one secret
+ * and a handful of labels; the bound only stops a long-lived isolate from
+ * growing the map without limit. */
+const MAX_DERIVED_KEYS = 32;
+
+function memoizedKey(
+	secret: string,
+	context: WebSecretBoxContext,
+	derive: () => Promise<CryptoKey>
+): Promise<CryptoKey> {
+	// `\0` cannot appear in any of the three, so the joined key is unambiguous.
+	const cacheKey = `${secret}\0${context.salt}\0${context.info}`;
+	const cached = derivedKeys.get(cacheKey);
+	if (cached !== undefined) return cached;
+	if (derivedKeys.size >= MAX_DERIVED_KEYS) derivedKeys.clear();
+	const pending = derive().catch((error: unknown) => {
+		// A failed derivation must not be remembered as the answer forever.
+		derivedKeys.delete(cacheKey);
+		throw error;
+	});
+	derivedKeys.set(cacheKey, pending);
+	return pending;
+}
+
+/**
  * Build a {@link WebSecretBox} that derives its key from `secret` under the
  * given HKDF salt/info context. Pure crypto — reads no env — so callers own the
  * secret source and the domain-separation labels.
  */
 export function createWebSecretBox(secret: string, context: WebSecretBoxContext): WebSecretBox {
-	const deriveKey = async (): Promise<CryptoKey> => {
-		const ikm = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
-			'deriveKey',
-		]);
-		return crypto.subtle.deriveKey(
-			{
-				name: 'HKDF',
-				hash: 'SHA-256',
-				salt: encoder.encode(context.salt),
-				info: encoder.encode(context.info),
-			},
-			ikm,
-			{ name: 'AES-GCM', length: AES_KEY_BITS },
-			false,
-			['encrypt', 'decrypt']
-		);
-	};
+	const deriveKey = (): Promise<CryptoKey> =>
+		memoizedKey(secret, context, async () => {
+			const ikm = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
+				'deriveKey',
+			]);
+			return crypto.subtle.deriveKey(
+				{
+					name: 'HKDF',
+					hash: 'SHA-256',
+					salt: encoder.encode(context.salt),
+					info: encoder.encode(context.info),
+				},
+				ikm,
+				{ name: 'AES-GCM', length: AES_KEY_BITS },
+				false,
+				['encrypt', 'decrypt']
+			);
+		});
 
 	return {
 		deriveKey,
