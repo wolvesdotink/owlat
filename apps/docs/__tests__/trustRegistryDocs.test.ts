@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { columnIndex, section, tableHeader, tableRows } from './markdownDocs';
+import { columnIndex, section, tableHeader, tableRows } from './trustRegistryMarkdown';
 
 /**
  * The trust-registry page makes claims an operator acts on — privacy floors, a
@@ -286,7 +286,9 @@ describe('trust registry docs — the off state and the wiring behind it', () =>
 			'apps/web reads no ostrTier — the pages must not claim a chip'
 		).toBeGreaterThan(0);
 		expect(threadReaderSource).toContain("isFeatureEnabled('ostr')");
-		expect(threadReaderSource).toContain(':ostr-tier="msg.ostrTier"');
+		expect(readRepoFile('apps/web/app/components/postbox/PostboxReaderMessage.vue')).toContain(
+			':ostr-tier="msg.ostrTier"'
+		);
 		expect(enPage).toMatch(/gates the routing decision and the tier chip/i);
 		expect(dePage).toMatch(/Ablageentscheidung und den Stufen-Chip/);
 		for (const { locale, page } of pages) {

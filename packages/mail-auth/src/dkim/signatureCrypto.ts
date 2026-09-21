@@ -8,7 +8,11 @@
  */
 
 import { createPublicKey, timingSafeEqual, type KeyObject } from 'crypto';
-import { canonicalizeHeaderField, stripSignatureValue, type Canonicalization } from '@owlat/mail-canon';
+import {
+	canonicalizeHeaderField,
+	stripSignatureValue,
+	type Canonicalization,
+} from '@owlat/mail-canon';
 import type { DkimVerdict } from '../dmarc.js';
 import { isNoRecordDnsError } from '../dnsErrors.js';
 import { selectSignedHeaders } from './evidence.js';

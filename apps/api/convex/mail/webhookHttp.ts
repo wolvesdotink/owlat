@@ -133,7 +133,9 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 	const mp = payload.mailboxPayload;
 	// Invalid advisory data must never prevent delivery; retain evidence only by opt-in.
 	const ostrTier = isOstrTier(mp.ostrTier) ? mp.ostrTier : undefined;
-	const ostrDkimEvidence = isObserverModeEnabled() ? parseOstrDkimEvidence(mp.ostrDkimEvidence) : undefined;
+	const ostrDkimEvidence = isObserverModeEnabled()
+		? parseOstrDkimEvidence(mp.ostrDkimEvidence)
+		: undefined;
 
 	try {
 		const result = await ctx.runAction(internal.mail.delivery.ingestFromWebhook, {

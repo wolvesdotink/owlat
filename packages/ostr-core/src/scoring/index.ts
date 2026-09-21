@@ -5,6 +5,6 @@
  * See TRUST_REGISTRY_PLAN §6.
  */
 
-export { POLICY_VERSION, POLICY_V1, type PolicyV1, type TierBoundaries } from './policy.js';
+export { POLICY_VERSION, POLICY_V1, type TierBoundaries } from './policy.js';
 export { scoreSubject, type ScoreSubjectInput } from './score.js';
 export { defaultObserverGroup, registrableDomain, type ObserverGrouper } from './select.js';

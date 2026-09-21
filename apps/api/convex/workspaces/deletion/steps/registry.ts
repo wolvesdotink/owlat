@@ -260,7 +260,6 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'ostrBatchCommitments',
 	'ostrObserverState',
 
-
 	// UI / onboarding state
 	'onboardingProgress',
 
@@ -461,7 +460,6 @@ export const ORGANIZATION_DELETION_STEPS = {
 	ostrReportQueue: makeSweepStep('ostrReportQueue'),
 	ostrBatchCommitments: makeSweepStep('ostrBatchCommitments'),
 	ostrObserverState: makeSweepStep('ostrObserverState'),
-
 } as const satisfies {
 	readonly [K in OrganizationDeletionTable]: OrganizationDeletionStepModule<K>;
 };

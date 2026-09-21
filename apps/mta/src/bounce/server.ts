@@ -27,7 +27,6 @@ import { parseMessage } from '@owlat/mail-message';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
-import { emailDomain } from '@owlat/shared/spfAlignment';
 import { MAX_INBOUND_MESSAGE_BYTES } from '@owlat/shared/attachments';
 import { checkConnectionRateLimit, releaseConnection } from './inboundSecurity.js';
 import { createSlotTracker } from '../lib/connectionSlots.js';

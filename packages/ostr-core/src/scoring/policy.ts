@@ -251,5 +251,3 @@ export const POLICY_V1 = Object.freeze({
 	/** Contributions and the score are rounded to this many decimals / to an integer. */
 	contributionDecimals: 2,
 });
-
-export type PolicyV1 = typeof POLICY_V1;

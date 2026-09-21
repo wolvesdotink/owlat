@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { deriveOstrChip, type OstrChip } from '~/utils/ostrChip';
 /**
  * Honest sender-authentication badge for the reader (Sealed Mail A3, flag
  * `senderAuthBadges`). Modeled on PostboxSecurityBadge: quiet when the sender
@@ -11,10 +12,8 @@
  * renders nothing.
  */
 import {
-	deriveOstrChip,
 	deriveSenderAuth,
 	deriveSenderHeuristicLines,
-	type OstrChip,
 	type SenderAuthInput,
 	type SenderAuthResult,
 	type SenderHeuristics,

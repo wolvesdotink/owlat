@@ -128,6 +128,7 @@ export const HOUR_MS = 60 * 60 * 1000;
  * (`campaigns/capacityPlan.ts`) both index by. ONE definition: the two modules
  * must never disagree about where a day starts.
  */
+export const DAY_MS = 24 * HOUR_MS;
 
 /**
  * `ostrSubmissionLog.attestationJson` — a signed OSTR attestation, stored
@@ -146,7 +147,6 @@ export const CURRENT_OSTR_ATTESTATION_BLOB_VERSION = 1;
  * know, so bumping this means bumping the package's `v` too.
  */
 export const CURRENT_OSTR_ACCUMULATOR_STATE_VERSION = 1;
-export const DAY_MS = 24 * HOUR_MS;
 
 /**
  * The shape `inboundMessages.attachmentMeta` is written in today.

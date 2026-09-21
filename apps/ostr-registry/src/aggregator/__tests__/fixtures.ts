@@ -27,8 +27,6 @@ export const OBSERVERS = [
 	'gw.observer-d.example',
 ] as const;
 
-export type ObserverName = (typeof OBSERVERS)[number];
-
 const KEYS = new Map<string, string>(
 	OBSERVERS.map((observer) => [observer, generateEd25519KeyPair().privateKey])
 );
@@ -227,19 +225,6 @@ export function corpus(): PendingEntry[] {
 		...abusive({ ip: '198.51.100.7' }),
 		...tenant(),
 	];
-}
-
-/** A further clean window for the veteran — the "nothing moved" refresh's counterpart. */
-export function laterVeteranEntry(): PendingEntry {
-	return traffic({
-		observer: OBSERVERS[0],
-		subject: { domain: 'veteran.example' },
-		messages: 150_000,
-		passRate: 0.995,
-		from: '2025-02-26T00:00:00Z',
-		to: '2026-08-19T00:00:00Z',
-		loggedAt: '2026-08-19T00:00:00Z',
-	});
 }
 
 /**

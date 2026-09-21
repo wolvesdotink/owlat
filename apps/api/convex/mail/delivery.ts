@@ -1,28 +1,11 @@
 /**
- * Personal-mail delivery pipeline.
+ * Personal-mail delivery: stage MIME, thread it, allocate UID/modseq, persist
+ * the message, and update folder/thread aggregates. Invoked by webhookHttp.ts
+ * after the MTA HMAC is verified; function paths remain internal.mail.delivery.*.
  *
- * Called by `apps/api/convex/mailWebhook.ts` after the MTA HMAC-verifies an
- * `inbound.mailbox.received` event. Stores raw .eml in ctx.storage, performs
- * RFC 5322 threading, allocates per-folder UID + modseq atomically, inserts
- * a mailMessages row, and updates folder/thread aggregates.
- *
- * This file is the Convex-function surface — the ingest action and the
- * delivery mutation, at their existing `internal.mail.delivery.*` paths. The
- * steps live beside it in `./deliveryPipeline/`:
- *
- *   ingest.ts   raw staging, decrypt-on-ingest, signature verify, body split,
- *               attachment capture (action-only)
- *   scan.ts     the aggregate inbound malware verdict
- *   routing.ts  pure spam / filter / DMARC-ARC decisions
- *   insert.ts   threading, UID+modseq, the row insert and its aggregates
- *
- * (`deliveryPipeline/` rather than `delivery/` so it never reads as a sibling
- * of the top-level `convex/delivery/` campaign send domain.)
- *
- * Threading order:
- *   1. In-Reply-To header → existing message by rfc822MessageId
- *   2. References header → any referenced message
- *   3. Fallback: mailbox + normalized subject (24h window)
+ * Action preparation lives in deliveryPipeline/{ingest,capture}; scan, routing,
+ * and insert own the mutation-side decisions and writes. Threading prefers
+ * In-Reply-To, then References, then mailbox + normalized subject within 24h.
  */
 
 import { v } from 'convex/values';
@@ -356,7 +339,10 @@ export const deliverToMailbox = internalMutation({
 			isOstrFlaggedTier(args.ostrTier) && resolveFlagsFromSettings(settings)['ostr'] === true;
 
 		const initialRole =
-			spamVerdict === 'spam' || args.virusVerdict === 'infected' || isDmarcQuarantine || ostrRoutesToSpam
+			spamVerdict === 'spam' ||
+			args.virusVerdict === 'infected' ||
+			isDmarcQuarantine ||
+			ostrRoutesToSpam
 				? 'spam'
 				: filterOutcome.isTrashed
 					? 'trash'
@@ -435,7 +421,11 @@ export const deliverToMailbox = internalMutation({
 
 		// Retain raw signed-header evidence only for an opted-in observer.
 		if (args.ostrDkimEvidence !== undefined && isObserverModeEnabled()) {
-			await recordOstrEvidence(ctx, { messageId, mailboxId: mailbox._id, evidence: args.ostrDkimEvidence });
+			await recordOstrEvidence(ctx, {
+				messageId,
+				mailboxId: mailbox._id,
+				evidence: args.ostrDkimEvidence,
+			});
 		}
 
 		// 11b. Reply Queue: enqueue needs-reply classification for the affected

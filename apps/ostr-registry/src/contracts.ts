@@ -8,7 +8,6 @@
  * choice (plan D1: the embedded store is one operator's choice, not spec).
  */
 import type {
-	Attestation,
 	DiffFeedEntry,
 	ScoreResult,
 	SequencedAttestation,
@@ -69,9 +68,6 @@ export interface RegistryServices {
 	log: RegistryLog;
 	scores: ScoreIndex;
 }
-
-/** Convenience alias for handlers that accept a submitted attestation. */
-export type SubmittedAttestation = Attestation;
 
 /** Re-exported so http/ tests can build typed subjects without deep imports. */
 export type { SubjectRef };
