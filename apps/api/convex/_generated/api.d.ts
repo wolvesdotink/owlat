@@ -889,6 +889,7 @@ import type * as mail_triageTally from '../mail/triageTally.js';
 import type * as mail_unsubscribe from '../mail/unsubscribe.js';
 import type * as mail_vacation from '../mail/vacation.js';
 import type * as mail_webhookHttp from '../mail/webhookHttp.js';
+import type * as maintenance_cronRegistration from '../maintenance/cronRegistration.js';
 import type * as maintenance_retention from '../maintenance/retention.js';
 import type * as mediaAssets from '../mediaAssets.js';
 import type * as migrations_0035_seal_bodies_at_rest from '../migrations/0035_seal_bodies_at_rest.js';
@@ -2027,6 +2028,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/unsubscribe': typeof mail_unsubscribe;
 	'mail/vacation': typeof mail_vacation;
 	'mail/webhookHttp': typeof mail_webhookHttp;
+	'maintenance/cronRegistration': typeof maintenance_cronRegistration;
 	'maintenance/retention': typeof maintenance_retention;
 	mediaAssets: typeof mediaAssets;
 	'migrations/0035_seal_bodies_at_rest': typeof migrations_0035_seal_bodies_at_rest;
