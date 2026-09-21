@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/email-scanner",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"private": true,
 	"description": "Email security scanner — malicious content, attachment, and URL reputation scanning",
 	"homepage": "https://owlat.app",

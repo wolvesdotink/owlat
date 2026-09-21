@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/mail-auth",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"private": true,
 	"description": "In-house email authentication — RFC 7208 SPF, RFC 7489 DMARC, RFC 6376 DKIM canonicalization + verification, and a cached injectable DNS resolver",
 	"homepage": "https://owlat.app",
