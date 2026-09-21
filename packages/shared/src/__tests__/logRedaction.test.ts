@@ -48,6 +48,14 @@ describe('redactEmailAddress', () => {
 		expect(redactEmailAddress('@nolocal.example')).toMatch(/^redacted-[0-9a-f]{12}$/);
 	});
 
+	it.each([
+		'Alice <alice@example.com> (private name)',
+		'alice@example.com (private name)',
+		'alice@example.com\nprivate name',
+	])('never preserves header prose after the domain: %s', (value) => {
+		expect(redactEmailAddress(value)).toMatch(/^redacted-[0-9a-f]{12}$/);
+	});
+
 	it('passes the empty string through rather than hashing nothing', () => {
 		expect(redactEmailAddress('')).toBe('');
 		expect(redactEmailAddress('   ')).toBe('');

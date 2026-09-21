@@ -72,7 +72,11 @@ export function redactEmailAddress(address: string): string {
 	const at = normalized.lastIndexOf('@');
 	const digest = redactionDigest(normalized);
 	if (at <= 0 || at === normalized.length - 1) return `redacted-${digest}`;
-	return `redacted-${digest}@${normalized.slice(at + 1)}`;
+	const domain = normalized.slice(at + 1);
+	// From headers can contain display names/comments after the mailbox.
+	// Only preserve a plain DNS name; hash malformed or decorated input whole.
+	if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(domain)) return `redacted-${digest}`;
+	return `redacted-${digest}@${domain}`;
 }
 
 /**
