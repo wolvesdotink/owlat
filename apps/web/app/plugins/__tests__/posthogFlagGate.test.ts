@@ -63,6 +63,7 @@ describe('posthog plugin — analytics.posthog gate', () => {
 
 	afterEach(() => {
 		vi.unstubAllGlobals();
+		vi.doMock('posthog-js', () => ({ default: posthogStub }));
 	});
 
 	it('does not initialise while the flag is off, even with a key configured', async () => {
@@ -101,6 +102,31 @@ describe('posthog plugin — analytics.posthog gate', () => {
 		expect(posthogStub.opt_out_capturing).toHaveBeenCalled();
 		expect(posthogStub.reset).toHaveBeenCalled();
 		expect(provide.posthog.value).toBeNull();
+	});
+
+	it('does not initialize if the flag is revoked while the module loads', async () => {
+		let release!: () => void;
+		const loading = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		vi.doMock('posthog-js', async () => {
+			await loading;
+			return { default: posthogStub };
+		});
+		const { plugin, flag } = await loadPlugin();
+		const { provide } = plugin();
+		flag.value = true;
+		await nextTick();
+		flag.value = false;
+		await nextTick();
+		release();
+		await settle();
+		expect(posthogStub.init).not.toHaveBeenCalled();
+		expect(posthogStub.opt_in_capturing).not.toHaveBeenCalled();
+		expect(provide.posthog.value).toBeNull();
+		flag.value = true;
+		await settle();
+		expect(posthogStub.init).toHaveBeenCalledOnce();
 	});
 
 	it('never initialises without a key, whatever the flag says', async () => {

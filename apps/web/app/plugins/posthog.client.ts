@@ -58,6 +58,8 @@ export default defineNuxtPlugin(() => {
 				// is on, so the ~193KB library is code-split out of the main chunk for
 				// the default (no-key, no-flag) build.
 				const { default: posthog } = await import('posthog-js');
+				// Loading yields: revocation must win before init can make requests.
+				if (!isEnabled('analytics.posthog')) return;
 				posthog.init(apiKey, {
 					// runtimeConfig.public.posthogHost already carries the default host.
 					api_host: host,
@@ -86,6 +88,9 @@ export default defineNuxtPlugin(() => {
 			// recording.
 			client.opt_in_capturing({ captureEventName: false });
 			handle.value = client;
+		} catch {
+			disable();
+			logWarn('PostHog could not be initialized.');
 		} finally {
 			starting = false;
 		}
