@@ -1,9 +1,11 @@
-import { api } from '@owlat/api';
-import { effectScope } from 'vue';
-import type { ConvexQueryResult } from './useConvexQuery';
-import type { OrganizationRole } from './useOrganization';
+import { api } from "@owlat/api";
+import { effectScope, type EffectScope } from "vue";
+import type { ConvexQueryResult } from "./useConvexQuery";
+import type { OrganizationRole } from "./useOrganization";
 
-type SettingsQuery = ConvexQueryResult<(typeof api.workspaces.settings.get)['_returnType']> | null;
+type SettingsQuery = ConvexQueryResult<(typeof api.workspaces.settings.get)["_returnType"]> | null;
+
+let settingsScope: EffectScope | null = null;
 
 let settingsQuery: SettingsQuery = null;
 
@@ -21,15 +23,15 @@ let settingsQuery: SettingsQuery = null;
  */
 function workspaceSettingsQuery(): NonNullable<SettingsQuery> {
 	if (!settingsQuery) {
-		const scope = effectScope(true);
-		scope.run(() => {
+		settingsScope = effectScope(true);
+		settingsScope.run(() => {
 			const { isPending: authPending, activeOrganizationId } = useAuth();
 			settingsQuery = useConvexQuery(api.workspaces.settings.get, () => {
 				if (authPending.value) {
-					return 'skip';
+					return "skip";
 				}
 				if (!activeOrganizationId.value) {
-					return 'skip';
+					return "skip";
 				}
 				return {};
 			});
@@ -38,7 +40,7 @@ function workspaceSettingsQuery(): NonNullable<SettingsQuery> {
 	// `run` is a no-op on a stopped scope, and a fresh detached one is never
 	// stopped — but say so rather than asserting a null away.
 	if (!settingsQuery) {
-		throw new Error('useOrganizationContext: could not build the workspace-settings query');
+		throw new Error("useOrganizationContext: could not build the workspace-settings query");
 	}
 	return settingsQuery;
 }
@@ -126,4 +128,13 @@ export function useOrganizationContext() {
 		// Convenience flags
 		hasActiveOrganization: computed(() => !!activeOrganizationId.value),
 	};
+}
+
+// Detached scopes outlive their callers and must be stopped on hot replacement.
+if (import.meta.hot) {
+	import.meta.hot.dispose(() => {
+		settingsScope?.stop();
+		settingsScope = null;
+		settingsQuery = null;
+	});
 }

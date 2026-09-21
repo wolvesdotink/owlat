@@ -1,16 +1,16 @@
-import type { BetterFetchError } from '@better-fetch/fetch';
-import { effectScope } from 'vue';
-import { authClient, type AuthSessionData } from '~/lib/auth-client';
-import { resetConvexAuthTokenCache } from '~/lib/convex-auth';
-import { requiresTwoFactor } from '~/utils/accountTwoFactor';
+import type { BetterFetchError } from "@better-fetch/fetch";
+import { effectScope, type EffectScope } from "vue";
+import { authClient, type AuthSessionData } from "~/lib/auth-client";
+import { resetConvexAuthTokenCache } from "~/lib/convex-auth";
+import { requiresTwoFactor } from "~/utils/accountTwoFactor";
 
 type SessionData = AuthSessionData | null;
 
-export type AuthStatus = 'pending' | 'authenticated' | 'unauthenticated' | 'error';
+export type AuthStatus = "pending" | "authenticated" | "unauthenticated" | "error";
 
 type RefreshSessionOptions = {
 	force?: boolean;
-	expected?: 'authenticated' | 'unauthenticated';
+	expected?: "authenticated" | "unauthenticated";
 	activeOrganizationId?: string | null;
 	maxRetries?: number;
 	intervalMs?: number;
@@ -49,15 +49,15 @@ function toError(error: BetterFetchError | null, t: (key: string) => string): Er
 		return null;
 	}
 
-	return new Error(error.message || t('shared.useAuth.requestFailed'));
+	return new Error(error.message || t("shared.useAuth.requestFailed"));
 }
 
 function matchesExpectedSession(session: SessionData, options: RefreshSessionOptions): boolean {
-	if (options.expected === 'authenticated' && !session) {
+	if (options.expected === "authenticated" && !session) {
 		return false;
 	}
 
-	if (options.expected === 'unauthenticated' && session) {
+	if (options.expected === "unauthenticated" && session) {
 		return false;
 	}
 
@@ -91,18 +91,20 @@ function createSessionStore() {
 
 type SessionStore = ReturnType<typeof createSessionStore>;
 
+let sessionScope: EffectScope | null = null;
+
 let sharedSession: SessionStore | null = null;
 
 function sessionStore(): SessionStore {
 	if (!sharedSession) {
-		const scope = effectScope(true);
-		scope.run(() => {
+		sessionScope = effectScope(true);
+		sessionScope.run(() => {
 			sharedSession = createSessionStore();
 		});
 		// `run` is a no-op on a stopped scope, and a fresh detached one is never
 		// stopped — but say so rather than asserting a null away.
 		if (!sharedSession) {
-			throw new Error('useAuth: could not build the better-auth session store');
+			throw new Error("useAuth: could not build the better-auth session store");
 		}
 	}
 	return sharedSession;
@@ -116,25 +118,25 @@ export function useAuth() {
 
 	const status = computed<AuthStatus>(() => {
 		if (sessionState.value.isPending) {
-			return 'pending';
+			return "pending";
 		}
 
 		if (sessionState.value.data) {
-			return 'authenticated';
+			return "authenticated";
 		}
 
 		if (sessionState.value.error) {
-			return 'error';
+			return "error";
 		}
 
-		return 'unauthenticated';
+		return "unauthenticated";
 	});
 
-	const isPending = computed(() => status.value === 'pending');
+	const isPending = computed(() => status.value === "pending");
 	const error = computed(() => toError(sessionState.value.error, t));
 
 	const isAuthenticated = computed(() => {
-		return status.value === 'authenticated';
+		return status.value === "authenticated";
 	});
 
 	const user = computed(() => {
@@ -154,7 +156,7 @@ export function useAuth() {
 	});
 
 	const waitUntilReady = async (timeoutMs = READY_TIMEOUT_MS) => {
-		await waitForLoaded(status, (s) => s !== 'pending', timeoutMs);
+		await waitForLoaded(status, (s) => s !== "pending", timeoutMs);
 
 		return status.value;
 	};
@@ -174,7 +176,7 @@ export function useAuth() {
 
 			const resolvedSession = result.data ?? null;
 			if (matchesExpectedSession(resolvedSession, options)) {
-				authClient.$store.notify('$sessionSignal');
+				authClient.$store.notify("$sessionSignal");
 				return resolvedSession;
 			}
 
@@ -183,7 +185,7 @@ export function useAuth() {
 			}
 		}
 
-		authClient.$store.notify('$sessionSignal');
+		authClient.$store.notify("$sessionSignal");
 		return sessionData.value;
 	};
 
@@ -194,7 +196,7 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useAuth.signInFailed'));
+			throw new Error(result.error.message || t("shared.useAuth.signInFailed"));
 		}
 
 		// An account with TOTP enabled answers with `{ twoFactorRedirect: true }`
@@ -206,7 +208,7 @@ export function useAuth() {
 			return result.data;
 		}
 
-		await refetch({ force: true, expected: 'authenticated' });
+		await refetch({ force: true, expected: "authenticated" });
 
 		return result.data;
 	};
@@ -221,10 +223,10 @@ export function useAuth() {
 	 */
 	const completeTwoFactorSignIn = async (input: {
 		code: string;
-		method?: 'totp' | 'backup-code';
+		method?: "totp" | "backup-code";
 	}) => {
 		const result =
-			input.method === 'backup-code'
+			input.method === "backup-code"
 				? await authClient.twoFactor.verifyBackupCode({ code: input.code })
 				: await authClient.twoFactor.verifyTotp({ code: input.code });
 
@@ -234,10 +236,10 @@ export function useAuth() {
 			// backup code, expired challenge), and BetterAuth phrases those as
 			// untranslated English prose that would land straight on the sign-in
 			// form. One catalog message says the same thing in the user's language.
-			throw new Error(t('shared.useAuth.twoFactorFailed'));
+			throw new Error(t("shared.useAuth.twoFactorFailed"));
 		}
 
-		await refetch({ force: true, expected: 'authenticated' });
+		await refetch({ force: true, expected: "authenticated" });
 
 		return result.data;
 	};
@@ -250,10 +252,10 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useAuth.signUpFailed'));
+			throw new Error(result.error.message || t("shared.useAuth.signUpFailed"));
 		}
 
-		await refetch({ force: true, expected: 'authenticated' });
+		await refetch({ force: true, expected: "authenticated" });
 
 		return result.data;
 	};
@@ -289,13 +291,13 @@ export function useAuth() {
 		const result = await authClient.signOut();
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useAuth.signOutFailed'));
+			throw new Error(result.error.message || t("shared.useAuth.signOutFailed"));
 		}
 
-		await refetch({ force: true, expected: 'unauthenticated' });
+		await refetch({ force: true, expected: "unauthenticated" });
 		await waitUntilSignedOut();
 
-		await navigateTo('/auth/login');
+		await navigateTo("/auth/login");
 
 		return result.data;
 	};
@@ -303,11 +305,11 @@ export function useAuth() {
 	const forgotPassword = async (email: string) => {
 		const result = await authClient.requestPasswordReset({
 			email,
-			redirectTo: '/auth/reset-password',
+			redirectTo: "/auth/reset-password",
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useAuth.resetEmailFailed'));
+			throw new Error(result.error.message || t("shared.useAuth.resetEmailFailed"));
 		}
 
 		return result.data;
@@ -320,7 +322,7 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useAuth.resetPasswordFailed'));
+			throw new Error(result.error.message || t("shared.useAuth.resetPasswordFailed"));
 		}
 
 		return result.data;
@@ -345,4 +347,13 @@ export function useAuth() {
 		refetch,
 		waitUntilReady,
 	};
+}
+
+// Detached scopes outlive their callers and must be stopped on hot replacement.
+if (import.meta.hot) {
+	import.meta.hot.dispose(() => {
+		sessionScope?.stop();
+		sessionScope = null;
+		sharedSession = null;
+	});
 }
