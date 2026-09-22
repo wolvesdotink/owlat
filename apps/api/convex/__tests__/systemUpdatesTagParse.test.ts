@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseReleaseTag } from '../systemUpdates';
+import { parseReleaseTag } from '../systemUpdatesReleaseCheck';
 
 describe('parseReleaseTag', () => {
 	it('parses a bare unified release tag to its semver', () => {

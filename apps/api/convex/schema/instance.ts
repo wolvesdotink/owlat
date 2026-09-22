@@ -300,14 +300,30 @@ export const instanceTables = {
 		versionTo: v.optional(v.string()),
 		startedAt: v.optional(v.number()),
 		finishedAt: v.optional(v.number()),
-		status: v.optional(v.union(v.literal('running'), v.literal('success'), v.literal('failed'))),
+		// `superseded` is a run that was still open when a LATER update was
+		// dispatched. At most one run may be `running` at a time — see
+		// `recordUpdateStart`, which retires the open ones before opening its
+		// own. It is deliberately not `failed`: the rollout it describes may
+		// well have succeeded, it is only no longer the run this instance is
+		// living through, and nobody is left who can say how it ended.
+		status: v.optional(
+			v.union(
+				v.literal('running'),
+				v.literal('success'),
+				v.literal('failed'),
+				v.literal('superseded')
+			)
+		),
 		// Per-step result blob returned by the updater sidecar.
 		steps: v.optional(updateStepResultValidator),
 		// User who initiated the update (auth user ID)
 		initiatedBy: v.optional(v.string()),
 	})
 		.index('by_kind_and_checkedAt', ['kind', 'checkedAt'])
-		.index('by_kind_and_startedAt', ['kind', 'startedAt']),
+		.index('by_kind_and_startedAt', ['kind', 'startedAt'])
+		// Retiring the still-open runs on every dispatch reads them by status;
+		// without this it would scan every run this instance ever recorded.
+		.index('by_kind_and_status', ['kind', 'status']),
 
 	// Desktop release cache — what GitHub has published on the two desktop-
 	// bearing release lines (`v*` and `desktop-v*`), so the manifest route can

@@ -33,7 +33,7 @@ async function checkNow() {
 	}
 	checking.value = true;
 	try {
-		await convex.action(api.systemUpdates.checkForUpdates, { force: true });
+		await convex.action(api.systemUpdatesReleaseCheck.checkForUpdates, { force: true });
 		showToast(t('dashboard.admin.system.index.toasts.checkComplete'));
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : t('dashboard.admin.system.index.unknownError');
@@ -408,6 +408,7 @@ function formatDuration(start?: number, end?: number) {
 										'bg-success/10 text-success': row.status === 'success',
 										'bg-error/10 text-error': row.status === 'failed',
 										'bg-brand/10 text-brand': row.status === 'running',
+										'bg-bg-surface text-text-tertiary': row.status === 'superseded',
 									}"
 								>
 									<span
@@ -416,6 +417,7 @@ function formatDuration(start?: number, end?: number) {
 											'bg-success': row.status === 'success',
 											'bg-error': row.status === 'failed',
 											'bg-brand animate-pulse motion-reduce:animate-none': row.status === 'running',
+											'bg-text-tertiary': row.status === 'superseded',
 										}"
 									/>
 									{{ row.status }}

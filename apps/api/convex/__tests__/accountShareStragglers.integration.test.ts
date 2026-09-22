@@ -54,19 +54,20 @@ vi.mock('../lib/sessionOrganization', async () => {
 			userId: sessionMock.userId,
 			role: sessionMock.role,
 		})),
-		requireOrgPermission: vi.fn().mockImplementation(
-			async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') = actual as typeof import('../lib/sessionOrganization');
+		requireOrgPermission: vi
+			.fn()
+			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
+				const mod: typeof import('../lib/sessionOrganization') =
+					actual as typeof import('../lib/sessionOrganization');
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.role as Parameters<typeof mod.hasPermission>[0],
-						permission as Parameters<typeof mod.hasPermission>[1],
+						permission as Parameters<typeof mod.hasPermission>[1]
 					),
-					message,
+					message
 				);
 				return { userId: sessionMock.userId, role: sessionMock.role };
-			},
-		),
+			}),
 		// requirePlatformAdmin / checkForUpdates resolve the caller through this.
 		requireAuthenticatedIdentity: vi.fn().mockImplementation(async () => ({
 			subject: sessionMock.subject,
@@ -102,8 +103,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 function newHarness(): TestConvex<typeof schema> {
@@ -129,7 +130,7 @@ afterEach(() => {
 async function seedProfile(
 	t: TestConvex<typeof schema>,
 	authUserId: string,
-	email = 'me@example.com',
+	email = 'me@example.com'
 ): Promise<Id<'userProfiles'>> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
@@ -146,7 +147,11 @@ async function seedProfile(
 async function seedDeletionRequest(
 	t: TestConvex<typeof schema>,
 	userProfileId: Id<'userProfiles'>,
-	overrides: Partial<{ cancellationToken: string; status: 'pending' | 'cancelled' | 'completed'; email: string }> = {},
+	overrides: Partial<{
+		cancellationToken: string;
+		status: 'pending' | 'cancelled' | 'completed';
+		email: string;
+	}> = {}
 ): Promise<Id<'accountDeletionRequests'>> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
@@ -164,7 +169,7 @@ async function seedDeletionRequest(
 
 async function seedTemplate(
 	t: TestConvex<typeof schema>,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'emailTemplates'>> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
@@ -185,7 +190,7 @@ async function seedTemplate(
 
 async function seedTransactional(
 	t: TestConvex<typeof schema>,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'transactionalEmails'>> {
 	return await t.run(async (ctx) => {
 		const now = Date.now();
@@ -203,10 +208,7 @@ async function seedTransactional(
 	});
 }
 
-async function seedPlatformAdmin(
-	t: TestConvex<typeof schema>,
-	authUserId: string,
-): Promise<void> {
+async function seedPlatformAdmin(t: TestConvex<typeof schema>, authUserId: string): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('platformAdmins', {
 			authUserId,
@@ -225,7 +227,9 @@ describe('accountManagement.cancelAccountDeletion — token path', () => {
 	it('cancels a pending request when given the matching cancellation token', async () => {
 		const t = newHarness();
 		const profileId = await seedProfile(t, 'auth-user-1');
-		const requestId = await seedDeletionRequest(t, profileId, { cancellationToken: 'secret-token-abc' });
+		const requestId = await seedDeletionRequest(t, profileId, {
+			cancellationToken: 'secret-token-abc',
+		});
 
 		const res = await t.mutation(api.auth.accountManagement.cancelAccountDeletion, {
 			userId: 'auth-user-1',
@@ -249,7 +253,7 @@ describe('accountManagement.cancelAccountDeletion — token path', () => {
 			t.mutation(api.auth.accountManagement.cancelAccountDeletion, {
 				userId: 'auth-user-1',
 				cancellationToken: 'this-is-wrong',
-			}),
+			})
 		).rejects.toThrow();
 
 		// The real pending request is untouched.
@@ -275,7 +279,7 @@ describe('accountManagement.cancelAccountDeletion — token path', () => {
 			t.mutation(api.auth.accountManagement.cancelAccountDeletion, {
 				userId: 'auth-user-1',
 				cancellationToken: 'used-token',
-			}),
+			})
 		).rejects.toThrow();
 	});
 
@@ -304,7 +308,7 @@ describe('accountManagement.cancelAccountDeletion — token path', () => {
 		await expect(
 			t.mutation(api.auth.accountManagement.cancelAccountDeletion, {
 				userId: 'someone-else',
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
@@ -343,7 +347,7 @@ describe('accountManagement.getPendingDeletionRequest', () => {
 		await expect(
 			t.query(api.auth.accountManagement.getPendingDeletionRequest, {
 				userId: 'someone-else',
-			}),
+			})
 		).rejects.toThrow();
 	});
 });
@@ -397,9 +401,7 @@ describe('shareLinks.createShareLink', () => {
 
 	it('rejects when neither target id is set (xor: at least one)', async () => {
 		const t = newHarness();
-		await expect(
-			t.mutation(api.shareLinks.createShareLink, {}),
-		).rejects.toThrow();
+		await expect(t.mutation(api.shareLinks.createShareLink, {})).rejects.toThrow();
 	});
 
 	it('rejects when BOTH target ids are set (xor: at most one)', async () => {
@@ -411,7 +413,7 @@ describe('shareLinks.createShareLink', () => {
 			t.mutation(api.shareLinks.createShareLink, {
 				emailTemplateId: templateId,
 				transactionalEmailId: txnId,
-			}),
+			})
 		).rejects.toThrow();
 
 		// Nothing was inserted.
@@ -426,7 +428,7 @@ describe('shareLinks.createShareLink', () => {
 		const templateId = await seedTemplate(t, { htmlContent: undefined });
 
 		await expect(
-			t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId }),
+			t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId })
 		).rejects.toThrow();
 	});
 
@@ -436,7 +438,7 @@ describe('shareLinks.createShareLink', () => {
 		const templateId = await seedTemplate(t);
 
 		await expect(
-			t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId }),
+			t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId })
 		).rejects.toThrow();
 	});
 });
@@ -469,9 +471,7 @@ describe('shareLinks.revokeShareLink', () => {
 		});
 
 		sessionMock.role = 'viewer';
-		await expect(
-			t.mutation(api.shareLinks.revokeShareLink, { shareLinkId }),
-		).rejects.toThrow();
+		await expect(t.mutation(api.shareLinks.revokeShareLink, { shareLinkId })).rejects.toThrow();
 	});
 });
 
@@ -485,7 +485,9 @@ describe('shareLinks.listShareLinks', () => {
 		const templateId = await seedTemplate(t);
 
 		const first = await t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId });
-		const second = await t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId });
+		const second = await t.mutation(api.shareLinks.createShareLink, {
+			emailTemplateId: templateId,
+		});
 
 		const links = await t.query(api.shareLinks.listShareLinks, { emailTemplateId: templateId });
 		expect(links).toHaveLength(2);
@@ -515,7 +517,9 @@ describe('shareLinks.listShareLinks', () => {
 		const templateId = await seedTemplate(t);
 		const txnId = await seedTransactional(t);
 		await t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId });
-		const txnLink = await t.mutation(api.shareLinks.createShareLink, { transactionalEmailId: txnId });
+		const txnLink = await t.mutation(api.shareLinks.createShareLink, {
+			transactionalEmailId: txnId,
+		});
 
 		const links = await t.query(api.shareLinks.listShareLinks, { transactionalEmailId: txnId });
 		expect(links).toHaveLength(1);
@@ -531,7 +535,9 @@ describe('shareLinkQueries.getShareLinkByToken', () => {
 	it('returns live link data for a valid token', async () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
-		const { token } = await t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId });
+		const { token } = await t.mutation(api.shareLinks.createShareLink, {
+			emailTemplateId: templateId,
+		});
 
 		await t.run(async (ctx) => {
 			await ctx.db.insert('instanceSettings', {
@@ -598,7 +604,9 @@ describe('GET /share/{token}', () => {
 	it('returns 200 + snapshotted html for a live link', async () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
-		const { token } = await t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId });
+		const { token } = await t.mutation(api.shareLinks.createShareLink, {
+			emailTemplateId: templateId,
+		});
 		await t.run(async (ctx) => {
 			await ctx.db.insert('instanceSettings', {
 				defaultFromName: 'Acme Co',
@@ -608,7 +616,10 @@ describe('GET /share/{token}', () => {
 
 		const res = await t.fetch(`/share/${token}`, { method: 'GET' });
 		expect(res.status).toBe(200);
-		const body = (await res.json()) as { ok: boolean; data: { html: string; subject: string; organizationName: string } };
+		const body = (await res.json()) as {
+			ok: boolean;
+			data: { html: string; subject: string; organizationName: string };
+		};
 		expect(body.ok).toBe(true);
 		expect(body.data.html).toBe('<p>rendered html</p>');
 		expect(body.data.subject).toBe('Hello there');
@@ -680,9 +691,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 		sessionMock.subject = 'not-an-admin';
 		// No platformAdmins seeded → isPlatformAdminByUserId returns false.
 
-		await expect(
-			t.action(api.systemUpdates.checkForUpdates, {}),
-		).rejects.toThrow();
+		await expect(t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {})).rejects.toThrow();
 	});
 
 	it('rejects an org member whose subject is not in platformAdmins (admin tier is higher)', async () => {
@@ -691,9 +700,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 		await seedPlatformAdmin(t, 'some-other-admin');
 		sessionMock.subject = 'auth-user-1';
 
-		await expect(
-			t.action(api.systemUpdates.checkForUpdates, {}),
-		).rejects.toThrow();
+		await expect(t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {})).rejects.toThrow();
 	});
 
 	it('passes the gate for a platform admin and returns the cached (fresh) result without a network call', async () => {
@@ -714,7 +721,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 			});
 		});
 
-		const res = await t.action(api.systemUpdates.checkForUpdates, {});
+		const res = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {});
 		expect(res.latestVersion).toBe('1.3.0');
 		expect(res.currentVersion).toBe('1.2.0');
 		expect(res.updateAvailable).toBe(true); // 1.3.0 > 1.2.0
@@ -738,7 +745,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 			});
 		});
 
-		const res = await t.action(api.systemUpdates.checkForUpdates, {});
+		const res = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {});
 		expect(res.updateAvailable).toBe(false);
 	});
 });
