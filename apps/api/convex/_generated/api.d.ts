@@ -141,6 +141,7 @@ import type * as autonomyFeedback from '../autonomyFeedback.js';
 import type * as autonomyOutcome from '../autonomyOutcome.js';
 import type * as autonomySuggestions from '../autonomySuggestions.js';
 import type * as backups from '../backups.js';
+import type * as blockedEmails_lookup from '../blockedEmails/lookup.js';
 import type * as blockedEmails from '../blockedEmails.js';
 import type * as campaigns_abTest from '../campaigns/abTest.js';
 import type * as campaigns_abTestLifecycle from '../campaigns/abTestLifecycle.js';
@@ -1285,6 +1286,7 @@ declare const fullApi: ApiFromModules<{
 	autonomyOutcome: typeof autonomyOutcome;
 	autonomySuggestions: typeof autonomySuggestions;
 	backups: typeof backups;
+	'blockedEmails/lookup': typeof blockedEmails_lookup;
 	blockedEmails: typeof blockedEmails;
 	'campaigns/abTest': typeof campaigns_abTest;
 	'campaigns/abTestLifecycle': typeof campaigns_abTestLifecycle;
