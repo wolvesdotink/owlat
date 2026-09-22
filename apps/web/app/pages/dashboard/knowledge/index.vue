@@ -16,6 +16,9 @@ const {
 	selectedType,
 	entries,
 	isLoading,
+	error,
+	errorMessage,
+	refetch,
 	ENTRY_TYPES,
 	TYPE_CONFIG,
 	typeVariant,
@@ -25,7 +28,13 @@ const {
 const showCreateForm = ref(false);
 const policyTitle = ref('');
 const policyContent = ref('');
-const { data: policies } = useConvexQuery(api.knowledge.graph.listPolicies, () => ({ limit: 10 }));
+const {
+	data: policies,
+	error: policiesError,
+	errorMessage: policiesErrorMessage,
+	isLoading: policiesLoading,
+	refetch: refetchPolicies,
+} = useBackendQuery(api.knowledge.graph.listPolicies, () => ({ limit: 10 }));
 const createPolicy = useBackendOperation(api.knowledge.graph.createPolicyEntry, {
 	label: () => t('dashboard.knowledge.index.createPolicyOperation'),
 });
@@ -131,8 +140,14 @@ const handleCancelled = () => {
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 			<!-- Main Content -->
 			<div class="lg:col-span-2 space-y-3">
+				<UiQueryBoundary
+					v-if="error"
+					:error="error"
+					:error-message="errorMessage"
+					@retry="refetch"
+				/>
 				<!-- Loading -->
-				<div v-if="isLoading" class="flex items-center justify-center py-16">
+				<div v-else-if="isLoading" class="flex items-center justify-center py-16">
 					<UiSpinner />
 				</div>
 
@@ -216,16 +231,23 @@ const handleCancelled = () => {
 							{{ t('dashboard.knowledge.index.addCanonicalAnswer') }}
 						</UiButton>
 					</div>
-					<ul v-if="policies?.length" class="mt-4 space-y-2 border-t border-border-subtle pt-4">
-						<li v-for="policy in policies" :key="policy._id">
-							<NuxtLink
-								:to="`/dashboard/knowledge/${policy._id}`"
-								class="block truncate text-sm font-medium text-text-primary hover:text-brand"
-							>
-								{{ policy.title }}
-							</NuxtLink>
-						</li>
-					</ul>
+					<UiQueryBoundary
+						:loading="policiesLoading"
+						:error="policiesError"
+						:error-message="policiesErrorMessage"
+						@retry="refetchPolicies"
+					>
+						<ul v-if="policies?.length" class="mt-4 space-y-2 border-t border-border-subtle pt-4">
+							<li v-for="policy in policies" :key="policy._id">
+								<NuxtLink
+									:to="`/dashboard/knowledge/${policy._id}`"
+									class="block truncate text-sm font-medium text-text-primary hover:text-brand"
+								>
+									{{ policy.title }}
+								</NuxtLink>
+							</li>
+						</ul>
+					</UiQueryBoundary>
 				</div>
 
 				<!-- How it works -->

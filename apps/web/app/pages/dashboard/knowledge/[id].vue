@@ -32,9 +32,17 @@ const {
 } = useKnowledgeGraph();
 
 // Fetch entry with relations
-const { data: entryData, isLoading } = useOrganizationQuery(api.knowledge.graph.getEntry, () => ({
-	entryId: entryId.value,
-}));
+const {
+	data: entryData,
+	isLoading,
+	error,
+	errorMessage,
+	refetch,
+} = useBackendQueryState(
+	useOrganizationQuery(api.knowledge.graph.getEntry, () => ({
+		entryId: entryId.value,
+	}))
+);
 
 const entry = computed(() => entryData.value?.entry ?? null);
 const outgoingRelations = computed(() => entryData.value?.outgoing ?? []);
@@ -232,8 +240,9 @@ const handleRemoveRelation = async (relationId: string) => {
 			{{ t('dashboard.knowledge.detail.backToGraph') }}
 		</NuxtLink>
 
+		<UiQueryBoundary v-if="error" :error="error" :error-message="errorMessage" @retry="refetch" />
 		<!-- Loading -->
-		<div v-if="isLoading" class="flex items-center justify-center py-20">
+		<div v-else-if="isLoading" class="flex items-center justify-center py-20">
 			<UiSpinner />
 		</div>
 
