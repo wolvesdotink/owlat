@@ -11,6 +11,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getActiveProfiles } from '@owlat/shared/featureFlags';
 import {
+	mergeComposeProfiles,
+	parseComposeProfilesFromEnv,
 	parseDeliveryProviderFromEnv,
 	renderComposeOverrideYaml,
 } from '@owlat/shared/composeOverride';
@@ -51,7 +53,15 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 	// env-driven rule, so read EMAIL_PROVIDER from the co-located .env exactly
 	// like the setup CLI's override writer does.
 	const deliveryProvider = parseDeliveryProviderFromEnv(envContent);
-	const profiles = getActiveProfiles(flags, { deliveryProvider });
+	// Only the flag-owned half of COMPOSE_PROFILES is this endpoint's to write.
+	// The install's own profiles — `tls` above all, the Caddy edge every HTTPS
+	// instance is reached THROUGH — are not derivable from any flag state, so
+	// writing the derived set verbatim deleted them and the `--remove-orphans`
+	// below then removed their containers.
+	const profiles = mergeComposeProfiles(
+		parseComposeProfilesFromEnv(envContent),
+		getActiveProfiles(flags, { deliveryProvider })
+	);
 
 	// The four file operations below are awaited, not the sync twins they used
 	// to be (and not because either is faster here). A fully synchronous handler

@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import { parseComposeProfilesFromEnv, renderComposeOverrideYaml } from '../composeOverride';
-import { FEATURE_FLAGS } from '../featureFlags';
+import {
+	mergeComposeProfiles,
+	parseComposeProfileList,
+	parseComposeProfilesFromEnv,
+	renderComposeOverrideYaml,
+} from '../composeOverride';
+import { FEATURE_FLAGS, getActiveProfiles, getFlagOwnedProfiles } from '../featureFlags';
 
 describe('shared override writer — compose-safe output', () => {
 	// The updater regenerates docker-compose.override.yml from this renderer on
@@ -74,5 +79,52 @@ describe('applied-profile reader — inverse of the COMPOSE_PROFILES writer', ()
 		expect(parseComposeProfilesFromEnv('COMPOSE_PROFILES=mta,UPPER,x:y,-lead,a b')).toEqual([
 			'mta',
 		]);
+	});
+});
+
+describe('mergeComposeProfiles — the flags own only half the line', () => {
+	// `tls` activates the Caddy edge; `dashboard` the Convex dashboard. Both are
+	// written by the installer and no flag state can re-derive either, so a
+	// writer that treats the derived set as the whole COMPOSE_PROFILES line
+	// deletes them — and the `docker compose up -d --remove-orphans` that
+	// follows an apply then removes the containers behind them.
+	it('keeps install-owned profiles the flag registry cannot derive', () => {
+		expect(mergeComposeProfiles(['tls', 'dashboard', 'mta'], ['clamav'])).toEqual([
+			'clamav',
+			'dashboard',
+			'tls',
+		]);
+	});
+
+	it('still drops a flag-owned profile the flags no longer want', () => {
+		expect(mergeComposeProfiles(['mta', 'personal-mail'], ['mta'])).toEqual(['mta']);
+	});
+
+	it('never resurrects a name the writer could not have emitted', () => {
+		expect(mergeComposeProfiles(['UPPER', 'a b', 'tls'], [])).toEqual(['tls']);
+	});
+
+	it('is idempotent — merging its own output changes nothing', () => {
+		const once = mergeComposeProfiles(['tls', 'personal-mail'], ['clamav', 'mta']);
+		expect(mergeComposeProfiles(once, ['clamav', 'mta'])).toEqual(once);
+	});
+
+	// The guarantee that makes the split safe: every profile a flag state can
+	// produce is one the merge is allowed to take away.
+	it('covers everything getActiveProfiles can emit', () => {
+		const owned = getFlagOwnedProfiles();
+		const everythingOn = Object.fromEntries(Object.keys(FEATURE_FLAGS).map((key) => [key, true]));
+		for (const profile of getActiveProfiles(everythingOn, { deliveryProvider: 'mta' })) {
+			expect(owned.has(profile)).toBe(true);
+		}
+	});
+});
+
+describe('parseComposeProfileList — the same read, without the .env around it', () => {
+	it('agrees with the .env reader', () => {
+		expect(parseComposeProfileList('"mta, clamav ,mta"')).toEqual(
+			parseComposeProfilesFromEnv('COMPOSE_PROFILES="mta, clamav ,mta"')
+		);
+		expect(parseComposeProfileList('')).toEqual([]);
 	});
 });

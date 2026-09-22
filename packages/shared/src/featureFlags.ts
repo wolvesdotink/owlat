@@ -805,6 +805,39 @@ export function getActiveProfiles(
 }
 
 /**
+ * Every compose profile the flag registry can ever produce — the profile
+ * vocabulary the flag writers OWN.
+ *
+ * `getActiveProfiles` answers "which profiles do these flags want ON"; it does
+ * NOT answer "which profiles should the host be running", because feature flags
+ * are not the only thing that puts a profile in COMPOSE_PROFILES. The install
+ * puts `tls` there for the Caddy edge and `dashboard` for the Convex dashboard,
+ * and no flag can ever derive either. A writer that treats the derived set as
+ * the whole truth therefore DELETES them — which, for `tls`, takes the
+ * reverse proxy the operator is talking through offline.
+ *
+ * So the writers converge only this vocabulary and leave every other applied
+ * profile alone (see `mergeComposeProfiles`).
+ *
+ * Plugin-contributed profiles belong to whichever registry the caller passes.
+ * A caller that omits `registry` — the updater sidecar and the drift probe both
+ * do, deliberately, so the two sides answer with the same vocabulary — treats a
+ * plugin profile as install-owned and preserves it. Preserving a profile one
+ * flag no longer wants is the recoverable direction; deleting one nothing can
+ * re-derive is not.
+ */
+export function getFlagOwnedProfiles(opts: FeatureFlagResolutionOptions = {}): Set<string> {
+	const owned = new Set<string>();
+	for (const def of Object.values(opts.registry ?? FEATURE_FLAGS)) {
+		for (const profile of def.dockerProfiles ?? []) owned.add(profile);
+	}
+	// The env-driven arm of `getActiveProfiles` — flag-derived in every sense
+	// that matters here, since that function is the only thing that adds it.
+	owned.add('mta');
+	return owned;
+}
+
+/**
  * Compute the union of required env vars for the active flag set.
  * The CLI/wizard uses this to prompt only for env vars actually needed.
  */

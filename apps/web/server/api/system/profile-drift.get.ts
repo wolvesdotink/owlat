@@ -1,5 +1,9 @@
 import { api } from '@owlat/api';
-import { getActiveProfiles, type FeatureFlagState } from '@owlat/shared/featureFlags';
+import {
+	getActiveProfiles,
+	getFlagOwnedProfiles,
+	type FeatureFlagState,
+} from '@owlat/shared/featureFlags';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
 
@@ -86,10 +90,18 @@ export default defineEventHandler(async (event): Promise<ProfileDriftResult> => 
 	)) as FeatureFlagState;
 	const expected = getActiveProfiles(flags, { deliveryProvider });
 
+	// Drift is only meaningful over the profiles the FLAGS own. `tls` and
+	// `dashboard` are written by the installer and no flag state can re-derive
+	// them, so measuring them against `expected` reported every HTTPS instance as
+	// permanently out of sync — a banner urging one click that would have taken
+	// the Caddy edge down (see `mergeComposeProfiles`).
+	const flagOwned = getFlagOwnedProfiles();
 	const appliedSet = new Set(applied);
 	const expectedSet = new Set(expected);
 	const missingProfiles = expected.filter((profile) => !appliedSet.has(profile));
-	const staleProfiles = applied.filter((profile) => !expectedSet.has(profile)).sort();
+	const staleProfiles = applied
+		.filter((profile) => flagOwned.has(profile) && !expectedSet.has(profile))
+		.sort();
 
 	return {
 		reachable: true,

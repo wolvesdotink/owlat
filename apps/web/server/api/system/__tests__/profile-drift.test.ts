@@ -125,6 +125,23 @@ describe('GET /api/system/profile-drift — drift computation', () => {
 		expect(result.staleProfiles).toEqual(stale);
 	});
 
+	it('does not call an install-time profile stale', async () => {
+		// `tls` (Caddy) and `dashboard` are written by the installer and derived by
+		// no flag, so measuring them against the flag-derived set reported every
+		// HTTPS instance as permanently out of sync — a banner urging one click
+		// that would have taken the reverse proxy down.
+		queryMock.mockResolvedValue({ postbox: true });
+		callUpdaterMock.mockResolvedValue(
+			updaterResponse(profileState(['clamav', 'mta', 'personal-mail', 'tls', 'dashboard']))
+		);
+
+		const result = await callRoute();
+
+		expect(result.staleProfiles).toEqual([]);
+		expect(result.missingProfiles).toEqual([]);
+		expect(result.drifted).toBe(false);
+	});
+
 	it('reports no drift when the applied set already matches the flags', async () => {
 		const flags = { postbox: true };
 		queryMock.mockResolvedValue(flags);
