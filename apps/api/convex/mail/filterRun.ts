@@ -192,7 +192,10 @@ async function applyActions(
 		// `messageActions.ts`. Without this a retroactive sweep over a mailbox
 		// holding snoozed unread mail permanently undercounts the folder badge.
 		const wasCounted = flagPatch.flagSeen === true && !isMessageSnoozed(message, now);
-		const modseq = folder ? folder.highestModseq + 1 : message.modseq;
+		// Folder deletion normally relocates every message first. Still advance
+		// an orphaned row (or one ahead of its folder watermark) so a changed
+		// message can never retain an already-observed modseq.
+		const modseq = Math.max(folder?.highestModseq ?? 0, message.modseq) + 1;
 		if (folder) {
 			await ctx.db.patch(folder._id, {
 				highestModseq: modseq,

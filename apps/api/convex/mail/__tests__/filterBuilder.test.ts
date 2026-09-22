@@ -229,6 +229,45 @@ describe('mail.filters.preview', () => {
 });
 
 describe('mail.filterRun', () => {
+	it.each(['present', 'missing', 'behind'] as const)(
+		'advances the modseq when the folder is %s and leaves a repeated run unchanged',
+		async (folderState) => {
+			const t = convexTest(schema, modules);
+			const mailboxId = await seedMailbox(t);
+			const folderId = await seedFolder(t, mailboxId);
+			const messageId = await seedMessage(t, mailboxId, { subject: 'Invoice' });
+			await t.run(async (ctx) => {
+				await ctx.db.patch(messageId, { modseq: 7 });
+				if (folderState === 'missing') await ctx.db.delete(folderId);
+				else
+					await ctx.db.patch(folderId, {
+						highestModseq: folderState === 'behind' ? 3 : 10,
+					});
+			});
+			const filterId = await t.mutation(api.mail.filters.create, {
+				mailboxId,
+				name: 'Read invoices',
+				conditions: [{ field: 'subject', op: 'contains', value: 'Invoice' }],
+				actions: [{ type: 'markRead' }, { type: 'markFlagged' }],
+			});
+			const expectedModseq = folderState === 'present' ? 11 : 8;
+			for (let run = 0; run < 2; run++) {
+				await t.mutation(api.mail.filterRun.start, { filterId });
+				await drainScheduler(t);
+				await t.run(async (ctx) => {
+					expect(await ctx.db.get(messageId)).toMatchObject({
+						flagSeen: true,
+						flagFlagged: true,
+						modseq: expectedModseq,
+					});
+					if (folderState !== 'missing') {
+						expect((await ctx.db.get(folderId))?.highestModseq).toBe(expectedModseq);
+					}
+				});
+			}
+		}
+	);
+
 	it('applies the safe actions to the backlog and reports progress', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t);
