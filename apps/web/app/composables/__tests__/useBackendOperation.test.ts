@@ -1,3 +1,4 @@
+import de from '~~/i18n/locales/de.json';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { ConvexError } from 'convex/values';
@@ -9,6 +10,7 @@ import { withSetup } from '~/__tests__/withSetup';
 
 /** The real catalog behind the `useI18n` auto-import the composable calls. */
 const i18n = createTestI18n();
+i18n.global.setLocaleMessage('de', de);
 
 const fakeOp = 'api.test.create' as unknown as Parameters<typeof useBackendOperation>[0];
 
@@ -29,6 +31,7 @@ describe('useBackendOperation', () => {
 	let navigate: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
+		i18n.global.locale.value = 'en';
 		mutation = vi.fn();
 		action = vi.fn();
 		showToast = vi.fn();
@@ -44,6 +47,16 @@ describe('useBackendOperation', () => {
 		// something.
 		vi.stubGlobal('useAnnounce', useAnnounce);
 		useAnnounce().clear();
+	});
+
+	it('reads the current locale when an already-created operation fails', async () => {
+		const { run } = build(fakeOp, { label: 'change' });
+		i18n.global.locale.value = 'de';
+		mutation.mockRejectedValue(
+			new ConvexError({ category: 'forbidden', message: 'Backend English' })
+		);
+		await run({});
+		expect(showToast).toHaveBeenCalledWith(de.shared.operationError.categories.forbidden, 'error');
 	});
 
 	describe('outside a component (route middleware)', () => {

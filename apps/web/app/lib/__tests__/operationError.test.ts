@@ -192,3 +192,45 @@ describe('SurfacedOperationError', () => {
 		expect(new SurfacedOperationError('x')).toBeInstanceOf(Error);
 	});
 });
+
+describe('localized operation copy', () => {
+	it.each(OPERATION_ERROR_CATEGORIES)('provides catalog copy for %s in German', (category) => {
+		const copy = operationCopy({ category, message: 'Backend English' }, { locale: 'de' });
+		expect('key' in copy).toBe(true);
+	});
+
+	it('keeps English regional locales and arbitrary backend text literal', () => {
+		expect(
+			operationCopy(
+				{ category: 'invalid_input', message: 'Invalid user@owlat.example' },
+				{ locale: 'en-US' }
+			)
+		).toEqual({ text: 'Invalid user@owlat.example' });
+	});
+
+	it('uses only explicit keys present in the catalog', () => {
+		const op = {
+			category: 'invalid_input' as const,
+			message: 'Backend English',
+			data: { messageKey: 'custom.refusal' },
+		};
+		expect(
+			operationCopy(op, { locale: 'de', hasMessage: (key) => key === 'custom.refusal' })
+		).toEqual({ key: 'custom.refusal' });
+		expect(operationCopy(op, { locale: 'de', hasMessage: () => false })).toEqual({
+			key: 'shared.operationError.categories.invalid_input',
+		});
+		expect(operationCopy(op, { locale: 'en', hasMessage: () => false })).toEqual({
+			text: 'Backend English',
+		});
+	});
+
+	it('never overrides generic fault copy with a backend key', () => {
+		expect(
+			operationCopy(
+				{ category: 'internal', message: 'private detail', data: { messageKey: 'custom.refusal' } },
+				{ locale: 'de', hasMessage: () => true }
+			)
+		).toEqual({ key: 'shared.operationError.generic' });
+	});
+});

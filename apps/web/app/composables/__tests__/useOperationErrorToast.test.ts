@@ -1,3 +1,4 @@
+import de from '~~/i18n/locales/de.json';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConvexError } from 'convex/values';
 import { useOperationErrorToast } from '../useOperationErrorToast';
@@ -6,14 +7,26 @@ import { createTestI18n } from '~/__tests__/i18n';
 
 /** The real catalog: the assertions below are assertions about English. */
 const i18n = createTestI18n();
+i18n.global.setLocaleMessage('de', de);
 
 describe('useOperationErrorToast', () => {
 	let showToast: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
+		i18n.global.locale.value = 'en';
 		showToast = vi.fn();
 		vi.stubGlobal('useI18n', () => i18n.global);
 		vi.stubGlobal('useToast', () => ({ showToast }));
+	});
+
+	it('reads the current locale for a backend refusal', () => {
+		const { showOperationError } = useOperationErrorToast();
+		i18n.global.locale.value = 'de';
+		showOperationError(new ConvexError({ category: 'invalid_input', message: 'Backend English' }));
+		expect(showToast).toHaveBeenCalledWith(
+			de.shared.operationError.categories.invalid_input,
+			'error'
+		);
 	});
 
 	it('toasts an uncategorized throw as the generic line', () => {

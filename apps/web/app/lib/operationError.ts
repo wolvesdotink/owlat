@@ -112,18 +112,30 @@ export function normalizeToOperationError(e: unknown): OperationError {
  */
 export type OperationCopy = { key: string } | { text: string };
 
+/** Locale is read at the time of failure; only known catalog keys may be translated. */
+export interface OperationCopyOptions {
+	locale?: string;
+	hasMessage?: (key: string) => boolean;
+}
+
 /**
- * The copy to show the user: the category's generic override where one exists,
- * otherwise the backend message (falling back to a generic line if empty).
- *
- * Module scope — no `useI18n` here. The two forms are kept apart rather than
- * collapsed into one string because a backend message must NOT be run through
- * `t()`: it is arbitrary text (an address, a template name) and the message
- * compiler reads characters like `@` as syntax.
+ * Keep fault/session copy generic. For expected refusals, use an explicit,
+ * known message key first, then a category fallback outside English. Raw
+ * backend sentences are never passed to the message compiler.
  */
-export function operationCopy(op: OperationError): OperationCopy {
+export function operationCopy(
+	op: OperationError,
+	options: OperationCopyOptions = {}
+): OperationCopy {
 	const treatment = TREATMENT[op.category];
 	if (treatment.genericCopyKey) return { key: treatment.genericCopyKey };
+	const messageKey = op.data?.['messageKey'];
+	if (typeof messageKey === 'string' && options.hasMessage?.(messageKey)) {
+		return { key: messageKey };
+	}
+	if (options.locale && options.locale.split('-')[0]?.toLowerCase() !== 'en') {
+		return { key: `shared.operationError.categories.${op.category}` };
+	}
 	return op.message ? { text: op.message } : { key: GENERIC_COPY_KEY };
 }
 
@@ -163,8 +175,12 @@ export function isSurfacedOperationError(e: unknown): boolean {
  * ("This mailbox no longer exists") and a transport failure ("Check your
  * connection") both say more than any per-call-site sentence could.
  */
-export function operationToastCopy(e: unknown, fallbackKey?: string): OperationCopy {
-	const copy = operationCopy(normalizeToOperationError(e));
+export function operationToastCopy(
+	e: unknown,
+	fallbackKey?: string,
+	options: OperationCopyOptions = {}
+): OperationCopy {
+	const copy = operationCopy(normalizeToOperationError(e), options);
 	if (fallbackKey && 'key' in copy && copy.key === GENERIC_COPY_KEY) return { key: fallbackKey };
 	return copy;
 }

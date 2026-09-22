@@ -12394,6 +12394,16 @@
 			}
 		},
 		"operationError": {
+			"categories": {
+				"forbidden": "Du hast keine Berechtigung für diese Aktion.",
+				"not_found": "Dieser Eintrag ist nicht mehr verfügbar. Lade die Seite neu und versuche es erneut.",
+				"invalid_input": "Einige Angaben fehlen oder sind ungültig. Prüfe deine Eingaben und versuche es erneut.",
+				"already_exists": "Ein Eintrag mit diesen Angaben ist bereits vorhanden.",
+				"conflict": "Dieser Eintrag wurde geändert. Lade die Seite neu und versuche es erneut.",
+				"invalid_state": "Diese Aktion ist derzeit nicht verfügbar.",
+				"rate_limited": "Zu viele Anfragen. Warte einen Moment und versuche es erneut.",
+				"limit_reached": "Ein Limit wurde erreicht. Prüfe die verfügbare Kapazität oder wende dich an die Administration."
+			},
 			"generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
 			"network": "Verbindungsproblem. Prüfen Sie Ihr Netzwerk und versuchen Sie es erneut.",
 			"sessionExpired": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an."

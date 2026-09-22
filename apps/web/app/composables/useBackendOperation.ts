@@ -117,10 +117,15 @@ export interface BackendOperation<M extends FunctionReference<'mutation' | 'acti
  * copy degrades to its key instead of taking the app down. Mirrors `useAuth.ts`
  * and `useOrganization.ts`.
  */
-function operationTranslator(): (key: string, values?: Record<string, unknown>) => string {
-	if (!getCurrentInstance()) return (key: string) => key;
-	const { t } = useI18n();
-	return (key: string, values?: Record<string, unknown>) => (values ? t(key, values) : t(key));
+function operationTranslator() {
+	if (!getCurrentInstance()) {
+		return { t: (key: string) => key, copyOptions: () => ({ locale: 'en' }) };
+	}
+	const { t, locale, te } = useI18n();
+	return {
+		t: (key: string, values?: Record<string, unknown>) => (values ? t(key, values) : t(key)),
+		copyOptions: () => ({ locale: locale.value, hasMessage: (key: string) => te(key) }),
+	};
 }
 
 export function useBackendOperation<M extends FunctionReference<'mutation' | 'action'>>(
@@ -128,7 +133,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 	opts: BackendOperationOptions
 ): BackendOperation<M> {
 	const client = useConvex();
-	const t = operationTranslator();
+	const { t, copyOptions } = operationTranslator();
 	const { showToast } = useToast();
 	const { announce } = useAnnounce();
 	const posthog = usePostHog();
@@ -146,7 +151,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		// `operationCopy` is module scope, so it hands back either a message KEY
 		// (copy this app owns) or the backend's own sentence, which must NOT go
 		// through `t()` — it is arbitrary text the compiler would read as syntax.
-		const copySource = operationCopy(op);
+		const copySource = operationCopy(op, copyOptions());
 		const copy = 'key' in copySource ? t(copySource.key) : copySource.text;
 
 		if (treatment.report) {
