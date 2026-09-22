@@ -4,7 +4,12 @@ import type { MutationCtx, QueryCtx } from './_generated/server';
 import { internalMutation, internalQuery } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
-import { isValidEmail, normalizeEmail } from './lib/inputGuards';
+import {
+	isValidEmail,
+	normalizeEmail,
+	validateStringLength,
+	STRING_LIMITS,
+} from './lib/inputGuards';
 import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/errors';
 import * as sm from './delivery/suppressionMirrorScheduler';
 import { recordAuditLog } from './lib/auditLog';
@@ -159,6 +164,10 @@ export const add = authedMutation({
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
 	},
 	handler: async (ctx, args) => {
+		validateStringLength(args.email, STRING_LIMITS.EMAIL, 'email');
+		if (args.notes !== undefined)
+			validateStringLength(args.notes, STRING_LIMITS.DESCRIPTION, 'notes');
+
 		const session = await requireOrgPermission(
 			ctx,
 			'contacts:manage',
@@ -294,6 +303,12 @@ export const bulkAdd = authedMutation({
 		// Bound the request before any write.
 		if (args.emails.length > MAX_BULK_BLOCK_ADD) {
 			throwInvalidInput(`Cannot block more than ${MAX_BULK_BLOCK_ADD} addresses at once`);
+		}
+
+		for (const item of args.emails) {
+			validateStringLength(item.email, STRING_LIMITS.EMAIL, 'email');
+			if (item.notes !== undefined)
+				validateStringLength(item.notes, STRING_LIMITS.DESCRIPTION, 'notes');
 		}
 
 		const results = {

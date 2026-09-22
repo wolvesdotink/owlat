@@ -693,3 +693,17 @@ Every embedding-bearing row (`knowledgeEntries`, `semanticFiles`) MUST
 record `embeddingModel: v.string()` and `embeddingGeneratedAt: v.number()`.
 Switching models or bumping the model version triggers a re-embed —
 the timestamp gates which rows are stale.
+
+## Public write input sizes
+
+All public mutation/action builders in `lib/authedFunctions.ts` reject strings
+longer than 1,048,576 UTF-16 code units before the handler runs. The guard visits
+nested arrays, object values and dynamic keys, including `v.any()` payloads.
+Authenticated builders retain their authentication/role floor before this check.
+Internal functions and storage bytes are outside this public text-input policy.
+
+This compatibility ceiling is a backstop, not a suitable limit for every field.
+Use `validateStringLength` and `STRING_LIMITS` for tighter domain limits (names,
+filenames, addresses, descriptions, tags and questions). Validate bulk entries
+before side effects. Length failures use the `invalid_input` operation category.
+Store large file content in storage rather than embedding it in text arguments.

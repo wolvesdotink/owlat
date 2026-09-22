@@ -77,6 +77,7 @@
  * See docs/adr (operation-error-taxonomy) and CONVENTIONS.md § Permissions.
  */
 
+import { validatePublicInputStrings } from './publicInput';
 import { query, mutation, action } from '../_generated/server';
 import type { QueryCtx, MutationCtx, ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -213,6 +214,7 @@ export const authedMutation = ((fn: FunctionConfig) =>
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
 		handler: async (ctx: MutationCtx, args: unknown) => {
 			const session = await getMutationContext(ctx);
+			validatePublicInputStrings(args);
 			return (fn.handler as unknown as SessionThreadedHandler<MutationCtx>)(ctx, args, session);
 		},
 	} as Parameters<RawMutation>[0])) as unknown as SessionMutationBuilder;
@@ -234,6 +236,7 @@ export const authedIdentityMutation = ((fn: FunctionConfig) =>
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
 		handler: async (ctx: MutationCtx, args: unknown) => {
 			await requireAuthenticatedIdentity(ctx);
+			validatePublicInputStrings(args);
 			return (fn.handler as unknown as (c: MutationCtx, a: unknown) => unknown)(ctx, args);
 		},
 	} as Parameters<RawMutation>[0])) as unknown as RawMutation;
@@ -254,6 +257,7 @@ export const authedAction = ((fn: FunctionConfig) =>
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
 		handler: async (ctx: ActionCtx, args: unknown) => {
 			await ctx.runQuery(internal.auth.membership.assertOrgMember, {});
+			validatePublicInputStrings(args);
 			return (fn.handler as unknown as (c: ActionCtx, a: unknown) => unknown)(ctx, args);
 		},
 	} as Parameters<RawAction>[0])) as unknown as RawAction;
@@ -273,6 +277,7 @@ export const adminMutation = ((fn: FunctionConfig) =>
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
 		handler: async (ctx: MutationCtx, args: unknown) => {
 			const session = await requireAdminContext(ctx);
+			validatePublicInputStrings(args);
 			return (fn.handler as unknown as SessionThreadedHandler<MutationCtx>)(ctx, args, session);
 		},
 	} as Parameters<RawMutation>[0])) as unknown as SessionMutationBuilder;
@@ -296,6 +301,7 @@ export const ownerMutation = ((fn: FunctionConfig) =>
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
 		handler: async (ctx: MutationCtx, args: unknown) => {
 			const session = await requireOwnerContext(ctx);
+			validatePublicInputStrings(args);
 			return (fn.handler as unknown as SessionThreadedHandler<MutationCtx>)(ctx, args, session);
 		},
 	} as Parameters<RawMutation>[0])) as unknown as SessionMutationBuilder;
@@ -401,12 +407,27 @@ export function featureGatedAny<
 /**
  * Explicit opt-out builders for endpoints that are intentionally reachable by
  * unauthenticated callers (token-gated links, signature-verified webhooks,
- * tracking pixels, the pre-auth setup page). These are plain aliases of the raw
- * builders — their only purpose is to make "this is public on purpose" an
+ * tracking pixels, the pre-auth setup page). The write builders also enforce the shared input ceiling.
+ * Their names make "this is public on purpose" an
  * explicit, greppable, lint-allowlisted choice rather than the default.
  *
  * Every use MUST carry a `// public: <reason>` comment at the call site.
  */
 export const publicQuery = query;
-export const publicMutation = mutation;
-export const publicAction = action;
+export const publicMutation = ((fn: FunctionConfig) =>
+	mutation({
+		...fn,
+		handler: (ctx: MutationCtx, args: unknown) => {
+			validatePublicInputStrings(args);
+			return (fn.handler as unknown as (c: MutationCtx, a: unknown) => unknown)(ctx, args);
+		},
+	} as Parameters<RawMutation>[0])) as unknown as RawMutation;
+
+export const publicAction = ((fn: FunctionConfig) =>
+	action({
+		...fn,
+		handler: (ctx: ActionCtx, args: unknown) => {
+			validatePublicInputStrings(args);
+			return (fn.handler as unknown as (c: ActionCtx, a: unknown) => unknown)(ctx, args);
+		},
+	} as Parameters<RawAction>[0])) as unknown as RawAction;

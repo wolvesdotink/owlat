@@ -1,3 +1,4 @@
+import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 /**
  * Semantic Files
  *
@@ -319,6 +320,13 @@ export const create = authedMutation({
 		previousVersionId: v.optional(v.id('semanticFiles')),
 	},
 	handler: async (ctx, args) => {
+		validateStringLength(args.filename, STRING_LIMITS.FILENAME, 'filename');
+		validateStringLength(args.mimeType, STRING_LIMITS.MIME_TYPE, 'mimeType');
+		if (args.title !== undefined) validateStringLength(args.title, STRING_LIMITS.NAME, 'title');
+		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
+		if (args.uploadContext !== undefined)
+			validateStringLength(args.uploadContext, STRING_LIMITS.DESCRIPTION, 'uploadContext');
+
 		const session = await requireAdminContext(ctx);
 
 		// Security: validate file type before storing the record, matching the
@@ -540,6 +548,9 @@ export const update = authedMutation({
 		threadId: v.optional(v.union(v.id('conversationThreads'), v.null())),
 	},
 	handler: async (ctx, args) => {
+		if (args.title !== undefined) validateStringLength(args.title, STRING_LIMITS.NAME, 'title');
+		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
+
 		await requireAdminContext(ctx);
 		const { fileId, ...updates } = args;
 		const file = await ctx.db.get(fileId);

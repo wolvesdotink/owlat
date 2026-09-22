@@ -1,3 +1,4 @@
+import { throwInvalidInput } from '../_utils/errors';
 import { isValidEmail as sharedIsValidEmail, normalizeEmail } from '@owlat/shared';
 
 /**
@@ -52,13 +53,18 @@ export function isValidConvexId(id: string): boolean {
  */
 export function validateStringLength(value: string, maxLen: number, fieldName: string): void {
 	if (value.length > maxLen) {
-		throw new Error(`${fieldName} must be at most ${maxLen} characters`);
+		throwInvalidInput(`${fieldName} must be at most ${maxLen} characters`);
 	}
 }
 
 /** Standard length limits for common fields */
 export const STRING_LIMITS = {
 	NAME: 200,
+	FILENAME: 255,
+	MIME_TYPE: 255,
+	EMAIL: 254,
+	TAG: 200,
+	QUESTION: 16000,
 	SUBJECT: 1000,
 	DESCRIPTION: 5000,
 	EVENT_NAME: 100,
@@ -96,19 +102,25 @@ export function isSafeRedirectUrl(url: string): boolean {
  * Limits length to 200 characters.
  */
 export function sanitizeEmailHeaderValue(value: string): string {
-	return value
-		// Strip control characters (U+0000–U+001F, U+007F, U+0080–U+009F) except space
-		.replace(/[\p{Cc}\p{Cf}]/gu, '')
-		// Collapse whitespace
-		.replace(/\s+/g, ' ')
-		.trim()
-		.slice(0, 200);
+	return (
+		value
+			// Strip control characters (U+0000–U+001F, U+007F, U+0080–U+009F) except space
+			.replace(/[\p{Cc}\p{Cf}]/gu, '')
+			// Collapse whitespace
+			.replace(/\s+/g, ' ')
+			.trim()
+			.slice(0, 200)
+	);
 }
 
 /**
  * Wrap a promise with a timeout. Rejects if the promise doesn't resolve within `ms` milliseconds.
  */
-export function withTimeout<T>(promise: Promise<T>, ms: number, msg = 'Operation timed out'): Promise<T> {
+export function withTimeout<T>(
+	promise: Promise<T>,
+	ms: number,
+	msg = 'Operation timed out'
+): Promise<T> {
 	return Promise.race([
 		promise,
 		new Promise<never>((_, reject) => setTimeout(() => reject(new Error(msg)), ms)),

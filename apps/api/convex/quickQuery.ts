@@ -1,5 +1,7 @@
 'use node';
 
+import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
+
 /**
  * Quick Query — cross-source, LLM-synthesized ask-anything.
  *
@@ -61,6 +63,8 @@ export const ask = authedAction({
 		question: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ answer: string; sources: QuerySource[] }> => {
+		validateStringLength(args.question, STRING_LIMITS.QUESTION, 'question');
+
 		// authz: gate enforced in quickQueryGate.assertKnowledgeReadAccess via
 		// ctx.runQuery (ai.knowledge feature flag + knowledge:read permission) —
 		// an action cannot touch ctx.db, so the check lives in the internal query.
