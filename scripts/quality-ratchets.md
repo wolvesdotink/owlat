@@ -18,7 +18,8 @@ retains exact repository paths.
 Coverage thresholds live in each workspace's Vitest configuration. The September
 2026 baseline measures all configured source files, including untouched modules.
 New coverage blocks cover the plugin workspaces and UI components/composables.
-Thresholds use the measured whole percentage (less than one point of rounding
+Thresholds use the lower measured whole percentage across local and CI runs
+(MTA: 88.08% locally, 87.96% on CI) (less than one point of rounding
 headroom). Raise them as coverage improves; do not lower them to make new code pass.
 Run `bun run ci:test:coverage` to enforce them. Coverage reports are generated
 artifacts and must not be committed.
