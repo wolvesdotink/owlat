@@ -18,6 +18,10 @@
 			"types": "./src/types/index.ts",
 			"import": "./src/types/index.ts"
 		},
+		"./mailSyncLimits": {
+			"types": "./src/mailSyncLimits.ts",
+			"import": "./src/mailSyncLimits.ts"
+		},
 		"./templateVariables": {
 			"types": "./src/templateVariables.ts",
 			"import": "./src/templateVariables.ts"

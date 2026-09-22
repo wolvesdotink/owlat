@@ -48,6 +48,7 @@ import {
 	hasAtRestBlobMagic,
 	isSealedBytesAtRest,
 	sealBytesAtRest,
+	sealBytesAtRestParts,
 	openBytesAtRest,
 } from './atRestBodies';
 
@@ -127,10 +128,10 @@ export async function storeSealedBlob(
 	contentType: string
 ): Promise<Id<'_storage'>> {
 	const secret = getOptional('INSTANCE_SECRET');
-	const out = secret === undefined ? bytes : await sealBytesAtRest(secret, bytes);
+	const parts = secret === undefined ? [bytes] : await sealBytesAtRestParts(secret, bytes);
 	// `BlobPart` typings reject Uint8Array<ArrayBufferLike> under newer
 	// @types/node; the runtime accepts it. Cast through unknown.
-	return storage.store(new Blob([out as unknown as BlobPart], { type: contentType }));
+	return storage.store(new Blob(parts as BlobPart[], { type: contentType }));
 }
 
 /**

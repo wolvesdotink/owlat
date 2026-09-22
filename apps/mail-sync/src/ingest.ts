@@ -11,6 +11,7 @@
  * left in the call's arguments is bounded by construction.
  */
 
+import { MAIL_SYNC_MAX_RAW_MESSAGE_BYTES } from '@owlat/shared/mailSyncLimits';
 import { parseMessage, type AddressObject } from '@owlat/mail-message';
 import type { ConvexClient } from './convex.js';
 import { fn } from './convex.js';
@@ -172,6 +173,11 @@ export async function ingestMessage(
 	config: RawUploadConfig,
 	params: IngestParams
 ): Promise<IngestOutcome> {
+	if (params.raw.byteLength > MAIL_SYNC_MAX_RAW_MESSAGE_BYTES) {
+		throw new Error(
+			`Message exceeds the ${MAIL_SYNC_MAX_RAW_MESSAGE_BYTES / (1024 * 1024)} MiB raw message limit (including attachments)`
+		);
+	}
 	const parsed = parseMessage(params.raw);
 	const text = parsed.text ?? undefined;
 	const html = typeof parsed.html === 'string' ? parsed.html : undefined;

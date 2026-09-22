@@ -12,7 +12,7 @@ export class StreamByteLimitExceeded extends Error {}
 export async function readStreamBytes(
 	body: ReadableStream<Uint8Array> | null,
 	maxBytes: number
-): Promise<Uint8Array | null> {
+): Promise<Uint8Array<ArrayBuffer> | null> {
 	if (!body) return null;
 	if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
 		throw new RangeError('maxBytes must be a non-negative safe integer');

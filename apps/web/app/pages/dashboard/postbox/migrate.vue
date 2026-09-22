@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MAIL_SYNC_MAX_RAW_MESSAGE_BYTES } from '@owlat/shared/mailSyncLimits';
 import type { MailProvider } from '~/utils/mailAutodiscover';
 import { MAIL_PROVIDERS, providerForImapHost } from '~/utils/mailAutodiscover';
 import { api } from '@owlat/api';
@@ -282,6 +283,14 @@ const steps = computed(() =>
 				:get-step-status="getStepStatus"
 				:is-connector-highlighted="isConnectorHighlighted"
 			/>
+
+			<p class="mb-5 text-sm text-text-secondary">
+				{{
+					t('dashboard.postbox.migrate.messageSizeLimit', {
+						limit: MAIL_SYNC_MAX_RAW_MESSAGE_BYTES / (1024 * 1024),
+					})
+				}}
+			</p>
 
 			<!-- ───────────────────────── Connect ───────────────────────── -->
 			<section v-if="step === 'connect'" class="space-y-5">

@@ -223,27 +223,42 @@ export function hasAtRestBlobMagic(bytes: Uint8Array): boolean {
  * key) is returned unchanged; a plaintext blob that merely happens to begin
  * with the magic bytes fails the decrypt and is sealed for real.
  */
-export async function sealBytesAtRest(
+export async function sealBytesAtRestParts(
 	secret: string,
 	plaintext: Uint8Array
-): Promise<Uint8Array<ArrayBuffer>> {
-	if (plaintext.length === 0) return new Uint8Array(0);
+): Promise<Uint8Array<ArrayBuffer>[]> {
+	if (plaintext.length === 0) return [];
 	const box = blobBox(secret);
 	const existing = parseBlobEnvelope(plaintext);
 	if (existing !== null) {
 		try {
 			await box.openBytes(existing);
-			return new Uint8Array(plaintext) as Uint8Array<ArrayBuffer>; // already our ciphertext
+			return [new Uint8Array(plaintext)]; // already our ciphertext
 		} catch {
 			// Magic-shaped but not ours: fall through and seal for real.
 		}
 	}
 	const { iv, ciphertext } = await box.sealBytes(plaintext);
-	const out = new Uint8Array(BLOB_HEADER_BYTES + ciphertext.length);
-	out.set(BLOB_MAGIC, 0);
-	out[BLOB_MAGIC.length] = BLOB_VERSION;
-	out.set(iv, BLOB_MAGIC.length + 1);
-	out.set(ciphertext, BLOB_HEADER_BYTES);
+	const header = new Uint8Array(BLOB_HEADER_BYTES);
+	header.set(BLOB_MAGIC, 0);
+	header[BLOB_MAGIC.length] = BLOB_VERSION;
+	header.set(iv, BLOB_MAGIC.length + 1);
+	return [header, ciphertext];
+}
+
+/** Contiguous envelope for callers that need bytes; storage can use the parts directly. */
+export async function sealBytesAtRest(
+	secret: string,
+	plaintext: Uint8Array
+): Promise<Uint8Array<ArrayBuffer>> {
+	const parts = await sealBytesAtRestParts(secret, plaintext);
+	if (parts.length === 1) return parts[0]!;
+	const out = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0));
+	let offset = 0;
+	for (const part of parts) {
+		out.set(part, offset);
+		offset += part.byteLength;
+	}
 	return out;
 }
 

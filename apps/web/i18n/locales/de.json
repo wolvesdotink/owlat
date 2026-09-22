@@ -9166,6 +9166,7 @@
 				}
 			},
 			"migrate": {
+				"messageSizeLimit": "Beim Import eines verbundenen Postfachs sind Nachrichten bis {limit} MiB möglich, einschließlich Anhängen und E-Mail-Kodierung. Größere Nachrichten bleiben beim Anbieter und werden als übersprungen gezählt. Ein erneuter Import umgeht diese Grenze nicht.",
 				"cancelDialogDescription": "Bisher importierte E-Mails bleiben erhalten. Der Rest Ihres Verlaufs wird nicht importiert, sofern Sie nicht erneut starten.",
 				"cancelDialogTitle": "Migration abbrechen?",
 				"cancelMigration": "Migration abbrechen",
