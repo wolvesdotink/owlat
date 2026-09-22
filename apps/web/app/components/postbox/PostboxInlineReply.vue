@@ -217,14 +217,12 @@ defineExpose({
 			</button>
 		</div>
 
-		<!-- Expanded inline composer. role="dialog" both for a11y and so the
-		     reader's single-key shortcut handler defers to the composer (same
-		     [role="dialog"] guard as the popup): focus on a non-editable control
-		     here must never let e/# archive the thread being replied to. -->
+		<!-- Inline editing stays nonmodal; its controls own reader shortcuts. -->
 		<div
 			v-else
 			:key="spec.key"
-			role="dialog"
+			role="region"
+			data-shortcut-boundary
 			:aria-label="t('components.postbox.postboxInlineReply.dialogLabel')"
 			class="h-[380px] flex flex-col overflow-hidden rounded border border-border-subtle bg-bg-elevated shadow-sm"
 		>

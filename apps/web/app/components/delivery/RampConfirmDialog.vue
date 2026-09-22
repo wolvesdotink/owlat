@@ -39,6 +39,7 @@
  * how much traffic, and what date it would be safe instead. "This may affect
  * deliverability" is the sentence this component exists to prevent.
  */
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 import { isConfirmationPhraseMatch } from '@owlat/shared/deliverabilityIndependence';
 
 const props = defineProps<{
@@ -60,37 +61,13 @@ const descriptionId = useId();
 const inputId = useId();
 const dialogEl = ref<HTMLElement | null>(null);
 const inputEl = ref<HTMLInputElement | null>(null);
-/** Whatever had focus when the dialog opened, so it can be given back. */
-let opener: HTMLElement | null = null;
-
-const FOCUSABLE =
-	'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function focusableNodes(): HTMLElement[] {
-	const root = dialogEl.value;
-	if (root === null) return [];
-	return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE));
-}
-
-/**
- * Tab stays inside. Written as a wrap rather than as a sentinel pair of hidden
- * tabbable nodes, because the confirm button's `disabled` state changes while
- * the dialog is open and a static sentinel would fall out of step with it.
- */
-function trapTab(event: KeyboardEvent): void {
-	const nodes = focusableNodes();
-	const first = nodes[0];
-	const last = nodes[nodes.length - 1];
-	if (first === undefined || last === undefined) return;
-	const active = document.activeElement;
-	if (event.shiftKey && active === first) {
-		event.preventDefault();
-		last.focus();
-	} else if (!event.shiftKey && active === last) {
-		event.preventDefault();
-		first.focus();
+useModalFocus(
+	dialogEl,
+	() => props.open,
+	() => {
+		if (!props.busy) emit('cancel');
 	}
-}
+);
 
 const canConfirm = computed(
 	() => props.busy !== true && isConfirmationPhraseMatch(typed.value, props.phrase)
@@ -98,21 +75,8 @@ const canConfirm = computed(
 
 watch(
 	() => props.open,
-	async (open) => {
-		// A stale phrase left in the box would make the NEXT open one click away
-		// from confirming, which is exactly the property this dialog is for.
-		if (!open) {
-			typed.value = '';
-			// Focus goes back where it came from, so a keyboard user is not dropped
-			// at the top of the document after cancelling.
-			const returnTo = opener;
-			opener = null;
-			returnTo?.focus();
-			return;
-		}
-		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-		await nextTick();
-		inputEl.value?.focus();
+	(open) => {
+		if (!open) typed.value = '';
 	}
 );
 
@@ -130,13 +94,12 @@ function confirm(): void {
 	>
 		<div
 			ref="dialogEl"
+			tabindex="-1"
 			role="dialog"
 			aria-modal="true"
 			:aria-labelledby="headingId"
 			:aria-describedby="descriptionId"
 			class="w-full max-w-lg space-y-4 rounded-xl bg-bg-surface p-6 shadow-lg"
-			@keydown.esc.prevent="emit('cancel')"
-			@keydown.tab="trapTab"
 		>
 			<h2 :id="headingId" class="text-lg font-semibold text-text-primary">{{ title }}</h2>
 

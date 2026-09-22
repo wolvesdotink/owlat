@@ -28,7 +28,7 @@ const emit = defineEmits<{
 		v-if="cardStyle"
 		class="postbox-rewrite-preview absolute z-30 w-72 max-w-[90vw] rounded-lg border border-border-subtle bg-bg-elevated p-2.5 shadow-xl"
 		:style="cardStyle"
-		role="dialog"
+		role="region"
 		:aria-label="t('components.postbox.postboxRewritePreview.dialogLabel')"
 		@mousedown.prevent
 	>

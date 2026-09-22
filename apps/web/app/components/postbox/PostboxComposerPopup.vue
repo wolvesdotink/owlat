@@ -79,18 +79,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<!-- role="dialog" both for a11y and so the reader's single-key shortcut
-	     handler defers to the composer (its [role="dialog"] guard): focus on a
-	     non-editable control here (Send, remove-attachment) must never let
-	     e/# archive/trash the message being replied to.
-
-	     Teleport relocates THIS SAME element (and the composer instance inside)
-	     into the centered focus surface when promoted — the frame changes, the
-	     draft state does not. Disabled = it stays a bottom-right popup. -->
+	<!-- Floating composers are nonmodal. Promotion adds modal semantics while
+	     teleporting the same draft into the shared focus surface. -->
 	<Teleport to="#pbx-focus-mount" :disabled="!isFocused">
 		<Transition name="pbx-popup" appear>
 			<div
-				role="dialog"
+				:role="isFocused ? 'dialog' : 'region'"
+				:aria-modal="isFocused || undefined"
+				data-shortcut-boundary
+				@keydown.esc.prevent.stop="onMinimize"
 				:aria-label="t('components.postbox.postboxComposerPopup.dialogLabel')"
 				class="flex flex-col z-40 bg-bg-elevated border border-border-subtle overflow-hidden"
 				:class="

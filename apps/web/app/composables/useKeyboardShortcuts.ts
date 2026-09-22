@@ -14,6 +14,7 @@
  * not a change here.
  */
 
+import { onScopeDispose } from 'vue';
 import { isHelpOverlayClaimed } from '~/utils/helpOverlayOwnership';
 import { chordFromEvent } from '~/utils/shortcutRegistry';
 import {
@@ -37,9 +38,9 @@ interface ShortcutConfig {
 	ignoreInputs?: boolean;
 }
 
-// Which catalog ids currently have a live handler. Module scope: registrations
-// outlive the component that made them until it unregisters.
-const shortcuts = ref<Map<string, ShortcutConfig>>(new Map());
+// Each composable owns its registrations. The newest live owner wins; releasing
+// it restores the previous owner rather than deleting somebody else's handler.
+const shortcuts = new Map<string, { owner: symbol; config: ShortcutConfig }[]>();
 const isHelpModalOpen = ref(false);
 
 // Track whether the composable has been initialized
@@ -68,7 +69,7 @@ function isInputFocused(): boolean {
 /** Fire the handler bound to `id`, if any. Reports whether anything ran. */
 function dispatch(id: string | null, event: KeyboardEvent): boolean {
 	if (!id) return false;
-	const config = shortcuts.value.get(id);
+	const config = shortcuts.get(id)?.at(-1)?.config;
 	if (!config) return false;
 	if (config.ignoreInputs && isInputFocused()) return false;
 	event.preventDefault();
@@ -80,6 +81,7 @@ function dispatch(id: string | null, event: KeyboardEvent): boolean {
  * Handle global keydown events
  */
 function handleGlobalKeydown(event: KeyboardEvent) {
+	if (event.defaultPrevented) return;
 	// Modifier chords belong to the browser, the OS, and the surfaces that bind
 	// their own listeners (⌘K palette, ⌘1–9 workspaces, the composer's ⌘Enter).
 	// This dispatcher deliberately never claims one.
@@ -156,11 +158,15 @@ function initializeKeyboardShortcuts() {
 	isInitialized = true;
 }
 
-// Note: cleanup is automatic when using Vue's onMounted/onUnmounted
-// If needed in the future, add a cleanup function export
-
 export function useKeyboardShortcuts() {
 	const router = useRouter();
+	const owner = Symbol('shortcut owner');
+	const ownedIds = new Set<string>();
+	let disposed = false;
+	onScopeDispose(() => {
+		disposed = true;
+		for (const id of ownedIds) unregisterShortcut(id);
+	});
 
 	// Initialize on first use
 	onMounted(() => {
@@ -173,12 +179,20 @@ export function useKeyboardShortcuts() {
 	 * the user remaps it), not this call.
 	 */
 	function registerShortcut(config: ShortcutConfig) {
-		shortcuts.value.set(config.id, config);
+		if (disposed) return;
+		unregisterShortcut(config.id);
+		const entries = shortcuts.get(config.id) ?? [];
+		entries.push({ owner, config });
+		shortcuts.set(config.id, entries);
+		ownedIds.add(config.id);
 	}
 
 	/** Release a catalog id's handler. */
 	function unregisterShortcut(id: string) {
-		shortcuts.value.delete(id);
+		const entries = shortcuts.get(id)?.filter((entry) => entry.owner !== owner);
+		if (entries?.length) shortcuts.set(id, entries);
+		else shortcuts.delete(id);
+		ownedIds.delete(id);
 	}
 
 	/**
@@ -221,7 +235,7 @@ export function useKeyboardShortcuts() {
 	 * because they document keys that are bound elsewhere too.
 	 */
 	function getRegisteredShortcuts() {
-		return SHORTCUT_CATALOG.filter((def) => shortcuts.value.has(def.id)).map((def) => ({
+		return SHORTCUT_CATALOG.filter((def) => shortcuts.has(def.id)).map((def) => ({
 			id: def.id,
 			keys: [...(shortcutBindings.value.byId.get(def.id) ?? [])],
 			description: def.labelKey,
@@ -230,7 +244,7 @@ export function useKeyboardShortcuts() {
 
 	/**
 	 * Register context-aware 'new' shortcut.
-	 * Call this in page onMounted, pass cleanup function in onUnmounted
+	 * Call this in page setup/onMounted; scope disposal releases it automatically.
 	 */
 	function registerNewShortcut(handler: ShortcutHandler) {
 		registerShortcut({ id: 'global.newItem', handler, ignoreInputs: true });

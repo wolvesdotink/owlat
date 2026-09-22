@@ -69,7 +69,7 @@ const VARIANT_CLASS: Record<TrustLabel['variant'], string> = {
 		<div
 			v-if="open"
 			data-testid="trust-chip-popover"
-			role="dialog"
+			role="region"
 			:aria-label="trustText"
 			class="absolute left-0 top-full mt-1 z-20 w-64 rounded-lg border border-border-subtle bg-bg-elevated shadow-lg p-3 text-left"
 			@click.stop

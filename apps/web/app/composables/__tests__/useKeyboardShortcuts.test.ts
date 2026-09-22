@@ -280,3 +280,34 @@ describe('useKeyboardShortcuts — help + escape', () => {
 		]);
 	});
 });
+
+describe('shortcut ownership', () => {
+	it.each([true, false])('only removes the disposed owner (newest first: %s)', (newestFirst) => {
+		const first = vi.fn();
+		const second = vi.fn();
+		const a = mountHost((api) => api.registerNewShortcut(first));
+		const b = mountHost((api) => api.registerNewShortcut(second));
+		press('n');
+		expect(first).not.toHaveBeenCalled();
+		expect(second).toHaveBeenCalledOnce();
+		(newestFirst ? b : a).unmount();
+		press('n');
+		expect(newestFirst ? first : second).toHaveBeenCalledTimes(newestFirst ? 1 : 2);
+		(newestFirst ? a : b).unmount();
+		first.mockClear();
+		second.mockClear();
+		press('n');
+		expect(first).not.toHaveBeenCalled();
+		expect(second).not.toHaveBeenCalled();
+	});
+
+	it('does not resurrect a handler when a disposed async callback registers it', () => {
+		const handler = vi.fn();
+		const host = mountHost(() => {});
+		const api = registered!;
+		host.unmount();
+		api.registerNewShortcut(handler);
+		press('n');
+		expect(handler).not.toHaveBeenCalled();
+	});
+});

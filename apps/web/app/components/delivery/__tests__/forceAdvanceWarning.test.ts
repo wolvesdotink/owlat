@@ -74,6 +74,7 @@ describe('force-advance control', () => {
 
 function mountDialog(open = true) {
 	return mount(RampConfirmDialog, {
+		attachTo: document.body,
 		props: {
 			open,
 			title: 'Force this cell past the evidence?',
