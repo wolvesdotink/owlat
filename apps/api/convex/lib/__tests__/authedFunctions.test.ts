@@ -30,6 +30,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import {
+	publicMutation,
+	publicAction,
+	authedAction,
+	authedIdentityMutation,
 	authedQuery,
 	authedMutation,
 	adminQuery,
@@ -40,6 +44,7 @@ import {
 } from '../authedFunctions';
 import * as sessionOrganization from '../sessionOrganization';
 import type { MutationSessionContext } from '../sessionOrganization';
+import { PUBLIC_STRING_MAX_CHARS } from '../publicInput';
 import * as featureFlags from '../featureFlags';
 
 const MEMBER: MutationSessionContext = {
@@ -62,6 +67,7 @@ vi.mock('../sessionOrganization', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../sessionOrganization')>();
 	return {
 		...actual,
+		requireAuthenticatedIdentity: vi.fn(async () => ({ subject: 'user-member' })),
 		requireOrgMember: vi.fn(async () => MEMBER),
 		getMutationContext: vi.fn(async () => MEMBER),
 		requireAdminContext: vi.fn(async () => ADMIN),
@@ -80,9 +86,10 @@ vi.mock('../featureFlags', async (importOriginal) => {
 });
 
 /** Identity-comparable and deliberately featureless — no handler here reads it. */
-const ctx = { db: 'fake-db' } as unknown as QueryCtx & MutationCtx;
+const ctx = { db: 'fake-db', runQuery: vi.fn(async () => MEMBER) } as unknown as QueryCtx &
+	MutationCtx;
 
-function invoke(registered: unknown, args: unknown = {}): Promise<unknown> {
+async function invoke(registered: unknown, args: unknown = {}): Promise<unknown> {
 	const inner = registered as { _handler: (c: unknown, a: unknown) => Promise<unknown> };
 	return inner._handler(ctx, args);
 }
@@ -323,6 +330,40 @@ describe('featureGatedAny composes an any-of flag floor', () => {
 
 		await expect(invoke(fn)).rejects.toThrow(/do not have access/);
 		expect(vi.mocked(featureFlags.assertAnyFeatureEnabled)).not.toHaveBeenCalled();
+		expect(handler).not.toHaveBeenCalled();
+	});
+});
+
+describe('every public write builder bounds nested input before handler side effects', () => {
+	const builders = {
+		publicMutation,
+		publicAction,
+		authedMutation,
+		authedIdentityMutation,
+		authedAction,
+		adminMutation,
+		ownerMutation,
+		gated: featureGated(authedMutation, 'chat'),
+	};
+	for (const [name, build] of Object.entries(builders)) {
+		it(`${name} rejects an oversized nested string with invalid_input`, async () => {
+			const handler = vi.fn(async () => null);
+			const fn = (build as unknown as LooseBuilder)({ args: {}, handler });
+			await expect(
+				invoke(fn, { payload: [{ text: 'x'.repeat(PUBLIC_STRING_MAX_CHARS + 1) }] })
+			).rejects.toMatchObject({ data: { category: 'invalid_input' } });
+			expect(handler).not.toHaveBeenCalled();
+		});
+	}
+	it('preserves the authentication floor before input validation', async () => {
+		vi.mocked(sessionOrganization.getMutationContext).mockRejectedValueOnce(
+			new Error('Authentication required')
+		);
+		const handler = vi.fn(async () => null);
+		const fn = authedMutation({ args: {}, handler });
+		await expect(invoke(fn, { text: 'x'.repeat(PUBLIC_STRING_MAX_CHARS + 1) })).rejects.toThrow(
+			'Authentication required'
+		);
 		expect(handler).not.toHaveBeenCalled();
 	});
 });

@@ -1,3 +1,4 @@
+import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { internalAction, internalMutation } from './_generated/server';
 import { internal } from './_generated/api';
@@ -187,6 +188,11 @@ export const create = authedMutation({
 		tags: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
+		validateStringLength(args.filename, STRING_LIMITS.FILENAME, 'filename');
+		validateStringLength(args.mimeType, STRING_LIMITS.MIME_TYPE, 'mimeType');
+		if (args.alt !== undefined) validateStringLength(args.alt, STRING_LIMITS.DESCRIPTION, 'alt');
+		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
+
 		const session = await requireOrgPermission(
 			ctx,
 			'media:manage',
@@ -392,6 +398,9 @@ export const update = authedMutation({
 		tags: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
+		if (args.alt !== undefined) validateStringLength(args.alt, STRING_LIMITS.DESCRIPTION, 'alt');
+		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
+
 		await requireOrgPermission(
 			ctx,
 			'media:manage',

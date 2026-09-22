@@ -81,3 +81,16 @@ describe('blockedEmails.bulkAdd — cap + audit', () => {
 		expect(rows).toHaveLength(0);
 	});
 });
+
+it('rejects oversized notes before persisting any row in the batch', async () => {
+	const t = convexTest(schema, modules);
+	await expect(
+		t.mutation(api.blockedEmails.bulkAdd, {
+			emails: [
+				{ email: 'valid@example.com', reason: 'manual' },
+				{ email: 'oversized@example.com', reason: 'manual', notes: 'x'.repeat(5001) },
+			],
+		})
+	).rejects.toThrow(/notes/);
+	expect(await t.run(async (ctx) => ctx.db.query('blockedEmails').collect())).toHaveLength(0);
+});
