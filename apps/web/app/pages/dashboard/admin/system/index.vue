@@ -33,7 +33,7 @@ async function checkNow() {
 	}
 	checking.value = true;
 	try {
-		await convex.action(api.systemUpdates.checkForUpdates, { force: true });
+		await convex.action(api.systemUpdatesReleaseCheck.checkForUpdates, { force: true });
 		showToast(t('dashboard.admin.system.index.toasts.checkComplete'));
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : t('dashboard.admin.system.index.unknownError');

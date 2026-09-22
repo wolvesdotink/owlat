@@ -681,7 +681,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 		// No platformAdmins seeded → isPlatformAdminByUserId returns false.
 
 		await expect(
-			t.action(api.systemUpdates.checkForUpdates, {}),
+			t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {}),
 		).rejects.toThrow();
 	});
 
@@ -692,7 +692,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 		sessionMock.subject = 'auth-user-1';
 
 		await expect(
-			t.action(api.systemUpdates.checkForUpdates, {}),
+			t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {}),
 		).rejects.toThrow();
 	});
 
@@ -714,7 +714,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 			});
 		});
 
-		const res = await t.action(api.systemUpdates.checkForUpdates, {});
+		const res = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {});
 		expect(res.latestVersion).toBe('1.3.0');
 		expect(res.currentVersion).toBe('1.2.0');
 		expect(res.updateAvailable).toBe(true); // 1.3.0 > 1.2.0
@@ -738,7 +738,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 			});
 		});
 
-		const res = await t.action(api.systemUpdates.checkForUpdates, {});
+		const res = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {});
 		expect(res.updateAvailable).toBe(false);
 	});
 });

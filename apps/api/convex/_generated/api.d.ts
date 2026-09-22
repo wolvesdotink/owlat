@@ -1063,6 +1063,7 @@ import type * as shareLinks from '../shareLinks.js';
 import type * as storage from '../storage.js';
 import type * as systemMail from '../systemMail.js';
 import type * as systemUpdates from '../systemUpdates.js';
+import type * as systemUpdatesReleaseCheck from '../systemUpdatesReleaseCheck.js';
 import type * as topics_apiHttp from '../topics/apiHttp.js';
 import type * as topics_bulk from '../topics/bulk.js';
 import type * as topics_doiHttp from '../topics/doiHttp.js';
@@ -2209,6 +2210,7 @@ declare const fullApi: ApiFromModules<{
 	storage: typeof storage;
 	systemMail: typeof systemMail;
 	systemUpdates: typeof systemUpdates;
+	systemUpdatesReleaseCheck: typeof systemUpdatesReleaseCheck;
 	'topics/apiHttp': typeof topics_apiHttp;
 	'topics/bulk': typeof topics_bulk;
 	'topics/doiHttp': typeof topics_doiHttp;
