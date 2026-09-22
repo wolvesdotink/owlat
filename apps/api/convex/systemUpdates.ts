@@ -265,6 +265,35 @@ export const getLatestRelease = authedQuery({
 	},
 });
 
+/**
+ * The `updateRun` row that is still open, if there is one.
+ *
+ * Every successful in-app update orphans its own row. `recordUpdateFinish` is
+ * called by the Nitro route that dispatched the update, and the update's last
+ * step recreates the container that route is running in — so on the happy path
+ * the process that would close the row is gone before the sidecar's answer gets
+ * back to it, and the run stays `running` in the history table forever.
+ *
+ * The browser outlives all of it, and its health poller is the only thing that
+ * ever learns how the run ended: it watches for the target version to come up.
+ * This query hands it the row to close. Only the NEWEST run is considered —
+ * an older one left `running` by a browser that was closed mid-update is not
+ * something a later update's poller can honestly speak for.
+ */
+export const getUnfinishedUpdate = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		await requirePlatformAdmin(ctx);
+		const [newest] = await ctx.db
+			.query('systemUpdates')
+			.withIndex('by_kind_and_startedAt', (q) => q.eq('kind', 'updateRun'))
+			.order('desc')
+			.take(1);
+		if (!newest || newest.status !== 'running') return null;
+		return { runId: newest._id, versionTo: newest.versionTo ?? null };
+	},
+});
+
 export const listUpdateHistory = authedQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {

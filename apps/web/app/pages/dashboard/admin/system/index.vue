@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import { apiFetch } from '~/lib/csrfFetch';
 import { semverCompare } from '@owlat/shared/semver';
 import { formatDateTime } from '~/utils/formatters';
-import { updateRequestWasAnswered } from '~/lib/systemUpdate';
+import { updateFailureMessage, updateRequestWasAnswered } from '~/lib/systemUpdate';
 
 const { t } = useI18n();
 const { showToast } = useToast();
@@ -121,13 +121,38 @@ async function confirmUpdate() {
 		updateSteps.value = resp.steps ?? null;
 		// Don't set success yet — wait for UpdateProgress to confirm new version is live.
 	} catch (err) {
-		// A throw with no HTTP status behind it is almost always the web container
-		// being recreated by the update's last step — the progress card keeps the
+		// A throw the server did not put there is the web container being
+		// recreated by the update's last step — the progress card keeps the
 		// verdict and resolves it from updater health.
 		if (!updateRequestWasAnswered(err)) return;
 		updateState.value = 'failed';
-		const msg = err instanceof Error ? err.message : t('dashboard.admin.system.index.unknownError');
-		updateError.value = msg;
+		updateError.value = updateFailureMessage(err, t('dashboard.admin.system.index.unknownError'));
+		void closeOpenRun('failed', updateError.value);
+	}
+}
+
+/**
+ * Close the `updateRun` row the update left open.
+ *
+ * The route that opened it is normally gone by the time the sidecar answers —
+ * its container is what the update recreated — so the browser is the only party
+ * left that can say how the run ended. Best-effort: an update that worked must
+ * not be reported as broken because its audit row could not be written, and a
+ * run the route DID manage to close is no longer `running`, so this finds
+ * nothing and does nothing.
+ */
+async function closeOpenRun(status: 'success' | 'failed', error?: string) {
+	if (!convex) return;
+	try {
+		const open = await convex.query(api.systemUpdates.getUnfinishedUpdate, {});
+		if (!open) return;
+		await convex.mutation(api.systemUpdates.recordUpdateFinish, {
+			runId: open.runId,
+			status,
+			...(error ? { error } : {}),
+		});
+	} catch (err) {
+		console.error('[system/update] could not close the update run', err);
 	}
 }
 
@@ -136,8 +161,11 @@ function cancelConfirm() {
 	pendingTargetVersion.value = '';
 }
 
-function onUpdateComplete() {
+async function onUpdateComplete() {
 	updateState.value = 'success';
+	// Awaited, not fired alongside the reload: the row has to be closed before
+	// the page goes away, or the history keeps a run that never ended.
+	await closeOpenRun('success');
 	// Force a full reload to pick up the new web app
 	setTimeout(() => {
 		window.location.reload();
@@ -147,6 +175,7 @@ function onUpdateComplete() {
 function onUpdateFailed(error: string) {
 	updateState.value = 'failed';
 	updateError.value = error;
+	void closeOpenRun('failed', error);
 }
 
 // ── Utility ──────────────────────────────────────────────────────────────────
