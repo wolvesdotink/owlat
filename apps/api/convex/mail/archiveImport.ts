@@ -32,6 +32,7 @@ import { throwForbidden } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
 import { insertDeliveredMessage } from './deliveryPipeline/insert';
 import { mailMessageAttachmentValidator } from '../lib/mailContentValidators';
+import { canonicalMessageId } from '../lib/messageId';
 import { resolveLabelPath } from './labelsTree';
 import { completedOrFailedValidator } from '../lib/convexValidators';
 import { archiveFormatValidator } from '../lib/literalValidators';
@@ -44,11 +45,6 @@ import { folderRoleValidator } from './mailbox/shared';
  * the two ceilings must be the same number.
  */
 export const MAX_ARCHIVE_BYTES = MAX_ARCHIVE_IMPORT_BYTES;
-
-/** Strip RFC 5322 angle brackets from a Message-ID for dedup. */
-function canonicalMessageId(raw: string): string {
-	return raw.replace(/[<>]/g, '').trim() || raw;
-}
 
 /** The caller-visible shape of a job row (the wizard's progress readout). */
 function toStatus(job: Doc<'mailArchiveImports'>) {

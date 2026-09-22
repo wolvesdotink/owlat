@@ -658,6 +658,7 @@ import type * as lib_mailSnooze from '../lib/mailSnooze.js';
 import type * as lib_accountExportTemplates from '../lib/accountExportTemplates.js';
 import type * as lib_messageBody from '../lib/messageBody.js';
 import type * as lib_messageBodyExport from '../lib/messageBodyExport.js';
+import type * as lib_messageId from '../lib/messageId.js';
 import type * as lib_outboundAlignment from '../lib/outboundAlignment.js';
 import type * as lib_outboundUrlValidation from '../lib/outboundUrlValidation.js';
 import type * as lib_pagination from '../lib/pagination.js';
@@ -1801,6 +1802,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/accountExportTemplates': typeof lib_accountExportTemplates;
 	'lib/messageBody': typeof lib_messageBody;
 	'lib/messageBodyExport': typeof lib_messageBodyExport;
+	'lib/messageId': typeof lib_messageId;
 	'lib/outboundAlignment': typeof lib_outboundAlignment;
 	'lib/outboundUrlValidation': typeof lib_outboundUrlValidation;
 	'lib/pagination': typeof lib_pagination;
