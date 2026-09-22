@@ -50,6 +50,9 @@ function fakeDeps(opts: {
 	stopAfterBatches?: number;
 	// recordProgress returns false from this batch on (simulates Cancel).
 	cancelAfterBatches?: number;
+	// UIDs the mailbox already holds — returned with no body, as the two-phase
+	// fetch does once the Message-ID lookup recognises them.
+	alreadyPresent?: number[];
 }): { deps: BackfillFolderDeps; rec: Recorder } {
 	const rec = recorder();
 	let batches = 0;
@@ -59,9 +62,14 @@ function fakeDeps(opts: {
 		fetchBatch: async (_remoteName, start, end): Promise<BackfillFetchedMessage[]> => {
 			rec.fetchedRanges.push({ start, end });
 			batches++;
+			const present = new Set(opts.alreadyPresent ?? []);
 			return opts.uids
 				.filter((u) => u >= start && u <= end)
-				.map((u) => ({ uid: u, source: Buffer.from(`raw-${u}`), flags: new Set<string>() }));
+				.map((u) =>
+					present.has(u)
+						? { uid: u, source: null, flags: new Set<string>(), alreadyPresent: true }
+						: { uid: u, source: Buffer.from(`raw-${u}`), flags: new Set<string>() }
+				);
 		},
 		ingest: async (_remoteName, _role, uid) => {
 			rec.ingested.push(uid);
@@ -100,6 +108,41 @@ describe('backfillFolder', () => {
 		expect(rec.progress.map((p) => p.newCursor)).toEqual([7, 4, 1, 0]);
 		// Per-batch imported counts (sparse) sum to messageCount.
 		expect(rec.progress.reduce((n, p) => n + p.importedDelta, 0)).toBe(4);
+	});
+
+	it('counts a message the mailbox already holds without ingesting it', async () => {
+		// The shape a resumed / re-walked import takes: the provider's bandwidth
+		// was never spent on these, and the walk still converges on the folder's
+		// denominator.
+		const { deps, rec } = fakeDeps({
+			uids: [1, 2, 5, 10],
+			batchSize: 3,
+			startCursor: 10,
+			alreadyPresent: [5, 10],
+		});
+		const done = await backfillFolder(deps, target);
+
+		expect(done).toBe(true);
+		expect(rec.ingested).toEqual([2, 1]); // only the two it did not have
+		// Counted exactly as the ingest path counts the `duplicate` it would
+		// otherwise have returned, so the reported numbers do not move.
+		expect(rec.progress.reduce((n, p) => n + p.importedDelta, 0)).toBe(4);
+		expect(rec.progress.reduce((n, p) => n + p.failedDelta, 0)).toBe(0);
+		expect(rec.failures).toHaveLength(0);
+	});
+
+	it('never reports an already-held message as failed for having no body', async () => {
+		// `alreadyPresent` has a null source by construction; without the earlier
+		// branch it would fall into the "server returned no body" failure arm.
+		const { deps, rec } = fakeDeps({
+			uids: [4],
+			batchSize: 10,
+			startCursor: 4,
+			alreadyPresent: [4],
+		});
+		await backfillFolder(deps, target);
+		expect(rec.progress.map((p) => p.importedDelta)).toEqual([1]);
+		expect(rec.progress.map((p) => p.failedDelta)).toEqual([0]);
 	});
 
 	it('skips the folder when there is no active migration (initFolder null)', async () => {

@@ -45,6 +45,9 @@ export const fn = {
 	getBackfillWork: 'mail/migrationBackfill:getBackfillWork' as FnRef,
 	// Snapshot a folder's high-water UID + count; returns the start cursor (internalMutation).
 	initFolderBackfill: 'mail/migrationBackfill:initFolderBackfill' as FnRef,
+	// Which of a batch's Message-IDs the mailbox already holds, so the walk can
+	// skip them WITHOUT downloading their bodies (internalQuery).
+	findKnownMessageIds: 'mail/migrationBackfill:findKnownMessageIds' as FnRef,
 	// Persist one descending backfill batch's progress (internalMutation).
 	recordBackfillProgress: 'mail/migrationBackfill:recordBackfillProgress' as FnRef,
 	// Signal "all folders backfilled" → hand off to AI indexing / finalize (internalMutation).

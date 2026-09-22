@@ -26,9 +26,13 @@ import { isFeatureEnabled } from '../lib/featureFlags';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { latestMigrationRow } from './migration';
 import { scheduleVoiceProfileRefresh } from './ai/voiceProfile';
+import { canonicalMessageId } from '../lib/messageId';
 
 // Chunk size for the post-import knowledge sweep (paced inside runIndexChunk).
 const INDEX_CHUNK_SIZE = 25;
+
+/** Upper bound on one `findKnownMessageIds` call — one backfill batch's worth. */
+const MAX_KNOWN_MESSAGE_ID_LOOKUP = 500;
 
 /**
  * Move a still-importing migration to `failed` with the reason, and record it.
@@ -71,6 +75,53 @@ export const getBackfillWork = internalQuery({
 			return { isActive: false as const, migrationId: null };
 		}
 		return { isActive: true as const, migrationId: migration._id };
+	},
+});
+
+/**
+ * Which of these Message-IDs the account's mailbox already holds.
+ *
+ * The walk's bandwidth valve. `ingestExternalMessage` dedupes on Message-ID,
+ * but it can only do so AFTER the worker has downloaded the whole message and
+ * uploaded its raw bytes — so re-walking a folder costs the provider's full
+ * bandwidth for mail that is already imported and will be thrown away on
+ * arrival. On a metered provider that is fatal rather than merely wasteful: a
+ * 21 GiB Gmail Sent folder behind a daily IMAP bandwidth cap spends the whole
+ * budget re-fetching the first 12 GiB it already has, is cut off with
+ * `* BYE [OVERQUOTA]`, and never reaches the mail it is missing — no matter how
+ * many times the import is restarted.
+ *
+ * So the worker asks first, with envelopes it fetched for a few hundred bytes a
+ * message, and downloads bodies only for the ones this returns as unknown.
+ *
+ * Canonicalisation MUST match the writers' (`lib/messageId.ts`) or a message
+ * would look unknown here and duplicate on ingest. Returns the caller's own
+ * strings, so it never has to canonicalise anything itself.
+ */
+export const findKnownMessageIds = internalQuery({
+	args: {
+		accountId: v.id('externalMailAccounts'),
+		/** Raw Message-ID headers, as the remote server reported them. */
+		messageIds: v.array(v.string()),
+	},
+	handler: async (ctx, args): Promise<string[]> => {
+		const account = await ctx.db.get(args.accountId);
+		if (!account) return [];
+
+		// One batch of the descending walk. Bounded so a malformed caller cannot
+		// turn a single query into an unbounded index scan.
+		const ids = args.messageIds.slice(0, MAX_KNOWN_MESSAGE_ID_LOOKUP);
+		const known: string[] = [];
+		for (const raw of ids) {
+			const canonical = canonicalMessageId(raw);
+			const hit = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', canonical))
+				.filter((q) => q.eq(q.field('mailboxId'), account.mailboxId))
+				.first();
+			if (hit) known.push(raw);
+		}
+		return known;
 	},
 });
 
