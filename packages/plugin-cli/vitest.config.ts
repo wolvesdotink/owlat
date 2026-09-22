@@ -4,6 +4,14 @@ import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 export default defineConfig({
 	test: {
+		coverage: {
+			provider: 'v8',
+			reporter: ['text', 'json-summary', 'html'],
+			reportsDirectory: './coverage',
+			include: ['src/**/*.ts'],
+			exclude: ['**/__tests__/**', '**/*.d.ts'],
+			thresholds: { lines: 86 },
+		},
 		include: ['src/**/__tests__/**/*.test.ts'],
 		environment: 'node',
 		// Every CLI test materialises a throwaway workspace and drives the real

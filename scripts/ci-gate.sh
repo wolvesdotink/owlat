@@ -52,7 +52,7 @@ step bunx turbo "${turbo_tasks[@]}" "${turbo_concurrency_args[@]}" --filter='!@o
 # for the gate scripts themselves. It used to be a `vitest run <file>` prefix
 # inside each lint:* entry, which booted vitest once per gate and left the
 # test files without a matching lint:* entry running only in security.yml.
-for gate in scripts script-tests deadcode catalog build-graph convex-orphans convex-globals filesize adr branding format imports providers \
+for gate in warnings scripts script-tests deadcode catalog build-graph convex-orphans convex-globals filesize adr branding format imports providers \
 	ui-buttons tokens member-jargon docker-workspaces deploy-closure installer compose; do
 	step bun run "lint:$gate"
 done

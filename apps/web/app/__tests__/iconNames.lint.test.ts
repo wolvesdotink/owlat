@@ -60,7 +60,7 @@ let workDir: string;
 /** Write one file into its own fixture root and lint that root. */
 function lintFile(name: string, fileName: string, contents: string): LintResult {
 	const root = join(workDir, name);
-	mkdirSync(root, { recursive: true });
+	mkdirSync(join(root, fileName, '..'), { recursive: true });
 	writeFileSync(join(root, fileName), contents);
 	return runLint(root);
 }
@@ -116,6 +116,10 @@ describe('check-icon-names.sh — the file must be scanned', () => {
 });
 
 describe('check-icon-names.sh — scope', () => {
+	it('ignores generated coverage reports', () => {
+		expect(lintFile('report', 'coverage/Card.vue.html', 'lucide:key-round-x').status).toBe(0);
+	});
+
 	it('scans the shared components, not only the app', () => {
 		const result = runLint();
 		expect(result.status).toBe(0);

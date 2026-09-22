@@ -26,22 +26,29 @@
 		"createError": "readonly"
 	},
 	"rules": {
-		"eqeqeq": ["error", "always", { "null": "ignore" }],
+		"eqeqeq": [
+			"error",
+			"always",
+			{
+				"null": "ignore"
+			}
+		],
 		"no-unused-vars": "error",
-		"no-console": ["warn", { "allow": ["info", "warn", "error"] }],
+		"no-console": [
+			"warn",
+			{
+				"allow": ["info", "warn", "error"]
+			}
+		],
 		"@typescript-eslint/no-explicit-any": "error",
-
 		"@typescript-eslint/ban-ts-comment": "error",
 		"@typescript-eslint/no-non-null-asserted-optional-chain": "error",
 		"@typescript-eslint/prefer-optional-chain": "error",
 		"no-unsafe-optional-chaining": "error",
-
 		"@typescript-eslint/consistent-type-imports": "warn",
 		"import/no-duplicates": "warn",
 		"unicorn/no-array-for-each": "warn",
-
-		"import/no-cycle": "warn",
-
+		"import/no-cycle": "error",
 		"no-underscore-dangle": "off",
 		"unicorn/no-array-sort": "off",
 		"unicorn/no-array-reverse": "off",
@@ -56,6 +63,29 @@
 			"rules": {
 				"@typescript-eslint/no-explicit-any": "off",
 				"no-unused-vars": "off"
+			}
+		},
+		{
+			"files": [
+				"**/convex/conditions/index.ts",
+				"**/convex/conditions/segmentMatch.ts",
+				"**/convex/delivery/sendAssignmentRouting.ts",
+				"**/convex/delivery/sendAssignments.ts",
+				"**/convex/lib/sendProviders/cellRoute.ts",
+				"**/convex/lib/sendProviders/routeMixContext.ts",
+				"**/convex/mail/filterRun.ts",
+				"**/convex/mail/filters.ts",
+				"**/src/parse/contentType.ts",
+				"**/src/parse/headers.ts",
+				"**/src/scaffoldSendProvider.ts",
+				"**/src/scaffoldSendProviderModules.ts",
+				"**/src/scaffoldSendProviderStubs.ts",
+				"**/src/manifestSnapshot.ts",
+				"**/src/manifestValue.ts",
+				"**/src/settingsSchema.ts"
+			],
+			"rules": {
+				"import/no-cycle": "warn"
 			}
 		}
 	],
