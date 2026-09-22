@@ -14,7 +14,7 @@ export default defineConfig({
 			// (config, folders, ingest) is what the unit tests cover.
 			exclude: ['src/**/__tests__/**', 'src/index.ts', 'src/server.ts'],
 			thresholds: {
-				lines: 20,
+				lines: 67,
 			},
 		},
 	},

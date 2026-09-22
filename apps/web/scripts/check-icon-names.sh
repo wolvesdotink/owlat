@@ -61,7 +61,7 @@ SCANNED_EXT='vue|jsx|tsx|ts|md|mdc|mdx|yml|yaml'
 # very rules quote a deliberately broken name by construction.
 mapfile -t hits < <(
 	grep -rHnoE --binary-files=without-match \
-		--exclude-dir=node_modules --exclude-dir=.nuxt --exclude-dir=dist \
+		--exclude-dir=node_modules --exclude-dir=.nuxt --exclude-dir=dist --exclude-dir=coverage \
 		--exclude-dir=__tests__ --exclude='*.test.ts' --exclude='*.spec.ts' \
 		'\blucide:[a-z0-9-]+' "${roots[@]}" 2>/dev/null | sort -u
 )

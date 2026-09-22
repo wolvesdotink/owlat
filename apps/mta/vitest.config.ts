@@ -13,7 +13,7 @@ export default defineConfig({
 			include: ['src/**/*.ts'],
 			exclude: ['src/**/__tests__/**', 'src/index.ts', 'src/server.ts'],
 			thresholds: {
-				lines: 20,
+				lines: 87,
 			},
 		},
 	},

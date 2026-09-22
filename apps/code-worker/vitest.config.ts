@@ -24,7 +24,7 @@ export default defineConfig({
 			// taskRunner.ts are the security-critical logic under test.
 			exclude: ['src/**/__tests__/**', 'src/index.ts'],
 			thresholds: {
-				lines: 20,
+				lines: 75,
 			},
 		},
 	},
