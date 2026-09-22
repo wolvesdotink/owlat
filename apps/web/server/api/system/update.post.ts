@@ -4,6 +4,7 @@ import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
+import { UPDATER_REPORT_MARKER } from '~/lib/systemUpdate';
 
 /**
  * Self-hosted in-app update entry point.
@@ -129,10 +130,14 @@ export default defineEventHandler(async (event) => {
 				.map((step) => `${step.step}: ${step.stderr}`)
 				.join(' | ')
 		);
+		// The marker is what tells the browser this 502 is OURS. The rollout's
+		// last step recreates this very container, so the same request also ends
+		// in a 502 when everything went right — Caddy's, for an upstream that
+		// went away mid-answer. Only one of the two carries a report.
 		throw createError({
 			statusCode: 502,
 			message: updaterResult.error || 'Update failed',
-			data: updaterResult,
+			data: { [UPDATER_REPORT_MARKER]: true, ...updaterResult },
 		});
 	}
 

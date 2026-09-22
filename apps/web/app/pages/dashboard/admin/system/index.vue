@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { apiFetch } from '~/lib/csrfFetch';
 import { semverCompare } from '@owlat/shared/semver';
 import { formatDateTime } from '~/utils/formatters';
-import { updateRequestWasAnswered } from '~/lib/systemUpdate';
 
 const { t } = useI18n();
 const { showToast } = useToast();
@@ -88,66 +86,19 @@ onMounted(fetchContainerHealth);
 
 // ── Update flow ──────────────────────────────────────────────────────────────
 
-type UpdateState = 'idle' | 'confirming' | 'running' | 'success' | 'failed';
-const updateState = ref<UpdateState>('idle');
-const updateSteps = ref<Array<{ step: string; ok?: boolean; stdout?: string; stderr?: string }> | null>(null);
-const updateError = ref<string>('');
-const pendingTargetVersion = ref<string>('');
-
-function startUpdate() {
-	const target = latestRelease.value?.latestVersion;
-	if (!target) return;
-	pendingTargetVersion.value = target;
-	updateState.value = 'confirming';
-}
-
-async function confirmUpdate() {
-	updateState.value = 'running';
-	updateError.value = '';
-	updateSteps.value = null;
-
-	try {
-		const resp = await apiFetch<{
-			// `ok` is the sidecar's per-step verdict; the progress list needs it to
-			// tell a real failure from docker's progress output on stderr.
-			steps?: Array<{ step: string; ok?: boolean; stdout?: string; stderr?: string }>;
-		}>('/api/system/update', {
-			method: 'POST',
-			body: { targetVersion: pendingTargetVersion.value },
-			retry: 0,
-			// Long timeout for pull+up+convex-deploy
-			timeout: 10 * 60 * 1000,
-		});
-		updateSteps.value = resp.steps ?? null;
-		// Don't set success yet — wait for UpdateProgress to confirm new version is live.
-	} catch (err) {
-		// A throw with no HTTP status behind it is almost always the web container
-		// being recreated by the update's last step — the progress card keeps the
-		// verdict and resolves it from updater health.
-		if (!updateRequestWasAnswered(err)) return;
-		updateState.value = 'failed';
-		const msg = err instanceof Error ? err.message : t('dashboard.admin.system.index.unknownError');
-		updateError.value = msg;
-	}
-}
-
-function cancelConfirm() {
-	updateState.value = 'idle';
-	pendingTargetVersion.value = '';
-}
-
-function onUpdateComplete() {
-	updateState.value = 'success';
-	// Force a full reload to pick up the new web app
-	setTimeout(() => {
-		window.location.reload();
-	}, 2_000);
-}
-
-function onUpdateFailed(error: string) {
-	updateState.value = 'failed';
-	updateError.value = error;
-}
+// The run has real control flow — it outlives its own transport — so it lives in
+// a composable rather than inline among this page's read-only cards.
+const {
+	updateState,
+	updateSteps,
+	updateError,
+	pendingTargetVersion,
+	startUpdate,
+	cancelConfirm,
+	confirmUpdate,
+	onUpdateComplete,
+	onUpdateFailed,
+} = useSystemUpdateRun(() => latestRelease.value?.latestVersion);
 
 // ── Utility ──────────────────────────────────────────────────────────────────
 function formatDuration(start?: number, end?: number) {
