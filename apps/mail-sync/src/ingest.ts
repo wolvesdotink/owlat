@@ -33,6 +33,7 @@ const HEADER_BLOCK_BYTES = 64 * 1024;
 
 function capBody(body: string | undefined): string | undefined {
 	if (!body) return undefined;
+	body = body.toWellFormed();
 	if (Buffer.byteLength(body, 'utf-8') <= WIRE_BODY_LIMIT) return body;
 	// Truncate by bytes without splitting a multibyte char (a trailing partial
 	// sequence decodes to U+FFFD, harmless for a preview).
@@ -46,7 +47,7 @@ function addrList(field: AddressObject | AddressObject[] | undefined): string[] 
 	const out: string[] = [];
 	for (const o of objs) {
 		for (const v of o.value ?? []) {
-			if (v.address) out.push(v.address);
+			if (v.address) out.push(v.address.toWellFormed());
 		}
 	}
 	return out;
@@ -63,7 +64,7 @@ function addrList(field: AddressObject | AddressObject[] | undefined): string[] 
  */
 function primaryAddress(field: AddressObject | AddressObject[] | undefined): string {
 	const obj = Array.isArray(field) ? field[field.length - 1] : field;
-	return obj?.value[0]?.address ?? '';
+	return obj?.value[0]?.address?.toWellFormed() ?? '';
 }
 
 /**
@@ -76,7 +77,7 @@ function primaryAddress(field: AddressObject | AddressObject[] | undefined): str
  */
 function addrText(field: AddressObject | AddressObject[] | undefined): string | undefined {
 	if (!field) return undefined;
-	return Array.isArray(field) ? field[field.length - 1]?.text : field.text;
+	return (Array.isArray(field) ? field[field.length - 1]?.text : field.text)?.toWellFormed();
 }
 
 /**
@@ -176,10 +177,10 @@ export async function ingestMessage(
 	const text = parsed.text ?? undefined;
 	const html = typeof parsed.html === 'string' ? parsed.html : undefined;
 	const attachments = parsed.attachments.map((a, i) => ({
-		filename: a.filename,
-		contentType: a.contentType,
+		filename: a.filename.toWellFormed(),
+		contentType: a.contentType.toWellFormed(),
 		size: a.size,
-		contentId: a.contentId ?? undefined,
+		contentId: a.contentId?.toWellFormed(),
 		partIndex: String(i),
 	}));
 	const references = Array.isArray(parsed.references)
@@ -195,7 +196,7 @@ export async function ingestMessage(
 		{
 			accountId: params.accountId,
 			folderRole: params.folderRole,
-			remoteName: params.remoteName,
+			remoteName: params.remoteName.toWellFormed(),
 			remoteUid: params.remoteUid,
 			remoteUidValidity: params.remoteUidValidity,
 			rawStorageId: uploaded.storageId,
@@ -206,12 +207,12 @@ export async function ingestMessage(
 			cc: addrList(parsed.cc),
 			bcc: addrList(parsed.bcc),
 			replyTo: addrText(parsed.replyTo),
-			subject: parsed.subject ?? '',
+			subject: parsed.subject?.toWellFormed() ?? '',
 			textBodyInline: capBody(text),
 			htmlBodyInline: capBody(html),
-			messageId: parsed.messageId ?? syntheticMessageId(params),
-			inReplyTo: parsed.inReplyTo ?? undefined,
-			references,
+			messageId: parsed.messageId?.toWellFormed() ?? syntheticMessageId(params),
+			inReplyTo: parsed.inReplyTo?.toWellFormed(),
+			references: references?.toWellFormed(),
 			receivedAt: (parsed.date ?? new Date()).getTime(),
 			attachments,
 			flagSeen: params.flags.has('\\Seen'),

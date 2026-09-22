@@ -9,6 +9,8 @@
  * (`mail/external/delivery.ts::ingestExternalMessage`).
  */
 
+import { truncateCodePoints } from '@owlat/shared/unicode';
+
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { extractEmail, normalizeSubject } from '../../lib/emailAddress';
@@ -35,7 +37,7 @@ export function buildSnippet(text: string | undefined, html: string | undefined)
 			.replace(/\s+/g, ' ')
 			.trim() ??
 		'';
-	return source.slice(0, 200);
+	return truncateCodePoints(source, 200);
 }
 
 export function stripBrackets(s: string | undefined): string | undefined {

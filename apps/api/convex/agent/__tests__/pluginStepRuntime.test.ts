@@ -1,9 +1,9 @@
+import { truncateCodePoints } from '@owlat/shared/unicode';
 import { describe, expect, it } from 'vitest';
 import {
 	isDeclaredPluginCautionEdge,
 	parsePluginAgentStepResult,
 	PLUGIN_AGENT_STEP_INPUT_LIMITS,
-	truncateCodePoints,
 } from '../pluginStepRuntime';
 
 describe('hosted plugin agent step runtime boundary', () => {
