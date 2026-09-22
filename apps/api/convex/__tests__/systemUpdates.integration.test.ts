@@ -278,7 +278,7 @@ describe('systemUpdates.getUnfinishedUpdate', () => {
 		// for — the abandoned one ended in a way nobody here witnessed.
 		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toBeNull();
 		const stale = await t.run(async (ctx) => ctx.db.get(abandoned));
-		expect(stale?.status).toBe('running');
+		expect(stale?.status).toBe('superseded');
 	});
 
 	it('does not mistake the release-check singleton for a run', async () => {
@@ -293,5 +293,136 @@ describe('systemUpdates.getUnfinishedUpdate', () => {
 		);
 
 		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toBeNull();
+	});
+});
+
+/**
+ * ONE RUN AT A TIME.
+ *
+ * The history table showed two rows reading `running` at once — the update to
+ * 0.5.3 and the update to 0.5.4 — on an instance where both rollouts had in
+ * fact completed. Neither was live: the happy path orphans its own row (the
+ * rollout recreates the container that would close it), and the browser that
+ * could close it had moved on. Dispatching a new update now retires whatever
+ * is still open before opening its own row.
+ */
+describe('one update run at a time', () => {
+	it('retires the open run when the next update is dispatched', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+
+		const orphaned = await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.2',
+			versionTo: '0.5.3',
+		});
+		const current = await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.3',
+			versionTo: '0.5.4',
+		});
+
+		const retired = await t.run(async (ctx) => ctx.db.get(orphaned));
+		expect(retired).toMatchObject({
+			status: 'superseded',
+			error: 'Superseded by the update to 0.5.4',
+		});
+		// Left unset on purpose: nobody witnessed that rollout end, and a "now"
+		// here would bill the gap between two updates to the first one's duration.
+		expect(retired?.finishedAt).toBeUndefined();
+
+		const open = await t.run(async (ctx) => ctx.db.get(current));
+		expect(open?.status).toBe('running');
+	});
+
+	it('leaves at most one running row however many updates were orphaned', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+
+		for (const [versionFrom, versionTo] of [
+			['0.5.0', '0.5.2'],
+			['0.5.2', '0.5.3'],
+			['0.5.3', '0.5.4'],
+			['0.5.4', '0.5.5'],
+		]) {
+			await t.mutation(api.systemUpdates.recordUpdateStart, {
+				versionFrom: versionFrom!,
+				versionTo: versionTo!,
+			});
+		}
+
+		const history = await t.query(api.systemUpdates.listUpdateHistory, {});
+		expect(history.filter((row) => row.status === 'running')).toHaveLength(1);
+		// Newest first, so the survivor is the update actually under way.
+		expect(history[0]).toMatchObject({ versionTo: '0.5.5', status: 'running' });
+		expect(history.filter((row) => row.status === 'superseded')).toHaveLength(3);
+	});
+
+	it('does not retire runs that already ended', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+
+		const succeeded = await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.2',
+			versionTo: '0.5.3',
+		});
+		await t.mutation(api.systemUpdates.recordUpdateFinish, {
+			runId: succeeded,
+			status: 'success',
+		});
+
+		await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.3',
+			versionTo: '0.5.4',
+		});
+
+		const closed = await t.run(async (ctx) => ctx.db.get(succeeded));
+		expect(closed?.status).toBe('success');
+		expect(closed?.error).toBeUndefined();
+	});
+
+	it('does not touch the release-check singleton, which has no status at all', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const checkId = await t.run(async (ctx) =>
+			ctx.db.insert('systemUpdates', {
+				kind: 'latestCheck',
+				latestVersion: '0.5.4',
+				checkedAt: Date.now(),
+			})
+		);
+
+		await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.3',
+			versionTo: '0.5.4',
+		});
+
+		const check = await t.run(async (ctx) => ctx.db.get(checkId));
+		expect(check).toMatchObject({ kind: 'latestCheck', latestVersion: '0.5.4' });
+		expect(check?.status).toBeUndefined();
+	});
+
+	it('keeps a superseded verdict when the old route finally reports back', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+
+		const orphaned = await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.2',
+			versionTo: '0.5.3',
+		});
+		await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.3',
+			versionTo: '0.5.4',
+		});
+
+		// The 0.5.3 rollout's route survived after all and closes its own row —
+		// a verdict about a rollout this instance has already moved past.
+		await t.mutation(api.systemUpdates.recordUpdateFinish, {
+			runId: orphaned,
+			status: 'success',
+			steps: SIDECAR_STEPS,
+		});
+
+		const retired = await t.run(async (ctx) => ctx.db.get(orphaned));
+		expect(retired?.status).toBe('superseded');
+		expect(retired?.steps).toBeUndefined();
 	});
 });

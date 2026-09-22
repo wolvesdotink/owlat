@@ -408,6 +408,7 @@ function formatDuration(start?: number, end?: number) {
 										'bg-success/10 text-success': row.status === 'success',
 										'bg-error/10 text-error': row.status === 'failed',
 										'bg-brand/10 text-brand': row.status === 'running',
+										'bg-bg-surface text-text-tertiary': row.status === 'superseded',
 									}"
 								>
 									<span
@@ -416,6 +417,7 @@ function formatDuration(start?: number, end?: number) {
 											'bg-success': row.status === 'success',
 											'bg-error': row.status === 'failed',
 											'bg-brand animate-pulse motion-reduce:animate-none': row.status === 'running',
+											'bg-text-tertiary': row.status === 'superseded',
 										}"
 									/>
 									{{ row.status }}

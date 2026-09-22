@@ -144,6 +144,23 @@ export const getLatestCheckInternal = internalQuery({
  *
  * Platform-admin only, and public on purpose — see the module header. Returns
  * the row id so the route can close the same row with `recordUpdateFinish`.
+ *
+ * ONE RUN AT A TIME
+ * -----------------
+ * Any run still `running` when this is called is retired to `superseded`
+ * first, so the history can never show two updates in flight at once. It
+ * regularly did: the happy path orphans its own row (the rollout's last step
+ * recreates the container that would close it — see `getUnfinishedUpdate`),
+ * and only the browser that started it can close it afterwards. Close that
+ * tab and the row stays `running` forever, sitting above the next update's
+ * row, which is then also `running`.
+ *
+ * Retiring beats refusing. The open row is usually the residue of an update
+ * that already finished, so treating it as a live rollout and rejecting the
+ * new one would wedge in-app updates permanently on exactly the instances
+ * that already hit this. The updater sidecar is the real mutual exclusion:
+ * it shells out with `execFileSync`, so a second `/update` cannot start until
+ * the first has returned.
  */
 export const recordUpdateStart = authedMutation({
 	args: {
@@ -157,6 +174,35 @@ export const recordUpdateStart = authedMutation({
 		const initiatedBy = admin.authUserId;
 
 		const startedAt = Date.now();
+
+		const openRuns = await ctx.db
+			.query('systemUpdates')
+			.withIndex('by_kind_and_status', (q) => q.eq('kind', 'updateRun').eq('status', 'running'))
+			.collect();
+		for (const open of openRuns) {
+			// No `finishedAt`: we do not know when that rollout ended, only that
+			// the instance has moved on from it. Stamping "now" would make the
+			// history's duration column report the gap between two updates as
+			// the length of the first one — hours, for a four-minute rollout.
+			await ctx.db.patch(open._id, {
+				status: 'superseded',
+				// Not `failed`, and the message says why: this run's rollout may
+				// have worked. What is true is that nobody is left to report it.
+				error: `Superseded by the update to ${args.versionTo}`,
+			});
+			// eslint-disable-next-line no-console
+			console.info(
+				JSON.stringify({
+					event: 'update_superseded',
+					runId: open._id,
+					versionFrom: open.versionFrom,
+					versionTo: open.versionTo,
+					supersededByVersionTo: args.versionTo,
+					timestamp: new Date(startedAt).toISOString(),
+				})
+			);
+		}
+
 		const runId = await ctx.db.insert('systemUpdates', {
 			kind: 'updateRun',
 			versionFrom: args.versionFrom,
@@ -207,6 +253,14 @@ export const recordUpdateFinish = authedMutation({
 		const existing = await ctx.db.get(args.runId);
 		if (!existing || existing.kind !== 'updateRun') {
 			throwNotFound('update run');
+		}
+
+		// A later update already retired this row (see `recordUpdateStart`).
+		// `superseded` is terminal on purpose: the late verdict arriving here
+		// is from a rollout the instance has since moved past, and writing it
+		// back would put a second `success` above the run that replaced it.
+		if (existing.status === 'superseded') {
+			return;
 		}
 
 		const finishedAt = Date.now();
@@ -277,8 +331,9 @@ export const getLatestRelease = authedQuery({
  * The browser outlives all of it, and its health poller is the only thing that
  * ever learns how the run ended: it watches for the target version to come up.
  * This query hands it the row to close. Only the NEWEST run is considered —
- * an older one left `running` by a browser that was closed mid-update is not
- * something a later update's poller can honestly speak for.
+ * an older one is not something a later update's poller can honestly speak
+ * for. Older runs cannot be `running` anyway: `recordUpdateStart` retires
+ * every open row before opening its own.
  */
 export const getUnfinishedUpdate = authedQuery({
 	args: {},
