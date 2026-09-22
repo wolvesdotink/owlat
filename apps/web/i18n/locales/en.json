@@ -12394,6 +12394,16 @@
 			}
 		},
 		"operationError": {
+			"categories": {
+				"forbidden": "You do not have permission to do this.",
+				"not_found": "This item is no longer available. Refresh the page and try again.",
+				"invalid_input": "Some information is missing or invalid. Check your entries and try again.",
+				"already_exists": "An item with these details already exists.",
+				"conflict": "This item has changed. Refresh the page and try again.",
+				"invalid_state": "This action is not available right now.",
+				"rate_limited": "Too many requests. Wait a moment and try again.",
+				"limit_reached": "A limit has been reached. Check the available capacity or contact an administrator."
+			},
 			"generic": "Something went wrong. Please try again.",
 			"network": "Connection problem. Check your network and try again.",
 			"sessionExpired": "Your session has expired. Please sign in again."

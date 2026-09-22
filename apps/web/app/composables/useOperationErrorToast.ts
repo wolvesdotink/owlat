@@ -18,7 +18,7 @@ import {
  * Same vocabulary, same copy rules, one line at the call site.
  */
 export function useOperationErrorToast() {
-	const { t } = useI18n();
+	const { t, locale, te } = useI18n();
 	const { showToast } = useToast();
 
 	/**
@@ -33,7 +33,16 @@ export function useOperationErrorToast() {
 	 */
 	function showOperationError(error: unknown, fallbackKey?: string): boolean {
 		if (isSurfacedOperationError(error)) return false;
-		showToast(resolveOperationCopy(operationToastCopy(error, fallbackKey), t), 'error');
+		showToast(
+			resolveOperationCopy(
+				operationToastCopy(error, fallbackKey, {
+					locale: locale.value,
+					hasMessage: (key) => te(key),
+				}),
+				t
+			),
+			'error'
+		);
 		return true;
 	}
 
