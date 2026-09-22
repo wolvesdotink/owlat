@@ -42,6 +42,13 @@ export interface BackfillFetchedMessage {
 	/** Raw RFC822 bytes, or null if the server returned no source. */
 	source: Buffer | null;
 	flags: Set<string>;
+	/**
+	 * The mailbox already holds this message — recognised from its Message-ID
+	 * BEFORE the body was downloaded, so `source` is deliberately null and there
+	 * is nothing to ingest. It still counts as present: ingesting it would have
+	 * ended in the same `duplicate` the ingest path already treats as landed.
+	 */
+	alreadyPresent?: boolean;
 }
 
 export interface BackfillFolderTarget {
@@ -65,7 +72,9 @@ export interface BackfillFolderDeps {
 	): Promise<{ startCursor: number } | null>;
 	/** Fetch one UID range (inclusive) — collected fully, with no IMAP lock held
 	 * during the per-message ingest that follows. Sparse UIDs ⇒ fewer than
-	 * `end-start+1` results. */
+	 * `end-start+1` results. Messages the mailbox already holds may come back
+	 * flagged `alreadyPresent` with no body, so a re-walk does not re-download
+	 * mail that is already imported. */
 	fetchBatch(remoteName: string, start: number, end: number): Promise<BackfillFetchedMessage[]>;
 	/** Ingest one message (reuses the forward-sync `ingestMessage` path). Resolves
 	 * false when the server stored NOTHING and the message is not already in the
@@ -124,6 +133,14 @@ export async function backfillFolder(
 			// A server quirk can return a UID outside the requested range — don't
 			// count it against this folder's `messageCount` denominator.
 			if (msg.uid < range.start || msg.uid > range.end) continue;
+			if (msg.alreadyPresent) {
+				// Skipped before the download, so the provider's bandwidth was never
+				// spent on it. Counted exactly as the ingest path counts the
+				// `duplicate` it would otherwise have returned, so a resumed or
+				// re-walked import reports the same numbers it always did.
+				imported++;
+				continue;
+			}
 			if (!msg.source) {
 				// The server listed the message but returned no body. Nothing was
 				// stored, so it is not an import — but it did consume one of the

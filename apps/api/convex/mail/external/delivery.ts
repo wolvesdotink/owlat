@@ -38,6 +38,7 @@ import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { buildSearchBody } from '../searchBody';
 import { splitBodyForStorage } from '../deliveryPipeline/ingest';
 import { base64ToBytes } from '../../lib/bytes';
+import { canonicalMessageId } from '../../lib/messageId';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 import { folderRoleValidator } from '../mailbox/shared';
 
@@ -55,11 +56,6 @@ import { folderRoleValidator } from '../mailbox/shared';
 export type ExternalIngestOutcome =
 	| { messageId: Id<'mailMessages'> }
 	| { skipped: 'duplicate' | 'no_target' };
-
-/** Strip RFC 5322 angle brackets from a Message-ID for dedup. */
-function canonicalMessageId(raw: string): string {
-	return raw.replace(/[<>]/g, '').trim() || raw;
-}
 
 /**
  * Ingest one synced message into its mapped local folder, dedup on Message-ID,

@@ -48,6 +48,14 @@ const INITIAL_BACKOFF_MS = 5000;
 const MAX_BACKOFF_MS = 5 * 60 * 1000;
 
 /**
+ * UIDs per `UID FETCH` in the backfill's body phase. The phase-1 range is
+ * addressed as `start:end`, but phase 2 asks for a sparse list, so the command
+ * grows with the number of UIDs — chunked to keep it comfortably inside the
+ * IMAP line length every server accepts.
+ */
+const SOURCE_FETCH_CHUNK = 50;
+
+/**
  * Terminal "the credentials are wrong" — as opposed to a transient drop worth
  * backing off and retrying.
  *
@@ -637,6 +645,126 @@ export class AccountConnection {
 	}
 
 	/** Wire the real IMAP fetch + Convex backfill mutations into a folder's deps. */
+	/**
+	 * Fetch one descending backfill range, paying the provider's bandwidth ONLY
+	 * for messages the mailbox does not already have.
+	 *
+	 * This used to be a single `UID FETCH <range> (BODY.PEEK[])`, which pulled
+	 * every message in the range at full size and let Convex decide, after the
+	 * upload, that it was a `duplicate`. That is fine on an unmetered server and
+	 * fatal on a metered one: a Gmail Sent folder of 21 GiB sits behind a daily
+	 * IMAP bandwidth cap, so an import that restarts near the top spends the
+	 * whole day's budget re-downloading the 12 GiB it already has, is cut off
+	 * with `* BYE [OVERQUOTA] Account exceeded command or bandwidth limits.`,
+	 * and never reaches the mail it is actually missing. Restarting it does the
+	 * identical thing the next day. The import cannot converge.
+	 *
+	 * So the range is fetched twice, cheap first:
+	 *
+	 *  1. envelopes only — a few hundred bytes a message — for the UIDs, flags
+	 *     and Message-IDs;
+	 *  2. `BODY.PEEK[]` for just the UIDs whose Message-ID the mailbox does not
+	 *     already hold.
+	 *
+	 * A message without a Message-ID header cannot be recognised, so it is
+	 * downloaded — the ingest path's own dedup stays the backstop. If the
+	 * lookup itself fails the batch degrades to downloading everything, which is
+	 * exactly the old behaviour: a slow import beats a stalled one.
+	 */
+	private async fetchBackfillBatch(
+		remoteName: string,
+		start: number,
+		end: number
+	): Promise<BackfillFetchedMessage[]> {
+		const client = this.client;
+		if (!client) return [];
+		const lock = await client.getMailboxLock(remoteName);
+		try {
+			// ── Phase 1: envelopes ──────────────────────────────────────────
+			const listed: Array<{ uid: number; flags: Set<string>; messageId: string | null }> = [];
+			for await (const msg of client.fetch(
+				`${start}:${end}`,
+				{ uid: true, flags: true, envelope: true },
+				{ uid: true }
+			)) {
+				listed.push({
+					uid: Number(msg.uid),
+					flags: msg.flags ?? new Set<string>(),
+					messageId: msg.envelope?.messageId ?? null,
+				});
+			}
+			if (listed.length === 0) return [];
+
+			const known = await this.knownMessageIds(listed);
+
+			// ── Phase 2: bodies, for the unknown ones only ──────────────────
+			const out: BackfillFetchedMessage[] = [];
+			// Index into `out` per UID awaiting a body. A UID the server listed in
+			// phase 1 but does not return in phase 2 keeps its `source: null` entry
+			// and so still counts against the folder's denominator, exactly as a
+			// single-phase fetch that returned no source did.
+			const pending = new Map<number, number>();
+			for (const msg of listed) {
+				if (msg.messageId !== null && known.has(msg.messageId)) {
+					out.push({ uid: msg.uid, source: null, flags: msg.flags, alreadyPresent: true });
+					continue;
+				}
+				pending.set(msg.uid, out.length);
+				out.push({ uid: msg.uid, source: null, flags: msg.flags });
+			}
+
+			const uids = [...pending.keys()];
+			for (let i = 0; i < uids.length; i += SOURCE_FETCH_CHUNK) {
+				const chunk = uids.slice(i, i + SOURCE_FETCH_CHUNK);
+				for await (const msg of client.fetch(
+					chunk.join(','),
+					{ uid: true, source: true, flags: true },
+					{ uid: true }
+				)) {
+					const at = pending.get(Number(msg.uid));
+					if (at === undefined) continue; // outside this chunk — ignore
+					const slot = out[at];
+					if (!slot) continue;
+					slot.source = msg.source ?? null;
+					if (msg.flags) slot.flags = msg.flags;
+				}
+			}
+			return out;
+		} finally {
+			lock.release();
+		}
+	}
+
+	/**
+	 * The subset of a listed batch's Message-IDs the mailbox already holds.
+	 * Empty on any lookup failure — the caller then downloads the batch whole,
+	 * which is what it did before this check existed.
+	 */
+	private async knownMessageIds(
+		listed: ReadonlyArray<{ messageId: string | null }>
+	): Promise<Set<string>> {
+		const messageIds = listed
+			.map((m) => m.messageId)
+			.filter((id): id is string => id !== null && id.length > 0);
+		if (messageIds.length === 0) return new Set();
+		try {
+			const rows = (await this.convex.query(
+				fn.findKnownMessageIds as never,
+				{
+					accountId: this.account.accountId,
+					messageIds,
+				} as never
+			)) as string[];
+			return new Set(rows);
+		} catch (err) {
+			logger.warn(
+				{ accountId: this.account.accountId, err },
+				'known-message-id lookup failed; downloading the whole batch'
+			);
+			return new Set();
+		}
+	}
+
 	private makeBackfillDeps(uidValidity: number, migrationId: string): BackfillFolderDeps {
 		const accountId = this.account.accountId;
 		return {
@@ -652,28 +780,7 @@ export class AccountConnection {
 						messageCount,
 					} as never
 				)) as { startCursor: number } | null,
-			fetchBatch: async (remoteName, start, end) => {
-				const client = this.client;
-				if (!client) return [];
-				const lock = await client.getMailboxLock(remoteName);
-				try {
-					const out: BackfillFetchedMessage[] = [];
-					for await (const msg of client.fetch(
-						`${start}:${end}`,
-						{ uid: true, source: true, flags: true },
-						{ uid: true }
-					)) {
-						out.push({
-							uid: Number(msg.uid),
-							source: msg.source ?? null,
-							flags: msg.flags ?? new Set<string>(),
-						});
-					}
-					return out;
-				} finally {
-					lock.release();
-				}
-			},
+			fetchBatch: (remoteName, start, end) => this.fetchBackfillBatch(remoteName, start, end),
 			ingest: async (remoteName, role, uid, raw, flags) => {
 				const outcome = await ingestMessage(this.convex, this.rawUploadConfig, {
 					accountId,
