@@ -5,6 +5,7 @@ import {
 	readCsrfToken,
 	shouldAttachCsrfToken,
 	withCsrfHeader,
+	writeCsrfToken,
 } from '~/lib/csrf';
 
 const HREF = 'https://mail.acme.test/dashboard/admin/instance/features';
@@ -180,5 +181,22 @@ describe('isCsrfRejection', () => {
 		expect(isCsrfRejection(null)).toBe(false);
 		expect(isCsrfRejection(undefined)).toBe(false);
 		expect(isCsrfRejection('Setup mode is not active.')).toBe(false);
+	});
+});
+
+describe('writeCsrfToken', () => {
+	it('round-trips through readCsrfToken', () => {
+		document.head.innerHTML = '<meta name="csrf-token" content="tok-stale">';
+		writeCsrfToken(document, 'tok-fresh');
+		expect(readCsrfToken(document)).toBe('tok-fresh');
+		expect(document.head.querySelectorAll('meta[name="csrf-token"]')).toHaveLength(1);
+	});
+
+	it('creates the tag on a document rendered without one', () => {
+		// A refreshed token can now reach a document that never carried one —
+		// exactly the tab with no tag to update.
+		document.head.innerHTML = '';
+		writeCsrfToken(document, 'tok-fresh');
+		expect(readCsrfToken(document)).toBe('tok-fresh');
 	});
 });
