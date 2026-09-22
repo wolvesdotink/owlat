@@ -135,6 +135,30 @@ export function readCsrfToken(doc: Pick<Document, 'querySelector'>): string | nu
 	return content ? content : null;
 }
 
+/** The document a refreshed token is written back into. */
+export type CsrfTokenDocument = Pick<Document, 'querySelector' | 'createElement' | 'head'>;
+
+/**
+ * Write a freshly minted token back into the document head, so every later
+ * caller — including ones that left the Nuxt context — reads the live value
+ * from the same single place `readCsrfToken` already looks.
+ *
+ * The tag is created when the document has none: a token can now arrive from
+ * `/api/csrf-token` on a document that was rendered before the module was
+ * enabled, which is exactly the tab that has no tag to update.
+ */
+export function writeCsrfToken(doc: CsrfTokenDocument, token: string): void {
+	const existing = doc.querySelector('meta[name="csrf-token"]');
+	if (existing) {
+		existing.setAttribute('content', token);
+		return;
+	}
+	const meta = doc.createElement('meta');
+	meta.setAttribute('name', 'csrf-token');
+	meta.setAttribute('content', token);
+	doc.head.appendChild(meta);
+}
+
 /**
  * Return `options` with the CSRF header added, leaving an explicit header set
  * by the caller alone. Headers are normalized to a `Headers` instance, which

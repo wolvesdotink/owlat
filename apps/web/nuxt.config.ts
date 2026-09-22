@@ -238,7 +238,14 @@ export default defineNuxtConfig({
 
 		xssValidator: {},
 
-		csrf: true,
+		// `addCsrfTokenToEventCtx` mints `event.context.csrfToken` on EVERY request
+		// (and seeds the cookie when there is none), which is what lets
+		// `server/api/csrf-token.get.ts` hand a live token to a tab whose baked-in
+		// one has gone stale. Without it nuxt-csurf only ever mints a token while
+		// rendering an HTML document — and this app is `ssr: false`, so a tab
+		// renders exactly one document and then lives on the token in its `<head>`
+		// for as long as it stays open.
+		csrf: { addCsrfTokenToEventCtx: true },
 	},
 
 	routeRules: {

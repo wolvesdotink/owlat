@@ -47,7 +47,12 @@ afterAll(() => server.close());
 const ENV_FILE = join(OWLAT_DIR, '.env');
 const OVERRIDE_FILE = join(OWLAT_DIR, 'docker-compose.override.yml');
 const MIRROR_FILE = join(OWLAT_DIR, '.owlat-flags.json');
-const INITIAL_ENV = '# managed by owlat\nEMAIL_PROVIDER=resend\nCOMPOSE_PROFILES=stale\nFOO=bar\n';
+// `personal-mail` is a FLAG-owned profile nothing in these fixtures derives, so
+// it stands for "applied, and the flags no longer want it" — the half of
+// COMPOSE_PROFILES this endpoint replaces. (An install-owned name like `tls`
+// would not: those are preserved. See the `install-time profiles` block.)
+const INITIAL_ENV =
+	'# managed by owlat\nEMAIL_PROVIDER=resend\nCOMPOSE_PROFILES=personal-mail\nFOO=bar\n';
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
@@ -187,6 +192,31 @@ describe('profile derivation (server-side, from flags — never caller profiles)
 		const res = await post({ flags: { 'scan.files': false }, profiles: ['mta', 'personal-mail'] });
 		expect(res.status).toBe(200);
 		expect(envProfiles()).toBe('');
+	});
+});
+
+describe('install-time profiles the flags cannot derive', () => {
+	// `tls` (the Caddy edge every HTTPS instance is reached THROUGH) and
+	// `dashboard` are written by the installer; no flag state derives either.
+	// Writing the derived set as the whole COMPOSE_PROFILES line deleted them,
+	// and the `up --remove-orphans` below then removed their containers — one
+	// click on "Apply & restart" took the reverse proxy down with the instance.
+	it('survive an apply, in .env and in the override alike', async () => {
+		writeFileSync(ENV_FILE, 'EMAIL_PROVIDER=resend\nCOMPOSE_PROFILES=tls,dashboard\n');
+		const res = await post({ flags: { 'mail.external': true } });
+		expect(res.status).toBe(200);
+
+		const body = (await res.json()) as { profiles: string[] };
+		expect(body.profiles).toEqual(['clamav', 'dashboard', 'external-mail', 'tls']);
+		expect(envProfiles()).toBe('clamav,dashboard,external-mail,tls');
+		expect(readFileSync(OVERRIDE_FILE, 'utf-8')).toContain('__tls_marker:');
+	});
+
+	it('do not stop a flag-owned profile from being removed', async () => {
+		writeFileSync(ENV_FILE, 'EMAIL_PROVIDER=resend\nCOMPOSE_PROFILES=tls,external-mail\n');
+		const res = await post({ flags: { 'mail.external': false } });
+		expect(res.status).toBe(200);
+		expect(envProfiles()).toBe('clamav,tls');
 	});
 });
 

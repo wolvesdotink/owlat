@@ -21,7 +21,11 @@ import {
 	resolveFlags,
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
-import { renderComposeOverrideYaml } from '@owlat/shared/composeOverride';
+import {
+	mergeComposeProfiles,
+	parseComposeProfileList,
+	renderComposeOverrideYaml,
+} from '@owlat/shared/composeOverride';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
 import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { ensureSecrets } from '@owlat/shared/setupSecrets';
@@ -126,7 +130,7 @@ export default defineEventHandler(
 
 		// The built-in MTA is opt-in: it runs only when it is the delivery provider
 		// or when postbox/inbox need it, so pass the chosen provider through.
-		const profiles = getActiveProfiles(flags, {
+		const derivedProfiles = getActiveProfiles(flags, {
 			deliveryProvider: body.env?.['EMAIL_PROVIDER'],
 		});
 
@@ -167,7 +171,7 @@ export default defineEventHandler(
 			if (!merged['DEFAULT_FROM_NAME']) merged['DEFAULT_FROM_NAME'] = 'Owlat';
 		}
 
-		if (profiles.includes('mta')) {
+		if (derivedProfiles.includes('mta')) {
 			const identityPreflight = await preflightMtaIdentities(merged);
 			if (!identityPreflight.ok) {
 				return { ok: false, message: identityPreflight.message };
@@ -283,7 +287,13 @@ export default defineEventHandler(
 		merged['OWLAT_SETUP_MODE'] = 'false';
 		// Canonicalize COMPOSE_PROFILES in .env so the updater sidecar and a bare
 		// `docker compose up` activate the same services the override marker declares
-		// (the built-in MTA is now an opt-in profile).
+		// (the built-in MTA is now an opt-in profile). Only the flag-owned half is
+		// this wizard's to write: the installer's own `tls` — the Caddy edge the
+		// operator is reaching this page THROUGH — survives untouched.
+		const profiles = mergeComposeProfiles(
+			parseComposeProfileList(merged['COMPOSE_PROFILES'] ?? ''),
+			derivedProfiles
+		);
 		merged['COMPOSE_PROFILES'] = profiles.join(',');
 		// Seal the SMTP relay password in the `.env` BACKUP copy so a filesystem
 		// dump never leaks it. The live push above already carried the working

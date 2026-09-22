@@ -7,22 +7,24 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { parseDeliveryProviderFromEnv, renderComposeOverride } from '@owlat/shared/composeOverride';
-import type { FeatureFlagState } from '@owlat/shared/featureFlags';
+import {
+	mergeComposeProfiles,
+	parseComposeProfilesFromEnv,
+	parseDeliveryProviderFromEnv,
+	renderComposeOverrideYaml,
+} from '@owlat/shared/composeOverride';
+import { getActiveProfiles, type FeatureFlagState } from '@owlat/shared/featureFlags';
 
 /**
- * The built-in MTA is opt-in: its `mta` compose profile activates when MTA is
- * the delivery provider (env-driven, not a flag) or when postbox/inbox need it.
- * The provider lives in `.env` (EMAIL_PROVIDER), co-located with the override —
- * read it as a fallback so post-setup flag toggles still keep the MTA running
- * for an MTA deployment. Best-effort: a missing/unparseable .env returns undefined.
+ * The co-located `.env` — the one beside the override being written — as text,
+ * or '' when there is none yet (a first install). Two answers come out of it:
+ * the delivery provider, and the profiles already applied.
  */
-async function readDeliveryProvider(overridePath: string): Promise<string | undefined> {
+async function readColocatedEnv(overridePath: string): Promise<string> {
 	try {
-		const envText = await readFile(join(dirname(overridePath), '.env'), 'utf-8');
-		return parseDeliveryProviderFromEnv(envText);
+		return await readFile(join(dirname(overridePath), '.env'), 'utf-8');
 	} catch {
-		return undefined;
+		return '';
 	}
 }
 
@@ -31,8 +33,19 @@ export async function writeComposeOverride(
 	flags: FeatureFlagState,
 	opts: { hosted?: boolean; deliveryProvider?: string } = {}
 ): Promise<string[]> {
-	const deliveryProvider = opts.deliveryProvider ?? (await readDeliveryProvider(path));
-	const { profiles, yaml } = renderComposeOverride(flags, { ...opts, deliveryProvider });
-	await writeFile(path, yaml, 'utf-8');
+	const envText = await readColocatedEnv(path);
+	// The built-in MTA is opt-in: its `mta` compose profile activates when MTA is
+	// the delivery provider (env-driven, not a flag) or when postbox/inbox need
+	// it. Read EMAIL_PROVIDER as a fallback so post-setup flag toggles still keep
+	// the MTA running for an MTA deployment.
+	const deliveryProvider = opts.deliveryProvider ?? parseDeliveryProviderFromEnv(envText);
+	// Union over the install-owned half of COMPOSE_PROFILES: `tls` (the Caddy
+	// edge) and `dashboard` are not derivable from any flag state, so rendering
+	// the derived set as the whole truth would drop them.
+	const profiles = mergeComposeProfiles(
+		parseComposeProfilesFromEnv(envText),
+		getActiveProfiles(flags, { ...opts, deliveryProvider })
+	);
+	await writeFile(path, renderComposeOverrideYaml(profiles), 'utf-8');
 	return profiles;
 }

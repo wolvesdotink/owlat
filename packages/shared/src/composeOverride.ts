@@ -18,16 +18,13 @@
  * binary — a serializer would be its only external dependency.
  */
 
-import {
-	getActiveProfiles,
-	type FeatureFlagResolutionOptions,
-	type FeatureFlagState,
-} from './featureFlags';
+import { getFlagOwnedProfiles, type FeatureFlagResolutionOptions } from './featureFlags';
 
 /**
  * Compose profile names come from the flag registry's `dockerProfiles` (plus
- * the env-driven 'mta'); anything outside this shape cannot be embedded into
- * YAML or a COMPOSE_PROFILES line verbatim, so refuse it outright.
+ * the env-driven 'mta') or from the installer (`tls`, `dashboard`); anything
+ * outside this shape cannot be embedded into YAML or a COMPOSE_PROFILES line
+ * verbatim, so refuse it outright.
  */
 const SAFE_PROFILE_NAME = /^[a-z][a-z0-9-]*$/;
 
@@ -70,15 +67,30 @@ export function renderComposeOverrideYaml(profiles: readonly string[]): string {
 }
 
 /**
- * Derive the active profiles for a flag state and render the override document
- * in one step. Callers own the filesystem write.
+ * The COMPOSE_PROFILES a flag apply should leave behind: the profiles the flags
+ * derive, plus every applied profile the flag registry does not own.
+ *
+ * A flag apply knows what the FLAGS want. It does not know what the INSTALL
+ * chose — `tls` (the Caddy edge that terminates HTTPS) and `dashboard` (the
+ * Convex dashboard) are written by the installer and can never be re-derived
+ * from a flag state. Writing the derived set as the whole line dropped them,
+ * and the `docker compose up -d --remove-orphans` that follows then removed the
+ * containers behind them: one click on "Apply & restart" took the reverse proxy
+ * down and the instance with it.
+ *
+ * Union, not replacement, over the install-owned half; straight replacement
+ * over the flag-owned half, so turning a flag OFF still stops its service.
  */
-export function renderComposeOverride(
-	flags: FeatureFlagState,
-	opts: FeatureFlagResolutionOptions & { deliveryProvider?: string } = {}
-): { profiles: string[]; yaml: string } {
-	const profiles = getActiveProfiles(flags, opts);
-	return { profiles, yaml: renderComposeOverrideYaml(profiles) };
+export function mergeComposeProfiles(
+	applied: readonly string[],
+	derived: readonly string[],
+	opts: FeatureFlagResolutionOptions = {}
+): string[] {
+	const flagOwned = getFlagOwnedProfiles(opts);
+	const preserved = applied.filter(
+		(profile) => !flagOwned.has(profile) && SAFE_PROFILE_NAME.test(profile)
+	);
+	return [...new Set([...derived, ...preserved])].sort();
 }
 
 /**
@@ -105,8 +117,17 @@ export function parseDeliveryProviderFromEnv(envText: string): string | undefine
  */
 export function parseComposeProfilesFromEnv(envText: string): string[] {
 	const match = envText.match(/^\s*COMPOSE_PROFILES\s*=\s*(.*?)\s*$/m);
-	const raw = match?.[1]?.replace(/^["']|["']$/g, '') ?? '';
-	const names = raw
+	return parseComposeProfileList(match?.[1] ?? '');
+}
+
+/**
+ * The same read, for a caller holding the COMPOSE_PROFILES VALUE rather than
+ * the `.env` text around it (the setup wizard reads `.env` into a map before it
+ * gets here). Same filter, so both readers agree on what a profile name is.
+ */
+export function parseComposeProfileList(value: string): string[] {
+	const names = value
+		.replace(/^["']|["']$/g, '')
 		.split(',')
 		.map((name) => name.trim())
 		.filter((name) => SAFE_PROFILE_NAME.test(name));

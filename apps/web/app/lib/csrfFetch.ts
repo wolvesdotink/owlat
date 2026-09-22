@@ -20,9 +20,23 @@
  * It resolves `globalThis.$fetch` per call rather than capturing it, so this
  * stays the very instance Nuxt configured (app `baseURL` and all) and test
  * stubs still take effect.
+ *
+ * It also heals a STALE token: nuxt-csurf's token is only minted while
+ * rendering an HTML document, and this app is `ssr:false`, so a tab renders one
+ * document and then holds that token for its whole life — until an in-app
+ * update promotes a `web` image whose build-time encrypt secret is a different
+ * one, at which point the token stops verifying and every POST from that tab
+ * 403s. A rejection at the CSRF middleware is answered here by minting a fresh
+ * token and sending the request once more.
  */
 import type { FetchOptions, FetchResponse } from 'ofetch';
-import { readCsrfToken, shouldAttachCsrfToken, withCsrfHeader } from './csrf';
+import {
+	isCsrfRejection,
+	readCsrfToken,
+	shouldAttachCsrfToken,
+	withCsrfHeader,
+	writeCsrfToken,
+} from './csrf';
 
 /** nuxt-csurf's `headerName` default, which nuxt.config leaves in place. */
 const DEFAULT_CSRF_HEADER = 'csrf-token';
@@ -79,11 +93,103 @@ export interface ApiFetch {
 	raw<T = unknown>(request: string, options?: FetchOptions): Promise<FetchResponse<T>>;
 }
 
+let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * Replace the document's token with a freshly minted one, at most one refresh
+ * per burst: a page that fires several POSTs at once (the setup wizard does)
+ * would otherwise have the later ones compare against a token the earlier ones
+ * already installed, read "nothing changed", and rethrow a 403 the retry would
+ * have cleared.
+ */
+function refreshCsrfToken(): Promise<boolean> {
+	refreshInFlight ??= fetchCsrfToken().finally(() => {
+		refreshInFlight = null;
+	});
+	return refreshInFlight;
+}
+
+/**
+ * Ask the server for a live token and install it, reporting whether anything
+ * changed.
+ *
+ * A token goes stale on its own: it is the `__Host-csrf` cookie encrypted under
+ * a secret nuxt-csurf generates AT BUILD TIME, so the first `web` image an
+ * in-app update promotes invalidates the token every open tab is holding — and
+ * an `ssr:false` SPA renders one document per tab and never re-mints it. What
+ * the tab saw was a bare 403 on every POST from then on, surfaced by each
+ * caller as its own unrelated failure.
+ *
+ * Returns false when the refresh brought nothing new, which is what keeps a
+ * genuine rejection (no cookie at all, CSRF disabled server-side, the endpoint
+ * itself refusing) from turning into a retry loop.
+ */
+async function fetchCsrfToken(): Promise<boolean> {
+	const previous = readCsrfToken(window.document);
+	let token: unknown;
+	try {
+		({ token } = (await nuxtFetch()('/api/csrf-token', {
+			method: 'GET',
+			retry: 0,
+		})) as { token?: unknown });
+	} catch {
+		return false;
+	}
+	if (typeof token !== 'string' || !token || token === previous) return false;
+	writeCsrfToken(window.document, token);
+	return true;
+}
+
+/**
+ * Whether a failed request failed at the CSRF middleware — which rejects
+ * BEFORE any route handler runs, so the retry below can never re-execute a
+ * side effect the first attempt already had.
+ */
+function isStaleTokenFailure(err: unknown, request: string, options?: FetchOptions): boolean {
+	if ((err as { status?: unknown } | null)?.status !== 403) return false;
+	if (!isCsrfRejection((err as { data?: unknown }).data)) return false;
+	// Only requests we put a token on can fail for want of a fresh one.
+	return shouldAttachCsrfToken({
+		request,
+		method: options?.method,
+		baseURL: options?.baseURL,
+		href: window.location.href,
+	});
+}
+
+/**
+ * Run a decorated request, and on a CSRF rejection mint a fresh token and run
+ * it once more. One retry, gated on the refresh actually producing a new
+ * token, so a server that is rejecting for any other reason still surfaces its
+ * 403 to the caller.
+ */
+async function withStaleTokenRetry<T>(
+	request: string,
+	options: FetchOptions | undefined,
+	send: (options: FetchOptions) => Promise<T>
+): Promise<T> {
+	try {
+		return await send(decorate(request, options));
+	} catch (err) {
+		if (!isStaleTokenFailure(err, request, options)) throw err;
+		if (!(await refreshCsrfToken())) throw err;
+		return await send(decorate(request, options));
+	}
+}
+
 export const apiFetch: ApiFetch = Object.assign(
 	<T = unknown>(request: string, options?: FetchOptions): Promise<T> =>
-		nuxtFetch()(request, decorate(request, options)) as Promise<T>,
+		withStaleTokenRetry(
+			request,
+			options,
+			(decorated) => nuxtFetch()(request, decorated) as Promise<T>
+		),
 	{
 		raw: <T = unknown>(request: string, options?: FetchOptions): Promise<FetchResponse<T>> =>
-			nuxtFetch().raw(request, decorate(request, options)) as Promise<FetchResponse<T>>,
+			withStaleTokenRetry(
+				request,
+				options,
+				(decorated) => nuxtFetch().raw(request, decorated) as Promise<FetchResponse<T>>
+			),
 	}
 );

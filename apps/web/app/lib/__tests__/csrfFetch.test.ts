@@ -125,3 +125,110 @@ describe('apiFetch', () => {
 		expect(headerOf(calls[0]!)).toBeNull();
 	});
 });
+
+/**
+ * A tab's token goes stale on its own: it is the `__Host-csrf` cookie encrypted
+ * under a secret nuxt-csurf generates at BUILD time, and this app is
+ * `ssr:false`, so a tab renders one document and holds that token for its whole
+ * life. The first `web` image an in-app update promotes therefore 403s every
+ * POST the tab makes afterwards — which each caller reported as its own
+ * unrelated failure ("Could not reach the updater", and the host-CLI fallback
+ * copy that goes with it).
+ */
+describe('apiFetch — a stale token heals itself', () => {
+	interface Scripted {
+		/** Status to fail the first attempt at the guarded request with. */
+		status: number;
+		/** Error body for that failure. */
+		data: unknown;
+		/** Token `/api/csrf-token` hands back, or a rejection when absent. */
+		refreshed?: string;
+	}
+
+	function stubRejectingFetch(script: Scripted): void {
+		const instance = ((request: unknown, options?: Record<string, unknown>) => {
+			if (request === '/api/csrf-token') {
+				if (!script.refreshed) return Promise.reject(new Error('offline'));
+				return Promise.resolve({ token: script.refreshed });
+			}
+			calls.push({ request, options: options ?? {} });
+			if (calls.length > 1) return Promise.resolve({ ok: true });
+			return Promise.reject(
+				Object.assign(new Error('403'), { status: script.status, data: script.data })
+			);
+		}) as unknown as Record<string, unknown>;
+		instance['raw'] = instance as unknown as Record<string, unknown>;
+		globalThis.$fetch = instance as unknown as typeof globalThis.$fetch;
+	}
+
+	const CSRF_403 = { statusCode: 403, statusMessage: 'CSRF Token Mismatch' };
+
+	it('re-sends the request with a freshly minted token', async () => {
+		stubRejectingFetch({ status: 403, data: CSRF_403, refreshed: 'tok-fresh' });
+
+		await expect(apiFetch('/api/system/apply-profiles', { method: 'POST' })).resolves.toEqual({
+			ok: true,
+		});
+
+		expect(calls).toHaveLength(2);
+		expect(headerOf(calls[0]!)).toBe('tok-123');
+		expect(headerOf(calls[1]!)).toBe('tok-fresh');
+		// The document carries the live token, so the NEXT caller — one that left
+		// the Nuxt context and only has the DOM to read — starts from it.
+		expect(document.head.querySelector('meta[name="csrf-token"]')?.getAttribute('content')).toBe(
+			'tok-fresh'
+		);
+	});
+
+	it('surfaces a 403 that is not the CSRF gate, untouched', async () => {
+		stubRejectingFetch({
+			status: 403,
+			data: { statusCode: 403, message: 'Platform admin access required' },
+			refreshed: 'tok-fresh',
+		});
+
+		await expect(apiFetch('/api/system/apply-profiles', { method: 'POST' })).rejects.toThrow();
+		expect(calls).toHaveLength(1);
+	});
+
+	it('surfaces the original failure when no fresh token can be had', async () => {
+		stubRejectingFetch({ status: 403, data: CSRF_403 });
+
+		await expect(apiFetch('/api/system/apply-profiles', { method: 'POST' })).rejects.toThrow();
+		expect(calls).toHaveLength(1);
+	});
+
+	it('does not retry a request it never put a token on', async () => {
+		// Cross-origin: the token is deliberately withheld, so a 403 from there is
+		// the other origin's answer and not ours to re-ask.
+		stubRejectingFetch({ status: 403, data: CSRF_403, refreshed: 'tok-fresh' });
+
+		await expect(
+			apiFetch('https://elsewhere.example.com/api/thing', { method: 'POST' })
+		).rejects.toThrow();
+		expect(calls).toHaveLength(1);
+	});
+
+	it('mints one token for a burst of simultaneous rejections', async () => {
+		let minted = 0;
+		const instance = ((request: unknown, options?: Record<string, unknown>) => {
+			if (request === '/api/csrf-token') {
+				minted += 1;
+				return Promise.resolve({ token: `tok-fresh-${minted}` });
+			}
+			calls.push({ request, options: options ?? {} });
+			if (calls.length > 2) return Promise.resolve({ ok: true });
+			return Promise.reject(Object.assign(new Error('403'), { status: 403, data: CSRF_403 }));
+		}) as unknown as Record<string, unknown>;
+		globalThis.$fetch = instance as unknown as typeof globalThis.$fetch;
+
+		await Promise.all([
+			apiFetch('/api/setup/apply', { method: 'POST' }),
+			apiFetch('/api/setup/restart', { method: 'POST' }),
+		]);
+
+		expect(minted).toBe(1);
+		expect(headerOf(calls[2]!)).toBe('tok-fresh-1');
+		expect(headerOf(calls[3]!)).toBe('tok-fresh-1');
+	});
+});
