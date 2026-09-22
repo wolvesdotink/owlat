@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
 import { parseComposePs } from '@owlat/shared/containerHealth';
-import { exec, OWLAT_DIR } from './http.js';
+import { COMPOSE_SHADOWED_VARS, exec, OWLAT_DIR } from './http.js';
 
 interface RolloutStep {
 	step: string;
@@ -392,7 +392,14 @@ function scheduleUpdaterRecreate(delaySeconds = 10): RolloutStep {
 		'-c',
 		// Interpreted by the HELPER container's shell, so this one stays a
 		// command line — hence `composeCommand` rather than `composeArgv`.
-		`sleep ${Math.max(1, Math.trunc(delaySeconds))}; ${composeCommand()} up -d --no-deps updater`,
+		//
+		// The `unset` is the helper's half of what `childEnv` does for the
+		// updater. The helper runs the updater's own image, which bakes
+		// `OWLAT_VERSION` at the release it was BUILT at — the one being
+		// replaced — and compose would let that shadow the `.env` this rollout
+		// just pinned, so the updater's replacement would come up reporting the
+		// version it was supposed to leave behind.
+		`unset ${COMPOSE_SHADOWED_VARS.join(' ')}; sleep ${Math.max(1, Math.trunc(delaySeconds))}; ${composeCommand()} up -d --no-deps updater`,
 	];
 
 	const started = exec('docker', args, OWLAT_DIR);

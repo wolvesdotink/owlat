@@ -52,9 +52,15 @@ const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
  * "available", and /health reporting permanent version drift.
  *
  * Called after the compose file is promoted and before `up -d`, so the
- * recreated containers are the ones that pick the new value up. A single
- * allowlisted key, appended when absent, through the same hardened rewriter the
- * secret rotation uses.
+ * recreated containers are the ones that pick the new value up. That only
+ * holds because the compose children run without an `OWLAT_VERSION` of their
+ * own (`COMPOSE_SHADOWED_VARS` in http.ts): compose reads its OWN environment
+ * before `--env-file`, and the updater is a service in the very file it is
+ * applying, so for three releases it handed compose the version it was created
+ * at and this pin reached nothing the rollout recreated.
+ *
+ * A single allowlisted key, appended when absent, through the same hardened
+ * rewriter the secret rotation uses.
  */
 async function pinConfiguredVersion(
 	version: string

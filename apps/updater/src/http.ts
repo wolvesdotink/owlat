@@ -47,6 +47,47 @@ export function requireAuth(req: IncomingMessage, res: ServerResponse): boolean 
 }
 
 /**
+ * The variables the updater must not hand down to a `docker compose` child.
+ *
+ * Compose resolves `${VAR}` from the CLI's OWN environment before it consults
+ * `--env-file`. The updater is itself a service in the file it is applying
+ * (`OWLAT_VERSION: ${OWLAT_VERSION:-dev}`), so it carries the version it was
+ * created at — the OLD one — and passes it straight back to compose, where it
+ * shadows the `.env` the rollout has just pinned to the new release. The pin
+ * step writes the right value; the `up` that follows never sees it.
+ *
+ * It fails silently because a release compose template pins its images
+ * literally, so the containers DO come up on the new release: only the
+ * interpolated values go stale. A 0.5.2 → 0.5.3 rollout left `web`, `mta` and
+ * `updater` running 0.5.3 images that report `OWLAT_VERSION=0.5.2`, while
+ * `imap` and `mail-sync` — which override nothing and keep the value baked
+ * into their image — were correct. Locally built services have it worse: for
+ * them the interpolation IS the image tag (`owlat-code-worker:${OWLAT_VERSION:-dev}`),
+ * so the rollout points them back at the previous release.
+ *
+ * Dropping them leaves `--env-file` as the single source of truth, which is
+ * what the rest of the rollout already assumes it is.
+ */
+export const COMPOSE_SHADOWED_VARS = [
+	'OWLAT_VERSION',
+	'OWLAT_GIT_SHA',
+	'OWLAT_BUILD_DATE',
+] as const;
+
+/**
+ * `process.env` minus the variables compose would let shadow `--env-file`.
+ *
+ * Unconditional rather than per-call-site: no command this sidecar runs needs
+ * its own `OWLAT_*` to reach a child, and a conditional version is a rule every
+ * future compose call site has to remember — which is how the shadowing got in.
+ */
+function childEnv(): NodeJS.ProcessEnv {
+	const env = { ...process.env };
+	for (const name of COMPOSE_SHADOWED_VARS) delete env[name];
+	return env;
+}
+
+/**
  * Run a command with an explicit argv, NEVER a shell.
  *
  * `execFileSync`, not `execSync`: two call sites build their command out of
@@ -68,6 +109,7 @@ export function exec(
 	try {
 		const stdout = execFileSync(file, args, {
 			cwd,
+			env: childEnv(),
 			timeout: 300_000, // 5 minutes
 			encoding: 'utf-8',
 			stdio: ['pipe', 'pipe', 'pipe'],
