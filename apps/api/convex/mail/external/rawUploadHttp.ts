@@ -1,3 +1,4 @@
+import { MAIL_SYNC_MAX_RAW_MESSAGE_BYTES } from '@owlat/shared/mailSyncLimits';
 import { BodyTooLargeError, readBodyBytes } from '../../lib/readBody';
 /**
  * Raw `.eml` upload for the mail-sync worker.
@@ -13,8 +14,7 @@ import { BodyTooLargeError, readBodyBytes } from '../../lib/readBody';
  * HTTP actions do not share that cap (their bodies stream), so the bytes come
  * in here instead and the ingest call carries only a storage id. What is left
  * in the action's arguments — the parsed header fields, the capped bodies, the
- * 64 KiB header block — is bounded by construction, so message size can no
- * longer decide whether a message imports.
+ * 64 KiB header block — is bounded by construction, while this endpoint enforces a separate raw-message ceiling.
  *
  * AUTH: the `MAIL_SYNC_API_KEY` shared secret, the same one Convex presents to
  * the worker's own `/send` and `/scan` endpoints. It is deliberately not a new
@@ -30,15 +30,9 @@ import { errorResponse, jsonResponse } from '../../lib/httpResponse';
 import { storeSealedBlob } from '../../lib/sealedBlob';
 import { logError } from '../../lib/runtimeLog';
 
-/**
- * Hard ceiling on one uploaded message.
- *
- * Above any real-world provider's own send limit (Gmail 25 MB, Outlook 20 MB,
- * and an IMAP server will not be holding much beyond what it accepted), so it
- * refuses nothing a mailbox actually contains, while keeping a caller that
- * holds the key from writing unbounded blobs.
- */
-export const MAX_RAW_MESSAGE_BYTES = 64 * 1024 * 1024;
+/** Buffered sealing must fit in the HTTP action's 64 MiB isolate. */
+export const MAX_RAW_MESSAGE_BYTES = MAIL_SYNC_MAX_RAW_MESSAGE_BYTES;
+const TOO_LARGE_MESSAGE = `Message exceeds the ${MAIL_SYNC_MAX_RAW_MESSAGE_BYTES / (1024 * 1024)} MiB raw message limit (including attachments)`;
 
 export const handleRawMessageUpload = httpAction(async (ctx, request) => {
 	const expected = getOptional('MAIL_SYNC_API_KEY');
@@ -57,7 +51,8 @@ export const handleRawMessageUpload = httpAction(async (ctx, request) => {
 	// over-size body at all.
 	const declared = Number(request.headers.get('content-length') ?? '0');
 	if (Number.isFinite(declared) && declared > MAX_RAW_MESSAGE_BYTES) {
-		return errorResponse('limit_reached', 'Message too large');
+		void request.body?.cancel().catch(() => undefined);
+		return errorResponse('limit_reached', TOO_LARGE_MESSAGE);
 	}
 
 	let bytes: Uint8Array;
@@ -65,17 +60,18 @@ export const handleRawMessageUpload = httpAction(async (ctx, request) => {
 		bytes = new Uint8Array(await readBodyBytes(request, MAX_RAW_MESSAGE_BYTES));
 	} catch (error) {
 		if (error instanceof BodyTooLargeError)
-			return errorResponse('limit_reached', 'Message too large');
+			return errorResponse('limit_reached', TOO_LARGE_MESSAGE);
 		logError('mail-sync raw upload: unreadable body', error);
 		return errorResponse('invalid_input', 'Unreadable body');
 	}
 	if (bytes.byteLength === 0) return errorResponse('invalid_input', 'Empty body');
 	if (bytes.byteLength > MAX_RAW_MESSAGE_BYTES) {
-		return errorResponse('limit_reached', 'Message too large');
+		return errorResponse('limit_reached', TOO_LARGE_MESSAGE);
 	}
 
 	// Sealed at rest exactly as the old inline path sealed it, so the reader and
 	// the `/sealed-blob` proxy are unaffected by where the bytes came from.
+	const size = bytes.byteLength;
 	const storageId = await storeSealedBlob(ctx.storage, bytes, 'message/rfc822');
-	return jsonResponse({ storageId, size: bytes.byteLength });
+	return jsonResponse({ storageId, size });
 });

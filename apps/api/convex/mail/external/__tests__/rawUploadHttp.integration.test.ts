@@ -1,17 +1,10 @@
-/**
- * The raw `.eml` upload endpoint the mail-sync worker PUTs to.
- *
- * It exists because a Convex function-call body is capped at 16 MiB and base64
- * inflates by 4/3: shipping the message as an ARGUMENT silently dropped every
- * message over ~12 MiB of source at the backend's HTTP layer, which on a real
- * mailbox was about one message in twenty. The cases below pin the two things
- * that makes true — the route is gated on the shared worker secret, and a body
- * far larger than the old argument ceiling is accepted and stored.
- */
+/** Raw uploads authenticate before reading and enforce the buffered sealing budget. */
 
 import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import schema from '../../../schema';
+import { MAX_RAW_MESSAGE_BYTES } from '../rawUploadHttp';
+import { openBytesAtRest } from '../../../lib/atRestBodies';
 
 const allModules = import.meta.glob('../../../**/*.*s');
 const modules = Object.fromEntries(
@@ -28,9 +21,6 @@ const modules = Object.fromEntries(
 
 const PATH = '/mail-sync/raw-message';
 const KEY = 'msk_test_secret';
-
-/** The argument ceiling this endpoint exists to get out from under. */
-const OLD_ARGUMENT_CEILING_BYTES = 16 * 1024 * 1024;
 
 function message(bytes: number): Uint8Array {
 	const header = 'From: a@acme.test\r\nSubject: big\r\n\r\n';
@@ -77,17 +67,36 @@ describe('POST /mail-sync/raw-message', () => {
 		expect(stored).not.toBeNull();
 	});
 
-	it('accepts a message far past the old function-argument ceiling', async () => {
-		// The whole point: 20 MiB as a base64 argument was rejected by Convex
-		// before any handler ran. As a body it is just a body.
-		const t = convexTest(schema, modules);
-		const raw = message(OLD_ARGUMENT_CEILING_BYTES + 4 * 1024 * 1024);
-
-		const res = await post(t, raw, { Authorization: `Bearer ${KEY}` });
-
-		expect(res.status).toBe(200);
-		expect(((await res.json()) as { size: number }).size).toBe(raw.byteLength);
+	it('seals a message at the inclusive ceiling and preserves every byte', async () => {
+		process.env['INSTANCE_SECRET'] = 'test-raw-message-secret';
+		try {
+			const t = convexTest(schema, modules);
+			const raw = new Uint8Array(MAX_RAW_MESSAGE_BYTES).fill(97);
+			const res = await post(t, raw, { Authorization: `Bearer ${KEY}` });
+			expect(res.status).toBe(200);
+			const { storageId, size } = await res.json();
+			expect(size).toBe(raw.byteLength);
+			const stored = await t.run(async (ctx) => (await ctx.storage.get(storageId))!.arrayBuffer());
+			const opened = await openBytesAtRest('test-raw-message-secret', new Uint8Array(stored));
+			expect(opened.byteLength).toBe(raw.byteLength);
+			expect(opened.every((byte) => byte === 97)).toBe(true);
+		} finally {
+			delete process.env['INSTANCE_SECRET'];
+		}
 	});
+
+	it.each([undefined, '1', String(MAX_RAW_MESSAGE_BYTES + 1)])(
+		'rejects an oversized message with content-length %s',
+		async (length) => {
+			const t = convexTest(schema, modules);
+			const res = await post(t, new Uint8Array(MAX_RAW_MESSAGE_BYTES + 1), {
+				Authorization: `Bearer ${KEY}`,
+				...(length === undefined ? {} : { 'Content-Length': length }),
+			});
+			expect(res.status).toBe(402);
+			expect(await res.text()).toContain('8 MiB');
+		}
+	);
 
 	it('refuses a caller with no key, the wrong key, or the wrong scheme', async () => {
 		const t = convexTest(schema, modules);

@@ -9166,6 +9166,7 @@
 				}
 			},
 			"migrate": {
+				"messageSizeLimit": "Connected mailbox imports accept messages up to {limit} MiB, including attachments and email encoding. Larger messages stay on your provider and count as skipped. Retrying does not bypass this limit.",
 				"cancelDialogDescription": "Mail imported so far is kept. The rest of your history won't be imported unless you start again.",
 				"cancelDialogTitle": "Cancel the migration?",
 				"cancelMigration": "Cancel migration",

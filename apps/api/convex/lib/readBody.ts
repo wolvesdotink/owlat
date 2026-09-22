@@ -17,7 +17,7 @@ export async function readBodyBytes(request: Request, maxBytes: number): Promise
 	}
 	try {
 		const bytes = await readStreamBytes(request.body, maxBytes);
-		return bytes ? new Uint8Array(bytes).buffer : new ArrayBuffer(0);
+		return bytes?.buffer ?? new ArrayBuffer(0);
 	} catch (error) {
 		if (error instanceof StreamByteLimitExceeded) throw new BodyTooLargeError();
 		throw error;

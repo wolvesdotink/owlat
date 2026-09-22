@@ -56,6 +56,25 @@ afterEach(() => {
 });
 
 describe('ingestMessage', () => {
+	it('rejects oversized raw mail before parsing, uploading, or ingesting', async () => {
+		const { calls } = mockUpload();
+		const { client, action } = mockConvex();
+		await expect(
+			ingestMessage(client, UPLOAD, {
+				accountId: 'acct_1',
+				folderRole: 'inbox',
+				remoteName: 'INBOX',
+				remoteUid: 42,
+				remoteUidValidity: 7,
+				raw: Buffer.alloc(8 * 1024 * 1024 + 1),
+				flags: new Set(),
+				origin: 'backfill',
+			})
+		).rejects.toThrow('8 MiB raw message limit');
+		expect(calls).toHaveLength(0);
+		expect(action).not.toHaveBeenCalled();
+	});
+
 	it('repairs lone surrogates throughout parsed metadata without changing raw bytes', async () => {
 		const malformed = 'before\ud83dafter\udc00😀';
 		const repaired = 'before�after�😀';

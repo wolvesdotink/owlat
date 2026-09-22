@@ -18,6 +18,10 @@
 			"types": "./src/types/index.ts",
 			"import": "./src/types/index.ts"
 		},
+		"./mailSyncLimits": {
+			"types": "./src/mailSyncLimits.ts",
+			"import": "./src/mailSyncLimits.ts"
+		},
 		"./unicode": {
 			"types": "./src/unicode.ts",
 			"import": "./src/unicode.ts"
