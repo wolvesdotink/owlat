@@ -1,78 +1,86 @@
-import { nextTick, onUnmounted, watch, type Ref } from 'vue';
+import { nextTick, onScopeDispose, watch, type Ref } from 'vue';
 
 const FOCUSABLE_SELECTOR =
-	'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+	'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
 
-/**
- * Dialog focus management: when `active` flips on, remember the opener, move
- * focus into `container` (first focusable child, else the container itself —
- * give it tabindex="-1"), and trap Tab inside; when it flips off, restore
- * focus to the opener. Shared by UiModal and the chat dialog shell so every
- * overlay gets the same keyboard behavior instead of each hand-rolling (or
- * skipping) it.
- *
- * `onEscape` is invoked on the Escape key while active (pass undefined to
- * opt out, e.g. for persistent dialogs).
- */
+// Nested dialogs suspend the parent trap until the child closes.
+const activeDialogs: symbol[] = [];
+
+/** Capture, contain, and restore focus for a modal, including conditional unmounts. */
 export function useModalFocus(
 	container: Ref<HTMLElement | null>,
 	active: Ref<boolean> | (() => boolean),
-	onEscape?: () => void,
+	onEscape?: () => void
 ): void {
 	if (typeof window === 'undefined') return;
+	const token = Symbol('modal focus');
+	let opener: HTMLElement | null = null;
+	let generation = 0;
+	const isTop = () => activeDialogs.at(-1) === token;
+	const focusable = () =>
+		Array.from(container.value?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []).filter(
+			(el) =>
+				!el.closest('[hidden], [inert], [aria-hidden="true"]') &&
+				(el.tabIndex >= 0 || el.getAttribute('contenteditable') === 'true')
+		);
 
-	let previouslyFocused: HTMLElement | null = null;
-
-	const handleKeydown = (event: KeyboardEvent) => {
+	function handleKeydown(event: KeyboardEvent) {
+		if (!isTop() || event.defaultPrevented) return;
 		if (event.key === 'Escape' && onEscape) {
+			event.preventDefault();
+			event.stopImmediatePropagation();
 			onEscape();
 			return;
 		}
-
-		if (event.key === 'Tab' && container.value) {
-			const focusable = Array.from(
-				container.value.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-			);
-			if (focusable.length === 0) return;
-
-			const first = focusable[0]!;
-			const last = focusable[focusable.length - 1]!;
-
-			if (event.shiftKey && document.activeElement === first) {
-				event.preventDefault();
-				last.focus();
-			} else if (!event.shiftKey && document.activeElement === last) {
-				event.preventDefault();
-				first.focus();
-			}
+		if (event.key !== 'Tab' || !container.value) return;
+		const nodes = focusable();
+		const first = nodes[0];
+		const last = nodes.at(-1);
+		const outside = !container.value.contains(document.activeElement);
+		if (!first || !last) {
+			event.preventDefault();
+			container.value.focus();
+		} else if (
+			event.shiftKey &&
+			(outside || document.activeElement === first || document.activeElement === container.value)
+		) {
+			event.preventDefault();
+			last.focus();
+		} else if (!event.shiftKey && (outside || document.activeElement === last)) {
+			event.preventDefault();
+			first.focus();
 		}
-	};
+	}
+
+	function release() {
+		generation += 1;
+		const restore = isTop();
+		const index = activeDialogs.indexOf(token);
+		if (index !== -1) activeDialogs.splice(index, 1);
+		document.removeEventListener('keydown', handleKeydown, true);
+		if (restore && opener?.isConnected) opener.focus();
+		opener = null;
+	}
 
 	watch(
 		active,
 		async (isActive) => {
-			if (isActive) {
-				previouslyFocused = document.activeElement as HTMLElement | null;
-				document.addEventListener('keydown', handleKeydown);
-
-				await nextTick();
-				if (container.value) {
-					const firstFocusable =
-						container.value.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-					(firstFocusable ?? container.value).focus();
-				}
-			} else {
-				document.removeEventListener('keydown', handleKeydown);
-				if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
-					previouslyFocused.focus();
-					previouslyFocused = null;
-				}
+			if (!isActive) {
+				release();
+				return;
 			}
+			opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+			activeDialogs.push(token);
+			document.addEventListener('keydown', handleKeydown, true);
+			const current = ++generation;
+			await nextTick();
+			if (current !== generation || !isTop()) return;
+			// Respect a component's deliberate initial target, e.g. a reader pane.
+			if (container.value?.contains(document.activeElement)) return;
+			(focusable()[0] ?? container.value)?.focus();
 		},
-		{ immediate: true },
+		{ immediate: true }
 	);
 
-	onUnmounted(() => {
-		document.removeEventListener('keydown', handleKeydown);
-	});
+	onScopeDispose(release);
 }

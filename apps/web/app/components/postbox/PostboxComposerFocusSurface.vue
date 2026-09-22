@@ -12,10 +12,17 @@
  * The mount stays in the DOM at all times (hidden, pointer-events gated) so the
  * teleport target never disappears mid-transition.
  */
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 import { isFocusComposeChord } from '~/utils/postboxShortcuts';
 
 const stack = usePostboxComposerStack();
 const focusedId = stack.focusedId;
+const focusMount = ref<HTMLElement | null>(null);
+useModalFocus(
+	focusMount,
+	() => Boolean(focusedId.value),
+	() => stack.unfocus()
+);
 
 function onKeydown(event: KeyboardEvent) {
 	if (isFocusComposeChord(event)) {
@@ -25,14 +32,6 @@ function onKeydown(event: KeyboardEvent) {
 			stack.toggleFocusActive();
 		}
 		return;
-	}
-	// Esc backstop: demote from the focus surface even when focus isn't inside
-	// the composer editor (e.g. after a scrim click). Capture + stop so it
-	// doesn't also close the underlying reader.
-	if (event.key === 'Escape' && focusedId.value) {
-		event.preventDefault();
-		event.stopPropagation();
-		stack.unfocus();
 	}
 }
 
@@ -57,6 +56,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true));
 		class="pbx-focus-frame fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-6 sm:p-10 pt-[calc(var(--titlebar-h,0px)+1.5rem)] sm:pt-[calc(var(--titlebar-h,0px)+2.5rem)] pointer-events-none"
 		:class="{ 'is-focused': focusedId }"
 	>
-		<div id="pbx-focus-mount" class="w-full max-w-2xl pointer-events-auto" />
+		<div
+			ref="focusMount"
+			tabindex="-1"
+			id="pbx-focus-mount"
+			class="w-full max-w-2xl pointer-events-auto"
+		/>
 	</div>
 </template>

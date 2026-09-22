@@ -22,6 +22,7 @@
  * archive/trash/snooze swap to the adjacent row (or close at the ends)
  * instead of navigating to the three-pane route.
  */
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget, resolvePostboxShortcut } from '~/utils/postboxShortcuts';
 import { resolveActiveShortcut } from '~/utils/shortcutScope';
@@ -44,6 +45,7 @@ const emit = defineEmits<{
 }>();
 
 const paneEl = ref<HTMLElement | null>(null);
+useModalFocus(paneEl, () => true);
 
 /** Step to the adjacent visible row; no-op off the ends or on unknown ids. */
 function step(delta: 1 | -1) {

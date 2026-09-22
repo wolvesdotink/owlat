@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 /**
  * Everything this mailbox knows about one correspondent, as a slide-over from
  * the reader's sender line (plan idea 45).
@@ -38,6 +39,9 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ 'update:open': [value: boolean] }>();
+
+const dialogEl = ref<HTMLElement | null>(null);
+useModalFocus(dialogEl, () => props.open, close);
 
 const { t } = useI18n();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
@@ -129,11 +133,12 @@ function close() {
 			<aside
 				v-if="open"
 				class="fixed top-0 right-0 z-50 flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-border-subtle bg-bg-elevated"
+				ref="dialogEl"
+				tabindex="-1"
 				role="dialog"
 				aria-modal="true"
 				:aria-label="t('components.postbox.postboxSenderProfile.title')"
 				data-testid="sender-profile"
-				@keydown.esc="close"
 			>
 				<header class="flex items-start gap-3 border-b border-border-subtle p-4">
 					<UiAvatar

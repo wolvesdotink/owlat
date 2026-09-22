@@ -33,7 +33,7 @@ export function usePostboxReaderShortcuts(opts: {
 		if (event.defaultPrevented) return;
 		const el = event.target as HTMLElement | null;
 		// The focused thread list and any open dialog own their keys.
-		if (el?.closest?.('[role="listbox"], [role="dialog"]')) return;
+		if (el?.closest?.('[role="listbox"], [role="dialog"], [data-shortcut-boundary]')) return;
 		const action = resolvePostboxShortcut(event.key);
 		// '?' is handled by the window-level PostboxShortcutHelp listener.
 		if (!action || action === 'help') return;
