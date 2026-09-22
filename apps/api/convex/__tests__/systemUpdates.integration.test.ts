@@ -216,3 +216,82 @@ describe('systemUpdates.recordUpdateFinish', () => {
 		expect(check?.status).toBeUndefined();
 	});
 });
+
+/**
+ * THE RUN THAT NOBODY CLOSES.
+ *
+ * `recordUpdateFinish` is called by the Nitro route that dispatched the update,
+ * and the update's last step recreates the container that route runs in — so on
+ * the HAPPY path the recorder dies before the sidecar's answer reaches it, and
+ * the row it opened stays `running` in the history table forever. The browser
+ * outlives the restart and its health poller is the only party that learns how
+ * the run ended; this is the lookup that hands it the row to close.
+ */
+describe('systemUpdates.getUnfinishedUpdate', () => {
+	it('rejects a caller with no platformAdmins row', async () => {
+		const t = convexTest(schema, modules);
+		await expect(t.query(api.systemUpdates.getUnfinishedUpdate, {})).rejects.toThrow(
+			/Platform admin access required/
+		);
+	});
+
+	it('returns the run the restart orphaned', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const runId = await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.2',
+			versionTo: '0.5.3',
+		});
+
+		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toEqual({
+			runId,
+			versionTo: '0.5.3',
+		});
+	});
+
+	it('returns nothing once the run is closed, so closing it twice is a no-op', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const runId = await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.2',
+			versionTo: '0.5.3',
+		});
+		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId, status: 'success' });
+
+		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toBeNull();
+	});
+
+	it('ignores an older run left open by a browser that was closed mid-update', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const abandoned = await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.0',
+			versionTo: '0.5.2',
+		});
+		const newest = await t.mutation(api.systemUpdates.recordUpdateStart, {
+			versionFrom: '0.5.2',
+			versionTo: '0.5.3',
+		});
+		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId: newest, status: 'success' });
+
+		// The newest run is closed, so there is nothing this poller can speak
+		// for — the abandoned one ended in a way nobody here witnessed.
+		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toBeNull();
+		const stale = await t.run(async (ctx) => ctx.db.get(abandoned));
+		expect(stale?.status).toBe('running');
+	});
+
+	it('does not mistake the release-check singleton for a run', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		await t.run(async (ctx) =>
+			ctx.db.insert('systemUpdates', {
+				kind: 'latestCheck',
+				latestVersion: '0.5.3',
+				checkedAt: Date.now(),
+			})
+		);
+
+		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toBeNull();
+	});
+});
