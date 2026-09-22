@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import { apiFetch } from '~/lib/csrfFetch';
 import { semverCompare } from '@owlat/shared/semver';
 import { formatDateTime } from '~/utils/formatters';
+import { updateRequestWasAnswered } from '~/lib/systemUpdate';
 
 const { t } = useI18n();
 const { showToast } = useToast();
@@ -120,6 +121,10 @@ async function confirmUpdate() {
 		updateSteps.value = resp.steps ?? null;
 		// Don't set success yet — wait for UpdateProgress to confirm new version is live.
 	} catch (err) {
+		// A throw with no HTTP status behind it is almost always the web container
+		// being recreated by the update's last step — the progress card keeps the
+		// verdict and resolves it from updater health.
+		if (!updateRequestWasAnswered(err)) return;
 		updateState.value = 'failed';
 		const msg = err instanceof Error ? err.message : t('dashboard.admin.system.index.unknownError');
 		updateError.value = msg;
