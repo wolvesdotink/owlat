@@ -664,6 +664,7 @@ import type * as lib_pagination from '../lib/pagination.js';
 import type * as lib_paginationCursor from '../lib/paginationCursor.js';
 import type * as lib_posthog from '../lib/posthog.js';
 import type * as lib_posthogHelpers from '../lib/posthogHelpers.js';
+import type * as lib_publicInput from '../lib/publicInput.js';
 import type * as lib_publicTokenEndpoint from '../lib/publicTokenEndpoint.js';
 import type * as lib_queryHelpers from '../lib/queryHelpers.js';
 import type * as lib_randomToken from '../lib/randomToken.js';
@@ -1807,6 +1808,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/paginationCursor': typeof lib_paginationCursor;
 	'lib/posthog': typeof lib_posthog;
 	'lib/posthogHelpers': typeof lib_posthogHelpers;
+	'lib/publicInput': typeof lib_publicInput;
 	'lib/publicTokenEndpoint': typeof lib_publicTokenEndpoint;
 	'lib/queryHelpers': typeof lib_queryHelpers;
 	'lib/randomToken': typeof lib_randomToken;
