@@ -399,3 +399,21 @@ through unopened rather than re-flattening it.
 
 `BackendOperationValue<R>` unwraps the payload type for the handful of callers
 that park a verdict in a `ref` and type it off the operation.
+
+### Read-side adoption
+
+`useBackendQuery(query, args, options)` preserves `useConvexQuery`'s typed
+subscription, skip, refetch and scope cleanup contract. It adds `operationError`
+and localized `errorMessage` refs. Faults are reported according to
+`categoryTreatment`; expired sessions navigate to login. Expected refusals render
+inline at the read boundary rather than producing a second toast.
+
+For an existing session-gated read, adapt it with
+`useBackendQueryState(useOrganizationQuery(...))` to retain its auth gating.
+Pass `error`, `errorMessage`, and `refetch` to the existing `UiQueryBoundary`
+(`:error`, `:error-message`, `@retry`). An error must precede loading, empty and
+not-found branches. Retain each page's existing successful-empty presentation.
+The Knowledge list (browse/type/search and canonical answers) and entry detail
+are the first migrated surfaces; remaining query consumers can adopt the same
+contract incrementally. Paginated reads keep their current boundary until a
+paginated adapter is introduced.

@@ -18,48 +18,42 @@ export function useKnowledgeGraph() {
 	const selectedType = ref<EntryType | null>(null);
 
 	// When searching, use the search API (skip when no search query)
-	const { data: searchResults, isLoading: searchLoading } = useConvexQuery(
-		api.knowledge.graph.search,
-		() => {
-			if (!debouncedSearch.value) return 'skip';
-			return {
-				searchQuery: debouncedSearch.value,
-				...(selectedType.value ? { entryType: selectedType.value } : {}),
-				limit: 50,
-			};
-		}
-	);
+	const searchQueryState = useBackendQuery(api.knowledge.graph.search, () => {
+		if (!debouncedSearch.value) return 'skip';
+		return {
+			searchQuery: debouncedSearch.value,
+			...(selectedType.value ? { entryType: selectedType.value } : {}),
+			limit: 50,
+		};
+	});
 
 	// When browsing a specific type (no search), use listByType (skip when
 	// searching or on the "All" tab).
-	const { data: typeResults, isLoading: typeLoading } = useConvexQuery(
-		api.knowledge.graph.listByType,
-		() => {
-			if (debouncedSearch.value || selectedType.value === null) return 'skip';
-			return { entryType: selectedType.value, limit: 50 };
-		}
-	);
+	const typeQueryState = useBackendQuery(api.knowledge.graph.listByType, () => {
+		if (debouncedSearch.value || selectedType.value === null) return 'skip';
+		return { entryType: selectedType.value, limit: 50 };
+	});
 
 	// The "All" tab (selectedType === null) lists every type, newest first.
-	const { data: allResults, isLoading: allLoading } = useConvexQuery(
-		api.knowledge.graph.listAll,
-		() => {
-			if (debouncedSearch.value || selectedType.value !== null) return 'skip';
-			return { limit: 50 };
-		}
-	);
+	const allQueryState = useBackendQuery(api.knowledge.graph.listAll, () => {
+		if (debouncedSearch.value || selectedType.value !== null) return 'skip';
+		return { limit: 50 };
+	});
 
 	const entries = computed(() => {
-		if (debouncedSearch.value) return searchResults.value ?? [];
-		if (selectedType.value === null) return allResults.value ?? [];
-		return typeResults.value ?? [];
+		if (debouncedSearch.value) return searchQueryState.data.value ?? [];
+		if (selectedType.value === null) return allQueryState.data.value ?? [];
+		return typeQueryState.data.value ?? [];
 	});
 
-	const isLoading = computed(() => {
-		if (debouncedSearch.value) return searchLoading.value;
-		if (selectedType.value === null) return allLoading.value;
-		return typeLoading.value;
+	const activeQuery = computed(() => {
+		if (debouncedSearch.value) return searchQueryState;
+		return selectedType.value === null ? allQueryState : typeQueryState;
 	});
+	const isLoading = computed(() => activeQuery.value.isLoading.value);
+	const error = computed(() => activeQuery.value.error.value);
+	const errorMessage = computed(() => activeQuery.value.errorMessage.value);
+	const refetch = () => activeQuery.value.refetch();
 
 	// Mutations
 	const { run: createEntry } = useBackendOperation(api.knowledge.graph.createEntry, {
@@ -116,6 +110,9 @@ export function useKnowledgeGraph() {
 		selectedType,
 		entries,
 		isLoading,
+		error,
+		errorMessage,
+		refetch,
 
 		// Mutations
 		createEntry,
