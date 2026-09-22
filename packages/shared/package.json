@@ -18,6 +18,10 @@
 			"types": "./src/types/index.ts",
 			"import": "./src/types/index.ts"
 		},
+		"./unicode": {
+			"types": "./src/unicode.ts",
+			"import": "./src/unicode.ts"
+		},
 		"./templateVariables": {
 			"types": "./src/templateVariables.ts",
 			"import": "./src/templateVariables.ts"

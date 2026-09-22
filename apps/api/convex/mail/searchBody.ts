@@ -28,11 +28,13 @@
  * `filename:` uses for the attachment index.
  */
 
+import { truncateCodePoints } from '@owlat/shared/unicode';
+
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 
 /**
- * Excerpt ceiling, in characters. ~8KB of UTF-16 text: deep enough that the
+ * Excerpt ceiling, in Unicode code points: deep enough that the
  * clause in section 8.2 of a contract is findable, bounded enough that the
  * plaintext carve-out stays an EXCERPT rather than "the body, again". The plan
  * names 4-16KB; 8KB is the middle of that band.
@@ -81,12 +83,14 @@ function htmlToSearchText(html: string): string {
 export function buildSearchBody(text: string | undefined, html: string | undefined): string {
 	const fromText = text?.replace(/\s+/g, ' ').trim() ?? '';
 	const source = fromText || (html ? htmlToSearchText(html).replace(/\s+/g, ' ').trim() : '');
-	if (source.length <= SEARCH_BODY_MAX_CHARS) return source;
-	const cut = source.slice(0, SEARCH_BODY_MAX_CHARS);
+	const cut = truncateCodePoints(source, SEARCH_BODY_MAX_CHARS);
+	if (cut.length === source.length) return source;
 	const lastSpace = cut.lastIndexOf(' ');
 	// Only honour the boundary when it is not a drastic loss; a body with no
 	// spaces at all (a base64 blob, some CJK text) keeps the hard cut.
-	return lastSpace > SEARCH_BODY_MAX_CHARS - 64 ? cut.slice(0, lastSpace) : cut;
+	return lastSpace >= 0 && Array.from(cut.slice(lastSpace)).length < 64
+		? cut.slice(0, lastSpace)
+		: cut;
 }
 
 /** Both gates are pure reads, so a query context and a mutation context both fit. */

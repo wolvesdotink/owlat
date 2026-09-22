@@ -1,3 +1,4 @@
+import { truncateCodePoints } from '@owlat/shared/unicode';
 import type { PluginAgentStepInput } from '@owlat/plugin-kit';
 import { isSafeAgentLifecycleEdge, type AgentStepPlacement } from '@owlat/plugin-host';
 import { isPlainObject } from '@owlat/shared';
@@ -88,18 +89,6 @@ function boundedBody(value: string | undefined): string | undefined {
 	return value === undefined
 		? undefined
 		: truncateCodePoints(value, PLUGIN_AGENT_STEP_INPUT_LIMITS.bodyCodePoints);
-}
-
-/** Truncate by Unicode code points, never splitting a surrogate pair. */
-export function truncateCodePoints(value: string, limit: number): string {
-	let count = 0;
-	let codeUnitEnd = 0;
-	for (const codePoint of value) {
-		if (count === limit) return value.slice(0, codeUnitEnd);
-		count += 1;
-		codeUnitEnd += codePoint.length;
-	}
-	return value;
 }
 
 function hasAtMostCodePoints(value: string, limit: number): boolean {
