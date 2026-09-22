@@ -22,6 +22,10 @@
 			"types": "./src/mailSyncLimits.ts",
 			"import": "./src/mailSyncLimits.ts"
 		},
+		"./unicode": {
+			"types": "./src/unicode.ts",
+			"import": "./src/unicode.ts"
+		},
 		"./templateVariables": {
 			"types": "./src/templateVariables.ts",
 			"import": "./src/templateVariables.ts"

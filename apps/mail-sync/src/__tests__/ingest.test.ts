@@ -1,3 +1,4 @@
+import * as mailMessage from '@owlat/mail-message';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { ingestMessage, syntheticMessageId, type RawUploadConfig } from '../ingest.js';
@@ -51,6 +52,7 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 });
 
 describe('ingestMessage', () => {
@@ -71,6 +73,65 @@ describe('ingestMessage', () => {
 		).rejects.toThrow('8 MiB raw message limit');
 		expect(calls).toHaveLength(0);
 		expect(action).not.toHaveBeenCalled();
+	});
+
+	it('repairs lone surrogates throughout parsed metadata without changing raw bytes', async () => {
+		const malformed = 'before\ud83dafter\udc00😀';
+		const repaired = 'before�after�😀';
+		const parsed = mailMessage.parseMessage(Buffer.from(RAW));
+		const address = { value: [{ address: malformed, name: malformed }], text: malformed };
+		vi.spyOn(mailMessage, 'parseMessage').mockReturnValue({
+			...parsed,
+			from: address,
+			to: address,
+			cc: address,
+			bcc: address,
+			replyTo: address,
+			subject: malformed,
+			text: malformed,
+			html: malformed,
+			messageId: malformed,
+			inReplyTo: malformed,
+			references: [malformed],
+			attachments: [
+				{
+					disposition: 'attachment',
+					filename: malformed,
+					contentType: malformed,
+					contentId: malformed,
+					size: 0,
+					content: Buffer.alloc(0),
+				},
+			],
+		});
+		const { client, lastPayload } = mockConvex();
+		const { calls } = mockUpload();
+		await ingestMessage(client, UPLOAD, {
+			accountId: 'acct_1',
+			folderRole: 'inbox',
+			remoteName: malformed,
+			remoteUid: 42,
+			remoteUidValidity: 7,
+			raw: Buffer.from(RAW),
+			flags: new Set(),
+			origin: 'backfill',
+		});
+		expect(lastPayload()).toMatchObject({
+			remoteName: repaired,
+			from: repaired,
+			to: [repaired],
+			cc: [repaired],
+			bcc: [repaired],
+			replyTo: repaired,
+			subject: repaired,
+			textBodyInline: repaired,
+			htmlBodyInline: repaired,
+			messageId: repaired,
+			inReplyTo: repaired,
+			references: repaired,
+			attachments: [{ filename: repaired, contentType: repaired, contentId: repaired }],
+		});
+		expect(Buffer.from(calls[0]!.init.body as Uint8Array).toString()).toBe(RAW);
 	});
 
 	it('parses headers + addresses and forwards them to ingestExternalRaw', async () => {

@@ -1,5 +1,7 @@
 'use node';
 
+import { truncateCodePoints } from '@owlat/shared/unicode';
+
 // Node-only: this is the EXECUTION half of the autonomy-gate split — it runs
 // hosted gate modules out of the `'use node'` generated registry (the
 // isolate-safe metadata half stays in `plugins/autonomyGateCatalog`).
@@ -15,7 +17,6 @@ import { internal } from '../../../_generated/api';
 import type { Doc, Id } from '../../../_generated/dataModel';
 import type { ActionCtx } from '../../../_generated/server';
 import { scrubForInjection } from '../../../assistant/prompt';
-import { truncateCodePoints } from '../../pluginStepRuntime';
 import { AUTONOMY_GATE_CATALOG } from '../../../plugins/autonomyGateCatalog';
 import { BUNDLED_PLUGIN_AUTONOMY_GATE_MODULES } from '../../../plugins/autonomyGateModules.generated';
 import type { AutoSendGateDecision } from './autoSendGates';
