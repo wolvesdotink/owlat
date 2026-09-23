@@ -1097,7 +1097,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						<p class="mt-2 text-xs text-text-tertiary">
 							{{ t('dashboard.inbox.detail.reusedAnswersHint') }}
 							<NuxtLink
-								to="/dashboard/admin/instance/autonomy"
+								to="/dashboard/admin/instance/ai-replies"
 								class="underline hover:text-text-primary"
 								>{{ t('dashboard.inbox.detail.reusedAnswersManage') }}</NuxtLink
 							>

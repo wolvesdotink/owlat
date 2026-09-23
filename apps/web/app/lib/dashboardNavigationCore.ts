@@ -103,7 +103,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 			},
 			{
 				name: 'shared.dashboardNavigation.items.inbox.reviewQueue',
-				href: '/dashboard/inbox/review',
+				href: '/dashboard/answer?in=team',
 				icon: 'lucide:check-circle',
 				gate: adminOnly,
 			},
