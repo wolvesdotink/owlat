@@ -14,11 +14,12 @@ describe('automation stat shards', () => {
 	it('spreads bumps across shards and derives statsActive on rollup', async () => {
 		const t = convexTest(schema, modules);
 		const automationId = await t.run(async (ctx) =>
-			ctx.db.insert('automations', createTestAutomation({})),
+			ctx.db.insert('automations', createTestAutomation({}))
 		);
 
 		await t.run(async (ctx) => {
-			for (let i = 0; i < 30; i++) await bumpAutomationStats(ctx, automationId, { statsEntered: 1 });
+			for (let i = 0; i < 30; i++)
+				await bumpAutomationStats(ctx, automationId, { statsEntered: 1 });
 			for (let i = 0; i < 12; i++)
 				await bumpAutomationStats(ctx, automationId, { statsCompleted: 1 });
 			for (let i = 0; i < 3; i++)

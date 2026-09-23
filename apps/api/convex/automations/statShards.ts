@@ -2,7 +2,7 @@
  * Automation run-stat sharding (module).
  *
  * fireTrigger used to read-modify-write the single `automations` row on EVERY
- * contact entry (statsEntered + statsActive), and complete/cancelAutomationRun
+ * contact entry (statsEntered + statsActive), and completeRun/cancelRun
  * RMW'd it again — so a bulk-import burst into a `contact_created` automation
  * (matches: () => true) serialized thousands of concurrent RMWs on one row.
  *
@@ -29,7 +29,7 @@ const FIELDS: readonly AutomationStatField[] = ['statsEntered', 'statsCompleted'
 /**
  * Increment inc-only run-stat counter(s) on a RANDOM shard of an automation,
  * creating the shard row on its first event. Called from fireTrigger (entered),
- * completeAutomationRun (completed), cancelAutomationRun (cancelled).
+ * completeRun (completed), cancelRun (cancelled).
  */
 export async function bumpAutomationStats(
 	ctx: MutationCtx,

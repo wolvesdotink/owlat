@@ -285,6 +285,12 @@ export const templateTables = {
 		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 		// Provenance for `kind: 'automation'` — the owning automation.
 		automationId: v.optional(v.id('automations')),
+		// Intake idempotency key for `kind: 'automation'`: the step run that
+		// produced this Send. A retried or recovered email step re-enters the
+		// intake with the same step run, and the intake returns the existing row
+		// instead of inserting a second Send. Absent on rows written before the
+		// key existed.
+		automationStepRunId: v.optional(v.id('automationStepRuns')),
 		// Provenance for `kind: 'agent_reply'` — the inbound message being replied
 		// to. The Send completion module drives that inbound message to
 		// `sent`/`failed` once the worker outcome lands.
@@ -368,5 +374,7 @@ export const templateTables = {
 		// Answers "does this inbound message already have a send?" as a point
 		// lookup. The stuck-approved reconciler used to infer that from a bounded
 		// scan of all queued sends, which unrelated volume could starve.
-		.index('by_inbound_message_status', ['inboundMessageId', 'status']),
+		.index('by_inbound_message_status', ['inboundMessageId', 'status'])
+		// Point lookup for the automation intake's step-run idempotency key.
+		.index('by_automation_step_run', ['automationStepRunId']),
 };

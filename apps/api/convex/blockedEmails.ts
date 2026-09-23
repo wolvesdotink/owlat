@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
-import { internalMutation, internalQuery } from './_generated/server';
+import { internalMutation } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import {
@@ -384,17 +384,6 @@ export const getCountsByReason = authedQuery({
 			manual: manual.length,
 			unengaged: unengaged.length,
 		};
-	},
-});
-
-// Internal query to check if an email is blocked (for use by other Convex functions)
-// Unlike the public `isBlocked` query, this does not require access validation
-export const isBlockedInternal = internalQuery({
-	args: {
-		email: v.string(),
-	},
-	handler: async (ctx, args) => {
-		return (await findBlockedByEmail(ctx, args.email)) !== null;
 	},
 });
 

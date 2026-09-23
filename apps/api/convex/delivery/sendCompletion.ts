@@ -12,6 +12,7 @@ import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { recordDeferralOutcome } from './deferralOutcome';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
 import { isSendWorkerOutcome, type SendWorkerOutcome } from './workerOutcome';
+import type { MarketingIneligibility } from '../lib/marketingEligibility';
 
 // ============================================================================
 // Send completion (module) — see CONTEXT.md.
@@ -324,15 +325,11 @@ export const completeSend = internalMutation({
 			// suppression-labelled non-delivery so campaign stats and the audit trail
 			// reflect that this was a deliberate honor-suppression skip (not a
 			// provider failure).
-			case 'suppressed':
-				await failSend(
-					ctx,
-					sendRef,
-					now,
-					'Recipient suppressed (blocklist) before dispatch',
-					'RECIPIENT_SUPPRESSED'
-				);
+			case 'suppressed': {
+				const refusal = SUPPRESSED_SEND_FAILURE[outcome.reason ?? 'blocklist'];
+				await failSend(ctx, sendRef, now, refusal.message, refusal.code);
 				return;
+			}
 
 			default: {
 				// EXHAUSTIVE BY CONSTRUCTION. A sixth arm added to
@@ -348,6 +345,26 @@ export const completeSend = internalMutation({
 		// records every attempt uniformly upstream of this module.
 	},
 });
+
+/**
+ * How each pre-dispatch refusal is recorded. A blocklist hit keeps its original
+ * code; a contact that unsubscribed from everything or was deleted gets its own,
+ * so the Send's audit trail says why it did not go out.
+ */
+const SUPPRESSED_SEND_FAILURE = {
+	blocklist: {
+		message: 'Recipient suppressed (blocklist) before dispatch',
+		code: 'RECIPIENT_SUPPRESSED',
+	},
+	contact_unsubscribed: {
+		message: 'Contact unsubscribed from marketing before dispatch',
+		code: 'RECIPIENT_UNSUBSCRIBED',
+	},
+	contact_deleted: { message: 'Contact deleted before dispatch', code: 'CONTACT_DELETED' },
+} as const satisfies Record<
+	'blocklist' | MarketingIneligibility,
+	{ message: string; code: string }
+>;
 
 /** The single terminal-failure write, so every arm names its own code. */
 async function failSend(

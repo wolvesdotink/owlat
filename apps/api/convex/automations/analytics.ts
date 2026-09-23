@@ -113,7 +113,7 @@ export const getAutomationStats = authedQuery({
 		if (!automation) return null;
 
 		// Run-level counts from the automation's denormalized stats (maintained by
-		// fireTrigger / completeAutomationRun / cancelAutomationRun) — no run scan.
+		// fireTrigger / completeRun / cancelRun) — no run scan.
 		// Every run is running | completed | cancelled, so cancelled is the
 		// remainder of the entered total.
 		const totalEntered = automation.statsEntered ?? 0;

@@ -14,10 +14,11 @@
  * path while another blocks it.
  *
  * A FOURTH read does not come through here: `delivery/worker.ts` re-reads the
- * blocklist through `blockedEmails.isBlockedInternal` immediately before
- * dispatching a CAMPAIGN envelope, to catch an address blocked between audience
- * resolution and the worker running. It normalizes through the same
- * `findBlockedByEmail`, so it agrees with this module by construction.
+ * blocklist through `delivery/marketingDispatchGate.ts` immediately before
+ * dispatching a MARKETING envelope (campaign or automation step), to catch an
+ * address blocked between resolution/intake and the worker running. It
+ * normalizes through the same `findBlockedByEmail`, so it agrees with this
+ * module by construction.
  *
  * AND SEVERAL SEND PATHS DO NOT GATE AT ALL, which is worth knowing before
  * trusting this list to be exhaustive: system mail (`systemMail.ts` — auth mail,

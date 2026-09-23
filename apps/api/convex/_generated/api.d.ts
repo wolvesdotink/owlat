@@ -126,6 +126,7 @@ import type * as automations_listing from '../automations/listing.js';
 import type * as automations_runDeletion from '../automations/runDeletion.js';
 import type * as automations_statShards from '../automations/statShards.js';
 import type * as automations_stepExecutorQueries from '../automations/stepExecutorQueries.js';
+import type * as automations_stepOrchestration from '../automations/stepOrchestration.js';
 import type * as automations_stepWalker from '../automations/stepWalker.js';
 import type * as automations_steps from '../automations/steps.js';
 import type * as automations_steps_condition_index from '../automations/steps/condition/index.js';
@@ -304,6 +305,7 @@ import type * as delivery_health from '../delivery/health.js';
 import type * as delivery_ipReadinessAlerts from '../delivery/ipReadinessAlerts.js';
 import type * as delivery_lastMileRouting from '../delivery/lastMileRouting.js';
 import type * as delivery_marketingCompliance from '../delivery/marketingCompliance.js';
+import type * as delivery_marketingDispatchGate from '../delivery/marketingDispatchGate.js';
 import type * as delivery_marketingSendAttribution from '../delivery/marketingSendAttribution.js';
 import type * as delivery_mtaHealth from '../delivery/mtaHealth.js';
 import type * as delivery_messageIdRouting from '../delivery/messageIdRouting.js';
@@ -669,6 +671,7 @@ import type * as lib_mailContentValidators from '../lib/mailContentValidators.js
 import type * as lib_mailSettingsValidators from '../lib/mailSettingsValidators.js';
 import type * as lib_mailMute from '../lib/mailMute.js';
 import type * as lib_mailSnooze from '../lib/mailSnooze.js';
+import type * as lib_marketingEligibility from '../lib/marketingEligibility.js';
 import type * as lib_accountExportTemplates from '../lib/accountExportTemplates.js';
 import type * as lib_messageBody from '../lib/messageBody.js';
 import type * as lib_messageBodyExport from '../lib/messageBodyExport.js';
@@ -1297,6 +1300,7 @@ declare const fullApi: ApiFromModules<{
 	'automations/runDeletion': typeof automations_runDeletion;
 	'automations/statShards': typeof automations_statShards;
 	'automations/stepExecutorQueries': typeof automations_stepExecutorQueries;
+	'automations/stepOrchestration': typeof automations_stepOrchestration;
 	'automations/stepWalker': typeof automations_stepWalker;
 	'automations/steps': typeof automations_steps;
 	'automations/steps/condition/index': typeof automations_steps_condition_index;
@@ -1475,6 +1479,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/ipReadinessAlerts': typeof delivery_ipReadinessAlerts;
 	'delivery/lastMileRouting': typeof delivery_lastMileRouting;
 	'delivery/marketingCompliance': typeof delivery_marketingCompliance;
+	'delivery/marketingDispatchGate': typeof delivery_marketingDispatchGate;
 	'delivery/marketingSendAttribution': typeof delivery_marketingSendAttribution;
 	'delivery/mtaHealth': typeof delivery_mtaHealth;
 	'delivery/messageIdRouting': typeof delivery_messageIdRouting;
@@ -1840,6 +1845,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/mailSettingsValidators': typeof lib_mailSettingsValidators;
 	'lib/mailMute': typeof lib_mailMute;
 	'lib/mailSnooze': typeof lib_mailSnooze;
+	'lib/marketingEligibility': typeof lib_marketingEligibility;
 	'lib/accountExportTemplates': typeof lib_accountExportTemplates;
 	'lib/messageBody': typeof lib_messageBody;
 	'lib/messageBodyExport': typeof lib_messageBodyExport;
