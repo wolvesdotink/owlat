@@ -42,17 +42,61 @@ const { t } = useUiI18n();
 
 const resolvedAriaLabel = computed(() => props.ariaLabel ?? t('ui.chart.trendAriaLabel'));
 
-const viewWidth = 320;
+/**
+ * The viewBox always matches the rendered size 1:1, so nothing inside the SVG
+ * is ever scaled: a fixed viewBox stretched to `w-full` with
+ * `preserveAspectRatio="none"` widened the axis-label glyphs along with the
+ * line. The width is measured from the container (ResizeObserver) and the
+ * geometry is recomputed from it; `FALLBACK_WIDTH` only covers the first paint
+ * before the measurement lands (SSR, or no ResizeObserver), and even then the
+ * `meet` aspect ratio keeps text at its natural proportions.
+ */
+const FALLBACK_WIDTH = 320;
+/** Below this the y-axis labels and the plot no longer fit side by side. */
+const MIN_WIDTH = 120;
 const viewHeight = 120;
 const padding = { top: 16, right: 12, bottom: 24, left: 48 };
-const innerWidth = viewWidth - padding.left - padding.right;
 const innerHeight = viewHeight - padding.top - padding.bottom;
 const baselineY = padding.top + innerHeight;
+
+const containerRef = ref<HTMLElement | null>(null);
+const measuredWidth = ref<number | null>(null);
+const viewWidth = computed(() => Math.max(MIN_WIDTH, measuredWidth.value ?? FALLBACK_WIDTH));
+const innerWidth = computed(() => viewWidth.value - padding.left - padding.right);
+
+function measure() {
+	const width = containerRef.value?.clientWidth ?? 0;
+	// A hidden container (display: none, a collapsed tab) reports 0 — keep the
+	// last good width rather than collapsing the plot.
+	if (width > 0) measuredWidth.value = Math.round(width);
+}
+
+let observer: ResizeObserver | null = null;
+
+function observe(el: HTMLElement | null) {
+	observer?.disconnect();
+	observer = null;
+	if (!el) return;
+	measure();
+	if (typeof ResizeObserver !== 'undefined') {
+		observer = new ResizeObserver(() => measure());
+		observer.observe(el);
+	}
+}
+
+// The plot container only exists once there is data to draw, so follow the
+// ref instead of observing once in onMounted.
+watch(containerRef, (el) => observe(el), { flush: 'post' });
+
+onBeforeUnmount(() => {
+	observer?.disconnect();
+	observer = null;
+});
 
 const hasData = computed(() => props.data.length >= 2);
 
 const points = computed(() =>
-	computeChartPoints(props.data, { width: viewWidth, height: viewHeight, padding })
+	computeChartPoints(props.data, { width: viewWidth.value, height: viewHeight, padding })
 );
 
 const linePoints = computed(() => buildLinePoints(points.value));
@@ -74,7 +118,7 @@ const peakPoint = computed(() => {
 const peakLabelX = computed(() => {
 	if (!peakPoint.value) return 0;
 	const min = padding.left + 14;
-	const max = padding.left + innerWidth - 14;
+	const max = padding.left + innerWidth.value - 14;
 	return Math.min(Math.max(peakPoint.value.x, min), max);
 });
 
@@ -106,7 +150,7 @@ function onPointerMove(event: PointerEvent) {
 	const target = event.currentTarget as SVGRectElement;
 	const rect = target.getBoundingClientRect();
 	if (rect.width === 0) return;
-	const x = padding.left + ((event.clientX - rect.left) / rect.width) * innerWidth;
+	const x = padding.left + ((event.clientX - rect.left) / rect.width) * innerWidth.value;
 	hoverIndex.value = nearestPointIndex(points.value, x);
 }
 
@@ -123,12 +167,12 @@ function onPointerLeave() {
 		>
 			<p class="text-sm text-text-tertiary">{{ t('ui.chart.empty') }}</p>
 		</div>
-		<div v-else class="relative">
+		<div v-else ref="containerRef" class="relative">
 			<svg
 				:viewBox="`0 0 ${viewWidth} ${viewHeight}`"
-				class="w-full"
+				class="w-full block"
 				:style="{ height: `${viewHeight}px` }"
-				preserveAspectRatio="none"
+				preserveAspectRatio="xMinYMid meet"
 				role="img"
 				:aria-label="resolvedAriaLabel"
 			>

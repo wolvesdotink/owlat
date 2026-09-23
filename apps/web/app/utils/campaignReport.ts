@@ -1,15 +1,15 @@
 /**
- * Campaign report — pure helpers for the "delta vs previous comparable send"
- * hero tiles. No Vue, no Convex: everything here is unit-tested directly.
+ * Campaign report — pure helpers for the "compared with the previous campaign"
+ * row. No Vue, no Convex: everything here is unit-tested directly.
  *
  * The report page fetches a bounded window of recent SENT campaign snapshots
  * (`api.campaigns.analytics.getComparableSentCampaigns`) and runs these two
  * functions client-side: pick the prior comparable send, then diff its rates
- * against the current send. Deltas are expressed in percentage POINTS of the
- * relevant rate (not raw counts) so audiences of different sizes compare fairly.
+ * against the current send. Changes are expressed in percentage POINTS of the
+ * rate (not raw counts) so audiences of different sizes compare fairly.
  */
 
-/** The aggregated counts a report tile diffs. */
+/** The aggregated counts the comparison row diffs. */
 export interface CampaignStatSnapshot {
 	/** Everything dispatched to the provider. */
 	sent: number;
@@ -38,20 +38,22 @@ export interface CurrentComparable {
 	isABTest: boolean;
 }
 
-/** Performance direction of a delta — "up" always reads as an improvement. */
+/** Performance direction of a change — "up" always reads as an improvement. */
 export type DeltaDirection = 'up' | 'down' | 'flat';
 
-export interface StatDelta {
-	/** Formatted magnitude (e.g. "2.3 pts"), or null when there is no prior send. */
-	text: string | null;
-	direction: DeltaDirection;
-}
+/** The two rates the report compares against the previous campaign. */
+export type ComparedRate = 'openRate' | 'clickRate';
 
-export interface CampaignStatDeltas {
-	delivered: StatDelta;
-	opened: StatDelta;
-	clicked: StatDelta;
-	bounced: StatDelta;
+export interface RateComparison {
+	key: ComparedRate;
+	/** This send's rate as a fraction (0.384 = 38.4%). */
+	rate: number;
+	/**
+	 * Change against the previous campaign in percentage POINTS, rounded to one
+	 * decimal, or null when there is no previous campaign to compare with.
+	 */
+	pointsChange: number | null;
+	direction: DeltaDirection;
 }
 
 /**
@@ -73,68 +75,45 @@ export function selectPreviousComparable(
 	return best;
 }
 
-/** Percentage rate, guarding a zero denominator. */
+/** Rate as a fraction, guarding a zero denominator. */
 function rate(numerator: number, denominator: number): number {
-	return denominator > 0 ? (numerator / denominator) * 100 : 0;
+	return denominator > 0 ? numerator / denominator : 0;
+}
+
+function compare(key: ComparedRate, current: number, previous: number | null): RateComparison {
+	if (previous === null) return { key, rate: current, pointsChange: null, direction: 'flat' };
+	// Rounded before the sign test so "+0.0 pts" can never read as a change.
+	// `|| 0` folds a rounded -0 into 0.
+	const pointsChange = Math.round((current - previous) * 1000) / 10 || 0;
+	return {
+		key,
+		rate: current,
+		pointsChange,
+		direction: pointsChange > 0 ? 'up' : pointsChange < 0 ? 'down' : 'flat',
+	};
 }
 
 /**
- * Percentage-point delta between the current and previous rate. `higherIsBetter`
- * flips the direction so an improvement always reads as "up" (fewer bounces is
- * an improvement, so bounce rate passes `false`).
+ * The report's one comparison row: open rate and click rate (both of
+ * delivered) for this send, each with its change in percentage points against
+ * the previous comparable campaign. Counts are deliberately left out — a
+ * points change only means something for a rate, and audiences of different
+ * sizes make a raw count change meaningless.
  */
-function pointDelta(currentRate: number, previousRate: number, higherIsBetter: boolean): StatDelta {
-	const diff = Math.round((currentRate - previousRate) * 10) / 10;
-	if (diff === 0) return { text: '0.0 pts', direction: 'flat' };
-	const improved = higherIsBetter ? diff > 0 : diff < 0;
-	return { text: `${Math.abs(diff).toFixed(1)} pts`, direction: improved ? 'up' : 'down' };
-}
-
-const noDelta: StatDelta = { text: null, direction: 'flat' };
-
-/**
- * The all-empty delta set — every metric has no prior send to compare against.
- * Returned by `computeStatDeltas` when there is no previous comparable send, and
- * usable directly (e.g. before the current send's stats have loaded).
- */
-export const NO_DELTAS: CampaignStatDeltas = {
-	delivered: noDelta,
-	opened: noDelta,
-	clicked: noDelta,
-	bounced: noDelta,
-};
-
-/**
- * Per-metric deltas of the current send vs the previous comparable send. When
- * `previous` is null (no prior comparable send) every delta is empty.
- */
-export function computeStatDeltas(
+export function compareRates(
 	current: CampaignStatSnapshot,
 	previous: CampaignStatSnapshot | null
-): CampaignStatDeltas {
-	if (previous === null) {
-		return NO_DELTAS;
-	}
-	return {
-		delivered: pointDelta(
-			rate(current.delivered, current.sent),
-			rate(previous.delivered, previous.sent),
-			true
-		),
-		opened: pointDelta(
+): RateComparison[] {
+	return [
+		compare(
+			'openRate',
 			rate(current.opened, current.delivered),
-			rate(previous.opened, previous.delivered),
-			true
+			previous ? rate(previous.opened, previous.delivered) : null
 		),
-		clicked: pointDelta(
+		compare(
+			'clickRate',
 			rate(current.clicked, current.delivered),
-			rate(previous.clicked, previous.delivered),
-			true
+			previous ? rate(previous.clicked, previous.delivered) : null
 		),
-		bounced: pointDelta(
-			rate(current.bounced, current.sent),
-			rate(previous.bounced, previous.sent),
-			false
-		),
-	};
+	];
 }

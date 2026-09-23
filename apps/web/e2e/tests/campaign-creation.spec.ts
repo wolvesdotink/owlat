@@ -24,17 +24,17 @@ test.describe('Campaign Creation Wizard', () => {
 	test('will not advance while the instance has no campaign sender', async ({ page }) => {
 		// Assert the PAGE got somewhere first. `canSubmit` (SetupStep.vue) is
 		// false while loading, false while the sender picker is not ready, and
-		// false without an audience — so "Next is disabled" is equally true of a
-		// wizard that never rendered, and asserting it alone is a test that
-		// passes on a dead page.
-		await expect(page.getByText('No campaign senders have been set up yet.')).toBeVisible({
-			timeout: 15_000,
-		});
+		// false without a name or recipients — so "Next is disabled" is equally
+		// true of a wizard that never rendered, and asserting it alone is a test
+		// that passes on a dead page. The suite signs in as the workspace owner,
+		// who gets the inline add-a-sender form rather than "ask your admin".
+		await expect(
+			page.getByText('No campaign senders yet. Add the address this campaign should come from.')
+		).toBeVisible({ timeout: 15_000 });
 
 		// With the picker resolved to its empty state, the disabled Next is the
-		// real guard: a blank instance has no verified sending identity, so the
-		// wizard refuses to advance. Note it is NOT the campaign name doing this —
-		// `canSubmit` never reads it.
+		// real guard, and it says what it is waiting for.
 		await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
+		await expect(page.getByTestId('setup-missing')).toContainText('a sender');
 	});
 });

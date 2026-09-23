@@ -158,7 +158,7 @@ async function clickSend(wrapper: ReturnType<typeof mountStep>) {
 		.findAll('button')
 		.find(
 			(candidate) =>
-				candidate.text() === 'Send Campaign' || candidate.text() === 'Schedule Campaign'
+				candidate.text() === 'Send campaign' || candidate.text() === 'Schedule campaign'
 		);
 	expect(button).toBeDefined();
 	await button!.trigger('click');
@@ -280,7 +280,7 @@ describe('ReviewStep layout', () => {
 		const wrapper = mountStep();
 		const headings = wrapper.findAll('h3').map((heading) => heading.text());
 
-		expect(headings.indexOf('Send Test Email')).toBeGreaterThanOrEqual(0);
-		expect(headings.indexOf('Send Test Email')).toBeLessThan(headings.indexOf('When to Send'));
+		expect(headings.indexOf('Send test email')).toBeGreaterThanOrEqual(0);
+		expect(headings.indexOf('Send test email')).toBeLessThan(headings.indexOf('When to send'));
 	});
 });

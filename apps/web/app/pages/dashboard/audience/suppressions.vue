@@ -181,14 +181,8 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Header -->
+		<AudienceTabs />
 		<div class="mb-6">
-			<NuxtLink
-				to="/dashboard/audience"
-				class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
-				{{ t('dashboard.audience.suppressions.backToAudience') }}
-			</NuxtLink>
 			<UiPageHeader
 				:title="t('dashboard.audience.suppressions.title')"
 				:description="t('dashboard.audience.suppressions.subtitle')"

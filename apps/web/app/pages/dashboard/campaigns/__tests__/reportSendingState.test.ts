@@ -36,7 +36,10 @@ const ZERO_STATS = {
 	bounced: 0,
 };
 
-function mountReport(campaign: Record<string, unknown>) {
+function mountReport(
+	campaign: Record<string, unknown>,
+	data: { stats?: typeof ZERO_STATS; comparables?: unknown[] } = {}
+) {
 	installNuxtStubs({
 		...i18nStubs,
 		formatDateTime,
@@ -49,7 +52,11 @@ function mountReport(campaign: Record<string, unknown>) {
 		useConvexQuery: (reference: FunctionReference<'query'>) => {
 			const name = getFunctionName(reference);
 			if (name === 'campaigns/campaigns:getWithRelations') return queryResult(campaign);
-			if (name === 'delivery/sends:getStatsByCampaign') return queryResult(ZERO_STATS);
+			if (name === 'delivery/sends:getStatsByCampaign')
+				return queryResult(data.stats ?? ZERO_STATS);
+			if (name === 'campaigns/analytics:getComparableSentCampaigns') {
+				return queryResult(data.comparables);
+			}
 			return queryResult(undefined);
 		},
 	});
@@ -105,7 +112,7 @@ describe('campaign report while the send is still pending', () => {
 		});
 
 		expect(wrapper.text()).toContain('These fill in as the send goes out.');
-		expect(wrapper.text()).not.toContain('No comparable prior send');
+		expect(wrapper.text()).not.toContain('No earlier campaign to compare with');
 	});
 
 	it('reads as in-flight while sending', () => {
@@ -151,5 +158,63 @@ describe('campaign report while the send is still pending', () => {
 		const text = wrapper.text();
 		expect(text).toContain('Cancelled');
 		expect(text).toContain('Cancelled before it went out');
+	});
+});
+
+describe('finished campaign report (#784)', () => {
+	const stats = {
+		total: 12480,
+		queued: 0,
+		failed: 0,
+		delivered: 12381,
+		uniqueOpens: 4755,
+		uniqueClicks: 770,
+		bounced: 99,
+	};
+	const comparables = [
+		{
+			id: 'previous',
+			name: 'Partner spotlight',
+			sentAt: SENT_AT - 7 * 24 * 60 * 60 * 1000,
+			isABTest: false,
+			sent: 10000,
+			delivered: 10000,
+			opened: 3350,
+			clicked: 340,
+			bounced: 0,
+		},
+	];
+
+	function mountSent() {
+		return mountReport(
+			{
+				_id: CAMPAIGN_ID,
+				name: 'September newsletter',
+				status: 'sent',
+				sentAt: SENT_AT,
+				isABTest: false,
+				statsUnsubscribed: 26,
+			},
+			{ stats, comparables }
+		);
+	}
+
+	it('labels funnel rates by their base, never "of previous"', () => {
+		const text = mountSent().text();
+		expect(text).toContain('38.4% of delivered');
+		expect(text).toContain('16.2% of opened');
+		expect(text).not.toContain('of previous');
+	});
+
+	it('compares with the previous campaign in one row, rates only', () => {
+		const wrapper = mountSent();
+		const row = wrapper.find('[data-testid="campaign-report-comparison"]');
+		expect(row.text()).toContain('Compared with Partner spotlight:');
+		expect(row.text()).toContain('+4.9 pts');
+		expect(row.text()).toContain('+2.8 pts');
+		// The four count tiles and the two rate cards are gone.
+		expect(wrapper.findAll('ui-stat-tile-stub')).toHaveLength(0);
+		expect(wrapper.text()).not.toContain('delivered opened');
+		expect(wrapper.text().match(/pts/g)).toHaveLength(2);
 	});
 });

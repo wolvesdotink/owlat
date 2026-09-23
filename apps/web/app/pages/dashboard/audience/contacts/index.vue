@@ -331,6 +331,7 @@ onUnmounted(() => {
 
 <template>
 	<div class="p-6 lg:p-8">
+		<AudienceTabs />
 		<!-- Header -->
 		<UiPageHeader
 			:title="t('dashboard.audience.contacts.index.title')"
@@ -674,14 +675,7 @@ onUnmounted(() => {
 							? t('dashboard.audience.contacts.index.empty.descriptionManage')
 							: t('dashboard.audience.contacts.index.empty.descriptionReadOnly')
 					"
-				>
-					<template v-if="canManageContacts" #action>
-						<UiButton @click="addModal.open()">
-							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-							{{ t('dashboard.audience.contacts.index.addContact') }}
-						</UiButton>
-					</template>
-				</UiEmptyState>
+				/>
 
 				<UiEmptyState
 					v-else-if="!isLoading && contacts.length === 0 && debouncedSearch"

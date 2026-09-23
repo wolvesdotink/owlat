@@ -10,6 +10,7 @@ import {
 	isCustomSender,
 	senderSelectionProblem,
 } from '~/utils/campaignSenderPicker';
+import { adminDisplayNames } from '~/utils/campaignSetupReadiness';
 
 const { t, locale } = useI18n();
 
@@ -74,8 +75,30 @@ const selectedSenderAuth = computed(() => {
 });
 
 // No curated senders AND no custom escape hatch: nothing is selectable, so show
-// an empty-state (admin deep link vs. "ask your admin") instead of a picker.
+// an empty state instead of a picker. Admins get the add-a-sender form right
+// here (#785); everyone else is told WHO can add one, by name.
 const showSenderEmptyState = computed(() => senders.value.length === 0 && !isCustomAllowed.value);
+
+// The workspace's owners and admins, for the member-facing empty state. The
+// member list is the same BetterAuth list the inbox pages read, so any member
+// can load it; it is only fetched when the empty state actually shows.
+const { members: orgMembers, fetchMembers } = useOrganization();
+watch(
+	[showSenderEmptyState, canManageSenders],
+	([empty, canManage]) => {
+		if (empty && !canManage) void fetchMembers();
+	},
+	{ immediate: true }
+);
+const adminNames = computed(() => adminDisplayNames(orgMembers.value, locale.value));
+
+// A sender just added inline: select it. The picker's one-shot preselect has
+// already run (with nothing to pick), so the selection is made here instead.
+function onSenderAdded(senderId: string) {
+	selectedSenderId.value = senderId;
+	senderError.value = null;
+	senderErrorField.value = null;
+}
 
 function onSelectSender(value: string | null) {
 	selectedSenderId.value = value ?? '';
@@ -86,7 +109,9 @@ function onSelectSender(value: string | null) {
 // A curated selection is the source of truth for the from name/address; keep the
 // form fields (read by the review summary) in sync. The custom branch leaves the
 // fields for the user to edit.
-watch(selectedSenderId, (value) => {
+// Also re-runs when the sender list changes, so a sender added inline fills the
+// fields as soon as it appears in the list.
+watch([selectedSenderId, senders], ([value]) => {
 	if (value === CUSTOM_SENDER_VALUE || !value) return;
 	const sender = senders.value.find((s) => s._id === value);
 	if (sender) {
@@ -234,20 +259,26 @@ defineExpose({ validate, isReady });
 			v-else-if="showSenderEmptyState"
 			class="mt-1.5 rounded-lg border border-border-subtle bg-bg-surface p-4 text-sm"
 		>
-			<p class="text-text-secondary">
-				{{ t('components.campaigns.steps.setupSenderPicker.emptyTitle') }}
-			</p>
-			<NuxtLink
-				v-if="canManageSenders"
-				to="/dashboard/admin/team/senders"
-				class="mt-2 inline-flex items-center gap-1.5 font-medium text-brand hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand rounded"
-			>
-				<Icon name="lucide:plus" class="w-4 h-4" />
-				{{ t('components.campaigns.steps.setupSenderPicker.addSender') }}
-			</NuxtLink>
-			<p v-else class="mt-1 text-text-tertiary">
-				{{ t('components.campaigns.steps.setupSenderPicker.askAdmin') }}
-			</p>
+			<template v-if="canManageSenders">
+				<p class="text-text-secondary mb-3">
+					{{ t('components.campaigns.steps.setupSenderPicker.emptyAdmin') }}
+				</p>
+				<CampaignsStepsSetupAddSenderInline @added="onSenderAdded" />
+			</template>
+			<template v-else>
+				<p class="text-text-secondary">
+					{{ t('components.campaigns.steps.setupSenderPicker.emptyTitle') }}
+				</p>
+				<p class="mt-1 text-text-tertiary" data-testid="sender-ask-admin">
+					{{
+						adminNames
+							? t('components.campaigns.steps.setupSenderPicker.askNamedAdmin', {
+									names: adminNames,
+								})
+							: t('components.campaigns.steps.setupSenderPicker.askAdmin')
+					}}
+				</p>
+			</template>
 		</div>
 
 		<!-- Picker -->

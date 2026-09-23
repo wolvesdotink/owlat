@@ -804,9 +804,16 @@
 			},
 			"funnel": {
 				"ariaLabel": "Versand-Trichter",
-				"ofPrevious": "{percent} vom vorherigen Schritt",
+				"rates": {
+					"bounced": "{percent} der gesendeten",
+					"clicked": "{percent} der geöffneten",
+					"delivered": "{percent} der gesendeten",
+					"opened": "{percent} der zugestellten",
+					"unsubscribed": "{percent} der zugestellten"
+				},
 				"stepTitle": "{step}: {count} von {previous} ({previousStep})",
 				"steps": {
+					"bounced": "Unzustellbar",
 					"clicked": "Geklickt",
 					"delivered": "Zugestellt",
 					"opened": "Geöffnet",
@@ -919,40 +926,46 @@
 						"openRate": "Beste Öffnungsrate"
 					}
 				},
+				"setupAddSenderInline": {
+					"emailLabel": "Absenderadresse",
+					"emailPlaceholder": "z. B. news{'@'}example.com",
+					"manageAll": "Alle Absender verwalten",
+					"nameLabel": "Absendername (optional)",
+					"namePlaceholder": "z. B. Beispiel-Newsletter",
+					"operation": "Kampagnen-Absender hinzufügen",
+					"setUpDomain": "Domain einrichten",
+					"submit": "Absender hinzufügen"
+				},
 				"setupAudiencePicker": {
 					"createSegment": "Segment erstellen",
 					"createTopic": "Thema erstellen",
-					"eligible": "Zulässige Empfänger.",
-					"eligibleForTopic": "Zulässige Empfänger für dieses Thema.",
+					"empty": "Es gibt noch keine Themen oder Segmente.",
 					"estimatedRecipients": "Geschätzte Empfänger",
-					"noDescription": "Keine Beschreibung vorhanden",
-					"noSegments": "Keine Segmente gefunden.",
-					"noSelection": "Wählen Sie eine Zielgruppe, um die geschätzte Empfängerzahl zu sehen.",
-					"noTopics": "Keine Themen gefunden.",
+					"noSelection": "Wählen Sie Empfänger aus, um zu sehen, wie viele Kontakte diese Kampagne erhalten.",
 					"nonEligible": "{nonEligible} von {total} Kontakten in diesem Thema sind nicht zulässig (keine E-Mail-Adresse, abgemeldet/gesperrt oder Double-Opt-in nicht abgeschlossen) und werden ausgeschlossen.",
-					"segmentCriteria": "Segmentkriterien",
-					"segmentOption": "Gespeichertes Segment",
-					"segmentOptionDescription": "Kontakte ansprechen, die den Kriterien eines gespeicherten Segments entsprechen.",
-					"segmentPlaceholder": "Segment auswählen ...",
-					"segmentSummary": "Kontakte, die den Kriterien von \"{segment}\" entsprechen, erhalten diese Kampagne.",
-					"segmentWarning": "Segmente sprechen alle passenden Kontakte an, unabhängig vom Themen-Abonnement. Einige Kontakte haben das Double-Opt-in möglicherweise nicht abgeschlossen. Es wird kein Abmeldelink eingefügt, da es kein bestimmtes Thema gibt, von dem man sich abmelden könnte.",
+					"placeholder": "Empfänger auswählen",
+					"segmentOption": "Kontakte in {name} ({count})",
+					"segmentOptionNoCount": "Kontakte in {name}",
+					"segmentWarning": "Ein Segment erreicht alle passenden Kontakte, auch Personen, die nie ein Thema abonniert oder das Double-Opt-in nicht bestätigt haben. Da es kein Thema zum Abmelden gibt, wird kein Abmeldelink eingefügt.",
+					"segmentsGroup": "Segmente: Kontakte, die gespeicherten Filtern entsprechen",
+					"sendTo": "Senden an",
 					"subtitle": "Wählen Sie, wer diese Kampagne erhält.",
-					"title": "Zielgruppe",
-					"topicOption": "Bestimmtes Thema",
-					"topicOptionDescription": "An Kontakte senden, die ein bestimmtes Thema abonniert haben.",
-					"topicOptionLabel": "{name} ({count} Kontakte)",
-					"topicPlaceholder": "Thema auswählen ...",
-					"topicSummary": "Abonnierte Kontakte in \"{topic}\" erhalten diese Kampagne."
+					"title": "Empfänger",
+					"topicHelp": "Nur Abonnenten dieses Themas erhalten sie, und jede E-Mail enthält einen Link, um sich vom Thema abzumelden.",
+					"topicOption": "Alle Abonnenten von {name} ({count})",
+					"topicOptionNoCount": "Alle Abonnenten von {name}",
+					"topicsGroup": "Themen: Personen, die sich angemeldet haben"
 				},
 				"setupSenderPicker": {
-					"addSender": "Kampagnen-Absender hinzufügen",
-					"askAdmin": "Bitten Sie Ihre Administration, einen Kampagnen-Absender anzulegen, bevor Sie senden können.",
+					"askAdmin": "Bitten Sie eine Person mit Adminrechten in diesem Workspace, einen anzulegen. Nur Admins können Absender hinzufügen.",
+					"askNamedAdmin": "Bitten Sie {names}, einen anzulegen. Nur Admins können Absender hinzufügen.",
 					"curatedHint": "Empfänger sehen diesen Namen und diese Adresse. Die Liste verwalten Sie unter Einstellungen → Kampagnen-Absender.",
 					"domainNeverChecked": "nie",
 					"domainNotRegistered": "Domain „{domain}“ ist nicht registriert. Sie können weiter bearbeiten, aber das Senden ist deaktiviert, bis Sie diese Domain unter Einstellungen → Domains hinzufügen und verifizieren.",
 					"domainNotVerified": "Domain „{domain}“ ist nicht verifiziert. Sie können weiter bearbeiten, aber das Senden ist deaktiviert, bis die DNS-Verifizierung unter Einstellungen → Domains abgeschlossen ist.",
 					"domainStale": "Die Domain-Verifizierung ist veraltet (zuletzt geprüft: {lastChecked}). Erwägen Sie eine erneute Verifizierung.",
 					"domainVerified": "Domain „{domain}“ ist verifiziert",
+					"emptyAdmin": "Noch keine Kampagnen-Absender. Fügen Sie die Adresse hinzu, von der diese Kampagne kommen soll.",
 					"emptyTitle": "Es wurden noch keine Kampagnen-Absender eingerichtet.",
 					"errors": {
 						"invalidEmail": "Geben Sie eine gültige Absenderadresse ein",
@@ -978,9 +991,16 @@
 					"detailsTitle": "Kampagnendetails",
 					"errors": {
 						"nameRequired": "Kampagnenname ist erforderlich",
-						"replyToInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
-						"segmentRequired": "Bitte wählen Sie ein Segment aus",
-						"topicRequired": "Bitte wählen Sie ein Thema aus"
+						"recipientsRequired": "Wählen Sie, wer diese Kampagne erhält",
+						"replyToInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein"
+					},
+					"missing": {
+						"items": {
+							"name": "ein Kampagnenname",
+							"recipients": "Empfänger",
+							"sender": "ein Absender"
+						},
+						"label": "Noch offen: {items}"
 					},
 					"nameHint": "Dieser Name dient nur Ihrer Orientierung und ist für Empfänger nicht sichtbar.",
 					"nameLabel": "Kampagnenname",
@@ -7892,7 +7912,7 @@
 					"deselectAll": "Auswahl aufheben",
 					"deselectContact": "Auswahl von {email} aufheben",
 					"empty": {
-						"descriptionManage": "Legen Sie los, indem Sie Ihre erste Kundin oder Ihren ersten Kunden hinzufügen oder eine CSV-Datei importieren.",
+						"descriptionManage": "Fügen Sie Ihren ersten Kontakt hinzu oder importieren Sie eine CSV-Datei.",
 						"descriptionReadOnly": "Es wurden noch keine Kundinnen und Kunden hinzugefügt.",
 						"title": "Noch keine Kontakte"
 					},
@@ -7947,69 +7967,6 @@
 						"emailCopied": "E-Mail-Adresse kopiert",
 						"imported": "{count} Kontakt erfolgreich verarbeitet | {count} Kontakte erfolgreich verarbeitet"
 					}
-				}
-			},
-			"index": {
-				"activity": {
-					"descriptions": {
-						"created": "{name} wurde hinzugefügt",
-						"topicConfirmed": "{name} hat das Abonnement bestätigt",
-						"topicSubscribed": "{name} wurde zu einem Thema angemeldet",
-						"topicUnsubscribed": "{name} wurde von einem Thema abgemeldet"
-					},
-					"emptyBody": "Aktivitäten erscheinen hier, sobald Kontakte Themen abonnieren oder abbestellen.",
-					"emptyTitle": "Keine aktuelle Aktivität",
-					"errorTitle": "Letzte Aktivität konnte nicht geladen werden",
-					"loading": "Aktivität wird geladen...",
-					"title": "Letzte Aktivität"
-				},
-				"addContact": "Kontakt hinzufügen",
-				"growth": {
-					"barValue": "{count} neue Abonnenten",
-					"chartLabel": "Neue Abonnenten pro Tag in den letzten 30 Tagen",
-					"errorTitle": "Abonnenten-Wachstum konnte nicht geladen werden",
-					"loading": "Diagramm wird geladen...",
-					"newCount": "+{count} neu",
-					"title": "Abonnenten-Wachstum (30 Tage)"
-				},
-				"pageTitle": "Zielgruppe — Owlat",
-				"quickActions": {
-					"addContact": {
-						"description": "Einen neuen Kontakt manuell hinzufügen",
-						"label": "Kontakt hinzufügen"
-					},
-					"createSegment": {
-						"description": "Ein dynamisches Zielgruppensegment erstellen",
-						"label": "Segment erstellen"
-					},
-					"createTopic": {
-						"description": "Ein neues Thema erstellen",
-						"label": "Thema erstellen"
-					}
-				},
-				"quickActionsHeading": "Schnellaktionen",
-				"recentContacts": {
-					"emptyBody": "Fügen Sie Ihren ersten Kontakt hinzu, um loszulegen.",
-					"emptyTitle": "Noch keine Kontakte",
-					"errorTitle": "Aktuelle Kontakte konnten nicht geladen werden",
-					"loading": "Kontakte werden geladen...",
-					"title": "Zuletzt hinzugefügt"
-				},
-				"stats": {
-					"segments": "Segmente",
-					"topics": "Themen",
-					"totalContacts": "Kontakte gesamt"
-				},
-				"subtitle": "Verwalten Sie Ihre Kontakte, Themen und Segmente.",
-				"title": "Zielgruppe",
-				"topTopics": {
-					"contactCount": "{count} Kontakte",
-					"createTopic": "Thema erstellen",
-					"emptyBody": "Erstellen Sie ein Thema, um Ihre Kontakte zu organisieren.",
-					"emptyTitle": "Noch keine Themen",
-					"errorTitle": "Top-Themen konnten nicht geladen werden",
-					"loading": "Themen werden geladen...",
-					"title": "Top-Themen"
 				}
 			},
 			"segments": {
@@ -8121,7 +8078,6 @@
 			"suppressions": {
 				"addSuppression": "Unterdrückung hinzufügen",
 				"adding": "Wird hinzugefügt...",
-				"backToAudience": "Zurück zur Zielgruppe",
 				"empty": {
 					"description": "Nichts ist unterdrückt. Adressen werden automatisch aufgenommen, wenn sie unzustellbar sind oder wenn jemand einen Versand als Spam markiert.",
 					"title": "Keine Unterdrückungen"
@@ -8692,14 +8648,16 @@
 					},
 					"backToCampaigns": "Zurück zu den Kampagnen",
 					"cancelledLine": "Vor dem Versand abgebrochen",
-					"clickRate": "Klickrate",
 					"clickedEmpty": "Bisher hat kein Kontakt Links in dieser E-Mail geklickt",
-					"clickedOfDelivered": "{clicked} von {delivered} zugestellten haben einen Link geklickt",
 					"comparison": {
-						"changeVsPrevious": "Veränderung gegenüber Ihrem letzten Versand · {name}",
-						"changeVsPreviousAb": "Veränderung gegenüber Ihrem letzten A/B-Versand · {name}",
-						"noComparable": "Es gibt noch keinen vergleichbaren früheren Versand.",
-						"pendingCounts": "Diese Werte füllen sich, während der Versand läuft."
+						"clickRate": "Klickrate",
+						"noChange": "unverändert",
+						"noComparable": "Noch keine frühere Kampagne zum Vergleich.",
+						"openRate": "Öffnungsrate",
+						"pendingCounts": "Diese Werte füllen sich, während der Versand läuft.",
+						"points": "{change} Pkt.",
+						"versus": "Verglichen mit {name}:",
+						"versusAb": "Verglichen mit Ihrem letzten A/B-Test, {name}:"
 					},
 					"declareWinnerOperation": "A/B-Test-Gewinner festlegen",
 					"duplicateOperation": "Kampagne duplizieren",
@@ -8715,9 +8673,7 @@
 					"noEmail": "Keine E-Mail",
 					"notFoundDescription": "Diese Kampagne wurde möglicherweise gelöscht oder Sie haben keinen Zugriff darauf.",
 					"notFoundTitle": "Kampagne nicht gefunden",
-					"openRate": "Öffnungsrate",
 					"openedEmpty": "Bisher hat kein Kontakt diese E-Mail geöffnet",
-					"openedOfDelivered": "{opened} von {delivered} zugestellten geöffnet",
 					"opensCount": "{count} Öffnungen",
 					"pageTitle": "Kampagnenbericht — Owlat",
 					"pagination": {
@@ -8739,12 +8695,6 @@
 					"tabs": {
 						"clicked": "Geklickt ({count})",
 						"opened": "Geöffnet ({count})"
-					},
-					"tiles": {
-						"bounced": "Unzustellbar",
-						"clicked": "Geklickt",
-						"delivered": "Zugestellt",
-						"opened": "Geöffnet"
 					},
 					"timeline": {
 						"chartLabel": "Öffnungen in den ersten 48 Stunden",
@@ -10186,52 +10136,35 @@
 				}
 			},
 			"index": {
-				"blockCount": "{count} Bausteine",
-				"createTemplate": "Vorlage erstellen",
-				"loadError": "Einige Mail-Daten konnten nicht geladen werden. Laden Sie die Seite neu, um es erneut zu versuchen.",
-				"noBlocksDescription": "Speichern Sie wiederverwendbare Bausteine aus Ihrem E-Mail-Editor, um sie in mehreren Vorlagen zu nutzen.",
-				"noBlocksTitle": "Keine Bausteine gespeichert",
-				"noTemplatesDescription": "Erstellen Sie Ihre erste E-Mail-Vorlage, um loszulegen.",
-				"noTemplatesTitle": "Noch keine Vorlagen",
-				"pageTitle": "Vorlagen & Bausteine — Owlat",
-				"quickActions": {
-					"blocks": {
-						"description": "Gespeicherte Bausteine ansehen und verwalten",
-						"label": "Bausteine durchsuchen"
+				"adminsOnly": "Nur Admins können Vorlagen erstellen.",
+				"createAndEdit": "Erstellen und bearbeiten",
+				"createOperation": "Vorlage erstellen",
+				"creating": "Wird erstellt…",
+				"empty": {
+					"description": "Legen Sie mit „Neue Vorlage“ eine an. Sie können mit einem fertigen Design beginnen.",
+					"filtered": {
+						"marketing": "Noch keine Marketing-Vorlagen",
+						"transactional": "Noch keine transaktionalen Vorlagen"
 					},
-					"files": {
-						"description": "Hochgeladene Dateien durchsuchen",
-						"label": "Dateien"
-					},
-					"marketing": {
-						"description": "Newsletter oder Werbe-E-Mail erstellen",
-						"label": "Marketing-E-Mails"
-					},
-					"media": {
-						"description": "Bilder hochladen und verwalten",
-						"label": "Medien"
-					},
-					"transactional": {
-						"description": "Per API ausgelöste E-Mail erstellen",
-						"label": "Transaktionale E-Mails"
-					}
+					"title": "Noch keine Vorlagen"
 				},
-				"quickActionsHeading": "Schnellaktionen",
-				"recentlyEdited": "Zuletzt bearbeitet",
-				"savedBlocks": "Gespeicherte Bausteine",
-				"stats": {
+				"filters": {
+					"all": "Alle",
 					"marketing": "Marketing",
-					"savedBlocks": "Gespeicherte Bausteine",
-					"totalTemplates": "Vorlagen gesamt",
 					"transactional": "Transaktional"
 				},
-				"subtitle": "Verwalten Sie Ihre E-Mail-Vorlagen und wiederverwendbaren Bausteine.",
+				"loadError": "Vorlagen konnten nicht geladen werden",
+				"loadMore": "Mehr laden",
+				"newTemplate": "Neue Vorlage",
+				"pageTitle": "Vorlagen — Owlat",
+				"savedBlocks": "Gespeicherte Bausteine",
+				"savedBlocksCount": "Gespeicherte Bausteine ({count})",
+				"subtitle": "E-Mail-Designs, die Sie in Kampagnen, Automationen und im API-Versand wiederverwenden.",
 				"templateTypes": {
 					"marketing": "Marketing",
 					"transactional": "Transaktional"
 				},
-				"title": "Vorlagen & Bausteine",
-				"usedTimes": "{count}-mal verwendet"
+				"title": "Vorlagen"
 			},
 			"marketing": {
 				"index": {
@@ -11905,7 +11838,6 @@
 				},
 				"audience": {
 					"contacts": "Kontakte",
-					"overview": "Übersicht",
 					"segments": "Segmente",
 					"suppressions": "Sperrlisten",
 					"topics": "Themen"
