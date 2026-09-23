@@ -15,15 +15,10 @@ export const contactTables = {
 	// DOI (double opt-in) is tracked at the contact level, not per-topic
 	//
 	// Cascade on permanent delete (after the soft-delete retention window):
-	// - contactTopics, contactPropertyValues, contactActivities,
-	//   contactIdentities, contactRelationships (both from & to),
-	//   automationRuns (required FK, per-contact)                 → deleted
-	// - emailSends, transactionalSends                            → soft-deleted
-	//   (deletedAt set, FK kept; row retained for audit)
-	// - unifiedMessages, formSubmissions, inboundMessages,
-	//   conversationThreads                                       → FK cleared
-	//   (optional FK set undefined; row survives unlinked).
-	// See lib/contactMutations.ts.
+	// every table that references a contact, and every table hanging off a
+	// row the erasure deletes, declares delete / unlink / retain in
+	// contacts/erasure/relations.ts. A schema coverage test fails when a new
+	// reference lands without a declaration. See lib/contactMutations.ts.
 	contacts: defineTable({
 		// Optional because Contacts can arrive via non-email channels
 		// (SMS/WhatsApp/phone/generic) and have no email signal at all.

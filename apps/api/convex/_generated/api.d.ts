@@ -236,6 +236,7 @@ import type * as contacts_creation from '../contacts/creation.js';
 import type * as contacts_crons from '../contacts/crons.js';
 import type * as contacts_dataExport from '../contacts/dataExport.js';
 import type * as contacts_doiLifecycle from '../contacts/doiLifecycle.js';
+import type * as contacts_erasure_relations from '../contacts/erasure/relations.js';
 import type * as contacts_guards from '../contacts/guards.js';
 import type * as contacts_identities from '../contacts/identities.js';
 import type * as contacts_import from '../contacts/import.js';
@@ -1396,6 +1397,7 @@ declare const fullApi: ApiFromModules<{
 	'contacts/crons': typeof contacts_crons;
 	'contacts/dataExport': typeof contacts_dataExport;
 	'contacts/doiLifecycle': typeof contacts_doiLifecycle;
+	'contacts/erasure/relations': typeof contacts_erasure_relations;
 	'contacts/guards': typeof contacts_guards;
 	'contacts/identities': typeof contacts_identities;
 	'contacts/import': typeof contacts_import;

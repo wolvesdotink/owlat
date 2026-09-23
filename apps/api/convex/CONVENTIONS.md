@@ -676,6 +676,17 @@ comment (see `schema/contacts.ts`). Permanent-delete helpers in
 `lib/contactMutations.ts` are the only place that performs the cascade —
 mutation code calls the helper rather than handling children inline.
 
+For contacts the contract is data: `contacts/erasure/relations.ts` declares
+`delete`, `unlink` or `retain` (with the reason) for every field that
+references a contact, and for every field that references a row the erasure
+deletes (an automation run's step runs, a thread's messages, …). A new
+`v.id('contacts')` field, or a new reference to one of those tables, fails
+`__tests__/contactErasureRelations.test.ts` until it declares a policy. Never
+null a `contactId` whose absence carries meaning — on `clarificationMemory` an
+absent contact is the org-wide scope, so a contact-scoped answer is deleted,
+not unlinked. Organization-wide knowledge that an admin promoted before the
+erasure no longer references the contact and is retained.
+
 ### Audit logging
 
 Use `recordAuditLog` from `lib/auditLog.ts`. Never call

@@ -50,6 +50,36 @@ async function deleteSoleContactInboundFiles(
 }
 
 /**
+ * The agent's work on an erased message is about the message: its step inputs
+ * and outputs (the model's reading of the mail and the reply it drafted) and
+ * the shadow-mode decision (sender address plus a draft snapshot) are deleted.
+ * Autonomy feedback trains the organization's rules and carries no message
+ * content, so it only loses the pointer.
+ */
+async function eraseInboundMessageDescendants(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<void> {
+	const actions = await ctx.db
+		.query('agentActions')
+		.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', inboundMessageId))
+		.collect(); // bounded: one message's agent steps
+	for (const action of actions) await ctx.db.delete(action._id);
+
+	const shadows = await ctx.db
+		.query('agentShadowDecisions')
+		.withIndex('by_message', (q) => q.eq('inboundMessageId', inboundMessageId))
+		.collect(); // bounded: one message's shadow decisions
+	for (const shadow of shadows) await ctx.db.delete(shadow._id);
+
+	const feedback = await ctx.db
+		.query('autonomyFeedback')
+		.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', inboundMessageId))
+		.collect(); // bounded: one message's review feedback
+	for (const row of feedback) await ctx.db.patch(row._id, { inboundMessageId: undefined });
+}
+
+/**
  * The single source of truth for every table that carries a `contactId` FK back
  * to a `contacts` row, split by how each must be handled when a contact is
  * removed. Both the permanent-delete cascade (delete/soft-delete the children)
@@ -253,6 +283,9 @@ export async function softDeleteContact(
  * the soft-delete retention window expires. After this runs there is no live row
  * anywhere whose `contactId` points at the deleted contact.
  *
+ * The per-table policy is declared in `contacts/erasure/relations.ts`, which a
+ * schema coverage test keeps complete; this function implements it.
+ *
  * Owned rows — REQUIRED `contactId`, meaningless without the parent (delete):
  *   - contactTopics, contactPropertyValues, contactActivities,
  *     contactIdentities (channel identifiers travel with the contact),
@@ -326,6 +359,19 @@ export async function permanentlyDeleteContactWithRelations(
 		.collect(); // bounded: one contact's incoming relationships
 	for (const rel of relationshipsTo) {
 		await ctx.db.delete(rel._id);
+	}
+
+	// Learned clarification answers scoped to this contact hold the question
+	// and the owner's answer about the person. Deleted, never unlinked: an
+	// absent contactId is the org-wide scope, so clearing it would promote the
+	// answer to every sender. Answers an admin promoted earlier already have no
+	// contactId and are out of reach here on purpose.
+	const learnedAnswers = await ctx.db
+		.query('clarificationMemory')
+		.withIndex('by_contact_slot', (q) => q.eq('contactId', contactId))
+		.collect(); // bounded: one contact's learned answers (cascade)
+	for (const answer of learnedAnswers) {
+		await ctx.db.delete(answer._id);
 	}
 
 	// automationRuns carries a REQUIRED contactId — a run is intrinsically
@@ -405,6 +451,9 @@ export async function permanentlyDeleteContactWithRelations(
 				await deleteBlobQuietly(ctx.storage, row.rawStorageId, '[contacts] erasure', {
 					rowId: row._id,
 				});
+			}
+			if (table === 'inboundMessages') {
+				await eraseInboundMessageDescendants(ctx, row._id as Id<'inboundMessages'>);
 			}
 			await ctx.db.delete(row._id);
 		}
