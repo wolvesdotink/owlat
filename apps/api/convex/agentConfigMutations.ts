@@ -54,8 +54,9 @@ export const getConfig = publicQuery({
  * to owners/admins via `adminMutation`.
  */
 export const updateConfig = adminMutation({
+	// The reply mode (`isAutoReplyEnabled` + `isShadowMode`) is NOT set here:
+	// `setReplyMode` is its only writer, so the two can never disagree.
 	args: {
-		isAutoReplyEnabled: v.optional(v.boolean()),
 		confidenceThreshold: v.optional(v.number()),
 		toneDescription: v.optional(v.string()),
 		signatureTemplate: v.optional(v.string()),
@@ -88,8 +89,6 @@ export const updateConfig = adminMutation({
 			const config = configs[0]!;
 			const patches: Partial<Doc<'agentConfig'>> = { updatedAt: now };
 
-			if (args.isAutoReplyEnabled !== undefined)
-				patches.isAutoReplyEnabled = args.isAutoReplyEnabled;
 			if (args.confidenceThreshold !== undefined)
 				patches.confidenceThreshold = args.confidenceThreshold;
 			if (args.toneDescription !== undefined) patches.toneDescription = args.toneDescription;
@@ -116,18 +115,6 @@ export const updateConfig = adminMutation({
 
 			await ctx.db.patch(config._id, patches);
 
-			// Kill switch: flipping auto-reply OFF must also abort any autonomous
-			// send still sitting in its undo window — otherwise a queued send
-			// fires seconds after the operator thought they stopped it. Scheduled
-			// so the (bounded) scan never blocks the config write; fail-soft.
-			if (args.isAutoReplyEnabled === false) {
-				await ctx.scheduler.runAfter(
-					0,
-					internal.inbox.processingLifecycle.cancelPendingAutoSendsForKillSwitch,
-					{}
-				);
-			}
-
 			await recordAuditLog(ctx, {
 				userId,
 				action: 'agent.config_updated',
@@ -139,7 +126,7 @@ export const updateConfig = adminMutation({
 		}
 
 		const configId = await ctx.db.insert('agentConfig', {
-			isAutoReplyEnabled: args.isAutoReplyEnabled ?? false,
+			isAutoReplyEnabled: false,
 			confidenceThreshold: args.confidenceThreshold ?? 0.8,
 			toneDescription: args.toneDescription,
 			signatureTemplate: args.signatureTemplate,
