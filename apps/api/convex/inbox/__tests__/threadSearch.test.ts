@@ -111,6 +111,27 @@ describe('threadMatchesFilter', () => {
 		);
 		expect(matches(thread({ status: 'closed' }), 'resolved')).toBe(false);
 	});
+
+	it('assignee narrows a status slice to me or to nobody', () => {
+		const mine = thread({ assignedTo: ME });
+		const theirs = thread({ assignedTo: 'user_other' });
+		const nobody = thread();
+		const status = (row: Doc<'conversationThreads'>, assignee: 'me' | 'unassigned') =>
+			threadMatchesFilter(row, 'open', ME, NOW, assignee);
+
+		expect(status(mine, 'me')).toBe(true);
+		expect(status(theirs, 'me')).toBe(false);
+		expect(status(nobody, 'me')).toBe(false);
+		expect(status(nobody, 'unassigned')).toBe(true);
+		expect(status(mine, 'unassigned')).toBe(false);
+		// The status rule still applies underneath the assignment.
+		expect(
+			threadMatchesFilter(thread({ assignedTo: ME, status: 'resolved' }), 'open', ME, NOW, 'me')
+		).toBe(false);
+		expect(
+			threadMatchesFilter(thread({ assignedTo: ME, status: 'resolved' }), 'resolved', ME, NOW, 'me')
+		).toBe(true);
+	});
 });
 
 describe('mergeThreadSearchHits', () => {

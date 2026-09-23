@@ -414,6 +414,45 @@ describe('inboundQueries.getThreadFilterCounts', () => {
 			cap: 100,
 		});
 	});
+
+	it('narrows status counts and the list by the assignment filter', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open', assignedTo: 'test-user-123' })
+			);
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'waiting', assignedTo: 'test-user-123' })
+			);
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open', assignedTo: 'someone-else' })
+			);
+			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'open' }));
+			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'resolved' }));
+		});
+
+		const asMe = t.withIdentity(testIdentity);
+		const mine = await asMe.query(api.inbox.queries.getThreadFilterCounts, { assignee: 'me' });
+		expect(mine).toMatchObject({ open: 1, waiting: 1, resolved: 0, snoozed: 0 });
+
+		const nobody = await asMe.query(api.inbox.queries.getThreadFilterCounts, {
+			assignee: 'unassigned',
+		});
+		expect(nobody).toMatchObject({ open: 1, waiting: 0, resolved: 1 });
+
+		const list = await asMe.query(api.inbox.queries.listThreads, {
+			filter: 'open',
+			assignee: 'me',
+		});
+		expect(list.threads).toHaveLength(1);
+		expect(list.threads[0]?.assignedTo).toBe('test-user-123');
+	});
 });
 
 // ============ getThread ============

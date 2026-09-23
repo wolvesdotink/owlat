@@ -17,6 +17,7 @@ import { compareNeedsAttention, compareOldestWaiting } from './threadSort';
 import {
 	FILTER_COUNT_CAP,
 	buildThreadQuery,
+	threadAssigneeValidator,
 	threadFilterValidator,
 	type ThreadFilter,
 } from './threadFilters';
@@ -95,6 +96,9 @@ async function enrichThreadRows(
 export const listThreads = publicQuery({
 	args: {
 		filter: v.optional(threadFilterValidator),
+		// Assignment filter shown beside the status tabs (Anyone / Me /
+		// Unassigned). Absent = anyone. Narrows the status slice.
+		assignee: v.optional(threadAssigneeValidator),
 		// Ordering. `needs-attention` (the default view) floats drafts-ready then
 		// unassigned-unread then oldest-open to the top; `oldest-waiting` puts
 		// the longest-waiting customer first; `newest` is plain recency.
@@ -125,6 +129,7 @@ export const listThreads = publicQuery({
 			const hits = await searchThreads(ctx, {
 				search: args.search,
 				filter: args.filter,
+				...(args.assignee ? { assignee: args.assignee } : {}),
 				userId: session.userId,
 				now,
 				limit,
@@ -145,7 +150,7 @@ export const listThreads = publicQuery({
 		//   - oldest-waiting  → the same ascending walk (oldest inbound activity is
 		//                        the longest wait), re-floated by the waiting rule.
 		//   - newest          → most-recent activity first (desc).
-		const built = buildThreadQuery(ctx, args.filter, session.userId, now);
+		const built = buildThreadQuery(ctx, args.filter, session.userId, now, args.assignee);
 		const order: 'asc' | 'desc' =
 			args.filter === 'snoozed' || sort === 'needs-attention' || sort === 'oldest-waiting'
 				? 'asc'
@@ -178,12 +183,14 @@ export const listThreads = publicQuery({
  *
  * Each count reads at most `FILTER_COUNT_CAP` rows off the same index the list
  * uses, so a pill never triggers an unbounded scan; a slice at the cap renders
- * as "99+" in the UI. Subscribed only by the inbox landing view.
+ * as "99+" in the UI. Subscribed only by the inbox landing view. `assignee`
+ * narrows the status counts the same way it narrows the list, so a tab's count
+ * always matches what it shows.
  */
 // public: soft-auth — admin-only shared inbox; returns empty for non-admins
 export const getThreadFilterCounts = publicQuery({
-	args: {},
-	handler: async (ctx) => {
+	args: { assignee: v.optional(threadAssigneeValidator) },
+	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'inbox');
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!isSharedInboxReader(session)) return null;
@@ -191,7 +198,9 @@ export const getThreadFilterCounts = publicQuery({
 		const now = Date.now();
 		const userId = session.userId;
 		const countFilter = async (filter: ThreadFilter) => {
-			const rows = await buildThreadQuery(ctx, filter, userId, now).take(FILTER_COUNT_CAP);
+			const rows = await buildThreadQuery(ctx, filter, userId, now, args.assignee).take(
+				FILTER_COUNT_CAP
+			);
 			return rows.length;
 		};
 
