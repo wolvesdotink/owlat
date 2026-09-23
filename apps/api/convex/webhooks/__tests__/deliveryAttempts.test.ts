@@ -298,11 +298,15 @@ describe('reconcileOverdueDeliveries', () => {
 		expect(log.recoverAfter).toBeUndefined();
 	});
 
-	it('ignores rows that are not yet overdue, finished, or predate attempt tracking', async () => {
+	it('ignores rows that are not yet overdue or already finished', async () => {
 		const { t, webhookId } = await setup();
 		await insertOverdue(t, webhookId, { recoverAfter: Date.now() + 60_000 });
 		await insertOverdue(t, webhookId, { status: 'success', completedAt: Date.now() });
-		await insertOverdue(t, webhookId, { attemptSeq: undefined, recoverAfter: undefined });
+		await insertOverdue(t, webhookId, {
+			status: 'failed',
+			attemptSeq: undefined,
+			recoverAfter: undefined,
+		});
 
 		expect(await reconcile(t)).toEqual({ waiting: 0, rescheduled: 0, failed: 0 });
 	});

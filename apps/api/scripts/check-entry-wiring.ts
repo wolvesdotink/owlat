@@ -402,6 +402,12 @@ const UNREACHED_ENTRIES: readonly string[] = [];
 const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'webhooks/fanout.ts#fanoutEvent': 'fanout jobs queued before the deploy',
 	'webhooks/fanout.ts#deliverEvent': 'single-target jobs queued before the deploy',
+	'webhooks/deliveryQueries.ts#getWebhooksForEvent': 'old fanout actions mid-run',
+	'webhooks/deliveryQueries.ts#getWebhook': 'old fanout/delivery actions mid-run',
+	'webhooks/deliveryQueries.ts#createDeliveryLog': 'old fanout actions mid-run',
+	'webhooks/deliveryQueries.ts#markDeliverySuccess': 'old delivery actions mid-run',
+	'webhooks/deliveryQueries.ts#markDeliveryRetrying': 'old delivery actions mid-run',
+	'webhooks/deliveryQueries.ts#markDeliveryFailed': 'old delivery actions mid-run',
 };
 
 // ─── The checks ─────────────────────────────────────────────────────────────
