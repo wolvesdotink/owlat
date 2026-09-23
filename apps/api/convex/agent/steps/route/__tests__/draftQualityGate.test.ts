@@ -72,6 +72,7 @@ function makeExecuteCtx(opts: {
 				};
 			}
 			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
+			if (name.includes('getShadowMode')) return { enabled: false };
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runMutation: async (ref: unknown) => {
