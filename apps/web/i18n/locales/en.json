@@ -15517,8 +15517,6 @@
 			"theme": "Theme",
 			"userFallback": "User",
 			"navigatedTo": "Navigated to {page}",
-			"pinSidebar": "Pin sidebar open",
-			"unpinSidebar": "Unpin sidebar",
 			"appNavigation": "App navigation",
 			"mailNavigation": "Mail",
 			"assistantNavigation": "Assistant"

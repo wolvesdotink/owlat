@@ -42,6 +42,16 @@ describe('useSidebarState', () => {
 			expect(s.sidebarMode.value).toBe('visible');
 		});
 
+		it('keeps one collapse preference for every page (#776)', () => {
+			// The mailbox used to collapse the sidebar into letter stubs on its
+			// own. The shape now only changes when the user changes it, so the
+			// state has no route input at all.
+			const s = useSidebarState();
+			expect('setRoutePath' in s).toBe(false);
+			s.setCollapsed(true);
+			expect(useSidebarState().isCollapsed.value).toBe(true);
+		});
+
 		it('hide toggles into hidden mode', () => {
 			const s = useSidebarState();
 			s.toggleHidden();

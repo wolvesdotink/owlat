@@ -15517,8 +15517,6 @@
 			"theme": "Design",
 			"userFallback": "Benutzer",
 			"navigatedTo": "Zu {page} gewechselt",
-			"pinSidebar": "Seitenleiste angeheftet lassen",
-			"unpinSidebar": "Seitenleiste lösen",
 			"appNavigation": "App-Navigation",
 			"mailNavigation": "Postfach",
 			"assistantNavigation": "Assistent"
