@@ -119,10 +119,10 @@ const snoozeAction = computed<SimpleAction>(() =>
 				<NuxtLink
 					v-if="action.to"
 					:to="action.to"
-					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-brand hover:bg-brand-subtle/70 transition-colors"
+					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-text-primary hover:bg-brand-subtle/70 transition-colors"
 					:title="action.title"
 				>
-					<Icon :name="action.icon" class="w-3.5 h-3.5" />
+					<Icon :name="action.icon" class="w-3.5 h-3.5 text-brand" />
 					{{ action.label }}
 				</NuxtLink>
 				<UiButton v-else variant="outline" size="sm" @click="action.run">
@@ -179,7 +179,11 @@ const snoozeAction = computed<SimpleAction>(() =>
 						type="button"
 						class="gap-1.5"
 						data-testid="thread-status"
-						:aria-label="t('dashboard.inbox.detail.changeStatusAria')"
+						:aria-label="
+							t('dashboard.inbox.detail.changeStatusAria', {
+								status: t(`dashboard.inbox.detail.statuses.${currentStatus}`),
+							})
+						"
 					>
 						{{ t(`dashboard.inbox.detail.statuses.${currentStatus}`) }}
 						<template #iconRight>
@@ -187,7 +191,13 @@ const snoozeAction = computed<SimpleAction>(() =>
 						</template>
 					</UiButton>
 				</template>
-				<UiDropdownMenuItem v-for="s in THREAD_STATUSES" :key="s" @click="emit('status', s)">
+				<UiDropdownMenuItem
+					v-for="s in THREAD_STATUSES"
+					:key="s"
+					role="menuitemradio"
+					:aria-checked="s === currentStatus"
+					@click="emit('status', s)"
+				>
 					<span class="flex-1 truncate">{{ t(`dashboard.inbox.detail.statuses.${s}`) }}</span>
 					<Icon v-if="s === currentStatus" name="lucide:check" class="w-4 h-4 text-brand shrink-0" />
 				</UiDropdownMenuItem>
@@ -228,7 +238,13 @@ const snoozeAction = computed<SimpleAction>(() =>
 				<Icon :name="snoozeAction.icon" class="w-4 h-4 shrink-0" />
 				<span class="flex-1 truncate">{{ snoozeAction.label }}</span>
 			</UiDropdownMenuItem>
-			<UiDropdownMenuItem v-for="s in THREAD_STATUSES" :key="s" @click="emit('status', s)">
+			<UiDropdownMenuItem
+				v-for="s in THREAD_STATUSES"
+				:key="s"
+				role="menuitemradio"
+				:aria-checked="s === currentStatus"
+				@click="emit('status', s)"
+			>
 				<span class="flex-1 truncate">{{ t(`dashboard.inbox.detail.markAs.${s}`) }}</span>
 				<Icon v-if="s === currentStatus" name="lucide:check" class="w-4 h-4 text-brand shrink-0" />
 			</UiDropdownMenuItem>

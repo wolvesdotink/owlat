@@ -8957,7 +8957,7 @@
 					"spam": "spam",
 					"support": "support"
 				},
-				"changeStatusAria": "Change thread status",
+				"changeStatusAria": "Status: {status}. Change thread status",
 				"channelLinkFailedToast": "Channel created, but linking failed",
 				"clarificationLead": "Answer below and the agent finishes the draft with your answers as confirmed facts.",
 				"clarificationProgress": "{answered} of {total} answered",

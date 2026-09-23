@@ -71,7 +71,7 @@ const tabs = computed(() => {
 					:class="[
 						'inline-flex items-center gap-1.5 px-3 py-2 -mb-px border-b-2 text-sm whitespace-nowrap transition-colors duration-(--motion-fast)',
 						tab.active
-							? 'border-text-primary text-text-primary font-medium'
+							? 'border-brand text-text-primary font-medium'
 							: 'border-transparent text-text-secondary hover:text-text-primary',
 					]"
 				>

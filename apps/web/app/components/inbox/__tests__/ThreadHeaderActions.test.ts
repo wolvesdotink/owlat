@@ -83,4 +83,17 @@ describe('ThreadHeaderActions', () => {
 			.trigger('click');
 		expect(mine.emitted('assign')?.[0]).toEqual([undefined]);
 	});
+
+	it('names the current status on the trigger and checks it in both menus', () => {
+		const wrapper = mountActions({ currentStatus: 'waiting' });
+		const trigger = wrapper.get('[data-testid="thread-status"]');
+		expect(trigger.attributes('aria-label')).toBe('Status: Waiting. Change thread status');
+		expect(trigger.text()).toContain('Waiting');
+
+		const radios = wrapper.findAll('[role="menuitemradio"]');
+		// Three statuses, rendered in the wide menu and the compact one.
+		expect(radios).toHaveLength(6);
+		const checked = radios.filter((r) => r.attributes('aria-checked') === 'true');
+		expect(checked).toHaveLength(2);
+	});
 });

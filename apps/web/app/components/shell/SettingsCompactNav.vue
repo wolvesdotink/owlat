@@ -29,7 +29,7 @@ const pill =
 			:class="[
 				pill,
 				currentPath === entry.path
-					? 'border-brand bg-brand-subtle font-medium text-brand'
+					? 'border-brand bg-brand-subtle font-medium text-text-primary'
 					: 'border-border-default text-text-secondary hover:text-text-primary',
 			]"
 			:aria-current="currentPath === entry.path ? 'page' : undefined"

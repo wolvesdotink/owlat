@@ -8957,7 +8957,7 @@
 					"spam": "Spam",
 					"support": "Support"
 				},
-				"changeStatusAria": "Status der Konversation ändern",
+				"changeStatusAria": "Status: {status}. Status der Konversation ändern",
 				"channelLinkFailedToast": "Kanal erstellt, aber die Verknüpfung ist fehlgeschlagen",
 				"clarificationLead": "Antworten Sie unten, dann stellt der Agent den Entwurf mit Ihren Angaben als bestätigten Fakten fertig.",
 				"clarificationProgress": "{answered} von {total} beantwortet",
