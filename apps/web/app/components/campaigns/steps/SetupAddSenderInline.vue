@@ -4,15 +4,12 @@
  *
  * A workspace with no campaign senders used to dead-end the wizard with "ask
  * your admin" — even for the admin. This is the same add path as
- * Settings → Campaign senders (same mutation, same verified-domain advisory),
- * rendered in place so the campaign in progress is never left behind. It is a
+ * Settings → Campaign senders (`useAddCampaignSender`), rendered in place so the campaign in progress is never left behind. It is a
  * plain `div`, not a `<form>`: it sits inside the wizard's own form, and
  * nested forms are invalid HTML.
  */
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { isValidEmail } from '@owlat/shared';
-import { mapSenderVerification } from '~/utils/campaignSenderVerification';
+import { useAddCampaignSender } from '~/composables/useAddCampaignSender';
 
 const emit = defineEmits<{
 	added: [senderId: Id<'campaignSenders'>];
@@ -22,48 +19,14 @@ const { t } = useI18n();
 
 const prefix = 'components.campaigns.steps.setupAddSenderInline';
 
-const email = ref('');
-const displayName = ref('');
-const addError = ref<string | null>(null);
-
-const { run: createSender, isLoading: creating } = useBackendOperation(
-	api.campaigns.senders.create,
-	{ label: () => t(`${prefix}.operation`), inlineTarget: addError }
-);
-
-const hasValidEmail = computed(() => isValidEmail(email.value.trim()));
-
-const { data: domainStatus, error: domainStatusError } = useOrganizationQuery(
-	api.domains.domains.getEmailDomainVerificationStatus,
-	() => {
-		const value = email.value.trim();
-		if (!value || !isValidEmail(value)) return undefined;
-		return { email: value };
-	}
-);
-
-const verification = computed(() =>
-	mapSenderVerification(domainStatus.value, hasValidEmail.value, domainStatusError.value != null)
-);
-
-// The shared advisory carries message KEYS (with params when the copy names
-// the domain), never sentences.
-const verificationMessage = computed(() => {
-	const message = verification.value.message;
-	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
-});
+const { email, displayName, addError, creating, verification, verificationMessage, reset, add: create } =
+	useAddCampaignSender({ operationLabel: () => t(`${prefix}.operation`) });
 
 async function add() {
-	addError.value = null;
-	if (creating.value || !verification.value.canAdd) return;
-	const result = await createSender({
-		email: email.value.trim(),
-		displayName: displayName.value.trim() || undefined,
-	});
-	if (result.ok) {
-		emit('added', result.result);
-		email.value = '';
-		displayName.value = '';
+	const senderId = await create();
+	if (senderId) {
+		emit('added', senderId);
+		reset();
 	}
 }
 </script>
