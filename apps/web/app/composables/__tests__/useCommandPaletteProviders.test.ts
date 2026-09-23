@@ -157,3 +157,37 @@ describe('navigation', () => {
 		expect(adminRoutes).toEqual([]);
 	});
 });
+
+describe('one row per destination', () => {
+	it('gives every destination its route, so the palette can show it once', async () => {
+		const { verbItems, navItems } = await providers();
+
+		expect(byId(verbItems.value, 'verb:new-campaign')?.href).toBe('/dashboard/campaigns/new');
+		// Overlay verbs have no route to collide on.
+		expect(byId(verbItems.value, 'verb:compose')?.href).toBeUndefined();
+		for (const item of navItems.value)
+			expect(item.href, item.id).toBe(item.id.slice('nav:'.length));
+	});
+
+	it('shows "New campaign" once for "camp", under Create', async () => {
+		const { mergeGroups, filterItems } = await import('~/lib/commandPalette');
+		const { verbItems, navItems } = await providers();
+
+		const merged = mergeGroups([
+			{ key: 'navigation', heading: '', order: 40, items: filterItems(navItems.value, 'camp') },
+			{ key: 'verbs', heading: '', order: 5, items: filterItems(verbItems.value, 'camp') },
+		]);
+		const rows = merged.flatMap((group) =>
+			group.items.map((item) => ({ group: group.key, label: item.label, href: item.href }))
+		);
+		const newCampaign = rows.filter((row) => row.href === '/dashboard/campaigns/new');
+		expect(newCampaign).toEqual([
+			{ group: 'verbs', label: 'New campaign', href: '/dashboard/campaigns/new' },
+		]);
+	});
+
+	it('files Campaigns under Marketing', async () => {
+		const { navItems } = await providers();
+		expect(byId(navItems.value, 'nav:/dashboard/campaigns')?.subtitle).toBe('Marketing');
+	});
+});

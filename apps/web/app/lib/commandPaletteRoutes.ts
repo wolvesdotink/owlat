@@ -13,6 +13,9 @@
  *   - what is left is gated the same way the sidebar gates its sections, by the
  *     SAME pure environment (`NavigationEnvironment`) — a member never gets an
  *     admin destination offered, and a disabled feature takes its pages with it;
+ *   - an Administration page takes its title and area from
+ *     `lib/adminSettingsRegistry`, the table its rail reads, so the palette
+ *     and the rail cannot name one page two ways;
  *   - Preferences is skipped entirely: the sidebar derives those from the
  *     settings registry, and the breadcrumb table's copy also carries the hidden
  *     wizard entries the registry keeps out of navigation on purpose.
@@ -24,6 +27,7 @@
 import type { NavigationEnvironment } from './dashboardNavigationCore';
 import { minRole } from './dashboardNavigationCore';
 import { routeConfigs } from './breadcrumbRoutes';
+import { ADMIN_AREAS, adminEntryFor } from './adminSettingsRegistry';
 
 /** One labelled destination the palette can offer, as message keys. */
 export interface RoutePaletteTarget {
@@ -99,6 +103,16 @@ export function routePaletteTargets(
 			// The crumb trail, deepest last: the label is where you land, the
 			// context is the step above it. A section root (`/dashboard`) is one
 			// crumb long and gets no context line rather than repeating itself.
+			const icon = SECTION_ICONS[config.section] ?? FALLBACK_ICON;
+			// An Administration page is named by the admin registry — the title and
+			// area its own rail prints — so a rename there reaches ⌘K too.
+			const adminEntry = adminEntryFor(href);
+			const areaKey = adminEntry
+				? ADMIN_AREAS.find((area) => area.key === adminEntry.area)?.titleKey
+				: undefined;
+			if (adminEntry && areaKey) {
+				return { href, labelKey: adminEntry.titleKey, contextKey: areaKey, icon };
+			}
 			const trail = [config.section, config.subsection, config.page].filter(
 				(key): key is string => key !== undefined
 			);
@@ -106,7 +120,7 @@ export function routePaletteTargets(
 				href,
 				labelKey: trail[trail.length - 1]!,
 				...(trail.length > 1 ? { contextKey: trail[trail.length - 2]! } : {}),
-				icon: SECTION_ICONS[config.section] ?? FALLBACK_ICON,
+				icon,
 			};
 		});
 }

@@ -7637,7 +7637,7 @@
 					"label": "Team and access settings",
 					"senders": {
 						"description": "Campaign identities",
-						"title": "Approved senders"
+						"title": "Campaign senders"
 					}
 				},
 				"operations": {

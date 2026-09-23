@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import type { NavigationEnvironment } from '../dashboardNavigationCore';
 import { routePaletteTargets } from '../commandPaletteRoutes';
+import { ADMIN_AREAS, adminEntryFor } from '../adminSettingsRegistry';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
@@ -43,11 +44,30 @@ describe('routePaletteTargets', () => {
 
 	it('labels a leaf with its page crumb and the level above it', () => {
 		const target = routePaletteTargets(env(), new Set()).find(
-			(entry) => entry.href === '/dashboard/admin/instance/ai-provider'
+			(entry) => entry.href === '/dashboard/audience/segments'
 		);
 		expect(target).toMatchObject({
+			labelKey: 'shared.breadcrumbRoutes.pages.segments',
+			contextKey: 'shared.breadcrumbRoutes.sections.audience',
+			icon: 'lucide:users',
+		});
+	});
+
+	it('names an admin page with the title and area its own rail prints', () => {
+		const targets = routePaletteTargets(env(), new Set());
+		for (const target of targets.filter((entry) => entry.href.startsWith('/dashboard/admin'))) {
+			const entry = adminEntryFor(target.href);
+			if (!entry) continue;
+			const area = ADMIN_AREAS.find((candidate) => candidate.key === entry.area)!;
+			expect(target.labelKey, target.href).toBe(entry.titleKey);
+			expect(target.contextKey, target.href).toBe(area.titleKey);
+		}
+		const aiProvider = targets.find(
+			(entry) => entry.href === '/dashboard/admin/instance/ai-provider'
+		);
+		expect(aiProvider).toMatchObject({
 			labelKey: 'shared.breadcrumbRoutes.pages.aiProvider',
-			contextKey: 'shared.breadcrumbRoutes.subsections.instance',
+			contextKey: 'shell.admin.areas.instance',
 			icon: 'lucide:shield-check',
 		});
 	});

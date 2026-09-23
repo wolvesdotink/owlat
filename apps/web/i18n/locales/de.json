@@ -7637,7 +7637,7 @@
 					"label": "Team- und Zugriffseinstellungen",
 					"senders": {
 						"description": "Kampagnenidentitäten",
-						"title": "Freigegebene Absender"
+						"title": "Kampagnenabsender"
 					}
 				},
 				"operations": {
