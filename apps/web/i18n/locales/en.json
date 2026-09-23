@@ -800,6 +800,29 @@
 				"sparklineLabel": "Variant open-rate trend for {name}",
 				"viewCampaign": "View campaign"
 			},
+			"funnel": {
+				"ariaLabel": "Send funnel",
+				"ofPrevious": "{percent} of previous",
+				"stepTitle": "{step}: {count} of {previous} ({previousStep})",
+				"steps": {
+					"clicked": "Clicked",
+					"delivered": "Delivered",
+					"opened": "Opened",
+					"sent": "Sent",
+					"unsubscribed": "Unsubscribed"
+				}
+			},
+			"reportHeadline": {
+				"aboveClick": "{open} opened and {click} clicked — above your average click rate.",
+				"aboveOpen": "{open} opened and {click} clicked — above your average open rate.",
+				"belowClick": "{open} opened and {click} clicked — below your average click rate.",
+				"belowOpen": "{open} opened and {click} clicked — below your average open rate.",
+				"bestClick": "{open} opened and {click} clicked — the best click rate in your last {count} campaigns.",
+				"bestOpen": "{open} opened and {click} clicked — the best open rate in your last {count} campaigns.",
+				"highUnsubscribe": "{open} opened and {click} clicked, but unsubscribes ran well above your average.",
+				"none": "{open} opened and {click} clicked.",
+				"onPar": "{open} opened and {click} clicked — in line with your average."
+			},
 			"steps": {
 				"contentStep": {
 					"choiceLabel": "Email Template Choice",

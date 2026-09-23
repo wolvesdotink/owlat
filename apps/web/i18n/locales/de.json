@@ -800,6 +800,29 @@
 				"sparklineLabel": "Trend der Varianten-Öffnungsrate für {name}",
 				"viewCampaign": "Kampagne ansehen"
 			},
+			"funnel": {
+				"ariaLabel": "Versand-Trichter",
+				"ofPrevious": "{percent} vom vorherigen Schritt",
+				"stepTitle": "{step}: {count} von {previous} ({previousStep})",
+				"steps": {
+					"clicked": "Geklickt",
+					"delivered": "Zugestellt",
+					"opened": "Geöffnet",
+					"sent": "Gesendet",
+					"unsubscribed": "Abgemeldet"
+				}
+			},
+			"reportHeadline": {
+				"aboveClick": "{open} geöffnet und {click} geklickt — Klickrate über deinem Durchschnitt.",
+				"aboveOpen": "{open} geöffnet und {click} geklickt — Öffnungsrate über deinem Durchschnitt.",
+				"belowClick": "{open} geöffnet und {click} geklickt — Klickrate unter deinem Durchschnitt.",
+				"belowOpen": "{open} geöffnet und {click} geklickt — Öffnungsrate unter deinem Durchschnitt.",
+				"bestClick": "{open} geöffnet und {click} geklickt — die beste Klickrate deiner letzten {count} Kampagnen.",
+				"bestOpen": "{open} geöffnet und {click} geklickt — die beste Öffnungsrate deiner letzten {count} Kampagnen.",
+				"highUnsubscribe": "{open} geöffnet und {click} geklickt, aber deutlich mehr Abmeldungen als im Durchschnitt.",
+				"none": "{open} geöffnet und {click} geklickt.",
+				"onPar": "{open} geöffnet und {click} geklickt — im Rahmen deines Durchschnitts."
+			},
 			"steps": {
 				"contentStep": {
 					"choiceLabel": "Auswahl der E-Mail-Vorlage",

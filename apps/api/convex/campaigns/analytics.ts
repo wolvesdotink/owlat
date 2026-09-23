@@ -33,6 +33,7 @@ export const getComparableSentCampaigns = authedQuery({
 				opened: c.statsOpened ?? 0,
 				clicked: c.statsClicked ?? 0,
 				bounced: c.statsBounced ?? 0,
+				unsubscribed: c.statsUnsubscribed ?? 0,
 			}));
 	},
 });

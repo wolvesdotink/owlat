@@ -3,6 +3,8 @@ import { api } from '@owlat/api';
 import ClickHeatmap from '~/components/dashboard/ClickHeatmap.vue';
 import CampaignSendPlanLine from '~/components/campaigns/CampaignSendPlanLine.vue';
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
+import CampaignFunnel from '~/components/campaigns/CampaignFunnel.vue';
+import CampaignReportHeadline from '~/components/campaigns/CampaignReportHeadline.vue';
 import { selectPreviousComparable, computeStatDeltas, NO_DELTAS } from '~/utils/campaignReport';
 import { formatNumber } from '~/utils/formatters';
 
@@ -434,7 +436,11 @@ const loadPrevClicked = () => {
 								:disabled="isDuplicating"
 								@click="handleDuplicate"
 							>
-								<Icon v-if="isDuplicating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+								<Icon
+									v-if="isDuplicating"
+									name="lucide:loader-2"
+									class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								/>
 								<Icon v-else name="lucide:copy" class="w-4 h-4" />
 								{{
 									isDuplicating
@@ -459,6 +465,30 @@ const loadPrevClicked = () => {
 							</span>
 						</div>
 					</div>
+				</div>
+
+				<!-- The story first: one sentence, then the funnel it comes from. -->
+				<div v-if="hasSendStarted && stats" class="card p-4 sm:p-6 mb-8">
+					<CampaignReportHeadline
+						v-if="reportStatus === 'sent'"
+						class="mb-5"
+						:campaign-id="campaignId"
+						:sent-at="campaign.sentAt"
+						:current="{
+							delivered: stats.delivered,
+							opened: stats.uniqueOpens,
+							clicked: stats.uniqueClicks,
+							unsubscribed: campaign.statsUnsubscribed ?? 0,
+						}"
+						:comparables="comparableSends"
+					/>
+					<CampaignFunnel
+						:sent="sentCount"
+						:delivered="stats.delivered"
+						:opened="stats.uniqueOpens"
+						:clicked="stats.uniqueClicks"
+						:unsubscribed="campaign.statsUnsubscribed ?? 0"
+					/>
 				</div>
 
 				<!-- Archive Link -->
@@ -681,7 +711,10 @@ const loadPrevClicked = () => {
 					<!-- Opened Contacts Tab -->
 					<div v-if="selectedTab === 'opened'">
 						<div v-if="openedLoading && !openedContacts" class="p-8 flex justify-center">
-							<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none" />
+							<Icon
+								name="lucide:loader-2"
+								class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none"
+							/>
 						</div>
 
 						<div
@@ -780,7 +813,10 @@ const loadPrevClicked = () => {
 					<!-- Clicked Contacts Tab -->
 					<div v-if="selectedTab === 'clicked'">
 						<div v-if="clickedLoading && !clickedContacts" class="p-8 flex justify-center">
-							<Icon name="lucide:loader-2" class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none" />
+							<Icon
+								name="lucide:loader-2"
+								class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none"
+							/>
 						</div>
 
 						<div
