@@ -1,60 +1,19 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { decrementContactCount } from './contactCountHelpers';
-import { deleteBlobQuietly } from './storageBlobs';
 import { deleteIdentitiesForContact } from '../contacts/resolution';
 import {
 	repointContactJunction,
-	detachContactJunction,
 	KNOWLEDGE_ENTRY_JUNCTION,
 	SEMANTIC_FILE_JUNCTION,
 } from './contactJunctions';
+import { ErasureBudget } from '../contacts/erasure/budget';
+import { advanceErasure, finishErasure, FIRST_ERASURE_PHASE } from '../contacts/erasure/phases';
 
 /**
- * Delete the `semanticFiles` rows that exist ONLY because this contact sent
- * mail — bytes, junction row and all.
- *
- * Scoped by `captureSource`: an inbound capture is a file that arrived on a
- * message, not a document the organization uploaded, so "unlink and keep"
- * would leave the erased person's own attachment in the library — and, with no
- * contact left on it, ORG-GENERAL, which matches every contact scope the
- * retrieval seam has. A file another contact is also scoped to is left alone:
- * it is still somebody else's, and erasing one participant is not a reason to
- * take it from the rest.
- */
-async function deleteSoleContactInboundFiles(
-	ctx: MutationCtx,
-	contactId: Id<'contacts'>
-): Promise<void> {
-	const links = await ctx.db
-		.query('semanticFileContacts')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's file links (cascade)
-	for (const link of links) {
-		const file = await ctx.db.get(link.fileId);
-		if (!file) {
-			await ctx.db.delete(link._id);
-			continue;
-		}
-		const othersRemain = (file.contactIds ?? []).some((c) => c !== contactId);
-		if (!file.captureSource || othersRemain) continue;
-		await ctx.db.delete(link._id);
-		// Released by the inbound retention sweep already ⇒ no blob left.
-		if (file.storageId) {
-			await deleteBlobQuietly(ctx.storage, file.storageId, '[contacts] erasure', {
-				fileId: file._id,
-			});
-		}
-		await ctx.db.delete(file._id);
-	}
-}
-
-/**
- * The single source of truth for every table that carries a `contactId` FK back
- * to a `contacts` row, split by how each must be handled when a contact is
- * removed. Both the permanent-delete cascade (delete/soft-delete the children)
- * and the merge cascade (repoint the children onto the survivor) drive off this
- * one list so the two paths can't silently drift apart.
+ * The `contactId` FK tables the merge cascade repoints onto the survivor with a
+ * plain FK swap. (What permanent deletion does to each contact-referencing
+ * table is declared separately, in `contacts/erasure/relations.ts`.)
  *
  * `contactIdentities`, `contactRelationships`, `contactTopics`, and
  * `contactPropertyValues` are handled by bespoke routines (dedupe / two-sided
@@ -224,8 +183,9 @@ export async function mergeContactRelations(
 /**
  * Soft-delete a contact: marks the row as deleted, adjusts the cached count,
  * and hard-deletes the Contact's `contactIdentities` rows so the
- * `(channel, identifier)` is reclaimable on day 1. A 30-day-later cron calls
- * permanentlyDeleteContactWithRelations for the rest of the cascade.
+ * `(channel, identifier)` is reclaimable on day 1. Once the 30-day retention
+ * window has passed, the daily sweep hands the contact to the erasure walker
+ * (`contacts/erasure/`) for the rest of the cascade.
  *
  * All list/lookup queries against `contacts` MUST filter `deletedAt === undefined`
  * (prefer the indexed `.withIndex('by_deleted_at', q => q.eq('deletedAt', undefined))`).
@@ -249,221 +209,38 @@ export async function softDeleteContact(
 }
 
 /**
- * Hard-delete a contact and cascade to children. Used by the cleanup cron after
- * the soft-delete retention window expires. After this runs there is no live row
- * anywhere whose `contactId` points at the deleted contact.
+ * Hard-delete a contact and cascade to its dependents, all inside the caller's
+ * transaction. After this runs there is no live row anywhere whose `contactId`
+ * points at the deleted contact, except the scrubbed send rows kept for
+ * statistics.
  *
- * Owned rows — REQUIRED `contactId`, meaningless without the parent (delete):
- *   - contactTopics, contactPropertyValues, contactActivities,
- *     contactIdentities (channel identifiers travel with the contact),
- *     contactRelationships (both sides — `by_from` and `by_to`),
- *     automationRuns (a run is per-contact; its FK can't be nulled).
+ * WHAT happens to each dependent table is declared in
+ * `contacts/erasure/relations.ts` (a schema coverage test keeps it complete)
+ * and implemented by the phases in `contacts/erasure/phases.ts`. In short:
+ * owned rows (topics, property values, activities, identities, relationships,
+ * learned clarification answers, automation runs through their lifecycle) are
+ * deleted; send rows are soft-deleted and scrubbed of the recipient's
+ * identity; the person's correspondence (threads, messages, raw mail, form
+ * submissions) is deleted with its blobs; knowledge about them alone is torn
+ * down, shared knowledge and organization files only lose the link.
  *
- * Send rows — kept for campaign-stat integrity but SCRUBBED: emailSends /
- *   transactionalSends are soft-deleted AND their denormalized recipient
- *   identity (address, names) is overwritten. Erasure must not leave the
- *   person's email living forever in delivery history; the suppression list
- *   (address-only, deliberately minimal) is the lawful do-not-contact record.
- *
- * Conversation rows — DELETED: inboundMessages, unifiedMessages,
- *   conversationThreads, formSubmissions hold the person's own words and
- *   submitted data. The old behavior (clear the FK, keep the row) retained
- *   full message bodies and addresses after "permanent" deletion.
- *
- * Knowledge — facts extracted about the person are personal data: entries
- *   linked solely to this contact are torn down (relations + junction +
- *   entry, killing the embedding with the row); multi-contact entries just
- *   lose the link. Semantic files are org documents — unlink only.
+ * The work is unbounded in the size of the contact's history, so only callers
+ * that already process contacts in small batches use this (organization wipe,
+ * sample-data removal). The soft-delete retention sweep and the REST hard
+ * delete go through the persisted, bounded walker (`contacts/erasure/walker.ts`)
+ * that runs the same phases a transaction at a time.
  */
 export async function permanentlyDeleteContactWithRelations(
 	ctx: MutationCtx,
 	contactId: Id<'contacts'>,
 	options?: { decrementCount?: boolean }
 ): Promise<void> {
-	// Cascade deletes — children that only make sense alongside the parent contact.
-	const memberships = await ctx.db
-		.query('contactTopics')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's topic memberships
-	for (const membership of memberships) {
-		await ctx.db.delete(membership._id);
-	}
-
-	const propertyValues = await ctx.db
-		.query('contactPropertyValues')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's property values
-	for (const value of propertyValues) {
-		await ctx.db.delete(value._id);
-	}
-
-	const activities = await ctx.db
-		.query('contactActivities')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's activities (cascade)
-	for (const activity of activities) {
-		await ctx.db.delete(activity._id);
-	}
-
-	const identities = await ctx.db
-		.query('contactIdentities')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's identities
-	for (const identity of identities) {
-		await ctx.db.delete(identity._id);
-	}
-
-	const relationshipsFrom = await ctx.db
-		.query('contactRelationships')
-		.withIndex('by_from', (q) => q.eq('fromContactId', contactId))
-		.collect(); // bounded: one contact's outgoing relationships
-	for (const rel of relationshipsFrom) {
-		await ctx.db.delete(rel._id);
-	}
-	const relationshipsTo = await ctx.db
-		.query('contactRelationships')
-		.withIndex('by_to', (q) => q.eq('toContactId', contactId))
-		.collect(); // bounded: one contact's incoming relationships
-	for (const rel of relationshipsTo) {
-		await ctx.db.delete(rel._id);
-	}
-
-	// automationRuns carries a REQUIRED contactId — a run is intrinsically
-	// per-contact and can't be left unlinked, so it cascades with the contact.
-	const automationRuns = await ctx.db
-		.query('automationRuns')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's automation runs (cascade)
-	for (const run of automationRuns) {
-		await ctx.db.delete(run._id);
-	}
-
-	// Send rows: soft-delete for stat integrity AND scrub the denormalized
-	// recipient identity — erasure means the address/name must not survive in
-	// delivery history (suppression keeps its own minimal address record).
-	const emailSends = await ctx.db
-		.query('emailSends')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's sends (GDPR cascade)
-	for (const send of emailSends) {
-		await ctx.db.patch(send._id, {
-			deletedAt: Date.now(),
-			deletedBy: 'system',
-			contactEmail: '[erased]',
-			contactFirstName: undefined,
-			contactLastName: undefined,
-		});
-	}
-
-	const transactionalSends = await ctx.db
-		.query('transactionalSends')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's transactional sends (cascade)
-	for (const send of transactionalSends) {
-		await ctx.db.patch(send._id, {
-			deletedAt: Date.now(),
-			deletedBy: 'system',
-			email: '[erased]',
-			// Request-supplied template variables can carry PII (name, address,
-			// order details). Erasure must drop them too, not just the address.
-			dataVariables: undefined,
-		});
-	}
-
-	// Conversation content IS the contact's personal data — delete it, don't
-	// unlink it. Threads first (taking their messages, including org-authored
-	// replies that quote the person), then any channel messages outside a
-	// thread, then raw inbound emails and form submissions.
-	const threads = await ctx.db
-		.query('conversationThreads')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's threads (cascade)
-	for (const thread of threads) {
-		const threadMessages = await ctx.db
-			.query('unifiedMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
-			.collect(); // bounded: one thread's unified messages
-		for (const msg of threadMessages) {
-			await ctx.db.delete(msg._id);
-		}
-		await ctx.db.delete(thread._id);
-	}
-	for (const table of ['unifiedMessages', 'inboundMessages', 'formSubmissions'] as const) {
-		const rows = await ctx.db
-			.query(table)
-			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-			.collect(); // bounded: one contact's unified messages (cascade)
-		for (const row of rows) {
-			// A team-inbox row carries the WHOLE received message — bodies,
-			// headers, every attachment — as a sealed `.eml` in `_storage`.
-			// Deleting the row alone left the erased person's own words in
-			// storage with nothing referencing them: the retention sweep finds
-			// blobs by walking `inboundMessages`, and the walk is what this loop
-			// just emptied. A "permanent" erasure that keeps the bytes is not
-			// one. Guarded — an older row and a swept row both have none.
-			if ('rawStorageId' in row && row.rawStorageId) {
-				await deleteBlobQuietly(ctx.storage, row.rawStorageId, '[contacts] erasure', {
-					rowId: row._id,
-				});
-			}
-			await ctx.db.delete(row._id);
-		}
-	}
-
-	// Knowledge about the contact: junction-driven. Entries scoped solely to
-	// this contact are torn down entirely (relations + junction + entry — the
-	// vector index entry dies with the row); shared entries just lose the link.
-	const entryLinks = await ctx.db
-		.query('knowledgeEntryContacts')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's knowledge links (cascade)
-	for (const link of entryLinks) {
-		const entry = await ctx.db.get(link.entryId);
-		await ctx.db.delete(link._id);
-		if (!entry) continue;
-		const remaining = (entry.contactIds ?? []).filter((c) => c !== contactId);
-		if (remaining.length === 0) {
-			const outgoing = await ctx.db
-				.query('knowledgeRelations')
-				.withIndex('by_from', (q) => q.eq('fromEntryId', entry._id))
-				.collect(); // bounded: one node's outgoing graph edges
-			const incoming = await ctx.db
-				.query('knowledgeRelations')
-				.withIndex('by_to', (q) => q.eq('toEntryId', entry._id))
-				.collect(); // bounded: one node's incoming graph edges
-			for (const rel of [...outgoing, ...incoming]) {
-				await ctx.db.delete(rel._id);
-			}
-			const otherLinks = await ctx.db
-				.query('knowledgeEntryContacts')
-				.withIndex('by_entry', (q) => q.eq('entryId', entry._id))
-				.collect(); // bounded: one knowledge entry's contact links
-			for (const other of otherLinks) {
-				await ctx.db.delete(other._id);
-			}
-			await ctx.db.delete(entry._id);
-		} else {
-			await ctx.db.patch(entry._id, { contactIds: remaining });
-		}
-	}
-
-	// Semantic files split two ways. An INBOUND CAPTURE scoped to nobody but
-	// this contact is a file the person themselves attached to their own mail —
-	// their data, in the same sense the message body above is, and captured
-	// automatically from a route anyone can reach. It is deleted, bytes and
-	// all. Everything else — an org-uploaded document, or a capture another
-	// contact is also scoped to — keeps the "unlink, don't delete" rule the
-	// erasure has always applied to documents the organization owns. The
-	// original rule was written before inbound captures existed.
-	await deleteSoleContactInboundFiles(ctx, contactId);
-	// Whatever is left: unlink only (the junction + mirror-array invariant is
-	// owned by `detachContactJunction`).
-	await detachContactJunction(ctx, SEMANTIC_FILE_JUNCTION, contactId);
-
-	// Finally, delete the contact row itself.
-	await ctx.db.delete(contactId);
-
-	if (options?.decrementCount !== false) {
-		await decrementContactCount(ctx, 1);
-	}
+	await advanceErasure(
+		ctx,
+		contactId,
+		{ phase: FIRST_ERASURE_PHASE },
+		ErasureBudget.unlimited(),
+		'inline'
+	);
+	await finishErasure(ctx, contactId, { decrementCount: options?.decrementCount !== false });
 }

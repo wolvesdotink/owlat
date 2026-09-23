@@ -112,9 +112,10 @@ queries/mutations: move the route into the `*Http.ts` sibling rather than
 renaming the whole module, so the generated paths its callers already use
 (`internal.<domain>.<feature>.*`) do not move. `webhooks/channels.ts` +
 `channelsHttp.ts`, `auth/apiAuth.ts` + `apiAuthHttp.ts`, `devShortcuts/reset.ts`
-+ `resetHttp.ts` and `seedDemo/index.ts` + `indexHttp.ts` are that split; a file
-that is ONLY routes is simply named `*Http.ts` (`mail/webhookHttp.ts`,
-`seedAdminHttp.ts`).
+
+- `resetHttp.ts` and `seedDemo/index.ts` + `indexHttp.ts` are that split; a file
+  that is ONLY routes is simply named `*Http.ts` (`mail/webhookHttp.ts`,
+  `seedAdminHttp.ts`).
 
 ---
 
@@ -241,12 +242,12 @@ the browser, so a read that returns a raw `Doc` from a **token-bearing** table
 ships a live bearer secret to every reader — the H4/M8 class. Four tables carry
 such a secret:
 
-| table        | secret field(s)                          | bearer for                          |
-| ------------ | ---------------------------------------- | ----------------------------------- |
+| table        | secret field(s)                              | bearer for                          |
+| ------------ | -------------------------------------------- | ----------------------------------- |
 | `contacts`   | `doiConfirmationToken` / `doiTokenExpiresAt` | unauthenticated `POST /confirm/doi` |
-| `shareLinks` | `token`                                  | unauthenticated `/share` route      |
-| `apiKeys`    | `keyHash`                                | the API-key verifier                |
-| `webhooks`   | `secret`                                 | the HMAC signing secret             |
+| `shareLinks` | `token`                                      | unauthenticated `/share` route      |
+| `apiKeys`    | `keyHash`                                    | the API-key verifier                |
+| `webhooks`   | `secret`                                     | the HMAC signing secret             |
 
 `scripts/check-token-redaction.sh` (wired into `bun run lint`) is the read-side
 sibling of `check-permissions.sh`: a **ratchet** that fails CI on any _new_
@@ -412,7 +413,7 @@ the gate never looks at them.
   env and clamp/scrub emit-time payload data before delivery.
 - A bundled send transport may declare a FEEDBACK webhook on the same
   contribution; all of them arrive on one route, `POST
-  /webhooks/plugin/<pluginId>`, keyed by plugin id (so at most one webhook per
+/webhooks/plugin/<pluginId>`, keyed by plugin id (so at most one webhook per
   plugin, enforced at manifest time). The host owns authenticity end to end: it
   recomputes the declared HMAC over `<timestamp>.<rawBody>` in constant time,
   refuses a timestamp outside the declared tolerance, and refuses a delivery
@@ -489,6 +490,7 @@ the gate never looks at them.
   short-circuits with no network call and no secret opened.
 - Scrub and clamp every app-returned string through the host untrusted-text
   policy bound to the app's plugin before any consumer sees it.
+
 ## Plugin worker jobs (Tier 3)
 
 - `worker:enqueue` is a reserved capability; no Convex enqueue or operator entry
@@ -747,9 +749,18 @@ Rules:
   (use `notSoftDeleted` from `lib/queryHelpers.ts` or the indexed
   `.filter((q) => q.eq(q.field('deletedAt'), undefined))`). Repository
   helpers like `getContactOrThrow` already filter; prefer them at read sites.
-- A daily cron (`cleanupSoftDeletedContacts`) permanently deletes rows
-  whose `deletedAt < now - 30 days`. The hard-delete cascade list lives
-  in `lib/contactMutations.ts:permanentlyDeleteContactWithRelations`.
+- A daily cron (`cleanupSoftDeletedContacts`) selects rows whose
+  `deletedAt < now - 30 days` through an index range and hands each to the
+  contact erasure walker (`contacts/erasure/walker.ts`): a persisted
+  `contactErasureJobs` row, bounded transactions (row and byte budget) that
+  save their phase and cursor, retries with backoff, and `status` /
+  `lastError` on the job when it fails. The same sweep restarts stalled and
+  failed jobs. The per-table policy lives in `contacts/erasure/relations.ts`,
+  the steps in `contacts/erasure/phases.ts`;
+  `lib/contactMutations.ts:permanentlyDeleteContactWithRelations` runs those
+  steps inline for callers that already batch (organization wipe, sample
+  data). Never `.collect()` a contact's children in one transaction on a new
+  erasure path — add a phase.
 
 ### Polymorphic foreign keys
 
@@ -779,6 +790,17 @@ Parent tables document their cascade-on-delete contract in the schema header
 comment (see `schema/contacts.ts`). Permanent-delete helpers in
 `lib/contactMutations.ts` are the only place that performs the cascade —
 mutation code calls the helper rather than handling children inline.
+
+For contacts the contract is data: `contacts/erasure/relations.ts` declares
+`delete`, `unlink` or `retain` (with the reason) for every field that
+references a contact, and for every field that references a row the erasure
+deletes (an automation run's step runs, a thread's messages, …). A new
+`v.id('contacts')` field, or a new reference to one of those tables, fails
+`__tests__/contactErasureRelations.test.ts` until it declares a policy. Never
+null a `contactId` whose absence carries meaning — on `clarificationMemory` an
+absent contact is the org-wide scope, so a contact-scoped answer is deleted,
+not unlinked. Organization-wide knowledge that an admin promoted before the
+erasure no longer references the contact and is retained.
 
 ### Audit logging
 

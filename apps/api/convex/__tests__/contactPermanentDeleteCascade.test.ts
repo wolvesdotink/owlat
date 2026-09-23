@@ -457,3 +457,61 @@ describe('permanentlyDeleteContactWithRelations — the bytes, not just the rows
 		});
 	});
 });
+
+describe('permanentlyDeleteContactWithRelations — the agent’s work on erased mail', () => {
+	it('deletes agent steps and shadow decisions, unlinks review feedback', async () => {
+		const t = convexTest(schema, modules);
+		const ids = await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact({}));
+			const inboundId = await ctx.db.insert('inboundMessages', {
+				messageId: '<agent-work@example.com>',
+				from: 'victim@example.com',
+				to: 'inbox@example.com',
+				subject: 'my own words',
+				contactId,
+				processingStatus: 'received' as const,
+				receivedAt: Date.now(),
+			} as never);
+			const actionId = await ctx.db.insert('agentActions', {
+				inboundMessageId: inboundId,
+				actionType: 'draft',
+				status: 'completed' as const,
+				output: 'Dear victim, about your order…',
+				retryCount: 0,
+				createdAt: Date.now(),
+			} as never);
+			const shadowId = await ctx.db.insert('agentShadowDecisions', {
+				inboundMessageId: inboundId,
+				category: 'support',
+				sender: 'victim@example.com',
+				isWouldHaveSent: true,
+				reason: 'high confidence',
+				confidence: 0.9,
+				shadowDraft: 'Dear victim, about your order…',
+				isResolved: false,
+				createdAt: Date.now(),
+			});
+			const feedbackId = await ctx.db.insert('autonomyFeedback', {
+				category: 'support',
+				action: 'approved' as const,
+				agentConfidence: 0.9,
+				inboundMessageId: inboundId,
+				createdAt: Date.now(),
+			});
+			return { contactId, inboundId, actionId, shadowId, feedbackId };
+		});
+
+		await t.run(async (ctx) => {
+			await permanentlyDeleteContactWithRelations(ctx, ids.contactId);
+		});
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(ids.inboundId)).toBeNull();
+			expect(await ctx.db.get(ids.actionId)).toBeNull();
+			expect(await ctx.db.get(ids.shadowId)).toBeNull();
+			const feedback = await ctx.db.get(ids.feedbackId);
+			expect(feedback).not.toBeNull();
+			expect(feedback?.inboundMessageId).toBeUndefined();
+		});
+	});
+});
