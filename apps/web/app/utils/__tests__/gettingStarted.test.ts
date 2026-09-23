@@ -12,7 +12,12 @@ import {
 	type GettingStartedMessage,
 	type InstanceFlagId,
 } from '../gettingStarted';
-import { CHECKLIST_STEPS, visibleChecklistSteps, type ChecklistStepId } from '../welcomeFlow';
+import {
+	CHECKLIST_STEPS,
+	MEMBER_STEPS,
+	visibleChecklistSteps,
+	type ChecklistStepId,
+} from '../welcomeFlow';
 import { createTestI18n } from '~/__tests__/i18n';
 
 // The model is a pure derivation, so every step's words arrive as a message key
@@ -118,7 +123,7 @@ describe('buildGettingStarted — viewer matrix (admin vs member)', () => {
 
 describe('buildGettingStarted — mode matrix (fresh vs migration)', () => {
 	it('fresh mode hides the migration-only personal steps', () => {
-		const model = buildGettingStarted(input({ role: 'member', mode: 'fresh' }));
+		const model = buildGettingStarted(input({ role: 'admin', mode: 'fresh' }));
 		const ids = allStepIds(model);
 		expect(ids).not.toContain('importDone');
 		expect(ids).not.toContain('knowledgeIndexed');
@@ -128,11 +133,52 @@ describe('buildGettingStarted — mode matrix (fresh vs migration)', () => {
 	});
 
 	it('migration mode shows every personal step', () => {
-		const model = buildGettingStarted(input({ role: 'member', mode: 'migration' }));
+		const model = buildGettingStarted(input({ role: 'admin', mode: 'migration' }));
 		const ids = allStepIds(model);
 		for (const step of CHECKLIST_STEPS) {
 			expect(ids).toContain(step.id);
 		}
+	});
+});
+
+describe('buildGettingStarted — a member gets three steps of their own', () => {
+	it('a fresh-start member sees exactly name, signature and notifications', () => {
+		const model = buildGettingStarted(input({ role: 'member', mode: 'fresh' }));
+		expect(allStepIds(model)).toEqual(MEMBER_STEPS.map((step) => step.id));
+		expect(allStepIds(model)).toEqual(['profileName', 'signature', 'notifications']);
+		expect(model.totalCount).toBe(3);
+		// Every one of them opens the welcome form that sets it.
+		expect(new Set(model.sections.flatMap((s) => s.steps.map((step) => step.href)))).toEqual(
+			new Set(['/welcome'])
+		);
+	});
+
+	it('never asks a member for admin work: the AI provider, provisioning or a test send', () => {
+		const ids = allStepIds(buildGettingStarted(input({ role: 'member', mode: 'migration' })));
+		expect(ids).not.toContain('aiConnected');
+		expect(ids).not.toContain('mailboxReady');
+		expect(ids).not.toContain('firstSendDone');
+	});
+
+	it('adds the import steps in migration mode, because bringing mail over is personal', () => {
+		const ids = allStepIds(buildGettingStarted(input({ role: 'member', mode: 'migration' })));
+		expect(ids).toEqual([
+			'profileName',
+			'signature',
+			'notifications',
+			'importDone',
+			'knowledgeIndexed',
+			'sendingSwitched',
+		]);
+	});
+
+	it('goes away once the three are done', () => {
+		const personalCompleted = new Set<ChecklistStepId>([
+			'profileName',
+			'signature',
+			'notifications',
+		]);
+		expect(buildGettingStarted(input({ role: 'member', personalCompleted })).visible).toBe(false);
 	});
 });
 
@@ -214,7 +260,7 @@ describe('buildGettingStarted — progress counts', () => {
 	});
 
 	it('leaves the informational "Finish setting up" row out of the counts', () => {
-		const model = buildGettingStarted(input({ role: 'member', mode: 'fresh' }));
+		const model = buildGettingStarted(input({ role: 'admin', mode: 'fresh' }));
 		const rendered = model.sections.flatMap((s) => s.steps);
 		// It is on screen…
 		expect(rendered.map((step) => step.id)).toContain(FINISH_SETUP_STEP.id);
@@ -225,7 +271,7 @@ describe('buildGettingStarted — progress counts', () => {
 
 describe('the way back into the welcome flow', () => {
 	it('ends the personal section with a permanent link to /welcome', () => {
-		const model = buildGettingStarted(input({ role: 'member', mode: 'fresh' }));
+		const model = buildGettingStarted(input({ role: 'admin', mode: 'fresh' }));
 		const personal = model.sections.find((s) => s.id === 'personal');
 		const last = personal?.steps.at(-1);
 		expect(last?.id).toBe(FINISH_SETUP_STEP.id);
@@ -242,8 +288,13 @@ describe('the way back into the welcome flow', () => {
 		// long since been "welcomed", which is exactly when /welcome used to be
 		// unreachable.
 		const personalCompleted = new Set<ChecklistStepId>(['mailboxReady', 'aiConnected']);
-		const model = buildGettingStarted(input({ role: 'member', personalCompleted }));
+		const model = buildGettingStarted(input({ role: 'admin', personalCompleted }));
 		expect(allStepIds(model)).toContain(FINISH_SETUP_STEP.id);
+	});
+
+	it('is not offered twice to a member, whose own steps already open it', () => {
+		const model = buildGettingStarted(input({ role: 'member' }));
+		expect(allStepIds(model)).not.toContain(FINISH_SETUP_STEP.id);
 	});
 
 	it('disappears with the section once nothing personal is left to do', () => {
@@ -254,7 +305,9 @@ describe('the way back into the welcome flow', () => {
 			'aiConnected',
 			'firstSendDone',
 		]);
-		const model = buildGettingStarted(input({ role: 'member', personalCompleted }));
+		const model = buildGettingStarted(
+			input({ role: 'admin', instanceComplete: true, personalCompleted })
+		);
 		expect(model.visible).toBe(false);
 		expect(allStepIds(model)).not.toContain(FINISH_SETUP_STEP.id);
 	});
@@ -290,7 +343,7 @@ describe('no step present in the old three surfaces is lost', () => {
 
 describe('the send steps block and unblock with the instance transport', () => {
 	it('marks the first-send step blocked while the instance cannot send', () => {
-		const model = buildGettingStarted(input({ sendPathReady: false }));
+		const model = buildGettingStarted(input({ role: 'admin', sendPathReady: false }));
 		const step = personalStep(model, 'firstSendDone');
 		expect(step?.blocked).toBe(true);
 		expect(step?.blockedReason).toBe(SEND_BLOCKED_REASON);
@@ -300,7 +353,9 @@ describe('the send steps block and unblock with the instance transport', () => {
 	});
 
 	it('blocks the migration sending switch too, and nothing else', () => {
-		const model = buildGettingStarted(input({ mode: 'migration', sendPathReady: false }));
+		const model = buildGettingStarted(
+			input({ role: 'admin', mode: 'migration', sendPathReady: false })
+		);
 		const blocked = model.sections
 			.flatMap((s) => s.steps)
 			.filter((step) => step.blocked)
@@ -309,7 +364,9 @@ describe('the send steps block and unblock with the instance transport', () => {
 	});
 
 	it('unblocks every send step the moment the transport is ready', () => {
-		const model = buildGettingStarted(input({ mode: 'migration', sendPathReady: true }));
+		const model = buildGettingStarted(
+			input({ role: 'admin', mode: 'migration', sendPathReady: true })
+		);
 		expect(model.sections.flatMap((s) => s.steps).some((step) => step.blocked)).toBe(false);
 		expect(personalStep(model, 'firstSendDone')?.blockedReason).toBeUndefined();
 	});
@@ -317,6 +374,7 @@ describe('the send steps block and unblock with the instance transport', () => {
 	it('never blocks a step the member already completed', () => {
 		const model = buildGettingStarted(
 			input({
+				role: 'admin',
 				sendPathReady: false,
 				personalCompleted: new Set<ChecklistStepId>(['firstSendDone']),
 			})

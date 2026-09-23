@@ -2,6 +2,12 @@
 import type { AnswerItem } from '~/composables/useAnswerQueue';
 import { replyQueueHeadline, type ReplyQueueText } from '~/utils/postboxReplyQueue';
 import { parseFromHeader } from '~/utils/todayDigest';
+import {
+	answerEffortParts,
+	answerSourceParts,
+	type AnswerCounts,
+	type SummaryPart,
+} from '~/utils/todayAnswerSummary';
 
 /**
  * Today's first band: how many things wait on the viewer's answer, one button
@@ -10,15 +16,13 @@ import { parseFromHeader } from '~/utils/todayDigest';
  */
 const props = defineProps<{
 	items: readonly AnswerItem[];
-	counts: { mail: number; team: number; mention: number; drafts: number };
+	counts: AnswerCounts;
 	isLoading: boolean;
 }>();
 
 const { t } = useI18n();
 const TOP = 3;
 const top = computed(() => props.items.slice(0, TOP));
-/** A rough reading-and-replying budget: ~90 seconds a card. */
-const minutes = computed(() => Math.max(1, Math.round(props.items.length * 1.5)));
 
 function text(value: ReplyQueueText): string {
 	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
@@ -51,23 +55,12 @@ function rowMeta(item: AnswerItem): string {
 	return when;
 }
 
-const breakdown = computed(() => {
-	const parts: string[] = [];
-	if (props.counts.drafts > 0)
-		parts.push(
-			t('components.today.answer.drafts', { count: props.counts.drafts }, props.counts.drafts)
-		);
-	if (props.counts.mail > 0)
-		parts.push(t('components.today.answer.mail', { count: props.counts.mail }, props.counts.mail));
-	if (props.counts.team > 0)
-		parts.push(t('components.today.answer.team', { count: props.counts.team }, props.counts.team));
-	if (props.counts.mention > 0)
-		parts.push(
-			t('components.today.answer.mentions', { count: props.counts.mention }, props.counts.mention)
-		);
-	parts.push(t('components.today.answer.minutes', { count: minutes.value }, minutes.value));
-	return parts.join(' · ');
-});
+const say = (parts: SummaryPart[]) =>
+	parts.map((part) => t(part.key, { count: part.count }, part.count)).join(' · ');
+/** Parts that add up to the big number, by where each item came from. */
+const sourceLine = computed(() => say(answerSourceParts(props.counts)));
+/** Drafts ready and the time estimate — true across sources, so on their own line. */
+const effortLine = computed(() => say(answerEffortParts(props.counts, props.items.length)));
 </script>
 
 <template>
@@ -96,7 +89,8 @@ const breakdown = computed(() => {
 					<h2 id="today-answer" class="text-sm font-medium text-text-primary">
 						{{ t('components.today.answer.title', { count: items.length }, items.length) }}
 					</h2>
-					<p class="mt-0.5 text-xs text-text-secondary">{{ breakdown }}</p>
+					<p v-if="sourceLine" class="mt-0.5 text-xs text-text-secondary">{{ sourceLine }}</p>
+					<p class="mt-0.5 text-xs text-text-tertiary">{{ effortLine }}</p>
 				</div>
 			</div>
 			<UiButton to="/dashboard/answer" class="shrink-0 justify-center">

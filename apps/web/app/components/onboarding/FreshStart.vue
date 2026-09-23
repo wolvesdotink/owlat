@@ -6,7 +6,7 @@
  * product welcome, never an import prompt. The two-minute setup personalises the
  * mailbox reserved for the member (display name, signature, notification scope)
  * and — ONLY when the instance actually has a sending transport — offers an
- * optional test email to themselves, then drops them into Postbox. Finishing
+ * optional test email to themselves, then lands them on Today. Finishing
  * marks `userOnboarding.mailboxReady`; a real test send marks `firstSendDone`
  * server-side (in `mail.drafts.send`, which itself gates the stamp on a
  * transport). When there is no send path yet we show an honest "your admin is
@@ -26,6 +26,10 @@ import { POSTBOX_NOTIFY_ABOUT_OPTIONS, type PostboxNotifyAbout } from '~/utils/p
 
 const { t } = useI18n();
 const { user } = useAuth();
+// Knowledge is only worth a tip where it exists: it lives in the Conversations
+// workspace next to Contacts, and only when the instance has it turned on.
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const showKnowledgeTip = computed(() => isFeatureEnabled('ai.knowledge'));
 const userId = computed(() => user.value?.id ?? null);
 
 const { currentMailbox, isLoading: mailboxLoading } = usePostboxMailbox();
@@ -162,7 +166,7 @@ async function sendTestEmail() {
 	}
 }
 
-/** Apply the setup and land in Postbox. Each write is best-effort/idempotent. */
+/** Apply the setup and land on Today. Each write is best-effort/idempotent. */
 async function finishSetup() {
 	const mb = mailbox.value;
 	if (finishing.value) return;
@@ -189,14 +193,14 @@ async function finishSetup() {
 				await completeOp.run({ userId: userId.value });
 			}
 		}
-		await navigateTo('/dashboard/postbox');
+		await navigateTo('/dashboard');
 	} finally {
 		finishing.value = false;
 	}
 }
 
-function skipToInbox() {
-	void navigateTo('/dashboard/postbox');
+function skipToToday() {
+	void navigateTo('/dashboard');
 }
 </script>
 
@@ -344,7 +348,7 @@ function skipToInbox() {
 				</div>
 			</div>
 
-			<!-- Teach-the-product: what Postbox gives you as mail arrives. -->
+			<!-- Teach-the-product: a few things worth knowing on day one. -->
 			<div class="rounded-xl border border-border-subtle bg-bg-surface/50 p-5">
 				<h2 class="mb-3 text-sm font-semibold">{{ t('welcome.freshStart.tipsHeading') }}</h2>
 				<ul class="space-y-3 text-sm text-text-secondary">
@@ -373,11 +377,13 @@ function skipToInbox() {
 							</template>
 						</I18nT>
 					</li>
-					<li class="flex items-start gap-3">
+					<li v-if="showKnowledgeTip" class="flex items-start gap-3">
 						<Icon name="lucide:sparkles" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						<I18nT keypath="welcome.freshStart.tips.knowledge" tag="span" scope="global">
 							<template #tab>
-								<span class="font-medium text-text-primary">Knowledge</span>
+								<span class="font-medium text-text-primary">{{
+									t('shared.dashboardNavigation.sections.knowledge')
+								}}</span>
 							</template>
 						</I18nT>
 					</li>
@@ -388,7 +394,7 @@ function skipToInbox() {
 				<button
 					type="button"
 					class="text-sm text-text-tertiary transition-colors hover:text-text-secondary"
-					@click="skipToInbox"
+					@click="skipToToday"
 				>
 					{{ t('welcome.freshStart.skip') }}
 				</button>

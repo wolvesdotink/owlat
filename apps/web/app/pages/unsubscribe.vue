@@ -13,6 +13,7 @@ definePageMeta({
 });
 
 const route = useRoute();
+const { senderName, contactEmail } = useRecipientSender();
 const config = useRuntimeConfig();
 
 // State
@@ -112,11 +113,8 @@ async function handleUnsubscribe() {
 	<div
 		class="flex min-h-dvh flex-col items-center justify-center gap-8 bg-bg-deep px-5 pt-[max(2.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))] text-text-primary"
 	>
-		<!-- Logo/Brand -->
-		<header class="text-center">
-			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="mt-2 text-text-secondary">{{ t('recipient.shared.emailPreferences') }}</p>
-		</header>
+		<!-- The sender, not Owlat: the recipient knows who emailed them. -->
+		<RecipientHeader :name="senderName" :purpose="t('recipient.shared.emailPreferences')" />
 
 		<!-- Loading State -->
 		<div v-if="isLoading" class="card w-full max-w-md py-8 text-center">
@@ -151,6 +149,7 @@ async function handleUnsubscribe() {
 					{{ t('recipient.unsubscribe.errorHeading') }}
 				</h2>
 				<p class="text-text-secondary">{{ error }}</p>
+				<RecipientContactHint :email="contactEmail" keypath="recipient.shared.contactToOptOut" />
 			</div>
 		</div>
 
@@ -194,7 +193,9 @@ async function handleUnsubscribe() {
 					scope="global"
 					class="mb-6 break-words text-text-secondary"
 				>
-					<template #organization><strong>{{ contactInfo?.teamName }}</strong></template>
+					<template #organization
+						><strong>{{ contactInfo?.teamName }}</strong></template
+					>
 				</I18nT>
 				<I18nT
 					keypath="recipient.unsubscribe.successNote"
@@ -202,7 +203,9 @@ async function handleUnsubscribe() {
 					scope="global"
 					class="text-sm break-words text-text-tertiary"
 				>
-					<template #email><strong>{{ contactInfo?.email }}</strong></template>
+					<template #email
+						><strong>{{ contactInfo?.email }}</strong></template
+					>
 				</I18nT>
 			</div>
 		</div>
@@ -237,7 +240,9 @@ async function handleUnsubscribe() {
 					scope="global"
 					class="break-words text-text-secondary"
 				>
-					<template #organization><strong>{{ contactInfo.teamName }}</strong></template>
+					<template #organization
+						><strong>{{ contactInfo.teamName }}</strong></template
+					>
 				</I18nT>
 				<I18nT
 					keypath="recipient.unsubscribe.alreadyStateNote"
@@ -245,7 +250,9 @@ async function handleUnsubscribe() {
 					scope="global"
 					class="mt-4 text-sm break-words text-text-tertiary"
 				>
-					<template #email><strong>{{ contactInfo.email }}</strong></template>
+					<template #email
+						><strong>{{ contactInfo.email }}</strong></template
+					>
 				</I18nT>
 			</div>
 		</div>
@@ -279,8 +286,12 @@ async function handleUnsubscribe() {
 						{{ t('recipient.unsubscribe.greeting', { name: contactInfo.firstName }) }}
 					</template>
 					<I18nT keypath="recipient.unsubscribe.confirmBody" tag="span" scope="global">
-						<template #email><strong>{{ contactInfo.email }}</strong></template>
-						<template #organization><strong>{{ contactInfo.teamName }}</strong></template>
+						<template #email
+							><strong>{{ contactInfo.email }}</strong></template
+						>
+						<template #organization
+							><strong>{{ contactInfo.teamName }}</strong></template
+						>
 					</I18nT>
 				</p>
 
@@ -297,9 +308,6 @@ async function handleUnsubscribe() {
 			</div>
 		</div>
 
-		<!-- Footer -->
-		<I18nT keypath="common.poweredBy" tag="p" scope="global" class="text-sm text-text-tertiary">
-			<template #brand><span class="font-display">Owlat</span></template>
-		</I18nT>
+		<RecipientFooter />
 	</div>
 </template>

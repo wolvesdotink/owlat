@@ -12,6 +12,7 @@ definePageMeta({
 
 const route = useRoute();
 const convex = useConvex();
+const { senderName, contactEmail } = useRecipientSender();
 
 // State
 const isLoading = ref(true);
@@ -102,8 +103,7 @@ async function handleConfirm() {
 		confirmSuccess.value = true;
 		alreadyConfirmed.value = result.alreadyConfirmed || false;
 	} catch (err) {
-		error.value =
-			err instanceof Error ? err.message : t('recipient.confirm.errors.confirmFailed');
+		error.value = err instanceof Error ? err.message : t('recipient.confirm.errors.confirmFailed');
 	} finally {
 		isProcessing.value = false;
 	}
@@ -117,11 +117,8 @@ async function handleConfirm() {
 	<div
 		class="flex min-h-dvh flex-col items-center justify-center gap-8 bg-bg-deep px-5 pt-[max(2.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))] text-text-primary"
 	>
-		<!-- Logo/Brand -->
-		<header class="text-center">
-			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="mt-2 text-text-secondary">{{ t('recipient.confirm.header') }}</p>
-		</header>
+		<!-- The sender, not Owlat: the recipient knows who they signed up with. -->
+		<RecipientHeader :name="senderName" :purpose="t('recipient.confirm.header')" />
 
 		<!-- Loading State -->
 		<div v-if="isLoading" class="card w-full max-w-md py-8 text-center">
@@ -156,6 +153,7 @@ async function handleConfirm() {
 					{{ t('recipient.confirm.errorHeading') }}
 				</h2>
 				<p class="text-text-secondary">{{ error }}</p>
+				<RecipientContactHint :email="contactEmail" keypath="recipient.shared.contactSender" />
 			</div>
 		</div>
 
@@ -197,7 +195,9 @@ async function handleConfirm() {
 					scope="global"
 					class="mb-6 break-words text-text-secondary"
 				>
-					<template #organization><strong>{{ submissionInfo?.organizationName }}</strong></template>
+					<template #organization
+						><strong>{{ submissionInfo?.organizationName }}</strong></template
+					>
 				</I18nT>
 				<I18nT
 					keypath="recipient.confirm.successNote"
@@ -205,7 +205,9 @@ async function handleConfirm() {
 					scope="global"
 					class="text-sm break-words text-text-tertiary"
 				>
-					<template #email><strong>{{ submissionInfo?.email }}</strong></template>
+					<template #email
+						><strong>{{ submissionInfo?.email }}</strong></template
+					>
 				</I18nT>
 			</div>
 		</div>
@@ -240,7 +242,9 @@ async function handleConfirm() {
 					scope="global"
 					class="break-words text-text-secondary"
 				>
-					<template #organization><strong>{{ submissionInfo.organizationName }}</strong></template>
+					<template #organization
+						><strong>{{ submissionInfo.organizationName }}</strong></template
+					>
 				</I18nT>
 				<I18nT
 					keypath="recipient.confirm.alreadyStateNote"
@@ -248,7 +252,9 @@ async function handleConfirm() {
 					scope="global"
 					class="mt-4 text-sm break-words text-text-tertiary"
 				>
-					<template #email><strong>{{ submissionInfo.email }}</strong></template>
+					<template #email
+						><strong>{{ submissionInfo.email }}</strong></template
+					>
 				</I18nT>
 			</div>
 		</div>
@@ -283,8 +289,12 @@ async function handleConfirm() {
 					scope="global"
 					class="mb-6 break-words text-text-secondary"
 				>
-					<template #organization><strong>{{ submissionInfo.organizationName }}</strong></template>
-					<template #email><strong>{{ submissionInfo.email }}</strong></template>
+					<template #organization
+						><strong>{{ submissionInfo.organizationName }}</strong></template
+					>
+					<template #email
+						><strong>{{ submissionInfo.email }}</strong></template
+					>
 				</I18nT>
 
 				<!-- h-12: the only action on the page, sized past the 44px touch target. -->
@@ -297,16 +307,11 @@ async function handleConfirm() {
 				</UiButton>
 
 				<p class="mt-6 text-xs break-words text-text-tertiary">
-					{{
-						t('recipient.confirm.footnote', { organization: submissionInfo.organizationName })
-					}}
+					{{ t('recipient.confirm.footnote', { organization: submissionInfo.organizationName }) }}
 				</p>
 			</div>
 		</div>
 
-		<!-- Footer -->
-		<I18nT keypath="common.poweredBy" tag="p" scope="global" class="text-sm text-text-tertiary">
-			<template #brand><span class="font-display">Owlat</span></template>
-		</I18nT>
+		<RecipientFooter />
 	</div>
 </template>

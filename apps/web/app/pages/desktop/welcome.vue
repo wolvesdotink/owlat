@@ -4,8 +4,11 @@
  * workspace (gated by middleware/desktop-workspace.global.ts), and reachable
  * to add/switch workspaces.
  *
- * Two steps: a branded welcome with the core choice (connect an existing
- * server vs. provision a new one), then the workspace connector form.
+ * One screen. Most people who install the desktop app were invited by their
+ * company and need to connect to a server that already exists, so the main
+ * card is "Connect to your workspace" with the server address field right in
+ * it. Setting up a new server is a one-time admin job and sits below as the
+ * secondary option.
  *
  * It is ALSO where a signed-out desktop lands: the packaged app has no in-app
  * login form, so middleware/auth.ts bounces an expired or never-completed
@@ -32,8 +35,6 @@ const {
 	removeWorkspace,
 } = useDesktopWorkspaces();
 
-const view = ref<'welcome' | 'connect'>('welcome');
-
 const siteUrl = ref('');
 const isConnecting = ref(false);
 const errorMessage = ref('');
@@ -50,7 +51,6 @@ const isRedeeming = ref(false);
  * known siteUrl re-authenticates that workspace in place (same id), so this
  * repairs the dead session instead of adding a second row for the same host. */
 async function reconnect(url: string) {
-	view.value = 'connect';
 	siteUrl.value = url;
 	await handleAdd();
 }
@@ -112,60 +112,69 @@ function startOver() {
 			{{ t('desktop.welcome.desktopOnly') }}
 		</div>
 
-		<!-- ============ STEP 1: WELCOME ============ -->
-		<div v-else-if="view === 'welcome'" class="w-full max-w-md text-center">
-			<img src="/owlat.svg" alt="" class="mx-auto mb-6 size-14" />
+		<div v-else class="w-full max-w-md">
+			<div class="text-center">
+				<img src="/owlat.svg" alt="" class="mx-auto mb-6 size-14" />
 
-			<!--
-				Two framings for one screen. With nothing connected this is a first
-				run. With workspaces present the user was bounced here by a dead
-				session, and the first-run copy would be a lie.
-			-->
-			<template v-if="workspaces.length">
-				<h1 class="font-display text-4xl mb-2">{{ t('desktop.welcome.reconnect.heading') }}</h1>
-				<p class="text-md text-text-secondary mb-8">
-					{{ t('desktop.welcome.reconnect.tagline') }}
-				</p>
-			</template>
-			<template v-else>
-				<I18nT
-					keypath="desktop.welcome.heading"
-					tag="h1"
-					class="font-display text-4xl mb-2"
-					scope="global"
-				>
-					<template #brand><span class="italic">Owlat</span></template>
-				</I18nT>
-				<p class="text-md text-text-secondary mb-10">
-					{{ t('desktop.welcome.tagline') }}
-				</p>
-			</template>
+				<!--
+					Two framings for one screen. With nothing connected this is a first
+					run. With workspaces present the user was bounced here by a dead
+					session, and the first-run copy would be a lie.
+				-->
+				<template v-if="workspaces.length">
+					<h1 class="font-display text-4xl mb-2">{{ t('desktop.welcome.reconnect.heading') }}</h1>
+					<p class="text-md text-text-secondary mb-8">
+						{{ t('desktop.welcome.reconnect.tagline') }}
+					</p>
+				</template>
+				<template v-else>
+					<I18nT
+						keypath="desktop.welcome.heading"
+						tag="h1"
+						class="font-display text-4xl mb-2"
+						scope="global"
+					>
+						<template #brand><span class="italic">Owlat</span></template>
+					</I18nT>
+					<p class="text-md text-text-secondary mb-8">
+						{{ t('desktop.welcome.tagline') }}
+					</p>
+				</template>
+			</div>
 
 			<!-- Why the app bounced back here, when it knows. -->
-			<p v-if="connectError" class="mb-6 text-sm text-error">{{ connectError }}</p>
+			<p v-if="connectError && !browserOpened" class="mb-6 text-center text-sm text-error">
+				{{ connectError }}
+			</p>
 
 			<!--
 				The connected servers. Without this the screen is indistinguishable
 				from a fresh install: the workspace is saved and active (the titlebar
 				even names it) but nothing on the page acknowledges it, so it cannot
-				be reconnected or removed.
+				be reconnected, switched to or removed.
 			-->
-			<ul v-if="workspaces.length" class="mb-8 space-y-1.5 text-left">
+			<ul v-if="workspaces.length" class="mb-6 space-y-1.5">
 				<li
 					v-for="ws in workspaces"
 					:key="ws.id"
 					class="flex items-center gap-3 rounded-xl surface-1 px-3 py-2"
 				>
-					<span class="min-w-0 flex-1">
+					<button
+						type="button"
+						class="min-w-0 flex-1 text-left"
+						:disabled="ws.id === activeId"
+						@click="switchTo(ws.id)"
+					>
 						<span class="block truncate text-sm" :class="ws.id === activeId ? 'font-semibold' : ''">
 							{{ ws.label }}
 						</span>
 						<span class="block truncate text-xs text-text-secondary">{{ ws.siteUrl }}</span>
-					</span>
+					</button>
 					<UiButton variant="outline" size="sm" class="shrink-0" @click="reconnect(ws.siteUrl)">
 						{{ t('desktop.welcome.reconnect.action') }}
 					</UiButton>
 					<button
+						type="button"
 						class="shrink-0 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-error"
 						@click="removeWorkspace(ws.id)"
 					>
@@ -174,17 +183,102 @@ function startOver() {
 				</li>
 			</ul>
 
+			<!-- ============ MAIN: CONNECT TO YOUR WORKSPACE ============ -->
+			<section class="card p-6" aria-labelledby="desktop-connect-title">
+				<div class="mb-5 flex items-start gap-4">
+					<span
+						class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand"
+					>
+						<Icon name="lucide:plug" class="size-5" />
+					</span>
+					<div class="min-w-0">
+						<h2 id="desktop-connect-title" class="text-base font-semibold">
+							{{
+								workspaces.length
+									? t('desktop.welcome.connect.titleAnother')
+									: t('desktop.welcome.connect.title')
+							}}
+						</h2>
+						<p class="mt-0.5 text-sm text-text-secondary">
+							{{ t('desktop.welcome.connect.description') }}
+						</p>
+					</div>
+				</div>
+
+				<form v-if="!browserOpened" class="space-y-3" @submit.prevent="handleAdd">
+					<label class="block text-sm font-medium" for="server-address">
+						{{ t('desktop.welcome.connect.urlLabel') }}
+					</label>
+					<input
+						id="server-address"
+						v-model="siteUrl"
+						type="text"
+						inputmode="url"
+						autocomplete="url"
+						spellcheck="false"
+						:placeholder="t('desktop.welcome.connect.urlPlaceholder')"
+						class="input input-sm text-sm"
+					/>
+					<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
+					<UiButton type="submit" :disabled="isConnecting" full-width>
+						{{
+							isConnecting
+								? t('desktop.welcome.connect.opening')
+								: t('desktop.welcome.connect.submit')
+						}}
+					</UiButton>
+				</form>
+
+				<div v-else class="space-y-4">
+					<p class="text-sm text-text-secondary">
+						{{ t('desktop.welcome.connect.finishInBrowser') }}
+					</p>
+					<!-- A deep link that came back and failed: the browser half looks
+					     finished, so the reason has to land here. -->
+					<p v-if="connectError" class="text-sm text-error">{{ connectError }}</p>
+					<form
+						class="space-y-3 border-t border-border-subtle pt-4"
+						@submit.prevent="handlePastedCode"
+					>
+						<label class="block text-sm" for="connection-code">
+							{{ t('desktop.welcome.connect.pasteCodeLabel') }}
+						</label>
+						<input
+							id="connection-code"
+							v-model="pastedCode"
+							type="text"
+							autocomplete="off"
+							spellcheck="false"
+							:placeholder="t('desktop.welcome.connect.codePlaceholder')"
+							class="input input-sm font-mono text-sm"
+						/>
+						<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
+						<UiButton type="submit" :disabled="isRedeeming || !pastedCode.trim()" full-width>
+							{{
+								isRedeeming
+									? t('desktop.welcome.connect.redeeming')
+									: t('desktop.welcome.connect.redeemSubmit')
+							}}
+						</UiButton>
+					</form>
+					<button
+						type="button"
+						class="text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
+						@click="startOver"
+					>
+						{{ t('desktop.welcome.connect.startOver') }}
+					</button>
+				</div>
+			</section>
+
+			<!-- ============ SECONDARY: SET UP A NEW SERVER ============ -->
 			<NuxtLink
 				to="/desktop/setup"
-				class="group card flex w-full items-center gap-4 p-5 text-left transition-[border-color,box-shadow] duration-(--motion-fast) ease-spring hover:border-brand-border hover:shadow-surface-3"
+				class="group mt-4 flex w-full items-center gap-3 rounded-xl border border-border-subtle px-4 py-3 text-left transition-colors duration-(--motion-fast) hover:border-brand-border"
 			>
-				<span
-					class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand"
-				>
-					<Icon name="lucide:server" class="size-5" />
-				</span>
+				<Icon name="lucide:server" class="size-4 shrink-0 text-text-tertiary" />
 				<span class="min-w-0 flex-1">
-					<span class="block text-sm font-semibold">{{ t('desktop.welcome.setup.title') }}</span>
+					<span class="block text-sm font-medium">{{ t('desktop.welcome.setup.title') }}</span>
 					<span class="mt-0.5 block text-xs text-text-secondary">{{
 						t('desktop.welcome.setup.description')
 					}}</span>
@@ -194,118 +288,6 @@ function startOver() {
 					class="size-4 shrink-0 text-text-tertiary transition-transform duration-(--motion-fast) group-hover:translate-x-[2px] group-hover:text-brand"
 				/>
 			</NuxtLink>
-
-			<p class="mt-5 text-xs text-text-secondary">
-				{{ t('desktop.welcome.haveServer') }}
-				<button type="button" class="link font-medium" @click="view = 'connect'">
-					{{ t('desktop.welcome.connectExisting') }}
-				</button>
-			</p>
-		</div>
-
-		<!-- ============ STEP 2: CONNECT ============ -->
-		<div v-else class="card w-full max-w-md p-8">
-			<button
-				type="button"
-				class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
-				@click="view = 'welcome'"
-			>
-				<Icon name="lucide:arrow-left" class="size-3.5" /> {{ t('common.back') }}
-			</button>
-
-			<h1 class="text-xl font-medium tracking-[-0.01em] mb-1">
-				{{ t('desktop.welcome.connect.title') }}
-			</h1>
-			<p class="text-sm text-text-secondary mb-6">
-				{{ t('desktop.welcome.connect.description') }}
-			</p>
-
-			<form v-if="!browserOpened" class="space-y-3" @submit.prevent="handleAdd">
-				<input
-					v-model="siteUrl"
-					type="text"
-					inputmode="url"
-					:placeholder="t('desktop.welcome.connect.urlPlaceholder')"
-					class="input input-sm text-sm"
-				/>
-				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
-				<UiButton type="submit" :disabled="isConnecting" full-width>
-					{{
-						isConnecting
-							? t('desktop.welcome.connect.opening')
-							: t('desktop.welcome.connect.submit')
-					}}
-				</UiButton>
-			</form>
-
-			<div v-else class="space-y-4">
-				<p class="text-sm text-text-secondary">
-					{{ t('desktop.welcome.connect.finishInBrowser') }}
-				</p>
-				<!-- A deep link that came back and failed: the browser half looks
-				     finished, so the reason has to land here. -->
-				<p v-if="connectError" class="text-sm text-error">{{ connectError }}</p>
-				<form
-					class="space-y-3 border-t border-border-subtle pt-4"
-					@submit.prevent="handlePastedCode"
-				>
-					<label class="block text-sm" for="connection-code">
-						{{ t('desktop.welcome.connect.pasteCodeLabel') }}
-					</label>
-					<input
-						id="connection-code"
-						v-model="pastedCode"
-						type="text"
-						autocomplete="off"
-						spellcheck="false"
-						:placeholder="t('desktop.welcome.connect.codePlaceholder')"
-						class="input input-sm font-mono text-sm"
-					/>
-					<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
-					<UiButton type="submit" :disabled="isRedeeming || !pastedCode.trim()" full-width>
-						{{
-							isRedeeming
-								? t('desktop.welcome.connect.redeeming')
-								: t('desktop.welcome.connect.redeemSubmit')
-						}}
-					</UiButton>
-				</form>
-				<button
-					type="button"
-					class="text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
-					@click="startOver"
-				>
-					{{ t('desktop.welcome.connect.startOver') }}
-				</button>
-			</div>
-
-			<div v-if="workspaces.length" class="mt-8">
-				<h2 class="text-xs font-medium uppercase tracking-wide text-text-secondary mb-2">
-					{{ t('desktop.welcome.workspaces') }}
-				</h2>
-				<ul class="space-y-1.5">
-					<li
-						v-for="ws in workspaces"
-						:key="ws.id"
-						class="flex items-center justify-between rounded-xl surface-1 px-3 py-2"
-					>
-						<button
-							class="flex-1 text-left text-sm"
-							:class="ws.id === activeId ? 'font-semibold' : ''"
-							@click="switchTo(ws.id)"
-						>
-							{{ ws.label }}
-							<span class="block text-xs text-text-secondary">{{ ws.siteUrl }}</span>
-						</button>
-						<button
-							class="ml-3 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-error"
-							@click="removeWorkspace(ws.id)"
-						>
-							{{ t('common.remove') }}
-						</button>
-					</li>
-				</ul>
-			</div>
 		</div>
 	</div>
 </template>

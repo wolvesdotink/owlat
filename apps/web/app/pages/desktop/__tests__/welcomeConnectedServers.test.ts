@@ -118,3 +118,41 @@ describe('/desktop/welcome — a bounced session is not a first run', () => {
 		expect(addWorkspace).toHaveBeenCalledWith('https://acme.test');
 	});
 });
+
+describe('/desktop/welcome — connecting is the main path (#797)', () => {
+	it('leads with "Connect to your workspace" and a server address field', () => {
+		const wrapper = mountPage();
+		const text = wrapper.text();
+
+		expect(text).toContain('Connect to your workspace');
+		expect(wrapper.find('input#server-address').exists()).toBe(true);
+		expect(wrapper.find('label[for="server-address"]').text()).toBe('Server address');
+		// Setting up a server is still offered, after the connect card.
+		expect(text).toContain('Set up a new server');
+		expect(text.indexOf('Connect to your workspace')).toBeLessThan(
+			text.indexOf('Set up a new server')
+		);
+		expect(wrapper.find('a[href="/desktop/setup"]').exists()).toBe(true);
+	});
+
+	it('connects straight from the first screen', async () => {
+		const wrapper = mountPage();
+		await wrapper.find('input#server-address').setValue('https://acme.test');
+		await wrapper.find('form').trigger('submit');
+
+		expect(addWorkspace).toHaveBeenCalledWith('https://acme.test');
+	});
+
+	it('asks for an address instead of connecting to nothing', async () => {
+		const wrapper = mountPage();
+		await wrapper.find('form').trigger('submit');
+
+		expect(addWorkspace).not.toHaveBeenCalled();
+		expect(wrapper.text()).toContain('Enter your server address.');
+	});
+
+	it('offers to connect another workspace when one is already saved', () => {
+		workspaces.value = [workspace()];
+		expect(mountPage().text()).toContain('Connect another workspace');
+	});
+});

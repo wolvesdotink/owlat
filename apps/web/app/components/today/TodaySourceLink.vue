@@ -5,24 +5,18 @@ import { TODAY_PEEK, type TodayPeekControls } from '~/utils/todayPeek';
 /**
  * A summarised phrase that quietly links to the email(s) it came from.
  *
- * At rest it reads as text: a faint dotted underline and a tiny marker (the
- * sender's initials for one email, a count for several). Hover or keyboard
- * focus shows a preview after a short delay; click / Enter opens the email in
- * Today's side panel; ⌘/Ctrl-click opens the full conversation.
+ * At rest it reads as text with a faint dotted underline — that alone says
+ * "link". There is deliberately no marker after it: sender initials or a bare
+ * count next to a sentence read as debug output. Who and how many are in the
+ * accessible name and in the preview. Hover or keyboard focus shows that
+ * preview after a short delay; click / Enter opens the email in Today's side
+ * panel; ⌘/Ctrl-click opens the full conversation.
  */
 const props = defineProps<{ text: string; sources: TodaySource[] }>();
 const { t } = useI18n();
 const peek = inject(TODAY_PEEK, null) as TodayPeekControls | null;
 
 const first = computed(() => props.sources[0] ?? null);
-const marker = computed(() => {
-	if (props.sources.length > 1) return String(props.sources.length);
-	const s = first.value;
-	if (!s) return '';
-	const name = s.fromName?.trim() || s.fromAddress;
-	const parts = name.split(/[\s@._-]+/).filter(Boolean);
-	return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
-});
 const accessibleLabel = computed(() => {
 	const s = first.value;
 	if (!s) return props.text;
@@ -75,11 +69,6 @@ function when(at: number): string {
 			@focus="schedulePreview"
 			@blur="hidePreview"
 			>{{ text }}</a
-		><span
-			v-if="marker"
-			class="ml-0.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-bg-surface px-1 align-[2px] text-[9px] font-semibold leading-none text-text-tertiary"
-			aria-hidden="true"
-			>{{ marker }}</span
 		>
 
 		<Transition

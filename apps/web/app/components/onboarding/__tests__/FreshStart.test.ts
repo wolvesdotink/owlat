@@ -34,11 +34,16 @@ const canSendData = ref<boolean | undefined>(undefined);
 const transportLoading = ref(true);
 const notifyAbout = ref<'everything' | 'people-important' | 'nothing'>('everything');
 const setNotifyAbout = vi.fn(async () => undefined);
+const knowledgeOn = ref(true);
+const navigateTo = vi.fn();
 
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
-		navigateTo: vi.fn(),
+		navigateTo,
+		useFeatureFlag: () => ({
+			isEnabled: (flag: string) => flag === 'ai.knowledge' && knowledgeOn.value,
+		}),
 		useAuth: () => ({ user: ref({ id: 'user-1', name: 'Marcel Pfeifer' }) }),
 		usePostboxMailbox: () => ({ currentMailbox: mailbox, isLoading: mailboxLoading }),
 		useOrganizationQuery: () => ({ data: canSendData, isLoading: transportLoading }),
@@ -57,6 +62,7 @@ beforeEach(() => {
 	canSendData.value = undefined;
 	transportLoading.value = true;
 	notifyAbout.value = 'everything';
+	knowledgeOn.value = true;
 	vi.clearAllMocks();
 });
 
@@ -93,7 +99,9 @@ describe('FreshStart copy', () => {
 		expect(w.text()).toContain('Notify me about');
 		expect(w.text()).toContain("A few things you'll love");
 		expect(w.text()).toContain('Skip for now');
-		expect(w.text()).toContain('Go to my inbox');
+		expect(w.text()).toContain('Go to Today');
+		expect(w.text()).toContain('You can change this later in your settings.');
+		expect(w.text()).not.toContain('Postbox');
 		expect(w.get('#fresh-display-name').attributes('placeholder')).toBe('e.g. Marcel Pfeifer');
 		expectFullyLocalized(w);
 	});
@@ -108,6 +116,35 @@ describe('FreshStart copy', () => {
 		const values = w.findAll('#fresh-notify option').map((option) => option.attributes('value'));
 		expect(values).toEqual(['everything', 'people-important', 'nothing']);
 		expectFullyLocalized(w);
+	});
+
+	it('points to Knowledge where it lives, and only when it is on', async () => {
+		await settleTransport(true);
+		const on = mountFreshStart();
+		expect(on.text()).toContain('Knowledge sits next to Contacts in Conversations.');
+		expect(on.text()).not.toContain('tab');
+
+		knowledgeOn.value = false;
+		const off = mountFreshStart();
+		expect(off.text()).not.toContain('Knowledge');
+	});
+
+	it('lands on Today, which is what the button says', async () => {
+		await settleTransport(true);
+		const w = mountFreshStart();
+		await w
+			.findAll('button')
+			.find((b) => b.text() === 'Go to Today')!
+			.trigger('click');
+		await flushPromises();
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard');
+
+		navigateTo.mockClear();
+		await w
+			.findAll('button')
+			.find((b) => b.text() === 'Skip for now')!
+			.trigger('click');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard');
 	});
 
 	it('hands a member with no mailbox to the honest next-step guard', async () => {
