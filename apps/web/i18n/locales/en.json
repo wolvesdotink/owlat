@@ -172,6 +172,7 @@
 		"skip": "Skip",
 		"status": "Status",
 		"today": "Today",
+		"undo": "Undo",
 		"unknown": "Unknown",
 		"upload": "Upload",
 		"viewAll": "View all",
@@ -455,6 +456,8 @@
 		"automations": {
 			"stepEditorPanel": {
 				"delete": "Delete Step",
+				"emptyBody": "Select a step in the workflow to edit its settings.",
+				"emptyTitle": "No step selected",
 				"save": "Save Changes",
 				"title": "Step Settings"
 			},
