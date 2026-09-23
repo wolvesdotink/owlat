@@ -3222,7 +3222,7 @@
 			},
 			"graphView": {
 				"analyticsOffBody": "Aktivieren Sie {setting} in den Einstellungen, um den Graphen und seine Einblicke zu sehen.",
-				"analyticsOffSetting": "Wissensgraph-Analysen",
+				"analyticsOffSetting": "Wissens-Einblicke",
 				"analyticsOffTitle": "Graph-Analysen sind deaktiviert",
 				"centerHere": "Hier zentrieren",
 				"closePanel": "Panel schließen",
@@ -5091,10 +5091,24 @@
 				"switch": "Wechseln"
 			},
 			"featureFlagMetadata": {
-				"dockerProfile": "Docker-Profil: {profiles}",
-				"package": "Paket: {name}",
-				"requestedAccess": "Fordert Zugriff an: {capabilities}",
-				"requiredEnv": "Benötigt Umgebungsvariablen: {vars}"
+				"dockerProfile": "Docker-Profil",
+				"flagKey": "Flag-Schlüssel",
+				"package": "Paket",
+				"requestedAccess": "Fordert Zugriff an",
+				"requiredEnv": "Umgebungsvariablen",
+				"summary": "Technische Details"
+			},
+			"featurePackList": {
+				"customize": "Anpassen ({on} von {total} an)",
+				"enableFirst": "Schalten Sie zuerst {flags} ein",
+				"more": {
+					"description": "Integrationen, Sicherheitsprüfungen und Zustellungswerkzeuge, die Sie einzeln einschalten können.",
+					"label": "Weitere Funktionen"
+				},
+				"needsOneOf": "Benötigt eines von: {flags}",
+				"needsSetup": "Einrichtung nötig",
+				"needsSetupTitle": "Eingeschaltet, aber noch nicht eingerichtet. Es fehlt: {missing}",
+				"partial": "Teilweise an"
 			},
 			"inboundRetentionCard": {
 				"adminOnly": "Nur Inhaber und Administratoren können das ändern.",
@@ -6559,18 +6573,8 @@
 						"title": "{label} deaktivieren?",
 						"titleFallback": "Funktion deaktivieren?"
 					},
-					"categories": {
-						"ai": "KI",
-						"deliverability": "Analyse & Zustellbarkeit",
-						"integrations": "Integrationen",
-						"plugins": "Mitgelieferte Plugins",
-						"receiving": "Empfang",
-						"security": "Sicherheit & Prüfung",
-						"sending": "Versand"
-					},
 					"configUnverified": "Die Plugin-Konfiguration konnte nicht überprüft werden.",
 					"deliveryProviderRequirement": "Ein Zustellanbieter — setzen Sie EMAIL_PROVIDER auf einen registrierten Transport, konfigurieren Sie dessen Voraussetzungen und starten Sie dann neu",
-					"enableRequiredFirst": "Aktivieren Sie zuerst {flags}",
 					"inboundDnsHint": "Für den Mail-Empfang werden MX- und Eingangsport-DNS-Einträge benötigt. Legen Sie die Einträge unter {link} an, damit eingehende Mail diese Instanz erreicht.",
 					"inboundDnsLink": "Einstellungen → Domains → Empfang",
 					"missingEnv": {
@@ -6579,15 +6583,6 @@
 						"howTo": "Führen Sie {envCommand} auf dem Host aus und danach {restartCommand}.",
 						"title": "{label} benötigt eine Konfiguration",
 						"titleFallback": "Konfiguration erforderlich"
-					},
-					"needsConfig": "Konfiguration nötig",
-					"needsConfigTitle": "Aktiviert, aber nicht konfiguriert — es fehlt: {missing}",
-					"needsOneOf": "Benötigt eines von: {flags}",
-					"packs": {
-						"description": "Bündel zusammengehöriger Flags. Beim Umschalten eines Pakets werden alle darin enthaltenen Flags (und deren Abhängigkeiten) umgeschaltet.",
-						"flags": "Flags: {flags}",
-						"partial": "Teilweise",
-						"title": "Funktionspakete"
 					},
 					"pageTitle": "Funktionen — Owlat",
 					"pluginStatus": {
@@ -11133,24 +11128,11 @@
 			"validating": "Wird geprüft…"
 		},
 		"features": {
-			"categories": {
-				"ai": "KI",
-				"deliverability": "Analysen & Zustellbarkeit",
-				"integrations": "Integrationen",
-				"receiving": "Empfang",
-				"security": "Sicherheit & Prüfung",
-				"sending": "Versand"
-			},
 			"eyebrow": "Owlat-Einrichtung",
-			"intro": "Wenn Sie eine übergeordnete Funktion deaktivieren, werden ihre Unterfunktionen automatisch deaktiviert. Sie können all das später ändern.",
+			"intro": "Schalten Sie ein, was dieser Workspace braucht. Unter „Anpassen“ wählen Sie einzelne Funktionen. Sie können all das später in den Einstellungen ändern.",
 			"next": "Weiter: E-Mail-Anbieter",
-			"packsHeading": "Funktionspakete",
-			"packsIntro": "Wählen Sie ein Bündel. Das Umschalten eines Pakets ändert alle darin enthaltenen Schalter.",
 			"pageTitle": "Owlat-Einrichtung — Funktionen",
-			"partial": "teilweise",
-			"providerRequiredMessage": "Kampagnen, transaktionaler Versand oder Automatisierungen sind aktiviert — im Schritt „E-Mail“ wird ein Zustellanbieter benötigt (MTA, Resend oder SES). Ein verbundenes externes Postfach zählt nicht dazu.",
-			"providerRequiredTitle": "Im nächsten Schritt wird ein Zustellanbieter benötigt",
-			"requires": "erfordert: {features}",
+			"providerNote": "Für Kampagnen oder Mails über die API brauchen Sie einen Zustellanbieter, etwa Ihren eigenen Mailserver, Resend oder SES. Den wählen Sie im nächsten Schritt. Ein verbundenes persönliches Postfach reicht dafür nicht.",
 			"title": "Wählen Sie, was Sie {accent}",
 			"titleAccent": "aktivieren möchten"
 		},
@@ -15201,41 +15183,41 @@
 			"flags": {
 				"ai": {
 					"agent": {
-						"description": "Eingehende Mail automatisch nach Absicht klassifizieren und Antwortvorschläge entwerfen.",
-						"label": "KI-Agent (klassifizieren + entwerfen)"
+						"description": "Eingehende Team-Mail nach Thema sortieren und zu jeder Nachricht eine Antwort entwerfen, die Sie prüfen können.",
+						"label": "Antworten für mich entwerfen"
 					},
 					"assistant": {
-						"description": "KI-Assistent mit mehreren Gesprächsrunden, Streaming und Tool-Calling (eine eigene Chat-Oberfläche) sowie {'@'}assistant-Antworten im Team-Chat. Durchsucht Ihr Wissen, Ihre Dateien, Kontakte und Kampagnen und verfasst auf Wunsch Texte.",
+						"description": "Ein Assistent, mit dem Sie chatten können, dazu {'@'}assistant-Antworten im Team-Chat. Er durchsucht Ihr Wissen, Ihre Dateien, Kontakte und Kampagnen und verfasst auf Wunsch Texte.",
 						"label": "KI-Assistent & Chat"
 					},
 					"autonomy": {
-						"description": "Der Agent versendet Antworten und führt Aktionen ohne menschliche Freigabe aus, wenn die Konfidenz hoch ist.",
-						"label": "Autonome Aktionen"
+						"description": "Pro Nachrichtenart festlegen, wann KI-Antworten ohne Prüfung rausgehen dürfen, und Regeln in eigenen Worten hinzufügen. Eingerichtet wird das unter KI-Antworten.",
+						"label": "Regeln pro Nachrichtenart"
 					},
 					"decisionPlane": {
-						"description": "Ja/Nein-, Kategorie- und Bewertungsentscheidungen der KI-Funktionen von einem eigenen Entscheidungsanbieter statt von einem Textmodell beantworten lassen. Ausgeschaltet bleibt jede Entscheidung bei dem von Ihnen konfigurierten Sprachmodell.",
-						"label": "Entscheidungsebene"
+						"description": "Einen eigenen Entscheidungsdienst für schnelle Einschätzungen nutzen, etwa ob eine Nachricht eine Antwort braucht oder zu welchem Thema sie gehört. Ausgeschaltet trifft Ihr KI-Hauptmodell diese Entscheidungen.",
+						"label": "Eigenes Modell für schnelle Entscheidungen"
 					},
-					"description": "Hauptschalter für alle KI-gestützten Funktionen. Benötigt einen LLM-Anbieter.",
+					"description": "Schaltet die KI-Funktionen darunter ein. Benötigt einen KI-Anbieter.",
 					"knowledge": {
 						"analytics": {
-							"description": "Graph-Analysen (Zentralität, Cluster) per Cron berechnen und ein Wissensgraph-Dashboard bereitstellen.",
-							"label": "Wissensgraph-Analysen"
+							"description": "Auf einem Wissens-Dashboard sehen, welche Fakten am wichtigsten sind und wie sie zusammenhängen.",
+							"label": "Wissens-Einblicke"
 						},
 						"autoLink": {
-							"description": "Typisierte Kanten zwischen Wissenseinträgen per LLM-Durchlauf ableiten und für bestehende Einträge nachtragen. Der deterministische, regelbasierte Linker läuft immer, wenn der Wissensgraph aktiv ist; dies ergänzt die vom LLM abgeleiteten Kanten.",
-							"label": "Wissen automatisch verknüpfen (LLM)"
+							"description": "Mit KI erkennen, wie gespeicherte Fakten zusammenhängen, auch bei bereits vorhandenen. Einfache Verknüpfungen entstehen in jedem Fall.",
+							"label": "Verwandte Fakten verknüpfen"
 						},
-						"description": "Semantische Extraktion aus Konversationen, um Kontext für Agentenentwürfe aufzubauen.",
+						"description": "Fakten aus Ihren Gesprächen lernen, damit Antwortentwürfe sie nutzen können.",
 						"graphRetrieval": {
-							"description": "Ergebnisse der semantischen Suche entlang der Wissensgraph-Kanten erweitern (erst Startpunkte, dann Ausweitung), bevor Agentenentwürfe fundiert werden. Notausschalter: Wenn aus, ist die Suche Byte-identisch mit dem flachen Pfad.",
-							"label": "Graphgestützte Suche"
+							"description": "Beim Entwerfen von Antworten auch verwandte Fakten finden, nicht nur die direkten Treffer. Ausgeschaltet nutzen Entwürfe nur die direkten Treffer.",
+							"label": "Verwandte Fakten in Entwürfen nutzen"
 						},
 						"label": "Wissensgraph"
 					},
 					"label": "KI-Funktionen",
 					"visualizations": {
-						"description": "Diagramme und Dashboards aus natürlichsprachlichen Prompts erzeugen.",
+						"description": "Ein Diagramm in eigenen Worten beschreiben und aus Ihren Daten erstellen lassen.",
 						"label": "KI-Dashboards"
 					}
 				},
@@ -15315,8 +15297,8 @@
 				},
 				"postbox": {
 					"aiDraft": {
-						"description": "Erzeugt einen Antwortentwurf (mit Konfidenz- und Qualitäts-Selbstprüfung) vorab in der Antwort-Warteschlange, sobald eine persönliche Nachricht eintrifft, die eine Antwort braucht — so kann die Person, der das Postfach gehört, prüfen und senden, statt mit einem leeren Editor zu beginnen. Nur mit menschlicher Prüfung — es wird nie automatisch versendet.",
-						"label": "Entwurf bei Eingang für persönliche Mail"
+						"description": "Braucht eine persönliche Nachricht eine Antwort, liegt ein Entwurf in der Antwort-Warteschlange bereit. Sie prüfen ihn immer, bevor er gesendet wird.",
+						"label": "Antworten in persönlicher Mail entwerfen"
 					},
 					"description": "Postfächer pro Benutzer mit Webmail-Oberfläche, IMAP/SMTP für native Clients und MX-basierter Zustellung (Gmail-Äquivalent).",
 					"label": "Persönliche Mail (Postbox)"
@@ -15360,7 +15342,7 @@
 			},
 			"packs": {
 				"ai": {
-					"description": "KI-Agent, Autonomie, Wissensgraph (+ automatische Verknüpfung, Graphsuche, Analysen), Assistent und Dashboards.",
+					"description": "Antwortentwürfe, Regeln für automatisches Senden, ein Wissensgraph, ein Assistent und KI-Dashboards.",
 					"label": "KI"
 				},
 				"emailClient": {

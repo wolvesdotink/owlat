@@ -3222,7 +3222,7 @@
 			},
 			"graphView": {
 				"analyticsOffBody": "Enable {setting} in Settings to view the graph and its insights.",
-				"analyticsOffSetting": "Knowledge graph analytics",
+				"analyticsOffSetting": "Knowledge insights",
 				"analyticsOffTitle": "Graph analytics are off",
 				"centerHere": "Center here",
 				"closePanel": "Close panel",
@@ -5091,10 +5091,24 @@
 				"switch": "Switch"
 			},
 			"featureFlagMetadata": {
-				"dockerProfile": "Docker profile: {profiles}",
-				"package": "Package: {name}",
-				"requestedAccess": "Requests access: {capabilities}",
-				"requiredEnv": "Requires env: {vars}"
+				"dockerProfile": "Docker profile",
+				"flagKey": "Flag key",
+				"package": "Package",
+				"requestedAccess": "Requests access",
+				"requiredEnv": "Environment variables",
+				"summary": "Technical details"
+			},
+			"featurePackList": {
+				"customize": "Customize ({on} of {total} on)",
+				"enableFirst": "Turn on {flags} first",
+				"more": {
+					"description": "Integrations, security checks and delivery tools you can turn on one by one.",
+					"label": "More features"
+				},
+				"needsOneOf": "Needs one of: {flags}",
+				"needsSetup": "Needs setup",
+				"needsSetupTitle": "On, but not set up yet. Missing: {missing}",
+				"partial": "Some on"
 			},
 			"inboundRetentionCard": {
 				"adminOnly": "Only owners and admins can change this.",
@@ -6559,18 +6573,8 @@
 						"title": "Disable {label}?",
 						"titleFallback": "Disable feature?"
 					},
-					"categories": {
-						"ai": "AI",
-						"deliverability": "Analytics & deliverability",
-						"integrations": "Integrations",
-						"plugins": "Bundled plugins",
-						"receiving": "Receiving",
-						"security": "Security & scanning",
-						"sending": "Sending"
-					},
 					"configUnverified": "Plugin configuration could not be verified.",
 					"deliveryProviderRequirement": "A delivery provider — set EMAIL_PROVIDER to a registered transport, configure its requirements, then restart",
-					"enableRequiredFirst": "Enable {flags} first",
 					"inboundDnsHint": "Receiving mail needs MX + inbound-port DNS. Add the records under {link} so inbound mail reaches this instance.",
 					"inboundDnsLink": "Settings → Domains → Receiving",
 					"missingEnv": {
@@ -6579,15 +6583,6 @@
 						"howTo": "Run {envCommand} on the host, then {restartCommand}.",
 						"title": "{label} needs config",
 						"titleFallback": "Configuration needed"
-					},
-					"needsConfig": "Needs config",
-					"needsConfigTitle": "Enabled but not configured — missing: {missing}",
-					"needsOneOf": "Needs one of: {flags}",
-					"packs": {
-						"description": "Bundles of related flags. Toggling a pack flips every flag inside it (and their dependencies).",
-						"flags": "Flags: {flags}",
-						"partial": "Partial",
-						"title": "Feature packs"
 					},
 					"pageTitle": "Features — Owlat",
 					"pluginStatus": {
@@ -11133,24 +11128,11 @@
 			"validating": "Validating…"
 		},
 		"features": {
-			"categories": {
-				"ai": "AI",
-				"deliverability": "Analytics & deliverability",
-				"integrations": "Integrations",
-				"receiving": "Receiving",
-				"security": "Security & scanning",
-				"sending": "Sending"
-			},
 			"eyebrow": "Owlat setup",
-			"intro": "Toggle a master feature off and its sub-features disable automatically. You can change all of this later.",
+			"intro": "Turn on what this workspace needs. Open Customize to pick single features. You can change all of this later in Settings.",
 			"next": "Next: Email provider",
-			"packsHeading": "Feature packs",
-			"packsIntro": "Pick a bundle. Toggling a pack flips every flag it contains.",
 			"pageTitle": "Owlat setup — Features",
-			"partial": "partial",
-			"providerRequiredMessage": "Campaigns, transactional, or automations are enabled — the Email step will require a delivery provider (MTA, Resend, or SES). A connected external mailbox is not one.",
-			"providerRequiredTitle": "A delivery provider is required next",
-			"requires": "requires: {features}",
+			"providerNote": "Sending campaigns or API mail needs a delivery provider, such as your own mail server, Resend or SES. You'll pick one in the next step. A connected personal mailbox can't be used for this.",
 			"title": "Pick what to {accent}",
 			"titleAccent": "enable"
 		},
@@ -15201,41 +15183,41 @@
 			"flags": {
 				"ai": {
 					"agent": {
-						"description": "Auto-classify inbound mail by intent and draft suggested replies.",
-						"label": "AI agent (classify + draft)"
+						"description": "Sort incoming team mail by topic and draft a reply to each message, ready for you to review.",
+						"label": "Draft replies for me"
 					},
 					"assistant": {
-						"description": "Multi-turn, streaming, tool-calling AI assistant (a dedicated chat surface) plus {'@'}assistant replies inside team chat. Searches your knowledge, files, contacts, campaigns, and drafts copy on request.",
+						"description": "An assistant you can chat with, plus {'@'}assistant replies inside team chat. It searches your knowledge, files, contacts and campaigns, and drafts copy on request.",
 						"label": "AI assistant & chat"
 					},
 					"autonomy": {
-						"description": "Let the agent send replies and take actions without human approval when confidence is high.",
-						"label": "Autonomous actions"
+						"description": "Decide per type of message when AI replies may go out without review, and add rules in plain words. Set them up under AI replies.",
+						"label": "Rules for each type of message"
 					},
 					"decisionPlane": {
-						"description": "Answer the yes/no, category and score judgements the AI features make with a dedicated decision provider instead of a text model. Off, every judgement stays on your configured language model.",
-						"label": "Decision plane"
+						"description": "Use a separate decision service for quick calls, such as whether a message needs a reply or which topic it belongs to. Off, your main AI model makes them.",
+						"label": "Separate model for quick decisions"
 					},
-					"description": "Master toggle for all AI-powered features. Requires an LLM provider.",
+					"description": "Turn on the AI features below. Needs an AI provider.",
 					"knowledge": {
 						"analytics": {
-							"description": "Compute graph analytics (centrality, clusters) on a cron and surface a knowledge-graph dashboard.",
-							"label": "Knowledge graph analytics"
+							"description": "See which facts matter most and how they group together, on a knowledge dashboard.",
+							"label": "Knowledge insights"
 						},
 						"autoLink": {
-							"description": "Infer typed edges between knowledge entries with an LLM pass and backfill existing entries. The deterministic rule-based linker runs whenever the knowledge graph is on; this adds the LLM-inferred edges.",
-							"label": "Auto-link knowledge (LLM)"
+							"description": "Use AI to spot how saved facts relate to each other, including the ones you already have. Simple links are made either way.",
+							"label": "Connect related facts"
 						},
-						"description": "Semantic extraction from conversations to build context for agent drafts.",
+						"description": "Learn facts from your conversations so drafted replies can use them.",
 						"graphRetrieval": {
-							"description": "Expand semantic-search results along knowledge-graph edges (seed-then-expand) before grounding agent drafts. Kill switch: when off, retrieval is byte-identical to the flat path.",
-							"label": "Graph-augmented retrieval"
+							"description": "Find related facts when drafting replies, not only the closest matches. Off, drafts use the closest matches only.",
+							"label": "Use related facts in drafts"
 						},
 						"label": "Knowledge graph"
 					},
 					"label": "AI features",
 					"visualizations": {
-						"description": "Generate charts and dashboards from natural-language prompts.",
+						"description": "Describe a chart in plain words and get it built from your data.",
 						"label": "AI dashboards"
 					}
 				},
@@ -15315,8 +15297,8 @@
 				},
 				"postbox": {
 					"aiDraft": {
-						"description": "Pre-generate a reply draft (with a confidence + quality self-check) into the Reply Queue the moment a personal-mail message that needs a reply lands, so the owner can review-and-send instead of starting from a blank composer. Human review only — never auto-sends.",
-						"label": "Draft-on-arrival for personal mail"
+						"description": "When a personal message needs a reply, have a draft waiting in the answer queue. You always review it before it is sent.",
+						"label": "Draft replies in personal mail"
 					},
 					"description": "Per-user mailboxes with webmail UI, IMAP/SMTP for native clients, and MX-based delivery (Gmail-equivalent).",
 					"label": "Personal mail (Postbox)"
@@ -15360,12 +15342,12 @@
 			},
 			"packs": {
 				"ai": {
-					"description": "AI agent, autonomy, knowledge graph (+ auto-link, graph retrieval, analytics), assistant, and dashboards.",
+					"description": "Reply drafts, auto-send rules, a knowledge graph, an assistant and AI dashboards.",
 					"label": "AI"
 				},
 				"emailClient": {
 					"description": "Inbox, chat, and personal mail (Postbox) as one bundle.",
-					"label": "Email Client"
+					"label": "Email client"
 				},
 				"marketing": {
 					"description": "Campaigns, automations, and the transactional API.",

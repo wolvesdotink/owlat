@@ -140,7 +140,7 @@ describe('Settings Features — flag copy', () => {
 
 		expect(text).toContain('Marketing campaigns');
 		expect(text).toContain('Schedule and send broadcast campaigns to contacts and segments.');
-		expect(text).toContain('Email Client');
+		expect(text).toContain('Email client');
 		expect(text).toContain('Inbox, chat, and personal mail (Postbox) as one bundle.');
 		expect(text).toContain('Policy Pack');
 		expect(text).toContain('Bundled plugin from @example/policy-pack.');
@@ -250,7 +250,7 @@ describe('Settings Features — any-of dependency hint (requiresAny)', () => {
 		const wrapper = mountPage();
 		const flagSwitch = wrapper.find(aiDraftSwitch);
 		expect(flagSwitch.attributes('disabled')).toBeDefined();
-		expect(flagSwitch.attributes('title')).toBe('Enable ai first');
+		expect(flagSwitch.attributes('title')).toBe('Turn on AI features first');
 	});
 
 	it('enables through the external arm alone (postbox stays off)', async () => {

@@ -224,7 +224,7 @@ describe('Features page — profile diff detection per flag', () => {
 			return { ok: true, result: { flags: { ...liveFlags.value }, cascaded: [] } };
 		});
 		const wrapper = mountFeatures();
-		await wrapper.find('button[aria-label="Toggle Email Client"]').trigger('click');
+		await wrapper.find('button[aria-label="Toggle Email client"]').trigger('click');
 		await flushPromises();
 
 		expect(setFeaturePack).toHaveBeenCalledWith({ pack: 'emailClient', value: true });
