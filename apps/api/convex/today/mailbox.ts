@@ -22,6 +22,7 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess } from '../mail/permissions';
 import { loadThreadVisit, visitDelta } from '../mail/threadVisits';
+import { loadTodaySummary } from './summaryCache';
 import {
 	FILED_CATEGORIES,
 	type FiledCategory,
@@ -63,12 +64,6 @@ function toSource(message: Doc<'mailMessages'>): SourceMessage {
 	};
 }
 
-/** A thread summary is only trusted while it still covers every message. */
-function freshSummary(thread: Doc<'mailThreads'>): string | null {
-	const cache = thread.summaryCache;
-	return cache && cache.messageCount === thread.messageCount ? cache.summary : null;
-}
-
 /** Inbound messages of a thread newer than `after`, newest first. */
 async function messagesAfter(
 	ctx: QueryCtx,
@@ -85,8 +80,9 @@ async function messagesAfter(
 
 // public: soft-auth — returns null for anonymous/non-members; mailbox access is enforced in-handler
 export const digest = publicQuery({
-	args: { mailboxId: v.id('mailboxes'), since: v.number() },
+	args: { mailboxId: v.id('mailboxes'), since: v.number(), locale: v.optional(v.string()) },
 	handler: async (ctx, args) => {
+		const locale = args.locale ?? 'en';
 		const access = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!access.ok) return null;
 		const { userId } = access;
@@ -141,14 +137,22 @@ export const digest = publicQuery({
 				if (changed.length >= CHANGED_LIMIT) continue;
 				const after = Math.max(visit?.visitedAt ?? 0, args.since);
 				const sources = await messagesAfter(ctx, thread._id, after);
+				const newMessages = visit ? visitDelta(thread, visit).newSinceVisit : sources.length;
+				const sinceCount = Math.max(0, thread.messageCount - Math.max(newMessages, 1));
 				changed.push({
 					threadId: thread._id,
 					mailboxId: thread.mailboxId,
 					subject: thread.latestSubject,
-					newMessages: visit ? visitDelta(thread, visit).newSinceVisit : sources.length,
+					newMessages,
 					lastMessageAt: thread.lastMessageAt,
 					snippet: thread.latestSnippet,
-					summary: freshSummary(thread),
+					summary: await loadTodaySummary(ctx, {
+						threadId: thread._id,
+						locale,
+						messageCount: thread.messageCount,
+						sinceCount,
+					}),
+					summaryRequest: { messageId: thread.latestMessageId, sinceCount },
 					sources: sources.map(toSource),
 				});
 				continue;
@@ -167,7 +171,13 @@ export const digest = publicQuery({
 				mailboxId: thread.mailboxId,
 				subject: thread.latestSubject,
 				snippet: thread.latestSnippet,
-				summary: freshSummary(thread),
+				summary: await loadTodaySummary(ctx, {
+					threadId: thread._id,
+					locale,
+					messageCount: thread.messageCount,
+					sinceCount: 0,
+				}),
+				summaryRequest: { messageId: thread.latestMessageId, sinceCount: 0 },
 				category: category ?? null,
 				lastMessageAt: thread.lastMessageAt,
 				hasAttachments: thread.hasAttachments,

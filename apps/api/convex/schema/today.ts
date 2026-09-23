@@ -37,4 +37,20 @@ export const todayTables = {
 		// Point read per (viewer, thread); the `userId` prefix also serves the
 		// member-erasure sweep.
 		.index('by_user_and_thread', ['userId', 'threadId']),
+
+	// One-sentence Today summaries of what is new in a conversation, written by
+	// the cheap summarizer tier (today/summarize.ts). Keyed by the thread's
+	// message count and the count the reader had already seen (`sinceCount`:
+	// 0 for a new conversation, the visit's count for "what changed"), plus the
+	// reader's locale — so a new message or a different starting point is a
+	// cache miss, never a stale sentence. Derived from the thread's content, so
+	// it goes with the tenant; it names no reader.
+	todayThreadSummaries: defineTable({
+		threadId: v.id('mailThreads'),
+		locale: v.string(),
+		messageCount: v.number(),
+		sinceCount: v.number(),
+		sentence: v.string(),
+		generatedAt: v.number(),
+	}).index('by_thread_locale_counts', ['threadId', 'locale', 'messageCount', 'sinceCount']),
 };

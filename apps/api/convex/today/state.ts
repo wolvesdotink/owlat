@@ -28,6 +28,7 @@ async function loadState(ctx: QueryCtx | MutationCtx, userId: string, organizati
  * The caller's watermark. `isFallback` marks the first-visit case, where the
  * page shows the last 24 hours instead of "since you last looked".
  */
+// all-members: every member reads only their own watermark (keyed by session.userId).
 export const get = authedQuery({
 	args: { now: v.optional(v.number()) },
 	handler: async (ctx, args, session) => {

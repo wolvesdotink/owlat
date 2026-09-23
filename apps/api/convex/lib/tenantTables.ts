@@ -213,6 +213,7 @@ export const TENANT_TABLES = [
 	// a member's own reading history, so they go with the tenant.
 	'mailThreadVisits',
 	'todayStates',
+	'todayThreadSummaries',
 	'mailAuditLog',
 	'mailAuthFailures',
 	'mailboxMigrations',
