@@ -105,10 +105,10 @@ function requestRestore(version: VersionSummary) {
 	// Restoring is undoable, but it still replaces whatever is on the canvas —
 	// worth one confirmation when that canvas holds unsaved work.
 	if (props.hasUnsavedChanges) {
-		// The preview modal renders above the builder at z 10001; the confirmation
-		// dialog only reaches the default modal layer, so it would open invisibly
-		// behind an open preview. Close the preview first — cancelling still
-		// leaves the history panel open behind it.
+		// One dialog at a time: the confirmation shares the modal layer with the
+		// preview, so stacking it on top would leave two backdrops and two focus
+		// traps. Close the preview first — cancelling still leaves the history
+		// panel open behind it.
 		previewVersion.value = null;
 		pendingRestore.value = version;
 		return;
@@ -268,7 +268,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 		</Teleport>
 
 		<!-- Snapshot preview -->
-		<UiModal v-model:open="isPreviewOpen" size="3xl" :z-index="10001">
+		<UiModal v-model:open="isPreviewOpen" size="3xl">
 			<div class="flex items-center gap-3 mb-4">
 				<UiIconBox icon="lucide:history" size="sm" variant="brand" rounded="lg" />
 				<div class="min-w-0">
@@ -324,7 +324,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 			:confirm-text="t('components.email.templateHistoryPanel.confirmAction')"
 			variant="warning"
 			:is-loading="isRestoring"
-			@update:open="(open: boolean) => { if (!open) pendingRestore = null; }"
+			@update:open="
+				(open: boolean) => {
+					if (!open) pendingRestore = null;
+				}
+			"
 			@confirm="pendingRestore && applyRestore(pendingRestore)"
 			@cancel="pendingRestore = null"
 		/>

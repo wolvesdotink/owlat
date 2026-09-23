@@ -104,10 +104,14 @@ function cleanupObservers() {
 	window.removeEventListener('resize', updatePosition);
 }
 
-watch(() => props.canvasElement, (newEl, oldEl) => {
-	if (oldEl) cleanupObservers();
-	if (newEl) setupObservers();
-}, { immediate: false });
+watch(
+	() => props.canvasElement,
+	(newEl, oldEl) => {
+		if (oldEl) cleanupObservers();
+		if (newEl) setupObservers();
+	},
+	{ immediate: false }
+);
 
 onMounted(() => {
 	if (props.canvasElement) setupObservers();
@@ -128,7 +132,7 @@ function handlePickerSelect(type: BlockType) {
 		<div
 			v-show="isVisible && visible !== false"
 			ref="sidebarRef"
-			class="light fixed z-[999] flex flex-col items-center gap-0.5 p-1 bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_2px_8px_rgba(0,0,0,0.08)] animate-eb-fade-in"
+			class="light fixed z-(--z-float) flex flex-col items-center gap-0.5 p-1 bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_2px_8px_rgba(0,0,0,0.08)] animate-eb-fade-in"
 			:style="{ top: `${posTop}px`, left: `${posLeft}px`, width: '40px' }"
 			role="toolbar"
 			aria-orientation="vertical"
