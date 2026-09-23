@@ -3593,7 +3593,7 @@
 				"signature": "Signatur",
 				"uploadingTitle": "Warten, bis die Anhänge vollständig hochgeladen sind…",
 				"previewAsSent": "Vorschau wie gesendet",
-				"sendAs": "Senden als {name}"
+				"sendAs": "als {name}"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -11531,11 +11531,9 @@
 			},
 			"subsections": {
 				"contacts": "Kontakte",
-				"marketing": "Marketing",
 				"plugins": "Plugins",
 				"segments": "Segmente",
-				"topics": "Themen",
-				"transactional": "Transaktional"
+				"topics": "Themen"
 			}
 		},
 		"breadcrumbRoutes": {
@@ -11548,6 +11546,7 @@
 				"api": "API",
 				"apiQuickstart": "API-Schnellstart",
 				"auditLog": "Audit-Protokoll",
+				"automations": "Automationen",
 				"backups": "Backups",
 				"blocks": "Blöcke",
 				"campaignSenders": "Kampagnenabsender",
@@ -11572,7 +11571,7 @@
 				"independence": "Unabhängigkeit",
 				"instance": "Instanz",
 				"mailSearch": "Suche",
-				"marketing": "Marketing",
+				"marketing": "Marketing-E-Mails",
 				"measurement": "Messung",
 				"media": "Medien",
 				"migrateFromMailchimp": "Von Mailchimp migrieren",
@@ -11590,19 +11589,16 @@
 				"systemAndUpdates": "System & Updates",
 				"team": "Team",
 				"teamInboxes": "Team-Postfächer",
-				"templatesAndBlocks": "Vorlagen & Blöcke",
+				"templates": "Vorlagen",
 				"topics": "Themen",
 				"transactional": "Transaktional",
 				"webhooks": "Webhooks"
 			},
 			"sections": {
 				"audience": "Zielgruppe",
-				"automations": "Automationen",
-				"campaigns": "Kampagnen",
 				"dashboard": "Heute",
 				"marketing": "Marketing",
 				"preferences": "Meine Einstellungen",
-				"send": "Senden",
 				"workspace": "Arbeitsbereich",
 				"answer": "Antwortliste",
 				"inboxes": "Alle Postfächer",
@@ -11928,7 +11924,7 @@
 				"send": {
 					"automations": "Automationen",
 					"campaigns": "Kampagnen",
-					"templatesAndBlocks": "Vorlagen & Blöcke",
+					"templates": "Vorlagen",
 					"transactional": "Transaktional",
 					"overview": "Marketing-Übersicht"
 				}
@@ -11942,8 +11938,7 @@
 				"inbox": "Team-Postfach",
 				"knowledge": "Wissen",
 				"postbox": "Postfächer",
-				"preferences": "Einstellungen",
-				"send": "Senden"
+				"preferences": "Einstellungen"
 			}
 		},
 		"data": {

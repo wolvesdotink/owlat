@@ -185,7 +185,8 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		name: 'shared.dashboardNavigation.sections.assistant',
 		icon: 'lucide:sparkles',
 		href: '/dashboard/assistant',
-		gate: (env) => adminOnly(env) && flag('ai.assistant')(env),
+		// Every member, like the route: the user menu and ⌘J offer it to all.
+		gate: flag('ai.assistant'),
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.assistant.chat',
@@ -195,9 +196,11 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		],
 	},
 	{
-		// Unified "Send" section: everything you send from, in one place.
+		// The Marketing workspace: everything you send to an audience. Named with
+		// the breadcrumb's own section key, so the palette's context line, the
+		// trail and the sidebar switch say the same word.
 		key: 'send',
-		name: 'shared.dashboardNavigation.sections.send',
+		name: 'shared.breadcrumbRoutes.sections.marketing',
 		icon: 'lucide:send',
 		items: [
 			{
@@ -225,7 +228,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				gate: (env) => adminOnly(env) && flag('transactional')(env),
 			},
 			{
-				name: 'shared.dashboardNavigation.items.send.templatesAndBlocks',
+				name: 'shared.dashboardNavigation.items.send.templates',
 				href: '/dashboard/send',
 				icon: 'lucide:layout-grid',
 				gate: adminOnly,
@@ -266,7 +269,8 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		key: 'knowledge',
 		name: 'shared.dashboardNavigation.sections.knowledge',
 		icon: 'lucide:brain',
-		gate: (env) => adminOnly(env) && flag('ai.knowledge')(env),
+		// Every member: Knowledge sits in the Conversations sidebar next to Chat.
+		gate: flag('ai.knowledge'),
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.knowledge.explorer',

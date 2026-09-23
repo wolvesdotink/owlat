@@ -273,8 +273,11 @@ const showEmptyState = computed(
 			:description="t('dashboard.campaigns.index.subtitle')"
 			class="mb-6"
 		>
+			<!-- On desktop the top bar's primary is already New campaign in the
+			     Marketing workspace; the header copy is for phones, whose top bar
+			     has no create button. -->
 			<template #actions>
-				<UiButton @click="handleNewCampaign">
+				<UiButton class="lg:hidden" @click="handleNewCampaign">
 					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 					{{ t('dashboard.campaigns.index.newCampaign') }}
 				</UiButton>

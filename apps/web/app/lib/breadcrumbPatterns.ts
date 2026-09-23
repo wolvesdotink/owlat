@@ -7,7 +7,12 @@
  * keys are the ones `breadcrumbRoutes.ts` already defines, so a section reads
  * the same word whichever table matched the path.
  */
-import type { RouteConfig } from '~/lib/breadcrumbRoutes';
+import {
+	MARKETING_AUTOMATIONS,
+	MARKETING_CAMPAIGNS,
+	MARKETING_TEMPLATES,
+	type RouteConfig,
+} from '~/lib/breadcrumbRoutes';
 
 export interface PatternConfig {
 	pattern: RegExp;
@@ -113,10 +118,7 @@ export const patternConfigs: PatternConfig[] = [
 	{
 		pattern: /^\/dashboard\/send\/emails\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			section: 'shared.breadcrumbRoutes.sections.send',
-			sectionHref: '/dashboard/send',
-			subsection: 'shared.breadcrumbPatterns.subsections.marketing',
-			subsectionHref: '/dashboard/send/marketing',
+			...MARKETING_TEMPLATES,
 			page: 'shared.breadcrumbPatterns.pages.editTemplate',
 		}),
 	},
@@ -124,10 +126,7 @@ export const patternConfigs: PatternConfig[] = [
 	{
 		pattern: /^\/dashboard\/send\/transactional\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			section: 'shared.breadcrumbRoutes.sections.send',
-			sectionHref: '/dashboard/send',
-			subsection: 'shared.breadcrumbPatterns.subsections.transactional',
-			subsectionHref: '/dashboard/send/transactional',
+			...MARKETING_TEMPLATES,
 			page: 'shared.breadcrumbPatterns.pages.editTemplate',
 		}),
 	},
@@ -135,8 +134,7 @@ export const patternConfigs: PatternConfig[] = [
 	{
 		pattern: /^\/dashboard\/campaigns\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			section: 'shared.breadcrumbRoutes.sections.campaigns',
-			sectionHref: '/dashboard/campaigns',
+			...MARKETING_CAMPAIGNS,
 			page: 'shared.breadcrumbPatterns.pages.editCampaign',
 		}),
 	},
@@ -144,8 +142,7 @@ export const patternConfigs: PatternConfig[] = [
 	{
 		pattern: /^\/dashboard\/campaigns\/([^/]+)\/report$/,
 		getConfig: () => ({
-			section: 'shared.breadcrumbRoutes.sections.campaigns',
-			sectionHref: '/dashboard/campaigns',
+			...MARKETING_CAMPAIGNS,
 			page: 'shared.breadcrumbPatterns.pages.campaignReport',
 		}),
 	},
@@ -153,8 +150,7 @@ export const patternConfigs: PatternConfig[] = [
 	{
 		pattern: /^\/dashboard\/automations\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			section: 'shared.breadcrumbRoutes.sections.automations',
-			sectionHref: '/dashboard/automations',
+			...MARKETING_AUTOMATIONS,
 			page: 'shared.breadcrumbPatterns.pages.editAutomation',
 		}),
 	},
@@ -162,8 +158,7 @@ export const patternConfigs: PatternConfig[] = [
 	{
 		pattern: /^\/dashboard\/automations\/new$/,
 		getConfig: () => ({
-			section: 'shared.breadcrumbRoutes.sections.automations',
-			sectionHref: '/dashboard/automations',
+			...MARKETING_AUTOMATIONS,
 			page: 'shared.breadcrumbPatterns.pages.newAutomation',
 		}),
 	},
@@ -231,4 +226,14 @@ export const patternConfigs: PatternConfig[] = [
 			page: 'shared.breadcrumbPatterns.pages.teamInboxMembers',
 		}),
 	},
+	/**
+	 * Every other page inside a Marketing subtree (an automation's detail, a
+	 * campaign send, a template's settings or translations) keeps the workspace
+	 * trail up to its list. Without these the slug fallback printed a bare
+	 * "Automations" or "Send › Emails", with no Marketing crumb at all. Last on
+	 * purpose: the specific patterns above win.
+	 */
+	{ pattern: /^\/dashboard\/campaigns\/.+/, getConfig: () => ({ ...MARKETING_CAMPAIGNS }) },
+	{ pattern: /^\/dashboard\/automations\/.+/, getConfig: () => ({ ...MARKETING_AUTOMATIONS }) },
+	{ pattern: /^\/dashboard\/send\/.+/, getConfig: () => ({ ...MARKETING_TEMPLATES }) },
 ];

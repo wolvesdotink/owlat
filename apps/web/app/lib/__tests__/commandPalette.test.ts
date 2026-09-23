@@ -55,6 +55,42 @@ describe('mergeGroups', () => {
 		expect(merged[0]?.items).toHaveLength(3);
 		expect(merged[1]?.items).toHaveLength(6);
 	});
+
+	it('shows a route once, in the group nearest the top', () => {
+		const verb = { ...item('verb:new-campaign', 'New campaign'), href: '/dashboard/campaigns/new' };
+		const nav = { ...item('nav:/dashboard/campaigns/new', 'New campaign'), href: verb.href };
+		const merged = mergeGroups([
+			group('navigation', 40, [
+				nav,
+				{ ...item('nav:x', 'Campaigns'), href: '/dashboard/campaigns' },
+			]),
+			group('verbs', 5, [verb]),
+		]);
+		expect(merged.map((g) => g.items.map((i) => i.id))).toEqual([['verb:new-campaign'], ['nav:x']]);
+	});
+
+	it('drops a group whose every row was already shown above', () => {
+		const a = { ...item('a', 'Campaigns'), href: '/dashboard/campaigns' };
+		const merged = mergeGroups([group('first', 0, [a]), group('second', 1, [{ ...a, id: 'b' }])]);
+		expect(merged.map((g) => g.key)).toEqual(['first']);
+	});
+
+	it('lets a row cut by the cap reappear in a later group', () => {
+		const rows = [1, 2, 3].map((n) => ({ ...item(`r${n}`, `Row ${n}`), href: `/r/${n}` }));
+		const merged = mergeGroups([
+			group('capped', 0, rows, 2),
+			group('later', 1, [{ ...rows[2]!, id: 'again' }]),
+		]);
+		expect(merged[1]?.items.map((i) => i.id)).toEqual(['again']);
+	});
+
+	it('never dedupes rows without a route', () => {
+		const merged = mergeGroups([
+			group('a', 0, [item('x', 'Undo')]),
+			group('b', 1, [item('y', 'Undo')]),
+		]);
+		expect(merged).toHaveLength(2);
+	});
 });
 
 describe('filterItems', () => {

@@ -69,6 +69,13 @@ export interface PaletteItem {
 	hint?: string;
 	icon: string;
 	run: () => void;
+	/**
+	 * The route this item leads to, when it leads to one. Two rows with the same
+	 * destination are one result, so {@link mergeGroups} keeps only the first —
+	 * "New campaign" under Create and "New Campaign" under Go to used to both
+	 * show for "camp".
+	 */
+	href?: string;
 	/** When true the palette stays open after `run` (e.g. "recent" items that
 	 * only refill the query rather than navigate). Defaults to close-on-run. */
 	keepOpen?: boolean;
@@ -177,20 +184,35 @@ const DEFAULT_GROUP_CAP = 6;
 
 /**
  * Merge provider groups into the final render list: drop empties, sort by
- * `order` (stable within equal order), and cap each group. Pure.
+ * `order` (stable within equal order), drop any item whose `href` an earlier
+ * group already leads to, and cap each group. The dedupe runs in render order,
+ * so the row nearest the top wins — a Create verb beats the same route under
+ * Go to. Pure.
  */
 export function mergeGroups(
 	groups: PaletteGroup[],
 	defaultCap = DEFAULT_GROUP_CAP
 ): PaletteGroup[] {
+	const seenHrefs = new Set<string>();
 	return groups
 		.map((group, index) => ({ group, index }))
-		.filter(({ group }) => group.items.length > 0)
 		.sort((a, b) => a.group.order - b.group.order || a.index - b.index)
-		.map(({ group }) => ({
-			...group,
-			items: group.items.slice(0, group.cap ?? defaultCap),
-		}));
+		.map(({ group }) => {
+			const cap = group.cap ?? defaultCap;
+			const items: PaletteItem[] = [];
+			for (const item of group.items) {
+				if (items.length >= cap) break;
+				if (item.href !== undefined) {
+					if (seenHrefs.has(item.href)) continue;
+					// Only a row that is actually shown claims its route; one cut by
+					// the cap must not hide the same route in a later group.
+					seenHrefs.add(item.href);
+				}
+				items.push(item);
+			}
+			return { ...group, items };
+		})
+		.filter((group) => group.items.length > 0);
 }
 
 /** Flatten merged groups into render order for keyboard navigation. Pure. */

@@ -81,6 +81,15 @@ describe('defaultQuickCreateEntry', () => {
 		expect(defaultQuickCreateEntry(env('owner', ['campaigns']))?.id).toBe('campaign');
 		expect(defaultQuickCreateEntry(env('editor', []))).toBeNull();
 	});
+
+	it("leads with the workspace's own verb", () => {
+		expect(defaultQuickCreateEntry(env('owner'), 'inbox')?.id).toBe('compose');
+		expect(defaultQuickCreateEntry(env('owner'), 'marketing')?.id).toBe('campaign');
+	});
+
+	it('falls back when the workspace verb is not allowed', () => {
+		expect(defaultQuickCreateEntry(env('owner', ['postbox']), 'marketing')?.id).toBe('compose');
+	});
 });
 
 describe('the registry itself', () => {

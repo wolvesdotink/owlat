@@ -3593,7 +3593,7 @@
 				"signature": "Signature",
 				"uploadingTitle": "Waiting for attachments to finish uploading…",
 				"previewAsSent": "Preview as sent",
-				"sendAs": "Send as {name}"
+				"sendAs": "as {name}"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -11515,15 +11515,15 @@
 		},
 		"breadcrumbPatterns": {
 			"pages": {
-				"campaignReport": "Campaign Report",
+				"campaignReport": "Campaign report",
 				"contactDetails": "Contact Details",
 				"contactInTopic": "Contact in Topic",
-				"editAutomation": "Edit Automation",
-				"editCampaign": "Edit Campaign",
-				"editTemplate": "Edit Template",
+				"editAutomation": "Edit automation",
+				"editCampaign": "Edit campaign",
+				"editTemplate": "Edit template",
 				"label": "Label",
 				"message": "Message",
-				"newAutomation": "New Automation",
+				"newAutomation": "New automation",
 				"pluginSettings": "Plugin settings",
 				"segmentDetails": "Segment Details",
 				"teamInboxMembers": "Team inbox members",
@@ -11531,11 +11531,9 @@
 			},
 			"subsections": {
 				"contacts": "Contacts",
-				"marketing": "Marketing",
 				"plugins": "Plugins",
 				"segments": "Segments",
-				"topics": "Topics",
-				"transactional": "Transactional"
+				"topics": "Topics"
 			}
 		},
 		"breadcrumbRoutes": {
@@ -11548,6 +11546,7 @@
 				"api": "API",
 				"apiQuickstart": "API quickstart",
 				"auditLog": "Audit log",
+				"automations": "Automations",
 				"backups": "Backups",
 				"blocks": "Blocks",
 				"campaignSenders": "Campaign senders",
@@ -11572,11 +11571,11 @@
 				"independence": "Independence",
 				"instance": "Instance",
 				"mailSearch": "Search",
-				"marketing": "Marketing",
+				"marketing": "Marketing emails",
 				"measurement": "Measurement",
 				"media": "Media",
 				"migrateFromMailchimp": "Migrate from Mailchimp",
-				"newCampaign": "New Campaign",
+				"newCampaign": "New campaign",
 				"operatorConsole": "Operator console",
 				"overview": "Overview",
 				"plugins": "Plugins",
@@ -11590,19 +11589,16 @@
 				"systemAndUpdates": "System & updates",
 				"team": "Team",
 				"teamInboxes": "Team inboxes",
-				"templatesAndBlocks": "Templates & blocks",
+				"templates": "Templates",
 				"topics": "Topics",
 				"transactional": "Transactional",
 				"webhooks": "Webhooks"
 			},
 			"sections": {
 				"audience": "Audience",
-				"automations": "Automations",
-				"campaigns": "Campaigns",
 				"dashboard": "Today",
 				"marketing": "Marketing",
 				"preferences": "My settings",
-				"send": "Send",
 				"workspace": "Workspace",
 				"answer": "Answer queue",
 				"inboxes": "All inboxes",
@@ -11928,7 +11924,7 @@
 				"send": {
 					"automations": "Automations",
 					"campaigns": "Campaigns",
-					"templatesAndBlocks": "Templates & blocks",
+					"templates": "Templates",
 					"transactional": "Transactional",
 					"overview": "Marketing overview"
 				}
@@ -11942,8 +11938,7 @@
 				"inbox": "Team inbox",
 				"knowledge": "Knowledge",
 				"postbox": "Inboxes",
-				"preferences": "Preferences",
-				"send": "Send"
+				"preferences": "Preferences"
 			}
 		},
 		"data": {

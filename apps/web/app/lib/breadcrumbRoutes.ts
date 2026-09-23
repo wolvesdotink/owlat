@@ -35,6 +35,34 @@ export interface RouteConfig {
 	page?: string;
 }
 
+/** The Marketing workspace crumb — the word the sidebar's switch shows. */
+const MARKETING = 'shared.breadcrumbRoutes.sections.marketing';
+const MARKETING_HREF = '/dashboard/marketing';
+
+/** "Marketing › Campaigns", the parent of every campaign page. */
+export const MARKETING_CAMPAIGNS = {
+	section: MARKETING,
+	sectionHref: MARKETING_HREF,
+	subsection: 'shared.breadcrumbRoutes.pages.campaigns',
+	subsectionHref: '/dashboard/campaigns',
+} as const;
+
+/** "Marketing › Automations", the parent of every automation page. */
+export const MARKETING_AUTOMATIONS = {
+	section: MARKETING,
+	sectionHref: MARKETING_HREF,
+	subsection: 'shared.breadcrumbRoutes.pages.automations',
+	subsectionHref: '/dashboard/automations',
+} as const;
+
+/** "Marketing › Templates", the parent of every template page. */
+export const MARKETING_TEMPLATES = {
+	section: MARKETING,
+	sectionHref: MARKETING_HREF,
+	subsection: 'shared.breadcrumbRoutes.pages.templates',
+	subsectionHref: '/dashboard/send',
+} as const;
+
 /**
  * The Preferences trails, projected out of the settings registry.
  *
@@ -132,52 +160,48 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		'/dashboard/postbox/migrate': 'shared.breadcrumbRoutes.pages.importMail',
 	}),
 
-	// Send section
-	'/dashboard/send': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
-		page: 'shared.breadcrumbRoutes.pages.templatesAndBlocks',
-	},
-	'/dashboard/send/marketing': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
-		page: 'shared.breadcrumbRoutes.pages.marketing',
-	},
-	'/dashboard/send/transactional': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
-		page: 'shared.breadcrumbRoutes.pages.transactional',
-	},
-	'/dashboard/send/blocks': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
-		page: 'shared.breadcrumbRoutes.pages.blocks',
-	},
-	'/dashboard/send/media': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
-		page: 'shared.breadcrumbRoutes.pages.media',
-	},
-
-	// Marketing workspace
+	// Marketing workspace. Campaigns, automations and templates are filed under
+	// it, matching the sidebar's Marketing switch — the trail used to say "Send",
+	// a section the sidebar no longer has.
 	'/dashboard/marketing': {
-		section: 'shared.breadcrumbRoutes.sections.marketing',
-		sectionHref: '/dashboard/marketing',
+		section: MARKETING,
+		sectionHref: MARKETING_HREF,
 		page: 'shared.breadcrumbRoutes.pages.overview',
 	},
-
-	// Campaigns section
-	// Filed under Send, matching the sidebar — the section crumb was
-	// `campaigns` too, so the index route read "Campaigns > Campaigns".
 	'/dashboard/campaigns': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
+		section: MARKETING,
+		sectionHref: MARKETING_HREF,
 		page: 'shared.breadcrumbRoutes.pages.campaigns',
 	},
 	'/dashboard/campaigns/new': {
-		section: 'shared.breadcrumbRoutes.sections.campaigns',
-		sectionHref: '/dashboard/campaigns',
+		...MARKETING_CAMPAIGNS,
 		page: 'shared.breadcrumbRoutes.pages.newCampaign',
+	},
+	'/dashboard/automations': {
+		section: MARKETING,
+		sectionHref: MARKETING_HREF,
+		page: 'shared.breadcrumbRoutes.pages.automations',
+	},
+	'/dashboard/send': {
+		section: MARKETING,
+		sectionHref: MARKETING_HREF,
+		page: 'shared.breadcrumbRoutes.pages.templates',
+	},
+	'/dashboard/send/marketing': {
+		...MARKETING_TEMPLATES,
+		page: 'shared.breadcrumbRoutes.pages.marketing',
+	},
+	'/dashboard/send/transactional': {
+		...MARKETING_TEMPLATES,
+		page: 'shared.breadcrumbRoutes.pages.transactional',
+	},
+	'/dashboard/send/blocks': {
+		...MARKETING_TEMPLATES,
+		page: 'shared.breadcrumbRoutes.pages.blocks',
+	},
+	'/dashboard/send/media': {
+		...MARKETING_TEMPLATES,
+		page: 'shared.breadcrumbRoutes.pages.media',
 	},
 
 	// Audience section
@@ -212,12 +236,6 @@ export const routeConfigs: Record<string, RouteConfig> = {
 
 	// Preferences section (personal, per-user settings) is DERIVED — see
 	// `preferencesRouteConfigs` below.
-
-	// Automations section
-	'/dashboard/automations': {
-		section: 'shared.breadcrumbRoutes.sections.automations',
-		sectionHref: '/dashboard/automations',
-	},
 
 	...preferencesRouteConfigs(),
 	...adminRouteConfigs(),

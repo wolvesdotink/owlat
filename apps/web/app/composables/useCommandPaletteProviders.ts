@@ -72,6 +72,8 @@ export function useCommandPaletteProviders() {
 				id: verb.id,
 				label: t(verb.labelKey),
 				icon: entry.icon,
+				// A verb that is a page is the same result as that page under Go to.
+				...(href ? { href } : {}),
 				run: href
 					? () => void navigateTo(href)
 					: entry.id === 'compose'
@@ -125,6 +127,7 @@ export function useCommandPaletteProviders() {
 				label: t(item.name),
 				subtitle: t(section.name),
 				icon: item.icon,
+				href: item.href,
 				run: () => void navigateTo(item.href),
 			}))
 		)
@@ -147,6 +150,7 @@ export function useCommandPaletteProviders() {
 			label: t(target.labelKey),
 			...(target.contextKey ? { subtitle: t(target.contextKey) } : {}),
 			icon: target.icon,
+			href: target.href,
 			run: () => void navigateTo(target.href),
 		}));
 	});

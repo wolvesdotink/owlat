@@ -37,9 +37,13 @@ describe('contextForPath', () => {
 		expect(contextForPath('/dashboard/marketing')).toBe('marketing');
 	});
 
+	it('claims Knowledge for Conversations, where its sidebar row lives', () => {
+		expect(contextForPath('/dashboard/knowledge')).toBe('inbox');
+		expect(contextForPath('/dashboard/knowledge/graph')).toBe('inbox');
+	});
+
 	it('returns null for shared routes', () => {
 		expect(contextForPath('/dashboard/assistant')).toBeNull();
-		expect(contextForPath('/dashboard/knowledge/graph')).toBeNull();
 		expect(contextForPath('/dashboard/admin/instance/features')).toBeNull();
 	});
 
@@ -69,14 +73,9 @@ describe('splitSectionsByContext', () => {
 			section('knowledge', ['/dashboard/knowledge']),
 			section('preferences', ['/dashboard/preferences']),
 		]);
-		expect(split.inbox.map((s) => s.key)).toEqual(['inbox', 'postbox', 'chat']);
+		expect(split.inbox.map((s) => s.key)).toEqual(['inbox', 'postbox', 'chat', 'knowledge']);
 		expect(split.marketing.map((s) => s.key)).toEqual(['send', 'audience']);
-		expect(split.shared.map((s) => s.key)).toEqual([
-			'assistant',
-			'administration',
-			'knowledge',
-			'preferences',
-		]);
+		expect(split.shared.map((s) => s.key)).toEqual(['assistant', 'administration', 'preferences']);
 	});
 
 	it('yields an empty context when its sections were flag-filtered out', () => {

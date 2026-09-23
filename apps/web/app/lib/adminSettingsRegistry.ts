@@ -569,6 +569,9 @@ export function buildAdminSurfaceGroups(deps: AdminSurfaceDeps, query: string): 
 		label: deps.t(entry.titleKey),
 		subtitle: deps.t(deps.areaTitleKey(entry.area)),
 		icon: entry.icon,
+		// Shared with the core Go to row for the same page: this group renders
+		// above it, so inside Administration this row wins and the other drops.
+		href: entry.path,
 		run: () => deps.onOpen(entry),
 	}));
 	return [

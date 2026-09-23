@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import type { NavigationEnvironment } from '../dashboardNavigationCore';
 import { routePaletteTargets } from '../commandPaletteRoutes';
+import { ADMIN_AREAS, adminEntryFor } from '../adminSettingsRegistry';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
@@ -43,9 +44,26 @@ describe('routePaletteTargets', () => {
 
 	it('labels a leaf with its page crumb and the level above it', () => {
 		const target = routePaletteTargets(env(), new Set()).find(
-			(entry) => entry.href === '/dashboard/admin/delivery/webhooks'
+			(entry) => entry.href === '/dashboard/audience/segments'
 		);
 		expect(target).toMatchObject({
+			labelKey: 'shared.breadcrumbRoutes.pages.segments',
+			contextKey: 'shared.breadcrumbRoutes.sections.audience',
+			icon: 'lucide:users',
+		});
+	});
+
+	it('names an admin page with the title and area its own rail prints', () => {
+		const targets = routePaletteTargets(env(), new Set());
+		for (const target of targets.filter((entry) => entry.href.startsWith('/dashboard/admin'))) {
+			const entry = adminEntryFor(target.href);
+			if (!entry) continue;
+			const area = ADMIN_AREAS.find((candidate) => candidate.key === entry.area)!;
+			expect(target.labelKey, target.href).toBe(entry.titleKey);
+			expect(target.contextKey, target.href).toBe(area.titleKey);
+		}
+		const webhooks = targets.find((entry) => entry.href === '/dashboard/admin/delivery/webhooks');
+		expect(webhooks).toMatchObject({
 			labelKey: 'shared.breadcrumbRoutes.pages.webhooks',
 			// The Workspace group the page sits in, as the Settings sidebar names it.
 			contextKey: 'shell.admin.areas.delivery',
@@ -55,10 +73,19 @@ describe('routePaletteTargets', () => {
 
 	it('gives a section root no context line', () => {
 		const target = routePaletteTargets(env(), new Set()).find(
-			(entry) => entry.href === '/dashboard/automations'
+			(entry) => entry.href === '/dashboard'
 		);
-		expect(target?.labelKey).toBe('shared.breadcrumbRoutes.sections.automations');
+		expect(target?.labelKey).toBe('shared.breadcrumbRoutes.sections.dashboard');
 		expect(target?.contextKey).toBeUndefined();
+	});
+
+	it('files campaigns, automations and templates under Marketing, not Send', () => {
+		const targets = routePaletteTargets(env(), new Set());
+		for (const href of ['/dashboard/campaigns', '/dashboard/automations', '/dashboard/send']) {
+			const target = targets.find((entry) => entry.href === href);
+			expect(target?.contextKey, href).toBe('shared.breadcrumbRoutes.sections.marketing');
+			expect(t(target!.contextKey!)).toBe('Marketing');
+		}
 	});
 
 	it('renders every derived key as words, never as a key path', () => {

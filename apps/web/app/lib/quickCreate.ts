@@ -22,6 +22,7 @@
  */
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { minRole, type NavigationEnvironment } from './dashboardNavigationCore';
+import type { SidebarContext } from './sidebarContext';
 
 export type QuickCreateId = 'compose' | 'campaign' | 'contact' | 'automation';
 
@@ -90,11 +91,28 @@ export function quickCreateEntriesFor(env: NavigationEnvironment): QuickCreateEn
 }
 
 /**
- * The verb a split button's primary half performs: the first one that survived
- * the gates, so an instance with no mail still gets a working create button
- * rather than a dead one labelled "Compose". `null` when nothing survived —
- * which is a member with no create rights at all, and the button is not drawn.
+ * The verb each workspace leads with: in Marketing the top-bar primary is New
+ * campaign, in Conversations it is Compose. The other verbs stay in the
+ * dropdown, so a marketer is never offered "Compose email" as the black button
+ * above a page full of campaigns.
  */
-export function defaultQuickCreateEntry(env: NavigationEnvironment): QuickCreateEntry | null {
-	return quickCreateEntriesFor(env)[0] ?? null;
+const WORKSPACE_PRIMARY: Readonly<Record<SidebarContext, QuickCreateId>> = {
+	inbox: 'compose',
+	marketing: 'campaign',
+};
+
+/**
+ * The verb a split button's primary half performs: the active workspace's own
+ * verb when this member may run it, else the first one that survived the gates,
+ * so an instance with no mail still gets a working create button rather than a
+ * dead one labelled "Compose". `null` when nothing survived — which is a member
+ * with no create rights at all, and the button is not drawn.
+ */
+export function defaultQuickCreateEntry(
+	env: NavigationEnvironment,
+	workspace: SidebarContext = 'inbox'
+): QuickCreateEntry | null {
+	const entries = quickCreateEntriesFor(env);
+	const preferred = WORKSPACE_PRIMARY[workspace];
+	return entries.find((entry) => entry.id === preferred) ?? entries[0] ?? null;
 }
