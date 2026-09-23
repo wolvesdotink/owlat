@@ -96,6 +96,7 @@ const confirmBlock = async () => {
 		>
 			<template #empty>
 				<UiEmptyState
+					tone="clear"
 					icon="lucide:shield-check"
 					:title="t('dashboard.inbox.quarantine.emptyTitle')"
 					:description="t('dashboard.inbox.quarantine.emptyBody')"

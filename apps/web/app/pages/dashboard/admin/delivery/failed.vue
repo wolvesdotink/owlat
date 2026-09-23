@@ -71,6 +71,7 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 		>
 			<template #empty>
 				<UiEmptyState
+					tone="clear"
 					icon="lucide:check-circle"
 					:title="t('dashboard.inbox.failed.emptyTitle')"
 					:description="t('dashboard.inbox.failed.emptyBody')"
