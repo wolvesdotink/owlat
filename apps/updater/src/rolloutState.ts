@@ -66,6 +66,8 @@ export async function exclusively(
 export type RolloutOutcome = 'healthy' | 'started' | 'partially-applied' | 'failed';
 
 export interface LastRollout {
+	/** The caller's id for this update, when it sent one. */
+	attempt?: string;
 	/** The release the update applied; null for an update without a template. */
 	targetVersion: string | null;
 	startedAt: number;
@@ -79,6 +81,13 @@ export interface LastRollout {
 }
 
 const RECORD_FILE = join(OWLAT_DIR, '.owlat-last-rollout.json');
+
+const ATTEMPT_ID = /^[A-Za-z0-9-]{8,64}$/;
+
+/** An attempt id is echoed back verbatim, so only a plain token is kept. */
+export function isAttemptId(value: unknown): value is string {
+	return typeof value === 'string' && ATTEMPT_ID.test(value);
+}
 
 /**
  * Persist `record`. Best-effort: losing it costs the browser its verdict after

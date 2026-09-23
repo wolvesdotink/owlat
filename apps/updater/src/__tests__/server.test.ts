@@ -857,6 +857,19 @@ describe('the last rollout, on /health', () => {
 		expect(lastRollout?.['summary']).toContain('services are up');
 	});
 
+	it("echoes the caller's attempt id, and drops one that is not a plain token", async () => {
+		await post('/update', {
+			composeTemplate: TEMPLATE,
+			attempt: 'a1b2c3d4-0000-4000-8000-000000000001',
+		});
+		expect((await health()).lastRollout).toMatchObject({
+			attempt: 'a1b2c3d4-0000-4000-8000-000000000001',
+		});
+
+		await post('/update', { composeTemplate: TEMPLATE, attempt: '<script>alert(1)</script>' });
+		expect((await health()).lastRollout).not.toHaveProperty('attempt');
+	});
+
 	it('records a rollout that started but did not become healthy as started', async () => {
 		readiness.webStatus(503);
 

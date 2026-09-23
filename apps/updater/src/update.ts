@@ -51,7 +51,12 @@ import {
 } from './rollout.js';
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
 import { failingBeforeRollout, verifyReadiness } from './readiness.js';
-import { writeLastRollout, type LastRollout, type RolloutOutcome } from './rolloutState.js';
+import {
+	isAttemptId,
+	writeLastRollout,
+	type LastRollout,
+	type RolloutOutcome,
+} from './rolloutState.js';
 
 interface UpdateAnswer {
 	error?: string;
@@ -113,12 +118,16 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	}
 
 	let composeTemplate: string | undefined;
+	let attempt: string | undefined;
 
 	try {
 		const raw = await readBody(req);
 		if (raw) {
 			const body = JSON.parse(raw);
 			composeTemplate = body.composeTemplate;
+			// The caller's id for this attempt, echoed on /health so it can tell
+			// this update's verdict from an earlier one's.
+			if (isAttemptId(body.attempt)) attempt = body.attempt;
 		}
 	} catch {
 		// No body or invalid JSON — proceed without compose template update
@@ -142,6 +151,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// From here on every answer is also the last rollout's verdict (see the
 	// header): the record says `applying` until one is reached.
 	const record: LastRollout = {
+		...(attempt ? { attempt } : {}),
 		targetVersion: composeTemplate ? parseReleaseVersionFromTemplate(composeTemplate) : null,
 		startedAt: Date.now(),
 		phase: 'applying',
