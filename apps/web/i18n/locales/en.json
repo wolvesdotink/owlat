@@ -9313,8 +9313,8 @@
 			"detail": {
 				"addRelation": "Add relation",
 				"addingRelation": "Adding…",
-				"backToGraph": "Back to Knowledge Graph",
-				"browseGraph": "Browse Knowledge Graph",
+				"backToGraph": "Back to Knowledge",
+				"browseGraph": "Browse knowledge",
 				"clearSelection": "Clear selection",
 				"commitmentStatus": "Commitment status",
 				"commitmentStatusOperation": "Update commitment status",

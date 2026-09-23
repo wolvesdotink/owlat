@@ -9313,8 +9313,8 @@
 			"detail": {
 				"addRelation": "Beziehung hinzufügen",
 				"addingRelation": "Wird hinzugefügt …",
-				"backToGraph": "Zurück zum Wissensgraphen",
-				"browseGraph": "Wissensgraph durchsuchen",
+				"backToGraph": "Zurück zum Wissen",
+				"browseGraph": "Wissen durchsuchen",
 				"clearSelection": "Auswahl aufheben",
 				"commitmentStatus": "Status der Zusage",
 				"commitmentStatusOperation": "Status der Zusage ändern",
