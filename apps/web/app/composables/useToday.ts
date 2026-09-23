@@ -1,6 +1,12 @@
 import { api } from '@owlat/api';
 import { localizedSummary } from '~/utils/clarificationLocale';
-import { buildTodayModel, type MailboxDigest, type TodayModel } from '~/utils/todayDigest';
+import type { Id } from '@owlat/api/dataModel';
+import {
+	buildTodayModel,
+	missingSummaries,
+	type MailboxDigest,
+	type TodayModel,
+} from '~/utils/todayDigest';
 
 /**
  * Everything Today shows, live: the viewer's "since you last looked"
@@ -25,7 +31,41 @@ export function useToday() {
 	const since = computed(() => state.value?.seenAt);
 
 	const digests = useConvexQueryMap(api.today.mailbox.digest, ids, (mailboxId) =>
-		since.value === undefined ? 'skip' : { mailboxId, since: since.value }
+		since.value === undefined ? 'skip' : { mailboxId, since: since.value, locale: locale.value }
+	);
+
+	// One-sentence summaries instead of subject lines, where AI is on. Lines
+	// without one ask the summarizer in small batches; each written sentence
+	// lands through the live digest read. A failure leaves the subject line.
+	const requested = new Set<string>();
+	const BATCH = 8;
+	watch(
+		() =>
+			isEnabled('ai')
+				? missingSummaries(
+						[...digests.values()].map((r) => (r.data.value ?? null) as MailboxDigest | null)
+					)
+				: [],
+		async (missing) => {
+			const fresh = missing.filter(
+				(m) => !requested.has(`${m.messageId}:${m.sinceCount}:${locale.value}`)
+			);
+			if (fresh.length === 0) return;
+			const batch = fresh.slice(0, BATCH);
+			for (const m of batch) requested.add(`${m.messageId}:${m.sinceCount}:${locale.value}`);
+			try {
+				await requireConvex().action(api.today.summarize.summarizeThreads, {
+					locale: locale.value,
+					items: batch.map((m) => ({
+						messageId: m.messageId as Id<'mailMessages'>,
+						sinceCount: m.sinceCount,
+					})),
+				});
+			} catch {
+				// Advisory: the subject line stays.
+			}
+		},
+		{ immediate: true }
 	);
 
 	const teamOn = computed(() => isAdmin.value && isEnabled('inbox'));
