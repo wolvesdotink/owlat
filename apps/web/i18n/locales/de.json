@@ -264,7 +264,7 @@
 				"sendReply": "Antwort senden",
 				"subjectPlaceholder": "Betreff (optional)",
 				"subtitle": "Vom Agenten erstellte Entwürfe und Eskalationen, die auf Ihre Aktion warten.",
-				"title": "Prüf-Warteschlange",
+				"title": "Team-Entwürfe zum Prüfen",
 				"toasts": {
 					"draftApproved": "Entwurf freigegeben und zum Senden eingereiht",
 					"draftRejected": "Entwurf abgelehnt",
@@ -3715,8 +3715,8 @@
 				"noCustomFolders": "Keine eigenen Ordner",
 				"noLabels": "Noch keine Labels",
 				"renameFolder": "Ordner umbenennen",
-				"replyQueue": "Antwort-Warteschlange",
-				"replyQueueAriaLabel": "Antwort-Warteschlange, {count}",
+				"replyQueue": "Antwortliste",
+				"replyQueueAriaLabel": "Antwortliste, {count}",
 				"snoozed": "Zurückgestellt",
 				"subscriptions": "Abonnements",
 				"pinnedSearchesHeading": "Angeheftete Suchen",
@@ -5640,7 +5640,7 @@
 			"band": {
 				"answeringAs": "Antwort als {name}",
 				"replyingIn": "Antwort in #{room}",
-				"teamDetail": "die Adresse des Team-Postfachs, im Namen des Teams",
+				"teamDetail": "Antworten gehen von der Adresse des Team-Postfachs raus",
 				"chatDetail": "intern, wird nicht per E-Mail verschickt",
 				"followUp": "Nachfassen",
 				"draftReady": "Entwurf bereit",
@@ -5664,6 +5664,9 @@
 				"title": "Alles erledigt",
 				"summary": "{summary} in dieser Sitzung.",
 				"body": "Heute beginnt ab hier neu."
+			},
+			"mail": {
+				"writeOwn": "Selbst schreiben"
 			}
 		}
 	},
@@ -9125,10 +9128,10 @@
 				"listAriaLabel": "Konversationen im Team-Posteingang",
 				"loadMore": "Mehr laden",
 				"pageTitle": "Team-Posteingang — Owlat",
-				"reviewQueue": "Prüfliste",
+				"reviewQueue": "Entwürfe prüfen",
 				"snoozeThreadOperation": "Konversation zurückstellen",
 				"subtitle": "Kundengespräche, die Ihr Team gemeinsam bearbeitet.",
-				"title": "Team-Posteingang",
+				"title": "Team-Postfach",
 				"undo": {
 					"assigned": "Zugewiesen",
 					"assignedTo": "{name} zugewiesen",
@@ -11899,7 +11902,7 @@
 					"allThreads": "Alle Konversationen",
 					"codeTasks": "Code-Aufgaben",
 					"quarantine": "Quarantäne",
-					"reviewQueue": "Prüf-Warteschlange",
+					"reviewQueue": "Entwürfe prüfen",
 					"updates": "Neuigkeiten"
 				},
 				"knowledge": {
@@ -11932,7 +11935,7 @@
 				"customers": "Kundschaft",
 				"inbox": "Team-Postfach",
 				"knowledge": "Wissen",
-				"postbox": "Mail",
+				"postbox": "Postfächer",
 				"preferences": "Einstellungen",
 				"send": "Senden"
 			}

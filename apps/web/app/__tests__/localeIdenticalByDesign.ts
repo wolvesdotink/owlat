@@ -339,7 +339,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.dashboardNavigation.items.postbox.spam',
 	'shared.dataRetention.spamLabel',
 	'shared.dashboardNavigation.sections.chat',
-	'shared.dashboardNavigation.sections.postbox',
 	'shared.data.languageOptions.languages.hi',
 	'shared.data.languageOptions.timezones.americaAnchorage',
 	'shared.data.languageOptions.timezones.americaChicago',

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AnswerItem } from '~/composables/useAnswerQueue';
 import { replyQueueHeadline, type ReplyQueueText } from '~/utils/postboxReplyQueue';
+import { parseFromHeader } from '~/utils/todayDigest';
 
 /**
  * Today's first band: how many things wait on the viewer's answer, one button
@@ -33,7 +34,10 @@ function rowTitle(item: AnswerItem): string {
 }
 function rowDetail(item: AnswerItem): string {
 	if (item.source === 'mail') return item.row.fromName || item.row.fromAddress;
-	if (item.source === 'team') return item.entry.message.from;
+	if (item.source === 'team') {
+		const from = parseFromHeader(item.entry.message.from);
+		return from.name ?? from.address;
+	}
 	return '';
 }
 function rowMeta(item: AnswerItem): string {
@@ -81,19 +85,21 @@ const breakdown = computed(() => {
 
 		<div
 			v-else-if="items.length > 0"
-			class="flex flex-wrap items-center gap-4 rounded-2xl border border-border-subtle bg-bg-elevated px-5 py-4 shadow-(--shadow-1)"
+			class="flex flex-col gap-4 rounded-2xl border border-border-subtle bg-bg-elevated px-5 py-4 shadow-(--shadow-1) sm:flex-row sm:items-center"
 		>
-			<span
-				class="font-display text-4xl leading-none tracking-tight text-text-primary tabular-nums"
-				>{{ items.length }}</span
-			>
-			<div class="min-w-0 flex-1">
-				<h2 id="today-answer" class="text-sm font-medium text-text-primary">
-					{{ t('components.today.answer.title', { count: items.length }, items.length) }}
-				</h2>
-				<p class="mt-0.5 text-xs text-text-secondary">{{ breakdown }}</p>
+			<div class="flex min-w-0 flex-1 items-center gap-4">
+				<span
+					class="font-display text-4xl leading-none tracking-tight text-text-primary tabular-nums"
+					>{{ items.length }}</span
+				>
+				<div class="min-w-0 flex-1">
+					<h2 id="today-answer" class="text-sm font-medium text-text-primary">
+						{{ t('components.today.answer.title', { count: items.length }, items.length) }}
+					</h2>
+					<p class="mt-0.5 text-xs text-text-secondary">{{ breakdown }}</p>
+				</div>
 			</div>
-			<UiButton to="/dashboard/answer" class="shrink-0">
+			<UiButton to="/dashboard/answer" class="shrink-0 justify-center">
 				{{ t('components.today.answer.cta') }}
 				<Icon name="lucide:arrow-right" class="size-4" />
 			</UiButton>

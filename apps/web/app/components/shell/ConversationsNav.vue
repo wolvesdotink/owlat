@@ -54,6 +54,19 @@ const pinned = computed(() => [
 		: []),
 ]);
 
+/** Icon-rail labels: the first letter, or two where two inboxes share one. */
+const railLabels = computed(() => {
+	const firsts = inboxes.value.map((i) => i.name.charAt(0).toUpperCase());
+	return new Map(
+		inboxes.value.map((inbox, index) => [
+			inbox.mailboxId,
+			firsts.filter((f) => f === firsts[index]).length > 1
+				? inbox.name.slice(0, 2)
+				: firsts[index]!,
+		])
+	);
+});
+
 function isActive(to: string, exact: boolean): boolean {
 	return exact ? route.path === to : route.path === to || route.path.startsWith(`${to}/`);
 }
@@ -102,7 +115,12 @@ function isActive(to: string, exact: boolean): boolean {
 				:title="inbox.name"
 				class="flex justify-center rounded-lg py-2 hover:bg-(--surface-2-hover)"
 			>
-				<InboxChip :name="inbox.name.charAt(0)" :slot="inbox.slot" variant="plain" size="md" />
+				<InboxChip
+					:name="railLabels.get(inbox.mailboxId) ?? inbox.name.charAt(0)"
+					:slot="inbox.slot"
+					variant="plain"
+					size="md"
+				/>
 			</NuxtLink>
 			<NuxtLink
 				v-if="showChat"

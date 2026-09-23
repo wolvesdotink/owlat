@@ -28,6 +28,11 @@ withDefaults(
 		held?: boolean;
 		/** Plain-language reason shown under the row while `held`. */
 		heldReason?: string;
+		/**
+		 * Render the primary as a secondary button — when the card already offers
+		 * a stronger next step (a prepared draft's "Review & send"), one accent.
+		 */
+		quiet?: boolean;
 		/** Quiet keyboard hints, e.g. [{ keys: ['Enter'], label: 'Answer' }]. */
 		hints?: ReadonlyArray<{ keys: readonly string[]; label: string }>;
 	}>(),
@@ -43,6 +48,7 @@ withDefaults(
 		held: false,
 		heldReason: undefined,
 		hints: undefined,
+		quiet: false,
 	}
 );
 
@@ -55,7 +61,12 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 			<button
 				type="button"
 				:data-testid="primaryTestId"
-				class="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded bg-brand text-text-inverse hover:bg-brand/90 transition-colors duration-(--motion-fast) disabled:opacity-50 disabled:cursor-not-allowed"
+				class="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded transition-colors duration-(--motion-fast) disabled:opacity-50 disabled:cursor-not-allowed"
+				:class="
+					quiet
+						? 'border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
+						: 'bg-brand text-text-inverse hover:bg-brand/90'
+				"
 				:disabled="primaryDisabled || primaryLoading || held"
 				:aria-disabled="held ? 'true' : undefined"
 				@click.stop.prevent="emit('primary')"

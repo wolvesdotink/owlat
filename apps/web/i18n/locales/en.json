@@ -264,7 +264,7 @@
 				"sendReply": "Send Reply",
 				"subjectPlaceholder": "Subject (optional)",
 				"subtitle": "Agent-generated drafts and escalations waiting for your action.",
-				"title": "Review Queue",
+				"title": "Team drafts to review",
 				"toasts": {
 					"draftApproved": "Draft approved and queued for sending",
 					"draftRejected": "Draft rejected",
@@ -3715,8 +3715,8 @@
 				"noCustomFolders": "No custom folders",
 				"noLabels": "No labels yet",
 				"renameFolder": "Rename folder",
-				"replyQueue": "Reply Queue",
-				"replyQueueAriaLabel": "Reply Queue, {count}",
+				"replyQueue": "Answer queue",
+				"replyQueueAriaLabel": "Answer queue, {count}",
 				"snoozed": "Snoozed",
 				"subscriptions": "Subscriptions",
 				"pinnedSearchesHeading": "Pinned searches",
@@ -4051,7 +4051,7 @@
 					}
 				},
 				"screener": {
-					"hint": "When on, mail from someone you've never corresponded with is held out of the Reply Queue until you accept the sender — their mail still lands in the inbox. Keeps triage focused on people you know. Off by default.",
+					"hint": "When on, mail from someone you've never corresponded with is held out of the Answer queue until you accept the sender — their mail still lands in the inbox. Keeps triage focused on people you know. Off by default.",
 					"label": "Screen first-time senders"
 				}
 			},
@@ -4267,7 +4267,7 @@
 			"postboxSenderControls": {
 				"accept": "Accept sender",
 				"acceptOperation": "Accept sender",
-				"acceptTitle": "Accept this first-time sender into the Reply Queue",
+				"acceptTitle": "Accept this first-time sender into the Answer queue",
 				"markVip": "Mark sender as VIP",
 				"removeVip": "Remove VIP",
 				"vipOperation": "VIP"
@@ -5640,7 +5640,7 @@
 			"band": {
 				"answeringAs": "Answering as {name}",
 				"replyingIn": "Replying in #{room}",
-				"teamDetail": "the team inbox address, on behalf of the team",
+				"teamDetail": "replies go out from the team inbox address",
 				"chatDetail": "internal, not sent by email",
 				"followUp": "follow-up",
 				"draftReady": "draft ready",
@@ -5664,6 +5664,9 @@
 				"title": "All caught up",
 				"summary": "{summary} this session.",
 				"body": "Today now starts fresh from here."
+			},
+			"mail": {
+				"writeOwn": "Write my own"
 			}
 		}
 	},
@@ -9125,10 +9128,10 @@
 				"listAriaLabel": "Team inbox threads",
 				"loadMore": "Load More",
 				"pageTitle": "Team Inbox — Owlat",
-				"reviewQueue": "Review Queue",
+				"reviewQueue": "Review drafts",
 				"snoozeThreadOperation": "Snooze thread",
 				"subtitle": "Customer conversations your team handles together.",
-				"title": "Team Inbox",
+				"title": "Team inbox",
 				"undo": {
 					"assigned": "Assigned",
 					"assignedTo": "Assigned to {name}",
@@ -9555,7 +9558,7 @@
 				"addMailAccount": "Add mail account",
 				"noMailbox": "No mailbox yet",
 				"noMailboxHint": "Provision your first personal mailbox to start receiving mail.",
-				"pageTitle": "Reply Queue — Owlat"
+				"pageTitle": "Answer queue — Owlat"
 			},
 			"search": {
 				"backToResults": "Results",
@@ -11899,7 +11902,7 @@
 					"allThreads": "All Threads",
 					"codeTasks": "Code Tasks",
 					"quarantine": "Quarantine",
-					"reviewQueue": "Review Queue",
+					"reviewQueue": "Review drafts",
 					"updates": "Updates"
 				},
 				"knowledge": {
@@ -11930,9 +11933,9 @@
 				"audience": "Audience",
 				"chat": "Chat",
 				"customers": "Customers",
-				"inbox": "Team Inbox",
+				"inbox": "Team inbox",
 				"knowledge": "Knowledge",
-				"postbox": "Mail",
+				"postbox": "Inboxes",
 				"preferences": "Preferences",
 				"send": "Send"
 			}

@@ -80,7 +80,7 @@ describe('useBreadcrumbs', () => {
 
 	describe('route coverage', () => {
 		// The slug-capitalization fallback drifts from the sidebar ('Ai Provider'
-		// vs 'AI provider') and always roots the trail at 'Dashboard', so a
+		// vs 'AI provider') and starts at the bare URL segment ('Admin'), so a
 		// configured Administration/Preferences route never starts with it.
 		it('every Administration page has a configured trail', async () => {
 			const uncovered: string[] = [];
@@ -182,7 +182,11 @@ describe('useBreadcrumbs', () => {
 	 */
 	describe('postbox message trail', () => {
 		it('names the message instead of printing its document id', () => {
-			expect(labelsFor('/dashboard/postbox/inbox/Mm_abc123')).toEqual(['Mail', 'Inbox', 'Message']);
+			expect(labelsFor('/dashboard/postbox/inbox/Mm_abc123')).toEqual([
+				'Inboxes',
+				'Inbox',
+				'Message',
+			]);
 		});
 
 		it('carries no id-looking crumb', () => {
@@ -199,13 +203,13 @@ describe('useBreadcrumbs', () => {
 
 		it('skips the folder crumb for a custom folder (its param is a raw id)', () => {
 			expect(labelsFor('/dashboard/postbox/j57customfolder/Mm_abc123')).toEqual([
-				'Mail',
+				'Inboxes',
 				'Message',
 			]);
 		});
 
 		it('reads a label list as a label, not as a message and not as its id', () => {
-			expect(labelsFor('/dashboard/postbox/label/lbl_abc123')).toEqual(['Mail', 'Label']);
+			expect(labelsFor('/dashboard/postbox/label/lbl_abc123')).toEqual(['Inboxes', 'Label']);
 		});
 	});
 
@@ -217,7 +221,7 @@ describe('useBreadcrumbs', () => {
 	 */
 	describe('postbox folder-list trail', () => {
 		it('names the section the way the sidebar does', () => {
-			expect(labelsFor('/dashboard/postbox/inbox')).toEqual(['Mail', 'Inbox']);
+			expect(labelsFor('/dashboard/postbox/inbox')).toEqual(['Inboxes', 'Inbox']);
 		});
 
 		it('agrees with the message trail it opens into', () => {

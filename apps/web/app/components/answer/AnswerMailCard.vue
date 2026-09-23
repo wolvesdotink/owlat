@@ -243,10 +243,13 @@ const secondaryButton =
 		<TaskActions
 			v-if="row.kind !== 'followup'"
 			:primary-label="
-				aiEnabled
-					? t('components.postbox.postboxReplyFlow.draftReply')
-					: t('components.postbox.postboxReplyFlow.reply')
+				row.draftSlot
+					? t('components.answer.mail.writeOwn')
+					: aiEnabled
+						? t('components.postbox.postboxReplyFlow.draftReply')
+						: t('components.postbox.postboxReplyFlow.reply')
 			"
+			:quiet="!!row.draftSlot"
 			primary-icon="lucide:reply"
 			:primary-disabled="busy"
 			:primary-loading="busy"

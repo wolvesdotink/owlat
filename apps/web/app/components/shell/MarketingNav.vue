@@ -70,7 +70,9 @@ const campaignRows = computed(() => {
 	}) => {
 		if (seen.has(c._id) || c.status === 'cancelled') return;
 		seen.add(c._id);
-		const at = c.status === 'scheduled' ? c.scheduledAt : (c.sentAt ?? c.updatedAt);
+		// A send still ahead of us shows when it goes out; anything else, when it did.
+		const upcoming = c.scheduledAt !== undefined && c.scheduledAt > now ? c.scheduledAt : undefined;
+		const at = upcoming ?? c.sentAt ?? c.updatedAt;
 		rows.push({
 			id: c._id,
 			name: c.name,

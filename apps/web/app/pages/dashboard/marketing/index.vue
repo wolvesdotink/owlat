@@ -214,7 +214,7 @@ function handleNewCampaign() {
 						<UiTrendChart
 							:data="opensSeries"
 							:ariaLabel="t('dashboard.marketing.period.opensPerDay')"
-							:format-value="(v: number) => formatNumber(v)"
+							:format-value="(v: number) => formatNumber(Math.round(v))"
 							label-peak
 						/>
 					</div>

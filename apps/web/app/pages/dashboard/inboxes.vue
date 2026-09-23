@@ -51,10 +51,10 @@ const allRows = computed<Row[]>(() => {
 	for (const [mailboxId, result] of threadResults) {
 		for (const thread of result.data.value?.threads ?? []) {
 			rows.push({
-				key: `mail:${thread._id}`,
+				key: `mail:${mailboxId}:${thread._id}`,
 				inboxId: mailboxId,
 				title: thread.latestSubject,
-				from: thread.latestFromAddress,
+				from: thread.latestFromAddress ?? '',
 				snippet: thread.latestSnippet,
 				at: thread.lastMessageAt,
 				unread: thread.unreadCount > 0,
@@ -121,8 +121,7 @@ function inboxOf(id: string) {
 	return id === 'team' ? null : (byId.value.get(id as Id<'mailboxes'>) ?? null);
 }
 function senderLabel(from: string): string {
-	const local = from.split('@', 1)[0] ?? from;
-	return from.includes('@') ? from : local;
+	return from;
 }
 
 const SHOW_OPTIONS = [
