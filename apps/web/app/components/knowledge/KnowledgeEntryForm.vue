@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import type { EntryType, SourceType } from '~/utils/knowledgeEntryTypes';
+import {
+	AUTHORABLE_ENTRY_TYPES,
+	AUTHORABLE_SOURCE_TYPES,
+	type EntryType,
+	type SourceType,
+} from '~/utils/knowledgeEntryTypes';
 
 const props = withDefaults(
 	defineProps<{
@@ -26,7 +31,19 @@ const emit = defineEmits<{
 	cancelled: [];
 }>();
 
-const { createEntry, updateEntry, ENTRY_TYPES, TYPE_CONFIG, SOURCE_CONFIG } = useKnowledgeGraph();
+const { createEntry, updateEntry, TYPE_CONFIG, SOURCE_CONFIG } = useKnowledgeGraph();
+
+// Policy/FAQ types and the `curated` source belong to canonical answers, which
+// have their own form. Editing an existing canonical answer keeps its own type
+// and source in the list so the select never shows a blank value.
+const withCurrent = <T extends string>(options: readonly T[], current: string | undefined): T[] =>
+	current && !options.includes(current as T) ? [...options, current as T] : [...options];
+const entryTypeOptions = computed(() =>
+	withCurrent(AUTHORABLE_ENTRY_TYPES, props.initialValues?.entryType)
+);
+const sourceTypeOptions = computed(() =>
+	withCurrent(AUTHORABLE_SOURCE_TYPES, props.initialValues?.sourceType)
+);
 
 const { t, te } = useI18n();
 
@@ -119,7 +136,7 @@ const handleCancel = () => {
 				t('components.knowledge.knowledgeEntryForm.type')
 			}}</label>
 			<select id="form-entrytype" v-model="form.entryType" class="input w-full">
-				<option v-for="entryType in ENTRY_TYPES" :key="entryType" :value="entryType">
+				<option v-for="entryType in entryTypeOptions" :key="entryType" :value="entryType">
 					{{ entryTypeLabel(entryType) }}
 				</option>
 			</select>
@@ -159,8 +176,8 @@ const handleCancel = () => {
 				t('components.knowledge.knowledgeEntryForm.source')
 			}}</label>
 			<select id="form-sourcetype" v-model="form.sourceType" class="input w-full">
-				<option v-for="(config, key) in SOURCE_CONFIG" :key="key" :value="key">
-					{{ sourceTypeLabel(String(key)) }}
+				<option v-for="source in sourceTypeOptions" :key="source" :value="source">
+					{{ sourceTypeLabel(source) }}
 				</option>
 			</select>
 		</div>

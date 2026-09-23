@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { formatContactPropertyValue } from '~/utils/contactPropertyValue';
+import { formatDate } from '~/utils/formatters';
 
 const { t } = useI18n();
 
@@ -82,6 +84,15 @@ const contactTitle = computed(() => {
 	return name || c.email || '';
 });
 
+// Stored values are strings whatever the type: show Yes/No and a dated value
+// in the reader's locale instead of `true` and `2026-11-09`.
+const displayPropertyValue = (property: { _id: Id<'contactProperties'>; type: string }) =>
+	formatContactPropertyValue(property.type, getPropertyValue(property._id), {
+		yes: t('common.yes'),
+		no: t('common.no'),
+		date: (value) => formatDate(value, 'medium'),
+	});
+
 const { canManageContacts, canAnnotateContacts, isAdmin } = usePermissions();
 
 // Members get a quiet two-tab profile. Admin-only CRM depth stays available
@@ -91,7 +102,6 @@ const tabOptions = computed(() =>
 	isAdmin.value
 		? [
 				{ value: 'profile', label: t('dashboard.audience.contacts.detail.tabs.profile') },
-				{ value: 'activity', label: t('dashboard.audience.contacts.detail.tabs.activity') },
 				{ value: 'timeline', label: t('dashboard.audience.contacts.detail.tabs.timeline') },
 				{ value: 'knowledge', label: t('dashboard.audience.contacts.detail.tabs.knowledge') },
 				{ value: 'files', label: t('dashboard.audience.contacts.detail.tabs.files') },
@@ -103,15 +113,16 @@ const tabOptions = computed(() =>
 			]
 		: [
 				{ value: 'profile', label: t('dashboard.audience.contacts.detail.tabs.profile') },
-				{ value: 'timeline', label: t('dashboard.audience.contacts.detail.tabs.activity') },
+				{ value: 'timeline', label: t('dashboard.audience.contacts.detail.tabs.timeline') },
 			]
 );
 
-// Activity Timeline — the Activity tab is admin-only and 'profile' is the default
-// tab, so the subscription is gated on the tab actually being open. Without the
-// gate every contact page paid for a listByContact subscription that members can
-// never surface and admins usually don't open.
-const isActivityTabActive = computed(() => isAdmin.value && activeTab.value === 'activity');
+// One Timeline tab: the messages, then (for admins) the activity log under
+// them. 'profile' is the default tab, so the activity subscription is gated on
+// the timeline actually being open. Without the gate every contact page paid
+// for a listByContact subscription that members can never surface and admins
+// usually don't open.
+const isActivityTabActive = computed(() => isAdmin.value && activeTab.value === 'timeline');
 const {
 	accumulatedActivities,
 	activitiesLoading,
@@ -295,11 +306,7 @@ async function handleRemoveSuppression() {
 								:name="getDoiStatusIcon(contact.doiStatus)!"
 								class="w-4 h-4"
 							/>
-							<span>{{
-								t('dashboard.audience.contacts.detail.doiStatus', {
-									status: getDoiStatusLabel(contact.doiStatus),
-								})
-							}}</span>
+							<span>{{ getDoiStatusLabel(contact.doiStatus) }}</span>
 						</div>
 					</template>
 
@@ -323,7 +330,11 @@ async function handleRemoveSuppression() {
 								:title="t('dashboard.audience.contacts.detail.resendDoiTitle')"
 								@click="handleResendDoi"
 							>
-								<Icon v-if="isResendingDoi" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+								<Icon
+									v-if="isResendingDoi"
+									name="lucide:loader-2"
+									class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								/>
 								<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
 								{{
 									isResendingDoi
@@ -542,11 +553,11 @@ async function handleRemoveSuppression() {
 								<span class="text-text-secondary">{{ property.label }}</span>
 								<span
 									:class="
-										getPropertyValue(property._id) ? 'text-text-primary' : 'text-text-tertiary'
+										displayPropertyValue(property) ? 'text-text-primary' : 'text-text-tertiary'
 									"
 								>
 									{{
-										getPropertyValue(property._id) || t('dashboard.audience.contacts.detail.notSet')
+										displayPropertyValue(property) || t('dashboard.audience.contacts.detail.notSet')
 									}}
 								</span>
 							</div>
@@ -574,8 +585,9 @@ async function handleRemoveSuppression() {
 						/>
 					</div>
 
-					<!-- Activity Tab -->
-					<div v-if="isAdmin && activeTab === 'activity'" class="card">
+					<!-- Timeline Tab: messages across channels, then the activity log -->
+					<ContactsUnifiedTimelineTab v-if="activeTab === 'timeline'" :contact-id="contactId" />
+					<div v-if="isAdmin && activeTab === 'timeline'" class="card">
 						<h2 class="text-lg font-medium text-text-primary mb-4">
 							{{ t('dashboard.audience.contacts.detail.activity.title') }}
 						</h2>
@@ -676,9 +688,6 @@ async function handleRemoveSuppression() {
 							</div>
 						</div>
 					</div>
-
-					<!-- Unified Timeline Tab -->
-					<ContactsUnifiedTimelineTab v-if="activeTab === 'timeline'" :contact-id="contactId" />
 
 					<!-- Knowledge Tab -->
 					<ContactsContactKnowledgeTab
