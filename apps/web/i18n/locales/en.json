@@ -5573,13 +5573,13 @@
 		},
 		"today": {
 			"answer": {
-				"title": "one email needs an answer from you | {count} emails need an answer from you",
+				"title": "{count} needs an answer from you | {count} need an answer from you",
 				"cta": "Review answer queue",
-				"drafts": "one with a draft ready | {count} with drafts ready",
-				"mail": "one email | {count} emails",
-				"team": "one team draft | {count} team drafts",
-				"mentions": "one mention | {count} mentions",
-				"minutes": "about a minute | about {count} minutes",
+				"drafts": "{count} draft ready | {count} drafts ready",
+				"mail": "{count} in your inboxes",
+				"team": "{count} in the team inbox",
+				"mentions": "{count} mention | {count} mentions",
+				"minutes": "about {count} minute | about {count} minutes",
 				"clearTitle": "Nothing needs an answer",
 				"clearBody": "New questions land in the Answer queue as they arrive.",
 				"needsTitle": "Needs an answer",
@@ -5591,8 +5591,8 @@
 			"changed": {
 				"title": "What changed",
 				"subtitle": "in conversations you already know",
-				"newFrom": "One new message from {name}: | {count} new messages, latest from {name}:",
-				"more": "and one more conversation. | and {count} more conversations."
+				"newFrom": "{count} new message from {name}: | {count} new messages, latest from {name}:",
+				"more": "and {count} more conversation. | and {count} more conversations."
 			},
 			"openInboxes": "Open all inboxes",
 			"updates": {
@@ -5602,15 +5602,15 @@
 				"worth": "Worth knowing",
 				"also": "Also arrived",
 				"empty": "Nothing new that needs no reply. Updates from people and services show up here.",
-				"more": "One more update is waiting. | {count} more updates are waiting."
+				"more": "{count} more update is waiting. | {count} more updates are waiting."
 			},
 			"filed": {
 				"title": "Filed away:",
-				"newsletter": "one newsletter | {count} newsletters",
-				"notification": "one notification | {count} notifications",
-				"receipt": "one receipt | {count} receipts",
-				"promotion": "one promotion | {count} promotions",
-				"spam": "one spam caught | {count} spam caught",
+				"newsletter": "{count} newsletter | {count} newsletters",
+				"notification": "{count} notification | {count} notifications",
+				"receipt": "{count} receipt | {count} receipts",
+				"promotion": "{count} promotion | {count} promotions",
+				"spam": "{count} spam caught | {count} spam caught",
 				"reassure": "None of these need a reply."
 			},
 			"line": {
@@ -10472,10 +10472,10 @@
 			"since": {
 				"label": "Since you last looked ({when}):",
 				"fallback": "In the last 24 hours:",
-				"newMail": "no new email | one new email | {count} new emails",
+				"newMail": "no new email | {count} new email | {count} new emails",
 				"newMailCapped": "more than {count} new emails",
-				"moved": "one conversation you follow moved | {count} conversations you follow moved",
-				"mentions": "one chat mention | {count} chat mentions"
+				"moved": "{count} conversation you follow moved | {count} conversations you follow moved",
+				"mentions": "{count} chat mention | {count} chat mentions"
 			},
 			"markAllSeen": "Mark all as seen",
 			"markedSeen": "Marked as seen. Today starts fresh from here.",

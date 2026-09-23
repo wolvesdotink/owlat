@@ -5573,13 +5573,13 @@
 		},
 		"today": {
 			"answer": {
-				"title": "eine E-Mail wartet auf deine Antwort | {count} E-Mails warten auf deine Antwort",
+				"title": "{count} wartet auf deine Antwort | {count} warten auf deine Antwort",
 				"cta": "Antwortliste durchgehen",
-				"drafts": "eine mit fertigem Entwurf | {count} mit fertigem Entwurf",
-				"mail": "eine E-Mail | {count} E-Mails",
-				"team": "ein Team-Entwurf | {count} Team-Entwürfe",
-				"mentions": "eine Erwähnung | {count} Erwähnungen",
-				"minutes": "etwa eine Minute | etwa {count} Minuten",
+				"drafts": "{count} Entwurf fertig | {count} Entwürfe fertig",
+				"mail": "{count} in deinen Postfächern",
+				"team": "{count} im Team-Posteingang",
+				"mentions": "{count} Erwähnung | {count} Erwähnungen",
+				"minutes": "etwa {count} Minute | etwa {count} Minuten",
 				"clearTitle": "Nichts wartet auf eine Antwort",
 				"clearBody": "Neue Fragen landen in der Antwortliste, sobald sie ankommen.",
 				"needsTitle": "Wartet auf Antwort",
@@ -5591,8 +5591,8 @@
 			"changed": {
 				"title": "Was sich getan hat",
 				"subtitle": "in Unterhaltungen, die du schon kennst",
-				"newFrom": "Eine neue Nachricht von {name}: | {count} neue Nachrichten, zuletzt von {name}:",
-				"more": "und eine weitere Unterhaltung. | und {count} weitere Unterhaltungen."
+				"newFrom": "{count} neue Nachricht von {name}: | {count} neue Nachrichten, zuletzt von {name}:",
+				"more": "und {count} weitere Unterhaltung. | und {count} weitere Unterhaltungen."
 			},
 			"openInboxes": "Alle Postfächer öffnen",
 			"updates": {
@@ -5602,15 +5602,15 @@
 				"worth": "Gut zu wissen",
 				"also": "Außerdem angekommen",
 				"empty": "Nichts Neues ohne Antwortbedarf. Neuigkeiten von Menschen und Diensten erscheinen hier.",
-				"more": "Eine weitere Neuigkeit wartet. | {count} weitere Neuigkeiten warten."
+				"more": "{count} weitere Neuigkeit wartet. | {count} weitere Neuigkeiten warten."
 			},
 			"filed": {
 				"title": "Abgelegt:",
-				"newsletter": "ein Newsletter | {count} Newsletter",
-				"notification": "eine Benachrichtigung | {count} Benachrichtigungen",
-				"receipt": "eine Quittung | {count} Quittungen",
-				"promotion": "eine Werbung | {count} Werbungen",
-				"spam": "ein Spam abgefangen | {count} Spam abgefangen",
+				"newsletter": "{count} Newsletter | {count} Newsletter",
+				"notification": "{count} Benachrichtigung | {count} Benachrichtigungen",
+				"receipt": "{count} Quittung | {count} Quittungen",
+				"promotion": "{count} Werbung | {count} Werbungen",
+				"spam": "{count} Spam abgefangen | {count} Spam abgefangen",
 				"reassure": "Nichts davon braucht eine Antwort."
 			},
 			"line": {
@@ -10472,10 +10472,10 @@
 			"since": {
 				"label": "Seit du zuletzt reingeschaut hast ({when}):",
 				"fallback": "In den letzten 24 Stunden:",
-				"newMail": "keine neue E-Mail | eine neue E-Mail | {count} neue E-Mails",
+				"newMail": "keine neue E-Mail | {count} neue E-Mail | {count} neue E-Mails",
 				"newMailCapped": "mehr als {count} neue E-Mails",
-				"moved": "eine Unterhaltung, die du kennst, hat sich bewegt | {count} Unterhaltungen, die du kennst, haben sich bewegt",
-				"mentions": "eine Erwähnung im Chat | {count} Erwähnungen im Chat"
+				"moved": "{count} Unterhaltung, die du kennst, hat sich bewegt | {count} Unterhaltungen, die du kennst, haben sich bewegt",
+				"mentions": "{count} Erwähnung im Chat | {count} Erwähnungen im Chat"
 			},
 			"markAllSeen": "Alles als gesehen markieren",
 			"markedSeen": "Als gesehen markiert. Heute beginnt ab hier neu.",
