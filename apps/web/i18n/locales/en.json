@@ -2192,6 +2192,17 @@
 				"title": "Sending domains",
 				"window30d": "30d"
 			},
+			"envSetupSteps": {
+				"blankValues": "Fill in each value after the = sign. Values stay on your server; this page only checks that they are there.",
+				"checkNow": "Check now",
+				"cliTitle": "Or run these commands on the server",
+				"connected": "Connected",
+				"copyCommands": "Copy the commands",
+				"copyEnv": "Copy the .env lines",
+				"envTitle": "Add these lines to the .env file on your server, then restart",
+				"guideLink": "Environment variable guide",
+				"waiting": "Waiting for the server to see the new values. This updates by itself after the restart."
+			},
 			"independenceTrendChart": {
 				"day": "Day",
 				"emptyNothingSent": "Nothing has been sent yet, so there is no trend to draw. This fills in on its own as mail goes out.",
@@ -2488,6 +2499,11 @@
 				"checkAlignment": "Check alignment",
 				"checkFailed": "The check could not run. Nothing has changed — try again.",
 				"checkingDns": "Checking DNS…",
+				"checks": {
+					"actionLabel": "Run the checks",
+					"body": "Send a live test through this provider, then check that SPF, DKIM and DMARC line up for it and for your own server.",
+					"title": "Check the connection"
+				},
 				"noSendingDomain": "No verified sending domain with an own-MTA signing identity was found, so there is nothing to compare yet. Verify a sending domain first.",
 				"optionalSuffix": "(optional)",
 				"position": "Step {index} of {total}: {title}",
@@ -2513,35 +2529,35 @@
 				"testFailedTitle": "Test failed"
 			},
 			"transportEditor": {
-				"activeTransport": "The active transport is {provider}. Choose a different provider or rotate its credentials — the change is tested and applied in place.",
+				"activeTransport": "Mail goes out through {provider}.",
 				"applyFailed": "Could not apply the transport. Try again.",
 				"applyFailedTitle": "Couldn't apply",
 				"applyTransport": "Apply transport",
 				"applying": "Applying…",
+				"changeProvider": "Change provider",
 				"credentialsNeverShown": "Existing credentials are never shown. Re-enter them to change the transport.",
 				"credentialsVerifiedTitle": "Credentials verified",
 				"disconnectConfirmLabel": "Disconnect and switch to my own MTA",
 				"disconnectDialogTitle": "Disconnect the relay?",
-				"editTransport": "Edit transport",
 				"fromEmailLabel": "Default From address",
 				"fromEmailPlaceholder": "noreply{'@'}yourdomain.com",
 				"fromIdentity": "From identity",
 				"fromIdentityHint": "Leave blank to keep the current default From address.",
 				"fromNameLabel": "From name",
 				"fromNamePlaceholder": "Owlat",
-				"guidedVersionNote": "“Connect an email provider” below is the guided version of this: the same change, walked step by step with a live send test and DNS alignment checks.",
 				"noPreApplyCheck": "This transport can't be tested before applying — apply, then use \"Send a test email\" below to confirm delivery.",
 				"notSet": "not set",
 				"optionalSuffix": "(optional)",
 				"probeFailed": "Could not reach the provider. Try again.",
+				"relayOffer": "Already paying for an email provider? You can send through it while your own server warms up, and compare the two. Owlat sends fine without one.",
 				"providerLegend": "Delivery provider",
 				"requireVerifiedWarning": "“Always encrypt and verify” can bounce mail to receivers whose mail servers have a misconfigured or self-signed certificate. Use it only if you know your recipients keep valid certificates.",
 				"restartRequiredTitle": "Restart required",
-				"subtitle": "Switch transport or update credentials — tested and applied here, no CLI needed",
+				"subtitle": "The service that carries your outgoing mail. Switch it or update its credentials here; the change is tested before it applies.",
 				"testCredentials": "Test credentials",
 				"testFailedTitle": "Test failed",
 				"testing": "Testing…",
-				"title": "Change provider"
+				"title": "Sending provider"
 			},
 			"trustedForwardersCard": {
 				"addLabel": "Add a trusted forwarder domain",
@@ -5942,9 +5958,8 @@
 				},
 				"migrate": {
 					"connect": {
-						"missing": "Create an API key in Mailchimp Transactional (Settings → API keys), set it as {envVar} in this deployment's environment, and restart. Credentials never live in the database, so this page can only ever tell you whether the key is present — never what it is.",
-						"present": "Mailchimp Transactional is connected — Owlat can see a {envVar} in this deployment's environment.",
-						"transportLink": "Transport setup, with the paste-ready environment block"
+						"missing": "Create an API key in Mailchimp Transactional (Settings → API keys), then add it on the server with one of the blocks below. The key stays in the server’s environment; this page only checks that it is there.",
+						"present": "Connected. Owlat can see the Mailchimp Transactional key on the server."
 					},
 					"domain": {
 						"domainsLink": "Sending domains",
@@ -5966,6 +5981,7 @@
 					"editModal": {
 						"enableOne": "Enable at least one provider.",
 						"failoverOrder": "Order = failover priority",
+						"hideSetup": "Hide setup",
 						"ipPool": "IP pool (optional)",
 						"ipPoolHint": "Overrides the IP pool for the built-in MTA provider. Leave blank to use the provider's default.",
 						"ipPoolPlaceholder": "e.g. transactional",
@@ -5976,6 +5992,7 @@
 						"providers": "Providers",
 						"save": "Save Route",
 						"saving": "Saving...",
+						"showSetup": "Set up",
 						"strategy": "Strategy",
 						"title": "Route — {messageType}",
 						"unavailable": "Unavailable",
@@ -5985,7 +6002,8 @@
 						"noProvider": "Enable at least one provider before saving"
 					},
 					"howItWorks": {
-						"body": "Each message type can use its own provider strategy. When no route is configured, sends fall back to the provider set by the {envVar} environment variable. Configure a route to enable failover or to split traffic across multiple providers.",
+						"body": "Each message type can use its own provider strategy. Without a route, mail goes out through the default provider, {provider}, which you choose on the {link} page. Configure a route to add failover or to split traffic across providers.",
+						"link": "Delivery provider",
 						"title": "How routing works"
 					},
 					"lede": "Choose which email provider sends each message type, with failover and weighted workload-split across providers",
@@ -5993,6 +6011,7 @@
 						"description": "Create or select a workspace to configure provider routing.",
 						"title": "No workspace selected"
 					},
+					"notSet": "not set",
 					"operations": {
 						"reset": "Reset provider route",
 						"save": "Save provider route"
@@ -6000,7 +6019,7 @@
 					"pageTitle": "Provider Routing — Owlat",
 					"resetModal": {
 						"confirm": "Reset to Default",
-						"description": "This message type will revert to the default provider set by the EMAIL_PROVIDER environment variable.",
+						"description": "This message type goes back to the default provider.",
 						"title": "Reset Provider Route"
 					},
 					"resetToDefault": "Reset to default",
@@ -6009,12 +6028,14 @@
 						"reset": "Provider route reset to the default",
 						"saved": "Provider route saved"
 					},
-					"usingDefault": "Using the default provider (EMAIL_PROVIDER)"
+					"usingDefault": "Using the default provider",
+					"usingDefaultNamed": "Using the default provider ({provider})"
 				},
 				"transport": {
 					"canSend": {
 						"no": "This instance cannot send email",
-						"noBody": "No usable delivery provider is configured. Until one is, campaigns and transactional sends will fail. Set {envVar} and its credentials in your environment.",
+						"connected": "Connected. The server sees the new values.",
+						"noBody": "No usable delivery provider is configured, so campaigns and transactional mail fail. Choose one under “Change provider” below, or add the missing values on the server.",
 						"yes": "This instance can send email",
 						"yesBody": "A delivery provider is configured and its credentials are present. Send a test email below to confirm the full path end-to-end."
 					},
@@ -6038,18 +6059,13 @@
 						"description": "No transport has been configured for this deployment yet, so there is nothing to report here. Set one up from delivery setup.",
 						"title": "No transport configured"
 					},
-					"env": {
-						"addToEnv": "Add to your {file}, then restart the instance",
-						"blankValues": "Values are left blank — fill in your real credentials. They are never displayed here.",
-						"cliHint": "Run {command} to list every variable your current configuration needs. See the {guideLink}.",
-						"cliTitle": "Or set each one from the CLI",
-						"copyCommand": "Copy command",
-						"copySnippet": "Copy .env snippet",
-						"guideLink": "environment variables guide"
-					},
 					"error": {
 						"message": "Delivery configuration is only visible to owners and admins. If you are an admin, reload to try again.",
 						"title": "Couldn't load delivery status"
+					},
+					"inbound": {
+						"subtitle": "How other mail servers deliver to you",
+						"title": "Incoming mail"
 					},
 					"lede": "Configure and validate the email delivery provider this instance sends through",
 					"loadingLabel": "Loading transport settings…",

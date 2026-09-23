@@ -58,9 +58,42 @@ export function buildProviderEnvSkeleton(
 	kind: string | null | undefined,
 	missingVarNames: readonly string[]
 ): string {
+	return buildDeliveryEnvSnippet(orderProviderEnvNames(kind, missingVarNames));
+}
+
+/**
+ * The names {@link buildProviderEnvSkeleton} emits, in its order — for a
+ * caller that renders the names itself (the shared env-setup block builds both
+ * the `.env` lines and the CLI commands from one list).
+ */
+export function orderProviderEnvNames(
+	kind: string | null | undefined,
+	missingVarNames: readonly string[]
+): string[] {
 	const declared = coreSendProviderCatalogEntry(kind ?? undefined)?.requiredEnvVars ?? [];
 	const missing = new Set(missingVarNames.map((name) => name.trim()).filter((name) => name !== ''));
 	const ordered = declared.filter((name) => missing.has(name));
 	const undeclared = [...missing].filter((name) => !declared.includes(name));
-	return buildDeliveryEnvSnippet([...ordered, ...undeclared]);
+	return [...ordered, ...undeclared];
 }
+
+/**
+ * The same remedy as shell commands for the `owlat` host CLI: one
+ * `owlat env NAME <value>` line per variable, then `owlat restart` so the
+ * running containers load it. `owlat env` writes the same `.env` the snippet
+ * above goes into, so the two are alternatives, not two steps.
+ *
+ * Names only, like the snippet — the value is always the `<value>` placeholder.
+ * Returns `''` for an empty list so a caller can hide the block.
+ */
+export function buildEnvCliCommands(varNames: readonly string[]): string {
+	const names = buildDeliveryEnvSnippet(varNames)
+		.split('\n')
+		.filter((line) => line !== '')
+		.map((line) => line.slice(0, -1));
+	if (names.length === 0) return '';
+	return [...names.map((name) => `owlat env ${name} <value>`), 'owlat restart'].join('\n');
+}
+
+/** How often a page waiting on an env change asks the server again. */
+export const ENV_CONNECTION_POLL_MS = 5_000;

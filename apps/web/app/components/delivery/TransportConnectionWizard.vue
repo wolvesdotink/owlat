@@ -48,7 +48,6 @@ import {
 	setStepStatus,
 	skippingWizardImpact,
 	stepById,
-	stepIndex,
 	type ReturnPathCapabilityValue,
 	type TransportWizardStepId,
 	type WizardFinding,
@@ -84,6 +83,14 @@ const props = defineProps<{
 	returnPathCapability?: ReturnPathCapabilityValue | null;
 	/** Whether a test send is possible at all (a transport is configured). */
 	canSend?: boolean;
+	/**
+	 * CHECKS ONLY: the provider is already connected (through "Change provider",
+	 * the page's one door for changing it), so the credentials step is skipped and
+	 * the wizard is the follow-up — live send test, alignment, return path. The
+	 * transport page mounts it this way so there is exactly one place to change
+	 * the provider and one place to check it.
+	 */
+	checksOnly?: boolean;
 }>();
 
 const emit = defineEmits<{ applied: [] }>();
@@ -91,16 +98,46 @@ const emit = defineEmits<{ applied: [] }>();
 const { t } = useI18n();
 
 const isOpen = ref(false);
-const state = ref(createTransportWizardState());
 const skipImpact = skippingWizardImpact();
 
-const steps = TRANSPORT_WIZARD_STEPS;
-const currentIndex = computed(() => stepIndex(state.value.current));
+/**
+ * In checks-only mode the credentials step is already behind the operator: it
+ * starts PASSED (the provider is connected — that is why this card exists) and
+ * is neither drawn on the rail nor reachable with Back.
+ */
+function initialState() {
+	const fresh = createTransportWizardState();
+	if (!props.checksOnly) return fresh;
+	return setStepStatus({ ...fresh, current: 'test_send' }, 'credentials', 'passed');
+}
+const state = ref(initialState());
+
+const steps = computed(() =>
+	props.checksOnly
+		? TRANSPORT_WIZARD_STEPS.filter((step) => step.id !== 'credentials')
+		: TRANSPORT_WIZARD_STEPS
+);
+const firstStepId = computed(() => steps.value[0]?.id ?? 'credentials');
+const canStepBack = computed(
+	() => canGoBack(state.value) && state.value.current !== firstStepId.value
+);
+const entryCopy = computed(() =>
+	props.checksOnly
+		? {
+				title: 'components.delivery.transportConnectionWizard.checks.title',
+				body: 'components.delivery.transportConnectionWizard.checks.body',
+				actionLabel: 'components.delivery.transportConnectionWizard.checks.actionLabel',
+			}
+		: TRANSPORT_WIZARD_ENTRY
+);
+const currentIndex = computed(() =>
+	steps.value.findIndex((step) => step.id === state.value.current)
+);
 const currentStep = computed(() => stepById(state.value.current));
 const positionLabel = computed(() =>
 	t('components.delivery.transportConnectionWizard.position', {
 		index: currentIndex.value + 1,
-		total: steps.length,
+		total: steps.value.length,
 		title: t(currentStep.value.title),
 	})
 );
@@ -134,6 +171,7 @@ function goNext() {
 	state.value = advanceStep(state.value);
 }
 function goBack() {
+	if (!canStepBack.value) return;
 	state.value = goBackStep(state.value);
 }
 
@@ -225,12 +263,12 @@ watch(
 					<UiIconBox icon="lucide:plug" size="sm" variant="surface" rounded="lg" />
 					<div>
 						<h2 class="text-lg font-semibold text-text-primary">
-							{{ t(TRANSPORT_WIZARD_ENTRY.title) }}
-							<span class="text-sm font-normal text-text-tertiary">
+							{{ t(entryCopy.title) }}
+							<span v-if="!checksOnly" class="text-sm font-normal text-text-tertiary">
 								{{ t('components.delivery.transportConnectionWizard.optionalSuffix') }}
 							</span>
 						</h2>
-						<p class="text-sm text-text-secondary">{{ t(TRANSPORT_WIZARD_ENTRY.body) }}</p>
+						<p class="text-sm text-text-secondary">{{ t(entryCopy.body) }}</p>
 					</div>
 				</div>
 				<!-- `shrink-0 whitespace-nowrap`: the title + body block beside it is
@@ -244,16 +282,16 @@ watch(
 					class="shrink-0 whitespace-nowrap"
 					@click="open"
 				>
-					{{ t(TRANSPORT_WIZARD_ENTRY.actionLabel) }}
+					{{ t(entryCopy.actionLabel) }}
 				</UiButton>
 			</div>
 		</template>
 
-		<div v-if="!isOpen" class="px-6 py-5">
+		<div v-if="!isOpen && !checksOnly" class="px-6 py-5">
 			<p class="text-sm text-text-secondary">{{ t(skipImpact.note) }}</p>
 		</div>
 
-		<div v-else class="p-6 space-y-6">
+		<div v-else-if="isOpen" class="p-6 space-y-6">
 			<!-- Step rail -->
 			<ol
 				class="flex flex-wrap gap-x-6 gap-y-2"
@@ -357,7 +395,7 @@ watch(
 
 			<!-- Navigation -->
 			<div class="flex flex-wrap items-center gap-3 border-t border-border-subtle pt-5">
-				<UiButton variant="ghost" :disabled="!canGoBack(state)" @click="goBack">
+				<UiButton variant="ghost" :disabled="!canStepBack" @click="goBack">
 					{{ t('common.back') }}
 				</UiButton>
 				<UiButton v-if="!isLastStep(state)" :disabled="!canAdvance(state)" @click="goNext">

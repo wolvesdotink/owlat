@@ -7,7 +7,8 @@ import {
 	validateEmailStep,
 } from '~/composables/setupWizardValidation';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
-import { OWN_SEND_PROVIDER_KIND } from '@owlat/shared/sendProviderCatalog';
+import { OWN_SEND_PROVIDER_KIND, isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
+import { transportKindLabel } from '~/utils/transportState';
 import { isComposedSendProviderKind } from '~/utils/composedSendProviderCatalog';
 import {
 	TRANSPORT_EDITOR_PROVIDER_OPTIONS,
@@ -78,6 +79,19 @@ function localized(value: LocalizedText | null): string {
 const { showToast } = useToast();
 
 const isEditing = ref(false);
+
+/**
+ * The provider BY NAME ("Amazon SES", "Your own server"), never the raw
+ * `EMAIL_PROVIDER` value — this card is the page's one "Change provider" door,
+ * and it is read by people who have never seen the variable.
+ */
+const currentProviderName = computed(() =>
+	props.currentProvider ? t(transportKindLabel(props.currentProvider)) : null
+);
+/** On the own server, the collapsed card also carries the offer to add a relay. */
+const isOnOwnServer = computed(
+	() => props.currentProvider === null || isOwnSendProviderKind(props.currentProvider)
+);
 
 // ── Draft (seeded from the active kind; credentials always blank) ────────────
 // Asked of the CATALOG rather than of a hand-kept list: a kind it declares is
@@ -302,7 +316,7 @@ function cancel() {
 				</div>
 				<UiButton v-if="!isEditing" variant="secondary" size="sm" @click="isEditing = true">
 					<template #iconLeft><Icon name="lucide:settings-2" class="w-4 h-4" /></template>
-					{{ t('components.delivery.transportEditor.editTransport') }}
+					{{ t('components.delivery.transportEditor.changeProvider') }}
 				</UiButton>
 			</div>
 		</template>
@@ -476,15 +490,20 @@ function cancel() {
 				class="text-sm text-text-secondary"
 			>
 				<template #provider>
-					<span class="font-medium text-text-primary">
-						{{ currentProvider ?? t('components.delivery.transportEditor.notSet') }}
+					<span class="font-medium text-text-primary" data-testid="transport-editor-provider">
+						{{ currentProviderName ?? t('components.delivery.transportEditor.notSet') }}
 					</span>
 				</template>
 			</I18nT>
-			<!-- One endpoint, two doors: name the relationship so neither affordance
-			     looks like it does something the other does not. -->
-			<p class="text-sm text-text-secondary mt-2">
-				{{ t('components.delivery.transportEditor.guidedVersionNote') }}
+			<!-- The one place to change the provider, so the offer to add a paid
+			     provider next to the own server lives here too — not on a second
+			     card with a second button that makes the same change. -->
+			<p
+				v-if="isOnOwnServer"
+				class="text-sm text-text-secondary mt-2"
+				data-testid="transport-editor-relay-offer"
+			>
+				{{ t('components.delivery.transportEditor.relayOffer') }}
 			</p>
 		</div>
 	</UiCard>

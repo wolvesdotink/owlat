@@ -2192,6 +2192,17 @@
 				"title": "Versanddomains",
 				"window30d": "30 T"
 			},
+			"envSetupSteps": {
+				"blankValues": "Tragen Sie jeden Wert nach dem =-Zeichen ein. Die Werte bleiben auf Ihrem Server; diese Seite prüft nur, ob sie vorhanden sind.",
+				"checkNow": "Jetzt prüfen",
+				"cliTitle": "Oder führen Sie diese Befehle auf dem Server aus",
+				"connected": "Verbunden",
+				"copyCommands": "Befehle kopieren",
+				"copyEnv": ".env-Zeilen kopieren",
+				"envTitle": "Fügen Sie diese Zeilen in die .env-Datei auf Ihrem Server ein und starten Sie dann neu",
+				"guideLink": "Leitfaden zu Umgebungsvariablen",
+				"waiting": "Warten, bis der Server die neuen Werte sieht. Das aktualisiert sich nach dem Neustart von selbst."
+			},
 			"independenceTrendChart": {
 				"day": "Tag",
 				"emptyNothingSent": "Es wurde noch nichts gesendet, daher gibt es keinen Verlauf zu zeichnen. Das füllt sich von selbst, sobald E-Mails hinausgehen.",
@@ -2488,6 +2499,11 @@
 				"checkAlignment": "Ausrichtung prüfen",
 				"checkFailed": "Die Prüfung konnte nicht ausgeführt werden. Es hat sich nichts geändert — versuchen Sie es erneut.",
 				"checkingDns": "DNS wird geprüft…",
+				"checks": {
+					"actionLabel": "Prüfungen starten",
+					"body": "Senden Sie einen Live-Test über diesen Anbieter und prüfen Sie dann, ob SPF, DKIM und DMARC für ihn und für Ihren eigenen Server übereinstimmen.",
+					"title": "Verbindung prüfen"
+				},
 				"noSendingDomain": "Es wurde keine verifizierte Versanddomain mit einer eigenen MTA-Signaturidentität gefunden, daher gibt es noch nichts zu vergleichen. Verifizieren Sie zuerst eine Versanddomain.",
 				"optionalSuffix": "(optional)",
 				"position": "Schritt {index} von {total}: {title}",
@@ -2513,35 +2529,35 @@
 				"testFailedTitle": "Test fehlgeschlagen"
 			},
 			"transportEditor": {
-				"activeTransport": "Der aktive Transport ist {provider}. Wählen Sie einen anderen Anbieter oder erneuern Sie dessen Zugangsdaten — die Änderung wird hier getestet und direkt angewendet.",
+				"activeTransport": "Mail wird über {provider} versendet.",
 				"applyFailed": "Der Transport konnte nicht angewendet werden. Versuchen Sie es erneut.",
 				"applyFailedTitle": "Konnte nicht angewendet werden",
 				"applyTransport": "Transport anwenden",
 				"applying": "Wird angewendet…",
+				"changeProvider": "Anbieter wechseln",
 				"credentialsNeverShown": "Vorhandene Zugangsdaten werden nie angezeigt. Geben Sie sie erneut ein, um den Transport zu ändern.",
 				"credentialsVerifiedTitle": "Zugangsdaten bestätigt",
 				"disconnectConfirmLabel": "Trennen und zu meinem eigenen MTA wechseln",
 				"disconnectDialogTitle": "Relay trennen?",
-				"editTransport": "Transport bearbeiten",
 				"fromEmailLabel": "Standard-Absenderadresse",
 				"fromEmailPlaceholder": "noreply{'@'}ihredomain.de",
 				"fromIdentity": "Absenderidentität",
 				"fromIdentityHint": "Leer lassen, um die aktuelle Standard-Absenderadresse beizubehalten.",
 				"fromNameLabel": "Absendername",
 				"fromNamePlaceholder": "Owlat",
-				"guidedVersionNote": "„E-Mail-Anbieter verbinden“ unten ist die geführte Variante davon: dieselbe Änderung, Schritt für Schritt mit einem Live-Testversand und DNS-Ausrichtungsprüfungen.",
 				"noPreApplyCheck": "Dieser Transport kann vor dem Anwenden nicht getestet werden — wenden Sie ihn an und nutzen Sie dann unten „Test-E-Mail senden“, um die Zustellung zu bestätigen.",
 				"notSet": "nicht gesetzt",
 				"optionalSuffix": "(optional)",
 				"probeFailed": "Der Anbieter konnte nicht erreicht werden. Versuchen Sie es erneut.",
+				"relayOffer": "Sie zahlen bereits für einen E-Mail-Anbieter? Dann können Sie darüber senden, während Ihr eigener Server aufwärmt, und beide vergleichen. Owlat sendet auch ohne einen solchen Anbieter.",
 				"providerLegend": "Versandanbieter",
 				"requireVerifiedWarning": "„Immer verschlüsseln und verifizieren“ kann dazu führen, dass Mail an Empfänger zurückkommt, deren Mailserver ein falsch konfiguriertes oder selbstsigniertes Zertifikat haben. Nutzen Sie diese Option nur, wenn Sie wissen, dass Ihre Empfänger gültige Zertifikate pflegen.",
 				"restartRequiredTitle": "Neustart erforderlich",
-				"subtitle": "Transport wechseln oder Zugangsdaten aktualisieren — hier getestet und angewendet, ganz ohne CLI",
+				"subtitle": "Der Dienst, der Ihre ausgehende Mail zustellt. Wechseln Sie ihn oder aktualisieren Sie seine Zugangsdaten hier; die Änderung wird vor dem Anwenden getestet.",
 				"testCredentials": "Zugangsdaten testen",
 				"testFailedTitle": "Test fehlgeschlagen",
 				"testing": "Wird getestet…",
-				"title": "Anbieter wechseln"
+				"title": "Versandanbieter"
 			},
 			"trustedForwardersCard": {
 				"addLabel": "Domain eines vertrauenswürdigen Weiterleiters hinzufügen",
@@ -5942,9 +5958,8 @@
 				},
 				"migrate": {
 					"connect": {
-						"missing": "Erstellen Sie in Mailchimp Transactional einen API-Schlüssel (Settings → API keys), setzen Sie ihn als {envVar} in der Umgebung dieser Installation und starten Sie neu. Zugangsdaten liegen niemals in der Datenbank, daher kann Ihnen diese Seite immer nur sagen, ob der Schlüssel vorhanden ist — nie, wie er lautet.",
-						"present": "Mailchimp Transactional ist verbunden — Owlat sieht einen {envVar} in der Umgebung dieser Installation.",
-						"transportLink": "Transporteinrichtung, mit dem einfügefertigen Umgebungsblock"
+						"missing": "Erstellen Sie in Mailchimp Transactional einen API-Schlüssel (Settings → API keys) und tragen Sie ihn mit einem der Blöcke unten auf dem Server ein. Der Schlüssel bleibt in der Umgebung des Servers; diese Seite prüft nur, ob er vorhanden ist.",
+						"present": "Verbunden. Owlat sieht den Mailchimp-Transactional-Schlüssel auf dem Server."
 					},
 					"domain": {
 						"domainsLink": "Versanddomains",
@@ -5966,6 +5981,7 @@
 					"editModal": {
 						"enableOne": "Aktivieren Sie mindestens einen Anbieter.",
 						"failoverOrder": "Reihenfolge = Failover-Priorität",
+						"hideSetup": "Einrichtung ausblenden",
 						"ipPool": "IP-Pool (optional)",
 						"ipPoolHint": "Überschreibt den IP-Pool für den eingebauten MTA-Anbieter. Leer lassen, um den Standard des Anbieters zu verwenden.",
 						"ipPoolPlaceholder": "z. B. transactional",
@@ -5976,6 +5992,7 @@
 						"providers": "Anbieter",
 						"save": "Route speichern",
 						"saving": "Wird gespeichert...",
+						"showSetup": "Einrichten",
 						"strategy": "Strategie",
 						"title": "Route — {messageType}",
 						"unavailable": "Nicht verfügbar",
@@ -5985,7 +6002,8 @@
 						"noProvider": "Aktivieren Sie vor dem Speichern mindestens einen Anbieter"
 					},
 					"howItWorks": {
-						"body": "Jeder Nachrichtentyp kann seine eigene Anbieterstrategie nutzen. Ist keine Route konfiguriert, fällt der Versand auf den Anbieter zurück, der über die Umgebungsvariable {envVar} gesetzt ist. Konfigurieren Sie eine Route, um Failover zu aktivieren oder den Verkehr auf mehrere Anbieter aufzuteilen.",
+						"body": "Jeder Nachrichtentyp kann seine eigene Anbieterstrategie nutzen. Ohne Route wird Mail über den Standardanbieter {provider} versendet, den Sie auf der Seite {link} wählen. Konfigurieren Sie eine Route, um Failover hinzuzufügen oder den Verkehr auf mehrere Anbieter aufzuteilen.",
+						"link": "Versandanbieter",
 						"title": "So funktioniert das Routing"
 					},
 					"lede": "Wählen Sie, welcher E-Mail-Anbieter welchen Nachrichtentyp versendet, mit Failover und gewichteter Lastverteilung über mehrere Anbieter",
@@ -5993,6 +6011,7 @@
 						"description": "Erstellen oder wählen Sie einen Workspace, um das Anbieter-Routing zu konfigurieren.",
 						"title": "Kein Workspace ausgewählt"
 					},
+					"notSet": "nicht gesetzt",
 					"operations": {
 						"reset": "Anbieter-Route zurücksetzen",
 						"save": "Anbieter-Route speichern"
@@ -6000,7 +6019,7 @@
 					"pageTitle": "Anbieter-Routing — Owlat",
 					"resetModal": {
 						"confirm": "Auf Standard zurücksetzen",
-						"description": "Dieser Nachrichtentyp fällt auf den Standardanbieter zurück, der über die Umgebungsvariable EMAIL_PROVIDER gesetzt ist.",
+						"description": "Dieser Nachrichtentyp nutzt wieder den Standardanbieter.",
 						"title": "Anbieter-Route zurücksetzen"
 					},
 					"resetToDefault": "Auf Standard zurücksetzen",
@@ -6009,12 +6028,14 @@
 						"reset": "Anbieter-Route auf den Standard zurückgesetzt",
 						"saved": "Anbieter-Route gespeichert"
 					},
-					"usingDefault": "Der Standardanbieter wird verwendet (EMAIL_PROVIDER)"
+					"usingDefault": "Der Standardanbieter wird verwendet",
+					"usingDefaultNamed": "Der Standardanbieter wird verwendet ({provider})"
 				},
 				"transport": {
 					"canSend": {
 						"no": "Diese Instanz kann keine E-Mails versenden",
-						"noBody": "Es ist kein nutzbarer Zustellungsanbieter konfiguriert. Bis das der Fall ist, schlagen Kampagnen und transaktionale Sendungen fehl. Setzen Sie {envVar} und die zugehörigen Zugangsdaten in Ihrer Umgebung.",
+						"connected": "Verbunden. Der Server sieht die neuen Werte.",
+						"noBody": "Es ist kein nutzbarer Zustellungsanbieter konfiguriert, daher schlagen Kampagnen und transaktionale Mail fehl. Wählen Sie unten unter „Anbieter wechseln“ einen aus oder tragen Sie die fehlenden Werte auf dem Server ein.",
 						"yes": "Diese Instanz kann E-Mails versenden",
 						"yesBody": "Ein Zustellungsanbieter ist konfiguriert und seine Zugangsdaten sind vorhanden. Senden Sie unten eine Test-E-Mail, um den gesamten Weg durchgängig zu bestätigen."
 					},
@@ -6038,18 +6059,13 @@
 						"description": "Für diese Installation wurde noch kein Transport konfiguriert, daher gibt es hier nichts zu berichten. Richten Sie einen in der Zustellungseinrichtung ein.",
 						"title": "Kein Transport konfiguriert"
 					},
-					"env": {
-						"addToEnv": "In Ihre {file} eintragen, dann die Instanz neu starten",
-						"blankValues": "Die Werte bleiben leer — tragen Sie Ihre echten Zugangsdaten ein. Sie werden hier niemals angezeigt.",
-						"cliHint": "Führen Sie {command} aus, um jede Variable aufzulisten, die Ihre aktuelle Konfiguration benötigt. Siehe den {guideLink}.",
-						"cliTitle": "Oder jede einzeln über die CLI setzen",
-						"copyCommand": "Befehl kopieren",
-						"copySnippet": ".env-Auszug kopieren",
-						"guideLink": "Leitfaden zu Umgebungsvariablen"
-					},
 					"error": {
 						"message": "Die Zustellungskonfiguration ist nur für Eigentümer und Administratoren sichtbar. Wenn Sie Administrator sind, laden Sie die Seite neu und versuchen Sie es erneut.",
 						"title": "Zustellungsstatus konnte nicht geladen werden"
+					},
+					"inbound": {
+						"subtitle": "Wie andere Mailserver an Sie zustellen",
+						"title": "Eingehende Mail"
 					},
 					"lede": "Konfigurieren und prüfen Sie den E-Mail-Zustellungsanbieter, über den diese Instanz versendet",
 					"loadingLabel": "Transporteinstellungen werden geladen…",
