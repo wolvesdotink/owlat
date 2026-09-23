@@ -266,6 +266,24 @@ export const eraseMemberData = internalMutation({
 			.collect(); // bounded: one open request per user, rarely more
 		for (const req of mailboxRequests) await ctx.db.delete(req._id);
 
+		// Today's per-user memory: the seen watermark and the thread-visit log
+		// are this member's reading history. Visits can be numerous, so drain
+		// them in batches through the same reschedule as the phases above.
+		const visits = await ctx.db
+			.query('mailThreadVisits')
+			.withIndex('by_user_and_thread', (q) => q.eq('userId', args.authUserId))
+			.take(MESSAGE_BATCH);
+		for (const visit of visits) await ctx.db.delete(visit._id);
+		if (visits.length === MESSAGE_BATCH) {
+			await reschedule();
+			return;
+		}
+		const todayStates = await ctx.db
+			.query('todayStates')
+			.withIndex('by_user_and_organization', (q) => q.eq('userId', args.authUserId))
+			.collect(); // bounded: one row per organization the member belonged to
+		for (const row of todayStates) await ctx.db.delete(row._id);
+
 		// Drop this user's memberships on OTHER users' shared mailboxes (their own
 		// personal mailbox's rows went in phase 1 alongside the mailbox). EXCEPTION:
 		// keep the `owner` row on a team inbox they still canonically own — that

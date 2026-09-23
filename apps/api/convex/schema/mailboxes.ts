@@ -57,6 +57,11 @@ export const mailboxesTables = {
 		address: v.string(), // canonical lowercase
 		domain: v.string(), // domain part for filtering
 		displayName: v.optional(v.string()),
+		// Identity colour for the inbox chip shown wherever a reply can start
+		// (sidebar, Today, Answer queue, reader, composer). An index into the
+		// web's fixed, colour-blind-validated four-colour set; unset ⇒ derived
+		// from the mailbox's position. Always rendered next to a text label.
+		colorSlot: v.optional(v.number()),
 		// Sharing model. undefined ⇒ 'personal' (a single user's mailbox;
 		// back-compat for all pre-shared-inbox rows). 'shared' ⇒ a team inbox
 		// whose access is governed by explicit `mailboxMembers` rows rather than

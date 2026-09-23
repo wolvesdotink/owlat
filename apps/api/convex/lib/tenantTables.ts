@@ -209,6 +209,10 @@ export const TENANT_TABLES = [
 	'mailCommitments',
 	'mailDailyBriefs',
 	'mailBriefCards',
+	// Today's per-user memory: the seen watermark and thread visits. Both are
+	// a member's own reading history, so they go with the tenant.
+	'mailThreadVisits',
+	'todayStates',
 	'mailAuditLog',
 	'mailAuthFailures',
 	'mailboxMigrations',

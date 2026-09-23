@@ -362,7 +362,9 @@ export const accessible = publicQuery({
 		const rows: Array<{
 			mailboxId: Id<'mailboxes'>;
 			label: string;
+			address: string;
 			scope: 'personal' | 'shared';
+			colorSlot: number | null;
 			unread: number;
 		}> = [];
 		for (const mb of mailboxes) {
@@ -375,7 +377,9 @@ export const accessible = publicQuery({
 			rows.push({
 				mailboxId: mb._id,
 				label: displayName && displayName.length > 0 ? displayName : mb.address,
+				address: mb.address,
 				scope: mb.scope === 'shared' ? 'shared' : 'personal',
+				colorSlot: mb.colorSlot ?? null,
 				unread: inbox?.unseenCount ?? 0,
 			});
 		}
