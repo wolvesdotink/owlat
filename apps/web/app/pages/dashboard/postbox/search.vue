@@ -150,7 +150,6 @@ async function confirmSave() {
 						<button
 							type="button"
 							class="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-border-subtle bg-bg-base text-sm text-left hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							:aria-label="t('dashboard.postbox.search.changeSearch')"
 							data-testid="mail-search-refine"
 							@click="refineSearch"
 						>
@@ -160,8 +159,12 @@ async function confirmSave() {
 								:class="query.trim() ? 'text-text-primary' : 'text-text-tertiary'"
 								>{{ query.trim() || t('dashboard.postbox.search.searchMail') }}</span
 							>
+							<!-- The visible query is the start of the name (WCAG 2.5.3); what the
+							     button does is added for screen readers only. -->
+							<span class="sr-only">{{ t('dashboard.postbox.search.changeSearch') }}</span>
 							<kbd
 								class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-text-tertiary bg-bg-elevated border border-border-subtle rounded"
+								aria-hidden="true"
 							>
 								<span class="text-xs">⌘</span>K
 							</kbd>

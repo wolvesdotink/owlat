@@ -164,6 +164,9 @@ describe('mail search page', () => {
 		expect(page.find('input[role="combobox"]').exists()).toBe(false);
 		const refine = page.get('[data-testid="mail-search-refine"]');
 		expect(refine.text()).toContain('invoice');
+		// The visible query is the button's name, not replaced by an aria-label.
+		expect(refine.attributes('aria-label')).toBeUndefined();
+		expect(refine.text()).toContain('Change search');
 		await refine.trigger('click');
 		expect(openPalette).toHaveBeenCalledWith({ scope: 'mail', query: 'invoice' });
 	});
