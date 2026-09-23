@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import type * as NodeFs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,7 +14,7 @@ vi.mock('node:child_process', () => ({ execFileSync: execFileSyncMock }));
 // Only statfs is faked: the tests stage real files in a temp OWLAT_DIR, but the
 // free space of the disk they run on is not something a test may depend on.
 vi.mock('node:fs', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('node:fs')>();
+	const actual = await importOriginal<typeof NodeFs>();
 	return { ...actual, statfsSync: () => ({ bavail: freeBytesMock(), bsize: 1 }) };
 });
 vi.mock('../security.js', async (importOriginal) => {
