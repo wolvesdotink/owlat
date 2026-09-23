@@ -208,10 +208,10 @@ export const getThreadFilterCounts = publicQuery({
 		// The escalation pill is `waitingOver24h` on the wire: a Convex object field
 		// is an identifier and the filter slug carries a hyphen. The web registry
 		// (utils/inboxFilters) is where the two names are tied together.
-		const [open, mine, unassigned, waiting, waitingOver24h, snoozed, resolved] = await Promise.all([
+		// No `mine` / `unassigned` counts: those are the assignment control now,
+		// not tabs, and `assignee` already narrows every count below.
+		const [open, waiting, waitingOver24h, snoozed, resolved] = await Promise.all([
 			countFilter('open'),
-			countFilter('mine'),
-			countFilter('unassigned'),
 			countFilter('waiting'),
 			countFilter('waiting-24h'),
 			countFilter('snoozed'),
@@ -220,8 +220,6 @@ export const getThreadFilterCounts = publicQuery({
 
 		return {
 			open,
-			mine,
-			unassigned,
 			waiting,
 			waitingOver24h,
 			snoozed,

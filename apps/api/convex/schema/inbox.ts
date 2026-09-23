@@ -98,7 +98,7 @@ export const inboxTables = {
 		.index('by_status_and_last_message_at', ['status', 'lastMessageAt'])
 		.index('by_last_message_at', ['lastMessageAt'])
 		.index('by_contact', ['contactId'])
-		.index('by_assigned_to', ['assignedTo'])
+		// Me / Unassigned per status tab, in lastMessageAt order (also legacy mine).
 		.index('by_assigned_to_and_status_and_last_message_at', [
 			'assignedTo',
 			'status',

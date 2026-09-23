@@ -399,14 +399,13 @@ describe('inboundQueries.getThreadFilterCounts', () => {
 			.withIdentity(testIdentity)
 			.query(api.inbox.queries.getThreadFilterCounts, {});
 
-		// open excludes the snoozed row; mine = the one assigned to me;
-		// unassigned = open/waiting with no owner (the plain open + the waiting +
-		// the neglected one); waiting/resolved/snoozed each = 1; waitingOver24h
-		// counts only the three-day-old open row.
+		// open excludes the snoozed row; waiting/resolved/snoozed each = 1;
+		// waitingOver24h counts only the three-day-old open row. The legacy
+		// mine / unassigned counts are gone: assignment narrows every count.
+		expect(counts).not.toHaveProperty('mine');
+		expect(counts).not.toHaveProperty('unassigned');
 		expect(counts).toMatchObject({
 			open: 3,
-			mine: 1,
-			unassigned: 3,
 			waiting: 1,
 			waitingOver24h: 1,
 			resolved: 1,

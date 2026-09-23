@@ -102,7 +102,9 @@ export function buildThreadQuery(
 		case 'mine':
 			// Assigned to me, still active (open/waiting), not currently snoozed.
 			return base
-				.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', userId))
+				.withIndex('by_assigned_to_and_status_and_last_message_at', (idx) =>
+					idx.eq('assignedTo', userId)
+				)
 				.filter((f) =>
 					f.and(
 						f.or(f.eq(f.field('status'), 'open'), f.eq(f.field('status'), 'waiting')),
@@ -111,7 +113,9 @@ export function buildThreadQuery(
 				);
 		case 'unassigned':
 			return base
-				.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', undefined))
+				.withIndex('by_assigned_to_and_status_and_last_message_at', (idx) =>
+					idx.eq('assignedTo', undefined)
+				)
 				.filter((f) =>
 					f.and(
 						f.or(f.eq(f.field('status'), 'open'), f.eq(f.field('status'), 'waiting')),
