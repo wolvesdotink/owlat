@@ -102,11 +102,6 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				icon: 'lucide:message-square',
 			},
 			{
-				name: 'shared.dashboardNavigation.items.inbox.allActivity',
-				href: '/dashboard/inbox/activity',
-				icon: 'lucide:activity',
-			},
-			{
 				name: 'shared.dashboardNavigation.items.inbox.reviewQueue',
 				href: '/dashboard/inbox/review',
 				icon: 'lucide:check-circle',
@@ -117,12 +112,6 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				href: '/dashboard/inbox/code-tasks',
 				icon: 'lucide:code',
 				gate: (env) => adminOnly(env) && flag('inbox.codeTasks')(env),
-			},
-			{
-				name: 'shared.dashboardNavigation.items.inbox.quarantine',
-				href: '/dashboard/inbox/quarantine',
-				icon: 'lucide:shield-alert',
-				gate: adminOnly,
 			},
 		],
 	},

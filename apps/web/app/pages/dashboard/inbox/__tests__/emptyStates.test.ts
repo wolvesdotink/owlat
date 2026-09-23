@@ -41,14 +41,14 @@ interface Guard {
 const guards: Guard[] = [
 	{
 		name: 'failed',
-		page: '../failed.vue',
+		page: '../../admin/delivery/failed.vue',
 		emptyBinding: '!failedMessages || failedMessages.length === 0',
 		emptyTitle: "t('dashboard.inbox.failed.emptyTitle')",
 		dataBranchMarker: 'v-for="message in failedMessages"',
 	},
 	{
 		name: 'quarantine',
-		page: '../quarantine.vue',
+		page: '../../admin/delivery/quarantine.vue',
 		emptyBinding: '!quarantinedMessages || quarantinedMessages.length === 0',
 		emptyTitle: "t('dashboard.inbox.quarantine.emptyTitle')",
 		dataBranchMarker: 'v-for="message in quarantinedMessages"',
@@ -69,7 +69,7 @@ const guards: Guard[] = [
 	},
 	{
 		name: 'activity',
-		page: '../activity.vue',
+		page: '../../admin/delivery/activity.vue',
 		emptyBinding: 'timeline.length === 0',
 		// The activity feed's guided copy lives in its own component, which is
 		// itself a thin wrapper over the shared ladder.
