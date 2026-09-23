@@ -10767,7 +10767,7 @@
 		"welcome": {
 			"connect": {
 				"codePlaceholder": "z. B. 4f2c…:Jh…",
-				"description": "Geben Sie die Adresse Ihrer Owlat-Instanz ein. Sie melden sich über Ihren Browser an.",
+				"description": "Geben Sie die Serveradresse ein, die Ihr Team für Owlat nutzt. Sie melden sich über Ihren Browser an.",
 				"finishInBrowser": "Schließen Sie die Anmeldung in Ihrem Browser ab — diese App verbindet sich automatisch wieder.",
 				"opening": "Browser wird geöffnet…",
 				"pasteCodeLabel": "Nichts passiert? Fügen Sie den im Browser angezeigten Verbindungscode ein:",
@@ -10775,31 +10775,30 @@
 				"redeeming": "Verbindung wird hergestellt…",
 				"startOver": "Von vorn beginnen",
 				"submit": "Workspace verbinden",
-				"title": "Mit Ihrem Owlat-Server verbinden",
+				"title": "Mit Ihrem Workspace verbinden",
+				"titleAnother": "Weiteren Workspace verbinden",
+				"urlLabel": "Serveradresse",
 				"urlPlaceholder": "https://ihre-instanz.owlat.app"
 			},
-			"connectExisting": "Bestehenden Server verbinden →",
 			"desktopOnly": "Der Workspace-Connector ist nur in der Desktop-App verfügbar.",
 			"errors": {
 				"codeRedeemFailed": "Verbindung mit diesem Code nicht möglich — melden Sie sich erneut an.",
 				"connectFailed": "Verbindung zu diesem Server nicht möglich.",
 				"invalidCode": "Das sieht nicht nach einem Verbindungscode aus.",
-				"urlRequired": "Geben Sie die URL Ihres Owlat-Servers ein."
+				"urlRequired": "Geben Sie Ihre Serveradresse ein."
 			},
-			"haveServer": "Sie haben bereits einen Server?",
 			"heading": "Willkommen bei {brand}",
 			"pageTitle": "Willkommen — Owlat",
 			"reconnect": {
 				"action": "Erneut verbinden",
 				"heading": "Erneut anmelden",
-				"tagline": "Deine Sitzung für diesen Server ist beendet. Verbinde dich erneut, um weiterzumachen."
+				"tagline": "Ihre Sitzung für diesen Server ist beendet. Verbinden Sie sich erneut, um weiterzumachen."
 			},
 			"setup": {
-				"description": "Installieren Sie Owlat per SSH auf einem frischen Linux-Server.",
+				"description": "Für Administratoren: Owlat per SSH auf einem frischen Linux-Server installieren.",
 				"title": "Neuen Server einrichten"
 			},
-			"tagline": "Ihr selbst gehostetes Zuhause für E-Mail, Kontakte und Marketing.",
-			"workspaces": "Ihre Workspaces"
+			"tagline": "Ihr selbst gehostetes Zuhause für E-Mail, Kontakte und Marketing."
 		}
 	},
 	"home": {

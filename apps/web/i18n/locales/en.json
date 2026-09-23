@@ -10767,7 +10767,7 @@
 		"welcome": {
 			"connect": {
 				"codePlaceholder": "e.g. 4f2c…:Jh…",
-				"description": "Enter the address of your Owlat instance. You'll sign in through your browser.",
+				"description": "Enter the server address your team uses for Owlat. You'll sign in through your browser.",
 				"finishInBrowser": "Finish signing in in your browser — this app reconnects automatically.",
 				"opening": "Opening browser…",
 				"pasteCodeLabel": "Nothing happening? Paste the connection code shown in the browser:",
@@ -10775,18 +10775,18 @@
 				"redeeming": "Connecting…",
 				"startOver": "Start over",
 				"submit": "Connect workspace",
-				"title": "Connect to your Owlat server",
+				"title": "Connect to your workspace",
+				"titleAnother": "Connect another workspace",
+				"urlLabel": "Server address",
 				"urlPlaceholder": "https://your-instance.owlat.app"
 			},
-			"connectExisting": "Connect an existing server →",
 			"desktopOnly": "The workspace connector is only available in the desktop app.",
 			"errors": {
 				"codeRedeemFailed": "Could not connect with that code — try signing in again.",
 				"connectFailed": "Could not connect to that server.",
 				"invalidCode": "That does not look like a connection code.",
-				"urlRequired": "Enter your owlat server URL."
+				"urlRequired": "Enter your server address."
 			},
-			"haveServer": "Already have a server?",
 			"heading": "Welcome to {brand}",
 			"pageTitle": "Welcome — Owlat",
 			"reconnect": {
@@ -10795,11 +10795,10 @@
 				"tagline": "Your session for this server has ended. Reconnect to pick up where you left off."
 			},
 			"setup": {
-				"description": "Install Owlat on a fresh Linux server over SSH.",
+				"description": "For admins: install Owlat on a fresh Linux server over SSH.",
 				"title": "Set up a new server"
 			},
-			"tagline": "Your self-hosted home for email, contacts and marketing.",
-			"workspaces": "Your workspaces"
+			"tagline": "Your self-hosted home for email, contacts and marketing."
 		}
 	},
 	"home": {
