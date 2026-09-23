@@ -48,6 +48,7 @@ const CONTEXT_ROUTE_PREFIXES: Record<SidebarContext, string[]> = {
 		'/dashboard/postbox',
 		'/dashboard/chat',
 		'/dashboard/knowledge',
+		'/dashboard/files',
 	],
 	marketing: [
 		'/dashboard/marketing',

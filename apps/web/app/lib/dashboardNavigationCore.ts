@@ -283,6 +283,13 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				icon: 'lucide:share-2',
 				gate: flag('ai.knowledge.analytics'),
 			},
+			{
+				// The semantic file library the assistant's searchFiles tool reads.
+				// Nothing else links to it since the Templates overview went away.
+				name: 'shared.dashboardNavigation.items.knowledge.files',
+				href: '/dashboard/files',
+				icon: 'lucide:file-search',
+			},
 		],
 	},
 	{

@@ -11879,6 +11879,7 @@
 				},
 				"knowledge": {
 					"explorer": "Explorer",
+					"files": "Dateien",
 					"graph": "Graph"
 				},
 				"postbox": {
