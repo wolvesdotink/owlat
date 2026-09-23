@@ -8956,7 +8956,6 @@
 					"agentDraft": "Drafted by the agent",
 					"blocked": {
 						"answered": "This message has been answered. You can reply again when they write back.",
-						"closed": "This message was closed without a reply.",
 						"drafting": "The agent is drafting a reply. It opens here when it is ready.",
 						"needsInput": "The agent needs your answers above before it can draft a reply.",
 						"processing": "Owlat is still reading this message. You can reply in a moment.",

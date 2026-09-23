@@ -1,7 +1,7 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import {
@@ -119,12 +119,36 @@ afterEach(() => {
  * normal edit → approve path can send a human-written reply.
  */
 describe('takeOverRefusal', () => {
-	it('allows failed messages and finished scans, nothing else', () => {
-		expect(takeOverRefusal('failed', false)).toBeNull();
-		expect(takeOverRefusal('security_check', true)).toBeNull();
-		expect(takeOverRefusal('security_check', false)).toMatch(/security check/);
-		for (const status of ['received', 'classifying', 'drafting', 'sent', 'archived'] as const) {
-			expect(takeOverRefusal(status, true), status).not.toBeNull();
+	const facts = {
+		scanFinished: true,
+		agentEnabled: false,
+		pipelineStarted: false,
+		receivedLongEnough: true,
+	};
+
+	it('allows failed, rejected and archived messages', () => {
+		for (const status of ['failed', 'rejected', 'archived'] as const) {
+			expect(takeOverRefusal(status, facts), status).toBeNull();
+		}
+	});
+
+	it('allows a finished scan only while the agent is off', () => {
+		expect(takeOverRefusal('security_check', facts)).toBeNull();
+		expect(takeOverRefusal('security_check', { ...facts, scanFinished: false })).toMatch(
+			/security check/
+		);
+		expect(takeOverRefusal('security_check', { ...facts, agentEnabled: true })).toMatch(/agent/);
+	});
+
+	it('allows a received message only when no pipeline run is coming', () => {
+		expect(takeOverRefusal('received', facts)).toBeNull();
+		expect(takeOverRefusal('received', { ...facts, pipelineStarted: true })).not.toBeNull();
+		expect(takeOverRefusal('received', { ...facts, receivedLongEnough: false })).not.toBeNull();
+	});
+
+	it('refuses while the agent works and once the reply is out', () => {
+		for (const status of ['classifying', 'drafting', 'approved', 'sent', 'quarantined'] as const) {
+			expect(takeOverRefusal(status, facts), status).not.toBeNull();
 		}
 	});
 });
@@ -205,6 +229,58 @@ describe('manualReply.takeOverReply', () => {
 		).rejects.toThrow();
 		const message = await t.run((ctx) => ctx.db.get(messageId));
 		expect(message?.processingStatus).toBe('drafting');
+	});
+
+	it('refuses a finished scan while the agent is on', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seed(t, 'security_check', 'completed');
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: Date.now(),
+				featureFlags: { ai: true, inbox: true, 'ai.agent': true },
+			});
+		});
+		await expect(
+			t
+				.withIdentity(testIdentity)
+				.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId })
+		).rejects.toThrow(/agent/);
+	});
+
+	it('reopens a rejected draft for a person to answer', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seed(t, 'rejected');
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('draft_ready');
+	});
+
+	it('answers a message the pipeline never picked up, once it has waited', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seed(t, 'received');
+		const asUser = t.withIdentity(testIdentity);
+		await expect(
+			asUser.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId })
+		).rejects.toThrow(/still being read/);
+		vi.setSystemTime(Date.now() + 10 * 60 * 1000);
+		await asUser.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('draft_ready');
+	});
+
+	it('never lets a pipeline step reopen an archived message', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seed(t, 'archived');
+		const outcome = await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'draft_ready', at: Date.now(), draftResponse: 'late agent draft' },
+		});
+		expect(outcome.ok).toBe(false);
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('archived');
 	});
 
 	it('is a no-op on a message already waiting for a person', async () => {

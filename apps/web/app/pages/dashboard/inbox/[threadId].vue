@@ -362,16 +362,22 @@ const replyTargetBlocker = computed(() =>
 	replyTarget.value
 		? replyBlocker(replyTarget.value.processingStatus, {
 				agentEnabled: isFeatureEnabled('ai.agent'),
+				receivedAt: replyTarget.value._creationTime,
+				now: now.value,
 			})
 		: null
 );
-// A message the agent failed (or, with the agent off, never drafts) is taken
-// over first, so the normal edit → approve path can send a person's reply.
+// A message no agent will answer (failed, agent off, never picked up, rejected
+// or archived) is taken over first, so the normal edit → approve path can send
+// a person's reply.
 const { run: takeOverReply } = useBackendOperation(api.inbox.manualReply.takeOverReply, {
 	label: () => t('dashboard.inbox.detail.takeOverOperation'),
 });
+// A rejected draft was thrown out on purpose: the person starts from an empty box.
 const replyDraft = computed(() =>
-	replyTarget.value && hasAgentDraft(replyTarget.value)
+	replyTarget.value &&
+	replyTarget.value.processingStatus !== 'rejected' &&
+	hasAgentDraft(replyTarget.value)
 		? (replyTarget.value.draftResponse ?? null)
 		: null
 );

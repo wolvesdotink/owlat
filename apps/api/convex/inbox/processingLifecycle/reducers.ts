@@ -36,10 +36,13 @@ import type {
 //
 // The graph itself lives in the generic lifecycle core (`lib/lifecycle.ts`,
 // ADR-0058); the reducers below and the effect runner in `./effects.ts` stay
-// where they are. `sent`, `rejected` and `archived` declare no outgoing edges,
-// which is what makes them terminal — there is no second hand-maintained
-// terminal set to drift from the graph — and this machine publishes the
-// distinct `terminal` refusal, so `reportsTerminalRefusals` is on.
+// where they are. `sent` declares no outgoing edges, which is what makes it
+// terminal. `rejected` and `archived` are CLOSED rather than terminal: their
+// one outgoing edge is a person reopening the message to write the reply
+// themselves (`→ draft_ready`, inbox/manualReply.ts). Every other move out of a
+// closed state — the pipeline failing it, archiving it again, a stray walker
+// step — is refused with the same `terminal` reason as before (see
+// `isClosedStatus`).
 
 export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 	{
@@ -47,7 +50,11 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// archives superseded `received` messages with reason 'coalesced'). The
 		// `* → archived` star-source branch in dispatch() already permits it; this
 		// entry keeps the declared contract in sync with runtime behavior.
-		received: ['security_check', 'archived'],
+		// `draft_ready` is the human takeover of a message the pipeline never
+		// picked up: automated/self-send mail and mail over the agent cost cap stay
+		// in `received` without a walker run (inbox/messages.ts), and a person can
+		// still answer it (inbox/manualReply.ts gates when).
+		received: ['security_check', 'archived', 'draft_ready'],
 		// `draft_ready` is the human takeover (inbox/manualReply.ts): with the
 		// agent off the pipeline stops after a clean scan, and a person writes the
 		// reply themselves. The mutation only takes this edge once the scan has
@@ -73,8 +80,10 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// human review queue rather than silently dropping it.
 		approved: ['sent', 'draft_ready'],
 		sent: [],
-		rejected: [],
-		archived: [],
+		// A person reopens a rejected draft or an archived message to write the
+		// reply themselves (inbox/manualReply.ts).
+		rejected: ['draft_ready'],
+		archived: ['draft_ready'],
 		// `received` is the retry; `draft_ready` is a person writing the reply
 		// the agent failed to (inbox/manualReply.ts).
 		failed: ['received', 'draft_ready'],
@@ -82,9 +91,36 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 	{ reportsTerminalRefusals: true }
 );
 
-// `to: 'failed'` can come from any non-terminal source; checked separately.
+/**
+ * Closed: nothing more happens to the message unless a person reopens it
+ * (`rejected`/`archived` → `draft_ready`). The star-source edges (`→ failed`,
+ * `→ archived`) and refusal reasons treat these exactly like the terminal
+ * `sent`.
+ */
+const CLOSED_STATES: ReadonlySet<ProcessingStatus> = new Set(['sent', 'rejected', 'archived']);
+
+export function isClosedStatus(status: ProcessingStatus): boolean {
+	return CLOSED_STATES.has(status) || PROCESSING_LIFECYCLE.isTerminal(status);
+}
+
+/**
+ * States only a person may move to `draft_ready` (with `manualTakeover`): the
+ * closed ones, and `received`, which the pipeline would otherwise leave
+ * through `security_check`.
+ */
+const TAKEOVER_ONLY_SOURCES: ReadonlySet<ProcessingStatus> = new Set([
+	'received',
+	'rejected',
+	'archived',
+]);
+
+export function requiresManualTakeover(from: ProcessingStatus, to: ProcessingStatus): boolean {
+	return to === 'draft_ready' && TAKEOVER_ONLY_SOURCES.has(from);
+}
+
+// `to: 'failed'` can come from any open source; checked separately.
 export function canFail(from: ProcessingStatus): boolean {
-	return !PROCESSING_LIFECYCLE.isTerminal(from);
+	return !isClosedStatus(from);
 }
 
 // ─── Reducer ────────────────────────────────────────────────────────────────

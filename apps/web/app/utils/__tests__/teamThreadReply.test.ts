@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	REPLY_BLOCKER_KEYS,
+	RECEIVED_TAKEOVER_AFTER_MS,
 	classificationSummary,
 	hasAgentDraft,
 	latestClassification,
@@ -30,6 +31,26 @@ describe('replyBlocker', () => {
 		expect(replyBlocker('received', { agentEnabled: false })).toBe('processing');
 	});
 
+	it('lets a person answer a rejected draft or an archived message', () => {
+		expect(replyBlocker('rejected')).toBeNull();
+		expect(replyBlocker('archived')).toBeNull();
+		expect(needsTakeOver('rejected')).toBe(true);
+	});
+
+	it('opens the composer on a message the pipeline never picked up', () => {
+		const receivedAt = 1_000_000;
+		expect(
+			replyBlocker('received', { agentEnabled: true, receivedAt, now: receivedAt + 60_000 })
+		).toBe('processing');
+		expect(
+			replyBlocker('received', {
+				agentEnabled: true,
+				receivedAt,
+				now: receivedAt + RECEIVED_TAKEOVER_AFTER_MS,
+			})
+		).toBeNull();
+	});
+
 	it('takes the message over first unless it already waits on a person', () => {
 		expect(needsTakeOver('draft_ready')).toBe(false);
 		expect(needsTakeOver('failed')).toBe(true);
@@ -45,8 +66,6 @@ describe('replyBlocker', () => {
 		expect(replyBlocker('informational')).toBe('update');
 		expect(replyBlocker('approved')).toBe('sending');
 		expect(replyBlocker('sent')).toBe('answered');
-		expect(replyBlocker('rejected')).toBe('closed');
-		expect(replyBlocker('archived')).toBe('closed');
 		expect(replyBlocker('quarantined')).toBe('quarantined');
 		// An unknown future state reads as "still processing", not as sendable.
 		expect(replyBlocker('something_new')).toBe('processing');

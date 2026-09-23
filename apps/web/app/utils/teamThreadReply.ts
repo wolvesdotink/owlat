@@ -5,12 +5,14 @@
  * A human reply rides the same path an agent draft does: the typed text is
  * saved as the message's working draft (`editDraft`) and then approved
  * (`approveDraft`), which schedules the send with its undo window. That path
- * starts at `draft_ready`. A message the agent will not draft — it failed, or
- * the agent is off and the pipeline stopped after the security scan — is first
- * taken over (`manualReply.takeOverReply` → `draft_ready`), so a person can
- * always write the reply themselves. States where the agent is still working,
- * or where no reply belongs, get a plain reason instead of a box that would
- * fail on submit.
+ * starts at `draft_ready`. A message no agent is going to answer — it failed,
+ * the agent is off and the pipeline stopped after the security scan, the
+ * pipeline never picked it up (automated mail, the cost cap), or a teammate
+ * rejected the draft or it was archived — is first taken over
+ * (`manualReply.takeOverReply` → `draft_ready`), so a person can always write
+ * the reply themselves. States where the agent is still working, or where the
+ * reply already went out, get a plain reason instead of a box that would fail
+ * on submit.
  *
  * Module scope never calls `useI18n`: reasons are catalog keys.
  */
@@ -35,7 +37,6 @@ export type ReplyBlocker =
 	| 'update'
 	| 'sending'
 	| 'answered'
-	| 'closed'
 	| 'quarantined';
 
 const BLOCKERS: Record<string, ReplyBlocker> = {
@@ -47,8 +48,6 @@ const BLOCKERS: Record<string, ReplyBlocker> = {
 	informational: 'update',
 	approved: 'sending',
 	sent: 'answered',
-	rejected: 'closed',
-	archived: 'closed',
 	quarantined: 'quarantined',
 };
 
@@ -60,15 +59,25 @@ export const REPLY_BLOCKER_KEYS: Record<ReplyBlocker, string> = {
 	update: 'dashboard.inbox.detail.composer.blocked.update',
 	sending: 'dashboard.inbox.detail.composer.blocked.sending',
 	answered: 'dashboard.inbox.detail.composer.blocked.answered',
-	closed: 'dashboard.inbox.detail.composer.blocked.closed',
 	quarantined: 'dashboard.inbox.detail.composer.blocked.quarantined',
 };
 
-/** What the viewer's instance allows, for the one state that depends on it. */
+/** What the viewer's instance allows, and the clock, for the states that depend on them. */
 export interface ReplyContext {
 	/** Is the AI agent on? When it is off, a scanned message rests in `security_check`. */
 	agentEnabled: boolean;
+	/** When the message arrived (`_creationTime`). */
+	receivedAt?: number;
+	/** The current time. */
+	now?: number;
 }
+
+/**
+ * How long a message sits in `received` before the composer assumes no
+ * pipeline run is coming (automated mail, the agent cost cap). Mirrors the
+ * server's `MIN_RECEIVED_WAIT_MS`; the server has the final word.
+ */
+export const RECEIVED_TAKEOVER_AFTER_MS = 5 * 60 * 1000;
 
 /**
  * `null` = a person can reply to this message now (possibly after taking it
@@ -79,7 +88,16 @@ export function replyBlocker(
 	context: ReplyContext = { agentEnabled: true }
 ): ReplyBlocker | null {
 	if (status === 'draft_ready' || status === 'failed') return null;
+	if (status === 'rejected' || status === 'archived') return null;
 	if (status === 'security_check' && !context.agentEnabled) return null;
+	if (
+		status === 'received' &&
+		context.receivedAt !== undefined &&
+		context.now !== undefined &&
+		context.now - context.receivedAt >= RECEIVED_TAKEOVER_AFTER_MS
+	) {
+		return null;
+	}
 	return BLOCKERS[status] ?? 'processing';
 }
 
