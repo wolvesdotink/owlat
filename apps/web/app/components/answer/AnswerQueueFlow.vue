@@ -6,6 +6,7 @@ import type { AnswerItem } from '~/composables/useAnswerQueue';
 import { mailAnswerKind, type AnswerCardControls } from '~/utils/answerCard';
 import { formatTaskFlowEstimate, type TaskFlowOrderKey } from '~/utils/taskFlow';
 import { replyQueueHeadline } from '~/utils/postboxReplyQueue';
+import { answerItemMatches, parseAnswerFilter } from '~/utils/answerQueue';
 
 /**
  * The Answer queue — one card at a time over everything waiting on the
@@ -21,19 +22,13 @@ const router = useRouter();
 const queue = useAnswerQueue();
 const { inboxes } = useInboxes();
 
-const filter = computed(() => (typeof route.query['in'] === 'string' ? route.query['in'] : 'all'));
+const filter = computed(() => parseAnswerFilter(route.query['in']));
 function setFilter(next: string) {
 	const { in: _in, focus: _focus, ...rest } = route.query;
 	void router.replace({ query: next === 'all' ? rest : { ...rest, in: next } });
 }
 
-function matches(item: AnswerItem): boolean {
-	const f = filter.value;
-	if (f === 'all') return true;
-	if (f === 'team') return item.source === 'team';
-	if (f === 'chat') return item.source === 'mention';
-	return item.source === 'mail' && item.mailboxId === f;
-}
+const matches = (item: AnswerItem) => answerItemMatches(item, filter.value);
 const source = computed(() => queue.items.value.filter(matches));
 
 function orderKey(item: AnswerItem): TaskFlowOrderKey {
@@ -149,14 +144,45 @@ const chips = computed(() => {
 			count: chat,
 			icon: 'lucide:message-circle',
 		});
+	// A link can land on a filter with nothing in it (`?in=team` once the team
+	// queue is clear). Keep that chip visible so the page says what it is
+	// filtered to, instead of looking like the whole queue is empty.
+	const active = filter.value;
+	if (active !== 'all' && !list.some((chip) => chip.id === active)) {
+		const inbox = inboxes.value.find((i) => i.mailboxId === active);
+		if (active === 'team') {
+			list.push({
+				id: 'team',
+				label: t('components.shell.teamInbox'),
+				count: 0,
+				icon: 'lucide:bot',
+			});
+		} else if (active === 'chat') {
+			list.push({
+				id: 'chat',
+				label: t('components.shell.chat.title'),
+				count: 0,
+				icon: 'lucide:message-circle',
+			});
+		} else if (inbox) {
+			list.push({ id: inbox.mailboxId, label: inbox.name, count: 0, slot: inbox.slot });
+		}
+	}
 	return list;
 });
+
+// The chip row earns its space once there is a choice to make — or when the
+// page is already filtered, so the filter is visible and can be cleared.
+const showChips = computed(() => chips.value.length > 2 || filter.value !== 'all');
+const activeChipLabel = computed(
+	() => chips.value.find((chip) => chip.id === filter.value && chip.id !== 'all')?.label ?? null
+);
 </script>
 
 <template>
 	<div>
 		<div
-			v-if="chips.length > 2"
+			v-if="showChips"
 			class="mx-auto flex max-w-2xl flex-wrap items-center gap-1.5 px-4 pt-6 sm:px-6"
 			role="toolbar"
 			:aria-label="t('components.answer.filter.label')"
@@ -197,25 +223,29 @@ const chips = computed(() => {
 			<UiSkeleton class="h-40 w-full rounded-2xl" />
 		</div>
 
-		<div
+		<!-- Nothing waiting is good news: the "all clear" tone, not "nothing yet". -->
+		<UiEmptyState
 			v-else-if="!flow.active.value && source.length === 0"
-			class="mx-auto max-w-md px-6 py-16 text-center"
+			class="mx-auto max-w-md"
+			tone="clear"
+			:title="
+				activeChipLabel
+					? t('components.answer.empty.titleIn', { inbox: activeChipLabel })
+					: t('components.answer.empty.title')
+			"
+			:description="t('components.answer.empty.body')"
 		>
-			<UiIconBox
-				icon="lucide:check-circle-2"
-				size="xl"
-				variant="success"
-				rounded="full"
-				class="mb-4"
-			/>
-			<h2 class="font-display text-xl text-text-primary">
-				{{ t('components.answer.empty.title') }}
-			</h2>
-			<p class="mt-1.5 text-sm text-text-secondary">{{ t('components.answer.empty.body') }}</p>
-			<UiButton variant="secondary" to="/dashboard" class="mt-6">{{
-				t('components.answer.backToToday')
-			}}</UiButton>
-		</div>
+			<template #action>
+				<div class="flex items-center justify-center gap-2">
+					<UiButton v-if="activeChipLabel" variant="secondary" @click="setFilter('all')">
+						{{ t('components.answer.empty.showAll') }}
+					</UiButton>
+					<UiButton variant="secondary" to="/dashboard">{{
+						t('components.answer.backToToday')
+					}}</UiButton>
+				</div>
+			</template>
+		</UiEmptyState>
 
 		<AgentTaskFlow
 			v-else

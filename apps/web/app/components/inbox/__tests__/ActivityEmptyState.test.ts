@@ -61,10 +61,11 @@ describe('ActivityEmptyState', () => {
 		expect(wrapper.text()).toContain('No messages yet');
 	});
 
-	it('rides the shared ladder: eyebrow, a real heading, no icon disc', () => {
+	it('rides the shared ladder: a real heading, no icon disc, no "nothing here yet"', () => {
 		const wrapper = mount(ActivityEmptyState, { ...mountOpts, props: { canManage: true } });
 
-		expect(wrapper.find('.lp-eyebrow').exists()).toBe(true);
+		// No default eyebrow: an empty feed is not a promise that something is due.
+		expect(wrapper.find('.lp-eyebrow').exists()).toBe(false);
 		// The title was a bolded <p>, invisible to a heading walk of the feed.
 		expect(wrapper.find('h2').text()).toContain('No messages yet');
 		expect(wrapper.find('ui-icon-box-stub').exists()).toBe(false);

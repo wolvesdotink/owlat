@@ -23,10 +23,10 @@ const { t } = useI18n();
 // email-processing pipeline (drafts, classification); this surfaces the unified
 // `unifiedMessages` stream for the thread — every channel (email/sms/whatsapp/
 // chat/generic), in chronological order — via `unifiedMessages.getThreadTimeline`.
-const { data: messagesData, isLoading } = useConvexQuery(
-	api.unifiedMessages.getThreadTimeline,
-	() => ({ threadId: props.threadId, limit: 100 })
-);
+const { data: messagesData } = useConvexQuery(api.unifiedMessages.getThreadTimeline, () => ({
+	threadId: props.threadId,
+	limit: 100,
+}));
 
 const timeline = computed(() => messagesData.value ?? []);
 
@@ -90,7 +90,9 @@ async function submitReply(item: TimelineMessage) {
 </script>
 
 <template>
-	<div class="card">
+	<!-- Nothing to show until another channel has spoken on this thread: an
+	     email-only thread (most of them) must not carry an empty card. -->
+	<div v-if="timeline.length > 0" class="card" data-testid="thread-channel-timeline">
 		<div class="mb-4">
 			<h2 class="text-lg font-medium text-text-primary">
 				{{ t('components.inbox.threadChannelTimeline.title') }}
@@ -100,20 +102,8 @@ async function submitReply(item: TimelineMessage) {
 			</p>
 		</div>
 
-		<!-- Loading -->
-		<div v-if="isLoading && !timeline.length" class="flex items-center justify-center py-6">
-			<UiSpinner size="sm" />
-		</div>
-
-		<!-- Empty -->
-		<div v-else-if="timeline.length === 0" class="text-center py-6">
-			<p class="text-text-tertiary text-sm">
-				{{ t('components.inbox.threadChannelTimeline.empty') }}
-			</p>
-		</div>
-
 		<!-- Timeline list -->
-		<div v-else class="space-y-1">
+		<div class="space-y-1">
 			<div v-for="(item, index) in timeline" :key="item._id" class="relative">
 				<!-- Timeline connector -->
 				<div

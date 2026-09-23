@@ -6,14 +6,19 @@ import type { Id } from '@owlat/api/dataModel';
 // draft -> route) for one inbound message. Lazy: the query runs only when
 // expanded, so a long thread doesn't fan out a query per message.
 // Auto-imports as <InboxAgentActionTimeline> (path-prefixed).
-const props = defineProps<{ inboundMessageId: Id<'inboundMessages'> }>();
+// `embedded` drops the own toggle: the host (the admin-only "Why did the agent
+// do this?" disclosure) already is the thing you open, so the trace loads as
+// soon as it renders.
+const props = withDefaults(
+	defineProps<{ inboundMessageId: Id<'inboundMessages'>; embedded?: boolean }>(),
+	{ embedded: false }
+);
 
 const { t } = useI18n();
 
-const open = ref(false);
-const { data: actions } = useConvexQuery(
-	api.inbox.queries.getMessageActions,
-	() => (open.value ? { inboundMessageId: props.inboundMessageId } : 'skip'),
+const open = ref(props.embedded);
+const { data: actions } = useConvexQuery(api.inbox.queries.getMessageActions, () =>
+	open.value ? { inboundMessageId: props.inboundMessageId } : 'skip'
 );
 
 interface AgentActionBadge {
@@ -29,7 +34,10 @@ const STATUS_BADGES: Record<string, AgentActionBadge> = {
 	skipped: { icon: 'lucide:minus-circle', color: 'text-text-tertiary' },
 };
 
-const STATUS_BADGE_DEFAULT: AgentActionBadge = { icon: 'lucide:circle', color: 'text-text-secondary' };
+const STATUS_BADGE_DEFAULT: AgentActionBadge = {
+	icon: 'lucide:circle',
+	color: 'text-text-secondary',
+};
 
 function statusBadge(status: string): AgentActionBadge {
 	return STATUS_BADGES[status] ?? STATUS_BADGE_DEFAULT;
@@ -66,8 +74,9 @@ function statusLabel(status: string): string {
 </script>
 
 <template>
-	<div class="mt-2">
+	<div :class="embedded ? '' : 'mt-2'">
 		<button
+			v-if="!embedded"
 			type="button"
 			class="text-xs text-text-tertiary hover:text-text-secondary flex items-center gap-1"
 			@click="open = !open"
@@ -75,7 +84,11 @@ function statusLabel(status: string): string {
 			<Icon :name="open ? 'lucide:chevron-down' : 'lucide:chevron-right'" class="w-3 h-3" />
 			{{ t('components.inbox.agentActionTimeline.toggle') }}
 		</button>
-		<div v-if="open" class="mt-2 pl-3 border-l border-border-subtle space-y-1.5">
+		<div
+			v-if="open"
+			class="pl-3 border-l border-border-subtle space-y-1.5"
+			:class="embedded ? '' : 'mt-2'"
+		>
 			<div v-if="!actions || actions.length === 0" class="text-xs text-text-tertiary">
 				{{ t('components.inbox.agentActionTimeline.empty') }}
 			</div>

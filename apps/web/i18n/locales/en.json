@@ -242,7 +242,7 @@
 			},
 			"reviewBrowseList": {
 				"agentDraft": "Agent Draft",
-				"approveAndSend": "Approve & Send",
+				"approveAndSend": "Review & send",
 				"classifierConfidence": "Classifier confidence {percent}%",
 				"empty": {
 					"body": "No drafts need your review right now.",
@@ -280,7 +280,7 @@
 				"selected": "{count} selected"
 			},
 			"reviewFocusFlow": {
-				"approveAndSend": "Approve & Send",
+				"reviewAndSend": "Review & send",
 				"backToInbox": "Back to inbox",
 				"backToList": "Back to list",
 				"done": {
@@ -302,7 +302,7 @@
 				"pickAnotherOption": "Edit in thread to pick another option",
 				"reject": "Reject",
 				"replyPlaceholder": "Type your reply…",
-				"sendReply": "Send Reply",
+				"sendReply": "Send reply",
 				"toasts": {
 					"draftApproved": "Draft approved and queued for sending",
 					"replySent": "Reply sent"
@@ -3093,18 +3093,13 @@
 				"heldBecause": "Held because:",
 				"sentBecause": "Sent because:"
 			},
-			"draftDiffEditor": {
-				"originalDraft": "Original draft",
-				"saveAndApprove": "Save & Approve",
-				"textareaLabel": "Edit draft response",
-				"yourEdit": "Your edit"
-			},
 			"draftOptions": {
 				"groupLabel": "Draft options",
 				"heading": "Agent Draft — pick one"
 			},
 			"inboxFilterPills": {
-				"groupLabel": "Filter threads"
+				"groupLabel": "Filter threads",
+				"assigneeLabel": "Filter by assignee"
 			},
 			"inboxMessageAttachments": {
 				"blocked": "Blocked — malware was found in this message.",
@@ -3155,7 +3150,6 @@
 				"returned": "· Returned"
 			},
 			"threadChannelTimeline": {
-				"empty": "No cross-channel messages yet.",
 				"reply": "Reply",
 				"replyOn": "Reply on {channel}",
 				"replyPlaceholder": "Reply on {channel}…",
@@ -3166,7 +3160,7 @@
 					"read": "read"
 				},
 				"subtitle": "Every message on this thread across all channels.",
-				"title": "Cross-channel Timeline"
+				"title": "All channels"
 			},
 			"trustChip": {
 				"seeWhy": "{label} — see why"
@@ -4141,7 +4135,6 @@
 				"removeRecipient": "Remove {address}"
 			},
 			"postboxReplyFlow": {
-				"browse": "Browse",
 				"done": {
 					"backToInbox": "Back to inbox",
 					"backToToday": "Back to Today",
@@ -5657,7 +5650,9 @@
 			},
 			"empty": {
 				"title": "Nothing needs an answer",
-				"body": "New questions show up here as they arrive, from every inbox you read."
+				"titleIn": "Nothing in {inbox} needs an answer",
+				"body": "New questions show up here as they arrive, from every inbox you read.",
+				"showAll": "Show all"
 			},
 			"backToToday": "Back to Today",
 			"done": {
@@ -9004,21 +8999,20 @@
 				}
 			},
 			"detail": {
-				"agentDraft": "Agent Draft",
 				"agentNeedsInput": "The agent needs your input",
 				"agentNeedsInputEyebrow": "Waiting on you",
-				"aiClassification": "AI Classification",
 				"answerAndResume": "Answer and resume draft",
 				"answerClarificationOperation": "Answer clarification",
 				"answerPlaceholder": "Type your answer",
 				"answerRemaining": "Answer {count} more to resume | Answer {count} more to resume",
-				"approveAndSend": "Approve & Send",
 				"assign": "Assign",
 				"assignThreadAria": "Assign thread",
-				"assignedTo": "Assigned To",
+				"assignToMe": "Assign to me",
+				"assignedTo": "Assigned to",
 				"assignedToAria": "Assigned to {name}",
 				"autoSendCancelledToast": "Automatic send cancelled and returned to review",
-				"backToInbox": "Back to Inbox",
+				"backToInbox": "Back to Team inbox",
+				"breadcrumb": "Conversation",
 				"categories": {
 					"billing": "billing",
 					"complaint": "complaint",
@@ -9034,19 +9028,54 @@
 				"clarificationLead": "Answer below and the agent finishes the draft with your answers as confirmed facts.",
 				"clarificationProgress": "{answered} of {total} answered",
 				"clarificationSavedToast": "Answers saved — drafting resumed",
-				"confidenceChip": "{percent}% confidence",
+				"composer": {
+					"agentDraft": "Drafted by the agent",
+					"blocked": {
+						"answered": "This message has been answered. You can reply again when they write back.",
+						"closed": "This message was closed without a reply.",
+						"drafting": "The agent is drafting a reply. It opens here when it is ready.",
+						"needsInput": "The agent needs your answers above before it can draft a reply.",
+						"processing": "Owlat is still reading this message. You can reply in a moment.",
+						"quarantined": "This message is in quarantine.",
+						"sending": "Your reply is on its way.",
+						"update": "This was filed as an update that needs no reply."
+					},
+					"bodyLabel": "Your reply",
+					"editedDraft": "Edited draft",
+					"label": "Reply",
+					"originalDraft": "Original draft",
+					"placeholder": "Write your reply…",
+					"rejectDraft": "Reject draft",
+					"replyTo": "Reply to {name}",
+					"restoreDraft": "Undo my changes",
+					"reviewAndSend": "Review & send",
+					"saveDraft": "Save draft",
+					"send": "Send reply",
+					"sendHint": "Send",
+					"writeOwn": "Write my own"
+				},
 				"contact": "Contact",
 				"details": "Details",
+				"insight": {
+					"confidence": "Confidence: {percent}%.",
+					"reason": "Why: {reason}",
+					"sortedAs": "Sorted as {category}, {priority} priority, {sentiment} tone.",
+					"toggle": "Why did the agent do this?"
+				},
 				"discussInChannel": "Discuss in channel",
 				"discussInChannelTitle": "Discuss in {channel}",
-				"draftApprovedToast": "Draft approved and queued for sending",
 				"draftRejectedToast": "Draft rejected",
-				"draftSavedToast": "Draft saved, approved and queued for sending",
-				"lastMessage": "Last Message",
+				"lastMessage": "Last message",
 				"loading": "Loading thread...",
 				"markSeenOperation": "Mark thread seen",
-				"messageCount": "{count} messages",
+				"markAs": {
+					"open": "Mark as open",
+					"resolved": "Mark as resolved",
+					"waiting": "Mark as waiting"
+				},
+				"messageCount": "{count} message | {count} messages",
 				"messages": "Messages",
+				"moreActions": "More actions",
 				"noErrorDetail": "No error detail was recorded.",
 				"noMessages": "No messages in this thread yet.",
 				"noSubject": "No subject",
@@ -9058,16 +9087,20 @@
 					"normal": "normal",
 					"urgent": "urgent"
 				},
-				"priorityChip": "{priority} priority",
 				"processingFailed": "Processing failed",
 				"questionCounter": "Question {index} of {total}",
-				"reject": "Reject",
-				"rejectDraft": "Reject Draft",
+				"rejectDraft": "Reject draft",
 				"rejectModalBody": "Optionally provide a reason. This feedback helps improve future drafts.",
 				"rejectReasonPlaceholder": "Reason for rejection (optional)",
 				"rejecting": "Rejecting...",
+				"reply": "Reply",
+				"replyRequestedToast": "The agent is drafting a reply",
+				"replySentToast": "Reply queued for sending",
+				"takeOverOperation": "Take over the reply",
+				"requestReply": "Draft a reply",
+				"requestReplyOperation": "Ask for a draft",
 				"replyLanguageNote": "The reply will be written in {language}.",
-				"retriedToast": "Message re-enqueued for processing",
+				"retriedToast": "The agent will try again",
 				"retryProcessing": "Retry processing",
 				"reusedAnswersEyebrow": "From memory",
 				"reusedAnswersHint": "The same question was answered before, so the agent applied that answer again. Edit the draft if it should read differently, or",
@@ -9081,6 +9114,7 @@
 				},
 				"snooze": "Snooze",
 				"snoozedToast": "Thread snoozed",
+				"snoozedUntil": "Back {time}",
 				"snoozedUntilReplyToast": "Snoozed until they reply",
 				"someone": "Someone",
 				"statuses": {
@@ -9088,11 +9122,11 @@
 					"resolved": "Resolved",
 					"waiting": "Waiting"
 				},
-				"subjectPlaceholder": "Subject (optional)",
 				"toasts": {
 					"draftSavedNotApproved": "Draft saved — not approved yet"
 				},
 				"unassigned": "Unassigned",
+				"unassignMe": "Unassign me",
 				"undo": "Undo",
 				"undoAutoSendOperation": "Undo automatic send",
 				"unsnooze": "Unsnooze",
@@ -9117,7 +9151,7 @@
 			"index": {
 				"assignThreadOperation": "Assign thread",
 				"empty": {
-					"mine": "Nothing is assigned to you right now.",
+					"me": "Nothing is assigned to you right now.",
 					"open": "No open conversations. Inbox zero.",
 					"resolved": "No resolved conversations yet.",
 					"snoozed": "Nothing is snoozed. It will reappear here when it does.",
@@ -9147,7 +9181,9 @@
 				"openMyPostbox": "Open my Postbox",
 				"accessHint": "Need access? Ask an organization admin to change your role in Settings → Team.",
 				"sortedBy": "Sorted by {sort}",
-				"sortSwitchTo": "Sort by {sort}"
+				"sortSwitchTo": "Sort by {sort}",
+				"waitingOver24h": "{count} customer has waited more than a day for an answer | {count} customers have waited more than a day for an answer",
+				"showLongestWaitFirst": "Show longest wait first"
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Block sender",
@@ -9218,9 +9254,6 @@
 				"title": "Quarantine",
 				"whyHeldLabel": "Why this was held"
 			},
-			"review": {
-				"pageTitle": "Review Queue — Owlat"
-			},
 			"updates": {
 				"blockDialogConfirm": "Block sender",
 				"blockDialogDescription": "Future mail from {sender} will be dropped silently.",
@@ -9272,7 +9305,7 @@
 				"loading": "Loading updates…",
 				"noSubject": "No subject",
 				"open": "Open",
-				"openReviewQueue": "Open review queue",
+				"openAnswerQueue": "Open answer queue",
 				"pageTitle": "Updates — Owlat",
 				"replyRequestedToast": "The agent is drafting a reply. It will show up in the review queue.",
 				"requestReply": "Draft a reply",
@@ -12657,11 +12690,12 @@
 				}
 			}
 		},
+		"inboxAssignees": {
+			"anyone": "Anyone",
+			"me": "Me",
+			"unassigned": "Unassigned"
+		},
 		"inboxFilters": {
-			"mine": {
-				"empty": "Nothing is assigned to you right now.",
-				"label": "Mine"
-			},
 			"open": {
 				"empty": "No open conversations. Inbox zero.",
 				"label": "Open"
@@ -12674,17 +12708,9 @@
 				"empty": "Nothing is snoozed. It will reappear here when it does.",
 				"label": "Snoozed"
 			},
-			"unassigned": {
-				"empty": "Every open thread has an owner.",
-				"label": "Unassigned"
-			},
 			"waiting": {
 				"empty": "No threads are waiting on a customer reply.",
 				"label": "Waiting"
-			},
-			"waiting24h": {
-				"label": "Waiting 24h+",
-				"empty": "Nobody has been waiting on us for more than a day."
 			}
 		},
 		"mailAutodiscover": {
@@ -13755,13 +13781,13 @@
 				"general": "General",
 				"navigation": "Navigation",
 				"organize": "Organize",
-				"review": "Review queue",
+				"review": "Answer queue",
 				"triage": "Triage",
 				"workspace": "Workspaces"
 			},
 			"labels": {
 				"addLabel": "Add label",
-				"approveAndSend": "Approve & send",
+				"approveAndSend": "Review & send",
 				"archive": "Archive",
 				"closeCancel": "Close / Cancel",
 				"closeConversation": "Close the open conversation / back to Today",

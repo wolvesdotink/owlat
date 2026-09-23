@@ -120,8 +120,8 @@ async function onRequestReply(row: UpdateRow) {
 		}
 		showToast(t('dashboard.inbox.updates.replyRequestedToast'), 'success', {
 			action: {
-				label: t('dashboard.inbox.updates.openReviewQueue'),
-				onAction: () => void navigateTo('/dashboard/inbox/review'),
+				label: t('dashboard.inbox.updates.openAnswerQueue'),
+				onAction: () => void navigateTo({ path: '/dashboard/answer', query: { in: 'team' } }),
 			},
 		});
 	} finally {
@@ -322,8 +322,9 @@ const HINTS: ReadonlyArray<{ keys: string[]; label: string; spamToo: boolean }> 
 			:loading-label="t('dashboard.inbox.updates.loading')"
 		>
 			<template #empty>
+				<!-- Caught up / no spam is the good outcome: "all clear", not "nothing yet". -->
 				<UiEmptyState
-					icon="lucide:check-check"
+					:tone="view === 'updates' || view === 'spam' ? 'clear' : 'default'"
 					:title="t(`dashboard.inbox.updates.empty.${view}.title`)"
 					:description="t(`dashboard.inbox.updates.empty.${view}.body`)"
 				/>

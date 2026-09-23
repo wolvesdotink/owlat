@@ -144,4 +144,11 @@ describe('ThreadChannelTimeline per-message reply', () => {
 		expect(wrapper.find('textarea').exists()).toBe(false);
 		expect(replyButtons(wrapper)).toHaveLength(1);
 	});
+
+	it('renders nothing on a thread no other channel has spoken on', () => {
+		timelineRows.value = [];
+		const wrapper = mount(ThreadChannelTimeline, mountOpts);
+		expect(wrapper.find('[data-testid="thread-channel-timeline"]').exists()).toBe(false);
+		expect(wrapper.text()).toBe('');
+	});
 });

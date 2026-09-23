@@ -242,7 +242,7 @@
 			},
 			"reviewBrowseList": {
 				"agentDraft": "Agenten-Entwurf",
-				"approveAndSend": "Freigeben & senden",
+				"approveAndSend": "Prüfen & senden",
 				"classifierConfidence": "Klassifikator-Konfidenz {percent} %",
 				"empty": {
 					"body": "Derzeit muss kein Entwurf von Ihnen geprüft werden.",
@@ -280,7 +280,7 @@
 				"selected": "{count} ausgewählt"
 			},
 			"reviewFocusFlow": {
-				"approveAndSend": "Freigeben & senden",
+				"reviewAndSend": "Prüfen & senden",
 				"backToInbox": "Zurück zum Posteingang",
 				"backToList": "Zurück zur Liste",
 				"done": {
@@ -3093,18 +3093,13 @@
 				"heldBecause": "Zurückgehalten, weil:",
 				"sentBecause": "Gesendet, weil:"
 			},
-			"draftDiffEditor": {
-				"originalDraft": "Ursprünglicher Entwurf",
-				"saveAndApprove": "Speichern & freigeben",
-				"textareaLabel": "Antwortentwurf bearbeiten",
-				"yourEdit": "Ihre Bearbeitung"
-			},
 			"draftOptions": {
 				"groupLabel": "Entwurfsoptionen",
 				"heading": "Agenten-Entwurf — bitte auswählen"
 			},
 			"inboxFilterPills": {
-				"groupLabel": "Konversationen filtern"
+				"groupLabel": "Konversationen filtern",
+				"assigneeLabel": "Nach Zuständigkeit filtern"
 			},
 			"inboxMessageAttachments": {
 				"blocked": "Blockiert — in dieser Nachricht wurde Schadsoftware gefunden.",
@@ -3155,7 +3150,6 @@
 				"returned": "· Zurückgekehrt"
 			},
 			"threadChannelTimeline": {
-				"empty": "Noch keine kanalübergreifenden Nachrichten.",
 				"reply": "Antworten",
 				"replyOn": "Über {channel} antworten",
 				"replyPlaceholder": "Über {channel} antworten…",
@@ -3166,7 +3160,7 @@
 					"read": "gelesen"
 				},
 				"subtitle": "Alle Nachrichten dieser Konversation über sämtliche Kanäle hinweg.",
-				"title": "Kanalübergreifender Verlauf"
+				"title": "Alle Kanäle"
 			},
 			"trustChip": {
 				"seeWhy": "{label} — Begründung anzeigen"
@@ -4141,7 +4135,6 @@
 				"removeRecipient": "{address} entfernen"
 			},
 			"postboxReplyFlow": {
-				"browse": "Blättern",
 				"done": {
 					"backToInbox": "Zurück zum Posteingang",
 					"backToToday": "Zurück zu Heute",
@@ -5657,7 +5650,9 @@
 			},
 			"empty": {
 				"title": "Nichts wartet auf eine Antwort",
-				"body": "Neue Fragen erscheinen hier, sobald sie ankommen – aus jedem Postfach, das du liest."
+				"titleIn": "In {inbox} wartet nichts auf eine Antwort",
+				"body": "Neue Fragen erscheinen hier, sobald sie ankommen – aus jedem Postfach, das du liest.",
+				"showAll": "Alle anzeigen"
 			},
 			"backToToday": "Zurück zu Heute",
 			"done": {
@@ -9004,21 +8999,20 @@
 				}
 			},
 			"detail": {
-				"agentDraft": "Agentenentwurf",
 				"agentNeedsInput": "Der Agent braucht Ihre Eingabe",
 				"agentNeedsInputEyebrow": "Wartet auf Sie",
-				"aiClassification": "KI-Klassifizierung",
 				"answerAndResume": "Antworten und Entwurf fortsetzen",
 				"answerClarificationOperation": "Rückfrage beantworten",
 				"answerPlaceholder": "Antwort eingeben",
 				"answerRemaining": "Noch {count} Antwort bis zum Fortsetzen | Noch {count} Antworten bis zum Fortsetzen",
-				"approveAndSend": "Freigeben & senden",
 				"assign": "Zuweisen",
 				"assignThreadAria": "Konversation zuweisen",
+				"assignToMe": "Mir zuweisen",
 				"assignedTo": "Zugewiesen an",
 				"assignedToAria": "{name} zugewiesen",
 				"autoSendCancelledToast": "Automatischer Versand abgebrochen und zur Prüfung zurückgestellt",
-				"backToInbox": "Zurück zum Posteingang",
+				"backToInbox": "Zurück zum Team-Postfach",
+				"breadcrumb": "Konversation",
 				"categories": {
 					"billing": "Abrechnung",
 					"complaint": "Beschwerde",
@@ -9034,19 +9028,54 @@
 				"clarificationLead": "Antworten Sie unten, dann stellt der Agent den Entwurf mit Ihren Angaben als bestätigten Fakten fertig.",
 				"clarificationProgress": "{answered} von {total} beantwortet",
 				"clarificationSavedToast": "Antworten gespeichert — Entwurf wird fortgesetzt",
-				"confidenceChip": "{percent} % Konfidenz",
+				"composer": {
+					"agentDraft": "Vom Agenten entworfen",
+					"blocked": {
+						"answered": "Diese Nachricht wurde beantwortet. Sie können wieder antworten, sobald eine neue Nachricht eintrifft.",
+						"closed": "Diese Nachricht wurde ohne Antwort geschlossen.",
+						"drafting": "Der Agent entwirft gerade eine Antwort. Sie erscheint hier, sobald sie fertig ist.",
+						"needsInput": "Der Agent braucht oben Ihre Antworten, bevor er eine Antwort entwerfen kann.",
+						"processing": "Owlat liest diese Nachricht noch. Sie können gleich antworten.",
+						"quarantined": "Diese Nachricht liegt in der Quarantäne.",
+						"sending": "Ihre Antwort ist unterwegs.",
+						"update": "Diese Nachricht wurde als Update eingeordnet, das keine Antwort braucht."
+					},
+					"bodyLabel": "Ihre Antwort",
+					"editedDraft": "Bearbeiteter Entwurf",
+					"label": "Antworten",
+					"originalDraft": "Ursprünglicher Entwurf",
+					"placeholder": "Antwort schreiben…",
+					"rejectDraft": "Entwurf ablehnen",
+					"replyTo": "Antwort an {name}",
+					"restoreDraft": "Änderungen verwerfen",
+					"reviewAndSend": "Prüfen & senden",
+					"saveDraft": "Entwurf speichern",
+					"send": "Antwort senden",
+					"sendHint": "Senden",
+					"writeOwn": "Selbst schreiben"
+				},
 				"contact": "Kontakt",
 				"details": "Details",
+				"insight": {
+					"confidence": "Sicherheit: {percent} %.",
+					"reason": "Begründung: {reason}",
+					"sortedAs": "Eingeordnet als {category}, Priorität {priority}, Tonfall {sentiment}.",
+					"toggle": "Warum hat der Agent so entschieden?"
+				},
 				"discussInChannel": "In Kanal besprechen",
 				"discussInChannelTitle": "In {channel} besprechen",
-				"draftApprovedToast": "Entwurf freigegeben und zum Versand eingereiht",
 				"draftRejectedToast": "Entwurf abgelehnt",
-				"draftSavedToast": "Entwurf gespeichert, freigegeben und zum Versand eingereiht",
 				"lastMessage": "Letzte Nachricht",
 				"loading": "Konversation wird geladen …",
 				"markSeenOperation": "Konversation als gelesen markieren",
-				"messageCount": "{count} Nachrichten",
+				"markAs": {
+					"open": "Als offen markieren",
+					"resolved": "Als erledigt markieren",
+					"waiting": "Als wartend markieren"
+				},
+				"messageCount": "{count} Nachricht | {count} Nachrichten",
 				"messages": "Nachrichten",
+				"moreActions": "Weitere Aktionen",
 				"noErrorDetail": "Es wurden keine Fehlerdetails erfasst.",
 				"noMessages": "Noch keine Nachrichten in dieser Konversation.",
 				"noSubject": "Kein Betreff",
@@ -9058,16 +9087,20 @@
 					"normal": "normal",
 					"urgent": "dringend"
 				},
-				"priorityChip": "Priorität: {priority}",
 				"processingFailed": "Verarbeitung fehlgeschlagen",
 				"questionCounter": "Frage {index} von {total}",
-				"reject": "Ablehnen",
 				"rejectDraft": "Entwurf ablehnen",
 				"rejectModalBody": "Geben Sie optional eine Begründung an. Dieses Feedback verbessert künftige Entwürfe.",
 				"rejectReasonPlaceholder": "Begründung der Ablehnung (optional)",
 				"rejecting": "Wird abgelehnt …",
+				"reply": "Antworten",
+				"replyRequestedToast": "Der Agent entwirft eine Antwort",
+				"replySentToast": "Antwort wird gesendet",
+				"takeOverOperation": "Antwort übernehmen",
+				"requestReply": "Antwort entwerfen",
+				"requestReplyOperation": "Entwurf anfordern",
 				"replyLanguageNote": "Die Antwort wird auf {language} verfasst.",
-				"retriedToast": "Nachricht erneut zur Verarbeitung eingereiht",
+				"retriedToast": "Der Agent versucht es erneut",
 				"retryProcessing": "Erneut verarbeiten",
 				"reusedAnswersEyebrow": "Aus dem Gedächtnis",
 				"reusedAnswersHint": "Dieselbe Frage wurde schon einmal beantwortet, daher hat der Agent diese Antwort erneut angewendet. Bearbeiten Sie den Entwurf, wenn er anders lauten soll, oder",
@@ -9081,6 +9114,7 @@
 				},
 				"snooze": "Zurückstellen",
 				"snoozedToast": "Konversation zurückgestellt",
+				"snoozedUntil": "Zurück {time}",
 				"snoozedUntilReplyToast": "Zurückgestellt, bis eine Antwort eintrifft",
 				"someone": "Jemand",
 				"statuses": {
@@ -9088,11 +9122,11 @@
 					"resolved": "Erledigt",
 					"waiting": "Wartend"
 				},
-				"subjectPlaceholder": "Betreff (optional)",
 				"toasts": {
 					"draftSavedNotApproved": "Entwurf gespeichert — noch nicht genehmigt"
 				},
 				"unassigned": "Nicht zugewiesen",
+				"unassignMe": "Zuweisung an mich aufheben",
 				"undo": "Rückgängig",
 				"undoAutoSendOperation": "Automatischen Versand rückgängig machen",
 				"unsnooze": "Zurückstellung aufheben",
@@ -9117,7 +9151,7 @@
 			"index": {
 				"assignThreadOperation": "Konversation zuweisen",
 				"empty": {
-					"mine": "Ihnen ist derzeit nichts zugewiesen.",
+					"me": "Ihnen ist derzeit nichts zugewiesen.",
 					"open": "Keine offenen Gespräche. Posteingang leer.",
 					"resolved": "Noch keine erledigten Gespräche.",
 					"snoozed": "Nichts ist zurückgestellt. Zurückgestelltes erscheint hier wieder.",
@@ -9147,7 +9181,9 @@
 				"openMyPostbox": "Meine Postbox öffnen",
 				"accessHint": "Du brauchst Zugriff? Bitte eine Organisations-Administration, deine Rolle unter Einstellungen → Team zu ändern.",
 				"sortedBy": "Sortiert nach {sort}",
-				"sortSwitchTo": "Nach {sort} sortieren"
+				"sortSwitchTo": "Nach {sort} sortieren",
+				"waitingOver24h": "{count} Person wartet seit über einem Tag auf eine Antwort | {count} Personen warten seit über einem Tag auf eine Antwort",
+				"showLongestWaitFirst": "Längste Wartezeit zuerst"
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Absender blockieren",
@@ -9218,9 +9254,6 @@
 				"title": "Quarantäne",
 				"whyHeldLabel": "Warum diese Nachricht zurückgehalten wurde"
 			},
-			"review": {
-				"pageTitle": "Prüfliste — Owlat"
-			},
 			"updates": {
 				"blockDialogConfirm": "Absender sperren",
 				"blockDialogDescription": "Künftige Nachrichten von {sender} werden stillschweigend verworfen.",
@@ -9272,7 +9305,7 @@
 				"loading": "Neuigkeiten werden geladen…",
 				"noSubject": "Kein Betreff",
 				"open": "Öffnen",
-				"openReviewQueue": "Prüfliste öffnen",
+				"openAnswerQueue": "Antwortliste öffnen",
 				"pageTitle": "Neuigkeiten — Owlat",
 				"replyRequestedToast": "Der Agent entwirft eine Antwort. Sie erscheint in der Prüfliste.",
 				"requestReply": "Antwort entwerfen",
@@ -12657,11 +12690,12 @@
 				}
 			}
 		},
+		"inboxAssignees": {
+			"anyone": "Alle",
+			"me": "Mir zugewiesen",
+			"unassigned": "Nicht zugewiesen"
+		},
 		"inboxFilters": {
-			"mine": {
-				"empty": "Ihnen ist derzeit nichts zugewiesen.",
-				"label": "Meine"
-			},
 			"open": {
 				"empty": "Keine offenen Gespräche. Posteingang leer.",
 				"label": "Offen"
@@ -12674,17 +12708,9 @@
 				"empty": "Nichts ist zurückgestellt. Zurückgestelltes erscheint hier wieder.",
 				"label": "Zurückgestellt"
 			},
-			"unassigned": {
-				"empty": "Jede offene Konversation hat eine Zuständigkeit.",
-				"label": "Nicht zugewiesen"
-			},
 			"waiting": {
 				"empty": "Keine Konversation wartet auf eine Kundenantwort.",
 				"label": "Wartend"
-			},
-			"waiting24h": {
-				"label": "Wartet 24 Std.+",
-				"empty": "Niemand wartet länger als einen Tag auf uns."
 			}
 		},
 		"mailAutodiscover": {
@@ -13755,13 +13781,13 @@
 				"general": "Allgemein",
 				"navigation": "Navigation",
 				"organize": "Organisieren",
-				"review": "Freigabe-Warteschlange",
+				"review": "Antwortliste",
 				"triage": "Triage",
 				"workspace": "Arbeitsbereiche"
 			},
 			"labels": {
 				"addLabel": "Label hinzufügen",
-				"approveAndSend": "Freigeben & senden",
+				"approveAndSend": "Prüfen & senden",
 				"archive": "Archivieren",
 				"closeCancel": "Schließen / Abbrechen",
 				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Heute",

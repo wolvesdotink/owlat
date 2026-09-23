@@ -254,11 +254,7 @@ const secondaryButton =
 			:primary-disabled="busy"
 			:primary-loading="busy"
 			:skip-label="t('common.done')"
-			:hints="[
-				{ keys: ['Enter'], label: t('components.postbox.postboxReplyFlow.reply') },
-				{ keys: ['e'], label: t('common.archive') },
-				{ keys: ['←', '→'], label: t('components.postbox.postboxReplyFlow.browse') },
-			]"
+			:hints="[{ keys: ['Enter'], label: t('components.postbox.postboxReplyFlow.reply') }]"
 			@primary="draftReply"
 			@skip="markDone"
 		>
