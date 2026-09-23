@@ -2563,6 +2563,16 @@
 				"savedToast": "Vertrauenswürdige Weiterleiter gespeichert.",
 				"subtitle": "Halten Sie Mailinglisten- und weitergeleitete Mail aus dem Spam-Ordner, wenn der Weiterleiter dafür bürgt",
 				"title": "Vertrauenswürdige Weiterleiter"
+			},
+			"ehloOverrides": {
+				"title": "EHLO-Namen pro IP-Adresse",
+				"subtitle": "Nur für einen Server, der von mehreren IP-Adressen mit unterschiedlichen Reverse-DNS-Namen sendet. Jede IP meldet sich bei anderen Servern mit dem Namen, auf den ihr PTR-Eintrag zeigt.",
+				"ipLabel": "Sende-IP",
+				"hostnameLabel": "EHLO-Hostname",
+				"addRow": "IP hinzufügen",
+				"removeRow": "Zeile {index} entfernen",
+				"invalidIp": "Geben Sie eine reine IPv4- oder IPv6-Adresse ein.",
+				"invalidHostname": "Geben Sie einen vollständigen Hostnamen ein, etwa mail2.example.com."
 			}
 		},
 		"desktop": {
@@ -13661,7 +13671,6 @@
 			}
 		},
 		"setupMtaIdentity": {
-			"invalidEhloHostnames": "Die EHLO-Überschreibungen pro IP müssen ein JSON-Objekt sein, das IP-Adressen auf Hostnamen abbildet.",
 			"missingIpsOrHostname": "Geben Sie die Versand-IPs für Transaktions- und Kampagnenmail sowie den EHLO-Hostnamen an, der in ihren PTR-Einträgen verwendet wird."
 		},
 		"setupOutboundTls": {

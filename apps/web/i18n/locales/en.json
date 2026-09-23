@@ -2563,6 +2563,16 @@
 				"savedToast": "Trusted forwarders saved.",
 				"subtitle": "Keep mailing-list and forwarded mail out of Spam when the forwarder vouches for it",
 				"title": "Trusted forwarders"
+			},
+			"ehloOverrides": {
+				"title": "Per-IP EHLO names",
+				"subtitle": "Only for a server that sends from several IP addresses with different reverse-DNS names. Each IP greets other servers with the name its PTR record points to.",
+				"ipLabel": "Sending IP",
+				"hostnameLabel": "EHLO hostname",
+				"addRow": "Add an IP",
+				"removeRow": "Remove row {index}",
+				"invalidIp": "Enter a bare IPv4 or IPv6 address.",
+				"invalidHostname": "Enter a full hostname, such as mail2.example.com."
 			}
 		},
 		"desktop": {
@@ -13661,7 +13671,6 @@
 			}
 		},
 		"setupMtaIdentity": {
-			"invalidEhloHostnames": "Per-IP EHLO overrides must be a JSON object mapping IP to hostname.",
 			"missingIpsOrHostname": "Enter the transactional and campaign sending IPs plus the EHLO hostname used by their PTR records."
 		},
 		"setupOutboundTls": {

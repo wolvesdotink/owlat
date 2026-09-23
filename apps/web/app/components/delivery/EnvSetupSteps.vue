@@ -29,8 +29,23 @@ const props = withDefaults(
 		connectedLabel?: string;
 		/** Poll cadence while waiting. */
 		pollIntervalMs?: number;
+		/**
+		 * Non-secret values the page built itself (never a credential), filled
+		 * into both blocks instead of the blank / `<value>` placeholder.
+		 */
+		values?: Readonly<Record<string, string>>;
+		/**
+		 * Whether the page can tell when the server has the value. Without that,
+		 * the blocks show but nothing polls or claims to be waiting.
+		 */
+		awaitConnection?: boolean;
 	}>(),
-	{ connectedLabel: undefined, pollIntervalMs: ENV_CONNECTION_POLL_MS }
+	{
+		connectedLabel: undefined,
+		pollIntervalMs: ENV_CONNECTION_POLL_MS,
+		values: undefined,
+		awaitConnection: true,
+	}
 );
 
 const emit = defineEmits<{ refresh: [] }>();
@@ -38,9 +53,10 @@ const emit = defineEmits<{ refresh: [] }>();
 const { t } = useI18n();
 const { copy, isCopied } = useCopyToClipboard();
 
-const envSnippet = computed(() => buildDeliveryEnvSnippet(props.variables));
-const cliCommands = computed(() => buildEnvCliCommands(props.variables));
-const isWaiting = computed(() => !props.connected && envSnippet.value !== '');
+const envSnippet = computed(() => buildDeliveryEnvSnippet(props.variables, props.values));
+const cliCommands = computed(() => buildEnvCliCommands(props.variables, props.values));
+const showBlocks = computed(() => !props.connected && envSnippet.value !== '');
+const isWaiting = computed(() => showBlocks.value && props.awaitConnection);
 
 let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -75,7 +91,7 @@ onBeforeUnmount(stopPolling);
 			{{ connectedLabel ?? t('components.delivery.envSetupSteps.connected') }}
 		</p>
 
-		<template v-else-if="isWaiting">
+		<template v-else-if="showBlocks">
 			<div>
 				<div class="mb-2 flex items-center justify-between gap-3">
 					<p class="text-xs font-medium text-text-primary">
@@ -100,7 +116,7 @@ onBeforeUnmount(stopPolling);
 					class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
 					data-testid="env-setup-env"
 					>{{ envSnippet }}</pre>
-				<p class="mt-1.5 text-xs text-text-tertiary">
+				<p v-if="!values" class="mt-1.5 text-xs text-text-tertiary">
 					{{ t('components.delivery.envSetupSteps.blankValues') }}
 				</p>
 			</div>
@@ -133,6 +149,7 @@ onBeforeUnmount(stopPolling);
 
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 				<p
+					v-if="isWaiting"
 					class="inline-flex items-center gap-1.5 text-xs text-text-secondary"
 					role="status"
 					aria-live="polite"
@@ -146,6 +163,7 @@ onBeforeUnmount(stopPolling);
 					{{ t('components.delivery.envSetupSteps.waiting') }}
 				</p>
 				<UiButton
+					v-if="isWaiting"
 					variant="ghost"
 					size="sm"
 					data-testid="env-setup-check-now"

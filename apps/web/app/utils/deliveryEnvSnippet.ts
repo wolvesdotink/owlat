@@ -19,24 +19,40 @@ import { coreSendProviderCatalogEntry } from '@owlat/shared/sendProviderCatalog'
 /**
  * Build a `.env` skeleton (one `NAME=` line per missing variable, empty values)
  * from a list of missing env var names. Returns `''` when nothing is missing so
- * callers can `v-if` the whole snippet away.
+ * callers can `v-if` the whole snippet away. `values` fills in a line only for
+ * a non-secret value the page itself built; credentials never reach here.
  *
  * Names are de-duplicated and blank entries dropped; order is preserved.
  */
-export function buildDeliveryEnvSnippet(missingVarNames: readonly string[]): string {
+export function buildDeliveryEnvSnippet(
+	missingVarNames: readonly string[],
+	values?: Readonly<Record<string, string>>
+): string {
+	return uniqueNames(missingVarNames)
+		.map((name) => `${name}=${values?.[name] ?? ''}`)
+		.join('\n');
+}
+
+/** Trimmed, de-duplicated, non-blank names, in their first order. */
+function uniqueNames(varNames: readonly string[]): string[] {
 	const seen = new Set<string>();
-	const lines: string[] = [];
-	for (const raw of missingVarNames) {
+	const names: string[] = [];
+	for (const raw of varNames) {
 		const name = raw.trim();
 		if (!name || seen.has(name)) continue;
 		seen.add(name);
-		lines.push(`${name}=`);
+		names.push(name);
 	}
-	return lines.join('\n');
+	return names;
+}
+
+/** Quote a value for a POSIX shell: single quotes, with any `'` spelled out. */
+function shellQuote(value: string): string {
+	return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 /**
- * The same skeleton, ORDERED BY THE CATALOG ENTRY (the seams plan's D1/D5):
+ * The missing variable names, ORDERED BY THE CATALOG ENTRY (the seams plan's D1/D5):
  * the active kind's `requiredEnvVars`, in the order it declares them, filtered
  * to the ones the status query reports missing.
  *
@@ -53,18 +69,6 @@ export function buildDeliveryEnvSnippet(missingVarNames: readonly string[]): str
  * send, with nothing on the page saying what is missing. An unknown kind — a
  * transport this build does not carry — falls back to the reported list whole,
  * for the same reason.
- */
-export function buildProviderEnvSkeleton(
-	kind: string | null | undefined,
-	missingVarNames: readonly string[]
-): string {
-	return buildDeliveryEnvSnippet(orderProviderEnvNames(kind, missingVarNames));
-}
-
-/**
- * The names {@link buildProviderEnvSkeleton} emits, in its order — for a
- * caller that renders the names itself (the shared env-setup block builds both
- * the `.env` lines and the CLI commands from one list).
  */
 export function orderProviderEnvNames(
 	kind: string | null | undefined,
@@ -83,16 +87,22 @@ export function orderProviderEnvNames(
  * running containers load it. `owlat env` writes the same `.env` the snippet
  * above goes into, so the two are alternatives, not two steps.
  *
- * Names only, like the snippet — the value is always the `<value>` placeholder.
- * Returns `''` for an empty list so a caller can hide the block.
+ * Names only by default, like the snippet — the value is the `<value>`
+ * placeholder. A caller that holds a NON-SECRET value (the EHLO overrides the
+ * page builds from what the operator typed) passes it in `values`, and it is
+ * shell-quoted. Returns `''` for an empty list so a caller can hide the block.
  */
-export function buildEnvCliCommands(varNames: readonly string[]): string {
-	const names = buildDeliveryEnvSnippet(varNames)
-		.split('\n')
-		.filter((line) => line !== '')
-		.map((line) => line.slice(0, -1));
+export function buildEnvCliCommands(
+	varNames: readonly string[],
+	values?: Readonly<Record<string, string>>
+): string {
+	const names = uniqueNames(varNames);
 	if (names.length === 0) return '';
-	return [...names.map((name) => `owlat env ${name} <value>`), 'owlat restart'].join('\n');
+	const set = names.map((name) => {
+		const value = values?.[name];
+		return `owlat env ${name} ${value === undefined ? '<value>' : shellQuote(value)}`;
+	});
+	return [...set, 'owlat restart'].join('\n');
 }
 
 /** How often a page waiting on an env change asks the server again. */

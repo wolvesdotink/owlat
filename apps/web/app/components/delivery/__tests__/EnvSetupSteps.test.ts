@@ -36,7 +36,12 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-function mountSteps(props: { variables: readonly string[]; connected: boolean }) {
+function mountSteps(props: {
+	variables: readonly string[];
+	connected: boolean;
+	values?: Record<string, string>;
+	awaitConnection?: boolean;
+}) {
 	return mount(EnvSetupSteps, { props, global: { stubs } });
 }
 
@@ -53,6 +58,30 @@ describe('EnvSetupSteps', () => {
 			'owlat env AWS_SES_REGION <value>\nowlat env AWS_SES_ACCESS_KEY_ID <value>\nowlat restart'
 		);
 		expect(wrapper.find('[data-testid="env-setup-waiting"]').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('fills in a value the page built, and does not wait when it cannot tell', async () => {
+		const value = '{"203.0.113.11":"mail2.example.com"}';
+		const refresh = vi.fn();
+		const wrapper = mount(EnvSetupSteps, {
+			props: {
+				variables: ['EHLO_HOSTNAMES'],
+				values: { EHLO_HOSTNAMES: value },
+				connected: false,
+				awaitConnection: false,
+				onRefresh: refresh,
+			},
+			global: { stubs },
+		});
+		expect(wrapper.find('[data-testid="env-setup-env"]').text()).toBe(`EHLO_HOSTNAMES=${value}`);
+		expect(wrapper.find('[data-testid="env-setup-cli"]').text()).toBe(
+			`owlat env EHLO_HOSTNAMES '${value}'\nowlat restart`
+		);
+		expect(wrapper.find('[data-testid="env-setup-waiting"]').exists()).toBe(false);
+		vi.advanceTimersByTime(60_000);
+		await nextTick();
+		expect(refresh).not.toHaveBeenCalled();
 		wrapper.unmount();
 	});
 

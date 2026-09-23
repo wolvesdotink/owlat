@@ -200,7 +200,6 @@ export function buildProviderEnv(
 		const identity = draft.mtaIdentity;
 		if (identity) {
 			Object.assign(next, buildMtaIdentityEnv(identity));
-			if (!identity.ehloHostnames.trim()) delete next['EHLO_HOSTNAMES'];
 		}
 	}
 

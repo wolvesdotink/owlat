@@ -102,6 +102,12 @@ const missingEnv = computed<string[]>(() => {
 	return status.value.provider ? [] : ['EMAIL_PROVIDER'];
 });
 
+// The built-in MTA is the active provider: its per-IP EHLO names are ours to set.
+const hasOwnProvider = computed(() => {
+	const provider = status.value?.provider;
+	return typeof provider === 'string' && provider !== '' && isOwnSendProviderKind(provider);
+});
+
 // The connection checks follow the provider: they compare a relay with our own
 // server, so they are offered once a relay is the active provider.
 const hasRelayProvider = computed(() => {
@@ -358,6 +364,10 @@ const inboundHeadingId = useId();
 						</I18nT>
 					</div>
 				</UiCard>
+
+				<!-- Our own MTA sending from several IPs with different PTR names:
+				     the per-IP EHLO table, handed over as EHLO_HOSTNAMES. -->
+				<DeliveryEhloOverridesCard v-if="hasOwnProvider" />
 
 				<!-- Send test email -->
 				<DeliveryTestSendCard
